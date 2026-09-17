@@ -537,7 +537,12 @@ table(widget) ->
                         [
                             {installation_id, tsid, required},
                             {mime, binary, required},
-                            {size_bytes, int, required}
+                            {size_bytes, int, required},
+                            %% CSB-02S D6 补全：企业面 request_presign 的
+                            %% object_hash（64 位小写 hex SHA-256）为必填，
+                            %% PUT 后由服务端复核——此前 widget 面漏收该参数，
+                            %% 桥接层送 undefined 进校验恒 500。
+                            {object_hash, binary, required}
                         ],
                         [{id, session_id}]}
                 ],

@@ -605,6 +605,15 @@ classify({invalid_organization_id, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({not_session_contact, _, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
+%% CSB-02S D6 补全：访客附件桥接（eb_asset_content 域校验）的取值不成立
+%% ——此前未登记被当 500（eb 面有 invalid_* 形状兜底，widget 面无兜底故
+%% 显式登记）。缺参在动作表层已是 422 missing_param，此处覆盖值不合法。
+classify({invalid_object_hash, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+classify({invalid_mime, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+classify({invalid_size_bytes, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
 %% C1~C4（contracts-w2）：列表查询参数的取值不成立——显式登记，无兜底。
 classify({invalid_after_id, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;

@@ -290,6 +290,9 @@ asset_presign(OrgId, Params) when is_map(Params) ->
                     conversation_id => maps:get(conversation_id, Session),
                     mime => maps:get(mime, Params, undefined),
                     size_bytes => maps:get(size_bytes, Params, undefined),
+                    %% CSB-02S D6 补全：object_hash 由 widget 面动作表收齐后
+                    %% 透传（企业面 request_presign 必填，PUT 后服务端复核）。
+                    object_hash => maps:get(object_hash, Params, undefined),
                     %% CSB-02S D6：访客主体（令牌 contact，服务端派生）进企业
                     %% 面的访客作用域分支——企业面 member 校验照旧不放宽。
                     actor_contact_id => ContactId
