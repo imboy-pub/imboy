@@ -142,10 +142,10 @@ m02_create_and_tree_queries() ->
             }),
         ?assertEqual(RootId, maps:get(parent_id, Child)),
 
-        {ok, All} = ?APP:list_departments(Org, #{status => all}),
+        {ok, All} = ?APP:list_departments(Org, #{status => all, actor_user_id => Owner}),
         ?assertEqual(2, length(All)),
 
-        {ok, Detail} = ?APP:get_department(Org, #{department_id => RootId}),
+        {ok, Detail} = ?APP:get_department(Org, #{department_id => RootId, actor_user_id => Owner}),
         ?assertEqual(<<"平台研发部"/utf8>>, maps:get(name, Detail)),
         ?assertEqual([], maps:get(members, Detail)),
 
@@ -174,6 +174,23 @@ m02_create_and_tree_queries() ->
             ?APP:create_department(Org, #{
                 name => <<"外来"/utf8>>, actor_user_id => maps:get(other_member, Scope)
             })
+        ),
+        %% 读面同门（GAP3 起 list/detail 需同 Org active actor）：
+        %% 非 member 拒绝且先于存在性裁决（不泄露目录事实）
+        ?assertMatch(
+            {error, {actor_not_member, _}},
+            ?APP:list_departments(Org, #{actor_user_id => maps:get(other_member, Scope)})
+        ),
+        ?assertMatch(
+            {error, {actor_not_member, _}},
+            ?APP:get_department(Org, #{
+                department_id => RootId, actor_user_id => maps:get(other_member, Scope)
+            })
+        ),
+        %% removed 成员读目录同样拒绝（status != active）
+        ?assertMatch(
+            {error, {actor_not_active, _, removed}},
+            ?APP:list_departments(Org, #{actor_user_id => maps:get(removed_member, Scope)})
         )
     after
         ?FIX:cleanup(Scope)
@@ -210,7 +227,7 @@ m03_self_parent_rejected() ->
             )
         ),
         %% 拒绝后树未被破坏
-        {ok, After} = ?APP:get_department(Org, #{department_id => DeptId}),
+        {ok, After} = ?APP:get_department(Org, #{department_id => DeptId, actor_user_id => Owner}),
         ?assertEqual(null, maps:get(parent_id, After))
     after
         ?FIX:cleanup(Scope)
@@ -397,7 +414,7 @@ m07_multi_department_membership_ok() ->
         ?assertEqual(1, dept_member_count(D1Id)),
         ?assertEqual(1, dept_member_count(D2Id)),
 
-        {ok, Detail1} = ?APP:get_department(Org, #{department_id => D1Id}),
+        {ok, Detail1} = ?APP:get_department(Org, #{department_id => D1Id, actor_user_id => Owner}),
         ?assertEqual([MemberA], [maps:get(user_id, M) || M <- maps:get(members, Detail1)])
     after
         ?FIX:cleanup(Scope)
@@ -451,7 +468,7 @@ m08_concurrent_move_exactly_one_winner() ->
         ?assertEqual(1, length(Losers), {all_results, Results}),
         [{_, WinnerTarget, _}] = Winners,
 
-        {ok, Final} = ?APP:get_department(Org, #{department_id => XId}),
+        {ok, Final} = ?APP:get_department(Org, #{department_id => XId, actor_user_id => Owner}),
         ?assertEqual(WinnerTarget, maps:get(parent_id, Final)),
         ?assertEqual(XVersion + 1, maps:get(version, Final)),
         ?assert(tree_acyclic(Org))
@@ -482,7 +499,7 @@ m09_concurrent_cycle_window_stays_acyclic() ->
         Self = self(),
         %% Op1：X 挂到自己的后代 A 之下（若先做=环，被拒；若 A 已被移出后做=合法）
         Op1 = fun() ->
-            {ok, Cur} = ?APP:get_department(Org, #{department_id => XId}),
+            {ok, Cur} = ?APP:get_department(Org, #{department_id => XId, actor_user_id => Owner}),
             Result =
                 ?APP:move_department(Org, #{
                     department_id => XId,
@@ -494,7 +511,7 @@ m09_concurrent_cycle_window_stays_acyclic() ->
         end,
         %% Op2：A 提到根
         Op2 = fun() ->
-            {ok, Cur} = ?APP:get_department(Org, #{department_id => AId}),
+            {ok, Cur} = ?APP:get_department(Org, #{department_id => AId, actor_user_id => Owner}),
             Result =
                 ?APP:move_department(Org, #{
                     department_id => AId,
@@ -555,7 +572,9 @@ m10_archive_no_permission_cascade() ->
         ?assertEqual(false, maps:get(archive_idempotent, Archived)),
 
         %% 子树一并归档（纯目录状态）
-        {ok, LeafAfter} = ?APP:get_department(Org, #{department_id => LeafId}),
+        {ok, LeafAfter} = ?APP:get_department(Org, #{
+            department_id => LeafId, actor_user_id => Owner
+        }),
         ?assertEqual(archived, maps:get(status, LeafAfter)),
 
         %% 关键负例：membership 与 workspace 权限零变化（C10 archive 不级联撤权限）
@@ -792,7 +811,9 @@ m12_archived_dept_write_gates() ->
             })
         ),
         %% 目录事实仍可读（可审计）
-        ?assertMatch({ok, _}, ?APP:get_department(Org, #{department_id => DeptId}))
+        ?assertMatch(
+            {ok, _}, ?APP:get_department(Org, #{department_id => DeptId, actor_user_id => Owner})
+        )
     after
         ?FIX:cleanup(Scope)
     end.
