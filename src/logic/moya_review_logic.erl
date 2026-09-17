@@ -547,21 +547,42 @@ workbench_payload(Uid, Bundle) ->
 
 -spec build_detail(integer(), integer(), staff | guardian, map()) ->
     {ok, map()} | {error, atom()}.
-build_detail(_Uid, SubmissionId, Perspective, _Scope) ->
+build_detail(Uid, SubmissionId, Perspective, _Scope) ->
     case load_submission_bundle(SubmissionId) of
         {ok, Bundle} ->
             case {Perspective, withdrawn_submission(Bundle)} of
                 %% A1-D04：staff 视角撤回后不再返回 teacher_view（含 AI 草稿），
                 %% 与 view_url 的 T17 拒绝同口径；guardian 保留本人可见语义
-                %% （parent_view 白名单本就无 AI 字段，D-10）
+                %% （parent_view 白名单本就无 AI 字段，D-10）。
+                %% MFS-3-B2：submission_access_dispatch staff 优先，双角色用户
+                %% （自己孩子的监护人兼本班老师）读 withdrawn 提交必被派为 staff
+                %% 视角——兼任监护人（can_view_review）时降级返回 parent_view，
+                %% 纯 staff 仍 forbidden。
                 {staff, true} ->
-                    {error, forbidden};
+                    case guardian_view_fallback(Uid, Bundle) of
+                        ok -> {ok, parent_view(Bundle)};
+                        {error, _} -> {error, forbidden}
+                    end;
                 _ ->
-                    detail_payload_by_perspective(_Uid, Bundle, Perspective)
+                    detail_payload_by_perspective(Uid, Bundle, Perspective)
             end;
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% MFS-3-B2：uid 兼任该学员的 active 监护人（can_view_review）则可降级为
+%% 家长本人可见视角；关系缺失/停用/无权限一律拒绝（fail-closed）。
+-spec guardian_view_fallback(integer(), map()) -> ok | {error, atom()}.
+guardian_view_fallback(Uid, Bundle) ->
+    LearnerId = bundle_learner_id(Bundle),
+    case moya_acl:resolve_guardian(Uid, LearnerId, view_review) of
+        {ok, _} -> ok;
+        {error, _} -> {error, forbidden}
+    end.
+
+-spec bundle_learner_id(map()) -> integer() | undefined.
+bundle_learner_id(#{submission := #{<<"learner_id">> := Id}}) -> Id;
+bundle_learner_id(_) -> undefined.
 
 -spec detail_payload_by_perspective(integer(), map(), staff | guardian) ->
     {ok, map()}.

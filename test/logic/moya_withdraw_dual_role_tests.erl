@@ -177,3 +177,73 @@ submission_detail_guardian_withdrawn_still_visible_test_() ->
             )
         end
     ).
+
+%% Wave3 e2e 回归（MFS-3-B2）：submission_access_dispatch staff 优先——双角色
+%% 用户（自己孩子的监护人兼本班老师）读 withdrawn 提交必被派为 staff 视角，
+%% D04 守卫不得误杀其「监护人本人可见」语义：应降级返回 parent_view。
+submission_detail_dual_role_withdrawn_guardian_fallback_test_() ->
+    ?WITH_MECKS(
+        [
+            {moya_acl, [
+                {'submission_access', 2, fun(?UID, ?SUBMISSION) -> {ok, staff, scope()} end},
+                {'resolve_guardian', 3, fun(?UID, ?LEARNER, view_review) -> {ok, #{}} end}
+            ]},
+            {moya_context_repo, [
+                {'submission_scope', 1, fun(?SUBMISSION) -> {ok, scope()} end}
+            ]},
+            {moya_submission_repo, [
+                {'find', 1, fun(?SUBMISSION) -> {ok, sub_row(<<"withdrawn">>)} end},
+                {'assets', 1, fun(?SUBMISSION) -> {ok, []} end}
+            ]},
+            {moya_review_repo, [
+                {'ai_draft', 1, fun(?SUBMISSION) -> {ok, undefined} end},
+                {'find_published', 1, fun(?SUBMISSION) -> {ok, undefined} end},
+                {'find_draft', 2, fun(?SUBMISSION, ?UID) -> {ok, undefined} end},
+                {'assets', 1, fun(_) -> {ok, []} end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _P) -> {ok, []} end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {ok, #{<<"status">> := <<"withdrawn">>}},
+                moya_review_logic:submission_detail(?UID, ?SUBMISSION)
+            )
+        end
+    ).
+
+%% 对照：staff 视角 + withdrawn + 无监护人关系 → 仍 forbidden（D04 主语义）
+submission_detail_staff_only_withdrawn_still_denied_test_() ->
+    ?WITH_MECKS(
+        [
+            {moya_acl, [
+                {'submission_access', 2, fun(?UID, ?SUBMISSION) -> {ok, staff, scope()} end},
+                {'resolve_guardian', 3, fun(?UID, ?LEARNER, view_review) ->
+                    {error, not_guardian}
+                end}
+            ]},
+            {moya_context_repo, [
+                {'submission_scope', 1, fun(?SUBMISSION) -> {ok, scope()} end}
+            ]},
+            {moya_submission_repo, [
+                {'find', 1, fun(?SUBMISSION) -> {ok, sub_row(<<"withdrawn">>)} end},
+                {'assets', 1, fun(?SUBMISSION) -> {ok, []} end}
+            ]},
+            {moya_review_repo, [
+                {'ai_draft', 1, fun(?SUBMISSION) -> {ok, undefined} end},
+                {'find_published', 1, fun(?SUBMISSION) -> {ok, undefined} end},
+                {'find_draft', 2, fun(?SUBMISSION, ?UID) -> {ok, undefined} end},
+                {'assets', 1, fun(_) -> {ok, []} end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _P) -> {ok, []} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, forbidden},
+                moya_review_logic:submission_detail(?UID, ?SUBMISSION)
+            )
+        end
+    ).
