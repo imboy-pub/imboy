@@ -22,9 +22,12 @@
     get_effect/2,
     find_effect_by_external_key/3,
     count_run_events/2,
+    get_agent_identity/2,
+    next_effect_sequence/2,
     insert_run_tx/3,
     cas_transition_tx/8,
     lease_acquire_tx/7,
+    insert_effect_guarded_tx/2,
     lease_renew/6,
     lease_take_over/5,
     insert_effect_tx/3,
@@ -135,6 +138,32 @@ count_run_events(Conn, RunId) ->
     {ok, _, [{Count}]} =
         epgsql:equery(Conn, "SELECT count(*) FROM agent_run_event WHERE run_id = $1", [RunId]),
     Count.
+
+%% ===================================================================
+%% 读路径：Agent 身份 + effect 序号（AG31-05 严格附加；R7 披露项）
+%% ===================================================================
+
+%% AG31-05 R1：enabled 权威事实=user 行存在 ∧ account_type=1，另加核
+%% 显式 status 列（00000001 注释：-1 删除/0 禁用/1 启用/2 注销中；
+%% 1=启用才视为 enabled）。既有行为的纯附加读，不改任何既有函数。
+-spec get_agent_identity(conn(), non_neg_integer()) ->
+    {ok, #{account_type := integer(), status := integer()}} | {error, not_found}.
+get_agent_identity(Conn, UserId) ->
+    Sql = "SELECT account_type, status FROM \"user\" WHERE id = $1",
+    case epgsql:equery(Conn, Sql, [UserId]) of
+        {ok, _Cols, [{AccountType, Status}]} ->
+            {ok, #{account_type => AccountType, status => Status}};
+        {ok, _, []} ->
+            {error, not_found}
+    end.
+
+%% AG31-05：authorize/3 自持 effect 单调序号（UNIQUE(run_id,sequence) 兜底
+%% 并发碰撞为 23505）。既有行为的纯附加读，不改任何既有函数。
+-spec next_effect_sequence(conn(), non_neg_integer()) -> pos_integer().
+next_effect_sequence(Conn, RunId) ->
+    Sql = "SELECT COALESCE(MAX(sequence), 0) + 1 FROM agent_effect WHERE run_id = $1",
+    {ok, _, [{Seq}]} = epgsql:equery(Conn, Sql, [RunId]),
+    Seq.
 
 %% ===================================================================
 %% 写路径：Run 创建（insert + 创建事件同事务）
@@ -355,6 +384,78 @@ insert_effect_tx(Conn, Effect, RunOp) ->
                 end
         end
     end).
+
+%% ===================================================================
+%% AG31-05 MEDIUM-2 加固（A2 review）：allow 决策持久化的 run 终态守卫。
+%% 与 insert_effect_tx 同一 INSERT created→Decided CAS 流程，但在同一事务内
+%% 先 SELECT ... FOR UPDATE 锁 run 行并要求 status='running'——堵住步骤 1
+%% 无锁读与持久化之间的并发终态迁移（cancel/timeout）窗口（§14 Run
+%% terminal → deny all new effects）。R7 严格附加：不改 insert_effect_tx
+%% 既有行为（deny/approval 路径继续走原函数；approval 的 E07 CAS 自带
+%% 版本守卫）。
+%% ===================================================================
+
+-spec insert_effect_guarded_tx(conn(), map()) ->
+    {ok, pos_integer()}
+    | {error, {run_not_active, binary() | not_found}}
+    | {error, {duplicate_effect, binary()}}
+    | {rollback, term()}.
+insert_effect_guarded_tx(Conn, Effect) ->
+    with_tx(Conn, fun(C) ->
+        RunId = maps:get(run_id, Effect),
+        case epgsql:equery(C, "SELECT status FROM agent_run WHERE id = $1 FOR UPDATE", [RunId]) of
+            {ok, _Cols, [{<<"running">>}]} ->
+                guarded_insert_decided(C, Effect);
+            {ok, _Cols, [{OtherStatus}]} ->
+                throw({abort_tx, {run_not_active, OtherStatus}});
+            {ok, _Cols, []} ->
+                throw({abort_tx, {run_not_active, not_found}})
+        end
+    end).
+
+%% guarded 变体的 created→Decided 落账：与 insert_effect_tx 主体同流程
+%% （R7 纯附加约束下的受控重复；行为差异仅事务开头的 run 行锁守卫）。
+guarded_insert_decided(C, Effect) ->
+    Sql =
+        "INSERT INTO agent_effect (id, run_id, sequence, tool_id, capability, action, "
+        "resource_digest, args_digest, status, authorization_reason, approval_ref, "
+        "grant_version_checked, external_idempotency_key, version, created_at, updated_at) "
+        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'created',NULL,NULL,NULL,$9,1,$10,$10) "
+        "RETURNING id",
+    Params = [
+        maps:get(id, Effect),
+        maps:get(run_id, Effect),
+        maps:get(sequence, Effect),
+        maps:get(tool_id, Effect),
+        maps:get(capability, Effect),
+        maps:get(action, Effect),
+        maps:get(resource_digest, Effect),
+        maps:get(args_digest, Effect),
+        maps:get(external_idempotency_key, Effect),
+        maps:get(now, Effect)
+    ],
+    EffectId =
+        case epgsql:equery(C, Sql, Params) of
+            {ok, 1, _InsCols, [{Id}]} ->
+                Id;
+            {error, {error, _S, <<"23505">>, _N, _M, Extra}} ->
+                throw({abort_tx, {duplicate_effect, constraint_name(Extra)}})
+        end,
+    Decided = maps:get(decided_status, Effect),
+    case
+        effect_to_equery(
+            C,
+            EffectId,
+            created,
+            Decided,
+            1,
+            maps:get(now, Effect),
+            decision_extras(Effect, Decided)
+        )
+    of
+        {ok, 1, _C1, [{_V}]} -> {ok, EffectId};
+        {ok, 0, _C2, []} -> throw({abort_tx, cas_conflict})
+    end.
 
 %% Effect CAS 子状态迁移（§10.3 链；ExtraCols 白名单限定可写列）。
 -spec effect_to_tx(pid(), integer(), atom(), atom(), integer(), dt(), #{
