@@ -96,7 +96,10 @@ provisioned_keys_pairs([Pair | Rest], Acc) ->
     end.
 
 verify_digest(Key, KeyDigest, Claims, Sig) ->
-    case binary:encode_hex(crypto:hash(sha256, Key)) of
+    %% encode_hex/2 lowercase：digest 惯例小写（shasum/xxd 同口径，DB 行亦然）；
+    %% encode_hex/1 缺省大写会与任何小写 provisioned digest 恒不匹配
+    %% （CSX-01 E2E 实测 identity_key_digest_mismatch 500 的根因）。
+    case binary:encode_hex(crypto:hash(sha256, Key), lowercase) of
         KeyDigest ->
             verify_signature(Key, Claims, Sig);
         _Other ->
@@ -105,7 +108,9 @@ verify_digest(Key, KeyDigest, Claims, Sig) ->
     end.
 
 verify_signature(Key, Claims, Sig) ->
-    Expected = binary:encode_hex(crypto:mac(hmac, sha256, Key, canonical_claims(Claims))),
+    %% 同 digest 口径：断言方签名 hex 惯例小写（node crypto digest('hex') 等）。
+    Expected =
+        binary:encode_hex(crypto:mac(hmac, sha256, Key, canonical_claims(Claims)), lowercase),
     case secure_equal(Expected, Sig) of
         true -> {ok, normalized_claims(Claims)};
         false -> {error, assertion_signature_mismatch}
