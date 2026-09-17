@@ -516,13 +516,16 @@ fixture_insert(Conn) ->
         "VALUES ($1,'ag31-05-pg-ws',$2,$3)",
         [?ID_WS, ?ID_DELEG, ?ID_ORG]
     ),
+    %% 有效窗口相对断言时钟 ?NOW 计算（不得用 DB now()——跨天运行会翻车：
+    %% 09-18 重跑时 now()-1h 晚于写死的 ?NOW → grant_pending）
+    Vf = shift(?NOW, -3600),
+    Exp = shift(?NOW, 86400),
     {ok, 1} = epgsql:equery(
         Conn,
         "INSERT INTO agent_grant (id, agent_id, organization_id, delegator_user_id, "
         "workspace_scope_kind, status, valid_from, expires_at, version, idempotency_key) "
-        "VALUES ($1,$2,$3,$4,'none','active', now() - interval '1 hour', "
-        "now() + interval '1 day', 1, 'ag31-05-pg-grant-k1')",
-        [?ID_GRANT, ?ID_AGENT, ?ID_ORG, ?ID_DELEG]
+        "VALUES ($1,$2,$3,$4,'none','active', $5, $6, 1, 'ag31-05-pg-grant-k1')",
+        [?ID_GRANT, ?ID_AGENT, ?ID_ORG, ?ID_DELEG, Vf, Exp]
     ),
     {ok, 1} = epgsql:equery(
         Conn,
@@ -597,6 +600,11 @@ now0() ->
 %% ===================================================================
 %% 断言辅助（02B/04B 同口径）
 %% ===================================================================
+
+shift(Dt, Seconds) ->
+    calendar:gregorian_seconds_to_datetime(
+        calendar:datetime_to_gregorian_seconds(Dt) + Seconds
+    ).
 
 squery_ok(Conn, Sql) ->
     case epgsql:squery(Conn, Sql) of
