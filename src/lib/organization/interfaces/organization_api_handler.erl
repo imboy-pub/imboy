@@ -145,8 +145,31 @@ invitation_accept(Req0, State) ->
     Params = elib_param:post(Req0),
     with_organization_id(Req0, fun(OrgId) ->
         Token = maps:get(<<"token">>, Params, undefined),
-        respond(Req0, organization_invitation_app:accept(Uid, OrgId, Token, #{}))
+        respond(
+            Req0,
+            organization_invitation_app:accept(
+                Uid,
+                OrgId,
+                Token,
+                #{membership_hook => fun invitation_membership_hook/2}
+            )
+        )
     end).
+
+%% C11 收口：邀请首次消费成功后**同事务**建立成员行（role=member）。
+%% upsert 语义：active 已在 → unchanged/role_conflict（不降级既有角色）；
+%% removed → 激活；不存在 → 新建。hook 失败 → 整个 accept 事务回滚
+%% （消费 + 成员变更原子，见 organization_invitation_app 冻结注释）。
+invitation_membership_hook(Conn, Row) ->
+    OrgId = positive_id(maps:get(<<"organization_id">>, Row, undefined)),
+    TargetUid = positive_id(maps:get(<<"target_user_id">>, Row, undefined)),
+    InvitedBy = maps:get(<<"invited_by">>, Row, undefined),
+    case
+        organization_member_repo:upsert_active_tx(Conn, OrgId, TargetUid, <<"member">>, InvitedBy)
+    of
+        {ok, _Outcome, _Info} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 
 invitation_reject(Req0, State) ->
     Uid = auth_ds:current_uid(State),
@@ -168,10 +191,14 @@ invitation_revoke(Req0, State) ->
 department_list(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     with_organization_id(Req0, fun(OrgId) ->
-        Params = #{
-            actor_user_id => Uid,
-            status => query_atom(Req0, <<"status">>)
-        },
+        %% 应用层约定：status 键**缺省**才落 all 默认；显式 undefined 会被判
+        %% invalid_status。查询串未带 status 时保持缺键。
+        Params0 = #{actor_user_id => Uid},
+        Params =
+            case query_atom(Req0, <<"status">>) of
+                undefined -> Params0;
+                Status -> Params0#{status => Status}
+            end,
         respond_dept(Req0, organization_department_app:list_departments(OrgId, Params))
     end).
 
@@ -179,7 +206,7 @@ department_create(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     Body = elib_param:post(Req0),
     with_organization_id(Req0, fun(OrgId) ->
-        Params = Body#{actor_user_id => Uid},
+        Params = (dept_body_params(Body))#{actor_user_id => Uid},
         respond_dept(Req0, organization_department_app:create_department(OrgId, Params))
     end).
 
@@ -194,7 +221,7 @@ department_update(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     Body = elib_param:post(Req0),
     with_department_id(Req0, fun(OrgId, DeptId) ->
-        Params = Body#{actor_user_id => Uid, department_id => DeptId},
+        Params = (dept_body_params(Body))#{actor_user_id => Uid, department_id => DeptId},
         respond_dept(Req0, organization_department_app:update_department(OrgId, Params))
     end).
 
@@ -202,7 +229,7 @@ department_move(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     Body = elib_param:post(Req0),
     with_department_id(Req0, fun(OrgId, DeptId) ->
-        Params = Body#{actor_user_id => Uid, department_id => DeptId},
+        Params = (dept_body_params(Body))#{actor_user_id => Uid, department_id => DeptId},
         respond_dept(Req0, organization_department_app:move_department(OrgId, Params))
     end).
 
@@ -210,7 +237,7 @@ department_archive(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     Body = elib_param:post(Req0),
     with_department_id(Req0, fun(OrgId, DeptId) ->
-        Params = Body#{actor_user_id => Uid, department_id => DeptId},
+        Params = (dept_body_params(Body))#{actor_user_id => Uid, department_id => DeptId},
         respond_dept(Req0, organization_department_app:archive_department(OrgId, Params))
     end).
 
@@ -225,7 +252,7 @@ department_member_add(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     Body = elib_param:post(Req0),
     with_department_id(Req0, fun(OrgId, DeptId) ->
-        Params = Body#{actor_user_id => Uid, department_id => DeptId},
+        Params = (dept_body_params(Body))#{actor_user_id => Uid, department_id => DeptId},
         respond_dept(Req0, organization_department_app:add_member(OrgId, Params))
     end).
 
@@ -262,6 +289,43 @@ body_bool(<<"false">>) ->
     false;
 body_bool(V) ->
     V.
+
+%% ORG-BACKEND-GAP2：elib_param:post 产物是二进制键 map，部门 app 层读原子键；
+%% 这里做 handler→app 的唯一一次形状归一。未知键丢弃；垃圾值原样透传，
+%% 交应用层 invalid_* 裁决（经 map_dept_error 后仍是 400，但可诊断）。
+dept_body_params(Body) when is_map(Body) ->
+    maps:fold(
+        fun
+            (<<"name">>, V, Acc) -> Acc#{name => V};
+            (<<"parent_id">>, V, Acc) -> Acc#{parent_id => body_parent_id(V)};
+            (<<"expected_version">>, V, Acc) -> Acc#{expected_version => body_version(V)};
+            (<<"user_id">>, V, Acc) -> Acc#{user_id => positive_id(V)};
+            (_, _, Acc) -> Acc
+        end,
+        #{},
+        Body
+    ).
+
+%% 建部门/移动：JSON null、缺省与空串都归一为 null（根/提根语义）。
+body_parent_id(null) ->
+    null;
+body_parent_id(undefined) ->
+    null;
+body_parent_id(<<>>) ->
+    null;
+body_parent_id(V) ->
+    case elib_cnv:safe_to_integer(V) of
+        Id when is_integer(Id), Id > 0 -> Id;
+        _ -> V
+    end.
+
+body_version(undefined) ->
+    undefined;
+body_version(V) ->
+    case elib_cnv:safe_to_integer(V) of
+        Id when is_integer(Id), Id > 0 -> Id;
+        _ -> V
+    end.
 
 %% ===================================================================
 %% default workspace（organization_default_workspace_app）
@@ -345,6 +409,19 @@ map_dept_error({invalid_transition, _, _}) ->
 %% （else 兜底 400 会把「并发写碰撞」伪装成客户端参数错误）。
 map_dept_error(conflict) ->
     {409, <<"部门已被并发修改，请刷新版本后重试"/utf8>>};
+%% 形状/参数类：给具体文案（否则全部落进 else 兜底，客户端无从分辨）。
+map_dept_error({invalid_name, _}) ->
+    {400, <<"部门名称非法"/utf8>>};
+map_dept_error({invalid_status, _}) ->
+    {400, <<"status 参数非法"/utf8>>};
+map_dept_error({invalid_parent_id, _}) ->
+    {400, <<"parent_id 非法"/utf8>>};
+map_dept_error({invalid_expected_version, _}) ->
+    {400, <<"expected_version 非法"/utf8>>};
+map_dept_error({invalid_user_id, _}) ->
+    {400, <<"user_id 非法"/utf8>>};
+map_dept_error({invalid_admin_flag, _}) ->
+    {400, <<"admin 标志非法"/utf8>>};
 map_dept_error(_) ->
     {400, <<"请求参数非法"/utf8>>}.
 
