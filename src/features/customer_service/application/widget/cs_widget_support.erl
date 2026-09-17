@@ -121,7 +121,7 @@ eb_params(Params, Base) ->
         {eb_clock, clock},
         {eb_crypto, crypto}
     ],
-    lists:foldl(
+    Merged = lists:foldl(
         fun({From, To}, Acc) ->
             case maps:get(From, Params, undefined) of
                 undefined -> Acc;
@@ -130,7 +130,13 @@ eb_params(Params, Base) ->
         end,
         WithKeyRef,
         Rename
-    ).
+    ),
+    %% CSB-02S D6：访客主体（服务端派生自令牌 contact）透传给 enterprise
+    %% 附件面的访客作用域分支。
+    case maps:get(actor_contact_id, Params, undefined) of
+        undefined -> Merged;
+        ContactId -> Merged#{actor_contact_id => ContactId}
+    end.
 
 %% ===================================================================
 %% 令牌与 installation 的机械读取（digest 命中 / 未吊销 / 未过期）

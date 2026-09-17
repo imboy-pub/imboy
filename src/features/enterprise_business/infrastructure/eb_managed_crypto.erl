@@ -38,7 +38,8 @@
     aad_hash/1,
     scope_bytes/1,
     algorithm/0,
-    key_ref/1
+    key_ref/1,
+    open_message_body/8
 ]).
 
 -define(ALG, <<"aes-256-gcm">>).
@@ -83,6 +84,45 @@ open(Aad, Sealed, KeyRef) ->
         {true, {ok, Key, RefVersion}, {ok, ScopeBytes}} ->
             open_with(Sealed, ScopeBytes, Key, RefVersion)
     end.
+
+%% @doc CSB-02S D5：从**消息行三列**（cipher / key_version / aad_hash）重建
+%% sealed 结构并解密——读面（list_messages）在 keyring 可用时服务端解出明文体。
+%% AAD 由 (OrgId, WorkspaceId, ConversationId, MessageId) 四字段重建，与
+%% `eb_pg_canonical_tx:seal_body/6` 的封口逐字同口径。
+-spec open_message_body(
+    integer(),
+    integer(),
+    integer(),
+    integer(),
+    binary(),
+    integer(),
+    binary(),
+    term()
+) ->
+    {ok, binary()} | {error, term()}.
+open_message_body(
+    OrgId, WorkspaceId, ConversationId, MessageId, Cipher, KeyVersion, AadHash, KeyRef
+) when
+    is_binary(Cipher), is_integer(KeyVersion), is_binary(AadHash)
+->
+    Aad = #{
+        organization_id => OrgId,
+        workspace_id => WorkspaceId,
+        conversation_id => ConversationId,
+        message_id => MessageId
+    },
+    Sealed = #{
+        alg => ?ALG,
+        kdf => ?KDF_LABEL,
+        key_version => KeyVersion,
+        aad_hash => AadHash,
+        cipher => Cipher
+    },
+    open(Aad, Sealed, KeyRef);
+open_message_body(
+    _OrgId, _WorkspaceId, _ConversationId, _MessageId, _Cipher, _KeyVersion, _AadHash, _KeyRef
+) ->
+    {error, invalid_sealed}.
 
 %% ===================================================================
 %% 通用资源作用域（客户资料 / 附件等非消息资源）

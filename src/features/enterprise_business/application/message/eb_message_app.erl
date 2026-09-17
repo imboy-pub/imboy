@@ -448,12 +448,74 @@ list_args(OrgId, WorkspaceId, Params) ->
                                 after_id => AfterId,
                                 limit => Limit
                             },
-                            with_store(Params, fun(Store) ->
-                                Store:list_messages_after(OrgId, WorkspaceId, Query)
-                            end)
+                            case
+                                with_store(Params, fun(Store) ->
+                                    Store:list_messages_after(OrgId, WorkspaceId, Query)
+                                end)
+                            of
+                                {ok, Rows} ->
+                                    %% CSB-02S D5：读面解密——keyring 可用时服务端
+                                    %% 解出明文体（白名单投影：body 进、密文材料列
+                                    %% 出）；keyring 缺失维持既有密文投影。
+                                    {ok, decrypt_rows(OrgId, WorkspaceId, Rows, Params)};
+                                {error, _} = Err ->
+                                    Err
+                            end
                     end
             end
     end.
+
+%% CSB-02S D5：读面解密。
+%%
+%%   * keyring 不可用（env 未配 / 显式 key_ref 解析失败）⇒ 原样返回**密文投影**
+%%     （既不报错、也不降级成半解密——调用方拿到的形状与 D5 之前逐字一致）；
+%%   * keyring 可用 ⇒ 逐条 `eb_managed_crypto:open_message_body/8` 解出明文体：
+%%     `body` 进、`body_cipher` / `aad_hash` 出（密文材料不与明文并存出站）；
+%%   * 任一条解密失败（key_version 不符 / AAD 不符 / 密文被篡改）⇒ 整页
+%%     `{error, {body_open_failed, Id, Reason}}`（fail-closed，绝不夹带未验证行）。
+decrypt_rows(OrgId, WorkspaceId, Rows, Params) ->
+    %% F6 装配契约：resolve_key_ref 给不出 map（undefined）= keyring 不可用。
+    case eb_env_keyring:resolve_key_ref(maps:get(key_ref, Params, undefined)) of
+        KeyRef when is_map(KeyRef) ->
+            decrypt_rows_or_fail(OrgId, WorkspaceId, KeyRef, Rows);
+        _Unavailable ->
+            Rows
+    end.
+
+decrypt_rows_or_fail(_OrgId, _WorkspaceId, _KeyRef, []) ->
+    [];
+decrypt_rows_or_fail(OrgId, WorkspaceId, KeyRef, [Row | Rest]) ->
+    [
+        open_row(OrgId, WorkspaceId, KeyRef, Row)
+        | decrypt_rows_or_fail(OrgId, WorkspaceId, KeyRef, Rest)
+    ].
+
+open_row(OrgId, WorkspaceId, KeyRef, Row) ->
+    case maps:get(body_cipher, Row, undefined) of
+        undefined ->
+            Row;
+        Cipher ->
+            case
+                eb_managed_crypto:open_message_body(
+                    OrgId,
+                    WorkspaceId,
+                    maps:get(conversation_id, Row, undefined),
+                    maps:get(id, Row, undefined),
+                    Cipher,
+                    maps:get(key_version, Row, undefined),
+                    maps:get(aad_hash, Row, undefined),
+                    KeyRef
+                )
+            of
+                {ok, Plain} ->
+                    decrypted_view(Row, Plain);
+                {error, Reason} ->
+                    erlang:error({body_open_failed, maps:get(id, Row, undefined), Reason})
+            end
+    end.
+
+decrypted_view(Row, Plain) ->
+    maps:without([body_cipher, aad_hash], Row#{body => Plain}).
 
 %% 游标缺省 0（`id > 0` 等价首页）；显式负数/非整数一律 fail-closed（不静默当首页）。
 page_cursor(Params) ->

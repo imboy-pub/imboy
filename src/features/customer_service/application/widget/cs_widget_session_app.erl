@@ -282,14 +282,17 @@ asset_presign(OrgId, Params) when is_map(Params) ->
     case visitor_session_scope(OrgId, Params) of
         {error, _} = Err ->
             Err;
-        {ok, #{workspace_id := WorkspaceId, session := Session}} ->
+        {ok, #{workspace_id := WorkspaceId, contact_id := ContactId, session := Session}} ->
             EbParams = cs_widget_support:eb_params(
                 Params,
                 #{
                     workspace_id => WorkspaceId,
                     conversation_id => maps:get(conversation_id, Session),
                     mime => maps:get(mime, Params, undefined),
-                    size_bytes => maps:get(size_bytes, Params, undefined)
+                    size_bytes => maps:get(size_bytes, Params, undefined),
+                    %% CSB-02S D6：访客主体（令牌 contact，服务端派生）进企业
+                    %% 面的访客作用域分支——企业面 member 校验照旧不放宽。
+                    actor_contact_id => ContactId
                 }
             ),
             cs_widget_support:eb_request_presign(OrgId, EbParams)
@@ -304,12 +307,14 @@ asset_confirm(OrgId, Params) when is_map(Params) ->
     case visitor_scope(OrgId, Params) of
         {error, _} = Err ->
             Err;
-        {ok, #{workspace_id := WorkspaceId}} ->
+        {ok, #{workspace_id := WorkspaceId, contact_id := ContactId}} ->
             EbParams = cs_widget_support:eb_params(
                 Params,
                 #{
                     workspace_id => WorkspaceId,
-                    upload_ref => maps:get(upload_ref, Params, undefined)
+                    upload_ref => maps:get(upload_ref, Params, undefined),
+                    %% CSB-02S D6：confirm 重新鉴权同样走访客分支。
+                    actor_contact_id => ContactId
                 }
             ),
             cs_widget_support:eb_confirm_asset(OrgId, EbParams)

@@ -21,7 +21,7 @@
 %%%      交接后（会话经办身份指向接任者）这条判定自动翻面：接任者通过、原经办被拒。
 -module(eb_asset_scope).
 
--export([authorize/6, member_only/5, active_assignment_for/3]).
+-export([authorize/6, authorize_contact/5, member_only/5, active_assignment_for/3]).
 
 %% @doc 会话级授权：`(Auth, Store, OrgId, WorkspaceId, ConversationId, ActorUserId)`。
 %%
@@ -34,6 +34,33 @@ authorize(Auth, Store, OrgId, WorkspaceId, ConversationId, ActorUserId) ->
             assignee_check(Store, OrgId, WorkspaceId, ConversationId, Facts);
         {error, _} = Err ->
             Err
+    end.
+
+%% @doc CSB-02S D6：**访客（contact 主体）**的会话级授权分支。
+%%
+%% 与成员分支（`authorize/6`）完全独立：访客没有 IMBoy 成员事实，授权锚是
+%% 「会话存在于同一 (Org, Workspace) 且会话的 contact 与令牌作用域主体逐字
+%% 相等」。访客令牌的真实性由 CS 侧 digest 校验裁决（A6/E2E 语义），这里
+%% 只做会话归属判定；跨租户 / 不存在 ⇒ `{error, not_found}`（不区分，避免枚举），
+%% 归属不符 ⇒ `{error, {forbidden, contact_scope_mismatch}}`（403 面）。
+-spec authorize_contact(module(), integer(), integer(), term(), term()) ->
+    ok | {error, term()}.
+authorize_contact(Store, OrgId, WorkspaceId, ConversationId, ActorContactId) ->
+    case is_integer(ActorContactId) andalso is_integer(ConversationId) of
+        false ->
+            {error, {forbidden, no_actor}};
+        true ->
+            case Store:fetch_conversation(OrgId, WorkspaceId, ConversationId) of
+                {ok, Conversation} ->
+                    case maps:get(contact_id, Conversation, undefined) of
+                        ActorContactId -> ok;
+                        _Other -> {error, {forbidden, contact_scope_mismatch}}
+                    end;
+                {error, not_found} ->
+                    {error, not_found};
+                {error, Reason} ->
+                    {error, Reason}
+            end
     end.
 
 %% @doc 只判成员状态（无会话语境时使用，例如未绑定会话的独立附件）。

@@ -82,15 +82,35 @@ request_presign(_OrgId, _Params) ->
 presign_args(Params) ->
     Ws = maps:get(workspace_id, Params, undefined),
     Conv = maps:get(conversation_id, Params, undefined),
-    Actor = maps:get(actor_user_id, Params, undefined),
     Mime = maps:get(mime, Params, undefined),
     Size = maps:get(size_bytes, Params, undefined),
     Hash = maps:get(object_hash, Params, undefined),
-    case {is_integer(Ws), is_integer(Conv), is_integer(Actor)} of
-        {true, true, true} ->
-            presign_validations(Ws, Conv, Actor, Mime, Size, Hash);
-        _ ->
-            {error, {invalid_argument, {presign_scope, [Ws, Conv, Actor]}}}
+    case actor_scope(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Actor} ->
+            case {is_integer(Ws), is_integer(Conv)} of
+                {true, true} ->
+                    presign_validations(Ws, Conv, Actor, Mime, Size, Hash);
+                _ ->
+                    {error, {invalid_argument, {presign_scope, [Ws, Conv]}}}
+            end
+    end.
+
+%% CSB-02S D6：actor 二选一（主体唯一，不混淆）——
+%%   * `actor_user_id`    给出 ⇒ 成员主体（企业面既有口径，走 member+assignee 门）；
+%%   * `actor_contact_id` 给出 ⇒ 访客主体（visit token contact，走会话归属门）。
+%% 两者皆缺/同时给出 = 作用域形状不成立。
+actor_scope(Params) ->
+    U = maps:get(actor_user_id, Params, undefined),
+    C = maps:get(actor_contact_id, Params, undefined),
+    if
+        is_integer(U), not is_integer(C) ->
+            {ok, #{kind => member, id => U}};
+        is_integer(C), not is_integer(U) ->
+            {ok, #{kind => contact, id => C}};
+        true ->
+            {error, {invalid_argument, {presign_scope, [U, C]}}}
     end.
 
 presign_validations(Ws, Conv, Actor, Mime, Size, Hash) ->
@@ -121,20 +141,34 @@ presign_validations(Ws, Conv, Actor, Mime, Size, Hash) ->
 presign_authorized(OrgId, Args, Params) ->
     Auth = port(Params, auth),
     Store = port(Params, store),
-    case
-        eb_asset_scope:authorize(
-            Auth,
-            Store,
-            OrgId,
-            maps:get(ws, Args),
-            maps:get(conv, Args),
-            maps:get(actor, Args)
-        )
-    of
+    case presign_scope_check(Auth, Store, OrgId, Args) of
         {error, _} = Err ->
             Err;
         ok ->
             presign_retention(OrgId, Args, Params)
+    end.
+
+%% CSB-02S D6：按 actor 主体种类分流授权——成员走 member+assignee 门
+%% （既有口径不变）；访客走会话归属门（令牌 contact = 会话 contact）。
+presign_scope_check(Auth, Store, OrgId, Args) ->
+    case maps:get(kind, maps:get(actor, Args), member) of
+        member ->
+            eb_asset_scope:authorize(
+                Auth,
+                Store,
+                OrgId,
+                maps:get(ws, Args),
+                maps:get(conv, Args),
+                maps:get(id, maps:get(actor, Args))
+            );
+        contact ->
+            eb_asset_scope:authorize_contact(
+                Store,
+                OrgId,
+                maps:get(ws, Args),
+                maps:get(conv, Args),
+                maps:get(id, maps:get(actor, Args))
+            )
     end.
 
 presign_retention(OrgId, Args, Params) ->
@@ -194,18 +228,20 @@ presign_mint(OrgId, Args, Retain, Params) ->
             Aad = eb_asset_upload_ref:aad(
                 OrgId, maps:get(ws, Args), maps:get(conv, Args), msg_or_undefined(Params)
             ),
-            Claims = #{
-                asset_id => AssetId,
-                actor_user_id => maps:get(actor, Args),
-                object_hash => maps:get(hash, Args),
-                mime => maps:get(mime, Args),
-                size_bytes => maps:get(size, Args),
-                retain_until => Retain,
-                conversation_id => maps:get(conv, Args),
-                message_id => msg_or_undefined(Params),
-                issued_at => Now,
-                expires_at => ExpiresAt
-            },
+            Claims = maps:merge(
+                #{
+                    asset_id => AssetId,
+                    object_hash => maps:get(hash, Args),
+                    mime => maps:get(mime, Args),
+                    size_bytes => maps:get(size, Args),
+                    retain_until => Retain,
+                    conversation_id => maps:get(conv, Args),
+                    message_id => msg_or_undefined(Params),
+                    issued_at => Now,
+                    expires_at => ExpiresAt
+                },
+                actor_claim(maps:get(actor, Args))
+            ),
             case eb_asset_upload_ref:mint(Aad, Claims, Crypto, KeyRef) of
                 {ok, Token} ->
                     {ok, presign_view(AssetId, Args, Retain, ExpiresAt, Token)};
@@ -213,6 +249,11 @@ presign_mint(OrgId, Args, Retain, Params) ->
                     Err
             end
     end.
+
+%% 凭证 actor claim：按主体种类二选一落 claims（D6；与 upload_ref 的
+%% actor 互斥校验配套）。
+actor_claim(#{kind := member, id := Id}) -> #{actor_user_id => Id};
+actor_claim(#{kind := contact, id := Id}) -> #{actor_contact_id => Id}.
 
 msg_or_undefined(Params) ->
     case maps:get(message_id, Params, undefined) of
@@ -279,10 +320,14 @@ put_args(Params) ->
     Ws = maps:get(workspace_id, Params, undefined),
     Token = maps:get(upload_ref, Params, undefined),
     Payload = maps:get(payload, Params, undefined),
-    Actor = maps:get(actor_user_id, Params, undefined),
-    case {is_integer(Ws), is_binary(Token), is_binary(Payload), is_integer(Actor)} of
-        {true, true, true, true} -> {ok, Ws, Token, Payload, Actor};
-        _ -> {error, {invalid_argument, {put_object, [Ws, Token, Payload, Actor]}}}
+    case actor_scope(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Actor} ->
+            case {is_integer(Ws), is_binary(Token), is_binary(Payload)} of
+                {true, true, true} -> {ok, Ws, Token, Payload, Actor};
+                _ -> {error, {invalid_argument, {put_object, [Ws, Token, Payload]}}}
+            end
     end.
 
 open_ref(OrgId, Ws, Token, Actor, Params) ->
@@ -292,24 +337,43 @@ open_ref(OrgId, Ws, Token, Actor, Params) ->
     KeyRef = key_ref(Params),
     case eb_asset_upload_ref:open(Token, OrgId, Ws, Crypto, KeyRef, Clock:now()) of
         {ok, #{claims := Claims}} ->
-            case maps:get(actor_user_id, Claims, undefined) of
-                Actor -> {ok, Claims};
+            case actor_claim_value(Claims) =:= actor_value(Actor) of
+                true -> {ok, Claims};
                 _Other -> {error, {forbidden, not_uploader}}
             end;
         {error, _} = Err ->
             Err
     end.
 
+%% CSB-02S D6：凭证里的 actor（member/contact 二选一）与请求方主体逐字比对。
+actor_claim_value(Claims) ->
+    case maps:get(actor_user_id, Claims, undefined) of
+        undefined -> {contact, maps:get(actor_contact_id, Claims, undefined)};
+        Id -> {member, Id}
+    end.
+
+actor_value(#{kind := Kind, id := Id}) ->
+    {Kind, Id}.
+
 put_authorized(OrgId, Ws, Payload, Claims, Params) ->
     Auth = port(Params, auth),
     Store = port(Params, store),
     Conv = maps:get(conversation_id, Claims, undefined),
-    Actor = maps:get(actor_user_id, Claims, undefined),
-    case eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, Actor) of
+    case scope_check_by_claims(Auth, Store, OrgId, Ws, Conv, Claims) of
         {error, _} = Err ->
             Err;
         ok ->
             put_verify(OrgId, Ws, Payload, Claims, Params)
+    end.
+
+%% CSB-02S D6：按凭证 actor 主体种类分流授权（member=成员+经办门；
+%% contact=访客会话归属门）。
+scope_check_by_claims(Auth, Store, OrgId, Ws, Conv, Claims) ->
+    case actor_claim_value(Claims) of
+        {member, ActorUserId} ->
+            eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, ActorUserId);
+        {contact, ActorContactId} ->
+            eb_asset_scope:authorize_contact(Store, OrgId, Ws, Conv, ActorContactId)
     end.
 
 %% 服务端重算并复核上传方声明的 hash / size / mime —— 三者任一不符都在落库前拒。
@@ -402,20 +466,24 @@ confirm_asset(_OrgId, _Params) ->
 confirm_args(Params) ->
     Ws = maps:get(workspace_id, Params, undefined),
     Token = maps:get(upload_ref, Params, undefined),
-    Actor = maps:get(actor_user_id, Params, undefined),
-    case {is_integer(Ws), is_binary(Token), is_integer(Actor)} of
-        {true, true, true} -> {ok, Ws, Token, Actor};
-        _ -> {error, {invalid_argument, {confirm_asset, [Ws, Token, Actor]}}}
+    case actor_scope(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Actor} ->
+            case {is_integer(Ws), is_binary(Token)} of
+                {true, true} -> {ok, Ws, Token, Actor};
+                _ -> {error, {invalid_argument, {confirm_asset, [Ws, Token]}}}
+            end
     end.
 
-%% A02 的落点：confirm 必须**重新**鉴权（presign 后被 suspend 的 actor 在此失败），
-%% 失败的 confirm 不得把状态推进为 active。
+%% A02 的落点：confirm 必须**重新**鉴权（presign 后被 suspend 的 actor 在此失败；
+%% CSB-02S D6：访客 contact 主体重新走会话归属门），失败的 confirm 不得把状态
+%% 推进为 active。
 confirm_authorized(OrgId, Ws, Claims, Params) ->
     Auth = port(Params, auth),
     Store = port(Params, store),
     Conv = maps:get(conversation_id, Claims, undefined),
-    Actor = maps:get(actor_user_id, Claims, undefined),
-    case eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, Actor) of
+    case scope_check_by_claims(Auth, Store, OrgId, Ws, Conv, Claims) of
         {error, _} = Err ->
             Err;
         ok ->

@@ -110,7 +110,7 @@ authorize_and_invoke(Entry, Case, Req0, Body, OrgId) ->
                     cs_http:reply_error(Req0, Reason);
                 {ok, OriginDerived} ->
                     Derived = maps:merge(
-                        maps:merge(#{at => cs_http:now_ms()}, TokenDerived), OriginDerived
+                        maps:merge(#{at => cs_http:now_sec()}, TokenDerived), OriginDerived
                     ),
                     invoke(Entry, Case, Req0, Body, OrgId, Derived)
             end
@@ -224,7 +224,7 @@ events_authorized(Entry, Case, Req0, Body, OrgId, State0) ->
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
         {ok, TokenDerived} ->
-            Derived = maps:merge(#{at => cs_http:now_ms()}, TokenDerived),
+            Derived = maps:merge(#{at => cs_http:now_sec()}, TokenDerived),
             case cs_http:build_params(Entry, Case, Req0, Body, Derived) of
                 {error, Reason} ->
                     cs_http:reply_error(Req0, Reason);

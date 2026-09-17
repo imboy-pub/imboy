@@ -29,6 +29,7 @@
     resource_aad/4,
     key_ref/0,
     key_ref/1,
+    store/0,
     table/1
 ]).
 
@@ -81,6 +82,11 @@ key_ref() ->
 -spec key_ref(pos_integer()) -> map().
 key_ref(Version) ->
     #{key => crypto:strong_rand_bytes(32), key_version => Version}.
+
+%% @doc CSB-02S：生产 store facade（DB 型用例直读原始行做保真性自证用）。
+-spec store() -> module().
+store() ->
+    eb_infra_ports:store().
 
 %% ===================================================================
 %% 合成租户

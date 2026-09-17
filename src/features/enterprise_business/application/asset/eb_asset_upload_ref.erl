@@ -33,10 +33,12 @@
 
 -define(VERSION, 1).
 
-%% 必填 claims（缺一即拒签）。
+%% 必填 claims（缺一即拒签）。actor 是**二选一**（CSB-02S D6）：
+%%   * `actor_user_id`    —— 成员主体（企业面既有口径，不变）；
+%%   * `actor_contact_id` —— 访客主体（visit token contact，组织域作用域）。
+%% 两者皆缺或同时出现都拒签（主体唯一，不混淆）。
 -define(REQUIRED_FIELDS, [
     asset_id,
-    actor_user_id,
     object_hash,
     mime,
     size_bytes,
@@ -86,6 +88,16 @@ mint(_Aad, _Claims, _Crypto, _KeyRef) ->
 
 missing_claims(Claims) ->
     Missing = [F || F <- ?REQUIRED_FIELDS, maps:get(F, Claims, undefined) =:= undefined],
+    %% actor 二选一（D6）：member / contact 恰好一个。
+    ActorU = maps:get(actor_user_id, Claims, undefined),
+    ActorC = maps:get(actor_contact_id, Claims, undefined),
+    ActorMissing =
+        case {is_integer(ActorU), is_integer(ActorC)} of
+            {true, false} -> [];
+            {false, true} -> [];
+            {true, true} -> [{actor_exclusive, both_present}];
+            {false, false} -> [actor_user_id]
+        end,
     Bad =
         [
             {F, V}
@@ -95,8 +107,8 @@ missing_claims(Claims) ->
             not is_integer(V)
         ],
     case Bad of
-        [] -> Missing;
-        _ -> Missing ++ [{invalid_optional, Bad}]
+        [] -> Missing ++ ActorMissing;
+        _ -> Missing ++ ActorMissing ++ [{invalid_optional, Bad}]
     end.
 
 %% @doc 打开并校验凭证：

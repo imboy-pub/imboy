@@ -57,6 +57,7 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a04_queue_keyset_seat_detail_and_rate_state_machine/0},
         {timeout, 60, fun a05_messages_only_via_enterprise_source/0},
         {timeout, 60, fun a06_widget_lifecycle_smoke/0},
+        {timeout, 60, fun csb02s_d2_bootstrap_token_ttl_two_directions/0},
         {timeout, 30, fun origin_normalization_edges/0}
     ];
 cases({error, Reason}) ->
@@ -853,6 +854,51 @@ origin_normalization_edges() ->
         cs_widget:origin_allowed(<<"https://a.com">>, [<<"not-an-origin">>])
     ),
     ok.
+
+%% ===================================================================
+%% CSB-02S D2：bootstrap 令牌 TTL 双向（时间基准 = Unix 秒，TTL 缺省 3600s）
+%% ===================================================================
+
+%% @doc 回归 D2：handler 曾以毫秒注入 at、TTL 按秒比较 ⇒ 有效期 3.6s。
+%% 修复后基准统一为秒：
+%%   * 有效方向 —— 签发后 TTL 内（T+3599）令牌仍可用（能开会话）；
+%%   * 过期方向 —— TTL 后（T+3601）同一 secret 开会话被拒（token_expired），
+%%     而 bootstrap 重放语义照常重签（不被本用例覆盖，见 A01）。
+csb02s_d2_bootstrap_token_ttl_two_directions() ->
+    {Scope, InstId, PublicId} = fresh_world(<<"wgt_pub_d2_ttl">>),
+    try
+        Org = org(Scope),
+        {ok, V} = bootstrap_for(Scope, PublicId, <<"d2-subj">>),
+        Secret = maps:get(secret, V),
+        %% 有效方向：TTL 内（+3599s）token 仍可用。
+        {ok, Created} =
+            cs_widget_session_app:create_session(
+                Org,
+                wp(Scope, #{
+                    installation_id => InstId,
+                    secret => Secret,
+                    at => ?T0 + 3599
+                })
+            ),
+        ?assert(is_integer(maps:get(session_id, Created))),
+        %% 过期方向：TTL 后（+3601s）同一 secret 开会话 = token_expired。
+        %% （开新 contact 的 subject，避开「已有未关闭会话」的 409 分支。）
+        {ok, V2} = bootstrap_for(Scope, PublicId, <<"d2-subj-2">>),
+        Secret2 = maps:get(secret, V2),
+        ?assertEqual(
+            {error, token_expired},
+            cs_widget_session_app:create_session(
+                Org,
+                wp(Scope, #{
+                    installation_id => InstId,
+                    secret => Secret2,
+                    at => ?T0 + 3601
+                })
+            )
+        )
+    after
+        teardown(Scope)
+    end.
 
 %% ===================================================================
 %% 夹具与构造辅助

@@ -60,7 +60,9 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a06_ack_is_idempotent_and_leaves_canonical_untouched/0},
         {timeout, 60, fun a06_hide_and_authorization_events_do_not_change_canonical/0},
         {timeout, 60, fun a06_no_personal_ack_or_archive_chain_is_used/0},
-        {timeout, 60, fun a08_commit_failure_yields_no_acceptance_and_retry_is_exactly_one/0}
+        {timeout, 60, fun a08_commit_failure_yields_no_acceptance_and_retry_is_exactly_one/0},
+        {timeout, 60, fun csb02s_d5_list_decrypts_with_keyring/0},
+        {timeout, 60, fun csb02s_d5_list_without_keyring_keeps_cipher_projection/0}
     ];
 cases(Other) ->
     erlang:error({eb06_message_suite_db_unavailable, Other}).
@@ -746,6 +748,94 @@ a08_commit_failure_yields_no_acceptance_and_retry_is_exactly_one() ->
 %% ===================================================================
 %% 辅助
 %% ===================================================================
+
+%% ===================================================================
+%% CSB-02S D5：读面解密（keyring 可用 → 明文体；缺失 → 密文投影维持）
+%% ===================================================================
+
+%% @doc 有 key_ref：append（服务端封口）→ list_messages 服务端解密 →
+%% `body` 为原明文、密文材料列（body_cipher/aad_hash）不出站。
+csb02s_d5_list_decrypts_with_keyring() ->
+    Scope = ?FIX:new_scope(),
+    try
+        {Org, Ws} = tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Contact = maps:get(contact_id, Scope),
+        Plain = <<"d5-plaintext-canary-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
+        %% key_ref 绑定一次复用：key_ref/1 每次生成新随机密钥，封口与解密
+        %% 必须同一把（否则 GCM authentication_failed）。
+        KeyRef = ?FIX:key_ref(1),
+        {ok, _} = eb_message_app:append_message(Org, #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            client_msg_id => <<"d5-decrypt-1">>,
+            body => Plain,
+            sender_type => contact,
+            contact_id => Contact,
+            key_ref => KeyRef,
+            accepted_at => now_secs()
+        }),
+        %% 读回密文列的保真性自证：content_hash 是入库时对密文摘要的锚。
+        {ok, Raw} = ?FIX:store():list_messages_after(Org, Ws, #{
+            conversation_id => Conv, after_id => 0, limit => 200
+        }),
+        RawMine = hd([R || R <- Raw, maps:get(client_msg_id, R, undefined) =:= <<"d5-decrypt-1">>]),
+        ?assertEqual(
+            maps:get(content_hash, RawMine),
+            binary:encode_hex(crypto:hash(sha256, maps:get(body_cipher, RawMine)), lowercase)
+        ),
+        {ok, Rows} = eb_message_app:list_messages(Org, #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            key_ref => KeyRef
+        }),
+        ?assert(length(Rows) >= 1),
+        Mine = hd([R || R <- Rows, maps:get(client_msg_id, R, undefined) =:= <<"d5-decrypt-1">>]),
+        ?assertEqual(Plain, maps:get(body, Mine)),
+        %% 密文材料不与明文并存出站。
+        ?assertNot(is_map_key(body_cipher, Mine)),
+        ?assertNot(is_map_key(aad_hash, Mine))
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+%% @doc 无 keyring：list_messages 维持既有**密文投影**（body_cipher/aad_hash
+%% 在、无 body 明文键）——不报错、不半解密。
+csb02s_d5_list_without_keyring_keeps_cipher_projection() ->
+    Scope = ?FIX:new_scope(),
+    OldKeyring = application:get_env(imboy, eb_enterprise_keyring),
+    try
+        %% env 临时清空（F6：无 keyring = 装配缺省不可用）。
+        application:unset_env(imboy, eb_enterprise_keyring),
+        {Org, Ws} = tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Contact = maps:get(contact_id, Scope),
+        {ok, _} = eb_message_app:append_message(Org, #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            client_msg_id => <<"d5-cipher-1">>,
+            body => <<"d5-cipher-body">>,
+            sender_type => contact,
+            contact_id => Contact,
+            key_ref => ?FIX:key_ref(1),
+            accepted_at => now_secs()
+        }),
+        {ok, Rows} = eb_message_app:list_messages(Org, #{
+            workspace_id => Ws,
+            conversation_id => Conv
+        }),
+        ?assert(length(Rows) >= 1),
+        Mine = hd([R || R <- Rows, maps:get(client_msg_id, R, undefined) =:= <<"d5-cipher-1">>]),
+        ?assert(is_binary(maps:get(body_cipher, Mine))),
+        ?assert(is_binary(maps:get(aad_hash, Mine))),
+        ?assertNot(is_map_key(body, Mine))
+    after
+        case OldKeyring of
+            undefined -> application:unset_env(imboy, eb_enterprise_keyring);
+            {ok, V} -> application:set_env(imboy, eb_enterprise_keyring, V)
+        end,
+        ?FIX:cleanup(Scope)
+    end.
 
 tenant(Scope) ->
     {maps:get(org_id, Scope), maps:get(workspace_id, Scope)}.

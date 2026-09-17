@@ -41,7 +41,9 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun unit_upload_ref_is_opaque_and_bound_to_scope/0},
         {timeout, 60, fun unit_upload_ref_expiry_is_enforced/0},
         {timeout, 60, fun unit_mime_size_hash_validation_is_fail_closed/0},
-        {timeout, 60, fun unit_cleanup_classifies_skips/0}
+        {timeout, 60, fun unit_cleanup_classifies_skips/0},
+        {timeout, 60, fun csb02s_d6_visitor_presign_put_confirm_positive/0},
+        {timeout, 60, fun csb02s_d6_visitor_scope_negatives/0}
     ];
 cases(_Skipped) ->
     {skip, "asset suite requires the scratch database connection"}.
@@ -70,6 +72,91 @@ run_acceptance(Id) ->
             %% 子断言明细的兜底输出（上面断言必然失败，这里是给日志的可读来源）
             ?debugFmt("~s: ~p/~p 子断言失败: ~p", [Id, Failed, Passed + Failed, Failures]),
             ok
+    end.
+
+%% ===================================================================
+%% CSB-02S D6：访客（visit token contact 主体）附件作用域分支
+%% ===================================================================
+
+%% @doc 访客 presign → PUT → confirm 全流水：actor = 令牌 contact
+%%（组织域主体），企业面 member 校验不参与也不放宽。
+csb02s_d6_visitor_presign_put_confirm_positive() ->
+    Scope = eb_asset_it_lib:new_scope(),
+    try
+        {Org, Ws} = eb_asset_it_lib:tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Contact = maps:get(contact_id, Scope),
+        Payload = <<"d6-visitor-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
+        Params = #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            mime => <<"text/plain">>,
+            size_bytes => byte_size(Payload),
+            object_hash => eb_asset_it_lib:sha256_hex(Payload),
+            actor_contact_id => Contact,
+            key_ref => eb_asset_it_lib:key_ref(Scope),
+            upload_ttl_seconds => 900
+        },
+        {ok, Presign} = enterprise_business_facade:request_presign(Org, Params),
+        Ref = maps:get(upload_ref, Presign),
+        AssetId = maps:get(asset_id, Presign),
+        %% PUT（访客主体；凭证 uploader 逐字比对 contact）。
+        {ok, _} = eb_asset_app:put_object(Org, #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            upload_ref => Ref,
+            payload => Payload,
+            actor_contact_id => Contact,
+            key_ref => eb_asset_it_lib:key_ref(Scope)
+        }),
+        %% confirm（重新鉴权仍走访客分支）。
+        {ok, Confirmed} = enterprise_business_facade:confirm_asset(Org, #{
+            workspace_id => Ws,
+            upload_ref => Ref,
+            actor_contact_id => Contact,
+            key_ref => eb_asset_it_lib:key_ref(Scope)
+        }),
+        ?assertEqual(active, maps:get(status, Confirmed)),
+        ?assert(eb_asset_it_lib:object_present(Org, Ws, AssetId))
+    after
+        _ = eb_asset_object_stub:reset()
+    end.
+
+%% @doc 访客作用域负例：contact 与会话不符（403 面）；member/contact 双主体
+%% 同时出现（作用域形状不成立）。
+csb02s_d6_visitor_scope_negatives() ->
+    Scope = eb_asset_it_lib:new_scope(),
+    try
+        {Org, Ws} = eb_asset_it_lib:tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Payload = <<"d6-neg-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
+        Base = #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            mime => <<"text/plain">>,
+            size_bytes => byte_size(Payload),
+            object_hash => eb_asset_it_lib:sha256_hex(Payload),
+            key_ref => eb_asset_it_lib:key_ref(Scope),
+            upload_ttl_seconds => 900
+        },
+        %% ① 冒名 contact：presign 直接拒（403 面，非 500）。
+        {error, {forbidden, contact_scope_mismatch}} =
+            enterprise_business_facade:request_presign(Org, Base#{actor_contact_id => 1}),
+        %% ② 双主体同时出现 = 形状不成立（422）。
+        ?assertMatch(
+            {error, {invalid_argument, {presign_scope, _}}},
+            enterprise_business_facade:request_presign(
+                Org,
+                Base#{actor_contact_id => maps:get(contact_id, Scope), actor_user_id => 42}
+            )
+        ),
+        %% ③ 无任何主体 = 形状不成立（422，既有行为不回归）。
+        ?assertMatch(
+            {error, {invalid_argument, {presign_scope, _}}},
+            enterprise_business_facade:request_presign(Org, Base)
+        )
+    after
+        _ = eb_asset_object_stub:reset()
     end.
 
 %% ===================================================================

@@ -40,7 +40,8 @@
     is_tsid_key/1,
     is_credential_surface_path/1,
     credential_in_query_string/1,
-    now_ms/0
+    now_ms/0,
+    now_sec/0
 ]).
 
 -include("error_code.hrl").
@@ -385,6 +386,14 @@ tsid(_Raw) ->
 now_ms() ->
     os:system_time(millisecond).
 
+%% @doc Unix **秒**（CSB-02S D2/D3）：widget 面的统一时间基准——bootstrap
+%% 令牌 TTL（秒）、identity key expires_at（epoch 秒）、JWT claims exp/iat
+%% （秒）与 nonce to_timestamp（秒）全部以此为口径。毫秒基准（now_ms/0）仍
+%% 是租户面既有约定，不在本卡范围。
+-spec now_sec() -> integer().
+now_sec() ->
+    os:system_time(second).
+
 %% ===================================================================
 %% 响应映射
 %% ===================================================================
@@ -520,6 +529,9 @@ classify(origin_not_allowed) ->
 classify(installation_revoked) ->
     ?ERR_FORBIDDEN;
 classify(identity_key_revoked) ->
+    ?ERR_FORBIDDEN;
+%% CSB-02S D6：访客附件作用域——令牌 contact 与会话 contact 不符（403 面）。
+classify({forbidden, contact_scope_mismatch}) ->
     ?ERR_FORBIDDEN;
 %% --- 404：资源不在本租户作用域（不区分不存在与跨 Org，避免枚举）---
 classify(not_found) ->
