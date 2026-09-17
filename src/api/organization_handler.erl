@@ -26,6 +26,23 @@ handle_action(detail, Req0, State) ->
         <<"GET">> -> detail(Req0, State);
         <<"PATCH">> -> update(Req0, State);
         _ -> method_not_allowed(Req0, <<"GET, PATCH">>)
+    end;
+%% ORG-02 adapter：archive/restore/deletion-preflight 应用层挂接。
+%% 路由注册仍归 ORG-10；此处只实现 handler 内 action。
+handle_action(archive, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"POST">> -> archive(Req0, State);
+        _ -> method_not_allowed(Req0, <<"POST">>)
+    end;
+handle_action(restore, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"POST">> -> restore(Req0, State);
+        _ -> method_not_allowed(Req0, <<"POST">>)
+    end;
+handle_action(deletion_preflight, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"GET">> -> deletion_preflight(Req0, State);
+        _ -> method_not_allowed(Req0, <<"GET">>)
     end.
 
 create(Req0, State) ->
@@ -64,6 +81,28 @@ update(Req0, State) ->
             );
         error ->
             elib_response:error(Req0, <<"organization_id 必须是正整数"/utf8>>, 400)
+    end.
+
+archive(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    with_organization_id(Req0, fun(OrgId) ->
+        respond(Req0, organization_logic:archive(Uid, OrgId))
+    end).
+
+restore(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    with_organization_id(Req0, fun(OrgId) ->
+        respond(Req0, organization_logic:restore(Uid, OrgId))
+    end).
+
+deletion_preflight(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    respond(Req0, organization_logic:deletion_preflight(Uid)).
+
+with_organization_id(Req0, Fun) ->
+    case positive_binding(organization_id, Req0) of
+        {ok, OrgId} -> Fun(OrgId);
+        error -> elib_response:error(Req0, <<"organization_id 必须是正整数"/utf8>>, 400)
     end.
 
 respond(Req0, {ok, Payload}) ->

@@ -129,28 +129,39 @@ multi_domain_e2e_test_() ->
             %% 注销申请（过期）
             ok = seed_expired_request(Uid),
             ok = ensure_sweeper(),
-            {ok, 1} = user_deletion_logic:cleanup_now(),
+            %% [ORG-02 裁决A] 计数语义：preflight 拒后 mark_failed 回 pending，
+            %% 同一轮批处理内重试直至 failed 终态（max_attempts=5），
+            %% cleanup_now 返回处理任务数 5。
+            {ok, 5} = user_deletion_logic:cleanup_now(),
 
-            %% 用户主行/消息/E2EE 密钥已删；群已转移
-            {ok, []} = elib_pg:query(
+            %% [ORG-02 裁决A] 期望翻转：计划 §1.6 冻结原文「禁止给未实现域
+            %% 默认空 blocker（未注册域=facts 不可得=拒）」——EB/CS/Agent 域
+            %% provider 未注册 → preflight 整体拒
+            %% （DEPENDENCY_FACTS_UNAVAILABLE），删除事务回滚，零部分删除。
+            %% 依据：control/ruling-ORG02-plan1-orchestrator-tests.md（裁决A）。
+            %% 原期望（Plan1）：用户主行/消息/朋友圈/E2EE 密钥已删、群 owner
+            %% 已转移、任务 completed —— 让位于冻结合同。
+            {ok, [_]} = elib_pg:query(
                 <<"SELECT id FROM public.\"user\" WHERE id = $1">>, [Uid]
             ),
-            {ok, []} = elib_pg:query(
+            {ok, [_]} = elib_pg:query(
                 <<"SELECT id FROM public.msg_c2c WHERE id = $1">>, [MsgId]
             ),
-            {ok, []} = elib_pg:query(
+            {ok, [_]} = elib_pg:query(
                 <<"SELECT id FROM public.moment_post WHERE id = $1">>, [PostId]
             ),
-            {ok, []} = elib_pg:query(
+            {ok, [_]} = elib_pg:query(
                 <<"SELECT id FROM public.olm_identity WHERE user_id = $1">>, [Uid]
             ),
-            %% 群幸存且 owner 已转移（D-02 转移决策）
-            {ok, [#{<<"owner_uid">> := Member}]} = elib_pg:query(
+            %% 群幸存且 owner 未转移（转移与删除同事务，整体回滚）
+            {ok, [#{<<"owner_uid">> := Uid}]} = elib_pg:query(
                 <<"SELECT owner_uid FROM public.\"group\" WHERE id = $1">>, [GroupId]
             ),
-            %% 任务墓碑：completed
-            {ok, #{<<"status">> := <<"completed">>}} =
-                user_deletion_job_repo:find_by_user(Uid)
+            %% 任务被稳定拒绝：pending（attempts<max 待重试），last_error 含
+            %% 稳定原因 DEPENDENCY_FACTS_UNAVAILABLE
+            {ok, #{<<"status">> := <<"failed">>, <<"last_error">> := LastError}} =
+                user_deletion_job_repo:find_by_user(Uid),
+            {_Pos, _Len} = binary:match(LastError, <<"DEPENDENCY_FACTS_UNAVAILABLE">>)
         after
             cleanup_user(Uid),
             cleanup_user(Member),
@@ -181,16 +192,23 @@ balance_gate_and_retry_test_() ->
             {ok, #{<<"status">> := <<"pending">>}} =
                 user_deletion_job_repo:find_by_user(Uid),
             2 = user_status(Uid),
-            %% 运营清零后重试 → 完成
+            %% 运营清零后重试
             {ok, _} = elib_pg:query(
                 <<"UPDATE public.wallet SET balance = 0 WHERE user_id = $1">>, [Uid]
             ),
-            {ok, 1} = user_deletion_logic:cleanup_now(),
-            {ok, []} = elib_pg:query(
+            %% [ORG-02 裁决A] 计数语义：同轮重试至 failed 终态 → 处理数 5。
+            {ok, 5} = user_deletion_logic:cleanup_now(),
+            %% [ORG-02 裁决A] 期望翻转：计划 §1.6「未注册域=facts 不可得=拒」
+            %% （EB/CS/Agent provider 未注册）→ preflight 整体拒
+            %% （DEPENDENCY_FACTS_UNAVAILABLE），删除事务回滚，零部分删除。
+            %% 依据：control/ruling-ORG02-plan1-orchestrator-tests.md（裁决A）。
+            %% 原期望（Plan1）：用户主行已删、任务 completed —— 让位于冻结合同。
+            {ok, [_]} = elib_pg:query(
                 <<"SELECT id FROM public.\"user\" WHERE id = $1">>, [Uid]
             ),
-            {ok, #{<<"status">> := <<"completed">>}} =
-                user_deletion_job_repo:find_by_user(Uid)
+            {ok, #{<<"status">> := <<"failed">>, <<"last_error">> := LastError}} =
+                user_deletion_job_repo:find_by_user(Uid),
+            {_Pos, _Len} = binary:match(LastError, <<"DEPENDENCY_FACTS_UNAVAILABLE">>)
         after
             cleanup_user(Uid)
         end
@@ -258,15 +276,22 @@ garage_enqueue_best_effort_test_() ->
             ),
             ok = seed_expired_request(Uid),
             ok = ensure_sweeper(),
-            {ok, 1} = user_deletion_logic:cleanup_now(),
-            %% 附件行已清；对象删除对外尝试失败（403）仅记日志，任务仍完成
-            {ok, []} = elib_pg:query(
+            %% [ORG-02 裁决A] 计数语义：同轮重试至 failed 终态 → 处理数 5。
+            {ok, 5} = user_deletion_logic:cleanup_now(),
+            %% [ORG-02 裁决A] 期望翻转：计划 §1.6「未注册域=facts 不可得=拒」
+            %% （EB/CS/Agent provider 未注册）→ preflight 整体拒
+            %% （DEPENDENCY_FACTS_UNAVAILABLE），事务回滚：附件行与用户行俱在。
+            %% 依据：control/ruling-ORG02-plan1-orchestrator-tests.md（裁决A）。
+            %% 原期望（Plan1）：附件行已清、任务 completed、用户已删 ——
+            %% 让位于冻结合同。
+            {ok, [_]} = elib_pg:query(
                 <<"SELECT id FROM public.attachment WHERE creator_user_id = $1">>,
                 [Uid]
             ),
-            {ok, #{<<"status">> := <<"completed">>}} =
+            {ok, #{<<"status">> := <<"failed">>, <<"last_error">> := LastError}} =
                 user_deletion_job_repo:find_by_user(Uid),
-            {ok, []} = elib_pg:query(
+            {_Pos, _Len} = binary:match(LastError, <<"DEPENDENCY_FACTS_UNAVAILABLE">>),
+            {ok, [_]} = elib_pg:query(
                 <<"SELECT id FROM public.\"user\" WHERE id = $1">>, [Uid]
             )
         after
