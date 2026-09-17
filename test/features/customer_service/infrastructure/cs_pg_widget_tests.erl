@@ -85,6 +85,7 @@ cases({ok, _Conn}) ->
         {timeout, 120, fun a01_widget_migration_roundtrip_no_residue/0},
         {timeout, 60, fun tenant_keys_carry_org_in_every_statement/0},
         {timeout, 60, fun a02_public_widget_id_cannot_cross_org/0},
+        {timeout, 60, fun a02_allowed_origins_jsonb_roundtrip/0},
         {timeout, 60, fun a03_only_digest_columns_and_rows/0},
         {timeout, 60, fun a03_returned_rows_carry_no_plaintext/0},
         {timeout, 60, fun a04_same_org_fk_negatives/0},
@@ -193,6 +194,55 @@ a02_public_widget_id_cannot_cross_org() ->
         {error, not_found} = cs_pg_widget:fetch_widget_installation(OtherOrg, InstallationId),
         {error, not_found} = cs_pg_widget:revoke_widget_installation(
             OtherOrg, InstallationId, erlang:system_time(second)
+        )
+    after
+        cleanup_widget(Scope)
+    end.
+
+%% ===================================================================
+%% A02b：allowed_origins 必须以 JSON 数组落库（jsonb/1 列表编码回归）
+%%
+%% 背景：W4 真实 HTTP 验证（2026-09-17）抓出 cs_pg_common:jsonb/1 的
+%% catch-all 把列表吞成 <<"{}">> 字符串——create 落库的 installation
+%% allowed_origins 恒为 JSON string "{}"，origin 白名单永不命中。
+%% 断言用 jsonb_typeof（codec 无关）：eunit 池未配 json codec 时回读
+%% 是 binary，不能以回读类型判定写侧正确性。
+%% ===================================================================
+
+a02_allowed_origins_jsonb_roundtrip() ->
+    %% 编码层：list → JSON 数组（decode 比较，规避 jsone 的 \/ 转义形式）；
+    %% map → 对象；binary 透传；其他保持 fail 值
+    ?assertEqual(
+        [<<"https://shop.example.com">>],
+        jsone:decode(cs_pg_common:jsonb([<<"https://shop.example.com">>]))
+    ),
+    ?assertEqual([], jsone:decode(cs_pg_common:jsonb([]))),
+    ?assertMatch(<<"{", _/binary>>, cs_pg_common:jsonb(#{<<"a">> => 1})),
+    ?assertEqual(<<"plain">>, cs_pg_common:jsonb(<<"plain">>)),
+    %% 落库层：insert 后列类型必须是 jsonb array（而非 string）
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    try
+        {ok, Inst} = cs_pg_widget:insert_widget_installation(Org, #{
+            id => ?FIX:id(),
+            organization_id => Org,
+            public_widget_id => public_widget_id(),
+            display_name => <<"csb01-origins-roundtrip">>,
+            allowed_origins => [<<"https://shop.example.com">>],
+            branding => #{},
+            consent_version => <<"csb01-consent-v1">>
+        }),
+        InstallationId = maps:get(id, Inst),
+        ?assertEqual(
+            <<"array">>,
+            ?FIX:scalar(
+                <<
+                    "SELECT jsonb_typeof(allowed_origins) FROM customer_service_widget_installation"
+                    " WHERE id = $1"
+                >>,
+                [InstallationId],
+                <<>>
+            )
         )
     after
         cleanup_widget(Scope)

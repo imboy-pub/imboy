@@ -90,10 +90,15 @@ nullify(undefined) -> null;
 nullify(null) -> null;
 nullify(Value) -> Value.
 
-%% @doc map → jsonb 参数（永不落明文正文/secret）。
+%% @doc map / list → jsonb 参数（永不落明文正文/secret）。
+%% list（如 allowed_origins）必须编码为 JSON 数组；此前的 catch-all 会把
+%% 列表吞成 <<"{}">> 字符串，导致 create 落库后 origin 白名单永不命中
+%% （CSX-01 W4 真实 HTTP 验证抓出，2026-09-17）。
 -spec jsonb(term()) -> binary().
 jsonb(Map) when is_map(Map) ->
     jsone:encode(Map);
+jsonb(List) when is_list(List) ->
+    jsone:encode(List);
 jsonb(Bin) when is_binary(Bin) ->
     Bin;
 jsonb(_Other) ->
