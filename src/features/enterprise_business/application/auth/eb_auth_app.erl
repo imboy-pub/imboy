@@ -379,18 +379,27 @@ active_assignments(Facts, UserId, OrgId) ->
     end.
 
 %% @doc 在 active assignment 中挑出路由要求的那一条职能身份。
-%% 同职能出现多条 active（违反 DB 唯一约束的脏数据）→ fail-closed，不静默取第一条。
+%% `RequiredFunction` 为单个 `function_key()` 或职能白名单（命中其一）；
+%% 白名单内出现多条 active（同用户同时持有两类职能且都被路由接纳）→
+%% fail-closed（`multiple_active_assignment`），不静默取第一条。
 select_assignment(Active, RequiredFunction) ->
+    ReqList = required_function_list(RequiredFunction),
     Matching = [
         A
      || A <- Active,
-        maps:get(function_key, A, undefined) =:= RequiredFunction
+        lists:member(maps:get(function_key, A, undefined), ReqList)
     ],
     case Matching of
         [Assignment] -> {ok, Assignment};
         [] -> {error, identity_assignment_missing};
         _Multiple -> {error, {multiple_active_assignment, RequiredFunction}}
     end.
+
+%% 路由声明的职能归一为白名单列表：单个 binary 包装为单元素列表；
+%% 列表原样（空列表/非列表一律空集 → fail-closed 挑不出 identity）。
+required_function_list(Required) when is_binary(Required) -> [Required];
+required_function_list(Required) when is_list(Required) -> Required;
+required_function_list(_Other) -> [].
 
 %% digest 比对使用 OTP 内置 `crypto:hash_equals/2`（等长常量时间比较），
 %% 不自造比较算法；长度不等直接判不等（OTP 该函数对长度不等会抛 badarg，

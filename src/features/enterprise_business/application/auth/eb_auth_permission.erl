@@ -83,11 +83,13 @@ known_permissions() ->
 
 %% @doc 业务身份类型判定。
 %%
-%% `Required = undefined` 表示该路由不要求特定职能；否则必须命中集合之一。
+%% `Required = undefined` 表示该路由不要求特定职能；`Required` 为单个
+%% `function_key()` 或职能白名单列表（命中其一即可——企业消息真源面同时
+%% 接纳 sales 与 customer_service 成员，如客服坐席回复会话消息）。
 %% 失败项携带**实际**职能集合，使「identity 正确但职能不符」与「identity 缺失」
 %% 在本模块层面就可区分。
--spec function_satisfied(function_key() | undefined, [function_key()]) ->
-    ok | {error, {function_mismatch, function_key(), [function_key()]}}.
+-spec function_satisfied(function_key() | [function_key()] | undefined, [function_key()]) ->
+    ok | {error, {function_mismatch, function_key() | [function_key()], [function_key()]}}.
 function_satisfied(undefined, _ActualFunctions) ->
     ok;
 function_satisfied(Required, ActualFunctions) when is_binary(Required), is_list(ActualFunctions) ->
@@ -96,6 +98,15 @@ function_satisfied(Required, ActualFunctions) when is_binary(Required), is_list(
             ok;
         false ->
             {error, {function_mismatch, Required, ActualFunctions}}
+    end;
+function_satisfied(Required, ActualFunctions) when
+    is_list(Required), Required =/= [], is_list(ActualFunctions)
+->
+    case [R || R <- Required, lists:member(R, ActualFunctions)] of
+        [] ->
+            {error, {function_mismatch, Required, ActualFunctions}};
+        [_ | _] ->
+            ok
     end;
 function_satisfied(Required, ActualFunctions) ->
     {error, {function_mismatch, Required, ActualFunctions}}.

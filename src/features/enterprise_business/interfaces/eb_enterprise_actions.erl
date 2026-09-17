@@ -265,7 +265,10 @@ table(tenant) ->
                         ],
                         [{id, conversation_id}], <<"conversation.write">>}
                 ],
-                member_auth(<<"conversation.read">>),
+                %% CSX-01：消息真源面职能白名单（sales | customer_service）——
+                %% 客服坐席回复必须走同一真源（plan v4.1 §5.2 全链契约），
+                %% 此前硬编码 sales 把 customer_service 坐席拒之门外（403）。
+                member_auth(<<"conversation.read">>, [<<"sales">>, <<"customer_service">>]),
                 false,
                 false
             )},
@@ -592,10 +595,19 @@ platform_entry(Action, Cases, Auth, ProxyContent) ->
     }.
 
 %% 企业成员类授权需求：职能类型 + 独立动作权限（function_key 不替代权限）。
+%% 默认单职能 sales（V1 企业面主场景）；多职能动作用 member_auth/2 传白名单。
 member_auth(Permission) ->
+    member_auth(Permission, <<"sales">>).
+
+%% CSX-01：企业面动作面向多职能成员时的授权需求——`Functions` 为单个
+%% function_key 或白名单（命中其一即可）。企业消息真源面（conversation_
+%% messages）同时接纳 sales 与 customer_service 成员：客服坐席（§EB-D02
+%% 允许与 sales 并存）经此面回复会话消息。发送者身份仍由 F-SEC-01 的
+%% caller_identity_id 权威锚定（认证事实派生，客户端不可申报）。
+member_auth(Permission, Functions) ->
     #{
         auth_context => enterprise_member,
-        required_function => <<"sales">>,
+        required_function => Functions,
         required_permission => Permission
     }.
 

@@ -1540,7 +1540,9 @@ enterprise_tenant_routes() ->
             #{
                 action => conversation_messages,
                 auth_context => enterprise_member,
-                required_function => <<"sales">>,
+                %% CSX-01：消息真源面职能白名单（与 eb_enterprise_actions 同步）——
+                %% 客服坐席（customer_service assignment）经此面回复会话消息。
+                required_function => [<<"sales">>, <<"customer_service">>],
                 required_permission => <<"conversation.read">>
             }},
         % ACK 是 delivery-only 动作（eb_enterprise_actions:ack_delivery 的
