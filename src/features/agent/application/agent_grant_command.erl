@@ -10,8 +10,8 @@
 %%%     seam 延续）；目录查询同理（`agent_capability_catalog_module`，默认
 %%%     `agent_capability_catalog`——D7 契约 §4）。unavailable 一律 fail closed。
 %%%   * **身份权威事实 = user 表 account_type**（迁移 00000070 注释枚举
-%%%     0=human 1=agent 2=system_bot 3=bot）：delegator 必须存在且 ≠1；Agent
-%%%     必须 =1（§M.1）。
+%%%     0=human 1=agent 2=system_bot 3=bot）：delegator 必须存在且 =0
+%%%     （Human；架构 §7.2 + ORG-06 操作人判据先例）；Agent 必须 =1（§M.1）。
 %%%   * **有效态实时算**：存储态只有 active|revoked；pending/active/expired/
 %%%     revoked 由 domain 以注入时钟 Now 计算，expired 不落库（§7.2 L291-292）。
 %%%   * **幂等**（§M.1）：UNIQUE(organization_id, delegator_user_id,
@@ -71,11 +71,12 @@ issue(Conn, Ctx) ->
     end.
 
 issue_after_validate(Conn, Ctx, Norm) ->
-    %% delegator 必须存在且非 Agent 身份（account_type=1 是 Agent，权威事实
-    %% = user 表 account_type，§M.1；2=system_bot/3=bot 非本接口语义对象，
-    %% 按 ≠1 冻结规则放行 identity 关，后续按需由 ADR 收窄）
+    %% delegator 必须存在且是 Human（account_type=0；架构 §7.2「运行时要求
+    %% Human」+ 仓内权威先例 ORG-06 organization_agent_membership_app 操作人
+    %% 判据；枚举 0=human/1=ai_agent/2=system_bot/3=bot 见迁移 00000070
+    %% 注释——1/2/3 一律非 Human，全部拒绝）
     case agent_grant_pg:get_user_account_type(Conn, maps:get(delegator_user_id, Norm)) of
-        {ok, DelegatorType} when DelegatorType =/= 1 ->
+        {ok, 0} ->
             case agent_grant_pg:get_user_account_type(Conn, maps:get(agent_id, Norm)) of
                 {ok, 1} ->
                     issue_membership_gate(Conn, Ctx, Norm);
@@ -86,8 +87,9 @@ issue_after_validate(Conn, Ctx, Norm) ->
                     audit(<<"issue">>, {error, agent_not_found}, audit_summary(Ctx)),
                     {error, agent_not_found}
             end;
-        {ok, 1} ->
-            %% Agent 当 delegator：V3.1 禁止 Agent 转授权（§8.2 冻结）
+        {ok, _NotHuman} ->
+            %% Agent(1)/system_bot(2)/bot(3) 当 delegator：V3.1 一律拒绝——
+            %% Human 权威判据=account_type=0（验收轮勘误，原「≠1」会放行 2/3）
             audit(<<"issue">>, {error, delegator_not_human}, audit_summary(Ctx)),
             {error, delegator_not_human};
         {error, not_found} ->

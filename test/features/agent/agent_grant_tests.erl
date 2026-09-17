@@ -356,6 +356,16 @@ issue_identity_tests(_) ->
             ?assertEqual({error, delegator_not_human}, agent_grant_command:issue(conn(), ctx())),
             ?assertEqual(0, meck:num_calls(?PG, insert_grant_tx, '_'))
         end},
+        {"delegator account_type=2 (system_bot) -> delegator_not_human (Human 权威判据=0)", fun() ->
+            meck:expect(?PG, get_user_account_type, fun(_C, _U) -> {ok, 2} end),
+            ?assertEqual({error, delegator_not_human}, agent_grant_command:issue(conn(), ctx())),
+            ?assertEqual(0, meck:num_calls(?PG, insert_grant_tx, '_'))
+        end},
+        {"delegator account_type=3 (bot) -> delegator_not_human (Human 权威判据=0)", fun() ->
+            meck:expect(?PG, get_user_account_type, fun(_C, _U) -> {ok, 3} end),
+            ?assertEqual({error, delegator_not_human}, agent_grant_command:issue(conn(), ctx())),
+            ?assertEqual(0, meck:num_calls(?PG, insert_grant_tx, '_'))
+        end},
         {"delegator account_type=0 (Human) passes identity gate", fun() ->
             meck:expect(?PG, get_user_account_type, fun
                 (_C, U) when U =:= ?DELEGATOR -> {ok, 0};
