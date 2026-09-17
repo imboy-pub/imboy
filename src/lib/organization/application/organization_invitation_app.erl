@@ -114,6 +114,17 @@ create_tx(Conn, Row) ->
         {error, Reason3} ->
             throw({abort_tx, {internal, Reason3}})
     end,
+    %% 3.5) target 必须是已注册用户（与 member legacy direct-add 同口径同话术）；
+    %%    校验后到插入之间 target 被删的并发窗口由第 5 步的 23503 映射兜底，
+    %%    两条路径最终都是同一业务 404，不冒泡成 500。
+    case organization_invitation_pg:target_user_tx(Conn, TargetUid) of
+        {ok, _} ->
+            ok;
+        {error, not_found} ->
+            abort(404, <<"用户不存在（仅支持邀请已注册用户）"/utf8>>);
+        {error, Reason35} ->
+            throw({abort_tx, {internal, Reason35}})
+    end,
     %% 4) lazy expire sweep：先释放已到期占位，再插入（唯一索引是最终裁决）
     case organization_invitation_pg:expire_due_tx(Conn, OrgId) of
         {ok, _} -> ok;
@@ -129,6 +140,9 @@ create_tx(Conn, Row) ->
     case organization_invitation_pg:insert_tx(Conn, FinalRow) of
         ok -> ok;
         {error, pending_conflict} -> abort(409, <<"该用户已有待处理邀请"/utf8>>);
+        %% 并发窗口兜底：第 3.5 步校验通过后 target 仍可能在插入前被删，
+        %% 外键违规（23503）转同一业务 404，不让用户看到 500。
+        {error, target_user_missing} -> abort(404, <<"用户不存在（仅支持邀请已注册用户）"/utf8>>);
         {error, Reason5} -> throw({abort_tx, {internal, Reason5}})
     end,
     {ok,

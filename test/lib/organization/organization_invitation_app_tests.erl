@@ -41,6 +41,7 @@ default_store_mocks() ->
                 Member -> {ok, Member}
             end
         end},
+        {target_user_tx, 2, fun(fake_conn, Uid) -> {ok, #{<<"id">> => Uid}} end},
         {insert_tx, 2, fun(fake_conn, _Row) -> ok end},
         {find_by_digest_tx, 4, fun(fake_conn, _OrgId, _Target, _Digest) ->
             case get(t_invitation_row) of
@@ -143,7 +144,7 @@ create_success_test_() ->
     end}.
 
 create_lock_order_test_() ->
-    {"create 锁序断言：lock_organization → member(inviter) → member(target) → expire_due → insert",
+    {"create 锁序断言：lock_organization → member(inviter) → member(target) → target_user → expire_due → insert",
         fun() ->
             with_mocks(
                 [
@@ -160,6 +161,10 @@ create_lock_order_test_() ->
                                 {error, not_found}
                         end
                     end},
+                    {target_user_tx, 2, fun(fake_conn, _Uid) ->
+                        record_event(user_exists),
+                        {ok, #{<<"id">> => ?TARGET}}
+                    end},
                     {expire_due_tx, 2, fun(fake_conn, _O) ->
                         record_event(sweep),
                         {ok, 0}
@@ -174,7 +179,14 @@ create_lock_order_test_() ->
                         invitation_id => ?INV_ID
                     }),
                     ?assertEqual(
-                        [lock_org, {member, ?OWNER}, {member, ?TARGET}, sweep, insert],
+                        [
+                            lock_org,
+                            {member, ?OWNER},
+                            {member, ?TARGET},
+                            user_exists,
+                            sweep,
+                            insert
+                        ],
                         events()
                     )
                 end
@@ -247,6 +259,40 @@ create_guards_test_() ->
                     })
                 )
             end)
+        end},
+        {"target 用户不存在 404（不落 FK 违规兜底 500；REAL BUG 2026-09-16 FINDING-2）", fun() ->
+            with_mocks(
+                [
+                    {target_user_tx, 2, fun(fake_conn, _Uid) -> {error, not_found} end}
+                ],
+                fun() ->
+                    set_member(?OWNER, <<"owner">>, <<"active">>),
+                    ?assertMatch(
+                        {error, {404, <<"用户不存在（仅支持邀请已注册用户）"/utf8>>}},
+                        organization_invitation_app:create(?OWNER, ?ORG_ID, ?TARGET, #{
+                            invitation_id => ?INV_ID
+                        })
+                    )
+                end
+            )
+        end},
+        {"并发窗口：校验通过后插入前 target 被删（23503→target_user_missing）→ 同一业务 404", fun() ->
+            with_mocks(
+                [
+                    {insert_tx, 2, fun(fake_conn, _R) ->
+                        {error, target_user_missing}
+                    end}
+                ],
+                fun() ->
+                    set_member(?OWNER, <<"owner">>, <<"active">>),
+                    ?assertMatch(
+                        {error, {404, <<"用户不存在（仅支持邀请已注册用户）"/utf8>>}},
+                        organization_invitation_app:create(?OWNER, ?ORG_ID, ?TARGET, #{
+                            invitation_id => ?INV_ID
+                        })
+                    )
+                end
+            )
         end},
         {"已有 pending（唯一索引冲突）409", fun() ->
             with_mocks(

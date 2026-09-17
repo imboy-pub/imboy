@@ -12,6 +12,7 @@
 -export([
     lock_organization_tx/2,
     member_tx/3,
+    target_user_tx/2,
     insert_tx/2,
     find_by_digest_tx/4,
     find_tx/4,
@@ -44,9 +45,19 @@ member_tx(Conn, OrgId, Uid) ->
             " WHERE organization_id = $1 AND user_id = $2">>,
     one_tx(Conn, Sql, [OrgId, Uid]).
 
+%% @doc 目标用户存在性读取（invite 仅限已注册用户；同事务只读裁决）。
+%% 并发窗口兜底由 insert_tx 的 23503 映射承担：校验通过到插入之间
+%% target 被删时不再让外键违规冒泡成 500。
+-spec target_user_tx(any(), integer()) -> {ok, map()} | {error, not_found | term()}.
+target_user_tx(Conn, Uid) ->
+    Sql = <<"SELECT id FROM ", (user_table())/binary, " WHERE id = $1">>,
+    one_tx(Conn, Sql, [Uid]).
+
 %% @doc 插入邀请行（id 由应用层 elib_tsid 生成；token_digest 为唯一落库形态）。
-%% 同 (org,target) 的第二条 pending 由部分唯一索引拒绝 → {error, pending_conflict}。
--spec insert_tx(any(), map()) -> ok | {error, pending_conflict | term()}.
+%% 同 (org,target) 的第二条 pending 由部分唯一索引拒绝 → {error, pending_conflict}；
+%% target 用户在校验后到插入之间被删（并发窗口）由外键拒绝 → {error, target_user_missing}。
+-spec insert_tx(any(), map()) ->
+    ok | {error, pending_conflict | target_user_missing | term()}.
 insert_tx(Conn, Row) ->
     Sql =
         <<"INSERT INTO ", (invitation_table())/binary,
@@ -68,6 +79,7 @@ insert_tx(Conn, Row) ->
         {error, Reason} = Err ->
             case error_code(Reason) of
                 <<"23505">> -> {error, pending_conflict};
+                <<"23503">> -> {error, target_user_missing};
                 _ -> Err
             end
     end.
@@ -193,6 +205,10 @@ member_table() ->
 -spec invitation_table() -> binary().
 invitation_table() ->
     elib_pg_sql:public_tablename(<<"organization_invitation">>).
+
+-spec user_table() -> binary().
+user_table() ->
+    elib_pg_sql:public_tablename(<<"user">>).
 
 -spec one_tx(any(), binary(), list()) -> {ok, map()} | {error, not_found | term()}.
 one_tx(Conn, Sql, Params) ->
