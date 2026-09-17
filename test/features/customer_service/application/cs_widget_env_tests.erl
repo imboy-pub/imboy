@@ -54,8 +54,10 @@ assertion_verifier_cases(_) ->
         <<"sub">> => <<"u-1">>
     },
     Canonical = jsx:encode(lists:sort(maps:to_list(Claims))),
-    Sig = binary:encode_hex(crypto:mac(hmac, sha256, Key, Canonical)),
-    GoodDigest = binary:encode_hex(crypto:hash(sha256, Key)),
+    %% lowercase 与生产 encode_hex/2 同口径（4fea324f：digest 惯例小写；
+    %% 缺省大写会先在 digest 锚定处失配，掩盖签名断言本意）。
+    Sig = binary:encode_hex(crypto:mac(hmac, sha256, Key, Canonical), lowercase),
+    GoodDigest = binary:encode_hex(crypto:hash(sha256, Key), lowercase),
     {ok, Verifier} = cs_widget_env:assertion_verifier_fun(),
     [
         {"verifier accepts a well-signed assertion and normalizes claim keys", fun() ->
