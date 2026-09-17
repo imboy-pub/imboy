@@ -70,6 +70,16 @@ open_session(_OrgId, _Params) ->
     {error, {invalid_argument, open_session}}.
 
 open_session_in(OrgId, WorkspaceId, Params) ->
+    %% ORG-08（C16 / compatibility §4.1）：archived Org 拒绝**新** Session
+    %% （稳定 denial：{error, organization_archived}）；授权只读不受影响。
+    case cs_org_lifecycle_gate:assert_session_writable(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            open_session_gated(OrgId, WorkspaceId, Params)
+    end.
+
+open_session_gated(OrgId, WorkspaceId, Params) ->
     ContactId = maps:get(contact_id, Params, undefined),
     ConversationId = maps:get(conversation_id, Params, undefined),
     At = maps:get(at, Params, undefined),
@@ -233,6 +243,16 @@ claim(_OrgId, _Params) ->
     {error, {invalid_argument, claim}}.
 
 claim_in(OrgId, WorkspaceId, Params) ->
+    %% ORG-08（C16 / compatibility §4.1）：archived Org 拒绝**新** Seat claim
+    %% （稳定 denial：{error, organization_archived}）；既有 Session 历史保留。
+    case cs_org_lifecycle_gate:assert_session_writable(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            claim_gated(OrgId, WorkspaceId, Params)
+    end.
+
+claim_gated(OrgId, WorkspaceId, Params) ->
     SessionId = maps:get(session_id, Params, undefined),
     ExpectedVersion = maps:get(expected_version, Params, undefined),
     At = maps:get(at, Params, undefined),

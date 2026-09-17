@@ -122,16 +122,19 @@ bad_subject_rejected_test_() ->
             organization_deletion_preflight:run(bad)
     end}.
 
-default_registry_is_org_plus_workspace_test_() ->
+default_registry_is_org_workspace_eb_cs_test_() ->
     {setup, fun() -> ok end, fun(_) -> ok end, fun() ->
         ?assertEqual(
             [
                 {organization, organization_preflight_facts_pg, facts_organization},
-                {workspace, organization_preflight_facts_pg, facts_workspace}
+                {workspace, organization_preflight_facts_pg, facts_workspace},
+                {enterprise_business, eb_preflight_facts_pg, facts_enterprise_business},
+                {customer_service, cs_preflight_facts_pg, facts_customer_service}
             ],
             organization_deletion_preflight:registry()
         ),
-        %% 冻结五域缺一不可（C17）：EB/CS/Agent 交付前默认注册表整体拒
+        %% 冻结五域缺一不可（C17）：Agent 交付前默认注册表整体拒
+        %% （EB/CS 登记 = ORG-A0 对 ORG-08 BLOCKED_INT-2 的合并，A0 裁决留痕）
         ?assertEqual(
             [organization, workspace, enterprise_business, customer_service, agent],
             organization_deletion_preflight:required_domains()
@@ -140,7 +143,7 @@ default_registry_is_org_plus_workspace_test_() ->
 
 default_registry_preflight_rejected_until_all_domains_registered_test_() ->
     ?TEST_WITH_DB_TIMEOUT(30, fun() ->
-        %% 真实 provider + 默认两域注册表：缺 EB/CS/Agent → 整体拒
+        %% 真实 provider + 默认四域注册表：缺 Agent → 整体拒
         %% （计划 §1.6：未注册域=facts 不可得=拒；control/ruling-
         %% ORG02-plan1-orchestrator-tests.md 同口径）
         {error, #{code := ?CODE, reason := provider_unregistered}} =

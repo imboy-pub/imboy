@@ -23,7 +23,7 @@ FIELDS = {"schema_version", "product_id", "profile", "base_ref", "selected_featu
 # 映射只需逐步覆盖有物理裁剪意义的模块；其余 feature 由 BUILD-01 补齐。
 FEATURE_BACKEND_MODULES = {
     "enterprise_business": (
-        # EB-10：src/features/enterprise_business/** 的 60 个模块（含 facade）。
+        # EB-10：src/features/enterprise_business/** 的 61 个模块（含 facade）。
         # 未选中 enterprise_business 时按 ERLC_EXCLUDE 不参与编译，并自动退出
         # .app modules 与 release 包；路由段的编译期剔除另见 src/imboy_router.erl
         # 的 -ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS) helper。清单与目录的
@@ -64,6 +64,7 @@ FEATURE_BACKEND_MODULES = {
         "eb_offboarding",
         "eb_offboarding_app",
         "eb_offboarding_flow",
+        "eb_preflight_facts_pg",
         "eb_pg_asset_meta",
         "eb_pg_audit",
         "eb_pg_auth_facts",
@@ -93,7 +94,7 @@ FEATURE_BACKEND_MODULES = {
         "enterprise_business_facade",
     ),
     "customer_service": (
-        # CS-02：src/features/customer_service/** 的 23 个模块（含 facade 与
+        # CS-02：src/features/customer_service/** 的 27 个模块（含 facade 与
         # interfaces 六模块）。未选中 customer_service 时按 ERLC_EXCLUDE 不参与
         # 编译，并自动退出 .app modules 与 release 包；路由段的编译期剔除另见
         # src/imboy_router.erl 的 -ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE) helper、
@@ -109,6 +110,9 @@ FEATURE_BACKEND_MODULES = {
         "cs_http",
         "cs_id_port",
         "cs_infra_ports",
+        "cs_org_lifecycle_facts",
+        "cs_org_lifecycle_gate",
+        "cs_org_lifecycle_port",
         "cs_pg_common",
         "cs_pg_seat",
         "cs_pg_session",
@@ -116,6 +120,7 @@ FEATURE_BACKEND_MODULES = {
         "cs_pg_token",
         "cs_platform_handler",
         "cs_ports",
+        "cs_preflight_facts_pg",
         "cs_seat_app",
         "cs_session",
         "cs_session_app",

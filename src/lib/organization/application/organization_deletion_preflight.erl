@@ -12,9 +12,9 @@
 %%   * providers 只读、不做 handover/offboarding。
 %%
 %% provider 注册表：
-%%   默认（代码内置）= organization + workspace 两域（org 侧只读代查 workspace
-%%   owner 字段，ORG-02 任务卡冻结口径）；enterprise_business / customer_service /
-%%   agent 三域的 provider 由各自域任务交付后注册。测试/集成可用
+%%   默认（代码内置）= organization + workspace（ORG-02 org 侧只读代查）+
+%%   enterprise_business（ORG-08）+ customer_service（ORG-08）四域；agent 域
+%%   provider 由 ORG-06 交付后注册（登记前缺域照拒，fail-closed）。测试/集成可用
 %%   application:set_env(imboy, deletion_preflight_providers, [{Domain, M, F}])
 %%   覆盖注册表——但 required 域集合不可缩减：覆盖后仍缺域照拒。
 %%
@@ -78,7 +78,9 @@ registry() ->
             Default = organization_preflight_facts_pg,
             [
                 {organization, Default, facts_organization},
-                {workspace, Default, facts_workspace}
+                {workspace, Default, facts_workspace},
+                {enterprise_business, eb_preflight_facts_pg, facts_enterprise_business},
+                {customer_service, cs_preflight_facts_pg, facts_customer_service}
             ]
     end.
 

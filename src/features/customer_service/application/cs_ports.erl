@@ -16,6 +16,7 @@
     all/0,
     store/0,
     id/0,
+    org_lifecycle/0,
     port_module_for/1,
     contracts/0,
     facade_targets/0,
@@ -36,7 +37,7 @@
 %% @doc 全部已冻结的扩展点模块（顺序固定，便于逐字审计）。
 -spec all() -> [port_module()].
 all() ->
-    [store(), id()].
+    [store(), id(), org_lifecycle()].
 
 %% @doc 持久化读写扩展点。session 级 callback 前两个业务参数是
 %% `organization_id` / `workspace_id`（铁律 6）；Org 级资源首参为 OrgId。
@@ -47,10 +48,16 @@ store() -> cs_store_port.
 -spec id() -> port_module().
 id() -> cs_id_port.
 
+%% @doc Organization 生命周期事实扩展点（ORG-08 / C16；只读）。
+%% archived Org → 新 Session / 新 claim 稳定拒绝的唯一事实来源。
+-spec org_lifecycle() -> port_module().
+org_lifecycle() -> cs_org_lifecycle_port.
+
 %% @doc 按域键取端口模块；未知键 fail-closed。
 -spec port_module_for(term()) -> port_module() | {error, term()}.
 port_module_for(store) -> store();
 port_module_for(id) -> id();
+port_module_for(org_lifecycle) -> org_lifecycle();
 port_module_for(Unknown) -> {error, {unknown_port, Unknown}}.
 
 %% ===================================================================
@@ -96,6 +103,10 @@ contracts() ->
         ],
         id() => [
             {new_id, 1}
+        ],
+        org_lifecycle() => [
+            %% 只读生命周期事实（active | archived）；ORG-08 / C16。
+            {status, 1}
         ]
     }.
 
@@ -115,10 +126,13 @@ facade_reference_whitelist() ->
 
 %% @doc customer_service 全部模块允许引用的**跨单元**白名单。
 %%
-%% 只有两类（EB-D08）：
+%% EB-D08 + ORG-08：
 %%   * `enterprise_business_facade`——消息/客户/附件真源的唯一入口（A03）；
+%%   * `organization_repo`——Organization 生命周期事实 adapter 的只读依赖
+%%     （cs_org_lifecycle_facts 经 `find_by_id/1` 读 organization.status，
+%%     不自查 org 表；Feature → Core/legacy 单向，铁律 5 合法方向）；
 %%   * core/lib（`src/lib`）与 OTP 模块不属于「跨 Feature」，由 cs 闭环测试的
 %%     OTP/lib 白名单单独放行，不在此列。
 -spec external_reference_whitelist() -> [module()].
 external_reference_whitelist() ->
-    [enterprise_business_facade].
+    [enterprise_business_facade, organization_repo].

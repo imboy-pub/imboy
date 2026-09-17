@@ -109,12 +109,22 @@ class ProductFeatureManifestTest(unittest.TestCase):
         # enterprise_business 都被选中）下，排除行恢复为空 —— 保住原来那条
         # 「无未选中 feature 时排除行为空」的检查。
         self.assertNotIn("moment_ds", selected.splitlines()[-1].split(":=")[1].split())
+        # customer_service 自 CS-02 起也有模块映射，完整 catalog 必须同样纳入，
+        # 否则 all-selected 场景下 cs 模块仍留在排除行（CS-02 起本断言一直红）。
         full_catalog = {
-            "features": [*self.catalog["features"], "moment", "enterprise_business"],
+            "features": [
+                *self.catalog["features"],
+                "moment",
+                "enterprise_business",
+                "customer_service",
+            ],
             "dependencies": self.catalog["dependencies"],
         }
         all_selected = MODULE.render(
-            MODULE.validate(self.manifest(["moment", "enterprise_business"]), full_catalog)
+            MODULE.validate(
+                self.manifest(["moment", "enterprise_business", "customer_service"]),
+                full_catalog,
+            )
         )[mk_path]
         self.assertEqual("IMBOY_FEATURE_ERLC_EXCLUDE :=", all_selected.splitlines()[-1])
 
