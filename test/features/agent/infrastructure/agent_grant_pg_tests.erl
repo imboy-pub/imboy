@@ -56,7 +56,14 @@ agent_grant_pg_test_() ->
                 end},
             {"f: chain head at 00000132 not dirty + data roundtrip + structure re-assert", fun() ->
                 t_chain_head_and_roundtrip(Conn)
-            end}
+            end},
+            {
+                "g: AG31-03 command lifecycle on real PG (issue/event/idempotency/"
+                "get/expired-not-stored/revoke/CAS-race/cross-org)",
+                fun() ->
+                    t_command_lifecycle(Conn)
+                end
+            }
         ]
     end}.
 
@@ -347,13 +354,15 @@ t_checks(Conn) ->
 %% ===================================================================
 
 t_chain_head_and_roundtrip(Conn) ->
-    %% 迁移链头 = 00000132 且非 dirty（up/down/up 后状态一致）
+    %% 迁移链头 >= 00000132（grant 四表落位）且非 dirty。
+    %% 放宽为下限断言：同分支 AG31-04B 已把链头推进到 00000133（agent_run
+    %% 三表），后续 track 只增不减；本组只关心 grant 基础表在链上且链健康。
     {ok, _, [{Version, Dirty}]} = epgsql:equery(
         Conn,
         "SELECT version, dirty FROM schema_migrations",
         []
     ),
-    ?assertEqual(?CHAIN_HEAD, Version),
+    ?assert(Version >= ?CHAIN_HEAD),
     ?assertEqual(false, Dirty),
     %% 数据往返：CAS 撤销流正例 + 读回字段一致
     fixture_cleanup(Conn),
@@ -506,3 +515,331 @@ count_existing_indexes(Conn, Names) ->
 
 placeholders(Start, N) ->
     string:join(["$" ++ integer_to_list(I) || I <- lists:seq(Start, Start + N - 1)], ",").
+
+%% ===================================================================
+%% g: AG31-03 命令级生命周期（agent_grant_command + agent_grant_pg 真库）
+%%
+%% membership/catalog 经 meck 注入（两模块本分支存在，strict meck）；
+%% 身份事实（user.account_type）与四表读写全部走真库。夹具独立使用 991xxx
+%% 高位区段 + TSID 真值，自建自清（replica 旁路仅用于 append-only 事件清理）。
+%% ===================================================================
+
+-define(C_DELEGATOR, 991010).
+-define(C_AGENT, 991011).
+-define(C_ORG1, 991001).
+-define(C_ORG2, 991002).
+-define(C_WS1, 991020).
+-define(C_WS2, 991030).
+-define(C_VF, {{2026, 9, 1}, {0, 0, 0}}).
+-define(C_EXP, {{2027, 9, 1}, {0, 0, 0}}).
+-define(C_NOW, {{2026, 9, 17}, {12, 0, 0}}).
+
+%% eunit-local 环境无 imboy app：elib_tsid 命名生成器需要 node 标识（init/1）；
+%% 已初始化（全量 app 先行启动）则保持原状不动（镜像 agent_run_pg_tests 口径）
+ensure_tsid() ->
+    try elib_tsid:generate(default) of
+        _ -> ok
+    catch
+        _:_ ->
+            ok = elib_tsid:init(#{dc_id => 0, node_id => 7})
+    end.
+
+t_command_lifecycle(Conn) ->
+    ensure_tsid(),
+    try
+        meck:new(agent_org_membership_adapter, [no_link]),
+        meck:new(agent_capability_catalog, [no_link]),
+        meck:expect(agent_org_membership_adapter, resolve_organization_membership, fun(_O, _A) ->
+            {ok, #{status => active, role => member, version => 1}}
+        end),
+        meck:expect(agent_capability_catalog, lookup, fun(C, A, R) ->
+            {ok, #{
+                capability => C,
+                action => A,
+                resource_type => R,
+                legal_constraint_keys => [<<"workspace_id">>]
+            }}
+        end),
+        command_fixture_cleanup(Conn),
+        command_fixture_insert(Conn),
+        g_issue_and_replay(Conn),
+        g_get_view(Conn),
+        g_expired_not_stored(Conn),
+        g_revoke_and_cas_race(Conn),
+        g_cross_org_workspace(Conn),
+        g_unknown_capability(Conn)
+    after
+        catch meck:unload(agent_org_membership_adapter),
+        catch meck:unload(agent_capability_catalog),
+        command_fixture_cleanup(Conn)
+    end,
+    ok.
+
+%% G1: 发行四写单事务 + 幂等（同 key 同 payload=replay；异 payload=冲突）
+g_issue_and_replay(Conn) ->
+    Ctx = c_ctx(#{idempotency_key => <<"ag31c-k1">>}),
+    {ok, Result} = agent_grant_command:issue(Conn, Ctx),
+    ?assertEqual(false, maps:get(replay, Result)),
+    ?assertEqual(1, maps:get(version, Result)),
+    ?assertEqual(active, maps:get(effective_status, Result)),
+    GrantId = maps:get(grant_id, Result),
+    %% 四写落库：grant 行 + workspace 行 + capability 行 + event 行
+    {ok, _, [{<<"active">>, 1, <<"explicit">>}]} =
+        epgsql:equery(
+            Conn, "SELECT status, version, workspace_scope_kind FROM agent_grant WHERE id = $1", [
+                GrantId
+            ]
+        ),
+    {ok, _, [{1}]} =
+        epgsql:equery(
+            Conn,
+            "SELECT count(*) FROM agent_grant_workspace WHERE grant_id = $1 AND organization_id = $2",
+            [GrantId, ?C_ORG1]
+        ),
+    {ok, _, [{1}]} =
+        epgsql:equery(Conn, "SELECT count(*) FROM agent_grant_capability WHERE grant_id = $1", [
+            GrantId
+        ]),
+    {ok, _, [{EventCount}]} =
+        epgsql:equery(
+            Conn,
+            "SELECT count(*) FROM agent_grant_event WHERE grant_id = $1 "
+            "AND event_type = 'issued' AND actor_kind = 'human' AND actor_user_id = $2 "
+            "AND to_version = 1 AND from_version IS NULL",
+            [GrantId, ?C_DELEGATOR]
+        ),
+    ?assertEqual(1, EventCount),
+    %% constraint_json 往返（只收窄键白名单内的键值；按 JSON 解码后比对结构，
+    %% 不依赖 PG 版本间的 ::text 空白差异）
+    {ok, _, [{ConstraintJson}]} =
+        epgsql:equery(
+            Conn, "SELECT constraint_json::text FROM agent_grant_capability WHERE grant_id = $1", [
+                GrantId
+            ]
+        ),
+    ?assertEqual(#{<<"workspace_id">> => 5}, jsone:decode(ConstraintJson, [{object_format, map}])),
+    %% 同 key 同 payload → replay=true 且同一 grant
+    {ok, Replay} = agent_grant_command:issue(Conn, Ctx),
+    ?assertEqual(true, maps:get(replay, Replay)),
+    ?assertEqual(GrantId, maps:get(grant_id, Replay)),
+    ?assertEqual(1, maps:get(version, Replay)),
+    %% 同 key 异 payload → idempotency_conflict
+    ?assertEqual(
+        {error, idempotency_conflict},
+        agent_grant_command:issue(
+            Conn,
+            c_ctx(#{idempotency_key => <<"ag31c-k1">>, expires_at => {{2027, 10, 1}, {0, 0, 0}}})
+        )
+    ),
+    put(ag31c_grant_id, GrantId),
+    ok.
+
+%% G2: get 视图（org 域 + 子行 + 实时有效态）
+g_get_view(Conn) ->
+    GrantId = get(ag31c_grant_id),
+    {ok, View} = agent_grant_command:get(Conn, ?C_ORG1, GrantId, ?C_NOW),
+    ?assertEqual(active, maps:get(effective_status, View)),
+    ?assertEqual([?C_WS1], maps:get(workspace_ids, View)),
+    ?assertEqual(1, length(maps:get(capabilities, View))),
+    %% org 不匹配 → not_found（bounded）
+    ?assertEqual({error, not_found}, agent_grant_command:get(Conn, ?C_ORG2, GrantId, ?C_NOW)),
+    ok.
+
+%% G3: expired 不落库——存储态 active、读时实时算 expired（§7.2 L291-292）
+g_expired_not_stored(Conn) ->
+    Ctx = c_ctx(#{
+        idempotency_key => <<"ag31c-k2">>,
+        valid_from => {{2025, 9, 1}, {0, 0, 0}},
+        expires_at => {{2026, 9, 16}, {0, 0, 0}}
+    }),
+    {ok, Result} = agent_grant_command:issue(Conn, Ctx),
+    ?assertEqual(expired, maps:get(effective_status, Result)),
+    GrantId = maps:get(grant_id, Result),
+    {ok, _, [{<<"active">>}]} =
+        epgsql:equery(Conn, "SELECT status FROM agent_grant WHERE id = $1", [GrantId]),
+    put(ag31c_expired_id, GrantId),
+    ok.
+
+%% G4: 撤销 CAS + event(revoked) + 并发一胜一拒 + 已撤销重复拒绝
+g_revoke_and_cas_race(Conn) ->
+    GrantId = get(ag31c_grant_id),
+    %% 两进程同 expected_version 并发撤销：CAS 行锁串行化，恰一胜一拒。
+    %% epgsql 连接是单进程资源，竞速双方必须各持独立连接。
+    Refs = [
+        spawn_monitor(fun() ->
+            RacerConn = c_connect(),
+            R =
+                try
+                    agent_grant_command:revoke(RacerConn, c_revoke_ctx(GrantId, 1))
+                catch
+                    C:Rc:S ->
+                        St = [{M, F, A} || {M, F, A, _} <- lists:sublist(S, 3)],
+                        epgsql:close(RacerConn),
+                        exit({crashed, C, Rc, St})
+                end,
+            epgsql:close(RacerConn),
+            exit({done, R})
+        end)
+     || _ <- [1, 2]
+    ],
+    Winners = collect_revoke_results(Refs, []),
+    Results = [R || {done, R} <- Winners],
+    ?assertEqual(1, length([ok || {ok, _} <- Results])),
+    ?assertEqual(1, length([ok || {error, version_conflict} <- Results])),
+    %% 胜者：status=revoked、revoked_at/by 非空、version=2、event(revoked) 落账
+    {ok, _, [{<<"revoked">>, 2, true}]} =
+        epgsql:equery(
+            Conn, "SELECT status, version, revoked_at IS NOT NULL FROM agent_grant WHERE id = $1", [
+                GrantId
+            ]
+        ),
+    {ok, _, [{1}]} =
+        epgsql:equery(
+            Conn,
+            "SELECT count(*) FROM agent_grant_event WHERE grant_id = $1 AND event_type = 'revoked' "
+            "AND from_version = 1 AND to_version = 2",
+            [GrantId]
+        ),
+    %% 败者后续重试（结构化拒绝）：已撤销 → already_revoked，非 version_conflict
+    ?assertEqual(
+        {error, already_revoked},
+        agent_grant_command:revoke(Conn, c_revoke_ctx(GrantId, 1))
+    ),
+    %% 独立 grant 的陈旧版本撤销 → version_conflict（确定性 CAS 丢败）
+    ExpiredId = get(ag31c_expired_id),
+    ?assertEqual(
+        {error, version_conflict},
+        agent_grant_command:revoke(Conn, c_revoke_ctx(ExpiredId, 9))
+    ),
+    ok.
+
+%% G5: 跨 Org workspace → DB 复合 FK 拒绝 → cross_org_workspace，零行残留
+g_cross_org_workspace(Conn) ->
+    ?assertEqual(
+        {error, cross_org_workspace},
+        agent_grant_command:issue(
+            Conn, c_ctx(#{idempotency_key => <<"ag31c-k3">>, workspace_ids => [?C_WS2]})
+        )
+    ),
+    {ok, _, [{0}]} =
+        epgsql:equery(
+            Conn, "SELECT count(*) FROM agent_grant WHERE idempotency_key = 'ag31c-k3'", []
+        ),
+    ok.
+
+%% G6: 目录未命中 → unknown_capability（D7 空集语义；此处以 catalog 未覆盖
+%% 的三元组触发——meck lookup 对其余三元组返回 not_found）
+g_unknown_capability(Conn) ->
+    meck:expect(agent_capability_catalog, lookup, fun(_C, _A, _R) -> {error, not_found} end),
+    ?assertEqual(
+        {error, {unknown_capability, {<<"echo">>, <<"invoke">>, <<"message">>}}},
+        agent_grant_command:issue(Conn, c_ctx(#{idempotency_key => <<"ag31c-k4">>}))
+    ),
+    ok.
+
+collect_revoke_results([{_Pid, Ref} | Rest], Acc) ->
+    receive
+        {'DOWN', Ref, process, _P, Reason} ->
+            collect_revoke_results(Rest, [Reason | Acc])
+    after 10000 ->
+        erlang:error(revoke_race_timeout)
+    end;
+collect_revoke_results([], Acc) ->
+    Acc.
+
+%% ===================================================================
+%% g 组夹具（991xxx 区段；自建自清）
+%% ===================================================================
+
+c_ctx(Over) ->
+    maps:merge(
+        #{
+            organization_id => ?C_ORG1,
+            agent_id => ?C_AGENT,
+            delegator_user_id => ?C_DELEGATOR,
+            workspace_scope_kind => explicit,
+            workspace_ids => [?C_WS1],
+            capabilities => [
+                #{
+                    capability => <<"echo">>,
+                    action => <<"invoke">>,
+                    resource_type => <<"message">>,
+                    constraint => #{<<"workspace_id">> => 5}
+                }
+            ],
+            valid_from => ?C_VF,
+            expires_at => ?C_EXP,
+            idempotency_key => <<"ag31c-kx">>,
+            now => ?C_NOW
+        },
+        Over
+    ).
+
+c_connect() ->
+    ConnOpts = #{
+        host => os:getenv("AG31_PG_HOST"),
+        port => list_to_integer(os:getenv("AG31_PG_PORT")),
+        username => os:getenv("AG31_PG_USER"),
+        password => os:getenv("AG31_PG_PASSWORD", ""),
+        database => os:getenv("AG31_PG_DB")
+    },
+    {ok, C} = epgsql:connect(ConnOpts),
+    C.
+
+c_revoke_ctx(GrantId, ExpectedVersion) ->
+    #{
+        organization_id => ?C_ORG1,
+        grant_id => GrantId,
+        revoker_user_id => ?C_DELEGATOR,
+        expected_version => ExpectedVersion,
+        now => ?C_NOW
+    }.
+
+command_fixture_insert(Conn) ->
+    {ok, 2} =
+        epgsql:equery(
+            Conn,
+            "INSERT INTO \"user\" (id, account, password, reg_ip, reg_cosv, status) "
+            "VALUES ($1,'ag31c_eunit_delegator','x','127.0.0.1','e2e',1), "
+            "($2,'ag31c_eunit_agent','x','127.0.0.1','e2e',1)",
+            [?C_DELEGATOR, ?C_AGENT]
+        ),
+    {ok, 1} = epgsql:equery(Conn, "UPDATE \"user\" SET account_type = 1 WHERE id = $1", [?C_AGENT]),
+    {ok, 2} =
+        epgsql:equery(
+            Conn,
+            "INSERT INTO organization (id, name, owner_id) VALUES ($1,'ag31c-eunit-org1',$3), "
+            "($2,'ag31c-eunit-org2',$3)",
+            [?C_ORG1, ?C_ORG2, ?C_DELEGATOR]
+        ),
+    {ok, 2} =
+        epgsql:equery(
+            Conn,
+            "INSERT INTO workspace (id, name, owner_id, organization_id) "
+            "VALUES ($1,'ag31c-eunit-ws1',$3,$5), ($2,'ag31c-eunit-ws2',$3,$4)",
+            [?C_WS1, ?C_WS2, ?C_DELEGATOR, ?C_ORG2, ?C_ORG1]
+        ),
+    ok.
+
+%% 命令级夹具清理：ag31c- 前缀幂等键定位命令发行的所有 grant（含 TSID id），
+%% 先经 replica 旁路清 append-only 事件，再清子行/主行/夹具行
+command_fixture_cleanup(Conn) ->
+    ok = squery_ok(Conn, "SET session_replication_role = replica"),
+    GrantIds =
+        "(SELECT id FROM agent_grant WHERE idempotency_key LIKE 'ag31c-%')",
+    lists:foreach(
+        fun(S) -> ok = squery_ok(Conn, S) end,
+        [
+            "DELETE FROM agent_grant_event WHERE grant_id IN " ++ GrantIds,
+            "DELETE FROM agent_grant_capability WHERE grant_id IN " ++ GrantIds,
+            "DELETE FROM agent_grant_workspace WHERE grant_id IN " ++ GrantIds,
+            "DELETE FROM agent_grant WHERE idempotency_key LIKE 'ag31c-%'",
+            "DELETE FROM workspace WHERE id IN (" ++ id_list([?C_WS1, ?C_WS2]) ++ ")",
+            "DELETE FROM organization WHERE id IN (" ++ id_list([?C_ORG1, ?C_ORG2]) ++ ")",
+            "DELETE FROM \"user\" WHERE id IN (" ++ id_list([?C_DELEGATOR, ?C_AGENT]) ++ ")"
+        ]
+    ),
+    ok = squery_ok(Conn, "RESET session_replication_role"),
+    erase(ag31c_grant_id),
+    erase(ag31c_expired_id),
+    ok.
