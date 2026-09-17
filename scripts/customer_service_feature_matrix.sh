@@ -12,7 +12,7 @@
 #
 #   逐档断言五层资产（对象 = customer_service 的全部模块（31，含 CSB-03 的
 #   cs_widget_handler 与 CSB-02R 的 cs_widget_env / cs_identity_assertion）+
-#   32 条路由 = 租户 17 + widget 8 + 平台 7）：
+#   34 条路由 = 租户 17 + widget 8 + 平台 9）：
 #     A-selected    宏 / 路由 / beam / .app modules / release 都在
 #     A-unselected  宏 / 路由 / beam / .app modules / release 都不在
 #     A03-负例      customer_service 无 enterprise_business ⇒ 生成即失败
@@ -350,11 +350,11 @@ assert_layer_routes() {
   platform="${platform%% *}"
   if [ "$expect" = selected ]; then
     # CSB-02R：租户面 17（坐席会话详情 + seats/sessions 工作台 + queue 双主体）
-    # + widget 接入面 8 + 平台面 7。
-    if [ "$tenant" = 17 ] && [ "$widget" = 8 ] && [ "$platform" = 7 ]; then
-      ok "路由表：get_routes/0 客服路由租户 17 + widget 8 + 平台 7"
+    # + widget 接入面 8 + 平台面 9（含 widget-installations 列表/创建/revoke）。
+    if [ "$tenant" = 17 ] && [ "$widget" = 8 ] && [ "$platform" = 9 ]; then
+      ok "路由表：get_routes/0 客服路由租户 17 + widget 8 + 平台 9"
     else
-      fail "路由表：selected 期望租户 17/widget 8/平台 7，实得 $probe"
+      fail "路由表：selected 期望租户 17/widget 8/平台 9，实得 $probe"
     fi
   else
     if [ "$tenant" = 0 ] && [ "$widget" = 0 ] && [ "$platform" = 0 ]; then
@@ -602,7 +602,7 @@ fi
 
 log ""
 if [ "$FAILED" -eq 0 ]; then
-  log "=== customer_service feature matrix: PASS（$CS_MODULE_COUNT 模块 / 32 路由，两档五层全绿） ==="
+  log "=== customer_service feature matrix: PASS（$CS_MODULE_COUNT 模块 / 34 路由，两档五层全绿） ==="
 else
   log "=== customer_service feature matrix: FAIL（$FAILED 条断言红） ===" >&2
 fi
