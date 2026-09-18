@@ -789,22 +789,22 @@ history(LearnerId, Page, Size) ->
     end.
 
 %% @doc 家长未读点评数：learner 的 published 回评中 published_at > Since 的条数。
-%% Since 为 RFC3339 binary（客户端原样回传上一响应的 published_at 值域）；
-%% undefined/<<>> 计全部已发布。join/状态口径与 history/3 一致。
+%% Since 为 RFC3339 binary；undefined/<<>> 计全部已发布。join/状态口径与 history/3 一致。
 %%
-%% 注：此处 `$2::timestamptz` 用**裸 cast** 是安全的，不要照着 queue_cond_sql/2
-%% 改成 text 双转换 —— 因为 Since 不是客户端拼的，而是上一响应里 published_at
-%% 的原样回传，值域由本仓 codec 自己产出，**必带时区偏移**（如
-%% `2026-09-13T09:28:23.467976+08:00`），elib_dt:rfc3339_to/2 能正常解析。
-%% 与之相反，review-queue 的时间筛选是客户端自由输入（白名单还放行无时区形态），
-%% 才需要双转换。实测两种带偏移形态（含 6 位小数秒）在该 codec 下均正常。
+%% D02-LOW（A1-D02）：此处必须写 `($2::text)::timestamptz` 双转换（与
+%% queue_cond_sql/2 同款），**不能**裸 `$2::timestamptz`。原注释声称"Since
+%% 必带时区（codec 产出值域原样回传）"的前提不成立：handler ?TIME_PARAM_RE
+%% 白名单同时放行客户端自拼的无时区形态（2026-09-15 / THH:MM），裸 cast 下
+%% epgsql_codec_rfc3339_bin 对无时区串 encode 退化 <<0:64>>（PG 纪元）→
+%% `published_at > 2000-01-01` 恒真 → 未读恒计全部。先钉 text 绕开 codec、
+%% 由 PG 按会话时区解析。回归守卫：test/repo/moya_unread_since_cast_tests.erl。
 -spec history_unread_count(integer(), binary() | undefined) ->
     {ok, non_neg_integer()} | {error, term()}.
 history_unread_count(LearnerId, Since) ->
     {SinceClause, Args} =
         case Since of
             B when is_binary(B), B =/= <<>> ->
-                {<<" AND tr.published_at > $2::timestamptz">>, [LearnerId, B]};
+                {<<" AND tr.published_at > ($2::text)::timestamptz">>, [LearnerId, B]};
             _ ->
                 {<<>>, [LearnerId]}
         end,
