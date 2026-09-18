@@ -223,7 +223,18 @@ do_authorization(Authorization, Req, Env) ->
         {error, Code, Msg} ->
             Req1 =
                 case Code of
+                    %% MFS3-F01/F02：token 过期(705)/无效(706)与 401 同属
+                    %% 认证边界，必须返回真实 HTTP 401（envelope code 保留
+                    %% 原值供客户端细分），否则 moya request.ts 的 401 单飞
+                    %% 刷新链、imboyapp 的 shouldReLogin 均不触发，
+                    %% token 失效无法自动恢复。管理面 /api/adm 走
+                    %% adm_auth_middleware（自带 unauthorized_api_response
+                    %% 同款 401+code 形态），不受此分支影响。
                     ?ERR_UNAUTHORIZED ->
+                        elib_response:error_with_status(Req, 401, Msg, Code);
+                    ?ERR_TOKEN_EXPIRED_REFRESHABLE ->
+                        elib_response:error_with_status(Req, 401, Msg, Code);
+                    ?ERR_TOKEN_MALFORMED ->
                         elib_response:error_with_status(Req, 401, Msg, Code);
                     _ ->
                         elib_response:error(Req, Msg, Code)

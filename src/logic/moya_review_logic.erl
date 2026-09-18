@@ -547,21 +547,42 @@ workbench_payload(Uid, Bundle) ->
 
 -spec build_detail(integer(), integer(), staff | guardian, map()) ->
     {ok, map()} | {error, atom()}.
-build_detail(_Uid, SubmissionId, Perspective, _Scope) ->
+build_detail(Uid, SubmissionId, Perspective, _Scope) ->
     case load_submission_bundle(SubmissionId) of
         {ok, Bundle} ->
             case {Perspective, withdrawn_submission(Bundle)} of
                 %% A1-D04：staff 视角撤回后不再返回 teacher_view（含 AI 草稿），
                 %% 与 view_url 的 T17 拒绝同口径；guardian 保留本人可见语义
-                %% （parent_view 白名单本就无 AI 字段，D-10）
+                %% （parent_view 白名单本就无 AI 字段，D-10）。
+                %% MFS-3-B2：submission_access_dispatch staff 优先，双角色用户
+                %% （自己孩子的监护人兼本班老师）读 withdrawn 提交必被派为 staff
+                %% 视角——兼任监护人（can_view_review）时降级返回 parent_view，
+                %% 纯 staff 仍 forbidden。
                 {staff, true} ->
-                    {error, forbidden};
+                    case guardian_view_fallback(Uid, Bundle) of
+                        ok -> {ok, parent_view(Bundle)};
+                        {error, _} -> {error, forbidden}
+                    end;
                 _ ->
-                    detail_payload_by_perspective(_Uid, Bundle, Perspective)
+                    detail_payload_by_perspective(Uid, Bundle, Perspective)
             end;
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% MFS-3-B2：uid 兼任该学员的 active 监护人（can_view_review）则可降级为
+%% 家长本人可见视角；关系缺失/停用/无权限一律拒绝（fail-closed）。
+-spec guardian_view_fallback(integer(), map()) -> ok | {error, atom()}.
+guardian_view_fallback(Uid, Bundle) ->
+    LearnerId = bundle_learner_id(Bundle),
+    case moya_acl:resolve_guardian(Uid, LearnerId, view_review) of
+        {ok, _} -> ok;
+        {error, _} -> {error, forbidden}
+    end.
+
+-spec bundle_learner_id(map()) -> integer() | undefined.
+bundle_learner_id(#{submission := #{<<"learner_id">> := Id}}) -> Id;
+bundle_learner_id(_) -> undefined.
 
 -spec detail_payload_by_perspective(integer(), map(), staff | guardian) ->
     {ok, map()}.
@@ -588,32 +609,33 @@ load_submission_bundle(SubmissionId) ->
                 {ok, undefined} ->
                     {error, not_found};
                 {ok, Sub} ->
-                    {ok, Assets} = moya_submission_repo:assets(SubmissionId),
-                    {ok, AiDraft} = moya_review_repo:ai_draft(SubmissionId),
-                    {ok, Published} = moya_review_repo:find_published(SubmissionId),
-                    ReviewAssets =
-                        case Published of
-                            #{<<"id">> := PubId} ->
-                                case moya_review_repo:assets(PubId) of
-                                    {ok, Rows} -> Rows;
-                                    _ -> []
-                                end;
-                            _ ->
-                                []
-                        end,
-                    #{<<"learner_id">> := LearnerId} = Scope,
-                    Bundle = #{
-                        submission => Sub,
-                        assets => Assets,
-                        ai_draft => AiDraft,
-                        published => Published,
-                        review_assets => ReviewAssets,
-                        scope => Scope,
-                        display_name => learner_name(LearnerId),
-                        reviewer_name => reviewer_display_name(Published),
-                        title => task_title(maps:get(<<"task_id">>, Scope, <<>>))
-                    },
-                    {ok, Bundle};
+                    %% A1-D13：assets/ai_draft/find_published 三处曾用
+                    %% {ok, _} = 强匹配，DB error 时函数子句崩溃 → HTTP 500；
+                    %% 改 case 折叠 {error, db_error}（与 find/scope 分支同口径）
+                    case bundle_aux(SubmissionId) of
+                        {ok, #{
+                            assets := Assets,
+                            ai_draft := AiDraft,
+                            published := Published,
+                            review_assets := ReviewAssets
+                        }} ->
+                            #{<<"learner_id">> := LearnerId} = Scope,
+                            Bundle = #{
+                                submission => Sub,
+                                assets => Assets,
+                                ai_draft => AiDraft,
+                                published => Published,
+                                review_assets => ReviewAssets,
+                                scope => Scope,
+                                display_name => learner_name(LearnerId),
+                                reviewer_name => reviewer_display_name(Published),
+                                title => task_title(maps:get(<<"task_id">>, Scope, <<>>))
+                            },
+                            {ok, Bundle};
+                        {error, Reason} ->
+                            ?LOG_ERROR("bundle aux db error ~p", [Reason]),
+                            {error, db_error}
+                    end;
                 {error, Reason} ->
                     ?LOG_ERROR("bundle find db error ~p", [Reason]),
                     {error, db_error}
@@ -625,15 +647,59 @@ load_submission_bundle(SubmissionId) ->
             {error, db_error}
     end.
 
+%% A1-D13：bundle 辅助读（提交媒体 / AI 草稿 / 已发布回评 / 回评媒体）——
+%% 任一 DB 错误折叠为 {error, Reason}（调用方归一 db_error），不再强匹配崩溃。
+-spec bundle_aux(integer()) ->
+    {ok, #{
+        assets := [map()],
+        ai_draft := map() | undefined,
+        published := map() | undefined,
+        review_assets := [map()]
+    }}
+    | {error, term()}.
+bundle_aux(SubmissionId) ->
+    case moya_submission_repo:assets(SubmissionId) of
+        {ok, Assets} ->
+            case moya_review_repo:ai_draft(SubmissionId) of
+                {ok, AiDraft} ->
+                    case moya_review_repo:find_published(SubmissionId) of
+                        {ok, Published} ->
+                            {ok, #{
+                                assets => Assets,
+                                ai_draft => AiDraft,
+                                published => Published,
+                                review_assets => published_assets(Published)
+                            }};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% 已发布回评的媒体集合：发布行缺失或读失败 → []（回评媒体本就允许为空，
+%% 该读在 D13 前即有优雅兜底分支，行为不变）
+-spec published_assets(map() | undefined) -> [map()].
+published_assets(#{<<"id">> := PubId}) ->
+    case moya_review_repo:assets(PubId) of
+        {ok, Rows} -> Rows;
+        _ -> []
+    end;
+published_assets(_) ->
+    [].
+
 -spec teacher_view(integer(), map()) -> map().
 teacher_view(Uid, Bundle) ->
     Base = parent_view(Bundle),
     #{submission := Sub} = Bundle,
     Sid = maps:get(<<"id">>, Sub, 0),
     MyDraft =
-        case moya_review_repo:find_draft(Sid, Uid) of
-            {ok, D} when is_map(D) -> D;
-            _ -> undefined
+        case zombie_reviewer_draft(Uid, maps:get(published, Bundle)) of
+            true -> undefined;
+            false -> find_my_draft(Sid, Uid)
         end,
     DraftAssets =
         case MyDraft of
@@ -650,6 +716,27 @@ teacher_view(Uid, Bundle) ->
         <<"my_review_draft">> => draft_ref(MyDraft, DraftAssets),
         <<"learner_display_name">> => maps:get(display_name, Bundle, <<>>)
     }.
+
+%% A1-D11：submission 已有 published 回评且发布者非本人 → 本人存量草稿是
+%% 「僵尸」——save_draft 恒被 5486 拒（submission 级唯一 published）、无
+%% discard 端点，永远无法发布或更新。读侧最小修复（方案 b，零状态迁移）：
+%% teacher_view 不下发该草稿（workbench 顶层与 submission 内嵌同源）。
+%% 发布者本人的草稿已被 publish_tx 消费（status 翻转，find_draft 只认
+%% 'draft' 行），此过滤对其零行为变化。
+-spec zombie_reviewer_draft(integer(), map() | undefined) -> boolean().
+zombie_reviewer_draft(_Uid, undefined) ->
+    false;
+zombie_reviewer_draft(Uid, #{<<"reviewer_uid">> := PubUid}) when PubUid =/= Uid ->
+    true;
+zombie_reviewer_draft(_Uid, _) ->
+    false.
+
+-spec find_my_draft(integer(), integer()) -> map() | undefined.
+find_my_draft(Sid, Uid) ->
+    case moya_review_repo:find_draft(Sid, Uid) of
+        {ok, D} when is_map(D) -> D;
+        _ -> undefined
+    end.
 
 -spec parent_view(map()) -> map().
 parent_view(Bundle) ->
@@ -846,7 +933,10 @@ do_publish(Uid, SubmissionId) ->
             {error, Reason}
     end.
 
-%% 发布前置：草稿存在且至少一种有效反馈内容（5480/5485）
+%% 发布前置：草稿存在且至少一种有效反馈内容（5480/5485）。
+%% 仅快速失败通道——A1-D05：此处读的是事务外旧快照，与并发 save_draft
+%% 清空存在 TOCTOU 窗口；事务内以锁后现值复核（run_publish_tx /
+%% publish_content_ok），最终裁决不依赖本快照。
 -spec publish_precheck(integer(), integer()) -> ok | {error, atom()}.
 publish_precheck(Uid, SubmissionId) ->
     case moya_review_repo:find_published(SubmissionId) of
@@ -893,6 +983,10 @@ review_has_content(Draft, Assets) ->
     HasText orelse HasVideo orelse HasImage.
 
 %% 配方③：lock-first 发布事务（P0-4：发布/幂等重放均回读 assets 进 DTO）
+%% A1-D05：空内容守卫收进事务——publish_precheck 在事务外读草稿判内容，
+%% 与并发 save_draft 清空存在 TOCTOU 窗口（precheck 旧快照通过 → 清空提交
+%% → publish_tx 翻 status → 空回评发布）。publish_tx 条件 UPDATE 的
+%% RETURNING * 带回**锁后现值**，现值无内容 → rollback empty_content（5485）。
 -spec run_publish_tx(integer(), integer()) -> {ok, map(), boolean()} | {error, atom()}.
 run_publish_tx(Uid, SubmissionId) ->
     Tx = fun(Conn) ->
@@ -903,7 +997,12 @@ run_publish_tx(Uid, SubmissionId) ->
                         ReviewId = maps:get(<<"id">>, Review, 0),
                         case moya_review_repo:assets_tx(Conn, ReviewId) of
                             {ok, AssetRows} ->
-                                {ok, {Tag, Review, AssetRows}};
+                                case publish_content_ok(Tag, Review, AssetRows) of
+                                    true ->
+                                        {ok, {Tag, Review, AssetRows}};
+                                    false ->
+                                        {rollback, empty_content}
+                                end;
                             {error, Reason} ->
                                 {rollback, {db, Reason}}
                         end;
@@ -928,6 +1027,8 @@ run_publish_tx(Uid, SubmissionId) ->
             {error, withdrawn};
         {rollback, no_draft} ->
             {error, no_draft};
+        {rollback, empty_content} ->
+            {error, empty_content};
         %% repo 侧 _tx 守卫失败返回裸 {error, Atom}（不触发 rollback）——
         %% 须原样透传，否则 5482 等语义码被折叠成 db_error
         %% （R8 契约实测：有草稿 + 已撤回的 publish 曾返回 code=1）
@@ -936,6 +1037,15 @@ run_publish_tx(Uid, SubmissionId) ->
         _ ->
             {error, db_error}
     end.
+
+%% A1-D05：事务内内容复核口径 = publish_precheck 的 review_has_content
+%% （文本 ∨ 视频旧列 ∨ ≥1 反馈图）。already_published 幂等重放不复核——
+%% 发布后内容不可变，重放须原样返回已发布结果（precheck 同语义）。
+-spec publish_content_ok(published | already_published, map(), [map()]) -> boolean().
+publish_content_ok(already_published, _Review, _AssetRows) ->
+    true;
+publish_content_ok(published, Review, AssetRows) ->
+    review_has_content(Review, AssetRows).
 
 -spec run_withdraw_tx(integer(), integer()) -> {ok, withdrawn} | {error, atom()}.
 run_withdraw_tx(Uid, SubmissionId) ->

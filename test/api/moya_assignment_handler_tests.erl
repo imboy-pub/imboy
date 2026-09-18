@@ -8,6 +8,8 @@
 %%               parent-api.ts tsidOrThrow(submission_id)，缺字段必抛错）；
 %%               错误 reason → envelope code 映射（5481/5444/5423）
 %%   history  —— 路径 TSID 解析 + 透传分页
+%%   unread   —— A1-D08：since 格式白名单（非法 RFC3339 → 422 拒绝；
+%%               合法/缺省透传不变）
 
 -module(moya_assignment_handler_tests).
 
@@ -54,6 +56,14 @@ history_logic_mock(Return) ->
     {moya_review_logic, [
         {'history', 3, fun(Uid, LearnerId, Page) ->
             self() ! {logic_history, Uid, LearnerId, Page},
+            Return
+        end}
+    ]}.
+
+unread_logic_mock(Return) ->
+    {moya_review_logic, [
+        {'history_unread_count', 3, fun(Uid, LearnerId, Since) ->
+            self() ! {logic_unread, Uid, LearnerId, Since},
             Return
         end}
     ]}.
@@ -253,6 +263,79 @@ history_passes_page_test_() ->
             receive
                 {logic_history, ?UID, 974001, {3, 50}} -> ok
             after 0 -> ?assert(false, "logic history not called with parsed page")
+            end
+        end
+    ).
+
+%%%===================================================================
+%%% history/unread-count（A1-D08）：since 格式白名单
+%%%===================================================================
+
+%% 非法 since（无法解析的脏串）：422 拒绝，不下发 logic（deny-by-default；
+%% 口径照抄 review-queue 的时间参数 deny 先例——脏串交给 PG ::timestamptz
+%% 会被 epgsql rfc3339 codec 退化 epoch → 计数膨胀）
+unread_since_invalid_422_test_() ->
+    ?WITH_MECKS(
+        handler_mocks(<<"974001">>, [{<<"since">>, <<"garbage">>}]) ++
+            [unread_logic_mock({ok, #{<<"count">> => 0}})],
+        fun() ->
+            Req = moya_assignment_handler:handle_action(
+                history_unread_count, req0, #{current_uid => ?UID}
+            ),
+            ?assertEqual(error, maps:get(resp, Req)),
+            ?assertEqual(?ERR_PARAM_INVALID, maps:get(code, Req)),
+            receive
+                {logic_unread, _, _, _} -> ?assert(false, "invalid since must not reach logic")
+            after 0 -> ok
+            end
+        end
+    ).
+
+%% 合法 since（服务端产出 published_at 原样回传形态：RFC3339 带时区偏移+小数秒）
+unread_since_valid_rfc3339_passthrough_test_() ->
+    Since = <<"2026-09-13T09:28:23.467976+08:00">>,
+    ?WITH_MECKS(
+        handler_mocks(<<"974001">>, [{<<"since">>, Since}]) ++
+            [unread_logic_mock({ok, #{<<"count">> => 2}})],
+        fun() ->
+            Req = moya_assignment_handler:handle_action(
+                history_unread_count, req0, #{current_uid => ?UID}
+            ),
+            ?assertEqual(success, maps:get(resp, Req)),
+            receive
+                {logic_unread, ?UID, 974001, Since} -> ok
+            after 0 -> ?assert(false, "valid since not passed through")
+            end
+        end
+    ).
+
+%% 缺省 since（不传）：行为不变——undefined 下发，计全部
+unread_since_absent_undefined_test_() ->
+    ?WITH_MECKS(
+        handler_mocks(<<"974001">>, []) ++ [unread_logic_mock({ok, #{<<"count">> => 7}})],
+        fun() ->
+            _ = moya_assignment_handler:handle_action(
+                history_unread_count, req0, #{current_uid => ?UID}
+            ),
+            receive
+                {logic_unread, ?UID, 974001, undefined} -> ok
+            after 0 -> ?assert(false, "absent since must pass as undefined")
+            end
+        end
+    ).
+
+%% date-only 形态也在白名单（review-queue ?TIME_PARAM_RE 同口径）
+unread_since_date_only_allowed_test_() ->
+    ?WITH_MECKS(
+        handler_mocks(<<"974001">>, [{<<"since">>, <<"2026-09-13">>}]) ++
+            [unread_logic_mock({ok, #{<<"count">> => 1}})],
+        fun() ->
+            _ = moya_assignment_handler:handle_action(
+                history_unread_count, req0, #{current_uid => ?UID}
+            ),
+            receive
+                {logic_unread, _, _, <<"2026-09-13">>} -> ok
+            after 0 -> ?assert(false, "date-only since should be whitelisted")
             end
         end
     ).

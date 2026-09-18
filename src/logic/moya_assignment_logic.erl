@@ -298,8 +298,26 @@ finish_create(Conn, Uid, AssignmentId, LearnerId, Assets, Row, Sid, Attempt) ->
             ok = moya_submission_repo:enqueue_ai_draft_tx(Conn, Sid),
             {ok, submission_created(Sid, AssignmentId, LearnerId, Attempt, true, Row)};
         false ->
-            %% 幂等重放：返回既有 submission，不重复入队/挂附件（IDEMP-01）
-            {ok, submission_created(Sid, AssignmentId, LearnerId, Attempt, false, Row)}
+            %% 幂等重放：返回既有 submission，不重复入队/挂附件（IDEMP-01）。
+            %% A1-D12：ai_status 反映 AI 草稿现值（此前恒 queued，重放时即使
+            %% AI 已 succeeded/failed 仍回 queued，客户端显示错态）。
+            Row1 = Row#{<<"ai_status">> => replay_ai_status(Conn, Sid)},
+            {ok, submission_created(Sid, AssignmentId, LearnerId, Attempt, false, Row1)}
+    end.
+
+%% 重放现值：最新草稿行状态；无行 → none（teacher 队列 ai_status(null)→none
+%% 同口径）；查询失败保守回退 queued（= 旧行为，重放主路径不被草稿查询破坏，
+%% 改法对照 A1-D13 的 case 折叠教训，不让 DB 故障升级 500）。
+-spec replay_ai_status(any(), integer()) -> binary().
+replay_ai_status(Conn, Sid) ->
+    case moya_submission_repo:ai_draft_status_tx(Conn, Sid) of
+        {ok, St} when is_binary(St) ->
+            St;
+        {ok, undefined} ->
+            <<"none">>;
+        {error, Reason} ->
+            ?LOG_WARNING("replay ai_status lookup error ~p", [Reason]),
+            <<"queued">>
     end.
 
 %% ---- payload 组装（TSID 一律字符串） ----
@@ -308,6 +326,8 @@ finish_create(Conn, Uid, AssignmentId, LearnerId, Assets, Row, Sid, Attempt) ->
 %% 与 create_idempotent_tx 入参行对齐，家长端 DTO 校验依赖）
 %% 2026-09-11：响应补 submitted_at（Rfc3339，create_idempotent_tx 行内返回；
 %% moya 此前兜底空串）。幂等重放与新建同源同值。
+%% A1-D12（2026-09-18）：ai_status 新建恒 queued（本事务刚入队）；重放取
+%% finish_create 注入的 << "ai_status" >>（crd 现值；无键兜底 queued 保持旧行为）。
 -spec submission_created(integer(), integer(), integer(), integer(), boolean(), map()) -> map().
 submission_created(Sid, AssignmentId, LearnerId, Attempt, Created, Row) ->
     #{
@@ -317,9 +337,18 @@ submission_created(Sid, AssignmentId, LearnerId, Attempt, Created, Row) ->
         <<"attempt_no">> => Attempt,
         <<"submitted_at">> => elib_dt:rfc3339_or_null(maps:get(<<"submitted_at">>, Row, null)),
         <<"status">> => <<"submitted">>,
-        <<"ai_status">> => <<"queued">>,
+        <<"ai_status">> => ai_status_field(Created, Row),
         <<"idempotent_replayed">> => not Created
     }.
+
+-spec ai_status_field(boolean(), map()) -> binary().
+ai_status_field(true, _Row) ->
+    <<"queued">>;
+ai_status_field(false, Row) ->
+    case maps:get(<<"ai_status">>, Row, undefined) of
+        St when is_binary(St), St =/= <<>> -> St;
+        _ -> <<"queued">>
+    end.
 
 -spec assignment_summary(map()) -> map().
 assignment_summary(R) ->

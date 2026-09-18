@@ -190,6 +190,14 @@
 
 %% 认证相关（避开 HTTP 标准码）
 
+%% 7xx JWT 细分认证失败码（token_ds:decrypt_token 产生）。
+%% MFS3-F01/F02：这两类与 401 同属认证边界，auth_ds:do_authorization
+%% 以真实 HTTP 401 + envelope code 原值返回，客户端（moya 401 单飞刷新 /
+%% imboyapp shouldReLogin）据此触发统一恢复链，并按 code 细分过期与无效。
+% access token 已过期（可用 refresh token 刷新）
+-define(ERR_TOKEN_EXPIRED_REFRESHABLE, 705).
+% token 无效/伪造/解析失败
+-define(ERR_TOKEN_MALFORMED, 706).
 % 不支持刷新 Token
 -define(ERR_TOKEN_REFRESH_NOT_ALLOWED, 901).
 % 签名验证失败

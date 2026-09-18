@@ -157,12 +157,20 @@ history_unread_count(Req0, State) ->
     Uid = maps:get(current_uid, State),
     case path_id(Req0) of
         {ok, LearnerId} ->
-            Since = since_param(cowboy_req:parse_qs(Req0)),
-            case moya_review_logic:history_unread_count(Uid, LearnerId, Since) of
-                {ok, Payload} ->
-                    elib_response:success_rfc3339(Req0, Payload);
-                {error, Reason} ->
-                    moya_error:to_response(Req0, Reason)
+            case since_param(cowboy_req:parse_qs(Req0)) of
+                {ok, Since} ->
+                    case moya_review_logic:history_unread_count(Uid, LearnerId, Since) of
+                        {ok, Payload} ->
+                            elib_response:success_rfc3339(Req0, Payload);
+                        {error, Reason} ->
+                            moya_error:to_response(Req0, Reason)
+                    end;
+                error ->
+                    %% A1-D08：非法 since 一律 422 拒绝（deny-by-default，不下发
+                    %% logic——脏串交给 PG ::timestamptz 会被 epgsql rfc3339 codec
+                    %% 退化 epoch → 恒真 → 计数膨胀；口径照抄 review-queue 时间
+                    %% 参数 deny 先例）
+                    elib_response:error(Req0, <<"未读计数时间参数非法"/utf8>>, ?ERR_PARAM_INVALID)
             end;
         _ ->
             elib_response:error(Req0, <<"学员ID必填"/utf8>>, ?ERR_MISSING_PARAM)
@@ -179,12 +187,24 @@ path_id(Req) ->
         Bin when is_binary(Bin) -> elib_tsid:from_binary(Bin)
     end.
 
-%% since：上次看到的 published_at（RFC3339，客户端原样回传）；缺省计全部
--spec since_param(list()) -> binary() | undefined.
+%% since：上次看到的 published_at（RFC3339，客户端原样回传）；缺省计全部。
+%% A1-D08：加格式白名单（正则口径照抄 review-queue 的 ?TIME_PARAM_RE）：
+%% `YYYY-MM-DD` 或带时间 RFC3339（可选小数秒/时区）放行；非法串 → error
+%% （handler 422，绝不把脏串交给 PG 的 ::timestamptz）。
+-define(TIME_PARAM_RE,
+    <<"^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})?)?$">>
+).
+
+-spec since_param(list()) -> {ok, binary() | undefined} | error.
 since_param(Qs) ->
     case proplists:get_value(<<"since">>, Qs) of
-        V when is_binary(V), byte_size(V) > 0 -> V;
-        _ -> undefined
+        V when is_binary(V), byte_size(V) > 0 ->
+            case re:run(V, ?TIME_PARAM_RE, [{capture, none}]) of
+                match -> {ok, V};
+                nomatch -> error
+            end;
+        _ ->
+            {ok, undefined}
     end.
 
 %% CM-F4：status 过滤四态白名单（与 moya parent-api.ts AssignmentStatus 对齐）。

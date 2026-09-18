@@ -441,3 +441,108 @@ queue_ai_status_absent_no_key_test_() ->
             end
         end
     ).
+
+%%%===================================================================
+%%% A1-D05：publish 空内容守卫 TOCTOU——publish_precheck 在事务外读草稿判
+%%% review_has_content；同一老师两端并发（清空草稿 + 发布）时序：
+%%%   precheck(非空旧快照通过) → 并发 save_draft 清空（lock、提交）→
+%%%   publish_tx(lock、UPDATE status) → 空回评发布。
+%%% 守卫须收进事务（lock-first）：publish_tx 条件 UPDATE 的 RETURNING *
+%%% 带回**锁后现值**，内容已空 → {error, empty_content}（5485），
+%%% 不依赖事务外快照。already_published 幂等重放不复核（发布后内容不可变）。
+%%%===================================================================
+
+-define(P_UID, 987001).
+-define(P_GROUP, 987101).
+-define(P_SUB, 987201).
+-define(P_REVIEW, 987301).
+
+p_sub_row() ->
+    #{<<"id">> => ?P_SUB, <<"status">> => <<"submitted">>, <<"attempt_no">> => 1}.
+
+p_review_base() ->
+    #{
+        <<"id">> => ?P_REVIEW,
+        <<"submission_id">> => ?P_SUB,
+        <<"reviewer_uid">> => ?P_UID,
+        <<"positive_point">> => <<>>,
+        <<"focus_problem">> => <<>>,
+        <<"practice_action">> => <<>>,
+        <<"comment">> => <<>>,
+        <<"video_attachment_id">> => null,
+        <<"rework_required">> => false,
+        <<"status">> => <<"draft">>,
+        <<"published_at">> => null
+    }.
+
+%% precheck 读到的旧快照：非空（并发清空发生在 precheck 之后）
+p_draft_snapshot() ->
+    (p_review_base())#{<<"positive_point">> => <<"并发清空前：有内容"/utf8>>}.
+
+%% 事务内 UPDATE ... RETURNING * 带回的「清空后」现值：四要素全空、无媒体
+p_cleared_row() ->
+    p_review_base().
+
+%% TxTag = published | already_published：publish_tx 的事务内返回标签；
+%% TxFinalRow = 事务内 RETURNING * 现值（与事务外旧快照 p_draft_snapshot
+%% 刻意不同，复现 TOCTOU 窗口内数据已变）
+race_mocks(TxTag, TxFinalRow) ->
+    [
+        {moya_acl, [
+            {'submission_access', 2, fun(?P_UID, ?P_SUB) ->
+                {ok, staff, #{<<"group_id">> => ?P_GROUP}}
+            end},
+            {'resolve_staff', 3, fun(_Uid, _Gid, _Perm) -> {ok, teacher} end}
+        ]},
+        {elib_pg, [
+            {'with_tx', 2, fun(TxFun, _Opts) -> TxFun(fake_conn) end}
+        ]},
+        {moya_submission_repo, [
+            {'lock_submission_tx', 2, fun(_Conn, ?P_SUB) -> {ok, p_sub_row()} end}
+        ]},
+        {moya_review_repo, [
+            %% 事务外 precheck：非空旧快照 → 守卫放行（窗口由此打开）
+            {'find_published', 1, fun(?P_SUB) -> {ok, undefined} end},
+            {'find_draft', 2, fun(?P_SUB, ?P_UID) -> {ok, p_draft_snapshot()} end},
+            {'assets', 1, fun(?P_REVIEW) -> {ok, []} end},
+            %% 事务内：条件 UPDATE 返回锁后现值
+            {'publish_tx', 3, fun(_Conn, ?P_SUB, ?P_UID) -> {ok, TxTag, TxFinalRow} end},
+            {'assets_tx', 2, fun(_Conn, ?P_REVIEW) -> {ok, []} end}
+        ]}
+    ].
+
+%% 主断言：precheck 通过（旧快照非空）但事务内现值已空 → 仍被 5485 拒
+d05_toctou_empty_content_rejected_in_tx_test_() ->
+    ?WITH_MECKS(
+        race_mocks(published, p_cleared_row()),
+        fun() ->
+            ?assertEqual(
+                {error, empty_content},
+                moya_review_logic:publish(?P_UID, ?P_SUB, #{})
+            )
+        end
+    ).
+
+%% 回归：事务内现值仍有内容（无并发清空）→ 正常发布
+d05_normal_publish_untouched_test_() ->
+    ?WITH_MECKS(
+        race_mocks(published, p_draft_snapshot()),
+        fun() ->
+            ?assertMatch(
+                {ok, #{<<"review_id">> := <<"987301">>}, false},
+                moya_review_logic:publish(?P_UID, ?P_SUB, #{})
+            )
+        end
+    ).
+
+%% 回归：already_published 幂等重放不复核内容（发布后内容不可变的既有语义）
+d05_already_published_replay_not_rechecked_test_() ->
+    ?WITH_MECKS(
+        race_mocks(already_published, p_cleared_row()),
+        fun() ->
+            ?assertMatch(
+                {ok, _, true},
+                moya_review_logic:publish(?P_UID, ?P_SUB, #{})
+            )
+        end
+    ).
