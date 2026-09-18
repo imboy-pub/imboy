@@ -619,61 +619,69 @@ validate_confidence_out_of_range_test() ->
     ?assertEqual(7, maps:size(W)).
 
 validate_moments_bounds_test() ->
-    Base = valid_result(),
-    %% 空 / 超过 5 项 / 负值 / 非数值 → bad_output
-    [
-        begin
-            BadInput = Base#{<<"evidence_moments">> => Bad},
-            ?assertEqual(
-                {error, bad_output},
-                moya_ai_draft_logic:validate_result(BadInput)
-            )
-        end
-     || Bad <- [[], [1, 2, 3, 4, 5, 6], [-0.1, 2], [<<"1.5">>]]
-    ],
-    %% 恰 1 项 / 恰 5 项合法
-    One = Base#{<<"evidence_moments">> => [0]},
-    {ok, _} = moya_ai_draft_logic:validate_result(One),
-    Five = Base#{<<"evidence_moments">> => [1, 2, 3, 4, 5]},
-    {ok, _} = moya_ai_draft_logic:validate_result(Five).
+    with_strict(fun() ->
+        Base = valid_result(),
+        %% 空 / 超过 5 项 / 负值 / 非数值 → bad_output
+        [
+            begin
+                BadInput = Base#{<<"evidence_moments">> => Bad},
+                ?assertEqual(
+                    {error, bad_output},
+                    moya_ai_draft_logic:validate_result(BadInput)
+                )
+            end
+         || Bad <- [[], [1, 2, 3, 4, 5, 6], [-0.1, 2], [<<"1.5">>]]
+        ],
+        %% 恰 1 项 / 恰 5 项合法
+        One = Base#{<<"evidence_moments">> => [0]},
+        {ok, _} = moya_ai_draft_logic:validate_result(One),
+        Five = Base#{<<"evidence_moments">> => [1, 2, 3, 4, 5]},
+        {ok, _} = moya_ai_draft_logic:validate_result(Five)
+    end).
 
 validate_outline_bounds_test() ->
-    Base = valid_result(),
-    %% 超过 3 项 / 单项超 200 字节 / 非二进制 → bad_output
-    Long = binary:copy(<<"a">>, 201),
-    [
-        begin
-            BadInput = Base#{<<"script_outline">> => Bad},
-            ?assertEqual(
-                {error, bad_output},
-                moya_ai_draft_logic:validate_result(BadInput)
-            )
-        end
-     || Bad <- [[<<"a">>, <<"b">>, <<"c">>, <<"d">>], [Long], [1, 2]]
-    ].
+    with_strict(fun() ->
+        Base = valid_result(),
+        %% 超过 3 项 / 单项超 200 字节 / 非二进制 → bad_output
+        Long = binary:copy(<<"a">>, 201),
+        [
+            begin
+                BadInput = Base#{<<"script_outline">> => Bad},
+                ?assertEqual(
+                    {error, bad_output},
+                    moya_ai_draft_logic:validate_result(BadInput)
+                )
+            end
+         || Bad <- [[<<"a">>, <<"b">>, <<"c">>, <<"d">>], [Long], [1, 2]]
+        ]
+    end).
 
 validate_text_fields_test() ->
-    Base = valid_result(),
-    %% 必填文本：缺失 / 空 / 非二进制 / 超 300 字节 → bad_output
-    Long = binary:copy(<<"字"/utf8>>, 151),
-    [
-        begin
-            BadInput = Base#{<<"positive_point">> => Bad},
-            ?assertEqual(
-                {error, bad_output},
-                moya_ai_draft_logic:validate_result(BadInput)
-            )
-        end
-     || Bad <- [undefined, <<>>, 123, Long]
-    ].
+    with_strict(fun() ->
+        Base = valid_result(),
+        %% 必填文本：缺失 / 空 / 非二进制 / 超 300 字节 → bad_output
+        Long = binary:copy(<<"字"/utf8>>, 151),
+        [
+            begin
+                BadInput = Base#{<<"positive_point">> => Bad},
+                ?assertEqual(
+                    {error, bad_output},
+                    moya_ai_draft_logic:validate_result(BadInput)
+                )
+            end
+         || Bad <- [undefined, <<>>, 123, Long]
+        ]
+    end).
 
 validate_needs_human_check_test() ->
-    Base = valid_result(),
-    BadInput = Base#{<<"needs_human_check">> => <<"yes">>},
-    ?assertEqual(
-        {error, bad_output},
-        moya_ai_draft_logic:validate_result(BadInput)
-    ).
+    with_strict(fun() ->
+        Base = valid_result(),
+        BadInput = Base#{<<"needs_human_check">> => <<"yes">>},
+        ?assertEqual(
+            {error, bad_output},
+            moya_ai_draft_logic:validate_result(BadInput)
+        )
+    end).
 
 validate_non_map_test() ->
     ?assertEqual({error, bad_output}, moya_ai_draft_logic:validate_result([valid_result()])),
@@ -697,8 +705,12 @@ relaxed_accepts_honest_refusal_test() ->
         <<"evidence_moments">> => []
     },
     with_env(<<"local">>, fun() ->
-        %% 基线：不开开关时仍严格判负（默认行为不变）
-        ?assertEqual({error, bad_output}, moya_ai_draft_logic:validate_result(Refusal)),
+        %% 基线：不开开关时仍严格判负（默认行为不变）。
+        %% with_strict 显式摘掉开关：sys.local.config 可能带 true（逐机漂移），
+        %% 不钉住的话「基线」实际在宽松口径下跑，假红成 {ok, _}。
+        with_strict(fun() ->
+            ?assertEqual({error, bad_output}, moya_ai_draft_logic:validate_result(Refusal))
+        end),
         with_relaxed(fun() ->
             {ok, W} = moya_ai_draft_logic:validate_result(Refusal),
             ?assertEqual(true, maps:get(<<"needs_human_check">>, W)),
@@ -769,6 +781,21 @@ validate_test_() ->
 with_relaxed(Fun) ->
     Old = application:get_env(imboy, teaching_ai_relaxed_schema),
     application:set_env(imboy, teaching_ai_relaxed_schema, true),
+    try
+        Fun()
+    after
+        case Old of
+            undefined -> application:unset_env(imboy, teaching_ai_relaxed_schema);
+            {ok, V} -> application:set_env(imboy, teaching_ai_relaxed_schema, V)
+        end
+    end.
+
+%% 严格用例的对称保护：sys.local.config（gitignored 逐机文件）可能带
+%% {teaching_ai_relaxed_schema, true}，eunit-local 加载后宽松口径会污染
+%% 「坏输入必须判负」的基线断言（2026-09-19 实证 5 例假红）。显式摘掉开关。
+with_strict(Fun) ->
+    Old = application:get_env(imboy, teaching_ai_relaxed_schema),
+    application:unset_env(imboy, teaching_ai_relaxed_schema),
     try
         Fun()
     after
