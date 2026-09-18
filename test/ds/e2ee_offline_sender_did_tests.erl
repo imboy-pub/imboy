@@ -206,15 +206,34 @@ stage_legacy_arity_omits_sender_did_test() ->
         release_insert()
     end.
 
-%% 群聊 fan-out（to_id_list 分支）同样支持，且缺省不写空值
+%% 群聊 fan-out：c2g + to_id_list 已被 fail-closed 拒绝（ef548a8b 起 c2g 必须
+%% 携带 GID 才能在同事务内重验群/发送者），不再产生 staging 写入；
+%% to_id_list 分支的 sender_did 缺省省略由 s2c 群发路径继续覆盖。
 stage_group_arity_omits_sender_did_test() ->
     capture_insert(),
     try
+        ?assertEqual(
+            {error, c2g_group_id_required},
+            msg_store_repo:stage(
+                <<"c2g">>,
+                <<"m-3">>,
+                <<"text">>,
+                <<"message">>,
+                null,
+                <<"{}">>,
+                100,
+                [200, 300],
+                <<"2026-07-28T00:00:00+08:00">>,
+                <<"2026-07-28T00:00:00+08:00">>
+            )
+        ),
+        %% fail-closed 拒绝不得触碰 staging 写入
+        ?assertMatch(error, persistent_term:get({?MODULE, insert_data}, error)),
         _ = msg_store_repo:stage(
-            <<"c2g">>,
-            <<"m-3">>,
-            <<"text">>,
-            <<"message">>,
+            <<"s2c">>,
+            <<"m-4">>,
+            <<"custom">>,
+            <<"pull_offline_msg">>,
             null,
             <<"{}">>,
             100,
