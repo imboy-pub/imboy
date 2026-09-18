@@ -13,8 +13,11 @@
 %%   * A13 | NOT_RUN_BLOCKED（正向路径；CS Gate 运行时 PASS 后补）
 %%
 %% 夹具：CS 工具持有效 Grant（含 CS capability 三元组）+ 全链放行，
-%% 以保证到达 step9（CS gate 唯一守门处）；CS facade 以 meck 计数器
-%% 代言（mutation_count 恒 0）。审计经真 logger handler 捕获。
+%% 以保证到达 step9（CS gate 唯一守门处）。CS facade 由 meck 哨兵代言：
+%% 正向 adapter 未实现、哨兵与生产代码无 seam 连接，零调用断言在当前
+%% 树上结构性成立（防未来误接线的最小护栏）；A13 交付时须经真 facade
+%% seam 接线后再断言。deny 的审计面由决策行落账承载（decided_status/
+%% denial_reason 断言）。
 -module(agent_cs_adapter_acceptance_tests).
 
 -include_lib("eunit/include/eunit.hrl").
