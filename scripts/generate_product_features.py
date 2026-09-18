@@ -461,7 +461,7 @@ int compiledChannelUnreadCount(WidgetRef ref) => 0;
 """
     channel_widgets = channel_widgets.rstrip()
     dart_routes = f"""// {header}
-{chr(10).join(route_imports)}
+{chr(10).join(normalize_dart_imports(route_imports))}
 
 const productFeatureRouteManifestHash =
     {json.dumps(contract['manifest_hash'])};
@@ -744,6 +744,19 @@ def _erl_term(value):
 
 def _erl_atom_list(values):
     return "[" + ", ".join(values) + "]"
+
+
+def normalize_dart_imports(imports: list[str]) -> list[str]:
+    """在首个相对 import（'routes/...'）前插入空行，使输出与 dart format 一致，
+    避免 pre-commit 钩子改写生成物导致 --check 永远 stale。"""
+    out: list[str] = []
+    inserted = False
+    for item in imports:
+        if not inserted and item.startswith("import 'routes/"):
+            out.append("")
+            inserted = True
+        out.append(item)
+    return out
 
 
 def write_or_check(outputs: dict[Path, str], check: bool) -> None:
