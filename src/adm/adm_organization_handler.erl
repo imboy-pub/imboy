@@ -289,16 +289,44 @@ lifecycle_write(Req0, State, ActionBin, Fun) ->
                 {error, Msg} ->
                     elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
                 {ok, OrgId} ->
-                    case Fun(AdmUserId, OrgId) of
-                        {ok, Result} ->
-                            audit(AdmUserId, OrgId, ActionBin, #{}, Req0),
-                            elib_response:success(
-                                Req0,
-                                normalize_result(Result),
-                                <<"Organization 已", ActionBin/binary>>
-                            );
-                        {error, {Code, Msg}} ->
-                            elib_response:error(Req0, Msg, Code)
+                    %% 防御边界：logic 层未预期异常收敛为 500 JSON（带服务端日志），
+                    %% 禁止裸冒泡成空 body 500。
+                    Handled =
+                        catch begin
+                            R = Fun(AdmUserId, OrgId),
+                            case R of
+                                {ok, Result} ->
+                                    audit(AdmUserId, OrgId, ActionBin, #{}, Req0),
+                                    %% 消息串必须 /utf8：非 ASCII 字面量按 latin1 字节
+                                    %% 列表拼 binary 会产生非法 UTF-8，jsone 编码 msg
+                                    %% 时 badarg（E2E 实测，eunit 假 Req 不编码 msg 故未暴露）。
+                                    Msg =
+                                        case ActionBin of
+                                            <<"archive">> -> <<"Organization 已归档"/utf8>>;
+                                            _ -> <<"Organization 已恢复"/utf8>>
+                                        end,
+                                    elib_response:success(Req0, normalize_result(Result), Msg);
+                                {error, {Code, Msg}} ->
+                                    elib_response:error(Req0, Msg, Code)
+                            end
+                        end,
+                    case Handled of
+                        RespReq when is_map(RespReq) ->
+                            RespReq;
+                        {'EXIT', {Reason2, Stack2}} ->
+                            ?ERROR_LOG([
+                                organization_admin_lifecycle_write_crash,
+                                ActionBin,
+                                OrgId,
+                                Reason2,
+                                Stack2
+                            ]),
+                            elib_response:error(Req0, <<"操作失败，请稍后重试"/utf8>>, 500);
+                        {'EXIT', Reason3} ->
+                            ?ERROR_LOG([
+                                organization_admin_lifecycle_write_crash, ActionBin, OrgId, Reason3
+                            ]),
+                            elib_response:error(Req0, <<"操作失败，请稍后重试"/utf8>>, 500)
                     end
             end
     end.

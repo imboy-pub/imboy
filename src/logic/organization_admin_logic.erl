@@ -102,7 +102,7 @@ page_where(Status, Keyword) ->
     Conds0 =
         case Status of
             all -> [];
-            S when S =:= <<"active">>; S =:= <<"archived">> -> [" o.status = $1"];
+            S when S =:= <<"active">>; S =:= <<"archived">> -> [<<" o.status = $1">>];
             _ -> []
         end,
     KwParams =
@@ -111,9 +111,9 @@ page_where(Status, Keyword) ->
                 %% keyword 命中组织名或 TSID 前缀（safe_to_integer 失败时按名称）
                 case elib_cnv:safe_to_integer(Keyword) of
                     Id when is_integer(Id), Id > 0 ->
-                        {" (o.name ILIKE $K OR o.id = $ID)", Keyword, Id};
+                        {<<" (o.name ILIKE $K OR o.id = $ID)">>, Keyword, Id};
                     _ ->
-                        {" o.name ILIKE $K", Keyword, undefined}
+                        {<<" o.name ILIKE $K">>, Keyword, undefined}
                 end;
             false ->
                 undefined
