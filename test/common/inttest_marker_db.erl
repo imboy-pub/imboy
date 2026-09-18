@@ -161,9 +161,25 @@ conn_opts(#{host := Host, port := Port, username := User, password := Pass} = Se
     ).
 
 connect_server(Server, Db) ->
-    case epgsql:connect(conn_opts(Server, Db)) of
-        {ok, Conn} -> Conn;
-        {error, Reason} -> erlang:error({marker_db_connect_failed, Db, Reason})
+    %% 整树全量下 Docker 端口转发在高 I/O（每次供给一轮全链迁移触发重
+    %% checkpoint）时会瞬态 econnrefused（容器内 postmaster 存活）——
+    %% 对连接做退避重试；持续失败仍显式 error，不弱化 no-skip 语义。
+    connect_retry(Server, Db, 4).
+
+connect_retry(_Server, _Db, 0) ->
+    erlang:error({marker_db_connect_failed, retry_exhausted});
+connect_retry(Server, Db, Attempts) ->
+    Opts = conn_opts(Server, Db),
+    case epgsql:connect(Opts) of
+        {ok, Conn} ->
+            Conn;
+        {error, Reason} when
+            Reason =:= econnrefused; Reason =:= etimedout; Reason =:= ehosunreach
+        ->
+            timer:sleep((5 - Attempts) * 1500),
+            connect_retry(Server, Db, Attempts - 1);
+        {error, Reason} ->
+            erlang:error({marker_db_connect_failed, Db, Reason})
     end.
 
 create_db(Conn, DbName) ->
