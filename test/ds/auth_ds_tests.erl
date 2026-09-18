@@ -220,3 +220,84 @@ do_authorization_without_token_test_() ->
             )
         end
     ).
+
+%% MFS3-F01：过期 token（token_ds 细分码 705）属认证边界，必须返回真实
+%% HTTP 401 + envelope code 705（客户端按 code 细分"可刷新"），而不是
+%% 200 + 业务错误——否则 moya request.ts 的 401 单飞刷新链、imboyapp
+%% 的 shouldReLogin 均不触发，token 失效无法自动恢复。
+do_authorization_expired_token_maps_http_401_test_() ->
+    ?WITH_MECKS(
+        [
+            {token_ds, [
+                {'decrypt_token', 1, fun(_Token) ->
+                    {error, 705, <<"Please refresh token">>, #{}}
+                end}
+            ]},
+            {elib_response, [
+                {'error_with_status', 4, fun(_Req, 401, _Msg, 705) ->
+                    expired_401_req
+                end},
+                {'error', 3, fun(_Req, _Msg, _Code) ->
+                    should_not_happen_200_req
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {stop, expired_401_req},
+                auth_ds:condition(false, false, <<"Bearer expired_token">>, #{}, #{})
+            )
+        end
+    ).
+
+%% MFS3-F02：伪造/坏 token（细分码 706）同属认证边界，HTTP 401 + code 706。
+do_authorization_invalid_token_maps_http_401_test_() ->
+    ?WITH_MECKS(
+        [
+            {token_ds, [
+                {'decrypt_token', 1, fun(_Token) ->
+                    {error, 706, <<"Invalid token">>, #{}}
+                end}
+            ]},
+            {elib_response, [
+                {'error_with_status', 4, fun(_Req, 401, _Msg, 706) ->
+                    invalid_401_req
+                end},
+                {'error', 3, fun(_Req, _Msg, _Code) ->
+                    should_not_happen_200_req
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {stop, invalid_401_req},
+                auth_ds:condition(false, false, <<"Bearer forged_token">>, #{}, #{})
+            )
+        end
+    ).
+
+%% 回归保护：非认证边界错误（如 901 用 rtk 充当 access token）仍走
+%% 200 + envelope 业务错误，不受 705/706 → 401 映射影响。
+do_authorization_refresh_token_keeps_business_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {token_ds, [
+                {'decrypt_token', 1, fun(_Token) ->
+                    {ok, 123, <<"2026-03-16">>, <<"rtk">>, <<"dev-9">>, 1}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(
+                    _Req, <<"TOKEN REFRESH NOT ALLOWED"/utf8>>, ?ERR_TOKEN_REFRESH_NOT_ALLOWED
+                ) ->
+                    business_200_req
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {stop, business_200_req},
+                auth_ds:condition(false, false, <<"Bearer refresh_token">>, #{}, #{})
+            )
+        end
+    ).
