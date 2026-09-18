@@ -461,9 +461,9 @@ with_department_member_id(Req0, Fun) ->
     of
         {{ok, OrgId}, {ok, DeptId}, {ok, UserId}} ->
             Fun(OrgId, DeptId, UserId);
-        {{error, _}, _, _} ->
+        {error, _, _} ->
             elib_response:error(Req0, <<"organization_id 必须是正整数"/utf8>>, 400);
-        {{ok, _}, {error, _}, _} ->
+        {{ok, _}, error, _} ->
             elib_response:error(Req0, <<"department_id 必须是正整数"/utf8>>, 400);
         _ ->
             elib_response:error(Req0, <<"user_id 必须是正整数"/utf8>>, 400)
