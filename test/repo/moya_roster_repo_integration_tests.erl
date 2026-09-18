@@ -1,9 +1,9 @@
 %% moya_roster_repo_integration_tests
 %% MN-ROSTER-01 — 只读班级学员名单仓库层真库集成测试。
 %%
-%% 直连 scratch 库 moya_zcode_181902@127.0.0.1:4323（迁移 1→103 +
-%% review_asset + group_task 幂等列全量态 162 表），每用例 BEGIN ... ROLLBACK，
-%% 不留数据。测试直接驱动 moya_roster_ds:list 与 moya_roster_repo
+%% 一次性 marker 库（inttest_marker_db 配方，env 前缀 MOYA_INTTEST，全链迁移
+%% 至当前 head），每用例 BEGIN ... ROLLBACK，不留数据。测试直接驱动
+%% moya_roster_ds:list 与 moya_roster_repo
 %% 的查询函数（与生产 elib_pg 同一代码路径），验证：
 %%   ① active enrollment 过滤：removed enrollment 不出现
 %%   ② 跨班过滤：他班 learner 不出现
@@ -12,18 +12,13 @@
 %%      数值正确（can_submit=false 不计、removed guardian 不计）
 %%   ⑤ display_name 回读
 %%   ⑥ 空班（无 active enrollment）→ 空列表
-%% DB 不可达时自动 skip。
+%% marker 库供给失败（环境/配置/迁移任一不可用）显式 FAIL，无静默 skip。
 
 -module(moya_roster_repo_integration_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
 %% ---- 夹具（96 段独立 ID，与 97/98/99 段互不冲突） ----
--define(PG_HOST, "127.0.0.1").
--define(PG_PORT, 4323).
--define(PG_USER, <<"imboy_user">>).
--define(PG_PASS, <<"abc54321">>).
--define(PG_DB, <<"moya_zcode_181902">>).
 
 -define(TEACHER_A1, 960001).
 -define(TEACHER_B2, 960002).
@@ -57,42 +52,25 @@
 
 setup_conn() ->
     try
-        {ok, _} = application:ensure_all_started(epgsql),
-        try
-            elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
-        catch
-            _:_ -> ok
-        end,
-        {ok, C} = epgsql:connect(#{
-            host => ?PG_HOST,
-            port => ?PG_PORT,
-            username => ?PG_USER,
-            password => ?PG_PASS,
-            database => ?PG_DB,
-            timeout => 5000,
-            %% 与生产 pg_conf 同款 timestamptz codec（RFC3339 binary）
-            codecs => [{epgsql_codec_rfc3339_bin, []}]
-        }),
-        C
-    catch
-        _:_ -> skip
-    end.
-
-close_conn(skip) ->
-    ok;
-close_conn(C) ->
-    try
-        epgsql:close(C)
+        elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
         _:_ -> ok
     end,
+    %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
+    %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链；任一失败显式 error。
+    inttest_marker_db:provision(#{
+        env_prefix => <<"MOYA_INTTEST">>,
+        connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
+    }).
+
+close_conn(State) ->
+    inttest_marker_db:release(State),
     ok.
 
 with_tx(TestFun) ->
-    {setup, fun setup_conn/0, fun close_conn/1, fun
-        (skip) ->
-            [];
-        (C) ->
+    {timeout, 900,
+        {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
+            C = maps:get(conn, State),
             ?_test(begin
                 ok = exec(C, <<"BEGIN">>),
                 try
@@ -102,7 +80,7 @@ with_tx(TestFun) ->
                     exec(C, <<"ROLLBACK">>)
                 end
             end)
-    end}.
+        end}}.
 
 exec(C, Sql) ->
     exec(C, Sql, []).

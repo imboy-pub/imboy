@@ -1,5 +1,6 @@
 %% moya_attach_integration_tests
-%% Step 10 真库集成（scratch@4323，BEGIN/ROLLBACK 不留数据）：
+%% Step 10 真库集成（一次性 marker 库，inttest_marker_db 配方，env 前缀
+%% MOYA_INTTEST，全链迁移至当前 head；BEGIN/ROLLBACK 不留数据）：
 %%   ① submission_for_asset_path：附件路径 → submission 绑定解析（MEDIA-01 数据面）
 %%   ② unbound_teaching_attachments：只列"超龄+未绑定"教学附件——
 %%      已绑定（含撤回证据）/新近未绑定/其他 scope 一律不列（MEDIA-02 不误删）
@@ -8,18 +9,12 @@
 %%      孤儿清理双排除（submission_asset ∪ review_asset 含草稿引用）、
 %%      review_asset 约束（attachment 全表唯一 / 单 review 单视频 / 3 图上限触发器）
 %%
-%% 库名：RUN 专属 scratch 库 moya_zcode_181902（1→103 全量态 + 00000105）。
-%% DB 不可达自动 skip。
+%% 库名：一次性 marker 库 inttest_<prefix>_<us>_<rand>，release 时 DROP。
+%% 供给失败（环境/配置/迁移任一不可用）显式 FAIL，无静默 skip。
 
 -module(moya_attach_integration_tests).
 
 -include_lib("eunit/include/eunit.hrl").
-
--define(PG_HOST, "127.0.0.1").
--define(PG_PORT, 4323).
--define(PG_USER, <<"imboy_user">>).
--define(PG_PASS, <<"abc54321">>).
--define(PG_DB, <<"moya_zcode_181902">>).
 
 -define(PARENT, 980002).
 -define(TEACHER, 980001).
@@ -47,35 +42,17 @@
 %%%===================================================================
 
 setup_conn() ->
-    try
-        {ok, _} = application:ensure_all_started(epgsql),
-        {ok, C} = epgsql:connect(#{
-            host => ?PG_HOST,
-            port => ?PG_PORT,
-            username => ?PG_USER,
-            password => ?PG_PASS,
-            database => ?PG_DB,
-            timeout => 5000
-        }),
-        C
-    catch
-        _:_ -> skip
-    end.
+    %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
+    %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链；任一失败显式 error。
+    inttest_marker_db:provision(#{env_prefix => <<"MOYA_INTTEST">>}).
 
-close_conn(skip) ->
-    ok;
-close_conn(C) ->
-    try
-        epgsql:close(C)
-    catch
-        _:_ -> ok
-    end.
+close_conn(State) ->
+    inttest_marker_db:release(State).
 
 with_tx(TestFun) ->
-    {setup, fun setup_conn/0, fun close_conn/1, fun
-        (skip) ->
-            [];
-        (C) ->
+    {timeout, 900,
+        {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
+            C = maps:get(conn, State),
             ?_test(begin
                 ok = exec(C, <<"BEGIN">>),
                 try
@@ -85,7 +62,7 @@ with_tx(TestFun) ->
                     exec(C, <<"ROLLBACK">>)
                 end
             end)
-    end}.
+        end}}.
 
 exec(C, Sql) -> exec(C, Sql, []).
 exec(C, Sql, Params) ->

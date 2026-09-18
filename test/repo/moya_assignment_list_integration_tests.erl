@@ -1,7 +1,7 @@
 %% moya_assignment_list_integration_tests
-%% 家长作业列表 latest_asset（作品预览句柄）真库集成——scratch@127.0.0.1:4323
-%% （RUN 专属库 moya_zcode_181902，00000001→103 全量态 + 00000105/110），
-%% 每用例 BEGIN ... ROLLBACK 不留数据；DB 不可达自动 skip。
+%% 家长作业列表 latest_asset（作品预览句柄）真库集成——一次性 marker 库
+%% （inttest_marker_db 配方，env 前缀 MOYA_INTTEST，全链迁移至当前 head），
+%% 每用例 BEGIN ... ROLLBACK 不留数据；供给失败显式 FAIL，无静默 skip。
 %%
 %% 验收口径（2026-09-12 拍板：单对象 / 只透 final_photo / sort_order 升序取首条）：
 %%   ① 取「最新 submission」（attempt_no 最大）的 final_photo——旧 attempt 的照片不入选
@@ -17,12 +17,6 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% ---- 夹具 ----
--define(PG_HOST, "127.0.0.1").
--define(PG_PORT, 4323).
--define(PG_USER, <<"imboy_user">>).
--define(PG_PASS, <<"abc54321">>).
--define(PG_DB, <<"moya_zcode_181902">>).
-
 -define(TEACHER, 980001).
 -define(PARENT, 980002).
 -define(ORG, 981000).
@@ -54,42 +48,24 @@
 %%%===================================================================
 
 setup_conn() ->
+    %% 直连模式未起 imboy 应用：本测试仅需 default TSID 生成器
     try
-        {ok, _} = application:ensure_all_started(epgsql),
-        %% 直连模式未起 imboy 应用：本测试仅需 default TSID 生成器
-        try
-            elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
-        catch
-            _:_ -> ok
-        end,
-        {ok, C} = epgsql:connect(#{
-            host => ?PG_HOST,
-            port => ?PG_PORT,
-            username => ?PG_USER,
-            password => ?PG_PASS,
-            database => ?PG_DB,
-            timeout => 5000
-        }),
-        C
-    catch
-        _:_ -> skip
-    end.
-
-close_conn(skip) ->
-    ok;
-close_conn(C) ->
-    try
-        epgsql:close(C)
+        elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
         _:_ -> ok
     end,
+    %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
+    %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链；任一失败显式 error。
+    inttest_marker_db:provision(#{env_prefix => <<"MOYA_INTTEST">>}).
+
+close_conn(State) ->
+    inttest_marker_db:release(State),
     ok.
 
 with_tx(TestFun) ->
-    {setup, fun setup_conn/0, fun close_conn/1, fun
-        (skip) ->
-            [];
-        (C) ->
+    {timeout, 900,
+        {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
+            C = maps:get(conn, State),
             ?_test(begin
                 ok = exec(C, <<"BEGIN">>),
                 try
@@ -99,7 +75,7 @@ with_tx(TestFun) ->
                     exec(C, <<"ROLLBACK">>)
                 end
             end)
-    end}.
+        end}}.
 
 exec(C, Sql) ->
     exec(C, Sql, []).
