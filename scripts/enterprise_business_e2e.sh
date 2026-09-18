@@ -192,6 +192,7 @@ HTTP_PORT="$PORT" \
 EB11_EVIDENCE_DIR="$EVID" \
 EB11_HEAD="$HEAD_SHA" \
 EB11_BASE_SHA="$BASE_SHA" \
+EB11_EXPECT_DB="$EXPECT_DB" \
 erl -noinput -boot no_dot_erlang -kernel start_distribution false \
     $(ls -d deps/*/ebin | sed 's/^/-pa /' | tr '\n' ' ') \
     -config "$EUNIT_CONFIG" -pa imboy/ebin -pa ebin -pa test \

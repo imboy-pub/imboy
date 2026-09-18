@@ -113,12 +113,21 @@ run(Ctx) ->
         length(AppendOnlyResiduals) =:= 3
     ),
     CurrentDb = eb_e2e_lib:scalar(<<"SELECT current_database() AS v">>, [], undefined),
+    %% 期望库名来自脚本透传（EB11_EXPECT_DB=脚本内 EXPECT_DB=EB11_SCRATCH_DB），
+    %% 不硬编码前缀——各 run 的 scratch 命名约定不同（如 imboy_it_<RUN_ID>）；
+    %% env 缺省保留 V4.1 时代的 imboy_eb_w2 以兼容旧调用。精确等值强于旧的前缀
+    %% 匹配：隔离语义本就是「恰好落在本 run 的 scratch 库」。
+    ExpectDb =
+        case os:getenv("EB11_EXPECT_DB") of
+            false -> <<"imboy_eb_w2">>;
+            Db -> list_to_binary(Db)
+        end,
     eb_e2e_lib:assert(
         <<"EB-11-A05.3">>,
-        io_lib:format("未触碰共享库（current_database=~p，必须落在本 run 的 scratch 命名空间）", [
-            CurrentDb
+        io_lib:format("未触碰共享库（current_database=~ts，必须恰为本 run scratch 库 ~ts）", [
+            CurrentDb, ExpectDb
         ]),
-        is_binary(CurrentDb) andalso binary:match(CurrentDb, <<"imboy_eb_w">>) =/= nomatch
+        is_binary(CurrentDb) andalso CurrentDb =:= ExpectDb
     ),
 
     BucketKeys = bucket_keys(),
