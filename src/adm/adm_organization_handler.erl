@@ -721,15 +721,9 @@ normalize_status(<<"all">>) -> all;
 normalize_status(Bin) when is_binary(Bin), byte_size(Bin) > 0 -> Bin;
 normalize_status(_) -> all.
 
--spec normalize_limit(integer() | binary()) -> integer().
+-spec normalize_limit(integer()) -> integer().
 normalize_limit(V) when is_integer(V), V > 0 -> V;
-normalize_limit(V) when is_binary(V) ->
-    case elib_cnv:safe_to_integer(V) of
-        N when is_integer(N), N > 0 -> N;
-        _ -> 20
-    end;
-normalize_limit(_) ->
-    20.
+normalize_limit(_) -> 20.
 
 -spec method_not_allowed(cowboy_req:req()) -> cowboy_req:req().
 method_not_allowed(Req0) ->
@@ -763,9 +757,7 @@ normalize_workspace_page(P) ->
 
 -spec normalize_page(map(), fun((map()) -> map())) -> map().
 normalize_page(#{list := List} = P, Fun) ->
-    P#{list => [Fun(Item) || Item <- List]};
-normalize_page(P, _Fun) ->
-    P.
+    P#{list => [Fun(Item) || Item <- List]}.
 
 -spec normalize_org_row(map()) -> map().
 normalize_org_row(Row) ->

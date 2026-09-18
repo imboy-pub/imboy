@@ -222,7 +222,5 @@ one_tx(Conn, Sql, Params) ->
 -spec error_code(term()) -> binary() | undefined.
 error_code({error, _S, Code, _Cn, _Msg, _Extra}) when is_binary(Code) ->
     Code;
-error_code({error, {error, _S, Code, _Cn, _Msg, _Extra}}) when is_binary(Code) ->
-    Code;
 error_code(_) ->
     undefined.
