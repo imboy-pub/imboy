@@ -8,6 +8,9 @@
 %%   * A20 | 2 orgs, 2 agents, concurrent Runs | mixed model/tool contexts
 %%          | no process/context/audit collision | cross-scope matches=0;
 %%          registrations=0 after stop
+%%     （执行口径：本 named test 以串行双 run 验证隔离语义；并发交错压力面
+%%      由 imboy_hird_gates_tests g08/g20 覆盖——meck 并发交互会挂死 worker，
+%%      降级裁决已录 10B result.md §裁决3）
 -module(imboy_hird_acceptance_tests).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -126,6 +129,7 @@ a19_sensitive_data_not_logged_test() ->
 
 %%% A20 | 2 orgs, 2 agents, concurrent Runs | no collision
 %%%      | cross-scope matches=0; registrations=0 after stop
+%%%      （隔离语义串行验证；并发交错面=gates g08/g20，见 result.md）
 a20_multi_run_isolation_test() ->
     setup(),
     try

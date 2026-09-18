@@ -9,7 +9,7 @@
 %%% caller/tool/result 骨架），保证确定程序两次运行 hash 稳定。
 -module(imboy_hird_replay).
 
--export([record/3, replay/3, normalize_audit/1, audit_hash/1]).
+-export([record/3, normalize_audit/1, audit_hash/1]).
 
 %% @doc 录制一次执行：
 %% ```
@@ -24,19 +24,6 @@ record(ProgramModule, AuditFile, RunFun) ->
         result => ok
     }.
 
-%% @doc 离线重放：同程序同输入再执行（RunFun 内部 handler 必须是录制值
-%% /纯 mock——外呼计数器由 RunFun 持有并保持 0），比对归一化 hash。
-%% ```
-%% replay(ProgramModule, AuditFile, RunFun)
-%%   -> #{hash => bin, matches => boolean(), external_calls => non_neg_integer()}
-%% '''
-replay(ProgramModule, AuditFile, RunFun) ->
-    Lines = run_with_audit(ProgramModule, AuditFile, RunFun),
-    ExternalCalls = external_call_count(),
-    #{hash => audit_hash(Lines), matches => false, external_calls => ExternalCalls}.
-
-%% 重放一致性比对（两份 recording 的 hash 相等性由调用方持原始录制
-%% 比对；本模块提供比较器避免 hash 泄漏到测试外）。
 run_with_audit(ProgramModule, AuditFile, RunFun) ->
     _ = file:delete(AuditFile),
     ok = filelib:ensure_dir(AuditFile),
@@ -54,12 +41,6 @@ run_with_audit(ProgramModule, AuditFile, RunFun) ->
         catch
             _:_ -> ok
         end
-    end.
-
-external_call_count() ->
-    case get(imboy_hird_external_calls) of
-        N when is_integer(N) -> N;
-        undefined -> 0
     end.
 
 %% @doc 归一化：逐行 JSONL 抽取 caller/tool/result 骨架并排序（audit

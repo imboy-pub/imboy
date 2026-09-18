@@ -55,7 +55,8 @@ gates_test_() ->
         {<<"G18 readonly Tool E2E：全链 allow + sanitized + audit run scope">>,
             fun g18_readonly_e2e/0},
         {<<"G19 approval-required E2E：E07→批准→recheck→allow 全链">>, fun g19_approval_e2e/0},
-        {<<"G20 进程/注册残留归零（并发放大后）">>, fun g20_residue/0}
+        {<<"G20 进程/注册残留归零（并发放大后）">>, fun g20_residue/0},
+        {<<"G03' bridge boot_lifecycle 封装：宿主自扮 boot 全序列+audit 行产出">>, fun g03_bridge_lifecycle/0}
     ]}.
 
 %% ===================================================================
@@ -599,3 +600,21 @@ restart_shared_audit() ->
     {ok, _} = hird_audit:start_link([{sink, {file, SharedFile}}]),
     ok = hird_audit:register_tools(?MOD:hird_tools@()),
     ok.
+
+%% G03'：bridge boot_lifecycle/2 封装面（此前零覆盖——review 整改补测）。
+%% 用 GateEcho 走完整宿主自扮 boot 序列，断言 ok + audit 行落盘。
+g03_bridge_lifecycle() ->
+    %% 共享 audit 由 setup 持有 → 先停（boot_lifecycle 自管 audit 生命周期）
+    try
+        gen_server:stop(hird_audit)
+    catch
+        _:_ -> ok
+    end,
+    try
+        File = audit_path(<<"g03lifecycle">>),
+        ok = imboy_hird:boot_lifecycle(?MOD, #{audit_file => File}),
+        ?assert(is_list(read_lines(File))),
+        ?assert(length(read_lines(File)) >= 1)
+    after
+        restart_shared_audit()
+    end.
