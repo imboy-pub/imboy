@@ -39,19 +39,24 @@ init(Req0, State) ->
     %% 所以本端点是公网可达且匿名的；向匿名者精确报版本号等于替攻击者做 CVE 匹配。
     %% 外部 LB 需要的只是 200/503，不需要版本。
     %% C-51 的部署探活走 ssh 到 127.0.0.1，属内网，照样拿得到版本。
+    %% 节点列表则按运维可见性决策**公网可见**（owner 2026-09-18）：Erlang dist
+    %% 端口只绑 127.0.0.1，节点名不构成可达路径，泄露面仅限侦察信息。
     Vsn =
         case is_internal(Req0) of
             true -> app_vsn();
             false -> <<"hidden">>
         end,
+    Nodes = nodes_json(lists:usort([node() | nodes()])),
     {Code, Body} =
         case probe_db() of
             true ->
-                {200, <<"{\"status\":\"ok\",\"db\":\"up\",\"version\":\"", Vsn/binary, "\"}">>};
+                {200,
+                    <<"{\"status\":\"ok\",\"db\":\"up\",\"nodes\":", Nodes/binary,
+                        ",\"version\":\"", Vsn/binary, "\"}">>};
             false ->
                 {503,
-                    <<"{\"status\":\"degraded\",\"db\":\"down\",\"version\":\"", Vsn/binary,
-                        "\"}">>}
+                    <<"{\"status\":\"degraded\",\"db\":\"down\",\"nodes\":", Nodes/binary,
+                        ",\"version\":\"", Vsn/binary, "\"}">>}
         end,
     Req = cowboy_req:reply(
         Code,
@@ -79,6 +84,16 @@ probe_db() ->
         %% 否则 PG 挂掉时探针返回 500 而不是判据要求的 503。
         _:_ -> false
     end.
+
+%% @doc 在线 Erlang 节点列表（本节点 + 已建立 dist 连接的节点）编码为 JSON 数组。
+%% 单机蓝绿部署时即当前服务节点；未来横向扩展后各节点互连，此处即为全量成员。
+-spec nodes_json([node()]) -> binary().
+nodes_json(Nodes) ->
+    iolist_to_binary([
+        $[,
+        lists:join($,, [<<$", (atom_to_binary(N, utf8))/binary, $">> || N <- Nodes]),
+        $]
+    ]).
 
 %% @doc 请求是否来自内网。复用 metrics_handler 里已有的判定，不另写一份 ——
 %% 两份网段判定迟早会漂（B-26 那类"同一知识抄多份"的坑）。

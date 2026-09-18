@@ -129,6 +129,22 @@ external_peer_gets_hidden_version() ->
         catch meck:unload(cowboy_req)
     end.
 
+%% 节点列表公网可见（owner 2026-09-18）：dist 端口只绑 127.0.0.1，节点名
+%% 不构成可达路径，泄露面仅限侦察信息。与 version 不同，外网也返回真实列表，
+%% 本节点自身必须恒在（lists:usort([node() | nodes()])）。
+nodes_in_body_test_() ->
+    {foreach, fun setup/0, fun cleanup/1, [
+        fun body_has_nodes_with_self/0
+    ]}.
+
+body_has_nodes_with_self() ->
+    meck:expect(elib_pg, query, fun(_S, _A) -> {ok, [#{}]} end),
+    ?assertEqual(200, healthz_handler_probe_via_cache()),
+    Body = iolist_to_binary(get(last_body)),
+    ?assertNotEqual(nomatch, binary:match(Body, <<"\"nodes\":">>)),
+    Self = <<$", (atom_to_binary(node(), utf8))/binary, $">>,
+    ?assertNotEqual(nomatch, binary:match(Body, Self)).
+
 unhealthy_body_has_version() ->
     meck:expect(elib_pg, query, fun(_S, _A) -> erlang:error(no_pool) end),
     ?assertEqual(503, healthz_handler_probe_via_cache()),
