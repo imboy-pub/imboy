@@ -710,10 +710,9 @@ get_routes() ->
                 }},
                 %% invitation（C11：invite / accept / reject / revoke / list 是
                 %% 不同 command；同路径 GET=list（org 治理面）/ POST=create）
-                {"/api/v1/organizations/:organization_id/invitations", organization_api_handler,
-                    #{
-                        action => invitation_collection
-                    }},
+                {"/api/v1/organizations/:organization_id/invitations", organization_api_handler, #{
+                    action => invitation_collection
+                }},
                 {"/api/v1/organizations/:organization_id/invitations/accept",
                     organization_api_handler, #{
                         action => invitation_accept
@@ -728,10 +727,9 @@ get_routes() ->
                     }},
                 %% department（C10：树形目录 + member 多归属 + 局部 admin；
                 %% 同路径 GET=list / POST=create）
-                {"/api/v1/organizations/:organization_id/departments", organization_api_handler,
-                    #{
-                        action => department_collection
-                    }},
+                {"/api/v1/organizations/:organization_id/departments", organization_api_handler, #{
+                    action => department_collection
+                }},
                 {"/api/v1/organizations/:organization_id/departments/:department_id",
                     organization_api_handler, #{
                         action => department_item
@@ -1048,6 +1046,48 @@ get_routes() ->
             {"/api/adm/workspace/members", adm_workspace_handler, #{action => members}},
             {"/api/adm/workspace/archive", adm_workspace_handler, #{action => archive}},
             {"/api/adm/workspace/restore", adm_workspace_handler, #{action => restore}},
+            % Platform Admin Organization 治理面（ORG-ADM-ORG-API；ORG-14 选 A）
+            % 读=organizations:read；写=organizations:write（fail-closed 403）。
+            % TSID 一律 string 传输；写端点全部审计 adm_operation_log。
+            {"/api/adm/organizations", adm_organization_handler, #{action => list}},
+            {"/api/adm/organizations/:organization_id", adm_organization_handler, #{
+                action => show
+            }},
+            {"/api/adm/organizations/:organization_id/members", adm_organization_handler, #{
+                action => members
+            }},
+            {"/api/adm/organizations/:organization_id/invitations", adm_organization_handler, #{
+                action => invitations
+            }},
+            {"/api/adm/organizations/:organization_id/departments", adm_organization_handler, #{
+                action => departments
+            }},
+            {"/api/adm/organizations/:organization_id/workspaces", adm_organization_handler, #{
+                action => workspaces
+            }},
+            {"/api/adm/organizations/:organization_id/archive", adm_organization_handler, #{
+                action => org_archive
+            }},
+            {"/api/adm/organizations/:organization_id/restore", adm_organization_handler, #{
+                action => org_restore
+            }},
+            {"/api/adm/organizations/:organization_id/owner-transfer", adm_organization_handler, #{
+                action => owner_transfer
+            }},
+            {"/api/adm/organizations/:organization_id/members/:user_id/suspend",
+                adm_organization_handler, #{action => member_suspend}},
+            {"/api/adm/organizations/:organization_id/members/:user_id/restore",
+                adm_organization_handler, #{action => member_restore}},
+            {"/api/adm/organizations/:organization_id/members/:user_id/remove",
+                adm_organization_handler, #{action => member_remove}},
+            {"/api/adm/organizations/:organization_id/invitations/:invitation_id/cancel",
+                adm_organization_handler, #{action => invitation_cancel}},
+            {"/api/adm/organizations/:organization_id/departments/:department_id/rename",
+                adm_organization_handler, #{action => department_rename}},
+            {"/api/adm/organizations/:organization_id/departments/:department_id/move",
+                adm_organization_handler, #{action => department_move}},
+            {"/api/adm/organizations/:organization_id/departments/:department_id/archive",
+                adm_organization_handler, #{action => department_archive}},
             {"/api/adm/project/list", adm_workspace_handler, #{action => project_list}},
             {"/api/adm/project/detail", adm_workspace_handler, #{action => project_detail}},
             %% Channel-first-class W2 治理只读面（ZC-05）

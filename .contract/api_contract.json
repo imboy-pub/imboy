@@ -1090,6 +1090,102 @@
         "static": false
       },
       {
+        "action": "list",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations",
+        "static": false
+      },
+      {
+        "action": "show",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id",
+        "static": false
+      },
+      {
+        "action": "org_archive",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/archive",
+        "static": false
+      },
+      {
+        "action": "departments",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/departments",
+        "static": false
+      },
+      {
+        "action": "department_archive",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/departments/:department_id/archive",
+        "static": false
+      },
+      {
+        "action": "department_move",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/departments/:department_id/move",
+        "static": false
+      },
+      {
+        "action": "department_rename",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/departments/:department_id/rename",
+        "static": false
+      },
+      {
+        "action": "invitations",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/invitations",
+        "static": false
+      },
+      {
+        "action": "invitation_cancel",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/invitations/:invitation_id/cancel",
+        "static": false
+      },
+      {
+        "action": "members",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/members",
+        "static": false
+      },
+      {
+        "action": "member_remove",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/members/:user_id/remove",
+        "static": false
+      },
+      {
+        "action": "member_restore",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/members/:user_id/restore",
+        "static": false
+      },
+      {
+        "action": "member_suspend",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/members/:user_id/suspend",
+        "static": false
+      },
+      {
+        "action": "owner_transfer",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/owner-transfer",
+        "static": false
+      },
+      {
+        "action": "org_restore",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/restore",
+        "static": false
+      },
+      {
+        "action": "workspaces",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/workspaces",
+        "static": false
+      },
+      {
         "action": "captcha",
         "handler": "adm_passport_handler",
         "path": "/api/adm/passport/captcha",
