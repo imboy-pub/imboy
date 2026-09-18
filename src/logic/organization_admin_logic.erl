@@ -864,7 +864,7 @@ parent_gate(OrgId, ParentId) when is_integer(ParentId) ->
     case organization_department_pg:fetch_department(OrgId, ParentId, none) of
         {error, not_found} ->
             {error, {404, <<"父部门不存在"/utf8>>}};
-        {ok, archived} ->
+        {ok, #{status := archived}} ->
             {error, {409, <<"父部门已归档"/utf8>>}};
         {ok, _} ->
             ok;
@@ -908,7 +908,7 @@ rename_gate(OrgId, DeptId, Name, ExpectedVersion) ->
     case organization_department_pg:fetch_department(OrgId, DeptId, none) of
         {error, not_found} ->
             {error, {404, <<"部门不存在"/utf8>>}};
-        {ok, archived} ->
+        {ok, #{status := archived}} ->
             {error, {409, <<"部门已归档，禁止修改"/utf8>>}};
         {ok, _Dept} ->
             case

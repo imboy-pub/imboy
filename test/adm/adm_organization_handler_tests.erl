@@ -848,6 +848,60 @@ negative_tests(Conn) ->
                 )
             )
         end},
+        {"409 archived 门禁：归档父部门下 create 部门被拒（TASK_ID=ORG-DIALYZE-FIX-R2）", fun() ->
+            ArchScope = seed_org(Conn, <<"negarchp">>),
+            ArchOrg = maps:get(org_id, ArchScope),
+            ArchDept = maps:get(dept_id, ArchScope),
+            RespArch =
+                call(
+                    ?WRITE_UID,
+                    department_archive,
+                    <<"POST">>,
+                    org_binding(ArchOrg, department_id, ArchDept),
+                    <<>>
+                ),
+            ?assertEqual(200, status_of(RespArch)),
+            ?assertEqual(
+                409,
+                status_of(
+                    call(
+                        ?WRITE_UID,
+                        departments,
+                        <<"POST">>,
+                        bindings(ArchOrg),
+                        jsone:encode(#{
+                            <<"name">> => <<"归档父下子部门"/utf8>>, <<"parent_id">> => ArchDept
+                        })
+                    )
+                )
+            )
+        end},
+        {"409 archived 门禁：归档部门 rename 被拒（TASK_ID=ORG-DIALYZE-FIX-R2）", fun() ->
+            ArchScope2 = seed_org(Conn, <<"negarchr">>),
+            ArchOrg2 = maps:get(org_id, ArchScope2),
+            ArchDept2 = maps:get(dept_id, ArchScope2),
+            RespArch2 =
+                call(
+                    ?WRITE_UID,
+                    department_archive,
+                    <<"POST">>,
+                    org_binding(ArchOrg2, department_id, ArchDept2),
+                    <<>>
+                ),
+            ?assertEqual(200, status_of(RespArch2)),
+            ?assertEqual(
+                409,
+                status_of(
+                    call(
+                        ?WRITE_UID,
+                        department_rename,
+                        <<"POST">>,
+                        org_binding(ArchOrg2, department_id, ArchDept2),
+                        jsone:encode(#{<<"name">> => <<"归档后新名"/utf8>>, <<"expected_version">> => 1})
+                    )
+                )
+            )
+        end},
         {"400 坏 JSON body", fun() ->
             ?assertEqual(
                 400,
