@@ -208,8 +208,89 @@ short_code_test_() ->
     end).
 
 %%%===================================================================
+%%% MFS2-F06（A1-D05）五身份矩阵：has_teaching_identity = 是否存在任何教学身份
+%%%
+%%% 契约（STEP-04 openapi/moya-teaching.yaml LoginPayload）：
+%%%   has_teaching_identity — "是否存在任何教学身份（引导小程序进入身份选择）"。
+%%% contexts/2 是三路并集：guardian ∪ staff ∪ organization(owner/admin)——
+%%% A1 审计 D-05 只看了 organization_contexts（owner/admin），误判"家长/老师
+%%% 恒 false"。本矩阵在 repo 层 meck、走真实 moya_context_logic:contexts/2
+%%% 并集路径逐身份证伪：五身份均应 true，无任何身份才 false。
+%%% 前端消费核对（wt-a2-moya）：该字段零消费（仅 types.ts:41 类型声明），
+%%% 实际路由门是 /moya/contexts 的 contexts.length === 0 → no-identity 页。
+%%%===================================================================
+
+teaching_identity_matrix_test_() ->
+    Scenarios = [
+        {owner_only, #{org_rows => [org_row(<<"owner">>)], staff_rows => [], guardian_rows => []},
+            true},
+        {admin_only, #{org_rows => [org_row(<<"admin">>)], staff_rows => [], guardian_rows => []},
+            true},
+        {teacher_only,
+            #{org_rows => [], staff_rows => [staff_row(<<"teacher">>)], guardian_rows => []}, true},
+        {assistant_only,
+            #{org_rows => [], staff_rows => [staff_row(<<"assistant">>)], guardian_rows => []},
+            true},
+        {pure_guardian, #{org_rows => [], staff_rows => [], guardian_rows => [guardian_row()]},
+            true},
+        {no_identity, #{org_rows => [], staff_rows => [], guardian_rows => []}, false}
+    ],
+    [
+        {
+            lists:flatten(io_lib:format("has_teaching_identity_~p", [Name])),
+            ?WITH_MECKS(login_mocks(Rows), fun() ->
+                {ok, Payload} = moya_auth_logic:wechat_mini_login(#{code => <<"good_code_123">>}),
+                ?assertEqual(Expected, maps:get(has_teaching_identity, Payload))
+            end)
+        }
+     || {Name, Rows, Expected} <- Scenarios
+    ].
+
+%%%===================================================================
 %%% Helpers
 %%%===================================================================
+
+%% 完整登录链 mock + 按场景注入 moya_context_repo 三路上下文行。
+%% has_teaching_identity → contexts(Uid, organization)：
+%% guardian_contexts + staff_contexts + organization_contexts 三路并集。
+login_mocks(#{org_rows := OrgRows, staff_rows := StaffRows, guardian_rows := GuardianRows}) ->
+    [
+        base_mocks(),
+        {moya_wechat_client, [
+            {'jscode2session', 3, fun(_, _, _) -> {ok, ?OPENID} end}
+        ]},
+        {sso_identity_ds, [
+            {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> {ok, ?UID} end}
+        ]},
+        {token_ds, [
+            {'encrypt_token', 1, fun(?UID) -> <<"at_98001">> end},
+            {'encrypt_refreshtoken', 2, fun(?UID, <<>>) -> <<"rt_98001">> end}
+        ]},
+        {moya_context_repo, [
+            {'guardian_contexts', 1, fun(?UID) -> {ok, GuardianRows} end},
+            {'staff_contexts', 1, fun(?UID) -> {ok, StaffRows} end},
+            {'organization_contexts', 1, fun(?UID) -> {ok, OrgRows} end},
+            {'owner_contexts', 1, fun(?UID) -> {ok, []} end}
+        ]}
+    ].
+
+%% organization_context/1 必填键：org_id（org_name/role 缺省 <<>>）
+org_row(Role) ->
+    #{<<"org_id">> => 982001, <<"org_name">> => <<"测试机构"/utf8>>, <<"role">> => Role}.
+
+%% staff_context/1 必填键：org_id / workspace_id / group_id
+staff_row(Role) ->
+    #{
+        <<"org_id">> => 982001,
+        <<"workspace_id">> => 981001,
+        <<"group_id">> => 983001,
+        <<"group_title">> => <<"书法一班"/utf8>>,
+        <<"role">> => Role
+    }.
+
+%% guardian_context/1 必填键：learner_id
+guardian_row() ->
+    #{<<"learner_id">> => 984001, <<"display_name">> => <<"小墨"/utf8>>}.
 
 %% 基础 mock：provider 已配置（appid/secret 占位值），微信端点/映射默认失败，
 %% 各用例按需覆盖。

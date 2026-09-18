@@ -563,8 +563,23 @@ build_detail(Uid, SubmissionId, Perspective, _Scope) ->
                         ok -> {ok, parent_view(Bundle)};
                         {error, _} -> {error, forbidden}
                     end;
+                %% MFS3-F09：staff 优先 dispatch 下，双角色用户即使以 guardian
+                %% 身份调用家长域端点（GET /moya/submissions/:id）也被派为
+                %% staff 视角——teacher_view 超集把未发布草稿全文
+                %% （my_review_draft）与 ai_draft 下发到家长端可达面，
+                %% published_review 同时为 null，「发布」门控被旁路
+                %% （evidence/journey/probe-draft-leak.txt）。修复：兼任该学员
+                %% active 监护人（can_view_review）时降级 parent_view
+                %% （MFS-3-B2 同款先例；契约 SubmissionParentView 硬约束
+                %% D-10）；纯 staff 保持 teacher_view。老师工作台走
+                %% review-workbench 专端点（workbench/2），不经此分支。
+                {staff, false} ->
+                    case guardian_view_fallback(Uid, Bundle) of
+                        ok -> {ok, parent_view(Bundle)};
+                        {error, _} -> {ok, teacher_view(Uid, Bundle)}
+                    end;
                 _ ->
-                    detail_payload_by_perspective(Uid, Bundle, Perspective)
+                    {ok, parent_view(Bundle)}
             end;
         {error, Reason} ->
             {error, Reason}
@@ -583,14 +598,6 @@ guardian_view_fallback(Uid, Bundle) ->
 -spec bundle_learner_id(map()) -> integer() | undefined.
 bundle_learner_id(#{submission := #{<<"learner_id">> := Id}}) -> Id;
 bundle_learner_id(_) -> undefined.
-
--spec detail_payload_by_perspective(integer(), map(), staff | guardian) ->
-    {ok, map()}.
-detail_payload_by_perspective(Uid, Bundle, Perspective) ->
-    case Perspective of
-        staff -> {ok, teacher_view(Uid, Bundle)};
-        guardian -> {ok, parent_view(Bundle)}
-    end.
 
 %% A1-D04：submission 行是否已撤回（bundle 内行真值判定）
 -spec withdrawn_submission(map()) -> boolean().
