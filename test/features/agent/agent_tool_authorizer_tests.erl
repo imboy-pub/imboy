@@ -347,6 +347,32 @@ step3_org_tests(_) ->
                 erlang:error(facts_down)
             end),
             ?assertEqual({deny, membership_unavailable}, auth0())
+        end},
+        {"org active + membership 未知 ok 形状 -> membership_denied（子句序修复：不再误标 org_state_unavailable）",
+            fun() ->
+                given_run_ok(),
+                given_agent_identity(1, 1),
+                given_org_state_ok(),
+                meck:expect(?MEMBERSHIP, resolve_organization_membership, fun(_O, _A) ->
+                    {ok, #{some => bad_shape}}
+                end),
+                ?assertEqual({deny, membership_denied}, auth0())
+            end},
+        {"org ok 形状但状态非 active -> org_not_active（精确归因）", fun() ->
+            given_run_ok(),
+            given_agent_identity(1, 1),
+            meck:expect(?MEMBERSHIP, resolve_organization_state, fun(_O) ->
+                {ok, #{status => suspended, version => 5}}
+            end),
+            ?assertEqual({deny, org_not_active}, auth0())
+        end},
+        {"org ok 但缺 status 键 -> org_state_unavailable（形状坏）", fun() ->
+            given_run_ok(),
+            given_agent_identity(1, 1),
+            meck:expect(?MEMBERSHIP, resolve_organization_state, fun(_O) ->
+                {ok, #{version => 5}}
+            end),
+            ?assertEqual({deny, org_state_unavailable}, auth0())
         end}
     ].
 

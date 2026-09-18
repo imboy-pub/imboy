@@ -279,12 +279,15 @@ step3_org(_, {error, unavailable}, _) ->
     {deny, membership_unavailable};
 step3_org(_, {error, _}, _) ->
     {deny, membership_denied};
-%% LOW-2 加固（A2 review）：port 返回未知 {ok, Shape}（非 active 形状）也
-%% fail closed——不得以 function_clause 逸出 authorize/3。
+%% LOW-2 加固（A2 review）+ 子句序修复（review 残留 LOW）：未知 {ok, Shape}
+%% 收敛为 deny 且**归因精确**——此前 {ok,_} 通配先命中，org 合法 active 而
+%% membership 形状坏时被误标 org_state_unavailable。现按维度精确分派：
+step3_org({ok, #{status := active}}, {ok, _BadMemberShape}, _) ->
+    {deny, membership_denied};
+step3_org({ok, #{status := BadStatus}}, _, _) when BadStatus =/= active ->
+    {deny, org_not_active};
 step3_org({ok, _BadOrgShape}, _, _) ->
-    {deny, org_state_unavailable};
-step3_org(_, {ok, _BadMemberShape}, _) ->
-    {deny, membership_denied}.
+    {deny, org_state_unavailable}.
 
 %% ---- 步骤 4：需要时 Workspace ownership + Membership（port 必须 {ok, active}） ----
 step4_workspace(not_required, Providers) ->

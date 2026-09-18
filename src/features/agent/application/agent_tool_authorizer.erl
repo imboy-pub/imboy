@@ -367,6 +367,8 @@ try_persist_deny(Conn, RunCtx, Tool, Resource, Facts, Reason) ->
 %% deny 记账仅对 running 态 Run 落 effect 行（与 04B new_effect_gate 口径
 %% 一致——非 running 结构性拒绝只审计不落行）。经 run 供给器实时重读：
 %% domain 步骤 1 缓存的 run_row 在 domain 本地映射内，调用方映射不可见。
+%% 注：这是「同链零双读」的**有意例外**——deny 记账必须以最新 Run 状态
+%% 为准（步骤 1 的读取在裁决前，记账前状态可能已被并发迁移）。
 run_persistable(Facts) ->
     case (maps:get(run, Facts))() of
         {ok, #{status := running}} -> true;
