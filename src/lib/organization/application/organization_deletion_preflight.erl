@@ -13,8 +13,11 @@
 %%
 %% provider 注册表：
 %%   默认（代码内置）= organization + workspace（ORG-02 org 侧只读代查）+
-%%   enterprise_business（ORG-08）+ customer_service（ORG-08）四域；agent 域
-%%   provider 由 ORG-06 交付后注册（登记前缺域照拒，fail-closed）。测试/集成可用
+%%   enterprise_business（ORG-08）+ customer_service（ORG-08）+ agent
+%%   （agent_preflight_facts，Agent track ORG-06 交付）五域。agent 域于
+%%   2026-09-18 用户拍板登记（原「推迟登记至 Agent track」裁决条款解除，
+%%   见 control/ruling-agent-provider-defer.md 顶部注记）；登记前该域
+%%   缺省照拒（fail-closed）。测试/集成可用
 %%   application:set_env(imboy, deletion_preflight_providers, [{Domain, M, F}])
 %%   覆盖注册表——但 required 域集合不可缩减：覆盖后仍缺域照拒。
 %%
@@ -80,7 +83,8 @@ registry() ->
                 {organization, Default, facts_organization},
                 {workspace, Default, facts_workspace},
                 {enterprise_business, eb_preflight_facts_pg, facts_enterprise_business},
-                {customer_service, cs_preflight_facts_pg, facts_customer_service}
+                {customer_service, cs_preflight_facts_pg, facts_customer_service},
+                {agent, agent_preflight_facts, facts_agent}
             ]
     end.
 

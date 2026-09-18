@@ -10,6 +10,12 @@
 %%   malformed               —— organization 域返回缺字段/坏形状的 fact
 %%   crash                   —— organization 域进程内抛异常（→ inconsistent 归口）
 %%   hang                    —— organization 域挂起（配合小 timeout 测超时）
+%%   agent_blockers          —— agent 域返回一个 AGENT_OWNER_ACTIVE blocker
+%%   agent_unavailable       —— agent 域返回 {error, unavailable}
+%%   agent_inconsistent      —— agent 域返回 {error, inconsistent}
+%%   agent_malformed         —— agent 域返回缺字段/坏形状的 fact
+%%   agent_crash             —— agent 域进程内抛异常（→ inconsistent 归口）
+%%   agent_hang              —— agent 域挂起（配合小 timeout 测超时）
 %%   agent_inserts_org_owner —— facts_agent 在返回前用独立连接插入
 %%                              「用户成为 org owner」并发变更（TOCTOU/DB
 %%                              RESTRICT 兜底专用；org id 取
@@ -56,6 +62,22 @@ facts_agent(UserId) ->
         agent_inserts_org_owner ->
             {ok, _} = insert_org_owner(UserId),
             fact(organization, UserId, []);
+        agent_blockers ->
+            {ok, fact(agent, UserId, [agent_owner_blocker()])};
+        agent_unavailable ->
+            {error, unavailable};
+        agent_inconsistent ->
+            {error, inconsistent};
+        agent_malformed ->
+            %% 缺 observed_at/fact_version + blocker 缺 code：按 inconsistent 归口
+            {ok, #{
+                subject_user_id => 1, domain => agent, blockers => [#{resource_type => <<"x">>}]
+            }};
+        agent_crash ->
+            erlang:error(stub_provider_crash);
+        agent_hang ->
+            timer:sleep(60000),
+            {ok, fact(agent, UserId, [])};
         _ ->
             act(behavior(), agent, UserId)
     end.
@@ -108,6 +130,15 @@ fact(Domain, UserId, Blockers) ->
         observed_at => erlang:system_time(millisecond),
         fact_version => 1,
         blockers => Blockers
+    }.
+
+%% agent 域冻结 blocker（计划 §1.6 稳定 code；bot/ai_agent 不挂 org → null）
+agent_owner_blocker() ->
+    #{
+        code => <<"AGENT_OWNER_ACTIVE">>,
+        resource_type => <<"bot">>,
+        resource_id => <<"424242">>,
+        organization_id => null
     }.
 
 insert_org_owner(UserId) ->

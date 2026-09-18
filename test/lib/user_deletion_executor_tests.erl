@@ -118,6 +118,47 @@ preflight_blockers_abort_no_partial_deletion_test_() ->
         end)
     end).
 
+%% ORG-BACKEND-ORG02-AGENT-DOMAIN（agent 域 2026-09-18 用户拍板登记，
+%% 见 control/ruling-agent-provider-defer.md 顶部注记）：agent 域 blocker
+%% （AGENT_OWNER_ACTIVE）同样命中 preflight 门 → 整事务拒绝、零部分删除
+%% ——确认 agent 域已纳入删除执行器的 preflight 路径（默认注册表第五域）。
+preflight_agent_blocker_abort_no_partial_deletion_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+        Uid = new_uid(),
+        Peer = new_uid(),
+        MsgId = new_uid(),
+        with_full_registry(agent_blockers, fun() ->
+            try
+                ok = create_user(Uid),
+                ok = create_user(Peer),
+                {ok, _} = elib_pg:query(
+                    <<
+                        "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload)"
+                        " VALUES ($1, $2, $3, 'm-agent-probe', 't', 'p')"
+                    >>,
+                    [MsgId, Uid, Peer]
+                ),
+                {error, {deletion_preflight_blockers, Blockers}} =
+                    elib_pg:with_tx(fun(Conn) ->
+                        user_deletion_executor:execute_main_tx(Conn, Uid)
+                    end),
+                Codes = [maps:get(code, B) || B <- Blockers],
+                %% agent 域稳定 code（§1.6 冻结）：AGENT_OWNER_ACTIVE 阻断删除
+                ?assert(lists:member(<<"AGENT_OWNER_ACTIVE">>, Codes)),
+                %% 资源/账号完好：用户行、消息行俱在（无部分删除）
+                {ok, [_]} = elib_pg:query(
+                    <<"SELECT id FROM public.\"user\" WHERE id = $1">>, [Uid]
+                ),
+                {ok, [_]} = elib_pg:query(
+                    <<"SELECT id FROM public.msg_c2c WHERE id = $1">>, [MsgId]
+                )
+            after
+                cleanup_user(Uid),
+                cleanup_user(Peer)
+            end
+        end)
+    end).
+
 %% ORG-02（C17/§1.6）：任一域 facts 不可得 → 稳定原因
 %% DEPENDENCY_FACTS_UNAVAILABLE，拒绝且零部分删除。
 preflight_unavailable_abort_no_partial_deletion_test_() ->

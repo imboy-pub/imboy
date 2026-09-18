@@ -11,7 +11,8 @@
 %%     assignment 结束（Seat 保留 enabled）→ blocker 消除（§6：User delete 前
 %%     Assignment 必须无 active，Seat 不随 User 删除）；Seat 停用 → 无 blocker；
 %%   * 编排器集成：真实 EB/CS provider + ORG-02 org/workspace provider +
-%%     agent stub 全注册 → blockers 聚合；缺 EB/CS/agent 注册 → fail-closed 拒。
+%%     agent stub 全注册 → blockers 聚合；env 显式缩减注册表 → fail-closed 拒；
+%%     默认五域注册表（agent 域 2026-09-18 登记后）→ 全 provider 聚合。
 %%
 %% 运行：make eunit-local t=cs_preflight_facts_pg_tests
 %% PG：一次性容器 imboy-org08-pg18 @127.0.0.1:4393（ORG08_PGPORT 可覆盖）；
@@ -43,7 +44,7 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun eb_provider_reports_active_assignment/0},
         {timeout, 60, fun cs_provider_reports_operating_seat/0},
         {timeout, 60, fun orchestrator_aggregates_with_real_eb_cs_providers/0},
-        {timeout, 0, fun orchestrator_fail_closed_without_registration/0}
+        {timeout, 60, fun orchestrator_default_registry_full_aggregation/0}
     ];
 cases({error, Reason}) ->
     erlang:error({cs_preflight_facts_db_unavailable, Reason}).
@@ -217,19 +218,22 @@ orchestrator_aggregates_with_real_eb_cs_providers() ->
         ?FIX:cleanup(Scope)
     end.
 
-%% 未注册域 = facts 不可得 = 拒（合同明文）。
-%% 期望演进（ORG-12 集成门基线重建时修正）：A0 合并（ORG-08 BLOCKED_INT-2）
-%% 已把 EB/CS provider 登记进默认注册表（4/5 域 staged 语义），缺域只剩 agent
-%% ——见 control/ruling-agent-provider-defer.md（第 5 域推迟登记至 Agent track）。
-%% 冻结语义不变：缺域照拒，本断言验证的正是「缺什么拒什么」的如实上报。
-orchestrator_fail_closed_without_registration() ->
+%% 默认注册表五域已齐（agent 域 = 2026-09-18 用户拍板登记，原「推迟登记至
+%% Agent track」裁决条款解除，见 control/ruling-agent-provider-defer.md 顶部
+%% 注记）：默认注册表下不再因缺域拒——本用例演进为验证默认五域全 provider
+%% 实时聚合成功。「缺域照拒」语义不受影响，由 env 显式缩减注册表的用例冻结
+%% （本文件上方 workspace-only 用例 + organization_preflight_tests 的
+%% reduced_registry_without_agent_still_rejected）。
+orchestrator_default_registry_full_aggregation() ->
     application:unset_env(imboy, deletion_preflight_providers),
-    {error, #{
-        code := <<"DEPENDENCY_FACTS_UNAVAILABLE">>,
-        reason := provider_unregistered,
-        detail := Missing
-    }} = organization_deletion_preflight:run(424242),
-    ?assertEqual([agent], lists:sort(Missing)).
+    {ok, #{subject_user_id := 424242, facts := Facts, blockers := Blockers}} =
+        organization_deletion_preflight:run(424242),
+    ?assertEqual(
+        [organization, workspace, enterprise_business, customer_service, agent],
+        [maps:get(domain, F) || F <- Facts]
+    ),
+    %% 无任何资源的探测 subject → 五域全绿空 blocker
+    ?assertEqual([], Blockers).
 
 %% ===================================================================
 %% 内部辅助（与 cs_org_compat_tests 同一容器口径）

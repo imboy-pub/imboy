@@ -3,14 +3,16 @@
 %% ORG-02 DeletionPreflightFacts 编排器 + org/workspace provider 测试。
 %%
 %% 覆盖（计划 §1.6 + ORG-02 卡 ORG-A05）：
-%%   * 编排器 fail-closed：缺域（EB/CS/Agent 未注册）→ 拒；
+%%   * 编排器 fail-closed：缺域（env 显式缩减注册表）→ 拒；
 %%     provider unavailable/timeout/inconsistent(malformed/crash) → 拒；
-%%     稳定原因恒为 DEPENDENCY_FACTS_UNAVAILABLE。
+%%     稳定原因恒为 DEPENDENCY_FACTS_UNAVAILABLE——组织域与 agent 域
+%%     （2026-09-18 用户拍板登记，见 control/ruling-agent-provider-defer.md
+%%     顶部注记）两条路径都覆盖。
 %%   * 五域全注册 + 全无 blocker → {ok, blockers = []}；
 %%     blocker 按冻结四字段聚合返回。
 %%   * 真实 provider（真 PG）：owner/member/workspace owner 三态 blocker；
-%%     无关用户空 blocker；默认注册表（organization+workspace 两域）
-%%     下整体 preflight 因缺 EB/CS/Agent 被拒（合同明文，非回归）。
+%%     无关用户空 blocker；env 显式缩减注册表（去掉 agent）→ 整体拒；
+%%     默认五域注册表 → 全 provider 实时聚合（合同明文，非回归）。
 %%
 %% 运行：make eunit-local t=organization_preflight_tests
 
@@ -122,33 +124,135 @@ bad_subject_rejected_test_() ->
             organization_deletion_preflight:run(bad)
     end}.
 
-default_registry_is_org_workspace_eb_cs_test_() ->
+default_registry_is_org_workspace_eb_cs_agent_test_() ->
     {setup, fun() -> ok end, fun(_) -> ok end, fun() ->
         ?assertEqual(
             [
                 {organization, organization_preflight_facts_pg, facts_organization},
                 {workspace, organization_preflight_facts_pg, facts_workspace},
                 {enterprise_business, eb_preflight_facts_pg, facts_enterprise_business},
-                {customer_service, cs_preflight_facts_pg, facts_customer_service}
+                {customer_service, cs_preflight_facts_pg, facts_customer_service},
+                {agent, agent_preflight_facts, facts_agent}
             ],
             organization_deletion_preflight:registry()
         ),
-        %% 冻结五域缺一不可（C17）：Agent 交付前默认注册表整体拒
-        %% （EB/CS 登记 = ORG-A0 对 ORG-08 BLOCKED_INT-2 的合并，A0 裁决留痕）
+        %% 冻结五域缺一不可（C17）。agent 域 = 2026-09-18 用户拍板登记
+        %% （原「推迟登记至 Agent track」裁决条款已解除，见
+        %% control/ruling-agent-provider-defer.md 顶部注记）；
+        %% EB/CS 登记 = ORG-A0 对 ORG-08 BLOCKED_INT-2 的合并（A0 裁决留痕）
         ?assertEqual(
             [organization, workspace, enterprise_business, customer_service, agent],
             organization_deletion_preflight:required_domains()
         )
     end}.
 
-default_registry_preflight_rejected_until_all_domains_registered_test_() ->
-    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
-        %% 真实 provider + 默认四域注册表：缺 Agent → 整体拒
-        %% （计划 §1.6：未注册域=facts 不可得=拒；control/ruling-
-        %% ORG02-plan1-orchestrator-tests.md 同口径）
-        {error, #{code := ?CODE, reason := provider_unregistered}} =
-            organization_deletion_preflight:run(1)
-    end).
+default_registry_preflight_rejection_and_full_aggregation_test_() ->
+    [
+        {"env 显式缩减注册表（去掉 agent）→ run 仍拒（缺域拒绝语义保留）",
+            ?TEST_WITH_DB_TIMEOUT(30, fun reduced_registry_without_agent_still_rejected/0)},
+        {"默认五域注册表：全 provider 实时聚合",
+            ?TEST_WITH_DB_TIMEOUT(30, fun default_five_domain_registry_aggregates/0)}
+    ].
+
+%% agent 域默认登记（2026-09-18 拍板）后，「缺域拒绝」语义不再依赖默认表
+%% 缺口，改由 env 显式缩减注册表的用例冻结（计划 §1.6：未注册域=facts
+%% 不可得=拒；control/ruling-ORG02-plan1-orchestrator-tests.md 同口径）。
+reduced_registry_without_agent_still_rejected() ->
+    application:unset_env(imboy, deletion_preflight_timeout_ms),
+    ok = application:set_env(imboy, deletion_preflight_providers, [
+        {organization, organization_preflight_facts_pg, facts_organization},
+        {workspace, organization_preflight_facts_pg, facts_workspace},
+        {enterprise_business, eb_preflight_facts_pg, facts_enterprise_business},
+        {customer_service, cs_preflight_facts_pg, facts_customer_service}
+    ]),
+    try
+        {error, #{
+            code := ?CODE,
+            reason := provider_unregistered,
+            domain := undefined,
+            detail := [agent]
+        }} = organization_deletion_preflight:run(new_uid())
+    after
+        application:unset_env(imboy, deletion_preflight_providers)
+    end.
+
+%% 默认（代码内置）五域注册表：真实 provider 对无任何资源的用户全绿聚合。
+default_five_domain_registry_aggregates() ->
+    application:unset_env(imboy, deletion_preflight_timeout_ms),
+    application:unset_env(imboy, deletion_preflight_providers),
+    Uid = new_uid(),
+    {ok, #{
+        subject_user_id := Uid,
+        blockers := [],
+        facts := Facts,
+        observed_at := ObservedAt
+    }} = organization_deletion_preflight:run(Uid),
+    ?assert(is_integer(ObservedAt)),
+    %% fact domain 序与默认注册表一致（五域 provider 全部实时返回）
+    ?assertEqual(
+        [organization, workspace, enterprise_business, customer_service, agent],
+        [maps:get(domain, F) || F <- Facts]
+    ),
+    %% 冻结形状逐域校验（§1.6：subject/observed_at/fact_version/blockers）
+    lists:foreach(
+        fun(F) ->
+            ?assertEqual(Uid, maps:get(subject_user_id, F)),
+            ?assert(is_integer(maps:get(observed_at, F))),
+            ?assert(maps:get(fact_version, F) >= 1),
+            ?assert(is_list(maps:get(blockers, F)))
+        end,
+        Facts
+    ).
+
+%% --- agent 域（stub）：fail-closed 失败路径与 blocker 聚合 -----------------
+
+agent_domain_blocker_aggregated_with_frozen_shape_test_() ->
+    {setup, fun() -> ok end, fun(_) -> ok end, fun() ->
+        with_full_registry(agent_blockers, fun() ->
+            {ok, #{blockers := [Blocker]}} = organization_deletion_preflight:run(42),
+            %% agent 域冻结 blocker 四字段；bot/ai_agent 不挂 org → 恒 null
+            ?assertEqual(
+                #{
+                    code => <<"AGENT_OWNER_ACTIVE">>,
+                    resource_type => <<"bot">>,
+                    resource_id => <<"424242">>,
+                    organization_id => null
+                },
+                Blocker
+            )
+        end)
+    end}.
+
+agent_domain_unavailable_rejected_test_() ->
+    agent_reject_case(agent_unavailable, unavailable).
+
+agent_domain_inconsistent_rejected_test_() ->
+    agent_reject_case(agent_inconsistent, inconsistent).
+
+agent_domain_malformed_rejected_test_() ->
+    agent_reject_case(agent_malformed, inconsistent).
+
+agent_domain_crash_rejected_test_() ->
+    agent_reject_case(agent_crash, inconsistent).
+
+agent_reject_case(Behavior, Reason) ->
+    {setup, fun() -> ok end, fun(_) -> ok end, fun() ->
+        with_full_registry(Behavior, fun() ->
+            {error, #{
+                code := ?CODE, reason := Reason, domain := agent
+            }} = organization_deletion_preflight:run(42)
+        end)
+    end}.
+
+agent_domain_timeout_rejected_test_() ->
+    {setup, fun() -> ok end, fun(_) -> ok end, fun() ->
+        ok = application:set_env(imboy, deletion_preflight_timeout_ms, 200),
+        with_full_registry(agent_hang, fun() ->
+            {error, #{
+                code := ?CODE, reason := timeout, domain := agent
+            }} = organization_deletion_preflight:run(42)
+        end)
+    end}.
 
 %% ===================================================================
 %% 真实 provider（真 PG）
