@@ -442,8 +442,12 @@ run_expand_migrations() {
     [ -n "$DB_CONTAINER" ] || fail "expand 自动模式需要 IMBOY_DEPLOY_DB_CONTAINER"
     [ -n "$DB_NAME" ] || fail "expand 自动模式需要 IMBOY_DEPLOY_DB_NAME"
     [ -n "$DB_USER" ] || fail "expand 自动模式需要 IMBOY_DEPLOY_DB_USER"
-    applied="$(ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c 'SELECT version FROM schema_migrations WHERE dirty = false'")" \
+    applied="$(ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c 'SELECT max(version) FROM schema_migrations WHERE dirty = false'")" \
       || fail "无法读取 schema_migrations 台账（表不存在或库不可达）；请显式配置 DEPLOY_EXPAND_MIGRATIONS"
+    # erlang_migrate 是单行台账（DELETE 全部 + INSERT 当前版本）：version=N
+    # 表示 1..N 全部已应用。判断 boundary 迁移是否已应用须比较版本大小，
+    # 不能按多行台账逐行 grep——否则收敛后的台账（如单行 134）永远匹配
+    # 不上历史迁移号（如 64），守门必误报。
     for required in \
       00000064_msg_store_sender_did.up.sql \
       00000108_group_attachment_anchor.up.sql \
@@ -451,8 +455,8 @@ run_expand_migrations() {
       00000111_c2g_request_recipient_boundary.up.sql \
       00000112_e2ee_group_session_attestation.up.sql; do
       if ssh_exec "test -f '$PROJECT_DIR/priv/migrations/$required'" \
-         && ! printf '%s\n' "$applied" | grep -qx "$((10#${required%%_*}))"; then
-        fail "release 包含 boundary 迁移 $required 且台账未登记：请显式配置 DEPLOY_EXPAND_MIGRATIONS 走受控 expand 护航"
+         && [ "${applied:-0}" -lt "$((10#${required%%_*}))" ]; then
+        fail "release 包含 boundary 迁移 $required 且台账版本（${applied:-无}）未达：请显式配置 DEPLOY_EXPAND_MIGRATIONS 走受控 expand 护航"
       fi
     done
     log "expand 自动模式：schema 升级由切流后 db migrate 统一执行（erlang_migrate 台账自动判断）"
