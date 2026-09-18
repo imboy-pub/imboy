@@ -1,22 +1,22 @@
--- 迁移 00000133: Agent Run 基础三表（Agent Run Foundation）。
+-- 迁移 00000134: Agent Run 基础三表（Agent Run Foundation）。
 -- 计划契约：docs/architecture/2026-09-16-imboy-agent-runtime-v3.1.md §9.3-9.4
 --   Frozen AgentRun FSM + Frozen Run/Effect Schema Contract
 --   （agent_run / agent_run_event / agent_effect；规范本
 --   SHA256=05808674d4825320de867a2a8d2899fb4babddbfcea6fe4bf27a4e43a55dd6b2）。
 -- 迁移契约：up=可重复执行，down=完整对称回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹。
--- 槽位：AGENT_MIGRATION_SLOT_RUN = 00000133（位于 00000132 Agent Grant 四表之后）。
+-- 槽位原登记 00000133，并入 main 时改号 00000134（grant 同步改号 00000133，相对顺序不变）。
 --
 -- 设计决策：
 --   * 本迁移逐字实现 §9.4 合同，不添加合同外对象；status CHECK 冻结 §9.3 八状态
 --     created|queued|running|waiting_approval|succeeded|failed|cancelled|unknown；
 --     timeout 不是状态（failed + reason_code='timeout' 表达，见 §9.3）。
---   * workspace 复合 FK 目标 uq_workspace_organization_id_id 由 00000116 建立（00000132 同款）；
+--   * workspace 复合 FK 目标 uq_workspace_organization_id_id 由 00000116 建立（00000133 同款）；
 --     MATCH SIMPLE 语义下 workspace_id 为 NULL（organization-scoped capability）时约束不检查。
 --   * agent_run_event.actor_kind CHECK ('human','system','agent') 为 AG-A0 裁决 CS-4 的
 --     冻结值域（对齐 grant_event human/system 语义并扩展 agent 执行者）。
 --   * actor_id 为 text：run 事件的 actor 除 human 外还有 system worker 与 agent 本体，
 --     不设 user FK；human actor 存 user id 的十进制文本。
---   * append-only 守卫复用 00000119/00000132 fn_*_event_append_only 模式
+--   * append-only 守卫复用 00000119/00000133 fn_*_event_append_only 模式
 --     （ERRCODE 23514 + BEFORE UPDATE OR DELETE）；本表无 ON DELETE SET NULL 例外
 --     （actor_id 为 text 无 user FK），UPDATE/DELETE 一律拒绝。
 --   * DEFAULT 語义仅限合同列的既有仓内惯例（version/attempt/created_at/updated_at/detail_json）。
@@ -208,7 +208,7 @@ COMMENT ON COLUMN agent_effect.failure_code IS '失败码；dispatch 结果不�
 COMMENT ON COLUMN agent_effect.version IS 'CAS 版本（>=1）；Effect 所有状态写入使用 CAS（§9.4）';
 
 -- ============================================================
--- Phase 4: agent_run_event append-only 守卫（复用 00000119/00000132 模式）
+-- Phase 4: agent_run_event append-only 守卫（复用 00000119/00000133 模式）
 -- ============================================================
 CREATE OR REPLACE FUNCTION fn_agent_run_event_append_only() RETURNS trigger
     LANGUAGE plpgsql

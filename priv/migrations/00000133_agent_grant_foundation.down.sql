@@ -1,4 +1,4 @@
--- 迁移 00000132: Agent Grant 基础四表（down，完整对称回滚）。
+-- 迁移 00000133: Agent Grant 基础四表（down，完整对称回滚）。
 -- 计划契约：docs/architecture/2026-09-16-imboy-agent-runtime-v3.1.md §7.2 Frozen Grant Schema Contract。
 -- 迁移契约：down=与 up 完全对称、逆序回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹。
 --

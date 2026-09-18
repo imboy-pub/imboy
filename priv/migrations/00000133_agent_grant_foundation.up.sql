@@ -1,11 +1,11 @@
--- 迁移 00000132: Agent Grant 基础四表（Agent Grant Foundation）。
+-- 迁移 00000133: Agent Grant 基础四表（Agent Grant Foundation）。
 -- 计划契约：docs/architecture/2026-09-16-imboy-agent-runtime-v3.1.md §7.2
 --   Frozen Grant Schema Contract（agent_grant / agent_grant_workspace /
 --   agent_grant_capability / agent_grant_event；规范本 SHA256=05808674d4825320de867a2a8d2899fb4babddbfcea6fe4bf27a4e43a55dd6b2）。
 -- 迁移契约：up=可重复执行，down=完整对称回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹。
 --
 -- 设计决策：
---   * 本迁移逐字实现 §7.2 合同，不添加合同外对象；槽位 AGENT_MIGRATION_SLOT_GRANT=00000132。
+--   * 本迁移逐字实现 §7.2 合同，不添加合同外对象；槽位原登记 00000132，并入 main 时改号 00000133（132 已被 customer_service_widget 占用）。
 --   * DEFAULT 語义仅限合同列的既有仓内惯例（version/created_at/updated_at/constraint_json/
 --     detail_json），与 00000116/00000119 同构，不引入新对象。
 --   * workspace 复合 FK 目标 uq_workspace_organization_id_id 由 00000116 建立（已有 6 处消费者），
