@@ -99,7 +99,7 @@ fetch_department(OrgId, DeptId, _Ctx) ->
     ok | {error, conflict} | {error, name_conflict} | {error, term()}.
 update_name(OrgId, DeptId, Name, ActorId, ExpectedVersion) ->
     case
-        elib_pg:query(
+        elib_pg:execute(
             <<
                 "UPDATE organization_department"
                 " SET name = $3, updated_by_user_id = $4,"
@@ -452,7 +452,7 @@ insert_member(OrgId, DeptId, UserId, ActorId, _Ctx) ->
 -spec delete_member(integer(), integer(), term()) -> {ok, removed | not_present} | {error, term()}.
 delete_member(DeptId, UserId, _Ctx) ->
     case
-        elib_pg:query(
+        elib_pg:execute(
             <<
                 "DELETE FROM organization_department_member"
                 " WHERE department_id = $1 AND user_id = $2"
@@ -466,12 +466,13 @@ delete_member(DeptId, UserId, _Ctx) ->
     end.
 
 %% @doc 设置/取消局部目录管理员标记（只改本行 is_admin，不触任何权限表）。
--spec set_admin(integer(), integer(), boolean(), integer() | undefined, term()) ->
+%% ActorId 仅占位：app 层负责 actor 审计，约定传 none（本函数不写审计列）。
+-spec set_admin(integer(), integer(), boolean(), none | integer() | undefined, term()) ->
     ok | {error, not_member} | {error, term()}.
 set_admin(DeptId, UserId, IsAdmin, _ActorId, _Ctx) when is_boolean(IsAdmin) ->
     %% 注意参数序：调用方 app 层负责 actor 审计；本函数只做标记位翻转
     case
-        elib_pg:query(
+        elib_pg:execute(
             <<
                 "UPDATE organization_department_member SET is_admin = $3, updated_at = CURRENT_TIMESTAMP"
                 " WHERE department_id = $1 AND user_id = $2"

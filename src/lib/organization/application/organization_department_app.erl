@@ -418,7 +418,7 @@ set_admin(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
 set_admin(_OrgId, _Params) ->
     {error, {invalid_argument, set_admin}}.
 
-set_admin_gate(_OrgId, DeptId, UserId, Flag) ->
+set_admin_gate(_OrgId, DeptId, UserId, Flag) when is_boolean(Flag) ->
     case ?PG:fetch_member(DeptId, UserId, none) of
         {error, not_found} ->
             {error, not_department_member};
