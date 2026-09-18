@@ -356,6 +356,23 @@ def callback_decl_text(source, name):
     return None
 
 
+def normalize_ws(text):
+    """A02 声明比较用的空白规范化。
+
+    R-EB01-01：冻结基准是旧 run EB-02 的**未提交工件**（单行格式），而入库文件自
+    首个提交 d4254b92 起就是 erlfmt 折行格式——折行点落在括号边界（`(` 后 / `)`
+    前 / 逗号后），语义零差异、仅空白与折行不同，byte-wise 比较会误报红。
+
+    规则：每行 strip 前后空白、行内连续空白折叠、去掉空行；由于折行点在括号
+    边界，行级折叠后行边界处仍会残留差异（`(\n    OrgId` vs `(OrgId`），故把
+    剩余空白（含换行）一并移除后再比较——非空白字符逐字符保持、大小写不变，
+    参数名 / 类型 / 结构的任何实质改动仍判红（下方负例证明）。"""
+    if text is None:
+        return None
+    lines = (re.sub(r"\s+", " ", line).strip() for line in text.split("\n"))
+    return "".join(line for line in lines if line)
+
+
 def git_show(sha, rel):
     import subprocess
     try:
@@ -430,13 +447,13 @@ for fname, names in FROZEN:
         base_decl = callback_decl_text(base, name)
         if cur_decl is None:
             fail("A02 %s 的既有 callback %s 声明丢失" % (fname, name))
-        elif cur_decl.strip() != base_decl.strip():
+        elif normalize_ws(cur_decl) != normalize_ws(base_decl):
             fail("A02 %s 的既有 callback %s 声明被改动（非逐字保持）" % (fname, name))
         else:
             frozen_checked += 1
 if frozen_checked and not any(m.startswith("A02") for m in failures):
-    ok("A02 既有 %d 个 callback 声明与冻结基准逐字一致（只追加；基准来源=%s）"
-       % (frozen_checked, source))
+    ok("A02 既有 %d 个 callback 声明与冻结基准一致（空白规范化后逐字符相同，"
+       "仅忽略折行/空白差异；基准来源=%s）" % (frozen_checked, source))
 
 # ------------------------------------------------------------------ CLI
 argv = sys.argv[1:]
@@ -696,14 +713,15 @@ if self_test:
     else:
         fail("A04 剥注释口径失效：comment_only=%r code_hit=%r" % (comment_only, code_hit))
 
-    # A02 负例：把既有 callback 的参数名改掉，字节比对必须报红
+    # A02 负例：把既有 callback 的参数名改掉，规范化比对必须报红
+    # （R-EB01-01：与主判定同用 normalize_ws——纯空白/折行差异放行，实质改动判红）
     saved = failures[:]
     failures.clear()
     real = callback_decl_text(
         (main_index.get("eb_crypto_port")).read_text(errors="replace"), "seal"
     )
     sample = (real.replace("Plaintext", "Body") if real else None)
-    if sample and real and sample != real:
+    if sample and real and normalize_ws(sample) != normalize_ws(real):
         fail("A02 eb_crypto_port.erl 的既有 callback seal 声明被改动（非逐字保持）")
     caught = failures[:]
     failures.clear()
