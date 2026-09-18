@@ -87,7 +87,7 @@ if [ -f "$SCRIPT_DIR/../VERSION" ]; then
   FILE_VSN="$(head -n1 "$SCRIPT_DIR/../VERSION" | tr -d '[:space:]')"
   if [ -n "$FILE_VSN" ] && [ "$FILE_VSN" != "$VSN" ]; then
     echo "✗ VERSION 文件 ($FILE_VSN) 与目标版本 ($VSN) 不一致 / VERSION file and target VSN mismatch" >&2
-    echo "  先同步两处：VERSION + relx.config（版本双源）" >&2
+    echo "  将 .env.deploy 的 DEPLOY_VSN 改为 $FILE_VSN，或提交 VERSION 变更（relx 版本行已由脚本自动对齐）" >&2
     exit 1
   fi
 fi
@@ -430,8 +430,34 @@ run_expand_migrations() {
   local boundary_ready
   local boundary_dirty
   local required_status
+  local applied
   local -a migrations=()
   local -a filtered_migrations=()
+
+  if [ -z "$EXPAND_MIGRATIONS" ]; then
+    # 自动模式：不做 psql 直跑。schema 升级统一由切流后的
+    # `make ctl ARGS='db migrate'`（erlang_migrate）按台账自动判断并登记。
+    # 此处仅保留 boundary 护航门：release 携带 boundary 文件而台账未登记时，
+    # 禁止静默绕过受控 expand 时序，要求显式配置清单。
+    [ -n "$DB_CONTAINER" ] || fail "expand 自动模式需要 IMBOY_DEPLOY_DB_CONTAINER"
+    [ -n "$DB_NAME" ] || fail "expand 自动模式需要 IMBOY_DEPLOY_DB_NAME"
+    [ -n "$DB_USER" ] || fail "expand 自动模式需要 IMBOY_DEPLOY_DB_USER"
+    applied="$(ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c 'SELECT version FROM schema_migrations WHERE dirty = false'")" \
+      || fail "无法读取 schema_migrations 台账（表不存在或库不可达）；请显式配置 DEPLOY_EXPAND_MIGRATIONS"
+    for required in \
+      00000064_msg_store_sender_did.up.sql \
+      00000108_group_attachment_anchor.up.sql \
+      00000109_c2g_timeline_generation_boundary.up.sql \
+      00000111_c2g_request_recipient_boundary.up.sql \
+      00000112_e2ee_group_session_attestation.up.sql; do
+      if ssh_exec "test -f '$PROJECT_DIR/priv/migrations/$required'" \
+         && ! printf '%s\n' "$applied" | grep -qx "$((10#${required%%_*}))"; then
+        fail "release 包含 boundary 迁移 $required 且台账未登记：请显式配置 DEPLOY_EXPAND_MIGRATIONS 走受控 expand 护航"
+      fi
+    done
+    log "expand 自动模式：schema 升级由切流后 db migrate 统一执行（erlang_migrate 台账自动判断）"
+    return 0
+  fi
 
   if [ -n "$EXPAND_MIGRATIONS" ]; then
     read -r -a migrations <<< "$EXPAND_MIGRATIONS"
@@ -454,17 +480,16 @@ run_expand_migrations() {
         fi
         if [ "${#migrations[@]}" -eq 0 ] \
            || ! printf '%s\n' "${migrations[@]}" | grep -qx "$required"; then
-          fail "release 包含必需的 expand 迁移但清单未配置: $required"
+          # 清单未含时，台账已登记(dirty=false)视为历史已应用，放行
+          if ! printf '%s\n' "${applied:-}" | grep -qx "$((10#${required%%_*}))"; then
+            fail "release 包含必需的 expand 迁移但清单未配置且台账未登记: $required"
+          fi
         fi
         ;;
       1) ;;
       *) fail "无法探测必需的 expand 迁移文件: $required (status=$required_status)" ;;
     esac
   done
-  [ -n "$EXPAND_MIGRATIONS" ] || {
-    log "release 不含必需的 expand 迁移，跳过切流前 schema 扩展"
-    return 0
-  }
   [ "${#migrations[@]}" -gt 0 ] || fail "IMBOY_DEPLOY_EXPAND_MIGRATIONS 为空"
   [ -n "$DB_CONTAINER" ] || fail "执行 expand 迁移需要 IMBOY_DEPLOY_DB_CONTAINER"
   [ -n "$DB_NAME" ] || fail "执行 expand 迁移需要 IMBOY_DEPLOY_DB_NAME"
@@ -619,7 +644,9 @@ fi
 
 case "$CURRENT_COLOR" in
   blue|green|none) ;;
-  conflict) fail "蓝绿端口同时监听，拒绝选择部署目标 / both slots are active" ;;
+  conflict) fail "蓝绿端口同时监听，拒绝选择部署目标 / both slots are active。
+  常见原因：上次部署失败后新节点未清理。确认 Nginx 仍指向活动端口后，
+  停掉非活动端口残留：ssh $SERVER_HOST \"<非活动节点目录>/bin/imboy stop\"" ;;
   *) fail "蓝绿监听状态返回未知结果 / unknown active-slot state: $CURRENT_COLOR" ;;
 esac
 
@@ -730,6 +757,14 @@ else
   ok "代码已拉取 / Code pulled"
 fi
 
+# 远端 VERSION 是 erlang.mk 生成 ebin/imboy.app vsn 的唯一来源，
+# /healthz 自报该 vsn。远端落后（如本地 bump 未 push）时产物名对得上但
+# 健康检查版本核对必败，这里提前拦截。
+REMOTE_VSN="$(ssh_capture "head -n1 '$PROJECT_DIR/VERSION' 2>/dev/null | tr -d '[:space:]'")" \
+  || fail "无法读取远端 VERSION"
+[ "$REMOTE_VSN" = "$VSN" ] \
+  || fail "远端仓库 VERSION ($REMOTE_VSN) 与目标版本 ($VSN) 不一致：本地提交是否已 push？(-l 模式请检查 rsync 排除项)"
+
 log "编译 release... / Building release..."
 ssh_exec "
   set -e
@@ -742,12 +777,15 @@ ssh_exec "
   }
   IMBOY_SALES_RELEASE=$SALES_RELEASE \
     escript scripts/validate_sales_release_config.escript config/sys.pro.config
+  # relx 只认 config 里的 release 版本行（RELX_REL_VSN 实测不生效，版本双源），
+  # 构建前把版本行强制对齐到 .env.deploy 指定的 VSN，避免产物名与解包名漂移。
+  # git reset --hard 每次会还原此改动，幂等重写无害。
+  sed -i 's/^{release, {imboy, \"[^\"]*\"}/{release, {imboy, \"$VSN\"}/' relx.config relxpro.config
   # 全量清理后重编：-l 模式 rsync 会同步本地自动生成的 ebin/imboy.app（已列新模块），
   # 但 --exclude='*.beam' 排除了对应 beam，致 erlang.mk 因 .app mtime 较新而跳过重建，
   # release 组装时报 module_not_found。make clean 强制从源码全量重编，规避此陷阱。
   make clean
   IMBOYENV=pro \
-    RELX_REL_VSN='$VSN' \
     RELX_DEV_MODE=false \
     RELX_INCLUDE_ERTS=true \
     make rel
