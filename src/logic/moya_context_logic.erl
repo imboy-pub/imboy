@@ -181,65 +181,86 @@ claims_mismatch(Params, Ctx) ->
     end.
 
 %% ---- 上下文快照查找 ----
+%%
+%% MFS2-F05（A1-D01）：contexts/1,2 在任一底层查询失败时返回 {error, db_error}，
+%% 二次查库（switch 路径）必须把该错误透传给 handler（映射 5xx 重试语义），
+%% 绝不能对返回值强匹配 {ok, ...} —— 强匹配在 DB 抖动窗口抛 badmatch → 500
+%% （A1-D13 bundle_aux 同型崩溃的 switch 路径残留收口）。
 
 -spec find_guardian_context(integer(), integer()) -> {ok, map()} | {error, atom()}.
 find_guardian_context(Uid, LearnerId) ->
-    {ok, #{contexts := Ctxs}} = contexts(Uid),
-    case
-        [
-            C
-         || C <- Ctxs,
-            maps:get(<<"context_type">>, C) =:= <<"guardian">>,
-            maps:get(<<"learner_id">>, C, <<>>) =:= tsid(LearnerId)
-        ]
-    of
-        [Ctx | _] -> {ok, Ctx};
-        [] -> {error, context_mismatch}
+    case contexts(Uid) of
+        {ok, #{contexts := Ctxs}} ->
+            case
+                [
+                    C
+                 || C <- Ctxs,
+                    maps:get(<<"context_type">>, C) =:= <<"guardian">>,
+                    maps:get(<<"learner_id">>, C, <<>>) =:= tsid(LearnerId)
+                ]
+            of
+                [Ctx | _] -> {ok, Ctx};
+                [] -> {error, context_mismatch}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec find_staff_context(integer(), integer()) -> {ok, map()} | {error, atom()}.
 find_staff_context(Uid, GroupId) ->
-    {ok, #{contexts := Ctxs}} = contexts(Uid),
-    case
-        [
-            C
-         || C <- Ctxs,
-            maps:get(<<"context_type">>, C) =:= <<"teacher">>,
-            maps:get(<<"group_id">>, C, <<>>) =:= tsid(GroupId)
-        ]
-    of
-        [Ctx | _] -> {ok, Ctx};
-        [] -> {error, context_mismatch}
+    case contexts(Uid) of
+        {ok, #{contexts := Ctxs}} ->
+            case
+                [
+                    C
+                 || C <- Ctxs,
+                    maps:get(<<"context_type">>, C) =:= <<"teacher">>,
+                    maps:get(<<"group_id">>, C, <<>>) =:= tsid(GroupId)
+                ]
+            of
+                [Ctx | _] -> {ok, Ctx};
+                [] -> {error, context_mismatch}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec find_organization_context(integer(), integer()) -> {ok, map()} | {error, atom()}.
 find_organization_context(Uid, OrgId) ->
-    {ok, #{contexts := Ctxs}} = contexts(Uid, organization),
-    case
-        [
-            C
-         || C <- Ctxs,
-            maps:get(<<"context_type">>, C) =:= <<"organization">>,
-            maps:get(<<"organization_id">>, C, <<>>) =:= tsid(OrgId)
-        ]
-    of
-        [Ctx | _] -> {ok, Ctx};
-        [] -> {error, context_mismatch}
+    case contexts(Uid, organization) of
+        {ok, #{contexts := Ctxs}} ->
+            case
+                [
+                    C
+                 || C <- Ctxs,
+                    maps:get(<<"context_type">>, C) =:= <<"organization">>,
+                    maps:get(<<"organization_id">>, C, <<>>) =:= tsid(OrgId)
+                ]
+            of
+                [Ctx | _] -> {ok, Ctx};
+                [] -> {error, context_mismatch}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec find_legacy_owner_context(integer(), integer()) -> {ok, map()} | {error, atom()}.
 find_legacy_owner_context(Uid, OrgId) ->
-    {ok, #{contexts := Ctxs}} = contexts(Uid, legacy),
-    case
-        [
-            C
-         || C <- Ctxs,
-            maps:get(<<"context_type">>, C) =:= <<"org_owner">>,
-            maps:get(<<"organization_id">>, C, <<>>) =:= tsid(OrgId)
-        ]
-    of
-        [Ctx | _] -> {ok, Ctx};
-        [] -> {error, context_mismatch}
+    case contexts(Uid, legacy) of
+        {ok, #{contexts := Ctxs}} ->
+            case
+                [
+                    C
+                 || C <- Ctxs,
+                    maps:get(<<"context_type">>, C) =:= <<"org_owner">>,
+                    maps:get(<<"organization_id">>, C, <<>>) =:= tsid(OrgId)
+                ]
+            of
+                [Ctx | _] -> {ok, Ctx};
+                [] -> {error, context_mismatch}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% ---- 行 → 契约快照（TSID 一律字符串） ----
