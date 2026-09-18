@@ -449,30 +449,37 @@ a06_default_workspace_change_keeps_persisted_session_scope() ->
 %% 内部辅助
 %% ===================================================================
 
-%% 我的验证容器：ORG-08 一次性 PG（端口可用 ORG08_PGPORT 覆盖，默认 4393）。
-%% 必须在 imboy app 启动（pooler 建池）之前写入 pg_conf。
+%% ORG-08 一次性验证 PG：仅在显式提供 ORG08_PGPORT 时覆盖 pg_conf（ORG-08
+%% run 的复现路径）；缺省不动——由 EUNIT_CONFIG 注入本 run scratch 的
+%% pg_conf。旧版硬编码 4393/imboy_v1，验证容器不存在时 setup 恒 no_pool
+%% （把环境巧合当成了前提）。
 ensure_test_pg_conf() ->
     _ = application:load(imboy),
-    Port = list_to_integer(os:getenv("ORG08_PGPORT", "4393")),
-    PgConf = #{
-        name => pgsql,
-        max_count => 40,
-        init_count => 5,
-        start_mfa =>
-            {epgsql, connect, [
-                #{
-                    host => "127.0.0.1",
-                    username => "imboy_user",
-                    password => "abc54321",
-                    database => "imboy_v1",
-                    port => Port,
-                    ssl => false,
-                    timeout => 4000,
-                    codecs => [{epgsql_codec_rfc3339_bin, []}]
-                }
-            ]}
-    },
-    application:set_env(imboy, pg_conf, PgConf).
+    case os:getenv("ORG08_PGPORT") of
+        false ->
+            ok;
+        PortStr ->
+            Port = list_to_integer(PortStr),
+            PgConf = #{
+                name => pgsql,
+                max_count => 40,
+                init_count => 5,
+                start_mfa =>
+                    {epgsql, connect, [
+                        #{
+                            host => "127.0.0.1",
+                            username => "imboy_user",
+                            password => "abc54321",
+                            database => "imboy_v1",
+                            port => Port,
+                            ssl => false,
+                            timeout => 4000,
+                            codecs => [{epgsql_codec_rfc3339_bin, []}]
+                        }
+                    ]}
+            },
+            application:set_env(imboy, pg_conf, PgConf)
+    end.
 
 %% cs_seat principal：active member + customer_service active assignment +
 %% seat enabled（A04 坐席门），事实装配用真实 eb_pg_auth_facts（真 PG）。
