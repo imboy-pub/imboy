@@ -8,6 +8,7 @@
 -export([
     store/0,
     id/0,
+    org_lifecycle/0,
     resolve/1,
     implementations/0
 ]).
@@ -23,6 +24,10 @@ store() -> cs_pg_store.
 %% @doc 注入 ID 端口实现（TSID）。
 -spec id() -> implementation().
 id() -> cs_tsid.
+
+%% @doc Organization 生命周期事实端口实现（只读 adapter，ORG-08）。
+-spec org_lifecycle() -> implementation().
+org_lifecycle() -> cs_org_lifecycle_facts.
 
 %% @doc 端口 → 已装配实现；未装配的端口显式失败（不返回空实现）。
 -spec resolve(term()) -> {ok, implementation()} | {error, term()}.
@@ -40,7 +45,11 @@ resolve(Port) ->
 %% @doc 已装配的 (契约模块, 实现模块) 列表（契约一致性测试用）。
 -spec implementations() -> [{module(), implementation()}].
 implementations() ->
-    [{cs_ports:store(), store()}, {cs_ports:id(), id()}].
+    [
+        {cs_ports:store(), store()},
+        {cs_ports:id(), id()},
+        {cs_ports:org_lifecycle(), org_lifecycle()}
+    ].
 
 by_key() ->
-    [{store, store()}, {id, id()}].
+    [{store, store()}, {id, id()}, {org_lifecycle, org_lifecycle()}].

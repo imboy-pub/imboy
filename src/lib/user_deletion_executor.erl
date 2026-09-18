@@ -10,6 +10,15 @@
 %%%   3. 事务后：Garage S3 附件对象删除（外部资源；DB 侧引用已清，
 %%%      失败重试幂等）
 %%%
+%%% ORG-02（Core Contract C17，fail-closed 编排接入）：用户主行删除的
+%%% 唯一路径是本模块 execute_main_tx/2，其首条语句即 deletion preflight
+%%% 编排（organization_deletion_preflight:run/1，实时拉取全部已注册域
+%%% facts）。blockers 非空或任一域 facts 不可得
+%%% （DEPENDENCY_FACTS_UNAVAILABLE：缺域/超时/unavailable/inconsistent）
+%%% 一律 abort 事务——无部分删除；最终裁决仍由 DB RESTRICT/guard
+%%% （00000126 organization.owner_id ON DELETE RESTRICT 等）兜底。
+%%% 无任何跳过开关（注册表不可被旁路）。
+%%%
 %%% 幂等契约：任意步骤对"已删除"的行是 no-op，两轮执行终态一致。
 %%% v1 明示不做（记入 manifest 机制列）：msg_store_seq（会话计数器，
 %%% 无用户列）、verification_code（时效自失效）；资金/审计类按 D-02
@@ -179,8 +188,13 @@ transfer_ownerships_tx(Conn, Uid) ->
 
 %% @doc 主删除事务：核心 20 表（含会话令牌/设备/E2EE/Olm 密钥）
 %% + 声明式扩展清单 + 用户主行最后（user_ds 负责主行）
+%%
+%% ORG-02（C17）：首条语句为 deletion preflight 门（fail-closed）；
+%% 门拒绝 → throw({abort_tx, ...}) → elib_pg:with_tx 回滚并归一为
+%% {error, Reason}（编排器 mark_failed，重试至上限转 failed 终态）。
 -spec execute_main_tx(pid(), integer()) -> ok.
 execute_main_tx(Conn, Uid) ->
+    ok = deletion_preflight_gate(Uid),
     %% mcp_client_grant 无用户列：先按用户 client 子查询删除
     {ok, _} = elib_pg:execute(
         Conn,
@@ -202,6 +216,19 @@ execute_main_tx(Conn, Uid) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+%% ORG-02 删除预检门：blockers 非空 → 稳定拒绝；facts 不可得
+%% （DEPENDENCY_FACTS_UNAVAILABLE）→ 稳定拒绝。只读 provider 经独立
+%% 连接池读已提交快照，与删除事务无连接/锁耦合；拒绝即整事务回滚。
+deletion_preflight_gate(Uid) ->
+    case organization_deletion_preflight:run(Uid) of
+        {ok, #{blockers := []}} ->
+            ok;
+        {ok, #{blockers := Blockers}} ->
+            throw({abort_tx, {deletion_preflight_blockers, Blockers}});
+        {error, Reason} ->
+            throw({abort_tx, {deletion_preflight_unavailable, Reason}})
+    end.
 
 %% 通用所有权转移：对每个 owned 对象找继任 → 转移；无继任 → Close
 transfer_generic(Conn, Uid, SuccessorSql, OwnedSql, Transfer, Close) ->

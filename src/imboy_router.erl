@@ -663,6 +663,22 @@ get_routes() ->
                 %% ============================================================
                 {"/api/v1/organizations", organization_handler, #{action => collection}},
                 {"/api/v1/organizations/mine", organization_handler, #{action => mine}},
+                %% ============================================================
+                %% Organization V1（ORG-10 一次性集中注册）：
+                %% lifecycle / invitation / department / default-workspace v2 面。
+                %% 术语冻结（Core Contract C18）：invite / accept / reject /
+                %% revoke / restore / member / department / archive 严格区分；
+                %% 既有 POST /organizations/:id/members 为 legacy direct-add
+                %% adapter（C11 TRANSITION），观测归零后移除，不在 v2 重复暴露。
+                %% 固定路径（deletion-preflight）必须注册在 :organization_id
+                %% 通配之前防遮蔽（同 channel/qrcode 先例）。
+                %% ============================================================
+                {"/api/v1/organizations/deletion-preflight", organization_handler, #{
+                    action => deletion_preflight
+                }},
+                {"/api/v1/organizations/invitations/mine", organization_api_handler, #{
+                    action => invitation_mine
+                }},
                 {"/api/v1/organizations/:organization_id", organization_handler, #{
                     action => detail
                 }},
@@ -673,8 +689,77 @@ get_routes() ->
                     organization_member_handler, #{action => owner_transfer}},
                 {"/api/v1/organizations/:organization_id/members/:user_id/role",
                     organization_member_handler, #{action => role}},
+                %% 成员生命周期命令（EB-D07/EB-08）：suspend/restore/offboard
+                %% （offboard 复用既有 remove 终态语义，两步离场 S3）
+                {"/api/v1/organizations/:organization_id/members/:user_id/suspend",
+                    organization_member_handler, #{action => member_suspend}},
+                {"/api/v1/organizations/:organization_id/members/:user_id/restore",
+                    organization_member_handler, #{action => member_restore}},
+                {"/api/v1/organizations/:organization_id/members/:user_id/offboard",
+                    organization_member_handler, #{action => member_offboard}},
                 {"/api/v1/organizations/:organization_id/members/:user_id",
                     organization_member_handler, #{action => member}},
+                %% —— ORG-10 集中注册（续）：org 域内 v2 面 ——
+                %% lifecycle（C16：archive/restore 幂等 command；deletion-preflight
+                %% 见上方固定路径块，GET）
+                {"/api/v1/organizations/:organization_id/archive", organization_handler, #{
+                    action => archive
+                }},
+                {"/api/v1/organizations/:organization_id/restore", organization_handler, #{
+                    action => restore
+                }},
+                %% invitation（C11：invite / accept / reject / revoke / list 是
+                %% 不同 command；同路径 GET=list（org 治理面）/ POST=create）
+                {"/api/v1/organizations/:organization_id/invitations", organization_api_handler, #{
+                    action => invitation_collection
+                }},
+                {"/api/v1/organizations/:organization_id/invitations/accept",
+                    organization_api_handler, #{
+                        action => invitation_accept
+                    }},
+                {"/api/v1/organizations/:organization_id/invitations/:invitation_id/reject",
+                    organization_api_handler, #{
+                        action => invitation_reject
+                    }},
+                {"/api/v1/organizations/:organization_id/invitations/:invitation_id/revoke",
+                    organization_api_handler, #{
+                        action => invitation_revoke
+                    }},
+                %% department（C10：树形目录 + member 多归属 + 局部 admin；
+                %% 同路径 GET=list / POST=create）
+                {"/api/v1/organizations/:organization_id/departments", organization_api_handler, #{
+                    action => department_collection
+                }},
+                {"/api/v1/organizations/:organization_id/departments/:department_id",
+                    organization_api_handler, #{
+                        action => department_item
+                    }},
+                {"/api/v1/organizations/:organization_id/departments/:department_id/move",
+                    organization_api_handler, #{
+                        action => department_move
+                    }},
+                {"/api/v1/organizations/:organization_id/departments/:department_id/archive",
+                    organization_api_handler, #{
+                        action => department_archive
+                    }},
+                {"/api/v1/organizations/:organization_id/departments/:department_id/members",
+                    organization_api_handler, #{
+                        action => department_member_collection
+                    }},
+                {"/api/v1/organizations/:organization_id/departments/:department_id/members/:user_id",
+                    organization_api_handler, #{
+                        action => department_member_item
+                    }},
+                {"/api/v1/organizations/:organization_id/departments/:department_id/members/:user_id/admin",
+                    organization_api_handler, #{
+                        action => department_member_admin
+                    }},
+                %% default workspace（C05：显式 default relation，GET 读 /
+                %% POST set / DELETE clear 同路径按 method 分派）
+                {"/api/v1/organizations/:organization_id/default-workspace",
+                    organization_api_handler, #{
+                        action => default_workspace
+                    }},
                 {"/api/v1/workspaces", workspace_handler, #{action => create}},
                 {"/api/v1/workspaces/mine", workspace_handler, #{action => mine}},
                 {"/api/v1/workspaces/join", workspace_handler, #{action => join}},
@@ -962,6 +1047,48 @@ get_routes() ->
             {"/api/adm/workspace/members", adm_workspace_handler, #{action => members}},
             {"/api/adm/workspace/archive", adm_workspace_handler, #{action => archive}},
             {"/api/adm/workspace/restore", adm_workspace_handler, #{action => restore}},
+            % Platform Admin Organization 治理面（ORG-ADM-ORG-API；ORG-14 选 A）
+            % 读=organizations:read；写=organizations:write（fail-closed 403）。
+            % TSID 一律 string 传输；写端点全部审计 adm_operation_log。
+            {"/api/adm/organizations", adm_organization_handler, #{action => list}},
+            {"/api/adm/organizations/:organization_id", adm_organization_handler, #{
+                action => show
+            }},
+            {"/api/adm/organizations/:organization_id/members", adm_organization_handler, #{
+                action => members
+            }},
+            {"/api/adm/organizations/:organization_id/invitations", adm_organization_handler, #{
+                action => invitations
+            }},
+            {"/api/adm/organizations/:organization_id/departments", adm_organization_handler, #{
+                action => departments
+            }},
+            {"/api/adm/organizations/:organization_id/workspaces", adm_organization_handler, #{
+                action => workspaces
+            }},
+            {"/api/adm/organizations/:organization_id/archive", adm_organization_handler, #{
+                action => org_archive
+            }},
+            {"/api/adm/organizations/:organization_id/restore", adm_organization_handler, #{
+                action => org_restore
+            }},
+            {"/api/adm/organizations/:organization_id/owner-transfer", adm_organization_handler, #{
+                action => owner_transfer
+            }},
+            {"/api/adm/organizations/:organization_id/members/:user_id/suspend",
+                adm_organization_handler, #{action => member_suspend}},
+            {"/api/adm/organizations/:organization_id/members/:user_id/restore",
+                adm_organization_handler, #{action => member_restore}},
+            {"/api/adm/organizations/:organization_id/members/:user_id/remove",
+                adm_organization_handler, #{action => member_remove}},
+            {"/api/adm/organizations/:organization_id/invitations/:invitation_id/cancel",
+                adm_organization_handler, #{action => invitation_cancel}},
+            {"/api/adm/organizations/:organization_id/departments/:department_id/rename",
+                adm_organization_handler, #{action => department_rename}},
+            {"/api/adm/organizations/:organization_id/departments/:department_id/move",
+                adm_organization_handler, #{action => department_move}},
+            {"/api/adm/organizations/:organization_id/departments/:department_id/archive",
+                adm_organization_handler, #{action => department_archive}},
             {"/api/adm/project/list", adm_workspace_handler, #{action => project_list}},
             {"/api/adm/project/detail", adm_workspace_handler, #{action => project_detail}},
             %% Channel-first-class W2 治理只读面（ZC-05）

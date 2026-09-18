@@ -704,6 +704,12 @@ archive_tx(Conn, WsId, Uid) ->
             " archived_by = $2, updated_at = $1", " WHERE id = $3 AND status = 'active'">>,
     case elib_pg:execute(Conn, Sql, [Now, Uid, WsId]) of
         {ok, 1} ->
+            %% Org 默认工作区同事务交接（C05/ORG-05）：默认永不指向
+            %% archived Workspace——replace_with_min_active / clear；
+            %% 个人域（organization_id 为空）不动作。失败回滚整个归档。
+            ok = organization_default_workspace_app:replace_or_clear_on_archive_tx(
+                Conn, organization_id_of_tx(Conn, WsId), WsId
+            ),
             {ok, #{
                 workspace_id => WsId,
                 status => <<"archived">>,
@@ -960,6 +966,10 @@ admin_archive_tx(Conn, WsId, _AdmUserId) ->
             " archived_by = NULL, updated_at = $1", " WHERE id = $2 AND status = 'active'">>,
     case elib_pg:execute(Conn, Sql, [Now, WsId]) of
         {ok, 1} ->
+            %% 与 Owner 归档同口径：Org 默认工作区同事务交接（C05/ORG-05）
+            ok = organization_default_workspace_app:replace_or_clear_on_archive_tx(
+                Conn, organization_id_of_tx(Conn, WsId), WsId
+            ),
             {ok, #{
                 workspace_id => WsId,
                 status => <<"archived">>,
@@ -970,6 +980,14 @@ admin_archive_tx(Conn, WsId, _AdmUserId) ->
             throw({abort_tx, already_archived});
         {error, Reason} ->
             throw({abort_tx, Reason})
+    end.
+
+%% 归档交接用：事务内读取工作区归属 Org（个人域返回 undefined 不动作）。
+-spec organization_id_of_tx(any(), integer()) -> integer() | undefined.
+organization_id_of_tx(Conn, WsId) ->
+    case elib_pg:query(Conn, <<"SELECT organization_id FROM workspace WHERE id = $1">>, [WsId]) of
+        {ok, [#{<<"organization_id">> := OrgId} | _]} when OrgId =/= null -> OrgId;
+        _ -> undefined
     end.
 
 %% @doc 运营恢复（平台侧；清空归档审计列；恢复后写守卫放行）

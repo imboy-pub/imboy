@@ -1,11 +1,11 @@
 %% moya_learner_bind_integration_tests
 %% BIND-01 / BIND-02 / HISTORY-01 复核 — 学员账号绑定真库集成测试（Step 16）。
 %%
-%% 直连 moya_mig_test@127.0.0.1:4323（scratch，00000001→00000098 全量态），
-%% 每用例 BEGIN ... ROLLBACK，不留数据（模式照 moya_flow_integration_tests）。
-%% 测试直调 moya_learner_bind_repo 的 _tx 函数（与生产 elib_pg:with_tx
-%% 同一代码路径）。
-%% DB 不可达时自动 skip。
+%% 一次性 marker 库（inttest_marker_db 配方，env 前缀 MOYA_INTTEST，全链迁移
+%% 至当前 head），每用例 BEGIN ... ROLLBACK，不留数据（模式照
+%% moya_flow_integration_tests）。测试直调 moya_learner_bind_repo 的 _tx 函数
+%% （与生产 elib_pg:with_tx 同一代码路径）。
+%% 供给失败（环境/配置/迁移任一不可用）显式 FAIL，无静默 skip。
 %%
 %% 覆盖：
 %%   guard      —— owner/manager 可操作；teacher(非 manager)/assistant/家长/陌生人 unauthorized
@@ -22,11 +22,6 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% ---- 夹具（与 moya_flow_integration_tests 同源；ID 段 99 前缀错开） ----
--define(PG_HOST, "127.0.0.1").
--define(PG_PORT, 4323).
--define(PG_USER, <<"imboy_user">>).
--define(PG_PASS, <<"abc54321">>).
--define(PG_DB, <<"moya_mig_test">>).
 
 % OrgA owner + A1 班 teacher（一人双身份）
 -define(OWNER, 990001).
@@ -64,40 +59,22 @@
 
 setup_conn() ->
     try
-        {ok, _} = application:ensure_all_started(epgsql),
-        try
-            elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
-        catch
-            _:_ -> ok
-        end,
-        {ok, C} = epgsql:connect(#{
-            host => ?PG_HOST,
-            port => ?PG_PORT,
-            username => ?PG_USER,
-            password => ?PG_PASS,
-            database => ?PG_DB,
-            timeout => 5000
-        }),
-        C
-    catch
-        _:_ -> skip
-    end.
-
-close_conn(skip) ->
-    ok;
-close_conn(C) ->
-    try
-        epgsql:close(C)
+        elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
         _:_ -> ok
     end,
+    %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
+    %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链；任一失败显式 error。
+    inttest_marker_db:provision(#{env_prefix => <<"MOYA_INTTEST">>}).
+
+close_conn(State) ->
+    inttest_marker_db:release(State),
     ok.
 
 with_tx(TestFun) ->
-    {setup, fun setup_conn/0, fun close_conn/1, fun
-        (skip) ->
-            [];
-        (C) ->
+    {timeout, 900,
+        {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
+            C = maps:get(conn, State),
             ?_test(begin
                 ok = exec(C, <<"BEGIN">>),
                 try
@@ -107,7 +84,7 @@ with_tx(TestFun) ->
                     exec(C, <<"ROLLBACK">>)
                 end
             end)
-    end}.
+        end}}.
 
 exec(C, Sql) ->
     case elib_pg:query(C, Sql, []) of

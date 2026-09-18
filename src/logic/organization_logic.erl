@@ -3,6 +3,9 @@
 %% 通用 Organization 本体逻辑；不派生 Workspace、Group 或垂直业务权限。
 
 -export([create/2, mine/3, detail/2, update/5]).
+%% ORG-02 adapter：archive/restore/deletion-preflight 应用层挂接
+%% （路由注册归 ORG-10；实现委托 src/lib/organization）。
+-export([archive/2, restore/2, deletion_preflight/1]).
 
 -include("log.hrl").
 
@@ -148,6 +151,35 @@ update_validated(Uid, OrgId, Name, BrandingJson, SettingsJson) ->
             ?ERROR_LOG([organization_update_failed, OrgId, Uid, Reason]),
             internal_error(<<"更新失败，请稍后重试"/utf8>>)
     end.
+
+%% ORG-02（C16）：归档（幂等 command，owner/admin）。
+-spec archive(integer(), integer()) -> {ok, map()} | {error, {400 | 403 | 404 | 500, binary()}}.
+archive(Uid, OrgId) when is_integer(Uid), Uid > 0, is_integer(OrgId), OrgId > 0 ->
+    organization_lifecycle:archive(Uid, OrgId);
+archive(_, _) ->
+    {error, {400, <<"organization_id 必须是正整数"/utf8>>}}.
+
+%% ORG-02（C16）：恢复（幂等 command，archived 态唯一放行的写入口）。
+-spec restore(integer(), integer()) -> {ok, map()} | {error, {400 | 403 | 404 | 500, binary()}}.
+restore(Uid, OrgId) when is_integer(Uid), Uid > 0, is_integer(OrgId), OrgId > 0 ->
+    organization_lifecycle:restore(Uid, OrgId);
+restore(_, _) ->
+    {error, {400, <<"organization_id 必须是正整数"/utf8>>}}.
+
+%% ORG-02（C17）：User deletion preflight 应用层入口，返回稳定 blocker 列表。
+%% DEPENDENCY_FACTS_UNAVAILABLE（缺域/超时/不可用/不一致）归口 503。
+-spec deletion_preflight(integer()) ->
+    {ok, map()} | {error, {400 | 503, binary()}}.
+deletion_preflight(Uid) when is_integer(Uid), Uid > 0 ->
+    case organization_deletion_preflight:run(Uid) of
+        {ok, Result} ->
+            {ok, Result};
+        {error, _Reason} ->
+            ?ERROR_LOG([organization_deletion_preflight_unavailable, Uid, _Reason]),
+            {error, {503, <<"依赖域事实不可用，删除预检被拒绝"/utf8>>}}
+    end;
+deletion_preflight(_) ->
+    {error, {400, <<"用户身份无效"/utf8>>}}.
 
 normalize_name(Name) when is_binary(Name) ->
     try unicode:characters_to_binary(string:trim(Name)) of

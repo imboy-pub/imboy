@@ -661,7 +661,14 @@ a03_env_keyring_assembly() ->
 
 params(Extra) ->
     maps:merge(
-        #{workspace_id => ?WS, store => ?FAKE, id => cs_fake_id},
+        #{
+            workspace_id => ?WS,
+            store => ?FAKE,
+            id => cs_fake_id,
+            %% ORG-08：archived Org 门（C16）在纯单元套件用恒 active 替身，
+            %% archived 分支的真库行为见 cs_org_compat_tests A04。
+            org_lifecycle => cs_fake_org_lifecycle
+        },
         Extra
     ).
 

@@ -73,6 +73,13 @@ archive_test_() ->
                     Other ->
                         ?assert(false, io_lib:format("unexpected ~p", [Other]))
                 after 500 -> ?assert(false, "archive UPDATE not executed")
+                end,
+                %% C05/ORG-05：归档同事务触发 Org 默认工作区交接钩子
+                %% （此处 ws 行归属列为 null → 个人域 undefined，钩子仍被调用）
+                receive
+                    {default_ws_handover, OrgId0, ?WS_ID} ->
+                        ?assertEqual(undefined, OrgId0)
+                after 500 -> ?assert(false, "default workspace handover hook not called")
                 end
             end)
         end},
@@ -153,8 +160,12 @@ archive_mocks(CurrStatus, Self) ->
             {'one', 2, fun(<<"SELECT status FROM workspace", _/binary>>, _) ->
                 {ok, #{<<"status">> => ws_status_of(CurrStatus)}}
             end},
-            {'query', 3, fun(fake_conn, <<"SELECT status FROM workspace", _/binary>>, _) ->
-                {ok, [#{<<"status">> => ws_status_of(CurrStatus)}]}
+            {'query', 3, fun
+                (fake_conn, <<"SELECT status FROM workspace", _/binary>>, _) ->
+                    {ok, [#{<<"status">> => ws_status_of(CurrStatus)}]};
+                %% C05/ORG-05：归档交接需事务内读归属 Org（本 mock 返回 null=个人域）
+                (fake_conn, <<"SELECT organization_id FROM workspace", _/binary>>, _) ->
+                    {ok, [#{<<"organization_id">> => null}]}
             end},
             {'execute', 3, fun(fake_conn, Sql, Params) ->
                 case Sql of
@@ -177,6 +188,13 @@ archive_mocks(CurrStatus, Self) ->
                     _ ->
                         {ok, 1}
                 end
+            end}
+        ]},
+        {organization_default_workspace_app, [
+            %% 归档同事务默认工作区交接钩子（ORG-05）；哨兵断言钩子已触发
+            {'replace_or_clear_on_archive_tx', 3, fun(_Conn, OrgId, WsId) ->
+                Self ! {default_ws_handover, OrgId, WsId},
+                ok
             end}
         ]}
     ].

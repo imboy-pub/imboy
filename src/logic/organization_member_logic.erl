@@ -18,6 +18,7 @@
     remove/3,
     transfer_owner/3,
     suspend/3,
+    restore/3,
     dependent_resources_conflict/1
 ]).
 
@@ -133,75 +134,23 @@ transfer_owner(Uid, OrgId, TargetUid) when
 transfer_owner(_, _, _) ->
     {error, {400, <<"organization_id 和 user_id 必须是正整数"/utf8>>}}.
 
+%% Owner Source-of-Truth 迁移（Enterprise Organization V1 / ORG-01）：
+%% transfer command 下沉到 src/lib/organization/application/organization_owner_transfer
+%% （单事务、组织行锁、先降旧 → 再升新 → 最后改 owner_id 投影，提交时双侧
+%% deferred invariant 终检）。本函数仅保留 legacy 入口兼容：日志与错误归口不变。
 transfer_owner_validated(Uid, OrgId, TargetUid) ->
-    Tx = fun(Conn) -> transfer_owner_tx(Conn, Uid, OrgId, TargetUid) end,
-    case elib_pg:with_tx(Tx) of
+    case organization_owner_transfer:transfer(Uid, OrgId, TargetUid) of
         {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
-            {error, {Code, Msg}};
-        {error, Reason} ->
-            ?ERROR_LOG([organization_owner_transfer_failed, OrgId, Uid, TargetUid, Reason]),
-            internal_error(<<"Owner 转移失败，请稍后重试"/utf8>>);
-        Result when is_map(Result) ->
+            case Code of
+                500 ->
+                    ?ERROR_LOG([organization_owner_transfer_failed, OrgId, Uid, TargetUid]),
+                    {error, {Code, Msg}};
+                _ ->
+                    {error, {Code, Msg}}
+            end;
+        {ok, Result} when is_map(Result) ->
             ?INFO_LOG([organization_owner_transferred, OrgId, Uid, TargetUid]),
             {ok, Result}
-    end.
-
-transfer_owner_tx(Conn, Uid, OrgId, TargetUid) ->
-    Org =
-        case organization_repo:find_for_update_tx(Conn, OrgId) of
-            {ok, #{<<"status">> := <<"active">>} = Row} -> Row;
-            {ok, _} -> abort(409, <<"Organization 已归档，不能转移 Owner"/utf8>>);
-            {error, not_found} -> abort(404, <<"Organization 不存在"/utf8>>);
-            {error, Reason1} -> throw({abort_tx, {internal, Reason1}})
-        end,
-    case maps:get(<<"owner_id">>, Org, 0) of
-        Uid -> ok;
-        _ -> abort(403, <<"仅当前主 Owner 可转移 Owner"/utf8>>)
-    end,
-    case organization_member_repo:find_for_update_tx(Conn, OrgId, Uid, <<"role,status">>) of
-        {ok, #{<<"role">> := <<"owner">>, <<"status">> := <<"active">>}} -> ok;
-        {ok, _} -> abort(403, <<"当前主 Owner 成员状态无效"/utf8>>);
-        {error, not_found} -> abort(403, <<"当前主 Owner 成员状态无效"/utf8>>);
-        {error, Reason2} -> throw({abort_tx, {internal, Reason2}})
-    end,
-    case
-        organization_member_repo:find_for_update_tx(
-            Conn, OrgId, TargetUid, <<"role,status">>
-        )
-    of
-        {ok, #{<<"status">> := <<"active">>, <<"role">> := Role}} when
-            Role =:= <<"admin">>; Role =:= <<"member">>
-        ->
-            ok;
-        {ok, #{<<"status">> := <<"active">>, <<"role">> := <<"owner">>}} ->
-            abort(409, <<"目标用户已是 Owner"/utf8>>);
-        {ok, _} ->
-            member_not_active();
-        {error, not_found} ->
-            member_not_active();
-        {error, Reason3} ->
-            throw({abort_tx, {internal, Reason3}})
-    end,
-    case organization_repo:update_owner_tx(Conn, OrgId, TargetUid) of
-        {ok, _} -> ok;
-        {error, Reason4} -> throw({abort_tx, {internal, Reason4}})
-    end,
-    case organization_member_repo:update_role_tx(Conn, OrgId, Uid, <<"admin">>) of
-        ok -> ok;
-        {error, Reason5} -> throw({abort_tx, {internal, Reason5}})
-    end,
-    case organization_member_repo:find_active_tx(Conn, OrgId, TargetUid, <<"role">>) of
-        {ok, #{<<"role">> := <<"owner">>}} ->
-            #{
-                organization_id => OrgId,
-                owner_id => TargetUid,
-                previous_owner_id => Uid,
-                previous_owner_role => <<"admin">>
-            };
-        {ok, _} ->
-            throw({abort_tx, owner_membership_not_synchronized});
-        {error, Reason6} ->
-            throw({abort_tx, {owner_membership_not_synchronized, Reason6}})
     end.
 
 invite_registered_user(Uid, OrgId, TargetUid, Role) ->
@@ -377,6 +326,60 @@ suspend(Uid, OrgId, TargetUid) when
 suspend(_, _, _) ->
     {error, {400, <<"organization_id 和 user_id 必须是正整数"/utf8>>}}.
 
+%% @doc 恢复（restore）suspended 的 Org 成员：EB-D07「suspended 是可恢复的撤权
+%% 第一步」的复位端。与 suspend/3 同规（锁顺序「组织行先、成员行后」）：
+%%   1. 参数形状；2. 组织存在且 active；3. 操作人必须是 Owner/Admin；
+%%   4. 目标必须是 suspended 成员；5. 精确单列状态迁移（suspended → active）。
+%%
+%% 语义要点：
+%%   * 只接受 suspended 来源：active（无需恢复）与 removed（终态，恢复走重新
+%%     邀请）都 409 明确拒绝——与 suspend 的「不静默成功」同一纪律；
+%%   * 主 Owner 的成员行不可能处于 suspended（DB 守卫
+%%     trg_organization_primary_owner_member_guard 23514），故无需 owner 特判。
+-spec restore(integer(), integer(), integer()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+restore(Uid, OrgId, TargetUid) when
+    is_integer(OrgId), OrgId > 0, is_integer(TargetUid), TargetUid > 0
+->
+    Result = write_tx(
+        Uid,
+        OrgId,
+        fun(Conn, _Org, _ActorRole) -> restore_tx(Conn, OrgId, TargetUid) end,
+        <<"恢复失败，请稍后重试"/utf8>>
+    ),
+    case Result of
+        {ok, _} -> ?INFO_LOG([organization_member_restored, OrgId, Uid, TargetUid]);
+        _ -> ok
+    end,
+    Result;
+restore(_, _, _) ->
+    {error, {400, <<"organization_id 和 user_id 必须是正整数"/utf8>>}}.
+
+restore_tx(Conn, OrgId, TargetUid) ->
+    case
+        organization_member_repo:find_for_update_tx(
+            Conn, OrgId, TargetUid, <<"role,status">>
+        )
+    of
+        {ok, #{<<"status">> := <<"suspended">>, <<"role">> := Role}} ->
+            case
+                set_member_status_tx(
+                    Conn, OrgId, TargetUid, <<"suspended">>, <<"active">>
+                )
+            of
+                ok ->
+                    {ok, member_result(OrgId, TargetUid, Role, <<"active">>)};
+                {error, Reason} ->
+                    throw({abort_tx, {internal, Reason}})
+            end;
+        {ok, _NotSuspended} ->
+            abort(409, <<"该成员不在暂停状态，无法恢复"/utf8>>);
+        {error, not_found} ->
+            member_not_active();
+        {error, Reason} ->
+            throw({abort_tx, {internal, Reason}})
+    end.
+
 suspend_tx(Conn, OrgId, TargetUid) ->
     case
         organization_member_repo:find_for_update_tx(
@@ -386,7 +389,7 @@ suspend_tx(Conn, OrgId, TargetUid) ->
         {ok, #{<<"status">> := <<"active">>, <<"role">> := <<"owner">>}} ->
             abort(409, <<"主 Owner 不能被暂停，请先转移 Owner"/utf8>>);
         {ok, #{<<"status">> := <<"active">>, <<"role">> := Role}} ->
-            case set_member_status_tx(Conn, OrgId, TargetUid, <<"suspended">>) of
+            case set_member_status_tx(Conn, OrgId, TargetUid, <<"active">>, <<"suspended">>) of
                 ok ->
                     {ok, member_result(OrgId, TargetUid, Role, <<"suspended">>)};
                 {error, Reason} ->
@@ -403,15 +406,16 @@ suspend_tx(Conn, OrgId, TargetUid) ->
 %% 主 Owner 的成员行受数据库守卫保护（00000113 的 trg_organization_primary_owner_member_guard，
 %% 任何 status <> 'active' 的变更都是 23514）；`suspend_tx/4` 的第一条子句先判
 %% `role = owner` ⇒ 409，避免把 DB 的 23514 当成普通内部错误上报。
-%% 精确的单列状态迁移：org 作用域显式贯穿，且只接受仍然 active 的行
-%% （并发重复迁移由该条件裁决 —— 影响行数不为 1 即显式失败，不静默成功）。
-set_member_status_tx(Conn, OrgId, Uid, Status) ->
+%% 精确的单列状态迁移（suspend: active→suspended；restore: suspended→active）：
+%% org 作用域显式贯穿，且只接受仍处于来源态的行（并发重复迁移由该条件裁决 ——
+%% 影响行数不为 1 即显式失败，不静默成功）。
+set_member_status_tx(Conn, OrgId, Uid, FromStatus, Status) ->
     Sql =
         <<
-            "UPDATE organization_member SET status = $3, updated_at = CURRENT_TIMESTAMP"
-            " WHERE organization_id = $1 AND user_id = $2 AND status = 'active'"
+            "UPDATE organization_member SET status = $4, updated_at = CURRENT_TIMESTAMP"
+            " WHERE organization_id = $1 AND user_id = $2 AND status = $3"
         >>,
-    case elib_pg:execute(Conn, Sql, [OrgId, Uid, Status]) of
+    case elib_pg:execute(Conn, Sql, [OrgId, Uid, FromStatus, Status]) of
         {ok, 1} -> ok;
         {ok, _} -> {error, member_not_active};
         {error, Reason} -> {error, Reason}

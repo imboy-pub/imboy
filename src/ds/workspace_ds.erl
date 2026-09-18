@@ -158,6 +158,10 @@ do_create_template(Conn, OwnerUid, OrgId, Name, RequestId) ->
         <<"created_at">> => Now,
         <<"updated_at">> => Now
     }),
+    %% 1.5 Organization 默认工作区（C05/ORG-05）：首个 Org Workspace 创建时
+    %% 同事务设默认（显式关系，取代 min-ID 推导）；个人域（OrgId=undefined）
+    %% 与非首个（已有默认或已有其他工作区）均为不动作。
+    ok = organization_default_workspace_app:ensure_first_workspace_tx(Conn, OrgId, WsId),
     %% 2. Owner workspace_member（创建者有且仅有一条 Owner 记录，§1.4.2 规则 1）
     ok = workspace_member_repo:insert_member_tx(Conn, WsId, #{
         <<"user_id">> => OwnerUid,

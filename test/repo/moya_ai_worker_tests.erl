@@ -1,9 +1,9 @@
 %% moya_ai_worker_tests
 %% AI-01 / AI-03（Worker 侧落库路径）— 墨芽书法 AI 回课 Worker 真库集成测试（Step 11）。
 %%
-%% 直连 moya_mig_test@127.0.0.1:4323（scratch，00000001→00000098 全量态），
-%% 每用例 BEGIN ... ROLLBACK，不留数据（模式照 moya_flow_integration_tests）。
-%% DB 不可达时自动 skip。
+%% 一次性 marker 库（inttest_marker_db 配方，env 前缀 MOYA_INTTEST，全链迁移
+%% 至当前 head），每用例 BEGIN ... ROLLBACK，不留数据（模式照
+%% moya_flow_integration_tests）。供给失败显式 FAIL，无静默 skip。
 %%
 %% 外部依赖全部 meck（零真实网络、零真实模型密钥）：
 %%   imboy_llm_registry:lookup/1、provider（imboy_llm_qianfan 的 chat/3 与
@@ -27,13 +27,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-%% ---- 夹具（真库 4323 scratch；ID 段 97 前缀与 flow-98/bind-99 错开） ----
--define(PG_HOST, "127.0.0.1").
--define(PG_PORT, 4323).
--define(PG_USER, <<"imboy_user">>).
--define(PG_PASS, <<"abc54321">>).
--define(PG_DB, <<"moya_mig_test">>).
-
+%% ---- 夹具（marker 库；ID 段 97 前缀与 flow-98/bind-99 错开） ----
 -define(TEACHER, 970001).
 -define(PARENT, 970002).
 -define(ORG_A, 971000).
@@ -56,45 +50,28 @@
 
 setup_all() ->
     try
-        {ok, _} = application:ensure_all_started(epgsql),
-        {ok, _} = application:ensure_all_started(meck),
-        try
-            elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
-        catch
-            _:_ -> ok
-        end,
-        {ok, C} = epgsql:connect(#{
-            host => ?PG_HOST,
-            port => ?PG_PORT,
-            username => ?PG_USER,
-            password => ?PG_PASS,
-            database => ?PG_DB,
-            timeout => 5000
-        }),
-        ok = install_mocks(),
-        C
-    catch
-        _:_ -> skip
-    end.
-
-cleanup_all(skip) ->
-    ok;
-cleanup_all(C) ->
-    uninstall_mocks(),
-    try
-        epgsql:close(C)
+        elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
         _:_ -> ok
     end,
+    {ok, _} = application:ensure_all_started(meck),
+    %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
+    %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链；任一失败显式 error。
+    State = inttest_marker_db:provision(#{env_prefix => <<"MOYA_INTTEST">>}),
+    ok = install_mocks(),
+    State.
+
+cleanup_all(State) ->
+    uninstall_mocks(),
+    inttest_marker_db:release(State),
     ok.
 
 %% 真库事务 + mock 生效域。chat 返回值经进程字典 fake_chat 注入
 %% （undefined → 合法结构化 JSON；{error, ...} / {ok, #{content...}} 直传）。
 ai_tx(TestFun) ->
-    {setup, fun setup_all/0, fun cleanup_all/1, fun
-        (skip) ->
-            [];
-        (C) ->
+    {timeout, 900,
+        {setup, fun setup_all/0, fun cleanup_all/1, fun(State) ->
+            C = maps:get(conn, State),
             ?_test(begin
                 ok = exec(C, <<"BEGIN">>),
                 put(moya_test_conn, C),
@@ -111,7 +88,7 @@ ai_tx(TestFun) ->
                     exec(C, <<"ROLLBACK">>)
                 end
             end)
-    end}.
+        end}}.
 
 install_mocks() ->
     Mocks = [
@@ -730,10 +707,9 @@ reclaim_stuck_pool_entry_test_() ->
 %% 两连接并发 claim：无双重认领（同一行不被两连接拿到）、无丢行（两 queued
 %% 各被一连接认领）。A 认领后不提交，B 的 SKIP LOCKED 必须跳过 A 锁定行。
 claim_skip_locked_no_double_claim_test_() ->
-    {setup, fun setup_pair/0, fun cleanup_pair/1, fun
-        ({skip, _}) ->
-            [];
-        ({CA, CB}) ->
+    {timeout, 900,
+        {setup, fun setup_pair/0, fun cleanup_pair/1, fun({State, CB}) ->
+            CA = maps:get(conn, State),
             ?_test(begin
                 try
                     %% 种子先提交（autocommit）：队列行对两连接均可见
@@ -785,15 +761,14 @@ claim_skip_locked_no_double_claim_test_() ->
                     rollback_soft(CB)
                 end
             end)
-    end}.
+        end}}.
 
 %% 单行竞态：A 认领唯一行后，B claim 得 undefined（不阻塞、不重复）；
 %% A 回滚释放锁后 B 可再次认领同一行（回收语义基础）
 claim_skip_locked_single_row_test_() ->
-    {setup, fun setup_pair/0, fun cleanup_pair/1, fun
-        ({skip, _}) ->
-            [];
-        ({CA, CB}) ->
+    {timeout, 900,
+        {setup, fun setup_pair/0, fun cleanup_pair/1, fun({State, CB}) ->
+            CA = maps:get(conn, State),
             ?_test(begin
                 try
                     seed(CA),
@@ -812,55 +787,51 @@ claim_skip_locked_single_row_test_() ->
                     rollback_soft(CB)
                 end
             end)
-    end}.
+        end}}.
 
 %% ---- 双连接夹具（无 meck；种子已提交，cleanup 物理清理） ----
 
 setup_pair() ->
     try
-        {ok, _} = application:ensure_all_started(epgsql),
-        try
-            elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
-        catch
-            _:_ -> ok
-        end,
-        {ok, CA} = epgsql:connect(#{
-            host => ?PG_HOST,
-            port => ?PG_PORT,
-            username => ?PG_USER,
-            password => ?PG_PASS,
-            database => ?PG_DB,
-            timeout => 5000
-        }),
-        {ok, CB} = epgsql:connect(#{
-            host => ?PG_HOST,
-            port => ?PG_PORT,
-            username => ?PG_USER,
-            password => ?PG_PASS,
-            database => ?PG_DB,
-            timeout => 5000
-        }),
-        %% 预清理：上一轮若中断残留已提交种子（best-effort）
-        cleanup_seed(CA),
-        {CA, CB}
-    catch
-        _:_ -> {skip, nil}
-    end.
-
-cleanup_pair({skip, _}) ->
-    ok;
-cleanup_pair({CA, CB}) ->
-    cleanup_seed(CA),
-    try
-        epgsql:close(CA)
+        elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
         _:_ -> ok
     end,
+    %% 一次性 marker 库（inttest_marker_db 配方）：CA = 夹具主连接；
+    %% CB 从同一 marker 库再开一条（SKIP LOCKED 双连接竞态用）。
+    State = inttest_marker_db:provision(#{env_prefix => <<"MOYA_INTTEST">>}),
+    CA = maps:get(conn, State),
+    #{
+        db := Db,
+        server := #{
+            host := Host,
+            port := Port,
+            username := User,
+            password := Pass
+        }
+    } = State,
+    {ok, CB} = epgsql:connect(#{
+        host => Host,
+        port => Port,
+        username => User,
+        password => Pass,
+        database => Db,
+        timeout => 5000
+    }),
+    %% 预清理：上一轮若中断残留已提交种子（best-effort；marker 库全新为 no-op）
+    cleanup_seed(CA),
+    {State, CB}.
+
+cleanup_pair({State, CB}) ->
+    CA = maps:get(conn, State),
+    cleanup_seed(CA),
     try
         epgsql:close(CB)
     catch
         _:_ -> ok
     end,
+    %% release 关闭 CA/maint 并 DROP 整库（已提交种子随库消失，不留数据）
+    inttest_marker_db:release(State),
     ok.
 
 %% 物理清理已提交种子（best-effort，逆 FK 序；本夹具专用——ai_tx 用例靠 ROLLBACK）

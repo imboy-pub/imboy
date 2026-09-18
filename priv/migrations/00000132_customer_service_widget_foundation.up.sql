@@ -1,4 +1,4 @@
--- 迁移 00000131: Widget 持久化基础（Customer Service Widget Foundation）。
+-- 迁移 00000132: Widget 持久化基础（Customer Service Widget Foundation）。
 -- 计划契约：POST-V4.1 run §12.4（A1：Widget installation / bootstrap / nonce
 --   新迁移与 PG adapter）、§12.7 CSB-01（CSB-01-A01..A05）。
 -- 迁移契约：up=可重复执行，down=安全回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹。

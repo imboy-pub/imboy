@@ -230,6 +230,9 @@ role_acl(1) ->
         %% Workspace/Project 运营管理（双体验 v2.5.2 WP7/T11b）
         <<"workspaces:read">>,
         <<"workspaces:update">>,
+        %% Platform Admin Organization 治理（ORG-ADM-ORG-API；ORG-14 选 A）
+        <<"organizations:read">>,
+        <<"organizations:write">>,
         %% Bot 开发者服务（平台处置：浏览 + 启停）
         <<"bots:read">>,
         <<"bots:update">>,
@@ -315,6 +318,7 @@ role_acl(1) ->
         <<"/logout-applications">>,
         <<"/channels">>,
         <<"/workspaces">>,
+        <<"/organizations">>,
         <<"/projects">>,
         <<"/finance">>,
         <<"/reports">>,
@@ -369,6 +373,9 @@ role_acl(2) ->
         %% Workspace/Project 运营管理（双体验 v2.5.2 WP7/T11b）
         <<"workspaces:read">>,
         <<"workspaces:update">>,
+        %% Platform Admin Organization 治理（ORG-ADM-ORG-API；ORG-14 选 A）
+        <<"organizations:read">>,
+        <<"organizations:write">>,
         %% Bot 开发者服务（平台处置：浏览 + 启停）
         <<"bots:read">>,
         <<"bots:update">>,
@@ -422,6 +429,7 @@ role_acl(2) ->
         <<"/logout-applications">>,
         <<"/channels">>,
         <<"/workspaces">>,
+        <<"/organizations">>,
         <<"/projects">>,
         <<"/finance">>,
         <<"/reports">>,
@@ -438,7 +446,10 @@ role_acl(3) ->
         <<"ux:events:ingest">>,
         <<"roles:view">>,
         <<"logs:view">>,
-        <<"plugins:read">>
+        <<"plugins:read">>,
+        %% Platform Admin Organization 只读（ORG-ADM-ORG-API）：审计角色
+        %% 可查看组织治理事实；全部写端点无 organizations:write 恒 403
+        <<"organizations:read">>
     ],
     MenuPaths = [
         <<"/dashboard">>,
@@ -446,7 +457,8 @@ role_acl(3) ->
         <<"/messages">>,
         <<"/logout-applications">>,
         <<"/roles">>,
-        <<"/logs">>
+        <<"/logs">>,
+        <<"/organizations">>
     ],
     apply_role_acl_override(3, {RoleName, Permissions, MenuPaths});
 %% A-02 角色基线：Moderator（内容审核）/Security Admin（安全治理）/Support（客服），
