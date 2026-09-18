@@ -1,7 +1,8 @@
 %% Migration 108/109, group attachment/action ACL, and room-key member snapshot
 %% PostgreSQL integration coverage.
-%% The dedicated harness supplies a marker scratch database through
-%% IMBOY_GA_TEST_*; normal EUnit runs skip rather than touching a shared DB.
+%% The harness provisions a one-shot marker database (inttest_marker_db recipe,
+%% env prefix MOYA_INTTEST, full migration chain to current head); any
+%% provisioning failure fails the suite explicitly — no silent skip.
 
 -module(group_attachment_acl_integration_tests).
 
@@ -23,46 +24,15 @@ group_attachment_acl_postgres_test_() ->
     {timeout, 240, {setup, fun setup/0, fun cleanup/1, fun run/1}}.
 
 setup() ->
-    case os:getenv("IMBOY_GA_TEST_DB") of
-        false ->
-            skip;
-        Db ->
-            {ok, _} = application:ensure_all_started(epgsql),
-            connect(Db)
-    end.
+    %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
+    %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链；任一失败显式 error。
+    inttest_marker_db:provision(#{env_prefix => <<"MOYA_INTTEST">>}).
 
-connect(Db) ->
-    Host = os:getenv("IMBOY_GA_TEST_HOST", "127.0.0.1"),
-    Port = list_to_integer(os:getenv("IMBOY_GA_TEST_PORT", "4323")),
-    User = os:getenv("IMBOY_GA_TEST_USER", "imboy_user"),
-    Pass = os:getenv("IMBOY_GA_TEST_PASSWORD", "abc54321"),
-    case Host of
-        "127.0.0.1" -> ok;
-        "::1" -> ok;
-        _ -> erlang:error({non_loopback_test_database, Host})
-    end,
-    case lists:prefix("imboy_ga_acl_", Db) of
-        true -> ok;
-        false -> erlang:error({non_marker_test_database, Db})
-    end,
-    {ok, Conn} = epgsql:connect(#{
-        host => Host,
-        port => Port,
-        username => User,
-        password => Pass,
-        database => Db,
-        timeout => 5000
-    }),
-    Conn.
+cleanup(State) ->
+    inttest_marker_db:release(State).
 
-cleanup(skip) ->
-    ok;
-cleanup(Conn) ->
-    epgsql:close(Conn).
-
-run(skip) ->
-    [];
-run(Conn) ->
+run(State) ->
+    Conn = maps:get(conn, State),
     [
         ?_test(begin
             c2g_boundary_migration_matrix(Conn),

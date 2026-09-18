@@ -16,8 +16,9 @@
 %%
 %% 本文件分两层：
 %%   A 纯函数层（无 DB，恒运行）：占位符编号契约 + 时间边界 SQL 形态 + 白名单一致性。
-%%   B 真库层（DB 不可达自动 skip）：用**生产同一份 SQL 片段**跑真 PG，
-%%     断言「未来时间边界必须筛空」——②的直接探针。
+%%   B 真库层（一次性 marker 库，inttest_marker_db 配方，env 前缀 MOYA_INTTEST，
+%%     全链迁移至当前 head；供给失败显式 FAIL 无 skip）：用**生产同一份 SQL 片段**
+%%     跑真 PG，断言「未来时间边界必须筛空」——②的直接探针。
 %%
 %% 带真实数据的端到端（真 HTTP + 真库 + 期望值现场算）另见
 %% scripts/smoke_moya_queue_filter.sh。
@@ -94,7 +95,7 @@ time_param_re_is_identical_in_handler_and_logic_test() ->
     ?assertMatch({_, _}, binary:match(L, Pattern)).
 
 %%%===================================================================
-%%% B 真库层（DB 不可达自动 skip）
+%%% B 真库层（一次性 marker 库；供给失败显式 FAIL，无静默 skip）
 %%%===================================================================
 
 %% 白名单放行的全部形态（与 ?TIME_PARAM_RE 对应）。
@@ -111,47 +112,27 @@ accepted_formats() ->
     ].
 
 setup_conn() ->
-    DB =
-        case os:getenv("MOYA_TEST_DB") of
-            false -> <<"moya_zcode_181902">>;
-            V -> list_to_binary(V)
-        end,
-    try
-        {ok, _} = application:ensure_all_started(epgsql),
-        {ok, C} = epgsql:connect(#{
-            host => "127.0.0.1",
-            port => 4323,
-            username => <<"imboy_user">>,
-            password => <<"abc54321">>,
-            database => DB,
-            timeout => 5000,
-            %% 与生产 pg_conf 同款 codec —— 不带上它就测不出缺陷 ②
-            codecs => [{epgsql_codec_rfc3339_bin, []}]
-        }),
-        C
-    catch
-        _:_ -> skip
-    end.
+    %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
+    %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链；任一失败显式 error。
+    inttest_marker_db:provision(#{
+        env_prefix => <<"MOYA_INTTEST">>,
+        %% 与生产 pg_conf 同款 codec —— 不带上它就测不出缺陷 ②
+        connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
+    }).
 
-close_conn(skip) ->
-    ok;
-close_conn(C) ->
-    try
-        epgsql:close(C)
-    catch
-        _:_ -> ok
-    end,
-    ok.
+close_conn(State) ->
+    inttest_marker_db:release(State).
 
 %% B1（缺陷 ② 直接探针）：行是 2030 年，submitted_from 指向 2099 年 —— 必须筛空。
 %% 用**生产片段** moya_submission_repo:queue_cond_sql/2 拼 SQL，不是抄一份；
 %% 抄一份就测不到拼装错误。裸 $N::timestamptz 时它会退化成纪元 2000-01-01，
 %% 于是 2030 的行被「命中」→ 本断言失败。无需任何夹具数据，故不会空转。
 future_boundary_filters_everything_test_() ->
-    {setup, fun setup_conn/0, fun close_conn/1, fun
-        (skip) -> [];
-        (C) -> [?_test(future_boundary_filters_everything(C))]
-    end}.
+    {timeout, 900,
+        {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
+            C = maps:get(conn, State),
+            [?_test(future_boundary_filters_everything(C))]
+        end}}.
 
 future_boundary_filters_everything(C) ->
     Frag = iolist_to_binary(moya_submission_repo:queue_cond_sql(submitted_from, 1)),
@@ -172,10 +153,11 @@ future_boundary_filters_everything(C) ->
 
 %% B2：反向守卫 —— 过去的时间边界不能把该留的行筛掉（防矫枉过正）。
 past_boundary_keeps_row_test_() ->
-    {setup, fun setup_conn/0, fun close_conn/1, fun
-        (skip) -> [];
-        (C) -> [?_test(past_boundary_keeps_row(C))]
-    end}.
+    {timeout, 900,
+        {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
+            C = maps:get(conn, State),
+            [?_test(past_boundary_keeps_row(C))]
+        end}}.
 
 past_boundary_keeps_row(C) ->
     lists:foreach(
@@ -199,10 +181,9 @@ past_boundary_keeps_row(C) ->
 %% 带筛选时 total 必须等于「同条件下取全量时的列表长度」。
 %% 计数 SQL 引用了不存在的 $N → PG 报错 → count_queue_run 回落 0 → 此处立即暴露。
 count_matches_list_under_filter_test_() ->
-    {setup, fun setup_conn/0, fun close_conn/1, fun
-        (skip) ->
-            [];
-        (C) ->
+    {timeout, 900,
+        {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
+            C = maps:get(conn, State),
             case all_groups_with_submitted(C) of
                 [] ->
                     %% 无数据则无从分辨；真实数据的端到端在 smoke 脚本里
@@ -221,7 +202,7 @@ count_matches_list_under_filter_test_() ->
                         end)
                     ]
             end
-    end}.
+        end}}.
 
 all_groups_with_submitted(C) ->
     Sql =
