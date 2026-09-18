@@ -186,9 +186,15 @@ parse_deadline(Dl) when is_binary(Dl) ->
 parse_deadline(_) ->
     deadline_invalid.
 
-%% learner_ids：非空 list、全为合法 TSID string、去重（重复拒绝）
+%% learner_ids：非空 list、全为合法 TSID string、去重（重复拒绝）。
+%% A1-D09：数量上限 200（class 常见规模之上限；仓内无既有列表 cap 常量可复用
+%% ——moya_ai_draft_logic 白名单 50 项是 Schema 字段数组上限，语义不同不共用）。
+%% 超限 → error → bad_param(422)：readiness IN 子句与逐条 insert_assignment
+%% 随列表线性膨胀，上限拒绝超长事务/巨型 SQL。
+-define(MAX_LEARNER_IDS, 200).
+
 -spec parse_learner_ids(term()) -> {ok, [integer()]} | error.
-parse_learner_ids(Ids) when is_list(Ids), Ids =/= [] ->
+parse_learner_ids(Ids) when is_list(Ids), Ids =/= [], length(Ids) =< ?MAX_LEARNER_IDS ->
     Parsed = [elib_tsid:from_binary(I) || I <- Ids],
     case lists:member(error, Parsed) of
         true ->

@@ -18,6 +18,7 @@
 -export([tablename/1]).
 -export([lock_assignment_tx/2, next_attempt_tx/2, create_idempotent_tx/2]).
 -export([insert_assets_tx/4, mark_submitted_by_tx/3, enqueue_ai_draft_tx/2]).
+-export([ai_draft_status_tx/2]).
 -export([withdraw_tx/3, lock_submission_tx/2, find/1, assets/1]).
 -export([assignments_for_learner/3, assignments_for_learner_tx/4]).
 -export([assignments_for_learner/4, assignments_for_learner_tx/5]).
@@ -265,6 +266,26 @@ enqueue_ai_draft_tx(Conn, SubmissionId) ->
             ok;
         {error, {error, error, _, unique_violation, _, _}} ->
             ok;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% A1-D12：幂等重放时读 AI 草稿现值（此前 submission_created 恒回 queued）。
+%% 取值口径照抄 queue/4 LATERAL join：该 submission 最新一条草稿行状态
+%% （queued/running/succeeded/failed——failed 不在 uk 有效集内但老师队列
+%% 仍展示，故不过滤）；无行 → undefined（logic 层折 none）。
+%% 事务内调用（重放发生在 run_create_tx 的事务里，Conn 复用）。
+-spec ai_draft_status_tx(any(), integer()) -> {ok, binary() | undefined} | {error, term()}.
+ai_draft_status_tx(Conn, SubmissionId) ->
+    Sql =
+        <<"SELECT status FROM ", (tb(calligraphy_review_draft))/binary,
+            " WHERE submission_id = $1 AND status IN ('queued','running','succeeded','failed') ",
+            " ORDER BY created_at DESC LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, [SubmissionId]) of
+        {ok, [#{<<"status">> := St} | _]} ->
+            {ok, St};
+        {ok, []} ->
+            {ok, undefined};
         {error, Reason} ->
             {error, Reason}
     end.

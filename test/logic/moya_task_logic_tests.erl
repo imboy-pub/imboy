@@ -270,6 +270,54 @@ create_learner_ids_invalid_tsid_test_() ->
         end
     ).
 
+%%%===================================================================
+%%% create：learner_ids 数量上限（A1-D09）
+%%%===================================================================
+
+learner_ids(N) ->
+    [integer_to_binary(974100 + I) || I <- lists:seq(1, N)].
+
+%% 201 个 → bad_param(422)：readiness IN 子句与逐条 insert 随列表线性膨胀，
+%% 上限防线拒绝超长事务/巨型 SQL
+create_learner_ids_over_limit_test_() ->
+    ?WITH_MECKS(
+        acl_mocks(manager) ++ [readiness_mock(ok), ds_mock({ok, created_payload()})],
+        fun() ->
+            ?assertEqual(
+                {error, bad_param},
+                moya_task_logic:create(?UID_MANAGER, <<"idem-97">>, (body())#{
+                    <<"learner_ids">> => learner_ids(201)
+                })
+            )
+        end
+    ).
+
+%% 200 个（恰在上限）→ 放行：ds 收到全部 200 learners（repo 层计数 mock）
+create_learner_ids_at_limit_200_test_() ->
+    ReadyMap = maps:from_list([
+        {974100 + I, {ok, ?PARENT_A1}}
+     || I <- lists:seq(1, 200)
+    ]),
+    DsMock =
+        {moya_task_ds, [
+            {'create', 6, fun(_Uid, _G, _K, _D, _F, Learners) ->
+                self() ! {ds_learners, length(Learners)},
+                {ok, created_payload()}
+            end}
+        ]},
+    ?WITH_MECKS(
+        acl_mocks(manager) ++ [readiness_mock_per_learner(ReadyMap), DsMock],
+        fun() ->
+            {ok, _} = moya_task_logic:create(
+                ?UID_MANAGER, <<"idem-97">>, (body())#{<<"learner_ids">> => learner_ids(200)}
+            ),
+            receive
+                {ds_learners, 200} -> ok
+            after 0 -> ?assert(false, "ds create not called with 200 learners")
+            end
+        end
+    ).
+
 create_group_id_invalid_test_() ->
     ?WITH_MECKS(
         acl_mocks(manager) ++ [readiness_mock(ok), ds_mock({ok, created_payload()})],
