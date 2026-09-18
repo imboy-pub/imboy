@@ -31,6 +31,10 @@
 %% 默认 OTLP endpoint：prod/dev 实例与 Uptrace 同机（106.53.76.53）
 -define(DEFAULT_OTLP_ENDPOINT, <<"http://127.0.0.1:14318">>).
 
+%% 本地等价类型：otel_span:name/0 在部分 SDK/PLT 组合下不可解析
+%% （dialyzer "Unknown type"），span 名实为 chardata，调用点均传 binary。
+-type span_name() :: unicode:chardata().
+
 %% ===================================================================
 %% Public API
 %% ===================================================================
@@ -62,22 +66,19 @@ init() ->
 %% @doc OpenTelemetry SDK 是否已在本节点启用。
 -spec started() -> boolean().
 started() ->
-    case application:which_applications() of
-        Apps when is_list(Apps) ->
-            lists:keymember(opentelemetry, 1, Apps);
-        _ ->
-            false
-    end.
+    %% which_applications/0 成功类型恒为 [{atom(), string(), string()}]，
+    %% 无需防御性兜底子句（dialyzer：unreachable clause）。
+    lists:keymember(opentelemetry, 1, application:which_applications()).
 
 %% @doc 业务侧便捷打点：在当前进程创建 span 并执行 Fun。
 %% 遥测未启用时直接执行 Fun，零开销。
--spec with_span(otel_span:name(), fun(() -> T)) -> T.
+-spec with_span(span_name(), fun(() -> T)) -> T.
 with_span(Name, Fun) ->
     with_span(Name, #{}, Fun).
 
 %% @doc 同 with_span/2，Opts 支持 #{attrs => #{Key => Val}} 与
 %% 标准 otel span 选项（kind、links 等）。遥测未启用时直接执行 Fun。
--spec with_span(otel_span:name(), map(), fun(() -> T)) -> T.
+-spec with_span(span_name(), map(), fun(() -> T)) -> T.
 with_span(Name, Opts, Fun) ->
     case started() of
         true ->
@@ -140,7 +141,9 @@ service_name() ->
     <<"imboy-", (imboy_env:current())/binary>>.
 
 %% @doc 启动标记 span：标记一次节点启动，兼作对接验证探针。
--spec boot_span() -> reference() | undefined.
+%% 返回值只有 fire-and-forget 语义（唯一调用点丢弃），故约定 ok；
+%% 不对 otel SDK 的 span 上下文返回类型作脆弱承诺。
+-spec boot_span() -> ok.
 boot_span() ->
     Tracer = opentelemetry:get_tracer(),
     SpanCtx = otel_tracer:start_span(Tracer, <<"imboy.boot">>, #{
@@ -149,7 +152,8 @@ boot_span() ->
             <<"imboy.version">> => imboy_version()
         }
     }),
-    otel_span:end_span(SpanCtx).
+    _ = otel_span:end_span(SpanCtx),
+    ok.
 
 %% @doc 把 #{attrs => Attrs} 翻译为 otel span 选项；未知键原样透传。
 -spec span_opts(map()) -> map().
