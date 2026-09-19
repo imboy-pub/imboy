@@ -13,7 +13,7 @@
 | `0.8.x` (app) / `0.7.x` (backend) | ⚠️ 仅修高危 | 1.0.0 GA 后 3 个月 |
 | `< 0.7` | ❌ 不再支持 | —— |
 
-首个标准 SKU 版本计划为 `1.0.0-rc.1`（尚未发布）；当前为 `1.0.0-alpha.46` 公测线。早期 pre-SKU 版本仅在紧急情况下修复。
+首个标准 SKU 版本计划为 `1.0.0-rc.1`（尚未发布）；当前为 `1.0.0-alpha.77` 公测线。早期 pre-SKU 版本仅在紧急情况下修复。
 
 ---
 
@@ -57,7 +57,7 @@
 - `imboyapp` Flutter 客户端（Android / iOS）本地密钥存储、消息加解密、权限控制、本地 SQLite 未授权访问、资源 URL 签名伪造
 - `imboy-admin-frontend` 管理后台（React）认证、XSS、CSRF、权限绕过
 - 官方 docker-compose / 部署脚本中的默认配置弱点
-- 文档（`doc/`）中的误导性安全建议
+- 文档（`docs/`）中的误导性安全建议
 
 ### 不在范围内（不会受理）
 
@@ -72,7 +72,7 @@
 
 ## 已知的安全基线 / Security Baseline
 
-在报告问题前，请先阅读 `imboy/doc/operations/security.md` 了解当前版本已声明的安全边界：
+在报告问题前，请先阅读 `imboy/docs/guides/operations/security.md` 了解当前版本已声明的安全边界：
 
 - 传输层强制 TLS（生产部署通过 nginx 反代 + certbot 自动签发/续期 Let's Encrypt）
 - 密码使用 **HMAC-SHA512 + 随机盐**存储（`elib_password` 内置 dual-verify，兼容早期 MD5 格式并在登录时自然淘汰）

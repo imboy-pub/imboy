@@ -3,6 +3,8 @@
 > 本文档记录 IMBoy 已完成的里程碑与近期 / 中期 / 长期规划。
 > This document records completed milestones and near / mid / long-term plans for IMBoy.
 >
+> **状态基线注记（2026-09-19）**：已完成清单对齐当前版本（`1.0.0-alpha.77`）；计划区完成状态已按代码/CI/文档证据逐项核对（勾选项附验证依据），**目标日期未重排**——GA「2026 Q2」与中期「Q3–Q4」已过期，新日期待产品决策后更新。
+>
 > **版本策略 / Versioning strategy**：遵循 [Semantic Versioning](https://semver.org/)。
 > `1.0.0` 为首个生产就绪 GA 版本；`1.x` 聚焦稳定性与可运维性；`2.x` 引入架构扩展。
 
@@ -10,7 +12,7 @@
 
 ## 已完成 / Completed
 
-### 1.0.0-alpha.46（当前 · 公测中）
+### 1.0.0-alpha.77（当前 · 公测中）
 
 **三端核心功能全部交付 / All three-component core features delivered**
 
@@ -29,7 +31,7 @@
 | React 管理后台 | ✅ |
 | Docker Compose 一键生产部署 + nginx 反代 + certbot 自动 TLS | ✅ |
 | 首启初始化向导（消除默认密码风险）| ✅ |
-| Prometheus + Grafana 可观测性包（13 条 SLO 告警规则）| ✅ |
+| Prometheus + Grafana 可观测性包（33 条 SLO 告警规则，14 组）| ✅ |
 | CI/CD 三端自动化（ci + release + codeql + trivy）| ✅ |
 | 部署后 sanity_check.sh（8 项验证）| ✅ |
 
@@ -41,17 +43,17 @@
 
 ### 必须完成 / Must-have
 
-- [ ] **iOS App Store 上架**：TestFlight 内测 → App Review 正式审核
-- [ ] **Google Play 内测轨**：Internal Test → Production track
-- [ ] **Sentry DSN 生产注入文档化**：`SENTRY_DSN` 环境变量接入指南 + 前后端 source map 上传
-- [ ] **API schema 冻结**：`imboy/doc/api/openapi.yaml` (REST) + `asyncapi.yaml` (WebSocket) 标注 `stable`
+- [ ] **iOS App Store 上架**：TestFlight 内测 → App Review 正式审核（商店状态需人工确认，未核对）
+- [ ] **Google Play 内测轨**：Internal Test → Production track（`imboyapp/scripts/check_play_release.sh` 已备，上架状态需人工确认）
+- [ ] **Sentry DSN 生产注入文档化**：`SENTRY_DSN` 环境变量接入指南 + 前后端 source map 上传（deploy/README 下一步清单亦标 pending）
+- [ ] **API schema 冻结**：`api/openapi.yaml` (REST) + `api/asyncapi.yaml` (WebSocket) 标注 `stable`
 
 ### 应该完成 / Should-have
 
-- [ ] **Demo 数据脚本**：`script/seed_demo.sh`，幂等灌库（5 用户 / 2 群）
+- [x] **Demo 数据脚本**：`scripts/seed_demo.sh`（2026-09-19 核对：脚本已交付；灌库语义未逐项验证）
 - [x] **升级 runbook**：`docs/guides/operations/upgrade-runbook.md`，alpha → 1.0.0 滚动更新 + 回滚 + PITR
-- [ ] **DCO sign-off CI 强制**：所有 PR 要求 `Signed-off-by` 行
-- [ ] **README.en.md 英文镜像**：与 README.md 保持同步
+- [x] **DCO sign-off CI 强制**：`.github/workflows/backend-ci.yml` 的 `dco-check`（dco-org/dco-action）对所有 PR 生效
+- [x] **README.en.md 英文镜像**：仓库根 `README.en.md` 与中文版同步维护
 
 ---
 
@@ -61,25 +63,25 @@
 
 ### 可运维性 / Operability
 
-- [ ] **Helm chart**：`deploy/helm/` 支持 Kubernetes 单集群部署
-- [ ] **Loki 日志聚合**：`docker-compose.prod.yml` 新增 `imboy_loki` 服务，Grafana 统一日志 + 指标
-- [ ] **多节点部署文档**：Erlang 集群节点发现（`epmd` / DNS SRV）配置指南
-- [ ] **PG 只读副本**：读写分离配置，减轻主库压力
+- [x] **Helm chart**：`deploy/helm/`（实验性：副本数固定 1、后端 HPA 默认关、不在交付支持范围——见 deploy/helm/README.md）
+- [x] **Loki 日志聚合**：社区版 `docker-compose.community.yml` 监控 profile 已含 `imboy_loki`(3.3.2) + promtail，Grafana 统一日志 + 指标
+- [x] **多节点部署文档**：`docs/guides/operations/clustering.md`
+- [x] **PG 只读副本**：`docs/guides/operations/postgres-read-replica.md`
 
 ### 功能增强 / Feature enhancements
 
-- [ ] **消息翻译**：接入第三方翻译 API，聊天界面长按"翻译"
-- [ ] **消息搜索**：基于 `pg_jieba` 全文索引，客户端跨会话关键词搜索
-- [ ] **语音消息转文字**：Whisper API 集成（后端流式 + 客户端展示）
-- [ ] **Windows / Linux 客户端**：Flutter Desktop 正式打包 + 分发
-- [ ] **Bot OAuth Grant**：Bot 代表用户操作的授权流程（待真实场景，YAGNI）
-- [ ] **Bot 市场 / Inline 模式**：`@botname query` 实时卡片返回
+- [ ] **消息翻译**：接入第三方翻译 API，聊天界面长按"翻译"（`src/logic/` 无对应模块，未开始）
+- [x] **消息搜索**：基于 `pg_jieba` 全文索引（`fts_logic` + `fts_user/fts_group` 表，迁移 68），客户端跨会话搜索已上线（E2EE 密文按设计排除）
+- [ ] **语音消息转文字**：Whisper API 集成（后端流式 + 客户端展示）（无对应模块，未开始）
+- [ ] **Windows / Linux 客户端**：Flutter Desktop 正式打包 + 分发（iOS/Android/macOS 已交付，Win/Linux 打包状态 UNKNOWN）
+- [ ] **Bot OAuth Grant**：Bot 代表用户操作的授权流程（数据表 `bot_oauth_grant` 已建·迁移 92，但无 API 面——流程未实现，维持 YAGNI）
+- [ ] **Bot 市场 / Inline 模式**：`@botname query` 实时卡片返回（未开始）
 
 ### 开发体验 / Developer experience
 
-- [ ] **本地开发一键环境**：`script/dev_setup.sh` 自动配置 PG + 后端 + 前端热重载
-- [ ] **API Sandbox**：基于 OpenAPI 3.1 的在线交互文档（Swagger UI / Redoc）
-- [ ] **SDK**：JavaScript / Python 客户端 SDK（WebSocket + REST 封装）
+- [x] **本地开发一键环境**：`scripts/dev_setup.sh`
+- [x] **API Sandbox**：`docs/api-sandbox/`（Swagger UI 本地交互文档）
+- ~~**SDK**：JavaScript / Python 客户端 SDK~~（2026-09-09 决策：删除 imboy-sdk-js，短期内不做 JS SDK；重启需重新立项）
 
 ---
 

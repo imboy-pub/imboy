@@ -1,6 +1,6 @@
 # `imboy/api/` — IMBoy 三端 API 契约真源（机器可处理）
 
-> **关联**：`.claude/plans/quality-loop.md` v1.3 T3.1 ~ T3.6 (PHASE_W3_CONTRACT)
+> **关联**：三端工程约定 [`docs/CONVENTIONS.md`](../docs/CONVENTIONS.md)（历史迭代 quality-loop v1.3 T3.1~T3.6，计划文件已不存在）
 > **角色**：本目录是 **API 与协议契约的代码生成驱动真源（Source of Truth）**
 > **创建**：2026-05-09 / iteration 65 / T3.1 落地
 

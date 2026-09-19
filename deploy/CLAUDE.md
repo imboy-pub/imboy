@@ -1,123 +1,67 @@
 > [imboy.pub 根目录](../CLAUDE.md) > **deploy（生产部署）**
 
-# IMBoy Deploy - AI 上下文文档 / AI Context Document
+# deploy — AI 上下文文档 / AI Context Document
 
-> **最后更新 / Last updated**: 2026-05-28
-> **职责 / Role**: 生产环境部署，包含 Docker Compose、Helm Chart、nginx 反向代理 + certbot TLS、可观测性栈
+> **最后更新 / Last updated**: 2026-09-19（结构树与命令对齐 `deploy/README.md` 口径重排）
+> 部署事实以 [deploy/README.md](./README.md) 为唯一权威；本文是 AI/新成员速览。
 
----
-
-## 目录结构 / Directory Structure
+## 目录结构 / Structure
 
 ```
 deploy/
-├── docker-compose.prod.yml      # 7 服务编排：pg18 + backend + admin + nginx + certbot + prometheus + grafana
-├── .env.example                 # 环境变量模板（复制为 .env 后填写）
-├── preflight.sh                 # 部署前置检查脚本
-├── nginx/
-│   ├── templates/
-│   │   └── imboy.conf.template  # nginx 反向代理配置模板（envsubst 渲染）
-│   └── init-letsencrypt.sh      # 首次部署一次性签发 Let's Encrypt 证书
-├── prometheus/
-│   ├── prometheus.yml           # 抓取配置（3 个 job）
-│   └── rules/
-│       └── imboy-alerts.yml     # 告警规则
-├── grafana/
-│   ├── provisioning/
-│   │   ├── datasources/
-│   │   │   └── prometheus.yml   # 自动装配 Prometheus 数据源
-│   │   └── dashboards/
-│   │       └── default.yml      # 自动装配 Dashboard Provider
-│   └── dashboards/
-│       └── imboy-overview.json  # 9-panel 总览面板
-├── loki/
-│   └── loki.yml                 # 日志聚合配置
-├── promtail/
-│   └── promtail.yml             # 日志采集 Agent 配置
-└── helm/                        # Kubernetes Helm Chart
-    ├── Chart.yaml
-    ├── values.yaml              # 默认值
-    ├── values.prod.yaml         # 生产覆盖值
-    └── templates/
-        ├── _helpers.tpl
-        ├── NOTES.txt
-        ├── secret.yaml
-        ├── configmap.yaml
-        ├── deployment-backend.yaml
-        ├── deployment-admin.yaml
-        ├── service-backend.yaml
-        ├── service-admin.yaml
-        ├── ingress.yaml
-        └── hpa.yaml             # HorizontalPodAutoscaler
+├── install.sh                   # 一键部署入口（推荐）：--edition community|business（默认 community）
+├── preflight.sh                 # 前置检查（--edition 按版本切换检查口径；.env 不存在时 exit 1）
+├── docker-compose.community.yml # 社区版编排（随仓分发）：pg18/garage/backend/admin/nginx/certbot/livekit
+│                                #   + 监控 profile（--profile monitoring）：prometheus/alertmanager/loki/promtail/grafana
+├── docker-compose.prod.yml      # 商务版编排（不随仓分发，leeyisoft@qq.com 渠道获取后放入本目录）
+├── docker-compose.demo.yml      # 最小两服务零配置评估栈
+├── docker-compose.healthcheck.yml / observability.yml / alert-dingtalk.yml / uptrace.yml / sales-policy.yml
+│                                # 商务版 overlay：按序 -f 叠加（就绪检查/观测组件/钉钉告警/Uptrace/无密钥策略）
+├── .env.example / ops.env.example
+├── nginx/                       # 反代模板（envsubst）+ init-letsencrypt.sh 首签
+├── prometheus/                  # prometheus.yml（4 job）+ rules/imboy-alerts.yml（33 条规则 14 组）
+├── alertmanager/                # 告警路由
+├── grafana/                     # provisioning + dashboards/imboy-overview.json（9 panel）
+├── loki/ · promtail/            # 日志聚合与采集
+├── uptrace/                     # 可选 Uptrace overlay（默认关）
+├── cron/                        # 定时任务配置
+└── helm/                        # Kubernetes Helm Chart（实验性，见文末警示）
 ```
-
----
 
 ## 前置条件 / Prerequisites
 
-- Linux x86_64（推荐 Ubuntu 22.04 / Debian 12 / Alma 9）
-- 内存 ≥ 8 GB，磁盘 ≥ 20 GB（生产建议 ≥ 32 GB 内存 / ≥ 100 GB 盘）
-- Docker 24+ 与 `docker compose` 插件
-- 两个已解析到本机的域名：`api.example.com`、`admin.example.com`
-- 80 / 443 端口可公网访问（certbot 通过 Let's Encrypt HTTP-01 签发）
-- `.env` 中配置 `CERTBOT_EMAIL`（Let's Encrypt 账号邮箱，用于到期提醒）
-
----
+- Linux x86_64（Debian 13 基准）
+- Docker 24+ 与 Compose v2.23.1+（configs 内联需要）
+- 核心栈内存 ≥ 4 GB、磁盘 ≥ 10 GB（建议 8 GB / 20 GB）；启用 Uptrace 后至少 8 GB / 20 GB（建议 16 GB / 40 GB）
+- 双域名（API 与管理后台）解析到本机，80 / 443 公网可达（certbot HTTP-01）
+- `.env` 配置 `CERTBOT_EMAIL`；`install.sh` 会幂等补齐内部密钥并生成 RSA 登录密钥对到 `data/backend_priv/keys/`
 
 ## 常用命令 / Common Commands
 
-### Docker Compose 部署
+### 社区版（推荐）
 
 ```bash
 cd deploy
-
-# 推荐：一键部署（自动生成 .env + 10 个密钥 + RSA 密钥对，只需人工填 3 项域名/邮箱）
-bash install.sh
-
-# ── 以下为手工路径，仅在需要逐步排查时使用 ──
-# ⚠️ 顺序不可颠倒：preflight.sh 在 .env 不存在时直接 exit 1，
-#    必须先备好 .env 再跑前置检查。
-
-# 1. 配置环境变量
-cp .env.example .env
-$EDITOR .env          # 域名/邮箱 + 10 个密钥 + 生成 RSA 对到 data/backend_priv/keys/
-
-# 2. 前置检查（验证 Docker、端口、域名解析）
-bash preflight.sh
-
-# 3. 创建网络并启动
-docker network create imboy-network
-docker compose -f docker-compose.prod.yml up -d
-
-# 3b. 首次部署：一次性签发 Let's Encrypt 证书（域名 A 记录须先指向本机）
-bash nginx/init-letsencrypt.sh
-
-# 4. 查看服务状态
-docker compose -f docker-compose.prod.yml ps
-
-# 5. 查看日志
-docker compose -f docker-compose.prod.yml logs -f imboy_backend
-docker compose -f docker-compose.prod.yml logs -f imboy_admin
-
-# 6. 停止服务
-docker compose -f docker-compose.prod.yml down
+cp .env.example .env && $EDITOR .env   # 填域名/邮箱/数据库口令
+bash preflight.sh --edition community
+bash install.sh --edition community
+docker compose -f docker-compose.community.yml ps
+# 监控栈：部署命令加 --profile monitoring（默认不启动）
 ```
 
-### Helm (Kubernetes) 部署
+### 商务版（手工路径）
+
+```bash
+# overlay 按序叠加：prod.yml → healthcheck.yml → observability.yml → alert-dingtalk.yml(可选)
+docker compose -f docker-compose.prod.yml -f docker-compose.healthcheck.yml up -d
+```
+
+### Helm (Kubernetes)
 
 ```bash
 cd deploy/helm
-
-# 安装
 helm install imboy . -f values.prod.yaml --namespace imboy --create-namespace
-
-# 升级
 helm upgrade imboy . -f values.prod.yaml --namespace imboy
-
-# 查看状态
-helm status imboy --namespace imboy
-
-# 卸载
 helm uninstall imboy --namespace imboy
 ```
 
@@ -125,33 +69,25 @@ helm uninstall imboy --namespace imboy
 
 | 服务 | 默认端口 | 说明 |
 |------|---------|------|
-| Prometheus | 9090 | 指标采集，3 个 scrape job |
-| Grafana | 3000 | 可视化面板，默认 admin/admin（首次登录需改密） |
-| Loki | 3100 | 日志聚合（通过 Grafana 查询） |
-
----
+| Prometheus | 9090 | 指标采集，4 个 scrape job |
+| Grafana | 3000 | 可视化（首次登录立即改默认密码） |
+| Loki | 3100 | 日志聚合（经 Grafana 查询） |
 
 ## 关键文件说明 / Key Files
 
 | 文件 | 说明 |
 |------|------|
-| `docker-compose.prod.yml` | 生产环境 7 服务编排入口，禁止直接修改数据库密码（改 .env） |
-| `.env.example` | 所有必填环境变量的模板，**不要提交含真实密钥的 .env** |
-| `preflight.sh` | 部署前自动检查依赖、端口占用、域名解析 |
-| `nginx/templates/imboy.conf.template` | nginx 反向代理规则（envsubst 渲染），后端 → `api.*`（含 WS 升级），管理后台 → `admin.*`；入口拦截 `/metrics` 与 `/api/v1/metrics` 返回 403 |
-| `nginx/init-letsencrypt.sh` | 首次部署一次性向 Let's Encrypt 申请证书；后续由 `imboy_certbot` 自动续期 |
-| `prometheus/rules/imboy-alerts.yml` | 告警规则（CPU/内存/连接数/消息积压等） |
-| `grafana/dashboards/imboy-overview.json` | 9-panel 总览：QPS、延迟、WS 连接数、DB 连接池、错误率等 |
-| `helm/values.prod.yaml` | 生产 Helm 覆盖值：副本数、资源限制、镜像 tag、Ingress 域名 |
-
----
+| `docker-compose.community.yml` | 社区版编排入口；服务名被其他配置硬引用，禁止改名 |
+| `install.sh` | 一键部署：幂等补齐密钥、打印 Release Identity 三元组（`IMBOY_VERSION`/`IMBOY_GIT_SHA`/镜像 digest） |
+| `.env.example` | 必填变量模板；**不要提交含真实密钥的 .env** |
+| `preflight.sh` | 依赖/端口/域名解析检查 |
+| `nginx/templates/imboy.conf.template` | 反代规则（envsubst）：后端 → `api.*`（含 WS 升级），管理后台 → `admin.*`；入口拦截 `/metrics` 返回 403 |
+| `prometheus/rules/imboy-alerts.yml` | 告警规则 33 条 14 组（可用性/延迟/HTTP/VM/PG/消息/WS/主机/连接池/备份/TLS/支付） |
+| `grafana/dashboards/imboy-overview.json` | 9-panel 总览 |
 
 ## 注意事项 / Notes
 
-- 不修改 `docker-compose.prod.yml` 中的服务名（其他配置文件硬引用了服务名）。
-- 生产环境必须修改 `.env` 中的 `JWT_SECRET`、`DB_PASSWORD`、`ADMIN_SECRET`、`CERTBOT_EMAIL`，不得使用默认值。
-- Grafana 首次启动后立即修改 `admin` 默认密码。
-- Helm **后端固定单副本**（`backend.replicaCount: 1`），后端 HPA 默认**关闭**。
-  后端是有状态的 Erlang 分布式节点，跨 Pod 的 `syn` 进程注册与消息路由未经生产集群
-  验证，多副本下消息投递不确定。集群水平扩展为路线图项，**不得对外承诺**。
-  admin 是无状态静态前端，多副本安全，其 HPA 不受此限。详见 `helm/README.md` 顶部警示。
+- 生产必须修改 `.env` 中全部密钥类变量，不得使用默认值；社区版没有手工多步的必要（install.sh 全自动）。
+- Grafana 首次启动后立即修改默认密码。
+- 版本单一来源：`.env` 的 `IMBOY_VERSION`；升级 = 改版本 → pull → up -d（社区版默认 `auto_migrate=true` 自动迁移）。
+- Helm **后端固定单副本**（`backend.replicaCount: 1`），后端 HPA 默认**关闭**。后端是有状态的 Erlang 分布式节点，跨 Pod 的 `syn` 进程注册与消息路由未经生产集群验证，多副本下消息投递不确定；集群水平扩展为路线图项，**不得对外承诺**。admin 是无状态静态前端，多副本安全，其 HPA 不受此限。详见 `helm/README.md` 顶部警示。

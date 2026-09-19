@@ -2,8 +2,9 @@
 
 # Imboy - AI 上下文文档 / AI Context Document
 
-> **最后更新 / Last updated**: 2026-08-21 CST | **版本**: 1.0.0-alpha.26
+> **最后更新 / Last updated**: 2026-09-19 CST | **版本**: 1.0.0-alpha.77（版本号以 `VERSION` 文件为准，更新本文时同步）
 > **架构**: 单应用 4 层架构 Handler -> Logic -> DS -> Repo | **语言**: Erlang/OTP 28+ + PostgreSQL 18+
+> **术语与概念**: 正式术语见 `docs/glossary.md`；核心业务概念见 `docs/concepts/`；三端 API 对齐见 `docs/api-contracts/three-platform-alignment.md`
 > 双语文档规则见根级 [CLAUDE.md](../CLAUDE.md#双语文档规则--bilingual-documentation-rule-mandatory)
 
 ---

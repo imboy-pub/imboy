@@ -5,7 +5,7 @@
 > Scope: WebSocket 连接、消息结构、错误约定与迁移说明  
 > Source of truth: `src/imboy_router.erl` + `src/api/websocket_handler.erl` + `src/logic/websocket_logic.erl` + `src/ds/message_ds.erl` + `src/ds/websocket_ds.erl` + `src/lib/imboy_codec.erl` + `src/lib/imboy_frame.erl` + `include/imboy_frame.hrl`  
 > Note: 本文中的 `v2.0` 指消息结构版本，`imboy.v2` 指分层二进制帧协议版本，二者相互独立。  
-> Related docs: `docs/reference/rest-api.md`, `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`, `docs/guides/operations/security.md`, `proto/imboy.proto`, `.claude/plans/imboy-frame-protocol.md`
+> Related docs: `docs/reference/rest-api.md`, `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`, `docs/guides/operations/security.md`, `proto/imboy.proto`, [`api/proto/README.md`](../../api/proto/README.md)`（帧协议真源）`
 
 ## 变更记录 (Changelog)
 
@@ -607,7 +607,7 @@ Erlang 与 Dart 构造同一帧时必须输出完全相同的字节序列，任�
 | 业务消息校验失败 | `message_ds:validate_message/1` | 返回 `invalid_message` / `invalid_json` S2C 错误 | 走原有 S2C 错误处理分支 |
 | Rate limit | `throttle:check(msg_per_user, Uid)` | 返回 `rate_limited` 校验错误，格式沿用 `ws_validation_error/3` | 走原有错误处理分支 |
 
-> **设计选择**：当前出现帧层错误时不关闭连接。原因是 WebSocket binary frame 本身已经是有边界的消息单元，错包往往是客户端临时 bug 或对端版本漂移，直接断开会放大故障面。未来若要迁移到 TCP 字节流传输，需要引入重同步（resync）策略并按 `.claude/plans/imboy-frame-protocol.md` 重新评估。
+> **设计选择**：当前出现帧层错误时不关闭连接。原因是 WebSocket binary frame 本身已经是有边界的消息单元，错包往往是客户端临时 bug 或对端版本漂移，直接断开会放大故障面。未来若要迁移到 TCP 字节流传输，需要引入重同步（resync）策略并按帧协议真源 `api/proto/` 重新评估。
 
 ### 路线图
 

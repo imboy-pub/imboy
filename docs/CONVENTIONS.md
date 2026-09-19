@@ -1,11 +1,10 @@
 # IMBoy 工程约定（CONVENTIONS）
 
-> **真源（Source of Truth）**：本文件位于 `imboy/docs/CONVENTIONS.md`，由 imboy（API/契约真源仓）维护。
-> `imboyapp` 与 `imboy-admin-frontend` 的副本由 W3.6 之后的 sync 脚本自动拉取，禁止手工编辑副本。
+> **真源（Source of Truth）**：本文件位于 `imboy/docs/CONVENTIONS.md`，由 imboy（API/契约真源仓）维护，三端共同遵守。
 >
 > **不可妥协（Non-Negotiable）**：以下 6 条规则适用于三端（Erlang 后端 / Flutter 客户端 / React 管理后台）。任何 PR 违反任一条 → 必须修复或显式标记 `convention-exception` 标签并在 PR 描述中说明充分理由。
 >
-> **版本**：v1.0 · **最后更新**：2026-05-08 · **关联**：`.claude/plans/quality-loop.md` T1.3
+> **版本**：v1.1 · **最后更新**：2026-09-19（对齐代码事实：错误码整数形态、WS action 命名、ID 进路径现状；v1.0 中与代码相反的三处已修正，详见各节）
 
 ---
 
@@ -26,7 +25,7 @@
 **禁止**：
 - 新增 `BIGSERIAL` / `SERIAL` / `IDENTITY` 列
 - 业务主键使用 `UUID`（仅 idempotency-key 等场景例外）
-- 暴露内部 ID 到 URL 路径（用 slug / public_id 字段隔离）
+- 把**公开不可猜测**能力建在 TSID 之上——TSID 允许出现在 URL 路径（现行 API 全量如此，如 `/:organization_id`），但对外分发、需要防枚举的标识必须另发专用公开标识/令牌（如 `channel.custom_id`、挂件 `public_widget_id`、邀请 token，且令牌只存摘要）
 
 ---
 
@@ -90,43 +89,35 @@
 
 ## 4. 错误响应规则（Error Response）
 
-**规则**：所有 HTTP / WS 错误响应使用统一信封，由 `code` 字段驱动客户端错误处理逻辑。
+> v1.1 修正：v1.0 曾规定字符串错误码（如 `"USER_NOT_FOUND"`）并禁止整数——**与代码事实相反**。现行代码（`elib_response`、`include/error_code.hrl`、三端客户端解析）自始至终使用**整数错误码**。本节以代码为准重写。
 
-**HTTP 错误信封**（合成示例）：
+**规则**：所有 HTTP / WS 响应使用统一信封，由整数 `code` 驱动客户端错误处理逻辑；错误码定义的唯一真源是 `include/error_code.hrl`（详见 [错误码使用规范](./reference/error-codes.md)）。
+
+**响应信封**（实现：`elib_response:reply_json/4,5`）：
+
 ```json
 {
-  "code": "USER_NOT_FOUND",
-  "message": "User does not exist",
-  "details": { "userId": "123456789012345678" },
-  "traceId": "01JX7K8M9P0Q1R2S3T4U5V6W7X"
+  "code": 0,
+  "msg": "success",
+  "payload": { }
 }
 ```
 
-**WS（v2 frame）错误信封**：错误作为 `payload` 中的 JSON 对象，frame 头部 `action=error`，结构同上。
+- `code`：整数。`0` 成功；`1` 通用错误；`4xx/5xx/9xx` 区间语义参考 HTTP（客户端错误/服务端错误/IM 业务专用）。
+- `msg`：人类可读消息（后端中文须 `/utf8`）；客户端**绝不**基于 `msg` 文本做分支判断。
+- `payload`：业务数据；管理面响应另有 `sv_ts`（服务器时间戳）。
+- HTTP 状态码：主流模式为 **HTTP 200 + 信封 code 表达业务结果**（如计费类端点无权时 HTTP 200 + code=403）；少数端点使用真实 HTTP 状态码（如 WS 握手 401）。**每个端点的具体语义以 `api/openapi.yaml` 与契约产物为准，不凭状态码猜。**
 
-**HTTP 状态码映射**：
-| 状态码 | 适用场景 |
-|--------|---------|
-| 400 | 入参格式错（schema 校验失败） |
-| 401 | 未认证（token 缺失/过期） |
-| 403 | 已认证但无权限 |
-| 404 | 资源不存在 |
-| 409 | 业务冲突（重名、并发更新） |
-| 422 | 业务规则违反（如「好友已添加」） |
-| 429 | 限流 |
-| 500 | 后端未捕获异常（仅记录 traceId，不暴露细节） |
+**错误码维护**：
 
-**`code` 字段约定**：
-- 全大写 + 下划线 + 业务域前缀
-- 格式：`{DOMAIN}_{REASON}`（如 `USER_NOT_FOUND`、`MSG_DUPLICATE`、`AUTH_TOKEN_EXPIRED`）
-- 在 `include/error_code.hrl` 中以宏形式维护（如 `?ERR_USER_NOT_FOUND`、`?ERR_AUTH_TOKEN_EXPIRED`）
-- 客户端绝不基于 `message` 文本做分支判断（仅用于日志与展示）
+- 新错误码加入 `include/error_code.hrl` 宏定义，并同步 [错误码使用规范](./reference/error-codes.md)。
+- 客户端生成的错误码常量由脚本从 `error_code.hrl` 派生（产物勿手改）。
 
 **禁止**：
-- 状态码 200 + body `{"error": ...}`（成功语义混淆）
-- 错误码用整数（不可读、易冲突）
-- 把 stacktrace / SQL 错误透传到客户端（`details` 字段需脱敏）
-- 客户端解析 `message` 字符串
+
+- 客户端解析 `msg` 字符串做逻辑分支
+- 把 stacktrace / SQL 错误透传到客户端（`payload` 需脱敏）
+- 未经契约评审新增与既有区间冲突的错误码
 
 ---
 
@@ -190,11 +181,11 @@ GET /api/v1/messages?cursorAfter=123456789012345678&limit=50
 | PATCH | 部分更新（需 `If-Match` ETag 防并发） |
 | DELETE | 删除（幂等） |
 
-**WS Action 命名**（v2 frame）：
-- 格式：`{domain}.{verb}`（小写、点分隔）
-- 客户端 → 服务端：`msg.send`、`contact.add`、`presence.heartbeat`
-- 服务端 → 客户端：`msg.received`、`msg.read`、`contact.online`、`error`
-- 注册表：`imboy/apps/imboy_im/src/protocol/imboy_pb_codec.erl`
+**WS Action 命名**（v1.1 修正：现行 action 为 snake_case，不是点分式）：
+- 格式：`{domain}_{verb}` 小写下划线（如 `message_revoke`、`e2ee_room_key`、`group_member_join`）
+- 注册表：`src/lib/imboy_ws_action_registry.erl`（ETS，插件可扩展）；未注册 action 回 `unknown_action`
+- 客户端常量表：imboyapp `lib/service/message_type_constants.dart`（S2C 侧）
+- 新增 action 必须双侧同步登记，并更新 [WebSocket 协议](./reference/ws-protocol-contract.md)
 
 **Erlang 模块命名**：
 - 业务域前缀 `imboy_`（如 `imboy_user`、`imboy_msg_router`）
@@ -205,7 +196,7 @@ GET /api/v1/messages?cursorAfter=123456789012345678&limit=50
 **禁止**：
 - 端点路径混用 `_` 与 `-`（统一 kebab-case）
 - 缩写域名（`/api/v1/usr` ✗ → `/api/v1/users` ✓）
-- WS action 用驼峰（`msgSend` ✗ → `msg.send` ✓）
+- WS action 用驼峰（`msgSend` ✗ → `message_send` ✓）或点分式（`msg.send` ✗）
 - Erlang 模块名带连字符（atom 语法不支持）
 
 ---
@@ -217,7 +208,7 @@ GET /api/v1/messages?cursorAfter=123456789012345678&limit=50
 1. 在描述中声明「**Convention Exception: §X.Y**」并附理由
 2. 添加 GitHub label `convention-exception`
 3. 由 2 名 maintainer 评审通过方可合并
-4. 在 `imboy/docs/CONVENTIONS_EXCEPTIONS.md` 追加一行记录（PR # / 时间 / 例外条款 / 范围）
+4. 在例外台账追加一行记录（PR # / 时间 / 例外条款 / 范围）。台账文件尚未建立（原引用 `docs/CONVENTIONS_EXCEPTIONS.md` 不存在）；建立前以 PR 描述为准。
 
 未走例外流程的违反 → 强制阻塞合并（`quality.yml` GHA + `code-reviewer` agent 双重检查）。
 

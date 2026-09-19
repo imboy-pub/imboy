@@ -35,7 +35,7 @@ deploy/
 │   │   └── imboy.conf.template  # nginx 反向代理（envsubst 渲染）/ nginx reverse proxy (envsubst-rendered)
 │   └── init-letsencrypt.sh      # 首次签发 Let's Encrypt 证书 / First-time Let's Encrypt issuance
 ├── prometheus/
-│   ├── prometheus.yml           # 抓取配置（3 job）/ Scrape config (3 jobs)
+│   ├── prometheus.yml           # 抓取配置（4 job）/ Scrape config (4 jobs)
 │   └── rules/                   # 告警规则目录（见 imboy-alerts.yml）/ Alert rules
 ├── grafana/
 │   ├── provisioning/            # 自动装配 datasource + dashboard provider
@@ -358,23 +358,43 @@ On first login, the "IMBoy Overview" dashboard is available in the **Dashboards 
 告警规则位于 `deploy/prometheus/rules/imboy-alerts.yml`，随 Prometheus 启动时自动加载。
 Alert rules live in `deploy/prometheus/rules/imboy-alerts.yml`, auto-loaded when Prometheus starts.
 
-**8 条规则覆盖 / 8 rules covering：**
+**33 条规则、14 个分组覆盖 / 33 rules in 14 groups：**（以 `imboy-alerts.yml` 为真源；下表阈值摘要与该文件同步于 2026-09-19）
 
-| 规则 / Rule | 触发条件 / Threshold | 级别 / Severity |
-|---|---|---|
-| `ImBoyBackendDown` | backend 离线 > 1min | critical |
-| `ImBoyBackendRestarted` | uptime < 2min | warning |
-| `ImBoyMsgDeliveryLatencyHigh` | p99 > 500ms 持续 5min | warning |
-| `ImBoyMsgDeliveryLatencyCritical` | p99 > 2s 持续 2min | critical |
-| `ImBoyHTTPErrorRateHigh` | 5xx > 1% 持续 5min | warning |
-| `ImBoyHTTPErrorRateCritical` | 5xx > 5% 持续 2min | critical |
-| `ImBoyErlangMemoryHigh` | VM 内存 > 6GB 持续 5min | warning |
-| `ImBoyErlangMemoryCritical` | VM 内存 > 7.5GB 持续 2min | critical |
-| `ImBoyErlangProcessCountHigh` | 进程数 > 200000 持续 5min | warning |
-| `ImBoyPostgresExporterDown` | exporter 离线 > 2min | critical |
-| `ImBoyPostgresHighRollbackRate` | 回滚率 > 5% 持续 5min | warning |
-| `ImBoyMsgRateDrop` | 消息速率陡降 > 90% 持续 5min | warning |
-| `ImBoyWSConnectionsDrop` | WS 连接数较 10min 前下降 > 50% | warning |
+| 分组 / Group | 规则 / Rule | 触发条件（摘要）/ Threshold | 级别 |
+|---|---|---|---|
+| availability | `ImBoyBackendDown` | backend 离线 > 1min | critical |
+| availability | `ImBoyBackendRestarted` | 后端刚重启（uptime < 2min） | warning |
+| latency | `ImBoyMsgDeliveryLatencyHigh` | p99 > 500ms 持续 5min | warning |
+| latency | `ImBoyMsgDeliveryLatencyCritical` | p99 > 2s 持续 2min | critical |
+| http | `ImBoyHTTPErrorRateHigh` | 5xx > 1% 持续 5min | warning |
+| http | `ImBoyHTTPErrorRateCritical` | 5xx > 5% 持续 2min | critical |
+| erlang_vm | `ImBoyErlangMemoryHigh` | VM 内存 > 6GB 持续 5min | warning |
+| erlang_vm | `ImBoyErlangMemoryCritical` | VM 内存 > 7.5GB 持续 2min | critical |
+| erlang_processes | `ImBoyErlangProcessCountHigh` | 进程数 > 200000 持续 5min | warning |
+| postgres | `ImBoyPostgresExporterDown` | exporter 离线 > 2min | critical |
+| postgres | `ImBoyPostgresHighRollbackRate` | 回滚率 > 5% 持续 5min | warning |
+| message | `ImBoyMsgRateDrop` | 消息速率陡降 > 90% 持续 5min | warning |
+| websocket | `ImBoyWSConnectionsDrop` | WS 连接数较 10min 前下降 > 50% | warning |
+| host_resources | `IMBoyHighMemoryUsage` | 主机内存使用率过高 持续 5min | warning |
+| host_resources | `IMBoyHighMemoryUsageCritical` | 主机内存严重不足 持续 2min | critical |
+| host_resources | `IMBoyHighDiskUsage` | 磁盘使用率过高 持续 5min | warning |
+| host_resources | `IMBoyHighDiskUsageCritical` | 磁盘严重不足 持续 2min | critical |
+| node_down | `IMBoyNodeDown` | Erlang 节点宕机 持续 5min | critical |
+| pg_pool | `IMBoyDatabasePoolExhausted` | PG 连接池使用率过高 持续 5min | warning |
+| pg_pool | `IMBoyDatabasePoolExhaustedCritical` | PG 连接池即将耗尽 持续 2min | critical |
+| backup | `IMBoyBackupNotRunning` | 备份超过 24 小时未运行 | critical |
+| backup | `IMBoyBackupJobFailed` | 备份作业上报失败 | warning |
+| backup | `IMBoyRestoreDrillFailed` | 备份恢复演练失败 | critical |
+| backup | `IMBoyRestoreDrillStalled` | 恢复演练 48 小时未成功（持续 30min 确认） | warning |
+| tls | `IMBoyTLSCertExpiringSoon` | TLS 证书 14 天内到期 | warning |
+| tls | `IMBoyTLSCertExpired` | TLS 证书已过期 | critical |
+| tls | `IMBoyTLSCheckStale` | TLS 到期检查指标缺失（持续 6h） | warning |
+| payment | `IMBoyPaymentCallbackErrorRateHigh` | 支付回调错误率 > 10% 持续 10min | critical |
+| payment | `IMBoyPaymentSignFailureSpike` | 支付回调验签失败激增 持续 5min | critical |
+| payment | `IMBoyPaymentReconcileMismatch` | 支付对账发现不一致 | critical |
+| payment | `IMBoyPaymentReconcileRepairFailed` | 支付对账补单失败 | critical |
+| payment | `IMBoyPaymentReconcileUnrepairable` | 支付流水找不到对应业务订单 | warning |
+| payment | `IMBoyPaymentReconcileStalled` | 支付对账 job 已停摆 持续 10min | warning |
 
 Prometheus 可通过 `http://<server-ip>:9090` 直接访问（建议仅内网暴露）。
 Prometheus is accessible at `http://<server-ip>:9090` (recommended: restrict to internal network only).

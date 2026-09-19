@@ -1,6 +1,6 @@
 # IMBoy Grafana 配置包
 
-开箱即用的 Grafana + Prometheus 配置，配套 `deploy/docker-compose.prod.yml` 可观测性栈。
+开箱即用的 Grafana + Prometheus 配置。社区版（`docker-compose.community.yml`）已内置监控栈，部署时以 `--profile monitoring` 启用；以下手工扩展步骤面向商务版 `docker-compose.prod.yml` 编排。
 
 ## 目录结构
 

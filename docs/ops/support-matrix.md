@@ -3,7 +3,7 @@
 > 私有化交付的依赖版本与支持范围。发布前由 `scripts/check_release_consistency.sh`
 > 校验本文件存在且声明了关键依赖。
 >
-> 产品版本以仓库根 `VERSION` 为准（当前 `1.0.0-alpha.16`，与 `relx.config` 同步）。
+> 产品版本以仓库根 `VERSION` 为准（当前 `1.0.0-alpha.77`，与 `relx.config` 同步；更新本文件时同步此行）。
 
 ## 服务端运行时
 

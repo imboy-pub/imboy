@@ -1,6 +1,6 @@
 # IMBoy Compliance Gap Matrix
 
-> 基线与证据口径见 [IMBoy Overseas Compliance Self-Audit.md](./IMBoy%20Overseas%20Self-Audit.md)。`Required Before Launch` 是工程/商店 Gate 判断；法律适用性仍以法律顾问意见为准。
+> 基线与证据口径见 [IMBoy Overseas Compliance Self-Audit.md](./IMBoy%20Overseas%20Compliance%20Self-Audit.md)。`Required Before Launch` 是工程/商店 Gate 判断；法律适用性仍以法律顾问意见为准。
 > **2026-09-08 终态回写**：实施计划（IMBoy Overseas Compliance Implementation Plan）F/L/D/R/B/A/T/P/V/E 十条线工程侧已全部执行完毕，本表已按当前代码逐行回写。全部提交在各自仓 main、未 push。剩余 Gap 均为外部依赖：E-02 真机验收（需设备）、R-04/B-02（LEGAL 门/矩阵拍板）、各 pending-owner 项（DPA/SCC 签署、生产开关、保留值翻转等）。各任务执行记录见同目录 Checklist 文档。
 
 | Domain | Current | Evidence | Gap | Severity | Required Before Launch | Proposed Solution |

@@ -2,7 +2,7 @@
 
 [根目录](../../CLAUDE.md) > **src/repo**
 
-> **最后更新**: 2026-06-10 | **模块数量**: 72 个（以 `find src/repo -maxdepth 1 -name '*.erl' | wc -l` 为准，截至 2026-06）
+> **最后更新**: 2026-09-19 | **模块数量**: 123 个（以 `find src/repo -maxdepth 1 -name '*.erl' | wc -l` 为准，截至 2026-09-19）
 > **职责**: 封装数据库操作，使用 elib_pg 访问 PostgreSQL，提供 CRUD 接口
 
 ---

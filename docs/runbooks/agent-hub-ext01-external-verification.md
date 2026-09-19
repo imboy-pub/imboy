@@ -127,7 +127,7 @@ python3 scripts/agent_hub_ext01_mcp_client_smoke.py --out /tmp/ext01-a02-result.
 
 按 `deploy/README.md`：`cp .env.example .env` → 填最小 env → `bash preflight.sh` →
 `docker compose -f docker-compose.prod.yml up -d`。前置注意：12 个 PG 扩展必须先于迁移
-（见 `docs/operations/agent-hub-local-golden-flow.md`）。验收：健康检查全绿，admin 可登录。
+（见 `docs/runbooks/agent-hub-local-golden-flow.md`）。验收：健康检查全绿，admin 可登录。
 
 ### 3.2 升级（本计划新增迁移 90-93）
 

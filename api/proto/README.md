@@ -1,6 +1,6 @@
 # `imboy/api/proto/` — IMBoy WebSocket Protobuf 契约真源
 
-> **关联**：`.claude/plans/quality-loop.md` v1.3 T3.3
+> **关联**：三端工程约定 [`docs/CONVENTIONS.md`](../../docs/CONVENTIONS.md)（历史迭代 quality-loop v1.3 T3.3，计划文件已不存在）
 > **协议**：imboy.v2 frame（自定义 binary WS frame 包裹 protobuf payload）
 > **创建**：2026-05-09 / iteration 68 / T3.3 落地
 > **业务设计文档**：`imboy/proto/README.md`（171L 历史，保留作业务参考）

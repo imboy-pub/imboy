@@ -1,8 +1,8 @@
 # API 层文档 - HTTP REST API 处理器
 
-[根目录](../../CLAUDE.md) > **src/api** | 54 个模块 | 职责：HTTP REST 请求入口、参数验证与权限控制、调用 Logic 层、WebSocket 连接管理、返回标准 JSON 响应
+[根目录](../../CLAUDE.md) > **src/api** | 89 个模块 | 职责：HTTP REST 请求入口、参数验证与权限控制、调用 Logic 层、WebSocket 连接管理、返回标准 JSON 响应
 
-> **最后更新**: 2026-06-10 | **计数**: 以 `find src/api -maxdepth 1 -name '*.erl' | wc -l` 为准（截至 2026-06）
+> **最后更新**: 2026-09-19 | **计数**: 以 `find src/api -maxdepth 1 -name '*.erl' | wc -l` 为准（截至 2026-09-19）
 
 ---
 

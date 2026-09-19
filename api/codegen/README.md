@@ -1,6 +1,6 @@
 # `imboy/api/codegen/` — 三端代码生成脚本
 
-> **关联**：`.claude/plans/quality-loop.md` v1.3 T3.4
+> **关联**：三端工程约定 [`docs/CONVENTIONS.md`](../../docs/CONVENTIONS.md)（历史迭代 quality-loop v1.3 T3.4，计划文件已不存在）
 > **创建**：2026-05-09 / iteration 69
 
 ---
