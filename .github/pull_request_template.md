@@ -20,7 +20,7 @@
 
 ### 编码规范
 
-- [ ] 已遵守 [CONVENTIONS.md](docs/CONVENTIONS.md) 6 条不可妥协规则（ID/时间/字段命名/错误响应/分页/命名）
+- [ ] 已遵守 [CONVENTIONS.md](../docs/CONVENTIONS.md) 6 条不可妥协规则（ID/时间/字段命名/错误响应/分页/命名）
 - [ ] UTF-8 字符串带 `/utf8` 后缀（如 `<<"操作成功"/utf8>>`）
 - [ ] SQL 全部 `elib_pg` 参数化（防注入）
 - [ ] 无新 `behavior` 写法（统一英式 `behaviour`）
