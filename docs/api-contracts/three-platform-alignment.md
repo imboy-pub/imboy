@@ -73,6 +73,7 @@
 | 6 | imboyadmin `docs/legal/` 残留 `MulanPSL-2.0.txt` 与 LICENSE（BUSL-1.1）不一致 | imboyadmin 仓 | 中（法务材料口径） | 删除或替换法务文件（非 markdown，本审计不動，转交维护者） |
 | 7 | WS S2C action 清单的服务端注册表与 App 常量表为两处人工同步 | `imboy_ws_action_registry` vs imboyapp `message_type_constants.dart` | 中（新增 action 靠纪律） | 建议纳入契约导出（代码任务） |
 |   | ↑ 2026-09-19 复核实证（修正原表述——实际是**三方且下行无注册表**）：①上行 action 有单一真源 `imboy_ws_action_registry`（内置 9 个：message_{revoke,edit,read}(_ack)+input 七个 + `e2ee_room_key` c2c/c2g 两路，registry:69-70）；②下行应答类 action 以 `message_ds:assemble_s2c` 字面量分散在 43 处调用（16 个错误/控制 action 如 peer_offline/rate_limited/permission_denied）；③业务事件推送（group_*/channel_*/moment_* 等）分散在各业务 logic、形态不一；App 侧 41 个 action 常量单侧维护。**三方无机器对账是结构性缺口**，建议随 contract-export 一并解决（代码任务，长期项） | `src/lib/imboy_ws_action_registry.erl`、`grep -r assemble_s2c src/`（43 处）、imboyapp `message_type_constants.dart` | | |
+| 8 | **错误码生成物滞后 3 项（2026-09-19 实证）**：后端 `include/error_code.hrl` 188 个错误码中，Flutter 生成物 `lib/config/error_code.dart` 缺 3 个——`ERR_TOKEN_EXPIRED_REFRESHABLE(705)`、`ERR_TOKEN_MALFORMED(706)`（CHANGELOG alpha.77 新增对，生成器未重跑）与 `ERR_TEACHING_ORG_OWNER_REQUIRED`；其余 185 项两侧名称/值一致（含 ERR_ 前缀剥离规则）。影响：客户端只能硬编码 705/706 或走默认分支。与历史 C-20 事故（生成器漂移 7 个月）同款模式；生成器自带 `--check` 校验模式但未见门禁强制 | `include/error_code.hrl` vs imboyapp `lib/config/error_code.dart`（文件头注明生成命令） | 中（客户端 token 错误处理分支缺失） | 代码任务：imboyapp 重跑 `dart scripts/generate_error_code.dart` 并考虑把 `--check` 接入 CI |
 
 ## 5. 三端职责一句话
 
