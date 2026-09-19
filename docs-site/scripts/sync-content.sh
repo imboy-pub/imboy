@@ -14,14 +14,21 @@ echo "==> 同步 docs/ → docs-site/content/"
 find "$CONTENT" -mindepth 1 -maxdepth 1 ! -name 'index.md' -exec rm -rf {} + 2>/dev/null || true
 mkdir -p "$CONTENT"
 
-# 同步四象限 + 合规 + 架构 + 商业
-for dir in tutorials guides reference explanation compliance architecture business; do
+# 同步四象限 + 核心概念 + 合规 + 架构 + 商业
+for dir in tutorials concepts guides reference explanation compliance architecture business; do
   if [ -d "$REPO_ROOT/docs/$dir" ]; then
     rsync -a --exclude='README.md' "$REPO_ROOT/docs/$dir/" "$CONTENT/$dir/"
     # 将 README.md 转为 index.md（VitePress 目录索引约定）
     if [ -f "$REPO_ROOT/docs/$dir/README.md" ]; then
       cp "$REPO_ROOT/docs/$dir/README.md" "$CONTENT/$dir/index.md"
     fi
+  fi
+done
+
+# 顶层单文件：术语表 + 工程约定（被多文档引用的全局真源）
+for file in glossary.md CONVENTIONS.md; do
+  if [ -f "$REPO_ROOT/docs/$file" ]; then
+    cp "$REPO_ROOT/docs/$file" "$CONTENT/$file"
   fi
 done
 

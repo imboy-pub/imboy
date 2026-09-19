@@ -14,6 +14,8 @@ export default defineConfig({
   themeConfig: {
     logo: '/imboy-logo.svg',
     nav: [
+      { text: '核心概念', link: '/concepts/' },
+      { text: '术语表', link: '/glossary' },
       { text: '教程', link: '/tutorials/' },
       { text: '操作指南', link: '/guides/' },
       { text: '参考', link: '/reference/' },
@@ -22,6 +24,32 @@ export default defineConfig({
     ],
 
     sidebar: {
+      '/concepts/': [
+        {
+          text: '核心业务概念',
+          items: [
+            { text: '概念地图', link: '/concepts/' },
+            { text: '账号与主体', link: '/concepts/accounts-and-actors' },
+            { text: '协作层级（组织/工作区/项目/群组/频道）', link: '/concepts/collaboration-hierarchy' },
+            { text: '消息模型', link: '/concepts/messaging-model' },
+            { text: '端到端加密（E2EE）', link: '/concepts/e2ee' },
+            { text: '智能体域（Grant/Run/Hirð）', link: '/concepts/agent' },
+            { text: '客服域', link: '/concepts/customer-service' },
+            { text: '企业业务域', link: '/concepts/enterprise-business' },
+          ],
+        },
+      ],
+
+      '/glossary': [
+        {
+          text: '全局',
+          items: [
+            { text: '术语表（Glossary）', link: '/glossary' },
+            { text: '三端工程约定', link: '/CONVENTIONS' },
+          ],
+        },
+      ],
+
       '/tutorials/': [
         {
           text: '快速上手',
