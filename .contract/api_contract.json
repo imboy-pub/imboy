@@ -4881,7 +4881,7 @@
     },
     "source": "include/error_code.hrl"
   },
-  "format_version": 1,
+  "format_version": 2,
   "generator": "scripts/contract_gate.py",
   "notes": {
     "entity_id_tsid": "canonical: JSON integer (TSID 64-bit)；admin 网络层 safeParseBigIntJson 转 string；TS 类型一律 EntityId",
@@ -4892,6 +4892,91 @@
   "sources": {
     "error_code": "include/error_code.hrl",
     "migrations_dir": "priv/migrations",
-    "router": "src/imboy_router.erl"
+    "router": "src/imboy_router.erl",
+    "ws_action_registry": "src/lib/imboy_ws_action_registry.erl"
+  },
+  "ws_actions": {
+    "actions": [
+      {
+        "action": "e2ee_room_key",
+        "function": "c2c",
+        "handler": "msg_c2c_logic",
+        "route": "c2c"
+      },
+      {
+        "action": "message_edit",
+        "function": "c2c_edit",
+        "handler": "msg_c2c_logic",
+        "route": "c2c"
+      },
+      {
+        "action": "message_edit_ack",
+        "function": "c2c_edit_ack",
+        "handler": "msg_c2c_logic",
+        "route": "c2c"
+      },
+      {
+        "action": "message_input",
+        "function": "c2c_input",
+        "handler": "msg_c2c_logic",
+        "route": "c2c"
+      },
+      {
+        "action": "message_read",
+        "function": "c2c_read",
+        "handler": "msg_c2c_logic",
+        "route": "c2c"
+      },
+      {
+        "action": "message_read_ack",
+        "function": "c2c_read_ack",
+        "handler": "msg_c2c_logic",
+        "route": "c2c"
+      },
+      {
+        "action": "message_revoke",
+        "function": "c2c_revoke",
+        "handler": "msg_c2c_logic",
+        "route": "c2c"
+      },
+      {
+        "action": "message_revoke_ack",
+        "function": "c2c_revoke_ack",
+        "handler": "msg_c2c_logic",
+        "route": "c2c"
+      },
+      {
+        "action": "e2ee_room_key",
+        "function": "c2g",
+        "handler": "msg_c2g_logic",
+        "route": "c2g"
+      },
+      {
+        "action": "message_edit",
+        "function": "c2g_edit",
+        "handler": "msg_c2g_logic",
+        "route": "c2g"
+      },
+      {
+        "action": "message_edit_ack",
+        "function": "c2g_edit_ack",
+        "handler": "msg_c2g_logic",
+        "route": "c2g"
+      },
+      {
+        "action": "message_revoke",
+        "function": "c2g_revoke",
+        "handler": "msg_c2g_logic",
+        "route": "c2g"
+      },
+      {
+        "action": "message_revoke_ack",
+        "function": "c2g_revoke_ack",
+        "handler": "msg_c2g_logic",
+        "route": "c2g"
+      }
+    ],
+    "note": "上行 WS action（客户端→服务端）内置注册表静态快照；运行时插件注册与下行 S2C action 不在静态导出内（口径对齐 endpoints.plugin_routes）",
+    "source": "src/lib/imboy_ws_action_registry.erl"
   }
 }

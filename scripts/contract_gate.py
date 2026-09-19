@@ -7,6 +7,8 @@
     （按迁移序号取最新定义，模拟迁移顺序应用）
   - 错误码：include/error_code.hrl（-define(ERR_*, N) 段摘要；
     flutter 全量契约由 C1 的 imboyapp/scripts/generate_error_code.dart --check 承担）
+  - 上行 WS action：src/lib/imboy_ws_action_registry.erl（-define(BUILTIN_ACTIONS)
+    表静态快照；运行时插件注册与下行 S2C action 不在静态导出内）
 
 子命令：
   export            生成 .contract/api_contract.json（确定性输出：内容不变则文件不变，
@@ -37,7 +39,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CONTRACT_PATH = REPO / ".contract" / "api_contract.json"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 # ---------------------------------------------------------------------------
 # 后端真源：DB CHECK 枚举约束白名单（约束名 → 契约枚举 key）
@@ -219,6 +221,32 @@ def _assert_no_duplicate_binaries(paths):
 
 
 # ---------------------------------------------------------------------------
+# 上行 WS action 注册表（imboy_ws_action_registry ?BUILTIN_ACTIONS 表）
+# ---------------------------------------------------------------------------
+WS_ACTION_RE = re.compile(
+    r'\{\s*<<"([a-z0-9_]+)">>\s*,\s*<<"([a-z0-9_]+)">>\s*,'
+    r'\s*([a-z0-9_]+)\s*,\s*([a-z0-9_]+)\s*\}')
+
+
+def extract_ws_actions(registry_src: str) -> dict:
+    """提取内置上行 WS action 注册表为契约快照（确定性排序）。"""
+    block = _slice_between(registry_src,
+                           re.compile(r"-define\(BUILTIN_ACTIONS"),
+                           re.compile(r"\]\)\."))
+    entries = [
+        {"route": m[0], "action": m[1], "handler": m[2], "function": m[3]}
+        for m in WS_ACTION_RE.findall(block)
+    ]
+    entries.sort(key=lambda e: (e["route"], e["action"], e["handler"]))
+    return {
+        "source": "src/lib/imboy_ws_action_registry.erl",
+        "note": "上行 WS action（客户端→服务端）内置注册表静态快照；运行时插件注册"
+                "与下行 S2C action 不在静态导出内（口径对齐 endpoints.plugin_routes）",
+        "actions": entries,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 枚举提取（priv/migrations CHECK 约束，按迁移序号取最新定义）
 # ---------------------------------------------------------------------------
 CHECK_RE = re.compile(
@@ -301,6 +329,7 @@ def build_contract() -> dict:
             "router": "src/imboy_router.erl",
             "migrations_dir": "priv/migrations",
             "error_code": "include/error_code.hrl",
+            "ws_action_registry": "src/lib/imboy_ws_action_registry.erl",
         },
         "notes": {
             "method": "cowboy 路由无 method 维度（handler 内分派），method 契约不在第一版范围",
@@ -313,6 +342,8 @@ def build_contract() -> dict:
         "auth_open_whitelist": extract_open_whitelist(router_src),
         "enums": extract_db_enums(REPO / "priv" / "migrations"),
         "error_code_summary": extract_error_code_summary(REPO / "include" / "error_code.hrl"),
+        "ws_actions": extract_ws_actions(
+            (REPO / "src" / "lib" / "imboy_ws_action_registry.erl").read_text(encoding="utf-8")),
     }
 
 
@@ -525,7 +556,7 @@ def cmd_check(admin_dir, flutter_dir) -> int:
     if failures:
         print("== 自检 FAIL：落仓契约与后端真源不一致 ==")
     else:
-        print("== 自检 PASS：落仓契约与 router/迁移/错误码真源一致 ==")
+        print("== 自检 PASS：落仓契约与 router/迁移/错误码/WS action 真源一致 ==")
     if admin_dir:
         check_client_bindings(admin_dir, ADMIN_ENUM_BINDINGS, contract, "admin", failures)
         check_entity_id_rules(admin_dir, failures)
