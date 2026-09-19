@@ -702,8 +702,11 @@ say ""
 
 # ------------------------------------------------------------- S2：EB 全链 --
 if [ "$MODE" = "local" ]; then
-    # F6：会话创建携带合成 consent（写链需 key_ref）——种子已建；HTTP 读链复核
-    C=$(eb GET "$ORG_ID" "conversations/$CONV_ID/messages?workspace_id=$WS_ID" "$JWT_A")
+    # F6：会话创建携带合成 consent（写链需 key_ref）——种子已建；HTTP 读链复核。
+    # 读链用单职能坐席 C：conversation_messages 白名单同时接纳 sales 与
+    # customer_service（CSX-01），A 双职能 active 会 fail-closed 409
+    # multiple_active_assignment（产品正确行为；读链归权断言不依赖读者身份）。
+    C=$(eb GET "$ORG_ID" "conversations/$CONV_ID/messages?workspace_id=$WS_ID" "$JWT_C")
     assert_eq "S2.1 种子会话经 HTTP 读（归 Org + 默认 Workspace + 合成 consent）" "$C" 200
 else
 C=$(eb POST "$ORG_ID" conversations "$JWT_A" \

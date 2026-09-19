@@ -9,16 +9,16 @@
 %%%     contact_id) 复合 FK（fk_csvt_contact，与 125 同口径）、token_digest
 %%%     （uq_csvt_org_digest 唯一）、expires_at / revoked_at；
 %%%   * 缺口只有三个可空列：widget_installation_id（复合 FK 指回 installation）、
-%%%     anonymous_subject_hmac、last_seen_at（00000131 迁移只做追加）；
+%%%     anonymous_subject_hmac、last_seen_at（00000132 迁移只做追加）；
 %%%   * 追加列全部 NULL 即非 Widget 令牌——既有运营侧 visit token 行零语义
 %%%     变化，digest / 过期 / 吊销不变量未放宽，满足「不放宽既有不变量即可复用」；
 %%%   * 新建独立表反而是复制：同一套 digest 唯一性 + expiry/revoke 语义要维护
 %%%     两份，且 session.visit_token_id 的审计链路无法覆盖 Widget 令牌。
-%%% installation / identity_key / nonce 三表无既有载体，为新建（00000131）。
+%%% installation / identity_key / nonce 三表无既有载体，为新建（00000132）。
 %%% ============================================================================
 %%%
 %%% 判定对应：
-%%%   * A01：00000131 up/down 往返无残留；00000114..00000125 文件列表逐字冻结、
+%%%   * A01：00000132 up/down 往返无残留；00000114..00000125 文件列表逐字冻结、
 %%%     内容零修改（读目录断言）；
 %%%   * A02：public_widget_id 可公开（非 secret），但解析同语句带 Org——错 Org
 %%%     查询 not_found，换不来跨 Org 权限；
@@ -98,7 +98,7 @@ cases({error, Reason}) ->
     erlang:error({csb01_pg_suite_db_unavailable, Reason}).
 
 %% ===================================================================
-%% A01：旧迁移零修改 + 00000131 up/down 往返无残留
+%% A01：旧迁移零修改 + 00000132 up/down 往返无残留
 %% ===================================================================
 
 a01_legacy_migrations_untouched() ->
@@ -113,7 +113,7 @@ a01_legacy_migrations_untouched() ->
         not lists:member(F, ?LEGACY_MIGRATIONS_114_125)
     ],
     ?assertEqual([], Foreign),
-    %% 内容零修改的证据性断言：旧迁移正文不含 widget 字样（widget 只属于 131）
+    %% 内容零修改的证据性断言：旧迁移正文不含 widget 字样（widget 只属于 132）
     lists:foreach(
         fun(Name) ->
             {ok, Bin} = file:read_file(filename:join(?MIG_DIR, Name)),
@@ -121,24 +121,31 @@ a01_legacy_migrations_untouched() ->
         end,
         ?LEGACY_MIGRATIONS_114_125
     ),
-    %% 本卡迁移恰为 00000131（共享 ledger 分配，禁用其他编号）
-    ?assert(lists:member("00000131_customer_service_widget_foundation.up.sql", Files)),
-    ?assert(lists:member("00000131_customer_service_widget_foundation.down.sql", Files)).
+    %% 本卡迁移落定为 00000132：分支期分配的是 131，但三计划合并序列把
+    %% 131 给了 organization_invitation_platform_invite（ORG-V1），widget
+    %% foundation 顺延为 132（agent_run_foundation 居 134 为 head）。
+    ?assert(lists:member("00000132_customer_service_widget_foundation.up.sql", Files)),
+    ?assert(lists:member("00000132_customer_service_widget_foundation.down.sql", Files)).
 
 a01_widget_migration_roundtrip_no_residue() ->
-    %% 前置：app 启动 migrate 已把 131 应用到 scratch 库
+    %% 前置：app 启动 migrate 已把 132 应用到 scratch 库
     ?assert(table_exists(<<"customer_service_widget_installation">>)),
     ok = with_migrate_conn(fun(Conn) ->
+        %% table 显式留默认（erlang_migrate 自有的 schema_migrations，含 dirty 列）：
+        %% app 侧 schema_migrations_history 无 dirty 列、非同 schema，不可混用；
+        %% scratch 库由本 run 独占，roundtrip 前置断言已锁定基线在位。
         Config = #{conn => Conn, dir => imboy_migrate:get_scripts_path(), strict => true},
-        %% down 恰 1 步 = 只回滚 head（131）
-        ok = erlang_migrate:down(Config, 1),
+        %% down 恰 3 步 = 从 head（134=agent_run_foundation）回滚 134/133/132，
+        %% 其中 132 即本卡 widget foundation；131 及更早保持不动
+        ok = erlang_migrate:down(Config, 3),
         ?assertNot(table_exists(<<"customer_service_widget_installation">>)),
         ?assertNot(table_exists(<<"customer_service_widget_identity_key">>)),
         ?assertNot(table_exists(<<"customer_service_widget_nonce">>)),
         ?assertNot(column_exists(<<"customer_service_visit_token">>, <<"widget_installation_id">>)),
         ?assertNot(column_exists(<<"customer_service_visit_token">>, <<"anonymous_subject_hmac">>)),
         ?assertNot(column_exists(<<"customer_service_visit_token">>, <<"last_seen_at">>)),
-        %% up 1 步 = 重新应用 131；再跑一次 up（幂等：IF NOT EXISTS 全绿）
+        %% up 1 步 = 重新应用 132（widget 回归）；再跑一次 up 全量
+        %% （补回 133/134，幂等：IF NOT EXISTS 全绿）
         ok = erlang_migrate:up(Config, 1),
         ?assert(table_exists(<<"customer_service_widget_installation">>)),
         ok = erlang_migrate:up(Config)

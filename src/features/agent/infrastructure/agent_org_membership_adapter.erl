@@ -62,7 +62,7 @@ resolve_organization_membership(OrgId, AgentId) ->
                 case Mod:resolve_organization(OrgId) of
                     {ok, OrgFact} when is_map(OrgFact) ->
                         %% org 门：membership 上下文里 org 非 active 一律 inactive
-                        case maps:get(status, OrgFact, undefined) of
+                        case norm_fact_val(maps:get(status, OrgFact, undefined)) of
                             active -> resolve_member_fact(OrgId, AgentId);
                             _ -> {error, inactive}
                         end;
@@ -134,9 +134,9 @@ resolve_member_fact(OrgId, AgentId) ->
 %% membership 上下文：任何非 active（member 行或 org_status 回读）→ inactive；
 %% role 非 member（DB invariant 挡死的理论分支）同 fail closed。
 member_verdict(MemberFact) ->
-    Status = maps:get(status, MemberFact, undefined),
-    OrgStatus = maps:get(org_status, MemberFact, undefined),
-    Role = maps:get(role, MemberFact, undefined),
+    Status = norm_fact_val(maps:get(status, MemberFact, undefined)),
+    OrgStatus = norm_fact_val(maps:get(org_status, MemberFact, undefined)),
+    Role = norm_fact_val(maps:get(role, MemberFact, undefined)),
     case {Status, OrgStatus, Role} of
         {active, active, member} ->
             ok_version(MemberFact, fun(Version) ->
@@ -150,7 +150,7 @@ ws_gate(WsId, AgentId, OwnershipFact) ->
     case
         {
             maps:get(same_org, OwnershipFact, undefined),
-            maps:get(workspace_status, OwnershipFact, undefined)
+            norm_fact_val(maps:get(workspace_status, OwnershipFact, undefined))
         }
     of
         {false, _} ->
@@ -175,9 +175,9 @@ resolve_ws_member_fact(WsId, AgentId) ->
     end).
 
 ws_member_verdict(WsMemberFact) ->
-    Status = maps:get(status, WsMemberFact, undefined),
-    WsStatus = maps:get(workspace_status, WsMemberFact, undefined),
-    Role = maps:get(role, WsMemberFact, undefined),
+    Status = norm_fact_val(maps:get(status, WsMemberFact, undefined)),
+    WsStatus = norm_fact_val(maps:get(workspace_status, WsMemberFact, undefined)),
+    Role = norm_fact_val(maps:get(role, WsMemberFact, undefined)),
     case {Status, WsStatus} of
         {active, active} when Role =/= undefined ->
             ok_version(WsMemberFact, fun(Version) ->
@@ -189,7 +189,7 @@ ws_member_verdict(WsMemberFact) ->
 
 %% state 上下文：只有 active 与 archived 是已知值，其余 fail closed 为 unavailable。
 state_verdict(OrgFact) ->
-    case maps:get(status, OrgFact, undefined) of
+    case norm_fact_val(maps:get(status, OrgFact, undefined)) of
         active ->
             ok_version(OrgFact, fun(Version) ->
                 {ok, #{status => active, version => Version}}
@@ -208,6 +208,24 @@ ok_version(Fact, Build) ->
         _Bad ->
             {error, unavailable}
     end.
+
+%% facts 状态/角色归一化：ORG facts（organization_agent_facts_app，C18 v1）
+%% 经真实 PG 返回 text 列的 binary 形态（<<"active">> 等），其内部 boundary
+%% 合同（organization_allowed/1 等）也以 binary 为准；而本模块的裁决与输出
+%% 合同是 atom（grant/run command 消费 {ok, #{status => active, ...}}，eunit
+%% mock 均为 atom）。IT-10 集成实测（run 20260918T124045Z-6af21b0d）发现两侧
+%% 形状漂移：真库上 binary 与 atom 恒不匹配 → membership 恒 inactive、state
+%% 恒 unavailable，grant/run 链路在真实部署中全部失效。修法=本模块读取边界
+%% 统一归一化：已知枚举 binary → atom；atom 原样透传（兼容既有 mock 合同）；
+%% 未知值原样返回（与 atom 比较必落入各 verdict 的 _NonActive/_Unknown 分支，
+%% fail closed 语义不变）。
+norm_fact_val(<<"active">>) -> active;
+norm_fact_val(<<"removed">>) -> removed;
+norm_fact_val(<<"archived">>) -> archived;
+norm_fact_val(<<"owner">>) -> owner;
+norm_fact_val(<<"admin">>) -> admin;
+norm_fact_val(<<"member">>) -> member;
+norm_fact_val(Value) -> Value.
 
 %% ===================================================================
 %% 内部：入口校验 / 错误翻译 / crash 兜底

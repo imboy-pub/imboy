@@ -68,7 +68,13 @@ load_request_facts(Request) when is_map(Request) ->
                              || A <- Assignments,
                                 maps:get(status, A) =:= active
                             ],
-                            {ok, #{
+                            %% 身份归属确定性 hint（EB-01 / A01.36 方案 a）：
+                            %% 请求路径带 conversation_id 时读会话经办
+                            %% business_identity_id 作为授权事实；仅在职能
+                            %% 白名单歧义且恰命中一条 assignment 时消歧。
+                            %% 会话不存在 / 查询失败 → 不投影该键（= 无 hint，
+                            %% 歧义维持 fail-closed），不影响授权主链。
+                            Facts0 = #{
                                 organization_id => OrgId,
                                 member => Member#{
                                     governance_roles => governance_roles(maps:get(role, Member))
@@ -79,7 +85,8 @@ load_request_facts(Request) when is_map(Request) ->
                                     maps:get(role, Member),
                                     FunctionKeys
                                 )
-                            }};
+                            },
+                            {ok, maybe_add_identity_hint(Facts0, Request, OrgId)};
                         {error, _} = Err ->
                             Err
                     end;
@@ -89,6 +96,22 @@ load_request_facts(Request) when is_map(Request) ->
     end;
 load_request_facts(_Request) ->
     {error, invalid_request}.
+
+%% 会话经办身份 hint 投影：请求 FactsRequest 带 conversation_id（接口层从
+%% 路径绑定解析）时读一次会话经办 business_identity_id；任何取数失败都
+%% 静默回落「无 hint」——hint 只用于消歧，绝不改变授权主链的判定。
+maybe_add_identity_hint(Facts, Request, OrgId) ->
+    case maps:get(conversation_id, Request, undefined) of
+        ConversationId when is_integer(ConversationId), ConversationId > 0 ->
+            case eb_pg_store:conversation_handler_identity(OrgId, ConversationId) of
+                {ok, #{business_identity_id := Hint}} when is_integer(Hint) ->
+                    Facts#{resource_identity_hint => Hint};
+                _ ->
+                    Facts
+            end;
+        _ ->
+            Facts
+    end.
 
 tenant_keys(Request) ->
     OrgId = maps:get(organization_id, Request, undefined),

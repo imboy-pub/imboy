@@ -153,7 +153,14 @@ a02_profile_plaintext_never_reaches_db() ->
             Org, maps:get(id, Contact), maps:get(id, maps:get(contact_identity, Result))
         ),
         ?assertEqual(nomatch, binary:match(Blob, Canary)),
-        %% 缺主密钥 → fail-closed（不降级为明文、不写行）
+        %% 缺主密钥 → fail-closed（不降级为明文、不写行）。
+        %% 显式隔离 env keyring：EUNIT_CONFIG 可能注入 eb_enterprise_keyring
+        %% （F6 合成密钥），此时缺省 key_ref 合法解析成功——那是另一条产品
+        %% 路径。本场景验证的是「env 无 keyring ⇒ fail-closed」，故 mock 掉
+        %% env 解析面返回 undefined，不依赖「全局环境恰好无 keyring」的假设。
+        catch meck:unload(eb_env_keyring),
+        ok = meck:new(eb_env_keyring, [passthrough, no_link]),
+        meck:expect(eb_env_keyring, resolve_key_ref, fun(_Any) -> undefined end),
         Before = contact_count(Org),
         ?assertEqual(
             {error, missing_key},
@@ -167,6 +174,7 @@ a02_profile_plaintext_never_reaches_db() ->
         ),
         ?assertEqual(Before, contact_count(Org))
     after
+        catch meck:unload(eb_env_keyring),
         ?FIX:cleanup(Scope)
     end.
 

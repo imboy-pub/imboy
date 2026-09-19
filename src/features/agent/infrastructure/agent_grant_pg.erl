@@ -354,6 +354,16 @@ grant_row_to_map(
 
 %% 整数秒等值浮点（0.0/5.0）归一为整数；带非零小数的微秒精度保留原值。
 %% 注意用数值相等 ==（0.0 =:= 0 为 false，会漏掉全部整秒浮点）。
+%% rfc3339 codec（sys.config.example 全仓绑定）读回 timestamptz 是 RFC3339
+%% binary；归一为 UTC calendar datetime 元组，与请求侧元组（domain 冻结合同）
+%% 做项等比较（幂等指纹/实时有效态判定依赖）。IT-10 集成实测修复。
+norm_dt(Bin) when is_binary(Bin) ->
+    case elib_dt:rfc3339_to(Bin, microsecond) of
+        LocalMicro when is_integer(LocalMicro) ->
+            calendar:gregorian_seconds_to_datetime(LocalMicro div 1000000 + 62167219200);
+        {error, _} ->
+            Bin
+    end;
 norm_dt({D, {H, I, S}}) when is_float(S), S == trunc(S) ->
     {D, {H, I, trunc(S)}};
 norm_dt(Dt) ->

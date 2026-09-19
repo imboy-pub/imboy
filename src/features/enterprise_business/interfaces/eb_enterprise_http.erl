@@ -73,7 +73,7 @@ authorize(Entry, Case, Req, State) ->
         {_, _, {error, _} = Err} ->
             Err;
         {{ok, RouteMetadata}, {ok, FactsModule}, {ok, Credential}} ->
-            FactsRequest = facts_request(State),
+            FactsRequest = facts_request(Case, Req, State),
             Request = #{
                 organization_id => maps:get(organization_id, State, undefined),
                 user_id => credential_user_id(Credential),
@@ -83,20 +83,45 @@ authorize(Entry, Case, Req, State) ->
             eb_auth_app:authorize(case_requirement(RouteMetadata, Case), Request)
     end.
 
+%% ===================================================================
+%% A05 分层门修正（EB-01 / A01.36 方案 a 实施记录）：接口层禁止直连
+%% facade，资源归属 hint（会话经办 business_identity_id）改道授权事实
+%% 通道——http 层只把请求路径里的会话 id 投进 FactsRequest，由 facts
+%% 实现按需加载（见 eb_pg_auth_facts:load_request_facts/1）。
+%% ===================================================================
+
+%% 只读事实源收到的请求形状（租户类 / 平台类两类事实源共同的最小键集）。
+%% 请求路径携带 `conversation_id` 绑定时一并投影：它承担「身份归属确定性
+%% hint」的取数锚点（授权歧义消歧用；取不到 → facts 无该键 → 维持歧义拒绝）。
+facts_request(Case, Req, State) ->
+    #{
+        organization_id => maps:get(organization_id, State, undefined),
+        user_id => maps:get(current_uid, State, 0),
+        adm_user_id => maps:get(adm_user_id, State, undefined),
+        path => maps:get(path, State, undefined),
+        conversation_id => conversation_binding(maps:get(path_params, Case, []), Req)
+    }.
+
+%% 从 Case 的路径参数声明里找 `conversation_id` 类绑定并解析当前请求的绑定值；
+%% 无该类绑定 / 绑定缺失或非法 → `undefined`（合法性仍由后续 build_params 报错）。
+conversation_binding(PathParams, Req) when is_list(PathParams) ->
+    case [Binding || {Binding, Key} <- PathParams, Key =:= conversation_id] of
+        [Binding | _] ->
+            case path_tsid(Req, Binding, {missing_path_param, conversation_id}) of
+                {ok, Id} -> Id;
+                _ -> undefined
+            end;
+        [] ->
+            undefined
+    end;
+conversation_binding(_PathParams, _Req) ->
+    undefined.
+
 case_requirement(RouteMetadata, Case) ->
     case maps:get(required_permission, Case, undefined) of
         undefined -> RouteMetadata;
         Permission -> RouteMetadata#{required_permission => Permission}
     end.
-
-%% 只读事实源收到的请求形状（租户类 / 平台类两类事实源共同的最小键集）。
-facts_request(State) ->
-    #{
-        organization_id => maps:get(organization_id, State, undefined),
-        user_id => maps:get(current_uid, State, 0),
-        adm_user_id => maps:get(adm_user_id, State, undefined),
-        path => maps:get(path, State, undefined)
-    }.
 
 %% route metadata：**只**取白名单键，避免把客户端可控值混进判定输入。
 metadata(State, Req) ->
