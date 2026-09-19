@@ -11,6 +11,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 契约漂移 #2：管理后台内置角色 4/5/6（内容审核/安全治理/客服）补展示名——抽 `shared/adminRoles.ts` 单一映射对齐后端 `role_acl/1` 真源（imboyadmin `cf9ad7b`）
+- 契约漂移 #7（服务端侧）：上行 WS action 注册表纳入契约门——`api_contract.json` 新增 `ws_actions` 段（format_version 2），registry 变更未重导出即 `make contract-check` 红门
+
 ### Docs
 
 - 三端文档体系整理（审计报告 `docs/documentation-system/2026-09-19-documentation-audit.md`）：新增全项目术语表 `docs/glossary.md`、核心概念层 `docs/concepts/`（账号/协作层级/消息/E2EE/智能体/客服/企业业务八篇）、三端 API 对齐与契约漂移登记 `docs/api-contracts/three-platform-alignment.md`；修正 `docs/CONVENTIONS.md` 三处与代码相反的约定（整数码信封、WS action snake_case、TSID 路径现状）；版本锚与部署监控数字对齐（4 job / 33 条告警规则）；全仓内链死链清零；文档站（GitHub Pages）接入概念层与术语表
