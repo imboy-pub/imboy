@@ -190,6 +190,8 @@ product evaluation and live demos.
 ## More documentation
 
 - [Documentation index](./docs/README.md)
+- [Core concepts](./docs/concepts/README.md) (accounts / hierarchy / messaging / E2EE / agent / customer service / enterprise)
+- [Glossary](./docs/glossary.md)
 - [Backend architecture](./docs/architecture/overview.md)
 - [REST API catalog](./docs/reference/rest-api-v1-catalog.md)
 - [WebSocket protocol](./docs/reference/ws-protocol-contract.md)

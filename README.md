@@ -181,6 +181,8 @@ docker compose -f docker-compose.demo.yml up -d
 ## 继续阅读
 
 - [**在线文档站**](https://imboy-pub.github.io/imboy/)（教程 / 指南 / 参考 / 合规）
+- [核心业务概念](./docs/concepts/README.md)（账号 / 组织与工作区 / 消息 / E2EE / 智能体 / 客服 / 企业业务）
+- [术语表](./docs/glossary.md)（三端统一的正式名称与易混裁定）
 - [E2EE 协议规范](./docs/reference/e2ee-protocol-specification.md)
 - [E2EE 安全简报（企业决策者）](./docs/business/e2ee-security-brief.md)
 - [后端架构](./docs/architecture/overview.md)
