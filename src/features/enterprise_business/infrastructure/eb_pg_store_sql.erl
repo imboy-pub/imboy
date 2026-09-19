@@ -132,6 +132,16 @@ sql(fetch_conversation) ->
         "  FROM enterprise_conversation"
         " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
     >>;
+%% EB-01 / A01.36 方案 a：授权层 hint 预取专用只读。**刻意不列入 statements()
+%% 冻结清单**（a01_every_statement_carries_both_tenants 双租户门不适用）：无
+%% Workspace 语义——会话 id 为 TSID 主键，org + id 双键防跨租户；授权发生在
+%% workspace 解析之前，此处只回经办身份、不回任何行数据，org 不匹配即 not_found。
+sql(conversation_handler_identity) ->
+    <<
+        "SELECT business_identity_id"
+        "  FROM enterprise_conversation"
+        " WHERE organization_id = $1 AND id = $2"
+    >>;
 sql(fetch_delivery) ->
     <<
         "SELECT d.id, d.organization_id, d.workspace_id, d.message_id, d.recipient_ref,"

@@ -34,6 +34,7 @@
     insert_identity/3,
     fetch_conversation/3,
     insert_conversation/3,
+    conversation_handler_identity/2,
     append_message/3,
     advance_assignment/5,
     list_assignments/2,
@@ -133,6 +134,20 @@ fetch_conversation(OrgId, WorkspaceId, ConversationId) ->
             eb_pg_store_sql:conversation_fields()
         )
     end).
+
+%% @doc 会话经办 `business_identity_id` 的轻量只读（EB-01 / A01.36 方案 a）。
+%% 授权层 hint 预取专用：无 Workspace 语义（会话 id 为 TSID 主键 + Org 双键
+%% 防跨租户），主键索引一次取行；**零写入**，不参与任何事务提交路径。
+-spec conversation_handler_identity(integer(), integer()) ->
+    {ok, #{business_identity_id => integer()}} | {error, term()}.
+conversation_handler_identity(OrgId, ConversationId) when
+    is_integer(OrgId), is_integer(ConversationId)
+->
+    fetch_one(
+        eb_pg_store_sql:sql(conversation_handler_identity),
+        [OrgId, ConversationId],
+        [{business_identity_id, <<"business_identity_id">>, int}]
+    ).
 
 %% @doc 在调用方事务内读取会话（canonical 事务用；同样租户贯穿）。
 -spec fetch_conversation_in(term(), integer(), integer(), integer()) ->

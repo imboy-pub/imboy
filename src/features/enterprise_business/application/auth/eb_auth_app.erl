@@ -126,7 +126,11 @@ enterprise_member(Requirement, Request, Credential) ->
                     {error, _} = Err ->
                         Err;
                     ok ->
-                        case select_assignment(Active, RequiredFunction) of
+                        %% 身份归属 hint 由 facts 实现按请求资源（会话）投影
+                        %% 进授权事实（见 eb_pg_auth_facts:maybe_add_identity_hint）；
+                        %% 纯逻辑注入同样经 facts 键传入。
+                        Hint = maps:get(resource_identity_hint, Facts, undefined),
+                        case select_assignment(Active, RequiredFunction, Hint) of
                             {error, _} = Err ->
                                 Err;
                             {ok, Assignment} ->
@@ -382,7 +386,14 @@ active_assignments(Facts, UserId, OrgId) ->
 %% `RequiredFunction` 为单个 `function_key()` 或职能白名单（命中其一）；
 %% 白名单内出现多条 active（同用户同时持有两类职能且都被路由接纳）→
 %% fail-closed（`multiple_active_assignment`），不静默取第一条。
-select_assignment(Active, RequiredFunction) ->
+%%
+%% 身份归属确定性规则（EB-01 / A01.36 方案 a，2026-09-20）：仅当歧义发生
+%% 且请求携带 `resource_identity_hint`（请求资源——如会话——的经办
+%% `business_identity_id`，由接口层在构造 Request 时预取）时，才在歧义集合中
+%% 过滤 `business_identity_id =:= Hint`：<b>恰一条命中 → 以该身份执行（翻转）；
+%% 零条或多条命中 → 维持歧义拒绝</b>。fail-closed 强度不变：无 hint、hint 落空、
+%% hint 仍歧义一律拒绝；白名单、身份基数不变量、拒绝原因族均不改动。
+select_assignment(Active, RequiredFunction, Hint) ->
     ReqList = required_function_list(RequiredFunction),
     Matching = [
         A
@@ -390,13 +401,31 @@ select_assignment(Active, RequiredFunction) ->
         lists:member(maps:get(function_key, A, undefined), ReqList)
     ],
     case Matching of
-        [Assignment] -> {ok, Assignment};
-        [] -> {error, identity_assignment_missing};
-        _Multiple -> {error, {multiple_active_assignment, RequiredFunction}}
+        [Assignment] ->
+            {ok, Assignment};
+        [] ->
+            {error, identity_assignment_missing};
+        _Multiple when Hint =:= undefined ->
+            {error, {multiple_active_assignment, RequiredFunction}};
+        _Multiple ->
+            case
+                [
+                    A
+                 || A <- Matching,
+                    maps:get(business_identity_id, A, undefined) =:= Hint
+                ]
+            of
+                [Assignment] -> {ok, Assignment};
+                _NotExactlyOne -> {error, {multiple_active_assignment, RequiredFunction}}
+            end
     end.
 
 %% 路由声明的职能归一为白名单列表：单个 binary 包装为单元素列表；
 %% 列表原样（空列表/非列表一律空集 → fail-closed 挑不出 identity）。
+%% 联合分析把输入域收窄为 `binary() | undefined` 后判 is_list 子句恒假
+%% （select_assignment/3 引入 /3 arity 后触发）；运行时白名单列表是真实
+%% 输入，属 dialyzer 误报——局部压制，不动 baseline 棘轮。
+-dialyzer({nowarn_function, required_function_list/1}).
 required_function_list(Required) when is_binary(Required) -> [Required];
 required_function_list(Required) when is_list(Required) -> Required;
 required_function_list(_Other) -> [].

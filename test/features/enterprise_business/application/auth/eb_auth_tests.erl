@@ -1146,3 +1146,128 @@ enterprise_sales_route() ->
         required_function => <<"sales">>,
         required_permission => <<"conversation.read">>
     }.
+
+%% ===================================================================
+%% EB-01 / A01.36 方案 a：身份归属确定性 hint（2026-09-20）
+%% ===================================================================
+
+%% A01.36 场景夹具：offboarding 承接后同一 user 同持 sales + customer_service
+%% 各一条 active；消息真源面（CSX-01 白名单 [sales, customer_service]）双命中。
+dual_function_facts() ->
+    dual_function_facts(undefined).
+
+%% Hint 为身份归属确定性 hint：生产路径由 facts 实现投影（见
+%% eb_pg_auth_facts:maybe_add_identity_hint/3），纯逻辑注入按同键位补齐。
+dual_function_facts(Hint) ->
+    Base = member_facts(#{
+        assignments => [
+            #{
+                business_identity_id => ?IDENTITY_SALES,
+                organization_id => ?ORG_A,
+                function_key => <<"sales">>,
+                user_id => ?USER_A,
+                status => active
+            },
+            #{
+                business_identity_id => ?IDENTITY_CS,
+                organization_id => ?ORG_A,
+                function_key => <<"customer_service">>,
+                user_id => ?USER_A,
+                status => active
+            }
+        ]
+    }),
+    case Hint of
+        undefined -> Base;
+        _ -> Base#{resource_identity_hint => Hint}
+    end.
+
+conversation_hint_route() ->
+    #{
+        auth_context => enterprise_member,
+        surface => tenant,
+        path => <<"/api/v1/enterprise/organizations/1/conversations/42/messages">>,
+        required_function => [<<"sales">>, <<"customer_service">>],
+        required_permission => <<"conversation.read">>
+    }.
+
+%% 无 hint（兼容回归）：白名单双命中歧义维持 fail-closed 拒绝。
+identity_hint_absent_keeps_ambiguity_rejected_test() ->
+    ?assertEqual(
+        {error, {multiple_active_assignment, [<<"sales">>, <<"customer_service">>]}},
+        eb_auth_app:authorize(conversation_hint_route(), #{
+            credential => jwt_credential(#{}),
+            organization_id => ?ORG_A,
+            facts => {load, fun() -> {ok, dual_function_facts()} end}
+        })
+    ).
+
+%% hint 恰命中一条 → 以会话经办身份执行（A01.36 承接人读不到继承历史的翻转）。
+identity_hint_exactly_one_flips_to_conversation_identity_test() ->
+    ?assertMatch(
+        {ok, #{business_identity_id := ?IDENTITY_SALES, function_key := <<"sales">>}},
+        eb_auth_app:authorize(conversation_hint_route(), #{
+            credential => jwt_credential(#{}),
+            organization_id => ?ORG_A,
+            facts => {load, fun() -> {ok, dual_function_facts(?IDENTITY_SALES)} end}
+        })
+    ),
+    ?assertMatch(
+        {ok, #{business_identity_id := ?IDENTITY_CS, function_key := <<"customer_service">>}},
+        eb_auth_app:authorize(conversation_hint_route(), #{
+            credential => jwt_credential(#{}),
+            organization_id => ?ORG_A,
+            facts => {load, fun() -> {ok, dual_function_facts(?IDENTITY_CS)} end}
+        })
+    ).
+
+%% hint 落空（零命中）→ 维持歧义拒绝：fail-closed 不放宽。
+identity_hint_zero_match_keeps_rejected_test() ->
+    ?assertEqual(
+        {error, {multiple_active_assignment, [<<"sales">>, <<"customer_service">>]}},
+        eb_auth_app:authorize(conversation_hint_route(), #{
+            credential => jwt_credential(#{}),
+            organization_id => ?ORG_A,
+            facts => {load, fun() -> {ok, dual_function_facts(999999)} end}
+        })
+    ).
+
+%% hint 畸形（非整数）→ 与任何 identity 不等 → 零命中 → 维持拒绝。
+identity_hint_malformed_keeps_rejected_test() ->
+    ?assertEqual(
+        {error, {multiple_active_assignment, [<<"sales">>, <<"customer_service">>]}},
+        eb_auth_app:authorize(conversation_hint_route(), #{
+            credential => jwt_credential(#{}),
+            organization_id => ?ORG_A,
+            facts => {load, fun() -> {ok, dual_function_facts(<<"not-an-identity">>)} end}
+        })
+    ).
+
+%% 同 identity 双职能脏数据：hint 过滤后仍多条 → 维持拒绝（恰一条 ≠ 至少一条）。
+identity_hint_multiple_match_keeps_rejected_test() ->
+    Dirty = member_facts(#{
+        assignments => [
+            #{
+                business_identity_id => ?IDENTITY_SALES,
+                organization_id => ?ORG_A,
+                function_key => <<"sales">>,
+                user_id => ?USER_A,
+                status => active
+            },
+            #{
+                business_identity_id => ?IDENTITY_SALES,
+                organization_id => ?ORG_A,
+                function_key => <<"customer_service">>,
+                user_id => ?USER_A,
+                status => active
+            }
+        ]
+    }),
+    ?assertEqual(
+        {error, {multiple_active_assignment, [<<"sales">>, <<"customer_service">>]}},
+        eb_auth_app:authorize(conversation_hint_route(), #{
+            credential => jwt_credential(#{}),
+            organization_id => ?ORG_A,
+            facts => {load, fun() -> {ok, Dirty#{resource_identity_hint => ?IDENTITY_SALES}} end}
+        })
+    ).
