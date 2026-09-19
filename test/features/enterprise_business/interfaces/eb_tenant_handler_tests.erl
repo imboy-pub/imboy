@@ -86,9 +86,10 @@ a02_identity_list_returns_tsid_strings_real() ->
         Ws = maps:get(workspace_id, Scope),
         Actor = maps:get(actor_user_id, Scope),
         %% 业务身份列表要求组织治理权（org.manage）：让持有 sales 经办关系的
-        %% 成员同时具备 owner 角色（V1 的「治理 + 业务身份」组合，见动作表注释）。
+        %% 成员升 admin（owner/admin 并列持治理权，§五第 1 条；org15 起每组织
+        %% 唯一 active owner，fixture 的 owner 行不转移 projection 不能降）。
         ok = sql(
-            <<"UPDATE organization_member SET role='owner' WHERE organization_id=$1 AND user_id=$2">>,
+            <<"UPDATE organization_member SET role='admin' WHERE organization_id=$1 AND user_id=$2">>,
             [Org, Actor]
         ),
         ?S:with_listener(tenant, business_identities, session(real, Actor), fun(Port) ->
@@ -177,7 +178,7 @@ c5_identity_list_pagination_real() ->
         Ws = maps:get(workspace_id, Scope),
         Actor = maps:get(actor_user_id, Scope),
         ok = sql(
-            <<"UPDATE organization_member SET role='owner' WHERE organization_id=$1 AND user_id=$2">>,
+            <<"UPDATE organization_member SET role='admin' WHERE organization_id=$1 AND user_id=$2">>,
             [Org, Actor]
         ),
         ?S:with_listener(tenant, business_identities, session(real, Actor), fun(Port) ->
@@ -470,9 +471,10 @@ a03_409_duplicate_occupation_real() ->
         Ws = maps:get(workspace_id, Scope),
         Actor = maps:get(actor_user_id, Scope),
         Sales = maps:get(sales_identity_id, Scope),
-        %% 治理权（org.manage）在 owner 角色上：让 Actor 同时具备 owner 角色
+        %% 治理权（org.manage）owner/admin 并列：让 Actor 升 admin（org15 唯一
+        %% active owner 约束下，fixture 的 owner 行不转移 projection 不能降）。
         ok = sql(
-            <<"UPDATE organization_member SET role='owner' WHERE organization_id=$1 AND user_id=$2">>,
+            <<"UPDATE organization_member SET role='admin' WHERE organization_id=$1 AND user_id=$2">>,
             [Org, Actor]
         ),
         Before = assignments(Org),
