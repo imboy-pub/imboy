@@ -52,6 +52,9 @@ jobs:
           # 任一漂移非零退出并打印明细（哪个枚举、期望/实得值集）。
           make contract-check ADMIN_DIR=imboyadmin FLUTTER_DIR=imboyapp
 
+      - name: REST test coverage contract check
+        run: make rest-contract-check
+
       - name: Summarize
         if: always()
         run: |

@@ -206,11 +206,22 @@ TEST_ERLC_OPTS += $(ERLC_COMPILE_OPTS)
 
 # Common Test
 CT_CONFIG ?= config/sys.config
+TEST_HTTP_PORT ?= 0
 CT_CONFIG_BASE = $(patsubst %.config,%,$(CT_CONFIG))
 CT_CONFIG_BASE_ABS = $(abspath $(CT_CONFIG_BASE))
 CT_ERL_ARGS = -config $(CT_CONFIG_BASE_ABS) -eval 'application:load(imboy)' -eval 'application:set_env(imboy, env, test)' -eval 'application:set_env(imboy, http_port, $(TEST_HTTP_PORT))' -eval 'application:set_env(imboy, dsync_enabled, false)'
 CT_OPTS ?=
-CT_OPTS += -erl_args "$(CT_ERL_ARGS)"
+CT_OPTS += -erl_args $(CT_ERL_ARGS)
+
+# REST API black-box tests. The runner owns an isolated scratch database and
+# lets Cowboy bind an ephemeral port; reports and redacted evidence stay under
+# the ignored .reports/ directory.
+.PHONY: rest-api-test rest-contract-check
+rest-api-test:
+	@bash scripts/run_rest_api_tests.sh
+
+rest-contract-check:
+	@bash scripts/check_rest_contract_coverage.sh
 
 # Feature smoke
 FEATURE_SMOKE_BASE_URL ?=
