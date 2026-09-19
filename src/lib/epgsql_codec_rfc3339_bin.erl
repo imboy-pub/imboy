@@ -30,7 +30,18 @@ encode(Bin, timestamptz, _) when is_binary(Bin) ->
         LocalMicro when is_integer(LocalMicro) ->
             PgMicro = LocalMicro - 946684800000000,
             <<PgMicro:64/big-signed-integer>>
-    end.
+    end;
+%% calendar datetime 元组（agent_grant/agent_run 域的冻结合同形状）→ UTC
+%% RFC3339。IT-10 集成实测（run 20260918T124045Z-6af21b0d）：此前本 codec 只收
+%% binary，元组入参直接 function_clause，grant/run 全部写路径在真实部署中
+%% 无法落库。已知秒级精度损失（元组无亚秒位）；binary 入参行为不变。
+encode({{_, _, _}, {_, _, _}} = Dt, timestamptz, _) ->
+    encode(dt_tuple_to_rfc3339(Dt), timestamptz, undefined).
+
+dt_tuple_to_rfc3339(Dt) ->
+    Gs = calendar:datetime_to_gregorian_seconds(Dt),
+    UnixMicro = (Gs - 62167219200) * 1000000,
+    elib_dt:to_rfc3339(UnixMicro, microsecond, "Z").
 
 %% @doc 解码 PostgreSQL timestamptz 类型为 RFC3339 格式
 %% @param Bin PostgreSQL 内部时间戳格式的二进制数据

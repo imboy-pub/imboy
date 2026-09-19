@@ -105,8 +105,11 @@ get_grant(Conn, GrantId) ->
             {ok, #{
                 id => Id,
                 status => binary_to_atom(StatusB, utf8),
-                valid_from => ValidFrom,
-                expires_at => ExpiresAt,
+                %% rfc3339 codec 读回 binary → UTC 元组，与 trigger adapter 注入的
+                %% calendar now 元组做项序比较（effective_status 判定）；binary 原样
+                %% 会因 tuple > binary 恒判 expired。IT-10 集成实测修复。
+                valid_from => norm_dt(ValidFrom),
+                expires_at => norm_dt(ExpiresAt),
                 version => Version
             }};
         {ok, _, []} ->
@@ -667,6 +670,19 @@ run_row_to_map(
         finished_at => FinishedAt,
         updated_at => UpdatedAt
     }.
+
+%% rfc3339 codec（sys.config.example 全仓绑定）读回 timestamptz 是 RFC3339
+%% binary；归一为 UTC calendar datetime 元组（与 agent_grant_pg:norm_dt 同口径，
+%% domain 冻结合同以 calendar 元组比对时间）。IT-10 集成实测修复。
+norm_dt(Bin) when is_binary(Bin) ->
+    case elib_dt:rfc3339_to(Bin, microsecond) of
+        LocalMicro when is_integer(LocalMicro) ->
+            calendar:gregorian_seconds_to_datetime(LocalMicro div 1000000 + 62167219200);
+        {error, _} ->
+            Bin
+    end;
+norm_dt(Dt) ->
+    Dt.
 
 effect_row_to_map(
     {Id, RunId, Sequence, ToolId, Capability, Action, ResourceDigest, ArgsDigest, StatusB,
