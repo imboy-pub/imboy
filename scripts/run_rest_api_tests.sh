@@ -2,9 +2,9 @@
 # REST API black-box test runner (RTF-01/RTF-03/RTF-05).
 #
 # Provision order is fixed: connectivity probe -> unique safe db name ->
-# create database -> install extensions -> (application start runs
-# migrations via auto_migrate) -> run Common Test -> cross-check evidence
-# -> cleanup database.
+# create database -> install extensions -> create_hypertable functional
+# probe -> (application start runs migrations via auto_migrate) -> run
+# Common Test -> cross-check evidence -> cleanup database.
 #
 # Credentials enter from the environment only (REST_PG_* / IMBOY_PG_*).
 # This script must never contain or default a database password (RTF-00-A3).
@@ -14,6 +14,7 @@
 #   2  environment/usage failure (missing credentials, unsafe db name, ...)
 #   3  test/contract/evidence failure
 #   75 BLOCKED_SHARED_CT (ct_imboy node busy for the whole wait window)
+#   130/143 interrupted by SIGINT/SIGTERM; scratch DB dropped by the trap
 
 set -euo pipefail
 
@@ -48,6 +49,22 @@ require_credentials() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Extension inventory: single source of truth is test/common/inttest_marker_db.erl
+# (RTF-01 task 2: no second, drifting extension list). The runner parses the
+# -define(EXTENSIONS, [...]) block from that module at runtime; it must never
+# carry its own copy of the list.
+# ---------------------------------------------------------------------------
+
+extension_list() {
+  awk '/-define\(EXTENSIONS, \[/,/\]\)\./' "$ROOT/test/common/inttest_marker_db.erl" |
+    grep -oE '<<"[^"]+">>' | tr -d '<>"'
+}
+
+extension_inventory_ok() {
+  [[ $(echo "$(extension_list)" | grep -c .) -ge 12 ]]
+}
+
 if [[ "$MODE" == "--check" ]]; then
   # Minimal self-check (RTF-01 task 6): no database is touched here.
   FAIL=0
@@ -66,6 +83,13 @@ if [[ "$MODE" == "--check" ]]; then
     echo "CHECK OK credentials present"
   else
     echo "CHECK OK missing credentials fail-fast verified"
+  fi
+  # Extension inventory single-source parse (RTF-01 task 2); file read only.
+  if extension_inventory_ok; then
+    echo "CHECK OK extension inventory parsed from test/common/inttest_marker_db.erl"
+  else
+    echo "CHECK FAIL extension inventory parse (inttest_marker_db.erl)"
+    FAIL=1
   fi
   exit "$FAIL"
 fi
@@ -166,17 +190,15 @@ wait_ct_node_free() {
 }
 
 # ---------------------------------------------------------------------------
-# Extension inventory: single source of truth is test/common/inttest_marker_db.erl
-# (RTF-01 task 2: no second, drifting extension list).
+# Extension inventory: parsed above from test/common/inttest_marker_db.erl
+# (single source of truth, RTF-01 task 2). A parse failure here means the
+# module format drifted; refusing to run beats silently provisioning a DB
+# with a partial extension set.
 # ---------------------------------------------------------------------------
 
-extension_list() {
-  awk '/-define\(EXTENSIONS, \[/,/\]\)\./' "$ROOT/test/common/inttest_marker_db.erl" |
-    grep -oE '<<"[^"]+">>' | tr -d '<>"'
-}
-
-EXTENSIONS=$(extension_list)
-[[ $(echo "$EXTENSIONS" | grep -c .) -ge 12 ]] ||
+EXTENSIONS=$(extension_list) ||
+  die 2 "extension inventory parse failure from inttest_marker_db.erl"
+extension_inventory_ok ||
   die 2 "extension inventory parse failure from inttest_marker_db.erl"
 
 psql_scratch() {
@@ -200,7 +222,13 @@ cleanup() {
   fi
   return $final
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+# RTF-01 task 4: INT/TERM must drop the scratch DB and stop immediately; a
+# bare `trap cleanup INT TERM` would resume the run afterwards (suites would
+# keep failing against an already-dropped database). 130/143 are the shell
+# conventions for death-by-SIGINT/SIGTERM.
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 
 # ---------------------------------------------------------------------------
 # Provision.
@@ -218,14 +246,24 @@ createdb -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$DB_NAME" ||
   die 2 "createdb failed for $DB_NAME"
 
 for ext in $EXTENSIONS; do
+  # Defense in depth: the names are interpolated into SQL, so only allow
+  # plain identifier characters even though they come from tracked source.
+  [[ "$ext" =~ ^[a-zA-Z0-9_]+$ ]] ||
+    die 2 "unsafe extension name parsed from inttest_marker_db.erl: $ext"
   psql_scratch -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS $ext" >/dev/null ||
     die 3 "extension install failed: $ext"
 done
 
-# RTF-01-A4: prove create_hypertable resolves before migrations run.
-HYPERTABLE_FN=$(psql_scratch -d "$DB_NAME" -Atc \
-  "SELECT count(*) FROM pg_proc WHERE proname = 'create_hypertable'")
-[[ "$HYPERTABLE_FN" -ge 1 ]] || die 3 "create_hypertable not present in scratch database (TimescaleDB)"
+# RTF-01-A4: prove create_hypertable resolves AND executes before migrations
+# run (migrations call public.create_hypertable on msg/user_log tables). A
+# pg_proc lookup alone would miss a loaded-but-broken TimescaleDB. The three
+# statements run as one implicit transaction, so the probe table is rolled
+# back automatically if create_hypertable fails.
+psql_scratch -d "$DB_NAME" \
+  -c "CREATE TABLE rtf01_ts_probe(ts timestamptz NOT NULL);
+      SELECT create_hypertable('rtf01_ts_probe', 'ts');
+      DROP TABLE rtf01_ts_probe;" >/dev/null ||
+  die 3 "create_hypertable probe failed (TimescaleDB not operational before migration)"
 
 wait_ct_node_free || {
   echo '{"result":"BLOCKED_SHARED_CT","run_id":"'"$RUN_ID"'"}' >"$REPORT_ROOT/result.json"
