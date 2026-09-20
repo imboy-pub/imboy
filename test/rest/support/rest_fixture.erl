@@ -11,6 +11,7 @@
     login/2,
     auth_header/1,
     session/1,
+    sign_key/0,
     store_session/2,
     sanitize_user/2,
     await_device_active/2,
@@ -164,6 +165,7 @@ ensure_sign_key() ->
         Key -> ok;
         _ -> erlang:error({sign_key_readback_mismatch, ConfigKey})
     end,
+    persistent_term:put({?MODULE, sign_key}, Key),
     Key.
 
 %% Log a fixture user in through the real POST /api/v1/passport/login and
@@ -214,6 +216,13 @@ store_session(Key, UserMap) ->
 -spec session(atom()) -> map().
 session(Key) ->
     persistent_term:get({?MODULE, session, Key}).
+
+%% Per-run device-sign key accessor (review round 2): the key lives in the
+%% session store, NOT in suite config — CT logs init_per_suite's return
+%% value on every suite log page, so the config must stay key-free.
+-spec sign_key() -> binary().
+sign_key() ->
+    persistent_term:get({?MODULE, sign_key}).
 
 %% Strip credential fields and attach the session handle used for
 %% rehydration; the sanitized map is safe for CT to log as suite config.

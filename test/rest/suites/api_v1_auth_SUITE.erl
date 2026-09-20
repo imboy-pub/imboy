@@ -38,8 +38,8 @@ init_per_suite(Config0) ->
     Config = eunit_runner:ct_suite_setup(Config0),
     ok = application:set_env(imboy, api_auth_switch, <<"on">>),
     Port = ranch:get_port(imboy_listener),
-    SignKey = rest_fixture:ensure_sign_key(),
-    [{http_port, Port}, {sign_key, SignKey} | Config].
+    _ = rest_fixture:ensure_sign_key(),
+    [{http_port, Port} | Config].
 
 end_per_suite(Config) ->
     ct:log("auth regression suite done"),
@@ -53,7 +53,7 @@ end_per_suite(Config) ->
 %% exchanges for a fresh access token. The credential travels in the
 %% imboy-refreshtoken request header, not the body (passport_handler:303).
 auth_001_valid_refreshtoken_exchange(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     #{uid := Uid} = User = rest_fixture:create_user(#{}),
     LoggedIn = rest_fixture:login(User, SignKey),
     #{did := Did, refreshtoken := Rtk} = LoggedIn,
@@ -91,7 +91,7 @@ auth_001_valid_refreshtoken_exchange(Config) ->
 %% lands in its catch branch (706) and the handler folds that into the
 %% business-error envelope at HTTP 200 (elib_response:error/3).
 auth_002_missing_refreshtoken(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     #{uid := Uid} = User = rest_fixture:create_user(#{}),
     LoggedIn = rest_fixture:login(User, SignKey),
     #{did := Did} = LoggedIn,
@@ -119,7 +119,7 @@ auth_002_missing_refreshtoken(Config) ->
 %% {error, 706, _} (verify-error or catch branch) and the handler answers
 %% with the business-error envelope at HTTP 200.
 auth_003_tampered_refreshtoken(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     #{uid := Uid} = User = rest_fixture:create_user(#{}),
     LoggedIn = rest_fixture:login(User, SignKey),
     #{did := Did, refreshtoken := Rtk} = LoggedIn,

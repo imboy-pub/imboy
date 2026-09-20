@@ -47,7 +47,7 @@ init_per_suite(Config0) ->
     %% Independent per-run signing key (RTF-03 task 3): registered through
     %% the production key lookup. LOGIN-001 (accepted) and LOGIN-005
     %% (rejected) prove the injection took.
-    SignKey = rest_fixture:ensure_sign_key(),
+    _ = rest_fixture:ensure_sign_key(),
 
     Suffix = run_suffix(),
     User = rest_fixture:create_user(#{
@@ -58,8 +58,7 @@ init_per_suite(Config0) ->
     [
         {http_port, Port},
         {user, User},
-        {suffix, Suffix},
-        {sign_key, SignKey}
+        {suffix, Suffix}
         | Config
     ].
 
@@ -214,7 +213,7 @@ verify(CaseId, Request, Response, Expected, AssertFun) ->
     rest_evidence:verify(Meta, Request, Response, AssertFun).
 
 post(Config, Did, Body) ->
-    Headers = signed_headers(Did, ?config(sign_key, Config)),
+    Headers = signed_headers(Did, rest_fixture:sign_key()),
     rest_client:post(?config(http_port, Config), ?PATH, Body, Headers).
 
 login_request(User, Did) ->

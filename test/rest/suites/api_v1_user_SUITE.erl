@@ -53,8 +53,8 @@ init_per_suite(Config0) ->
     %% any behavior under test (rate limiting is not in this batch's list).
     ok = rest_fixture:ensure_login_throttle_capacity(),
     Port = ranch:get_port(imboy_listener),
-    SignKey = rest_fixture:ensure_sign_key(),
-    [{http_port, Port}, {sign_key, SignKey} | Config].
+    _ = rest_fixture:ensure_sign_key(),
+    [{http_port, Port} | Config].
 
 end_per_suite(Config) ->
     ct:log("user regression suite done"),
@@ -69,7 +69,7 @@ end_per_suite(Config) ->
 %% asserts the minimized public payload (no account/mobile/email and no
 %% account_type for a regular human account).
 user_001_show_with_valid_token(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     {User, LoggedIn} = login_ready(SignKey),
     Uid = maps:get(uid, User),
     Path = show_path(Uid),
@@ -103,7 +103,7 @@ user_001_show_with_valid_token(Config) ->
 %% and envelope code 401 ERR_TOKEN_MISSING. The request carries a valid
 %% device signature so the signature gate is not the boundary under test.
 user_002_missing_authorization(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     {_User, LoggedIn} = login_ready(SignKey),
     Did = maps:get(did, LoggedIn),
     Request = update_request(),
@@ -136,7 +136,7 @@ user_002_missing_authorization(Config) ->
 %% tampered token still verifies (nondeterministic by construction); do_authorization maps
 %% ERR_TOKEN_MALFORMED to a real HTTP 401 while keeping envelope code 706.
 user_003_tampered_token(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     {_User, LoggedIn} = login_ready(SignKey),
     Token = tamper_tail(maps:get(token, LoggedIn)),
     Request = update_request(),
@@ -164,7 +164,7 @@ user_003_tampered_token(Config) ->
 %% real HTTP 401 with "Please refresh token". The middleware stops the
 %% request before user_handler:update/2, so no profile data changes.
 user_004_expired_token(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     {User, LoggedIn} = login_ready(SignKey),
     Uid = maps:get(uid, User),
     Did = maps:get(did, LoggedIn),
@@ -209,7 +209,7 @@ user_004_expired_token(Config) ->
 %% whoever ?id names — it is a public lookup, not "the token owner" — so
 %% isolation is asserted on the write path, where it actually lives.)
 user_005_cross_user_isolation(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     {UserA, LoggedInA} = login_ready(SignKey),
     {UserB, _LoggedInB} = login_ready(SignKey),
     UidA = maps:get(uid, UserA),
@@ -262,7 +262,7 @@ user_005_cross_user_isolation(Config) ->
 %% HTTP 401 / code 401 "会话已吊销，请重新登录", the old password no longer
 %% logs in (code 1), and the new password logs in (code 0 + fresh token).
 user_006_change_password_lifecycle(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     {User, LoggedIn} = login_ready(SignKey),
     Uid = maps:get(uid, User),
     OldPwd = maps:get(plain_password, User),

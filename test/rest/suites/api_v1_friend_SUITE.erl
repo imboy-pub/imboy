@@ -50,8 +50,8 @@ init_per_suite(Config0) ->
     %% behavior under test (rate limiting is not in this batch's list).
     ok = rest_fixture:ensure_login_throttle_capacity(),
     Port = ranch:get_port(imboy_listener),
-    SignKey = rest_fixture:ensure_sign_key(),
-    [{http_port, Port}, {sign_key, SignKey} | Config].
+    _ = rest_fixture:ensure_sign_key(),
+    [{http_port, Port} | Config].
 
 end_per_suite(Config) ->
     eunit_runner:ct_suite_cleanup(Config).
@@ -133,7 +133,7 @@ friend_001_add_confirm_list_delete(Config) ->
 %% ===================================================================
 friend_002_missing_token_rejected(Config) ->
     Did = rest_fixture:unique_id(<<"d">>),
-    UnsignedHeaders = rest_fixture:signed_headers(Did, ?config(sign_key, Config)),
+    UnsignedHeaders = rest_fixture:signed_headers(Did, rest_fixture:sign_key()),
 
     MissingResp = rest_client:request(
         ?config(http_port, Config), <<"GET">>, ?LIST, <<>>, UnsignedHeaders
@@ -396,7 +396,7 @@ friend_pair(Config) ->
     {login_user(Config), login_user(Config)}.
 
 login_user(Config) ->
-    LoggedIn = rest_fixture:login(rest_fixture:create_user(#{}), ?config(sign_key, Config)),
+    LoggedIn = rest_fixture:login(rest_fixture:create_user(#{}), rest_fixture:sign_key()),
     %% The JWT gate needs the asynchronously written user_device row.
     ok = rest_fixture:await_device_active(uid(LoggedIn), maps:get(did, LoggedIn)),
     LoggedIn.
@@ -444,10 +444,10 @@ post(Config, User, Path, Body) ->
 get(Config, User, Path) ->
     rest_client:request(?config(http_port, Config), <<"GET">>, Path, <<>>, headers(Config, User)).
 
-headers(Config, User) ->
+headers(_Config, User) ->
     Did = rest_fixture:unique_id(<<"d">>),
     maps:merge(
-        rest_fixture:signed_headers(Did, ?config(sign_key, Config)),
+        rest_fixture:signed_headers(Did, rest_fixture:sign_key()),
         rest_fixture:auth_header(User)
     ).
 

@@ -77,8 +77,7 @@ init_per_suite(Config0) ->
     [
         {http_port, Port},
         {user_a, rest_fixture:sanitize_user(UserA, user_a)},
-        {user_b, rest_fixture:sanitize_user(UserB, user_b)},
-        {sign_key, SignKey}
+        {user_b, rest_fixture:sanitize_user(UserB, user_b)}
         | Config
     ].
 
@@ -219,7 +218,7 @@ conv_003_pin_idempotent(Config) ->
 %% CONV-004: signed request without Authorization is stopped at the
 %% middleware boundary with the real HTTP 401 + ERR_TOKEN_MISSING envelope.
 conv_004_mine_missing_token(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     Did = case_did(<<"004">>),
     Headers = rest_fixture:signed_headers(Did, SignKey),
     Response = rest_client:request(
@@ -375,11 +374,11 @@ get(Config, User, Path) ->
 post(Config, User, Path, Body) ->
     rest_client:post(?config(http_port, Config), Path, Body, headers(Config, User)).
 
-headers(Config, User) ->
+headers(_Config, User) ->
     Did = rest_fixture:unique_id(<<"d">>),
     maps:merge(
         rest_fixture:auth_header(User),
-        rest_fixture:signed_headers(Did, ?config(sign_key, Config))
+        rest_fixture:signed_headers(Did, rest_fixture:sign_key())
     ).
 
 case_did(Tag) ->

@@ -62,8 +62,7 @@ init_per_suite(Config0) ->
     ok = rest_fixture:store_session(user_a, UserA),
     [
         {http_port, Port},
-        {user_a, rest_fixture:sanitize_user(UserA, user_a)},
-        {sign_key, SignKey}
+        {user_a, rest_fixture:sanitize_user(UserA, user_a)}
         | Config
     ].
 
@@ -225,7 +224,7 @@ channel_005_nonexistent_channel(Config) ->
 %% CHANNEL-006: signed create without Authorization is stopped at the
 %% middleware boundary with HTTP 401 / ERR_TOKEN_MISSING.
 channel_006_create_missing_token(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     Did = rest_fixture:unique_id(<<"d">>),
     Headers = rest_fixture:signed_headers(Did, SignKey),
     Body = #{<<"name">> => channel_name(<<"006">>)},
@@ -334,9 +333,9 @@ get(Config, User, Path) ->
 post(Config, User, Path, Body) ->
     rest_client:post(?config(http_port, Config), Path, Body, headers(Config, User)).
 
-headers(Config, User) ->
+headers(_Config, User) ->
     Did = rest_fixture:unique_id(<<"d">>),
     maps:merge(
         rest_fixture:auth_header(User),
-        rest_fixture:signed_headers(Did, ?config(sign_key, Config))
+        rest_fixture:signed_headers(Did, rest_fixture:sign_key())
     ).

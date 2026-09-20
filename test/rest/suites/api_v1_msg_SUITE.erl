@@ -84,8 +84,7 @@ init_per_suite(Config0) ->
     [
         {http_port, Port},
         {user_a, rest_fixture:sanitize_user(UserA, user_a)},
-        {user_b, rest_fixture:sanitize_user(UserB, user_b)},
-        {sign_key, SignKey}
+        {user_b, rest_fixture:sanitize_user(UserB, user_b)}
         | Config
     ].
 
@@ -159,7 +158,7 @@ msg_002_history_cursor_pagination(Config) ->
     %% its own three seeds and the pagination contract is asserted in
     %% isolation against the real product semantics (messaging_logic:history/6
     %% fetches Limit+1 rows and sublist/2-clamps to Limit; limit IS honoured).
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     Peer = rest_fixture:login(rest_fixture:create_user(#{}), SignKey),
     ok = rest_fixture:await_device_active(uid(Peer), maps:get(did, Peer)),
     UserA = ?config(user_a, Config),
@@ -419,7 +418,7 @@ msg_006_reaction_param_validation(Config) ->
 %% MSG-007: signed history request without Authorization is stopped with
 %% HTTP 401 / ERR_TOKEN_MISSING.
 msg_007_history_missing_token(Config) ->
-    SignKey = ?config(sign_key, Config),
+    SignKey = rest_fixture:sign_key(),
     Did = rest_fixture:unique_id(<<"d">>),
     Headers = rest_fixture:signed_headers(Did, SignKey),
     Path = <<"/api/v1/msg/history?chat_type=c2c&peer_id=1">>,
@@ -567,11 +566,11 @@ get(Config, User, Path) ->
 post(Config, User, Path, Body) ->
     rest_client:post(?config(http_port, Config), Path, Body, headers(Config, User)).
 
-headers(Config, User) ->
+headers(_Config, User) ->
     Did = rest_fixture:unique_id(<<"d">>),
     maps:merge(
         rest_fixture:auth_header(User),
-        rest_fixture:signed_headers(Did, ?config(sign_key, Config))
+        rest_fixture:signed_headers(Did, rest_fixture:sign_key())
     ).
 
 positive_integer(Value) ->
