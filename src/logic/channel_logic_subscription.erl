@@ -33,6 +33,10 @@ subscribe(Uid, ChannelIdBin) ->
             case channel_ds:find_by_id(ChannelId, <<"id,access_type,join_policy">>) of
                 {error, _} ->
                     {error, <<"频道不存在"/utf8>>};
+                Channel when is_map(Channel), map_size(Channel) =:= 0 ->
+                    % 零行查询经 elib_pg:one 解包为空 map：与 show/messages 的
+                    % not-found 语义对齐（spec：未知频道折叠为 code 1 频道不存在）。
+                    {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
                     %% T7 归档写守卫（R3 #11）：订阅写前置检查
                     case channel_logic_common:guard_channel_writable(ChannelId) of
