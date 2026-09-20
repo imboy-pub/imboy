@@ -1,2 +1,2 @@
 # method	path	handler	auth	spec	suite	case_ids	openapi_operation
-POST	/api/v1/passport/login	passport_handler	open	test/rest/specs/api_v1_login.md	test/rest/suites/api_v1_login_SUITE.erl	LOGIN-001,LOGIN-002,LOGIN-003,LOGIN-004	api/paths/auth/login.yaml
+POST	/api/v1/passport/login	passport_handler	open+device-sign	test/rest/specs/api_v1_login.md	test/rest/suites/api_v1_login_SUITE.erl	LOGIN-001,LOGIN-002,LOGIN-003,LOGIN-004,LOGIN-005	api/paths/auth/login.yaml
