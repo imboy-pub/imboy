@@ -89,9 +89,9 @@
 
 -define(SQL_INSERT_EVENT, <<
     "INSERT INTO customer_service_event"
-    " (id, organization_id, session_id, business_identity_id, actor_user_id,"
+    " (id, organization_id, workspace_id, session_id, business_identity_id, actor_user_id,"
     "  actor_kind, action, detail)"
-    " VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)"
+    " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)"
     " RETURNING id"
 >>).
 
@@ -222,6 +222,10 @@ event_params(OrgId, Event) ->
     [
         maps:get(id, Event, cs_tsid:new_id(cs_event)),
         OrgId,
+        %% BE-S01a（迁移 135）：workspace_id NOT NULL——全部写入方
+        %% （session/seat/access/widget application）已在事件构造点注入；
+        %% 缺失即 23502 由调用方显式失败（不静默猜默认）。
+        cs_pg_common:nullify(maps:get(workspace_id, Event, undefined)),
         cs_pg_common:nullify(maps:get(session_id, Event, undefined)),
         cs_pg_common:nullify(maps:get(business_identity_id, Event, undefined)),
         cs_pg_common:nullify(maps:get(actor_user_id, Event, undefined)),
