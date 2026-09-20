@@ -152,7 +152,7 @@ override_from_env() ->
     ok = override_qianfan(),
 
     %% 受信反向代理白名单（决定是否采信 x-forwarded-for）
-    ok = override_trusted_proxy_ips(),
+    ok = imboy_env_overrides:override_trusted_proxy_ips(),
 
     %% 新增敏感配置环境变量覆盖
     ok = override_binary_key("IMBOY_API_AUTH_SWITCH", api_auth_switch),
@@ -526,95 +526,9 @@ override_payment() ->
     ok = override_binary_key("IMBOY_STRIPE_SECRET_KEY", stripe_secret_key),
     ok = override_binary_key("IMBOY_STRIPE_WEBHOOK_SECRET", stripe_webhook_secret),
     %% 网关运行模式：sandbox（默认）| live
-    ok = override_payment_mode(),
-    ok = override_payment_gateway_enabled(),
+    ok = imboy_env_overrides:override_payment_mode(),
+    ok = imboy_env_overrides:override_payment_gateway_enabled(),
     ok.
-
-%% @doc 覆盖受信反向代理白名单（逗号分隔，如 "127.0.0.1,10.0.0.5"）。
-%%
-%% elib_req:get_client_ip/1 只有在**直连对端**命中本名单时才采信
-%% x-forwarded-for；该 IP 是 throttle_middleware 两个限流桶的 key。
-%%
-%% 默认 [127.0.0.1, ::1] 与 deploy/nginx 的 proxy_pass http://127.0.0.1:9800
-%% 一致，标准单机 compose 部署无需配置。
-%%
-%% 什么时候必须配：后端前面还有云 LB / 额外一层 nginx / k8s ingress ——
-%% 此时直连对端不是 127.0.0.1，XFF 会被全部忽略，所有客户端在限流器眼里
-%% 变成同一个 IP（那一跳的出口 IP），共用一个桶 → 正常用户互相挤掉、
-%% 出现莫名其妙的登录频率限制。这是 fail-closed 方向的故障，安全但影响可用性，
-%% 需要把各跳出口 IP 显式列进来。
-%%
-%% 空值/全空白条目会被丢弃；若最终为空列表则保留原配置不覆盖，
-%% 避免一个手误的空环境变量把白名单清空（那会让 XFF 永久失效）。
--spec override_trusted_proxy_ips() -> ok.
-override_trusted_proxy_ips() ->
-    case os:getenv("IMBOY_TRUSTED_PROXY_IPS") of
-        Value when is_list(Value), length(Value) > 0 ->
-            Ips = [
-                list_to_binary(Trimmed)
-             || Part <- string:split(Value, ",", all),
-                Trimmed <- [string:trim(Part)],
-                Trimmed =/= ""
-            ],
-            case Ips of
-                [] ->
-                    ok;
-                _ ->
-                    application:set_env(imboy, trusted_proxy_ips, Ips),
-                    ok
-            end;
-        _ ->
-            ok
-    end.
-
-%% @doc 覆盖支付网关运行模式（atom：sandbox | live）
-%%
-%% 只有精确的 "sandbox"（忽略大小写与首尾空白）才进 sandbox，其余一律 live。
-%%
-%% 此前的规则是反的：非法值回退 sandbox，注释理由写"安全默认，避免误走真实
-%% 扣款"。但这句话只覆盖了一半风险 —— payment_sign:sandbox_verify/3 是
-%% **完全跳过验签**，而 /api/v1/payment/callback/:gateway 免 JWT。对回调验签
-%% 这一侧，sandbox 才是危险方向：`IMBOY_PAYMENT_MODE=production`、`live `
-%% （尾空格）、`LIVE-` 之类的误配都会静默落到"任何人都能伪造回调入账"。
-%%
-%% 反过来，误配落到 live 的后果是拿不到凭据 → {error, no_credential} → 回调
-%% 被拒绝：吵闹、可见、可修，且不会造成资金损失。两害相权取可见的那个。
--spec override_payment_mode() -> ok.
-override_payment_mode() ->
-    case os:getenv("IMBOY_PAYMENT_MODE") of
-        Value when is_list(Value), length(Value) > 0 ->
-            Mode =
-                case string:trim(string:lowercase(Value)) of
-                    "sandbox" -> sandbox;
-                    _ -> live
-                end,
-            application:set_env(imboy, payment_mode, Mode),
-            ok;
-        _ ->
-            ok
-    end.
-
-%% @doc 覆盖外部支付网关总开关（boolean，默认 false）
-%%
-%% 方向与 override_payment_mode/0 相反：这里只有精确的 "true"/"1"（忽略大小写
-%% 与首尾空白）才开启，其余一律关闭。因为"关闭"是安全方向 —— 关闭时网关端点
-%% 直接拒绝，误配最多是功能不可用；而误开启会让一个未配凭据的部署方在
-%% strict 环境下 fail-fast，或更糟：以为自己配好了收款其实没有。
--spec override_payment_gateway_enabled() -> ok.
-override_payment_gateway_enabled() ->
-    case os:getenv("IMBOY_PAYMENT_GATEWAY_ENABLED") of
-        Value when is_list(Value), length(Value) > 0 ->
-            Enabled =
-                case string:trim(string:lowercase(Value)) of
-                    "true" -> true;
-                    "1" -> true;
-                    _ -> false
-                end,
-            application:set_env(imboy, payment_gateway_enabled, Enabled),
-            ok;
-        _ ->
-            ok
-    end.
 
 %% @doc 覆盖动态插件生命周期写操作总开关（boolean，默认 false，A-28）。
 %%
