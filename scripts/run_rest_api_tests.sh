@@ -389,6 +389,17 @@ if grep -rqE 'eyJ[A-Za-z0-9_-]{20,}' "$CT_LOGS_DIR" "$EVIDENCE_DIR" 2>/dev/null;
   EVIDENCE_STATUS=3
 fi
 
+# Credential-echo gate (review round 4): the same init-return mechanism that
+# once echoed JWTs into every suite log page also echoed the login suite's
+# fixture password key. The eyJ shape above cannot see passwords, so scan
+# for credential-key names directly. Source-listing pages legitimately
+# contain the identifiers, so they are excluded.
+if find "$CT_LOGS_DIR" -name '*.html' ! -name '*.src.html' -print0 2>/dev/null |
+  xargs -0 grep -l 'plain_password' 2>/dev/null | grep -q .; then
+  echo "evidence cross-check: credential keys echoed into CT log pages" | tee -a "$RUNNER_LOG"
+  EVIDENCE_STATUS=3
+fi
+
 [[ $EVIDENCE_STATUS -ne 0 ]] && RUN_STATUS=3
 
 # ---------------------------------------------------------------------------
