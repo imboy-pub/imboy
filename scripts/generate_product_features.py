@@ -129,6 +129,7 @@ FEATURE_BACKEND_MODULES = {
         "cs_ports",
         "cs_preflight_facts_pg",
         "cs_seat_app",
+        "cs_seat_event_app",
         "cs_session",
         "cs_session_app",
         "cs_store_port",

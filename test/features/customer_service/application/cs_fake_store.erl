@@ -1016,7 +1016,9 @@ fetch_event_scope(OrgId, EventId) ->
                     }};
                 false ->
                     %% 按 id 唯一：存在的行不属于本 Org 即跨作用域。
-                    {ok, #{organization_id => maps:get(organization_id, E), workspace_id => undefined}}
+                    {ok, #{
+                        organization_id => maps:get(organization_id, E), workspace_id => undefined
+                    }}
             end;
         [] ->
             {error, not_found}
@@ -1041,7 +1043,11 @@ event_watermark(OrgId, WorkspaceId) ->
         maps:get(organization_id, E) =:= OrgId,
         maps:get(workspace_id, E, undefined) =:= WorkspaceId
     ],
-    {ok, case Ids of [] -> 0; _ -> lists:max(Ids) end}.
+    {ok,
+        case Ids of
+            [] -> 0;
+            _ -> lists:max(Ids)
+        end}.
 
 %% Provisioning 故障注入：第 N 次 seat upsert 前失败（回滚语义测试用）。
 seed_provision_fail_after(N) ->
@@ -1061,13 +1067,15 @@ provision_seat(OrgId, WorkspaceId, Provision) ->
             {error, {not_found, member}};
         true ->
             {workspaces, Ws} = hd(ets:lookup(?TAB, workspaces)),
-            case [
-                W
-             || W <- maps:values(Ws),
-                maps:get(organization_id, W) =:= OrgId,
-                maps:get(id, W) =:= WorkspaceId,
-                maps:get(status, W) =:= active
-            ] of
+            case
+                [
+                    W
+                 || W <- maps:values(Ws),
+                    maps:get(organization_id, W) =:= OrgId,
+                    maps:get(id, W) =:= WorkspaceId,
+                    maps:get(status, W) =:= active
+                ]
+            of
                 [] ->
                     {error, {not_found, workspace}};
                 _ ->
@@ -1078,8 +1086,16 @@ provision_seat(OrgId, WorkspaceId, Provision) ->
 provision_in(OrgId, WorkspaceId, Provision) ->
     UserId = maps:get(user_id, Provision),
     %% 故障注入点在一切写入之前：fake 无真事务，用「失败即零写入」镜像
-    %% PG 单事务回滚的可观测终态（all-or-nothing）。
-    ok = maybe_fail_provision(),
+    %% PG 单事务回滚的可观测终态（all-or-nothing）。返回形状与 PG 路径一致
+    %%（elib_pg 回滚解包后 cs_seat_app 见到的就是 {error, Reason}）。
+    case maybe_fail_provision() of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            provision_in_tx(OrgId, WorkspaceId, Provision, UserId)
+    end.
+
+provision_in_tx(OrgId, WorkspaceId, Provision, UserId) ->
     %% 复用：既有 active customer_service identity+assignment（assignment_users
     %% 即「identity ↔ user」事实；无则走创建分支）。
     Cands = [
@@ -1107,7 +1123,11 @@ provision_in(OrgId, WorkspaceId, Provision) ->
         function_key => <<"customer_service">>,
         enabled => true,
         max_concurrent => maps:get(max_concurrent, Provision, 1),
-        created_by_user_id => undefined
+        created_by_user_id => undefined,
+        %% 行形状与 insert_seat 镜像（set_seat_enabled 依赖 version/updated_at）。
+        version => 1,
+        created_at => 1700000000,
+        updated_at => 1700000000
     },
     Seat =
         case Before of
@@ -1151,7 +1171,7 @@ maybe_fail_provision() ->
             ok;
         0 ->
             update(provision_fail_after, fun(_) -> infinity end),
-            throw({rollback, {error, seat_conflict_injected}});
+            {error, seat_conflict_injected};
         _ when is_integer(N) ->
             update(provision_fail_after, fun(_) -> N - 1 end),
             ok;

@@ -57,16 +57,21 @@ authorize(Entry, Case, Req0, Body, State, OrgId) ->
     case cs_auth:authorize(Metadata, Req0, State) of
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
-        {ok, _AuthContext} ->
-            invoke(Entry, Case, Req0, Body, OrgId)
+        {ok, AuthContext} ->
+            invoke(Entry, Case, Req0, Body, OrgId, AuthContext)
     end.
 
-invoke(Entry, Case, Req0, Body, OrgId) ->
+invoke(Entry, Case, Req0, Body, OrgId, AuthContext) ->
     case cs_http:workspace_id(Req0, Body) of
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
         {ok, WorkspaceId} ->
-            Derived = #{workspace_id => WorkspaceId, at => now(Case)},
+            %% BE-S01b：认证派生键随上下文注入（adm_user_id——provisioning 的
+            %% 审计 actor 记录；认证上下文派生，客户端不可申报）。
+            Derived = maps:merge(
+                #{workspace_id => WorkspaceId, at => now(Case)},
+                identity_derived(AuthContext)
+            ),
             case cs_http:build_params(Entry, Case, Req0, Body, Derived) of
                 {error, Reason} ->
                     cs_http:reply_error(Req0, Reason);
@@ -75,6 +80,14 @@ invoke(Entry, Case, Req0, Body, OrgId) ->
                     cs_http:respond(Entry, Req0, Result)
             end
     end.
+
+%% 认证上下文 → 服务端派生参数（platform_admin 的 adm_user_id）。
+identity_derived(#{auth_context := platform_admin, adm_user_id := Adm}) when
+    is_integer(Adm)
+->
+    #{adm_user_id => Adm};
+identity_derived(_Other) ->
+    #{}.
 
 metadata(State) ->
     Keys = [auth_context, surface, required_function, required_permission, required_governance],

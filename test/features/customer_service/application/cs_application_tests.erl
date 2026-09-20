@@ -26,6 +26,8 @@
 -define(SEAT_B, 810000000000012).
 -define(USER_A, 810000000000021).
 -define(USER_B, 810000000000022).
+%% BE-S01b：平台 Admin（认证派生键，进审计 detail 的 actor 记录）。
+-define(ADM, 810000000000099).
 -define(T0, 1700000000).
 
 application_test_() ->
@@ -61,7 +63,12 @@ cases(_State) ->
         {timeout, 30, fun a03_env_keyring_assembly/0},
         %% BE-S01a：坐席上下文清单 / 转接目标最小投影。
         {timeout, 30, fun s01a_seat_contexts_aggregate_projection/0},
-        {timeout, 30, fun s01a_transfer_targets_exclude_self_and_project/0}
+        {timeout, 30, fun s01a_transfer_targets_exclude_self_and_project/0},
+        %% BE-S01b：admin provisioning（事务化开通/修复 + 审计 + 幂等 + 回滚）。
+        {timeout, 30, fun s01b_provision_fresh_and_audit/0},
+        {timeout, 30, fun s01b_provision_retry_is_idempotent_and_repairs_seat/0},
+        {timeout, 30, fun s01b_provision_guards_reject_non_member_and_bad_workspace/0},
+        {timeout, 30, fun s01b_provision_partial_failure_leaves_no_residue/0}
     ].
 
 %% ===================================================================
@@ -803,3 +810,105 @@ open_session() ->
         })
     ),
     S.
+
+%% ===================================================================
+%% BE-S01b：admin provisioning（api-surface-freeze admin_provisioning）
+%% 事务化开通/修复 identity + assignment + enabled seat；审计
+%% actor/target/before/after；幂等；部分失败零残留。
+%% ===================================================================
+
+s01b_provision_fresh_and_audit() ->
+    reset_all(),
+    ok = ?FAKE:seed_workspace(?ORG, ?WS),
+    ok = ?FAKE:seed_member(?ORG, ?USER_A),
+    {ok, Result} = cs_seat_app:provision_seat(?ORG, s01b_provision_params()),
+    %% 全新开通：identity 新建 + seat enabled。
+    ?assertEqual(true, maps:get(identity_created, Result)),
+    ?assertEqual(?WS, maps:get(workspace_id, Result)),
+    IdentityId = maps:get(business_identity_id, Result),
+    ?assertEqual(?USER_A, ?FAKE:assignment_user(?ORG, IdentityId)),
+    {ok, SeatRow} = ?FAKE:fetch_seat(?ORG, IdentityId),
+    ?assertEqual(true, maps:get(enabled, SeatRow)),
+    %% 审计（不可抵赖）：platform_admin actor + adm/target/before/after 全在。
+    [Event] = ?FAKE:events_with_action(<<"platform.provisioned">>),
+    ?assertEqual(<<"platform_admin">>, maps:get(actor_kind, Event)),
+    ?assertEqual(?WS, maps:get(workspace_id, Event)),
+    Detail = maps:get(detail, Event),
+    ?assertEqual(?ADM, maps:get(<<"adm_user_id">>, Detail)),
+    ?assertEqual(?USER_A, maps:get(<<"target_user_id">>, Detail)),
+    ?assertEqual(<<"absent">>, maps:get(<<"before">>, Detail)),
+    ?assertEqual(<<"enabled">>, maps:get(<<"after">>, Detail)),
+    ok.
+
+s01b_provision_retry_is_idempotent_and_repairs_seat() ->
+    reset_all(),
+    ok = ?FAKE:seed_workspace(?ORG, ?WS),
+    ok = ?FAKE:seed_member(?ORG, ?USER_A),
+    {ok, First} = cs_seat_app:provision_seat(?ORG, s01b_provision_params()),
+    IdentityId = maps:get(business_identity_id, First),
+    %% 坐席被 suspend 后重复开通 ⇒「修复」语义：enabled 回 true，identity 不重建。
+    {ok, _} = ?FAKE:set_seat_enabled(?ORG, IdentityId, false, ?T0),
+    {ok, Retry} = cs_seat_app:provision_seat(?ORG, s01b_provision_params()),
+    ?assertEqual(false, maps:get(identity_created, Retry)),
+    ?assertEqual(IdentityId, maps:get(business_identity_id, Retry)),
+    {ok, SeatRow} = ?FAKE:fetch_seat(?ORG, IdentityId),
+    ?assertEqual(true, maps:get(enabled, SeatRow)),
+    %% 第二次审计记录 before=disabled → after=enabled（修复轨迹可追溯）。
+    Events = lists:sort(
+        fun(A, B) -> maps:get(id, A) =< maps:get(id, B) end,
+        ?FAKE:events_with_action(<<"platform.provisioned">>)
+    ),
+    ?assertEqual(2, length(Events)),
+    [_, Repair] = Events,
+    ?assertEqual(<<"disabled">>, maps:get(<<"before">>, maps:get(detail, Repair))).
+
+s01b_provision_guards_reject_non_member_and_bad_workspace() ->
+    reset_all(),
+    ok = ?FAKE:seed_workspace(?ORG, ?WS),
+    %% ① 非 member：开通是「成员变坐席」，不是成员创建（404 面）。
+    ?assertMatch(
+        {error, {not_found, member}},
+        cs_seat_app:provision_seat(?ORG, s01b_provision_params())
+    ),
+    %% ② workspace 不在本 Org / 非 active：作用域不存在（404 面）。
+    ok = ?FAKE:seed_member(?ORG, ?USER_A),
+    ?assertMatch(
+        {error, {not_found, workspace}},
+        cs_seat_app:provision_seat(
+            ?ORG, s01b_provision_params(#{workspace_id => ?WS + 1})
+        )
+    ),
+    %% ③ facade 形状门：缺认证派生键即 422（客户端不可自报 adm 身份）。
+    ?assertMatch(
+        {error, {invalid_argument, provision_seat}},
+        customer_service_facade:provision_seat(?ORG, #{workspace_id => ?WS})
+    ),
+    ok.
+
+s01b_provision_partial_failure_leaves_no_residue() ->
+    reset_all(),
+    ok = ?FAKE:seed_workspace(?ORG, ?WS),
+    ok = ?FAKE:seed_member(?ORG, ?USER_A),
+    %% 故障注入：seat upsert 前失败（镜像 PG 单事务回滚的可观测终态）。
+    ok = ?FAKE:seed_provision_fail_after(0),
+    ?assertMatch(
+        {error, _}, cs_seat_app:provision_seat(?ORG, s01b_provision_params())
+    ),
+    %% 零残留：无审计事件（审计失败/未达 = 整体不成功，不产生半个事实）。
+    ?assertEqual([], ?FAKE:events_with_action(<<"platform.provisioned">>)),
+    ok.
+
+s01b_provision_params() ->
+    s01b_provision_params(#{}).
+
+s01b_provision_params(Override) ->
+    maps:merge(
+        #{
+            workspace_id => ?WS,
+            user_id => ?USER_A,
+            display_name => <<"客服一号"/utf8>>,
+            adm_user_id => ?ADM,
+            store => ?FAKE
+        },
+        Override
+    ).

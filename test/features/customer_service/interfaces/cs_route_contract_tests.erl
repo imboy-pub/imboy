@@ -101,6 +101,8 @@ platform_literal_routes() ->
     P = <<"/api/adm/customer-service/organizations/:org_id">>,
     [
         {<<P/binary, "/seats">>, p_seats, [<<"GET">>], platform_admin},
+        %% BE-S01b（api-surface-freeze admin_provisioning）：事务化开通/修复坐席。
+        {<<P/binary, "/provisioning">>, p_seat_provision, [<<"POST">>], platform_admin},
         %% C1（contracts-w2）：平台 session 列表（只读）。
         {<<P/binary, "/sessions">>, p_session_list, [<<"GET">>], platform_admin},
         {<<P/binary, "/sessions/:id">>, p_session, [<<"GET">>], platform_admin},
@@ -133,6 +135,14 @@ widget_literal_routes() ->
             <<W/binary, "/sessions/:id/assets/confirm">>,
             widget_asset_confirm,
             [<<"POST">>],
+            cs_visit
+        },
+        %% BE-S01b（api-surface-freeze widget_apis）：访客附件内容代理（对象字节
+        %% 本体响应；线格式分支在 cs_widget_handler）。
+        {
+            <<W/binary, "/sessions/:id/assets/:asset/content">>,
+            widget_asset_content,
+            [<<"GET">>],
             cs_visit
         },
         {<<W/binary, "/sessions/:id/rating">>, widget_session_rating, [<<"POST">>], cs_visit},
