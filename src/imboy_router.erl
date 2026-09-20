@@ -1853,26 +1853,34 @@ enterprise_platform_routes() ->
 -spec customer_service_tenant_routes() -> list().
 customer_service_tenant_routes() ->
     [
-        %% —— A0 客户端契约基准（与 imboyapp A4 纵切对齐）——
-        %% 门店开会话：shop key 主体（org 为申报值，cs_auth 用 digest 同语句证明）。
-        {"/api/v1/cs/sessions/queue", cs_tenant_handler, #{
+        %% —— BE-S01a（T-2 裁定）：坐席上下文清单。主体自身作用域（无 Org 键），
+        %% 一次返回当前用户全部可用 Organization[]/Workspace[]/active
+        %% customer_service identity/seat enabled/capabilities。——
+        {"/api/v1/cs/me/seat-contexts", cs_tenant_handler, #{
+            action => seat_contexts,
+            auth_context => cs_seat
+        }},
+        %% 门店开会话（T-2 后 org 显式在路径）：shop key 主体（cs_auth 用 digest
+        %% 同语句证明 path org 与 key 绑定 org 逐字一致）。
+        {"/api/v1/cs/organizations/:org_id/sessions/queue", cs_tenant_handler, #{
             action => session_queue,
             auth_context => cs_shop_key
         }},
-        %% 坐席会话生命周期（claim/transfer/close）：cs_seat 主体。
-        {"/api/v1/cs/sessions/:id/claim", cs_tenant_handler, #{
+        %% 坐席会话生命周期（claim/transfer/close）：cs_seat 主体；T-2 裁定——
+        %% 服务端逐字校验 path org_id == session.org_id == 坐席 active member org。
+        {"/api/v1/cs/organizations/:org_id/sessions/:id/claim", cs_tenant_handler, #{
             action => session_claim,
             auth_context => cs_seat,
             required_function => <<"customer_service">>,
             required_permission => <<"conversation.write">>
         }},
-        {"/api/v1/cs/sessions/:id/transfer", cs_tenant_handler, #{
+        {"/api/v1/cs/organizations/:org_id/sessions/:id/transfer", cs_tenant_handler, #{
             action => session_transfer,
             auth_context => cs_seat,
             required_function => <<"customer_service">>,
             required_permission => <<"conversation.write">>
         }},
-        {"/api/v1/cs/sessions/:id/close", cs_tenant_handler, #{
+        {"/api/v1/cs/organizations/:org_id/sessions/:id/close", cs_tenant_handler, #{
             action => session_close,
             auth_context => cs_seat,
             required_function => <<"customer_service">>,
@@ -1938,23 +1946,36 @@ customer_service_tenant_routes() ->
             auth_context => enterprise_owner_admin,
             required_governance => [<<"owner">>, <<"admin">>]
         }},
-        %% CSB-03：坐席会话详情（GET；坐席 JWT + conversation.read；登记在
-        %% 全部字面路径之后——cowboy 按注册序匹配，:id 不得抢在 queue 等字面
-        %% 段之前）。
-        {"/api/v1/cs/sessions/:id", cs_tenant_handler, #{
+        %% CSB-03：坐席会话详情（GET；T-2 后路径显式 org_id；登记在全部字面
+        %% 路径之后——cowboy 按注册序匹配，:id 不得抢在 queue 等字面段之前）。
+        {"/api/v1/cs/organizations/:org_id/sessions/:id", cs_tenant_handler, #{
             action => session_detail,
             auth_context => cs_seat,
             required_function => <<"customer_service">>,
             required_permission => <<"conversation.read">>
         }},
-        %% CSB-02R：坐席工作台 active/closed 两视图。独立路径而非
-        %% /sessions?scope=seat 的理由：GET /api/v1/cs/sessions 已冻结为访客面，
-        %% route metadata 是 principal 的唯一分流依据，同方法双主体必须换路径；
-        %% `seats/sessions` 与 cs_seat/seats 命名族一致。队列视图走
-        %% GET /api/v1/cs/sessions/queue（同路径 method+auth_context 分流，
-        %% 见 cs_actions 的 case_auth）。
-        {"/api/v1/cs/seats/sessions", cs_tenant_handler, #{
+        %% CSB-02R：坐席工作台 active/closed 两视图（T-2 后 org 显式在路径）。
+        %% 独立路径而非 /sessions?scope=seat 的理由：GET /api/v1/cs/sessions 已
+        %% 冻结为访客面，route metadata 是 principal 的唯一分流依据。
+        {"/api/v1/cs/organizations/:org_id/seats/sessions", cs_tenant_handler, #{
             action => seat_session_list,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
+        %% —— BE-S01a：坐席 transfer 目标最小投影（同 Org 其他可用坐席；
+        %% api-surface-freeze：无 owner/admin 权限要求，不复用治理 identity 列表）——
+        {"/api/v1/cs/organizations/:org_id/transfer-targets", cs_tenant_handler, #{
+            action => transfer_targets,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
+        %% —— BE-S01a：坐席 SSE 事件流占位（sse-event-contract 端点；流式实现
+        %% 在 BE-S01b——facade 返回 not_implemented → 501。字面段 me 先于
+        %% seats/:id/suspend 的 :id 捕获注册）。——
+        {"/api/v1/cs/organizations/:org_id/seats/me/events", cs_tenant_handler, #{
+            action => seat_events,
             auth_context => cs_seat,
             required_function => <<"customer_service">>,
             required_permission => <<"conversation.read">>
@@ -1971,6 +1992,13 @@ customer_service_tenant_routes() ->
         }},
         {"/api/v1/cs/widget/identity/exchange", cs_widget_handler, #{
             action => widget_identity_exchange,
+            auth_context => cs_visit
+        }},
+        %% BE-W01：动态 frame HTML（iframe src 落点，零凭证面；嵌入策略由
+        %% handler 按 installation allowed_origins 出精确 frame-ancestors CSP，
+        %% security_headers_middleware / cors_middleware 对该路径豁免 XFO）。
+        {"/api/v1/cs/widget/frame/:installation_id", cs_widget_frame_handler, #{
+            action => widget_frame_html,
             auth_context => cs_visit
         }},
         {"/api/v1/cs/widget/sessions", cs_widget_handler, #{

@@ -510,8 +510,8 @@ a06_capability_and_matrix_tests(_) ->
                     Resp = ?S:request(
                         Port,
                         <<"GET">>,
-                        <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "?organization_id=",
-                            (int_bin(?ORG))/binary, "&workspace_id=", (int_bin(?WS))/binary>>,
+                        <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                            (int_bin(?SESSION))/binary, "?workspace_id=", (int_bin(?WS))/binary>>,
                         <<>>,
                         %% visit token 头冒充坐席 JWT：坐席面只认 Authorization
                         %% Bearer（current_uid）——头类型不对即 401，绝不降级采信。
@@ -853,8 +853,8 @@ a05_contract_and_seat_tests(_) ->
                     Resp = ?S:request(
                         Port,
                         <<"GET">>,
-                        <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "?organization_id=",
-                            (int_bin(?ORG))/binary, "&workspace_id=", (int_bin(?WS))/binary>>,
+                        <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                            (int_bin(?SESSION))/binary, "?workspace_id=", (int_bin(?WS))/binary>>,
                         <<>>,
                         #{<<"authorization">> => <<"Bearer x">>}
                     ),
@@ -877,8 +877,8 @@ a05_contract_and_seat_tests(_) ->
                     Resp = ?S:request(
                         Port,
                         <<"GET">>,
-                        <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "?organization_id=",
-                            (int_bin(?ORG))/binary, "&workspace_id=", (int_bin(?WS))/binary>>,
+                        <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                            (int_bin(?SESSION))/binary, "?workspace_id=", (int_bin(?WS))/binary>>,
                         <<>>,
                         #{}
                     ),

@@ -65,6 +65,23 @@
     OrgId :: integer(), IdentityId :: integer(), Enabled :: boolean(), At :: integer()
 ) ->
     {ok, seat()} | {error, not_found | term()}.
+%% @doc BE-S01a：用户维度坐席上下文聚合（主体自身作用域，无 Org 前参）。
+%% 单语句同过滤：organization_member active + 组织 active；LEFT JOIN active
+%% customer_service assignment 与 seat 行（无坐席身份的 Org 也返回——
+%% seat_enabled=false 让客户端区分「成员但未开通坐席」）。workspaces 是
+%% 同 Org active Workspace 的 `#{id, name}` 列表（json 聚合，store 侧已解码）。
+-callback list_seat_org_contexts(UserId :: integer()) ->
+    {ok, [map()]} | {error, term()}.
+%% @doc BE-S01a：转接目标分页（键集下推 `business_identity_id > after` 升序 +
+%% `LIMIT`，C1~C4 模板口径）；同语句带 Org、仅 enabled、排除 ExcludeIdentityId
+%% （调用者本人）；行含 identity 显示名与 active 会话同语句计数。
+-callback list_transfer_targets_page(
+    OrgId :: integer(),
+    ExcludeIdentityId :: integer(),
+    AfterId :: non_neg_integer(),
+    Limit :: pos_integer()
+) ->
+    {ok, [map()]} | {error, term()}.
 
 %% -- session ---------------------------------------------------------------
 

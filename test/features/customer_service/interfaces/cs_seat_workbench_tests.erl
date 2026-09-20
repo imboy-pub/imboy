@@ -52,7 +52,10 @@ workbench_test_() ->
         end,
         [
             fun queue_split_tests/1,
-            fun seat_list_tests/1
+            fun seat_list_tests/1,
+            fun seat_context_endpoint_tests/1,
+            fun transfer_targets_tests/1,
+            fun seat_events_placeholder_tests/1
         ]}.
 
 seat_inject() ->
@@ -133,8 +136,8 @@ queue_split_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"GET">>,
-                    <<"/api/v1/cs/sessions/queue?organization_id=", (int_bin(?ORG))/binary,
-                        "&after_id=0&limit=50">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                        "/sessions/queue?after_id=0&limit=50">>,
                     <<>>,
                     #{<<"authorization">> => <<"Bearer x">>}
                 ),
@@ -172,9 +175,8 @@ queue_split_tests(_) ->
                     Resp = ?S:request(
                         Port,
                         <<"POST">>,
-                        <<"/api/v1/cs/sessions/queue">>,
+                        <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/queue">>,
                         #{
-                            <<"organization_id">> => ?ORG,
                             <<"workspace_id">> => ?WS,
                             <<"contact_id">> => 1,
                             <<"conversation_id">> => 2
@@ -199,7 +201,7 @@ queue_split_tests(_) ->
                     Resp = ?S:request(
                         Port,
                         <<"GET">>,
-                        <<"/api/v1/cs/sessions/queue?organization_id=", (int_bin(?ORG))/binary>>,
+                        <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/queue">>,
                         <<>>,
                         #{}
                     ),
@@ -219,7 +221,7 @@ queue_split_tests(_) ->
                     Resp = ?S:request(
                         Port,
                         <<"GET">>,
-                        <<"/api/v1/cs/sessions/queue?organization_id=", (int_bin(?ORG))/binary>>,
+                        <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/queue">>,
                         <<>>,
                         #{<<"x-cs-shop-key">> => ?SHOP_KEY}
                     ),
@@ -250,9 +252,8 @@ queue_split_tests(_) ->
                     Resp = ?S:request(
                         Port,
                         <<"POST">>,
-                        <<"/api/v1/cs/sessions/queue">>,
+                        <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/queue">>,
                         #{
-                            <<"organization_id">> => ?ORG,
                             <<"workspace_id">> => ?WS,
                             <<"contact_id">> => 1,
                             <<"conversation_id">> => 2
@@ -295,8 +296,8 @@ seat_list_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"GET">>,
-                    <<"/api/v1/cs/seats/sessions?organization_id=", (int_bin(?ORG))/binary,
-                        "&status=active&workspace_id=", (int_bin(?WS))/binary>>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                        "/seats/sessions?status=active&workspace_id=", (int_bin(?WS))/binary>>,
                     <<>>,
                     #{<<"authorization">> => <<"Bearer x">>}
                 ),
@@ -324,8 +325,8 @@ seat_list_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"GET">>,
-                    <<"/api/v1/cs/seats/sessions?organization_id=", (int_bin(?ORG))/binary,
-                        "&status=queued">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                        "/seats/sessions?status=queued">>,
                     <<>>,
                     #{<<"authorization">> => <<"Bearer x">>}
                 ),
@@ -345,8 +346,8 @@ seat_list_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"GET">>,
-                    <<"/api/v1/cs/seats/sessions?organization_id=", (int_bin(?ORG))/binary,
-                        "&status=closed">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                        "/seats/sessions?status=closed">>,
                     <<>>,
                     #{<<"authorization">> => <<"Bearer x">>}
                 ),
@@ -363,14 +364,170 @@ seat_list_tests(_) ->
                     Resp = ?S:request(
                         Port,
                         <<"GET">>,
-                        <<"/api/v1/cs/seats/sessions?organization_id=", (int_bin(?ORG))/binary,
-                            "&status=active">>,
+                        <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                            "/seats/sessions?status=active">>,
                         <<>>,
                         #{}
                     ),
                     ?assertEqual(401, ?S:status(Resp))
                 end
             )
+        end}
+    ].
+
+%% ===================================================================
+%% BE-S01a：GET /api/v1/cs/me/seat-contexts（主体自身作用域——无 Org 键，
+%% handler 的 self 分支只验 JWT 会话键，聚合事实在 facade/application）
+%% ===================================================================
+
+seat_context_endpoint_tests(_) ->
+    [
+        {"Seat contexts with JWT returns the aggregate view (200)", fun() ->
+            meck:expect(customer_service_facade, seat_contexts, fun(OrgIgnored, Params) ->
+                %% self 作用域：OrgId 是 0 占位，真作用域键是 actor_user_id。
+                ?assertEqual(0, OrgIgnored),
+                ?assertEqual(?UID, maps:get(actor_user_id, Params)),
+                {ok, #{
+                    contexts => [
+                        #{
+                            organization_id => ?ORG,
+                            organization_name => <<"Acme"/utf8>>,
+                            workspaces => [#{id => ?WS, name => <<"main">>}],
+                            business_identity_id => ?IDENTITY,
+                            seat_enabled => true,
+                            capabilities => [<<"conversation.read">>]
+                        }
+                    ],
+                    user_id => ?UID
+                }}
+            end),
+            ?S:with_listener(tenant, seat_contexts, seat_inject(), fun(Port) ->
+                meck:reset(customer_service_facade),
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/me/seat-contexts">>,
+                    <<>>,
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                [Ctx] = maps:get(<<"contexts">>, ?S:payload(Resp)),
+                ?assertEqual(int_bin(?ORG), maps:get(<<"organization_id">>, Ctx)),
+                ?assertEqual(true, maps:get(<<"seat_enabled">>, Ctx))
+            end)
+        end},
+        {"Seat contexts without JWT is 401", fun() ->
+            ?S:with_listener(tenant, seat_contexts, #{auth_facts => cs_fake_facts}, fun(Port) ->
+                meck:reset(customer_service_facade),
+                Resp = ?S:request(Port, <<"GET">>, <<"/api/v1/cs/me/seat-contexts">>, <<>>, #{}),
+                ?assertEqual(401, ?S:status(Resp)),
+                ?assertNot(meck:called(customer_service_facade, seat_contexts, '_'))
+            end)
+        end}
+    ].
+
+%% ===================================================================
+%% BE-S01a：GET /api/v1/cs/organizations/:org_id/transfer-targets
+%% ===================================================================
+
+transfer_targets_tests(_) ->
+    [
+        {"Transfer targets return the minimal projection with org from path", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                {ok, #{business_identity_id => ?IDENTITY, enabled => true}}
+            end),
+            meck:expect(customer_service_facade, transfer_targets, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                %% 排除键是认证派生的坐席本人 identity（客户端不可申报）。
+                ?assertEqual(?IDENTITY, maps:get(business_identity_id, Params)),
+                {ok, #{
+                    targets => [
+                        #{
+                            business_identity_id => 515552,
+                            display_name => <<"B 坐席"/utf8>>,
+                            available => true
+                        }
+                    ],
+                    next_after_id => undefined
+                }}
+            end),
+            ?S:with_listener(tenant, transfer_targets, seat_inject(), fun(Port) ->
+                meck:reset(customer_service_facade),
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/transfer-targets">>,
+                    <<>>,
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                [Target] = maps:get(<<"targets">>, ?S:payload(Resp)),
+                ?assertEqual(<<"515552">>, maps:get(<<"business_identity_id">>, Target)),
+                ?assertEqual(true, maps:get(<<"available">>, Target))
+            end)
+        end},
+        {"Transfer targets of a foreign org is rejected by the seat gate", fun() ->
+            %% 坐席事实只在 ?ORG：路径申报其他 org 时 member/assignment 同语句
+            %% 查找必失败（fail-closed，不是信任路径申报）。
+            cs_fake_facts:set(seat_facts()),
+            ?S:with_listener(tenant, transfer_targets, seat_inject(), fun(Port) ->
+                meck:reset(customer_service_facade),
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG + 1))/binary,
+                        "/transfer-targets">>,
+                    <<>>,
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(403, ?S:status(Resp)),
+                ?assertNot(meck:called(customer_service_facade, transfer_targets, '_'))
+            end)
+        end}
+    ].
+
+%% ===================================================================
+%% BE-S01a：GET /api/v1/cs/organizations/:org_id/seats/me/events（501 占位）
+%% ===================================================================
+
+seat_events_placeholder_tests(_) ->
+    [
+        {"Seat events placeholder is 501 after full auth and workspace gate", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                {ok, #{business_identity_id => ?IDENTITY, enabled => true}}
+            end),
+            ?S:with_listener(tenant, seat_events, seat_inject(), fun(Port) ->
+                meck:reset(customer_service_facade),
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                        "/seats/me/events?workspace_id=", (int_bin(?WS))/binary>>,
+                    <<>>,
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(501, ?S:status(Resp)),
+                ?assertEqual(<<"not_implemented">>, ?S:msg(Resp))
+            end)
+        end},
+        {"Seat events without workspace_id is 422 before the placeholder", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                {ok, #{business_identity_id => ?IDENTITY, enabled => true}}
+            end),
+            ?S:with_listener(tenant, seat_events, seat_inject(), fun(Port) ->
+                meck:reset(customer_service_facade),
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/seats/me/events">>,
+                    <<>>,
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(422, ?S:status(Resp))
+            end)
         end}
     ].
 

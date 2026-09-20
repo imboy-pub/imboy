@@ -21,7 +21,10 @@
     resume_seat/2,
     fetch_seat/2,
     list_dispatchable_seats/2,
-    session_detail/2
+    session_detail/2,
+    %% BE-S01a：坐席上下文清单（主体自身作用域）+ 转接目标最小投影
+    seat_contexts/1,
+    transfer_targets/2
 ]).
 
 %% ===================================================================
@@ -252,6 +255,106 @@ fetch_detail(OrgId, Params) ->
             Clean = maps:with([store, id, workspace_id], Params),
             cs_session_app:fetch_session(OrgId, Clean#{session_id => SessionId})
     end.
+
+%% ===================================================================
+%% BE-S01a：坐席上下文清单（GET /api/v1/cs/me/seat-contexts）
+%% ===================================================================
+
+%% @doc 一次返回当前用户全部可用坐席上下文（api-surface-freeze）。
+%%
+%% 聚合源是四张事实表（store 单语句同过滤）：organization_member（active）、
+%% workspace（同 Org active）、organization_business_identity_assignment
+%% （active + customer_service）、customer_service_seat（enabled）。**不复用**
+%% 治理 identity 列表——本用例是坐席面自描述端点，客户端不手填 TSID。
+%%
+%% 投影：每 Org 一行 `#{organization_id, organization_name, workspaces,
+%% business_identity_id, seat_enabled, capabilities}`；workspaces 是
+%% `#{id, name}` 列表；capabilities 是坐席能力清单（seat_enabled 才非空——
+%% 镜像 EB 侧 V1 经办业务能力冻结集 §五，见 eb_pg_auth_facts:
+%% business_permission_set；跨 feature 直引其基础设施是被禁的，此处冻结镜像
+%% 并以注释锚定真源）。
+-spec seat_contexts(map()) -> {ok, map()} | {error, term()}.
+seat_contexts(#{user_id := UserId} = Params) when is_integer(UserId) ->
+    case with_store(Params, fun(Store) -> Store:list_seat_org_contexts(UserId) end) of
+        {error, _} = Err ->
+            Err;
+        {ok, Rows} ->
+            {ok, #{
+                contexts => [context_row(Row) || Row <- Rows],
+                user_id => UserId
+            }}
+    end;
+seat_contexts(_Params) ->
+    {error, {invalid_argument, seat_contexts}}.
+
+context_row(Row) ->
+    SeatEnabled = maps:get(seat_enabled, Row, false) =:= true,
+    #{
+        organization_id => maps:get(organization_id, Row),
+        organization_name => maps:get(organization_name, Row),
+        workspaces => maps:get(workspaces, Row, []),
+        business_identity_id => maps:get(business_identity_id, Row),
+        seat_enabled => SeatEnabled,
+        capabilities => seat_capabilities(SeatEnabled)
+    }.
+
+%% seat enabled 才有坐席能力（suspended seat 的 capabilities 为空——与
+%% cs_auth 的 seat_enabled_gate 同口径：停用坐席拿不到任何动作语义）。
+seat_capabilities(true) ->
+    [
+        <<"conversation.read">>,
+        <<"conversation.write">>,
+        <<"message.write">>,
+        <<"asset.read">>,
+        <<"asset.write">>
+    ];
+seat_capabilities(false) ->
+    [].
+
+%% ===================================================================
+%% BE-S01a：转接目标最小投影（GET .../transfer-targets）
+%% ===================================================================
+
+%% @doc 同 Org 其他可用坐席的最小投影（identity id / 显示名 / 可用状态）。
+%% 排除调用者本人（IdentityId 是认证派生键）；无 owner/admin 权限要求——
+%% 坐席转接是工作台动作，不是治理动作。available = active 会话数未达
+%% max_concurrent（store 同语句计数）。after_id/limit 沿用 C1~C4 冻结口径。
+-spec transfer_targets(integer(), map()) -> {ok, map()} | {error, term()}.
+transfer_targets(OrgId, #{business_identity_id := IdentityId} = Params) when
+    is_integer(OrgId), is_integer(IdentityId)
+->
+    case cs_app_support:page_cursor(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, AfterId, Limit} ->
+            case
+                with_store(Params, fun(Store) ->
+                    Store:list_transfer_targets_page(OrgId, IdentityId, AfterId, Limit)
+                end)
+            of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, Rows} ->
+                    cs_app_support:page_view(
+                        targets,
+                        [business_identity_id, display_name, available],
+                        [target_row(Row) || Row <- Rows],
+                        Limit,
+                        business_identity_id
+                    )
+            end
+    end;
+transfer_targets(_OrgId, _Params) ->
+    {error, {invalid_argument, transfer_targets}}.
+
+target_row(Row) ->
+    ActiveCount = maps:get(active_count, Row, 0),
+    MaxConcurrent = maps:get(max_concurrent, Row, 1),
+    #{
+        business_identity_id => maps:get(business_identity_id, Row),
+        display_name => maps:get(display_name, Row),
+        available => ActiveCount < MaxConcurrent
+    }.
 
 %% ===================================================================
 %% 内部辅助

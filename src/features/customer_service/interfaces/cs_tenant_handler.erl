@@ -60,11 +60,29 @@ dispatch(Entry, Case, Req0, State0) ->
 
 authorize(Entry, Case, Req0, Body, State, OrgId) ->
     Metadata = authorize_metadata(Entry, Case, State),
-    case cs_auth:authorize(Metadata, Req0, State) of
+    case authorizer(Entry, Metadata, Req0, State) of
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
         {ok, AuthContext} ->
             invoke(Entry, Case, Req0, Body, OrgId, AuthContext)
+    end.
+
+%% BE-S01a：`org_source = self` 的主体自身作用域用例（坐席上下文清单）。
+%% 五类 principal 的凭证类别语义不变（cs_seat = IMBoy JWT），但**不**做
+%% org 级 member/assignment/seat 判定——清单的意义正是枚举这些事实，各 Org
+%% 的复核由 application 聚合时逐 Org 下推（store SQL 同语句过滤 active
+%% member / active assignment / seat enabled）。缺 JWT 会话键即 401。
+authorizer(Entry, Metadata, Req, State) ->
+    case cs_actions:org_source(Entry) of
+        self ->
+            case maps:get(current_uid, State, 0) of
+                Uid when is_integer(Uid), Uid > 0 ->
+                    {ok, #{auth_context => cs_seat, user_id => Uid}};
+                _ ->
+                    {error, credential_missing}
+            end;
+        _ ->
+            cs_auth:authorize(Metadata, Req, State)
     end.
 
 %% route metadata（auth_context 等）+ 动作表 case_auth 覆盖：同一 cowboy 路径

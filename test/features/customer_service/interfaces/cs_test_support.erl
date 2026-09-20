@@ -40,11 +40,16 @@
 %% 监听器
 %% ===================================================================
 
-%% @doc 面 → handler 映射（三面：租户 / widget / 平台）。
+%% @doc 面 → handler 映射（三面：租户 / widget / 平台；widget 面含 BE-W01 的
+%% 动态 frame HTML handler——同面同 surface 键）。
 -spec handler_of(atom()) -> module().
 handler_of(platform) -> cs_platform_handler;
 handler_of(widget) -> cs_widget_handler;
 handler_of(_Tenant) -> cs_tenant_handler.
+
+%% widget 面的 handler 集合（route_opt 按 action 匹配时两个 handler 都可见）。
+widget_handlers() ->
+    [cs_widget_handler, cs_widget_frame_handler].
 
 %% @doc 按面 + 动作起监听器：从真路由表取该动作的 path 与 Opts，叠加注入
 %% （auth_facts 换成 cs_fake_facts；current_uid/adm_user_id 扮演中间件）。
@@ -83,11 +88,15 @@ stop(Name) ->
 
 -spec route_opt(atom(), atom()) -> {binary(), map()}.
 route_opt(Surface, Action) ->
-    Handler = handler_of(Surface),
+    HandlerFilter =
+        case Surface of
+            widget -> widget_handlers();
+            Other -> [handler_of(Other)]
+        end,
     Matches = [
         {b(Path), Opts}
      || {Path, H, Opts} <- cs_routes(all),
-        H =:= Handler,
+        lists:member(H, HandlerFilter),
         maps:get(action, Opts, undefined) =:= Action
     ],
     case Matches of
@@ -113,14 +122,15 @@ path(Surface, Action, Bindings) ->
         Bindings
     ).
 
-%% @doc 客服面路由（租户 + widget + 平台），从真路由表筛出。
+%% @doc 客服面路由（租户 + widget + 平台；widget 含 frame handler），从真路由表筛出。
 -spec cs_routes(atom()) -> [{binary(), module(), map()}].
 cs_routes(_Scope) ->
     [{_Host, Routes}] = imboy_router:get_routes(),
+    Handlers = [cs_tenant_handler, cs_platform_handler] ++ widget_handlers(),
     [
         {b(Path), H, Opts}
      || {Path, H, Opts} <- Routes,
-        H =:= cs_tenant_handler orelse H =:= cs_platform_handler orelse H =:= cs_widget_handler
+        lists:member(H, Handlers)
     ].
 
 %% ===================================================================

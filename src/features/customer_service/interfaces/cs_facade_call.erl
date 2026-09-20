@@ -100,6 +100,13 @@ call(seat_session_queue, OrgId, Params) ->
     customer_service_facade:seat_session_queue(OrgId, Params);
 call(seat_session_list, OrgId, Params) ->
     customer_service_facade:seat_session_list(OrgId, Params);
+%% BE-S01a：坐席上下文清单 / 转接目标 / SSE 占位（api-surface-freeze）。
+call(seat_contexts, OrgId, Params) ->
+    customer_service_facade:seat_contexts(OrgId, Params);
+call(transfer_targets, OrgId, Params) ->
+    customer_service_facade:transfer_targets(OrgId, Params);
+call(seat_events, OrgId, Params) ->
+    customer_service_facade:seat_events(OrgId, Params);
 call(Action, _OrgId, _Params) ->
     {error, {unknown_action, Action}}.
 
@@ -144,5 +151,9 @@ actions() ->
         seat_session_detail,
         %% CSB-02R：坐席工作台
         seat_session_queue,
-        seat_session_list
+        seat_session_list,
+        %% BE-S01a：坐席上下文清单 / 转接目标 / SSE 占位
+        seat_contexts,
+        transfer_targets,
+        seat_events
     ].
