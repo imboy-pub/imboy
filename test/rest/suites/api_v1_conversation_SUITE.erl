@@ -68,10 +68,16 @@ init_per_suite(Config0) ->
         SignKey
     ),
     ok = rest_fixture:await_device_active(uid(UserB), maps:get(did, UserB)),
+    %% Common Test writes init_per_suite's return value into every suite
+    %% log page (review P1): full login maps carry password/token/
+    %% refreshtoken/authorization, so the config carries sanitized handles
+    %% and auth_header/1 rehydrates through the fixture session store.
+    ok = rest_fixture:store_session(user_a, UserA),
+    ok = rest_fixture:store_session(user_b, UserB),
     [
         {http_port, Port},
-        {user_a, UserA},
-        {user_b, UserB},
+        {user_a, rest_fixture:sanitize_user(UserA, user_a)},
+        {user_b, rest_fixture:sanitize_user(UserB, user_b)},
         {sign_key, SignKey}
         | Config
     ].

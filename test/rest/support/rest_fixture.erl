@@ -10,6 +10,9 @@
     signed_headers/2,
     login/2,
     auth_header/1,
+    session/1,
+    store_session/2,
+    sanitize_user/2,
     await_device_active/2,
     ensure_login_throttle_capacity/0,
     ensure_ct_priv_alias/0,
@@ -188,8 +191,35 @@ login(User, SignKey) ->
 
 %% Bearer authorization header map for an already-logged-in fixture user.
 -spec auth_header(map()) -> map().
+auth_header(#{session_key := Key}) ->
+    auth_header(session(Key));
 auth_header(#{authorization := Auth}) ->
     #{<<"authorization">> => Auth}.
+
+%% ---------------------------------------------------------------------------
+%% Session store (review P1 fix): Common Test writes init_per_suite's return
+%% value into every suite log page, so suite config must never carry
+%% credential fields. Suites store the full login map here and place only
+%% sanitize_user/2 output into the config; auth_header/1 rehydrates the
+%% credentials through the session_key handle.
+%% ---------------------------------------------------------------------------
+
+-define(SESSION_SENSITIVE, [password, plain_password, token, refreshtoken, authorization]).
+
+-spec store_session(atom(), map()) -> ok.
+store_session(Key, UserMap) ->
+    persistent_term:put({?MODULE, session, Key}, UserMap),
+    ok.
+
+-spec session(atom()) -> map().
+session(Key) ->
+    persistent_term:get({?MODULE, session, Key}).
+
+%% Strip credential fields and attach the session handle used for
+%% rehydration; the sanitized map is safe for CT to log as suite config.
+-spec sanitize_user(map(), atom()) -> map().
+sanitize_user(UserMap, Key) ->
+    (maps:without(?SESSION_SENSITIVE, UserMap))#{session_key => Key}.
 
 %% The login success path writes the user_device row through
 %% gen_server:cast (user_server {login_success, ...}) only after the HTTP
@@ -226,6 +256,9 @@ await_device_active(Uid, Did, Attempts) ->
 %% limit) raises it. Domain suites that log in more than 6 fixture users
 %% per run call this from init_per_suite so the shared 127.0.0.1 passport
 %% bucket does not hand 429s to fixture logins.
+%% Node-scope note: the raised ceiling lives on the shared ct_imboy VM for
+%% its remaining lifetime — later suites or runs on the same node inherit it
+%% until that VM restarts. Rate-limit semantics are not under test here.
 -spec ensure_login_throttle_capacity() -> ok.
 ensure_login_throttle_capacity() ->
     ok = throttle:setup(passport_per_ip, 300, per_minute).
