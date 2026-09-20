@@ -11,12 +11,19 @@
 
 % -include("log.hrl").
 -include_lib("public_key/include/public_key.hrl").
+%% BE-W01：特性裁剪宏（eb_keyring_file 跨裁剪调用的 -ifdef 保护，F-EB10-1 同款）
+-include("generated/imboy_product_features.hrl").
 
 %% @doc 启动 application 回调
 -spec start(term(), term()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
 start(_Type, _Args) ->
     _ = inets:start(),
     ok = imboy_env:override_from_env(),
+    %% BE-W01 A02：企业密钥环 _FILE 装载（IMBOY_EB_ENTERPRISE_KEYRING_FILE，
+    %% 0600 + fail-fast）。eb_keyring_file 属 enterprise_business 特性模块，
+    %% 未选中档被 ERLC_EXCLUDE 物理排除——函数级 -ifdef 保护（F-EB10-1
+    %% 同款），未选中档调用整条省略。
+    ok = maybe_load_keyring_env_file(),
     %% 确保 os:cmd 能找到 homebrew/系统工具（captcha 依赖 ImageMagick convert）
     ok = ensure_tool_path(),
     %% prime IMBOYENV 缓存：所有运行时模块统一走 imboy_env:current/0
@@ -421,6 +428,19 @@ init_throttle_rates() ->
     ok = throttle:setup(olm_claim, RateFor(olm_claim, 30), per_minute),
     ok = throttle:setup(olm_claim_target, RateFor(olm_claim_target, 60), per_minute),
     ok.
+
+%% @doc BE-W01 A02：特性可选的企业密钥环 _FILE 装载守卫。
+%% eb_keyring_file 随 enterprise_business 裁剪（ERLC_EXCLUDE）不参与
+%% 未选中档编译；远程调用是运行期解析的——按 F-EB10-1 函数级 -ifdef
+%% 保护（check_feature_prune_calls 门禁口径）：未选中档调用整条省略。
+-spec maybe_load_keyring_env_file() -> ok.
+-ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS).
+maybe_load_keyring_env_file() ->
+    eb_keyring_file:load_env_file().
+-else.
+maybe_load_keyring_env_file() ->
+    ok.
+-endif.
 
 -spec validate_runtime_config() -> ok.
 validate_runtime_config() ->

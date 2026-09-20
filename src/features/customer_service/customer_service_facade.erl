@@ -46,6 +46,8 @@
     revoke_widget_installation/2,
     %% widget（CSB-02：application 合同；HTTP 面归 CSB-03）
     widget_bootstrap/2,
+    %% BE-W01 A05：动态 frame HTML 的公开 installation 投影
+    widget_frame_html/2,
     widget_identity_exchange/2,
     widget_create_session/2,
     widget_list_sessions/2,
@@ -399,20 +401,49 @@ widget_bootstrap(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
 widget_bootstrap(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
+%% BE-W01 A05：动态 frame HTML 端点的公开 installation 投影——零凭证面
+%% （iframe src 导航落点）。Params：installation_id 必填；返回
+%% #{id, public_widget_id, allowed_origins}（allowed_origins 已归一化），
+%% revoked/不存在一律 {error, not_found}（handler 映射 404，kill switch
+%% 不显形）。凭据/接触面零 secret。
+-spec widget_frame_html(integer(), map()) -> term().
+widget_frame_html(OrgId, #{installation_id := InstallationId} = Params) when
+    is_integer(OrgId), is_integer(InstallationId), is_map(Params)
+->
+    cs_widget_app:public_frame_installation(OrgId, Params);
+widget_frame_html(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_frame_html}};
+widget_frame_html(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% BE-W01 A06：identity/exchange 第一阶段 capability_disabled 收敛
+%% （api-surface-freeze.json：返回明确能力状态；签名断言流程保留，
+%% 由 cs_widget_identity_exchange_enabled 显式开启，默认 false）。
 -spec widget_identity_exchange(integer(), map()) -> term().
 widget_identity_exchange(
     OrgId, #{installation_id := InstallationId, assertion := Assertion} = Params
 ) when
     is_integer(OrgId), is_integer(InstallationId), is_map(Assertion), is_map(Params)
 ->
-    case cs_widget_env:merge_identity_exchange(OrgId, Params) of
-        {ok, Merged} -> cs_widget_app:identity_exchange(OrgId, Merged);
-        {error, _} = Err -> Err
+    case cs_widget_env:identity_exchange_enabled() of
+        true ->
+            widget_identity_exchange_enabled(OrgId, InstallationId, Assertion, Params);
+        false ->
+            %% 第一阶段：签名身份换绑未开放（capability_disabled；HTTP 403 +
+            %% envelope tag capability_disabled.identity_exchange）。既有签名
+            %% 断言链原样保留在 true 分支，未删除。
+            {error, {capability_disabled, identity_exchange}}
     end;
 widget_identity_exchange(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_identity_exchange}};
 widget_identity_exchange(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
+
+widget_identity_exchange_enabled(OrgId, _InstallationId, _Assertion, Params) ->
+    case cs_widget_env:merge_identity_exchange(OrgId, Params) of
+        {ok, Merged} -> cs_widget_app:identity_exchange(OrgId, Merged);
+        {error, _} = Err -> Err
+    end.
 
 -spec widget_create_session(integer(), map()) -> term().
 widget_create_session(OrgId, #{installation_id := InstallationId, secret := Secret} = Params) when

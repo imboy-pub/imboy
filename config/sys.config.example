@@ -47,6 +47,16 @@
         ]},
         % 开发环境允许 localhost 任意端口（正则匹配）
         {cors_allow_localhost, true},
+        % BE-W01：CORS 三面 origin 名单（IMBOY_CORS_WIDGET_ORIGINS /
+        % IMBOY_CORS_ADMIN_ORIGINS，逗号分隔注入）。
+        %   * cors_widget_origins —— Widget 应用 origin（dist-widget 部署域，
+        %     iframe 内 JS 的 Origin）：Widget API 面预检只精确校验本名单，
+        %     credentials 恒 false；不回退全局白名单（admin origin 不得混入）。
+        %   * cors_admin_origins —— admin origin：Admin API(/api/adm) 面与
+        %     Seat API 面（credentials false + Authorization/Last-Event-ID +
+        %     expose X-CS-Event-Retention-Seconds）共用；未配置回退全局白名单。
+        {cors_widget_origins, []},
+        {cors_admin_origins, []},
 
         %% 客户端 /init 接口返回的 URL 及上传配置
         %% ws_url: WebSocket 连接地址（wss:// 或 ws://）
@@ -427,8 +437,11 @@
         %%     绝不降级明文、绝不使用默认密钥。
         %%   * 形状：#{active_version := 正整数, keys := #{版本 => 64 位 hex（32 字节）}}；
         %%     轮换 = 追加新版本并把 active_version 指向它（旧版本保留可解历史密文）。
-        %%   * ⚠️ 真实密钥字节**永不入仓**：生产经部署环境（IMBOY_* 变量 / 密管渲染）
-        %%     注入后覆盖本键；下方仅形状示意（注释态，勿在此填真实值）。
+        %%   * ⚠️ 真实密钥字节**永不入仓**：生产经部署环境注入后覆盖本键；
+        %%     BE-W01 文件装载：IMBOY_EB_ENTERPRISE_KEYRING_FILE（JSON
+        %%     {"active_version":1,"keys":{"1":"<64hex>"}}，权限 0600，读取/
+        %%     权限/形状失败启动 fail-fast；与 sys.config 同给报歧义错）。
+        %%     下方仅形状示意（注释态，勿在此填真实值）。
         %% {eb_enterprise_keyring, #{
         %%     active_version => 1,
         %%     keys => #{
@@ -529,13 +542,21 @@
         %% =========================================================
         %% 匿名 subject HMAC 材料（IMBOY_CS_WIDGET_SUBJECT_KEY；空 = bootstrap
         %% 等写路径 fail-closed 422）。digest 不落库，本材料只驻服务端内存。
+        %% secret 文件变体：IMBOY_CS_WIDGET_SUBJECT_KEY_FILE（0600 持久化
+        %% mount，BE-W01：读内容为值；权限过宽/读取失败/与直接值同给一律
+        %% 启动 fail-fast）。
         {cs_widget_subject_key, <<>>},
         %% 签名身份断言验签材料（IMBOY_CS_WIDGET_IDENTITY_KEYS，形如 "1:k1,2:k2"；
         %% DB identity key 行只存 sha256(key) digest，此处按 key_version 供真材料）
         {cs_widget_identity_keys, []},
         %% 接待 identity 覆写（0 = 由 store 派生：本 Org enabled 且
         %% customer_service 职能的派单快照最小 business_identity_id）
-        {cs_widget_intake_business_identity_id, 0}
+        %% （IMBOY_CS_WIDGET_INTAKE_BUSINESS_IDENTITY_ID）
+        {cs_widget_intake_business_identity_id, 0},
+        %% BE-W01：签名身份换绑第一阶段 capability_disabled（默认 false；
+        %% 端点返回 403 capability_disabled.identity_exchange）。true 时走既有
+        %% 签名断言验签链（代码保留未删除）。
+        {cs_widget_identity_exchange_enabled, false}
     ]},
 
     %% =============================================================

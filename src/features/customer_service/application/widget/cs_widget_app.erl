@@ -30,6 +30,8 @@
     list_installations/2,
     create_installation/2,
     revoke_installation/2,
+    %% BE-W01 A05：动态 frame HTML 端点的公开 installation 投影（零凭证面）
+    public_frame_installation/2,
     bootstrap/2,
     identity_exchange/2
 ]).
@@ -240,6 +242,49 @@ new_public_widget_id(Params) ->
         Fun when is_function(Fun, 0) -> Fun();
         _ -> <<"wgt_pub_", (binary:encode_hex(crypto:strong_rand_bytes(16)))/binary>>
     end.
+
+%% ===================================================================
+%% 公开 installation 投影（BE-W01 A05：动态 frame HTML 端点）
+%% ===================================================================
+
+%% @doc 按 (Org, installation_id) 取 active installation 的 frame HTML
+%% 投影：`#{id, public_widget_id, allowed_origins}`（allowed_origins 已按
+%% domain `cs_widget:normalize_origin/1` 归一）。
+%%
+%% fail-closed 语义：
+%%   * 不存在 / 错 Org → `{error, not_found}`（同语句命中证明，无枚举）；
+%%   * 已吊销（kill switch）→ `{error, installation_revoked}`（handler 映射
+%%     404，不显形）；
+%%   * 投影白名单只含公开字段——secret/branding/consent 一律不出本用例。
+-spec public_frame_installation(integer(), map()) -> {ok, map()} | {error, term()}.
+public_frame_installation(OrgId, #{installation_id := InstallationId} = Params) when
+    is_integer(OrgId), is_integer(InstallationId)
+->
+    case cs_widget_support:fetch_installation(OrgId, InstallationId, Params) of
+        {ok, Installation} ->
+            {ok, #{
+                id => maps:get(id, Installation),
+                public_widget_id => maps:get(public_widget_id, Installation),
+                allowed_origins => normalized_allowed_origins(Installation)
+            }};
+        {error, installation_revoked} = Err ->
+            Err;
+        {error, _} = Err ->
+            Err
+    end;
+public_frame_installation(_OrgId, _Params) ->
+    {error, {invalid_argument, public_frame_installation}}.
+
+normalized_allowed_origins(Installation) ->
+    lists:filtermap(
+        fun(Raw) ->
+            case cs_widget:normalize_origin(Raw) of
+                {ok, Norm} -> {true, Norm};
+                {error, _} -> false
+            end
+        end,
+        maps:get(allowed_origins, Installation, [])
+    ).
 
 %% ===================================================================
 %% bootstrap（安装校验 → Origin 精确匹配 → 匿名 contact 幂等映射 → 签发令牌）

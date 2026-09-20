@@ -21,6 +21,8 @@
 
 -export([
     merge_bootstrap/2,
+    %% BE-W01 A06：identity/exchange 能力开关（第一阶段 capability_disabled）
+    identity_exchange_enabled/0,
     merge_identity_exchange/2,
     merge_session/2,
     merge_visitor/2,
@@ -39,6 +41,13 @@
 
 merge_bootstrap(OrgId, Params) ->
     merge_facts(OrgId, Params, [fun merge_subject_key/2, fun merge_default_workspace/2]).
+
+%% @doc 签名身份换绑能力开关（BE-W01 A06，默认 false = capability_disabled）。
+%% 只显式接受布尔 true（与 imboy_env 的布尔解析口径一致）；其余任何值
+%% （含未配置）一律 false——fail-closed，拼错不等于开启。
+-spec identity_exchange_enabled() -> boolean().
+identity_exchange_enabled() ->
+    config_ds:env(cs_widget_identity_exchange_enabled, false) =:= true.
 
 merge_identity_exchange(OrgId, Params) ->
     case shape_assertion(Params) of

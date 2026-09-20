@@ -74,6 +74,9 @@ call(revoke_widget_installation, OrgId, Params) ->
 %% facade 调用点，保证「有 facade 函数必有调用点」的机械核对闭合）。
 call(widget_bootstrap, OrgId, Params) ->
     customer_service_facade:widget_bootstrap(OrgId, Params);
+%% BE-W01 A05：动态 frame HTML 的公开 installation 投影（零凭证面）。
+call(widget_frame_html, OrgId, Params) ->
+    customer_service_facade:widget_frame_html(OrgId, Params);
 call(widget_identity_exchange, OrgId, Params) ->
     customer_service_facade:widget_identity_exchange(OrgId, Params);
 call(widget_create_session, OrgId, Params) ->
@@ -129,6 +132,7 @@ actions() ->
         revoke_widget_installation,
         %% CSB-02：Widget 与 Seat 补缺用例
         widget_bootstrap,
+        widget_frame_html,
         widget_identity_exchange,
         widget_create_session,
         widget_list_sessions,

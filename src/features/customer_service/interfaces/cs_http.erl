@@ -83,6 +83,11 @@ is_credential_surface_path(Path) when is_binary(Path) ->
         %% CSB-03：POST /api/v1/cs/widget/identity/exchange（签名身份换绑）
         [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"identity">>, <<"exchange">>] ->
             true;
+        %% BE-W01 A05：GET /api/v1/cs/widget/frame/:id（动态 frame HTML，
+        %% iframe src 导航落点——零凭证面，中间件免签/免 JWT 直通；嵌入
+        %% 策略由 frame-ancestors CSP 裁决，不是凭证）。
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"frame">>, _Id] ->
+            true;
         %% CSB-03：GET+POST /api/v1/cs/widget/sessions（访客会话建立/列表）
         [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>] ->
             true;
@@ -534,6 +539,10 @@ classify(identity_key_revoked) ->
     ?ERR_FORBIDDEN;
 %% CSB-02S D6：访客附件作用域——令牌 contact 与会话 contact 不符（403 面）。
 classify({forbidden, contact_scope_mismatch}) ->
+    ?ERR_FORBIDDEN;
+%% BE-W01 A06：identity/exchange 第一阶段能力未开放（默认关闭；明确状态，
+%% 非客户端过错集合，但按冻结合同归入拒绝面）。
+classify({capability_disabled, _}) ->
     ?ERR_FORBIDDEN;
 %% --- 404：资源不在本租户作用域（不区分不存在与跨 Org，避免枚举）---
 classify(not_found) ->

@@ -58,6 +58,7 @@ widget_test_() ->
         end,
         [
             fun a01_token_and_origin_tests/1,
+            fun a06_capability_and_matrix_tests/1,
             fun a02_sse_tests/1,
             fun a03_cors_tests/1,
             fun a04_throttle_tests/1,
@@ -395,6 +396,149 @@ a01_token_and_origin_tests(_) ->
                 ?assertEqual(200, ?S:status(Resp)),
                 ?assertEqual(int_bin(?CONTACT), maps:get(<<"contact_id">>, ?S:payload(Resp)))
             end)
+        end}
+    ].
+
+%% ===================================================================
+%% BE-W01 A06：capability_disabled 收敛 + 三面凭据矩阵（独立 foreach 组，
+%% meck passthrough 无 expect——门在真 facade 入口）
+%% ===================================================================
+
+a06_capability_and_matrix_tests(_) ->
+    [
+        %% BE-W01 A06：第一阶段 capability_disabled（默认关）。走真 facade
+        %% （meck passthrough 未 expect 该函数）——门在 facade 入口，请求
+        %% 不触签名断言链、不触 DB。
+        {"A06 identity exchange defaults to capability_disabled (403, explicit tag)", fun() ->
+            meck:reset(customer_service_facade),
+            ?S:with_listener(widget, widget_identity_exchange, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/widget/identity/exchange">>,
+                    #{
+                        <<"organization_id">> => ?ORG,
+                        <<"installation_id">> => ?INSTALL,
+                        <<"assertion">> =>
+                            #{<<"key_version">> => 1, <<"claims">> => #{<<"jti">> => <<"j">>}}
+                    },
+                    #{<<"x-cs-visit-token">> => ?TOKEN}
+                ),
+                ?assertEqual(403, ?S:status(Resp)),
+                ?assertEqual(<<"capability_disabled.identity_exchange">>, ?S:msg(Resp))
+            end)
+        end},
+
+        %% BE-W01 A06：开关显式开启后原签名断言链保留（真 facade 门放行 →
+        %% 打桩 application 层（零 DB），证明 true 路径未删除）。
+        {"A06 identity exchange enabled path still routes the assertion chain", fun() ->
+            SavedSwitch = application:get_env(imboy, cs_widget_identity_exchange_enabled),
+            try
+                ok = application:set_env(imboy, cs_widget_identity_exchange_enabled, true),
+                meck:new(cs_widget_app, [passthrough]),
+                meck:expect(cs_widget_app, identity_exchange, fun(Org, Params) ->
+                    ?assertEqual(?ORG, Org),
+                    ?assert(is_map(maps:get(assertion, Params))),
+                    {ok, #{
+                        installation_id => ?INSTALL,
+                        contact_id => ?CONTACT,
+                        anonymous_contact_id => ?CONTACT,
+                        contact_reused => false
+                    }}
+                end),
+                ?S:with_listener(widget, widget_identity_exchange, widget_inject(), fun(Port) ->
+                    Resp = ?S:request(
+                        Port,
+                        <<"POST">>,
+                        <<"/api/v1/cs/widget/identity/exchange">>,
+                        #{
+                            <<"organization_id">> => ?ORG,
+                            <<"installation_id">> => ?INSTALL,
+                            <<"assertion">> =>
+                                #{
+                                    <<"key_version">> => 1,
+                                    <<"claims">> => #{<<"jti">> => <<"j">>},
+                                    <<"sig">> => <<"c2ln">>
+                                }
+                        },
+                        #{<<"x-cs-visit-token">> => ?TOKEN}
+                    ),
+                    ?assertEqual(200, ?S:status(Resp)),
+                    ?assert(meck:called(cs_widget_app, identity_exchange, '_'))
+                end)
+            after
+                meck:unload(cs_widget_app),
+                case SavedSwitch of
+                    undefined ->
+                        _ = application:unset_env(
+                            imboy, cs_widget_identity_exchange_enabled
+                        );
+                    {ok, V} ->
+                        ok = application:set_env(
+                            imboy, cs_widget_identity_exchange_enabled, V
+                        )
+                end
+            end
+        end},
+
+        %% BE-W01 A06 凭据矩阵（eunit 层模拟）：三类凭据不互换。
+        {"A06 admin cookie is not a widget credential (401)", fun() ->
+            meck:reset(customer_service_facade),
+            ?S:with_listener(widget, widget_sessions, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/widget/sessions">>,
+                    #{<<"organization_id">> => ?ORG, <<"installation_id">> => ?INSTALL},
+                    #{<<"cookie">> => <<"imboy_adm_sid=adm-session-1">>}
+                ),
+                ?assertEqual(401, ?S:status(Resp)),
+                ?assertEqual(<<"credential_missing">>, ?S:msg(Resp)),
+                ?assertNot(meck:called(customer_service_facade, widget_create_session, '_'))
+            end)
+        end},
+
+        {"A06 widget visit token is not a seat credential (401)", fun() ->
+            %% 不注入 current_uid（中间件只在 Authorization Bearer JWT 通过后
+            %% 注入）：浏览器只带 visit token 头时坐席面没有任何可采信凭据。
+            cs_fake_facts:set(seat_facts()),
+            ?S:with_listener(
+                tenant,
+                session_detail,
+                #{auth_facts => cs_fake_facts},
+                fun(Port) ->
+                    Resp = ?S:request(
+                        Port,
+                        <<"GET">>,
+                        <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "?organization_id=",
+                            (int_bin(?ORG))/binary, "&workspace_id=", (int_bin(?WS))/binary>>,
+                        <<>>,
+                        %% visit token 头冒充坐席 JWT：坐席面只认 Authorization
+                        %% Bearer（current_uid）——头类型不对即 401，绝不降级采信。
+                        #{<<"x-cs-visit-token">> => ?TOKEN}
+                    ),
+                    ?assertEqual(401, ?S:status(Resp))
+                end
+            )
+        end},
+
+        {"A06 widget visit token is not a platform admin credential (401)", fun() ->
+            ?S:with_listener(
+                platform,
+                p_widget_installations,
+                #{auth_facts => cs_fake_facts},
+                fun(Port) ->
+                    Resp = ?S:request(
+                        Port,
+                        <<"GET">>,
+                        <<"/api/adm/customer-service/widget-installations?organization_id=",
+                            (int_bin(?ORG))/binary, "&workspace_id=", (int_bin(?WS))/binary>>,
+                        <<>>,
+                        #{<<"x-cs-visit-token">> => ?TOKEN}
+                    ),
+                    ?assertEqual(401, ?S:status(Resp))
+                end
+            )
         end}
     ].
 
