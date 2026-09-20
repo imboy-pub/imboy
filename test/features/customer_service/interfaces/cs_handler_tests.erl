@@ -702,6 +702,68 @@ governance_flow_tests(_) ->
             )
         end},
 
+        %% DF-4 回归：吊销写路径的 `at` 必须是 epoch 秒——store 的
+        %% `to_timestamp` 以秒为量纲，毫秒输入会把 revoked_at 写成约 5.8 万年
+        %% 后，`cs_session:assert_visitor_scope` 的吊销判定永不命中（写路径
+        %% fail-open：治理面 revoke 200 后访客发消息仍 200）。这里在 facade
+        %% 边界（真 cowboy 监听 + 动作表 clock_unit => second）锁死量纲。
+        {"DF-4: visit-token revoke derives the server clock in epoch seconds", fun() ->
+            cs_fake_facts:set(owner_facts()),
+            meck:expect(customer_service_facade, revoke_visit_token, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(91, maps:get(id, Params)),
+                ?assert(is_integer(maps:get(at, Params))),
+                At = maps:get(at, Params),
+                NowSec = os:system_time(second),
+                ?assert(abs(At - NowSec) < 60),
+                ok
+            end),
+            ?S:with_listener(
+                tenant,
+                visit_token_revoke,
+                #{auth_facts => cs_fake_facts, current_uid => ?UID},
+                fun(Port) ->
+                    Path = ?S:path(tenant, visit_token_revoke, #{org_id => ?ORG, id => 91}),
+                    Resp = ?S:request(
+                        Port,
+                        <<"POST">>,
+                        Path,
+                        #{<<"workspace_id">> => ?WS},
+                        #{<<"authorization">> => <<"Bearer x">>}
+                    ),
+                    ?assertEqual(200, ?S:status(Resp))
+                end
+            )
+        end},
+
+        {"DF-4: shop-key revoke derives the server clock in epoch seconds", fun() ->
+            cs_fake_facts:set(owner_facts()),
+            meck:expect(customer_service_facade, revoke_shop_key, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assert(is_integer(maps:get(at, Params))),
+                At = maps:get(at, Params),
+                NowSec = os:system_time(second),
+                ?assert(abs(At - NowSec) < 60),
+                ok
+            end),
+            ?S:with_listener(
+                tenant,
+                shop_key_revoke,
+                #{auth_facts => cs_fake_facts, current_uid => ?UID},
+                fun(Port) ->
+                    Path = ?S:path(tenant, shop_key_revoke, #{org_id => ?ORG, id => 88}),
+                    Resp = ?S:request(
+                        Port,
+                        <<"POST">>,
+                        Path,
+                        #{<<"workspace_id">> => ?WS},
+                        #{<<"authorization">> => <<"Bearer x">>}
+                    ),
+                    ?assertEqual(200, ?S:status(Resp))
+                end
+            )
+        end},
+
         {"C4: tenant seats list pushes after_id/limit through (200, paged shape)", fun() ->
             cs_fake_facts:set(owner_facts()),
             meck:expect(customer_service_facade, list_dispatchable_seats, fun(Org, Params) ->

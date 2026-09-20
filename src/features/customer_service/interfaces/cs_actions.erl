@@ -476,7 +476,10 @@ table(tenant) ->
             )},
         {shop_key_revoke,
             entry(
-                [{<<"POST">>, revoke_shop_key, [], [{id, id}]}],
+                %% clock_unit => second（DF-4）：吊销写路径的 `at` 进 store 的
+                %% `to_timestamp`（epoch 秒）；毫秒量纲会把 revoked_at 污染成
+                %% 约 5.8 万年后 → 吊销判定永不命中（fail-open）。
+                [{<<"POST">>, revoke_shop_key, [], [{id, id}], #{clock_unit => second}}],
                 governance_auth(),
                 server_common(),
                 path
@@ -501,7 +504,9 @@ table(tenant) ->
             )},
         {visit_token_revoke,
             entry(
-                [{<<"POST">>, revoke_visit_token, [], [{id, id}]}],
+                %% clock_unit => second（DF-4）：同 shop_key_revoke——revoked_at
+                %% 的 to_timestamp 以秒为量纲，毫秒输入即吊销 fail-open。
+                [{<<"POST">>, revoke_visit_token, [], [{id, id}], #{clock_unit => second}}],
                 governance_auth(),
                 server_common(),
                 path

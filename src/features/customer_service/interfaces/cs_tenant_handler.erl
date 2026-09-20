@@ -121,7 +121,7 @@ invoke(Entry, Case, Req0, Body, OrgId, AuthContext) ->
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
         {ok, WorkspaceId} ->
-            Derived = derived_params(AuthContext, WorkspaceId),
+            Derived = derived_params(Case, AuthContext, WorkspaceId),
             case cs_http:build_params(Entry, Case, Req0, Body, Derived) of
                 {error, Reason} ->
                     cs_http:reply_error(Req0, Reason);
@@ -152,12 +152,12 @@ metadata(State) ->
 
 %% 服务端派生参数：操作人/时钟/主体身份全部来自认证上下文与服务端时钟，
 %% 客户端无法自报（动作表已把这些键列为 client_forbidden，400 兜底）。
-derived_params(AuthContext, WorkspaceId) ->
+derived_params(Case, AuthContext, WorkspaceId) ->
     %% CSB-02R：optional workspace **缺省时键不存在**（不是值为 undefined 的
     %% 键）——「未提供」与「提供了 undefined」是两种形状，facade/application
     %% 与消费方只见前者；此处是 optional 派生键的唯一归一点。
     Base0 = #{
-        at => cs_http:now_ms(),
+        at => now(Case),
         actor_user_id => actor_user_id(AuthContext)
     },
     Base =
@@ -169,6 +169,17 @@ derived_params(AuthContext, WorkspaceId) ->
 
 actor_user_id(#{user_id := Uid}) when is_integer(Uid) -> Uid;
 actor_user_id(_Other) -> undefined.
+
+%% 时钟量纲选择（与 cs_platform_handler:now/1 同机制）：store 的时间写路径
+%% 统一 `to_timestamp`（epoch 秒）。默认沿用租户面毫秒既有口径；动作表声明
+%% `clock_unit => second` 的用例改用秒——DF-4 修复：吊销写路径（shop_key /
+%% visit_token revoke）以毫秒喂 `to_timestamp` 会把 revoked_at 写成约 5.8 万
+%% 年后，`cs_session:assert_visitor_scope` 的吊销判定永不命中（fail-open）。
+now(Case) ->
+    case maps:get(clock_unit, Case, millisecond) of
+        second -> cs_http:now_sec();
+        millisecond -> cs_http:now_ms()
+    end.
 
 identity_derived(#{auth_context := cs_seat, business_identity_id := Bid}) ->
     #{business_identity_id => Bid};
@@ -223,7 +234,7 @@ events_invoke(Entry, Case, Req0, Body, OrgId, State, Metadata, AuthContext) ->
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
         {ok, WorkspaceId} ->
-            Derived = derived_params(AuthContext, WorkspaceId),
+            Derived = derived_params(Case, AuthContext, WorkspaceId),
             case cs_http:build_params(Entry, Case, Req0, Body, Derived) of
                 {error, Reason} ->
                     cs_http:reply_error(Req0, Reason);
