@@ -230,10 +230,16 @@ RUN_STATUS=0
 bash "$ROOT/scripts/check_rest_contract_coverage.sh" 2>&1 | tee -a "$RUNNER_LOG" || RUN_STATUS=3
 
 if [[ $RUN_STATUS -eq 0 ]]; then
-  make -C "$ROOT" ct-api_v1_login \
-    CT_CONFIG="$CT_CONFIG" \
-    TEST_HTTP_PORT=0 \
-    CT_LOGS_DIR="$CT_LOGS_DIR" 2>&1 | tee -a "$RUNNER_LOG" || RUN_STATUS=3
+  # One make invocation per suite so a failing suite does not stop the
+  # remaining ones; any failure keeps the overall run non-zero.
+  for SUITE in api_v1_login api_v1_auth api_v1_user api_v1_friend \
+               api_v1_group api_v1_conversation api_v1_msg api_v1_channel; do
+    echo "=== REST suite: $SUITE ===" | tee -a "$RUNNER_LOG"
+    make -C "$ROOT" "ct-$SUITE" \
+      CT_CONFIG="$CT_CONFIG" \
+      TEST_HTTP_PORT=0 \
+      CT_LOGS_DIR="$CT_LOGS_DIR" 2>&1 | tee -a "$RUNNER_LOG" || RUN_STATUS=3
+  done
 fi
 FINISHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -246,7 +252,8 @@ TABLES_COUNT=$(psql_scratch -d "$DB_NAME" -Atc \
 MIGRATION_TABLE=$(psql_scratch -d "$DB_NAME" -Atc \
   "SELECT table_name FROM information_schema.tables WHERE table_name LIKE '%migration%' AND table_schema='public' LIMIT 1" || true)
 
-# Cross-check: exactly the five expected case ids, each executed with PASS.
+# Cross-check: the login golden suite must always deliver its five cases;
+# domain suites report through their own evidence files.
 EXPECTED_CASES="login-001 login-002 login-003 login-004 login-005"
 EVIDENCE_STATUS=0
 EVIDENCE_TOTAL=$(find "$EVIDENCE_DIR" -maxdepth 1 -name 'login-*.json' | wc -l | tr -d ' ')
