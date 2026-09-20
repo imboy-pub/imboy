@@ -22,6 +22,7 @@
 # 依赖镜像：IMBoy 自有镜像与 IMBOY_VERSION 强一致；Certbot 按交付约定跟随 latest。
 #   - ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION}   （release 流水线从 git tag 构建推送 GHCR）
 #   - ghcr.io/imboy-pub/imboy-admin:${IMBOY_VERSION}     （同上）
+#   - ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION}    （客服 Widget 静态产物，同上）
 #   - ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION}      （同一发布流水线构建）
 #   - dxflrs/garage:v2.3.0                   （官方，与 scripts/garage-install.sh 同版本）
 #   - nginx:1.27-alpine / certbot/certbot:latest / livekit/livekit-server:v1.9（官方）
@@ -265,6 +266,39 @@ services:
         max-size: "50m"
         max-file: "30"
 
+  # ========== 客服托管 Widget 静态运行时（CSD-DEP-01）==========
+  # 只承载 imboyadmin 仓 build:widget 的静态产物（loader.js / assets / frame HTML 壳，
+  # 见 imboyadmin Dockerfile.widget + docker/widget/nginx.conf，监听 8080）：
+  # 零业务配置、零 DB、零队列、零 secret —— 纯静态产物容器（CSD-IMG-01）。
+  # 仅 compose 内网可达（只 expose 8080，不发布任何公网端口）；公网唯一入口是
+  # nginx 的 CS_WIDGET_DOMAIN vhost（nginx/templates/cs-widget.conf.template）。
+  # 运行时合同（CSD-IMG-01）：只读根文件系统 + tmpfs /tmp（pid/temp/日志全落 /tmp）。
+  imboy_widget:
+    image: ${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.71}}
+    container_name: imboy_widget
+    hostname: widget.docker.imboy.pub
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health.txt"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
   # ========== nginx 反向代理 + certbot 自动 TLS ==========
   # 首次部署后执行一次 `bash nginx/init-letsencrypt.sh` 签发证书；之后自动续期。
   imboy_nginx:
@@ -274,15 +308,18 @@ services:
     depends_on:
       - imboy_backend
       - imboy_admin
+      - imboy_widget
       - imboy_livekit
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       API_DOMAIN: ${API_DOMAIN}
       ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      # 客服 Widget 第三域（渲染 nginx/templates/cs-widget.conf.template）
+      CS_WIDGET_DOMAIN: ${CS_WIDGET_DOMAIN}
       # /s3/ 反代 upstream（附件公网直传/下载）：社区版 = compose 网络内 garage 服务
       S3_UPSTREAM: ${S3_UPSTREAM:-garage:3900}
-      # 仅替换这三个变量，保留 nginx 内置 $$host/$$remote_addr 等
-      NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM)$$"
+      # 仅替换这四个变量，保留 nginx 内置 $$host/$$remote_addr 等
+      NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM|CS_WIDGET_DOMAIN)$$"
     volumes:
       - ./nginx/templates:/etc/nginx/templates:ro
       - ${DATA_DIR:-./data}/certbot/conf:/etc/letsencrypt:ro

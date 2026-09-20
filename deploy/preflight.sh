@@ -90,9 +90,17 @@ check_secrets_distinct() {
     fi
 }
 
+# 校验两个域名互异（CSD-DEP-01 三域唯一性）：check_domains_distinct <N1> <V1> <N2> <V2>
+check_domains_distinct() {
+    local n1="$1" v1="$2" n2="$3" v2="$4"
+    if [[ -n "$v1" && -n "$v2" && "$v1" == "$v2" ]]; then
+        err "$n1 与 $n2 不能相同（每个域名必须唯一，两两不同）"
+    fi
+}
+
 # --self-test：以负向 fixtures 自检上述规则函数（每个用例必须被抓到才算过）
 run_secret_rules_self_test() {
-    echo "▶ LT-06 secret 校验规则自测（负向 fixtures 必须全部被抓到）"
+    echo "▶ LT-06 secret 规则 + 三域唯一性规则自测（负向 fixtures 必须全部被抓到）"
     local passed=0 failed=0
 
     ERRORS=0; check_secret_strength "T_KEY" "short" >/dev/null
@@ -111,6 +119,15 @@ run_secret_rules_self_test() {
     ERRORS=0
     check_secrets_distinct "A" "value-aaaaaaaaaaaaaaaaaaaaaaaa-32" "B" "value-bbbbbbbbbbbbbbbbbbbbbbbbbbbb" >/dev/null
     if (( ERRORS == 0 )); then ok "自测5 互异放行"; passed=$((passed+1)); else err "自测5 失败：互异被误拒"; failed=$((failed+1)); fi
+
+    # CSD-DEP-01：三域唯一性规则负向 fixtures（域名任两相同必须被抓到）
+    ERRORS=0
+    check_domains_distinct "A" "cs.fixt" "B" "cs.fixt" >/dev/null
+    if (( ERRORS == 1 )); then ok "自测6 相同域名被拒"; passed=$((passed+1)); else err "自测6 失败：相同域名未被拒"; failed=$((failed+1)); fi
+
+    ERRORS=0
+    check_domains_distinct "A" "api.fixt" "B" "cs.fixt" >/dev/null
+    if (( ERRORS == 0 )); then ok "自测7 不同域名放行"; passed=$((passed+1)); else err "自测7 失败：不同域名被误拒"; failed=$((failed+1)); fi
 
     echo ""
     if (( failed > 0 )); then
@@ -170,6 +187,9 @@ check_var() {
 
 check_var "API_DOMAIN"
 check_var "ADMIN_DOMAIN"
+# 客服 Widget 第三域：标准部署三域必填（fail-closed）。证书签发、Nginx vhost 与
+# compose 接线均依赖该值；占位符（cs.example.com）与留空都按未填处理。
+check_var "CS_WIDGET_DOMAIN"
 check_var "POSTGRES_USER"
 check_var "POSTGRES_PASSWORD"
 check_var "POSTGRES_DB"
@@ -204,7 +224,11 @@ is_email() { [[ "$1" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; }
 
 if ! is_domain "${API_DOMAIN:-}"; then err "API_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
 if ! is_domain "${ADMIN_DOMAIN:-}"; then err "ADMIN_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
-if [[ "${API_DOMAIN:-}" == "${ADMIN_DOMAIN:-}" ]]; then err "API_DOMAIN 与 ADMIN_DOMAIN 不能相同"; fi
+if ! is_domain "${CS_WIDGET_DOMAIN:-}"; then err "CS_WIDGET_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
+# 三域两两不同（CSD-DEP-01；重复会使 Nginx server_name 冲突、证书签发对象错乱）
+check_domains_distinct "API_DOMAIN" "${API_DOMAIN:-}" "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}"
+check_domains_distinct "API_DOMAIN" "${API_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
+check_domains_distinct "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
 if ! is_email "${CERTBOT_EMAIL:-}"; then err "CERTBOT_EMAIL 格式无效"; fi
 
 UPTRACE_ENABLED_VALUE="$(echo "${UPTRACE_ENABLED:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
@@ -216,8 +240,8 @@ case "$UPTRACE_ENABLED_VALUE" in
             check_var "$var_name"
         done
         if ! is_domain "${UPTRACE_DOMAIN:-}"; then err "UPTRACE_DOMAIN 不是有效的纯域名"; fi
-        if [[ "${UPTRACE_DOMAIN:-}" == "${API_DOMAIN:-}" || "${UPTRACE_DOMAIN:-}" == "${ADMIN_DOMAIN:-}" ]]; then
-            err "UPTRACE_DOMAIN 必须与 API_DOMAIN / ADMIN_DOMAIN 不同"
+        if [[ "${UPTRACE_DOMAIN:-}" == "${API_DOMAIN:-}" || "${UPTRACE_DOMAIN:-}" == "${ADMIN_DOMAIN:-}" || "${UPTRACE_DOMAIN:-}" == "${CS_WIDGET_DOMAIN:-}" ]]; then
+            err "UPTRACE_DOMAIN 必须与 API_DOMAIN / ADMIN_DOMAIN / CS_WIDGET_DOMAIN 不同"
         fi
         if ! is_email "${UPTRACE_ADMIN_EMAIL:-}"; then err "UPTRACE_ADMIN_EMAIL 格式无效"; fi
         ok "Uptrace 可选栈已启用并配置"

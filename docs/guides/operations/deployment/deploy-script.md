@@ -120,6 +120,52 @@ bash scripts/imboy-deploy.sh rollback
 
 ---
 
+## 客服 Widget 部署（cs）
+
+> 本节描述 `cs` 组件合同（CSD-CLI-01 冻结）；命令由 `scripts/imboy-deploy.sh`
+> 统一入口提供。面向**蓝绿多节点生产**形态；标准 Compose 部署（`imboy_widget`
+> 静态容器）见 [customer-service-widget.md](./customer-service-widget.md)。
+
+### 命令
+
+```bash
+bash scripts/imboy-deploy.sh cs -v -l [--env-file ~/.config/imboy/deploy/customer-a.env]
+```
+
+`cs -v -l`（verbose + 本地源码模式：Backend 用本地源码蓝绿发布，Widget 用本地
+imboyadmin 源码 `bun run build:widget` 构建）固定顺序：
+
+```text
+PRECHECK → BUILD_AND_VERIFY_WIDGET → STAGE_WIDGET_RELEASE → VALIDATE_CS_VHOST_AND_TLS
+  → DEPLOY_BACKEND_BLUE_GREEN → ATOMIC_ACTIVATE_WIDGET_AND_VHOST → REAL_SMOKE
+  → FINALIZE_OR_ROLLBACK_WIDGET_GATEWAY
+```
+
+### 专属配置项（`.env.deploy`）
+
+```bash
+CS_WIDGET_DOMAIN=cs.example.com          # Widget 网关域名（与 API/Admin 两两不同）
+CS_BUILD_DIR=../imboy-admin/dist-widget  # 本地 Widget 构建产物目录
+CS_REMOTE_ROOT=/www/wwwroot/cs.domain.com # 服务器上不可变 release 根（须含 .imboy-cs-root marker）
+CS_NGINX_CONF=/path/to/nginx/cs.conf     # CS vhost 配置路径
+CS_CERT_FULLCHAIN=/path/to/fullchain.pem # CS 域证书链
+CS_CERT_KEY=/path/to/privkey.pem         # CS 域证书私钥
+CS_SMOKE_SHOP_ORIGIN=https://shop.example.com # smoke 用的宿主页 origin（须在 allowlist 内）
+```
+
+### 失败语义（不变量）
+
+- Backend 先成功再激活新 Widget；新 Backend 必须向后兼容旧 Widget。
+- 升级失败：只恢复先前 Widget symlink/vhost；已成功且向后兼容的 Backend 不回滚。
+- 首次安装失败：移除一切未成功激活的 vhost/symlink/临时文件，无半配置残留。
+- smoke 失败：恢复先前 symlink/vhost；新 release 目录保留待人工排查。
+- 远端写入前生成时间戳备份 + checksum + 恢复命令记录；未知/foreign 文件不覆盖不删除。
+- 全部输入（domain/path/host/port/version）在 SSH 前 allowlist 校验；CS 远端
+  realpath 必须位于批准根内且含 `.imboy-cs-root` marker。
+- verbose 输出零 secret/token/证书私钥/完整敏感配置/联系方式。
+
+---
+
 ## 蓝绿部署原理
 
 ```

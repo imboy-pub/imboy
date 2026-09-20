@@ -19,6 +19,8 @@ set -a; . ./.env; set +a
 
 : "${API_DOMAIN:?在 .env 中设置 API_DOMAIN}"
 : "${ADMIN_DOMAIN:?在 .env 中设置 ADMIN_DOMAIN}"
+# CSD-DEP-01：客服 Widget 第三域同为必填（fail-closed），证书与 API/Admin 各自独立签发
+: "${CS_WIDGET_DOMAIN:?在 .env 中设置 CS_WIDGET_DOMAIN（客服 Widget 域名）}"
 : "${CERTBOT_EMAIL:?在 .env 中设置 CERTBOT_EMAIL（证书到期通知邮箱）}"
 DATA_DIR="${DATA_DIR:-./data}"
 # install.sh 传入空格分隔的完整 Compose 文件集合；单独运行仍兼容 COMPOSE_FILE。
@@ -30,7 +32,7 @@ for compose_file in $COMPOSE_FILES; do
 done
 compose() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
 
-DOMAINS=("$API_DOMAIN" "$ADMIN_DOMAIN")
+DOMAINS=("$API_DOMAIN" "$ADMIN_DOMAIN" "$CS_WIDGET_DOMAIN")
 case "$(printf '%s' "${UPTRACE_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')" in
   true|1)
     : "${UPTRACE_DOMAIN:?UPTRACE_ENABLED=true 时必须设置 UPTRACE_DOMAIN}"

@@ -32,7 +32,8 @@ deploy/
 ├── .env.example                 # 环境变量模板 / Environment variables template
 ├── nginx/
 │   ├── templates/
-│   │   └── imboy.conf.template  # nginx 反向代理（envsubst 渲染）/ nginx reverse proxy (envsubst-rendered)
+│   │   ├── imboy.conf.template    # nginx 反向代理（envsubst 渲染）/ nginx reverse proxy (envsubst-rendered)
+│   │   └── cs-widget.conf.template # 客服 Widget 第三域 vhost（CSD-DEP-01）/ CS widget gateway vhost
 │   └── init-letsencrypt.sh      # 首次签发 Let's Encrypt 证书 / First-time Let's Encrypt issuance
 ├── prometheus/
 │   ├── prometheus.yml           # 抓取配置（4 job）/ Scrape config (4 jobs)
@@ -54,7 +55,8 @@ deploy/
 - Docker 24+ 与 `docker compose` v2 插件（社区版 compose 使用 configs 内联定义，
   需要 **Compose v2.23.1+**；Debian 13 经 get.docker.com 安装的 Docker 均满足。
   未安装 Docker 时 `install.sh` 会确认后引导安装）
-- 已解析到本机的两个域名：`api.example.com`、`admin.example.com`；启用 Uptrace
+- 已解析到本机的三个域名：`api.example.com`、`admin.example.com`、
+  `cs.example.com`（客服托管 Widget，三域两两不同）；启用 Uptrace
   时再准备独立的 `uptrace.example.com`
 - 80 / 443 端口可公网访问（certbot 通过 Let's Encrypt HTTP-01 签发）
 
@@ -94,6 +96,10 @@ bash install.sh --edition community
                          ├── API_DOMAIN/livekit/     -> LiveKit :7880
                          ├── API_DOMAIN/s3/          -> Garage S3 :3900
                          ├── ADMIN_DOMAIN/           -> React admin :80
+                         ├── CS_WIDGET_DOMAIN/       -> Widget 静态 :8080
+                         │     /v1/loader.js /assets/ /widget/（loader/资产/frame 壳）
+                         ├── CS_WIDGET_DOMAIN/w/*    -> backend :9800（动态 frame HTML）
+                         ├── CS_WIDGET_DOMAIN/api/v1/cs/widget/* -> backend :9800
                          └── UPTRACE_DOMAIN/ (可选)  -> Uptrace :80
 
 backend -> PostgreSQL 18（业务数据）
@@ -102,6 +108,9 @@ backend -> 支付/短信/SMTP 第三方 HTTPS/TLS 服务（仅配置并启用后
 OTel Collector -> 抓取 backend /metrics -> Uptrace
 Uptrace -> PostgreSQL 18 的独立 uptrace 库 + 独立 ClickHouse + 独立 Redis
 ```
+
+客服托管 Widget 的接入与运维细节（snippet、smoke、证书续期、卸载边界）见
+[customer-service-widget.md](../docs/guides/operations/deployment/customer-service-widget.md)。
 
 Uptrace 默认关闭。启用时在 `.env` 设置 `UPTRACE_ENABLED=true`，填写
 `UPTRACE_DOMAIN` 和 `UPTRACE_ADMIN_EMAIL`；其余 Uptrace 密钥由安装器生成。该 overlay

@@ -135,7 +135,9 @@ SECRET_VARS_48="LIVEKIT_API_SECRET"
 UPTRACE_SECRET_VARS="UPTRACE_SERVICE_SECRET UPTRACE_PG_PASSWORD UPTRACE_CLICKHOUSE_PASSWORD UPTRACE_REDIS_PASSWORD UPTRACE_ADMIN_PASSWORD UPTRACE_PROJECT_TOKEN"
 
 # 必须人工填写的字段（机器无从知晓）
-MANUAL_VARS="API_DOMAIN ADMIN_DOMAIN CERTBOT_EMAIL"
+# CS_WIDGET_DOMAIN 是客服托管 Widget 第三域（CSD-DEP-01）：标准部署三域必填，
+# fail-closed —— 证书签发、Nginx vhost、preflight 都依赖它。
+MANUAL_VARS="API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN CERTBOT_EMAIL"
 
 # 替换 .env 中 KEY=... 行（按字段名精确匹配，值含特殊字符也安全；BSD/GNU 通用）。
 set_var() {
@@ -280,6 +282,11 @@ if [ "$EDITION" = "business" ]; then
     || missing="$missing\n    · 短信平台配置未透传"
   grep -q 'S3_UPSTREAM' "$COMPOSE_FILE" \
     || missing="$missing\n    · Nginx 未配置 Garage S3 upstream"
+  # CSD-DEP-01：客服 Widget 第三域增量（渠道发旧版时在此拦下，不留半配置）
+  grep -q 'imboy_widget' "$COMPOSE_FILE" \
+    || missing="$missing\n    · 缺少 imboy_widget 静态服务（客服 Widget 不可用）"
+  grep -q 'CS_WIDGET_DOMAIN' "$COMPOSE_FILE" \
+    || missing="$missing\n    · Nginx 未配置客服 Widget 第三域（CS_WIDGET_DOMAIN）"
 
   if [ -n "$missing" ]; then
     # shellcheck disable=SC2059
@@ -297,6 +304,7 @@ if [ ! -f .env ]; then
   printf '    编辑 %s/.env\n' "$(pwd)"
   printf '      API_DOMAIN     后端 API 域名（需已 DNS 解析到本机）\n'
   printf '      ADMIN_DOMAIN   管理后台域名（需已 DNS 解析到本机）\n'
+  printf '      CS_WIDGET_DOMAIN 客服 Widget 域名（需已 DNS 解析到本机，三域两两不同）\n'
   printf '      CERTBOT_EMAIL  证书到期通知邮箱\n'
   printf '      第三方服务     仅填写实际启用的支付、短信、SMTP、Uptrace 配置\n'
   printf '\n    填好后执行：bash install.sh --edition %s\n\n' "$EDITION"
@@ -468,6 +476,7 @@ digest_line="IMBOY_IMAGE_DIGEST=${image_digest}"
 if [ -n "$digest_note" ]; then digest_line="$digest_line  $digest_note"; fi
 
 adm="$(get_var ADMIN_DOMAIN)"
+cs="$(get_var CS_WIDGET_DOMAIN)"
 if [ -n "$ADMIN_PHONE" ]; then
   admin_hint="（超管已创建，ADMIN_ID=${admin_id:-见上方输出}，可直接登录）"
 else
@@ -485,6 +494,7 @@ cat <<EOF
 
    管理后台 / Admin : https://${adm}   ${admin_hint}
    API / WebSocket  : https://${api}
+   客服 Widget      : https://${cs}  (snippet: /v1/loader.js + data-widget-id)
    LiveKit 信令     : wss://${api}/livekit  (媒体端口 TCP 7881 / UDP 50000-50200)
    Garage S3        : https://${api}/s3  (3900 不暴露公网)
 EOF
