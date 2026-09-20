@@ -78,25 +78,23 @@ fail(Kind, Expected, Actual) ->
         }}
     ).
 
-%% Sanitized value summaries: scalars and short binaries are shown as-is;
-%% maps contribute their key names only, lists their length. Map values
-%% never enter the summary, so token/password-bearing payloads cannot leak
-%% into CT logs or evidence failure fields.
+%% Sanitized value summaries: maps contribute their key names only, lists
+%% their length. Binaries NEVER contribute content: header values and
+%% expected fragments are exactly where bearer tokens/cookies live, and the
+%% failure reason is later written verbatim into the evidence `failure`
+%% field, where key-based redaction cannot help (RTF-02 task 5). Scalars
+%% (atoms/integers/floats) pass through: they cannot carry credential
+%% payloads. Debuggability is preserved through the evidence response field,
+%% which keeps non-sensitive values after key redaction.
 summarize(Value) when is_map(Value) ->
     {map_keys, lists:sort(maps:keys(Value))};
 summarize(Value) when is_list(Value) ->
     {list_length, length(Value)};
 summarize(Value) when is_binary(Value) ->
-    truncate_binary(Value);
+    {binary, byte_size(Value)};
 summarize(Value) when is_atom(Value); is_integer(Value); is_float(Value) ->
     Value;
 summarize(Value) when is_tuple(Value) ->
     {tuple_size_summary, tuple_size(Value)};
 summarize(Value) ->
     {non_printable_summary, byte_size(term_to_binary(Value))}.
-
-truncate_binary(Value) when byte_size(Value) =< 64 ->
-    Value;
-truncate_binary(Value) ->
-    <<Head:64/binary, _/binary>> = Value,
-    {binary_head_64, Head, byte_size(Value)}.

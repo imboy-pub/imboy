@@ -102,6 +102,42 @@ redaction_recursive_and_case_insensitive_test() ->
         ?assertEqual(<<"[REDACTED]">>, maps:get(<<"Refresh_Token">>, Nested))
     end).
 
+%% RTF-02 task 5: substring semantics — prefixed/camelCase/snake_case
+%% spellings of sensitive words are redacted too.
+sensitive_key_substring_spellings_test() ->
+    with_evidence_dir(fun(Dir) ->
+        try
+            rest_evidence:verify(
+                meta(<<"UNIT-006">>),
+                #{},
+                #{
+                    status => 200,
+                    headers => #{
+                        <<"x-auth-token">> => ?CANARY_TOKEN,
+                        <<"SET-COOKIE">> => ?CANARY_PWD
+                    },
+                    raw_body => <<"raw">>,
+                    duration_ms => 1,
+                    body => #{<<"accessToken">> => ?CANARY_TOKEN, <<"ok">> => true}
+                },
+                fun(_) -> error(boom) end
+            ),
+            ?assert(should_have_failed)
+        catch
+            _:_ -> ok
+        end,
+        {ok, Bin} = file:read_file(filename:join(Dir, "unit-006.json")),
+        ?assertEqual(nomatch, binary:match(Bin, ?CANARY_TOKEN)),
+        ?assertEqual(nomatch, binary:match(Bin, ?CANARY_PWD)),
+        Doc = jsone:decode(Bin, [{object_format, map}]),
+        Headers = maps:get(<<"headers">>, maps:get(<<"response">>, Doc)),
+        ?assertEqual(<<"[REDACTED]">>, maps:get(<<"x-auth-token">>, Headers)),
+        ?assertEqual(<<"[REDACTED]">>, maps:get(<<"SET-COOKIE">>, Headers)),
+        Body = maps:get(<<"body">>, maps:get(<<"response">>, Doc)),
+        ?assertEqual(<<"[REDACTED]">>, maps:get(<<"accessToken">>, Body)),
+        ?assertEqual(true, maps:get(<<"ok">>, Body))
+    end).
+
 pass_evidence_shape_test() ->
     with_evidence_dir(fun(Dir) ->
         ok = rest_evidence:verify(
@@ -115,4 +151,59 @@ pass_evidence_shape_test() ->
         ?assertEqual(<<"PASS">>, maps:get(<<"result">>, Doc)),
         ?assertEqual(<<"UNIT-003">>, maps:get(<<"case_id">>, Doc)),
         ?assert(erlang:is_map_key(<<"timestamp">>, Doc))
+    end).
+
+%% RTF-02 task 5: the expected field goes through the same redaction entry —
+%% a suite that puts a token-shaped expectation under a sensitive key must
+%% not plant it verbatim in evidence.
+expected_field_redacted_test() ->
+    with_evidence_dir(fun(Dir) ->
+        ExpectedMeta = (meta(<<"UNIT-004">>))#{
+            expected => #{
+                <<"http_status">> => 200,
+                <<"token">> => ?CANARY_TOKEN
+            }
+        },
+        ok = rest_evidence:verify(
+            ExpectedMeta,
+            #{},
+            #{status => 200, headers => #{}, body => #{}, duration_ms => 1},
+            fun(_) -> ok end
+        ),
+        {ok, Bin} = file:read_file(filename:join(Dir, "unit-004.json")),
+        ?assertEqual(nomatch, binary:match(Bin, ?CANARY_TOKEN)),
+        Doc = jsone:decode(Bin, [{object_format, map}]),
+        Expected = maps:get(<<"expected">>, Doc),
+        ?assertEqual(<<"[REDACTED]">>, maps:get(<<"token">>, Expected)),
+        ?assertEqual(200, maps:get(<<"http_status">>, Expected))
+    end).
+
+%% RTF-02 task 5: non-assertion errors (e.g. a badmatch carrying a whole
+%% response) are capped so unbounded payloads cannot enter evidence.
+failure_text_capped_test() ->
+    with_evidence_dir(fun(Dir) ->
+        Huge = binary:copy(<<"x">>, 100000),
+        try
+            rest_evidence:verify(
+                meta(<<"UNIT-005">>),
+                #{},
+                #{status => 200, headers => #{}, body => #{}, duration_ms => 1},
+                fun(_) -> erlang:error({boom, Huge}) end
+            ),
+            ?assert(should_have_failed)
+        catch
+            _:_ -> ok
+        end,
+        {ok, Bin} = file:read_file(filename:join(Dir, "unit-005.json")),
+        Doc = jsone:decode(Bin, [{object_format, map}]),
+        Failure = maps:get(<<"failure">>, maps:get(<<"actual">>, Doc)),
+        ?assert(byte_size(Failure) < 100000),
+        ?assertMatch(
+            <<" ...[truncated by rest_evidence]">>,
+            binary:part(
+                Failure,
+                byte_size(Failure) - byte_size(<<" ...[truncated by rest_evidence]">>),
+                byte_size(<<" ...[truncated by rest_evidence]">>)
+            )
+        )
     end).

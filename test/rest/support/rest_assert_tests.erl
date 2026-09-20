@@ -74,12 +74,42 @@ failure_reason_carries_no_payload_values_test() ->
             ?assertMatch({map_keys, _}, maps:get(actual, SummaryMap))
     end.
 
-long_binary_is_truncated_test() ->
+long_binary_summary_test() ->
     Long = binary:copy(<<"a">>, 500),
     ?assertError(
-        {rest_assertion_failed, status, #{expected := 404, actual := {binary_head_64, _, 500}}},
+        {rest_assertion_failed, status, #{expected := 404, actual := {binary, 500}}},
         rest_assert:status(404, #{status => Long})
     ).
+
+%% RTF-02 task 5: binary content never enters the failure reason — not for
+%% long binaries, and not for short token-shaped ones either. The failure
+%% text lands verbatim in the evidence `failure` field where key-based
+%% redaction cannot scrub it.
+short_binary_expectation_leaks_no_content_test() ->
+    Resp = response(),
+    try
+        rest_assert:json_path([<<"payload">>, <<"token">>], <<"short-secret-abc">>, Resp),
+        ?assert(fail_expected)
+    catch
+        error:Reason ->
+            Formatted = unicode:characters_to_binary(io_lib:format("~p", [Reason])),
+            ?assertEqual(nomatch, binary:match(Formatted, <<"short-secret-abc">>)),
+            Summary = element(3, Reason),
+            ?assertMatch(#{expected := {binary, 16}}, Summary)
+    end.
+
+binary_header_value_leaks_no_content_test() ->
+    Resp = (response())#{
+        headers => #{<<"set-cookie">> => <<"sid=leaky-cookie-value; HttpOnly">>}
+    },
+    try
+        rest_assert:header_contains(<<"set-cookie">>, <<"Secure">>, Resp),
+        ?assert(fail_expected)
+    catch
+        error:Reason ->
+            Formatted = unicode:characters_to_binary(io_lib:format("~p", [Reason])),
+            ?assertEqual(nomatch, binary:match(Formatted, <<"leaky-cookie-value">>))
+    end.
 
 nonempty(Value) ->
     is_binary(Value) andalso byte_size(Value) > 0.
