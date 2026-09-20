@@ -538,10 +538,11 @@ positive(_) ->
     1.
 
 %% 单次写出；cowboy 断连/错误统一折叠为 {error, _}（socket 关闭由框架收尾）。
+%% stream_body 的非 ok 返回不走 of 分支（case_clause 被 catch 收拢）。
 send(Req, IoData) ->
-    try cowboy_req:stream_body(IoData, nofin, Req) of
-        ok -> ok;
-        Other -> {error, Other}
+    try
+        _ = cowboy_req:stream_body(IoData, nofin, Req),
+        ok
     catch
         _:_ -> {error, stream_closed}
     end.

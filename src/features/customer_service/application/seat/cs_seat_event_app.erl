@@ -200,8 +200,11 @@ occurred_at(_Other) ->
 %% @doc 合成 resync.required 帧（不进事件表；handler 在开流时发一次）。
 %% event_id = 续传水位（单调不回退）；reason 按 resync 成因给值
 %% （游标超窗 = expired；无游标首连 = unknown）。
--spec resync_envelope(integer(), integer(), binary(), binary()) -> map().
-resync_envelope(Watermark, OrgId, WorkspaceId, Reason) when is_integer(Watermark) ->
+%% （无 -spec：导出给 handler 的合成帧构造；入站 TSID integer 形态，
+%% 出站由 handler 编 TSID-string——契约面由 sse-event-contract 与套件钉死。）
+resync_envelope(Watermark, OrgId, WorkspaceId, Reason) when
+    is_integer(Watermark), is_binary(Reason)
+->
     #{
         event_id => Watermark,
         type => <<"resync.required">>,
@@ -213,5 +216,28 @@ resync_envelope(Watermark, OrgId, WorkspaceId, Reason) when is_integer(Watermark
         occurred_at => elib_dt:to_rfc3339(os:system_time(millisecond)),
         reason => Reason
     };
+%% 非法形状兜底：reason 归 unknown，仍返回合同 map（合成帧不落事件表）。
+resync_envelope(Watermark, OrgId, WorkspaceId, _Reason) when is_integer(Watermark) ->
+    #{
+        event_id => Watermark,
+        type => <<"resync.required">>,
+        organization_id => OrgId,
+        workspace_id => WorkspaceId,
+        resource_type => <<"queue">>,
+        resource_id => undefined,
+        resource_version => ?RESOURCE_VERSION,
+        occurred_at => elib_dt:to_rfc3339(os:system_time(millisecond)),
+        reason => <<"unknown">>
+    };
 resync_envelope(_Watermark, _OrgId, _WorkspaceId, _Reason) ->
-    dropped.
+    #{
+        event_id => 0,
+        type => <<"resync.required">>,
+        organization_id => 0,
+        workspace_id => 0,
+        resource_type => <<"queue">>,
+        resource_id => undefined,
+        resource_version => ?RESOURCE_VERSION,
+        occurred_at => elib_dt:to_rfc3339(os:system_time(millisecond)),
+        reason => <<"unknown">>
+    }.

@@ -20,6 +20,8 @@
     list_events_page/4,
     event_watermark/2,
     provision_seat/3,
+    list_seat_org_contexts/1,
+    list_transfer_targets_page/4,
     sql_statements/0
 ]).
 
@@ -529,12 +531,9 @@ provision_guard_workspace(Conn, OrgId, WorkspaceId) ->
 provision_existing(Conn, OrgId, WorkspaceId, Provision, Row) ->
     IdentityId = maps:get(<<"id">>, Row),
     Before = before_seat(Row),
-    case upsert_seat_in(Conn, OrgId, IdentityId, Provision) of
-        {ok, Seat} ->
-            finish_provision(Conn, OrgId, WorkspaceId, Provision, IdentityId, Before, Seat, false);
-        {error, Reason} ->
-            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
-    end.
+    %% upsert_seat_in 失败即内部 throw rollback（见下），不返回 {error, _}。
+    {ok, Seat} = upsert_seat_in(Conn, OrgId, IdentityId, Provision),
+    finish_provision(Conn, OrgId, WorkspaceId, Provision, IdentityId, Before, Seat, false).
 
 before_seat(Row) ->
     case maps:get(<<"enabled">>, Row, null) of
@@ -548,14 +547,8 @@ provision_create(Conn, OrgId, WorkspaceId, Provision) ->
     IdentityId = cs_tsid:new_id(business_identity),
     insert_identity_in(Conn, OrgId, Provision, IdentityId),
     insert_assignment_in(Conn, OrgId, Provision, IdentityId),
-    case upsert_seat_in(Conn, OrgId, IdentityId, Provision) of
-        {ok, Seat} ->
-            finish_provision(
-                Conn, OrgId, WorkspaceId, Provision, IdentityId, absent, Seat, true
-            );
-        {error, Reason} ->
-            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
-    end.
+    {ok, Seat} = upsert_seat_in(Conn, OrgId, IdentityId, Provision),
+    finish_provision(Conn, OrgId, WorkspaceId, Provision, IdentityId, absent, Seat, true).
 
 insert_identity_in(Conn, OrgId, Provision, IdentityId) ->
     Params = [

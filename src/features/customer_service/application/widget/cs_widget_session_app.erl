@@ -157,7 +157,7 @@ insert_visitor_session(OrgId, Installation, Token, ContactId, WorkspaceId, Conve
         {error, _} = Err ->
             Err;
         {ok, Session} ->
-            cs_widget_support:append_event(Params, OrgId, WorkspaceId, #{
+            _ = cs_widget_support:append_event(Params, OrgId, WorkspaceId, #{
                 actor_kind => <<"visitor">>,
                 action => <<"widget.session_created">>,
                 detail => #{

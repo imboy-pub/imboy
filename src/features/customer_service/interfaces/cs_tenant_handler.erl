@@ -211,7 +211,9 @@ events(Entry, Case, Req0, State0) ->
                         {error, Reason} ->
                             cs_http:reply_error(Req0, Reason);
                         {ok, AuthContext} ->
-                            events_invoke(Entry, Case, Req0, Body, OrgId, State, Metadata, AuthContext)
+                            events_invoke(
+                                Entry, Case, Req0, Body, OrgId, State, Metadata, AuthContext
+                            )
                     end
             end
     end.
@@ -276,7 +278,7 @@ stream(Req0, OrgId, Params, State) ->
                             OrgId,
                             maps:get(workspace_id, Params),
                             Cursor,
-                            maps:get(resync_reason, Page, <<"unknown">>)
+                            reason_bin(Page)
                         );
                     false ->
                         <<>>
@@ -334,7 +336,11 @@ recheck_metadata(State) ->
     metadata(State).
 
 poll(Req, OrgId, Params, State, Ctx) ->
-    case cs_facade_call:call(seat_events, OrgId, with_cursor(Params, {cursor, maps:get(cursor, Ctx)})) of
+    case
+        cs_facade_call:call(
+            seat_events, OrgId, with_cursor(Params, {cursor, maps:get(cursor, Ctx)})
+        )
+    of
         {ok, #{events := Events, cursor := Cursor}} ->
             deliver(Req, OrgId, Params, State, Ctx, event_frames(Events), Cursor);
         _ ->
@@ -406,8 +412,8 @@ stream_headers() ->
 -spec event_frame(integer(), map()) -> binary().
 event_frame(Id, Envelope) when is_integer(Id), is_map(Envelope) ->
     Data = jsx:encode(cs_http:encode_entity(Envelope)),
-    <<"id: ", (integer_to_binary(Id))/binary, "\nevent: ", (type_bin(Envelope))/binary,
-        "\ndata: ", Data/binary, "\n\n">>;
+    <<"id: ", (integer_to_binary(Id))/binary, "\nevent: ", (type_bin(Envelope))/binary, "\ndata: ",
+        Data/binary, "\n\n">>;
 event_frame(_Id, _Envelope) ->
     <<>>.
 
@@ -418,11 +424,18 @@ event_frames(Events) when is_list(Events) ->
 event_frames(_) ->
     <<>>.
 
+%% resync 成因取值收敛（合同 reason 枚举内；非二进制一律归 unknown）。
+reason_bin(Page) ->
+    case maps:get(resync_reason, Page, <<"unknown">>) of
+        Bin when is_binary(Bin), Bin =/= <<>> -> Bin;
+        _ -> <<"unknown">>
+    end.
+
 %% @doc 合成 resync.required 帧（event_id = 续传水位，单调不回退；reason 按
 %% resync 成因给值——超窗 = expired，首连无游标 = unknown）。
 -spec resync_frame(integer(), integer(), integer(), binary()) -> binary().
 resync_frame(OrgId, WorkspaceId, Watermark, Reason) when
-    is_integer(OrgId), is_integer(WorkspaceId), is_integer(Watermark)
+    is_integer(OrgId), is_integer(WorkspaceId), is_integer(Watermark), is_binary(Reason)
 ->
     Envelope = cs_seat_event_app:resync_envelope(Watermark, OrgId, WorkspaceId, Reason),
     event_frame(Watermark, Envelope);
@@ -468,11 +481,12 @@ retry_frame(_) ->
 comment_frame() ->
     <<": keep-alive\n\n">>.
 
-%% 单次写出；cowboy 断连/错误统一折叠为 {error, _}。
+%% 单次写出；cowboy 断连/错误统一折叠为 {error, _}。stream_body 的
+%% 非 ok 返回不走 of 分支（case_clause 被 catch 收拢），socket 错误不崩。
 send(Req, IoData) ->
-    try cowboy_req:stream_body(IoData, nofin, Req) of
-        ok -> ok;
-        Other -> {error, Other}
+    try
+        _ = cowboy_req:stream_body(IoData, nofin, Req),
+        ok
     catch
         _:_ -> {error, stream_closed}
     end.
