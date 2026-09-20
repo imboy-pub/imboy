@@ -17,7 +17,8 @@
     await_device_active/2,
     ensure_login_throttle_capacity/0,
     ensure_ct_priv_alias/0,
-    ensure_sign_key/0
+    ensure_sign_key/0,
+    flip_signature_bit/1
 ]).
 
 %% Must run first in init_per_suite. The alias subtree
@@ -84,6 +85,32 @@ alnum(C) when C >= $a, C =< $z -> true;
 alnum(C) when C >= $A, C =< $Z -> true;
 alnum(C) when C >= $0, C =< $9 -> true;
 alnum(_) -> false.
+
+%% Deterministically flip a signature-real bit in the final base64url
+%% character of a JWT: the character's 6-bit index is XORed with 16, which
+%% is a real bit in the last 2-byte group of a 32-byte HS256 signature
+%% (only bit weights 2 and 1 are padding there). XOR keeps the index inside
+%% 0..63 for EVERY input character and keeps padding bits zero, so the
+%% tampered token still decodes and the server answers signature-invalid
+%% (706/401) instead of failing to decode — independent of what the last
+%% character happens to be.
+-spec flip_signature_bit(binary()) -> binary().
+flip_signature_bit(Token) when byte_size(Token) > 1 ->
+    Size = byte_size(Token) - 1,
+    <<Head:Size/binary, Last>> = Token,
+    <<Head/binary, (b64url_char(b64url_index(Last) bxor 16))/binary>>.
+
+b64url_index(C) when C >= $A, C =< $Z -> C - $A;
+b64url_index(C) when C >= $a, C =< $z -> C - $a + 26;
+b64url_index(C) when C >= $0, C =< $9 -> C - $0 + 52;
+b64url_index($-) -> 62;
+b64url_index($_) -> 63.
+
+b64url_char(I) when I < 26 -> I + $A;
+b64url_char(I) when I < 52 -> I - 26 + $a;
+b64url_char(I) when I < 62 -> I - 52 + $0;
+b64url_char(62) -> $-;
+b64url_char(63) -> $_.
 
 %% Device signature headers following auth_ds:verify_sign/2 exactly.
 %% The signing key must be the one registered for these test headers via

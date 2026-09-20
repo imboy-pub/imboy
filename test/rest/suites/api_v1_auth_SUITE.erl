@@ -67,9 +67,10 @@ auth_001_valid_refreshtoken_exchange(Config) ->
     Response = rest_client:post(?config(http_port, Config), ?PATH, Request, Headers),
     verify(
         <<"AUTH-001">>,
-        %% The transport header carries a live refresh token and the shared
-        %% redactor only matches the bare key "refreshtoken", so the request
-        %% is pre-redacted before evidence is written.
+        %% The transport header carries a live refresh token; pre-redact
+        %% it before evidence is written. Belt and braces: the substring
+        %% redactor matches "refreshtoken" inside "imboy-refreshtoken"
+        %% anyway, so the manual replacement is redundant, not load-bearing.
         #{<<"imboy-refreshtoken">> => <<"[REDACTED]">>},
         Response,
         #{<<"http_status">> => 200, <<"code">> => 0},
@@ -178,12 +179,8 @@ nonempty_binary(Value) ->
 %% (rest_fixture:await_device_active/2) synchronizes on the production
 %% predicate user_device_logic:is_active/2 without touching shared code.
 
-%% Flip the final character of a JWT so the HMAC no longer verifies while
-%% the token stays structurally parseable.
+%% Flip a signature-real bit in the final character of a JWT so the HMAC
+%% no longer verifies while the token stays structurally parseable — for
+%% any final character (rest_fixture:flip_signature_bit/1).
 tamper_tail(Token) when byte_size(Token) > 1 ->
-    Size = byte_size(Token) - 1,
-    <<Head:Size/binary, Last>> = Token,
-    <<Head/binary, (flip_char(Last))/binary>>.
-
-flip_char($A) -> <<"Q">>;
-flip_char(_) -> <<"A">>.
+    rest_fixture:flip_signature_bit(Token).

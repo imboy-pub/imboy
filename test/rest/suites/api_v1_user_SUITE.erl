@@ -276,8 +276,10 @@ user_006_change_password_lifecycle(Config) ->
     Headers = client_headers(LoggedIn, SignKey),
     Response =
         rest_client:post(?config(http_port, Config), ?CHANGE_PWD_PATH, Request, Headers),
-    %% The shared redactor matches pwd/password but not existing_pwd/
-    %% new_pwd, so the evidence request is pre-redacted.
+    %% Pre-redact the password fields before evidence is written. Belt and
+    %% braces: the substring redactor matches pwd inside existing_pwd/
+    %% new_pwd anyway, so the manual replacement is redundant, not
+    %% load-bearing.
     RedactedRequest = Request#{
         <<"existing_pwd">> => <<"[REDACTED]">>,
         <<"new_pwd">> => <<"[REDACTED]">>
@@ -414,12 +416,7 @@ absent(missing) -> true;
 absent(_) -> false.
 
 tamper_tail(Token) when byte_size(Token) > 1 ->
-    Size = byte_size(Token) - 1,
-    <<Head:Size/binary, Last>> = Token,
-    <<Head/binary, (flip_char(Last))/binary>>.
-
-flip_char($A) -> <<"Q">>;
-flip_char(_) -> <<"A">>.
+    rest_fixture:flip_signature_bit(Token).
 
 unique_nickname(Tag) ->
     <<"REST-User-", (rest_fixture:unique_id(Tag))/binary>>.
