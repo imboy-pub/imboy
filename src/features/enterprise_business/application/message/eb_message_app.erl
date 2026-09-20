@@ -332,23 +332,92 @@ ack_write(OrgId, WorkspaceId, MessageId, RecipientRef, AckedAt, Params) ->
         {error, _} = Err ->
             Err;
         {ok, Before} ->
-            Ack = #{
-                message_id => MessageId,
-                recipient_ref => RecipientRef,
-                device_id => maps:get(device_id, Params, undefined),
-                acked_at => AckedAt
-            },
-            case
-                with_store(Params, fun(Store) ->
-                    Store:ack_delivery(OrgId, WorkspaceId, Ack)
-                end)
-            of
-                {error, _} = Err ->
-                    Err;
-                {ok, Delivery} ->
-                    ack_verify(OrgId, WorkspaceId, MessageId, Before, Delivery, Params)
+            %% BE-S01a：坐席经办 ACL（T-2 裁定 + 勘察 J05 缺口的 ACK 半边）。
+            %% customer_service 坐席只允许 ACK「自己经办的会话里发给自己
+            %% identity 的消息」；sales 保持原行为（无坐席门）。
+            case ack_seat_gate(OrgId, WorkspaceId, RecipientRef, Before, Params) of
+                {error, _} = GateErr ->
+                    GateErr;
+                ok ->
+                    ack_commit(OrgId, WorkspaceId, MessageId, RecipientRef, AckedAt, Before, Params)
             end
     end.
+
+ack_commit(OrgId, WorkspaceId, MessageId, RecipientRef, AckedAt, Before, Params) ->
+    Ack = #{
+        message_id => MessageId,
+        recipient_ref => RecipientRef,
+        device_id => maps:get(device_id, Params, undefined),
+        acked_at => AckedAt
+    },
+    case
+        with_store(Params, fun(Store) ->
+            Store:ack_delivery(OrgId, WorkspaceId, Ack)
+        end)
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Delivery} ->
+            ack_verify(OrgId, WorkspaceId, MessageId, Before, Delivery, Params)
+    end.
+
+%% @doc BE-S01a：ACK 的坐席经办门——只在调用者是 customer_service 职能时
+%% 生效（`caller_function_key` 是 eb_tenant_handler 从认证事实派生的键，
+%% 客户端不可申报；直接调用缺省视为非坐席，行为同 sales）。
+%%
+%% 判定链（全部 fail-closed）：
+%%   1. recipient_ref 必须是 `identity:<调用者本人 business_identity_id>`
+%%      （坐席只能 ACK 发给自己的投递；T-2 裁定的前缀合同——`seat:` 前缀
+%%      在形状层已被拒，此处保证 id 归属）；
+%%   2. 消息所属会话的当前经办（enterprise_conversation.business_identity_id，
+%%      同语句 (Org, Ws, Conv) 读取）必须等于调用者本人——非经办坐席 403。
+ack_seat_gate(OrgId, WorkspaceId, RecipientRef, Canonical, Params) ->
+    case maps:get(caller_function_key, Params, undefined) of
+        <<"customer_service">> ->
+            ack_seat_gate_in(OrgId, WorkspaceId, RecipientRef, Canonical, Params);
+        _SalesOrUnset ->
+            ok
+    end.
+
+ack_seat_gate_in(OrgId, WorkspaceId, RecipientRef, Canonical, Params) ->
+    CallerIdentity = maps:get(caller_identity_id, Params, undefined),
+    case recipient_identity_id(RecipientRef) of
+        CallerIdentity when is_integer(CallerIdentity) ->
+            ack_conversation_assignee(OrgId, WorkspaceId, Canonical, CallerIdentity, Params);
+        _Mismatch ->
+            {error, {forbidden, not_recipient}}
+    end.
+
+ack_conversation_assignee(OrgId, WorkspaceId, Canonical, CallerIdentity, Params) ->
+    ConversationId = maps:get(conversation_id, Canonical, undefined),
+    case
+        with_store(Params, fun(Store) ->
+            Store:fetch_conversation(OrgId, WorkspaceId, ConversationId)
+        end)
+    of
+        {ok, Conversation} ->
+            case maps:get(business_identity_id, Conversation, undefined) of
+                CallerIdentity -> ok;
+                _Other -> {error, {forbidden, not_assignee}}
+            end;
+        {error, _} ->
+            %% 会话取不到（跨 Ws/不存在）一律按非经办拒绝（避免枚举）。
+            {error, {forbidden, not_assignee}}
+    end.
+
+%% recipient_ref 的 identity id（形状已由 is_valid_recipient_ref 前置校验；
+%% 解析失败按非本人处理，fail-closed）。
+recipient_identity_id(<<"identity:", IdBin/binary>>) ->
+    try
+        case binary_to_integer(IdBin) of
+            N when N > 0 -> N;
+            _ -> undefined
+        end
+    catch
+        _:_ -> undefined
+    end;
+recipient_identity_id(_Other) ->
+    undefined.
 
 %% ACK 之后复核 canonical 真源逐字不变（行数不由本路径改变；字段由 domain 判据裁决）。
 ack_verify(OrgId, WorkspaceId, MessageId, Before, Delivery, Params) ->

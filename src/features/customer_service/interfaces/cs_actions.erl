@@ -27,9 +27,12 @@
 %%%
 %%% ## Org 归属
 %%%
-%%%   * `/api/v1/cs/organizations/:org_id/*`（治理动作）与平台面：OrgId 来自 path；
-%%%   * 其余租户动作（A0 冻结路径，path 无 org 段）：OrgId 是客户端**申报**的必填
-%%%     `organization_id` 参数，由 `cs_auth` 用凭证/事实**证明**（跨 Org 的
+%%%   * `/api/v1/cs/organizations/:org_id/*`（T-2 裁定后的坐席/治理动作）与
+%%%     平台面：OrgId 来自 path；
+%%%   * `self`（BE-S01a）：主体自身作用域（坐席上下文清单），无 Org 键——
+%%%     handler 走 self 认证分支，聚合时逐 Org 复核；
+%%%   * 其余访客动作（A0 冻结路径，path 无 org 段）：OrgId 是客户端**申报**的
+%%%     必填 `organization_id` 参数，由 `cs_auth` 用凭证/事实**证明**（跨 Org 的
 %%%     secret/token/member 在该 Org 的同语句查找必失败 ⇒ 401/403，不是信任）。
 %%%
 %%% **本模块不做**：不解析请求、不读库、不判权限、不拼响应。
@@ -79,8 +82,10 @@
     %% 的 GET 坐席语义）。cs_route_contract_tests 审计其方法/主体合法性。
     case_auth => #{binary() => map()}
 }.
-%% OrgId 的来源：path 绑定 / 请求参数（客户端申报 + 授权证明）。
--type org_source() :: path | param.
+%% OrgId 的来源：path 绑定 / 请求参数（客户端申报 + 授权证明）/ self（主体
+%% 自身作用域——跨 Org 聚合用例，如坐席上下文清单；授权只验凭证类别，
+%% 每个 Org 的成员/坐席事实由 application 聚合时逐 Org 复核）。
+-type org_source() :: path | param | self.
 
 -define(FEATURE, customer_service).
 
@@ -158,6 +163,14 @@ seat_auth(Permission) ->
         required_permission => Permission
     }.
 
+%% BE-S01a：主体自身作用域（跨 Org 聚合用例，如坐席上下文清单）。授权只验
+%% 凭证类别（IMBoy JWT——handler 的 self 分支），不声明 org 级
+%% function/permission：各 Org 的 member/assignment/seat 事实由 application
+%% 聚合时逐 Org 复核（cs_seat_app:seat_contexts）。route metadata 仍标
+%% cs_seat（五类 principal 内，凭证类别互斥语义不变）。
+self_auth() ->
+    #{auth_context => cs_seat}.
+
 %% 访客：visit token（digest + 未吊销 + 未过期 + 绑定本 Org/contact）。
 visit_auth() ->
     #{auth_context => cs_visit}.
@@ -221,8 +234,24 @@ widget_server_derived() ->
 
 table(tenant) ->
     [
-        %% 门店开会话（A0 冻结路径）：shop key 主体；contact/conversation 由门店
-        %% 集成方给出，session 只挂同一个 enterprise conversation（§5.2）。
+        %% —— BE-S01a：坐席上下文清单（T-2 裁定后的坐席面入口；Org 数未知，
+        %% org 不在路径也不在参数——作用域是「当前用户本人」，各 Org 的
+        %% member/assignment/seat 事实由 application 聚合时逐 Org 复核）——
+        {seat_contexts,
+            entry(
+                [
+                    {<<"GET">>, seat_contexts, [], [], #{
+                        %% 跨 Org 聚合：作用域是「当前用户本人」，无 workspace 键。
+                        workspace => optional
+                    }}
+                ],
+                self_auth(),
+                server_common(),
+                self
+            )},
+        %% 门店开会话（T-2 后 org 显式在路径）：shop key 主体；contact/conversation
+        %% 由门店集成方给出，session 只挂同一个 enterprise conversation（§5.2）。
+        %% path org 由 cs_auth 用 shop key digest 同语句证明（跨 Org 必失败）。
         {session_queue,
             with_case_auth(
                 entry(
@@ -239,7 +268,7 @@ table(tenant) ->
                     ],
                     shop_key_auth(),
                     server_common() ++ [created_by_user_id],
-                    param
+                    path
                 ),
                 #{<<"GET">> => seat_auth(<<"conversation.read">>)}
             )},
@@ -283,12 +312,14 @@ table(tenant) ->
                 param
             )},
         %% 坐席接单：business_identity_id 服务端派生（坐席只能以**本人**身份接单）。
+        %% T-2 裁定：路径显式 org_id，cs_auth 逐字校验 path org == 坐席 active
+        %% member org；session.org_id 由 store 同语句裁决（跨 Org not_found）。
         {session_claim,
             entry(
                 [{<<"POST">>, claim, [{expected_version, int, required}], [{id, session_id}]}],
                 seat_auth(<<"conversation.write">>),
                 server_common() ++ [business_identity_id],
-                param
+                path
             )},
         {session_transfer,
             entry(
@@ -300,7 +331,7 @@ table(tenant) ->
                 ],
                 seat_auth(<<"conversation.write">>),
                 server_common(),
-                param
+                path
             )},
         {session_close,
             entry(
@@ -312,7 +343,7 @@ table(tenant) ->
                 ],
                 seat_auth(<<"conversation.write">>),
                 server_common(),
-                param
+                path
             )},
         %% A0 客户端契约基准：客服端的企业消息列表（游标 after_id，TSID string）。
         %% 唯一经 `enterprise_business_facade:list_messages` 复用企业真源的读路径，
@@ -327,21 +358,22 @@ table(tenant) ->
                 server_common() ++ [business_identity_id],
                 param
             )},
-        %% CSB-03：坐席会话详情（GET /api/v1/cs/sessions/:id）——坐席侧单会话读，
-        %% 与平台面 p_session 共用同一 fetch_session 用例（不复制逻辑）。
+        %% CSB-03：坐席会话详情（GET；坐席 JWT + conversation.read；T-2 后路径
+        %% 显式 org_id）——坐席侧单会话读，与平台面 p_session 共用同一
+        %% fetch_session 用例（不复制逻辑）。
         {session_detail,
             entry(
                 [{<<"GET">>, seat_session_detail, [], [{id, session_id}]}],
                 seat_auth(<<"conversation.read">>),
                 server_common() ++ [business_identity_id],
-                param
+                path
             )},
-        %% CSB-02R：坐席 active/closed 两视图（GET /api/v1/cs/seats/sessions）。
+        %% CSB-02R：坐席 active/closed 两视图（T-2 后
+        %% GET /api/v1/cs/organizations/:org_id/seats/sessions）。
         %% 独立路径的理由：GET /api/v1/cs/sessions 已冻结为访客面（cs_visit，
-        %% route metadata 是 principal 的唯一分流依据，同方法双主体必须换路径）；
-        %% `seats/sessions` 与既有 cs_seat/seats 命名族一致。queued 视图冻结在
-        %% /sessions/queue（GET，case_auth 分流），此处 status 显式必填且仅
-        %% 接受 active|closed（application 复核）。
+        %% route metadata 是 principal 的唯一分流依据，同方法双主体必须换路径）。
+        %% queued 视图冻结在 sessions/queue（GET，case_auth 分流），此处 status
+        %% 显式必填且仅接受 active|closed（application 复核）。
         {seat_session_list,
             entry(
                 [
@@ -355,7 +387,41 @@ table(tenant) ->
                 ],
                 seat_auth(<<"conversation.read">>),
                 server_common() ++ [business_identity_id],
-                param
+                path
+            )},
+        %% —— BE-S01a（api-surface-freeze）：转接目标最小投影——同 Org 其他
+        %% 可用坐席（identity id / 显示名 / 可用状态），无 owner/admin 权限要求，
+        %% 不复用治理 identity 列表。排除调用者本人（application 以认证派生的
+        %% business_identity_id 为准，客户端不可申报）。
+        {transfer_targets,
+            entry(
+                [
+                    {<<"GET">>, transfer_targets,
+                        [{after_id, binary, optional}, {limit, binary, optional}], [], #{
+                            %% 转接目标是 Org 级最小投影（不按 workspace 收窄）。
+                            workspace => optional
+                        }}
+                ],
+                seat_auth(<<"conversation.read">>),
+                server_common() ++ [business_identity_id],
+                path
+            )},
+        %% —— BE-S01a：坐席 SSE 事件流（T-2 裁定路由族成员；sse-event-contract
+        %% 的流式实现在 BE-S01b）。占位动作：handler 照常解析 workspace_id（查询
+        %% 串必填）并走完整坐席认证，facade 返回 not_implemented → HTTP 501
+        %% （客户端可探测能力，不误判路由缺失 404）。
+        {seat_events,
+            entry(
+                [
+                    {<<"GET">>, seat_events,
+                        [
+                            {after_id, tsid, optional}
+                        ],
+                        []}
+                ],
+                seat_auth(<<"conversation.read">>),
+                server_common() ++ [business_identity_id],
+                path
             )},
         %% —— 以下为租户治理面（owner/admin）：seat / shop key / visit token ——
         %% C4（contracts-w2）：seats 列表 GET 支持 after_id/limit 键集分页
@@ -473,6 +539,18 @@ table(widget) ->
                             {assertion, map, required}
                         ],
                         []}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
+        %% BE-W01（router wiring manifest W-1）：动态 frame HTML。handler 自行
+        %% 解析参数（不经 cs_actions 的 dispatch——零凭证导航面）；此处登记
+        %% 只为动作表/路由表/契约测试三方一致。
+        {widget_frame_html,
+            widget_entry(
+                [
+                    {<<"GET">>, widget_frame_html, [{installation_id, tsid, required}], []}
                 ],
                 widget_auth(),
                 widget_server_derived(),

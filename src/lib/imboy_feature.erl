@@ -141,7 +141,10 @@ route_feature(admin, eb_platform_handler, _Action) ->
 %% 物理裁剪在 src/imboy_router.erl（-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE)），
 %% 本处供 compiled_routes/2 过滤，两者是双保险而不是替代。
 route_feature(api, Handler, _Action) when
-    Handler =:= cs_tenant_handler; Handler =:= cs_widget_handler
+    Handler =:= cs_tenant_handler;
+    Handler =:= cs_widget_handler;
+    %% BE-W01：动态 frame HTML handler（widget 面同族）。
+    Handler =:= cs_widget_frame_handler
 ->
     customer_service;
 route_feature(admin, cs_platform_handler, _Action) ->

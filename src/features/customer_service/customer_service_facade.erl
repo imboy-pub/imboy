@@ -60,7 +60,11 @@
     seat_session_detail/2,
     %% CSB-02R：坐席工作台（队列 GET + active/closed 列表，共用 seat_session_page）
     seat_session_queue/2,
-    seat_session_list/2
+    seat_session_list/2,
+    %% BE-S01a：坐席上下文清单 / 转接目标最小投影 / SSE 占位
+    seat_contexts/2,
+    transfer_targets/2,
+    seat_events/2
 ]).
 
 %% ===================================================================
@@ -637,4 +641,48 @@ seat_session_list(OrgId, #{status := Status} = Params) when
 seat_session_list(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, seat_session_list}};
 seat_session_list(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% ===================================================================
+%% BE-S01a：坐席上下文清单 / 转接目标 / SSE 占位（api-surface-freeze）
+%% ===================================================================
+
+%% @doc 坐席上下文清单（GET /api/v1/cs/me/seat-contexts）：主体自身作用域——
+%% OrgId 形参不读（org 作用域由 actor 派生；handler 的 self 分支传 0 占位）。
+%% 一次返回当前用户全部 active member 的 Org、每 Org 的 active Workspace[]、
+%% active customer_service identity、seat enabled 与 capabilities。数据从
+%% org membership / eb identity / assignment / seat 事实表聚合（store 同语句
+%% 过滤 active），不复用治理 identity 列表。
+-spec seat_contexts(integer(), map()) -> term().
+seat_contexts(_OrgId, #{actor_user_id := UserId} = Params) when
+    is_integer(UserId), is_map(Params)
+->
+    cs_seat_app:seat_contexts(Params#{user_id => UserId});
+seat_contexts(_OrgId, Params) when is_map(Params) ->
+    {error, {invalid_argument, seat_contexts}};
+seat_contexts(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 转接目标最小投影（GET /api/v1/cs/organizations/:org_id/transfer-targets）：
+%% 同 Org 其他可用坐席（identity id / 显示名 / 可用状态），排除调用者本人
+%% （business_identity_id 是认证派生键，客户端不可申报）；无 owner/admin
+%% 权限要求。分页 after_id/limit 沿用 C1~C4 冻结口径。
+-spec transfer_targets(integer(), map()) -> term().
+transfer_targets(OrgId, #{business_identity_id := IdentityId} = Params) when
+    is_integer(OrgId), is_integer(IdentityId), is_map(Params)
+->
+    cs_seat_app:transfer_targets(OrgId, Params);
+transfer_targets(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, transfer_targets}};
+transfer_targets(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 坐席 SSE 事件流占位（GET /api/v1/cs/organizations/:org_id/seats/me/events）：
+%% 路由/认证/参数面已按 T-2 裁定冻结，流式实现（sse-event-contract 的信封/
+%% 游标补偿/保活）在 BE-S01b——此前一律 501（not_implemented），客户端可探测
+%% 能力而不误判路由缺失（404）。
+-spec seat_events(integer(), map()) -> {error, not_implemented}.
+seat_events(OrgId, _Params) when is_integer(OrgId), is_map(_Params) ->
+    {error, not_implemented};
+seat_events(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.

@@ -74,7 +74,8 @@ visitor_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/queue">>,
+                    <<"/api/v1/cs/organizations/", (integer_to_binary(?ORG))/binary,
+                        "/sessions/queue">>,
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
@@ -102,7 +103,8 @@ visitor_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/queue">>,
+                    <<"/api/v1/cs/organizations/", (integer_to_binary(?ORG))/binary,
+                        "/sessions/queue">>,
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
@@ -123,7 +125,8 @@ visitor_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/queue">>,
+                    <<"/api/v1/cs/organizations/", (integer_to_binary(?ORG))/binary,
+                        "/sessions/queue">>,
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
@@ -145,7 +148,8 @@ visitor_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/queue">>,
+                    <<"/api/v1/cs/organizations/", (integer_to_binary(?ORG))/binary,
+                        "/sessions/queue">>,
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"contact_id">> => 1,
@@ -157,12 +161,14 @@ visitor_flow_tests(_) ->
             end)
         end},
 
-        {"missing organization_id on frozen path is 400", fun() ->
+        %% T-2 后 org 显式在路径：非法 TSID 的 org 段在解析层即 400
+        %%（申报参数 organization_id 已不再是本面的 org 来源）。
+        {"malformed org_id in the path is 400", fun() ->
             ?S:with_listener(tenant, session_queue, #{auth_facts => cs_fake_facts}, fun(Port) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/queue">>,
+                    <<"/api/v1/cs/organizations/notatsid/sessions/queue">>,
                     #{
                         <<"workspace_id">> => ?WS,
                         <<"contact_id">> => 1,
@@ -181,7 +187,8 @@ visitor_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"GET">>,
-                    <<"/api/v1/cs/sessions/", (integer_to_binary(555000111))/binary, "/claim">>,
+                    <<"/api/v1/cs/organizations/", (integer_to_binary(?ORG))/binary, "/sessions/",
+                        (integer_to_binary(555000111))/binary, "/claim">>,
                     <<>>
                 ),
                 ?assertEqual(405, ?S:status(Resp))
@@ -193,7 +200,8 @@ visitor_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/queue">>,
+                    <<"/api/v1/cs/organizations/", (integer_to_binary(?ORG))/binary,
+                        "/sessions/queue">>,
                     <<"{not-json">>,
                     #{
                         <<"x-cs-shop-key">> => <<"sk">>,
@@ -367,7 +375,8 @@ seat_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "/claim">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                        (int_bin(?SESSION))/binary, "/claim">>,
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
@@ -398,7 +407,8 @@ seat_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "/claim">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                        (int_bin(?SESSION))/binary, "/claim">>,
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
@@ -420,7 +430,8 @@ seat_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "/claim">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                        (int_bin(?SESSION))/binary, "/claim">>,
                     #{<<"organization_id">> => ?ORG, <<"workspace_id">> => ?WS},
                     #{<<"authorization">> => <<"Bearer x">>}
                 ),
@@ -490,7 +501,8 @@ seat_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "/close">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                        (int_bin(?SESSION))/binary, "/close">>,
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
@@ -507,7 +519,8 @@ seat_flow_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "/claim">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                        (int_bin(?SESSION))/binary, "/claim">>,
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
@@ -1101,7 +1114,8 @@ contract_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/queue">>,
+                    <<"/api/v1/cs/organizations/", (integer_to_binary(?ORG))/binary,
+                        "/sessions/queue">>,
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
@@ -1127,7 +1141,8 @@ contract_tests(_) ->
                 Resp = ?S:request(
                     Port,
                     <<"POST">>,
-                    <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "/transfer">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                        (int_bin(?SESSION))/binary, "/transfer">>,
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
@@ -1185,7 +1200,12 @@ contract_tests(_) ->
         {"credential surface paths are exactly the visitor/shop-key actions", fun() ->
             %% 正例：访客/门店动作的路径在 credential 面上。
             ?assert(cs_http:is_credential_surface_path(<<"/api/v1/cs/sessions">>)),
-            ?assert(cs_http:is_credential_surface_path(<<"/api/v1/cs/sessions/queue">>)),
+            ?assert(
+                cs_http:is_credential_surface_path(
+                    <<"/api/v1/cs/organizations/", (integer_to_binary(?ORG))/binary,
+                        "/sessions/queue">>
+                )
+            ),
             ?assert(
                 cs_http:is_credential_surface_path(
                     <<"/api/v1/cs/sessions/123/messages">>
@@ -1199,12 +1219,12 @@ contract_tests(_) ->
             %% 负例：坐席/治理路径不在 credential 面（照常走中间件 JWT 门）。
             ?assertNot(
                 cs_http:is_credential_surface_path(
-                    <<"/api/v1/cs/sessions/123/claim">>
+                    <<"/api/v1/cs/organizations/1/sessions/123/claim">>
                 )
             ),
             ?assertNot(
                 cs_http:is_credential_surface_path(
-                    <<"/api/v1/cs/sessions/123/close">>
+                    <<"/api/v1/cs/organizations/1/sessions/123/close">>
                 )
             ),
             ?assertNot(

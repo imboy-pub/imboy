@@ -58,7 +58,10 @@ cases(_State) ->
         {timeout, 30, fun close_then_rate_then_double_actions_rejected/0},
         {timeout, 30, fun facade_delegates_and_validates_shape/0},
         %% F6：主密钥服务端装配（显式注入优先；无注入经 env keyring）。
-        {timeout, 30, fun a03_env_keyring_assembly/0}
+        {timeout, 30, fun a03_env_keyring_assembly/0},
+        %% BE-S01a：坐席上下文清单 / 转接目标最小投影。
+        {timeout, 30, fun s01a_seat_contexts_aggregate_projection/0},
+        {timeout, 30, fun s01a_transfer_targets_exclude_self_and_project/0}
     ].
 
 %% ===================================================================
@@ -658,6 +661,76 @@ a03_env_keyring_assembly() ->
 %% ===================================================================
 %% 构造辅助
 %% ===================================================================
+
+%% ===================================================================
+%% BE-S01a：坐席上下文清单 / 转接目标（主体自身作用域 + 最小投影）
+%% ===================================================================
+
+s01a_seat_contexts_aggregate_projection() ->
+    ok = ?FAKE:put_org_context(#{
+        user_id => ?USER_A,
+        organization_id => ?ORG,
+        organization_name => <<"彼方"/utf8>>,
+        business_identity_id => ?SEAT_A,
+        seat_enabled => true,
+        workspaces => [#{id => ?WS, name => <<"主工作区"/utf8>>}]
+    }),
+    ok = ?FAKE:put_org_context(#{
+        user_id => ?USER_A,
+        organization_id => ?ORG + 1,
+        organization_name => <<"此方"/utf8>>,
+        business_identity_id => undefined,
+        seat_enabled => false,
+        workspaces => []
+    }),
+    {ok, View} = cs_seat_app:seat_contexts(#{store => ?FAKE, user_id => ?USER_A}),
+    ?assertEqual(?USER_A, maps:get(user_id, View)),
+    Contexts = maps:get(contexts, View),
+    ?assertEqual(2, length(Contexts)),
+    [Enabled, NotSeat] = Contexts,
+    ?assertEqual(?ORG, maps:get(organization_id, Enabled)),
+    ?assertEqual(true, maps:get(seat_enabled, Enabled)),
+    ?assertEqual(?SEAT_A, maps:get(business_identity_id, Enabled)),
+    ?assertEqual([#{id => ?WS, name => <<"主工作区"/utf8>>}], maps:get(workspaces, Enabled)),
+    %% 能力清单仅在 seat enabled 时非空（镜像 EB V1 经办业务冻结集）。
+    ?assert(lists:member(<<"conversation.read">>, maps:get(capabilities, Enabled))),
+    ?assertEqual([], maps:get(capabilities, NotSeat)),
+    ?assertEqual(undefined, maps:get(business_identity_id, NotSeat)),
+    %% 形状门：缺 actor 即 422。
+    ?assertMatch(
+        {error, {invalid_argument, seat_contexts}},
+        cs_seat_app:seat_contexts(#{store => ?FAKE})
+    ).
+
+s01a_transfer_targets_exclude_self_and_project() ->
+    %% 套件级共享 fake store：用独立 TSID 避免与既有用例的 seat 行冲突。
+    Self = 810000000000031,
+    Peer = 810000000000032,
+    ok = ?FAKE:seed_identity_function(?ORG, Self, <<"customer_service">>),
+    ok = ?FAKE:seed_identity_function(?ORG, Peer, <<"customer_service">>),
+    {ok, _} = cs_seat_app:create_seat(
+        ?ORG,
+        params(#{
+            business_identity_id => Self, max_concurrent => 1, created_by_user_id => ?USER_A
+        })
+    ),
+    {ok, _} = cs_seat_app:create_seat(
+        ?ORG,
+        params(#{
+            business_identity_id => Peer, max_concurrent => 1, created_by_user_id => ?USER_B
+        })
+    ),
+    ok = ?FAKE:put_identity_display(?ORG, Peer, <<"B 坐席"/utf8>>),
+    {ok, Page} = cs_seat_app:transfer_targets(
+        ?ORG, params(#{business_identity_id => Self})
+    ),
+    PeerTargets = [T || T <- maps:get(targets, Page), maps:get(business_identity_id, T) =:= Peer],
+    %% 排除调用者本人；只剩同 Org 其他可用坐席的最小投影。
+    ?assertEqual(1, length(PeerTargets)),
+    [Target] = PeerTargets,
+    ?assertEqual(<<"B 坐席"/utf8>>, maps:get(display_name, Target)),
+    %% max_concurrent=1 且无 active 会话 → available。
+    ?assertEqual(true, maps:get(available, Target)).
 
 params(Extra) ->
     maps:merge(

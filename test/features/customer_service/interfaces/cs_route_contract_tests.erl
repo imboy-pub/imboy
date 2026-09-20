@@ -40,39 +40,61 @@
 %% ===================================================================
 
 tenant_literal_routes() ->
+    O = <<"/api/v1/cs/organizations/:org_id">>,
     [
+        %% BE-S01a（T-2 裁定）：坐席上下文清单——主体自身作用域（无 Org 键）。
+        {<<"/api/v1/cs/me/seat-contexts">>, seat_contexts, [<<"GET">>], cs_seat},
         %% CSB-02R：同路径 method+auth_context 分流——POST=门店（route metadata
         %% 冻结主体），GET=坐席队列（case_auth 覆盖，审计见 entry_violations）。
-        {<<"/api/v1/cs/sessions/queue">>, session_queue, [<<"GET">>, <<"POST">>], cs_shop_key},
+        %% T-2 后 org 显式在路径（旧 /api/v1/cs/sessions/queue 已删）。
+        {<<O/binary, "/sessions/queue">>, session_queue, [<<"GET">>, <<"POST">>], cs_shop_key},
         {<<"/api/v1/cs/sessions">>, visitor_sessions, [<<"GET">>], cs_visit},
         {<<"/api/v1/cs/sessions/:id/messages">>, session_messages, [<<"POST">>], cs_visit},
         {<<"/api/v1/cs/sessions/:id/rating">>, session_rating, [<<"POST">>], cs_visit},
-        {<<"/api/v1/cs/sessions/:id/claim">>, session_claim, [<<"POST">>], cs_seat},
-        {<<"/api/v1/cs/sessions/:id/transfer">>, session_transfer, [<<"POST">>], cs_seat},
-        {<<"/api/v1/cs/sessions/:id/close">>, session_close, [<<"POST">>], cs_seat},
+        {<<O/binary, "/sessions/:id/claim">>, session_claim, [<<"POST">>], cs_seat},
+        {<<O/binary, "/sessions/:id/transfer">>, session_transfer, [<<"POST">>], cs_seat},
+        {<<O/binary, "/sessions/:id/close">>, session_close, [<<"POST">>], cs_seat},
         {<<"/api/v1/enterprise/conversations/:conversation_id/messages">>, conversation_messages,
             [<<"GET">>], cs_seat},
-        %% CSB-03：坐席会话详情（GET；坐席 JWT + conversation.read）。
-        {<<"/api/v1/cs/sessions/:id">>, session_detail, [<<"GET">>], cs_seat},
-        %% CSB-02R：坐席工作台 active/closed 两视图（独立路径——GET /sessions
-        %% 已冻结为访客面，route metadata 是 principal 唯一分流依据）。
-        {<<"/api/v1/cs/seats/sessions">>, seat_session_list, [<<"GET">>], cs_seat},
-        {<<"/api/v1/cs/organizations/:org_id/seats">>, seats, [<<"GET">>, <<"POST">>],
-            enterprise_owner_admin},
-        {<<"/api/v1/cs/organizations/:org_id/seats/:id/suspend">>, seat_suspend, [<<"POST">>],
-            enterprise_owner_admin},
-        {<<"/api/v1/cs/organizations/:org_id/seats/:id/resume">>, seat_resume, [<<"POST">>],
-            enterprise_owner_admin},
+        %% CSB-03：坐席会话详情（GET；坐席 JWT + conversation.read；T-2 后 org
+        %% 显式在路径）。
+        {<<O/binary, "/sessions/:id">>, session_detail, [<<"GET">>], cs_seat},
+        %% CSB-02R：坐席工作台 active/closed 两视图（T-2 后 org 显式在路径——
+        %% 旧 /api/v1/cs/seats/sessions 已删）。
+        {<<O/binary, "/seats/sessions">>, seat_session_list, [<<"GET">>], cs_seat},
+        %% BE-S01a：转接目标最小投影（api-surface-freeze）。
+        {<<O/binary, "/transfer-targets">>, transfer_targets, [<<"GET">>], cs_seat},
+        %% BE-S01a：坐席 SSE 占位（流式实现在 BE-S01b；先注册 501）。
+        {<<O/binary, "/seats/me/events">>, seat_events, [<<"GET">>], cs_seat},
+        {<<O/binary, "/seats">>, seats, [<<"GET">>, <<"POST">>], enterprise_owner_admin},
+        {<<O/binary, "/seats/:id/suspend">>, seat_suspend, [<<"POST">>], enterprise_owner_admin},
+        {<<O/binary, "/seats/:id/resume">>, seat_resume, [<<"POST">>], enterprise_owner_admin},
         %% C2/C3（contracts-w2）：治理面列表 GET 与既有 POST 同路径动作（cowboy
         %% 只按 path 匹配，一行 = 一条路径动作，按方法分派用例——seats 同款先例）。
-        {<<"/api/v1/cs/organizations/:org_id/shop-keys">>, shop_key_list, [<<"GET">>, <<"POST">>],
-            enterprise_owner_admin},
-        {<<"/api/v1/cs/organizations/:org_id/shop-keys/:id/revoke">>, shop_key_revoke, [<<"POST">>],
-            enterprise_owner_admin},
-        {<<"/api/v1/cs/organizations/:org_id/visit-tokens">>, visit_token_list,
-            [<<"GET">>, <<"POST">>], enterprise_owner_admin},
-        {<<"/api/v1/cs/organizations/:org_id/visit-tokens/:id/revoke">>, visit_token_revoke,
-            [<<"POST">>], enterprise_owner_admin}
+        {
+            <<O/binary, "/shop-keys">>,
+            shop_key_list,
+            [<<"GET">>, <<"POST">>],
+            enterprise_owner_admin
+        },
+        {
+            <<O/binary, "/shop-keys/:id/revoke">>,
+            shop_key_revoke,
+            [<<"POST">>],
+            enterprise_owner_admin
+        },
+        {
+            <<O/binary, "/visit-tokens">>,
+            visit_token_list,
+            [<<"GET">>, <<"POST">>],
+            enterprise_owner_admin
+        },
+        {
+            <<O/binary, "/visit-tokens/:id/revoke">>,
+            visit_token_revoke,
+            [<<"POST">>],
+            enterprise_owner_admin
+        }
     ].
 
 platform_literal_routes() ->
@@ -113,7 +135,10 @@ widget_literal_routes() ->
             [<<"POST">>],
             cs_visit
         },
-        {<<W/binary, "/sessions/:id/rating">>, widget_session_rating, [<<"POST">>], cs_visit}
+        {<<W/binary, "/sessions/:id/rating">>, widget_session_rating, [<<"POST">>], cs_visit},
+        %% BE-W01（router wiring manifest W-1）：动态 frame HTML（iframe src 落点，
+        %% 零凭证面——principal 声明 cs_visit，嵌入策略由 frame-ancestors CSP 裁决）。
+        {<<W/binary, "/frame/:installation_id">>, widget_frame_html, [<<"GET">>], cs_visit}
     ].
 
 %% ===================================================================
@@ -172,6 +197,8 @@ route_violations(Path, Handler, Opts, Known, EntryResult) ->
     ExpectedHandler =
         case Surface of
             platform -> cs_platform_handler;
+            %% BE-W01：widget 面有两个 handler（frame HTML 是零凭证导航端点）。
+            widget when Handler =:= cs_widget_frame_handler -> cs_widget_frame_handler;
             widget -> cs_widget_handler;
             _ -> cs_tenant_handler
         end,
@@ -301,11 +328,12 @@ literal_for(platform) ->
 %% 审计必须逐条报红。
 a01_audit_is_not_vacuous_test() ->
     Real = ?S:cs_routes(all),
-    %% 34 = 租户 17（CSB-03 详情 + CSB-02R seats/sessions；queue 计 1 条路径）+
-    %% widget 8（CSB-03）+ 平台 9；
-    %% C2/C3 治理列表与既有 POST 同路径（动作名按 contracts-w2 冻结为
+    %% 38 = 租户 20（T-2 org 作用域化：queue/claim/transfer/close/detail/
+    %% seats-sessions 迁径 + seat-contexts/transfer-targets/seats-me-events 新增；
+    %% 访客三路与 A0 enterprise messages 路保持）+ widget 9（BE-W01 frame）+
+    %% 平台 9；C2/C3 治理列表与既有 POST 同路径（动作名按 contracts-w2 冻结为
     %% shop_key_list/visit_token_list）。
-    ?assert(length(Real) >= 34),
+    ?assert(length(Real) >= 38),
     MutatedAuth = lists:map(
         fun({Path, H, Opts}) ->
             case maps:get(action, Opts) of
@@ -404,10 +432,28 @@ a04_seat_actions_declare_customer_service_function_test() ->
             {ok, Entry} = cs_actions:tenant(Action),
             Auth = maps:get(auth, Entry),
             ?assertEqual(cs_seat, maps:get(auth_context, Auth)),
-            ?assertEqual(<<"customer_service">>, maps:get(required_function, Auth)),
-            ?assert(is_binary(maps:get(required_permission, Auth)))
+            case cs_actions:org_source(Entry) of
+                %% self 面（seat_contexts）不声明 org 级 function——聚合本身
+                %% 就是枚举对象（application 逐 Org 复核）。
+                self ->
+                    ok;
+                _ ->
+                    ?assertEqual(<<"customer_service">>, maps:get(required_function, Auth)),
+                    ?assert(is_binary(maps:get(required_permission, Auth)))
+            end
         end,
-        [session_claim, session_transfer, session_close, conversation_messages]
+        [
+            session_claim,
+            session_transfer,
+            session_close,
+            conversation_messages,
+            %% BE-S01a：org 作用域坐席新面（T-2 后全部走 seat 门）。
+            session_detail,
+            seat_session_list,
+            transfer_targets,
+            seat_events,
+            seat_contexts
+        ]
     ).
 
 a02_both_surfaces_share_facade_use_cases_test() ->
@@ -506,9 +552,11 @@ credential_surface_matches_principal_declaration_test() ->
                 {PathBin, ExpectCredential},
                 {PathBin, cs_http:is_credential_surface_path(PathBin)}
             ),
-            %% org 来源：param 面的路径不能带 :org_id 绑定。
+            %% org 来源：param 面的路径不能带 :org_id 绑定；path 面必须带；
+            %% self 面（BE-S01a 坐席上下文清单）路径不带 :org_id。
             case cs_actions:org_source(Entry) of
                 path -> ?assert(is_map_key(org_id, path_bindings(PathBin)));
+                self -> ?assertNot(is_map_key(org_id, path_bindings(PathBin)));
                 param -> ?assertNot(is_map_key(org_id, path_bindings(PathBin)))
             end
         end,

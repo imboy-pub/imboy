@@ -2382,6 +2382,12 @@
         "static": false
       },
       {
+        "action": "seat_contexts",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/me/seat-contexts",
+        "static": false
+      },
+      {
         "action": "seats",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/organizations/:org_id/seats",
@@ -2400,6 +2406,48 @@
         "static": false
       },
       {
+        "action": "seat_events",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/seats/me/events",
+        "static": false
+      },
+      {
+        "action": "seat_session_list",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/seats/sessions",
+        "static": false
+      },
+      {
+        "action": "session_detail",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/sessions/:id",
+        "static": false
+      },
+      {
+        "action": "session_claim",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/sessions/:id/claim",
+        "static": false
+      },
+      {
+        "action": "session_close",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/sessions/:id/close",
+        "static": false
+      },
+      {
+        "action": "session_transfer",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/sessions/:id/transfer",
+        "static": false
+      },
+      {
+        "action": "session_queue",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/sessions/queue",
+        "static": false
+      },
+      {
         "action": "shop_key_list",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/organizations/:org_id/shop-keys",
@@ -2409,6 +2457,12 @@
         "action": "shop_key_revoke",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/organizations/:org_id/shop-keys/:id/revoke",
+        "static": false
+      },
+      {
+        "action": "transfer_targets",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/transfer-targets",
         "static": false
       },
       {
@@ -2424,33 +2478,9 @@
         "static": false
       },
       {
-        "action": "seat_session_list",
-        "handler": "cs_tenant_handler",
-        "path": "/api/v1/cs/seats/sessions",
-        "static": false
-      },
-      {
         "action": "visitor_sessions",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/sessions",
-        "static": false
-      },
-      {
-        "action": "session_detail",
-        "handler": "cs_tenant_handler",
-        "path": "/api/v1/cs/sessions/:id",
-        "static": false
-      },
-      {
-        "action": "session_claim",
-        "handler": "cs_tenant_handler",
-        "path": "/api/v1/cs/sessions/:id/claim",
-        "static": false
-      },
-      {
-        "action": "session_close",
-        "handler": "cs_tenant_handler",
-        "path": "/api/v1/cs/sessions/:id/close",
         "static": false
       },
       {
@@ -2466,25 +2496,13 @@
         "static": false
       },
       {
-        "action": "session_transfer",
-        "handler": "cs_tenant_handler",
-        "path": "/api/v1/cs/sessions/:id/transfer",
-        "static": false
-      },
-      {
-        "action": "session_queue",
-        "handler": "cs_tenant_handler",
-        "path": "/api/v1/cs/sessions/queue",
-        "static": false
-      },
-      {
         "action": "widget_bootstrap",
         "handler": "cs_widget_handler",
         "path": "/api/v1/cs/widget/bootstrap",
         "static": false
       },
       {
-        "action": null,
+        "action": "widget_frame_html",
         "handler": "cs_widget_frame_handler",
         "path": "/api/v1/cs/widget/frame/:installation_id",
         "static": false

@@ -70,8 +70,10 @@ is_credential_surface_path(Path) when is_binary(Path) ->
             %% GET /api/v1/cs/sessions（访客列自己的会话）
             [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>] ->
                 true;
-            %% POST /api/v1/cs/sessions/queue（门店开会话）
-            [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>, <<"queue">>] ->
+            %% POST /api/v1/cs/organizations/:org_id/sessions/queue（门店开会话——
+            %% T-2 后 org 显式在路径；GET 坐席队列视图同路径，凭证面以门店 POST
+            %% 为准，坐席 GET 照常由 handler 的 cs_seat 分支校验 JWT）。
+            [<<"api">>, <<"v1">>, <<"cs">>, <<"organizations">>, _OrgId, <<"sessions">>, <<"queue">>] ->
                 true;
             %% POST /api/v1/cs/sessions/:id/messages | /rating（访客消息/评分）
             [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>, _Id, Last] when
@@ -191,14 +193,18 @@ action_tables() ->
         [cs_actions:widget(A) || A <- cs_actions:widget_actions()].
 
 %% @doc OrgId 解析（cs_actions:org_source/1 决定来源）：
-%%   * `path` —— cowboy 绑定 `org_id`（治理/平台面）；
-%%   * `param` —— A0 冻结路径（path 无 org 段）取查询/正文的必填 `organization_id`，
-%%     作为**申报值**交由 cs_auth 用凭证/事实证明。
+%%   * `path` —— cowboy 绑定 `org_id`（T-2 后坐席/治理/门店面）；
+%%   * `param` —— A0 冻结访客路径（path 无 org 段）取查询/正文的必填
+%%     `organization_id`，作为**申报值**交由 cs_auth 用凭证/事实证明；
+%%   * `self` —— 主体自身作用域（BE-S01a 坐席上下文清单）：无 Org 键，
+%%     返回 0 占位（facade 的 self 用例不读 OrgId，作用域是 actor 本人）。
 -spec org_id(map(), cowboy_req:req(), map()) -> {ok, integer()} | {error, term()}.
 org_id(Entry, Req, Body) ->
     case cs_actions:org_source(Entry) of
         path ->
             path_tsid(Req, org_id, missing_org_id);
+        self ->
+            {ok, 0};
         param ->
             case value(organization_id, Req, Body) of
                 undefined ->
@@ -454,6 +460,10 @@ classify({invalid_origin, _}) ->
     ?ERR_BAD_REQUEST;
 classify(method_not_allowed) ->
     ?ERR_METHOD_NOT_ALLOWED;
+%% BE-S01a：坐席 SSE 占位（seat_events 路由族已注册、流式实现在 BE-S01b）。
+%% 501 语义：路由存在但能力未交付——客户端探测能力，不误判路由缺失（404）。
+classify(not_implemented) ->
+    ?ERR_NOT_IMPLEMENTED;
 %% --- 401：凭证缺失/无效（访客与门店凭证也是凭证）---
 classify(credential_missing) ->
     ?ERR_UNAUTHORIZED;

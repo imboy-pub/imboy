@@ -87,11 +87,54 @@
     " WHERE organization_id = $1 AND business_identity_id = $2"
 >>).
 
+%% BE-S01a：用户维度坐席上下文聚合（四张事实表单语句同过滤——member active、
+%% org active、assignment active+customer_service、seat enabled；无坐席身份的
+%% Org 行 LEFT JOIN 出 NULL，application 投影为 seat_enabled=false）。
+-define(SQL_SEAT_ORG_CONTEXTS, <<
+    "SELECT m.organization_id,"
+    "       o.name AS organization_name,"
+    "       a.business_identity_id,"
+    "       COALESCE(s.enabled, false) AS seat_enabled,"
+    "       (SELECT json_agg(json_build_object('id', w.id, 'name', w.name) ORDER BY w.id)"
+    "          FROM workspace w"
+    "         WHERE w.organization_id = m.organization_id AND w.status = 'active')"
+    "         AS workspaces"
+    "  FROM organization_member m"
+    "  JOIN organization o ON o.id = m.organization_id AND o.status = 'active'"
+    "  LEFT JOIN organization_business_identity_assignment a"
+    "    ON a.organization_id = m.organization_id AND a.user_id = m.user_id"
+    "   AND a.status = 'active' AND a.function_key = 'customer_service'"
+    "  LEFT JOIN customer_service_seat s"
+    "    ON s.organization_id = a.organization_id"
+    "   AND s.business_identity_id = a.business_identity_id AND s.enabled = true"
+    " WHERE m.user_id = $1 AND m.status = 'active'"
+    " ORDER BY m.organization_id"
+>>).
+
+%% BE-S01a：转接目标分页（键集下推 + 同语句 active 计数；排除调用者本人）。
+-define(SQL_TRANSFER_TARGETS_PAGE, <<
+    "SELECT s.business_identity_id,"
+    "       i.display_name,"
+    "       s.max_concurrent,"
+    "       (SELECT count(*) FROM customer_service_session x"
+    "         WHERE x.organization_id = s.organization_id"
+    "           AND x.business_identity_id = s.business_identity_id"
+    "           AND x.status = 'active') AS active_count"
+    "  FROM customer_service_seat s"
+    "  JOIN organization_business_identity i"
+    "    ON i.organization_id = s.organization_id AND i.id = s.business_identity_id"
+    " WHERE s.organization_id = $1 AND s.enabled = true"
+    "   AND s.business_identity_id <> $2"
+    "   AND s.business_identity_id > $3"
+    " ORDER BY s.business_identity_id"
+    " LIMIT $4"
+>>).
+
 -define(SQL_INSERT_EVENT, <<
     "INSERT INTO customer_service_event"
-    " (id, organization_id, session_id, business_identity_id, actor_user_id,"
+    " (id, organization_id, workspace_id, session_id, business_identity_id, actor_user_id,"
     "  actor_kind, action, detail)"
-    " VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)"
+    " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)"
     " RETURNING id"
 >>).
 
@@ -105,6 +148,8 @@ sql_statements() ->
         ?SQL_LIST_DISPATCHABLE,
         ?SQL_LIST_DISPATCHABLE_PAGE,
         ?SQL_SET_ENABLED,
+        ?SQL_SEAT_ORG_CONTEXTS,
+        ?SQL_TRANSFER_TARGETS_PAGE,
         ?SQL_INSERT_EVENT
     ].
 
@@ -195,6 +240,55 @@ set_seat_enabled(OrgId, IdentityId, Enabled, At) ->
     end.
 
 %% ===================================================================
+%% BE-S01a：坐席上下文聚合 / 转接目标（主体自身作用域 + 最小投影）
+%% ===================================================================
+
+%% @doc 用户维度的坐席上下文聚合（无坐席身份的 Org 行 business_identity_id
+%% 为 undefined、seat_enabled=false——application 据此区分「成员未开通」）。
+-spec list_seat_org_contexts(integer()) -> {ok, [map()]} | {error, term()}.
+list_seat_org_contexts(UserId) when is_integer(UserId) ->
+    Keys = [organization_id, organization_name, business_identity_id, seat_enabled, workspaces],
+    case cs_pg_common:fetch_many(?SQL_SEAT_ORG_CONTEXTS, [UserId], Keys) of
+        {ok, Rows} ->
+            {ok, [decode_workspaces(Row) || Row <- Rows]};
+        {error, _} = Err ->
+            Err
+    end;
+list_seat_org_contexts(UserId) ->
+    {error, {invalid_argument, {user_id, UserId}}}.
+
+%% epgsql 解 json_agg 列：binary JSON → map（null → []——无 active Workspace
+%% 的 Org 给空列表，客户端自行提示不可用）。
+decode_workspaces(Row) ->
+    case maps:get(workspaces, Row, undefined) of
+        Bin when is_binary(Bin) ->
+            try
+                Row#{workspaces := jsx:decode(Bin, [return_maps])}
+            catch
+                _:_ -> Row#{workspaces := []}
+            end;
+        null ->
+            Row#{workspaces := []};
+        List when is_list(List) ->
+            Row;
+        _Other ->
+            Row#{workspaces := []}
+    end.
+
+%% @doc 转接目标分页（键集下推 + 同语句 active 计数；排除调用者本人）。
+-spec list_transfer_targets_page(integer(), integer(), non_neg_integer(), pos_integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_transfer_targets_page(OrgId, ExcludeIdentityId, AfterId, Limit) when
+    is_integer(OrgId), is_integer(ExcludeIdentityId)
+->
+    Keys = [business_identity_id, display_name, max_concurrent, active_count],
+    cs_pg_common:fetch_many(
+        ?SQL_TRANSFER_TARGETS_PAGE, [OrgId, ExcludeIdentityId, AfterId, Limit], Keys
+    );
+list_transfer_targets_page(OrgId, _Exclude, _After, _Limit) ->
+    {error, {invalid_organization_id, OrgId}}.
+
+%% ===================================================================
 %% event（append-only；只 INSERT）
 %% ===================================================================
 
@@ -222,6 +316,10 @@ event_params(OrgId, Event) ->
     [
         maps:get(id, Event, cs_tsid:new_id(cs_event)),
         OrgId,
+        %% BE-S01a（迁移 135）：workspace_id NOT NULL——全部写入方
+        %% （session/seat/access/widget application）已在事件构造点注入；
+        %% 缺失即 23502 由调用方显式失败（不静默猜默认）。
+        cs_pg_common:nullify(maps:get(workspace_id, Event, undefined)),
         cs_pg_common:nullify(maps:get(session_id, Event, undefined)),
         cs_pg_common:nullify(maps:get(business_identity_id, Event, undefined)),
         cs_pg_common:nullify(maps:get(actor_user_id, Event, undefined)),

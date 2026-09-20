@@ -26,6 +26,9 @@
     put_visit_token_for_list/1,
     put_seat_for_list/2,
     last_page_limit/0,
+    %% BE-S01a：坐席上下文 / 转接目标种子与读取面
+    put_org_context/1,
+    put_identity_display/3,
     %% cs_store_port callbacks
     fetch_identity_function/2,
     insert_seat/2,
@@ -33,6 +36,8 @@
     list_dispatchable_seats/1,
     list_dispatchable_seats_page/3,
     set_seat_enabled/4,
+    list_seat_org_contexts/1,
+    list_transfer_targets_page/4,
     insert_session/3,
     fetch_session/3,
     claim_session/7,
@@ -91,7 +96,9 @@ init() ->
         {events, []},
         {identity_functions, #{}},
         {assignment_users, #{}},
-        {workspaces, #{}}
+        {workspaces, #{}},
+        {org_contexts, #{}},
+        {identity_displays, #{}}
     ]),
     ok.
 
@@ -351,6 +358,54 @@ set_seat_enabled(OrgId, IdentityId, Enabled, At) ->
             update(seats, fun(M) -> M#{{OrgId, IdentityId} => NewRow} end),
             {ok, NewRow}
     end.
+
+%% ===================================================================
+%% BE-S01a：坐席上下文聚合 / 转接目标（镜像 cs_pg_seat 的过滤与键集语义）
+%% ===================================================================
+
+%% 坐席上下文种子：Row 形如真库投影
+%% #{user_id, organization_id, organization_name, business_identity_id,
+%%   seat_enabled, workspaces => [#{id, name}]}。
+put_org_context(Row) ->
+    UserId = maps:get(user_id, Row),
+    update(org_contexts, fun(M) -> M#{UserId => [Row | maps_get_list(UserId, M)]} end).
+
+maps_get_list(K, M) ->
+    case maps:get(K, M, undefined) of
+        L when is_list(L) -> L;
+        _ -> []
+    end.
+
+%% identity 显示名种子（转接目标投影用）。
+put_identity_display(OrgId, IdentityId, DisplayName) ->
+    update(identity_displays, fun(M) -> M#{{OrgId, IdentityId} => DisplayName} end).
+
+list_seat_org_contexts(UserId) ->
+    {org_contexts, M} = hd(ets:lookup(?TAB, org_contexts)),
+    {ok, lists:sort(maps_get_list(UserId, M))}.
+
+list_transfer_targets_page(OrgId, ExcludeIdentityId, AfterId, Limit) ->
+    {seats, Seats} = hd(ets:lookup(?TAB, seats)),
+    {identity_displays, Displays} = hd(ets:lookup(?TAB, identity_displays)),
+    Rows0 = [
+        with_active_count(OrgId, Seat#{
+            display_name => maps:get(
+                {OrgId, maps:get(business_identity_id, Seat)}, Displays, undefined
+            )
+        })
+     || {{O, _I}, Seat} <- maps:to_list(Seats),
+        O =:= OrgId,
+        maps:get(enabled, Seat, false) =:= true,
+        maps:get(business_identity_id, Seat) =/= ExcludeIdentityId,
+        maps:get(business_identity_id, Seat) > AfterId
+    ],
+    Rows1 = lists:sort(
+        fun(A, B) ->
+            maps:get(business_identity_id, A) =< maps:get(business_identity_id, B)
+        end,
+        Rows0
+    ),
+    {ok, lists:sublist(Rows1, Limit)}.
 
 insert_session(OrgId, WorkspaceId, Draft) ->
     SessionId = maps:get(id, Draft),
