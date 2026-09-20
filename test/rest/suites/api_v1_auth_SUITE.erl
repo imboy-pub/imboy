@@ -114,10 +114,14 @@ auth_002_missing_refreshtoken(Config) ->
         end
     ).
 
-%% Authentication: a token whose last character is flipped no longer
-%% verifies under the service jwt_key; decrypt_token returns
-%% {error, 706, _} (verify-error or catch branch) and the handler answers
-%% with the business-error envelope at HTTP 200.
+%% Authentication: a token whose last character is flipped in a real
+%% (non-padding) base64 bit no longer verifies under the service jwt_key;
+%% decrypt_token returns {error, 706, _} (verify-error or catch branch) and
+%% the handler answers with the business-error envelope at HTTP 200. The
+%% flip must avoid the last base64 character's unused low bits — a flip
+%% inside them decodes to the identical token and the negative case goes
+%% green by luck (r6 exposed exactly that nondeterminism; same disease
+%% USER-003 had, fixed the same way).
 auth_003_tampered_refreshtoken(Config) ->
     SignKey = rest_fixture:sign_key(),
     #{uid := Uid} = User = rest_fixture:create_user(#{}),
@@ -181,5 +185,5 @@ tamper_tail(Token) when byte_size(Token) > 1 ->
     <<Head:Size/binary, Last>> = Token,
     <<Head/binary, (flip_char(Last))/binary>>.
 
-flip_char($A) -> <<"B">>;
+flip_char($A) -> <<"Q">>;
 flip_char(_) -> <<"A">>.
