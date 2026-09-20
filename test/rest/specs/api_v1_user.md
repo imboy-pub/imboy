@@ -119,7 +119,7 @@ The client posts `{existing_pwd, new_pwd, rsa_encrypt="0"}` to `/api/v1/user/cha
 ## Deliberately not covered here
 
 - **Signature boundary on user/update (902)**: already covered as LOGIN-005 against the same `auth_ds:verify_sign/2` gate; USER-002/003/004 intentionally carry valid signatures so they exercise the JWT boundary, not the signature boundary.
-- **Rate limit (429)**: deferred to a dedicated suite per plan §4. The CT environment raises `passport_per_ip` to 120/min (`config/sys.local.config`), so the fixture logins in this suite stay far below the production default of 10/min; noted because USER-006 performs three logins.
+- **Rate limit (429)**: deferred to a dedicated suite per plan §4. The fixture raises `passport_per_ip` to 300/min at runtime via `rest_fixture:ensure_login_throttle_capacity/0` (same helper as the friend/group suites), so the fixture logins in this suite stay far below the raised capacity even though the production default is 10/min; noted because USER-006 performs three logins.
 - **Malformed JSON / invalid field type on user/update**: covered by the login golden suite at the middleware/parsing layer (LOGIN-004) and by `user_agg` EUnit for field validation; the REST batch keeps to the plan's V1 category minimum for this domain.
 
 ## Execution History

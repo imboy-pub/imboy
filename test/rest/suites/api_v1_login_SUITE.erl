@@ -295,7 +295,3 @@ alnum(C) when C >= $a, C =< $z -> true;
 alnum(C) when C >= $A, C =< $Z -> true;
 alnum(C) when C >= $0, C =< $9 -> true;
 alnum(_) -> false.
-
-unique_secret(Bytes) ->
-    Hex = binary:encode_hex(crypto:strong_rand_bytes(Bytes)),
-    <<"rest-", Hex/binary>>.
