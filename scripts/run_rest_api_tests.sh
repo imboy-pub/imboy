@@ -485,5 +485,5 @@ elif ! diff <(echo "$PRE_DBS") <(echo "$POST_DBS") >/dev/null; then
   RUN_STATUS=3
 fi
 
-echo "REST run $RUN_ID => $(jq -r '.result' "$REPORT_ROOT/result.json") (case_pass=$(jq -r '.case_pass' "$REPORT_ROOT/result.json")/5)"
+echo "REST run $RUN_ID => $(jq -r '.result' "$REPORT_ROOT/result.json") (case_pass=$(jq -r '.case_pass' "$REPORT_ROOT/result.json")/$(jq -r '.case_total' "$REPORT_ROOT/result.json"))"
 exit "$RUN_STATUS"
