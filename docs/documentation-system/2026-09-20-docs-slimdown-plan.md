@@ -197,8 +197,8 @@ A0 在本文档末尾补写以下字段后再提交执行结果：
 | 引用扫描结果 / allowlist | 门 grep 剩余 2 处，全部在 allowlist：① scripts/check_module_boundaries.sh:29 运行时 rg 排除 glob（行为保留）；② docs/api-contracts/three-platform-alignment.md:67 imboyadmin 跨仓引用（目标在兄弟仓被跟踪）。另有 4 行历史语境化目录名描述未被门正则命中，登记于 DS-05-allowlist.md 供 A7 复核 |
 | ignored 可恢复删除数 / 保留数 | 218 项核验：7 删除（内容 blob 100% 可达，含 SHA-256/blob OID/历史路径/恢复命令，抽验恢复一致）/ 211 保留为 PRESERVED_NO_GIT_RECOVERY / 0 missing |
 | docs-site build / diff-check | `bun run build` PASS（0 死链，12.48s）；ignoreDeadLinks 已移除；附带修复 A6 死链门暴露的 70 处存量死链（与 plans/planning 无关，28 文件改指 GitHub 真源 URL/现存页/退化纯文字）；`git diff --check` 与 `--cached --check` 均 PASS |
-| A7 独立结论 | 预审完成（74 MUST_CLEAN / 2 GENERIC_KEEP / 2 UNCERTAIN 已裁定）；终审基于执行提交 SHA 进行，结论见后续回填 |
-| 本地提交 | `docs: remove historical plans and evidence`（298 文件：206 删除 + 92 修改；作者 leeyi <leeyisoft@qq.com>；A5/A1/A2/A3/A4/A6 六分片补丁 + A1b 死链修复串行集成） |
+| A7 独立结论 | 预审：74 MUST_CLEAN / 2 GENERIC_KEEP / 2 UNCERTAIN 已裁定；终审（基于候选 SHA）：**PASS**，10 项检查全过、零阻断项（详见 run 证据 A7 终审报告；备注 D1 计数笔误已在本回填修正） |
+| 本地提交 | `docs: remove historical plans and evidence` = `31343a47`（299 文件：206 删除 + 93 修改；作者 leeyi <leeyisoft@qq.com>；A5/A1/A2/A3/A4/A6 六分片补丁 + A1b 死链修复串行集成） |
 | 外向操作 | NONE（未 push、未发 PR、未发布、未部署、未动远端与 .gitignore） |
 
 执行补充：集成方式为六分片 worktree 补丁（`git diff --binary Base..branch | git apply --index`，零冲突）+ A1b 增量；主树编译 `make compile` PASS；Wave 1 同时发现 Base 的 .gitignore L121-122 已含两目录忽略规则（历史遗留，本次未改）。
