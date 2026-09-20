@@ -207,10 +207,16 @@ delete_all_related_data_cascades_e2ee_tables_test_() ->
         [
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
-                {'execute', 3, fun(fake_conn, Sql, Params) ->
+                {'query', 3, fun(fake_conn, Sql, _Params) ->
                     case Sql of
                         <<"SELECT to_regclass", _/binary>> ->
-                            {ok, cols, [{true}]};
+                            {ok, [#{<<"present">> => true}]};
+                        _ ->
+                            {ok, []}
+                    end
+                end},
+                {'execute', 3, fun(fake_conn, Sql, Params) ->
+                    case Sql of
                         <<"DELETE FROM ", Rest/binary>> ->
                             [Table | _] = binary:split(Rest, <<" ">>),
                             self() ! {deleted_table, Table, Params},
@@ -243,10 +249,16 @@ delete_all_related_data_cascades_olm_tables_test_() ->
         [
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
-                {'execute', 3, fun(fake_conn, Sql, Params) ->
+                {'query', 3, fun(fake_conn, Sql, _Params) ->
                     case Sql of
                         <<"SELECT to_regclass", _/binary>> ->
-                            {ok, cols, [{true}]};
+                            {ok, [#{<<"present">> => true}]};
+                        _ ->
+                            {ok, []}
+                    end
+                end},
+                {'execute', 3, fun(fake_conn, Sql, Params) ->
+                    case Sql of
                         <<"DELETE FROM ", Rest/binary>> ->
                             [Table | _] = binary:split(Rest, <<" ">>),
                             self() ! {deleted_table, Table, Params},
