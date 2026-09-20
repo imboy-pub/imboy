@@ -43,6 +43,7 @@ all() ->
 %% device-signature + JWT middleware chain. user/show sits in
 %% imboy_router:open/0 and is exercised with client-shaped headers.
 init_per_suite(Config0) ->
+    ok = rest_fixture:ensure_ct_priv_alias(),
     Config = eunit_runner:ct_suite_setup(Config0),
     ok = application:set_env(imboy, api_auth_switch, <<"on">>),
     %% The USER cases log in 7 fixture users per run; the passport per-IP

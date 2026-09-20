@@ -34,6 +34,7 @@ all() ->
 %% (auth_middleware_api_v1.erl:74), so every case below carries valid
 %% signature headers and the boundary under test stays in the handler.
 init_per_suite(Config0) ->
+    ok = rest_fixture:ensure_ct_priv_alias(),
     Config = eunit_runner:ct_suite_setup(Config0),
     ok = application:set_env(imboy, api_auth_switch, <<"on">>),
     Port = ranch:get_port(imboy_listener),

@@ -43,6 +43,7 @@ all() ->
 %% api_auth_switch): msg_store-backed history is required by MSG-001/002
 %% and must not depend on the ambient test config carrying the flag.
 init_per_suite(Config0) ->
+    ok = rest_fixture:ensure_ct_priv_alias(),
     Config = eunit_runner:ct_suite_setup(Config0),
     ok = application:set_env(imboy, api_auth_switch, <<"on">>),
     %% The archive switch is read per call through application:get_env

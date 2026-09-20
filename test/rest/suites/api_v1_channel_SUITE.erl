@@ -36,6 +36,7 @@ all() ->
 %% Real application through the project's standard CT entry (config load,
 %% core dependency apps, serialized boot with scratch-database migrations).
 init_per_suite(Config0) ->
+    ok = rest_fixture:ensure_ct_priv_alias(),
     Config = eunit_runner:ct_suite_setup(Config0),
     ok = application:set_env(imboy, api_auth_switch, <<"on">>),
     Port = ranch:get_port(imboy_listener),
