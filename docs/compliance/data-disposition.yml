@@ -183,13 +183,6 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
-  doc_draft_sections:
-    action: delete
-    owner: account
-    reason: 文档草稿（用户内容）
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
   e2ee_key_backups:
     action: delete
     owner: e2ee
@@ -898,9 +891,385 @@ tables:
     review: pending-owner
     retention: indefinite
 
+  adm_auth_epoch:
+    action: delete
+    owner: account
+    reason: 管理端认证纪元（凭据代），注销即失效
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  user_auth_epoch:
+    action: delete
+    owner: account
+    reason: 认证纪元（凭据代），注销即失效
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  agent_effect:
+    action: delete
+    owner: ai
+    reason: Agent 执行效果记录
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  agent_grant:
+    action: delete
+    owner: ai
+    reason: 用户授予 Agent 的授权，注销即撤销
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  agent_grant_capability:
+    action: delete
+    owner: ai
+    reason: Agent 授权能力项
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  agent_grant_event:
+    action: delete
+    owner: ai
+    reason: Agent 授权流转记录
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  agent_grant_workspace:
+    action: delete
+    owner: ai
+    reason: Agent 授权的工作区范围
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  agent_hub_audit:
+    action: retain
+    owner: ai
+    reason: Agent Hub 操作审计，安全留存
+    mechanism: retention per policy
+    review: pending-owner
+    retention: indefinite
+  agent_run:
+    action: delete
+    owner: ai
+    reason: Agent 运行记录
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  agent_run_event:
+    action: delete
+    owner: ai
+    reason: Agent 运行事件
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  agent_task:
+    action: delete
+    owner: ai
+    reason: Agent 任务
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  agent_task_decision:
+    action: delete
+    owner: ai
+    reason: Agent 任务审批决定
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  agent_task_event:
+    action: delete
+    owner: ai
+    reason: Agent 任务事件
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  bot_delivery:
+    action: delete
+    owner: ai
+    reason: Bot 消息投递记录
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  bot_delivery_attempt:
+    action: delete
+    owner: ai
+    reason: Bot 消息投递尝试
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  calligraphy_review_draft:
+    action: delete
+    owner: teaching
+    reason: 习字点评草稿（学习者内容）
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  class_enrollment:
+    action: delete
+    owner: teaching
+    reason: 班级报名关系
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  class_staff:
+    action: delete
+    owner: teaching
+    reason: 班级任教（职员）关系行
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  customer_service_event:
+    action: delete
+    owner: customer_service
+    reason: 客服会话事件流水
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  customer_service_seat:
+    action: delete
+    owner: customer_service
+    reason: 客服坐席绑定
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  customer_service_session:
+    action: delete
+    owner: customer_service
+    reason: 客服会话
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  customer_service_shop_key:
+    action: delete
+    owner: customer_service
+    reason: 客服店铺密钥
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  customer_service_visit_token:
+    action: delete
+    owner: customer_service
+    reason: 客服访客令牌
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  customer_service_widget_identity_key:
+    action: delete
+    owner: customer_service
+    reason: 客服挂件身份密钥
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  customer_service_widget_installation:
+    action: delete
+    owner: customer_service
+    reason: 客服挂件安装记录
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  customer_service_widget_nonce:
+    action: delete
+    owner: customer_service
+    reason: 客服挂件 nonce
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  e2ee_group_session_attestation:
+    action: delete
+    owner: e2ee
+    reason: E2EE 群会话证明
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  e2ee_group_session_member:
+    action: delete
+    owner: e2ee
+    reason: E2EE 群会话成员
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  enterprise_asset:
+    action: delete
+    owner: enterprise
+    reason: 企业资产
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  enterprise_audit_event:
+    action: retain
+    owner: enterprise
+    reason: 企业审计事件，安全留存
+    mechanism: retention per policy
+    review: pending-owner
+    retention: indefinite
+  enterprise_contact:
+    action: delete
+    owner: enterprise
+    reason: 企业联系人
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  enterprise_contact_assignment:
+    action: delete
+    owner: enterprise
+    reason: 企业联系人经办分配
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  enterprise_contact_identity:
+    action: delete
+    owner: enterprise
+    reason: 企业联系人身份
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  enterprise_conversation:
+    action: delete
+    owner: enterprise
+    reason: 企业会话
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  enterprise_message:
+    action: delete
+    owner: enterprise
+    reason: 企业消息密文
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  enterprise_message_delivery:
+    action: delete
+    owner: enterprise
+    reason: 企业消息投递
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  enterprise_note:
+    action: delete
+    owner: enterprise
+    reason: 企业备注
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  enterprise_offboarding_case:
+    action: delete
+    owner: enterprise
+    reason: 离岗个案（案主数据）
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  enterprise_offboarding_item:
+    action: delete
+    owner: enterprise
+    reason: 离岗个案事项
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  group_member_generation:
+    action: delete
+    owner: groups
+    reason: 群成员代际记录
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  guardian_learner:
+    action: delete
+    owner: teaching
+    reason: 监护-学习者关系，注销即解除
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  homework_submission:
+    action: delete
+    owner: teaching
+    reason: 作业提交（学习者个人数据）
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  learner:
+    action: delete
+    owner: teaching
+    reason: 学习者档案（儿童数据从严删除）
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  review_asset:
+    action: delete
+    owner: teaching
+    reason: 点评附件
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  submission_asset:
+    action: delete
+    owner: teaching
+    reason: 提交附件
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  teacher_review:
+    action: delete
+    owner: teaching
+    reason: 教师点评记录
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  teaching_admin_audit:
+    action: retain
+    owner: teaching
+    reason: 教学管理审计，安全留存
+    mechanism: retention per policy
+    review: pending-owner
+    retention: indefinite
+  moderation_appeal:
+    action: anonymize
+    owner: moderation
+    reason: 申诉记录保留以维持处置链可审计性，身份匿名化
+    mechanism: scrub identity columns
+    review: pending-owner
+    retention: n/a
+  msg_c2g_recipient_snapshot:
+    action: delete
+    owner: messages
+    reason: C2G 收件人快照（消息密文类）
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  msg_c2g_request_ledger:
+    action: delete
+    owner: messages
+    reason: C2G 消息请求台账（消息密文类）
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  organization_member:
+    action: delete
+    owner: organization
+    reason: 用户组织成员行
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  organization_business_identity_assignment:
+    action: delete
+    owner: organization
+    reason: 用户占用的业务身份分配行
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  organization_department_member:
+    action: delete
+    owner: organization
+    reason: 用户部门成员行
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  organization_invitation:
+    action: delete
+    owner: organization
+    reason: 涉该用户的组织邀请
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
 exclusions:
-  _qa_tmp:
-    reason: QA 临时表，无用户数据（建议另行清理）
   adm_role:
     reason: 管理端 RBAC 角色配置，非终端用户数据
   adm_user:
@@ -939,9 +1308,20 @@ exclusions:
     reason: ID 发号器号段
   system_id_segment_stats:
     reason: ID 发号器统计
-
-exclusions:
-  group_category:
-    reason: 系统分类字典（无用户归属列），不属于删除范围
+  enterprise_retention_policy:
+    reason: 组织留存策略配置（组织治理资产，创建人痕迹随 offboarding 转移，不随个人删除）
+  enterprise_retention_hold:
+    reason: 组织留存冻结（组织治理资产，不随个人删除）
+  organization:
+    reason: 组织为多用户共有实体，删除走 offboarding 与所有权转移流程，不随单用户删除
+  organization_business_identity:
+    reason: 组织业务身份为组织资产（用户占用关系行在 tables 的 assignment 条目）
+  organization_default_workspace:
+    reason: 组织默认工作区配置（组织资产）
+  organization_department:
+    reason: 组织部门结构（组织资产）
+  class_profile:
+    reason: 班级档案为机构与班级资产（成员个人行见 class_enrollment 与 class_staff）
   channel_category:
     reason: 系统分类字典（无用户归属列），不属于删除范围
+
