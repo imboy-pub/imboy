@@ -39,6 +39,9 @@
     eb_list_messages/2,
     eb_request_presign/2,
     eb_confirm_asset/2,
+    %% BE-PATCH-01：访客附件字节上传代理
+    eb_put_object/2,
+    api_base/0,
     %% BE-S01b：访客附件内容代理
     eb_content_stream/2
 ]).
@@ -265,6 +268,14 @@ eb_request_presign(OrgId, Params) ->
     enterprise_business_facade:request_presign(OrgId, Params).
 eb_confirm_asset(OrgId, Params) ->
     enterprise_business_facade:confirm_asset(OrgId, Params).
+%% BE-PATCH-01：访客附件字节上传（企业真源既有 put_object：ref open 验过期/
+%% 篡改/同上传人 + contact 会话归属门 + hash/size/mime 复核，widget 零复制）。
+eb_put_object(OrgId, Params) ->
+    enterprise_business_facade:put_object(OrgId, Params).
+%% BE-PATCH-01：API 绝对 URL 基址（{imboy, base_url}，仓内既有派生方式；
+%% 未配置 = 空串，presign 投影据此不加 upload.url——fail-closed）。
+api_base() ->
+    config_ds:env(base_url, <<>>).
 %% BE-S01b：访客附件内容代理（企业真源的 contact 分支，零 URL/key 出站）。
 eb_content_stream(OrgId, Params) ->
     enterprise_business_facade:content_stream(OrgId, Params).
@@ -279,6 +290,10 @@ eb_request_presign(_OrgId, _Params) ->
     {error, enterprise_business_feature_not_selected}.
 eb_confirm_asset(_OrgId, _Params) ->
     {error, enterprise_business_feature_not_selected}.
+eb_put_object(_OrgId, _Params) ->
+    {error, enterprise_business_feature_not_selected}.
+api_base() ->
+    <<>>.
 eb_content_stream(_OrgId, _Params) ->
     {error, enterprise_business_feature_not_selected}.
 -endif.

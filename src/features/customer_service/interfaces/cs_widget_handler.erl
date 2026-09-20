@@ -70,6 +70,11 @@ handle(Action, Req0, State0) ->
             %% 对象字节本体（mime 定 content-type），不落 cs_http:respond 的
             %% JSON 面。
             asset_content(Entry, Req0, State0);
+        {ok, Entry} when Action =:= widget_asset_put ->
+            %% BE-PATCH-01：字节上传代理——payload=请求体字节（非 JSON 线格式，
+            %% asset_content 同款线格式分支先例）；upload_ref 是唯一凭证（FE 裸
+            %% PUT 合同：无凭证头），因此不走 token_credential 门。
+            asset_put(Entry, Req0, State0);
         {ok, Entry} ->
             dispatch(Entry, Req0, State0)
     end.
@@ -266,6 +271,69 @@ content_bin(AssetId) when is_integer(AssetId) ->
     integer_to_binary(AssetId);
 content_bin(Bin) when is_binary(Bin) ->
     Bin.
+
+%% ===================================================================
+%% 字节上传代理（POST .../sessions/:id/assets/upload，BE-PATCH-01）
+%% ===================================================================
+
+%% 与普通动作同链的前半段（传输守卫 → Org → 参数投影），差在两处线格式：
+%%   1. **不要求**凭证头——本端点以 upload_ref（不透明、HMAC、TTL 900s、绑定
+%%      Org/Workspace/conversation/actor/hash/size/mime）为唯一凭证，FE 裸 PUT
+%%      合同（无凭证头/Cookie）；安装级 active 门与会话归属门在 application 用例。
+%%   2. 请求体是**原始字节**（附件内容），不经 JSON 解码——先完成零成本参数
+%%      校验（缺参 422 优先），再读原始体注入 `payload` 键进 facade。
+asset_put(Entry, Req0, _State0) ->
+    case cs_actions:case_for(Entry, cowboy_req:method(Req0)) of
+        {error, method_not_allowed} ->
+            cs_http:reply_error(Req0, method_not_allowed);
+        {ok, Case} ->
+            case transport_guard(Req0) of
+                {error, Reason} ->
+                    cs_http:reply_error(Req0, Reason);
+                ok ->
+                    case cs_http:org_id(Entry, Req0, #{}) of
+                        {error, Reason2} ->
+                            cs_http:reply_error(Req0, Reason2);
+                        {ok, OrgId} ->
+                            asset_put_params(Entry, Case, Req0, OrgId)
+                    end
+            end
+    end.
+
+asset_put_params(Entry, Case, Req0, OrgId) ->
+    %% Derived 只注入服务端时钟（无令牌可派生 secret）；空正文投影让缺参在
+    %% 读字节前 fail-fast（422），不先消费上传体。
+    case cs_http:build_params(Entry, Case, Req0, #{}, #{at => cs_http:now_sec()}) of
+        {error, Reason} ->
+            cs_http:reply_error(Req0, Reason);
+        {ok, Params0} ->
+            case read_upload_body(Req0, []) of
+                {error, Reason2} ->
+                    cs_http:reply_error(Req0, Reason2);
+                {ok, Payload, Req1} ->
+                    Params = Params0#{payload => Payload},
+                    Result = cs_facade_call:call(maps:get(facade, Case), OrgId, Params),
+                    Req2 = dynamic_cors(Req1, origin_or_undefined(Req1), Result),
+                    cs_http:respond(Entry, Req2, Result)
+            end
+    end.
+
+%% 原始体累积读上限：与 presign 申报 size 的企业面上界一致（25 MiB）。
+%% 本地常量而非跨单元引用——接口层只依赖 core/本 feature/facade（铁律 5）；
+%% 真正的 size 语义校验（申报值=实际值、mime sniff、hash 复核）全部在企业
+%% eb_asset_app:put_object，这里是纯传输 DoS 门（超限 400 fail-closed）。
+-define(UPLOAD_MAX_BYTES, 25 * 1024 * 1024).
+
+read_upload_body(Req, Acc) ->
+    case cowboy_req:read_body(Req, #{length => 4 * 1024 * 1024, period => 10000}) of
+        {ok, Data, Req1} ->
+            {ok, iolist_to_binary(lists:reverse([Data | Acc])), Req1};
+        {more, Data, Req1} ->
+            case iolist_size(Acc) + byte_size(Data) > ?UPLOAD_MAX_BYTES of
+                true -> {error, {invalid_param, payload}};
+                false -> read_upload_body(Req1, [Data | Acc])
+            end
+    end.
 
 %% ===================================================================
 %% SSE（GET .../sessions/:id/events）

@@ -137,6 +137,14 @@ widget_literal_routes() ->
             [<<"POST">>],
             cs_visit
         },
+        %% BE-PATCH-01：访客附件字节上传代理（upload_ref 唯一凭证——FE 裸 PUT
+        %% 合同；payload=请求体字节，线格式分支在 cs_widget_handler）。
+        {
+            <<W/binary, "/sessions/:id/assets/upload">>,
+            widget_asset_put,
+            [<<"POST">>],
+            cs_visit
+        },
         %% BE-S01b（api-surface-freeze widget_apis）：访客附件内容代理（对象字节
         %% 本体响应；线格式分支在 cs_widget_handler）。
         {

@@ -650,6 +650,27 @@ table(widget) ->
                 widget_server_derived(),
                 param
             )},
+        %% BE-PATCH-01：字节上传代理（POST .../assets/upload）。upload_ref 是
+        %% 唯一凭证（FE 裸 PUT 合同：无凭证头/Cookie，URL 查询串携带申报键），
+        %% **不要求** visit token 头；payload=请求体字节，不经 JSON 参数表——
+        %% 线格式分支在 cs_widget_handler（asset_content 同款先例），handler 取
+        %% 原始体注入 payload 键。鉴权链：installation active → 会话事实（服务
+        %% 端派生 contact）→ upload_ref open（过期/篡改/同上传人）→ contact
+        %% 会话归属门（全部复用 eb_asset_app:put_object 既有实现）。
+        {widget_asset_put,
+            widget_entry(
+                [
+                    {<<"POST">>, widget_asset_put,
+                        [
+                            {installation_id, tsid, required},
+                            {upload_ref, binary, required}
+                        ],
+                        [{id, session_id}]}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
         %% BE-S01b（api-surface-freeze widget_apis）：访客附件内容代理（GET）。
         %% 响应是对象字节本体（mime 定 content-type），不走 cs_http:respond 的
         %% JSON 面——线格式分支在 cs_widget_handler；此处动作表登记的是解析/

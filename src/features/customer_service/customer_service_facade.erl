@@ -57,6 +57,7 @@
     widget_rate/2,
     widget_asset_upload/2,
     widget_asset_confirm/2,
+    widget_asset_put/2,
     widget_asset_content/2,
     %% seat 会话详情（§12.4 表 2 补缺）
     seat_session_detail/2,
@@ -602,6 +603,39 @@ widget_asset_confirm(
 widget_asset_confirm(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_asset_confirm}};
 widget_asset_confirm(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% BE-PATCH-01：访客附件字节上传代理（POST .../sessions/:session_id/assets/upload）。
+%% upload_ref 是唯一凭证（FE 裸 PUT 合同：无凭证头/Cookie）；payload=请求体字节
+%% （cs_widget_handler 线格式分支注入，非 JSON 参数）。校验链在
+%% `cs_widget_session_app:asset_put/2`：installation active → 默认 Workspace →
+%% 会话事实（服务端派生 contact，浏览器不可申报）→ 企业面 put_object（ref
+%% open 验过期/篡改/同上传人 + contact 会话归属门，既有实现复用）。响应只含
+%% asset 元数据投影，**永不**暴露 storage URL / object key。
+-spec widget_asset_put(integer(), map()) -> term().
+widget_asset_put(
+    OrgId,
+    #{
+        installation_id := InstallationId,
+        session_id := SessionId,
+        upload_ref := UploadRef,
+        payload := Payload
+    } = Params
+) when
+    is_integer(OrgId),
+    is_integer(InstallationId),
+    is_integer(SessionId),
+    is_binary(UploadRef),
+    is_binary(Payload),
+    is_map(Params)
+->
+    case cs_widget_env:merge_visitor(OrgId, Params) of
+        {ok, Merged} -> cs_widget_session_app:asset_put(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
+widget_asset_put(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_asset_put}};
+widget_asset_put(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% BE-S01b：访客附件内容代理（GET .../sessions/:session_id/assets/:asset_id/content，

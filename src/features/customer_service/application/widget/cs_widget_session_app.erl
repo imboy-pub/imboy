@@ -28,6 +28,8 @@
     rate/2,
     asset_presign/2,
     asset_confirm/2,
+    %% BE-PATCH-01：访客附件字节上传代理
+    asset_put/2,
     %% BE-S01b：访客附件内容代理
     asset_content/2
 ]).
@@ -352,10 +354,70 @@ asset_presign(OrgId, Params) when is_map(Params) ->
                     actor_contact_id => ContactId
                 }
             ),
-            cs_widget_support:eb_request_presign(OrgId, EbParams)
+            case cs_widget_support:eb_request_presign(OrgId, EbParams) of
+                {ok, View} ->
+                    {ok, with_upload_url(OrgId, Params, Session, View)};
+                {error, _} = Err2 ->
+                    Err2
+            end
     end;
 asset_presign(_OrgId, _Params) ->
     {error, {invalid_argument, asset_presign}}.
+
+%% BE-PATCH-01：presign 响应补本 widget 代理端点的裸 PUT 目标（绝对 https
+%% URL）。代理端点不是对象存储——不含 object key / storage 引用，不违反
+%% 「永不出对象 URL」；url 查询串携带 organization_id / installation_id /
+%% upload_ref（裸 PUT 的唯一凭证），FE 检测到 upload.url 即零改动闭环。
+%% base_url 未配置（或非 https）→ 不加 url（fail-closed，与现状同形）。
+with_upload_url(OrgId, Params, Session, View) ->
+    case upload_proxy_url(OrgId, Params, Session, View) of
+        undefined ->
+            View;
+        Url ->
+            Upload = maps:get(upload, View, #{}),
+            View#{upload := Upload#{url => Url, method => <<"PUT">>}}
+    end.
+
+upload_proxy_url(OrgId, Params, Session, View) ->
+    Base = cs_widget_support:api_base(),
+    case is_https_base(Base) of
+        false ->
+            undefined;
+        true ->
+            SessionId = maps:get(id, Session, undefined),
+            Ref = maps:get(upload_ref, View, undefined),
+            InstallationId = maps:get(installation_id, Params, undefined),
+            case
+                is_integer(SessionId) andalso is_integer(InstallationId) andalso
+                    is_binary(Ref) andalso Ref =/= <<>>
+            of
+                true ->
+                    Path = upload_path(SessionId),
+                    Query = uri_string:compose_query([
+                        {<<"organization_id">>, integer_to_binary(OrgId)},
+                        {<<"installation_id">>, integer_to_binary(InstallationId)},
+                        {<<"upload_ref">>, Ref}
+                    ]),
+                    <<Base/binary, Path/binary, $?, Query/binary>>;
+                false ->
+                    undefined
+            end
+    end.
+
+upload_path(SessionId) ->
+    iolist_to_binary([
+        <<"/api/v1/cs/widget/sessions/">>,
+        integer_to_binary(SessionId),
+        <<"/assets/upload">>
+    ]).
+
+is_https_base(Base) when is_binary(Base) ->
+    case Base of
+        <<"https://", _Rest/binary>> -> true;
+        _ -> false
+    end;
+is_https_base(_) ->
+    false.
 
 %% @doc 访客附件确认（confirm 重新鉴权：本用例先裁决令牌作用域，再进
 %% enterprise confirm 面）。
@@ -378,6 +440,66 @@ asset_confirm(OrgId, Params) when is_map(Params) ->
     end;
 asset_confirm(_OrgId, _Params) ->
     {error, {invalid_argument, asset_confirm}}.
+
+%% @doc 访客附件字节上传代理（BE-PATCH-01）：
+%% POST .../sessions/:session_id/assets/upload，payload=请求体字节。
+%%
+%% FE 裸 PUT 合同（无凭证头/Cookie）⇒ 本用例**不验 bootstrap 令牌**，鉴权链
+%% 改由以下服务端事实+企业面既有实现构成（逐项）：
+%%   1. installation 事实：installation_id 必须命中本 Org 且 active（kill switch）；
+%%   2. 默认 Workspace：env 注入事实（fail-closed）；
+%%   3. 会话事实：session 必须命中 (Org, Workspace)，其 contact 行值是**服务端
+%%      派生**的访客主体（浏览器不可申报）；
+%%   4. `eb_asset_app:put_object`（既有实现复用）：upload_ref open（HMAC 防篡改/
+%%      过期/跨 Org/Workspace/conversation 作用域）+ ref claim 的 contact 与本
+%%      会话 contact 逐字比对（同上传人门）+ contact 会话归属门 + hash/size/mime
+%%      服务端复核——走私字节/偷换内容在此 fail-closed。
+%% 响应只含 asset 元数据投影，**永不**暴露 storage URL / object key。
+-spec asset_put(integer(), map()) -> {ok, map()} | {error, term()}.
+asset_put(OrgId, Params) when is_map(Params) ->
+    InstallationId = maps:get(installation_id, Params, undefined),
+    case cs_widget_support:fetch_installation(Params, OrgId, InstallationId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Installation} ->
+            case cs_widget_support:installation_active(Installation) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, _Active} ->
+                    asset_put_in(OrgId, Params)
+            end
+    end;
+asset_put(_OrgId, _Params) ->
+    {error, {invalid_argument, asset_put}}.
+
+asset_put_in(OrgId, Params) ->
+    case cs_widget_support:resolve_default_workspace(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            Clean = maps:with([store, id], Params),
+            SessionId = maps:get(session_id, Params, undefined),
+            case
+                cs_widget_support:session_fetch(OrgId, Clean#{
+                    workspace_id => WorkspaceId, session_id => SessionId
+                })
+            of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, Session} ->
+                    EbParams = cs_widget_support:eb_params(
+                        Params,
+                        #{
+                            workspace_id => WorkspaceId,
+                            upload_ref => maps:get(upload_ref, Params, undefined),
+                            payload => maps:get(payload, Params, undefined),
+                            %% 服务端派生主体：会话行的 contact（不是任何客户端申报值）。
+                            actor_contact_id => maps:get(contact_id, Session)
+                        }
+                    ),
+                    cs_widget_support:eb_put_object(OrgId, EbParams)
+            end
+    end.
 
 %% @doc 访客附件内容代理（BE-S01b，api-surface-freeze widget_apis）：
 %% GET .../sessions/:session_id/assets/:asset_id/content。
