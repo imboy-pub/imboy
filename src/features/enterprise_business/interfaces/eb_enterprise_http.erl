@@ -644,6 +644,10 @@ textual_status(Tag) ->
         _ -> unknown
     end.
 
+%% BE-S01a（T-2 裁定）：recipient_ref 前缀合同是**请求形状**（允许前缀集
+%% 冻结为 contact|identity；`seat:` 前缀即 400），不是域值不成立——显式
+%% 登记覆盖 invalid_* 形状兜底的 422。
+enterprise_status({invalid_recipient_ref, _}) -> ?ERR_BAD_REQUEST;
 enterprise_status(no_member) -> ?ERR_FORBIDDEN;
 enterprise_status({no_member, _}) -> ?ERR_FORBIDDEN;
 enterprise_status({forbidden, _}) -> ?ERR_FORBIDDEN;

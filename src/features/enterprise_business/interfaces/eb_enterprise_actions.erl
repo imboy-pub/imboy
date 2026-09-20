@@ -273,6 +273,8 @@ table(tenant) ->
                 false
             )},
         %% A06：企业 message ACK **只**写 delivery（delivery_only = true）。
+        %% BE-S01a：职能白名单扩为 sales|customer_service（与路由侧同步；
+        %% 坐席经办 ACL 在 eb_message_app 的 seat 门，sales 行为不变）。
         {ack_delivery,
             entry(
                 tenant,
@@ -282,10 +284,13 @@ table(tenant) ->
                             {id, conversation_id}, {message_id, message_id}
                         ]}
                 ],
-                member_auth(<<"message.write">>),
+                member_auth(<<"message.write">>, [<<"sales">>, <<"customer_service">>]),
                 true,
                 false
             )},
+        %% BE-S01a：附件三动作职能白名单扩为 sales|customer_service（坐席
+        %% 上传/确认/读取；经办 ACL 由 eb_asset_scope 的 assignee 门对全员
+        %% 生效——sales 行为不变）。
         {presign,
             entry(
                 tenant,
@@ -302,7 +307,7 @@ table(tenant) ->
                         ],
                         []}
                 ],
-                member_auth(<<"asset.write">>),
+                member_auth(<<"asset.write">>, [<<"sales">>, <<"customer_service">>]),
                 false,
                 false
             )},
@@ -310,7 +315,7 @@ table(tenant) ->
             entry(
                 tenant,
                 [{<<"POST">>, confirm_asset, [{upload_ref, binary, required}], []}],
-                member_auth(<<"asset.write">>),
+                member_auth(<<"asset.write">>, [<<"sales">>, <<"customer_service">>]),
                 false,
                 false
             )},
@@ -319,7 +324,7 @@ table(tenant) ->
             entry(
                 tenant,
                 [{<<"GET">>, content_stream, [], [{id, asset_id}]}],
-                member_auth(<<"asset.read">>),
+                member_auth(<<"asset.read">>, [<<"sales">>, <<"customer_service">>]),
                 false,
                 true
             )},

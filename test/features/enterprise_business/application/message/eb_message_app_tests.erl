@@ -58,6 +58,8 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a05_realtime_failure_does_not_roll_back_committed_truth/0},
         {timeout, 60, fun a05_notification_carries_only_resource_ids_after_commit/0},
         {timeout, 60, fun a06_ack_is_idempotent_and_leaves_canonical_untouched/0},
+        %% BE-S01a：ACK 的坐席经办 ACL + recipient_ref 前缀合同（T-2 裁定）。
+        {timeout, 60, fun s01a_ack_seat_assignee_acl_and_recipient_contract/0},
         {timeout, 60, fun a06_hide_and_authorization_events_do_not_change_canonical/0},
         {timeout, 60, fun a06_no_personal_ack_or_archive_chain_is_used/0},
         {timeout, 60, fun a08_commit_failure_yields_no_acceptance_and_retry_is_exactly_one/0},
@@ -502,6 +504,70 @@ a05_notification_carries_only_resource_ids_after_commit() ->
     end.
 
 %% ===================================================================
+%% BE-S01a：ACK 坐席经办 ACL + recipient_ref 前缀合同（T-2 裁定）
+%% ===================================================================
+
+s01a_ack_seat_assignee_acl_and_recipient_contract() ->
+    Scope = ?FIX:new_scope(),
+    try
+        {Org, Ws} = tenant(Scope),
+        Sales = maps:get(sales_identity_id, Scope),
+        Service = maps:get(service_identity_id, Scope),
+        {ok, First} = eb_message_app:append_message(Org, base_params(Scope, <<"s01a-ack-1">>)),
+        MessageId = maps:get(message_id, First),
+        %% 会话经办 = Sales（fixture 的 enterprise_conversation.business_identity_id）。
+        SeatCtx = #{
+            workspace_id => Ws,
+            message_id => MessageId,
+            device_id => <<"s01a-seat-1">>,
+            acked_at => now_secs(),
+            caller_function_key => <<"customer_service">>
+        },
+        %% ① 经办坐席以自己 identity 为收件人 ACK：成功。
+        {ok, Acked} = eb_message_app:ack_delivery(Org, SeatCtx#{
+            caller_identity_id => Sales,
+            recipient_ref => <<"identity:", (integer_to_binary(Sales))/binary>>
+        }),
+        ?assertEqual(delivered, maps:get(status, maps:get(delivery, Acked))),
+        %% ② 非经办坐席（同 Org 其他 CS identity）：403 not_assignee。
+        ?assertMatch(
+            {error, {forbidden, not_assignee}},
+            eb_message_app:ack_delivery(Org, SeatCtx#{
+                caller_identity_id => Service,
+                recipient_ref => <<"identity:", (integer_to_binary(Service))/binary>>
+            })
+        ),
+        %% ③ 经办坐席但收件人不是自己：403 not_recipient。
+        ?assertMatch(
+            {error, {forbidden, not_recipient}},
+            eb_message_app:ack_delivery(Org, SeatCtx#{
+                caller_identity_id => Sales,
+                recipient_ref => <<"identity:", (integer_to_binary(Service))/binary>>
+            })
+        ),
+        %% ④ sales 保持原行为：无 caller_function_key 时不走坐席门
+        %% （contact 收件人照旧 ACK 成功；坐席门只对 CS 职能生效）。
+        SalesCtx = maps:remove(caller_function_key, SeatCtx),
+        {ok, _} = eb_message_app:ack_delivery(Org, SalesCtx#{
+            recipient_ref => <<"contact:", (integer_to_binary(maps:get(contact_id, Scope)))/binary>>
+        }),
+        %% ⑤ T-2 合同：seat: 前缀形状不合（与 DB CHECK 同口径），
+        %% 触库前拒绝且映射 400（不再落到 invalid_* 形犴兑底 422）。
+        ?assertMatch(
+            {error, {invalid_recipient_ref, <<"seat:", _/binary>>}},
+            eb_message_app:ack_delivery(Org, SeatCtx#{
+                caller_identity_id => Sales,
+                recipient_ref => <<"seat:", (integer_to_binary(Sales))/binary>>
+            })
+        ),
+        ?assertEqual(
+            400, eb_enterprise_http:status({invalid_recipient_ref, <<"seat:1">>})
+        )
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+%% ===================================================================
 %% A06：ACK 幂等 + canonical 不变
 %% ===================================================================
 
@@ -776,7 +842,7 @@ csb02s_d5_list_decrypts_with_keyring() ->
             accepted_at => now_secs()
         }),
         %% 读回密文列的保真性自证：content_hash 是入库时对密文摘要的锚。
-        {ok, Raw} = ?FIX:store():list_messages_after(Org, Ws, #{
+        {ok, Raw} = (?FIX:store()):list_messages_after(Org, Ws, #{
             conversation_id => Conv, after_id => 0, limit => 200
         }),
         RawMine = hd([R || R <- Raw, maps:get(client_msg_id, R, undefined) =:= <<"d5-decrypt-1">>]),

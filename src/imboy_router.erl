@@ -1681,31 +1681,35 @@ enterprise_tenant_routes() ->
                 required_permission => <<"conversation.read">>
             }},
         % ACK 是 delivery-only 动作（eb_enterprise_actions:ack_delivery 的
-        % delivery_only=true）：响应不含删除/归档语义（EB-09-A06）
+        % delivery_only=true）：响应不含删除/归档语义（EB-09-A06）。
+        % BE-S01a（勘察缺口 J05/J07）：ACK/presign/confirm/content 四动作的
+        % 职能白名单扩为 sales|customer_service——此前 sales-only 把坐席挡死
+        % （403）；坐席的会话经办 ACL 在 application 层裁决（附件三动作
+        % eb_asset_scope 全员门 + ACK 的 seat 门），sales 行为不变。
         {"/api/v1/enterprise/organizations/:org_id/conversations/:id/messages/:message_id/ack",
             eb_tenant_handler, #{
                 action => ack_delivery,
                 auth_context => enterprise_member,
-                required_function => <<"sales">>,
+                required_function => [<<"sales">>, <<"customer_service">>],
                 required_permission => <<"message.write">>
             }},
         {"/api/v1/enterprise/organizations/:org_id/assets/presign", eb_tenant_handler, #{
             action => presign,
             auth_context => enterprise_member,
-            required_function => <<"sales">>,
+            required_function => [<<"sales">>, <<"customer_service">>],
             required_permission => <<"asset.write">>
         }},
         {"/api/v1/enterprise/organizations/:org_id/assets/confirm", eb_tenant_handler, #{
             action => confirm_asset,
             auth_context => enterprise_member,
-            required_function => <<"sales">>,
+            required_function => [<<"sales">>, <<"customer_service">>],
             required_permission => <<"asset.write">>
         }},
         % content 经 facade 取流并流式返回，不签发任何 URL（EB-09-A05）
         {"/api/v1/enterprise/organizations/:org_id/assets/:id/content", eb_tenant_handler, #{
             action => asset_content,
             auth_context => enterprise_member,
-            required_function => <<"sales">>,
+            required_function => [<<"sales">>, <<"customer_service">>],
             required_permission => <<"asset.read">>
         }},
         {"/api/v1/enterprise/organizations/:org_id/members/:uid/suspend", eb_tenant_handler, #{

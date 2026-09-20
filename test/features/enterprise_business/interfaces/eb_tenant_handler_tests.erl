@@ -774,9 +774,24 @@ a05_asset_content_negative_cases_through_http() ->
         ),
         ok = eb_asset_it_lib:add_member(Org, Peer),
         ok = eb_asset_it_lib:add_member(Org, Other),
+        NoFunction = ?FIX:id(),
+        ok = ?FIX:exec(
+            <<
+                "INSERT INTO \"user\"(id,password,account,reg_ip,reg_cosv)"
+                " VALUES ($1,'x',$2,'127.0.0.1','x')"
+            >>,
+            [NoFunction, <<"eb09-nofn-", (integer_to_binary(NoFunction))/binary>>]
+        ),
+        ok = eb_asset_it_lib:add_member(Org, NoFunction),
         ok = eb_asset_it_lib:assignment_for(Org, Ws, Peer, Service, <<"customer_service">>),
         ok = eb_asset_it_lib:assignment_for(Org, Ws, Other, ExtraSales, <<"sales">>),
-        %% 每个负例断言**精确**的状态码与稳定标签（不是「403 或 404」的宽松集合）
+        %% 每个负例断言**精确**的状态码与稳定标签（不是「403 或 404」的宽松集合）。
+        %% BE-S01a：四动作职能白名单扩为 sales|customer_service——
+        %% 值域只有这两个 function_key（eb_identity:function_keys/0），
+        %% 白名单后 function_mismatch 对真实 assignment 已不可达：
+        %% CS 坐席（Peer）过职能门后落进 eb_asset_scope 的经办门
+        %% （403 not_assignee；正是本卡要的坐席 ACL）；无任何经办
+        %% 职能的成员落 identity_assignment_missing（403，fail-closed）。
         Cases = [
             {cross_org_no_member, Peer, #{org_id => OtherOrg, id => AssetId}, Ws,
                 {403, <<"no_member">>}},
@@ -784,8 +799,10 @@ a05_asset_content_negative_cases_through_http() ->
                 {404, <<"not_found">>}},
             {guessed_asset_id, Actor, #{org_id => Org, id => ?FIX:id()}, Ws,
                 {404, <<"not_found">>}},
-            {function_mismatch, Peer, #{org_id => Org, id => AssetId}, Ws,
-                {403, <<"function_mismatch">>}},
+            {no_assignment, NoFunction, #{org_id => Org, id => AssetId}, Ws,
+                {403, <<"identity_assignment_missing">>}},
+            {cs_seat_not_assignee, Peer, #{org_id => Org, id => AssetId}, Ws,
+                {403, <<"forbidden.not_assignee">>}},
             {not_assignee_other_sales_identity, Other, #{org_id => Org, id => AssetId}, Ws,
                 {403, <<"forbidden.not_assignee">>}}
         ],
