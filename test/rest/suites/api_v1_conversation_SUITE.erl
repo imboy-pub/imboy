@@ -54,6 +54,10 @@ init_per_suite(Config0) ->
         }),
         SignKey
     ),
+    %% The login path writes the user_device row through gen_server:cast
+    %% after the HTTP answer; the JWT gate rejects tokens until the row is
+    %% active, so every fixture login is followed by the shared wait.
+    ok = rest_fixture:await_device_active(uid(UserA), maps:get(did, UserA)),
     UserB = rest_fixture:login(
         rest_fixture:create_user(#{
             account => <<"rest-convb-", Suffix/binary>>,
@@ -62,6 +66,7 @@ init_per_suite(Config0) ->
         }),
         SignKey
     ),
+    ok = rest_fixture:await_device_active(uid(UserB), maps:get(did, UserB)),
     [
         {http_port, Port},
         {user_a, UserA},
@@ -336,7 +341,9 @@ seed_c2c_msg(FromUid, ToUid) ->
         <<"content">> => <<"rest-conversation-seed ", MsgId/binary>>
     },
     Now = erlang:system_time(millisecond),
-    {ok, _Count} = msg_c2c_ds:write_msg(Now, MsgId, PayloadMap, FromUid, ToUid, Now),
+    %% The production repo answers the plain atom ok on success
+    %% (msg_c2c_repo: {ok, Count} when Count > 0 -> ok).
+    ok = msg_c2c_ds:write_msg(Now, MsgId, PayloadMap, FromUid, ToUid, Now),
     {MsgId, PayloadMap}.
 
 uid(User) ->

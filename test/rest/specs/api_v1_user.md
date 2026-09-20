@@ -65,7 +65,7 @@ The client posts a profile update body with `Authorization: Bearer <tampered>` a
 - HTTP status is `401`.
 - Envelope `code` is `706` (`ERR_TOKEN_MALFORMED`) with empty `payload` and non-empty `msg` (`Invalid token` / `Invalid token.`, branch-dependent).
 
-### USER-EXPIRED: expired token on user/update (deterministic construction)
+### USER-004: expired token on user/update (deterministic construction)
 
 #### Given
 
@@ -118,7 +118,7 @@ The client posts `{existing_pwd, new_pwd, rsa_encrypt="0"}` to `/api/v1/user/cha
 
 ## Deliberately not covered here
 
-- **Signature boundary on user/update (902)**: already covered as LOGIN-005 against the same `auth_ds:verify_sign/2` gate; USER-002/003/USER-EXPIRED intentionally carry valid signatures so they exercise the JWT boundary, not the signature boundary.
+- **Signature boundary on user/update (902)**: already covered as LOGIN-005 against the same `auth_ds:verify_sign/2` gate; USER-002/003/004 intentionally carry valid signatures so they exercise the JWT boundary, not the signature boundary.
 - **Rate limit (429)**: deferred to a dedicated suite per plan §4. The CT environment raises `passport_per_ip` to 120/min (`config/sys.local.config`), so the fixture logins in this suite stay far below the production default of 10/min; noted because USER-006 performs three logins.
 - **Malformed JSON / invalid field type on user/update**: covered by the login golden suite at the middleware/parsing layer (LOGIN-004) and by `user_agg` EUnit for field validation; the REST batch keeps to the plan's V1 category minimum for this domain.
 

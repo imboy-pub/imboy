@@ -50,6 +50,10 @@ init_per_suite(Config0) ->
         }),
         SignKey
     ),
+    %% The login path writes the user_device row through gen_server:cast
+    %% after the HTTP answer; the JWT gate rejects tokens until the row is
+    %% active, so every fixture login is followed by the shared wait.
+    ok = rest_fixture:await_device_active(uid(UserA), maps:get(did, UserA)),
     [
         {http_port, Port},
         {user_a, UserA},

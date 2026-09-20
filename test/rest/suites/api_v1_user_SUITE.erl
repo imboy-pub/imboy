@@ -19,7 +19,7 @@
     user_001_show_with_valid_token/1,
     user_002_missing_authorization/1,
     user_003_tampered_token/1,
-    user_expired_expired_token/1,
+    user_004_expired_token/1,
     user_005_cross_user_isolation/1,
     user_006_change_password_lifecycle/1
 ]).
@@ -33,7 +33,7 @@ all() ->
         user_001_show_with_valid_token,
         user_002_missing_authorization,
         user_003_tampered_token,
-        user_expired_expired_token,
+        user_004_expired_token,
         user_005_cross_user_isolation,
         user_006_change_password_lifecycle
     ].
@@ -45,6 +45,12 @@ all() ->
 init_per_suite(Config0) ->
     Config = eunit_runner:ct_suite_setup(Config0),
     ok = application:set_env(imboy, api_auth_switch, <<"on">>),
+    %% The USER cases log in 7 fixture users per run; the passport per-IP
+    %% bucket default (10/min) leaves too little headroom once other
+    %% suites share the same 127.0.0.1 bucket in the same minute.
+    %% Capacity configuration for the test environment, not a bypass of
+    %% any behavior under test (rate limiting is not in this batch's list).
+    ok = rest_fixture:ensure_login_throttle_capacity(),
     Port = ranch:get_port(imboy_listener),
     SignKey = rest_fixture:ensure_sign_key(),
     [{http_port, Port}, {sign_key, SignKey} | Config].
@@ -152,7 +158,7 @@ user_003_tampered_token(Config) ->
 %% signature-valid and reliably expired. do_authorization maps 705 to a
 %% real HTTP 401 with "Please refresh token". The middleware stops the
 %% request before user_handler:update/2, so no profile data changes.
-user_expired_expired_token(Config) ->
+user_004_expired_token(Config) ->
     SignKey = ?config(sign_key, Config),
     {User, LoggedIn} = login_ready(SignKey),
     Uid = maps:get(uid, User),
@@ -173,7 +179,7 @@ user_expired_expired_token(Config) ->
     Headers = bearer_headers(LoggedIn, SignKey, ExpiredToken),
     Response = rest_client:post(?config(http_port, Config), ?UPDATE_PATH, Request, Headers),
     verify(
-        <<"USER-EXPIRED">>,
+        <<"USER-004">>,
         Request,
         Response,
         #{<<"http_status">> => 401, <<"code">> => ?ERR_TOKEN_EXPIRED_REFRESHABLE},
@@ -341,29 +347,16 @@ method_for(<<"USER-001">>) -> <<"GET">>;
 method_for(_) -> <<"POST">>.
 
 %% Create a user and log it in through the real passport/login, then wait
-%% for the asynchronously written user_device row. Without the wait the
-%% JWT gate and the refresh handler would both reject the fresh token with
-%% "device removed" (user_device_ds:is_active/2).
+%% for the asynchronously written user_device row (rest_fixture:
+%% await_device_active/2). Without the wait the JWT gate and the refresh
+%% handler would both reject the fresh token with "device removed"
+%% (user_device_ds:is_active/2).
 login_ready(SignKey) ->
     User = rest_fixture:create_user(#{nickname => unique_nickname(<<"base">>)}),
     LoggedIn = rest_fixture:login(User, SignKey),
     #{uid := Uid, did := Did} = LoggedIn,
-    ok = await_device_active(Uid, Did),
+    ok = rest_fixture:await_device_active(Uid, Did),
     {User, LoggedIn}.
-
-await_device_active(Uid, Did) ->
-    await_device_active(Uid, Did, 50).
-
-await_device_active(_Uid, _Did, 0) ->
-    ct:fail(device_row_not_visible);
-await_device_active(Uid, Did, Attempts) ->
-    case user_device_logic:is_active(Uid, Did) of
-        true ->
-            ok;
-        false ->
-            timer:sleep(100),
-            await_device_active(Uid, Did, Attempts - 1)
-    end.
 
 show_path(Uid) ->
     <<?SHOW_PATH/binary, "?id=", (integer_to_binary(Uid))/binary>>.

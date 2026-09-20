@@ -43,6 +43,11 @@ all() ->
 init_per_suite(Config0) ->
     Config = eunit_runner:ct_suite_setup(Config0),
     ok = application:set_env(imboy, api_auth_switch, <<"on">>),
+    %% FRIEND cases log in 12 fixture users per run; the passport per-IP
+    %% bucket default (10/min) would answer 429 to later logins. Capacity
+    %% configuration for the test environment, not a bypass of any
+    %% behavior under test (rate limiting is not in this batch's list).
+    ok = rest_fixture:ensure_login_throttle_capacity(),
     Port = ranch:get_port(imboy_listener),
     SignKey = rest_fixture:ensure_sign_key(),
     [{http_port, Port}, {sign_key, SignKey} | Config].
@@ -390,7 +395,10 @@ friend_pair(Config) ->
     {login_user(Config), login_user(Config)}.
 
 login_user(Config) ->
-    rest_fixture:login(rest_fixture:create_user(#{}), ?config(sign_key, Config)).
+    LoggedIn = rest_fixture:login(rest_fixture:create_user(#{}), ?config(sign_key, Config)),
+    %% The JWT gate needs the asynchronously written user_device row.
+    ok = rest_fixture:await_device_active(uid(LoggedIn), maps:get(did, LoggedIn)),
+    LoggedIn.
 
 uid(#{uid := Uid}) ->
     Uid.

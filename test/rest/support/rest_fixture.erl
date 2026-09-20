@@ -10,6 +10,8 @@
     signed_headers/2,
     login/2,
     auth_header/1,
+    await_device_active/2,
+    ensure_login_throttle_capacity/0,
     ensure_ct_priv_alias/0,
     ensure_sign_key/0
 ]).
@@ -188,6 +190,45 @@ login(User, SignKey) ->
 -spec auth_header(map()) -> map().
 auth_header(#{authorization := Auth}) ->
     #{<<"authorization">> => Auth}.
+
+%% The login success path writes the user_device row through
+%% gen_server:cast (user_server {login_success, ...}) only after the HTTP
+%% answer is already on the wire, while both the refresh handler and the
+%% JWT gate reject tokens whose device row is not active yet. Waiting on
+%% the production predicate user_device_logic:is_active/2 synchronizes
+%% the fixture without touching shared code. Cap: 100 x 50 ms = 5 s.
+-spec await_device_active(integer(), binary()) -> ok.
+await_device_active(Uid, Did) ->
+    await_device_active(Uid, Did, 100).
+
+await_device_active(_Uid, _Did, 0) ->
+    erlang:error(device_row_not_visible);
+await_device_active(Uid, Did, Attempts) ->
+    case user_device_logic:is_active(Uid, Did) of
+        true ->
+            ok;
+        false ->
+            timer:sleep(50),
+            await_device_active(Uid, Did, Attempts - 1)
+    end.
+
+%% Test-environment CAPACITY configuration, not a bypass of any behavior
+%% under test (rate-limit semantics are not in this batch's tested
+%% contract list): throttle_middleware gates POST /api/v1/passport/*
+%% through the passport_per_ip scope via throttle:check/2 on every
+%% request. The rule itself is registered once at app boot
+%% (imboy_app:init_throttle_rates/0, default 10/min; the {throttle, rates}
+%% env override is read only at boot), and the per-request check reads the
+%% registered rule, not the env — so a post-boot application:set_env has
+%% no effect on the live ceiling. Re-registering the scope with the same
+%% primitive the product uses (throttle:setup/3; throttle_sup is
+%% simple_one_for_one and the fresh child re-initializes the driver
+%% limit) raises it. Domain suites that log in more than 6 fixture users
+%% per run call this from init_per_suite so the shared 127.0.0.1 passport
+%% bucket does not hand 429s to fixture logins.
+-spec ensure_login_throttle_capacity() -> ok.
+ensure_login_throttle_capacity() ->
+    ok = throttle:setup(passport_per_ip, 300, per_minute).
 
 login_port() ->
     ranch:get_port(imboy_listener).

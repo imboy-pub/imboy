@@ -39,11 +39,16 @@ all() ->
 
 %% Real application through the project's standard CT entry (config load,
 %% core dependency apps, serialized boot with scratch-database migrations).
-%% msg_archive_enabled comes from the loaded config (true in
-%% config/sys.local.config), so msg_store-backed history is available.
+%% msg_archive_enabled is injected explicitly below (same style as
+%% api_auth_switch): msg_store-backed history is required by MSG-001/002
+%% and must not depend on the ambient test config carrying the flag.
 init_per_suite(Config0) ->
     Config = eunit_runner:ct_suite_setup(Config0),
     ok = application:set_env(imboy, api_auth_switch, <<"on">>),
+    %% The archive switch is read per call through application:get_env
+    %% (msg_store_worker:maybe_archive/1), so a post-boot injection is
+    %% effective without a restart.
+    ok = application:set_env(imboy, msg_archive_enabled, true),
     Port = ranch:get_port(imboy_listener),
     SignKey = rest_fixture:ensure_sign_key(),
 
@@ -56,6 +61,10 @@ init_per_suite(Config0) ->
         }),
         SignKey
     ),
+    %% The login path writes the user_device row through gen_server:cast
+    %% after the HTTP answer; the JWT gate rejects tokens until the row is
+    %% active, so every fixture login is followed by the shared wait.
+    ok = rest_fixture:await_device_active(uid(UserA), maps:get(did, UserA)),
     UserB = rest_fixture:login(
         rest_fixture:create_user(#{
             account => <<"rest-msgb-", Suffix/binary>>,
@@ -64,6 +73,7 @@ init_per_suite(Config0) ->
         }),
         SignKey
     ),
+    ok = rest_fixture:await_device_active(uid(UserB), maps:get(did, UserB)),
     [
         {http_port, Port},
         {user_a, UserA},
@@ -485,11 +495,16 @@ seed_archive_msgs(FromUid, ToUid, N) ->
             ]
     ].
 
+%% Odd rows travel From->To, even rows To->From, so the seeded history is
+%% a real two-way conversation under the direction-agnostic
+%% c2c:<min>:<max> conv key. (An earlier draft took both endpoints from
+%% the same side, producing self-to-self rows whose conv key never
+%% matched the queried one.)
 pick_sender(FromUid, _ToUid, I) when I rem 2 =:= 1 -> FromUid;
 pick_sender(_FromUid, ToUid, _I) -> ToUid.
 
-pick_receiver(FromUid, _ToUid, I) when I rem 2 =:= 1 -> FromUid;
-pick_receiver(_FromUid, ToUid, _I) -> ToUid.
+pick_receiver(_FromUid, ToUid, I) when I rem 2 =:= 1 -> ToUid;
+pick_receiver(FromUid, _ToUid, _I) -> FromUid.
 
 %% Seed one real msg_c2c row through the production write path.
 seed_c2c_msg(FromUid, ToUid) ->
@@ -499,7 +514,9 @@ seed_c2c_msg(FromUid, ToUid) ->
         <<"content">> => <<"rest-reaction-seed ", MsgId/binary>>
     },
     Now = erlang:system_time(millisecond),
-    {ok, _Count} = msg_c2c_ds:write_msg(Now, MsgId, PayloadMap, FromUid, ToUid, Now),
+    %% The production repo answers the plain atom ok on success
+    %% (msg_c2c_repo: {ok, Count} when Count > 0 -> ok).
+    ok = msg_c2c_ds:write_msg(Now, MsgId, PayloadMap, FromUid, ToUid, Now),
     {MsgId, PayloadMap}.
 
 uid(User) ->

@@ -56,7 +56,7 @@ auth_001_valid_refreshtoken_exchange(Config) ->
     #{uid := Uid} = User = rest_fixture:create_user(#{}),
     LoggedIn = rest_fixture:login(User, SignKey),
     #{did := Did, refreshtoken := Rtk} = LoggedIn,
-    ok = await_device_active(Uid, Did),
+    ok = rest_fixture:await_device_active(Uid, Did),
 
     Request = #{},
     Headers = maps:merge(
@@ -94,7 +94,7 @@ auth_002_missing_refreshtoken(Config) ->
     #{uid := Uid} = User = rest_fixture:create_user(#{}),
     LoggedIn = rest_fixture:login(User, SignKey),
     #{did := Did} = LoggedIn,
-    ok = await_device_active(Uid, Did),
+    ok = rest_fixture:await_device_active(Uid, Did),
 
     Request = #{},
     Headers = rest_fixture:signed_headers(Did, SignKey),
@@ -122,7 +122,7 @@ auth_003_tampered_refreshtoken(Config) ->
     #{uid := Uid} = User = rest_fixture:create_user(#{}),
     LoggedIn = rest_fixture:login(User, SignKey),
     #{did := Did, refreshtoken := Rtk} = LoggedIn,
-    ok = await_device_active(Uid, Did),
+    ok = rest_fixture:await_device_active(Uid, Did),
 
     Request = #{},
     Headers = maps:merge(
@@ -168,23 +168,10 @@ nonempty_binary(Value) ->
     is_binary(Value) andalso byte_size(Value) > 0.
 
 %% The login success path writes the user_device row through
-%% gen_server:cast (user_server {login_success, ...}), while both the
-%% refresh handler and the JWT gate reject tokens whose device row is not
-%% active yet. Waiting on the production predicate user_device_logic:
-%% is_active/2 synchronizes the fixture without touching shared code.
-await_device_active(Uid, Did) ->
-    await_device_active(Uid, Did, 50).
-
-await_device_active(_Uid, _Did, 0) ->
-    ct:fail(device_row_not_visible);
-await_device_active(Uid, Did, Attempts) ->
-    case user_device_logic:is_active(Uid, Did) of
-        true ->
-            ok;
-        false ->
-            timer:sleep(100),
-            await_device_active(Uid, Did, Attempts - 1)
-    end.
+%% gen_server:cast, while both the refresh handler and the JWT gate reject
+%% tokens whose device row is not active yet; the shared fixture wait
+%% (rest_fixture:await_device_active/2) synchronizes on the production
+%% predicate user_device_logic:is_active/2 without touching shared code.
 
 %% Flip the final character of a JWT so the HMAC no longer verifies while
 %% the token stays structurally parseable.
