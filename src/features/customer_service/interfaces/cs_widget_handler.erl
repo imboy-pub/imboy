@@ -545,10 +545,14 @@ poll_messages(OrgId, Params, Cursor) ->
 sort_messages(Messages) ->
     lists:sort(fun(A, B) -> message_id(A) =< message_id(B) end, Messages).
 
-%% facade 参数收敛：只留注入键 + 游标/页大小键（session 级键不出流循环）。
+%% facade 参数收敛：只留注入键 + 游标/页大小键 + session_id（DF-5：流内
+%% `widget_history_after` 补偿读与 REST 历史同源，真 facade 的
+%% `visitor_session_scope` 需要它裁决会话归属——丢键即补偿读恒
+%% invalid_argument，被 stream_step 静默吞掉，message/state 帧全死）。
 scoped(Params) ->
     maps:with(
-        [installation_id, secret, at, store, id, default_workspace, digest, limit], Params
+        [installation_id, secret, at, store, id, default_workspace, digest, limit, session_id],
+        Params
     ).
 
 %% 断线重连游标：`Last-Event-ID` 头优先，其次 `after_id` 参数，缺省 0

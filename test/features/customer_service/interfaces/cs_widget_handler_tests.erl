@@ -457,25 +457,24 @@ asset_content_tests(_) ->
                 ?assertNot(meck:called(customer_service_facade, widget_asset_content, '_'))
             end)
         end},
-        {"BE-S01b content proxy cross-session asset is structured 404 JSON (not bytes)",
-            fun() ->
-                meck:expect(customer_service_facade, widget_asset_content, fun(_Org, _Params) ->
-                    {error, not_found}
-                end),
-                ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
-                    Resp = ?S:request(
-                        Port,
-                        <<"GET">>,
-                        <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
-                            "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
-                            "&installation_id=", (int_bin(?INSTALL))/binary>>,
-                        <<>>,
-                        #{<<"x-cs-visit-token">> => ?TOKEN}
-                    ),
-                    ?assertEqual(404, ?S:status(Resp)),
-                    ?assertEqual(<<"not_found">>, ?S:msg(Resp))
-                end)
-            end},
+        {"BE-S01b content proxy cross-session asset is structured 404 JSON (not bytes)", fun() ->
+            meck:expect(customer_service_facade, widget_asset_content, fun(_Org, _Params) ->
+                {error, not_found}
+            end),
+            ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
+                        "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
+                        "&installation_id=", (int_bin(?INSTALL))/binary>>,
+                    <<>>,
+                    #{<<"x-cs-visit-token">> => ?TOKEN}
+                ),
+                ?assertEqual(404, ?S:status(Resp)),
+                ?assertEqual(<<"not_found">>, ?S:msg(Resp))
+            end)
+        end},
         {"BE-S01b content proxy with credential in query string is 400", fun() ->
             ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
                 meck:reset(customer_service_facade),
@@ -484,8 +483,7 @@ asset_content_tests(_) ->
                     <<"GET">>,
                     <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
                         "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
-                        "&installation_id=", (int_bin(?INSTALL))/binary,
-                        "&token=", ?TOKEN/binary>>,
+                        "&installation_id=", (int_bin(?INSTALL))/binary, "&token=", ?TOKEN/binary>>,
                     <<>>,
                     #{}
                 ),
@@ -709,6 +707,42 @@ a02_sse_tests(_) ->
                     string:find(Raw, <<"id: 41\nevent: state">>) =/= nomatch
                 ),
                 ?assert(string:find(Raw, <<"id: 41\nevent: message">>) =:= nomatch)
+            end)
+        end},
+
+        %% DF-5 回归：流内 `widget_history_after` 补偿读与 REST 历史同源——真
+        %% facade 的 visitor_session_scope 需要 session_id 裁决会话归属。此前
+        %% scoped/1 丢键使补偿读恒 invalid_argument 且被 stream_step 静默吞掉，
+        %% message/state 帧全死（长流只剩初始 state 帧）。这里在 facade mock
+        %% 边界锁死 session_id 投影：缺键/错键即测试失败。
+        {"DF-5 SSE polling read carries session_id so message frames survive", fun() ->
+            meck:expect(customer_service_facade, widget_list_sessions, fun(_O, _P) ->
+                {ok, [#{id => ?SESSION, status => queued}]}
+            end),
+            meck:expect(customer_service_facade, widget_history_after, fun(_O, Params) ->
+                case maps:get(session_id, Params, undefined) of
+                    ?SESSION ->
+                        case maps:get(after_id, Params, undefined) of
+                            undefined -> {ok, [#{id => 9, body => <<"df5-m1">>}]};
+                            9 -> {ok, []};
+                            Other -> erlang:error({unexpected_cursor, Other})
+                        end;
+                    MissingOrWrong ->
+                        erlang:error({df5_session_id_missing, MissingOrWrong})
+                end
+            end),
+            ?S:with_listener(widget, widget_session_events, sse_inject(), fun(Port) ->
+                Raw = ?S:stream_request(
+                    Port,
+                    <<"GET">>,
+                    events_path(),
+                    <<>>,
+                    #{<<"x-cs-visit-token">> => ?TOKEN},
+                    400
+                ),
+                ?assert(string:find(Raw, <<"event: message">>) =/= nomatch),
+                ?assert(string:find(Raw, <<"id: 9">>) =/= nomatch),
+                ?assert(string:find(Raw, <<"df5-m1">>) =/= nomatch)
             end)
         end},
 
