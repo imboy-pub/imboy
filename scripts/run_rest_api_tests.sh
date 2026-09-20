@@ -115,9 +115,38 @@ if [[ "$CT_CONFIG" != "$ROOT/config/sys.config" ]]; then
   cp "$CT_CONFIG" "$ROOT/config/sys.config"
 fi
 export IMBOY_TEST_CONFIG="$CT_CONFIG"
-# The suite boot needs the worktree root to build the code:priv_dir(imboy)
-# alias subtree (see rest_fixture:ensure_ct_priv_alias/0).
+# The suite boot needs the worktree root for eunit_runner (test build) and
+# the alias tree for code:priv_dir(imboy); see rest_fixture helpers.
 export REST_PROJECT_ROOT="$ROOT"
+
+# ---------------------------------------------------------------------------
+# VM-startup alias + CT_OPTS.
+#
+# code:priv_dir(imboy) resolves by matching a code-path segment named
+# "<...>/imboy/ebin"; the shared main tree matches because its directory is
+# named `imboy`, a differently named worktree does not. Build
+# .ct/appalias/imboy/{ebin,priv} (symlinks, untracked, runtime-only) and put
+# it FIRST on the VM path via CT_OPTS (-pa). Putting the alias ahead of
+# test/ also guarantees the real ebin builds (config_ds etc.) win over any
+# stale test/common stub copies.
+# ---------------------------------------------------------------------------
+
+ALIAS_DIR="$ROOT/.ct/appalias/imboy"
+mkdir -p "$ALIAS_DIR"
+# `ln -sfn` cannot replace an existing real directory (it nests the link
+# inside it), so drop any stale entry first; this scratch area is ours.
+for entry in "ebin:$ROOT/ebin" "priv:$ROOT/priv"; do
+  link="$ALIAS_DIR/${entry%%:*}"
+  rm -rf "$link"
+  ln -sfn "${entry#*:}" "$link"
+done
+ALIAS_EBIN="$ALIAS_DIR/ebin"
+
+# Replicates Makefile's CT_ERL_ARGS (they live behind CT_OPTS += which a
+# command-line CT_OPTS would override) and prefixes the alias -pa.
+SYS_CONFIG_ABS="$ROOT/config/sys.config"
+CT_OPTS="-pa $ALIAS_EBIN -erl_args -config $SYS_CONFIG_ABS -eval 'application:load(imboy)' -eval 'application:set_env(imboy, env, test)' -eval 'application:set_env(imboy, http_port, 0)' -eval 'application:set_env(imboy, dsync_enabled, false)'"
+export CT_OPTS
 
 # ---------------------------------------------------------------------------
 # Shared Common Test node: erlang.mk hardcodes -sname ct_imboy.

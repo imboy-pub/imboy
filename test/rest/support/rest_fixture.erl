@@ -14,46 +14,38 @@
     ensure_sign_key/0
 ]).
 
-%% Must run first in init_per_suite: code:priv_dir(imboy) resolves by
-%% matching a code-path segment named "<...>/imboy/ebin". The shared main
-%% tree satisfies this because its checkout directory is named `imboy`; a
-%% differently named worktree does not, so app start crashes with
-%% {terminology_priv_dir_error, bad_name}. Build an alias subtree
-%% .ct/appalias/imboy/{ebin,priv} (symlinks, untracked, runtime-only) and
-%% add it to the front of the code path so the pattern matches again.
+%% Must run first in init_per_suite. The alias subtree
+%% .ct/appalias/imboy/{ebin,priv} (built by the runner as VM startup -pa)
+%% makes code:priv_dir(imboy) resolvable in a differently named worktree;
+%% this helper now only forces the test/common build of eunit_runner
+%% (the app's ebin carries an unrelated src/lib eunit_runner that would
+%% otherwise shadow it and lack ct_suite_setup/1).
 -spec ensure_ct_priv_alias() -> ok.
 ensure_ct_priv_alias() ->
     case os:getenv("REST_PROJECT_ROOT") of
         false ->
             ok;
         Root ->
-            CtDir = filename:join(Root, ".ct"),
-            Alias = filename:join(filename:join(CtDir, "appalias"), "imboy"),
-            Ebin = filename:join(Alias, "ebin"),
-            Priv = filename:join(Alias, "priv"),
-            ok = filelib:ensure_dir(filename:join(Alias, "placeholder")),
-            ok = ensure_symlink(Ebin, filename:join(Root, "ebin")),
-            ok = ensure_symlink(Priv, filename:join(Root, "priv")),
-            true = code:add_patha(Ebin),
-            %% erlang.mk flattens test builds: test/common/*.erl produces
-            %% test/*.beam (test/common itself holds no beams). Ensure the
-            %% test dir is on the path, then reload.
-            true = code:add_patha(filename:join(Root, "test")),
+            TestBeam = filename:join([Root, "test", "eunit_runner"]),
             code:purge(eunit_runner),
             code:delete(eunit_runner),
-            {module, eunit_runner} = code:ensure_loaded(eunit_runner),
-            {module, inttest_marker_db} = code:ensure_loaded(inttest_marker_db),
+            {module, eunit_runner} = code:load_abs(TestBeam, eunit_runner),
+            %% test/common ships STUB copies of product modules (a 35-line
+            %% config_ds whose get/2 always returns the default). CT can put
+            %% the test dir ahead of the alias subtree regardless of -pa
+            %% ordering, so path order alone is not trustworthy: load the
+            %% real ebin build by absolute path. cowboy_req_h is test-only
+            %% and has no ebin build; skip it.
+            lists:foreach(
+                fun(M) ->
+                    code:purge(M),
+                    code:delete(M),
+                    Beam = filename:join([Root, "ebin", atom_to_list(M)]),
+                    {module, M} = code:load_abs(Beam, M)
+                end,
+                [config_ds]
+            ),
             ok
-    end.
-
-ensure_symlink(Link, Target) ->
-    case file:read_link_info(Link) of
-        {ok, _} ->
-            ok;
-        _ ->
-            %% file:make_symlink(Target, Link): the link is created at the
-            %% second argument pointing at the first (verified on OTP 29).
-            ok = file:make_symlink(Target, Link)
     end.
 
 -spec create_user(map()) -> map().
@@ -158,21 +150,15 @@ ensure_sign_key() ->
     end,
     _ = imboy_cache:flush({config5, ConfigKey}),
     ok = imboy_cache:set({config5, ConfigKey}, Key, 864000),
-    %% depcache memoizes query results (including `undefined`) in the
-    %% calling process dictionary; a stale undefined memo would shadow the
-    %% fresh value. Clear it, then verify the production read path
-    %% (app_version_ds:sign_key/3 -> config_ds:get -> depcache/DB) really
-    %% serves this key before any case runs; fail INIT loudly otherwise.
-    _ = imboy_cache:flush({config5, ConfigKey}),
-    ok = imboy_cache:set({config5, ConfigKey}, Key, 864000),
     depcache:flush_process_dict(),
     ReadBack = app_version_ds:sign_key(?REST_COS, ?REST_VSN, ?REST_PKG),
-    ct:pal(
-        "SIGNKEY readback_len=~p (0 means the product config_ds read "
-        "chain fails to serve the freshly written key in this node; see "
-        "FINAL report finding F-RTF-READCHAIN)",
-        [byte_size(ReadBack)]
-    ),
+    %% Fail INIT loudly rather than letting every signed request 902 later:
+    %% an empty readback means the product config read chain (config_ds:get
+    %% -> pluck_decrypted_value) cannot serve the freshly written key.
+    case ReadBack of
+        Key -> ok;
+        _ -> erlang:error({sign_key_readback_mismatch, ConfigKey})
+    end,
     Key.
 
 %% Log a fixture user in through the real POST /api/v1/passport/login and
