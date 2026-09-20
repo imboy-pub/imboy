@@ -197,9 +197,9 @@ wait_ct_node_free() {
 # ---------------------------------------------------------------------------
 
 EXTENSIONS=$(extension_list) ||
-  die 2 "extension inventory parse failure from inttest_marker_db.erl"
+  die 2 "cannot parse extension inventory from inttest_marker_db.erl (define block format drifted?)"
 extension_inventory_ok ||
-  die 2 "extension inventory parse failure from inttest_marker_db.erl"
+  die 2 "extension inventory from inttest_marker_db.erl has fewer than 12 entries"
 
 psql_scratch() {
   psql -X -q -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -v ON_ERROR_STOP=1 "$@"
@@ -211,8 +211,13 @@ scratch_databases() {
 }
 
 DROP_DONE=0
+CLEANUP_DONE=0
 cleanup() {
   local final=$?
+  # Re-entrancy: the INT/TERM traps exit explicitly, which re-enters via the
+  # EXIT trap; the second pass must be a no-op.
+  [[ $CLEANUP_DONE -eq 1 ]] && return "$final"
+  CLEANUP_DONE=1
   if [[ $DROP_DONE -eq 0 && "${REST_KEEP_DB:-0}" != "1" ]]; then
     dropdb --if-exists --force -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$DB_NAME" >/dev/null 2>&1 || true
     DROP_DONE=1
@@ -296,6 +301,17 @@ RUN_STATUS=0
 
 bash "$ROOT/scripts/check_rest_contract_coverage.sh" 2>&1 | tee -a "$RUNNER_LOG" || RUN_STATUS=3
 
+# RTF-02 unit gate (review P2): the redaction unit tests must EXECUTE on
+# every round, not merely compile. Pure in-memory eunit, no database.
+if [[ $RUN_STATUS -eq 0 ]]; then
+  make -C "$ROOT" test-build >>"$RUNNER_LOG" 2>&1 || RUN_STATUS=3
+  erl -pa "$ROOT/ebin" -pa "$ROOT/test" -pa "$ROOT"/deps/*/ebin -noshell -eval \
+    'case eunit:test([rest_assert_tests, rest_evidence_tests]) of ok -> halt(0); _ -> halt(3) end' \
+    >>"$RUNNER_LOG" 2>&1 \
+    && echo "evidence cross-check: REST support unit tests PASS" | tee -a "$RUNNER_LOG" \
+    || { echo "evidence cross-check: REST support unit tests FAIL" | tee -a "$RUNNER_LOG"; RUN_STATUS=3; }
+fi
+
 if [[ $RUN_STATUS -eq 0 ]]; then
   # One make invocation per suite so a failing suite does not stop the
   # remaining ones; any failure keeps the overall run non-zero.
@@ -319,13 +335,27 @@ TABLES_COUNT=$(psql_scratch -d "$DB_NAME" -Atc \
 MIGRATION_TABLE=$(psql_scratch -d "$DB_NAME" -Atc \
   "SELECT table_name FROM information_schema.tables WHERE table_name LIKE '%migration%' AND table_schema='public' LIMIT 1" || true)
 
-# Cross-check: the login golden suite must always deliver its five cases;
-# domain suites report through their own evidence files.
+# Cross-check: the login golden suite must always deliver its five cases,
+# and the aggregate gate derives the expected evidence total from each
+# suite's all()/0 so the machine-readable totals track every case (review
+# P2: case_total used to be golden-suite-only, diverging from the case
+# truth in the CT logs).
 EXPECTED_CASES="login-001 login-002 login-003 login-004 login-005"
 EVIDENCE_STATUS=0
-EVIDENCE_TOTAL=$(find "$EVIDENCE_DIR" -maxdepth 1 -name 'login-*.json' | wc -l | tr -d ' ')
-if [[ "$EVIDENCE_TOTAL" -ne 5 ]]; then
-  echo "evidence cross-check: expected 5 login-*.json files, found $EVIDENCE_TOTAL" | tee -a "$RUNNER_LOG"
+EXPECTED_TOTAL=0
+for SUITE in api_v1_login api_v1_auth api_v1_user api_v1_friend \
+             api_v1_group api_v1_conversation api_v1_msg api_v1_channel; do
+  N=$(erl -pa "$ROOT/ebin" -pa "$ROOT/test" -noshell -eval \
+    "io:format('~p', [length(${SUITE}_SUITE:all())]), halt(0)." 2>/dev/null || echo 0)
+  EXPECTED_TOTAL=$((EXPECTED_TOTAL + N))
+done
+EVIDENCE_TOTAL=$(find "$EVIDENCE_DIR" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')
+if [[ "$EVIDENCE_TOTAL" -ne "$EXPECTED_TOTAL" ]]; then
+  echo "evidence cross-check: expected $EXPECTED_TOTAL evidence files, found $EVIDENCE_TOTAL" | tee -a "$RUNNER_LOG"
+  EVIDENCE_STATUS=3
+fi
+if [[ "$EXPECTED_TOTAL" -eq 0 ]]; then
+  echo "evidence cross-check: aggregate derivation got 0 cases (suite beams missing?)" | tee -a "$RUNNER_LOG"
   EVIDENCE_STATUS=3
 fi
 for case in $EXPECTED_CASES; do
@@ -351,6 +381,14 @@ if grep -E 'TEST COMPLETE,' "$RUNNER_LOG" 2>/dev/null | grep -q 'skipped'; then
   EVIDENCE_STATUS=3
 fi
 
+# Belt-and-braces (review P1): no JWT-shaped material may surface in the CT
+# logs or the evidence dir. Suites keep credential fields out of anything
+# CT logs (sanitized session handles); evidence redacts by key.
+if grep -rqE 'eyJ[A-Za-z0-9_-]{20,}' "$CT_LOGS_DIR" "$EVIDENCE_DIR" 2>/dev/null; then
+  echo "evidence cross-check: JWT-shaped material found in CT logs/evidence" | tee -a "$RUNNER_LOG"
+  EVIDENCE_STATUS=3
+fi
+
 [[ $EVIDENCE_STATUS -ne 0 ]] && RUN_STATUS=3
 
 # ---------------------------------------------------------------------------
@@ -362,12 +400,12 @@ PG_VERSION=$(psql_scratch -d "$DB_NAME" -Atc "SHOW server_version" || echo unkno
 EXTENSION_INVENTORY=$(psql_scratch -d "$DB_NAME" -Atc \
   "SELECT string_agg(extname || '=' || extversion, ',' ORDER BY extname) FROM pg_extension" || echo unknown)
 
-if compgen -G "$EVIDENCE_DIR/login-*.json" >/dev/null; then
-  CASE_PASS=$(jq -s 'map(select(.result == "PASS")) | length' "$EVIDENCE_DIR"/login-*.json | head -1)
+CASE_TOTAL=${EVIDENCE_TOTAL}
+if [[ "$CASE_TOTAL" -gt 0 ]]; then
+  CASE_PASS=$(jq -s 'map(select(.result == "PASS")) | length' "$EVIDENCE_DIR"/*.json | head -1)
 else
   CASE_PASS=0
 fi
-CASE_TOTAL=${EVIDENCE_TOTAL}
 
 jq -n \
   --arg run_id "$RUN_ID" \
@@ -395,7 +433,7 @@ jq -n \
     case_pass: $case_pass,
     case_fail: ($case_total - $case_pass),
     case_skip: 0,
-    result: (if $exit_code == 0 and $case_pass == 5 then "PASS" elif $exit_code == 75 then "BLOCKED_SHARED_CT" else "FAIL" end),
+    result: (if $exit_code == 0 and $case_pass == $case_total and $case_total > 0 then "PASS" elif $exit_code == 75 then "BLOCKED_SHARED_CT" else "FAIL" end),
     scratch_database: $run_id,
     public_tables: $tables,
     migration_table: $migtable,
