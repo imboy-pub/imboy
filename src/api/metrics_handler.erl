@@ -31,7 +31,22 @@ serve_metrics(Req0, State0) ->
                 %% JSON 格式
                 case fetch_metrics() of
                     {ok, Metrics} ->
-                        elib_response:success(Req0, Metrics, "success.");
+                        %% B-26 引入的 {Name, Labels} tuple key counter 是
+                        %% Prometheus 专用形态，jsone 无法序列化 tuple key
+                        %%（直接崩出 cowboy 500 空响应）。JSON 消费者
+                        %% （imboyadmin system-health）只认扁平名，展开后再出。
+                        Counters = maps:get(counters, Metrics),
+                        FlatCounters = maps:fold(
+                            fun
+                                ({Name, Labels}, V, Acc) when is_map(Labels) ->
+                                    Acc#{json_counter_key(Name, Labels) => V};
+                                (Name, V, Acc) ->
+                                    Acc#{Name => V}
+                            end,
+                            #{},
+                            Counters
+                        ),
+                        elib_response:success(Req0, Metrics#{counters := FlatCounters}, "success.");
                     {error, Reason} ->
                         elib_response:error(Req0, format_error(Reason))
                 end;
@@ -317,6 +332,13 @@ metric_name(Name) when is_tuple(Name) ->
     list_to_binary(string:join(Parts, "_"));
 metric_name(Name) ->
     iolist_to_binary(io_lib:format("~p", [Name])).
+
+%% @doc JSON 输出的扁平 key：{erlang_vm_memory_bytes_total, #{kind => total}}
+%% → <<"erlang_vm_memory_bytes_total_total">>（label 值按序接在名后）。
+-spec json_counter_key(atom() | binary(), map()) -> binary().
+json_counter_key(Name, Labels) ->
+    LabelBits = [format_label_value(V) || {_K, V} <- lists:sort(maps:to_list(Labels))],
+    iolist_to_binary(lists:join(<<"_">>, [metric_name(Name) | LabelBits])).
 
 -spec number_to_binary(number()) -> binary().
 number_to_binary(N) when is_integer(N) -> integer_to_binary(N);

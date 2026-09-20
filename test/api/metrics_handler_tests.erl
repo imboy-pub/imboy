@@ -57,6 +57,55 @@ init_returns_error_when_metric_fetch_fails_test_() ->
     ).
 
 %% ===================================================================
+%% JSON 分支不得携带 tuple key counter
+%%
+%% B-26 引入的 {Name, Labels} 带 key counter 是 Prometheus 专用形态；
+%% jsone 无法序列化 tuple key，直接崩出 cowboy 500 空响应
+%%（崩点在 fetch_metrics 的 try/catch 之外，error.log 也无记录）。
+%% ===================================================================
+
+init_json_payload_has_no_tuple_keys_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'peer', 1, fun(_Req) -> {{127, 0, 0, 1}, 12345} end},
+                {'header', 3, fun(_Name, _Req, _Default) -> <<>> end}
+            ]},
+            {elib_metric, [
+                {'get_all_metrics', 0, fun() ->
+                    #{
+                        counters => #{
+                            msg_sent_total => 7,
+                            {plugin_msg_total, #{plugin => channel}} => 3
+                        }
+                    }
+                end}
+            ]},
+            {elib_response, [
+                {'success', 3, fun(Req, Payload, Msg) ->
+                    Req#{response_status => 200, payload => Payload, msg => Msg}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = metrics_handler:init(#{}, #{}),
+            Counters = maps:get(counters, maps:get(payload, RespReq)),
+            %% 无任何 tuple key —— 这是 jsone 能序列化的前提
+            ?assertNot(
+                maps:fold(
+                    fun(K, _V, Acc) -> Acc orelse is_tuple(K) end,
+                    false,
+                    Counters
+                )
+            ),
+            %% 普通原子 key 原样保留
+            ?assertEqual(7, maps:get(msg_sent_total, Counters)),
+            %% 带标签 counter 展开为扁平名（label 值接在名后）
+            ?assertEqual(3, maps:get(<<"plugin_msg_total_channel">>, Counters))
+        end
+    ).
+
+%% ===================================================================
 %% B-27：Prometheus histogram 导出格式
 %%
 %% histogram_quantile() 的输入是 `_bucket{le="..."}` **累积**序列，且必须有
