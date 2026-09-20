@@ -43,7 +43,10 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun unit_mime_size_hash_validation_is_fail_closed/0},
         {timeout, 60, fun unit_cleanup_classifies_skips/0},
         {timeout, 60, fun csb02s_d6_visitor_presign_put_confirm_positive/0},
-        {timeout, 60, fun csb02s_d6_visitor_scope_negatives/0}
+        {timeout, 60, fun csb02s_d6_visitor_scope_negatives/0},
+        %% BE-S01b：访客 content proxy 的 contact 分支 + 绑定作用域门
+        {timeout, 60, fun bes01b_visitor_content_linked_positive/0},
+        {timeout, 60, fun bes01b_visitor_content_binding_negatives/0}
     ];
 cases(_Skipped) ->
     {skip, "asset suite requires the scratch database connection"}.
@@ -158,6 +161,122 @@ csb02s_d6_visitor_scope_negatives() ->
     after
         _ = eb_asset_object_stub:reset()
     end.
+
+%% ===================================================================
+%% BE-S01b：访客 content proxy（contact 分支 + conversation 绑定作用域门）
+%% ===================================================================
+
+%% @doc 正向：linked（绑消息）资产经「conversation 绑定门 + contact 会话
+%% 归属门」读出——视图是白名单投影（字节 + 完整性摘要），零 URL/object key。
+bes01b_visitor_content_linked_positive() ->
+    Scope = eb_asset_it_lib:new_scope(),
+    try
+        {Org, Ws} = eb_asset_it_lib:tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Contact = maps:get(contact_id, Scope),
+        MsgId = eb_asset_it_lib:seed_message(Scope, Contact),
+        Payload = <<"s01b-linked-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
+        AssetId = bes01b_visitor_upload(Scope, Conv, Contact, MsgId, Payload),
+        {ok, View} =
+            enterprise_business_facade:content_stream(Org, #{
+                workspace_id => Ws,
+                asset_id => AssetId,
+                %% 绑定作用域（生产由 CS 会话服务端派生）：必须 == 资产行。
+                conversation_id => Conv,
+                actor_contact_id => Contact
+            }),
+        ?assertEqual(Payload, maps:get(body, View)),
+        ?assertEqual(<<"text/plain">>, maps:get(mime, View)),
+        ?assertEqual(MsgId, maps:get(message_id, View)),
+        ?assertEqual(active, maps:get(status, View)),
+        %% 红线：视图零存储侧引用（key / URL 不在白名单投影里）。
+        ?assertNot(maps:is_key(object_key, View)),
+        ?assertEqual(
+            eb_asset_it_lib:sha256_hex(Payload), maps:get(object_hash, View)
+        )
+    after
+        _ = eb_asset_object_stub:reset()
+    end.
+
+%% @doc 负例（PG oracle）：
+%%   ① confirmed_unbound（message_id NULL）不出访客内容面（not_found）；
+%%   ② 声明 conversation 与资产行不符（跨会话）⇒ not_found（不枚举）；
+%%   ③ 既有成员路径不传 conversation_id ⇒ 绑定门不生效（行为不回归）。
+bes01b_visitor_content_binding_negatives() ->
+    Scope = eb_asset_it_lib:new_scope(),
+    try
+        {Org, Ws} = eb_asset_it_lib:tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Contact = maps:get(contact_id, Scope),
+        Payload = <<"s01b-neg-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
+        UnboundId = bes01b_visitor_upload(Scope, Conv, Contact, undefined, Payload),
+        MsgId = eb_asset_it_lib:seed_message(Scope, Contact),
+        LinkedId = bes01b_visitor_upload(Scope, Conv, Contact, MsgId, Payload),
+        %% ① unbound：访客 404（attachment-state-machine：linked 才出访客面）。
+        {error, not_found} =
+            enterprise_business_facade:content_stream(Org, #{
+                workspace_id => Ws,
+                asset_id => UnboundId,
+                conversation_id => Conv,
+                actor_contact_id => Contact
+            }),
+        %% ② 跨会话声明：逐字不等 ⇒ not_found（与不存在同答案，不枚举）。
+        {error, not_found} =
+            enterprise_business_facade:content_stream(Org, #{
+                workspace_id => Ws,
+                asset_id => LinkedId,
+                conversation_id => Conv + 1,
+                actor_contact_id => Contact
+            }),
+        %% ③ 成员路径（不传绑定键）：绑定门不生效——linked 资产照常读出
+        %%（成员门 = active + 会话经办，既有 A05 e2e 已覆盖其授权面）。
+        {ok, _} =
+            enterprise_business_facade:content_stream(Org, #{
+                workspace_id => Ws,
+                asset_id => UnboundId,
+                actor_user_id => maps:get(actor_user_id, Scope)
+            })
+    after
+        _ = eb_asset_object_stub:reset()
+    end.
+
+%% 访客全流水上传（presign → PUT → confirm）；MsgId = undefined 时为 unbound。
+bes01b_visitor_upload(Scope, Conv, Contact, MsgId, Payload) ->
+    {Org, Ws} = eb_asset_it_lib:tenant(Scope),
+    Base = #{
+        workspace_id => Ws,
+        conversation_id => Conv,
+        mime => <<"text/plain">>,
+        size_bytes => byte_size(Payload),
+        object_hash => eb_asset_it_lib:sha256_hex(Payload),
+        actor_contact_id => Contact,
+        key_ref => eb_asset_it_lib:key_ref(Scope),
+        upload_ttl_seconds => 900
+    },
+    Params =
+        case MsgId of
+            undefined -> Base;
+            _ -> Base#{message_id => MsgId}
+        end,
+    {ok, Presign} = enterprise_business_facade:request_presign(Org, Params),
+    Ref = maps:get(upload_ref, Presign),
+    {ok, _} = eb_asset_app:put_object(Org, #{
+        workspace_id => Ws,
+        conversation_id => Conv,
+        upload_ref => Ref,
+        payload => Payload,
+        actor_contact_id => Contact,
+        key_ref => eb_asset_it_lib:key_ref(Scope)
+    }),
+    {ok, Confirmed} =
+        enterprise_business_facade:confirm_asset(Org, #{
+            workspace_id => Ws,
+            upload_ref => Ref,
+            actor_contact_id => Contact,
+            key_ref => eb_asset_it_lib:key_ref(Scope)
+        }),
+    ?assertEqual(active, maps:get(status, Confirmed)),
+    maps:get(asset_id, Confirmed).
 
 %% ===================================================================
 %% 窄口径单元断言

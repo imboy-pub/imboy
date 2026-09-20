@@ -283,8 +283,39 @@
 ) ->
     ok | {error, replay | term()}.
 
-%% -- event（客服域 append-only 状态审计）------------------------------------
+%% -- event（客服域 append-only 状态审计 + BE-S01b 坐席 SSE 流读取）---------
 
 %% @doc 追加一条客服状态审计（append-only；实现侧 UPDATE/DELETE 被触发器拒绝）。
 -callback append_event(OrgId :: integer(), Event :: event()) ->
     {ok, integer()} | {error, term()}.
+
+%% @doc BE-S01b（sse-event-contract）：按事件 id 读取作用域（Org+Workspace），
+%% 供游标合法性裁决——事件存在但 (Org, Workspace) 与流作用域不符 ⇒ 跨租户
+%% 游标（403 面）；不存在 ⇒ 游标缺失/超窗（resync 面）。`{error, not_found}`
+%% 与其他错误同形状（实现侧跨作用域不可能命中他行——按 id 全局唯一）。
+-callback fetch_event_scope(OrgId :: integer(), EventId :: integer()) ->
+    {ok, #{organization_id := integer(), workspace_id := integer()}} | {error, term()}.
+
+%% @doc BE-S01b：SSE 补偿/轮询读页（键集下推 `id > after` + `ORDER BY id ASC`
+%% + `LIMIT`，迁移 135 的 i_cse_org_ws_id (organization_id, workspace_id, id)
+%% 是唯一入口）。同语句绑定 (Org, Workspace)——跨租户/跨 Workspace 恒空页。
+-callback list_events_page(
+    OrgId :: integer(), WorkspaceId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
+) ->
+    {ok, [event()]} | {error, term()}.
+
+%% @doc BE-S01b：当前水位（(Org, Workspace) 内最大事件 id；空域为 0）。
+%% resync（游标缺失/超窗）后从水位继续，不重放历史。
+-callback event_watermark(OrgId :: integer(), WorkspaceId :: integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+
+%% -- Admin provisioning（BE-S01b；api-surface-freeze admin_provisioning）-----
+
+%% @doc 平台面事务化开通/修复坐席：单数据库事务内
+%%   1. (Org, user, customer_service) 已有 active identity+assignment ⇒ 复用；
+%%      否则创建 active customer_service identity + active assignment；
+%%   2. seat upsert（enabled=true，已存在则修复为 enabled）；
+%%   3. 审计事件同事务落库（actor/target/before/after）。
+%% 任一步失败全回滚；幂等（重复调用返回既有事实，不重复创建）。
+-callback provision_seat(OrgId :: integer(), WorkspaceId :: integer(), Provision :: map()) ->
+    {ok, map()} | {error, term()}.

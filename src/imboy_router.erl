@@ -2025,6 +2025,12 @@ customer_service_tenant_routes() ->
             action => widget_asset_confirm,
             auth_context => cs_visit
         }},
+        %% BE-S01b：访客附件内容代理（GET；响应是对象字节本体，不走 JSON 面——
+        %% 线格式分支在 cs_widget_handler；绑定门：asset 必须绑在本会话的消息上）。
+        {"/api/v1/cs/widget/sessions/:id/assets/:asset/content", cs_widget_handler, #{
+            action => widget_asset_content,
+            auth_context => cs_visit
+        }},
         {"/api/v1/cs/widget/sessions/:id/rating", cs_widget_handler, #{
             action => widget_session_rating,
             auth_context => cs_visit
@@ -2038,6 +2044,14 @@ customer_service_platform_routes() ->
             action => p_seats,
             auth_context => platform_admin,
             required_permission => <<"customer_service:read">>
+        }},
+        %% BE-S01b（api-surface-freeze admin_provisioning）：事务化开通/修复
+        %% identity/assignment/seat + actor/target/before/after 不可抵赖审计；
+        %% customer_service:write 平台权限；幂等（重复调用返回既有事实 200）。
+        {"/api/adm/customer-service/organizations/:org_id/provisioning", cs_platform_handler, #{
+            action => p_seat_provision,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:write">>
         }},
         %% C1（contracts-w2）：平台 session 列表（只读；workspace_id 为 face 级
         %% 必填参数——不存在「不带 workspace 的全局列举」）。

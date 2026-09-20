@@ -119,8 +119,12 @@ contracts() ->
             {revoke_widget_bootstrap_token, 4},
             %% widget JTI nonce（重放防护）
             {record_widget_nonce, 4},
-            %% event（append-only 状态审计）
-            {append_event, 2}
+            %% event（append-only 状态审计）+ BE-S01b SSE 读面 / provisioning
+            {append_event, 2},
+            {fetch_event_scope, 2},
+            {list_events_page, 4},
+            {event_watermark, 2},
+            {provision_seat, 3}
         ],
         id() => [
             {new_id, 1}
@@ -140,6 +144,8 @@ contracts() ->
 facade_targets() ->
     [
         cs_seat_app,
+        %% BE-S01b：坐席 SSE 事件流用例（sse-event-contract 的 application 面）。
+        cs_seat_event_app,
         cs_session_app,
         cs_access_app,
         cs_widget_app,

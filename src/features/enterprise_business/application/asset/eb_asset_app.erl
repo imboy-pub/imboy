@@ -604,7 +604,12 @@ confirm_commit(OrgId, Ws, Row, Params) ->
 %% 4. content：鉴权代理取流
 %% ===================================================================
 
-%% @doc `Params`：`workspace_id` / `asset_id` / `actor_user_id` 必填。
+%% @doc `Params`：`workspace_id` / `asset_id` 必填；主体二选一：
+%% `actor_user_id`（成员，走 member+assignee 门）或 `actor_contact_id`
+%% （访客，走会话归属门）；`conversation_id` 可选（**绑定作用域**，服务端
+%% 派生——传入时 asset 行的 conversation 必须逐字相等，且访客分支只读
+%% linked（message_id 非空）资产。CS 访客内容代理（BE-S01b）用此键表达
+%% 「asset 必须绑在本会话的消息上」；既有 EB 坐席调用不传，行为不变）。
 -spec content_stream(integer(), map()) -> {ok, map()} | {error, term()}.
 content_stream(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     case content_args(Params) of
@@ -619,31 +624,81 @@ content_stream(_OrgId, _Params) ->
 content_args(Params) ->
     Ws = maps:get(workspace_id, Params, undefined),
     AssetId = maps:get(asset_id, Params, undefined),
-    Actor = maps:get(actor_user_id, Params, undefined),
-    case {is_integer(Ws), is_integer(AssetId), is_integer(Actor)} of
-        {true, true, true} -> {ok, Ws, AssetId, Actor};
-        _ -> {error, {invalid_argument, {content_stream, [Ws, AssetId, Actor]}}}
+    %% CSB-02S D6 同款 actor 二选一（主体唯一，不混淆）。
+    case actor_scope(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Actor} ->
+            case {is_integer(Ws), is_integer(AssetId)} of
+                {true, true} -> {ok, Ws, AssetId, Actor};
+                _ -> {error, {invalid_argument, {content_stream, [Ws, AssetId]}}}
+            end
     end.
 
 content_fetch(OrgId, Ws, AssetId, Actor, Params) ->
     Asset = port(Params, asset),
     case Asset:fetch_asset(OrgId, Ws, AssetId) of
         {ok, Row} ->
-            content_authorized(OrgId, Ws, Row, Actor, Params);
+            case content_binding_gate(Row, Actor, Params) of
+                ok ->
+                    content_authorized(OrgId, Ws, Row, Actor, Params);
+                {error, _} = Err ->
+                    Err
+            end;
         {error, _} ->
             %% 跨 Org / 跨 Workspace / 不存在 / 已回收：同一答案（避免枚举）
             {error, not_found}
+    end.
+
+%% 绑定作用域门（调用方显式传入 conversation_id 时生效）：
+%%   * asset 行的 conversation 必须与声明值逐字相等（跨会话与不存在同为
+%%     not_found——避免枚举）；
+%%   * 访客主体只读 linked（message_id 非空）资产——confirmed_unbound
+%%     不出访客内容面（attachment-state-machine binding_invariants）。
+content_binding_gate(Row, Actor, Params) ->
+    Kind = maps:get(kind, Actor),
+    case maps:get(conversation_id, Params, undefined) of
+        undefined ->
+            ok;
+        DeclaredConv ->
+            case maps:get(conversation_id, Row, undefined) of
+                DeclaredConv when Kind =:= contact ->
+                    case maps:get(message_id, Row, undefined) of
+                        MsgId when is_integer(MsgId) -> ok;
+                        _Other -> {error, not_found}
+                    end;
+                DeclaredConv ->
+                    ok;
+                _Other ->
+                    {error, not_found}
+            end
     end.
 
 content_authorized(OrgId, Ws, Row, Actor, Params) ->
     Auth = port(Params, auth),
     Store = port(Params, store),
     Conv = maps:get(conversation_id, Row, undefined),
-    case eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, Actor) of
-        {error, _} = Err ->
-            Err;
-        ok ->
-            content_status_gate(OrgId, Ws, Row, Params)
+    case maps:get(kind, Actor) of
+        member ->
+            case
+                eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, maps:get(id, Actor))
+            of
+                {error, _} = Err ->
+                    Err;
+                ok ->
+                    content_status_gate(OrgId, Ws, Row, Params)
+            end;
+        contact ->
+            case
+                eb_asset_scope:authorize_contact(
+                    Store, OrgId, Ws, Conv, maps:get(id, Actor)
+                )
+            of
+                {error, _} = Err ->
+                    Err;
+                ok ->
+                    content_status_gate(OrgId, Ws, Row, Params)
+            end
     end.
 
 content_status_gate(OrgId, Ws, Row, Params) ->

@@ -44,6 +44,9 @@ call(list_sessions, OrgId, Params) ->
     customer_service_facade:list_sessions(OrgId, Params);
 call(create_seat, OrgId, Params) ->
     customer_service_facade:create_seat(OrgId, Params);
+%% BE-S01b：admin provisioning（api-surface-freeze admin_provisioning）。
+call(provision_seat, OrgId, Params) ->
+    customer_service_facade:provision_seat(OrgId, Params);
 call(list_dispatchable_seats, OrgId, Params) ->
     customer_service_facade:list_dispatchable_seats(OrgId, Params);
 call(suspend_seat, OrgId, Params) ->
@@ -93,6 +96,9 @@ call(widget_asset_upload, OrgId, Params) ->
     customer_service_facade:widget_asset_upload(OrgId, Params);
 call(widget_asset_confirm, OrgId, Params) ->
     customer_service_facade:widget_asset_confirm(OrgId, Params);
+%% BE-S01b：访客附件内容代理（api-surface-freeze widget_apis）。
+call(widget_asset_content, OrgId, Params) ->
+    customer_service_facade:widget_asset_content(OrgId, Params);
 call(seat_session_detail, OrgId, Params) ->
     customer_service_facade:seat_session_detail(OrgId, Params);
 %% CSB-02R：坐席工作台（队列 GET + active/closed 列表）。
@@ -125,6 +131,7 @@ actions() ->
         fetch_session,
         list_sessions,
         create_seat,
+        provision_seat,
         list_dispatchable_seats,
         suspend_seat,
         resume_seat,
@@ -148,6 +155,7 @@ actions() ->
         widget_rate,
         widget_asset_upload,
         widget_asset_confirm,
+        widget_asset_content,
         seat_session_detail,
         %% CSB-02R：坐席工作台
         seat_session_queue,

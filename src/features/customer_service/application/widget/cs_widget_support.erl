@@ -38,7 +38,9 @@
     eb_open_conversation/2,
     eb_list_messages/2,
     eb_request_presign/2,
-    eb_confirm_asset/2
+    eb_confirm_asset/2,
+    %% BE-S01b：访客附件内容代理
+    eb_content_stream/2
 ]).
 
 -include("generated/imboy_product_features.hrl").
@@ -263,6 +265,9 @@ eb_request_presign(OrgId, Params) ->
     enterprise_business_facade:request_presign(OrgId, Params).
 eb_confirm_asset(OrgId, Params) ->
     enterprise_business_facade:confirm_asset(OrgId, Params).
+%% BE-S01b：访客附件内容代理（企业真源的 contact 分支，零 URL/key 出站）。
+eb_content_stream(OrgId, Params) ->
+    enterprise_business_facade:content_stream(OrgId, Params).
 -else.
 eb_create_contact(_OrgId, _Params) ->
     {error, enterprise_business_feature_not_selected}.
@@ -273,5 +278,7 @@ eb_list_messages(_OrgId, _Params) ->
 eb_request_presign(_OrgId, _Params) ->
     {error, enterprise_business_feature_not_selected}.
 eb_confirm_asset(_OrgId, _Params) ->
+    {error, enterprise_business_feature_not_selected}.
+eb_content_stream(_OrgId, _Params) ->
     {error, enterprise_business_feature_not_selected}.
 -endif.

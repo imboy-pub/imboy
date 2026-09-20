@@ -55,8 +55,13 @@
     touch_widget_bootstrap_token/4,
     revoke_widget_bootstrap_token/4,
     record_widget_nonce/4,
-    %% event
-    append_event/2
+    %% event + SSE 读面（BE-S01b）
+    append_event/2,
+    fetch_event_scope/2,
+    list_events_page/4,
+    event_watermark/2,
+    %% admin provisioning（BE-S01b）
+    provision_seat/3
 ]).
 
 %% identity 事实（A01）
@@ -155,3 +160,13 @@ record_widget_nonce(OrgId, InstallationId, JtiDigest, ExpiresAt) ->
 
 %% event（append-only 审计）
 append_event(OrgId, Event) -> cs_pg_seat:insert_event(OrgId, Event).
+
+%% event SSE 读面（BE-S01b：游标裁决 / 键集读页 / 水位）
+fetch_event_scope(OrgId, EventId) -> cs_pg_seat:fetch_event_scope(OrgId, EventId).
+list_events_page(OrgId, WorkspaceId, AfterId, Limit) ->
+    cs_pg_seat:list_events_page(OrgId, WorkspaceId, AfterId, Limit).
+event_watermark(OrgId, WorkspaceId) -> cs_pg_seat:event_watermark(OrgId, WorkspaceId).
+
+%% admin provisioning（BE-S01b：单事务开通/修复坐席）
+provision_seat(OrgId, WorkspaceId, Provision) ->
+    cs_pg_seat:provision_seat(OrgId, WorkspaceId, Provision).

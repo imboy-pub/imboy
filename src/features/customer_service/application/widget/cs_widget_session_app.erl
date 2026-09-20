@@ -27,7 +27,9 @@
     visitor_message/2,
     rate/2,
     asset_presign/2,
-    asset_confirm/2
+    asset_confirm/2,
+    %% BE-S01b：访客附件内容代理
+    asset_content/2
 ]).
 
 %% ===================================================================
@@ -324,6 +326,38 @@ asset_confirm(OrgId, Params) when is_map(Params) ->
     end;
 asset_confirm(_OrgId, _Params) ->
     {error, {invalid_argument, asset_confirm}}.
+
+%% @doc 访客附件内容代理（BE-S01b，api-surface-freeze widget_apis）：
+%% GET .../sessions/:session_id/assets/:asset_id/content。
+%%
+%% 逐项校验链：令牌 → installation → 默认 Workspace → 会话归属
+%% （visitor_session_scope）→ **绑定门**（asset 的 conversation 必须 == 本
+%% session 的 conversation，且访客只读 linked 资产——见 eb_asset_app
+%% content_stream 的 conversation_id 绑定作用域键）。asset_id 是路径绑定
+%% （服务端解析），浏览器不可能申报会话外的作用域。返回体是 asset 内容
+%% 投影（mime/size/hash/字节），**永不**暴露 storage URL / object key。
+-spec asset_content(integer(), map()) -> {ok, map()} | {error, term()}.
+asset_content(OrgId, Params) when is_map(Params) ->
+    case visitor_session_scope(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, #{workspace_id := WorkspaceId, contact_id := ContactId, session := Session}} ->
+            EbParams = cs_widget_support:eb_params(
+                Params,
+                #{
+                    workspace_id => WorkspaceId,
+                    asset_id => maps:get(asset_id, Params, undefined),
+                    %% 绑定作用域（服务端派生自本 session）：enterprise 侧逐字
+                    %% 比对 asset 行的 conversation——跨会话 not_found，不枚举。
+                    conversation_id => maps:get(conversation_id, Session),
+                    %% CSB-02S D6：访客主体走企业面 contact 分支（会话归属门）。
+                    actor_contact_id => ContactId
+                }
+            ),
+            cs_widget_support:eb_content_stream(OrgId, EbParams)
+    end;
+asset_content(_OrgId, _Params) ->
+    {error, {invalid_argument, asset_content}}.
 
 %% ===================================================================
 %% 作用域辅助（服务端派生事实；申报值只作逐字比对不成为授权事实）

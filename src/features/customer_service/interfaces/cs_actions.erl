@@ -642,6 +642,21 @@ table(widget) ->
                 widget_server_derived(),
                 param
             )},
+        %% BE-S01b（api-surface-freeze widget_apis）：访客附件内容代理（GET）。
+        %% 响应是对象字节本体（mime 定 content-type），不走 cs_http:respond 的
+        %% JSON 面——线格式分支在 cs_widget_handler；此处动作表登记的是解析/
+        %% 认证/参数投影契约。asset_id 是路径绑定（服务端解析会话外作用域）。
+        {widget_asset_content,
+            widget_entry(
+                [
+                    {<<"GET">>, widget_asset_content,
+                        [{installation_id, tsid, required}],
+                        [{id, session_id}, {asset, asset_id}]}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
         {widget_session_rating,
             widget_entry(
                 [
@@ -662,7 +677,7 @@ table(widget) ->
 %% 平台运营面（§5.3）：每条路径显式带 :org_id + workspace_id 必填；
 %% 与租户面共用同一 application（CS-02-A02：不复制业务逻辑）。
 %% ===================================================================
-table(platform) ->
+    table(platform) ->
     [
         {p_seats,
             platform_entry(
@@ -671,6 +686,23 @@ table(platform) ->
                         [{after_id, binary, optional}, {limit, binary, optional}], []}
                 ],
                 platform_auth(<<"customer_service:read">>)
+            )},
+        %% BE-S01b（api-surface-freeze admin_provisioning）：平台面事务化开通/
+        %% 修复坐席（identity + assignment + enabled seat 单事务 + 不可抵赖审计；
+        %% 幂等）。workspace_id 仍是 handler 强制的 face 级必填（Derived 注入）；
+        %% adm_user_id 是认证派生键（进审计 detail，客户端提供即 400）。
+        {p_seat_provision,
+            platform_entry(
+                [
+                    {<<"POST">>, provision_seat,
+                        [
+                            {user_id, tsid, required},
+                            {display_name, binary, required},
+                            {max_concurrent, int, optional}
+                        ],
+                        []}
+                ],
+                platform_auth(<<"customer_service:write">>)
             )},
         %% C1（contracts-w2）：平台 session 列表（只读）。workspace_id 是 handler
         %% 强制的 face 级必填（Derived 注入）；status 白名单 / after_id / limit 由

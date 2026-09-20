@@ -29,6 +29,9 @@
     %% BE-S01a：坐席上下文 / 转接目标种子与读取面
     put_org_context/1,
     put_identity_display/3,
+    %% BE-S01b：provisioning 前置事实种子与故障注入
+    seed_member/2,
+    seed_provision_fail_after/1,
     %% cs_store_port callbacks
     fetch_identity_function/2,
     insert_seat/2,
@@ -72,7 +75,12 @@
     touch_widget_bootstrap_token/4,
     revoke_widget_bootstrap_token/4,
     record_widget_nonce/4,
-    append_event/2
+    append_event/2,
+    %% BE-S01b：SSE 读面 + admin provisioning
+    fetch_event_scope/2,
+    list_events_page/4,
+    event_watermark/2,
+    provision_seat/3
 ]).
 
 -define(TAB, cs_fake_store_tab).
@@ -98,7 +106,9 @@ init() ->
         {assignment_users, #{}},
         {workspaces, #{}},
         {org_contexts, #{}},
-        {identity_displays, #{}}
+        {identity_displays, #{}},
+        {members, #{}},
+        {provision_fail_after, infinity}
     ]),
     ok.
 
@@ -988,6 +998,188 @@ append_event(OrgId, Event) ->
     EventId = next_counter(),
     update(events, fun(L) -> L ++ [Event#{id => EventId, organization_id => OrgId}] end),
     {ok, EventId}.
+
+%% ===================================================================
+%% BE-S01b：SSE 读面（fake 镜像键集升序读页 / 游标裁决 / 水位）+
+%% admin provisioning（镜像单事务顺序：workspace/member 门 → identity/assignment
+%% 复用或创建 → seat upsert → 审计；`fail_after` 注入点模拟"部分失败"）
+%% ===================================================================
+
+fetch_event_scope(OrgId, EventId) ->
+    case [E || E <- events(), maps:get(id, E, undefined) =:= EventId] of
+        [E | _] ->
+            case same_org(E, OrgId) of
+                true ->
+                    {ok, #{
+                        organization_id => maps:get(organization_id, E),
+                        workspace_id => maps:get(workspace_id, E, undefined)
+                    }};
+                false ->
+                    %% 按 id 唯一：存在的行不属于本 Org 即跨作用域。
+                    {ok, #{organization_id => maps:get(organization_id, E), workspace_id => undefined}}
+            end;
+        [] ->
+            {error, not_found}
+    end.
+
+list_events_page(OrgId, WorkspaceId, AfterId, Limit) ->
+    Rows =
+        [
+            E
+         || E <- events(),
+            maps:get(organization_id, E) =:= OrgId,
+            maps:get(workspace_id, E, undefined) =:= WorkspaceId,
+            maps:get(id, E, 0) > AfterId
+        ],
+    Sorted = lists:sort(fun(A, B) -> maps:get(id, A) =< maps:get(id, B) end, Rows),
+    {ok, lists:sublist(Sorted, Limit)}.
+
+event_watermark(OrgId, WorkspaceId) ->
+    Ids = [
+        maps:get(id, E)
+     || E <- events(),
+        maps:get(organization_id, E) =:= OrgId,
+        maps:get(workspace_id, E, undefined) =:= WorkspaceId
+    ],
+    {ok, case Ids of [] -> 0; _ -> lists:max(Ids) end}.
+
+%% Provisioning 故障注入：第 N 次 seat upsert 前失败（回滚语义测试用）。
+seed_provision_fail_after(N) ->
+    update(provision_fail_after, fun(_) -> N end).
+
+%% provisioning 前置事实：目标 user 是本 Org 的 active member。
+seed_member(OrgId, UserId) ->
+    update(members, fun(M) ->
+        M#{{OrgId, UserId} => #{organization_id => OrgId, user_id => UserId, status => active}}
+    end).
+
+provision_seat(OrgId, WorkspaceId, Provision) ->
+    {members, Members} = hd(ets:lookup(?TAB, members)),
+    UserId = maps:get(user_id, Provision),
+    case maps:is_key({OrgId, UserId}, Members) of
+        false ->
+            {error, {not_found, member}};
+        true ->
+            {workspaces, Ws} = hd(ets:lookup(?TAB, workspaces)),
+            case [
+                W
+             || W <- maps:values(Ws),
+                maps:get(organization_id, W) =:= OrgId,
+                maps:get(id, W) =:= WorkspaceId,
+                maps:get(status, W) =:= active
+            ] of
+                [] ->
+                    {error, {not_found, workspace}};
+                _ ->
+                    provision_in(OrgId, WorkspaceId, Provision)
+            end
+    end.
+
+provision_in(OrgId, WorkspaceId, Provision) ->
+    UserId = maps:get(user_id, Provision),
+    %% 故障注入点在一切写入之前：fake 无真事务，用「失败即零写入」镜像
+    %% PG 单事务回滚的可观测终态（all-or-nothing）。
+    ok = maybe_fail_provision(),
+    %% 复用：既有 active customer_service identity+assignment（assignment_users
+    %% 即「identity ↔ user」事实；无则走创建分支）。
+    Cands = [
+        I
+     || {{O, I}, U} <- maps:to_list(assignment_users_map()),
+        O =:= OrgId,
+        U =:= UserId,
+        maps:get({OrgId, I}, identity_functions_map(), undefined) =:= <<"customer_service">>
+    ],
+    {IdentityId, Created} =
+        case Cands of
+            [I | _] -> {I, false};
+            [] -> {next_counter(), true}
+        end,
+    Created andalso
+        update(identity_functions, fun(M) ->
+            M#{{OrgId, IdentityId} => <<"customer_service">>}
+        end),
+    Created andalso
+        update(assignment_users, fun(M) -> M#{{OrgId, IdentityId} => UserId} end),
+    Before = maps:get({OrgId, IdentityId}, seats_map(), undefined),
+    Seat0 = #{
+        organization_id => OrgId,
+        business_identity_id => IdentityId,
+        function_key => <<"customer_service">>,
+        enabled => true,
+        max_concurrent => maps:get(max_concurrent, Provision, 1),
+        created_by_user_id => undefined
+    },
+    Seat =
+        case Before of
+            undefined -> Seat0;
+            B -> B#{enabled => true, max_concurrent => maps:get(max_concurrent, Provision, 1)}
+        end,
+    put_seat(Seat),
+    EventId = next_counter(),
+    update(events, fun(L) ->
+        L ++
+            [
+                #{
+                    id => EventId,
+                    organization_id => OrgId,
+                    workspace_id => WorkspaceId,
+                    business_identity_id => IdentityId,
+                    actor_kind => <<"platform_admin">>,
+                    action => <<"platform.provisioned">>,
+                    detail => #{
+                        <<"adm_user_id">> => maps:get(adm_user_id, Provision, undefined),
+                        <<"target_user_id">> => UserId,
+                        <<"identity_created">> => Created,
+                        <<"before">> => before_bin(Before),
+                        <<"after">> => <<"enabled">>
+                    }
+                }
+            ]
+    end),
+    {ok, #{
+        organization_id => OrgId,
+        workspace_id => WorkspaceId,
+        business_identity_id => IdentityId,
+        identity_created => Created,
+        seat => #{enabled => true, max_concurrent => maps:get(max_concurrent, Provision, 1)}
+    }}.
+
+maybe_fail_provision() ->
+    {provision_fail_after, N} = hd(ets:lookup(?TAB, provision_fail_after)),
+    case N of
+        infinity ->
+            ok;
+        0 ->
+            update(provision_fail_after, fun(_) -> infinity end),
+            throw({rollback, {error, seat_conflict_injected}});
+        _ when is_integer(N) ->
+            update(provision_fail_after, fun(_) -> N - 1 end),
+            ok;
+        _ ->
+            ok
+    end.
+
+before_bin(undefined) -> <<"absent">>;
+before_bin(#{enabled := true}) -> <<"enabled">>;
+before_bin(_) -> <<"disabled">>.
+
+assignment_users_map() ->
+    {assignment_users, M} = hd(ets:lookup(?TAB, assignment_users)),
+    M.
+
+identity_functions_map() ->
+    {identity_functions, M} = hd(ets:lookup(?TAB, identity_functions)),
+    M.
+
+seats_map() ->
+    {seats, M} = hd(ets:lookup(?TAB, seats)),
+    M.
+
+put_seat(Seat) ->
+    IdentityId = maps:get(business_identity_id, Seat),
+    OrgId = maps:get(organization_id, Seat),
+    update(seats, fun(M) -> M#{{OrgId, IdentityId} => Seat} end),
+    ok.
 
 %% ===================================================================
 %% 测试读取面（断言用）

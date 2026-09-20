@@ -24,7 +24,9 @@
     session_detail/2,
     %% BE-S01a：坐席上下文清单（主体自身作用域）+ 转接目标最小投影
     seat_contexts/1,
-    transfer_targets/2
+    transfer_targets/2,
+    %% BE-S01b：平台面事务化开通/修复坐席（/api/adm provisioning）
+    provision_seat/2
 ]).
 
 %% ===================================================================
@@ -355,6 +357,66 @@ target_row(Row) ->
         display_name => maps:get(display_name, Row),
         available => ActiveCount < MaxConcurrent
     }.
+
+%% ===================================================================
+%% BE-S01b：平台面事务化开通/修复坐席（api-surface-freeze admin_provisioning）
+%% ===================================================================
+
+%% @doc 为 (Org, Workspace, user) 开通/修复坐席：customer_service identity +
+%% active assignment + enabled seat 在**单数据库事务**内创建或修复
+%% （store `provision_seat/3`：任一步失败全回滚）。
+%%
+%% Params：workspace_id / user_id（目标成员）/ display_name（identity 显示名）
+%% 必填；max_concurrent 可选（默认 1）；adm_user_id 必填（认证派生键，
+%% 进审计 detail 的 actor 记录——事件表 FK 只认 "user"，admin id 不写 actor 列）。
+%% 幂等：重复对同一 user+org+workspace 调用返回既有事实，不重复创建。
+%%
+%% 业务前提：目标 user 必须是本 Org 的 active member（store 首语句同语句
+%% 裁决——identity/assignment 的 INSERT 语义即「把成员变坐席」，非成员在
+%% 事实层不存在，由 guard 语句显式拒绝，返回 `{error, {not_found, member}}`）。
+-spec provision_seat(integer(), map()) -> {ok, map()} | {error, term()}.
+provision_seat(OrgId, #{workspace_id := WorkspaceId} = Params) when
+    is_integer(OrgId), is_integer(WorkspaceId), is_map(Params)
+->
+    UserId = maps:get(user_id, Params, undefined),
+    DisplayName = maps:get(display_name, Params, undefined),
+    AdmId = maps:get(adm_user_id, Params, undefined),
+    case
+        pos_int(UserId) andalso cs_app_support:non_empty_binary(DisplayName) andalso pos_int(AdmId)
+    of
+        false ->
+            {error, {invalid_argument, provision_seat}};
+        true ->
+            Provision = #{
+                user_id => UserId,
+                display_name => DisplayName,
+                max_concurrent => max_concurrent(Params),
+                adm_user_id => AdmId
+            },
+            case
+                with_store(Params, fun(Store) ->
+                    Store:provision_seat(OrgId, WorkspaceId, Provision)
+                end)
+            of
+                {error, {not_found, workspace}} ->
+                    %% workspace 不在本 Org / 非 active：作用域不存在（404 面）。
+                    {error, {not_found, workspace}};
+                {error, {not_found, member}} ->
+                    {error, {not_found, member}};
+                {error, _} = Err ->
+                    Err;
+                {ok, Result} ->
+                    {ok, Result#{seat_enabled => maps:get(enabled, maps:get(seat, Result), false)}}
+            end
+    end;
+provision_seat(_OrgId, _Params) ->
+    {error, {invalid_argument, provision_seat}}.
+
+max_concurrent(Params) ->
+    case maps:get(max_concurrent, Params, undefined) of
+        N when is_integer(N), N > 0 -> N;
+        _ -> 1
+    end.
 
 %% ===================================================================
 %% 内部辅助

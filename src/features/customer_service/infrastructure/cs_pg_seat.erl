@@ -16,6 +16,10 @@
     set_seat_enabled/4,
     insert_event/2,
     insert_event_in/3,
+    fetch_event_scope/2,
+    list_events_page/4,
+    event_watermark/2,
+    provision_seat/3,
     sql_statements/0
 ]).
 
@@ -138,6 +142,89 @@
     " RETURNING id"
 >>).
 
+%% BE-S01b（sse-event-contract）：游标作用域裁决——按 id 全局唯一读
+%% (organization_id, workspace_id)，跨租户/跨 Workspace 游标由此逐字比对。
+-define(SQL_FETCH_EVENT_SCOPE, <<
+    "SELECT organization_id, workspace_id FROM customer_service_event WHERE id = $1"
+>>).
+
+%% BE-S01b：SSE 键集读页（迁移 135 的 i_cse_org_ws_id 唯一入口；升序 = 乱序
+%% 不产生；`id > $3` = 不重）。同语句绑定 (Org, Workspace)。
+-define(SQL_LIST_EVENTS_PAGE, <<
+    "SELECT id, organization_id, workspace_id, session_id, business_identity_id,"
+    "       actor_kind, action, detail,"
+    "       extract(epoch from created_at)::bigint AS created_at"
+    "  FROM customer_service_event"
+    " WHERE organization_id = $1 AND workspace_id = $2 AND id > $3"
+    " ORDER BY id ASC"
+    " LIMIT $4"
+>>).
+
+%% BE-S01b：当前水位（resync 后从这里继续，不重放历史）。
+-define(SQL_EVENT_WATERMARK, <<
+    "SELECT COALESCE(max(id), 0) AS watermark FROM customer_service_event"
+    " WHERE organization_id = $1 AND workspace_id = $2"
+>>).
+
+%% BE-S01b（admin provisioning）：事务化开通/修复坐席。
+%% 1) workspace 归属门（Org 内 active workspace 必须存在，否则 fail）；
+%% 2) (Org, user, customer_service) 的 active identity+assignment 复用查询；
+%% 3) 缺失则建 identity（display_name 幂等性由调用方语义承担——重复开通用户
+%%    命中步骤 2，不会走到这里）；
+%% 4) 建 active assignment；
+%% 5) seat upsert（PK=business_identity_id；已存在但 disabled ⇒ 修复 enabled）；
+%% 6) 审计事件同事务落库（before/after 进 detail）。
+-define(SQL_PROVISION_GUARD_WS, <<
+    "SELECT 1 FROM workspace"
+    " WHERE organization_id = $1 AND id = $2 AND status = 'active'"
+>>).
+
+%% 开通前提（api-surface-freeze authoritative checks）：目标 user 必须已是
+%% 本 Org 的 active member——provisioning 是「成员变坐席」，不是成员创建。
+-define(SQL_PROVISION_GUARD_MEMBER, <<
+    "SELECT 1 FROM organization_member"
+    " WHERE organization_id = $1 AND user_id = $2 AND status = 'active'"
+>>).
+
+-define(SQL_PROVISION_FIND_IDENTITY, <<
+    "SELECT i.id, s.enabled"
+    "  FROM organization_business_identity_assignment a"
+    "  JOIN organization_business_identity i"
+    "    ON i.organization_id = a.organization_id AND i.id = a.business_identity_id"
+    "   AND i.function_key = 'customer_service' AND i.status = 'active'"
+    "  LEFT JOIN customer_service_seat s"
+    "    ON s.business_identity_id = i.id"
+    " WHERE a.organization_id = $1 AND a.user_id = $2"
+    "   AND a.function_key = 'customer_service' AND a.status = 'active'"
+    " ORDER BY i.id"
+    " LIMIT 1"
+>>).
+
+-define(SQL_PROVISION_INSERT_IDENTITY, <<
+    "INSERT INTO organization_business_identity"
+    " (id, organization_id, function_key, display_name, status, version, created_by_user_id)"
+    " VALUES ($1, $2, 'customer_service', $3, 'active', 1, $4)"
+    " RETURNING id"
+>>).
+
+-define(SQL_PROVISION_INSERT_ASSIGNMENT, <<
+    "INSERT INTO organization_business_identity_assignment"
+    " (id, organization_id, business_identity_id, function_key, user_id, status,"
+    "  assigned_by, version)"
+    " VALUES ($1, $2, $3, 'customer_service', $4, 'active', $5, 1)"
+    " RETURNING id"
+>>).
+
+-define(SQL_PROVISION_UPSERT_SEAT, <<
+    "INSERT INTO customer_service_seat"
+    " (organization_id, business_identity_id, function_key, enabled, max_concurrent,"
+    "  created_by_user_id)"
+    " VALUES ($1, $2, 'customer_service', true, $3, $4)"
+    " ON CONFLICT (business_identity_id) DO UPDATE"
+    "   SET enabled = true, version = customer_service_seat.version + 1, updated_at = now()"
+    " RETURNING enabled, max_concurrent"
+>>).
+
 %% @doc 冻结语句（供 cs_pg_tests 的租户键机械断言）。
 -spec sql_statements() -> [binary()].
 sql_statements() ->
@@ -150,7 +237,16 @@ sql_statements() ->
         ?SQL_SET_ENABLED,
         ?SQL_SEAT_ORG_CONTEXTS,
         ?SQL_TRANSFER_TARGETS_PAGE,
-        ?SQL_INSERT_EVENT
+        ?SQL_INSERT_EVENT,
+        ?SQL_FETCH_EVENT_SCOPE,
+        ?SQL_LIST_EVENTS_PAGE,
+        ?SQL_EVENT_WATERMARK,
+        ?SQL_PROVISION_GUARD_WS,
+        ?SQL_PROVISION_GUARD_MEMBER,
+        ?SQL_PROVISION_FIND_IDENTITY,
+        ?SQL_PROVISION_INSERT_IDENTITY,
+        ?SQL_PROVISION_INSERT_ASSIGNMENT,
+        ?SQL_PROVISION_UPSERT_SEAT
     ].
 
 %% ===================================================================
@@ -311,6 +407,238 @@ insert_event_in(Conn, OrgId, Event) when is_integer(OrgId), is_map(Event) ->
     end;
 insert_event_in(_Conn, OrgId, _Event) ->
     {error, {invalid_organization_id, OrgId}}.
+
+%% ===================================================================
+%% BE-S01b：SSE 事件读取（游标裁决 / 键集读页 / 水位）
+%% ===================================================================
+
+%% @doc 按事件 id 读作用域（sse-event-contract 游标裁决的数据面）：
+%% 行存在 ⇒ `{ok, #{organization_id, workspace_id}}`（调用方逐字比对）；
+%% 不存在 ⇒ `{error, not_found}`（游标缺失/超窗 ⇒ resync 面）。
+-spec fetch_event_scope(integer(), integer()) ->
+    {ok, #{organization_id := integer(), workspace_id := integer()}} | {error, term()}.
+fetch_event_scope(OrgId, EventId) when is_integer(OrgId), is_integer(EventId) ->
+    Keys = [organization_id, workspace_id],
+    cs_pg_common:fetch_one(?SQL_FETCH_EVENT_SCOPE, [EventId], Keys);
+fetch_event_scope(OrgId, _EventId) ->
+    {error, {invalid_organization_id, OrgId}}.
+
+%% @doc SSE 补偿/轮询读页（键集下推，升序 = 乱序不产生，`id >` = 不重）。
+%% 行键投影与 append_event 写入面同源；detail 归一为 map（jsonb 读出 binary）。
+-spec list_events_page(integer(), integer(), non_neg_integer(), pos_integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_events_page(OrgId, WorkspaceId, AfterId, Limit) when
+    is_integer(OrgId), is_integer(WorkspaceId), is_integer(AfterId), is_integer(Limit)
+->
+    Keys = [
+        id,
+        organization_id,
+        workspace_id,
+        session_id,
+        business_identity_id,
+        actor_kind,
+        action,
+        detail,
+        created_at
+    ],
+    case
+        cs_pg_common:fetch_many(?SQL_LIST_EVENTS_PAGE, [OrgId, WorkspaceId, AfterId, Limit], Keys)
+    of
+        {ok, Rows} -> {ok, [decode_detail(Row) || Row <- Rows]};
+        {error, _} = Err -> Err
+    end;
+list_events_page(OrgId, _Ws, _After, _Limit) ->
+    {error, {invalid_organization_id, OrgId}}.
+
+decode_detail(Row) ->
+    case maps:get(detail, Row, undefined) of
+        Bin when is_binary(Bin) ->
+            Row#{detail := cs_pg_common:jsonb_read(Bin)};
+        Map when is_map(Map) ->
+            Row;
+        _Other ->
+            Row#{detail := #{}}
+    end.
+
+%% @doc 当前水位（(Org, Workspace) 内最大事件 id；空域 0）。
+-spec event_watermark(integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+event_watermark(OrgId, WorkspaceId) when is_integer(OrgId), is_integer(WorkspaceId) ->
+    case cs_pg_common:fetch_one(?SQL_EVENT_WATERMARK, [OrgId, WorkspaceId], [watermark]) of
+        {ok, #{watermark := W}} when is_integer(W) -> {ok, W};
+        {ok, _} -> {ok, 0};
+        {error, _} = Err -> Err
+    end;
+event_watermark(OrgId, _Ws) ->
+    {error, {invalid_organization_id, OrgId}}.
+
+%% ===================================================================
+%% BE-S01b：Admin provisioning（单事务开通/修复 identity+assignment+seat）
+%% ===================================================================
+
+-spec provision_seat(integer(), integer(), map()) -> {ok, map()} | {error, term()}.
+provision_seat(OrgId, WorkspaceId, Provision) when
+    is_integer(OrgId), is_integer(WorkspaceId), is_map(Provision)
+->
+    undo_rollback(
+        elib_pg:with_tx(fun(Conn) -> provision_tx(Conn, OrgId, WorkspaceId, Provision) end)
+    );
+provision_seat(OrgId, _Ws, _Provision) ->
+    {error, {invalid_organization_id, OrgId}}.
+
+%% elib_pg 的业务回滚信号 `{rollback, Reason}`：Reason 就是调用方的返回形状，
+%% 原样透传（cs_pg_session 同款，绝不二次包裹）。
+undo_rollback({rollback, Reason}) -> Reason;
+undo_rollback(Other) -> Other.
+
+provision_tx(Conn, OrgId, WorkspaceId, Provision) ->
+    ok = provision_guard_workspace(Conn, OrgId, WorkspaceId),
+    ok = provision_guard_member(Conn, OrgId, maps:get(user_id, Provision)),
+    case elib_pg:query(Conn, ?SQL_PROVISION_FIND_IDENTITY, [OrgId, maps:get(user_id, Provision)]) of
+        {ok, [Row | _]} ->
+            provision_existing(Conn, OrgId, WorkspaceId, Provision, Row);
+        {ok, []} ->
+            provision_create(Conn, OrgId, WorkspaceId, Provision);
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+provision_guard_member(Conn, OrgId, UserId) when is_integer(UserId) ->
+    case elib_pg:query(Conn, ?SQL_PROVISION_GUARD_MEMBER, [OrgId, UserId]) of
+        {ok, [_ | _]} ->
+            ok;
+        {ok, []} ->
+            throw({rollback, {error, {not_found, member}}});
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end;
+provision_guard_member(_Conn, _OrgId, _Bad) ->
+    throw({rollback, {error, {invalid_argument, {user_id, _Bad}}}}).
+
+provision_guard_workspace(Conn, OrgId, WorkspaceId) ->
+    case elib_pg:query(Conn, ?SQL_PROVISION_GUARD_WS, [OrgId, WorkspaceId]) of
+        {ok, [_ | _]} ->
+            ok;
+        {ok, []} ->
+            throw({rollback, {error, {not_found, workspace}}});
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+%% 既有事实（幂等路径）：不重复创建 identity/assignment；seat 不存在则补建、
+%% disabled 则修复 enabled=true（"修复"语义）；审计记 before/after。
+provision_existing(Conn, OrgId, WorkspaceId, Provision, Row) ->
+    IdentityId = maps:get(<<"id">>, Row),
+    Before = before_seat(Row),
+    case upsert_seat_in(Conn, OrgId, IdentityId, Provision) of
+        {ok, Seat} ->
+            finish_provision(Conn, OrgId, WorkspaceId, Provision, IdentityId, Before, Seat, false);
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+before_seat(Row) ->
+    case maps:get(<<"enabled">>, Row, null) of
+        null -> absent;
+        true -> enabled;
+        false -> disabled
+    end.
+
+%% 全新开通：identity + assignment + seat 三写（同事务，任一失败全回滚）。
+provision_create(Conn, OrgId, WorkspaceId, Provision) ->
+    IdentityId = cs_tsid:new_id(business_identity),
+    insert_identity_in(Conn, OrgId, Provision, IdentityId),
+    insert_assignment_in(Conn, OrgId, Provision, IdentityId),
+    case upsert_seat_in(Conn, OrgId, IdentityId, Provision) of
+        {ok, Seat} ->
+            finish_provision(
+                Conn, OrgId, WorkspaceId, Provision, IdentityId, absent, Seat, true
+            );
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+insert_identity_in(Conn, OrgId, Provision, IdentityId) ->
+    Params = [
+        IdentityId,
+        OrgId,
+        maps:get(display_name, Provision),
+        cs_pg_common:nullify(maps:get(actor_user_id, Provision, undefined))
+    ],
+    case elib_pg:execute(Conn, ?SQL_PROVISION_INSERT_IDENTITY, Params) of
+        {ok, _Count, _Rows} ->
+            ok;
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+insert_assignment_in(Conn, OrgId, Provision, IdentityId) ->
+    AssignmentId = cs_tsid:new_id(organization_business_identity_assignment),
+    Params = [
+        AssignmentId,
+        OrgId,
+        IdentityId,
+        maps:get(user_id, Provision),
+        cs_pg_common:nullify(maps:get(actor_user_id, Provision, undefined))
+    ],
+    case elib_pg:execute(Conn, ?SQL_PROVISION_INSERT_ASSIGNMENT, Params) of
+        {ok, _Count, _Rows} ->
+            ok;
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+upsert_seat_in(Conn, OrgId, IdentityId, Provision) ->
+    Params = [
+        OrgId,
+        IdentityId,
+        maps:get(max_concurrent, Provision, 1),
+        cs_pg_common:nullify(maps:get(actor_user_id, Provision, undefined))
+    ],
+    case elib_pg:query(Conn, ?SQL_PROVISION_UPSERT_SEAT, Params) of
+        {ok, [Row | _]} ->
+            {ok, #{
+                enabled => maps:get(<<"enabled">>, Row),
+                max_concurrent => maps:get(<<"max_concurrent">>, Row)
+            }};
+        {ok, []} ->
+            throw({rollback, {error, seat_not_found}});
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+%% 审计（不可抵赖：append-only 事件行，trigger 拒绝改写）：actor_kind=
+%% platform_admin；adm 身份进 detail（fk_cse_actor 只认 "user"，adm_user_id
+%% 不得写 actor_user_id 列）；before/after 进 detail。审计失败 = 全回滚。
+finish_provision(Conn, OrgId, WorkspaceId, Provision, IdentityId, Before, Seat, Created) ->
+    Event = #{
+        business_identity_id => IdentityId,
+        actor_kind => <<"platform_admin">>,
+        action => <<"platform.provisioned">>,
+        detail => #{
+            <<"adm_user_id">> => maps:get(adm_user_id, Provision, undefined),
+            <<"target_user_id">> => maps:get(user_id, Provision),
+            <<"workspace_id">> => WorkspaceId,
+            <<"identity_created">> => Created,
+            <<"before">> => atom_to_binary(Before, utf8),
+            <<"after">> => after_seat(Seat)
+        },
+        workspace_id => WorkspaceId
+    },
+    case insert_event_in(Conn, OrgId, Event) of
+        {ok, _EventId} ->
+            {ok, #{
+                organization_id => OrgId,
+                workspace_id => WorkspaceId,
+                business_identity_id => IdentityId,
+                identity_created => Created,
+                seat => Seat
+            }};
+        {error, Reason} ->
+            throw({rollback, {error, {event_append_failed, Reason}}})
+    end.
+
+after_seat(#{enabled := true}) -> <<"enabled">>;
+after_seat(_Other) -> <<"unknown">>.
 
 event_params(OrgId, Event) ->
     [

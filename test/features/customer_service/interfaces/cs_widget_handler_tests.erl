@@ -59,6 +59,7 @@ widget_test_() ->
         [
             fun a01_token_and_origin_tests/1,
             fun a06_capability_and_matrix_tests/1,
+            fun asset_content_tests/1,
             fun a02_sse_tests/1,
             fun a03_cors_tests/1,
             fun a04_throttle_tests/1,
@@ -395,6 +396,101 @@ a01_token_and_origin_tests(_) ->
                 ),
                 ?assertEqual(200, ?S:status(Resp)),
                 ?assertEqual(int_bin(?CONTACT), maps:get(<<"contact_id">>, ?S:payload(Resp)))
+            end)
+        end}
+    ].
+
+%% ===================================================================
+%% BE-S01b：访客附件内容代理（GET .../sessions/:id/assets/:asset_id/content）
+%% 响应是对象字节本体（mime 定 content-type，private no-store）——不走
+%% cs_http:respond 的 JSON 面。
+%% ===================================================================
+
+asset_content_tests(_) ->
+    [
+        {"BE-S01b content proxy streams asset bytes with mime content-type", fun() ->
+            meck:expect(customer_service_facade, widget_asset_content, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(?SESSION, maps:get(session_id, Params)),
+                ?assertEqual(990001, maps:get(asset_id, Params)),
+                ?assertEqual(?INSTALL, maps:get(installation_id, Params)),
+                ?assertEqual(?TOKEN, maps:get(secret, Params)),
+                {ok, #{
+                    asset_id => 990001,
+                    mime => <<"image/png">>,
+                    size_bytes => 5,
+                    object_hash =>
+                        <<"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef">>,
+                    body => <<"BYTES">>
+                }}
+            end),
+            ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
+                        "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
+                        "&installation_id=", (int_bin(?INSTALL))/binary>>,
+                    <<>>,
+                    #{<<"x-cs-visit-token">> => ?TOKEN}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                Headers = maps:get(headers, Resp),
+                ?assertEqual(<<"image/png">>, maps:get(<<"content-type">>, Headers)),
+                ?assertEqual(<<"private, no-store">>, maps:get(<<"cache-control">>, Headers)),
+                ?assertEqual(<<"BYTES">>, maps:get(body, Resp))
+            end)
+        end},
+        {"BE-S01b content proxy without token is 401 before the use case", fun() ->
+            ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
+                meck:reset(customer_service_facade),
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
+                        "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
+                        "&installation_id=", (int_bin(?INSTALL))/binary>>,
+                    <<>>,
+                    #{}
+                ),
+                ?assertEqual(401, ?S:status(Resp)),
+                ?assertNot(meck:called(customer_service_facade, widget_asset_content, '_'))
+            end)
+        end},
+        {"BE-S01b content proxy cross-session asset is structured 404 JSON (not bytes)",
+            fun() ->
+                meck:expect(customer_service_facade, widget_asset_content, fun(_Org, _Params) ->
+                    {error, not_found}
+                end),
+                ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
+                    Resp = ?S:request(
+                        Port,
+                        <<"GET">>,
+                        <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
+                            "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
+                            "&installation_id=", (int_bin(?INSTALL))/binary>>,
+                        <<>>,
+                        #{<<"x-cs-visit-token">> => ?TOKEN}
+                    ),
+                    ?assertEqual(404, ?S:status(Resp)),
+                    ?assertEqual(<<"not_found">>, ?S:msg(Resp))
+                end)
+            end},
+        {"BE-S01b content proxy with credential in query string is 400", fun() ->
+            ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
+                meck:reset(customer_service_facade),
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
+                        "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
+                        "&installation_id=", (int_bin(?INSTALL))/binary,
+                        "&token=", ?TOKEN/binary>>,
+                    <<>>,
+                    #{}
+                ),
+                ?assertEqual(400, ?S:status(Resp)),
+                ?assertNot(meck:called(customer_service_facade, widget_asset_content, '_'))
             end)
         end}
     ].

@@ -572,8 +572,42 @@ append_message_in(OrgId, WorkspaceId, Params) ->
                     Err;
                 {ok, SenderType} ->
                     FacadeParams = facade_message_params(Session, SenderType, WorkspaceId, Params),
-                    dispatch_message(OrgId, FacadeParams)
+                    case dispatch_message(OrgId, FacadeParams) of
+                        {error, _} = Err2 ->
+                            Err2;
+                        {ok, Accepted} ->
+                            %% BE-S01b（sse-event-contract）：message.appended
+                            %% 事件——坐席/访客/widget 三条消息路径的唯一写入点
+                            %% 都汇经本用例，一次埋点全覆盖。审计丢失显式失败
+                            %% （audit_append_failed），不静默降级为"发了没事件"。
+                            case message_event(Params, OrgId, WorkspaceId, Session, Accepted) of
+                                ok -> {ok, Accepted};
+                                {error, _} = AuditErr -> AuditErr
+                            end
+                    end
             end
+    end.
+
+%% 事件只带资源 ID（payload_limits 合同：零正文/零附件引用细节）。
+message_event(Params, OrgId, WorkspaceId, Session, Accepted) ->
+    append_event(Params, OrgId, #{
+        session_id => maps:get(id, Session),
+        business_identity_id => maps:get(business_identity_id, Session, undefined),
+        actor_user_id => maps:get(actor_user_id, Params, undefined),
+        actor_kind => actor_kind_of(Params),
+        action => <<"message.appended">>,
+        detail => #{<<"message_id">> => message_id_of(Accepted)},
+        workspace_id => WorkspaceId
+    }).
+
+message_id_of(#{message_id := Id}) when is_integer(Id) -> Id;
+message_id_of(#{message := #{id := Id}}) when is_integer(Id) -> Id;
+message_id_of(_Other) -> undefined.
+
+actor_kind_of(Params) ->
+    case maps:get(business_identity_id, Params, undefined) of
+        undefined -> <<"visitor">>;
+        _Identity -> <<"seat">>
     end.
 
 %% A03：客服消息的唯一写入路径是 `enterprise_business_facade:append_message`。

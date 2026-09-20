@@ -38,6 +38,7 @@
     tag/1,
     encode_entity/1,
     is_tsid_key/1,
+    tsid/1,
     is_credential_surface_path/1,
     credential_in_query_string/1,
     now_ms/0,
@@ -99,6 +100,11 @@ is_credential_surface_path(Path) when is_binary(Path) ->
                 true;
             %% CSB-03：POST .../sessions/:id/assets/presign | /confirm（访客附件面）
             [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>, _Id, <<"assets">>, _Last] ->
+                true;
+            %% BE-S01b：GET .../sessions/:id/assets/:asset_id/content（访客附件
+            %% 内容代理——令牌在专用头，与 presign/confirm 同一面）
+            [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>, _Id, <<"assets">>,
+                _AssetId, <<"content">>] ->
                 true;
             _ ->
                 false

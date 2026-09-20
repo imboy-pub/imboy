@@ -65,6 +65,11 @@ handle(Action, Req0, State0) ->
             cs_http:reply_error(Req0, {unknown_action, Action});
         {ok, Entry} when Action =:= widget_session_events ->
             events(Entry, Req0, State0);
+        {ok, Entry} when Action =:= widget_asset_content ->
+            %% BE-S01b：内容代理走同一解析→验证→认证→投影链，命中后响应是
+            %% 对象字节本体（mime 定 content-type），不落 cs_http:respond 的
+            %% JSON 面。
+            asset_content(Entry, Req0, State0);
         {ok, Entry} ->
             dispatch(Entry, Req0, State0)
     end.
@@ -187,6 +192,80 @@ dynamic_cors(Req, Origin, {ok, _}) ->
     cowboy_req:set_resp_header(<<"vary">>, <<"Origin">>, Req1);
 dynamic_cors(Req, _Origin, _Error) ->
     Req.
+
+%% ===================================================================
+%% 内容代理（GET .../sessions/:id/assets/:asset_id/content，BE-S01b）
+%% ===================================================================
+
+%% 与普通动作同链（传输守卫 → Org → 令牌 → 参数投影），差只在响应映射：
+%% 成功 = 对象字节本体（content-type = asset mime，private no-store，
+%% 定长流式，零 URL / object key）；失败照常 JSON 结构化错误。
+asset_content(Entry, Req0, State0) ->
+    case cs_actions:case_for(Entry, cowboy_req:method(Req0)) of
+        {error, method_not_allowed} ->
+            cs_http:reply_error(Req0, method_not_allowed);
+        {ok, Case} ->
+            case cs_http:read_body(Req0) of
+                {error, Reason} ->
+                    cs_http:reply_error(Req0, Reason);
+                {ok, Body} ->
+                    content_guarded(Entry, Case, Req0, Body, State0)
+            end
+    end.
+
+content_guarded(Entry, Case, Req0, Body, _State0) ->
+    case transport_guard(Req0) of
+        {error, Reason} ->
+            cs_http:reply_error(Req0, Reason);
+        ok ->
+            case cs_http:org_id(Entry, Req0, Body) of
+                {error, Reason} ->
+                    cs_http:reply_error(Req0, Reason);
+                {ok, OrgId} ->
+                    content_authorized(Entry, Case, Req0, Body, OrgId)
+            end
+    end.
+
+content_authorized(Entry, Case, Req0, Body, OrgId) ->
+    %% 内容代理无 bootstrap 例外：令牌必填（缺头即 401，在响应前拒绝）。
+    case token_credential(Req0, false) of
+        {error, Reason} ->
+            cs_http:reply_error(Req0, Reason);
+        {ok, TokenDerived} ->
+            Derived = maps:merge(#{at => cs_http:now_sec()}, TokenDerived),
+            case cs_http:build_params(Entry, Case, Req0, Body, Derived) of
+                {error, Reason} ->
+                    cs_http:reply_error(Req0, Reason);
+                {ok, Params} ->
+                    Result = cs_facade_call:call(maps:get(facade, Case), OrgId, Params),
+                    content_respond(Req0, origin_or_undefined(Req0), Result)
+            end
+    end.
+
+content_respond(Req, _Origin, {error, Reason}) ->
+    cs_http:reply_error(Req, Reason);
+content_respond(Req, _Origin, {ok, #{body := Bytes} = View}) when is_binary(Bytes) ->
+    Headers = #{
+        <<"content-type">> => maps:get(mime, View, <<"application/octet-stream">>),
+        <<"cache-control">> => <<"private, no-store">>,
+        <<"x-asset-id">> => content_bin(maps:get(asset_id, View, undefined)),
+        <<"x-asset-sha256">> => maps:get(object_hash, View, undefined)
+    },
+    Req1 = cowboy_req:stream_reply(200, Headers, Req),
+    _ = cowboy_req:stream_body(Bytes, fin, Req1),
+    Req1;
+content_respond(Req, Origin, {ok, _Other}) ->
+    %% 用例返回形状异常：fail-closed（不把未知形状当成功），但成功鉴权事实
+    %% 已确立，动态 CORS echo 照常（与普通动作口径一致）。
+    Req1 = dynamic_cors(Req, Origin, {ok, ok}),
+    cs_http:reply_error(Req1, {invalid_argument, widget_asset_content}).
+
+content_bin(undefined) ->
+    <<>>;
+content_bin(AssetId) when is_integer(AssetId) ->
+    integer_to_binary(AssetId);
+content_bin(Bin) when is_binary(Bin) ->
+    Bin.
 
 %% ===================================================================
 %% SSE（GET .../sessions/:id/events）

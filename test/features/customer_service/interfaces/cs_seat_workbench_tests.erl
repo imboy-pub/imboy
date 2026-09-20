@@ -488,12 +488,139 @@ transfer_targets_tests(_) ->
     ].
 
 %% ===================================================================
-%% BE-S01a：GET /api/v1/cs/organizations/:org_id/seats/me/events（501 占位）
+%% BE-S01b：GET /api/v1/cs/organizations/:org_id/seats/me/events（SSE 流式）
 %% ===================================================================
 
 seat_events_placeholder_tests(_) ->
     [
-        {"Seat events placeholder is 501 after full auth and workspace gate", fun() ->
+        {"Seat events streams retry+resync+event frames after full auth and workspace gate",
+            fun() ->
+                cs_fake_facts:set(seat_facts()),
+                meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                    {ok, #{business_identity_id => ?IDENTITY, enabled => true}}
+                end),
+                %% 合同信封（application 投影形状；TSID integer 进 handler 后
+                %% 出站编 TSID-string）。
+                Envelope = seat_event_envelope(),
+                meck:expect(customer_service_facade, seat_events, fun(Org, Params) ->
+                    ?assertEqual(?ORG, Org),
+                    ?assertEqual(?WS, maps:get(workspace_id, Params)),
+                    ?assertEqual(?IDENTITY, maps:get(business_identity_id, Params)),
+                    {ok, #{
+                        events => [Envelope],
+                        cursor => 880001,
+                        resync_required => true,
+                        resync_reason => <<"unknown">>
+                    }}
+                end),
+                ?S:with_listener(
+                    tenant,
+                    seat_events,
+                    stream_inject(),
+                    fun(Port) ->
+                        Raw = ?S:stream_request(
+                            Port,
+                            <<"GET">>,
+                            <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                                "/seats/me/events?workspace_id=", (int_bin(?WS))/binary>>,
+                            <<>>,
+                            #{<<"authorization">> => <<"Bearer x">>},
+                            600
+                        ),
+                        {Head, Body} = sse_parts(Raw),
+                        %% 响应头（sse-event-contract response_headers）。
+                        ?assertMatch(
+                            {match, _},
+                            re:run(Head, <<"content-type: text/event-stream">>, [caseless])
+                        ),
+                        ?assertMatch(
+                            {match, _},
+                            re:run(Head, <<"x-cs-event-retention-seconds: 86400">>, [caseless])
+                        ),
+                        %% 首写顺序：retry: 2000（合同字面值）→ 合成 resync 帧
+                        %% （首连无游标）。首个 stream_body 合并写出，逐字连续。
+                        ?assertMatch(
+                            {match, _},
+                            re:run(
+                                Body,
+                                <<"retry: 2000\\nid: 880001\\nevent: resync.required\\n">>
+                            )
+                        ),
+                        %% 事件帧：id/event/data 全合同形状；TSID 出站为 string。
+                        ?assertMatch({match, _}, re:run(Body, <<"\"event_id\":\"880001\"">>)),
+                        ?assertMatch({match, _}, re:run(Body, <<"\"workspace_id\":\"90001\"">>)),
+                        ?assertMatch({match, _}, re:run(Body, <<"\"resource_id\":\"990001\"">>)),
+                        %% resource_version 是版本号不是 TSID：保持 number。
+                        ?assertMatch({match, _}, re:run(Body, <<"\"resource_version\":1">>)),
+                        ?assertMatch({match, _}, re:run(Body, <<"\"reason\":\"created\"">>))
+                    end
+                )
+            end},
+        {"Seat events with valid cursor continues without resync frame", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                {ok, #{business_identity_id => ?IDENTITY, enabled => true}}
+            end),
+            meck:expect(customer_service_facade, seat_events, fun(_Org, Params) ->
+                %% Last-Event-ID 头优先于 after_id 查询参数（cursor_rule）。
+                ?assertEqual(880001, maps:get(after_id, Params)),
+                {ok, #{
+                    events => [],
+                    cursor => 880001,
+                    resync_required => false,
+                    resync_reason => <<"unknown">>
+                }}
+            end),
+            ?S:with_listener(
+                tenant,
+                seat_events,
+                stream_inject(),
+                fun(Port) ->
+                    Raw = ?S:stream_request(
+                        Port,
+                        <<"GET">>,
+                        <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                            "/seats/me/events?workspace_id=", (int_bin(?WS))/binary,
+                            "&after_id=1">>,
+                        <<>>,
+                        #{
+                            <<"authorization">> => <<"Bearer x">>,
+                            <<"last-event-id">> => <<"880001">>
+                        },
+                        600
+                    ),
+                    {_, Body} = sse_parts(Raw),
+                    %% retry 帧仍是首写；合法游标 ⇒ 无 resync 帧。
+                    ?assertMatch({match, _}, re:run(Body, <<"retry: 2000\\n">>)),
+                    ?assertNotMatch({match, _}, re:run(Body, <<"resync.required">>))
+                end
+            )
+        end},
+        {"Seat events cross-org cursor is 403 before streaming (no silent fallback)", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                {ok, #{business_identity_id => ?IDENTITY, enabled => true}}
+            end),
+            meck:expect(customer_service_facade, seat_events, fun(_Org, _Params) ->
+                {error, cross_org}
+            end),
+            ?S:with_listener(tenant, seat_events, seat_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                        "/seats/me/events?workspace_id=", (int_bin(?WS))/binary>>,
+                    <<>>,
+                    #{
+                        <<"authorization">> => <<"Bearer x">>,
+                        <<"last-event-id">> => <<"880002">>
+                    }
+                ),
+                ?assertEqual(403, ?S:status(Resp)),
+                ?assertEqual(<<"cross_org">>, ?S:msg(Resp))
+            end)
+        end},
+        {"Seat events invalid Last-Event-ID header is 400", fun() ->
             cs_fake_facts:set(seat_facts()),
             meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
                 {ok, #{business_identity_id => ?IDENTITY, enabled => true}}
@@ -506,13 +633,16 @@ seat_events_placeholder_tests(_) ->
                     <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
                         "/seats/me/events?workspace_id=", (int_bin(?WS))/binary>>,
                     <<>>,
-                    #{<<"authorization">> => <<"Bearer x">>}
+                    #{
+                        <<"authorization">> => <<"Bearer x">>,
+                        <<"last-event-id">> => <<"not-a-tsid">>
+                    }
                 ),
-                ?assertEqual(501, ?S:status(Resp)),
-                ?assertEqual(<<"not_implemented">>, ?S:msg(Resp))
+                ?assertEqual(400, ?S:status(Resp)),
+                ?assertNot(meck:called(customer_service_facade, seat_events, '_'))
             end)
         end},
-        {"Seat events without workspace_id is 422 before the placeholder", fun() ->
+        {"Seat events without workspace_id is 422 before streaming", fun() ->
             cs_fake_facts:set(seat_facts()),
             meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
                 {ok, #{business_identity_id => ?IDENTITY, enabled => true}}
@@ -528,8 +658,50 @@ seat_events_placeholder_tests(_) ->
                 ),
                 ?assertEqual(422, ?S:status(Resp))
             end)
+        end},
+        {"Seat events without JWT is 401 before streaming", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            %% 中间件门：无 Authorization 头 ⇒ 生产中间件不注入 current_uid，
+            %% 测试扮演中间件（注入集不含 current_uid）。
+            ?S:with_listener(tenant, seat_events, #{auth_facts => cs_fake_facts}, fun(Port) ->
+                meck:reset(customer_service_facade),
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                        "/seats/me/events?workspace_id=", (int_bin(?WS))/binary>>,
+                    <<>>,
+                    #{}
+                ),
+                ?assertEqual(401, ?S:status(Resp)),
+                ?assertNot(meck:called(customer_service_facade, seat_events, '_'))
+            end)
         end}
     ].
+
+seat_event_envelope() ->
+    #{
+        event_id => 880001,
+        type => <<"message.appended">>,
+        organization_id => ?ORG,
+        workspace_id => ?WS,
+        resource_type => <<"message">>,
+        resource_id => 990001,
+        resource_version => 1,
+        occurred_at => <<"2026-09-20T08:00:00Z">>,
+        reason => <<"created">>
+    }.
+
+sse_parts(Raw) ->
+    case binary:split(Raw, <<"\r\n\r\n">>) of
+        [Head, Body] -> {Head, Body};
+        [_] -> {Raw, <<>>}
+    end.
+
+%% SSE 流式用例的注入集：短轮询/短 deadline（流循环在 deadline 正常 fin，
+%% 测试客户端限时读 600ms 后主动断开，不拖慢套件）。
+stream_inject() ->
+    maps:merge(seat_inject(), #{sse_max_ms => 250, sse_poll_ms => 50}).
 
 %% ===================================================================
 %% 视图投影（application 直驱 + fake store：掩码名 / 来源 / 末条安全摘要）

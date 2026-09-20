@@ -21,6 +21,7 @@
     resume_seat/2,
     fetch_seat/2,
     list_dispatchable_seats/2,
+    provision_seat/2,
     %% session
     open_session/2,
     fetch_session/2,
@@ -56,6 +57,7 @@
     widget_rate/2,
     widget_asset_upload/2,
     widget_asset_confirm/2,
+    widget_asset_content/2,
     %% seat 会话详情（§12.4 表 2 补缺）
     seat_session_detail/2,
     %% CSB-02R：坐席工作台（队列 GET + active/closed 列表，共用 seat_session_page）
@@ -597,6 +599,38 @@ widget_asset_confirm(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
 widget_asset_confirm(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
+%% BE-S01b：访客附件内容代理（GET .../sessions/:session_id/assets/:asset_id/content，
+%% api-surface-freeze widget_apis）：逐项校验链（visit token → installation 事实
+%% → 默认 Workspace → 会话归属）后经 enterprise 真源的 contact 分支取流。
+%% 返回体只含 mime/size/hash/字节（asset content 投影），**永不**暴露 storage
+%% URL / object key。asset_id 是路径绑定（服务端解析），浏览器不申报会话外的
+%% 任何作用域。
+-spec widget_asset_content(integer(), map()) -> term().
+widget_asset_content(
+    OrgId,
+    #{
+        installation_id := InstallationId,
+        secret := Secret,
+        session_id := SessionId,
+        asset_id := AssetId
+    } = Params
+) when
+    is_integer(OrgId),
+    is_integer(InstallationId),
+    is_binary(Secret),
+    is_integer(SessionId),
+    is_integer(AssetId),
+    is_map(Params)
+->
+    case cs_widget_env:merge_visitor(OrgId, Params) of
+        {ok, Merged} -> cs_widget_session_app:asset_content(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
+widget_asset_content(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_asset_content}};
+widget_asset_content(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
 %% @doc 坐席会话详情（§12.4 表 2 补缺）：business_identity_id 是认证事实
 %% 派生键（HTTP 面服务端注入），queue 列表沿用既有 list_sessions。
 -spec seat_session_detail(integer(), map()) -> term().
@@ -677,12 +711,36 @@ transfer_targets(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
 transfer_targets(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
-%% @doc 坐席 SSE 事件流占位（GET /api/v1/cs/organizations/:org_id/seats/me/events）：
-%% 路由/认证/参数面已按 T-2 裁定冻结，流式实现（sse-event-contract 的信封/
-%% 游标补偿/保活）在 BE-S01b——此前一律 501（not_implemented），客户端可探测
-%% 能力而不误判路由缺失（404）。
--spec seat_events(integer(), map()) -> {error, not_implemented}.
-seat_events(OrgId, _Params) when is_integer(OrgId), is_map(_Params) ->
-    {error, not_implemented};
+%% @doc 坐席 SSE 事件流（GET /api/v1/cs/organizations/:org_id/seats/me/events）：
+%% BE-S01b 流式实现。handler 把 Last-Event-ID 头（优先）与 after_id 查询参数
+%% 归一为同一 `after_id` 键（缺流首连无该键）；workspace_id 是 handler 强制的
+%% face 级必填。每次调用返回一页确定性事实（游标状态 + 合同信封列表），流式
+%% 写出/心跳/撤权关流在 handler 分支（see cs_seat_event_app 模块文档）。
+-spec seat_events(integer(), map()) -> term().
+seat_events(
+    OrgId, #{workspace_id := WorkspaceId, business_identity_id := IdentityId} = Params
+) when
+    is_integer(OrgId), is_integer(WorkspaceId), is_integer(IdentityId), is_map(Params)
+->
+    cs_seat_event_app:events(OrgId, Params);
+seat_events(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, seat_events}};
 seat_events(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 平台面事务化开通/修复坐席（POST /api/adm/.../provisioning；
+%% api-surface-freeze admin_provisioning）：单事务内 identity + assignment +
+%% enabled seat 的创建/修复 + 不可抵赖审计；幂等（重复调用返回既有事实）。
+%% adm_user_id 是认证派生键（Admin session），进审计 detail 不进 actor 列。
+-spec provision_seat(integer(), map()) -> term().
+provision_seat(
+    OrgId,
+    #{workspace_id := WorkspaceId, user_id := UserId, adm_user_id := AdmId} = Params
+) when
+    is_integer(OrgId), is_integer(WorkspaceId), is_integer(UserId), is_integer(AdmId), is_map(Params)
+->
+    cs_seat_app:provision_seat(OrgId, Params);
+provision_seat(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, provision_seat}};
+provision_seat(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
