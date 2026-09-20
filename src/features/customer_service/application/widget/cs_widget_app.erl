@@ -260,7 +260,7 @@ new_public_widget_id(Params) ->
 public_frame_installation(OrgId, #{installation_id := InstallationId} = Params) when
     is_integer(OrgId), is_integer(InstallationId)
 ->
-    case cs_widget_support:fetch_installation(OrgId, InstallationId, Params) of
+    case cs_widget_support:fetch_installation(Params, OrgId, InstallationId) of
         {ok, Installation} ->
             {ok, #{
                 id => maps:get(id, Installation),
