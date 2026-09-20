@@ -850,6 +850,31 @@ origin_normalization_edges() ->
     ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com:0">>)),
     ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"a.com">>)),
     ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://u@a.com">>)),
+    %% CSD-BE-01T（合同 S4 六禁形状门，SEC-1 修复）：白名单内 `_`/`-`/`.`
+    %% host 合法；六禁全 fail-closed——scheme 非 http(s)（与端口无关）、通配、
+    %% 空白/控制字符（含无冒号 CRLF 形态）、path/query/fragment、userinfo、
+    %% 端口非法字符集。
+    ?assertEqual(
+        {ok, <<"https://a_.com-x.y">>}, cs_widget:normalize_origin(<<"HTTPS://A_.COM-X.Y">>)
+    ),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"ftp://h.com:21">>)),
+    ?assertMatch(
+        {error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"javascript://h.com:80">>)
+    ),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://*">>)),
+    ?assertMatch(
+        {error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://*.evil.com">>)
+    ),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com X">>)),
+    ?assertMatch(
+        {error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com\r\nEvil">>)
+    ),
+    ?assertMatch(
+        {error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com\r\nEvil: 1">>)
+    ),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com?x=1">>)),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com#f">>)),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com:+80">>)),
     %% allowlist 精确匹配：归一后相等才放行。
     ?assertEqual(
         ok, cs_widget:origin_allowed(<<"https://a.com:443">>, [<<"https://a.com">>])
