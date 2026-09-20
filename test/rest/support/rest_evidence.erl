@@ -84,16 +84,28 @@ redact(Value) ->
 %% Substring semantics on the lowercased key: exact matching leaks
 %% camelCase/snake_case/prefixed spellings (Refresh_Token is caught by the
 %% case-insensitive exact list, but refreshToken, access_token, x-token,
-%% set-cookie, api_key ... are not). Over-redaction of token_count-style
-%% fields is an accepted cost: evidence is the sanitized artifact, raw
-%% values remain inspectable in the live response.
+%% set-cookie, api_key, client_secret ... are not). A bare "key" fragment is
+%% deliberately excluded: it would redact cache_key/sort_key-class debug
+%% fields for no extra credential coverage. Over-redaction of
+%% token_count-style fields is an accepted cost: evidence is the sanitized
+%% artifact, raw values remain inspectable in the live response.
 sensitive_key(Key) when is_atom(Key) ->
     sensitive_key(atom_to_binary(Key, utf8));
 sensitive_key(Key) when is_binary(Key) ->
     Lower = string:lowercase(Key),
     lists:any(
         fun(Fragment) -> binary:match(Lower, Fragment) =/= nomatch end,
-        [<<"authorization">>, <<"cookie">>, <<"password">>, <<"pwd">>, <<"token">>]
+        [
+            <<"authorization">>,
+            <<"cookie">>,
+            <<"password">>,
+            <<"pwd">>,
+            <<"token">>,
+            <<"secret">>,
+            <<"api_key">>,
+            <<"apikey">>,
+            <<"api-key">>
+        ]
     );
 sensitive_key(_) ->
     false.

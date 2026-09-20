@@ -51,38 +51,43 @@ response() ->
 fail_evidence_written_before_raise_test() ->
     with_evidence_dir(fun(Dir) ->
         Request = #{<<"pwd">> => ?CANARY_PWD},
-        try
-            rest_evidence:verify(
-                meta(<<"UNIT-001">>),
-                Request,
-                response(),
-                fun(Resp) -> rest_assert:json_contains(#{<<"code">> => 0}, Resp) end
-            ),
-            ?assert(should_have_failed)
-        catch
-            error:{rest_assertion_failed, _, _} ->
-                File = filename:join(Dir, "unit-001.json"),
-                {ok, Bin} = file:read_file(File),
-                Doc = jsone:decode(Bin, [{object_format, map}]),
-                ?assertEqual(<<"FAIL">>, maps:get(<<"result">>, Doc)),
-                %% A3: FAIL evidence exists although the assertion raised.
-                ?assertMatch(#{<<"result">> := <<"FAIL">>}, Doc)
-        end
+        Raised =
+            try
+                rest_evidence:verify(
+                    meta(<<"UNIT-001">>),
+                    Request,
+                    response(),
+                    fun(Resp) -> rest_assert:json_contains(#{<<"code">> => 0}, Resp) end
+                ),
+                not_raised
+            catch
+                error:{rest_assertion_failed, _, _} = Raiser -> {raised, Raiser}
+            end,
+        %% A no-raise run must fail the test, not pass it vacuously.
+        ?assertMatch({raised, _}, Raised),
+        File = filename:join(Dir, "unit-001.json"),
+        {ok, Bin} = file:read_file(File),
+        Doc = jsone:decode(Bin, [{object_format, map}]),
+        ?assertEqual(<<"FAIL">>, maps:get(<<"result">>, Doc)),
+        %% A3: FAIL evidence exists although the assertion raised.
+        ?assertMatch(#{<<"result">> := <<"FAIL">>}, Doc)
     end).
 
 redaction_recursive_and_case_insensitive_test() ->
     with_evidence_dir(fun(Dir) ->
-        try
-            rest_evidence:verify(
-                meta(<<"UNIT-002">>),
-                #{<<"pwd">> => ?CANARY_PWD},
-                response(),
-                fun(_) -> error(boom) end
-            ),
-            ?assert(should_have_failed)
-        catch
-            _:_ -> ok
-        end,
+        Outcome =
+            try
+                rest_evidence:verify(
+                    meta(<<"UNIT-002">>),
+                    #{<<"pwd">> => ?CANARY_PWD},
+                    response(),
+                    fun(_) -> error(boom) end
+                ),
+                not_raised
+            catch
+                _:_ -> raised
+            end,
+        ?assertEqual(raised, Outcome),
         {ok, Bin} = file:read_file(filename:join(Dir, "unit-002.json")),
         ?assertEqual(nomatch, binary:match(Bin, ?CANARY_PWD)),
         ?assertEqual(nomatch, binary:match(Bin, ?CANARY_TOKEN)),
@@ -106,26 +111,30 @@ redaction_recursive_and_case_insensitive_test() ->
 %% spellings of sensitive words are redacted too.
 sensitive_key_substring_spellings_test() ->
     with_evidence_dir(fun(Dir) ->
-        try
-            rest_evidence:verify(
-                meta(<<"UNIT-006">>),
-                #{},
-                #{
-                    status => 200,
-                    headers => #{
-                        <<"x-auth-token">> => ?CANARY_TOKEN,
-                        <<"SET-COOKIE">> => ?CANARY_PWD
+        Outcome =
+            try
+                rest_evidence:verify(
+                    meta(<<"UNIT-006">>),
+                    #{},
+                    #{
+                        status => 200,
+                        headers => #{
+                            <<"x-auth-token">> => ?CANARY_TOKEN,
+                            <<"SET-COOKIE">> => ?CANARY_PWD,
+                            <<"x-api-key">> => ?CANARY_PWD,
+                            <<"client_secret">> => ?CANARY_TOKEN
+                        },
+                        raw_body => <<"raw">>,
+                        duration_ms => 1,
+                        body => #{<<"accessToken">> => ?CANARY_TOKEN, <<"ok">> => true}
                     },
-                    raw_body => <<"raw">>,
-                    duration_ms => 1,
-                    body => #{<<"accessToken">> => ?CANARY_TOKEN, <<"ok">> => true}
-                },
-                fun(_) -> error(boom) end
-            ),
-            ?assert(should_have_failed)
-        catch
-            _:_ -> ok
-        end,
+                    fun(_) -> error(boom) end
+                ),
+                not_raised
+            catch
+                _:_ -> raised
+            end,
+        ?assertEqual(raised, Outcome),
         {ok, Bin} = file:read_file(filename:join(Dir, "unit-006.json")),
         ?assertEqual(nomatch, binary:match(Bin, ?CANARY_TOKEN)),
         ?assertEqual(nomatch, binary:match(Bin, ?CANARY_PWD)),
@@ -133,6 +142,8 @@ sensitive_key_substring_spellings_test() ->
         Headers = maps:get(<<"headers">>, maps:get(<<"response">>, Doc)),
         ?assertEqual(<<"[REDACTED]">>, maps:get(<<"x-auth-token">>, Headers)),
         ?assertEqual(<<"[REDACTED]">>, maps:get(<<"SET-COOKIE">>, Headers)),
+        ?assertEqual(<<"[REDACTED]">>, maps:get(<<"x-api-key">>, Headers)),
+        ?assertEqual(<<"[REDACTED]">>, maps:get(<<"client_secret">>, Headers)),
         Body = maps:get(<<"body">>, maps:get(<<"response">>, Doc)),
         ?assertEqual(<<"[REDACTED]">>, maps:get(<<"accessToken">>, Body)),
         ?assertEqual(true, maps:get(<<"ok">>, Body))
@@ -183,17 +194,19 @@ expected_field_redacted_test() ->
 failure_text_capped_test() ->
     with_evidence_dir(fun(Dir) ->
         Huge = binary:copy(<<"x">>, 100000),
-        try
-            rest_evidence:verify(
-                meta(<<"UNIT-005">>),
-                #{},
-                #{status => 200, headers => #{}, body => #{}, duration_ms => 1},
-                fun(_) -> erlang:error({boom, Huge}) end
-            ),
-            ?assert(should_have_failed)
-        catch
-            _:_ -> ok
-        end,
+        Outcome =
+            try
+                rest_evidence:verify(
+                    meta(<<"UNIT-005">>),
+                    #{},
+                    #{status => 200, headers => #{}, body => #{}, duration_ms => 1},
+                    fun(_) -> erlang:error({boom, Huge}) end
+                ),
+                not_raised
+            catch
+                _:_ -> raised
+            end,
+        ?assertEqual(raised, Outcome),
         {ok, Bin} = file:read_file(filename:join(Dir, "unit-005.json")),
         Doc = jsone:decode(Bin, [{object_format, map}]),
         Failure = maps:get(<<"failure">>, maps:get(<<"actual">>, Doc)),

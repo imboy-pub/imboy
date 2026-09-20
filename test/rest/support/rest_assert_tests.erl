@@ -62,17 +62,20 @@ missing_path_test() ->
 %% entries (the token string never appears), only summaries.
 failure_reason_carries_no_payload_values_test() ->
     Resp = response(),
-    try
-        rest_assert:json_contains(#{<<"payload">> => #{<<"token">> => <<"other">>}}, Resp),
-        ?assert(fail_expected)
-    catch
-        error:Reason ->
-            Formatted = unicode:characters_to_binary(io_lib:format("~p", [Reason])),
-            ?assertEqual(nomatch, binary:match(Formatted, <<"super-secret-token-value">>)),
-            %% the summary describes the shape, not the content
-            SummaryMap = element(3, Reason),
-            ?assertMatch({map_keys, _}, maps:get(actual, SummaryMap))
-    end.
+    Raised =
+        try
+            rest_assert:json_contains(#{<<"payload">> => #{<<"token">> => <<"other">>}}, Resp),
+            not_raised
+        catch
+            error:Rsn -> {raised, Rsn}
+        end,
+    %% A no-raise run must fail the test, not pass it vacuously.
+    {raised, Reason} = Raised,
+    Formatted = unicode:characters_to_binary(io_lib:format("~p", [Reason])),
+    ?assertEqual(nomatch, binary:match(Formatted, <<"super-secret-token-value">>)),
+    %% the summary describes the shape, not the content
+    SummaryMap = element(3, Reason),
+    ?assertMatch({map_keys, _}, maps:get(actual, SummaryMap)).
 
 long_binary_summary_test() ->
     Long = binary:copy(<<"a">>, 500),
@@ -87,29 +90,35 @@ long_binary_summary_test() ->
 %% redaction cannot scrub it.
 short_binary_expectation_leaks_no_content_test() ->
     Resp = response(),
-    try
-        rest_assert:json_path([<<"payload">>, <<"token">>], <<"short-secret-abc">>, Resp),
-        ?assert(fail_expected)
-    catch
-        error:Reason ->
-            Formatted = unicode:characters_to_binary(io_lib:format("~p", [Reason])),
-            ?assertEqual(nomatch, binary:match(Formatted, <<"short-secret-abc">>)),
-            Summary = element(3, Reason),
-            ?assertMatch(#{expected := {binary, 16}}, Summary)
-    end.
+    Raised =
+        try
+            rest_assert:json_path([<<"payload">>, <<"token">>], <<"short-secret-abc">>, Resp),
+            not_raised
+        catch
+            error:Rsn -> {raised, Rsn}
+        end,
+    %% A no-raise run must fail the test, not pass it vacuously.
+    {raised, Reason} = Raised,
+    Formatted = unicode:characters_to_binary(io_lib:format("~p", [Reason])),
+    ?assertEqual(nomatch, binary:match(Formatted, <<"short-secret-abc">>)),
+    Summary = element(3, Reason),
+    ?assertMatch(#{expected := {binary, 16}}, Summary).
 
 binary_header_value_leaks_no_content_test() ->
     Resp = (response())#{
         headers => #{<<"set-cookie">> => <<"sid=leaky-cookie-value; HttpOnly">>}
     },
-    try
-        rest_assert:header_contains(<<"set-cookie">>, <<"Secure">>, Resp),
-        ?assert(fail_expected)
-    catch
-        error:Reason ->
-            Formatted = unicode:characters_to_binary(io_lib:format("~p", [Reason])),
-            ?assertEqual(nomatch, binary:match(Formatted, <<"leaky-cookie-value">>))
-    end.
+    Raised =
+        try
+            rest_assert:header_contains(<<"set-cookie">>, <<"Secure">>, Resp),
+            not_raised
+        catch
+            error:Rsn -> {raised, Rsn}
+        end,
+    %% A no-raise run must fail the test, not pass it vacuously.
+    {raised, Reason} = Raised,
+    Formatted = unicode:characters_to_binary(io_lib:format("~p", [Reason])),
+    ?assertEqual(nomatch, binary:match(Formatted, <<"leaky-cookie-value">>)).
 
 nonempty(Value) ->
     is_binary(Value) andalso byte_size(Value) > 0.
