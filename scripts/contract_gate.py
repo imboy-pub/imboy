@@ -9,6 +9,8 @@
     flutter 全量契约由 C1 的 imboyapp/scripts/generate_error_code.dart --check 承担）
   - 上行 WS action：src/lib/imboy_ws_action_registry.erl（-define(BUILTIN_ACTIONS)
     表静态快照；运行时插件注册与下行 S2C action 不在静态导出内）
+  - 下行 S2C action：src/**/*.erl 的 assemble_s2c 第 2 参数字面量
+    （应答/控制类静态清单；业务事件推送不经 assemble_s2c 的不在内）
 
 子命令：
   export            生成 .contract/api_contract.json（确定性输出：内容不变则文件不变，
@@ -39,7 +41,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CONTRACT_PATH = REPO / ".contract" / "api_contract.json"
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 
 # ---------------------------------------------------------------------------
 # 后端真源：DB CHECK 枚举约束白名单（约束名 → 契约枚举 key）
@@ -247,6 +249,30 @@ def extract_ws_actions(registry_src: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# 下行 S2C 应答/控制 action（assemble_s2c 第 2 参数字面量，只读静态提取）
+# ---------------------------------------------------------------------------
+S2C_ACTION_RE = re.compile(r'assemble_s2c\s*\(\s*[\w:]+\s*,\s*<<"([a-z0-9_]+)">>')
+
+
+def extract_ws_s2c_actions() -> dict:
+    """静态提取服务端应答/控制类 S2C action 清单（确定性排序，含出处）。"""
+    hits = {}
+    for f in sorted((REPO / "src").rglob("*.erl")):
+        if f.name.endswith("_tests.erl"):
+            continue
+        rel = f.relative_to(REPO).as_posix()
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            for m in S2C_ACTION_RE.finditer(line):
+                hits.setdefault(m.group(1), []).append(f"{rel}:{i}")
+    return {
+        "source": "src/**/*.erl 的 assemble_s2c 第 2 参数字面量（非 *_tests）",
+        "note": "应答/控制类 S2C action 静态清单；业务事件推送（group_*/moment_* 等"
+                "不经 assemble_s2c 的）不在本清单（口径对齐 endpoints.plugin_routes）",
+        "actions": [{"action": a, "sources": hits[a]} for a in sorted(hits)],
+    }
+
+
+# ---------------------------------------------------------------------------
 # 枚举提取（priv/migrations CHECK 约束，按迁移序号取最新定义）
 # ---------------------------------------------------------------------------
 CHECK_RE = re.compile(
@@ -330,6 +356,7 @@ def build_contract() -> dict:
             "migrations_dir": "priv/migrations",
             "error_code": "include/error_code.hrl",
             "ws_action_registry": "src/lib/imboy_ws_action_registry.erl",
+            "ws_s2c_actions": "assemble_s2c 字面量（src/**/*.erl）",
         },
         "notes": {
             "method": "cowboy 路由无 method 维度（handler 内分派），method 契约不在第一版范围",
@@ -344,6 +371,7 @@ def build_contract() -> dict:
         "error_code_summary": extract_error_code_summary(REPO / "include" / "error_code.hrl"),
         "ws_actions": extract_ws_actions(
             (REPO / "src" / "lib" / "imboy_ws_action_registry.erl").read_text(encoding="utf-8")),
+        "ws_s2c_actions": extract_ws_s2c_actions(),
     }
 
 
@@ -550,6 +578,47 @@ def _self_check(contract) -> list:
             "合法变更流程（计划 §2.2）：同一 PR 内运行 make contract-export 并提交产物。\n" + head]
 
 
+# App 侧已收编但服务端 registry 未注册的上行 action（漂移登记簿 #9：WS 通道
+# 恒回 unknown_action，生效通道是 HTTP messaging API；通道去留待拍板）。
+# 比对时豁免；豁免表之外 App 不得声明 registry 不存在的上行 action。
+APP_ONLY_C2S_ACTIONS = {"message_reaction"}
+
+DART_C2S_CONST_RE = re.compile(r"static\s+const\s+String\s+\w+\s*=\s*'([a-z0-9_]+)'\s*;")
+
+
+def _dart_class_block(text: str, class_name: str):
+    m = (re.search(rf"abstract\s+class\s+{class_name}\s*\{{", text)
+         or re.search(rf"class\s+{class_name}\s*\{{", text))
+    if m is None:
+        return None
+    end = text.find("\n}", m.end())
+    return text[m.end(): end if end != -1 else len(text)]
+
+
+def check_flutter_c2s_actions(flutter_dir, contract, failures) -> None:
+    """App 上行 action 单向比对：C2SAction 声明值集 ⊆ registry ∪ 豁免表。"""
+    path = Path(flutter_dir) / "lib" / "service" / "message_type_constants.dart"
+    if not path.is_file():
+        print(f"[skip] flutter C2S action 比对（未找到 {path}）")
+        return
+    block = _dart_class_block(path.read_text(encoding="utf-8"), "C2SAction")
+    if block is None:
+        failures.append("flutter C2SAction 类缺失（lib/service/message_type_constants.dart）")
+        return
+    app_actions = set(DART_C2S_CONST_RE.findall(block))
+    registry_actions = {a["action"] for a in contract["ws_actions"]["actions"]}
+    unknown = app_actions - registry_actions - APP_ONLY_C2S_ACTIONS
+    if unknown:
+        failures.append(
+            f"flutter C2SAction 声明了服务端 registry 不存在的 action：{sorted(unknown)}"
+            f"（现行豁免表={sorted(APP_ONLY_C2S_ACTIONS)}；新 action 须先注册 "
+            f"imboy_ws_action_registry 或经评审登记豁免）")
+        return
+    exempt = sorted(app_actions & APP_ONLY_C2S_ACTIONS)
+    print(f"== flutter C2S action 比对 PASS：App {len(app_actions)} 项 ⊆ registry "
+          f"{len(registry_actions)} 项（豁免 {exempt if exempt else '无'}）==")
+
+
 def cmd_check(admin_dir, flutter_dir) -> int:
     contract = build_contract()
     failures = _self_check(contract)
@@ -564,6 +633,7 @@ def cmd_check(admin_dir, flutter_dir) -> int:
         print("[skip] admin diff（未指定 --admin 且 ../imboyadmin 不存在）")
     if flutter_dir:
         check_client_bindings(flutter_dir, FLUTTER_ENUM_BINDINGS, contract, "flutter", failures)
+        check_flutter_c2s_actions(flutter_dir, contract, failures)
     else:
         print("[skip] flutter diff（未指定 --flutter 且 ../imboyapp 不存在）")
     check_openapi_coverage(contract)

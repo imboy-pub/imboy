@@ -14,7 +14,7 @@
 ### Fixed
 
 - 契约漂移 #2：管理后台内置角色 4/5/6（内容审核/安全治理/客服）补展示名——抽 `shared/adminRoles.ts` 单一映射对齐后端 `role_acl/1` 真源（imboyadmin `cf9ad7b`）
-- 契约漂移 #7（服务端侧）：上行 WS action 注册表纳入契约门——`api_contract.json` 新增 `ws_actions` 段（format_version 2），registry 变更未重导出即 `make contract-check` 红门
+- 契约漂移 #7（收口）：上行 WS action 注册表与下行 S2C action 清单均入契约门（`api_contract.json` `ws_actions`/`ws_s2c_actions` 段，format_version 3）；App 上行常量收编 `C2SAction` 并接单向比对（imboyapp `783b752f`）；新发现 #9（App WS `message_reaction` 通道服务端不认）登记待拍板
 
 ### Docs
 

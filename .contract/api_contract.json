@@ -4881,7 +4881,7 @@
     },
     "source": "include/error_code.hrl"
   },
-  "format_version": 2,
+  "format_version": 3,
   "generator": "scripts/contract_gate.py",
   "notes": {
     "entity_id_tsid": "canonical: JSON integer (TSID 64-bit)；admin 网络层 safeParseBigIntJson 转 string；TS 类型一律 EntityId",
@@ -4893,7 +4893,8 @@
     "error_code": "include/error_code.hrl",
     "migrations_dir": "priv/migrations",
     "router": "src/imboy_router.erl",
-    "ws_action_registry": "src/lib/imboy_ws_action_registry.erl"
+    "ws_action_registry": "src/lib/imboy_ws_action_registry.erl",
+    "ws_s2c_actions": "assemble_s2c 字面量（src/**/*.erl）"
   },
   "ws_actions": {
     "actions": [
@@ -4978,5 +4979,134 @@
     ],
     "note": "上行 WS action（客户端→服务端）内置注册表静态快照；运行时插件注册与下行 S2C action 不在静态导出内（口径对齐 endpoints.plugin_routes）",
     "source": "src/lib/imboy_ws_action_registry.erl"
+  },
+  "ws_s2c_actions": {
+    "actions": [
+      {
+        "action": "c2s_unsupported",
+        "sources": [
+          "src/logic/msg_c2s_logic.erl:51"
+        ]
+      },
+      {
+        "action": "in_denylist",
+        "sources": [
+          "src/logic/msg_c2c_logic.erl:113",
+          "src/logic/msg_c2c_logic.erl:878",
+          "src/logic/webrtc_ws_logic.erl:57"
+        ]
+      },
+      {
+        "action": "internal_error",
+        "sources": [
+          "src/logic/msg_c2c_logic.erl:986",
+          "src/logic/msg_c2s_logic.erl:164",
+          "src/logic/msg_s2c_logic.erl:62"
+        ]
+      },
+      {
+        "action": "invalid_message_type",
+        "sources": [
+          "src/logic/message_router_logic.erl:114"
+        ]
+      },
+      {
+        "action": "invalid_msgid",
+        "sources": [
+          "src/logic/msg_c2g_logic.erl:929"
+        ]
+      },
+      {
+        "action": "invalid_operation",
+        "sources": [
+          "src/logic/msg_c2c_logic.erl:865"
+        ]
+      },
+      {
+        "action": "msg_not_found",
+        "sources": [
+          "src/logic/msg_c2c_logic.erl:294",
+          "src/logic/msg_c2c_logic.erl:570",
+          "src/logic/msg_c2c_logic.erl:636",
+          "src/logic/msg_c2g_logic.erl:333",
+          "src/logic/msg_c2g_logic.erl:683",
+          "src/logic/msg_c2g_logic.erl:852",
+          "src/logic/msg_s2c_logic.erl:137"
+        ]
+      },
+      {
+        "action": "not_a_friend",
+        "sources": [
+          "src/logic/msg_c2c_logic.erl:116",
+          "src/logic/msg_c2c_logic.erl:881",
+          "src/logic/webrtc_ws_logic.erl:60"
+        ]
+      },
+      {
+        "action": "not_group_member",
+        "sources": [
+          "src/logic/msg_c2g_logic.erl:688",
+          "src/logic/msg_c2g_logic.erl:859"
+        ]
+      },
+      {
+        "action": "peer_offline",
+        "sources": [
+          "src/logic/webrtc_ws_logic.erl:51"
+        ]
+      },
+      {
+        "action": "permission_denied",
+        "sources": [
+          "src/logic/msg_c2c_logic.erl:565",
+          "src/logic/msg_c2c_logic.erl:575",
+          "src/logic/msg_c2c_logic.erl:634",
+          "src/logic/msg_c2c_logic.erl:640",
+          "src/logic/msg_c2c_logic.erl:886",
+          "src/logic/msg_c2g_logic.erl:681",
+          "src/logic/msg_c2g_logic.erl:686",
+          "src/logic/msg_c2g_logic.erl:847",
+          "src/logic/msg_c2g_logic.erl:856",
+          "src/logic/msg_c2g_logic.erl:931",
+          "src/logic/msg_s2c_logic.erl:88",
+          "src/logic/msg_s2c_logic.erl:108",
+          "src/logic/msg_s2c_logic.erl:135"
+        ]
+      },
+      {
+        "action": "pull_offline_msg",
+        "sources": [
+          "src/ds/message_ds.erl:443"
+        ]
+      },
+      {
+        "action": "rate_limited",
+        "sources": [
+          "src/logic/msg_c2c_logic.erl:47"
+        ]
+      },
+      {
+        "action": "server_error",
+        "sources": [
+          "src/api/websocket_handler.erl:592"
+        ]
+      },
+      {
+        "action": "service_unavailable",
+        "sources": [
+          "src/logic/msg_c2g_logic.erl:944",
+          "src/logic/msg_c2g_logic.erl:946"
+        ]
+      },
+      {
+        "action": "unknown_action",
+        "sources": [
+          "src/logic/message_router_logic.erl:148",
+          "src/logic/msg_s2c_logic.erl:177"
+        ]
+      }
+    ],
+    "note": "应答/控制类 S2C action 静态清单；业务事件推送（group_*/moment_* 等不经 assemble_s2c 的）不在本清单（口径对齐 endpoints.plugin_routes）",
+    "source": "src/**/*.erl 的 assemble_s2c 第 2 参数字面量（非 *_tests）"
   }
 }
