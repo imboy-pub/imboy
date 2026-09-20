@@ -173,9 +173,14 @@ conv_002_pin_unpin_cycle(Config) ->
             %% After pin the conversation is flagged in mine.
             rest_assert:status(200, MineAfterPin),
             pinned_entry_is(MineAfterPin, BUid, true),
-            %% Unpin answers with the explicit updated payload.
+            %% Unpin answers with the explicit updated payload: the
+            %% handler wraps it as payload.updated inside the standard
+            %% {code,msg,payload,sv_ts} envelope
+            %% (conversation_handler:unpin_conversation/2).
             rest_assert:status(200, UnpinResponse),
-            rest_assert:json_contains(#{<<"code">> => 0, <<"updated">> => true}, UnpinResponse),
+            rest_assert:json_contains(
+                #{<<"code">> => 0, <<"payload">> => #{<<"updated">> => true}}, UnpinResponse
+            ),
             %% And the pin state is cleared again.
             rest_assert:status(200, MineAfterUnpin),
             pinned_entry_is(MineAfterUnpin, BUid, false)
@@ -288,7 +293,9 @@ conv_006_pin_nonexistent_conversation(Config) ->
             common_assertions(Resp),
             rest_assert:json_contains(#{<<"code">> => 0, <<"payload">> => #{}}, Resp),
             rest_assert:status(200, UnpinResponse),
-            rest_assert:json_contains(#{<<"code">> => 0, <<"updated">> => true}, UnpinResponse)
+            rest_assert:json_contains(
+                #{<<"code">> => 0, <<"payload">> => #{<<"updated">> => true}}, UnpinResponse
+            )
         end
     ).
 

@@ -144,10 +144,21 @@ msg_001_history_happy(Config) ->
 %% MSG-002: limit clamps the page and the returned next_seq cursor pages
 %% through the remaining rows without overlap.
 msg_002_history_cursor_pagination(Config) ->
+    %% MSG-001 already archived rows into the suite-level A/B conversation
+    %% (c2c:<min>:<max> is per-pair, direction-agnostic, and nothing cleans
+    %% it between cases), so reusing that pair here would make the cursor
+    %% assertions depend on case order: 6 accumulated rows -> page 2 returns
+    %% 4 messages after after_seq=2 (probe2 MSG-002 failure). This case
+    %% therefore logs in a dedicated peer, so the conversation holds only
+    %% its own three seeds and the pagination contract is asserted in
+    %% isolation against the real product semantics (messaging_logic:history/6
+    %% fetches Limit+1 rows and sublist/2-clamps to Limit; limit IS honoured).
+    SignKey = ?config(sign_key, Config),
+    Peer = rest_fixture:login(rest_fixture:create_user(#{}), SignKey),
+    ok = rest_fixture:await_device_active(uid(Peer), maps:get(did, Peer)),
     UserA = ?config(user_a, Config),
-    UserB = ?config(user_b, Config),
     AUid = uid(UserA),
-    BUid = uid(UserB),
+    BUid = uid(Peer),
     MsgIds = seed_archive_msgs(AUid, BUid, 3),
 
     Page1Path = history_path(BUid, 0, 2),
@@ -279,8 +290,10 @@ msg_004_reaction_add_remove_cycle(Config) ->
             rest_assert:predicate(
                 [<<"payload">>, <<"user_id">>], fun(Val) -> Val =:= AUid end, Resp
             ),
+            %% reaction/add echoes created_at as an integer millisecond
+            %% epoch (probe2 MSG-004: 1789922643788), not a string.
             rest_assert:predicate(
-                [<<"payload">>, <<"created_at">>], fun nonempty_binary/1, Resp
+                [<<"payload">>, <<"created_at">>], fun positive_integer/1, Resp
             ),
             rest_assert:status(200, RemoveResponse),
             rest_assert:json_contains(
@@ -555,5 +568,5 @@ headers(Config, User) ->
         rest_fixture:signed_headers(Did, ?config(sign_key, Config))
     ).
 
-nonempty_binary(Value) ->
-    is_binary(Value) andalso byte_size(Value) > 0.
+positive_integer(Value) ->
+    is_integer(Value) andalso Value > 0.

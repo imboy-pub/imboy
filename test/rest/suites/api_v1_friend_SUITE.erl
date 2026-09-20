@@ -425,10 +425,18 @@ confirm_request(FromUid, ToUid) ->
 delete_request(ToUid) ->
     #{<<"user_id">> => to_uid_term(ToUid)}.
 
-%% Fixture uids travel as JSON strings; friend_logic converts both shapes
-%% via ec_cnv (add_friend/4 normalises To with ec_cnv:to_binary).
+%% The wire contract carries peer uids as TSID strings and friend_logic
+%% converts both shapes back via ec_cnv (add_friend/4 normalises To with
+%% ec_cnv:to_binary). The request builders are called with the whole
+%% fixture user map from FRIEND-001/005/006/007 (add_request(B) etc.)
+%% while FRIEND-003/004 pass raw integers, so every shape normalises here:
+%% user map -> its integer uid, integer -> string, binary -> as-is.
+to_uid_term(#{uid := Uid}) ->
+    to_uid_term(Uid);
 to_uid_term(Uid) when is_integer(Uid) ->
-    integer_to_binary(Uid).
+    integer_to_binary(Uid);
+to_uid_term(Uid) when is_binary(Uid) ->
+    Uid.
 
 post(Config, User, Path, Body) ->
     rest_client:post(?config(http_port, Config), Path, Body, headers(Config, User)).

@@ -84,7 +84,11 @@ login_001_valid_credentials(Config) ->
         fun(Resp) ->
             common_assertions(Resp),
             rest_assert:json_contains(#{<<"code">> => 0, <<"msg">> => <<"success.">>}, Resp),
-            rest_assert:json_contains(#{<<"account">> => maps:get(account, User)}, Resp),
+            %% account lives inside the success payload, not on the
+            %% envelope top level (envelope is {code,msg,payload,sv_ts}).
+            rest_assert:json_contains(
+                #{<<"payload">> => #{<<"account">> => maps:get(account, User)}}, Resp
+            ),
             rest_assert:predicate([<<"payload">>, <<"account">>], fun nonempty_binary/1, Resp),
             rest_assert:predicate(
                 [<<"payload">>, <<"uid">>],

@@ -75,7 +75,10 @@ A sends `GET /api/v1/msg/history?chat_type=c2c&peer_id=<B uid>&after_seq=0&limit
 
 #### Given
 
-The same three seeded archive messages (fresh ids for this case).
+A dedicated peer user logged in inside this case (not the suite-level B): the
+c2c conv key is per-pair and prior cases leave their archived rows behind, so
+a fresh pair guarantees the conversation holds exactly this case's three
+seeded archive messages (fresh ids).
 
 #### When
 
@@ -118,7 +121,8 @@ A adds emoji `👍` to the message (`POST /api/v1/msg/reaction/add`), then remov
 #### Then
 
 - Add returns HTTP `200`, `code` `0`, msg `添加表情成功`, payload `msg_id`/`emoji` echoed,
-  `user_id` equal to A's uid and non-empty `created_at`.
+  `user_id` equal to A's uid and `created_at` as a positive integer millisecond epoch
+  (probe2 measured `1789922643788`; not a string).
 - Remove returns HTTP `200`, `code` `0`, msg `移除表情成功`, payload `msg_id`/`emoji` echoed.
 
 ### MSG-005: reaction on a nonexistent message
