@@ -10,9 +10,9 @@
 #     1. neither           既不选 enterprise_business 也不选 customer_service
 #     2. customer-service  enterprise_business + customer_service（依赖前者）
 #
-#   逐档断言五层资产（对象 = customer_service 的全部模块（32，含 CSB-03 的
-#   cs_widget_handler / BE-W01 的 cs_widget_frame_handler 与 CSB-02R 的
-#   cs_widget_env / cs_identity_assertion）+
+#   逐档断言五层资产（对象 = customer_service 的全部模块（运行期实测 36，
+#   含 CSB-03 的 cs_widget_handler / BE-W01 的 cs_widget_frame_handler 与
+#   CSB-02R 的 cs_widget_env / cs_identity_assertion）+
 #   35 条路由 = 租户 17 + widget 9 + 平台 9）：
 #     A-selected    宏 / 路由 / beam / .app modules / release 都在
 #     A-unselected  宏 / 路由 / beam / .app modules / release 都不在
