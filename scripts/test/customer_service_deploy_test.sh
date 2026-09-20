@@ -516,6 +516,13 @@ suite_a01() {
     "ssl_certificate     /etc/letsencrypt/live/cs.test.local/fullchain.pem;"
   ck_not_contains "vhost 零 @占位符@ 残留" "$FROOT/$CS_CONF_REL" "@"
   ck_not_contains "vhost 不再含旧内容(return 503)" "$FROOT/$CS_CONF_REL" "return 503;"
+  # CSD-CLI-01R（SEC-2，对齐 DEP-01R）：proxy 面 Host 头统一 $http_host
+  # （保留端口，非默认端口网关部署同源判定不失配）——渲染产物禁
+  # `proxy_set_header Host $host` 残留；80→443 的 301 跳转行豁免。
+  ck_not_contains "vhost proxy_set_header Host 禁 \$host 残留（301 跳转行豁免）" \
+    "$FROOT/$CS_CONF_REL" 'proxy_set_header Host $host'
+  ck_eq "vhost proxy 面三处 Host 头均为 \$http_host" \
+    "$(grep -cF 'proxy_set_header Host $http_host' "$FROOT/$CS_CONF_REL" 2>/dev/null)" "3"
 
   # I5：时间戳备份 + 恢复记录；无半配置
   BAKF="$(ls "$FROOT/$CS_CONF_REL".cs-bak-* 2>/dev/null | head -1)"
