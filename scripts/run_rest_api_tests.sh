@@ -94,7 +94,8 @@ if [[ "$MODE" == "--check" ]]; then
   exit "$FAIL"
 fi
 
-[[ "$#" -eq 0 ]] || die 2 "unknown mode: $MODE (expected --check or no arguments)"
+[[ "$#" -eq 0 || "${1:-}" == "run" ]] ||
+  die 2 "unknown mode: $MODE (expected --check, run, or no arguments)"
 
 valid_db_name "$DB_NAME" || die 2 "refusing unsafe scratch database name: $DB_NAME"
 require_credentials || die 2 "missing database credentials"
@@ -414,13 +415,17 @@ EXTENSION_INVENTORY=$(psql_scratch -d "$DB_NAME" -Atc \
 
 CASE_TOTAL=${EVIDENCE_TOTAL}
 if [[ "$CASE_TOTAL" -gt 0 ]]; then
-  CASE_PASS=$(jq -s 'map(select(.result == "PASS")) | length' "$EVIDENCE_DIR"/*.json | head -1)
+  # A malformed evidence file must degrade to a totals mismatch (exit 3
+  # with a full result.json), not abort the script before the remaining
+  # gates run.
+  CASE_PASS=$(jq -s 'map(select(.result == "PASS")) | length' "$EVIDENCE_DIR"/*.json | head -1) || CASE_PASS=0
 else
   CASE_PASS=0
 fi
 
 jq -n \
   --arg run_id "$RUN_ID" \
+  --arg db "$DB_NAME" \
   --arg base_sha "$REST_COMMIT_SHA" \
   --arg otp "$OTP_RELEASE" \
   --arg pg "$PG_VERSION" \
@@ -446,7 +451,7 @@ jq -n \
     case_fail: ($case_total - $case_pass),
     case_skip: 0,
     result: (if $exit_code == 0 and $case_pass == $case_total and $case_total > 0 then "PASS" elif $exit_code == 75 then "BLOCKED_SHARED_CT" else "FAIL" end),
-    scratch_database: $run_id,
+    scratch_database: $db,
     public_tables: $tables,
     migration_table: $migtable,
     started_at: $started,
@@ -492,8 +497,13 @@ trap - EXIT INT TERM
 POST_DBS=$(scratch_databases)
 if [[ "${REST_KEEP_DB:-0}" == "1" ]]; then
   : # operator-owned diagnostic residue: the kept scratch DB is intentional
-elif ! diff <(echo "$PRE_DBS") <(echo "$POST_DBS") >/dev/null; then
-  echo "run_rest_api_tests: residue detected (imboy_rest_% set changed)" >&2
+elif grep -qx "$DB_NAME" <<<"$POST_DBS"; then
+  # The invariant is scoped to THIS run's scratch database only: a
+  # concurrent or prior run's imboy_rest_% entry appearing/disappearing
+  # between PRE_DBS and POST_DBS is not residue we own (foreign resources
+  # are recorded, never policed), and a transient psql failure during a
+  # scrape must not fail the run either.
+  echo "run_rest_api_tests: residue detected (own scratch DB still present): $DB_NAME" >&2
   RUN_STATUS=3
 fi
 
