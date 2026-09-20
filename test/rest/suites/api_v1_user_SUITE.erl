@@ -128,8 +128,12 @@ user_002_missing_authorization(Config) ->
         end
     ).
 
-%% Authentication: a signature-valid JWT whose signature bytes were
-%% flipped fails token_ds:decrypt_token/1 with 706; do_authorization maps
+% Authentication: a signature-valid JWT whose signature bytes were
+%% flipped in a real (non-padding) base64 bit fails token_ds:decrypt_token/1
+%% with 706. The flip must avoid the final base64 character's unused low
+%% bits: for a 32-byte HMAC the last group carries 2 bytes, so a flip
+%% inside those padding bits decodes to the identical signature and the
+%% tampered token still verifies (nondeterministic by construction); do_authorization maps
 %% ERR_TOKEN_MALFORMED to a real HTTP 401 while keeping envelope code 706.
 user_003_tampered_token(Config) ->
     SignKey = ?config(sign_key, Config),
@@ -414,7 +418,7 @@ tamper_tail(Token) when byte_size(Token) > 1 ->
     <<Head:Size/binary, Last>> = Token,
     <<Head/binary, (flip_char(Last))/binary>>.
 
-flip_char($A) -> <<"B">>;
+flip_char($A) -> <<"Q">>;
 flip_char(_) -> <<"A">>.
 
 unique_nickname(Tag) ->
