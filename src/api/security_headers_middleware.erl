@@ -29,7 +29,7 @@ execute(Req0, Env) ->
         <<"x-content-type-options">>, <<"nosniff">>, Req0
     ),
     Req2 =
-        case is_widget_frame_path(cowboy_req:path(Req0)) of
+        case imboy_route_shape:is_cs_widget_frame_path(cowboy_req:path(Req0)) of
             true ->
                 %% frame HTML 面：CSP 由 handler 精确出，不叠加 XFO（叠加即全拒）。
                 Req1;
@@ -63,14 +63,5 @@ execute(Req0, Env) ->
 
     {ok, Req6, Env}.
 
-%% frame HTML 路径段形状：[api, v1, cs, widget, frame, :installation_id]
-%% （与 cors_middleware:widget_frame_path/1 同一冻结形状；路由注册由
-%% BE-W01 wiring manifest 应用，判定按路径段独立成立）。
-is_widget_frame_path(Path) when is_binary(Path) ->
-    Segments = [S || S <- binary:split(Path, <<"/">>, [global]), S =/= <<>>],
-    case Segments of
-        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"frame">>, _Id] -> true;
-        _Other -> false
-    end;
-is_widget_frame_path(_Path) ->
-    false.
+%% frame 路径形状判定收敛在 imboy_route_shape:is_cs_widget_frame_path/1
+%% （cors/security_headers/cs_http 三处共享的单一真源）。

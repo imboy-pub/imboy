@@ -65,44 +65,42 @@
 %% 中间件签名 + JWT 门。
 -spec is_credential_surface_path(binary()) -> boolean().
 is_credential_surface_path(Path) when is_binary(Path) ->
-    case segments(Path) of
-        %% GET /api/v1/cs/sessions（访客列自己的会话）
-        [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>] ->
-            true;
-        %% POST /api/v1/cs/sessions/queue（门店开会话）
-        [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>, <<"queue">>] ->
-            true;
-        %% POST /api/v1/cs/sessions/:id/messages | /rating（访客消息/评分）
-        [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>, _Id, Last] when
-            Last =:= <<"messages">>; Last =:= <<"rating">>
-        ->
-            true;
-        %% CSB-03：POST /api/v1/cs/widget/bootstrap（widget 引导，签发点本身）
-        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"bootstrap">>] ->
-            true;
-        %% CSB-03：POST /api/v1/cs/widget/identity/exchange（签名身份换绑）
-        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"identity">>, <<"exchange">>] ->
-            true;
-        %% BE-W01 A05：GET /api/v1/cs/widget/frame/:id（动态 frame HTML，
-        %% iframe src 导航落点——零凭证面，中间件免签/免 JWT 直通；嵌入
-        %% 策略由 frame-ancestors CSP 裁决，不是凭证）。
-        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"frame">>, _Id] ->
-            true;
-        %% CSB-03：GET+POST /api/v1/cs/widget/sessions（访客会话建立/列表）
-        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>] ->
-            true;
-        %% CSB-03：GET+POST .../sessions/:id/messages、GET .../:id/events（SSE）、
-        %% POST .../:id/rating（访客消息/事件流/评分——令牌在专用头）
-        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>, _Id, Last] when
-            Last =:= <<"messages">>; Last =:= <<"events">>; Last =:= <<"rating">>
-        ->
-            true;
-        %% CSB-03：POST .../sessions/:id/assets/presign | /confirm（访客附件面）
-        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>, _Id, <<"assets">>, _Last] ->
-            true;
-        _ ->
-            false
-    end;
+    imboy_route_shape:is_cs_widget_frame_path(Path) orelse
+        case segments(Path) of
+            %% GET /api/v1/cs/sessions（访客列自己的会话）
+            [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>] ->
+                true;
+            %% POST /api/v1/cs/sessions/queue（门店开会话）
+            [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>, <<"queue">>] ->
+                true;
+            %% POST /api/v1/cs/sessions/:id/messages | /rating（访客消息/评分）
+            [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>, _Id, Last] when
+                Last =:= <<"messages">>; Last =:= <<"rating">>
+            ->
+                true;
+            %% CSB-03：POST /api/v1/cs/widget/bootstrap（widget 引导，签发点本身）
+            [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"bootstrap">>] ->
+                true;
+            %% CSB-03：POST /api/v1/cs/widget/identity/exchange（签名身份换绑）
+            [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"identity">>, <<"exchange">>] ->
+                true;
+            %% BE-W01 A05：GET /api/v1/cs/widget/frame/:id（动态 frame HTML，
+            %% iframe 导航落点——零凭证面）已由 imboy_route_shape 前置判定。
+            %% CSB-03：GET+POST /api/v1/cs/widget/sessions（访客会话建立/列表）
+            [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>] ->
+                true;
+            %% CSB-03：GET+POST .../sessions/:id/messages、GET .../:id/events（SSE）、
+            %% POST .../:id/rating（访客消息/事件流/评分——令牌在专用头）
+            [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>, _Id, Last] when
+                Last =:= <<"messages">>; Last =:= <<"events">>; Last =:= <<"rating">>
+            ->
+                true;
+            %% CSB-03：POST .../sessions/:id/assets/presign | /confirm（访客附件面）
+            [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>, _Id, <<"assets">>, _Last] ->
+                true;
+            _ ->
+                false
+        end;
 is_credential_surface_path(_Path) ->
     false.
 
