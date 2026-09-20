@@ -308,8 +308,36 @@ deploy_admin() {
   fi
 
   log "本地构建 Admin Frontend ..."
-  (cd "$BUILD_DIR" && bun install --frozen-lockfile && bun run build)
+  (cd "$BUILD_DIR" && bun install --frozen-lockfile)
+
+  # __IMBOY_API_HOST__ 是 docker 镜像 entrypoint 的运行时 sed 占位符
+  # （见 imboy/deploy/docker-compose.community.yml）。本脚本是同源反代部署，
+  # 必须在构建期就注入同源值（.env.production.local 优先级高于 .env.production），
+  # 让产物 hash 基于真实内容——构建后 sed 会造成"同名不同内容"的缓存毒化
+  # （assets/ 为 1y immutable）。收尾仅对 no-cache 的 index.html 替换 CSP 残留。
+  local ADMIN_ENV_LOCAL="$BUILD_DIR/.env.production.local"
+  cat >"$ADMIN_ENV_LOCAL" <<'EOF'
+VITE_API_BASE_URL=/api/adm
+VITE_SIDEBAR_CONFIG_URL=/api/adm/admin/config/sidebar
+VITE_UX_EVENT_REPORT_URL=/api/adm/admin/ux/events
+VITE_FEEDBACK_WORKFLOW_CONFIG_URL=/api/adm/admin/config/feedback-workflow
+VITE_FEEDBACK_WORKFLOW_CONFIG_SAVE_URL=/api/adm/admin/config/feedback-workflow
+EOF
+  # shellcheck disable=SC2064  # 构建结束即删除，路径在本函数生命周期内固定
+  trap "rm -f '$ADMIN_ENV_LOCAL'" RETURN
+  # set -e 直接退出会同时跳过 RETURN trap 与下方显式清理；若不先删，
+  # gitignored 的 .env.production.local 残留会毒化 imboyadmin 后续生产构建
+  if ! (cd "$BUILD_DIR" && bun run build); then
+    rm -f "$ADMIN_ENV_LOCAL"
+    fail "Admin Frontend 构建失败"
+  fi
+  rm -f "$ADMIN_ENV_LOCAL"
   ok "Admin Frontend 构建完成: $BUILD_DIR/dist"
+
+  sed -i '' -e 's/__IMBOY_API_HOST__//g' "$BUILD_DIR/dist/index.html"
+  if grep -rl '__IMBOY_API_HOST__' "$BUILD_DIR/dist" >/dev/null 2>&1; then
+    fail "dist 仍含 __IMBOY_API_HOST__ 占位符（.env.production 可能新增了未覆盖的变量）"
+  fi
 
   # 上传（rsync 增量，比 scp 快）
   log "上传至 $SERVER_USER@$SERVER_HOST:$ADMIN_REMOTE_REAL ..."
