@@ -1,53 +1,371 @@
 #!/usr/bin/env bash
+# REST API black-box test runner (RTF-01/RTF-03/RTF-05).
+#
+# Provision order is fixed: connectivity probe -> unique safe db name ->
+# create database -> install extensions -> (application start runs
+# migrations via auto_migrate) -> run Common Test -> cross-check evidence
+# -> cleanup database.
+#
+# Credentials enter from the environment only (REST_PG_* / IMBOY_PG_*).
+# This script must never contain or default a database password (RTF-00-A3).
+#
+# Exit codes:
+#   0  PASS
+#   2  environment/usage failure (missing credentials, unsafe db name, ...)
+#   3  test/contract/evidence failure
+#   75 BLOCKED_SHARED_CT (ct_imboy node busy for the whole wait window)
+
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+MODE=${1:-run}
+
+die() {
+  local code=$1
+  shift
+  echo "run_rest_api_tests: $*" >&2
+  exit "$code"
+}
+
+# ---------------------------------------------------------------------------
+# Scratch database naming: strictly imboy_rest_<run-id-sanitized>.
+# ---------------------------------------------------------------------------
+
 RUN_ID=${REST_RUN_ID:-"$(date -u +%Y%m%dT%H%M%SZ)-$$"}
 DB_NAME=${REST_TEST_DB:-"imboy_rest_${RUN_ID//[^a-zA-Z0-9_]/_}"}
-REPORT_ROOT=${REST_REPORT_ROOT:-"$ROOT/.reports/rest/$RUN_ID"}
+
+valid_db_name() {
+  [[ "$1" =~ ^imboy_rest_[a-zA-Z0-9_]+$ ]]
+}
+
+require_credentials() {
+  if [[ -z "${REST_PG_PASSWORD:-}" && -z "${IMBOY_PG_PASSWORD:-}" ]]; then
+    echo "run_rest_api_tests: missing database password" >&2
+    echo "  set REST_PG_PASSWORD (or IMBOY_PG_PASSWORD) in the environment;" >&2
+    echo "  tracked runners must not carry a default password (RTF-00-A3)" >&2
+    return 1
+  fi
+}
+
+if [[ "$MODE" == "--check" ]]; then
+  # Minimal self-check (RTF-01 task 6): no database is touched here.
+  FAIL=0
+  if valid_db_name "$DB_NAME"; then
+    echo "CHECK OK db name: $DB_NAME"
+  else
+    echo "CHECK OK db name rejected: $DB_NAME"
+  fi
+  if valid_db_name "imboy_rest_evil'; drop database x"; then
+    echo "CHECK FAIL unsafe name accepted"
+    FAIL=1
+  else
+    echo "CHECK OK unsafe name rejected"
+  fi
+  if require_credentials; then
+    echo "CHECK OK credentials present"
+  else
+    echo "CHECK OK missing credentials fail-fast verified"
+  fi
+  exit "$FAIL"
+fi
+
+[[ "$#" -eq 0 ]] || die 2 "unknown mode: $MODE (expected --check or no arguments)"
+
+valid_db_name "$DB_NAME" || die 2 "refusing unsafe scratch database name: $DB_NAME"
+require_credentials || die 2 "missing database credentials"
+
+# ---------------------------------------------------------------------------
+# PostgreSQL connection parameters (environment only).
+# ---------------------------------------------------------------------------
+
 PG_HOST=${REST_PG_HOST:-${IMBOY_PG_HOST:-127.0.0.1}}
 PG_PORT=${REST_PG_PORT:-${IMBOY_PG_PORT:-4323}}
 PG_USER=${REST_PG_USER:-${IMBOY_PG_USERNAME:-${IMBOY_PG_USER:-imboy_user}}}
-PG_PASSWORD=${REST_PG_PASSWORD:-${IMBOY_PG_PASSWORD:-abc54321}}
-CT_CONFIG=${REST_CT_CONFIG:-config/sys.local.config}
-
-if [[ ! "$DB_NAME" =~ ^imboy_rest_[a-zA-Z0-9_]+$ ]]; then
-  echo "Refusing unsafe scratch database name: $DB_NAME" >&2
-  exit 2
-fi
-if [[ ! -f "$ROOT/$CT_CONFIG" ]]; then
-  CT_CONFIG=config/sys.config.example
-fi
-
+PG_PASSWORD=${REST_PG_PASSWORD:-${IMBOY_PG_PASSWORD}}
+PG_MAINT_DB=${REST_PG_MAINT_DB:-postgres}
 export PGPASSWORD="$PG_PASSWORD"
+
+REPORT_ROOT=${REST_REPORT_ROOT:-"$ROOT/.reports/rest/$RUN_ID"}
+EVIDENCE_DIR="$REPORT_ROOT/evidence"
+CT_LOGS_DIR="$REPORT_ROOT/ct"
+mkdir -p "$EVIDENCE_DIR" "$CT_LOGS_DIR"
+
+CT_CONFIG=${REST_CT_CONFIG:-}
+if [[ -z "$CT_CONFIG" ]]; then
+  if [[ -f "$ROOT/config/sys.local.config" ]]; then
+    CT_CONFIG=config/sys.local.config
+  else
+    die 2 "no loadable CT config (config/sys.local.config missing); REST_CT_CONFIG must point at a *.config file"
+  fi
+fi
+# Make relative paths absolute before changing anything.
+case "$CT_CONFIG" in
+  /*) ;;
+  *) CT_CONFIG="$ROOT/$CT_CONFIG" ;;
+esac
+[[ -f "$CT_CONFIG" ]] || die 2 "CT config not found: $CT_CONFIG"
+
+# eunit_runner:find_project_root/1 locates the project root by looking for
+# config/sys.config + Makefile above the CT working directory; a worktree
+# only carries the gitignored sys.local.config, so materialize the resolved
+# config as config/sys.config (RTF-05: the runner materializes the config,
+# same duty the CI job has). It is untracked and never staged by this run.
+if [[ "$CT_CONFIG" != "$ROOT/config/sys.config" ]]; then
+  cp "$CT_CONFIG" "$ROOT/config/sys.config"
+fi
+export IMBOY_TEST_CONFIG="$CT_CONFIG"
+# The suite boot needs the worktree root to build the code:priv_dir(imboy)
+# alias subtree (see rest_fixture:ensure_ct_priv_alias/0).
+export REST_PROJECT_ROOT="$ROOT"
+
+# ---------------------------------------------------------------------------
+# Shared Common Test node: erlang.mk hardcodes -sname ct_imboy.
+# ---------------------------------------------------------------------------
+
+wait_ct_node_free() {
+  local waited=0
+  while epmd -names 2>/dev/null | grep -q 'name ct_imboy at port'; do
+    if [[ $waited -eq 0 ]]; then
+      echo "WAITING_SHARED_CT: ct_imboy busy; waiting up to ${REST_CT_WAIT_SECONDS:-600}s"
+    fi
+    sleep 10
+    waited=$((waited + 10))
+    [[ $waited -ge ${REST_CT_WAIT_SECONDS:-600} ]] && return 1
+  done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Extension inventory: single source of truth is test/common/inttest_marker_db.erl
+# (RTF-01 task 2: no second, drifting extension list).
+# ---------------------------------------------------------------------------
+
+extension_list() {
+  awk '/-define\(EXTENSIONS, \[/,/\]\)\./' "$ROOT/test/common/inttest_marker_db.erl" |
+    grep -oE '<<"[^"]+">>' | tr -d '<>"'
+}
+
+EXTENSIONS=$(extension_list)
+[[ $(echo "$EXTENSIONS" | grep -c .) -ge 12 ]] ||
+  die 2 "extension inventory parse failure from inttest_marker_db.erl"
+
+psql_scratch() {
+  psql -X -q -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -v ON_ERROR_STOP=1 "$@"
+}
+
+scratch_databases() {
+  psql -X -At -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_MAINT_DB" \
+    -tAc "SELECT datname FROM pg_database WHERE datname LIKE 'imboy_rest_%' ORDER BY 1" 2>/dev/null || true
+}
+
+DROP_DONE=0
+cleanup() {
+  local final=$?
+  if [[ $DROP_DONE -eq 0 && "${REST_KEEP_DB:-0}" != "1" ]]; then
+    dropdb --if-exists --force -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$DB_NAME" >/dev/null 2>&1 || true
+    DROP_DONE=1
+  elif [[ "${REST_KEEP_DB:-0}" == "1" ]]; then
+    echo "run_rest_api_tests: REST_KEEP_DB=1; scratch database kept: $DB_NAME" >&2
+    DROP_DONE=1
+  fi
+  return $final
+}
+trap cleanup EXIT INT TERM
+
+# ---------------------------------------------------------------------------
+# Provision.
+# ---------------------------------------------------------------------------
+
+pg_isready -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" >/dev/null ||
+  die 2 "postgres not ready at $PG_HOST:$PG_PORT"
+
+PRE_DBS=$(scratch_databases)
+if grep -qx "$DB_NAME" <<<"$PRE_DBS"; then
+  die 2 "scratch database already exists (rerun with a fresh REST_RUN_ID): $DB_NAME"
+fi
+
+createdb -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$DB_NAME" ||
+  die 2 "createdb failed for $DB_NAME"
+
+for ext in $EXTENSIONS; do
+  psql_scratch -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS $ext" >/dev/null ||
+    die 3 "extension install failed: $ext"
+done
+
+# RTF-01-A4: prove create_hypertable resolves before migrations run.
+HYPERTABLE_FN=$(psql_scratch -d "$DB_NAME" -Atc \
+  "SELECT count(*) FROM pg_proc WHERE proname = 'create_hypertable'")
+[[ "$HYPERTABLE_FN" -ge 1 ]] || die 3 "create_hypertable not present in scratch database (TimescaleDB)"
+
+wait_ct_node_free || {
+  echo '{"result":"BLOCKED_SHARED_CT","run_id":"'"$RUN_ID"'"}' >"$REPORT_ROOT/result.json"
+  die 75 "ct_imboy busy; CT not executed (WAITING_SHARED_CT)"
+}
+
+# ---------------------------------------------------------------------------
+# Environment for the Common Test node and the application under test.
+# ---------------------------------------------------------------------------
+
 export IMBOYENV=test
 export IMBOY_PG_HOST="$PG_HOST"
 export IMBOY_PG_PORT="$PG_PORT"
 export IMBOY_PG_USERNAME="$PG_USER"
 export IMBOY_PG_PASSWORD="$PG_PASSWORD"
 export IMBOY_PG_DATABASE="$DB_NAME"
-export HTTP_PORT=0
 export TEST_HTTP_PORT=0
 export REST_COMMIT_SHA
 REST_COMMIT_SHA=$(git -C "$ROOT" rev-parse HEAD)
-export REST_EVIDENCE_DIR="$REPORT_ROOT/evidence"
-
-cleanup() {
-  dropdb --if-exists --force --host "$PG_HOST" --port "$PG_PORT" --username "$PG_USER" "$DB_NAME" >/dev/null 2>&1 || true
-}
-trap cleanup EXIT INT TERM
-
-mkdir -p "$REST_EVIDENCE_DIR" "$REPORT_ROOT/ct"
-pg_isready --host "$PG_HOST" --port "$PG_PORT" --username "$PG_USER" >/dev/null
-cleanup
-createdb --host "$PG_HOST" --port "$PG_PORT" --username "$PG_USER" "$DB_NAME"
+export REST_EVIDENCE_DIR="$EVIDENCE_DIR"
+export REST_RUN_ID
 
 echo "REST run: $RUN_ID"
-echo "Scratch DB: $DB_NAME"
-echo "Evidence: $REPORT_ROOT"
+echo "Scratch DB: $DB_NAME @ $PG_HOST:$PG_PORT"
+echo "Report: $REPORT_ROOT"
 
-make -C "$ROOT" rest-contract-check
-make -C "$ROOT" ct-api_v1_login \
-  CT_CONFIG="$CT_CONFIG" \
-  TEST_HTTP_PORT=0 \
-  CT_LOGS_DIR="$REPORT_ROOT/ct"
+STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+RUNNER_LOG="$REPORT_ROOT/runner.log"
+RUN_STATUS=0
+
+bash "$ROOT/scripts/check_rest_contract_coverage.sh" 2>&1 | tee -a "$RUNNER_LOG" || RUN_STATUS=3
+
+if [[ $RUN_STATUS -eq 0 ]]; then
+  make -C "$ROOT" ct-api_v1_login \
+    CT_CONFIG="$CT_CONFIG" \
+    TEST_HTTP_PORT=0 \
+    CT_LOGS_DIR="$CT_LOGS_DIR" 2>&1 | tee -a "$RUNNER_LOG" || RUN_STATUS=3
+fi
+FINISHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# ---------------------------------------------------------------------------
+# Post-run: migration state evidence + evidence cross-check (RTF-03 task 8).
+# ---------------------------------------------------------------------------
+
+TABLES_COUNT=$(psql_scratch -d "$DB_NAME" -Atc \
+  "SELECT count(*) FROM pg_tables WHERE schemaname='public'" || echo 0)
+MIGRATION_TABLE=$(psql_scratch -d "$DB_NAME" -Atc \
+  "SELECT table_name FROM information_schema.tables WHERE table_name LIKE '%migration%' AND table_schema='public' LIMIT 1" || true)
+
+# Cross-check: exactly the five expected case ids, each executed with PASS.
+EXPECTED_CASES="login-001 login-002 login-003 login-004 login-005"
+EVIDENCE_STATUS=0
+EVIDENCE_TOTAL=$(find "$EVIDENCE_DIR" -maxdepth 1 -name 'login-*.json' | wc -l | tr -d ' ')
+if [[ "$EVIDENCE_TOTAL" -ne 5 ]]; then
+  echo "evidence cross-check: expected 5 login-*.json files, found $EVIDENCE_TOTAL" | tee -a "$RUNNER_LOG"
+  EVIDENCE_STATUS=3
+fi
+for case in $EXPECTED_CASES; do
+  f="$EVIDENCE_DIR/$case.json"
+  if [[ ! -f "$f" ]]; then
+    echo "evidence cross-check: missing evidence for $case" | tee -a "$RUNNER_LOG"
+    EVIDENCE_STATUS=3
+  elif ! jq -e '.result == "PASS"' "$f" >/dev/null 2>&1; then
+    echo "evidence cross-check: $case result is not PASS" | tee -a "$RUNNER_LOG"
+    EVIDENCE_STATUS=3
+  fi
+done
+
+# Skipped cases never reach the evidence writer, and init failures skip the
+# whole suite; both are caught above. Belt-and-braces: scan CT logs for skip
+# markers.
+if grep -rqiE '\bskipped\b' "$CT_LOGS_DIR" 2>/dev/null; then
+  echo "evidence cross-check: skip marker found under CT logs" | tee -a "$RUNNER_LOG"
+  EVIDENCE_STATUS=3
+fi
+
+[[ $EVIDENCE_STATUS -ne 0 ]] && RUN_STATUS=3
+
+# ---------------------------------------------------------------------------
+# Aggregated result + environment manifests (RTF-05).
+# ---------------------------------------------------------------------------
+
+OTP_RELEASE=$(erl -noshell -noinput -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt(0).' 2>/dev/null || echo unknown)
+PG_VERSION=$(psql_scratch -d "$DB_NAME" -Atc "SHOW server_version" || echo unknown)
+EXTENSION_INVENTORY=$(psql_scratch -d "$DB_NAME" -Atc \
+  "SELECT string_agg(extname || '=' || extversion, ',' ORDER BY extname) FROM pg_extension" || echo unknown)
+
+if compgen -G "$EVIDENCE_DIR/login-*.json" >/dev/null; then
+  CASE_PASS=$(jq -s 'map(select(.result == "PASS")) | length' "$EVIDENCE_DIR"/login-*.json | head -1)
+else
+  CASE_PASS=0
+fi
+CASE_TOTAL=${EVIDENCE_TOTAL}
+
+jq -n \
+  --arg run_id "$RUN_ID" \
+  --arg base_sha "$REST_COMMIT_SHA" \
+  --arg otp "$OTP_RELEASE" \
+  --arg pg "$PG_VERSION" \
+  --arg ext "$EXTENSION_INVENTORY" \
+  --arg started "$STARTED_AT" \
+  --arg finished "$FINISHED_AT" \
+  --argjson case_total "${CASE_TOTAL:-0}" \
+  --argjson case_pass "${CASE_PASS:-0}" \
+  --argjson exit_code "$RUN_STATUS" \
+  --argjson tables "${TABLES_COUNT:-0}" \
+  --arg migtable "${MIGRATION_TABLE:-none}" \
+  '{
+    schema_version: 1,
+    run_id: $run_id,
+    base_sha: $base_sha,
+    otp_release: $otp,
+    postgres_version: $pg,
+    extensions: ($ext | if . == "unknown" then {} else (split(",") | map(split("=") | {(.[0]): .[1]}) | add) end),
+    command: "make rest-api-test",
+    exit_code: $exit_code,
+    case_total: $case_total,
+    case_pass: $case_pass,
+    case_fail: ($case_total - $case_pass),
+    case_skip: 0,
+    result: (if $exit_code == 0 and $case_pass == 5 then "PASS" elif $exit_code == 75 then "BLOCKED_SHARED_CT" else "FAIL" end),
+    scratch_database: $run_id,
+    public_tables: $tables,
+    migration_table: $migtable,
+    started_at: $started,
+    finished_at: $finished
+  }' >"$REPORT_ROOT/result.json"
+
+jq -n \
+  --arg run_id "$RUN_ID" \
+  --arg base_sha "$REST_COMMIT_SHA" \
+  --arg otp "$OTP_RELEASE" \
+  --arg pg "$PG_VERSION" \
+  --arg ext "$EXTENSION_INVENTORY" \
+  --arg ct_config "$CT_CONFIG" \
+  '{
+    run_id: $run_id,
+    base_sha: $base_sha,
+    otp_release: $otp,
+    postgres_version: $pg,
+    extensions: ($ext | if . == "unknown" then {} else (split(",") | map(split("=") | {(.[0]): .[1]}) | add) end),
+    ct_config: $ct_config,
+    credentials: "environment only (REST_PG_*/IMBOY_PG_*)"
+  }' >"$REPORT_ROOT/environment.json"
+
+# ---------------------------------------------------------------------------
+# Redaction canaries (RTF-02-A4): dynamic values must not appear anywhere
+# under the report root.
+# ---------------------------------------------------------------------------
+
+for canary_var in REST_REDACTION_CANARY_PASSWORD REST_REDACTION_CANARY_TOKEN; do
+  canary=${!canary_var:-}
+  if [[ -n "$canary" ]] && grep -rF -- "$canary" "$REPORT_ROOT" >/dev/null 2>&1; then
+    echo "run_rest_api_tests: redaction canary $canary_var leaked into $REPORT_ROOT" >&2
+    RUN_STATUS=3
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Residue assertion: this run leaves no scratch database behind.
+# ---------------------------------------------------------------------------
+
+cleanup
+trap - EXIT INT TERM
+POST_DBS=$(scratch_databases)
+if ! diff <(echo "$PRE_DBS") <(echo "$POST_DBS") >/dev/null; then
+  echo "run_rest_api_tests: residue detected (imboy_rest_% set changed)" >&2
+  RUN_STATUS=3
+fi
+
+echo "REST run $RUN_ID => $(jq -r '.result' "$REPORT_ROOT/result.json") (case_pass=$(jq -r '.case_pass' "$REPORT_ROOT/result.json")/5)"
+exit "$RUN_STATUS"
