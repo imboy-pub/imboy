@@ -6,8 +6,8 @@
 | --- | --- |
 | Handler | `passport_handler` with `action => login` |
 | Content-Type | `application/json` |
-| Authentication | Open endpoint; no Bearer token required |
-| Device context | `cos`, `did`, and `dname` request headers |
+| Authentication | Open endpoint (no Bearer token) with mandatory device signature while `api_auth_switch=on` |
+| Device context | `cos`, `did`, `dname`, `vsn`, `pkg`, `sign`, `method` request headers |
 | Response | HTTP 200 with `{code,msg,sv_ts,payload}` envelope |
 | Executable suite | `test/rest/suites/api_v1_login_SUITE.erl` |
 
@@ -70,12 +70,31 @@ The real Cowboy route and middleware chain are running.
 
 #### When
 
-The client posts malformed JSON with `Content-Type: application/json`.
+The client posts malformed JSON with `Content-Type: application/json`, carrying a valid device signature.
 
 #### Then
 
 - The request does not crash the handler or listener.
 - HTTP status is `200` and envelope `code` is `1`.
+
+### LOGIN-005: device signature boundary
+
+#### Given
+
+`api_auth_switch` is `on` (the production default) and a per-run signing key
+is registered through `app_version_ds:set_sign_key/4`.
+
+#### When
+
+The client posts a valid login request either without the `sign`/`method`
+headers, or with a signature computed under a different key.
+
+#### Then
+
+- Both variants are rejected at the middleware boundary before reaching the
+  business layer: HTTP `200` with envelope `code` `902`
+  (`ERR_SIGNATURE_INVALID`) and message `签名验证失败，请更新客户端`.
+- A correctly signed request still passes to the business layer (LOGIN-001).
 
 ## Execution History
 
