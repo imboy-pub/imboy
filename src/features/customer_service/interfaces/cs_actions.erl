@@ -665,6 +665,16 @@ table(widget) ->
                             {installation_id, tsid, required},
                             {upload_ref, binary, required}
                         ],
+                        [{id, session_id}]},
+                    %% P1-E2E-01 实证缺陷修复：presign 回显 upload.method=PUT
+                    %% （with_upload_url），浏览器按合同发裸 PUT，而动作表只登记
+                    %% POST → PUT 一律 405，FE-W01 附件链必炸。PUT 与 POST 同参
+                    %% 同用例，方法门放行两形态（鉴权/绑定门不变）。
+                    {<<"PUT">>, widget_asset_put,
+                        [
+                            {installation_id, tsid, required},
+                            {upload_ref, binary, required}
+                        ],
                         [{id, session_id}]}
                 ],
                 widget_auth(),

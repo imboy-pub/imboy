@@ -139,10 +139,12 @@ widget_literal_routes() ->
         },
         %% BE-PATCH-01：访客附件字节上传代理（upload_ref 唯一凭证——FE 裸 PUT
         %% 合同；payload=请求体字节，线格式分支在 cs_widget_handler）。
+        %% P1-E2E-01 实证：presign 回显 upload.method=PUT，动作表放行 POST+PUT
+        %% 双形态（同参同用例），否则浏览器按合同发 PUT 一律 405。
         {
             <<W/binary, "/sessions/:id/assets/upload">>,
             widget_asset_put,
-            [<<"POST">>],
+            [<<"POST">>, <<"PUT">>],
             cs_visit
         },
         %% BE-S01b（api-surface-freeze widget_apis）：访客附件内容代理（对象字节

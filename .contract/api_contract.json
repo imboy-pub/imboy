@@ -2544,6 +2544,12 @@
         "static": false
       },
       {
+        "action": "widget_asset_put",
+        "handler": "cs_widget_handler",
+        "path": "/api/v1/cs/widget/sessions/:id/assets/upload",
+        "static": false
+      },
+      {
         "action": "widget_session_events",
         "handler": "cs_widget_handler",
         "path": "/api/v1/cs/widget/sessions/:id/events",
