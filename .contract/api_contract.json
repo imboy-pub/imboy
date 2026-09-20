@@ -520,6 +520,12 @@
         "static": false
       },
       {
+        "action": "p_seat_provision",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/organizations/:org_id/provisioning",
+        "static": false
+      },
+      {
         "action": "p_seats",
         "handler": "cs_platform_handler",
         "path": "/api/adm/customer-service/organizations/:org_id/seats",
@@ -2517,6 +2523,12 @@
         "action": "widget_sessions",
         "handler": "cs_widget_handler",
         "path": "/api/v1/cs/widget/sessions",
+        "static": false
+      },
+      {
+        "action": "widget_asset_content",
+        "handler": "cs_widget_handler",
+        "path": "/api/v1/cs/widget/sessions/:id/assets/:asset/content",
         "static": false
       },
       {

@@ -186,7 +186,13 @@ otp_lib_whitelist() ->
         timer,
         %% CSB-02R：cs_widget_env / cs_identity_assertion 的 env 事实读取
         %% （config_ds:env/1,2 只读装配面）。
-        config_ds
+        config_ds,
+        %% BE-S01b：SSE 信封 occurred_at 的 Unix ms → RFC3339（core lib 时间面，
+        %% cs_seat_event_app / cs_tenant_handler 使用）。
+        elib_dt,
+        %% BE-S01b：cs_http credential 面判据复用 core lib 的冻结路径形状
+        %% （imboy_route_shape:is_cs_widget_frame_path/1）。
+        imboy_route_shape
     ].
 
 remote_calls_in_module(Mod) ->
