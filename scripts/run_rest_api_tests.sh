@@ -382,9 +382,9 @@ if grep -E 'TEST COMPLETE,' "$RUNNER_LOG" 2>/dev/null | grep -q 'skipped'; then
 fi
 
 # Belt-and-braces (review P1): no JWT-shaped material may surface in the CT
-# logs or the evidence dir. Suites keep credential fields out of anything
-# CT logs (sanitized session handles); evidence redacts by key.
-if grep -rqE 'eyJ[A-Za-z0-9_-]{20,}' "$CT_LOGS_DIR" "$EVIDENCE_DIR" 2>/dev/null; then
+# logs, the evidence dir, or the runner log. Suites keep credential fields
+# out of anything CT logs (sanitized session handles); evidence redacts by key.
+if grep -rqE 'eyJ[A-Za-z0-9_-]{20,}' "$CT_LOGS_DIR" "$EVIDENCE_DIR" "$RUNNER_LOG" 2>/dev/null; then
   echo "evidence cross-check: JWT-shaped material found in CT logs/evidence" | tee -a "$RUNNER_LOG"
   EVIDENCE_STATUS=3
 fi
@@ -393,9 +393,10 @@ fi
 # once echoed JWTs into every suite log page also echoed the login suite's
 # fixture password key. The eyJ shape above cannot see passwords, so scan
 # for credential-key names directly. Source-listing pages legitimately
-# contain the identifiers, so they are excluded.
-if find "$CT_LOGS_DIR" -name '*.html' ! -name '*.src.html' -print0 2>/dev/null |
-  xargs -0 grep -l 'plain_password' 2>/dev/null | grep -q .; then
+# contain the identifiers, so they are excluded (--exclude form is portable
+# across BSD/GNU grep; a find|xargs form would hang on GNU xargs with empty
+# input).
+if grep -rq --exclude='*.src.html' 'plain_password' "$CT_LOGS_DIR" "$RUNNER_LOG" 2>/dev/null; then
   echo "evidence cross-check: credential keys echoed into CT log pages" | tee -a "$RUNNER_LOG"
   EVIDENCE_STATUS=3
 fi
