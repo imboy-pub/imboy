@@ -26,6 +26,7 @@
     revoke_widget_identity_key/4,
     insert_widget_bootstrap_token/2,
     fetch_widget_bootstrap_token_by_digest/3,
+    fetch_widget_bootstrap_token_by_digest_global/2,
     touch_widget_bootstrap_token/4,
     revoke_widget_bootstrap_token/4,
     record_widget_nonce/4,
@@ -183,6 +184,24 @@
     "  FROM customer_service_visit_token"
     " WHERE organization_id = $1 AND widget_installation_id = $2"
     "   AND token_digest = $3"
+>>).
+
+%% CSD-BE-01S（hosted-widget-contract S3 v1.1）：持 token 动作面的 Org 权威
+%% 派生——与铁律 6 的租户语句**不同类**（fetch_installation_by_public_id_global
+%% 同款先例）：输入只有 (installation_id, digest)，谓词零 Org，
+%% `organization_id` 只出现在 SELECT 投影（从命中行**输出**，token 行本就
+%% 绑定 (org, installation)）。digest = sha256(secret)，命中前提是持明文
+%% secret——无存在性枚举面。本语句不进 sql_statements/0（「同语句带 Org」
+%% 机械断言语义上不适用），形状由 cs_pg_widget_tests 专属断言单独冻结。
+-define(SQL_FETCH_BOOTSTRAP_BY_DIGEST_GLOBAL, <<
+    "SELECT id, organization_id, contact_id, widget_installation_id,"
+    "       anonymous_subject_hmac, display_hint,"
+    "       extract(epoch from expires_at)::bigint AS expires_at,"
+    "       extract(epoch from revoked_at)::bigint AS revoked_at,"
+    "       extract(epoch from last_seen_at)::bigint AS last_seen_at, version,"
+    "       extract(epoch from created_at)::bigint AS created_at"
+    "  FROM customer_service_visit_token"
+    " WHERE widget_installation_id = $1 AND token_digest = $2"
 >>).
 
 -define(SQL_TOUCH_BOOTSTRAP_TOKEN, <<
@@ -407,6 +426,20 @@ fetch_widget_bootstrap_token_by_digest(OrgId, InstallationId, Digest) ->
     cs_pg_common:fetch_one(
         ?SQL_FETCH_BOOTSTRAP_BY_DIGEST, [OrgId, InstallationId, Digest], ?BOOTSTRAP_KEYS
     ).
+
+%% @doc digest **全局**命中（CSD-BE-01S，hosted-widget-contract S3 v1.1）：
+%% 无 Org 输入，organization_id 从命中行输出——持 token 动作面的租户派生
+%% 真源（token 行本就绑定 (org, installation)）。不存在 → not_found。
+-spec fetch_widget_bootstrap_token_by_digest_global(integer(), binary()) ->
+    {ok, map()} | {error, term()}.
+fetch_widget_bootstrap_token_by_digest_global(InstallationId, Digest) when
+    is_integer(InstallationId), is_binary(Digest)
+->
+    cs_pg_common:fetch_one(
+        ?SQL_FETCH_BOOTSTRAP_BY_DIGEST_GLOBAL, [InstallationId, Digest], ?BOOTSTRAP_KEYS
+    );
+fetch_widget_bootstrap_token_by_digest_global(_InstallationId, _Digest) ->
+    {error, {invalid_argument, widget_bootstrap_token}}.
 
 -spec touch_widget_bootstrap_token(integer(), integer(), integer(), integer()) ->
     ok | {error, term()}.

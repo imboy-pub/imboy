@@ -75,6 +75,7 @@
     revoke_widget_identity_key/4,
     insert_widget_bootstrap_token/2,
     fetch_widget_bootstrap_token_by_digest/3,
+    fetch_widget_bootstrap_token_by_digest_global/2,
     touch_widget_bootstrap_token/4,
     revoke_widget_bootstrap_token/4,
     record_widget_nonce/4,
@@ -956,6 +957,21 @@ fetch_widget_bootstrap_token_by_digest(OrgId, InstallationId, Digest) ->
         T
      || T <- maps:values(Tokens),
         maps:get(organization_id, T) =:= OrgId,
+        maps:get(widget_installation_id, T, undefined) =:= InstallationId,
+        maps:get(token_digest, T) =:= Digest
+    ],
+    case Match of
+        [Row | _] -> {ok, Row};
+        [] -> {error, not_found}
+    end.
+
+%% CSD-BE-01S：digest 全局命中——无 Org 输入，organization_id 从行输出
+%% （持 token 动作面的租户派生真源；与 PG 语句同语义）。
+fetch_widget_bootstrap_token_by_digest_global(InstallationId, Digest) ->
+    {visit_tokens, Tokens} = hd(ets:lookup(?TAB, visit_tokens)),
+    Match = [
+        T
+     || T <- maps:values(Tokens),
         maps:get(widget_installation_id, T, undefined) =:= InstallationId,
         maps:get(token_digest, T) =:= Digest
     ],

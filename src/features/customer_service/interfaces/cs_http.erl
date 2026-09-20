@@ -221,9 +221,10 @@ action_tables() ->
 %%     `organization_id`，作为**申报值**交由 cs_auth 用凭证/事实证明；
 %%   * `self` —— 主体自身作用域（BE-S01a 坐席上下文清单）：无 Org 键，
 %%     返回 0 占位（facade 的 self 用例不读 OrgId，作用域是 actor 本人）；
-%%   * `derived` —— CSD-BE-01R（hosted-widget-contract S3）：widget_bootstrap
-%%     的浏览器零申报面——无 Org 输入，返回 0 占位（facade 调用点同构），
-%%     租户归属由 application 的 public_widget_id 全局反查命中行**权威派生**；
+%%   * `derived` —— CSD-BE-01R/01S（hosted-widget-contract S3 v1.1）：widget
+%%     面的浏览器零申报面——无 Org 输入，返回 0 占位（facade 调用点同构），
+%%     租户由 application 权威派生（bootstrap：public_widget_id 全局反查；
+%%     持 token 动作面：(installation_id, secret) 的 digest 全局命中行）；
 %%     客户端申报 `organization_id` 被动作表 client_forbidden 拦为
 %%     400 `server_derived_key_rejected`。
 -spec org_id(map(), cowboy_req:req(), map()) -> {ok, integer()} | {error, term()}.

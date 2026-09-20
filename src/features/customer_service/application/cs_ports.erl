@@ -118,6 +118,8 @@ contracts() ->
             %% widget bootstrap token（复用 visit_token 存储）
             {insert_widget_bootstrap_token, 2},
             {fetch_widget_bootstrap_token_by_digest, 3},
+            %% CSD-BE-01S：digest 全局命中（S3 v1.1 持 token 面 Org 派生）。
+            {fetch_widget_bootstrap_token_by_digest_global, 2},
             {touch_widget_bootstrap_token, 4},
             {revoke_widget_bootstrap_token, 4},
             %% widget JTI nonce（重放防护）
@@ -153,6 +155,9 @@ facade_targets() ->
         cs_access_app,
         cs_widget_app,
         cs_widget_session_app,
+        %% CSD-BE-01S：widget 接入面的机械辅助（derive_org_by_token——持
+        %% token 动作面的租户解析，facade 在 env 装配前调用）。
+        cs_widget_support,
         %% CSB-02R：widget env 装配（subject_key/default_workspace/intake/
         %% assertion_verifier 的解析与合并——facade 参数收敛职责的一部分）。
         cs_widget_env

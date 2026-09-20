@@ -9,8 +9,10 @@
 %%%     冻结码 `server_derived_key_rejected`，键名不出线）；bootstrap 的
 %%%     Origin 头归一化（大小写/缺省端口折叠）后进 application，形状非法
 %%%     400、不在 installation allowlist 403；方法门 405；缺必填 422（绝不
-%%%     500）。bootstrap 是零 org 申报面：载荷仅 public_widget_id+subject_id，
-%%%     申报 organization_id 即 400（OrgId 占位 0 由 application 反查派生）。
+%%%     500）。CSD-BE-01S（合同 S3 v1.1）：**全部 widget 动作面零 org 申报**
+%%%     ——持 token 面 OrgId 占位 0 由 facade 按 token digest 命中行派生，
+%%%     organization_id 申报即 400；bootstrap 同时注入 request_host（Host 头
+%%%     + 客户端侧 scheme 归一 origin，同源放行判定输入）。
 %%%   * **A02 SSE**：GET events 返回 `text/event-stream`；先发 `retry:` +
 %%%     当前状态 resource-id 事件（TSID string）；`Last-Event-ID` 头驱动
 %%%     after 游标补偿（消息事件 id = 消息 id，单调不重）；空轮询周期注释行
@@ -113,6 +115,10 @@ a01_token_and_origin_tests(_) ->
                 ?assertEqual(0, Org),
                 ?assertNot(is_map_key(organization_id, Params)),
                 ?assertEqual(?ORIGIN, maps:get(origin, Params)),
+                %% CSD-BE-01S（合同 S3 v1.1）：同源放行判定输入——Host 头 +
+                %% 客户端侧 scheme 归一 origin（夹具 Host=localhost + 明文 http
+                %% 直连 → 缺省端口折叠）。
+                ?assertEqual(<<"http://localhost">>, maps:get(request_host, Params)),
                 ?assert(is_integer(maps:get(at, Params))),
                 ?assertEqual(<<"wgt_pub_a01">>, maps:get(public_widget_id, Params)),
                 ?assertNot(is_map_key(workspace_id, Params)),
@@ -243,7 +249,7 @@ a01_token_and_origin_tests(_) ->
                         Port,
                         <<"POST">>,
                         <<"/api/v1/cs/widget/sessions">>,
-                        #{<<"organization_id">> => ?ORG, <<"installation_id">> => ?INSTALL},
+                        #{<<"installation_id">> => ?INSTALL},
                         #{}
                     ),
                     ?assertEqual(401, ?S:status(Resp)),
@@ -257,7 +263,7 @@ a01_token_and_origin_tests(_) ->
                     Port,
                     <<"POST">>,
                     <<"/api/v1/cs/widget/sessions?token=", ?TOKEN/binary>>,
-                    #{<<"organization_id">> => ?ORG, <<"installation_id">> => ?INSTALL},
+                    #{<<"installation_id">> => ?INSTALL},
                     #{}
                 ),
                 ?assertEqual(400, ?S:status(Resp)),
@@ -271,11 +277,7 @@ a01_token_and_origin_tests(_) ->
                     Port,
                     <<"POST">>,
                     <<"/api/v1/cs/widget/sessions">>,
-                    #{
-                        <<"organization_id">> => ?ORG,
-                        <<"installation_id">> => ?INSTALL,
-                        <<"secret">> => <<"forged">>
-                    },
+                    #{<<"installation_id">> => ?INSTALL, <<"secret">> => <<"forged">>},
                     #{<<"x-cs-visit-token">> => ?TOKEN}
                 ),
                 ?assertEqual(400, ?S:status(Resp)),
@@ -283,33 +285,50 @@ a01_token_and_origin_tests(_) ->
             end)
         end},
 
-        {"A01 widget session create happy path (header token becomes secret; TSID string)", fun() ->
-                meck:expect(customer_service_facade, widget_create_session, fun(Org, Params) ->
-                    ?assertEqual(?ORG, Org),
-                    ?assertEqual(?TOKEN, maps:get(secret, Params)),
-                    ?assertEqual(?INSTALL, maps:get(installation_id, Params)),
-                    ?assert(is_integer(maps:get(at, Params))),
-                    {ok, #{
-                        session_id => ?SESSION,
-                        conversation_id => ?CONVERSATION,
-                        contact_id => ?CONTACT,
-                        workspace_id => ?WS,
-                        installation_id => ?INSTALL,
-                        status => queued
-                    }}
-                end),
-                ?S:with_listener(widget, widget_sessions, widget_inject(), fun(Port) ->
-                    Resp = ?S:request(
-                        Port,
-                        <<"POST">>,
-                        <<"/api/v1/cs/widget/sessions">>,
-                        #{<<"organization_id">> => ?ORG, <<"installation_id">> => ?INSTALL},
-                        #{<<"x-cs-visit-token">> => ?TOKEN}
-                    ),
-                    ?assertEqual(200, ?S:status(Resp)),
-                    ?assertEqual(int_bin(?SESSION), maps:get(<<"session_id">>, ?S:payload(Resp)))
-                end)
-            end},
+        {"CSD-BE-01S session create zero-org body (OrgId placeholder 0 to facade)", fun() ->
+            meck:expect(customer_service_facade, widget_create_session, fun(Org, Params) ->
+                %% CSD-BE-01S：零 org 申报面——OrgId 占位 0，租户由 facade
+                %% 按 token digest 命中行派生；organization_id 不进 Params。
+                ?assertEqual(0, Org),
+                ?assertNot(is_map_key(organization_id, Params)),
+                ?assertEqual(?TOKEN, maps:get(secret, Params)),
+                ?assertEqual(?INSTALL, maps:get(installation_id, Params)),
+                ?assert(is_integer(maps:get(at, Params))),
+                {ok, #{
+                    session_id => ?SESSION,
+                    conversation_id => ?CONVERSATION,
+                    contact_id => ?CONTACT,
+                    workspace_id => ?WS,
+                    installation_id => ?INSTALL,
+                    status => queued
+                }}
+            end),
+            ?S:with_listener(widget, widget_sessions, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/widget/sessions">>,
+                    #{<<"installation_id">> => ?INSTALL},
+                    #{<<"x-cs-visit-token">> => ?TOKEN}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                ?assertEqual(int_bin(?SESSION), maps:get(<<"session_id">>, ?S:payload(Resp)))
+            end)
+        end},
+
+        {"CSD-BE-01S declared organization_id on sessions is 400 (contract code)", fun() ->
+            ?S:with_listener(widget, widget_sessions, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/widget/sessions">>,
+                    #{<<"organization_id">> => ?ORG, <<"installation_id">> => ?INSTALL},
+                    #{<<"x-cs-visit-token">> => ?TOKEN}
+                ),
+                ?assertEqual(400, ?S:status(Resp)),
+                ?assertEqual(<<"server_derived_key_rejected">>, ?S:msg(Resp))
+            end)
+        end},
 
         {"A01 missing installation_id is a structured 422", fun() ->
             ?S:with_listener(widget, widget_sessions, widget_inject(), fun(Port) ->
@@ -317,7 +336,7 @@ a01_token_and_origin_tests(_) ->
                     Port,
                     <<"POST">>,
                     <<"/api/v1/cs/widget/sessions">>,
-                    #{<<"organization_id">> => ?ORG},
+                    #{},
                     #{<<"x-cs-visit-token">> => ?TOKEN}
                 ),
                 ?assertEqual(422, ?S:status(Resp)),
@@ -336,6 +355,8 @@ a01_token_and_origin_tests(_) ->
 
         {"A01 visitor message: client_msg_id required (422) and TSID string outbound", fun() ->
             meck:expect(customer_service_facade, widget_visitor_message, fun(Org, Params) ->
+                ?assertEqual(0, Org),
+                ?assertNot(is_map_key(organization_id, Params)),
                 ?assertEqual(?TOKEN, maps:get(secret, Params)),
                 ?assertEqual(?SESSION, maps:get(session_id, Params)),
                 {ok, #{id => 99001, client_msg_id => <<"cmid-1">>, body => <<"hi">>}}
@@ -345,11 +366,7 @@ a01_token_and_origin_tests(_) ->
                     Port,
                     <<"POST">>,
                     <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary, "/messages">>,
-                    #{
-                        <<"organization_id">> => ?ORG,
-                        <<"installation_id">> => ?INSTALL,
-                        <<"body">> => <<"hi">>
-                    },
+                    #{<<"installation_id">> => ?INSTALL, <<"body">> => <<"hi">>},
                     #{<<"x-cs-visit-token">> => ?TOKEN}
                 ),
                 ?assertEqual(422, ?S:status(Missing)),
@@ -359,7 +376,6 @@ a01_token_and_origin_tests(_) ->
                     <<"POST">>,
                     <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary, "/messages">>,
                     #{
-                        <<"organization_id">> => ?ORG,
                         <<"installation_id">> => ?INSTALL,
                         <<"body">> => <<"hi">>,
                         <<"client_msg_id">> => <<"cmid-1">>
@@ -372,7 +388,9 @@ a01_token_and_origin_tests(_) ->
         end},
 
         {"A01 visitor history honors after_id cursor (compensation semantics)", fun() ->
-            meck:expect(customer_service_facade, widget_history_after, fun(_Org, Params) ->
+            meck:expect(customer_service_facade, widget_history_after, fun(Org, Params) ->
+                ?assertEqual(0, Org),
+                ?assertNot(is_map_key(organization_id, Params)),
                 ?assertEqual(41, maps:get(after_id, Params)),
                 {ok, [#{id => 42, body => <<"m1">>}]}
             end),
@@ -381,8 +399,7 @@ a01_token_and_origin_tests(_) ->
                     Port,
                     <<"GET">>,
                     <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
-                        "/messages?organization_id=", (int_bin(?ORG))/binary, "&installation_id=",
-                        (int_bin(?INSTALL))/binary, "&after_id=41">>,
+                        "/messages?installation_id=", (int_bin(?INSTALL))/binary, "&after_id=41">>,
                     <<>>,
                     #{<<"x-cs-visit-token">> => ?TOKEN}
                 ),
@@ -394,7 +411,8 @@ a01_token_and_origin_tests(_) ->
 
         {"A01 identity exchange passes the assertion map through", fun() ->
             meck:expect(customer_service_facade, widget_identity_exchange, fun(Org, Params) ->
-                ?assertEqual(?ORG, Org),
+                ?assertEqual(0, Org),
+                ?assertNot(is_map_key(organization_id, Params)),
                 Assertion = maps:get(assertion, Params),
                 %% 嵌套对象键保持 JSON 原样（binary）；形状判定在 application。
                 ?assertEqual(1, maps:get(<<"key_version">>, Assertion)),
@@ -411,7 +429,6 @@ a01_token_and_origin_tests(_) ->
                     <<"POST">>,
                     <<"/api/v1/cs/widget/identity/exchange">>,
                     #{
-                        <<"organization_id">> => ?ORG,
                         <<"installation_id">> => ?INSTALL,
                         <<"assertion">> =>
                             #{<<"key_version">> => 1, <<"claims">> => #{<<"jti">> => <<"j">>}}
@@ -434,7 +451,8 @@ asset_content_tests(_) ->
     [
         {"BE-S01b content proxy streams asset bytes with mime content-type", fun() ->
             meck:expect(customer_service_facade, widget_asset_content, fun(Org, Params) ->
-                ?assertEqual(?ORG, Org),
+                ?assertEqual(0, Org),
+                ?assertNot(is_map_key(organization_id, Params)),
                 ?assertEqual(?SESSION, maps:get(session_id, Params)),
                 ?assertEqual(990001, maps:get(asset_id, Params)),
                 ?assertEqual(?INSTALL, maps:get(installation_id, Params)),
@@ -453,8 +471,7 @@ asset_content_tests(_) ->
                     Port,
                     <<"GET">>,
                     <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
-                        "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
-                        "&installation_id=", (int_bin(?INSTALL))/binary>>,
+                        "/assets/990001/content?installation_id=", (int_bin(?INSTALL))/binary>>,
                     <<>>,
                     #{<<"x-cs-visit-token">> => ?TOKEN}
                 ),
@@ -472,8 +489,7 @@ asset_content_tests(_) ->
                     Port,
                     <<"GET">>,
                     <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
-                        "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
-                        "&installation_id=", (int_bin(?INSTALL))/binary>>,
+                        "/assets/990001/content?installation_id=", (int_bin(?INSTALL))/binary>>,
                     <<>>,
                     #{}
                 ),
@@ -490,8 +506,7 @@ asset_content_tests(_) ->
                     Port,
                     <<"GET">>,
                     <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
-                        "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
-                        "&installation_id=", (int_bin(?INSTALL))/binary>>,
+                        "/assets/990001/content?installation_id=", (int_bin(?INSTALL))/binary>>,
                     <<>>,
                     #{<<"x-cs-visit-token">> => ?TOKEN}
                 ),
@@ -506,8 +521,8 @@ asset_content_tests(_) ->
                     Port,
                     <<"GET">>,
                     <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
-                        "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
-                        "&installation_id=", (int_bin(?INSTALL))/binary, "&token=", ?TOKEN/binary>>,
+                        "/assets/990001/content?installation_id=", (int_bin(?INSTALL))/binary,
+                        "&token=", ?TOKEN/binary>>,
                     <<>>,
                     #{}
                 ),
@@ -535,7 +550,6 @@ a06_capability_and_matrix_tests(_) ->
                     <<"POST">>,
                     <<"/api/v1/cs/widget/identity/exchange">>,
                     #{
-                        <<"organization_id">> => ?ORG,
                         <<"installation_id">> => ?INSTALL,
                         <<"assertion">> =>
                             #{<<"key_version">> => 1, <<"claims">> => #{<<"jti">> => <<"j">>}}
@@ -553,6 +567,12 @@ a06_capability_and_matrix_tests(_) ->
             SavedSwitch = application:get_env(imboy, cs_widget_identity_exchange_enabled),
             try
                 ok = application:set_env(imboy, cs_widget_identity_exchange_enabled, true),
+                meck:new(cs_widget_support, [passthrough]),
+                %% CSD-BE-01S：零 org 申报面——HTTP 链里租户由 token digest 命中
+                %% 行派生；本用例打桩派生点（零 DB），证明 enabled 路径照常路由。
+                meck:expect(cs_widget_support, derive_org_by_token, fun(_Params) ->
+                    {ok, ?ORG}
+                end),
                 meck:new(cs_widget_app, [passthrough]),
                 meck:expect(cs_widget_app, identity_exchange, fun(Org, Params) ->
                     ?assertEqual(?ORG, Org),
@@ -570,7 +590,6 @@ a06_capability_and_matrix_tests(_) ->
                         <<"POST">>,
                         <<"/api/v1/cs/widget/identity/exchange">>,
                         #{
-                            <<"organization_id">> => ?ORG,
                             <<"installation_id">> => ?INSTALL,
                             <<"assertion">> =>
                                 #{
@@ -586,6 +605,7 @@ a06_capability_and_matrix_tests(_) ->
                 end)
             after
                 meck:unload(cs_widget_app),
+                meck:unload(cs_widget_support),
                 case SavedSwitch of
                     undefined ->
                         _ = application:unset_env(
@@ -607,7 +627,7 @@ a06_capability_and_matrix_tests(_) ->
                     Port,
                     <<"POST">>,
                     <<"/api/v1/cs/widget/sessions">>,
-                    #{<<"organization_id">> => ?ORG, <<"installation_id">> => ?INSTALL},
+                    #{<<"installation_id">> => ?INSTALL},
                     #{<<"cookie">> => <<"imboy_adm_sid=adm-session-1">>}
                 ),
                 ?assertEqual(401, ?S:status(Resp)),
@@ -665,16 +685,24 @@ a06_capability_and_matrix_tests(_) ->
 %% ===================================================================
 
 events_path() ->
-    <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary, "/events?organization_id=",
-        (int_bin(?ORG))/binary, "&installation_id=", (int_bin(?INSTALL))/binary>>.
+    <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary, "/events?installation_id=",
+        (int_bin(?INSTALL))/binary>>.
 
 a02_sse_tests(_) ->
     [
         {"A02 SSE opens with retry line and current state resource-id event", fun() ->
-            meck:expect(customer_service_facade, widget_list_sessions, fun(_O, _P) ->
+            meck:expect(customer_service_facade, widget_list_sessions, fun(Org, Params) ->
+                %% CSD-BE-01S：零 org 申报面——OrgId 占位 0（facade 侧派生）。
+                ?assertEqual(0, Org),
+                ?assertNot(is_map_key(organization_id, Params)),
                 {ok, [#{id => ?SESSION, status => queued}]}
             end),
-            meck:expect(customer_service_facade, widget_history_after, fun(_O, _P) ->
+            meck:expect(customer_service_facade, widget_history_after, fun(Org, Params) ->
+                %% CSD-BE-01S（GAP-5）：补偿读把 token-scoped session_id 传入
+                %% widget_history_after——缺它 = 轮询恒 {invalid_argument,*}、
+                %% 坐席消息帧结构性永不出。
+                ?assertEqual(0, Org),
+                ?assertEqual(?SESSION, maps:get(session_id, Params)),
                 {ok, []}
             end),
             ?S:with_listener(widget, widget_session_events, sse_inject(), fun(Port) ->
@@ -704,7 +732,9 @@ a02_sse_tests(_) ->
             end),
             meck:expect(customer_service_facade, widget_history_after, fun(_O, Params) ->
                 %% 断线重连不重不漏：补偿从 Last-Event-ID 游标起（消息表 after_id）；
-                %% 后续轮询从新游标继续（此处无新增消息）。
+                %% 后续轮询从新游标继续（此处无新增消息）。session 级键随行
+                %% （CSD-BE-01S GAP-5）。
+                ?assertEqual(?SESSION, maps:get(session_id, Params)),
                 case maps:get(after_id, Params, undefined) of
                     41 -> {ok, [#{id => 42, body => <<"m1">>}, #{id => 43, body => <<"m2">>}]};
                     43 -> {ok, []};
@@ -781,6 +811,51 @@ a02_sse_tests(_) ->
                 ?assert(string:find(Raw, <<"\"status\":\"closed\"">>) =/= nomatch),
                 %% 首状态事件 + 变更事件：至少两块 state 帧。
                 ?assert(length(string:split(Raw, <<"event: state">>, all)) >= 2)
+            end)
+        end},
+
+        %% CSD-BE-01S（GAP-5 用例级 oracle）：坐席消息经 SSE **message 帧**到达
+        %% ——轮询参数带 session_id（history_after 契约闭合）后，轮询期落库的
+        %% 坐席消息以 `event: message` 帧送达（真实流验证归 E2E-03）。
+        {"CSD-BE-01S agent message delivered as an SSE message frame mid-stream", fun() ->
+            Counter = counters:new(1, []),
+            meck:expect(customer_service_facade, widget_list_sessions, fun(_O, _P) ->
+                {ok, [#{id => ?SESSION, status => claimed}]}
+            end),
+            meck:expect(customer_service_facade, widget_history_after, fun(_O, Params) ->
+                %% GAP-5 契约：轮询必须携带 session_id（scoped 曾剥掉它，
+                %% facade 强制要求 → 每次轮询 invalid_argument 静默重试）。
+                ?assertEqual(?SESSION, maps:get(session_id, Params)),
+                case counters:get(Counter, 1) of
+                    0 ->
+                        counters:add(Counter, 1, 1),
+                        {ok, []};
+                    _ ->
+                        {ok, [
+                            #{
+                                id => 77,
+                                conversation_id => ?CONVERSATION,
+                                body => <<"agent says hi">>,
+                                sender_kind => business_identity,
+                                kind => text
+                            }
+                        ]}
+                end
+            end),
+            ?S:with_listener(widget, widget_session_events, sse_inject(), fun(Port) ->
+                Raw = ?S:stream_request(
+                    Port,
+                    <<"GET">>,
+                    events_path(),
+                    <<>>,
+                    #{<<"x-cs-visit-token">> => ?TOKEN},
+                    400
+                ),
+                ?assert(string:find(Raw, <<"event: message">>) =/= nomatch),
+                ?assert(string:find(Raw, <<"id: 77">>) =/= nomatch),
+                ?assert(string:find(Raw, <<"agent says hi">>) =/= nomatch),
+                %% 零 secret：消息帧是投影白名单出站。
+                ?assert(string:find(Raw, <<"secret">>) =:= nomatch)
             end)
         end},
 

@@ -10,8 +10,9 @@
 %%%     （CSD-BE-01R，hosted-widget-contract S3 零申报面）；status 非 active
 %%%     （disabled/revoked）与不存在一律 `installation_unavailable`（404 三态
 %%%     归一，无存在性枚举）；
-%%%   * Origin 由 domain `cs_widget:origin_allowed/2` 做 scheme+host+port 归一
-%%%     后精确匹配 allowlist——无通融、无子域前缀；
+%%%   * Origin 由 domain `cs_widget:origin_allowed/3` 做 scheme+host+port 归一
+%%%     后判定：allowlist 精确匹配（无通融、无子域前缀）∪ 同源 Host 对等
+%%%     （v1.1，同源 iframe 面的放行来源可区分）；
 %%%   * 匿名 subject 只以 HMAC 形态存在（`cs_widget:subject_hmac/3`，密钥由
 %%%     Ctx 注入）；(installation, subject_hmac) → enterprise contact 的映射
 %%%     以 contact 的**确定性资源键**（EB-05 幂等锚）裁决：重复映射返回
@@ -467,10 +468,13 @@ fetch_installation_by_public_id_global(Params, PublicId) ->
 
 bootstrap_origin(OrgId, Installation, Params) ->
     Allowed = maps:get(allowed_origins, Installation, []),
-    case cs_widget:origin_allowed(maps:get(origin, Params), Allowed) of
+    %% CSD-BE-01S（合同 S3 v1.1）：放行集合 = allowlist ∪ 同源 Host（handler
+    %% 由 Host 头 + X-Forwarded-Proto 派生注入；undefined = 仅 allowlist）。
+    Host = maps:get(request_host, Params, undefined),
+    case cs_widget:origin_allowed(maps:get(origin, Params), Allowed, Host) of
         {error, _} = Err ->
             Err;
-        ok ->
+        _Allowed ->
             bootstrap_replay(OrgId, Installation, Params)
     end.
 

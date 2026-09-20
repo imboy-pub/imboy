@@ -395,6 +395,14 @@ revoke_widget_installation(OrgId, _Params) ->
 %% widget（CSB-02）：参数收敛只做形状判定；服务端派生事实（contact /
 %% conversation / workspace / identity / 时钟 / HMAC key）由 application 从
 %% Ctx 注入项与令牌作用域取得，浏览器申报值一律不成为授权事实。
+%%
+%% CSD-BE-01S（hosted-widget-contract S3 v1.1）：持 token 动作面
+%% （sessions/messages/history/rating/assets/identity_exchange）是浏览器
+%% **零 org 申报面**——handler 经 cs_actions org_source=derived 传 0 占位，
+%% 本层先以 `cs_widget_support:derive_org_by_token/1` 由 (installation_id,
+%% secret) 的 digest 全局命中行解析真实 Org，再行 env 事实装配与用例委派
+%% （intake identity 等 org 级装配必须拿到真实租户）；`organization_id` 已
+%% 入动作表 client_forbidden，客户端提供即 400 `server_derived_key_rejected`。
 %% ===================================================================
 
 %% CSD-BE-01R（hosted-widget-contract S3）：bootstrap 是浏览器零 org 申报面。
@@ -455,20 +463,26 @@ widget_public_frame_html(OrgId, _Params) ->
 %% 由 cs_widget_identity_exchange_enabled 显式开启，默认 false）。
 -spec widget_identity_exchange(integer(), map()) -> term().
 widget_identity_exchange(
-    OrgId, #{installation_id := InstallationId, assertion := Assertion} = Params
+    _OrgId, #{installation_id := InstallationId, secret := Secret, assertion := Assertion} = Params
 ) when
-    is_integer(OrgId), is_integer(InstallationId), is_map(Assertion), is_map(Params)
+    is_integer(InstallationId), is_binary(Secret), is_map(Assertion), is_map(Params)
 ->
     case cs_widget_env:identity_exchange_enabled() of
         true ->
-            widget_identity_exchange_enabled(OrgId, InstallationId, Assertion, Params);
+            case cs_widget_support:derive_org_by_token(Params) of
+                {error, _} = Err ->
+                    Err;
+                {ok, OrgId} ->
+                    widget_identity_exchange_enabled(OrgId, InstallationId, Assertion, Params)
+            end;
         false ->
             %% 第一阶段：签名身份换绑未开放（capability_disabled；HTTP 403 +
             %% envelope tag capability_disabled.identity_exchange）。既有签名
-            %% 断言链原样保留在 true 分支，未删除。
+            %% 断言链原样保留在 true 分支，未删除。能力门在租户派生之前——
+            %% 探测面零 DB 依赖（可探测能力，不误判 404/401）。
             {error, {capability_disabled, identity_exchange}}
     end;
-widget_identity_exchange(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_identity_exchange(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_identity_exchange}};
 widget_identity_exchange(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
@@ -480,53 +494,65 @@ widget_identity_exchange_enabled(OrgId, _InstallationId, _Assertion, Params) ->
     end.
 
 -spec widget_create_session(integer(), map()) -> term().
-widget_create_session(OrgId, #{installation_id := InstallationId, secret := Secret} = Params) when
-    is_integer(OrgId), is_integer(InstallationId), is_binary(Secret), is_map(Params)
-->
-    case cs_widget_env:merge_session(OrgId, Params) of
-        {ok, Merged} -> cs_widget_session_app:create_session(OrgId, Merged);
-        {error, _} = Err -> Err
+widget_create_session(
+    _OrgId, #{installation_id := InstallationId, secret := Secret} = Params
+) when is_integer(InstallationId), is_binary(Secret), is_map(Params) ->
+    case cs_widget_support:derive_org_by_token(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, OrgId} ->
+            case cs_widget_env:merge_session(OrgId, Params) of
+                {ok, Merged} -> cs_widget_session_app:create_session(OrgId, Merged);
+                {error, _} = Err2 -> Err2
+            end
     end;
-widget_create_session(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_create_session(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_create_session}};
 widget_create_session(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 -spec widget_list_sessions(integer(), map()) -> term().
-widget_list_sessions(OrgId, #{installation_id := InstallationId, secret := Secret} = Params) when
-    is_integer(OrgId), is_integer(InstallationId), is_binary(Secret), is_map(Params)
-->
-    case cs_widget_env:merge_visitor(OrgId, Params) of
-        {ok, Merged} -> cs_widget_session_app:list_sessions(OrgId, Merged);
-        {error, _} = Err -> Err
+widget_list_sessions(
+    _OrgId, #{installation_id := InstallationId, secret := Secret} = Params
+) when is_integer(InstallationId), is_binary(Secret), is_map(Params) ->
+    case cs_widget_support:derive_org_by_token(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, OrgId} ->
+            case cs_widget_env:merge_visitor(OrgId, Params) of
+                {ok, Merged} -> cs_widget_session_app:list_sessions(OrgId, Merged);
+                {error, _} = Err2 -> Err2
+            end
     end;
-widget_list_sessions(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_list_sessions(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_list_sessions}};
 widget_list_sessions(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 -spec widget_history_after(integer(), map()) -> term().
 widget_history_after(
-    OrgId, #{installation_id := InstallationId, secret := Secret, session_id := SessionId} = Params
+    _OrgId,
+    #{installation_id := InstallationId, secret := Secret, session_id := SessionId} = Params
 ) when
-    is_integer(OrgId),
-    is_integer(InstallationId),
-    is_binary(Secret),
-    is_integer(SessionId),
-    is_map(Params)
+    is_integer(InstallationId), is_binary(Secret), is_integer(SessionId), is_map(Params)
 ->
-    case cs_widget_env:merge_visitor(OrgId, Params) of
-        {ok, Merged} -> cs_widget_session_app:history_after(OrgId, Merged);
-        {error, _} = Err -> Err
+    case cs_widget_support:derive_org_by_token(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, OrgId} ->
+            case cs_widget_env:merge_visitor(OrgId, Params) of
+                {ok, Merged} -> cs_widget_session_app:history_after(OrgId, Merged);
+                {error, _} = Err2 -> Err2
+            end
     end;
-widget_history_after(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_history_after(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_history_after}};
 widget_history_after(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 -spec widget_visitor_message(integer(), map()) -> term().
 widget_visitor_message(
-    OrgId,
+    _OrgId,
     #{
         installation_id := InstallationId,
         secret := Secret,
@@ -534,7 +560,6 @@ widget_visitor_message(
         client_msg_id := ClientMsgId
     } = Params
 ) when
-    is_integer(OrgId),
     is_integer(InstallationId),
     is_binary(Secret),
     is_integer(SessionId),
@@ -545,21 +570,26 @@ widget_visitor_message(
     %% 与企业 canonical 侧裁决）；这里只挡形状错（给出但非 binary）。
     case maps:get(body, Params, undefined) of
         Body when is_binary(Body); Body =:= undefined ->
-            case cs_widget_env:merge_visitor(OrgId, Params) of
-                {ok, Merged} -> cs_widget_session_app:visitor_message(OrgId, Merged);
-                {error, _} = Err -> Err
+            case cs_widget_support:derive_org_by_token(Params) of
+                {error, _} = Err ->
+                    Err;
+                {ok, OrgId} ->
+                    case cs_widget_env:merge_visitor(OrgId, Params) of
+                        {ok, Merged} -> cs_widget_session_app:visitor_message(OrgId, Merged);
+                        {error, _} = Err2 -> Err2
+                    end
             end;
         _Other ->
             {error, {invalid_argument, widget_visitor_message}}
     end;
-widget_visitor_message(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_visitor_message(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_visitor_message}};
 widget_visitor_message(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 -spec widget_rate(integer(), map()) -> term().
 widget_rate(
-    OrgId,
+    _OrgId,
     #{
         installation_id := InstallationId,
         secret := Secret,
@@ -568,7 +598,6 @@ widget_rate(
         expected_version := ExpectedVersion
     } = Params
 ) when
-    is_integer(OrgId),
     is_integer(InstallationId),
     is_binary(Secret),
     is_integer(SessionId),
@@ -576,18 +605,23 @@ widget_rate(
     is_integer(ExpectedVersion),
     is_map(Params)
 ->
-    case cs_widget_env:merge_visitor(OrgId, Params) of
-        {ok, Merged} -> cs_widget_session_app:rate(OrgId, Merged);
-        {error, _} = Err -> Err
+    case cs_widget_support:derive_org_by_token(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, OrgId} ->
+            case cs_widget_env:merge_visitor(OrgId, Params) of
+                {ok, Merged} -> cs_widget_session_app:rate(OrgId, Merged);
+                {error, _} = Err2 -> Err2
+            end
     end;
-widget_rate(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_rate(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_rate}};
 widget_rate(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 -spec widget_asset_upload(integer(), map()) -> term().
 widget_asset_upload(
-    OrgId,
+    _OrgId,
     #{
         installation_id := InstallationId,
         secret := Secret,
@@ -596,7 +630,6 @@ widget_asset_upload(
         size_bytes := SizeBytes
     } = Params
 ) when
-    is_integer(OrgId),
     is_integer(InstallationId),
     is_binary(Secret),
     is_integer(SessionId),
@@ -604,30 +637,36 @@ widget_asset_upload(
     is_integer(SizeBytes),
     is_map(Params)
 ->
-    case cs_widget_env:merge_visitor(OrgId, Params) of
-        {ok, Merged} -> cs_widget_session_app:asset_presign(OrgId, Merged);
-        {error, _} = Err -> Err
+    case cs_widget_support:derive_org_by_token(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, OrgId} ->
+            case cs_widget_env:merge_visitor(OrgId, Params) of
+                {ok, Merged} -> cs_widget_session_app:asset_presign(OrgId, Merged);
+                {error, _} = Err2 -> Err2
+            end
     end;
-widget_asset_upload(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_asset_upload(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_asset_upload}};
 widget_asset_upload(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 -spec widget_asset_confirm(integer(), map()) -> term().
 widget_asset_confirm(
-    OrgId, #{installation_id := InstallationId, secret := Secret, upload_ref := UploadRef} = Params
+    _OrgId, #{installation_id := InstallationId, secret := Secret, upload_ref := UploadRef} = Params
 ) when
-    is_integer(OrgId),
-    is_integer(InstallationId),
-    is_binary(Secret),
-    is_binary(UploadRef),
-    is_map(Params)
+    is_integer(InstallationId), is_binary(Secret), is_binary(UploadRef), is_map(Params)
 ->
-    case cs_widget_env:merge_visitor(OrgId, Params) of
-        {ok, Merged} -> cs_widget_session_app:asset_confirm(OrgId, Merged);
-        {error, _} = Err -> Err
+    case cs_widget_support:derive_org_by_token(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, OrgId} ->
+            case cs_widget_env:merge_visitor(OrgId, Params) of
+                {ok, Merged} -> cs_widget_session_app:asset_confirm(OrgId, Merged);
+                {error, _} = Err2 -> Err2
+            end
     end;
-widget_asset_confirm(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_asset_confirm(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_asset_confirm}};
 widget_asset_confirm(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
@@ -673,7 +712,7 @@ widget_asset_put(OrgId, _Params) ->
 %% 任何作用域。
 -spec widget_asset_content(integer(), map()) -> term().
 widget_asset_content(
-    OrgId,
+    _OrgId,
     #{
         installation_id := InstallationId,
         secret := Secret,
@@ -681,18 +720,22 @@ widget_asset_content(
         asset_id := AssetId
     } = Params
 ) when
-    is_integer(OrgId),
     is_integer(InstallationId),
     is_binary(Secret),
     is_integer(SessionId),
     is_integer(AssetId),
     is_map(Params)
 ->
-    case cs_widget_env:merge_visitor(OrgId, Params) of
-        {ok, Merged} -> cs_widget_session_app:asset_content(OrgId, Merged);
-        {error, _} = Err -> Err
+    case cs_widget_support:derive_org_by_token(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, OrgId} ->
+            case cs_widget_env:merge_visitor(OrgId, Params) of
+                {ok, Merged} -> cs_widget_session_app:asset_content(OrgId, Merged);
+                {error, _} = Err2 -> Err2
+            end
     end;
-widget_asset_content(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_asset_content(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_asset_content}};
 widget_asset_content(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.

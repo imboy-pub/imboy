@@ -12,10 +12,13 @@
 %%%      签发点本身，令牌可选（携带即重放心跳）。
 %%%   2. **Origin 头校验**（仅 bootstrap）：handler 用 domain
 %%%      `cs_widget:normalize_origin/1` 做 scheme+host+port 归一（非法形状
-%%%      400），归一值注入 `origin` 参数交给 application 与 installation
-%%%      allowlist **精确**匹配（`cs_widget:origin_allowed/2`）——Origin 是
-%%%      bootstrap 的必要条件，不是唯一认证：令牌/限流/租户 scope 照常生效。
-%%%      动态 CORS：仅当请求成功才回 `Access-Control-Allow-Origin`
+%%%      400），归一值注入 `origin` 参数交给 application 判定（
+%%%      `cs_widget:origin_allowed/3`：installation allowlist 精确匹配 ∪
+%%%      同源 Host 对等——CSD-BE-01S 合同 S3 v1.1：同源 iframe fetch 的
+%%%      Origin 恒为 Widget 网关自身，handler 同时把 Host 头 + 客户端侧
+%%%      scheme 派生的归一 origin 注入 `request_host` 供同源分支比对）——
+%%%      Origin 是 bootstrap 的必要条件，不是唯一认证：令牌/限流/租户 scope
+%%%      照常生效。动态 CORS：仅当请求成功才回 `Access-Control-Allow-Origin`
 %%%      （echo 归一化后的**具体值**，绝不 `*`、绝不由此开 credentials）；
 %%%      全局 CORS 由 `cors_middleware` 按既有口径先行。
 %%%
@@ -175,15 +178,17 @@ token_credential(Req, Optional) ->
     end.
 
 %% Origin 守卫（仅 bootstrap）：头缺失即 400；形状非法（含 path/userinfo/
-%% 非法端口）即 400；合法值归一化后注入 `origin` 参数——allowlist 精确
-%% 匹配在 application（`cs_widget:origin_allowed/2`）。
+%% 非法端口）即 400；合法值归一化后注入 `origin` 参数，同时注入同源判定
+%% 输入 `request_host`（Host 头 + 客户端侧 scheme 的归一 origin；缺头/形状
+%% 非法不注入——同源分支自然不生效，fail-closed）——allowlist ∪ 同源的
+%% 判定在 application（`cs_widget:origin_allowed/3`）。
 origin_guard(Entry, Req) ->
     case maps:get(action, Entry) =:= widget_bootstrap of
         false ->
             {ok, #{}};
         true ->
             case normalized_origin(Req) of
-                {ok, Norm} -> {ok, #{origin => Norm}};
+                {ok, Norm} -> {ok, maps:merge(#{origin => Norm}, request_host(Req))};
                 {error, missing_origin} -> {error, {missing_param, origin}};
                 {error, Reason} -> {error, Reason}
             end
@@ -196,6 +201,50 @@ normalized_origin(Req) ->
         Raw when is_binary(Raw) ->
             cs_widget:normalize_origin(Raw)
     end.
+
+%% CSD-BE-01S（合同 S3 v1.1）：同源放行判定的服务端输入——Host 头（含端口
+%% 的原始 authority）+ 客户端可见 scheme 拼出 `scheme://host[:port]` 再归一。
+%% scheme 反代场景信任 X-Forwarded-Proto（nginx 模板恒下发；取首段防链式
+%% 列表），无头时用 cowboy 直连 scheme。Host 头缺失/形状非法 = 不注入
+%% （同源分支不生效，仅剩 allowlist 判定——fail-closed）。
+request_host(Req) ->
+    case host_authority(Req) of
+        {ok, Authority} ->
+            case
+                cs_widget:normalize_origin(<<(client_scheme(Req))/binary, "://", Authority/binary>>)
+            of
+                {ok, Norm} -> #{request_host => Norm};
+                {error, _} -> #{}
+            end;
+        error ->
+            #{}
+    end.
+
+host_authority(Req) ->
+    case cowboy_req:header(<<"host">>, Req) of
+        Host when is_binary(Host), Host =/= <<>> -> {ok, Host};
+        _ -> error
+    end.
+
+client_scheme(Req) ->
+    case cowboy_req:header(<<"x-forwarded-proto">>, Req) of
+        Xfp when is_binary(Xfp), Xfp =/= <<>> ->
+            [First | _] = binary:split(Xfp, <<",">>),
+            lower_bin(string:trim(First));
+        _ ->
+            %% cowboy 2.x 返回 binary（<<"http">>/<<"https">>）；atom 形态兼容兜底。
+            case cowboy_req:scheme(Req) of
+                S when is_binary(S) -> lower_bin(S);
+                A when is_atom(A) -> atom_to_binary(A, utf8)
+            end
+    end.
+
+lower_bin(Bin) ->
+    Lower = fun
+        (C) when C >= $A, C =< $Z -> C + 32;
+        (C) -> C
+    end,
+    <<<<(Lower(C))>> || <<C>> <= Bin>>.
 
 %% 请求成功时才可用于动态 CORS 的归一化 Origin（失败/无头 = undefined）。
 origin_or_undefined(Req) ->
@@ -677,19 +726,26 @@ message_id(Message) when is_map(Message) ->
 message_id(_Other) ->
     0.
 
+%% CSD-BE-01S（GAP-5）：消息补偿读把（开流前已 token-scoped 归属校验过的）
+%% `session_id` 回注进 facade 参数——`widget_history_after` 的参数契约要求
+%% session 级作用域键，缺它 = 每次轮询 {error,{invalid_argument,*}} 静默重试、
+%% 坐席消息帧结构性永不出。状态/保活轮询走 `widget_list_sessions`（不需要
+%% session 级键），仍由 scoped/1 收敛。
 poll_messages(OrgId, Params, Cursor) ->
     Base = scoped(Params#{limit => ?SSE_POLL_LIMIT}),
+    WithSession = Base#{session_id => maps:get(session_id, Params)},
     WithCursor =
         case Cursor > 0 of
-            true -> Base#{after_id => Cursor};
-            false -> Base
+            true -> WithSession#{after_id => Cursor};
+            false -> WithSession
         end,
     cs_facade_call:call(widget_history_after, OrgId, WithCursor).
 
 sort_messages(Messages) ->
     lists:sort(fun(A, B) -> message_id(A) =< message_id(B) end, Messages).
 
-%% facade 参数收敛：只留注入键 + 游标/页大小键（session 级键不出流循环）。
+%% facade 参数收敛：只留注入键 + 游标/页大小键（session 级键不出流循环；
+%% 唯一例外是消息补偿读——poll_messages 在收敛后显式回注 session_id）。
 scoped(Params) ->
     maps:with(
         [installation_id, secret, at, store, id, default_workspace, digest, limit], Params

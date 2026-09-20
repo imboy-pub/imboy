@@ -272,6 +272,14 @@
     OrgId :: integer(), InstallationId :: integer(), Digest :: binary()
 ) ->
     {ok, widget_bootstrap_token()} | {error, not_found | term()}.
+%% @doc digest **全局**命中（CSD-BE-01S，hosted-widget-contract S3 v1.1）：
+%% 无 Org 输入——持 token 动作面的租户派生真源，命中行的 organization_id
+%% 即权威租户（token 行绑定 (org, installation)）；digest = sha256(secret)，
+%% 命中前提是持明文 secret，无存在性枚举面。
+-callback fetch_widget_bootstrap_token_by_digest_global(
+    InstallationId :: integer(), Digest :: binary()
+) ->
+    {ok, widget_bootstrap_token()} | {error, not_found | term()}.
 %% @doc 活跃心跳：更新 last_seen_at（不改 digest / 不动 version 语义）。
 -callback touch_widget_bootstrap_token(
     OrgId :: integer(), InstallationId :: integer(), TokenId :: integer(), At :: integer()

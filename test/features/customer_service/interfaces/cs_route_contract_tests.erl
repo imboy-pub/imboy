@@ -772,9 +772,9 @@ error_status_mapping_is_explicit_test() ->
     ?assertEqual(<<"installation_unavailable">>, cs_http:tag(installation_unavailable)),
     ?assertEqual(400, cs_http:status(invalid_public_widget_id)).
 
-%% CSD-BE-01R（hosted-widget-contract S3）：bootstrap 的 public_id 反查语义
-%% **锁死**——动作收 public_widget_id（required），org 来源是 derived（浏览器
-%% 零申报面：public_widget_id 全局反查命中行权威派生，OrgId 占位 0）；
+%% CSD-BE-01R/01S（hosted-widget-contract S3 v1.1）：bootstrap 的 public_id
+%% 反查语义**锁死**——动作收 public_widget_id（required），org 来源是 derived
+%% （浏览器零申报面：public_widget_id 全局反查命中行权威派生，OrgId 占位 0）；
 %% `organization_id` 与其余服务端派生键（workspace/origin/secret/contact 等）
 %% 客户端提供即 400 `server_derived_key_rejected`。
 widget_bootstrap_public_id_and_server_derived_locked_test() ->
@@ -786,7 +786,7 @@ widget_bootstrap_public_id_and_server_derived_locked_test() ->
     Forbidden = maps:get(client_forbidden, Entry),
     lists:foreach(
         fun(Key) -> ?assert(lists:member(Key, Forbidden)) end,
-        [workspace_id, origin, secret, contact_id, subject_key, organization_id]
+        [workspace_id, origin, request_host, secret, contact_id, subject_key, organization_id]
     ),
     ?assertEqual(derived, cs_actions:org_source(Entry)),
     %% /w/ 面动作同表同纪律：public_widget_id 是唯一公开输入。
@@ -794,6 +794,53 @@ widget_bootstrap_public_id_and_server_derived_locked_test() ->
     [PubCase] = maps:get(cases, PubEntry),
     ?assert(
         lists:member({public_widget_id, binary, required}, maps:get(params, PubCase))
+    ).
+
+%% CSD-BE-01S（hosted-widget-contract S3 v1.1，GAP-3 修复锁死）：**全部持
+%% token widget 动作面**零 org 申报——org_source=derived（Org 由 (installation_id,
+%% secret) 的 digest 全局命中行服务端派生），organization_id 客户端提供即
+%% 400 `server_derived_key_rejected`。两个例外是同一豁免面：旧 frame（S4
+%% 兼容窗口，query organization_id 原样保留）与 widget_asset_put（无 token
+%% 的裸 PUT 代理——presign 下发 URL 携带服务端签发的 organization_id，同值
+%% 回传，非浏览器申报）。
+widget_token_surfaces_org_derived_locked_test() ->
+    DerivedSurfaces = [
+        widget_identity_exchange,
+        widget_sessions,
+        widget_session_messages,
+        widget_session_events,
+        widget_asset_upload,
+        widget_asset_confirm,
+        widget_asset_content,
+        widget_session_rating,
+        widget_public_frame_html
+    ],
+    lists:foreach(
+        fun(Action) ->
+            {ok, Entry} = cs_actions:widget(Action),
+            ?assertEqual({Action, derived}, {Action, cs_actions:org_source(Entry)}),
+            Forbidden = maps:get(client_forbidden, Entry),
+            ?assert(lists:member(organization_id, Forbidden), {Action, organization_id}),
+            %% request_host 是 CSD-BE-01S 的服务端注入键（同源判定输入）。
+            ?assert(lists:member(request_host, Forbidden), {Action, request_host}),
+            lists:foreach(
+                fun(Case) ->
+                    ?assertNot(
+                        lists:member({organization_id, tsid, required}, maps:get(params, Case))
+                    )
+                end,
+                maps:get(cases, Entry)
+            )
+        end,
+        DerivedSurfaces
+    ),
+    %% 豁免面保持 param（兼容窗口 / 无 token 裸 PUT），路径无 :org_id 绑定。
+    lists:foreach(
+        fun(Action) ->
+            {ok, Entry} = cs_actions:widget(Action),
+            ?assertEqual({Action, param}, {Action, cs_actions:org_source(Entry)})
+        end,
+        [widget_frame_html, widget_asset_put]
     ).
 
 %% CSD-BE-01（hosted-widget-contract S6）：/w/* 形状登记进共享谓词

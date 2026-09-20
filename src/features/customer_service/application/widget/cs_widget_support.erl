@@ -28,6 +28,7 @@
     fetch_installation/3,
     installation_active/1,
     verify_bootstrap_token/2,
+    derive_org_by_token/1,
     token_usable/2,
     session_open/2,
     session_list_contact/2,
@@ -176,6 +177,37 @@ fetch_token_by_digest(OrgId, Params, Secret) ->
         {ok, Token} ->
             token_usable(Token, maps:get(at, Params))
     end.
+
+%% @doc 持 token 动作面的 Org 权威派生（CSD-BE-01S，hosted-widget-contract
+%% S3 v1.1 零申报面）：(installation_id, secret) 的 digest **全局**命中行本就
+%% 绑定 (organization_id, installation)——命中行的 org 即派生租户（facade 在
+%% env 事实装配**之前**调用，装配与用例内的令牌复核都以真实 Org 进行）。
+%% digest = sha256(secret)：命中前提是持明文 secret，无存在性枚举面。
+%% 令牌可用性（吊销/过期）不在此裁决——仍由各用例的
+%% `verify_bootstrap_token/2` 以 (Org, installation) 同语句复核（纵深防御：
+%% 本函数只做「租户解析」这一件事）。
+-spec derive_org_by_token(map()) -> {ok, integer()} | {error, term()}.
+derive_org_by_token(Params) when is_map(Params) ->
+    InstallationId = maps:get(installation_id, Params, undefined),
+    Secret = maps:get(secret, Params, undefined),
+    case pos_int(InstallationId) andalso non_empty_binary(Secret) of
+        false ->
+            {error, {invalid_argument, derive_org_by_token}};
+        true ->
+            Digest = token_digest(Params, Secret),
+            case
+                with_store(Params, fun(Store) ->
+                    Store:fetch_widget_bootstrap_token_by_digest_global(InstallationId, Digest)
+                end)
+            of
+                {error, _} = Err ->
+                    Err;
+                {ok, Token} ->
+                    {ok, maps:get(organization_id, Token)}
+            end
+    end;
+derive_org_by_token(_Params) ->
+    {error, {invalid_argument, derive_org_by_token}}.
 
 token_usable(Token, At) ->
     RevokedAt = maps:get(revoked_at, Token, undefined),

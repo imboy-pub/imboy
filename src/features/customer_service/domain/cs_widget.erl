@@ -8,6 +8,8 @@
 %%%   * Origin 判定全在服务端：申报 Origin 与 allowlist 双方都做
 %%%     scheme+host+port 归一（同源 sibling：缺省端口 80/443 折叠、host 小写、
 %%%     scheme 大小写折叠），然后**精确**匹配——无前缀/后缀/子域通融；
+%%%     v1.1 追加同源对等（`origin_allowed/3`，GAP-4 裁决）：放行集合 =
+%%%     allowlist ∪ 与请求 Host 头 scheme+host:port 归一相同，放行来源可区分；
 %%%   * 匿名 subject 只以 HMAC 形态存在：`subject_hmac/3` 以安装级数据域
 %%%     （public_widget_id + 浏览器随机 ID）+ 注入密钥计算 sha256-HMAC hex；
 %%%     签名身份 sub 同口径但数据域前缀不同（与匿名域永不相交）；
@@ -21,6 +23,7 @@
 -export([
     normalize_origin/1,
     origin_allowed/2,
+    origin_allowed/3,
     subject_hmac/3,
     verified_subject_hmac/3,
     assertion_claims/2,
@@ -157,6 +160,45 @@ origin_allowed(Declared, AllowedOrigins) when is_list(AllowedOrigins) ->
     end;
 origin_allowed(_Declared, _AllowedOrigins) ->
     {error, {invalid_origin, undefined}}.
+
+%% @doc v1.1 同源对等放行（CSD-BE-01S，hosted-widget-contract S3 GAP-4 裁决）：
+%% 放行集合 = installation `allowed_origins`（宿主面）∪ **与请求 Host 头
+%% scheme+host:port 归一相同**（同源 iframe 面——iframe 内 fetch 的 Origin
+%% 恒为 Widget 网关自身，嵌入合法性由 /w/ 的 frame-ancestors CSP 保证）。
+%%
+%% 返回可区分两种放行来源（测试/日志面）：
+%%   * `ok`                —— allowlist 精确命中（allowlist 优先，语义不变）；
+%%   * `{ok, same_origin}` —— Origin 与 Host 头归一相等（同源对等）；
+%%   * `{error, _}`        —— 两者皆否 / 输入形状非法 / allowlist 配置错误
+%%     （fail-closed 原样上抛）。
+%%
+%% `HostOrigin` 是 handler 由 Host 头 + 客户端侧 scheme 派生的归一 origin
+%% （`undefined` = 头缺失/形状非法 → 同源分支不生效，仅剩 allowlist 判定）。
+-spec origin_allowed(term(), [binary()], term()) -> ok | {ok, same_origin} | {error, term()}.
+origin_allowed(Declared, AllowedOrigins, HostOrigin) when is_list(AllowedOrigins) ->
+    case origin_allowed(Declared, AllowedOrigins) of
+        ok ->
+            ok;
+        {error, origin_not_allowed} = NotAllowed ->
+            case same_origin_as(Declared, HostOrigin) of
+                true -> {ok, same_origin};
+                false -> NotAllowed
+            end;
+        {error, _} = Err ->
+            Err
+    end;
+origin_allowed(_Declared, _AllowedOrigins, _HostOrigin) ->
+    {error, {invalid_origin, undefined}}.
+
+%% 同源判定：双方各自归一后逐字相等（scheme+host+port 同一口径）；Host 侧
+%% 形状非法 = 不构成同源放行（fail-closed，不做容错截断）。
+same_origin_as(Declared, HostOrigin) when is_binary(Declared), is_binary(HostOrigin) ->
+    case {normalize_origin(Declared), normalize_origin(HostOrigin)} of
+        {{ok, Norm}, {ok, Norm}} -> true;
+        _ -> false
+    end;
+same_origin_as(_Declared, _HostOrigin) ->
+    false.
 
 normalize_all([], Acc) ->
     {ok, lists:usort(Acc)};

@@ -86,6 +86,7 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun tenant_keys_carry_org_in_every_statement/0},
         {timeout, 60, fun a02_public_widget_id_cannot_cross_org/0},
         {timeout, 60, fun csd_be01_global_public_id_lookup/0},
+        {timeout, 60, fun csd_be01s_global_token_digest_lookup/0},
         {timeout, 60, fun a02_allowed_origins_jsonb_roundtrip/0},
         {timeout, 60, fun a03_only_digest_columns_and_rows/0},
         {timeout, 60, fun a03_returned_rows_carry_no_plaintext/0},
@@ -247,6 +248,85 @@ csd_be01_global_public_id_lookup() ->
         ?assertEqual(<<"revoked">>, maps:get(status, RevRow))
     after
         cleanup_widget(Scope)
+    end.
+
+%% CSD-BE-01S（hosted-widget-contract S3 v1.1，GAP-3 oracle）：bootstrap
+%% token digest **全局**命中的 PG 证明——无 Org 输入，(installation_id, digest)
+%% 命中行派生 organization_id（持 token 动作面的租户真源）；digest 未命中/
+%% 跨 installation → not_found（digest = sha256(secret)，无存在性枚举）。
+%% SQL 形状机械断言：谓词零 Org、恰两个占位符。
+csd_be01s_global_token_digest_lookup() ->
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    OtherOrg = maps:get(other_org_id, Scope),
+    try
+        {ok, Inst} = cs_pg_widget:insert_widget_installation(Org, #{
+            id => ?FIX:id(),
+            organization_id => Org,
+            public_widget_id => public_widget_id(),
+            display_name => <<"csbe01s-global-digest">>,
+            allowed_origins => [<<"https://shop.example.com">>],
+            branding => #{},
+            consent_version => <<"csb01-consent-v1">>
+        }),
+        InstallationId = maps:get(id, Inst),
+        Digest = cs_access_app:default_digest(<<"csbe01s-global-token">>),
+        {ok, Token} = cs_pg_widget:insert_widget_bootstrap_token(Org, #{
+            id => ?FIX:id(),
+            contact_id => maps:get(contact_id, Scope),
+            token_digest => Digest,
+            expires_at => erlang:system_time(second) + 600,
+            widget_installation_id => InstallationId
+        }),
+        %% 全局命中：无 Org 输入，行的 organization_id 即派生租户。
+        {ok, Row} = cs_pg_widget:fetch_widget_bootstrap_token_by_digest_global(
+            InstallationId, Digest
+        ),
+        ?assertEqual(maps:get(id, Token), maps:get(id, Row)),
+        ?assertEqual(Org, maps:get(organization_id, Row)),
+        ?assertEqual(InstallationId, maps:get(widget_installation_id, Row)),
+        %% digest 不匹配 → not_found；跨 installation → not_found（不可枚举）。
+        {error, not_found} = cs_pg_widget:fetch_widget_bootstrap_token_by_digest_global(
+            InstallationId, cs_access_app:default_digest(<<"csbe01s-other-token">>)
+        ),
+        {error, not_found} = cs_pg_widget:fetch_widget_bootstrap_token_by_digest_global(
+            ?FIX:id(), Digest
+        ),
+        %% 与既有 (Org, installation) 同语句口径一致：行保留、可复核。
+        {ok, _} = cs_pg_widget:fetch_widget_bootstrap_token_by_digest(
+            Org, InstallationId, Digest
+        ),
+        _ = OtherOrg,
+        %% SQL 形状机械断言（同 by_public_id_global 先例）：谓词零 Org
+        %% （organization_id 只在 SELECT 投影）、占位符恰为 $1/$2。
+        Chunk = global_digest_sql_chunk(),
+        ?assertMatch(
+            {match, _},
+            re:run(Chunk, <<"WHERE\\s+widget_installation_id = \\$1 AND token_digest = \\$2">>)
+        ),
+        ?assertMatch(nomatch, re:run(Chunk, <<"organization_id\\s*=">>)),
+        ?assertMatch({match, _}, re:run(Chunk, <<"SELECT id, organization_id,">>)),
+        ok
+    after
+        cleanup_widget(Scope)
+    end.
+
+%% 全局 digest 语句是模块级宏（不进 sql_statements/0——「同语句带 Org」的
+%% 机械断言集语义上不适用）；形状以模块源码冻结（宏原文切片）。
+global_digest_sql_chunk() ->
+    {ok, Bin} = file:read_file(
+        filename:join([
+            "src", "features", "customer_service", "infrastructure", "cs_pg_widget.erl"
+        ])
+    ),
+    case binary:split(Bin, <<"-define(SQL_FETCH_BOOTSTRAP_BY_DIGEST_GLOBAL, <<">>) of
+        [_Only] ->
+            erlang:error(global_digest_sql_missing);
+        [_Head, Rest] ->
+            case binary:split(Rest, <<">>).">>) of
+                [Chunk, _Tail] -> Chunk;
+                _ -> erlang:error(global_digest_sql_unterminated)
+            end
     end.
 
 %% ===================================================================
