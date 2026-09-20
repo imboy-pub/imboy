@@ -1,5 +1,10 @@
 -module(rest_assert).
 
+%% Minimal black-box assertions for REST Common Test suites.
+%% Failure exceptions carry only the assertion kind, the expectation and a
+%% sanitized summary of the actual value — never a full response body that
+%% could embed tokens (RTF-02 task 4).
+
 -export([status/2, header_contains/3, json_path/3, json_contains/2, predicate/3]).
 
 -spec status(non_neg_integer(), map()) -> ok.
@@ -43,6 +48,10 @@ predicate(Path, Pred, #{body := Body}) ->
         false -> fail({json_predicate, Path}, predicate, Actual)
     end.
 
+%% ===================================================================
+%% Internal
+%% ===================================================================
+
 get_path([], Value) ->
     Value;
 get_path([Key | Rest], Map) when is_map(Map) ->
@@ -62,4 +71,32 @@ contains(Expected, Actual) ->
     Expected =:= Actual.
 
 fail(Kind, Expected, Actual) ->
-    erlang:error({rest_assertion_failed, Kind, #{expected => Expected, actual => Actual}}).
+    erlang:error(
+        {rest_assertion_failed, Kind, #{
+            expected => summarize(Expected),
+            actual => summarize(Actual)
+        }}
+    ).
+
+%% Sanitized value summaries: scalars and short binaries are shown as-is;
+%% maps contribute their key names only, lists their length. Map values
+%% never enter the summary, so token/password-bearing payloads cannot leak
+%% into CT logs or evidence failure fields.
+summarize(Value) when is_map(Value) ->
+    {map_keys, lists:sort(maps:keys(Value))};
+summarize(Value) when is_list(Value) ->
+    {list_length, length(Value)};
+summarize(Value) when is_binary(Value) ->
+    truncate_binary(Value);
+summarize(Value) when is_atom(Value); is_integer(Value); is_float(Value) ->
+    Value;
+summarize(Value) when is_tuple(Value) ->
+    {tuple_size_summary, tuple_size(Value)};
+summarize(Value) ->
+    {non_printable_summary, byte_size(term_to_binary(Value))}.
+
+truncate_binary(Value) when byte_size(Value) =< 64 ->
+    Value;
+truncate_binary(Value) ->
+    <<Head:64/binary, _/binary>> = Value,
+    {binary_head_64, Head, byte_size(Value)}.
