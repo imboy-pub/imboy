@@ -1594,6 +1594,14 @@ customer_service_wire_route({Path, cs_widget_handler, Opts}) when is_map(Opts) -
         %% 不用事实装配；注入与租户面同键保持面级不变量一致（无害）。
         auth_facts => eb_pg_auth_facts
     }};
+%% BE-W01 A05：动态 frame HTML 与 cs_widget_handler 同属 widget 面——面级
+%% 不变量键（surface/feature/auth_facts）逐字同款，防面间漂移。
+customer_service_wire_route({Path, cs_widget_frame_handler, Opts}) when is_map(Opts) ->
+    {Path, cs_widget_frame_handler, Opts#{
+        surface => widget,
+        feature => customer_service,
+        auth_facts => eb_pg_auth_facts
+    }};
 customer_service_wire_route({Path, cs_platform_handler, Opts}) when is_map(Opts) ->
     {Path, cs_platform_handler, Opts#{
         surface => platform,
@@ -1987,6 +1995,15 @@ customer_service_tenant_routes() ->
         }},
         {"/api/v1/cs/widget/sessions/:id/rating", cs_widget_handler, #{
             action => widget_session_rating,
+            auth_context => cs_visit
+        }},
+        %% BE-W01 A05：GET 动态 frame HTML（iframe src 导航落点）——零凭证面：
+        %% 免签/免 JWT 直通由 cs_http:is_credential_surface_path/1 登记（路径
+        %% 形状单一真源 imboy_route_shape:is_cs_widget_frame_path/1）；嵌入
+        %% 策略 = handler 按 installation allowed_origins 出精确 frame-ancestors
+        %% CSP，该路径 XFO 豁免（cors/security_headers 两中间件同真源判定）；
+        %% installation 不存在/吊销一律 404（kill switch 不显形）。
+        {"/api/v1/cs/widget/frame/:installation_id", cs_widget_frame_handler, #{
             auth_context => cs_visit
         }}
     ].

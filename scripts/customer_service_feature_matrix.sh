@@ -10,9 +10,10 @@
 #     1. neither           既不选 enterprise_business 也不选 customer_service
 #     2. customer-service  enterprise_business + customer_service（依赖前者）
 #
-#   逐档断言五层资产（对象 = customer_service 的全部模块（31，含 CSB-03 的
-#   cs_widget_handler 与 CSB-02R 的 cs_widget_env / cs_identity_assertion）+
-#   34 条路由 = 租户 17 + widget 8 + 平台 9）：
+#   逐档断言五层资产（对象 = customer_service 的全部模块（32，含 CSB-03 的
+#   cs_widget_handler / BE-W01 的 cs_widget_frame_handler 与 CSB-02R 的
+#   cs_widget_env / cs_identity_assertion）+
+#   35 条路由 = 租户 17 + widget 9 + 平台 9）：
 #     A-selected    宏 / 路由 / beam / .app modules / release 都在
 #     A-unselected  宏 / 路由 / beam / .app modules / release 都不在
 #     A03-负例      customer_service 无 enterprise_business ⇒ 生成即失败
@@ -264,10 +265,13 @@ route_probe() {   # $1 = 副本；stdout = "tenant=<n> platform=<n>"
         Routes = lists:append([Rs || {_H, Rs} <- imboy_router:get_routes()]),
         CS = [P || {P, H, _} <- Routes,
                    (H =:= cs_tenant_handler orelse H =:= cs_widget_handler orelse
+                    H =:= cs_widget_frame_handler orelse
                     H =:= cs_platform_handler),
                    is_list(P)],
         T = [P || {P, H, _} <- Routes, H =:= cs_tenant_handler, is_list(P)],
-        W = [P || {P, H, _} <- Routes, H =:= cs_widget_handler, is_list(P)],
+        W = [P || {P, H, _} <- Routes,
+                  (H =:= cs_widget_handler orelse H =:= cs_widget_frame_handler),
+                  is_list(P)],
         A = [P || {P, H, _} <- Routes, H =:= cs_platform_handler, is_list(P)],
         io:format("ROUTE_PROBE tenant=~p widget=~p platform=~p total=~p~n",
                   [length(T), length(W), length(A), length(CS)]),
@@ -350,11 +354,12 @@ assert_layer_routes() {
   platform="${platform%% *}"
   if [ "$expect" = selected ]; then
     # CSB-02R：租户面 17（坐席会话详情 + seats/sessions 工作台 + queue 双主体）
-    # + widget 接入面 8 + 平台面 9（含 widget-installations 列表/创建/revoke）。
-    if [ "$tenant" = 17 ] && [ "$widget" = 8 ] && [ "$platform" = 9 ]; then
-      ok "路由表：get_routes/0 客服路由租户 17 + widget 8 + 平台 9"
+    # + widget 接入面 9（8 + BE-W01 frame）+ 平台面 9（含
+    # widget-installations 列表/创建/revoke）。
+    if [ "$tenant" = 17 ] && [ "$widget" = 9 ] && [ "$platform" = 9 ]; then
+      ok "路由表：get_routes/0 客服路由租户 17 + widget 9 + 平台 9"
     else
-      fail "路由表：selected 期望租户 17/widget 8/平台 9，实得 $probe"
+      fail "路由表：selected 期望租户 17/widget 9/平台 9，实得 $probe"
     fi
   else
     if [ "$tenant" = 0 ] && [ "$widget" = 0 ] && [ "$platform" = 0 ]; then
@@ -602,7 +607,7 @@ fi
 
 log ""
 if [ "$FAILED" -eq 0 ]; then
-  log "=== customer_service feature matrix: PASS（$CS_MODULE_COUNT 模块 / 34 路由，两档五层全绿） ==="
+  log "=== customer_service feature matrix: PASS（$CS_MODULE_COUNT 模块 / 35 路由，两档五层全绿） ==="
 else
   log "=== customer_service feature matrix: FAIL（$FAILED 条断言红） ===" >&2
 fi

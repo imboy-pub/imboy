@@ -2484,6 +2484,12 @@
         "static": false
       },
       {
+        "action": null,
+        "handler": "cs_widget_frame_handler",
+        "path": "/api/v1/cs/widget/frame/:installation_id",
+        "static": false
+      },
+      {
         "action": "widget_identity_exchange",
         "handler": "cs_widget_handler",
         "path": "/api/v1/cs/widget/identity/exchange",
