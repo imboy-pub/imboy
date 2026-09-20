@@ -50,6 +50,7 @@ handler_test_() ->
             fun seat_flow_tests/1,
             fun governance_flow_tests/1,
             fun platform_flow_tests/1,
+            fun provisioning_flow_tests/1,
             fun contract_tests/1
         ]}.
 
@@ -1290,6 +1291,113 @@ member_facts() ->
 
 platform_inject() ->
     #{auth_facts => cs_fake_facts, adm_user_id => ?ADM}.
+
+%% ===================================================================
+%% BE-S01b（A07）：admin provisioning 平台接线——customer_service:write 门、
+%% 认证派生 adm_user_id 进参数（审计 actor 记录）、workspace face 必填门。
+%% ===================================================================
+
+provisioning_flow_tests(_) ->
+    [
+        {"platform provisioning reaches the use case with derived adm_user_id (200)", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:write">>]
+            }),
+            meck:expect(customer_service_facade, provision_seat, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(?WS, maps:get(workspace_id, Params)),
+                ?assertEqual(909091, maps:get(user_id, Params)),
+                %% 审计 actor 是认证派生键（Admin session），非客户端申报。
+                ?assertEqual(?ADM, maps:get(adm_user_id, Params)),
+                {ok, #{
+                    organization_id => ?ORG,
+                    workspace_id => ?WS,
+                    business_identity_id => 515999,
+                    identity_created => true,
+                    seat => #{enabled => true, max_concurrent => 1}
+                }}
+            end),
+            ?S:with_listener(platform, p_seat_provision, platform_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/adm/customer-service/organizations/", (int_bin(?ORG))/binary,
+                        "/provisioning?workspace_id=", (int_bin(?WS))/binary>>,
+                    #{
+                        <<"user_id">> => 909091,
+                        <<"display_name">> => <<"客服一号">>,
+                        <<"max_concurrent">> => 1
+                    },
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                Payload = ?S:payload(Resp),
+                ?assertEqual(<<"515999">>, maps:get(<<"business_identity_id">>, Payload)),
+                ?assertEqual(true, maps:get(<<"identity_created">>, Payload))
+            end)
+        end},
+
+        {"platform provisioning with read permission is 403 (no use case touch)", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:read">>]
+            }),
+            meck:expect(customer_service_facade, provision_seat, fun(_Org, _Params) ->
+                erlang:error(provision_reached_with_read_permission)
+            end),
+            ?S:with_listener(platform, p_seat_provision, platform_inject(), fun(Port) ->
+                meck:reset(customer_service_facade),
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/adm/customer-service/organizations/", (int_bin(?ORG))/binary,
+                        "/provisioning?workspace_id=", (int_bin(?WS))/binary>>,
+                    #{<<"user_id">> => 909091, <<"display_name">> => <<"X">>},
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(403, ?S:status(Resp)),
+                ?assertNot(meck:called(customer_service_facade, provision_seat, '_'))
+            end)
+        end},
+
+        {"platform provisioning without session key is 401", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:write">>]
+            }),
+            ?S:with_listener(
+                platform,
+                p_seat_provision,
+                #{auth_facts => cs_fake_facts},
+                fun(Port) ->
+                    Resp = ?S:request(
+                        Port,
+                        <<"POST">>,
+                        <<"/api/adm/customer-service/organizations/", (int_bin(?ORG))/binary,
+                            "/provisioning?workspace_id=", (int_bin(?WS))/binary>>,
+                        #{<<"user_id">> => 909091, <<"display_name">> => <<"X">>},
+                        #{}
+                    ),
+                    ?assertEqual(401, ?S:status(Resp))
+                end
+            )
+        end},
+
+        {"platform provisioning without workspace_id is 422 (face-level required)", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:write">>]
+            }),
+            ?S:with_listener(platform, p_seat_provision, platform_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/adm/customer-service/organizations/", (int_bin(?ORG))/binary,
+                        "/provisioning">>,
+                    #{<<"user_id">> => 909091, <<"display_name">> => <<"X">>},
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(422, ?S:status(Resp))
+            end)
+        end}
+    ].
 
 widget_installation_body() ->
     #{

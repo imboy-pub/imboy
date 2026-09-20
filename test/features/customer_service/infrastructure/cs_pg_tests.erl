@@ -53,6 +53,8 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a03_messages_land_only_in_enterprise_tables/0},
         {timeout, 60, fun cross_org_session_is_not_found/0},
         {timeout, 60, fun event_table_is_append_only/0},
+        %% BE-S01b（A07）：admin provisioning 单事务 + 审计 + 幂等 + 回滚（真库）。
+        {timeout, 120, fun bes01b_provision_seat_pg_tx_audit_idempotent_rollback/0},
         %% C1~C4（contracts-w2）：键集分页下推 + 租户隔离（真库）。
         {timeout, 60, fun c1_sessions_page_desc_keyset_and_cross_org/0},
         {timeout, 60, fun c2_shop_keys_page_and_cross_org/0},
@@ -889,4 +891,132 @@ run(Fun) ->
         Fun()
     catch
         Class:Reason -> {crashed, Class, Reason}
+    end.
+
+%% ===================================================================
+%% BE-S01b（A07）：admin provisioning 的 PG 证据
+%% 单事务开通（identity+assignment+seat+审计同事务）、重试幂等（identity
+%% 不重建 + seat 修复 enabled）、审计行 actor/target/before/after、
+%% ck_css_max_concurrent 触发 seat upsert 失败 ⇒ 全回滚零残留。
+%% ===================================================================
+
+bes01b_provision_seat_pg_tx_audit_idempotent_rollback() ->
+    Scope = ?FIX:new_scope(),
+    Org = maps:get(org_id, Scope),
+    Ws = maps:get(workspace_id, Scope),
+    Peer = maps:get(peer_user_id, Scope),
+    Owner = maps:get(owner_user_id, Scope),
+    Adm = Owner,
+    %% peer 目前不是 member：补一条 active member（provisioning 的「成员变坐席」前提）。
+    ok = ?FIX:exec(
+        <<
+            "INSERT INTO organization_member(organization_id,user_id,role,status)"
+            " VALUES ($1,$2,'member','active')"
+        >>,
+        [Org, Peer]
+    ),
+    %% 审计事件基线（此后新增的 platform.provisioned 都归本用例）。
+    Baseline = ?FIX:scalar(
+        <<
+            "SELECT count(*) AS n FROM customer_service_event"
+            " WHERE organization_id=$1 AND action='platform.provisioned'"
+        >>,
+        [Org],
+        -1
+    ),
+    try
+        %% ① 全新开通：单事务四写（identity/assignment/seat/审计）。
+        {ok, First} = cs_pg_seat:provision_seat(Org, Ws, #{
+            user_id => Peer,
+            display_name => <<"pg-provisioned-seat">>,
+            max_concurrent => 2,
+            adm_user_id => Adm
+        }),
+        ?assertEqual(true, maps:get(identity_created, First)),
+        IdentityId = maps:get(business_identity_id, First),
+        ?assertEqual(true, maps:get(enabled, maps:get(seat, First))),
+        %% ② 审计 PG 证据：platform_admin actor + adm/target/before/after。
+        ?assertEqual(
+            1,
+            ?FIX:scalar(
+                <<
+                    "SELECT count(*) AS n FROM customer_service_event"
+                    " WHERE organization_id=$1 AND action='platform.provisioned'"
+                    " AND actor_kind='platform_admin'"
+                    " AND detail->>'adm_user_id' = $2::text"
+                    " AND detail->>'target_user_id' = $3::text"
+                    " AND detail->>'before' = 'absent'"
+                    " AND detail->>'after' = 'enabled'"
+                >>,
+                [Org, integer_to_binary(Adm), integer_to_binary(Peer)],
+                -1
+            )
+        ),
+        %% ③ 重试幂等：identity 不重建（同 id），disabled 的 seat 被修复 enabled。
+        ok = ?FIX:exec(
+            <<
+                "UPDATE customer_service_seat SET enabled = false"
+                " WHERE organization_id=$1 AND business_identity_id=$2"
+            >>,
+            [Org, IdentityId]
+        ),
+        {ok, Retry} = cs_pg_seat:provision_seat(Org, Ws, #{
+            user_id => Peer,
+            display_name => <<"pg-provisioned-seat">>,
+            max_concurrent => 2,
+            adm_user_id => Adm
+        }),
+        ?assertEqual(false, maps:get(identity_created, Retry)),
+        ?assertEqual(IdentityId, maps:get(business_identity_id, Retry)),
+        ?assertEqual(true, maps:get(enabled, maps:get(seat, Retry))),
+        %% ④ 部分失败回滚（真事务证据）：max_concurrent=0 命中
+        %% ck_css_max_concurrent，seat upsert 失败 ⇒ identity/assignment/审计
+        %% 全部回滚（分配行数与审计行数零增长）。
+        {error, _Rollback} = cs_pg_seat:provision_seat(Org, Ws, #{
+            user_id => Peer,
+            display_name => <<"rollback-probe">>,
+            max_concurrent => 0,
+            adm_user_id => Adm
+        }),
+        ?assertEqual(
+            0,
+            ?FIX:scalar(
+                <<
+                    "SELECT count(*) AS n FROM organization_business_identity"
+                    " WHERE organization_id=$1 AND display_name='rollback-probe'"
+                >>,
+                [Org],
+                -1
+            )
+        ),
+        ?assertEqual(
+            Baseline + 2,
+            ?FIX:scalar(
+                <<
+                    "SELECT count(*) AS n FROM customer_service_event"
+                    " WHERE organization_id=$1 AND action='platform.provisioned'"
+                >>,
+                [Org],
+                -1
+            )
+        ),
+        %% ⑤ 越权面：非 member / 作用域外 workspace 在 store 首语句即拒。
+        ?assertMatch(
+            {error, {not_found, member}},
+            cs_pg_seat:provision_seat(Org, Ws, #{
+                user_id => ?FIX:id(),
+                display_name => <<"X">>,
+                adm_user_id => Adm
+            })
+        ),
+        ?assertMatch(
+            {error, {not_found, workspace}},
+            cs_pg_seat:provision_seat(Org, maps:get(other_workspace_id, Scope), #{
+                user_id => Peer,
+                display_name => <<"X">>,
+                adm_user_id => Adm
+            })
+        )
+    after
+        ?FIX:cleanup(Scope)
     end.
