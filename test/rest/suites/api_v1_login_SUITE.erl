@@ -55,9 +55,15 @@ init_per_suite(Config0) ->
         email => <<"rest-login-", Suffix/binary, "@example.invalid">>,
         nickname => <<"REST Golden ", Suffix/binary>>
     }),
+    %% Common Test writes init_per_suite's return value into every suite
+    %% log page (review P1): the raw user map carries plain_password and
+    %% the password hash, so the config carries a sanitized handle and the
+    %% login cases rehydrate the credential-bearing map through the
+    %% fixture session store.
+    ok = rest_fixture:store_session(golden, User),
     [
         {http_port, Port},
-        {user, User},
+        {user, rest_fixture:sanitize_user(User, golden)},
         {suffix, Suffix}
         | Config
     ].
@@ -73,7 +79,10 @@ end_per_suite(Config) ->
 login_001_valid_credentials(Config) ->
     User = ?config(user, Config),
     Did = did(Config, <<"001">>),
-    Request = login_request(User, Did),
+    %% The request itself needs the plain fixture password, which the
+    %% sanitized config handle does not carry (review P1): rehydrate the
+    %% full map from the session store instead.
+    Request = login_request(rest_fixture:session(golden), Did),
     Response = post(Config, Did, Request),
     verify(
         <<"LOGIN-001">>,
@@ -166,9 +175,11 @@ login_004_malformed_json(Config) ->
 %% (code 902), and a correctly signed request still passes through to the
 %% business layer in LOGIN-001.
 login_005_device_signature_boundary(Config) ->
-    User = ?config(user, Config),
+    %% Same credential handling as LOGIN-001 (review P1): the plain
+    %% password lives in the session store, not in the suite config.
+    Golden = rest_fixture:session(golden),
 
-    Missing = login_request(User, did(Config, <<"005a">>)),
+    Missing = login_request(Golden, did(Config, <<"005a">>)),
     ResponseMissing = rest_client:post(
         ?config(http_port, Config),
         ?PATH,
@@ -177,7 +188,7 @@ login_005_device_signature_boundary(Config) ->
     ),
 
     DidB = did(Config, <<"005b">>),
-    Tampered = login_request(User, DidB),
+    Tampered = login_request(Golden, DidB),
     TamperHeaders = signed_headers(DidB, <<"tampered-key-not-the-one-stored">>),
     ResponseTampered = rest_client:post(?config(http_port, Config), ?PATH, Tampered, TamperHeaders),
 
