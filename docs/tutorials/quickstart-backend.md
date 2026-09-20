@@ -144,7 +144,7 @@ make eunit-local
 
 ## 下一步
 
-- [运维脚本与命令总览](../../scripts/)（backup / smoke / ctl 等，见 scripts 目录）
+- [运维脚本与命令总览](https://github.com/imboy-pub/imboy/tree/main/scripts)（backup / smoke / ctl 等，见 scripts 目录）
 - [参考：工程约定 CONVENTIONS](../CONVENTIONS.md)（TSID、分层边界等不可妥协规则）
-- [解释：四层架构设计](../explanation/README.md)（ADR-0001，待迁移补全）
+- [解释：四层架构设计](../explanation/)（ADR-0001，待迁移补全）
 - 教程：私有化部署一套生产环境（待补）

@@ -20,9 +20,9 @@
 
 | 材料 | 位置 | 说明 |
 |---|---|---|
-| 一键安装脚本 | [deploy/install.sh](../../../deploy/install.sh) | `--edition community\|business`；`--admin-phone/--admin-password` 可无浏览器建超管；装完打印 Release Identity 三元组 |
-| 前置检查 | [deploy/preflight.sh](../../../deploy/preflight.sh) | **先填 `.env` 再跑**（缺失时直接退出）；`--edition` 切换检查口径 |
-| 部署栈说明 | [deploy/README.md](../../../deploy/README.md) | 交付清单、前置条件（Debian 13 基准 / 8 GB 内存 / Compose v2.23.1+ / 双域名 / 80+443） |
+| 一键安装脚本 | [deploy/install.sh](https://github.com/imboy-pub/imboy/blob/main/deploy/install.sh) | `--edition community\|business`；`--admin-phone/--admin-password` 可无浏览器建超管；装完打印 Release Identity 三元组 |
+| 前置检查 | [deploy/preflight.sh](https://github.com/imboy-pub/imboy/blob/main/deploy/preflight.sh) | **先填 `.env` 再跑**（缺失时直接退出）；`--edition` 切换检查口径 |
+| 部署栈说明 | [deploy/README.md](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md) | 交付清单、前置条件（Debian 13 基准 / 8 GB 内存 / Compose v2.23.1+ / 双域名 / 80+443） |
 | 完整手册 | [deployment/deployment.md](./deployment/deployment.md) | compose 全量参考 |
 | 裸机快速上手 | [deployment/day1-quickstart.md](./deployment/day1-quickstart.md) | 路径 B 入口（5 分钟最小配置） |
 | 裸机部署脚本手册 | [deployment/deploy-script.md](./deployment/deploy-script.md) | `scripts/imboy-deploy.sh` 全量/增量部署 |
@@ -34,23 +34,23 @@
 | 材料 | 位置 | 说明 |
 |---|---|---|
 | 备份恢复手册 | [deployment/backup-restore.md](./deployment/backup-restore.md) | 策略（每日全量 03:00 / Schema / WAL 归档）、RPO<5min / RTO<30min 目标 |
-| PG 全量备份脚本 | [scripts/backup_pg.sh](../../../scripts/backup_pg.sh) | `--full`（pg_dump -Fc）/ `--schema-only` |
-| 附件备份脚本 | [scripts/backup_garage.sh](../../../scripts/backup_garage.sh) | rclone 同步 Garage bucket（需预配置 remote） |
-| DB 备份（部署栈口径） | [scripts/backup_imboy_db.sh](../../../scripts/backup_imboy_db.sh) | 部署脚本族配套 |
+| PG 全量备份脚本 | [scripts/backup_pg.sh](https://github.com/imboy-pub/imboy/blob/main/scripts/backup_pg.sh) | `--full`（pg_dump -Fc）/ `--schema-only` |
+| 附件备份脚本 | [scripts/backup_garage.sh](https://github.com/imboy-pub/imboy/blob/main/scripts/backup_garage.sh) | rclone 同步 Garage bucket（需预配置 remote） |
+| DB 备份（部署栈口径） | [scripts/backup_imboy_db.sh](https://github.com/imboy-pub/imboy/blob/main/scripts/backup_imboy_db.sh) | 部署脚本族配套 |
 
 ## 3. 恢复（Restore）
 
 | 材料 | 位置 | 说明 |
 |---|---|---|
-| PG 恢复脚本 | [scripts/restore_pg.sh](../../../scripts/restore_pg.sh) | 含恢复后行数抽样校验（演练验收用） |
-| 恢复冒烟 | [scripts/restore_smoke.sh](../../../scripts/restore_smoke.sh) | 恢复后冒烟验证 |
+| PG 恢复脚本 | [scripts/restore_pg.sh](https://github.com/imboy-pub/imboy/blob/main/scripts/restore_pg.sh) | 含恢复后行数抽样校验（演练验收用） |
+| 恢复冒烟 | [scripts/restore_smoke.sh](https://github.com/imboy-pub/imboy/blob/main/scripts/restore_smoke.sh) | 恢复后冒烟验证 |
 | 恢复演练实录 | [deployment/restore-drill-2026-06.md](./deployment/restore-drill-2026-06.md) | 2026-06 演练记录与耗时参考 |
 
 ## 4. 升级（Upgrade）
 
 | 材料 | 位置 | 说明 |
 |---|---|---|
-| **版本与升级真相源** | [RELEASES.md](../../../RELEASES.md) | 升级前必读：先查目标版本行与「升级说明」小节；镜像 pin semver tag，禁 `latest`；Release Identity 三元组核验 |
+| **版本与升级真相源** | [RELEASES.md](https://github.com/imboy-pub/imboy/blob/main/RELEASES.md) | 升级前必读：先查目标版本行与「升级说明」小节；镜像 pin semver tag，禁 `latest`；Release Identity 三元组核验 |
 | 升级手册 | [upgrade-runbook.md](./upgrade-runbook.md) | rc.1→1.0.0 路径（**草案**，正式版发布后生效；含停机与预估窗口） |
 | alpha 线升级 | RELEASES.md「当前状态」节 | 首个正式 semver 未发布前，`1.0.0-alpha.*` 为内部版本，不构成正式发布 |
 

@@ -331,7 +331,7 @@ alias(Uid, Gid, Alias, Description) ->
 %% @param Conn 数据库连接（可选）
 %% @param Gid 群组ID
 %% @return {ok, MemberCount} | {error, Reason}
-%% P0 修复（docs/planning/group-user-id-sum-p0-decision-2026-08-29.md 方案 B）：
+%% P0 修复（方案 B；真源 priv/migrations/00000079_user_id_sum_removal.up.sql）：
 %% user_id_sum（成员 TSID 算术和）已随迁移 00000079 退役——原 SUM 绑定回写
 %% 约 85 人即 {integer_overflow,int8} 崩连接（加/退群 500、大群冻结）。
 %% 现仅维护 member_count；建群幂等去重已整体废弃（P0 终局决策）。

@@ -1,7 +1,6 @@
 -- 00000097_homework_review_loop.up.sql
 -- 墨芽习字 Step 7：assignment 教学扩展 + 回课闭环四表
 -- （homework_submission / submission_asset / calligraphy_review_draft / teacher_review）
--- 计划契约：docs/plans/2026-09-09-moya-calligraphy-ai-review-execution-plan.md §6.3、Step 7
 -- 迁移契约：up=可重复执行，down=安全回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹。
 --
 -- 设计决策：

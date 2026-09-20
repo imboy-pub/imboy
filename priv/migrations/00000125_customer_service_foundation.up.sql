@@ -1,5 +1,5 @@
 -- 迁移 00000125: 客服基础五表（Customer Service Foundation）。
--- 计划契约：docs/plans/2026-09-14-enterprise-business-and-customer-service-zcode-plan-v4.1.md
+-- 计划契约：
 --   §4.2（customer_service_seat / shop_key / visit_token / session / event）、
 --   §3 EB-D02/EB-D03/EB-D05/EB-D10、§5.2、CS-01-A01..A05。
 -- 迁移契约：up=可重复执行，down=安全回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹。

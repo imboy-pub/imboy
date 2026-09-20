@@ -1,7 +1,6 @@
 %% moya_teaching_migration_tests
 %% 墨芽习字 Step 5-7 迁移（00000095/96/97）SQL 结构断言测试。
-%% 模式与 test/repo/message_dedup_migration_tests.erl 一致：纯文本断言，不连数据库；
-%% 真实 DDL/约束行为验证见 docs/plans/STEP-05..07（scratch 库 up/down/up + 行为测试）。
+%% 模式与 test/repo/message_dedup_migration_tests.erl 一致：纯文本断言，不连数据库。
 
 -module(moya_teaching_migration_tests).
 

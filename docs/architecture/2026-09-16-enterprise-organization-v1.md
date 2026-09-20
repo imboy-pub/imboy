@@ -18,8 +18,6 @@
 | Source snapshot | dirty working tree; 2026-09-16 探测期间存在其他 Agent 的 staged/unstaged 客服与 Enterprise Business 修改 |
 | Observed tracked status count | `61`（最终写文档前观测值；并发工作树可能继续变化） |
 | Observed status fingerprint | `0e869b742bad8244fe57caa00e549e546360d1e5a2850cc2abaac7ebcb0b0f25` (`git status --porcelain=v1 | shasum -a 256`) |
-| Phase 1 input | `docs/plans/2026-09-16-customer-service-progress-assessment.md` |
-| Historical boundary input | `docs/plans/2026-09-13-org-workspace-project-group-channel-boundary.md` |
 | Step 2 decision HEAD | `1a712a6a8a7829b1785afc413d2193f24c364d70` |
 | Step 2 drift check | HEAD 差异仅涉及 `moya_wechat_msg_logic` 及其测试；Organization Core 合同未漂移 |
 

@@ -1,7 +1,7 @@
 # IMBoy 发布指南 / Release Guide
 
 > 串联版本、镜像构建、版次、部署、部署后校验的完整发布流程。
-> 配套：[edition-boundary.md](../../business/edition-boundary.md) ｜ [../../../deploy/README.md](../../../deploy/README.md) ｜ [../operations/deployment/day1-quickstart.md](../operations/deployment/day1-quickstart.md)
+> 配套：[edition-boundary.md](../../business/edition-boundary.md) ｜ [../../../deploy/README.md](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md) ｜ [../operations/deployment/day1-quickstart.md](../operations/deployment/day1-quickstart.md)
 
 ---
 
@@ -57,7 +57,7 @@ docker build --build-arg VITE_API_BASE=https://api.yourdomain.com -t imboy/imboy
 
 ## 4. 部署 / Deploy
 
-一键部署五步见 [../../../deploy/README.md](../../../deploy/README.md)：preflight → 配 `.env` → `docker compose up -d` → 查日志 → `/setup` 向导建管理员。
+一键部署五步见 [../../../deploy/README.md](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md)：preflight → 配 `.env` → `docker compose up -d` → 查日志 → `/setup` 向导建管理员。
 
 ---
 

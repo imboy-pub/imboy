@@ -19,7 +19,6 @@
 
 ## 什么时候**不要**放进来
 
-- 进行中的工作文档 → 放 [../planning/](../planning/)
 - 仍被引用的契约/参考 → 放 [../reference/](../reference/)
 - 仍可执行的操作指南 → 放 [../guides/](../guides/)
 

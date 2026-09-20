@@ -19,7 +19,7 @@
 | P3 | **版本锚点四处漂移**：ROADMAP/SECURITY=alpha.46、CLAUDE.md=alpha.26、ops/support-matrix=alpha.16，实际 VERSION=alpha.77 | 各文件头部 | ✅ 全部对齐 alpha.77（support-matrix 加同步提醒） |
 | P4 | **Agent Runtime V3.1 计划状态头滞后**：标 `READY_NOT_EXECUTED`，但迁移 133/134 与 `src/features/agent/` 已并入 main（CHANGELOG alpha.77） | 计划头 vs CHANGELOG | ✅ 状态勘误横幅 |
 | P5 | **客服计划链七连未收尾**：v2 与 system-design 两环缺被取代标注 | plans/ 链 | ✅ 补 HISTORICAL 横幅（v3/v4 原有 SUPERSEDED 保持） |
-| P6 | **目录分裂**：`ops/` vs `operations/` vs `guides/operations/` 三处运维位；`plans/` vs `planning/` 双计划目录 | 目录树 | ✅ `operations/` 并入 `runbooks/`（唯一文件归位+修 2 处入链）；`ops/support-matrix.md` 因被 `scripts/check_release_consistency.sh` 引用**原地保留**；plans/planning 之分在 docs/README.md 明确口径 |
+| P6 | **目录分裂**：`ops/` vs `operations/` vs `guides/operations/` 三处运维位；`plans/` vs `planning/` 双计划目录 | 目录树 | ✅ `operations/` 并入 `runbooks/`（唯一文件归位+修 2 处入链）；`ops/support-matrix.md` 因被 `scripts/check_release_consistency.sh` 引用**原地保留**；plans/planning 之分在 docs/README.md 明确口径（2026-09-20 瘦身：两目录已整体移除，口径同步撤销） |
 | P7 | **死链**：CONVENTIONS 引 `.claude/plans/quality-loop.md`、`CONVENTIONS_EXCEPTIONS.md`（均不存在）；SECURITY 引 `doc/`；ROADMAP 引 `script/`、`doc/api/` | grep | ✅ 主体轮已修（CONVENTIONS/SECURITY/ROADMAP）；⚠️ 续轮复核发现首轮 P7 结论「全部修正」为过度声明——api/{,codegen/,proto/}README 的 quality-loop 死链与 reference 两份 WS 文档的 imboy-frame-protocol 死链当时未处理，**已在本续轮补齐**（指向 CONVENTIONS / api/proto 真源）；overview.md 链接显示文字过期亦同轮修正 |
 | P8 | **imboyapp 文档滞后**：SQLite schema 写 v30，实际 v32 | `lib/service/sqlite.dart` | ✅ 修正 |
 | P9 | imboyadmin README 代理描述不全（漏 `/api/v1`、`/brand`） | `vite.config.ts` | ✅ 修正 |
@@ -86,7 +86,6 @@ docs/
 |---|---|
 | Hirð 完整运行时（hird_actor/hird_tool_dispatch 等）的交付与版本来源 | 不在本仓（deps 无 hird），外部组件 |
 | Admin 内置角色 4/5/6 的正式语义 | 前端无映射，需后端 adm_role 种子确认 |
-| `docs/planning/tasks/` 23 张任务卡是否全部完结 | 与 2026-07 roadmap loop 绑定，判定需产品侧确认 |
 | ~~deploy README「3 个抓取 job / 8 条告警规则」vs 实际~~ | ✅ 续轮已修复（实际为 4 job / 33 条规则 14 组；首轮「13 规则」亦为低估），UNKNOWN 关闭 |
 | compose fallback tag `alpha.71` 与 README 叙述 `rc.1` 并存 | 发布口径问题，转交维护者 |
 

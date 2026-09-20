@@ -1,6 +1,6 @@
 -- 00000106_group_task_idempotency.up.sql
 -- 墨芽 P0-3（MN-TASK-02）：group_task 补教师发布教学作业的持久幂等列。
--- 计划契约：docs/plans/2026-09-10-moya-post-security-product-plan.md §P0-3
+-- 行为契约：
 --   "写请求必须带 Idempotency-Key …… 同 key 同 digest 返回原结果并置 replayed=true，
 --    同 key 不同 body 返回 5460，缺 key 返回 5461"；教学作业的 task+assignments
 --   必须同一事务零半成品，幂等真源必须是持久列（禁止 ETS/进程缓存/先查后写）。

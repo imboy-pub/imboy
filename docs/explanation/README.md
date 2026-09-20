@@ -19,8 +19,8 @@
 
 ## 相关入口
 
-- [architecture/](../architecture/)：架构活跃文档（overview、module-map、database-access、module-layer-cheatsheet）
-- [archive/architecture/](../archive/architecture/)：已完成的架构历程（DDD 迁移状态、fastdfs→Garage 迁移、资源访问控制演进）
+- [architecture/](../architecture/overview.md)：架构活跃文档（overview、module-map、database-access、module-layer-cheatsheet）
+- [archive/architecture/](https://github.com/imboy-pub/imboy/tree/main/docs/archive/architecture)：已完成的架构历程（DDD 迁移状态、fastdfs→Garage 迁移、资源访问控制演进）
 
 ## 待补（Phase 4 深化）
 

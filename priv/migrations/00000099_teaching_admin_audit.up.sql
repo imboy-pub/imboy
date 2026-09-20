@@ -1,7 +1,6 @@
 -- 00000099_teaching_admin_audit.up.sql
 -- 墨芽习字收官：教学管理动作审计表（Step 16 handoff #2，D 交付；表结构建议 + sentinel uid 0 匿名化策略）
--- 计划契约：docs/plans/2026-09-09-moya-calligraphy-ai-review-execution-plan.md §9.3（删除/导出/更正/解绑留审计）、
---           §6.4（绑定审计）；STEP-16/notes.md handoff #2；STEP-08-DB/notes.md（sentinel uid 0 建议）
+-- 审计范围契约：删除/导出/更正/解绑/绑定等教学管理动作必须留审计记录。
 -- 迁移契约：up=可重复执行，down=安全回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹。
 --
 -- 设计决策（C 采纳口径）：

@@ -3,7 +3,7 @@
 
 > **版本 / Version**: 1.0.0 | **最后更新 / Last Updated**: 2026-05-27
 > **适用范围 / Scope**: 1.x 中期计划（ROADMAP.md §多节点部署文档）
-> **前置文档 / Prerequisites**: [deployment.md](./deployment/deployment.md), [sys.config](../../../config/sys.config.example)
+> **前置文档 / Prerequisites**: [deployment.md](./deployment/deployment.md), [sys.config](https://github.com/imboy-pub/imboy/blob/main/config/sys.config.example)
 
 ---
 

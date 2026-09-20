@@ -1,6 +1,6 @@
 # Agent Hub Task API 契约（PDT-01）
 
-> 版本：1.0（冻结）| 任务卡：[PDT-01](../planning/tasks/PDT-01.md) | 主计划：[§7](../planning/ai-agent-mcp-bot-webhook-product-convergence-plan-2026-09.md)
+> 版本：1.0（冻结）
 >
 > 引用真源：状态语义以 [agent_hub_task_state_machine.md](./agent_hub_task_state_machine.md)（FSM-00 冻结）为准，
 > 链/ID 语义以 [agent_hub_correlation_contract.md](./agent_hub_correlation_contract.md)（TRACE-00 冻结）为准。

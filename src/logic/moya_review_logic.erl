@@ -32,7 +32,7 @@
 %% 契约保留字段（T7：伪造 reviewer_uid/status/published_at → 5484）
 -define(RESERVED_BODY_KEYS, [<<"reviewer_uid">>, <<"status">>, <<"published_at">>]).
 
-%% 逐字点评字卡（char_reviews 契约：docs/plans/2026-09-12-char-review-dto-proposal.md）
+%% 逐字点评字卡（char_reviews 契约：见本文件 parse_char_reviews/1 规范注释）
 -define(CHAR_REVIEWS_MAX, 50).
 -define(CHAR_GRADES, [<<"good">>, <<"fair">>, <<"poor">>]).
 
@@ -1346,7 +1346,7 @@ learner_name(LearnerId) ->
         _ -> <<>>
     end.
 
-%% ---- 逐字点评字卡（char_reviews，Phase A：docs/plans/2026-09-12-char-review-dto-proposal.md）----
+%% ---- 逐字点评字卡（char_reviews，Phase A）----
 
 %% 请求体解析：无键 → null（覆盖式 upsert 与其他字段同语义：PUT 不带即清空）；
 %% 非 list → {error, char_reviews_invalid}（整体结构错误=调用方 bug，整体拒绝）；

@@ -35,4 +35,4 @@
 
 ## 备注
 
-MCP server（AI Agent 载体路线图 Phase 3，`docs/planning/ai-agent-platform-roadmap.md`）作为**核心固定端点**，直接进 `imboy_router.erl` 静态 `ApiV1Routes`（`/api/v1/mcp/`），不走本注册表——本 ADR 仅对齐"未来动态插件"的契约前缀，不改变"核心端点走静态路由"的做法。
+MCP server（AI Agent 载体路线图 Phase 3，`docs/roadmap/ai-agent-platform-roadmap.md`）作为**核心固定端点**，直接进 `imboy_router.erl` 静态 `ApiV1Routes`（`/api/v1/mcp/`），不走本注册表——本 ADR 仅对齐"未来动态插件"的契约前缀，不改变"核心端点走静态路由"的做法。

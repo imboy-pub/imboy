@@ -25,7 +25,7 @@
 
 **P1 关键事实：目标覆盖率（Repo 80% / Logic 70% / Handler 60% / 整体 65%，见根 `CLAUDE.md` 测试策略表）目前无任何度量手段。** `imboy/Makefile` 中不存在任何 `cover`/`COVER` 目标（`grep -n "cover\|COVER" imboy/Makefile` 为空），CI（`.github/workflows/backend-ci.yml`）也未收集行覆盖。上表"文件级配比"不是行覆盖，目标达成与否**不可验证**——这是宣称与事实之间的缺口。
 
-### 1.2 死测试/幻影测试问题（证据：`docs/planning/dead-tests-census.md`）
+### 1.2 死测试/幻影测试问题（原始普查 census 为历史计划文档，已随计划目录移除；本节结论保留）
 
 普查结论（census:5）：**132 处死调用点、14 个 test 文件、约 16 个已被重构删除/改名的生产函数**，根因是生产重构后测试未同步。分类现状：
 
@@ -132,9 +132,9 @@
 | 1 | 覆盖率目标（80/70/60/65）零度量手段，不可验证 | imboy | P1 | Makefile 无 cover；backend-ci.yml 无覆盖收集 |
 | 2 | 全量 EUnit 仍 continue-on-error，mock 漂移可再静默积累 | imboy | P1 | backend-ci.yml full-eunit job |
 | 3 | Playwright 9 个 E2E spec 完全不进 CI | imboyadmin | P1 | tests/e2e/*.spec.ts；workflows 零 playwright 引用 |
-| 4 | mock 协议/存储边界反模式：5 个真生产 bug 未被 404 个单测发现 | imboy | P1 | docs/planning/dead-tests-census.md:25-32 |
+| 4 | mock 协议/存储边界反模式：5 个真生产 bug 未被 404 个单测发现 | imboy | P1 | 本评审 §1.3 反模式 1 |
 | 5 | Flutter 覆盖率门只验证 lcov 文件存在，无阈值 | imboyapp | P1 | .github/workflows/ci.yml analyze job |
-| 6 | B 类死测试文件 3/7 仍残留（4/7 已删；performance 目录 4 文件中 2 死 2 benchmark 非死） | imboy | P2 | dead-tests-census.md:34-46 |
+| 6 | B 类死测试文件 3/7 仍残留（4/7 已删；performance 目录 4 文件中 2 死 2 benchmark 非死） | imboy | P2 | 本评审 §1.2 B 类 |
 | 7 | integration_test.yml 坏死工作流（paths/working-directory 指向不存在目录） | imboyapp | P2 | integration_test.yml:5-9,32-34 |
 | 8 | liveRoom 四层实现挂生产路由但零测试 | imboy | P2 | src/*/live_room_*; test 零引用 |
 | 9 | ds 层测试文件配比最低（50/89） | imboy | P2 | test/ds vs src/ds 计数 |

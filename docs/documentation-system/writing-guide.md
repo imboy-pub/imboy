@@ -90,7 +90,7 @@ Node 'imboy@127.0.0.1' is running (uptime: 2h13m)
 |------|------|------|
 | 稳定文档用小写 kebab-case | 单词以连字符分隔，不用下划线/大写/中文 | `backup-restore.md`、`module-map.md` |
 | 编号系列保持系列格式 | ADR、E2EE 规范等有序系列不拆散 | `adr/0001-four-layer-architecture.md`、`guides/e2ee/v2/` |
-| 日期前缀只用于时效文档 | planning / archive / 一次性报告 | `planning/execution-checklist-2026-07.md` |
+| 日期前缀只用于时效文档 | archive / 一次性报告 / 带日期的架构或审计快照 | `2026-09-16-enterprise-organization-v1.md` |
 | 索引文件统一 `README.md` | 目录门户用大写 README；其余文档不用全大写文件名 | `docs/README.md` |
 | 一次性产物完成后归 archive/ | 审计/评审/轮次台账不留活目录 | `archive/review/` |
 

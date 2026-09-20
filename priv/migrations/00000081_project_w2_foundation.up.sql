@@ -1,7 +1,5 @@
 -- 00000081_project_w2_foundation.up.sql
 -- Channel-first-class W2：project_member + project_milestone + project_channel_rel + project.links
--- 计划契约：docs/planning/imboy-channel-firstclass-w2-alpha-release-execution-plan.md（ZC-01）
--- Scope 契约：docs/planning/channel-firstclass-w2-execution-ledger.md §4（H1 放行 2026-08-29）
 -- 迁移契约：up=可重复执行，down=安全回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹，
 --           文件内 COMMIT 会提前提交外层事务，其后的失败将无法回滚前置 DDL。
 --

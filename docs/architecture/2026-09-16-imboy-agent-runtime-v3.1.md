@@ -23,9 +23,8 @@ Organization V1 合同，本文不重新设计。
 1. `docs/architecture/2026-09-16-enterprise-organization-v1-core-contract.md`
 2. `docs/architecture/2026-09-16-enterprise-organization-agent-contract.md`
 3. `docs/architecture/2026-09-16-enterprise-organization-v1.md`
-4. `docs/plans/2026-09-16-customer-service-progress-assessment.md`
-5. `docs/adr/0007-feature-slice-architecture.md`
-6. `docs/architecture/feature-slice-rules.md`
+4. `docs/adr/0007-feature-slice-architecture.md`
+5. `docs/architecture/feature-slice-rules.md`
 
 冲突优先级：冻结的 Organization Core Contract 高于本文；当前源码/DDL/测试高于历史路线图；本文高于
 尚未实施的 Agent 计划。

@@ -145,7 +145,7 @@ imboy 为**真人 C2C 与 C2G 消息**提供客户端端到端加密：真人消
 ## 当前证据与发布状态
 
 - 当前 Base C 级回归全绿（后端 124/0、Flutter 410/0/1、analyze 零 issue），但 C 级证据**不构成发布放行**。
-- `E2EE_RELEASE_POSTURE=NO-GO` 维持，独立原因：`LT02-SEC-01` HIGH/OPEN（AI 身份信任边界）、`E2EE-2026-012` 群历史策略待决策、A 级攻击复测为 0。详见 [`docs/security/audits/e2ee-2026-09-07/E2EE_AUDIT_REPORT.md`](../security/audits/e2ee-2026-09-07/E2EE_AUDIT_REPORT.md)。
+- `E2EE_RELEASE_POSTURE=NO-GO` 维持，独立原因：`LT02-SEC-01` HIGH/OPEN（AI 身份信任边界）、`E2EE-2026-012` 群历史策略待决策、A 级攻击复测为 0。详见 [`docs/security/audits/e2ee-2026-09-07/E2EE_AUDIT_REPORT.md`](https://github.com/imboy-pub/imboy/blob/main/docs/security/audits/e2ee-2026-09-07/E2EE_AUDIT_REPORT.md)。
 - 对外演示与 PoC 可正常进行；对外材料不得使用「服务器全程不接触任何明文」「攻破服务器也无法解密任何历史消息」等绝对措辞（AI 通道与举报摘录为披露的例外）。
 
 ---

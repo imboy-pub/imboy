@@ -24,7 +24,7 @@
 | [tsid-field-convention.md](./tsid-field-convention.md) | TSID 跨端字段约定 |
 | [tsid-field-matrix.md](./tsid-field-matrix.md) | TSID 字段矩阵 |
 | [ws-repl-cheatsheet.md](./ws-repl-cheatsheet.md) | WebSocket REPL 开发速记 |
-| [contracts/](./contracts/) | 频道/朋友圈/E2EE 分片契约 v1 |
+| [contracts/](https://github.com/imboy-pub/imboy/tree/main/docs/reference/contracts) | 频道/朋友圈/E2EE 分片契约 v1 |
 
 ## 插件规范
 
@@ -38,16 +38,16 @@
 
 | 文档 | 内容 |
 |------|------|
-| [engineering/](./engineering/) | CI/配置/依赖/Docker/日志/可观测/发布/技术债笔记 + 迁移命名规范 |
+| [engineering/](./engineering/engineering-overview.md) | CI/配置/依赖/Docker/日志/可观测/发布/技术债笔记 + 迁移命名规范 |
 
 ## 静态类型检查
 
 | 文档 | 内容 |
 |------|------|
-| [static-typechecking/](./static-typechecking/) | Gradualizer + eqWAlizer 双引擎：选型分析、落地规划、误报决策日志、CI 集成验证 |
+| [static-typechecking/](https://github.com/imboy-pub/imboy/blob/main/docs/reference/static-typechecking/README.md) | Gradualizer + eqWAlizer 双引擎：选型分析、落地规划、误报决策日志、CI 集成验证 |
 
 ## 待生成
 
 - `api/`：REST API 参考站点，由 `imboy/api/openapi.yaml` 经 Redoc CI 自动生成，**禁止手写**
 
-模板：见 [documentation-system/templates/reference-template.md](../documentation-system/templates/reference-template.md)
+模板：见 [documentation-system/templates/reference-template.md](https://github.com/imboy-pub/imboy/blob/main/docs/documentation-system/templates/reference-template.md)

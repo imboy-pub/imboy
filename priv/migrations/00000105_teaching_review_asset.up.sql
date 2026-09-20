@@ -1,6 +1,5 @@
 -- 00000105_teaching_review_asset.up.sql
 -- 墨芽回评媒体 P0-4（MN-MEDIA-01）：teacher_review 多媒体关联表 review_asset
--- 计划契约：docs/plans/2026-09-10-moya-post-security-product-plan.md §P0-4
 -- 迁移契约：up=可重复执行，down=安全回滚（fail-closed 预检）。禁止
 -- BEGIN/COMMIT——erlang_migrate 外层单事务包裹。
 --

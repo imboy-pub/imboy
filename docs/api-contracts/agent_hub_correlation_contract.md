@@ -1,6 +1,6 @@
 # Agent Hub correlation_id 全链路追踪契约（TRACE-00 冻结）
 
-> 版本：1.0（冻结）| 任务卡：[TRACE-00](../planning/tasks/TRACE-00.md) | 主计划：[§1.1/§4/§7](../planning/ai-agent-mcp-bot-webhook-product-convergence-plan-2026-09.md)
+> 版本：1.0（冻结）
 >
 > 本文件是 Agent Hub 审计链的权威契约。机器可判定实现见
 > `scripts/verify_agent_hub_correlation_trace.py`，测试见

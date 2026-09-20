@@ -9,7 +9,7 @@
 | # | 工件 | 内容 | 当前状态 | 来源任务 |
 |---|---|---|---|---|
 | 1 | 威胁模型 | 攻击者能力分级；每威胁→防御→证据三对照 | ✅ [`../v2/08-threat-model.md`](../v2/08-threat-model.md)（2026-08-02 补齐 T10 附件 / T11 分叉视图，含「有守护测试 ≠ 运行时生效」读法警告） | P5-1 |
-| 2 | 密码学清单 | 原语/参数/曲线/库/版本/许可证；**AGPL 状态醒目标注** | ✅ [`crypto-inventory.md`](./crypto-inventory.md)（原语与参数，每行标注 📄本仓实证 / 📕上游规范 / ⚙️上游默认）+ [`../../../legal/third-party-licenses.md`](../../../legal/third-party-licenses.md)（143 条许可证清单）。**未含 SBOM hash 锚** | P5-2 |
+| 2 | 密码学清单 | 原语/参数/曲线/库/版本/许可证；**AGPL 状态醒目标注** | ✅ [`crypto-inventory.md`](./crypto-inventory.md)（原语与参数，每行标注 📄本仓实证 / 📕上游规范 / ⚙️上游默认）+ [`../../../legal/third-party-licenses.md`](https://github.com/imboy-pub/imboy/blob/main/docs/legal/third-party-licenses.md)（143 条许可证清单）。**未含 SBOM hash 锚** | P5-2 |
 | 3 | 协议规范白皮书 | 生效状态解析 + 协议分段导航 + 规范与实现落差 | ✅ [`protocol-whitepaper.md`](./protocol-whitepaper.md)。**刻意不复制 wire 格式**——规范字节留在 ADR 作唯一真源（复制副本正是 `e2ee-key-rotation-policy.md` 失真的成因）。核心是 supersedes 生效解析表：直接读 ADR 03/04/05/06/07/08/13 会读到已被取代的条款 | P5-3 |
 | 4 | 密钥生命周期 | 生成/存储/轮换/备份/销毁/吊销级联全链路 | ✅ [`../key-lifecycle.md`](../key-lifecycle.md)（10 类密钥材料矩阵 + 服务端 8 表敏感度分级 + 三条销毁路径 + 可验证性主张） | P5-4 |
 | 5 | 已知问题台账 | Acknowledged/Open/Blocked 状态机 | ✅ [`known-issues-ledger.md`](./known-issues-ledger.md)（IMB-2026-001..027，按问题而非按标准条款组织；含 §2「名义防御与运行时不符」三条与 §6 审计方使用说明） | P5-5 |

@@ -64,7 +64,7 @@
 |---|---|
 | TT-D1 | [`protocol-whitepaper.md`](./protocol-whitepaper.md)（含此前不存在的 supersedes 生效解析表） |
 | TT-D2 | [`../v2/08-threat-model.md`](../v2/08-threat-model.md)（T1–T11，含 T10 附件 / T11 分叉视图） |
-| TT-D3 | [`crypto-inventory.md`](./crypto-inventory.md) + [`../../../legal/third-party-licenses.md`](../../../legal/third-party-licenses.md)（143 条，机器可查） |
+| TT-D3 | [`crypto-inventory.md`](./crypto-inventory.md) + [`../../../legal/third-party-licenses.md`](https://github.com/imboy-pub/imboy/blob/main/docs/legal/third-party-licenses.md)（143 条，机器可查） |
 | TT-D4 | [`../key-lifecycle.md`](../key-lifecycle.md) |
 | TT-D6 | [`known-issues-ledger.md`](./known-issues-ledger.md)（IMB-2026-001..029） |
 | TT-E4 | 设备吊销级联清 Olm 材料（`olm_identity_repo:delete_by_device/2`），测试含顺序断言与删除维度断言 |

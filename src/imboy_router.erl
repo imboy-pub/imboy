@@ -521,7 +521,7 @@ get_routes() ->
                 {"/api/v1/group/task/pending", group_task_handler, #{action => pending_review}},
 
                 % 墨芽习字教学域 API（Step 8：登录/上下文/ACL；Step 9：作业/提交/回评；
-                % 契约见 docs/plans/evidence/moya-calligraphy-ai-review/STEP-04/）
+                % 错误码契约见 include/error_code.hrl 墨芽教学域 5400-5519）
                 % wechat-mini login 免 Bearer（open/0 白名单）；其余教学端点全部走 JWT
                 {"/api/v1/moya/contexts", moya_context_handler, #{action => contexts}},
                 {"/api/v1/moya/context/switch", moya_context_handler, #{action => switch}},

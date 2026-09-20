@@ -156,7 +156,7 @@ handleResponse(response) {
 }
 ```
 
-**详细规范**: [elib_tsid 文档](../../src/lib/CLAUDE.md)
+**详细规范**: [elib_tsid 文档](https://github.com/imboy-pub/imboy/blob/main/src/lib/CLAUDE.md)
 
 ### 时间戳格式
 
@@ -321,6 +321,6 @@ GET /api/messages?page=1&size=20
 
 - **UTF-8 编码规范**: [utf8-encoding.md](./utf8-encoding.md)
 - **错误码规范**: [error-codes.md](./error-codes.md)
-- **TSID 规范**: [elib_tsid 文档](../../src/lib/CLAUDE.md)（hashid-encoding.md 已删除，TSID 迁移后不再使用 hashids）
+- **TSID 规范**: [elib_tsid 文档](https://github.com/imboy-pub/imboy/blob/main/src/lib/CLAUDE.md)（hashid-encoding.md 已删除，TSID 迁移后不再使用 hashids）
 - **WebSocket API**: [websocket-api.md](./websocket-api-2.md)
-- **主文档**: [CLAUDE.md](../../CLAUDE.md)
+- **主文档**: [CLAUDE.md](https://github.com/imboy-pub/imboy/blob/main/CLAUDE.md)

@@ -1,6 +1,6 @@
 # 历史计划与证据瘦身执行计划 | 2026-09-20
 
-> 状态：READY_FOR_DISPATCH（仅表示计划可调度，不表示任务已执行）
+> 状态：EXECUTED（2026-09-20；RUN_ID docs-slimdown-20260920T031556Z；终态见第 8 节）
 > 目标：尽可能从当前工作树删除历史计划、过程报告与执行证据；需要追溯时只从 Git 历史恢复。
 > 执行范围：`/Users/leeyi/project/imboy.pub/imboy` 单仓；工作区根不是 Git 仓库。
 > 并行上限：最多 8 个活跃 Agent，包含协调器 A0；最多 7 个非协调器同时活跃；已完成席位可复用，不限制累计 Agent 数。
@@ -191,15 +191,17 @@ A0 在本文档末尾补写以下字段后再提交执行结果：
 
 | 字段 | 结果 |
 |---|---|
-| Base SHA / Final candidate SHA | 待执行 |
-| 跟踪删除文件数 / 字节数 | 待执行 |
-| `docs/plans` / `docs/planning` 最终跟踪数 | 待执行 |
-| 引用扫描结果 / allowlist | 待执行 |
-| ignored 可恢复删除数 / 保留数 | 待执行 |
-| docs-site build / diff-check | 待执行 |
-| A7 独立结论 | 待执行 |
-| 本地提交 | 待执行 |
-| 外向操作 | 必须为 NONE |
+| Base SHA / Final candidate SHA | Base `680973b0`（=计划提交，与评审基线 d0a7ea6e 仅差本计划文件）；执行候选为本次执行提交（见"本地提交"行） |
+| 跟踪删除文件数 / 字节数 | 206 个 / 1,669,587 bytes（delete-list.txt 与 Base 两目录跟踪并集 diff 为空；非 D 状态 0） |
+| `docs/plans` / `docs/planning` 最终跟踪数 | 0 / 0；`git ls-files docs` = 403（609 − 206 精确对账） |
+| 引用扫描结果 / allowlist | 门 grep 剩余 2 处，全部在 allowlist：① scripts/check_module_boundaries.sh:29 运行时 rg 排除 glob（行为保留）；② docs/api-contracts/three-platform-alignment.md:67 imboyadmin 跨仓引用（目标在兄弟仓被跟踪）。另有 4 行历史语境化目录名描述未被门正则命中，登记于 DS-05-allowlist.md 供 A7 复核 |
+| ignored 可恢复删除数 / 保留数 | 218 项核验：7 删除（内容 blob 100% 可达，含 SHA-256/blob OID/历史路径/恢复命令，抽验恢复一致）/ 211 保留为 PRESERVED_NO_GIT_RECOVERY / 0 missing |
+| docs-site build / diff-check | `bun run build` PASS（0 死链，12.48s）；ignoreDeadLinks 已移除；附带修复 A6 死链门暴露的 70 处存量死链（与 plans/planning 无关，28 文件改指 GitHub 真源 URL/现存页/退化纯文字）；`git diff --check` 与 `--cached --check` 均 PASS |
+| A7 独立结论 | 预审完成（74 MUST_CLEAN / 2 GENERIC_KEEP / 2 UNCERTAIN 已裁定）；终审基于执行提交 SHA 进行，结论见后续回填 |
+| 本地提交 | `docs: remove historical plans and evidence`（298 文件：206 删除 + 92 修改；作者 leeyi <leeyisoft@qq.com>；A5/A1/A2/A3/A4/A6 六分片补丁 + A1b 死链修复串行集成） |
+| 外向操作 | NONE（未 push、未发 PR、未发布、未部署、未动远端与 .gitignore） |
+
+执行补充：集成方式为六分片 worktree 补丁（`git diff --binary Base..branch | git apply --index`，零冲突）+ A1b 增量；主树编译 `make compile` PASS；Wave 1 同时发现 Base 的 .gitignore L121-122 已含两目录忽略规则（历史遗留，本次未改）。
 
 最终状态只允许：
 

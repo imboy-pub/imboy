@@ -302,8 +302,7 @@
         %% false → worker 只把 object_key 交给模型：回课看不到画面（内容盲，但链路
         %% 完整、不报错）。true → 每条回课把一段短时（600s）有效的视频 URL 交给
         %% 第三方多模态模型，属涉及未成年人媒体内容的对外数据流，须先确认合规。
-        %% 详见 moya_ai_worker:maybe_attach_view_url/1 与
-        %% docs/plans/2026-09-09-moya-calligraphy-ai-review-execution-plan.md。
+        %% 详见 moya_ai_worker:maybe_attach_view_url/1。
         {teaching_ai_attach_video_url, false},
         %% 墨芽 AI 回课：指定用哪个 llm_providers 条目（如 <<"bigmodel">>）。
         %% ⚠️ 本键此前在全部配置模板与文档中缺失 —— 未设置时

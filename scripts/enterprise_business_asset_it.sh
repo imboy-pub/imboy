@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # EB-07 —— 企业附件闭环集成门（plan §EB-07 指定的门）。
 #
-# 计划契约：`docs/plans/2026-09-14-enterprise-business-and-customer-service-zcode-plan-v4.1.md` §EB-07
+# 契约（EB-07）：
 #   「实现私有 object presigned PUT/confirm、鉴权代理 content download、hash/mime/size 校验和
 #     pending cleanup」，以及 `control/required-acceptance.tsv` 的 `EB-07-A01..A06`。
 #

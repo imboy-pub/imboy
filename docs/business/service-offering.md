@@ -2,7 +2,7 @@
 
 IMBoy 的商业化定位、行业解决方案、报价假设、PoC、销售、内容获客和客户交付资料，已统一迁移到独立仓库：
 
-> [imboy-commercial-hub](../../../imboy-commercial-hub/README.md)
+> imboy-commercial-hub
 
 请以商业中心仓库中的最新文档为准。IMBoy 产品仓库继续维护产品代码、API、部署、测试和发布相关事实；本文件不再复制商业报价或销售文案，避免两处内容发生漂移。
 

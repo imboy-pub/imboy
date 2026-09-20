@@ -1,6 +1,6 @@
 # Agent Hub Webhook 契约（PDT-01）
 
-> 版本：1.0（冻结）| 任务卡：[PDT-01](../planning/tasks/PDT-01.md) | 主计划：[§7](../planning/ai-agent-mcp-bot-webhook-product-convergence-plan-2026-09.md)
+> 版本：1.0（冻结）
 >
 > 引用真源：链字段以 [agent_hub_correlation_contract.md](./agent_hub_correlation_contract.md)（TRACE-00）为准；
 > 交付重试/死信/重放语义由 WH-01 实现。本文件固定协议形状与安全边界；冲突时以

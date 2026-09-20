@@ -3,7 +3,7 @@
 % 墨芽教师侧只读班级学员名单仓库层（MN-ROSTER-01，P0-2）
 % Teaching roster repository：本班 active enrollment learner 最小名单查询。
 %
-% 设计（计划 docs/plans/2026-09-10-moya-post-security-product-plan.md §P0-2）：
+% 设计（P0-2）：
 %   - 只返回 active enrollment 且 learner 机构 == 班机构 的学员
 %     （removed enrollment / 跨班（无行）/ 跨机构一律不出现在名单）；
 %   - submit_guardians = active 且 can_submit=true 的 guardian_learner 计数

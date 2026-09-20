@@ -1,7 +1,7 @@
 # EXT-01 外部技术验证 Runbook — 真机 / 真实 MCP 客户端 / 客户隔离环境
 
-> 所属：[IMBoy Agent Hub 产品收敛执行计划](../planning/ai-agent-mcp-bot-webhook-product-convergence-plan-2026-09.md)
-> 执行卡：[tasks/EXT-01.md](../planning/tasks/EXT-01.md) ｜ Status：`blocked_external`
+> 所属域：Agent Hub 产品收敛线（原执行计划与任务卡为历史计划文档，已移除）
+> Status：`blocked_external`
 > 前置门：`LOCAL_AGENT_HUB_GATE=PASS`（已达，2026-09-08）+ 用户明确授权设备/账号/外部动作。
 > 本 runbook 是授权后执行的完整作业书；授权前**不得**执行任何 §1-§3 的外部动作。
 

@@ -47,7 +47,7 @@
 
 1. **工具齐、机制软**:lefthook(erlfmt/gitleaks/conventional)、xref=0、check_module_boundaries、SBOM diff、Sonar 都在,但全量 eunit/dialyzer/覆盖率/E2E 多为软门。工程效能的最高杠杆是"把已有软门收紧"(见 ci-notes 与 roadmap TEST-01/02)。
 2. **覆盖密度不足**:日志、指标埋点、测试覆盖率三处都是"设施在但用得薄"。这是可增量补齐的,不需重构。
-3. **正确范本已存在**:多处"对的做法 + 未推广"(见 `docs/planning/tech-debt.md`),工程改进 = 推广而非发明。
+3. **正确范本已存在**:多处"对的做法 + 未推广",工程改进 = 推广而非发明。
 
 ---
 

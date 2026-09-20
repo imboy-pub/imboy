@@ -414,7 +414,7 @@ Erlang 中 `-callback` 仅用于**定义** behaviour（用 `-behaviour(X)` 是**
 | `docs/explanation/product-profile-and-plugin-registry-design.md` | `product_profile` / `profile` 定义来源；§4.6 两轴辨析以其为准 |
 | `config/product-feature-manifest.json` + `scripts/generate_product_features.py` | Product 轴**现成机制**（manifest → 编译期宏 → 裁剪） |
 | `docs/architecture/database-access.md` | 铁律 6/7 在 SQL 层的展开 |
-| `docs/plans/2026-09-13-customer-service-prp-v2.md` | 首个实施样本（本地工作稿，gitignored） |
+| `docs/concepts/customer-service.md` | 首个实施样本（客服系统）的概念说明 |
 | `docs/standards/feature-slice-checklist.md` | **待产出**：首个样本收官时沉淀的"新增纵切单元检查表" |
 
 ---

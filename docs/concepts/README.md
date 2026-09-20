@@ -40,7 +40,7 @@
 1. 新成员：账号与主体 → 协作层级 → 消息模型。
 2. 做组织/工作区功能：协作层级 + `docs/architecture/` 下 2026-09-16 冻结契约系列。
 3. 做加密：端到端加密 + [E2EE 协议规范](../reference/e2ee-protocol-specification.md)。
-4. 做智能体/客服/企业业务：对应概念文档 + `docs/plans/` 现役计划。
+4. 做智能体/客服/企业业务：对应概念文档 + `docs/architecture/` 冻结契约。
 
 ## 状态标注约定
 

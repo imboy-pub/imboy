@@ -1,7 +1,7 @@
 # 客服域（Customer Service）
 
 > Purpose：定义 IMBoy 内置客服系统的坐席、会话、访客接入与挂件模型。
-> 现役计划：`docs/plans/2026-09-14-enterprise-business-and-customer-service-zcode-plan-v4.1.md`；验收状态见 `docs/plans/2026-09-16-customer-service-progress-assessment.md`（PARTIAL）。
+> 实施进度与验收结论见 CHANGELOG.md（首版验收为 PARTIAL，2026-09）。
 
 ## Concept：三层接入结构
 

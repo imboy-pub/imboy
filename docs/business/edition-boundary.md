@@ -43,7 +43,7 @@
    `deploy/helm/` 的多副本配置（`replicaCount` 2/3）**未经生产集群验证**，
    不得作为交付承诺，亦不得写进任何售前材料。
 
-1. **专业版/企业版 = 商业授权 + 闭源商业模块，不进本社区仓**。后端与管理后台采用 BSL 1.1（源码公开、限制竞争性商业使用）：Additional Use Grant 已覆盖"组织内部生产使用 / 单客户私有部署 / 集成进自有产品"，而**多租户托管（SaaS）与竞争性付费产品或服务需要商业授权**——许可证本身即是杠杆，不必再叠加版次残缺开关。参考野火 IM：社区版单机，专业版闭源集群。许可细节见 [docs/legal/licensing.md](../legal/licensing.md)。
+1. **专业版/企业版 = 商业授权 + 闭源商业模块，不进本社区仓**。后端与管理后台采用 BSL 1.1（源码公开、限制竞争性商业使用）：Additional Use Grant 已覆盖"组织内部生产使用 / 单客户私有部署 / 集成进自有产品"，而**多租户托管（SaaS）与竞争性付费产品或服务需要商业授权**——许可证本身即是杠杆，不必再叠加版次残缺开关。参考野火 IM：社区版单机，专业版闭源集群。许可细节见 [docs/legal/licensing.md](https://github.com/imboy-pub/imboy/blob/main/docs/legal/licensing.md)。
 
 2. **`IMBOY_EDITION` 当前仅作"标记 + 启动日志"**（见 `src/lib/imboy_env.erl` 的 `edition/0` 与 `override_edition/0`）。**社区版代码不得被植入按版次的残缺收费开关**——避免开源用户看到"被阉割"的半成品逻辑。真正的版次功能开关随闭源模块一起提供。
 

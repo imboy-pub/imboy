@@ -17,7 +17,7 @@ IMBoy 的 `user` 表承载四类账号主体，由 `user.account_type` 区分（
 体系外主体（不在 `user` 表）：
 
 - **平台管理员（Platform Admin）**：`adm_user`/`adm_role` 独立账号域，cookie 会话 + RBAC，只经 `/api/adm/*` 行动。
-- **访客（Visitor）**：客服外部咨询者，凭门店密钥签发的访问令牌接入，不建 user 行、不占 License 配额（客服系统裁决，见 `docs/plans/2026-09-13-customer-service-system-design.md`）。
+- **访客（Visitor）**：客服外部咨询者，凭门店密钥签发的访问令牌接入，不建 user 行、不占 License 配额（客服系统裁决，见[客服域](./customer-service.md)）。
 - **业务身份（Business Identity）**：组织的稳定经办主体（不可登录、不发 JWT），见[客服域](./customer-service.md)与[企业业务域](./enterprise-business.md)。
 
 ## Current

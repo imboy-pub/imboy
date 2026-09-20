@@ -1,6 +1,5 @@
 -- 00000110_char_reviews.up.sql
 -- 逐字点评 Phase A（char_reviews 契约）：teacher_review 增 jsonb 列
--- 计划契约：docs/plans/2026-09-12-char-review-dto-proposal.md §2/§3
 -- 迁移契约：up=可重复执行，down=安全回滚（fail-closed 预检）。禁止
 -- BEGIN/COMMIT——erlang_migrate 外层单事务包裹。
 --

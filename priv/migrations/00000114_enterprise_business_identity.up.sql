@@ -1,5 +1,5 @@
 -- 迁移 00000114: 企业业务身份与经办关系（Organization Business Identity）。
--- 计划契约：docs/plans/2026-09-14-enterprise-business-and-customer-service-zcode-plan-v4.1.md
+-- 计划契约：
 --   §3 EB-D02（稳定业务身份）、EB-D03（Owner/assignee/actor 三分）、EB-D07（离职状态机）、
 --   §4.1（organization_business_identity / organization_business_identity_assignment）。
 -- 迁移契约：up=可重复执行，down=安全回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹。

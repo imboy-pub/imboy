@@ -122,7 +122,7 @@ add(_, Uid, Type, MemberUids) ->
     MemberUids3 = [ec_cnv:to_integer(Id) || Id <- MemberUids2, is_binary(Id)],
     % 【防御性编程】确保创建者不会被重复添加
     MemberUids4 = lists:usort([U || U <- MemberUids3, U =/= Uid]),
-    % P0 终局（docs/planning/group-user-id-sum-p0-decision-2026-08-29.md）：
+    % P0 终局决策（真源 priv/migrations/00000079_user_id_sum_removal.up.sql）：
     % 同一成员集允许创建多个群（微信/Telegram 同款），不做创建幂等去重；
     % user_id_sum 签名链已随迁移 00000079 整体退役。
     % invite_[uid]_[nickname]

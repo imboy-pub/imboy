@@ -59,4 +59,3 @@ Tool Adapter（native / MCP）── 工具权限（mcp_client_grant 按 tool �
 
 - 架构（权威）：`docs/architecture/2026-09-16-imboy-agent-runtime-v3.1.md`
 - 迁移：27/29/58/61/90/107/**133/134**
-- 计划：`docs/plans/2026-09-16-imboy-agent-runtime-v3.1-implementation-plan.md`（执行记录，代码已并入）

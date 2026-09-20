@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # EB-01 — 企业业务与客服 Schema 的 PostgreSQL 契约 / 迁移往返集成验证。
 #
-# 计划契约：docs/plans/2026-09-14-enterprise-business-and-customer-service-zcode-plan-v4.1.md
-#   §3 EB-D02/D03/D04/D05/D06/D07/D11/D12、§4.1 必需表、§4.3 数据不变量检查、§8 EB-01。
+# 契约决策：EB-D02/D03/D04/D05/D06/D07/D11/D12、必需表、数据不变量检查、验收门 EB-01。
 #
 # 在一次性 loopback scratch PostgreSQL 18 中验证：
 #   - A01：真实历史迁移（76/95/113）+ 新企业迁移（114..120）up/down 往返，企业对象残留为 0；

@@ -9,7 +9,6 @@ export default defineConfig({
   lastUpdated: true,
   srcDir: 'content',
   outDir: '.vitepress/dist',
-  ignoreDeadLinks: true,
 
   themeConfig: {
     logo: '/imboy-logo.svg',

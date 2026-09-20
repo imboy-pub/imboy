@@ -433,7 +433,7 @@ handle_user_create(Args) ->
 %%% 用户创建列宽前置校验（ZC-08 缺陷立项根因修复）：
 %%% account 同值写入 user.mobile varchar(40)——实际上限 40 而非 account
 %%% 列的 80；>40 字符时 INSERT 报 22001 且失败易在调用管道中被丢弃
-%%% （静默延迟暴露，见 docs/planning/dual-exp-demo-b-w2-rehearsal.md R1）。
+%%% （静默延迟暴露）。
 %%% 若未来放宽列宽，test/repo/user_repo_column_limit_tests 会变红，
 %%% 提示同步修改此处上限。
 validate_user_create(Account, Nickname) ->

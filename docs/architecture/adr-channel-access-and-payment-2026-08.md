@@ -1,6 +1,6 @@
 # ADR: 频道访问控制与付费语义契约
 
-> 日期：2026-08-24 | 状态：**PASS（M1+M2 冻结为代码事实，M3 不引入——产品已确认）** | 关联计划：`docs/planning/2026-08-24-private-paid-channel-red-packet-remediation-plan.md` Step 1
+> 日期：2026-08-24 | 状态：**PASS（M1+M2 冻结为代码事实，M3 不引入——产品已确认）**
 >
 > 适用：`imboy` 后端、`imboyapp` Flutter、`imboyadmin` 管理后台。本 ADR 冻结现有频道类型的产品语义，供后续 Step 2–8 作为契约基线。
 

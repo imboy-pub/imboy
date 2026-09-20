@@ -656,8 +656,7 @@ authorize_channel_uploader_subscribed_grants_test_() ->
 %% moment 用例守卫：moment 族被 preset 物理裁剪（如 agent_hub：ERLC_EXCLUDE
 %% 排除 moment 模块且无 IMBOY_FEATURE_MOMENT 宏）时 attach_logic 的
 %% authorize_moment_scope 编译为 fail-closed 版，mock 到不了真实 moment 分支
-%% ——skip 防假绿（denies 两例在裁剪构建下"碰巧过"即假覆盖）。证据：
-%% docs/plans/evidence/moya-calligraphy-ai-review/STEP-08-DB/attach-momentds-review.md
+%% ——skip 防假绿（denies 两例在裁剪构建下"碰巧过"即假覆盖）。
 moment_ready_() ->
     %% 权威判据 = attach_logic 的 beam 是否含 moment 分支（can_view_post 仅真分支调用）。
     %% 只查 code:which(moment_ds) 不够：make compile 波动可能只补编 moment_ds.beam

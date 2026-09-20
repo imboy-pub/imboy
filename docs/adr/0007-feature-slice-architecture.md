@@ -4,7 +4,7 @@
 - Date: 2026-09-14
 - 关联：ADR 0001（四层单向依赖）、ADR 0005（模块化单体边界）、ADR 0006（DDD 迁移端点线）、ADR 0003（插件路由命名空间 / `imboy_plugin_*` 冻结）
 - 规范文本：`docs/architecture/feature-slice-rules.md`（9 条铁律，规范性）
-- 首个实施样本：客服系统（`docs/plans/2026-09-13-customer-service-prp-v2.md`）
+- 首个实施样本：客服系统（概念见 `docs/concepts/customer-service.md`）
 
 ## Context
 
@@ -59,7 +59,7 @@
 - ⚠️ 新旧两套目录并存，需明文规则约束"该放哪"：存量不迁、新增进 features/products/plugins。
 - ⚠️ 门禁若只写脚本不接线，目录将退化为装饰——故以"故意注入四类违规必须全部变红"为金丝雀验收。
 - ⚠️ 支持第二个 `product_id` 需放开 `generate_product_features.py:108` 的硬校验并新增 manifest；在此之前产品维度只能靠 `profile` 近似表达。
-- ⚠️ `docs/plans/` 被 `.gitignore` 忽略，PRP 是本地工作稿；ADR 与规范文本必须落在被跟踪的 `docs/adr/`、`docs/architecture/`。
+- ⚠️ 一次性工作稿不入库；ADR 与规范文本必须落在被跟踪的 `docs/adr/`、`docs/architecture/`。
 
 ## Non-Goals
 

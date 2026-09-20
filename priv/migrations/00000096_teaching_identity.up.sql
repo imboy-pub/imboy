@@ -1,7 +1,6 @@
 -- 00000096_teaching_identity.up.sql
 -- 墨芽习字 Step 6：教学身份五表 + 机构一致性约束（class_profile/class_staff/learner/
 -- class_enrollment/guardian_learner）
--- 计划契约：docs/plans/2026-09-09-moya-calligraphy-ai-review-execution-plan.md §6.2、Step 6
 -- 迁移契约：up=可重复执行，down=安全回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹。
 --
 -- 设计决策：

@@ -1,6 +1,6 @@
 # 依赖管理笔记（Dependency Notes）
 
-> 工程视角 · 描述现状 + 增量改进 · 补充 `docs/planning/tech-debt.md`(AGPL 法务已记 P0-4,此处不重复法务面)
+> 工程视角 · 描述现状 + 增量改进 · AGPL 法务面此处不重复（另见法务合规文档）
 
 ## 现状
 

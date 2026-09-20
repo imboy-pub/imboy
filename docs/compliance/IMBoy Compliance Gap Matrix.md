@@ -50,7 +50,7 @@ OFF until separately accepted: nearby people, public discovery/trending,
 
 This is a proposed launch build preset, not a product deletion and not a legal mandate. A canonical product-feature manifest should define the compiled feature ceiling for Backend, Flutter and Admin. Existing feature/profile mechanisms remain runtime enforcement and may only further disable compiled features. Every OFF item needs artifact/import or chunk evidence plus UI, API, WebSocket and deep-link verification. Shared infrastructure and a compatible database-schema superset may remain when physical removal would require rewriting core domains.
 
-**当前实现状态（2026-09-08）**：上述 preset 已以 `config/product-feature-manifests/overseas_baseline.json`（L-01）+ 三端生成物 + BUILD-00R 编译期物理裁剪 + `verify_product_feature_artifacts.py` 三层物理断言落地；OFF 清单逐项有产物/路由/深链证据（feature-composition-evidence/）。操作口径见 [docs/product/packaging-contract.md](../product/packaging-contract.md)。
+**当前实现状态（2026-09-08）**：上述 preset 已以 `config/product-feature-manifests/overseas_baseline.json`（L-01）+ 三端生成物 + BUILD-00R 编译期物理裁剪 + `verify_product_feature_artifacts.py` 三层物理断言落地；OFF 清单逐项有产物/路由/深链证据（feature-composition-evidence/）。操作口径见 [docs/product/packaging-contract.md](https://github.com/imboy-pub/imboy/blob/main/docs/product/packaging-contract.md)。
 
 ## 剩余外部依赖汇总（无工程阻塞项）
 

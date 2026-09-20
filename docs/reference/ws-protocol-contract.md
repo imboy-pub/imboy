@@ -2,7 +2,7 @@
 
 > 定位：三端（Erlang 后端 / Flutter / JS SDK）协议常量的**单一对照基准**，防止漂移。
 > 本文是速查契约表，不重复 API 用法（见 [websocket-api-2.md](./websocket-api-2.md)）
-> 与帧格式设计（真源 [`api/proto/`](../../api/proto/README.md)，实现 `src/lib/imboy_frame.erl`）。
+> 与帧格式设计（真源 [`api/proto/`](https://github.com/imboy-pub/imboy/blob/main/api/proto/README.md)，实现 `src/lib/imboy_frame.erl`）。
 >
 > 最后更新：2026-08-20
 

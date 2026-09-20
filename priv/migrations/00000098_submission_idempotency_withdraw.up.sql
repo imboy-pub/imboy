@@ -1,7 +1,5 @@
 -- 00000098_submission_idempotency_withdraw.up.sql
 -- 墨芽习字 R2：homework_submission 补幂等/撤回审计列，对齐 Step 4 冻结契约（§7.2 幂等与状态机）
--- 计划契约：docs/plans/2026-09-09-moya-calligraphy-ai-review-execution-plan.md §7.2；
---           schema gap 审计（用户现场确认，STEP-08/schema-gap.md 由 Agent B 补写）
 -- 迁移契约：up=可重复执行，down=安全回滚。禁止 BEGIN/COMMIT——erlang_migrate 外层单事务包裹。
 --
 -- 设计决策：

@@ -2,7 +2,6 @@
 # CS-04 —— 客服产品全链 **HTTP 独立 E2E** 门（plan §8 CS-04 / A0 客户端契约基准）。
 #
 # 依据：
-#   * docs/plans/2026-09-14-enterprise-business-and-customer-service-zcode-plan-v4.1.md §8 CS-04
 #   * control/prompts/cs04-worker-prompt.md（场景与验收点 CS-04-A01..A06）
 #   * 契约来源（逐条核对，禁止臆造端点/参数）：
 #       - src/features/customer_service/interfaces/cs_actions.erl      （客服租户面冻结契约）

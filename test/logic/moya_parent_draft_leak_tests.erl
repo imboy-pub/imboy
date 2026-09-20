@@ -7,8 +7,7 @@
 %% 超集 → my_review_draft 草稿全文 + ai_draft 下发到家长端可达面，
 %% published_review 同时为 null——「发布」门控被旁路。
 %%
-%% 契约依据（docs/plans/evidence/moya-calligraphy-ai-review/STEP-04/openapi/
-%% moya-teaching.yaml）：
+%% 契约依据（家长视角 OpenAPI schema 契约）：
 %%   - SubmissionParentView：「硬约束：schema 级排除任何 ai_draft 字段
 %%     （D-10）」，且无 my_review_draft 字段（仅 published_review /
 %%     ai_status_hint / assets / note）

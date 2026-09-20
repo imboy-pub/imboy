@@ -4,7 +4,7 @@
 % Teaching task repository：group_task 幂等创建、教学 assignment 写入、
 % 老师作业列表统计、learner assignment_ready 校验。
 %
-% 设计（计划 docs/plans/2026-09-10-moya-post-security-product-plan.md §P0-3）：
+% 设计（P0-3）：
 %   - 幂等真源 = 00000106 持久列 group_task.(idempotency_key, request_digest)
 %     + 部分唯一索引 uk_group_task_idempotency(creator_id, group_id, idempotency_key)；
 %     ON CONFLICT DO NOTHING + 回读 + digest 比对（配方同 00000098

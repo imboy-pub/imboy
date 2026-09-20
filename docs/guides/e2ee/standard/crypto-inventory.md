@@ -3,7 +3,7 @@
 > 审计就绪包**第 2 件工件**（P5-2）。审计方判断"用了什么原语、参数是否合规、实现来自哪里"的单一入口。
 > 最后核对：2026-08-02
 
-本清单分两半：**原语与参数**（本文）+ **库/版本/许可证**（[`../../../legal/third-party-licenses.md`](../../../legal/third-party-licenses.md)，含 AGPL 阻断项醒目标注）。
+本清单分两半：**原语与参数**（本文）+ **库/版本/许可证**（[`../../../legal/third-party-licenses.md`](https://github.com/imboy-pub/imboy/blob/main/docs/legal/third-party-licenses.md)，含 AGPL 阻断项醒目标注）。
 密钥的生成/存储/轮换/销毁见 [`../key-lifecycle.md`](../key-lifecycle.md)。
 
 ## 0. 证据等级说明

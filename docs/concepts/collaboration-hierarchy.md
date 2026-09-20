@@ -42,8 +42,8 @@
 
 ## TARGET（已裁定未完全闭合）
 
-- 五概念边界的最终裁定文档 `docs/plans/2026-09-13-org-workspace-project-group-channel-boundary.md` 仍有 5 个决策点未拍板（D1-D5），其中「Project ⊆ Workspace 触发器挡学员/作业三分裂」「License 挂实例」等杂交问题以该文档为准。**该文档是 TARGET 层权威，不是现状描述。**
-- 企业组织 V1 已并入 main（CHANGELOG `1.0.0-alpha.77`）；2026-09-18 用户曾裁定原实施计划的「正文完成结论」作废、仅作历史快照——该裁定的书面矩阵存于当时会话工作目录，**未入库**（UNKNOWN：仓内无此文件；仓内可见证据为 `docs/plans/evidence/enterprise-organization-v1/`（ORG-00/ORG-00-R2/ORG-09）与三计划集成计划 `docs/plans/2026-09-18-three-plan-integrated-local-test-zcode-plan.md`）。
+- 五概念边界仍有 5 个决策点未拍板（D1-D5），其中「Project ⊆ Workspace 触发器挡学员/作业三分裂」「License 挂实例」等杂交问题待产品最终裁定（原裁定文档为历史计划稿，已随计划目录移除）。**本节是 TARGET 层事实，不是现状描述。**
+- 企业组织 V1 已并入 main（CHANGELOG `1.0.0-alpha.77`）；2026-09-18 用户曾裁定原实施计划的「正文完成结论」作废、仅作历史快照——该裁定的书面矩阵存于当时会话工作目录，**未入库**（UNKNOWN：仓内无此文件）。
 
 ## Constraints
 
@@ -55,4 +55,4 @@
 
 - 冻结契约：`docs/architecture/2026-09-16-*.md` 系列（organization governance / compatibility）
 - 迁移：76（workspace）、77（scope）、78/81（project）、95（organization foundation）、113-131（org 家族）
-- 三端路由：见 [三端 API 对齐](../api-contracts/three-platform-alignment.md)
+- 三端路由：见 [三端 API 对齐](https://github.com/imboy-pub/imboy/blob/main/docs/api-contracts/three-platform-alignment.md)

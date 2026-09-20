@@ -25,9 +25,7 @@
 ```
 
 可选聚焦执行：启动任务时可指定 `focus=commercialization`，此时只选择
-`tag: commercialization` 的任务，使用
-`docs/planning/p0-commercialization-claude-code-plan-2026-07.md`
-作为动作与验收的详细规范。未指定 focus 时保持原有全局顺序。
+`tag: commercialization` 的任务。未指定 focus 时保持原有全局顺序。
 
 **退出条件**（任一即停并报告）：无 ready 任务且无可结算闸门 / 遇授权/凭证/架构决策 / 连续两轮无新进展 / 验收需真机或人工凭证。
 
@@ -481,7 +479,6 @@
 
 ## Wave C0 · 商业化 P0（聚焦执行）
 
-> 详细规范：`docs/planning/p0-commercialization-claude-code-plan-2026-07.md`。
 > 固化默认：单租户 `owner_uid=current_uid`、OIDC-only、支付 mock-only；真实凭证和真机不进入本闸门。
 
 ### C0-BILL-01

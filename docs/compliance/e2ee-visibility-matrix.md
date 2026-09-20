@@ -94,7 +94,7 @@ POST /api/v1/report/message
 3. **TOFU 首钥局限**：compliance 公钥 TOFU 锚定只防"已固定后的服务端偷换"，首次接触的恶意服务端仍可注入首钥（e2ee-policy.md §3.3，根治依赖 Key Transparency，台账 IMB-2026-007）。
 4. **客户端侧行为**不在服务端契约内：客户端本地日志/iPrint 已由 V-02 口径约束（`kDebugMode` only），Sentry 事件经 LogRedactor 清洗、面包屑整体禁用。
 5. **debug 构建日志**：定义 `debug` 宏的开发构建中 `?DEBUG_LOG` 会输出消息 Data（含当时 payload——required 下即密文）；release/eunit 构建零输出。开发机构建不面向生产数据。
-6. **C2G 群历史边界（E2EE-2026-012）**：`/msg/history` 与批量 sync 目前只按当前 active membership 开放整个群归档，缺不可变 join boundary；新成员/重入/新设备历史策略待 F/R/D/M 产品决策（决策包 `docs/planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md`），决策与实现完成前该面为已知安全设计缺口。
+6. **C2G 群历史边界（E2EE-2026-012）**：`/msg/history` 与批量 sync 目前只按当前 active membership 开放整个群归档，缺不可变 join boundary；新成员/重入/新设备历史策略待 F/R/D/M 产品决策（决策未落定，决策包为历史计划文档已移除），决策与实现完成前该面为已知安全设计缺口。
 7. **证据等级**：本矩阵契约行的当前支撑为当前 Base C 级回归（后端 124 PASS/0 FAIL、Flutter 410 PASS/0 FAIL/1 SKIP、2026-09-09）；真实 DB/日志/备份/Push/对象存储的 Canary 扫描（A 级）为 0，全部待授权。
 8. **e2ee_mode 四态语义**、**compliance 托管披露**（依法留存通道破坏纯端到端语义）见 [e2ee-policy.md](./e2ee-policy.md)，本矩阵不重复。
 

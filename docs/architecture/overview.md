@@ -8,7 +8,7 @@
 
 ## 相关 ADR / Related Decisions
 
-- [ADR-0005 模块化单体边界（Modular Monolith Boundaries）](../adr/0005-modular-monolith-boundaries.md): 明确后端继续保持 modular monolith，并仅在高变化扩展点引入轻量插件化。
+- [ADR-0005 模块化单体边界（Modular Monolith Boundaries）](https://github.com/imboy-pub/imboy/blob/main/docs/adr/0005-modular-monolith-boundaries.md): 明确后端继续保持 modular monolith，并仅在高变化扩展点引入轻量插件化。
 
 ## 迁移状态（2026-03-28 — 闭环）
 

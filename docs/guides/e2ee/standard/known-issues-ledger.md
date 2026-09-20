@@ -35,7 +35,7 @@
 | IMB-2026-004 | `jwerl` 无 LICENSE 正文，仅 `app.src` 元数据声明 BSD-3 | `Open` | 低风险，从上游补回正文即可 |
 
 > 001–004 由 `scripts/license_inventory.sh --check` 机器可查。详见
-> [`../../../legal/third-party-licenses.md`](../../../legal/third-party-licenses.md)。
+> [`../../../legal/third-party-licenses.md`](https://github.com/imboy-pub/imboy/blob/main/docs/legal/third-party-licenses.md)。
 
 ---
 

@@ -6,7 +6,7 @@
 
 | 目标 | 入口 |
 |---|---|
-| 理解项目全貌（三端怎么组成） | [核心业务概念](./concepts/README.md) · [三端 API 对齐](./api-contracts/three-platform-alignment.md) |
+| 理解项目全貌（三端怎么组成） | [核心业务概念](./concepts/) · [三端 API 对齐](https://github.com/imboy-pub/imboy/blob/main/docs/api-contracts/three-platform-alignment.md) |
 | 查一个术语的准确含义 | [术语表](./glossary.md) |
 | 本地跑通后端 | [后端快速上手](./tutorials/quickstart-backend.md) |
 | 生产部署 | [部署 README](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md) → [Day-1 部署](./guides/operations/deployment/day1-quickstart.md) |
@@ -14,8 +14,8 @@
 | 对接 REST / WebSocket | [API 格式](./reference/api-format.md) → [REST API 目录](./reference/rest-api-v1-catalog.md) → [WebSocket 协议](./reference/ws-protocol-contract.md) |
 | 理解后端架构 | [架构总览](./architecture/overview.md) → [模块地图](./architecture/module-map.md) → [分层速查](./architecture/module-layer-cheatsheet.md) |
 | 审核 E2EE / 合规 | [E2EE 概念](./concepts/e2ee.md) → [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 政策](./compliance/e2ee-policy.md) · [等保清单](./compliance/mlps2-checklist.md) |
-| 当前正在做什么 | [现役计划](./plans/)（按文件名日期取最新）· [路线图](../ROADMAP.md) |
-| 查看历史结论 | [已归档](./archive/) · [早期规划](./planning/) |
+| 当前正在做什么 | [路线图](https://github.com/imboy-pub/imboy/blob/main/ROADMAP.md) · [CHANGELOG](https://github.com/imboy-pub/imboy/blob/main/CHANGELOG.md) |
+| 查看历史结论 | [已归档](https://github.com/imboy-pub/imboy/blob/main/docs/archive/README.md) |
 
 ## 文档分类
 
@@ -25,16 +25,15 @@
 | 教程 | 我怎样从零做出一个可运行结果？ | [tutorials](./tutorials/) |
 | 操作指南 | 我怎样完成部署、备份、测试或发布？ | [guides](./guides/) |
 | 参考 | 参数、接口、协议和错误码是什么？ | [reference](./reference/) · [术语表](./glossary.md) |
-| 契约 | 某个域的 API 契约与三端对齐？ | [api-contracts](./api-contracts/) |
-| 解释 | 为什么采用这种架构或安全设计？ | [explanation](./explanation/) · [architecture](./architecture/) |
-| 业务与合规 | 产品边界、商业、安全披露是什么？ | [business](./business/) · [compliance](./compliance/) · [legal](./legal/) |
-| 决策与过程 | 方案、审计和阶段性结论是什么？ | [adr](./adr/) · [plans](./plans/) · [planning](./planning/) · [archive](./archive/) |
+| 契约 | 某个域的 API 契约与三端对齐？ | [api-contracts](https://github.com/imboy-pub/imboy/tree/main/docs/api-contracts) |
+| 解释 | 为什么采用这种架构或安全设计？ | [explanation](./explanation/) · [architecture](./architecture/overview.md) |
+| 业务与合规 | 产品边界、商业、安全披露是什么？ | [business](./business/service-offering.md) · [compliance](./compliance/e2ee-policy.md) · [legal](https://github.com/imboy-pub/imboy/tree/main/docs/legal) |
+| 决策与过程 | 方案、审计和阶段性结论是什么？ | [adr](https://github.com/imboy-pub/imboy/blob/main/docs/adr/README.md) · [archive](https://github.com/imboy-pub/imboy/blob/main/docs/archive/README.md) |
 
 判断规则：教技能是「教程」，办事情是「指南」，查事实是「参考」，讲原理是「解释」。一次性计划和已完成审计不进入稳定入口，完成后放入 `archive/`。
 
 ### 目录口径备注
 
-- `plans/` vs `planning/`：**plans/ 是现役执行计划**（2026-08 起日期制 + evidence 证据树）；**planning/ 是 2026-07/08 的早期阶段规划**（dual-exp、w2 系列等，多数已完成，按历史材料查阅）。
 - 操作手册主阵地是 `guides/operations/`；`docs/runbooks/` 收运行手册；`docs/ops/support-matrix.md` 为支持矩阵（被 `scripts/check_release_consistency.sh` 引用，位置固定）。
 - `adr/` 收编号 ADR；E2EE v2 体系（`guides/e2ee/v2/`）内部的编号 ADR 属于该体系，不并入。
 
@@ -55,7 +54,7 @@
 
 - **代码事实**：以 `src/`、`api/openapi.yaml`、`api/asyncapi.yaml`、`deploy/` 和可执行测试为准。
 - **后端文档真源**：本目录 `imboy/docs/`；[GitHub Pages](https://imboy-pub.github.io/imboy/) 由 CI 构建发布，不在站点副本上直接改文档。
-- **客户端文档**：见相邻仓库 [`imboyapp/docs`](https://github.com/imboy-pub/imboy-flutter/tree/main/docs)；管理后台、SDK 和插件分别维护自己的 README/文档。三端共享的术语与 API 对齐以本仓 [术语表](./glossary.md) 与 [三端 API 对齐](./api-contracts/three-platform-alignment.md) 为准。
+- **客户端文档**：见相邻仓库 [`imboyapp/docs`](https://github.com/imboy-pub/imboy-flutter/tree/main/docs)；管理后台、SDK 和插件分别维护自己的 README/文档。三端共享的术语与 API 对齐以本仓 [术语表](./glossary.md) 与 [三端 API 对齐](https://github.com/imboy-pub/imboy/blob/main/docs/api-contracts/three-platform-alignment.md) 为准。
 - **Wiki**：只保留用户和运维最常用的短入口；详细协议、内部架构、审计证据不在 Wiki 复制。
 - **产品官网**：只负责定位、能力和商业信息，不承担 API 或部署契约。
 
@@ -68,7 +67,7 @@
 5. 不提交生产数据、真实密钥、个人联系方式和环境专属配置。
 6. 新术语先查[术语表](./glossary.md)：有则复用，无则先在术语表立项再写正文。
 
-写作规范、模板和 CI 约束见 [documentation-system](./documentation-system/README.md)。
+写作规范、模板和 CI 约束见 [documentation-system](https://github.com/imboy-pub/imboy/blob/main/docs/documentation-system/README.md)。
 
 ## 常用命令
 

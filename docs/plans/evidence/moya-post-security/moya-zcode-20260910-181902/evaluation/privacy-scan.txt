@@ -1,7 +1,0 @@
-regex_hits_total=0
-allowlisted: https://json-schema.org/draft/2020-12/schema ($schema dialect URI, spec constant)
---- CJK inventory (name-heuristic adjudication, not a regex verdict) ---
-CJK manifest.schema.json: ['作业任务', '字帖']
---- adjudication ---
-All CJK sequences above are schema description words (copybook/task/identity
-explanations). Fixtures contain no CJK. No personal names present.

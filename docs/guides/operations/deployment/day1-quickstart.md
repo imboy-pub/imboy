@@ -6,7 +6,7 @@
 > ```bash
 > cd deploy && bash install.sh
 > ```
-> 见 [`deploy/README.md`](../../../../deploy/README.md)。那条路径的密钥、RSA 密钥对与
+> 见 [`deploy/README.md`](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md)。那条路径的密钥、RSA 密钥对与
 > TLS 证书全部自动生成，只需人工填两个域名 + 一个邮箱。
 >
 > **本文是裸机 / release 包部署路径**：变量名带 `IMBOY_` 前缀、密钥路径形如

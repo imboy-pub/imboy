@@ -396,7 +396,6 @@
 
 > 墨芽（moya）子项目教学域增量端点。**与主站 TSID 约定不同：本域全部 TSID 字段以 JSON string 传输**（64-bit 精度保护，客户端不做 number 转换）。
 > 错误码段：5420-5429（上下文/ACL）、5430-5432（花名册/教学作业）、5440-5444（作业/提交）、5460-5461（幂等）、5480-5485（回评）。
-> OpenAPI 冻结契约：`docs/plans/evidence/moya-post-security/moya-zcode-20260910-181902/openapi/moya-teaching.yaml`。
 
 | 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload | 主要错误码 Errors |
 |---|---|---|---|---|---|---|---|

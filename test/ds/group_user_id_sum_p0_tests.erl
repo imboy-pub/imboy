@@ -3,9 +3,8 @@
 -include("eunit_setup.hrl").
 
 %%%===================================================================
-%%% P0 修复回归：group.user_id_sum int8 溢出根治（终局方案，见
-%%% docs/planning/group-user-id-sum-p0-decision-2026-08-29.md +
-%%% 迁移 00000079）：
+%%% P0 修复回归：group.user_id_sum int8 溢出根治（终局方案，
+%%% 见迁移 00000079）：
 %%% B1 同成员集允许多群：不做创建幂等去重（微信/Telegram 同款行为），
 %%%    连续两次同集合建群得到两个不同 Gid。
 %%% B2 user_id_sum 列退役：>85 人大群加人不再溢出崩连接，统计仅 COUNT。

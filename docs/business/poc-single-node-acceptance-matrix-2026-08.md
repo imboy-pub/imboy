@@ -145,11 +145,11 @@ docker exec imboy_pg18 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
 
 ## A9 升级与回滚
 
-**前置**：A8 通过（升级前必有可用备份）；版本与升级说明真相源：[RELEASES.md](../../RELEASES.md)。
+**前置**：A8 通过（升级前必有可用备份）；版本与升级说明真相源：[RELEASES.md](https://github.com/imboy-pub/imboy/blob/main/RELEASES.md)。
 
 **步骤**：
 1. 升级前：比对运行环境三元组与 Release 说明的三元组；
-2. 按目标版本在 [RELEASES.md](../../RELEASES.md) 对应「升级说明」小节执行升级（正式版发布后另有 [upgrade-runbook.md](../guides/operations/upgrade-runbook.md)，含回滚章节）；
+2. 按目标版本在 [RELEASES.md](https://github.com/imboy-pub/imboy/blob/main/RELEASES.md) 对应「升级说明」小节执行升级（正式版发布后另有 [upgrade-runbook.md](../guides/operations/upgrade-runbook.md)，含回滚章节）；
 3. 升级后：重跑 A1 判据 2–3（容器健康 + API 健康检查）与 A2 冒烟；
 4. 回滚演练：按 upgrade-runbook 的回滚路径（PITR + 切回旧版本）演练一次，或在当前版本做"重装 + A8 备份恢复"等效演练。
 

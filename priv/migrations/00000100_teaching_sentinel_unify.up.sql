@@ -5,7 +5,7 @@
 --   homework_submission.withdrawn_by（00000098 引入，fk_hs_withdrawn_by ON DELETE SET NULL）
 --   teacher_review.reviewer_uid      （00000097 引入，fk_tr_reviewer     ON DELETE SET NULL）
 --
--- 动机（对齐 99 基准，见 docs/plans/evidence/moya-calligraphy-ai-review/STEP-08-DB/migration-99-verification.md §2）：
+-- 动机（对齐 00000099 基准）：
 --   1) SET NULL 会抹掉操作人痕迹：撤回/回评是审计动作，操作人账号注销后审计行必须保留原 uid，
 --      由应用层匿名化流程显式 UPDATE→0（sentinel），而不是 FK 静默置 NULL；
 --   2) 解除 fail-closed 交互：00000098 时代 withdrawn_by 的 SET NULL 撞

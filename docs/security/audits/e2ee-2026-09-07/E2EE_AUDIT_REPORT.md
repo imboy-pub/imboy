@@ -6,7 +6,7 @@
 
 状态：2026-09-12 AI 明文身份门、C2G staging 权威快照、群聊附件 generation ACL、`/msg/offline` 权威 `conv_seq` 与 D3 historical room-key grant 已形成本地实现候选；migration 1→112、108/109/111/112 up/down/重复执行/失败回滚、附件/action ACL 与 session attestation 生命周期已在唯一 loopback scratch PostgreSQL 真库通过。用户已书面选择 `F2/R2/D3/M1/AI-ID=B`，明确接受 AI-ID=B 的恶意/被攻陷运行时服务端伪造 Agent 剩余风险，并确认 D3 采用 archive ciphertext 与 historical room-key grant 分开授权。migration 112 的 server-authoritative Megolm session attestation 在 C2G staging 顺序锁事务内固化 sender/device、recipient generation 集合与单调 `conv_seq` 范围，historical grant 只从该账本签发；原 session attestation `HIGH / OPEN` 已在本地候选关闭。App 导出前刷新、恢复前独立确认和审计、恢复后按可信 seq 限制使用；可恢复 policy error 会触发下一次发送前 rotate。生产规模 DDL/cutover、旧客户端 rollout、真实设备和 A 级攻击复测仍未闭环。当前结论为 `LOCAL_SECURITY_GATE_FAIL / DECISION_RECORDED / RISK_ACCEPTED / D3_DETAIL_RECORDED / A_LEVEL_ATTACK_RETEST=BLOCKED / E2EE_RELEASE=NO-GO`。
 
-配套执行清单：[`E2EE_ATTACK_MATRIX.md`](./E2EE_ATTACK_MATRIX.md)；群历史决策包：[`docs/planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md`](../../../planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md)；AI 明文身份决策包：[`docs/planning/ai-id-plaintext-channel-decision-brief-2026-09-11.md`](../../../planning/ai-id-plaintext-channel-decision-brief-2026-09-11.md)
+配套执行清单：[`E2EE_ATTACK_MATRIX.md`](./E2EE_ATTACK_MATRIX.md)；群历史决策包与 AI 明文身份决策包为历史计划文档（已随计划目录移除），其决策结论（`F2/R2/D3/M1/AI-ID=B`、D3 分开授权）已记录于上文状态段与 [e2ee-visibility-matrix](../../../compliance/e2ee-visibility-matrix.md)。
 
 本文件统一承载基线、消息路径、密钥所有权、Findings、修复状态和发布结论。旧报告、注释、测试名称及历史 PASS/GO 均不自动继承。
 
