@@ -340,9 +340,13 @@ for case in $EXPECTED_CASES; do
 done
 
 # Skipped cases never reach the evidence writer, and init failures skip the
-# whole suite; both are caught above. Belt-and-braces: scan CT logs for skip
-# markers.
-if grep -rqiE '\bskipped\b' "$CT_LOGS_DIR" 2>/dev/null; then
+# whole suite; both are caught above. Belt-and-braces: CT prints a per-suite
+# "K skipped" segment on its TEST COMPLETE line only when cases actually
+# skipped, so scan those authoritative lines. A recursive scan of the CT dir
+# false-positives forever: Common Test's own HTML templates (index.html
+# column headers) and the cumulative all_runs.html history contain the word
+# regardless of outcomes.
+if grep -E 'TEST COMPLETE,' "$RUNNER_LOG" 2>/dev/null | grep -q 'skipped'; then
   echo "evidence cross-check: skip marker found under CT logs" | tee -a "$RUNNER_LOG"
   EVIDENCE_STATUS=3
 fi
