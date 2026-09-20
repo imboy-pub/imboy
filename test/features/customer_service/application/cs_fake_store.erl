@@ -65,8 +65,11 @@
     insert_widget_installation/2,
     fetch_widget_installation/2,
     fetch_widget_installation_by_public_id/2,
+    fetch_widget_installation_by_public_id_global/1,
     list_widget_installations_page/3,
     revoke_widget_installation/3,
+    %% CSD-BE-01：测试注入面——强制 installation 状态（disabled 三态归一用）
+    force_widget_installation_status/2,
     insert_widget_identity_key/3,
     fetch_widget_identity_key/3,
     revoke_widget_identity_key/4,
@@ -790,6 +793,35 @@ fetch_widget_installation_by_public_id(OrgId, PublicWidgetId) ->
     case Match of
         [Row | _] -> {ok, Row};
         [] -> {error, not_found}
+    end.
+
+%% CSD-BE-01（hosted-widget-contract S3）：public_widget_id **全局**反查——
+%% 无 Org 输入，镜像真库 `WHERE public_widget_id = $1`（全局唯一 → 单行）；
+%% 行的 organization_id 是派生输出， Org 归属证明由命中行本身承担。
+fetch_widget_installation_by_public_id_global(PublicWidgetId) ->
+    {widget_installations, Insts} = hd(ets:lookup(?TAB, widget_installations)),
+    Match = [
+        I
+     || I <- maps:values(Insts),
+        maps:get(public_widget_id, I) =:= PublicWidgetId
+    ],
+    case Match of
+        [Row | _] -> {ok, Row};
+        [] -> {error, not_found}
+    end.
+
+%% CSD-BE-01 测试注入面：绕过正常生命周期把 installation 置为任意状态
+%% （disabled 等 store 正常路径不产出的状态），供三态归一断言使用。
+force_widget_installation_status(InstallationId, Status) ->
+    {widget_installations, Insts} = hd(ets:lookup(?TAB, widget_installations)),
+    case maps:get(InstallationId, Insts, undefined) of
+        undefined ->
+            {error, not_found};
+        Row ->
+            update(widget_installations, fun(M) ->
+                M#{InstallationId => Row#{status => Status}}
+            end),
+            ok
     end.
 
 list_widget_installations_page(OrgId, AfterId, Limit) ->

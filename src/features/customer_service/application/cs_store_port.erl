@@ -223,6 +223,15 @@
 %% OrgId——错 Org 的查询拿到 not_found（CSB-01-A02 的 store 裁决点）。
 -callback fetch_widget_installation_by_public_id(OrgId :: integer(), PublicWidgetId :: binary()) ->
     {ok, widget_installation()} | {error, not_found | term()}.
+%% @doc CSD-BE-01（hosted-widget-contract S3）：public_widget_id **全局**反查——
+%% 输入只有公开 ID（浏览器不申报 Org），Org/Workspace 是**输出**（权威派生自
+%% 命中的唯一 active installation 行，`public_widget_id` 全局唯一约束保证单行）。
+%% 消费面仅限零凭证导航面（/w/:public_widget_id frame HTML）；token 面
+%% （bootstrap 等）仍必须走 Org 同语句的 `fetch_widget_installation_by_public_id/2`。
+%% 不存在 → `{error, not_found}`（三态归一为 installation_unavailable 由
+%% application 承担）。
+-callback fetch_widget_installation_by_public_id_global(PublicWidgetId :: binary()) ->
+    {ok, widget_installation()} | {error, not_found | term()}.
 %% @doc 管理面列表：DESC 键集分页，同语句绑定 Org。
 -callback list_widget_installations_page(
     OrgId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
@@ -300,7 +309,10 @@
 %% + `LIMIT`，迁移 135 的 i_cse_org_ws_id (organization_id, workspace_id, id)
 %% 是唯一入口）。同语句绑定 (Org, Workspace)——跨租户/跨 Workspace 恒空页。
 -callback list_events_page(
-    OrgId :: integer(), WorkspaceId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
+    OrgId :: integer(),
+    WorkspaceId :: integer(),
+    AfterId :: non_neg_integer(),
+    Limit :: pos_integer()
 ) ->
     {ok, [event()]} | {error, term()}.
 

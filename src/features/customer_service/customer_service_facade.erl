@@ -49,6 +49,8 @@
     widget_bootstrap/2,
     %% BE-W01 A05：动态 frame HTML 的公开 installation 投影
     widget_frame_html/2,
+    %% CSD-BE-01：public_widget_id 全局反查的 frame HTML 投影（/w/ 面）
+    widget_public_frame_html/2,
     widget_identity_exchange/2,
     widget_create_session/2,
     widget_list_sessions/2,
@@ -421,6 +423,23 @@ widget_frame_html(OrgId, #{installation_id := InstallationId} = Params) when
 widget_frame_html(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_frame_html}};
 widget_frame_html(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% CSD-BE-01（hosted-widget-contract S3/S4）：public_widget_id **全局**反查的
+%% frame HTML 投影（/w/:public_widget_id 零凭证导航面）。OrgId 形参仅为 facade
+%% 调用点表 `cs_facade_call:call/3` 的同构占位（seat_contexts 的 self 面先例，
+%% 传 0）：本用例的租户归属是命中行的**派生输出**
+%% （`cs_widget_app:public_frame_installation_by_public_id/1`），浏览器零申报面。
+%% 不存在 / disabled / revoked 一律 `{error, installation_unavailable}`
+%% （S3 三态不区分；handler 直映 404，无枚举）。
+-spec widget_public_frame_html(integer(), map()) -> term().
+widget_public_frame_html(_OrgId, #{public_widget_id := PublicId} = Params) when
+    is_binary(PublicId), is_map(Params)
+->
+    cs_widget_app:public_frame_installation_by_public_id(Params);
+widget_public_frame_html(_OrgId, Params) when is_map(Params) ->
+    {error, {invalid_argument, widget_public_frame_html}};
+widget_public_frame_html(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% BE-W01 A06：identity/exchange 第一阶段 capability_disabled 收敛

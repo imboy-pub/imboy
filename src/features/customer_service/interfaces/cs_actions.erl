@@ -556,6 +556,21 @@ table(widget) ->
                 widget_server_derived(),
                 param
             )},
+        %% CSD-BE-01（hosted-widget-contract S3/S4）：/w/:public_widget_id 动态
+        %% frame HTML（iframe src 新落点）。handler 自行解析路径绑定（不经
+        %% cs_actions 的 dispatch——零凭证导航面）；此处登记只为动作表/路由表/
+        %% 契约测试三方一致。租户归属是命中行的派生输出（public_widget_id
+        %% 全局反查），浏览器零 org/workspace 申报面。
+        {widget_public_frame_html,
+            widget_entry(
+                [
+                    {<<"GET">>, widget_public_frame_html, [{public_widget_id, binary, required}],
+                        []}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
         %% 会话建立（POST）与访客会话列表（GET）同路径动作（cowboy 只按 path
         %% 匹配——seats/shop-keys 同款先例）。
         {widget_sessions,

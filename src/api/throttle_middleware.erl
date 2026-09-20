@@ -171,6 +171,10 @@ reply_429(Req) ->
 is_whitelisted(<<"/api/v1/passport/", _/binary>>) -> passport;
 is_whitelisted(<<"/api/v1/cs/widget/", _/binary>>) -> cs_widget;
 is_whitelisted(<<"/api/v1/cs/widget">>) -> cs_widget;
+%% CSD-BE-01（hosted-widget-contract S4）：/w/:public_widget_id 动态 frame HTML
+%% 归 widget 接入面专用桶（访客无 UID，恒按 IP——与 bootstrap/消息/SSE 同一只
+%% 桶，不混入通用 api_per_ip 桶）。/w 根段全站唯一（CS widget 专属命名空间）。
+is_whitelisted(<<"/w/", _/binary>>) -> cs_widget;
 is_whitelisted(<<"/api/v1/init">>) -> true;
 is_whitelisted(<<"/api/v1/ws">>) -> true;
 is_whitelisted(<<"/health">>) -> true;

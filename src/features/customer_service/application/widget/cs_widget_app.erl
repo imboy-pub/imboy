@@ -32,6 +32,8 @@
     revoke_installation/2,
     %% BE-W01 A05：动态 frame HTML 端点的公开 installation 投影（零凭证面）
     public_frame_installation/2,
+    %% CSD-BE-01：public_widget_id 全局反查的公开 installation 投影（/w/ 面）
+    public_frame_installation_by_public_id/1,
     bootstrap/2,
     identity_exchange/2
 ]).
@@ -285,6 +287,75 @@ normalized_allowed_origins(Installation) ->
         end,
         maps:get(allowed_origins, Installation, [])
     ).
+
+%% ===================================================================
+%% public_widget_id 全局反查（CSD-BE-01，hosted-widget-contract S3/S4）
+%% ===================================================================
+
+%% @doc 按**全局唯一** `public_widget_id` 反查唯一 active installation 的
+%% frame HTML 投影：`#{public_widget_id, allowed_origins}`（allowed_origins
+%% 已按 domain `cs_widget:normalize_origin/1` 归一）。零凭证导航面（/w/），
+%% Org/Workspace 由命中行**权威派生**——浏览器零申报面。
+%%
+%% 统一错误语义（S3：不存在性不可枚举，三态不区分）：
+%%   * 不存在 / status 非 active（disabled、revoked kill switch）→
+%%     `{error, installation_unavailable}`（HTTP 404，handler 直映）；
+%%   * 投影白名单只含 public id 与 origin 名单——installation 内部 id /
+%%     organization_id / workspace / secret / branding 一律不出本用例
+%%     （S4：HTML 壳不得嵌入 installation_id / organization_id）。
+-spec public_frame_installation_by_public_id(map()) -> {ok, map()} | {error, term()}.
+public_frame_installation_by_public_id(#{public_widget_id := PublicId} = Params) when
+    is_map(Params)
+->
+    case valid_public_widget_id(PublicId) of
+        false ->
+            {error, {invalid_argument, public_widget_id}};
+        true ->
+            case
+                cs_widget_support:with_store(Params, fun(Store) ->
+                    Store:fetch_widget_installation_by_public_id_global(PublicId)
+                end)
+            of
+                {error, _} = Err ->
+                    %% not_found 与其余失败同形状经 handler 分流：仅
+                    %% installation_unavailable 归一在此发生，store 瞬态故障
+                    %% 照常上抛（500，不伪装 4xx）。
+                    case Err of
+                        {error, not_found} -> {error, installation_unavailable};
+                        _ -> Err
+                    end;
+                {ok, Installation} ->
+                    case cs_widget_support:installation_active(Installation) of
+                        {ok, Active} ->
+                            {ok, #{
+                                public_widget_id => maps:get(public_widget_id, Active),
+                                allowed_origins => normalized_allowed_origins(Active)
+                            }};
+                        {error, _} ->
+                            %% disabled / revoked（kill switch）同归一（S3 三态不区分）。
+                            {error, installation_unavailable}
+                    end
+            end
+    end;
+public_frame_installation_by_public_id(_Params) ->
+    {error, {invalid_argument, public_frame_installation_by_public_id}}.
+
+%% public_widget_id 形状门（与签发口径 `wgt_pub_<hex>` 同族）：非空、长度上限
+%% 128、字符集 [A-Za-z0-9_-]——路径绑定不可信，控制字符/引号/空白在进 store
+%% 前即拒（400 面，无枚举——形状错误与不存在同不着行）。
+valid_public_widget_id(PublicId) when is_binary(PublicId) ->
+    byte_size(PublicId) > 0 andalso
+        byte_size(PublicId) =< 128 andalso
+        lists:all(fun public_id_char/1, binary_to_list(PublicId));
+valid_public_widget_id(_PublicId) ->
+    false.
+
+public_id_char(C) when C >= $a, C =< $z -> true;
+public_id_char(C) when C >= $A, C =< $Z -> true;
+public_id_char(C) when C >= $0, C =< $9 -> true;
+public_id_char($_) -> true;
+public_id_char($-) -> true;
+public_id_char(_) -> false.
 
 %% ===================================================================
 %% bootstrap（安装校验 → Origin 精确匹配 → 匿名 contact 幂等映射 → 签发令牌）

@@ -42,6 +42,9 @@
 %% SSE 帧构造纯函数（导出仅供套件零 socket 断言；生产路径只在流循环内使用）。
 -export([comment_frame/0, event_frame/3, message_data/1, retry_frame/1, state_data/2]).
 
+%% CSD-BE-01：/w/ frame 文档构造纯函数（导出仅供套件零 socket 断言）。
+-export([public_frame_document/1]).
+
 %% SSE 缺省节奏（route Opts 可注入覆盖：sse_retry_ms / sse_poll_ms / sse_max_ms）。
 -define(SSE_RETRY_MS, 5000).
 -define(SSE_POLL_MS, 15000).
@@ -49,6 +52,11 @@
 -define(SSE_KEEPALIVE_EVERY, 3).
 %% SSE 增量单次拉取上限（页大小上限 = cs_app_support:max_page_limit/0）。
 -define(SSE_POLL_LIMIT, 200).
+
+%% CSD-BE-01（hosted-widget-contract S4）：/w/ frame 文档引用的版本化静态 JS。
+%% 与旧 frame handler 的 `?FRAME_ASSET_JS`（cs_widget_frame_handler）同口径——
+%% 升级版本两处同步改（产物部署归 A6/CSD-IMG-01）。
+-define(PUBLIC_FRAME_ASSET_JS, <<"/widget-assets/cs-widget.v1.js">>).
 
 %% cowboy 普通 handler：State = route Opts（含 route metadata + 中间件会话键）。
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
@@ -75,6 +83,12 @@ handle(Action, Req0, State0) ->
             %% asset_content 同款线格式分支先例）；upload_ref 是唯一凭证（FE 裸
             %% PUT 合同：无凭证头），因此不走 token_credential 门。
             asset_put(Entry, Req0, State0);
+        {ok, _Entry} when Action =:= widget_public_frame_html ->
+            %% CSD-BE-01（hosted-widget-contract S4）：/w/:public_widget_id 动态
+            %% frame HTML——零凭证导航面（iframe src 落点），handler 自解析，
+            %% 不走 dispatch 的 Org/令牌链。租户归属由 public_widget_id 全局
+            %% 反查**派生**，HTML 壳零 installation_id/org/workspace/secret。
+            public_frame(Req0);
         {ok, Entry} ->
             dispatch(Entry, Req0, State0)
     end.
@@ -334,6 +348,133 @@ read_upload_body(Req, Acc) ->
                 false -> read_upload_body(Req1, [Data | Acc])
             end
     end.
+
+%% ===================================================================
+%% /w/:public_widget_id 动态 frame HTML（CSD-BE-01，hosted-widget-contract S4）
+%% ===================================================================
+
+%% 零凭证导航面：方法门（非 GET 405）→ 凭证不进 URL（查询串凭证样式键 400）
+%% → 路径绑定形状门（400，无枚举）→ public_widget_id 全局反查 → HTML。
+%% 与旧 frame（cs_widget_frame_handler，/api/v1/cs/widget/frame/:installation_id）
+%% 的差异（S4 冻结）：HTML 壳**零** installation_id / organization_id /
+%% workspace_id / secret / token，租户归属由反查派生、浏览器零申报面；
+%% 错误统一 404 `installation_unavailable`（missing/disabled/revoked 三态不区分）。
+public_frame(Req0) ->
+    case cowboy_req:method(Req0) of
+        <<"GET">> ->
+            case cs_http:credential_in_query_string(Req0) of
+                true ->
+                    cs_http:reply_error(Req0, credential_in_query_string);
+                false ->
+                    public_frame_binding(Req0)
+            end;
+        _Other ->
+            cs_http:reply_error(Req0, method_not_allowed)
+    end.
+
+public_frame_binding(Req0) ->
+    case public_widget_binding(Req0) of
+        {error, Reason} ->
+            cs_http:reply_error(Req0, Reason);
+        {ok, PublicId} ->
+            %% OrgId=0 是 facade_call 同构占位：反查面无 Org 输入（命中行派生）。
+            Result =
+                cs_facade_call:call(
+                    widget_public_frame_html, 0, #{public_widget_id => PublicId}
+                ),
+            public_frame_respond(Req0, Result)
+    end.
+
+%% 路径绑定形状门：非空、≤128、[A-Za-z0-9_-]（与
+%% cs_widget_app:valid_public_widget_id/1 同口径——接口层先拒 400，
+%% application 层再守 422，纵深防御不互信）。
+public_widget_binding(Req) ->
+    case cowboy_req:binding(public_widget_id, Req) of
+        undefined ->
+            {error, {missing_path_param, public_widget_id}};
+        Raw when is_binary(Raw) ->
+            case valid_public_id(Raw) of
+                true -> {ok, Raw};
+                false -> {error, invalid_public_widget_id}
+            end
+    end.
+
+valid_public_id(Raw) ->
+    byte_size(Raw) > 0 andalso
+        byte_size(Raw) =< 128 andalso
+        lists:all(fun public_id_char/1, binary_to_list(Raw)).
+
+public_id_char(C) when C >= $a, C =< $z -> true;
+public_id_char(C) when C >= $A, C =< $Z -> true;
+public_id_char(C) when C >= $0, C =< $9 -> true;
+public_id_char($_) -> true;
+public_id_char($-) -> true;
+public_id_char(_) -> false.
+
+public_frame_respond(Req0, {ok, Projection}) ->
+    Origins = maps:get(allowed_origins, Projection, []),
+    PublicId = maps:get(public_widget_id, Projection, <<>>),
+    Headers = #{
+        <<"content-type">> => <<"text/html; charset=utf-8">>,
+        %% 嵌入策略唯一真源：逐 origin 列名（或 'none'）——复用旧 frame 的
+        %% 同一纯函数（frame_ancestors_csp/1），XFO 已由共享形状谓词豁免。
+        <<"content-security-policy">> => cs_widget_frame_handler:frame_ancestors_csp(Origins),
+        %% revocation 立即生效优先（S6：/w/:public_widget_id = no-store）。
+        <<"cache-control">> => <<"no-store">>
+    },
+    cowboy_req:reply(200, Headers, public_frame_document(PublicId), Req0);
+public_frame_respond(Req0, {error, Reason}) ->
+    cs_http:reply_error(Req0, Reason).
+
+%% @doc /w/ 帧文档（S4 冻结形状）：最小挂载点 `div#cs-widget-root` +
+%% `data-public-widget-id` + 版本化脚本。**不输出** installation_id /
+%% organization_id / workspace_id / secret / token（与旧 frame 的
+%% `data-installation-id` 是合同级差异）；属性值 HTML 转义。
+-spec public_frame_document(binary()) -> binary().
+public_frame_document(PublicId) when is_binary(PublicId) ->
+    PubAttr = html_attr(PublicId),
+    <<
+        "<!DOCTYPE html>"
+        "<html lang=\"en\">"
+        "<head>"
+        "<meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<title>Customer service</title>"
+        "</head>"
+        "<body>"
+        "<div id=\"cs-widget-root\" data-public-widget-id=\"",
+        PubAttr/binary,
+        "\"></div>"
+        "<script src=\"",
+        ?PUBLIC_FRAME_ASSET_JS/binary,
+        "\" defer></script>"
+        "</body>"
+        "</html>"
+    >>;
+public_frame_document(_PublicId) ->
+    <<>>.
+
+%% HTML 属性转义（与 cs_widget_frame_handler:html_attr/1 同口径；该函数未导出，
+%% 本面按同一四元集独立实现）。
+html_attr(Bin) when is_binary(Bin) ->
+    binary:replace(
+        binary:replace(
+            binary:replace(
+                binary:replace(Bin, <<"&">>, <<"&amp;">>, [global]),
+                <<"<">>,
+                <<"&lt;">>,
+                [global]
+            ),
+            <<">">>,
+            <<"&gt;">>,
+            [global]
+        ),
+        <<"\"">>,
+        <<"&quot;">>,
+        [global]
+    );
+html_attr(_) ->
+    <<>>.
 
 %% ===================================================================
 %% SSE（GET .../sessions/:id/events）

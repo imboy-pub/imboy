@@ -18,6 +18,7 @@
     insert_widget_installation/2,
     fetch_widget_installation/2,
     fetch_widget_installation_by_public_id/2,
+    fetch_widget_installation_by_public_id_global/1,
     list_widget_installations_page/3,
     revoke_widget_installation/3,
     insert_widget_identity_key/3,
@@ -101,6 +102,24 @@
     "       extract(epoch from updated_at)::bigint AS updated_at"
     "  FROM customer_service_widget_installation"
     " WHERE organization_id = $1 AND public_widget_id = $2"
+>>).
+
+%% CSD-BE-01（hosted-widget-contract S3）：public_widget_id **全局**反查——
+%% 与铁律 6 的租户语句**不同类**：输入只有公开 ID（单占位符 $1 =
+%% public_widget_id），`organization_id` 只出现在 SELECT 投影（从行**输出**，
+%% 权威派生租户），谓词零 Org——错 Org 的调用方根本不存在（调用方是浏览器，
+%% 无 Org 可带）。uq_cswi_public_widget_id 全局唯一约束保证单行。
+%% 本语句**不进** sql_statements/0（那是「同语句带 Org」的机械断言集，
+%% 语义上不适用）；其形状由 cs_pg_widget_tests 的专属机械断言单独冻结：
+%% 恰一个占位符且谓词为 public_widget_id = $1。
+-define(SQL_FETCH_INSTALLATION_BY_PUBLIC_ID_GLOBAL, <<
+    "SELECT id, organization_id, public_widget_id, display_name,"
+    "       allowed_origins, branding, consent_version, status,"
+    "       extract(epoch from revoked_at)::bigint AS revoked_at, version,"
+    "       extract(epoch from created_at)::bigint AS created_at,"
+    "       extract(epoch from updated_at)::bigint AS updated_at"
+    "  FROM customer_service_widget_installation"
+    " WHERE public_widget_id = $1"
 >>).
 
 -define(SQL_LIST_INSTALLATIONS_PAGE, <<
@@ -273,6 +292,24 @@ fetch_widget_installation_by_public_id(OrgId, PublicWidgetId) ->
             )
         )
     ).
+
+%% @doc 全局反查（CSD-BE-01，hosted-widget-contract S3）：无 Org 输入，
+%% organization_id 从命中行输出。不存在 → not_found（application 归一为
+%% installation_unavailable，三态不区分、无枚举）。
+-spec fetch_widget_installation_by_public_id_global(binary()) ->
+    {ok, map()} | {error, term()}.
+fetch_widget_installation_by_public_id_global(PublicWidgetId) when is_binary(PublicWidgetId) ->
+    to_status_row(
+        decode_installation_jsonb(
+            cs_pg_common:fetch_one(
+                ?SQL_FETCH_INSTALLATION_BY_PUBLIC_ID_GLOBAL,
+                [PublicWidgetId],
+                ?INSTALLATION_KEYS
+            )
+        )
+    );
+fetch_widget_installation_by_public_id_global(_PublicWidgetId) ->
+    {error, {invalid_argument, public_widget_id}}.
 
 -spec list_widget_installations_page(integer(), non_neg_integer(), pos_integer()) ->
     {ok, [map()]} | {error, term()}.

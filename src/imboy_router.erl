@@ -2005,6 +2005,19 @@ customer_service_tenant_routes() ->
             action => widget_frame_html,
             auth_context => cs_visit
         }},
+        %% CSD-BE-01（hosted-widget-contract S2/S4）：动态 frame HTML 的新落点
+        %% `GET /w/:public_widget_id`（snippet 零 org/workspace 申报，iframe src
+        %% 只带全局 public ID）。零凭证导航面：租户归属由 public_widget_id
+        %% 全局反查**派生**；HTML 壳零 installation_id/org/workspace/secret；
+        %% 错误统一 404 installation_unavailable。handler 复用 cs_widget_handler
+        %% （surface=widget 注入走 customer_service_wire_route 同款分支）。
+        %% 根路径不与 /api/* 路由树冲突（段首 w 唯一）；auth_middleware 对
+        %% /w/* 直通、throttle 归 cs_widget 桶、XFO 豁免经
+        %% imboy_route_shape:is_cs_widget_frame_path/1 单一真源登记。
+        {"/w/:public_widget_id", cs_widget_handler, #{
+            action => widget_public_frame_html,
+            auth_context => cs_visit
+        }},
         {"/api/v1/cs/widget/sessions", cs_widget_handler, #{
             action => widget_sessions,
             auth_context => cs_visit

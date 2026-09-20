@@ -74,7 +74,15 @@ is_credential_surface_path(Path) when is_binary(Path) ->
             %% POST /api/v1/cs/organizations/:org_id/sessions/queue（门店开会话——
             %% T-2 后 org 显式在路径；GET 坐席队列视图同路径，凭证面以门店 POST
             %% 为准，坐席 GET 照常由 handler 的 cs_seat 分支校验 JWT）。
-            [<<"api">>, <<"v1">>, <<"cs">>, <<"organizations">>, _OrgId, <<"sessions">>, <<"queue">>] ->
+            [
+                <<"api">>,
+                <<"v1">>,
+                <<"cs">>,
+                <<"organizations">>,
+                _OrgId,
+                <<"sessions">>,
+                <<"queue">>
+            ] ->
                 true;
             %% POST /api/v1/cs/sessions/:id/messages | /rating（访客消息/评分）
             [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>, _Id, Last] when
@@ -103,8 +111,17 @@ is_credential_surface_path(Path) when is_binary(Path) ->
                 true;
             %% BE-S01b：GET .../sessions/:id/assets/:asset_id/content（访客附件
             %% 内容代理——令牌在专用头，与 presign/confirm 同一面）
-            [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>, _Id, <<"assets">>,
-                _AssetId, <<"content">>] ->
+            [
+                <<"api">>,
+                <<"v1">>,
+                <<"cs">>,
+                <<"widget">>,
+                <<"sessions">>,
+                _Id,
+                <<"assets">>,
+                _AssetId,
+                <<"content">>
+            ] ->
                 true;
             _ ->
                 false
@@ -461,6 +478,11 @@ classify(body_not_object) ->
 %% CSB-03：widget 面凭证只准走专用头——查询串携带凭证样式键即 400（值不读）。
 classify(credential_in_query_string) ->
     ?ERR_BAD_REQUEST;
+%% CSD-BE-01：/w/:public_widget_id 路径绑定形状非法（空/越界字符集）——
+%% 与旧 frame 的 invalid_tsid 同为 400 形状面（无枚举，不区分形状错与不存在
+%% ——不存在的 installation 走 404 installation_unavailable）。
+classify(invalid_public_widget_id) ->
+    ?ERR_BAD_REQUEST;
 %% CSB-03：Origin 头形状非法（含 path/userinfo/非法端口等）——fail-closed 400。
 classify({invalid_origin, _}) ->
     ?ERR_BAD_REQUEST;
@@ -564,6 +586,12 @@ classify(not_found) ->
 classify({not_found, _}) ->
     ?ERR_NOT_FOUND;
 classify({session_not_found, _}) ->
+    ?ERR_NOT_FOUND;
+%% CSD-BE-01（hosted-widget-contract S3）：public_widget_id 反查面（/w/ 与
+%% bootstrap）的统一 404——不存在 / disabled / revoked(kill switch) 三态归一
+%% `installation_unavailable`，不泄漏 installation 存在性差异。旧 frame 面的
+%% `installation_revoked`=403 分类保留（兼容窗口，见下方 403 段）。
+classify(installation_unavailable) ->
     ?ERR_NOT_FOUND;
 %% F-LAY-01：seat 绑定不存在的业务身份 → 与 EB 面 404 同口径（此前 500）。
 classify({identity_not_found, _}) ->

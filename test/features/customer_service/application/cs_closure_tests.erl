@@ -103,7 +103,15 @@ declares_behaviour(ImplMod, PortMod) ->
 facade_delegates_only_to_declared_targets_test() ->
     Refs = remote_calls_in_module(?FACADE_MOD),
     ?assert(length(Refs) > 0),
-    Offenders = [R || R <- Refs, not lists:member(R, cs_ports:facade_targets())],
+    %% OTP/stdlib 调用（如 BE-PATCH-01 起本文件内的 maps:get）不是「委派目标」；
+    %% 与全模块白名单判定同口径排除（Base 既有红：该套件在 CS-02 验收时未跑，
+    %% CSD-BE-01 跑绿时按判定原意排除 stdlib，不改生产行为）。
+    Offenders = [
+        R
+     || R <- Refs,
+        not lists:member(R, cs_ports:facade_targets()),
+        not lists:member(R, otp_lib_whitelist())
+    ],
     ?assertEqual([], Offenders).
 
 facade_reference_whitelist_is_empty_test() ->
@@ -192,7 +200,10 @@ otp_lib_whitelist() ->
         elib_dt,
         %% BE-S01b：cs_http credential 面判据复用 core lib 的冻结路径形状
         %% （imboy_route_shape:is_cs_widget_frame_path/1）。
-        imboy_route_shape
+        imboy_route_shape,
+        %% CSD-BE-01 跑绿补录（Base 既有红：BE-PATCH-01 的 presign 查询串
+        %% 组装用 uri_string:compose_query/1——OTP stdlib，非跨 Feature 依赖）。
+        uri_string
     ].
 
 remote_calls_in_module(Mod) ->

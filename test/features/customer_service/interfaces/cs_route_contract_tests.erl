@@ -156,7 +156,11 @@ widget_literal_routes() ->
         {<<W/binary, "/sessions/:id/rating">>, widget_session_rating, [<<"POST">>], cs_visit},
         %% BE-W01（router wiring manifest W-1）：动态 frame HTML（iframe src 落点，
         %% 零凭证面——principal 声明 cs_visit，嵌入策略由 frame-ancestors CSP 裁决）。
-        {<<W/binary, "/frame/:installation_id">>, widget_frame_html, [<<"GET">>], cs_visit}
+        {<<W/binary, "/frame/:installation_id">>, widget_frame_html, [<<"GET">>], cs_visit},
+        %% CSD-BE-01（hosted-widget-contract S2/S4）：/w/:public_widget_id 动态
+        %% frame HTML（iframe src 新落点；零凭证导航面——public_widget_id 全局
+        %% 反查派生租户，浏览器零 org/workspace 申报面；兼容窗口内旧 frame 原样保留）。
+        {<<"/w/:public_widget_id">>, widget_public_frame_html, [<<"GET">>], cs_visit}
     ].
 
 %% ===================================================================
@@ -751,7 +755,48 @@ error_status_mapping_is_explicit_test() ->
     ?assertEqual(422, cs_http:status(identity_key_not_configured)),
     %% 服务端注入事实缺失/默认 Workspace 解析失败是配置问题 ⇒ 500（不伪装 4xx）。
     ?assertEqual(500, cs_http:status({missing_injection, default_workspace})),
-    ?assertEqual(500, cs_http:status(default_workspace_unresolved)).
+    ?assertEqual(500, cs_http:status(default_workspace_unresolved)),
+    %% CSD-BE-01（hosted-widget-contract S3/S4）：public_widget_id 反查面——
+    %% missing/disabled/revoked 三态统一 404 `installation_unavailable`（响应
+    %% 标签不区分三态，无存在性枚举）；路径绑定形状非法为 400。
+    ?assertEqual(404, cs_http:status(installation_unavailable)),
+    ?assertEqual(<<"installation_unavailable">>, cs_http:tag(installation_unavailable)),
+    ?assertEqual(400, cs_http:status(invalid_public_widget_id)).
+
+%% CSD-BE-01（hosted-widget-contract S3）：bootstrap 的 public_id 反查语义
+%% **锁死**——动作收 public_widget_id（required），org 来源仍是申报+证明的
+%% param 面；服务端派生键（workspace/origin/secret/contact 等）客户端提供
+%% 即 400（Base 语义保留，扩展到 /w/ 面的反查派生）。
+widget_bootstrap_public_id_and_server_derived_locked_test() ->
+    {ok, Entry} = cs_actions:widget(widget_bootstrap),
+    [Case] = maps:get(cases, Entry),
+    Params = maps:get(params, Case),
+    ?assert(lists:member({public_widget_id, binary, required}, Params)),
+    ?assertNot(lists:member({organization_id, tsid, required}, Params)),
+    Forbidden = maps:get(client_forbidden, Entry),
+    lists:foreach(
+        fun(Key) -> ?assert(lists:member(Key, Forbidden)) end,
+        [workspace_id, origin, secret, contact_id, subject_key]
+    ),
+    ?assertEqual(param, cs_actions:org_source(Entry)),
+    %% /w/ 面动作同表同纪律：public_widget_id 是唯一公开输入。
+    {ok, PubEntry} = cs_actions:widget(widget_public_frame_html),
+    [PubCase] = maps:get(cases, PubEntry),
+    ?assert(
+        lists:member({public_widget_id, binary, required}, maps:get(params, PubCase))
+    ).
+
+%% CSD-BE-01（hosted-widget-contract S6）：/w/* 形状登记进共享谓词
+%% （XFO 豁免 / CORS 面 / 免签直通三处消费的单一真源）；旧 frame 形状原样
+%% 保留，相似路径不放宽。
+csd_be01_public_frame_shape_single_source_test() ->
+    ?assert(imboy_route_shape:is_cs_widget_frame_path(<<"/w/wgt_pub_x">>)),
+    ?assert(imboy_route_shape:is_cs_widget_frame_path(<<"/api/v1/cs/widget/frame/810001">>)),
+    ?assertNot(imboy_route_shape:is_cs_widget_frame_path(<<"/w">>)),
+    ?assertNot(imboy_route_shape:is_cs_widget_frame_path(<<"/w/a/b">>)),
+    ?assertNot(imboy_route_shape:is_cs_widget_frame_path(<<"/www/wgt_pub_x">>)),
+    %% /w/ 免签直通面（与旧 frame 同一判定入口）。
+    ?assert(cs_http:is_credential_surface_path(<<"/w/wgt_pub_x">>)).
 
 %% CSB-03：widget 面凭证传输纪律——专用头合法、查询串即 400；Origin 归一化
 %% 复用 domain cs_widget（接口层只做归一与形状门，allowlist 匹配在 application）。
