@@ -187,6 +187,41 @@ sql(fetch_message_by_client) ->
         " WHERE organization_id = $1 AND workspace_id = $2 AND conversation_id = $3"
         "   AND client_msg_id = $4"
     >>;
+%% BE-PATCH-01（attachment-state-machine append_message）：事务内按 id 批量锁定
+%% 资产行（FOR UPDATE），绑定前校验在 canonical 事务的应用侧逐行裁决。
+%% 铁律 6：$1/$2 = organization_id/workspace_id。
+sql(lock_assets_by_ids) ->
+    <<
+        "SELECT a.id, a.conversation_id, a.message_id, a.status,"
+        " a.uploaded_by_user_id, a.retain_until"
+        "  FROM enterprise_asset a"
+        " WHERE a.organization_id = $1 AND a.workspace_id = $2"
+        "   AND a.id = ANY($3::bigint[])"
+        " ORDER BY a.id"
+        " FOR UPDATE"
+    >>;
+%% BE-PATCH-01：绑定（写 message_id）。只接 active+unbound；retain_until 取
+%% 「资产现有值与消息保留期的较大者」（只能后移；NULL 资产继承消息保留期——
+%% 迁移 118 触发器在 message_id 非空时要求 retain 非空且 >= 消息值，此处预满足）。
+sql(bind_asset_message) ->
+    <<
+        "UPDATE enterprise_asset a"
+        "   SET message_id = $4,"
+        "       retain_until = GREATEST(a.retain_until, to_timestamp($5::bigint)),"
+        "       version = a.version + 1, updated_at = now()"
+        " WHERE a.organization_id = $1 AND a.workspace_id = $2 AND a.id = $3"
+        "   AND a.status = 'active' AND a.message_id IS NULL"
+        " RETURNING a.id"
+    >>;
+%% BE-PATCH-01：读某消息已绑定的资产 id 集（重放奇偶校验：同一 client_msg_id +
+%% asset_ids 重放返回同一 message；其他重放 409）。
+sql(fetch_asset_ids_by_message) ->
+    <<
+        "SELECT a.id"
+        "  FROM enterprise_asset a"
+        " WHERE a.organization_id = $1 AND a.workspace_id = $2 AND a.message_id = $3"
+        " ORDER BY a.id"
+    >>;
 sql(fetch_policy_by_id) ->
     <<
         "SELECT id, organization_id, workspace_id, data_class, version, retention_days,"
@@ -341,6 +376,10 @@ statements() ->
         sql(fetch_message_by_client),
         sql(fetch_message),
         sql(list_messages),
+        %% BE-PATCH-01：消息-附件事务绑定（attachment-state-machine）。
+        sql(lock_assets_by_ids),
+        sql(bind_asset_message),
+        sql(fetch_asset_ids_by_message),
         sql(ack_delivery),
         sql(advance_assignment),
         sql(list_assignments),

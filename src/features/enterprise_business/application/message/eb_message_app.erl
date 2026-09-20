@@ -135,10 +135,10 @@ validate_sender_type(Params, ClientMsgId) ->
         {error, _} = Err ->
             Err;
         {ok, SenderType} ->
-            case is_non_empty_binary(maps:get(body, Params, undefined)) of
-                false ->
-                    {error, {invalid_body, maps:get(body, Params, undefined)}};
-                true ->
+            case validate_body(Params) of
+                {error, _} = Err ->
+                    Err;
+                ok ->
                     validate_sender_xor(Params, SenderType, ClientMsgId)
             end
     end.
@@ -156,6 +156,51 @@ validate_sender_xor(Params, SenderType, ClientMsgId) ->
         ok -> {ok, SenderType, ClientMsgId};
         {error, _} = Err -> Err
     end.
+
+%% BE-PATCH-01（attachment-state-machine append_message）：正文与附件的载荷
+%% 规则。正文非空恒可；正文为空仅当消息**带**有效 asset_ids（附件消息）——
+%% 失败不产生「文件名文本附件」（合同禁令）。asset_ids 归一：pos int 且去重；
+%% 空数组与缺省同义。
+validate_body(Params) ->
+    Body = maps:get(body, Params, undefined),
+    case validate_asset_ids(maps:get(asset_ids, Params, undefined)) of
+        {error, _} = Err ->
+            Err;
+        {ok, _AssetIds} ->
+            case is_non_empty_binary(Body) of
+                true ->
+                    ok;
+                false when Body =:= <<>>; Body =:= undefined ->
+                    HasAssets = asset_ids_not_empty(Params),
+                    case HasAssets of
+                        true -> ok;
+                        false -> {error, {invalid_body, Body}}
+                    end;
+                false ->
+                    {error, {invalid_body, Body}}
+            end
+    end.
+
+asset_ids_not_empty(Params) ->
+    case validate_asset_ids(maps:get(asset_ids, Params, undefined)) of
+        {ok, []} -> false;
+        {ok, _Ids} -> true;
+        {error, _} -> false
+    end.
+
+%% `asset_ids` 归一：undefined/[] → {ok, []}；列表内全部 pos int 且无重复 →
+%% 原样（canonical 事务据此锁定绑定）；其余 → {error, {invalid_asset_ids, V}}。
+validate_asset_ids(undefined) ->
+    {ok, []};
+validate_asset_ids(Ids) when is_list(Ids) ->
+    AllPos = lists:all(fun(Id) -> is_integer(Id) andalso Id > 0 end, Ids),
+    Unique = length(Ids) =:= length(lists:usort(Ids)),
+    case AllPos andalso Unique of
+        true -> {ok, Ids};
+        false -> {error, {invalid_asset_ids, Ids}}
+    end;
+validate_asset_ids(Other) ->
+    {error, {invalid_asset_ids, Other}}.
 
 %% 只识别两个受控值；其余原样回传（不做 binary_to_atom，避免用外部输入造原子）。
 sender_type_atom(contact) ->
@@ -193,15 +238,28 @@ append_tx(OrgId, WorkspaceId, SenderType, ClientMsgId, AcceptedAt, Params) ->
 %% 时 resolve 返回 undefined，canonical tx 的 seal 照旧 `{error, missing_key}`
 %% fail-closed（500 面），不降级、不造默认密钥。
 tx_params(Params, SenderType, ClientMsgId, AcceptedAt) ->
-    Base = #{
+    %% BE-PATCH-01：附件消息允许空正文（canonical seal 接受空二进制）；此处
+    %% 把 undefined 归一为 <<>>，缺键不再下探。
+    Body =
+        case maps:get(body, Params, undefined) of
+            undefined -> <<>>;
+            B when is_binary(B) -> B
+        end,
+    Base0 = #{
         conversation_id => maps:get(conversation_id, Params, undefined),
         client_msg_id => ClientMsgId,
-        body => maps:get(body, Params, undefined),
+        body => Body,
         sender_type => SenderType,
         key_ref => eb_env_keyring:resolve_key_ref(maps:get(key_ref, Params, undefined)),
         accepted_at => AcceptedAt,
         enforce_consent => true
     },
+    Base =
+        case validate_asset_ids(maps:get(asset_ids, Params, undefined)) of
+            {ok, [] = Empty} -> Base0#{asset_ids => Empty};
+            {ok, Ids} -> Base0#{asset_ids => Ids};
+            {error, _} -> Base0
+        end,
     WithAudit =
         case maps:get(audit_action, Params, undefined) of
             undefined -> Base;

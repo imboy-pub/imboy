@@ -211,13 +211,21 @@ persist(Conn, OrgId, WorkspaceId, Message, _Snapshot, Params, AcceptedAt, Sealed
         {ok, Stored} ->
             case maps:get(replayed, Stored, false) of
                 true ->
-                    %% 重放：不追加第二条接受审计（§2.1 #18）
-                    {ok, #{
-                        message => Stored,
-                        audit_id => undefined,
-                        replayed => true,
-                        sealed => Sealed
-                    }};
+                    %% 重放：不追加第二条接受审计（§2.1 #18）。asset_ids 奇偶
+                    %% 校验（BE-PATCH-01，attachment-state-machine 幂等口径）：
+                    %% 同一 client_msg_id + 同一 asset_ids 重放 = 同一 message；
+                    %% 其他重放 = 409 conflict。
+                    case asset_replay_gate(Conn, OrgId, WorkspaceId, Stored, Params) of
+                        ok ->
+                            {ok, #{
+                                message => Stored,
+                                audit_id => undefined,
+                                replayed => true,
+                                sealed => Sealed
+                            }};
+                        {error, _} = Err ->
+                            Err
+                    end;
                 false ->
                     append_accept_audit(
                         Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sealed
@@ -227,7 +235,21 @@ persist(Conn, OrgId, WorkspaceId, Message, _Snapshot, Params, AcceptedAt, Sealed
             Err
     end.
 
+%% ===================================================================
+%% 消息-附件事务绑定（BE-PATCH-01，attachment-state-machine append_message）
+%% ===================================================================
+
+%% 绑定发生在接受审计**之前**、同一事务内：任一资产校验/绑定失败 → 整体回滚
+%% （不产生半提交、不产生「无附件的文本消息」假成功）。
 append_accept_audit(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sealed) ->
+    case bind_assets(Conn, OrgId, WorkspaceId, Stored, Params) of
+        ok ->
+            do_append_accept_audit(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sealed);
+        {error, _} = Err ->
+            Err
+    end.
+
+do_append_accept_audit(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sealed) ->
     Action = maps:get(audit_action, Params, ?DEFAULT_AUDIT_ACTION),
     Event = #{
         id => eb_tsid:new_id(enterprise_audit),
@@ -288,6 +310,116 @@ audit_detail(_OrgId, WorkspaceId, Stored, AcceptedAt, Sealed) ->
 
 %% ===================================================================
 %% sender / seal
+%% ===================================================================
+
+%% 请求的 asset_ids（已由 eb_message_app 归一校验：pos int 且去重；缺省 = 空集）。
+requested_asset_ids(Params) ->
+    case maps:get(asset_ids, Params, undefined) of
+        Ids when is_list(Ids) -> Ids;
+        _Other -> []
+    end.
+
+%% 重放奇偶校验：请求 asset_ids 与该消息已绑定资产集合逐字相等 ⇒ 同一 message
+%% 重放（幂等成功）；不等 ⇒ 其他重放（409 conflict）。
+asset_replay_gate(Conn, OrgId, WorkspaceId, Stored, Params) ->
+    case eb_pg_store:message_asset_ids_in(Conn, OrgId, WorkspaceId, maps:get(id, Stored)) of
+        {error, _} = Err ->
+            Err;
+        {ok, BoundIds} ->
+            case lists:sort(BoundIds) =:= lists:sort(requested_asset_ids(Params)) of
+                true -> ok;
+                false -> {error, conflict}
+            end
+    end.
+
+%% 绑定主流程：FOR UPDATE 锁行 → 逐行校验 → 逐条写 message_id。任一步失败
+%% 即返回错误，由外层 with_tx 整体回滚（attachment-state-machine：
+%% 「单数据库事务内锁定 active+unbound asset … 任一步失败全部回滚」）。
+bind_assets(Conn, OrgId, WorkspaceId, Stored, Params) ->
+    AssetIds = requested_asset_ids(Params),
+    case AssetIds =:= [] of
+        true ->
+            ok;
+        false ->
+            RetainUntilSec = maps:get(retain_until, Stored, undefined),
+            case is_integer(RetainUntilSec) of
+                false ->
+                    %% 消息无保留期快照 ⇒ 附件无从继承（迁移 118 触发器同样拒绝）：
+                    %% fail-closed，不默认任何值。
+                    {error, {invalid_argument, asset_retain_until}};
+                true ->
+                    ConversationId = maps:get(conversation_id, Stored),
+                    case eb_pg_store:lock_assets_in(Conn, OrgId, WorkspaceId, AssetIds) of
+                        {error, _} = Err ->
+                            Err;
+                        {ok, Rows} ->
+                            bind_validated(
+                                Conn,
+                                OrgId,
+                                WorkspaceId,
+                                Stored,
+                                AssetIds,
+                                Rows,
+                                ConversationId,
+                                RetainUntilSec
+                            )
+                    end
+            end
+    end.
+
+%% 存在性/作用域不泄露：缺行（含跨租户/不存在）与跨会话同为 not_found。
+bind_validated(Conn, OrgId, WorkspaceId, Stored, AssetIds, Rows, ConversationId, RetainUntilSec) ->
+    LockedIds = [maps:get(id, Row) || Row <- Rows],
+    Missing = [Id || Id <- AssetIds, not lists:member(Id, LockedIds)],
+    case Missing of
+        [_ | _] ->
+            {error, not_found};
+        [] ->
+            case lists:all(fun(Row) -> bindable(Row, Stored, ConversationId) end, Rows) of
+                false ->
+                    {error, not_found};
+                true ->
+                    bind_each(
+                        Conn, OrgId, WorkspaceId, AssetIds, maps:get(id, Stored), RetainUntilSec
+                    )
+            end
+    end.
+
+%% 逐行可绑校验（attachment-state-machine：Org/Workspace 由语句作用域保证；
+%% 这里裁决 unbound / 会话一致 / 上传人主体一致；retain_until 由 SQL
+%% GREATEST + 迁移 118 触发器裁决）。
+bindable(Row, Stored, ConversationId) ->
+    maps:get(status, Row) =:= active andalso
+        maps:get(message_id, Row, undefined) =:= undefined andalso
+        maps:get(conversation_id, Row, undefined) =:= ConversationId andalso
+        uploader_matches(Row, Stored).
+
+%% 上传人主体一致：访客消息只绑「contact 上传」（uploaded_by_user_id 为空，
+%% 访客凭证不落 user 列——上传人在上传链路由会话归属门裁决）；成员消息只绑
+%% 本人上传的资产。不符 ⇒ not_found（不区分「不存在」与「不属于你」）。
+uploader_matches(Row, Stored) ->
+    case maps:get(sender_contact_id, Stored, undefined) of
+        ContactId when is_integer(ContactId) ->
+            maps:get(uploaded_by_user_id, Row, undefined) =:= undefined;
+        _Other ->
+            maps:get(uploaded_by_user_id, Row, undefined) =:=
+                maps:get(actor_user_id, Stored, undefined)
+    end.
+
+bind_each(_Conn, _OrgId, _WorkspaceId, [], _MessageId, _RetainUntilSec) ->
+    ok;
+bind_each(Conn, OrgId, WorkspaceId, [AssetId | Rest], MessageId, RetainUntilSec) ->
+    case
+        eb_pg_store:bind_asset_message_in(
+            Conn, OrgId, WorkspaceId, AssetId, MessageId, RetainUntilSec
+        )
+    of
+        ok -> bind_each(Conn, OrgId, WorkspaceId, Rest, MessageId, RetainUntilSec);
+        {error, _} = Err -> Err
+    end.
+
+%% ===================================================================
+%% sender / seal（候选构造与加密封装）
 %% ===================================================================
 
 %% 构造 domain 判定所需的候选 map：显式两个 sender 列，绝不使用多态 sender_id。

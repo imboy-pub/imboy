@@ -56,6 +56,11 @@
     append_message_in/4,
     fetch_conversation_in/4,
     latest_policy_in/4,
+    %% BE-PATCH-01：消息-附件事务绑定（attachment-state-machine append_message）。
+    %% 只在 canonical 事务内使用（调用方事务回滚即整体回滚，无独立提交路径）。
+    lock_assets_in/4,
+    bind_asset_message_in/6,
+    message_asset_ids_in/4,
     %% EB-03R：契约面补齐后的新增能力（实现下沉到各 eb_pg_*_ext 模块，本模块只做
     %% Port 实现的唯一入口——`eb_infra_ports:resolve(store)` 返回的模块必须实现
     %% `eb_store_port` 的全部 callback）。
@@ -333,6 +338,94 @@ fetch_message(OrgId, WorkspaceId, MessageId) ->
             eb_pg_store_sql:message_fields()
         )
     end).
+
+%% ===================================================================
+%% BE-PATCH-01：消息-附件事务绑定（canonical 事务内专用）
+%% ===================================================================
+
+%% 资产锁定行的归一化规格（与 SQL 列序逐字对应；retain_until 归一 Unix 秒）。
+-define(ASSET_LOCK_FIELDS, [
+    {id, <<"id">>, int},
+    {conversation_id, <<"conversation_id">>, int},
+    {message_id, <<"message_id">>, int},
+    {status, <<"status">>, atom},
+    {uploaded_by_user_id, <<"uploaded_by_user_id">>, int},
+    {retain_until, <<"retain_until">>, ts}
+]).
+
+%% @doc 在调用方事务内按 id 批量锁定资产行（FOR UPDATE），供 canonical 事务做
+%% 绑定前逐行校验（attachment-state-machine：锁定 active+unbound asset）。
+%% 不在列表内的 id 不返回——缺失（含跨租户/不存在）由调用方按 not_found 裁决。
+-spec lock_assets_in(term(), integer(), integer(), [integer()]) ->
+    {ok, [map()]} | {error, term()}.
+lock_assets_in(Conn, OrgId, WorkspaceId, AssetIds) when is_list(AssetIds) ->
+    case tenant_error(OrgId, WorkspaceId) of
+        ok ->
+            case
+                elib_pg:query(Conn, eb_pg_store_sql:sql(lock_assets_by_ids), [
+                    OrgId, WorkspaceId, AssetIds
+                ])
+            of
+                {ok, Rows} ->
+                    {ok, [eb_pg_store_sql:normalize(Row, ?ASSET_LOCK_FIELDS) || Row <- Rows]};
+                {error, Reason} ->
+                    {error, eb_pg_store_sql:normalize_error(Reason)}
+            end;
+        {error, _} = Err ->
+            Err
+    end;
+lock_assets_in(_Conn, _OrgId, _WorkspaceId, _AssetIds) ->
+    {error, invalid_asset_ids}.
+
+%% @doc 在调用方事务内把一条 active+unbound 资产绑定到消息（写 message_id）。
+%% retain_until 取「资产现值与消息保留期的较大者」（只能后移；NULL 继承消息值
+%% ——迁移 118 触发器要求 message_id 非空时 retain 非空且 >= 消息值）。
+%% 行不可绑（非 active / 已绑 / 跨租户）= 0 行 → `{error, not_bound}`。
+-spec bind_asset_message_in(term(), integer(), integer(), integer(), integer(), integer()) ->
+    ok | {error, term()}.
+bind_asset_message_in(Conn, OrgId, WorkspaceId, AssetId, MessageId, RetainUntilSec) when
+    is_integer(AssetId), is_integer(MessageId), is_integer(RetainUntilSec)
+->
+    case tenant_error(OrgId, WorkspaceId) of
+        ok ->
+            case
+                elib_pg:execute(Conn, eb_pg_store_sql:sql(bind_asset_message), [
+                    OrgId, WorkspaceId, AssetId, MessageId, RetainUntilSec
+                ])
+            of
+                %% 0 行 = 行不可绑（非 active / 已绑 / 跨租户 / FOR UPDATE 后被并发改写）。
+                {ok, 0, _Rows} -> {error, not_bound};
+                {ok, 0} -> {error, not_bound};
+                {ok, 1, _Rows} -> ok;
+                {ok, 1} -> ok;
+                {error, Reason} -> {error, eb_pg_store_sql:normalize_error(Reason)}
+            end;
+        {error, _} = Err ->
+            Err
+    end;
+bind_asset_message_in(_Conn, _OrgId, _WorkspaceId, _AssetId, _MessageId, _Retain) ->
+    {error, {invalid_argument, bind_asset_message}}.
+
+%% @doc 读某消息已绑定的资产 id 集（升序），供 canonical 事务的重放奇偶校验
+%% （同一 client_msg_id + asset_ids 重放返回同一 message；其他重放 409）。
+-spec message_asset_ids_in(term(), integer(), integer(), integer()) ->
+    {ok, [integer()]} | {error, term()}.
+message_asset_ids_in(Conn, OrgId, WorkspaceId, MessageId) ->
+    case tenant_error(OrgId, WorkspaceId) of
+        ok ->
+            case
+                elib_pg:query(Conn, eb_pg_store_sql:sql(fetch_asset_ids_by_message), [
+                    OrgId, WorkspaceId, MessageId
+                ])
+            of
+                {ok, Rows} ->
+                    {ok, [maps:get(<<"id">>, Row) || Row <- Rows]};
+                {error, Reason} ->
+                    {error, eb_pg_store_sql:normalize_error(Reason)}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
 
 -spec list_messages(integer(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
 list_messages(OrgId, WorkspaceId, ConversationId) ->

@@ -244,22 +244,74 @@ history_after(_OrgId, _Params) ->
 %% @doc 访客入站消息：sender 恒为令牌 contact（服务端派生），唯一写入路径是
 %% `cs_session_app:append_session_message` → `enterprise_business_facade`。
 %% client_msg_id 幂等口径由 enterprise 侧冻结语义承担。
+%%
+%% BE-PATCH-01（attachment-state-machine append_message）：`asset_ids` 为 TSID
+%% string 数组（传输形态），此处投影为 pos int 交企业面 canonical 事务做绑定
+%% （单事务锁定 active+unbound asset + 写 message_id，widget 不复制绑定逻辑）。
+%% 投影失败 = 形状取值不成立（{invalid_param, asset_ids}，400 面）。
 -spec visitor_message(integer(), map()) -> {ok, map()} | {error, term()}.
 visitor_message(OrgId, Params) when is_map(Params) ->
+    case project_asset_ids(maps:get(asset_ids, Params, undefined)) of
+        {error, _} = Err ->
+            Err;
+        {ok, AssetIds} ->
+            visitor_message_scoped(OrgId, Params, AssetIds)
+    end;
+visitor_message(_OrgId, _Params) ->
+    {error, {invalid_argument, visitor_message}}.
+
+visitor_message_scoped(OrgId, Params, AssetIds) ->
     case visitor_session_scope(OrgId, Params) of
         {error, _} = Err ->
             Err;
         {ok, #{workspace_id := WorkspaceId, contact_id := ContactId}} ->
-            Clean = maps:with(
-                [store, id, key_ref, canonical_tx, accepted_at, session_id, client_msg_id, body],
+            Clean0 = maps:with(
+                [
+                    store,
+                    id,
+                    key_ref,
+                    canonical_tx,
+                    accepted_at,
+                    session_id,
+                    client_msg_id,
+                    body,
+                    asset_ids
+                ],
                 Params
             ),
+            Clean =
+                case AssetIds of
+                    [] -> Clean0;
+                    _ -> Clean0#{asset_ids => AssetIds}
+                end,
             cs_widget_support:session_append_message(OrgId, Clean#{
                 workspace_id => WorkspaceId, contact_id => ContactId
             })
-    end;
-visitor_message(_OrgId, _Params) ->
-    {error, {invalid_argument, visitor_message}}.
+    end.
+
+%% TSID string 数组 → pos int 数组（传输投影；elib_tsid 是 core，application
+%% 可依赖）。元素十进制字符串或 number 兼容（与 cs_http:tsid 同口径）。
+project_asset_ids(undefined) ->
+    {ok, []};
+project_asset_ids(Ids) when is_list(Ids) ->
+    project_asset_ids(Ids, []);
+project_asset_ids(_Other) ->
+    {error, {invalid_param, asset_ids}}.
+
+project_asset_ids([], Acc) ->
+    {ok, lists:reverse(Acc)};
+project_asset_ids([Raw | Rest], Acc) ->
+    case tsid_value(Raw) of
+        {ok, Id} when Id > 0 -> project_asset_ids(Rest, [Id | Acc]);
+        _ -> {error, {invalid_param, asset_ids}}
+    end.
+
+tsid_value(Raw) when is_integer(Raw), Raw > 0 ->
+    {ok, Raw};
+tsid_value(Raw) when is_binary(Raw) ->
+    elib_tsid:from_binary(Raw);
+tsid_value(_Raw) ->
+    error.
 
 %% @doc 访客评分：仅 closed、1..5、不可重复（状态机由 `cs_session` 域真源
 %% 与 store CAS 承担，本用例只做令牌作用域与会话归属裁决）。

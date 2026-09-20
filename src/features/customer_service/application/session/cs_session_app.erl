@@ -647,7 +647,9 @@ facade_message_params(Session, SenderType, WorkspaceId, Params) ->
         conversation_id => maps:get(conversation_id, Session),
         client_msg_id => maps:get(client_msg_id, Params),
         sender_type => sender_type_bin(SenderType),
-        body => maps:get(body, Params),
+        %% BE-PATCH-01：body 可选（widget 附件消息 = 空正文 + asset_ids）——
+        %% 缺键归一为空二进制交给企业 canonical（载荷规则在企业侧裁决）。
+        body => maps:get(body, Params, <<>>),
         %% F6（RULING-2026-09-15 §七）：key_ref 不再是调用方必填——HTTP 面已删除
         %% 该参数（显式提交即 422）。这里只透传**显式注入**（测试/内部合同），
         %% 缺省为 undefined；主密钥的**装配**统一在 enterprise 侧 application 层
@@ -666,7 +668,8 @@ facade_message_params(Session, SenderType, WorkspaceId, Params) ->
                 Base#{contact_id => maps:get(contact_id, Session)}
         end,
     %% 注入面与可选键原样透传（facade/application 侧按需消费）。
-    PassKeys = [canonical_tx, store, clock, id, notify, accepted_at, audit_action],
+    %% BE-PATCH-01：asset_ids（已投影 pos int）随载荷进企业 append_message。
+    PassKeys = [canonical_tx, store, clock, id, notify, accepted_at, audit_action, asset_ids],
     maps:merge(WithSender, passthrough(Params, PassKeys)).
 
 passthrough(Params, Keys) ->

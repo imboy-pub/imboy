@@ -578,11 +578,19 @@ table(widget) ->
                             {limit, int, optional}
                         ],
                         [{id, session_id}]},
+                    %% BE-PATCH-01（attachment-state-machine append_message）：
+                    %% `asset_ids` = TSID string 数组（list 传输形态沿用
+                    %% allowed_origins 先例；TSID 投影在应用桥接层做——空正文 +
+                    %% asset_ids 是合法附件消息，body 由此改 optional，纯文本
+                    %% 消息仍要求非空 body 由应用层裁决）。幂等 = 同一
+                    %% client_msg_id + asset_ids 重放返回同一 message（企业面
+                    %% canonical 事务冻结语义，widget 只桥接）。
                     {<<"POST">>, widget_visitor_message,
                         [
                             {installation_id, tsid, required},
-                            {body, binary, required},
-                            {client_msg_id, binary, required}
+                            {body, binary, optional},
+                            {client_msg_id, binary, required},
+                            {asset_ids, list, optional}
                         ],
                         [{id, session_id}]}
                 ],
@@ -649,9 +657,9 @@ table(widget) ->
         {widget_asset_content,
             widget_entry(
                 [
-                    {<<"GET">>, widget_asset_content,
-                        [{installation_id, tsid, required}],
-                        [{id, session_id}, {asset, asset_id}]}
+                    {<<"GET">>, widget_asset_content, [{installation_id, tsid, required}], [
+                        {id, session_id}, {asset, asset_id}
+                    ]}
                 ],
                 widget_auth(),
                 widget_server_derived(),
@@ -677,7 +685,7 @@ table(widget) ->
 %% 平台运营面（§5.3）：每条路径显式带 :org_id + workspace_id 必填；
 %% 与租户面共用同一 application（CS-02-A02：不复制业务逻辑）。
 %% ===================================================================
-    table(platform) ->
+table(platform) ->
     [
         {p_seats,
             platform_entry(

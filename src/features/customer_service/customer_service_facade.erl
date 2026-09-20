@@ -503,8 +503,7 @@ widget_visitor_message(
         installation_id := InstallationId,
         secret := Secret,
         session_id := SessionId,
-        client_msg_id := ClientMsgId,
-        body := Body
+        client_msg_id := ClientMsgId
     } = Params
 ) when
     is_integer(OrgId),
@@ -512,12 +511,18 @@ widget_visitor_message(
     is_binary(Secret),
     is_integer(SessionId),
     is_binary(ClientMsgId),
-    is_binary(Body),
     is_map(Params)
 ->
-    case cs_widget_env:merge_visitor(OrgId, Params) of
-        {ok, Merged} -> cs_widget_session_app:visitor_message(OrgId, Merged);
-        {error, _} = Err -> Err
+    %% BE-PATCH-01：body 可选（附件消息 = 空正文 + asset_ids，载荷规则由应用层
+    %% 与企业 canonical 侧裁决）；这里只挡形状错（给出但非 binary）。
+    case maps:get(body, Params, undefined) of
+        Body when is_binary(Body); Body =:= undefined ->
+            case cs_widget_env:merge_visitor(OrgId, Params) of
+                {ok, Merged} -> cs_widget_session_app:visitor_message(OrgId, Merged);
+                {error, _} = Err -> Err
+            end;
+        _Other ->
+            {error, {invalid_argument, widget_visitor_message}}
     end;
 widget_visitor_message(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_visitor_message}};
@@ -737,7 +742,11 @@ provision_seat(
     OrgId,
     #{workspace_id := WorkspaceId, user_id := UserId, adm_user_id := AdmId} = Params
 ) when
-    is_integer(OrgId), is_integer(WorkspaceId), is_integer(UserId), is_integer(AdmId), is_map(Params)
+    is_integer(OrgId),
+    is_integer(WorkspaceId),
+    is_integer(UserId),
+    is_integer(AdmId),
+    is_map(Params)
 ->
     cs_seat_app:provision_seat(OrgId, Params);
 provision_seat(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
