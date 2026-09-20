@@ -72,6 +72,11 @@ widget_inject() ->
 sse_inject() ->
     #{auth_facts => cs_fake_facts, sse_poll_ms => 30, sse_max_ms => 300, sse_retry_ms => 3000}.
 
+%% DF-10 回归专用：sse_max_ms 拉长到 60s——修复前的静默保持不会在读窗口内
+%% 自然 fin，与修复后的「轮询即关流」在时间轴上可区分。
+sse_inject_fatal() ->
+    #{auth_facts => cs_fake_facts, sse_poll_ms => 30, sse_max_ms => 60000, sse_retry_ms => 3000}.
+
 bootstrap_body() ->
     #{
         <<"organization_id">> => ?ORG,
@@ -745,6 +750,38 @@ a02_sse_tests(_) ->
                 ?assert(string:find(Raw, <<"df5-m1">>) =/= nomatch)
             end)
         end},
+
+        %% DF-10 回归：流内轮询命中凭证终态失效（token_revoked 族）必须立即
+        %% fin 关流，而非静默保持至 sse_max_ms。修复前 stream_step 吞掉一切
+        %% 轮询错误，已吊销访客的既有流保持 open——撤权对访客不可感知（任务
+        %% 书 A04「既有 SSE 流立即降级」不满足）。判定口径：sse_max_ms 拉长
+        %% 到 60s、读窗口 2s——修复后首轮 poll（30ms）关流 → EOF 提前返回；
+        %% 修复前静默保持 → 读满 2s 超时返回（elapsed 越窗即未修复）。
+        {"DF-10 poll hitting terminal revocation closes the stream instead of silent keep-open",
+            fun() ->
+                meck:expect(customer_service_facade, widget_list_sessions, fun(_O, _P) ->
+                    {ok, [#{id => ?SESSION, status => queued}]}
+                end),
+                meck:expect(customer_service_facade, widget_history_after, fun(_O, _P) ->
+                    {error, token_revoked}
+                end),
+                ?S:with_listener(widget, widget_session_events, sse_inject_fatal(), fun(Port) ->
+                    T0 = erlang:monotonic_time(millisecond),
+                    Raw = ?S:stream_request(
+                        Port,
+                        <<"GET">>,
+                        events_path(),
+                        <<>>,
+                        #{<<"x-cs-visit-token">> => ?TOKEN},
+                        2000
+                    ),
+                    Elapsed = erlang:monotonic_time(millisecond) - T0,
+                    %% 流开过（关流前初始 state 帧已发出）。
+                    ?assert(string:find(Raw, <<"event: state">>) =/= nomatch),
+                    %% EOF 提前返回：远小于读窗口（静默保持时会读满 2000ms）。
+                    ?assert(Elapsed < 1500)
+                end)
+            end},
 
         {"A02 idle stream emits keep-alive comment lines", fun() ->
             meck:expect(customer_service_facade, widget_list_sessions, fun(_O, _P) ->
