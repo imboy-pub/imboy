@@ -121,3 +121,7 @@ elvis-output.txt
 docs/plans
 docs/planning
 tmp
+
+# REST CT runner runtime artifacts (untracked by design)
+/.ct/
+/config/sys.config
