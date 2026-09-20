@@ -83,7 +83,7 @@ login_001_valid_credentials(Config) ->
         #{<<"http_status">> => 200, <<"code">> => 0},
         fun(Resp) ->
             common_assertions(Resp),
-            rest_assert:json_contains(#{<<"code">> => 0, <<"msg">> => <<"success">>}, Resp),
+            rest_assert:json_contains(#{<<"code">> => 0, <<"msg">> => <<"success.">>}, Resp),
             rest_assert:json_contains(#{<<"account">> => maps:get(account, User)}, Resp),
             rest_assert:predicate([<<"payload">>, <<"account">>], fun nonempty_binary/1, Resp),
             rest_assert:predicate(
