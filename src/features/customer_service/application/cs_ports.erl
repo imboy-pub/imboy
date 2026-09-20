@@ -78,6 +78,9 @@ contracts() ->
             {list_dispatchable_seats, 1},
             {list_dispatchable_seats_page, 3},
             {set_seat_enabled, 4},
+            %% BE-S01a：坐席上下文聚合 / 转接目标
+            {list_seat_org_contexts, 1},
+            {list_transfer_targets_page, 4},
             %% session
             {insert_session, 3},
             {fetch_session, 3},
