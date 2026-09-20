@@ -436,7 +436,9 @@ done
 cleanup
 trap - EXIT INT TERM
 POST_DBS=$(scratch_databases)
-if ! diff <(echo "$PRE_DBS") <(echo "$POST_DBS") >/dev/null; then
+if [[ "${REST_KEEP_DB:-0}" == "1" ]]; then
+  : # operator-owned diagnostic residue: the kept scratch DB is intentional
+elif ! diff <(echo "$PRE_DBS") <(echo "$POST_DBS") >/dev/null; then
   echo "run_rest_api_tests: residue detected (imboy_rest_% set changed)" >&2
   RUN_STATUS=3
 fi
