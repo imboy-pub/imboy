@@ -6,8 +6,10 @@
 %%% 领域纯判定在 `cs_widget`。
 %%%
 %%% 安全合同（全部服务端派生，禁止信任浏览器申报值）：
-%%%   * Org 解析后的 installation 只在本 Org 内可见（store 同语句裁决）；
-%%%     status 非 active（revoked）即拒绝新 bootstrap；
+%%%   * bootstrap 的 Org 由 public_widget_id 全局反查的命中行权威派生
+%%%     （CSD-BE-01R，hosted-widget-contract S3 零申报面）；status 非 active
+%%%     （disabled/revoked）与不存在一律 `installation_unavailable`（404 三态
+%%%     归一，无存在性枚举）；
 %%%   * Origin 由 domain `cs_widget:origin_allowed/2` 做 scheme+host+port 归一
 %%%     后精确匹配 allowlist——无通融、无子域前缀；
 %%%   * 匿名 subject 只以 HMAC 形态存在（`cs_widget:subject_hmac/3`，密钥由
@@ -130,16 +132,32 @@ installation_origins(WorkspaceId, DisplayName, ConsentVersion, Branding, Params)
                 {error, _} = Err2 ->
                     Err2;
                 {ok, InstallationId} ->
-                    {ok, WorkspaceId, #{
-                        id => InstallationId,
-                        public_widget_id => new_public_widget_id(Params),
-                        display_name => DisplayName,
-                        allowed_origins => AllowedOrigins,
-                        branding => cs_widget:branding_view(Branding),
-                        consent_version => ConsentVersion,
-                        created_by_user_id => maps:get(actor_user_id, Params, undefined)
-                    }}
+                    installation_public_id(
+                        WorkspaceId,
+                        DisplayName,
+                        ConsentVersion,
+                        Branding,
+                        AllowedOrigins,
+                        InstallationId,
+                        Params
+                    )
             end
+    end.
+
+installation_public_id(Ws, Name, Consent, Branding, Origins, InstallationId, Params) ->
+    case new_public_widget_id(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, PublicId} ->
+            {ok, Ws, #{
+                id => InstallationId,
+                public_widget_id => PublicId,
+                display_name => Name,
+                allowed_origins => Origins,
+                branding => cs_widget:branding_view(Branding),
+                consent_version => Consent,
+                created_by_user_id => maps:get(actor_user_id, Params, undefined)
+            }}
     end.
 
 insert_installation(OrgId, WorkspaceId, Draft, Params) ->
@@ -239,10 +257,21 @@ normalize_origins_in([Origin | Rest], Acc) ->
         {error, _} = Err -> Err
     end.
 
+%% CSD-BE-01R（R4）：公开 Widget ID 的生成口径统一为 **TSID 十进制 string**
+%% （FE loader `isValidPublicWidgetId` 只接受 1..26 位十进制；与仓内 TSID
+%% 纪律一致）。注入 fun/0 恒优先（测试/内部合同不变）；缺省走 id 端口按
+%% 独立命名域生成。旧 `wgt_pub_<hex>` 生成口径废止；存量行不做迁移——
+%% 形状门 `valid_public_widget_id/1` 保持 [A-Za-z0-9_-] 宽口径，存量
+%% `wgt_pub_*` 行照常可服务（bootstrap / /w/ 反查不受影响，零 DDL）。
 new_public_widget_id(Params) ->
     case maps:get(new_public_widget_id, Params, undefined) of
-        Fun when is_function(Fun, 0) -> Fun();
-        _ -> <<"wgt_pub_", (binary:encode_hex(crypto:strong_rand_bytes(16)))/binary>>
+        Fun when is_function(Fun, 0) -> {ok, Fun()};
+        _ ->
+            case cs_widget_support:new_id(cs_widget_installation_public, Params) of
+                {ok, Id} when is_integer(Id), Id > 0 -> {ok, integer_to_binary(Id)};
+                {error, _} = Err -> Err;
+                _ -> {error, {id_generation_failed, cs_widget_installation_public}}
+            end
     end.
 
 %% ===================================================================
@@ -340,9 +369,10 @@ public_frame_installation_by_public_id(#{public_widget_id := PublicId} = Params)
 public_frame_installation_by_public_id(_Params) ->
     {error, {invalid_argument, public_frame_installation_by_public_id}}.
 
-%% public_widget_id 形状门（与签发口径 `wgt_pub_<hex>` 同族）：非空、长度上限
-%% 128、字符集 [A-Za-z0-9_-]——路径绑定不可信，控制字符/引号/空白在进 store
-%% 前即拒（400 面，无枚举——形状错误与不存在同不着行）。
+%% public_widget_id 形状门（存量兼容宽口径：TSID 十进制与历史 `wgt_pub_*`
+%% 均可命中）：非空、长度上限 128、字符集 [A-Za-z0-9_-]——路径绑定不可信，
+%% 控制字符/引号/空白在进 store 前即拒（400 面，无枚举——形状错误与不存在
+%% 同不着行）。
 valid_public_widget_id(PublicId) when is_binary(PublicId) ->
     byte_size(PublicId) > 0 andalso
         byte_size(PublicId) =< 128 andalso
@@ -361,12 +391,23 @@ public_id_char(_) -> false.
 %% bootstrap（安装校验 → Origin 精确匹配 → 匿名 contact 幂等映射 → 签发令牌）
 %% ===================================================================
 
-%% @doc Widget 引导。Params：
+%% @doc Widget 引导（CSD-BE-01R，hosted-widget-contract S3：浏览器零申报面）。
+%% Params：
 %%   public_widget_id / origin / subject_id（浏览器随机 ID）/ at / subject_key
 %%   （服务端 HMAC 材料，注入）必填；secret（已持有的 bootstrap 令牌，重放
 %%   复用）、default_workspace（fun/1 服务端事实，contact 落位用）、
 %%   bootstrap_token_ttl、new_secret（fun/0）、digest（fun/1）、store / id
 %%   可选；`key_ref` / `eb_*` 透传给 enterprise facade（测试/内部合同）。
+%%
+%% OrgId 形参是 facade 调用点表 `cs_facade_call:call/3` 的同构占位（传 0，
+%% public_frame 同款先例）：租户归属由 public_widget_id **全局**反查的命中行
+%% 权威派生——浏览器不申报 org，动作表已把 organization_id 列为客户端提供
+%% 即 400 的服务端派生键。
+%%
+%% 统一错误语义（S3：不存在性不可枚举，三态不区分）：
+%%   * public_widget_id 不存在 / installation disabled / revoked(kill switch)
+%%     → `{error, installation_unavailable}`（HTTP 404，handler 直映）；
+%%   * origin 不在 allowlist → `{error, origin_not_allowed}`（403）。
 %%
 %% 重放语义（CSB-02-A01）：
 %%   * 携带未过期且 subject 逐字相符的令牌 → 原令牌复用（touch 心跳），
@@ -375,21 +416,23 @@ public_id_char(_) -> false.
 %%     contact），contact_exists 复用既有行；
 %%   * 携带已吊销令牌（kill switch）或 subject 不符的令牌 → 显式拒绝。
 -spec bootstrap(integer(), map()) -> {ok, map()} | {error, term()}.
-bootstrap(OrgId, Params) when is_map(Params) ->
-    case bootstrap_args(OrgId, Params) of
+bootstrap(_OrgId, Params) when is_map(Params) ->
+    case bootstrap_args(Params) of
         {error, _} = Err ->
             Err;
         {ok, Installation} ->
-            bootstrap_origin(OrgId, Installation, Params)
+            %% Org 是命中行的派生输出（不再是客户端申报值）。
+            bootstrap_origin(
+                maps:get(organization_id, Installation), Installation, Params
+            )
     end;
 bootstrap(_OrgId, _Params) ->
     {error, {invalid_argument, bootstrap}}.
 
-bootstrap_args(OrgId, Params) ->
+bootstrap_args(Params) ->
     PublicId = maps:get(public_widget_id, Params, undefined),
     ShapeOk =
-        cs_widget_support:pos_int(OrgId) andalso
-            cs_widget_support:non_empty_binary(PublicId) andalso
+        cs_widget_support:non_empty_binary(PublicId) andalso
             cs_widget_support:non_empty_binary(maps:get(subject_id, Params, undefined)) andalso
             cs_widget_support:non_empty_binary(maps:get(origin, Params, undefined)) andalso
             cs_widget_support:non_empty_binary(maps:get(subject_key, Params, undefined)) andalso
@@ -398,19 +441,28 @@ bootstrap_args(OrgId, Params) ->
         false ->
             {error, {invalid_argument, bootstrap}};
         true ->
-            fetch_installation_by_public_id(Params, OrgId, PublicId)
+            fetch_installation_by_public_id_global(Params, PublicId)
     end.
 
-fetch_installation_by_public_id(Params, OrgId, PublicId) ->
+%% public_widget_id 全局反查（store 同语句 `WHERE public_widget_id = $1`，
+%% 全局唯一 → 单行命中；行的 organization_id 即派生租户）。三态归一：
+%% not_found / 非 active（disabled、revoked）一律 installation_unavailable；
+%% store 瞬态故障照常上抛（500，不伪装 4xx）。
+fetch_installation_by_public_id_global(Params, PublicId) ->
     case
         cs_widget_support:with_store(Params, fun(Store) ->
-            Store:fetch_widget_installation_by_public_id(OrgId, PublicId)
+            Store:fetch_widget_installation_by_public_id_global(PublicId)
         end)
     of
+        {error, not_found} ->
+            {error, installation_unavailable};
         {error, _} = Err ->
             Err;
         {ok, Installation} ->
-            cs_widget_support:installation_active(Installation)
+            case cs_widget_support:installation_active(Installation) of
+                {ok, Active} -> {ok, Active};
+                {error, _} -> {error, installation_unavailable}
+            end
     end.
 
 bootstrap_origin(OrgId, Installation, Params) ->

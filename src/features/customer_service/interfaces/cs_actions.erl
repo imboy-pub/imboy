@@ -84,8 +84,10 @@
 }.
 %% OrgId 的来源：path 绑定 / 请求参数（客户端申报 + 授权证明）/ self（主体
 %% 自身作用域——跨 Org 聚合用例，如坐席上下文清单；授权只验凭证类别，
-%% 每个 Org 的成员/坐席事实由 application 聚合时逐 Org 复核）。
--type org_source() :: path | param | self.
+%% 每个 Org 的成员/坐席事实由 application 聚合时逐 Org 复核）/ derived
+%% （CSD-BE-01R，hosted-widget-contract S3：浏览器零申报面——Org 由
+%% public_widget_id 全局反查的命中行**权威派生**，handler 传 0 占位）。
+-type org_source() :: path | param | self | derived.
 
 -define(FEATURE, customer_service).
 
@@ -512,7 +514,10 @@ table(tenant) ->
 %% bootstrap 令牌专用头（查询串携带凭证即 400，见 cs_http）；令牌校验在
 %% application 用例内逐请求裁决。bootstrap 无令牌可验（它就是签发点，
 %% 令牌可选 = 重放心跳）；会话生命周期用例复用 `cs_widget_session_app`。
-%% Org 恒为申报参数（path 无 org 段），由令牌 digest 的同语句命中证明。
+%% Org 来源（CSD-BE-01R，hosted-widget-contract S3）：bootstrap 是唯一
+%% `derived` 面——浏览器零 org 申报，Org 由 public_widget_id 全局反查的
+%% 命中行权威派生，`organization_id` 客户端提供即 400；其余 widget 动作
+%% 沿 CSB-03 申报面（param），由令牌 digest 的同语句命中证明。
 %% ===================================================================
 table(widget) ->
     [
@@ -527,8 +532,9 @@ table(widget) ->
                         []}
                 ],
                 widget_auth(),
-                widget_server_derived(),
-                param
+                %% organization_id 是 bootstrap 面的服务端派生键（S3 零申报面）。
+                widget_server_derived() ++ [organization_id],
+                derived
             )},
         {widget_identity_exchange,
             widget_entry(

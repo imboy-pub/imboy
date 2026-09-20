@@ -226,8 +226,9 @@
 %% @doc CSD-BE-01（hosted-widget-contract S3）：public_widget_id **全局**反查——
 %% 输入只有公开 ID（浏览器不申报 Org），Org/Workspace 是**输出**（权威派生自
 %% 命中的唯一 active installation 行，`public_widget_id` 全局唯一约束保证单行）。
-%% 消费面仅限零凭证导航面（/w/:public_widget_id frame HTML）；token 面
-%% （bootstrap 等）仍必须走 Org 同语句的 `fetch_widget_installation_by_public_id/2`。
+%% CSD-BE-01R 起消费面 = 全部 public_widget_id 反查面（/w/:public_widget_id
+%% frame HTML 与 widget_bootstrap——S3 零申报面）；token 面其余动作仍按
+%% installation_id 走 Org 同语句的 `fetch_widget_installation/2`。
 %% 不存在 → `{error, not_found}`（三态归一为 installation_unavailable 由
 %% application 承担）。
 -callback fetch_widget_installation_by_public_id_global(PublicWidgetId :: binary()) ->

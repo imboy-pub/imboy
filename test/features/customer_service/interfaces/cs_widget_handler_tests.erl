@@ -5,9 +5,12 @@
 %%%
 %%%   * **A01 令牌与 Origin**：widget 凭证 = bootstrap 令牌专用头
 %%%     （`x-cs-visit-token`）——缺头 401、查询串携带即 400、正文申报服务端
-%%%     派生键（secret/origin/subject_key 等）即 400；bootstrap 的 Origin 头
-%%%     归一化（大小写/缺省端口折叠）后进 application，形状非法 400、不在
-%%%     installation allowlist 403；方法门 405；缺必填 422（绝不 500）。
+%%%     派生键（secret/origin/subject_key 等）即 400（CSD-BE-01R：合同 S3
+%%%     冻结码 `server_derived_key_rejected`，键名不出线）；bootstrap 的
+%%%     Origin 头归一化（大小写/缺省端口折叠）后进 application，形状非法
+%%%     400、不在 installation allowlist 403；方法门 405；缺必填 422（绝不
+%%%     500）。bootstrap 是零 org 申报面：载荷仅 public_widget_id+subject_id，
+%%%     申报 organization_id 即 400（OrgId 占位 0 由 application 反查派生）。
 %%%   * **A02 SSE**：GET events 返回 `text/event-stream`；先发 `retry:` +
 %%%     当前状态 resource-id 事件（TSID string）；`Last-Event-ID` 头驱动
 %%%     after 游标补偿（消息事件 id = 消息 id，单调不重）；空轮询周期注释行
@@ -73,8 +76,10 @@ sse_inject() ->
     #{auth_facts => cs_fake_facts, sse_poll_ms => 30, sse_max_ms => 300, sse_retry_ms => 3000}.
 
 bootstrap_body() ->
+    %% CSD-BE-01R（hosted-widget-contract S3）：浏览器零 org 申报面——载荷
+    %% 只有 public_widget_id + subject_id（FE contract.ts buildBootstrapBody
+    %% 同构）；申报 organization_id 即 400 server_derived_key_rejected。
     #{
-        <<"organization_id">> => ?ORG,
         <<"public_widget_id">> => <<"wgt_pub_a01">>,
         <<"subject_id">> => <<"browser-random-1">>
     }.
@@ -103,7 +108,10 @@ a01_token_and_origin_tests(_) ->
     [
         {"A01 bootstrap issues token once (200; TSID string; origin normalized)", fun() ->
             meck:expect(customer_service_facade, widget_bootstrap, fun(Org, Params) ->
-                ?assertEqual(?ORG, Org),
+                %% CSD-BE-01R：零 org 申报面——OrgId 是 derived 占位 0，租户
+                %% 归属由 application 的 public_id 全局反查派生（facade 侧）。
+                ?assertEqual(0, Org),
+                ?assertNot(is_map_key(organization_id, Params)),
                 ?assertEqual(?ORIGIN, maps:get(origin, Params)),
                 ?assert(is_integer(maps:get(at, Params))),
                 ?assertEqual(<<"wgt_pub_a01">>, maps:get(public_widget_id, Params)),
@@ -127,6 +135,21 @@ a01_token_and_origin_tests(_) ->
                 ?assertEqual(<<"s3cr3t-once">>, maps:get(<<"secret">>, Payload))
             end)
         end},
+
+        {"CSD-BE-01R bootstrap body organization_id is server-derived (400, contract code)",
+            fun() ->
+                ?S:with_listener(widget, widget_bootstrap, widget_inject(), fun(Port) ->
+                    Resp = ?S:request(
+                        Port,
+                        <<"POST">>,
+                        <<"/api/v1/cs/widget/bootstrap">>,
+                        (bootstrap_body())#{<<"organization_id">> => ?ORG},
+                        #{<<"origin">> => ?ORIGIN}
+                    ),
+                    ?assertEqual(400, ?S:status(Resp)),
+                    ?assertEqual(<<"server_derived_key_rejected">>, ?S:msg(Resp))
+                end)
+            end},
 
         {"A01 bootstrap origin header is scheme/host/port normalized", fun() ->
             meck:expect(customer_service_facade, widget_bootstrap, fun(_Org, Params) ->
@@ -205,7 +228,8 @@ a01_token_and_origin_tests(_) ->
                     #{<<"origin">> => ?ORIGIN}
                 ),
                 ?assertEqual(400, ?S:status(Resp)),
-                ?assertEqual(<<"forbidden_client_key.origin">>, ?S:msg(Resp))
+                %% CSD-BE-01R（合同 S3 冻结码）：键名不出线（枚举面收口）。
+                ?assertEqual(<<"server_derived_key_rejected">>, ?S:msg(Resp))
             end)
         end},
 
@@ -255,7 +279,7 @@ a01_token_and_origin_tests(_) ->
                     #{<<"x-cs-visit-token">> => ?TOKEN}
                 ),
                 ?assertEqual(400, ?S:status(Resp)),
-                ?assertEqual(<<"forbidden_client_key.secret">>, ?S:msg(Resp))
+                ?assertEqual(<<"server_derived_key_rejected">>, ?S:msg(Resp))
             end)
         end},
 
@@ -457,25 +481,24 @@ asset_content_tests(_) ->
                 ?assertNot(meck:called(customer_service_facade, widget_asset_content, '_'))
             end)
         end},
-        {"BE-S01b content proxy cross-session asset is structured 404 JSON (not bytes)",
-            fun() ->
-                meck:expect(customer_service_facade, widget_asset_content, fun(_Org, _Params) ->
-                    {error, not_found}
-                end),
-                ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
-                    Resp = ?S:request(
-                        Port,
-                        <<"GET">>,
-                        <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
-                            "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
-                            "&installation_id=", (int_bin(?INSTALL))/binary>>,
-                        <<>>,
-                        #{<<"x-cs-visit-token">> => ?TOKEN}
-                    ),
-                    ?assertEqual(404, ?S:status(Resp)),
-                    ?assertEqual(<<"not_found">>, ?S:msg(Resp))
-                end)
-            end},
+        {"BE-S01b content proxy cross-session asset is structured 404 JSON (not bytes)", fun() ->
+            meck:expect(customer_service_facade, widget_asset_content, fun(_Org, _Params) ->
+                {error, not_found}
+            end),
+            ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
+                        "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
+                        "&installation_id=", (int_bin(?INSTALL))/binary>>,
+                    <<>>,
+                    #{<<"x-cs-visit-token">> => ?TOKEN}
+                ),
+                ?assertEqual(404, ?S:status(Resp)),
+                ?assertEqual(<<"not_found">>, ?S:msg(Resp))
+            end)
+        end},
         {"BE-S01b content proxy with credential in query string is 400", fun() ->
             ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
                 meck:reset(customer_service_facade),
@@ -484,8 +507,7 @@ asset_content_tests(_) ->
                     <<"GET">>,
                     <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
                         "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
-                        "&installation_id=", (int_bin(?INSTALL))/binary,
-                        "&token=", ?TOKEN/binary>>,
+                        "&installation_id=", (int_bin(?INSTALL))/binary, "&token=", ?TOKEN/binary>>,
                     <<>>,
                     #{}
                 ),

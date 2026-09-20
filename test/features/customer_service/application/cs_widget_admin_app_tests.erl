@@ -19,7 +19,8 @@ widget_admin_app_test_() ->
         end,
         [
             fun create_list_revoke_uses_public_id_only/0,
-            fun invalid_origin_is_rejected_before_store/0
+            fun invalid_origin_is_rejected_before_store/0,
+            fun generated_public_widget_id_is_decimal_tsid/0
         ]}.
 
 create_list_revoke_uses_public_id_only() ->
@@ -52,6 +53,40 @@ invalid_origin_is_rejected_before_store() ->
         )
     ),
     ?assertEqual({ok, Before}, cs_widget_app:list_installations(?ORG, params())).
+
+%% CSD-BE-01R（R4，hosted-widget-contract S1）：public_widget_id 生成口径
+%% = TSID 十进制 string（FE loader `isValidPublicWidgetId` 只接受 1..26 位
+%% 十进制；旧 `wgt_pub_<hex>` 生成口径废止——真实发放的 ID 曾被前端
+%% fail-closed 拒绝）。未注入 `new_public_widget_id` 时走 id 端口生成。
+generated_public_widget_id_is_decimal_tsid() ->
+    {ok, #{installation := Created}} =
+        cs_widget_app:create_installation(?ORG, maps:without([new_public_widget_id], params())),
+    PublicId = maps:get(public_widget_id, Created),
+    ?assert(byte_size(PublicId) > 0),
+    ?assert(byte_size(PublicId) =< 26),
+    ?assert(lists:all(fun(C) -> C >= $0 andalso C =< $9 end, binary_to_list(PublicId))),
+    %% 生成的 ID 经全局反查 round-trip 可服务（bootstrap / /w/ 面）。
+    ?assertMatch(
+        {ok, _}, cs_fake_store:fetch_widget_installation_by_public_id_global(PublicId)
+    ),
+    %% 存量形状（wgt_pub_*）不做迁移：形状门保持 [A-Za-z0-9_-] 宽口径，
+    %% 旧行照常命中（零 DDL 的存量兼容）。
+    LegacyInst = cs_fake_id:new_id(cs_session),
+    {ok, _} =
+        cs_fake_store:insert_widget_installation(?ORG, #{
+            id => LegacyInst,
+            public_widget_id => <<"wgt_pub_legacy_shape">>,
+            display_name => <<"legacy">>,
+            allowed_origins => [<<"https://shop.example.com">>],
+            branding => #{},
+            consent_version => <<"v1">>
+        }),
+    ?assertMatch(
+        {ok, _},
+        cs_fake_store:fetch_widget_installation_by_public_id_global(
+            <<"wgt_pub_legacy_shape">>
+        )
+    ).
 
 params() ->
     #{

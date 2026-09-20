@@ -397,15 +397,23 @@ revoke_widget_installation(OrgId, _Params) ->
 %% Ctx 注入项与令牌作用域取得，浏览器申报值一律不成为授权事实。
 %% ===================================================================
 
+%% CSD-BE-01R（hosted-widget-contract S3）：bootstrap 是浏览器零 org 申报面。
+%% OrgId 形参仅为 facade 调用点表 `cs_facade_call:call/3` 的同构占位（handler
+%% 经 cs_actions org_source=derived 传 0）：租户归属由 `cs_widget_app:bootstrap/2`
+%% 内的 public_widget_id 全局反查命中行**权威派生**；动作表已把
+%% `organization_id` 列为客户端提供即 400 `server_derived_key_rejected` 的
+%% 服务端派生键。
 -spec widget_bootstrap(integer(), map()) -> term().
-widget_bootstrap(OrgId, #{public_widget_id := PublicId, origin := Origin} = Params) when
-    is_integer(OrgId), is_binary(PublicId), is_binary(Origin), is_map(Params)
+widget_bootstrap(_OrgId, #{public_widget_id := PublicId, origin := Origin} = Params) when
+    is_binary(PublicId), is_binary(Origin), is_map(Params)
 ->
-    case cs_widget_env:merge_bootstrap(OrgId, Params) of
-        {ok, Merged} -> cs_widget_app:bootstrap(OrgId, Merged);
+    %% env 事实装配与 Org 无关（subject_key / default_workspace 在用例内按
+    %% 派生 Org 消费），占位 0 照常合并。
+    case cs_widget_env:merge_bootstrap(0, Params) of
+        {ok, Merged} -> cs_widget_app:bootstrap(0, Merged);
         {error, _} = Err -> Err
     end;
-widget_bootstrap(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_bootstrap(_OrgId, Params) when is_map(Params) ->
     {error, {invalid_argument, widget_bootstrap}};
 widget_bootstrap(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.

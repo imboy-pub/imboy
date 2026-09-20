@@ -280,11 +280,27 @@ a02_origin_negatives_sibling_and_revoked() ->
                 })
             )
         ),
-        %% 吊销安装 → 新 bootstrap 与新会话全拒（kill switch 语义）。
+        %% CSD-BE-01R（hosted-widget-contract S3 零申报面）：OrgId 形参是
+        %% 占位——application 用 public_widget_id 全局反查的命中行权威派生
+        %% 租户；申报任意/错误 org 值被忽略，contact 仍落在命中行的 Org
+        %% （旧断言「跨 Org 命中不了行」随零申报面语义一并废止）。
+        ContactsX = contacts(Org),
+        {ok, VCross} =
+            cs_widget_app:bootstrap(
+                maps:get(other_org_id, Scope),
+                wp(Scope, #{
+                    public_widget_id => PublicId, origin => origin(), subject_id => <<"subj-x">>
+                })
+            ),
+        ?assertEqual(ContactsX + 1, contacts(Org)),
+        ?assertEqual(false, maps:get(reused, VCross)),
+        %% 吊销安装 → 新 bootstrap 与新会话全拒（kill switch 语义；
+        %% CSD-BE-01R：bootstrap 反查面三态归一 installation_unavailable）。
         {ok, V1} = bootstrap_for(Scope, PublicId, <<"subj-rev">>),
         ok = ?FAKE:revoke_widget_installation(Org, InstId, ?T0 + 1),
         ?assertEqual(
-            {error, installation_revoked}, bootstrap_for(Scope, PublicId, <<"subj-rev2">>)
+            {error, installation_unavailable},
+            bootstrap_for(Scope, PublicId, <<"subj-rev2">>)
         ),
         ?assertEqual(
             {error, installation_revoked},
@@ -292,16 +308,6 @@ a02_origin_negatives_sibling_and_revoked() ->
                 Org,
                 wp(Scope, #{
                     installation_id => InstId, secret => maps:get(secret, V1)
-                })
-            )
-        ),
-        %% 跨 Org 的 public_widget_id 解析命中不了行（CSB-01-A02 应用侧复核）。
-        ?assertEqual(
-            {error, not_found},
-            cs_widget_app:bootstrap(
-                maps:get(other_org_id, Scope),
-                wp(Scope, #{
-                    public_widget_id => PublicId, origin => origin(), subject_id => <<"subj-x">>
                 })
             )
         )

@@ -19,7 +19,10 @@
 -define(ORG, 7001001).
 -define(INSTALL, 810001).
 -define(PUBID, <<"wgt_pub_csdb01">>).
--define(FRAME_JS, <<"/widget-assets/cs-widget.v1.js">>).
+%% CSD-BE-01R（GAP-2 修复，hosted-widget-contract S4/S6）：/w/ 新面引用
+%% `/assets/cs-widget.v1.js`（deploy 网关既有 location + IMG-01R 产物稳定
+%% 版本名）；旧面 `/widget-assets/` 行为不在本套件断言范围。
+-define(FRAME_JS, <<"/assets/cs-widget.v1.js">>).
 -define(FRAME_PATH, <<"/w/">>).
 
 cs_widget_public_frame_test_() ->
@@ -120,10 +123,13 @@ public_frame_http_tests(_) ->
                 ?assertEqual(nomatch, binary:match(Body, <<"workspace">>)),
                 ?assertEqual(nomatch, binary:match(Body, <<"secret">>)),
                 ?assertEqual(nomatch, binary:match(Body, <<"token">>)),
-                %% 版本化脚本（S4）。
+                %% 版本化脚本（S4；CSD-BE-01R：新面 = /assets/ 稳定版本名，
+                %% 旧面 /widget-assets/ 不得出现在 /w/ 文档——GAP-2 oracle）。
                 ?assertMatch(
                     {_, _}, binary:match(Body, <<"src=\"", ?FRAME_JS/binary, "\"">>)
-                )
+                ),
+                ?assertMatch({_, _}, binary:match(Body, ?FRAME_JS)),
+                ?assertEqual(nomatch, binary:match(Body, <<"/widget-assets/">>))
             end)
         end},
 

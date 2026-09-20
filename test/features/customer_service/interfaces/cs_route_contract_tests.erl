@@ -592,7 +592,10 @@ credential_surface_matches_principal_declaration_test() ->
             PathBin = path_of(widget, Action),
             ?assert(lists:member(Principal, [cs_visit, cs_shop_key])),
             ?assert(cs_http:is_credential_surface_path(PathBin)),
-            ?assertEqual(param, cs_actions:org_source(Entry)),
+            %% CSD-BE-01R：widget 面 org 来源只有 param（申报+证明）与
+            %% derived（bootstrap 的 public_id 全局反查零申报面）；两者都
+            %% 不允许路径出现 :org_id 绑定。
+            ?assert(lists:member(cs_actions:org_source(Entry), [param, derived])),
             ?assertNot(is_map_key(org_id, path_bindings(PathBin)))
         end,
         widget_literal_routes()
@@ -713,7 +716,13 @@ tsid_outbound_is_string_test() ->
 
 %% 错误映射：400/401/403/404/405/409/422 每类至少一条显式登记。
 error_status_mapping_is_explicit_test() ->
-    ?assertEqual(400, cs_http:status({forbidden_client_key, actor_user_id})),
+    %% CSD-BE-01R（hosted-widget-contract S3 冻结码）：客户端申报服务端派生键
+    %% = 400 `server_derived_key_rejected`（原 forbidden_client_key 对齐改名，
+    %% tag 不回显命中键名——派生键集合不给客户端枚举面）。
+    ?assertEqual(400, cs_http:status({server_derived_key_rejected, actor_user_id})),
+    ?assertEqual(
+        <<"server_derived_key_rejected">>, cs_http:tag({server_derived_key_rejected, secret})
+    ),
     ?assertEqual(401, cs_http:status(credential_missing)),
     ?assertEqual(401, cs_http:status({principal_mismatch, cs_visit, imboy_jwt})),
     ?assertEqual(403, cs_http:status(seat_disabled)),
@@ -763,10 +772,11 @@ error_status_mapping_is_explicit_test() ->
     ?assertEqual(<<"installation_unavailable">>, cs_http:tag(installation_unavailable)),
     ?assertEqual(400, cs_http:status(invalid_public_widget_id)).
 
-%% CSD-BE-01（hosted-widget-contract S3）：bootstrap 的 public_id 反查语义
-%% **锁死**——动作收 public_widget_id（required），org 来源仍是申报+证明的
-%% param 面；服务端派生键（workspace/origin/secret/contact 等）客户端提供
-%% 即 400（Base 语义保留，扩展到 /w/ 面的反查派生）。
+%% CSD-BE-01R（hosted-widget-contract S3）：bootstrap 的 public_id 反查语义
+%% **锁死**——动作收 public_widget_id（required），org 来源是 derived（浏览器
+%% 零申报面：public_widget_id 全局反查命中行权威派生，OrgId 占位 0）；
+%% `organization_id` 与其余服务端派生键（workspace/origin/secret/contact 等）
+%% 客户端提供即 400 `server_derived_key_rejected`。
 widget_bootstrap_public_id_and_server_derived_locked_test() ->
     {ok, Entry} = cs_actions:widget(widget_bootstrap),
     [Case] = maps:get(cases, Entry),
@@ -776,9 +786,9 @@ widget_bootstrap_public_id_and_server_derived_locked_test() ->
     Forbidden = maps:get(client_forbidden, Entry),
     lists:foreach(
         fun(Key) -> ?assert(lists:member(Key, Forbidden)) end,
-        [workspace_id, origin, secret, contact_id, subject_key]
+        [workspace_id, origin, secret, contact_id, subject_key, organization_id]
     ),
-    ?assertEqual(param, cs_actions:org_source(Entry)),
+    ?assertEqual(derived, cs_actions:org_source(Entry)),
     %% /w/ 面动作同表同纪律：public_widget_id 是唯一公开输入。
     {ok, PubEntry} = cs_actions:widget(widget_public_frame_html),
     [PubCase] = maps:get(cases, PubEntry),
