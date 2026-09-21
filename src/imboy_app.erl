@@ -279,6 +279,10 @@ tsid_generator_names() ->
         organization,
         workspace,
         workspace_invite,
+        %% organization_invite_code = 企业邀请码（GZAPP-01 迁移 00000137；
+        %% GZAPP-09 集成期补登：此前漏注册，真节点上 create 必
+        %% elib_tsid_generator_not_registered → 500）
+        organization_invite_code,
         owner_activation_invite,
         %% ── 项目（双体验 v2.5.2 WP4/T6a/T6b；project_event 由 T6a 独占 writer 接口） ──
         project,
