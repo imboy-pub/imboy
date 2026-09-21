@@ -1,0 +1,28 @@
+# IMBoy CS Widget 独立静态服务（DEP-01 A01/A04）
+#
+# 两用：
+#   1) 独立演练栈（默认端口 18900，命名经变量注入演练前缀）：
+#        docker compose -p csww-dep01 -f docker-compose.widget.yml up -d
+#   2) 并入社区栈（服务以 imboy-network 内名字互达，生产由主 nginx 反代）：
+#        docker compose -f docker-compose.community.yml -f docker-compose.widget.yml config
+#
+# 镜像 tag 固定、禁 latest（A04/A06）：升级=推新 tag，回滚=切回旧 tag；
+# WIDGET_IMAGE 默认本地构建产物名，生产交付时经 .env 覆盖为 registry 地址。
+services:
+  widget:
+    image: ${WIDGET_IMAGE:-imboy-widget:v1}
+    container_name: ${WIDGET_CONTAINER_NAME:-imboy_widget}
+    ports:
+      - "${WIDGET_HTTP_PORT:-18900}:8080"
+    extra_hosts:
+      # 演练：WIDGET_BACKEND_UPSTREAM 指向 host.docker.internal 时经宿主回环
+      # 访问本地后端（Docker Desktop 的自动 DNS 条目可能指向失效地址，
+      # host-gateway 映射保证可达）。生产上游为 imboy_backend 时本条目闲置。
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s

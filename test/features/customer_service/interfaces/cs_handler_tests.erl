@@ -348,6 +348,36 @@ visitor_flow_tests(_) ->
                     ?CONTACT, persistent_term:get({cs02_test, captured_contact}, undefined)
                 )
             end)
+        end},
+
+        %% DF-6 回归：访客评分写路径的 `at` 必须是 epoch 秒——rating_at 走
+        %% `to_timestamp`（epoch 秒），毫秒输入写成约 5.8 万年后（同 claim/close）。
+        {"DF-6: visitor rating derives the server clock in epoch seconds", fun() ->
+            meck:expect(customer_service_facade, verify_visit_token, fun(_O, _P) ->
+                {ok, #{organization_id => ?ORG, contact_id => ?CONTACT, scope => visit}}
+            end),
+            meck:expect(customer_service_facade, rate, fun(_O, Params) ->
+                persistent_term:put({df6_clock, rating_at}, maps:get(at, Params, undefined)),
+                {ok, #{id => ?SESSION, status => closed, rating => 5}}
+            end),
+            ?S:with_listener(tenant, session_rating, #{auth_facts => cs_fake_facts}, fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "/rating">>,
+                    #{
+                        <<"organization_id">> => ?ORG,
+                        <<"workspace_id">> => ?WS,
+                        <<"rating">> => 5,
+                        <<"expected_version">> => 4
+                    },
+                    #{<<"x-cs-visit-token">> => <<"tok">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                At = persistent_term:get({df6_clock, rating_at}, undefined),
+                ?assert(is_integer(At)),
+                ?assert(abs(At - os:system_time(second)) < 60)
+            end)
         end}
     ].
 
@@ -530,6 +560,108 @@ seat_flow_tests(_) ->
                 ),
                 ?assertEqual(401, ?S:status(Resp))
             end)
+        end},
+
+        %% DF-6 回归：claim/close 写路径的 `at` 必须是 epoch 秒——
+        %% cs_pg_session 的 claimed_at/closed_at/updated_at 走 `to_timestamp`
+        %% （epoch 秒），毫秒输入会把时间戳写成约 5.8 万年后（实证残留行
+        %% closed_at=58691-02-01）。动作表 clock_unit => second 在 facade 边界
+        %% 锁死量纲（DF-4 吊销族同款机制）。`at` 经 persistent_term 捕获后在
+        %% 测试进程断言（meck fun 跑在 cowboy 请求进程，组内断言先例：
+        %% captured_contact），避免请求进程崩溃把用例变成 timeout/cancelled。
+        {"DF-6: seat claim derives the server clock in epoch seconds", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            persistent_term:erase({df6_clock, claim_at}),
+            meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                {ok, #{enabled => true}}
+            end),
+            meck:expect(customer_service_facade, claim, fun(_O, Params) ->
+                persistent_term:put({df6_clock, claim_at}, maps:get(at, Params, undefined)),
+                {ok, #{id => ?SESSION, status => active}}
+            end),
+            ?S:with_listener(tenant, session_claim, seat_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                        (int_bin(?SESSION))/binary, "/claim">>,
+                    #{
+                        <<"organization_id">> => ?ORG,
+                        <<"workspace_id">> => ?WS,
+                        <<"expected_version">> => 1
+                    },
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                At = persistent_term:get({df6_clock, claim_at}, undefined),
+                ?assert(is_integer(At)),
+                ?assert(abs(At - os:system_time(second)) < 60)
+            end)
+        end},
+
+        {"DF-6: seat close derives the server clock in epoch seconds", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            persistent_term:erase({df6_clock, close_at}),
+            meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                {ok, #{enabled => true}}
+            end),
+            meck:expect(customer_service_facade, close, fun(_O, Params) ->
+                persistent_term:put({df6_clock, close_at}, maps:get(at, Params, undefined)),
+                {ok, #{id => ?SESSION, status => closed}}
+            end),
+            ?S:with_listener(tenant, session_close, seat_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                        (int_bin(?SESSION))/binary, "/close">>,
+                    #{
+                        <<"organization_id">> => ?ORG,
+                        <<"workspace_id">> => ?WS,
+                        <<"expected_version">> => 3
+                    },
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                At = persistent_term:get({df6_clock, close_at}, undefined),
+                ?assert(is_integer(At)),
+                ?assert(abs(At - os:system_time(second)) < 60)
+            end)
+        end},
+
+        %% DF-6R（DF-6 同族收尾）：transfer 写路径的 `at` 同样进
+        %% SQL_TRANSFER_UPDATE 的 updated_at = to_timestamp（epoch 秒），
+        %% 缺 clock_unit => second 会把 updated_at 喂成约 5.8 万年后
+        %% （与 claim/close 同源）。
+        {"DF-6: seat transfer derives the server clock in epoch seconds", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            persistent_term:erase({df6_clock, transfer_at}),
+            meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                {ok, #{enabled => true}}
+            end),
+            meck:expect(customer_service_facade, transfer, fun(_O, Params) ->
+                persistent_term:put({df6_clock, transfer_at}, maps:get(at, Params, undefined)),
+                {ok, #{id => ?SESSION, status => active}}
+            end),
+            ?S:with_listener(tenant, session_transfer, seat_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                        (int_bin(?SESSION))/binary, "/transfer">>,
+                    #{
+                        <<"organization_id">> => ?ORG,
+                        <<"workspace_id">> => ?WS,
+                        <<"to_identity_id">> => 999,
+                        <<"expected_version">> => 2
+                    },
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                At = persistent_term:get({df6_clock, transfer_at}, undefined),
+                ?assert(is_integer(At)),
+                ?assert(abs(At - os:system_time(second)) < 60)
+            end)
         end}
     ].
 
@@ -698,6 +830,68 @@ governance_flow_tests(_) ->
                     ?assertEqual(<<"91">>, maps:get(<<"id">>, Row)),
                     ?assertEqual(integer_to_binary(?CONTACT), maps:get(<<"contact_id">>, Row)),
                     ?assertNot(is_map_key(<<"token_digest">>, Row))
+                end
+            )
+        end},
+
+        %% DF-4 回归：吊销写路径的 `at` 必须是 epoch 秒——store 的
+        %% `to_timestamp` 以秒为量纲，毫秒输入会把 revoked_at 写成约 5.8 万年
+        %% 后，`cs_session:assert_visitor_scope` 的吊销判定永不命中（写路径
+        %% fail-open：治理面 revoke 200 后访客发消息仍 200）。这里在 facade
+        %% 边界（真 cowboy 监听 + 动作表 clock_unit => second）锁死量纲。
+        {"DF-4: visit-token revoke derives the server clock in epoch seconds", fun() ->
+            cs_fake_facts:set(owner_facts()),
+            meck:expect(customer_service_facade, revoke_visit_token, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(91, maps:get(id, Params)),
+                ?assert(is_integer(maps:get(at, Params))),
+                At = maps:get(at, Params),
+                NowSec = os:system_time(second),
+                ?assert(abs(At - NowSec) < 60),
+                ok
+            end),
+            ?S:with_listener(
+                tenant,
+                visit_token_revoke,
+                #{auth_facts => cs_fake_facts, current_uid => ?UID},
+                fun(Port) ->
+                    Path = ?S:path(tenant, visit_token_revoke, #{org_id => ?ORG, id => 91}),
+                    Resp = ?S:request(
+                        Port,
+                        <<"POST">>,
+                        Path,
+                        #{<<"workspace_id">> => ?WS},
+                        #{<<"authorization">> => <<"Bearer x">>}
+                    ),
+                    ?assertEqual(200, ?S:status(Resp))
+                end
+            )
+        end},
+
+        {"DF-4: shop-key revoke derives the server clock in epoch seconds", fun() ->
+            cs_fake_facts:set(owner_facts()),
+            meck:expect(customer_service_facade, revoke_shop_key, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assert(is_integer(maps:get(at, Params))),
+                At = maps:get(at, Params),
+                NowSec = os:system_time(second),
+                ?assert(abs(At - NowSec) < 60),
+                ok
+            end),
+            ?S:with_listener(
+                tenant,
+                shop_key_revoke,
+                #{auth_facts => cs_fake_facts, current_uid => ?UID},
+                fun(Port) ->
+                    Path = ?S:path(tenant, shop_key_revoke, #{org_id => ?ORG, id => 88}),
+                    Resp = ?S:request(
+                        Port,
+                        <<"POST">>,
+                        Path,
+                        #{<<"workspace_id">> => ?WS},
+                        #{<<"authorization">> => <<"Bearer x">>}
+                    ),
+                    ?assertEqual(200, ?S:status(Resp))
                 end
             )
         end},

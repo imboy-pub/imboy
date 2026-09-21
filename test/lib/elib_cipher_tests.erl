@@ -43,6 +43,17 @@ encrypt_with_empty_text_test_() ->
         ?assertEqual(PlainText, DecryptedText)
     end).
 
+%% DF-13：空明文 GCM 信封（Salt16+IV12+CT0+Tag16=44 字节）是合法密文——
+%% 访客仅发附件不写字时 body=""，服务端 seal 出 44 字节信封；读侧长度守卫
+%% 曾要求 `>` 44 而误判 invalid_data_format，致坐席消息历史整页 500。
+aes_gcm_empty_plaintext_roundtrip_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        Key = <<0:256>>,
+        {ok, CipherText} = elib_cipher:aes_gcm_encrypt(<<>>, Key),
+        ?assertEqual(44, byte_size(base64:decode(CipherText))),
+        ?assertEqual({ok, <<>>}, elib_cipher:aes_gcm_decrypt(CipherText, Key))
+    end).
+
 decrypt_with_invalid_data_test_() ->
     ?TEST_WITH_APP(fun() ->
         InvalidCipherText = <<"invalid_data_not_base64">>,
@@ -65,7 +76,7 @@ num_random_generates_integer_test_() ->
         % 验证数字在合理范围内
         ?assert(Result >= 0),
         % 验证数字长度符合要求（对于40位数字，应该在10^39到10^40-1之间）
-        ?assert(Result >= trunc(math:pow(10, Length-1)))
+        ?assert(Result >= trunc(math:pow(10, Length - 1)))
     end).
 
 num_random_with_different_lengths_test_() ->
@@ -76,7 +87,7 @@ num_random_with_different_lengths_test_() ->
         Result2 = elib_cipher:num_random(Length2),
         % 验证不同长度生成的数字位数不同
         ?assert(Result1 < trunc(math:pow(10, Length1))),
-        ?assert(Result2 >= trunc(math:pow(10, Length2-1))),
+        ?assert(Result2 >= trunc(math:pow(10, Length2 - 1))),
         % 验证两个结果不相等（极小概率相等，但测试中可忽略）
         ?assert(Result1 =/= Result2)
     end).
@@ -132,7 +143,9 @@ aes_encrypt_with_binary_key_test_() ->
 aes_decrypt_removes_padding_test_() ->
     ?TEST_WITH_APP(fun() ->
         % 测试 PKCS#7 填充移除
-        PlainText = <<"x">>,  % 1字节，需要填充15字节
+
+        % 1字节，需要填充15字节
+        PlainText = <<"x">>,
         Key = <<"dddddddddddddddddddddddddddddddd">>,
         IV = <<"eeeeeeeeeeeeeeee">>,
         CipherText = elib_cipher:aes_encrypt(aes_256_cbc, PlainText, Key, IV),
@@ -154,11 +167,14 @@ rsa_encrypt_with_binary_input_test_() ->
             meck:expect(public_key, pem_decode, fun(_) -> [mock_pub_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_pub_entry) -> mock_public_key end),
             meck:expect(public_key, encrypt_public, fun(<<"test password">>, mock_public_key, Opts) ->
-                ?assertEqual([
-                    {rsa_padding, rsa_pkcs1_oaep_padding},
-                    {rsa_oaep_md, sha256},
-                    {rsa_mgf1_md, sha256}
-                ], Opts),
+                ?assertEqual(
+                    [
+                        {rsa_padding, rsa_pkcs1_oaep_padding},
+                        {rsa_oaep_md, sha256},
+                        {rsa_mgf1_md, sha256}
+                    ],
+                    Opts
+                ),
                 <<"encrypted_payload">>
             end),
 
@@ -182,7 +198,9 @@ rsa_encrypt_with_list_input_test_() ->
             meck:expect(config_ds, env, fun(login_rsa_pub_key) -> TestPubKey end),
             meck:expect(public_key, pem_decode, fun(_) -> [mock_pub_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_pub_entry) -> mock_public_key end),
-            meck:expect(public_key, encrypt_public, fun(<<"password">>, mock_public_key, _Opts) -> <<"encrypted">> end),
+            meck:expect(public_key, encrypt_public, fun(<<"password">>, mock_public_key, _Opts) ->
+                <<"encrypted">>
+            end),
 
             Result = elib_cipher:rsa_encrypt("password"),
             ?assertEqual(base64:encode(<<"encrypted">>), Result)
@@ -199,7 +217,9 @@ rsa_encrypt_with_custom_key_test_() ->
             CustomKey = <<"-----BEGIN PUBLIC KEY-----\ntest key\n-----END PUBLIC KEY-----">>,
             meck:expect(public_key, pem_decode, fun(_) -> [mock_pub_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_pub_entry) -> mock_public_key end),
-            meck:expect(public_key, encrypt_public, fun(<<"data">>, mock_public_key, _Opts) -> <<"custom_encrypted">> end),
+            meck:expect(public_key, encrypt_public, fun(<<"data">>, mock_public_key, _Opts) ->
+                <<"custom_encrypted">>
+            end),
 
             Result = elib_cipher:rsa_encrypt(<<"data">>, CustomKey),
 
@@ -233,16 +253,20 @@ rsa_decrypt_with_config_key_test_() ->
         meck:new(config_ds, [no_link]),
         meck:new(public_key, [passthrough, no_link]),
         try
-            TestPrivKey = <<"-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----">>,
+            TestPrivKey =
+                <<"-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----">>,
             meck:expect(config_ds, env, fun(login_rsa_priv_key) -> TestPrivKey end),
             meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
             meck:expect(public_key, decrypt_private, fun(<<"encrypted">>, mock_private_key, Opts) ->
-                ?assertEqual([
-                    {rsa_padding, rsa_pkcs1_oaep_padding},
-                    {rsa_oaep_md, sha256},
-                    {rsa_mgf1_md, sha256}
-                ], Opts),
+                ?assertEqual(
+                    [
+                        {rsa_padding, rsa_pkcs1_oaep_padding},
+                        {rsa_oaep_md, sha256},
+                        {rsa_mgf1_md, sha256}
+                    ],
+                    Opts
+                ),
                 <<"decrypted_password">>
             end),
 
@@ -277,7 +301,9 @@ rsa_decrypt_with_custom_key_test_() ->
             CustomKey = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
             meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
-            meck:expect(public_key, decrypt_private, fun(<<"data">>, mock_private_key, _Opts) -> <<"custom_decrypted">> end),
+            meck:expect(public_key, decrypt_private, fun(<<"data">>, mock_private_key, _Opts) ->
+                <<"custom_decrypted">>
+            end),
 
             Result = elib_cipher:rsa_decrypt(base64:encode(<<"data">>), CustomKey),
 
@@ -294,7 +320,9 @@ rsa_decrypt_url_safe_base64_test_() ->
             CustomKey = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
             meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
-            meck:expect(public_key, decrypt_private, fun(<<251, 255>>, mock_private_key, _Opts) -> <<"url_safe_decrypted">> end),
+            meck:expect(public_key, decrypt_private, fun(<<251, 255>>, mock_private_key, _Opts) ->
+                <<"url_safe_decrypted">>
+            end),
 
             Result = elib_cipher:rsa_decrypt(<<"-_8">>, CustomKey),
 
@@ -311,7 +339,9 @@ rsa_decrypt_url_encoded_test_() ->
             CustomKey = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
             meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
-            meck:expect(public_key, decrypt_private, fun(<<251, 255>>, mock_private_key, _Opts) -> <<"url_decoded_decrypted">> end),
+            meck:expect(public_key, decrypt_private, fun(<<251, 255>>, mock_private_key, _Opts) ->
+                <<"url_decoded_decrypted">>
+            end),
 
             Result = elib_cipher:rsa_decrypt(<<"%2B%2F8%3D">>, CustomKey),
 
@@ -328,7 +358,9 @@ rsa_decrypt_space_replaced_plus_test_() ->
             CustomKey = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
             meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
-            meck:expect(public_key, decrypt_private, fun(<<251, 255>>, mock_private_key, _Opts) -> <<"space_fixed">> end),
+            meck:expect(public_key, decrypt_private, fun(<<251, 255>>, mock_private_key, _Opts) ->
+                <<"space_fixed">>
+            end),
 
             Result = elib_cipher:rsa_decrypt(<<" /8=">>, CustomKey),
 
@@ -345,7 +377,9 @@ rsa_decrypt_missing_padding_test_() ->
             CustomKey = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
             meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),
-            meck:expect(public_key, decrypt_private, fun(<<"hello">>, mock_private_key, _Opts) -> <<"padding_added">> end),
+            meck:expect(public_key, decrypt_private, fun(<<"hello">>, mock_private_key, _Opts) ->
+                <<"padding_added">>
+            end),
 
             Result = elib_cipher:rsa_decrypt(<<"aGVsbG8">>, CustomKey),
 
@@ -364,7 +398,8 @@ safe_rsa_decrypt_version_1_success_test_() ->
         meck:new(config_ds, [no_link]),
         meck:new(public_key, [passthrough, no_link]),
         try
-            PrivateKeyPem = <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
+            PrivateKeyPem =
+                <<"-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----">>,
             meck:expect(config_ds, env, fun(login_rsa_priv_key) -> PrivateKeyPem end),
             meck:expect(public_key, pem_decode, fun(_) -> [mock_priv_entry] end),
             meck:expect(public_key, pem_entry_decode, fun(mock_priv_entry) -> mock_private_key end),

@@ -274,11 +274,15 @@ seat_session_total_by_status(OrgId, WorkspaceId) ->
         {error, _} = Err ->
             Err;
         {ok, Rows} ->
-            {ok,
+            ByStatus =
                 #{
                     cs_pg_common:to_status(maps:get(status, Row)) => maps:get(total, Row)
                  || Row <- Rows
-                }}
+                },
+            %% DF-8：queued/active/closed 三键恒在、零计数显式出 0。GROUP BY
+            %% 只出非零行，缺键会把前端 toCounts 的数字断言打成 TypeError，
+            %% 队列视图恒「请求失败」；白名单外的 status 键原样保留。
+            {ok, maps:merge(#{queued => 0, active => 0, closed => 0}, ByStatus)}
     end.
 
 -spec sql_statements() -> [binary()].

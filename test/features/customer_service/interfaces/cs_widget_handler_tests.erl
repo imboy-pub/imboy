@@ -72,6 +72,11 @@ widget_inject() ->
 sse_inject() ->
     #{auth_facts => cs_fake_facts, sse_poll_ms => 30, sse_max_ms => 300, sse_retry_ms => 3000}.
 
+%% DF-10 回归专用：sse_max_ms 拉长到 60s——修复前的静默保持不会在读窗口内
+%% 自然 fin，与修复后的「轮询即关流」在时间轴上可区分。
+sse_inject_fatal() ->
+    #{auth_facts => cs_fake_facts, sse_poll_ms => 30, sse_max_ms => 60000, sse_retry_ms => 3000}.
+
 bootstrap_body() ->
     #{
         <<"organization_id">> => ?ORG,
@@ -457,25 +462,24 @@ asset_content_tests(_) ->
                 ?assertNot(meck:called(customer_service_facade, widget_asset_content, '_'))
             end)
         end},
-        {"BE-S01b content proxy cross-session asset is structured 404 JSON (not bytes)",
-            fun() ->
-                meck:expect(customer_service_facade, widget_asset_content, fun(_Org, _Params) ->
-                    {error, not_found}
-                end),
-                ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
-                    Resp = ?S:request(
-                        Port,
-                        <<"GET">>,
-                        <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
-                            "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
-                            "&installation_id=", (int_bin(?INSTALL))/binary>>,
-                        <<>>,
-                        #{<<"x-cs-visit-token">> => ?TOKEN}
-                    ),
-                    ?assertEqual(404, ?S:status(Resp)),
-                    ?assertEqual(<<"not_found">>, ?S:msg(Resp))
-                end)
-            end},
+        {"BE-S01b content proxy cross-session asset is structured 404 JSON (not bytes)", fun() ->
+            meck:expect(customer_service_facade, widget_asset_content, fun(_Org, _Params) ->
+                {error, not_found}
+            end),
+            ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
+                        "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
+                        "&installation_id=", (int_bin(?INSTALL))/binary>>,
+                    <<>>,
+                    #{<<"x-cs-visit-token">> => ?TOKEN}
+                ),
+                ?assertEqual(404, ?S:status(Resp)),
+                ?assertEqual(<<"not_found">>, ?S:msg(Resp))
+            end)
+        end},
         {"BE-S01b content proxy with credential in query string is 400", fun() ->
             ?S:with_listener(widget, widget_asset_content, widget_inject(), fun(Port) ->
                 meck:reset(customer_service_facade),
@@ -484,8 +488,7 @@ asset_content_tests(_) ->
                     <<"GET">>,
                     <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
                         "/assets/990001/content?organization_id=", (int_bin(?ORG))/binary,
-                        "&installation_id=", (int_bin(?INSTALL))/binary,
-                        "&token=", ?TOKEN/binary>>,
+                        "&installation_id=", (int_bin(?INSTALL))/binary, "&token=", ?TOKEN/binary>>,
                     <<>>,
                     #{}
                 ),
@@ -711,6 +714,74 @@ a02_sse_tests(_) ->
                 ?assert(string:find(Raw, <<"id: 41\nevent: message">>) =:= nomatch)
             end)
         end},
+
+        %% DF-5 回归：流内 `widget_history_after` 补偿读与 REST 历史同源——真
+        %% facade 的 visitor_session_scope 需要 session_id 裁决会话归属。此前
+        %% scoped/1 丢键使补偿读恒 invalid_argument 且被 stream_step 静默吞掉，
+        %% message/state 帧全死（长流只剩初始 state 帧）。这里在 facade mock
+        %% 边界锁死 session_id 投影：缺键/错键即测试失败。
+        {"DF-5 SSE polling read carries session_id so message frames survive", fun() ->
+            meck:expect(customer_service_facade, widget_list_sessions, fun(_O, _P) ->
+                {ok, [#{id => ?SESSION, status => queued}]}
+            end),
+            meck:expect(customer_service_facade, widget_history_after, fun(_O, Params) ->
+                case maps:get(session_id, Params, undefined) of
+                    ?SESSION ->
+                        case maps:get(after_id, Params, undefined) of
+                            undefined -> {ok, [#{id => 9, body => <<"df5-m1">>}]};
+                            9 -> {ok, []};
+                            Other -> erlang:error({unexpected_cursor, Other})
+                        end;
+                    MissingOrWrong ->
+                        erlang:error({df5_session_id_missing, MissingOrWrong})
+                end
+            end),
+            ?S:with_listener(widget, widget_session_events, sse_inject(), fun(Port) ->
+                Raw = ?S:stream_request(
+                    Port,
+                    <<"GET">>,
+                    events_path(),
+                    <<>>,
+                    #{<<"x-cs-visit-token">> => ?TOKEN},
+                    400
+                ),
+                ?assert(string:find(Raw, <<"event: message">>) =/= nomatch),
+                ?assert(string:find(Raw, <<"id: 9">>) =/= nomatch),
+                ?assert(string:find(Raw, <<"df5-m1">>) =/= nomatch)
+            end)
+        end},
+
+        %% DF-10 回归：流内轮询命中凭证终态失效（token_revoked 族）必须立即
+        %% fin 关流，而非静默保持至 sse_max_ms。修复前 stream_step 吞掉一切
+        %% 轮询错误，已吊销访客的既有流保持 open——撤权对访客不可感知（任务
+        %% 书 A04「既有 SSE 流立即降级」不满足）。判定口径：sse_max_ms 拉长
+        %% 到 60s、读窗口 2s——修复后首轮 poll（30ms）关流 → EOF 提前返回；
+        %% 修复前静默保持 → 读满 2s 超时返回（elapsed 越窗即未修复）。
+        {"DF-10 poll hitting terminal revocation closes the stream instead of silent keep-open",
+            fun() ->
+                meck:expect(customer_service_facade, widget_list_sessions, fun(_O, _P) ->
+                    {ok, [#{id => ?SESSION, status => queued}]}
+                end),
+                meck:expect(customer_service_facade, widget_history_after, fun(_O, _P) ->
+                    {error, token_revoked}
+                end),
+                ?S:with_listener(widget, widget_session_events, sse_inject_fatal(), fun(Port) ->
+                    T0 = erlang:monotonic_time(millisecond),
+                    Raw = ?S:stream_request(
+                        Port,
+                        <<"GET">>,
+                        events_path(),
+                        <<>>,
+                        #{<<"x-cs-visit-token">> => ?TOKEN},
+                        2000
+                    ),
+                    Elapsed = erlang:monotonic_time(millisecond) - T0,
+                    %% 流开过（关流前初始 state 帧已发出）。
+                    ?assert(string:find(Raw, <<"event: state">>) =/= nomatch),
+                    %% EOF 提前返回：远小于读窗口（静默保持时会读满 2000ms）。
+                    ?assert(Elapsed < 1500)
+                end)
+            end},
 
         {"A02 idle stream emits keep-alive comment lines", fun() ->
             meck:expect(customer_service_facade, widget_list_sessions, fun(_O, _P) ->

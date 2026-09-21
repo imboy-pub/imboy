@@ -756,9 +756,12 @@ projection_cases(_) ->
             ?assertNot(is_map_key(body_cipher, LM)),
             ?assertNot(is_map_key(key_version, LM)),
             ?assertNot(is_map_key(client_msg_id, LM)),
-            %% 计数：同作用域稳定分布。
+            %% 计数：同作用域稳定分布；DF-8：三键恒在（零计数 = 0）。
             ?assertEqual(1, maps:get(total, View)),
-            ?assertEqual(#{<<"queued">> => 1}, maps:get(total_by_status, View))
+            ?assertEqual(
+                #{<<"queued">> => 1, <<"active">> => 0, <<"closed">> => 0},
+                maps:get(total_by_status, View)
+            )
         end},
 
         {"Projection: masked display name keeps first/last chars; source facts decide", fun() ->
@@ -837,5 +840,23 @@ projection_cases(_) ->
                     {error, {invalid_status, undefined}},
                     cs_session_app:seat_session_page(Org, #{store => cs_fake_store})
                 )
+            end},
+
+        {"DF-8: total_by_status always carries all three status keys (zero counts included)",
+            fun() ->
+                ok = cs_fake_store:init(),
+                ok = cs_fake_store:put_session_for_list(
+                    Base#{visit_token_id => undefined, created_by_user_id => undefined}
+                ),
+                {ok, View} = cs_session_app:seat_session_page(Org, #{
+                    store => cs_fake_store, status => <<"queued">>, workspace_id => Ws
+                }),
+                ByStatus = maps:get(total_by_status, View),
+                ?assertEqual(
+                    #{<<"queued">> => 1, <<"active">> => 0, <<"closed">> => 0}, ByStatus
+                ),
+                ?assert(is_integer(maps:get(<<"queued">>, ByStatus))),
+                ?assert(is_integer(maps:get(<<"active">>, ByStatus))),
+                ?assert(is_integer(maps:get(<<"closed">>, ByStatus)))
             end}
     ].

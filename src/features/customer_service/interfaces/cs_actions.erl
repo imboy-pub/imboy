@@ -304,8 +304,11 @@ table(tenant) ->
         {session_rating,
             entry(
                 [
+                    %% clock_unit => second（DF-6）：评分写路径的 `at` 进 store 的
+                    %% `to_timestamp`（epoch 秒）；毫秒量纲会把 rating_at 污染成
+                    %% 约 5.8 万年后（与 claim/close 同族，DF-4 同款机制）。
                     {<<"POST">>, rate, [{rating, int, required}, {expected_version, int, required}],
-                        [{id, session_id}]}
+                        [{id, session_id}], #{clock_unit => second}}
                 ],
                 visit_auth(),
                 server_common() ++ [contact_id, business_identity_id],
@@ -316,7 +319,13 @@ table(tenant) ->
         %% member org；session.org_id 由 store 同语句裁决（跨 Org not_found）。
         {session_claim,
             entry(
-                [{<<"POST">>, claim, [{expected_version, int, required}], [{id, session_id}]}],
+                [
+                    %% clock_unit => second（DF-6）：claimed_at/updated_at 的
+                    %% `to_timestamp` 以秒为量纲，毫秒输入即时间戳写污染。
+                    {<<"POST">>, claim, [{expected_version, int, required}], [{id, session_id}], #{
+                        clock_unit => second
+                    }}
+                ],
                 seat_auth(<<"conversation.write">>),
                 server_common() ++ [business_identity_id],
                 path
@@ -324,10 +333,16 @@ table(tenant) ->
         {session_transfer,
             entry(
                 [
+                    %% clock_unit => second（DF-6R，DF-6 同族收尾）：转接写路径的
+                    %% `at` 进 SQL_TRANSFER_UPDATE 的 updated_at = to_timestamp
+                    %% （epoch 秒）；毫秒量纲会把 updated_at 污染成约 5.8 万年后
+                    %% （与 claim/close/rate 同源）。
                     {<<"POST">>, transfer,
-                        [{to_identity_id, tsid, required}, {expected_version, int, required}], [
+                        [{to_identity_id, tsid, required}, {expected_version, int, required}],
+                        [
                             {id, session_id}
-                        ]}
+                        ],
+                        #{clock_unit => second}}
                 ],
                 seat_auth(<<"conversation.write">>),
                 server_common(),
@@ -336,10 +351,15 @@ table(tenant) ->
         {session_close,
             entry(
                 [
+                    %% clock_unit => second（DF-6）：同 session_claim——closed_at/
+                    %% updated_at 的 `to_timestamp` 以秒为量纲（实证残留行
+                    %% closed_at=58691-02-01）。
                     {<<"POST">>, close,
-                        [{expected_version, int, required}, {reason, binary, optional}], [
+                        [{expected_version, int, required}, {reason, binary, optional}],
+                        [
                             {id, session_id}
-                        ]}
+                        ],
+                        #{clock_unit => second}}
                 ],
                 seat_auth(<<"conversation.write">>),
                 server_common(),
@@ -476,7 +496,10 @@ table(tenant) ->
             )},
         {shop_key_revoke,
             entry(
-                [{<<"POST">>, revoke_shop_key, [], [{id, id}]}],
+                %% clock_unit => second（DF-4）：吊销写路径的 `at` 进 store 的
+                %% `to_timestamp`（epoch 秒）；毫秒量纲会把 revoked_at 污染成
+                %% 约 5.8 万年后 → 吊销判定永不命中（fail-open）。
+                [{<<"POST">>, revoke_shop_key, [], [{id, id}], #{clock_unit => second}}],
                 governance_auth(),
                 server_common(),
                 path
@@ -501,7 +524,9 @@ table(tenant) ->
             )},
         {visit_token_revoke,
             entry(
-                [{<<"POST">>, revoke_visit_token, [], [{id, id}]}],
+                %% clock_unit => second（DF-4）：同 shop_key_revoke——revoked_at
+                %% 的 to_timestamp 以秒为量纲，毫秒输入即吊销 fail-open。
+                [{<<"POST">>, revoke_visit_token, [], [{id, id}], #{clock_unit => second}}],
                 governance_auth(),
                 server_common(),
                 path
@@ -661,6 +686,16 @@ table(widget) ->
             widget_entry(
                 [
                     {<<"POST">>, widget_asset_put,
+                        [
+                            {installation_id, tsid, required},
+                            {upload_ref, binary, required}
+                        ],
+                        [{id, session_id}]},
+                    %% P1-E2E-01 实证缺陷修复：presign 回显 upload.method=PUT
+                    %% （with_upload_url），浏览器按合同发裸 PUT，而动作表只登记
+                    %% POST → PUT 一律 405，FE-W01 附件链必炸。PUT 与 POST 同参
+                    %% 同用例，方法门放行两形态（鉴权/绑定门不变）。
+                    {<<"PUT">>, widget_asset_put,
                         [
                             {installation_id, tsid, required},
                             {upload_ref, binary, required}

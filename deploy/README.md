@@ -43,8 +43,43 @@ deploy/
 │   │   └── dashboards/          # Auto-provision dashboard folder
 │   └── dashboards/
 │       └── imboy-overview.json  # 9 panel 总览面板 / 9-panel overview dashboard
+├── widget/                      # CS Widget 独立静态镜像（DEP-01）
+│   ├── Dockerfile               # nginx:1.27-alpine 非 root 承载 build:widget 产物
+│   ├── nginx.conf               # 缓存策略 + SSE 直通（见下「CS Widget」节）
+│   └── dryrun.sh                # install/restart/rollback 合成环境演练（DEP-01 A06）
+├── docker-compose.widget.yml    # widget 服务 overlay（默认宿主端口 18900）
+├── docker-compose.secrets.example.yml # 后端 secret 以 _FILE 加 0600 文件注入示例
+├── secrets/                     # 部署机本机 secret 文件（git 忽略，仅路径入 compose）
 └── README.md                    # 本文件 / This file
 ```
+
+## CS Widget 静态服务（DEP-01）
+
+客服 Widget（宿主 loader + iframe 聊天应用）以**独立镜像**交付，不混入 Admin
+SPA 镜像。产物由 admin 仓 `bun run build:widget` 生成（`dist-widget/`，含
+`loader.js` / `widget/index.html` / `assets/`），构建时拷入本目录 `widget/dist/`
+（git 忽略，dist 本体永不入仓）：
+
+```bash
+# 1. 生成产物（admin 仓）
+cd /path/to/imboyadmin && bun run build:widget
+# 2. 构建镜像（tag 固定、禁 latest：升级=推新 tag，回滚=切回旧 tag）
+cp -R dist-widget/. /path/to/imboy/deploy/widget/dist/
+docker build -t imboy-widget:v1 /path/to/imboy/deploy/widget/
+# 3. 起服务（overlay 可并入社区栈；独立演练见 widget/dryrun.sh）
+docker compose -f docker-compose.widget.yml up -d   # 宿主端口 18900
+```
+
+缓存策略（`widget/nginx.conf`）：宿主 HTML 与 `widget/` 应用 HTML `no-cache`，
+`/loader.js` 与 `/assets/` 短缓存（300s）+ `must-revalidate` + ETag——产物文件名
+当前不带内容 hash，**不得**加 `immutable`（升级后旧资产会按同名永生）；产物改带
+hash 后方可升级为长缓存。Widget 访客事件流（SSE）经 nginx 时禁缓冲/禁缓存、
+1h 读超时（本镜像与主反代模板均已内置对应 location）。
+
+后端 secret（widget subject key 与企业消息 keyring）经 `docker-compose.secrets.example.yml`
+以 `_FILE` + 0600 只读挂载注入：明文只存在于部署机 `secrets/` 目录文件里，
+不出现在 compose、`.env` 或日志中；任一文件缺失或权限过宽，后端启动即拒绝
+（fail-closed，读方 `src/lib/imboy_env_overrides.erl`）。
 
 ## 前置条件
 

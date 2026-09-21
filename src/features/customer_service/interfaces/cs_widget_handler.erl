@@ -444,10 +444,27 @@ stream_step(Req, OrgId, Params, Ctx) ->
     case poll_messages(OrgId, Params, Cursor) of
         {ok, Messages} when is_list(Messages) ->
             deliver(Req, OrgId, Params, Ctx, sort_messages(Messages));
-        _ ->
-            %% 单次轮询失败（瞬态）不终止流；也不推进保活计数。
-            stream_loop(Req, OrgId, Params, Ctx)
+        {error, Reason} ->
+            case is_stream_fatal(Reason) of
+                true ->
+                    %% DF-10 修复：凭证/安装终态失效（吊销族）不是瞬态错误——
+                    %% 立即 fin 关流，客户端重连走 4xx fail-closed，访客侧
+                    %% banner 呈现断线/重连态（撤权可感知降级）。
+                    finish(Req);
+                false ->
+                    %% 单次轮询失败（瞬态，如 DB 抖动）不终止流；也不推进保活计数。
+                    stream_loop(Req, OrgId, Params, Ctx)
+            end
     end.
+
+%% 凭证/接入的终态失效词汇：流保持已无意义（重试只会持续 4xx），且访客侧
+%% 必须可感知降级。瞬态错误（DB 抖动等）不在此列，维持静默续流。
+is_stream_fatal(token_revoked) -> true;
+is_stream_fatal(token_expired) -> true;
+is_stream_fatal(revoked) -> true;
+is_stream_fatal(installation_revoked) -> true;
+is_stream_fatal(identity_key_revoked) -> true;
+is_stream_fatal(_) -> false.
 
 %% 逐条发新消息帧（id 严格递增）→ 状态变更检查 → 空轮询保活注释。
 deliver(Req, OrgId, Params, Ctx, Messages) ->
@@ -545,10 +562,14 @@ poll_messages(OrgId, Params, Cursor) ->
 sort_messages(Messages) ->
     lists:sort(fun(A, B) -> message_id(A) =< message_id(B) end, Messages).
 
-%% facade 参数收敛：只留注入键 + 游标/页大小键（session 级键不出流循环）。
+%% facade 参数收敛：只留注入键 + 游标/页大小键 + session_id（DF-5：流内
+%% `widget_history_after` 补偿读与 REST 历史同源，真 facade 的
+%% `visitor_session_scope` 需要它裁决会话归属——丢键即补偿读恒
+%% invalid_argument，被 stream_step 静默吞掉，message/state 帧全死）。
 scoped(Params) ->
     maps:with(
-        [installation_id, secret, at, store, id, default_workspace, digest, limit], Params
+        [installation_id, secret, at, store, id, default_workspace, digest, limit, session_id],
+        Params
     ).
 
 %% 断线重连游标：`Last-Event-ID` 头优先，其次 `after_id` 参数，缺省 0

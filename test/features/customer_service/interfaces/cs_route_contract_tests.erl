@@ -139,10 +139,12 @@ widget_literal_routes() ->
         },
         %% BE-PATCH-01：访客附件字节上传代理（upload_ref 唯一凭证——FE 裸 PUT
         %% 合同；payload=请求体字节，线格式分支在 cs_widget_handler）。
+        %% P1-E2E-01 实证：presign 回显 upload.method=PUT，动作表放行 POST+PUT
+        %% 双形态（同参同用例），否则浏览器按合同发 PUT 一律 405。
         {
             <<W/binary, "/sessions/:id/assets/upload">>,
             widget_asset_put,
-            [<<"POST">>],
+            [<<"POST">>, <<"PUT">>],
             cs_visit
         },
         %% BE-S01b（api-surface-freeze widget_apis）：访客附件内容代理（对象字节
@@ -751,7 +753,13 @@ error_status_mapping_is_explicit_test() ->
     ?assertEqual(422, cs_http:status(identity_key_not_configured)),
     %% 服务端注入事实缺失/默认 Workspace 解析失败是配置问题 ⇒ 500（不伪装 4xx）。
     ?assertEqual(500, cs_http:status({missing_injection, default_workspace})),
-    ?assertEqual(500, cs_http:status(default_workspace_unresolved)).
+    ?assertEqual(500, cs_http:status(default_workspace_unresolved)),
+    %% DF-2：坏 upload_ref（confirm 的唯一凭证）是客户端凭证错误——未显式
+    %% 登记时落 server_side 兜底恒 500，语义错位。篡改/跨租户/垃圾 ref =
+    %% 客户端凭证 400；过期 ref 与 EB 面显式登记同口径（F-LAY-02：客户端
+    %% 可重试的冲突语义 409）。
+    ?assertEqual(400, cs_http:status(invalid_upload_ref)),
+    ?assertEqual(409, cs_http:status(expired_upload_ref)).
 
 %% CSB-03：widget 面凭证传输纪律——专用头合法、查询串即 400；Origin 归一化
 %% 复用 domain cs_widget（接口层只做归一与形状门，allowlist 匹配在 application）。
