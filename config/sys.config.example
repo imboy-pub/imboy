@@ -146,6 +146,20 @@
         %% （跨环境基本一致，按业务需要调整；非敏感）
         %% ====================================================================
 
+        %% EPGZ-02 企业 internal API（/api/internal/v1/*）专用限流
+        %% 每分钟每 application 配额。**配置缺失即 fail-closed 拒绝请求**
+        %% （INV-9，enterprise_internal_rate:check → security_gate_closed），
+        %% 不得为绕过限流删除本段；数值可按客户调整。
+        {enterprise_internal_rate_limits, #{
+            internal_read => 600,
+            internal_write => 300,
+            internal_sso => 60
+        }},
+
+        %% EPGZ-02 internal API 幂等窗口（秒，缺省 24h）：同 Idempotency-Key
+        %% 同 body 在窗口内重放原结果，窗口外按新请求处理。
+        {enterprise_internal_idempotency_ttl_seconds, 86400},
+
         %% API 签名验证开关（<<"on">> | <<"off">>）
         %% 生产环境建议设为 <<"on">>，开发/测试可留 <<"off">>
         {api_auth_switch, <<"off">>},

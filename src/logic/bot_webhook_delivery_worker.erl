@@ -96,9 +96,30 @@ run_batch() ->
             ok
     end.
 
-%% @doc 执行单条交付：校验不可变 URL/IP 快照 → 凭证解密 → 签名发送 → 分类落账。
+%% @doc 执行单条交付：企业分派（EPGZ-04 hook）→ bot 原路径。
+%%
+%% EPGZ-04 企业分派（最小 hook 点，A0 复核）：bot_delivery.bot_id 以
+%% "eapp:" 前缀开头的行为属于企业 Webhook（enterprise_webhook_repo 的
+%% delivery_bot_id/1 命名空间，与个人 bot 的纯数字 bot_id 物理可分派），
+%% 委托 enterprise_webhook_logic:execute_delivery/1 执行——同一 outbox
+%% 表 / 重试表 / 死信语义，仅签名原文与 secret 来源按企业合同
+%% （plan-gz §7.1：HMAC-SHA256(secret, ts "." body)）。
 execute(Delivery) ->
     #{<<"delivery_id">> := Did} = Delivery,
+    case is_enterprise_delivery(Delivery) of
+        true ->
+            enterprise_webhook_logic:execute_delivery(Delivery);
+        false ->
+            execute_bot(Delivery, Did)
+    end.
+
+is_enterprise_delivery(#{<<"bot_id">> := BotId}) when is_binary(BotId) ->
+    binary:longest_common_prefix([BotId, <<"eapp:">>]) =:= byte_size(<<"eapp:">>);
+is_enterprise_delivery(_) ->
+    false.
+
+%% @doc 执行单条 bot 交付：校验不可变 URL/IP 快照 → 凭证解密 → 签名发送 → 分类落账。
+execute_bot(Delivery, Did) ->
     AttemptNo = maps:get(<<"attempt_count">>, Delivery, 0) + 1,
     try
         do_execute(Delivery, AttemptNo)
