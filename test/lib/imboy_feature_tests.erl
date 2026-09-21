@@ -82,6 +82,9 @@ all_returns_binary_key_view_for_known_features_test_() ->
     EnterpriseCompiled = lists:member(enterprise_business, imboy_feature:compiled_features()),
     CustomerServiceCompiled =
         lists:member(customer_service, imboy_feature:compiled_features()),
+    %% GZAPP-02/G6：project 也是内建键（Workspace 项目协作面，通用默认开启；
+    %% 广州部署经 Git 外 manifest/运行时开关关闭）。同上按编译期真源取值。
+    ProjectCompiled = lists:member(project, imboy_feature:compiled_features()),
     FeatureMap = #{
         core => true,
         e2ee => false,
@@ -95,11 +98,13 @@ all_returns_binary_key_view_for_known_features_test_() ->
         group_schedule => false,
         group_task => true,
         %% 平台内建键（Builtin）：L-01 bot_webhook / R-04 appeal /
-        %% EB-10 enterprise_business / customer_service
+        %% EB-10 enterprise_business / customer_service /
+        %% GZAPP-02 project
         bot_webhook => true,
         appeal => false,
         enterprise_business => EnterpriseCompiled,
-        customer_service => CustomerServiceCompiled
+        customer_service => CustomerServiceCompiled,
+        project => ProjectCompiled
     },
     ?WITH_MECKS(
         [
@@ -139,7 +144,10 @@ feature_names_contract_test() ->
             bot_webhook,
             appeal,
             enterprise_business,
-            customer_service
+            customer_service,
+            %% GZAPP-02/G6：project 是 Builtin 列表的末位（与
+            %% src/lib/imboy_feature.erl 的 Builtin 字面量同序）
+            project
         ],
         imboy_feature:feature_names()
     ).

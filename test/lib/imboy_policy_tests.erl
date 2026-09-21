@@ -705,7 +705,10 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
                 <<"bot_webhook">>,
                 <<"appeal">>,
                 <<"enterprise_business">>,
-                <<"customer_service">>
+                <<"customer_service">>,
+                %% GZAPP-02/G6：project 为 Builtin 末位（字面量契约，
+                %% 与 src/lib/imboy_feature.erl 的 Builtin 同序）
+                <<"project">>
             ],
             maps:get(<<"features">>, EditorOrder)
         ),
