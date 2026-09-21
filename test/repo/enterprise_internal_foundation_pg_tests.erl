@@ -7,9 +7,13 @@
 %% 业务用例每条 BEGIN ... ROLLBACK，不留数据；down/up 循环用独立连接，
 %% 排在最后（其后表已重建但为空）。
 %%
-%% oracle 覆盖（plan-gz §5 约束逐条）：
+%% oracle 覆盖（plan-gz §5 约束逐条 + EPGZ-01R 修订）：
 %%   ⓪ 空库全量 up 至版本 136
 %%   ① enterprise_application：CRUD、(org,application_key) 唯一拒绝、跨 Org 同 key 放行
+%%   ①b redirect URI allowlist（EPGZ-01R / EPGZ-05 硬需求）：写读往返、整体
+%%      替换/清空、默认空、非法元素（http/非 https scheme/无 host/空串/
+%%      fragment/重复/超 20 个）触发器 23514 拒绝、exact match 语义
+%%      （= ANY 逐字节：尾斜杠/查询参数变体不相等）
 %%   ② credential：digest/prefix 落库、按 prefix 查找、全局 prefix 唯一拒绝、
 %%      复合 org 约束（跨 Org application 引用 23503 拒绝）、revoke 幂等
 %%   ③ identity mapping：bind/resolve/unbind、双向唯一拒绝、
@@ -17,9 +21,17 @@
 %%   ④ idempotency：record 首插/重放/同键异 body、claim 单次、过期标记
 %%   ⑤ sso code：issue/consume 单次原子、重放 already_consumed、过期 expired、
 %%      redirect_uri 不匹配拒绝、非 https redirect CHECK 拒绝
-%%   ⑥ migration 循环：down 136 五表+守卫函数全消 → up 136 全部重建 →
-%%      版本 136→135→136 → 重建后 oracle 复验
+%%   ⑤b push_token platform 值域（EPGZ-01R / EPGZ-07 硬需求）：'jpush' 可插入、
+%%      fcm/apns/web_push 回归放行、非法值（含大小写变体）仍 23514 拒绝
+%%   ⑥ migration 循环：down 136 五表+两守卫函数全消、push platform 值域恢复
+%%      原定义（jpush 拒/fcm 放行）→ up 136 全部重建 → 版本 136→135→136
+%%      → 重建后 oracle 复验（redirect 守卫 + jpush 放行）
 %% marker 库供给失败（环境/配置/迁移任一不可用）显式 FAIL，无静默 skip。
+%%
+%% EPGZ-01R exact match 语义说明：text[] 元素级"逐字节相等"由 = ANY 谓词在
+%% DB 层即成立（本测试 ①b 直接断言）；"尾斜杠/查询参数不算相等"无需应用
+%% 层参与——变体字符串不是同一数组元素，= ANY 必为 false。SSO 签发/交换
+%% 侧的 fail-closed 调用顺序由 A5（EPGZ-05 W2）负责。
 
 -module(enterprise_internal_foundation_pg_tests).
 
@@ -118,10 +130,13 @@ foundation_pg_test_() ->
                 {"empty_db_full_up_reaches_136", empty_db_full_up_test(C)},
                 {"application_crud_and_org_scoped_key_unique",
                     with_tx(C, fun application_oracle/1)},
+                {"application_redirect_uri_allowlist_domain",
+                    with_tx(C, fun application_redirect_oracle/1)},
                 {"credential_digest_prefix_and_org_boundary", with_tx(C, fun credential_oracle/1)},
                 {"identity_mapping_bind_resolve_guards", with_tx(C, fun identity_oracle/1)},
                 {"idempotency_record_claim_expiry", with_tx(C, fun idempotency_oracle/1)},
                 {"sso_code_issue_consume_single_use", with_tx(C, fun sso_code_oracle/1)},
+                {"push_token_platform_jpush_domain", with_tx(C, fun push_token_platform_oracle/1)},
                 {"migration_136_down_then_up_cycle", {timeout, 300, migration_cycle_test(State)}}
             ]
         end}}.
@@ -210,6 +225,121 @@ application_oracle(C) ->
             )
         end)
     ).
+
+%%%===================================================================
+%%% ①b redirect URI allowlist（EPGZ-01R / EPGZ-05 硬需求）
+%%%===================================================================
+
+application_redirect_oracle(C) ->
+    ok = seed_org(C, ?ORG_A, ?OWNER_A),
+    Uris = [
+        <<"https://oa.customer.example.com/sso/cb">>,
+        <<"https://oa2.customer.example.com/callback">>
+    ],
+    %% 创建带 allowlist + 写读往返（RETURNING / find / find_by_key 三口径一致）
+    {ok, App} = enterprise_application_repo:create_tx(
+        C, ?ORG_A, <<"oa-gz-redir">>, <<"redir_app"/utf8>>, {?OWNER_A, []}, Uris
+    ),
+    AppId = maps:get(<<"id">>, App),
+    ?assertEqual(Uris, maps:get(<<"allowed_redirect_uris">>, App)),
+    {ok, Found} = enterprise_application_repo:find_tx(C, ?ORG_A, AppId),
+    ?assertEqual(Uris, maps:get(<<"allowed_redirect_uris">>, Found)),
+    {ok, FoundKey} = enterprise_application_repo:find_by_key_tx(C, ?ORG_A, <<"oa-gz-redir">>),
+    ?assertEqual(Uris, maps:get(<<"allowed_redirect_uris">>, FoundKey)),
+    %% create_tx/4 默认空 allowlist（空表 = SSO 一律拒绝 fail-closed）
+    {ok, Plain} = enterprise_application_repo:create_tx(
+        C, ?ORG_A, <<"oa-gz-plain">>, <<"plain"/utf8>>
+    ),
+    ?assertEqual([], maps:get(<<"allowed_redirect_uris">>, Plain)),
+    %% 整体替换 + 清空
+    Uris2 = [<<"https://new.customer.example.com/cb">>],
+    ok = enterprise_application_repo:update_redirect_uris_tx(C, ?ORG_A, AppId, Uris2),
+    {ok, Updated} = enterprise_application_repo:find_tx(C, ?ORG_A, AppId),
+    ?assertEqual(Uris2, maps:get(<<"allowed_redirect_uris">>, Updated)),
+    ok = enterprise_application_repo:update_redirect_uris_tx(C, ?ORG_A, AppId, []),
+    {ok, Cleared} = enterprise_application_repo:find_tx(C, ?ORG_A, AppId),
+    ?assertEqual([], maps:get(<<"allowed_redirect_uris">>, Cleared)),
+    %% 不存在的 application
+    ?assertEqual(
+        {error, not_found},
+        enterprise_application_repo:update_redirect_uris_tx(
+            C, ?ORG_A, AppId + 999999, Uris2
+        )
+    ),
+    %% ---- 存储层元素校验：非法元素一律触发器 23514 拒绝 ----
+    BadUriCases = [
+        {<<"http://oa.customer.example.com/cb">>, <<"http_scheme">>},
+        {<<"ftp://oa.customer.example.com/cb">>, <<"non_http_scheme">>},
+        {<<"https://">>, <<"no_host">>},
+        {<<"https:///cb">>, <<"empty_host">>},
+        {<<>>, <<"empty_string">>},
+        {<<"https://oa.customer.example.com/cb#frag">>, <<"fragment">>},
+        {<<"https://oa.customer.example.com/cb?x=1#f">>, <<"query_then_fragment">>}
+    ],
+    lists:foreach(
+        fun({BadUri, Label}) ->
+            ?assertMatch(
+                {error, #error{code = <<"23514">>}},
+                in_savepoint(C, fun() ->
+                    enterprise_application_repo:create_tx(
+                        C,
+                        ?ORG_A,
+                        <<"oa-gz-bad-", Label/binary>>,
+                        <<"bad"/utf8>>,
+                        undefined,
+                        [BadUri]
+                    )
+                end)
+            ),
+            %% update 路径同样被守卫
+            ?assertMatch(
+                {error, #error{code = <<"23514">>}},
+                in_savepoint(C, fun() ->
+                    enterprise_application_repo:update_redirect_uris_tx(C, ?ORG_A, AppId, [BadUri])
+                end)
+            )
+        end,
+        BadUriCases
+    ),
+    %% 合法带查询参数的 URI 可注册（exact match 消费时逐字节比对，见下）
+    ok = enterprise_application_repo:update_redirect_uris_tx(
+        C, ?ORG_A, AppId, [<<"https://oa.customer.example.com/cb?tenant=gz">>]
+    ),
+    %% 重复元素拒绝
+    ?assertMatch(
+        {error, #error{code = <<"23514">>}},
+        in_savepoint(C, fun() ->
+            enterprise_application_repo:update_redirect_uris_tx(
+                C,
+                ?ORG_A,
+                AppId,
+                [<<"https://oa.customer.example.com/cb">>, <<"https://oa.customer.example.com/cb">>]
+            )
+        end)
+    ),
+    %% 超 20 个元素拒绝
+    TooMany = [
+        <<"https://oa.customer.example.com/cb/", (integer_to_binary(N))/binary>>
+     || N <- lists:seq(1, 21)
+    ],
+    ?assertMatch(
+        {error, #error{code = <<"23514">>}},
+        in_savepoint(C, fun() ->
+            enterprise_application_repo:update_redirect_uris_tx(C, ?ORG_A, AppId, TooMany)
+        end)
+    ),
+    %% 恰好 20 个放行（边界）
+    Exactly20 = lists:sublist(TooMany, 20),
+    ok = enterprise_application_repo:update_redirect_uris_tx(C, ?ORG_A, AppId, Exactly20),
+    %% ---- exact match 语义（DB 层 = ANY 逐字节比较，A5 消费谓词同型）----
+    %% 尾斜杠变体 / 查询参数变体都不是同一元素：不匹配（不算相等）
+    ?assert(bool(C, allow_match_sql(<<"https://oa.customer.example.com/cb/1">>))),
+    ?assertNot(bool(C, allow_match_sql(<<"https://oa.customer.example.com/cb/1/">>))),
+    ?assertNot(bool(C, allow_match_sql(<<"https://oa.customer.example.com/cb/1?x=1">>))),
+    ?assertNot(bool(C, allow_match_sql(<<"https://oa.customer.example.com:443/cb/1">>))),
+    %% allowlist 未注册的 URI 不匹配（跨 app/org 隔离由行唯一性天然保证）
+    ?assertNot(bool(C, allow_match_sql(<<"https://evil.example.com/cb/1">>))),
+    ok.
 
 %%%===================================================================
 %%% ② enterprise_application_credential
@@ -577,6 +707,51 @@ sso_code_oracle(C) ->
     ).
 
 %%%===================================================================
+%%% ⑤b push_token platform 值域（EPGZ-01R / EPGZ-07 硬需求）
+%%%===================================================================
+
+push_token_platform_oracle(C) ->
+    %% 'jpush' 可插入（136 扩展值域；EPGZ-07 目标合同 device_type=android + platform=jpush）
+    ?assertMatch(
+        {ok, _},
+        insert_push_token(C, 987501, <<"android">>, <<"jpush">>)
+    ),
+    %% 既有值域回归放行：fcm / apns / web_push
+    lists:foreach(
+        fun({Id, Dt, Platform}) ->
+            ?assertMatch(
+                {ok, _},
+                insert_push_token(C, Id, Dt, Platform)
+            )
+        end,
+        [
+            {987502, <<"android">>, <<"fcm">>},
+            {987503, <<"ios">>, <<"apns">>},
+            {987504, <<"web">>, <<"web_push">>}
+        ]
+    ),
+    %% 非法值仍拒（CHECK 23514）：未知 provider / 大小写变体 / 空串
+    BadPlatforms = [<<"xxx">>, <<"JPush">>, <<"FCM">>, <<"">>],
+    lists:foreach(
+        fun(Platform) ->
+            ?assertMatch(
+                {error, #error{code = <<"23514">>}},
+                in_savepoint(C, fun() ->
+                    insert_push_token(C, 987505, <<"android">>, Platform)
+                end)
+            )
+        end,
+        BadPlatforms
+    ),
+    %% device_type 值域未受本次修订影响：非法 device_type 仍拒
+    ?assertMatch(
+        {error, #error{code = <<"23514">>}},
+        in_savepoint(C, fun() ->
+            insert_push_token(C, 987506, <<"watchos">>, <<"jpush">>)
+        end)
+    ).
+
+%%%===================================================================
 %%% ⑥ migration down/up 循环（独立连接；排在最后）
 %%%===================================================================
 
@@ -588,7 +763,8 @@ migration_cycle(State) ->
     Conn = connect_marker(State),
     try
         MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
-        %% down 00000136：五表 + 守卫函数全部消失，版本回到 135
+        %% down 00000136：五表 + 两个守卫函数全部消失，push platform 值域恢复，
+        %% 版本回到 135
         ok = erlang_migrate:down(MigConfig, 1),
         {ok, VerAfterDown, false} = erlang_migrate:version(MigConfig),
         ?assertEqual(135, VerAfterDown),
@@ -597,6 +773,17 @@ migration_cycle(State) ->
             ?TABLES
         ),
         ?assert(function_missing(Conn, <<"fn_enterprise_external_identity_member_guard">>)),
+        ?assert(function_missing(Conn, <<"fn_enterprise_application_redirect_guard">>)),
+        %% down 后 push_token platform 值域精确恢复原定义（00000001）：
+        %% 'jpush' 被拒、'fcm' 放行
+        ?assertMatch(
+            {error, #error{code = <<"23514">>}},
+            insert_push_token(Conn, 987601, <<"android">>, <<"jpush">>)
+        ),
+        ?assertMatch(
+            {ok, _},
+            insert_push_token(Conn, 987602, <<"android">>, <<"fcm">>)
+        ),
         %% 再次 up 00000136：五表全部重建，版本回到 136
         ok = erlang_migrate:up(MigConfig, 1),
         {ok, 136, false} = erlang_migrate:version(MigConfig),
@@ -604,7 +791,12 @@ migration_cycle(State) ->
             fun(T) -> ?assertNot(table_missing(Conn, T), {table_should_exist, T}) end,
             ?TABLES
         ),
-        %% 重建后 oracle 复验：五表可写且约束仍在
+        %% up 后 push platform 值域重新扩展：'jpush' 放行
+        ?assertMatch(
+            {ok, _},
+            insert_push_token(Conn, 987603, <<"android">>, <<"jpush">>)
+        ),
+        %% 重建后 oracle 复验：五表可写且约束/守卫仍在
         ok = exec(Conn, <<"BEGIN">>),
         try
             ok = seed_org(Conn, ?ORG_A, ?OWNER_A),
@@ -622,6 +814,33 @@ migration_cycle(State) ->
                         Conn, ?ORG_A, maps:get(<<"id">>, AppA), <<"oa-emp-x">>, ?OUTSIDER
                     )
                 end)
+            ),
+            %% redirect 守卫同样重建：非 https 元素仍被 23514 拒绝
+            ?assertMatch(
+                {error, #error{code = <<"23514">>}},
+                in_savepoint(Conn, fun() ->
+                    enterprise_application_repo:create_tx(
+                        Conn,
+                        ?ORG_A,
+                        <<"oa-gz-redir-rebuilt">>,
+                        <<"rb"/utf8>>,
+                        undefined,
+                        [<<"http://oa.customer.example.com/cb">>]
+                    )
+                end)
+            ),
+            %% 合法 allowlist 重建后可写
+            {ok, Rb} = enterprise_application_repo:create_tx(
+                Conn,
+                ?ORG_A,
+                <<"oa-gz-redir-rebuilt2">>,
+                <<"rb2"/utf8>>,
+                undefined,
+                [<<"https://oa.customer.example.com/sso/cb">>]
+            ),
+            ?assertEqual(
+                [<<"https://oa.customer.example.com/sso/cb">>],
+                maps:get(<<"allowed_redirect_uris">>, Rb)
             ),
             ok
         after
@@ -684,6 +903,36 @@ exec(C, IoData) ->
         {ok, _} -> ok;
         {error, Reason} -> erlang:error({sql_error, Reason, Sql})
     end.
+
+%% 插入 push_token 行（无 FK，user_id 仅占位）；device_id/token 按 Id 派生
+%% 避开既有部分唯一索引 uk_push_token_user_device (user_id, device_id)
+%% WHERE status=1；返回 {ok,_}|{error,#error{}} 以便负例直接断言 CHECK 违约。
+insert_push_token(C, Id, DeviceType, Platform) ->
+    Sql = iolist_to_binary([
+        <<"INSERT INTO push_token (id, user_id, device_id, device_type, platform, token, status, created_at, updated_at) VALUES (">>,
+        integer_to_binary(Id),
+        ", ",
+        integer_to_binary(?HUMAN_A),
+        ", 'dev-",
+        integer_to_binary(Id),
+        <<"', '">>,
+        DeviceType,
+        <<"', '">>,
+        Platform,
+        <<"', 'tok-">>,
+        integer_to_binary(Id),
+        <<"', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)">>
+    ]),
+    elib_pg:query(C, Sql, []).
+
+%% 与 A5 消费谓词同型的 exact match 断言 SQL：
+%% <uri> = ANY(allowed_redirect_uris)（逐字节比较，结果别名 missing 复用 bool/1；
+%% 行限定本事务内创建的 oa-gz-redir application，其 allowlist 为 cb/1..cb/20）。
+allow_match_sql(Uri) ->
+    Escaped = binary:replace(Uri, <<"'">>, <<"''">>, [global]),
+    <<"SELECT ('", Escaped/binary, "' = ANY(allowed_redirect_uris)) AS missing",
+        " FROM enterprise_application", " WHERE organization_id = ",
+        (integer_to_binary(?ORG_A))/binary, " AND application_key = 'oa-gz-redir' LIMIT 1">>.
 
 table_missing(C, Table) ->
     bool(C, <<"SELECT to_regclass('public.", Table/binary, "') IS NULL AS missing">>).

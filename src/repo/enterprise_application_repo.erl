@@ -8,7 +8,11 @@
 %
 % 表结构：enterprise_application(id TSID PK, organization_id, principal_user_id
 %   可空, application_key 同 Org 唯一, name, status active|disabled,
-%   allowed_scopes jsonb 数组, timestamps)；uq_ea_org_id 复合唯一供子表复合 FK。
+%   allowed_scopes jsonb 数组, allowed_redirect_uris text[]（EPGZ-01R：
+%   exact redirect URI allowlist，元素 https-only/禁 fragment 由触发器
+%   trg_enterprise_application_redirect_guard 守卫，exact match 消费谓词
+%   <uri> = ANY(allowed_redirect_uris) 在应用层逐字节执行）, timestamps)；
+%   uq_ea_org_id 复合唯一供子表复合 FK。
 %%%
 
 -export([
@@ -16,18 +20,20 @@
     next_id/0,
     create_tx/4,
     create_tx/5,
+    create_tx/6,
     find_tx/3,
     find_by_key_tx/3,
     update_status_tx/4,
     update_name_tx/4,
-    update_scopes_tx/4
+    update_scopes_tx/4,
+    update_redirect_uris_tx/4
 ]).
 
 -include_lib("epgsql/include/epgsql.hrl").
 
 -define(COLUMNS, <<
     "id, organization_id, principal_user_id, application_key, name, status, "
-    "allowed_scopes, created_at, updated_at"
+    "allowed_scopes, allowed_redirect_uris, created_at, updated_at"
 >>).
 
 %% ===================================================================
@@ -47,18 +53,33 @@ next_id() ->
     end,
     elib_tsid:generate(enterprise_application).
 
-%% @doc 事务内创建 Application（无 principal_user_id）。
+%% @doc 事务内创建 Application（无 principal_user_id，allowlist 为空）。
 -spec create_tx(any(), integer(), binary(), binary()) ->
     {ok, map()} | {error, key_conflict | term()}.
 create_tx(Conn, OrgId, ApplicationKey, Name) ->
     create_tx(Conn, OrgId, ApplicationKey, Name, undefined).
 
+%% @doc 事务内创建 Application（无 redirect allowlist，等价空 allowlist）。
+-spec create_tx(
+    any(), integer(), binary(), binary(), undefined | {binary(), [binary()] | binary()}
+) ->
+    {ok, map()} | {error, key_conflict | term()}.
+create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes) ->
+    create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes, []).
+
 %% @doc 事务内创建 Application；allowed_scopes 默认 []（scope 授权由运维接口另行下发）。
 %% Scopes 是二进制 JSON 数组（如 <<"[\"application:read\"]">>），由上层序列化。
 %% Org 内 application_key 撞唯一约束归一 {error, key_conflict}。
--spec create_tx(any(), integer(), binary(), binary(), undefined | {binary(), [binary()]}) ->
+%% RedirectUris 是 exact redirect URI allowlist（EPGZ-01R / EPGZ-05）：元素
+%% 仅 https、禁 fragment，非法元素由 trg_enterprise_application_redirect_guard
+%% 以 23514 拒绝（错误形态 {error, #error{code = <<"23514">>}}）；空表 = 空
+%% allowlist（SSO 签发侧 fail-closed 一律拒绝）。参数以 $N::text[] 直传
+%% Erlang list（epgsql 按服务端推断的 text[] 类型做数组编码）。
+-spec create_tx(
+    any(), integer(), binary(), binary(), undefined | {binary(), [binary()] | binary()}, [binary()]
+) ->
     {ok, map()} | {error, key_conflict | term()}.
-create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes) ->
+create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes, RedirectUris) ->
     {PrincipalUserId, ScopesJson} =
         case PrincipalAndScopes of
             undefined -> {null, <<"[]">>};
@@ -71,11 +92,20 @@ create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes) ->
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (id, organization_id, principal_user_id, application_key, name, status,",
-            " allowed_scopes, created_at, updated_at)",
-            " VALUES ($1, $2, $3, $4, $5, 'active', $6::jsonb, $7, $7)", " RETURNING ",
+            " allowed_scopes, allowed_redirect_uris, created_at, updated_at)",
+            " VALUES ($1, $2, $3, $4, $5, 'active', $6::jsonb, $7::text[], $8, $8)", " RETURNING ",
             ?COLUMNS/binary>>,
     case
-        elib_pg:query(Conn, Sql, [Id, OrgId, PrincipalUserId, ApplicationKey, Name, ScopesJson, Now])
+        elib_pg:query(Conn, Sql, [
+            Id,
+            OrgId,
+            PrincipalUserId,
+            ApplicationKey,
+            Name,
+            ScopesJson,
+            RedirectUris,
+            Now
+        ])
     of
         {ok, [Row | _]} ->
             {ok, Row};
@@ -143,6 +173,23 @@ update_scopes_tx(Conn, OrgId, Id, Scopes) ->
         <<"UPDATE ", (tablename())/binary,
             " SET allowed_scopes = $1::jsonb, updated_at = $2 WHERE organization_id = $3 AND id = $4">>,
     case elib_pg:execute(Conn, Sql, [ScopesJson, Now, OrgId, Id]) of
+        {ok, 1} -> ok;
+        {ok, 0} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 事务内整体替换 redirect URI allowlist（EPGZ-01R）。空表 = 清空
+%% allowlist（SSO 签发侧 fail-closed 一律拒绝）；元素校验同 create_tx/6
+%%（触发器 23514 拒绝非法元素）；参数直传 list（同 create_tx/6 说明）。
+-spec update_redirect_uris_tx(any(), integer(), integer(), [binary()]) ->
+    ok | {error, not_found | term()}.
+update_redirect_uris_tx(Conn, OrgId, Id, RedirectUris) when is_list(RedirectUris) ->
+    Now = elib_dt:now(),
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET allowed_redirect_uris = $1::text[], updated_at = $2",
+            " WHERE organization_id = $3 AND id = $4">>,
+    case elib_pg:execute(Conn, Sql, [RedirectUris, Now, OrgId, Id]) of
         {ok, 1} -> ok;
         {ok, 0} -> {error, not_found};
         {error, Reason} -> {error, Reason}

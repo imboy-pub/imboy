@@ -1,4 +1,14 @@
 -- 迁移 00000136: Enterprise Internal API 基础五表（EPGZ-01 / plan-gz §5）。
+-- 修订 00000136R（EPGZ-01R，同号原子迁移，2026-09-21）：
+--   * enterprise_application 新增 allowed_redirect_uris text[]（每 Application 的
+--     exact redirect URI allowlist，EPGZ-05 W1 §4 对 A1 的硬需求）：逐字节
+--     exact match 语义（text[] 元素 + = ANY 匹配，尾斜杠/查询参数变体天然
+--     不相等）、仅 HTTPS、可存多个（≤20）、随行天然 org+app 隔离；元素级
+--     校验由 BEFORE 触发器 fn_enterprise_application_redirect_guard 守卫
+--     （非空、https://<非空 host> 形态、禁 fragment、≤2048、无重复）。
+--   * push_token.chk_push_token_platform 值域扩展 'jpush'（EPGZ-07 W1 对 A1
+--     的硬需求，plan-gz §7.4 provider=jpush）：DROP + 重建与 00000001 原定义
+--     同构的 CHECK，仅追加 'jpush'；down 精确恢复原值域（fcm/apns/web_push）。
 -- 计划契约：plan-gz §5 数据与 migration 方案（enterprise_application /
 --   enterprise_application_credential / enterprise_external_identity /
 --   enterprise_internal_idempotency / enterprise_oa_sso_code）、§4.1 认证
@@ -32,6 +42,13 @@
 --     org/app/user/redirect_uri/nonce_digest；consumed_at 单次消费 CAS 语义
 --     由 UPDATE ... WHERE consumed_at IS NULL 实现（应用层），DB 侧 CHECK
 --     保证 digest 形态。60 秒有效期由 expires_at 表达，不另建状态列。
+--   * allowed_redirect_uris 选型 text[] 而非子表（EPGZ-01R）：元素级校验
+--     语义（https-only / 禁 fragment / 非空 / 去重 / 上限）无法用单条 CHECK
+--     表达（PG CHECK 禁止子查询），故列级 NOT NULL + BEFORE 触发器组合；
+--     exact match 消费谓词为 <uri> = ANY(allowed_redirect_uris)（逐字节
+--     比较，无规范化），签发/交换侧 fail-closed 判定由 A5 应用层执行。
+--   * push_token.platform CHECK 扩展走 ALTER（该表为 00000001 既有表，
+--     在本期原子迁移内做增量修订合法且为 plan-gz §5 纪律 2 的预期位置）。
 --   * FK 删除行为镜像仓内惯例：organization 一律 RESTRICT（fail-closed，
 --     机构走 archived 软删除不触发物理 DELETE）；principal_user_id 审计可空
 --     SET NULL（00000114 created_by_user_id 同构）；其余业务 FK RESTRICT，
@@ -51,6 +68,7 @@ CREATE TABLE IF NOT EXISTS enterprise_application (
     name               text                     NOT NULL,
     status             text                     DEFAULT 'active' NOT NULL,
     allowed_scopes     jsonb                    DEFAULT '[]'::jsonb NOT NULL,
+    allowed_redirect_uris text[]                DEFAULT '{}' NOT NULL,
     created_at         timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at         timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_enterprise_application PRIMARY KEY (id),
@@ -77,9 +95,86 @@ COMMENT ON COLUMN enterprise_application.name IS '展示名（客户 OA 后端�
 COMMENT ON COLUMN enterprise_application.status IS '生命周期: active 可用 | disabled 已停用（停用即拒绝全部 internal API）';
 COMMENT ON COLUMN enterprise_application.allowed_scopes IS
     '固定 scopes 白名单 jsonb 数组（plan-gz §4.2 十值；成员校验在应用层，不支持 wildcard）';
+COMMENT ON COLUMN enterprise_application.allowed_redirect_uris IS
+    '预注册 exact redirect URI allowlist（EPGZ-05 OA SSO）：元素逐字节精确匹配（= ANY，无规范化），仅 HTTPS、禁 fragment；SSO 签发/交换必须命中，空 allowlist = 一律拒绝（fail-closed）';
 
 CREATE INDEX IF NOT EXISTS i_ea_org_status ON enterprise_application
     USING btree (organization_id, status);
+
+-- 「exact redirect URI allowlist」存储守卫（EPGZ-01R）：元素级校验无法用
+-- 单条 CHECK 表达（PG CHECK 禁止子查询/循环），以 BEFORE 触发器实现：
+--   非空数组本身（NOT NULL 列兜底）· 每元素非空串 · https://<非空 host>
+--   形态（正则 ^https://[^/?#]+([/?]|$)）· 禁 fragment（#）· 单元素 ≤2048
+--   · ≤20 个 · 无重复。
+-- exact match 语义（尾斜杠/查询参数变体不相等）由 text 元素逐字节比较
+-- 天然保证，消费侧谓词 = ANY(allowed_redirect_uris) 在应用层执行。
+CREATE OR REPLACE FUNCTION fn_enterprise_application_redirect_guard() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_uri text;
+BEGIN
+    IF NEW.allowed_redirect_uris IS NULL THEN
+        RAISE EXCEPTION
+            'allowed_redirect_uris 不可为 NULL；空 allowlist 请用空数组 {}（= 一律拒绝）'
+            USING ERRCODE = '23514',
+                  CONSTRAINT = 'trg_enterprise_application_redirect_guard';
+    END IF;
+    IF cardinality(NEW.allowed_redirect_uris) > 20 THEN
+        RAISE EXCEPTION
+            'redirect URI allowlist 最多 20 个元素，当前 %',
+            cardinality(NEW.allowed_redirect_uris)
+            USING ERRCODE = '23514',
+                  CONSTRAINT = 'trg_enterprise_application_redirect_guard';
+    END IF;
+    IF (SELECT count(DISTINCT u) FROM unnest(NEW.allowed_redirect_uris) AS t(u))
+        <> cardinality(NEW.allowed_redirect_uris) THEN
+        RAISE EXCEPTION
+            'redirect URI allowlist 含重复元素（allowlist 语义无需重复项）'
+            USING ERRCODE = '23514',
+                  CONSTRAINT = 'trg_enterprise_application_redirect_guard';
+    END IF;
+    FOREACH v_uri IN ARRAY NEW.allowed_redirect_uris LOOP
+        IF v_uri IS NULL OR v_uri = '' THEN
+            RAISE EXCEPTION
+                'redirect URI allowlist 元素不可为空串'
+                USING ERRCODE = '23514',
+                      CONSTRAINT = 'trg_enterprise_application_redirect_guard';
+        END IF;
+        IF v_uri !~ '^https://[^/?#]+([/?]|$)' THEN
+            RAISE EXCEPTION
+                'redirect URI (%) 必须是 https://<非空 host>[/?...] 形态（仅小写 https scheme，无通配）',
+                v_uri
+                USING ERRCODE = '23514',
+                      CONSTRAINT = 'trg_enterprise_application_redirect_guard';
+        END IF;
+        IF position('#' IN v_uri) > 0 THEN
+            RAISE EXCEPTION
+                'redirect URI (%) 不可携带 fragment（#），注册与消费均为全字符串精确匹配',
+                v_uri
+                USING ERRCODE = '23514',
+                      CONSTRAINT = 'trg_enterprise_application_redirect_guard';
+        END IF;
+        IF length(v_uri) > 2048 THEN
+            RAISE EXCEPTION
+                'redirect URI (%) 长度超限（>2048）', v_uri
+                USING ERRCODE = '23514',
+                      CONSTRAINT = 'trg_enterprise_application_redirect_guard';
+        END IF;
+    END LOOP;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enterprise_application_redirect_guard
+    ON enterprise_application;
+CREATE TRIGGER trg_enterprise_application_redirect_guard
+    BEFORE INSERT OR UPDATE OF allowed_redirect_uris
+    ON enterprise_application
+    FOR EACH ROW EXECUTE FUNCTION fn_enterprise_application_redirect_guard();
+
+COMMENT ON FUNCTION fn_enterprise_application_redirect_guard() IS
+    'redirect URI allowlist 存储守卫：元素 https://<非空 host> + 禁 fragment + 去重 + ≤20 个，否则 23514（EPGZ-05 §4 对 A1 硬需求；exact match 语义由 = ANY 逐字节比较保证）';
 
 -- ============================================================
 -- Phase 2: enterprise_application_credential
@@ -292,3 +387,18 @@ COMMENT ON COLUMN enterprise_oa_sso_code.consumed_at IS '消费时间（NULL=未
 
 CREATE INDEX IF NOT EXISTS i_eosc_org_app_user ON enterprise_oa_sso_code
     USING btree (organization_id, application_id, user_id);
+
+-- ============================================================
+-- Phase 6: push_token platform CHECK 值域扩展 'jpush'（EPGZ-01R）
+-- ============================================================
+-- 00000001 既有表增量修订（plan-gz §7.4 provider=jpush；EPGZ-07 W1 目标合同：
+-- 记录形状 device_type='android'、platform='jpush'）。约束表达式与 00000001
+-- 原定义同构，仅追加 'jpush'::character varying；fcm/apns/web_push 全保留。
+-- DROP IF EXISTS + ADD 保持 up 可重复执行；down 精确恢复原值域。
+ALTER TABLE public.push_token
+    DROP CONSTRAINT IF EXISTS chk_push_token_platform;
+ALTER TABLE public.push_token
+    ADD CONSTRAINT chk_push_token_platform CHECK (((platform)::text = ANY ((ARRAY['fcm'::character varying, 'apns'::character varying, 'web_push'::character varying, 'jpush'::character varying])::text[])));
+
+COMMENT ON CONSTRAINT chk_push_token_platform ON public.push_token IS
+    '推送 provider 值域: fcm | apns | web_push | jpush（jpush 由 00000136 扩展，device_type 仍为 android/ios/web；136 前为 fcm/apns/web_push）';
