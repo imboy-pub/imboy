@@ -255,13 +255,15 @@ seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId) ->
         cursor_pass(maps:get(id, S), AfterId)
     ],
     Ordered = lists:sort(fun(A, B) -> maps:get(id, A) >= maps:get(id, B) end, InScope),
+    %% DF-8：queued/active/closed 三键恒在、零计数显式出 0（与 cs_pg_session
+    %% 的构建层默认对齐）——前端 toCounts 要求三键均为数字，缺键即 TypeError。
     TotalByStatus =
         lists:foldl(
             fun(S, Acc) ->
                 K = atom_to_binary(maps:get(status, S), utf8),
                 Acc#{K => maps:get(K, Acc, 0) + 1}
             end,
-            #{},
+            #{<<"queued">> => 0, <<"active">> => 0, <<"closed">> => 0},
             InScopeAll
         ),
     Total = maps:get(binary_status(Status), TotalByStatus, 0),
