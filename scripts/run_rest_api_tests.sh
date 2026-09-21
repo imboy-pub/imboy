@@ -125,6 +125,13 @@ export PGPASSWORD="$PG_PASSWORD"
 REPORT_ROOT=${REST_REPORT_ROOT:-"$ROOT/.reports/rest/$RUN_ID"}
 EVIDENCE_DIR="$REPORT_ROOT/evidence"
 CT_LOGS_DIR="$REPORT_ROOT/ct"
+# A reused report root would mix stale evidence into this run's aggregate
+# gate. The runner never deletes (no rm -rf anywhere by design), so instead
+# of a sibling-style pre-clean it refuses the rerun outright: fail fast
+# with the fix in the message rather than a confusing evidence-count error.
+if [[ -e "$REPORT_ROOT" && -n "$(ls -A "$REPORT_ROOT" 2>/dev/null)" ]]; then
+  die 2 "report root already exists and is not empty; use a fresh REST_RUN_ID: $REPORT_ROOT"
+fi
 mkdir -p "$EVIDENCE_DIR" "$CT_LOGS_DIR"
 
 CT_CONFIG=${REST_CT_CONFIG:-}
