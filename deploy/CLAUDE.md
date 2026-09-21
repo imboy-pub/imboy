@@ -18,7 +18,7 @@ deploy/
 ├── docker-compose.healthcheck.yml / observability.yml / alert-dingtalk.yml / uptrace.yml / sales-policy.yml
 │                                # 商务版 overlay：按序 -f 叠加（就绪检查/观测组件/钉钉告警/Uptrace/无密钥策略）
 ├── .env.example / ops.env.example
-├── nginx/                       # 反代模板（envsubst）+ init-letsencrypt.sh 首签
+├── nginx/                       # 反代模板（envsubst）+ init-letsencrypt.sh 首签 + prod-vhosts/ 宿主机生产 vhost 快照
 ├── prometheus/                  # prometheus.yml（4 job）+ rules/imboy-alerts.yml（33 条规则 14 组）
 ├── alertmanager/                # 告警路由
 ├── grafana/                     # provisioning + dashboards/imboy-overview.json（9 panel）

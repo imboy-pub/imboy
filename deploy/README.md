@@ -34,6 +34,7 @@ deploy/
 │   ├── templates/
 │   │   ├── imboy.conf.template    # nginx 反向代理（envsubst 渲染）/ nginx reverse proxy (envsubst-rendered)
 │   │   └── cs-widget.conf.template # 客服 Widget 第三域 vhost（CSD-DEP-01）/ CS widget gateway vhost
+│   ├── prod-vhosts/             # 宿主机生产 vhost 快照（蓝绿单机形态）/ host-level prod vhost snapshots（见其 README）
 │   └── init-letsencrypt.sh      # 首次签发 Let's Encrypt 证书 / First-time Let's Encrypt issuance
 ├── prometheus/
 │   ├── prometheus.yml           # 抓取配置（4 job）/ Scrape config (4 jobs)
