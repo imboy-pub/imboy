@@ -2,7 +2,9 @@
 
 > STATUS: `FROZEN_API_CONTRACT`
 >
-> IMPLEMENTATION_STATE: `NOT_STARTED`（W2 依赖 EPGZ-01 schema 与 EPGZ-02 认证链落地）
+> IMPLEMENTATION_STATE: `IMPLEMENTED`（EPGZ-05 W2：src/logic/enterprise_oa_sso_logic.erl
+> + src/api/enterprise_oa_sso_handler.erl + src/api/enterprise_oa_sso_exchange_handler.erl；
+> Router 登记归 A0 W4，见 §3.1/§4.1 登记形态）
 >
 > AUTHORITY: 本文冻结 OA one-time SSO 的 HTTP 合同、code 生命周期状态机与负例矩阵。
 > 上游权威：`plan-gz §7.2 / §6 INT-14 / §4`（RUN_ID `enterprise-internal-20260921T043945Z`）与
@@ -60,8 +62,13 @@ OA backend 建立自己的 HttpOnly/Secure/SameSite 会话（IMBoy 不发任何�
 ### 3.1 认证与前置
 
 - `MUST`：走现有 `/api/v1/*` Human 认证链（`auth_middleware_api_v1` 签名校验 + JWT condition），
-  路由注册形态 `{"/api/v1/oa/sso/code", oa_sso_handler, #{action => code}}`（W2 由 Router lease
-  owner 串行登记，本合同不改 Router）。
+  路由注册形态（A0 W4 经 Router lease 串行登记）：
+
+```erlang
+{"/api/v1/oa/sso/code", enterprise_oa_sso_handler, #{action => code}}
+```
+
+  必须挂在 `/api/v1` 认证块（不得进 `imboy_router:open()/0`）。
 - `MUST NOT`：Application Credential 调用本端点——按 manifest `auth_contexts` 双向隔离，返回
   401/403（NEG-13）。
 
@@ -89,12 +96,21 @@ OA backend 把收到的 `state` 原样作为 ③ 的 `nonce` 提交（跨端点�
 ### 3.4 签发判定顺序（fail-closed，任一步失败立即终止）
 
 ```text
-JWT/签名认证 -> application_key 可解析且 application active
+JWT/签名认证 -> 请求字段语法校验（application_key/redirect_uri/nonce）
+  -> application_key 可解析且 application active
   -> organization active -> 请求者是该 org 的 active Human member
   -> 已存在 (organization_id, application_id, user_id) 的 active identity mapping
   -> redirect_uri exact-match 预注册 allowlist（HTTPS、无 fragment）
-  -> nonce/字段格式校验 -> 签发（新行，独立 TTL）
+  -> 签发（新行，独立 TTL）
 ```
+
+实现钉住（W2）：① 语法校验前置（语法 400 与语义 403/404/400 分离）；
+② `application_key` 仅 Org 内唯一（`uq_ea_org_key`），跨 Org 同 key 候选按
+「请求者是该 Org active member」收敛——零候选且存在 active 候选 = 403
+（NEG-H03 语义），收敛后多义 = 404 fail-closed（不提供多 Org oracle）；
+③ organization 非 active 归 404（与 application 非 active 同族，human 面无
+stable 码可承载 org 状态）；④ code 实际形态 `oa_sso_`（7 字节）+ 43 字符
+base64url = 50 字符，熵恰 256-bit。
 
 重复签发不幂等也不互斥：同一 Human 可多次签发，每个 code 独立 60s TTL、独立单次消费；
 旧 code 不因新签发而失效（NEG-H07 行为合同）。
@@ -120,6 +136,13 @@ JWT/签名认证 -> application_key 可解析且 application active
   credential → credential active/expiry → application active → organization active →
   scope `sso:exchange` → rate bucket `internal_sso`（fail-closed）→ operation → audit。
 - `MUST`：请求头 `Authorization: Bearer ib_int_<credential_id>.<secret>`。
+- 路由登记形态（A0 W4 经 Router lease 串行登记；必须经
+  `enterprise_internal_middleware` 前置，ctx 注入 `handler_opts.enterprise_internal`）：
+
+```erlang
+{"/api/internal/v1/oa/sso/exchange",
+    enterprise_oa_sso_exchange_handler, #{action => exchange}}
+```
 - `Idempotency-Key` **不要求**：manifest INT-14 行 `idempotency: single_use_code` 是对 INV-7
   通用 mutation 幂等要求的显式豁免——code 本身就是幂等键，重放语义是「拒绝」而非「回放原响应」
   （NEG-03）。携带该头不报错、也不改变语义。
@@ -287,6 +310,11 @@ internal 面错误信封（stable 字符串码的承载形态）归 EPGZ-02/A2 �
 `test/enterprise_oa_sso_tests.erl` 的全部 skip 翻绿（逐 NEG 编号）。RED 骨架中的目标函数签名
 （`enterprise_oa_sso_logic:issue_code/3` / `exchange/4` 等）是**建议形态、非冻结项**，W2 可按
 分层惯例调整；HTTP 行为与 §6 期望值不可调。
+**W2 落地形态**：`enterprise_oa_sso_logic:issue_code/2 | issue_code_tx/3 |
+exchange/2 | exchange_tx/3 | validate_issue_params/1 | validate_exchange_params/1`；
+identity 按 user 反查（repo 缺口）在 logic 层内联只读（镜像 EPGZ-02 先例），
+exchange 的 `identity_not_mapped` 以「调用方必须回滚」契约承载（池化入口
+`exchange/2` 以 `throw({rollback, ...})` 强制，直连测试以 SAVEPOINT 回滚）。
 
 对 A6（EPGZ-06 Flutter）：§3.3 的 `state=nonce` 跨端点绑定链 + `expires_in=60` 的 UI 倒计时与
 过期/退出/域名跳转错误状态。
@@ -314,5 +342,5 @@ SSO_EXCHANGE_RESPONSE = NO IMBOY CREDENTIAL EVER
 SSO_IDEMPOTENCY = single_use_code (INV-7 exempt per manifest INT-14 row)
 SSO_HUMAN_FACE = existing integer envelope + error_code.hrl macros
 SSO_ERROR_CODES = manifest stable_error_codes ONLY (no new codes)
-STATUS = FROZEN_API_CONTRACT / IMPLEMENTATION_STATE=NOT_STARTED
+STATUS = FROZEN_API_CONTRACT / IMPLEMENTATION_STATE=IMPLEMENTED (EPGZ-05 W2)
 ```
