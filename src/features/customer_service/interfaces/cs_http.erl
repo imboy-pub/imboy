@@ -74,7 +74,15 @@ is_credential_surface_path(Path) when is_binary(Path) ->
             %% POST /api/v1/cs/organizations/:org_id/sessions/queue（门店开会话——
             %% T-2 后 org 显式在路径；GET 坐席队列视图同路径，凭证面以门店 POST
             %% 为准，坐席 GET 照常由 handler 的 cs_seat 分支校验 JWT）。
-            [<<"api">>, <<"v1">>, <<"cs">>, <<"organizations">>, _OrgId, <<"sessions">>, <<"queue">>] ->
+            [
+                <<"api">>,
+                <<"v1">>,
+                <<"cs">>,
+                <<"organizations">>,
+                _OrgId,
+                <<"sessions">>,
+                <<"queue">>
+            ] ->
                 true;
             %% POST /api/v1/cs/sessions/:id/messages | /rating（访客消息/评分）
             [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>, _Id, Last] when
@@ -103,8 +111,17 @@ is_credential_surface_path(Path) when is_binary(Path) ->
                 true;
             %% BE-S01b：GET .../sessions/:id/assets/:asset_id/content（访客附件
             %% 内容代理——令牌在专用头，与 presign/confirm 同一面）
-            [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>, _Id, <<"assets">>,
-                _AssetId, <<"content">>] ->
+            [
+                <<"api">>,
+                <<"v1">>,
+                <<"cs">>,
+                <<"widget">>,
+                <<"sessions">>,
+                _Id,
+                <<"assets">>,
+                _AssetId,
+                <<"content">>
+            ] ->
                 true;
             _ ->
                 false
@@ -464,6 +481,13 @@ classify(credential_in_query_string) ->
 %% CSB-03：Origin 头形状非法（含 path/userinfo/非法端口等）——fail-closed 400。
 classify({invalid_origin, _}) ->
     ?ERR_BAD_REQUEST;
+%% DF-2：坏 upload_ref（附件 confirm 的唯一凭证）是客户端凭证错误——篡改/
+%% 跨租户重放/垃圾串都进不了解密门。未显式登记时落 server_side 兜底恒 500，
+%% 客户端会把自身凭证问题当服务端故障重试；显式登记为 400（EB 面同因
+%% `{invalid_recipient_ref, _}` ⇒ 400 的显式登记先例：凭证形状是请求错误，
+%% 不是域值不成立）。
+classify(invalid_upload_ref) ->
+    ?ERR_BAD_REQUEST;
 classify(method_not_allowed) ->
     ?ERR_METHOD_NOT_ALLOWED;
 %% BE-S01a：坐席 SSE 占位（seat_events 路由族已注册、流式实现在 BE-S01b）。
@@ -591,6 +615,10 @@ classify({session_already_open, _}) ->
 classify(replay) ->
     ?ERR_CONFLICT;
 classify(already_rated) ->
+    ?ERR_CONFLICT;
+%% DF-2：过期 upload_ref 与 EB 面同口径（eb_enterprise_http F-LAY-02：上传
+%% 引用过期是客户端可重试的冲突语义，此前 widget 面未登记恒 500）。
+classify(expired_upload_ref) ->
     ?ERR_CONFLICT;
 classify({rating_requires_closed, _}) ->
     ?ERR_CONFLICT;
