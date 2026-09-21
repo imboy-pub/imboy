@@ -21,6 +21,11 @@ set -a; . ./.env; set +a
 : "${ADMIN_DOMAIN:?在 .env 中设置 ADMIN_DOMAIN}"
 # CSD-DEP-01：客服 Widget 第三域同为必填（fail-closed），证书与 API/Admin 各自独立签发
 : "${CS_WIDGET_DOMAIN:?在 .env 中设置 CS_WIDGET_DOMAIN（客服 Widget 域名）}"
+# LK-DEP-01：LiveKit 两域必签 —— RTC 域供 nginx 443 WSS 反代使用；TURN 域供
+# embedded TURN TLS 5349（overlay 只读挂载该 live 目录）。两域均经 webroot 签发
+#（未匹配 server_name 的 ACME 请求由默认 80 server 的 webroot location 兜底应答）。
+: "${RTC_DOMAIN:?在 .env 中设置 RTC_DOMAIN（LiveKit 信令域）}"
+: "${TURN_DOMAIN:?在 .env 中设置 TURN_DOMAIN（LiveKit TURN 域）}"
 : "${CERTBOT_EMAIL:?在 .env 中设置 CERTBOT_EMAIL（证书到期通知邮箱）}"
 DATA_DIR="${DATA_DIR:-./data}"
 # install.sh 传入空格分隔的完整 Compose 文件集合；单独运行仍兼容 COMPOSE_FILE。
@@ -32,7 +37,7 @@ for compose_file in $COMPOSE_FILES; do
 done
 compose() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
 
-DOMAINS=("$API_DOMAIN" "$ADMIN_DOMAIN" "$CS_WIDGET_DOMAIN")
+DOMAINS=("$API_DOMAIN" "$ADMIN_DOMAIN" "$CS_WIDGET_DOMAIN" "$RTC_DOMAIN" "$TURN_DOMAIN")
 case "$(printf '%s' "${UPTRACE_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')" in
   true|1)
     : "${UPTRACE_DOMAIN:?UPTRACE_ENABLED=true 时必须设置 UPTRACE_DOMAIN}"
@@ -43,10 +48,17 @@ esac
 CONF="$DATA_DIR/certbot/conf"
 WWW="$DATA_DIR/certbot/www"
 mkdir -p "$WWW"
+# 临时自签证书标记文件：certbot 中途失败时，尚未轮到的域名会留着 1 天期的
+# 自签证书。无标记的话重跑会被「证书已存在，跳过」误判，该域永远停在自签
+# 证书上（A04 故障恢复路径）。带标记 = 必须重签。
+SELF_SIGNED_MARK=".imboy-selfsigned"
+is_real_cert() {
+  [ -s "$1/fullchain.pem" ] && [ -s "$1/privkey.pem" ] && [ ! -e "$1/$SELF_SIGNED_MARK" ]
+}
 # 只处理缺失证书的域名，绝不覆盖已签发证书。
 MISSING_DOMAINS=()
 for d in "${DOMAINS[@]}"; do
-  if [ -s "$CONF/live/$d/fullchain.pem" ] && [ -s "$CONF/live/$d/privkey.pem" ]; then
+  if is_real_cert "$CONF/live/$d"; then
     echo "==> 正式证书已存在，跳过 $d"
   else
     [ ! -e "$CONF/archive/$d" ] && [ ! -e "$CONF/renewal/$d.conf" ] \
@@ -71,6 +83,7 @@ for d in "${MISSING_DOMAINS[@]}"; do
       -out    "$live/fullchain.pem" \
       -subj "/CN=$d"
   chmod 600 "$live/privkey.pem"
+  touch "$live/$SELF_SIGNED_MARK"
 done
 
 # ② 启动 nginx（已能加载临时证书并响应 ACME challenge）
