@@ -100,11 +100,15 @@ admin_page(Page0, Size0, Status, Keyword) ->
     end.
 
 page_where(Status, Keyword) ->
-    Conds0 =
+    %% ⚠ status 条件自带 $1 占位符 ⇒ 它的**值必须同步进 params**。只写占位符不绑值，
+    %% epgsql 会收到「占位符多于参数」的语句并在结果解码阶段以 function_clause 崩成 500
+    %% （实测：GET /api/adm/organizations?status=active ⇒ 配置向导拉不到组织列表）。
+    %% 故这里 Conds 与 Params 成对构造；`::text` 让枚举/varchar 两种列型都能绑。
+    {Conds0, StatusParams} =
         case Status of
-            all -> [];
-            S when S =:= <<"active">>; S =:= <<"archived">> -> [<<" o.status = $1">>];
-            _ -> []
+            <<"active">> -> {[<<" o.status::text = $1">>], [<<"active">>]};
+            <<"archived">> -> {[<<" o.status::text = $1">>], [<<"archived">>]};
+            _ -> {[], []}
         end,
     KwParams =
         case is_binary(Keyword) andalso byte_size(Keyword) > 0 of
@@ -122,13 +126,13 @@ page_where(Status, Keyword) ->
     {Conds, Params0} =
         case KwParams of
             undefined ->
-                {Conds0, []};
+                {Conds0, StatusParams};
             {CondTpl, Kw, MaybeId} ->
                 N = length(Conds0) + 1,
                 Cond1 = binary:replace(CondTpl, <<"$K">>, <<"$", (integer_to_binary(N))/binary>>),
                 case MaybeId of
                     undefined ->
-                        {Conds0 ++ [Cond1], [<<"%", Kw/binary, "%">>]};
+                        {Conds0 ++ [Cond1], StatusParams ++ [<<"%", Kw/binary, "%">>]};
                     Id2 ->
                         Cond2 =
                             binary:replace(
@@ -136,7 +140,7 @@ page_where(Status, Keyword) ->
                                 <<"$ID">>,
                                 <<"$", (integer_to_binary(N + 1))/binary>>
                             ),
-                        {Conds0 ++ [Cond2], [<<"%", Kw/binary, "%">>, Id2]}
+                        {Conds0 ++ [Cond2], StatusParams ++ [<<"%", Kw/binary, "%">>, Id2]}
                 end
         end,
     WhereSql =
