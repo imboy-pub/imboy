@@ -64,3 +64,23 @@ jobs:
             echo "- 产物: .contract/api_contract.json（内容不变则文件不变）"
             echo "- 合法变更流程: 同一 PR 内 make contract-export 并提交产物"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  rest-contract:
+    name: REST API contract coverage gate (router/OpenAPI/spec/suite/Case IDs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout imboy
+        uses: actions/checkout@v7
+
+      - name: rest-contract-check (pure static, no database, no Erlang toolchain)
+        run: |
+          set -euo pipefail
+          make rest-contract-check
+
+      # Real-REST regression (Common Test + Gun + real scratch PostgreSQL with
+      # TimescaleDB/PostGIS/pg_jieba) intentionally has NO hosted job yet:
+      # vanilla postgres images lack the project extensions. Status is
+      # BLOCKED_CI_DATABASE_IMAGE until an extension-compatible runner image
+      # exists. No allow-failure/skip wrapper is permitted (plan RTF-05-3).
