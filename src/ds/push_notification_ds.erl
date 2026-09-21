@@ -208,6 +208,8 @@ do_send_push(Row, Title, Body) ->
                         {error, {apns_error, 410}} -> ok;
                         {error, Reason} -> error({push_failed, Reason})
                     end;
+                <<"jpush">> ->
+                    send_jpush(Token, Title, Body);
                 _ ->
                     ?DEBUG_LOG(["Unknown push platform", Platform]),
                     ok
@@ -217,6 +219,26 @@ do_send_push(Row, Title, Body) ->
         2,
         3000
     ).
+
+%% @doc JPush 分派（EPGZ-07）：错误分类见 push_provider_jpush:send/3
+send_jpush(Token, Title, Body) ->
+    case push_provider_jpush:send(Token, Title, Body) of
+        ok ->
+            ok;
+        % 未配置凭证：fail-closed 跳过，不重试
+        {error, not_configured} ->
+            ok;
+        % registration_id 失效：下线 token，不重试（对齐 FCM 404/410 语义）
+        {error, {jpush_error, invalid_token}} ->
+            _ = push_token_repo:deactivate_by_token(Token),
+            ok;
+        % 凭证/鉴权配置错误：不重试、不下线 token
+        {error, {jpush_error, unauthorized}} ->
+            ok;
+        % rate_limited / 其余错误：经 async_retry 重试
+        {error, Reason} ->
+            error({push_failed, Reason})
+    end.
 
 %% @doc 从查询结果行提取推送信息
 %% elib_pg:query 返回 [map()]，每个 map 包含 <<"platform">> 和 <<"token">> 键

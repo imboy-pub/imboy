@@ -1,17 +1,19 @@
 -module(push_provider_jpush_tests).
 
 %%%
-%%% EPGZ-07 W1 — JPush provider adapter RED 测试骨架
+%%% EPGZ-07 — JPush provider 测试套件（W2 实现后全绿）
 %%%
-%%% 状态：RED（adapter `push_provider_jpush` / HTTP seam
-%%% `push_provider_jpush_http` 尚未实现，合同详见
-%%% docs/reference/push-provider-jpush-research-2026-09-21.md）。
-%%% W2 实现后本套件必须转 GREEN；跳过用例/改断言不算转绿（计划 §10）。
+%%% W1 骨架（12 RED + 3 GREEN）已在 W2 转绿：adapter
+%%% `push_provider_jpush` / HTTP seam `push_provider_jpush_http` /
+%%% `push_notification_ds:do_send_push` jpush 分派均已实现，合同见
+%%% docs/reference/push-provider-jpush-research-2026-09-21.md。
+%%% D 组为 W2 新增的 F3 防御校验用例（handler 400 而非 DB 500）。
 %%%
 %%% 合同来源：.Codex/runs/enterprise-internal-20260921T043945Z/control/
 %%% plan-gz.snapshot.md §7.4（JPush）。合同条目编号：
 %%%   J1 注册/刷新  J2 注销  J3 请求构造  J4 响应解析
 %%%   J5 错误分类  J6 多设备 fan-out 分派与失效 token 下线
+%%%   F3 push_register 参数校验（device_type 非空 + 值域）
 %%%
 %%% 硬性纪律：
 %%%   - HTTP 层全部经 `push_provider_jpush_http`（W2 薄封装，默认 gun），
@@ -266,9 +268,13 @@ j4_send_ok_on_200_test() ->
 j5_classify_invalid_token_test() ->
     ?assertEqual(
         {jpush_error, invalid_token},
-        ?JPUSH_ADAPTER:classify(400,
-            <<"{\"error\":{\"code\":1003,"
-                "\"message\":\"cannot find user by this registration_id\"}}">>)
+        ?JPUSH_ADAPTER:classify(
+            400,
+            <<
+                "{\"error\":{\"code\":1003,"
+                "\"message\":\"cannot find user by this registration_id\"}}"
+            >>
+        )
     ).
 
 %% J5 分类为 invalid_token 的 send 路径（含 body 无 message 字段的兜底形态）。
@@ -343,8 +349,10 @@ j6_fanout_dispatches_jpush_to_adapter_test() ->
     ?WITH_MECKS([push_token_repo, elib_async, ?JPUSH_ADAPTER], fun() ->
         Rows = [
             #{
-                <<"device_id">> => <<"did-1">>, <<"device_type">> => <<"android">>,
-                <<"platform">> => <<"jpush">>, <<"token">> => <<"rid-jpush-001">>
+                <<"device_id">> => <<"did-1">>,
+                <<"device_type">> => <<"android">>,
+                <<"platform">> => <<"jpush">>,
+                <<"token">> => <<"rid-jpush-001">>
             }
         ],
         meck:expect(push_token_repo, list_by_uid, fun(1) -> {ok, Rows} end),
@@ -371,8 +379,10 @@ j6_fanout_invalid_token_deactivates_test() ->
     ?WITH_MECKS([push_token_repo, elib_async, ?JPUSH_ADAPTER], fun() ->
         Rows = [
             #{
-                <<"device_id">> => <<"did-1">>, <<"device_type">> => <<"android">>,
-                <<"platform">> => <<"jpush">>, <<"token">> => <<"rid-stale-001">>
+                <<"device_id">> => <<"did-1">>,
+                <<"device_type">> => <<"android">>,
+                <<"platform">> => <<"jpush">>,
+                <<"token">> => <<"rid-stale-001">>
             }
         ],
         meck:expect(push_token_repo, list_by_uid, fun(1) -> {ok, Rows} end),
@@ -399,8 +409,10 @@ j6_fanout_unauthorized_keeps_token_test() ->
     ?WITH_MECKS([push_token_repo, elib_async, ?JPUSH_ADAPTER], fun() ->
         Rows = [
             #{
-                <<"device_id">> => <<"did-1">>, <<"device_type">> => <<"android">>,
-                <<"platform">> => <<"jpush">>, <<"token">> => <<"rid-keep-001">>
+                <<"device_id">> => <<"did-1">>,
+                <<"device_type">> => <<"android">>,
+                <<"platform">> => <<"jpush">>,
+                <<"token">> => <<"rid-keep-001">>
             }
         ],
         meck:expect(push_token_repo, list_by_uid, fun(1) -> {ok, Rows} end),
@@ -420,4 +432,86 @@ j6_fanout_unauthorized_keeps_token_test() ->
             meck:called(?JPUSH_ADAPTER, send, ['_', ?PUSH_TITLE, ?PUSH_BODY])
         ),
         ?assertEqual(0, meck:num_calls(push_token_repo, deactivate_by_token, '_'))
+    end).
+
+%% ===================================================================
+%% D 组 · push_register 参数校验合同（EPGZ-07 F3：错值 400 而非 DB 炸 500）
+%% user_device_handler:push_register 校验 device_type 非空 + 双字段值域
+%%（值域 = push_token 表 CHECK：device_type {android,ios,web}、
+%% platform {fcm,apns,web_push,jpush}）。
+%% ===================================================================
+
+%% 公共桩：捕获 register_token 调用参数与响应分支
+expect_push_register_stubs(PostVals) ->
+    meck:expect(auth_ds, current_uid, fun(_State) -> 1 end),
+    meck:expect(elib_param, post, fun(_Req) -> PostVals end),
+    meck:expect(push_notification_logic, register_token, fun(Uid, Did, DType, Pf, Tk) ->
+        self() ! {f3_register, {Uid, Did, DType, Pf, Tk}},
+        ok
+    end),
+    meck:expect(elib_response, success, fun(Req) ->
+        self() ! {f3_resp, success},
+        Req
+    end),
+    meck:expect(elib_response, error, fun(Req, _Msg, Code) ->
+        self() ! {f3_resp, {error, Code}},
+        Req
+    end).
+
+%% F3：缺 device_type（App 旧版 body）→ 400，不触达 logic 层
+f3_missing_device_type_rejected_400_test() ->
+    ?WITH_MECKS([auth_ds, elib_param, push_notification_logic, elib_response], fun() ->
+        expect_push_register_stubs(#{
+            <<"device_id">> => <<"did-1">>,
+            <<"platform">> => <<"jpush">>,
+            <<"token">> => <<"rid-1">>
+        }),
+        _ = user_device_handler:handle_action(push_register, req, #{current_uid => 1}),
+        ?assertEqual({error, 400}, recv_captured(f3_resp)),
+        ?assertEqual(0, meck:num_calls(push_notification_logic, register_token, '_'))
+    end).
+
+%% F3：platform 误传 device_type 值（错位 1 的服务端防御）→ 400
+f3_platform_device_type_value_rejected_400_test() ->
+    ?WITH_MECKS([auth_ds, elib_param, push_notification_logic, elib_response], fun() ->
+        expect_push_register_stubs(#{
+            <<"device_id">> => <<"did-1">>,
+            <<"device_type">> => <<"android">>,
+            <<"platform">> => <<"android">>,
+            <<"token">> => <<"rid-1">>
+        }),
+        _ = user_device_handler:handle_action(push_register, req, #{current_uid => 1}),
+        ?assertEqual({error, 400}, recv_captured(f3_resp)),
+        ?assertEqual(0, meck:num_calls(push_notification_logic, register_token, '_'))
+    end).
+
+%% F3：device_type 越界值（如 desktop/macOS 客户端值）→ 400
+f3_invalid_device_type_rejected_400_test() ->
+    ?WITH_MECKS([auth_ds, elib_param, push_notification_logic, elib_response], fun() ->
+        expect_push_register_stubs(#{
+            <<"device_id">> => <<"did-1">>,
+            <<"device_type">> => <<"macos">>,
+            <<"platform">> => <<"jpush">>,
+            <<"token">> => <<"rid-1">>
+        }),
+        _ = user_device_handler:handle_action(push_register, req, #{current_uid => 1}),
+        ?assertEqual({error, 400}, recv_captured(f3_resp)),
+        ?assertEqual(0, meck:num_calls(push_notification_logic, register_token, '_'))
+    end).
+
+%% F3：合法 jpush 组合透传 logic 层（四字段原样、200 响应）
+f3_valid_jpush_params_pass_through_test() ->
+    ?WITH_MECKS([auth_ds, elib_param, push_notification_logic, elib_response], fun() ->
+        expect_push_register_stubs(#{
+            <<"device_id">> => <<"did-1">>,
+            <<"device_type">> => <<"android">>,
+            <<"platform">> => <<"jpush">>,
+            <<"token">> => <<"rid-1">>
+        }),
+        _ = user_device_handler:handle_action(push_register, req, #{current_uid => 1}),
+        ?assertEqual(success, recv_captured(f3_resp)),
+        ?assertEqual(
+            {1, <<"did-1">>, <<"android">>, <<"jpush">>, <<"rid-1">>},
+            recv_captured(f3_register)
+        )
     end).

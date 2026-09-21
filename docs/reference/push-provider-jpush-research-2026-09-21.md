@@ -1,6 +1,11 @@
 # JPush Provider 调研与合同（EPGZ-07 W1）
 
-> 日期：2026-09-21 ｜ 状态：`RED`（adapter 未实现，本文定义 W2 实现合同）
+> 日期：2026-09-21 ｜ 状态：`IMPLEMENTED`（W2 已实现 §3 合同并转绿 §4 骨架：
+> `src/push_provider_jpush.erl` + `src/push_provider_jpush_http.erl` +
+> `push_notification_ds:do_send_push` jpush 分派 + `user_device_handler`
+> push_register 值域校验（F3）+ sys.config.example jpush 占位键；
+> 测试套件 `test/push_provider_jpush_tests.erl` 20 用例全绿，含 W2 新增
+> D 组 F3 防御校验 4 例）
 >
 > 范围：计划 §7.4 JPush 的 W1 部分——现状调研、App/后端字段错位定位、
 > provider 目标合同、RED 测试骨架。不含任何生产实现。
