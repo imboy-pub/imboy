@@ -1,0 +1,153 @@
+# IMBoy 客服托管 Widget 网关 vhost —— 第三个域名（CSD-DEP-01）
+# Hosted Customer Service Widget gateway vhost — the third domain.
+#
+# 与 imboy.conf.template 同目录，由 nginx 官方镜像 entrypoint 的 envsubst 渲染为
+# /etc/nginx/conf.d/cs-widget.conf；NGINX_ENVSUBST_FILTER 须包含 CS_WIDGET_DOMAIN
+# （见 docker-compose.community.yml / docker-compose.prod.yml 的 imboy_nginx 服务）。
+#
+# 拓扑（冻结合同 hosted-widget-contract-v1 §S2/S4/S5/S6、计划卡 CSD-DEP-01）：
+#   https://<CS_WIDGET_DOMAIN>/v1/loader.js | /assets/ | /widget/ -> imboy_widget:8080（静态产物）
+#   https://<CS_WIDGET_DOMAIN>/w/<public_widget_id>               -> imboy_backend:9800（动态 frame HTML）
+#   https://<CS_WIDGET_DOMAIN>/api/v1/cs/widget/*                 -> imboy_backend:9800（同源 Widget API + SSE）
+#
+# 安全头边界（合同 S6；本 vhost 不注入 XFO / CSP，原因见下方 server 块内注释）：
+#   · 缓存头（no-cache / immutable / no-store）全部由 imboy_widget 容器内 nginx
+#     按 S6 冻结表下发（imboyadmin 仓 docker/widget/nginx.conf），网关不覆写、
+#     也不添加任何影响缓存的头；
+#   · X-Frame-Options / frame-ancestors 由 backend 按逐路径豁免登记下发
+#     （/w/* 与旧 frame 路径豁免、其余 DENY/SAMEORIGIN），网关注入任一值都会与
+#     backend 响应叠加生效（浏览器取交集），故本 vhost 零注入；
+#   · 本 vhost 不放宽 API/Admin 既有安全头 —— 那两个 vhost 属 imboy.conf.template，
+#     本文件不触碰其任何行。
+
+# ---------- 客服 Widget：HTTP-01 challenge + 全站跳转 HTTPS ----------
+server {
+    listen 80;
+    server_name ${CS_WIDGET_DOMAIN};
+
+    # Let's Encrypt ACME HTTP-01 challenge（与 API/Admin 同一 webroot 机制）
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${CS_WIDGET_DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${CS_WIDGET_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CS_WIDGET_DOMAIN}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSL:10m;
+
+    # ── Widget API SSE 长连接：GET /api/v1/cs/widget/sessions/:id/events ──────
+    # 正则 location 优先于下方 /api/v1/cs/widget/ 前缀 location。必须关闭缓冲，
+    # 否则 nginx 缓存事件流导致坐席消息推送延迟/不达；读超时对齐既有 SSE 块
+    # （≥300s 合同要求，取 3600s 与 API vhost SSE 一致）。upstream 的
+    # X-Accel-Buffering 头由 nginx 原生尊重，且 buffering 已显式关闭。
+    location ~ ^/api/v1/cs/widget/sessions/[0-9A-Za-z_-]+/events$ {
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding on;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # ── 动态 frame：GET /w/:public_widget_id → backend（合同 S4）──────────────
+    # HTML 壳的 CSP frame-ancestors 由 backend 按 installation allowlist 逐请求
+    # 下发、Cache-Control: no-store；网关不注入任何可能与之取交集的头。
+    location ^~ /w/ {
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # ── 同源 Widget API：/api/v1/cs/widget/* → backend（合同 S5）──────────────
+    # 含旧 frame 兼容路径 /api/v1/cs/widget/frame/:installation_id（合同 S4 兼容
+    # 窗口，backend 原样保留）。上传代理端点 .../assets/upload 走本路径，
+    # client_max_body_size 与 API vhost 对齐（50m）。
+    location /api/v1/cs/widget/ {
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # ── 静态 Widget 产物 → imboy_widget:8080（合同 S6）────────────────────────
+    # 缓存头由容器内 nginx 下发：loader no-cache、assets immutable、frame 壳
+    # no-store；网关不覆写、不追加任何影响缓存的头。以下三个 location 显式
+    # 列出 S6 静态面；^~ 防止未来新增正则 location 抢走这些前缀。
+    location = /v1/loader.js {
+        proxy_pass http://imboy_widget:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location ^~ /assets/ {
+        proxy_pass http://imboy_widget:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location ^~ /widget/ {
+        proxy_pass http://imboy_widget:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 其余路径（/manifest.json、/health.txt、未知路径）同样交给静态容器：
+    # 容器内 nginx 对未列入 S6 的路径一律 no-store（fail-closed），未知路径 404。
+    location / {
+        proxy_pass http://imboy_widget:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 安全响应头（刻意最小集，见文件头注释）：
+    #   · 不加 X-Frame-Options —— /w/* 必须能被第三方宿主页 iframe，XFO 豁免面由
+    #     backend 逐路径登记（合同 S6）；网关注入 DENY/SAMEORIGIN 会与其叠加、
+    #     注入豁免值又等于放宽既有面，两者都违反边界；
+    #   · 不加 Content-Security-Policy —— frame-ancestors 由 backend 按
+    #     installation allowlist 动态下发；多个 CSP 头浏览器取交集，网关侧静态
+    #     CSP 只会破坏嵌入或形同虚设；
+    #   · HSTS/nosniff/Referrer-Policy 与 API/Admin 同强度，属收紧不属放宽。
+    # 注意：全部 add_header 只写在 server 级、location 级零 add_header ——
+    # nginx 的 add_header 继承规则是"location 有自己的 add_header 就整体不继承
+    # server 级"，保持 server 级唯一来源可确保每条响应（含代理透传）都带齐。
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    # 与 API vhost 的请求体上限一致（Widget 上传代理端点 .../assets/upload 经此转发）
+    client_max_body_size 50m;
+}

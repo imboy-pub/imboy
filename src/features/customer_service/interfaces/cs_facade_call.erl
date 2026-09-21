@@ -80,6 +80,11 @@ call(widget_bootstrap, OrgId, Params) ->
 %% BE-W01 A05：动态 frame HTML 的公开 installation 投影（零凭证面）。
 call(widget_frame_html, OrgId, Params) ->
     customer_service_facade:widget_frame_html(OrgId, Params);
+%% CSD-BE-01（hosted-widget-contract S3/S4）：public_widget_id 全局反查的
+%% frame HTML 投影（/w/ 面）。OrgId=0 是同构占位（租户由命中行派生，
+%% seat_contexts 的 self 面先例）。
+call(widget_public_frame_html, _OrgId, Params) ->
+    customer_service_facade:widget_public_frame_html(0, Params);
 call(widget_identity_exchange, OrgId, Params) ->
     customer_service_facade:widget_identity_exchange(OrgId, Params);
 call(widget_create_session, OrgId, Params) ->
@@ -150,6 +155,7 @@ actions() ->
         %% CSB-02：Widget 与 Seat 补缺用例
         widget_bootstrap,
         widget_frame_html,
+        widget_public_frame_html,
         widget_identity_exchange,
         widget_create_session,
         widget_list_sessions,

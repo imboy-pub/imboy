@@ -85,6 +85,8 @@ cases({ok, _Conn}) ->
         {timeout, 120, fun a01_widget_migration_roundtrip_no_residue/0},
         {timeout, 60, fun tenant_keys_carry_org_in_every_statement/0},
         {timeout, 60, fun a02_public_widget_id_cannot_cross_org/0},
+        {timeout, 60, fun csd_be01_global_public_id_lookup/0},
+        {timeout, 60, fun csd_be01s_global_token_digest_lookup/0},
         {timeout, 60, fun a02_allowed_origins_jsonb_roundtrip/0},
         {timeout, 60, fun a03_only_digest_columns_and_rows/0},
         {timeout, 60, fun a03_returned_rows_carry_no_plaintext/0},
@@ -135,9 +137,12 @@ a01_widget_migration_roundtrip_no_residue() ->
         %% app 侧 schema_migrations_history 无 dirty 列、非同 schema，不可混用；
         %% scratch 库由本 run 独占，roundtrip 前置断言已锁定基线在位。
         Config = #{conn => Conn, dir => imboy_migrate:get_scripts_path(), strict => true},
-        %% down 恰 3 步 = 从 head（134=agent_run_foundation）回滚 134/133/132，
+        %% down 恰 4 步 = 从 head（135=customer_service_seat_sse；134=agent_run
+        %% foundation、133=agent_grant_foundation 同批在册）回滚 135/134/133/132，
         %% 其中 132 即本卡 widget foundation；131 及更早保持不动
-        ok = erlang_migrate:down(Config, 3),
+        %% （CSD-BE-01 修正：迁移 135 入库（BE-S01）后 head 不再是 134，
+        %% 原 down 3 步在 head=135 的库上留 132 在表 → 断言恒红）。
+        ok = erlang_migrate:down(Config, 4),
         ?assertNot(table_exists(<<"customer_service_widget_installation">>)),
         ?assertNot(table_exists(<<"customer_service_widget_identity_key">>)),
         ?assertNot(table_exists(<<"customer_service_widget_nonce">>)),
@@ -204,6 +209,124 @@ a02_public_widget_id_cannot_cross_org() ->
         )
     after
         cleanup_widget(Scope)
+    end.
+
+%% CSD-BE-01（hosted-widget-contract S3，A06 oracle）：public_widget_id
+%% **全局**反查的 PG 证明——无 Org 输入命中唯一行，行的 organization_id 即
+%% 权威派生租户（/w/ 面的租户归属真源）；不存在 → not_found（application
+%% 归一 installation_unavailable，无枚举）。零 DDL：走既有行与列。
+csd_be01_global_public_id_lookup() ->
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    PublicId = public_widget_id(),
+    try
+        {ok, Inst} = cs_pg_widget:insert_widget_installation(Org, #{
+            id => ?FIX:id(),
+            organization_id => Org,
+            public_widget_id => PublicId,
+            display_name => <<"csdb01-global-lookup">>,
+            allowed_origins => [<<"https://shop.example.com">>],
+            branding => #{<<"primary">> => <<"#0a84ff">>},
+            consent_version => <<"csb01-consent-v1">>,
+            created_by_user_id => maps:get(owner_user_id, Scope)
+        }),
+        InstallationId = maps:get(id, Inst),
+        %% 全局反查：无 Org 输入；命中行派生 (id, organization_id)。
+        {ok, Row} = cs_pg_widget:fetch_widget_installation_by_public_id_global(PublicId),
+        ?assertEqual(InstallationId, maps:get(id, Row)),
+        ?assertEqual(Org, maps:get(organization_id, Row)),
+        %% 不存在 → not_found（与命中失败的唯一形状，三态归一在上层）。
+        {error, not_found} = cs_pg_widget:fetch_widget_installation_by_public_id_global(
+            <<"wgt_pub_absent_csdb01">>
+        ),
+        %% 吊销后反查仍命中行（行保留以审计）；active 门由 application 裁决
+        %% （installation_active + installation_unavailable 归一）。status 列
+        %% 契约：`active` → atom，其余 fail-closed 保留 binary。
+        At = erlang:system_time(second),
+        ok = cs_pg_widget:revoke_widget_installation(Org, InstallationId, At),
+        {ok, RevRow} = cs_pg_widget:fetch_widget_installation_by_public_id_global(PublicId),
+        ?assertEqual(<<"revoked">>, maps:get(status, RevRow))
+    after
+        cleanup_widget(Scope)
+    end.
+
+%% CSD-BE-01S（hosted-widget-contract S3 v1.1，GAP-3 oracle）：bootstrap
+%% token digest **全局**命中的 PG 证明——无 Org 输入，(installation_id, digest)
+%% 命中行派生 organization_id（持 token 动作面的租户真源）；digest 未命中/
+%% 跨 installation → not_found（digest = sha256(secret)，无存在性枚举）。
+%% SQL 形状机械断言：谓词零 Org、恰两个占位符。
+csd_be01s_global_token_digest_lookup() ->
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    OtherOrg = maps:get(other_org_id, Scope),
+    try
+        {ok, Inst} = cs_pg_widget:insert_widget_installation(Org, #{
+            id => ?FIX:id(),
+            organization_id => Org,
+            public_widget_id => public_widget_id(),
+            display_name => <<"csbe01s-global-digest">>,
+            allowed_origins => [<<"https://shop.example.com">>],
+            branding => #{},
+            consent_version => <<"csb01-consent-v1">>
+        }),
+        InstallationId = maps:get(id, Inst),
+        Digest = cs_access_app:default_digest(<<"csbe01s-global-token">>),
+        {ok, Token} = cs_pg_widget:insert_widget_bootstrap_token(Org, #{
+            id => ?FIX:id(),
+            contact_id => maps:get(contact_id, Scope),
+            token_digest => Digest,
+            expires_at => erlang:system_time(second) + 600,
+            widget_installation_id => InstallationId
+        }),
+        %% 全局命中：无 Org 输入，行的 organization_id 即派生租户。
+        {ok, Row} = cs_pg_widget:fetch_widget_bootstrap_token_by_digest_global(
+            InstallationId, Digest
+        ),
+        ?assertEqual(maps:get(id, Token), maps:get(id, Row)),
+        ?assertEqual(Org, maps:get(organization_id, Row)),
+        ?assertEqual(InstallationId, maps:get(widget_installation_id, Row)),
+        %% digest 不匹配 → not_found；跨 installation → not_found（不可枚举）。
+        {error, not_found} = cs_pg_widget:fetch_widget_bootstrap_token_by_digest_global(
+            InstallationId, cs_access_app:default_digest(<<"csbe01s-other-token">>)
+        ),
+        {error, not_found} = cs_pg_widget:fetch_widget_bootstrap_token_by_digest_global(
+            ?FIX:id(), Digest
+        ),
+        %% 与既有 (Org, installation) 同语句口径一致：行保留、可复核。
+        {ok, _} = cs_pg_widget:fetch_widget_bootstrap_token_by_digest(
+            Org, InstallationId, Digest
+        ),
+        _ = OtherOrg,
+        %% SQL 形状机械断言（同 by_public_id_global 先例）：谓词零 Org
+        %% （organization_id 只在 SELECT 投影）、占位符恰为 $1/$2。
+        Chunk = global_digest_sql_chunk(),
+        ?assertMatch(
+            {match, _},
+            re:run(Chunk, <<"WHERE\\s+widget_installation_id = \\$1 AND token_digest = \\$2">>)
+        ),
+        ?assertMatch(nomatch, re:run(Chunk, <<"organization_id\\s*=">>)),
+        ?assertMatch({match, _}, re:run(Chunk, <<"SELECT id, organization_id,">>)),
+        ok
+    after
+        cleanup_widget(Scope)
+    end.
+
+%% 全局 digest 语句是模块级宏（不进 sql_statements/0——「同语句带 Org」的
+%% 机械断言集语义上不适用）；形状以模块源码冻结（宏原文切片）。
+global_digest_sql_chunk() ->
+    {ok, Bin} = file:read_file(
+        filename:join([
+            "src", "features", "customer_service", "infrastructure", "cs_pg_widget.erl"
+        ])
+    ),
+    case binary:split(Bin, <<"-define(SQL_FETCH_BOOTSTRAP_BY_DIGEST_GLOBAL, <<">>) of
+        [_Only] ->
+            erlang:error(global_digest_sql_missing);
+        [_Head, Rest] ->
+            case binary:split(Rest, <<">>).">>) of
+                [Chunk, _Tail] -> Chunk;
+                _ -> erlang:error(global_digest_sql_unterminated)
+            end
     end.
 
 %% ===================================================================

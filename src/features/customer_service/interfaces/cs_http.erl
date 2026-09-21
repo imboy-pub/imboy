@@ -45,6 +45,11 @@
     now_sec/0
 ]).
 
+-ifdef(TEST).
+%% R2-F2：查询串派生键守卫的合同面锁死（cs_route_contract_tests 直调）。
+-export([check_forbidden/3]).
+-endif.
+
 -include("error_code.hrl").
 
 %% TSID 在 JSON 里的载体是 string；版本/评分/时间戳不是 TSID，保持 number。
@@ -220,13 +225,21 @@ action_tables() ->
 %%   * `param` —— A0 冻结访客路径（path 无 org 段）取查询/正文的必填
 %%     `organization_id`，作为**申报值**交由 cs_auth 用凭证/事实证明；
 %%   * `self` —— 主体自身作用域（BE-S01a 坐席上下文清单）：无 Org 键，
-%%     返回 0 占位（facade 的 self 用例不读 OrgId，作用域是 actor 本人）。
+%%     返回 0 占位（facade 的 self 用例不读 OrgId，作用域是 actor 本人）；
+%%   * `derived` —— CSD-BE-01R/01S（hosted-widget-contract S3 v1.1）：widget
+%%     面的浏览器零申报面——无 Org 输入，返回 0 占位（facade 调用点同构），
+%%     租户由 application 权威派生（bootstrap：public_widget_id 全局反查；
+%%     持 token 动作面：(installation_id, secret) 的 digest 全局命中行）；
+%%     客户端申报 `organization_id` 被动作表 client_forbidden 拦为
+%%     400 `server_derived_key_rejected`。
 -spec org_id(map(), cowboy_req:req(), map()) -> {ok, integer()} | {error, term()}.
 org_id(Entry, Req, Body) ->
     case cs_actions:org_source(Entry) of
         path ->
             path_tsid(Req, org_id, missing_org_id);
         self ->
+            {ok, 0};
+        derived ->
             {ok, 0};
         param ->
             case value(organization_id, Req, Body) of
@@ -293,7 +306,8 @@ path_tsid(Req, Name, MissingTag) when is_atom(Name) ->
     {ok, map()} | {error, term()}.
 build_params(Entry, Case, Req, Body, Derived) ->
     Forbidden = maps:get(client_forbidden, Entry, []),
-    case check_forbidden(Body, Forbidden ++ ?FORBIDDEN_SCOPE_KEYS) of
+    Qs = cowboy_req:parse_qs(Req),
+    case check_forbidden(Body, Qs, Forbidden ++ ?FORBIDDEN_SCOPE_KEYS) of
         {error, _} = Err ->
             Err;
         ok ->
@@ -321,10 +335,22 @@ server_derived_keys() ->
 server_derived() ->
     #{}.
 
-check_forbidden(Body, Keys) ->
-    case [K || K <- Keys, is_map_key(K, Body)] of
-        [] -> ok;
-        [Key | _] -> {error, {forbidden_client_key, Key}}
+%% R2-F2（hosted-widget-contract S3 查询串面）：派生键申报面 = 正文**与**
+%% 查询串双查——与 check_forbidden_crypto_keys/2 同口径。派生事实永不来自
+%% 客户端，query 里的申报显式 400 而非静默忽略。
+check_forbidden(Body, Qs, Keys) when is_map(Body), is_list(Qs) ->
+    case
+        [
+            K
+         || K <- Keys,
+            is_map_key(K, Body) orelse proplists:is_defined(key_bin(K), Qs)
+        ]
+    of
+        [] ->
+            ok;
+        [Key | _] ->
+            %% CSD-BE-01R（hosted-widget-contract S3）：400 `server_derived_key_rejected`。
+            {error, {server_derived_key_rejected, Key}}
     end.
 
 %% F6（RULING-2026-09-15 §七）：主密钥材料键在任何动作的 HTTP/JSON 面（正文与
@@ -459,7 +485,9 @@ status(Reason) ->
     end.
 
 %% --- 400：请求形状错误 ---
-classify({forbidden_client_key, _}) ->
+%% CSD-BE-01R（hosted-widget-contract S3）：客户端申报服务端派生键 = 400
+%% `server_derived_key_rejected`（原名 forbidden_client_key，按合同对齐）。
+classify({server_derived_key_rejected, _}) ->
     ?ERR_BAD_REQUEST;
 classify({invalid_param, _}) ->
     ?ERR_BAD_REQUEST;
@@ -477,6 +505,11 @@ classify(body_not_object) ->
     ?ERR_BAD_REQUEST;
 %% CSB-03：widget 面凭证只准走专用头——查询串携带凭证样式键即 400（值不读）。
 classify(credential_in_query_string) ->
+    ?ERR_BAD_REQUEST;
+%% CSD-BE-01：/w/:public_widget_id 路径绑定形状非法（空/越界字符集）——
+%% 与旧 frame 的 invalid_tsid 同为 400 形状面（无枚举，不区分形状错与不存在
+%% ——不存在的 installation 走 404 installation_unavailable）。
+classify(invalid_public_widget_id) ->
     ?ERR_BAD_REQUEST;
 %% CSB-03：Origin 头形状非法（含 path/userinfo/非法端口等）——fail-closed 400。
 classify({invalid_origin, _}) ->
@@ -588,6 +621,12 @@ classify(not_found) ->
 classify({not_found, _}) ->
     ?ERR_NOT_FOUND;
 classify({session_not_found, _}) ->
+    ?ERR_NOT_FOUND;
+%% CSD-BE-01（hosted-widget-contract S3）：public_widget_id 反查面（/w/ 与
+%% bootstrap）的统一 404——不存在 / disabled / revoked(kill switch) 三态归一
+%% `installation_unavailable`，不泄漏 installation 存在性差异。旧 frame 面的
+%% `installation_revoked`=403 分类保留（兼容窗口，见下方 403 段）。
+classify(installation_unavailable) ->
     ?ERR_NOT_FOUND;
 %% F-LAY-01：seat 绑定不存在的业务身份 → 与 EB 面 404 同口径（此前 500）。
 classify({identity_not_found, _}) ->
@@ -713,12 +752,16 @@ server_side(_Other) -> false.
 %% 原因标签（对外可见的稳定文本；丢弃整数与二进制取值）
 %% ===================================================================
 
-%% @doc 把错误项编成点分原子路径。**唯一特例**：offboarding 降级
-%%% `{assignee_change_requires_offboarding, _}` 对外是客户端契约冻结标签
-%%% `offboarding_required`（HTTP 409 + envelope code，双通道语义）。
+%% @doc 把错误项编成点分原子路径。**两个特例**（对外契约冻结标签，不回显
+%%% 取值/键名）：offboarding 降级对外是 `offboarding_required`；
+%%% 客户端申报服务端派生键对外是合同 S3 的 `server_derived_key_rejected`
+%%% ——不回显命中键名，避免把服务端派生键集合变成客户端的枚举面。
 -spec tag(term()) -> binary().
 tag({assignee_change_requires_offboarding, _}) ->
     <<"offboarding_required">>;
+%% CSD-BE-01R（hosted-widget-contract S3 冻结码）：键名不出线（枚举面收口）。
+tag({server_derived_key_rejected, _Key}) ->
+    <<"server_derived_key_rejected">>;
 tag(Reason) ->
     Parts = path(Reason, []),
     case Parts of

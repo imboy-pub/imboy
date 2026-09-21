@@ -84,8 +84,11 @@
 }.
 %% OrgId 的来源：path 绑定 / 请求参数（客户端申报 + 授权证明）/ self（主体
 %% 自身作用域——跨 Org 聚合用例，如坐席上下文清单；授权只验凭证类别，
-%% 每个 Org 的成员/坐席事实由 application 聚合时逐 Org 复核）。
--type org_source() :: path | param | self.
+%% 每个 Org 的成员/坐席事实由 application 聚合时逐 Org 复核）/ derived
+%% （CSD-BE-01R/01S，hosted-widget-contract S3：浏览器零申报面——bootstrap
+%% 由 public_widget_id 全局反查、持 token 动作面由 (installation_id, secret)
+%% 的 digest 全局命中行**权威派生**，handler 传 0 占位）。
+-type org_source() :: path | param | self | derived.
 
 -define(FEATURE, customer_service).
 
@@ -199,10 +202,11 @@ server_common() ->
 
 %% CSB-03：widget 面的服务端派生/注入键全集。除公共时钟外：contact 与
 %% workspace 由令牌行与默认 Workspace 事实服务端解析；`origin` 只来自
-%% Origin 头（handler 归一化后注入）；`secret` 只来自专用头；其余键是
-%% application 的 Ctx 注入面（HMAC 材料 / 事实 fun / 端口 / 摘要 fun /
-%% 断言验证器 / TTL）——浏览器可写即等于把服务端事实交给客户端，
-%% 一律「提供即 400」。
+%% Origin 头（handler 归一化后注入）；`request_host` 只来自 Host 头 +
+%% X-Forwarded-Proto（CSD-BE-01S：同源放行判定的输入，handler 派生注入）；
+%% `secret` 只来自专用头；其余键是 application 的 Ctx 注入面（HMAC 材料 /
+%% 事实 fun / 端口 / 摘要 fun / 断言验证器 / TTL）——浏览器可写即等于把
+%% 服务端事实交给客户端，一律「提供即 400」。
 widget_server_derived() ->
     server_common() ++
         [
@@ -211,6 +215,7 @@ widget_server_derived() ->
             created_by_user_id,
             workspace_id,
             origin,
+            request_host,
             secret,
             subject_key,
             default_workspace,
@@ -537,7 +542,15 @@ table(tenant) ->
 %% bootstrap 令牌专用头（查询串携带凭证即 400，见 cs_http）；令牌校验在
 %% application 用例内逐请求裁决。bootstrap 无令牌可验（它就是签发点，
 %% 令牌可选 = 重放心跳）；会话生命周期用例复用 `cs_widget_session_app`。
-%% Org 恒为申报参数（path 无 org 段），由令牌 digest 的同语句命中证明。
+%% Org 来源（CSD-BE-01R/01S，hosted-widget-contract S3 v1.1）：**全部
+%% 浏览器动作面零 org 申报**——bootstrap 由 public_widget_id 全局反查的
+%% 命中行权威派生；持 token 动作面（sessions/messages/events/rating/assets/
+%% identity_exchange）由 (installation_id, secret) 的 digest **全局命中行**
+%% 派生（token 行本就绑定 (org, installation)，digest 命中无枚举面），
+%% `organization_id` 在全部面上客户端提供即 400。仅两个例外保留 param：
+%% 旧 frame（S4 兼容窗口，路径带 organization_id 查询参数原样保留）与
+%% widget_asset_put（无 token 面——presign 下发的裸 PUT URL 携带服务端
+%% 签发的 organization_id，同值回传语义，非浏览器申报）。
 %% ===================================================================
 table(widget) ->
     [
@@ -552,11 +565,12 @@ table(widget) ->
                         []}
                 ],
                 widget_auth(),
-                widget_server_derived(),
-                param
+                %% organization_id 是 bootstrap 面的服务端派生键（S3 零申报面）。
+                widget_server_derived() ++ [organization_id],
+                derived
             )},
         {widget_identity_exchange,
-            widget_entry(
+            widget_token_entry(
                 [
                     {<<"POST">>, widget_identity_exchange,
                         [
@@ -564,10 +578,7 @@ table(widget) ->
                             {assertion, map, required}
                         ],
                         []}
-                ],
-                widget_auth(),
-                widget_server_derived(),
-                param
+                ]
             )},
         %% BE-W01（router wiring manifest W-1）：动态 frame HTML。handler 自行
         %% 解析参数（不经 cs_actions 的 dispatch——零凭证导航面）；此处登记
@@ -581,20 +592,30 @@ table(widget) ->
                 widget_server_derived(),
                 param
             )},
+        %% CSD-BE-01（hosted-widget-contract S3/S4）：/w/:public_widget_id 动态
+        %% frame HTML（iframe src 新落点）。handler 自行解析路径绑定（不经
+        %% cs_actions 的 dispatch——零凭证导航面）；此处登记只为动作表/路由表/
+        %% 契约测试三方一致。租户归属是命中行的派生输出（public_widget_id
+        %% 全局反查），浏览器零 org/workspace 申报面（CSD-BE-01S：org_source
+        %% 如实登记为 derived）。
+        {widget_public_frame_html,
+            widget_token_entry(
+                [
+                    {<<"GET">>, widget_public_frame_html, [{public_widget_id, binary, required}],
+                        []}
+                ]
+            )},
         %% 会话建立（POST）与访客会话列表（GET）同路径动作（cowboy 只按 path
         %% 匹配——seats/shop-keys 同款先例）。
         {widget_sessions,
-            widget_entry(
+            widget_token_entry(
                 [
                     {<<"POST">>, widget_create_session, [{installation_id, tsid, required}], []},
                     {<<"GET">>, widget_list_sessions, [{installation_id, tsid, required}], []}
-                ],
-                widget_auth(),
-                widget_server_derived(),
-                param
+                ]
             )},
         {widget_session_messages,
-            widget_entry(
+            widget_token_entry(
                 [
                     {<<"GET">>, widget_history_after,
                         [
@@ -618,16 +639,13 @@ table(widget) ->
                             {asset_ids, list, optional}
                         ],
                         [{id, session_id}]}
-                ],
-                widget_auth(),
-                widget_server_derived(),
-                param
+                ]
             )},
         %% SSE 事件流（GET）：流式响应由 cs_widget_handler 专用分支承担；
         %% 动作表声明的是补偿读语义（Last-Event-ID / after_id → 历史 after 游标），
         %% facade 与普通历史同源（widget_history_after）。
         {widget_session_events,
-            widget_entry(
+            widget_token_entry(
                 [
                     {<<"GET">>, widget_history_after,
                         [
@@ -636,13 +654,10 @@ table(widget) ->
                             {limit, int, optional}
                         ],
                         [{id, session_id}]}
-                ],
-                widget_auth(),
-                widget_server_derived(),
-                param
+                ]
             )},
         {widget_asset_upload,
-            widget_entry(
+            widget_token_entry(
                 [
                     {<<"POST">>, widget_asset_upload,
                         [
@@ -656,13 +671,10 @@ table(widget) ->
                             {object_hash, binary, required}
                         ],
                         [{id, session_id}]}
-                ],
-                widget_auth(),
-                widget_server_derived(),
-                param
+                ]
             )},
         {widget_asset_confirm,
-            widget_entry(
+            widget_token_entry(
                 [
                     {<<"POST">>, widget_asset_confirm,
                         [
@@ -670,10 +682,7 @@ table(widget) ->
                             {upload_ref, binary, required}
                         ],
                         [{id, session_id}]}
-                ],
-                widget_auth(),
-                widget_server_derived(),
-                param
+                ]
             )},
         %% BE-PATCH-01：字节上传代理（POST .../assets/upload）。upload_ref 是
         %% 唯一凭证（FE 裸 PUT 合同：无凭证头/Cookie，URL 查询串携带申报键），
@@ -711,18 +720,15 @@ table(widget) ->
         %% JSON 面——线格式分支在 cs_widget_handler；此处动作表登记的是解析/
         %% 认证/参数投影契约。asset_id 是路径绑定（服务端解析会话外作用域）。
         {widget_asset_content,
-            widget_entry(
+            widget_token_entry(
                 [
                     {<<"GET">>, widget_asset_content, [{installation_id, tsid, required}], [
                         {id, session_id}, {asset, asset_id}
                     ]}
-                ],
-                widget_auth(),
-                widget_server_derived(),
-                param
+                ]
             )},
         {widget_session_rating,
-            widget_entry(
+            widget_token_entry(
                 [
                     {<<"POST">>, widget_rate,
                         [
@@ -731,10 +737,7 @@ table(widget) ->
                             {expected_version, int, required}
                         ],
                         [{id, session_id}]}
-                ],
-                widget_auth(),
-                widget_server_derived(),
-                param
+                ]
             )}
     ];
 %% ===================================================================
@@ -877,6 +880,15 @@ with_case_auth(Entry, CaseAuth) when is_map(CaseAuth) ->
 %% widget 面路径动作构造（owner=widget；其余形状与租户面一致）。
 widget_entry(Cases, Auth, ClientForbidden, OrgSource) ->
     (entry(Cases, Auth, ClientForbidden, OrgSource))#{owner => widget}.
+
+%% CSD-BE-01S（hosted-widget-contract S3 v1.1）：持 token 动作面的统一构造
+%% ——org_source=derived（Org 由 token digest 全局命中行服务端派生），
+%% `organization_id` 与其余服务端派生键一样客户端提供即 400
+%% `server_derived_key_rejected`（浏览器零申报面）。
+widget_token_entry(Cases) ->
+    widget_entry(
+        Cases, widget_auth(), widget_server_derived() ++ [organization_id], derived
+    ).
 
 %% 平台面路径动作构造：org 默认来自 path；服务端派生键 = 公共集。
 platform_entry(Cases, Auth) ->

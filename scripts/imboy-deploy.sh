@@ -6,9 +6,10 @@
 #   bash scripts/imboy-deploy.sh <component> [-v] [-l] [--env-file PATH]
 #
 # Component:
-#   all       全量部署：api（内含 migrate）→ admin
+#   all       全量部署：api（内含 migrate）→ admin → cs
 #   api       部署 Erlang 后端（首次边界迁移可能进入维护窗口）
 #   admin     仅部署 React 管理后台（本地构建 + 上传）
+#   cs        部署托管客服 Widget 网关（构建/暂存 → 复用 api 蓝绿 → 原子激活 → smoke）
 #   migrate   仅在另一蓝绿节点已停止后执行数据库迁移
 #   rollback  回滚：将 Nginx 切回旧节点端口
 #
@@ -23,6 +24,7 @@
 #   bash scripts/imboy-deploy.sh api -v -l
 #   bash scripts/imboy-deploy.sh api -v -l --env-file ~/.config/imboy/acme.env
 #   bash scripts/imboy-deploy.sh admin
+#   bash scripts/imboy-deploy.sh cs -v -l --env-file ~/.config/imboy/acme.env
 #   bash scripts/imboy-deploy.sh migrate
 #   bash scripts/imboy-deploy.sh rollback
 # =============================================================================
@@ -33,11 +35,11 @@ ENV_FILE="$SCRIPT_DIR/.env.deploy"
 COMPONENT="${1:-all}"
 
 usage() {
-  echo "用法: bash scripts/imboy-deploy.sh <all|api|admin|migrate|rollback> [-v|--verbose] [-l|--local] [--env-file PATH]"
+  echo "用法: bash scripts/imboy-deploy.sh <all|api|admin|cs|migrate|rollback> [-v|--verbose] [-l|--local] [--env-file PATH]"
 }
 
 case "$COMPONENT" in
-  all|api|admin|migrate|rollback) ;;
+  all|api|admin|cs|migrate|rollback) ;;
   *) usage; exit 1 ;;
 esac
 
@@ -59,6 +61,14 @@ while [[ $# -gt 0 ]]; do
     *) usage; exit 1 ;;
   esac
 done
+
+# CS 组件部署 helper（CSD-CLI-01）：纯函数在 SSH 前 allowlist 校验即用，
+# deploy_cs 在主分派处调用。仅 cs/all 组件加载（其他组件零依赖、零行为变化）。
+# 此处在日志函数定义之前 source，其独立 source 的兜底日志函数会被下方正式定义覆盖。
+if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
+  # shellcheck source=lib/cs_deploy.sh
+  source "$SCRIPT_DIR/lib/cs_deploy.sh"
+fi
 
 if [[ "$ENV_FILE" != /* ]]; then
   ENV_FILE="$PWD/$ENV_FILE"
@@ -182,6 +192,12 @@ if [[ -n "${DEPLOY_NODE_NAME:-}" && ! "$DEPLOY_NODE_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]
   fail "DEPLOY_NODE_NAME 非法，拒绝建立 SSH"
 fi
 
+# ---------- CS 组件专属配置校验（I6：全部在建立 SSH 之前） ----------
+if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
+  cs_validate_config
+  cs_resolve_build_paths
+fi
+
 if [[ "$COMPONENT" == api || "$COMPONENT" == all ]]; then
   CHANGELOG_FILE="$SCRIPT_DIR/../CHANGELOG.md"
   [[ -f "$CHANGELOG_FILE" ]] || fail "本地发布缺少 CHANGELOG.md"
@@ -196,7 +212,6 @@ if [[ "$COMPONENT" == api || "$COMPONENT" == all ]]; then
     fail "CHANGELOG.md 缺少发布版本标题：## [$DEPLOY_VSN]"
   fi
 fi
-
 if [[ ("$COMPONENT" == api || "$COMPONENT" == all) && "${DEPLOY_SALES_RELEASE:-true}" == true ]]; then
   [[ -n "${DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}" ]] \
     || fail "销售版缺少 DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE"
@@ -210,8 +225,8 @@ if [[ ("$COMPONENT" == api || "$COMPONENT" == all) && "${DEPLOY_SALES_RELEASE:-t
     || fail "插件签名可信公钥必须是 32 字节 Ed25519 raw public key"
 fi
 
-if [[ "$LOCAL_MODE" -eq 1 && "$COMPONENT" != api && "$COMPONENT" != all ]]; then
-  fail "-l/--local 仅支持 api 或 all"
+if [[ "$LOCAL_MODE" -eq 1 && "$COMPONENT" != api && "$COMPONENT" != all && "$COMPONENT" != cs ]]; then
+  fail "-l/--local 仅支持 api、all 或 cs"
 fi
 if [[ "$LOCAL_MODE" -eq 1 ]] && ! command -v rsync >/dev/null 2>&1; then
   fail "本地源码上传需要 rsync"
@@ -255,26 +270,34 @@ deploy_api() {
   NODE_ID="${DEPLOY_NODE_NAME:-$(date '+%m%d%H%M')}"
 
   # 将客户配置映射为私有蓝绿实现的 IMBOY_DEPLOY_* 环境变量。
-  IMBOY_DEPLOY_PORT="$SERVER_PORT" \
-  IMBOY_DEPLOY_USER="$SERVER_USER" \
-  IMBOY_DEPLOY_PROJECT_DIR="$DEPLOY_PROJECT_DIR" \
-  IMBOY_DEPLOY_NGINX_CONF="$NGINX_CONF" \
-  IMBOY_DEPLOY_PRODADM_CONF="$PRODADM_CONF" \
-  IMBOY_DEPLOY_BLUE_PORT="$DEPLOY_BLUE_PORT" \
-  IMBOY_DEPLOY_GREEN_PORT="$DEPLOY_GREEN_PORT" \
-  IMBOY_DEPLOY_COOKIE="$DEPLOY_COOKIE" \
-  IMBOY_DEPLOY_BRANCH="$DEPLOY_BRANCH" \
-  IMBOY_DEPLOY_STOP_OLD="${DEPLOY_STOP_OLD:-true}" \
-  IMBOY_DEPLOY_DB_CONTAINER="$DB_CONTAINER" \
-  IMBOY_DEPLOY_DB_NAME="$DB_NAME" \
-  IMBOY_DEPLOY_DB_USER="$DB_USER" \
-  IMBOY_DEPLOY_EXPAND_MIGRATIONS="${DEPLOY_EXPAND_MIGRATIONS:-}" \
-  IMBOY_DEPLOY_SALES_RELEASE="${DEPLOY_SALES_RELEASE:-true}" \
-  IMBOY_DEPLOY_E2EE_MODE="${DEPLOY_E2EE_MODE:-}" \
-  IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE="${DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}" \
-  IMBOY_DEPLOY_INTERNAL=1 \
-    bash "$SCRIPT_DIR/lib/blue_green_deploy.sh" "${DEPLOY_ARGS[@]}" \
-      "$SERVER_HOST" "$DEPLOY_VSN" "$NODE_ID"
+  # 蓝绿子进程失败必须显式 return 1：条件上下文调用（cs 组件）会抑制本函数
+  # 内部 errexit，靠最后一个 ok 命令会把失败吞成返回 0。
+  # 客户配置映射为子进程环境（与原 env-prefix 逐项等价，返回码经显式 if 捕获）。
+  local -a bg_env=(
+    "IMBOY_DEPLOY_PORT=$SERVER_PORT"
+    "IMBOY_DEPLOY_USER=$SERVER_USER"
+    "IMBOY_DEPLOY_PROJECT_DIR=$DEPLOY_PROJECT_DIR"
+    "IMBOY_DEPLOY_NGINX_CONF=$NGINX_CONF"
+    "IMBOY_DEPLOY_PRODADM_CONF=$PRODADM_CONF"
+    "IMBOY_DEPLOY_BLUE_PORT=$DEPLOY_BLUE_PORT"
+    "IMBOY_DEPLOY_GREEN_PORT=$DEPLOY_GREEN_PORT"
+    "IMBOY_DEPLOY_COOKIE=$DEPLOY_COOKIE"
+    "IMBOY_DEPLOY_BRANCH=$DEPLOY_BRANCH"
+    "IMBOY_DEPLOY_STOP_OLD=${DEPLOY_STOP_OLD:-true}"
+    "IMBOY_DEPLOY_DB_CONTAINER=$DB_CONTAINER"
+    "IMBOY_DEPLOY_DB_NAME=$DB_NAME"
+    "IMBOY_DEPLOY_DB_USER=$DB_USER"
+    "IMBOY_DEPLOY_EXPAND_MIGRATIONS=${DEPLOY_EXPAND_MIGRATIONS:-}"
+    "IMBOY_DEPLOY_SALES_RELEASE=${DEPLOY_SALES_RELEASE:-true}"
+    "IMBOY_DEPLOY_E2EE_MODE=${DEPLOY_E2EE_MODE:-}"
+    "IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE=${DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}"
+    "IMBOY_DEPLOY_INTERNAL=1"
+  )
+  if ! env "${bg_env[@]}" \
+    bash "$SCRIPT_DIR/lib/blue_green_deploy.sh" ${DEPLOY_ARGS[@]+"${DEPLOY_ARGS[@]}"} \
+      "$SERVER_HOST" "$DEPLOY_VSN" "$NODE_ID"; then
+    return 1
+  fi
 
   ok "▶ Erlang 后端部署完成"
 }
@@ -432,7 +455,7 @@ rollback() {
   IMBOY_DEPLOY_COOKIE="$DEPLOY_COOKIE" \
   IMBOY_DEPLOY_BRANCH="$DEPLOY_BRANCH" \
   IMBOY_DEPLOY_INTERNAL=1 \
-    bash "$SCRIPT_DIR/lib/blue_green_deploy.sh" "${DEPLOY_ARGS[@]}" --rollback "$SERVER_HOST" "$DEPLOY_VSN" rollback
+    bash "$SCRIPT_DIR/lib/blue_green_deploy.sh" ${DEPLOY_ARGS[@]+"${DEPLOY_ARGS[@]}"} --rollback "$SERVER_HOST" "$DEPLOY_VSN" rollback
 }
 
 # =============================================================================
@@ -444,12 +467,18 @@ log "目标: $SERVER_USER@$SERVER_HOST:$SERVER_PORT | branch=$DEPLOY_BRANCH | ve
 log "运行: project=$DEPLOY_PROJECT_DIR | blue=$DEPLOY_BLUE_PORT | green=$DEPLOY_GREEN_PORT"
 log "数据库: container=$DB_CONTAINER | database=$DB_NAME | user=$DB_USER"
 log "策略: sales=${DEPLOY_SALES_RELEASE:-true} | e2ee=${DEPLOY_E2EE_MODE:-auto} | expand=${#CONFIGURED_EXPAND_MIGRATIONS[@]} | stop_old=${DEPLOY_STOP_OLD:-true} | source=$([[ "$LOCAL_MODE" -eq 1 ]] && echo local-rsync || echo remote-git) | verbose=$([[ "$VERBOSE" -eq 1 ]] && echo true || echo false)"
+if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
+  # I7: cookie 仅以脱敏占位出现；证书内容/私钥/secret 永不打印
+  log "CS: domain=$CS_WIDGET_DOMAIN | root=$CS_REMOTE_ROOT | vhost=$CS_NGINX_CONF | build=$CS_BUILD_PATH | smoke_origin=$CS_SMOKE_SHOP_ORIGIN | mode=$([[ "$LOCAL_MODE" -eq 1 ]] && echo local-build || echo artifact) | cookie=$(cs_redact "${DEPLOY_COOKIE:-}")"
+fi
 _ssh_connect
 
 case "$COMPONENT" in
   all)
     deploy_api
     deploy_admin
+    # all -l（合同 A06）：Backend 恰一次，总顺序 api → admin → cs artifact/gateway
+    deploy_cs skip-backend
     echo
     ok "════ 全量部署完成 / Full deploy complete ════"
     ;;
@@ -458,6 +487,9 @@ case "$COMPONENT" in
     ;;
   admin)
     deploy_admin
+    ;;
+  cs)
+    deploy_cs with-backend
     ;;
   migrate)
     deploy_migrate

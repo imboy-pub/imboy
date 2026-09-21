@@ -223,6 +223,16 @@
 %% OrgId——错 Org 的查询拿到 not_found（CSB-01-A02 的 store 裁决点）。
 -callback fetch_widget_installation_by_public_id(OrgId :: integer(), PublicWidgetId :: binary()) ->
     {ok, widget_installation()} | {error, not_found | term()}.
+%% @doc CSD-BE-01（hosted-widget-contract S3）：public_widget_id **全局**反查——
+%% 输入只有公开 ID（浏览器不申报 Org），Org/Workspace 是**输出**（权威派生自
+%% 命中的唯一 active installation 行，`public_widget_id` 全局唯一约束保证单行）。
+%% CSD-BE-01R 起消费面 = 全部 public_widget_id 反查面（/w/:public_widget_id
+%% frame HTML 与 widget_bootstrap——S3 零申报面）；token 面其余动作仍按
+%% installation_id 走 Org 同语句的 `fetch_widget_installation/2`。
+%% 不存在 → `{error, not_found}`（三态归一为 installation_unavailable 由
+%% application 承担）。
+-callback fetch_widget_installation_by_public_id_global(PublicWidgetId :: binary()) ->
+    {ok, widget_installation()} | {error, not_found | term()}.
 %% @doc 管理面列表：DESC 键集分页，同语句绑定 Org。
 -callback list_widget_installations_page(
     OrgId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
@@ -260,6 +270,14 @@
 %% 跨 Org / 跨安装命中不了行（not_found，不做存在性枚举）。
 -callback fetch_widget_bootstrap_token_by_digest(
     OrgId :: integer(), InstallationId :: integer(), Digest :: binary()
+) ->
+    {ok, widget_bootstrap_token()} | {error, not_found | term()}.
+%% @doc digest **全局**命中（CSD-BE-01S，hosted-widget-contract S3 v1.1）：
+%% 无 Org 输入——持 token 动作面的租户派生真源，命中行的 organization_id
+%% 即权威租户（token 行绑定 (org, installation)）；digest = sha256(secret)，
+%% 命中前提是持明文 secret，无存在性枚举面。
+-callback fetch_widget_bootstrap_token_by_digest_global(
+    InstallationId :: integer(), Digest :: binary()
 ) ->
     {ok, widget_bootstrap_token()} | {error, not_found | term()}.
 %% @doc 活跃心跳：更新 last_seen_at（不改 digest / 不动 version 语义）。
@@ -300,7 +318,10 @@
 %% + `LIMIT`，迁移 135 的 i_cse_org_ws_id (organization_id, workspace_id, id)
 %% 是唯一入口）。同语句绑定 (Org, Workspace)——跨租户/跨 Workspace 恒空页。
 -callback list_events_page(
-    OrgId :: integer(), WorkspaceId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
+    OrgId :: integer(),
+    WorkspaceId :: integer(),
+    AfterId :: non_neg_integer(),
+    Limit :: pos_integer()
 ) ->
     {ok, [event()]} | {error, term()}.
 

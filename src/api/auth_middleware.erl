@@ -39,6 +39,13 @@ execute(Req, Env) ->
             auth_middleware_api_v1:execute(Req, Env);
         <<"/webrtc/", _Tail/binary>> ->
             {ok, Req, Env};
+        %% CSD-BE-01（hosted-widget-contract S4）：`/w/:public_widget_id` 动态
+        %% frame HTML——零凭证导航面（iframe src 落点，无 IMBoy 设备/JWT/签名），
+        %% 与 /webrtc 同款直通；handler 侧 fail-closed（方法门 + 查询串凭证键
+        %% 400 + public_widget_id 形状门），租户归属由 public_widget_id 全局
+        %% 反查派生。`/w` 根段全站唯一（CS widget 专属命名空间）。
+        <<"/w/", _Tail/binary>> ->
+            {ok, Req, Env};
         _ ->
             OpenLi = imboy_router:open(),
             OptionLi = imboy_router:option(),

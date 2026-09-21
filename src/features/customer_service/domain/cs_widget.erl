@@ -8,6 +8,8 @@
 %%%   * Origin 判定全在服务端：申报 Origin 与 allowlist 双方都做
 %%%     scheme+host+port 归一（同源 sibling：缺省端口 80/443 折叠、host 小写、
 %%%     scheme 大小写折叠），然后**精确**匹配——无前缀/后缀/子域通融；
+%%%     v1.1 追加同源对等（`origin_allowed/3`，GAP-4 裁决）：放行集合 =
+%%%     allowlist ∪ 与请求 Host 头 scheme+host:port 归一相同，放行来源可区分；
 %%%   * 匿名 subject 只以 HMAC 形态存在：`subject_hmac/3` 以安装级数据域
 %%%     （public_widget_id + 浏览器随机 ID）+ 注入密钥计算 sha256-HMAC hex；
 %%%     签名身份 sub 同口径但数据域前缀不同（与匿名域永不相交）；
@@ -21,6 +23,7 @@
 -export([
     normalize_origin/1,
     origin_allowed/2,
+    origin_allowed/3,
     subject_hmac/3,
     verified_subject_hmac/3,
     assertion_claims/2,
@@ -44,20 +47,51 @@
 %% ===================================================================
 
 %% @doc 把申报/配置 Origin 归一为 `scheme://host[:port]`（缺省端口折叠、
-%% scheme/host 小写）。含 path/query/fragment、无 scheme、空 host、非法端口的
-%% 输入一律 `{error, {invalid_origin, V}}`（fail-closed，不做容错截断）。
+%% scheme/host 小写）。合同 S4 六禁形状门：scheme 非 http(s)、通配 `*`、
+%% userinfo、path/query/fragment、空白/控制字符、非法字符集（host 白名单外
+%% 与端口非纯数字）一律 `{error, {invalid_origin, V}}`——fail-closed，不做
+%% 容错截断（CSP frame-ancestors 输入链的唯一入口，形状非法值绝不上头）。
 -spec normalize_origin(term()) -> {ok, binary()} | {error, term()}.
 normalize_origin(V) when is_binary(V) ->
     case binary:split(V, <<"://">>) of
         [Scheme, Rest] when Scheme =/= <<>>, Rest =/= <<>> ->
-            normalize_authority(lower(Scheme), Rest, V);
+            normalize_scheme(lower(Scheme), Rest, V);
         _ ->
             {error, {invalid_origin, V}}
     end;
 normalize_origin(V) ->
     {error, {invalid_origin, V}}.
 
-%% authority 里的 `/` 一定意味着 path（query/fragment 亦然）——Origin 没有这些。
+%% 六禁之一：scheme 无条件仅 {http,https}——与端口无关（`ftp://h:21`、
+%% `javascript://h:80` 同拒）；scheme 段的任何空白/控制/通配形态都进不了
+%% 这两个逐字匹配，天然封闭。
+normalize_scheme(<<"http">>, Rest, Raw) ->
+    reject_forbidden_authority(<<"http">>, Rest, Raw);
+normalize_scheme(<<"https">>, Rest, Raw) ->
+    reject_forbidden_authority(<<"https">>, Rest, Raw);
+normalize_scheme(_Scheme, _Rest, Raw) ->
+    {error, {invalid_origin, Raw}}.
+
+%% 六禁（authority 任意位置）：通配 `*`、path/query/fragment 前导 `/`、`?`、
+%% `#`、userinfo `@`、空白与控制字符（<0x21 与 0x7F）一律拒——
+%% `https://a.com\r\nEvil`（无冒号 CRLF 形态）与 `https://a.com X` 在此拦截。
+reject_forbidden_authority(Scheme, Rest, Raw) ->
+    case has_forbidden_authority_byte(Rest) of
+        true -> {error, {invalid_origin, Raw}};
+        false -> normalize_authority(Scheme, Rest, Raw)
+    end.
+
+has_forbidden_authority_byte(<<C, _/binary>>) when C < 16#21; C =:= 16#7F -> true;
+has_forbidden_authority_byte(<<$*, _/binary>>) -> true;
+has_forbidden_authority_byte(<<$/, _/binary>>) -> true;
+has_forbidden_authority_byte(<<$?, _/binary>>) -> true;
+has_forbidden_authority_byte(<<$#, _/binary>>) -> true;
+has_forbidden_authority_byte(<<$@, _/binary>>) -> true;
+has_forbidden_authority_byte(<<_, Rest/binary>>) -> has_forbidden_authority_byte(Rest);
+has_forbidden_authority_byte(<<>>) -> false.
+
+%% authority 里的 `/` 一定意味着 path（query/fragment 亦然）——Origin 没有这些
+%% （前置禁字节扫描已拦，此处保留为结构兜底）。
 normalize_authority(Scheme, Rest, Raw) ->
     case binary:match(Rest, <<"/">>) of
         nomatch -> normalize_hostport(Scheme, Rest, Raw);
@@ -71,17 +105,56 @@ normalize_hostport(Scheme, Authority, Raw) ->
         _ -> {error, {invalid_origin, Raw}}
     end.
 
-%% host 非空；端口缺省折叠（http:80 / https:443），否则 1..65535。
+%% host 非空、字符集白名单内；端口缺省折叠（http:80 / https:443），否则
+%% 1..65535（纯数字）。
 split_hostport(Scheme, Authority, Raw) ->
     case split_authority(Authority) of
-        {ok, Host, DefaultPort} ->
-            case port_or_default(DefaultPort, Scheme) of
-                {ok, Port} -> {ok, join_origin(Scheme, lower(Host), Port)};
-                {error, _} -> {error, {invalid_origin, Raw}}
+        {ok, Host0, DefaultPort} ->
+            Host = lower(Host0),
+            case valid_host_charset(Host) of
+                true ->
+                    case port_or_default(DefaultPort, Scheme) of
+                        {ok, Port} -> {ok, join_origin(Scheme, Host, Port)};
+                        {error, _} -> {error, {invalid_origin, Raw}}
+                    end;
+                false ->
+                    {error, {invalid_origin, Raw}}
             end;
         error ->
             {error, {invalid_origin, Raw}}
     end.
+
+%% 六禁之「非法字符集」：host 白名单——非方括号形态仅 `[a-z0-9._-]`（小写
+%% 归一后判定，大小写输入不受影响）；IPv6 方括号形态保留 `[<hex>:.]`
+%% （`::1` 与 IPv4-mapped 同口径），空方括号/白名单外一律拒。
+valid_host_charset(<<>>) ->
+    false;
+valid_host_charset(<<$[, Rest/binary>>) ->
+    case binary:split(Rest, <<"]">>) of
+        [Body, <<>>] when Body =/= <<>> -> ipv6_chars(Body);
+        _ -> false
+    end;
+valid_host_charset(Host) ->
+    hostname_chars(Host).
+
+hostname_chars(<<>>) ->
+    true;
+hostname_chars(<<C, Rest/binary>>) when
+    (C >= $a andalso C =< $z) orelse (C >= $0 andalso C =< $9) orelse
+        C =:= $. orelse C =:= $- orelse C =:= $_
+->
+    hostname_chars(Rest);
+hostname_chars(_) ->
+    false.
+
+ipv6_chars(<<>>) ->
+    true;
+ipv6_chars(<<C, Rest/binary>>) when
+    (C >= $a andalso C =< $f) orelse (C >= $0 andalso C =< $9) orelse C =:= $: orelse C =:= $.
+->
+    ipv6_chars(Rest);
+ipv6_chars(_) ->
+    false.
 
 %% 拆 host:port；IPv6 字面量按 `[...]:port` 处理（方括号内原样保留）。
 split_authority(<<"[", _/binary>> = Authority) ->
@@ -103,13 +176,32 @@ split_authority(Authority) ->
         _ -> error
     end.
 
+%% 端口仅接受纯数字 1..65535（`+80`、`0x50` 等非法字符集形态同拒；
+%% 归一输出恒为规范十进制，坏字符不进 CSP 值）。
 binary_to_port(Bin) ->
-    try binary_to_integer(Bin) of
-        N when N >= 1, N =< 65535 -> N;
-        _ -> invalid
-    catch
-        _:_ -> invalid
+    case port_digits(Bin) of
+        true ->
+            try binary_to_integer(Bin) of
+                N when N >= 1, N =< 65535 -> N;
+                _ -> invalid
+            catch
+                _:_ -> invalid
+            end;
+        false ->
+            invalid
     end.
+
+port_digits(<<>>) ->
+    false;
+port_digits(<<C, Rest/binary>>) when C >= $0, C =< $9 -> port_digits_rest(Rest);
+port_digits(_) ->
+    false.
+
+port_digits_rest(<<>>) ->
+    true;
+port_digits_rest(<<C, Rest/binary>>) when C >= $0, C =< $9 -> port_digits_rest(Rest);
+port_digits_rest(_) ->
+    false.
 
 port_or_default(undefined, <<"http">>) -> {ok, ?DEFAULT_HTTP_PORT};
 port_or_default(undefined, <<"https">>) -> {ok, ?DEFAULT_HTTPS_PORT};
@@ -157,6 +249,45 @@ origin_allowed(Declared, AllowedOrigins) when is_list(AllowedOrigins) ->
     end;
 origin_allowed(_Declared, _AllowedOrigins) ->
     {error, {invalid_origin, undefined}}.
+
+%% @doc v1.1 同源对等放行（CSD-BE-01S，hosted-widget-contract S3 GAP-4 裁决）：
+%% 放行集合 = installation `allowed_origins`（宿主面）∪ **与请求 Host 头
+%% scheme+host:port 归一相同**（同源 iframe 面——iframe 内 fetch 的 Origin
+%% 恒为 Widget 网关自身，嵌入合法性由 /w/ 的 frame-ancestors CSP 保证）。
+%%
+%% 返回可区分两种放行来源（测试/日志面）：
+%%   * `ok`                —— allowlist 精确命中（allowlist 优先，语义不变）；
+%%   * `{ok, same_origin}` —— Origin 与 Host 头归一相等（同源对等）；
+%%   * `{error, _}`        —— 两者皆否 / 输入形状非法 / allowlist 配置错误
+%%     （fail-closed 原样上抛）。
+%%
+%% `HostOrigin` 是 handler 由 Host 头 + 客户端侧 scheme 派生的归一 origin
+%% （`undefined` = 头缺失/形状非法 → 同源分支不生效，仅剩 allowlist 判定）。
+-spec origin_allowed(term(), [binary()], term()) -> ok | {ok, same_origin} | {error, term()}.
+origin_allowed(Declared, AllowedOrigins, HostOrigin) when is_list(AllowedOrigins) ->
+    case origin_allowed(Declared, AllowedOrigins) of
+        ok ->
+            ok;
+        {error, origin_not_allowed} = NotAllowed ->
+            case same_origin_as(Declared, HostOrigin) of
+                true -> {ok, same_origin};
+                false -> NotAllowed
+            end;
+        {error, _} = Err ->
+            Err
+    end;
+origin_allowed(_Declared, _AllowedOrigins, _HostOrigin) ->
+    {error, {invalid_origin, undefined}}.
+
+%% 同源判定：双方各自归一后逐字相等（scheme+host+port 同一口径）；Host 侧
+%% 形状非法 = 不构成同源放行（fail-closed，不做容错截断）。
+same_origin_as(Declared, HostOrigin) when is_binary(Declared), is_binary(HostOrigin) ->
+    case {normalize_origin(Declared), normalize_origin(HostOrigin)} of
+        {{ok, Norm}, {ok, Norm}} -> true;
+        _ -> false
+    end;
+same_origin_as(_Declared, _HostOrigin) ->
+    false.
 
 normalize_all([], Acc) ->
     {ok, lists:usort(Acc)};

@@ -12,10 +12,13 @@
 %%%      签发点本身，令牌可选（携带即重放心跳）。
 %%%   2. **Origin 头校验**（仅 bootstrap）：handler 用 domain
 %%%      `cs_widget:normalize_origin/1` 做 scheme+host+port 归一（非法形状
-%%%      400），归一值注入 `origin` 参数交给 application 与 installation
-%%%      allowlist **精确**匹配（`cs_widget:origin_allowed/2`）——Origin 是
-%%%      bootstrap 的必要条件，不是唯一认证：令牌/限流/租户 scope 照常生效。
-%%%      动态 CORS：仅当请求成功才回 `Access-Control-Allow-Origin`
+%%%      400），归一值注入 `origin` 参数交给 application 判定（
+%%%      `cs_widget:origin_allowed/3`：installation allowlist 精确匹配 ∪
+%%%      同源 Host 对等——CSD-BE-01S 合同 S3 v1.1：同源 iframe fetch 的
+%%%      Origin 恒为 Widget 网关自身，handler 同时把 Host 头 + 客户端侧
+%%%      scheme 派生的归一 origin 注入 `request_host` 供同源分支比对）——
+%%%      Origin 是 bootstrap 的必要条件，不是唯一认证：令牌/限流/租户 scope
+%%%      照常生效。动态 CORS：仅当请求成功才回 `Access-Control-Allow-Origin`
 %%%      （echo 归一化后的**具体值**，绝不 `*`、绝不由此开 credentials）；
 %%%      全局 CORS 由 `cors_middleware` 按既有口径先行。
 %%%
@@ -42,6 +45,9 @@
 %% SSE 帧构造纯函数（导出仅供套件零 socket 断言；生产路径只在流循环内使用）。
 -export([comment_frame/0, event_frame/3, message_data/1, retry_frame/1, state_data/2]).
 
+%% CSD-BE-01：/w/ frame 文档构造纯函数（导出仅供套件零 socket 断言）。
+-export([public_frame_document/1]).
+
 %% SSE 缺省节奏（route Opts 可注入覆盖：sse_retry_ms / sse_poll_ms / sse_max_ms）。
 -define(SSE_RETRY_MS, 5000).
 -define(SSE_POLL_MS, 15000).
@@ -49,6 +55,15 @@
 -define(SSE_KEEPALIVE_EVERY, 3).
 %% SSE 增量单次拉取上限（页大小上限 = cs_app_support:max_page_limit/0）。
 -define(SSE_POLL_LIMIT, 200).
+
+%% CSD-BE-01R + R2-F1/F3（hosted-widget-contract S4/S6）：/w/ frame 文档引用
+%% 版本化静态 JS = `/widget-assets/cs-widget.v2.js`（合同 S4 字面形状）。v1 已
+%% 被旧 frame 面 `?FRAME_ASSET_JS`（cs_widget_frame_handler，随 API 主机静态
+%% 部署）占用，新面取 v2 避免同名互踩。widget 网关对 /widget-assets/ 下发
+%% no-cache 重验证（非 immutable）：稳定版本名的入口资产可在发布时原位更新，
+%% 热修（含安全修复）对已缓存访客立即可达，不依赖跨仓改名纪律；内容哈希
+%% chunk 仍走 /assets/* immutable。旧面行为零修改（兼容窗口）。
+-define(PUBLIC_FRAME_ASSET_JS, <<"/widget-assets/cs-widget.v2.js">>).
 
 %% cowboy 普通 handler：State = route Opts（含 route metadata + 中间件会话键）。
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
@@ -75,6 +90,12 @@ handle(Action, Req0, State0) ->
             %% asset_content 同款线格式分支先例）；upload_ref 是唯一凭证（FE 裸
             %% PUT 合同：无凭证头），因此不走 token_credential 门。
             asset_put(Entry, Req0, State0);
+        {ok, _Entry} when Action =:= widget_public_frame_html ->
+            %% CSD-BE-01（hosted-widget-contract S4）：/w/:public_widget_id 动态
+            %% frame HTML——零凭证导航面（iframe src 落点），handler 自解析，
+            %% 不走 dispatch 的 Org/令牌链。租户归属由 public_widget_id 全局
+            %% 反查**派生**，HTML 壳零 installation_id/org/workspace/secret。
+            public_frame(Req0);
         {ok, Entry} ->
             dispatch(Entry, Req0, State0)
     end.
@@ -158,15 +179,17 @@ token_credential(Req, Optional) ->
     end.
 
 %% Origin 守卫（仅 bootstrap）：头缺失即 400；形状非法（含 path/userinfo/
-%% 非法端口）即 400；合法值归一化后注入 `origin` 参数——allowlist 精确
-%% 匹配在 application（`cs_widget:origin_allowed/2`）。
+%% 非法端口）即 400；合法值归一化后注入 `origin` 参数，同时注入同源判定
+%% 输入 `request_host`（Host 头 + 客户端侧 scheme 的归一 origin；缺头/形状
+%% 非法不注入——同源分支自然不生效，fail-closed）——allowlist ∪ 同源的
+%% 判定在 application（`cs_widget:origin_allowed/3`）。
 origin_guard(Entry, Req) ->
     case maps:get(action, Entry) =:= widget_bootstrap of
         false ->
             {ok, #{}};
         true ->
             case normalized_origin(Req) of
-                {ok, Norm} -> {ok, #{origin => Norm}};
+                {ok, Norm} -> {ok, maps:merge(#{origin => Norm}, request_host(Req))};
                 {error, missing_origin} -> {error, {missing_param, origin}};
                 {error, Reason} -> {error, Reason}
             end
@@ -179,6 +202,50 @@ normalized_origin(Req) ->
         Raw when is_binary(Raw) ->
             cs_widget:normalize_origin(Raw)
     end.
+
+%% CSD-BE-01S（合同 S3 v1.1）：同源放行判定的服务端输入——Host 头（含端口
+%% 的原始 authority）+ 客户端可见 scheme 拼出 `scheme://host[:port]` 再归一。
+%% scheme 反代场景信任 X-Forwarded-Proto（nginx 模板恒下发；取首段防链式
+%% 列表），无头时用 cowboy 直连 scheme。Host 头缺失/形状非法 = 不注入
+%% （同源分支不生效，仅剩 allowlist 判定——fail-closed）。
+request_host(Req) ->
+    case host_authority(Req) of
+        {ok, Authority} ->
+            case
+                cs_widget:normalize_origin(<<(client_scheme(Req))/binary, "://", Authority/binary>>)
+            of
+                {ok, Norm} -> #{request_host => Norm};
+                {error, _} -> #{}
+            end;
+        error ->
+            #{}
+    end.
+
+host_authority(Req) ->
+    case cowboy_req:header(<<"host">>, Req) of
+        Host when is_binary(Host), Host =/= <<>> -> {ok, Host};
+        _ -> error
+    end.
+
+client_scheme(Req) ->
+    case cowboy_req:header(<<"x-forwarded-proto">>, Req) of
+        Xfp when is_binary(Xfp), Xfp =/= <<>> ->
+            [First | _] = binary:split(Xfp, <<",">>),
+            lower_bin(string:trim(First));
+        _ ->
+            %% cowboy 2.x 返回 binary（<<"http">>/<<"https">>）；atom 形态兼容兜底。
+            case cowboy_req:scheme(Req) of
+                S when is_binary(S) -> lower_bin(S);
+                A when is_atom(A) -> atom_to_binary(A, utf8)
+            end
+    end.
+
+lower_bin(Bin) ->
+    Lower = fun
+        (C) when C >= $A, C =< $Z -> C + 32;
+        (C) -> C
+    end,
+    <<<<(Lower(C))>> || <<C>> <= Bin>>.
 
 %% 请求成功时才可用于动态 CORS 的归一化 Origin（失败/无头 = undefined）。
 origin_or_undefined(Req) ->
@@ -334,6 +401,133 @@ read_upload_body(Req, Acc) ->
                 false -> read_upload_body(Req1, [Data | Acc])
             end
     end.
+
+%% ===================================================================
+%% /w/:public_widget_id 动态 frame HTML（CSD-BE-01，hosted-widget-contract S4）
+%% ===================================================================
+
+%% 零凭证导航面：方法门（非 GET 405）→ 凭证不进 URL（查询串凭证样式键 400）
+%% → 路径绑定形状门（400，无枚举）→ public_widget_id 全局反查 → HTML。
+%% 与旧 frame（cs_widget_frame_handler，/api/v1/cs/widget/frame/:installation_id）
+%% 的差异（S4 冻结）：HTML 壳**零** installation_id / organization_id /
+%% workspace_id / secret / token，租户归属由反查派生、浏览器零申报面；
+%% 错误统一 404 `installation_unavailable`（missing/disabled/revoked 三态不区分）。
+public_frame(Req0) ->
+    case cowboy_req:method(Req0) of
+        <<"GET">> ->
+            case cs_http:credential_in_query_string(Req0) of
+                true ->
+                    cs_http:reply_error(Req0, credential_in_query_string);
+                false ->
+                    public_frame_binding(Req0)
+            end;
+        _Other ->
+            cs_http:reply_error(Req0, method_not_allowed)
+    end.
+
+public_frame_binding(Req0) ->
+    case public_widget_binding(Req0) of
+        {error, Reason} ->
+            cs_http:reply_error(Req0, Reason);
+        {ok, PublicId} ->
+            %% OrgId=0 是 facade_call 同构占位：反查面无 Org 输入（命中行派生）。
+            Result =
+                cs_facade_call:call(
+                    widget_public_frame_html, 0, #{public_widget_id => PublicId}
+                ),
+            public_frame_respond(Req0, Result)
+    end.
+
+%% 路径绑定形状门：非空、≤128、[A-Za-z0-9_-]（与
+%% cs_widget_app:valid_public_widget_id/1 同口径——接口层先拒 400，
+%% application 层再守 422，纵深防御不互信）。
+public_widget_binding(Req) ->
+    case cowboy_req:binding(public_widget_id, Req) of
+        undefined ->
+            {error, {missing_path_param, public_widget_id}};
+        Raw when is_binary(Raw) ->
+            case valid_public_id(Raw) of
+                true -> {ok, Raw};
+                false -> {error, invalid_public_widget_id}
+            end
+    end.
+
+valid_public_id(Raw) ->
+    byte_size(Raw) > 0 andalso
+        byte_size(Raw) =< 128 andalso
+        lists:all(fun public_id_char/1, binary_to_list(Raw)).
+
+public_id_char(C) when C >= $a, C =< $z -> true;
+public_id_char(C) when C >= $A, C =< $Z -> true;
+public_id_char(C) when C >= $0, C =< $9 -> true;
+public_id_char($_) -> true;
+public_id_char($-) -> true;
+public_id_char(_) -> false.
+
+public_frame_respond(Req0, {ok, Projection}) ->
+    Origins = maps:get(allowed_origins, Projection, []),
+    PublicId = maps:get(public_widget_id, Projection, <<>>),
+    Headers = #{
+        <<"content-type">> => <<"text/html; charset=utf-8">>,
+        %% 嵌入策略唯一真源：逐 origin 列名（或 'none'）——复用旧 frame 的
+        %% 同一纯函数（frame_ancestors_csp/1），XFO 已由共享形状谓词豁免。
+        <<"content-security-policy">> => cs_widget_frame_handler:frame_ancestors_csp(Origins),
+        %% revocation 立即生效优先（S6：/w/:public_widget_id = no-store）。
+        <<"cache-control">> => <<"no-store">>
+    },
+    cowboy_req:reply(200, Headers, public_frame_document(PublicId), Req0);
+public_frame_respond(Req0, {error, Reason}) ->
+    cs_http:reply_error(Req0, Reason).
+
+%% @doc /w/ 帧文档（S4 冻结形状）：最小挂载点 `div#cs-widget-root` +
+%% `data-public-widget-id` + 版本化脚本。**不输出** installation_id /
+%% organization_id / workspace_id / secret / token（与旧 frame 的
+%% `data-installation-id` 是合同级差异）；属性值 HTML 转义。
+-spec public_frame_document(binary()) -> binary().
+public_frame_document(PublicId) when is_binary(PublicId) ->
+    PubAttr = html_attr(PublicId),
+    <<
+        "<!DOCTYPE html>"
+        "<html lang=\"en\">"
+        "<head>"
+        "<meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<title>Customer service</title>"
+        "</head>"
+        "<body>"
+        "<div id=\"cs-widget-root\" data-public-widget-id=\"",
+        PubAttr/binary,
+        "\"></div>"
+        "<script src=\"",
+        ?PUBLIC_FRAME_ASSET_JS/binary,
+        "\" defer></script>"
+        "</body>"
+        "</html>"
+    >>;
+public_frame_document(_PublicId) ->
+    <<>>.
+
+%% HTML 属性转义（与 cs_widget_frame_handler:html_attr/1 同口径；该函数未导出，
+%% 本面按同一四元集独立实现）。
+html_attr(Bin) when is_binary(Bin) ->
+    binary:replace(
+        binary:replace(
+            binary:replace(
+                binary:replace(Bin, <<"&">>, <<"&amp;">>, [global]),
+                <<"<">>,
+                <<"&lt;">>,
+                [global]
+            ),
+            <<">">>,
+            <<"&gt;">>,
+            [global]
+        ),
+        <<"\"">>,
+        <<"&quot;">>,
+        [global]
+    );
+html_attr(_) ->
+    <<>>.
 
 %% ===================================================================
 %% SSE（GET .../sessions/:id/events）
@@ -550,25 +744,29 @@ message_id(Message) when is_map(Message) ->
 message_id(_Other) ->
     0.
 
+%% CSD-BE-01S（GAP-5）：消息补偿读把（开流前已 token-scoped 归属校验过的）
+%% `session_id` 回注进 facade 参数——`widget_history_after` 的参数契约要求
+%% session 级作用域键，缺它 = 每次轮询 {error,{invalid_argument,*}} 静默重试、
+%% 坐席消息帧结构性永不出。状态/保活轮询走 `widget_list_sessions`（不需要
+%% session 级键），仍由 scoped/1 收敛。
 poll_messages(OrgId, Params, Cursor) ->
     Base = scoped(Params#{limit => ?SSE_POLL_LIMIT}),
+    WithSession = Base#{session_id => maps:get(session_id, Params)},
     WithCursor =
         case Cursor > 0 of
-            true -> Base#{after_id => Cursor};
-            false -> Base
+            true -> WithSession#{after_id => Cursor};
+            false -> WithSession
         end,
     cs_facade_call:call(widget_history_after, OrgId, WithCursor).
 
 sort_messages(Messages) ->
     lists:sort(fun(A, B) -> message_id(A) =< message_id(B) end, Messages).
 
-%% facade 参数收敛：只留注入键 + 游标/页大小键 + session_id（DF-5：流内
-%% `widget_history_after` 补偿读与 REST 历史同源，真 facade 的
-%% `visitor_session_scope` 需要它裁决会话归属——丢键即补偿读恒
-%% invalid_argument，被 stream_step 静默吞掉，message/state 帧全死）。
+%% facade 参数收敛：只留注入键 + 游标/页大小键（session 级键不出流循环；
+%% 唯一例外是消息补偿读——poll_messages 在收敛后显式回注 session_id）。
 scoped(Params) ->
     maps:with(
-        [installation_id, secret, at, store, id, default_workspace, digest, limit, session_id],
+        [installation_id, secret, at, store, id, default_workspace, digest, limit],
         Params
     ).
 

@@ -58,7 +58,11 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a05_messages_only_via_enterprise_source/0},
         {timeout, 60, fun a06_widget_lifecycle_smoke/0},
         {timeout, 60, fun csb02s_d2_bootstrap_token_ttl_two_directions/0},
-        {timeout, 30, fun origin_normalization_edges/0}
+        {timeout, 30, fun origin_normalization_edges/0},
+        %% CSD-BE-01S：同源 Host 对等放行（GAP-4）+ 零 org 申报面 facade 派生
+        %% oracle（GAP-3）。
+        {timeout, 30, fun csd_be01s_same_origin_host_allowed/0},
+        {timeout, 60, fun csd_be01s_facade_derives_org_from_token_digest/0}
     ];
 cases({error, Reason}) ->
     erlang:error({csb02_widget_suite_db_unavailable, Reason}).
@@ -280,11 +284,27 @@ a02_origin_negatives_sibling_and_revoked() ->
                 })
             )
         ),
-        %% 吊销安装 → 新 bootstrap 与新会话全拒（kill switch 语义）。
+        %% CSD-BE-01R（hosted-widget-contract S3 零申报面）：OrgId 形参是
+        %% 占位——application 用 public_widget_id 全局反查的命中行权威派生
+        %% 租户；申报任意/错误 org 值被忽略，contact 仍落在命中行的 Org
+        %% （旧断言「跨 Org 命中不了行」随零申报面语义一并废止）。
+        ContactsX = contacts(Org),
+        {ok, VCross} =
+            cs_widget_app:bootstrap(
+                maps:get(other_org_id, Scope),
+                wp(Scope, #{
+                    public_widget_id => PublicId, origin => origin(), subject_id => <<"subj-x">>
+                })
+            ),
+        ?assertEqual(ContactsX + 1, contacts(Org)),
+        ?assertEqual(false, maps:get(reused, VCross)),
+        %% 吊销安装 → 新 bootstrap 与新会话全拒（kill switch 语义；
+        %% CSD-BE-01R：bootstrap 反查面三态归一 installation_unavailable）。
         {ok, V1} = bootstrap_for(Scope, PublicId, <<"subj-rev">>),
         ok = ?FAKE:revoke_widget_installation(Org, InstId, ?T0 + 1),
         ?assertEqual(
-            {error, installation_revoked}, bootstrap_for(Scope, PublicId, <<"subj-rev2">>)
+            {error, installation_unavailable},
+            bootstrap_for(Scope, PublicId, <<"subj-rev2">>)
         ),
         ?assertEqual(
             {error, installation_revoked},
@@ -292,16 +312,6 @@ a02_origin_negatives_sibling_and_revoked() ->
                 Org,
                 wp(Scope, #{
                     installation_id => InstId, secret => maps:get(secret, V1)
-                })
-            )
-        ),
-        %% 跨 Org 的 public_widget_id 解析命中不了行（CSB-01-A02 应用侧复核）。
-        ?assertEqual(
-            {error, not_found},
-            cs_widget_app:bootstrap(
-                maps:get(other_org_id, Scope),
-                wp(Scope, #{
-                    public_widget_id => PublicId, origin => origin(), subject_id => <<"subj-x">>
                 })
             )
         )
@@ -840,6 +850,31 @@ origin_normalization_edges() ->
     ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com:0">>)),
     ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"a.com">>)),
     ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://u@a.com">>)),
+    %% CSD-BE-01T（合同 S4 六禁形状门，SEC-1 修复）：白名单内 `_`/`-`/`.`
+    %% host 合法；六禁全 fail-closed——scheme 非 http(s)（与端口无关）、通配、
+    %% 空白/控制字符（含无冒号 CRLF 形态）、path/query/fragment、userinfo、
+    %% 端口非法字符集。
+    ?assertEqual(
+        {ok, <<"https://a_.com-x.y">>}, cs_widget:normalize_origin(<<"HTTPS://A_.COM-X.Y">>)
+    ),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"ftp://h.com:21">>)),
+    ?assertMatch(
+        {error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"javascript://h.com:80">>)
+    ),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://*">>)),
+    ?assertMatch(
+        {error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://*.evil.com">>)
+    ),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com X">>)),
+    ?assertMatch(
+        {error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com\r\nEvil">>)
+    ),
+    ?assertMatch(
+        {error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com\r\nEvil: 1">>)
+    ),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com?x=1">>)),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com#f">>)),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://a.com:+80">>)),
     %% allowlist 精确匹配：归一后相等才放行。
     ?assertEqual(
         ok, cs_widget:origin_allowed(<<"https://a.com:443">>, [<<"https://a.com">>])
@@ -854,6 +889,179 @@ origin_normalization_edges() ->
         cs_widget:origin_allowed(<<"https://a.com">>, [<<"not-an-origin">>])
     ),
     ok.
+
+%% ===================================================================
+%% CSD-BE-01S（hosted-widget-contract S3 v1.1，GAP-4 修复）：
+%% 同源 Host 对等放行——放行集合 = installation allowlist ∪ 与请求 Host 头
+%% scheme+host:port 归一相同；两种放行来源可区分（ok vs {ok, same_origin}）。
+%% ===================================================================
+
+csd_be01s_same_origin_host_allowed() ->
+    %% —— domain 面：origin_allowed/3 的放行来源可区分 ——
+    %% 同源命中（origin 不在 allowlist，但 == request_host 归一值）。
+    ?assertEqual(
+        {ok, same_origin},
+        cs_widget:origin_allowed(
+            <<"https://cs.test:18443">>,
+            [<<"https://shop.example.com">>],
+            <<"https://cs.test:18443">>
+        )
+    ),
+    %% allowlist 命中优先（与同源无关，语义不变 = ok）。
+    ?assertEqual(
+        ok,
+        cs_widget:origin_allowed(
+            <<"https://shop.example.com">>,
+            [<<"https://shop.example.com">>],
+            <<"https://evil.example.com">>
+        )
+    ),
+    %% 两者皆否 → origin_not_allowed（403 面）。
+    ?assertEqual(
+        {error, origin_not_allowed},
+        cs_widget:origin_allowed(
+            <<"https://evil.example.com">>,
+            [<<"https://shop.example.com">>],
+            <<"https://shop.example.com">>
+        )
+    ),
+    %% Host 头缺失（undefined）→ 仅 allowlist 判定；Host 形状非法 → 不构成
+    %% 同源放行（fail-closed，不做容错截断）。
+    ?assertEqual(
+        {error, origin_not_allowed},
+        cs_widget:origin_allowed(
+            <<"https://cs.test:18443">>,
+            [<<"https://shop.example.com">>],
+            undefined
+        )
+    ),
+    %% Host 形状非法不构成同源放行 → 落回 allowlist 判定（origin_not_allowed）。
+    ?assertEqual(
+        {error, origin_not_allowed},
+        cs_widget:origin_allowed(
+            <<"https://cs.test:18443">>,
+            [<<"https://shop.example.com">>],
+            <<"not-an-origin">>
+        )
+    ),
+    %% 归一对等同样作用于 Host 侧（scheme/host 大小写 + 缺省端口折叠）。
+    ?assertEqual(
+        {ok, same_origin},
+        cs_widget:origin_allowed(<<"https://cs.test">>, [], <<"HTTPS://CS.TEST:443">>)
+    ),
+    ?assertEqual(
+        {error, origin_not_allowed},
+        cs_widget:origin_allowed(<<"https://cs.test">>, [], <<"http://cs.test">>)
+    ),
+    %% —— app 面：bootstrap 走同一判定 ——
+    {Scope, _InstId, PublicId} = fresh_world(<<"wgt_pub_be01s_origin">>),
+    try
+        %% origin 不在 allowlist、但与 request_host 同源 → 放行（同源 iframe 面）。
+        {ok, V} =
+            cs_widget_app:bootstrap(
+                0,
+                wp(Scope, #{
+                    public_widget_id => PublicId,
+                    origin => <<"https://cs.test:18443">>,
+                    request_host => <<"https://cs.test:18443">>,
+                    subject_id => <<"be01s-same-origin-subj">>
+                })
+            ),
+        ?assert(is_binary(maps:get(secret, V))),
+        %% origin 与 Host 不同源且不在 allowlist → origin_not_allowed。
+        ?assertEqual(
+            {error, origin_not_allowed},
+            cs_widget_app:bootstrap(
+                0,
+                wp(Scope, #{
+                    public_widget_id => PublicId,
+                    origin => <<"https://evil.example.com">>,
+                    request_host => <<"https://shop.example.com">>,
+                    subject_id => <<"be01s-same-origin-subj">>
+                })
+            )
+        )
+    after
+        teardown(Scope)
+    end.
+
+%% ===================================================================
+%% CSD-BE-01S（hosted-widget-contract S3 v1.1，GAP-3 修复 oracle）：持 token
+%% 动作面零 org 申报——facade 直调（HTTP 面 OrgId 占位 0）由 (installation_id,
+%% secret) 的 digest 全局命中行派生真实租户后照常开会话；跨 installation 与
+%% 过期令牌按既有 401 语义拒绝。
+%% ===================================================================
+
+csd_be01s_facade_derives_org_from_token_digest() ->
+    {Scope, InstId, PublicId} = fresh_world(<<"wgt_pub_be01s_facade">>),
+    try
+        Org = org(Scope),
+        {ok, V} = bootstrap_for(Scope, PublicId, <<"be01s-facade-subj">>),
+        Secret = maps:get(secret, V),
+        %% 零 org 申报参数（FE buildCreateSessionBody 同构）+ OrgId 占位 0
+        %% （HTTP 面 org_source=derived 同构）→ 会话落在令牌行派生的真实租户。
+        {ok, Created} =
+            customer_service_facade:widget_create_session(
+                0,
+                wp(Scope, #{installation_id => InstId, secret => Secret})
+            ),
+        ?assert(is_integer(maps:get(session_id, Created))),
+        ?assertEqual(maps:get(contact_id, V), maps:get(contact_id, Created)),
+        {ok, Sessions} =
+            cs_widget_session_app:list_sessions(
+                Org,
+                wp(Scope, #{installation_id => InstId, secret => Secret})
+            ),
+        ?assert(
+            lists:member(
+                maps:get(session_id, Created), [maps:get(id, S) || S <- Sessions]
+            )
+        ),
+        %% 跨 installation：令牌 digest 在另一 installation 行命中不了 → 401
+        %% not_found（digest 绑定 (org, installation)，与 PG 语句同语义）。
+        InstId2 = cs_fake_id:new_id(cs_session),
+        {ok, _} =
+            ?FAKE:insert_widget_installation(Org, #{
+                id => InstId2,
+                public_widget_id => <<"wgt_pub_be01s_other">>,
+                display_name => <<"BE01S Other">>,
+                allowed_origins => [<<"https://shop.example.com">>],
+                branding => #{},
+                consent_version => <<"consent-v1">>
+            }),
+        ?assertEqual(
+            {error, not_found},
+            customer_service_facade:widget_create_session(
+                0,
+                wp(Scope, #{installation_id => InstId2, secret => Secret})
+            )
+        ),
+        %% 未知 installation（无行）→ 同形 not_found（无存在性枚举）。
+        ?assertEqual(
+            {error, not_found},
+            customer_service_facade:widget_create_session(
+                0,
+                wp(Scope, #{installation_id => 999887766, secret => Secret})
+            )
+        ),
+        %% 过期令牌：派生命中后由用例以 (Org, installation) 复核 → 401
+        %% token_expired（错误语义与 E2E-02 记录一致）。
+        {ok, V3} = bootstrap_for(Scope, PublicId, <<"be01s-facade-subj-3">>),
+        ?assertEqual(
+            {error, token_expired},
+            customer_service_facade:widget_create_session(
+                0,
+                wp(Scope, #{
+                    installation_id => InstId,
+                    secret => maps:get(secret, V3),
+                    at => maps:get(expires_at, V3) + 1
+                })
+            )
+        ),
+        ok
+    after
+        teardown(Scope)
+    end.
 
 %% ===================================================================
 %% CSB-02S D2：bootstrap 令牌 TTL 双向（时间基准 = Unix 秒，TTL 缺省 3600s）

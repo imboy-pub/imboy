@@ -18,6 +18,7 @@
     insert_widget_installation/2,
     fetch_widget_installation/2,
     fetch_widget_installation_by_public_id/2,
+    fetch_widget_installation_by_public_id_global/1,
     list_widget_installations_page/3,
     revoke_widget_installation/3,
     insert_widget_identity_key/3,
@@ -25,6 +26,7 @@
     revoke_widget_identity_key/4,
     insert_widget_bootstrap_token/2,
     fetch_widget_bootstrap_token_by_digest/3,
+    fetch_widget_bootstrap_token_by_digest_global/2,
     touch_widget_bootstrap_token/4,
     revoke_widget_bootstrap_token/4,
     record_widget_nonce/4,
@@ -103,6 +105,24 @@
     " WHERE organization_id = $1 AND public_widget_id = $2"
 >>).
 
+%% CSD-BE-01（hosted-widget-contract S3）：public_widget_id **全局**反查——
+%% 与铁律 6 的租户语句**不同类**：输入只有公开 ID（单占位符 $1 =
+%% public_widget_id），`organization_id` 只出现在 SELECT 投影（从行**输出**，
+%% 权威派生租户），谓词零 Org——错 Org 的调用方根本不存在（调用方是浏览器，
+%% 无 Org 可带）。uq_cswi_public_widget_id 全局唯一约束保证单行。
+%% 本语句**不进** sql_statements/0（那是「同语句带 Org」的机械断言集，
+%% 语义上不适用）；其形状由 cs_pg_widget_tests 的专属机械断言单独冻结：
+%% 恰一个占位符且谓词为 public_widget_id = $1。
+-define(SQL_FETCH_INSTALLATION_BY_PUBLIC_ID_GLOBAL, <<
+    "SELECT id, organization_id, public_widget_id, display_name,"
+    "       allowed_origins, branding, consent_version, status,"
+    "       extract(epoch from revoked_at)::bigint AS revoked_at, version,"
+    "       extract(epoch from created_at)::bigint AS created_at,"
+    "       extract(epoch from updated_at)::bigint AS updated_at"
+    "  FROM customer_service_widget_installation"
+    " WHERE public_widget_id = $1"
+>>).
+
 -define(SQL_LIST_INSTALLATIONS_PAGE, <<
     "SELECT id, organization_id, public_widget_id, display_name,"
     "       allowed_origins, branding, consent_version, status,"
@@ -164,6 +184,24 @@
     "  FROM customer_service_visit_token"
     " WHERE organization_id = $1 AND widget_installation_id = $2"
     "   AND token_digest = $3"
+>>).
+
+%% CSD-BE-01S（hosted-widget-contract S3 v1.1）：持 token 动作面的 Org 权威
+%% 派生——与铁律 6 的租户语句**不同类**（fetch_installation_by_public_id_global
+%% 同款先例）：输入只有 (installation_id, digest)，谓词零 Org，
+%% `organization_id` 只出现在 SELECT 投影（从命中行**输出**，token 行本就
+%% 绑定 (org, installation)）。digest = sha256(secret)，命中前提是持明文
+%% secret——无存在性枚举面。本语句不进 sql_statements/0（「同语句带 Org」
+%% 机械断言语义上不适用），形状由 cs_pg_widget_tests 专属断言单独冻结。
+-define(SQL_FETCH_BOOTSTRAP_BY_DIGEST_GLOBAL, <<
+    "SELECT id, organization_id, contact_id, widget_installation_id,"
+    "       anonymous_subject_hmac, display_hint,"
+    "       extract(epoch from expires_at)::bigint AS expires_at,"
+    "       extract(epoch from revoked_at)::bigint AS revoked_at,"
+    "       extract(epoch from last_seen_at)::bigint AS last_seen_at, version,"
+    "       extract(epoch from created_at)::bigint AS created_at"
+    "  FROM customer_service_visit_token"
+    " WHERE widget_installation_id = $1 AND token_digest = $2"
 >>).
 
 -define(SQL_TOUCH_BOOTSTRAP_TOKEN, <<
@@ -274,6 +312,24 @@ fetch_widget_installation_by_public_id(OrgId, PublicWidgetId) ->
         )
     ).
 
+%% @doc 全局反查（CSD-BE-01，hosted-widget-contract S3）：无 Org 输入，
+%% organization_id 从命中行输出。不存在 → not_found（application 归一为
+%% installation_unavailable，三态不区分、无枚举）。
+-spec fetch_widget_installation_by_public_id_global(binary()) ->
+    {ok, map()} | {error, term()}.
+fetch_widget_installation_by_public_id_global(PublicWidgetId) when is_binary(PublicWidgetId) ->
+    to_status_row(
+        decode_installation_jsonb(
+            cs_pg_common:fetch_one(
+                ?SQL_FETCH_INSTALLATION_BY_PUBLIC_ID_GLOBAL,
+                [PublicWidgetId],
+                ?INSTALLATION_KEYS
+            )
+        )
+    );
+fetch_widget_installation_by_public_id_global(_PublicWidgetId) ->
+    {error, {invalid_argument, public_widget_id}}.
+
 -spec list_widget_installations_page(integer(), non_neg_integer(), pos_integer()) ->
     {ok, [map()]} | {error, term()}.
 list_widget_installations_page(OrgId, AfterId, Limit) ->
@@ -370,6 +426,20 @@ fetch_widget_bootstrap_token_by_digest(OrgId, InstallationId, Digest) ->
     cs_pg_common:fetch_one(
         ?SQL_FETCH_BOOTSTRAP_BY_DIGEST, [OrgId, InstallationId, Digest], ?BOOTSTRAP_KEYS
     ).
+
+%% @doc digest **全局**命中（CSD-BE-01S，hosted-widget-contract S3 v1.1）：
+%% 无 Org 输入，organization_id 从命中行输出——持 token 动作面的租户派生
+%% 真源（token 行本就绑定 (org, installation)）。不存在 → not_found。
+-spec fetch_widget_bootstrap_token_by_digest_global(integer(), binary()) ->
+    {ok, map()} | {error, term()}.
+fetch_widget_bootstrap_token_by_digest_global(InstallationId, Digest) when
+    is_integer(InstallationId), is_binary(Digest)
+->
+    cs_pg_common:fetch_one(
+        ?SQL_FETCH_BOOTSTRAP_BY_DIGEST_GLOBAL, [InstallationId, Digest], ?BOOTSTRAP_KEYS
+    );
+fetch_widget_bootstrap_token_by_digest_global(_InstallationId, _Digest) ->
+    {error, {invalid_argument, widget_bootstrap_token}}.
 
 -spec touch_widget_bootstrap_token(integer(), integer(), integer(), integer()) ->
     ok | {error, term()}.

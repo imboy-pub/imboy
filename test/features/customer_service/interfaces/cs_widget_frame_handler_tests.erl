@@ -261,5 +261,52 @@ frame_pure_functions_test(_) ->
             ?assertMatch({_, _}, binary:match(Doc, <<"w&amp;quot;x">>)),
             %% 版本化 JS 常量在文档内。
             ?assertMatch({_, _}, binary:match(Doc, <<"src=\"", ?FRAME_JS/binary, "\"">>))
-        end
+        end,
+        fun ban_non_http_scheme_not_in_csp/0,
+        fun ban_wildcard_not_in_csp/0,
+        fun ban_space_control_char_not_in_csp/0,
+        fun ban_path_not_in_csp/0,
+        fun ban_userinfo_not_in_csp/0,
+        fun ban_crlf_not_in_csp/0
     ].
+
+%% ===================================================================
+%% CSD-BE-01T（合同 S4 六禁端到端，SEC-1 修复）：每个被禁形状
+%% `cs_widget:normalize_origin/1` 必须 error，且经归一门出口过滤
+%% （对齐 `cs_widget_app:normalized_allowed_origins/1` 的 filtermap 语义）
+%% 后进 `frame_ancestors_csp/1` 的 CSP 值里裸值不出现——写入口 fail-closed
+%% 与读出口过滤双重保证，形状非法值绝不上 frame-ancestors 头。
+%% ===================================================================
+
+assert_ban_not_in_csp(Raw) ->
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(Raw)),
+    Filtered =
+        lists:filtermap(
+            fun(O) ->
+                case cs_widget:normalize_origin(O) of
+                    {ok, Norm} -> {true, Norm};
+                    {error, _} -> false
+                end
+            end,
+            [<<"https://good.example.com">>, Raw]
+        ),
+    Csp = cs_widget_frame_handler:frame_ancestors_csp(Filtered),
+    ?assertEqual(<<"frame-ancestors https://good.example.com">>, Csp).
+
+ban_non_http_scheme_not_in_csp() ->
+    assert_ban_not_in_csp(<<"ftp://h.com:21">>).
+
+ban_wildcard_not_in_csp() ->
+    assert_ban_not_in_csp(<<"https://*.evil.com">>).
+
+ban_space_control_char_not_in_csp() ->
+    assert_ban_not_in_csp(<<"https://a.com X">>).
+
+ban_path_not_in_csp() ->
+    assert_ban_not_in_csp(<<"https://a.com/x">>).
+
+ban_userinfo_not_in_csp() ->
+    assert_ban_not_in_csp(<<"https://u@a.com">>).
+
+ban_crlf_not_in_csp() ->
+    assert_ban_not_in_csp(<<"https://a.com\r\nEvil">>).

@@ -45,6 +45,7 @@
     insert_widget_installation/2,
     fetch_widget_installation/2,
     fetch_widget_installation_by_public_id/2,
+    fetch_widget_installation_by_public_id_global/1,
     list_widget_installations_page/3,
     revoke_widget_installation/3,
     insert_widget_identity_key/3,
@@ -52,6 +53,7 @@
     revoke_widget_identity_key/4,
     insert_widget_bootstrap_token/2,
     fetch_widget_bootstrap_token_by_digest/3,
+    fetch_widget_bootstrap_token_by_digest_global/2,
     touch_widget_bootstrap_token/4,
     revoke_widget_bootstrap_token/4,
     record_widget_nonce/4,
@@ -137,6 +139,10 @@ fetch_widget_installation(OrgId, InstallationId) ->
     cs_pg_widget:fetch_widget_installation(OrgId, InstallationId).
 fetch_widget_installation_by_public_id(OrgId, PublicWidgetId) ->
     cs_pg_widget:fetch_widget_installation_by_public_id(OrgId, PublicWidgetId).
+%% CSD-BE-01（hosted-widget-contract S3）：public_widget_id 全局反查（/w/ 面，
+%% Org 是行输出的派生值而非查询输入）。
+fetch_widget_installation_by_public_id_global(PublicWidgetId) ->
+    cs_pg_widget:fetch_widget_installation_by_public_id_global(PublicWidgetId).
 list_widget_installations_page(OrgId, AfterId, Limit) ->
     cs_pg_widget:list_widget_installations_page(OrgId, AfterId, Limit).
 revoke_widget_installation(OrgId, InstallationId, At) ->
@@ -151,6 +157,8 @@ insert_widget_bootstrap_token(OrgId, Token) ->
     cs_pg_widget:insert_widget_bootstrap_token(OrgId, Token).
 fetch_widget_bootstrap_token_by_digest(OrgId, InstallationId, Digest) ->
     cs_pg_widget:fetch_widget_bootstrap_token_by_digest(OrgId, InstallationId, Digest).
+fetch_widget_bootstrap_token_by_digest_global(InstallationId, Digest) ->
+    cs_pg_widget:fetch_widget_bootstrap_token_by_digest_global(InstallationId, Digest).
 touch_widget_bootstrap_token(OrgId, InstallationId, TokenId, At) ->
     cs_pg_widget:touch_widget_bootstrap_token(OrgId, InstallationId, TokenId, At).
 revoke_widget_bootstrap_token(OrgId, InstallationId, TokenId, At) ->

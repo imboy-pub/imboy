@@ -1,0 +1,7 @@
+{
+  "name": "cs-widget-build-fixture-20260920t150315",
+  "private": true,
+  "scripts": {
+    "build:widget": "echo 'real build replaced by fake bun in customer_service_deploy_test.sh (run 20260920t150315)'"
+  }
+}

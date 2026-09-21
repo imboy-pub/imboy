@@ -4564,6 +4564,12 @@
         "handler": "websocket_handler",
         "path": "/api/v1/ws",
         "static": false
+      },
+      {
+        "action": "widget_public_frame_html",
+        "handler": "cs_widget_handler",
+        "path": "/w/:public_widget_id",
+        "static": false
       }
     ],
     "main": [
