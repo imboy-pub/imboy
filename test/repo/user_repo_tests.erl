@@ -27,7 +27,11 @@
 tablename_returns_public_user_test_() ->
     ?WITH_MECKS([?MOCK_ENV], fun() ->
         Result = user_repo:tablename(),
-        ?assertEqual(<<"public.user">>, Result)
+        %% "user" 是 PostgreSQL 保留字，**必须**带双引号：不带引号的
+        %% public.user 会被解析成 current_user 特殊标识符，曾导致注销清理
+        %% 静默跳过用户主行删除（见 user_repo:tablename/0 注释）。
+        %% 本断言原先期望 <<"public.user">>，在该修复后即长期为红。
+        ?assertEqual(<<"public.\"user\"">>, Result)
     end).
 
 tablename_is_binary_test_() ->
