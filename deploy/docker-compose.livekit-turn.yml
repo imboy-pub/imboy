@@ -1,0 +1,67 @@
+# IMBoy LiveKit embedded TURN overlay（LK-01 W5 终态 / LK-DEP-01）
+#
+# 用途：为 docker-compose.community.yml 的 imboy_livekit 增补 embedded TURN
+# （turn.imboy.pub：UDP 3478 兼 STUN + TLS 5349 + relay 50201-50500）。
+#
+# 为什么是 overlay 而不是写进基础 compose：ports 无法按变量条件渲染，而共存期
+# （W4，旧 eturnal 仍在跑）3478/5349/50201-50500 归 eturnal —— 提前发布会让
+# docker-proxy bind 冲突、容器启动崩溃（LK-01 §2.2 约束 3：不得双活）。
+# 安装器按 .env 的 LIVEKIT_TURN_ENABLED=true 把本文件叠加进 compose 集合；
+# false（默认/共存期）时完全不加载，零端口占用。
+#
+# 用法（W5 切换顺序，LK-01 §2.2 约束 3，顺序不可颠倒）：
+#   1. 删除 eturnal（释放 3478/5349/50201-50500），ss -lntup 确认无残留监听
+#   2. 确认 TURN_DOMAIN 证书已就绪（LIVEKIT_TURN_CERT_DIR 下 fullchain/privkey）
+#   3. .env 置 LIVEKIT_TURN_ENABLED=true 后重跑 install.sh（幂等收敛）
+#
+# ⚠️ LIVEKIT_CONFIG 与基础文件的 imboy_livekit.LIVEKIT_CONFIG 逐项同步维护
+#    （compose 对 environment 按 key 合并，此处整体覆盖该变量；差异仅 turn 段）。
+#    改基础配置时必须同步改这里，否则 TURN 形态下悄悄回退旧值。
+#
+# 依赖镜像：与基础 compose 相同（livekit/livekit-server:v1.13.7 精确 tag）。
+
+services:
+
+  imboy_livekit:
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # turn 段（LK-01 §1.4 最低必需配置 + §2.2 W5 端口合同，显式写出以便审计）：
+      #   tls_port 5349：TURN_443=BLOCKED（LK-01 §3），TLS 固定 5349，任何设计
+      #     不得依赖 turn.imboy.pub:443/TCP 可达 —— 443 只归 nginx。
+      #   udp_port 3478：STUN/TURN over UDP，兼 STUN 服务。
+      #   relay 50201-50500：接手 eturnal 腾出的段（与 rtc.port_range 50000-50200
+      #     不重叠，边界 50200/50201 已核对）；ufw 与云安全组零变更。
+      #   ttl/allocation 配额保持默认（300s / 每用户 12），凭据经 signal 自动
+      #     下发轮换（LK-01 §4.2），无第二套 shared secret。
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50200
+          use_external_ip: true
+        turn:
+          enabled: true
+          domain: ${TURN_DOMAIN:?TURN_DOMAIN is required - see deploy/.env.example}
+          cert_file: /etc/livekit/certs/fullchain.pem
+          key_file: /etc/livekit/certs/privkey.pem
+          tls_port: 5349
+          udp_port: 3478
+          relay_range_start: 50201
+          relay_range_end: 50500
+        keys:
+          ${LIVEKIT_API_KEY:?LIVEKIT_API_KEY is required - see deploy/.env.example}: ${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET is required (>=32 chars) - see deploy/.env.example}
+        logging:
+          level: info
+    volumes:
+      # TURN TLS 证书只读挂载（LK-01 §2.3 强制 :ro）。
+      # 默认指向 compose certbot 签发目录（install.sh 按 TURN_DOMAIN 展开写入 .env）；
+      # 宿主机 certbot 形态（宝塔/生产机）指向 /etc/imboy/livekit-certs —— 由
+      # deploy/nginx/livekit-turn-cert-deploy-hook.sh 在续期后原子分发。
+      - ${LIVEKIT_TURN_CERT_DIR:?LIVEKIT_TURN_CERT_DIR is required when LIVEKIT_TURN_ENABLED=true}:/etc/livekit/certs:ro
+    ports:
+      # W5 端口合同（LK-01 §2.2）：3478 仅 UDP（TCP 空置）；5349 TCP TLS；
+      # relay 段 50201-50500/udp 与媒体段 50000-50200 一样走 docker-proxy 段映射。
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "50201-50500:50201-50500/udp"
