@@ -12,6 +12,7 @@
 -export([face2face_create/5]).
 -export([face2face_save/3]).
 -export([dissolve_group/4]).
+-export([dissolve_by_org_manager/3]).
 
 -export([member_uids/1]).
 -export([member_uids_strict/1]).
@@ -554,6 +555,18 @@ face2face_save(Code, Gid, Uid) ->
 dissolve_group(Uid, _Gid, OwnerUid, _G) when Uid =/= OwnerUid ->
     {error, <<"只有拥有者才能够解散该群，或者群已解散"/utf8>>};
 dissolve_group(Uid, Gid, _, G) ->
+    do_dissolve(Uid, Gid, G).
+
+%% @doc GZAPP-03：Organization owner/admin 授权解散（非群主）。
+%% **调用方必须先完成 organization_resource_authority:ensure_manager/2 授权**——
+%% 本函数不再做群主校验，仅承载与群主路径完全相同的事务语义
+%% （归档写守卫 / E2EE 世代关闭 / group_log 审计 / 消息保留）。
+-spec dissolve_by_org_manager(integer(), integer(), map()) -> ok | {error, binary()}.
+dissolve_by_org_manager(Uid, Gid, G) ->
+    do_dissolve(Uid, Gid, G).
+
+-spec do_dissolve(integer(), integer(), map()) -> ok | {error, binary()}.
+do_dissolve(Uid, Gid, G) ->
     Now = elib_dt:now(),
     {ok, Body} = jsone_encode:encode(G, [native_utf8]),
     ToUidLi = member_uids(Gid),

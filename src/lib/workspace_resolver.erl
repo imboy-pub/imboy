@@ -334,10 +334,19 @@ ensure_group_member_access(Uid, Gid) ->
     end.
 
 %% ensure_member 返回 {ok, Role}；handler 便捷门契约是 ok——此处归一。
+%% GZAPP-03/D04：成员校验失败后补一次「Organization owner/admin」判定——
+%% 企业治理者对其 Organization 全部 Workspace 的群/频道拥有访问与管理权，
+%% 不要求同时是该 Workspace 成员。个人域 Workspace（无 organization_id）
+%% 无组织可授权，原错误原样返回（零行为变化）。
 ensure_member_ok(WsId, Uid) ->
     case workspace_logic:ensure_member(WsId, Uid) of
-        {ok, _Role} -> ok;
-        {error, _} = Err -> Err
+        {ok, _Role} ->
+            ok;
+        {error, _} = Err ->
+            case organization_workspace_access:ensure_org_manager_for_ws(WsId, Uid) of
+                ok -> ok;
+                {error, _} -> Err
+            end
     end.
 
 %% @doc handler 便捷门：读 cowboy 的 :channel_id binding（无 binding 放行）

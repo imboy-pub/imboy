@@ -24,6 +24,8 @@
 
 -export([ensure_org_manager/2]).
 -export([is_org_manager_tx/3]).
+%% GZAPP-03：Workspace 级入口（群/频道访问门复用）
+-export([ensure_org_manager_for_ws/2]).
 
 -include("log.hrl").
 
@@ -48,6 +50,23 @@ ensure_org_manager(OrgId, UserId) ->
             {error, ?ORG_MANAGER_FORBIDDEN};
         {error, Reason} ->
             _ = ?ERROR_LOG([organization_manager_lookup_failed, OrgId, UserId, Reason]),
+            {error, {503, <<"组织权限校验暂时不可用，请稍后重试"/utf8>>}}
+    end.
+
+%% @doc Workspace 级管理权判定：Workspace 归属 Organization 的 owner/admin。
+%% 个人域 Workspace（organization_id 为空/NULL）→ 403（无 org 可授权，
+%% 其治理权仍仅由 workspace owner 裁决）；Workspace 不存在 → 403（不泄露
+%% 存在性）；DB 异常 fail-closed 503。
+-spec ensure_org_manager_for_ws(integer(), integer()) ->
+    ok | {error, {403 | 503, binary()}}.
+ensure_org_manager_for_ws(WsId, UserId) ->
+    case workspace_repo:find_by_id(WsId, <<"organization_id">>) of
+        #{<<"organization_id">> := OrgId} when is_integer(OrgId), OrgId > 0 ->
+            ensure_org_manager(OrgId, UserId);
+        #{} ->
+            {error, ?ORG_MANAGER_FORBIDDEN};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([organization_ws_scope_lookup_failed, WsId, UserId, Reason]),
             {error, {503, <<"组织权限校验暂时不可用，请稍后重试"/utf8>>}}
     end.
 

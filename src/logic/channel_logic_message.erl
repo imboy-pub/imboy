@@ -299,10 +299,8 @@ archive_channel(Uid, ChannelIdBin) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_logic_common:get_user_role(ChannelId, Uid) == 3 of
-                false ->
-                    {error, <<"只有创建者可以归档频道"/utf8>>};
-                true ->
+            case manage_authority(Uid, ChannelId, <<"只有创建者可以归档频道"/utf8>>) of
+                ok ->
                     case channel_ds:archive(ChannelId) of
                         {ok, 1} ->
                             _ = ?INFO_LOG([channel_archived, ChannelId, Uid]),
@@ -319,7 +317,9 @@ archive_channel(Uid, ChannelIdBin) ->
                         {error, Reason} ->
                             _ = ?ERROR_LOG([channel_archive_failed, ChannelId, Uid, Reason]),
                             {error, <<"归档失败，请稍后重试"/utf8>>}
-                    end
+                    end;
+                {error, Msg} ->
+                    {error, Msg}
             end
     end.
 
@@ -331,10 +331,8 @@ restore_channel(Uid, ChannelIdBin) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_logic_common:get_user_role(ChannelId, Uid) == 3 of
-                false ->
-                    {error, <<"只有创建者可以恢复频道"/utf8>>};
-                true ->
+            case manage_authority(Uid, ChannelId, <<"只有创建者可以恢复频道"/utf8>>) of
+                ok ->
                     case channel_ds:restore(ChannelId) of
                         {ok, 1} ->
                             _ = ?INFO_LOG([channel_restored, ChannelId, Uid]),
@@ -351,7 +349,26 @@ restore_channel(Uid, ChannelIdBin) ->
                         {error, Reason} ->
                             _ = ?ERROR_LOG([channel_restore_failed, ChannelId, Uid, Reason]),
                             {error, <<"恢复失败，请稍后重试"/utf8>>}
-                    end
+                    end;
+                {error, Msg} ->
+                    {error, Msg}
+            end
+    end.
+
+%% GZAPP-03/D04：频道归档/恢复的双授权源——频道创建者（角色 3）或本频道
+%% 所属 Workspace 的 Organization owner/admin。两者都不满足时返回该操作
+%% 的既有拒绝文案（不区分「非创建者」与「非 org 管理者」，不泄露存在性）；
+%% 授权链 DB 异常 fail-closed 503 原样透传。
+-spec manage_authority(integer(), integer(), binary()) -> ok | {error, binary()}.
+manage_authority(Uid, ChannelId, ForbiddenMsg) ->
+    case channel_logic_common:get_user_role(ChannelId, Uid) == 3 of
+        true ->
+            ok;
+        false ->
+            case organization_resource_authority:ensure_manager({channel, ChannelId}, Uid) of
+                ok -> ok;
+                {error, {403, _Msg}} -> {error, ForbiddenMsg};
+                {error, {503, Msg}} -> {error, Msg}
             end
     end.
 

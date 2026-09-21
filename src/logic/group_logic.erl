@@ -539,7 +539,28 @@ dissolve(Uid, Gid) ->
             {error, <<"群组不存在"/utf8>>};
         G ->
             OwnerUid = maps:get(<<"owner_uid">>, G, 0),
-            group_ds:dissolve_group(Uid, Gid, OwnerUid, G)
+            case Uid =:= OwnerUid of
+                true ->
+                    group_ds:dissolve_group(Uid, Gid, OwnerUid, G);
+                false ->
+                    dissolve_by_org_manager(Uid, Gid, G)
+            end
+    end.
+
+%% GZAPP-03/D04：群主之外的第二授权源——本群所属 Workspace 的 Organization
+%% owner/admin（企业治理者可解散本 org 任意 ws 域群）。授权失败保持既有
+%% 拒绝文案（不区分「非群主」与「非 org 管理者」，不泄露群/组织存在性）；
+%% 授权链 DB 异常 fail-closed 503。审计仍走 group_ds 的 group_log type=101
+%% （option_uid = 实际操作者 uid），消息行不删除。
+-spec dissolve_by_org_manager(integer(), integer(), map()) -> ok | {error, binary()}.
+dissolve_by_org_manager(Uid, Gid, G) ->
+    case organization_resource_authority:ensure_manager({group, Gid}, Uid) of
+        ok ->
+            group_ds:dissolve_by_org_manager(Uid, Gid, G);
+        {error, {403, _Msg}} ->
+            {error, <<"只有拥有者才能够解散该群，或者群已解散"/utf8>>};
+        {error, {503, Msg}} ->
+            {error, Msg}
     end.
 
 %% @doc 分页查询当前用户作为群主的群组列表

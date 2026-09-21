@@ -152,3 +152,85 @@ is_org_manager_tx_test_() ->
             )
         end}
     ].
+
+%% ===================================================================
+%% GZAPP-03：ensure_org_manager_for_ws/2（Workspace 级入口）
+%% ===================================================================
+
+-define(WS_ID, 800001).
+
+with_ws_and_member(FindWsResult, FindMemberResult, TestFun) ->
+    ?WITH_MECKS(
+        [
+            {workspace_repo, [{'find_by_id', 2, fun(_WsId, _Cols) -> FindWsResult end}]},
+            {organization_member_repo, [
+                {'find_active', 3, fun(_OrgId, _Uid, _Cols) -> FindMemberResult end}
+            ]}
+        ],
+        TestFun
+    ).
+
+ensure_org_manager_for_ws_test_() ->
+    [
+        {"ws org owner passes", fun() ->
+            with_ws_and_member(
+                #{<<"organization_id">> => ?ORG_ID},
+                {ok, #{<<"role">> => <<"owner">>}},
+                fun() ->
+                    ?assertEqual(
+                        ok,
+                        organization_workspace_access:ensure_org_manager_for_ws(?WS_ID, ?ORG_OWNER)
+                    )
+                end
+            )
+        end},
+        {"ws org member rejected 403", fun() ->
+            with_ws_and_member(
+                #{<<"organization_id">> => ?ORG_ID},
+                {ok, #{<<"role">> => <<"member">>}},
+                fun() ->
+                    ?assertMatch(
+                        {error, {403, _}},
+                        organization_workspace_access:ensure_org_manager_for_ws(?WS_ID, ?ORG_MEMBER)
+                    )
+                end
+            )
+        end},
+        {"personal-domain ws (org null) rejected 403 without org lookup", fun() ->
+            with_ws_and_member(
+                #{<<"organization_id">> => null},
+                {error, not_found},
+                fun() ->
+                    ?assertMatch(
+                        {error, {403, _}},
+                        organization_workspace_access:ensure_org_manager_for_ws(?WS_ID, ?ORG_OWNER)
+                    ),
+                    ?assertEqual(0, meck:num_calls(organization_member_repo, find_active, 3))
+                end
+            )
+        end},
+        {"missing ws rejected 403", fun() ->
+            with_ws_and_member(
+                #{},
+                {error, not_found},
+                fun() ->
+                    ?assertMatch(
+                        {error, {403, _}},
+                        organization_workspace_access:ensure_org_manager_for_ws(?WS_ID, ?ORG_OWNER)
+                    )
+                end
+            )
+        end},
+        {"ws lookup db error fail-closed 503", fun() ->
+            with_ws_and_member(
+                {error, connection_closed},
+                {ok, #{<<"role">> => <<"owner">>}},
+                fun() ->
+                    ?assertMatch(
+                        {error, {503, _}},
+                        organization_workspace_access:ensure_org_manager_for_ws(?WS_ID, ?ORG_OWNER)
+                    )
+                end
+            )
+        end}
+    ].
