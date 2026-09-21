@@ -149,13 +149,30 @@ empty_db_full_up_test(C) ->
     ?_test(begin
         {ok, Version, Dirty} = erlang_migrate:version(#{conn => C, dir => "priv/migrations"}),
         ?assertEqual(false, Dirty),
-        ?assertEqual(136, Version),
-        %% 五表全部就位
+        %% head 按 priv/migrations **实际在册版本**推导，不写死具体数字：
+        %% 历史教训（CSD-BE-01 / cs_pg_widget_tests 同款）：写死 head 会被后
+        %% 续新增 migration 打红（135 入库、136 入库各红一次）。FULL-01 加入
+        %% 00000139 后本断言仍成立，且「空库全量 up 到当前 head 且 dirty=false」
+        %% 的语义比写死 136 更强。
+        ?assertEqual(migration_head(), Version),
+        %% 五表全部就位（136 的资产在当前 head 下依然在册）
         lists:foreach(
             fun(T) -> ?assertNot(table_missing(C, T), {table_missing, T}) end,
             ?TABLES
         )
     end).
+
+%% 当前迁移 head = priv/migrations 下 *.up.sql 的最大 8 位版本号。
+%% 只读文件系统、不查库（避免与断言目标同源导致同义反复）。
+migration_head() ->
+    {ok, Files} = file:list_dir("priv/migrations"),
+    Versions = [
+        list_to_integer(Ver)
+     || F <- Files,
+        {match, [Ver]} <- [re:run(F, "^(\\d{8})_.*\\.up\\.sql$", [{capture, all_but_first, list}])]
+    ],
+    ?assertNotEqual([], Versions),
+    lists:max(Versions).
 
 %%%===================================================================
 %%% ① enterprise_application
@@ -763,9 +780,12 @@ migration_cycle(State) ->
     Conn = connect_marker(State),
     try
         MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
-        %% down 00000136：五表 + 两个守卫函数全部消失，push platform 值域恢复，
-        %% 版本回到 135
-        ok = erlang_migrate:down(MigConfig, 1),
+        %% 回滚 00000136：五表 + 两个守卫函数全部消失，push platform 值域恢复，
+        %% 版本回到 135。
+        %% 用 goto(135) 而非 down(1)：本用例的语义是「把 136 回滚掉」，down 步数
+        %% 会随 head 前移而错位（FULL-01 加入 00000139 后 down 1 只回滚 139）。
+        %% 与 cs_pg_widget_tests 的 head 前移教训同款，这里以目标版本表达意图。
+        ok = erlang_migrate:goto(MigConfig, 135),
         {ok, VerAfterDown, false} = erlang_migrate:version(MigConfig),
         ?assertEqual(135, VerAfterDown),
         lists:foreach(

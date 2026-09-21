@@ -6,12 +6,18 @@
 % module API / shell 命令形态）。
 %
 % 能力：创建 application、下发/轮换/撤销 credential、查状态、scopes 与
-% 启停治理。调用方是运维（imboy_ctl/erl shell，W4 接线后可挂 /api/adm/*），
-% **不是** Application Credential 面。
+% 启停治理，以及 Application Grant（Org/Workspace Grant）的签发/撤销/降级/
+% 边界编辑（FULL-01）。调用方是运维（imboy_ctl/erl shell，W4 接线后可挂
+% /api/adm/*），**不是** Application Credential 面。
 %
 % credential 明文纪律：secret 由本模块生成（32 字节 CSPRNG base64url）
 % 或由运维显式提供，只在 issue/rotate 的**返回值出现一次**；库内只存
 % SHA-256 digest（enterprise_application_credential_repo）。
+%
+% Grant 纪律（FULL-01）：签发必须显式给 idempotency_key（同 (org, app) 唯一，
+% 重复签发返回 key_conflict 而不是静默再发一份——静默再发会以并集形式扩大
+% 授权面）；撤销/降级/边界编辑走 expected-version CAS；授权行禁止物理删除
+% （migration 00000139 触发器），撤权即改 status 且下一次请求生效。
 %
 % _tx 变体供测试（直连连接）与运行时复用；无后缀变体经 elib_pg:with_tx
 % 池化执行。scope 只接受 enterprise_internal_scope:all() 固定枚举成员。
@@ -33,7 +39,17 @@
     revoke_credential_tx/3,
     revoke_credential/2,
     application_status_tx/3,
-    application_status/2
+    application_status/2,
+    issue_grant_tx/4,
+    issue_grant/3,
+    revoke_grant_tx/6,
+    revoke_grant/5,
+    set_grant_scopes_tx/6,
+    set_grant_scopes/5,
+    set_grant_workspaces_tx/7,
+    set_grant_workspaces/6,
+    grant_status_tx/3,
+    grant_status/2
 ]).
 
 -include("log.hrl").
@@ -209,6 +225,219 @@ application_status_tx(Conn, OrgId, AppId) ->
 -spec application_status(integer(), integer()) -> {ok, map()} | {error, term()}.
 application_status(OrgId, AppId) ->
     pool(fun(Conn) -> application_status_tx(Conn, OrgId, AppId) end).
+
+%%%===================================================================
+%%% Application Grant 治理（FULL-01：Org/Workspace Grant）
+%%%===================================================================
+
+%% @doc 事务内签发 Grant（Org Grant 或 Workspace Grant）。
+%% Spec（map）：
+%%   scopes                :: [binary()] 非空且全为固定枚举成员（必填）
+%%   workspace_scope_kind  :: none（org 全域，缺省）| explicit（Workspace Grant）
+%%   workspace_ids         :: [integer()]（explicit 必填非空；none 必须缺省/空）
+%%   expires_at            :: binary RFC3339（必填）
+%%   valid_from            :: binary RFC3339（缺省当前时间）
+%%   idempotency_key       :: binary 非空（必填；(org, app) 内唯一）
+%% 返回 {ok, Grant}（含 scopes / workspace_ids / version=1）。
+%% 失败：{error, invalid_scope}（非固定枚举）| {error, missing_idempotency_key} |
+%%   {error, empty_scopes} | {error, invalid_workspaces} | {error, key_conflict}
+%%   （同键已存在，调用方应 read-back 而不是再发一份）|
+%%   {error, application_not_found}（跨 Org / 不存在）|
+%%   {error, workspace_not_found}（workspace 不存在或跨 Org）。
+%% 语义提醒：第一次签发后该 Application 即「受 Grant 治理」，生效 scope 变为
+%% allowed_scopes ∩ Grant scopes——签发比 allowed_scopes 窄的 Grant 会**立即**
+%% 收窄该应用的权限面（这是 Grant 的预期语义）。
+-spec issue_grant_tx(any(), integer(), integer(), map()) ->
+    {ok, map()}
+    | {error,
+        invalid_scope
+        | missing_idempotency_key
+        | empty_scopes
+        | invalid_workspaces
+        | key_conflict
+        | application_not_found
+        | workspace_not_found
+        | term()}.
+issue_grant_tx(Conn, OrgId, AppId, Spec) when is_map(Spec) ->
+    Scopes = maps:get(scopes, Spec, []),
+    case validate_scopes(Scopes) of
+        ok ->
+            case grant_idempotency_key(Spec) of
+                {ok, IdemKey} ->
+                    RepoSpec = (maps:without([scopes], Spec))#{
+                        scopes => Scopes, idempotency_key => IdemKey
+                    },
+                    case
+                        enterprise_application_grant_repo:create_tx(Conn, OrgId, AppId, RepoSpec)
+                    of
+                        {ok, _} = Ok -> Ok;
+                        {error, Reason} -> {error, grant_error(Reason)}
+                    end;
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, _} = Err ->
+            Err
+    end;
+issue_grant_tx(_Conn, _OrgId, _AppId, _Other) ->
+    {error, invalid_spec}.
+
+%% @doc 池化签发 Grant。
+-spec issue_grant(integer(), integer(), map()) -> {ok, map()} | {error, term()}.
+issue_grant(OrgId, AppId, Spec) ->
+    pool(fun(Conn) -> issue_grant_tx(Conn, OrgId, AppId, Spec) end).
+
+%% @doc 事务内撤销 Grant（CAS：expected version + 仅 active 可撤销）。
+%% 撤权立即生效：下一次 auth context 读取就看不到它（受管应用生效 scope 收窄）。
+-spec revoke_grant_tx(any(), integer(), integer(), integer(), integer(), integer()) ->
+    ok | {error, not_found | version_conflict | already_revoked | term()}.
+revoke_grant_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, RevokedByUserId) ->
+    enterprise_application_grant_repo:revoke_tx(
+        Conn, OrgId, AppId, GrantId, ExpectedVersion, RevokedByUserId
+    ).
+
+%% @doc 池化撤销 Grant。
+-spec revoke_grant(integer(), integer(), integer(), integer(), integer()) ->
+    ok | {error, term()}.
+revoke_grant(OrgId, AppId, GrantId, ExpectedVersion, RevokedByUserId) ->
+    pool(fun(Conn) ->
+        revoke_grant_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, RevokedByUserId)
+    end).
+
+%% @doc 事务内整体替换 Grant 的 scope 集合（CAS；scope downgrade 的机制）。
+-spec set_grant_scopes_tx(any(), integer(), integer(), integer(), integer(), [binary()]) ->
+    ok
+    | {error,
+        invalid_scope | empty_scopes | not_found | version_conflict | already_revoked | term()}.
+set_grant_scopes_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, Scopes) ->
+    case validate_scopes(Scopes) of
+        ok ->
+            enterprise_application_grant_repo:replace_scopes_tx(
+                Conn, OrgId, AppId, GrantId, ExpectedVersion, Scopes
+            );
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc 池化替换 Grant scopes（降级/升级）。
+-spec set_grant_scopes(integer(), integer(), integer(), integer(), [binary()]) ->
+    ok | {error, term()}.
+set_grant_scopes(OrgId, AppId, GrantId, ExpectedVersion, Scopes) ->
+    pool(fun(Conn) ->
+        set_grant_scopes_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, Scopes)
+    end).
+
+%% @doc 事务内整体替换 Grant 的 workspace 边界（CAS）。
+%% Kind=none ⇒ org 全域授权（清空 workspace 行）；explicit ⇒ Workspace Grant
+%% （workspace_ids 必须非空）。
+-spec set_grant_workspaces_tx(
+    any(), integer(), integer(), integer(), integer(), none | explicit, [integer()]
+) ->
+    ok
+    | {error,
+        invalid_workspaces
+        | not_found
+        | version_conflict
+        | already_revoked
+        | workspace_not_found
+        | term()}.
+set_grant_workspaces_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, Kind, WorkspaceIds) ->
+    case
+        enterprise_application_grant_repo:set_workspace_scope_tx(
+            Conn, OrgId, AppId, GrantId, ExpectedVersion, Kind, WorkspaceIds
+        )
+    of
+        ok -> ok;
+        {error, Reason} -> {error, grant_error(Reason)}
+    end.
+
+%% @doc 池化替换 Grant workspace 边界。
+-spec set_grant_workspaces(integer(), integer(), integer(), integer(), none | explicit, [integer()]) ->
+    ok | {error, term()}.
+set_grant_workspaces(OrgId, AppId, GrantId, ExpectedVersion, Kind, WorkspaceIds) ->
+    pool(fun(Conn) ->
+        set_grant_workspaces_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, Kind, WorkspaceIds)
+    end).
+
+%% @doc 事务内查询 Grant 治理状态（redacted：只有授权元数据，无 secret）。
+%% 返回 #{grant_governed, effective_scopes, grants = [grant 摘要 + effective 标记]}。
+-spec grant_status_tx(any(), integer(), integer()) -> {ok, map()} | {error, term()}.
+grant_status_tx(Conn, OrgId, AppId) ->
+    case enterprise_application_grant_repo:list_tx(Conn, OrgId, AppId) of
+        {ok, Grants} ->
+            case enterprise_application_grant_repo:grant_governed_tx(Conn, OrgId, AppId) of
+                {ok, Governed} ->
+                    case
+                        enterprise_application_grant_repo:effective_scopes_tx(Conn, OrgId, AppId)
+                    of
+                        {ok, EffectiveScopes} ->
+                            EffectiveIds = effective_ids(Conn, OrgId, AppId),
+                            {ok, #{
+                                grant_governed => Governed,
+                                effective_scopes => EffectiveScopes,
+                                grants => [grant_summary(G, EffectiveIds) || G <- Grants]
+                            }};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 池化查询 Grant 治理状态。
+-spec grant_status(integer(), integer()) -> {ok, map()} | {error, term()}.
+grant_status(OrgId, AppId) ->
+    pool(fun(Conn) -> grant_status_tx(Conn, OrgId, AppId) end).
+
+-spec effective_ids(any(), integer(), integer()) -> sets:set(integer()).
+effective_ids(Conn, OrgId, AppId) ->
+    case enterprise_application_grant_repo:effective_grants_tx(Conn, OrgId, AppId) of
+        {ok, Rows} -> sets:from_list([maps:get(<<"grant_id">>, R) || R <- Rows]);
+        {error, _} -> sets:new()
+    end.
+
+-spec grant_summary(map(), sets:set(integer())) -> map().
+grant_summary(G, EffectiveIds) ->
+    GrantId = maps:get(<<"id">>, G),
+    #{
+        grant_id => GrantId,
+        organization_id => maps:get(<<"organization_id">>, G),
+        application_id => maps:get(<<"application_id">>, G),
+        workspace_scope_kind => maps:get(<<"workspace_scope_kind">>, G),
+        status => maps:get(<<"status">>, G),
+        version => maps:get(<<"version">>, G),
+        valid_from => maps:get(<<"valid_from">>, G),
+        expires_at => maps:get(<<"expires_at">>, G),
+        revoked_at => maps:get(<<"revoked_at">>, G),
+        scopes => maps:get(<<"scopes">>, G, []),
+        workspace_ids => maps:get(<<"workspace_ids">>, G, []),
+        effective => sets:is_element(GrantId, EffectiveIds)
+    }.
+
+-spec grant_idempotency_key(map()) -> {ok, binary()} | {error, missing_idempotency_key}.
+grant_idempotency_key(Spec) ->
+    case maps:get(idempotency_key, Spec, undefined) of
+        Key when is_binary(Key), Key =/= <<>> -> {ok, Key};
+        _ -> {error, missing_idempotency_key}
+    end.
+
+%% Grant repo 错误 → 运维面稳定 atom（跨 Org/不存在一律 not_found 语义，不给 oracle）。
+-spec grant_error(term()) -> atom() | term().
+grant_error({foreign_key_violation, <<"fk_eag_application">>}) ->
+    application_not_found;
+grant_error({foreign_key_violation, <<"fk_eag_organization">>}) ->
+    application_not_found;
+grant_error({foreign_key_violation, <<"fk_eagw_workspace">>}) ->
+    workspace_not_found;
+grant_error({foreign_key_violation, _Other}) ->
+    foreign_key_violation;
+grant_error({check_violation, _Constraint}) ->
+    invalid_grant_value;
+grant_error(Reason) ->
+    Reason.
 
 %%%===================================================================
 %%% Internal

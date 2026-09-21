@@ -11,17 +11,23 @@
 %   -> credential active/expiry（revoked→invalid_credential；过期→credential_expired）
 %   -> application active（disabled→application_disabled）
 %   -> organization active（archived/缺失→organization_disabled）
+%   -> Grant 求值（FULL-01：受管应用的生效 scope = allowed_scopes ∩ 生效 Grant
+%      scopes，逐请求真库读、无缓存；读取失败 fail-closed→security_gate_closed）
 %   -> required scope（静态路由在此判定；INT-09/10 动态 scope 由 handler
 %      按 sender_mode 裁决，ctx 标注 dynamic_scope）
 %   -> rate limit（internal_read/write/sso；缺配置 fail-closed）
 %   -> Idempotency-Key 存在性（mutation 必带；INT-14 豁免）
 %   （organization/workspace/resource boundary 与 operation 由 handler 用
-%    认证产物 ctx 继续裁决；audit 在业务侧。）
+%    认证产物 ctx 继续裁决；audit 在业务侧。Grant 的 workspace 边界求值入口：
+%    enterprise_application_grant_logic:require_workspace_tx/4）
 %
 % 认证产物 context（atom 键，供 A3/A4/A5 handler 使用）：
 %   #{organization_id, application_id, credential_id, application_key,
-%     granted_scopes :: [binary()], route_id, rate_bucket, idempotency,
+%     granted_scopes :: [binary()], grant_governed :: boolean(),
+%     route_id, rate_bucket, idempotency,
 %     dynamic_scope（仅动态 scope 路由）}
+%   granted_scopes 是**生效** scope（受管应用已与 Grant 取交集）；grant_governed
+%   为 false 时沿用广州期口径（allowed_scopes）。
 %
 % redaction 红线：secret/Authorization 值/prefix 不落日志（失败日志只含
 % stage 与 stable 码）；错误响应只含 stable 码。
@@ -67,6 +73,7 @@ parse_bearer(_) ->
         | credential_expired
         | application_disabled
         | organization_disabled
+        | security_gate_closed
         | internal_error}.
 authenticate_tx(Conn, Prefix, Secret) when
     is_binary(Prefix), is_binary(Secret), Secret =/= <<>>
@@ -309,23 +316,41 @@ organization_status(Conn, OrgId) ->
             {error, Reason}
     end.
 
--spec finalize_auth(any(), map(), map()) -> {ok, map()}.
+-spec finalize_auth(any(), map(), map()) -> {ok, map()} | {error, atom()}.
 finalize_auth(Conn, Row, App) ->
     CredId = maps:get(<<"id">>, Row),
     %% last_used 记录失败不影响认证结果
     _ = enterprise_application_credential_repo:touch_last_used_tx(Conn, CredId),
-    Scopes =
-        case jsone:decode(maps:get(<<"allowed_scopes">>, App, <<"[]">>)) of
-            L when is_list(L) -> [S || S <- L, is_binary(S)];
-            _ -> []
-        end,
-    {ok, #{
-        organization_id => maps:get(<<"organization_id">>, Row),
-        application_id => maps:get(<<"application_id">>, Row),
-        credential_id => CredId,
-        application_key => maps:get(<<"application_key">>, App, undefined),
-        granted_scopes => Scopes
-    }}.
+    Scopes = decode_scopes(App),
+    OrgId = maps:get(<<"organization_id">>, Row),
+    AppId = maps:get(<<"application_id">>, Row),
+    %% FULL-01 Grant 求值：同一事务、逐请求真库读（无缓存）。受管应用（存在任何
+    %% Grant 行）的生效 scope = allowed_scopes ∩ 生效 Grant scopes，撤权/降级/
+    %% 到期在下一次请求即反映；未受管应用沿用广州期口径（allowed_scopes）。
+    case enterprise_application_grant_logic:context_tx(Conn, OrgId, AppId, Scopes) of
+        {ok, #{grant_governed := Governed, effective_scopes := Effective}} ->
+            {ok, #{
+                organization_id => OrgId,
+                application_id => AppId,
+                credential_id => CredId,
+                application_key => maps:get(<<"application_key">>, App, undefined),
+                granted_scopes => Effective,
+                grant_governed => Governed
+            }};
+        {error, security_gate_closed} ->
+            %% 授权读取失败：fail-closed，绝不放行（也不给 oracle）
+            log_reject(grant_read_failed, security_gate_closed),
+            {error, security_gate_closed}
+    end.
+
+%% allowed_scopes（jsonb 数组）→ 固定 scope 二进制列表；形态异常一律空集
+%% （空集 fail-closed：任何 required scope 都不会被满足）。
+-spec decode_scopes(map()) -> [binary()].
+decode_scopes(App) ->
+    case jsone:decode(maps:get(<<"allowed_scopes">>, App, <<"[]">>)) of
+        L when is_list(L) -> [S || S <- L, is_binary(S)];
+        _ -> []
+    end.
 
 %%%===================================================================
 %%% 内部
