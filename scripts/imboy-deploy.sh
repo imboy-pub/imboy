@@ -225,8 +225,9 @@ if [[ ("$COMPONENT" == api || "$COMPONENT" == all) && "${DEPLOY_SALES_RELEASE:-t
     || fail "插件签名可信公钥必须是 32 字节 Ed25519 raw public key"
 fi
 
-if [[ "$LOCAL_MODE" -eq 1 && "$COMPONENT" != api && "$COMPONENT" != all && "$COMPONENT" != cs ]]; then
-  fail "-l/--local 仅支持 api、all 或 cs"
+# admin 恒为「本地构建 + rsync 上传」，-l 只是显式声明同一行为（幂等 no-op）
+if [[ "$LOCAL_MODE" -eq 1 && "$COMPONENT" != api && "$COMPONENT" != all && "$COMPONENT" != cs && "$COMPONENT" != admin ]]; then
+  fail "-l/--local 仅支持 api、all、cs 或 admin"
 fi
 if [[ "$LOCAL_MODE" -eq 1 ]] && ! command -v rsync >/dev/null 2>&1; then
   fail "本地源码上传需要 rsync"
