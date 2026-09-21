@@ -128,8 +128,12 @@ j1_register_jpush_token_contract_test() ->
     end).
 
 %% J1 刷新合同：token 刷新 = 同一 upsert 路径——先 deactivate 同设备旧
-%% token（UPDATE ... status=0，参数为 [Now, Uid, DeviceId]），再插入新
-%% token 行；同设备仅保留一条活跃。
+%% token（UPDATE ... status=0），再插入新 token 行；同设备仅保留一条活跃。
+%%
+%% FULL-06 口径更新：断电语句的**参数形状**由 [Now, Uid, DeviceId] 变为
+%% [Now, Token, Uid, DeviceId]（谓词加 token 维度，见 push_token_repo:upsert
+%% 文档：同 token 换主人/换设备也必须断电）。本用例的断言随之同步——
+%% 这是本次唯一的既有断言改动（1 处，changelog 见 checkpoints/FULL-06.md）。
 j1_refresh_replaces_previous_token_test() ->
     ?WITH_MECKS([elib_pg, elib_dt, elib_pg_sql, elib_tsid], fun() ->
         meck:expect(elib_dt, now, fun() -> <<"2026-09-21T00:00:00Z">> end),
@@ -152,10 +156,10 @@ j1_refresh_replaces_previous_token_test() ->
                 1, <<"did-android-1">>, <<"android">>, <<"jpush">>, <<"rid-jpush-002-new">>
             )
         ),
-        %% 先 deactivate 旧 token：参数形状 [Now, Uid, DeviceId]
+        %% 先 deactivate 旧 token：参数形状 [Now, Token, Uid, DeviceId]
         DeactParams = recv_captured(j1r_deactivate),
         ?assertMatch(
-            [_Now, 1, <<"did-android-1">>], DeactParams
+            [_Now, <<"rid-jpush-002-new">>, 1, <<"did-android-1">>], DeactParams
         ),
         %% 再插入新 token 行：token 值为新 registration_id
         InsertData = recv_captured(j1r_insert),

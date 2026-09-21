@@ -54,6 +54,10 @@
     <<"uq_ewh_delivery_replay_inflight">>
 ]).
 
+%% 本套件被测迁移的版本号（FULL-06 起回滚目标用 goto 显式表达，不写死步数）
+-define(EWH_MIGRATION_VERSION, 141).
+-define(EWH_DOWN_TARGET, 140).
+
 %%%===================================================================
 %%% Fixture
 %%%===================================================================
@@ -1003,9 +1007,14 @@ down_up_cycle_test(State) ->
             Before = fn_body_snapshot(Conn),
             ?assert(length(maps:keys(Before)) > 20),
 
-            %% down 141：只回滚本迁移对象
-            ok = erlang_migrate:down(MigConfig, 1),
-            ?assertMatch({ok, 140, false}, erlang_migrate:version(MigConfig)),
+            %% 回滚到 141 之前（= 140）：只回滚本迁移（00000141）的对象。
+            %% FULL-06 口径更新：目标版本用 goto 显式表达，不再写死 `down 1`——
+            %% head 一变，写死的步数就会回滚到别的迁移上，本套件的字段断言随即恒红
+            %% （与 GZ 期 cs_pg_widget_tests 写死 head 的缺陷同类，同一修法；见
+            %% GZ_CANDIDATE.md §5「cs_pg_widget_tests 写死迁移 head」）。
+            ?assertEqual(141, ?EWH_MIGRATION_VERSION),
+            ok = erlang_migrate:goto(MigConfig, ?EWH_DOWN_TARGET),
+            ?assertEqual({ok, ?EWH_DOWN_TARGET, false}, erlang_migrate:version(MigConfig)),
             lists:foreach(fun(Col) -> ?assertNot(has_column(Conn, Col)) end, ?NEW_COLUMNS),
             lists:foreach(fun(N) -> ?assertNot(has_constraint(Conn, N)) end, ?NEW_CONSTRAINTS),
             lists:foreach(fun(I) -> ?assertNot(has_index(Conn, I)) end, ?NEW_INDEXES),

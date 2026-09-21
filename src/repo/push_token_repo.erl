@@ -25,18 +25,30 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"push_token">>).
 
 %% @doc 注册或更新推送 token（upsert）
-%% 同一用户同一设备只保留一个活跃 token
+%%
+%% 接管式绑定（FULL-06，plan-full §7「token 跨用户/设备不可复用」）：
+%% 一个推送 token（FCM token / JPush RegistrationID）在生产上唯一对应一台
+%% 物理设备，因此**同一 token 同一时刻只能有一个活跃主人**。旧实现在断电
+%% 条件里只用了 (user_id, device_id)，于是「同一个 token 换了主人」会漏网：
+%%   * 换主人：user B 在同一台机器上登录（device_id 与 A 不同），A 的旧行仍
+%%     是 status=1 → 此后投给 A 的推送被投到「已登成 B」的设备上（跨用户投递）；
+%%   * 换设备：重装后 device_id 变了而 RegistrationID 未变，同样留下两条活跃
+%%     同 token 行（同一设备重复推送）。
+%% 修法：断电条件加上 token 维度——先按 token 把**任何**旧活跃行置为无效
+%% （含换主人/换设备），再插入新行。DB 层由迁移 00000142 的
+%% uq_push_token_active_token（部分唯一索引）兜底，防并发竞态与新写入方绕过。
 -spec upsert(integer(), binary(), binary(), binary(), binary()) ->
     {ok, integer()} | {error, term()}.
 upsert(Uid, DeviceId, DeviceType, Platform, Token) ->
     Tb = tablename(),
     Now = elib_dt:now(),
-    %% 先将该设备旧 token 置为无效
+    %% 先将该设备旧 token，以及该 token 在任何用户/设备上的旧活跃行置为无效
     DeactivateSql =
         <<"UPDATE ", Tb/binary,
             " SET status = 0, updated_at = $1"
-            " WHERE user_id = $2 AND device_id = $3 AND status = 1">>,
-    _ = elib_pg:execute(DeactivateSql, [Now, Uid, DeviceId]),
+            " WHERE status = 1"
+            " AND (token = $2 OR (user_id = $3 AND device_id = $4))">>,
+    _ = elib_pg:execute(DeactivateSql, [Now, Token, Uid, DeviceId]),
     %% 插入新 token
     Id = elib_tsid:generate(push_token),
     Data = #{

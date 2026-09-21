@@ -176,6 +176,144 @@ push_payload_is_constant_across_message_types_test() ->
     end).
 
 %% ===================================================================
+%% FULL-06 · 离线判定负例（plan-full §3.3 多设备 / 登出行为）
+%% 判定口径：`imboy_syn:count_user(Uid) =:= 0` 才推送；>0 = 至少一台在线。
+%% ===================================================================
+
+%% 单设备在线（count_user=1）即视为在线 → 不推送（边界值，不是 >=2 才算在线）
+maybe_push_for_c2c_single_device_online_test() ->
+    ?WITH_MECKS([imboy_syn, elib_async, push_notification_ds], fun() ->
+        meck:expect(elib_async, async, fun(Fun) ->
+            Fun(),
+            self()
+        end),
+        meck:expect(imboy_syn, count_user, fun(2) -> 1 end),
+        ?assertEqual(ok, push_notification_logic:maybe_push_for_c2c(1, 2, <<"text">>, <<"hi">>)),
+        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_user, '_'))
+    end).
+
+%% 多设备在线（count_user=3，同用户三台设备）→ 仍视为在线，不推送
+maybe_push_for_c2c_multi_device_online_test() ->
+    ?WITH_MECKS([imboy_syn, elib_async, push_notification_ds], fun() ->
+        meck:expect(elib_async, async, fun(Fun) ->
+            Fun(),
+            self()
+        end),
+        meck:expect(imboy_syn, count_user, fun(2) -> 3 end),
+        ?assertEqual(ok, push_notification_logic:maybe_push_for_c2c(1, 2, <<"text">>, <<"hi">>)),
+        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_user, '_'))
+    end).
+
+%% 单设备离线（count_user=0）→ 推送；且 title/body 是静态常量
+notify_offline_user_single_device_offline_uses_constant_payload_test() ->
+    ?WITH_MECKS([imboy_syn, push_notification_ds], fun() ->
+        meck:expect(imboy_syn, count_user, fun(1) -> 0 end),
+        meck:expect(push_notification_ds, send_to_user, fun(
+            1, <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>
+        ) ->
+            ok
+        end),
+        ?assertEqual(
+            ok,
+            push_notification_logic:notify_offline_user(
+                1, <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>
+            )
+        ),
+        ?assert(
+            meck:called(
+                push_notification_ds,
+                send_to_user,
+                [1, <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>]
+            )
+        )
+    end).
+
+%% c2g 负例：发送者即使离线，也绝不收到自己发出的群消息推送
+maybe_push_for_c2g_never_pushes_sender_test() ->
+    ?WITH_MECKS([imboy_syn, elib_async, push_notification_ds], fun() ->
+        meck:expect(elib_async, async, fun(Fun) ->
+            Fun(),
+            self()
+        end),
+        meck:expect(imboy_syn, count_user, fun(_) -> 0 end),
+        meck:expect(push_notification_ds, send_to_users, fun([2], _T, _B) -> ok end),
+        ?assertEqual(
+            ok,
+            push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1, 2])
+        ),
+        %% 只有非发送者一个 uid 收到批量推送（发送者 1 被剔除）
+        ?assert(meck:called(push_notification_ds, send_to_users, [[2], '_', '_'])),
+        ?assertEqual(1, meck:num_calls(push_notification_ds, send_to_users, '_'))
+    end).
+
+%% c2g 负例：全体成员（除发送者）都在线 → 零推送
+maybe_push_for_c2g_all_members_online_test() ->
+    ?WITH_MECKS([imboy_syn, elib_async, push_notification_ds], fun() ->
+        meck:expect(elib_async, async, fun(Fun) ->
+            Fun(),
+            self()
+        end),
+        meck:expect(imboy_syn, count_user, fun(_) -> 1 end),
+        ?assertEqual(
+            ok,
+            push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1, 2, 3])
+        ),
+        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_users, '_'))
+    end).
+
+%% c2g 负例：只有发送者一个成员 → 过滤后为空，不发批量推送（不炸）
+maybe_push_for_c2g_sender_only_member_test() ->
+    ?WITH_MECKS([imboy_syn, elib_async, push_notification_ds], fun() ->
+        meck:expect(elib_async, async, fun(Fun) ->
+            Fun(),
+            self()
+        end),
+        meck:expect(imboy_syn, count_user, fun(_) -> 0 end),
+        ?assertEqual(
+            ok,
+            push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1])
+        ),
+        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_users, '_'))
+    end).
+
+%% c2g 负例：成员列表为空 → 零推送
+maybe_push_for_c2g_empty_members_test() ->
+    ?WITH_MECKS([imboy_syn, elib_async, push_notification_ds], fun() ->
+        meck:expect(elib_async, async, fun(Fun) ->
+            Fun(),
+            self()
+        end),
+        ?assertEqual(
+            ok,
+            push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [])
+        ),
+        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_users, '_'))
+    end).
+
+%% c2c 负例：接收方离线但没有任何 token → 走真实 DS 空集分支，不炸
+maybe_push_for_c2c_offline_without_any_token_test() ->
+    ?WITH_MECKS([imboy_syn, elib_async, push_token_repo], fun() ->
+        meck:expect(elib_async, async, fun(Fun) ->
+            Fun(),
+            self()
+        end),
+        meck:expect(imboy_syn, count_user, fun(2) -> 0 end),
+        meck:expect(push_token_repo, list_by_uid, fun(2) -> {ok, []} end),
+        ?assertEqual(ok, push_notification_logic:maybe_push_for_c2c(1, 2, <<"text">>, <<"hi">>)),
+        ?assert(meck:called(push_token_repo, list_by_uid, [2]))
+    end).
+
+%% c2c 负例：DS 层查 token 失败 → fail-safe 返回 ok（推送故障不影响消息投递）
+push_notification_ds_list_failure_is_failsafe_test() ->
+    ?WITH_MECKS([push_token_repo], fun() ->
+        meck:expect(push_token_repo, list_by_uid, fun(1) -> {error, db_down} end),
+        ?assertEqual(
+            ok,
+            push_notification_ds:send_to_user(1, <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>)
+        )
+    end).
+
+%% ===================================================================
 %% E2EE 推送隐私守护（零知识不变量：密文永远不出现在 push body）
 %% ===================================================================
 
