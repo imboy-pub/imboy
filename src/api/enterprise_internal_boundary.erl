@@ -37,6 +37,7 @@
     error_code/1
 ]).
 
+%% FULL-02 阶段新增（已由 A0 接线进冻结表/Router/manifest/契约）
 -define(NEW_IDS, [
     <<"INT-15">>,
     <<"INT-16">>,
@@ -46,6 +47,11 @@
     <<"INT-20">>,
     <<"INT-21">>,
     <<"INT-22">>
+]).
+
+%% FULL-03 阶段新增（A0 接线；与 NEW_IDS 分开只为保留阶段来源）
+-define(FULL03_IDS, [
+    <<"INT-23">>
 ]).
 
 %%%===================================================================
@@ -79,6 +85,10 @@ spec(<<"INT-11">>) ->
 spec(<<"INT-12">>) ->
     {ok, #{kind => none, scope => <<"webhooks:manage">>}};
 spec(<<"INT-13">>) ->
+    {ok, #{kind => none, scope => <<"webhooks:manage">>}};
+%% INT-23 投递列表 + 健康度摘要（只读；与 INT-12/13 同为 application 自属面，
+%% 无 org/workspace 资源边界，故 kind=none，仅 scope 门）
+spec(<<"INT-23">>) ->
     {ok, #{kind => none, scope => <<"webhooks:manage">>}};
 spec(<<"INT-14">>) ->
     {ok, #{kind => none, scope => <<"sso:exchange">>}};
@@ -216,5 +226,5 @@ candidate_ids() ->
         <<"INT-12">>,
         <<"INT-13">>,
         <<"INT-14">>
-        | ?NEW_IDS
+        | ?NEW_IDS ++ ?FULL03_IDS
     ].

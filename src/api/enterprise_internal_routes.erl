@@ -245,6 +245,17 @@ routes() ->
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
+        },
+        %% ---- FULL-03 新增（A0 接线）----
+        %% INT-23 投递列表 + 健康度摘要（只读；无 payload——信封键集封闭）
+        #{
+            id => <<"INT-23">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/webhook/deliveries">>,
+            scope => <<"webhooks:manage">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
         }
     ].
 

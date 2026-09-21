@@ -1842,6 +1842,12 @@
         "static": false
       },
       {
+        "action": "deliveries",
+        "handler": "enterprise_webhook_handler",
+        "path": "/api/internal/v1/webhook/deliveries",
+        "static": false
+      },
+      {
         "action": "replay",
         "handler": "enterprise_webhook_handler",
         "path": "/api/internal/v1/webhook/deliveries/:delivery_id/replay",

@@ -151,6 +151,12 @@ one(C, Sql, Params) ->
         {error, Reason} -> erlang:error({sql_error, Reason, Sql})
     end.
 
+all(C, Sql, Params) ->
+    case elib_pg:query(C, Sql, Params) of
+        {ok, Rows} when is_list(Rows) -> Rows;
+        {error, Reason} -> erlang:error({sql_error, Reason, Sql})
+    end.
+
 scalar(C, Sql, Params) ->
     Row = one(C, Sql, Params),
     case maps:values(Row) of
@@ -383,6 +389,17 @@ delivery_by_url(C, Url) ->
     ).
 
 %% 取最近一条企业投递行
+%% 取本套件刚插入的那条投递行（「最后一条」）。
+%%
+%% ⚠️ 排序必须用**数字序列**做 tiebreak，不能用 delivery_id 的文本序：
+%% delivery_id 形态是 `ewd-<unique_integer>-<hex>`，同一事务内多行 created_at
+%% 相同（tie），此时 `delivery_id DESC` 是字符串比较——'ewd-1090-…' 按字典序
+%% 排在 'ewd-834-…' **之前**（'1' < '8'），于是会取到**更早**插入的那行。
+%% 实测后果：本套件 reload_oracle 的「在途拒重放」用例把上一条已置 dead 的行
+%% 当成刚 emit 的 pending 行，replay 走 dead 分支成功返回，断言随机变红
+%% （负载高时 created_at 撞毫秒 → 15 用例里红 1 条；A0 复核首跑即复现，
+%% 连跑两次绿）。unique_integer 在 VM 内单调递增，故按其中段数值排序才是真
+%% 插入序。COALESCE 兼顾历史/非本前缀行的 NULL。
 last_delivery(C) ->
     one(
         C,
@@ -391,10 +408,37 @@ last_delivery(C) ->
             " attempt_count, webhook_url, webhook_host, pinned_ip, ewh_owner_organization_id,"
             " ewh_owner_application_id, ewh_replay_of, ewh_endpoint_generation,"
             " ewh_ledger_version, ewh_claimed_at FROM bot_delivery"
-            " WHERE bot_id LIKE 'eapp:%' ORDER BY created_at DESC, delivery_id DESC LIMIT 1"
+            " WHERE bot_id LIKE 'eapp:%'"
+            " ORDER BY created_at DESC,"
+            " COALESCE((substring(delivery_id from '^ewd-([0-9]+)-'))::bigint, 0) DESC"
+            " LIMIT 1"
         >>,
         []
     ).
+
+%% 取「本用例刚 emit、尚未落地」的那条在途行（status='pending'）。
+%%
+%% 为什么不用 last_delivery/1 定位：NOW() 在 PostgreSQL 里返回**事务开始时间**，
+%% 所以同一用例事务内插入的所有行 created_at **完全相同**（不是"偶尔撞毫秒"，
+%% 而是恒定 tie），最后一行只能靠 tiebreak 决定。本套件多处需要精确指向
+%% 「刚 emit 的那一行」（在途拒重放、终态改写、统计口径），按序取行会随实现
+%% 细节漂移：实测出现过把已置 dead 的旧行当成新在途行，导致 replay 走终态分支、
+%% 以及 dead→success 被终态守卫拒绝（A0 复核连跑复现）。这里改为**按状态**取
+%% 唯一的在途行——同一用例内它必然唯一，且不存在排序歧义。
+sole_pending_delivery(C) ->
+    Rows = all(
+        C,
+        <<
+            "SELECT delivery_id, status FROM bot_delivery"
+            " WHERE bot_id LIKE 'eapp:%' AND status = 'pending'"
+            " ORDER BY COALESCE((substring(delivery_id from '^ewd-([0-9]+)-'))::bigint, 0) DESC"
+            " LIMIT 1"
+        >>,
+        []
+    ),
+    ?assert(length(Rows) >= 1),
+    [Row] = Rows,
+    delivery_row(C, maps:get(<<"delivery_id">>, Row)).
 
 delivery_row(C, Did) ->
     one(
@@ -1078,9 +1122,9 @@ replay_oracle(C, State) ->
         <<"'">>
     ]),
 
-    %% 在途拒重放：先造一条 pending
+    %% 在途拒重放：先造一条 pending（按**状态**精确定位，见 sole_pending_delivery/1）
     {ok, emitted} = emit(C, ctx_a(State), <<"file.confirmed">>),
-    Pending = last_delivery(C),
+    Pending = sole_pending_delivery(C),
     ?assertEqual(
         {error, {<<"invalid_request">>, delivery_in_flight}},
         enterprise_webhook_logic:replay_tx(C, ctx_a(State), maps:get(<<"delivery_id">>, Pending))
@@ -1254,7 +1298,7 @@ metrics_oracle(C, State) ->
     %% 统计读面：成功率口径 success/(success+dead)
     %% （原行已 dead，dead->success 被终态守卫拒绝——另起一行做成功态）
     {ok, emitted} = emit(C, ctx_a(State), <<"file.confirmed">>),
-    SuccessDid = maps:get(<<"delivery_id">>, last_delivery(C)),
+    SuccessDid = maps:get(<<"delivery_id">>, sole_pending_delivery(C)),
     ok = exec(C, [
         <<"UPDATE bot_delivery SET status = 'success' WHERE delivery_id = '">>,
         SuccessDid,

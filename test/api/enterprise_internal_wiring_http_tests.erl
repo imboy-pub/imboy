@@ -46,23 +46,23 @@ route_table() ->
     Paths = [P || {P, _H, _O} <- Routes],
 
     %% ①② 冻结表逐条登记 + 零 open 面
-    %% 22 条 INT（GZ 14 + FULL-02 新增 8）；18 个 cowboy path——同 path 多方法：
-    %% INT-02/15、INT-05/06、INT-18/19/21。
+    %% 23 条 INT（GZ 14 + FULL-02 新增 8 + FULL-03 新增 1）；19 个 cowboy path——
+    %% 同 path 多方法：INT-02/15、INT-05/06、INT-18/19/21。
     Manifest = enterprise_internal_routes:routes(),
-    ?assertEqual(22, length(Manifest)),
+    ?assertEqual(23, length(Manifest)),
     %% 冻结表用 {name} 占位符语法，cowboy 路由用 :name —— 归一后逐条比对。
     ManifestPaths = lists:usort([
         cowboy_path(binary_to_list(maps:get(path, R)))
      || R <- Manifest
     ]),
-    ?assertEqual(18, length(ManifestPaths)),
+    ?assertEqual(19, length(ManifestPaths)),
     lists:foreach(
         fun(P) ->
             ?assert(lists:member(P, Paths))
         end,
         ManifestPaths
     ),
-    ?assertEqual(18, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
+    ?assertEqual(19, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
 
     %% ③ internal 前缀不在匿名白名单；零 open 面
     Open = imboy_router:open(),

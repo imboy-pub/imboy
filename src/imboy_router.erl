@@ -2229,5 +2229,9 @@ enterprise_internal_routes() ->
             action => member_roles
         }},
         %% INT-22 附件留存/hold/purge 治理
-        {"/api/internal/v1/files/governance", enterprise_asset_handler, #{action => governance}}
+        {"/api/internal/v1/files/governance", enterprise_asset_handler, #{action => governance}},
+        %% INT-23 投递列表 + 健康度摘要（FULL-03；只读，无 payload）
+        {"/api/internal/v1/webhook/deliveries", enterprise_webhook_handler, #{
+            action => deliveries
+        }}
     ].
