@@ -137,12 +137,16 @@ a01_widget_migration_roundtrip_no_residue() ->
         %% app 侧 schema_migrations_history 无 dirty 列、非同 schema，不可混用；
         %% scratch 库由本 run 独占，roundtrip 前置断言已锁定基线在位。
         Config = #{conn => Conn, dir => imboy_migrate:get_scripts_path(), strict => true},
-        %% down 恰 4 步 = 从 head（135=customer_service_seat_sse；134=agent_run
-        %% foundation、133=agent_grant_foundation 同批在册）回滚 135/134/133/132，
-        %% 其中 132 即本卡 widget foundation；131 及更早保持不动
-        %% （CSD-BE-01 修正：迁移 135 入库（BE-S01）后 head 不再是 134，
-        %% 原 down 3 步在 head=135 的库上留 132 在表 → 断言恒红）。
-        ok = erlang_migrate:down(Config, 4),
+        %% down 步数**按 priv/migrations 实际在册版本推导**，不写死。
+        %% 历史教训（本条断言两次被 head 前移打红）：
+        %%   CSD-BE-01：迁移 135 入库后 head 不再是 134，写死 down 3 步在
+        %%   head=135 的库上回滚 135/134/133，留 132 在表 → 断言恒红；
+        %%   EPGZ-08 W4：migration 136（enterprise_internal_foundation）入库后
+        %%   head=136，写死 down 4 步回滚的是 136/135/134/133，同样留 132 在表。
+        %% 现按在册版本集合（严格大于 132 的版本数 + 1）推导，head 再前移不红。
+        Steps = down_steps_to(132),
+        ?assert(Steps >= 1),
+        ok = erlang_migrate:down(Config, Steps),
         ?assertNot(table_exists(<<"customer_service_widget_installation">>)),
         ?assertNot(table_exists(<<"customer_service_widget_identity_key">>)),
         ?assertNot(table_exists(<<"customer_service_widget_nonce">>)),
@@ -797,13 +801,28 @@ error_contains(Err, PlainText) ->
     binary:match(iolist_to_binary(Chars), PlainText) =/= nomatch.
 
 migration_version_in_range(FileName, Min, Max) ->
-    case re:run(FileName, <<"^([0-9]{8})_.*\\.(up|down)\\.sql$">>, [{capture, [1], binary}]) of
-        {match, [VersionBin]} ->
-            Version = binary_to_integer(VersionBin),
-            Version >= Min andalso Version =< Max;
-        nomatch ->
-            false
+    case migration_version_of(FileName) of
+        {ok, Version} -> Version >= Min andalso Version =< Max;
+        error -> false
     end.
+
+%% 迁移文件名 → 版本号（仅 `NNNNNNNN_name.(up|down).sql` 形态）。
+migration_version_of(FileName) ->
+    case re:run(FileName, <<"^([0-9]{8})_.*\\.(up|down)\\.sql$">>, [{capture, [1], binary}]) of
+        {match, [VersionBin]} -> {ok, binary_to_integer(VersionBin)};
+        nomatch -> error
+    end.
+
+%% 从当前 head 回滚到（并含）TargetVersion 需要的 down 步数：
+%% 在册版本里严格大于目标版本的个数 + 1。up/down 同名不同后缀只计一次。
+down_steps_to(TargetVersion) ->
+    {ok, Files} = file:list_dir(?MIG_DIR),
+    Versions = lists:usort([
+        V
+     || F <- Files,
+        {ok, V} <- [migration_version_of(F)]
+    ]),
+    length([V || V <- Versions, V > TargetVersion]) + 1.
 
 %% 迁移往返：独立连接（不占池连接的 advisory 锁）。
 with_migrate_conn(Fun) ->

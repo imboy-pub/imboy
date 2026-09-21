@@ -1269,6 +1269,20 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  enterprise_internal_idempotency:
+    action: delete
+    owner: enterprise
+    reason: internal API 幂等重放窗口记录（短时效，仅存 request digest 与资源指针）
+    mechanism: delete rows by TTL (expires_at)
+    review: self-evident
+    retention: n/a
+  enterprise_oa_sso_code:
+    action: delete
+    owner: enterprise
+    reason: OA SSO 一次性 code（60 秒有效，仅存 digest，一次性消费）
+    mechanism: delete rows by TTL (expires_at)
+    review: self-evident
+    retention: n/a
 exclusions:
   adm_role:
     reason: 管理端 RBAC 角色配置，非终端用户数据
@@ -1325,3 +1339,9 @@ exclusions:
   channel_category:
     reason: 系统分类字典（无用户归属列），不属于删除范围
 
+  enterprise_application:
+    reason: 组织级企业集成应用注册（组织资产）；principal_user_id 为 ON DELETE SET NULL，随组织 offboarding 处置，不随单个用户删除
+  enterprise_application_credential:
+    reason: 组织集成应用的凭证行（只存 sha256 digest 与状态），生命周期绑定所属应用，随应用移除/轮换处置
+  enterprise_external_identity:
+    reason: 外部身份与组织成员的绑定（企业集成所需）；user_id 经 fk_eei_member 绑到 organization_member，随组织成员移除/offboarding 处置，不随个人账号删除级联
