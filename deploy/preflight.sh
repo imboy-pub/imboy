@@ -26,10 +26,12 @@ WARNINGS=0
 # 销售发布支付强校验）。install.sh 会按部署版本显式传入 --edition。
 DOCKER_CHECK=0
 SELF_TEST=0
+DNS_CHECK_FLAG=0
 EDITION="business"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --docker) DOCKER_CHECK=1 ;;
+        --dns) DNS_CHECK_FLAG=1 ;;
         --self-test) SELF_TEST=1 ;;
         --edition)
             [[ $# -ge 2 ]] || { echo "错误：--edition 需要值 community|business" >&2; exit 1; }
@@ -38,7 +40,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --edition=*) EDITION="${1#*=}" ;;
         *)
-            echo "未知参数：$1（支持 --docker 与 --edition community|business）" >&2
+            echo "未知参数：$1（支持 --docker、--dns 与 --edition community|business）" >&2
             exit 1
             ;;
     esac
@@ -190,6 +192,12 @@ check_var "ADMIN_DOMAIN"
 # 客服 Widget 第三域：标准部署三域必填（fail-closed）。证书签发、Nginx vhost 与
 # compose 接线均依赖该值；占位符（cs.example.com）与留空都按未填处理。
 check_var "CS_WIDGET_DOMAIN"
+# LiveKit 两域（LK-DEP-01）：RTC_DOMAIN 是后端下发 wss:// 的信令域（nginx 443
+# 反代 7880）；TURN_DOMAIN 是 embedded TURN 域（TLS 5349 + UDP 3478，证书经
+# 80 端口 ACME webroot 签发/续期）。两域与证书签发（init-letsencrypt.sh）都
+# 强依赖，fail-closed。
+check_var "RTC_DOMAIN"
+check_var "TURN_DOMAIN"
 check_var "POSTGRES_USER"
 check_var "POSTGRES_PASSWORD"
 check_var "POSTGRES_DB"
@@ -225,11 +233,100 @@ is_email() { [[ "$1" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; }
 if ! is_domain "${API_DOMAIN:-}"; then err "API_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
 if ! is_domain "${ADMIN_DOMAIN:-}"; then err "ADMIN_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
 if ! is_domain "${CS_WIDGET_DOMAIN:-}"; then err "CS_WIDGET_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
+if ! is_domain "${RTC_DOMAIN:-}"; then err "RTC_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
+if ! is_domain "${TURN_DOMAIN:-}"; then err "TURN_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
 # 三域两两不同（CSD-DEP-01；重复会使 Nginx server_name 冲突、证书签发对象错乱）
 check_domains_distinct "API_DOMAIN" "${API_DOMAIN:-}" "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}"
 check_domains_distinct "API_DOMAIN" "${API_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
 check_domains_distinct "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
+# LiveKit 两域并入唯一性阵营（LK-DEP-01）：rtc/turn 互不相同，且不与既有三域
+# 撞名 —— RTC 域是独立 443 vhost，TURN 证书按域名分发，撞名即配置错乱。
+check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "TURN_DOMAIN" "${TURN_DOMAIN:-}"
+check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "API_DOMAIN" "${API_DOMAIN:-}"
+check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}"
+check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
+check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "API_DOMAIN" "${API_DOMAIN:-}"
+check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}"
+check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
 if ! is_email "${CERTBOT_EMAIL:-}"; then err "CERTBOT_EMAIL 格式无效"; fi
+
+# ── 2a. LiveKit 域名 DNS 解析（可选开关，开启即 fail-closed）─────────────────
+# 用法：bash preflight.sh --dns 或 .env 设 PREFLIGHT_CHECK_DNS=true。
+# 默认关闭：离线/内网 CI 无解析器时不应堵死部署；生产首次部署建议开启，
+# DNS 未生效就跑 init-letsencrypt 只会撞 Let's Encrypt 速率限制。
+DNS_CHECK=0
+if [[ "$DNS_CHECK_FLAG" -eq 1 ]]; then DNS_CHECK=1; fi
+case "$(echo "${PREFLIGHT_CHECK_DNS:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+    true|1) DNS_CHECK=1 ;;
+esac
+if [[ "$DNS_CHECK" -eq 1 ]]; then
+    resolve_domain() {
+        local d="$1"
+        # 返回 0=解析成功 1=解析失败（无 A 记录）2=本机无任何解析工具
+        if command -v getent &>/dev/null; then
+            getent ahostsv4 "$d" &>/dev/null && return 0 || return 1
+        elif command -v host &>/dev/null; then
+            host -t A "$d" &>/dev/null && return 0 || return 1
+        elif command -v dig &>/dev/null; then
+            dig +short A "$d" 2>/dev/null | grep -q . && return 0 || return 1
+        elif command -v nslookup &>/dev/null; then
+            nslookup "$d" &>/dev/null && return 0 || return 1
+        else
+            return 2
+        fi
+    }
+    for DNS_VAR_NAME in RTC_DOMAIN TURN_DOMAIN; do
+        DNS_VAL="${!DNS_VAR_NAME:-}"
+        [[ -z "$DNS_VAL" ]] && continue
+        DNS_RC=0
+        resolve_domain "$DNS_VAL" || DNS_RC=$?
+        case "$DNS_RC" in
+            0) ok "$DNS_VAR_NAME DNS 解析通过（${DNS_VAL}）" ;;
+            2) warn "无法检查 $DNS_VAR_NAME DNS（无 getent/host/dig/nslookup）" ;;
+            *) err "${DNS_VAR_NAME}（${DNS_VAL}）无 A 记录解析 —— 证书签发（ACME HTTP-01）与客户端连接都会失败，先配好 DNS 再部署" ;;
+        esac
+    done
+else
+    info "LiveKit 域名 DNS 检查未开启（--dns 或 PREFLIGHT_CHECK_DNS=true 开启）"
+fi
+
+# ── 2a-bis. LiveKit embedded TURN（LIVEKIT_TURN_ENABLED=true 时 fail-closed）──
+# W5 终态前置门（LK-01 §2.2 约束 3）：旧 TURN 未退场（3478/5349 仍被占）或
+# TURN 证书未就绪时拒绝启动 —— 双 TURN 会 bind 冲突导致容器崩溃，缺证书则
+# LiveKit turn.enabled:true 起不来。
+TURN_ENABLED="$(echo "${LIVEKIT_TURN_ENABLED:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+case "$TURN_ENABLED" in
+    true|1)
+        ok "LIVEKIT_TURN_ENABLED=true（embedded TURN：UDP 3478 + TLS 5349 + relay 50201-50500）"
+        # 端口冲突 fail-closed（同 W5 端口合同；check_port 的 warn 语义不够）
+        check_port_conflict() {
+            local port="$1" proto="$2"
+            if command -v ss &>/dev/null; then
+                ss -lnup 2>/dev/null | grep -q ":${port} " \
+                    || ss -lntp 2>/dev/null | grep -q ":${port} " || return 0
+                err "端口 ${port}/${proto} 已被占用 —— TURN 开启时 3478/5349 归 LiveKit，旧 TURN（eturnal/coturn）必须先删除（不得双活）"
+            elif command -v lsof &>/dev/null; then
+                lsof -i:"${port}" &>/dev/null \
+                    && err "端口 ${port} 已被占用 —— TURN 开启时 3478/5349 归 LiveKit，旧 TURN（eturnal/coturn）必须先删除（不得双活）" \
+                    || true
+            else
+                info "无法检查端口 ${port}（ss/lsof 不可用）"
+            fi
+        }
+        check_port_conflict 3478 udp
+        check_port_conflict 5349 tcp
+        # 证书目录必须已含 fullchain/privkey（install.sh 的证书签发发生在启动之后，
+        # 首装两段式：先 false 完成签发，再 true 重跑收敛）
+        TURN_CERT_DIR="${LIVEKIT_TURN_CERT_DIR:-${DATA_DIR:-./data}/certbot/conf/live/${TURN_DOMAIN:-}}"
+        if [[ -s "$TURN_CERT_DIR/fullchain.pem" && -s "$TURN_CERT_DIR/privkey.pem" ]]; then
+            ok "TURN TLS 证书就绪（${TURN_CERT_DIR}，容器内只读挂载）"
+        else
+            err "TURN TLS 证书未就绪：${TURN_CERT_DIR} 缺 fullchain.pem/privkey.pem。首次安装请先保持 LIVEKIT_TURN_ENABLED=false 完成证书签发（init-letsencrypt.sh 会签发 TURN_DOMAIN），再置 true 重跑 install.sh"
+        fi
+        ;;
+    false|0|"") info "LIVEKIT_TURN_ENABLED=false（embedded TURN 未启用；受限 NAT 先走 ICE/TCP 7881 兜底）" ;;
+    *) err "LIVEKIT_TURN_ENABLED 仅支持 true/1/false/0" ;;
+esac
 
 UPTRACE_ENABLED_VALUE="$(echo "${UPTRACE_ENABLED:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
 case "$UPTRACE_ENABLED_VALUE" in
@@ -400,7 +497,7 @@ else
                 KEY_FILE="$(echo "$KEY_FILE" | xargs)"
                 [[ -z "$KEY_FILE" ]] && continue
                 if [[ ! -f "$KEY_FILE" ]]; then
-                    err "可信公钥文件不存在：$KEY_FILE（后端加载时跳过该 key，等价缺配置）"
+                    err "可信公钥文件不存在：${KEY_FILE}（后端加载时跳过该 key，等价缺配置）"
                     MISSING=1
                 fi
             done
@@ -592,6 +689,8 @@ check_port 443
 check_port "${BACKEND_PORT:-9800}"
 check_port "${PG_PORT:-5432}"
 check_port "${GRAFANA_PORT:-3000}"
+# LiveKit ICE/TCP 兜底端口（compose 无条件发布；占用会导致容器启动失败）
+check_port 7881
 
 # ── 4b. OIDC 多节点一次性状态 ─────────────────────────────────────────────────
 # auth_oidc_logic 的 state/otc 存在**节点本地 ETS**（?ONETIME_TAB）。
