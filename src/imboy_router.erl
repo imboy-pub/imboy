@@ -770,6 +770,18 @@ get_routes() ->
                     organization_api_handler, #{
                         action => default_workspace
                     }},
+                %% invite code（GZAPP-01：org 可复用加入凭证，8 位 A-Z2-9、
+                %% 7 天有效、一码多人、owner/admin 可撤销；join 统一走
+                %% organization_join_orchestrator 编排——org member → 默认
+                %% WS → 全员群 → 公告频道；GET/POST/DELETE 同路径分派，
+                %% join 子路径须注册在前缀匹配安全区内）
+                {"/api/v1/organizations/:organization_id/invite_code", organization_api_handler, #{
+                    action => invite_code
+                }},
+                {"/api/v1/organizations/:organization_id/invite_code/join",
+                    organization_api_handler, #{
+                        action => invite_code_join
+                    }},
                 {"/api/v1/workspaces", workspace_handler, #{action => create}},
                 {"/api/v1/workspaces/mine", workspace_handler, #{action => mine}},
                 {"/api/v1/workspaces/join", workspace_handler, #{action => join}},

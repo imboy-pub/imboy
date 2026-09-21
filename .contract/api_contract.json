@@ -3992,6 +3992,18 @@
         "static": false
       },
       {
+        "action": "invite_code",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/invite_code",
+        "static": false
+      },
+      {
+        "action": "invite_code_join",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/invite_code/join",
+        "static": false
+      },
+      {
         "action": "collection",
         "handler": "organization_member_handler",
         "path": "/api/v1/organizations/:organization_id/members",

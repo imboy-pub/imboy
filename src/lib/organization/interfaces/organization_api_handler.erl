@@ -101,6 +101,22 @@ handle_action(default_workspace, Req0, State) ->
         <<"POST">> -> default_workspace_set(Req0, State);
         <<"DELETE">> -> default_workspace_clear(Req0, State);
         _ -> method_not_allowed(Req0, <<"GET, POST, DELETE">>)
+    end;
+%% —— invite code（GZAPP-01）：org 可复用加入凭证，同路径按 method 分派 ——
+%% GET=读当前 active 码 / POST=生成（重新生成即旧码失效）/ DELETE=撤销
+handle_action(invite_code, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"GET">> -> invite_code_get(Req0, State);
+        <<"POST">> -> invite_code_create(Req0, State);
+        <<"DELETE">> -> invite_code_revoke(Req0, State);
+        _ -> method_not_allowed(Req0, <<"GET, POST, DELETE">>)
+    end;
+%% —— invite code join（GZAPP-01）：任意登录用户凭码加入 org
+%% （统一走 organization_join_orchestrator 编排）——
+handle_action(invite_code_join, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"POST">> -> invite_code_join(Req0, State);
+        _ -> method_not_allowed(Req0, <<"POST">>)
     end.
 
 %% ===================================================================
@@ -151,25 +167,17 @@ invitation_accept(Req0, State) ->
                 Uid,
                 OrgId,
                 Token,
-                #{membership_hook => fun invitation_membership_hook/2}
+                #{membership_hook => fun organization_join_orchestrator:membership_hook/2}
             )
         )
     end).
 
-%% C11 收口：邀请首次消费成功后**同事务**建立成员行（role=member）。
-%% upsert 语义：active 已在 → unchanged/role_conflict（不降级既有角色）；
-%% removed → 激活；不存在 → 新建。hook 失败 → 整个 accept 事务回滚
-%% （消费 + 成员变更原子，见 organization_invitation_app 冻结注释）。
-invitation_membership_hook(Conn, Row) ->
-    OrgId = positive_id(maps:get(<<"organization_id">>, Row, undefined)),
-    TargetUid = positive_id(maps:get(<<"target_user_id">>, Row, undefined)),
-    InvitedBy = maps:get(<<"invited_by">>, Row, undefined),
-    case
-        organization_member_repo:upsert_active_tx(Conn, OrgId, TargetUid, <<"member">>, InvitedBy)
-    of
-        {ok, _Outcome, _Info} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
+%% C11 收口（GZAPP-01 编排化）：邀请首次消费成功后**同事务**完成统一加入
+%% 编排——org member(role=member) → 默认 Workspace member → 全员群
+%% (General) → 公告频道 (Announcements) 订阅，全部幂等可重放；默认 WS
+%% 缺失只写 org member（不阻塞）。hook 失败 → 整个 accept 事务回滚
+%% （消费 + 成员变更原子，见 organization_invitation_app 冻结注释；
+%% 编排实现冻结于 organization_join_orchestrator）。
 
 invitation_reject(Req0, State) ->
     Uid = auth_ds:current_uid(State),
@@ -362,6 +370,57 @@ default_workspace_clear(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     with_organization_id(Req0, fun(OrgId) ->
         respond(Req0, organization_default_workspace_app:clear(Uid, OrgId))
+    end).
+
+%% ===================================================================
+%% invite code（organization_invite_code_app；{error, {HTTPCode, Msg}}
+%% 直映射；业务码 981/982 沿用 workspace 团队码 envelope 口径）
+%% ===================================================================
+
+%% 治理面读当前 active 码：无 active 码是可空语义（code => null 成功信封），
+%% 与 default_workspace_get 的 not_set 同口径。
+invite_code_get(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    with_organization_id(Req0, fun(OrgId) ->
+        case organization_invite_code_app:get(Uid, OrgId) of
+            {ok, View} ->
+                elib_response:success(Req0, View);
+            {error, not_found} ->
+                elib_response:success(Req0, #{
+                    organization_id => OrgId, code => null, status => null
+                });
+            {error, {Code, Msg}} ->
+                elib_response:error(Req0, Msg, Code)
+        end
+    end).
+
+invite_code_create(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    with_organization_id(Req0, fun(OrgId) ->
+        respond(Req0, organization_invite_code_app:create(Uid, OrgId, #{}))
+    end).
+
+invite_code_revoke(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    with_organization_id(Req0, fun(OrgId) ->
+        respond(Req0, organization_invite_code_app:revoke(Uid, OrgId))
+    end).
+
+%% 凭码加入：code 非 binary / trim 空统一 981（app 层裁决），handler 只透传。
+%% payload 镜像 workspace join：{status => joined|unchanged, join => 编排摘要}。
+invite_code_join(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    Params = elib_param:post(Req0),
+    with_organization_id(Req0, fun(OrgId) ->
+        Code = maps:get(<<"code">>, Params, undefined),
+        case organization_invite_code_app:join_by_code(Uid, OrgId, Code) of
+            {ok, joined, Summary} ->
+                elib_response:success(Req0, #{status => joined, join => Summary});
+            {ok, unchanged, Summary} ->
+                elib_response:success(Req0, #{status => unchanged, join => Summary});
+            {error, {Code2, Msg}} ->
+                elib_response:error(Req0, Msg, Code2)
+        end
     end).
 
 %% ===================================================================

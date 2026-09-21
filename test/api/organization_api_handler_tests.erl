@@ -205,8 +205,10 @@ dept_list_passes_status_atom_when_present_test_() ->
         end
     ).
 
-%% DEFECT-1：accept 必须注入 membership_hook；hook 以同事务语义调用
-%% upsert_active_tx（role=member），并把 repo 结果归一为 hook 契约。
+%% DEFECT-1（GZAPP-01 编排化升级）：accept 必须注入 membership_hook，且
+%% hook 织入 organization_join_orchestrator:membership_hook/2（统一加入
+%% 编排：org member → 默认 WS → 全员群 → 公告频道）。编排自身行为由
+%% organization_join_orchestrator_tests 冻结，此处只锁 handler 接线契约。
 invitation_accept_wires_membership_hook_test_() ->
     ?WITH_MECKS(
         invitation_accept_mocks(),
@@ -223,16 +225,21 @@ invitation_accept_wires_membership_hook_test_() ->
                         <<"target_user_id">> => 305,
                         <<"invited_by">> => 304
                     },
-                    ?assertEqual(ok, Hook(fake_conn, Row))
+                    ?assertEqual(ok, Hook(fake_conn, Row)),
+                    ?assert(
+                        meck:called(
+                            organization_join_orchestrator, membership_hook, [fake_conn, Row]
+                        )
+                    )
             after 1000 -> erlang:error(no_accept_call)
             end
         end
     ).
 
 %% hook 失败必须把错误透传（app 层据此整体回滚事务）。
-invitation_membership_hook_propagates_repo_error_test_() ->
+invitation_membership_hook_propagates_orchestrator_error_test_() ->
     ?WITH_MECKS(
-        invitation_accept_mocks(#{upsert_result => {error, {unexpected_write_result, x}}}),
+        invitation_accept_mocks(#{hook_result => {error, {unexpected_write_result, x}}}),
         fun() ->
             organization_api_handler:handle_action(
                 invitation_accept, post_req, #{current_uid => 305}
@@ -381,11 +388,11 @@ dept_list_mocks(GetFun) ->
         ]}
     ].
 
-%% invitation_accept POST：hook 注入 + hook→repo 契约锁。
+%% invitation_accept POST：hook 注入 + hook→orchestrator 契约锁（GZAPP-01）。
 invitation_accept_mocks() ->
-    invitation_accept_mocks(#{upsert_result => {ok, changed, #{}}}).
+    invitation_accept_mocks(#{hook_result => ok}).
 
-invitation_accept_mocks(#{upsert_result := UpsertResult}) ->
+invitation_accept_mocks(#{hook_result := HookResult}) ->
     [
         {cowboy_req, [
             {'method', 1, fun(post_req) -> <<"POST">> end},
@@ -413,10 +420,11 @@ invitation_accept_mocks(#{upsert_result := UpsertResult}) ->
                 {ok, #{status => accepted, already_accepted => false}}
             end}
         ]},
-        {organization_member_repo, [
-            {'upsert_active_tx', 5, fun(Conn, OrgId, Uid, Role, InvitedBy) ->
-                self() ! {upsert_active_tx, Conn, OrgId, Uid, Role, InvitedBy},
-                UpsertResult
+        %% GZAPP-01：hook 已编排化——upsert org member 的旧 mock 换成
+        %% orchestrator 挂点 mock（编排行为由 organization_join_orchestrator_tests 冻结）
+        {organization_join_orchestrator, [
+            {'membership_hook', 2, fun(_Conn, _Row) ->
+                HookResult
             end}
         ]}
     ].
