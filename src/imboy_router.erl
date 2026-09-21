@@ -79,6 +79,13 @@ get_routes() ->
                 action => wechat_mini_login
             }},
 
+            % EPGZ-08 W4（INT-HUMAN-SSO-01，plan §7.2）：Human 侧签发一次性
+            % OA SSO code —— 人类 JWT 门（**不进 open()**），60 秒 opaque
+            % code，只存 digest，绑定 org/app/user/redirect_uri/nonce；
+            % 客户 OA backend 再用 Application Credential 调 INT-14 原子消费。
+            % Flutter WebView 只拿 code，不注入 IMBoy JWT / Application secret。
+            {"/api/v1/oa/sso/code", enterprise_oa_sso_handler, #{action => code}},
+
             % 墨芽习字：微信小程序「消息推送」接收端点（免 Bearer，见 open/0）
             % GET  = 保存配置时的验签（原样回 echostr）
             % POST = 客服消息 / 进入会话等事件（兼容/安全模式 + JSON）
@@ -1324,7 +1331,15 @@ get_routes() ->
         enterprise_wire(imboy_feature:compiled_routes(admin, AdmRoutes))
     ),
     CompiledPluginRoutes = imboy_feature:compiled_routes(api, plugin_routes()),
-    CoreRoutes = MainRoutes ++ CompiledApiRoutes ++ CompiledAdmRoutes,
+    %% EPGZ-08 W4：企业 internal 面（/api/internal/v1/*，Application Credential
+    %% 认证）挂进 CoreRoutes。**不经 feature 门**：它是 OA 集成面的冻结白名单
+    %% （A0 control/internal-api-manifest.yaml，14 条），与 enterprise_business
+    %% 的租户/运营面是两套 surface；新增 feature key 会改动
+    %% IMBOY_PRODUCT_FEATURE_MANIFEST_HASH，超出 EPGZ-08「只做集成」范围。
+    %% 匿名可达性由 auth_middleware 的前缀分支 + enterprise_internal_middleware
+    %% 认证链保证（open()/option() 均不含该前缀）。
+    CoreRoutes =
+        MainRoutes ++ CompiledApiRoutes ++ CompiledAdmRoutes ++ enterprise_internal_routes(),
     %% 源路由已统一在 /api 命名空间下（双路过渡已撤，无存量老客户端）。
     %% 网站白名单（/、/help、/brand、/privacy-policy、/account-deletion、/metrics、/static/*）保留根路径。
     [{Host, CoreRoutes ++ CompiledPluginRoutes}].
@@ -2130,3 +2145,66 @@ customer_service_tenant_routes() ->
 customer_service_platform_routes() ->
     [].
 -endif.
+
+%% ===========================================================================
+%% EPGZ-08 W4：企业 internal 面路由（/api/internal/v1/*）
+%%
+%% 冻结真源 = src/api/enterprise_internal_routes.erl（method+path+scope+
+%% rate_bucket+idempotency+sender_mode，逐条对应 A0 control/
+%% internal-api-manifest.yaml 的 INT-01..INT-14）。本函数只把该表映射为
+%% cowboy 三元组：**路径与方法真源仍只有一处**，这里不重抄 scope/rate。
+%%
+%% 三条硬约束（plan §3 硬边界，均由 control/assert_manifest.py 机械断言）：
+%%   1. 前缀恒为 /api/internal/v1/，**零 Open Platform 生产面**（硬边界 1）；
+%%   2. 不进 imboy_router:open()/option()：匿名不可达（认证由
+%%      enterprise_internal_middleware 的 credential 链负责）；
+%%   3. 认证中间件方向：auth_middleware 前缀分支委托，**不落 verify_sign**
+%%      客户端签名门（internal 面无设备/JWT/签名）。
+%%
+%% 路径参数：cowboy 段名 :group_id / :delivery_id 由 cowboy_router 注入
+%% bindings，enterprise_internal_middleware 合并（并把这两个 TSID 段名收敛
+%% 为整数）进 handler_opts。
+%%
+%% 无 feature 门：见 get_routes/0 内注释（新增 feature key 会改动产品 feature
+%% manifest hash，超出 EPGZ-08 集成范围）。
+%% ===========================================================================
+
+-spec enterprise_internal_routes() -> list().
+enterprise_internal_routes() ->
+    [
+        %% INT-01 凭证自检
+        {"/api/internal/v1/application", enterprise_application_handler, #{action => self_info}},
+        %% INT-02 绑定 external_user_id <-> active member
+        {"/api/internal/v1/identity-mappings", enterprise_identity_handler, #{action => bind}},
+        %% INT-03 批量解析（无全量导出形态）
+        {"/api/internal/v1/identity-mappings/resolve", enterprise_identity_handler, #{
+            action => resolve
+        }},
+        %% INT-04 创建 Workspace 企业群
+        {"/api/internal/v1/groups", enterprise_group_handler, #{action => create}},
+        %% INT-05/06 同一 path 幂等加/删成员（方法分派在 handler 内，非表外组合）
+        {"/api/internal/v1/groups/:group_id/members", enterprise_group_handler, #{
+            action => members
+        }},
+        %% INT-07/08 企业附件 presign/confirm
+        {"/api/internal/v1/files/presign", enterprise_asset_handler, #{action => presign}},
+        {"/api/internal/v1/files/confirm", enterprise_asset_handler, #{action => confirm}},
+        %% INT-09/10 OA 代发（application / 指定 sender_user_id），固定非 E2EE
+        {"/api/internal/v1/messages/direct", enterprise_message_handler, #{action => direct}},
+        {"/api/internal/v1/groups/:group_id/messages", enterprise_message_handler, #{
+            action => group
+        }},
+        %% INT-11 代 Human 发起好友申请（只发起，无自动接受/确认）
+        {"/api/internal/v1/friend-requests", enterprise_friend_request_handler, #{
+            action => create
+        }},
+        %% INT-12/13 Webhook 配置与仅本 Application 的 replay
+        {"/api/internal/v1/webhook", enterprise_webhook_handler, #{action => configure}},
+        {"/api/internal/v1/webhook/deliveries/:delivery_id/replay", enterprise_webhook_handler, #{
+            action => replay
+        }},
+        %% INT-14 OA SSO 一次性 code 原子交换
+        {"/api/internal/v1/oa/sso/exchange", enterprise_oa_sso_exchange_handler, #{
+            action => exchange
+        }}
+    ].

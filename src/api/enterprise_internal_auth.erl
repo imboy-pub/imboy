@@ -112,8 +112,12 @@ authenticate(Prefix, Secret) ->
 %% @doc 中间件编排决策（认证链之上的路由/scope/限流/幂等键编排）。
 %% AuthFun/0 返回认证链结果（{ok, Ctx} | {error, StableCode}）——运行时
 %% 由 enterprise_internal_middleware 注入池化认证；测试可注入直连事务闭包。
-%% 返回 {ok, Ctx}（含路由元数据）或 {error, StableCode}。
--spec decide(binary(), binary(), map(), fun()) -> {ok, map()} | {error, binary()}.
+%% 返回 {ok, Ctx}（含路由元数据）或 {error, Code}，Code 为本模块内部
+%% **atom** 约定（与 parse_bearer/1、authenticate_tx/* 一致：invalid_credential /
+%% resource_not_found / insufficient_scope / rate_limited / security_gate_closed /
+%% invalid_request 等）。manifest 的 snake_case **二进制**码由 HTTP 适配器
+%% enterprise_internal_middleware:normalize_code/1 归一（见该函数注释）。
+-spec decide(binary(), binary(), map(), fun()) -> {ok, map()} | {error, atom()}.
 decide(Method, Path, Headers, AuthFun) when is_map(Headers) ->
     case enterprise_internal_routes:match(Method, Path) of
         {error, not_found} ->
@@ -121,7 +125,13 @@ decide(Method, Path, Headers, AuthFun) when is_map(Headers) ->
         {ok, Route} ->
             case parse_bearer(maps:get(<<"authorization">>, Headers, undefined)) of
                 {error, Code} when Code =:= credential_missing; Code =:= invalid_credential ->
-                    %% 缺头/畸形头统一 invalid_credential（401，无 oracle）
+                    %% 缺头/畸形头统一 invalid_credential（401，无 oracle）。
+                    %% 码形态保持本模块内部的 atom 约定（与 parse_bearer/1、
+                    %% authenticate_tx/* 一致；A2 冻结测试按 atom 断言）。
+                    %% HTTP 面需要的 manifest **二进制**码由适配器
+                    %% enterprise_internal_middleware:normalize_code/1 统一归一
+                    %% ——atom 越过该边界会落 error 信封的"未知码 → 500
+                    %% internal_error"兜底，把 401 变 500（W4 真 cowboy 请求实测）。
                     log_reject(credential_header, invalid_credential),
                     {error, invalid_credential};
                 {ok, _Prefix, _Secret} ->
@@ -133,7 +143,7 @@ decide(Method, Path, Headers, AuthFun) when is_map(Headers) ->
 %%% 认证链
 %%%===================================================================
 
--spec chain(map(), map(), fun()) -> {ok, map()} | {error, binary()}.
+-spec chain(map(), map(), fun()) -> {ok, map()} | {error, atom()}.
 chain(Route, Headers, AuthFun) ->
     case AuthFun() of
         {error, Code} ->
@@ -149,7 +159,7 @@ chain(Route, Headers, AuthFun) ->
 
 %% 静态 scope 在中间件判定；动态 scope（INT-09/10）由 handler 裁决
 %% （ctx 标注 dynamic_scope 后原样放行）。
--spec scope_gate(map(), map()) -> {ok, map()} | {error, binary()}.
+-spec scope_gate(map(), map()) -> {ok, map()} | {error, atom()}.
 scope_gate(#{scope := {dynamic, Kind}}, Ctx) ->
     {ok, Ctx#{dynamic_scope => Kind}};
 scope_gate(#{scope := Required}, Ctx) ->
@@ -165,7 +175,7 @@ scope_gate(#{scope := Required}, Ctx) ->
             {error, insufficient_scope}
     end.
 
--spec rate_gate(map(), map(), map()) -> {ok, map()} | {error, binary()}.
+-spec rate_gate(map(), map(), map()) -> {ok, map()} | {error, atom()}.
 rate_gate(#{rate_bucket := Bucket} = Route, Headers, Ctx) ->
     AppId = maps:get(application_id, Ctx, 0),
     case enterprise_internal_rate:check(Bucket, AppId) of
@@ -181,7 +191,7 @@ rate_gate(#{rate_bucket := Bucket} = Route, Headers, Ctx) ->
     end.
 
 %% INV-7：mutation 必带非空 Idempotency-Key（INT-14 single_use_code 豁免）。
--spec idempotency_gate(map(), map(), map()) -> {ok, map()} | {error, binary()}.
+-spec idempotency_gate(map(), map(), map()) -> {ok, map()} | {error, atom()}.
 idempotency_gate(#{idempotency := required} = Route, Headers, Ctx) ->
     case maps:get(<<"idempotency-key">>, Headers, undefined) of
         Key when is_binary(Key), Key =/= <<>> ->

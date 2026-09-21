@@ -1738,6 +1738,86 @@
         "static": true
       }
     ],
+    "api_internal": [
+      {
+        "action": "self_info",
+        "handler": "enterprise_application_handler",
+        "path": "/api/internal/v1/application",
+        "static": false
+      },
+      {
+        "action": "confirm",
+        "handler": "enterprise_asset_handler",
+        "path": "/api/internal/v1/files/confirm",
+        "static": false
+      },
+      {
+        "action": "presign",
+        "handler": "enterprise_asset_handler",
+        "path": "/api/internal/v1/files/presign",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "enterprise_friend_request_handler",
+        "path": "/api/internal/v1/friend-requests",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "enterprise_group_handler",
+        "path": "/api/internal/v1/groups",
+        "static": false
+      },
+      {
+        "action": "members",
+        "handler": "enterprise_group_handler",
+        "path": "/api/internal/v1/groups/:group_id/members",
+        "static": false
+      },
+      {
+        "action": "group",
+        "handler": "enterprise_message_handler",
+        "path": "/api/internal/v1/groups/:group_id/messages",
+        "static": false
+      },
+      {
+        "action": "bind",
+        "handler": "enterprise_identity_handler",
+        "path": "/api/internal/v1/identity-mappings",
+        "static": false
+      },
+      {
+        "action": "resolve",
+        "handler": "enterprise_identity_handler",
+        "path": "/api/internal/v1/identity-mappings/resolve",
+        "static": false
+      },
+      {
+        "action": "direct",
+        "handler": "enterprise_message_handler",
+        "path": "/api/internal/v1/messages/direct",
+        "static": false
+      },
+      {
+        "action": "exchange",
+        "handler": "enterprise_oa_sso_exchange_handler",
+        "path": "/api/internal/v1/oa/sso/exchange",
+        "static": false
+      },
+      {
+        "action": "configure",
+        "handler": "enterprise_webhook_handler",
+        "path": "/api/internal/v1/webhook",
+        "static": false
+      },
+      {
+        "action": "replay",
+        "handler": "enterprise_webhook_handler",
+        "path": "/api/internal/v1/webhook/deliveries/:delivery_id/replay",
+        "static": false
+      }
+    ],
     "api_v1": [
       {
         "action": "well_known",
@@ -3765,6 +3845,12 @@
         "action": "read_stats",
         "handler": "msg_handler",
         "path": "/api/v1/msg/read_stats",
+        "static": false
+      },
+      {
+        "action": "code",
+        "handler": "enterprise_oa_sso_handler",
+        "path": "/api/v1/oa/sso/code",
         "static": false
       },
       {
