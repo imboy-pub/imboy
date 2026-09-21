@@ -304,8 +304,11 @@ table(tenant) ->
         {session_rating,
             entry(
                 [
+                    %% clock_unit => second（DF-6）：评分写路径的 `at` 进 store 的
+                    %% `to_timestamp`（epoch 秒）；毫秒量纲会把 rating_at 污染成
+                    %% 约 5.8 万年后（与 claim/close 同族，DF-4 同款机制）。
                     {<<"POST">>, rate, [{rating, int, required}, {expected_version, int, required}],
-                        [{id, session_id}]}
+                        [{id, session_id}], #{clock_unit => second}}
                 ],
                 visit_auth(),
                 server_common() ++ [contact_id, business_identity_id],
@@ -316,7 +319,13 @@ table(tenant) ->
         %% member org；session.org_id 由 store 同语句裁决（跨 Org not_found）。
         {session_claim,
             entry(
-                [{<<"POST">>, claim, [{expected_version, int, required}], [{id, session_id}]}],
+                [
+                    %% clock_unit => second（DF-6）：claimed_at/updated_at 的
+                    %% `to_timestamp` 以秒为量纲，毫秒输入即时间戳写污染。
+                    {<<"POST">>, claim, [{expected_version, int, required}], [{id, session_id}], #{
+                        clock_unit => second
+                    }}
+                ],
                 seat_auth(<<"conversation.write">>),
                 server_common() ++ [business_identity_id],
                 path
@@ -336,10 +345,15 @@ table(tenant) ->
         {session_close,
             entry(
                 [
+                    %% clock_unit => second（DF-6）：同 session_claim——closed_at/
+                    %% updated_at 的 `to_timestamp` 以秒为量纲（实证残留行
+                    %% closed_at=58691-02-01）。
                     {<<"POST">>, close,
-                        [{expected_version, int, required}, {reason, binary, optional}], [
+                        [{expected_version, int, required}, {reason, binary, optional}],
+                        [
                             {id, session_id}
-                        ]}
+                        ],
+                        #{clock_unit => second}}
                 ],
                 seat_auth(<<"conversation.write">>),
                 server_common(),
