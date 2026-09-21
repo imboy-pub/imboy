@@ -26,7 +26,9 @@
     update_status_tx/4,
     update_name_tx/4,
     update_scopes_tx/4,
-    update_redirect_uris_tx/4
+    update_redirect_uris_tx/4,
+    policy_tx/3,
+    update_content_policy_tx/5
 ]).
 
 -include_lib("epgsql/include/epgsql.hrl").
@@ -192,6 +194,53 @@ update_redirect_uris_tx(Conn, OrgId, Id, RedirectUris) when is_list(RedirectUris
     case elib_pg:execute(Conn, Sql, [RedirectUris, Now, OrgId, Id]) of
         {ok, 1} -> ok;
         {ok, 0} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 事务内读**内容策略**（FULL-02 / plan-full §3.1「企业附件 … 内容策略」）：
+%% allowed_mime_types（空数组 = 沿用全局白名单）+ max_file_size_bytes
+%% （NULL = 沿用全局上限）。只读两列，不影响本模块其余读面的列集。
+-spec policy_tx(any(), integer(), integer()) ->
+    {ok, #{allowed_mime_types := [binary()], max_file_size_bytes := undefined | integer()}}
+    | {error, not_found | term()}.
+policy_tx(Conn, OrgId, Id) when is_integer(OrgId), is_integer(Id) ->
+    Sql =
+        <<"SELECT allowed_mime_types, max_file_size_bytes FROM ", (tablename())/binary,
+            " WHERE organization_id = $1 AND id = $2 LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, [OrgId, Id]) of
+        {ok, [Row | _]} ->
+            Mimes =
+                case maps:get(<<"allowed_mime_types">>, Row, []) of
+                    L when is_list(L) -> [M || M <- L, is_binary(M)];
+                    _ -> []
+                end,
+            Max =
+                case maps:get(<<"max_file_size_bytes">>, Row, null) of
+                    N when is_integer(N), N > 0 -> N;
+                    _ -> undefined
+                end,
+            {ok, #{allowed_mime_types => Mimes, max_file_size_bytes => Max}};
+        {ok, []} ->
+            {error, not_found};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 事务内替换内容策略（元素级校验由 migration 00000140 的触发器 23514
+%% 承担；非法元素归一 {error, invalid_policy}）。Mimes 为空表 = 清空 allowlist
+%% （回到全局白名单）；MaxBytes 为 undefined/null 表示不限（沿用全局上限）。
+-spec update_content_policy_tx(any(), integer(), integer(), [binary()], undefined | integer()) ->
+    ok | {error, invalid_policy | not_found | term()}.
+update_content_policy_tx(Conn, OrgId, Id, Mimes, MaxBytes) when is_list(Mimes) ->
+    Now = elib_dt:now(),
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET allowed_mime_types = $1::text[], max_file_size_bytes = $2, updated_at = $3",
+            " WHERE organization_id = $4 AND id = $5">>,
+    case elib_pg:execute(Conn, Sql, [Mimes, MaxBytes, Now, OrgId, Id]) of
+        {ok, 1} -> ok;
+        {ok, 0} -> {error, not_found};
+        {error, #error{code = <<"23514">>}} -> {error, invalid_policy};
         {error, Reason} -> {error, Reason}
     end.
 

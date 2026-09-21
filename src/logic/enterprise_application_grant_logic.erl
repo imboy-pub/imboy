@@ -15,7 +15,10 @@
 %     scope 治理（与 EPGZ-02 行为逐字一致，避免既有企业域用例的语义漂移）。
 %   * **资源边界**：workspace 级资源必须由**同一个**生效 Grant 同时覆盖 scope 与
 %     workspace（kind=none 覆盖 org 全域；kind=explicit 需显式命中）——不允许
-%     「scope 来自 A、workspace 来自 B」的拼接。
+%     「scope 来自 A、workspace 来自 B」的拼接。org 级资源（manifest
+%     grant=org scoped 的路径）要求**同一**生效 Grant 覆盖 scope 与 Org 全域
+%     （kind='none'）：显式 Workspace Grant 不授权 org 级操作。
+%     workspace 级入口 = require_workspace_tx/4；org 级入口 = require_org_tx/3。
 %   * 每次求值都是一次真库读（经 00000139 的 effective 视图，读时求值）；撤销/
 %     到期/降级在**下一次请求**即生效。本模块不持有任何进程字典/ETS/缓存。
 %
@@ -28,7 +31,8 @@
 
 -export([
     context_tx/4,
-    require_workspace_tx/4
+    require_workspace_tx/4,
+    require_org_tx/3
 ]).
 
 %% ===================================================================
@@ -110,6 +114,51 @@ require_workspace_tx(Conn, Ctx, WorkspaceId, RequiredScope) when
             {error, security_gate_closed}
     end;
 require_workspace_tx(_Conn, _Ctx, _WorkspaceId, _RequiredScope) ->
+    {error, security_gate_closed}.
+
+%% @doc 资源边界求值（**org 级**资源，FULL-02；INT-02/03/07/08/09 等 manifest
+%% grant=org scoped 的路径）：Ctx 是认证链产物，RequiredScope 是该操作要求的
+%% 固定 scope。
+%%   * 未受管（grant_governed=false）⇒ ok（org 边界仍由既有 handler 逻辑判定，
+%%     本层不加限制——与广州期语义逐字一致）；
+%%   * 受管 ⇒ 要求 RequiredScope 在**生效** scope 内，且存在**覆盖 Org 全域**的
+%%     同一生效 Grant（workspace_scope_kind='none'）同时覆盖该 scope。显式
+%%     Workspace Grant 只覆盖列出的 workspace，不授权 org 级操作（否则窄授权
+%%     会被隐式放大，fail-open）。
+%% 拒绝码同 require_workspace_tx/4：insufficient_scope（scope 不在生效集）/
+%% organization_boundary_violation（scope 有但无 Org 全域 Grant 覆盖）/
+%% security_gate_closed（读取失败或上下文形态非法，fail-closed）。
+-spec require_org_tx(any(), map(), binary()) ->
+    ok
+    | {error,
+        insufficient_scope
+        | organization_boundary_violation
+        | security_gate_closed}.
+require_org_tx(Conn, Ctx, RequiredScope) when is_map(Ctx), is_binary(RequiredScope) ->
+    case ctx_grants(Ctx) of
+        {ok, false, _Effective} ->
+            ok;
+        {ok, true, Effective} ->
+            case lists:member(RequiredScope, Effective) of
+                false ->
+                    {error, insufficient_scope};
+                true ->
+                    OrgId = maps:get(organization_id, Ctx),
+                    AppId = maps:get(application_id, Ctx),
+                    case
+                        enterprise_application_grant_repo:org_covered_tx(
+                            Conn, OrgId, AppId, RequiredScope
+                        )
+                    of
+                        {ok, true} -> ok;
+                        {ok, false} -> {error, organization_boundary_violation};
+                        {error, _Reason} -> {error, security_gate_closed}
+                    end
+            end;
+        {error, _Reason} ->
+            {error, security_gate_closed}
+    end;
+require_org_tx(_Conn, _Ctx, _RequiredScope) ->
     {error, security_gate_closed}.
 
 %% ===================================================================

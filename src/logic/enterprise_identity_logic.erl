@@ -15,11 +15,17 @@
 %                                           （非 active / 非 Human / 账号停用）
 %   * INT-03 只按入参 external_user_id 集合返回命中项（active 行），
 %     本模块不提供任何 list/全量导出形态函数（无全量导出能力）。
+%   * FULL-02 扩展：revoke_mapping_tx/3（INT-02 撤销面，软删 + 聚合计量）；
+%     **cursor directory 不在本模块**——受限分页目录独占
+%     enterprise_directory_logic（page_mappings_tx/3 / page_users_tx/3，每页
+%     有硬上限、无 OFFSET、无无 LIMIT 读）；本模块导出面因此仍无任何
+%     list/all/export 形态（真库套件钉死）。
 %%%
 
 -export([
     bind_mapping_tx/4,
-    resolve_mappings_tx/3
+    resolve_mappings_tx/3,
+    revoke_mapping_tx/3
 ]).
 
 -define(MAX_EXTERNAL_ID_LEN, 256).
@@ -79,6 +85,56 @@ resolve_mappings_tx(Conn, Ctx, ExternalUserIds) when is_list(ExternalUserIds) ->
     end;
 resolve_mappings_tx(_Conn, _Ctx, _Other) ->
     {error, {<<"invalid_request">>, external_ids_not_list}}.
+
+%% @doc FULL-02 INT-02 撤销面：撤销（软删）本 (org, app) 下某 external_user_id 的
+%% 映射（repo unbind_tx：status -> 'removed'，行保留供审计/重绑）。撤销后该
+%% external_user_id 立即不再是 sender/成员解析来源（resolve 只认 active 行），
+%% 重绑走 bind_mapping_tx/4 的 upsert。
+%% 语义与拒绝码：
+%%   * 撤销成功 → {ok, #{external_user_id, status => <<"removed">>, revoked => true}}，
+%%     记 identity.revoked 聚合计量（同事务）；
+%%   * 目标无 active 映射（不存在 / 已被撤销）→ resource_not_found
+%%     （不区分「不存在」与「已撤销」，不给存在性 oracle）；
+%%   * external_user_id 形态非法 → invalid_request。
+%% 幂等：INV-7 由调用方（handler）的 Idempotency-Key 保证——同 key 同 body 重放
+%% 返回首次结果；换 key 重复撤销才会落 resource_not_found（事实口径）。
+-spec revoke_mapping_tx(any(), map(), binary()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+revoke_mapping_tx(Conn, Ctx, ExternalUserId) ->
+    case validate_external_id(ExternalUserId) of
+        ok ->
+            OrgId = org_id(Ctx),
+            AppId = app_id(Ctx),
+            case
+                enterprise_external_identity_repo:unbind_tx(
+                    Conn, OrgId, AppId, ExternalUserId
+                )
+            of
+                ok ->
+                    case
+                        enterprise_application_usage_repo:bump_tx(
+                            Conn, OrgId, AppId, <<"identity.revoked">>
+                        )
+                    of
+                        ok ->
+                            {ok, #{
+                                <<"external_user_id">> => ExternalUserId,
+                                <<"status">> => <<"removed">>,
+                                <<"revoked">> => true
+                            }};
+                        {error, Reason} ->
+                            {error, {<<"internal_error">>, Reason}}
+                    end;
+                {error, not_found} ->
+                    {error, {<<"resource_not_found">>, mapping_not_found}};
+                {error, not_active} ->
+                    {error, {<<"resource_not_found">>, mapping_not_active}};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end;
+        {error, Detail} ->
+            {error, {<<"invalid_request">>, Detail}}
+    end.
 
 %% ===================================================================
 %% Internal Functions
@@ -151,7 +207,15 @@ classify_target(Conn, OrgId, UserId) ->
 do_bind(Conn, OrgId, AppId, ExternalUserId, UserId) ->
     case enterprise_external_identity_repo:bind_tx(Conn, OrgId, AppId, ExternalUserId, UserId) of
         {ok, Row} ->
-            {ok, mapping_view(Row)};
+            %% 聚合计量（只计数，不含 external_user_id/正文/PII，plan-full §5）。
+            case
+                enterprise_application_usage_repo:bump_tx(Conn, OrgId, AppId, <<"identity.bound">>)
+            of
+                ok ->
+                    {ok, mapping_view(Row)};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end;
         {error, invalid_member} ->
             %% 前置甄别与触发器判定间的竞态（成员状态并发变化）：终局守卫口径
             {error, {<<"identity_not_mapped">>, member_guard_rejected}};

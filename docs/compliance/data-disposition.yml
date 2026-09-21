@@ -1351,3 +1351,11 @@ exclusions:
     reason: Grant 的固定 scope 集合（Grant 子行，随 Grant 生命周期处置，无用户 PII）
   enterprise_application_grant_workspace:
     reason: Grant 的显式 workspace 授权行（Grant 子行，随 Grant 生命周期处置，无用户 PII）
+  enterprise_attachment_retention:
+    reason: 企业附件（attachment scope=enterprise）的留存/法务 hold/purge 治理行（组织治理资产）；行禁止物理删除，purge 走 purge_state=purged 保留证据；不含任何正文/PII
+  enterprise_application_usage:
+    reason: 企业 Application 用量**聚合计量**（org/app/固定 metric 名/周期/计数）；列集封闭，刻意不含消息正文、external_user_id 等任何 PII（plan-full §5）
+  enterprise_group_origin:
+    reason: 企业群的 Application 归属（Application membership）：记录哪份 Application 在哪个 Org/Workspace 建立该企业群；组织治理资产，行禁止物理删除，归档走 status=archived
+  enterprise_message_origin:
+    reason: 企业托管消息的真实 Application origin 证据（append-only，application_id 非空 + human sender_user_id + non_e2ee 恒真）；只存 id/枚举/时间戳，不含消息正文或 external 标识

@@ -40,7 +40,8 @@
     grant_governed_tx/3,
     effective_scopes_tx/3,
     effective_grants_tx/3,
-    workspace_covered_tx/5
+    workspace_covered_tx/5,
+    org_covered_tx/4
 ]).
 
 -include_lib("epgsql/include/epgsql.hrl").
@@ -318,6 +319,34 @@ workspace_covered_tx(Conn, OrgId, AppId, WorkspaceId, Scope) when
             ") AS covered"
         >>,
     case elib_pg:query(Conn, Sql, [OrgId, AppId, Scope, WorkspaceId]) of
+        {ok, [Row | _]} -> {ok, maps:get(<<"covered">>, Row)};
+        {ok, []} -> {ok, false};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 资源边界读取面（**org 级**资源，FULL-02）：是否存在同一生效 Grant 同时
+%% 覆盖 scope 与 Org 全域。org 级资源的边界是「Org 全域 Grant」（kind='none'）
+%% ——显式 Workspace Grant（kind='explicit'）只覆盖列出的 workspace，**不**授权
+%% org 级操作（否则一份窄 Workspace Grant 会隐式放大成全域权限，fail-open）。
+%% 判定在 SQL 内以 (organization_id, application_id, scope) 复合条件完成：
+%% 跨 Org / 未授予 scope 一律 false。读取失败由调用方 fail-closed。
+-spec org_covered_tx(any(), integer(), integer(), binary()) ->
+    {ok, boolean()} | {error, term()}.
+org_covered_tx(Conn, OrgId, AppId, Scope) when is_binary(Scope) ->
+    Sql =
+        <<
+            "SELECT EXISTS ("
+            " SELECT 1 FROM ",
+            (effective_view())/binary,
+            " g"
+            " JOIN ",
+            (scope_tablename())/binary,
+            " s ON s.grant_id = g.grant_id"
+            " WHERE g.organization_id = $1 AND g.application_id = $2 AND s.scope = $3"
+            " AND g.workspace_scope_kind = 'none'"
+            ") AS covered"
+        >>,
+    case elib_pg:query(Conn, Sql, [OrgId, AppId, Scope]) of
         {ok, [Row | _]} -> {ok, maps:get(<<"covered">>, Row)};
         {ok, []} -> {ok, false};
         {error, Reason} -> {error, Reason}

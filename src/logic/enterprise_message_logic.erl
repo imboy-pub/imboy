@@ -176,24 +176,33 @@ resolve_sender(Conn, Ctx, Input) ->
 forbidden_alias(Input) ->
     maps:is_key(as_user_id, Input) orelse maps:is_key(actor_user_id, Input).
 
+%% @doc sender_mode 分派：scope 由
+%% enterprise_internal_boundary:required_scope_for_sender_mode/1 单点给出
+%% （handler 的 Grant 资源边界判定读同一处，避免两份映射漂移）。
 resolve_sender_mode(Conn, Ctx, Input) ->
-    case maps:get(sender_mode, Input, undefined) of
-        <<"application">> ->
-            scope_gate(Ctx, <<"messages:send">>, fun() -> application_sender(Ctx) end);
-        <<"human">> ->
-            case maps:get(sender_user_id, Input, undefined) of
-                SenderExt when is_binary(SenderExt), SenderExt =/= <<>> ->
-                    scope_gate(Ctx, <<"messages:send_as_human">>, fun() ->
-                        case resolve_active_human(Conn, Ctx, SenderExt) of
-                            {ok, Uid} -> {ok, <<"human">>, Uid};
-                            {error, _} = E -> E
-                        end
-                    end);
-                _ ->
-                    {error, {<<"invalid_request">>, sender_user_id_required}}
-            end;
-        _ ->
+    Mode = maps:get(sender_mode, Input, undefined),
+    case enterprise_internal_boundary:required_scope_for_sender_mode(Mode) of
+        {ok, Scope} ->
+            resolve_sender_scoped(Conn, Ctx, Input, Mode, Scope);
+        error ->
             {error, {<<"invalid_request">>, invalid_sender_mode}}
+    end.
+
+-spec resolve_sender_scoped(any(), map(), map(), binary(), binary()) ->
+    {ok, binary(), integer()} | {error, {binary(), term()}}.
+resolve_sender_scoped(_Conn, Ctx, _Input, <<"application">>, Scope) ->
+    scope_gate(Ctx, Scope, fun() -> application_sender(Ctx) end);
+resolve_sender_scoped(Conn, Ctx, Input, <<"human">>, Scope) ->
+    case maps:get(sender_user_id, Input, undefined) of
+        SenderExt when is_binary(SenderExt), SenderExt =/= <<>> ->
+            scope_gate(Ctx, Scope, fun() ->
+                case resolve_active_human(Conn, Ctx, SenderExt) of
+                    {ok, Uid} -> {ok, <<"human">>, Uid};
+                    {error, _} = E -> E
+                end
+            end);
+        _ ->
+            {error, {<<"invalid_request">>, sender_user_id_required}}
     end.
 
 scope_gate(Ctx, RequiredScope, Next) ->
@@ -356,6 +365,71 @@ finish_accept(Conn, Ctx, SenderKind, SenderUid, ResourceType, RowId, MsgId) ->
     OrgId = maps:get(organization_id, Ctx),
     AppId = maps:get(application_id, Ctx),
     Principal = maps:get(principal_user_id, Ctx, null),
+    %% FULL-02：origin 一等账本与消息行**同事务**写入（消息主体与 origin 原子；
+    %% application_id 恒非空、human sender 必带 sender_user_id、non_e2ee 恒真——
+    %% 三者由 migration 00000140 的 CHECK 声明式强制）。
+    Kind = conversation_kind(ResourceType),
+    case
+        enterprise_message_origin_repo:insert_tx(
+            Conn,
+            Kind,
+            OrgId,
+            AppId,
+            sender_kind_atom(SenderKind),
+            origin_sender_uid(SenderKind, SenderUid),
+            RowId,
+            MsgId
+        )
+    of
+        {ok, _OriginRow} ->
+            finish_audit(
+                Conn,
+                Ctx,
+                SenderKind,
+                SenderUid,
+                ResourceType,
+                RowId,
+                MsgId,
+                OrgId,
+                AppId,
+                Principal
+            );
+        {error, Reason} ->
+            {error, {<<"internal_error">>, {message_origin, Reason}}}
+    end.
+
+-spec conversation_kind(binary()) -> direct | group.
+conversation_kind(<<"msg_c2c">>) -> direct;
+conversation_kind(<<"msg_c2g">>) -> group;
+conversation_kind(_Other) -> direct.
+
+-spec sender_kind_atom(binary()) -> application | human.
+sender_kind_atom(<<"human">>) -> human;
+sender_kind_atom(_Other) -> application.
+
+%% origin 账本的 sender_user_id 只在 human 模式写入（application 模式的
+%% from_id 是 principal，但那是消息主体字段，不是 Human sender 痕迹；
+%% DB CHECK `(sender_kind='human') = (sender_user_id IS NOT NULL)` 强制二者一致）。
+-spec origin_sender_uid(binary(), term()) -> undefined | integer().
+origin_sender_uid(<<"human">>, Uid) when is_integer(Uid) -> Uid;
+origin_sender_uid(_Kind, _Uid) -> undefined.
+
+-spec finish_audit(
+    any(),
+    map(),
+    binary(),
+    integer(),
+    binary(),
+    integer(),
+    binary(),
+    integer(),
+    integer(),
+    term()
+) ->
+    {ok, map()} | {error, {binary(), term()}}.
+finish_audit(
+    Conn, Ctx, SenderKind, SenderUid, ResourceType, RowId, MsgId, OrgId, AppId, Principal
+) ->
     Detail = #{
         <<"msg_id">> => MsgId,
         <<"origin_kind">> => ?ORIGIN_KIND,
@@ -384,6 +458,9 @@ finish_accept(Conn, Ctx, SenderKind, SenderUid, ResourceType, RowId, MsgId) ->
                 Ctx,
                 <<"message.enterprise.accepted">>,
                 #{resource_type => ResourceType, resource_id => RowId}
+            ),
+            _ = enterprise_application_usage_repo:bump_tx(
+                Conn, OrgId, AppId, <<"message.accepted">>
             ),
             {ok, #{
                 <<"msg_id">> => MsgId,

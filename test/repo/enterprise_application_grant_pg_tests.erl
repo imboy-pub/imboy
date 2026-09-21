@@ -143,6 +143,19 @@ foundation_pg_test_() ->
             ]
         end}}.
 
+%% 当前迁移 head = priv/migrations 下 *.up.sql 的最大 8 位版本号
+%% （与 test/repo/enterprise_internal_foundation_pg_tests 同款口径：只读文件
+%% 系统、不查库，避免与断言目标同源）。
+migration_head() ->
+    {ok, Files} = file:list_dir("priv/migrations"),
+    Versions = [
+        list_to_integer(Ver)
+     || F <- Files,
+        {match, [Ver]} <- [re:run(F, "^(\\d{8})_.*\\.up\\.sql$", [{capture, all_but_first, list}])]
+    ],
+    ?assertNotEqual([], Versions),
+    lists:max(Versions).
+
 %%%===================================================================
 %%% ⓪ 空库全量迁移 up
 %%%===================================================================
@@ -151,7 +164,10 @@ empty_db_full_up_test(C) ->
     ?_test(begin
         {ok, Version, Dirty} = erlang_migrate:version(#{conn => C, dir => "priv/migrations"}),
         ?assertEqual(false, Dirty),
-        ?assertEqual(139, Version),
+        %% FULL-02：断言目标从写死 139 改为「priv/migrations 在册最大版本」
+        %% （head 前移的必然结果；与 foundation 套件 migration_head/0 同款口径，
+        %% 全仓已因同类写死被打红过三次：EPGZ-08 cs_pg_widget / FULL-01 foundation）
+        ?assertEqual(migration_head(), Version),
         lists:foreach(fun(T) -> ?assertNot(table_missing(C, T)) end, ?TABLES),
         lists:foreach(fun(V) -> ?assertNot(view_missing(C, V)) end, ?VIEWS),
         ?assertNot(function_missing(C, <<"fn_enterprise_application_grant_no_delete">>))
@@ -459,9 +475,10 @@ gz_upgrade_compat(State) ->
         ]),
         ok = exec(Conn, <<"COMMIT">>),
 
-        %% 3) 升级到 139：只应用 00000139（137/138 不在本仓）
+        %% 3) 升级到当前 head（139 起；FULL-02 追加 140，故断言改为 head 推导）
         ok = erlang_migrate:up(MigConfig),
-        ?assertMatch({ok, 139, false}, erlang_migrate:version(MigConfig)),
+        Head = migration_head(),
+        ?assertMatch({ok, Head, false}, erlang_migrate:version(MigConfig)),
         lists:foreach(fun(T) -> ?assertNot(table_missing(Conn, T)) end, ?TABLES),
         lists:foreach(fun(V) -> ?assertNot(view_missing(Conn, V)) end, ?VIEWS),
 
@@ -519,9 +536,12 @@ migration_cycle(State) ->
         {ok, AppA} = enterprise_application_repo:find_by_key_tx(Conn, ?ORG_A, <<"t996-app-a">>),
         AppAId = maps:get(<<"id">>, AppA),
 
-        %% down 139：三表 + 两视图 + 守卫函数全部消失，版本回到 136，
-        %% 广州期数据（五表 + organization + workspace）不受影响
-        ok = erlang_migrate:down(MigConfig, 1),
+        %% 回滚 139：三表 + 两视图 + 守卫函数全部消失，版本回到 136，
+        %% 广州期数据（五表 + organization + workspace）不受影响。
+        %% FULL-02：从 `down 1` 改为 `goto 136`（意图是「退到 139 之前」；
+        %% 140 入库后 `down 1` 只回滚 140，断言会错位——与 FULL-01 对
+        %% foundation 套件 migration_cycle 的同款修法一致）
+        ok = erlang_migrate:goto(MigConfig, 136),
         ?assertMatch({ok, 136, false}, erlang_migrate:version(MigConfig)),
         lists:foreach(fun(T) -> ?assert(table_missing(Conn, T)) end, ?TABLES),
         lists:foreach(fun(V) -> ?assert(view_missing(Conn, V)) end, ?VIEWS),
@@ -531,9 +551,10 @@ migration_cycle(State) ->
             Conn, <<"SELECT id FROM organization WHERE id = $1">>, [?ORG_A]
         ),
 
-        %% 再次 up 139：三表与视图重建，版本回到 139
-        ok = erlang_migrate:up(MigConfig, 1),
-        ?assertMatch({ok, 139, false}, erlang_migrate:version(MigConfig)),
+        %% 再次全量 up：三表与视图重建，版本回到当前 head
+        ok = erlang_migrate:up(MigConfig),
+        Head2 = migration_head(),
+        ?assertMatch({ok, Head2, false}, erlang_migrate:version(MigConfig)),
         lists:foreach(fun(T) -> ?assertNot(table_missing(Conn, T)) end, ?TABLES),
         lists:foreach(fun(V) -> ?assertNot(view_missing(Conn, V)) end, ?VIEWS),
         ?assertNot(function_missing(Conn, <<"fn_enterprise_application_grant_no_delete">>)),

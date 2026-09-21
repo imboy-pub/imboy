@@ -39,6 +39,7 @@ init(Req0, State0) ->
         case Action of
             presign -> presign(Method, Req0, State);
             confirm -> confirm(Method, Req0, State);
+            governance -> governance(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -56,7 +57,9 @@ presign(<<"POST">>, Req0, State) ->
         <<"POST">>, <<"/api/internal/v1/files/presign">>, Params
     ),
     with_idempotency(Req0, Ctx, <<"enterprise_asset_presign">>, IdemKey, Digest, fun(Conn) ->
-        enterprise_asset_logic:presign_tx(Conn, Ctx, params_to_input(Params))
+        with_boundary(Conn, Ctx, <<"INT-07">>, undefined, fun() ->
+            enterprise_asset_logic:presign_tx(Conn, Ctx, params_to_input(Params))
+        end)
     end);
 presign(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
@@ -70,10 +73,45 @@ confirm(<<"POST">>, Req0, State) ->
         <<"POST">>, <<"/api/internal/v1/files/confirm">>, Params
     ),
     with_idempotency(Req0, Ctx, <<"attachment">>, IdemKey, Digest, fun(Conn) ->
-        enterprise_asset_logic:confirm_tx(Conn, Ctx, params_to_input(Params))
+        with_boundary(Conn, Ctx, <<"INT-08">>, undefined, fun() ->
+            enterprise_asset_logic:confirm_tx(Conn, Ctx, params_to_input(Params))
+        end)
     end);
 confirm(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc INT-22（FULL-02 新增，待 A0 接线）：附件留存/法务 hold/purge 治理。
+%% scope files:write（rate internal_write，幂等 required）。
+%% 路由：POST /api/internal/v1/files/governance -> #{action => governance}
+-spec governance(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+governance(<<"POST">>, Req0, State) ->
+    Ctx = maps:get(enterprise_internal, State, #{}),
+    Params = elib_param:post(Req0),
+    IdemKey = idempotency_key(Req0),
+    Digest = enterprise_internal_idempotency:request_digest(
+        <<"POST">>, <<"/api/internal/v1/files/governance">>, Params
+    ),
+    with_idempotency(Req0, Ctx, <<"enterprise_asset_governance">>, IdemKey, Digest, fun(Conn) ->
+        with_boundary(Conn, Ctx, <<"INT-22">>, undefined, fun() ->
+            enterprise_asset_retention_logic:governance_tx(Conn, Ctx, params_to_input(Params))
+        end)
+    end);
+governance(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc FULL-01/FULL-02 授权边界接线（唯一接线点
+%% enterprise_internal_boundary:enforce/4）：在**同一事务内**、业务执行前判定
+%% Grant 的 org/workspace 资源边界。未受管应用是 no-op（广州期语义不变）；
+%% 受管应用撤权/降权在下一请求即失败（fail-closed）。
+-spec with_boundary(any(), map(), binary(), undefined | integer(), fun()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
+    case enterprise_internal_boundary:enforce(Conn, Ctx, RouteId, WorkspaceId) of
+        ok ->
+            Fun();
+        {error, Code} ->
+            {error, {enterprise_internal_boundary:error_code(Code), grant_boundary}}
+    end.
 
 %% @doc A2 幂等模式（单事务）。返回值契约见 enterprise_internal_idempotency。
 -spec with_idempotency(

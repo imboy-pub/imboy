@@ -26,12 +26,26 @@
 -export([
     create_group_tx/3,
     add_members_tx/4,
-    remove_members_tx/4
+    remove_members_tx/4,
+    group_detail_tx/3,
+    update_group_tx/4,
+    archive_group_tx/3,
+    set_member_roles_tx/4,
+    boundary_workspace_tx/3
 ]).
 
 -define(MAX_TITLE_LEN, 200).
 -define(MAX_INTRODUCTION_LEN, 2000).
 -define(MAX_MEMBERS, 200).
+
+%% OA 可分配的角色集合（migration 00000001 group_member.role 注释：
+%%   0 未定义 1 普通成员 2 嘉宾 3 管理员 4 群主 5 副群主）。
+%% 4（群主）**不开放给 OA**——群主转让走人类/管理端流程；
+%% 0（未定义）不是有效角色。显式枚举即白名单（表外值一律 invalid_request）。
+-define(ASSIGNABLE_ROLES, [1, 2, 3, 5]).
+
+%% 群详情面成员列表硬上限（与 repo ?DETAIL_MEMBER_LIMIT 同源；超过即拒）。
+-define(MAX_DETAIL_MEMBERS, 200).
 
 %% ===================================================================
 %% API functions
@@ -74,6 +88,378 @@ add_members_tx(Conn, Ctx, GroupId, ExternalIds) ->
 remove_members_tx(Conn, Ctx, GroupId, ExternalIds) ->
     mutate_members(Conn, Ctx, GroupId, ExternalIds, remove).
 
+%%%===================================================================
+%%% FULL-02 生命周期（详情 / 更新 / 归档 / 成员角色）
+%%%===================================================================
+
+%% @doc 群详情：Workspace 边界定位（resource_not_found 语义同 INT-05/06）+
+%% Application 归属 + 成员列表（最小字段 + 硬上限）。
+%% 返回 {ok, #{group_id, workspace_id, title, introduction, owner_user_id,
+%% member_count, members := [#{user_id, role}], origin := #{owner_app, mine}
+%% | null}}；成员行超过上限 → {error, {invalid_request, members_over_limit}}
+%% （绝不静默截断）。
+-spec group_detail_tx(any(), map(), integer()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+group_detail_tx(Conn, Ctx, GroupId) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    case locate_group(Conn, OrgId, GroupId) of
+        {ok, Group} ->
+            Gid = maps:get(<<"id">>, Group),
+            case enterprise_group_repo:active_member_rows_tx(Conn, Gid) of
+                {ok, Rows} when length(Rows) =< ?MAX_DETAIL_MEMBERS ->
+                    case origin_view(Conn, Gid, OrgId, AppId) of
+                        {ok, Origin} ->
+                            {ok, #{
+                                <<"group_id">> => Gid,
+                                <<"workspace_id">> => maps:get(<<"workspace_id">>, Group),
+                                <<"title">> => maps:get(<<"title">>, Group, <<>>),
+                                <<"owner_user_id">> => maps:get(<<"owner_uid">>, Group),
+                                <<"member_count">> => maps:get(<<"member_count">>, Group, 0),
+                                <<"members">> => [member_view(R) || R <- Rows],
+                                <<"origin">> => Origin
+                            }};
+                        {error, _} = Err ->
+                            Err
+                    end;
+                {ok, _TooMany} ->
+                    {error, {<<"invalid_request">>, members_over_limit}};
+                {error, too_many_members} ->
+                    {error, {<<"invalid_request">>, members_over_limit}};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc 群更新（标题/简介；成员输入用 external_user_id，与 INT-05/06 一致）。
+%% Input（atom 键，至少一项）：title（1..200）/ introduction（<=2000）。
+%% 空更新 → invalid_request（不产生无意义写入与审计噪音）。
+-spec update_group_tx(any(), map(), integer(), map()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+update_group_tx(Conn, Ctx, GroupId, Input) when is_map(Input) ->
+    OrgId = maps:get(organization_id, Ctx),
+    case parse_update_input(Input) of
+        {ok, Title, Intro} ->
+            case locate_group(Conn, OrgId, GroupId) of
+                {ok, Group} ->
+                    Gid = maps:get(<<"id">>, Group),
+                    %% 未给出的字段保持原值（部分更新；不把缺省写成空串）。
+                    NewTitle = default(Title, maps:get(<<"title">>, Group, <<>>)),
+                    NewIntro = default(Intro, maps:get(<<"introduction">>, Group, <<>>)),
+                    case
+                        enterprise_group_repo:update_group_meta_tx(
+                            Conn, Gid, NewTitle, NewIntro
+                        )
+                    of
+                        ok ->
+                            {ok, #{
+                                <<"group_id">> => Gid,
+                                <<"title">> => NewTitle,
+                                <<"introduction">> => NewIntro,
+                                <<"updated">> => true
+                            }};
+                        {error, not_found} ->
+                            {error, {<<"resource_not_found">>, group_not_found}};
+                        {error, Reason} ->
+                            {error, {<<"internal_error">>, Reason}}
+                    end;
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, Detail} ->
+            {error, {<<"invalid_request">>, Detail}}
+    end;
+update_group_tx(_Conn, _Ctx, _GroupId, _Input) ->
+    {error, {<<"invalid_request">>, input_not_map}}.
+
+%% @doc 群归档（生命周期终点）：group.status -> 0（禁用），归属行 -> archived。
+%% 归档后该群对全部 internal 路径不可见（find_group_in_org_tx 恒过滤 status=1）
+%% ——消息发送/成员增删随之 fail-closed。
+%% Application membership 边界：**OA 只能归档本 Application 建立的企业群**
+%% （归属行 application_id 必须等于本 app）；无归属行（人类自建群）或他人归属
+%% → {error, {invalid_request, not_group_owner_application}}。
+%% 幂等：已归档（status=0 且归属 archived）→ {ok, #{archived => true, already => true}}。
+-spec archive_group_tx(any(), map(), integer()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+archive_group_tx(Conn, Ctx, GroupId) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    case enterprise_group_repo:find_group_in_org_any_tx(Conn, OrgId, GroupId) of
+        {ok, Group} ->
+            Gid = maps:get(<<"id">>, Group),
+            case own_origin(Conn, Gid, OrgId, AppId) of
+                ok ->
+                    do_archive(Conn, Group, Gid);
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, not_found} ->
+            {error, {<<"resource_not_found">>, group_not_found}};
+        {error, Reason} ->
+            {error, {<<"internal_error">>, Reason}}
+    end.
+
+-spec do_archive(any(), map(), pos_integer()) -> {ok, map()} | {error, {binary(), term()}}.
+do_archive(Conn, Group, Gid) ->
+    case maps:get(<<"status">>, Group) of
+        1 ->
+            case enterprise_group_repo:set_group_status_tx(Conn, Gid, 0) of
+                ok ->
+                    case enterprise_group_origin_repo:archive_tx(Conn, Gid) of
+                        {ok, _} ->
+                            {ok, #{
+                                <<"group_id">> => Gid,
+                                <<"archived">> => true,
+                                <<"already">> => false
+                            }};
+                        {error, Reason} ->
+                            {error, {<<"internal_error">>, Reason}}
+                    end;
+                {error, not_found} ->
+                    {error, {<<"resource_not_found">>, group_not_found}};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end;
+        _AlreadyArchived ->
+            case enterprise_group_origin_repo:archive_tx(Conn, Gid) of
+                {ok, _} ->
+                    {ok, #{
+                        <<"group_id">> => Gid, <<"archived">> => true, <<"already">> => true
+                    }};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end
+    end.
+
+%% @doc 成员角色管理（幂等）：Input #{roles => [#{external_user_id, role}]}。
+%%   * role 必须 ∈ {1,2,3,5}（4=群主不可经 OA 分配，0 未定义非法）；
+%%   * 目标必须已由本 app 映射（active）且是**本群 active 成员**
+%%     （不在群内 → invalid_request not_member；未映射 → identity_not_mapped）；
+%%   * 不允许改群主（owner_uid）的角色（owner invariant 的一部分）：
+%%     角色分配后 active 群主（role=4）计数不得变化——owner_uid 行的角色改动
+%%     一律拒（invalid_request cannot_change_owner_role）。
+%% 返回 {ok, #{group_id, updated := N, unchanged := M, members := [...]}}。
+-spec set_member_roles_tx(any(), map(), integer(), term()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+set_member_roles_tx(Conn, Ctx, GroupId, Roles) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    case parse_roles_input(Roles) of
+        {ok, Wanted} ->
+            case locate_group(Conn, OrgId, GroupId) of
+                {ok, Group} ->
+                    Gid = maps:get(<<"id">>, Group),
+                    OwnerUid = maps:get(<<"owner_uid">>, Group),
+                    case resolve_all_mapped(Conn, OrgId, AppId, [E || {E, _} <- Wanted]) of
+                        {ok, ExtToUid} ->
+                            case check_role_targets(Conn, Gid, OwnerUid, Wanted, ExtToUid) of
+                                ok ->
+                                    apply_roles(Conn, Gid, Wanted, ExtToUid);
+                                {error, _} = Err ->
+                                    Err
+                            end;
+                        {error, _} = Err ->
+                            Err
+                    end;
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, Detail} ->
+            {error, {<<"invalid_request">>, Detail}}
+    end.
+
+%% ===================================================================
+%% FULL-02 internals
+%% ===================================================================
+
+-spec member_view(map()) -> map().
+member_view(R) ->
+    #{
+        <<"user_id">> => maps:get(<<"user_id">>, R),
+        <<"role">> => maps:get(<<"role">>, R),
+        <<"status">> => maps:get(<<"status">>, R)
+    }.
+
+%% @doc 归属视图：null（无归属行 = 人类自建群）或
+%% #{application_id, workspace_id, status, mine}。
+-spec origin_view(any(), pos_integer(), integer(), integer()) ->
+    {ok, null | map()} | {error, term()}.
+origin_view(Conn, Gid, _OrgId, AppId) ->
+    case enterprise_group_origin_repo:find_tx(Conn, Gid) of
+        {ok, Row} ->
+            OwnerApp = maps:get(<<"application_id">>, Row),
+            {ok, #{
+                <<"application_id">> => OwnerApp,
+                <<"workspace_id">> => maps:get(<<"workspace_id">>, Row),
+                <<"status">> => maps:get(<<"status">>, Row),
+                <<"mine">> => OwnerApp =:= AppId
+            }};
+        {error, not_found} ->
+            {ok, null};
+        {error, Reason} ->
+            {error, {<<"internal_error">>, Reason}}
+    end.
+
+-spec own_origin(any(), pos_integer(), integer(), integer()) -> ok | {error, {binary(), term()}}.
+own_origin(Conn, Gid, OrgId, AppId) ->
+    case enterprise_group_origin_repo:owns_tx(Conn, Gid, OrgId, AppId) of
+        {ok, true} ->
+            ok;
+        {ok, false} ->
+            {error, {<<"invalid_request">>, not_group_owner_application}};
+        {error, Reason} ->
+            {error, {<<"internal_error">>, Reason}}
+    end.
+
+-spec parse_update_input(map()) ->
+    {ok, undefined | binary(), undefined | binary()} | {error, term()}.
+parse_update_input(Input) ->
+    Title = maps:get(title, Input, undefined),
+    Intro = maps:get(introduction, Input, undefined),
+    case {Title, Intro} of
+        {undefined, undefined} ->
+            {error, empty_update};
+        _ ->
+            case valid_title(Title) andalso valid_introduction(Intro) of
+                true -> {ok, Title, Intro};
+                false -> {error, invalid_group_meta}
+            end
+    end.
+
+-spec valid_title(undefined | binary()) -> boolean().
+valid_title(undefined) ->
+    true;
+valid_title(T) when is_binary(T) ->
+    byte_size(T) > 0 andalso byte_size(T) =< ?MAX_TITLE_LEN;
+valid_title(_) ->
+    false.
+
+-spec valid_introduction(undefined | binary()) -> boolean().
+valid_introduction(undefined) ->
+    true;
+valid_introduction(I) when is_binary(I) ->
+    byte_size(I) =< ?MAX_INTRODUCTION_LEN;
+valid_introduction(_) ->
+    false.
+
+-spec default(undefined | T, T) -> T.
+default(undefined, Default) ->
+    Default;
+default(Value, _Default) ->
+    Value.
+
+-spec parse_roles_input(term()) ->
+    {ok, [{binary(), integer()}]} | {error, term()}.
+parse_roles_input(Roles) when is_list(Roles), length(Roles) > 0 ->
+    case length(Roles) =< ?MAX_MEMBERS of
+        false ->
+            {error, too_many_roles};
+        true ->
+            parse_roles_each(Roles, [])
+    end;
+parse_roles_input(Roles) when is_list(Roles) ->
+    {error, empty_roles};
+parse_roles_input(_) ->
+    {error, roles_not_list}.
+
+-spec parse_roles_each([term()], [{binary(), integer()}]) ->
+    {ok, [{binary(), integer()}]} | {error, term()}.
+parse_roles_each([], Acc) ->
+    {ok, lists:reverse(Acc)};
+parse_roles_each([#{external_user_id := Ext, role := Role} | Rest], Acc) when
+    is_binary(Ext), Ext =/= <<>>, is_integer(Role)
+->
+    case lists:member(Role, ?ASSIGNABLE_ROLES) of
+        true -> parse_roles_each(Rest, [{Ext, Role} | Acc]);
+        false -> {error, {role_not_assignable, Role}}
+    end;
+parse_roles_each(_Bad, _Acc) ->
+    {error, invalid_role_entry}.
+
+%% @doc 角色目标前置（逐项）：
+%%   * 目标不能是群 owner（owner_uid）→ cannot_change_owner_role；
+%%   * 目标必须是本群 active 成员 → not_member。
+-spec check_role_targets(any(), pos_integer(), integer(), [{binary(), integer()}], map()) ->
+    ok | {error, {binary(), term()}}.
+check_role_targets(_Conn, _Gid, _OwnerUid, [], _ExtToUid) ->
+    ok;
+check_role_targets(Conn, Gid, OwnerUid, [{Ext, _Role} | Rest], ExtToUid) ->
+    Uid = maps:get(Ext, ExtToUid),
+    case Uid =:= OwnerUid of
+        true ->
+            {error, {<<"invalid_request">>, cannot_change_owner_role}};
+        false ->
+            case enterprise_group_repo:group_member_status_tx(Conn, Gid, Uid) of
+                {ok, #{<<"status">> := 1}} ->
+                    check_role_targets(Conn, Gid, OwnerUid, Rest, ExtToUid);
+                {ok, _Inactive} ->
+                    {error, {<<"invalid_request">>, {not_member, Ext}}};
+                {error, not_found} ->
+                    {error, {<<"invalid_request">>, {not_member, Ext}}};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end
+    end.
+
+-spec apply_roles(any(), pos_integer(), [{binary(), integer()}], map()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+apply_roles(Conn, Gid, Wanted, ExtToUid) ->
+    fold_roles(Conn, Gid, Wanted, ExtToUid, {0, 0, []}).
+
+-spec fold_roles(
+    any(),
+    pos_integer(),
+    [{binary(), integer()}],
+    map(),
+    {integer(), integer(), [
+        map()
+    ]}
+) ->
+    {ok, map()} | {error, {binary(), term()}}.
+fold_roles(_Conn, Gid, [], _ExtToUid, {Updated, Unchanged, Acc}) ->
+    {ok, #{
+        <<"group_id">> => Gid,
+        <<"updated">> => Updated,
+        <<"unchanged">> => Unchanged,
+        <<"members">> => lists:reverse(Acc)
+    }};
+fold_roles(Conn, Gid, [{Ext, Role} | Rest], ExtToUid, {Updated, Unchanged, Acc}) ->
+    Uid = maps:get(Ext, ExtToUid),
+    case enterprise_group_repo:set_member_role_tx(Conn, Gid, Uid, Role) of
+        {ok, OldRole} ->
+            Item = #{
+                <<"external_user_id">> => Ext,
+                <<"user_id">> => Uid,
+                <<"role">> => Role,
+                <<"previous_role">> => OldRole
+            },
+            case OldRole =:= Role of
+                true ->
+                    fold_roles(Conn, Gid, Rest, ExtToUid, {Updated, Unchanged + 1, [Item | Acc]});
+                false ->
+                    fold_roles(Conn, Gid, Rest, ExtToUid, {Updated + 1, Unchanged, [Item | Acc]})
+            end;
+        {error, not_found} ->
+            %% 前置已判成员身份；此处是并发退群的终局兜底。
+            {error, {<<"invalid_request">>, {not_member, Ext}}};
+        {error, Reason} ->
+            {error, {<<"internal_error">>, Reason}}
+    end.
+
+%% @doc 边界定位（FULL-02 handler 接线用）：给出该群**所属 workspace_id**，
+%% 供 handler 在同一事务内调用 enterprise_internal_boundary:enforce/4 做 Grant
+%% 资源边界判定。可见性语义与 INT-05/06 完全一致（locate_group/3）：跨 Org /
+%% 个人群 / 已归档群一律 {error, {resource_not_found, _}}，不泄露存在性。
+-spec boundary_workspace_tx(any(), map(), integer()) ->
+    {ok, pos_integer()} | {error, {binary(), term()}}.
+boundary_workspace_tx(Conn, Ctx, GroupId) ->
+    case locate_group(Conn, maps:get(organization_id, Ctx), GroupId) of
+        {ok, Group} -> {ok, maps:get(<<"workspace_id">>, Group)};
+        {error, _} = Err -> Err
+    end.
+
 %% ===================================================================
 %% INT-04 internals
 %% ===================================================================
@@ -96,7 +482,15 @@ create_in_workspace(Conn, OrgId, AppId, #{
                     case enterprise_group_repo:non_ws_member_uids_tx(Conn, WsId, Uids) of
                         {ok, []} ->
                             insert_group_with_members(
-                                Conn, WsId, Title, Intro, Members, OwnerExt, ExtToUid
+                                Conn,
+                                OrgId,
+                                AppId,
+                                WsId,
+                                Title,
+                                Intro,
+                                Members,
+                                OwnerExt,
+                                ExtToUid
                             );
                         {ok, NonMembers} ->
                             BadExt = [
@@ -120,10 +514,18 @@ create_in_workspace(Conn, OrgId, AppId, #{
     end.
 
 -spec insert_group_with_members(
-    any(), integer(), binary(), binary(), [binary()], binary(), map()
+    any(),
+    integer(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    [binary()],
+    binary(),
+    map()
 ) ->
     {ok, map()} | {error, {binary(), term()}}.
-insert_group_with_members(Conn, WsId, Title, Intro, Members, OwnerExt, ExtToUid) ->
+insert_group_with_members(Conn, OrgId, AppId, WsId, Title, Intro, Members, OwnerExt, ExtToUid) ->
     OwnerUid = maps:get(OwnerExt, ExtToUid),
     Gid = enterprise_group_repo:next_group_id(),
     case
@@ -137,12 +539,21 @@ insert_group_with_members(Conn, WsId, Title, Intro, Members, OwnerExt, ExtToUid)
                     [{maps:get(M, ExtToUid), 1} || M <- Members, M =/= OwnerExt],
             case activate_one_by_one(Conn, Gid, UidRoles, ok) of
                 ok ->
-                    {ok, #{
-                        <<"group_id">> => Gid,
-                        <<"workspace_id">> => WsId,
-                        <<"owner_user_id">> => OwnerUid,
-                        <<"member_count">> => length(UidRoles)
-                    }};
+                    %% Application membership（FULL-02）：建群同事务登记归属行
+                    %% （哪份 Application 在哪个 Org/Workspace 建立该企业群）。
+                    %% 归属行禁止物理删除、归档单向（migration 00000140 触发器）。
+                    case enterprise_group_origin_repo:insert_tx(Conn, Gid, OrgId, AppId, WsId) of
+                        {ok, _} ->
+                            {ok, #{
+                                <<"group_id">> => Gid,
+                                <<"workspace_id">> => WsId,
+                                <<"owner_user_id">> => OwnerUid,
+                                <<"member_count">> => length(UidRoles),
+                                <<"origin_application_id">> => AppId
+                            }};
+                        {error, Reason} ->
+                            {error, {<<"internal_error">>, {group_origin, Reason}}}
+                    end;
                 {error, Reason} ->
                     {error, {<<"internal_error">>, Reason}}
             end;

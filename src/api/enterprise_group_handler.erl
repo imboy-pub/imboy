@@ -44,6 +44,8 @@ init(Req0, State0) ->
         case Action of
             create -> create(Method, Req0, State);
             members -> members(Method, Req0, State);
+            group -> group(Method, Req0, State);
+            member_roles -> member_roles(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -67,7 +69,13 @@ create(<<"POST">>, Req0, State) ->
         IdemKey,
         Digest,
         fun(Conn) ->
-            enterprise_group_logic:create_group_tx(Conn, Ctx, params_to_input(Params))
+            Input = params_to_input(Params),
+            %% INT-04 的边界资源是请求体里的 workspace_id（manifest: workspace scoped）
+            with_boundary(
+                Conn, Ctx, <<"INT-04">>, maps:get(workspace_id, Input, undefined), fun() ->
+                    enterprise_group_logic:create_group_tx(Conn, Ctx, Input)
+                end
+            )
         end
     );
 create(_, Req0, _State) ->
@@ -93,6 +101,7 @@ members_op(Op, Method, Req0, State) ->
     Digest = enterprise_internal_idempotency:request_digest(
         Method, members_path(GroupId), Params
     ),
+    RouteId = route_id_of(Op),
     with_idempotency(
         Req0,
         Ctx,
@@ -101,14 +110,142 @@ members_op(Op, Method, Req0, State) ->
         Digest,
         fun(Conn) ->
             ExternalIds = maps:get(<<"external_user_ids">>, Params, undefined),
-            case Op of
-                add ->
-                    enterprise_group_logic:add_members_tx(Conn, Ctx, GroupId, ExternalIds);
-                remove ->
-                    enterprise_group_logic:remove_members_tx(Conn, Ctx, GroupId, ExternalIds)
-            end
+            with_group_boundary(Conn, Ctx, RouteId, GroupId, fun() ->
+                case Op of
+                    add ->
+                        enterprise_group_logic:add_members_tx(Conn, Ctx, GroupId, ExternalIds);
+                    remove ->
+                        enterprise_group_logic:remove_members_tx(Conn, Ctx, GroupId, ExternalIds)
+                end
+            end)
         end
     ).
+
+%% @doc INT-18（GET 详情）/ INT-19（PATCH 更新）/ INT-21（DELETE 归档）：同一
+%% path 的群生命周期端点（FULL-02 新增，待 A0 接线）。
+%%   GET    /api/internal/v1/groups/{group_id}  -> #{action => group}
+%%   PATCH  /api/internal/v1/groups/{group_id}  -> #{action => group}
+%%   DELETE /api/internal/v1/groups/{group_id}  -> #{action => group}
+-spec group(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+group(<<"GET">>, Req0, State) ->
+    %% 只读（manifest idempotency: not_required）——无幂等键、无写入。
+    read_group(read_detail, Req0, State);
+group(<<"PATCH">>, Req0, State) ->
+    write_group(update, <<"INT-19">>, <<"PATCH">>, Req0, State);
+group(<<"DELETE">>, Req0, State) ->
+    write_group(archive, <<"INT-21">>, <<"DELETE">>, Req0, State);
+group(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc INT-20（FULL-02 新增，待 A0 接线）：成员角色管理。
+%% 路由：PUT /api/internal/v1/groups/{group_id}/members/roles -> #{action => member_roles}
+-spec member_roles(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+member_roles(<<"PUT">>, Req0, State) ->
+    write_group(set_roles, <<"INT-20">>, <<"PUT">>, Req0, State);
+member_roles(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 详情（单事务只读；无幂等键）。
+-spec read_group(read_detail, cowboy_req:req(), map()) -> cowboy_req:req().
+read_group(read_detail, Req0, State) ->
+    Ctx = maps:get(enterprise_internal, State, #{}),
+    GroupId = maps:get(group_id, State, 0),
+    Result =
+        elib_pg:with_tx(fun(Conn) ->
+            with_group_boundary(Conn, Ctx, <<"INT-18">>, GroupId, fun() ->
+                enterprise_group_logic:group_detail_tx(Conn, Ctx, GroupId)
+            end)
+        end),
+    case Result of
+        {ok, Detail} ->
+            reply_json(Req0, 200, Detail);
+        {error, {Code, _Detail}} ->
+            enterprise_internal_error:reply(Req0, Code);
+        {rollback, Reason} ->
+            ?ERROR_LOG("enterprise_group_handler detail rollback: ~p~n", [Reason]),
+            enterprise_internal_error:reply(Req0, <<"internal_error">>);
+        {error, Reason} ->
+            ?ERROR_LOG("enterprise_group_handler detail error: ~p~n", [Reason]),
+            enterprise_internal_error:reply(Req0, <<"internal_error">>)
+    end.
+
+%% @doc 写路径（更新/归档/角色）：走 A2 幂等模式（单事务）。
+-spec write_group(update | archive | set_roles, binary(), binary(), cowboy_req:req(), map()) ->
+    cowboy_req:req().
+write_group(Op, RouteId, Method, Req0, State) ->
+    Ctx = maps:get(enterprise_internal, State, #{}),
+    GroupId = maps:get(group_id, State, 0),
+    Params = elib_param:post(Req0),
+    IdemKey = idempotency_key(Req0),
+    ResourceType = resource_type_of(Op),
+    Digest = enterprise_internal_idempotency:request_digest(
+        Method, group_path(Op, GroupId), Params
+    ),
+    with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, fun(Conn) ->
+        with_group_boundary(Conn, Ctx, RouteId, GroupId, fun() ->
+            do_write_group(Conn, Ctx, Op, GroupId, Params)
+        end)
+    end).
+
+-spec do_write_group(any(), map(), update | archive | set_roles, term(), map()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+do_write_group(Conn, Ctx, update, GroupId, Params) ->
+    enterprise_group_logic:update_group_tx(Conn, Ctx, GroupId, params_to_input(Params));
+do_write_group(Conn, Ctx, archive, GroupId, _Params) ->
+    enterprise_group_logic:archive_group_tx(Conn, Ctx, GroupId);
+do_write_group(Conn, Ctx, set_roles, GroupId, Params) ->
+    Roles = maps:get(<<"roles">>, Params, undefined),
+    enterprise_group_logic:set_member_roles_tx(Conn, Ctx, GroupId, json_roles(Roles)).
+
+%% @doc roles 入参（JSON 数组 [{external_user_id, role}]）→ logic 需要的 atom 键
+%% 列表；形态不合法交给 logic 归一 invalid_request（本函数只做结构转换，
+%% 不判业务合法性）。
+-spec json_roles(term()) -> term().
+json_roles(Roles) when is_list(Roles) ->
+    [json_role(R) || R <- Roles];
+json_roles(Other) ->
+    Other.
+
+-spec json_role(term()) -> term().
+json_role(#{<<"external_user_id">> := Ext, <<"role">> := Role}) ->
+    #{external_user_id => Ext, role => Role};
+json_role(Other) ->
+    Other.
+
+-spec resource_type_of(update | archive | set_roles) -> binary().
+resource_type_of(update) -> <<"group">>;
+resource_type_of(archive) -> <<"group_archive">>;
+resource_type_of(set_roles) -> <<"group_member_roles">>.
+
+-spec route_id_of(add | remove) -> binary().
+route_id_of(add) -> <<"INT-05">>;
+route_id_of(remove) -> <<"INT-06">>.
+
+%% @doc 群类路由的边界接线：先按 Org 边界定位群（跨 Org/个人群/已归档一律
+%% resource_not_found，不泄露存在性），再用其 workspace_id 做 Grant workspace
+%% 边界判定（同一事务，逐请求读）。
+-spec with_group_boundary(any(), map(), binary(), term(), fun()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+with_group_boundary(Conn, Ctx, RouteId, GroupId, Fun) ->
+    case enterprise_group_logic:boundary_workspace_tx(Conn, Ctx, GroupId) of
+        {ok, WsId} ->
+            with_boundary(Conn, Ctx, RouteId, WsId, Fun);
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc FULL-01/FULL-02 授权边界接线（唯一接线点
+%% enterprise_internal_boundary:enforce/4）：未受管应用 no-op；受管应用要求
+%% 同一生效 Grant 同时覆盖 scope 与 workspace，撤权/降权下一请求即失败。
+-spec with_boundary(any(), map(), binary(), undefined | integer(), fun()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
+    case enterprise_internal_boundary:enforce(Conn, Ctx, RouteId, WorkspaceId) of
+        ok ->
+            Fun();
+        {error, Code} ->
+            {error, {enterprise_internal_boundary:error_code(Code), grant_boundary}}
+    end.
 
 %% @doc 幂等 digest 用**具体路径**（非模板）：同 key 换 group_id 必须是
 %% digest_conflict 409，不得被当成首次请求的静默重放（参见 message handler
@@ -117,6 +254,16 @@ members_path(GroupId) when is_integer(GroupId) ->
     <<"/api/internal/v1/groups/", (integer_to_binary(GroupId))/binary, "/members">>;
 members_path(_) ->
     ?GROUP_MEMBERS_TEMPLATE.
+
+-spec group_path(update | archive | set_roles, term()) -> binary().
+group_path(set_roles, GroupId) when is_integer(GroupId) ->
+    <<"/api/internal/v1/groups/", (integer_to_binary(GroupId))/binary, "/members/roles">>;
+group_path(set_roles, _GroupId) ->
+    <<"/api/internal/v1/groups/{group_id}/members/roles">>;
+group_path(_Op, GroupId) when is_integer(GroupId) ->
+    <<"/api/internal/v1/groups/", (integer_to_binary(GroupId))/binary>>;
+group_path(_Op, _GroupId) ->
+    <<"/api/internal/v1/groups/{group_id}">>.
 
 %% @doc A2 幂等模式（单事务）。返回值契约见 enterprise_internal_idempotency。
 -spec with_idempotency(

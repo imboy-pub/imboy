@@ -28,7 +28,7 @@
 %% Input（atom 键）：
 %%   file_name  必填 binary 1..256
 %%   mime_type  必填 binary（elib_oss 白名单预检；confirm 以 HEAD 真实值复核）
-%%   size_bytes 可选 integer（>0 且 <= elib_oss:max_file_size() 预检）
+%%   size_bytes 可选 integer（>0 且 <= 有效上限（min(全局, 应用策略)）预检）
 %% 返回 {ok, #{file_id, object_key, put_url, expires_at}}。
 -spec presign_tx(any(), map(), map()) -> {ok, map()} | {error, {binary(), term()}}.
 presign_tx(Conn, Ctx, Input) when is_map(Input) ->
@@ -37,34 +37,46 @@ presign_tx(Conn, Ctx, Input) when is_map(Input) ->
     FileName = maps:get(file_name, Input, undefined),
     MimeType = maps:get(mime_type, Input, undefined),
     SizeHint = maps:get(size_bytes, Input, undefined),
-    case valid_name(FileName) andalso valid_mime(MimeType) andalso valid_size_hint(SizeHint) of
-        true ->
-            ObjectKey = enterprise_asset_repo:build_object_key(OrgId, AppId, FileName),
-            Bucket = elib_oss:get_bucket(<<"enterprise">>),
-            PutUrl = elib_oss:presign_put_for_key(Bucket, ObjectKey, MimeType, ?PUT_EXPIRES),
-            %% pending 登记（迁移 54 生命周期）：失败不阻断签发（与 attach_logic
-            %% 同口径——拿不到 URL 是功能中断，漏登记只影响孤儿回收）。
-            _ =
-                case
-                    enterprise_asset_repo:pending_add_tx(Conn, ObjectKey, Bucket, <<"enterprise">>)
-                of
-                    {ok, inserted} ->
-                        ok;
-                    {error, Reason} ->
-                        ?ERROR_LOG([
-                            "enterprise_asset presign pending_add failed: ", ObjectKey, Reason
-                        ])
-                end,
-            {ok, #{
-                <<"object_key">> => ObjectKey,
-                <<"put_url">> => PutUrl,
-                <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
-            }};
-        false ->
-            {error, {<<"invalid_request">>, invalid_presign_input}}
+    case enterprise_asset_retention_logic:content_policy_tx(Conn, Ctx, Input) of
+        {ok, Policy} ->
+            MaxBytes = enterprise_asset_retention_logic:effective_max_bytes(Policy, SizeHint),
+            Ok =
+                valid_name(FileName) andalso
+                    enterprise_asset_retention_logic:mime_allowed(Policy, MimeType) andalso
+                    valid_size_hint(SizeHint, MaxBytes),
+            case Ok of
+                true ->
+                    presign_ok(Conn, OrgId, AppId, FileName, MimeType);
+                false ->
+                    {error, {<<"invalid_request">>, invalid_presign_input}}
+            end;
+        {error, _} = Err ->
+            Err
     end;
 presign_tx(_Conn, _Ctx, _Input) ->
     {error, {<<"invalid_request">>, input_not_map}}.
+
+%% @doc 签发（内容策略通过后）：object key 前缀 + pending 登记 + 返回 URL。
+presign_ok(Conn, OrgId, AppId, FileName, MimeType) ->
+    ObjectKey = enterprise_asset_repo:build_object_key(OrgId, AppId, FileName),
+    Bucket = elib_oss:get_bucket(<<"enterprise">>),
+    PutUrl = elib_oss:presign_put_for_key(Bucket, ObjectKey, MimeType, ?PUT_EXPIRES),
+    %% pending 登记（迁移 54 生命周期）：失败不阻断签发（与 attach_logic
+    %% 同口径——拿不到 URL 是功能中断，漏登记只影响孤儿回收）。
+    _ =
+        case enterprise_asset_repo:pending_add_tx(Conn, ObjectKey, Bucket, <<"enterprise">>) of
+            {ok, inserted} ->
+                ok;
+            {error, Reason} ->
+                ?ERROR_LOG([
+                    "enterprise_asset presign pending_add failed: ", ObjectKey, Reason
+                ])
+        end,
+    {ok, #{
+        <<"object_key">> => ObjectKey,
+        <<"put_url">> => PutUrl,
+        <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
+    }}.
 
 %%%===================================================================
 %%% INT-08 confirm
@@ -119,30 +131,47 @@ confirm_head(Conn, Ctx, ObjectKey, Hash) ->
             ?ERROR_LOG(["enterprise_asset confirm head failed: ", Bucket, ObjectKey, Reason]),
             {error, {<<"internal_error">>, Reason}};
         {ok, #{size := RealSize, content_type := RealType}} ->
-            case RealSize > elib_oss:max_file_size() of
-                true ->
-                    _ =
-                        try
-                            elib_oss:delete_object(Bucket, ObjectKey)
-                        catch
-                            _:_ -> ok
-                        end,
-                    {error, {<<"invalid_request">>, file_too_large}};
-                false ->
-                    case elib_oss:validate_file_type(RealType) of
-                        false ->
-                            _ =
-                                try
-                                    elib_oss:delete_object(Bucket, ObjectKey)
-                                catch
-                                    _:_ -> ok
-                                end,
-                            {error, {<<"invalid_request">>, invalid_file_type}};
-                        true ->
-                            save_confirmed(Conn, Ctx, ObjectKey, Hash, RealSize, RealType)
-                    end
+            case enterprise_asset_retention_logic:content_policy_tx(Conn, Ctx, #{}) of
+                {ok, Policy} ->
+                    MaxBytes = enterprise_asset_retention_logic:effective_max_bytes(
+                        Policy, RealSize
+                    ),
+                    confirm_policy(
+                        Conn, Ctx, ObjectKey, Hash, RealSize, RealType, Policy, MaxBytes
+                    );
+                {error, _} = Err ->
+                    Err
             end
     end.
+
+%% @doc confirm 侧内容策略复核（**服务端真实值**）：超有效上限或类型不在策略内
+%% 的对象一律删除并拒绝（与广州期 too_large/invalid_type 同口径）。
+confirm_policy(Conn, Ctx, ObjectKey, Hash, RealSize, RealType, Policy, MaxBytes) ->
+    MimeOk = enterprise_asset_retention_logic:mime_allowed(Policy, RealType),
+    case RealSize > MaxBytes of
+        true ->
+            discard_object(ObjectKey),
+            {error, {<<"invalid_request">>, file_too_large}};
+        false ->
+            case MimeOk of
+                false ->
+                    discard_object(ObjectKey),
+                    {error, {<<"invalid_request">>, invalid_file_type}};
+                true ->
+                    save_confirmed(Conn, Ctx, ObjectKey, Hash, RealSize, RealType)
+            end
+    end.
+
+-spec discard_object(binary()) -> ok.
+discard_object(ObjectKey) ->
+    Bucket = elib_oss:get_bucket(<<"enterprise">>),
+    _ =
+        try
+            elib_oss:delete_object(Bucket, ObjectKey)
+        catch
+            _:_ -> ok
+        end,
+    ok.
 
 save_confirmed(Conn, Ctx, ObjectKey, Hash, RealSize, RealType) ->
     OrgId = maps:get(organization_id, Ctx),
@@ -161,22 +190,51 @@ save_confirmed(Conn, Ctx, ObjectKey, Hash, RealSize, RealType) ->
     case enterprise_asset_repo:confirm_save_tx(Conn, ObjectKey, RealType, RealSize, InfoMap) of
         {ok, AttId} ->
             ok = enterprise_asset_repo:pending_remove_tx(Conn, ObjectKey),
-            %% file.confirmed 事件与转正同事务原子（订阅判定/SSRF guard 在
-            %% emit 内；guard 拒绝只跳过事件不阻断 confirm——事件是旁路）。
-            _ = enterprise_webhook_logic:emit_event_tx(
-                Conn,
-                Ctx,
-                <<"file.confirmed">>,
-                #{resource_type => <<"attachment">>, resource_id => AttId}
-            ),
-            {ok, #{
-                <<"file_id">> => AttId,
-                <<"object_key">> => ObjectKey,
-                <<"size">> => RealSize,
-                <<"mime_type">> => RealType
-            }};
+            %% FULL-02：留存/法务 hold 治理行与附件转正**同事务**登记
+            %% （migration 00000140；附件与治理行要么都在、要么都不在）。
+            case
+                enterprise_asset_retention_logic:register_retention_tx(
+                    Conn, {AttId, OrgId, AppId}
+                )
+            of
+                ok ->
+                    ok = confirm_side_effects(Conn, Ctx, AttId),
+                    {ok, #{
+                        <<"file_id">> => AttId,
+                        <<"object_key">> => ObjectKey,
+                        <<"size">> => RealSize,
+                        <<"mime_type">> => RealType
+                    }};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}
+    end.
+
+%% @doc confirm 的旁路副作用（聚合计量 + file.confirmed 事件）：与转正同事务。
+%% 事件订阅判定/SSRF guard 在 emit 内；guard 拒绝只跳过事件不阻断 confirm。
+-spec confirm_side_effects(any(), map(), pos_integer()) -> ok.
+confirm_side_effects(Conn, Ctx, AttId) ->
+    _ = enterprise_webhook_logic:emit_event_tx(
+        Conn,
+        Ctx,
+        <<"file.confirmed">>,
+        #{resource_type => <<"attachment">>, resource_id => AttId}
+    ),
+    case
+        enterprise_application_usage_repo:bump_tx(
+            Conn,
+            maps:get(organization_id, Ctx),
+            maps:get(application_id, Ctx),
+            <<"file.confirmed">>
+        )
+    of
+        ok ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG(["enterprise_asset confirm usage bump failed: ", Reason]),
+            ok
     end.
 
 %%%===================================================================
@@ -188,16 +246,12 @@ valid_name(N) when is_binary(N), byte_size(N) > 0, byte_size(N) =< 256 ->
 valid_name(_) ->
     false.
 
-valid_mime(M) when is_binary(M), M =/= <<>> ->
-    elib_oss:validate_file_type(M);
-valid_mime(_) ->
-    false.
-
-valid_size_hint(undefined) ->
+%% @doc 尺寸预检（FULL-02 起上限来自**内容策略**：min(全局, 应用配置)）。
+valid_size_hint(undefined, _MaxBytes) ->
     true;
-valid_size_hint(S) when is_integer(S), S > 0 ->
-    S =< elib_oss:max_file_size();
-valid_size_hint(_) ->
+valid_size_hint(S, MaxBytes) when is_integer(S), S > 0 ->
+    S =< MaxBytes;
+valid_size_hint(_, _MaxBytes) ->
     false.
 
 valid_hash(undefined) ->

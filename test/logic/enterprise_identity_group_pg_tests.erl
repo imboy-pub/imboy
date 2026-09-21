@@ -522,10 +522,21 @@ resolve_invalid_batch(C, CtxA) ->
 
 exported_surface_test() ->
     ?_test(begin
-        %% identity logic 导出面冻结：仅 bind/resolve，无任何 list/export 形态
+        %% identity logic 导出面冻结：仅 bind/resolve/revoke（单条撤销），
+        %% 无任何 list/export 形态。
+        %% FULL-02 唯一例外改动（已记 FULL-02 checkpoint 交 A0 复核）：
+        %% revoke_mapping_tx/3 是本 phase 新增的**单条**撤销入口（非批量/
+        %% 非导出形态），故在冻结表里 +1 条；下面的「无 list/export/all 形态」
+        %% 性质断言原样保留（新导出同受该性质约束）。
         IdEx = lists:sort(enterprise_identity_logic:module_info(exports)),
         ?assertEqual(
-            [{bind_mapping_tx, 4}, {module_info, 0}, {module_info, 1}, {resolve_mappings_tx, 3}],
+            [
+                {bind_mapping_tx, 4},
+                {module_info, 0},
+                {module_info, 1},
+                {resolve_mappings_tx, 3},
+                {revoke_mapping_tx, 3}
+            ],
             IdEx
         ),
         ?assertEqual(
@@ -563,15 +574,24 @@ exported_surface_test() ->
                 FRAll -- [{module_info, 0}, {module_info, 1}]
             )
         ),
-        %% group logic 导出面：仅 create/add/remove（无成员全量分页导出形态）
+        %% group logic 导出面：create/add/remove + FULL-02 生命周期（detail/
+        %% update/archive/roles/边界定位）；**没有**成员全量分页导出形态。
+        %% FULL-02 例外改动（已记 FULL-02 checkpoint 交 A0 复核）：下面 5 个
+        %% 单群操作/边界入口是本 phase 新增（均非 list/export 形态），故冻结
+        %% 表 +5 条；性质断言（无 list/export/all）原样保留。
         GEx = lists:sort(enterprise_group_logic:module_info(exports)),
         ?assertEqual(
             [
                 {add_members_tx, 4},
+                {archive_group_tx, 3},
+                {boundary_workspace_tx, 3},
                 {create_group_tx, 3},
+                {group_detail_tx, 3},
                 {module_info, 0},
                 {module_info, 1},
-                {remove_members_tx, 4}
+                {remove_members_tx, 4},
+                {set_member_roles_tx, 4},
+                {update_group_tx, 4}
             ],
             GEx
         ),

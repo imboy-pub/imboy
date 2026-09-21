@@ -23,11 +23,17 @@
     deactivate_member_tx/4,
     refresh_member_count_tx/2,
     find_group_in_org_tx/3,
+    find_group_in_org_any_tx/3,
     find_workspace_in_org_tx/3,
     non_ws_member_uids_tx/3,
     active_member_uids_tx/2,
     count_active_owners_tx/2,
-    group_member_status_tx/3
+    group_member_status_tx/3,
+    update_group_meta_tx/4,
+    set_group_status_tx/3,
+    set_member_role_tx/4,
+    active_member_rows_tx/2,
+    active_member_rows_in_ws_tx/3
 ]).
 
 -include_lib("epgsql/include/epgsql.hrl").
@@ -36,6 +42,9 @@
     <<"id, type, join_limit, owner_uid, creator_uid, member_max, member_count, ",
         "introduction, avatar, title, status, scope, workspace_id, created_at, updated_at">>
 ).
+
+%% 详情面成员行硬上限（FULL-02）：超过即拒，不静默截断（无全量导出形态）。
+-define(DETAIL_MEMBER_LIMIT, 200).
 
 %% ===================================================================
 %% API functions
@@ -236,7 +245,7 @@ count_active_owners_tx(Conn, Gid) when is_integer(Gid), Gid > 0 ->
             {error, Reason}
     end.
 
-%% @doc 事务内读单个成员行状态（owner invariant 判定用）。
+%% @doc 事务内按 group_id 读单个成员行状态（owner invariant 判定用）。
 %% 返回 not_found / status smallint。
 -spec group_member_status_tx(any(), pos_integer(), pos_integer()) ->
     {ok, map()} | {error, not_found | term()}.
@@ -255,9 +264,137 @@ group_member_status_tx(Conn, Gid, Uid) when
             {error, Reason}
     end.
 
+%%%===================================================================
+%%% FULL-02 生命周期（群详情 / 更新 / 归档 / 成员角色）
+%%%===================================================================
+
+%% @doc 事务内 Org 边界群定位（**不过滤 group.status**，FULL-02 归档幂等判定用）：
+%% 群存在、scope='workspace'，且其 workspace 属于指定 Org。
+%% 跨 Org / 个人群 / 不存在的群 → {error, not_found}（同 find_group_in_org_tx/3）。
+-spec find_group_in_org_any_tx(any(), integer(), integer()) ->
+    {ok, map()} | {error, not_found | term()}.
+find_group_in_org_any_tx(Conn, OrgId, GroupId) when
+    is_integer(OrgId), is_integer(GroupId), GroupId > 0
+->
+    Sql =
+        <<"SELECT g.id, g.title, g.introduction, g.owner_uid, g.member_count, g.scope, ",
+            "g.workspace_id, g.status, w.id AS ws_id, w.status AS ws_status ",
+            "FROM \"group\" g JOIN workspace w ON w.id = g.workspace_id ",
+            "WHERE g.id = $1 AND g.scope = 'workspace' ", "AND w.organization_id = $2 LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, [GroupId, OrgId]) of
+        {ok, [Row | _]} ->
+            {ok, Row};
+        {ok, []} ->
+            {error, not_found};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 事务内更新群标题/简介（成员数等统计列不在此路径）。
+%% 只影响 status=1 的群行；0 行更新归一 {error, not_found}（调用方已先行边界判定，
+%% 此处是「群在判定与更新之间被归档」的终局兜底）。
+-spec update_group_meta_tx(any(), pos_integer(), binary(), binary()) ->
+    ok | {error, not_found | term()}.
+update_group_meta_tx(Conn, Gid, Title, Introduction) when
+    is_integer(Gid), Gid > 0, is_binary(Title), is_binary(Introduction)
+->
+    Sql =
+        <<"UPDATE \"group\" SET title = $2, introduction = $3, updated_at = $4 ",
+            "WHERE id = $1 AND status = 1">>,
+    case elib_pg:execute(Conn, Sql, [Gid, Title, Introduction, elib_dt:now()]) of
+        {ok, 1} -> ok;
+        {ok, 0} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 事务内设置群状态（1 启用 / 0 禁用=归档；-1 删除语义不开放给 OA）。
+-spec set_group_status_tx(any(), pos_integer(), integer()) ->
+    ok | {error, not_found | term()}.
+set_group_status_tx(Conn, Gid, Status) when
+    is_integer(Gid), Gid > 0, (Status =:= 0 orelse Status =:= 1)
+->
+    Sql =
+        <<"UPDATE \"group\" SET status = $2, updated_at = $3 ", "WHERE id = $1 AND status <> -1">>,
+    case elib_pg:execute(Conn, Sql, [Gid, Status, elib_dt:now()]) of
+        {ok, 1} -> ok;
+        {ok, 0} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 事务内改成员角色（仅 status=1 的成员行）。返回 {ok, OldRole}——
+%% **更新前**的角色（幂等判定用：NewRole =/= OldRole 才算变更）。
+%% 先读旧值（group_member_status_tx）再更新（PG 的 RETURNING 反映的是更新后的
+%% 行，不能当旧值用；W4 实测把 NEW 当 OLD 会恒判「无变化」）。
+-spec set_member_role_tx(any(), pos_integer(), pos_integer(), integer()) ->
+    {ok, integer()} | {error, not_found | term()}.
+set_member_role_tx(Conn, Gid, Uid, Role) when
+    is_integer(Gid), Gid > 0, is_integer(Uid), Uid > 0, is_integer(Role)
+->
+    case group_member_status_tx(Conn, Gid, Uid) of
+        {ok, #{<<"status">> := 1, <<"role">> := OldRole}} ->
+            Sql =
+                <<"UPDATE group_member SET role = $3, updated_at = $4 ",
+                    "WHERE group_id = $1 AND user_id = $2 AND status = 1">>,
+            case elib_pg:execute(Conn, Sql, [Gid, Uid, Role, elib_dt:now()]) of
+                {ok, 1} -> {ok, OldRole};
+                {ok, 0} -> {error, not_found};
+                {error, Reason} -> {error, Reason}
+            end;
+        {ok, _NotActive} ->
+            {error, not_found};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 事务内列群 active 成员行（详情面）：最小字段（user_id / role / status）
+%% + 上限（详情面永不全量返回成员表：超过上限即 {error, too_many_members}，
+%% 调用方转 invalid_request，绝不静默截断）。
+-spec active_member_rows_tx(any(), pos_integer()) ->
+    {ok, [map()]} | {error, too_many_members | term()}.
+active_member_rows_tx(Conn, Gid) when is_integer(Gid), Gid > 0 ->
+    select_member_rows(
+        Conn,
+        ?DETAIL_MEMBER_LIMIT,
+        <<"SELECT user_id, role, status FROM group_member ",
+            "WHERE group_id = $1 AND status = 1 ORDER BY user_id LIMIT $2">>,
+        [Gid]
+    ).
+
+%% @doc 同 active_member_rows_tx/2，但限定为该 Workspace 的 active 成员
+%% （详情面的 workspace 过滤读面）。
+-spec active_member_rows_in_ws_tx(any(), pos_integer(), pos_integer()) ->
+    {ok, [map()]} | {error, too_many_members | term()}.
+active_member_rows_in_ws_tx(Conn, Gid, WsId) when
+    is_integer(Gid), Gid > 0, is_integer(WsId), WsId > 0
+->
+    select_member_rows(
+        Conn,
+        ?DETAIL_MEMBER_LIMIT,
+        <<"SELECT gm.user_id, gm.role, gm.status FROM group_member gm ",
+            "JOIN workspace_member wm ON wm.workspace_id = $2 ",
+            "AND wm.user_id = gm.user_id AND wm.status = 'active' ",
+            "WHERE gm.group_id = $1 AND gm.status = 1 ORDER BY gm.user_id LIMIT $3">>,
+        [Gid, WsId]
+    ).
+
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+%% @doc 成员行读取骨架：按 MaxRows+1 取行，真取到 MaxRows+1 行即
+%% {error, too_many_members}（绝不静默截断——详情面返回被截断的成员列表会让
+%% 调用方误判群规模）。SQL 的最后占位符恒为 LIMIT。
+-spec select_member_rows(any(), pos_integer(), binary(), list()) ->
+    {ok, [map()]} | {error, too_many_members | term()}.
+select_member_rows(Conn, MaxRows, Sql, Params) ->
+    case elib_pg:query(Conn, Sql, Params ++ [MaxRows + 1]) of
+        {ok, Rows} when length(Rows) > MaxRows ->
+            {error, too_many_members};
+        {ok, Rows} ->
+            {ok, Rows};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% @doc 镜像 group_member_ds:open_history_generation/3（私有未导出）：
 %% 新激活成员开启 E2EE 历史世代（ON CONFLICT 幂等，锁内计数器下一值）。
