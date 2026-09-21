@@ -39,9 +39,11 @@ DB_NAME=${REST_TEST_DB:-"imboy_rest_${RUN_ID//[^a-zA-Z0-9_]/_}"}
 # The run id also flows into the report root path and the run_id evidence
 # field, so accept only safe identifier characters outright instead of
 # sanitizing per consumer (operator-controlled, but cheap to pin down).
+# Pure-dot components are rejected explicitly: a component of dots stays
+# inside the character whitelist but resolves to a parent directory.
 case "$RUN_ID" in
-  *[!a-zA-Z0-9._-]*|'')
-    die 2 "unsafe REST_RUN_ID '$RUN_ID' (allowed: alphanumerics, dot, dash, underscore)"
+  ''|.|..|*[!a-zA-Z0-9._-]*)
+    die 2 "unsafe REST_RUN_ID '$RUN_ID' (allowed: alphanumerics, dot, dash, underscore; not a bare dot component)"
     ;;
 esac
 
