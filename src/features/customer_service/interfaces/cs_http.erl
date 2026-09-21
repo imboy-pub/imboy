@@ -41,14 +41,10 @@
     tsid/1,
     is_credential_surface_path/1,
     credential_in_query_string/1,
+    check_forbidden/3,
     now_ms/0,
     now_sec/0
 ]).
-
--ifdef(TEST).
-%% R2-F2：查询串派生键守卫的合同面锁死（cs_route_contract_tests 直调）。
--export([check_forbidden/3]).
--endif.
 
 -include("error_code.hrl").
 
