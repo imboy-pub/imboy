@@ -1,6 +1,7 @@
 %% moya_auth_logic_tests
 %% AUTH-01：微信小程序登录 — code 重放/无效、无效 provider（未配置）、
-%% 未绑定用户、网络失败、成功签发（响应不含 openid/session_key）。
+%% 首登自动开户（方案 B）/幂等/失败折叠/额度上限、网络失败、
+%% 成功签发（响应不含 openid/session_key）。
 %% 全部外呼/配置/映射均 meck，无真实网络、无真实 AppSecret。
 
 -module(moya_auth_logic_tests).
@@ -126,10 +127,16 @@ network_error_test_() ->
     ).
 
 %%%===================================================================
-%%% 未绑定用户（sso_identity 无映射）→ 5404 路径，不泄漏 openid 细节
+%%% 首登自动开户（2026-09-20 试点方案 B）
+%%%
+%%% 契约变更：sso_identity 无映射时**不再**返回 identity_none（5404），
+%%% 而是在本次请求内自动开户（user 行 + sso_identity 映射）并签发 token。
+%%% 原「机构侧建立绑定」在实现上不可执行：openid 只在服务端 jscode2session
+%%% 那一次可见，不落库、不落日志（log_redact 把 openid 列为脱敏键），
+%%% 机构侧拿不到它就无法预先写 sso_identity ⇒ 新家长永远进不了门。
 %%%===================================================================
 
-identity_none_test_() ->
+first_login_provisions_and_issues_test_() ->
     ?WITH_MECKS(
         [
             base_mocks()
@@ -138,15 +145,189 @@ identity_none_test_() ->
                     {'jscode2session', 3, fun(_, _, _) -> {ok, ?OPENID} end}
                 ]},
                 {sso_identity_ds, [
-                    {'find_uid', 2, fun(_, _) -> not_found end}
+                    {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> not_found end}
+                ]},
+                {passport_logic, [{'quota_guard', 0, fun() -> ok end}]},
+                {moya_identity_ds, [
+                    {'provision_and_bind', 3, fun(<<"wechat_mini">>, ?OPENID, _Opts) ->
+                        {ok, ?UID}
+                    end}
+                ]},
+                {token_ds, [
+                    {'encrypt_token', 1, fun(?UID) -> <<"at_provisioned">> end},
+                    {'encrypt_refreshtoken', 2, fun(?UID, <<>>) -> <<"rt_provisioned">> end}
+                ]},
+                {moya_context_logic, [
+                    {'contexts', 2, fun(?UID, organization) -> {ok, #{contexts => []}} end}
+                ]}
+            ]
+        ],
+        fun() ->
+            {ok, Payload} = moya_auth_logic:wechat_mini_login(#{code => <<"good_code_123">>}),
+            ?assertEqual(<<"at_provisioned">>, maps:get(token, Payload)),
+            %% 全新账号必然没有教学身份 → 客户端 routeByContexts 落到 no-identity 页
+            %% 「等待老师开通」，再由老师用 learners/:id/bind 建立家长关系
+            ?assertEqual(false, maps:get(has_teaching_identity, Payload)),
+            %% 开户恰好发生一次
+            ?assertEqual(1, meck:num_calls(moya_identity_ds, provision_and_bind, 3)),
+            %% 响应键集合仍不含 openid（身份映射层外泄=零容忍）
+            ?assertEqual(false, lists:member(openid, maps:keys(Payload)))
+        end
+    ).
+
+%% 已开户的老用户绝不重复建号（否则每次登录都烧掉一个 account 号 + 一行 user）
+known_user_skips_provision_test_() ->
+    ?WITH_MECKS(
+        [
+            base_mocks()
+            | [
+                {moya_wechat_client, [
+                    {'jscode2session', 3, fun(_, _, _) -> {ok, ?OPENID} end}
+                ]},
+                {sso_identity_ds, [
+                    {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> {ok, ?UID} end}
+                ]},
+                {passport_logic, [{'quota_guard', 0, fun() -> ok end}]},
+                {moya_identity_ds, [
+                    {'provision_and_bind', 3, fun(_, _, _) -> {error, unreachable} end}
+                ]},
+                {token_ds, [
+                    {'encrypt_token', 1, fun(?UID) -> <<"at_known">> end},
+                    {'encrypt_refreshtoken', 2, fun(?UID, <<>>) -> <<"rt_known">> end}
+                ]},
+                {moya_context_logic, [
+                    {'contexts', 2, fun(?UID, organization) -> {ok, #{contexts => []}} end}
+                ]}
+            ]
+        ],
+        fun() ->
+            {ok, _} = moya_auth_logic:wechat_mini_login(#{code => <<"good_code_123">>}),
+            ?assertEqual(0, meck:num_calls(moya_identity_ds, provision_and_bind, 3)),
+            %% 命中既有映射时连配额检查都不该走（不做建号动作）
+            ?assertEqual(0, meck:num_calls(passport_logic, quota_guard, 0))
+        end
+    ).
+
+%% 请求上下文（device_id / ip）必须透传到开户层 —— reg_ip 是 NOT NULL 列，
+%% 漏传就会被 user 层兜成 127.0.0.1（运维看到全部家长来自本机）
+provision_receives_request_context_test_() ->
+    ?WITH_MECKS(
+        [
+            base_mocks()
+            | [
+                {moya_wechat_client, [
+                    {'jscode2session', 3, fun(_, _, _) -> {ok, ?OPENID} end}
+                ]},
+                {sso_identity_ds, [
+                    {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> not_found end}
+                ]},
+                {passport_logic, [{'quota_guard', 0, fun() -> ok end}]},
+                {moya_identity_ds, [
+                    {'provision_and_bind', 3, fun(_, _, Opts) ->
+                        put(provision_opts, Opts),
+                        {ok, ?UID}
+                    end}
+                ]},
+                {token_ds, [
+                    {'encrypt_token', 1, fun(?UID) -> <<"at_ctx">> end},
+                    {'encrypt_refreshtoken', 2, fun(?UID, <<>>) -> <<"rt_ctx">> end}
+                ]},
+                {moya_context_logic, [
+                    {'contexts', 2, fun(?UID, organization) -> {ok, #{contexts => []}} end}
+                ]}
+            ]
+        ],
+        fun() ->
+            {ok, _} = moya_auth_logic:wechat_mini_login(#{
+                code => <<"good_code_123">>, device_id => <<"dev-1">>, ip => <<"203.0.113.9">>
+            }),
+            Opts = erase(provision_opts),
+            ?assertEqual(<<"203.0.113.9">>, maps:get(ip, Opts)),
+            ?assertEqual(<<"dev-1">>, maps:get(device_id, Opts))
+        end
+    ).
+
+%% 开户失败（DB/分配异常）折叠为 5401；绝不因开户失败而假装登录成功
+provision_failure_folds_to_login_failed_test_() ->
+    ?WITH_MECKS(
+        [
+            base_mocks()
+            | [
+                {moya_wechat_client, [
+                    {'jscode2session', 3, fun(_, _, _) -> {ok, ?OPENID} end}
+                ]},
+                {sso_identity_ds, [
+                    {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> not_found end}
+                ]},
+                {passport_logic, [{'quota_guard', 0, fun() -> ok end}]},
+                {moya_identity_ds, [
+                    {'provision_and_bind', 3, fun(_, _, _) -> {error, db_error} end}
                 ]}
             ]
         ],
         fun() ->
             ?assertEqual(
-                {error, identity_none},
+                {error, login_failed},
                 moya_auth_logic:wechat_mini_login(#{code => <<"good_code_123">>})
             )
+        end
+    ).
+
+%% License 用户数上限：**永久**条件，必须单独成码（402）而不是并进 5401 ——
+%% 否则家长看到的是可重试的文案 + 一个永远不会成功的重试按钮（5404 同款坑）
+provision_quota_exceeded_test_() ->
+    ?WITH_MECKS(
+        [
+            base_mocks()
+            | [
+                {moya_wechat_client, [
+                    {'jscode2session', 3, fun(_, _, _) -> {ok, ?OPENID} end}
+                ]},
+                {sso_identity_ds, [
+                    {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> not_found end}
+                ]},
+                {passport_logic, [
+                    {'quota_guard', 0, fun() -> {error, <<"license detail">>, 402} end}
+                ]},
+                {moya_identity_ds, [
+                    {'provision_and_bind', 3, fun(_, _, _) -> {ok, ?UID} end}
+                ]}
+            ]
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, account_quota_exceeded},
+                moya_auth_logic:wechat_mini_login(#{code => <<"good_code_123">>})
+            ),
+            %% 配额耗尽时不得再尝试建号（免绕过 License gate）
+            ?assertEqual(0, meck:num_calls(moya_identity_ds, provision_and_bind, 3))
+        end
+    ).
+
+%% 查映射本身失败（DB 抖动）绝不退化为「当作新用户开户」——
+%% 那会在 DB 抖动时批量造重复账号
+lookup_error_does_not_provision_test_() ->
+    ?WITH_MECKS(
+        [
+            base_mocks()
+            | [
+                {moya_wechat_client, [
+                    {'jscode2session', 3, fun(_, _, _) -> {ok, ?OPENID} end}
+                ]},
+                {sso_identity_ds, [
+                    {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> {error, timeout} end}
+                ]},
+                {moya_identity_ds, [
+                    {'provision_and_bind', 3, fun(_, _, _) -> {ok, ?UID} end}
+                ]}
+            ]
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, login_failed},
+                moya_auth_logic:wechat_mini_login(#{code => <<"good_code_123">>})
+            ),
+            ?assertEqual(0, meck:num_calls(moya_identity_ds, provision_and_bind, 3))
         end
     ).
 

@@ -288,6 +288,14 @@ update_last_seen_at(Field, Uid, Timestamp) ->
     elib_pg:execute(Sql, [Timestamp, elib_dt:now(), Uid]).
 
 %% @doc 兼容旧测试数据结构（uid/name 等）并补齐非空字段默认值
+%% 注意：本函数产出的是**固定键集**，不在其中的键会被静默丢弃。
+%% 2026-09-20 补 `source` / `reg_ip` / `reg_cosv` 三个透传：
+%%   - source：DB 有 DEFAULT ''，此前调用方传的 source 一律被吞，而姊妹路径
+%%     user_ds:insert_and_get_id/1（不过本函数）却能落 source ⇒ 同表两条写
+%%     路径语义不一致；
+%%   - reg_ip / reg_cosv：此前**硬编码** 127.0.0.1 / perf-test（为内部机器人
+%%     账号设的占位值），对外注册路径无法记录真实来源 IP。
+%% 三者缺省值与改动前逐字节相同 ⇒ 既有调用方行为零变化。
 -spec normalize_legacy_create_data(map()) -> map().
 normalize_legacy_create_data(Data0) ->
     Id = pick_value(Data0, [id, <<"id">>, uid, <<"uid">>], 0),
@@ -299,6 +307,9 @@ normalize_legacy_create_data(Data0) ->
     Region = pick_value(Data0, [region, <<"region">>], <<>>),
     Avatar = pick_value(Data0, [avatar, <<"avatar">>], <<>>),
     Sign = pick_value(Data0, [sign, <<"sign">>], <<>>),
+    Source = pick_value(Data0, [source, <<"source">>], <<>>),
+    RegIp = pick_value(Data0, [reg_ip, <<"reg_ip">>], <<"127.0.0.1">>),
+    RegCosv = pick_value(Data0, [reg_cosv, <<"reg_cosv">>], <<"perf-test">>),
     #{
         id => ec_cnv:to_integer(Id),
         nickname => ec_cnv:to_binary(Nickname),
@@ -309,10 +320,11 @@ normalize_legacy_create_data(Data0) ->
         region => ec_cnv:to_binary(Region),
         avatar => ec_cnv:to_binary(Avatar),
         sign => ec_cnv:to_binary(Sign),
+        source => ec_cnv:to_binary(Source),
         status => 1,
         created_at => elib_dt:now(),
-        reg_ip => <<"127.0.0.1">>,
-        reg_cosv => <<"perf-test">>
+        reg_ip => ec_cnv:to_binary(RegIp),
+        reg_cosv => ec_cnv:to_binary(RegCosv)
     }.
 
 -spec pick_value(map(), [atom() | binary()], term()) -> term().

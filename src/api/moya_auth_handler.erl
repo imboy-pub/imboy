@@ -7,6 +7,10 @@
 % 错误码映射（STEP-04 error-codes.md 5400 段）：
 %   invalid_code(参数) → 422 | missing/invalid code → 422/5402
 %   provider_unconfigured → 5403 | login_failed → 5401 | identity_none → 5404
+%   account_quota_exceeded → 402（复用全局授权上限码，与 passport/oidc 注册同款）
+%
+% 2026-09-20（试点方案 B）：首登已改为自动开户，identity_none 正常流程下不再
+% 产生；该分支保留为兼容（服务端将来若关闭自动开户仍会用到）。
 %%%
 
 -behavior(cowboy_rest).
@@ -40,7 +44,9 @@ wechat_mini_login(Req0) ->
     PostVals = elib_param:post(Req0),
     Params = #{
         code => maps:get(<<"code">>, PostVals, <<>>),
-        device_id => maps:get(<<"device_id">>, PostVals, <<>>)
+        device_id => maps:get(<<"device_id">>, PostVals, <<>>),
+        %% 首登自动开户会落 user.reg_ip：取真实客户端 IP，勿留占位值
+        ip => elib_req:get_client_ip(Req0)
     },
     case moya_auth_logic:wechat_mini_login(Params) of
         {ok, Payload} ->
@@ -68,5 +74,14 @@ login_error(Req, login_failed) ->
     elib_response:error(Req, <<"微信登录失败"/utf8>>, ?ERR_WECHAT_LOGIN_FAILED);
 login_error(Req, identity_none) ->
     elib_response:error(Req, <<"该微信未绑定教学账号，请联系机构"/utf8>>, ?ERR_TEACHING_IDENTITY_NONE);
+login_error(Req, account_quota_exceeded) ->
+    %% 首次开户撞上 License 用户数上限：**永久**条件，重试不会成功 ⇒
+    %% 文案必须指向「找管理员」，且客户端侧按 402 关掉重试按钮。
+    %% 不透 quota_guard 的原始 msg（含 License 细节）。
+    elib_response:error(
+        Req,
+        <<"用户数已达授权上限，请联系机构管理员"/utf8>>,
+        ?ERR_PAYMENT_REQUIRED
+    );
 login_error(Req, _Other) ->
     elib_response:error(Req, <<"微信登录失败"/utf8>>, ?ERR_WECHAT_LOGIN_FAILED).
