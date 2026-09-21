@@ -333,10 +333,16 @@ table(tenant) ->
         {session_transfer,
             entry(
                 [
+                    %% clock_unit => second（DF-6R，DF-6 同族收尾）：转接写路径的
+                    %% `at` 进 SQL_TRANSFER_UPDATE 的 updated_at = to_timestamp
+                    %% （epoch 秒）；毫秒量纲会把 updated_at 污染成约 5.8 万年后
+                    %% （与 claim/close/rate 同源）。
                     {<<"POST">>, transfer,
-                        [{to_identity_id, tsid, required}, {expected_version, int, required}], [
+                        [{to_identity_id, tsid, required}, {expected_version, int, required}],
+                        [
                             {id, session_id}
-                        ]}
+                        ],
+                        #{clock_unit => second}}
                 ],
                 seat_auth(<<"conversation.write">>),
                 server_common(),

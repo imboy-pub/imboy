@@ -627,6 +627,41 @@ seat_flow_tests(_) ->
                 ?assert(is_integer(At)),
                 ?assert(abs(At - os:system_time(second)) < 60)
             end)
+        end},
+
+        %% DF-6R（DF-6 同族收尾）：transfer 写路径的 `at` 同样进
+        %% SQL_TRANSFER_UPDATE 的 updated_at = to_timestamp（epoch 秒），
+        %% 缺 clock_unit => second 会把 updated_at 喂成约 5.8 万年后
+        %% （与 claim/close 同源）。
+        {"DF-6: seat transfer derives the server clock in epoch seconds", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            persistent_term:erase({df6_clock, transfer_at}),
+            meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                {ok, #{enabled => true}}
+            end),
+            meck:expect(customer_service_facade, transfer, fun(_O, Params) ->
+                persistent_term:put({df6_clock, transfer_at}, maps:get(at, Params, undefined)),
+                {ok, #{id => ?SESSION, status => active}}
+            end),
+            ?S:with_listener(tenant, session_transfer, seat_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary, "/sessions/",
+                        (int_bin(?SESSION))/binary, "/transfer">>,
+                    #{
+                        <<"organization_id">> => ?ORG,
+                        <<"workspace_id">> => ?WS,
+                        <<"to_identity_id">> => 999,
+                        <<"expected_version">> => 2
+                    },
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                At = persistent_term:get({df6_clock, transfer_at}, undefined),
+                ?assert(is_integer(At)),
+                ?assert(abs(At - os:system_time(second)) < 60)
+            end)
         end}
     ].
 
