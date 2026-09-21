@@ -843,6 +843,47 @@ widget_token_surfaces_org_derived_locked_test() ->
         [widget_frame_html, widget_asset_put]
     ).
 
+%% R2-F2（hosted-widget-contract S3 查询串面）：派生键申报面 = 正文与查询串
+%% 双查——org 申报进 query 同样 400 `server_derived_key_rejected`，与 F6 密钥
+%% 键守卫同口径；豁免面（旧 frame 兼容窗口）query organization_id 原样保留。
+widget_query_string_declared_org_rejected_test() ->
+    DerivedSurfaces = [
+        widget_identity_exchange,
+        widget_sessions,
+        widget_session_messages,
+        widget_session_events,
+        widget_asset_upload,
+        widget_asset_confirm,
+        widget_asset_content,
+        widget_session_rating,
+        widget_public_frame_html
+    ],
+    lists:foreach(
+        fun(Action) ->
+            {ok, Entry} = cs_actions:widget(Action),
+            Forbidden = maps:get(client_forbidden, Entry) ++ [workspace_organization_id],
+            ?assertMatch(
+                {error, {server_derived_key_rejected, organization_id}},
+                cs_http:check_forbidden(#{}, [{<<"organization_id">>, <<"7001001">>}], Forbidden)
+            ),
+            ?assertMatch(
+                {error, {server_derived_key_rejected, request_host}},
+                cs_http:check_forbidden(
+                    #{}, [{<<"request_host">>, <<"https://evil.example">>}], Forbidden
+                )
+            )
+        end,
+        DerivedSurfaces
+    ),
+    %% 兼容窗口豁免：旧 frame 的 query organization_id 不在禁键集，放行由
+    %% org_source=param 走 value() 收集（行为零修改）。
+    {ok, FrameEntry} = cs_actions:widget(widget_frame_html),
+    FrameForbidden = maps:get(client_forbidden, FrameEntry) ++ [workspace_organization_id],
+    ?assertEqual(
+        ok,
+        cs_http:check_forbidden(#{}, [{<<"organization_id">>, <<"7001001">>}], FrameForbidden)
+    ).
+
 %% CSD-BE-01（hosted-widget-contract S6）：/w/* 形状登记进共享谓词
 %% （XFO 豁免 / CORS 面 / 免签直通三处消费的单一真源）；旧 frame 形状原样
 %% 保留，相似路径不放宽。

@@ -45,6 +45,11 @@
     now_sec/0
 ]).
 
+-ifdef(TEST).
+%% R2-F2：查询串派生键守卫的合同面锁死（cs_route_contract_tests 直调）。
+-export([check_forbidden/3]).
+-endif.
+
 -include("error_code.hrl").
 
 %% TSID 在 JSON 里的载体是 string；版本/评分/时间戳不是 TSID，保持 number。
@@ -301,7 +306,8 @@ path_tsid(Req, Name, MissingTag) when is_atom(Name) ->
     {ok, map()} | {error, term()}.
 build_params(Entry, Case, Req, Body, Derived) ->
     Forbidden = maps:get(client_forbidden, Entry, []),
-    case check_forbidden(Body, Forbidden ++ ?FORBIDDEN_SCOPE_KEYS) of
+    Qs = cowboy_req:parse_qs(Req),
+    case check_forbidden(Body, Qs, Forbidden ++ ?FORBIDDEN_SCOPE_KEYS) of
         {error, _} = Err ->
             Err;
         ok ->
@@ -329,8 +335,17 @@ server_derived_keys() ->
 server_derived() ->
     #{}.
 
-check_forbidden(Body, Keys) ->
-    case [K || K <- Keys, is_map_key(K, Body)] of
+%% R2-F2（hosted-widget-contract S3 查询串面）：派生键申报面 = 正文**与**
+%% 查询串双查——与 check_forbidden_crypto_keys/2 同口径。派生事实永不来自
+%% 客户端，query 里的申报显式 400 而非静默忽略。
+check_forbidden(Body, Qs, Keys) when is_map(Body), is_list(Qs) ->
+    case
+        [
+            K
+         || K <- Keys,
+            is_map_key(K, Body) orelse proplists:is_defined(key_bin(K), Qs)
+        ]
+    of
         [] ->
             ok;
         [Key | _] ->

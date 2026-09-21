@@ -56,13 +56,14 @@
 %% SSE 增量单次拉取上限（页大小上限 = cs_app_support:max_page_limit/0）。
 -define(SSE_POLL_LIMIT, 200).
 
-%% CSD-BE-01R（hosted-widget-contract S4/S6）：/w/ frame 文档引用的版本化
-%% 静态 JS = `/assets/cs-widget.v1.js`（deploy 网关既有 /assets/ location，
-%% 产物侧由 IMG-01R 提供该稳定版本名文件；S6 的 immutable 缓存口径同时覆盖
-%% /assets/* 与 /widget-assets/*）。旧 frame handler 的 `?FRAME_ASSET_JS`
-%% （cs_widget_frame_handler）与旧面行为零修改（兼容窗口）——升级版本时
-%% 两处各自同步。
--define(PUBLIC_FRAME_ASSET_JS, <<"/assets/cs-widget.v1.js">>).
+%% CSD-BE-01R + R2-F1/F3（hosted-widget-contract S4/S6）：/w/ frame 文档引用
+%% 版本化静态 JS = `/widget-assets/cs-widget.v2.js`（合同 S4 字面形状）。v1 已
+%% 被旧 frame 面 `?FRAME_ASSET_JS`（cs_widget_frame_handler，随 API 主机静态
+%% 部署）占用，新面取 v2 避免同名互踩。widget 网关对 /widget-assets/ 下发
+%% no-cache 重验证（非 immutable）：稳定版本名的入口资产可在发布时原位更新，
+%% 热修（含安全修复）对已缓存访客立即可达，不依赖跨仓改名纪律；内容哈希
+%% chunk 仍走 /assets/* immutable。旧面行为零修改（兼容窗口）。
+-define(PUBLIC_FRAME_ASSET_JS, <<"/widget-assets/cs-widget.v2.js">>).
 
 %% cowboy 普通 handler：State = route Opts（含 route metadata + 中间件会话键）。
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.

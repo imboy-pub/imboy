@@ -19,10 +19,10 @@
 -define(ORG, 7001001).
 -define(INSTALL, 810001).
 -define(PUBID, <<"wgt_pub_csdb01">>).
-%% CSD-BE-01R（GAP-2 修复，hosted-widget-contract S4/S6）：/w/ 新面引用
-%% `/assets/cs-widget.v1.js`（deploy 网关既有 location + IMG-01R 产物稳定
-%% 版本名）；旧面 `/widget-assets/` 行为不在本套件断言范围。
--define(FRAME_JS, <<"/assets/cs-widget.v1.js">>).
+%% CSD-BE-01R + R2-F1/F3（hosted-widget-contract S4/S6）：/w/ 新面引用合同
+%% S4 字面形状 `/widget-assets/cs-widget.v2.js`（v1 归旧 frame 面，新面取 v2
+%% 避免同名互踩；widget 网关对该 location 下发 no-cache 重验证）。
+-define(FRAME_JS, <<"/widget-assets/cs-widget.v2.js">>).
 -define(FRAME_PATH, <<"/w/">>).
 
 cs_widget_public_frame_test_() ->
@@ -123,13 +123,15 @@ public_frame_http_tests(_) ->
                 ?assertEqual(nomatch, binary:match(Body, <<"workspace">>)),
                 ?assertEqual(nomatch, binary:match(Body, <<"secret">>)),
                 ?assertEqual(nomatch, binary:match(Body, <<"token">>)),
-                %% 版本化脚本（S4；CSD-BE-01R：新面 = /assets/ 稳定版本名，
-                %% 旧面 /widget-assets/ 不得出现在 /w/ 文档——GAP-2 oracle）。
+                %% 版本化脚本（S4；R2-F1/F3：新面 = 合同字面路径
+                %% /widget-assets/cs-widget.v2.js；旧面 v1 文件名（新旧两形）
+                %% 不得出现在 /w/ 文档——面隔离 oracle，升级即换 <N> 缓存键）。
                 ?assertMatch(
                     {_, _}, binary:match(Body, <<"src=\"", ?FRAME_JS/binary, "\"">>)
                 ),
                 ?assertMatch({_, _}, binary:match(Body, ?FRAME_JS)),
-                ?assertEqual(nomatch, binary:match(Body, <<"/widget-assets/">>))
+                ?assertEqual(nomatch, binary:match(Body, <<"/widget-assets/cs-widget.v1.js">>)),
+                ?assertEqual(nomatch, binary:match(Body, <<"/assets/cs-widget.v1.js">>))
             end)
         end},
 
