@@ -2,9 +2,22 @@
 
 %%%
 % EPGZ-04 INT-12/13 企业 Webhook（配置/轮换/停用 + 事件入箱 + 投递执行）。
+% FULL-03 扩展（Gate WEBHOOK_PASS，plan-full §3.1/§5/§7）：
+%   * 投递账本：ownership（org/app 显式落行）、endpoint snapshot（url/host/pin
+%     + 配置代际，DB 守卫强制不可变）、ledger_version（守卫独占写入的单调版本）、
+%     claim（ewh_claimed_at + 租约）、terminal（success/dead 不可回退，重放走新行
+%     + ewh_replay_of）。**不建第二套 outbox / worker**——全部是既有
+%     bot_delivery + bot_delivery_worker 的扩展（plan-full §5）。
+%   * 签名合同可验：verify/4（常量时间比较）与 verify_within/5（反重放时间窗），
+%     头名由 signature_headers/0 单点声明（旋转后旧签名一律不通过）。
+%   * 可观测：attempt/dead-letter/emit/replay 计数与投递延迟直方图全部进既有
+%     elib_metric 通道（metrics 名见 metric_names/0）；只读统计/列表读面不含
+%     secret、正文与签名 URL。
+%   * 无正文/无 secret：envelope 键集封闭（envelope_keys/0）；投递行只存
+%     信封（事件 id + 资源 id），不存消息正文；日志不落 secret/正文。
 %
 % 复用不建第二套（plan-gz §7.1）：
-%   * durable outbox = bot_delivery / bot_delivery_attempt（迁移 92/104）；
+%   * durable outbox = bot_delivery / bot_delivery_attempt（迁移 92/104/141）；
 %     worker = bot_webhook_delivery_worker（同一轮询/重试 [5,30,300]/死信/
 %     attempt 审计）；企业行以 bot_id 命名空间 'eapp:<principal_uid>' 区分，
 %     worker 在 execute/1 入口按前缀分派到本模块 execute_delivery/1
@@ -25,13 +38,22 @@
 -export([
     events_whitelist/0,
     envelope/3,
+    envelope_keys/0,
     signature_base/2,
+    signature_headers/0,
     sign/2,
+    verify/4,
+    verify_within/5,
     configure_tx/3,
     replay_tx/3,
     emit_event_tx/4,
     emit_event_failed/4,
-    execute_delivery/1
+    execute_delivery/1,
+    deliveries_tx/4,
+    delivery_stats_tx/2,
+    purgeable_tx/3,
+    retention_days/0,
+    metric_names/0
 ]).
 
 -include("log.hrl").
@@ -46,6 +68,37 @@
 -define(ENVELOPE_VERSION, 1).
 -define(RETRY_SCHEDULE, [5, 30, 300]).
 
+%% 信封键集封闭（plan-full §3.1「无正文/无 secret」）：envelope/3 只产出这些键，
+%% 多一个键都是合同变更（套件按本清单逐键断言 == 集合相等）。
+-define(ENVELOPE_KEYS, [
+    <<"event_id">>,
+    <<"delivery_id">>,
+    <<"event_type">>,
+    <<"version">>,
+    <<"occurred_at">>,
+    <<"organization_id">>,
+    <<"application_id">>,
+    <<"resource">>
+]).
+-define(ENVELOPE_RESOURCE_KEYS, [<<"type">>, <<"id">>]).
+
+%% 签名头名（冻结合同；rotation/重放两侧共用同一组名字）
+-define(HDR_DELIVERY, <<"x-imboy-delivery">>).
+-define(HDR_EVENT, <<"x-imboy-event">>).
+-define(HDR_TIMESTAMP, <<"x-imboy-timestamp">>).
+-define(HDR_SIGNATURE, <<"x-imboy-signature">>).
+%% 验签时间窗（秒）：默认 300（与常见 webhook 反重放窗口同量级）
+-define(DEFAULT_VERIFY_WINDOW_S, 300).
+
+%% 指标名（复用 elib_metric；dead-letter/成功率/重试计数全部经既有通道）
+-define(METRIC_ATTEMPT, enterprise_webhook_attempt_total).
+-define(METRIC_DEAD, enterprise_webhook_dead_letter_total).
+-define(METRIC_LATENCY, enterprise_webhook_delivery_latency_seconds).
+-define(METRIC_EMIT, enterprise_webhook_emit_total).
+-define(METRIC_REPLAY, enterprise_webhook_replay_total).
+
+-define(DEFAULT_RETENTION_DAYS, 30).
+
 %%%===================================================================
 %%% 纯合同（envelope / 签名）
 %%%===================================================================
@@ -53,6 +106,32 @@
 -spec events_whitelist() -> [binary()].
 events_whitelist() ->
     ?EVENTS_WHITELIST.
+
+%% @doc 信封键集（封闭；测试逐键断言）。
+-spec envelope_keys() -> {[binary()], [binary()]}.
+envelope_keys() ->
+    {?ENVELOPE_KEYS, ?ENVELOPE_RESOURCE_KEYS}.
+
+%% @doc 投递头名合同（timestamp/signature/delivery/event 四头，名字稳定）。
+-spec signature_headers() -> map().
+signature_headers() ->
+    #{
+        delivery => ?HDR_DELIVERY,
+        event => ?HDR_EVENT,
+        timestamp => ?HDR_TIMESTAMP,
+        signature => ?HDR_SIGNATURE
+    }.
+
+%% @doc 指标名（复用既有 elib_metric 通道，不新建通道）。
+-spec metric_names() -> map().
+metric_names() ->
+    #{
+        attempt => ?METRIC_ATTEMPT,
+        dead_letter => ?METRIC_DEAD,
+        latency => ?METRIC_LATENCY,
+        emit => ?METRIC_EMIT,
+        replay => ?METRIC_REPLAY
+    }.
 
 %% @doc 事件信封：event_id/delivery_id/event_type/version/occurred_at/
 %% org/app/resource——无 secret、无正文、无签名 URL（plan-gz §7.1）。
@@ -82,6 +161,55 @@ signature_base(Timestamp, RawBody) ->
 -spec sign(binary(), binary()) -> binary().
 sign(Secret, SigBase) ->
     bot_webhook_logic:sign_payload(Secret, SigBase).
+
+%% @doc 验签（接收侧合同实现；常量时间比较，大小写不敏感 hex）。
+%% secret 轮换后：用旧 secret 算出的签名在新 secret 下**必然为 false**
+%% （无「双密钥并行窗口」——旋转即失效，见 FULL-03 checkpoint §能力对照）。
+-spec verify(binary(), binary(), binary(), binary()) -> boolean().
+verify(Secret, Timestamp, RawBody, Signature) when
+    is_binary(Secret), is_binary(Timestamp), is_binary(RawBody), is_binary(Signature)
+->
+    Expected = sign(Secret, signature_base(Timestamp, RawBody)),
+    constant_time_eq(Expected, Signature);
+verify(_, _, _, _) ->
+    false.
+
+%% @doc 带时间窗的验签（反重放）：|now - timestamp| =< WindowSec 才可能为 true。
+-spec verify_within(binary(), binary(), binary(), binary(), non_neg_integer()) -> boolean().
+verify_within(Secret, Timestamp, RawBody, Signature, WindowSec) when
+    is_integer(WindowSec), WindowSec >= 0
+->
+    case timestamp_seconds(Timestamp) of
+        {ok, Ts} ->
+            case abs(os:system_time(second) - Ts) =< WindowSec of
+                true -> verify(Secret, Timestamp, RawBody, Signature);
+                false -> false
+            end;
+        error ->
+            false
+    end;
+verify_within(_, _, _, _, _) ->
+    false.
+
+timestamp_seconds(Timestamp) when byte_size(Timestamp) > 0, byte_size(Timestamp) =< 20 ->
+    try binary_to_integer(Timestamp) of
+        Ts when Ts >= 0 -> {ok, Ts};
+        _ -> error
+    catch
+        _:_ -> error
+    end;
+timestamp_seconds(_) ->
+    error.
+
+%% 常量时间 hex 比较：先规范化大小写与长度，再走 crypto:hash_equals/2
+%% （长度不同直接 false——长度本身不是秘密，签名是固定 64 hex）。
+constant_time_eq(A, B) when byte_size(A) =:= byte_size(B) ->
+    crypto:hash_equals(lower_hex(A), lower_hex(B));
+constant_time_eq(_, _) ->
+    false.
+
+lower_hex(Bin) ->
+    list_to_binary(string:lowercase(binary_to_list(Bin))).
 
 %%%===================================================================
 %%% INT-12 配置 / 轮换 / 停用
@@ -164,14 +292,28 @@ maybe_rotate(Conn, Principal, Rotate, Url, Events, Status) ->
             Secret = new_secret(),
             case enterprise_webhook_repo:set_secret_tx(Conn, Principal, Secret) of
                 {ok, updated} ->
-                    {ok, result(Url, Events, Status, true, #{<<"secret">> => Secret})};
+                    {ok,
+                        with_generation(
+                            Conn,
+                            Principal,
+                            result(Url, Events, Status, true, #{
+                                <<"secret">> => Secret
+                            })
+                        )};
                 {error, no_key} ->
                     {error, {<<"security_gate_closed">>, webhook_secret_key_missing}};
                 {error, Reason} ->
                     {error, {<<"internal_error">>, Reason}}
             end;
         false ->
-            {ok, result(Url, Events, Status, false, #{})}
+            {ok, with_generation(Conn, Principal, result(Url, Events, Status, false, #{}))}
+    end.
+
+%% @doc 端点配置代际：任何配置写入都 +1；返回值同时进配置响应与后续入箱快照。
+with_generation(Conn, Principal, Result) ->
+    case enterprise_webhook_repo:bump_generation_tx(Conn, Principal) of
+        {ok, Gen} -> Result#{<<"endpoint_generation">> => Gen};
+        {error, _} -> Result
     end.
 
 first_time(Conn, Principal) ->
@@ -242,17 +384,33 @@ do_emit(Conn, Ctx, EventType, Resource0) ->
                 idempotency_key => <<"evt-", EventId/binary>>,
                 webhook_url => current_url(Conn, Principal),
                 webhook_host => maps:get(host, Pin),
-                pinned_ip => ip_to_binary(maps:get(ip, Pin))
+                pinned_ip => ip_to_binary(maps:get(ip, Pin)),
+                %% FULL-03 账本：ownership + 端点配置代际（DB 守卫强制不可变）
+                owner_organization_id => maps:get(organization_id, Ctx),
+                owner_application_id => maps:get(application_id, Ctx),
+                endpoint_generation => current_generation(Conn, Principal)
             },
             case enterprise_webhook_repo:insert_delivery_tx(Conn, Delivery) of
-                {ok, inserted} -> {ok, emitted};
-                {ok, duplicate} -> {ok, skipped};
-                {error, Reason} -> {error, Reason}
+                {ok, inserted} ->
+                    metric_emit(emitted),
+                    {ok, emitted};
+                {ok, duplicate} ->
+                    metric_emit(duplicate),
+                    {ok, skipped};
+                {error, Reason} ->
+                    {error, Reason}
             end;
         {error, Reason} ->
             %% SSRF/DNS 拒绝：跳过入箱并留痕（不阻断业务事务）。
             ?WARN_LOG("[EPGZ04] webhook emit guard rejected: ~p~n", [Reason]),
+            metric_emit(skipped),
             {ok, skipped}
+    end.
+
+current_generation(Conn, Principal) ->
+    case enterprise_webhook_repo:find_bot_config_tx(Conn, Principal) of
+        {ok, Row} -> maps:get(<<"ewh_endpoint_generation">>, Row, 0);
+        _ -> 0
     end.
 
 %% @doc message.enterprise.failed（业务 {error} 后由 handler 在 ROLLBACK 之后
@@ -281,26 +439,29 @@ emit_event_failed(Ctx, EventType, Resource, ReasonCode) ->
 %%% INT-13 replay
 %%%===================================================================
 
-%% @doc 重放本 Application delivery：新 delivery id、保留原 event id。
-%% 仅本 App 的行可重放（bot_id=eapp:<本 app principal> 反查同 Org active
-%% Application；不属/不存在 → resource_not_found）；仅已终结态
-%% （success/dead）可重放（在途 pending/retry → idempotency_conflict 语义
-%% 的 invalid_request 拒绝，避免并发重复投递）。
+%% @doc 重放本 Application delivery：新 delivery id、保留原 event id、
+%% ewh_replay_of 指向原行。仅本 App 的行可重放（ownership 双证：行的
+%% ewh_owner_* 列 + bot_id 前缀反查同 Org active Application；两者都过才放行）；
+%% 仅已终结态（success/dead）可重放（在途 pending/retry → invalid_request 拒绝，
+%% 避免并发重复投递）。DB 侧 uq_ewh_delivery_replay_inflight 保证同一原行
+%% **同时最多一条在途重放**——并发重放第二次命中 23505 → idempotency_conflict。
 -spec replay_tx(any(), map(), binary()) -> {ok, map()} | {error, {binary(), term()}}.
 replay_tx(Conn, Ctx, DeliveryId) when is_binary(DeliveryId), DeliveryId =/= <<>> ->
     OrgId = maps:get(organization_id, Ctx),
-    _ = OrgId,
     case enterprise_webhook_repo:find_delivery_tx(Conn, DeliveryId) of
         {ok, Delivery = #{<<"bot_id">> := BotId}} ->
-            case replay_owner_ok(Conn, OrgId, BotId) of
+            case replay_owner_ok(Conn, OrgId, Delivery) of
                 true ->
                     replay_finalize(Conn, Ctx, Delivery, BotId);
                 false ->
+                    metric_replay(rejected),
                     {error, {<<"resource_not_found">>, delivery_not_found}}
             end;
         {ok, _} ->
+            metric_replay(rejected),
             {error, {<<"resource_not_found">>, delivery_not_found}};
         {error, notfound} ->
+            metric_replay(rejected),
             {error, {<<"resource_not_found">>, delivery_not_found}};
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}
@@ -308,15 +469,41 @@ replay_tx(Conn, Ctx, DeliveryId) when is_binary(DeliveryId), DeliveryId =/= <<>>
 replay_tx(_Conn, _Ctx, _DeliveryId) ->
     {error, {<<"invalid_request">>, invalid_delivery_id}}.
 
-replay_owner_ok(Conn, OrgId, BotId) ->
-    case enterprise_webhook_repo:principal_of_delivery(BotId) of
-        {ok, Principal} ->
-            case enterprise_webhook_repo:find_application_by_principal_tx(Conn, OrgId, Principal) of
-                {ok, _} -> true;
-                _ -> false
-            end;
-        error ->
-            false
+%% ownership 双证：① 行的 ownership 列必须与本 ctx 的 org 一致（FULL-03 显式
+%% 归属，fallback 到 bot_id 前缀反查以兼容迁移 141 之前写入的既有行——backfill
+%% 已补齐，此处 fallback 只是防御）；② bot_id 前缀反查的 Application 必须属于
+%% 本 Org 且 active。
+replay_owner_ok(Conn, OrgId, Delivery) ->
+    case maps:get(<<"ewh_owner_organization_id">>, Delivery, undefined) of
+        RowOrg when is_integer(RowOrg), RowOrg =/= OrgId ->
+            false;
+        _ ->
+            case
+                enterprise_webhook_repo:principal_of_delivery(
+                    maps:get(<<"bot_id">>, Delivery)
+                )
+            of
+                {ok, Principal} ->
+                    case
+                        enterprise_webhook_repo:find_application_by_principal_tx(
+                            Conn, OrgId, Principal
+                        )
+                    of
+                        {ok, App} -> replay_owner_app_ok(Delivery, App);
+                        _ -> false
+                    end;
+                error ->
+                    false
+            end
+    end.
+
+%% 行的 Application 归属必须与反查结果一致（防一行被写成「A 的 bot 前缀 + B 的
+%% ownership」——DB 守卫也拦，这里是读侧的第二道）。
+replay_owner_app_ok(Delivery, App) ->
+    case maps:get(<<"ewh_owner_application_id">>, Delivery, undefined) of
+        undefined -> true;
+        null -> true;
+        AppId -> AppId =:= maps:get(<<"id">>, App)
     end.
 
 replay_finalize(Conn, Ctx, Delivery, BotId) ->
@@ -324,10 +511,13 @@ replay_finalize(Conn, Ctx, Delivery, BotId) ->
         Status when Status =:= <<"dead">>; Status =:= <<"success">> ->
             replay_insert(Conn, Ctx, Delivery, BotId);
         <<"pending">> ->
+            metric_replay(rejected),
             {error, {<<"invalid_request">>, delivery_in_flight}};
         <<"retry">> ->
+            metric_replay(rejected),
             {error, {<<"invalid_request">>, delivery_in_flight}};
         _ ->
+            metric_replay(rejected),
             {error, {<<"invalid_request">>, delivery_not_replayable}}
     end.
 
@@ -355,6 +545,7 @@ replay_insert(Conn, _Ctx, Delivery, BotId) ->
                     true -> Env0#{<<"delivery_id">> => NewDeliveryId};
                     false -> #{<<"event_id">> => EventId, <<"delivery_id">> => NewDeliveryId}
                 end,
+            OriginalId = maps:get(<<"delivery_id">>, Delivery),
             Row = #{
                 delivery_id => NewDeliveryId,
                 bot_id => BotId,
@@ -364,21 +555,35 @@ replay_insert(Conn, _Ctx, Delivery, BotId) ->
                 idempotency_key => <<"replay-", NewDeliveryId/binary>>,
                 webhook_url => current_url(Conn, Principal),
                 webhook_host => maps:get(host, Pin),
-                pinned_ip => ip_to_binary(maps:get(ip, Pin))
+                pinned_ip => ip_to_binary(maps:get(ip, Pin)),
+                %% 重放行的归属沿用原行（同 App），代际取**当前**配置代际
+                %% （重放到当前端点，而不是已废弃的历史端点）
+                owner_organization_id => maps:get(
+                    <<"ewh_owner_organization_id">>, Delivery, undefined
+                ),
+                owner_application_id => maps:get(
+                    <<"ewh_owner_application_id">>, Delivery, undefined
+                ),
+                replay_of => OriginalId,
+                endpoint_generation => current_generation(Conn, Principal)
             },
             case enterprise_webhook_repo:insert_delivery_tx(Conn, Row) of
                 {ok, inserted} ->
+                    metric_replay(queued),
                     {ok, #{
                         <<"delivery_id">> => NewDeliveryId,
                         <<"event_id">> => EventId,
-                        <<"original_delivery_id">> => maps:get(<<"delivery_id">>, Delivery)
+                        <<"original_delivery_id">> => OriginalId
                     }};
                 {ok, duplicate} ->
+                    %% 同一原行已有在途重放（唯一索引仲裁）
+                    metric_replay(rejected),
                     {error, {<<"idempotency_conflict">>, replay_already_queued}};
                 {error, Reason} ->
                     {error, {<<"internal_error">>, Reason}}
             end;
         {error, Reason} ->
+            metric_replay(rejected),
             {error, {<<"invalid_request">>, {ssrf_or_invalid_url, Reason}}}
     end.
 
@@ -426,10 +631,10 @@ do_execute_delivery(Delivery, AttemptNo) ->
                     SigBase = signature_base(Ts, Body),
                     Sig = sign(Secret, SigBase),
                     Headers = [
-                        {<<"x-imboy-delivery">>, maps:get(<<"delivery_id">>, Delivery)},
-                        {<<"x-imboy-event">>, maps:get(<<"event_type">>, Delivery, <<"message">>)},
-                        {<<"x-imboy-timestamp">>, Ts},
-                        {<<"x-imboy-signature">>, Sig}
+                        {?HDR_DELIVERY, maps:get(<<"delivery_id">>, Delivery)},
+                        {?HDR_EVENT, maps:get(<<"event_type">>, Delivery, <<"message">>)},
+                        {?HDR_TIMESTAMP, Ts},
+                        {?HDR_SIGNATURE, Sig}
                     ],
                     T0 = erlang:monotonic_time(millisecond),
                     Res = (sender_mod()):post(IP, Port, IsTls, PathQS, Host, Headers, Body),
@@ -448,10 +653,14 @@ do_execute_delivery(Delivery, AttemptNo) ->
 settle(Delivery, AttemptNo, {ok, Code} = Res, Lat) ->
     Did = maps:get(<<"delivery_id">>, Delivery),
     Class = class_of(Code),
+    metric_latency(Lat),
     case Class of
         <<"2xx">> ->
             ok = audit(Did, AttemptNo, Class, Code, Lat, <<>>),
-            {ok, _} = bot_webhook_delivery_repo:mark_success(Did, AttemptNo);
+            settle_write(success, Did, fun() ->
+                bot_webhook_delivery_repo:mark_success(Did, AttemptNo)
+            end),
+            metric_attempt(success, Class);
         <<"4xx">> ->
             dead(Delivery, AttemptNo, Class, Code, Lat, <<>>);
         _ ->
@@ -464,11 +673,18 @@ retry(Delivery, AttemptNo, Class, Code, Lat, Reason) ->
     ok = audit(Did, AttemptNo, Class, Code, Lat, Reason),
     case retries_left(AttemptNo) of
         [] ->
-            {ok, _} = bot_webhook_delivery_repo:mark_dead(Did, AttemptNo),
+            settle_write(dead, Did, fun() ->
+                bot_webhook_delivery_repo:mark_dead(Did, AttemptNo)
+            end),
+            metric_attempt(dead, Class),
+            metric_dead(Class),
             ?WARN_LOG("[EPGZ04] delivery ~ts -> dead after ~p attempts~n", [Did, AttemptNo]),
             ok;
         [After | _] ->
-            {ok, _} = bot_webhook_delivery_repo:mark_retry(Did, After, AttemptNo, <<>>),
+            settle_write(retry, Did, fun() ->
+                bot_webhook_delivery_repo:mark_retry(Did, After, AttemptNo, <<>>)
+            end),
+            metric_attempt(retry, Class),
             ok
     end.
 
@@ -481,7 +697,30 @@ retries_left(AttemptNo) ->
 dead(Delivery, AttemptNo, Class, Code, Lat, Reason) ->
     Did = maps:get(<<"delivery_id">>, Delivery),
     ok = audit(Did, AttemptNo, Class, Code, Lat, Reason),
-    {ok, _} = bot_webhook_delivery_repo:mark_dead(Did, AttemptNo).
+    settle_write(dead, Did, fun() ->
+        bot_webhook_delivery_repo:mark_dead(Did, AttemptNo)
+    end),
+    metric_attempt(dead, Class),
+    metric_dead(Class).
+
+%% 状态落账容错（FULL-03）：账本守卫把终态行冻结、并拒绝非法迁移——若本行已被
+%% 另一个执行者终结（并发 worker / 重放竞争），mark_* 会拿到 {rollback, ...}
+%% 或直接 raise。那不是投递失败，也不该炸掉 worker 批次：记 WARN 继续。
+%% 任何情况下都不吞掉「成功」语义——成功路径的 mark_success 失败同样只留痕。
+settle_write(Label, Did, Fun) ->
+    try Fun() of
+        {ok, _} ->
+            ok;
+        Other ->
+            ?WARN_LOG("[FULL03] delivery ~ts settle ~p rejected: ~p~n", [Did, Label, Other]),
+            ok
+    catch
+        Class:Reason ->
+            ?WARN_LOG(
+                "[FULL03] delivery ~ts settle ~p crash ~p:~p~n", [Did, Label, Class, Reason]
+            ),
+            ok
+    end.
 
 audit(Did, AttemptNo, Class, Code, Lat, Reason) ->
     Id = iolist_to_binary([
@@ -521,6 +760,126 @@ sender_mod() ->
         {ok, M} -> M;
         undefined -> bot_webhook_delivery_sender
     end.
+
+%%%===================================================================
+%%% FULL-03 可观测：指标（复用 elib_metric 通道）
+%%%===================================================================
+
+metric_attempt(Outcome, Class) ->
+    _ = elib_metric:increment(?METRIC_ATTEMPT, 1, #{outcome => Outcome, class => Class}),
+    ok.
+
+metric_dead(Class) ->
+    _ = elib_metric:increment(?METRIC_DEAD, 1, #{class => Class}),
+    ok.
+
+metric_latency(LatMs) when is_integer(LatMs), LatMs >= 0 ->
+    elib_metric:record(?METRIC_LATENCY, LatMs / 1000);
+metric_latency(_) ->
+    ok.
+
+metric_emit(Result) ->
+    _ = elib_metric:increment(?METRIC_EMIT, 1, #{result => Result}),
+    ok.
+
+metric_replay(Result) ->
+    _ = elib_metric:increment(?METRIC_REPLAY, 1, #{result => Result}),
+    ok.
+
+%%%===================================================================
+%%% FULL-03 只读面：投递列表 / 统计 / 保留窗口
+%%%===================================================================
+
+%% @doc 本 Application 的投递列表 + 健康度摘要（org/app 归属过滤，页大小夹紧）。
+%% 响应**不含 payload**（无正文/无 secret/无签名 URL），只有元数据 + 计数。
+-spec deliveries_tx(any(), map(), map(), integer()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+deliveries_tx(Conn, Ctx, Params, DefaultSize) when is_map(Params) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    Filters = #{
+        size => maps:get(size, Params, DefaultSize),
+        status => status_filter(maps:get(status, Params, undefined))
+    },
+    Page = int_or(maps:get(page, Params, 1), 1),
+    case enterprise_webhook_repo:list_deliveries_tx(Conn, OrgId, AppId, Filters, Page) of
+        {ok, Result} ->
+            case delivery_stats_tx(Conn, Ctx) of
+                {ok, Summary} -> {ok, Result#{summary => Summary}};
+                {error, Reason} -> {error, {<<"internal_error">>, Reason}}
+            end;
+        {error, Reason} ->
+            {error, {<<"internal_error">>, Reason}}
+    end;
+deliveries_tx(_Conn, _Ctx, _Params, _DefaultSize) ->
+    {error, {<<"invalid_request">>, invalid_page_params}}.
+
+%% @doc 投递健康度：状态计数 + 尝试/重试次数 + 死信数 + 成功率。
+%% 成功率口径：success / (success + dead)——**在途（pending/retry）不计入分母**，
+%% 因此「成功率」不会因为刚入箱还没投递而虚低。
+-spec delivery_stats_tx(any(), map()) -> {ok, map()} | {error, {binary(), term()}}.
+delivery_stats_tx(Conn, Ctx) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    case enterprise_webhook_repo:delivery_stats_tx(Conn, OrgId, AppId) of
+        {ok, Stats} ->
+            Success = maps:get(<<"success">>, maps:get(<<"status_counts">>, Stats), 0),
+            Dead = maps:get(<<"dead_letter_count">>, Stats, 0),
+            Settled = Success + Dead,
+            Rate =
+                case Settled of
+                    0 -> null;
+                    _ -> Success / Settled
+                end,
+            {ok, Stats#{
+                <<"success_count">> => Success,
+                <<"success_rate">> => Rate,
+                <<"in_flight_count">> =>
+                    maps:get(<<"pending">>, maps:get(<<"status_counts">>, Stats), 0) +
+                    maps:get(<<"retry">>, maps:get(<<"status_counts">>, Stats), 0)
+            }};
+        {error, Reason} ->
+            {error, {<<"internal_error">>, Reason}}
+    end.
+
+%% @doc 保留窗口（天）：配置缺省 30；只读集合，不做物理删除。
+-spec retention_days() -> pos_integer().
+retention_days() ->
+    case config_ds:env(enterprise_webhook_retention_days, ?DEFAULT_RETENTION_DAYS) of
+        D when is_integer(D), D > 0 -> D;
+        _ -> ?DEFAULT_RETENTION_DAYS
+    end.
+
+%% @doc 保留窗口只读集合：已终结 + 早于 cutoff 的企业投递（在途永不入选）。
+-spec purgeable_tx(any(), map(), pos_integer()) ->
+    {ok, [map()]} | {error, {binary(), term()}}.
+purgeable_tx(Conn, Ctx, Days) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    case enterprise_webhook_repo:purgeable_tx(Conn, OrgId, AppId, Days) of
+        {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, {<<"internal_error">>, Reason}}
+    end.
+
+status_filter(undefined) ->
+    undefined;
+status_filter(Status) when is_binary(Status) ->
+    case lists:member(Status, [<<"pending">>, <<"retry">>, <<"success">>, <<"dead">>]) of
+        true -> Status;
+        false -> undefined
+    end;
+status_filter(_) ->
+    undefined.
+
+int_or(V, _Default) when is_integer(V) -> V;
+int_or(V, Default) when is_binary(V) ->
+    try binary_to_integer(V) of
+        I -> I
+    catch
+        _:_ -> Default
+    end;
+int_or(_, Default) ->
+    Default.
 
 %%%===================================================================
 %%% Internal

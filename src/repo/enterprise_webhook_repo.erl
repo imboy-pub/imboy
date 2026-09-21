@@ -26,16 +26,25 @@
     find_bot_config_tx/2,
     upsert_config_tx/5,
     set_secret_tx/3,
+    bump_generation_tx/2,
     get_secret/1,
     encrypt_secret/1,
     insert_delivery_tx/2,
-    find_delivery_tx/2
+    find_delivery_tx/2,
+    list_deliveries_tx/5,
+    delivery_stats_tx/3,
+    purgeable_tx/4
 ]).
 
 -include_lib("epgsql/include/epgsql.hrl").
 -include("log.hrl").
 
 -define(DELIVERY_PREFIX, <<"eapp:">>).
+%% 列表读面硬上限（无界导出负例：page size 与 page 号都被夹紧）
+-define(MAX_PAGE_SIZE, 50).
+-define(MAX_PAGE, 1000).
+%% 死信/历史保留窗口（天）；purgeable 只读集合的默认口径
+-define(DEFAULT_RETENTION_DAYS, 30).
 
 %%%===================================================================
 %%% 命名空间
@@ -89,10 +98,25 @@ find_bot_config_tx(Conn, PrincipalUid) ->
     Sql =
         <<
             "SELECT user_id, name, username, webhook_url, verify_token_enc, events::text AS events,"
-            " is_public, status FROM bot WHERE user_id = $1"
+            " is_public, status, ewh_endpoint_generation FROM bot WHERE user_id = $1"
         >>,
     case elib_pg:query(Conn, Sql, [PrincipalUid]) of
         {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 端点配置代际 +1（任何配置写入：URL/订阅/启停/轮换都算一代）。
+%% 返回新代际；调用方把它写进配置响应，入箱时快照进投递行。
+-spec bump_generation_tx(any(), integer()) -> {ok, integer()} | {error, term()}.
+bump_generation_tx(Conn, PrincipalUid) ->
+    Tb = elib_pg_sql:public_tablename(<<"bot">>),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET ewh_endpoint_generation = ewh_endpoint_generation + 1, updated_at = NOW()"
+            " WHERE user_id = $1 RETURNING ewh_endpoint_generation">>,
+    case elib_pg:query(Conn, Sql, [PrincipalUid]) of
+        {ok, [#{<<"ewh_endpoint_generation">> := Gen} | _]} -> {ok, Gen};
         {ok, []} -> {error, not_found};
         {error, Reason} -> {error, Reason}
     end.
@@ -188,9 +212,12 @@ derive_aead_key(_) ->
 
 %% @doc 事件入箱（幂等键 = evt-<event_id>；replay 走独立新行新键）。
 %% SQL 与 bot_webhook_delivery_repo:insert_tx 同构（含幂等 ON CONFLICT），
-%% 差异仅两处：不写 agent_hub 审计链（企业事件无 agent task chain，
-%% record_delivery_tx 对无 chain correlation 本就 no_chain 跳过）；
+%% 差异：① 不写 agent_hub 审计链（企业事件无 agent task chain）；
+%%      ② 额外落 ownership（org/app）、配置代际、replay 来源（FULL-03 账本）。
 %% 入箱在调用方事务内（与消息接受/附件确认同 tx 原子提交）。
+%% 冲突语义：idempotency_key 命中 = 同事件重复入箱（duplicate）；
+%%   uq_ewh_delivery_replay_inflight 命中 = 同原行已有在途重放（同样 duplicate，
+%%   由 logic 归一为 idempotency_conflict）——DB 是并发重放的仲裁者。
 -spec insert_delivery_tx(any(), map()) -> {ok, inserted | duplicate} | {error, term()}.
 insert_delivery_tx(
     Conn,
@@ -207,21 +234,43 @@ insert_delivery_tx(
     Tb = elib_pg_sql:public_tablename(<<"bot_delivery">>),
     EventType = maps:get(event_type, D, <<"message">>),
     Payload = maps:get(payload, D, <<"{}">>),
+    OrgId = maps:get(owner_organization_id, D, null),
+    AppId = maps:get(owner_application_id, D, null),
+    ReplayOf = maps:get(replay_of, D, null),
+    Generation = maps:get(endpoint_generation, D, 0),
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (delivery_id, bot_id, event_type, payload, reply_context,"
-            " correlation_id, idempotency_key, webhook_url, webhook_host, pinned_ip)"
-            " VALUES ($1,$2,$3,$4::jsonb,'',$5,$6,$7,$8,$9)"
+            " correlation_id, idempotency_key, webhook_url, webhook_host, pinned_ip,"
+            " ewh_owner_organization_id, ewh_owner_application_id, ewh_replay_of,"
+            " ewh_endpoint_generation)"
+            " VALUES ($1,$2,$3,$4::jsonb,'',$5,$6,$7,$8,$9,$10,$11,$12,$13)"
             " ON CONFLICT (idempotency_key) DO NOTHING">>,
     case
         elib_pg:query(Conn, Sql, [
-            Did, BotId, EventType, Payload, Corr, Idem, WebhookUrl, Host, PinnedIP
+            Did,
+            BotId,
+            EventType,
+            Payload,
+            Corr,
+            Idem,
+            WebhookUrl,
+            Host,
+            PinnedIP,
+            OrgId,
+            AppId,
+            ReplayOf,
+            Generation
         ])
     of
         {ok, [_]} ->
             {ok, inserted};
-        {ok, N} when is_integer(N), N > 0 -> {ok, inserted};
+        {ok, N} when is_integer(N), N > 0 ->
+            {ok, inserted};
         {ok, _} ->
+            {ok, duplicate};
+        {error, #error{code = <<"23505">>}} ->
+            %% 在途重放唯一索引命中：并发/重复 replay，另一次已在途
             {ok, duplicate};
         {error, Reason} ->
             ?ERROR_LOG("enterprise_webhook_repo insert_delivery error ~p~n", [Reason]),
@@ -230,8 +279,8 @@ insert_delivery_tx(
 
 %% @doc 按 delivery_id 取 outbox 行（tx 直连版——replay 在调用方事务内，
 %% 必须与业务写入同连接读取：池化连接读不到调用方未提交的状态变更，
-%% 且 eunit 直连模式下池不可用）。SQL 与
-%% bot_webhook_delivery_repo:get_delivery/1 同构（含 payload::text）。
+%% 且 eunit 直连模式下池不可用）。SQL 含 FULL-03 账本列（ownership/代际/
+%% 重放来源/版本/认领时刻）。
 -spec find_delivery_tx(any(), binary()) -> {ok, map()} | {error, notfound | term()}.
 find_delivery_tx(Conn, DeliveryId) ->
     Tb = elib_pg_sql:public_tablename(<<"bot_delivery">>),
@@ -240,6 +289,8 @@ find_delivery_tx(Conn, DeliveryId) ->
             "SELECT delivery_id, bot_id, event_type, payload::text AS payload,"
             " reply_context, correlation_id, idempotency_key, status,"
             " attempt_count, next_retry_at, webhook_url, webhook_host, pinned_ip,"
+            " ewh_owner_organization_id, ewh_owner_application_id, ewh_replay_of,"
+            " ewh_endpoint_generation, ewh_ledger_version, ewh_claimed_at,"
             " created_at, updated_at FROM ",
             Tb/binary,
             " WHERE delivery_id = $1"
@@ -249,6 +300,167 @@ find_delivery_tx(Conn, DeliveryId) ->
         {ok, []} -> {error, notfound};
         {error, Reason} -> {error, Reason}
     end.
+
+%%%===================================================================
+%%% FULL-03 读面：投递列表 / 统计 / 保留窗口（全部只读，含硬上限）
+%%%===================================================================
+
+%% @doc 本 Application 的投递列表（metadata only——**不含 payload**，
+%% 无 secret/无正文/无签名 URL）。按 (org, app) 归属过滤（不是 bot_id 前缀
+%% 推导），分页与页大小夹紧（无界导出负例）。
+%% 手写 count+page 两条 SQL（不用 elib_pg:page_with_total——那是池化入口，
+%% 本读面要在调用方事务/直连连接上执行）。
+-spec list_deliveries_tx(any(), integer(), integer(), map(), integer()) ->
+    {ok, map()} | {error, term()}.
+list_deliveries_tx(Conn, OrgId, AppId, Filters, Page0) ->
+    Page = clamp_page(Page0),
+    Size = clamp_size(maps:get(size, Filters, 20)),
+    Status = maps:get(status, Filters, undefined),
+    Tb = elib_pg_sql:public_tablename(<<"bot_delivery">>),
+    {Where, Params} = list_where(OrgId, AppId, Status),
+    CountSql = <<"SELECT count(*) AS total FROM ", Tb/binary, " WHERE ", Where/binary>>,
+    case elib_pg:query(Conn, CountSql, Params) of
+        {ok, [#{<<"total">> := Total} | _]} ->
+            list_page(Conn, Tb, Where, Params, Status, Page, Size, Total);
+        {ok, _} ->
+            {ok, empty_page(Page, Size, Status)};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+list_page(Conn, Tb, Where, Params, Status, Page, Size, Total) ->
+    {LimitP, OffsetP} = {length(Params) + 1, length(Params) + 2},
+    Sql =
+        <<
+            "SELECT delivery_id, event_type, status, attempt_count, webhook_host,"
+            " ewh_replay_of, ewh_ledger_version, ewh_claimed_at, created_at, updated_at"
+            " FROM ",
+            Tb/binary,
+            " WHERE ",
+            Where/binary,
+            " ORDER BY created_at DESC, delivery_id DESC LIMIT $",
+            (integer_to_binary(LimitP))/binary,
+            " OFFSET $",
+            (integer_to_binary(OffsetP))/binary
+        >>,
+    case elib_pg:query(Conn, Sql, Params ++ [Size, (Page - 1) * Size]) of
+        {ok, Rows} when is_list(Rows) ->
+            {ok, #{
+                total => Total,
+                page => Page,
+                size => Size,
+                status => Status,
+                list => Rows
+            }};
+        {ok, _N} ->
+            {ok, empty_page(Page, Size, Status)};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+empty_page(Page, Size, Status) ->
+    #{total => 0, page => Page, size => Size, status => Status, list => []}.
+
+%% @doc 归属过滤（org+app 复合；status 可选）——企业与 bot 域行物理混表，
+%% 归属列非空才可能被本读面看到（bot 域行 NULL 天然不在集合内）。
+list_where(OrgId, AppId, undefined) ->
+    {<<"ewh_owner_organization_id = $1 AND ewh_owner_application_id = $2">>, [OrgId, AppId]};
+list_where(OrgId, AppId, Status) ->
+    {
+        <<
+            "ewh_owner_organization_id = $1 AND ewh_owner_application_id = $2"
+            " AND status = $3"
+        >>,
+        [OrgId, AppId, Status]
+    }.
+
+%% @doc 投递健康度（只读聚合）：状态计数 + 尝试次数 + 重试次数 + 在途重放数。
+%% 成功率口径在 logic 层算（success / (success+dead)），此处只给原始计数。
+-spec delivery_stats_tx(any(), integer(), integer()) -> {ok, map()} | {error, term()}.
+delivery_stats_tx(Conn, OrgId, AppId) ->
+    Tb = elib_pg_sql:public_tablename(<<"bot_delivery">>),
+    ATb = elib_pg_sql:public_tablename(<<"bot_delivery_attempt">>),
+    Sql =
+        <<
+            "SELECT status, count(*) AS n, coalesce(sum(attempt_count), 0) AS attempts,"
+            " coalesce(sum(greatest(attempt_count - 1, 0)), 0) AS retries"
+            " FROM ",
+            Tb/binary,
+            " WHERE ewh_owner_organization_id = $1 AND ewh_owner_application_id = $2"
+            " GROUP BY status"
+        >>,
+    case elib_pg:query(Conn, Sql, [OrgId, AppId]) of
+        {ok, Rows} when is_list(Rows) ->
+            AttemptSql =
+                <<
+                    "SELECT count(*) AS n FROM ",
+                    ATb/binary,
+                    " a JOIN ",
+                    Tb/binary,
+                    " d ON d.delivery_id = a.delivery_id"
+                    " WHERE d.ewh_owner_organization_id = $1 AND d.ewh_owner_application_id = $2"
+                >>,
+            case elib_pg:query(Conn, AttemptSql, [OrgId, AppId]) of
+                {ok, [#{<<"n">> := AttemptRows} | _]} ->
+                    {ok, stats_of(Rows, AttemptRows)};
+                {ok, _} ->
+                    {ok, stats_of(Rows, 0)};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {ok, _N} when is_integer(_N) ->
+            {ok, stats_of([], 0)};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+stats_of(Rows, AttemptRows) ->
+    Statuses = maps:from_list([
+        {maps:get(<<"status">>, R), maps:get(<<"n">>, R)}
+     || R <- Rows
+    ]),
+    Attempts = lists:sum([maps:get(<<"attempts">>, R, 0) || R <- Rows]),
+    Retries = lists:sum([maps:get(<<"retries">>, R, 0) || R <- Rows]),
+    #{
+        <<"status_counts">> => Statuses,
+        <<"attempt_count">> => Attempts,
+        <<"retry_count">> => Retries,
+        <<"attempt_rows">> => AttemptRows,
+        <<"dead_letter_count">> => maps:get(<<"dead">>, Statuses, 0)
+    }.
+
+%% @doc 保留窗口只读集合（plan-full §3.1「retention」）：企业投递中**已终结**
+%% 且 updated_at 早于 cutoff 的行。在途（pending/retry）永不入选——保留策略
+%% 不得成为投递丢失的路径。本函数只读，不做任何删除（物理清理留给运维 runbook）。
+-spec purgeable_tx(any(), integer(), integer(), pos_integer() | map()) ->
+    {ok, [map()]} | {error, term()}.
+purgeable_tx(Conn, OrgId, AppId, Days) ->
+    Days1 =
+        case Days of
+            D when is_integer(D), D > 0 -> D;
+            _ -> ?DEFAULT_RETENTION_DAYS
+        end,
+    Tb = elib_pg_sql:public_tablename(<<"bot_delivery">>),
+    Sql =
+        <<
+            "SELECT delivery_id, status, attempt_count, updated_at FROM ",
+            Tb/binary,
+            " WHERE ewh_owner_organization_id = $1 AND ewh_owner_application_id = $2"
+            " AND status IN ('success','dead')"
+            " AND updated_at < NOW() - ($3 || ' days')::interval"
+            " ORDER BY updated_at ASC LIMIT $4"
+        >>,
+    case elib_pg:query(Conn, Sql, [OrgId, AppId, integer_to_binary(Days1), ?MAX_PAGE_SIZE]) of
+        {ok, Rows} when is_list(Rows) -> {ok, Rows};
+        {ok, _N} when is_integer(_N) -> {ok, []};
+        {error, Reason} -> {error, Reason}
+    end.
+
+clamp_page(Page) when is_integer(Page), Page >= 1 -> min(Page, ?MAX_PAGE);
+clamp_page(_) -> 1.
+
+clamp_size(Size) when is_integer(Size), Size >= 1 -> min(Size, ?MAX_PAGE_SIZE);
+clamp_size(_) -> 20.
 
 %%%===================================================================
 %%% Internal
