@@ -18,6 +18,7 @@
 -export([list_managed/1]).
 %% T5（双体验 v2.5.2）：工作区频道列表（scope 分区）
 -export([list_workspace_channels/2]).
+-export([list_workspace_channels/3]).
 -export([find_by_custom_id/1]).
 -export([update/2]).
 -export([delete/1]).
@@ -387,6 +388,12 @@ list_managed(Uid) -> channel_repo:list_managed(Uid).
 -spec list_workspace_channels(integer(), integer()) -> {ok, list(map())} | {error, any()}.
 list_workspace_channels(WorkspaceId, Limit) ->
     channel_repo:list_workspace_channels(WorkspaceId, Limit).
+
+%% GZAPP-05：带归档可见性过滤（active 默认 / archived / all），治理面枚举入口。
+-spec list_workspace_channels(integer(), integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_workspace_channels(WorkspaceId, Limit, Status) ->
+    channel_repo:list_workspace_channels(WorkspaceId, Limit, Status).
 
 -spec find_by_custom_id(binary()) -> map() | {error, any()}.
 find_by_custom_id(CustomId) -> channel_repo:find_by_custom_id(CustomId).

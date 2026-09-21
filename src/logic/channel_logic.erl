@@ -137,6 +137,7 @@
 -export([create_channel/5]).
 -export([update_channel_checked/3]).
 -export([list_workspace_channels/2]).
+-export([list_workspace_channels/3]).
 
 %% ==================== Delegates ====================
 
@@ -386,7 +387,14 @@ update_channel_checked(Uid, ChannelIdBin, Data) ->
 %% personal 频道列表接口零行为变化）。
 -spec list_workspace_channels(integer(), integer()) -> {ok, [map()]} | {error, binary()}.
 list_workspace_channels(WorkspaceId, Limit) ->
-    case channel_ds:list_workspace_channels(WorkspaceId, Limit) of
+    list_workspace_channels(WorkspaceId, Limit, <<"active">>).
+
+%% @doc 工作区频道列表（GZAPP-05：status = active | archived | all）。
+%% 归档频道默认不在公开面（与引入前一致）；治理面显式要 archived 才能拿到
+%% 归档集合，否则「恢复」入口无处可达。未知 status 折叠为 active。
+-spec list_workspace_channels(integer(), integer(), binary()) -> {ok, [map()]} | {error, binary()}.
+list_workspace_channels(WorkspaceId, Limit, Status) ->
+    case channel_ds:list_workspace_channels(WorkspaceId, Limit, Status) of
         {ok, Channels} -> {ok, [channel_logic_common:channel_transfer(C) || C <- Channels]};
         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
     end.

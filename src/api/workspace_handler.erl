@@ -209,8 +209,11 @@ overview(Req0, State) ->
             end
     end.
 
-%% @doc 工作区频道列表（T5 scope 严格分区：仅 scope='workspace' 且 status=1；
+%% @doc 工作区频道列表（T5 scope 严格分区：仅 scope='workspace'；
 %% active 工作区成员可读；personal 频道列表接口零行为变化）
+%%
+%% GZAPP-05：新增可选 `status` 查询参数（active 默认 / archived / all）。
+%% 缺省与引入过滤前逐字节同行为（status=1）；未知值由 logic 折叠为 active。
 -spec channel_list(cowboy_req:req(), map()) -> cowboy_req:req().
 channel_list(Req0, State) ->
     Uid = auth_ds:current_uid(State),
@@ -224,7 +227,8 @@ channel_list(Req0, State) ->
                 {ok, _Role} ->
                     Limit = elib_param:int(limit, Req0, 100),
                     Limit2 = max(1, min(Limit, 200)),
-                    case channel_logic:list_workspace_channels(WsId, Limit2) of
+                    {ok, Status} = elib_param:binary(status, Req0, <<"active">>),
+                    case channel_logic:list_workspace_channels(WsId, Limit2, Status) of
                         {ok, Channels} ->
                             elib_response:success(Req0, #{workspace_id => WsId, list => Channels});
                         {error, Msg2} ->

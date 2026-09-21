@@ -158,3 +158,51 @@ list_workspace_channels_partitions_by_scope_body() ->
         ?assert(binary:match(Sql, <<"workspace_id = $1">>) =/= nomatch),
         ok
     end.
+
+%% GZAPP-05：治理面归档可见性过滤 —— status 三值折叠 + 默认零行为变化。
+%% 原实现把 `c.status = 1` 写死在 SQL 里，归档频道在任何入口都不可枚举，
+%% 「归档后可恢复」在 UI 上不可达；本用例锁死折叠契约与默认分支。
+list_workspace_channels_status_filter_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_repo, [
+                {'tablename', 0, fun() -> <<"public.channel">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(Sql, [?WS_ID, _Limit]) ->
+                    put(t_cs_status_sql, Sql),
+                    {ok, []}
+                end}
+            ]},
+            {channel_logic_common, [
+                {'channel_transfer', 1, fun(C) -> C end}
+            ]}
+        ],
+        fun() -> list_workspace_channels_status_filter_body() end
+    ).
+
+list_workspace_channels_status_filter_body() ->
+    begin
+        %% 默认（/2 入口）：仍是 status = 1，公开面行为不变
+        {ok, []} = channel_logic:list_workspace_channels(?WS_ID, 50),
+        DefaultSql = erase(t_cs_status_sql),
+        ?assert(binary:match(DefaultSql, <<"c.status = 1 ">>) =/= nomatch),
+        %% 显式 active 同默认
+        {ok, []} = channel_logic:list_workspace_channels(?WS_ID, 50, <<"active">>),
+        ?assertEqual(DefaultSql, erase(t_cs_status_sql)),
+        %% archived：仅归档集合，出现在 SQL 且不残留 status = 1
+        {ok, []} = channel_logic:list_workspace_channels(?WS_ID, 50, <<"archived">>),
+        ArchivedSql = erase(t_cs_status_sql),
+        ?assert(binary:match(ArchivedSql, <<"c.status = 0 ">>) =/= nomatch),
+        ?assertEqual(nomatch, binary:match(ArchivedSql, <<"c.status = 1 ">>)),
+        %% all：无状态子句（active + archived 全量）
+        {ok, []} = channel_logic:list_workspace_channels(?WS_ID, 50, <<"all">>),
+        AllSql = erase(t_cs_status_sql),
+        ?assertEqual(nomatch, binary:match(AllSql, <<"c.status">>)),
+        %% 未知值折叠为 active（不接受外部拼接语义）
+        {ok, []} = channel_logic:list_workspace_channels(
+            ?WS_ID, 50, <<"'; DROP TABLE channel; --">>
+        ),
+        ?assertEqual(DefaultSql, erase(t_cs_status_sql)),
+        ok
+    end.

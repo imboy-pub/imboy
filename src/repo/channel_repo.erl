@@ -24,6 +24,7 @@
 -export([increment_subscribers/2]).
 -export([increment_subscribers/3]).
 -export([list_workspace_channels/2]).
+-export([list_workspace_channels/3]).
 -export([search/3]).
 -export([list_discover/2]).
 % 统计相关
@@ -233,14 +234,33 @@ list_managed(Uid) ->
 
 %% @doc 工作区频道列表（双体验 v2.5.2 T5：scope 严格分区）
 %% 命中部分索引 i_channel_scope_ws（00000077）；personal 列表接口不受影响。
+%% 默认 active：调用方不传 status 时与引入过滤前的行为逐字节一致。
 -spec list_workspace_channels(integer(), integer()) -> {ok, list(map())} | {error, any()}.
 list_workspace_channels(WorkspaceId, Limit) ->
+    list_workspace_channels(WorkspaceId, Limit, <<"active">>).
+
+%% @doc 工作区频道列表（带归档可见性过滤；GZAPP-05 治理面用）。
+%%
+%% status = active（默认）| archived | all；未知值一律折叠为 active——
+%% 过滤意图不能靠拼 SQL 字符串表达（原实现把 status 子句写死在 SQL 里，
+%% 归档频道在任何公开面都不可枚举，归档后「恢复」入口因此不可达）。
+%% 三个分支都是常量片段，不接受外部拼接。
+-spec list_workspace_channels(integer(), integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_workspace_channels(WorkspaceId, Limit, Status) ->
     Tb = tablename(),
+    StatusSql =
+        case Status of
+            <<"all">> -> <<"">>;
+            <<"archived">> -> <<"AND c.status = 0 ">>;
+            _ -> <<"AND c.status = 1 ">>
+        end,
     Sql = <<
         "SELECT c.* FROM ",
         Tb/binary,
         " c "
-        "WHERE c.workspace_id = $1 AND c.scope = 'workspace' AND c.status = 1 "
+        "WHERE c.workspace_id = $1 AND c.scope = 'workspace' ",
+        StatusSql/binary,
         "ORDER BY c.created_at DESC, c.id DESC LIMIT $2"
     >>,
     elib_pg:query(Sql, [WorkspaceId, Limit]).
