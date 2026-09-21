@@ -211,7 +211,7 @@
         % 已消费 OTK 审计保留天数（Logic 层换算 seconds）
         {olm_otk_retention_days, 7},
 
-        % 推送通知配置（FCM / APNs）— 凭据走 SECTION C
+        % 推送通知配置（FCM / APNs / JPush）— 凭据走 SECTION C
         {push, [
             % 总开关，true 启用推送
             {enabled, false},
@@ -220,7 +220,13 @@
             % APNs 配置（iOS 推送）
             {apns_key_id, ""},
             {apns_team_id, ""},
-            {apns_bundle_id, "pub.imboy.app"}
+            {apns_bundle_id, "pub.imboy.app"},
+            % JPush 配置（EPGZ-07，Android 一期）
+            % 真实凭据由客户提供后经 sys.local / 环境注入，严禁提交真实值
+            {jpush_app_key, "your-jpush-appkey"},
+            {jpush_master_secret, "your-jpush-secret"},
+            % REST API v3 端点，测试/代理可覆盖
+            {jpush_push_url, "https://api.jpush.cn/v3/push"}
         ]},
 
         % WebRTC ICE Server 配置
