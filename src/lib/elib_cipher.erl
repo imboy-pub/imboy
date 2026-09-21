@@ -528,7 +528,10 @@ aes_gcm_decrypt(EncryptedData, EncryptionKey) when
         TotalHeaderSize = SaltSize + IVSize,
 
         case byte_size(Combined) of
-            Size when Size > TotalHeaderSize + TagSize ->
+            % DF-13：`>=`——44 字节（Salt16+IV12+CT0+Tag16）是空明文的合法
+            % 信封（访客仅发附件时 body=""），GCM tag 仍全程认证；`>` 会把
+            % 它误判 invalid_data_format，坐席消息历史整页 500。
+            Size when Size >= TotalHeaderSize + TagSize ->
                 <<Salt:SaltSize/binary, IV:IVSize/binary, Rest/binary>> = Combined,
                 CipherTextSize = byte_size(Rest) - TagSize,
                 <<CipherText:CipherTextSize/binary, Tag:TagSize/binary>> = Rest,
