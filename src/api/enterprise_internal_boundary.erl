@@ -116,10 +116,14 @@ spec(_RouteId) ->
 ids() ->
     [maps:get(id, R) || R <- route_specs()].
 
-%% @doc 冻结表内的 route id 子集（不含 FULL-02 待接线的新增 id）。
+%% @doc 冻结表内的 route id 全集。
+%% FULL-02 集成时 A0 已把 INT-15..22 登记进 enterprise_internal_routes:routes/0
+%% 与 imboy_router（并逐条进 manifest 与契约），故「新增 id」不再是「未生效」——
+%% 本函数与 ids/0 等价，保留函数名以避免调用侧改动；?NEW_IDS 仍保留用于标注
+%% 来源阶段（FULL-02）。
 -spec frozen_ids() -> [binary()].
 frozen_ids() ->
-    [Id || Id <- ids(), not lists:member(Id, ?NEW_IDS)].
+    ids().
 
 %%%===================================================================
 %%% 边界判定

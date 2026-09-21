@@ -42,6 +42,11 @@ init(Req0, State0) ->
     Method = cowboy_req:method(Req0),
     Req1 =
         case Action of
+            %% INT-02(PUT)/INT-15(DELETE) 共用 /identity-mappings 这一条 cowboy
+            %% path（cowboy 不允许同 path 重复登记），方法分派在此收敛；
+            %% enterprise_internal_routes:match/2 仍按 method+path 冻结判定，
+            %% 两条 INT 的 scope/幂等/rate 各自独立生效。
+            mappings -> mappings(Method, Req0, State);
             bind -> bind(Method, Req0, State);
             resolve -> resolve(Method, Req0, State);
             revoke -> revoke(Method, Req0, State);
@@ -53,6 +58,14 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+-spec mappings(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+mappings(<<"PUT">>, Req0, State) ->
+    bind(<<"PUT">>, Req0, State);
+mappings(<<"DELETE">>, Req0, State) ->
+    revoke(<<"DELETE">>, Req0, State);
+mappings(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 -spec bind(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 bind(<<"PUT">>, Req0, State) ->

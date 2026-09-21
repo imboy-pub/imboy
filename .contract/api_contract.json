@@ -1746,9 +1746,21 @@
         "static": false
       },
       {
+        "action": "users",
+        "handler": "enterprise_directory_handler",
+        "path": "/api/internal/v1/directory/users",
+        "static": false
+      },
+      {
         "action": "confirm",
         "handler": "enterprise_asset_handler",
         "path": "/api/internal/v1/files/confirm",
+        "static": false
+      },
+      {
+        "action": "governance",
+        "handler": "enterprise_asset_handler",
+        "path": "/api/internal/v1/files/governance",
         "static": false
       },
       {
@@ -1770,9 +1782,21 @@
         "static": false
       },
       {
+        "action": "group",
+        "handler": "enterprise_group_handler",
+        "path": "/api/internal/v1/groups/:group_id",
+        "static": false
+      },
+      {
         "action": "members",
         "handler": "enterprise_group_handler",
         "path": "/api/internal/v1/groups/:group_id/members",
+        "static": false
+      },
+      {
+        "action": "member_roles",
+        "handler": "enterprise_group_handler",
+        "path": "/api/internal/v1/groups/:group_id/members/roles",
         "static": false
       },
       {
@@ -1782,9 +1806,15 @@
         "static": false
       },
       {
-        "action": "bind",
+        "action": "mappings",
         "handler": "enterprise_identity_handler",
         "path": "/api/internal/v1/identity-mappings",
+        "static": false
+      },
+      {
+        "action": "mappings",
+        "handler": "enterprise_directory_handler",
+        "path": "/api/internal/v1/identity-mappings/directory",
         "static": false
       },
       {

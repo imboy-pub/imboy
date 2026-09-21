@@ -1972,7 +1972,8 @@ bnd_fail_closed(C, State) ->
     ).
 
 %% @doc 机械对齐：边界 spec 覆盖**全部**冻结路由（少一条即红）；kind 与 manifest
-%% 的 grant 语义逐条一致；新增 id 尚未进冻结表（A0 接线前不得自称已生效）。
+%% 的 grant 语义逐条一致。INT-15..22 已由 A0 在 FULL-02 集成时登记进冻结表与
+%% Router（并进 manifest/契约），故两侧都必须是 22 条全集。
 bnd_spec_align_test() ->
     ?_test(begin
         FrozenIds = lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
@@ -1993,6 +1994,15 @@ bnd_spec_align_test() ->
             {<<"INT-09">>, org},
             {<<"INT-10">>, workspace},
             {<<"INT-11">>, org},
+            %% FULL-02 新增（A0 接线后进冻结表）
+            {<<"INT-15">>, org},
+            {<<"INT-16">>, org},
+            {<<"INT-17">>, org},
+            {<<"INT-18">>, workspace},
+            {<<"INT-19">>, workspace},
+            {<<"INT-20">>, workspace},
+            {<<"INT-21">>, workspace},
+            {<<"INT-22">>, org},
             {<<"INT-12">>, none},
             {<<"INT-13">>, none},
             {<<"INT-14">>, none}
@@ -2020,23 +2030,11 @@ bnd_spec_align_test() ->
             end,
             enterprise_internal_boundary:ids()
         ),
-        %% 新增 id 尚未进冻结表（A0 接线时会同时进 manifest/router；此处钉住
-        %% 现状，避免把「待接线」误报成「已生效」）
-        NewIds = enterprise_internal_boundary:ids() -- FrozenIds,
-        ?assertEqual(
-            [
-                <<"INT-15">>,
-                <<"INT-16">>,
-                <<"INT-17">>,
-                <<"INT-18">>,
-                <<"INT-19">>,
-                <<"INT-20">>,
-                <<"INT-21">>,
-                <<"INT-22">>
-            ],
-            lists:sort(NewIds)
-        ),
-        ?assertEqual([], [Id || Id <- NewIds, lists:member(Id, FrozenIds)])
+        %% FULL-02 新增 id 已由 A0 在集成时登记进冻结表 + Router + manifest +
+        %% 契约，因此边界 ids 与冻结表必须**完全相等**，不存在「待接线」差集；
+        %% 若将来仍有未接线新增，此断言会立即变红（差集恒为空）。
+        ?assertEqual([], lists:sort(enterprise_internal_boundary:ids()) -- FrozenIds),
+        ?assertEqual(22, length(lists:usort(enterprise_internal_boundary:ids())))
     end).
 
 %% @doc **接线点机械断言**：handler 模块的 beam 抽象码里必须真实存在对

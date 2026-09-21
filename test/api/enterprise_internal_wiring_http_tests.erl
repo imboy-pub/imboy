@@ -46,21 +46,23 @@ route_table() ->
     Paths = [P || {P, _H, _O} <- Routes],
 
     %% ①② 冻结表逐条登记 + 零 open 面
+    %% 22 条 INT（GZ 14 + FULL-02 新增 8）；18 个 cowboy path——同 path 多方法：
+    %% INT-02/15、INT-05/06、INT-18/19/21。
     Manifest = enterprise_internal_routes:routes(),
-    ?assertEqual(14, length(Manifest)),
+    ?assertEqual(22, length(Manifest)),
     %% 冻结表用 {name} 占位符语法，cowboy 路由用 :name —— 归一后逐条比对。
     ManifestPaths = lists:usort([
         cowboy_path(binary_to_list(maps:get(path, R)))
      || R <- Manifest
     ]),
-    ?assertEqual(13, length(ManifestPaths)),
+    ?assertEqual(18, length(ManifestPaths)),
     lists:foreach(
         fun(P) ->
             ?assert(lists:member(P, Paths))
         end,
         ManifestPaths
     ),
-    ?assertEqual(13, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
+    ?assertEqual(18, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
 
     %% ③ internal 前缀不在匿名白名单；零 open 面
     Open = imboy_router:open(),
@@ -162,6 +164,37 @@ assert_fail_closed(Port) ->
     %% ② 零 open 面：/api/open/v1/* 无路由（cowboy_router 直接 404）
     OpenResp = request(Port, <<"GET">>, <<"/api/open/v1/anything">>, []),
     ?assertMatch(<<"HTTP/1.1 404", _/binary>>, OpenResp).
+
+%% 冻结表 ↔ 边界规格表双向一致（FULL-02 引入；任一侧漏登记 = 边界失效）
+boundary_parity_test_() ->
+    {timeout, 15, fun boundary_parity/0}.
+
+boundary_parity() ->
+    TableIds = lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
+    BoundaryIds = lists:sort(enterprise_internal_boundary:ids()),
+    ?assertEqual(TableIds, BoundaryIds),
+    %% 每条路由都必须有边界规格（spec 缺失 → error，不可静默放行）
+    lists:foreach(
+        fun(Id) ->
+            ?assertMatch(
+                {ok, #{kind := _, scope := _}},
+                enterprise_internal_boundary:spec(Id)
+            )
+        end,
+        TableIds
+    ).
+
+%% cowboy dispatch 可编译 = path 无重复（cowboy 禁止同 path 重复登记；
+%% INT-02/15、INT-05/06、INT-18/19/21 都是同 path 多方法，必须在 handler 内分派）
+dispatch_compiles_test_() ->
+    {timeout, 30, fun dispatch_compiles/0}.
+
+dispatch_compiles() ->
+    [{_Host, Routes}] = imboy_router:get_routes(),
+    Paths = [P || {P, _H, _O} <- Routes],
+    Dups = Paths -- lists:usort(Paths),
+    ?assertEqual([], Dups),
+    ?assertNotEqual([], cowboy_router:compile(imboy_router:get_routes())).
 
 %%%===================================================================
 %%% 码归一（内部 atom → manifest 二进制）

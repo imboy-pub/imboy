@@ -161,6 +161,90 @@ routes() ->
             rate_bucket => internal_sso,
             idempotency => single_use_code,
             sender_mode => none
+        },
+        %% ---- FULL-02 新增（A0 接线）。grant 边界规格见
+        %%      enterprise_internal_boundary:spec/1，两侧必须逐条一致
+        %%      （有测试机械比对）。----
+        %% INT-15 撤销 external identity 映射（org scoped）。DELETE 不便带
+        %% body 语义，故固定为集合端点 + body 指定 external_user_id。
+        #{
+            id => <<"INT-15">>,
+            method => <<"DELETE">>,
+            path => <<"/api/internal/v1/identity-mappings">>,
+            scope => <<"identities:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
+        },
+        %% INT-16 映射 cursor directory（受限分页；无全量导出形态）
+        #{
+            id => <<"INT-16">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/identity-mappings/directory">>,
+            scope => <<"identities:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% INT-17 成员 cursor directory（受限分页）
+        #{
+            id => <<"INT-17">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/directory/users">>,
+            scope => <<"identities:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% INT-18 群详情
+        #{
+            id => <<"INT-18">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/groups/{group_id}">>,
+            scope => <<"groups:write">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% INT-19 群更新
+        #{
+            id => <<"INT-19">>,
+            method => <<"PATCH">>,
+            path => <<"/api/internal/v1/groups/{group_id}">>,
+            scope => <<"groups:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
+        },
+        %% INT-20 成员角色
+        #{
+            id => <<"INT-20">>,
+            method => <<"PUT">>,
+            path => <<"/api/internal/v1/groups/{group_id}/members/roles">>,
+            scope => <<"groups:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
+        },
+        %% INT-21 群归档（DELETE = 归档语义）
+        #{
+            id => <<"INT-21">>,
+            method => <<"DELETE">>,
+            path => <<"/api/internal/v1/groups/{group_id}">>,
+            scope => <<"groups:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
+        },
+        %% INT-22 附件留存/hold/purge 治理
+        #{
+            id => <<"INT-22">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/files/governance">>,
+            scope => <<"files:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
         }
     ].
 

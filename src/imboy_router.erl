@@ -2174,8 +2174,8 @@ enterprise_internal_routes() ->
     [
         %% INT-01 凭证自检
         {"/api/internal/v1/application", enterprise_application_handler, #{action => self_info}},
-        %% INT-02 绑定 external_user_id <-> active member
-        {"/api/internal/v1/identity-mappings", enterprise_identity_handler, #{action => bind}},
+        %% INT-02 绑定 external_user_id <-> active member（PUT；与 INT-15 的
+        %% DELETE 共用本 path，方法分派在 handler 的 mappings action 内）
         %% INT-03 批量解析（无全量导出形态）
         {"/api/internal/v1/identity-mappings/resolve", enterprise_identity_handler, #{
             action => resolve
@@ -2206,5 +2206,28 @@ enterprise_internal_routes() ->
         %% INT-14 OA SSO 一次性 code 原子交换
         {"/api/internal/v1/oa/sso/exchange", enterprise_oa_sso_exchange_handler, #{
             action => exchange
-        }}
+        }},
+        %% ---- FULL-02 新增（A0 接线）。边界规格 enterprise_internal_boundary:
+        %%      spec/1 与冻结表 enterprise_internal_routes:routes/0 两侧必须
+        %%      逐条一致，有机械比对测试。----
+        %% INT-02(PUT 绑定)/INT-15(DELETE 撤销) 共用同一 path，方法分派在
+        %% handler 内（cowboy 不允许同 path 重复登记；与 INT-05/06 同款口径）
+        {"/api/internal/v1/identity-mappings", enterprise_identity_handler, #{action => mappings}},
+        %% INT-16 映射受限游标目录（无全量导出形态）
+        {"/api/internal/v1/identity-mappings/directory", enterprise_directory_handler, #{
+            action => mappings
+        }},
+        %% INT-17 成员受限游标目录
+        {"/api/internal/v1/directory/users", enterprise_directory_handler, #{
+            action => users
+        }},
+        %% INT-18/19/21 群详情(GET) / 更新(PATCH) / 归档(DELETE)：同一 path，
+        %% 方法分派在 handler 内（与 INT-05/06 同款口径）
+        {"/api/internal/v1/groups/:group_id", enterprise_group_handler, #{action => group}},
+        %% INT-20 成员角色
+        {"/api/internal/v1/groups/:group_id/members/roles", enterprise_group_handler, #{
+            action => member_roles
+        }},
+        %% INT-22 附件留存/hold/purge 治理
+        {"/api/internal/v1/files/governance", enterprise_asset_handler, #{action => governance}}
     ].
