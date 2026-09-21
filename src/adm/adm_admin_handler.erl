@@ -5,6 +5,8 @@
 -behavior(cowboy_rest).
 
 -export([init/2]).
+%% EADM-02: 菜单权威声明需对外可读（W1.5 MENU_CONTRACT 双向集合校验/eunit 直调）
+-export([default_sidebar_config/0]).
 
 -include("error_code.hrl").
 
@@ -996,6 +998,68 @@ default_sidebar_config() ->
                         <<"label">> => <<"日志审计"/utf8>>,
                         <<"roles">> => [1, 3, 5],
                         <<"permission">> => <<"logs:view">>
+                    }
+                ]
+            },
+            #{
+                <<"label">> => <<"企业管理"/utf8>>,
+                <<"icon">> => <<"Building2">>,
+                <<"children">> => [
+                    #{
+                        <<"path">> => <<"/organizations">>,
+                        <<"icon">> => <<"Building2">>,
+                        <<"label">> => <<"企业组织"/utf8>>,
+                        <<"roles">> => [1, 2, 3],
+                        <<"permission">> => <<"organizations:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/customer-service/provisioning">>,
+                        <<"icon">> => <<"UserPlus">>,
+                        <<"label">> => <<"客服开通"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:write">>
+                    },
+                    #{
+                        <<"path">> => <<"/customer-service">>,
+                        <<"icon">> => <<"Headphones">>,
+                        <<"label">> => <<"客服坐席"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/customer-service/sessions">>,
+                        <<"icon">> => <<"MessagesSquare">>,
+                        <<"label">> => <<"客服会话"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/customer-service/widgets">>,
+                        <<"icon">> => <<"MessageSquare">>,
+                        <<"label">> => <<"Widget 接入"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/enterprise-business">>,
+                        <<"icon">> => <<"BarChart3">>,
+                        <<"label">> => <<"企业业务数据"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"enterprise_business:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/enterprise-business/offboarding">>,
+                        <<"icon">> => <<"ListChecks">>,
+                        <<"label">> => <<"离岗交接"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"enterprise_business:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/customer-service/workspace">>,
+                        <<"icon">> => <<"MonitorSmartphone">>,
+                        <<"label">> => <<"坐席工作台"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:read">>
                     }
                 ]
             },
