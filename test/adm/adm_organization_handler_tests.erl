@@ -5,8 +5,8 @@
 
 %%% Platform Admin Organization 治理 API（TASK_ID=ORG-ADM-ORG-API）
 %%%
-%%% 覆盖面（合同 20 条端点 = 18 条路由，invitations/departments 两条同路径
-%%% 承载 GET 列表 + POST create 双语义）：
+%%% 覆盖面（合同 20 条端点 = 18 条路由，list/invitations/departments 三条同路径
+%%% 承载 GET 列表 + POST create 双语义（list POST create 为 EADM-01 合同））：
 %%%   * route contract：18 条 /api/adm/organizations* 路由（20 端点）注册 +
 %%%     handler/action 正确；固定路径先于通配；organizations 面不暴露 workspace
 %%%     写路由（平台对 Workspace 只读关系事实）；方法分派 405；
@@ -182,8 +182,8 @@ adm_org_method_dispatch_test_() ->
     {"方法分派：读端点拒 POST=405；invitations/departments 同路径 GET/POST 双语义",
         {foreach, fun mocks_on/0, fun(_S) -> mocks_off() end, [
             fun(_S) ->
-                {"list 拒 POST → 405", fun() ->
-                    ?assertEqual(405, status_of(call(?WRITE_UID, list, <<"POST">>, #{}, <<>>)))
+                {"list 拒 PUT → 405（POST 已承载创建，EADM-01）", fun() ->
+                    ?assertEqual(405, status_of(call(?WRITE_UID, list, <<"PUT">>, #{}, <<>>)))
                 end}
             end,
             fun(_S) ->
