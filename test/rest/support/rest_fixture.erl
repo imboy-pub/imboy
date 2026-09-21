@@ -98,7 +98,8 @@ alnum(_) -> false.
 flip_signature_bit(Token) when byte_size(Token) > 1 ->
     Size = byte_size(Token) - 1,
     <<Head:Size/binary, Last>> = Token,
-    <<Head/binary, (b64url_char(b64url_index(Last) bxor 16))/binary>>.
+    Flipped = b64url_char(b64url_index(Last) bxor 16),
+    <<Head/binary, Flipped:8>>.
 
 b64url_index(C) when C >= $A, C =< $Z -> C - $A;
 b64url_index(C) when C >= $a, C =< $z -> C - $a + 26;
