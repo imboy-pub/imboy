@@ -36,6 +36,15 @@ die() {
 RUN_ID=${REST_RUN_ID:-"$(date -u +%Y%m%dT%H%M%SZ)-$$"}
 DB_NAME=${REST_TEST_DB:-"imboy_rest_${RUN_ID//[^a-zA-Z0-9_]/_}"}
 
+# The run id also flows into the report root path and the run_id evidence
+# field, so accept only safe identifier characters outright instead of
+# sanitizing per consumer (operator-controlled, but cheap to pin down).
+case "$RUN_ID" in
+  *[!a-zA-Z0-9._-]*|'')
+    die 2 "unsafe REST_RUN_ID '$RUN_ID' (allowed: alphanumerics, dot, dash, underscore)"
+    ;;
+esac
+
 valid_db_name() {
   [[ "$1" =~ ^imboy_rest_[a-zA-Z0-9_]+$ ]]
 }
