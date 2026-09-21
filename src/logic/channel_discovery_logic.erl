@@ -16,6 +16,11 @@
 
 -define(DEFAULT_LIMIT, 20).
 
+%% GZAPP-02/G5 企业频道内部化：公开发现/搜索面统一排除 workspace scope 频道
+%% （scope 列 NOT NULL DEFAULT 'personal'，见迁移 00000077；企业频道只在
+%% 工作区频道列表 list_workspace_channels 出现）。查询侧过滤，不动 fts 触发器。
+-define(EXCLUDE_WORKSPACE_SCOPE, <<"AND c.scope <> 'workspace' ">>).
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -78,14 +83,15 @@ discover(Page, Size, CategoryId, Sort) ->
             {error, <<"查询失败，请稍后重试"/utf8>>}
     end.
 
-%% @doc 精选频道（运营推荐）
+%% @doc 精选频道（运营推荐；G5：排除 workspace scope 频道）
 -spec featured(pos_integer()) -> {ok, map()} | {error, binary()}.
 featured(Limit) ->
     Sql = <<
         "SELECT c.id, c.name, c.description, c.avatar, c.visibility, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at "
         "FROM public.channel c "
-        "WHERE c.status = 1 AND c.is_featured = true AND c.visibility = 0 "
+        "WHERE c.status = 1 AND c.is_featured = true AND c.visibility = 0 ",
+        ?EXCLUDE_WORKSPACE_SCOPE/binary,
         "ORDER BY c.featured_at DESC NULLS LAST "
         "LIMIT $1"
     >>,
@@ -97,7 +103,7 @@ featured(Limit) ->
             {error, <<"查询失败，请稍后重试"/utf8>>}
     end.
 
-%% @doc 热门频道（基于订阅数 + 近期活跃度）
+%% @doc 热门频道（基于订阅数 + 近期活跃度；G5：排除 workspace scope 频道）
 %% 使用 channel_stats_daily 表的统计数据进行排序
 %% @param Period 统计周期（7 | 30 天）
 %% @param Limit 返回数量
@@ -113,7 +119,8 @@ trending(Period, Limit) ->
         "FROM public.channel c "
         "LEFT JOIN public.channel_stats_daily s ON c.id = s.channel_id "
         "AND s.stats_date >= CURRENT_DATE - $1::integer "
-        "WHERE c.status = 1 AND c.visibility = 0 "
+        "WHERE c.status = 1 AND c.visibility = 0 ",
+        ?EXCLUDE_WORKSPACE_SCOPE/binary,
         "GROUP BY c.id "
         "ORDER BY (c.subscriber_count * 0.4 + COALESCE(SUM(s.new_subscribers), 0) * 0.3 "
         "  + COALESCE(SUM(s.messages_count), 0) * 0.2 + COALESCE(SUM(s.active_viewers), 0) * 0.1) DESC "
@@ -224,21 +231,24 @@ channel_search_page(Keyword, Size, Offset, CategoryId) ->
             {ok, []}
     end.
 
-%% @doc 构建搜索 WHERE 子句
+%% @doc 构建搜索 WHERE 子句（G5：排除 workspace scope 频道——企业频道不进公开搜索）
 -spec build_search_where(integer() | undefined) -> binary().
 build_search_where(undefined) ->
-    <<"c.status = 1 AND fts.token @@ to_tsquery('jiebacfg', $1)">>;
+    <<"c.status = 1 ", ?EXCLUDE_WORKSPACE_SCOPE/binary,
+        "AND fts.token @@ to_tsquery('jiebacfg', $1)">>;
 build_search_where(_CategoryId) ->
-    <<"c.status = 1 AND c.category_id = $2 AND fts.token @@ to_tsquery('jiebacfg', $1)">>.
+    <<"c.status = 1 ", ?EXCLUDE_WORKSPACE_SCOPE/binary,
+        "AND c.category_id = $2 AND fts.token @@ to_tsquery('jiebacfg', $1)">>.
 
-%% @doc 构建发现页 SQL
+%% @doc 构建发现页 SQL（G5：排除 workspace scope 频道）
 -spec build_discover_sql(integer() | undefined, binary()) -> binary().
 build_discover_sql(undefined, OrderBy) ->
     <<
         "SELECT c.id, c.name, c.description, c.avatar, c.visibility, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at "
         "FROM public.channel c "
-        "WHERE c.status = 1 AND c.visibility = 0 "
+        "WHERE c.status = 1 AND c.visibility = 0 ",
+        ?EXCLUDE_WORKSPACE_SCOPE/binary,
         "ORDER BY c.",
         OrderBy/binary,
         " "
@@ -249,7 +259,9 @@ build_discover_sql(_CategoryId, OrderBy) ->
         "SELECT c.id, c.name, c.description, c.avatar, c.visibility, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at "
         "FROM public.channel c "
-        "WHERE c.status = 1 AND c.visibility = 0 AND c.category_id = $1 "
+        "WHERE c.status = 1 AND c.visibility = 0 ",
+        ?EXCLUDE_WORKSPACE_SCOPE/binary,
+        "AND c.category_id = $1 "
         "ORDER BY c.",
         OrderBy/binary,
         " "

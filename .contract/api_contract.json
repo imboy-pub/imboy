@@ -2162,6 +2162,12 @@
         "static": false
       },
       {
+        "action": "archive",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/archive",
+        "static": false
+      },
+      {
         "action": "delete_comment",
         "handler": "channel_handler_comment",
         "path": "/api/v1/channel/:channel_id/comment/:comment_id/delete",
@@ -2267,6 +2273,12 @@
         "action": "mark_read",
         "handler": "channel_handler",
         "path": "/api/v1/channel/:channel_id/read",
+        "static": false
+      },
+      {
+        "action": "restore",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/restore",
         "static": false
       },
       {

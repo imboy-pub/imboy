@@ -2226,5 +2226,187 @@ qrcode_redirects_on_bad_tk_test_() ->
         end
     ).
 
+%%%===================================================================
+%%% GZAPP-02/G5：workspace scope 频道创建强制非公开（企业频道内部化）
+%%% 公开组合 C1(0,0,0)→C2(1,0,1)、C3(0,1,3)→C4(1,1,3)；
+%%% personal scope 零行为变化（回归红线）。
+%%%===================================================================
+
+create_mocks_for_scope(PostVals, Captured) ->
+    [
+        {elib_param, [
+            {'post', 1, fun(_Req) -> PostVals end}
+        ]},
+        {channel_logic, [
+            {'create_channel', 5, fun(_Uid, _Name, Opts, _Max, ScopeCtx) ->
+                put(Captured, {Opts, ScopeCtx}),
+                {ok, #{<<"id">> => 9001}}
+            end}
+        ]},
+        {elib_response, [
+            {'success', 2, fun(_Req, Msg) -> {ok_resp, Msg} end}
+        ]}
+    ].
+
+workspace_scope_forces_private_c1_to_c2_test_() ->
+    Captured = t_wl_create_opts,
+    ?WITH_MECKS(
+        create_mocks_for_scope(
+            #{
+                <<"name">> => <<"企业频道"/utf8>>,
+                <<"visibility">> => <<"0">>,
+                <<"access_type">> => <<"0">>,
+                <<"join_policy">> => <<"0">>,
+                <<"scope">> => <<"workspace">>,
+                <<"workspace_id">> => <<"8001">>
+            },
+            Captured
+        ),
+        fun() ->
+            Req = req_mock(),
+            Result = channel_handler:handle_action(create, Req, #{current_uid => 1001}),
+            ?assertMatch({ok_resp, _}, Result),
+            {Opts, {<<"workspace">>, 8001}} = get(Captured),
+            %% C1(0,0,0) 强制收敛为 C2(1,0,1)：visibility 0→1、join_policy 0→1
+            ?assertEqual(1, maps:get(visibility, Opts)),
+            ?assertEqual(0, maps:get(access_type, Opts)),
+            ?assertEqual(1, maps:get(join_policy, Opts))
+        end
+    ).
+
+workspace_scope_forces_private_c3_to_c4_test_() ->
+    Captured = t_wl_create_opts,
+    ?WITH_MECKS(
+        create_mocks_for_scope(
+            #{
+                <<"name">> => <<"付费公开会被私有化"/utf8>>,
+                <<"visibility">> => <<"0">>,
+                <<"access_type">> => <<"1">>,
+                <<"join_policy">> => <<"3">>,
+                <<"scope">> => <<"workspace">>,
+                <<"workspace_id">> => <<"8001">>
+            },
+            Captured
+        ),
+        fun() ->
+            Req = req_mock(),
+            ?assertMatch(
+                {ok_resp, _}, channel_handler:handle_action(create, Req, #{current_uid => 1001})
+            ),
+            {Opts, _} = get(Captured),
+            %% C3(0,1,3) 强制收敛为 C4(1,1,3)：仅 visibility 翻转
+            ?assertEqual(1, maps:get(visibility, Opts)),
+            ?assertEqual(1, maps:get(access_type, Opts)),
+            ?assertEqual(3, maps:get(join_policy, Opts))
+        end
+    ).
+
+personal_scope_keeps_public_combination_unchanged_test_() ->
+    Captured = t_wl_create_opts,
+    ?WITH_MECKS(
+        create_mocks_for_scope(
+            #{
+                <<"name">> => <<"个人公开频道"/utf8>>,
+                <<"visibility">> => <<"0">>,
+                <<"access_type">> => <<"0">>,
+                <<"join_policy">> => <<"0">>
+            },
+            Captured
+        ),
+        fun() ->
+            Req = req_mock(),
+            ?assertMatch(
+                {ok_resp, _}, channel_handler:handle_action(create, Req, #{current_uid => 1001})
+            ),
+            {Opts, {<<"personal">>, 0}} = get(Captured),
+            %% personal 零行为变化：C1 原样透传
+            ?assertEqual(0, maps:get(visibility, Opts)),
+            ?assertEqual(0, maps:get(join_policy, Opts))
+        end
+    ).
+
+%%%===================================================================
+%%% GZAPP-02/G4：channel archive/restore action 分发与错误码映射
+%%%===================================================================
+
+archive_action_dispatches_to_logic_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) -> #{} end}
+            ]},
+            {cowboy_req, [
+                {'binding', 2, fun(channel_id, _Req) -> <<"9001">> end}
+            ]},
+            {channel_logic, [
+                {'archive_channel', 2, fun(1001, <<"9001">>) ->
+                    {ok, #{channel_id => 9001, status => <<"archived">>}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Msg) -> {ok_resp, Msg} end},
+                {'error', 3, fun(_Req, Msg, Code) -> {error_resp, Code, Msg} end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_handler:handle_action(
+                archive, req_mock(), #{current_uid => 1001}
+            ),
+            ?assertMatch({ok_resp, #{channel_id := 9001}}, Result)
+        end
+    ).
+
+archive_action_maps_stable_error_code_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) -> #{} end}
+            ]},
+            {cowboy_req, [
+                {'binding', 2, fun(channel_id, _Req) -> <<"9001">> end}
+            ]},
+            {channel_logic, [
+                {'archive_channel', 2, fun(_Uid, _Id) ->
+                    {error, {409, <<"频道已处于归档或删除状态"/utf8>>}}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, Msg, Code) -> {error_resp, Code, Msg} end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_handler:handle_action(
+                archive, req_mock(), #{current_uid => 1001}
+            ),
+            ?assertMatch({error_resp, 409, _}, Result)
+        end
+    ).
+
+restore_action_dispatches_to_logic_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) -> #{} end}
+            ]},
+            {cowboy_req, [
+                {'binding', 2, fun(channel_id, _Req) -> <<"9001">> end}
+            ]},
+            {channel_logic, [
+                {'restore_channel', 2, fun(1001, <<"9001">>) ->
+                    {ok, #{channel_id => 9001, status => <<"active">>}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Msg) -> {ok_resp, Msg} end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_handler:handle_action(
+                restore, req_mock(), #{current_uid => 1001}
+            ),
+            ?assertMatch({ok_resp, #{status := <<"active">>}}, Result)
+        end
+    ).
+
 req_mock() ->
     #{mock_req => true}.

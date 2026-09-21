@@ -21,6 +21,9 @@
 -export([find_by_custom_id/1]).
 -export([update/2]).
 -export([delete/1]).
+%% GZAPP-02/G4：频道归档/恢复（status 0↔1，workspace_guard 同事务）
+-export([archive/1]).
+-export([restore/1]).
 -export([search/3]).
 -export([list_discover/2]).
 -export([list_subscribed/2]).
@@ -416,6 +419,22 @@ delete(ChannelId) ->
     %% T7 归档写守卫（P0 收口）：频道软删与守卫同事务（原自动提交写）。
     workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
         channel_repo:delete_tx(Conn, ChannelId)
+    end).
+
+%% @doc 归档频道（GZAPP-02/G4：status 1→0，复用既有列语义、无 DDL）；
+%% 与 workspace_guard 同事务——ws 频道所属工作区已归档时稳定 980 拒绝。
+-spec archive(integer()) -> {ok, non_neg_integer()} | {error, any()}.
+archive(ChannelId) ->
+    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+        channel_repo:archive_tx(Conn, ChannelId, elib_dt:now())
+    end).
+
+%% @doc 恢复频道（GZAPP-02/G4：status 0→1；已删除（-1）不可恢复）；
+%% 与 workspace_guard 同事务（同 archive）。
+-spec restore(integer()) -> {ok, non_neg_integer()} | {error, any()}.
+restore(ChannelId) ->
+    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+        channel_repo:restore_tx(Conn, ChannelId, elib_dt:now())
     end).
 
 -spec search(binary(), integer(), binary()) -> {ok, list(map())} | {error, any()}.

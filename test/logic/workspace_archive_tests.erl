@@ -97,6 +97,25 @@ archive_test_() ->
                 )
             end)
         end},
+        {"archiving last default workspace rejected 409 (G3 strong handover)", fun() ->
+            %% GZAPP-02/G3（计划 §4.2）：被归档者是 Org 默认且无剩余 active
+            %% Workspace → 稳定 409（先指定替代默认），不再静默 clear。
+            run_with_mocks(archive_mocks(<<"active">>, Self), fun() ->
+                meck:expect(
+                    organization_default_workspace_app,
+                    replace_or_clear_on_archive_tx,
+                    3,
+                    fun(_Conn, _OrgId, _WsId) ->
+                        throw(
+                            {abort_tx, {default_workspace_handover_required, no_active_replacement}}
+                        )
+                    end
+                ),
+                ?assertMatch(
+                    {error, {409, _Msg}}, workspace_logic:archive(?OWNER, ?WS_ID)
+                )
+            end)
+        end},
         {"restore clears audit columns", fun() ->
             run_with_mocks(archive_mocks(<<"archived">>, Self), fun() ->
                 ?assertMatch(

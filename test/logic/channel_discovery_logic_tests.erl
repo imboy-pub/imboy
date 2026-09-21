@@ -251,3 +251,108 @@ categories_returns_empty_list_on_error_test_() ->
             ?assertEqual([], maps:get(<<"list">>, Result))
         end
     ).
+
+%% ===================================================================
+%% GZAPP-02/G5 企业频道内部化：公开发现/搜索面全部排除 scope='workspace'
+%% （负例：ws 频道不出现在 discover/search/featured/trending——由 SQL
+%%  WHERE c.scope <> 'workspace' 承载，断言各查询均带排除子句）
+%% ===================================================================
+
+g5_excludes_workspace_scope_from_discover_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'query', 2, fun(Sql, _Params) ->
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(Sql, <<"c.scope <> 'workspace'">>),
+                        "discover must exclude workspace-scope channels"
+                    ),
+                    {ok, [#{<<"id">> => 1}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {ok, _}, channel_discovery_logic:discover(1, 20, undefined, <<"popular">>)
+            ),
+            ?assertMatch({ok, _}, channel_discovery_logic:discover(1, 20, 2, <<"newest">>))
+        end
+    ).
+
+g5_excludes_workspace_scope_from_featured_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'query', 2, fun(Sql, [5]) ->
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(Sql, <<"c.scope <> 'workspace'">>),
+                        "featured must exclude workspace-scope channels"
+                    ),
+                    {ok, []}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({ok, _}, channel_discovery_logic:featured(5))
+        end
+    ).
+
+g5_excludes_workspace_scope_from_trending_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'query', 2, fun(Sql, [7, 20]) ->
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(Sql, <<"c.scope <> 'workspace'">>),
+                        "trending must exclude workspace-scope channels"
+                    ),
+                    {ok, []}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({ok, _}, channel_discovery_logic:trending(7, 20))
+        end
+    ).
+
+g5_excludes_workspace_scope_from_search_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'one', 2, fun(Sql, _Params) ->
+                    case binary:match(Sql, <<"as keyword">>) of
+                        nomatch ->
+                            ?assertNotEqual(
+                                nomatch,
+                                binary:match(Sql, <<"c.scope <> 'workspace'">>),
+                                "search count must exclude workspace-scope channels"
+                            ),
+                            {ok, #{<<"count">> => 0}};
+                        _ ->
+                            {ok, #{<<"keyword">> => <<"test">>}}
+                    end
+                end},
+                {'query', 2, fun(Sql, _Params) ->
+                    case binary:match(Sql, <<"as keyword">>) of
+                        nomatch ->
+                            ?assertNotEqual(
+                                nomatch,
+                                binary:match(Sql, <<"c.scope <> 'workspace'">>),
+                                "search page must exclude workspace-scope channels"
+                            ),
+                            {ok, []};
+                        _ ->
+                            {ok, [#{<<"keyword">> => <<"test">>}]}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            %% 全量搜索与分类筛选两条 WHERE 分支都带排除子句
+            ?assertMatch({ok, _}, channel_discovery_logic:search(<<"test">>, 1, 20)),
+            ?assertMatch({ok, _}, channel_discovery_logic:search(<<"test">>, 1, 20, 1))
+        end
+    ).

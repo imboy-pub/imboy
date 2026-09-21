@@ -14,6 +14,8 @@
 %%%                                           （scope=workspace 须 Owner/Member，Guest 403；
 %%%                                            personal 默认，行为零变化）
 %%%   POST /api/v1/channel/:channel_id/update → update 拒绝改 scope/workspace_id（400，不可变）
+%%%   POST /api/v1/channel/:channel_id/archive|restore → GZAPP-02/G4 频道归档/恢复
+%%%                                           （仅创建者；status 0↔1 与删除 -1 区分；980 同口径）
 %%%   GET  /api/v1/channel/:channel_id 等 :channel_id 入口（show/publish/messages/
 %%%        subscribe/unsubscribe/mark_read/add_admin/stats 及 message/admin/comment/
 %%%        webhook 子 handler 全部 :channel_id 入口）→ init 前置 workspace 边界：
@@ -81,6 +83,8 @@ handle_action(qrcode, Req, State) -> qrcode(Req, State);
 handle_action(by_custom_id, Req, State) -> by_custom_id(Req, State);
 handle_action(update, Req, State) -> update(Req, State);
 handle_action(delete, Req, State) -> delete(Req, State);
+handle_action(archive, Req, State) -> archive(Req, State);
+handle_action(restore, Req, State) -> restore(Req, State);
 handle_action(subscribe, Req, State) -> subscribe(Req, State);
 handle_action(unsubscribe, Req, State) -> unsubscribe(Req, State);
 handle_action(subscribed, Req, State) -> subscribed(Req, State);
@@ -118,16 +122,21 @@ create(Req0, State) ->
         <<>> ->
             elib_response:error(Req0, <<"频道名称不能为空"/utf8>>);
         _ ->
-            case validate_access_policy(Visibility, AccessType, JoinPolicy) of
+            %% GZAPP-02/G5 企业频道内部化：workspace scope 频道强制非公开——
+            %% 公开组合 C1(0,0,0)→C2(1,0,1)、C3(0,1,3)→C4(1,1,3)，
+            %% 私有组合原样；确保企业频道不出现在公开发现面
+            %% （discover/trending/featured/search 均只取 visibility=0）。
+            {Visibility2, JoinPolicy2} = internalize_visibility(Scope, Visibility, JoinPolicy),
+            case validate_access_policy(Visibility2, AccessType, JoinPolicy2) of
                 true ->
                     Opts = #{
                         description => Description,
                         avatar => Avatar,
                         custom_id => CustomId,
                         tags => Tags,
-                        visibility => Visibility,
+                        visibility => Visibility2,
                         access_type => AccessType,
-                        join_policy => JoinPolicy
+                        join_policy => JoinPolicy2
                     },
                     MaxChannels = 20,
                     case
@@ -286,6 +295,41 @@ delete(Req0, State) ->
                     elib_response:success(Req0, #{});
                 {error, {Code, Msg}} when is_integer(Code) ->
                     %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc 归档频道（GZAPP-02/G4）：仅创建者；status 1→0（可恢复，与删除区分）。
+%% 归档后频道退出全部列表/发现/搜索面（查询恒过滤 status=1）；
+%% ws 频道所属工作区已归档时稳定 980。
+-spec archive(cowboy_req:req(), map()) -> cowboy_req:req().
+archive(Req0, State) ->
+    channel_status_action(Req0, State, fun channel_logic:archive_channel/2).
+
+%% @doc 恢复频道（GZAPP-02/G4）：仅创建者；status 0→1；已删除（-1）不可恢复。
+-spec restore(cowboy_req:req(), map()) -> cowboy_req:req().
+restore(Req0, State) ->
+    channel_status_action(Req0, State, fun channel_logic:restore_channel/2).
+
+%% archive/restore 共用入口：binding/post 解析 + 两形态错误映射（同 delete）。
+-spec channel_status_action(
+    cowboy_req:req(), map(), fun((integer(), binary()) -> {ok, map()} | {error, any()})
+) ->
+    cowboy_req:req().
+channel_status_action(Req0, State, LogicFun) ->
+    Uid = maps:get(current_uid, State),
+    PostVals = elib_param:post(Req0),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    case ChannelId of
+        <<>> ->
+            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+        _ ->
+            case LogicFun(Uid, ChannelId) of
+                {ok, Result} ->
+                    elib_response:success(Req0, Result);
+                {error, {Code, Msg}} when is_integer(Code) ->
                     elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
@@ -667,3 +711,13 @@ validate_access_policy(0, 1, 3) -> true;
 % C4: private/paid/purchase
 validate_access_policy(1, 1, 3) -> true;
 validate_access_policy(_, _, _) -> false.
+
+%% GZAPP-02/G5 企业频道内部化：workspace scope 强制非公开。
+%% 公开组合收敛到对应私有组合（C1→C2、C3→C4）；personal scope 零行为变化。
+%% 收敛后仍是合法组合（validate_access_policy 复核），客户端显式传公开值
+%% 不报错——服务端强制私有（内部化语义），create 响应回传实际 visibility。
+-spec internalize_visibility(binary(), non_neg_integer(), non_neg_integer()) ->
+    {non_neg_integer(), non_neg_integer()}.
+internalize_visibility(<<"workspace">>, 0, 0) -> {1, 1};
+internalize_visibility(<<"workspace">>, 0, 3) -> {1, 3};
+internalize_visibility(_Scope, Visibility, JoinPolicy) -> {Visibility, JoinPolicy}.

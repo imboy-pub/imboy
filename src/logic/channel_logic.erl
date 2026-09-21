@@ -14,6 +14,10 @@
 -spec get_channel_by_custom_id(binary(), integer()) -> {ok, map()} | {error, binary()}.
 -spec update_channel(integer(), binary(), map()) -> {ok, map()} | {error, binary()}.
 -spec delete_channel(integer(), binary()) -> ok | {error, binary()}.
+-spec archive_channel(integer(), binary()) ->
+    {ok, map()} | {error, binary()} | {error, {integer(), binary()}}.
+-spec restore_channel(integer(), binary()) ->
+    {ok, map()} | {error, binary()} | {error, {integer(), binary()}}.
 -spec publish_message(integer(), binary(), binary(), binary(), map()) ->
     {ok, map()} | {error, binary()}.
 -spec publish_message(integer(), binary(), binary(), binary(), map(), binary()) ->
@@ -74,6 +78,9 @@
 -export([get_channel_by_custom_id/2]).
 -export([update_channel/3]).
 -export([delete_channel/2]).
+%% GZAPP-02/G4：频道归档/恢复（status 0↔1，workspace_guard 同事务）
+-export([archive_channel/2]).
+-export([restore_channel/2]).
 
 -export([subscribe/2]).
 -export([unsubscribe/2]).
@@ -147,6 +154,13 @@ update_channel(Uid, ChannelIdBin, Data) ->
 
 delete_channel(Uid, ChannelIdBin) ->
     channel_logic_message:delete_channel(Uid, ChannelIdBin).
+
+%% GZAPP-02/G4：频道归档/恢复（spec 见文件顶部清单）
+archive_channel(Uid, ChannelIdBin) ->
+    channel_logic_message:archive_channel(Uid, ChannelIdBin).
+
+restore_channel(Uid, ChannelIdBin) ->
+    channel_logic_message:restore_channel(Uid, ChannelIdBin).
 
 subscribe(Uid, ChannelIdBin) ->
     channel_logic_subscription:subscribe(Uid, ChannelIdBin).

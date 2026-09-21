@@ -16,6 +16,7 @@ Feature 全集的**唯一权威源**是代码：`imboy_feature:feature_names()`�
 | Base 固定 | `core`、`e2ee` | **不可裁剪**（任何 manifest 不得禁用；生成器 `disabled_base_features` 强制为空） |
 | 插件管理（plugin-managed） | `channel`、`location`、`moment`、`channel_discover`、`channel_invitation`、`channel_order`、`group_vote`、`group_schedule`、`group_task` 及插件注册表追加键 | 可按 manifest 选择性编译/禁用 |
 | 平台内建 | `bot_webhook` | 可禁用（overseas_baseline 默认关） |
+| 平台内建 | `project`（GZAPP-02/G6，Workspace 项目协作面：`project_handler`/`project_task_handler`/`project_member_handler`/`project_milestone_handler`/`project_channel_handler`） | 可禁用；**通用默认开启**（full-selected 兼容）。物理裁剪仅 API handler 家族（logic/ds/repo 保留编译——admin 概览/资源计数仍引用）；路由由 `imboy_feature:route_feature/3` + `compiled_routes/2` 运行时过滤 |
 
 依赖关系（如 `channel_discover`/`channel_order` 依赖 `channel`）由 `imboy_policy_catalog:dependencies/1` 与生成器 catalog 校验。
 
@@ -39,6 +40,17 @@ Feature 全集的**唯一权威源**是代码：`imboy_feature:feature_names()`�
 约束（`generate_product_features.py:validate` 强制）：schema_version=1；product_id=imboy；`base_ref` 固定；`disabled_base_features` 必须为空（Base 不可禁）；`selected_features` ⊆ 全集且满足依赖闭包；`compiled_features = selected + 依赖闭包 ∪ Base`，生成器输出 `manifest_hash`（sha256）。
 
 **Tracked manifest 位置**：`config/product-feature-manifests/*.json`（如 `overseas_baseline.json`）；`config/product-feature-manifest.json` 为 full-selected 默认清单。运行时镜像校验见 `feature_composition_compat_tests:tracked_manifests_within_catalog_test_`。
+
+**部署级（Git 外）关闭示例——广州企业版关 `project`（GZAPP-02/G6 定案：不建广州 profile，通用 manifest 默认开）**：
+
+1. 物理裁剪（编译期）：在部署机用 Git 外 manifest 重跑生成器，产物同样落仓内路径但不回传 Git——
+   ```bash
+   # guangzhou.json = full-selected 清单去掉 "project"，存放在部署机（不入仓）
+   python3 imboy/scripts/generate_product_features.py --manifest /etc/imboy/guangzhou.json
+   make -C imboy rel   # project_* 五 handler 经 ERLC_EXCLUDE 不进 beam
+   ```
+2. 运行时开关（不重编译，双保险的第二道）：`sys.config` 的 policy `features` 段把 `project` 置 `false`（逐机配置文件 Git 外，同 `IMBOY_PG_*` 约定）——`imboy_feature:enabled/1` 按 `?IMBOY_COMPILED_FEATURES andalso effective_features` 双条件裁决，`compiled_routes/2` 同口径剔除路由。
+3. 数据兼容：关闭 `project` 只裁 API 面，project 表与存量数据保留（admin 只读面 `adm_workspace_handler:project_*` 不挂 feature 门，平台运营仍可查）；重新启用走 §7.2。
 
 ## 4. 构建命令（单 manifest 复现）
 

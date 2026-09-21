@@ -19,6 +19,8 @@
 -export([update_tx/3]).
 -export([delete/1]).
 -export([delete_tx/2]).
+-export([archive_tx/3]).
+-export([restore_tx/3]).
 -export([increment_subscribers/2]).
 -export([increment_subscribers/3]).
 -export([list_workspace_channels/2]).
@@ -276,6 +278,25 @@ delete_tx(Conn, ChannelId) ->
     {Sql, Params} = elib_pg_sql:update(Tb, #{status => -1}, <<"id = $1">>, [ChannelId]),
     elib_pg:execute(Conn, Sql, Params).
 
+%% @doc 事务内归档频道（GZAPP-02/G4：复用 status 软删列语义——
+%% 归档= status 1→0（禁用），与删除（→-1）区分、可经 restore_tx 恢复；
+%% WHERE 带 status=1 前置条件，0 行更新 = 已归档/已删除（幂等裁决在 DS/Logic）。
+-spec archive_tx(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+archive_tx(Conn, ChannelId, Now) ->
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET status = 0, updated_at = $1 WHERE id = $2 AND status = 1">>,
+    elib_pg:execute(Conn, Sql, [Now, ChannelId]).
+
+%% @doc 事务内恢复频道（GZAPP-02/G4：status 0→1；WHERE 限定 status=0——
+%% 已删除（-1）的频道不可恢复，0 行更新 = 非归档态（active/已删除））。
+-spec restore_tx(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+restore_tx(Conn, ChannelId, Now) ->
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET status = 1, updated_at = $1 WHERE id = $2 AND status = 0">>,
+    elib_pg:execute(Conn, Sql, [Now, ChannelId]).
+
 %% @doc 增减订阅者数量
 %% @param ChannelId 频道ID
 %% @param Delta 变化量（正数增加，负数减少）
@@ -324,7 +345,9 @@ search(Keyword, Limit, Column) ->
     Pattern = <<"%", Keyword/binary, "%">>,
     Sql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE status = 1 AND (name LIKE $1 OR description LIKE $1 OR custom_id LIKE $1) "
+            %% GZAPP-02/G5：企业频道内部化——搜索面排除 workspace scope
+            " WHERE status = 1 AND scope <> 'workspace' ",
+            "AND (name LIKE $1 OR description LIKE $1 OR custom_id LIKE $1) "
             "ORDER BY subscriber_count DESC LIMIT $2">>,
     elib_pg:query(Sql, [Pattern, Limit]).
 
@@ -339,7 +362,8 @@ list_discover(Limit, Column) ->
     Sql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             % visibility=0 表示公开频道
-            " WHERE status = 1 AND visibility = 0 "
+            %% GZAPP-02/G5：企业频道内部化——发现面排除 workspace scope
+            " WHERE status = 1 AND visibility = 0 AND scope <> 'workspace' ",
             "ORDER BY subscriber_count DESC, created_at DESC LIMIT $1">>,
     elib_pg:query(Sql, [Limit]).
 

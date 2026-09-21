@@ -99,11 +99,19 @@ domain_archive_decision_test_() ->
                 organization_default_workspace:archive_decision(true, [100, 300, 900])
             )
         end},
-        {"archived default with no remaining clears", fun() ->
-            ?assertEqual(clear, organization_default_workspace:archive_decision(true, []))
+        {"archived default with no remaining is rejected (G3 strong handover)", fun() ->
+            %% GZAPP-02/G3（计划 §4.2）：无剩余 active 时拒绝归档
+            %% （先显式指定替代默认），不再静默 clear。
+            ?assertEqual(
+                {error, no_active_replacement},
+                organization_default_workspace:archive_decision(true, [])
+            )
         end},
-        {"archiving non-default never touches relation", fun() ->
-            ?assertEqual(clear, organization_default_workspace:archive_decision(false, [100]))
+        {"archiving non-default never silently clears (defensive arm fail-closed)", fun() ->
+            ?assertEqual(
+                {error, not_current_default},
+                organization_default_workspace:archive_decision(false, [100])
+            )
         end}
     ].
 
@@ -440,5 +448,29 @@ hooks_test_() ->
                     end
                 end
             )
-        end}
+        end},
+        {"replace_or_clear_on_archive_tx rejects with dedicated marker when no active replacement (G3)",
+            fun() ->
+                %% GZAPP-02/G3 强交接：无剩余 active → 专用拒绝标记（供
+                %% workspace_logic 映射 409），不是 500 类 handover_failed。
+                with_pg_mocks(
+                    [
+                        {'replace_or_clear_on_archive_tx', 3, fun(_C, _O, _W) ->
+                            {error, no_active_replacement}
+                        end}
+                    ],
+                    fun() ->
+                        try
+                            organization_default_workspace_app:replace_or_clear_on_archive_tx(
+                                fake_conn, ?ORG_ID, ?WS_ID
+                            ),
+                            ?assert(false, "expected abort_tx throw")
+                        catch
+                            throw:{abort_tx,
+                                {default_workspace_handover_required, no_active_replacement}} ->
+                                ok
+                        end
+                    end
+                )
+            end}
     ].

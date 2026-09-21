@@ -8,8 +8,9 @@
 %%%
 %%% Workspace 生命周期同事务钩子（由 workspace 侧精确调用，非公开命令）：
 %%%   * `ensure_first_workspace_tx/3`：首个 Org Workspace 创建时同事务设默认；
-%%%   * `replace_or_clear_on_archive_tx/3`：归档默认时同事务交接
-%%%     （replace_with_min_active / clear，与 legacy min-ID 读法过渡期等值）。
+%%%   * `replace_or_clear_on_archive_tx/3`：归档默认时同事务交接——
+%%%     有剩余 active 时 replace_with_min_active；无剩余 active 时拒绝归档
+%%%     （GZAPP-02/G3 强交接：须先显式指定替代默认，不再 clear）。
 -module(organization_default_workspace_app).
 
 -export([get/1, set/3, clear/2]).
@@ -112,8 +113,11 @@ ensure_first_workspace_tx(Conn, OrgId, WsId) ->
     end.
 
 %% @doc 归档工作区时的默认同事务交接。
-%% 仅当被归档者是该 Org 当前默认时动作（replace-with-min-active / clear）。
-%% 失败抛 abort_tx 由 archive 事务回滚（默认永不指向 archived Workspace）。
+%% 仅当被归档者是该 Org 当前默认时动作：有剩余 active → replace-with-min-active；
+%% 无剩余 active → **拒绝归档**（GZAPP-02/G3 强交接，计划 §4.2：归档默认
+%% Workspace 前必须先指定替代项），抛专用 abort 标记由 workspace_logic
+%% 映射稳定错误码 409；其余失败抛 abort_tx 由 archive 事务回滚
+%% （默认永不指向 archived Workspace）。
 -spec replace_or_clear_on_archive_tx(any(), integer() | undefined, integer()) -> ok.
 replace_or_clear_on_archive_tx(_Conn, undefined, _WsId) ->
     ok;
@@ -121,6 +125,10 @@ replace_or_clear_on_archive_tx(Conn, OrgId, WsId) ->
     case organization_default_workspace_pg:replace_or_clear_on_archive_tx(Conn, OrgId, WsId) of
         ok ->
             ok;
+        {error, no_active_replacement} ->
+            %% G3 强交接拒绝：稳定标记上抛（非 500 类故障），
+            %% workspace_logic 的 archive/admin_archive 映射 409。
+            throw({abort_tx, {default_workspace_handover_required, no_active_replacement}});
         {error, Reason} ->
             throw({abort_tx, {organization_default_workspace_handover_failed, Reason}})
     end.

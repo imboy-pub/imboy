@@ -16,6 +16,7 @@
     "group_task",
     "bot_webhook",
     "enterprise_business",
-    "customer_service"
+    "customer_service",
+    "project"
   ]
 }

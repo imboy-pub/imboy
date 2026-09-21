@@ -155,6 +155,22 @@ route_feature(admin, adm_report_handler, Action) when
     Action =:= channel_batch_resolve
 ->
     channel;
+%% GZAPP-02/G6：Workspace 项目协作面的运行时 feature 门——
+%% project_handler/project_task_handler/project_member_handler/
+%% project_milestone_handler/project_channel_handler 的全部 /api/v1
+%% 动作（含 workspace_handler:projects 同路由入口）。未选中 project 时
+%% compiled_routes/2 剔除路由（运行时过滤，不进 cowboy dispatch）；
+%% FEATURE_BACKEND_MODULES 另按 ERLC_EXCLUDE 物理裁剪五个 handler beam
+%% （双保险）。admin 只读面（adm_workspace_handler 的 project_* action）
+%% 不挂门——平台运营视角按需可见。
+route_feature(api, Handler, _Action) when
+    Handler =:= project_handler;
+    Handler =:= project_task_handler;
+    Handler =:= project_member_handler;
+    Handler =:= project_milestone_handler;
+    Handler =:= project_channel_handler
+->
+    project;
 route_feature(Surface, Handler, Action) ->
     imboy_plugin_registry:required_feature(Surface, Handler, Action).
 
@@ -213,7 +229,13 @@ feature_names() ->
     %%   enterprise_business 是独立纵切单元 src/features/enterprise_business/，
     %%   不注册为插件 feature_keys；依赖边 customer_service ->
     %%   enterprise_business 声明在 imboy_policy_catalog:dependencies/1。
-    Builtin = [bot_webhook, appeal, enterprise_business, customer_service],
+    %% - project（GZAPP-02/G6）：Workspace 项目协作面（项目/任务/里程碑/
+    %%   项目成员/项目频道 five-handler 家族）。通用默认开启（兼容）；
+    %%   广州部署走 Git 外 manifest/运行时开关关闭（文档见
+    %%   docs/product/packaging-contract.md）。logic/ds/repo 层不物理裁剪
+    %%   （admin workspace 概览/资源计数仍引用），裁剪面只到 API handler
+    %%   与路由（compiled_routes 运行时过滤）。
+    Builtin = [bot_webhook, appeal, enterprise_business, customer_service, project],
     CoreFixed ++ Ordered ++ Extra ++ Builtin.
 
 -spec normalize_feature_key(feature()) -> atom() | undefined.

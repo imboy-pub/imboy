@@ -14,7 +14,8 @@
 %%%   * set 同值幂等（unchanged）、clear 空值幂等（already_empty）；
 %%%   * 变更必须先锁 organization 行（与 owner transfer 同锁序：组织行先）；
 %%%   * 首个 Org Workspace 创建时同事务设默认；archive 交接策略见
-%%%     `archive_decision/3`（replace-or-clear，与 legacy min-ID 读法过渡期等值）。
+%%%     `archive_decision/2`（GZAPP-02/G3 强交接：无剩余 active 时拒绝归档，
+%%%     必须先显式指定替代默认，不再静默 clear）。
 -module(organization_default_workspace).
 
 -export([
@@ -50,15 +51,13 @@ ensure_settable_target(_ExpectedOrg, _WsOrg, _Status) ->
     {error, not_active}.
 
 %% ===================================================================
-%% archive 交接决策（replace-or-clear）
+%% archive 交接决策（GZAPP-02/G3 强交接）
 %% ===================================================================
 
 %% @doc archive 时的默认交接策略标识（决策记录用，见 ORG-05 evidence）。
-%% 选定 **replace_with_min_active** 的理由：legacy min-ID 读法在被替换前
-%% 的过渡期内「归档默认后自然落到剩余最小 active id」——显式关系采用同一
-%% 策略使两读法逐 Org 等值，装配层一次性切换零行为漂移，rollback 故事最强。
-%% 无剩余 active Workspace 时 clear（legacy 读法此时同样返回
-%% no_default_workspace，等值）。
+%% 保留 **replace_with_min_active**：有剩余 active Workspace 时自动交接给
+%% 剩余最小 active id（legacy min-ID 读法过渡期等值，装配层零漂移）。
+%% 无剩余 active 的场景不再 clear——见 `archive_decision/2`（G3 拒绝语义）。
 -spec next_default_policy() -> replace_with_min_active.
 next_default_policy() ->
     replace_with_min_active.
@@ -66,15 +65,22 @@ next_default_policy() ->
 %% @doc 归档默认 Workspace 时的交接决策（纯函数）。
 %% 输入：被归档的 workspace 是否当前默认（`IsCurrentDefault`）、
 %% 同 Org 剩余 active workspace id 升序列表（不含被归档者）。
-%% 输出：`clear` | `{replace, MinActiveId}`。
+%% 输出：`{replace, MinActiveId}` | `{error, no_active_replacement |
+%% not_current_default}`。
+%%
+%% GZAPP-02/G3 强交接（计划 §4.2）：被归档者是默认且无剩余 active
+%% Workspace 时**拒绝归档**（`{error, no_active_replacement}`）——归档前
+%% 必须先显式指定替代默认项（set 到其他 active Workspace），归档事务整体
+%% 回滚；不再走旧 clear（静默清空默认）路径。
 %% 剩余列表已按 id 升序给定时，头元素即 min（与 legacy 读法等值）。
 %% ⚠️ 当前唯一生产调用方（organization_default_workspace_pg）恒传 true——
-%% 其仅在「被归档者 = 当前默认」时才进入本决策；`false -> clear` 分支是
-%% 防御臂，防止未来调用方误用造成误清空。
--spec archive_decision(boolean(), [integer()]) -> clear | {replace, integer()}.
+%% 其仅在「被归档者 = 当前默认」时才进入本决策；`false` 分支是防御臂，
+%% fail-closed 拒绝（不静默 clear）防止未来调用方误用造成误清空。
+-spec archive_decision(boolean(), [integer()]) ->
+    {replace, integer()} | {error, no_active_replacement | not_current_default}.
 archive_decision(false, _RemainingActiveIds) ->
-    clear;
+    {error, not_current_default};
 archive_decision(true, []) ->
-    clear;
+    {error, no_active_replacement};
 archive_decision(true, [MinId | _]) when is_integer(MinId), MinId > 0 ->
     {replace, MinId}.

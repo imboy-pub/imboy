@@ -50,7 +50,14 @@ route_feature_covers_split_handlers_test() ->
         {admin, adm_group_vote_handler, vote_list, group_vote},
         {admin, adm_group_schedule_handler, schedule_list, group_schedule},
         {admin, adm_group_task_handler, task_list, group_task},
-        {admin, adm_report_handler, channel_list, channel}
+        {admin, adm_report_handler, channel_list, channel},
+        %% GZAPP-02/G6：project handler 家族 → project feature
+        {api, project_handler, projects, project},
+        {api, project_handler, show, project},
+        {api, project_task_handler, create, project},
+        {api, project_member_handler, members, project},
+        {api, project_milestone_handler, milestones, project},
+        {api, project_channel_handler, update_links, project}
     ],
     lists:foreach(
         fun({Surface, Handler, Action, Expected}) ->

@@ -368,6 +368,9 @@ get_routes() ->
                 }},
                 {"/api/v1/channel/:channel_id/update", channel_handler, #{action => update}},
                 {"/api/v1/channel/:channel_id/delete", channel_handler, #{action => delete}},
+                %% GZAPP-02/G4：频道归档/恢复（仅创建者；status 0↔1，与删除 -1 区分）
+                {"/api/v1/channel/:channel_id/archive", channel_handler, #{action => archive}},
+                {"/api/v1/channel/:channel_id/restore", channel_handler, #{action => restore}},
                 {"/api/v1/channel/:channel_id/subscribe", channel_handler, #{action => subscribe}},
                 {"/api/v1/channel/:channel_id/unsubscribe", channel_handler, #{
                     action => unsubscribe

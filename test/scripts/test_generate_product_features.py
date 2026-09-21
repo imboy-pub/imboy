@@ -111,18 +111,25 @@ class ProductFeatureManifestTest(unittest.TestCase):
         self.assertNotIn("moment_ds", selected.splitlines()[-1].split(":=")[1].split())
         # customer_service 自 CS-02 起也有模块映射，完整 catalog 必须同样纳入，
         # 否则 all-selected 场景下 cs 模块仍留在排除行（CS-02 起本断言一直红）。
+        # project 自 GZAPP-02/G6 起同样有模块映射（API handler 家族），一并纳入。
         full_catalog = {
             "features": [
                 *self.catalog["features"],
                 "moment",
                 "enterprise_business",
                 "customer_service",
+                "project",
             ],
             "dependencies": self.catalog["dependencies"],
         }
         all_selected = MODULE.render(
             MODULE.validate(
-                self.manifest(["moment", "enterprise_business", "customer_service"]),
+                self.manifest([
+                    "moment",
+                    "enterprise_business",
+                    "customer_service",
+                    "project",
+                ]),
                 full_catalog,
             )
         )[mk_path]

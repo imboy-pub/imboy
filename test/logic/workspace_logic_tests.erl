@@ -1477,6 +1477,143 @@ join_by_code_guard_passthrough_test_() ->
     ).
 
 %%%===================================================================
+%%% GZAPP-02/G7：org owner/admin 对本 org 全部 ws 的管理权（D04 权限矩阵）
+%%% 入口 ensure_governor：本 ws Owner 短路；非 owner 且 ws 归属 org 时查
+%%% organization_workspace_access；个人域仍仅 ws Owner。
+%%%===================================================================
+
+org_ws_row() ->
+    Row = ws_row(),
+    Row#{<<"organization_id">> => ?ORG_ID}.
+
+governor_mocks() ->
+    [
+        {workspace_member_repo, [
+            {'find', 3, fun(?WS_ID, U, _) ->
+                case U of
+                    ?OWNER -> #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>};
+                    ?MEMBER -> #{<<"role">> => <<"member">>, <<"status">> => <<"active">>};
+                    ?GUEST -> #{<<"role">> => <<"guest">>, <<"status">> => <<"active">>};
+                    _ -> #{}
+                end
+            end}
+        ]},
+        {workspace_ds, [
+            {'find_by_id', 1, fun(_) -> org_ws_row() end},
+            {'find_by_id', 2, fun(_, <<"status">>) ->
+                #{<<"status">> => <<"active">>}
+            end}
+        ]},
+        {organization_workspace_access, [
+            {'ensure_org_manager', 2, fun(?ORG_ID, U) ->
+                case U of
+                    ?OUTSIDER -> ok;
+                    _ -> {error, {403, <<"仅工作区 Owner 或组织 Owner/Admin 可执行该操作"/utf8>>}}
+                end
+            end}
+        ]},
+        %% archive 链路（与 workspace_archive_tests 同口径的最小集）
+        {elib_pg, [
+            {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+            {'query', 3, fun
+                (fake_conn, <<"SELECT organization_id FROM workspace", _/binary>>, _) ->
+                    {ok, [#{<<"organization_id">> => ?ORG_ID}]};
+                (_C, _S, _P) ->
+                    {ok, []}
+            end},
+            {'execute', 3, fun(
+                fake_conn, <<"UPDATE workspace SET status = 'archived'", _/binary>>, _
+            ) ->
+                {ok, 1}
+            end}
+        ]},
+        {organization_default_workspace_app, [
+            {'replace_or_clear_on_archive_tx', 3, fun(_C, _O, _W) -> ok end}
+        ]}
+    ].
+
+governor_authorization_test_() ->
+    [
+        {"ws owner short-circuits without org lookup", fun() ->
+            ?WITH_MECKS(governor_mocks(), fun() ->
+                %% owner 直接通过：不得触碰 org 判定
+                ?assertMatch(
+                    {ok, _}, workspace_logic:archive(?OWNER, ?WS_ID)
+                ),
+                ?assertEqual(
+                    0, meck:num_calls(organization_workspace_access, ensure_org_manager, 2)
+                )
+            end)
+        end},
+        {"org admin (non ws member) may archive org workspace", fun() ->
+            ?WITH_MECKS(governor_mocks(), fun() ->
+                %% OUTSIDER 非 ws 成员但 mock 为 org owner/admin → 归档放行
+                ?assertMatch(
+                    {ok, _}, workspace_logic:archive(?OUTSIDER, ?WS_ID)
+                )
+            end)
+        end},
+        {"org admin may invite into org workspace", fun() ->
+            ?WITH_MECKS(
+                governor_mocks() ++
+                    [
+                        {user_repo, [{'find_by_id', 2, fun(1001, _) -> #{<<"id">> => 1001} end}]},
+                        {user_denylist_logic, [{'blocked_between', 2, fun(_, _) -> false end}]}
+                    ],
+                fun() ->
+                    %% 重设 member 决策表：OUTSIDER 非成员 + 目标 1001 可 upsert
+                    meck(workspace_member_repo, [
+                        {'find', 3, fun
+                            (?WS_ID, 1001, _) ->
+                                #{<<"role">> => <<"member">>, <<"status">> => <<"active">>};
+                            (?WS_ID, _, _) ->
+                                #{}
+                        end},
+                        {'upsert_active_tx', 5, fun(_Conn, ?WS_ID, 1001, <<"member">>, ?OUTSIDER) ->
+                            {ok, changed, #{}}
+                        end}
+                    ]),
+                    ?assertMatch(
+                        {ok, changed, _},
+                        workspace_logic:invite(?OUTSIDER, ?WS_ID, 1001, <<"member">>)
+                    )
+                end
+            )
+        end},
+        {"ws member without org role still 403", fun() ->
+            ?WITH_MECKS(governor_mocks(), fun() ->
+                %% MEMBER 是 ws member 但非 owner，org 判定 mock 也拒 → 403
+                ?assertMatch(
+                    {error, {403, _}}, workspace_logic:archive(?MEMBER, ?WS_ID)
+                )
+            end)
+        end},
+        {"personal workspace non owner still 403 (no org fallback)", fun() ->
+            ?WITH_MECKS(governor_mocks(), fun() ->
+                %% 个人域 ws（无 organization_id）：非 owner 一律 403，
+                %% 且不得查组织角色
+                meck(workspace_ds, [
+                    {'find_by_id', 1, fun(_) -> ws_row() end},
+                    {'find_by_id', 2, fun(_, <<"status">>) ->
+                        #{<<"status">> => <<"active">>}
+                    end}
+                ]),
+                meck(organization_workspace_access, [
+                    {'ensure_org_manager', 2, fun(_, _) ->
+                        erlang:error(must_not_query_org_for_personal_ws)
+                    end}
+                ]),
+                ?assertMatch(
+                    {error, {403, _}}, workspace_logic:archive(?MEMBER, ?WS_ID)
+                ),
+                ?assertEqual(
+                    0, meck:num_calls(organization_workspace_access, ensure_org_manager, 2)
+                )
+            end)
+        end}
+    ].
+
+%%%===================================================================
 %%% Internal
 %%%===================================================================
 

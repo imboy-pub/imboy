@@ -122,8 +122,11 @@ ensure_first_workspace_tx(Conn, OrgId, WsId) ->
     end.
 
 %% @doc 归档同事务交接（workspace_logic archive/admin_archive 调用）：
-%% 被归档者是当前默认 → replace 为剩余最小 active id；无剩余 → clear。
-%% 策略与 legacy min-ID 读法过渡期等值（organization_default_workspace:archive_decision/2）。
+%% 被归档者是当前默认且有剩余 active → replace 为剩余最小 active id；
+%% 无剩余 active → {error, no_active_replacement}（GZAPP-02/G3 强交接：
+%% 拒绝归档、由调用方映射稳定错误码，不再 clear）。
+%% replace 策略与 legacy min-ID 读法过渡期等值
+%% （organization_default_workspace:archive_decision/2）。
 -spec replace_or_clear_on_archive_tx(any(), integer(), integer()) -> ok | {error, term()}.
 replace_or_clear_on_archive_tx(Conn, OrgId, ArchivedWsId) ->
     case find_tx(Conn, OrgId) of
@@ -142,12 +145,9 @@ archive_handover_tx(Conn, OrgId, ArchivedWsId) ->
         {ok, Remaining} ->
             %% 交接裁决集中在 domain 模块（单一决策真源）；
             %% 此分支必为「被归档者是当前默认」（IsCurrentDefault=true）。
+            %% GZAPP-02/G3：no_active_replacement 上抛拒绝（归档事务回滚，
+            %% 不再 clear 默认关系）。
             case organization_default_workspace:archive_decision(true, Remaining) of
-                clear ->
-                    case delete_tx(Conn, OrgId) of
-                        {ok, _} -> ok;
-                        {error, Reason} -> {error, Reason}
-                    end;
                 {replace, MinActiveId} ->
                     Sql =
                         <<"UPDATE ", (table())/binary, " SET workspace_id = $1, updated_at = now()",
@@ -155,7 +155,9 @@ archive_handover_tx(Conn, OrgId, ArchivedWsId) ->
                     case elib_pg:execute(Conn, Sql, [MinActiveId, OrgId, ArchivedWsId]) of
                         {ok, _} -> ok;
                         {error, Reason} -> {error, Reason}
-                    end
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
             end;
         {error, Reason} ->
             {error, Reason}

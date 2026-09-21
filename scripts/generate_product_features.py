@@ -154,6 +154,20 @@ FEATURE_BACKEND_MODULES = {
         "moment_report_repo",
         "moment_timeline_repo",
     ),
+    # GZAPP-02/G6：Workspace 项目协作面（project feature）的 API handler
+    # 家族。未选中 project 时按 ERLC_EXCLUDE 不参与编译；路由由
+    # imboy_feature:route_feature/3 + compiled_routes/2 运行时过滤
+    # （双保险）。注意：logic/ds/repo 层（project_logic/project_ds/...）
+    # **不在此清单**——admin workspace 概览/资源计数（adm_workspace_handler、
+    # workspace_ds:admin_resource_list）仍引用它们，物理裁剪须待那些引用
+    # 面解耦后再扩清单。
+    "project": (
+        "project_channel_handler",
+        "project_handler",
+        "project_member_handler",
+        "project_milestone_handler",
+        "project_task_handler",
+    ),
 }
 
 

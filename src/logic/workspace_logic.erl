@@ -209,7 +209,8 @@ invite(Uid, WsId, TargetUid, Role) ->
         false ->
             {error, {400, <<"角色仅支持 owner/member/guest"/utf8>>}};
         true ->
-            case ensure_owner(WsId, Uid) of
+            %% GZAPP-02/G7：管理类操作授权放宽为本 ws Owner 或 org owner/admin
+            case ensure_governor(WsId, Uid) of
                 {error, Reason} ->
                     {error, Reason};
                 {ok, _WS} ->
@@ -422,7 +423,8 @@ join_as_member(Uid, WsId, CreatedBy, WS) ->
 -spec remove_member(integer(), integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 remove_member(Uid, WsId, TargetUid) ->
-    case ensure_owner(WsId, Uid) of
+    %% GZAPP-02/G7：管理类操作授权放宽为本 ws Owner 或 org owner/admin
+    case ensure_governor(WsId, Uid) of
         {error, Reason} ->
             {error, Reason};
         {ok, WS} ->
@@ -537,19 +539,24 @@ change_role(Uid, WsId, TargetUid, Role) ->
         false ->
             {error, {400, <<"角色仅支持 owner/member/guest"/utf8>>}};
         true ->
-            case ensure_owner(WsId, Uid) of
+            %% GZAPP-02/G7：管理类操作授权放宽为本 ws Owner 或 org owner/admin
+            case ensure_governor(WsId, Uid) of
                 {error, Reason} ->
                     {error, Reason};
-                {ok, _WS} ->
+                {ok, WS} ->
                     case ensure_not_archived(WsId) of
                         {error, Reason2} -> {error, Reason2};
-                        ok -> change_role_checked(Uid, WsId, TargetUid, Role)
+                        ok -> change_role_checked(Uid, WsId, TargetUid, Role, ws_org_id(WS))
                     end
             end
     end.
 
-change_role_checked(Uid, WsId, TargetUid, Role) ->
-    case elib_pg:with_tx(fun(Conn) -> change_role_tx(Conn, Uid, WsId, TargetUid, Role) end) of
+change_role_checked(Uid, WsId, TargetUid, Role, OrgId) ->
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            change_role_tx(Conn, Uid, WsId, TargetUid, Role, OrgId)
+        end)
+    of
         ok ->
             _ = ?INFO_LOG([workspace_member_role_changed, WsId, TargetUid, Role]),
             {ok, #{workspace_id => WsId, user_id => TargetUid, role => Role}};
@@ -562,14 +569,24 @@ change_role_checked(Uid, WsId, TargetUid, Role) ->
             {error, {500, <<"更新失败，请稍后重试"/utf8>>}}
     end.
 
-change_role_tx(Conn, Uid, WsId, TargetUid, Role) ->
+change_role_tx(Conn, Uid, WsId, TargetUid, Role, OrgId) ->
     ok = workspace_guard:abort_on_error(
         workspace_guard:ensure_writable_tx(Conn, {workspace, WsId})
     ),
     Actor = workspace_member_repo:find_tx(Conn, WsId, Uid, <<"role,status">>),
-    case Actor of
-        #{<<"role">> := <<"owner">>, <<"status">> := <<"active">>} -> ok;
-        _ -> throw({abort_tx, {403, <<"仅工作区 Owner 可执行此操作"/utf8>>}})
+    %% GZAPP-02/G7：事务内二次校验（防 TOCTOU）与入口同口径——
+    %% 本 ws Owner 或归属 org 的 owner/admin（后者不必是 ws 成员；
+    %% OrgId 由入口 ensure_governor 的工作区行提取传入，不在事务内重复查）。
+    ActorIsOwner =
+        case Actor of
+            #{<<"role">> := <<"owner">>, <<"status">> := <<"active">>} -> true;
+            _ -> false
+        end,
+    case ActorIsOwner orelse organization_workspace_access:is_org_manager_tx(Conn, OrgId, Uid) of
+        true ->
+            ok;
+        false ->
+            throw({abort_tx, {403, <<"仅工作区 Owner 或组织 Owner/Admin 可执行此操作"/utf8>>}})
     end,
     Member = workspace_member_repo:find_tx(Conn, WsId, TargetUid, <<"role,status">>),
     case maps:get(<<"status">>, Member, <<>>) of
@@ -676,12 +693,14 @@ member_list(Uid, WsId, Page0, Size0) ->
 %% 生命周期：归档/恢复（T7；Owner only；写 archived_at/archived_by 审计列）
 %% ===================================================================
 
-%% @doc 归档工作区（仅 Owner；审计列 archived_at/archived_by；服务端日志审计）
+%% @doc 归档工作区（Owner or org owner/admin，GZAPP-02/G7；审计列
+%% archived_at/archived_by；服务端日志审计）
 %% 归档后所有 workspace 资源写操作被 workspace_guard 拒绝（稳定错误码 980）；
 %% 读取/历史浏览不受影响；personal 资源永不受 guard 影响。
 -spec archive(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
 archive(Uid, WsId) ->
-    case ensure_owner(WsId, Uid) of
+    %% GZAPP-02/G7：管理类操作授权放宽为本 ws Owner 或 org owner/admin
+    case ensure_governor(WsId, Uid) of
         {error, Reason} ->
             {error, Reason};
         {ok, _WS} ->
@@ -691,6 +710,13 @@ archive(Uid, WsId) ->
                     {ok, Result};
                 {error, already_archived} ->
                     {error, {409, <<"工作区已处于归档状态"/utf8>>}};
+                %% GZAPP-02/G3 强交接：被归档者是 Org 默认且无剩余 active
+                %% Workspace → 拒绝归档（计划 §4.2：须先指定替代默认项）。
+                {error, {default_workspace_handover_required, _}} ->
+                    {error, {
+                        409,
+                        <<"该工作区是组织默认工作区，请先设置其他工作区为默认后再归档"/utf8>>
+                    }};
                 {error, Reason2} ->
                     _ = ?ERROR_LOG([workspace_archive_failed, WsId, Uid, Reason2]),
                     {error, {500, <<"归档失败，请稍后重试"/utf8>>}}
@@ -722,10 +748,11 @@ archive_tx(Conn, WsId, Uid) ->
             throw({abort_tx, Reason})
     end.
 
-%% @doc 恢复工作区（仅 Owner；清空归档审计列；恢复后写操作放行）
+%% @doc 恢复工作区（Owner or org owner/admin，GZAPP-02/G7；清空归档审计列；恢复后写操作放行）
 -spec restore(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
 restore(Uid, WsId) ->
-    case ensure_owner(WsId, Uid) of
+    %% GZAPP-02/G7：管理类操作授权放宽为本 ws Owner 或 org owner/admin
+    case ensure_governor(WsId, Uid) of
         {error, Reason} ->
             {error, Reason};
         {ok, _WS} ->
@@ -811,6 +838,50 @@ ensure_owner(WsId, Uid) ->
                 {ok, _Other} -> {error, {403, <<"仅工作区 Owner 可执行该操作"/utf8>>}};
                 {error, Reason} -> {error, Reason}
             end
+    end.
+
+%% @doc 管理类操作（archive/restore/成员管理/角色变更）的授权入口
+%% （GZAPP-02/G7，D04 权限矩阵）：**本 ws Owner 或归属 org 的 owner/admin
+%% 均可**；个人域 Workspace（无归属 org）仍仅 ws Owner。
+%% owner 短路（零额外查询）；非 owner 且归属 org 时才查组织角色
+%% （organization_workspace_access，仅权限判定——不写 ws_member 行）。
+-spec ensure_governor(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
+ensure_governor(WsId, Uid) ->
+    case load_workspace(WsId) of
+        {error, NotFound} ->
+            {error, NotFound};
+        {ok, WS} ->
+            case my_role(WsId, Uid) of
+                {ok, <<"owner">>} ->
+                    {ok, WS};
+                {ok, _OtherRole} ->
+                    maybe_org_governor(WS, Uid);
+                {error, _NotMember} ->
+                    %% org owner/admin 不必是 ws 成员（C05：Org Role ≠ Workspace
+                    %% Role）——非成员继续走 org 判定。
+                    maybe_org_governor(WS, Uid)
+            end
+    end.
+
+%% 归属 org 的治理者判定；个人域（organization_id 为空）拒绝。
+-spec maybe_org_governor(map(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
+maybe_org_governor(WS, Uid) ->
+    case ws_org_id(WS) of
+        undefined ->
+            {error, {403, <<"仅工作区 Owner 可执行该操作"/utf8>>}};
+        OrgId ->
+            case organization_workspace_access:ensure_org_manager(OrgId, Uid) of
+                ok -> {ok, WS};
+                {error, Reason} -> {error, Reason}
+            end
+    end.
+
+%% 工作区行的归属 org（null/缺失 → undefined 个人域）。
+-spec ws_org_id(map()) -> integer() | undefined.
+ws_org_id(WS) ->
+    case maps:get(<<"organization_id">>, WS, null) of
+        OrgId when is_integer(OrgId), OrgId > 0 -> OrgId;
+        _ -> undefined
     end.
 
 %% 归档工作区拒绝成员管理写操作（简单前置检查；完整归档写守卫是 T7 的活）
@@ -947,6 +1018,12 @@ admin_archive(AdmUserId, WsId) ->
                     {ok, Result};
                 {error, already_archived} ->
                     {error, {409, <<"工作区已处于归档状态"/utf8>>}};
+                %% GZAPP-02/G3 强交接（与 Owner 归档同口径）：无替代默认时拒绝。
+                {error, {default_workspace_handover_required, _}} ->
+                    {error, {
+                        409,
+                        <<"该工作区是组织默认工作区，请先设置其他工作区为默认后再归档"/utf8>>
+                    }};
                 {error, Reason} ->
                     _ = ?ERROR_LOG([workspace_admin_archive_failed, WsId, AdmUserId, Reason]),
                     {error, {500, <<"归档失败，请稍后重试"/utf8>>}}

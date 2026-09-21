@@ -9,6 +9,9 @@
 -export([get_channel_by_custom_id/2]).
 -export([update_channel/3]).
 -export([delete_channel/2]).
+%% GZAPP-02/G4：频道归档/恢复
+-export([archive_channel/2]).
+-export([restore_channel/2]).
 -export([publish_message/5]).
 -export([publish_message/6]).
 -export([get_messages/4]).
@@ -279,6 +282,88 @@ delete_channel(Uid, ChannelIdBin) ->
                             {error, elib_cnv:safe_to_binary(Reason)}
                     end
             end
+    end.
+
+%% ===================================================================
+%% GZAPP-02/G4：频道归档/恢复（复用 status 软删列语义：归档=1→0、恢复=0→1，
+%% 与删除（→-1）区分；无 DDL。所有列表/发现/搜索查询恒过滤 status=1，
+%% 归档频道自然退出各公开面；workspace_guard 同事务（ws 频道所属工作区
+%% 已归档时稳定 980 拒绝）。权限与 delete 同口径：仅创建者（Role=3）。
+%% ===================================================================
+
+-spec archive_channel(integer(), binary()) ->
+    {ok, map()} | {error, binary()} | {error, {integer(), binary()}}.
+archive_channel(Uid, ChannelIdBin) ->
+    ChannelId = decode_positive_id(ChannelIdBin),
+    case ChannelId of
+        0 ->
+            {error, <<"频道不存在"/utf8>>};
+        _ ->
+            case channel_logic_common:get_user_role(ChannelId, Uid) == 3 of
+                false ->
+                    {error, <<"只有创建者可以归档频道"/utf8>>};
+                true ->
+                    case channel_ds:archive(ChannelId) of
+                        {ok, 1} ->
+                            _ = ?INFO_LOG([channel_archived, ChannelId, Uid]),
+                            notify_channel_status_changed(ChannelId),
+                            {ok, #{
+                                channel_id => ChannelId,
+                                status => <<"archived"/utf8>>
+                            }};
+                        {ok, 0} ->
+                            {error, {409, <<"频道已处于归档或删除状态"/utf8>>}};
+                        %% T7 收口：归档守卫（980）等稳定错误码透传
+                        {error, {Code, Msg}} when is_integer(Code) ->
+                            {error, {Code, Msg}};
+                        {error, Reason} ->
+                            _ = ?ERROR_LOG([channel_archive_failed, ChannelId, Uid, Reason]),
+                            {error, <<"归档失败，请稍后重试"/utf8>>}
+                    end
+            end
+    end.
+
+-spec restore_channel(integer(), binary()) ->
+    {ok, map()} | {error, binary()} | {error, {integer(), binary()}}.
+restore_channel(Uid, ChannelIdBin) ->
+    ChannelId = decode_positive_id(ChannelIdBin),
+    case ChannelId of
+        0 ->
+            {error, <<"频道不存在"/utf8>>};
+        _ ->
+            case channel_logic_common:get_user_role(ChannelId, Uid) == 3 of
+                false ->
+                    {error, <<"只有创建者可以恢复频道"/utf8>>};
+                true ->
+                    case channel_ds:restore(ChannelId) of
+                        {ok, 1} ->
+                            _ = ?INFO_LOG([channel_restored, ChannelId, Uid]),
+                            notify_channel_status_changed(ChannelId),
+                            {ok, #{
+                                channel_id => ChannelId,
+                                status => <<"active"/utf8>>
+                            }};
+                        {ok, 0} ->
+                            %% active（未归档）或 -1（已删除，不可恢复）
+                            {error, {409, <<"频道不处于可恢复的归档状态"/utf8>>}};
+                        {error, {Code, Msg}} when is_integer(Code) ->
+                            {error, {Code, Msg}};
+                        {error, Reason} ->
+                            _ = ?ERROR_LOG([channel_restore_failed, ChannelId, Uid, Reason]),
+                            {error, <<"恢复失败，请稍后重试"/utf8>>}
+                    end
+            end
+    end.
+
+%% 归档/恢复后向订阅者广播频道更新（复用 channel_updated 通道，
+%% 客户端据 channel.status 刷新可见性）。
+-spec notify_channel_status_changed(integer()) -> ok.
+notify_channel_status_changed(ChannelId) ->
+    case channel_ds:find_by_id(ChannelId, ?CHANNEL_SAFE_COLUMNS) of
+        Channel when is_map(Channel), map_size(Channel) > 0 ->
+            channel_logic_notify:notify_channel_update(ChannelId, channel_transfer(Channel));
+        _ ->
+            ok
     end.
 
 -spec publish_message(integer(), binary(), binary(), binary(), map()) ->
