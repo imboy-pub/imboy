@@ -26,14 +26,14 @@
 join(Uid, Did, <<"group">> = Kind, Gid) ->
     case group_member_ds:is_member(Gid, Uid) of
         true ->
-            {ok, build_grant(Uid, Did, room_name(Kind, Gid), interactive_perms())};
+            build_grant(Uid, Did, room_name(Kind, Gid), interactive_perms());
         false ->
             {error, <<"不是群成员，无权加入群通话"/utf8>>}
     end;
 join(Uid, Did, <<"c2c">> = Kind, PeerUid) ->
     case friend_ds:is_friend(Uid, PeerUid) of
         true ->
-            {ok, build_grant(Uid, Did, room_name(Kind, {Uid, PeerUid}), interactive_perms())};
+            build_grant(Uid, Did, room_name(Kind, {Uid, PeerUid}), interactive_perms());
         false ->
             {error, <<"不是好友关系，无法发起通话"/utf8>>}
     end;
@@ -61,36 +61,64 @@ interactive_perms() ->
     #{can_publish => true, can_subscribe => true, can_publish_data => true}.
 
 %% @doc 组装返回体：签发 LiveKit JWT（HS256，claims 结构见 LiveKit 认证文档）
--spec build_grant(integer(), binary(), binary(), map()) -> map().
+%% LiveKit 配置缺失/不完整时返回受控业务错误（handler 层转 4xx 响应），
+%% 不让 badmatch 崩成 500。
+-spec build_grant(integer(), binary(), binary(), map()) -> {ok, map()} | {error, binary()}.
 build_grant(Uid, Did, RoomName, Perms) ->
-    #{ws_url := WsUrl, api_key := ApiKey, api_secret := ApiSecret} =
-        config_ds:env(livekit, #{}),
-    Now = erlang:system_time(second),
-    %% identity 带设备后缀，避免同账号多设备入同房被互踢
-    Identity = <<(integer_to_binary(Uid))/binary, "_", Did/binary>>,
-    Claims = #{
-        iss => ApiKey,
-        sub => Identity,
-        %% name claim：参与者的展示名。LiveKit 客户端的 Participant.name
-        %% 直接取此值；不签发时客户端只能回退显示 identity（形如
-        %% “1024_abc123”的技术标识）。查不到昵称时回退 uid。
-        name => display_name(Uid),
-        nbf => Now - 10,
-        exp => Now + ?TOKEN_TTL_SECONDS,
-        video => #{
-            room => RoomName,
-            roomJoin => true,
-            canPublish => maps:get(can_publish, Perms, false),
-            canSubscribe => maps:get(can_subscribe, Perms, true),
-            canPublishData => maps:get(can_publish_data, Perms, false)
-        }
-    },
-    Token = jwerl:sign(Claims, hs256, ApiSecret),
-    #{
-        <<"ws_url">> => WsUrl,
-        <<"token">> => Token,
-        <<"room_name">> => RoomName
-    }.
+    case livekit_config() of
+        {ok, WsUrl, ApiKey, ApiSecret} ->
+            Now = erlang:system_time(second),
+            %% identity 带设备后缀，避免同账号多设备入同房被互踢
+            Identity = <<(integer_to_binary(Uid))/binary, "_", Did/binary>>,
+            Claims = #{
+                iss => ApiKey,
+                sub => Identity,
+                %% name claim：参与者的展示名。LiveKit 客户端的 Participant.name
+                %% 直接取此值；不签发时客户端只能回退显示 identity（形如
+                %% “1024_abc123”的技术标识）。查不到昵称时回退 uid。
+                name => display_name(Uid),
+                nbf => Now - 10,
+                exp => Now + ?TOKEN_TTL_SECONDS,
+                video => #{
+                    room => RoomName,
+                    roomJoin => true,
+                    canPublish => maps:get(can_publish, Perms, false),
+                    canSubscribe => maps:get(can_subscribe, Perms, true),
+                    canPublishData => maps:get(can_publish_data, Perms, false)
+                }
+            },
+            Token = jwerl:sign(Claims, hs256, ApiSecret),
+            {ok, #{
+                <<"ws_url">> => WsUrl,
+                <<"token">> => Token,
+                <<"room_name">> => RoomName
+            }};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 读取并校验 LiveKit 配置：ws_url / api_key / api_secret 三键齐全且非空
+%% 缺任一键（或整个 {livekit, _} 段未配置）→ 受控错误，不崩调用方。
+-spec livekit_config() -> {ok, binary(), binary(), binary()} | {error, binary()}.
+livekit_config() ->
+    Cfg = config_ds:env(livekit, #{}),
+    case Cfg of
+        #{
+            ws_url := WsUrl,
+            api_key := ApiKey,
+            api_secret := ApiSecret
+        } when
+            is_binary(WsUrl),
+            WsUrl =/= <<>>,
+            is_binary(ApiKey),
+            ApiKey =/= <<>>,
+            is_binary(ApiSecret),
+            ApiSecret =/= <<>>
+        ->
+            {ok, WsUrl, ApiKey, ApiSecret};
+        _ ->
+            {error, <<"livekit_not_configured">>}
+    end.
 
 %% @doc 参与者展示名：优先用户昵称，异常/缺失时回退 uid 字符串
 -spec display_name(integer()) -> binary().

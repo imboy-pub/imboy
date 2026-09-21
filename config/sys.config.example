@@ -75,12 +75,14 @@
             secret_key => <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>
         }},
 
-        %% LiveKit SFU 配置（群通话/屏幕共享/录制；占位符，实际值走 IMBOY_LIVEKIT_* 环境变量）
-        %% LiveKit SFU config (group call/screen share/recording; placeholders,
+        %% LiveKit SFU 配置（群通话/屏幕共享；占位符，实际值走 IMBOY_LIVEKIT_* 环境变量）
+        %% LiveKit SFU config (group call/screen share; placeholders,
         %% real values via IMBOY_LIVEKIT_* env vars)
-        %% ws_url: 客户端可达的 LiveKit WebSocket 信令地址
+        %% ws_url: 客户端可达的 LiveKit WebSocket 信令地址。
+        %% 生产默认 = 独立 rtc 域（wss://rtc.imboy.pub，nginx 反代 127.0.0.1:7880）；
+        %% 本地/开发用 IMBOY_LIVEKIT_WS_URL 或 sys.local.config 覆盖。
         {livekit, #{
-            ws_url => <<"wss://dev.imboy.pub/livekit">>,
+            ws_url => <<"wss://rtc.imboy.pub">>,
             api_key => <<"devkey">>,
             api_secret => <<"devsecret_at_least_32_chars_long_xx">>
         }},
