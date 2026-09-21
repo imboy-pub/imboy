@@ -1186,9 +1186,39 @@
         "static": false
       },
       {
+        "action": "owner_activation_show",
+        "handler": "adm_owner_activation_handler",
+        "path": "/api/adm/organizations/:organization_id/owner-activation",
+        "static": false
+      },
+      {
+        "action": "owner_activation_consume",
+        "handler": "adm_owner_activation_handler",
+        "path": "/api/adm/organizations/:organization_id/owner-activation/consume",
+        "static": false
+      },
+      {
+        "action": "owner_activation_reactivate",
+        "handler": "adm_owner_activation_handler",
+        "path": "/api/adm/organizations/:organization_id/owner-activation/reactivate",
+        "static": false
+      },
+      {
+        "action": "owner_activation_resend",
+        "handler": "adm_owner_activation_handler",
+        "path": "/api/adm/organizations/:organization_id/owner-activation/resend",
+        "static": false
+      },
+      {
         "action": "owner_transfer",
         "handler": "adm_organization_handler",
         "path": "/api/adm/organizations/:organization_id/owner-transfer",
+        "static": false
+      },
+      {
+        "action": "owner_transfer_by_phone",
+        "handler": "adm_owner_activation_handler",
+        "path": "/api/adm/organizations/:organization_id/owner-transfer-by-phone",
         "static": false
       },
       {

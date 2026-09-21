@@ -274,10 +274,12 @@ tsid_generator_names() ->
         channel_price,
         %% ── Organization / 工作区（成员关系均为复合主键，不注册；
         %%    workspace 双体验 v2.5.2 WP3/T4；
-        %%    workspace_invite = 团队码 T2.2，迁移 00000082） ──
+        %%    workspace_invite = 团队码 T2.2，迁移 00000082；
+        %%    owner_activation_invite = 待激活 Owner 邀请，GZAPP-06 迁移 00000138） ──
         organization,
         workspace,
         workspace_invite,
+        owner_activation_invite,
         %% ── 项目（双体验 v2.5.2 WP4/T6a/T6b；project_event 由 T6a 独占 writer 接口） ──
         project,
         project_task,

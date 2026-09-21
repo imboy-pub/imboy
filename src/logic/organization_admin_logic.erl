@@ -32,6 +32,8 @@
     admin_workspace_page/3,
     %% 写（全部走组织行锁 + 与 app 层同构的状态机裁决）
     admin_create/5,
+    admin_create_pending_owner/5,
+    admin_create_pending_owner/6,
     admin_archive/2,
     admin_restore/2,
     admin_transfer_owner/3,
@@ -412,8 +414,67 @@ create_org_tx(Conn, AdmUserId, OwnerUid, Name, WsName, AuditCtx) ->
 create_new_org_tx(Conn, AdmUserId, OwnerUid, Name, WsName, AuditCtx) ->
     %% 3) owner 门禁（存在 / active / human），fail-closed
     ok = owner_gate_tx(Conn, OwnerUid),
-    %% 4) INSERT organization；trg_organization_owner_member_sync（迁移 00000113）
-    %%    在 INSERT 时同步 owner membership 行
+    {ok, OrgId, WsId} = insert_org_core_tx(Conn, OwnerUid, Name, WsName),
+    Result = #{
+        <<"created">> => true,
+        <<"organization">> =>
+            #{
+                <<"id">> => OrgId,
+                <<"name">> => Name,
+                <<"owner_id">> => OwnerUid,
+                <<"status">> => <<"active">>
+            },
+        <<"default_workspace">> =>
+            #{<<"id">> => WsId, <<"name">> => WsName, <<"status">> => <<"active">>}
+    },
+    ok = audit_create_tx(Conn, AdmUserId, OwnerUid, Result, AuditCtx),
+    {ok, Result}.
+
+%% 创建审计必须与 Organization、Owner 和默认 Workspace 在同一事务提交。
+-spec audit_create_tx(term(), integer(), integer(), map(), map()) -> ok.
+audit_create_tx(Conn, AdmUserId, OwnerUid, Result, AuditCtx) ->
+    Org = maps:get(<<"organization">>, Result),
+    Ws = maps:get(<<"default_workspace">>, Result, null),
+    OrgId = maps:get(<<"id">>, Org),
+    Detail = #{
+        <<"action">> => <<"create">>,
+        <<"organization_id">> => OrgId,
+        <<"owner_user_id">> => OwnerUid,
+        <<"default_workspace_id">> => ws_field(Ws, <<"id">>),
+        <<"default_workspace_name">> => ws_field(Ws, <<"name">>),
+        <<"created">> => maps:get(<<"created">>, Result),
+        <<"request">> => maps:get(request, AuditCtx, #{})
+    },
+    case
+        adm_operation_log_ds:insert_tx(
+            Conn,
+            AdmUserId,
+            <<"organization_create">>,
+            OrgId,
+            <<"organization">>,
+            Detail,
+            maps:get(ip, AuditCtx, undefined)
+        )
+    of
+        ok -> ok;
+        {error, Reason} -> throw({abort_tx, {audit_failed, Reason}})
+    end.
+
+ws_field(Ws, Key) when is_map(Ws) ->
+    maps:get(Key, Ws, null);
+ws_field(_, _) ->
+    null.
+
+%% 步骤 4-7 共享核心（registered 与 pending_phone 两模式同构）：
+%%   4) INSERT organization（trg_organization_owner_member_sync 同步 owner
+%%      membership 行——迁移 00000113；对预创建 Owner 同样成立：触发器与
+%%      00000126/00000127 invariant 只校验 account_type=0 Human，不校验
+%%      user.status——「org.owner_id 暂锚预创建 user」与既有不变量兼容，
+%%      激活时仅翻转 user.status 0→1（GZAPP-06 锚点决策）；
+%%   5) 显式 owner membership upsert；
+%%   6) INSERT active default workspace；
+%%   7) INSERT organization_default_workspace。
+insert_org_core_tx(Conn, OwnerUid, Name, WsName) ->
     OrgId = elib_tsid:generate(organization),
     case
         elib_pg:execute(
@@ -469,70 +530,236 @@ create_new_org_tx(Conn, AdmUserId, OwnerUid, Name, WsName, AuditCtx) ->
     %% 7) INSERT organization_default_workspace 关系
     case organization_default_workspace_pg:upsert_tx(Conn, OrgId, WsId) of
         {ok, _} ->
-            ok;
+            {ok, OrgId, WsId};
         {error, Reason4} ->
             throw({abort_tx, {internal, Reason4}})
+    end.
+
+%% ===================================================================
+%% 写：Organization 原子创建 · pending_phone 模式（GZAPP-06 / D11-D12）
+%% 单事务（与 registered 模式同构，owner 门禁换成「手机号 → 预创建 Human」）：
+%%   1) pg_advisory_xact_lock(("mob:" + mobile, lower(trim(name)))) 串行；
+%%   2) 手机号裁决：活跃注册用户 → 409 引导已注册模式；预创建 Human → 复用；
+%%      不存在 → 预创建不可登录 Human（status=0, account_type=0）；
+%%   3) 锁内幂等（owner, 归一化名）→ created=false 返回既有资源 + 当前
+%%      live invite 视图（不重发短信、不吐新 token）；
+%%   4-7) 复用 insert_org_core_tx（org+membership+default ws+默认关系）；
+%%   8) INSERT owner_activation_invite（pending，token 只存 digest）。
+%% 提交后：尝试发一次激活短信（fake）——失败不回滚企业，仅置
+%% invite.status=sms_failed，可重发（D12）。
+%% ===================================================================
+
+-spec admin_create_pending_owner(integer(), binary(), binary(), binary(), binary()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_create_pending_owner(AdmUserId, Name, Mobile, WsName, PeerIP) when
+    is_binary(Mobile), is_binary(PeerIP)
+->
+    admin_create_pending_owner(
+        AdmUserId, Name, Mobile, WsName, PeerIP, #{ip => PeerIP, request => #{}}
+    );
+admin_create_pending_owner(_, _, _, _, _) ->
+    {error, {400, <<"name、default_workspace_name、owner_mobile 必填"/utf8>>}}.
+
+-spec admin_create_pending_owner(integer(), binary(), binary(), binary(), binary(), map()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_create_pending_owner(AdmUserId, Name, Mobile, WsName, PeerIP, AuditCtx) when
+    is_binary(Mobile), is_binary(PeerIP), is_map(AuditCtx)
+->
+    case valid_name(Name) of
+        {error, _} ->
+            {error, {400, <<"name 必填（1-200 字节，不能为空白）"/utf8>>}};
+        ok ->
+            case valid_name(WsName) of
+                {error, _} ->
+                    {error, {400, <<"default_workspace_name 必填（1-200 字节，不能为空白）"/utf8>>}};
+                ok ->
+                    create_pending_owner_gated(
+                        AdmUserId, Name, Mobile, WsName, PeerIP, AuditCtx
+                    )
+            end
+    end;
+admin_create_pending_owner(_, _, _, _, _, _) ->
+    {error, {400, <<"name、default_workspace_name、owner_mobile 必填"/utf8>>}}.
+
+create_pending_owner_gated(AdmUserId, Name, Mobile, WsName, PeerIP, AuditCtx) ->
+    case imboy_mobile:normalize(Mobile) of
+        {error, invalid} ->
+            {error, {400, <<"owner_mobile 格式非法（5-20 位数字）"/utf8>>}};
+        {ok, Mobile1} ->
+            Name1 = string:trim(Name),
+            WsName1 = string:trim(WsName),
+            Tx = fun(Conn) ->
+                create_pending_org_tx(
+                    Conn, AdmUserId, Mobile1, Name1, WsName1, PeerIP, AuditCtx
+                )
+            end,
+            case elib_pg:with_tx(Tx) of
+                {ok, #{created := Created} = Result} when is_map(Result) ->
+                    ok = ?INFO_LOG([
+                        organization_admin_pending_created,
+                        maps:get(owner_uid, Result),
+                        Name1,
+                        Created,
+                        imboy_mobile:mask(Mobile1)
+                    ]),
+                    finalize_pending_create(Result);
+                {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+                    {error, {Code, Msg}};
+                {rollback, Reason} ->
+                    _ = ?ERROR_LOG([
+                        organization_admin_pending_create_failed, Reason, imboy_mobile:mask(Mobile1)
+                    ]),
+                    {error, {500, <<"创建 Organization 失败，请稍后重试"/utf8>>}};
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([
+                        organization_admin_pending_create_failed, Reason, imboy_mobile:mask(Mobile1)
+                    ]),
+                    {error, {500, <<"创建 Organization 失败，请稍后重试"/utf8>>}}
+            end
+    end.
+
+create_pending_org_tx(Conn, AdmUserId, Mobile, Name, WsName, PeerIP, AuditCtx) ->
+    %% 1) 事务级 advisory lock：同 (mobile, 归一化名) 的并发创建串行
+    LockSql = <<"SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext(lower(trim($2))))">>,
+    case elib_pg:query(Conn, LockSql, [<<"mob:", Mobile/binary>>, Name]) of
+        {ok, _} ->
+            ok;
+        {error, Reason0} ->
+            throw({abort_tx, {internal, Reason0}})
     end,
-    Result = #{
-        <<"created">> => true,
-        <<"organization">> =>
-            #{
+    %% 2) 手机号裁决（预创建/复用；活跃注册用户 → 409 引导已注册模式）
+    case organization_owner_activation_logic:resolve_target_tx(Conn, Mobile, PeerIP) of
+        {ok, OwnerUid, pending} ->
+            pending_owner_locked(
+                Conn, AdmUserId, OwnerUid, Mobile, Name, WsName, AuditCtx
+            );
+        {ok, _Uid, _Kind} ->
+            %% 活跃注册用户（registered）：引导改用已注册 Owner 模式
+            abort(409, <<"该手机号已是注册活跃用户，请改用已注册 Owner 模式选择该用户"/utf8>>);
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+            abort(Code, Msg);
+        {error, {500, Reason1}} ->
+            throw({abort_tx, {internal, Reason1}})
+    end.
+
+pending_owner_locked(Conn, AdmUserId, OwnerUid, Mobile, Name, WsName, AuditCtx) ->
+    %% 3) 锁内幂等：同 owner + 归一化名的 active 组织已存在 → 既有资源 + 当前 invite
+    case find_active_org_tx(Conn, OwnerUid, Name) of
+        {ok, OrgRow} ->
+            OrgId = maps:get(<<"id">>, OrgRow),
+            Org = org_view(OrgRow),
+            Ws = existing_default_ws_view(Conn, OrgId),
+            ok = audit_create_tx(
+                Conn,
+                AdmUserId,
+                OwnerUid,
+                #{
+                    <<"created">> => false,
+                    <<"organization">> => Org,
+                    <<"default_workspace">> => Ws
+                },
+                AuditCtx
+            ),
+            {ok, #{
+                created => false,
+                owner_uid => OwnerUid,
+                org => Org,
+                ws => Ws,
+                invite =>
+                    case organization_owner_activation_logic:live_invite_tx(Conn, OrgId) of
+                        {ok, InviteRow} ->
+                            organization_owner_activation_logic:invite_view(InviteRow);
+                        _ ->
+                            null
+                    end,
+                invite_ctx => undefined
+            }};
+        {error, not_found} ->
+            pending_owner_create_new(
+                Conn, AdmUserId, OwnerUid, Mobile, Name, WsName, AuditCtx
+            );
+        {error, Reason1} ->
+            throw({abort_tx, {internal, Reason1}})
+    end.
+
+pending_owner_create_new(Conn, AdmUserId, OwnerUid, Mobile, Name, WsName, AuditCtx) ->
+    %% 4-7) 共享创建核心（含 00000113 同步触发器 + invariant 提交校验）
+    {ok, OrgId, WsId} = insert_org_core_tx(Conn, OwnerUid, Name, WsName),
+    %% 8) owner_activation_invite 行（pending；token 只存 digest）
+    Token = organization_invitation:new_token(),
+    InviteCtx = organization_owner_activation_logic:new_invite_ctx(
+        OrgId, OwnerUid, Mobile, AdmUserId, Token, Name
+    ),
+    case organization_owner_activation_logic:insert_invite_tx(Conn, InviteCtx) of
+        ok ->
+            Org = #{
                 <<"id">> => OrgId,
                 <<"name">> => Name,
                 <<"owner_id">> => OwnerUid,
                 <<"status">> => <<"active">>
             },
-        <<"default_workspace">> =>
-            #{<<"id">> => WsId, <<"name">> => WsName, <<"status">> => <<"active">>}
-    },
-    %% 8) 平台审计（**事务内**，与 1-7 同 Conn；写失败即整事务回滚）
-    ok = audit_create_tx(Conn, AdmUserId, OwnerUid, Result, AuditCtx),
-    {ok, Result}.
-
-%% @doc 事务内写平台审计（合同 EADM-01/C2 第 8 步）。
-%% 审计目标事实含 Organization、Owner、默认 Workspace 的 id/name 与请求摘要；
-%% 不记录任何凭据。写入失败**不吞**：throw({abort_tx, …}) 让整事务回滚——
-%% 审计静默丢失等于「创建了组织却无从追责」，属治理链路的完整性要求。
--spec audit_create_tx(term(), integer(), integer(), map(), map()) -> ok.
-audit_create_tx(Conn, AdmUserId, OwnerUid, Result, AuditCtx) ->
-    Org = maps:get(<<"organization">>, Result),
-    Ws = maps:get(<<"default_workspace">>, Result, null),
-    OrgId = maps:get(<<"id">>, Org),
-    Detail = #{
-        <<"action">> => <<"create">>,
-        <<"organization_id">> => OrgId,
-        <<"owner_user_id">> => OwnerUid,
-        <<"default_workspace_id">> => ws_field(Ws, <<"id">>),
-        <<"default_workspace_name">> => ws_field(Ws, <<"name">>),
-        <<"created">> => maps:get(<<"created">>, Result),
-        <<"request">> => maps:get(request, AuditCtx, #{})
-    },
-    case
-        adm_operation_log_ds:insert_tx(
-            Conn,
-            AdmUserId,
-            <<"organization_create">>,
-            OrgId,
-            <<"organization">>,
-            Detail,
-            maps:get(ip, AuditCtx, undefined)
-        )
-    of
-        ok ->
-            ok;
-        {error, Reason} ->
-            %% 已证伪（2026-09-22）：把本分支临时改成 `ok`（即旧行为「审计失败不阻断
-            %% 业务」）后，test/adm/adm_organization_create_tests.erl 的
-            %% audit_injection_rollback 立刻 failed —— 证明该用例真能变红，不是假绿。
-            throw({abort_tx, {audit_failed, Reason}})
+            Ws = #{<<"id">> => WsId, <<"name">> => WsName, <<"status">> => <<"active">>},
+            ok = audit_create_tx(
+                Conn,
+                AdmUserId,
+                OwnerUid,
+                #{
+                    <<"created">> => true,
+                    <<"organization">> => Org,
+                    <<"default_workspace">> => Ws
+                },
+                AuditCtx
+            ),
+            {ok, #{
+                created => true,
+                owner_uid => OwnerUid,
+                org => Org,
+                ws => Ws,
+                invite => undefined,
+                invite_ctx => InviteCtx,
+                org_name => Name
+            }};
+        {error, Reason2} ->
+            throw({abort_tx, {internal, Reason2}})
     end.
 
-%% 默认 Workspace 视图在历史数据缺关系时如实为 null（不推导、不回落 min-ID）。
--spec ws_field(map() | null, binary()) -> term().
-ws_field(Ws, Key) when is_map(Ws) ->
-    maps:get(Key, Ws, null);
-ws_field(_, _) ->
-    null.
+%% 提交后收口：仅 created=true 路径尝试发一次激活短信（D12：失败不回滚）；
+%% 幂等命中（created=false）不重发、不吐新 token。
+finalize_pending_create(#{created := true, invite_ctx := InviteCtx} = Result) ->
+    SendStatus =
+        organization_owner_activation_logic:record_send_result(
+            organization_owner_activation_logic:attempt_send(InviteCtx), InviteCtx
+        ),
+    Mobile = maps:get(mobile, InviteCtx),
+    InviteStatus =
+        case SendStatus of
+            <<"sent">> -> <<"pending">>;
+            _ -> <<"sms_failed">>
+        end,
+    {ok, #{
+        <<"created">> => true,
+        <<"organization">> => maps:get(org, Result),
+        <<"default_workspace">> => maps:get(ws, Result),
+        <<"owner_activation">> => #{
+            <<"invite_id">> => maps:get(invite_id, InviteCtx),
+            <<"organization_id">> => maps:get(organization_id, InviteCtx),
+            <<"owner_user_id">> => maps:get(owner_user_id, InviteCtx),
+            <<"status">> => InviteStatus,
+            <<"mobile_masked">> => imboy_mobile:mask(Mobile),
+            <<"expires_at">> => maps:get(expires_at, InviteCtx),
+            <<"resend_count">> => 0,
+            <<"activation_token">> => maps:get(token, InviteCtx)
+        },
+        <<"sms_sent">> => SendStatus =:= <<"sent">>
+    }};
+finalize_pending_create(#{created := false} = Result) ->
+    {ok, #{
+        <<"created">> => false,
+        <<"organization">> => maps:get(org, Result),
+        <<"default_workspace">> => maps:get(ws, Result),
+        <<"owner_activation">> => maps:get(invite, Result),
+        <<"sms_sent">> => false
+    }}.
 
 %% owner 门禁：存在（404）/ status=1 活跃（400）/ account_type=0 human（400）。
 %% status 口径与 passport_logic 签发收口一致：1 启用；0 禁用 / 2 注销中 /

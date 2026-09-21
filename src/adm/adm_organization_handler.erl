@@ -128,6 +128,10 @@ list_action(_, Req0, _State) ->
 
 %% ------------------------------------------------------------------
 %% 写：创建 Organization（单事务见 organization_admin_logic:admin_create）
+%% GZAPP-06 扩展 owner_mode（D11）：
+%%   registered / 缺省 —— owner_user_id 指向已注册 active Human（原行为不动）；
+%%   pending_phone    —— owner_mobile 建待激活 Owner（预创建不可登录 Human +
+%%                       owner_activation_invite，短信失败不回滚 D12）。
 %% ------------------------------------------------------------------
 
 -spec org_create(cowboy_req:req(), map()) -> cowboy_req:req().
@@ -141,13 +145,11 @@ org_create(Req0, State) ->
                 {error, Msg2} ->
                     elib_response:error(Req0, Msg2, ?ERR_BAD_REQUEST);
                 {ok, Data} ->
-                    case parse_tsid_map(maps:get(<<"owner_user_id">>, Data, <<>>)) of
-                        {ok, OwnerUid} ->
-                            org_create_write(Req0, AdmUserId, Data, OwnerUid);
-                        error ->
-                            elib_response:error(
-                                Req0, <<"owner_user_id 必须是正整数"/utf8>>, ?ERR_BAD_REQUEST
-                            )
+                    case maps:get(<<"owner_mode">>, Data, undefined) of
+                        <<"pending_phone">> ->
+                            org_create_pending(Req0, AdmUserId, Data);
+                        _ ->
+                            org_create_registered(Req0, AdmUserId, Data)
                     end
             end
     end.
@@ -156,6 +158,52 @@ org_create(Req0, State) ->
 %% 创建事务的**第 8 步**、失败整事务回滚；若在此处（事务成功返回之后）调用，
 %% 审计写入失败就只能被吞掉 ⇒ 审计静默丢失。故只负责把请求侧事实（IP、方法、
 %% 路径）组装成 AuditCtx 交给 logic，由 logic 在同一 Conn 内写审计。
+
+%% registered 模式（owner_mode 缺省亦走此路径——与 EADM-01 契约向后兼容）
+org_create_registered(Req0, AdmUserId, Data) ->
+    case parse_tsid_map(maps:get(<<"owner_user_id">>, Data, <<>>)) of
+        {ok, OwnerUid} ->
+            org_create_write(Req0, AdmUserId, Data, OwnerUid);
+        error ->
+            elib_response:error(
+                Req0, <<"owner_user_id 必须是正整数"/utf8>>, ?ERR_BAD_REQUEST
+            )
+    end.
+
+%% pending_phone 模式：审计与错误消息携带的手机号一律脱敏（前3后4）
+org_create_pending(Req0, AdmUserId, Data) ->
+    Mobile = maps:get(<<"owner_mobile">>, Data, undefined),
+    case is_binary(Mobile) andalso byte_size(Mobile) > 0 of
+        false ->
+            elib_response:error(
+                Req0, <<"owner_mobile 必填（pending_phone 模式）"/utf8>>, ?ERR_BAD_REQUEST
+            );
+        true ->
+            PeerIP = elib_req:peer_ip(Req0),
+            AuditCtx = #{
+                ip => PeerIP,
+                request => #{
+                    <<"method">> => cowboy_req:method(Req0),
+                    <<"path">> => cowboy_req:path(Req0)
+                }
+            },
+            PendingResult =
+                organization_admin_logic:admin_create_pending_owner(
+                    AdmUserId,
+                    maps:get(<<"name">>, Data, <<>>),
+                    Mobile,
+                    maps:get(<<"default_workspace_name">>, Data, <<>>),
+                    PeerIP,
+                    AuditCtx
+                ),
+            case PendingResult of
+                {ok, Result} ->
+                    elib_response:success(Req0, normalize_create_result(Result));
+                {error, {Code, Msg}} ->
+                    elib_response:error(Req0, Msg, Code)
+            end
+    end.
+
 org_create_write(Req0, AdmUserId, Data, OwnerUid) ->
     AuditCtx = #{
         ip => elib_req:peer_ip(Req0),
@@ -859,7 +907,9 @@ normalize_result(Result) ->
     elib_id:tsid_keys_to_bin(Bin, ?RESULT_ID_KEYS).
 
 %% 创建响应归一化：org/ws 嵌套对象内 TSID int → string（防 JS 精度丢失）；
-%% default_workspace 为 null（历史 Org 无显式默认关系）时原样透传。
+%% default_workspace 为 null（历史 Org 无显式默认关系）时原样透传；
+%% pending_phone 模式额外携带 owner_activation（无则不带该键，registered
+%% 契约零变化）。
 -spec normalize_create_result(map()) -> map().
 normalize_create_result(Result) ->
     Org = elib_id:tsid_keys_to_bin(maps:get(<<"organization">>, Result), [
@@ -870,11 +920,29 @@ normalize_create_result(Result) ->
             W when is_map(W) -> elib_id:tsid_keys_to_bin(W, [<<"id">>]);
             Other -> Other
         end,
-    #{
+    Base = #{
         <<"organization">> => Org,
         <<"default_workspace">> => Ws,
         <<"created">> => maps:get(<<"created">>, Result)
-    }.
+    },
+    case maps:get(<<"owner_activation">>, Result, undefined) of
+        undefined ->
+            Base;
+        null ->
+            Base#{<<"owner_activation">> => null, <<"sms_sent">> => false};
+        Activation when is_map(Activation) ->
+            Base#{
+                <<"owner_activation">> =>
+                    elib_id:tsid_keys_to_bin(Activation, [
+                        <<"invite_id">>,
+                        <<"organization_id">>,
+                        <<"owner_user_id">>
+                    ]),
+                <<"sms_sent">> => maps:get(<<"sms_sent">>, Result, false)
+            };
+        _Other ->
+            Base
+    end.
 
 -spec normalize_department_row(map()) -> map().
 normalize_department_row(Row) ->

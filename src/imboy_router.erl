@@ -1097,6 +1097,24 @@ get_routes() ->
             {"/api/adm/organizations/:organization_id/owner-transfer", adm_organization_handler, #{
                 action => owner_transfer
             }},
+            % 待激活 Owner 治理面（GZAPP-06 / D11-D13）
+            % 读=organizations:read；写=organizations:write（fail-closed 403）。
+            % 手机号出站一律脱敏；审计 adm_operation_log 只落 masked 形态。
+            {"/api/adm/organizations/:organization_id/owner-activation", adm_owner_activation_handler, #{
+                action => owner_activation_show
+            }},
+            {"/api/adm/organizations/:organization_id/owner-activation/resend", adm_owner_activation_handler, #{
+                action => owner_activation_resend
+            }},
+            {"/api/adm/organizations/:organization_id/owner-activation/reactivate", adm_owner_activation_handler, #{
+                action => owner_activation_reactivate
+            }},
+            {"/api/adm/organizations/:organization_id/owner-activation/consume", adm_owner_activation_handler, #{
+                action => owner_activation_consume
+            }},
+            {"/api/adm/organizations/:organization_id/owner-transfer-by-phone", adm_owner_activation_handler, #{
+                action => owner_transfer_by_phone
+            }},
             {"/api/adm/organizations/:organization_id/members/:user_id/suspend",
                 adm_organization_handler, #{action => member_suspend}},
             {"/api/adm/organizations/:organization_id/members/:user_id/restore",
