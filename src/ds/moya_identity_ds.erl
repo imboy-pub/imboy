@@ -113,6 +113,10 @@ create_user_and_bind(Conn, Provider, Subject, Opts) ->
         %% normalize 的 "password123" 兜底（那在生产是不设防的口令）
         password => elib_password:generate(binary:encode_hex(crypto:strong_rand_bytes(32))),
         reg_ip => maps:get(ip, Opts, <<>>),
+        %% 客户端系统线索（handler 由请求 UA 取得）。**必须显式传**：不传会落到
+        %% user_repo 兜底的 "perf-test" —— 那是给内部压测/机器人账号设的占位值，
+        %% 写进真实家长账号会让运营侧无法区分真实用户与压测数据。
+        reg_cosv => maps:get(reg_cosv, Opts, <<"unknown">>),
         source => ?SOURCE
     },
     case user_repo:create_tx(Conn, Data) of

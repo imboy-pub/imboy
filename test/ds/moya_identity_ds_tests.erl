@@ -78,6 +78,36 @@ user_row_without_ip_test_() ->
         end
     ).
 
+%% reg_cosv（客户端系统线索）必须显式给值。
+%% 不显式传会落到 user_repo:normalize_legacy_create_data 的 "perf-test" 兜底 ——
+%% 那是给内部压测/机器人账号设的占位值，写进真实家长账号后运营侧无法区分
+%% 真实用户与压测数据（2026-09-21 生产库实测踩到：首登家长的 reg_cosv=perf-test）。
+reg_cosv_passthrough_test_() ->
+    ?WITH_MECKS(
+        ok_mocks(),
+        fun() ->
+            {ok, _} = moya_identity_ds:provision_and_bind(<<"wechat_mini">>, ?OPENID, #{
+                reg_cosv => <<"iOS 15.0">>
+            }),
+            {_, Data} = erased(create_args),
+            ?assertEqual(<<"iOS 15.0">>, maps:get(reg_cosv, Data))
+        end
+    ).
+
+%% 调用方没给 reg_cosv 时也必须给出**可区分**的值（unknown），而不是占位偏测值
+reg_cosv_never_perf_placeholder_test_() ->
+    ?WITH_MECKS(
+        ok_mocks(),
+        fun() ->
+            {ok, _} = moya_identity_ds:provision_and_bind(<<"wechat_mini">>, ?OPENID, #{}),
+            {_, Data} = erased(create_args),
+            V = maps:get(reg_cosv, Data),
+            ?assertNotEqual(<<"perf-test">>, V),
+            ?assertNotEqual(<<>>, V),
+            ?assertEqual(<<"unknown">>, V)
+        end
+    ).
+
 %% 随机口令不得复用：两次开户的口令必须不同
 password_is_random_per_provision_test_() ->
     ?WITH_MECKS(

@@ -11,6 +11,9 @@
 
 -define(UID, 98001).
 -define(OPENID, <<"oMOYA_test_openid_0001">>).
+%% 真实量级 uid（生产实测 min/max：9000000000000000001）——19 位，远超
+%% JS 安全整数 2^53。用于锁死「uid 必须成字符串下发」这条硬规则。
+-define(BIG_UID, 9000000000000000001).
 
 %%%===================================================================
 %%% Provider 未配置（AUTH-01：无效 provider 路径真实可测）
@@ -170,8 +173,45 @@ first_login_provisions_and_issues_test_() ->
             ?assertEqual(false, maps:get(has_teaching_identity, Payload)),
             %% 开户恰好发生一次
             ?assertEqual(1, meck:num_calls(moya_identity_ds, provision_and_bind, 3)),
+            %% uid 随登录下发，且必须是**字符串**（闭环最后一段靠它：
+            %% 家长把 uid 报给老师，老师据此调 learners/:id/bind）
+            ?assertEqual(integer_to_binary(?UID), maps:get(uid, Payload)),
             %% 响应键集合仍不含 openid（身份映射层外泄=零容忍）
             ?assertEqual(false, lists:member(openid, maps:keys(Payload)))
+        end
+    ).
+
+%% 真实量级 uid（19 位）必须以字符串下发。
+%% 反例的形状：以 number 下发 ⇒ JS 的 JSON.parse 把它折成 ...000
+%% （9223372036854775807 → 9223372036854776000）。它仍然「能解析、能显示、
+%% 能提交」，只是家长报给老师的号不是老师要绑的号 —— 全链路无一门禁会报。
+uid_is_string_for_big_id_test_() ->
+    ?WITH_MECKS(
+        [
+            base_mocks()
+            | [
+                {moya_wechat_client, [
+                    {'jscode2session', 3, fun(_, _, _) -> {ok, ?OPENID} end}
+                ]},
+                {sso_identity_ds, [
+                    {'find_uid', 2, fun(<<"wechat_mini">>, ?OPENID) -> {ok, ?BIG_UID} end}
+                ]},
+                {token_ds, [
+                    {'encrypt_token', 1, fun(?BIG_UID) -> <<"at_big">> end},
+                    {'encrypt_refreshtoken', 2, fun(?BIG_UID, <<>>) -> <<"rt_big">> end}
+                ]},
+                {moya_context_logic, [
+                    {'contexts', 2, fun(?BIG_UID, organization) -> {ok, #{contexts => []}} end}
+                ]}
+            ]
+        ],
+        fun() ->
+            {ok, Payload} = moya_auth_logic:wechat_mini_login(#{code => <<"good_code_123">>}),
+            Uid = maps:get(uid, Payload),
+            ?assertEqual(false, is_integer(Uid)),
+            ?assertEqual(<<"9000000000000000001">>, Uid),
+            %% 19 位原样，无截断/进位
+            ?assertEqual(19, byte_size(Uid))
         end
     ).
 

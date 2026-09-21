@@ -21,6 +21,11 @@
 -include("error_code.hrl").
 
 -define(CLIENT_IP, <<"203.0.113.77">>).
+%% 真实微信客户端 UA 形态（含系统与版本）——reg_cosv 的来源
+-define(UA, <<
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.49"
+>>).
 
 %%%===================================================================
 %%% 基建
@@ -28,12 +33,25 @@
 
 %% Body：elib_param:post/1 的返回值；LogicReturn：moya_auth_logic 的返回值
 handler_mocks(Body, LogicReturn) ->
+    handler_mocks(Body, LogicReturn, ?UA).
+
+handler_mocks(Body, LogicReturn, Ua) ->
     [
         {elib_param, [
             {'post', 1, fun(_Req) -> Body end}
         ]},
         {elib_req, [
             {'get_client_ip', 1, fun(_Req) -> ?CLIENT_IP end}
+        ]},
+        %% 只允许读 user-agent：别的 header 一律炸出来，避免桩把「读错 header」
+        %% 静默掩盖（meck_helper 首选 passthrough，未 mock 的函数仍走真实现）
+        {cowboy_req, [
+            {'header', 3, fun(Key, _Req, _Default) ->
+                case Key of
+                    <<"user-agent">> -> Ua;
+                    _ -> error({unexpected_header_read, Key})
+                end
+            end}
         ]},
         {elib_response, [
             {'success_rfc3339', 3, fun(_Req, Payload, _Msg) ->
@@ -56,11 +74,21 @@ token_payload() ->
         token => <<"tok_abc">>,
         expires_in => 3600,
         refresh_token => <<"rt_abc">>,
-        has_teaching_identity => false
+        has_teaching_identity => false,
+        %% 19 位真实量级 uid：handler 必须**原样透传**（把 number 变 string 或
+        %% 反过来都会让客户端拿到的号与真正要绑的号不一致）
+        uid => <<"9000000000000000001">>
     }.
 
 call(Req) ->
     moya_auth_handler:handle_action(wechat_mini_login, Req, #{}).
+
+%% 取 logic 层实际收到的入参
+logic_params() ->
+    receive
+        {logic_params, P} -> P
+    after 0 -> timeout
+    end.
 
 %%%===================================================================
 %%% 参数解析
@@ -77,11 +105,13 @@ params_parsed_test_() ->
             Resp = call(#{req => ok}),
             ?assertMatch(#{resp := success}, Resp),
             ?assertEqual(
-                #{code => <<"good_code_123">>, device_id => <<"dev_1">>, ip => ?CLIENT_IP},
-                receive
-                    {logic_params, P} -> P
-                after 0 -> timeout
-                end
+                #{
+                    code => <<"good_code_123">>,
+                    device_id => <<"dev_1">>,
+                    ip => ?CLIENT_IP,
+                    reg_cosv => ?UA
+                },
+                logic_params()
             )
         end
     ).
@@ -93,11 +123,8 @@ params_defaults_test_() ->
         fun() ->
             _ = call(#{req => ok}),
             ?assertEqual(
-                #{code => <<>>, device_id => <<>>, ip => ?CLIENT_IP},
-                receive
-                    {logic_params, P} -> P
-                after 0 -> timeout
-                end
+                #{code => <<>>, device_id => <<>>, ip => ?CLIENT_IP, reg_cosv => ?UA},
+                logic_params()
             )
         end
     ).
@@ -109,13 +136,48 @@ ip_is_real_not_placeholder_test_() ->
         handler_mocks(#{<<"code">> => <<"good_code_123">>}, {ok, token_payload()}),
         fun() ->
             _ = call(#{req => ok}),
-            P =
-                receive
-                    {logic_params, X} -> X
-                after 0 -> timeout
-                end,
+            P = logic_params(),
             ?assertNotEqual(<<"127.0.0.1">>, maps:get(ip, P)),
             ?assertNotEqual(<<>>, maps:get(ip, P))
+        end
+    ).
+
+%% reg_cosv 落 user.reg_cosv。**必须**来自请求（UA），不能落到 user_repo
+%% 的 "perf-test" 兜底 —— 那是内部压测占位值，写进真实家长账号后运营侧
+%% 无法区分真实用户与压测数据（2026-09-21 生产库实测踩到）。
+reg_cosv_is_real_not_placeholder_test_() ->
+    ?WITH_MECKS(
+        handler_mocks(#{<<"code">> => <<"good_code_123">>}, {ok, token_payload()}),
+        fun() ->
+            _ = call(#{req => ok}),
+            V = maps:get(reg_cosv, logic_params()),
+            ?assertNotEqual(<<"perf-test">>, V),
+            ?assertNotEqual(<<"127.0.0.1">>, V),
+            ?assertNotEqual(<<>>, V),
+            ?assertEqual(?UA, V)
+        end
+    ).
+
+%% UA 缺失 → <<"unknown">>（可区分「没采到」与「旧数据」），绝不空串/占位
+reg_cosv_unknown_without_ua_test_() ->
+    ?WITH_MECKS(
+        handler_mocks(#{<<"code">> => <<"good_code_123">>}, {ok, token_payload()}, <<>>),
+        fun() ->
+            _ = call(#{req => ok}),
+            ?assertEqual(<<"unknown">>, maps:get(reg_cosv, logic_params()))
+        end
+    ).
+
+%% UA 超长必须截断（外部输入不进无界列）
+reg_cosv_truncated_test_() ->
+    LongUa = binary:copy(<<"A">>, 1000),
+    ?WITH_MECKS(
+        handler_mocks(#{<<"code">> => <<"good_code_123">>}, {ok, token_payload()}, LongUa),
+        fun() ->
+            _ = call(#{req => ok}),
+            V = maps:get(reg_cosv, logic_params()),
+            ?assert(byte_size(V) =< 300),
+            ?assertNotEqual(LongUa, V)
         end
     ).
 

@@ -39,8 +39,9 @@
 %%%===================================================================
 
 %% @doc 微信小程序登录
-%% 入参 #{code => binary(), device_id => binary() | undefined, ip => binary() | undefined}
-%% 出参 {ok, #{token, expires_in, refresh_token, has_teaching_identity}}
+%% 入参 #{code => binary(), device_id => binary() | undefined, ip => binary() | undefined,
+%%        reg_cosv => binary() | undefined}
+%% 出参 {ok, #{token, expires_in, refresh_token, has_teaching_identity, uid}}
 %%     | {error, missing_code | invalid_code | provider_unconfigured |
 %%               login_failed | identity_none | account_quota_exceeded}
 -spec wechat_mini_login(map()) ->
@@ -57,6 +58,7 @@ wechat_mini_login(#{code := Code0} = Params) when is_binary(Code0) ->
     Code = trim_binary(Code0),
     DeviceId = maps:get(device_id, Params, <<>>),
     Ip = maps:get(ip, Params, <<>>),
+    RegCosv = maps:get(reg_cosv, Params, <<>>),
     case valid_code(Code) of
         false ->
             {error, invalid_code};
@@ -65,7 +67,9 @@ wechat_mini_login(#{code := Code0} = Params) when is_binary(Code0) ->
                 {error, provider_unconfigured} = E ->
                     E;
                 {ok, AppId, Secret} ->
-                    do_login(AppId, Secret, Code, #{device_id => DeviceId, ip => Ip})
+                    do_login(AppId, Secret, Code, #{
+                        device_id => DeviceId, ip => Ip, reg_cosv => RegCosv
+                    })
             end
     end;
 wechat_mini_login(_) ->
@@ -158,7 +162,14 @@ issue_token(Uid) ->
         token => Token,
         expires_in => ?TOKEN_VALID,
         refresh_token => RefreshToken,
-        has_teaching_identity => has_teaching_identity(Uid)
+        has_teaching_identity => has_teaching_identity(Uid),
+        %% 本人 uid，**字符串形态**（契约硬规则1 / STEP-04：64-bit ID 的 JSON
+        %% 表示一律 string）。真实 uid 已到 19 位（如 9000000000000000001），
+        %% 以 number 下发会被 JS 的 JSON.parse 折成 ...000 —— 家长看到的号
+        %% 和老师要绑的号就不一致，且**任何门禁都发现不了**（能解析、能用、
+        %% 只是错了）。此前客户端拿不到自己的 uid，闭环最后一段（老师据
+        %% uid 调 learners/:id/bind）无从下手，故在此随登录一并下发。
+        uid => integer_to_binary(Uid)
     }.
 
 -spec has_teaching_identity(integer()) -> boolean().

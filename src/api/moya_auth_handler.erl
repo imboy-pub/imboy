@@ -46,7 +46,13 @@ wechat_mini_login(Req0) ->
         code => maps:get(<<"code">>, PostVals, <<>>),
         device_id => maps:get(<<"device_id">>, PostVals, <<>>),
         %% 首登自动开户会落 user.reg_ip：取真实客户端 IP，勿留占位值
-        ip => elib_req:get_client_ip(Req0)
+        ip => elib_req:get_client_ip(Req0),
+        %% user.reg_cosv 的列注释就是「客户端操作系统版本」。小程序侧目前
+        %% 不发该字段，这里退而取请求 UA —— 微信客户端 UA 里含真实
+        %% 系统与版本（如 "iPhone; CPU iPhone OS 15_0"）。**绝不**让它落到
+        %% normalize 的 "perf-test" 占位值：那会把内部压测标记写进
+        %% 真实家长账号，运营侧再也分不清谁是压测数据。
+        reg_cosv => client_os_hint(Req0)
     },
     case moya_auth_logic:wechat_mini_login(Params) of
         {ok, Payload} ->
@@ -58,6 +64,29 @@ wechat_mini_login(Req0) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%% @doc 客户端系统线索（落 user.reg_cosv）。
+%% 优先取请求 UA（微信客户端 UA 含真实系统版本）；UA 缺失时给
+%% <<"unknown">> 而不是空串，便于运营侧区分「没采到」与「旧数据」。
+%% 截断到 300 字节：该列是 text 无长度约束，但不接受无界的外部输入。
+-define(REG_COSV_MAX, 300).
+-spec client_os_hint(cowboy_req:req()) -> binary().
+client_os_hint(Req) ->
+    case cowboy_req:header(<<"user-agent">>, Req, <<>>) of
+        <<>> ->
+            <<"unknown">>;
+        Ua when is_binary(Ua) ->
+            truncate_utf8(Ua, ?REG_COSV_MAX)
+    end.
+
+-spec truncate_utf8(binary(), pos_integer()) -> binary().
+truncate_utf8(Bin, Max) when byte_size(Bin) =< Max ->
+    Bin;
+truncate_utf8(Bin, Max) ->
+    case unicode:characters_to_binary(binary:part(Bin, 0, Max)) of
+        T when is_binary(T) -> T;
+        _ -> <<"unknown">>
+    end.
 
 -spec login_error(cowboy_req:req(), atom()) -> cowboy_req:req().
 login_error(Req, missing_code) ->
