@@ -27,7 +27,6 @@
 -export([apply_logout/2]).
 -export([cancel_logout/2]).
 -export([deletion_status/1]).
--export([webrtc_credential/1]).
 -export([get_status/1]).
 -export([change_chat_state/2]).
 -export([save_settings/2]).
@@ -429,14 +428,6 @@ update(Uid, Field, Val) ->
         {error, unsupported_field} ->
             {error, {1, <<"">>, <<"Unsupported field">>}}
     end.
-
-%% @doc 生成 WebRTC 连接凭证
-%% Handler 层通过此接口获取凭证，不直接访问 user_ds
-%% @param Uid 用户ID
-%% @return map() WebRTC 凭证
--spec webrtc_credential(pos_integer()) -> map().
-webrtc_credential(Uid) ->
-    user_ds:webrtc_credential(Uid).
 
 %% ===================================================================
 %% R-03.1：profile 文本公开面审核门

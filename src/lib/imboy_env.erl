@@ -26,7 +26,6 @@
 %   IMBOY_REDIS_PORT       -> redis_options 中的 port
 %   IMBOY_API_AUTH_SWITCH  -> {imboy, api_auth_switch}
 %   IMBOY_PASSWORD_SALT    -> {imboy, password_salt}
-%   IMBOY_ETURNAL_SECRET   -> {imboy, eturnal_secret}
 %   IMBOY_JPUSH_APP_KEY    -> {imboy, jpush_app_key}
 %   IMBOY_JPUSH_MASTER_SECRET -> {imboy, jpush_master_secret}
 %   IMBOY_YJSMS_ACCOUNT    -> {imboy, yjsms_account}
@@ -158,7 +157,6 @@ override_from_env() ->
     ok = override_binary_key("IMBOY_API_AUTH_SWITCH", api_auth_switch),
     ok = override_binary_key("IMBOY_PASSWORD_SALT", password_salt),
     ok = override_binary_key("IMBOY_HASHIDS_SALT", hashids_salt),
-    ok = override_binary_key("IMBOY_ETURNAL_SECRET", eturnal_secret),
     ok = override_binary_key("IMBOY_JPUSH_APP_KEY", jpush_app_key),
     ok = override_binary_key("IMBOY_JPUSH_MASTER_SECRET", jpush_master_secret),
     ok = override_binary_key("IMBOY_YJSMS_ACCOUNT", yjsms_account),

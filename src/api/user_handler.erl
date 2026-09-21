@@ -50,7 +50,6 @@ handle_action(setting, Req, State) -> setting(Req, State);
 handle_action(update, Req, State) -> update(Req, State);
 handle_action(show, Req, State) -> show(Req, State);
 handle_action(qrcode, Req, State) -> qrcode(Req, State);
-handle_action(credential, Req, State) -> credential(Req, State);
 handle_action(change_password, Req, State) -> change_password(Req, State);
 handle_action(set_password, Req, State) -> set_password(Req, State);
 handle_action(apply_logout, Req, State) -> apply_logout(Req, State);
@@ -185,20 +184,6 @@ deletion_status(Req0, State) ->
         {error, Msg} ->
             elib_response:error(Req0, Msg)
     end.
-
-%% @doc 获取WebRTC凭证
-%% 生成WebRTC连接所需的凭证
-%%
-%% @param Req0 Cowboy请求对象
-%% @param State 状态映射，包含 current_uid
-%% @return 返回包含WebRTC凭证的响应
-%% @end
-% credential的计算方式 base64(sha1_HMAC(timestamp:username,secret-key))
--spec credential(cowboy_req:req(), map()) -> cowboy_req:req().
-credential(Req0, State) ->
-    CurrentUid = auth_ds:current_uid(State),
-    Payload = user_logic:webrtc_credential(CurrentUid),
-    elib_response:success(Req0, Payload).
 
 %% @doc 扫描用户二维码
 %% 通过扫描用户二维码获取用户信息

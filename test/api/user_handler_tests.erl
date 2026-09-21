@@ -9,7 +9,7 @@
 %%% 这些用例贴合当前 handler/logic 签名，验证：
 %%% - search 走 elib_type 与统一 payload
 %%% - 密码、状态、设置等写操作走当前 response 形态
-%%% - credential / qrcode 走当前 domain facade
+%%% - qrcode 走当前 domain facade
 %%%===================================================================
 
 search_by_email_test_() ->
@@ -122,37 +122,6 @@ set_password_test_() ->
             }),
             {StatusCode, _, _Body} = cowboy_req_h:response(Req),
             ?assertEqual(200, StatusCode)
-        end
-    ).
-
-credential_test_() ->
-    ?WITH_MECKS(
-        [
-            {auth_ds, [
-                {'current_uid', 1, fun(_State) -> 12345 end}
-            ]},
-            {user_ds, [
-                {'webrtc_credential', 1, fun(12345) ->
-                    #{<<"username">> => <<"user123">>, <<"credential">> => <<"base64_credential">>}
-                end}
-            ]},
-            {elib_response, [
-                {'success', 2, fun(_Req, Payload) ->
-                    cowboy_req_h:new(#{
-                        response_status => 200,
-                        response_body => Payload
-                    })
-                end}
-            ]}
-        ],
-        fun() ->
-            MockReq = cowboy_req_h:new(#{method => <<"GET">>}),
-            {ok, Req, _State} = user_handler:init(MockReq, #{
-                action => credential, current_uid => 12345
-            }),
-            {StatusCode, _, Body} = cowboy_req_h:response(Req),
-            ?assertEqual(200, StatusCode),
-            ?assertEqual(<<"user123">>, maps:get(<<"username">>, Body))
         end
     ).
 

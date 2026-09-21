@@ -143,8 +143,6 @@ paths:
     $ref: './paths/api/v1/user/show.yaml'
   /api/v1/user/qrcode:
     $ref: './paths/api/v1/user/qrcode.yaml'
-  /api/v1/user/credential:
-    $ref: './paths/api/v1/user/credential.yaml'
   /api/v1/user/change_state:
     $ref: './paths/api/v1/user/change-state.yaml'
   /api/v1/user/setting:
