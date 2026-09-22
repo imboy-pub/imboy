@@ -11,6 +11,7 @@
     find_for_update_tx/4,
     find_organization_for_share_tx/3,
     page_by_organization/4,
+    member_workspaces/2,
     upsert_active_tx/5,
     update_role_tx/4,
     remove_tx/3
@@ -104,6 +105,57 @@ page_by_organization(OrgId, Page, Size, Columns) ->
         Other ->
             {error, {unexpected_count_result, Other}}
     end.
+
+%% @doc 一批成员在该 Organization 内的**有权 Workspace**（计划 §5.2：成员详情
+%% 必须含有权 Workspace 信息）。
+%%
+%% 判定口径：workspace_member.status='active' ∧ workspace.status='active'
+%% ∧ workspace.organization_id = 目标 Org（跨 Org 的 Workspace 授权不算数——
+%% 本接口回答的是"在本企业内有权的工作区"）。
+%% 一次查完整页（user_id = ANY($1)），不在上层做 N+1；返回按 user_id 分组的
+%% 列表，缺省空列表。
+-spec member_workspaces(integer(), [integer()]) ->
+    {ok, #{integer() => [map()]}} | {error, term()}.
+member_workspaces(_OrgId, []) ->
+    {ok, #{}};
+member_workspaces(OrgId, UserIds) when is_integer(OrgId), OrgId > 0 ->
+    Sql =
+        <<"SELECT wm.user_id, w.id, w.name FROM ", (workspace_member_tablename())/binary,
+            " wm JOIN ", (workspace_tablename())/binary, " w ON w.id = wm.workspace_id",
+            " WHERE wm.user_id = ANY($1::bigint[]) AND wm.status = 'active'",
+            " AND w.status = 'active' AND w.organization_id = $2", " ORDER BY w.id ASC">>,
+    case elib_pg:query(Sql, [UserIds, OrgId]) of
+        {ok, Rows} ->
+            {ok, grouping_workspaces(Rows)};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec grouping_workspaces([map()]) -> #{integer() => [map()]}.
+grouping_workspaces(Rows) ->
+    Reversed =
+        lists:foldl(
+            fun(Row, Acc) ->
+                Uid = maps:get(<<"user_id">>, Row),
+                Item = #{
+                    <<"id">> => maps:get(<<"id">>, Row), <<"name">> => maps:get(<<"name">>, Row)
+                },
+                Acc#{Uid => [Item | maps:get(Uid, Acc, [])]}
+            end,
+            #{},
+            Rows
+        ),
+    %% SQL 已按 w.id ASC 返回，foldl 前插后每组成员是倒序——这里恢复升序，
+    %% 让出站顺序与 SQL 一致（前端按 workspace id 升序展示，稳定可断言）。
+    maps:map(fun(_Uid, Items) -> lists:reverse(Items) end, Reversed).
+
+-spec workspace_member_tablename() -> binary().
+workspace_member_tablename() ->
+    elib_pg_sql:public_tablename(<<"workspace_member">>).
+
+-spec workspace_tablename() -> binary().
+workspace_tablename() ->
+    elib_pg_sql:public_tablename(<<"workspace">>).
 
 %% @doc 幂等邀请或恢复。active 同角色不写库；active 异角色交给角色接口处理。
 -spec upsert_active_tx(any(), integer(), integer(), binary(), integer()) ->

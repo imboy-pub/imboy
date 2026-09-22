@@ -114,6 +114,82 @@ ordinary_member_cannot_list_test_() ->
         end
     ).
 
+%% —— §5.2 成员详情的有权 Workspace（workspaces/3）——
+%% 权限面刻意宽于 list/4：任意 active 成员都可查（成员详情是全员可见能力），
+%% 但目标必须是本 Org active 成员（否则 404，不泄露外部用户在本企业的授权）。
+member_workspaces_allows_ordinary_member_test_() ->
+    ?WITH_MECKS(
+        [
+            {organization_member_repo, [
+                %% 同一 {Fun,Arity} 的多分支写在一个 fun 的子句里
+                {'find_active', 3, fun
+                    (?ORG_ID, ?MEMBER, <<"role">>) -> {ok, #{<<"role">> => <<"member">>}};
+                    (?ORG_ID, ?OWNER, <<"user_id">>) -> {ok, #{<<"user_id">> => ?OWNER}}
+                end},
+                {'member_workspaces', 2, fun(?ORG_ID, [?OWNER]) ->
+                    {ok, #{
+                        ?OWNER => [
+                            #{<<"id">> => 9001, <<"name">> => <<"总部工作区">>},
+                            #{<<"id">> => 9002, <<"name">> => <<"广州项目组">>}
+                        ]
+                    }}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {ok, [#{<<"id">> := 9001}, #{<<"id">> := 9002}]},
+                organization_member_logic:workspaces(?MEMBER, ?ORG_ID, ?OWNER)
+            )
+        end
+    ).
+
+member_workspaces_forbids_non_member_test_() ->
+    ?WITH_MECKS(
+        [
+            {organization_member_repo, [
+                {'find_active', 3, fun(?ORG_ID, 999, <<"role">>) -> {error, not_found} end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {403, _}},
+                organization_member_logic:workspaces(999, ?ORG_ID, ?OWNER)
+            )
+        end
+    ).
+
+member_workspaces_target_must_be_org_member_test_() ->
+    ?WITH_MECKS(
+        [
+            {organization_member_repo, [
+                {'find_active', 3, fun
+                    (?ORG_ID, ?MEMBER, <<"role">>) -> {ok, #{<<"role">> => <<"member">>}};
+                    (?ORG_ID, 999, <<"user_id">>) -> {error, not_found}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {404, _}},
+                organization_member_logic:workspaces(?MEMBER, ?ORG_ID, 999)
+            )
+        end
+    ).
+
+member_workspaces_requires_positive_ids_test_() ->
+    ?WITH_MECKS(
+        [],
+        fun() ->
+            ?assertMatch(
+                {error, {400, _}}, organization_member_logic:workspaces(0, ?ORG_ID, ?OWNER)
+            ),
+            ?assertMatch(
+                {error, {400, _}}, organization_member_logic:workspaces(?MEMBER, ?ORG_ID, 0)
+            )
+        end
+    ).
+
 %% ORG-01：transfer command 下沉到 organization_owner_transfer（src/lib/organization），
 %% logic 入口仅作兼容委托；以下用例的 mock 目标由旧 repo 切换到 organization_owner_store。
 primary_owner_can_transfer_to_active_member_test_() ->

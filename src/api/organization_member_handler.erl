@@ -47,6 +47,13 @@ handle_action(member_offboard, Req0, State) ->
     case cowboy_req:method(Req0) of
         <<"POST">> -> member_command(offboard, Req0, State);
         _ -> method_not_allowed(Req0, <<"POST">>)
+    end;
+%% 成员的有权 Workspace（计划 §5.2：通讯录成员详情，**全员可见**——
+%% 因此与 collection 的治理门分开成独立 action）。
+handle_action(member_workspaces, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"GET">> -> member_workspaces(Req0, State);
+        _ -> method_not_allowed(Req0, <<"GET">>)
     end.
 
 list(Req0, State) ->
@@ -87,6 +94,14 @@ remove(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     with_ids(Req0, fun(OrgId, TargetUid) ->
         respond(Req0, organization_member_logic:remove(Uid, OrgId, TargetUid))
+    end).
+
+%% 成员的有权 Workspace（§5.2）。权限在 logic：调用者须为本 Org active 成员
+%% （任意角色即可，不只是 owner/admin）。
+member_workspaces(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    with_ids(Req0, fun(OrgId, TargetUid) ->
+        respond(Req0, organization_member_logic:workspaces(Uid, OrgId, TargetUid))
     end).
 
 %% 成员生命周期命令共用形状（organization_id + user_id 绑定，POST 命令语义）：

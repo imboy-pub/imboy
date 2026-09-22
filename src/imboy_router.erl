@@ -707,6 +707,10 @@ get_routes() ->
                     organization_member_handler, #{action => member_restore}},
                 {"/api/v1/organizations/:organization_id/members/:user_id/offboard",
                     organization_member_handler, #{action => member_offboard}},
+                %% 成员的有权 Workspace（§5.2 通讯录成员详情；全员可见，
+                %% 权限判定在 logic：调用者须为本 Org active 成员）
+                {"/api/v1/organizations/:organization_id/members/:user_id/workspaces",
+                    organization_member_handler, #{action => member_workspaces}},
                 {"/api/v1/organizations/:organization_id/members/:user_id",
                     organization_member_handler, #{action => member}},
                 %% —— ORG-10 集中注册（续）：org 域内 v2 面 ——
@@ -1100,21 +1104,26 @@ get_routes() ->
             % 待激活 Owner 治理面（GZAPP-06 / D11-D13）
             % 读=organizations:read；写=organizations:write（fail-closed 403）。
             % 手机号出站一律脱敏；审计 adm_operation_log 只落 masked 形态。
-            {"/api/adm/organizations/:organization_id/owner-activation", adm_owner_activation_handler, #{
-                action => owner_activation_show
-            }},
-            {"/api/adm/organizations/:organization_id/owner-activation/resend", adm_owner_activation_handler, #{
-                action => owner_activation_resend
-            }},
-            {"/api/adm/organizations/:organization_id/owner-activation/reactivate", adm_owner_activation_handler, #{
-                action => owner_activation_reactivate
-            }},
-            {"/api/adm/organizations/:organization_id/owner-activation/consume", adm_owner_activation_handler, #{
-                action => owner_activation_consume
-            }},
-            {"/api/adm/organizations/:organization_id/owner-transfer-by-phone", adm_owner_activation_handler, #{
-                action => owner_transfer_by_phone
-            }},
+            {"/api/adm/organizations/:organization_id/owner-activation",
+                adm_owner_activation_handler, #{
+                    action => owner_activation_show
+                }},
+            {"/api/adm/organizations/:organization_id/owner-activation/resend",
+                adm_owner_activation_handler, #{
+                    action => owner_activation_resend
+                }},
+            {"/api/adm/organizations/:organization_id/owner-activation/reactivate",
+                adm_owner_activation_handler, #{
+                    action => owner_activation_reactivate
+                }},
+            {"/api/adm/organizations/:organization_id/owner-activation/consume",
+                adm_owner_activation_handler, #{
+                    action => owner_activation_consume
+                }},
+            {"/api/adm/organizations/:organization_id/owner-transfer-by-phone",
+                adm_owner_activation_handler, #{
+                    action => owner_transfer_by_phone
+                }},
             {"/api/adm/organizations/:organization_id/members/:user_id/suspend",
                 adm_organization_handler, #{action => member_suspend}},
             {"/api/adm/organizations/:organization_id/members/:user_id/restore",

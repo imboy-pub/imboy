@@ -13,6 +13,7 @@
 
 -export([
     list/4,
+    workspaces/3,
     invite/4,
     change_role/4,
     remove/3,
@@ -58,6 +59,57 @@ list(Uid, OrgId, Page0, Size0) when
     end;
 list(_, _, _, _) ->
     {error, {400, <<"organization_id 必须是正整数"/utf8>>}}.
+
+%% @doc 某成员在本 Organization 内的**有权 Workspace**（计划 §5.2：通讯录的
+%% 成员详情必须含有权 Workspace 信息，且**所有企业成员可见**）。
+%%
+%% 权限面刻意不同于 `list/4`（治理门 owner/admin）：本函数只要求调用者是
+%% **本 Org 的 active 成员**（任意角色）——成员详情是全员可见能力，不能
+%% 挂在治理端点上（否则普通成员看到的永远是 403）。
+%% 目标也必须是本 Org 的 active 成员：非成员一律 404（不泄露外部用户是否
+%% 在本企业内有工作区）。
+%% 跨 Org 的 Workspace 授权不算数（回答的是"在本企业内有权的工作区"）。
+-spec workspaces(integer(), integer(), integer()) ->
+    {ok, [map()]} | {error, {integer(), binary()}}.
+workspaces(CallerUid, OrgId, TargetUid) when
+    is_integer(CallerUid),
+    CallerUid > 0,
+    is_integer(OrgId),
+    OrgId > 0,
+    is_integer(TargetUid),
+    TargetUid > 0
+->
+    case organization_member_repo:find_active(OrgId, CallerUid, <<"role">>) of
+        {ok, _Caller} ->
+            case organization_member_repo:find_active(OrgId, TargetUid, <<"user_id">>) of
+                {ok, _Target} ->
+                    member_workspaces(OrgId, TargetUid);
+                {error, not_found} ->
+                    {error, {404, <<"该用户不是本 Organization 成员"/utf8>>}};
+                {error, Reason} ->
+                    ?ERROR_LOG([organization_member_workspaces_acl_failed, OrgId, Reason]),
+                    internal_error(<<"查询失败，请稍后重试"/utf8>>)
+            end;
+        {error, not_found} ->
+            %% 非本 Org 成员与"Org 不存在"同口径，不泄露组织存在性
+            {error, {403, <<"仅本 Organization 成员可查看成员详情"/utf8>>}};
+        {error, Reason} ->
+            ?ERROR_LOG([organization_member_workspaces_acl_failed, OrgId, Reason]),
+            internal_error(<<"查询失败，请稍后重试"/utf8>>)
+    end;
+workspaces(_, _, _) ->
+    {error, {400, <<"organization_id 与 user_id 必须是正整数"/utf8>>}}.
+
+-spec member_workspaces(integer(), integer()) ->
+    {ok, [map()]} | {error, {integer(), binary()}}.
+member_workspaces(OrgId, TargetUid) ->
+    case organization_member_repo:member_workspaces(OrgId, [TargetUid]) of
+        {ok, Grouped} ->
+            {ok, maps:get(TargetUid, Grouped, [])};
+        {error, Reason} ->
+            ?ERROR_LOG([organization_member_workspaces_failed, OrgId, Reason]),
+            internal_error(<<"查询失败，请稍后重试"/utf8>>)
+    end.
 
 -spec invite(integer(), integer(), integer(), binary()) ->
     {ok, changed | unchanged, map()} | {error, {integer(), binary()}}.

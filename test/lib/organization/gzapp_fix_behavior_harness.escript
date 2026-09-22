@@ -252,6 +252,50 @@ probes(Conn, Counters) ->
     exec(Conn, <<"UPDATE workspace SET status='active' WHERE id = $1">>, [?WS1]),
     {ok, _} = organization_default_workspace_app:set(?OWNER1, ?ORG1, ?WS1),
 
+    io:format("~n== C3 成员有权 Workspace（计划 §5.2，全员可见） ==~n"),
+    %% P20：普通成员（非治理者）也能读别人的有权 Workspace——这正是 §5.2
+    %% 「所有企业成员可见」的要求。此刻 OWNER1 在 org1 内 active 的 ws = WS1、WS3。
+    Rw = organization_member_logic:workspaces(?MEMBER1, ?ORG1, ?OWNER1),
+    pass_val(
+        Counters,
+        <<"P20 普通成员可读他人有权 Workspace（全员可见）"/utf8>>,
+        Rw,
+        fun
+            ({ok, Items}) when is_list(Items) -> true;
+            (_) -> false
+        end
+    ),
+    {ok, OwnerWs} = Rw,
+    OwnerWsIds = [maps:get(<<"id">>, I) || I <- OwnerWs],
+    pass(
+        Counters,
+        <<"P20b 只含本 Org 内该成员的 active Workspace（WS1+WS3，按 id 升序）"/utf8>>,
+        OwnerWsIds =:= [?WS1, ?WS3]
+    ),
+    pass(
+        Counters,
+        <<"P20c 不含跨 Org 授权（WS_ORG2 不出现）"/utf8>>,
+        not lists:member(?WS_ORG2, OwnerWsIds)
+    ),
+    %% P21：非本 Org 成员调用 → 403（不泄露组织存在性）
+    pass(
+        Counters,
+        <<"P21 非本 Org 成员调用 → 403"/utf8>>,
+        is_status(organization_member_logic:workspaces(?OUTSIDER, ?ORG1, ?OWNER1), 403)
+    ),
+    %% P22：目标是外部用户 → 404
+    pass(
+        Counters,
+        <<"P22 目标不是本 Org 成员 → 404"/utf8>>,
+        is_status(organization_member_logic:workspaces(?OWNER1, ?ORG1, ?OUTSIDER), 404)
+    ),
+    %% P23：非法 id 形状 → 400
+    pass(
+        Counters,
+        <<"P23 非法 user_id → 400"/utf8>>,
+        is_status(organization_member_logic:workspaces(?OWNER1, ?ORG1, 0), 400)
+    ),
+
     io:format("~n== F3 建企模板原语 + 加入编排（真库） ==~n"),
     RA = organization_admin_logic:admin_create(
         1, <<"GZFIX-建企验证"/utf8>>, ?CREATE_OWNER, <<"GZFIX-默认工作区"/utf8>>
