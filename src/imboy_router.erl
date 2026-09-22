@@ -1320,7 +1320,17 @@ get_routes() ->
             %% EB-10：企业平台运营面 10 条（同上：编译期物理裁剪，helper 见文件底部）
             enterprise_platform_routes() ++
             %% CS-02：客服平台运营面 6 条（同款编译期物理裁剪，helper 见文件底部）
-            customer_service_platform_routes(),
+            customer_service_platform_routes() ++
+            %% FULL-08：Admin 企业应用治理面 A-01..A-14（/api/adm/enterprise/*）。
+            %% 与 enterprise_platform_routes()（/api/adm/enterprise-business/*）是
+            %% **两个前缀不相交的 surface**：本族只服务 Application/Credential/
+            %% Grant/Webhook/审计治理，**不经 feature 门**——理由与
+            %% enterprise_internal_routes() 一致（企业集成平台是核心交付面，
+            %% 新增 feature key 会改 IMBOY_PRODUCT_FEATURE_MANIFEST_HASH）。
+            %% 鉴权：/api/adm 前缀的 adm_auth_middleware（Admin Cookie 会话）+
+            %% handler 内按方法强制 adm_acl 权限位；与 OA Credential 的
+            %% /api/internal/v1/* 链路不可互换。
+            enterprise_application_governance_routes(),
     %% ---------------------------------------------------------------------------
     %% EB-10 / BUILD-00R：enterprise_business 路由段的**编译期物理裁剪** helper
 
@@ -1854,6 +1864,66 @@ enterprise_tenant_routes() ->
 enterprise_platform_routes() ->
     [].
 -endif.
+
+%% ===================================================================
+%% FULL-08：Admin 企业应用治理面（A-01..A-14）
+%% ===================================================================
+%% 路径集合与 imboyadmin（分支 run/full-candidate-admin-20260921T101806Z）
+%% src/modules/enterprise_apps/api/contracts.ts:ENDPOINTS **逐字对应**；前端
+%% 字符串被单测钉死，后端不得漂移。前缀 `/api/adm/enterprise/` 与
+%% - `/api/adm/enterprise-business/*`（enterprise_business 租户/运营面）
+%% - `/api/internal/v1/*`（OA Application Credential 面）
+%% 三者互不相交 —— 这是产品硬边界 §2 的机械保证（OA 凭据不能换 Admin 权限）。
+%%
+%% 权限：**按方法**在 handler 内强制（adm_acl:ensure_permission/3）——
+%%   * GET（A-01/A-02/A-05/A-09/A-12/A-13/A-14）→ `enterprise_business:read`
+%%   * POST/PUT/PATCH/DELETE（A-03/A-04/A-06/A-07/A-08/A-10/A-11）→
+%%     `enterprise_business:write`
+%% A-05/A-06、A-09/A-10 **同路径不同方法**，因此权限不能挂在路由条目上（挂在
+%% 路由上只会得到「读权限可签发 credential」这类放宽）；逐方法判定放在
+%% handler 的 with_read/with_write 里，与其余 `/api/adm/*` 路由的形态一致
+%% （本仓 adm 面统一由 `/api/adm` 前缀的 adm_auth_middleware 做会话鉴权）。
+%% 本模块**不注册、不接受**任何 Application Credential 请求头。
+-spec enterprise_application_governance_routes() -> list().
+enterprise_application_governance_routes() ->
+    [
+        %% A-01 列表（GET）
+        {"/api/adm/enterprise/organizations/:org_id/applications",
+            adm_enterprise_application_handler, #{action => applications}},
+        %% A-02 详情（GET）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id",
+            adm_enterprise_application_handler, #{action => application_detail}},
+        %% A-03 生命周期迁移（POST，CAS）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/status",
+            adm_enterprise_application_handler, #{action => application_status}},
+        %% A-04 scope 授予/降级（PUT，CAS）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/scopes",
+            adm_enterprise_application_handler, #{action => application_scopes}},
+        %% A-05 列表（GET）/ A-06 签发（POST，唯一回显 secret 的响应）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials",
+            adm_enterprise_application_handler, #{action => credentials}},
+        %% A-07 轮换（POST，唯一回显 secret 的响应）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials/:credential_id/rotate",
+            adm_enterprise_application_handler, #{action => credential_rotate}},
+        %% A-08 撤销（DELETE）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials/:credential_id",
+            adm_enterprise_application_handler, #{action => credential_revoke}},
+        %% A-09 列表（GET）/ A-10 新增（POST）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/grants",
+            adm_enterprise_application_handler, #{action => grants}},
+        %% A-11 Grant CAS 增删（PATCH）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/grants/:grant_id",
+            adm_enterprise_application_handler, #{action => grant}},
+        %% A-12 投递统计（GET，无 payload）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/delivery-stats",
+            adm_enterprise_application_handler, #{action => delivery_stats}},
+        %% A-13 投递列表（GET，无 payload / 无 secret）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/deliveries",
+            adm_enterprise_application_handler, #{action => deliveries}},
+        %% A-14 审计（GET，before/after diff）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/audit-logs",
+            adm_enterprise_application_handler, #{action => audit_logs}}
+    ].
 
 %% ===================================================================
 %% CS-02：customer_service 路由段的**编译期物理裁剪** helper

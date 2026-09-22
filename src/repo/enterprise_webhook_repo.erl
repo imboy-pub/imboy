@@ -32,6 +32,7 @@
     insert_delivery_tx/2,
     find_delivery_tx/2,
     list_deliveries_tx/5,
+    list_deliveries_admin_tx/6,
     delivery_stats_tx/3,
     purgeable_tx/4
 ]).
@@ -326,6 +327,46 @@ list_deliveries_tx(Conn, OrgId, AppId, Filters, Page0) ->
             {ok, empty_page(Page, Size, Status)};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% @doc Admin 治理面（FULL-08 / A-13）的投递**元数据**读面。
+%% 与 list_deliveries_tx/5 同归属过滤、同排序、同分页夹紧，只是**列集更宽**：
+%%   * 补 correlation_id / next_retry_at / ewh_endpoint_generation —— Admin 治理
+%%     需要这些运维元数据，既有 internal 读面出于「最小暴露」没选；
+%%   * 补 `payload->>'event_id'` —— event_id 只存在于事件信封（payload）里，
+%%     此处**只取这一个标量**。payload 本体永远不下发到 Admin（业务正文，
+%%     plan-full §7：Admin 投递面不得出现 payload / body）。
+%% 单独开一个入口而不是改既有 SELECT：既有 internal 读面的列集被 FULL-03 套件
+%% 逐键断言，加列会打破既有契约。
+-spec list_deliveries_admin_tx(
+    any(), integer(), integer(), undefined | binary(), integer(), integer()
+) ->
+    {ok, [map()]} | {error, term()}.
+list_deliveries_admin_tx(Conn, OrgId, AppId, Status, Page0, Size0) ->
+    Page = clamp_page(Page0),
+    Size = clamp_size(Size0),
+    Tb = elib_pg_sql:public_tablename(<<"bot_delivery">>),
+    {Where, Params} = list_where(OrgId, AppId, Status),
+    LimitP = length(Params) + 1,
+    OffsetP = LimitP + 1,
+    Sql =
+        <<
+            "SELECT delivery_id, event_type, status, attempt_count, correlation_id,"
+            " next_retry_at, ewh_endpoint_generation, ewh_ledger_version, ewh_replay_of,"
+            " created_at, updated_at,"
+            " NULLIF(payload->>'event_id', '') AS event_id"
+            " FROM ",
+            Tb/binary,
+            " WHERE ",
+            Where/binary,
+            " ORDER BY created_at DESC, delivery_id DESC LIMIT $",
+            (integer_to_binary(LimitP))/binary,
+            " OFFSET $",
+            (integer_to_binary(OffsetP))/binary
+        >>,
+    case elib_pg:query(Conn, Sql, Params ++ [Size, (Page - 1) * Size]) of
+        {ok, Rows} when is_list(Rows) -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
     end.
 
 list_page(Conn, Tb, Where, Params, Status, Page, Size, Total) ->
