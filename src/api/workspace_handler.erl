@@ -440,7 +440,14 @@ archive(Req0, State) ->
         {error, Req} ->
             Req;
         {ok, WsId} ->
-            case workspace_logic:archive(Uid, WsId) of
+            %% 计划 §105：被归档者是组织默认工作区时必须显式给出替代项，
+            %% 否则 workspace_logic 返回 409 引导先设默认（或一并传本参数）。
+            Opts = #{
+                replacement_workspace_id => maps:get(
+                    <<"replacement_workspace_id">>, PostVals, undefined
+                )
+            },
+            case workspace_logic:archive(Uid, WsId, Opts) of
                 {ok, Result} ->
                     elib_response:success(Req0, Result);
                 {error, {Code, Msg}} ->

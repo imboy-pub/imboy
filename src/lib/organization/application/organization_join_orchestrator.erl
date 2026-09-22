@@ -203,8 +203,15 @@ default_workspace_channel_tx(Conn, WsId) ->
 -spec one_id_tx(any(), binary(), list()) -> integer() | none.
 one_id_tx(Conn, Sql, Params) ->
     case elib_pg:query(Conn, Sql, Params) of
-        {ok, [#{<<"id">> := Id} | _]} -> Id;
-        _ -> none
+        {ok, [#{<<"id">> := Id} | _]} ->
+            Id;
+        {ok, []} ->
+            none;
+        {error, Reason} ->
+            %% R3-2：查询失败必须显式失败。此前 `_ -> none` 把 DB 故障与
+            %% "确实没有该行"混为一谈，再被 join_general_tx(_,_,none) -> ok
+            %% 静默放过——一次抖动会被永久伪装成"该企业没有全员群"。
+            throw({abort_tx, {internal, {default_resource_lookup_failed, Reason}}})
     end.
 
 -spec positive(term()) -> integer().

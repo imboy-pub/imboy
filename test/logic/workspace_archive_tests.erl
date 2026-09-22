@@ -77,7 +77,7 @@ archive_test_() ->
                 %% C05/ORG-05：归档同事务触发 Org 默认工作区交接钩子
                 %% （此处 ws 行归属列为 null → 个人域 undefined，钩子仍被调用）
                 receive
-                    {default_ws_handover, OrgId0, ?WS_ID} ->
+                    {default_ws_handover, OrgId0, ?WS_ID, _ReplacementWsId} ->
                         ?assertEqual(undefined, OrgId0)
                 after 500 -> ?assert(false, "default workspace handover hook not called")
                 end
@@ -98,16 +98,17 @@ archive_test_() ->
             end)
         end},
         {"archiving last default workspace rejected 409 (G3 strong handover)", fun() ->
-            %% GZAPP-02/G3（计划 §4.2）：被归档者是 Org 默认且无剩余 active
-            %% Workspace → 稳定 409（先指定替代默认），不再静默 clear。
+            %% 计划 §105：被归档者是 Org 默认且**未显式指定替代项** → 稳定 409
+            %% （引导先设默认或一并传 replacement_workspace_id），不再自动改指。
             run_with_mocks(archive_mocks(<<"active">>, Self), fun() ->
                 meck:expect(
                     organization_default_workspace_app,
-                    replace_or_clear_on_archive_tx,
-                    3,
-                    fun(_Conn, _OrgId, _WsId) ->
+                    replace_on_archive_tx,
+                    4,
+                    fun(_Conn, _OrgId, _WsId, _ReplacementWsId) ->
                         throw(
-                            {abort_tx, {default_workspace_handover_required, no_active_replacement}}
+                            {abort_tx,
+                                {default_workspace_handover_required, replacement_not_specified}}
                         )
                     end
                 ),
@@ -211,8 +212,8 @@ archive_mocks(CurrStatus, Self) ->
         ]},
         {organization_default_workspace_app, [
             %% 归档同事务默认工作区交接钩子（ORG-05）；哨兵断言钩子已触发
-            {'replace_or_clear_on_archive_tx', 3, fun(_Conn, OrgId, WsId) ->
-                Self ! {default_ws_handover, OrgId, WsId},
+            {'replace_on_archive_tx', 4, fun(_Conn, OrgId, WsId, ReplacementWsId) ->
+                Self ! {default_ws_handover, OrgId, WsId, ReplacementWsId},
                 ok
             end}
         ]}

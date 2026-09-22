@@ -111,8 +111,8 @@ create_mocks() ->
                 put(t_first_ws_args, {OrgId, WsId}),
                 ok
             end},
-            {'replace_or_clear_on_archive_tx', 3, fun(_Conn, OrgId, WsId) ->
-                put(t_handover_args, {OrgId, WsId}),
+            {'replace_on_archive_tx', 4, fun(_Conn, OrgId, WsId, ReplacementWsId) ->
+                put(t_handover_args, {OrgId, WsId, ReplacementWsId}),
                 ok
             end}
         ]}
@@ -185,7 +185,9 @@ archive_hands_over_default_test_() ->
                     {ok, #{workspace_id := ?WS_ID, status := <<"archived">>}},
                     workspace_logic:archive(?OWNER, ?WS_ID)
                 ),
-                ?assertEqual({?ORG_ID, ?WS_ID}, get(t_handover_args))
+                %% 未传 replacement → 交接钩子收到 undefined（计划 §105：
+                %% 未指定替代项时由 app 层拒绝，钩子本身收到 undefined）
+                ?assertEqual({?ORG_ID, ?WS_ID, undefined}, get(t_handover_args))
             end)
         end},
         {"personal workspace archive passes undefined (no handover)", fun() ->
@@ -194,7 +196,7 @@ archive_hands_over_default_test_() ->
                     {ok, #{workspace_id := ?WS_ID, status := <<"archived">>}},
                     workspace_logic:archive(?OWNER, ?WS_ID)
                 ),
-                ?assertEqual({undefined, ?WS_ID}, get(t_handover_args))
+                ?assertEqual({undefined, ?WS_ID, undefined}, get(t_handover_args))
             end)
         end},
         {"admin archive invokes the same handover hook", fun() ->
@@ -203,7 +205,7 @@ archive_hands_over_default_test_() ->
                     {ok, #{workspace_id := ?WS_ID, status := <<"archived">>, archived_by := null}},
                     workspace_logic:admin_archive(?ADM_UID, ?WS_ID)
                 ),
-                ?assertEqual({?ORG_ID, ?WS_ID}, get(t_handover_args))
+                ?assertEqual({?ORG_ID, ?WS_ID, undefined}, get(t_handover_args))
             end)
         end}
     ].
@@ -241,8 +243,8 @@ run_archive_mocks(OrgDbId, TestFun) ->
             {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
         ]},
         {organization_default_workspace_app, [
-            {'replace_or_clear_on_archive_tx', 3, fun(_Conn, OrgId, WsId) ->
-                put(t_handover_args, {OrgId, WsId}),
+            {'replace_on_archive_tx', 4, fun(_Conn, OrgId, WsId, ReplacementWsId) ->
+                put(t_handover_args, {OrgId, WsId, ReplacementWsId}),
                 ok
             end}
         ]}

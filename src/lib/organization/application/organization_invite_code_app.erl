@@ -60,17 +60,30 @@ create(_, _, _) ->
 insert_code_tx(_ActorUid, _OrgId, _ExpiresAt, 0) ->
     {error, code_retry_exhausted};
 insert_code_tx(ActorUid, OrgId, ExpiresAt, Left) ->
+    %% R3-7：撤旧只在**首次尝试**做。重试若仍撤旧，会把并发生成中对手刚拿到
+    %% 的码静默撤销（对手收到 200 但码已死）——首次已保证"重新生成=旧码失效"。
+    Mode =
+        case Left =:= ?CODE_RETRY_LIMIT of
+            true -> revoke_first;
+            false -> insert_only
+        end,
     Code = organization_invite_code_pg:generate_code(),
     Tx = fun(Conn) ->
         %% 治理门（组织行先锁 → actor owner/admin；archived 409）
         ok = ensure_governance_tx(Conn, OrgId, ActorUid, reject_archived),
         %% 撤旧是「重新生成=旧码失效」的语义前提，失败即中止整个事务
-        case organization_invite_code_pg:revoke_active_by_org_tx(Conn, OrgId) of
-            {ok, _} ->
-                organization_invite_code_pg:add_tx(Conn, OrgId, Code, ActorUid, ExpiresAt);
-            {error, Reason} ->
-                throw({abort_tx, {internal, {revoke_old_code, Reason}}})
-        end
+        case Mode of
+            revoke_first ->
+                case organization_invite_code_pg:revoke_active_by_org_tx(Conn, OrgId) of
+                    {ok, _} ->
+                        ok;
+                    {error, RevokeReason} ->
+                        throw({abort_tx, {internal, {revoke_old_code, RevokeReason}}})
+                end;
+            insert_only ->
+                ok
+        end,
+        organization_invite_code_pg:add_tx(Conn, OrgId, Code, ActorUid, ExpiresAt)
     end,
     case elib_pg:with_tx(Tx) of
         {ok, Row} ->

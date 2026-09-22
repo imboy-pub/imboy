@@ -472,8 +472,9 @@ ws_field(_, _) ->
 %%      user.status——「org.owner_id 暂锚预创建 user」与既有不变量兼容，
 %%      激活时仅翻转 user.status 0→1（GZAPP-06 锚点决策）；
 %%   5) 显式 owner membership upsert；
-%%   6) INSERT active default workspace；
-%%   7) INSERT organization_default_workspace。
+%%   6) 默认 Workspace 模板（workspace_ds:create_default_template_tx/4）：
+%%      workspace 行 + Org 默认关系 + owner workspace_member + 全员群 +
+%%      公告频道（含订阅）——与建工作区路径同一实现（R3-3/F3）。
 insert_org_core_tx(Conn, OwnerUid, Name, WsName) ->
     OrgId = elib_tsid:generate(organization),
     case
@@ -508,32 +509,15 @@ insert_org_core_tx(Conn, OwnerUid, Name, WsName) ->
         {error, Reason2} ->
             throw({abort_tx, {internal, Reason2}})
     end,
-    %% 6) INSERT active default workspace（branding.name 与 workspace.name 同源）
-    WsId = elib_tsid:generate(workspace),
-    BrandingJson = jsone:encode(#{<<"name">> => WsName}, [native_utf8]),
-    case
-        elib_pg:execute(
-            Conn,
-            <<"INSERT INTO workspace (id, name, owner_id, organization_id, status, branding,",
-                " created_at, updated_at)",
-                " VALUES ($1, $2, $3, $4, 'active', $5, now(), now())">>,
-            [WsId, WsName, OwnerUid, OrgId, BrandingJson]
-        )
-    of
-        {ok, 1} ->
-            ok;
-        {ok, _} ->
-            throw({abort_tx, {internal, workspace_insert_affected}});
-        {error, Reason3} ->
-            throw({abort_tx, {internal, Reason3}})
-    end,
-    %% 7) INSERT organization_default_workspace 关系
-    case organization_default_workspace_pg:upsert_tx(Conn, OrgId, WsId) of
-        {ok, _} ->
-            {ok, OrgId, WsId};
-        {error, Reason4} ->
-            throw({abort_tx, {internal, Reason4}})
-    end.
+    %% 6-7) 默认 Workspace 模板（R3-3/F3）：改走 workspace_ds 的模板原语，
+    %% 与「建工作区」路径同一实现——workspace 行 + Org 默认关系 +
+    %% owner workspace_member + 全员群（General）+ 公告频道（Announcements，含订阅）。
+    %% 此前这里是一句裸 INSERT 加一条默认关系：建出的组织没有全员群/公告频道，
+    %% owner 也不在 workspace_member（连自己工作区的企业群都进不去），
+    %% 加入编排查不到这两行只能返回 none 并静默跳过——撞
+    %% plan.snapshot.md:54/106/222/224 与 GZ-J01「全员群、公告频道原子成功」。
+    {ok, Template} = workspace_ds:create_default_template_tx(Conn, OwnerUid, OrgId, WsName),
+    {ok, OrgId, maps:get(workspace_id, Template)}.
 
 %% ===================================================================
 %% 写：Organization 原子创建 · pending_phone 模式（GZAPP-06 / D11-D12）

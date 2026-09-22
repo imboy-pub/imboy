@@ -187,6 +187,13 @@ set_mocks(Opts) ->
             false -> {error, not_found}
         end
     end),
+    %% R3-1：set/clear 现在在事务内做调用者鉴权（org owner/admin 或目标 ws owner）。
+    %% 本套用例聚焦锁序/状态裁决，默认放行管理权；负例见 set_by_non_manager_*。
+    meck:new(organization_workspace_access, [non_strict, no_link]),
+    IsOrgManager = maps:get(is_org_manager, Opts, true),
+    meck:expect(organization_workspace_access, is_org_manager_tx, 3, fun(_C, _Org, _Uid) ->
+        IsOrgManager
+    end),
     meck:new(organization_default_workspace_pg, [non_strict, no_link]),
     meck:expect(organization_default_workspace_pg, target_row_tx, 2, fun(_Conn, _WsId) ->
         record_event(target_read),
@@ -211,6 +218,7 @@ set_mocks(Opts) ->
 unload_set_mocks() ->
     meck:unload(elib_pg),
     meck:unload(organization_owner_store),
+    meck:unload(organization_workspace_access),
     meck:unload(organization_default_workspace_pg).
 
 set_test_() ->
@@ -341,6 +349,14 @@ clear_test_() ->
                     meck:expect(organization_owner_store, lock_organization_tx, 2, fun(_C, _O) ->
                         {ok, #{}}
                     end),
+                    %% R3-1：clear 现在要求 org owner/admin
+                    meck:new(organization_workspace_access, [non_strict, no_link]),
+                    meck:expect(
+                        organization_workspace_access,
+                        is_org_manager_tx,
+                        3,
+                        fun(_C, _O, _U) -> true end
+                    ),
                     try
                         ?assertEqual(
                             {ok, cleared},
@@ -348,7 +364,8 @@ clear_test_() ->
                         )
                     after
                         meck:unload(elib_pg),
-                        meck:unload(organization_owner_store)
+                        meck:unload(organization_owner_store),
+                        meck:unload(organization_workspace_access)
                     end
                 end
             )
@@ -362,6 +379,14 @@ clear_test_() ->
                     meck:expect(organization_owner_store, lock_organization_tx, 2, fun(_C, _O) ->
                         {ok, #{}}
                     end),
+                    %% R3-1：clear 现在要求 org owner/admin
+                    meck:new(organization_workspace_access, [non_strict, no_link]),
+                    meck:expect(
+                        organization_workspace_access,
+                        is_org_manager_tx,
+                        3,
+                        fun(_C, _O, _U) -> true end
+                    ),
                     try
                         ?assertEqual(
                             {ok, already_empty},
@@ -369,7 +394,8 @@ clear_test_() ->
                         )
                     after
                         meck:unload(elib_pg),
-                        meck:unload(organization_owner_store)
+                        meck:unload(organization_owner_store),
+                        meck:unload(organization_workspace_access)
                     end
                 end
             )
@@ -415,30 +441,34 @@ hooks_test_() ->
                 end
             )
         end},
-        {"replace_or_clear_on_archive_tx passes through for personal scope", fun() ->
+        {"replace_on_archive_tx passes through for personal scope", fun() ->
             with_pg_mocks(
                 [
-                    {'replace_or_clear_on_archive_tx', 3, fun(_C, _O, _W) ->
+                    {'set_replacement_on_archive_tx', 4, fun(_C, _O, _W, _R) ->
                         erlang:error(must_not_touch_pg_for_personal)
                     end}
                 ],
                 fun() ->
                     ?assertEqual(
                         ok,
-                        organization_default_workspace_app:replace_or_clear_on_archive_tx(
-                            fake_conn, undefined, ?WS_ID
+                        organization_default_workspace_app:replace_on_archive_tx(
+                            fake_conn, undefined, ?WS_ID, undefined
                         )
                     )
                 end
             )
         end},
-        {"replace_or_clear_on_archive_tx failure aborts the enclosing tx", fun() ->
+        {"replace_on_archive_tx failure aborts the enclosing tx", fun() ->
             with_pg_mocks(
-                [{'replace_or_clear_on_archive_tx', 3, fun(_C, _O, _W) -> {error, injected} end}],
+                [
+                    {'set_replacement_on_archive_tx', 4, fun(_C, _O, _W, _R) ->
+                        {error, injected}
+                    end}
+                ],
                 fun() ->
                     try
-                        organization_default_workspace_app:replace_or_clear_on_archive_tx(
-                            fake_conn, ?ORG_ID, ?WS_ID
+                        organization_default_workspace_app:replace_on_archive_tx(
+                            fake_conn, ?ORG_ID, ?WS_ID, ?WS_ID_2
                         ),
                         ?assert(false, "expected abort_tx throw")
                     catch
@@ -449,28 +479,97 @@ hooks_test_() ->
                 end
             )
         end},
-        {"replace_or_clear_on_archive_tx rejects with dedicated marker when no active replacement (G3)",
+        {"replace_on_archive_tx rejects with dedicated marker when replacement not specified (plan §105)",
             fun() ->
-                %% GZAPP-02/G3 强交接：无剩余 active → 专用拒绝标记（供
+                %% 计划 §105 强交接：未显式指定替代项 → 专用拒绝标记（供
                 %% workspace_logic 映射 409），不是 500 类 handover_failed。
                 with_pg_mocks(
                     [
-                        {'replace_or_clear_on_archive_tx', 3, fun(_C, _O, _W) ->
-                            {error, no_active_replacement}
+                        {'set_replacement_on_archive_tx', 4, fun(_C, _O, _W, _R) ->
+                            {error, replacement_not_specified}
                         end}
                     ],
                     fun() ->
                         try
-                            organization_default_workspace_app:replace_or_clear_on_archive_tx(
-                                fake_conn, ?ORG_ID, ?WS_ID
+                            organization_default_workspace_app:replace_on_archive_tx(
+                                fake_conn, ?ORG_ID, ?WS_ID, undefined
                             ),
                             ?assert(false, "expected abort_tx throw")
                         catch
                             throw:{abort_tx,
-                                {default_workspace_handover_required, no_active_replacement}} ->
+                                {default_workspace_handover_required, replacement_not_specified}} ->
                                 ok
                         end
                     end
                 )
             end}
+    ].
+
+%%--------------------------------------------------------------------
+%% R3-1：默认工作区写命令的调用者鉴权（越权修复）
+%%--------------------------------------------------------------------
+
+set_authorization_test_() ->
+    [
+        {"set by non-manager non-owner is forbidden 403", fun() ->
+            %% 既不是组织 owner/admin，也不是目标工作区的 owner → 403，
+            %% 且不产生任何写入（越权修复前这里是 200 + 改指）。
+            set_mocks(#{is_org_manager => false}),
+            try
+                ?assertMatch(
+                    {error, {403, _}},
+                    organization_default_workspace_app:set(?OPERATOR, ?ORG_ID, ?WS_ID)
+                ),
+                ?assertEqual(undefined, get(odw_upsert))
+            after
+                erase(odw_order),
+                erase(odw_upsert),
+                unload_set_mocks()
+            end
+        end},
+        {"set by target workspace owner allowed", fun() ->
+            %% 目标 Workspace 的 owner 可把自己/本工作区设为默认
+            %% （与 APP 企业管理页「WS Owner 菜单含设为默认」的权限面一致）。
+            set_mocks(#{
+                is_org_manager => false,
+                target => #{
+                    <<"organization_id">> => ?ORG_ID,
+                    <<"status">> => <<"active">>,
+                    <<"owner_id">> => ?OPERATOR
+                }
+            }),
+            try
+                ?assertEqual(
+                    {ok, changed},
+                    organization_default_workspace_app:set(?OPERATOR, ?ORG_ID, ?WS_ID)
+                ),
+                ?assertEqual({?ORG_ID, ?WS_ID}, get(odw_upsert))
+            after
+                erase(odw_order),
+                erase(odw_upsert),
+                unload_set_mocks()
+            end
+        end},
+        {"set by neither manager nor owner of another org is forbidden 403", fun() ->
+            %% 跨租户：org B 的 owner 拿 org A 的默认写命令 → 403（不泄露存在性）。
+            set_mocks(#{
+                is_org_manager => false,
+                target => #{
+                    <<"organization_id">> => ?ORG_ID,
+                    <<"status">> => <<"active">>,
+                    <<"owner_id">> => 777777
+                }
+            }),
+            try
+                ?assertMatch(
+                    {error, {403, _}},
+                    organization_default_workspace_app:set(?OPERATOR, ?ORG_ID, ?WS_ID)
+                ),
+                ?assertEqual(undefined, get(odw_upsert))
+            after
+                erase(odw_order),
+                erase(odw_upsert),
+                unload_set_mocks()
+            end
+        end}
     ].

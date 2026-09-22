@@ -315,6 +315,12 @@ activate_by_token(Token) when is_binary(Token), byte_size(Token) > 0 ->
             {error, {Code, Msg}};
         {rollback, Reason} ->
             _ = ?ERROR_LOG([owner_activation_consume_failed, Reason]),
+            {error, {500, <<"激活失败，请稍后重试"/utf8>>}};
+        {error, Reason} ->
+            %% R3-4：内部失败（with_tx 把 throw({abort_tx, {internal, R}}) 归一为
+            %% {error, {internal, R}}，Code 是原子）落不进上面的整数守卫——
+            %% 没有本子句会以 case_clause 崩掉请求进程，而不是返回 500 兜底。
+            _ = ?ERROR_LOG([owner_activation_consume_failed, Reason]),
             {error, {500, <<"激活失败，请稍后重试"/utf8>>}}
     end;
 activate_by_token(_) ->

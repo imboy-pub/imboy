@@ -21,6 +21,11 @@
 %%%
 
 -export([create_template/4]).
+%% 建企路径专用（R3-3/F3）：建 Organization 时同事务创建默认 Workspace 模板。
+%% 与 create_template/4 的差异：**不走 owner 工作区配额与语义幂等前置**——
+%% 建企时该 Org 尚无任何工作区（本函数创建它），配额检查会按 owner 的
+%% 全部工作区计数、误伤已有大量个人工作区的 Owner。
+-export([create_default_template_tx/4]).
 -export([find_by_id/1]).
 -export([find_by_id/2]).
 -export([page_by_member/3]).
@@ -137,6 +142,18 @@ existing_workspace_result(Conn, WS) ->
                 group_id => DefaultGroup
             }}}
     ).
+
+%% @doc 建企路径专用入口（R3-3/F3）：在**调用方的事务**内创建默认 Workspace
+%% 模板，返回与 create_template/4 同形状的 Result（含 channel_id / group_id）。
+%% 语义与 do_create_template/5 完全一致——workspace 行 + Org 默认关系 +
+%% owner workspace_member + 全员群（General，owner 为群主）+ 公告频道
+%% （Announcements，owner 为 Admin 且已订阅）。任一步失败抛 abort_tx，
+%% 由建企事务整体回滚（不留半初始化组织）。
+%% `OrgId` 必须是本事务内已插入的 Organization（ensure_organization_creator_tx
+%% 会在同事务内校验其 active 与调用者的 owner/admin 成员行）。
+-spec create_default_template_tx(any(), integer(), integer(), binary()) -> {ok, map()}.
+create_default_template_tx(Conn, OwnerUid, OrgId, Name) ->
+    {ok, do_create_template(Conn, OwnerUid, OrgId, Name, <<>>)}.
 
 %% @doc 真正的 Template 单事务创建
 do_create_template(Conn, OwnerUid, OrgId, Name, RequestId) ->

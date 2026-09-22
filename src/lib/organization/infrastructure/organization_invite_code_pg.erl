@@ -134,12 +134,17 @@ error_code({error, _S, Code, _Cn, _Msg, _Extra}) when is_binary(Code) ->
 error_code(_) ->
     undefined.
 
-%% @doc 逐位抽取邀请码（rand:uniform/1 返回 1..Len，转 0 起下标）
+%% @doc 逐位抽取邀请码（R3-7：改用 CSPRNG）。
+%% 字符集恰为 32 字符，256 rem 32 = 0，故 `Byte rem 32` 无取模偏置，
+%% 无需拒绝采样；与同仓 token 路径（organization_invitation 用
+%% crypto:strong_rand_bytes）保持同一安全等级——rand:uniform 是可预测的
+%% 进程级 PRNG，不该用来生成可换取加入资格的凭证。
 -spec generate_code_chars(non_neg_integer(), binary()) -> binary().
 generate_code_chars(0, Acc) ->
     Acc;
 generate_code_chars(N, Acc) ->
     Chars = ?INVITE_CHARSET,
-    Pos = rand:uniform(byte_size(Chars)) - 1,
+    <<Byte:8>> = crypto:strong_rand_bytes(1),
+    Pos = Byte rem byte_size(Chars),
     <<_:Pos/binary, Char:1/binary, _/binary>> = Chars,
     generate_code_chars(N - 1, <<Acc/binary, Char/binary>>).

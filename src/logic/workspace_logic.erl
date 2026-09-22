@@ -29,6 +29,7 @@
 -export([transfer_owner/3]).
 -export([member_list/4]).
 -export([archive/2]).
+-export([archive/3]).
 -export([restore/2]).
 -export([my_role/2]).
 -export([ensure_member/2]).
@@ -40,6 +41,7 @@
 -export([admin_detail/1]).
 -export([admin_member_page/3]).
 -export([admin_archive/2]).
+-export([admin_archive/3]).
 -export([admin_restore/2]).
 
 -include("log.hrl").
@@ -699,31 +701,71 @@ member_list(Uid, WsId, Page0, Size0) ->
 %% 读取/历史浏览不受影响；personal 资源永不受 guard 影响。
 -spec archive(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
 archive(Uid, WsId) ->
+    archive(Uid, WsId, #{}).
+
+%% @doc 归档工作区（可带显式替代默认项）。
+%% `Opts` 支持 `replacement_workspace_id`：被归档者是组织默认工作区时**必须**
+%% 指定（计划 `plan.snapshot.md:105`「归档默认 Workspace 前必须先指定替代项」）；
+%% 未指定或替代项不合法 → 409 拒绝，不再自动改指 min-active。
+-spec archive(integer(), integer(), map()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+archive(Uid, WsId, Opts) when is_map(Opts) ->
+    ReplacementWsId =
+        case maps:get(replacement_workspace_id, Opts, undefined) of
+            undefined -> undefined;
+            V -> elib_cnv:safe_to_integer(V)
+        end,
     %% GZAPP-02/G7：管理类操作授权放宽为本 ws Owner 或 org owner/admin
     case ensure_governor(WsId, Uid) of
         {error, Reason} ->
             {error, Reason};
         {ok, _WS} ->
-            case elib_pg:with_tx(fun(Conn) -> archive_tx(Conn, WsId, Uid) end) of
+            case
+                elib_pg:with_tx(
+                    fun(Conn) ->
+                        archive_tx(Conn, WsId, Uid, normalize_replacement(ReplacementWsId))
+                    end
+                )
+            of
                 {ok, Result} when is_map(Result) ->
                     _ = ?INFO_LOG([workspace_archived, WsId, Uid]),
                     {ok, Result};
                 {error, already_archived} ->
                     {error, {409, <<"工作区已处于归档状态"/utf8>>}};
-                %% GZAPP-02/G3 强交接：被归档者是 Org 默认且无剩余 active
-                %% Workspace → 拒绝归档（计划 §4.2：须先指定替代默认项）。
+                %% 计划 §105 强交接：被归档者是 Org 默认工作区时，
+                %% 必须先显式指定替代项。
                 {error, {default_workspace_handover_required, _}} ->
-                    {error, {
-                        409,
-                        <<"该工作区是组织默认工作区，请先设置其他工作区为默认后再归档"/utf8>>
-                    }};
+                    {error,
+                        {
+                            409,
+                            <<
+                                "该工作区是组织默认工作区：请先在企业管理中指定替代的默认工作区，"
+                                "再归档（或用 replacement_workspace_id 一并指定）"/utf8
+                            >>
+                        }};
+                {error, {default_workspace_handover_invalid, InvalidReason}} ->
+                    {error, {409, handover_invalid_msg(InvalidReason)}};
                 {error, Reason2} ->
                     _ = ?ERROR_LOG([workspace_archive_failed, WsId, Uid, Reason2]),
                     {error, {500, <<"归档失败，请稍后重试"/utf8>>}}
             end
     end.
 
-archive_tx(Conn, WsId, Uid) ->
+%% 非正整数（含 0 / 负数 / 非数字）一律归一为"未指定"——避免把脏输入
+%% 当成一个具体目标去查库。
+-spec normalize_replacement(integer() | undefined) -> integer() | undefined.
+normalize_replacement(Id) when is_integer(Id), Id > 0 -> Id;
+normalize_replacement(_) -> undefined.
+
+-spec handover_invalid_msg(term()) -> binary().
+handover_invalid_msg(cross_org) ->
+    <<"指定的替代默认工作区不属于同一组织"/utf8>>;
+handover_invalid_msg(not_active) ->
+    <<"指定的替代默认工作区已归档，不能作为默认"/utf8>>;
+handover_invalid_msg(_) ->
+    <<"指定的替代默认工作区不存在"/utf8>>.
+
+archive_tx(Conn, WsId, Uid, ReplacementWsId) ->
     Now = elib_dt:now(),
     Sql =
         <<"UPDATE workspace SET status = 'archived', archived_at = $1,",
@@ -733,8 +775,8 @@ archive_tx(Conn, WsId, Uid) ->
             %% Org 默认工作区同事务交接（C05/ORG-05）：默认永不指向
             %% archived Workspace——replace_with_min_active / clear；
             %% 个人域（organization_id 为空）不动作。失败回滚整个归档。
-            ok = organization_default_workspace_app:replace_or_clear_on_archive_tx(
-                Conn, organization_id_of_tx(Conn, WsId), WsId
+            ok = organization_default_workspace_app:replace_on_archive_tx(
+                Conn, organization_id_of_tx(Conn, WsId), WsId, ReplacementWsId
             ),
             {ok, #{
                 workspace_id => WsId,
@@ -1010,20 +1052,45 @@ admin_member_page(WsId, Page0, Size0) ->
 %% 归档后 T7 写守卫（稳定错误码 980）对全部 workspace 业务写生效。
 -spec admin_archive(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
 admin_archive(AdmUserId, WsId) ->
+    admin_archive(AdmUserId, WsId, #{}).
+
+%% @doc 运营归档（可带显式替代默认项，与 Owner 归档同口径）。
+-spec admin_archive(integer(), integer(), map()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_archive(AdmUserId, WsId, Opts) when is_map(Opts) ->
+    ReplacementWsId =
+        case maps:get(replacement_workspace_id, Opts, undefined) of
+            undefined -> undefined;
+            V -> elib_cnv:safe_to_integer(V)
+        end,
     case workspace_ds:find_by_id(WsId, <<"id">>) of
         #{<<"id">> := _} ->
-            case elib_pg:with_tx(fun(Conn) -> admin_archive_tx(Conn, WsId, AdmUserId) end) of
+            case
+                elib_pg:with_tx(
+                    fun(Conn) ->
+                        admin_archive_tx(
+                            Conn, WsId, AdmUserId, normalize_replacement(ReplacementWsId)
+                        )
+                    end
+                )
+            of
                 {ok, Result} when is_map(Result) ->
                     _ = ?INFO_LOG([workspace_admin_archived, WsId, AdmUserId]),
                     {ok, Result};
                 {error, already_archived} ->
                     {error, {409, <<"工作区已处于归档状态"/utf8>>}};
-                %% GZAPP-02/G3 强交接（与 Owner 归档同口径）：无替代默认时拒绝。
+                %% 计划 §105 强交接（与 Owner 归档同口径）：默认工作区必须先指定替代项。
                 {error, {default_workspace_handover_required, _}} ->
-                    {error, {
-                        409,
-                        <<"该工作区是组织默认工作区，请先设置其他工作区为默认后再归档"/utf8>>
-                    }};
+                    {error,
+                        {
+                            409,
+                            <<
+                                "该工作区是组织默认工作区：请先指定替代的默认工作区再归档"
+                                "（replacement_workspace_id）"/utf8
+                            >>
+                        }};
+                {error, {default_workspace_handover_invalid, InvalidReason}} ->
+                    {error, {409, handover_invalid_msg(InvalidReason)}};
                 {error, Reason} ->
                     _ = ?ERROR_LOG([workspace_admin_archive_failed, WsId, AdmUserId, Reason]),
                     {error, {500, <<"归档失败，请稍后重试"/utf8>>}}
@@ -1032,7 +1099,7 @@ admin_archive(AdmUserId, WsId) ->
             {error, {404, <<"工作区不存在"/utf8>>}}
     end.
 
-admin_archive_tx(Conn, WsId, _AdmUserId) ->
+admin_archive_tx(Conn, WsId, _AdmUserId, ReplacementWsId) ->
     Now = elib_dt:now(),
     %% archived_by 列带 FK → "user"(id)（迁移 00000076），而运营操作者是
     %% adm_user.id，写入库必 23503 回滚成 500——admin 路径固定写 NULL，
@@ -1044,8 +1111,8 @@ admin_archive_tx(Conn, WsId, _AdmUserId) ->
     case elib_pg:execute(Conn, Sql, [Now, WsId]) of
         {ok, 1} ->
             %% 与 Owner 归档同口径：Org 默认工作区同事务交接（C05/ORG-05）
-            ok = organization_default_workspace_app:replace_or_clear_on_archive_tx(
-                Conn, organization_id_of_tx(Conn, WsId), WsId
+            ok = organization_default_workspace_app:replace_on_archive_tx(
+                Conn, organization_id_of_tx(Conn, WsId), WsId, ReplacementWsId
             ),
             {ok, #{
                 workspace_id => WsId,

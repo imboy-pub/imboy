@@ -15,7 +15,7 @@
     upsert_tx/3,
     delete_tx/2,
     ensure_first_workspace_tx/3,
-    replace_or_clear_on_archive_tx/3,
+    set_replacement_on_archive_tx/4,
     remaining_active_ids_tx/3
 ]).
 
@@ -41,7 +41,9 @@ find(OrgId) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 事务内读取 set 目标行（organization_id/status 两列预检用）。
+%% @doc 事务内读取 set 目标行（organization_id/status/owner_id 三列：前两列用于
+%% 同 Org/active 预检，owner_id 用于调用者鉴权——「目标 Workspace 的 owner」
+%% 是合法调用方，见 organization_default_workspace_app:set_tx/4）。
 %% 按 id 读取、**不带 org 过滤**：跨 Org 判定交给 domain
 %% （organization_default_workspace:ensure_settable_target/3 裁决 cross_org），
 %% 调用方不得在本层吞掉归属差异。
@@ -49,7 +51,8 @@ find(OrgId) ->
     {ok, map()} | {error, not_found | term()}.
 target_row_tx(Conn, WsId) ->
     Sql =
-        <<"SELECT organization_id, status FROM ", (workspace_table())/binary, " WHERE id = $1">>,
+        <<"SELECT organization_id, status, owner_id FROM ", (workspace_table())/binary,
+            " WHERE id = $1">>,
     case elib_pg:query(Conn, Sql, [WsId]) of
         {ok, [Row | _]} -> {ok, Row};
         {ok, []} -> {error, not_found};
@@ -121,17 +124,16 @@ ensure_first_workspace_tx(Conn, OrgId, WsId) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 归档同事务交接（workspace_logic archive/admin_archive 调用）：
-%% 被归档者是当前默认且有剩余 active → replace 为剩余最小 active id；
-%% 无剩余 active → {error, no_active_replacement}（GZAPP-02/G3 强交接：
-%% 拒绝归档、由调用方映射稳定错误码，不再 clear）。
-%% replace 策略与 legacy min-ID 读法过渡期等值
-%% （organization_default_workspace:archive_decision/2）。
--spec replace_or_clear_on_archive_tx(any(), integer(), integer()) -> ok | {error, term()}.
-replace_or_clear_on_archive_tx(Conn, OrgId, ArchivedWsId) ->
+%% @doc 归档默认 Workspace 时的**显式替代**交接（计划 §105：归档默认前必须
+%% 先指定替代项）。仅当被归档者是该 Org 当前默认时动作；调用方必须给出
+%% 替代项，且替代项须存在 / 同 Org / active（复用 domain 的单一裁决真源）。
+%% 未指定 → {error, replacement_not_specified}（不再回落到 min-active 自动改指）。
+-spec set_replacement_on_archive_tx(any(), integer(), integer(), integer() | undefined) ->
+    ok | {error, term()}.
+set_replacement_on_archive_tx(Conn, OrgId, ArchivedWsId, ReplacementWsId) ->
     case find_tx(Conn, OrgId) of
         {ok, ArchivedWsId} ->
-            archive_handover_tx(Conn, OrgId, ArchivedWsId);
+            apply_replacement_tx(Conn, OrgId, ReplacementWsId);
         {ok, _Other} ->
             ok;
         {error, not_found} ->
@@ -140,28 +142,32 @@ replace_or_clear_on_archive_tx(Conn, OrgId, ArchivedWsId) ->
             {error, Reason}
     end.
 
-archive_handover_tx(Conn, OrgId, ArchivedWsId) ->
-    case remaining_active_ids_tx(Conn, OrgId, ArchivedWsId) of
-        {ok, Remaining} ->
-            %% 交接裁决集中在 domain 模块（单一决策真源）；
-            %% 此分支必为「被归档者是当前默认」（IsCurrentDefault=true）。
-            %% GZAPP-02/G3：no_active_replacement 上抛拒绝（归档事务回滚，
-            %% 不再 clear 默认关系）。
-            case organization_default_workspace:archive_decision(true, Remaining) of
-                {replace, MinActiveId} ->
-                    Sql =
-                        <<"UPDATE ", (table())/binary, " SET workspace_id = $1, updated_at = now()",
-                            " WHERE organization_id = $2 AND workspace_id = $3">>,
-                    case elib_pg:execute(Conn, Sql, [MinActiveId, OrgId, ArchivedWsId]) of
-                        {ok, _} -> ok;
-                        {error, Reason} -> {error, Reason}
-                    end;
+apply_replacement_tx(_Conn, _OrgId, undefined) ->
+    {error, replacement_not_specified};
+apply_replacement_tx(_Conn, _OrgId, WsId) when not is_integer(WsId); WsId =< 0 ->
+    {error, replacement_not_specified};
+apply_replacement_tx(Conn, OrgId, ReplacementWsId) ->
+    case target_row_tx(Conn, ReplacementWsId) of
+        {ok, #{<<"organization_id">> := RowOrg, <<"status">> := Status}} ->
+            case
+                organization_default_workspace:ensure_settable_target(
+                    OrgId, RowOrg, Status
+                )
+            of
+                ok ->
+                    upsert_tx(Conn, OrgId, ReplacementWsId);
                 {error, Reason} ->
                     {error, Reason}
             end;
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% 说明：原 `archive_handover_tx/3`（自动改指剩余最小 active）已随
+%% 计划 §105 的落地删除——归档默认工作区现在必须由调用方显式给出替代项
+%% （见 set_replacement_on_archive_tx/4），不再有"自动挑一个"的分支。
+%% `remaining_active_ids_tx/3` 与 domain 的 `archive_decision/2` 保留，
+%% 供测试与既有 domain 决策复用。
 
 %%--------------------------------------------------------------------
 %% Internal

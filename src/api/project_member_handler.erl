@@ -43,7 +43,20 @@
 init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = handle_action(Action, Req0, State),
+    %% C2：运行时特性门。`compiled_routes/2` 只按**编译期**特性剔除路由，
+    %% 因此仅用 sys.config / 策略关闭 project 时，project 的 27 条路由仍留在
+    %% cowboy dispatch 内且无逐请求拦截——深链/直达就能绕过配置。
+    %% 这里复用路由层的同一映射（imboy_feature:route_feature/3），不另造开关。
+    Req1 =
+        case imboy_feature:route_feature(api, ?MODULE, Action) of
+            undefined ->
+                handle_action(Action, Req0, State);
+            Feature ->
+                case imboy_feature:ensure_enabled(Req0, Feature) of
+                    ok -> handle_action(Action, Req0, State);
+                    {error, RespReq} -> RespReq
+                end
+        end,
     {ok, Req1, State}.
 
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().

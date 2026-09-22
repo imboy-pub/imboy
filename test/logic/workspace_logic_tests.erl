@@ -1528,7 +1528,7 @@ governor_mocks() ->
             end}
         ]},
         {organization_default_workspace_app, [
-            {'replace_or_clear_on_archive_tx', 3, fun(_C, _O, _W) -> ok end}
+            {'replace_on_archive_tx', 4, fun(_C, _O, _W, _R) -> ok end}
         ]}
     ].
 

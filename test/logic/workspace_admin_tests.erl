@@ -220,7 +220,7 @@ admin_archive_writes_audit_columns_test_() ->
             {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
         ]},
         {organization_default_workspace_app, [
-            {'replace_or_clear_on_archive_tx', 3, fun(_Conn, _OrgId, _WsId) -> ok end}
+            {'replace_on_archive_tx', 4, fun(_Conn, _OrgId, _WsId, _ReplacementWsId) -> ok end}
         ]}
     ],
     {setup,
@@ -280,7 +280,7 @@ admin_archive_is_not_owner_gated_test_() ->
                         end}
                     ]},
                     {organization_default_workspace_app, [
-                        {'replace_or_clear_on_archive_tx', 3, fun(_Conn, _OrgId, _WsId) ->
+                        {'replace_on_archive_tx', 4, fun(_Conn, _OrgId, _WsId, _ReplacementWsId) ->
                             ok
                         end}
                     ]}
@@ -407,7 +407,7 @@ admin_archive_then_business_write_rejected_980_test_() ->
                         end}
                     ]},
                     {organization_default_workspace_app, [
-                        {'replace_or_clear_on_archive_tx', 3, fun(_Conn, _OrgId, _WsId) ->
+                        {'replace_on_archive_tx', 4, fun(_Conn, _OrgId, _WsId, _ReplacementWsId) ->
                             ok
                         end}
                     ]},

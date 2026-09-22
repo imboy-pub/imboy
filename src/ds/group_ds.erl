@@ -595,8 +595,12 @@ do_dissolve(Uid, Gid, G) ->
                     }
                 )
             of
-                {ok, _} -> ok;
-                {error, LogReason} -> ?ERROR_LOG([group_log_add_failed, Gid, Uid, LogReason])
+                {ok, _} ->
+                    ok;
+                {error, LogReason} ->
+                    %% R3-6：解散是不可恢复操作，审计行缺失等于不可追溯——
+                    %% 与"业务数据不物理删除"同级，必须整体回滚而不是留痕后继续。
+                    throw({abort_tx, {group_log_add_failed, Gid, Uid, LogReason}})
             end,
 
             % 删除群组
@@ -631,13 +635,17 @@ do_dissolve(Uid, Gid, G) ->
                                 {ok, _} ->
                                     ok;
                                 {error, BatchReason} ->
-                                    ?ERROR_LOG([group_log_batch_add_failed, Gid, BatchReason])
+                                    %% R3-6：同 101 审计——成员变更审计缺失即回滚
+                                    throw(
+                                        {abort_tx, {group_log_batch_add_failed, Gid, BatchReason}}
+                                    )
                             end,
                             ok
                     end;
-                {error, _Reason} ->
-                    %% 忽略错误，继续执行
-                    ok
+                {error, Reason} ->
+                    %% R3-6：成员列表读失败不能当"没有成员"放过——
+                    %% 那会删掉群却一条成员审计都不写。
+                    throw({abort_tx, {group_member_list_failed, Gid, Reason}})
             end,
 
             % 删除群成员
