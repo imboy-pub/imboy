@@ -1283,6 +1283,20 @@ tables:
     mechanism: delete rows by TTL (expires_at)
     review: self-evident
     retention: n/a
+  organization_invite_code:
+    action: delete
+    owner: organization
+    reason: 该用户创建的企业邀请码
+    mechanism: delete rows by created_by column
+    review: self-evident
+    retention: n/a
+  owner_activation_invite:
+    action: delete
+    owner: organization
+    reason: 待激活 Owner 邀请，含手机号 PII 与 token digest
+    mechanism: delete rows by created_by or owner_user_id column
+    review: self-evident
+    retention: n/a
 exclusions:
   adm_role:
     reason: 管理端 RBAC 角色配置，非终端用户数据
