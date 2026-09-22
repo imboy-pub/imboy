@@ -555,24 +555,45 @@ face2face_save(Code, Gid, Uid) ->
 dissolve_group(Uid, _Gid, OwnerUid, _G) when Uid =/= OwnerUid ->
     {error, <<"只有拥有者才能够解散该群，或者群已解散"/utf8>>};
 dissolve_group(Uid, Gid, _, G) ->
-    do_dissolve(Uid, Gid, G).
+    do_dissolve(Uid, Gid, G, owner).
 
 %% @doc GZAPP-03：Organization owner/admin 授权解散（非群主）。
-%% **调用方必须先完成 organization_resource_authority:ensure_manager/2 授权**——
-%% 本函数不再做群主校验，仅承载与群主路径完全相同的事务语义
+%% R3-5：**授权判定移入本函数的事务内**（不再由调用方提前判定）——
+%% 判定与删除同一事务、同一 Conn，撤权与解散无法交错，「先判定后写入」的
+%% 角色变更窗口关闭。事务语义与群主路径完全一致
 %% （归档写守卫 / E2EE 世代关闭 / group_log 审计 / 消息保留）。
 -spec dissolve_by_org_manager(integer(), integer(), map()) -> ok | {error, binary()}.
 dissolve_by_org_manager(Uid, Gid, G) ->
-    do_dissolve(Uid, Gid, G).
+    do_dissolve(Uid, Gid, G, org_manager).
 
--spec do_dissolve(integer(), integer(), map()) -> ok | {error, binary()}.
-do_dissolve(Uid, Gid, G) ->
+%% 事务内授权判定（R3-5）。失败以 abort_tx 标记上抛，由 with_tx 归一后
+%% 在下方 case 中映射回既有稳定文案（不区分「非群主」与「非 org 管理者」）。
+-spec ensure_dissolve_authz_tx(owner | org_manager, any(), integer(), integer()) -> ok.
+ensure_dissolve_authz_tx(owner, _Conn, _Gid, _Uid) ->
+    ok;
+ensure_dissolve_authz_tx(org_manager, Conn, Gid, Uid) ->
+    case organization_resource_authority:ensure_manager_tx(Conn, {group, Gid}, Uid) of
+        ok ->
+            ok;
+        {error, {403, _Msg}} ->
+            throw({abort_tx, dissolve_org_manager_forbidden});
+        {error, {503, Msg}} ->
+            throw({abort_tx, {dissolve_authz_unavailable, Msg}})
+    end.
+
+-spec do_dissolve(integer(), integer(), map(), owner | org_manager) ->
+    ok | {error, binary()}.
+do_dissolve(Uid, Gid, G, Authz) ->
     Now = elib_dt:now(),
     {ok, Body} = jsone_encode:encode(G, [native_utf8]),
     ToUidLi = member_uids(Gid),
 
     case
         elib_pg:with_tx(fun(Conn) ->
+            %% R3-5 授权判定（同事务、同 Conn）：群主路径已在函数头按
+            %% OwnerUid 判定（同进程无窗口）；org manager 路径在此处判定，
+            %% 判定依据是本事务快照。
+            ok = ensure_dissolve_authz_tx(Authz, Conn, Gid, Uid),
             %% T7 归档写守卫（P0 收口）：解散 = workspace 域群的最大写操作，
             %% archived 时整事务拒绝（{group, Gid} 行锁与解散同事务）；
             %% personal 群由 resolver 直通，零行为变化。
@@ -671,6 +692,13 @@ do_dissolve(Uid, Gid, G) ->
         {error, {980, _ArchivedMsg} = Archived} ->
             %% T7 收口：归档拒绝（稳定错误码 980）原样透传，不吞成通用失败
             {error, Archived};
+        {error, dissolve_org_manager_forbidden} ->
+            %% R3-5：与群主路径同一拒绝文案（不区分「非群主」与「非 org
+            %% 管理者」，不泄露群/组织存在性）
+            {error, <<"只有拥有者才能够解散该群，或者群已解散"/utf8>>};
+        {error, {dissolve_authz_unavailable, AuthzMsg}} ->
+            %% 授权链 DB 异常 fail-closed（不降级放行）
+            {error, AuthzMsg};
         Err ->
             ?ERROR_LOG([dissolve_group_tx_failed, Gid, Uid, Err]),
             {error, <<"解散群组失败"/utf8>>}

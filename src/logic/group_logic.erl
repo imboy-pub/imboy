@@ -548,20 +548,14 @@ dissolve(Uid, Gid) ->
     end.
 
 %% GZAPP-03/D04：群主之外的第二授权源——本群所属 Workspace 的 Organization
-%% owner/admin（企业治理者可解散本 org 任意 ws 域群）。授权失败保持既有
-%% 拒绝文案（不区分「非群主」与「非 org 管理者」，不泄露群/组织存在性）；
-%% 授权链 DB 异常 fail-closed 503。审计仍走 group_ds 的 group_log type=101
+%% owner/admin（企业治理者可解散本 org 任意 ws 域群）。
+%% R3-5：授权判定**已下沉到 group_ds:dissolve_by_org_manager/3 的事务内**
+%% （判定与删除同事务、同 Conn），本层只做转发；拒绝文案与 fail-closed 503
+%% 语义不变（在 group_ds 的事务结果映射里）。审计仍走 group_log type=101
 %% （option_uid = 实际操作者 uid），消息行不删除。
 -spec dissolve_by_org_manager(integer(), integer(), map()) -> ok | {error, binary()}.
 dissolve_by_org_manager(Uid, Gid, G) ->
-    case organization_resource_authority:ensure_manager({group, Gid}, Uid) of
-        ok ->
-            group_ds:dissolve_by_org_manager(Uid, Gid, G);
-        {error, {403, _Msg}} ->
-            {error, <<"只有拥有者才能够解散该群，或者群已解散"/utf8>>};
-        {error, {503, Msg}} ->
-            {error, Msg}
-    end.
+    group_ds:dissolve_by_org_manager(Uid, Gid, G).
 
 %% @doc 分页查询当前用户作为群主的群组列表
 %% @param OwnerUid 群主用户ID
