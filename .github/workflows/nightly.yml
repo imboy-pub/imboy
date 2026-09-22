@@ -433,6 +433,102 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+
+  # ----------------------------------------------------------------
+  # 真 PostgreSQL 行为 harness 门（GZAPP 2026-09-22 纳入）
+  #
+  # 三支 harness（25 + 53 + 11 探针）是"默认工作区鉴权 / 归档强交接 / 建企模板 /
+  # 成员有权 Workspace / 群与频道的双授权源 / 邀请码加入"这一整片行为的真库证据，
+  # 此前只是"手工可复跑"，没有任何跑道会替人跑它——本轮它就是靠手工复跑才抓到
+  # 一个主路径恒 500 的缺陷。纳入 nightly 是把它从"靠自觉"变成"有跑道"。
+  #
+  # 为什么在 job 内 docker build 而不是用现成镜像：本仓 PG 镜像（docker/pg18_Dockerfile）
+  # 依赖 TimescaleDB / pgRouting / roaringbitmap / pg_jieba 源码编译，仓库未公开发布
+  # 该镜像；job 内构建 + GHA 层缓存是**不推送任何 registry** 的自足方案（避免把镜像
+  # 变成需要凭据/对外发布的动作）。代价是首次构建慢，故 timeout 给到 120 分钟。
+  #
+  # ⚠️ 校验状态（勿误读为已验证）：本 job 的 docker-build 路径**未在本机验证**
+  # （本机无 CI runner）；已在本机验证的是它调用的那一步——
+  # `scripts/run_pg_behavior_harnesses.sh`（含 head 自检、三支 harness、失败退出码），
+  # 见 run/FINAL/FIX-ROUND-2026-09-22.md 的 R3-5/门禁小节。首次 nightly 需人工盯。
+  # ----------------------------------------------------------------
+  pg-behavior-harnesses:
+    name: PG behavior harnesses (nightly, classified)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    needs: [compile]
+    outputs:
+      classify: ${{ steps.gate.outputs.summary }}
+      new_items: ${{ steps.gate.outputs.new_items }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+          key: ${{ runner.os }}-otp28-pgharness-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Build PG image from docker/pg18_Dockerfile (no registry push)
+        run: |
+          docker buildx build             --file docker/pg18_Dockerfile             --tag imboy-pg18:ci             --load             --cache-from type=gha,scope=pg18             --cache-to type=gha,scope=pg18,mode=max             docker/
+
+      - name: Start PG and wait for readiness
+        run: |
+          set -euo pipefail
+          docker run -d --name imboy_pg_ci             -e POSTGRES_USER=imboy_user             -e POSTGRES_PASSWORD=abc54321             -e POSTGRES_DB=imboy_ci             -p 5432:5432 imboy-pg18:ci
+          for i in $(seq 1 60); do
+            if docker exec imboy_pg_ci pg_isready -U imboy_user -d imboy_ci >/dev/null 2>&1; then
+              echo "PG ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::PG 未在 60s 内就绪"; docker logs imboy_pg_ci; exit 1
+
+      - name: Apply migrations to head
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "5432"
+          PGUSER: imboy_user
+          PGPASSWORD: abc54321
+          PGDATABASE: imboy_ci
+        run: |
+          set -euo pipefail
+          # 迁移文件不含 CREATE EXTENSION：先铺齐所需扩展（镜像已带这些扩展，
+          # 此处只做 CREATE EXTENSION，不重复编译）
+          for ext in timescaledb postgis pg_jieba pgcrypto pg_trgm vector citext \
+                     btree_gin btree_gist '"uuid-ossp"' hstore unaccent; do
+            eval "docker exec imboy_pg_ci psql -U imboy_user -d imboy_ci -c \"CREATE EXTENSION IF NOT EXISTS $ext;\""
+          done
+          ./scripts/drill_migrate.escript up
+
+      - name: Run PG behavior harnesses (retry + classify)
+        id: gate
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "5432"
+          PGUSER: imboy_user
+          PGPASSWORD: abc54321
+          PGDATABASE: imboy_ci
+        run: |
+          bash .qa/nightly-gate.sh pg-behavior-harnesses pg-harness.log \
+            -- make pg-harness-check
+
+      - name: Dump PG logs on failure
+        if: failure()
+        run: docker logs imboy_pg_ci || true
+
   # ----------------------------------------------------------------
   # P4-Q4 — QA 汇总 + NEW_FAILURE 自动建 gitee issue
   # 汇总五个慢门的 QA_CLASSIFY 机器行；存在 NEW>0 时经 gitee API v5 建 issue。
@@ -446,7 +542,7 @@ jobs:
     name: QA summary + gitee issue on NEW_FAILURE
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [full-eunit, dialyze, gradualize, eqwalize, elvis]
+    needs: [full-eunit, dialyze, gradualize, eqwalize, elvis, pg-behavior-harnesses]
     if: always()
     env:
       GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
@@ -464,6 +560,7 @@ jobs:
             echo '${{ needs.gradualize.outputs.classify }}'
             echo '${{ needs.eqwalize.outputs.classify }}'
             echo '${{ needs.elvis.outputs.classify }}'
+            echo '${{ needs.pg-behavior-harnesses.outputs.classify }}'
           } | grep '^QA_CLASSIFY ' | tee /tmp/qa-classify-all.txt || true
 
           total_new=$(awk '{for(i=1;i<=NF;i++) if($i ~ /^NEW=/){sub(/^NEW=/,"",$i); s+=$i}} END{print s+0}' /tmp/qa-classify-all.txt)

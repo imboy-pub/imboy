@@ -33,6 +33,17 @@ gates:
     known_failures: []
 
   # ---------------------------------------------------------------------------
+  # pg-behavior-harnesses —— 失败标识粒度：harness 脚本路径（test/lib/.../*.escript）
+  # 提取依据：.qa/../scripts/run_pg_behavior_harnesses.sh 打印的 "FAIL: <harness>" 行。
+  # 零已知失败：真库行为矩阵是本 run 的核心证据面，任何一条探针红都必须阻断，
+  # 不允许沉淀成 KNOWN 存量（沉淀等于把行为回归降级成噪声）。
+  # ---------------------------------------------------------------------------
+  pg-behavior-harnesses:
+    source: "首次纳入（GZAPP 2026-09-22）：本地三支 harness 全绿，known 故意留空"
+    note: "nightly 侧由 .github/workflows/nightly.yml 的 pg-behavior-harnesses job 调用；该 job 先按 docker/pg18_Dockerfile 构建 PG 镜像再起库（不推任何 registry）"
+    known_failures: []
+
+  # ---------------------------------------------------------------------------
   # dialyze —— 失败标识粒度：警告所在文件路径（src/xxx.erl）
   # 提取依据：dialyzer 原生 "src/foo.erl:123: Warning:" 行
   # ---------------------------------------------------------------------------

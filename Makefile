@@ -335,6 +335,16 @@ terminology-check: app ## 校验 priv/terminology/*.json 的结构、profile 与
 	@erl -noinput -boot no_dot_erlang -pa imboy/ebin -pa ebin \
 		-eval 'ok = product_terminology:validate_all(), halt().'
 
+# 真 PostgreSQL 行为 harness 门（GZAPP：默认工作区鉴权 / 归档强交接 / 建企模板 /
+# 成员有权 Workspace / 群与频道的双授权源）。三支 harness 都是真库行为矩阵，
+# 没有它们这条证据面就只是"手工可复跑"。
+# 前置：目标库必须迁移到与本仓 priv/migrations 一致的 head（脚本会自检并
+#      拒绝在 schema 来源不符的库上跑），且集群已铺齐所需扩展。
+# 用法: make pg-harness-check PGDATABASE=scratch_gzapp_fix_verify PGPORT=4323
+.PHONY: pg-harness-check
+pg-harness-check: ## 跑三支真库行为 harness（需已迁移的同源 PG）
+	@bash scripts/run_pg_behavior_harnesses.sh
+
 # 跨仓特性产物一致性（GZAPP-C1 回归守卫，ADR-0007 特性机制）。
 # 清单 → 11 份产物分落三仓；任一仓产物与清单不一致即非零退出。
 # 需要 imboyapp / imboyadmin 与 imboy 同父目录（或用 APP_DIR/ADMIN_DIR 指定）。
