@@ -46,7 +46,9 @@ capability_meta_catalog() ->
     #{
         storage_mode => #{
             type => enum,
-            options => [archived, compliance_e2ee, secure_e2ee]
+            %% disabled = E2EE 全局硬闸（见 imboy_policy:e2ee_disabled/0）：
+            %% 取该值时密钥端点关闭、明文校验放行、群级加密被忽略。
+            options => [disabled, archived, compliance_e2ee, secure_e2ee]
         },
         e2ee_mode => #{
             type => enum,

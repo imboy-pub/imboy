@@ -372,3 +372,40 @@ nearby_gid_with_no_results_test_() ->
             ?assertEqual({ok, []}, Result)
         end
     ).
+
+%% ===================================================================
+%% 群级 E2EE 开启入口（全局硬闸 guard）
+%% ===================================================================
+
+%% 全局硬闸（storage_mode=disabled）下必须拒绝开启群 E2EE。
+%% 放行会造出"全局关着、这个群开着"的裂缝：该群成员的设备会按群标志继续加密，
+%% 而密钥端点已随硬闸关闭，群消息必然发不出去；且群 E2EE 在 API 上只能 0→1，
+%% 事后无法从客户端回退。
+%% 断言"未触达 group_member_ds"是刻意的：拦截必须在查库/查角色之前完成，
+%% 否则硬闸部署下这个入口会带上一次无意义的 PG 依赖。
+set_e2ee_mode_refused_under_global_hard_off_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [{'e2ee_disabled', 0, fun() -> true end}]},
+            {group_member_ds, [
+                {'find_by_gid_and_uid', 3, fun(_, _, _) ->
+                    erlang:error(unexpected_group_member_lookup)
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({error, _}, group_logic:set_e2ee_mode(1001, 88, 1))
+        end
+    ).
+
+%% 对照组：非硬闸部署维持既有语义（0→1 单向拒绝不变），证明上面的拒绝来自硬闸
+set_e2ee_mode_one_way_error_kept_without_hard_off_test_() ->
+    ?WITH_MECKS(
+        [{imboy_policy, [{'e2ee_disabled', 0, fun() -> false end}]}],
+        fun() ->
+            ?assertEqual(
+                {error, <<"e2ee_mode 仅支持单向开启（0→1）"/utf8>>},
+                group_logic:set_e2ee_mode(1001, 88, 0)
+            )
+        end
+    ).

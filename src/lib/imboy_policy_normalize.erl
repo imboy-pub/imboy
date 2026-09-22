@@ -167,25 +167,32 @@ normalize_profile_input("enterprise") ->
 normalize_profile_input(_) ->
     error.
 
--spec normalize_storage_mode(term(), atom()) -> archived | compliance_e2ee | secure_e2ee.
+-spec normalize_storage_mode(term(), atom()) ->
+    archived | compliance_e2ee | secure_e2ee | disabled.
 normalize_storage_mode(archived, _Default) ->
     archived;
 normalize_storage_mode(compliance_e2ee, _Default) ->
     compliance_e2ee;
 normalize_storage_mode(secure_e2ee, _Default) ->
     secure_e2ee;
+normalize_storage_mode(disabled, _Default) ->
+    disabled;
 normalize_storage_mode(<<"archived">>, _Default) ->
     archived;
 normalize_storage_mode(<<"compliance_e2ee">>, _Default) ->
     compliance_e2ee;
 normalize_storage_mode(<<"secure_e2ee">>, _Default) ->
     secure_e2ee;
+normalize_storage_mode(<<"disabled">>, _Default) ->
+    disabled;
 normalize_storage_mode("archived", _Default) ->
     archived;
 normalize_storage_mode("compliance_e2ee", _Default) ->
     compliance_e2ee;
 normalize_storage_mode("secure_e2ee", _Default) ->
     secure_e2ee;
+normalize_storage_mode("disabled", _Default) ->
+    disabled;
 normalize_storage_mode(_, Default) ->
     Default.
 

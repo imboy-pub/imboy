@@ -484,6 +484,19 @@ edit(Uid, Gid, Data) ->
 set_e2ee_mode(_Uid, _Gid, Mode) when Mode =/= 1 ->
     {error, <<"e2ee_mode 仅支持单向开启（0→1）"/utf8>>};
 set_e2ee_mode(Uid, Gid, 1) ->
+    %% 全局硬闸下拒绝开启：storage_mode=disabled 表示部署整体不使用 E2EE，
+    %% 此时放行会造出"全局关着、这个群开着"的裂缝——该群的成员设备会按群标志
+    %% 继续加密，而密钥端点已关闭，群消息必然发不出去（且无法从后台回退）。
+    case imboy_policy:e2ee_disabled() of
+        true ->
+            {error, <<"当前部署已关闭端到端加密，无法开启群加密"/utf8>>};
+        false ->
+            do_set_e2ee_mode(Uid, Gid)
+    end.
+
+%% @private 群级 E2EE 开启主体（全局硬闸已在 set_e2ee_mode/3 前置拦截）。
+-spec do_set_e2ee_mode(integer(), integer()) -> ok | {error, binary()}.
+do_set_e2ee_mode(Uid, Gid) ->
     Member = group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"role">>),
     Role = maps:get(<<"role">>, Member, 0),
     case ?IS_OWNER_ROLE(Role) of

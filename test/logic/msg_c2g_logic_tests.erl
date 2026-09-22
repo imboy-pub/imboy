@@ -1185,6 +1185,8 @@ c2g_edit_plaintext_blocked_when_group_e2ee_required_test_() ->
             ]},
             {imboy_policy, [
                 %% 全局策略放行，隔离出群级门的独立作用
+                %% （e2ee_disabled=false 让硬闸分支确定性地缺席，避免测试受部署配置影响）
+                {'e2ee_disabled', 0, fun() -> false end},
                 {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end},
                 {'content_bearing_action', 1, fun(<<"message_edit">>) -> true end},
                 {'encrypted_message_body', 3, fun(_, _, _) -> false end}
@@ -1403,5 +1405,51 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
             ?assertEqual(<<"e2ee_room_key">>, maps:get(<<"action">>, Delivered)),
             ?assertEqual(<<"e2ee_room_key">>, maps:get(<<"msg_type">>, Delivered)),
             ?assertNot(maps:is_key(<<"e2ee">>, Delivered))
+        end
+    ).
+
+%% ===================================================================
+%% 群级门的全局硬闸旁路（storage_mode=disabled）
+%% ===================================================================
+
+%% 硬闸下整门放行：群标志仍是 1、载荷是明文，也必须 ok。
+%% 否则"关掉 E2EE 的部署"里那些历史 E2EE 群会变成发不出消息的死群——
+%% 而群 E2EE 只能 0→1，客户端无法自救。
+group_e2ee_gate_passes_through_under_global_hard_off_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [{'e2ee_disabled', 0, fun() -> true end}]},
+            {group_ds, [{'e2ee_mode', 1, fun(88) -> {ok, 1} end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                ok,
+                msg_c2g_logic:group_e2ee_gate(
+                    88, <<"text">>, <<"message">>, null, <<"{\"x\":1}">>
+                )
+            ),
+            %% 硬闸判定在最前：不该再去读群标志（历史存量在关档位后不再有权威性）
+            ?assertEqual(0, meck:num_calls(group_ds, e2ee_mode, 1))
+        end
+    ).
+
+%% 对照组：非硬闸部署下同一入参仍被拒，证明上面的放行来自硬闸而非群门被改坏
+group_e2ee_gate_keeps_blocking_without_hard_off_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [
+                {'e2ee_disabled', 0, fun() -> false end},
+                {'content_bearing_action', 1, fun(<<"message">>) -> true end},
+                {'encrypted_message_body', 3, fun(_, _, _) -> false end}
+            ]},
+            {group_ds, [{'e2ee_mode', 1, fun(88) -> {ok, 1} end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"encrypted_message_required">>},
+                msg_c2g_logic:group_e2ee_gate(
+                    88, <<"text">>, <<"message">>, null, <<"{\"x\":1}">>
+                )
+            )
         end
     ).

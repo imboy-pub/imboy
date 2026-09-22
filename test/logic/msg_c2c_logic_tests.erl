@@ -1369,3 +1369,25 @@ c2c_agent_gate_rejection_zero_side_effects_test_() ->
             ?assertEqual(0, meck:num_calls(push_notification_logic, maybe_push_for_c2c, 4))
         end
     ).
+
+%% 【硬闸·关键】storage_mode=disabled 是"本部署整体不用 E2EE"的硬闸：哪怕配置里
+%% e2ee_mode 仍写着 required（矛盾组合），明文 C2C 也必须放行——这是"一个开关能
+%% 关死"的验收面；不放行就等于"关掉 E2EE 的部署里 C2C 文本全部发不出去"。
+%% 对照组见 c2c_plaintext_blocked_by_real_policy_when_e2ee_required_test_（同一份
+%% 配置去掉硬闸值就恢复拒收）。
+c2c_plaintext_allowed_when_storage_mode_hard_off_test_() ->
+    ?WITH_MECKS(
+        [
+            policy_config_meck(#{storage_mode => disabled, e2ee_mode => required})
+            | c2c_pipeline_mecks()
+        ],
+        fun() ->
+            ?assertEqual(
+                ok,
+                msg_c2c_logic:c2c(
+                    <<"msg_plain_allowed_hard_off">>, 123, plaintext_c2c_data()
+                )
+            ),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11))
+        end
+    ).

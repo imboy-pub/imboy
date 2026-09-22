@@ -74,25 +74,32 @@ is_charlist([H | T]) when is_integer(H), H >= 0, H =< 16#10FFFF ->
 is_charlist(_) ->
     false.
 
--spec parse_storage_mode(term()) -> {ok, archived | compliance_e2ee | secure_e2ee} | error.
+-spec parse_storage_mode(term()) ->
+    {ok, archived | compliance_e2ee | secure_e2ee | disabled} | error.
 parse_storage_mode(archived) ->
     {ok, archived};
 parse_storage_mode(compliance_e2ee) ->
     {ok, compliance_e2ee};
 parse_storage_mode(secure_e2ee) ->
     {ok, secure_e2ee};
+parse_storage_mode(disabled) ->
+    {ok, disabled};
 parse_storage_mode(<<"archived">>) ->
     {ok, archived};
 parse_storage_mode(<<"compliance_e2ee">>) ->
     {ok, compliance_e2ee};
 parse_storage_mode(<<"secure_e2ee">>) ->
     {ok, secure_e2ee};
+parse_storage_mode(<<"disabled">>) ->
+    {ok, disabled};
 parse_storage_mode("archived") ->
     {ok, archived};
 parse_storage_mode("compliance_e2ee") ->
     {ok, compliance_e2ee};
 parse_storage_mode("secure_e2ee") ->
     {ok, secure_e2ee};
+parse_storage_mode("disabled") ->
+    {ok, disabled};
 parse_storage_mode(_) ->
     error.
 

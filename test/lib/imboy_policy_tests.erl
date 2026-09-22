@@ -608,7 +608,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             maps:get(<<"plugins">>, OriginSections)
         ),
         ?assertEqual(
-            [<<"archived">>, <<"compliance_e2ee">>, <<"secure_e2ee">>],
+            [<<"disabled">>, <<"archived">>, <<"compliance_e2ee">>, <<"secure_e2ee">>],
             maps:get(<<"options">>, maps:get(<<"storage_mode">>, Capabilities))
         ),
         ?assertEqual(
@@ -2197,3 +2197,113 @@ encrypted_message_body_matrix_test() ->
     ?assertEqual(
         true, imboy_policy:encrypted_message_body(<<"text">>, #{<<"e2ee">> => true}, <<"nonempty">>)
     ).
+
+%% ===================================================================
+%% E2EE 全局硬闸（storage_mode = disabled，语义 A）
+%%
+%% 产品语义：storage_mode=disabled 表示「本部署整体不使用 E2EE」。它是硬闸——
+%% 出现该值时，一切"要求加密 / 开放密钥端点 / 群级加密"的判据都必须失效，
+%% 防止"配置只写对一半"又回到"要求加密却拿不到密钥"的老死锁
+%% （生产实测过：storage_mode=compliance_e2ee + e2ee_mode=disabled）。
+%% ===================================================================
+
+%% 矛盾组合：硬闸 + e2ee_mode=required 时，加密要求与密钥端点必须双双关闭
+hard_off_storage_mode_dominates_e2ee_mode_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun default_config_get/2},
+                {'env', 2, fun
+                    (product_profile, community) -> community;
+                    (capabilities, #{}) -> #{storage_mode => disabled, e2ee_mode => required};
+                    (_Key, Default) -> Default
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(true, imboy_policy:e2ee_disabled()),
+            ?assertEqual(false, imboy_policy:message_encryption_required()),
+            ?assertEqual(false, imboy_policy:e2ee_enabled())
+        end
+    ).
+
+%% 对照组（防"把硬闸写成无条件关闭"）：非硬闸的加密档位维持原语义不变
+hard_off_absent_keeps_encrypt_required_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun default_config_get/2},
+                {'env', 2, fun
+                    (product_profile, community) ->
+                        community;
+                    (capabilities, #{}) ->
+                        #{storage_mode => compliance_e2ee, e2ee_mode => required};
+                    (_Key, Default) ->
+                        Default
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(false, imboy_policy:e2ee_disabled()),
+            ?assertEqual(true, imboy_policy:message_encryption_required()),
+            ?assertEqual(true, imboy_policy:e2ee_enabled())
+        end
+    ).
+
+%% 硬闸下 features.e2ee 被强制关掉：/api/v1/app/features 与 /api/v1/app/policy
+%% 的 features 都读同一份结果，客户端据此隐藏 E2EE 入口（设备密钥/密钥管理/
+%% 合规审计密钥）；路由级功能门也读它，故密钥端点是"端点开关 + 功能门"双层关闭。
+hard_off_forces_e2ee_feature_off_in_view_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun default_config_get/2},
+                {'env', 2, fun
+                    (product_profile, community) -> community;
+                    (capabilities, #{}) -> #{storage_mode => disabled, e2ee_mode => disabled};
+                    (_Key, Default) -> Default
+                end}
+            ]}
+        ],
+        fun() ->
+            Features = maps:get(<<"features">>, imboy_policy:effective_view()),
+            ?assertEqual(false, maps:get(<<"e2ee">>, Features, undefined))
+        end
+    ).
+
+%% 对照组：硬闸缺席时 e2ee 功能位保持预设值（true），证明上一条是硬闸生效
+hard_off_absent_keeps_e2ee_feature_on_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun default_config_get/2},
+                {'env', 2, fun
+                    (product_profile, community) -> community;
+                    (capabilities, #{}) -> #{storage_mode => archived, e2ee_mode => disabled};
+                    (_Key, Default) -> Default
+                end}
+            ]}
+        ],
+        fun() ->
+            Features = maps:get(<<"features">>, imboy_policy:effective_view()),
+            ?assertEqual(true, maps:get(<<"e2ee">>, Features, undefined))
+        end
+    ).
+
+%% 枚举三处必须一致接受 disabled：codec（真源）、normalize（展示/落库）、
+%% 后台保存白名单。少一处就会出现"后台选不了 / 存进去被静默回退"的经典坑。
+storage_mode_disabled_is_accepted_on_all_paths_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual({ok, disabled}, imboy_policy_codec:parse_storage_mode(disabled)),
+        ?assertEqual({ok, disabled}, imboy_policy_codec:parse_storage_mode(<<"disabled">>)),
+        ?assertEqual({ok, disabled}, imboy_policy_codec:parse_storage_mode("disabled")),
+        ?assertEqual(disabled, imboy_policy_normalize:normalize_storage_mode(disabled, archived)),
+        ?assertEqual(
+            disabled, imboy_policy_normalize:normalize_storage_mode(<<"disabled">>, archived)
+        ),
+        ?assertEqual(disabled, imboy_policy_normalize:normalize_storage_mode("disabled", archived)),
+        ?assertEqual(
+            {ok, disabled},
+            imboy_policy_normalize:normalize_capability_payload_value(storage_mode, <<"disabled">>)
+        )
+    end).

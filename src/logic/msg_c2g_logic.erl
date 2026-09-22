@@ -232,13 +232,16 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, RequiredRole) ->
 %% e2ee_mode=1 的群拒收未加密的内容消息；群配置查询失败同样拒发（fail-closed，
 %% 修掉项目欠账"E2EE fail-closed 无群级标志"）。非内容动作（撤回/已读等）放行。
 %% 热路径读走 group_ds:e2ee_mode 缓存，不逐条裸查 PG。
+%% 全局硬闸（storage_mode=disabled）下整门放行：部署已声明不使用 E2EE，此时仍按
+%% 群标志要求密文会把"关掉 E2EE 的部署"里的老群变成发不出消息的死群。
+%% 硬闸判定放在最前，且不看群标志——群标志是历史存量，关档位后它不再有权威性。
 -spec group_e2ee_gate(integer(), binary(), binary(), term(), binary()) ->
     ok | {error, binary()}.
 group_e2ee_gate(Gid, MsgType, Action, E2EE, Payload) ->
-    case imboy_policy:content_bearing_action(Action) of
-        false ->
-            ok;
+    case imboy_policy:e2ee_disabled() orelse not imboy_policy:content_bearing_action(Action) of
         true ->
+            ok;
+        false ->
             case group_ds:e2ee_mode(Gid) of
                 {ok, 1} ->
                     case imboy_policy:encrypted_message_body(MsgType, E2EE, Payload) of

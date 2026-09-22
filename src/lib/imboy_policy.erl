@@ -36,6 +36,7 @@
     message_body_visible/0,
     message_encryption_required/0,
     e2ee_enabled/0,
+    e2ee_disabled/0,
     validate_message_write/5,
     content_bearing_action/1,
     encrypted_message_body/3,
@@ -167,10 +168,27 @@ message_encryption_required() ->
     Capabilities = effective_capabilities(),
     StorageMode = maps:get(storage_mode, Capabilities, archived),
     E2eeMode = maps:get(e2ee_mode, Capabilities, disabled),
-    StorageMode =:= secure_e2ee orelse
-        StorageMode =:= compliance_e2ee orelse
-        E2eeMode =:= required orelse
-        E2eeMode =:= compliance.
+    %% storage_mode=disabled 是硬闸（E2EE 整体关闭）：任一加密档判据都不再生效，
+    %% 包括"storage_mode 在 __e2ee 档强推加密"那条防死锁规则——该规则的前提是
+    %% 部署仍要求加密；硬闸下前提不成立，故必须先判 hard off。
+    not hard_off_storage_mode(StorageMode) andalso
+        (StorageMode =:= secure_e2ee orelse
+            StorageMode =:= compliance_e2ee orelse
+            E2eeMode =:= required orelse
+            E2eeMode =:= compliance).
+
+-spec e2ee_disabled() -> boolean().
+%% @doc E2EE 全局硬闸：`storage_mode = disabled` 时整个 E2EE 体系视为关闭。
+%%  唯一的真源在此；密钥类端点（e2ee_enabled/0）、明文校验
+%%  （message_encryption_required/0）、群级加密门与"开启群 E2EE"入口
+%%  都以此为准，避免同一语义在多处各写一遍而漂移。
+e2ee_disabled() ->
+    hard_off_storage_mode(maps:get(storage_mode, effective_capabilities(), archived)).
+
+%% @private 硬闸判定（保持单点，便于 greps 与后续扩档）。
+-spec hard_off_storage_mode(term()) -> boolean().
+hard_off_storage_mode(disabled) -> true;
+hard_off_storage_mode(_) -> false.
 
 -spec e2ee_enabled() -> boolean().
 %% 与 message_encryption_required/0 的判定源对齐：storage_mode 为
@@ -178,13 +196,16 @@ message_encryption_required() ->
 %% 密钥上报/查询端点也必须放行——否则形成「要求加密却 5190 拒绝密钥上报」的
 %% 死锁（生产实测 storage_mode=compliance_e2ee + e2ee_mode=disabled 组合，
 %% 客户端 no_recipient_keys，C2C 全部发不出去）。
+%% storage_mode=disabled 硬闸下相反：端点必须**关闭**，否则部署已声明不用 E2EE
+%% 却仍开放密钥面，与"整体关闭"语义自相矛盾。
 e2ee_enabled() ->
     Capabilities = effective_capabilities(),
     StorageMode = maps:get(storage_mode, Capabilities, archived),
     E2eeMode = maps:get(e2ee_mode, Capabilities, disabled),
-    StorageMode =:= secure_e2ee orelse
-        StorageMode =:= compliance_e2ee orelse
-        E2eeMode =/= disabled.
+    not hard_off_storage_mode(StorageMode) andalso
+        (StorageMode =:= secure_e2ee orelse
+            StorageMode =:= compliance_e2ee orelse
+            E2eeMode =/= disabled).
 
 -spec validate_message_write(binary(), binary(), binary(), term(), term()) ->
     ok | {error, binary()}.
@@ -539,7 +560,22 @@ effective_policy_components(Profile, CapabilityConfig, FeatureConfig) ->
     Capabilities = effective_capabilities_for_profile(Profile, CapabilityConfig),
     BaseFeatures = effective_features_for_profile(Profile, FeatureConfig),
     {Features, Plugins} = resolve_plugin_constraints(BaseFeatures, Capabilities),
-    {Capabilities, Features, Plugins}.
+    {Capabilities, apply_hard_off_feature_overrides(Capabilities, Features), Plugins}.
+
+-spec apply_hard_off_feature_overrides(map(), map()) -> map().
+%% @private 硬闸下的功能位强制关闭。
+%%  `e2ee` 是客户端唯一可见的"整个功能开关"：/api/v1/app/features 与
+%%  /api/v1/app/policy 的 features 都读本函数结果——客户端据此隐藏 E2EE 入口
+%%  （设备密钥/密钥管理/合规审计密钥）；路由级 feature 门
+%%  （imboy_feature:route_feature/2 把 e2ee_handler 归到 e2ee）也读它，因此
+%%  密钥端点会被"端点开关 + 路由功能门"双层拦住。
+%%  刻意放在 resolve_plugin_constraints 之后：这是部署级事实，saved 覆盖不得
+%%  把它翻回 true（否则备份配置一恢复就把硬闸顶开）。
+apply_hard_off_feature_overrides(Capabilities, Features) ->
+    case hard_off_storage_mode(maps:get(storage_mode, Capabilities, archived)) of
+        true -> maps:put(e2ee, false, Features);
+        false -> Features
+    end.
 
 -spec effective_features_from_config(term()) -> map().
 effective_features_from_config(FeatureConfig) ->
