@@ -425,8 +425,75 @@ owner_not_human() ->
 
 create_injection_rollback_tests() ->
     [
-        {"注入失败：default 关系写入失败 → 500 且 org/member/workspace 零残留", fun() -> injection_rollback() end}
+        {"注入失败：default 关系写入失败 → 500 且 org/member/workspace 零残留", fun() -> injection_rollback() end},
+        {"注入失败：平台审计写入失败 → 500 且 org/member/workspace/默认关系零残留（审计在同一事务）", fun() ->
+            audit_injection_rollback()
+        end}
     ].
+
+%% 合同 EADM-01/C2（实施计划:109）：平台审计是创建事务的**第 8 步**，
+%% 「失败必须整事务回滚」。
+%%
+%% 本用例注入审计写入失败，断言业务数据**一行都不留**。它是这条合同的唯一
+%% 反例守卫：若审计被放在事务外（由 handler 事后补写）且吞掉写入错误，
+%% 结果会是「组织创建成功、审计静默丢失」——org/member/ws 全部落库而这里
+%% 期望 0，用例立刻变红。
+audit_injection_rollback() ->
+    Conn = conn(),
+    Owner = new_id(),
+    ok = seed_user(Conn, Owner, 1, 0),
+    Name = <<"eadm-create-audit-inject-", (integer_to_binary(Owner))/binary>>,
+    case
+        meck_helper:setup_mock(adm_operation_log_ds, [
+            {'insert_tx', 7, fun(_C, _Uid, _Action, _Tid, _TType, _Detail, _Ip) ->
+                {error, injected_audit_failure}
+            end}
+        ])
+    of
+        {ok, _} -> ok;
+        {error, Reason} -> erlang:error({mock_setup_failed, audit_inject, Reason})
+    end,
+    try
+        RespReq =
+            create_org(#{
+                <<"name">> => Name,
+                <<"owner_user_id">> => uid_bin(Owner),
+                <<"default_workspace_name">> => <<"ws">>
+            }),
+        ?assertEqual(500, status_of(RespReq))
+    after
+        meck_helper:cleanup_mock(adm_operation_log_ds)
+    end,
+    %% 零残留：org / member / workspace / 默认关系全部随审计失败一起回滚
+    ?assertEqual(0, org_count(Owner, Name)),
+    {ok, [#{<<"count">> := MemberCnt}]} =
+        one(
+            Conn,
+            <<"SELECT count(*) AS count FROM organization_member om",
+                " JOIN organization o ON o.id = om.organization_id",
+                " WHERE o.owner_id = $1 AND lower(trim(o.name)) = lower(trim($2))">>,
+            [Owner, Name]
+        ),
+    ?assertEqual(0, MemberCnt),
+    {ok, [#{<<"count">> := WsCnt}]} =
+        one(
+            Conn,
+            <<"SELECT count(*) AS count FROM workspace w",
+                " JOIN organization o ON o.id = w.organization_id",
+                " WHERE o.owner_id = $1 AND lower(trim(o.name)) = lower(trim($2))">>,
+            [Owner, Name]
+        ),
+    ?assertEqual(0, WsCnt),
+    {ok, [#{<<"count">> := RelCnt}]} =
+        one(
+            Conn,
+            <<"SELECT count(*) AS count FROM organization_default_workspace odw",
+                " JOIN organization o ON o.id = odw.organization_id",
+                " WHERE o.owner_id = $1 AND lower(trim(o.name)) = lower(trim($2))">>,
+            [Owner, Name]
+        ),
+    ?assertEqual(0, RelCnt),
+    ok.
 
 injection_rollback() ->
     Conn = conn(),

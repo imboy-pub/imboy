@@ -31,7 +31,7 @@
     admin_department_list/2,
     admin_workspace_page/3,
     %% 写（全部走组织行锁 + 与 app 层同构的状态机裁决）
-    admin_create/4,
+    admin_create/5,
     admin_archive/2,
     admin_restore/2,
     admin_transfer_owner/3,
@@ -328,12 +328,19 @@ admin_workspace_page(OrgId, Page, Size) ->
 %%   6) INSERT active default workspace；
 %%   7) INSERT organization_default_workspace（复用
 %%      organization_default_workspace_pg:upsert_tx 原语）。
-%% 任一步失败整回滚；操作者审计由 handler 层 adm_operation_log_ds 承担。
+%% 任一步失败整回滚。
+%%
+%% ⚠ 合同 EADM-01/C2（实施计划:109）：平台审计是**事务内第 8 步**，不是事后补写。
+%% 此前实现把审计放在事务外由 handler 调用且吞掉写入错误 ⇒ 审计可静默丢失，
+%% 违反「失败必须整事务回滚」。现已改为事务内 adm_operation_log_ds:insert_tx/7，
+%% 写入失败即 throw({abort_tx,{audit_failed,_}}) ⇒ 业务数据一并回滚。
 %% ===================================================================
 
--spec admin_create(integer(), binary(), integer(), binary()) ->
+-spec admin_create(integer(), binary(), integer(), binary(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_create(_AdmUserId, Name, OwnerUid, WsName) when is_integer(OwnerUid), OwnerUid > 0 ->
+admin_create(AdmUserId, Name, OwnerUid, WsName, AuditCtx) when
+    is_integer(OwnerUid), OwnerUid > 0
+->
     case valid_name(Name) of
         {error, _} ->
             {error, {400, <<"name 必填（1-200 字节，不能为空白）"/utf8>>}};
@@ -344,7 +351,10 @@ admin_create(_AdmUserId, Name, OwnerUid, WsName) when is_integer(OwnerUid), Owne
                 ok ->
                     Name1 = string:trim(Name),
                     WsName1 = string:trim(WsName),
-                    Tx = fun(Conn) -> create_org_tx(Conn, OwnerUid, Name1, WsName1) end,
+                    Tx =
+                        fun(Conn) ->
+                            create_org_tx(Conn, AdmUserId, OwnerUid, Name1, WsName1, AuditCtx)
+                        end,
                     case elib_pg:with_tx(Tx) of
                         {ok, Result} when is_map(Result) ->
                             ok = ?INFO_LOG([
@@ -369,10 +379,10 @@ admin_create(_AdmUserId, Name, OwnerUid, WsName) when is_integer(OwnerUid), Owne
                     end
             end
     end;
-admin_create(_, _, _, _) ->
+admin_create(_, _, _, _, _) ->
     {error, {400, <<"name、default_workspace_name 必填，owner_user_id 必须是正整数"/utf8>>}}.
 
-create_org_tx(Conn, OwnerUid, Name, WsName) ->
+create_org_tx(Conn, AdmUserId, OwnerUid, Name, WsName, AuditCtx) ->
     %% 1) 事务级 advisory lock：同 (owner, 归一化名) 的并发创建串行
     LockSql = <<"SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext(lower(trim($2))))">>,
     case elib_pg:query(Conn, LockSql, [OwnerUid, Name]) of
@@ -384,19 +394,22 @@ create_org_tx(Conn, OwnerUid, Name, WsName) ->
     %% 2) 锁内幂等：同 owner + 归一化名的 active 组织已存在 → 返回既有资源
     case find_active_org_tx(Conn, OwnerUid, Name) of
         {ok, OrgRow} ->
-            {ok, #{
+            Result = #{
                 <<"created">> => false,
                 <<"organization">> => org_view(OrgRow),
                 <<"default_workspace">> =>
                     existing_default_ws_view(Conn, maps:get(<<"id">>, OrgRow))
-            }};
+            },
+            %% 8) 平台审计（事务内；幂等命中同样要留痕——「谁在何时请求创建」是治理事实）
+            ok = audit_create_tx(Conn, AdmUserId, OwnerUid, Result, AuditCtx),
+            {ok, Result};
         {error, not_found} ->
-            create_new_org_tx(Conn, OwnerUid, Name, WsName);
+            create_new_org_tx(Conn, AdmUserId, OwnerUid, Name, WsName, AuditCtx);
         {error, Reason1} ->
             throw({abort_tx, {internal, Reason1}})
     end.
 
-create_new_org_tx(Conn, OwnerUid, Name, WsName) ->
+create_new_org_tx(Conn, AdmUserId, OwnerUid, Name, WsName, AuditCtx) ->
     %% 3) owner 门禁（存在 / active / human），fail-closed
     ok = owner_gate_tx(Conn, OwnerUid),
     %% 4) INSERT organization；trg_organization_owner_member_sync（迁移 00000113）
@@ -460,7 +473,7 @@ create_new_org_tx(Conn, OwnerUid, Name, WsName) ->
         {error, Reason4} ->
             throw({abort_tx, {internal, Reason4}})
     end,
-    {ok, #{
+    Result = #{
         <<"created">> => true,
         <<"organization">> =>
             #{
@@ -471,7 +484,55 @@ create_new_org_tx(Conn, OwnerUid, Name, WsName) ->
             },
         <<"default_workspace">> =>
             #{<<"id">> => WsId, <<"name">> => WsName, <<"status">> => <<"active">>}
-    }}.
+    },
+    %% 8) 平台审计（**事务内**，与 1-7 同 Conn；写失败即整事务回滚）
+    ok = audit_create_tx(Conn, AdmUserId, OwnerUid, Result, AuditCtx),
+    {ok, Result}.
+
+%% @doc 事务内写平台审计（合同 EADM-01/C2 第 8 步）。
+%% 审计目标事实含 Organization、Owner、默认 Workspace 的 id/name 与请求摘要；
+%% 不记录任何凭据。写入失败**不吞**：throw({abort_tx, …}) 让整事务回滚——
+%% 审计静默丢失等于「创建了组织却无从追责」，属治理链路的完整性要求。
+-spec audit_create_tx(term(), integer(), integer(), map(), map()) -> ok.
+audit_create_tx(Conn, AdmUserId, OwnerUid, Result, AuditCtx) ->
+    Org = maps:get(<<"organization">>, Result),
+    Ws = maps:get(<<"default_workspace">>, Result, null),
+    OrgId = maps:get(<<"id">>, Org),
+    Detail = #{
+        <<"action">> => <<"create">>,
+        <<"organization_id">> => OrgId,
+        <<"owner_user_id">> => OwnerUid,
+        <<"default_workspace_id">> => ws_field(Ws, <<"id">>),
+        <<"default_workspace_name">> => ws_field(Ws, <<"name">>),
+        <<"created">> => maps:get(<<"created">>, Result),
+        <<"request">> => maps:get(request, AuditCtx, #{})
+    },
+    case
+        adm_operation_log_ds:insert_tx(
+            Conn,
+            AdmUserId,
+            <<"organization_create">>,
+            OrgId,
+            <<"organization">>,
+            Detail,
+            maps:get(ip, AuditCtx, undefined)
+        )
+    of
+        ok ->
+            ok;
+        {error, Reason} ->
+            %% 已证伪（2026-09-22）：把本分支临时改成 `ok`（即旧行为「审计失败不阻断
+            %% 业务」）后，test/adm/adm_organization_create_tests.erl 的
+            %% audit_injection_rollback 立刻 failed —— 证明该用例真能变红，不是假绿。
+            throw({abort_tx, {audit_failed, Reason}})
+    end.
+
+%% 默认 Workspace 视图在历史数据缺关系时如实为 null（不推导、不回落 min-ID）。
+-spec ws_field(map() | null, binary()) -> term().
+ws_field(Ws, Key) when is_map(Ws) ->
+    maps:get(Key, Ws, null);
+ws_field(_, _) ->
+    null.
 
 %% owner 门禁：存在（404）/ status=1 活跃（400）/ account_type=0 human（400）。
 %% status 口径与 passport_logic 签发收口一致：1 启用；0 禁用 / 2 注销中 /

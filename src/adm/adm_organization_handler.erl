@@ -152,28 +152,28 @@ org_create(Req0, State) ->
             end
     end.
 
+%% ⚠ 审计**不在**这里事后补写。合同 EADM-01/C2（实施计划:109）要求平台审计是
+%% 创建事务的**第 8 步**、失败整事务回滚；若在此处（事务成功返回之后）调用，
+%% 审计写入失败就只能被吞掉 ⇒ 审计静默丢失。故只负责把请求侧事实（IP、方法、
+%% 路径）组装成 AuditCtx 交给 logic，由 logic 在同一 Conn 内写审计。
 org_create_write(Req0, AdmUserId, Data, OwnerUid) ->
+    AuditCtx = #{
+        ip => elib_req:peer_ip(Req0),
+        request => #{
+            <<"method">> => cowboy_req:method(Req0),
+            <<"path">> => cowboy_req:path(Req0)
+        }
+    },
     case
         organization_admin_logic:admin_create(
             AdmUserId,
             maps:get(<<"name">>, Data, <<>>),
             OwnerUid,
-            maps:get(<<"default_workspace_name">>, Data, <<>>)
+            maps:get(<<"default_workspace_name">>, Data, <<>>),
+            AuditCtx
         )
     of
         {ok, Result} ->
-            Org = maps:get(<<"organization">>, Result),
-            audit(
-                AdmUserId,
-                maps:get(<<"id">>, Org),
-                <<"create">>,
-                #{
-                    <<"name">> => maps:get(<<"name">>, Org),
-                    <<"owner_user_id">> => OwnerUid,
-                    <<"created">> => maps:get(<<"created">>, Result)
-                },
-                Req0
-            ),
             elib_response:success(Req0, normalize_create_result(Result));
         {error, {Code, Msg}} ->
             elib_response:error(Req0, Msg, Code)
