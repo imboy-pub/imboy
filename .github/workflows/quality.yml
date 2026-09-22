@@ -358,3 +358,51 @@ jobs:
 
       - name: Check naming format / up-down pairs / unique versions
         run: bash scripts/check_migrations.sh
+
+  # ----------------------------------------------------------------
+  # 8) 跨仓特性产物一致性（GZAPP-C1 回归守卫，ADR-0007 特性机制）
+  #    清单 → 11 份产物分落三仓（imboy 2 / imboyapp 7 / imboyadmin 2），
+  #    每份内嵌 manifest_hash 与 compiled_features。曾真实漂移过一次：
+  #    三仓 main 同为 9f5bc3e8，但 APP/Admin 产物仍是旧哈希 → APP 侧
+  #    ensureBuildCompatible 判定不一致、特性开关全数误判。
+  #    生成器本身能发现（每个产物路径都在 render() 里），缺的是"有人跑它"。
+  #
+  #    三仓都 checkout：manifest 是唯一真源，产物分落三仓，只 check 本仓
+  #    无法发现跨仓漂移（这正是当初漏掉的原因）。
+  #    兄弟仓检出失败的语义：job 红（缺仓不静默）——脚本自身在缺仓时输出
+  #    SKIPPED 且退出 3，本 workflow 把"没核对"当失败，避免假绿。
+  #
+  #    兄弟仓取 main（非 PR 分支）。含义要认清：**本仓改了清单、兄弟仓 main
+  #    的产物还没跟上时，本 job 就该红**——这正是三仓契约的棘轮语义。
+  #    若确实要"先改清单、后随兄弟仓 PR 落地"，需按顺序合并（本仓 PR 在兄弟仓
+  #    PR 之后），不要靠 loosening 这道门来绕过。
+  # ----------------------------------------------------------------
+  feature-cross-repo:
+    name: Cross-repo feature artifacts (ADR-0007)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout imboy
+        uses: actions/checkout@v7
+        with:
+          path: imboy
+
+      - name: Checkout imboyapp (sibling)
+        uses: actions/checkout@v7
+        with:
+          repository: imboy/imboy-flutter
+          path: imboyapp
+          ref: main
+
+      - name: Checkout imboyadmin (sibling)
+        uses: actions/checkout@v7
+        with:
+          repository: imboy/imboy-admin-frontend
+          path: imboyadmin
+          ref: main
+
+      - name: Check manifest vs three repos' artifacts
+        working-directory: imboy
+        run: |
+          set -euo pipefail
+          python3 scripts/check_product_feature_cross_repo.py \
+            --app-dir ../imboyapp --admin-dir ../imboyadmin

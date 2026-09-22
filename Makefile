@@ -335,6 +335,16 @@ terminology-check: app ## 校验 priv/terminology/*.json 的结构、profile 与
 	@erl -noinput -boot no_dot_erlang -pa imboy/ebin -pa ebin \
 		-eval 'ok = product_terminology:validate_all(), halt().'
 
+# 跨仓特性产物一致性（GZAPP-C1 回归守卫，ADR-0007 特性机制）。
+# 清单 → 11 份产物分落三仓；任一仓产物与清单不一致即非零退出。
+# 需要 imboyapp / imboyadmin 与 imboy 同父目录（或用 APP_DIR/ADMIN_DIR 指定）。
+# 兄弟仓缺失时输出显式 SKIPPED 且退出码 3（"没核对"≠"一致"，避免假绿）。
+.PHONY: feature-cross-repo-check
+feature-cross-repo-check: ## 校验三仓特性产物与 config/product-feature-manifest.json 一致
+	@python3 scripts/check_product_feature_cross_repo.py \
+		--app-dir "$${APP_DIR:-../imboyapp}" \
+		--admin-dir "$${ADMIN_DIR:-../imboyadmin}"
+
 # 定时作业门禁（ecron）：模板真源非空 + 无 {jobs,...} 回归 + crontab 规格合法
 # + MFA 目标模块/入口真实存在（改名或删模块的连带检查）；逐机运行配置
 # （sys.local/pro/dev，均被 .gitignore）与模板的漂移默认只告警——
