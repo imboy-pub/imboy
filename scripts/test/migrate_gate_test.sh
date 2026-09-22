@@ -93,7 +93,7 @@ cat >"$MOCK_BIN/git" <<'MOCK'
 #!/usr/bin/env bash
 case " $* " in
   *" rev-parse HEAD "*) printf '%s\n' "$TEST_SOURCE_HEAD" ;;
-  *" status --porcelain "*) : ;;
+  *" status --porcelain "*) [ "${MOCK_GIT_DIRTY:-0}" = 1 ] && printf ' M src/demo.erl\n' ;;
   *) exit 0 ;;
 esac
 MOCK
@@ -170,6 +170,18 @@ if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
   ok "api -v -l 自动同步版本并透传本地模式与显式节点名"
 else
   bad "api -v -l 未正确透传" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
+fi
+
+: >"$MOCK_CALLS"
+if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" MOCK_GIT_DIRTY=1 \
+   BLUE_GREEN_LOG="$BLUE_GREEN_LOG" \
+   bash "$TEST_DEPLOY" api -l --env-file "$CUSTOM_ENV" \
+   >"$TMP_ROOT/output.log" 2>&1 \
+   && grep -q '按当前工作树继续发布' "$TMP_ROOT/output.log"; then
+  ok "api -l 本地工作树有改动时告警并继续"
+else
+  bad "api -l 本地工作树改动仍阻断发布" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
 fi
 
 printf '%s\n' 0.0.0 >"$TMP_ROOT/VERSION"

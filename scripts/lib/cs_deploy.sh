@@ -407,8 +407,9 @@ cs_resolve_build_paths() {
   CS_SOURCE_HEAD="$(git -C "$CS_BUILD_REPO" rev-parse HEAD 2>/dev/null)" \
     || fail "Widget 源码不是可读取的 Git 工作树"
   [[ "$CS_SOURCE_HEAD" =~ ^[0-9a-f]{40}$ ]] || fail "Widget 源码 Git HEAD 非法"
-  [[ -z "$(git -C "$CS_BUILD_REPO" status --porcelain --untracked-files=normal)" ]] \
-    || fail "Widget 源码存在未提交或未跟踪改动，拒绝发布无法绑定 SHA 的产物"
+  if [[ -n "$(git -C "$CS_BUILD_REPO" status --porcelain --untracked-files=normal)" ]]; then
+    warn "Widget 源码存在未提交或未跟踪改动；按当前工作树继续发布（source_head 仅记录 Git HEAD 基线）" >&2
+  fi
 }
 
 cs_verify_source_head() {

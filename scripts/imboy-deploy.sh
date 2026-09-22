@@ -107,10 +107,14 @@ git_source_head() {
   printf '%s\n' "$head"
 }
 
-require_clean_source() {
-  local repo="$1" label="$2"
-  [[ -z "$(git -C "$repo" status --porcelain --untracked-files=normal)" ]] \
-    || fail "$label 存在未提交或未跟踪改动，拒绝发布无法绑定 SHA 的源码"
+warn_dirty_source() {
+  local repo="$1" label="$2" mode="$3"
+  [[ -z "$(git -C "$repo" status --porcelain --untracked-files=normal)" ]] && return 0
+  if [[ "$mode" == worktree ]]; then
+    warn "$label 存在未提交或未跟踪改动；按当前工作树继续发布（source_head 仅记录 Git HEAD 基线）" >&2
+  else
+    warn "$label 存在未提交或未跟踪改动；本次远端 Git 发布不会包含这些本地改动" >&2
+  fi
 }
 
 valid_fqdn() {
@@ -265,13 +269,21 @@ if [[ "$COMPONENT" == all || "$COMPONENT" == admin || "$COMPONENT" == api ]]; th
   [[ "$ADMIN_BUILD_PATH" != "/" && -f "$ADMIN_BUILD_PATH/package.json" ]] \
     || fail "ADMIN_BUILD_DIR 必须指向含 package.json 的具体项目目录"
   ADMIN_SOURCE_HEAD="$(git_source_head "$ADMIN_BUILD_PATH" "Admin 源码")"
-  require_clean_source "$ADMIN_BUILD_PATH" "Admin 源码"
+  if [[ "$COMPONENT" == admin || "$COMPONENT" == all ]]; then
+    warn_dirty_source "$ADMIN_BUILD_PATH" "Admin 源码" worktree
+  else
+    warn_dirty_source "$ADMIN_BUILD_PATH" "Admin 源码" git
+  fi
 fi
 
 if [[ "$COMPONENT" == api || "$COMPONENT" == all || "$COMPONENT" == cs ]]; then
   BACKEND_REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
   BACKEND_SOURCE_HEAD="$(git_source_head "$BACKEND_REPO_ROOT" "Backend 源码")"
-  require_clean_source "$BACKEND_REPO_ROOT" "Backend 源码"
+  if [[ "$LOCAL_MODE" -eq 1 ]]; then
+    warn_dirty_source "$BACKEND_REPO_ROOT" "Backend 源码" worktree
+  else
+    warn_dirty_source "$BACKEND_REPO_ROOT" "Backend 源码" git
+  fi
 fi
 
 if [[ "$COMPONENT" == api || "$COMPONENT" == all || "$COMPONENT" == admin ]]; then

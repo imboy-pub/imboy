@@ -367,7 +367,7 @@ cat >"$MOCK_BIN/git" <<'MOCK'
 #!/usr/bin/env bash
 case " $* " in
   *" rev-parse HEAD "*) printf '%s\n' "$TEST_SOURCE_HEAD" ;;
-  *" status --porcelain "*) : ;;
+  *" status --porcelain "*) [ "${MOCK_GIT_DIRTY:-0}" = 1 ] && printf ' M src/widget-demo.ts\n' ;;
   *) exit 0 ;;
 esac
 MOCK
@@ -435,6 +435,7 @@ run_component() {
       MOCK_UPSTREAM_PRE="${MOCK_UPSTREAM_PRE-9800}" \
       MOCK_UPSTREAM_POST="${MOCK_UPSTREAM_POST-9801}" \
       MOCK_PRECHECK_ESCAPE="${MOCK_PRECHECK_ESCAPE-0}" \
+      MOCK_GIT_DIRTY="${MOCK_GIT_DIRTY-0}" \
       TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" \
       bash "$TEST_SCRIPTS/imboy-deploy.sh" "$@" ) >"$OUT" 2>&1
 }
@@ -672,6 +673,18 @@ if [ "$rc" -ne 0 ] && grep -q "远端根不存在" "$OUT" && [ ! -s "$RSYNC_CALL
   ok "CS 远端根目录缺失在 PRECHECK 拒绝"
 else
   bad "远端根缺失拒绝" "rc=$rc"
+fi
+
+# Widget 本地源码允许未提交改动：应告警并至少进入构建步骤，而不是预检拒绝。
+setup_fake_fs upgrade; write_env
+MOCK_GIT_DIRTY=1 MOCK_FAIL_AT=build run_component cs -v -l --env-file "$ENV_FILE"
+rc=$?
+if [ "$rc" -ne 0 ] \
+   && grep -q 'Widget 源码存在未提交或未跟踪改动；按当前工作树继续发布' "$OUT" \
+   && grep -q '^STEP BUILD_AND_VERIFY_WIDGET$' "$EVENTS"; then
+  ok "Widget 本地工作树有改动时告警并继续到构建"
+else
+  bad "Widget 本地工作树改动仍在构建前阻断" "rc=$rc output=$(tail -5 "$OUT" | tr '\n' ',')"
 fi
 
 # =============================================================================
