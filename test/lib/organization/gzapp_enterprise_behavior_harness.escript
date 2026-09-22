@@ -129,6 +129,11 @@ scalar(Conn, Sql, Params) ->
     Row = one(Conn, Sql, Params),
     maps:get(<<"n">>, Row).
 
+%% 用户是否可登录（0=不可登录/预创建，1=启用）：激活消费全链用它取证。
+user_status(Conn, Uid) ->
+    Row = one(Conn, <<"SELECT status FROM \"user\" WHERE id = $1">>, [Uid]),
+    maps:get(<<"status">>, Row).
+
 setup(Conn) ->
     %% 只种「认证壳」用户；组织一律走真实建企路径 admin_create（GZ-J01 的
     %% 默认资源关系只有在真实路径里才成立，直插 SQL 会造出没有默认 WS 的
@@ -478,6 +483,37 @@ p09_owner_activation_contract(Conn, C) ->
             imboy_sms_provider:provider() =:= not_configured,
         C
     ),
+
+    %% ---- GZ-J02 激活消费全链 ----
+    %% 本卡交付边界＝「provider contract + fake/local 测试」：token 只在创建响应
+    %% 出现一次（库中只存 digest），消费走 activate_by_token/1；短信 provider
+    %% 为 fake/未配置，绝不真实外发。
+    Token = maps:get(<<"activation_token">>, Invite, undefined),
+    ok(
+        "P10a 建企响应返回一次性 activation_token",
+        is_binary(Token) andalso byte_size(Token) > 0,
+        C
+    ),
+    ok("P10b 激活前 Owner 为不可登录（status=0）", user_status(Conn, OwnerUid) =:= 0, C),
+    Act = organization_owner_activation_logic:activate_by_token(Token),
+    ok("P10c 凭 token 激活成功", element(1, Act) =:= ok, C),
+    ok("P10d 激活后 Owner 变为可登录（status=1）", user_status(Conn, OwnerUid) =:= 1, C),
+    InvActivated = scalar(
+        Conn,
+        <<"SELECT count(*)::bigint AS n FROM owner_activation_invite",
+            " WHERE owner_user_id = $1 AND status = 'activated'",
+            " AND consumed_at IS NOT NULL">>,
+        [OwnerUid]
+    ),
+    ok(
+        "P10e 邀请行收敛为 activated 且 consumed_at 已写（单次消费 CAS）",
+        InvActivated =:= 1,
+        C
+    ),
+    Replay = organization_owner_activation_logic:activate_by_token(Token),
+    ok("P10f 同一 token 重放被拒（一次性）", element(1, Replay) =:= error, C),
+    Invalid = organization_owner_activation_logic:activate_by_token(<<"not-a-real-token">>),
+    ok("P10g 无效 token 被拒", element(1, Invalid) =:= error, C),
     {OrgId, OwnerUid, Mobile}.
 
 %% ===================================================================
