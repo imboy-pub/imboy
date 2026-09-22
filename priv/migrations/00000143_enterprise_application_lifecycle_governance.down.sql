@@ -30,8 +30,26 @@ WHERE status IN ('draft', 'archived');
 -- ============================================================
 -- 2) 还原 Grant 约束与列
 -- ============================================================
+-- ⚠ 归因收敛（A0-REV review 发现）：139 的窄约束要求 revoked 行必有租户
+--   user 归因（(revoked_at IS NULL) = (revoked_by_user_id IS NULL)），而 143
+--   期间可能已产生 **adm 通道撤销**的行（revoked_at NOT NULL + user 列 NULL +
+--   revoked_by_adm_user_id 非空）。若不处理，下方 ADD CONSTRAINT 对存量行
+--   校验必败，整条回滚链卡死（与 draft/archived 同类问题，此处同样按
+--   **安全方向**收敛：归因物化为 organization.owner_id —— 语义是「该组织侧
+--   的授权已被撤销」，不删行（审计留痕，D3）、不改 status（不复活授权）、
+--   不扩权；真实操作者是平台管理员，139 形态无处安放，故记为组织侧归属。
+--   顺序要点：**先拆 143 宽约束再收敛** —— PG 的 CHECK 是逐行即时校验，
+--   先填 user 列会瞬间构成「双 actor 非空」而撞 143 的 XOR 约束。
 ALTER TABLE enterprise_application_grant
     DROP CONSTRAINT IF EXISTS ck_eag_status_revoked_match;
+
+UPDATE enterprise_application_grant g
+SET revoked_by_user_id = o.owner_id
+FROM organization o
+WHERE g.revoked_by_adm_user_id IS NOT NULL
+  AND g.revoked_by_user_id IS NULL
+  AND o.id = g.organization_id;
+
 ALTER TABLE enterprise_application_grant
     ADD CONSTRAINT ck_eag_status_revoked_match CHECK (
         (status = 'revoked') = (revoked_at IS NOT NULL)

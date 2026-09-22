@@ -302,7 +302,9 @@ all_test_() ->
                 with_tx(C, fun grant_attribution_oracle/1)},
             {"grant_revoke_both_actors_rejected", with_tx(C, fun grant_both_actors_oracle/1)},
             {"grant_revoke_no_actor_rejected", with_tx(C, fun grant_no_actor_oracle/1)},
-            {"down_up_cycle_residue_zero_and_rebuild", {timeout, 900, down_up_cycle_test(State)}}
+            {"down_up_cycle_residue_zero_and_rebuild", {timeout, 900, down_up_cycle_test(State)}},
+            {"down_with_adm_revoked_grant_converges",
+                {timeout, 900, down_with_adm_revoked_test(State)}}
         ]}
     end}.
 
@@ -667,6 +669,90 @@ down_up_cycle_test(State) ->
             catch
                 _:_ -> ok
             end
+        end
+    end).
+
+%% A0-REV review 发现的 down 卡死场景回归钉：
+%% adm 通道撤销行（revoked + user 列 NULL + adm 列非空，143 合法态）存在时，
+%% down 的「归因收敛到 org owner」必须走通 —— 行保留、status 仍 revoked
+%% （不复活授权）、归因=owner（139 窄约束可过），up 回 143 后保持。
+down_with_adm_revoked_test(State) ->
+    C = maps:get(conn, State),
+    ?_test(begin
+        MigConn = connect_marker(State),
+        MigConfig = #{conn => MigConn, dir => "priv/migrations"},
+        try
+            %% 造 adm 通道撤销行：恰一个 actor（adm），user 列为空
+            ?assertEqual(
+                1,
+                affected(
+                    C,
+                    <<
+                        "UPDATE enterprise_application_grant"
+                        " SET status = 'revoked', revoked_at = NOW(),"
+                        " revoked_by_adm_user_id = 995001"
+                        " WHERE id = $1"
+                    >>,
+                    [?GRANT_A1]
+                )
+            ),
+            %% down 穿过 143：不再因 ADD 窄约束撞存量行而卡死
+            ok = erlang_migrate:goto(MigConfig, ?DOWN_TARGET),
+            ?assertEqual({ok, ?DOWN_TARGET, false}, erlang_migrate:version(MigConfig)),
+            ?assertEqual(
+                1,
+                scalar(
+                    C,
+                    <<"SELECT count(*) FROM enterprise_application_grant WHERE id = $1">>,
+                    [?GRANT_A1]
+                )
+            ),
+            ?assertEqual(
+                <<"revoked">>,
+                scalar(
+                    C,
+                    <<"SELECT status FROM enterprise_application_grant WHERE id = $1">>,
+                    [?GRANT_A1]
+                )
+            ),
+            ?assertEqual(
+                ?OWNER_A,
+                scalar(
+                    C,
+                    <<
+                        "SELECT revoked_by_user_id FROM enterprise_application_grant"
+                        " WHERE id = $1"
+                    >>,
+                    [?GRANT_A1]
+                )
+            ),
+            %% up 回 head：行与归因保持，adm 列恢复存在且为 NULL（未写入）
+            ok = erlang_migrate:up(MigConfig),
+            ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig)),
+            ?assertEqual(
+                ?OWNER_A,
+                scalar(
+                    C,
+                    <<
+                        "SELECT revoked_by_user_id FROM enterprise_application_grant"
+                        " WHERE id = $1"
+                    >>,
+                    [?GRANT_A1]
+                )
+            ),
+            ?assertEqual(
+                null,
+                scalar(
+                    C,
+                    <<
+                        "SELECT revoked_by_adm_user_id FROM enterprise_application_grant"
+                        " WHERE id = $1"
+                    >>,
+                    [?GRANT_A1]
+                )
+            )
+        after
+            epgsql:close(MigConn)
         end
     end).
 
