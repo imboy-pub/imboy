@@ -51,16 +51,22 @@ find_returns_empty_map_when_subscription_missing_test_() ->
         end
     ).
 
+%% 参数顺序 = [ChannelId, Limit, Cursor]（见 repo 的 -spec 与 63e63151 的
+%% offset 型分页修正）。原用例按 [ChannelId, Cursor] 断言，在实现改成
+%% 【LIMIT $2 OFFSET $3】之后即失配（mock 的 fun 头匹配不上 → function_clause）。
 list_by_channel_first_page_uses_limit_clause_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'query', 2, fun(Sql, [11, 50]) ->
+                {'query', 2, fun(Sql, [11, 50, 0]) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assert(
                         re:run(
                             SqlBin,
-                            <<"ORDER BY cs.is_pinned DESC, cs.subscribed_at DESC LIMIT \\$2">>
+                            <<
+                                "ORDER BY cs.is_pinned DESC, cs.subscribed_at DESC, cs.id DESC "
+                                "LIMIT \\$2 OFFSET \\$3"
+                            >>
                         ) =/= nomatch
                     ),
                     {ok, [#{<<"user_id">> => 1001}]}
@@ -75,19 +81,29 @@ list_by_channel_first_page_uses_limit_clause_test_() ->
         end
     ).
 
-list_by_channel_next_page_uses_cursor_filter_test_() ->
+%% 第二页必须是 OFFSET 型（cursor=已加载条数），**不是** `id < cursor`：
+%% id 是 TSID 大整数，与"条数"永不可比 → 第二页恒空（63e63151 修正的正是这个
+%% bug）。本用例名与断言语义随之对齐：断言 OFFSET 取到 900、LIMIT 取到 20。
+list_by_channel_next_page_uses_offset_not_id_cursor_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'query', 2, fun(Sql, [11, 900, 20]) ->
+                {'query', 2, fun(Sql, [11, 20, 900]) ->
                     SqlBin = iolist_to_binary(Sql),
-                    ?assert(re:run(SqlBin, <<"id < \\$2">>) =/= nomatch),
-                    {ok, []}
+                    ?assertEqual(nomatch, re:run(SqlBin, <<"id < \\$">>)),
+                    ?assert(
+                        re:run(SqlBin, <<"LIMIT \\$2 OFFSET \\$3">>) =/= nomatch
+                    ),
+                    {ok, [#{<<"user_id">> => 2002}]}
                 end}
             ]}
         ],
         fun() ->
-            ?assertEqual({ok, []}, channel_subscription_repo:list_by_channel(11, 900, 20))
+            %% 第二页：已加载 900 条，再取 20 条
+            ?assertMatch(
+                {ok, [#{<<"user_id">> := 2002}]},
+                channel_subscription_repo:list_by_channel(11, 900, 20)
+            )
         end
     ).
 
