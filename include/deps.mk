@@ -167,11 +167,11 @@ dep_epgsql = git https://github.com/epgsql/epgsql.git 4.8.0
 #dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git devel
 # dep_epgsql = ln ../../epgsql
 
-# v0.3.2 = fix(core): down(N)/goto no longer wipes version history after a
+# v0.3.3 = fix(core): down(N)/goto no longer wipes version history after a
 # partial rollback (PrevVersion derived inside the rolled-back sublist).
-# NOTE: v0.3.2 tag HAS been pushed to github.com/imboy-pub/erlang_migrate
+# NOTE: v0.3.3 tag HAS been pushed to github.com/imboy-pub/erlang_migrate
 # (verified via git ls-remote on 2026-08-28); external/Docker builds can resolve it.
-dep_erlang_migrate = git https://github.com/imboy-pub/erlang_migrate.git v0.3.2
+dep_erlang_migrate = git https://github.com/imboy-pub/erlang_migrate.git v0.3.3
 dep_idna = hex 6.1.1 idna
 dep_hackney = git https://gitee.com/imboy-tripartite-deps/hackney.git 1.20.1
 dep_guanco = git https://gitee.com/imboy-tripartite-deps/guanco.git main
