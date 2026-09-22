@@ -281,6 +281,9 @@ case "$cmd" in
       exit 0
     fi
     exit 4 ;;
+  *"BLUE_API="*"统一 readiness"*|*"BLUE_API="*"ADMIN_META="*)
+    log_event READINESS
+    exit 0 ;;
   *"curl -sS -o /dev/null -w '%{http_code}'"*"/api/adm/admin/config/sidebar"*)
     printf '401\n'
     exit 0 ;;
@@ -289,9 +292,6 @@ case "$cmd" in
     exit 0 ;;
   *"deploy-meta.json"*)
     printf '%s\n' "$TEST_SOURCE_HEAD"
-    exit 0 ;;
-  *"BLUE_API="*"统一 readiness"*|*"BLUE_API="*"ADMIN_META="*)
-    log_event READINESS
     exit 0 ;;
   *)
     log_event "SSH_OTHER:$(printf '%s' "$cmd" | cut -c1-40)"
@@ -919,6 +919,7 @@ if [ "$rc" -ne 0 ]; then bad "all -l 应成功" "$(tail -5 "$OUT")"; fi
 assert_event_count "all -l 蓝绿恰一次（backend 不重复部署）" BLUEGREEN 1
 assert_event_count "all -l admin 构建恰一次" BUN_BUILD_ADMIN 1
 assert_event_count "all -l widget 构建恰一次" BUN_BUILD_WIDGET 1
+assert_event_count "all -l 统一 readiness 恰一次" READINESS 1
 assert_steps_equal_contract "all -l 中 cs 段步骤序列完整"
 bg_line="$(grep -an '^BLUEGREEN' "$MOCK_LOG" | head -1 | cut -d: -f1)"
 admin_line="$(grep -an '^BUN_BUILD_ADMIN' "$MOCK_LOG" | head -1 | cut -d: -f1)"
@@ -935,10 +936,11 @@ fi
 setup_fake_fs upgrade; write_env
 run_component api -v -l --env-file "$ENV_FILE"
 rc=$?
-if [ "$rc" -eq 0 ] && [ "$(event_count BLUEGREEN)" = 1 ] && [ "$(event_count SWAP_SYMLINK)" = 0 ] && [ "$(event_count BUN_BUILD_WIDGET)" = 0 ]; then
-  ok "回归: api -v -l 行为不变（蓝绿恰一次、零 CS 副作用）"
+if [ "$rc" -eq 0 ] && [ "$(event_count BLUEGREEN)" = 1 ] && [ "$(event_count READINESS)" = 1 ] \
+   && [ "$(event_count SWAP_SYMLINK)" = 0 ] && [ "$(event_count BUN_BUILD_WIDGET)" = 0 ]; then
+  ok "回归: api -v -l 蓝绿恰一次、统一 readiness 恰一次、零 CS 副作用"
 else
-  bad "回归: api -v -l" "rc=$rc bg=$(event_count BLUEGREEN) cs=$(event_count BUN_BUILD_WIDGET)"
+  bad "回归: api -v -l" "rc=$rc bg=$(event_count BLUEGREEN) readiness=$(event_count READINESS) cs=$(event_count BUN_BUILD_WIDGET)"
 fi
 setup_fake_fs upgrade; write_env
 run_component admin --env-file "$ENV_FILE"

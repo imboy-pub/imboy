@@ -41,8 +41,6 @@ ENTRY="scripts/imboy-deploy.sh"
 LIB="scripts/lib/cs_deploy.sh"
 FIX_BASE="$REPO/scripts/test/fixtures/cs_deploy/fake-remote"
 FIX_OVERLAY="$REPO/scripts/test/fixtures/cs_deploy/fake-remote-upgrade-overlay"
-BUILD_SRC="$REPO/scripts/test/fixtures/cs_deploy/build-src"
-ART_DIR="$BUILD_SRC/widget-dist"          # fake bun 的产物目录（运行期生成，保证清理）
 CANARY="CS_TEST_CANARY_9f2b"
 
 CS_ROOT_REL="www/wwwroot/cs.test.local"
@@ -86,8 +84,20 @@ TMP_ROOT="$(mktemp -d "/tmp/imboy_csd_test_${RUN_ID}.XXXXXX")" || exit 1
 # macOS /tmp → /private/tmp symlink：fake ssh 的 realpath/cd -P 会解析 symlink，
 # 路径翻译往返必须基于规范化路径，否则批准根校验失配。
 TMP_ROOT="$( cd "$TMP_ROOT" && pwd -P )" || exit 1
+RUN_REPO="$TMP_ROOT/repo"
+git clone -q --no-hardlinks "$REPO" "$RUN_REPO" || exit 1
+# 发布入口会正确拒绝脏源码；harness 必须在隔离的 clean clone 中运行，不能让
+# 调用者工作树里的无关 WIP 改变离线事务测试结果。
+cp "$REPO/scripts/imboy-deploy.sh" "$RUN_REPO/scripts/imboy-deploy.sh" || exit 1
+cp "$REPO/scripts/lib/blue_green_deploy.sh" "$RUN_REPO/scripts/lib/blue_green_deploy.sh" || exit 1
+cp "$REPO/scripts/lib/cs_deploy.sh" "$RUN_REPO/scripts/lib/cs_deploy.sh" || exit 1
+git -C "$RUN_REPO" add scripts/imboy-deploy.sh scripts/lib/blue_green_deploy.sh scripts/lib/cs_deploy.sh
+GIT_AUTHOR_NAME=leeyi GIT_AUTHOR_EMAIL=leeyisoft@qq.com \
+GIT_COMMITTER_NAME=leeyi GIT_COMMITTER_EMAIL=leeyisoft@qq.com \
+  git -C "$RUN_REPO" -c commit.gpgsign=false commit --allow-empty -qm 'test: isolated deployment source' || exit 1
+BUILD_SRC="$RUN_REPO/scripts/test/fixtures/cs_deploy/build-src"
+ART_DIR="$BUILD_SRC/widget-dist"
 ORIG_PATH="$PATH"
-ART_DIR="$ART_DIR" # documented non-local; cleanup in trap
 cleanup() {
   [ "${KEEP_TMP:-0}" = 1 ] || rm -rf -- "$TMP_ROOT"
   rm -rf -- "$ART_DIR" 2>/dev/null || true
@@ -379,7 +389,7 @@ make_upgrade_state() { # 叠加升级态：旧 release + current symlink（原�
 
 run_deploy() { # 驱动真实入口；EXIT_CODE → RUN_RC
   RUN_RC=0
-  ( cd "$REPO" && exec env \
+  ( cd "$RUN_REPO" && exec env \
       -u CS_SSH_EXEC_FN -u CS_SSH_CAP_FN -u CS_SCP_FN -u CS_RSYNC_FN \
       -u CS_BUN_FN -u CS_DEPLOY_API_FN -u FAIL_AT -u FAKE_LOG -u FAKE_ROOT \
       -u FAKE_SED -u CS_EVENT_LOG -u CS_FAKE_ART_DIR \
