@@ -744,7 +744,13 @@ down_up_cycle_test(State) ->
         try
             MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
             ?assert(has_index(Conn, ?ACTIVE_TOKEN_INDEX)),
-            ok = erlang_migrate:down(MigConfig, 1),
+            %% 精确退到 141（GZ 期形态：142 的活跃 token 唯一索引尚不存在），
+            %% 步数从 head 推导，不随后续新迁移落地而漂移
+            %% （A0-REV：原 down 1 步 + 硬编码 {ok,141,_} 只在 head=142 时成立，
+            %% head=143 起断言中止并级联污染后续用例的 marker 库状态）
+            Head = migration_head(),
+            ?assert(Head >= 142),
+            ok = erlang_migrate:down(MigConfig, Head - 141),
             ?assertMatch({ok, 141, false}, erlang_migrate:version(MigConfig)),
             ?assertNot(has_index(Conn, ?ACTIVE_TOKEN_INDEX)),
             %% 既有索引未被 down 波及
