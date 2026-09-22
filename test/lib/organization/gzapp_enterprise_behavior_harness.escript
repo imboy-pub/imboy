@@ -58,11 +58,16 @@ main(_) ->
     _ = (catch application:ensure_all_started(lager)),
     ok = probes(Conn, Counters),
     epgsql:close(Conn),
-    io:format(
-        "~nPROBE-SUMMARY pass=~p fail=~p~n",
-        [counters:get(Counters, 1), counters:get(Counters, 2)]
-    ),
-    halt(0).
+    Pass = counters:get(Counters, 1),
+    Fail = counters:get(Counters, 2),
+    io:format("~nPROBE-SUMMARY pass=~p fail=~p~n", [Pass, Fail]),
+    %% 有失败即非零退出——否则「探针失败」在 CI/门禁里会伪装成全绿
+    %% （本 harness 上一版就因恒 halt(0)，让 GZ-J06/J07 两条从未产出证据的
+    %%   声明被当成 PASS 记账）。
+    case Fail of
+        0 -> halt(0);
+        _ -> halt(2)
+    end.
 
 conn_opts() ->
     #{
@@ -92,8 +97,13 @@ env(Key, Default) ->
 -define(OWNER2, 16#82EA0102).
 -define(JOINER, 16#82EA0103).   %% 待加入 org1 的普通用户
 -define(OUTSIDER, 16#82EA0104). %% 与 org1 无关的人
+-define(GROUP_WS, 16#82EA0201). %% P07：org1 默认 ws 内的企业群（群主=JOINER）
+-define(MSG1, 16#82EA0301).     %% P07：群消息（解散后必须保留）
+-define(MSG2, 16#82EA0302).
 -define(PREFIX, "gzapp09-").
--define(PENDING_MOBILE, <<"1390000" ++ "0001">>).
+%% 修：原为 <<"1390000" ++ "0001">> —— `++` 不能出现在 binary 字面量内部，
+%% 是编译期语法错误（P09 之前因更早的缺陷从未跑到，故一直没暴露）。
+-define(PENDING_MOBILE, <<"13900000001">>).
 
 %% 统一走 elib_pg（pool 指向同一 scratch 库）：它把行列映射为 binary 键 map，
 %% 裸 epgsql:equery 返回的是元组行，maps:get 会直接 bad map 崩。
@@ -150,10 +160,10 @@ probes(Conn, C) ->
     ok = p04_second_workspace(Conn, C, OrgA),
     ok = p05_default_ws_handover(Conn, C, OrgA, WsA),
     ok = p06_channel_archive_visibility(Conn, C, OrgA),
-    ok = p07_group_dissolve_retention(Conn, C, OrgB),
+    ok = p07_group_dissolve_retention(Conn, C, WsA),
     ok = p08_workspace_idempotent(Conn, C, OrgA),
-    ok = p09_owner_activation_contract(Conn, C),
-    ok = cleanup(Conn, OrgA, OrgB),
+    PendingFixture = p09_owner_activation_contract(Conn, C),
+    ok = cleanup(Conn, OrgA, OrgB, PendingFixture),
     ok.
 
 ok(Name, Cond, C) ->
@@ -186,17 +196,48 @@ p02_invite_join(Conn, C, OrgA) ->
     Join = organization_invite_code_app:join_by_code(?JOINER, OrgA, Code),
     Member = scalar(Conn, ~s{SELECT count(*)::bigint AS n FROM organization_member
         WHERE organization_id = $1 AND user_id = $2 AND status = 'active'}, [OrgA, ?JOINER]),
-    %% 默认资源关系：默认 WS 指针存在，且该 ws 下存在 scope=workspace 的群与频道
-    WsRows = element(2, {ok, elib_pg:query(~s{SELECT workspace_id FROM organization_default_workspace
-        WHERE organization_id = $1}, [OrgA])}),
+    %% join_by_code/3 成功返回 {ok, Outcome, Summary}（Summary 为 atom 键 map，
+    %% 见 organization_join_orchestrator:join_tx/4 的契约注释）
+    J2 = case Join of
+        {ok, _Outcome, #{group_id := G, channel_id := Ch}} when
+            is_integer(G), is_integer(Ch)
+        ->
+            io:format("  [P02] 加入编排落到 group_id=~p channel_id=~p~n", [G, Ch]),
+            true;
+        Other2 ->
+            io:format("  [P02] 加入编排未落到群/频道：~p~n", [Other2]),
+            false
+    end,
+    %% 默认资源关系（GZ-J01 的真实断言面）：默认 WS 指针存在**且**该 ws 下
+    %% 同时存在 scope=workspace 的全员群与公告频道。
+    %% 修：原断言只查 `WsRows =/= []`（「有一行」），建企只裸插 workspace 时
+    %% 也能满足——等于没有验证「全员群、公告频道原子成功」，却被记成 GZ-J01 PASS。
+    WsId = scalar(
+        Conn,
+        ~s{SELECT workspace_id AS n FROM organization_default_workspace WHERE organization_id = $1},
+        [OrgA]
+    ),
+    GCount = scalar(
+        Conn,
+        ~s{SELECT count(*)::bigint AS n FROM "group"
+           WHERE workspace_id = $1 AND scope = 'workspace' AND status = 1},
+        [WsId]
+    ),
+    CCount = scalar(
+        Conn,
+        ~s{SELECT count(*)::bigint AS n FROM channel
+           WHERE workspace_id = $1 AND scope = 'workspace' AND status = 1},
+        [WsId]
+    ),
     ok(
         "P02a 邀请码加入成功且 membership active",
         element(1, Join) =:= ok andalso Member =:= 1,
         C
     ),
+    ok("P02b 加入编排返回真实 group_id/channel_id（默认资源关系已落地）", J2, C),
     ok(
-        "P02b 默认 Workspace 指针存在（默认资源关系真源）",
-        element(1, WsRows) =:= ok andalso element(2, WsRows) =/= [],
+        "P02c 默认 Workspace 下全员群与公告频道均存在（GZ-J01 原子成功）",
+        is_integer(WsId) andalso GCount >= 1 andalso CCount >= 1,
         C
     ).
 
@@ -280,18 +321,30 @@ p05_default_ws_handover(Conn, C, OrgA, Ws1) ->
 
 %% --- P06：频道归档可见性（GZ-J07） ---
 p06_channel_archive_visibility(Conn, C, OrgA) ->
+    %% 修：原用模块宏 ?ORG1（恒为 fixture 段常量）当查询参数，与 P05 的 OrgA
+    %% 不是同一值 → 查不到 Ws2 → `[Ws2] = []` badmatch 打断 harness，
+    %% 后续 P06b/P06c/P07/P08/P09 全部未执行（GZ-J06/J07 因此从未产出证据）。
     [Ws2] = [
         maps:get(<<"id">>, R)
-     || R <- element(2, elib_pg:query(Conn, ~s{SELECT id FROM workspace WHERE organization_id = $1 AND name = $2}, [?ORG1, <<"GZAPP09-WS2">>]))
+     || R <- element(2, elib_pg:query(Conn, ~s{SELECT id FROM workspace WHERE organization_id = $1 AND name = $2}, [OrgA, <<"GZAPP09-WS2">>]))
     ],
+    %% 修：企业频道必须走 create_channel/5 并显式给 {<<"workspace">>, WsId}；
+    %% 原用 /4（个人域路径）会静默建出 scope='personal' 频道，
+    %% list_workspace_channels 永远查不到它。
     {ok, Ch} = channel_logic:create_channel(
         ?OWNER1,
         <<"GZAPP09-CH1">>,
-        #{<<"scope">> => <<"workspace">>, <<"workspace_id">> => integer_to_binary(Ws2)},
-        100
+        #{},
+        100,
+        {<<"workspace">>, Ws2}
     ),
     ChId = maps:get(<<"id">>, Ch),
     ok("P06a 企业频道创建成功", is_integer(ChId), C),
+    %% 旁证：频道行确实是 workspace 作用域，否则下面的可见性断言无意义
+    Scope = scalar(
+        Conn, ~s{SELECT count(*)::bigint AS n FROM channel WHERE id = $1 AND scope = 'workspace'}, [ChId]
+    ),
+    ok("P06a2 频道行 scope='workspace'（企业域，非个人域）", Scope =:= 1, C),
     {ok, _} = channel_logic:archive_channel(?OWNER1, integer_to_binary(ChId)),
     {ok, Active} = channel_logic:list_workspace_channels(Ws2, 100, <<"active">>),
     {ok, Archived} = channel_logic:list_workspace_channels(Ws2, 100, <<"archived">>),
@@ -307,23 +360,52 @@ p06_channel_archive_visibility(Conn, C, OrgA) ->
     BackInActive = lists:any(fun(M) -> maps:get(<<"id">>, M) =:= ChId end, Active2),
     ok("P06c 恢复后回到 active 集合（归档可恢复闭环）", BackInActive, C).
 
-%% --- P07：群解散保留 ---
-p07_group_dissolve_retention(Conn, C, OrgB) ->
-    Gid = 16#82EA0201,
-    exec(Conn, ~s{INSERT INTO "group" (id, owner_uid, creator_uid, member_max, member_count,
-        introduction, avatar, title, chat_aes_key, status, created_at, e2ee_mode, scope, workspace_id)
-        VALUES ($1,$2,$2,500,1,'','','GZAPP09-G1','k',1,now(),0,'workspace',NULL)
-        ON CONFLICT (id) DO NOTHING}, [Gid, ?OWNER2]),
-    exec(Conn, ~s<INSERT INTO msg_c2g (id, msg_id, from_id, to_id_list, msg_type, payload,
-        created_at, conv_seq, sender_did, retry_count)
-        VALUES ($1,'gzapp09-m1',$2,'[1,2]','text',jsonb_build_object(),now(),1,'did-gzapp09',0)
-        ON CONFLICT (id) DO NOTHING>, [16#82EA0301, ?OWNER2]),
-    %% org A 的 owner 解散 org B 的群 → 必须被拒（跨租户）
-    Cross = group_logic:dissolve(?OWNER1, Gid),
-    Alive = scalar(Conn, ~s{SELECT count(*)::bigint AS n FROM "group" WHERE id = $1}, [Gid]),
-    ok("P07a 跨 org 解散群被拒且群行仍在", element(1, Cross) =:= error andalso Alive =:= 1, C),
-    ok("P07b 消息行未受影响（保留策略）",
-        scalar(Conn, ~s{SELECT count(*)::bigint AS n FROM msg_c2g WHERE id = $1}, [16#82EA0301]) =:= 1, C).
+%% --- P07：群解散保留（GZ-J07） ---
+%% 语义（与 harness 自述一致）：org 管理者解散**非本人持有**的 ws 群后，
+%% 消息行保留 + group_log type=101 记录真实操作者。
+%% 修：原 fixture 建的是 scope='workspace' 但 workspace_id=NULL 的群——既不
+%% 属于任何 org，「跨 org 被拒」实际测的是「无 workspace 被拒」，与标题
+%% 「跨 org 解散」不是同一件事；且 msg_c2g 用了 to_id_list/conv_seq/retry_count
+%% 三个不存在的列（那是 msg_store 出站表的形状）→ undefined_column 直接中断。
+p07_group_dissolve_retention(Conn, C, Ws1) ->
+    Gid = ?GROUP_WS,
+    %% 群主 = JOINER（org 普通成员、非管理者）；org owner OWNER1 不占群主位。
+    %% 落 OrgA 的**默认 ws**（P02 的 join_by_code 把 JOINER 加进的就是它），
+    %% 满足「群成员 ⊆ ws 成员」提交校验。
+    exec(Conn, ~s{INSERT INTO "group" (id, owner_uid, creator_uid, title, scope, workspace_id,
+        status, e2ee_mode) VALUES ($1,$2,$2,'GZAPP09-G1','workspace',$3,1,0)
+        ON CONFLICT (id) DO NOTHING}, [Gid, ?JOINER, Ws1]),
+    %% 群成员 ⊆ ws 成员：JOINER 已由 P02 加入并落地为 ws 成员；OWNER1 是 ws owner
+    exec(Conn, ~s{INSERT INTO group_member (id, group_id, user_id, status)
+        VALUES ($1,$2,$3,1), ($4,$2,$5,1) ON CONFLICT DO NOTHING}, [
+        Gid * 10 + 1, Gid, ?JOINER, Gid * 10 + 2, ?OWNER1
+    ]),
+    %% msg_c2g 真实列：id/topic_id/from_id/to_id/msg_id/msg_type/payload
+    %% （原用的是 to_id_list/conv_seq/retry_count —— 那是 msg_store 出站表的形状，
+    %%   msg_c2g 上不存在 → undefined_column 直接中断 harness）
+    %% JSON 用 jsonb_build_object()：`~s{...}` 定界符不参与花括号配对，
+    %% 字面 '{"t":"hi"}' 会把 sigil 提前闭合。
+    exec(Conn, ~s{INSERT INTO msg_c2g (id, topic_id, from_id, to_id, msg_id, msg_type, payload)
+        VALUES ($1,$2,$3,$4,'gzapp09-m1','text',jsonb_build_object('t','hi')),
+               ($5,$2,$6,$4,'gzapp09-m2','text',jsonb_build_object('t','ho'))
+        ON CONFLICT DO NOTHING}, [?MSG1, Gid, ?JOINER, Gid, ?MSG2, ?OWNER1]),
+    %% org owner（非群主）解散该 ws 群：第二授权源放行
+    %% （dissolve 成功返回原子 ok，失败返回 {error, _}——见 group_logic:dissolve/2）
+    Dissolved = group_logic:dissolve(?OWNER1, Gid),
+    ok("P07a org owner 解散非本人持有的 ws 群成功", Dissolved =:= ok, C),
+    Gone = scalar(Conn, ~s{SELECT count(*)::bigint AS n FROM "group" WHERE id = $1}, [Gid]),
+    ok("P07a2 群行已删除", Gone =:= 0, C),
+    Msgs = scalar(
+        Conn, ~s{SELECT count(*)::bigint AS n FROM msg_c2g WHERE topic_id = $1}, [Gid]
+    ),
+    ok("P07b 解散后 msg_c2g 消息行保留（保留策略，2 条）", Msgs =:= 2, C),
+    Logs = scalar(
+        Conn,
+        ~s{SELECT count(*)::bigint AS n FROM group_log
+           WHERE group_id = $1 AND type = 101 AND option_uid = $2},
+        [Gid, ?OWNER1]
+    ),
+    ok("P07c group_log type=101 审计含真实操作者（可追溯）", Logs >= 1, C).
 
 %% --- P08：幂等（同 request_id 不产生第二行） ---
 p08_workspace_idempotent(Conn, C, OrgA) ->
@@ -337,44 +419,144 @@ p08_workspace_idempotent(Conn, C, OrgA) ->
         ),
     ok("P08 同 request_id 重复建 ws 只产生一行（幂等真源唯一）", Count =:= 1, C).
 
-%% --- P09：待激活 Owner 契约（不真发短信） ---
+%% --- P09：待激活 Owner 契约（走真实建企路径；不真发短信） ---
+%% 修：原 fixture 直插 owner_id=0 的 organization —— 违反 organization.owner_id
+%% → user(id) 外键（真库 23503），harness 在这里直接中断，P09a/P09b 从未执行。
+%% 改为调用与生产同一条 admin_create_pending_owner/5（预创建不可登录 Human
+%% + 组织 + 默认 WS + owner_activation_invite）。
+%% 短信边界（D11-D13 本卡交付面）：imboy_sms_provider 只实现 fake/local，
+%% 未配置或配置成真实厂商一律 fail-closed 不外发——本 harness 依赖并断言这一点。
 p09_owner_activation_contract(Conn, C) ->
-    OrgId = 16#82EA0003,
-    exec(Conn, ~s<INSERT INTO organization (id, name, owner_id, status, branding, settings)
-        VALUES ($1,'GZAPP09-Pending',0,'active',jsonb_build_object(),jsonb_build_object()) ON CONFLICT (id) DO NOTHING>, [OrgId]),
-    R = organization_owner_activation_logic:admin_status(OrgId),
-    ok("P09a 待激活状态可读（合同面存在）", element(1, R) =:= ok, C),
-    %% 短信 provider 契约：fake 实现不触网
-    FakeOk =
-        case erlang:function_exported(imboy_sms_provider, behaviour_info, 1) orelse
-            code:ensure_loaded(imboy_sms_fake) =/= {error, nofile} of
-            true -> true;
-            false ->
-                case code:ensure_loaded(imboy_sms_fake) of
-                    {module, _} -> true;
-                    _ -> false
-                end
+    Mobile = ?PENDING_MOBILE,
+    R = organization_admin_logic:admin_create_pending_owner(
+        1, <<"GZAPP09-Pending">>, Mobile, <<"GZAPP09-P-WS1">>, <<"127.0.0.1">>
+    ),
+    ok("P09a 待激活建企成功（预创建 Human + 组织 + 邀请）", element(1, R) =:= ok, C),
+    {OrgId, OwnerUid, Invite} =
+        case R of
+            {ok, #{
+                <<"organization">> := #{<<"id">> := O},
+                <<"owner_activation">> := #{<<"owner_user_id">> := U} = IV
+            }} ->
+                {O, U, IV};
+            _ ->
+                {0, 0, #{}}
         end,
-    ok("P09b 短信 provider 契约/fake 已编译进树（禁止真实外发）", FakeOk, C).
+    %% 预创建 Owner：不可登录 Human（status=0 禁用 / account_type=0 human）
+    Flags =
+        case
+            elib_pg:query(
+                ~s{SELECT status, account_type FROM "user" WHERE id = $1}, [OwnerUid]
+            )
+        of
+            {ok, [#{<<"status">> := S, <<"account_type">> := A} | _]} -> {S, A};
+            _ -> {unknown, unknown}
+        end,
+    ok("P09b Owner 为不可登录 Human（status=0, account_type=0）", Flags =:= {0, 0}, C),
+    St = organization_owner_activation_logic:admin_status(OrgId),
+    ok("P09c 待激活状态可读（合同面存在）", element(1, St) =:= ok, C),
+    %% D12：短信失败不回滚企业——企业行仍在且 active
+    OrgAlive = scalar(
+        Conn,
+        ~s{SELECT count(*)::bigint AS n FROM organization WHERE id = $1 AND status = 'active'},
+        [OrgId]
+    ),
+    Smssent = maps:get(<<"sms_sent">>, element(2, R), undefined),
+    InvStatus = maps:get(<<"status">>, Invite, undefined),
+    %% 两种自洽终态：送出→pending；未送出→sms_failed（且企业照常提交）
+    SmsConsistent =
+        (Smssent =:= true andalso InvStatus =:= <<"pending">>) orelse
+            (Smssent =:= false andalso InvStatus =:= <<"sms_failed">>),
+    ok(
+        "P09d 短信结果与 invite 状态自洽且企业不回滚（D12）",
+        OrgAlive =:= 1 andalso SmsConsistent,
+        C
+    ),
+    ok(
+        "P09e 短信 provider 无真实实现（仅 fake/not_configured，绝不外发）",
+        imboy_sms_provider:provider() =:= fake orelse
+            imboy_sms_provider:provider() =:= not_configured,
+        C
+    ),
+    {OrgId, OwnerUid, Mobile}.
 
 %% ===================================================================
 %% 清理（仅本 harness 的 fixture 段）
 %% ===================================================================
-cleanup(_Conn, OrgA, OrgB) ->
-    _ = elib_pg:query(~s{DELETE FROM msg_c2g WHERE id = $1}, [16#82EA0301]),
-    _ = elib_pg:query(~s{DELETE FROM group_log WHERE group_id = $1}, [16#82EA0201]),
-    _ = elib_pg:query(~s{DELETE FROM group_member WHERE group_id = $1}, [16#82EA0201]),
-    _ = elib_pg:query(~s{DELETE FROM "group" WHERE id = $1}, [16#82EA0201]),
+cleanup(_Conn, OrgA, OrgB, PendingFixture) ->
+    %% P09 的待激活企业/预创建 Owner 都是运行时 TSID：先按建企路径回收，
+    %% 再并入统一删除面（先删依赖行，最后删 organization/user）。
+    PendingOrgs =
+        case PendingFixture of
+            {POrgId, _PUid, _PMobile} when is_integer(POrgId), POrgId > 0 -> [POrgId];
+            _ -> []
+        end,
+    _ = elib_pg:query(
+        ~s{DELETE FROM group_log WHERE group_id IN (SELECT id FROM "group" WHERE workspace_id IN (SELECT id FROM workspace WHERE organization_id = ANY($1::bigint[])))},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    _ = elib_pg:query(
+        ~s{DELETE FROM group_member WHERE group_id IN (SELECT id FROM "group" WHERE workspace_id IN (SELECT id FROM workspace WHERE organization_id = ANY($1::bigint[])))},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    _ = elib_pg:query(
+        ~s{DELETE FROM "group" WHERE workspace_id IN (SELECT id FROM workspace WHERE organization_id = ANY($1::bigint[]))},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    _ = elib_pg:query(
+        ~s{DELETE FROM channel_subscription WHERE workspace_id IN (SELECT id FROM workspace WHERE organization_id = ANY($1::bigint[]))},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    _ = elib_pg:query(
+        ~s{DELETE FROM channel_admin WHERE channel_id IN (SELECT id FROM channel WHERE workspace_id IN (SELECT id FROM workspace WHERE organization_id = ANY($1::bigint[])))},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
     _ = elib_pg:query(
         ~s{DELETE FROM channel WHERE workspace_id IN (SELECT id FROM workspace WHERE organization_id = ANY($1::bigint[]))},
-        [[OrgA, OrgB]]
+        [PendingOrgs ++ [OrgA, OrgB]]
     ),
-    _ = elib_pg:query(~s{DELETE FROM organization_invite_code WHERE organization_id = ANY($1::bigint[])}, [[OrgA, OrgB]]),
-    _ = elib_pg:query(~s{DELETE FROM organization_default_workspace WHERE organization_id = ANY($1::bigint[])}, [[OrgA, OrgB]]),
-    _ = elib_pg:query(~s{DELETE FROM workspace_member WHERE workspace_id IN (SELECT id FROM workspace WHERE organization_id = ANY($1::bigint[]))}, [[OrgA, OrgB]]),
-    _ = elib_pg:query(~s{DELETE FROM workspace WHERE organization_id = ANY($1::bigint[])}, [[OrgA, OrgB]]),
-    _ = elib_pg:query(~s{DELETE FROM organization_member WHERE organization_id = ANY($1::bigint[])}, [[OrgA, OrgB]]),
-    _ = elib_pg:query(~s{DELETE FROM organization WHERE id = ANY($1::bigint[])}, [[OrgA, OrgB]]),
-    _ = elib_pg:query(~s{DELETE FROM "user" WHERE id = ANY($1::bigint[])}, [[?OWNER1, ?OWNER2, ?JOINER, ?OUTSIDER]]),
+    _ = elib_pg:query(
+        ~s{DELETE FROM owner_activation_invite WHERE organization_id = ANY($1::bigint[])},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    _ = elib_pg:query(~s{DELETE FROM group_log WHERE group_id = $1}, [?GROUP_WS]),
+    _ = elib_pg:query(~s{DELETE FROM group_member WHERE group_id = $1}, [?GROUP_WS]),
+    _ = elib_pg:query(~s{DELETE FROM "group" WHERE id = $1}, [?GROUP_WS]),
+    _ = elib_pg:query(~s{DELETE FROM msg_c2g WHERE id = ANY($1::bigint[])}, [[?MSG1, ?MSG2]]),
+    _ = elib_pg:query(
+        ~s{DELETE FROM organization_invite_code WHERE organization_id = ANY($1::bigint[])},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    _ = elib_pg:query(
+        ~s{DELETE FROM organization_default_workspace WHERE organization_id = ANY($1::bigint[])},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    _ = elib_pg:query(
+        ~s{DELETE FROM workspace_member WHERE workspace_id IN (SELECT id FROM workspace WHERE organization_id = ANY($1::bigint[]))},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    _ = elib_pg:query(
+        ~s{DELETE FROM workspace WHERE organization_id = ANY($1::bigint[])},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    %% 非 owner 成员先删；owner 行随 organization 删除 CASCADE 带走。
+    %% （00000127 owner 不变量是 DEFERRED 且每条语句都是独立提交点，
+    %%   整表先删会在该提交点出现「有 org 无 owner」→ 23514。）
+    _ = elib_pg:query(
+        ~s{DELETE FROM organization_member WHERE organization_id = ANY($1::bigint[]) AND role <> 'owner'},
+        [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    _ = elib_pg:query(
+        ~s{DELETE FROM organization WHERE id = ANY($1::bigint[])}, [PendingOrgs ++ [OrgA, OrgB]]
+    ),
+    PendingUsers =
+        case PendingFixture of
+            {_POrgId2, PUid, _} when is_integer(PUid), PUid > 0 -> [PUid];
+            _ -> []
+        end,
+    _ = elib_pg:query(
+        ~s{DELETE FROM "user" WHERE id = ANY($1::bigint[])},
+        [PendingUsers ++ [?OWNER1, ?OWNER2, ?JOINER, ?OUTSIDER]]
+    ),
     io:format("~nFIXTURE-CLEANUP done~n"),
     ok.
