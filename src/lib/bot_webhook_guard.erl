@@ -154,6 +154,8 @@ is_private_ip({169, 254, _, _}) -> true;
 %% CGNAT
 is_private_ip({100, B, _, _}) when B >= 64, B =< 127 -> true;
 is_private_ip({192, 0, 0, _}) -> true;
+%% 6to4 relay anycast 192.88.99.0/24（FULL-03 补：既是保留段也是中继跳板）
+is_private_ip({192, 88, 99, _}) -> true;
 %% IANA documentation ranges
 is_private_ip({192, 0, 2, _}) -> true;
 is_private_ip({198, 51, 100, _}) -> true;

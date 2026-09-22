@@ -31,6 +31,16 @@ execute(Req, Env) ->
             % /api 前缀的 Admin 路由同样委托给 adm_auth_middleware，
             % 避免落入客户端默认分支误走 verify_sign 客户端签名门（902）
             adm_auth_middleware:execute(Req, Env);
+        <<"/api/internal/v1/", _Tail/binary>> ->
+            %% 企业 internal 面（EPGZ-08 W4 接线）：委托
+            %% enterprise_internal_middleware 走 Application Credential 认证链
+            %% （credential 格式/digest → active/expiry → application active →
+            %% organization active → scope → rate fail-closed）。
+            %% 不得进 open()/option()（否则匿名可达），也不得落入兜底分支误走
+            %% verify_sign 客户端签名门——internal 面无设备/JWT/签名，落兜底
+            %% 会被 902 拦死（该分支必须排在 /api/v1/ 之前，因为 internal 前缀
+            %% 同时以 /api/ 开头但没有 /api/v1/ 段）。
+            enterprise_internal_middleware:execute(Req, Env);
         <<"/api/v1/", _Tail/binary>> ->
             % API v1 路由委托给 auth_middleware_api_v1
             % 2026-07-08 路由由 /v1/* 改名 /api/v1/*，此处前缀当时漏改，

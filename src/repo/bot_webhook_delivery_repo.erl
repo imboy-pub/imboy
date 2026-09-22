@@ -6,7 +6,7 @@
 %%%
 
 -export([tablename/0, attempt_tablename/0]).
--export([insert/1, get_delivery/1, claim_due/1]).
+-export([insert/1, get_delivery/1, claim_due/1, claim_due_tx/2]).
 -export([consume_reply_context/4]).
 -export([mark_success/1, mark_success/2, mark_retry/4, mark_dead/2]).
 -export([insert_attempt/2]).
@@ -103,8 +103,23 @@ get_delivery(DeliveryId) ->
     end.
 
 %% @doc 认领到期交付（pending/retry 且 next_retry_at <= NOW）。
+%% 池化入口（worker 用）；事务化实现在 claim_due_tx/2（同一段 SQL，无第二套认领）。
 -spec claim_due(non_neg_integer()) -> {ok, [map()]} | {error, term()}.
 claim_due(Limit) ->
+    case elib_pg:with_tx(fun(Conn) -> claim_due_tx(Conn, Limit) end) of
+        {rollback, Reason} -> {error, Reason};
+        Result -> Result
+    end.
+
+%% @doc 事务化认领（FULL-03：并发 claim 判定需要调用方自持事务/连接）。
+%% 认领语义（单条 SQL = 单次原子认领，不拆分）：
+%%   * SELECT ... FOR UPDATE SKIP LOCKED 只锁本事务可见的到期行——并发 claim
+%%     双方不会拿到同一行（另一方可跳过的行已被锁）；
+%%   * UPDATE 把 next_retry_at 前推 60 秒（租约）——即使两个事务不重叠，
+%%     后到的 claim 也看不到已前推的行（next_retry_at > NOW()）；
+%%   * ewh_claimed_at 仅对企业行（bot_id LIKE 'eapp:%'）打点，bot 域行保持 NULL。
+-spec claim_due_tx(any(), non_neg_integer()) -> {ok, [map()]} | {error, term()}.
+claim_due_tx(Conn, Limit) ->
     Tb = tablename(),
     Sql =
         <<
@@ -117,14 +132,19 @@ claim_due(Limit) ->
             Tb/binary,
             " AS delivery"
             " SET status = 'pending', next_retry_at = NOW() + INTERVAL '60 seconds',"
+            " ewh_claimed_at = CASE WHEN delivery.bot_id LIKE 'eapp:%' THEN NOW()"
+            " ELSE delivery.ewh_claimed_at END,"
             " updated_at = NOW()"
             " FROM due WHERE delivery.delivery_id = due.delivery_id"
             " RETURNING delivery.delivery_id, delivery.bot_id, delivery.event_type,"
             " delivery.payload::text AS payload, delivery.reply_context,"
             " delivery.correlation_id, delivery.attempt_count, delivery.webhook_url,"
-            " delivery.webhook_host, delivery.pinned_ip"
+            " delivery.webhook_host, delivery.pinned_ip,"
+            " delivery.ewh_owner_organization_id, delivery.ewh_owner_application_id,"
+            " delivery.ewh_replay_of, delivery.ewh_endpoint_generation,"
+            " delivery.ewh_ledger_version"
         >>,
-    case elib_pg:query(Sql, [Limit]) of
+    case elib_pg:query(Conn, Sql, [Limit]) of
         {ok, Rows} when is_list(Rows) -> {ok, Rows};
         {ok, _N} when is_integer(_N) -> {ok, []};
         {ok, _N, Rows} when is_list(Rows) -> {ok, Rows};

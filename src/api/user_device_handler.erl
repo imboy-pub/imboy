@@ -209,7 +209,13 @@ kick_others(Req0, State) ->
 
 %% @doc 注册推送 Token
 %% POST /v1/push/register
-%% Body: {"device_id": "...", "device_type": "android|ios", "platform": "fcm|apns", "token": "..."}
+%% Body: {"device_id": "...", "device_type": "android|ios|web",
+%%         "platform": "fcm|apns|web_push|jpush", "token": "..."}
+%%
+%% EPGZ-07 F3：device_type 非空 + 双字段值域在 handler 层校验，
+%% 非法值返回 400 而非穿透到 DB CHECK 炸 500。值域与
+%% push_token 表 chk_push_token_device_type / chk_push_token_platform
+%%（含本期扩展的 'jpush'）保持一致。
 -spec push_register(cowboy_req:req(), map()) -> cowboy_req:req().
 push_register(Req0, State) ->
     Uid = auth_ds:current_uid(State),
@@ -218,17 +224,33 @@ push_register(Req0, State) ->
     DeviceType = maps:get(<<"device_type">>, PostVals, <<>>),
     Platform = maps:get(<<"platform">>, PostVals, <<>>),
     Token = maps:get(<<"token">>, PostVals, <<>>),
-    case byte_size(DeviceId) > 0 andalso byte_size(Token) > 0 andalso byte_size(Platform) > 0 of
+    case valid_push_register_params(DeviceId, DeviceType, Platform, Token) of
         false ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         true ->
-            case push_notification_logic:register_token(Uid, DeviceId, DeviceType, Platform, Token) of
+            case
+                push_notification_logic:register_token(Uid, DeviceId, DeviceType, Platform, Token)
+            of
                 ok ->
                     elib_response:success(Req0);
                 {error, _Reason} ->
-                    elib_response:error(Req0, error_msg(?ERR_INTERNAL_SERVER_ERROR), ?ERR_INTERNAL_SERVER_ERROR)
+                    elib_response:error(
+                        Req0, error_msg(?ERR_INTERNAL_SERVER_ERROR), ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
+
+%% @doc push_register 参数校验：四字段非空 + device_type/platform 值域
+%% 值域对齐 push_token 表 CHECK 约束（platform 含 EPGZ-07 扩展的 jpush）
+valid_push_register_params(DeviceId, DeviceType, Platform, Token) ->
+    non_empty(DeviceId) andalso non_empty(Token) andalso
+        lists:member(DeviceType, [<<"android">>, <<"ios">>, <<"web">>]) andalso
+        lists:member(Platform, [<<"fcm">>, <<"apns">>, <<"web_push">>, <<"jpush">>]).
+
+non_empty(Bin) when is_binary(Bin) ->
+    byte_size(Bin) > 0;
+non_empty(_) ->
+    false.
 
 %% @doc 注销推送 Token
 %% POST /v1/push/unregister
@@ -258,4 +280,3 @@ format_error(Reason) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

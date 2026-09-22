@@ -178,8 +178,19 @@ def extract_routes(router_src: str) -> dict:
         router_src,
         re.compile(r"^-spec customer_service_platform_routes\(\) ->", re.M),
         re.compile(r"^-endif\.", re.M))
+    # EPGZ-08 W4（精确 internal 行）：企业 internal 面（/api/internal/v1/*，
+    # Application Credential 认证）的路由在文件末尾的 `enterprise_internal_routes()`
+    # helper 内（位于所有 feature ifdef 之后，故不在上面任何窗口内）。该 helper 是
+    # 冻结表 src/api/enterprise_internal_routes.erl 的 cowboy 映射；路径/方法真源
+    # 仍只有一处（冻结表），此处只登记 13 个 cowboy path（14 条 INT，INT-05/06 同 path）。
+    # 终点用不匹配哨兵：helper 之后没有顶层构造，取到文件尾。
+    seg_internal = _slice_between(
+        router_src,
+        re.compile(r"^-spec enterprise_internal_routes\(\) ->", re.M),
+        re.compile(r"^\s*NEVER_MATCHES_END_OF_INTERNAL_HELPER\s*$", re.M))
     scopes = {
         "main": seg_main, "api_v1": seg_v1, "adm": seg_adm,
+        "api_internal": seg_internal,
         "test_dev_only": seg_test,
     }
     out = {}
@@ -548,7 +559,7 @@ def check_openapi_coverage(contract):
     m = re.search(r"^paths:\n(.*?)^\w", seg, re.M | re.S)
     declared = set(re.findall(r"^\s{2}(/\S+):\s*$", m.group(1), re.M)) if m else set()
     router_paths = set()
-    for scope in ("main", "api_v1", "adm"):
+    for scope in ("main", "api_v1", "adm", "api_internal"):
         for e in contract["endpoints"][scope]:
             if not e["static"]:
                 router_paths.add(re.sub(r":(\w+)", r"{\1}", e["path"]))

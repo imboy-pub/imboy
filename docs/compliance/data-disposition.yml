@@ -1269,6 +1269,20 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  enterprise_internal_idempotency:
+    action: delete
+    owner: enterprise
+    reason: internal API 幂等重放窗口记录（短时效，仅存 request digest 与资源指针）
+    mechanism: delete rows by TTL (expires_at)
+    review: self-evident
+    retention: n/a
+  enterprise_oa_sso_code:
+    action: delete
+    owner: enterprise
+    reason: OA SSO 一次性 code（60 秒有效，仅存 digest，一次性消费）
+    mechanism: delete rows by TTL (expires_at)
+    review: self-evident
+    retention: n/a
 exclusions:
   adm_role:
     reason: 管理端 RBAC 角色配置，非终端用户数据
@@ -1325,3 +1339,23 @@ exclusions:
   channel_category:
     reason: 系统分类字典（无用户归属列），不属于删除范围
 
+  enterprise_application:
+    reason: 组织级企业集成应用注册（组织资产）；principal_user_id 为 ON DELETE SET NULL，随组织 offboarding 处置，不随单个用户删除
+  enterprise_application_credential:
+    reason: 组织集成应用的凭证行（只存 sha256 digest 与状态），生命周期绑定所属应用，随应用移除/轮换处置
+  enterprise_external_identity:
+    reason: 外部身份与组织成员的绑定（企业集成所需）；user_id 经 fk_eei_member 绑到 organization_member，随组织成员移除/offboarding 处置，不随个人账号删除级联
+  enterprise_application_grant:
+    reason: 组织级授权 Grant（组织治理资产，非用户数据）；授权行被 00000139 触发器禁止物理删除，撤销走 status=revoked 以保留授权 lineage 并保证撤权即时生效
+  enterprise_application_grant_scope:
+    reason: Grant 的固定 scope 集合（Grant 子行，随 Grant 生命周期处置，无用户 PII）
+  enterprise_application_grant_workspace:
+    reason: Grant 的显式 workspace 授权行（Grant 子行，随 Grant 生命周期处置，无用户 PII）
+  enterprise_attachment_retention:
+    reason: 企业附件（attachment scope=enterprise）的留存/法务 hold/purge 治理行（组织治理资产）；行禁止物理删除，purge 走 purge_state=purged 保留证据；不含任何正文/PII
+  enterprise_application_usage:
+    reason: 企业 Application 用量**聚合计量**（org/app/固定 metric 名/周期/计数）；列集封闭，刻意不含消息正文、external_user_id 等任何 PII（plan-full §5）
+  enterprise_group_origin:
+    reason: 企业群的 Application 归属（Application membership）：记录哪份 Application 在哪个 Org/Workspace 建立该企业群；组织治理资产，行禁止物理删除，归档走 status=archived
+  enterprise_message_origin:
+    reason: 企业托管消息的真实 Application origin 证据（append-only，application_id 非空 + human sender_user_id + non_e2ee 恒真）；只存 id/枚举/时间戳，不含消息正文或 external 标识

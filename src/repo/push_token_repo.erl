@@ -25,18 +25,30 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"push_token">>).
 
 %% @doc 注册或更新推送 token（upsert）
-%% 同一用户同一设备只保留一个活跃 token
+%%
+%% 接管式绑定（FULL-06，plan-full §7「token 跨用户/设备不可复用」）：
+%% 一个推送 token（FCM token / JPush RegistrationID）在生产上唯一对应一台
+%% 物理设备，因此**同一 token 同一时刻只能有一个活跃主人**。旧实现在断电
+%% 条件里只用了 (user_id, device_id)，于是「同一个 token 换了主人」会漏网：
+%%   * 换主人：user B 在同一台机器上登录（device_id 与 A 不同），A 的旧行仍
+%%     是 status=1 → 此后投给 A 的推送被投到「已登成 B」的设备上（跨用户投递）；
+%%   * 换设备：重装后 device_id 变了而 RegistrationID 未变，同样留下两条活跃
+%%     同 token 行（同一设备重复推送）。
+%% 修法：断电条件加上 token 维度——先按 token 把**任何**旧活跃行置为无效
+%% （含换主人/换设备），再插入新行。DB 层由迁移 00000142 的
+%% uq_push_token_active_token（部分唯一索引）兜底，防并发竞态与新写入方绕过。
 -spec upsert(integer(), binary(), binary(), binary(), binary()) ->
     {ok, integer()} | {error, term()}.
 upsert(Uid, DeviceId, DeviceType, Platform, Token) ->
     Tb = tablename(),
     Now = elib_dt:now(),
-    %% 先将该设备旧 token 置为无效
+    %% 先将该设备旧 token，以及该 token 在任何用户/设备上的旧活跃行置为无效
     DeactivateSql =
         <<"UPDATE ", Tb/binary,
             " SET status = 0, updated_at = $1"
-            " WHERE user_id = $2 AND device_id = $3 AND status = 1">>,
-    _ = elib_pg:execute(DeactivateSql, [Now, Uid, DeviceId]),
+            " WHERE status = 1"
+            " AND (token = $2 OR (user_id = $3 AND device_id = $4))">>,
+    _ = elib_pg:execute(DeactivateSql, [Now, Token, Uid, DeviceId]),
     %% 插入新 token
     Id = elib_tsid:generate(push_token),
     Data = #{
@@ -118,16 +130,31 @@ list_by_uids(Uids) when is_list(Uids) ->
     elib_pg:query(Sql, [Uids]).
 
 %% @doc 分页查询推送 token（Admin 管理用）
+%%
+%% 隐私不变量（plan-full §7「无 secret hydration」）：**投影里不出现 token 明文**。
+%% 推送 token 是设备凭据——拿到即可向该设备推任意通知，因此 Admin 读面只给
+%% **不可逆指纹**：`md5(token)` 十六进制前 8 位 + `length(token)`（原字节长度）。
+%% 指纹在 **SQL 侧**计算：明文根本不进入应用进程，更不进响应体——不是
+%% 「取回来再删字段」那种一改响应序列化就漏的写法。口径与前端 PushTokenView
+%% 一致（同 md5 前 8 位 + 原长度），不另立一套。
+%%
+%% 边界：本函数只服务 Admin 读面。推送**执行链**走 list_by_uid/1、list_by_uids/1
+%% 与 deactivate_by_token/1（各自独立 SQL，仍取 token 明文），三者不受本次改动影响
+%% ——已用 `grep -rn "push_token_repo:list_page" src/` 核实只有一个调用方
+%% （adm_admin_handler:push_token_list_action/3，权限 settings:view）。
 -spec list_page(pos_integer(), pos_integer()) ->
     {ok, #{list := list(), total := integer()}} | {error, term()}.
 list_page(Page, Size) ->
     Tb = tablename(),
     CountSql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE status = 1">>,
-    case elib_pg:one(CountSql, []) of
-        {ok, #{<<"count">> := Total}} ->
+    case elib_pg:query(CountSql, []) of
+        {ok, [#{<<"count">> := Total} | _]} ->
             Offset = (Page - 1) * Size,
             DataSql = <<
-                "SELECT user_id, device_id, device_type, platform, token, created_at, updated_at"
+                "SELECT user_id, device_id, device_type, platform,"
+                " lower(substring(md5(token) for 8)) AS token_fingerprint,"
+                " length(token) AS token_length,"
+                " created_at, updated_at"
                 " FROM ",
                 Tb/binary,
                 " WHERE status = 1"

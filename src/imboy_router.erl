@@ -79,6 +79,13 @@ get_routes() ->
                 action => wechat_mini_login
             }},
 
+            % EPGZ-08 W4（INT-HUMAN-SSO-01，plan §7.2）：Human 侧签发一次性
+            % OA SSO code —— 人类 JWT 门（**不进 open()**），60 秒 opaque
+            % code，只存 digest，绑定 org/app/user/redirect_uri/nonce；
+            % 客户 OA backend 再用 Application Credential 调 INT-14 原子消费。
+            % Flutter WebView 只拿 code，不注入 IMBoy JWT / Application secret。
+            {"/api/v1/oa/sso/code", enterprise_oa_sso_handler, #{action => code}},
+
             % 墨芽习字：微信小程序「消息推送」接收端点（免 Bearer，见 open/0）
             % GET  = 保存配置时的验签（原样回 echostr）
             % POST = 客服消息 / 进入会话等事件（兼容/安全模式 + JSON）
@@ -1313,7 +1320,17 @@ get_routes() ->
             %% EB-10：企业平台运营面 10 条（同上：编译期物理裁剪，helper 见文件底部）
             enterprise_platform_routes() ++
             %% CS-02：客服平台运营面 6 条（同款编译期物理裁剪，helper 见文件底部）
-            customer_service_platform_routes(),
+            customer_service_platform_routes() ++
+            %% FULL-08：Admin 企业应用治理面 A-01..A-14（/api/adm/enterprise/*）。
+            %% 与 enterprise_platform_routes()（/api/adm/enterprise-business/*）是
+            %% **两个前缀不相交的 surface**：本族只服务 Application/Credential/
+            %% Grant/Webhook/审计治理，**不经 feature 门**——理由与
+            %% enterprise_internal_routes() 一致（企业集成平台是核心交付面，
+            %% 新增 feature key 会改 IMBOY_PRODUCT_FEATURE_MANIFEST_HASH）。
+            %% 鉴权：/api/adm 前缀的 adm_auth_middleware（Admin Cookie 会话）+
+            %% handler 内按方法强制 adm_acl 权限位；与 OA Credential 的
+            %% /api/internal/v1/* 链路不可互换。
+            enterprise_application_governance_routes(),
     %% ---------------------------------------------------------------------------
     %% EB-10 / BUILD-00R：enterprise_business 路由段的**编译期物理裁剪** helper
 
@@ -1324,7 +1341,15 @@ get_routes() ->
         enterprise_wire(imboy_feature:compiled_routes(admin, AdmRoutes))
     ),
     CompiledPluginRoutes = imboy_feature:compiled_routes(api, plugin_routes()),
-    CoreRoutes = MainRoutes ++ CompiledApiRoutes ++ CompiledAdmRoutes,
+    %% EPGZ-08 W4：企业 internal 面（/api/internal/v1/*，Application Credential
+    %% 认证）挂进 CoreRoutes。**不经 feature 门**：它是 OA 集成面的冻结白名单
+    %% （A0 control/internal-api-manifest.yaml，14 条），与 enterprise_business
+    %% 的租户/运营面是两套 surface；新增 feature key 会改动
+    %% IMBOY_PRODUCT_FEATURE_MANIFEST_HASH，超出 EPGZ-08「只做集成」范围。
+    %% 匿名可达性由 auth_middleware 的前缀分支 + enterprise_internal_middleware
+    %% 认证链保证（open()/option() 均不含该前缀）。
+    CoreRoutes =
+        MainRoutes ++ CompiledApiRoutes ++ CompiledAdmRoutes ++ enterprise_internal_routes(),
     %% 源路由已统一在 /api 命名空间下（双路过渡已撤，无存量老客户端）。
     %% 网站白名单（/、/help、/brand、/privacy-policy、/account-deletion、/metrics、/static/*）保留根路径。
     [{Host, CoreRoutes ++ CompiledPluginRoutes}].
@@ -1841,6 +1866,66 @@ enterprise_platform_routes() ->
 -endif.
 
 %% ===================================================================
+%% FULL-08：Admin 企业应用治理面（A-01..A-14）
+%% ===================================================================
+%% 路径集合与 imboyadmin（分支 run/full-candidate-admin-20260921T101806Z）
+%% src/modules/enterprise_apps/api/contracts.ts:ENDPOINTS **逐字对应**；前端
+%% 字符串被单测钉死，后端不得漂移。前缀 `/api/adm/enterprise/` 与
+%% - `/api/adm/enterprise-business/*`（enterprise_business 租户/运营面）
+%% - `/api/internal/v1/*`（OA Application Credential 面）
+%% 三者互不相交 —— 这是产品硬边界 §2 的机械保证（OA 凭据不能换 Admin 权限）。
+%%
+%% 权限：**按方法**在 handler 内强制（adm_acl:ensure_permission/3）——
+%%   * GET（A-01/A-02/A-05/A-09/A-12/A-13/A-14）→ `enterprise_business:read`
+%%   * POST/PUT/PATCH/DELETE（A-03/A-04/A-06/A-07/A-08/A-10/A-11）→
+%%     `enterprise_business:write`
+%% A-05/A-06、A-09/A-10 **同路径不同方法**，因此权限不能挂在路由条目上（挂在
+%% 路由上只会得到「读权限可签发 credential」这类放宽）；逐方法判定放在
+%% handler 的 with_read/with_write 里，与其余 `/api/adm/*` 路由的形态一致
+%% （本仓 adm 面统一由 `/api/adm` 前缀的 adm_auth_middleware 做会话鉴权）。
+%% 本模块**不注册、不接受**任何 Application Credential 请求头。
+-spec enterprise_application_governance_routes() -> list().
+enterprise_application_governance_routes() ->
+    [
+        %% A-01 列表（GET）
+        {"/api/adm/enterprise/organizations/:org_id/applications",
+            adm_enterprise_application_handler, #{action => applications}},
+        %% A-02 详情（GET）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id",
+            adm_enterprise_application_handler, #{action => application_detail}},
+        %% A-03 生命周期迁移（POST，CAS）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/status",
+            adm_enterprise_application_handler, #{action => application_status}},
+        %% A-04 scope 授予/降级（PUT，CAS）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/scopes",
+            adm_enterprise_application_handler, #{action => application_scopes}},
+        %% A-05 列表（GET）/ A-06 签发（POST，唯一回显 secret 的响应）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials",
+            adm_enterprise_application_handler, #{action => credentials}},
+        %% A-07 轮换（POST，唯一回显 secret 的响应）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials/:credential_id/rotate",
+            adm_enterprise_application_handler, #{action => credential_rotate}},
+        %% A-08 撤销（DELETE）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials/:credential_id",
+            adm_enterprise_application_handler, #{action => credential_revoke}},
+        %% A-09 列表（GET）/ A-10 新增（POST）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/grants",
+            adm_enterprise_application_handler, #{action => grants}},
+        %% A-11 Grant CAS 增删（PATCH）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/grants/:grant_id",
+            adm_enterprise_application_handler, #{action => grant}},
+        %% A-12 投递统计（GET，无 payload）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/delivery-stats",
+            adm_enterprise_application_handler, #{action => delivery_stats}},
+        %% A-13 投递列表（GET，无 payload / 无 secret）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/deliveries",
+            adm_enterprise_application_handler, #{action => deliveries}},
+        %% A-14 审计（GET，before/after diff）
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/audit-logs",
+            adm_enterprise_application_handler, #{action => audit_logs}}
+    ].
+
+%% ===================================================================
 %% CS-02：customer_service 路由段的**编译期物理裁剪** helper
 %% ===================================================================
 %% 模式照 enterprise_tenant_routes()/enterprise_platform_routes()：未选中
@@ -2130,3 +2215,93 @@ customer_service_tenant_routes() ->
 customer_service_platform_routes() ->
     [].
 -endif.
+
+%% ===========================================================================
+%% EPGZ-08 W4：企业 internal 面路由（/api/internal/v1/*）
+%%
+%% 冻结真源 = src/api/enterprise_internal_routes.erl（method+path+scope+
+%% rate_bucket+idempotency+sender_mode，逐条对应 A0 control/
+%% internal-api-manifest.yaml 的 INT-01..INT-14）。本函数只把该表映射为
+%% cowboy 三元组：**路径与方法真源仍只有一处**，这里不重抄 scope/rate。
+%%
+%% 三条硬约束（plan §3 硬边界，均由 control/assert_manifest.py 机械断言）：
+%%   1. 前缀恒为 /api/internal/v1/，**零 Open Platform 生产面**（硬边界 1）；
+%%   2. 不进 imboy_router:open()/option()：匿名不可达（认证由
+%%      enterprise_internal_middleware 的 credential 链负责）；
+%%   3. 认证中间件方向：auth_middleware 前缀分支委托，**不落 verify_sign**
+%%      客户端签名门（internal 面无设备/JWT/签名）。
+%%
+%% 路径参数：cowboy 段名 :group_id / :delivery_id 由 cowboy_router 注入
+%% bindings，enterprise_internal_middleware 合并（并把这两个 TSID 段名收敛
+%% 为整数）进 handler_opts。
+%%
+%% 无 feature 门：见 get_routes/0 内注释（新增 feature key 会改动产品 feature
+%% manifest hash，超出 EPGZ-08 集成范围）。
+%% ===========================================================================
+
+-spec enterprise_internal_routes() -> list().
+enterprise_internal_routes() ->
+    [
+        %% INT-01 凭证自检
+        {"/api/internal/v1/application", enterprise_application_handler, #{action => self_info}},
+        %% INT-02 绑定 external_user_id <-> active member（PUT；与 INT-15 的
+        %% DELETE 共用本 path，方法分派在 handler 的 mappings action 内）
+        %% INT-03 批量解析（无全量导出形态）
+        {"/api/internal/v1/identity-mappings/resolve", enterprise_identity_handler, #{
+            action => resolve
+        }},
+        %% INT-04 创建 Workspace 企业群
+        {"/api/internal/v1/groups", enterprise_group_handler, #{action => create}},
+        %% INT-05/06 同一 path 幂等加/删成员（方法分派在 handler 内，非表外组合）
+        {"/api/internal/v1/groups/:group_id/members", enterprise_group_handler, #{
+            action => members
+        }},
+        %% INT-07/08 企业附件 presign/confirm
+        {"/api/internal/v1/files/presign", enterprise_asset_handler, #{action => presign}},
+        {"/api/internal/v1/files/confirm", enterprise_asset_handler, #{action => confirm}},
+        %% INT-09/10 OA 代发（application / 指定 sender_user_id），固定非 E2EE
+        {"/api/internal/v1/messages/direct", enterprise_message_handler, #{action => direct}},
+        {"/api/internal/v1/groups/:group_id/messages", enterprise_message_handler, #{
+            action => group
+        }},
+        %% INT-11 代 Human 发起好友申请（只发起，无自动接受/确认）
+        {"/api/internal/v1/friend-requests", enterprise_friend_request_handler, #{
+            action => create
+        }},
+        %% INT-12/13 Webhook 配置与仅本 Application 的 replay
+        {"/api/internal/v1/webhook", enterprise_webhook_handler, #{action => configure}},
+        {"/api/internal/v1/webhook/deliveries/:delivery_id/replay", enterprise_webhook_handler, #{
+            action => replay
+        }},
+        %% INT-14 OA SSO 一次性 code 原子交换
+        {"/api/internal/v1/oa/sso/exchange", enterprise_oa_sso_exchange_handler, #{
+            action => exchange
+        }},
+        %% ---- FULL-02 新增（A0 接线）。边界规格 enterprise_internal_boundary:
+        %%      spec/1 与冻结表 enterprise_internal_routes:routes/0 两侧必须
+        %%      逐条一致，有机械比对测试。----
+        %% INT-02(PUT 绑定)/INT-15(DELETE 撤销) 共用同一 path，方法分派在
+        %% handler 内（cowboy 不允许同 path 重复登记；与 INT-05/06 同款口径）
+        {"/api/internal/v1/identity-mappings", enterprise_identity_handler, #{action => mappings}},
+        %% INT-16 映射受限游标目录（无全量导出形态）
+        {"/api/internal/v1/identity-mappings/directory", enterprise_directory_handler, #{
+            action => mappings
+        }},
+        %% INT-17 成员受限游标目录
+        {"/api/internal/v1/directory/users", enterprise_directory_handler, #{
+            action => users
+        }},
+        %% INT-18/19/21 群详情(GET) / 更新(PATCH) / 归档(DELETE)：同一 path，
+        %% 方法分派在 handler 内（与 INT-05/06 同款口径）
+        {"/api/internal/v1/groups/:group_id", enterprise_group_handler, #{action => group}},
+        %% INT-20 成员角色
+        {"/api/internal/v1/groups/:group_id/members/roles", enterprise_group_handler, #{
+            action => member_roles
+        }},
+        %% INT-22 附件留存/hold/purge 治理
+        {"/api/internal/v1/files/governance", enterprise_asset_handler, #{action => governance}},
+        %% INT-23 投递列表 + 健康度摘要（FULL-03；只读，无 payload）
+        {"/api/internal/v1/webhook/deliveries", enterprise_webhook_handler, #{
+            action => deliveries
+        }}
+    ].
