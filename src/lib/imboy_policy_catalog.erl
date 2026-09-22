@@ -42,6 +42,22 @@ origin_meta_catalog() ->
     }.
 
 -spec capability_meta_catalog() -> map().
+%% 加密档位（运营视角）——e2ee_mode × storage_mode 的标准组合表。
+%% 管理后台「加密档位」单选一次套用两个字段；档位语义面向运营者，
+%% 客户端解析行为见 imboyapp lib/service/encryption_mode.dart，
+%% 概念说明见 docs/concepts/e2ee.md §加密档位。
+%% ⚠️ 调整档位/取值必须三处同步：本注释、imboyadmin policy.ts ENCRYPTION_TIERS、
+%% 概念文档（页面测试会逐项锁定该表）。
+%%
+%%   档位                | e2ee_mode | storage_mode    | 含义
+%%   ---------------------+-----------+-----------------+----------------------
+%%   关闭（明文交付）     | disabled  | disabled        | 硬闸：整档关闭 E2EE
+%%   可选（明文归档）     | optional  | archived        | 明文收发+归档存储
+%%   合规（可审计）       | compliance| compliance_e2ee | 加密+合规密钥托管
+%%   强制（纯端到端）     | required  | secure_e2ee     | 服务器不可读
+%%
+%% 非标准组合（如企业预设 disabled+archived：E2EE 关但无硬闸）仍合法——
+%% 各判定函数对未知/交叉取值均有兜底分支，只是不再对应任何档位。
 capability_meta_catalog() ->
     #{
         storage_mode => #{
