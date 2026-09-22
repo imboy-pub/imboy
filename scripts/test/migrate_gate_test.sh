@@ -12,7 +12,9 @@ TEST_SCRIPT_DIR="$TMP_ROOT/scripts"
 TEST_DEPLOY="$TEST_SCRIPT_DIR/imboy-deploy.sh"
 TEST_ENV="$TEST_SCRIPT_DIR/.env.deploy"
 TEST_PLUGIN_KEY="$TMP_ROOT/plugin-signing-public.raw"
-mkdir -p "$MOCK_BIN" "$TEST_SCRIPT_DIR/lib"
+TEST_SOURCE_HEAD=0123456789abcdef0123456789abcdef01234567
+export TEST_SOURCE_HEAD
+mkdir -p "$MOCK_BIN" "$TEST_SCRIPT_DIR/lib" "$TMP_ROOT/imboyadmin"
 
 cleanup() {
   rm -rf -- "$TMP_ROOT"
@@ -28,6 +30,7 @@ printf '%s\n' \
   ']}.' >"$TMP_ROOT/relx.config"
 cp "$TMP_ROOT/relx.config" "$TMP_ROOT/relxpro.config"
 printf '0123456789abcdef0123456789abcdef' >"$TEST_PLUGIN_KEY"
+printf '%s\n' '{"scripts":{"build":"vite build"}}' >"$TMP_ROOT/imboyadmin/package.json"
 cat >"$TEST_SCRIPT_DIR/lib/blue_green_deploy.sh" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >"$BLUE_GREEN_LOG"
@@ -51,6 +54,8 @@ write_env() {
   'DEPLOY_BLUE_PORT=9800' \
   'DEPLOY_GREEN_PORT=9801' \
   'DEPLOY_COOKIE=testcookie' \
+  'API_DOMAIN=api.example.invalid' \
+  'ADMIN_DOMAIN=admin.example.invalid' \
   'ADMIN_BUILD_DIR=../imboyadmin' \
   'DB_CONTAINER=postgres' \
   'DB_NAME=imboy' \
@@ -84,7 +89,15 @@ exit 0
 MOCK
 chmod +x "$MOCK_BIN/ssh"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$MOCK_BIN/rsync"
-chmod +x "$MOCK_BIN/rsync" "$TEST_SCRIPT_DIR/lib/blue_green_deploy.sh"
+cat >"$MOCK_BIN/git" <<'MOCK'
+#!/usr/bin/env bash
+case " $* " in
+  *" rev-parse HEAD "*) printf '%s\n' "$TEST_SOURCE_HEAD" ;;
+  *" status --porcelain "*) : ;;
+  *) exit 0 ;;
+esac
+MOCK
+chmod +x "$MOCK_BIN/rsync" "$MOCK_BIN/git" "$TEST_SCRIPT_DIR/lib/blue_green_deploy.sh"
 
 PASS=0
 FAIL=0
@@ -106,6 +119,7 @@ run_migrate() {
   : >"$MOCK_LOG"
   : >"$MOCK_CALLS"
   env PATH="$MOCK_BIN:$PATH" \
+    TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" \
     MOCK_LOG="$MOCK_LOG" \
     MOCK_CALLS="$MOCK_CALLS" \
     MOCK_GATE_STATE="$gate_state" \
@@ -143,6 +157,7 @@ fi
 BLUE_GREEN_LOG="$TMP_ROOT/blue-green.log"
 : >"$MOCK_CALLS"
 if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" \
    BLUE_GREEN_LOG="$BLUE_GREEN_LOG" \
    bash "$TEST_DEPLOY" api -v -l --env-file "$CUSTOM_ENV" \
    >"$TMP_ROOT/output.log" 2>&1 \
@@ -161,6 +176,7 @@ printf '%s\n' 0.0.0 >"$TMP_ROOT/VERSION"
 printf '%s\n' '## [0.9.0] - 2026-09-01' >"$TMP_ROOT/CHANGELOG.md"
 : >"$MOCK_CALLS"
 if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" \
    bash "$TEST_DEPLOY" api --env-file "$CUSTOM_ENV" \
    >"$TMP_ROOT/output.log" 2>&1; then
   bad "非本地发布缺少 CHANGELOG 目标版本时应拒绝" ""

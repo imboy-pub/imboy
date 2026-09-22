@@ -100,12 +100,12 @@ bash nginx/init-letsencrypt.sh     # 三域证书签发（幂等：已签发的�
 
 ---
 
-## 5. 一键事务部署 `cs -v -l` / One-command Transactional Deploy
+## 5. 一键事务部署 `cs` / One-command Transactional Deploy
 
 除标准 Compose 部署外，仓库还提供面向既有蓝绿生产环境的 CS 组件一键事务入口：
 
 ```bash
-bash scripts/imboy-deploy.sh cs -v -l [--env-file PATH]
+bash scripts/imboy-deploy.sh cs [--env-file PATH]
 ```
 
 该命令由 `scripts/imboy-deploy.sh`（统一部署入口）提供，固定顺序：
@@ -123,7 +123,8 @@ PRECHECK → BUILD_AND_VERIFY_WIDGET → STAGE_WIDGET_RELEASE → VALIDATE_CS_VH
 命令细节见 [deploy-script.md](./deploy-script.md) 的「客服 Widget 部署（cs）」章节。
 
 > 两种形态的关系：本文第 4 节是标准 Compose 部署（`imboy_widget` 容器承载静态产物）；
-> `cs -v -l` 面向蓝绿多节点生产（不可变 release 目录 + `current` symlink 承载静态产物）。
+> `cs` 面向蓝绿多节点生产（不可变 release 目录 + `current` symlink 承载静态产物）；
+> 它始终从 clean Git HEAD 构建 Widget。`-v` 仅增加日志，`-l` 仅让 Backend 改用本地 rsync。
 > 二者共用同一份 `.env`/env-file 的 `CS_WIDGET_DOMAIN` 与同一套 backend 路由。
 
 ---
@@ -158,7 +159,7 @@ docker compose -f docker-compose.community.yml stop imboy_widget
 ```
 
 回滚只影响 `imboy_widget` 容器与 Widget 产物；API/Admin/backend 数据、证书与
-vhost 不受影响。`cs -v -l` 形态的回滚由脚本自动完成（恢复先前 symlink/vhost），
+vhost 不受影响。`cs` 形态的回滚由脚本自动完成（恢复先前 symlink/vhost），
 见 deploy-script.md。
 
 ---

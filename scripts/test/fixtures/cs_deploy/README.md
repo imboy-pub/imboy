@@ -9,7 +9,7 @@ certbot/bun 全部为 PATH 注入的 fake binary）。
 
 | 路径 | 用途 |
 |---|---|
-| `build-src/package.json` | fake 本地构建源码仓：`cs -l` 的 `cs_resolve_build_paths` 要求 `CS_BUILD_DIR` 上级含 `build:widget` 脚本。真实构建由 fake bun 完成（产物 `widget-dist/` 仅运行期生成，harness 保证清理，不入库）。 |
+| `build-src/package.json` | fake 本地构建源码仓：`cs` 的 `cs_resolve_build_paths` 要求 `CS_BUILD_DIR` 上级含 `build:widget` 脚本。真实构建由 fake bun 完成（产物 `widget-dist/` 仅运行期生成，harness 保证清理，不入库）。 |
 | `fake-remote/` | fake 远端树模板（首次安装基线）：批准根 marker `.imboy-cs-root`、foreign release 目录（验证永不删除）、API vhost（蓝 upstream 9800 恰一行）。 |
 | `fake-remote-upgrade-overlay/` | 升级场景叠加层：旧 release `20260101000000-old`、旧 CS vhost。`current` symlink 由 harness 运行期创建（必须指向原始形式绝对路径 `/www/wwwroot/cs.test.local/releases/...`，供路径翻译往返一致）。 |
 

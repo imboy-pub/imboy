@@ -6,6 +6,7 @@ cd "$(dirname "$0")/../.." || exit 1
 
 DEPLOY="scripts/lib/blue_green_deploy.sh"
 TEST_VSN="$(tr -d '[:space:]' < VERSION)"
+TEST_SOURCE_HEAD=0123456789abcdef0123456789abcdef01234567
 TMP_ROOT="$(mktemp -d /tmp/imboy_deploy_sequence.XXXXXX)"
 MOCK_BIN="$TMP_ROOT/bin"
 MOCK_LOG="$TMP_ROOT/events.log"
@@ -26,6 +27,18 @@ for last_arg in "$@"; do :; done
 cmd="${last_arg:-}"
 
 case "$cmd" in
+  *"cd '/srv/imboy' && git rev-parse HEAD"*)
+    printf '%s\n' "${MOCK_REMOTE_SOURCE_HEAD:-$TEST_SOURCE_HEAD}"
+    exit 0
+    ;;
+  *"head -n1 '/srv/imboy/VERSION'"*)
+    printf '%s\n' "$TEST_VSN"
+    exit 0
+    ;;
+  *"/etc/source-head"*)
+    [ "${MOCK_SOURCE_HEAD_MATCH:-1}" = 1 ]
+    exit
+    ;;
   *"BLUE_UPSTREAM="*"GREEN_UPSTREAM="*)
     [ "${MOCK_FAIL_AT:-}" != "rollback_unknown" ] || exit 2
     printf '%s\n' "${MOCK_NGINX_COLOR:-green}"
@@ -125,21 +138,26 @@ case "$cmd" in
       && [ "${MOCK_FAIL_AT:-}" != "rollback_health" ]
     exit
     ;;
-  *"ROLLBACK_BLUE_AFTER="*"ROLLBACK_GREEN_AFTER="*)
+  *": imboy-nginx-rollback"*)
+    case "$cmd" in
+      *"/etc/nginx/imboy.conf"*"/etc/nginx/prodadm.conf"*"/etc/nginx/cs.conf"*) ;;
+      *) exit 9 ;;
+    esac
     printf '%s\n' ROLLBACK >>"$MOCK_LOG"
     [ "${MOCK_FAIL_AT:-}" != "rollback_sed" ] || exit 1
     if [ "${MOCK_FAIL_AT:-}" = "rollback_reload" ]; then
-      case "$cmd" in
-        *"nginx -s reload || {"*"cp '/etc/nginx/imboy.conf'.bak '/etc/nginx/imboy.conf'"*) exit 1 ;;
-        *) exit 0 ;;
-      esac
+      exit 1
     fi
     case "${MOCK_NGINX_COLOR:-green}" in
       green) case "$cmd" in *"9801;|server 127.0.0.1:9800;"*) exit 0 ;; *) exit 1 ;; esac ;;
       blue)  case "$cmd" in *"9800;|server 127.0.0.1:9801;"*) exit 0 ;; *) exit 1 ;; esac ;;
     esac
     ;;
-  *"nginx -t && nginx -s reload"*)
+  *": imboy-nginx-cutover"*)
+    case "$cmd" in
+      *"/etc/nginx/imboy.conf"*"/etc/nginx/prodadm.conf"*"/etc/nginx/cs.conf"*) ;;
+      *) exit 9 ;;
+    esac
     printf '%s\n' SWITCH >>"$MOCK_LOG"
     exit 0
     ;;
@@ -208,15 +226,22 @@ run_deploy() {
     MOCK_MARKER_READY="${MOCK_MARKER_READY:-1}" \
     MOCK_RELEASE_EXISTS="${MOCK_RELEASE_EXISTS:-0}" \
     MOCK_ACTIVE_RELEASE_DIR="${MOCK_ACTIVE_RELEASE_DIR:-/usr/local/imboy-0.9.0-oldnode}" \
+    MOCK_SOURCE_HEAD_MATCH="${MOCK_SOURCE_HEAD_MATCH:-1}" \
+    MOCK_REMOTE_SOURCE_HEAD="${MOCK_REMOTE_SOURCE_HEAD:-}" \
+    TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" \
+    TEST_VSN="$TEST_VSN" \
     IMBOY_DEPLOY_USER=tester \
     IMBOY_DEPLOY_PORT=2222 \
     IMBOY_DEPLOY_PROJECT_DIR=/srv/imboy \
     IMBOY_DEPLOY_NGINX_CONF=/etc/nginx/imboy.conf \
+    IMBOY_DEPLOY_PRODADM_CONF=/etc/nginx/prodadm.conf \
+    IMBOY_DEPLOY_CS_NGINX_CONF=/etc/nginx/cs.conf \
     IMBOY_DEPLOY_BLUE_PORT=9800 \
     IMBOY_DEPLOY_GREEN_PORT=9801 \
     IMBOY_DEPLOY_NODE_HOST=127.0.0.1 \
     IMBOY_DEPLOY_COOKIE=testcookie \
     IMBOY_DEPLOY_BRANCH=main \
+    IMBOY_DEPLOY_SOURCE_HEAD="$TEST_SOURCE_HEAD" \
     IMBOY_DEPLOY_STOP_OLD=true \
     IMBOY_DEPLOY_DB_CONTAINER=postgres \
     IMBOY_DEPLOY_DB_NAME=imboy_test \
@@ -241,6 +266,8 @@ run_rollback() {
     IMBOY_DEPLOY_PORT=2222 \
     IMBOY_DEPLOY_PROJECT_DIR=/srv/imboy \
     IMBOY_DEPLOY_NGINX_CONF=/etc/nginx/imboy.conf \
+    IMBOY_DEPLOY_PRODADM_CONF=/etc/nginx/prodadm.conf \
+    IMBOY_DEPLOY_CS_NGINX_CONF=/etc/nginx/cs.conf \
     IMBOY_DEPLOY_BLUE_PORT=9800 \
     IMBOY_DEPLOY_GREEN_PORT=9801 \
     IMBOY_DEPLOY_COOKIE=testcookie \
@@ -309,6 +336,25 @@ if MOCK_RELEASE_EXISTS=1 \
   fi
 else
   bad "相同健康 release 重复部署应退出 0" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_RELEASE_EXISTS=1 MOCK_SOURCE_HEAD_MATCH=0 \
+   MOCK_ACTIVE_RELEASE_DIR="/usr/local/imboy-${TEST_VSN}-testnode" \
+   run_deploy "" blue; then
+  bad "相同版本但 source HEAD 不同不得幂等成功" ""
+elif grep -q 'source HEAD 与本次候选不一致' "$TMP_ROOT/output.log"; then
+  ok "相同版本 release 仍以 source HEAD 区分候选"
+else
+  bad "source HEAD 幂等门禁错误文案异常" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_REMOTE_SOURCE_HEAD=ffffffffffffffffffffffffffffffffffffffff run_deploy "" blue; then
+  bad "远端 Git HEAD 与本地候选不一致时不得部署" ""
+elif grep -q '与本地候选.*不一致' "$TMP_ROOT/output.log" \
+     && ! grep -qE '^(DAEMON|SWITCH|STOP|MIGRATE)$' "$MOCK_LOG"; then
+  ok "远端 Git HEAD 不匹配时在构建和切流前失败"
+else
+  bad "远端 Git HEAD 门禁未在副作用前失败" "$(<"$TMP_ROOT/output.log")"
 fi
 
 if MOCK_RELEASE_EXISTS=1 run_deploy "" blue; then
@@ -394,7 +440,7 @@ else
   assert_absent "expand 清单未设置时不启动新节点" DAEMON
   assert_absent "expand 清单未设置时不切流" SWITCH
   assert_absent "expand 清单未设置时不执行迁移" MIGRATE
-  grep -q "release 包含必需的 expand 迁移但清单未配置" "$TMP_ROOT/output.log" \
+  grep -q "release 包含 boundary 迁移.*请显式配置 DEPLOY_EXPAND_MIGRATIONS" "$TMP_ROOT/output.log" \
     && ok "expand 清单未设置时返回明确配置错误" \
     || bad "expand 清单未设置时错误文案异常" "$(<"$TMP_ROOT/output.log")"
 fi
@@ -406,7 +452,7 @@ else
   assert_absent "expand 清单为空时不启动新节点" DAEMON
   assert_absent "expand 清单为空时不切流" SWITCH
   assert_absent "expand 清单为空时不执行迁移" MIGRATE
-  grep -q "release 包含必需的 expand 迁移但清单未配置" "$TMP_ROOT/output.log" \
+  grep -q "release 包含 boundary 迁移.*请显式配置 DEPLOY_EXPAND_MIGRATIONS" "$TMP_ROOT/output.log" \
     && ok "expand 清单为空时返回明确配置错误" \
     || bad "expand 清单为空时错误文案异常" "$(<"$TMP_ROOT/output.log")"
 fi
@@ -514,12 +560,12 @@ else
 fi
 
 if MOCK_NGINX_COLOR=none run_deploy "" none; then
-  assert_absent "首次空库安装不预跑单条 expand" EXPAND
-  [ -n "$(event_line AUTO_TRUE)" ] \
-    && ok "首次空库安装通过 boot 执行完整迁移" \
-    || bad "首次安装未开启 bootstrap 迁移" "$(tr '\n' ',' <"$MOCK_LOG")"
+  bad "首次安装不得在未切流时谎报成功" ""
+elif grep -q '缺少可验证的蓝绿 upstream' "$TMP_ROOT/output.log" \
+     && ! grep -qE '^(EXPAND|DAEMON|SWITCH|STOP|MIGRATE)$' "$MOCK_LOG"; then
+  ok "首次安装缺少预置 upstream 时在构建、启动和迁移前 fail-closed"
 else
-  bad "首次空库安装控制流应成功" "$(<"$TMP_ROOT/output.log")"
+  bad "首次安装缺少 upstream 的错误文案异常" "$(<"$TMP_ROOT/output.log")"
 fi
 
 if MOCK_NGINX_COLOR=none run_deploy "" none --no-migrate; then

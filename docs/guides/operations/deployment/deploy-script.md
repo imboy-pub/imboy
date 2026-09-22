@@ -48,12 +48,14 @@ DEPLOY_BLUE_PORT=9800                              # 蓝节点端口（当前生
 DEPLOY_GREEN_PORT=9801                             # 绿节点端口（备用）
 DEPLOY_COOKIE=imboycookie                          # Erlang 节点 cookie
 NGINX_CONF=/path/to/nginx/pro.conf                 # nginx 配置文件路径
+API_DOMAIN=api.domain.com                          # API 对外域名
 PRODADM_CONF=/path/to/nginx/admin.conf             # Admin API vhost 配置路径
 DEPLOY_STOP_OLD=true                               # 部署后是否停旧节点
 
 # ── 管理后台 ─────────────────────────────────────────────
 ADMIN_BUILD_DIR=../imboy-admin-frontend            # 本地 admin 仓库路径（相对 imboy/scripts/）
 ADMIN_REMOTE_DIR=/www/wwwroot/prodadm.domain.com   # 服务器上静态文件目录
+ADMIN_DOMAIN=prodadm.domain.com                    # Admin 对外域名
 
 # ── 数据库 ────────────────────────────────────────────────
 DB_CONTAINER=prod_imboy_pg18   # Docker 容器名
@@ -129,11 +131,12 @@ bash scripts/imboy-deploy.sh rollback
 ### 命令
 
 ```bash
-bash scripts/imboy-deploy.sh cs -v -l [--env-file ~/.config/imboy/deploy/customer-a.env]
+bash scripts/imboy-deploy.sh cs [--env-file ~/.config/imboy/deploy/customer-a.env]
 ```
 
-`cs -v -l`（verbose + 本地源码模式：Backend 用本地源码蓝绿发布，Widget 用本地
-imboyadmin 源码 `bun run build:widget` 构建）固定顺序：
+`cs` 始终从 clean Git HEAD 执行 `bun run build:widget`，不会复用旧产物；Backend
+默认由服务器拉取同一 Git HEAD。`-v` 只增加日志，`-l` 只把 Backend 改为本地 rsync。
+固定顺序：
 
 ```text
 PRECHECK → BUILD_AND_VERIFY_WIDGET → STAGE_WIDGET_RELEASE → VALIDATE_CS_VHOST_AND_TLS
@@ -156,6 +159,7 @@ CS_SMOKE_SHOP_ORIGIN=https://shop.example.com # smoke 用的宿主页 origin（�
 ### 失败语义（不变量）
 
 - Backend 先成功再激活新 Widget；新 Backend 必须向后兼容旧 Widget。
+- Backend release、Admin deploy-meta 与 Widget manifest 都绑定并校验源码 Git HEAD。
 - 升级失败：只恢复先前 Widget symlink/vhost；已成功且向后兼容的 Backend 不回滚。
 - 首次安装失败：移除一切未成功激活的 vhost/symlink/临时文件，无半配置残留。
 - smoke 失败：恢复先前 symlink/vhost；新 release 目录保留待人工排查。

@@ -99,6 +99,24 @@ ok()   { echo -e "\033[32m✓ $*\033[0m"; }
 warn() { echo -e "\033[33m⚠ $*\033[0m"; }
 fail() { echo -e "\033[31m✗ $*\033[0m" >&2; exit 1; }
 
+git_source_head() {
+  local repo="$1" label="$2" head
+  head="$(git -C "$repo" rev-parse HEAD 2>/dev/null)" \
+    || fail "$label 不是可读取的 Git 工作树"
+  [[ "$head" =~ ^[0-9a-f]{40}$ ]] || fail "$label Git HEAD 非法"
+  printf '%s\n' "$head"
+}
+
+require_clean_source() {
+  local repo="$1" label="$2"
+  [[ -z "$(git -C "$repo" status --porcelain --untracked-files=normal)" ]] \
+    || fail "$label 存在未提交或未跟踪改动，拒绝发布无法绑定 SHA 的源码"
+}
+
+valid_fqdn() {
+  [[ "$1" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$ ]]
+}
+
 sync_local_release_version() {
   local repo_root version_file version_tmp configured_relx relx_file relx_tmp tmp changed
   local -a relx_files relx_tmps
@@ -181,6 +199,11 @@ sync_local_release_version() {
 [[ "$PRODADM_CONF" =~ ^/[a-zA-Z0-9._/-]+$ && "$PRODADM_CONF" != "/" \
    && "$PRODADM_CONF" != *..* ]] \
   || fail "PRODADM_CONF 必须是无 .. 的安全绝对路径"
+if [[ -n "${CS_NGINX_CONF:-}" ]]; then
+  [[ "$CS_NGINX_CONF" =~ ^/[a-zA-Z0-9._/-]+$ && "$CS_NGINX_CONF" != "/" \
+     && "$CS_NGINX_CONF" != *..* ]] \
+    || fail "CS_NGINX_CONF 必须是无 .. 的安全绝对路径"
+fi
 [[ "$ADMIN_REMOTE_DIR" =~ ^/www/wwwroot/[a-zA-Z0-9._/-]+$ \
    && "$ADMIN_REMOTE_DIR" != *..* ]] \
   || fail "ADMIN_REMOTE_DIR 必须位于 /www/wwwroot/<站点>"
@@ -236,11 +259,28 @@ if [[ "$LOCAL_MODE" -eq 1 && ("$COMPONENT" == api || "$COMPONENT" == all) ]]; th
   sync_local_release_version
 fi
 
-if [[ "$COMPONENT" == all || "$COMPONENT" == admin ]]; then
+if [[ "$COMPONENT" == all || "$COMPONENT" == admin || "$COMPONENT" == api ]]; then
   ADMIN_BUILD_PATH="$(cd "$SCRIPT_DIR/$ADMIN_BUILD_DIR" 2>/dev/null && pwd -P)" \
     || fail "ADMIN_BUILD_DIR 不存在或不可访问"
   [[ "$ADMIN_BUILD_PATH" != "/" && -f "$ADMIN_BUILD_PATH/package.json" ]] \
     || fail "ADMIN_BUILD_DIR 必须指向含 package.json 的具体项目目录"
+  ADMIN_SOURCE_HEAD="$(git_source_head "$ADMIN_BUILD_PATH" "Admin 源码")"
+  require_clean_source "$ADMIN_BUILD_PATH" "Admin 源码"
+fi
+
+if [[ "$COMPONENT" == api || "$COMPONENT" == all || "$COMPONENT" == cs ]]; then
+  BACKEND_REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+  BACKEND_SOURCE_HEAD="$(git_source_head "$BACKEND_REPO_ROOT" "Backend 源码")"
+  require_clean_source "$BACKEND_REPO_ROOT" "Backend 源码"
+fi
+
+if [[ "$COMPONENT" == api || "$COMPONENT" == all || "$COMPONENT" == admin ]]; then
+  ADMIN_DOMAIN="${ADMIN_DOMAIN:-$(basename "$ADMIN_REMOTE_DIR")}"
+  valid_fqdn "$ADMIN_DOMAIN" || fail "ADMIN_DOMAIN 非法（可显式配置，默认从 ADMIN_REMOTE_DIR 推导）"
+fi
+if [[ "$COMPONENT" == api || "$COMPONENT" == all ]]; then
+  API_DOMAIN="${API_DOMAIN:-$(basename "$NGINX_CONF" .conf)}"
+  valid_fqdn "$API_DOMAIN" || fail "API_DOMAIN 非法（可显式配置，默认从 NGINX_CONF 文件名推导）"
 fi
 
 # ---------- SSH 复用连接 ----------
@@ -280,10 +320,12 @@ deploy_api() {
     "IMBOY_DEPLOY_PROJECT_DIR=$DEPLOY_PROJECT_DIR"
     "IMBOY_DEPLOY_NGINX_CONF=$NGINX_CONF"
     "IMBOY_DEPLOY_PRODADM_CONF=$PRODADM_CONF"
+    "IMBOY_DEPLOY_CS_NGINX_CONF=${CS_NGINX_CONF:-}"
     "IMBOY_DEPLOY_BLUE_PORT=$DEPLOY_BLUE_PORT"
     "IMBOY_DEPLOY_GREEN_PORT=$DEPLOY_GREEN_PORT"
     "IMBOY_DEPLOY_COOKIE=$DEPLOY_COOKIE"
     "IMBOY_DEPLOY_BRANCH=$DEPLOY_BRANCH"
+    "IMBOY_DEPLOY_SOURCE_HEAD=$BACKEND_SOURCE_HEAD"
     "IMBOY_DEPLOY_STOP_OLD=${DEPLOY_STOP_OLD:-true}"
     "IMBOY_DEPLOY_DB_CONTAINER=$DB_CONTAINER"
     "IMBOY_DEPLOY_DB_NAME=$DB_NAME"
@@ -362,6 +404,8 @@ EOF
   if grep -rl '__IMBOY_API_HOST__' "$BUILD_DIR/dist" >/dev/null 2>&1; then
     fail "dist 仍含 __IMBOY_API_HOST__ 占位符（.env.production 可能新增了未覆盖的变量）"
   fi
+  printf '{"source_head":"%s","version":"%s"}\n' \
+    "$ADMIN_SOURCE_HEAD" "$DEPLOY_VSN" >"$BUILD_DIR/dist/deploy-meta.json"
 
   # 上传（rsync 增量，比 scp 快）
   log "上传至 $SERVER_USER@$SERVER_HOST:$ADMIN_REMOTE_REAL ..."
@@ -377,6 +421,17 @@ EOF
       "$BUILD_DIR/dist/." \
       "$SERVER_USER@$SERVER_HOST:$ADMIN_REMOTE_REAL/"
   fi
+  local admin_code sidebar_code remote_head
+  admin_code="$(ssh_cap "curl -sS -o /dev/null -w '%{http_code}' --max-time 10 'https://$ADMIN_DOMAIN/'")" \
+    || fail "Admin 首页 smoke 请求失败"
+  [[ "$admin_code" == 200 ]] || fail "Admin 首页 smoke 失败: HTTP $admin_code"
+  sidebar_code="$(ssh_cap "curl -sS -o /dev/null -w '%{http_code}' --max-time 10 'https://$ADMIN_DOMAIN/api/adm/admin/config/sidebar'")" \
+    || fail "Admin Sidebar API smoke 请求失败"
+  case "$sidebar_code" in 200|401|403) ;; *) fail "Admin Sidebar API smoke 失败: HTTP $sidebar_code" ;; esac
+  remote_head="$(ssh_cap "curl -fsS --max-time 10 'https://$ADMIN_DOMAIN/deploy-meta.json' | sed -n 's/.*\"source_head\":\"\([0-9a-f]*\)\".*/\1/p'")" \
+    || fail "Admin deploy-meta smoke 请求失败"
+  [[ "$remote_head" == "$ADMIN_SOURCE_HEAD" ]] \
+    || fail "Admin 线上 source HEAD 不匹配: got=${remote_head:-missing} expect=$ADMIN_SOURCE_HEAD"
   ok "▶ Admin Frontend 部署完成 → $ADMIN_REMOTE_REAL"
 }
 
@@ -442,6 +497,60 @@ deploy_migrate() {
 }
 
 # =============================================================================
+# deploy_readiness — 最终 api/all 收尾门：三 vhost 同槽 + 外部入口可验收
+# =============================================================================
+deploy_readiness() {
+  log "▶ 执行 API / Admin / CS 统一 readiness ..."
+  ssh_exec "
+    set -eu
+    BLUE_API=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:${DEPLOY_BLUE_PORT};/{n++} END{print n+0}' '$NGINX_CONF')
+    GREEN_API=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:${DEPLOY_GREEN_PORT};/{n++} END{print n+0}' '$NGINX_CONF')
+    if [ \"\$BLUE_API\" -eq 1 ] && [ \"\$GREEN_API\" -eq 0 ]; then
+      ACTIVE_PORT='${DEPLOY_BLUE_PORT}'; INACTIVE_PORT='${DEPLOY_GREEN_PORT}'
+    elif [ \"\$GREEN_API\" -eq 1 ] && [ \"\$BLUE_API\" -eq 0 ]; then
+      ACTIVE_PORT='${DEPLOY_GREEN_PORT}'; INACTIVE_PORT='${DEPLOY_BLUE_PORT}'
+    else
+      echo 'API vhost 没有唯一蓝绿 upstream' >&2; exit 40
+    fi
+
+    [ -f '$PRODADM_CONF' ] || { echo 'Admin vhost 不存在' >&2; exit 41; }
+    grep -q \"http://127.0.0.1:\$ACTIVE_PORT;\" '$PRODADM_CONF' \
+      && ! grep -q \"http://127.0.0.1:\$INACTIVE_PORT;\" '$PRODADM_CONF' \
+      || { echo 'Admin vhost 与 API 活动槽不一致' >&2; exit 42; }
+
+    BODY=\$(curl -fsS --max-time 5 \"http://127.0.0.1:\$ACTIVE_PORT/healthz\")
+    case \"\$BODY\" in *'\"status\":\"ok\"'*) ;; *) exit 43 ;; esac
+    case \"\$BODY\" in *'\"version\":\"${DEPLOY_VSN}\"'*) ;; *) exit 44 ;; esac
+    curl -fsS -o /dev/null --max-time 10 'https://$API_DOMAIN/healthz' || exit 45
+    curl -fsS -o /dev/null --max-time 10 'https://$ADMIN_DOMAIN/' || exit 46
+    ADMIN_META=\$(curl -fsS --max-time 10 'https://$ADMIN_DOMAIN/deploy-meta.json') || exit 47
+    case \"\$ADMIN_META\" in *'\"source_head\":\"${ADMIN_SOURCE_HEAD}\"'*) ;; *) exit 48 ;; esac
+    SIDEBAR=\$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 'https://$ADMIN_DOMAIN/api/adm/admin/config/sidebar') || exit 49
+    case \"\$SIDEBAR\" in 200|401|403) ;; *) exit 50 ;; esac
+
+    if [ -n '${CS_NGINX_CONF:-}' ] && [ -f '${CS_NGINX_CONF:-}' ]; then
+      [ -n '${CS_WIDGET_DOMAIN:-}' ] || exit 51
+      grep -q \"http://127.0.0.1:\$ACTIVE_PORT;\" '${CS_NGINX_CONF:-}' \
+        && ! grep -q \"http://127.0.0.1:\$INACTIVE_PORT;\" '${CS_NGINX_CONF:-}' \
+        || { echo 'CS vhost 与 API 活动槽不一致' >&2; exit 52; }
+      CS_ORIGIN='https://${CS_WIDGET_DOMAIN:-}'
+      curl -fsS -o /dev/null --max-time 10 \"\$CS_ORIGIN/v1/loader.js\" || exit 53
+      MANIFEST=\$(curl -fsS --max-time 10 \"\$CS_ORIGIN/manifest.json\") || exit 54
+      CS_HEAD=\$(printf '%s\n' \"\$MANIFEST\" | sed -n 's/.*"source_head"[[:space:]]*:[[:space:]]*"\([0-9a-f]*\)".*/\1/p' | head -1)
+      [ \"\$CS_HEAD\" = '${ADMIN_SOURCE_HEAD}' ] || exit 55
+      curl -fsS -o /dev/null --max-time 10 \"\$CS_ORIGIN/health.txt\" || exit 56
+      FRAME=\$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \"\$CS_ORIGIN/w/0\") || exit 57
+      [ \"\$FRAME\" = 404 ] || exit 58
+      BOOTSTRAP=\$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+        -H 'content-type: application/json' -H 'origin: ${CS_SMOKE_SHOP_ORIGIN:-https://invalid.example}' \
+        --data '{}' \"\$CS_ORIGIN/api/v1/cs/widget/bootstrap\") || exit 59
+      case \"\$BOOTSTRAP\" in 400|401|403|422) ;; *) exit 60 ;; esac
+    fi
+  " || fail "统一 readiness 失败：API、Admin、CS 尚未达到可人工验收状态"
+  ok "▶ 统一 readiness 通过：API、Admin、CS 可开始人工验收"
+}
+
+# =============================================================================
 # rollback — 将 Nginx 切回旧节点端口
 # =============================================================================
 rollback() {
@@ -451,6 +560,7 @@ rollback() {
   IMBOY_DEPLOY_PROJECT_DIR="$DEPLOY_PROJECT_DIR" \
   IMBOY_DEPLOY_NGINX_CONF="$NGINX_CONF" \
   IMBOY_DEPLOY_PRODADM_CONF="$PRODADM_CONF" \
+  IMBOY_DEPLOY_CS_NGINX_CONF="${CS_NGINX_CONF:-}" \
   IMBOY_DEPLOY_BLUE_PORT="$DEPLOY_BLUE_PORT" \
   IMBOY_DEPLOY_GREEN_PORT="$DEPLOY_GREEN_PORT" \
   IMBOY_DEPLOY_COOKIE="$DEPLOY_COOKIE" \
@@ -470,7 +580,7 @@ log "数据库: container=$DB_CONTAINER | database=$DB_NAME | user=$DB_USER"
 log "策略: sales=${DEPLOY_SALES_RELEASE:-true} | e2ee=${DEPLOY_E2EE_MODE:-auto} | expand=${#CONFIGURED_EXPAND_MIGRATIONS[@]} | stop_old=${DEPLOY_STOP_OLD:-true} | source=$([[ "$LOCAL_MODE" -eq 1 ]] && echo local-rsync || echo remote-git) | verbose=$([[ "$VERBOSE" -eq 1 ]] && echo true || echo false)"
 if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
   # I7: cookie 仅以脱敏占位出现；证书内容/私钥/secret 永不打印
-  log "CS: domain=$CS_WIDGET_DOMAIN | root=$CS_REMOTE_ROOT | vhost=$CS_NGINX_CONF | build=$CS_BUILD_PATH | smoke_origin=$CS_SMOKE_SHOP_ORIGIN | mode=$([[ "$LOCAL_MODE" -eq 1 ]] && echo local-build || echo artifact) | cookie=$(cs_redact "${DEPLOY_COOKIE:-}")"
+  log "CS: domain=$CS_WIDGET_DOMAIN | root=$CS_REMOTE_ROOT | vhost=$CS_NGINX_CONF | build=$CS_BUILD_PATH | smoke_origin=$CS_SMOKE_SHOP_ORIGIN | mode=source-build | cookie=$(cs_redact "${DEPLOY_COOKIE:-}")"
 fi
 _ssh_connect
 
@@ -480,11 +590,13 @@ case "$COMPONENT" in
     deploy_admin
     # all -l（合同 A06）：Backend 恰一次，总顺序 api → admin → cs artifact/gateway
     deploy_cs skip-backend
+    deploy_readiness
     echo
     ok "════ 全量部署完成 / Full deploy complete ════"
     ;;
   api)
     deploy_api
+    deploy_readiness
     ;;
   admin)
     deploy_admin
