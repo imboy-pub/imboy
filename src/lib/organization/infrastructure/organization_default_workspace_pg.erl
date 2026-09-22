@@ -155,12 +155,22 @@ apply_replacement_tx(Conn, OrgId, ReplacementWsId) ->
                 )
             of
                 ok ->
-                    upsert_tx(Conn, OrgId, ReplacementWsId);
+                    upsert_ok_tx(Conn, OrgId, ReplacementWsId);
                 {error, Reason} ->
                     {error, Reason}
             end;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% upsert_tx 的 {ok, changed | unchanged} 都是「交接成功」；本层对外契约是
+%% `ok | {error, term()}`（见上方 -spec），必须在此收敛，否则调用方的
+%% case 无法命中而抛 case_clause（真库实测：成功路径恒 500）。
+-spec upsert_ok_tx(any(), integer(), integer()) -> ok | {error, term()}.
+upsert_ok_tx(Conn, OrgId, WsId) ->
+    case upsert_tx(Conn, OrgId, WsId) of
+        {ok, _Status} -> ok;
+        {error, Reason} -> {error, Reason}
     end.
 
 %% 说明：原 `archive_handover_tx/3`（自动改指剩余最小 active）已随
