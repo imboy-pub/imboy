@@ -92,6 +92,11 @@ install_pool_shim(Conn) ->
     meck:expect(elib_pg, query, 2, fun(Sql, Params) ->
         elib_pg:query(Conn, Sql, Params)
     end),
+    %% list_page/2 走 elib_pg:one/2（单行投影）——池化入口一并 shim 到真连接，
+    %% 否则 Admin 投影用例会掉进无 pooler 的 {noproc, {gen_server,call,[pgsql ...]}}。
+    meck:expect(elib_pg, one, 2, fun(Sql, Params) ->
+        elib_pg:one(Conn, Sql, Params)
+    end),
     ok.
 
 %% 逐用例桩安装（每个用例一个干净桩集；with_tx 收尾 meck:unload）
@@ -265,6 +270,8 @@ push_token_contract_test_() ->
                 {"multi_device_fanout_and_offline_decision", with_tx(C, fun fanout_oracle/1)},
                 {"jpush_wire_payload_closed_and_pii_free", with_tx(C, fun payload_oracle/1)},
                 {"notify_offline_apis_unreachable_from_src", notify_reachability_test()},
+                {"admin_list_page_never_projects_token_plaintext",
+                    with_tx(C, fun(C1) -> admin_projection_oracle(C1) end)},
                 {"migration_142_down_up_cycle", {timeout, 400, down_up_cycle_test(State)}},
                 {"migration_142_gz_era_duplicate_upgrade_compat",
                     {timeout, 400, upgrade_compat_test(State)}}
@@ -614,6 +621,93 @@ recv_wire() ->
 %%% ⑥ 调用面守卫：caller 自定 title/body 的 API 不得被生产代码调用
 %%%===================================================================
 
+%%%===================================================================
+%%% ⑥.5 Admin 读面：token 明文零投影（FULL-06/04 follow-up）
+%%%
+%%% 缺陷（A0 亲核）：GET /api/adm/admin/push_token/list 只要求 settings:view，
+%%% 却把原始推送 token 明文返回（adm_admin_handler.erl:712 -> push_token_ds:23
+%%% -> push_token_repo:142 的 SELECT 列表里直接有 token 列）。推送 token 是设备
+%%% 凭据（拿到即可向该设备推任意通知），与 plan-full §7「无 secret hydration」相抵。
+%%% 修法：投影改为 SQL 侧算出的不可逆指纹（md5 前 8 位 + 原字节长度），明文根本
+%%% 不进入应用进程。下面用**固定合成 token 探针**做全字面扫描。
+%%%===================================================================
+
+-define(ADMIN_TOKEN_PROBE, <<"rid995-ADMIN-PROBE-DO-NOT-LEAK-abcdef0123456789">>).
+
+admin_projection_oracle(_C) ->
+    %% 合成夹具：一台带长探针 token 的设备（本用例 BEGIN..ROLLBACK，不留数据）
+    Uid = 995777,
+    Did = <<"did995-admin-probe">>,
+    {ok, _} = push_token_repo:upsert(Uid, Did, <<"android">>, <<"jpush">>, ?ADMIN_TOKEN_PROBE),
+
+    {ok, #{list := Rows, total := Total}} = push_token_repo:list_page(1, 50),
+    ?assert(Total >= 1),
+    Row = hd([R || R <- Rows, maps:get(<<"device_id">>, R) =:= Did]),
+    %% ① 行内**没有** token 键，且没有任何值等于明文
+    ?assertNot(maps:is_key(<<"token">>, Row)),
+    ?assertNot(
+        lists:any(fun(V) -> V =:= ?ADMIN_TOKEN_PROBE end, maps:values(Row))
+    ),
+    %% ② 指纹口径与前端一致：md5(token) 十六进制前 8 位 + 原字节长度
+    ExpectFp = binary:part(
+        binary:encode_hex(crypto:hash(md5, ?ADMIN_TOKEN_PROBE), lowercase), 0, 8
+    ),
+    ?assertEqual(ExpectFp, maps:get(<<"token_fingerprint">>, Row)),
+    ?assertEqual(byte_size(?ADMIN_TOKEN_PROBE), maps:get(<<"token_length">>, Row)),
+    %% ③ 不可反推：指纹只有 8 个十六进制字符、长度只是整数；两者都不含原 token
+    %%    的任何可推送形态（既非原串，也不含原串的前/后缀片段）。
+    ?assertEqual(8, byte_size(maps:get(<<"token_fingerprint">>, Row))),
+    ?assertEqual(nomatch, binary:match(ExpectFp, [?ADMIN_TOKEN_PROBE])),
+    ?assertEqual(
+        nomatch,
+        binary:match(
+            binary:encode_hex(crypto:hash(md5, ?ADMIN_TOKEN_PROBE), lowercase),
+            [binary:part(?ADMIN_TOKEN_PROBE, 0, 8)]
+        )
+    ),
+    %% ④ 全字面扫描：**整页响应 JSON**（含键名、嵌套、分页元数据）里探针出现 0 次。
+    %%    这是对「任何响应路径都不出现明图片段」的机械断言 —— 不是只看某几个字段。
+    ItemsJson = jsone:encode(#{<<"list">> => Rows, <<"total">> => Total}),
+    ?assertEqual(nomatch, binary:match(ItemsJson, [?ADMIN_TOKEN_PROBE])),
+    QuotedTokenKey = list_to_binary([$", "token", $"]),
+    ?assertEqual(nomatch, binary:match(ItemsJson, [QuotedTokenKey])),
+    %% ⑤ 长探针的多个片段也都不出现（防"部分截断展示"复活）
+    lists:foreach(
+        fun(Len) ->
+            ?assertEqual(
+                nomatch,
+                binary:match(ItemsJson, [binary:part(?ADMIN_TOKEN_PROBE, 0, Len)])
+            )
+        end,
+        [6, 8, 12, 16, 24, 32]
+    ),
+    %% ⑥ 推送执行链未被削弱：执行链读面（list_by_uid/1）仍拿到可推送的明文 token
+    %%    （这是设备凭据的**唯一**合法消费点，明文不入 Admin 响应体）。
+    {ok, ExecRows} = push_token_repo:list_by_uid(Uid),
+    ?assert(
+        lists:any(
+            fun(R) -> maps:get(<<"token">>, R, undefined) =:= ?ADMIN_TOKEN_PROBE end,
+            ExecRows
+        )
+    ),
+    %% ⑦ 详情/单条读面同样零明文：find/list_page 之外没有第二处 Admin 投影
+    %%    （list_by_uid/list_by_uids 是执行链专用，不经 handler）。
+    Files = filelib:wildcard("src/adm/*.erl"),
+    AdminLeak = [
+        F
+     || F <- Files,
+        binary:match(read_file(F), [<<"push_token">>]) =/= nomatch,
+        binary:match(read_file(F), [<<"list_by_uid">>]) =/= nomatch
+    ],
+    ?assertEqual([], AdminLeak),
+    ok.
+
+read_file(Path) ->
+    case file:read_file(Path) of
+        {ok, Bin} -> Bin;
+        {error, Reason} -> erlang:error({read_failed, Path, Reason})
+    end.
+
 notify_reachability_test() ->
     ?_test(begin
         Files = filelib:wildcard("src/**/*.erl"),
@@ -639,12 +733,6 @@ notify_reachability_test() ->
             binary:match(read_file("src/logic/msg_c2g_logic.erl"), [<<"maybe_push_for_c2g(">>])
         )
     end).
-
-read_file(Path) ->
-    case file:read_file(Path) of
-        {ok, Bin} -> Bin;
-        {error, Reason} -> erlang:error({read_failed, Path, Reason})
-    end.
 
 %%%===================================================================
 %%% ⑦ 迁移 142 down/up 对称

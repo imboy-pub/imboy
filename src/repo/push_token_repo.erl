@@ -130,16 +130,31 @@ list_by_uids(Uids) when is_list(Uids) ->
     elib_pg:query(Sql, [Uids]).
 
 %% @doc 分页查询推送 token（Admin 管理用）
+%%
+%% 隐私不变量（plan-full §7「无 secret hydration」）：**投影里不出现 token 明文**。
+%% 推送 token 是设备凭据——拿到即可向该设备推任意通知，因此 Admin 读面只给
+%% **不可逆指纹**：`md5(token)` 十六进制前 8 位 + `length(token)`（原字节长度）。
+%% 指纹在 **SQL 侧**计算：明文根本不进入应用进程，更不进响应体——不是
+%% 「取回来再删字段」那种一改响应序列化就漏的写法。口径与前端 PushTokenView
+%% 一致（同 md5 前 8 位 + 原长度），不另立一套。
+%%
+%% 边界：本函数只服务 Admin 读面。推送**执行链**走 list_by_uid/1、list_by_uids/1
+%% 与 deactivate_by_token/1（各自独立 SQL，仍取 token 明文），三者不受本次改动影响
+%% ——已用 `grep -rn "push_token_repo:list_page" src/` 核实只有一个调用方
+%% （adm_admin_handler:push_token_list_action/3，权限 settings:view）。
 -spec list_page(pos_integer(), pos_integer()) ->
     {ok, #{list := list(), total := integer()}} | {error, term()}.
 list_page(Page, Size) ->
     Tb = tablename(),
     CountSql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE status = 1">>,
-    case elib_pg:one(CountSql, []) of
-        {ok, #{<<"count">> := Total}} ->
+    case elib_pg:query(CountSql, []) of
+        {ok, [#{<<"count">> := Total} | _]} ->
             Offset = (Page - 1) * Size,
             DataSql = <<
-                "SELECT user_id, device_id, device_type, platform, token, created_at, updated_at"
+                "SELECT user_id, device_id, device_type, platform,"
+                " lower(substring(md5(token) for 8)) AS token_fingerprint,"
+                " length(token) AS token_length,"
+                " created_at, updated_at"
                 " FROM ",
                 Tb/binary,
                 " WHERE status = 1"
