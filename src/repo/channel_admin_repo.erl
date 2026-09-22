@@ -5,6 +5,7 @@
 %%%
 
 -export([tablename/0]).
+-export([find_tx/3, get_role_tx/3]).
 -export([add/1]).
 -export([add/2]).
 -export([find/2]).
@@ -64,6 +65,23 @@ find(ChannelId, Uid) ->
         {ok, Row} -> Row;
         _ -> #{}
     end.
+
+%% @doc 事务内查找管理员记录（R3-5：授权判定与写操作同事务同 Conn）。
+%% 语义与 find/2 一致（无行返回 #{}），只是读的是本事务快照。
+-spec find_tx(any(), integer(), integer()) -> map().
+find_tx(Conn, ChannelId, Uid) ->
+    Tb = tablename(),
+    Sql = <<"SELECT * FROM ", Tb/binary, " WHERE channel_id = $1 AND user_id = $2 LIMIT 1">>,
+    case elib_pg:one(Conn, Sql, [ChannelId, Uid]) of
+        {ok, Row} -> Row;
+        _ -> #{}
+    end.
+
+%% @doc 事务内角色读取（镜像 get_role/2 的双源：管理员行优先）。
+-spec get_role_tx(any(), integer(), integer()) -> integer().
+get_role_tx(Conn, ChannelId, Uid) ->
+    Admin = find_tx(Conn, ChannelId, Uid),
+    maps:get(<<"role">>, Admin, 0).
 
 %% @doc 查询频道的管理员列表
 -spec list_by_channel(integer()) -> {ok, list(map())} | {error, any()}.

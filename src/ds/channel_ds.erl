@@ -5,6 +5,7 @@
 %%%
 
 -export([create_channel/3]).
+-export([find_by_id_tx/3, archive_with_authz/2, restore_with_authz/2]).
 -export([is_subscribed/2]).
 -export([subscriber_uids/1]).
 -export([subscribe/2]).
@@ -377,6 +378,11 @@ list_by_ids_since(ChannelIds, Since) -> channel_repo:list_by_ids_since(ChannelId
 -spec find_by_id(integer(), binary()) -> map() | {error, any()}.
 find_by_id(ChannelId, Column) -> channel_repo:find_by_id(ChannelId, Column).
 
+%% @doc 事务内按 id 读频道（R3-5：供授权判定在写事务内复用）。
+-spec find_by_id_tx(any(), integer() | binary(), binary()) -> map() | {error, any()}.
+find_by_id_tx(Conn, ChannelId, Column) ->
+    channel_repo:find_by_id_tx(Conn, ChannelId, Column).
+
 %% @doc 查找频道详情并包含 price/currency（付费频道展示用）
 -spec find_by_id_with_price(integer() | binary()) -> map() | {error, any()}.
 find_by_id_with_price(ChannelId) -> channel_repo:find_by_id_with_price(ChannelId).
@@ -432,17 +438,44 @@ delete(ChannelId) ->
 %% 与 workspace_guard 同事务——ws 频道所属工作区已归档时稳定 980 拒绝。
 -spec archive(integer()) -> {ok, non_neg_integer()} | {error, any()}.
 archive(ChannelId) ->
+    archive_with_authz(ChannelId, fun(_Conn) -> ok end).
+
+%% @doc 归档 + **事务内授权判定**（R3-5）。Authz 在同一个写事务里、且在归档
+%% UPDATE 之前执行，判定依据是本事务快照——撤权与归档无法交错，「先判定、
+%% 后写入」的角色变更窗口关闭。
+%% Authz 返回 ok 继续；{error, Msg}（Msg 为既有稳定拒绝文案，裸 binary，与
+%% 原事务外判定同形）→ 以 abort_tx 回滚整个归档并以 {channel_authz_denied, Msg}
+%% 上抛，由调用方映射回既有对外形状。
+-spec archive_with_authz(integer(), fun((any()) -> ok | {error, binary()})) ->
+    {ok, non_neg_integer()} | {error, term()}.
+archive_with_authz(ChannelId, Authz) ->
     workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+        ok = abort_on_denied(Authz(Conn)),
         channel_repo:archive_tx(Conn, ChannelId, elib_dt:now())
     end).
+
+%% @doc 恢复 + 事务内授权判定（同 archive_with_authz/2）。
+-spec restore_with_authz(integer(), fun((any()) -> ok | {error, binary()})) ->
+    {ok, non_neg_integer()} | {error, term()}.
+restore_with_authz(ChannelId, Authz) ->
+    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+        ok = abort_on_denied(Authz(Conn)),
+        channel_repo:restore_tx(Conn, ChannelId, elib_dt:now())
+    end).
+
+%% 授权失败 → abort_tx（回滚归档/恢复），并保留「被拒」与「DB 异常」的区别：
+%% 前者是稳定业务拒绝，后者交给 with_tx 归一后由调用方的兜底臂处理。
+-spec abort_on_denied(ok | {error, binary()}) -> ok.
+abort_on_denied(ok) ->
+    ok;
+abort_on_denied({error, Msg}) when is_binary(Msg) ->
+    throw({abort_tx, {channel_authz_denied, Msg}}).
 
 %% @doc 恢复频道（GZAPP-02/G4：status 0→1；已删除（-1）不可恢复）；
 %% 与 workspace_guard 同事务（同 archive）。
 -spec restore(integer()) -> {ok, non_neg_integer()} | {error, any()}.
 restore(ChannelId) ->
-    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
-        channel_repo:restore_tx(Conn, ChannelId, elib_dt:now())
-    end).
+    restore_with_authz(ChannelId, fun(_Conn) -> ok end).
 
 -spec search(binary(), integer(), binary()) -> {ok, list(map())} | {error, any()}.
 search(Keyword, Limit, Column) -> channel_repo:search(Keyword, Limit, Column).

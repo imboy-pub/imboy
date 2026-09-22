@@ -6,6 +6,7 @@
 -export([resolve_channel_id/1]).
 -export([decode_positive_id/1]).
 -export([get_user_role/2]).
+-export([get_user_role_tx/3]).
 -export([ensure_channel_content_access/2]).
 -export([channel_revoke_window_seconds/0]).
 -export([channel_edit_window_seconds/0]).
@@ -57,6 +58,25 @@ get_user_role(ChannelId, Uid) ->
             Role;
         _ ->
             case channel_ds:find_by_id(ChannelId, <<"*">>) of
+                #{<<"creator_uid">> := CreatorUid} when CreatorUid =:= Uid ->
+                    3;
+                #{<<"owner_id">> := OwnerUid} when OwnerUid =:= Uid ->
+                    3;
+                _ ->
+                    0
+            end
+    end.
+
+%% @doc 事务内角色读取（R3-5）：与 get_user_role/2 同口径（管理员行优先，
+%% 其次 creator_uid/owner_id 视同角色 3），只是两次读都走传入的 Conn。
+%% 供归档/恢复的授权判定与写操作同事务。
+-spec get_user_role_tx(any(), integer(), integer()) -> integer().
+get_user_role_tx(Conn, ChannelId, Uid) ->
+    case channel_admin_ds:get_role_tx(Conn, ChannelId, Uid) of
+        Role when is_integer(Role), Role > 0 ->
+            Role;
+        _ ->
+            case channel_ds:find_by_id_tx(Conn, ChannelId, <<"*">>) of
                 #{<<"creator_uid">> := CreatorUid} when CreatorUid =:= Uid ->
                     3;
                 #{<<"owner_id">> := OwnerUid} when OwnerUid =:= Uid ->

@@ -8,6 +8,7 @@
 
 %% ==================== API ====================
 -export([add/1]).
+-export([get_role_tx/3]).
 -export([add/2]).
 -export([delete/2]).
 -export([list_by_channel/1]).
@@ -50,6 +51,11 @@ get_role(ChannelId, Uid) -> channel_admin_repo:get_role(ChannelId, Uid).
 
 -spec find(integer(), integer()) -> map() | {error, any()}.
 find(ChannelId, Uid) -> channel_admin_repo:find(ChannelId, Uid).
+
+%% @doc 事务内角色读取（R3-5：供归档/恢复的授权判定在写事务内复用）。
+-spec get_role_tx(any(), integer(), integer()) -> integer().
+get_role_tx(Conn, ChannelId, Uid) ->
+    channel_admin_repo:get_role_tx(Conn, ChannelId, Uid).
 
 -spec page(binary(), map(), binary(), pos_integer(), pos_integer()) ->
     {ok, map()} | {error, term()}.

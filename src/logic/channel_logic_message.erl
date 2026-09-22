@@ -299,27 +299,32 @@ archive_channel(Uid, ChannelIdBin) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case manage_authority(Uid, ChannelId, <<"只有创建者可以归档频道"/utf8>>) of
-                ok ->
-                    case channel_ds:archive(ChannelId) of
-                        {ok, 1} ->
-                            _ = ?INFO_LOG([channel_archived, ChannelId, Uid]),
-                            notify_channel_status_changed(ChannelId),
-                            {ok, #{
-                                channel_id => ChannelId,
-                                status => <<"archived"/utf8>>
-                            }};
-                        {ok, 0} ->
-                            {error, {409, <<"频道已处于归档或删除状态"/utf8>>}};
-                        %% T7 收口：归档守卫（980）等稳定错误码透传
-                        {error, {Code, Msg}} when is_integer(Code) ->
-                            {error, {Code, Msg}};
-                        {error, Reason} ->
-                            _ = ?ERROR_LOG([channel_archive_failed, ChannelId, Uid, Reason]),
-                            {error, <<"归档失败，请稍后重试"/utf8>>}
-                    end;
-                {error, Msg} ->
-                    {error, Msg}
+            %% R3-5：授权判定在 channel_ds 的**写事务内**执行（判定与归档同一
+            %% Conn/快照），不再先判定后写入。
+            case
+                channel_ds:archive_with_authz(ChannelId, fun(Conn) ->
+                    manage_authority_tx(Conn, Uid, ChannelId, <<"只有创建者可以归档频道"/utf8>>)
+                end)
+            of
+                {ok, 1} ->
+                    _ = ?INFO_LOG([channel_archived, ChannelId, Uid]),
+                    notify_channel_status_changed(ChannelId),
+                    {ok, #{
+                        channel_id => ChannelId,
+                        status => <<"archived"/utf8>>
+                    }};
+                {ok, 0} ->
+                    {error, {409, <<"频道已处于归档或删除状态"/utf8>>}};
+                %% 事务内授权拒绝：映射回既有对外形状（裸 message，与原
+                %% 事务外判定完全一致）
+                {error, {channel_authz_denied, AuthzMsg}} ->
+                    {error, AuthzMsg};
+                %% T7 收口：归档守卫（980）等稳定错误码透传
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    {error, {Code, Msg}};
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([channel_archive_failed, ChannelId, Uid, Reason]),
+                    {error, <<"归档失败，请稍后重试"/utf8>>}
             end
     end.
 
@@ -331,27 +336,29 @@ restore_channel(Uid, ChannelIdBin) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case manage_authority(Uid, ChannelId, <<"只有创建者可以恢复频道"/utf8>>) of
-                ok ->
-                    case channel_ds:restore(ChannelId) of
-                        {ok, 1} ->
-                            _ = ?INFO_LOG([channel_restored, ChannelId, Uid]),
-                            notify_channel_status_changed(ChannelId),
-                            {ok, #{
-                                channel_id => ChannelId,
-                                status => <<"active"/utf8>>
-                            }};
-                        {ok, 0} ->
-                            %% active（未归档）或 -1（已删除，不可恢复）
-                            {error, {409, <<"频道不处于可恢复的归档状态"/utf8>>}};
-                        {error, {Code, Msg}} when is_integer(Code) ->
-                            {error, {Code, Msg}};
-                        {error, Reason} ->
-                            _ = ?ERROR_LOG([channel_restore_failed, ChannelId, Uid, Reason]),
-                            {error, <<"恢复失败，请稍后重试"/utf8>>}
-                    end;
-                {error, Msg} ->
-                    {error, Msg}
+            case
+                channel_ds:restore_with_authz(ChannelId, fun(Conn) ->
+                    manage_authority_tx(Conn, Uid, ChannelId, <<"只有创建者可以恢复频道"/utf8>>)
+                end)
+            of
+                {ok, 1} ->
+                    _ = ?INFO_LOG([channel_restored, ChannelId, Uid]),
+                    notify_channel_status_changed(ChannelId),
+                    {ok, #{
+                        channel_id => ChannelId,
+                        status => <<"active"/utf8>>
+                    }};
+                {ok, 0} ->
+                    %% active（未归档）或 -1（已删除，不可恢复）
+                    {error, {409, <<"频道不处于可恢复的归档状态"/utf8>>}};
+                %% 事务内授权拒绝 → 既有对外形状（裸 message）
+                {error, {channel_authz_denied, AuthzMsg}} ->
+                    {error, AuthzMsg};
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    {error, {Code, Msg}};
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([channel_restore_failed, ChannelId, Uid, Reason]),
+                    {error, <<"恢复失败，请稍后重试"/utf8>>}
             end
     end.
 
@@ -366,6 +373,24 @@ manage_authority(Uid, ChannelId, ForbiddenMsg) ->
             ok;
         false ->
             case organization_resource_authority:ensure_manager({channel, ChannelId}, Uid) of
+                ok -> ok;
+                {error, {403, _Msg}} -> {error, ForbiddenMsg};
+                {error, {503, Msg}} -> {error, Msg}
+            end
+    end.
+
+%% @doc 事务内授权判定（R3-5）：与 manage_authority/3 同口径、同对外形状
+%% （ok | {error, binary()}），但两次判定都在传入的 Conn 上完成——调用方在
+%% 写事务内调用它，判定依据即本事务快照。
+-spec manage_authority_tx(any(), integer(), integer(), binary()) -> ok | {error, binary()}.
+manage_authority_tx(Conn, Uid, ChannelId, ForbiddenMsg) ->
+    case channel_logic_common:get_user_role_tx(Conn, ChannelId, Uid) == 3 of
+        true ->
+            ok;
+        false ->
+            case
+                organization_resource_authority:ensure_manager_tx(Conn, {channel, ChannelId}, Uid)
+            of
                 ok -> ok;
                 {error, {403, _Msg}} -> {error, ForbiddenMsg};
                 {error, {503, Msg}} -> {error, Msg}

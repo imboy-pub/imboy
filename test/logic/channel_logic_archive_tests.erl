@@ -14,16 +14,32 @@
 -define(CREATOR, 900001).
 -define(OTHER, 900002).
 
+%% R3-5 后归档走 channel_ds:archive_with_authz/2：授权判定在**写事务内**。
+%% 因此本套件的桩要挂在两处新接缝上，并**真的调用一次传入的 Authz fun**
+%% （否则用例只验证了外壳、验不到角色门）：
+%%   * channel_logic_common:get_user_role_tx/3（判定读，事务内版）
+%%   * channel_ds:archive_with_authz/2（把 Authz 的拒绝转成 {channel_authz_denied,_}
+%%     后再返回业务结果，与真实 DS 同形）
+-define(FAKE_CONN, fake_conn).
+
+authz_gate(Fun, BusinessResult) ->
+    case Fun(?FAKE_CONN) of
+        ok -> BusinessResult;
+        {error, Msg} -> {error, {channel_authz_denied, Msg}}
+    end.
+
 archive_mocks(Role, ArchiveResult) ->
     [
         {channel_logic_common, [
-            {'get_user_role', 2, fun
-                (?CID, ?CREATOR) -> Role;
-                (?CID, _) -> 0
+            {'get_user_role_tx', 3, fun
+                (?FAKE_CONN, ?CID, ?CREATOR) -> Role;
+                (?FAKE_CONN, ?CID, _) -> 0
             end}
         ]},
         {channel_ds, [
-            {'archive', 1, fun(?CID) -> ArchiveResult end},
+            {'archive_with_authz', 2, fun(?CID, Authz) ->
+                authz_gate(Authz, ArchiveResult)
+            end},
             {'find_by_id', 2, fun(?CID, _Cols) ->
                 #{<<"id">> => ?CID, <<"status">> => 0}
             end}
@@ -50,7 +66,11 @@ archive_test_() ->
                     {error, <<"只有创建者可以归档频道"/utf8>>},
                     channel_logic:archive_channel(?OTHER, integer_to_binary(?CID))
                 ),
-                ?assertEqual(0, meck:num_calls(channel_ds, archive, 1))
+                %% R3-5：拒绝必须来自**事务内**判定（读的是 tx 版），
+                %% 且拒后不产生业务写入
+                ?assertEqual(1, meck:num_calls(channel_logic_common, get_user_role_tx, 3)),
+                ?assertEqual(0, meck:num_calls(channel_logic_common, get_user_role, 2)),
+                ?assertEqual(0, meck:num_calls(channel_ds, archive_with_authz, 2))
             end)
         end},
         {"double archive rejected 409", fun() ->
@@ -82,13 +102,15 @@ archive_test_() ->
 restore_mocks(Role, RestoreResult) ->
     [
         {channel_logic_common, [
-            {'get_user_role', 2, fun
-                (?CID, ?CREATOR) -> Role;
-                (?CID, _) -> 0
+            {'get_user_role_tx', 3, fun
+                (?FAKE_CONN, ?CID, ?CREATOR) -> Role;
+                (?FAKE_CONN, ?CID, _) -> 0
             end}
         ]},
         {channel_ds, [
-            {'restore', 1, fun(?CID) -> RestoreResult end},
+            {'restore_with_authz', 2, fun(?CID, Authz) ->
+                authz_gate(Authz, RestoreResult)
+            end},
             {'find_by_id', 2, fun(?CID, _Cols) ->
                 #{<<"id">> => ?CID, <<"status">> => 1}
             end}
@@ -121,7 +143,8 @@ restore_test_() ->
                 ?assertMatch(
                     {error, <<"只有创建者可以恢复频道"/utf8>>},
                     channel_logic:restore_channel(?OTHER, integer_to_binary(?CID))
-                )
+                ),
+                ?assertEqual(1, meck:num_calls(channel_logic_common, get_user_role_tx, 3))
             end)
         end},
         {"workspace-guard 980 passthrough on restore", fun() ->
@@ -141,14 +164,18 @@ restore_test_() ->
 org_manager_mocks(Role, ManagerResult, ArchiveResult) ->
     [
         {channel_logic_common, [
-            {'get_user_role', 2, fun(_Cid, _Uid) -> Role end}
+            {'get_user_role_tx', 3, fun(_Conn, _Cid, _Uid) -> Role end}
         ]},
         {organization_resource_authority, [
-            {'ensure_manager', 2, fun(_Resource, _Uid) -> ManagerResult end}
+            {'ensure_manager_tx', 3, fun(_Conn, _Resource, _Uid) -> ManagerResult end}
         ]},
         {channel_ds, [
-            {'archive', 1, fun(_Cid) -> ArchiveResult end},
-            {'restore', 1, fun(_Cid) -> ArchiveResult end},
+            {'archive_with_authz', 2, fun(_Cid, Authz) ->
+                authz_gate(Authz, ArchiveResult)
+            end},
+            {'restore_with_authz', 2, fun(_Cid, Authz) ->
+                authz_gate(Authz, ArchiveResult)
+            end},
             {'find_by_id', 2, fun(?CID, _Cols) ->
                 #{<<"id">> => ?CID, <<"status">> => 0}
             end}
@@ -169,7 +196,7 @@ org_manager_authority_test_() ->
                 ?assertEqual(
                     1,
                     meck:num_calls(
-                        organization_resource_authority, ensure_manager, 2
+                        organization_resource_authority, ensure_manager_tx, 3
                     )
                 )
             end)
@@ -196,8 +223,8 @@ org_manager_authority_test_() ->
                         {error, <<"只有创建者可以恢复频道"/utf8>>},
                         channel_logic:restore_channel(?OTHER, integer_to_binary(?CID))
                     ),
-                    ?assertEqual(0, meck:num_calls(channel_ds, archive, 1)),
-                    ?assertEqual(0, meck:num_calls(channel_ds, restore, 1))
+                    ?assertEqual(0, meck:num_calls(channel_ds, archive_with_authz, 2)),
+                    ?assertEqual(0, meck:num_calls(channel_ds, restore_with_authz, 2))
                 end
             )
         end},
@@ -209,7 +236,7 @@ org_manager_authority_test_() ->
                         {error, <<"权限校验暂时不可用", _/binary>>},
                         channel_logic:archive_channel(?OTHER, integer_to_binary(?CID))
                     ),
-                    ?assertEqual(0, meck:num_calls(channel_ds, archive, 1))
+                    ?assertEqual(0, meck:num_calls(channel_ds, archive_with_authz, 2))
                 end
             )
         end},
@@ -222,9 +249,12 @@ org_manager_authority_test_() ->
                 ?assertEqual(
                     0,
                     meck:num_calls(
-                        organization_resource_authority, ensure_manager, 2
+                        organization_resource_authority, ensure_manager_tx, 3
                     )
-                )
+                ),
+                %% 创建者路径也要走事务内判定（而非旧的事务外 get_user_role/2）
+                ?assertEqual(1, meck:num_calls(channel_logic_common, get_user_role_tx, 3)),
+                ?assertEqual(0, meck:num_calls(channel_logic_common, get_user_role, 2))
             end)
         end}
     ].

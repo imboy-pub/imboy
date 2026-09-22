@@ -9,6 +9,7 @@
 -export([add/1]).
 -export([add/2]).
 -export([find_by_id/2]).
+-export([find_by_id_tx/3]).
 -export([find_by_id_with_price/1]).
 -export([find_by_custom_id/1]).
 -export([list_by_ids/2]).
@@ -97,6 +98,19 @@ find_by_id(ChannelId, Column) ->
         limit => 1
     }),
     case elib_pg:one(Sql, Params) of
+        {ok, Row} -> Row;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 事务内按 id 查找频道（R3-5：授权判定与写操作同事务同 Conn）。
+%% 语义与 find_by_id/2 一致（含 status = 1 过滤），只是读本事务快照。
+-spec find_by_id_tx(any(), integer() | binary(), binary()) -> map() | {error, any()}.
+find_by_id_tx(Conn, ChannelId, Column) ->
+    Tb = tablename(),
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => ChannelId, status => 1}, #{
+        limit => 1
+    }),
+    case elib_pg:one(Conn, Sql, Params) of
         {ok, Row} -> Row;
         {error, Reason} -> {error, Reason}
     end.

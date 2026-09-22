@@ -252,6 +252,70 @@ probes(Conn, Counters) ->
     exec(Conn, <<"UPDATE workspace SET status='active' WHERE id = $1">>, [?WS1]),
     {ok, _} = organization_default_workspace_app:set(?OWNER1, ?ORG1, ?WS1),
 
+    io:format("~n== R3-5 频道归档/恢复的双授权源（真库，判定在事务内） ==~n"),
+    %% 通道由 org owner 建（他是 ws1 owner）；随后用「非创建者」身份试归档，
+    %% 验证第二授权源与拒绝都真实生效。
+    {ok, ChRow} = channel_logic:create_channel(
+        ?OWNER1, <<"GZFIX-CH-R35"/utf8>>, #{}, 100, {<<"workspace">>, ?WS1}
+    ),
+    R35ChId = maps:get(<<"id">>, ChRow),
+    pass(Counters, <<"P24 企业频道创建成功（R3-5 fixture）"/utf8>>, is_integer(R35ChId)),
+    %% P25：非创建者且非 org 管理者（MEMBERSH 仅 org member）→ 拒绝，频道仍 active
+    Deny = channel_logic:archive_channel(?MEMBER1, integer_to_binary(R35ChId)),
+    pass_val(
+        Counters,
+        <<"P25 非创建者且非 org 管理者归档 → 既有拒绝文案"/utf8>>,
+        Deny,
+        fun
+            ({error, Msg}) when is_binary(Msg) -> true;
+            (_) -> false
+        end
+    ),
+    pass(
+        Counters,
+        <<"P25b 被拒后频道仍 active（事务内判定未产生写入）"/utf8>>,
+        channel_status(Conn, R35ChId) =:= 1
+    ),
+    %% P26：org owner（非频道创建者）经第二授权源归档成功
+    OkArch = channel_logic:archive_channel(?OWNER1, integer_to_binary(R35ChId)),
+    pass_val(
+        Counters,
+        <<"P26 org owner（非创建者）归档成功（第二授权源）"/utf8>>,
+        OkArch,
+        fun
+            ({ok, _}) -> true;
+            (_) -> false
+        end
+    ),
+    pass(
+        Counters,
+        <<"P26b 归档后 status=0（archived）"/utf8>>,
+        channel_status(Conn, R35ChId) =:= 0
+    ),
+    %% P27：恢复同源放行；跨组织/无关系者仍被拒
+    OkRes = channel_logic:restore_channel(?OWNER1, integer_to_binary(R35ChId)),
+    pass_val(
+        Counters,
+        <<"P27 org owner（非创建者）恢复成功"/utf8>>,
+        OkRes,
+        fun
+            ({ok, _}) -> true;
+            (_) -> false
+        end
+    ),
+    pass(
+        Counters,
+        <<"P27b 恢复后 status=1（active）"/utf8>>,
+        channel_status(Conn, R35ChId) =:= 1
+    ),
+    Deny2 = channel_logic:archive_channel(?OUTSIDER, integer_to_binary(R35ChId)),
+    pass(
+        Counters,
+        <<"P28 跨组织用户归档被拒且频道仍 active"/utf8>>,
+        is_error_binary(Deny2) andalso channel_status(Conn, R35ChId) =:= 1
+    ),
+    {ok, _} = channel_ds:archive(R35ChId),
+
     io:format("~n== C3 成员有权 Workspace（计划 §5.2，全员可见） ==~n"),
     %% P20：普通成员（非治理者）也能读别人的有权 Workspace——这正是 §5.2
     %% 「所有企业成员可见」的要求。此刻 OWNER1 在 org1 内 active 的 ws = WS1、WS3。
@@ -350,6 +414,13 @@ probes(Conn, Counters) ->
     ),
     cleanup_created(Conn, OrgNew, WsNew),
     ok.
+
+
+is_error_binary({error, Msg}) when is_binary(Msg) -> true;
+is_error_binary(_) -> false.
+
+channel_status(Conn, ChannelId) ->
+    one(Conn, <<"SELECT status FROM channel WHERE id = $1">>, [ChannelId]).
 
 %% ===================================================================
 %% 断言助手
