@@ -23,18 +23,22 @@
     create_tx/6,
     find_tx/3,
     find_by_key_tx/3,
+    list_page_tx/5,
     update_status_tx/4,
     update_name_tx/4,
     update_scopes_tx/4,
     update_redirect_uris_tx/4,
+    update_status_cas_tx/5,
+    update_scopes_cas_tx/5,
     policy_tx/3,
     update_content_policy_tx/5
 ]).
 
 -include_lib("epgsql/include/epgsql.hrl").
 
+%% version 由迁移 00000143 加入（乐观锁；见 update_status_cas_tx / update_scopes_cas_tx）。
 -define(COLUMNS, <<
-    "id, organization_id, principal_user_id, application_key, name, status, "
+    "id, organization_id, principal_user_id, application_key, name, status, version, "
     "allowed_scopes, allowed_redirect_uris, created_at, updated_at"
 >>).
 
@@ -134,6 +138,102 @@ find_by_key_tx(Conn, OrgId, ApplicationKey) when is_integer(OrgId), is_binary(Ap
         <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
             " WHERE organization_id = $1 AND application_key = $2 LIMIT 1">>,
     one_tx(Conn, Sql, [OrgId, ApplicationKey]).
+
+%% @doc 事务内按组织分页浏览 Application（Admin 治理面 A-01；迁移 00000143）。
+%% Org 边界在 SQL 内强制：跨 Org 的行一律不可见，不靠调用方守纪律（IDOR 负例
+%% 由 SQL 自身保证，见 test/repo/enterprise_admin_governance_pg_tests.erl）。
+%%
+%% Opts 键（均可缺省）：
+%%   status :: binary() —— 四值生命周期之一；不在集合内 ⇒ {error, invalid_status}
+%%             且**不执行任何 SQL**（fail-closed，DB 的 CHECK 只是第二道闸）
+%%   q      :: binary() —— name / application_key 的大小写不敏感子串；空二进制等同缺省
+%%
+%% q 的匹配用 position(lower($N::text) in lower(col)) > 0：**不用 LIKE**——
+%% LIKE 会把用户输入里的 % 与 _ 当通配符，既造成语义漂移（"_" 匹配任意字符）
+%% 又可被构造为昂贵的全表模式匹配。position 保证始终把输入当字面量。
+%%
+%% 排序 created_at DESC, id DESC 与索引 i_ea_org_created 同向（EXPLAIN 见索引扫描），
+%% id 兜底保证同 created_at 时分页稳定。
+-spec list_page_tx(any(), integer(), pos_integer(), pos_integer(), map()) ->
+    {ok, #{items := [map()], total := non_neg_integer()}} | {error, invalid_status | term()}.
+list_page_tx(Conn, OrgId, Page, Size, Opts) when is_integer(OrgId), is_map(Opts) ->
+    Page1 = normalize_page(Page),
+    Size1 = normalize_size(Size),
+    Status = maps:get(status, Opts, undefined),
+    Q = maps:get(q, Opts, undefined),
+    case valid_status_filter(Status) of
+        false ->
+            {error, invalid_status};
+        true ->
+            {Conds, Params0} = build_list_filters(OrgId, Status, Q),
+            LimitIdx = length(Params0) + 1,
+            OffsetIdx = LimitIdx + 1,
+            LimitB = integer_to_binary(LimitIdx),
+            OffsetB = integer_to_binary(OffsetIdx),
+            WhereBin = join_conds(Conds),
+            Sql =
+                <<"SELECT ", ?COLUMNS/binary, ", COUNT(*) OVER() AS total_count FROM ",
+                    (tablename())/binary, " WHERE ", WhereBin/binary,
+                    " ORDER BY created_at DESC, id DESC LIMIT $", LimitB/binary, " OFFSET $",
+                    OffsetB/binary>>,
+            Params = Params0 ++ [Size1, (Page1 - 1) * Size1],
+            case elib_pg:query(Conn, Sql, Params) of
+                {ok, Rows} when is_list(Rows) ->
+                    Total =
+                        case Rows of
+                            [First | _] -> to_int(maps:get(<<"total_count">>, First, 0));
+                            [] -> 0
+                        end,
+                    {ok, #{
+                        items => [maps:remove(<<"total_count">>, R) || R <- Rows], total => Total
+                    }};
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+%% @doc 事务内 CAS 替换生命周期（Admin 治理面 A-03；迁移 00000143 的 version 列）。
+%% 并发下只有 expected_version 命中者生效（version+1）；其余 {error, version_conflict}。
+%% status 值域由 DB ck_ea_status 兜底（非法值 23514 归一 invalid_status），本层不重复
+%% 维护枚举副本（避免两处漂移）。
+-spec update_status_cas_tx(any(), integer(), integer(), pos_integer(), binary()) ->
+    ok | {error, invalid_status | not_found | version_conflict | term()}.
+update_status_cas_tx(Conn, OrgId, Id, ExpectedVersion, Status) when
+    is_integer(OrgId), is_integer(Id), is_integer(ExpectedVersion), is_binary(Status)
+->
+    Now = elib_dt:now(),
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET status = $4, version = version + 1, updated_at = $5",
+            " WHERE organization_id = $1 AND id = $2 AND version = $3">>,
+    case elib_pg:execute(Conn, Sql, [OrgId, Id, ExpectedVersion, Status, Now]) of
+        {ok, 1} -> ok;
+        {ok, 0} -> cas_miss(Conn, OrgId, Id);
+        {error, #error{code = <<"23514">>}} -> {error, invalid_status};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 事务内 CAS 整体替换 allowed_scopes（Admin 治理面 A-04）。
+%% 与 update_status_cas_tx 同口径的 CAS；scope 值域校验在 logic 层
+%% （enterprise_internal_ops:validate_scopes/1）——Repo 不反向依赖 api 层枚举模块。
+-spec update_scopes_cas_tx(any(), integer(), integer(), pos_integer(), [binary()] | binary()) ->
+    ok | {error, not_found | version_conflict | term()}.
+update_scopes_cas_tx(Conn, OrgId, Id, ExpectedVersion, Scopes) ->
+    ScopesJson =
+        case Scopes of
+            L when is_list(L) -> scopes_to_json(L);
+            J when is_binary(J) -> J
+        end,
+    Now = elib_dt:now(),
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET allowed_scopes = $4::jsonb, version = version + 1, updated_at = $5",
+            " WHERE organization_id = $1 AND id = $2 AND version = $3">>,
+    case elib_pg:execute(Conn, Sql, [OrgId, Id, ExpectedVersion, ScopesJson, Now]) of
+        {ok, 1} -> ok;
+        {ok, 0} -> cas_miss(Conn, OrgId, Id);
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @doc 事务内启停 Application（active|disabled；disabled 即拒绝全部 internal API）。
 -spec update_status_tx(any(), integer(), integer(), binary()) -> ok | {error, not_found | term()}.
@@ -247,6 +347,67 @@ update_content_policy_tx(Conn, OrgId, Id, Mimes, MaxBytes) when is_list(Mimes) -
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+%% @doc 生命周期过滤值是否合法（四值；undefined 表示不过滤）。
+%% 与 imboyadmin contracts.ts:APPLICATION_STATUSES 一致；DB ck_ea_status 是第二道闸。
+-spec valid_status_filter(undefined | binary()) -> boolean().
+valid_status_filter(undefined) ->
+    true;
+valid_status_filter(S) when
+    S =:= <<"draft">>; S =:= <<"active">>; S =:= <<"disabled">>; S =:= <<"archived">>
+->
+    true;
+valid_status_filter(_) ->
+    false.
+
+-spec normalize_page(term()) -> pos_integer().
+normalize_page(P) when is_integer(P), P > 0 -> P;
+normalize_page(_) -> 1.
+
+-spec normalize_size(term()) -> pos_integer().
+normalize_size(S) when is_integer(S), S > 0 -> S;
+normalize_size(_) -> 10.
+
+%% @doc 逐条拼 WHERE 条件，同时按最终位置生成 $N 占位符（避免手写错位）。
+-spec build_list_filters(integer(), undefined | binary(), undefined | binary()) ->
+    {[binary()], [term()]}.
+build_list_filters(OrgId, Status, Q) ->
+    C1 = <<"organization_id = $1">>,
+    {Conds, Params} =
+        case Status of
+            undefined -> {[C1], [OrgId]};
+            S when is_binary(S) -> {[C1, <<"status = $2">>], [OrgId, S]}
+        end,
+    case Q of
+        Qq when is_binary(Qq), Qq =/= <<>> ->
+            IdxB = integer_to_binary(length(Params) + 1),
+            Frag =
+                <<"(position(lower($", IdxB/binary,
+                    "::text) in lower(name)) > 0"
+                    " OR position(lower($", IdxB/binary,
+                    "::text) in lower(application_key::text)) > 0)">>,
+            {Conds ++ [Frag], Params ++ [Qq]};
+        _ ->
+            {Conds, Params}
+    end.
+
+-spec join_conds([binary()]) -> binary().
+join_conds(Conds) ->
+    binary:join(Conds, <<" AND ">>).
+
+-spec to_int(term()) -> non_neg_integer().
+to_int(N) when is_integer(N), N >= 0 -> N;
+to_int(_) -> 0.
+
+%% @doc CAS 未命中时区分「行不存在」与「版本已被他人推进」。
+-spec cas_miss(any(), integer(), integer()) ->
+    {error, not_found | version_conflict | term()}.
+cas_miss(Conn, OrgId, Id) ->
+    case find_tx(Conn, OrgId, Id) of
+        {ok, _Row} -> {error, version_conflict};
+        {error, not_found} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
 
 -spec scopes_to_json([binary()]) -> binary().
 scopes_to_json(Scopes) when is_list(Scopes) ->

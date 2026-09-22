@@ -35,6 +35,7 @@
     find_by_idempotency_key_tx/4,
     list_tx/3,
     revoke_tx/6,
+    revoke_admin_tx/6,
     replace_scopes_tx/6,
     set_workspace_scope_tx/7,
     grant_governed_tx/3,
@@ -170,28 +171,24 @@ list_tx(Conn, OrgId, AppId) when is_integer(OrgId), is_integer(AppId) ->
 
 %% @doc 事务内撤销 Grant（CAS：expected version 且仅 active 可撤销）。
 %% 撤权**立即生效**：下一次 auth context 读取（effective 视图）即看不到该 Grant。
+%% 既有行为逐字不变（租户 user 通道）：只是委托到带双通道的内部实现。
 -spec revoke_tx(any(), integer(), integer(), integer(), integer(), integer()) ->
     ok | {error, not_found | version_conflict | already_revoked | term()}.
 revoke_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, RevokedByUserId) ->
-    Now = elib_dt:now(),
-    Sql =
-        <<"UPDATE ", (tablename())/binary,
-            " SET status = 'revoked', revoked_at = $5, revoked_by_user_id = $6,"
-            " version = version + 1, updated_at = $5",
-            " WHERE organization_id = $1 AND application_id = $2 AND id = $3"
-            " AND version = $4 AND status = 'active'">>,
-    case
-        elib_pg:execute(Conn, Sql, [
-            OrgId, AppId, GrantId, ExpectedVersion, Now, RevokedByUserId
-        ])
-    of
-        {ok, 1} ->
-            ok;
-        {ok, 0} ->
-            cas_miss(Conn, OrgId, AppId, GrantId);
-        {error, Reason} ->
-            {error, Reason}
-    end.
+    revoke_with_actor_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, RevokedByUserId, null).
+
+%% @doc 事务内以**平台管理员**身份撤销 Grant（Admin 治理面 A-11；迁移 00000143）。
+%% 语义与 revoke_tx/6 完全对称（CAS + 仅 active 可撤 + 撤权立即生效），唯一差别是
+%% 执行者落在新列 revoked_by_adm_user_id（revoked_by_user_id 保持 NULL）。
+%% 为什么必须开第二通道：平台管理员是 adm_user，**不是**租户 user，
+%% 而 ck_eag_status_revoked_match 要求 revoked 行必须有且仅有一个执行者——
+%% 用它顶替租户 user 会伪造归因，撤销不写执行者则等于放弃留痕。
+-spec revoke_admin_tx(any(), integer(), integer(), integer(), integer(), integer()) ->
+    ok | {error, not_found | version_conflict | already_revoked | term()}.
+revoke_admin_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, AdmUserId) when
+    is_integer(AdmUserId), AdmUserId > 0
+->
+    revoke_with_actor_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, null, AdmUserId).
 
 %% @doc 事务内整体替换 Grant 的 scope 集合（CAS；scope downgrade 的机制）。
 %% Scopes 非空；替换后 version+1。降级对**下一请求**立即生效。
@@ -549,6 +546,39 @@ set_workspace_scope_kind_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, Target
                 ok -> insert_workspace_rows_tx(Conn, OrgId, GrantId, WorkspaceIds);
                 {error, Reason} -> {error, Reason}
             end;
+        {ok, 1} ->
+            ok;
+        {ok, 0} ->
+            cas_miss(Conn, OrgId, AppId, GrantId);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% 撤销的唯一写入点（CAS：expected version 且仅 active 可撤销）。撤权**立即生效**：
+%% 下一次 auth context 读取（effective 视图）即看不到该 Grant。
+%% RevokedByUserId 与 RevokedByAdmUserId 必须**恰有一个**为 null（另一方为整数）——
+%% 由 ck_eag_status_revoked_match（迁移 00000143）在 DB 侧强制，本层不重复校验，
+%% 但违反时 DB 抛 23514，map_error/1 归一后上层可见。
+-spec revoke_with_actor_tx(
+    any(), integer(), integer(), integer(), integer(), integer() | null, integer() | null
+) ->
+    ok | {error, not_found | version_conflict | already_revoked | term()}.
+revoke_with_actor_tx(
+    Conn, OrgId, AppId, GrantId, ExpectedVersion, RevokedByUserId, RevokedByAdmUserId
+) ->
+    Now = elib_dt:now(),
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET status = 'revoked', revoked_at = $5, revoked_by_user_id = $6,"
+            " revoked_by_adm_user_id = $7,"
+            " version = version + 1, updated_at = $5",
+            " WHERE organization_id = $1 AND application_id = $2 AND id = $3"
+            " AND version = $4 AND status = 'active'">>,
+    case
+        elib_pg:execute(Conn, Sql, [
+            OrgId, AppId, GrantId, ExpectedVersion, Now, RevokedByUserId, RevokedByAdmUserId
+        ])
+    of
         {ok, 1} ->
             ok;
         {ok, 0} ->

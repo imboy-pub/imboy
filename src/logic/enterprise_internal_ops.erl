@@ -30,6 +30,10 @@
     update_scopes/3,
     set_application_status_tx/4,
     set_application_status/3,
+    set_application_status_cas/4,
+    update_scopes_cas/4,
+    list_credentials/2,
+    list_credentials/3,
     issue_credential_tx/5,
     issue_credential_tx/4,
     issue_credential/3,
@@ -101,6 +105,46 @@ set_application_status_tx(Conn, OrgId, AppId, Status) ->
 -spec set_application_status(integer(), integer(), binary()) -> ok | {error, term()}.
 set_application_status(OrgId, AppId, Status) ->
     pool(fun(Conn) -> set_application_status_tx(Conn, OrgId, AppId, Status) end).
+
+%% @doc 池化 CAS 替换生命周期（Admin 治理面 A-03；迁移 00000143 的 version 列）。
+%% 与 set_application_status/3 的差别：
+%%   ① 带 expected_version —— 并发治理写入只有赢家生效，其余 {error, version_conflict}
+%%      （plan-full §7「credential/Grant … 下一请求即失效」同口径的乐观锁纪律）；
+%%   ② 接受**四值**生命周期 draft/active/disabled/archived（DB ck_ea_status
+%%      已同步放宽），而不再只接受启停二值。
+%% 非法状态在本层就拒绝（fail-closed，不执行 SQL）；DB 的 CHECK 是第二道闸。
+-spec set_application_status_cas(integer(), integer(), pos_integer(), binary()) ->
+    ok | {error, invalid_status | not_found | version_conflict | term()}.
+set_application_status_cas(OrgId, AppId, ExpectedVersion, Status) ->
+    case validate_lifecycle(Status) of
+        ok ->
+            pool(fun(Conn) ->
+                enterprise_application_repo:update_status_cas_tx(
+                    Conn, OrgId, AppId, ExpectedVersion, Status
+                )
+            end);
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc 池化 CAS 整体替换 allowed_scopes（Admin 治理面 A-04）。
+%% 空集合 ⇒ {error, empty_scopes}（scope downgrade 到「无权限」必须显式表达，
+%% 静默清空等于把授权面清零后无人知晓）；非白名单成员 ⇒ {error, invalid_scope}。
+-spec update_scopes_cas(integer(), integer(), pos_integer(), [binary()]) ->
+    ok | {error, empty_scopes | invalid_scope | not_found | version_conflict | term()}.
+update_scopes_cas(_OrgId, _AppId, _ExpectedVersion, []) ->
+    {error, empty_scopes};
+update_scopes_cas(OrgId, AppId, ExpectedVersion, Scopes) ->
+    case validate_scopes(Scopes) of
+        ok ->
+            pool(fun(Conn) ->
+                enterprise_application_repo:update_scopes_cas_tx(
+                    Conn, OrgId, AppId, ExpectedVersion, Scopes
+                )
+            end);
+        {error, _} = Err ->
+            Err
+    end.
 
 %%%===================================================================
 %%% Credential 生命周期
@@ -450,6 +494,16 @@ pool(Fun) ->
         Result -> Result
     end.
 
+%% 生命周期四值（迁移 00000143 放宽 ck_ea_status；与 imboyadmin
+%% contracts.ts:APPLICATION_STATUSES 同序）。archived 是终态——合法迁移由上层裁决。
+-spec validate_lifecycle(binary()) -> ok | {error, invalid_status}.
+validate_lifecycle(S) when
+    S =:= <<"draft">>; S =:= <<"active">>; S =:= <<"disabled">>; S =:= <<"archived">>
+->
+    ok;
+validate_lifecycle(_) ->
+    {error, invalid_status}.
+
 -spec validate_scopes([binary()]) -> ok | {error, invalid_scope}.
 validate_scopes(Scopes) when is_list(Scopes) ->
     Fixed = enterprise_internal_scope:all(),
@@ -487,10 +541,17 @@ credential_application_id(Conn, OrgId, CredId) ->
             {error, Reason}
     end.
 
+%% @doc 池化列出 credential **元数据**（Admin 治理面 A-05）。
+%% SELECT 列**永不**含 secret_digest / 明文 —— 与 application_status_tx/3 同源的
+%% redaction 红线：Admin 读面一旦投影摘要就等于把可离线爆破的凭据哈希下发到浏览器。
+-spec list_credentials(integer(), integer()) -> [map()].
+list_credentials(OrgId, AppId) ->
+    pool(fun(Conn) -> list_credentials(Conn, OrgId, AppId) end).
+
 -spec list_credentials(any(), integer(), integer()) -> [map()].
 list_credentials(Conn, OrgId, AppId) ->
     Sql =
-        <<"SELECT id, credential_prefix, status, expires_at, last_used_at, revoked_at",
+        <<"SELECT id, credential_prefix, status, created_at, expires_at, last_used_at, revoked_at",
             " FROM enterprise_application_credential",
             " WHERE organization_id = $1 AND application_id = $2 ORDER BY id">>,
     case elib_pg:query(Conn, Sql, [OrgId, AppId]) of
