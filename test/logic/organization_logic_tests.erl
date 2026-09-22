@@ -26,6 +26,15 @@ create_relies_on_owner_trigger_and_returns_owner_role_test_() ->
                 {'find_active_tx', 4, fun(fake_conn, ?ORG_ID, ?UID, <<"role">>) ->
                     {ok, #{<<"role">> => <<"owner">>}}
                 end}
+            ]},
+            %% APP 建企必须同事务创建默认 Workspace 模板（workspace 行 / 默认关系 /
+            %% owner 成员 / 全员群 / 公告频道）——否则 owner 名下无工作区、加入者
+            %% 拿到的 group_id/channel_id 全是 none。
+            {workspace_ds, [
+                {'create_default_template_tx', 4, fun(fake_conn, ?UID, ?ORG_ID, WsName) ->
+                    ?assertEqual(<<"默认工作区"/utf8>>, WsName),
+                    {ok, #{workspace_id => 9001, group_id => 9002, channel_id => 9003}}
+                end}
             ]}
         ],
         fun() ->
@@ -37,6 +46,9 @@ create_relies_on_owner_trigger_and_returns_owner_role_test_() ->
                     <<"settings">> := #{<<"locale">> := <<"zh-CN">>}
                 }},
                 organization_logic:create(?UID, <<"  Acme  ">>)
+            ),
+            ?assertEqual(
+                1, meck:num_calls(workspace_ds, create_default_template_tx, 4)
             )
         end
     ).

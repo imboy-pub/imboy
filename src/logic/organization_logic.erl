@@ -9,6 +9,9 @@
 
 -include("log.hrl").
 
+%% APP 侧建企不存在"工作区名"入参：默认工作区用固定名（同 org 内唯一即可）。
+-define(DEFAULT_WS_NAME, <<"默认工作区"/utf8>>).
+
 -spec create(integer(), term()) -> {ok, map()} | {error, {integer(), binary()}}.
 create(Uid, Name0) when is_integer(Uid), Uid > 0 ->
     case normalize_name(Name0) of
@@ -64,16 +67,30 @@ update(Uid, OrgId, Name0, Branding0, Settings0) when
 update(_, _, _, _, _) ->
     {error, {400, <<"organization_id 必须是正整数"/utf8>>}}.
 
+%% @doc 建企（**APP 侧** `POST /organizations`）。
+%%
+%% 与 Admin 建企（organization_admin_logic:admin_create/4）同构：org 行 + 唯一
+%% Owner 成员 + **默认 Workspace 模板**（workspace 行 / Org 默认关系 /
+%% owner workspace_member / 全员群 General / 公告频道 Announcements 含订阅），
+%% 全部在同一事务内，失败零残留（计划 §106「不能留下半初始化状态」）。
+%% APP 建企只收一个名称，故默认工作区用固定名（Admin 侧由调用方显式给名）。
+%%
+%% 此前本路径只写 org + owner 成员（裸建企）：owner 名下没有任何工作区，
+%% 真机上表现为「创建企业后进入工作区壳看到『还没有工作区』」；更严重的是
+%% organization_default_workspace 无行 → 后续凭邀请码/邀请加入的成员拿到的
+%% workspace_id/group_id/channel_id 全是 none（GZ-J03「仅默认 Workspace、
+%% 全员群和公告频道关系正确」不成立）。
 create_validated(Uid, Name) ->
     Tx = fun(Conn) ->
         case organization_repo:create_tx(Conn, Uid, Name) of
             {ok, Org} ->
-                case
-                    organization_member_repo:find_active_tx(
-                        Conn, maps:get(<<"id">>, Org), Uid, <<"role">>
-                    )
-                of
+                OrgId = maps:get(<<"id">>, Org),
+                case organization_member_repo:find_active_tx(Conn, OrgId, Uid, <<"role">>) of
                     {ok, #{<<"role">> := <<"owner">>}} ->
+                        %% 默认 Workspace 模板：与建工作区/Admin 建企同一原语
+                        {ok, _Template} = workspace_ds:create_default_template_tx(
+                            Conn, Uid, OrgId, ?DEFAULT_WS_NAME
+                        ),
                         {ok, Org#{<<"member_role">> => <<"owner">>}};
                     {ok, _} ->
                         throw({abort_tx, owner_membership_not_created});
