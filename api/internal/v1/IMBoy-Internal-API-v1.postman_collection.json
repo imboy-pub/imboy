@@ -1,0 +1,1007 @@
+{
+  "info": {
+    "name": "IMBoy Internal API v1",
+    "_postman_id": "74b0c0be-ae23-5011-b04e-a7776770f4bd",
+    "description": "IMBoy 企业内部集成 API（/api/internal/v1）。\n\n使用前设置两个变量：\n  1. base_url —— 由平台部署方提供；\n  2. credential —— 平台管理员在治理台签发的集成凭证（Bearer ib_int_<id>.<secret>），secret 明文仅在签发时可见一次。\n\n配套文档：README.md（概念）、endpoints.md（端点参考）、CHANGELOG.md（版本）。\n所有示例值均为合成数据，不含真实凭据。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:9800",
+      "description": "由平台部署方提供（示例为本地联调值）"
+    },
+    {
+      "key": "credential",
+      "value": "ib_int_9100000000000000003.SYNTHETIC-NOT-A-REAL-SECRET",
+      "description": "集成凭证；此处为合成占位，请替换为治理台签发的真实凭证"
+    },
+    {
+      "key": "idempotency_key",
+      "value": "{{$guid}}",
+      "description": "写动作幂等键；同一业务操作请复用同一 key"
+    },
+    {
+      "key": "group_id",
+      "value": "9100000000000000100",
+      "description": "示例群组 ID（合成）"
+    },
+    {
+      "key": "delivery_id",
+      "value": "9100000000000000200",
+      "description": "示例投递 ID（合成）"
+    }
+  ],
+  "item": [
+    {
+      "name": "应用与凭证",
+      "description": "读取本应用自身（健康检查与联调首选）。",
+      "item": [
+        {
+          "name": "INT-01 读取应用信息",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/application",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "application"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "返回本应用名称、组织、授予的 scope、状态。无请求体。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "外部身份映射",
+      "description": "OA 用户标识 ↔ 平台用户 的绑定 / 解析 / 解绑 / 目录。",
+      "item": [
+        {
+          "name": "INT-02 绑定身份",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/identity-mappings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "identity-mappings"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "把 OA 侧用户标识绑定到平台用户。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_user_id\": \"oa-1001\",\n  \"user_id\": 9100000000000000300,\n  \"workspace_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-03 解析身份",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/identity-mappings/resolve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "identity-mappings",
+                "resolve"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "OA 标识 → 平台用户。未映射返回 identity_not_mapped(422)。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_user_id\": \"oa-1001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-15 解绑身份",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/identity-mappings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "identity-mappings"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "解绑后该用户对你的消息/群操作立即不可达。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_user_id\": \"oa-1001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-16 已映射目录",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/identity-mappings/directory",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "identity-mappings",
+                "directory"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "分页查询本组织已映射用户（只回元数据）。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page_size\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-17 可映射用户目录",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/directory/users",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "directory",
+                "users"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "分页查询本组织可映射用户。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page_size\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "企业群组",
+      "description": "建群、成员增删、群信息、成员角色、解散。",
+      "item": [
+        {
+          "name": "INT-04 创建群组",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "groups"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "创建企业群并拉入初始成员。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"项目协同群\",\n  \"workspace_id\": 1,\n  \"external_user_ids\": [\n    \"oa-1001\",\n    \"oa-1002\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-05 添加成员",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/groups/{{group_id}}/members",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "groups",
+                ":group_id}",
+                "members"
+              ],
+              "variable": [
+                {
+                  "key": "group_id",
+                  "value": "{{group_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "向既有企业群添加成员。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_user_ids\": [\n    \"oa-1003\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-06 移除成员",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/groups/{{group_id}}/members",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "groups",
+                ":group_id}",
+                "members"
+              ],
+              "variable": [
+                {
+                  "key": "group_id",
+                  "value": "{{group_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "从企业群移除成员。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_user_ids\": [\n    \"oa-1003\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-18 读取群信息",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/groups/{{group_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "groups",
+                ":group_id}"
+              ],
+              "variable": [
+                {
+                  "key": "group_id",
+                  "value": "{{group_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "读取群标题、成员数等元数据。无请求体。"
+          }
+        },
+        {
+          "name": "INT-19 修改群信息",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/groups/{{group_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "groups",
+                ":group_id}"
+              ],
+              "variable": [
+                {
+                  "key": "group_id",
+                  "value": "{{group_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "修改标题/群介绍。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"新标题\",\n  \"introduction\": \"群介绍文本\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-20 设置成员角色",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/groups/{{group_id}}/members/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "groups",
+                ":group_id}",
+                "members",
+                "roles"
+              ],
+              "variable": [
+                {
+                  "key": "group_id",
+                  "value": "{{group_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "调整成员角色。roles 的合法取值请在联调时向平台方确认。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_user_ids\": [\n    \"oa-1001\"\n  ],\n  \"roles\": [\n    \"member\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-21 解散群组",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/groups/{{group_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "groups",
+                ":group_id}"
+              ],
+              "variable": [
+                {
+                  "key": "group_id",
+                  "value": "{{group_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "解散企业群。破坏性操作，请谨慎。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "企业文件（两段式直传）",
+      "description": "presign 拿预签名 URL → 对象存储直传 → confirm 确认入库。",
+      "item": [
+        {
+          "name": "INT-07 直传预签名",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/files/presign",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "files",
+                "presign"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "第一段：请求对象存储预签名。请求体字段（对象键/大小/类型等）在对接启动时由平台方提供字段说明；本示例暂不预填。"
+          }
+        },
+        {
+          "name": "INT-08 确认入库",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/files/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "files",
+                "confirm"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "第二段：直传完成后确认入库，取得可引用的文件标识。"
+          }
+        },
+        {
+          "name": "INT-22 文件治理动作",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/files/governance",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "files",
+                "governance"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "文件生命周期/元数据治理动作。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"file_id\": 9100000000000000400\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "消息（sender_mode 语义见 README §6）",
+      "description": "应用身份直发 / 代人类发送；单聊与群聊；固定非端到端加密。",
+      "item": [
+        {
+          "name": "INT-09 单聊发送",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/messages/direct",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "messages",
+                "direct"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "sender_mode=application：以应用身份发；sender_mode=human：代人类发（追加 principal_user_id，消耗 messages:send_as_human）。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sender_mode\": \"application\",\n  \"to_id\": 9100000000000000300,\n  \"content\": \"您好，来自 OA 的通知\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-10 群聊发送",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/groups/{{group_id}}/messages",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "groups",
+                ":group_id}",
+                "messages"
+              ],
+              "variable": [
+                {
+                  "key": "group_id",
+                  "value": "{{group_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "向企业群发送托管消息。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sender_mode\": \"application\",\n  \"content\": \"项目群通知\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "好友申请（只发起；平台不自动通过）",
+      "description": "仅可对同组织已映射用户发起；无自动通过/删除/批量能力。",
+      "item": [
+        {
+          "name": "INT-11 发起好友申请",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/friend-requests",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "friend-requests"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "以 human 形态代 OA 用户发起；平台不会自动通过，由对方确认。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_user_id\": \"oa-1002\",\n  \"greeting\": \"我是 OA 里的同事\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhook（出站回调）",
+      "description": "登记回调地址、查询投递、重放失败投递。签名头 x-imboy-delivery/event/timestamp/signature。",
+      "item": [
+        {
+          "name": "INT-12 登记/更新 Webhook",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/webhook",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "webhook"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "description": "设置你方回调 URL 与关注的事件。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_url\": \"https://oa.example.com/imboy/callback\",\n  \"name\": \"OA 回调\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "INT-23 查询投递列表",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/webhook/deliveries",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "webhook",
+                "deliveries"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "分页查询投递状态（status/page 查询参数）。无请求体。\n查询参数见 url.query。"
+          }
+        },
+        {
+          "name": "INT-13 重放投递",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/webhook/deliveries/{{delivery_id}}/replay",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "webhook",
+                "deliveries",
+                ":delivery_id}",
+                "replay"
+              ],
+              "variable": [
+                {
+                  "key": "delivery_id",
+                  "value": "{{delivery_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "对失败投递按 delivery_id 重放。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "OA SSO（一次性 code 交换）",
+      "description": "OA 登录成功后换一次性 code；code 只能成功交换一次。",
+      "item": [
+        {
+          "name": "INT-14 交换登录态",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/oa/sso/exchange",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "oa",
+                "sso",
+                "exchange"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "code 为一次性（single_use_code），重放即失败。独立限流桶。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"ONE-TIME-CODE-FROM-OA-FLOW\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

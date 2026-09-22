@@ -157,10 +157,13 @@ Scope 由管理员签发时授予，集成方**不可自选**、不存在 `*` �
 IMBoy → 前端/网关调 INT-14 原子交换（`single_use_code`：一个 code 只能成功
 交换一次，重放即失败）。完成即建立 IMBoy 会话，无需再传 OA 凭据。
 
-## 10. 端点参考
+## 10. 端点参考与 Postman 集合
 
-见 [endpoints.md](./endpoints.md)（23 个端点，按域分组）。
-字段级请求/响应 schema 以 `.contract/api/openapi.yaml` 为准。
+- 人类阅读：[endpoints.md](./endpoints.md)（23 个端点，按域分组）。
+- **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
+  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 23 个端点、按域分文件夹、
+  示例请求体与 `{{base_url}}` / `{{credential}}` 变量；导入后填好两个变量即可发请求。
+- 字段级请求/响应 schema 以 `.contract/api/openapi.yaml` 为准；示例体均为合成数据。
 
 ## 11. 版本与变更
 
