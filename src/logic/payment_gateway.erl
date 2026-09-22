@@ -24,14 +24,22 @@
 -callback refund(PaymentNo :: binary(), Amount :: term()) ->
     ok | {error, binary()}.
 
+%% 可选回调：带业务上下文 Opts 的退款。Opts 可携带 out_refund_no（业务退款
+%% 唯一号，如 payment_transaction.trade_no / channel_order.order_no）——
+%% 网关侧（Stripe）据此派生稳定幂等键：同一笔业务退款重试 → 同键 → 网关
+%% 返回首次结果，不会重复退款。未实现 refund/3 的网关（mock/wallet）经
+%% dispatcher 回退 refund/2。
+-callback refund(PaymentNo :: binary(), Amount :: term(), Opts :: map()) ->
+    ok | {error, binary()}.
+
 %% 可选回调：主动查单（客户端支付回跳后服务端确认用）。
 %% 返回 #{trade_state => success|pending|..., trade_no => binary()}；
 %% 未实现的网关（mock 等即时入账）经 dispatcher 归一为 unsupported。
 -callback query_order(OrderNo :: binary(), Opts :: map()) ->
     {ok, map()} | {error, binary()} | unsupported.
--optional_callbacks([query_order/2]).
+-optional_callbacks([query_order/2, refund/3]).
 
--export([pay/3, refund/3, query_order/2, method_module/1, registry/0]).
+-export([pay/3, refund/3, refund/4, query_order/2, method_module/1, registry/0]).
 -export([enabled/0]).
 
 %% @doc 外部支付网关总开关（默认关闭）。
@@ -63,12 +71,22 @@ pay(Method, OrderNo, Opts) ->
             Err
     end.
 
-%% @doc 发起退款
+%% @doc 发起退款（兼容入口：无退款上下文）。新代码应优先 refund/4，
+%% 为网关提供业务退款唯一号以满足幂等合同。
 -spec refund(binary(), binary(), term()) -> ok | {error, binary()}.
 refund(Method, PaymentNo, Amount) ->
+    refund(Method, PaymentNo, Amount, #{}).
+
+%% @doc 发起退款（主入口）。Opts 可含 out_refund_no（业务退款唯一号）；
+%% 网关实现 refund/3 时透传 Opts，否则回退 refund/2。
+-spec refund(binary(), binary(), term(), map()) -> ok | {error, binary()}.
+refund(Method, PaymentNo, Amount, Opts) ->
     case method_module(Method) of
         {ok, Module} ->
-            Module:refund(PaymentNo, Amount);
+            case erlang:function_exported(Module, refund, 3) of
+                true -> Module:refund(PaymentNo, Amount, Opts);
+                false -> Module:refund(PaymentNo, Amount)
+            end;
         {error, _} = Err ->
             Err
     end.

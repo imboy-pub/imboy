@@ -10,7 +10,8 @@
 %%%   - sandbox：直通放行，用于 mock 网关联调跑通回调入账链路。
 %%%
 %%% 凭据读取（IMBOY_* 注入，application:get_env/3）：
-%%%   stripe_webhook_secret / wechat_api_v3_key / alipay_public_key
+%%%   stripe_webhook_secret / wechat_api_v3_key
+%%%   / wechat_platform_public_key / alipay_app_id / alipay_public_key
 %%%
 %%% verify/3:
 %%%   Gateway        :: binary()  网关标识（alipay/wechat/stripe/mock/...）
@@ -52,14 +53,18 @@ sandbox_verify(_Gateway, _RawBody, _Headers) ->
 %% imboy 侧只读凭据、组 Cfg/Ctx、归一返回，不再自实现验签（剔除重复）。
 -spec live_verify(binary(), binary(), map()) -> {ok, map()} | {error, atom()}.
 live_verify(<<"alipay">>, RawBody, _Headers) ->
+    AppId = cfg(alipay_app_id),
     PubKey = cfg(alipay_public_key),
-    case is_blank(PubKey) of
+    case is_blank(AppId) orelse is_blank(PubKey) of
         true ->
             {error, no_credential};
         false ->
             %% 支付宝异步通知为 form 串（明文），解析为 map 交 erlang_pay 验签。
+            %% app_id 必传：erlang_pay 侧做通知 app_id 绑定（不一致即拒绝）。
             Ctx = #{form => parse_form(RawBody)},
-            normalize_verify(erlang_pay:verify_notify(alipay, #{public_key => PubKey}, Ctx))
+            normalize_verify(
+                erlang_pay:verify_notify(alipay, #{app_id => AppId, public_key => PubKey}, Ctx)
+            )
     end;
 live_verify(<<"wechat">>, RawBody, Headers) ->
     ApiV3Key = cfg(wechat_api_v3_key),
@@ -71,7 +76,9 @@ live_verify(<<"wechat">>, RawBody, Headers) ->
             %% 经 erlang_pay 平台公钥验签 + AES-256-GCM 解密；
             %% 解密后的明文 map 通过 normalize_verify({ok, Data}) 透出，
             %% payment_callback_logic 会以 map_size(Verified)>0 优先使用此明文。
-            Cfg = #{api_v3 => ApiV3Key, platform_public_key => PlatPub},
+            %% 注意 Cfg 键名必须是 api_v3_key（erlang_pay 读取键），
+            %% 错写成 api_v3 会导致 live 回调恒 no_credential。
+            Cfg = #{api_v3_key => ApiV3Key, platform_public_key => PlatPub},
             Ctx = #{headers => Headers, body => RawBody},
             normalize_verify(erlang_pay:verify_notify(wechat, Cfg, Ctx))
     end;

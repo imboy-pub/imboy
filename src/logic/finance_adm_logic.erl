@@ -198,7 +198,16 @@ refund_payment_by_biz(Row, TradeNo, _BizType) ->
 do_gateway_refund(Gateway, GwPayNo, Amount, TradeNo) ->
     %% payment_transaction.amount 单位为「分」，须按目标网关期望单位适配，
     %% 否则 wallet 网关把分当元 → 退款放大 100 倍（见 fen_to_gateway_amount/2）。
-    case payment_gateway:refund(Gateway, GwPayNo, fen_to_gateway_amount(Gateway, Amount)) of
+    %% out_refund_no 传 TradeNo：同一笔业务退款重试 → 网关同一幂等键，
+    %% 这是占位机制之外挡住重复退款的第二道防线（Stripe 幂等合同）。
+    case
+        payment_gateway:refund(
+            Gateway,
+            GwPayNo,
+            fen_to_gateway_amount(Gateway, Amount),
+            #{out_refund_no => TradeNo}
+        )
+    of
         ok ->
             case payment_transaction_ds:mark_refunded(TradeNo) of
                 {ok, 1} ->

@@ -32,6 +32,7 @@ stripe_gateway_test_() ->
         fun pay_maps_gateway_error_to_binary/0,
         fun refund_ok/0,
         fun refund_maps_error/0,
+        fun refund_missing_refund_no_rejected/0,
         fun missing_credential_rejected/0
     ]}.
 
@@ -68,10 +69,15 @@ pay_maps_gateway_error_to_binary() ->
     ).
 
 refund_ok() ->
-    meck:expect(erlang_pay, refund, fun(stripe, _Cfg, _Req) ->
+    meck:expect(erlang_pay, refund, fun(stripe, _Cfg, Req) ->
+        %% 断言业务退款唯一号透传到库（幂等键派生源）
+        ?assertEqual(<<"txn_1001">>, maps:get(out_refund_no, Req)),
         {ok, #{type => stripe_refund}}
     end),
-    ?assertEqual(ok, payment_stripe_gateway:refund(<<"pi_123">>, 1999)).
+    ?assertEqual(
+        ok,
+        payment_stripe_gateway:refund(<<"pi_123">>, 1999, #{out_refund_no => <<"txn_1001">>})
+    ).
 
 refund_maps_error() ->
     meck:expect(erlang_pay, refund, fun(stripe, _Cfg, _Req) ->
@@ -79,8 +85,24 @@ refund_maps_error() ->
     end),
     ?assertEqual(
         {error, <<"timeout"/utf8>>},
-        payment_stripe_gateway:refund(<<"pi_x">>, 100)
+        payment_stripe_gateway:refund(<<"pi_x">>, 100, #{out_refund_no => <<"txn_9">>})
     ).
+
+%% 缺业务退款唯一号 → 拒绝，且不调用库（fail-closed：Stripe 幂等合同
+%% 禁止无稳定退款号发退款 POST；refund/2 兼容入口同样被拒）
+refund_missing_refund_no_rejected() ->
+    meck:expect(erlang_pay, refund, fun(_Gw, _Cfg, _Req) ->
+        error(<<"erlang_pay:refund 不应被调用"/utf8>>)
+    end),
+    ?assertMatch(
+        {error, _},
+        payment_stripe_gateway:refund(<<"pi_y">>, 100)
+    ),
+    ?assertMatch(
+        {error, _},
+        payment_stripe_gateway:refund(<<"pi_y">>, 100, #{out_refund_no => <<>>})
+    ),
+    ?assertEqual(0, meck:num_calls(erlang_pay, refund, 3)).
 
 %% 缺真实凭据（live 模式）→ 拒绝，不调用库
 missing_credential_rejected() ->

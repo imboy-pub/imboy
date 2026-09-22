@@ -37,7 +37,7 @@ setup() ->
             <<"payment_no">> => <<"WPY_ORD_REF">>
         }}
     end),
-    meck:expect(payment_gateway, refund, fun(<<"wallet">>, _No, _Amt) -> ok end),
+    meck:expect(payment_gateway, refund, fun(<<"wallet">>, _No, _Amt, _Opts) -> ok end),
     %% payment_transaction_ds: 默认找不到对应流水 → 静默跳过
     meck:expect(payment_transaction_ds, find_by_biz_order_no, fun(_, _) -> #{} end),
     meck:expect(payment_transaction_ds, mark_refunding, fun(_) -> {ok, 1} end),
@@ -79,7 +79,7 @@ concurrent_refund_only_one_succeeds() ->
 
 %% 网关失败 → 释放占位(5→1)，下次可重试
 gateway_failure_releases_refunding() ->
-    meck:expect(payment_gateway, refund, fun(<<"wallet">>, _No, _Amt) ->
+    meck:expect(payment_gateway, refund, fun(<<"wallet">>, _No, _Amt, _Opts) ->
         {error, <<"余额不足"/utf8>>}
     end),
     Result = channel_logic_order:refund_order(?UID, ?ORDER_NO),
@@ -90,12 +90,12 @@ gateway_failure_releases_refunding() ->
 %% 网关失败释放后，重试可以再次抢占
 gateway_failure_allows_retry() ->
     %% 第一次：网关失败
-    meck:expect(payment_gateway, refund, fun(<<"wallet">>, _No, _Amt) ->
+    meck:expect(payment_gateway, refund, fun(<<"wallet">>, _No, _Amt, _Opts) ->
         {error, <<"余额不足"/utf8>>}
     end),
     _ = channel_logic_order:refund_order(?UID, ?ORDER_NO),
     %% 第二次：mark_refunding 再次抢占成功（因为释放了）
-    meck:expect(payment_gateway, refund, fun(<<"wallet">>, _No, _Amt) -> ok end),
+    meck:expect(payment_gateway, refund, fun(<<"wallet">>, _No, _Amt, _Opts) -> ok end),
     Result2 = channel_logic_order:refund_order(?UID, ?ORDER_NO),
     ?assertEqual(ok, Result2),
     %% 两次网关调用，mark_refunding 被调了两次

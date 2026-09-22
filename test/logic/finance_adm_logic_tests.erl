@@ -283,7 +283,7 @@ refund_payment_tx_billing_success_test_() ->
                 {'mark_refunded', 1, fun(<<"T1">>) -> {ok, 1} end}
             ]},
             {payment_gateway, [
-                {'refund', 3, fun(<<"alipay">>, <<"GW123">>, 500) -> ok end}
+                {'refund', 4, fun(<<"alipay">>, <<"GW123">>, 500, _Opts) -> ok end}
             ]}
         ],
         fun() ->
@@ -311,7 +311,7 @@ refund_payment_tx_mark_race_test_() ->
                 {'mark_refunded', 1, fun(_) -> {ok, 0} end}
             ]},
             {payment_gateway, [
-                {'refund', 3, fun(_, _, _) -> ok end}
+                {'refund', 4, fun(_, _, _, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -396,7 +396,7 @@ refund_payment_tx_retry_after_mark_failure_test_() ->
                 end}
             ]},
             {payment_gateway, [
-                {'refund', 3, fun(_, _, _) -> ok end}
+                {'refund', 4, fun(_, _, _, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -423,7 +423,7 @@ refund_payment_tx_cas_lost_skips_gateway_test_() ->
                 {'mark_refunding', 1, fun(_) -> {ok, 0} end}
             ]},
             {payment_gateway, [
-                {'refund', 3, fun(_, _, _) -> ok end}
+                {'refund', 4, fun(_, _, _, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -450,7 +450,7 @@ refund_payment_tx_gateway_error_releases_placeholder_test_() ->
                 {'release_refunding', 1, fun(_) -> {ok, 1} end}
             ]},
             {payment_gateway, [
-                {'refund', 3, fun(_, _, _) -> {error, <<"网关拒绝"/utf8>>} end}
+                {'refund', 4, fun(_, _, _, _) -> {error, <<"网关拒绝"/utf8>>} end}
             ]}
         ],
         fun() ->
@@ -482,7 +482,7 @@ refund_payment_tx_mark_error_keeps_placeholder_test_() ->
                 {'release_refunding', 1, fun(_) -> {ok, 1} end}
             ]},
             {payment_gateway, [
-                {'refund', 3, fun(_, _, _) -> ok end}
+                {'refund', 4, fun(_, _, _, _) -> ok end}
             ]}
         ],
         fun() ->

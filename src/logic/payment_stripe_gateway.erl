@@ -12,10 +12,12 @@
 %%%
 %%% 凭据(IMBOY_* 注入)：stripe_secret_key / stripe_webhook_secret
 %%% Amount：最小货币单位（分/cents），直接作 amount_fen 传入。
+%%% Refund：refund/3 需 Opts.out_refund_no（业务退款唯一号）——erlang_pay
+%%% 据此派生稳定幂等键；refund/2 缺号即拒绝，绝不无幂等键发退款。
 %%% @end
 %%%===================================================================
 
--export([pay/3, refund/2]).
+-export([pay/3, refund/2, refund/3]).
 
 -spec pay(binary(), term(), map()) ->
     {ok, binary()} | {ok, binary(), map()} | {error, binary()}.
@@ -39,17 +41,52 @@ pay(OrderNo, Amount, Opts) ->
             {error, Reason}
     end.
 
+%% @doc 退款（兼容入口）。无退款上下文时委托 refund/3 —— Stripe 要求稳定
+%% 退款唯一号派生幂等键，缺号即拒绝（fail-closed，不向网关发请求）。
 -spec refund(binary(), term()) -> ok | {error, binary()}.
 refund(PaymentNo, Amount) ->
+    refund(PaymentNo, Amount, #{}).
+
+%% @doc 退款（主入口）。Opts.out_refund_no 为业务退款唯一号
+%% （payment_transaction.trade_no / channel_order.order_no）：
+%% 同一笔业务退款重试 → 同一 out_refund_no → erlang_pay 派生同一
+%% Idempotency-Key（rf_ 前缀）→ Stripe 同键 24h 内返回首次结果，
+%% 不会重复退款。禁止用 payment_intent 派生（同一 PI 允许多次部分退款）。
+-spec refund(binary(), term(), map()) -> ok | {error, binary()}.
+refund(PaymentNo, Amount, Opts) ->
+    case out_refund_no(Opts) of
+        {ok, RefundNo} ->
+            do_refund(PaymentNo, Amount, RefundNo);
+        {error, _} = Err ->
+            Err
+    end.
+
+-spec do_refund(binary(), term(), binary()) -> ok | {error, binary()}.
+do_refund(PaymentNo, Amount, RefundNo) ->
     case cfg() of
         {ok, Cfg} ->
-            Req = #{payment_intent => PaymentNo, amount_fen => to_fen(Amount)},
+            Req = #{
+                payment_intent => PaymentNo,
+                amount_fen => to_fen(Amount),
+                out_refund_no => RefundNo
+            },
             case erlang_pay:refund(stripe, Cfg, Req) of
                 {ok, _} -> ok;
                 {error, Err} -> {error, err_msg(Err)}
             end;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% Opts 提取业务退款唯一号：必须为非空 binary，缺失/空值 fail-closed
+%% （erlang_pay 幂等合同要求，绝不无键发退款 POST）。
+-spec out_refund_no(map()) -> {ok, binary()} | {error, binary()}.
+out_refund_no(Opts) ->
+    case maps:get(out_refund_no, Opts, <<>>) of
+        N when is_binary(N), N =/= <<>> ->
+            {ok, N};
+        _ ->
+            {error, <<"Stripe 退款缺少业务退款唯一号(out_refund_no)，已拒绝"/utf8>>}
     end.
 
 %% imboy 凭据 → erlang_pay Stripe Cfg；secret_key 为空视为未配置

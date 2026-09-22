@@ -601,8 +601,16 @@ do_refund_cas(ChannelId, Uid, OrderNo, Method, PaymentNo, Amount, Reason) ->
 do_refund_gateway(ChannelId, Uid, OrderNo, Method, PaymentNo, Amount, Reason) ->
     %% Step 2: 同步标记 payment_transaction 为退款中（best-effort）
     _ = mark_payment_tx_refunding(OrderNo),
-    %% Step 3: 调网关退款
-    case payment_gateway:refund(Method, PaymentNo, to_gateway_amount(Method, Amount)) of
+    %% Step 3: 调网关退款（out_refund_no 传 OrderNo：订单级单次退款模型下，
+    %% 重试同键 → Stripe 幂等返回首次结果，不重复退款）
+    case
+        payment_gateway:refund(
+            Method,
+            PaymentNo,
+            to_gateway_amount(Method, Amount),
+            #{out_refund_no => OrderNo}
+        )
+    of
         ok ->
             do_refund_finalize(ChannelId, Uid, OrderNo, Reason);
         {error, PayReason} ->
