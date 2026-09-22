@@ -44,7 +44,7 @@
 %%%  数据库 db
 %%%
 %%%  escript scripts/imboy_ctl db ping       # 测试数据库连接
-%%%  escript scripts/imboy_ctl db migrate    # 执行迁移
+%%%  escript scripts/imboy_ctl db migrate [--dir <绝对路径>]  # 执行迁移（默认 release 内 priv/migrations）
 %%%  escript scripts/imboy_ctl db pool       # 连接池状态
 %%%
 %%%  诊断 diagnose
@@ -182,7 +182,13 @@ cli_spec() ->
             "db" => #{
                 help => "数据库运维 / Database operations",
                 commands => #{
-                    "migrate" => #{help => "执行数据库迁移"},
+                    "migrate" => #{
+                        help => "执行数据库迁移",
+                        arguments => [
+                            #{name => dir, long => "-dir", type => binary,
+                              help => "迁移文件目录（绝对路径；默认 release 内 priv/migrations）"}
+                        ]
+                    },
                     "ping" => #{help => "测试数据库连接"},
                     "pool" => #{help => "连接池状态"}
                 }
@@ -626,7 +632,12 @@ handle_node_pools(Args) ->
 
 handle_db_migrate(Args) ->
     {ok, Node} = connect_node(Args),
-    case do_rpc(Node, Args, imboy_migrate, migrate, []) of
+    %% --dir 指定迁移目录（如部署脚本 --local 模式的 staging 目录）；不传 = release 内 priv/migrations
+    RpcArgs = case maps:get(dir, Args, undefined) of
+        undefined -> [];
+        Dir -> [binary_to_list(Dir)]
+    end,
+    case do_rpc(Node, Args, imboy_migrate, migrate, RpcArgs) of
         ok ->
             io:format("MIGRATE_RESULT=OK~n"),
             halt(0);

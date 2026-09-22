@@ -109,6 +109,8 @@ NODE_HOST="${IMBOY_DEPLOY_NODE_HOST:-127.0.0.1}"
 COOKIE="${IMBOY_DEPLOY_COOKIE:-imboy}"
 BRANCH="${IMBOY_DEPLOY_BRANCH:-main}"
 SOURCE_HEAD="${IMBOY_DEPLOY_SOURCE_HEAD:-}"
+# --local 模式下远端迁移 staging 目录（空 = 非 -l 模式，迁移读 release 内 priv/migrations）
+MIGRATE_STAGING=""
 STOP_OLD="${IMBOY_DEPLOY_STOP_OLD:-true}"
 DB_CONTAINER="${IMBOY_DEPLOY_DB_CONTAINER:-}"
 DB_NAME="${IMBOY_DEPLOY_DB_NAME:-}"
@@ -177,10 +179,13 @@ if [ "$SALES_RELEASE" = "true" ] && [ "$E2EE_MODE" != "required" ] && [ "$E2EE_M
   echo "销售版 IMBOY_DEPLOY_E2EE_MODE 必须为 required/compliance" >&2
   exit 1
 fi
-if [ "$ROLLBACK" -eq 0 ] && [ "$SALES_RELEASE" = "true" ]; then
+# product_profile=enterprise 时插件签名在 boot 强制（imboy_plugin_signature:signature_required/0），
+# 缺可信公钥 = 启动即崩（invalid_plugin_signature_config）+ heart 复活循环。
+# 公钥非机密，只要配置了本地公钥就随 release 安装，与销售版开关解耦。
+if [ "$ROLLBACK" -eq 0 ] && [ -n "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" ]; then
   [[ "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" == /* && -f "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" \
      && -r "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" ]] \
-    || { echo "销售版缺少可读的本地 Ed25519 插件签名公钥" >&2; exit 1; }
+    || { echo "缺少可读的本地 Ed25519 插件签名公钥（需绝对路径）: $PLUGIN_TRUSTED_PUBLIC_KEY_FILE" >&2; exit 1; }
   [[ "$(wc -c <"$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" | tr -d '[:space:]')" == 32 ]] \
     || { echo "插件签名可信公钥必须是 32 字节 raw public key" >&2; exit 1; }
 fi
@@ -748,6 +753,31 @@ if ssh_exec "[ -d '$RELEASE_DIR' ]"; then
       timeout 10s '$RELEASE_DIR/bin/imboy' stop >/dev/null 2>&1 || true
     fi
   "
+  # 优雅 stop 无效的常见形态：boot 崩溃 + -heart 复活循环（beam 秒级重启，
+  # 心跳进程的 -pid 可能指向已死的旧 beam）。必须先杀 heart 再杀 beam，
+  # 顺序反了会被 heart 立刻拉起新实例。
+  # 归属判定不用 pgrep -f 文本匹配（远端 shell 自身 argv 含该文本会误伤）：
+  #   heart → /proc/$H/environ 的 HEART_COMMAND 含 release 目录（relx 写入），
+  #   beam  → /proc/$P/cmdline 的 -root 后继参数精确等于 release 目录。
+  # 此分支已确认 RELEASE_DIR 非活动 release，且下方 fail-closed 检查与
+  # C-51 健康门继续兜底。
+  ssh_exec "
+    command -v pgrep >/dev/null 2>&1 || exit 2
+    for round in TERM KILL; do
+      for H in \$(pgrep -x heart || true); do
+        if tr '\\0' '\\n' < \"/proc/\$H/environ\" 2>/dev/null | grep -Fq \"HEART_COMMAND=\\\"$RELEASE_DIR\"; then
+          kill -\$round \$H 2>/dev/null || true
+        fi
+      done
+      for P in \$(pgrep -x beam.smp || true); do
+        ROOT=\$(tr '\\0' '\\n' < \"/proc/\$P/cmdline\" 2>/dev/null | grep -A1 '^-root\$' | tail -1)
+        [ \"\$ROOT\" = '$RELEASE_DIR' ] && kill -\$round \$P 2>/dev/null || true
+      done
+      if [ \"\$round\" = TERM ]; then sleep 2; fi
+    done
+    sleep 1
+    exit 0
+  "
   ssh_exec "
     command -v pgrep >/dev/null 2>&1 || exit 2
     ! { pgrep -a beam.smp 2>/dev/null || true; pgrep -a heart 2>/dev/null || true; } \
@@ -782,6 +812,18 @@ if [ "$LOCAL_MODE" -eq 1 ]; then
     "$LOCAL_SRC_DIR/" \
     "$SERVER_USER@$SERVER_HOST:$PROJECT_DIR/"
   ok "本地源码已同步 / Local source synced"
+  # 迁移走独立 staging 目录：DB 升级从 staging 读本地工作区的迁移文件（与源码
+  # 同一快照），迁移成功后清理，失败保留供比对排查。目录放 $PROJECT_DIR 之外
+  # （/tmp），避免下次部署 rsync --delete 同步源码时被误删、或被 make clean 碰到。
+  if [ "$SKIP_MIGRATE" -eq 0 ]; then
+    MIGRATE_STAGING="/tmp/imboy-migrate-staging-${NODE_NAME}"
+    rsync -az --delete \
+      -e "ssh -p $SERVER_PORT -o ControlPath=$SSH_CTRL -o StrictHostKeyChecking=accept-new" \
+      "$LOCAL_SRC_DIR/priv/migrations/" \
+      "$SERVER_USER@$SERVER_HOST:$MIGRATE_STAGING/" \
+      || fail "迁移文件同步到 staging 失败 / Failed to sync migrations to staging"
+    ok "迁移文件已同步到 staging / Migrations synced: $MIGRATE_STAGING"
+  fi
 else
   log "拉取代码... / Pulling code from git..."
   ssh_exec "
@@ -883,12 +925,25 @@ ssh_exec "
 +zdbbl 81920
 VMARGS
 "
-if [ "$SALES_RELEASE" = "true" ]; then
+if [ -n "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" ]; then
   ssh_exec "install -d -m 0755 '$RELEASE_DIR/etc'"
   ssh_upload "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" "$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE"
   ssh_exec "[ \"\$(wc -c < '$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE')\" -eq 32 ] && chmod 0644 '$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE'"
   ok "插件签名可信公钥已安装到新 release"
 fi
+# 启动前 fail-fast：enterprise 档位 + 未安装公钥 = 必然 boot 崩溃循环
+# （invalid_plugin_signature_config + heart 复活，且 40s 健康门超时后残留
+# 阻塞后续发布）。宁可在此中止，也不留下一个注定起不来的槽位。
+ssh_exec "
+  SYS=\$(find '$RELEASE_DIR/releases' -maxdepth 2 -name sys.config | head -1)
+  if [ -n \"\$SYS\" ] \\
+     && grep -qE '\\{product_profile,' \"\$SYS\" \\
+     && ! grep -qE '\\{product_profile,[ ]*community\\}' \"\$SYS\" \\
+     && [ ! -f '$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE' ]; then
+    echo 'sys.config 为非 community 档位但未安装插件可信公钥，启动必崩' >&2
+    exit 1
+  fi
+" || fail "非 community 档位缺少插件可信公钥，拒绝启动新节点；请配置 DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE"
 ok "release 已解包，vm.args 已写入 / Release extracted, vm.args written"
 
 # =============================================================================
@@ -1005,9 +1060,19 @@ else
   # "cannot reach 'imboy@127.0.0.1'" 并中止部署（实测复现）。同理 cookie
   # 也必须显式传 IMBOY_CTL_COOKIE，否则 imboy_ctl 默认 cookie=imboy，
   # 当 IMBOY_DEPLOY_COOKIE（如 .env.deploy 的 imboycookie）不是默认值时连不上。
-  ssh_exec "cd '$PROJECT_DIR' && CTL_NODE='${NODE_NAME}@${NODE_HOST}' IMBOY_CTL_COOKIE='${COOKIE}' make ctl ARGS='db migrate'" \
+  # --local 模式迁移从 staging 读（与本次源码快照一致）；否则读 release 内 priv/migrations
+  MIGRATE_CMD="db migrate"
+  [ -n "$MIGRATE_STAGING" ] && MIGRATE_CMD="db migrate --dir $MIGRATE_STAGING"
+  ssh_exec "cd '$PROJECT_DIR' && CTL_NODE='${NODE_NAME}@${NODE_HOST}' IMBOY_CTL_COOKIE='${COOKIE}' make ctl ARGS='$MIGRATE_CMD'" \
     || fail "数据库迁移失败 / DB migration failed。流量已切到新节点且 schema 可能部分应用。
-  旧节点已停止；请先核对 schema_migrations_history 与兼容性，再决定是否人工恢复旧节点。"
+  旧节点已停止；请先核对 schema_migrations_history 与兼容性，再决定是否人工恢复旧节点。
+  $([ -n "$MIGRATE_STAGING" ] && echo "[--local] 迁移 staging 已保留供比对: $MIGRATE_STAGING")"
+  # 迁移成功才清理 staging（-l 模式；失败时上面的 fail 已保留现场）
+  if [ -n "$MIGRATE_STAGING" ]; then
+    ssh_exec "rm -rf -- '$MIGRATE_STAGING'" \
+      || log "警告：迁移 staging 清理失败（不影响部署，可手动 rm）: $MIGRATE_STAGING"
+    ok "迁移 staging 已清理 / Migration staging cleaned"
+  fi
   ok "数据库迁移完成 / DB migrations applied"
 fi
 

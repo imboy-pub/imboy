@@ -4,6 +4,7 @@
 %%% 负责执行数据库结构升级和序列重置
 
 -export([migrate/0]).
+-export([migrate/1]).
 -export([migrate_to_msg_v2/0]).
 -export([set_max_id_seq/0]).
 -export([migrate_msg_payload_plaintext/0]).
@@ -77,8 +78,13 @@ migrate_to_msg_v2() ->
 %%       strict 模式按 schema_migrations_history 检测乱序，见 docs/standards/migration_naming.md
 -spec migrate() -> ok | {error, term()}.
 migrate() ->
+    migrate(get_scripts_path()).
+
+%% @doc 从指定目录执行迁移（如部署脚本 --local 模式上传的 staging 目录）；
+%% 不传路径时同 migrate/0（读 scripts_path 配置，即 release 内 priv/migrations）。
+-spec migrate(file:filename_all()) -> ok | {error, term()}.
+migrate(Path) ->
     Conf = config_ds:env(super_account),
-    Path = get_scripts_path(),
     ?LOG_INFO("[imboy_migrate] running migrations from ~s", [Path]),
     {ok, Conn} = epgsql:connect(Conf),
     %% strict: 顺序编号下检测乱序迁移（后合并的低编号文件会报
