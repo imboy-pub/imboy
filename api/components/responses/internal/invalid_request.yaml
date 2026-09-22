@@ -1,0 +1,12 @@
+# Internal API v1 稳定错误码 invalid_request（HTTP 400，README §7 冻结表）。
+description: '请求参数/形状非法'
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: '../../schemas/internal/ErrorEnvelope.yaml'
+      properties:
+        error:
+          properties:
+            code:
+              enum: [invalid_request]

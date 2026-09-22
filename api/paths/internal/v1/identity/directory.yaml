@@ -1,0 +1,62 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/identity/directory.yaml
+# POST /api/internal/v1/identity-mappings/directory — 已映射目录（INT-16）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1identity-mappings~1directory
+# Handler：src/api/enterprise_identity_handler.erl（directory/3 + page_opts/1 实证）
+# ----------------------------------------------------------------------------
+post:
+  tags: [internal]
+  summary: 已映射身份目录（cursor 分页，无 list-all）
+  description: |
+    本组织本应用已映射用户目录。受限 cursor directory：游标不透明且不可跨页族
+    复用；只返回最小字段（不返回姓名/手机号/邮箱等 PII）；不存在 list-all/export
+    形态。请求字段实证自 handler `page_opts/1`（cursor / page_size / workspace_id）；
+    响应实证自 `enterprise_directory_logic`（`{items, page_size, has_more, next_cursor}`）。
+  operationId: internalIdentityDirectory
+  security:
+    - ibIntBearer: []
+  x-imboy-scope: identities:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  requestBody:
+    required: false
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            cursor:
+              type: string
+              description: 上一页返回的 next_cursor（首页缺省）
+            page_size:
+              type: integer
+              description: 页大小（服务端夹紧上限）
+            workspace_id:
+              type: integer
+              format: int64
+              description: 按 workspace 过滤
+  responses:
+    '200':
+      description: 已映射目录页
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              items:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    external_user_id: { type: string }
+                    user_id: { type: integer, format: int64 }
+              page_size: { type: integer }
+              has_more: { type: boolean }
+              next_cursor:
+                type: [string, 'null']
+                description: 下页游标（has_more=false 时 null）
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

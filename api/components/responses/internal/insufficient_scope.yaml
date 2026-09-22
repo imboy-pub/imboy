@@ -1,0 +1,12 @@
+# Internal API v1 稳定错误码 insufficient_scope（HTTP 403，README §7 冻结表）。
+description: '凭证未被授予所需 scope'
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: '../../schemas/internal/ErrorEnvelope.yaml'
+      properties:
+        error:
+          properties:
+            code:
+              enum: [insufficient_scope]

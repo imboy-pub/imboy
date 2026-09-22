@@ -1,0 +1,48 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/webhook/replay.yaml
+# POST /api/internal/v1/webhook/deliveries/{delivery_id}/replay — 重放投递（INT-13）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1webhook~1deliveries~1{delivery_id}~1replay
+# Handler：src/api/enterprise_webhook_handler.erl replay/3
+# 响应实证：handler replay 成功 {replayed: true}；幂等资源=新 delivery 行
+# ----------------------------------------------------------------------------
+post:
+  tags: [internal]
+  summary: 重放失败的 Webhook 投递
+  description: |
+    按 delivery_id 重放（失败投递可重放；重放产生新 delivery 行，幂等键由
+    平台侧派生，在途重放由唯一索引仲裁为 idempotency_conflict）。
+  operationId: internalWebhookReplay
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: delivery_id
+      in: path
+      required: true
+      description: 投递 ID（INT-23 列表中的 delivery_id）
+      schema: { type: string, minLength: 1 }
+    - name: Idempotency-Key
+      in: header
+      required: false
+      description: 幂等键（平台对 replay 派生专用幂等资源；可不传）
+      schema: { type: string }
+  x-imboy-scope: webhooks:manage
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: platform_derived
+  responses:
+    '200':
+      description: 重放受理
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              replayed:
+                type: boolean
+                enum: [true]
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

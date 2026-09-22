@@ -1,0 +1,53 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/identity/resolve.yaml
+# POST /api/internal/v1/identity-mappings/resolve — 解析身份（INT-03）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1identity-mappings~1resolve
+# Handler：src/api/enterprise_identity_handler.erl（resolve/3 实证：读 external_user_ids 数组）
+# ----------------------------------------------------------------------------
+post:
+  tags: [internal]
+  summary: 批量解析外部身份 → 平台用户
+  description: |
+    OA 标识批量解析为平台用户 TSID；未映射的标识不出现在结果 mappings 中
+    （整体语义见 endpoints.md INT-03）。请求字段实证自 handler
+    `maps:get(<<"external_user_ids">>, ...)`（**数组**，非单数）；
+    响应实证自 `enterprise_identity_logic:rows_to_pairs/1`。
+  operationId: internalIdentityResolve
+  security:
+    - ibIntBearer: []
+  x-imboy-scope: identities:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [external_user_ids]
+          properties:
+            external_user_ids:
+              type: array
+              minItems: 1
+              items: { type: string }
+              description: OA 侧用户标识列表
+  responses:
+    '200':
+      description: 解析结果（已映射的标识）
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              mappings:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    external_user_id: { type: string }
+                    user_id: { type: integer, format: int64 }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

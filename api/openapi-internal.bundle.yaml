@@ -1,0 +1,2046 @@
+openapi: 3.1.0
+info:
+  title: IMBoy Internal API — internal surface
+  version: 1.0.0
+  x-stability: stable
+  summary: IMBoy 企业内部集成 API（Internal API v1，冻结）
+  description: |
+    本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 19 条
+    path（23 个操作）。受众为企业 OA / 第三方集成系统开发者。
+
+    **认证**：所有请求携带 `Authorization: Bearer ib_int_<application_id>.<secret>`；
+    凭证由平台管理员在 Admin 管理台签发，scope 固定 10 枚举、无通配。
+
+    **响应模型**：成功响应为**裸 payload**（无 `{code,msg,payload}` 业务信封）；
+    错误响应统一 `{"error":{"code","message"}}`，13 个稳定错误码见
+    `components/responses/internal/`（README §7 冻结表）。
+
+    **限流与幂等**：三只独立桶 internal_read / internal_write / internal_sso；
+    写动作必须携带 `Idempotency-Key` 头（同 key 重放返回首次结果）。
+
+    **路由冻结**：method+path 不在冻结表内一律 resource_not_found（fail-closed）。
+    人类文档：[internal/v1/README.md](./internal/v1/README.md)（本 API 整个
+    v1/ 目录可直接交付集成方）。
+
+    **版本策略**：v1 已冻结——只追加新端点/新可选字段，不做破坏性变更。
+  license:
+    name: BUSL-1.1
+    url: https://mariadb.com/bsl11/
+  contact:
+    name: IMBoy Maintainers
+    url: https://github.com/imboy-pub/imboy
+servers:
+  - url: https://{apiDomain}
+    description: 生产环境（部署方按实际域名替换 apiDomain）
+    variables:
+      apiDomain:
+        default: api.imboy.app
+        description: 生产 API 域名占位；自托管/私有部署需改为对应域名
+  - url: http://127.0.0.1:{devPort}
+    description: 本地开发（IMBOYENV=local make run，端口见 imboy/CLAUDE.md）
+    variables:
+      devPort:
+        default: '9800'
+        description: 本地 HTTP 端口；可通过 HTTP_PORT 环境变量覆盖
+security:
+  - ibIntBearer: []
+tags:
+  - name: internal
+    description: 企业集成 Internal API（ib_int 凭证；scope/限流/幂等见各端点扩展字段）
+paths:
+  /api/internal/v1/application:
+    get:
+      tags:
+        - internal
+      summary: 读取本应用信息（健康检查与联调首选）
+      description: |
+        返回本应用元数据、本次凭证的授权 scope 与凭证清单。字段实证自
+        `enterprise_application_handler:self_payload/2`：application/credentials
+        为平台行数据的 binary 键透出（最小字段集，不含 secret）。
+      operationId: internalApplicationSelf
+      x-imboy-scope: application:read
+      x-imboy-rate-bucket: internal_read
+      x-imboy-idempotency: not_required
+      responses:
+        '200':
+          description: 应用自检信息
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id:
+                    type: integer
+                    format: int64
+                    description: 所属组织 TSID
+                  application_id:
+                    type: integer
+                    format: int64
+                    description: 应用 TSID
+                  credential_id:
+                    type:
+                      - integer
+                      - 'null'
+                    format: int64
+                    description: 本次凭证 ID（无凭证上下文时 null）
+                  application_key:
+                    type:
+                      - string
+                      - 'null'
+                    description: 应用 key
+                  application:
+                    type: object
+                    description: 应用行元数据（binary 键透出）
+                  granted_scopes:
+                    type: array
+                    items:
+                      type: string
+                    description: 本次凭证被授予的 scope 集合
+                  credentials:
+                    type: array
+                    items:
+                      type: object
+                    description: 凭证清单（不含 secret）
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/application_disabled'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+        '503':
+          $ref: '#/components/responses/security_gate_closed'
+  /api/internal/v1/identity-mappings:
+    put:
+      tags:
+        - internal
+      summary: 绑定外部身份（OA 用户 → 平台用户）
+      description: |
+        把 OA 侧用户标识绑定到本组织平台用户（TSID）。字段实证自
+        `enterprise_identity_handler:bind/3` + `enterprise_identity_logic:mapping_view/1`。
+        幂等重放返回 `{replayed: true, user_id, status}` 形态。
+      operationId: internalIdentityBind
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键（同一 key 重复提交返回首次结果）
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: identities:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - external_user_id
+                - user_id
+              properties:
+                external_user_id:
+                  type: string
+                  description: OA 侧用户标识（同 org+app 内唯一）
+                user_id:
+                  type: integer
+                  format: int64
+                  description: 平台用户 TSID（须为本组织成员）
+      responses:
+        '200':
+          description: 绑定结果
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    description: 首次绑定 / 幂等重放命中
+                    properties:
+                      replayed:
+                        type: boolean
+                      external_user_id:
+                        type: string
+                      user_id:
+                        type: integer
+                        format: int64
+                      status:
+                        type: string
+                        description: 映射状态（如 active）
+                  - type: object
+                    description: 幂等重放（带 user_id 资源定位）
+                    properties:
+                      replayed:
+                        type: boolean
+                        enum:
+                          - true
+                      user_id:
+                        type: integer
+                        format: int64
+                      status:
+                        type: string
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '422':
+          $ref: '#/components/responses/identity_not_mapped'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+    delete:
+      tags:
+        - internal
+      summary: 解绑外部身份（软删映射）
+      description: |
+        撤销 external identity 映射（软删）。解绑后该用户对本应用的消息/群操作
+        立即不可达（identity_not_mapped）。响应字段实证自
+        `enterprise_identity_logic`（revoke 返回 `{external_user_id, status: removed, revoked: true}`）。
+      operationId: internalIdentityRevoke
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: identities:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - external_user_id
+              properties:
+                external_user_id:
+                  type: string
+                  description: 要解绑的 OA 侧用户标识
+      responses:
+        '200':
+          description: 解绑结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  external_user_id:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - removed
+                  revoked:
+                    type: boolean
+                    enum:
+                      - true
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/identity-mappings/resolve:
+    post:
+      tags:
+        - internal
+      summary: 批量解析外部身份 → 平台用户
+      description: |
+        OA 标识批量解析为平台用户 TSID；未映射的标识不出现在结果 mappings 中
+        （整体语义见 endpoints.md INT-03）。请求字段实证自 handler
+        `maps:get(<<"external_user_ids">>, ...)`（**数组**，非单数）；
+        响应实证自 `enterprise_identity_logic:rows_to_pairs/1`。
+      operationId: internalIdentityResolve
+      security:
+        - ibIntBearer: []
+      x-imboy-scope: identities:read
+      x-imboy-rate-bucket: internal_read
+      x-imboy-idempotency: not_required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - external_user_ids
+              properties:
+                external_user_ids:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                  description: OA 侧用户标识列表
+      responses:
+        '200':
+          description: 解析结果（已映射的标识）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mappings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        external_user_id:
+                          type: string
+                        user_id:
+                          type: integer
+                          format: int64
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/identity-mappings/directory:
+    post:
+      tags:
+        - internal
+      summary: 已映射身份目录（cursor 分页，无 list-all）
+      description: |
+        本组织本应用已映射用户目录。受限 cursor directory：游标不透明且不可跨页族
+        复用；只返回最小字段（不返回姓名/手机号/邮箱等 PII）；不存在 list-all/export
+        形态。请求字段实证自 handler `page_opts/1`（cursor / page_size / workspace_id）；
+        响应实证自 `enterprise_directory_logic`（`{items, page_size, has_more, next_cursor}`）。
+      operationId: internalIdentityDirectory
+      security:
+        - ibIntBearer: []
+      x-imboy-scope: identities:read
+      x-imboy-rate-bucket: internal_read
+      x-imboy-idempotency: not_required
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cursor:
+                  type: string
+                  description: 上一页返回的 next_cursor（首页缺省）
+                page_size:
+                  type: integer
+                  description: 页大小（服务端夹紧上限）
+                workspace_id:
+                  type: integer
+                  format: int64
+                  description: 按 workspace 过滤
+      responses:
+        '200':
+          description: 已映射目录页
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        external_user_id:
+                          type: string
+                        user_id:
+                          type: integer
+                          format: int64
+                  page_size:
+                    type: integer
+                  has_more:
+                    type: boolean
+                  next_cursor:
+                    type:
+                      - string
+                      - 'null'
+                    description: 下页游标（has_more=false 时 null）
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/directory/users:
+    post:
+      tags:
+        - internal
+      summary: 可映射用户目录（cursor 分页，只回元数据）
+      description: |
+        查询本组织可映射（尚未绑定或已绑定）的平台用户，只返回最小元数据。
+        响应 items 字段实证自 `enterprise_directory_logic`：user_id /
+        external_user_id（本应用未映射则 null）/ member_role 等。
+      operationId: internalDirectoryUsers
+      security:
+        - ibIntBearer: []
+      x-imboy-scope: identities:read
+      x-imboy-rate-bucket: internal_read
+      x-imboy-idempotency: not_required
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cursor:
+                  type: string
+                  description: 上一页返回的 next_cursor（首页缺省）
+                page_size:
+                  type: integer
+                  description: 页大小（服务端夹紧上限）
+      responses:
+        '200':
+          description: 可映射用户目录页
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user_id:
+                          type: integer
+                          format: int64
+                        external_user_id:
+                          type:
+                            - string
+                            - 'null'
+                          description: 本应用已映射的 OA 标识；未映射为 null
+                        member_role:
+                          type: string
+                          description: 组织内角色
+                  page_size:
+                    type: integer
+                  has_more:
+                    type: boolean
+                  next_cursor:
+                    type:
+                      - string
+                      - 'null'
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/groups:
+    post:
+      tags:
+        - internal
+      summary: 创建 Workspace 企业群
+      description: |
+        成员用 OA 侧 external_user_id 列表（1..200 项，自动去重）；owner 缺省取
+        首个成员且必须在 members 内。
+      operationId: internalGroupCreate
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: groups:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - workspace_id
+                - title
+                - members
+              properties:
+                workspace_id:
+                  type: integer
+                  format: int64
+                  description: 归属 Workspace TSID（边界资源）
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                members:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    type: string
+                  description: OA 侧用户标识列表（须已映射本组织）
+                owner_external_user_id:
+                  type: string
+                  description: 群主的 OA 标识（缺省取首个成员；必须在 members 内）
+                introduction:
+                  type: string
+                  maxLength: 2000
+                  description: 群介绍（缺省空串）
+      responses:
+        '200':
+          description: 创建结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group_id:
+                    type: integer
+                    format: int64
+                  workspace_id:
+                    type: integer
+                    format: int64
+                  owner_user_id:
+                    type: integer
+                    format: int64
+                  member_count:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '422':
+          $ref: '#/components/responses/identity_not_mapped'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/groups/{group_id}:
+    get:
+      tags:
+        - internal
+      summary: 读取企业群详情
+      description: |
+        最小字段 + 成员硬上限（超限返回 invalid_request，绝不静默截断）。
+        跨组织/个人群/已归档一律 resource_not_found（不泄露存在性）。
+      operationId: internalGroupDetail
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          description: 企业群 TSID
+          schema:
+            type: integer
+            format: int64
+      x-imboy-scope: groups:write
+      x-imboy-rate-bucket: internal_read
+      x-imboy-idempotency: not_required
+      responses:
+        '200':
+          description: 群详情
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group_id:
+                    type: integer
+                    format: int64
+                  workspace_id:
+                    type: integer
+                    format: int64
+                  title:
+                    type: string
+                  introduction:
+                    type: string
+                  owner_user_id:
+                    type: integer
+                    format: int64
+                  member_count:
+                    type: integer
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user_id:
+                          type: integer
+                          format: int64
+                        role:
+                          type: string
+                        status:
+                          type: string
+                  origin:
+                    type:
+                      - object
+                      - 'null'
+                    description: 来源标记（owner_app / mine 等；非本应用建群为 null）
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+    patch:
+      tags:
+        - internal
+      summary: 修改企业群信息
+      description: |
+        可更新字段实证自 handler `known_key/1`：title / introduction / members
+        （members 为成员覆盖语义）。响应实证自 logic update：`{group_id, title,
+        introduction, updated: true}`。
+      operationId: internalGroupUpdate
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          description: 企业群 TSID
+          schema:
+            type: integer
+            format: int64
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: groups:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                introduction:
+                  type: string
+                  maxLength: 2000
+                members:
+                  type: array
+                  items:
+                    type: string
+                  description: 成员覆盖（external_user_id 列表）
+      responses:
+        '200':
+          description: 更新结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group_id:
+                    type: integer
+                    format: int64
+                  title:
+                    type: string
+                  introduction:
+                    type: string
+                  updated:
+                    type: boolean
+                    enum:
+                      - true
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+    delete:
+      tags:
+        - internal
+      summary: 解散（归档）企业群
+      description: |
+        归档式解散；重复解散返回 `{group_id, archived: true, already: true}`。
+      operationId: internalGroupArchive
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          description: 企业群 TSID
+          schema:
+            type: integer
+            format: int64
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: groups:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      responses:
+        '200':
+          description: 归档结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group_id:
+                    type: integer
+                    format: int64
+                  archived:
+                    type: boolean
+                    enum:
+                      - true
+                  already:
+                    type: boolean
+                    description: 重复解散时 true
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/groups/{group_id}/members:
+    put:
+      tags:
+        - internal
+      summary: 向企业群添加成员（幂等）
+      description: |
+        成员须为本组织已映射用户；已在群（active）计入 already_member，不重复开世代。
+        群 owner 不可被移除（owner invariant 由 INT-06 强制）。
+      operationId: internalGroupAddMembers
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          description: 企业群 TSID
+          schema:
+            type: integer
+            format: int64
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键（同 key 换 group_id 会得到 idempotency_conflict）
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: groups:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - external_user_ids
+              properties:
+                external_user_ids:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: 添加结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group_id:
+                    type: integer
+                    format: int64
+                  member_count:
+                    type: integer
+                  added:
+                    type: integer
+                    description: 本次新开世代数
+                  already_member:
+                    type: integer
+                    description: 已在群的数量
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '422':
+          $ref: '#/components/responses/identity_not_mapped'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+    delete:
+      tags:
+        - internal
+      summary: 从企业群移除成员（幂等）
+      description: |
+        群 owner 不可被 OA 移除（移除后必须仍剩 active 群主）；已不在群计入
+        already_absent，重复调用同结果。
+      operationId: internalGroupRemoveMembers
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          description: 企业群 TSID
+          schema:
+            type: integer
+            format: int64
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: groups:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - external_user_ids
+              properties:
+                external_user_ids:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: 移除结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group_id:
+                    type: integer
+                    format: int64
+                  member_count:
+                    type: integer
+                  removed:
+                    type: integer
+                  already_absent:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '422':
+          $ref: '#/components/responses/identity_not_mapped'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/groups/{group_id}/members/roles:
+    put:
+      tags:
+        - internal
+      summary: 设置企业群成员角色
+      description: |
+        按成员逐个设置角色（role 取值由群域定义，如 member / admin）。
+        **请求形态以 handler 为准**：roles 为 `[{external_user_id, role}]` 对象数组。
+      operationId: internalGroupSetMemberRoles
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          description: 企业群 TSID
+          schema:
+            type: integer
+            format: int64
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: groups:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - roles
+              properties:
+                roles:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required:
+                      - external_user_id
+                      - role
+                    properties:
+                      external_user_id:
+                        type: string
+                      role:
+                        type: string
+      responses:
+        '200':
+          description: 角色设置结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group_id:
+                    type: integer
+                    format: int64
+                  updated:
+                    type: integer
+                    description: 本次变更数
+                  unchanged:
+                    type: integer
+                    description: 目标态与现状相同数
+                  members:
+                    type: array
+                    description: 设置后的成员角色清单
+                    items:
+                      type: object
+                      properties:
+                        user_id:
+                          type: integer
+                          format: int64
+                        role:
+                          type: string
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '422':
+          $ref: '#/components/responses/identity_not_mapped'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/groups/{group_id}/messages:
+    post:
+      tags:
+        - internal
+      summary: 企业托管群聊消息（发到企业群）
+      description: |
+        发送到企业群。scope 由 sender_mode 动态决定（同 INT-09）。
+        human 发送者必须是该群 active 成员；企业托管消息固定非端到端加密。
+        **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
+      operationId: internalMessageGroup
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: group_id
+          in: path
+          required: true
+          description: 企业群 TSID
+          schema:
+            type: integer
+            format: int64
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: dynamic:messages_send
+      x-imboy-scope-note: application → messages:send；human → messages:send_as_human
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sender_mode
+                - msg_type
+              properties:
+                sender_mode:
+                  type: string
+                  enum:
+                    - application
+                    - human
+                sender_user_id:
+                  type: string
+                  description: human 模式必填；OA 侧标识（须该群 active 成员）
+                msg_type:
+                  type: string
+                  enum:
+                    - text
+                    - file
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+                  description: msg_type=text 必填
+                object_key:
+                  type: string
+                  description: msg_type=file 必填（本 org/app 已 confirm 附件）
+      responses:
+        '200':
+          description: 受理结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg_id:
+                    type: integer
+                    format: int64
+                  sender_kind:
+                    type: string
+                  sender_user_id:
+                    type:
+                      - integer
+                      - 'null'
+                    format: int64
+                  origin_kind:
+                    type: string
+                    enum:
+                      - enterprise_application
+                  origin_application_id:
+                    type: integer
+                    format: int64
+                  accepted_at:
+                    type: string
+                    description: 受理时间（ISO-8601）
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '422':
+          $ref: '#/components/responses/identity_not_mapped'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/messages/direct:
+    post:
+      tags:
+        - internal
+      summary: 企业托管单聊消息（OA 直发 / 代发）
+      description: |
+        以应用身份或代本组织已映射人类用户发送单聊。企业托管消息**固定非端到端
+        加密**，审计事实永久保留。scope 由 sender_mode 动态决定：
+        application → messages:send；human → messages:send_as_human。
+        **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
+      operationId: internalMessageDirect
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键（重复提交返回首次结果）
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: dynamic:messages_send
+      x-imboy-scope-note: application → messages:send；human → messages:send_as_human
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sender_mode
+                - recipient_user_id
+                - msg_type
+              properties:
+                sender_mode:
+                  type: string
+                  enum:
+                    - application
+                    - human
+                sender_user_id:
+                  type: string
+                  description: human 模式必填；OA 侧标识（须本组织已映射、已启用）
+                recipient_user_id:
+                  type: string
+                  description: 收件人 OA 侧标识（同组织已映射 active 用户）
+                msg_type:
+                  type: string
+                  enum:
+                    - text
+                    - file
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+                  description: msg_type=text 必填
+                object_key:
+                  type: string
+                  description: msg_type=file 必填（本 org/app 已 confirm 附件）
+      responses:
+        '200':
+          description: 受理结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg_id:
+                    type: integer
+                    format: int64
+                  sender_kind:
+                    type: string
+                    description: application | human
+                  sender_user_id:
+                    type:
+                      - integer
+                      - 'null'
+                    format: int64
+                    description: human 发送者的平台 TSID；application 模式为 null
+                  origin_kind:
+                    type: string
+                    enum:
+                      - enterprise_application
+                  origin_application_id:
+                    type: integer
+                    format: int64
+                  accepted_at:
+                    type: string
+                    description: 受理时间（ISO-8601）
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '422':
+          $ref: '#/components/responses/identity_not_mapped'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/files/presign:
+    post:
+      tags:
+        - internal
+      summary: 企业附件直传预签名（PUT URL）
+      description: |
+        两段式直传第一步：取对象存储预签名 PUT URL（有效期 3600 秒），随后你方
+        直传文件，再调 /files/confirm 确认入库。mime 白名单与大小上限取
+        min(全局, 应用策略)；confirm 以 HEAD 真实值复核。
+      operationId: internalFilePresign
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: files:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - file_name
+                - mime_type
+              properties:
+                file_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+                mime_type:
+                  type: string
+                  description: MIME 类型（须在白名单内）
+                size_bytes:
+                  type: integer
+                  format: int64
+                  description: 大小预检提示（正整数，<= 有效上限）
+      responses:
+        '200':
+          description: 预签名结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file_id:
+                    type: integer
+                    format: int64
+                  object_key:
+                    type: string
+                  put_url:
+                    type: string
+                    format: uri
+                  expires_at:
+                    type: string
+                    description: 过期时间（ISO-8601）
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/files/confirm:
+    post:
+      tags:
+        - internal
+      summary: 确认企业附件入库（HEAD/size/hash/scope 校验）
+      description: |
+        直传完成后的确认：服务端以 HEAD 真实值复核大小与 MIME（超限/非法类型对象
+        被删除），登记 attachment 行并建立治理行。object_key 必须是本 org/app 域
+        且已 presign 登记的对象。
+      operationId: internalFileConfirm
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: files:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - object_key
+              properties:
+                object_key:
+                  type: string
+                  description: presign 返回的 object_key
+                file_hash256:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{64}$
+                  description: SHA-256 完整性参考（可选）
+      responses:
+        '200':
+          description: 确认结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file_id:
+                    type: integer
+                    format: int64
+                  object_key:
+                    type: string
+                  size:
+                    type: integer
+                    format: int64
+                    description: HEAD 实测字节数
+                  mime_type:
+                    type: string
+                    description: HEAD 实测类型
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/files/governance:
+    post:
+      tags:
+        - internal
+      summary: 企业附件治理（留存 / 法务 hold / 清除）
+      description: |
+        治理动作四选一：set_retention（延长留存，只可延长）、hold（设法务 hold，
+        需事由）、release_hold（释放 hold）、purge（hold 释放且留存到期后清除）。
+        不变量在 DB 层声明式强制（migration 00000140 触发器）；违规动作归一
+        invalid_request（detail 区分 purge_blocked_by_hold / retention_not_elapsed /
+        already_purged 等，不新增错误码）。
+      operationId: internalFileGovernance
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: files:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - op
+                - object_key
+              properties:
+                op:
+                  type: string
+                  enum:
+                    - set_retention
+                    - hold
+                    - release_hold
+                    - purge
+                object_key:
+                  type: string
+                  description: 本 (org, app) 已 confirm 的附件
+                retention_days:
+                  type: integer
+                  minimum: 1
+                  maximum: 3650
+                  description: op=set_retention 必填（延长天数，上限 10 年）
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: op=hold 必填（法务 hold 事由）
+      responses:
+        '200':
+          description: 治理结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  op:
+                    type: string
+                    enum:
+                      - set_retention
+                      - hold
+                      - release_hold
+                      - purge
+                  file_id:
+                    type: integer
+                    format: int64
+                  object_key:
+                    type: string
+                  retention_until:
+                    type:
+                      - string
+                      - 'null'
+                    description: 留存截止（ISO-8601；未设置 null）
+                  hold_state:
+                    type: string
+                  purge_state:
+                    type: string
+                  purged:
+                    type: boolean
+                  retention_days:
+                    type:
+                      - integer
+                      - 'null'
+                    description: set_retention 时回显
+                  held:
+                    type:
+                      - boolean
+                      - 'null'
+                    description: hold/release_hold 时回显
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/friend-requests:
+    post:
+      tags:
+        - internal
+      summary: 代 OA 用户发起好友申请（只发起，平台不自动通过）
+      description: |
+        仅可对**同组织已映射用户**发起；发送者形态固定为 human（代 OA 用户）。
+        平台没有自动通过/确认、删除好友、批量加好友的 API。
+      operationId: internalFriendRequestCreate
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: friend_requests:create
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sender_user_id
+                - target_user_id
+              properties:
+                sender_user_id:
+                  type: string
+                  description: 发送者 OA 侧标识（human 形态）
+                target_user_id:
+                  type: string
+                  description: 目标用户 OA 侧标识（同组织已映射）
+                greeting:
+                  type: string
+                  description: 打招呼文案（缺省空串）
+      responses:
+        '200':
+          description: 申请受理结果（平台不自动通过）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  request_status:
+                    type: string
+                    enum:
+                      - pending
+                  sender_user_id:
+                    type: string
+                  target_user_id:
+                    type: string
+                  replayed:
+                    type: boolean
+                    description: 幂等重放时为 true
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '422':
+          $ref: '#/components/responses/identity_not_mapped'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/webhook:
+    put:
+      tags:
+        - internal
+      summary: 登记或更新出站 Webhook
+      description: |
+        配置本应用的回调端点与订阅事件（upsert）。url 即时过 SSRF guard（DNS
+        解析私网/保留段拒）；events 须在事件白名单内（空列表 = 只停用订阅）。
+        rotate=true 轮换 secret，响应返回新明文一次。
+      operationId: internalWebhookConfigure
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 幂等键
+          schema:
+            type: string
+            minLength: 1
+      x-imboy-scope: webhooks:manage
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+                - events
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: HTTPS 回调地址（SSRF guard 即时校验）
+                events:
+                  type: array
+                  items:
+                    type: string
+                  description: 订阅事件列表（⊆ 事件白名单；空列表 = 只停用订阅）
+                status:
+                  type: string
+                  enum:
+                    - enabled
+                    - disabled
+                  description: 缺省 enabled
+                rotate:
+                  type: boolean
+                  description: true = 轮换 secret（响应返回新明文一次）
+      responses:
+        '200':
+          description: 配置结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                  events:
+                    type: array
+                    items:
+                      type: string
+                  status:
+                    type: string
+                    enum:
+                      - enabled
+                      - disabled
+                  rotated:
+                    type: boolean
+                  secret:
+                    type:
+                      - string
+                      - 'null'
+                    description: rotate=true 时返回新 secret 明文（仅此一次）；否则 null
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/webhook/deliveries:
+    get:
+      tags:
+        - internal
+      summary: Webhook 投递列表 + 健康度摘要
+      description: |
+        本应用的投递元数据分页（**不含 payload/正文/secret/签名 URL**）。
+        summary 成功率口径 = success / (success + dead)，在途（pending/retry）
+        不计入分母。
+      operationId: internalWebhookDeliveries
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: 页码（默认 1）
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          required: false
+          description: 页大小（默认 20，服务端夹紧上限）
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+        - name: status
+          in: query
+          required: false
+          description: 按投递状态过滤
+          schema:
+            type: string
+      x-imboy-scope: webhooks:manage
+      x-imboy-rate-bucket: internal_read
+      x-imboy-idempotency: not_required
+      responses:
+        '200':
+          description: 投递列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        delivery_id:
+                          type: string
+                        event_type:
+                          type: string
+                        status:
+                          type: string
+                          description: 如 pending/retry/success/dead
+                        attempt_count:
+                          type: integer
+                        correlation_id:
+                          type:
+                            - string
+                            - 'null'
+                  summary:
+                    type: object
+                    description: 投递健康度摘要
+                    properties:
+                      status_counts:
+                        type: object
+                        description: 各状态计数
+                      dead_letter_count:
+                        type: integer
+                      success_count:
+                        type: integer
+                      success_rate:
+                        type:
+                          - number
+                          - 'null'
+                        description: success/(success+dead)；无已终结投递时 null
+                      in_flight_count:
+                        type: integer
+                        description: pending+retry
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/webhook/deliveries/{delivery_id}/replay:
+    post:
+      tags:
+        - internal
+      summary: 重放失败的 Webhook 投递
+      description: |
+        按 delivery_id 重放（失败投递可重放；重放产生新 delivery 行，幂等键由
+        平台侧派生，在途重放由唯一索引仲裁为 idempotency_conflict）。
+      operationId: internalWebhookReplay
+      security:
+        - ibIntBearer: []
+      parameters:
+        - name: delivery_id
+          in: path
+          required: true
+          description: 投递 ID（INT-23 列表中的 delivery_id）
+          schema:
+            type: string
+            minLength: 1
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: 幂等键（平台对 replay 派生专用幂等资源；可不传）
+          schema:
+            type: string
+      x-imboy-scope: webhooks:manage
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: platform_derived
+      responses:
+        '200':
+          description: 重放受理
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  replayed:
+                    type: boolean
+                    enum:
+                      - true
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '409':
+          $ref: '#/components/responses/idempotency_conflict'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+  /api/internal/v1/oa/sso/exchange:
+    post:
+      tags:
+        - internal
+      summary: OA SSO 一次性 code 原子交换
+      description: |
+        一个 code 只能成功交换一次（single_use_code），重放即失败——不存在
+        「二次成功」。code TTL 60 秒。成功 payload 永不含 IMBoy 凭证（R-6）；
+        TSID 以 JSON integer 输出（INV-8）。独立限流桶 internal_sso。
+      operationId: internalOaSsoExchange
+      security:
+        - ibIntBearer: []
+      x-imboy-scope: sso:exchange
+      x-imboy-rate-bucket: internal_sso
+      x-imboy-idempotency: single_use_code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+                - redirect_uri
+                - nonce
+              properties:
+                code:
+                  type: string
+                  description: OA 流程签发的一次性 code（前缀 oa_sso_，TTL 60s）
+                redirect_uri:
+                  type: string
+                  description: 签发时绑定的 redirect URI（须匹配）
+                nonce:
+                  type: string
+                  description: 签发时携带的 nonce（须匹配）
+      responses:
+        '200':
+          description: 交换成功（登录态建立所需的平台侧事实）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id:
+                    type: integer
+                    format: int64
+                  application_id:
+                    type: integer
+                    format: int64
+                  user_id:
+                    type: integer
+                    format: int64
+                    description: 平台用户 TSID
+                  external_user_id:
+                    type: string
+                    description: OA 侧标识
+                  consumed_at:
+                    type: string
+                    description: 消费时间（ISO-8601 UTC 毫秒）
+        '400':
+          $ref: '#/components/responses/invalid_request'
+        '401':
+          $ref: '#/components/responses/invalid_credential'
+        '403':
+          $ref: '#/components/responses/insufficient_scope'
+        '404':
+          $ref: '#/components/responses/resource_not_found'
+        '422':
+          $ref: '#/components/responses/identity_not_mapped'
+        '429':
+          $ref: '#/components/responses/rate_limited'
+        '500':
+          $ref: '#/components/responses/internal_error'
+components:
+  securitySchemes:
+    ibIntBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: ib_int_<application_id>.<secret>
+      description: |
+        企业集成凭证：与单个企业应用一一对应，授权范围 = 签发时授予的
+        scope 集合（固定 10 枚举、无通配）。secret 平台侧只存不可逆摘要，
+        泄露即轮换；应用停用/归档后所有请求返回 application_disabled（403）。
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+              enum:
+                - invalid_request
+                - invalid_credential
+                - credential_expired
+                - application_disabled
+                - organization_disabled
+                - insufficient_scope
+                - organization_boundary_violation
+                - resource_not_found
+                - idempotency_conflict
+                - identity_not_mapped
+                - rate_limited
+                - security_gate_closed
+                - internal_error
+            message:
+              type: string
+              description: 人类可读说明（文案不保证稳定）
+  responses:
+    invalid_credential:
+      description: 凭证缺失/格式错/不存在的 locator
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                      - invalid_credential
+    application_disabled:
+      description: 应用被停用/归档
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                      - application_disabled
+    rate_limited:
+      description: 触发限流（fail-closed）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                      - rate_limited
+    internal_error:
+      description: 内部错误（安全兜底：未列入稳定表的码一律收敛为此值）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                      - internal_error
+    security_gate_closed:
+      description: 平台安全闸关闭（暂时拒绝服务）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                      - security_gate_closed
+    invalid_request:
+      description: 请求参数/形状非法
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                      - invalid_request
+    insufficient_scope:
+      description: 凭证未被授予所需 scope
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                      - insufficient_scope
+    idempotency_conflict:
+      description: Idempotency-Key 与既有请求冲突
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                      - idempotency_conflict
+    identity_not_mapped:
+      description: 目标用户未做身份映射
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                      - identity_not_mapped
+    resource_not_found:
+      description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                      - resource_not_found

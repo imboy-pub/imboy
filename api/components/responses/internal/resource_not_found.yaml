@@ -1,0 +1,12 @@
+# Internal API v1 稳定错误码 resource_not_found（HTTP 404，README §7 冻结表）。
+description: '资源不存在或不属于本组织（不区分「不存在」与「不归你」）'
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: '../../schemas/internal/ErrorEnvelope.yaml'
+      properties:
+        error:
+          properties:
+            code:
+              enum: [resource_not_found]

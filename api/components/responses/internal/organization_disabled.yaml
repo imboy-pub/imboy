@@ -1,0 +1,12 @@
+# Internal API v1 稳定错误码 organization_disabled（HTTP 403，README §7 冻结表）。
+description: '所属组织被停用'
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: '../../schemas/internal/ErrorEnvelope.yaml'
+      properties:
+        error:
+          properties:
+            code:
+              enum: [organization_disabled]

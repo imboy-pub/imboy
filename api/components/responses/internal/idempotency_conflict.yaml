@@ -1,0 +1,12 @@
+# Internal API v1 稳定错误码 idempotency_conflict（HTTP 409，README §7 冻结表）。
+description: 'Idempotency-Key 与既有请求冲突'
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: '../../schemas/internal/ErrorEnvelope.yaml'
+      properties:
+        error:
+          properties:
+            code:
+              enum: [idempotency_conflict]

@@ -1,0 +1,118 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/group/members.yaml
+# PUT    /api/internal/v1/groups/{group_id}/members — 添加成员（INT-05）
+# DELETE /api/internal/v1/groups/{group_id}/members — 移除成员（INT-06）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1groups~1{group_id}~1members
+# Handler：src/api/enterprise_group_handler.erl members_op（实证：external_user_ids 数组；
+# 响应实证自 logic 690-696：{group_id, member_count, added|removed, already_member|already_absent}）
+# ----------------------------------------------------------------------------
+put:
+  tags: [internal]
+  summary: 向企业群添加成员（幂等）
+  description: |
+    成员须为本组织已映射用户；已在群（active）计入 already_member，不重复开世代。
+    群 owner 不可被移除（owner invariant 由 INT-06 强制）。
+  operationId: internalGroupAddMembers
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: group_id
+      in: path
+      required: true
+      description: 企业群 TSID
+      schema: { type: integer, format: int64 }
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键（同 key 换 group_id 会得到 idempotency_conflict）
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: groups:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [external_user_ids]
+          properties:
+            external_user_ids:
+              type: array
+              minItems: 1
+              items: { type: string }
+  responses:
+    '200':
+      description: 添加结果
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              group_id: { type: integer, format: int64 }
+              member_count: { type: integer }
+              added: { type: integer, description: 本次新开世代数 }
+              already_member: { type: integer, description: 已在群的数量 }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+delete:
+  tags: [internal]
+  summary: 从企业群移除成员（幂等）
+  description: |
+    群 owner 不可被 OA 移除（移除后必须仍剩 active 群主）；已不在群计入
+    already_absent，重复调用同结果。
+  operationId: internalGroupRemoveMembers
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: group_id
+      in: path
+      required: true
+      description: 企业群 TSID
+      schema: { type: integer, format: int64 }
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: groups:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [external_user_ids]
+          properties:
+            external_user_ids:
+              type: array
+              minItems: 1
+              items: { type: string }
+  responses:
+    '200':
+      description: 移除结果
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              group_id: { type: integer, format: int64 }
+              member_count: { type: integer }
+              removed: { type: integer }
+              already_absent: { type: integer }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

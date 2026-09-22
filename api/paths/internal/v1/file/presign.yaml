@@ -1,0 +1,64 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/file/presign.yaml
+# POST /api/internal/v1/files/presign — 直传预签名（INT-07）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1files~1presign
+# Handler：src/api/enterprise_asset_handler.erl presign/3
+# 请求/响应实证：enterprise_asset_logic 模块注释（file_name 必填 1..256、
+# mime_type 必填（白名单预检）、size_bytes 可选预检；返回 4 字段）
+# ----------------------------------------------------------------------------
+post:
+  tags: [internal]
+  summary: 企业附件直传预签名（PUT URL）
+  description: |
+    两段式直传第一步：取对象存储预签名 PUT URL（有效期 3600 秒），随后你方
+    直传文件，再调 /files/confirm 确认入库。mime 白名单与大小上限取
+    min(全局, 应用策略)；confirm 以 HEAD 真实值复核。
+  operationId: internalFilePresign
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: files:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [file_name, mime_type]
+          properties:
+            file_name:
+              type: string
+              minLength: 1
+              maxLength: 256
+            mime_type:
+              type: string
+              description: MIME 类型（须在白名单内）
+            size_bytes:
+              type: integer
+              format: int64
+              description: 大小预检提示（正整数，<= 有效上限）
+  responses:
+    '200':
+      description: 预签名结果
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              file_id: { type: integer, format: int64 }
+              object_key: { type: string }
+              put_url: { type: string, format: uri }
+              expires_at: { type: string, description: 过期时间（ISO-8601） }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

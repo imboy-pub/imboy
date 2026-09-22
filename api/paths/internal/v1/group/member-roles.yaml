@@ -1,0 +1,75 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/group/member-roles.yaml
+# PUT /api/internal/v1/groups/{group_id}/members/roles — 设置成员角色（INT-20）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1groups~1{group_id}~1members~1roles
+# Handler：src/api/enterprise_group_handler.erl member_roles/3
+# 请求实证：handler 读 roles 数组，元素 {external_user_id, role}（json_role/1）
+# 响应实证：logic §243 {group_id, updated, unchanged, members}
+# ----------------------------------------------------------------------------
+put:
+  tags: [internal]
+  summary: 设置企业群成员角色
+  description: |
+    按成员逐个设置角色（role 取值由群域定义，如 member / admin）。
+    **请求形态以 handler 为准**：roles 为 `[{external_user_id, role}]` 对象数组。
+  operationId: internalGroupSetMemberRoles
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: group_id
+      in: path
+      required: true
+      description: 企业群 TSID
+      schema: { type: integer, format: int64 }
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: groups:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [roles]
+          properties:
+            roles:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [external_user_id, role]
+                properties:
+                  external_user_id: { type: string }
+                  role: { type: string }
+  responses:
+    '200':
+      description: 角色设置结果
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              group_id: { type: integer, format: int64 }
+              updated: { type: integer, description: 本次变更数 }
+              unchanged: { type: integer, description: 目标态与现状相同数 }
+              members:
+                type: array
+                description: 设置后的成员角色清单
+                items:
+                  type: object
+                  properties:
+                    user_id: { type: integer, format: int64 }
+                    role: { type: string }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

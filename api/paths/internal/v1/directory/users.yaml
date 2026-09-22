@@ -1,0 +1,59 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/directory/users.yaml
+# POST /api/internal/v1/directory/users — 可映射用户目录（INT-17）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1directory~1users
+# Handler：src/api/enterprise_directory_handler.erl（page_users_tx 实证）
+# ----------------------------------------------------------------------------
+post:
+  tags: [internal]
+  summary: 可映射用户目录（cursor 分页，只回元数据）
+  description: |
+    查询本组织可映射（尚未绑定或已绑定）的平台用户，只返回最小元数据。
+    响应 items 字段实证自 `enterprise_directory_logic`：user_id /
+    external_user_id（本应用未映射则 null）/ member_role 等。
+  operationId: internalDirectoryUsers
+  security:
+    - ibIntBearer: []
+  x-imboy-scope: identities:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  requestBody:
+    required: false
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            cursor:
+              type: string
+              description: 上一页返回的 next_cursor（首页缺省）
+            page_size:
+              type: integer
+              description: 页大小（服务端夹紧上限）
+  responses:
+    '200':
+      description: 可映射用户目录页
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              items:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    user_id: { type: integer, format: int64 }
+                    external_user_id:
+                      type: [string, 'null']
+                      description: 本应用已映射的 OA 标识；未映射为 null
+                    member_role: { type: string, description: 组织内角色 }
+              page_size: { type: integer }
+              has_more: { type: boolean }
+              next_cursor:
+                type: [string, 'null']
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

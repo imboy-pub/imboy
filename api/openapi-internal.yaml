@@ -1,31 +1,38 @@
 # ----------------------------------------------------------------------------
-# imboy/openapi-internal.yaml — IMBoy Internal API 编辑真源（surface internal）
+# imboy/api/openapi-internal.yaml — IMBoy Internal API 编辑真源（surface internal）
 #
-# 三受众布局（2026-09-22 api-surface-reorg）：企业集成 internal v1 端点。
-# 端点文件位于 paths/internal/v1/；认证方案 ibIntBearer（Bearer ib_int_* 凭证）。
+# 三受众布局（2026-09-22 api-surface-reorg）：企业集成 internal v1 端点
+# （19 条 cowboy path / 23 端点，与 src/api/enterprise_internal_routes.erl
+# 冻结路由表逐条对应）。端点文件位于 paths/internal/v1/；认证方案
+# ibIntBearer（Bearer ib_int_<application_id>.<secret>）。
+# 人类集成文档：api/internal/v1/（README / endpoints / Postman）。
 # 汇总入口 api/openapi.yaml 由 gen_aggregate.py 生成，请勿手改。
-# 阶段 2（internal surface 契约化）填充 paths 段。
 # ----------------------------------------------------------------------------
 openapi: 3.1.0
 info:
-  title: IMBoy REST API
-  version: 1.0.0-rc.3
+  title: IMBoy Internal API — internal surface
+  version: 1.0.0
   x-stability: stable
-  summary: IMBoy 后端 HTTP / REST 接口冻结版
+  summary: IMBoy 企业内部集成 API（Internal API v1，冻结）
   description: |
-    本文件是 IMBoy 1.0.0-rc.3 REST API 的冻结契约。覆盖核心路径（认证、用户、消息、
-    群组、好友、频道、朋友圈、管理后台首启向导等）。完整路径清单以
-    `imboy/src/imboy_router.erl` 为权威；本文件当前声明 522 条端点（2026-08-30，
-    project 协作域已全量补齐），其余增量端点按域逐步补全；契约机器真源见
-    `.contract/api_contract.json`（contract-export）。
+    本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 19 条
+    path（23 个操作）。受众为企业 OA / 第三方集成系统开发者。
 
-    **响应信封**：所有响应统一为 `{ code, msg, sv_ts, payload }`，定义见
-    [envelope.schema.json](./envelope.schema.json)。
+    **认证**：所有请求携带 `Authorization: Bearer ib_int_<application_id>.<secret>`；
+    凭证由平台管理员在 Admin 管理台签发，scope 固定 10 枚举、无通配。
 
-    **认证**：Bearer JWT，载荷中的 `sub` 为 TSID（integer 字符串）。`/adm/setup/*`
-    与少数白名单路径免鉴权（见 `imboy_router:open/0`）。
+    **响应模型**：成功响应为**裸 payload**（无 `{code,msg,payload}` 业务信封）；
+    错误响应统一 `{"error":{"code","message"}}`，13 个稳定错误码见
+    `components/responses/internal/`（README §7 冻结表）。
 
-    **版本策略**：1.0.x 期间保证路径签名向后兼容，破坏性变更通过 `/v2` 路径前缀发布。
+    **限流与幂等**：三只独立桶 internal_read / internal_write / internal_sso；
+    写动作必须携带 `Idempotency-Key` 头（同 key 重放返回首次结果）。
+
+    **路由冻结**：method+path 不在冻结表内一律 resource_not_found（fail-closed）。
+    人类文档：[internal/v1/README.md](./internal/v1/README.md)（本 API 整个
+    v1/ 目录可直接交付集成方）。
+
+    **版本策略**：v1 已冻结——只追加新端点/新可选字段，不做破坏性变更。
   license:
     name: BUSL-1.1
     url: https://mariadb.com/bsl11/
@@ -49,52 +56,58 @@ servers:
 
 tags:
   - name: internal
-    description: 企业集成 Internal API（ib_int 凭证）
-paths: {}
-  # 阶段 2 填充：19 条 cowboy path / 23 端点
+    description: 企业集成 Internal API（ib_int 凭证；scope/限流/幂等见各端点扩展字段）
+
+paths:
+  /api/internal/v1/application:
+    $ref: './paths/internal/v1/application/self.yaml'
+  /api/internal/v1/identity-mappings:
+    $ref: './paths/internal/v1/identity/mappings.yaml'
+  /api/internal/v1/identity-mappings/resolve:
+    $ref: './paths/internal/v1/identity/resolve.yaml'
+  /api/internal/v1/identity-mappings/directory:
+    $ref: './paths/internal/v1/identity/directory.yaml'
+  /api/internal/v1/directory/users:
+    $ref: './paths/internal/v1/directory/users.yaml'
+  /api/internal/v1/groups:
+    $ref: './paths/internal/v1/group/create.yaml'
+  /api/internal/v1/groups/{group_id}:
+    $ref: './paths/internal/v1/group/detail.yaml'
+  /api/internal/v1/groups/{group_id}/members:
+    $ref: './paths/internal/v1/group/members.yaml'
+  /api/internal/v1/groups/{group_id}/members/roles:
+    $ref: './paths/internal/v1/group/member-roles.yaml'
+  /api/internal/v1/groups/{group_id}/messages:
+    $ref: './paths/internal/v1/group/messages.yaml'
+  /api/internal/v1/messages/direct:
+    $ref: './paths/internal/v1/message/direct.yaml'
+  /api/internal/v1/files/presign:
+    $ref: './paths/internal/v1/file/presign.yaml'
+  /api/internal/v1/files/confirm:
+    $ref: './paths/internal/v1/file/confirm.yaml'
+  /api/internal/v1/files/governance:
+    $ref: './paths/internal/v1/file/governance.yaml'
+  /api/internal/v1/friend-requests:
+    $ref: './paths/internal/v1/friend-request/create.yaml'
+  /api/internal/v1/webhook:
+    $ref: './paths/internal/v1/webhook/configure.yaml'
+  /api/internal/v1/webhook/deliveries:
+    $ref: './paths/internal/v1/webhook/deliveries.yaml'
+  /api/internal/v1/webhook/deliveries/{delivery_id}/replay:
+    $ref: './paths/internal/v1/webhook/replay.yaml'
+  /api/internal/v1/oa/sso/exchange:
+    $ref: './paths/internal/v1/oa-sso/exchange.yaml'
+
 components:
   securitySchemes:
-    bearerAuth:
+    ibIntBearer:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      bearerFormat: ib_int_<application_id>.<secret>
       description: |
-        JWT 载荷 `sub` 为 TSID integer 字符串；过期后前端需调用 `/passport/refresh`
-        而非直接重连（此前反转逻辑已于 1.0.0-rc.1 修复）。
-
-  schemas:
-    # ----------------------------------------------------------------------
-    # T3.2 split phase 1 (2026-05-16)：通用 schema 抽离为独立文件，
-    # 便于 review、按域演进、避免单文件膨胀至万行。
-    # 根 yaml 仍保持内部锚 #/components/schemas/<Name> 不变，
-    # 现有 paths 中的 $ref 无需调整。
-    # ----------------------------------------------------------------------
-    Envelope:
-      $ref: './components/schemas/Envelope.yaml'
-    User:
-      $ref: './components/schemas/User.yaml'
-    Message:
-      $ref: './components/schemas/Message.yaml'
-
-  parameters:
-    # ----------------------------------------------------------------------
-    # T3.2 split phase 2 (2026-05-16)：公共 query 参数抽出。
-    # 复用范围：分页参数 → admin 20+ 列表端点；会话/游标参数 → msg 多个端点。
-    # 文件名必须 PascalCase 与 components.parameters key 严格一致，
-    # 触发 redocly bundle 去重，避免 *ref_N YAML 锚点污染 codegen。
-    # ----------------------------------------------------------------------
-    PaginationPage:
-      $ref: './components/parameters/PaginationPage.yaml'
-    PaginationSize:
-      $ref: './components/parameters/PaginationSize.yaml'
-    PaginationKeyword:
-      $ref: './components/parameters/PaginationKeyword.yaml'
-    ConvKey:
-      $ref: './components/parameters/ConvKey.yaml'
-    SinceSeq:
-      $ref: './components/parameters/SinceSeq.yaml'
-    HistoryLimit:
-      $ref: './components/parameters/HistoryLimit.yaml'
+        企业集成凭证：与单个企业应用一一对应，授权范围 = 签发时授予的
+        scope 集合（固定 10 枚举、无通配）。secret 平台侧只存不可逆摘要，
+        泄露即轮换；应用停用/归档后所有请求返回 application_disabled（403）。
 
 security:
-  - bearerAuth: []
+  - ibIntBearer: []

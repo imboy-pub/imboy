@@ -1,0 +1,160 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/group/detail.yaml
+# GET    /api/internal/v1/groups/{group_id} — 群详情（INT-18）
+# PATCH  /api/internal/v1/groups/{group_id} — 改群信息（INT-19）
+# DELETE /api/internal/v1/groups/{group_id} — 解散（归档）群（INT-21）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1groups~1{group_id}
+# Handler：src/api/enterprise_group_handler.erl group/3（实证字段见各 operation）
+# ----------------------------------------------------------------------------
+get:
+  tags: [internal]
+  summary: 读取企业群详情
+  description: |
+    最小字段 + 成员硬上限（超限返回 invalid_request，绝不静默截断）。
+    跨组织/个人群/已归档一律 resource_not_found（不泄露存在性）。
+  operationId: internalGroupDetail
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: group_id
+      in: path
+      required: true
+      description: 企业群 TSID
+      schema: { type: integer, format: int64 }
+  x-imboy-scope: groups:write
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  responses:
+    '200':
+      description: 群详情
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              group_id: { type: integer, format: int64 }
+              workspace_id: { type: integer, format: int64 }
+              title: { type: string }
+              introduction: { type: string }
+              owner_user_id: { type: integer, format: int64 }
+              member_count: { type: integer }
+              members:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    user_id: { type: integer, format: int64 }
+                    role: { type: string }
+                    status: { type: string }
+              origin:
+                type: [object, 'null']
+                description: 来源标记（owner_app / mine 等；非本应用建群为 null）
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+patch:
+  tags: [internal]
+  summary: 修改企业群信息
+  description: |
+    可更新字段实证自 handler `known_key/1`：title / introduction / members
+    （members 为成员覆盖语义）。响应实证自 logic update：`{group_id, title,
+    introduction, updated: true}`。
+  operationId: internalGroupUpdate
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: group_id
+      in: path
+      required: true
+      description: 企业群 TSID
+      schema: { type: integer, format: int64 }
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: groups:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          minProperties: 1
+          properties:
+            title: { type: string, minLength: 1, maxLength: 200 }
+            introduction: { type: string, maxLength: 2000 }
+            members:
+              type: array
+              items: { type: string }
+              description: 成员覆盖（external_user_id 列表）
+  responses:
+    '200':
+      description: 更新结果
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              group_id: { type: integer, format: int64 }
+              title: { type: string }
+              introduction: { type: string }
+              updated:
+                type: boolean
+                enum: [true]
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+delete:
+  tags: [internal]
+  summary: 解散（归档）企业群
+  description: |
+    归档式解散；重复解散返回 `{group_id, archived: true, already: true}`。
+  operationId: internalGroupArchive
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: group_id
+      in: path
+      required: true
+      description: 企业群 TSID
+      schema: { type: integer, format: int64 }
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: groups:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  responses:
+    '200':
+      description: 归档结果
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              group_id: { type: integer, format: int64 }
+              archived:
+                type: boolean
+                enum: [true]
+              already:
+                type: boolean
+                description: 重复解散时 true
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

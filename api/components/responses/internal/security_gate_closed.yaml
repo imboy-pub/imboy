@@ -1,0 +1,12 @@
+# Internal API v1 稳定错误码 security_gate_closed（HTTP 503，README §7 冻结表）。
+description: '平台安全闸关闭（暂时拒绝服务）'
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: '../../schemas/internal/ErrorEnvelope.yaml'
+      properties:
+        error:
+          properties:
+            code:
+              enum: [security_gate_closed]

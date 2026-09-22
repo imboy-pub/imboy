@@ -1,0 +1,84 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/message/direct.yaml
+# POST /api/internal/v1/messages/direct — 单聊直发（INT-09）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1messages~1direct
+# Handler：src/api/enterprise_message_handler.erl direct/3
+# 请求/响应实证：enterprise_message_logic 模块注释（sender_mode/sender_user_id/
+# recipient_user_id/msg_type/content/object_key；返回 msg_id 等 6 字段）
+# ----------------------------------------------------------------------------
+post:
+  tags: [internal]
+  summary: 企业托管单聊消息（OA 直发 / 代发）
+  description: |
+    以应用身份或代本组织已映射人类用户发送单聊。企业托管消息**固定非端到端
+    加密**，审计事实永久保留。scope 由 sender_mode 动态决定：
+    application → messages:send；human → messages:send_as_human。
+    **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
+  operationId: internalMessageDirect
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键（重复提交返回首次结果）
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: dynamic:messages_send
+  x-imboy-scope-note: application → messages:send；human → messages:send_as_human
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [sender_mode, recipient_user_id, msg_type]
+          properties:
+            sender_mode:
+              type: string
+              enum: [application, human]
+            sender_user_id:
+              type: string
+              description: human 模式必填；OA 侧标识（须本组织已映射、已启用）
+            recipient_user_id:
+              type: string
+              description: 收件人 OA 侧标识（同组织已映射 active 用户）
+            msg_type:
+              type: string
+              enum: [text, file]
+            content:
+              type: string
+              minLength: 1
+              maxLength: 4000
+              description: msg_type=text 必填
+            object_key:
+              type: string
+              description: msg_type=file 必填（本 org/app 已 confirm 附件）
+  responses:
+    '200':
+      description: 受理结果
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              msg_id: { type: integer, format: int64 }
+              sender_kind: { type: string, description: application | human }
+              sender_user_id:
+                type: [integer, 'null']
+                format: int64
+                description: human 发送者的平台 TSID；application 模式为 null
+              origin_kind:
+                type: string
+                enum: [enterprise_application]
+              origin_application_id: { type: integer, format: int64 }
+              accepted_at: { type: string, description: 受理时间（ISO-8601） }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
