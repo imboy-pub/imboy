@@ -54,13 +54,53 @@ invite_code_expected_routes() ->
         {<<"/api/v1/organizations/:organization_id/invite_code">>, organization_api_handler,
             A(invite_code)},
         {<<"/api/v1/organizations/:organization_id/invite_code/join">>, organization_api_handler,
-            A(invite_code_join)}
+            A(invite_code_join)},
+        %% GZAPP-J11 code-only 面：字面段路由必须注册在 :organization_id
+        %% 通配之前（否则 invite_code 被当 orgId 遮蔽）；此处由
+        %% invite_code_literal_before_wildcard_test 冻结注册顺序。
+        {<<"/api/v1/organizations/invite_code/preview">>, organization_api_handler,
+            A(invite_code_preview)},
+        {<<"/api/v1/organizations/invite_code/join">>, organization_api_handler,
+            A(invite_code_join_by_code)}
     ].
+
+%% GZAPP-J11：字面段 code-only 路由必须排在任一 :organization_id 通配
+%% 路由之前（cowboy 顺序匹配：通配先注册会把 invite_code 当 orgId 吃掉）。
+invite_code_literal_before_wildcard_test() ->
+    All = [
+        unicode:characters_to_binary(P)
+     || {_Host, Routes} <- imboy_router:get_routes(),
+        {P, _H, _S} <- Routes
+    ],
+    WithIdx = lists:zip(All, lists:seq(1, length(All))),
+    LiteralIdx = lists:min(
+        [N || {P, N} <- WithIdx, is_code_only_path(P)]
+    ),
+    WildcardIdx = lists:min(
+        [
+            N
+         || {P, N} <- WithIdx,
+            is_binary(P),
+            P =/= <<"/api/v1/organizations">>,
+            %% 以 /api/v1/organizations/ 开头且该段为 binding：
+            binary:match(P, <<"/api/v1/organizations/:">>) =/= nomatch
+        ]
+    ),
+    ?assert(LiteralIdx < WildcardIdx).
+
+is_code_only_path(<<"/api/v1/organizations/invite_code/", _/binary>>) -> true;
+is_code_only_path(_) -> false.
+
+%% ------------------------------------------------------------------
+%% Internal
+%% ------------------------------------------------------------------
 
 invite_code_routes() ->
     [R || R = {P, _H, _S} <- all_routes(), is_invite_code_path(P)].
 
 is_invite_code_path(<<"/api/v1/organizations/:organization_id/invite_code", _/binary>>) ->
+    true;
+is_invite_code_path(<<"/api/v1/organizations/invite_code/", _/binary>>) ->
     true;
 is_invite_code_path(_) ->
     false.

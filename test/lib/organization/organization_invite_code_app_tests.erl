@@ -62,6 +62,9 @@ default_mocks() ->
             end},
             {'find_active_by_code_tx', 3, fun(fake_conn, _OrgId, _Code) ->
                 {ok, code_row()}
+            end},
+            {'find_active_by_code_global_tx', 2, fun(fake_conn, _Code) ->
+                {ok, code_row()}
             end}
         ]},
         %% 治理门依赖（镜像 organization_member_logic:write_tx 锁序）
@@ -513,6 +516,268 @@ join_by_code_test_() ->
                 ?assertMatch(
                     {error, {400, _}},
                     organization_invite_code_app:join_by_code(?TARGET, 0, <<"ABCD2345">>)
+                )
+            end)
+        end}
+    ].
+
+%%--------------------------------------------------------------------
+%% preview_by_code / join_by_code_only（GZAPP-J11 code-only 面：
+%% 码全局唯一即凭据，无需 orgId——扫码 / 单码手输加入路径）
+%%--------------------------------------------------------------------
+
+preview_by_code_test_() ->
+    [
+        {"有效码：返回 organization_id + name（uppercase 归一后查全局）", fun() ->
+            with_mocks(
+                [
+                    {organization_member_repo, [
+                        {'find_organization_for_share_tx', 3, fun(_C, _O, Cols) ->
+                            ?assert(
+                                binary:match(Cols, <<"name">>) =/= nomatch
+                            ),
+                            {ok, #{
+                                <<"id">> => ?ORG_ID,
+                                <<"name">> => <<"广州演示企业"/utf8>>,
+                                <<"status">> => <<"active">>
+                            }}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    {ok, View} = organization_invite_code_app:preview_by_code(
+                        ?TARGET, <<"abcd2345">>
+                    ),
+                    ?assertEqual(?ORG_ID, maps:get(organization_id, View)),
+                    ?assertEqual(<<"广州演示企业"/utf8>>, maps:get(name, View)),
+                    ?assert(
+                        meck:called(
+                            organization_invite_code_pg,
+                            find_active_by_code_global_tx,
+                            [fake_conn, <<"ABCD2345">>]
+                        )
+                    )
+                end
+            )
+        end},
+        {"码不存在 981", fun() ->
+            with_mocks(
+                [
+                    {organization_invite_code_pg, [
+                        {'find_active_by_code_global_tx', 2, fun(_C, _Code) ->
+                            {error, not_found}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {?ERR_WORKSPACE_INVITE_INVALID, _}},
+                        organization_invite_code_app:preview_by_code(?TARGET, <<"NOPE9999">>)
+                    )
+                end
+            )
+        end},
+        {"已撤销码 981（active 查找命中不了 revoked 行）", fun() ->
+            with_mocks(
+                [
+                    {organization_invite_code_pg, [
+                        {'find_active_by_code_global_tx', 2, fun(_C, _Code) ->
+                            {error, not_found}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {?ERR_WORKSPACE_INVITE_INVALID, _}},
+                        organization_invite_code_app:preview_by_code(?TARGET, <<"ABCD2345">>)
+                    )
+                end
+            )
+        end},
+        {"过期码 982", fun() ->
+            with_mocks(
+                [
+                    {organization_invite_code_pg, [
+                        {'find_active_by_code_global_tx', 2, fun(_C, _Code) ->
+                            {ok, (code_row())#{<<"expired">> => true}}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {?ERR_WORKSPACE_INVITE_EXPIRED, _}},
+                        organization_invite_code_app:preview_by_code(?TARGET, <<"ABCD2345">>)
+                    )
+                end
+            )
+        end},
+        {"目标 org 已归档 409", fun() ->
+            with_mocks(
+                [
+                    {organization_member_repo, [
+                        {'find_organization_for_share_tx', 3, fun(_C, _O, _Cols) ->
+                            {ok, #{
+                                <<"id">> => ?ORG_ID,
+                                <<"name">> => <<"x">>,
+                                <<"status">> => <<"archived">>
+                            }}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {409, _}},
+                        organization_invite_code_app:preview_by_code(?TARGET, <<"ABCD2345">>)
+                    )
+                end
+            )
+        end},
+        {"目标 org 不存在 981（不泄露组织存在性差异）", fun() ->
+            with_mocks(
+                [
+                    {organization_member_repo, [
+                        {'find_organization_for_share_tx', 3, fun(_C, _O, _Cols) ->
+                            {error, not_found}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    NotFound = organization_invite_code_app:preview_by_code(
+                        ?TARGET, <<"ABCD2345">>
+                    ),
+                    ?assertMatch({error, {?ERR_WORKSPACE_INVITE_INVALID, _}}, NotFound)
+                end
+            )
+        end},
+        {"空码 / 非 binary 统一 981", fun() ->
+            with_mocks([], fun() ->
+                ?assertMatch(
+                    {error, {?ERR_WORKSPACE_INVITE_INVALID, _}},
+                    organization_invite_code_app:preview_by_code(?TARGET, <<>>)
+                ),
+                ?assertMatch(
+                    {error, {?ERR_WORKSPACE_INVITE_INVALID, _}},
+                    organization_invite_code_app:preview_by_code(?TARGET, 12345)
+                )
+            end)
+        end},
+        {"非法参量 400", fun() ->
+            with_mocks([], fun() ->
+                ?assertMatch(
+                    {error, {400, _}},
+                    organization_invite_code_app:preview_by_code(0, <<"ABCD2345">>)
+                )
+            end)
+        end}
+    ].
+
+join_by_code_only_test_() ->
+    [
+        {"有效码：从码行取 organization_id 转统一编排", fun() ->
+            with_mocks([], fun() ->
+                {ok, joined, Summary} =
+                    organization_invite_code_app:join_by_code_only(?TARGET, <<"abcd2345">>),
+                ?assert(
+                    meck:called(
+                        organization_invite_code_pg,
+                        find_active_by_code_global_tx,
+                        [fake_conn, <<"ABCD2345">>]
+                    )
+                ),
+                ?assertEqual(?ORG_ID, maps:get(organization_id, Summary)),
+                OrchestratorCalled =
+                    receive
+                        {orchestrator_join, fake_conn, ?ORG_ID, ?TARGET} -> true
+                    after 0 -> false
+                    end,
+                ?assert(OrchestratorCalled)
+            end)
+        end},
+        {"码不存在 981（不与 preview 语义分歧）", fun() ->
+            with_mocks(
+                [
+                    {organization_invite_code_pg, [
+                        {'find_active_by_code_global_tx', 2, fun(_C, _Code) ->
+                            {error, not_found}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {?ERR_WORKSPACE_INVITE_INVALID, _}},
+                        organization_invite_code_app:join_by_code_only(?TARGET, <<"NOPE9999">>)
+                    )
+                end
+            )
+        end},
+        {"过期码 982", fun() ->
+            with_mocks(
+                [
+                    {organization_invite_code_pg, [
+                        {'find_active_by_code_global_tx', 2, fun(_C, _Code) ->
+                            {ok, (code_row())#{<<"expired">> => true}}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {?ERR_WORKSPACE_INVITE_EXPIRED, _}},
+                        organization_invite_code_app:join_by_code_only(?TARGET, <<"ABCD2345">>)
+                    )
+                end
+            )
+        end},
+        {"空码 / 非 binary 统一 981", fun() ->
+            with_mocks([], fun() ->
+                ?assertMatch(
+                    {error, {?ERR_WORKSPACE_INVITE_INVALID, _}},
+                    organization_invite_code_app:join_by_code_only(?TARGET, <<>>)
+                ),
+                ?assertMatch(
+                    {error, {?ERR_WORKSPACE_INVITE_INVALID, _}},
+                    organization_invite_code_app:join_by_code_only(?TARGET, [])
+                )
+            end)
+        end},
+        {"编排拒绝 980（默认 WS archived）透传", fun() ->
+            with_mocks(
+                [
+                    {organization_join_orchestrator, [
+                        {'join_tx', 4, fun(_C, _O, _U, _B) ->
+                            throw({abort_tx, {?ERR_WORKSPACE_ARCHIVED, <<"工作区已归档"/utf8>>}})
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {?ERR_WORKSPACE_ARCHIVED, _}},
+                        organization_invite_code_app:join_by_code_only(?TARGET, <<"ABCD2345">>)
+                    )
+                end
+            )
+        end},
+        {"重复加入幂等 unchanged 透传", fun() ->
+            with_mocks(
+                [
+                    {organization_join_orchestrator, [
+                        {'join_tx', 4, fun(_C, OrgId, _U, _B) ->
+                            {ok, unchanged, #{organization_id => OrgId}}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {ok, unchanged, _},
+                        organization_invite_code_app:join_by_code_only(?TARGET, <<"ABCD2345">>)
+                    )
+                end
+            )
+        end},
+        {"非法参量 400", fun() ->
+            with_mocks([], fun() ->
+                ?assertMatch(
+                    {error, {400, _}},
+                    organization_invite_code_app:join_by_code_only(0, <<"ABCD2345">>)
                 )
             end)
         end}

@@ -14,6 +14,7 @@
     generate_code/0,
     add_tx/5,
     find_active_by_code_tx/3,
+    find_active_by_code_global_tx/2,
     find_active_by_org_tx/2,
     revoke_active_by_org_tx/2
 ]).
@@ -101,6 +102,18 @@ find_active_by_code_tx(Conn, OrgId, Code) ->
         <<"SELECT ", ?ROW_COLS, " FROM ", (code_table())/binary,
             " WHERE organization_id = $1 AND code = $2 AND status = 'active' LIMIT 1">>,
     one_tx(Conn, Sql, [OrgId, Code]).
+
+%% @doc 事务内按码**全局**查有效邀请码（GZAPP-J11 code-only join/preview；
+%% 码本身全局唯一即凭据，无需 orgId——命中即透露该组织存在性是产品语义：
+%% 持有有效码=持有效邀请，与 3 元版「跨 Org 输码不泄露」口径刻意不同）。
+%% code 有全局唯一索引兜底；LIMIT 1 防御性。
+-spec find_active_by_code_global_tx(any(), binary()) ->
+    {ok, map()} | {error, not_found | term()}.
+find_active_by_code_global_tx(Conn, Code) ->
+    Sql =
+        <<"SELECT ", ?ROW_COLS, " FROM ", (code_table())/binary,
+            " WHERE code = $1 AND status = 'active' LIMIT 1">>,
+    one_tx(Conn, Sql, [Code]).
 
 %% @doc 事务内读组织当前 active 码（治理面 GET；无 active 码 → not_found）。
 -spec find_active_by_org_tx(any(), integer()) -> {ok, map()} | {error, not_found | term()}.

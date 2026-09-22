@@ -17,7 +17,9 @@
     create/3,
     revoke/2,
     get/2,
-    join_by_code/3
+    join_by_code/3,
+    preview_by_code/2,
+    join_by_code_only/2
 ]).
 
 -include("error_code.hrl").
@@ -167,11 +169,7 @@ join_by_code(Uid, OrgId, Code0) when
 ->
     %% 非 binary（JSON number/array 等）或 trim 后为空统一按无效码 981
     %% （显式短路，省一次 DB roundtrip；真实 SQL 同口径查不到行）
-    Code =
-        case is_binary(Code0) of
-            true -> string:uppercase(string:trim(Code0));
-            false -> <<>>
-        end,
+    Code = normalize_code(Code0),
     Tx = fun(Conn) ->
         case Code of
             <<>> ->
@@ -204,17 +202,131 @@ lookup_and_join_tx(Conn, OrgId, Uid, Code) ->
         {ok, #{<<"expired">> := true}} ->
             abort(?ERR_WORKSPACE_INVITE_EXPIRED, <<"组织邀请码已过期"/utf8>>);
         {ok, Row} ->
-            CreatedBy =
-                case maps:get(<<"created_by">>, Row, null) of
-                    By when is_integer(By) -> By;
-                    _ -> null
-                end,
-            organization_join_orchestrator:join_tx(Conn, OrgId, Uid, CreatedBy)
+            organization_join_orchestrator:join_tx(Conn, OrgId, Uid, created_by_of(Row))
+    end.
+
+%% ===================================================================
+%% preview_by_code / join_by_code_only —— 凭码免 orgId 面（GZAPP-J11）
+%% ===================================================================
+
+%% @doc 凭码预览目标组织（code-only join 的确认步骤，任意登录用户）：
+%% 码本身全局唯一即凭据，按码全局反查 → {ok, #{organization_id, name}}。
+%% 码校验 981/982 同 join 口径；org 已归档 409 / 不存在 981。
+-spec preview_by_code(integer(), binary()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+preview_by_code(Uid, Code0) when is_integer(Uid), Uid > 0 ->
+    Code = normalize_code(Code0),
+    Tx = fun(Conn) ->
+        case Code of
+            <<>> ->
+                abort(?ERR_WORKSPACE_INVITE_INVALID, <<"组织邀请码无效或已失效"/utf8>>);
+            _ ->
+                lookup_preview_tx(Conn, Code)
+        end
+    end,
+    case elib_pg:with_tx(Tx) of
+        {ok, View} ->
+            _ = ?INFO_LOG([organization_invite_code_previewed, Uid, Code]),
+            {ok, View};
+        {error, {Code2, Msg}} when is_integer(Code2), is_binary(Msg) ->
+            {error, {Code2, Msg}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([organization_invite_code_preview_failed, Uid, Reason]),
+            {error, {500, <<"读取邀请信息失败，请稍后重试"/utf8>>}}
+    end;
+preview_by_code(_, _) ->
+    {error, {400, <<"code 与用户标识必须是有效值"/utf8>>}}.
+
+%% 码全局查找 → 过期裁决 → 组织投影（with_tx 事务体内部）。
+-spec lookup_preview_tx(any(), binary()) -> {ok, map()}.
+lookup_preview_tx(Conn, Code) ->
+    case organization_invite_code_pg:find_active_by_code_global_tx(Conn, Code) of
+        {error, not_found} ->
+            abort(?ERR_WORKSPACE_INVITE_INVALID, <<"组织邀请码无效或已失效"/utf8>>);
+        {error, Reason} ->
+            throw({abort_tx, {internal, {code_lookup, Reason}}});
+        {ok, #{<<"expired">> := true}} ->
+            abort(?ERR_WORKSPACE_INVITE_EXPIRED, <<"组织邀请码已过期"/utf8>>);
+        {ok, #{<<"organization_id">> := OrgId}} ->
+            case
+                organization_member_repo:find_organization_for_share_tx(
+                    Conn, OrgId, <<"id,name,status">>
+                )
+            of
+                {ok, #{<<"name">> := Name, <<"status">> := <<"active">>}} ->
+                    {ok, #{organization_id => OrgId, name => Name}};
+                {ok, _Archived} ->
+                    abort(409, <<"Organization 已归档，不能加入"/utf8>>);
+                {error, not_found} ->
+                    abort(?ERR_WORKSPACE_INVITE_INVALID, <<"组织邀请码无效或已失效"/utf8>>);
+                {error, Reason} ->
+                    throw({abort_tx, {internal, {organization_lookup, Reason}}})
+            end
+    end.
+
+%% @doc 凭码加入组织（code-only，任意登录用户）：码全局唯一即凭据，
+%% 按码反查 organization_id 后走统一加入编排（与 join_by_code 同一
+%% organization_join_orchestrator:join_tx/4：org member → 默认 WS →
+%% 全员群 → 公告频道，同事务、幂等可重放）。非字符串/空/无效码统一 981。
+-spec join_by_code_only(integer(), binary()) ->
+    {ok, joined | unchanged, map()} | {error, {integer(), binary()}}.
+join_by_code_only(Uid, Code0) when is_integer(Uid), Uid > 0 ->
+    Code = normalize_code(Code0),
+    Tx = fun(Conn) ->
+        case Code of
+            <<>> ->
+                abort(?ERR_WORKSPACE_INVITE_INVALID, <<"组织邀请码无效或已失效"/utf8>>);
+            _ ->
+                lookup_and_join_global_tx(Conn, Uid, Code)
+        end
+    end,
+    case elib_pg:with_tx(Tx) of
+        {ok, Outcome, Summary} ->
+            {ok, Outcome, Summary};
+        {error, {Code2, Msg}} when is_integer(Code2), is_binary(Msg) ->
+            {error, {Code2, Msg}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([organization_invite_code_join_only_failed, Uid, Reason]),
+            {error, {500, <<"加入组织失败，请稍后重试"/utf8>>}}
+    end;
+join_by_code_only(_, _) ->
+    {error, {400, <<"code 与用户标识必须是有效值"/utf8>>}}.
+
+%% 码全局查找 → 过期裁决 → 统一编排（with_tx 事务体内部）。
+-spec lookup_and_join_global_tx(any(), integer(), binary()) ->
+    {ok, joined | unchanged, map()}.
+lookup_and_join_global_tx(Conn, Uid, Code) ->
+    case organization_invite_code_pg:find_active_by_code_global_tx(Conn, Code) of
+        {error, not_found} ->
+            abort(?ERR_WORKSPACE_INVITE_INVALID, <<"组织邀请码无效或已失效"/utf8>>);
+        {error, Reason} ->
+            throw({abort_tx, {internal, {code_lookup, Reason}}});
+        {ok, #{<<"expired">> := true}} ->
+            abort(?ERR_WORKSPACE_INVITE_EXPIRED, <<"组织邀请码已过期"/utf8>>);
+        {ok, Row = #{<<"organization_id">> := OrgId}} when is_integer(OrgId), OrgId > 0 ->
+            organization_join_orchestrator:join_tx(Conn, OrgId, Uid, created_by_of(Row))
     end.
 
 %% ===================================================================
 %% 内部
 %% ===================================================================
+
+%% 非 binary（JSON number/array 等）或 trim 后为空统一归一 <<>>（981 短路，
+%% 省一次 DB roundtrip；真实 SQL 同口径查不到行）。
+-spec normalize_code(term()) -> binary().
+normalize_code(Code0) ->
+    case is_binary(Code0) of
+        true -> string:uppercase(string:trim(Code0));
+        false -> <<>>
+    end.
+
+%% 邀请人行 created_by → integer | null（编排 invitedBy 透传口径）。
+-spec created_by_of(map()) -> integer() | null.
+created_by_of(Row) ->
+    case maps:get(<<"created_by">>, Row, null) of
+        By when is_integer(By) -> By;
+        _ -> null
+    end.
 
 %% 治理门（镜像 organization_member_logic:write_tx 的锁序与裁决：
 %% 组织行 FOR SHARE 先、成员行 FOR SHARE 后；owner/admin 放行）。

@@ -117,6 +117,18 @@ handle_action(invite_code_join, Req0, State) ->
     case cowboy_req:method(Req0) of
         <<"POST">> -> invite_code_join(Req0, State);
         _ -> method_not_allowed(Req0, <<"POST">>)
+    end;
+%% —— invite code preview / code-only join（GZAPP-J11）：码全局唯一即凭据，
+%% 无需 path orgId（扫码 / 单码手输加入路径）；业务语义与 invite_code_join 同构
+handle_action(invite_code_preview, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"POST">> -> invite_code_preview(Req0, State);
+        _ -> method_not_allowed(Req0, <<"POST">>)
+    end;
+handle_action(invite_code_join_by_code, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"POST">> -> invite_code_join_by_code(Req0, State);
+        _ -> method_not_allowed(Req0, <<"POST">>)
     end.
 
 %% ===================================================================
@@ -422,6 +434,28 @@ invite_code_join(Req0, State) ->
                 elib_response:error(Req0, Msg, Code2)
         end
     end).
+
+%% 凭码预览目标组织（GZAPP-J11）：{organization_id, name}——扫码/单码
+%% 加入的「确认加入 XX 企业」步骤；码校验 981/982 与 join 同口径。
+invite_code_preview(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    Params = elib_param:post(Req0),
+    Code = maps:get(<<"code">>, Params, undefined),
+    respond(Req0, organization_invite_code_app:preview_by_code(Uid, Code)).
+
+%% 凭码加入（无需 orgId，GZAPP-J11）：payload 与 invite_code_join 完全同构。
+invite_code_join_by_code(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    Params = elib_param:post(Req0),
+    Code = maps:get(<<"code">>, Params, undefined),
+    case organization_invite_code_app:join_by_code_only(Uid, Code) of
+        {ok, joined, Summary} ->
+            elib_response:success(Req0, #{status => joined, join => Summary});
+        {ok, unchanged, Summary} ->
+            elib_response:success(Req0, #{status => unchanged, join => Summary});
+        {error, {Code2, Msg}} ->
+            elib_response:error(Req0, Msg, Code2)
+    end.
 
 %% ===================================================================
 %% 协议面辅助（与 organization_handler 同口径）

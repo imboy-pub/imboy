@@ -689,6 +689,15 @@ get_routes() ->
                 {"/api/v1/organizations/invitations/mine", organization_api_handler, #{
                     action => invitation_mine
                 }},
+                %% GZAPP-J11 code-only 面（凭码免 orgId：扫码/单码加入）：
+                %% 字面段路由必须先于 :organization_id 通配防遮蔽（同
+                %% deletion-preflight 先例——否则 invite_code 会被当 orgId 吃掉）。
+                {"/api/v1/organizations/invite_code/preview", organization_api_handler, #{
+                    action => invite_code_preview
+                }},
+                {"/api/v1/organizations/invite_code/join", organization_api_handler, #{
+                    action => invite_code_join_by_code
+                }},
                 {"/api/v1/organizations/:organization_id", organization_handler, #{
                     action => detail
                 }},
