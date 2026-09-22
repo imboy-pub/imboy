@@ -163,6 +163,9 @@ with_idempotency(Req0, Ctx0, ResourceType, IdemKey, Digest, MsgTable, BoundaryFu
         end),
     case TxResult of
         {tx_ok, Result} ->
+            %% COMMIT 后离线推送（FULL-07）。幂等 replay 分支不走这里——同一条
+            %% 消息不会因客户端重放而二次推送；失败只记日志，不改消息结果。
+            ok = push_after_commit(MsgTable, Result),
             reply_json(Req0, 200, Result);
         {rollback, {business_error, Code}} ->
             enterprise_webhook_logic:emit_event_failed(
@@ -185,6 +188,16 @@ with_idempotency(Req0, Ctx0, ResourceType, IdemKey, Digest, MsgTable, BoundaryFu
             ?ERROR_LOG("enterprise_message_handler idempotency error: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
     end.
+
+%% @doc 提交后离线推送（FULL-07）：企业托管消息发给离线收件人时必须推送。
+%% 目标收件人真源在 logic 内由**已提交的消息行**导出（direct: msg_c2c.to_id；
+%% group: 群 active 成员），本壳只负责「在 COMMIT 之后、且仅在首次插入成功
+%% 的分支」触发。Result 无 msg_id 时 no-op（不掩盖任何错误）。
+-spec push_after_commit(binary(), map()) -> ok.
+push_after_commit(Table, #{<<"msg_id">> := MsgId}) when is_binary(MsgId) ->
+    enterprise_message_logic:push_after_commit(Table, MsgId);
+push_after_commit(_Table, _Result) ->
+    ok.
 
 %% principal 预取（application 发送主体；human 模式不依赖，缺省即拒）。
 with_principal(Conn, Ctx) ->

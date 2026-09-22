@@ -29,6 +29,7 @@
 %%%
 
 -export([direct_tx/3, group_tx/4]).
+-export([push_after_commit/2]).
 
 -include("log.hrl").
 
@@ -473,6 +474,74 @@ finish_audit(
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}
     end.
+
+%%%===================================================================
+%%% 提交后离线推送（FULL-07）
+%%%===================================================================
+%%
+%% 增量根因（A0 已核实）：本模块此前**没有任何 push 调用**——`msg_c2c_logic`
+%% 与 `msg_c2g_logic` 都有离线推送入口，企业托管消息（INT-09/10）没有。后果是
+%% OA 代发消息发给离线用户时完全不推送，企业内部平台的核心通知链是断的。
+%%
+%% 位置约束（**必须在消息事务 COMMIT 之后**）：
+%%   * 推送是不可撤销的外部副作用（FCM/APNs/JPush 第三方通道），事务内触发
+%%     会在 rollback 时产生「消息不存在但已推送」的幽灵通知；
+%%   * 幂等 replay 分支（`{ok, replay, ...}`）**不**经过本函数，因此同一条
+%%     消息不会因客户端重放而二次推送；
+%%   * 与 `enterprise_friend_request_handler:notify_after_commit/3` 同款先例
+%%     （提交后独立事务 + 失败只记日志，不影响已提交的消息结果）。
+%%
+%% 收件人真源 = **已提交的消息行**（不重新解析 external id）：
+%%   direct: msg_c2c.to_id
+%%   group : msg_c2g.to_id 的 active(status=1) 成员（`active_member_uids_tx`）
+%% 这样即使 mapping 在提交后被停用，推送目标仍与已落库的收件人一致。
+%%
+%% 硬边界：企业托管消息固定非 E2EE；推送文案由 `push_notification_logic` 的
+%% 常量单点给出，本模块**不传** msg_type/正文/payload（没有入参通道）。
+-type push_table() :: binary().
+
+%% @doc 消息提交后离线推送（Table 为 msg_c2c | msg_c2g，MsgId 为 TSID binary）。
+%% 恒返回 ok：推送故障不影响已提交的消息（fail-safe，与 C2C/C2G 推送同口径）。
+-spec push_after_commit(push_table(), binary()) -> ok.
+push_after_commit(Table, MsgId) when is_binary(MsgId) ->
+    try
+        _ = elib_pg:with_tx(fun(Conn) -> push_after_commit_tx(Conn, Table, MsgId) end),
+        ok
+    catch
+        Class:Reason ->
+            ?ERROR_LOG([
+                "enterprise_message push_after_commit failed", Table, MsgId, Class, Reason
+            ]),
+            ok
+    end;
+push_after_commit(_Table, _MsgId) ->
+    ok.
+
+push_after_commit_tx(Conn, <<"msg_c2c">>, MsgId) ->
+    case enterprise_message_repo:find_direct_tx(Conn, MsgId) of
+        {ok, #{<<"from_id">> := FromId, <<"to_id">> := ToId}} ->
+            push_notification_logic:maybe_push_for_enterprise_c2c(FromId, ToId);
+        _ ->
+            ok
+    end;
+push_after_commit_tx(Conn, <<"msg_c2g">>, MsgId) ->
+    case enterprise_message_repo:find_group_tx(Conn, MsgId) of
+        {ok, #{<<"from_id">> := FromId, <<"to_id">> := GroupId}} ->
+            case enterprise_group_repo:active_member_uids_tx(Conn, GroupId) of
+                {ok, MemberUids} ->
+                    %% 发送者剔除与离线判定在 push_notification_logic 内单点实现
+                    %% （c2g 的发送者永不自收）。
+                    push_notification_logic:maybe_push_for_enterprise_c2g(
+                        FromId, GroupId, MemberUids
+                    );
+                _ ->
+                    ok
+            end;
+        _ ->
+            ok
+    end;
+push_after_commit_tx(_Conn, _Table, _MsgId) ->
+    ok.
 
 %%%===================================================================
 %%% Internal
