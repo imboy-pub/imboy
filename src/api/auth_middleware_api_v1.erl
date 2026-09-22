@@ -65,6 +65,15 @@ execute(Req, Env) ->
     %% 只保留 /api/v1/* 形态。
     IsPassportPath =
         string:sub_string(binary_to_list(Path), 1, 17) == "/api/v1/passport/",
+    %% Web 坐席在登录前无法生成移动端设备签名；这四条 QR 会话路由本身
+    %% 已在 open/0 精确登记。手机端 scan/confirm 不在此列，仍走签名 + JWT。
+    IsWebQrLoginPath =
+        lists:member(Path, [
+            <<"/api/v1/passport/qr_login/create">>,
+            <<"/api/v1/passport/qr_login/status">>,
+            <<"/api/v1/passport/qr_login/cancel">>,
+            <<"/api/v1/passport/qr_login/subscribe">>
+        ]),
     Res1 =
         if
             Path == <<"/api/v1/ws">>, Switch == <<"on">> ->
@@ -73,7 +82,7 @@ execute(Req, Env) ->
                 auth_ds:verify_sign(Req, Env);
             Path == <<"/api/v1/refreshtoken">>, Switch == <<"on">> ->
                 auth_ds:verify_sign(Req, Env);
-            IsPassportPath, Switch == <<"on">> ->
+            IsPassportPath, not IsWebQrLoginPath, Switch == <<"on">> ->
                 auth_ds:verify_sign(Req, Env);
             InOpenLi == false, not IsCsCredentialPath, Switch == <<"on">> ->
                 auth_ds:verify_sign(Req, Env);
