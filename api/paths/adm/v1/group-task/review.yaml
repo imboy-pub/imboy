@@ -1,0 +1,26 @@
+# POST /api/adm/group/task/review — admin
+post:
+  tags: [admin]
+  summary: 管理后台批改群任务
+  description: 管理员对群任务提交进行评分和评语批改。Review and score a group task submission by admin.
+  operationId: adm_group_task_review
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [assignment_id]
+          properties:
+            assignment_id: { type: string, description: '任务分配 ID' }
+            score: { type: integer, description: '评分' }
+            comment: { type: string, description: '评语' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

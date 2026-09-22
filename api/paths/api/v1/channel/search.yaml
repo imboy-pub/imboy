@@ -1,0 +1,51 @@
+# GET (channel) searchChannels
+get:
+  tags: [user]
+  summary: 频道搜索
+  description: |
+    ## 中文 / English
+    频道搜索
+    Search channels
+  operationId: searchChannels
+  parameters:
+    - in: query
+      name: q
+      required: false
+      description: '搜索关键词（主参数；后端兼容旧 keyword 别名）/ Search keyword'
+      schema: { type: string }
+    - in: query
+      name: category_id
+      required: false
+      description: '分类 ID（频道分类筛选）/ Category filter'
+      schema: { type: integer }
+    - $ref: '../../../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64 }
+                            name: { type: string }
+                            type: { type: integer }
+                            avatar: { type: string }
+                            description: { type: string }
+                            subscriber_count: { type: integer }
+                            is_subscribed: { type: boolean }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

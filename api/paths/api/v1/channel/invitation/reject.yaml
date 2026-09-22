@@ -1,0 +1,34 @@
+# POST (channel) rejectChannelInvitation
+post:
+  tags: [user]
+  summary: 拒绝邀请
+  description: |
+    ## 中文 / English
+    拒绝邀请
+    Reject invitation
+  operationId: rejectChannelInvitation
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            invitation_id: { type: integer }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 无 payload，成功即拒绝邀请 / No payload on success
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../../../components/schemas/Envelope.yaml' } }

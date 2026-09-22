@@ -1,0 +1,75 @@
+# GET /api/adm/app_version/index — admin
+get:
+  tags: [admin]
+  summary: admin adm-app-version - index
+  description: |
+    ## 中文 / English
+    管理后台 adm-app-version handler 的 `index` 动作；路径 `/adm/app_version/index`。
+    Admin handler `adm-app-version`, action `index`. Path `/adm/app_version/index`.
+  operationId: adm_app_version_index
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        description: App 版本列表
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                            region_code:
+                              type: string
+                            type:
+                              type: string
+                            package_name:
+                              type: string
+                            app_name:
+                              type: string
+                            vsn:
+                              type: string
+                              description: 版本号
+                            download_url:
+                              type: string
+                            description:
+                              type: string
+                            force_update:
+                              type: boolean
+                            status:
+                              type: integer
+                            min_supported_vsn:
+                              type: string
+                            grayscale_percent:
+                              type: integer
+                            upgrade_type:
+                              type: string
+                              description: 'recommend / force'
+                            file_size:
+                              type: integer
+                            file_hash:
+                              type: string
+                            updated_at:
+                              type: string
+                            created_at:
+                              type: string
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,60 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/api/v1/user-tag-relation/friend-page.yaml
+# GET /api/user_tag_relation/friend_page — 好友标签下的好友分页 / Friends by tag
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
+# 调用方:  api/openapi.yaml#/paths/~1user_tag_relation~1friend_page
+# Handler: src/api/user_tag_relation_handler.erl#page/3 (Scene=friend)
+# 实现：friend_ds:page_by_tag/5
+# ----------------------------------------------------------------------------
+get:
+  tags: [user]
+  summary: 好友标签下的好友分页
+  description: |
+    ## 中文
+    列出指定好友标签下的所有好友。kwd 模糊匹配好友 nickname / remark。
+    ## English
+    Paginate friends under a friend-scoped tag. `kwd` fuzzy-matches the
+    friend's nickname / remark.
+  operationId: friendPageByTag
+  parameters:
+    - in: query
+      name: tag_id
+      required: true
+      description: '标签 ID / Tag ID'
+      schema: { type: integer, minimum: 1 }
+    - in: query
+      name: kwd
+      required: false
+      description: '搜索关键词（模糊匹配昵称/备注）/ Search keyword (fuzzy match nickname/remark)'
+      schema: { type: string }
+    - $ref: '../../../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页结果 { total, page, size, list }
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 来源 user_tag_relation_handler#page → user_tag_relation_logic
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: collect_page 含收藏字段；friend_page 含用户字段
+    '4XX':
+      description: token 无效 / tag_id 缺失或非法
+      content:
+        application/json:
+          schema:
+            $ref: '../../../../components/schemas/Envelope.yaml'

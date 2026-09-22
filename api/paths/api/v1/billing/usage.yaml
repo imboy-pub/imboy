@@ -1,0 +1,45 @@
+# POST /api/v1/billing/usage — 上报用量
+post:
+  tags: [user]
+  summary: 上报用量
+  description: |
+    上报指定订阅的某项指标用量增量。超配额时返回 quota_exceeded。
+
+    **归属校验（fail-closed）**：须登录且 `subscription_id` 归属当前用户，
+    否则 HTTP 仍为 200，信封 `code`=403 —— 未登录 msg「未登录」；
+    订阅不存在 / 无主（owner_uid=0）/ 非本人一律 msg「无权操作该订阅」
+    （不区分「不存在」与「非本人」，避免枚举他人订阅 id）。
+    （src/api/billing_handler.erl:293-307、src/logic/billing_logic.erl:208）
+
+  operationId: billingReportUsage
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [subscription_id, metric, used]
+          properties:
+            subscription_id: { type: integer, format: int64 }
+            metric: { type: string, description: '指标键，如 messages 或 storage' }
+            used: { type: integer, description: 用量增量（非负） }
+            period: { type: string, description: 计费周期标识（可选） }
+  responses:
+    '200':
+      description: 上报后累计用量
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      metric: { type: string }
+                      used: { type: integer, description: 本周期累计用量 }
+    '4XX':
+      description: 参数不合法 / 用量已超出套餐配额
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

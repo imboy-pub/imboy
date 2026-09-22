@@ -1,0 +1,469 @@
+# ----------------------------------------------------------------------------
+# imboy/api/openapi-adm.yaml — IMBoy REST API 编辑真源（surface adm：管理后台端点）
+#
+# 三受众布局（2026-09-22 api-surface-reorg）：本文件是**手工编辑真源**之一。
+# 汇总入口 api/openapi.yaml 由 gen_aggregate.py 从三个 root 生成，请勿手改。
+# 修改流程：改本文件（或 paths/ 下对应端点文件）→ redocly lint →
+#   python3 api/gen_aggregate.py 重新生成聚合文件。
+# ----------------------------------------------------------------------------
+openapi: 3.1.0
+info:
+  title: IMBoy REST API — adm surface
+  version: 1.0.0-rc.3
+  x-stability: stable
+  summary: IMBoy 管理后台 HTTP / REST 接口冻结版
+  description: |
+    本文件是 IMBoy REST API **surface adm**（管理后台）的编辑真源，桥接 178 条
+    path（184 个操作，2026-09-22 三受众重组）。覆盖管理后台的用户/群组/频道/
+    举报/公告/插件/运营统计等治理路径与首启初始化向导；完整路径清单以
+    `imboy/src/imboy_router.erl` 为权威；契约机器真源见
+    `.contract/api_contract.json`（contract-export）。
+
+    **响应信封**：所有响应统一为 `{ code, msg, sv_ts, payload }`，定义见
+    [envelope.schema.json](./envelope.schema.json)。
+
+    **认证**：与 api surface 相同的 Bearer JWT（管理后台登录签发）；
+    `/api/adm/setup/*` 首启向导免鉴权（仅允许执行一次，见 `imboy_router:open/0`）。
+
+    **版本策略**：1.0.x 期间保证路径签名向后兼容，破坏性变更通过 `/v2` 路径前缀发布。
+  license:
+    name: BUSL-1.1
+    url: https://mariadb.com/bsl11/
+  contact:
+    name: IMBoy Maintainers
+    url: https://github.com/imboy-pub/imboy
+
+servers:
+  - url: https://{apiDomain}
+    description: 生产环境（部署方按实际域名替换 apiDomain）
+    variables:
+      apiDomain:
+        default: api.imboy.app
+        description: 生产 API 域名占位；自托管/私有部署需改为对应域名
+  - url: http://127.0.0.1:{devPort}
+    description: 本地开发（IMBOYENV=local make run，端口见 imboy/CLAUDE.md）
+    variables:
+      devPort:
+        default: '9800'
+        description: 本地 HTTP 端口；可通过 HTTP_PORT 环境变量覆盖
+
+tags:
+  - name: admin
+    description: 管理后台鉴权端点
+  - name: admin-setup
+    description: 首启初始化向导（免鉴权，仅允许执行一次）
+  - name: ai-agent
+    description: AI 助手（平台 LLM 推理）
+
+# ----------------------------------------------------------------------------
+# T3.2 split phase 4 / B (2026-05-16)：paths 段由"内联端点"改为"按域 $ref"。
+# 每个端点对应 api/paths/<domain>/<name>.yaml，零语义变化（oasdiff 守门）。
+# 子目录约定：adm/ auth/ user/ msg/ 等按业务 tag 拆分；新增端点直接落入
+# 对应子目录后在此 paths 段追加 $ref 桥接。
+# ----------------------------------------------------------------------------
+paths:
+  /api/adm/setup/status:
+    $ref: './paths/adm/v1/setup/status.yaml'
+  /api/adm/setup/init:
+    $ref: './paths/adm/v1/setup/init.yaml'
+  /api/adm:
+    $ref: './paths/adm/v1/index/index.yaml'
+  /api/adm/index:
+    $ref: './paths/adm/v1/index/index.yaml'
+  /api/adm/current:
+    $ref: './paths/adm/v1/index/current.yaml'
+  /api/adm/rbac/me:
+    $ref: './paths/adm/v1/index/rbac.yaml'
+  /api/adm/welcome:
+    $ref: './paths/adm/v1/index/welcome.yaml'
+  /api/adm/feedback/index:
+    $ref: './paths/adm/v1/feedback/index.yaml'
+  /api/adm/admin/config/features:
+    $ref: './paths/adm/v1/admin/config_features.yaml'
+  /api/adm/admin/config/policy/bootstrap:
+    $ref: './paths/adm/v1/admin/config_policy_bootstrap.yaml'
+  /api/adm/admin/config/policy/meta:
+    $ref: './paths/adm/v1/admin/config_policy_meta.yaml'
+  /api/adm/admin/config/policy/preview:
+    $ref: './paths/adm/v1/admin/config_policy_preview.yaml'
+  /api/adm/admin/config/policy/saved:
+    $ref: './paths/adm/v1/admin/config_policy_saved.yaml'
+  /api/adm/admin/config/policy:
+    $ref: './paths/adm/v1/admin/config_policy.yaml'
+  /api/adm/admin/muted_users/list:
+    $ref: './paths/adm/v1/admin/muted_users_list.yaml'
+  /api/adm/admin/muted_users/unmute:
+    $ref: './paths/adm/v1/admin/muted_users_unmute.yaml'
+  /api/adm/admin/muted_users/unmute_batch:
+    $ref: './paths/adm/v1/admin/muted_users_unmute_batch.yaml'
+  /api/adm/admin/push_token/list:
+    $ref: './paths/adm/v1/admin/push_token_list.yaml'
+  /api/adm/admin/compliance_key/list:
+    $ref: './paths/adm/v1/admin/compliance_key_list.yaml'
+  /api/adm/admin/compliance_key/create:
+    $ref: './paths/adm/v1/admin/compliance_key_create.yaml'
+  /api/adm/admin/compliance_key/revoke:
+    $ref: './paths/adm/v1/admin/compliance_key_revoke.yaml'
+  /api/adm/admin/list:
+    $ref: './paths/adm/v1/admin/list.yaml'
+  /api/adm/admin/create:
+    $ref: './paths/adm/v1/admin/create.yaml'
+  /api/adm/admin/assign_role:
+    $ref: './paths/adm/v1/admin/assign_role.yaml'
+  /api/adm/feedback/reply:
+    $ref: './paths/adm/v1/feedback/reply.yaml'
+  /api/adm/role/list:
+    $ref: './paths/adm/v1/role/list.yaml'
+  /api/adm/roles/list:
+    $ref: './paths/adm/v1/role/list.yaml'
+  /api/adm/role/create:
+    $ref: './paths/adm/v1/role/create.yaml'
+  /api/adm/roles/create:
+    $ref: './paths/adm/v1/role/create.yaml'
+  /api/adm/role/permissions/save:
+    $ref: './paths/adm/v1/role/permissions_save.yaml'
+  /api/adm/role/permission/update:
+    $ref: './paths/adm/v1/role/permissions_save.yaml'
+  /api/adm/roles/permissions/save:
+    $ref: './paths/adm/v1/role/permissions_save.yaml'
+  /api/adm/app_ddl/index:
+    $ref: './paths/adm/v1/app-ddl/index.yaml'
+  /api/adm/app_ddl/save:
+    $ref: './paths/adm/v1/app-ddl/save.yaml'
+  /api/adm/app_ddl/delete:
+    $ref: './paths/adm/v1/app-ddl/delete.yaml'
+  /api/adm/app_version/index:
+    $ref: './paths/adm/v1/app-version/index.yaml'
+  /api/adm/app_version/save:
+    $ref: './paths/adm/v1/app-version/save.yaml'
+  /api/adm/app_version/delete:
+    $ref: './paths/adm/v1/app-version/delete.yaml'
+  /api/adm/app_version/version_stats:
+    $ref: './paths/adm/v1/app-version/version_stats.yaml'
+  /api/adm/attach/auth:
+    $ref: './paths/adm/v1/attach/auth.yaml'
+  /api/adm/storage/stats:
+    $ref: './paths/adm/v1/attach/stats.yaml'
+  /api/adm/storage/index:
+    $ref: './paths/adm/v1/attach/index.yaml'
+  /api/adm/passport/meta:
+    $ref: './paths/adm/v1/passport/meta.yaml'
+  /api/adm/passport/login:
+    $ref: './paths/adm/v1/passport/login.yaml'
+  /api/adm/passport/captcha:
+    $ref: './paths/adm/v1/passport/captcha.yaml'
+  /api/adm/passport/do_login:
+    $ref: './paths/adm/v1/passport/do_login.yaml'
+  /api/adm/passport/logout:
+    $ref: './paths/adm/v1/passport/logout.yaml'
+  /api/adm/user/list:
+    $ref: './paths/adm/v1/user/list.yaml'
+  /api/adm/user/detail:
+    $ref: './paths/adm/v1/user/detail.yaml'
+  /api/adm/user/ban:
+    $ref: './paths/adm/v1/user/ban.yaml'
+  /api/adm/user/unban:
+    $ref: './paths/adm/v1/user/unban.yaml'
+  /api/adm/user/search:
+    $ref: './paths/adm/v1/user/search.yaml'
+  /api/adm/user/logout_apply/list:
+    $ref: './paths/adm/v1/logout-apply/list.yaml'
+  /api/adm/user/logout_apply/export:
+    $ref: './paths/adm/v1/logout-apply/export.yaml'
+  /api/adm/user/logout_apply/reject:
+    $ref: './paths/adm/v1/logout-apply/reject.yaml'
+  /api/adm/group/list:
+    $ref: './paths/adm/v1/group/list.yaml'
+  /api/adm/group/detail:
+    $ref: './paths/adm/v1/group/detail.yaml'
+  /api/adm/group/dissolve:
+    $ref: './paths/adm/v1/group/dissolve.yaml'
+  /api/adm/group/search:
+    $ref: './paths/adm/v1/group/search.yaml'
+  /api/adm/group/members:
+    $ref: './paths/adm/v1/group/members.yaml'
+  /api/adm/message/list:
+    $ref: './paths/adm/v1/message/list.yaml'
+  /api/adm/message/detail:
+    $ref: './paths/adm/v1/message/detail.yaml'
+  /api/adm/message/export:
+    $ref: './paths/adm/v1/message/export.yaml'
+  /api/adm/channel/list:
+    $ref: './paths/adm/v1/channel/list.yaml'
+  /api/adm/channel/detail/{channel_id}:
+    $ref: './paths/adm/v1/channel/detail.yaml'
+  /api/adm/channel/{channel_id}/messages:
+    $ref: './paths/adm/v1/channel/messages.yaml'
+  /api/adm/channel/{channel_id}/subscribers:
+    $ref: './paths/adm/v1/channel/subscribers.yaml'
+  /api/adm/channel/{channel_id}/subscriber/{user_id}:
+    $ref: './paths/adm/v1/channel/remove_subscriber.yaml'
+  /api/adm/channel/{channel_id}/admins:
+    $ref: './paths/adm/v1/channel/admins.yaml'
+  /api/adm/channel/{channel_id}/admin/{user_id}/role:
+    $ref: './paths/adm/v1/channel/update_admin_role.yaml'
+  /api/adm/channel/{channel_id}/admin/{user_id}:
+    $ref: './paths/adm/v1/channel/remove_admin.yaml'
+  /api/adm/channel/{channel_id}/invitations:
+    $ref: './paths/adm/v1/channel/invitations.yaml'
+  /api/adm/channel/{channel_id}/orders:
+    $ref: './paths/adm/v1/channel/orders.yaml'
+  /api/adm/channel/{channel_id}/stats:
+    $ref: './paths/adm/v1/channel/stats.yaml'
+  /api/adm/channel/{channel_id}/message/{message_id}/pin:
+    $ref: './paths/adm/v1/channel/pin_message.yaml'
+  /api/adm/channel/{channel_id}/message/{message_id}/delete:
+    $ref: './paths/adm/v1/channel/delete_message.yaml'
+  /api/adm/channel/search:
+    $ref: './paths/adm/v1/channel/search.yaml'
+  /api/adm/channel/delete:
+    $ref: './paths/adm/v1/channel/delete.yaml'
+  /api/adm/moment/list:
+    $ref: './paths/adm/v1/moment/list.yaml'
+  /api/adm/moment/detail/{moment_id}:
+    $ref: './paths/adm/v1/moment/detail.yaml'
+  /api/adm/moment/delete:
+    $ref: './paths/adm/v1/moment/delete.yaml'
+  /api/adm/moment/report/list:
+    $ref: './paths/adm/v1/moment/report_list.yaml'
+  /api/adm/moment/report/resolve:
+    $ref: './paths/adm/v1/moment/report_resolve.yaml'
+  /api/adm/moment/report/batch_resolve:
+    $ref: './paths/adm/v1/moment/report_batch_resolve.yaml'
+  /api/adm/report/create:
+    $ref: './paths/adm/v1/report/create.yaml'
+  /api/adm/report/list:
+    $ref: './paths/adm/v1/report/list.yaml'
+  /api/adm/report/detail:
+    $ref: './paths/adm/v1/report/detail.yaml'
+  /api/adm/report/resolve:
+    $ref: './paths/adm/v1/report/resolve.yaml'
+  /api/adm/report/batch_resolve:
+    $ref: './paths/adm/v1/report/batch_resolve.yaml'
+  /api/adm/group/report/list:
+    $ref: './paths/adm/v1/report/group_list.yaml'
+  /api/adm/group/report/resolve:
+    $ref: './paths/adm/v1/report/group_resolve.yaml'
+  /api/adm/group/report/batch_resolve:
+    $ref: './paths/adm/v1/report/group_batch_resolve.yaml'
+  /api/adm/channel/report/list:
+    $ref: './paths/adm/v1/report/channel_list.yaml'
+  /api/adm/channel/report/resolve:
+    $ref: './paths/adm/v1/report/channel_resolve.yaml'
+  /api/adm/channel/report/batch_resolve:
+    $ref: './paths/adm/v1/report/channel_batch_resolve.yaml'
+  /api/adm/user/report/list:
+    $ref: './paths/adm/v1/report/user_list.yaml'
+  /api/adm/user/report/resolve:
+    $ref: './paths/adm/v1/report/user_resolve.yaml'
+  /api/adm/user/report/batch_resolve:
+    $ref: './paths/adm/v1/report/user_batch_resolve.yaml'
+  /api/adm/announcement/index:
+    $ref: './paths/adm/v1/announcement/index.yaml'
+  /api/adm/announcement/create:
+    $ref: './paths/adm/v1/announcement/create.yaml'
+  /api/adm/announcement/update:
+    $ref: './paths/adm/v1/announcement/update.yaml'
+  /api/adm/announcement/delete:
+    $ref: './paths/adm/v1/announcement/delete.yaml'
+  /api/adm/announcement/publish:
+    $ref: './paths/adm/v1/announcement/publish.yaml'
+  /api/adm/announcement/unpublish:
+    $ref: './paths/adm/v1/announcement/unpublish.yaml'
+  /api/adm/plugin/list:
+    $ref: './paths/adm/v1/plugin/list.yaml'
+  /api/adm/plugin/detail:
+    $ref: './paths/adm/v1/plugin/detail.yaml'
+  /api/adm/plugin/state:
+    $ref: './paths/adm/v1/plugin/state_query.yaml'
+  /api/adm/plugin/health:
+    $ref: './paths/adm/v1/plugin/health.yaml'
+  /api/adm/plugin/install:
+    $ref: './paths/adm/v1/plugin/install.yaml'
+  /api/adm/plugin/enable:
+    $ref: './paths/adm/v1/plugin/enable.yaml'
+  /api/adm/plugin/disable:
+    $ref: './paths/adm/v1/plugin/disable.yaml'
+  /api/adm/plugin/upgrade:
+    $ref: './paths/adm/v1/plugin/upgrade.yaml'
+  /api/adm/plugin/uninstall:
+    $ref: './paths/adm/v1/plugin/uninstall.yaml'
+  /api/adm/plugin/reset:
+    $ref: './paths/adm/v1/plugin/reset.yaml'
+  /api/adm/plugin/force_uninstall:
+    $ref: './paths/adm/v1/plugin/force_uninstall.yaml'
+  /api/adm/stats/overview:
+    $ref: './paths/adm/v1/stats/overview.yaml'
+  /api/adm/stats/user:
+    $ref: './paths/adm/v1/stats/user.yaml'
+  /api/adm/stats/message:
+    $ref: './paths/adm/v1/stats/message.yaml'
+  /api/adm/stats/group:
+    $ref: './paths/adm/v1/stats/group.yaml'
+  /api/adm/stats/ranking:
+    $ref: './paths/adm/v1/stats/ranking.yaml'
+  /api/adm/group/vote/list:
+    $ref: './paths/adm/v1/group-vote/list.yaml'
+  /api/adm/group/vote/detail:
+    $ref: './paths/adm/v1/group-vote/detail.yaml'
+  /api/adm/group/vote/close:
+    $ref: './paths/adm/v1/group-vote/close.yaml'
+  /api/adm/group/notice/list:
+    $ref: './paths/adm/v1/group-notice/list.yaml'
+  /api/adm/group/notice/detail:
+    $ref: './paths/adm/v1/group-notice/detail.yaml'
+  /api/adm/group/notice/delete:
+    $ref: './paths/adm/v1/group-notice/delete.yaml'
+  /api/adm/group/album/list:
+    $ref: './paths/adm/v1/group-album/list.yaml'
+  /api/adm/group/album/detail:
+    $ref: './paths/adm/v1/group-album/detail.yaml'
+  /api/adm/group/album/delete:
+    $ref: './paths/adm/v1/group-album/delete.yaml'
+  /api/adm/group/category/list:
+    $ref: './paths/adm/v1/group-category/list.yaml'
+  /api/adm/group/category/delete:
+    $ref: './paths/adm/v1/group-category/delete.yaml'
+  /api/adm/group/file/list:
+    $ref: './paths/adm/v1/group-file/list.yaml'
+  /api/adm/group/file/detail:
+    $ref: './paths/adm/v1/group-file/detail.yaml'
+  /api/adm/group/file/delete:
+    $ref: './paths/adm/v1/group-file/delete.yaml'
+  /api/adm/group/tag/list:
+    $ref: './paths/adm/v1/group-tag/list.yaml'
+  /api/adm/group/tag/delete:
+    $ref: './paths/adm/v1/group-tag/delete.yaml'
+  /api/adm/group/schedule/list:
+    $ref: './paths/adm/v1/group-schedule/list.yaml'
+  /api/adm/group/schedule/detail:
+    $ref: './paths/adm/v1/group-schedule/detail.yaml'
+  /api/adm/group/schedule/cancel:
+    $ref: './paths/adm/v1/group-schedule/cancel.yaml'
+  /api/adm/group/schedule/restore:
+    $ref: './paths/adm/v1/group-schedule/restore.yaml'
+  /api/adm/group/task/list:
+    $ref: './paths/adm/v1/group-task/list.yaml'
+  /api/adm/group/task/detail:
+    $ref: './paths/adm/v1/group-task/detail.yaml'
+  /api/adm/group/task/pending_review:
+    $ref: './paths/adm/v1/group-task/pending_review.yaml'
+  /api/adm/group/task/review:
+    $ref: './paths/adm/v1/group-task/review.yaml'
+  /api/adm/group/task/restore:
+    $ref: './paths/adm/v1/group-task/restore.yaml'
+  /api/adm/group/task/close:
+    $ref: './paths/adm/v1/group-task/close.yaml'
+  /api/adm/group/task/delete:
+    $ref: './paths/adm/v1/group-task/delete.yaml'
+  /api/adm/group/update:
+    $ref: './paths/adm/v1/group/update.yaml'
+  /api/adm/group/member/kick:
+    $ref: './paths/adm/v1/group/member_kick.yaml'
+  /api/adm/group/governance_log/list:
+    $ref: './paths/adm/v1/group-governance/list.yaml'
+  /api/adm/storage/delete:
+    $ref: './paths/adm/v1/storage/delete.yaml'
+  /api/adm/storage/disable:
+    $ref: './paths/adm/v1/storage/disable.yaml'
+  /api/adm/storage/enable:
+    $ref: './paths/adm/v1/storage/enable.yaml'
+  /api/adm/storage/orphan:
+    $ref: './paths/adm/v1/storage/orphan.yaml'
+  /api/adm/storage/orphan/cleanup:
+    $ref: './paths/adm/v1/storage/orphan_cleanup.yaml'
+  /api/adm/user/tag/list:
+    $ref: './paths/adm/v1/user/tag_list.yaml'
+  /api/adm/user/tag/delete:
+    $ref: './paths/adm/v1/user/tag_delete.yaml'
+  /api/adm/user/collect/list:
+    $ref: './paths/adm/v1/user/collect_list.yaml'
+  /api/adm/user/collect/remove:
+    $ref: './paths/adm/v1/user/collect_remove.yaml'
+  /api/adm/user/logout_apply/approve:
+    $ref: './paths/adm/v1/user/logout_approve.yaml'
+  /api/adm/admin/disable:
+    $ref: './paths/adm/v1/admin/disable.yaml'
+  /api/adm/feedback/delete:
+    $ref: './paths/adm/v1/feedback/delete.yaml'
+  /api/adm/plugin/logs:
+    $ref: './paths/adm/v1/plugin/logs.yaml'
+  /api/adm/ai_agent/onboarding_config:
+    $ref: './paths/adm/v1/ai-agent/onboarding-config.yaml'
+  # --------------------------------------------------------------------------
+  # 商业化管理端（C0-CONTRACT-01）：License 状态、SSO 配置、finance/billing 运营
+  # --------------------------------------------------------------------------
+  /api/adm/stats/license:
+    $ref: './paths/adm/v1/stats/license.yaml'
+  /api/adm/sso/config:
+    $ref: './paths/adm/v1/sso/config.yaml'
+  /api/adm/sso/test:
+    $ref: './paths/adm/v1/sso/test.yaml'
+  /api/adm/finance/billing/plans:
+    $ref: './paths/adm/v1/finance/billing-plans.yaml'
+  /api/adm/finance/billing/plan:
+    $ref: './paths/adm/v1/finance/billing-plan-create.yaml'
+  /api/adm/finance/billing/plan/update:
+    $ref: './paths/adm/v1/finance/billing-plan-update.yaml'
+  /api/adm/finance/billing/subscriptions:
+    $ref: './paths/adm/v1/finance/billing-subscriptions.yaml'
+  /api/adm/finance/billing/invoices:
+    $ref: './paths/adm/v1/finance/billing-invoices.yaml'
+  /api/adm/project/list:
+    $ref: './paths/adm/v1/project/adm-project-list.yaml'
+  /api/adm/project/detail:
+    $ref: './paths/adm/v1/project/adm-project-detail.yaml'
+  /api/adm/project/members:
+    $ref: './paths/adm/v1/project/adm-project-members.yaml'
+  /api/adm/project/milestones:
+    $ref: './paths/adm/v1/project/adm-project-milestones.yaml'
+  /api/adm/project/channels:
+    $ref: './paths/adm/v1/project/adm-project-channels.yaml'
+  /api/adm/project/aggregations:
+    $ref: './paths/adm/v1/project/adm-project-aggregations.yaml'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT 载荷 `sub` 为 TSID integer 字符串；过期后前端需调用 `/passport/refresh`
+        而非直接重连（此前反转逻辑已于 1.0.0-rc.1 修复）。
+
+  schemas:
+    # ----------------------------------------------------------------------
+    # T3.2 split phase 1 (2026-05-16)：通用 schema 抽离为独立文件，
+    # 便于 review、按域演进、避免单文件膨胀至万行。
+    # 根 yaml 仍保持内部锚 #/components/schemas/<Name> 不变，
+    # 现有 paths 中的 $ref 无需调整。
+    # ----------------------------------------------------------------------
+    Envelope:
+      $ref: './components/schemas/Envelope.yaml'
+    User:
+      $ref: './components/schemas/User.yaml'
+    Message:
+      $ref: './components/schemas/Message.yaml'
+
+  parameters:
+    # ----------------------------------------------------------------------
+    # T3.2 split phase 2 (2026-05-16)：公共 query 参数抽出。
+    # 复用范围：分页参数 → admin 20+ 列表端点；会话/游标参数 → msg 多个端点。
+    # 文件名必须 PascalCase 与 components.parameters key 严格一致，
+    # 触发 redocly bundle 去重，避免 *ref_N YAML 锚点污染 codegen。
+    # ----------------------------------------------------------------------
+    PaginationPage:
+      $ref: './components/parameters/PaginationPage.yaml'
+    PaginationSize:
+      $ref: './components/parameters/PaginationSize.yaml'
+    PaginationKeyword:
+      $ref: './components/parameters/PaginationKeyword.yaml'
+    ConvKey:
+      $ref: './components/parameters/ConvKey.yaml'
+    SinceSeq:
+      $ref: './components/parameters/SinceSeq.yaml'
+    HistoryLimit:
+      $ref: './components/parameters/HistoryLimit.yaml'
+
+security:
+  - bearerAuth: []

@@ -1,0 +1,24 @@
+# POST /api/group_album/photo/delete — 删除照片 / Delete photo
+post:
+  tags: [user]
+  summary: 删除照片
+  description: 删除群相册中的照片；仅上传者或群管理员可操作。Delete a photo from the group album; only the uploader or group admin can delete.
+  operationId: deleteGroupAlbumPhoto
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [photo_id]
+          properties:
+            photo_id: { type: integer, minimum: 1 }
+  responses:
+    '200':
+      description: 删除成功
+      content:
+        application/json: { schema: { $ref: '../../../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 不存在 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../../../../components/schemas/Envelope.yaml' } }

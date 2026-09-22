@@ -1,0 +1,30 @@
+# GET /api/adm/group/album/detail — admin
+get:
+  tags: [admin]
+  summary: 管理后台群相册详情
+  description: 获取指定群相册的详细信息（管理员视角）。Get group album details (admin view).
+  operationId: adm_group_album_detail
+  parameters:
+    - in: query
+      name: album_id
+      required: true
+      schema: { type: string }
+      description: 相册 ID
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: '详情对象（字段以对应表/handler 为准）'
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

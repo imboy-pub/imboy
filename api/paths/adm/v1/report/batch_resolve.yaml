@@ -1,0 +1,45 @@
+# POST /api/adm/report/batch_resolve — admin
+post:
+  tags: [admin]
+  summary: admin adm-report - batch_resolve
+  description: |
+    ## 中文 / English
+    管理后台 adm-report handler 的 `batch_resolve` 动作；路径 `/adm/report/batch_resolve`。
+    Admin handler `adm-report`, action `batch_resolve`. Path `/adm/report/batch_resolve`.
+  operationId: adm_report_batch_resolve
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 批量处理结果 / Batch resolve result
+                    properties:
+                      success_count:
+                        type: integer
+                        description: 成功处理条数 / Successfully resolved count
+                      failed_count:
+                        type: integer
+                        description: 失败条数 / Failed count
+                      failed_ids:
+                        type: array
+                        description: 失败的举报 ID 列表 / Failed report IDs
+                        items:
+                          type: string
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

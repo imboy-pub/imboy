@@ -1,0 +1,52 @@
+post:
+  tags: [workspace]
+  summary: 创建 Workspace
+  description: |
+    创建 Workspace，并在同一事务中初始化 Owner、默认 Group 和默认 Channel。
+
+    部署的 `product_experience` 是唯一模式来源：
+    - `chat`（user_scope）：不得提供 `organization_id`，Workspace 归属当前用户。
+    - `workspace`（workspace_scope）：必须提供 `organization_id`，且当前用户必须是
+      active Organization 的 active Owner 或 Admin；Workspace 不归属个人。
+
+    Organization Member 与 Workspace Member 相互独立；创建 Organization Workspace
+    不会自动把其他 Organization Member 加入 Workspace。
+  operationId: workspaceCreate
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string, minLength: 1, maxLength: 200 }
+            organization_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: workspace_scope 必填；user_scope 禁止提供
+            request_id:
+              type: string
+              description: 客户端幂等请求标识
+  responses:
+    '200':
+      description: 创建成功、幂等命中或业务错误信封
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [workspace_id, workspace, channel_id, group_id, status]
+                    properties:
+                      workspace_id: { type: integer, format: int64 }
+                      workspace: { $ref: '../../../../components/schemas/Workspace.yaml' }
+                      channel_id: { type: integer, format: int64 }
+                      group_id: { type: integer, format: int64 }
+                      status: { type: string, enum: [created, existing] }
+    '405':
+      description: Method Not Allowed

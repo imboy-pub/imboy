@@ -1,0 +1,41 @@
+# POST /api/adm/report/create — admin
+post:
+  tags: [admin]
+  summary: admin adm-report - create
+  description: |
+    ## 中文 / English
+    管理后台 adm-report handler 的 `create` 动作；路径 `/adm/report/create`。
+    Admin handler `adm-report`, action `create`. Path `/adm/report/create`.
+  operationId: adm_report_create
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 创建举报结果 / Create report result
+                    properties:
+                      report_id:
+                        type: integer
+                        format: int64
+                        description: 举报记录 TSID / Report TSID
+                      target_type:
+                        type: string
+                        description: 举报目标类型 moment/group/channel/user / Target type
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,27 @@
+# GET /api/adm/plugin/detail — admin
+get:
+  tags: [admin]
+  summary: admin adm-plugin - detail
+  description: |
+    ## 中文 / English
+    管理后台 adm-plugin handler 的 `detail` 动作；路径 `/adm/plugin/detail`。
+    Admin handler `adm-plugin`, action `detail`. Path `/adm/plugin/detail`.
+  operationId: adm_plugin_detail
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 插件详情对象（imboy_plugin_manager:get_plugin 返回）
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

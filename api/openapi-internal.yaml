@@ -1,0 +1,100 @@
+# ----------------------------------------------------------------------------
+# imboy/openapi-internal.yaml — IMBoy Internal API 编辑真源（surface internal）
+#
+# 三受众布局（2026-09-22 api-surface-reorg）：企业集成 internal v1 端点。
+# 端点文件位于 paths/internal/v1/；认证方案 ibIntBearer（Bearer ib_int_* 凭证）。
+# 汇总入口 api/openapi.yaml 由 gen_aggregate.py 生成，请勿手改。
+# 阶段 2（internal surface 契约化）填充 paths 段。
+# ----------------------------------------------------------------------------
+openapi: 3.1.0
+info:
+  title: IMBoy REST API
+  version: 1.0.0-rc.3
+  x-stability: stable
+  summary: IMBoy 后端 HTTP / REST 接口冻结版
+  description: |
+    本文件是 IMBoy 1.0.0-rc.3 REST API 的冻结契约。覆盖核心路径（认证、用户、消息、
+    群组、好友、频道、朋友圈、管理后台首启向导等）。完整路径清单以
+    `imboy/src/imboy_router.erl` 为权威；本文件当前声明 522 条端点（2026-08-30，
+    project 协作域已全量补齐），其余增量端点按域逐步补全；契约机器真源见
+    `.contract/api_contract.json`（contract-export）。
+
+    **响应信封**：所有响应统一为 `{ code, msg, sv_ts, payload }`，定义见
+    [envelope.schema.json](./envelope.schema.json)。
+
+    **认证**：Bearer JWT，载荷中的 `sub` 为 TSID（integer 字符串）。`/adm/setup/*`
+    与少数白名单路径免鉴权（见 `imboy_router:open/0`）。
+
+    **版本策略**：1.0.x 期间保证路径签名向后兼容，破坏性变更通过 `/v2` 路径前缀发布。
+  license:
+    name: BUSL-1.1
+    url: https://mariadb.com/bsl11/
+  contact:
+    name: IMBoy Maintainers
+    url: https://github.com/imboy-pub/imboy
+
+servers:
+  - url: https://{apiDomain}
+    description: 生产环境（部署方按实际域名替换 apiDomain）
+    variables:
+      apiDomain:
+        default: api.imboy.app
+        description: 生产 API 域名占位；自托管/私有部署需改为对应域名
+  - url: http://127.0.0.1:{devPort}
+    description: 本地开发（IMBOYENV=local make run，端口见 imboy/CLAUDE.md）
+    variables:
+      devPort:
+        default: '9800'
+        description: 本地 HTTP 端口；可通过 HTTP_PORT 环境变量覆盖
+
+tags:
+  - name: internal
+    description: 企业集成 Internal API（ib_int 凭证）
+paths: {}
+  # 阶段 2 填充：19 条 cowboy path / 23 端点
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT 载荷 `sub` 为 TSID integer 字符串；过期后前端需调用 `/passport/refresh`
+        而非直接重连（此前反转逻辑已于 1.0.0-rc.1 修复）。
+
+  schemas:
+    # ----------------------------------------------------------------------
+    # T3.2 split phase 1 (2026-05-16)：通用 schema 抽离为独立文件，
+    # 便于 review、按域演进、避免单文件膨胀至万行。
+    # 根 yaml 仍保持内部锚 #/components/schemas/<Name> 不变，
+    # 现有 paths 中的 $ref 无需调整。
+    # ----------------------------------------------------------------------
+    Envelope:
+      $ref: './components/schemas/Envelope.yaml'
+    User:
+      $ref: './components/schemas/User.yaml'
+    Message:
+      $ref: './components/schemas/Message.yaml'
+
+  parameters:
+    # ----------------------------------------------------------------------
+    # T3.2 split phase 2 (2026-05-16)：公共 query 参数抽出。
+    # 复用范围：分页参数 → admin 20+ 列表端点；会话/游标参数 → msg 多个端点。
+    # 文件名必须 PascalCase 与 components.parameters key 严格一致，
+    # 触发 redocly bundle 去重，避免 *ref_N YAML 锚点污染 codegen。
+    # ----------------------------------------------------------------------
+    PaginationPage:
+      $ref: './components/parameters/PaginationPage.yaml'
+    PaginationSize:
+      $ref: './components/parameters/PaginationSize.yaml'
+    PaginationKeyword:
+      $ref: './components/parameters/PaginationKeyword.yaml'
+    ConvKey:
+      $ref: './components/parameters/ConvKey.yaml'
+    SinceSeq:
+      $ref: './components/parameters/SinceSeq.yaml'
+    HistoryLimit:
+      $ref: './components/parameters/HistoryLimit.yaml'
+
+security:
+  - bearerAuth: []

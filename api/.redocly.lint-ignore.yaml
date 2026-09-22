@@ -1,6 +1,8 @@
 # This file instructs Redocly's linter to ignore the rules contained for specific parts of your API.
 # See https://redocly.com/docs/cli/ for more information.
-openapi.yaml:
+# 三受众布局（2026-09-22）：key 相对本目录；root 级忽略项按 surface 落在
+# openapi-api.yaml / openapi-adm.yaml；聚合文件 openapi.yaml 为生成物不单独 lint。
+openapi-api.yaml:
   no-ambiguous-paths:
     - '#/paths/~1api~1v1~1channel~1{channel_id}~1update'
     - '#/paths/~1api~1v1~1channel~1{channel_id}~1delete'
@@ -16,15 +18,17 @@ openapi.yaml:
     - '#/paths/~1api~1v1~1channel~1{channel_id}~1invitation'
     - '#/paths/~1api~1v1~1channel~1{channel_id}~1order'
     - '#/paths/~1api~1v1~1channel~1order~1{order_no}'
+openapi-adm.yaml:
+  no-ambiguous-paths:
     - '#/paths/~1api~1adm~1channel~1{channel_id}~1messages'
     - '#/paths/~1api~1adm~1channel~1{channel_id}~1subscribers'
     - '#/paths/~1api~1adm~1channel~1{channel_id}~1admins'
     - '#/paths/~1api~1adm~1channel~1{channel_id}~1invitations'
     - '#/paths/~1api~1adm~1channel~1{channel_id}~1orders'
     - '#/paths/~1api~1adm~1channel~1{channel_id}~1stats'
-paths/ws/connect.yaml:
+paths/api/v1/ws/connect.yaml:
   operation-2xx-response:
     - '#/get/responses'
-paths/auth/oidc-authorize.yaml:
+paths/api/v1/auth/oidc-authorize.yaml:
   operation-2xx-response:
     - '#/get/responses'

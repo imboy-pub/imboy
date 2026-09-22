@@ -1,0 +1,25 @@
+# POST /api/adm/group/tag/delete — admin
+post:
+  tags: [admin]
+  summary: 管理后台删除群标签
+  description: 管理员删除指定群的标签。Delete a group tag by admin.
+  operationId: adm_group_tag_delete
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, tag_name]
+          properties:
+            gid: { type: integer, description: '群 ID' }
+            tag_name: { type: string, description: '标签名称' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
