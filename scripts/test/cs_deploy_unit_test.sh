@@ -29,6 +29,7 @@ BLUE_GREEN_LOG="$TMP_ROOT/bluegreen.log"
 ENV_FILE="$TMP_ROOT/customer.env"
 FAKE_ROOT="$TMP_ROOT/fakeroot"
 TEST_SCRIPTS="$TMP_ROOT/scripts"
+TEST_SOURCE_HEAD=0123456789abcdef0123456789abcdef01234567
 
 mkdir -p "$MOCK_BIN" "$TEST_SCRIPTS/lib"
 
@@ -93,7 +94,7 @@ DEPLOY_SALES_RELEASE=false
 DEPLOY_STOP_OLD=true
 NGINX_CONF=/etc/nginx/api.imboy.test.conf
 PRODADM_CONF=/etc/nginx/prodadm.imboy.test.conf
-ADMIN_BUILD_DIR=../fakeroot/www/wwwroot/admin.imboy.test
+ADMIN_BUILD_DIR=../fakeroot/admin-src
 ADMIN_REMOTE_DIR=/www/wwwroot/admin.imboy.test
 DB_CONTAINER=pg.test
 DB_NAME=imboy_test
@@ -280,6 +281,18 @@ case "$cmd" in
       exit 0
     fi
     exit 4 ;;
+  *"curl -sS -o /dev/null -w '%{http_code}'"*"/api/adm/admin/config/sidebar"*)
+    printf '401\n'
+    exit 0 ;;
+  *"curl -sS -o /dev/null -w '%{http_code}'"*"https://admin.imboy.test/"*)
+    printf '200\n'
+    exit 0 ;;
+  *"deploy-meta.json"*)
+    printf '%s\n' "$TEST_SOURCE_HEAD"
+    exit 0 ;;
+  *"BLUE_API="*"统一 readiness"*|*"BLUE_API="*"ADMIN_META="*)
+    log_event READINESS
+    exit 0 ;;
   *)
     log_event "SSH_OTHER:$(printf '%s' "$cmd" | cut -c1-40)"
     exit 0 ;;
@@ -350,6 +363,16 @@ exit 0
 MOCK
 chmod +x "$MOCK_BIN/rsync"
 
+cat >"$MOCK_BIN/git" <<'MOCK'
+#!/usr/bin/env bash
+case " $* " in
+  *" rev-parse HEAD "*) printf '%s\n' "$TEST_SOURCE_HEAD" ;;
+  *" status --porcelain "*) : ;;
+  *) exit 0 ;;
+esac
+MOCK
+chmod +x "$MOCK_BIN/git"
+
 cat >"$MOCK_BIN/bun" <<'MOCK'
 #!/usr/bin/env bash
 inc_counter() { local n; n="$(cat "$1" 2>/dev/null || printf 0)"; printf '%s\n' "$((n+1))" >"$1"; }
@@ -363,7 +386,7 @@ case "$*" in
     D="$PWD/dist-widget"
     mkdir -p "$D/widget" "$D/assets"
     printf 'loader-js\n' >"$D/loader.js"
-    printf '{"files":[]}\n' >"$D/manifest.json"
+    printf '{"source_head":"%s","files":[]}\n' "$TEST_SOURCE_HEAD" >"$D/manifest.json"
     shasum -a 256 "$D/manifest.json" | awk '{print $1}' >"$D/manifest.sha256"
     printf 'ok\n' >"$D/health.txt"
     printf '<html>widget</html>\n' >"$D/widget/index.html"
@@ -412,6 +435,7 @@ run_component() {
       MOCK_UPSTREAM_PRE="${MOCK_UPSTREAM_PRE-9800}" \
       MOCK_UPSTREAM_POST="${MOCK_UPSTREAM_POST-9801}" \
       MOCK_PRECHECK_ESCAPE="${MOCK_PRECHECK_ESCAPE-0}" \
+      TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" \
       bash "$TEST_SCRIPTS/imboy-deploy.sh" "$@" ) >"$OUT" 2>&1
 }
 
@@ -524,13 +548,13 @@ else
   bad "非法 flag 拒绝" "rc=$rc"
 fi
 
-# cs 非 -l（产物模式）且产物缺失 → 预 SSH 失败
+# cs 非 -l 同样从源码构建，不复用缺失或陈旧产物。
 run_component cs -v --env-file "$ENV_FILE"
 rc=$?
-if [ "$rc" -ne 0 ] && grep -q "产物目录不存在" "$OUT" && [ ! -s "$SSH_CALLS" ]; then
-  ok "cs 产物模式下缺失产物在 SSH 前拒绝"
+if [ "$rc" -eq 0 ] && [ "$(event_count BUN_BUILD_WIDGET)" = 1 ]; then
+  ok "cs 非 -l 在产物缺失时仍从当前源码构建"
 else
-  bad "cs 产物模式缺失产物拒绝" "rc=$rc out=$(head -3 "$OUT")"
+  bad "cs 非 -l 源码构建" "rc=$rc out=$(tail -3 "$OUT")"
 fi
 
 # 长短选项 / --env-file 顺序等价：全部成功且步骤序列/蓝绿参数一致
@@ -850,7 +874,7 @@ fi
 assert_eq "E9 symlink 保持旧指向" "releases/old-release" "$(current_symlink_target)"
 assert_eq "E9 vhost 保持旧内容" "old-cs-vhost-content" "$(cs_vhost_content)"
 
-# E10 产物模式（非 -l）：直接使用既有产物成功
+# E10 非 -l：陈旧产物必须被当前源码构建覆盖。
 setup_fake_fs upgrade; write_env
 mkdir -p "$FAKE_ROOT/admin-src/dist-widget/widget" "$FAKE_ROOT/admin-src/dist-widget/assets"
 printf 'loader-js\n' >"$FAKE_ROOT/admin-src/dist-widget/loader.js"
@@ -861,10 +885,12 @@ printf '<html>w</html>\n' >"$FAKE_ROOT/admin-src/dist-widget/widget/index.html"
 printf 'x' >"$FAKE_ROOT/admin-src/dist-widget/assets/a.js"
 run_component cs -v --env-file "$ENV_FILE"
 rc=$?
-if [ "$rc" -eq 0 ] && [ "$(event_count BUN_BUILD_WIDGET)" = 0 ] && [ "$(event_count SMOKE)" = 1 ]; then
-  ok "E10 产物模式（无 -l）跳过构建直接部署成功"
+if [ "$rc" -eq 0 ] && [ "$(event_count BUN_BUILD_WIDGET)" = 1 ] \
+   && grep -q "\"source_head\":\"$TEST_SOURCE_HEAD\"" "$FAKE_ROOT/admin-src/dist-widget/manifest.json" \
+   && [ "$(event_count SMOKE)" = 1 ]; then
+  ok "E10 非 -l 会重建陈旧产物并绑定当前源码 HEAD"
 else
-  bad "E10 产物模式部署" "rc=$rc bun=$(event_count BUN_BUILD_WIDGET)"
+  bad "E10 非 -l 源码重建" "rc=$rc bun=$(event_count BUN_BUILD_WIDGET)"
 fi
 
 # =============================================================================

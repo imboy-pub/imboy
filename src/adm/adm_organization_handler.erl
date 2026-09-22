@@ -7,7 +7,9 @@
 % 切换为专用平台治理端点：
 %   * 读（organizations:read）：组织分页搜索 / 详情 / 成员 / 邀请 / 部门 /
 %     Workspace 只读关系事实
-%   * 写（organizations:write）：archive/restore、owner-transfer、成员
+%   * 写（organizations:write）：create（原子创建 org + owner membership +
+%     default workspace + 显式默认关系，单事务见 organization_admin_logic:
+%     admin_create/4）、archive/restore、owner-transfer、成员
 %     suspend/restore/remove、邀请 create/cancel、部门
 %     create/rename/move/archive
 %
@@ -100,7 +102,7 @@ dispatch(_, _Method, Req0, _State) ->
     method_not_allowed(Req0).
 
 %% ------------------------------------------------------------------
-%% 读：组织分页 + 搜索
+%% 读：组织分页 + 搜索；POST=创建（write，合同 EADM-01/C2）——同路径分 method
 %% ------------------------------------------------------------------
 
 -spec list_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
@@ -119,8 +121,63 @@ list_action(<<"GET">>, Req0, State) ->
                     elib_response:error(Req0, Msg, Code)
             end
     end;
+list_action(<<"POST">>, Req0, State) ->
+    org_create(Req0, State);
 list_action(_, Req0, _State) ->
     method_not_allowed(Req0).
+
+%% ------------------------------------------------------------------
+%% 写：创建 Organization（单事务见 organization_admin_logic:admin_create）
+%% ------------------------------------------------------------------
+
+-spec org_create(cowboy_req:req(), map()) -> cowboy_req:req().
+org_create(Req0, State) ->
+    case adm_acl:ensure_permission(State, ?ACL_WRITE, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            AdmUserId = maps:get(adm_user_id, State, 0),
+            case read_body_map(Req0) of
+                {error, Msg2} ->
+                    elib_response:error(Req0, Msg2, ?ERR_BAD_REQUEST);
+                {ok, Data} ->
+                    case parse_tsid_map(maps:get(<<"owner_user_id">>, Data, <<>>)) of
+                        {ok, OwnerUid} ->
+                            org_create_write(Req0, AdmUserId, Data, OwnerUid);
+                        error ->
+                            elib_response:error(
+                                Req0, <<"owner_user_id 必须是正整数"/utf8>>, ?ERR_BAD_REQUEST
+                            )
+                    end
+            end
+    end.
+
+%% ⚠ 审计**不在**这里事后补写。合同 EADM-01/C2（实施计划:109）要求平台审计是
+%% 创建事务的**第 8 步**、失败整事务回滚；若在此处（事务成功返回之后）调用，
+%% 审计写入失败就只能被吞掉 ⇒ 审计静默丢失。故只负责把请求侧事实（IP、方法、
+%% 路径）组装成 AuditCtx 交给 logic，由 logic 在同一 Conn 内写审计。
+org_create_write(Req0, AdmUserId, Data, OwnerUid) ->
+    AuditCtx = #{
+        ip => elib_req:peer_ip(Req0),
+        request => #{
+            <<"method">> => cowboy_req:method(Req0),
+            <<"path">> => cowboy_req:path(Req0)
+        }
+    },
+    case
+        organization_admin_logic:admin_create(
+            AdmUserId,
+            maps:get(<<"name">>, Data, <<>>),
+            OwnerUid,
+            maps:get(<<"default_workspace_name">>, Data, <<>>),
+            AuditCtx
+        )
+    of
+        {ok, Result} ->
+            elib_response:success(Req0, normalize_create_result(Result));
+        {error, {Code, Msg}} ->
+            elib_response:error(Req0, Msg, Code)
+    end.
 
 %% ------------------------------------------------------------------
 %% 读：组织详情
@@ -797,6 +854,24 @@ normalize_invitation_row(Row) ->
 normalize_result(Result) ->
     Bin = atom_keys_to_bin(Result),
     elib_id:tsid_keys_to_bin(Bin, ?RESULT_ID_KEYS).
+
+%% 创建响应归一化：org/ws 嵌套对象内 TSID int → string（防 JS 精度丢失）；
+%% default_workspace 为 null（历史 Org 无显式默认关系）时原样透传。
+-spec normalize_create_result(map()) -> map().
+normalize_create_result(Result) ->
+    Org = elib_id:tsid_keys_to_bin(maps:get(<<"organization">>, Result), [
+        <<"id">>, <<"owner_id">>
+    ]),
+    Ws =
+        case maps:get(<<"default_workspace">>, Result) of
+            W when is_map(W) -> elib_id:tsid_keys_to_bin(W, [<<"id">>]);
+            Other -> Other
+        end,
+    #{
+        <<"organization">> => Org,
+        <<"default_workspace">> => Ws,
+        <<"created">> => maps:get(<<"created">>, Result)
+    }.
 
 -spec normalize_department_row(map()) -> map().
 normalize_department_row(Row) ->

@@ -387,29 +387,36 @@ cs_verify_artifact_dir() {
   [[ -n "$(ls -A "$d/assets" 2>/dev/null)" ]] || fail "Widget 产物 assets/ 为空"
 }
 
-# 预 SSH 的 CS_BUILD_DIR 解析（主脚本 allowlist 阶段调用；-l 时允许产物尚未构建）
+# 预 SSH 的 CS_BUILD_DIR 解析：固定从源码仓构建，禁止发布陈旧 ignored 产物。
 cs_resolve_build_paths() {
   local raw="$CS_BUILD_DIR" base parent_raw
   [[ "$raw" =~ ^[a-zA-Z0-9._/-]+$ ]] || fail "CS_BUILD_DIR 含非法字符，拒绝部署"
   base="${raw##*/}"
   [[ "$base" != "." && "$base" != ".." && -n "$base" ]] || fail "CS_BUILD_DIR 必须指向具体产物目录"
-  if [[ "$LOCAL_MODE" -eq 1 ]]; then
-    # 源码仓 = 去掉最后一段（产物目录名）；-l 首次构建时产物目录尚不存在，
-    # 不能借道 ".." 穿越，必须先剥掉 basename 再解析。
-    parent_raw="${raw%/*}"
-    [[ "$parent_raw" == "$raw" ]] && parent_raw="."
-    CS_BUILD_REPO="$(cd "$SCRIPT_DIR/$parent_raw" 2>/dev/null && pwd -P)" \
-      || fail "CS_BUILD_DIR 的源码仓目录不可访问: $raw"
-    [[ -f "$CS_BUILD_REPO/package.json" ]] || fail "CS_BUILD_DIR 上级缺少 package.json（-l 模式需 imboyadmin 源码仓）"
-    grep -q '"build:widget"' "$CS_BUILD_REPO/package.json" \
-      || fail "源码仓 package.json 缺少 build:widget 脚本"
-    CS_BUILD_PATH="$CS_BUILD_REPO/$base"
-  else
-    CS_BUILD_PATH="$(cd "$SCRIPT_DIR/$raw" 2>/dev/null && pwd -P)" \
-      || fail "CS_BUILD_DIR 产物目录不存在（非 -l 模式直接使用已构建产物）: $raw"
-    CS_BUILD_REPO=""
-  fi
+  # 源码仓 = 去掉最后一段（产物目录名）；首次构建时产物目录尚不存在，
+  # 不能借道 ".." 穿越，必须先剥掉 basename 再解析。
+  parent_raw="${raw%/*}"
+  [[ "$parent_raw" == "$raw" ]] && parent_raw="."
+  CS_BUILD_REPO="$(cd "$SCRIPT_DIR/$parent_raw" 2>/dev/null && pwd -P)" \
+    || fail "CS_BUILD_DIR 的源码仓目录不可访问: $raw"
+  [[ -f "$CS_BUILD_REPO/package.json" ]] || fail "CS_BUILD_DIR 上级缺少 package.json（需 imboyadmin 源码仓）"
+  grep -q '"build:widget"' "$CS_BUILD_REPO/package.json" \
+    || fail "源码仓 package.json 缺少 build:widget 脚本"
+  CS_BUILD_PATH="$CS_BUILD_REPO/$base"
   [[ "$CS_BUILD_PATH" != "/" ]] || fail "CS_BUILD_DIR 解析结果非法"
+  CS_SOURCE_HEAD="$(git -C "$CS_BUILD_REPO" rev-parse HEAD 2>/dev/null)" \
+    || fail "Widget 源码不是可读取的 Git 工作树"
+  [[ "$CS_SOURCE_HEAD" =~ ^[0-9a-f]{40}$ ]] || fail "Widget 源码 Git HEAD 非法"
+  [[ -z "$(git -C "$CS_BUILD_REPO" status --porcelain --untracked-files=normal)" ]] \
+    || fail "Widget 源码存在未提交或未跟踪改动，拒绝发布无法绑定 SHA 的产物"
+}
+
+cs_verify_source_head() {
+  local actual
+  actual="$(sed -n 's/.*"source_head"[[:space:]]*:[[:space:]]*"\([0-9a-f]*\)".*/\1/p' \
+    "$CS_BUILD_PATH/manifest.json" | head -1)"
+  [[ "$actual" == "$CS_SOURCE_HEAD" ]] \
+    || fail "Widget manifest source HEAD 不匹配: got=${actual:-missing} expect=$CS_SOURCE_HEAD"
 }
 
 # =============================================================================
@@ -558,22 +565,16 @@ STATE
 
   # ---------- 2. BUILD_AND_VERIFY_WIDGET ----------
   cs_step BUILD_AND_VERIFY_WIDGET "本地构建并校验 Widget 产物"
-  if [[ "$LOCAL_MODE" -eq 1 ]]; then
-    if [[ -z "$CS_BUILD_REPO" ]]; then
-      fail "cs -l 需要 CS_BUILD_DIR 指向 imboyadmin 源码仓内的产物目录"
-    fi
-    log "  构建: (cd $CS_BUILD_REPO && bun run build:widget)"
-    if ! (cd "$CS_BUILD_REPO" && cs_bun run build:widget); then
-      cs_rollback "Widget 本地构建失败"
-      fail "Widget 构建失败（build:widget）"
-    fi
-  else
-    log "  产物模式: 直接使用已构建产物 $CS_BUILD_PATH"
+  log "  构建: (cd $CS_BUILD_REPO && bun run build:widget)"
+  if ! (cd "$CS_BUILD_REPO" && cs_bun run build:widget); then
+    cs_rollback "Widget 本地构建失败"
+    fail "Widget 构建失败（build:widget）"
   fi
   if ! cs_verify_artifact_dir "$CS_BUILD_PATH"; then
     cs_rollback "Widget 产物完整性校验失败"
     fail "Widget 产物完整性校验失败: $CS_BUILD_PATH"
   fi
+  cs_verify_source_head
   ok "  Widget 产物校验通过: $CS_BUILD_PATH"
 
   # ---------- 3. STAGE_WIDGET_RELEASE ----------

@@ -192,11 +192,16 @@ search(<<"GET">>, Req0, State) ->
             case byte_size(Keyword) > 0 of
                 true ->
                     Where = #{
-                        'or' => [
-                            #{title => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+                        <<"__or">> => [
+                            #{
+                                title =>
+                                    {op, <<"LIKE">>,
+                                        <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}
+                            },
                             #{
                                 introduction =>
-                                    {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}
+                                    {op, <<"LIKE">>,
+                                        <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}
                             }
                         ]
                     },
@@ -279,9 +284,9 @@ build_where(Status, Type, Keyword) ->
             Esc = elib_pg:escape_like(Keyword),
             Like = <<"%", Esc/binary, "%">>,
             Base#{
-                'or' => [
-                    #{title => {like, Like}},
-                    #{introduction => {like, Like}}
+                <<"__or">> => [
+                    #{title => {op, <<"LIKE">>, Like}},
+                    #{introduction => {op, <<"LIKE">>, Like}}
                 ]
             };
         false ->

@@ -31,6 +31,7 @@
     admin_department_list/2,
     admin_workspace_page/3,
     %% 写（全部走组织行锁 + 与 app 层同构的状态机裁决）
+    admin_create/5,
     admin_archive/2,
     admin_restore/2,
     admin_transfer_owner/3,
@@ -99,11 +100,15 @@ admin_page(Page0, Size0, Status, Keyword) ->
     end.
 
 page_where(Status, Keyword) ->
-    Conds0 =
+    %% ⚠ status 条件自带 $1 占位符 ⇒ 它的**值必须同步进 params**。只写占位符不绑值，
+    %% epgsql 会收到「占位符多于参数」的语句并在结果解码阶段以 function_clause 崩成 500
+    %% （实测：GET /api/adm/organizations?status=active ⇒ 配置向导拉不到组织列表）。
+    %% 故这里 Conds 与 Params 成对构造；`::text` 让枚举/varchar 两种列型都能绑。
+    {Conds0, StatusParams} =
         case Status of
-            all -> [];
-            S when S =:= <<"active">>; S =:= <<"archived">> -> [<<" o.status = $1">>];
-            _ -> []
+            <<"active">> -> {[<<" o.status::text = $1">>], [<<"active">>]};
+            <<"archived">> -> {[<<" o.status::text = $1">>], [<<"archived">>]};
+            _ -> {[], []}
         end,
     KwParams =
         case is_binary(Keyword) andalso byte_size(Keyword) > 0 of
@@ -121,13 +126,13 @@ page_where(Status, Keyword) ->
     {Conds, Params0} =
         case KwParams of
             undefined ->
-                {Conds0, []};
+                {Conds0, StatusParams};
             {CondTpl, Kw, MaybeId} ->
                 N = length(Conds0) + 1,
                 Cond1 = binary:replace(CondTpl, <<"$K">>, <<"$", (integer_to_binary(N))/binary>>),
                 case MaybeId of
                     undefined ->
-                        {Conds0 ++ [Cond1], [<<"%", Kw/binary, "%">>]};
+                        {Conds0 ++ [Cond1], StatusParams ++ [<<"%", Kw/binary, "%">>]};
                     Id2 ->
                         Cond2 =
                             binary:replace(
@@ -135,7 +140,7 @@ page_where(Status, Keyword) ->
                                 <<"$ID">>,
                                 <<"$", (integer_to_binary(N + 1))/binary>>
                             ),
-                        {Conds0 ++ [Cond2], [<<"%", Kw/binary, "%">>, Id2]}
+                        {Conds0 ++ [Cond2], StatusParams ++ [<<"%", Kw/binary, "%">>, Id2]}
                 end
         end,
     WhereSql =
@@ -306,6 +311,315 @@ admin_workspace_page(OrgId, Page, Size) ->
                     {error, {500, <<"查询失败，请稍后重试"/utf8>>}}
             end
     end.
+
+%% ===================================================================
+%% 写：Organization 原子创建（合同 EADM-01/C2；POST /api/adm/organizations）
+%% 单事务：
+%%   1) pg_advisory_xact_lock((owner, lower(trim(name)))) 串行（TSID 超 int4，
+%%      两侧各取 hashtext；碰撞只损失并行度，正确性由锁内复查保证）；
+%%   2) 锁内幂等：同 owner + 归一化名的 active 组织已存在 → created=false
+%%      返回既有 org/default workspace（默认关系缺失（历史数据）如实返回 null，
+%%      不回落 min-ID 推导——organization_default_workspace_app 同口径）；
+%%   3) owner 门禁 fail-closed：存在 / status=1 活跃 / account_type=0 human；
+%%   4) INSERT organization（trg_organization_owner_member_sync 在 INSERT 时
+%%      同步 owner membership 行——迁移 00000113 既有事实）；
+%%   5) 显式 owner membership upsert（与触发器幂等收敛为 role=owner/active；
+%%      Platform Admin（adm_user.id）绝不写入任何租户身份列）；
+%%   6) INSERT active default workspace；
+%%   7) INSERT organization_default_workspace（复用
+%%      organization_default_workspace_pg:upsert_tx 原语）。
+%% 任一步失败整回滚。
+%%
+%% ⚠ 合同 EADM-01/C2（实施计划:109）：平台审计是**事务内第 8 步**，不是事后补写。
+%% 此前实现把审计放在事务外由 handler 调用且吞掉写入错误 ⇒ 审计可静默丢失，
+%% 违反「失败必须整事务回滚」。现已改为事务内 adm_operation_log_ds:insert_tx/7，
+%% 写入失败即 throw({abort_tx,{audit_failed,_}}) ⇒ 业务数据一并回滚。
+%% ===================================================================
+
+-spec admin_create(integer(), binary(), integer(), binary(), map()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_create(AdmUserId, Name, OwnerUid, WsName, AuditCtx) when
+    is_integer(OwnerUid), OwnerUid > 0
+->
+    case valid_name(Name) of
+        {error, _} ->
+            {error, {400, <<"name 必填（1-200 字节，不能为空白）"/utf8>>}};
+        ok ->
+            case valid_name(WsName) of
+                {error, _} ->
+                    {error, {400, <<"default_workspace_name 必填（1-200 字节，不能为空白）"/utf8>>}};
+                ok ->
+                    Name1 = string:trim(Name),
+                    WsName1 = string:trim(WsName),
+                    Tx =
+                        fun(Conn) ->
+                            create_org_tx(Conn, AdmUserId, OwnerUid, Name1, WsName1, AuditCtx)
+                        end,
+                    case elib_pg:with_tx(Tx) of
+                        {ok, Result} when is_map(Result) ->
+                            ok = ?INFO_LOG([
+                                organization_admin_created,
+                                OwnerUid,
+                                Name1,
+                                maps:get(<<"created">>, Result)
+                            ]),
+                            {ok, Result};
+                        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+                            {error, {Code, Msg}};
+                        {rollback, Reason} ->
+                            _ = ?ERROR_LOG([
+                                organization_admin_create_failed, OwnerUid, Name1, Reason
+                            ]),
+                            {error, {500, <<"创建 Organization 失败，请稍后重试"/utf8>>}};
+                        {error, Reason} ->
+                            _ = ?ERROR_LOG([
+                                organization_admin_create_failed, OwnerUid, Name1, Reason
+                            ]),
+                            {error, {500, <<"创建 Organization 失败，请稍后重试"/utf8>>}}
+                    end
+            end
+    end;
+admin_create(_, _, _, _, _) ->
+    {error, {400, <<"name、default_workspace_name 必填，owner_user_id 必须是正整数"/utf8>>}}.
+
+create_org_tx(Conn, AdmUserId, OwnerUid, Name, WsName, AuditCtx) ->
+    %% 1) 事务级 advisory lock：同 (owner, 归一化名) 的并发创建串行
+    LockSql = <<"SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext(lower(trim($2))))">>,
+    case elib_pg:query(Conn, LockSql, [OwnerUid, Name]) of
+        {ok, _} ->
+            ok;
+        {error, Reason0} ->
+            throw({abort_tx, {internal, Reason0}})
+    end,
+    %% 2) 锁内幂等：同 owner + 归一化名的 active 组织已存在 → 返回既有资源
+    case find_active_org_tx(Conn, OwnerUid, Name) of
+        {ok, OrgRow} ->
+            Result = #{
+                <<"created">> => false,
+                <<"organization">> => org_view(OrgRow),
+                <<"default_workspace">> =>
+                    existing_default_ws_view(Conn, maps:get(<<"id">>, OrgRow))
+            },
+            %% 8) 平台审计（事务内；幂等命中同样要留痕——「谁在何时请求创建」是治理事实）
+            ok = audit_create_tx(Conn, AdmUserId, OwnerUid, Result, AuditCtx),
+            {ok, Result};
+        {error, not_found} ->
+            create_new_org_tx(Conn, AdmUserId, OwnerUid, Name, WsName, AuditCtx);
+        {error, Reason1} ->
+            throw({abort_tx, {internal, Reason1}})
+    end.
+
+create_new_org_tx(Conn, AdmUserId, OwnerUid, Name, WsName, AuditCtx) ->
+    %% 3) owner 门禁（存在 / active / human），fail-closed
+    ok = owner_gate_tx(Conn, OwnerUid),
+    %% 4) INSERT organization；trg_organization_owner_member_sync（迁移 00000113）
+    %%    在 INSERT 时同步 owner membership 行
+    OrgId = elib_tsid:generate(organization),
+    case
+        elib_pg:execute(
+            Conn,
+            <<"INSERT INTO organization (id, name, owner_id, status)",
+                " VALUES ($1, $2, $3, 'active')">>,
+            [OrgId, Name, OwnerUid]
+        )
+    of
+        {ok, 1} ->
+            ok;
+        {ok, _} ->
+            throw({abort_tx, {internal, organization_insert_affected}});
+        {error, Reason1} ->
+            throw({abort_tx, {internal, Reason1}})
+    end,
+    %% 5) 显式 owner membership upsert（与触发器幂等收敛为 role=owner/active；
+    %%    PK 冲突时 DO UPDATE 收敛，不产生第二行）
+    case
+        elib_pg:execute(
+            Conn,
+            <<"INSERT INTO organization_member (organization_id, user_id, role, status, joined_at)",
+                " VALUES ($1, $2, 'owner', 'active', now())",
+                " ON CONFLICT (organization_id, user_id)",
+                " DO UPDATE SET role = 'owner', status = 'active', updated_at = now()">>,
+            [OrgId, OwnerUid]
+        )
+    of
+        {ok, _} ->
+            ok;
+        {error, Reason2} ->
+            throw({abort_tx, {internal, Reason2}})
+    end,
+    %% 6) INSERT active default workspace（branding.name 与 workspace.name 同源）
+    WsId = elib_tsid:generate(workspace),
+    BrandingJson = jsone:encode(#{<<"name">> => WsName}, [native_utf8]),
+    case
+        elib_pg:execute(
+            Conn,
+            <<"INSERT INTO workspace (id, name, owner_id, organization_id, status, branding,",
+                " created_at, updated_at)",
+                " VALUES ($1, $2, $3, $4, 'active', $5, now(), now())">>,
+            [WsId, WsName, OwnerUid, OrgId, BrandingJson]
+        )
+    of
+        {ok, 1} ->
+            ok;
+        {ok, _} ->
+            throw({abort_tx, {internal, workspace_insert_affected}});
+        {error, Reason3} ->
+            throw({abort_tx, {internal, Reason3}})
+    end,
+    %% 7) INSERT organization_default_workspace 关系
+    case organization_default_workspace_pg:upsert_tx(Conn, OrgId, WsId) of
+        {ok, _} ->
+            ok;
+        {error, Reason4} ->
+            throw({abort_tx, {internal, Reason4}})
+    end,
+    Result = #{
+        <<"created">> => true,
+        <<"organization">> =>
+            #{
+                <<"id">> => OrgId,
+                <<"name">> => Name,
+                <<"owner_id">> => OwnerUid,
+                <<"status">> => <<"active">>
+            },
+        <<"default_workspace">> =>
+            #{<<"id">> => WsId, <<"name">> => WsName, <<"status">> => <<"active">>}
+    },
+    %% 8) 平台审计（**事务内**，与 1-7 同 Conn；写失败即整事务回滚）
+    ok = audit_create_tx(Conn, AdmUserId, OwnerUid, Result, AuditCtx),
+    {ok, Result}.
+
+%% @doc 事务内写平台审计（合同 EADM-01/C2 第 8 步）。
+%% 审计目标事实含 Organization、Owner、默认 Workspace 的 id/name 与请求摘要；
+%% 不记录任何凭据。写入失败**不吞**：throw({abort_tx, …}) 让整事务回滚——
+%% 审计静默丢失等于「创建了组织却无从追责」，属治理链路的完整性要求。
+-spec audit_create_tx(term(), integer(), integer(), map(), map()) -> ok.
+audit_create_tx(Conn, AdmUserId, OwnerUid, Result, AuditCtx) ->
+    Org = maps:get(<<"organization">>, Result),
+    Ws = maps:get(<<"default_workspace">>, Result, null),
+    OrgId = maps:get(<<"id">>, Org),
+    Detail = #{
+        <<"action">> => <<"create">>,
+        <<"organization_id">> => OrgId,
+        <<"owner_user_id">> => OwnerUid,
+        <<"default_workspace_id">> => ws_field(Ws, <<"id">>),
+        <<"default_workspace_name">> => ws_field(Ws, <<"name">>),
+        <<"created">> => maps:get(<<"created">>, Result),
+        <<"request">> => maps:get(request, AuditCtx, #{})
+    },
+    case
+        adm_operation_log_ds:insert_tx(
+            Conn,
+            AdmUserId,
+            <<"organization_create">>,
+            OrgId,
+            <<"organization">>,
+            Detail,
+            maps:get(ip, AuditCtx, undefined)
+        )
+    of
+        ok ->
+            ok;
+        {error, Reason} ->
+            %% 已证伪（2026-09-22）：把本分支临时改成 `ok`（即旧行为「审计失败不阻断
+            %% 业务」）后，test/adm/adm_organization_create_tests.erl 的
+            %% audit_injection_rollback 立刻 failed —— 证明该用例真能变红，不是假绿。
+            throw({abort_tx, {audit_failed, Reason}})
+    end.
+
+%% 默认 Workspace 视图在历史数据缺关系时如实为 null（不推导、不回落 min-ID）。
+-spec ws_field(map() | null, binary()) -> term().
+ws_field(Ws, Key) when is_map(Ws) ->
+    maps:get(Key, Ws, null);
+ws_field(_, _) ->
+    null.
+
+%% owner 门禁：存在（404）/ status=1 活跃（400）/ account_type=0 human（400）。
+%% status 口径与 passport_logic 签发收口一致：1 启用；0 禁用 / 2 注销中 /
+%% 负值已删除一律 fail-closed 拒绝。account_type：0=human（迁移 00000027 注释）。
+owner_gate_tx(Conn, OwnerUid) ->
+    case
+        elib_pg:query(
+            Conn, <<"SELECT status, account_type FROM \"user\" WHERE id = $1">>, [OwnerUid]
+        )
+    of
+        {ok, []} ->
+            abort(404, <<"Owner 用户不存在"/utf8>>);
+        {ok, [#{<<"status">> := Status, <<"account_type">> := AccountType}]} ->
+            case Status of
+                1 ->
+                    ok;
+                _ ->
+                    abort(400, <<"Owner 用户不是活跃账号"/utf8>>)
+            end,
+            case AccountType of
+                0 ->
+                    ok;
+                _ ->
+                    abort(400, <<"Owner 必须是人类账号"/utf8>>)
+            end;
+        {ok, _OtherShape} ->
+            throw({abort_tx, {internal, owner_row_shape}});
+        {error, Reason} ->
+            throw({abort_tx, {internal, Reason}})
+    end.
+
+find_active_org_tx(Conn, OwnerUid, Name) ->
+    Sql =
+        <<"SELECT id, name, owner_id, status FROM organization",
+            " WHERE owner_id = $1 AND lower(trim(name)) = lower(trim($2)) AND status = 'active'">>,
+    case elib_pg:query(Conn, Sql, [OwnerUid, Name]) of
+        {ok, [Row | _]} ->
+            {ok, Row};
+        {ok, []} ->
+            {error, not_found};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% 幂等命中路径回读既有 default workspace；显式关系缺失（历史 Org）→ null，
+%% 不回落 min-ID 推导（organization_default_workspace_app 读取同口径）。
+existing_default_ws_view(Conn, OrgId) ->
+    case organization_default_workspace_pg:find_tx(Conn, OrgId) of
+        {ok, WsId} ->
+            case
+                elib_pg:query(
+                    Conn, <<"SELECT id, name, status FROM workspace WHERE id = $1">>, [WsId]
+                )
+            of
+                {ok, [Row | _]} ->
+                    ws_view(Row);
+                _ ->
+                    null
+            end;
+        _ ->
+            null
+    end.
+
+org_view(Row) ->
+    #{
+        <<"id">> => maps:get(<<"id">>, Row),
+        <<"name">> => maps:get(<<"name">>, Row),
+        <<"owner_id">> => maps:get(<<"owner_id">>, Row),
+        <<"status">> => maps:get(<<"status">>, Row)
+    }.
+
+ws_view(Row) ->
+    #{
+        <<"id">> => maps:get(<<"id">>, Row),
+        <<"name">> => maps:get(<<"name">>, Row),
+        <<"status">> => maps:get(<<"status">>, Row)
+    }.
+
+valid_name(Name) when is_binary(Name) ->
+    case byte_size(string:trim(Name)) of
+        N when N >= 1, N =< 200 ->
+            ok;
+        _ ->
+            {error, invalid}
+    end;
+valid_name(_) ->
+    {error, invalid}.
 
 %% ===================================================================
 %% 写：archive / restore（幂等；镜像 organization_lifecycle 状态机，平台侧

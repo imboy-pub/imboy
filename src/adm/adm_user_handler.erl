@@ -248,11 +248,23 @@ search(<<"GET">>, Req0, _State) ->
     case byte_size(Keyword) > 0 of
         true ->
             Where = #{
-                'or' => [
-                    #{account => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
-                    #{nickname => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
-                    #{email => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
-                    #{mobile => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}}
+                <<"__or">> => [
+                    #{
+                        account =>
+                            {op, <<"LIKE">>, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}
+                    },
+                    #{
+                        nickname =>
+                            {op, <<"LIKE">>, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}
+                    },
+                    #{
+                        email =>
+                            {op, <<"LIKE">>, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}
+                    },
+                    #{
+                        mobile =>
+                            {op, <<"LIKE">>, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}
+                    }
                 ]
             },
             {ok, P} = user_ds:page(Page, Size, Where, <<"created_at DESC">>),
@@ -410,11 +422,11 @@ collect_remove(<<"POST">>, Req0, State) ->
 -spec build_where(integer(), binary()) -> map().
 build_where(Status, Keyword) when byte_size(Keyword) > 0 ->
     KeywordWhere = #{
-        'or' => [
-            #{account => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
-            #{nickname => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
-            #{email => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
-            #{mobile => {like, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}}
+        <<"__or">> => [
+            #{account => {op, <<"LIKE">>, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+            #{nickname => {op, <<"LIKE">>, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+            #{email => {op, <<"LIKE">>, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}},
+            #{mobile => {op, <<"LIKE">>, <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>}}
         ]
     },
     case Status >= 0 of

@@ -35,11 +35,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 #   IMBOY_DEPLOY_PORT        SSH 端口       SSH port            (default: 32)
 #   IMBOY_DEPLOY_PROJECT_DIR 远端项目目录   Remote project dir  (default: /www/wwwroot/imboy-api)
 #   IMBOY_DEPLOY_NGINX_CONF  Nginx 配置路径 Nginx conf path
+#   IMBOY_DEPLOY_PRODADM_CONF Admin vhost path (optional when not installed)
+#   IMBOY_DEPLOY_CS_NGINX_CONF CS vhost path (optional when not installed)
 #   IMBOY_DEPLOY_BLUE_PORT   蓝端口         Blue port           (default: 9800)
 #   IMBOY_DEPLOY_GREEN_PORT  绿端口         Green port          (default: 9801)
 #   IMBOY_DEPLOY_NODE_HOST   节点 host      Node host           (default: 127.0.0.1)
 #   IMBOY_DEPLOY_COOKIE      节点 cookie    Node cookie         (default: imboy)
 #   IMBOY_DEPLOY_BRANCH      部署分支       Deploy branch       (default: main)
+#   IMBOY_DEPLOY_SOURCE_HEAD 本地已确认的 40 位 Git HEAD
 #   IMBOY_DEPLOY_STOP_OLD    完整迁移必须为 true；--no-migrate 时强制为 false
 #   IMBOY_DEPLOY_DB_CONTAINER PostgreSQL 容器名  PostgreSQL container
 #   IMBOY_DEPLOY_DB_NAME      PostgreSQL 数据库名 Database name
@@ -99,11 +102,13 @@ NGINX_CONF="${IMBOY_DEPLOY_NGINX_CONF:-/www/server/panel/vhost/nginx/pro.imboy.p
 # 管理后台 vhost 直接 proxy_pass 到应用端口（不走 upstream），切流时必须跟切，
 # 否则 admin API 打到已停止的旧槽位（alpha.72/alpha.73 两次实战踩坑）。
 PRODADM_CONF="${IMBOY_DEPLOY_PRODADM_CONF:-/www/server/panel/vhost/nginx/prodadm.imboy.pub.conf}"
+CS_NGINX_CONF="${IMBOY_DEPLOY_CS_NGINX_CONF:-}"
 BLUE_PORT="${IMBOY_DEPLOY_BLUE_PORT:-9800}"
 GREEN_PORT="${IMBOY_DEPLOY_GREEN_PORT:-9801}"
 NODE_HOST="${IMBOY_DEPLOY_NODE_HOST:-127.0.0.1}"
 COOKIE="${IMBOY_DEPLOY_COOKIE:-imboy}"
 BRANCH="${IMBOY_DEPLOY_BRANCH:-main}"
+SOURCE_HEAD="${IMBOY_DEPLOY_SOURCE_HEAD:-}"
 STOP_OLD="${IMBOY_DEPLOY_STOP_OLD:-true}"
 DB_CONTAINER="${IMBOY_DEPLOY_DB_CONTAINER:-}"
 DB_NAME="${IMBOY_DEPLOY_DB_NAME:-}"
@@ -156,10 +161,18 @@ PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE="$RELEASE_DIR/etc/plugin_trusted_ed25519.pub"
   || { echo "NGINX_CONF 必须是无 .. 的安全绝对路径 / unsafe NGINX_CONF" >&2; exit 1; }
 [[ "$PRODADM_CONF" =~ ^/[a-zA-Z0-9._/-]+$ && "$PRODADM_CONF" != "/" && "$PRODADM_CONF" != *..* ]] \
   || { echo "PRODADM_CONF 必须是无 .. 的安全绝对路径 / unsafe PRODADM_CONF" >&2; exit 1; }
+if [ -n "$CS_NGINX_CONF" ]; then
+  [[ "$CS_NGINX_CONF" =~ ^/[a-zA-Z0-9._/-]+$ && "$CS_NGINX_CONF" != "/" && "$CS_NGINX_CONF" != *..* ]] \
+    || { echo "CS_NGINX_CONF 必须是无 .. 的安全绝对路径 / unsafe CS_NGINX_CONF" >&2; exit 1; }
+fi
 [[ "$LOCAL_SRC_DIR" == /* && -d "$LOCAL_SRC_DIR" ]] \
   || { echo "LOCAL_SRC_DIR 必须是存在的绝对目录 / invalid LOCAL_SRC_DIR" >&2; exit 1; }
 case "$SALES_RELEASE" in true|false) ;; *) echo "IMBOY_DEPLOY_SALES_RELEASE 只能为 true/false" >&2; exit 1 ;; esac
 case "$E2EE_MODE" in disabled|optional|required|compliance) ;; *) echo "IMBOY_DEPLOY_E2EE_MODE 非法" >&2; exit 1 ;; esac
+if [ "$ROLLBACK" -eq 0 ]; then
+  [[ "$SOURCE_HEAD" =~ ^[0-9a-f]{40}$ ]] \
+    || { echo "IMBOY_DEPLOY_SOURCE_HEAD 必须是 40 位 Git SHA" >&2; exit 1; }
+fi
 if [ "$SALES_RELEASE" = "true" ] && [ "$E2EE_MODE" != "required" ] && [ "$E2EE_MODE" != "compliance" ]; then
   echo "销售版 IMBOY_DEPLOY_E2EE_MODE 必须为 required/compliance" >&2
   exit 1
@@ -608,17 +621,35 @@ if [ "$ROLLBACK" -eq 1 ]; then
   若当初部署时设了 IMBOY_DEPLOY_STOP_OLD=true，旧节点已被停止，需先手工启动它。"
 
   ssh_exec "
+    : imboy-nginx-rollback
+    set -eu
+    HAD_ADMIN=0
+    HAD_CS=0
+    restore_configs() {
+      cp '$NGINX_CONF'.bak '$NGINX_CONF'
+      [ "\$HAD_ADMIN" -eq 0 ] || cp '$PRODADM_CONF'.bak '$PRODADM_CONF'
+      [ "\$HAD_CS" -eq 0 ] || cp '$CS_NGINX_CONF'.bak '$CS_NGINX_CONF'
+    }
     cp '$NGINX_CONF' '$NGINX_CONF'.bak
+    if [ -f '$PRODADM_CONF' ]; then cp '$PRODADM_CONF' '$PRODADM_CONF'.bak; HAD_ADMIN=1; fi
+    if [ -n '$CS_NGINX_CONF' ] && [ -f '$CS_NGINX_CONF' ]; then cp '$CS_NGINX_CONF' '$CS_NGINX_CONF'.bak; HAD_CS=1; fi
     sed -i 's|server 127.0.0.1:$CUR_PORT;|server 127.0.0.1:$RB_PORT;|g' '$NGINX_CONF'
     ROLLBACK_BLUE_AFTER=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$BLUE_PORT;/{n++} END{print n+0}' '$NGINX_CONF')
     ROLLBACK_GREEN_AFTER=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$GREEN_PORT;/{n++} END{print n+0}' '$NGINX_CONF')
     case '$RB_COLOR' in
       blue)  [ \"\$ROLLBACK_BLUE_AFTER\" -eq 1 ] && [ \"\$ROLLBACK_GREEN_AFTER\" -eq 0 ] ;;
       green) [ \"\$ROLLBACK_GREEN_AFTER\" -eq 1 ] && [ \"\$ROLLBACK_BLUE_AFTER\" -eq 0 ] ;;
-    esac || { cp '$NGINX_CONF'.bak '$NGINX_CONF'; echo 'Nginx upstream 替换未生效，已恢复配置' >&2; exit 1; }
-    nginx -t || { cp '$NGINX_CONF'.bak '$NGINX_CONF'; exit 1; }
+    esac || { restore_configs; echo 'Nginx upstream 替换未生效，已恢复配置' >&2; exit 1; }
+    for CONF in '$PRODADM_CONF' '$CS_NGINX_CONF'; do
+      [ -n \"\$CONF\" ] && [ -f \"\$CONF\" ] || continue
+      sed -i 's|http://127.0.0.1:$CUR_PORT;|http://127.0.0.1:$RB_PORT;|g' \"\$CONF\"
+      grep -q 'http://127.0.0.1:$RB_PORT;' \"\$CONF\" \
+        && ! grep -q 'http://127.0.0.1:$CUR_PORT;' \"\$CONF\" \
+        || { restore_configs; echo \"vhost 回滚端口替换失败: \$CONF\" >&2; exit 1; }
+    done
+    nginx -t || { restore_configs; exit 1; }
     nginx -s reload || {
-      cp '$NGINX_CONF'.bak '$NGINX_CONF'
+      restore_configs
       nginx -t && nginx -s reload || true
       exit 1
     }
@@ -660,7 +691,7 @@ if [ "$CURRENT_COLOR" = "none" ]; then
   case "$NGINX_COLOR" in
     blue)  CURRENT_COLOR=blue;  OLD_PORT=$BLUE_PORT ;;
     green) CURRENT_COLOR=green; OLD_PORT=$GREEN_PORT ;;
-    none)  ;;
+    none)  fail "首次部署缺少可验证的蓝绿 upstream，拒绝在构建、启动或迁移前继续；请先按部署模板预置 Nginx vhost" ;;
     conflict) fail "两个应用端口均未监听，但 Nginx upstream 不是唯一蓝/绿色；拒绝猜测恢复目标" ;;
     *) fail "Nginx upstream 状态未知，拒绝误判为首次安装: $NGINX_COLOR" ;;
   esac
@@ -702,6 +733,8 @@ if ssh_exec "[ -d '$RELEASE_DIR' ]"; then
       || fail "目标目录已存在，但无法确认当前活动 release，拒绝覆盖"
   fi
   if [ "$ACTIVE_DIR" = "$RELEASE_DIR" ]; then
+    ssh_exec "test \"\$(cat '$RELEASE_DIR/etc/source-head' 2>/dev/null)\" = '$SOURCE_HEAD'" \
+      || fail "同版本活动 release 的 source HEAD 与本次候选不一致，拒绝幂等误判"
     wait_for_health "$OLD_PORT" "$VSN" \
       || fail "同版本 release 正在活动端口运行但健康或版本不符，拒绝覆盖"
     ok "目标 release 已在活动端口健康运行，重复部署直接成功 (port=$OLD_PORT, vsn=$VSN)"
@@ -759,6 +792,10 @@ else
     git reset --hard origin/'$BRANCH'
   "
   ok "代码已拉取 / Code pulled"
+  REMOTE_HEAD="$(ssh_capture "cd '$PROJECT_DIR' && git rev-parse HEAD")" \
+    || fail "无法读取远端 Git HEAD"
+  [ "$REMOTE_HEAD" = "$SOURCE_HEAD" ] \
+    || fail "远端 $BRANCH HEAD ($REMOTE_HEAD) 与本地候选 ($SOURCE_HEAD) 不一致：请先完成受控 push 或使用 -l"
 fi
 
 # 远端 VERSION 是 erlang.mk 生成 ebin/imboy.app vsn 的唯一来源，
@@ -824,6 +861,8 @@ ssh_exec "
     sed -i '/{imboy, \\[/a\\        {auto_migrate, false},' \"\$REL_VSN_DIR/sys.config\"
   fi
   grep -q '{auto_migrate,[ ]*false}' \"\$REL_VSN_DIR/sys.config\"
+  install -d -m 0755 '$RELEASE_DIR/etc'
+  printf '%s\n' '$SOURCE_HEAD' > '$RELEASE_DIR/etc/source-head'
   cat > \"\$REL_VSN_DIR/vm.args\" <<'VMARGS'
 -name ${NODE_NAME}@${NODE_HOST}
 -setcookie ${COOKIE}
@@ -888,29 +927,45 @@ fi
 
 # =============================================================================
 # 6️⃣ 切换 Nginx upstream / Switch Nginx upstream
-# 首次部署（OLD_PORT 为空）跳过自动切换，提示人工配置
-# Skip auto-switch on first deploy (OLD_PORT empty); prompt for manual config
+# 首次部署必须预置蓝/绿 upstream。无法证明切流完成时 fail-closed，禁止成功后再要求手工补配置。
 # =============================================================================
 if [ -n "$OLD_PORT" ]; then
   log "切换 Nginx: $OLD_PORT → $APP_PORT..."
   ssh_exec "
+    : imboy-nginx-cutover
+    set -eu
+    HAD_ADMIN=0
+    HAD_CS=0
+    restore_configs() {
+      cp '$NGINX_CONF'.bak '$NGINX_CONF'
+      [ "\$HAD_ADMIN" -eq 0 ] || cp '$PRODADM_CONF'.bak '$PRODADM_CONF'
+      [ "\$HAD_CS" -eq 0 ] || cp '$CS_NGINX_CONF'.bak '$CS_NGINX_CONF'
+    }
     cp '$NGINX_CONF' '$NGINX_CONF'.bak
+    if [ -f '$PRODADM_CONF' ]; then cp '$PRODADM_CONF' '$PRODADM_CONF'.bak; HAD_ADMIN=1; fi
+    if [ -n '$CS_NGINX_CONF' ] && [ -f '$CS_NGINX_CONF' ]; then cp '$CS_NGINX_CONF' '$CS_NGINX_CONF'.bak; HAD_CS=1; fi
     sed -i 's|server 127.0.0.1:$OLD_PORT;|server 127.0.0.1:$APP_PORT;|g' '$NGINX_CONF'
     grep -q 'server 127.0.0.1:$APP_PORT;' '$NGINX_CONF' \
-      || { cp '$NGINX_CONF'.bak '$NGINX_CONF'; echo 'Nginx upstream 替换失败，已回滚 / replacement failed, rolled back' >&2; exit 1; }
-    if [ -f '$PRODADM_CONF' ]; then
-      cp '$PRODADM_CONF' '$PRODADM_CONF'.bak
-      sed -i 's|http://127.0.0.1:$OLD_PORT;|http://127.0.0.1:$APP_PORT;|g' '$PRODADM_CONF'
-      grep -q 'http://127.0.0.1:$APP_PORT;' '$PRODADM_CONF' \
-        || { cp '$PRODADM_CONF'.bak '$PRODADM_CONF'; echo 'prodadm proxy_pass 替换失败，已回滚 / prodadm replacement failed, rolled back' >&2; exit 1; }
-    fi
-    nginx -t && nginx -s reload
+      && ! grep -q 'server 127.0.0.1:$OLD_PORT;' '$NGINX_CONF' \
+      || { restore_configs; echo 'Nginx upstream 替换失败，已回滚 / replacement failed, rolled back' >&2; exit 1; }
+    for CONF in '$PRODADM_CONF' '$CS_NGINX_CONF'; do
+      [ -n \"\$CONF\" ] && [ -f \"\$CONF\" ] || continue
+      sed -i 's|http://127.0.0.1:$OLD_PORT;|http://127.0.0.1:$APP_PORT;|g' \"\$CONF\"
+      grep -q 'http://127.0.0.1:$APP_PORT;' \"\$CONF\" \
+        && ! grep -q 'http://127.0.0.1:$OLD_PORT;' \"\$CONF\" \
+        || { restore_configs; echo \"vhost upstream 替换失败: \$CONF\" >&2; exit 1; }
+    done
+    nginx -t || { restore_configs; exit 1; }
+    nginx -s reload || {
+      restore_configs
+      nginx -t && nginx -s reload || true
+      exit 1
+    }
   "
   TRAFFIC_SWITCHED=1
   ok "Nginx 已切换至 $TARGET_COLOR / Nginx switched to $TARGET_COLOR"
 else
-  echo "ℹ️  首次部署：请手动将 Nginx upstream 设为 127.0.0.1:${APP_PORT}，然后执行 nginx -s reload"
-  echo "ℹ️  First deploy: set Nginx upstream to 127.0.0.1:${APP_PORT}, then run nginx -s reload"
+  fail "内部状态错误：缺少旧端口却进入切流阶段"
 fi
 
 # Nginx reload 只切换新连接；既有 WebSocket 仍停留在旧节点。完整迁移前必须
