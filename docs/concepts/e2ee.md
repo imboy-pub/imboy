@@ -34,6 +34,30 @@
 2. 三端能力协商以 `user_device.capabilities` 为准；新增能力（如 MLS）先扩契约。
 3. 群 E2EE 模式开关：`group.e2ee_mode`（迁移 37），开关变更广播 WS action `group_e2ee_mode`。
 
+## 加密档位（运营视角）
+
+部署的加密强度由两个底层策略字段共同表达：`e2ee_mode`（给**客户端**的加密规矩，
+随 `/api/v1/app/policy` 下发）与 `storage_mode`（**服务端**存储/审计姿态，联动搜索/
+导出/审计）。两者是同一个运营决定的两面；管理后台「能力配置 → 加密档位」单选
+一次套用两个字段。标准组合共四档：
+
+| 档位 | e2ee_mode | storage_mode | 客户端行为 | 服务端 |
+|---|---|---|---|---|
+| 关闭（明文交付） | `disabled` | `disabled` | 明文收发，E2EE 入口隐藏 | **硬闸**：密钥端点关闭、明文校验放行、群级加密被忽略 |
+| 可选（明文归档） | `optional` | `archived` | 明文收发 | 明文归档存储，可搜索/导出 |
+| 合规（可审计） | `compliance` | `compliance_e2ee` | 双密钥加密（接收方 + 合规公钥） | 审计方可凭合规密钥解密存量消息 |
+| 强制（纯端到端） | `required` | `secure_e2ee` | 强制端到端加密 | 服务器不可读；消息搜索/导出自动关闭 |
+
+- **判定优先级（客户端）**：`storage_mode=disabled`（硬闸）> `e2ee_mode` > `storage_mode`；
+  非标准/未知取值一律回落明文（`imboyapp lib/service/encryption_mode.dart`）。
+- **判定优先级（服务端生效值）**：环境变量覆盖 > DB 持久化（后台保存值）> profile 预设；
+  硬闸（storage_mode=disabled）压倒一切加密档判据（`imboy_policy:e2ee_disabled/0`）。
+  ⚠️ 部署期注入 `IMBOY_E2EE_MODE` 会覆盖后台保存值——策略页"改不动"先查这一层。
+- **非标准组合**（如企业预设 `disabled + archived`：E2EE 关但无硬闸）仍合法且判定有
+  兜底，但不再对应任何档位；后台会提示，选择任一档位即标准化。
+- **映射真源三处同步**：imboyadmin `policy.ts ENCRYPTION_TIERS`、
+  `imboy_policy_catalog.erl` 注释、本文档（admin 页面测试逐项锁定）。
+
 ## Constraints
 
 - E2EE 群的世代边界由数据库 append-only 表守卫，任何「补发旧房间密钥」的需求都违反安全模型。
