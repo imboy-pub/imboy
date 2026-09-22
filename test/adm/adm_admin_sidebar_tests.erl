@@ -13,14 +13,12 @@
 %% C1 冻结表: {Label, Path, Permission, Roles}
 -define(C1_LEAVES, [
     {<<"企业组织"/utf8>>, <<"/organizations">>, <<"organizations:read">>, [1, 2, 3]},
-    {<<"客服开通"/utf8>>, <<"/customer-service/provisioning">>, <<"customer_service:write">>, [1, 2]},
-    {<<"客服坐席"/utf8>>, <<"/customer-service">>, <<"customer_service:read">>, [1, 2]},
-    {<<"客服会话"/utf8>>, <<"/customer-service/sessions">>, <<"customer_service:read">>, [1, 2]},
-    {<<"Widget 接入"/utf8>>, <<"/customer-service/widgets">>, <<"customer_service:read">>, [1, 2]},
     {<<"企业业务数据"/utf8>>, <<"/enterprise-business">>, <<"enterprise_business:read">>, [1, 2]},
     {<<"离岗交接"/utf8>>, <<"/enterprise-business/offboarding">>, <<"enterprise_business:read">>, [
         1, 2
     ]},
+    {<<"企业应用治理"/utf8>>, <<"/enterprise/applications">>, <<"enterprise_business:read">>, [1, 2]},
+    {<<"在线客服"/utf8>>, <<"/customer-service">>, <<"customer_service:read">>, [1, 2]},
     {<<"坐席工作台"/utf8>>, <<"/customer-service/workspace">>, <<"customer_service:read">>, [1, 2]}
 ]).
 
@@ -54,17 +52,17 @@ contract_triples(Children) ->
     ]).
 
 %%--------------------------------------------------------------------
-%% 1. 「企业管理」顶级组存在，恰 8 个叶子
+%% 1. 「企业管理」顶级组存在，恰 6 个叶子
 %%--------------------------------------------------------------------
 
 sidebar_enterprise_group_exists_test_() ->
     [
         ?_assertMatch(#{<<"children">> := [_ | _]}, enterprise_group()),
-        ?_assertEqual(8, length(enterprise_children()))
+        ?_assertEqual(6, length(enterprise_children()))
     ].
 
 %%--------------------------------------------------------------------
-%% 2. 8 叶子逐条精确匹配（label + path + permission + roles，含顺序）
+%% 2. 6 叶子逐条精确匹配（label + path + permission + roles，含顺序）
 %%--------------------------------------------------------------------
 
 sidebar_enterprise_leaves_exact_test_() ->

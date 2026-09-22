@@ -1013,34 +1013,6 @@ default_sidebar_config() ->
                         <<"permission">> => <<"organizations:read">>
                     },
                     #{
-                        <<"path">> => <<"/customer-service/provisioning">>,
-                        <<"icon">> => <<"UserPlus">>,
-                        <<"label">> => <<"客服开通"/utf8>>,
-                        <<"roles">> => [1, 2],
-                        <<"permission">> => <<"customer_service:write">>
-                    },
-                    #{
-                        <<"path">> => <<"/customer-service">>,
-                        <<"icon">> => <<"Headphones">>,
-                        <<"label">> => <<"客服坐席"/utf8>>,
-                        <<"roles">> => [1, 2],
-                        <<"permission">> => <<"customer_service:read">>
-                    },
-                    #{
-                        <<"path">> => <<"/customer-service/sessions">>,
-                        <<"icon">> => <<"MessagesSquare">>,
-                        <<"label">> => <<"客服会话"/utf8>>,
-                        <<"roles">> => [1, 2],
-                        <<"permission">> => <<"customer_service:read">>
-                    },
-                    #{
-                        <<"path">> => <<"/customer-service/widgets">>,
-                        <<"icon">> => <<"MessageSquare">>,
-                        <<"label">> => <<"Widget 接入"/utf8>>,
-                        <<"roles">> => [1, 2],
-                        <<"permission">> => <<"customer_service:read">>
-                    },
-                    #{
                         <<"path">> => <<"/enterprise-business">>,
                         <<"icon">> => <<"BarChart3">>,
                         <<"label">> => <<"企业业务数据"/utf8>>,
@@ -1053,6 +1025,20 @@ default_sidebar_config() ->
                         <<"label">> => <<"离岗交接"/utf8>>,
                         <<"roles">> => [1, 2],
                         <<"permission">> => <<"enterprise_business:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/enterprise/applications">>,
+                        <<"icon">> => <<"ShieldCheck">>,
+                        <<"label">> => <<"企业应用治理"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"enterprise_business:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/customer-service">>,
+                        <<"icon">> => <<"Headphones">>,
+                        <<"label">> => <<"在线客服"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:read">>
                     },
                     #{
                         <<"path">> => <<"/customer-service/workspace">>,
