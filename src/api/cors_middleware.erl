@@ -81,6 +81,12 @@ classify_by_prefix(Path) ->
     case Path of
         <<"/api/adm", _/binary>> ->
             admin;
+        <<"/api/v1/cs/widget/", _/binary>> ->
+            %% 挂件访客面 API（bootstrap/sessions/messages/assets）：frame
+            %% (cs 网关域) 会跨域到 API 主域调这些端点——必须归 widget 面，
+            %% 否则落 undefined 走全局白名单，宿主/网关 origin 一律 403
+            %%（2026-09-23 附件上传预检 403 实测）。
+            widget;
         <<"/api/v1/cs/organizations/", _/binary>> ->
             %% 坐席/治理面路径前缀兜底（未来 seat SSE 等新路由未带 metadata
             %% 时仍按 seat 面收口；凭据校验照旧在 auth 层 fail-closed）。

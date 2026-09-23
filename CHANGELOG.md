@@ -22,6 +22,12 @@
 
 ---
 
+## [1.0.0-alpha.81] - 2026-09-23
+
+- 挂件面 CORS 二段修复：`/api/v1/cs/widget/*` 路径前缀兜底归入 widget 面（此前落 undefined 走全局白名单，frame 跨域上传一律 403）；`cors_widget_origins` 补入网关域 cs.imboy.pub（挂件 frame 是实际跨域发起方）
+
+---
+
 ## [1.0.0-alpha.80] - 2026-09-23
 
 - 挂件面 CORS 修复：widget 预检 allow_methods 补 PUT（附件裸上传被浏览器预检 403）；生产配置补 `cors_widget_origins`（宿主页 imboy.pub / www.imboy.pub）
