@@ -10,7 +10,8 @@
 %%
 %% 前置: 该库已应用迁移链至 00000128（drill_migrate.escript up；
 %%       126/127 为 ORG-01 的前置迁移，129 属 ORG-04 在途文件，不进本验证链）。
-%% 探针: P01-P15 = 应用层 organization_invitation_app 命令真调（elib_pg:with_tx）；
+%% 探针: P01-P20 = 应用层 organization_invitation_app 命令真调（elib_pg:with_tx；
+%%       P16-P20 = 免口令 accept_targeted 真库行为矩阵）；
 %%       A01-A06 = DB 不变量矩阵（C11 冻结 schema 正反例）；
 %%       C01-C03 = 并发（C01 两连接 CAS 消费恰一胜；C02 应用层并发 accept；
 %%                 C03 并发 create 唯一索引裁决）。
@@ -287,6 +288,110 @@ app_probes(Conn, Counters) ->
             1 = b2i(N15b),
             pass(Counters, "P15 membership hook creates exactly one member row, replay adds none");
         Other15 -> fail(Counters, "P15 membership hook", Other15)
+    end,
+
+    %% P16a 免口令 accept_targeted（P0）：TARGET 此节点最新 active 行是 P07
+    %% 消费的 Inv1（accepted）→ 幂等重放 already_accepted=true（证明
+    %% (org,target) 最新 pending/accepted 定位能读到终态而非 404）
+    case organization_invitation_app:accept_targeted(?TARGET, ?ORG_A, #{}) of
+        {ok, View16a} ->
+            true = maps:get(already_accepted, View16a),
+            <<"accepted">> = maps:get(status, View16a),
+            pass(Counters, "P16a tokenless accept replays accepted terminal via (org,target) lookup");
+        Other16a -> fail(Counters, "P16a tokenless accept replay", Other16a)
+    end,
+
+    %% P16b 新 pending 建立后免口令接受：定位切换到最新 pending 并一次性消费
+    Inv16 = 810000216,
+    {ok, _} = organization_invitation_app:create(?OWNER, ?ORG_A, ?TARGET,
+                                                 #{invitation_id => Inv16}),
+    case organization_invitation_app:accept_targeted(?TARGET, ?ORG_A, #{}) of
+        {ok, View16b} ->
+            false = maps:get(already_accepted, View16b),
+            <<"accepted">> = maps:get(status, View16b),
+            %% 默认无 hook：不产生 membership（与 P07 同口径）
+            {ok, _, [{N16}]} = q(Conn,
+                [<<"SELECT count(*) FROM organization_member WHERE organization_id=">>,
+                 orgb(?ORG_A), <<" AND user_id=">>, integer_to_binary(?TARGET)]),
+            0 = b2i(N16),
+            pass(Counters, "P16b tokenless accept consumes latest pending, no membership by default");
+        Other16b -> fail(Counters, "P16b tokenless accept consume", Other16b)
+    end,
+
+    %% P17 免口令重复接受幂等：读到 accepted 终态，不二次消费
+    case organization_invitation_app:accept_targeted(?TARGET, ?ORG_A, #{}) of
+        {ok, View17} ->
+            true = maps:get(already_accepted, View17),
+            pass(Counters, "P17 tokenless replay idempotent");
+        Other17 -> fail(Counters, "P17 tokenless replay idempotent", Other17)
+    end,
+
+    %% P18 无任何邀请的用户免口令接受 → 404（MEMBER 在 ORG_A 从未被邀请）
+    case organization_invitation_app:accept_targeted(?MEMBER, ?ORG_A, #{}) of
+        {error, {404, _}} -> pass(Counters, "P18 tokenless accept without invitation rejected 404");
+        Other18 -> fail(Counters, "P18 tokenless accept without invitation", Other18)
+    end,
+
+    %% P19 终态排序正确性（真库定位语义文档化）：
+    %% rejected/revoked/expired 不入选（status IN ('pending','accepted')）。
+    %% TARGET 有 P16b 消费的 accepted 行；新 pending 被拒后，
+    %% 免口令定位跳过 rejected 收敛到更早的 accepted 终态（stale-UI 角落
+    %% 的既定语义：消费只可能落在 pending 行，无安全面）。
+    Inv19a = 810000219,
+    {ok, _} = organization_invitation_app:create(?OWNER, ?ORG_A, ?TARGET,
+                                                 #{invitation_id => Inv19a}),
+    {ok, _} = organization_invitation_app:reject(?TARGET, ?ORG_A, Inv19a),
+    case organization_invitation_app:accept_targeted(?TARGET, ?ORG_A, #{}) of
+        {ok, View19a} ->
+            true = maps:get(already_accepted, View19a),
+            810000216 = maps:get(invitation_id, View19a),
+            pass(Counters, "P19a tokenless accept skips rejected, converges to older accepted");
+        Other19a -> fail(Counters, "P19a tokenless accept skips rejected", Other19a)
+    end,
+    %% 新 pending 建立后：pending 优先于更早的 accepted 被消费
+    Inv19b = 810000220,
+    {ok, _} = organization_invitation_app:create(?OWNER, ?ORG_A, ?TARGET,
+                                                 #{invitation_id => Inv19b}),
+    case organization_invitation_app:accept_targeted(?TARGET, ?ORG_A, #{}) of
+        {ok, View19b} ->
+            false = maps:get(already_accepted, View19b),
+            810000220 = maps:get(invitation_id, View19b),
+            pass(Counters, "P19b tokenless accept picks newest pending over older accepted");
+        Other19b -> fail(Counters, "P19b tokenless accept newest pending", Other19b)
+    end,
+
+    %% P20 免口令 + membership_hook：同事务成员行恰一（生产形态）
+    Inv20 = 810000221,
+    {ok, _} = organization_invitation_app:create(?OWNER, ?ORG_A, ?TARGET,
+                                                 #{invitation_id => Inv20}),
+    Hook20 =
+        fun(HookConn, Row) ->
+            OrgB = integer_to_binary(maps:get(<<"organization_id">>, Row)),
+            TgtB = integer_to_binary(maps:get(<<"target_user_id">>, Row)),
+            case elib_pg:execute(HookConn,
+                    [<<"INSERT INTO organization_member"
+                       " (organization_id,user_id,role,status,joined_at,created_at,updated_at)"
+                       " VALUES (">>, OrgB, <<",">>, TgtB,
+                       <<",'member','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"
+                         " ON CONFLICT (organization_id,user_id) DO NOTHING">>], []) of
+                {ok, _} -> ok;
+                {error, _} = E -> E
+            end
+        end,
+    case organization_invitation_app:accept_targeted(?TARGET, ?ORG_A,
+                                                     #{membership_hook => Hook20}) of
+        {ok, _} ->
+            {ok, _, [{N20}]} = q(Conn,
+                [<<"SELECT count(*) FROM organization_member WHERE organization_id=">>,
+                 orgb(?ORG_A), <<" AND user_id=">>, integer_to_binary(?TARGET)]),
+            1 = b2i(N20),
+            {ok, _} = organization_invitation_app:accept_targeted(?TARGET, ?ORG_A, #{}),
+            {ok, _, [{N20b}]} = q(Conn,
+                [<<"SELECT count(*) FROM organization_member WHERE organization_id=">>,
+                 orgb(?ORG_A), <<" AND user_id=">>, integer_to_binary(?TARGET)]),
+            1 = b2i(N20b),
+            pass(Counters, "P20 tokenless accept with hook creates exactly one member row");
+        Other20 -> fail(Counters, "P20 tokenless accept with hook", Other20)
     end,
     ok.
 
