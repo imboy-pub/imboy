@@ -48,7 +48,7 @@ admin_page_attaches_task_counts_test_() ->
     ?WITH_MECKS(
         [
             {project_ds, [
-                {'admin_page', 4, fun(1, 10, all, <<>>) ->
+                {'admin_page', 5, fun(1, 10, all, <<>>, 0) ->
                     {ok, #{list => [Row], page => 1, size => 10, total => 1, total_page => 1}}
                 end},
                 {'admin_batch_task_counts', 1, fun([?PROJECT_ID]) ->
@@ -71,7 +71,7 @@ admin_page_invalid_status_normalized_to_all_test_() ->
             run_with_mocks(
                 [
                     {project_ds, [
-                        {'admin_page', 4, fun(_P, _S, Status, _K) ->
+                        {'admin_page', 5, fun(_P, _S, Status, _K, _O) ->
                             Self ! {status_arg, Status},
                             {ok, #{list => [], page => 1, size => 10, total => 0, total_page => 0}}
                         end}

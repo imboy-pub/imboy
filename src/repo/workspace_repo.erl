@@ -18,6 +18,7 @@
 -export([update_owner_tx/3]).
 -export([page_by_member/4]).
 -export([count_by_owner/1]).
+-export([ids_by_organization/1]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -178,4 +179,19 @@ count_by_owner(OwnerUid) ->
     case elib_pg:one(Sql, [OwnerUid]) of
         {ok, #{<<"count">> := Count}} -> Count;
         _ -> 0
+    end.
+
+%% @doc Organization 名下全部 workspace id（Admin 企业入口 O 维度过滤真源；
+%% adm_enterprise_filter 把结果以 IN 谓词下推给 group/channel 列表）。
+%% 查询失败返回 {error, _}（调用方 fail-closed 处理，不兜底全量）。
+-spec ids_by_organization(integer()) -> {ok, [integer()]} | {error, term()}.
+ids_by_organization(OrgId) when OrgId > 0 ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT id FROM ", Tb/binary, " WHERE organization_id = $1 ORDER BY id ASC">>,
+    case elib_pg:query(Sql, [OrgId]) of
+        {ok, Rows} ->
+            {ok, [maps:get(<<"id">>, Row) || Row <- Rows]};
+        {error, Reason} ->
+            {error, Reason}
     end.

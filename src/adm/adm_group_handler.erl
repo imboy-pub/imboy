@@ -56,6 +56,10 @@ dispatch(kick_member, Method, Req0, State) -> kick_member(Method, Req0, State);
 dispatch(_, _Method, Req0, _State) -> Req0.
 
 %% @doc 群组列表
+%% 企业菜单入口（plan §13.1）：preset/organization_id/workspace_id 只表达 UI
+%% 状态；服务端经 adm_enterprise_filter 强制重验——enterprise 恒定 scope=
+%% 'workspace'（personal 群企业入口零可见），O/W 过滤由服务端解析下推。
+%% 运营中心入口（无 preset）保留全局/个人治理语义不变。
 -spec list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 list(<<"GET">>, Req0, State) ->
     case adm_acl:ensure_permission(State, <<"groups:read">>, Req0) of
@@ -67,7 +71,11 @@ list(<<"GET">>, Req0, State) ->
             {ok, Type} = elib_param:int(type, Req0, -1),
             {ok, Keyword} = elib_param:binary(keyword, Req0, <<>>),
 
-            Where = build_where(Status, Type, Keyword),
+            ScopeParams = adm_enterprise_filter:scope_params_from_req(Req0),
+            OrgWsIds = adm_enterprise_filter:org_workspace_ids(ScopeParams),
+
+            Where0 = build_where(Status, Type, Keyword),
+            Where = adm_enterprise_filter:group_where(Where0, ScopeParams, OrgWsIds),
             {ok, P} = group_ds:page(Page, Size, Where, <<"created_at DESC">>),
             P2 = normalize_group_payload(P),
             elib_response:success(Req0, P2)

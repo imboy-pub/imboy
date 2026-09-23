@@ -38,8 +38,10 @@
 -export([resource_counts/1]).
 %% Admin 运营管理查询（双体验 v2.5.2 WP7/T11b；仅供 workspace_logic admin 函数调用）
 -export([admin_page/4]).
+-export([admin_page/5]).
 -export([admin_batch_resource_counts/1]).
 -export([admin_resource_list/3]).
+-export([admin_workspace_ids_by_organization/1]).
 
 -include("log.hrl").
 
@@ -416,11 +418,18 @@ ws_transfer_tx(Conn, WsId, NewOwnerUid) ->
 -spec admin_page(integer(), integer(), binary() | all, binary()) ->
     {ok, map()} | {error, term()}.
 admin_page(Page0, Size0, Status, Keyword) ->
+    admin_page(Page0, Size0, Status, Keyword, 0).
+
+%% @doc Admin 工作区分页列表（OrgId > 0 时服务端强制 Organization 过滤；
+%% 企业菜单入口的 workspace 列表按组织维度收窄，query 参数仅表达 UI 状态）。
+-spec admin_page(integer(), integer(), binary() | all, binary(), non_neg_integer()) ->
+    {ok, map()} | {error, term()}.
+admin_page(Page0, Size0, Status, Keyword, OrgId) ->
     Page = max(Page0, 1),
     Size = clamp(Size0, 1, 100),
     WsTb = workspace_repo:tablename(),
     UTb = user_repo:tablename(),
-    {WhereSql, Params} = admin_page_where(Status, Keyword),
+    {WhereSql, Params} = admin_page_where(Status, Keyword, OrgId),
     CountSql =
         <<"SELECT COUNT(*) AS count FROM ", WsTb/binary, " w", WhereSql/binary>>,
     Total =
@@ -458,16 +467,35 @@ admin_page(Page0, Size0, Status, Keyword) ->
             {error, Reason}
     end.
 
-%% status= all | <<"active">> | <<"archived">>；keyword 非空时 name ILIKE（防注入走参数）
--spec admin_page_where(binary() | all, binary()) -> {binary(), [term()]}.
-admin_page_where(all, Keyword) when byte_size(Keyword) > 0 ->
+%% status= all | <<"active">> | <<"archived">>；keyword 非空时 name ILIKE（防注入走参数）；
+%% OrgId > 0 时恒以 w.organization_id = $N 服务端过滤（无条件叠加，不信任 UI 状态）
+-spec admin_page_where(binary() | all, binary(), non_neg_integer()) -> {binary(), [term()]}.
+admin_page_where(all, Keyword, OrgId) when OrgId > 0, byte_size(Keyword) > 0 ->
+    {<<" WHERE w.organization_id = $1 AND w.name ILIKE $2">>, [
+        OrgId, <<"%", Keyword/binary, "%">>
+    ]};
+admin_page_where(all, _Keyword, OrgId) when OrgId > 0 ->
+    {<<" WHERE w.organization_id = $1">>, [OrgId]};
+admin_page_where(all, Keyword, _OrgId) when byte_size(Keyword) > 0 ->
     {<<" WHERE w.name ILIKE $1">>, [<<"%", Keyword/binary, "%">>]};
-admin_page_where(all, _Keyword) ->
+admin_page_where(all, _Keyword, _OrgId) ->
     {<<>>, []};
-admin_page_where(Status, Keyword) when byte_size(Keyword) > 0 ->
+admin_page_where(Status, Keyword, OrgId) when OrgId > 0, byte_size(Keyword) > 0 ->
+    {<<" WHERE w.status = $1 AND w.name ILIKE $2 AND w.organization_id = $3">>, [
+        Status, <<"%", Keyword/binary, "%">>, OrgId
+    ]};
+admin_page_where(Status, _Keyword, OrgId) when OrgId > 0 ->
+    {<<" WHERE w.status = $1 AND w.organization_id = $2">>, [Status, OrgId]};
+admin_page_where(Status, Keyword, _OrgId) when byte_size(Keyword) > 0 ->
     {<<" WHERE w.status = $1 AND w.name ILIKE $2">>, [Status, <<"%", Keyword/binary, "%">>]};
-admin_page_where(Status, _Keyword) ->
+admin_page_where(Status, _Keyword, _OrgId) ->
     {<<" WHERE w.status = $1">>, [Status]}.
+
+%% @doc Organization → workspace id 真源解析（Admin 企业入口 O 维度过滤）。
+%% repo 查询失败时返回 {error, _}，由 adm_enterprise_filter fail-closed 为零可见。
+-spec admin_workspace_ids_by_organization(integer()) -> {ok, [integer()]} | {error, term()}.
+admin_workspace_ids_by_organization(OrgId) ->
+    workspace_repo:ids_by_organization(OrgId).
 
 %% @doc 批量资源计数（projects/groups/channels/members；每类一条 GROUP BY，
 %% 与页大小无关——避免逐行 COUNT 的 N+1）
