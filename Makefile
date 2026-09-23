@@ -216,9 +216,17 @@ CT_OPTS += -erl_args $(CT_ERL_ARGS)
 # REST API black-box tests. The runner owns an isolated scratch database and
 # lets Cowboy bind an ephemeral port; reports and redacted evidence stay under
 # the ignored .reports/ directory.
+#
+# The scratch provider (imboy_pg18 container) listens on 127.0.0.1:4323. The
+# workspace .env sets IMBOY_PG_PORT for the dev database — a DIFFERENT server
+# — so this target pins the REST provider port (REST_* outranks IMBOY_* in the
+# runner). Override for a provider elsewhere: make rest-api-test REST_PG_PORT=5433.
+# Credentials come from the environment only: source .env first
+# (REST_PG_PASSWORD / IMBOY_PG_PASSWORD).
+REST_PG_PORT ?= 4323
 .PHONY: rest-api-test rest-contract-check
 rest-api-test:
-	@bash scripts/run_rest_api_tests.sh
+	@REST_PG_PORT='$(REST_PG_PORT)' bash scripts/run_rest_api_tests.sh
 
 rest-contract-check:
 	@bash scripts/check_rest_contract_coverage.sh

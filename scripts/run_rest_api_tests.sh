@@ -26,6 +26,11 @@ die() {
   local code=$1
   shift
   echo "run_rest_api_tests: $*" >&2
+  # CI post-mortems often collect only the report dir, not stderr: mirror the
+  # message into it once it exists (review round 9, 2026-09-23).
+  if [[ -n "${REPORT_ROOT:-}" && -d "$REPORT_ROOT" ]]; then
+    printf 'run_rest_api_tests: %s\n' "$*" >>"$REPORT_ROOT/RUNNER_ERROR" 2>/dev/null
+  fi
   exit "$code"
 }
 
