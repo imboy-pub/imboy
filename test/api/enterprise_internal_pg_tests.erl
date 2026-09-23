@@ -4,15 +4,20 @@
 %% 一次性 marker 库（inttest_marker_db 配方，env 前缀 EPGZ02_INTTEST，直连
 %% imboy_pg18:4323）。业务用例每条 BEGIN ... ROLLBACK，不留数据。
 %%
-%% 覆盖（plan-gz §4.1/§4.2、§6；manifest auth_contexts/INV-4/INV-7/INV-9）：
-%%   ① 固定 scope 枚举：10 个、无 wildcard、无隐含包含（INV-4 负例）
+%% 覆盖（plan-gz §4.1/§4.2、§6；manifest auth_contexts/INV-4/INV-7/INV-9；
+%% V2.1 §7 scope 14 值 / §11 幂等 response 快照 / §5.2 零 Grant deny）：
+%%   ① 固定 scope 枚举：14 个、无 wildcard、无隐含包含（INV-4 负例；
+%%      read 不隐含 write、write 不隐含 read）
 %%   ② 错误信封：13 个 stable 码 → HTTP 状态映射 + 信封形态
 %%   ③ credential 解析：合法/畸形各形态
 %%   ④ 认证链负例矩阵：unknown prefix / 错 secret / revoked / expired /
 %%      application disabled / organization archived / 成功 context 形态
+%%      （V2.1：零 Grant ⇒ granted_scopes 空集，授权后交集生效）
 %%   ⑤ 中间件 decide：路由匹配、scope、rate（含 fail-closed）、
-%%      mutation 缺 Idempotency-Key 拒绝（INV-7）、INT-14 豁免
-%%   ⑥ 幂等三态：同 key 同 body 重放 / 同 key 异 body 409 / claim 单次
+%%      mutation 缺/畸形 Idempotency-Key 拒绝（INV-7 + §11 形态）、INT-14 豁免
+%%   ⑥ 幂等：同 key 同 payload 精确重放 status+body / 同 key 异 payload 409 /
+%%      claim 单次 / 过期行同事务原子重置 / digest 规范化（key 序无关、
+%%      float 拒绝）
 %%   ⑦ 运维命令：create application / issue credential（明文只出现一次）/
 %%      rotate（新生效旧吊销）/ revoke / status（无 digest 泄露）
 %%   ⑧ redaction：认证失败日志与错误信封不含 secret / Authorization 值
@@ -133,6 +138,15 @@ prefix_of(Full) ->
     [Prefix, _Secret] = binary:split(Full, <<".">>),
     Prefix.
 
+%% V2.1 §5.2：零 Grant 即零授权——fixture 必须显式建 Grant（org 全域生效）。
+seed_org_grant(C, OrgId, AppId, Scopes, Key) ->
+    {ok, Grant} = enterprise_internal_ops:issue_grant_tx(C, OrgId, AppId, #{
+        scopes => Scopes,
+        idempotency_key => Key,
+        expires_at => <<"2099-12-31T00:00:00+00:00">>
+    }),
+    Grant.
+
 %%%===================================================================
 %%% Suite
 %%%===================================================================
@@ -170,9 +184,12 @@ enterprise_internal_pg_test_() ->
                 {"middleware_int14_exempt_idempotency", middleware_int14_exempt_test()},
                 {"middleware_credential_forbidden_prefixes",
                     with_tx(C, fun middleware_forbidden_prefixes/1)},
-                %% ⑥ 幂等三态（真库）
+                %% ⑥ 幂等（真库；V2.1 §11）
                 {"idempotency_three_states", with_tx(C, fun idempotency_three_states/1)},
                 {"idempotency_claim_single", with_tx(C, fun idempotency_claim_single/1)},
+                {"idempotency_expired_atomic_reset",
+                    with_tx(C, fun idempotency_expired_atomic_reset/1)},
+                {"idempotency_digest_canonical", idempotency_digest_canonical_test()},
                 %% ⑦ 运维命令（真库）
                 {"ops_application_lifecycle", with_tx(C, fun ops_application_lifecycle/1)},
                 {"ops_credential_plaintext_once", with_tx(C, fun ops_credential_plaintext_once/1)},
@@ -185,27 +202,32 @@ enterprise_internal_pg_test_() ->
         end}}.
 
 %%%===================================================================
-%%% ① 固定 scope 枚举（plan-gz §4.2，INV-4）
+%%% ① 固定 scope 枚举（V2.1 §7：14 值，无 wildcard、无隐含包含）
 %%%===================================================================
+
+-define(V21_SCOPES, [
+    <<"application:read">>,
+    <<"identities:read">>,
+    <<"identities:write">>,
+    <<"groups:read">>,
+    <<"groups:write">>,
+    <<"workspaces:read">>,
+    <<"projects:read">>,
+    <<"channels:read">>,
+    <<"files:write">>,
+    <<"messages:send">>,
+    <<"messages:send_as_human">>,
+    <<"friend_requests:create">>,
+    <<"webhooks:manage">>,
+    <<"sso:exchange">>
+]).
 
 scope_fixed_enum_test() ->
     ?_test(begin
-        %% all() 返回 plan-gz §4.2 的固定顺序（不做 sort：顺序也是契约）
-        ?assertEqual(
-            [
-                <<"application:read">>,
-                <<"identities:read">>,
-                <<"identities:write">>,
-                <<"groups:write">>,
-                <<"files:write">>,
-                <<"messages:send">>,
-                <<"messages:send_as_human">>,
-                <<"friend_requests:create">>,
-                <<"webhooks:manage">>,
-                <<"sso:exchange">>
-            ],
-            enterprise_internal_scope:all()
-        ),
+        %% all() 返回 V2.1 §7 的固定顺序（不做 sort：顺序也是契约），
+        %% 恰好 14 个——多一个/少一个都判失败（CON-02 口径）。
+        ?assertEqual(?V21_SCOPES, enterprise_internal_scope:all()),
+        ?assertEqual(14, length(enterprise_internal_scope:all())),
         %% 显式授予才可用；未授予即拒
         ?assertEqual(
             ok,
@@ -230,6 +252,26 @@ scope_fixed_enum_test() ->
         ?assertEqual(
             {error, invalid_scope},
             enterprise_internal_scope:authorize(<<"messages:send:*">>, [<<"messages:send:*">>])
+        ),
+        %% V2.1 新增 4 个只读 scope 均可显式授予/未授予即拒
+        lists:foreach(
+            fun(S) ->
+                ?assertEqual(ok, enterprise_internal_scope:authorize(S, [S])),
+                ?assertEqual(
+                    {error, insufficient_scope},
+                    enterprise_internal_scope:authorize(S, [<<"application:read">>])
+                )
+            end,
+            [<<"groups:read">>, <<"workspaces:read">>, <<"projects:read">>, <<"channels:read">>]
+        ),
+        %% read 不隐含 write、write 不隐含 read（§7 无 read implies write，双向）
+        ?assertEqual(
+            {error, insufficient_scope},
+            enterprise_internal_scope:authorize(<<"groups:write">>, [<<"groups:read">>])
+        ),
+        ?assertEqual(
+            {error, insufficient_scope},
+            enterprise_internal_scope:authorize(<<"workspaces:read">>, [<<"groups:read">>])
         )
     end).
 
@@ -351,21 +393,47 @@ credential_parse_forms_test() ->
 
 auth_chain_success(C) ->
     F = seed_app_fixture(C),
+    %% V2.1 §5.2/F-09：零 Grant ⇒ granted_scopes 恒为空集——即使
+    %% allowed_scopes（?WRITE_SCOPES）包含所需 scope 也绝不回退放行。
     ?assertMatch(
         {ok, #{
             organization_id := ?ORG_A,
             application_id := _,
             credential_id := _,
-            granted_scopes := _
+            granted_scopes := []
         }},
         enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), maps:get(secret, F))
+    ),
+    %% 零 Grant + allowed_scopes 含所需 scope → 中间件 scope gate 恒 403
+    ?assertEqual(
+        {error, insufficient_scope},
+        enterprise_internal_auth:decide(
+            <<"PUT">>,
+            <<"/api/internal/v1/identity-mappings">>,
+            maps:put(<<"idempotency-key">>, <<"epgz02-zg">>, headers(F)),
+            auth_fun(C, F)
+        )
+    ),
+    %% 显式建 Grant（org 全域）后：生效 scope = allowed_scopes ∩ Grant scopes
+    _Grant = seed_org_grant(
+        C, ?ORG_A, maps:get(app_id, F), ?WRITE_SCOPES, <<"epgz02-grant-auth-ok">>
     ),
     {ok, Ctx} = enterprise_internal_auth:authenticate_tx(
         C, maps:get(prefix, F), maps:get(secret, F)
     ),
     ?assertEqual(lists:sort(?WRITE_SCOPES), lists:sort(maps:get(granted_scopes, Ctx))),
     ?assertEqual(maps:get(app_id, F), maps:get(application_id, Ctx)),
-    ?assertEqual(maps:get(credential_id, F), maps:get(credential_id, Ctx)).
+    ?assertEqual(maps:get(credential_id, F), maps:get(credential_id, Ctx)),
+    %% 零 Grant 的 decide 负例此时翻绿（同 key 同路由）
+    ?assertMatch(
+        {ok, #{route_id := <<"INT-02">>}},
+        enterprise_internal_auth:decide(
+            <<"PUT">>,
+            <<"/api/internal/v1/identity-mappings">>,
+            maps:put(<<"idempotency-key">>, <<"epgz02-zg">>, headers(F)),
+            auth_fun(C, F)
+        )
+    ).
 
 auth_chain_unknown_prefix(C) ->
     _F = seed_app_fixture(C),
@@ -455,16 +523,31 @@ headers(F) ->
 
 middleware_route_and_flow(C) ->
     F = seed_app_fixture(C),
-    %% INT-01：scope application:read 未授予（fixture 只给 write scopes）→ 403 码
+    %% INT-01：零 Grant（V2.1：无回退旁路）→ 403 码
     ?assertEqual(
         {error, insufficient_scope},
         enterprise_internal_auth:decide(
             <<"GET">>, <<"/api/internal/v1/application">>, headers(F), auth_fun(C, F)
         )
     ),
-    %% 授予后通过，context 含 route 元数据
+    %% 授予 allowed_scopes 后仍需 Grant（只加 allowed 不建 Grant 依旧 403）
     ok = enterprise_internal_ops:update_scopes_tx(
         C, ?ORG_A, maps:get(app_id, F), [<<"application:read">> | ?WRITE_SCOPES]
+    ),
+    ?assertEqual(
+        {error, insufficient_scope},
+        enterprise_internal_auth:decide(
+            <<"GET">>, <<"/api/internal/v1/application">>, headers(F), auth_fun(C, F)
+        ),
+        "V2.1：allowed_scopes 含所需 scope 但零 Grant 依旧恒 403"
+    ),
+    %% 建 Grant 后通过，context 含 route 元数据
+    _Grant = seed_org_grant(
+        C,
+        ?ORG_A,
+        maps:get(app_id, F),
+        lists:usort([<<"application:read">> | ?WRITE_SCOPES]),
+        <<"epgz02-grant-route">>
     ),
     ?assertMatch(
         {ok, #{route_id := <<"INT-01">>, rate_bucket := internal_read}},
@@ -572,6 +655,13 @@ middleware_idem_key_required(C) ->
     ok = enterprise_internal_ops:update_scopes_tx(
         C, ?ORG_A, maps:get(app_id, F), [<<"identities:write">>, <<"groups:write">> | ?WRITE_SCOPES]
     ),
+    _Grant = seed_org_grant(
+        C,
+        ?ORG_A,
+        maps:get(app_id, F),
+        lists:usort([<<"identities:write">>, <<"groups:write">> | ?WRITE_SCOPES]),
+        <<"epgz02-grant-idem">>
+    ),
     %% INT-02 mutation：无 Idempotency-Key → invalid_request（INV-7）
     ?assertEqual(
         {error, invalid_request},
@@ -593,6 +683,31 @@ middleware_idem_key_required(C) ->
         {error, invalid_request},
         enterprise_internal_auth:decide(
             <<"PUT">>, <<"/api/internal/v1/identity-mappings">>, H3, auth_fun(C, F)
+        )
+    ),
+    %% §11 Key 形态：超长（>128）/ 控制字符 → invalid_request
+    H4 = maps:put(<<"idempotency-key">>, binary:copy(<<"k">>, 129), headers(F)),
+    ?assertEqual(
+        {error, invalid_request},
+        enterprise_internal_auth:decide(
+            <<"PUT">>, <<"/api/internal/v1/identity-mappings">>, H4, auth_fun(C, F)
+        ),
+        "Idempotency-Key 超 128 字符必须 400"
+    ),
+    H5 = maps:put(<<"idempotency-key">>, <<"bad", 16#01, "key">>, headers(F)),
+    ?assertEqual(
+        {error, invalid_request},
+        enterprise_internal_auth:decide(
+            <<"PUT">>, <<"/api/internal/v1/identity-mappings">>, H5, auth_fun(C, F)
+        ),
+        "Idempotency-Key 含控制字符必须 400"
+    ),
+    %% 恰好 128 个可打印 ASCII 合法（边界）
+    H6 = maps:put(<<"idempotency-key">>, binary:copy(<<"k">>, 128), headers(F)),
+    ?assertMatch(
+        {ok, #{route_id := <<"INT-02">>}},
+        enterprise_internal_auth:decide(
+            <<"PUT">>, <<"/api/internal/v1/identity-mappings">>, H6, auth_fun(C, F)
         )
     ).
 
@@ -644,18 +759,21 @@ middleware_forbidden_prefixes(C) ->
     ).
 
 %%%===================================================================
-%%% ⑥ 幂等三态（INV-7；repo：enterprise_internal_idempotency_repo）
+%%% ⑥ 幂等（V2.1 §11：response 快照精确重放；repo：enterprise_internal_idempotency_repo）
 %%%===================================================================
 
-idempotency_three_states(C) ->
-    F = seed_app_fixture(C),
-    Ctx = #{
+idem_ctx(F) ->
+    #{
         organization_id => ?ORG_A,
         application_id => maps:get(app_id, F),
         credential_id => maps:get(credential_id, F)
-    },
+    }.
+
+idempotency_three_states(C) ->
+    F = seed_app_fixture(C),
+    Ctx = idem_ctx(F),
     Key = <<"epgz02-idem-key-1">>,
-    D1 = enterprise_internal_idempotency:request_digest(
+    {ok, D1} = enterprise_internal_idempotency:request_digest(
         <<"PUT">>, <<"/api/internal/v1/identity-mappings">>, <<"{\"external_user_id\":\"e1\"}">>
     ),
     %% 态一：首插 → inserted（执行业务）
@@ -663,38 +781,35 @@ idempotency_three_states(C) ->
         {ok, inserted},
         enterprise_internal_idempotency:begin_tx(C, Ctx, <<"identity_mapping">>, Key, D1)
     ),
-    %% 业务执行成功后回填结果
+    %% 业务执行成功后回填结果快照（同事务：code + body）
+    Body1 = <<"{\"data\":{\"resource_id\":4242}}">>,
     ok = enterprise_internal_idempotency:complete_tx(
-        C, Ctx, <<"identity_mapping">>, Key, 4242, 200
+        C, Ctx, <<"identity_mapping">>, Key, 4242, 200, Body1
     ),
-    %% 态二：同 key 同 body → replay（回读原结果；回读 map 只含这两个键）
+    %% 态二：同 key 同 body → replay（字节精确回读原 status + body；map 恰含三键）
     ?assertEqual(
-        {ok, replay, #{response_code => 200, resource_id => 4242}},
+        {ok, replay, #{response_code => 200, resource_id => 4242, response_body => Body1}},
         enterprise_internal_idempotency:begin_tx(C, Ctx, <<"identity_mapping">>, Key, D1)
     ),
     %% 态三：同 key 异 body → digest_conflict（上层 409 idempotency_conflict）
-    D2 = enterprise_internal_idempotency:request_digest(
+    {ok, D2} = enterprise_internal_idempotency:request_digest(
         <<"PUT">>, <<"/api/internal/v1/identity-mappings">>, <<"{\"external_user_id\":\"e2\"}">>
     ),
     ?assertEqual(
         {error, digest_conflict},
         enterprise_internal_idempotency:begin_tx(C, Ctx, <<"identity_mapping">>, Key, D2)
     ),
-    %% 409 映射：digest_conflict → idempotency_conflict
+    %% 409 映射与重放头（§11 Replay：仅重放路径附加）
+    ?assertEqual(<<"idempotency_conflict">>, enterprise_internal_idempotency:conflict_code()),
     ?assertEqual(
-        <<"idempotency_conflict">>,
-        enterprise_internal_idempotency:conflict_code()
+        {<<"idempotent-replayed">>, <<"true">>}, enterprise_internal_idempotency:replay_header()
     ).
 
 idempotency_claim_single(C) ->
     F = seed_app_fixture(C),
-    Ctx = #{
-        organization_id => ?ORG_A,
-        application_id => maps:get(app_id, F),
-        credential_id => maps:get(credential_id, F)
-    },
+    Ctx = idem_ctx(F),
     Key = <<"epgz02-idem-key-claim">>,
-    D = enterprise_internal_idempotency:request_digest(
+    {ok, D} = enterprise_internal_idempotency:request_digest(
         <<"POST">>, <<"/api/internal/v1/groups">>, <<"{}">>
     ),
     {ok, inserted} = enterprise_internal_idempotency:begin_tx(
@@ -702,18 +817,111 @@ idempotency_claim_single(C) ->
     ),
     ?assertEqual(
         ok,
-        enterprise_internal_idempotency:complete_tx(C, Ctx, <<"group">>, Key, 555000111, 201)
+        enterprise_internal_idempotency:complete_tx(
+            C, Ctx, <<"group">>, Key, 555000111, 201, <<"{\"id\":555000111}">>
+        )
     ),
     ?assertEqual(
         {error, already_claimed},
-        enterprise_internal_idempotency:complete_tx(C, Ctx, <<"group">>, Key, 555000112, 201),
+        enterprise_internal_idempotency:complete_tx(
+            C, Ctx, <<"group">>, Key, 555000112, 201, <<"{\"id\":555000112}">>
+        ),
         "并发第二个执行者不得重复回填"
     ),
-    %% 回填后同 key 同 body 重放读回原结果
+    %% 回填后同 key 同 body 重放读回原快照
     ?assertEqual(
-        {ok, replay, #{response_code => 201, resource_id => 555000111}},
+        {ok, replay, #{
+            response_code => 201,
+            resource_id => 555000111,
+            response_body => <<"{\"id\":555000111}">>
+        }},
         enterprise_internal_idempotency:begin_tx(C, Ctx, <<"group">>, Key, D)
     ).
+
+%% §11 TTL：记录过期后，下一请求在同事务内原子重置并作为新请求执行。
+idempotency_expired_atomic_reset(C) ->
+    F = seed_app_fixture(C),
+    Ctx = idem_ctx(F),
+    Key = <<"epgz02-idem-key-ttl">>,
+    {ok, D} = enterprise_internal_idempotency:request_digest(
+        <<"POST">>, <<"/api/internal/v1/groups">>, <<"{\"title\":\"v1\"}">>
+    ),
+    {ok, inserted} = enterprise_internal_idempotency:begin_tx(C, Ctx, <<"group">>, Key, D),
+    ok = enterprise_internal_idempotency:complete_tx(
+        C, Ctx, <<"group">>, Key, 601000111, 201, <<"{\"v\":1}">>
+    ),
+    %% 把行改成已过期（模拟 24h 窗口流逝）
+    {ok, [Row | _]} = elib_pg:query(
+        C,
+        <<"UPDATE ", (enterprise_internal_idempotency_repo:tablename())/binary,
+            " SET expires_at = CURRENT_TIMESTAMP - interval '1 second'",
+            " WHERE idempotency_key = $1 RETURNING idempotency_key">>,
+        [Key]
+    ),
+    ?assertEqual(Key, maps:get(<<"idempotency_key">>, Row)),
+    %% TTL 外同 key + **不同** payload：不是 409——原子重置后作为新请求执行
+    {ok, D2} = enterprise_internal_idempotency:request_digest(
+        <<"POST">>, <<"/api/internal/v1/groups">>, <<"{\"title\":\"v2\"}">>
+    ),
+    ?assertEqual(
+        {ok, inserted},
+        enterprise_internal_idempotency:begin_tx(C, Ctx, <<"group">>, Key, D2),
+        "过期行必须原子重置为新请求，不得回放旧快照也不得 409"
+    ),
+    %% 新请求可重新回填新快照
+    ok = enterprise_internal_idempotency:complete_tx(
+        C, Ctx, <<"group">>, Key, 601000222, 201, <<"{\"v\":2}">>
+    ),
+    ?assertEqual(
+        {ok, replay, #{
+            response_code => 201, resource_id => 601000222, response_body => <<"{\"v\":2}">>
+        }},
+        enterprise_internal_idempotency:begin_tx(C, Ctx, <<"group">>, Key, D2)
+    ).
+
+%% §11 Digest：canonical_json_body——JSON key 顺序不得改变 digest；不可规范化
+%% （float/非法 JSON）→ non_canonical（上层 400 invalid_request）。
+idempotency_digest_canonical_test() ->
+    ?_test(begin
+        {ok, D1} = enterprise_internal_idempotency:request_digest(
+            <<"PUT">>,
+            <<"/api/internal/v1/identity-mappings">>,
+            <<"{\"a\":1,\"b\":{\"x\":true,\"y\":\"s\"}}">>
+        ),
+        {ok, D2} = enterprise_internal_idempotency:request_digest(
+            <<"PUT">>,
+            <<"/api/internal/v1/identity-mappings">>,
+            <<"{\"b\":{\"y\":\"s\",\"x\":true},\"a\":1}">>
+        ),
+        ?assertEqual(D1, D2, "JSON key 顺序不得改变 digest（canonical_json）"),
+        %% 空 body 与 {} 同 digest（规范化到同一 canonical 形态）
+        {ok, D3} = enterprise_internal_idempotency:request_digest(
+            <<"PUT">>, <<"/api/internal/v1/identity-mappings">>, <<>>
+        ),
+        {ok, D4} = enterprise_internal_idempotency:request_digest(
+            <<"PUT">>, <<"/api/internal/v1/identity-mappings">>, <<"{}">>
+        ),
+        ?assertEqual(D3, D4),
+        %% float 拒绝（§10.1 禁浮点）
+        ?assertEqual(
+            {error, non_canonical},
+            enterprise_internal_idempotency:request_digest(
+                <<"PUT">>, <<"/api/internal/v1/identity-mappings">>, <<"{\"a\":1.5}">>
+            )
+        ),
+        %% 非法 JSON 拒绝
+        ?assertEqual(
+            {error, non_canonical},
+            enterprise_internal_idempotency:request_digest(
+                <<"PUT">>, <<"/api/internal/v1/identity-mappings">>, <<"not-json">>
+            )
+        ),
+        %% method/path 参与 digest（§11 公式：method + concrete_path + "\n" + body）
+        {ok, D5} = enterprise_internal_idempotency:request_digest(
+            <<"POST">>, <<"/api/internal/v1/identity-mappings">>, <<"{\"a\":1}">>
+        ),
+        ?assertNotEqual(D1, D5)
+    end).
 
 %%%===================================================================
 %%% ⑦ 运维命令（最小运维面，非 Admin UI）

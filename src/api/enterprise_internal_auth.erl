@@ -26,8 +26,10 @@
 %     granted_scopes :: [binary()], grant_governed :: boolean(),
 %     route_id, rate_bucket, idempotency,
 %     dynamic_scope（仅动态 scope 路由）}
-%   granted_scopes 是**生效** scope（受管应用已与 Grant 取交集）；grant_governed
-%   为 false 时沿用广州期口径（allowed_scopes）。
+%   granted_scopes 是**生效** scope = allowed_scopes ∩ 生效 Grant scopes
+%   （零 Grant ⇒ 空集 ⇒ 任一 required scope 均 403 insufficient_scope，
+%   V2.1 §5.2/F-09：不存在「零 Grant 回退 allowed_scopes」旁路）；
+%   grant_governed 仅为诊断标记（是否存在任何 Grant 行），不参与判定。
 %
 % redaction 红线：secret/Authorization 值/prefix 不落日志（失败日志只含
 % stage 与 stable 码）；错误响应只含 stable 码。
@@ -197,12 +199,20 @@ rate_gate(#{rate_bucket := Bucket} = Route, Headers, Ctx) ->
             {error, security_gate_closed}
     end.
 
-%% INV-7：mutation 必带非空 Idempotency-Key（INT-14 single_use_code 豁免）。
+%% INV-7 + §11：mutation 必带 Idempotency-Key（INT-14 single_use_code 豁免）。
+%% Key 形态：1..128 个可打印 ASCII——空/过长/控制字符 400 invalid_request
+%% （enterprise_internal_idempotency:valid_key/1）。
 -spec idempotency_gate(map(), map(), map()) -> {ok, map()} | {error, atom()}.
 idempotency_gate(#{idempotency := required} = Route, Headers, Ctx) ->
     case maps:get(<<"idempotency-key">>, Headers, undefined) of
-        Key when is_binary(Key), Key =/= <<>> ->
-            {ok, finalize_ctx(Route, Ctx)};
+        Key when is_binary(Key) ->
+            case enterprise_internal_idempotency:valid_key(Key) of
+                true ->
+                    {ok, finalize_ctx(Route, Ctx)};
+                false ->
+                    log_reject(idempotency_key_invalid, invalid_request),
+                    {error, invalid_request}
+            end;
         _ ->
             log_reject(idempotency_key_missing, invalid_request),
             {error, invalid_request}
@@ -324,9 +334,10 @@ finalize_auth(Conn, Row, App) ->
     Scopes = decode_scopes(App),
     OrgId = maps:get(<<"organization_id">>, Row),
     AppId = maps:get(<<"application_id">>, Row),
-    %% FULL-01 Grant 求值：同一事务、逐请求真库读（无缓存）。受管应用（存在任何
-    %% Grant 行）的生效 scope = allowed_scopes ∩ 生效 Grant scopes，撤权/降级/
-    %% 到期在下一次请求即反映；未受管应用沿用广州期口径（allowed_scopes）。
+    %% FULL-01 Grant 求值（V2.1 §5.2 收紧）：同一事务、逐请求真库读（无缓存）。
+    %% 生效 scope 恒为 allowed_scopes ∩ 生效 Grant scopes——零 Grant（从未授予/
+    %% 全部撤销/全部过期）即空集，本请求的 scope gate 必然 403 insufficient_scope；
+    %% grant_governed 只是诊断标记，不再触发「回退 allowed_scopes」旁路。
     case enterprise_application_grant_logic:context_tx(Conn, OrgId, AppId, Scopes) of
         {ok, #{grant_governed := Governed, effective_scopes := Effective}} ->
             {ok, #{
