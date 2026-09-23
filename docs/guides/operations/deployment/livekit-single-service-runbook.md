@@ -4,7 +4,7 @@
 >
 > 适用版本：imboy 集成分支（LiveKit `livekit/livekit-server:v1.13.7`，精确 tag 锁定，禁止 `latest`/浮动 tag）。
 >
-> 本文描述的是 **imboy 仓库内已实现的部署形态**（`deploy/` 目录）。本文是手册不是部署证明：生产切换（W4/W5）由运维按 [迁移计划](../../../../docs/plans) 执行并另行留存证据。
+> 本文描述的是 **imboy 仓库内已实现的部署形态**（`deploy/` 目录）。本文是手册不是部署证明：生产切换（W4/W5）由运维按 迁移计划(docs/plans/2026-09-21-livekit-single-service-migration-deployment-plan-v1.md,存于项目工作区) 执行并另行留存证据。
 >
 > 相关文档：[deployment.md](./deployment.md)（完整部署参考）｜[day1-quickstart.md](./day1-quickstart.md)（5 分钟上手）｜[production-architecture.md](./production-architecture.md)（生产架构快照）
 
