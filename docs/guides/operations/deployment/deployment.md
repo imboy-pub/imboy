@@ -2,6 +2,7 @@
 
 > - **自动化部署脚本**（推荐）：[deploy-script.md](./deploy-script.md) — 配置一次 `.env.deploy`，一条命令完成全量或增量部署
 > - **5 分钟快速上手**：[day1-quickstart.md](./day1-quickstart.md) — 从零搭建最小生产环境
+> - **LiveKit 通话运行手册**：[livekit-single-service-runbook.md](./livekit-single-service-runbook.md) — rtc WSS + SFU + embedded TURN 的部署/验证/升级/回滚（小白可逐行执行）
 > - **生产架构图**：[production-architecture.md](./production-architecture.md) — 服务分布与端口一览
 >
 > 本文是完整参考手册，适合定制化配置场景。
@@ -58,6 +59,24 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 | `HTTP_PORT` | HTTP 服务端口 | `9800` |
 | `IMBOY_PG_MAX_COUNT` | 连接池最大连接数 | `80` |
 | `IMBOY_PG_INIT_COUNT` | 连接池初始连接数 | `5` |
+
+### LiveKit 通话（RTC）
+
+通话（1:1 与群通话）统一走 LiveKit Room，后端经 `/api/v1/rtc/room/join` 签发接入 token。Docker Compose 部署（`deploy/docker-compose.community.yml`）已内置 LiveKit 服务（`livekit/livekit-server:v1.13.7`，单节点、SFU + embedded STUN/TURN，无 Redis、无 Egress）：
+
+| 变量 | 说明 | 示例 / 默认 |
+|------|------|------|
+| `RTC_DOMAIN` | LiveKit 信令域（wss:// 反代 7880，必填） | `rtc.example.com` |
+| `TURN_DOMAIN` | LiveKit embedded TURN 域（必填，证书经 80 端口签发） | `turn.example.com` |
+| `LIVEKIT_API_KEY` | LiveKit API key（install.sh 自动生成） | 随机字符串 |
+| `LIVEKIT_API_SECRET` | LiveKit API secret（≥32 字符，与 key 配对） | `openssl rand -hex 24` |
+| `LIVEKIT_TURN_ENABLED` | embedded TURN overlay 开关（`true` 需先退场旧 TURN，禁双活） | `false` |
+| `LIVEKIT_TURN_CERT_DIR` | TURN TLS 证书目录（install.sh 自动展开） | `<DATA_DIR>/certbot/conf/live/<TURN_DOMAIN>` |
+| `IMBOY_LIVEKIT_WS_URL` | 客户端信令地址覆盖（一般无需设置） | `wss://<RTC_DOMAIN>` |
+
+> 裸机部署需在 `config/sys*.config` 的 `{livekit, ...}` 段配置 `ws_url` / `api_key` / `api_secret`（或用 `IMBOY_LIVEKIT_*` 环境变量覆盖）；任一键为空时通话入会返回受控错误 `livekit_not_configured`（不会崩溃为 500）。
+> 端口、容量上限、证书续期与回滚的完整操作见 [livekit-single-service-runbook.md](./livekit-single-service-runbook.md)。
+> 旧 eturnal/coturn TURN 链路（含 `/api/v1/user/credential` 端点）已删除，不再是部署依赖。
 
 ---
 

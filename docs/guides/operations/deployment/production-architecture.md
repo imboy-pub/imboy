@@ -1,7 +1,7 @@
 # 生产环境架构与部署文档
 
 > 服务器 IP：106.53.76.53 | SSH 端口：32
-> 最后更新：2026-06-19
+> 最后更新：2026-09-23（LiveKit 单服务迁移更新；原快照 2026-06-19）
 
 ---
 
@@ -16,7 +16,8 @@
 │                                                     │
 │  pro.imboy.pub        prodadm.imboy.pub             │
 │  s3.imboy.pub         www.imboy.pub                 │
-│  turn.imboy.pub                                     │
+│  rtc.imboy.pub (WSS → 127.0.0.1:7880)               │
+│  turn.imboy.pub (纯 80 ACME webroot，无 443)         │
 └────────┬──────────────────┬────────────────────────-┘
          │                  │
          ▼ :9800            ▼ 静态文件
@@ -25,7 +26,11 @@
   OTP 16.2             www.imboy.pub/public/ ← 落地页
          │
          ├──▶ prod_imboy_pg18 (Docker) :5182  ← 主数据库
-         └──▶ garage (S3)              :3900  ← 对象存储
+         ├──▶ garage (S3)              :3900  ← 对象存储
+         └──▶ imboy_livekit (Docker)        ← 通话媒体面
+                ├ 信令 :7880（仅 127.0.0.1，经 rtc.imboy.pub WSS 反代）
+                ├ 媒体 :7881/tcp + :50000-50200/udp（直连宿主）
+                └ embedded TURN（终态）：3478/udp + 5349/tcp + 50201-50500/udp
 ```
 
 ---
@@ -63,9 +68,16 @@ upstream `pro_imboy_api` → `127.0.0.1:9800`
 
 静态文件目录：`/www/wwwroot/www.imboy.pub/public/`
 
-### turn.imboy.pub — TURN 中继服务器
+### rtc.imboy.pub — LiveKit RTC 信令域
 
-coturn 进程，监听 `10.1.20.14:3478`（WebRTC 穿透用）
+`wss://rtc.imboy.pub` → nginx 443 反代 `127.0.0.1:7880`（imboy_livekit 容器信令，TLS 由 nginx 终结）。媒体面 UDP 50000-50200 / TCP 7881 直连宿主，不经 nginx。vhost 快照见 `deploy/nginx/prod-vhosts/rtc.imboy.pub.conf`。
+
+### turn.imboy.pub — TURN 中继（LiveKit embedded TURN）
+
+- **目标形态（终态）**：TURN 由 LiveKit 容器内置承载 —— UDP 3478（兼 STUN）、TCP 5349（TLS）、relay UDP 50201-50500。证书经本域 80 端口 ACME webroot 签发，续期后由 deploy hook 原子分发并重启 LiveKit。
+- **迁移过渡期现状**：生产机旧 eturnal（systemd）仍在占用 3478/5349，LiveKit TURN overlay（`LIVEKIT_TURN_ENABLED=true`）在 eturnal 退场前不得开启（禁双活）。
+- 本域**无 443**：TURN/TLS 固定 5349（`TURN_443=BLOCKED` 冻结合同），任何设计不得依赖 `turn.imboy.pub:443` 可达。
+- 操作手册：[livekit-single-service-runbook.md](./livekit-single-service-runbook.md)。
 
 ---
 
@@ -78,7 +90,8 @@ coturn 进程，监听 `10.1.20.14:3478`（WebRTC 穿透用）
 | PostgreSQL（生产） | Docker `prod_imboy_pg18` | `0.0.0.0:5182` | Docker volume |
 | PostgreSQL（开发） | Docker `dev_imboy_pg18` | `0.0.0.0:5180` | Docker volume |
 | Garage S3 | 裸进程 | `0.0.0.0:3900`（公网 API）`127.0.0.1:3901`（RPC）`127.0.0.1:3903`（Admin）| `/var/lib/garage/` |
-| coturn | 系统进程 | `10.1.20.14:3478` | 系统服务 |
+| imboy_livekit | Docker 容器 | `127.0.0.1:7880`（信令）`0.0.0.0:7881/tcp` `0.0.0.0:50000-50200/udp` | Docker（`livekit/livekit-server:v1.13.7`） |
+| eturnal（迁移过渡期） | systemd（`eturnal.service`） | `0.0.0.0:3478/udp+tcp` `0.0.0.0:5349/tcp`（relay 50201-50500/udp 有效段） | `/opt/eturnal`；eturnal 退场后端口移交 LiveKit embedded TURN（见 runbook §5） |
 | 宝塔面板 | BT-Panel | `*:9898` | 系统服务 |
 | SSH | sshd | `0.0.0.0:32` | 系统服务 |
 | epmd | Erlang 端口映射 | `0.0.0.0:4369` | 随 beam 启动 |
