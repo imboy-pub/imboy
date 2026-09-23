@@ -224,13 +224,23 @@ psql_scratch() {
   psql -X -q -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -v ON_ERROR_STOP=1 "$@"
 }
 
+# Failure must be distinguishable from an empty result: a scrape that
+# cannot run makes residue verification impossible, and that case is a
+# non-zero outcome, never a silent pass (reverdict 2026-09-23, finding 3).
+DB_SCRAPE_FAILED=0
 scratch_databases() {
-  psql -X -At -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_MAINT_DB" \
-    -tAc "SELECT datname FROM pg_database WHERE datname LIKE 'imboy_rest_%' ORDER BY 1" 2>/dev/null || true
+  local out
+  if out=$(psql -X -At -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_MAINT_DB" \
+      -tAc "SELECT datname FROM pg_database WHERE datname LIKE 'imboy_rest_%' ORDER BY 1" 2>/dev/null); then
+    printf '%s\n' "$out"
+  else
+    DB_SCRAPE_FAILED=1
+  fi
 }
 
 DROP_DONE=0
 CLEANUP_DONE=0
+CLEANUP_FAILED=0
 cleanup() {
   local final=$?
   # Re-entrancy: the INT/TERM traps exit explicitly, which re-enters via the
@@ -238,7 +248,18 @@ cleanup() {
   [[ $CLEANUP_DONE -eq 1 ]] && return "$final"
   CLEANUP_DONE=1
   if [[ $DROP_DONE -eq 0 && "${REST_KEEP_DB:-0}" != "1" ]]; then
-    dropdb --if-exists --force -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$DB_NAME" >/dev/null 2>&1 || true
+    # RTF-01: cleanup failure must not be swallowed. One grace retry (a
+    # terminating backend can hold the drop briefly), then record it loudly:
+    # marker file in the report root + CLEANUP_FAILED, which the normal exit
+    # path turns into a non-zero run status.
+    if ! dropdb --if-exists --force -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$DB_NAME" >/dev/null 2>&1; then
+      sleep 1
+      if ! dropdb --if-exists --force -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$DB_NAME" >/dev/null 2>&1; then
+        CLEANUP_FAILED=1
+        echo "run_rest_api_tests: CLEANUP FAILED: scratch database could not be dropped: $DB_NAME" >&2
+        [[ -n "${REPORT_ROOT:-}" && -d "$REPORT_ROOT" ]] && : >"$REPORT_ROOT/CLEANUP_FAILED" 2>/dev/null
+      fi
+    fi
     DROP_DONE=1
   elif [[ "${REST_KEEP_DB:-0}" == "1" ]]; then
     echo "run_rest_api_tests: REST_KEEP_DB=1; scratch database kept: $DB_NAME" >&2
@@ -262,6 +283,9 @@ pg_isready -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" >/dev/null ||
   die 2 "postgres not ready at $PG_HOST:$PG_PORT"
 
 PRE_DBS=$(scratch_databases)
+if [[ "$DB_SCRAPE_FAILED" == "1" ]]; then
+  die 2 "cannot inventory scratch databases; pre-state unverifiable"
+fi
 if grep -qx "$DB_NAME" <<<"$PRE_DBS"; then
   die 2 "scratch database already exists (rerun with a fresh REST_RUN_ID): $DB_NAME"
 fi
@@ -425,6 +449,21 @@ fi
 # ---------------------------------------------------------------------------
 # Aggregated result + environment manifests (RTF-05).
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Redaction canaries (RTF-02-A4): dynamic values must not appear anywhere
+# under the report root.
+# ---------------------------------------------------------------------------
+
+for canary_var in REST_REDACTION_CANARY_PASSWORD REST_REDACTION_CANARY_TOKEN; do
+  canary=${!canary_var:-}
+  if [[ -n "$canary" ]] && grep -rF -- "$canary" "$REPORT_ROOT" >/dev/null 2>&1; then
+    echo "run_rest_api_tests: redaction canary $canary_var leaked into $REPORT_ROOT" >&2
+    RUN_STATUS=3
+  fi
+done
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 
 OTP_RELEASE=$(erl -noshell -noinput -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt(0).' 2>/dev/null || echo unknown)
 PG_VERSION=$(psql_scratch -d "$DB_NAME" -Atc "SHOW server_version" || echo unknown)
@@ -441,6 +480,33 @@ else
   CASE_PASS=0
 fi
 
+# Residue assertion: this run leaves no scratch database behind.
+# ---------------------------------------------------------------------------
+
+cleanup
+trap - EXIT INT TERM
+DB_SCRAPE_FAILED=0
+POST_DBS=$(scratch_databases)
+if [[ "${REST_KEEP_DB:-0}" == "1" ]]; then
+  : # operator-owned diagnostic residue: the kept scratch DB is intentional
+elif [[ "$DB_SCRAPE_FAILED" == "1" || "${CLEANUP_FAILED:-0}" == "1" ]]; then
+  # A scrape that cannot run makes residue unverifiable; a failed drop was
+  # already reported loudly by cleanup. Both are non-zero outcomes
+  # (reverdict 2026-09-23, finding 3) — never a silent pass.
+  echo "run_rest_api_tests: residue verification unavailable (scrape/cleanup failure)" >&2
+  RUN_STATUS=3
+elif grep -qx "$DB_NAME" <<<"$POST_DBS"; then
+  # The invariant is scoped to THIS run's scratch database only: a
+  # concurrent or prior run's imboy_rest_% entry appearing/disappearing
+  # between PRE_DBS and POST_DBS is not residue we own (foreign resources
+  # are recorded, never policed), and a transient psql failure during a
+  # scrape must not fail the run either.
+  echo "run_rest_api_tests: residue detected (own scratch DB still present): $DB_NAME" >&2
+  RUN_STATUS=3
+fi
+
+# result.json is written ONCE, after every gate, so result/exit_code are the
+# single machine truth of the whole run (reverdict 2026-09-23, finding 2).
 jq -n \
   --arg run_id "$RUN_ID" \
   --arg db "$DB_NAME" \
@@ -492,38 +558,6 @@ jq -n \
     ct_config: $ct_config,
     credentials: "environment only (REST_PG_*/IMBOY_PG_*)"
   }' >"$REPORT_ROOT/environment.json"
-
-# ---------------------------------------------------------------------------
-# Redaction canaries (RTF-02-A4): dynamic values must not appear anywhere
-# under the report root.
-# ---------------------------------------------------------------------------
-
-for canary_var in REST_REDACTION_CANARY_PASSWORD REST_REDACTION_CANARY_TOKEN; do
-  canary=${!canary_var:-}
-  if [[ -n "$canary" ]] && grep -rF -- "$canary" "$REPORT_ROOT" >/dev/null 2>&1; then
-    echo "run_rest_api_tests: redaction canary $canary_var leaked into $REPORT_ROOT" >&2
-    RUN_STATUS=3
-  fi
-done
-
-# ---------------------------------------------------------------------------
-# Residue assertion: this run leaves no scratch database behind.
-# ---------------------------------------------------------------------------
-
-cleanup
-trap - EXIT INT TERM
-POST_DBS=$(scratch_databases)
-if [[ "${REST_KEEP_DB:-0}" == "1" ]]; then
-  : # operator-owned diagnostic residue: the kept scratch DB is intentional
-elif grep -qx "$DB_NAME" <<<"$POST_DBS"; then
-  # The invariant is scoped to THIS run's scratch database only: a
-  # concurrent or prior run's imboy_rest_% entry appearing/disappearing
-  # between PRE_DBS and POST_DBS is not residue we own (foreign resources
-  # are recorded, never policed), and a transient psql failure during a
-  # scrape must not fail the run either.
-  echo "run_rest_api_tests: residue detected (own scratch DB still present): $DB_NAME" >&2
-  RUN_STATUS=3
-fi
 
 echo "REST run $RUN_ID => $(jq -r '.result' "$REPORT_ROOT/result.json") (case_pass=$(jq -r '.case_pass' "$REPORT_ROOT/result.json")/$(jq -r '.case_total' "$REPORT_ROOT/result.json"))"
 exit "$RUN_STATUS"
