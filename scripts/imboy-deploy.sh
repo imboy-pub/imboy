@@ -548,7 +548,7 @@ deploy_readiness() {
       CS_ORIGIN='https://${CS_WIDGET_DOMAIN:-}'
       curl -fsS -o /dev/null --max-time 10 \"\$CS_ORIGIN/v1/loader.js\" || exit 53
       MANIFEST=\$(curl -fsS --max-time 10 \"\$CS_ORIGIN/manifest.json\") || exit 54
-      CS_HEAD=\$(printf '%s\n' \"\$MANIFEST\" | sed -n 's/.*"source_head"[[:space:]]*:[[:space:]]*"\([0-9a-f]*\)".*/\1/p' | head -1)
+      CS_HEAD=\$(printf '%s\n' \"\$MANIFEST\" | sed -n 's/.*\"source_head\"[[:space:]]*:[[:space:]]*\"\([0-9a-f]*\)\".*/\1/p' | head -1)
       [ \"\$CS_HEAD\" = '${ADMIN_SOURCE_HEAD}' ] || exit 55
       curl -fsS -o /dev/null --max-time 10 \"\$CS_ORIGIN/health.txt\" || exit 56
       FRAME=\$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \"\$CS_ORIGIN/w/0\") || exit 57
