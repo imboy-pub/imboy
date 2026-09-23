@@ -771,7 +771,12 @@ parse_create_input(Input) ->
                                     undefined -> hd(Members);
                                     _ -> OwnerExt0
                                 end,
-                            check_owner_and_intro(OwnerExt, Members, Intro, WsId, Title)
+                            check_owner_and_intro(OwnerExt, Members, Intro, WsId, Title);
+                        %% 校验失败（空列表/超限/非列表/元素非法）→ 稳定
+                        %% invalid_request（§15 stable code），绝不 case_clause
+                        %% 落 500（F3 F-05：members:[] 曾炸 internal_error）。
+                        {error, Detail} ->
+                            {error, Detail}
                     end
             end
     end.

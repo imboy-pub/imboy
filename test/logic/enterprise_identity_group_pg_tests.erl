@@ -326,6 +326,8 @@ enterprise_identity_group_pg_test_() ->
                     with_tx(C, fun(C1) -> group_create_explicit_owner(C1, CtxA) end)},
                 {"group_create_invalid_title",
                     with_tx(C, fun(C1) -> group_create_invalid_title(C1, CtxA) end)},
+                {"group_create_empty_members_stable_4xx",
+                    with_tx(C, fun(C1) -> group_create_empty_members(C1, CtxA) end)},
                 {"group_create_dedupes_members",
                     with_tx(C, fun(C1) -> group_create_dedupes(C1, CtxA) end)},
                 %% ⑤ INT-05 幂等添加
@@ -760,6 +762,34 @@ group_create_invalid_title(C, CtxA) ->
             members => [?EXT_A1]
         })
     ),
+    ok.
+
+%% F3 F-05 回归守卫：members:[] 先前在 logic 内 case_clause（500
+%% internal_error）；现在必须落稳定 4xx invalid_request（语义=成员列表不能
+%% 为空），且统一错误信封形态不变（400 类，非 5xx）。
+group_create_empty_members(C, CtxA) ->
+    ?assertEqual(
+        {error, {<<"invalid_request">>, empty_members}},
+        enterprise_group_logic:create_group_tx(C, CtxA, #{
+            workspace_id => ?WS_A1,
+            title => <<"t">>,
+            members => []
+        })
+    ),
+    ?assertMatch(
+        {error, {<<"invalid_request">>, members_not_list}},
+        enterprise_group_logic:create_group_tx(C, CtxA, #{
+            workspace_id => ?WS_A1,
+            title => <<"t">>,
+            members => <<"not-a-list">>
+        })
+    ),
+    %% 稳定码 → HTTP 状态固定 400（invalid_request 类），非 5xx
+    ?assertEqual(400, enterprise_internal_error:http_status(<<"invalid_request">>)),
+    %% 统一错误信封：{"error":{"code","message"}}，由 code 静态生成
+    #{<<"error">> := #{<<"code">> := <<"invalid_request">>, <<"message">> := Msg}} =
+        jsone:decode(enterprise_internal_error:error_body(<<"invalid_request">>)),
+    ?assert(is_binary(Msg) andalso byte_size(Msg) > 0),
     ok.
 
 group_create_dedupes(C, CtxA) ->
