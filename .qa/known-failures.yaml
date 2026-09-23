@@ -12,6 +12,11 @@
 # 产出者：bash .qa/classify.sh <gate> <log> --emit-known  -> 输出片段，人工 review 后贴回本文件
 # 注意：改本清单是人工 review 动作，CI/脚本只读不写（棘轮收紧也是人工确认后移除）。
 #
+# 本期盘点（2026-09-23，本地 main 树 cdd88b9c 实测，classify.sh --emit-known 机械生成）：
+#   elvis          实测 502 条（elvis 5.0.4 homebrew；含上一期 304 条存量，净增 198）
+#   gradualizer    实测 362 条（678 模块 failing 362；含上一期 277 条存量）
+#   eqwalizer-lib  本地无 ELP 环境未重盘，保留 2026-08-22 清单，待推送后首跑 nightly 回填
+#   full-eunit     本地全量未重盘（45min 边界），user_ds_tests 已单跑全绿；待首跑回填
 # 首版盘点来源（2026-08-22，macOS 本机实测，见文件末尾 diff 附注）：
 #   full-eunit     留空 —— 本机全量 eunit 45min 超出 P4-Q1 实测时间边界，首跑 nightly 回填
 #   dialyze        留空 —— 本机无 .dialyzer_plt 缓存，从零建 PLT >10min 即止，首跑 nightly 回填
@@ -20,7 +25,7 @@
 #   elvis          实测 308 条（elvis 5.0.4 homebrew, 10397 violations / 308 FAIL 文件）
 # =============================================================================
 schema_version: 1
-updated: "2026-08-22"
+updated: "2026-09-23"
 
 gates:
   # ---------------------------------------------------------------------------
@@ -104,6 +109,10 @@ gates:
       实测为准"原则全部入册存量化；如需回溯 triage：comm -13
       <(sort .gradualizer-baseline.txt) <(awk '{print $2"    - "$1}' 本段)
     known_failures:
+
+  # ---------------------------------------------------------------------------
+  # elvis —— 失败标识粒度：FAIL 文件路径（"elvis rock" 输出 "# <path> [FAIL]" 行）
+  # ---------------------------------------------------------------------------
       - ack_retry_cache
       - adm_acl
       - adm_admin_handler
@@ -112,9 +121,8 @@ gates:
       - adm_app_ddl_handler
       - adm_app_version_handler
       - adm_attach_handler
-      - adm_auth_middleware
-      - adm_bot_handler
       - adm_channel_handler
+      - adm_enterprise_application_handler
       - adm_feedback_handler
       - adm_finance_handler
       - adm_group_content_handler
@@ -127,19 +135,25 @@ gates:
       - adm_message_handler
       - adm_moderation_handler
       - adm_moderation_logic
+      - adm_organization_handler
+      - adm_owner_activation_handler
       - adm_passport_handler
       - adm_plugin_handler
       - adm_report_handler
       - adm_role_handler
+      - adm_session_ds
       - adm_stats_handler
       - adm_user_ds
       - adm_user_handler
       - adm_user_repo
+      - adm_workspace_handler
+      - agent_hub_audit_repo
       - agent_payment_command
       - agent_payment_compensation_repo
       - agent_payment_logic
       - agent_payment_mandate_repo
       - agent_rate_limiter
+      - agent_task_repo
       - agent_trigger_policy
       - ai_agent_ds
       - ai_agent_group_reply
@@ -151,23 +165,28 @@ gates:
       - app_ddl_ds
       - app_manifest_handler
       - app_version_repo
+      - attach_handler
       - attach_logic
       - attachment_repo
+      - attachment_upload_logic
       - auth_ds
       - auth_oidc_handler
+      - auth_oidc_jwks
       - auth_oidc_logic
       - barrel_mcp_protocol
       - barrel_mcp_registry
       - barrel_mcp_session
       - barrel_mcp_tasks
       - billing_logic
-      - bot_ds
       - bot_handler
       - bot_logic
+      - bot_repo
+      - bot_webhook_delivery_repo
+      - bot_webhook_delivery_worker
+      - bot_webhook_logic
       - channel_admin_repo
       - channel_comment_logic
       - channel_comment_repo
-      - channel_discovery_handler
       - channel_ds
       - channel_handler
       - channel_handler_admin
@@ -180,16 +199,20 @@ gates:
       - channel_logic_message
       - channel_logic_notify
       - channel_logic_order
-      - channel_logic_subscription
+      - channel_logic_stats
       - channel_message_repo
+      - channel_order_repo
       - channel_repo
+      - channel_subscription_repo
       - channel_webhook_ds
       - channel_webhook_handler
       - channel_webhook_logic
+      - channel_webhook_repo
       - config_ds
       - conv_key_vo
       - conversation_handler
       - cors_middleware
+      - data_disposition
       - e2ee_backup_repo
       - e2ee_handler
       - e2ee_kt_merkle
@@ -199,6 +222,7 @@ gates:
       - elib_cipher
       - elib_cnv
       - elib_hasher
+      - elib_kdf
       - elib_metric
       - elib_oss
       - elib_param
@@ -212,6 +236,27 @@ gates:
       - elib_type
       - elib_uri
       - elib_uuid
+      - elib_wechat_msg
+      - enterprise_admin_governance_logic
+      - enterprise_application_grant_repo
+      - enterprise_asset_handler
+      - enterprise_asset_repo
+      - enterprise_asset_retention_logic
+      - enterprise_audit_event_repo
+      - enterprise_directory_handler
+      - enterprise_directory_logic
+      - enterprise_friend_request_handler
+      - enterprise_group_handler
+      - enterprise_group_logic
+      - enterprise_identity_handler
+      - enterprise_internal_auth
+      - enterprise_internal_idempotency
+      - enterprise_internal_ops
+      - enterprise_internal_routes
+      - enterprise_message_handler
+      - enterprise_oa_sso_logic
+      - enterprise_webhook_handler
+      - enterprise_webhook_logic
       - eunit_runner
       - feedback_handler
       - feedback_logic
@@ -230,7 +275,6 @@ gates:
       - group_album_repo
       - group_category_ds
       - group_category_repo
-      - group_discovery_handler
       - group_ds
       - group_file_ds
       - group_file_repo
@@ -241,20 +285,24 @@ gates:
       - group_member_logic
       - group_notice_ds
       - group_notice_handler
+      - group_notice_repo
       - group_repo
       - group_schedule_handler
       - group_schedule_logic
       - group_schedule_repo
+      - group_tag_handler
       - group_tag_repo
       - group_task_assignment_repo
       - group_task_handler
       - group_task_logic
+      - group_task_repo
       - group_vote_repo
       - imboy_app
       - imboy_cache
       - imboy_cluster
       - imboy_codec
       - imboy_env
+      - imboy_env_overrides
       - imboy_feature
       - imboy_frame
       - imboy_http_metrics
@@ -262,6 +310,7 @@ gates:
       - imboy_llm_registry
       - imboy_mcp_tools
       - imboy_migrate
+      - imboy_mobile
       - imboy_plugin_dependency
       - imboy_plugin_generic_sup
       - imboy_plugin_loader
@@ -270,12 +319,19 @@ gates:
       - imboy_plugin_toml
       - imboy_policy_codec
       - imboy_policy_normalize
+      - imboy_profile_preset
+      - imboy_route_shape
+      - imboy_secret_policy
       - imboy_sms
+      - imboy_sms_fake
+      - imboy_sms_provider
       - imboy_sup
       - imboy_syn
+      - imboy_telemetry
       - index_handler
       - live_room_ds
       - live_room_repo
+      - log_redact
       - login_attempt_ds
       - mcp_client_repo
       - mcp_governance_logic
@@ -285,9 +341,11 @@ gates:
       - mention_logic
       - mention_repo
       - message_ds
-      - message_router_logic
       - messaging_logic
       - metrics_handler
+      - moderation_appeal_logic
+      - moderation_appeal_repo
+      - moderation_policy
       - moment_comment_repo
       - moment_ds
       - moment_handler
@@ -297,6 +355,18 @@ gates:
       - moment_post_repo
       - moment_report_repo
       - moment_timeline_repo
+      - moya_acl
+      - moya_ai_draft_logic
+      - moya_assignment_handler
+      - moya_assignment_logic
+      - moya_auth_logic
+      - moya_org_settings_repo
+      - moya_review_handler
+      - moya_review_logic
+      - moya_submission_repo
+      - moya_task_logic
+      - moya_wechat_msg_handler
+      - moya_wechat_msg_logic
       - msg_ack_logic
       - msg_archive_repo
       - msg_burn_logic
@@ -323,6 +393,10 @@ gates:
       - olm_identity_logic
       - olm_identity_repo
       - ops_report_logic
+      - organization_admin_logic
+      - organization_logic
+      - organization_owner_activation_logic
+      - organization_repo
       - passport_handler
       - passport_logic
       - payment_alipay_gateway
@@ -334,7 +408,18 @@ gates:
       - payment_transaction_repo
       - payment_wallet_gateway
       - payment_wechat_gateway
+      - product_experience
+      - product_terminology
+      - project_ds
+      - project_milestone_ds
+      - project_milestone_repo
+      - project_repo
+      - project_task_ds
+      - project_task_handler
+      - project_task_repo
       - push_notification_ds
+      - push_provider_jpush
+      - push_provider_jpush_http
       - push_token_repo
       - qianfan_api
       - qr_login_event_ds
@@ -344,6 +429,7 @@ gates:
       - recharge_order_repo
       - report_handler
       - report_logic
+      - report_ticket_ds
       - report_ticket_repo
       - review_queue_repo
       - rtc_room_logic
@@ -353,6 +439,7 @@ gates:
       - transfer_logic
       - trust_audit_repo
       - user_collect_handler
+      - user_deletion_job_repo
       - user_deletion_logic
       - user_denylist_ds
       - user_denylist_repo
@@ -381,10 +468,13 @@ gates:
       - websocket_handler
       - websocket_logic
       - withdrawal_logic
-
-  # ---------------------------------------------------------------------------
-  # elvis —— 失败标识粒度：FAIL 文件路径（"elvis rock" 输出 "# <path> [FAIL]" 行）
-  # ---------------------------------------------------------------------------
+      - workspace_ds
+      - workspace_guard
+      - workspace_handler
+      - workspace_invite_repo
+      - workspace_logic
+      - workspace_member_repo
+      - workspace_repo
   elvis:
     source: "local 2026-08-23, elvis 5.0.4 (homebrew), 951 violations / 307 FAIL 文件（豁免 gpb 生成代码后）"
     note: >-
@@ -407,9 +497,11 @@ gates:
       - src/adm/adm_announcement_handler.erl
       - src/adm/adm_app_ddl_handler.erl
       - src/adm/adm_app_version_handler.erl
+      - src/adm/adm_appeal_handler.erl
       - src/adm/adm_attach_handler.erl
       - src/adm/adm_bot_handler.erl
       - src/adm/adm_channel_handler.erl
+      - src/adm/adm_enterprise_application_handler.erl
       - src/adm/adm_feedback_handler.erl
       - src/adm/adm_finance_handler.erl
       - src/adm/adm_group_content_handler.erl
@@ -426,14 +518,18 @@ gates:
       - src/adm/adm_moderation_handler.erl
       - src/adm/adm_moment_handler.erl
       - src/adm/adm_operation_log_handler.erl
+      - src/adm/adm_organization_handler.erl
+      - src/adm/adm_owner_activation_handler.erl
       - src/adm/adm_passport_handler.erl
       - src/adm/adm_plugin_handler.erl
+      - src/adm/adm_report_action_handler.erl
       - src/adm/adm_report_handler.erl
       - src/adm/adm_role_handler.erl
       - src/adm/adm_setup_handler.erl
       - src/adm/adm_sso_handler.erl
       - src/adm/adm_stats_handler.erl
       - src/adm/adm_user_handler.erl
+      - src/adm/adm_workspace_handler.erl
       - src/api/agent_card_handler.erl
       - src/api/agent_mandate_handler.erl
       - src/api/ai_agent_handler.erl
@@ -441,6 +537,7 @@ gates:
       - src/api/app_manifest_handler.erl
       - src/api/app_upgrade_log_handler.erl
       - src/api/app_version_handler.erl
+      - src/api/appeal_handler.erl
       - src/api/attach_handler.erl
       - src/api/auth_middleware_api_v1.erl
       - src/api/auth_middleware.erl
@@ -460,10 +557,22 @@ gates:
       - src/api/e2ee_backup_handler.erl
       - src/api/e2ee_handler.erl
       - src/api/e2ee_trust_handler.erl
+      - src/api/enterprise_application_handler.erl
+      - src/api/enterprise_asset_handler.erl
+      - src/api/enterprise_directory_handler.erl
+      - src/api/enterprise_friend_request_handler.erl
+      - src/api/enterprise_group_handler.erl
+      - src/api/enterprise_identity_handler.erl
+      - src/api/enterprise_internal_auth.erl
+      - src/api/enterprise_message_handler.erl
+      - src/api/enterprise_oa_sso_exchange_handler.erl
+      - src/api/enterprise_oa_sso_handler.erl
+      - src/api/enterprise_webhook_handler.erl
       - src/api/feedback_handler.erl
       - src/api/friend_category_handler.erl
       - src/api/friend_handler.erl
       - src/api/fts_handler.erl
+      - src/api/group_album_handler.erl
       - src/api/group_category_handler.erl
       - src/api/group_discovery_handler.erl
       - src/api/group_file_handler.erl
@@ -480,10 +589,24 @@ gates:
       - src/api/mention_handler.erl
       - src/api/metrics_handler.erl
       - src/api/moment_handler.erl
+      - src/api/moya_assignment_handler.erl
+      - src/api/moya_auth_handler.erl
+      - src/api/moya_context_handler.erl
+      - src/api/moya_learner_bind_handler.erl
+      - src/api/moya_review_handler.erl
+      - src/api/moya_roster_handler.erl
+      - src/api/moya_task_handler.erl
       - src/api/msg_handler.erl
       - src/api/olm_handler.erl
+      - src/api/organization_handler.erl
+      - src/api/organization_member_handler.erl
       - src/api/passport_handler.erl
       - src/api/payment_callback_handler.erl
+      - src/api/project_channel_handler.erl
+      - src/api/project_handler.erl
+      - src/api/project_member_handler.erl
+      - src/api/project_milestone_handler.erl
+      - src/api/project_task_handler.erl
       - src/api/qr_login_handler.erl
       - src/api/qr_login_sse_handler.erl
       - src/api/report_handler.erl
@@ -497,17 +620,21 @@ gates:
       - src/api/user_tag_relation_handler.erl
       - src/api/wallet_handler.erl
       - src/api/websocket_handler.erl
+      - src/api/workspace_handler.erl
       - src/domain/conversation_agg.erl
       - src/domain/friend_agg.erl
       - src/domain/group_agg.erl
       - src/domain/imboy_domain_event.erl
       - src/domain/message_policy.erl
       - src/ds/account_ds.erl
+      - src/ds/adm_operation_log_ds.erl
       - src/ds/ai_agent_role_ds.erl
       - src/ds/app_ddl_ds.erl
       - src/ds/app_version_ds.erl
       - src/ds/attachment_ds.erl
+      - src/ds/auth_session_ds.erl
       - src/ds/channel_ds.erl
+      - src/ds/channel_webhook_ds.erl
       - src/ds/feedback_ds.erl
       - src/ds/friend_category_ds.erl
       - src/ds/friend_ds.erl
@@ -517,9 +644,10 @@ gates:
       - src/ds/group_file_ds.erl
       - src/ds/group_member_ds.erl
       - src/ds/group_notice_ds.erl
-      - src/ds/group_task_ds.erl
+      - src/ds/group_tag_ds.erl
       - src/ds/message_ds.erl
       - src/ds/moment_ds.erl
+      - src/ds/moya_identity_ds.erl
       - src/ds/msg_c2c_ds.erl
       - src/ds/msg_c2g_ds.erl
       - src/ds/msg_c2s_ds.erl
@@ -528,25 +656,94 @@ gates:
       - src/ds/msg_s2c_ds.erl
       - src/ds/msg_store_ds.erl
       - src/ds/msg_store_worker.erl
+      - src/ds/project_channel_ds.erl
+      - src/ds/project_ds.erl
+      - src/ds/project_member_ds.erl
+      - src/ds/project_milestone_ds.erl
+      - src/ds/project_task_ds.erl
       - src/ds/push_notification_ds.erl
       - src/ds/qr_login_event_ds.erl
+      - src/ds/report_ticket_ds.erl
       - src/ds/token_ds.erl
       - src/ds/user_ds.erl
       - src/ds/user_log_ds.erl
       - src/ds/user_tag_ds.erl
       - src/ds/user_tag_relation_ds.erl
       - src/ds/websocket_ds.erl
+      - src/ds/workspace_ds.erl
+      - src/features/agent/application/agent_grant_command.erl
+      - src/features/agent/application/agent_mcp_tool_adapter.erl
+      - src/features/agent/application/agent_native_tool_adapter.erl
+      - src/features/agent/application/agent_run_command.erl
+      - src/features/agent/application/agent_tool_authorizer.erl
+      - src/features/agent/application/agent_trigger_adapter.erl
+      - src/features/agent/domain/agent_grant_domain.erl
+      - src/features/agent/domain/agent_tool_decision.erl
+      - src/features/agent/infrastructure/agent_grant_pg.erl
+      - src/features/agent/infrastructure/agent_org_membership_adapter.erl
+      - src/features/agent/infrastructure/agent_run_pg.erl
+      - src/features/agent/infrastructure/imboy_hird/imboy_hird_replay.erl
+      - src/features/agent/infrastructure/imboy_hird/imboy_hird.erl
+      - src/features/customer_service/application/access/cs_access_app.erl
+      - src/features/customer_service/application/cs_app_support.erl
+      - src/features/customer_service/application/cs_org_lifecycle_gate.erl
+      - src/features/customer_service/application/cs_widget_env.erl
+      - src/features/customer_service/application/seat/cs_seat_app.erl
+      - src/features/customer_service/application/seat/cs_seat_event_app.erl
+      - src/features/customer_service/application/session/cs_session_app.erl
+      - src/features/customer_service/application/widget/cs_widget_app.erl
+      - src/features/customer_service/application/widget/cs_widget_support.erl
+      - src/features/customer_service/customer_service_facade.erl
+      - src/features/customer_service/domain/cs_dispatch.erl
+      - src/features/customer_service/domain/cs_session.erl
+      - src/features/customer_service/domain/cs_widget.erl
+      - src/features/customer_service/infrastructure/cs_pg_seat.erl
+      - src/features/customer_service/infrastructure/cs_pg_session.erl
+      - src/features/customer_service/infrastructure/cs_pg_store.erl
+      - src/features/customer_service/interfaces/cs_actions.erl
+      - src/features/customer_service/interfaces/cs_auth.erl
+      - src/features/customer_service/interfaces/cs_tenant_handler.erl
+      - src/features/customer_service/interfaces/cs_widget_handler.erl
+      - src/features/enterprise_business/application/asset/eb_asset_app.erl
+      - src/features/enterprise_business/application/asset/eb_asset_scope.erl
+      - src/features/enterprise_business/application/asset/eb_asset_upload_ref.erl
+      - src/features/enterprise_business/application/auth/eb_auth_app.erl
+      - src/features/enterprise_business/application/auth/eb_auth_principal.erl
+      - src/features/enterprise_business/application/consent/eb_consent_app.erl
+      - src/features/enterprise_business/application/contact/eb_contact_app.erl
+      - src/features/enterprise_business/application/conversation/eb_conversation_app.erl
+      - src/features/enterprise_business/application/identity/eb_identity_app.erl
+      - src/features/enterprise_business/application/message/eb_message_app.erl
+      - src/features/enterprise_business/application/offboarding/eb_offboarding_app.erl
+      - src/features/enterprise_business/application/offboarding/eb_offboarding_flow.erl
+      - src/features/enterprise_business/application/retention/eb_retention_app.erl
+      - src/features/enterprise_business/domain/eb_consent.erl
+      - src/features/enterprise_business/domain/eb_conversation.erl
+      - src/features/enterprise_business/domain/eb_identity.erl
+      - src/features/enterprise_business/domain/eb_message.erl
+      - src/features/enterprise_business/domain/eb_offboarding.erl
+      - src/features/enterprise_business/domain/eb_retention.erl
+      - src/features/enterprise_business/enterprise_business_facade.erl
+      - src/features/enterprise_business/infrastructure/eb_keyring_file.erl
+      - src/features/enterprise_business/infrastructure/eb_pg_audit.erl
+      - src/features/enterprise_business/infrastructure/eb_pg_identity_ext.erl
+      - src/features/enterprise_business/infrastructure/eb_pg_purge.erl
+      - src/features/enterprise_business/infrastructure/eb_pg_store.erl
+      - src/features/enterprise_business/interfaces/eb_enterprise_actions.erl
+      - src/features/enterprise_business/interfaces/eb_enterprise_http.erl
       - src/imboy_app.erl
       - src/lib/agent_trigger_policy.erl
       - src/lib/alipay_openapi.erl
+      - src/lib/auth_oidc_jwks.erl
+      - src/lib/data_disposition.erl
       - src/lib/e2ee_kt_merkle.erl
       - src/lib/elib_async.erl
       - src/lib/elib_cipher.erl
       - src/lib/elib_cnv.erl
       - src/lib/elib_dt.erl
-      - src/lib/elib_email.erl
       - src/lib/elib_log.erl
       - src/lib/elib_metric.erl
+      - src/lib/elib_multipart.erl
       - src/lib/elib_param.erl
       - src/lib/elib_password.erl
       - src/lib/elib_pg_sql.erl
@@ -559,11 +756,13 @@ gates:
       - src/lib/elib_tsid.erl
       - src/lib/elib_type.erl
       - src/lib/elib_uri.erl
+      - src/lib/elib_wechat_msg.erl
       - src/lib/eunit_runner.erl
       - src/lib/imboy_cache_sync.erl
       - src/lib/imboy_cluster.erl
       - src/lib/imboy_codec.erl
       - src/lib/imboy_dtl.erl
+      - src/lib/imboy_env_overrides.erl
       - src/lib/imboy_env.erl
       - src/lib/imboy_error.erl
       - src/lib/imboy_feature.erl
@@ -582,20 +781,48 @@ gates:
       - src/lib/imboy_policy.erl
       - src/lib/imboy_sms.erl
       - src/lib/imboy_syn.erl
+      - src/lib/imboy_telemetry.erl
       - src/lib/imboy_ws_action_registry.erl
       - src/lib/license_expiry_notice.erl
       - src/lib/license_notice_worker.erl
       - src/lib/llm_stream.erl
+      - src/lib/organization/application/organization_agent_facts_app.erl
+      - src/lib/organization/application/organization_agent_membership_app.erl
+      - src/lib/organization/application/organization_default_workspace_app.erl
+      - src/lib/organization/application/organization_deletion_preflight.erl
+      - src/lib/organization/application/organization_department_app.erl
+      - src/lib/organization/application/organization_invitation_app.erl
+      - src/lib/organization/application/organization_invite_code_app.erl
+      - src/lib/organization/application/organization_join_orchestrator.erl
+      - src/lib/organization/application/organization_lifecycle.erl
+      - src/lib/organization/application/organization_owner_transfer.erl
+      - src/lib/organization/application/organization_resource_authority.erl
+      - src/lib/organization/infrastructure/organization_agent_membership_pg.erl
+      - src/lib/organization/infrastructure/organization_default_workspace_pg.erl
+      - src/lib/organization/infrastructure/organization_department_pg.erl
+      - src/lib/organization/infrastructure/organization_invitation_pg.erl
+      - src/lib/organization/interfaces/organization_api_handler.erl
+      - src/lib/product_experience.erl
       - src/lib/qianfan_api.erl
+      - src/lib/user_deletion_executor.erl
+      - src/lib/workspace_guard.erl
+      - src/lib/workspace_resolver.erl
+      - src/logic/adm_moderation_logic.erl
+      - src/logic/adm_setup_logic.erl
+      - src/logic/agent_task_logic.erl
       - src/logic/agent_task_observer.erl
       - src/logic/ai_agent_group_reply.erl
       - src/logic/ai_agent_policy.erl
       - src/logic/ai_agent_proactive.erl
       - src/logic/ai_agent_reply.erl
       - src/logic/app_version_logic.erl
+      - src/logic/attach_logic.erl
       - src/logic/auth_oidc_logic.erl
       - src/logic/billing_logic.erl
       - src/logic/bot_logic.erl
+      - src/logic/bot_webhook_delivery_worker.erl
+      - src/logic/bot_webhook_logic.erl
+      - src/logic/channel_comment_logic.erl
       - src/logic/channel_logic_common.erl
       - src/logic/channel_logic_invitation.erl
       - src/logic/channel_logic_message.erl
@@ -607,6 +834,14 @@ gates:
       - src/logic/conversation_logic.erl
       - src/logic/conversation_pin_logic.erl
       - src/logic/e2ee_backup_logic.erl
+      - src/logic/enterprise_admin_governance_logic.erl
+      - src/logic/enterprise_application_grant_logic.erl
+      - src/logic/enterprise_friend_request_logic.erl
+      - src/logic/enterprise_group_logic.erl
+      - src/logic/enterprise_identity_logic.erl
+      - src/logic/enterprise_message_logic.erl
+      - src/logic/enterprise_oa_sso_logic.erl
+      - src/logic/enterprise_webhook_logic.erl
       - src/logic/feedback_logic.erl
       - src/logic/finance_adm_logic.erl
       - src/logic/friend_logic.erl
@@ -622,8 +857,19 @@ gates:
       - src/logic/mcp_governance_logic.erl
       - src/logic/message_router_logic.erl
       - src/logic/messaging_logic.erl
+      - src/logic/moderation_action_logic.erl
+      - src/logic/moderation_policy.erl
+      - src/logic/moderation_sweep_logic.erl
       - src/logic/moment_logic_notify.erl
       - src/logic/moment_logic.erl
+      - src/logic/moya_acl.erl
+      - src/logic/moya_ai_draft_logic.erl
+      - src/logic/moya_ai_worker.erl
+      - src/logic/moya_assignment_logic.erl
+      - src/logic/moya_attach_logic.erl
+      - src/logic/moya_context_logic.erl
+      - src/logic/moya_review_logic.erl
+      - src/logic/moya_task_logic.erl
       - src/logic/msg_c2c_logic.erl
       - src/logic/msg_c2g_logic.erl
       - src/logic/msg_forward_logic.erl
@@ -631,6 +877,10 @@ gates:
       - src/logic/msg_reaction_logic.erl
       - src/logic/msg_s2c_logic.erl
       - src/logic/olm_identity_logic.erl
+      - src/logic/organization_admin_logic.erl
+      - src/logic/organization_logic.erl
+      - src/logic/organization_member_logic.erl
+      - src/logic/organization_owner_activation_logic.erl
       - src/logic/passport_logic.erl
       - src/logic/payment_alipay_gateway.erl
       - src/logic/payment_callback_logic.erl
@@ -639,31 +889,50 @@ gates:
       - src/logic/payment_stripe_gateway.erl
       - src/logic/payment_wallet_gateway.erl
       - src/logic/payment_wechat_gateway.erl
+      - src/logic/project_channel_logic.erl
+      - src/logic/project_member_logic.erl
+      - src/logic/project_milestone_logic.erl
       - src/logic/push_notification_logic.erl
       - src/logic/recharge_logic.erl
       - src/logic/red_packet_logic.erl
       - src/logic/report_logic.erl
       - src/logic/user_collect_logic.erl
-      - src/logic/user_deletion_logic.erl
       - src/logic/user_logic.erl
       - src/logic/user_server.erl
       - src/logic/user_tag_relation_logic.erl
+      - src/logic/workspace_logic.erl
       - src/mcp/barrel_mcp_protocol.erl
       - src/mcp/barrel_mcp_registry.erl
       - src/mcp/barrel_mcp_schema.erl
       - src/mcp/barrel_mcp_session.erl
       - src/repo/adm_user_repo.erl
+      - src/repo/agent_hub_audit_repo.erl
       - src/repo/agent_payment_compensation_repo.erl
       - src/repo/agent_payment_mandate_repo.erl
+      - src/repo/agent_task_repo.erl
       - src/repo/ai_agent_role_repo.erl
       - src/repo/app_version_repo.erl
       - src/repo/attachment_repo.erl
       - src/repo/billing_invoice_repo.erl
       - src/repo/billing_plan_repo.erl
       - src/repo/bot_repo.erl
+      - src/repo/bot_webhook_delivery_repo.erl
       - src/repo/channel_invitation_repo.erl
+      - src/repo/channel_message_repo.erl
       - src/repo/channel_order_repo.erl
       - src/repo/channel_repo.erl
+      - src/repo/channel_webhook_repo.erl
+      - src/repo/enterprise_application_credential_repo.erl
+      - src/repo/enterprise_application_grant_repo.erl
+      - src/repo/enterprise_application_repo.erl
+      - src/repo/enterprise_asset_repo.erl
+      - src/repo/enterprise_attachment_retention_repo.erl
+      - src/repo/enterprise_directory_repo.erl
+      - src/repo/enterprise_external_identity_repo.erl
+      - src/repo/enterprise_friend_request_repo.erl
+      - src/repo/enterprise_group_repo.erl
+      - src/repo/enterprise_message_repo.erl
+      - src/repo/enterprise_webhook_repo.erl
       - src/repo/feedback_repo.erl
       - src/repo/friend_repo.erl
       - src/repo/fts_group_repo.erl
@@ -683,8 +952,16 @@ gates:
       - src/repo/group_vote_repo.erl
       - src/repo/mcp_client_repo.erl
       - src/repo/mention_repo.erl
+      - src/repo/moderation_action_repo.erl
+      - src/repo/moderation_appeal_repo.erl
       - src/repo/moment_comment_repo.erl
       - src/repo/moment_like_repo.erl
+      - src/repo/moya_context_repo.erl
+      - src/repo/moya_learner_bind_repo.erl
+      - src/repo/moya_review_repo.erl
+      - src/repo/moya_roster_repo.erl
+      - src/repo/moya_submission_repo.erl
+      - src/repo/moya_task_repo.erl
       - src/repo/msg_archive_repo.erl
       - src/repo/msg_c2c_repo.erl
       - src/repo/msg_c2g_repo.erl
@@ -693,14 +970,22 @@ gates:
       - src/repo/msg_s2c_repo.erl
       - src/repo/msg_store_repo.erl
       - src/repo/olm_identity_repo.erl
+      - src/repo/organization_member_repo.erl
+      - src/repo/organization_repo.erl
       - src/repo/payment_transaction_repo.erl
+      - src/repo/project_channel_agg_repo.erl
+      - src/repo/project_milestone_repo.erl
+      - src/repo/project_repo.erl
       - src/repo/recharge_order_repo.erl
       - src/repo/red_packet_repo.erl
       - src/repo/report_ticket_repo.erl
       - src/repo/review_queue_repo.erl
       - src/repo/transfer_repo.erl
       - src/repo/user_collect_repo.erl
+      - src/repo/user_deletion_request_repo.erl
       - src/repo/user_denylist_repo.erl
       - src/repo/user_repo.erl
       - src/repo/user_tag_relation_repo.erl
       - src/repo/wallet_repo.erl
+      - src/repo/workspace_member_repo.erl
+      - src/repo/workspace_repo.erl
