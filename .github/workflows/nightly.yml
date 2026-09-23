@@ -59,7 +59,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: "3.24.0"
+          rebar3-version: '3.27'
 
       - name: Cache dependencies and build artifacts
         uses: actions/cache@v6
@@ -98,7 +98,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: "3.24.0"
+          rebar3-version: '3.27'
 
       - name: Cache dependencies and build artifacts
         uses: actions/cache@v6
@@ -169,7 +169,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: "3.24.0"
+          rebar3-version: '3.27'
 
       - name: Cache dependencies, build artifacts and PLT
         uses: actions/cache@v6
@@ -232,7 +232,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: "3.24.0"
+          rebar3-version: '3.27'
 
       - name: Cache dependencies and build artifacts
         uses: actions/cache@v6
@@ -305,7 +305,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: "3.24.0"
+          rebar3-version: '3.27'
 
       - name: Setup JDK 17 (eqWAlizer 为 Scala jar)
         uses: actions/setup-java@v6
@@ -469,7 +469,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: "3.24.0"
+          rebar3-version: '3.27'
 
       - name: Cache dependencies and build artifacts
         uses: actions/cache@v6
