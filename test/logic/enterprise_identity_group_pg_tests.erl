@@ -575,10 +575,12 @@ exported_surface_test() ->
             )
         ),
         %% group logic 导出面：create/add/remove + FULL-02 生命周期（detail/
-        %% update/archive/roles/边界定位）；**没有**成员全量分页导出形态。
+        %% update/archive/roles/边界定位）+ V2.1 只读 keyset（INT-26/27 的
+        %% list_groups_tx/list_members_tx——CURSOR-V2 受限分页，非 list-all
+        %% 形态，性质断言（无 export/all 全量面）原样保留）。
         %% FULL-02 例外改动（已记 FULL-02 checkpoint 交 A0 复核）：下面 5 个
         %% 单群操作/边界入口是本 phase 新增（均非 list/export 形态），故冻结
-        %% 表 +5 条；性质断言（无 list/export/all）原样保留。
+        %% 表 +5 条；V2.1 再 +2（INT-26/27 只读 keyset）。
         GEx = lists:sort(enterprise_group_logic:module_info(exports)),
         ?assertEqual(
             [
@@ -587,6 +589,8 @@ exported_surface_test() ->
                 {boundary_workspace_tx, 3},
                 {create_group_tx, 3},
                 {group_detail_tx, 3},
+                {list_groups_tx, 3},
+                {list_members_tx, 4},
                 {module_info, 0},
                 {module_info, 1},
                 {remove_members_tx, 4},

@@ -58,7 +58,11 @@
     <<"application:read">>,
     <<"identities:read">>,
     <<"identities:write">>,
+    <<"groups:read">>,
     <<"groups:write">>,
+    <<"workspaces:read">>,
+    <<"projects:read">>,
+    <<"channels:read">>,
     <<"files:write">>,
     <<"messages:send">>,
     <<"messages:send_as_human">>
@@ -476,7 +480,8 @@ enterprise_full_api_pg_test_() ->
                 {"message_origin_db_invariants",
                     with_tx_expect_error(C, fun(C1) -> msg_origin_db(C1, State) end)},
                 %% ⑤ FULL-01 Grant 读取面接线（boundary）
-                {"boundary_unmanaged_is_noop", with_tx(C, fun(C1) -> bnd_unmanaged(C1, State) end)},
+                {"boundary_zero_grant_denies_all_scoped_routes",
+                    with_tx(C, fun(C1) -> bnd_unmanaged(C1, State) end)},
                 {"boundary_org_grant_covers_org_routes_only",
                     with_tx(C, fun(C1) -> bnd_org_grant(C1, State) end)},
                 {"boundary_explicit_ws_grant_does_not_cover_org",
@@ -704,7 +709,10 @@ dir_repo_ceiling(C, State) ->
     ?assert(length(HugeMapping) > 0).
 
 dir_users(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    %% V2.1 D4：workspace 过滤走 require_workspace_tx（零 Grant 恒拒）——
+    %% 先建 org 全域 Grant 再用真链路 ctx（与 handler 同形状）。
+    {ok, _} = issue_org_grant(C, State, [<<"identities:read">>], <<"k-dir-users">>),
+    Ctx = ctx_managed(C, State),
     {ok, Page} = enterprise_directory_logic:page_users_tx(C, Ctx, #{page_size => 50}),
     Items = maps:get(<<"items">>, Page),
     ?assert(length(Items) > 0),
@@ -740,11 +748,15 @@ dir_users(C, State) ->
             ]
         )
     ),
-    %% 跨 Org workspace 过滤：本 Org 视图内无该 workspace（SQL 复合条件），不报错也不泄露
-    {ok, CrossOrg} = enterprise_directory_logic:page_users_tx(C, Ctx, #{
-        page_size => 50, workspace_id => ?WS_B1
-    }),
-    ?assertEqual([], maps:get(<<"items">>, CrossOrg)),
+    %% 跨 Org workspace 过滤：V2.1 边界 fail-closed——require_workspace_tx 对
+    %% 「W 不在本 Org 视图内」与「同 O 未覆盖」统一 organization_boundary_violation
+    %% （与 bnd_ws_scope 对 WS_B1 的冻结断言同款；不回显目标是否存在）
+    ?assertEqual(
+        {error, {<<"organization_boundary_violation">>, grant_boundary}},
+        enterprise_directory_logic:page_users_tx(C, Ctx, #{
+            page_size => 50, workspace_id => ?WS_B1
+        })
+    ),
     %% workspace_id 非法
     ?assertMatch(
         {error, {<<"invalid_request">>, _}},
@@ -1797,14 +1809,35 @@ msg_origin_db(C, State) ->
 %%% ⑤ FULL-01 Grant 边界接线
 %%%===================================================================
 
+%% V2.1 D4（plan §5.2 / F-09 / D-06）：零 Grant（grant_governed=false）不再有
+%% allowed_scopes 回退旁路——生效 scope 恒为空集，org/workspace/list 类路由
+%% 一律 insufficient_scope；仅 kind=none（application self 面，认证链 scope
+%% gate 在中间件层）不在此判定内。
 bnd_unmanaged(C, State) ->
     Ctx = ctx_managed(C, State),
     ?assertEqual(false, maps:get(grant_governed, Ctx)),
-    ?assertEqual(lists:sort(?SCOPES_FULL), maps:get(granted_scopes, Ctx)),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-02">>, undefined)),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-07">>, undefined)),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, ?WS_A2)),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-01">>, undefined)).
+    ?assertEqual([], maps:get(granted_scopes, Ctx)),
+    ?assertEqual(
+        {error, insufficient_scope},
+        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-02">>, undefined)
+    ),
+    ?assertEqual(
+        {error, insufficient_scope},
+        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-07">>, undefined)
+    ),
+    ?assertEqual(
+        {error, insufficient_scope},
+        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, ?WS_A2)
+    ),
+    %% INT-24/26（kind=list）同样拒绝（scope 不在生效集）
+    ?assertEqual(
+        {error, insufficient_scope},
+        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-24">>, undefined)
+    ),
+    ?assertEqual(
+        {error, insufficient_scope},
+        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-26">>, undefined)
+    ).
 
 bnd_org_grant(C, State) ->
     {ok, Grant} = issue_org_grant(C, State, [<<"identities:read">>], <<"k-org-read">>),
@@ -1851,11 +1884,19 @@ bnd_ws_not_org(C, State) ->
     ).
 
 bnd_ws_scope(C, State) ->
-    {ok, _} = issue_ws_grant(C, State, [<<"groups:write">>], [?WS_A1], <<"k-ws-groups">>),
+    %% V2.1：INT-18 读操作降为 groups:read（§6.2/§7）——Grant 需同时覆盖
+    %% groups:read 与 groups:write 才能让 INT-05 与 INT-18 同时通过。
+    {ok, _} = issue_ws_grant(
+        C, State, [<<"groups:read">>, <<"groups:write">>], [?WS_A1], <<"k-ws-groups">>
+    ),
     Ctx = ctx_managed(C, State),
-    ?assertEqual([<<"groups:write">>], maps:get(granted_scopes, Ctx)),
+    ?assertEqual(
+        lists:sort([<<"groups:read">>, <<"groups:write">>]), maps:get(granted_scopes, Ctx)
+    ),
     ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, ?WS_A1)),
     ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-18">>, ?WS_A1)),
+    %% V2.1 新增只读面（workspace 边界同 Grant）
+    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-27">>, ?WS_A1)),
     %% 同 Org 内**其他** workspace：organization_boundary_violation（不是 insufficient_scope）
     ?assertEqual(
         {error, organization_boundary_violation},
@@ -2034,7 +2075,7 @@ bnd_spec_align_test() ->
         %% 契约，因此边界 ids 与冻结表必须**完全相等**，不存在「待接线」差集；
         %% 若将来仍有未接线新增，此断言会立即变红（差集恒为空）。
         ?assertEqual([], lists:sort(enterprise_internal_boundary:ids()) -- FrozenIds),
-        ?assertEqual(23, length(lists:usort(enterprise_internal_boundary:ids())))
+        ?assertEqual(31, length(lists:usort(enterprise_internal_boundary:ids())))
     end).
 
 %% @doc **接线点机械断言**：handler 模块的 beam 抽象码里必须真实存在对

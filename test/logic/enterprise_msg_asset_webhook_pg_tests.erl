@@ -970,11 +970,13 @@ idem_replay(C, State) ->
     ),
     {ok, Result} = enterprise_message_logic:direct_tx(C, Ctx, direct_input_human()),
     RowId = msg_row_id(C, maps:get(<<"msg_id">>, Result)),
+    %% V2.1 §11 v2：complete_tx/7 需带 response 快照（status + JSON body）
+    Body = jsone:encode(Result),
     ok = enterprise_internal_idempotency:complete_tx(
-        C, Ctx, <<"enterprise_message">>, Key, RowId, 200
+        C, Ctx, <<"enterprise_message">>, Key, RowId, 200, Body
     ),
     ?assertMatch(
-        {ok, replay, #{resource_id := RowId, response_code := 200}},
+        {ok, replay, #{resource_id := RowId, response_code := 200, response_body := Body}},
         enterprise_internal_idempotency:begin_tx(C, Ctx, <<"enterprise_message">>, Key, Digest)
     ).
 
