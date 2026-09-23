@@ -156,16 +156,17 @@ a02_declared_values_are_ignored_server_derived_wins() ->
         ?assertEqual(Contact1, maps:get(contact_id, Session)),
         ?assertEqual(Conv, maps:get(conversation_id, Session)),
         ?assertEqual(undefined, maps:get(business_identity_id, Session)),
-        %% 同 contact 再开会话 → session_already_open（A01 的会话侧幂等）。
-        ?assertMatch(
-            {error, {session_already_open, _}},
+        %% 同 contact 再开会话 → 幂等接续返回既有开放会话（2026-09-23 起：
+        %% 访客重开面板/网络重试不再 409 中断；单会话约束不变）。
+        {ok, Idempotent} =
             cs_widget_session_app:create_session(
                 Org,
                 wp(Scope, #{
                     installation_id => InstId, secret => maps:get(secret, V1)
                 })
-            )
-        ),
+            ),
+        ?assertEqual(maps:get(session_id, Created), maps:get(session_id, Idempotent)),
+        ?assertEqual(Conv, maps:get(conversation_id, Idempotent)),
         %% 访客消息：申报坐席身份被剥离，sender 恒为 token contact。
         ok = cs_fake_canonical_tx:reset(),
         {ok, _} =

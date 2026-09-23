@@ -94,8 +94,18 @@ ensure_single_open(OrgId, Installation, Token, ContactId, WorkspaceId, IntakeId,
             create_session_rows(
                 OrgId, Installation, Token, ContactId, WorkspaceId, IntakeId, Params
             );
-        {ok, SessionId} ->
-            {error, {session_already_open, SessionId}}
+        {ok, Session} ->
+            %% 幂等接续：同 contact 已有开放会话时原样返回该会话（与新建同
+            %% 响应形状）。访客重开面板/网络重试不应 409 中断——主流客服
+            %% 产品均为接续语义；单会话约束本身不变（不会开出第二个会话）。
+            {ok, #{
+                session_id => maps:get(id, Session),
+                conversation_id => maps:get(conversation_id, Session),
+                contact_id => ContactId,
+                workspace_id => WorkspaceId,
+                installation_id => maps:get(id, Installation),
+                status => maps:get(status, Session)
+            }}
     end.
 
 existing_open_session(OrgId, ContactId, WorkspaceId, Params) ->
@@ -108,13 +118,13 @@ existing_open_session(OrgId, ContactId, WorkspaceId, Params) ->
         {error, _} = Err ->
             Err;
         {ok, Sessions} ->
-            {ok, open_session_id(Sessions)}
+            {ok, open_session(Sessions)}
     end.
 
-open_session_id(Sessions) ->
+open_session(Sessions) ->
     Open = [S || S <- Sessions, maps:get(status, S) =/= closed],
     case Open of
-        [S | _] -> maps:get(id, S);
+        [S | _] -> S;
         [] -> undefined
     end.
 
