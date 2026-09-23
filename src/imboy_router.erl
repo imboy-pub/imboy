@@ -2373,5 +2373,19 @@ enterprise_internal_routes() ->
         %% INT-23 投递列表 + 健康度摘要（FULL-03；只读，无 payload）
         {"/api/internal/v1/webhook/deliveries", enterprise_webhook_handler, #{
             action => deliveries
+        }},
+        %% ---- V2.1 INT-24..31 资源只读面（A2 实现；A0 机械接线）----
+        %% INT-26/27 复用上方 groups 两行（同 path 单注册，GET 分派在 handler 内）
+        {"/api/internal/v1/workspaces", enterprise_workspace_handler, #{action => workspaces}},
+        {"/api/internal/v1/workspaces/:workspace_id", enterprise_workspace_handler, #{
+            action => workspace
+        }},
+        {"/api/internal/v1/projects", enterprise_project_handler, #{action => projects}},
+        {"/api/internal/v1/projects/:project_id", enterprise_project_handler, #{
+            action => project
+        }},
+        {"/api/internal/v1/channels", enterprise_channel_handler, #{action => channels}},
+        {"/api/internal/v1/channels/:channel_id", enterprise_channel_handler, #{
+            action => channel
         }}
     ].

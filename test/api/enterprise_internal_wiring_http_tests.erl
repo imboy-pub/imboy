@@ -58,24 +58,24 @@ route_table() ->
     %% manifest_v21_entries）。
     Manifest = enterprise_internal_routes:routes(),
     ?assertEqual(31, length(Manifest)),
-    %% Router（共享路径，A0 接线）当前登记的是已实现 handler 的 23 条——
-    %% V2.1 的 8 条（INT-24..31）由 A2 实现 handler 后经 A0 接线进
-    %% imboy_router；集成时本「已接线面」断言随之扩到 31/27 path（A0 机械更新）。
-    Wired = [R || R <- Manifest, not lists:member(maps:get(id, R), v21_ids())],
-    ?assertEqual(23, length(Wired)),
+    %% Router（共享路径，A0 已于集成接线）：INT-24..31 的 8 条全部进
+    %% imboy_router；其中 INT-26/27 复用既有 cowboy path（GET 方法分派在
+    %% handler 内），故 31 端点对应 25 条唯一 path（19 既有 + 6 新增）。
+    Wired = Manifest,
+    ?assertEqual(31, length(Wired)),
     %% 冻结表用 {name} 占位符语法，cowboy 路由用 :name —— 归一后逐条比对。
     WiredPaths = lists:usort([
         cowboy_path(binary_to_list(maps:get(path, R)))
      || R <- Wired
     ]),
-    ?assertEqual(19, length(WiredPaths)),
+    ?assertEqual(25, length(WiredPaths)),
     lists:foreach(
         fun(P) ->
             ?assert(lists:member(P, Paths))
         end,
         WiredPaths
     ),
-    ?assertEqual(19, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
+    ?assertEqual(25, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
 
     %% ③ internal 前缀不在匿名白名单；零 open 面
     Open = imboy_router:open(),
@@ -95,19 +95,6 @@ route_table() ->
         fun({_P, Handler, _O}) -> ?assertNotEqual(false, code:ensure_loaded(Handler)) end,
         [R || R = {P, _H, _O} <- Routes, lists:prefix("/api/internal/v1/", P)]
     ).
-
-%% V2.1 §6.1 新增、待 A2/A0 接线的 8 条路由 id。
-v21_ids() ->
-    [
-        <<"INT-24">>,
-        <<"INT-25">>,
-        <<"INT-26">>,
-        <<"INT-27">>,
-        <<"INT-28">>,
-        <<"INT-29">>,
-        <<"INT-30">>,
-        <<"INT-31">>
-    ].
 
 %% V2.1 §6.1/§6.2 冻结的 INT-24..31 注册形态 + INT-18 scope 修正
 %% （CON-01 的 A1 侧前置断言：31 unique method+path、scope 全在 14 值枚举、
