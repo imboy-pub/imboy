@@ -795,7 +795,7 @@ fi
 if [ "$LOCAL_MODE" -eq 1 ]; then
   log "[--local] 同步本地源码到远端 $PROJECT_DIR ... / Syncing local source to remote..."
   rsync -az --delete \
-    --exclude='.git/' \
+    --exclude='.git' \
     --exclude='_build/' \
     --exclude='_rel/' \
     --exclude='deps/' \
