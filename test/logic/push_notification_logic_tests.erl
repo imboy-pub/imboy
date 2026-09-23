@@ -460,9 +460,10 @@ enterprise_push_chain_wired_in_src_test() ->
     %% ② handler 必须触发提交后推送；`= push_after_commit(` 是唯一调用点
     %%    （另一处 `push_after_commit(` 出现是函数定义头 `-spec push_after_commit(`）。
     ?assertEqual(1, length(binary:matches(Handler, [<<"= push_after_commit(">>]))),
-    %% ③ 该调用点必须在 COMMIT 成功分支之后（`{tx_ok, Result} ->`），
-    %%    即绝不是事务内触发；其后仍能看到 replay 分支（其内不推送）。
-    {TxOkIdx, _} = binary:match(Handler, [<<"{tx_ok, Result} ->">>]),
+    %% ③ 该调用点必须在 COMMIT 成功分支之后（`{tx_ok, Result, Body} ->`，幂等
+    %%    v2 三元组，1191a02d 起 Body 随行），即绝不是事务内触发；
+    %%    其后仍能看到 replay 分支（其内不推送）。
+    {TxOkIdx, _} = binary:match(Handler, [<<"{tx_ok, Result, Body} ->">>]),
     {PushIdx, _} = binary:match(Handler, [<<"= push_after_commit(">>]),
     ?assert(PushIdx > TxOkIdx),
     Tail = binary:part(Handler, TxOkIdx, byte_size(Handler) - TxOkIdx),
