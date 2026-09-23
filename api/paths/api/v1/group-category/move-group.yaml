@@ -1,0 +1,36 @@
+# POST /api/v1/group/category/move_group
+post:
+  tags: [user]
+  summary: 把群移动到指定分组
+  description: |
+    ## 中文 / English
+    把群移动到指定分组
+    Move group to category
+  operationId: moveGroupToCategory
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, category_id]
+          properties:
+            gid: { type: integer, minimum: 1 }
+            category_id: { type: integer, minimum: 0, description: '0=默认分组' }
+  responses:
+    '200':
+      description: 移动成功；无 payload
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象，无实质 payload.
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

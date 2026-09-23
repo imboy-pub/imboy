@@ -1,0 +1,73 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/webhook/configure.yaml
+# PUT /api/internal/v1/webhook — 登记/更新 Webhook（INT-12）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1webhook
+# Handler：src/api/enterprise_webhook_handler.erl configure/3
+# 请求/响应实证：enterprise_webhook_logic configure_tx 注释（url/events/status/
+# rotate；返回 {url, events, status, rotated, secret?}）
+# ----------------------------------------------------------------------------
+put:
+  tags: [internal]
+  summary: 登记或更新出站 Webhook
+  description: |
+    配置本应用的回调端点与订阅事件（upsert）。url 即时过 SSRF guard（DNS
+    解析私网/保留段拒）；events 须在事件白名单内（空列表 = 只停用订阅）。
+    rotate=true 轮换 secret，响应返回新明文一次。
+  operationId: internalWebhookConfigure
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: webhooks:manage
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [url, events]
+          properties:
+            url:
+              type: string
+              format: uri
+              description: HTTPS 回调地址（SSRF guard 即时校验）
+            events:
+              type: array
+              items: { type: string }
+              description: 订阅事件列表（⊆ 事件白名单；空列表 = 只停用订阅）
+            status:
+              type: string
+              enum: [enabled, disabled]
+              description: 缺省 enabled
+            rotate:
+              type: boolean
+              description: true = 轮换 secret（响应返回新明文一次）
+  responses:
+    '200':
+      description: 配置结果
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              url: { type: string, format: uri }
+              events:
+                type: array
+                items: { type: string }
+              status: { type: string, enum: [enabled, disabled] }
+              rotated: { type: boolean }
+              secret:
+                type: [string, 'null']
+                description: rotate=true 时返回新 secret 明文（仅此一次）；否则 null
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

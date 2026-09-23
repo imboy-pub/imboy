@@ -2,7 +2,9 @@
 
 > **版本**：v1.0（冻结）｜ **受众**：企业 OA / 第三方集成系统开发者
 > **Base Path**：`/api/internal/v1`
-> **字段级 Schema 真源**：`.contract/api/openapi.yaml`（`api_internal` 组）；
+> **机器契约**：`api/openapi-internal.yaml`（编辑真源，19 path / 23 端点，
+> 字段级 schema 逐端点实证自 handler）；`api/openapi-internal.bundle.yaml`
+> （bundle 单文件，可直接导入 Postman / Apifox / openapi-generator）。
 > 本目录是面向集成方的交付文档。路由与合同由 12 项机械断言
 > （`scripts/check_enterprise_release_manifest.py`）持续守护，文档漂移会被门禁发现。
 
@@ -160,10 +162,18 @@ IMBoy → 前端/网关调 INT-14 原子交换（`single_use_code`：一个 code
 ## 10. 端点参考与 Postman 集合
 
 - 人类阅读：[endpoints.md](./endpoints.md)（23 个端点，按域分组）。
+- **机器契约**：`../openapi-internal.yaml`（编辑真源）与
+  `../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
+  schema 逐端点从 handler 实证（`src/api/enterprise_*_handler.erl`），
+  13 个稳定错误码为可复用 response 组件；scope / 限流桶 / 幂等要求以
+  `x-imboy-scope` / `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
+  标注。工具导入用 bundle 单文件。
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
   —— Postman / Apifox 直接导入（Collection v2.1），已含全部 23 个端点、按域分文件夹、
   示例请求体与 `{{base_url}}` / `{{credential}}` 变量；导入后填好两个变量即可发请求。
-- 字段级请求/响应 schema 以 `.contract/api/openapi.yaml` 为准；示例体均为合成数据。
+  注意：示例体为合成数据、个别字段形态以机器契约为准
+  （如 INT-03 请求为 `external_user_ids` 数组、INT-20 为
+  `roles:[{external_user_id, role}]` 对象数组）。
 
 ## 11. 版本与变更
 

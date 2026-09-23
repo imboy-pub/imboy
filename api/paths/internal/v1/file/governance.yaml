@@ -1,0 +1,83 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/file/governance.yaml
+# POST /api/internal/v1/files/governance — 文件治理动作（INT-22）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1files~1governance
+# Handler：src/api/enterprise_asset_handler.erl governance/3
+# 请求/响应实证：enterprise_asset_retention_logic governance_tx 注释
+# （op/object_key/retention_days/reason；返回 7 字段 + retention_days/held）
+# ----------------------------------------------------------------------------
+post:
+  tags: [internal]
+  summary: 企业附件治理（留存 / 法务 hold / 清除）
+  description: |
+    治理动作四选一：set_retention（延长留存，只可延长）、hold（设法务 hold，
+    需事由）、release_hold（释放 hold）、purge（hold 释放且留存到期后清除）。
+    不变量在 DB 层声明式强制（migration 00000140 触发器）；违规动作归一
+    invalid_request（detail 区分 purge_blocked_by_hold / retention_not_elapsed /
+    already_purged 等，不新增错误码）。
+  operationId: internalFileGovernance
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: files:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [op, object_key]
+          properties:
+            op:
+              type: string
+              enum: [set_retention, hold, release_hold, purge]
+            object_key:
+              type: string
+              description: 本 (org, app) 已 confirm 的附件
+            retention_days:
+              type: integer
+              minimum: 1
+              maximum: 3650
+              description: op=set_retention 必填（延长天数，上限 10 年）
+            reason:
+              type: string
+              minLength: 1
+              maxLength: 200
+              description: op=hold 必填（法务 hold 事由）
+  responses:
+    '200':
+      description: 治理结果
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              op: { type: string, enum: [set_retention, hold, release_hold, purge] }
+              file_id: { type: integer, format: int64 }
+              object_key: { type: string }
+              retention_until:
+                type: [string, 'null']
+                description: 留存截止（ISO-8601；未设置 null）
+              hold_state: { type: string }
+              purge_state: { type: string }
+              purged: { type: boolean }
+              retention_days:
+                type: [integer, 'null']
+                description: set_retention 时回显
+              held:
+                type: [boolean, 'null']
+                description: hold/release_hold 时回显
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

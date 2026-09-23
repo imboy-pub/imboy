@@ -1,0 +1,30 @@
+# GET /api/adm/storage/orphan — admin
+get:
+  tags: [admin]
+  summary: 管理后台孤儿文件列表
+  description: 列出孤儿文件统计信息（无群组引用的存储对象）。List orphan file statistics (storage objects with no group reference).
+  operationId: adm_storage_orphan
+  parameters:
+    - in: query
+      name: age_days
+      required: false
+      schema: { type: integer, default: 30 }
+      description: 孤立天数阈值 / Orphan age threshold in days
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 孤立附件统计信息（attachment_ds:orphan_stats 返回）
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

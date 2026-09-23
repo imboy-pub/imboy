@@ -1,0 +1,26 @@
+# POST /api/adm/group/category/delete — admin
+post:
+  tags: [admin]
+  summary: 管理后台删除群分类
+  description: 管理员删除指定群分类。Delete a group category by admin.
+  operationId: adm_group_category_delete
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, uid, category_id]
+          properties:
+            gid: { type: integer, description: '群 ID' }
+            uid: { type: string, description: '用户 ID' }
+            category_id: { type: string, description: '分类 ID' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

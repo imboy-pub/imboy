@@ -15,15 +15,23 @@
 
 ---
 
-## 目录结构（T3.1 骨架 + D-cleanup 2026-05-17 更新）
+## 目录结构（三受众布局，2026-09-22 重组）
 
 ```
 imboy/api/
 ├── README.md           # 本文件（总览）
-├── openapi.yaml        # T3.2 产出 — HTTP REST API（OpenAPI 3.1，含 paths/ + components/ 多文件 $ref）
+├── openapi-api.yaml        # 编辑真源 — surface api（业务 v1 端点桥接）
+├── openapi-adm.yaml        # 编辑真源 — surface adm（管理后台端点桥接）
+├── openapi-internal.yaml   # 编辑真源 — surface internal（企业集成 v1，见 internal/v1/）
+├── openapi.yaml        # 生成式聚合桥接（gen_aggregate.py 产出，勿手改）
+├── gen_aggregate.py    # 聚合生成/校验脚本（--check 供门禁用）
 ├── asyncapi.yaml       # D-cleanup 产出 — WebSocket / 实时通讯（AsyncAPI 3.0，机器消费真源）
-├── paths/              # OpenAPI path item 文件（按业务域子目录）
-├── components/         # 共享 schemas / parameters
+├── paths/              # OpenAPI path item 文件，三级布局：
+│   ├── api/v1/<domain>/<action>.yaml      # surface api（业务端点）
+│   ├── adm/v1/<domain>/<action>.yaml      # surface adm（原 adm-* 目录去前缀）
+│   └── internal/v1/<domain>/<action>.yaml # surface internal（企业集成）
+├── components/         # 共享 schemas / parameters（三 surface 通用）
+├── internal/v1/        # internal surface 人类集成文档（README/endpoints/Postman）
 ├── proto/              # T3.3 产出 — 实时通讯 Protobuf（asyncapi.yaml 的字节级真源）
 │   ├── imboy_v2_frame.proto    # WS 顶层封装帧
 │   ├── imboy_s2c.proto         # Server→Client action payload
@@ -41,11 +49,38 @@ imboy/api/
 
 | 工件 | 协议 | 消费方 | 工具链 |
 |------|------|-------|--------|
-| `openapi.yaml` | HTTP REST | 后端实现校验 + 前端 axios client + 文档 | Redocly + openapi-generator |
+| `openapi-{api,adm,internal}.yaml` | HTTP REST（三受众编辑真源） | 后端实现校验 + 前端 axios client + 文档 | Redocly + openapi-generator |
+| `openapi.yaml` | 三 root 聚合并集（GENERATED） | 契约校验脚本 / 单文件导入方 | `python3 api/gen_aggregate.py` |
 | `asyncapi.yaml` | WebSocket / 实时事件 | 客户端 WS 消息分发 codegen + 文档 | AsyncAPI Generator + Studio |
 | `proto/*.proto` | WebSocket（imboy.v2 frame）| Erlang gpb / Dart protoc / TypeScript ts-proto | protoc + plugins |
 | `codegen/*.sh` | 调用 | Makefile / npm scripts / pubspec 依赖 | shell + 各 plugin |
-| `redocly.yaml` | OpenAPI 静态文档 | docs.imboy.com / GitHub Pages | redocly cli |
+| `redocly.yaml` | OpenAPI lint/渲染 | CI + docs.imboy.com / GitHub Pages | redocly cli |
+
+---
+
+## 三受众布局与映射规则（2026-09-22 重组）
+
+**surface 三值**（按受众划分，不按 URL 前缀机械切）：
+
+- `api` — 业务端点（移动端/Web 客户端消费；含无 `/v1` 前缀的旧路径如 `/user_tag/change_name`）
+- `adm` — 管理后台端点（URL 多为 `/api/adm/...`；目录自旧 `adm-*` 前缀目录去前缀而来）
+- `internal` — 企业集成端点（URL `/api/internal/v1/...`；`ib_int_*` 凭证认证）
+
+**目录版本段 `v1` 是契约定位**，不强制等于 URL 前缀：`paths/api/v1/user/show.yaml`
+对应 URL `/api/v1/user/show`，但 `paths/api/v1/user_tag/change_name.yaml` 对应
+URL `/api/user_tag/change_name`（历史无 v1 前缀路径，归 surface api）。
+
+**修改流程**：改对应 surface 的 root（或其桥接的 `paths/<surface>/v1/...` 端点文件）
+→ `redocly lint` 三 root → `python3 api/gen_aggregate.py` 重新生成聚合文件并提交。
+`openapi.yaml`（聚合桥接）头部标 GENERATED，手改会被下次生成覆盖。
+
+**internal 双层结构**：`api/internal/v1/` 是人类集成文档
+（README / endpoints / Postman collection），`api/paths/internal/v1/` 是机器契约
+（OpenAPI path item），两者互为指路、内容同源（handler 实证）。
+
+**旧路径 → 新路径映射**：一次性迁移映射表存档于
+`.Codex/runs/api-surface-reorg-20260922T182750/migration-map.tsv`（528 文件）。
+git 历史可通过 rename 追溯。
 
 ---
 
@@ -108,7 +143,7 @@ imboy/api/
 | `/test/req_get` | `test_handler` | 开发调试端点，不暴露给客户端 codegen |
 | `/test/req_post` | `test_handler` | 同上 |
 
-如未来需要把这些挂入 OpenAPI（例如静态资源需 SDK 化、或测试端点需契约化），可参考 `paths/system/help.yaml` 的 `text/html` content type 模式。
+如未来需要把这些挂入 OpenAPI（例如静态资源需 SDK 化、或测试端点需契约化），可参考 `paths/api/v1/system/help.yaml` 的 `text/html` content type 模式。
 
 ---
 
@@ -118,9 +153,9 @@ phase 1 从 `docs/api/openapi.yaml`（340 行历史冻结契约，2026-04-15 之
 
 | 已删除契约路径 | router 实际路径 | 替代方案 |
 |---|---|---|
-| ~~`/passport/refresh`~~ | `/refreshtoken` + `/v1/refreshtoken` | 使用 `paths/auth/refreshtoken.yaml`（D-extras） |
+| ~~`/passport/refresh`~~ | `/refreshtoken` + `/v1/refreshtoken` | 使用 `paths/api/v1/auth/refreshtoken.yaml`（D-extras） |
 | ~~`/user/current`~~ | 不存在 | 客户端从 JWT 解出自身 uid 后调 `/user/show?id=...` |
-| ~~`/user/{uid}`~~ | 不存在 | 使用 `/user/show?id=...`（`paths/user/show.yaml`） |
+| ~~`/user/{uid}`~~ | 不存在 | 使用 `/user/show?id=...`（`paths/api/v1/user/show.yaml`） |
 
 注：删除属破坏性 path 变更（oasdiff 会报 ERR），但本质上是 contract bug fix —— 这些 path 在后端不存在，client SDK 调用必然 404。删除前若有 client 已按 phase 1 契约生成代码并实际调用过这些 path，应在收到 404 时回退到上表"替代方案"。
 

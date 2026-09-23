@@ -1,0 +1,34 @@
+# POST /api/location/makeMyselfVisible
+post:
+  tags: [user]
+  summary: 在附近列表中可见
+  description: |
+    ## 中文 / English
+    在附近列表中可见
+  operationId: locationMakeVisible
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            longitude: { type: number, format: float }
+            latitude: { type: number, format: float }
+  responses:
+    '200':
+      description: 设置可见成功；无 payload
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象，无实质 payload.
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

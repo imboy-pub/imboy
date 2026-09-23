@@ -1,0 +1,25 @@
+# POST /api/group_album/photo/comment — 评论照片 / Add comment
+post:
+  tags: [user]
+  summary: 给照片发表评论
+  description: 给群相册照片发表文字评论，长度上限 500 字符。Post a text comment on a group album photo; max 500 characters.
+  operationId: commentGroupAlbumPhoto
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [photo_id, content]
+          properties:
+            photo_id: { type: integer, minimum: 1 }
+            content: { type: string, maxLength: 500 }
+  responses:
+    '200':
+      description: 评论成功（payload 含 comment_id）
+      content:
+        application/json: { schema: { $ref: '../../../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 不存在 / 无权限 / 内容为空
+      content:
+        application/json: { schema: { $ref: '../../../../../components/schemas/Envelope.yaml' } }

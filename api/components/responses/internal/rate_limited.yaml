@@ -1,0 +1,12 @@
+# Internal API v1 稳定错误码 rate_limited（HTTP 429，README §7 冻结表）。
+description: '触发限流（fail-closed）'
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: '../../schemas/internal/ErrorEnvelope.yaml'
+      properties:
+        error:
+          properties:
+            code:
+              enum: [rate_limited]

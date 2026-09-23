@@ -1,0 +1,56 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/application/self.yaml
+# GET /api/internal/v1/application — 读取本应用信息（INT-01）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1application
+# Handler：src/api/enterprise_application_handler.erl（self_payload/2 实证字段）
+# ----------------------------------------------------------------------------
+get:
+  tags: [internal]
+  summary: 读取本应用信息（健康检查与联调首选）
+  description: |
+    返回本应用元数据、本次凭证的授权 scope 与凭证清单。字段实证自
+    `enterprise_application_handler:self_payload/2`：application/credentials
+    为平台行数据的 binary 键透出（最小字段集，不含 secret）。
+  operationId: internalApplicationSelf
+  x-imboy-scope: application:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  responses:
+    '200':
+      description: 应用自检信息
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              organization_id:
+                type: integer
+                format: int64
+                description: 所属组织 TSID
+              application_id:
+                type: integer
+                format: int64
+                description: 应用 TSID
+              credential_id:
+                type: [integer, 'null']
+                format: int64
+                description: 本次凭证 ID（无凭证上下文时 null）
+              application_key:
+                type: [string, 'null']
+                description: 应用 key
+              application:
+                type: object
+                description: 应用行元数据（binary 键透出）
+              granted_scopes:
+                type: array
+                items: { type: string }
+                description: 本次凭证被授予的 scope 集合
+              credentials:
+                type: array
+                items: { type: object }
+                description: 凭证清单（不含 secret）
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/application_disabled.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

@@ -1,0 +1,12 @@
+# Internal API v1 稳定错误码 organization_boundary_violation（HTTP 403，README §7 冻结表）。
+description: '跨组织访问（IDOR 防线）'
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: '../../schemas/internal/ErrorEnvelope.yaml'
+      properties:
+        error:
+          properties:
+            code:
+              enum: [organization_boundary_violation]

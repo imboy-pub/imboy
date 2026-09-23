@@ -1,0 +1,12 @@
+# Internal API v1 稳定错误码 identity_not_mapped（HTTP 422，README §7 冻结表）。
+description: '目标用户未做身份映射'
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: '../../schemas/internal/ErrorEnvelope.yaml'
+      properties:
+        error:
+          properties:
+            code:
+              enum: [identity_not_mapped]

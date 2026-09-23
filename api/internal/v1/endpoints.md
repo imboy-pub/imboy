@@ -1,7 +1,8 @@
 # Internal API v1 — 端点参考（23 端点）
 
 > 与代码冻结表（`src/api/enterprise_internal_routes.erl`）逐条一致；
-> 字段级 schema 见 `.contract/api/openapi.yaml`（`api_internal` 组）。
+> 字段级机器契约见 `../openapi-internal.yaml`（编辑真源，
+> `../paths/internal/v1/`）与 `../openapi-internal.bundle.yaml`（bundle 单文件）。
 > 认证、限流桶、幂等、`sender_mode` 语义见 [README.md](./README.md)。
 
 图例：幂等 `—`=不需要 / `K`=必须带 `Idempotency-Key` / `code`=一次性 code。

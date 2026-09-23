@@ -1,0 +1,51 @@
+# GET (channel) discoverChannels
+get:
+  tags: [user]
+  summary: 频道发现
+  description: |
+    ## 中文 / English
+    频道发现
+    Discover channels
+  operationId: discoverChannels
+  parameters:
+    - in: query
+      name: category_id
+      required: false
+      description: '分类 ID / Category filter'
+      schema: { type: integer }
+    - in: query
+      name: sort
+      required: false
+      description: '排序：popular（订阅数）/ newest（创建时间）/ active（活跃度）/ Sort order'
+      schema: { type: string, enum: [popular, newest, active], default: popular }
+    - $ref: '../../../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64 }
+                            name: { type: string }
+                            type: { type: integer }
+                            avatar: { type: string }
+                            description: { type: string }
+                            subscriber_count: { type: integer }
+                            is_subscribed: { type: boolean }
+    '4XX':
+      description: 参数非法 / 无权限 / 不存在
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

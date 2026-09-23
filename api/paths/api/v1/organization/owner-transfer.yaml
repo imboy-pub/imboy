@@ -1,0 +1,49 @@
+post:
+  tags: [organization]
+  summary: 转移 Organization Owner
+  description: |
+    仅当前主 Owner 可把 Organization Owner 转移给该 Organization 的 active
+    Admin 或 Member。新 Owner 升为 Owner，原 Owner 降为 Admin，全部在同一事务完成。
+
+    本操作不修改任何 Workspace 的 `owner_id`、`organization_id` 或成员关系，也不
+    修改 Group 成员关系；Workspace Owner 与 Organization Owner 是独立角色。
+  operationId: organizationOwnerTransfer
+  parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [user_id]
+          properties:
+            user_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: 新主 Owner 的用户 ID
+  responses:
+    '200':
+      description: 成功或业务错误信封（400/403/404/409/500）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required:
+                      [organization_id, owner_id, previous_owner_id, previous_owner_role]
+                    properties:
+                      organization_id: { type: integer, format: int64 }
+                      owner_id: { type: integer, format: int64 }
+                      previous_owner_id: { type: integer, format: int64 }
+                      previous_owner_role: { type: string, enum: [admin] }
+    '405':
+      description: Method Not Allowed

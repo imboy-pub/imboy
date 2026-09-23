@@ -1,0 +1,122 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/identity/mappings.yaml
+# PUT   /api/internal/v1/identity-mappings — 绑定身份（INT-02）
+# DELETE /api/internal/v1/identity-mappings — 解绑身份（INT-15）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1identity-mappings
+# Handler：src/api/enterprise_identity_handler.erl（bind/revoke 实证字段）
+# ----------------------------------------------------------------------------
+put:
+  tags: [internal]
+  summary: 绑定外部身份（OA 用户 → 平台用户）
+  description: |
+    把 OA 侧用户标识绑定到本组织平台用户（TSID）。字段实证自
+    `enterprise_identity_handler:bind/3` + `enterprise_identity_logic:mapping_view/1`。
+    幂等重放返回 `{replayed: true, user_id, status}` 形态。
+  operationId: internalIdentityBind
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键（同一 key 重复提交返回首次结果）
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: identities:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [external_user_id, user_id]
+          properties:
+            external_user_id:
+              type: string
+              description: OA 侧用户标识（同 org+app 内唯一）
+            user_id:
+              type: integer
+              format: int64
+              description: 平台用户 TSID（须为本组织成员）
+  responses:
+    '200':
+      description: 绑定结果
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - type: object
+                description: 首次绑定 / 幂等重放命中
+                properties:
+                  replayed: { type: boolean }
+                  external_user_id: { type: string }
+                  user_id: { type: integer, format: int64 }
+                  status: { type: string, description: 映射状态（如 active） }
+              - type: object
+                description: 幂等重放（带 user_id 资源定位）
+                properties:
+                  replayed:
+                    type: boolean
+                    enum: [true]
+                  user_id: { type: integer, format: int64 }
+                  status: { type: string }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+delete:
+  tags: [internal]
+  summary: 解绑外部身份（软删映射）
+  description: |
+    撤销 external identity 映射（软删）。解绑后该用户对本应用的消息/群操作
+    立即不可达（identity_not_mapped）。响应字段实证自
+    `enterprise_identity_logic`（revoke 返回 `{external_user_id, status: removed, revoked: true}`）。
+  operationId: internalIdentityRevoke
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: identities:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [external_user_id]
+          properties:
+            external_user_id:
+              type: string
+              description: 要解绑的 OA 侧用户标识
+  responses:
+    '200':
+      description: 解绑结果
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              external_user_id: { type: string }
+              status:
+                type: string
+                enum: [removed]
+              revoked:
+                type: boolean
+                enum: [true]
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

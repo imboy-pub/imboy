@@ -1,0 +1,60 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/oa-sso/exchange.yaml
+# POST /api/internal/v1/oa/sso/exchange — 一次性 code 交换登录态（INT-14）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1oa~1sso~1exchange
+# Handler：src/api/enterprise_oa_sso_exchange_handler.erl
+# 请求实证：enterprise_oa_sso_logic validate_exchange_params（code/redirect_uri/
+# nonce 三键全必填）；响应实证 exchange_payload（5 字段，永不含 IMBoy 凭证）
+# ----------------------------------------------------------------------------
+post:
+  tags: [internal]
+  summary: OA SSO 一次性 code 原子交换
+  description: |
+    一个 code 只能成功交换一次（single_use_code），重放即失败——不存在
+    「二次成功」。code TTL 60 秒。成功 payload 永不含 IMBoy 凭证（R-6）；
+    TSID 以 JSON integer 输出（INV-8）。独立限流桶 internal_sso。
+  operationId: internalOaSsoExchange
+  security:
+    - ibIntBearer: []
+  x-imboy-scope: sso:exchange
+  x-imboy-rate-bucket: internal_sso
+  x-imboy-idempotency: single_use_code
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [code, redirect_uri, nonce]
+          properties:
+            code:
+              type: string
+              description: OA 流程签发的一次性 code（前缀 oa_sso_，TTL 60s）
+            redirect_uri:
+              type: string
+              description: 签发时绑定的 redirect URI（须匹配）
+            nonce:
+              type: string
+              description: 签发时携带的 nonce（须匹配）
+  responses:
+    '200':
+      description: 交换成功（登录态建立所需的平台侧事实）
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              organization_id: { type: integer, format: int64 }
+              application_id: { type: integer, format: int64 }
+              user_id: { type: integer, format: int64, description: 平台用户 TSID }
+              external_user_id: { type: string, description: OA 侧标识 }
+              consumed_at:
+                type: string
+                description: 消费时间（ISO-8601 UTC 毫秒）
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

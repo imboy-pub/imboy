@@ -1,0 +1,47 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/api/v1/auth/login.yaml
+# POST /api/v1/passport/login — 账号密码登录 / Account+password login
+#
+# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
+# 调用方：api/openapi-api.yaml#/paths/~1api~1v1~1passport~1login
+# Handler：src/api/passport_handler.erl#login/1
+# ----------------------------------------------------------------------------
+post:
+  tags: [auth]
+  summary: 账号密码登录
+  description: |
+    通过手机号、邮箱或账号 + 密码换取 access token 与 refresh token。
+    当前业务错误沿用 HTTP 200，通过 envelope.code 区分成功（0）与失败（非 0）。
+    副作用：服务端发放 token、记录登录审计、可能触发风控。
+    典型场景：客户端首次启动或 refresh_token 失效后回退至此端点重新登录。
+  operationId: login
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [account, pwd]
+          properties:
+            type: { type: string, enum: [account, mobile, email], default: email }
+            account: { type: string }
+            pwd: { type: string, description: 登录密码 / Login password }
+            rsa_encrypt:
+              $ref: '../../../../components/schemas/RsaEncryptFlag.yaml'
+  responses:
+    '200':
+      description: 登录结果
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      uid: { type: integer, format: int64, description: 用户 TSID（JSON integer，前端 safeParseBigIntJson 转为 string） }
+                      token: { type: string, description: JWT access token }
+                      refreshtoken: { type: string }

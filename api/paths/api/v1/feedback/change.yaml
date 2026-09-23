@@ -1,0 +1,28 @@
+# POST /api/feedback/change
+post:
+  tags: [user]
+  summary: 修改反馈
+  deprecated: true
+  description: |
+    ## 中文 / English
+    修改反馈
+    ⚠️ 后端 handler 未实现（action 被注释），暂不可用
+  operationId: feedbackChange
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            id: { type: integer }
+            content: { type: string }
+  responses:
+    '200':
+      description: 成功（action 暂未启用，handler 中已注释；无 payload）
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 参数非法 / 无权限
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

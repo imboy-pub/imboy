@@ -1,0 +1,845 @@
+# ----------------------------------------------------------------------------
+# imboy/api/openapi-api.yaml — IMBoy REST API 编辑真源（surface api：业务 v1 端点）
+#
+# 三受众布局（2026-09-22 api-surface-reorg）：本文件是**手工编辑真源**之一。
+# 汇总入口 api/openapi.yaml 由 gen_aggregate.py 从三个 root 生成，请勿手改。
+# 修改流程：改本文件（或 paths/ 下对应端点文件）→ redocly lint →
+#   python3 api/gen_aggregate.py 重新生成聚合文件。
+# ----------------------------------------------------------------------------
+openapi: 3.1.0
+info:
+  title: IMBoy REST API — api surface
+  version: 1.0.0-rc.3
+  x-stability: stable
+  summary: IMBoy 后端 HTTP / REST 接口冻结版（业务 surface）
+  description: |
+    本文件是 IMBoy REST API **surface api**（业务端点）的编辑真源，桥接 354 条
+    path（362 个操作，2026-09-22 三受众重组）。覆盖认证、用户、消息、群组、
+    好友、频道、朋友圈、项目协作等业务路径；完整路径清单以
+    `imboy/src/imboy_router.erl` 为权威；契约机器真源见
+    `.contract/api_contract.json`（contract-export）。
+
+    **响应信封**：所有响应统一为 `{ code, msg, sv_ts, payload }`，定义见
+    [envelope.schema.json](./envelope.schema.json)。
+
+    **认证**：Bearer JWT，载荷中的 `sub` 为 TSID（integer 字符串）；白名单
+    路径免鉴权（见 `imboy_router:open/0`）。
+
+    **版本策略**：1.0.x 期间保证路径签名向后兼容，破坏性变更通过 `/v2` 路径前缀发布。
+  license:
+    name: BUSL-1.1
+    url: https://mariadb.com/bsl11/
+  contact:
+    name: IMBoy Maintainers
+    url: https://github.com/imboy-pub/imboy
+
+servers:
+  - url: https://{apiDomain}
+    description: 生产环境（部署方按实际域名替换 apiDomain）
+    variables:
+      apiDomain:
+        default: api.imboy.app
+        description: 生产 API 域名占位；自托管/私有部署需改为对应域名
+  - url: http://127.0.0.1:{devPort}
+    description: 本地开发（IMBOYENV=local make run，端口见 imboy/CLAUDE.md）
+    variables:
+      devPort:
+        default: '9800'
+        description: 本地 HTTP 端口；可通过 HTTP_PORT 环境变量覆盖
+
+tags:
+  - name: auth
+    description: 登录、注册、token 刷新
+  - name: user
+    description: 用户资料
+  - name: msg
+    description: 消息查询与历史
+  - name: bot
+    description: 开发者服务 Bot（Webhook 推送 + api_token 认证）
+  - name: project
+    description: 项目协作（W2）：成员 / 里程碑 / 频道关联 / 四聚合
+  - name: organization
+    description: Organization 治理与成员管理
+  - name: workspace
+    description: Workspace 协作空间与成员管理
+  - name: admin
+    description: 管理后台鉴权端点
+  - name: system
+    description: 系统配置与品牌
+  - name: wallet
+    description: 钱包与支付
+  - name: ai-agent
+    description: AI 助手（平台 LLM 推理）
+
+# ----------------------------------------------------------------------------
+# T3.2 split phase 4 / B (2026-05-16)：paths 段由"内联端点"改为"按域 $ref"。
+# 每个端点对应 api/paths/<domain>/<name>.yaml，零语义变化（oasdiff 守门）。
+# 子目录约定：adm/ auth/ user/ msg/ 等按业务 tag 拆分；新增端点直接落入
+# 对应子目录后在此 paths 段追加 $ref 桥接。
+# ----------------------------------------------------------------------------
+paths:
+  # --------------------------------------------------------------------------
+  # 系统级 / 基础端点（D-extras phase 26, 2026-05-17）
+  # 包含：根欢迎页、初始化探针、Prometheus 指标、auth-gated assets、WebSocket
+  #      升级、deprecated 旧 alias。
+  # --------------------------------------------------------------------------
+  /:
+    $ref: './paths/api/v1/system/help.yaml'
+  /help:
+    $ref: './paths/api/v1/system/help.yaml'
+  /api/v1/init:
+    $ref: './paths/api/v1/system/init.yaml'
+  /api/v1/metrics:
+    $ref: './paths/api/v1/system/metrics.yaml'
+  /api/v1/auth/assets:
+    $ref: './paths/api/v1/system/auth-assets.yaml'
+  /api/v1/ws:
+    $ref: './paths/api/v1/ws/connect.yaml'
+  /api/v1/refreshtoken:
+    $ref: './paths/api/v1/auth/refreshtoken.yaml'
+  /api/v1/passport/qr_login/subscribe:
+    $ref: './paths/api/v1/auth/qr-subscribe.yaml'
+  /api/v1/user/export_data:
+    $ref: './paths/api/v1/user/export-data.yaml'
+  /api/v1/organizations:
+    $ref: './paths/api/v1/organization/organizations.yaml'
+  /api/v1/organizations/mine:
+    $ref: './paths/api/v1/organization/mine.yaml'
+  /api/v1/organizations/{organization_id}:
+    $ref: './paths/api/v1/organization/detail.yaml'
+  /api/v1/organizations/{organization_id}/members:
+    $ref: './paths/api/v1/organization/members.yaml'
+  /api/v1/organizations/{organization_id}/members/transfer_owner:
+    $ref: './paths/api/v1/organization/owner-transfer.yaml'
+  /api/v1/organizations/{organization_id}/members/{user_id}/role:
+    $ref: './paths/api/v1/organization/member-role.yaml'
+  /api/v1/organizations/{organization_id}/members/{user_id}:
+    $ref: './paths/api/v1/organization/member.yaml'
+  /api/v1/workspaces:
+    $ref: './paths/api/v1/workspace/workspaces.yaml'
+  /brand:
+    $ref: './paths/api/v1/system/brand.yaml'
+  /api/v1/passport/login:
+    $ref: './paths/api/v1/auth/login.yaml'
+  /api/v1/passport/quick_login:
+    $ref: './paths/api/v1/auth/quick-login.yaml'
+  /api/v1/passport/signup:
+    $ref: './paths/api/v1/auth/signup.yaml'
+  /api/v1/passport/getcode:
+    $ref: './paths/api/v1/auth/getcode.yaml'
+  /api/v1/passport/findpassword:
+    $ref: './paths/api/v1/auth/findpassword.yaml'
+  /api/v1/passport/bind_mail:
+    $ref: './paths/api/v1/auth/bind-mail.yaml'
+  /api/v1/passport/qr_login/create:
+    $ref: './paths/api/v1/auth/qr-create.yaml'
+  /api/v1/passport/qr_login/status:
+    $ref: './paths/api/v1/auth/qr-status.yaml'
+  /api/v1/passport/qr_login/scan:
+    $ref: './paths/api/v1/auth/qr-scan.yaml'
+  /api/v1/passport/qr_login/confirm:
+    $ref: './paths/api/v1/auth/qr-confirm.yaml'
+  /api/v1/passport/qr_login/cancel:
+    $ref: './paths/api/v1/auth/qr-cancel.yaml'
+  /api/v1/auth/oidc/authorize:
+    $ref: './paths/api/v1/auth/oidc-authorize.yaml'
+  /api/v1/auth/oidc/callback:
+    $ref: './paths/api/v1/auth/oidc-callback.yaml'
+  /api/v1/auth/oidc/exchange:
+    $ref: './paths/api/v1/auth/oidc-exchange.yaml'
+  /api/v1/user/update:
+    $ref: './paths/api/v1/user/update.yaml'
+  /api/v1/user/show:
+    $ref: './paths/api/v1/user/show.yaml'
+  /api/v1/user/qrcode:
+    $ref: './paths/api/v1/user/qrcode.yaml'
+  /api/v1/user/credential:
+    $ref: './paths/api/v1/user/credential.yaml'
+  /api/v1/user/change_state:
+    $ref: './paths/api/v1/user/change-state.yaml'
+  /api/v1/user/setting:
+    $ref: './paths/api/v1/user/setting.yaml'
+  /api/v1/user/change_password:
+    $ref: './paths/api/v1/user/change-password.yaml'
+  /api/v1/user/set_password:
+    $ref: './paths/api/v1/user/set-password.yaml'
+  /api/v1/user/apply_logout:
+    $ref: './paths/api/v1/user/apply-logout.yaml'
+  /api/v1/user/cancel_logout:
+    $ref: './paths/api/v1/user/cancel-logout.yaml'
+  /api/v1/user/search:
+    $ref: './paths/api/v1/user/search.yaml'
+  /api/v1/user_tag/page:
+    $ref: './paths/api/v1/user-tag/page.yaml'
+  /api/v1/user_tag/add:
+    $ref: './paths/api/v1/user-tag/add.yaml'
+  /api/v1/user_tag/change_name:
+    $ref: './paths/api/v1/user-tag/change-name.yaml'
+  /api/v1/user_tag/delete:
+    $ref: './paths/api/v1/user-tag/delete.yaml'
+  /api/v1/user_tag_relation/collect_page:
+    $ref: './paths/api/v1/user-tag-relation/collect-page.yaml'
+  /api/v1/user_tag_relation/friend_page:
+    $ref: './paths/api/v1/user-tag-relation/friend-page.yaml'
+  /api/v1/user_tag_relation/add:
+    $ref: './paths/api/v1/user-tag-relation/add.yaml'
+  /api/v1/user_tag_relation/set:
+    $ref: './paths/api/v1/user-tag-relation/set.yaml'
+  /api/v1/user_tag_relation/remove:
+    $ref: './paths/api/v1/user-tag-relation/remove.yaml'
+  /api/v1/user_collect/page:
+    $ref: './paths/api/v1/user-collect/page.yaml'
+  /api/v1/user_collect/add:
+    $ref: './paths/api/v1/user-collect/add.yaml'
+  /api/v1/user_collect/remove:
+    $ref: './paths/api/v1/user-collect/remove.yaml'
+  /api/v1/user_collect/change:
+    $ref: './paths/api/v1/user-collect/change.yaml'
+  /api/v1/user_device/page:
+    $ref: './paths/api/v1/user-device/page.yaml'
+  /api/v1/user_device/change_name:
+    $ref: './paths/api/v1/user-device/change-name.yaml'
+  /api/v1/user_device/delete:
+    $ref: './paths/api/v1/user-device/delete.yaml'
+  /api/v1/user_device/sessions:
+    $ref: './paths/api/v1/user-device/sessions.yaml'
+  /api/v1/user_device/check_login:
+    $ref: './paths/api/v1/user-device/check-login.yaml'
+  /api/v1/user_device/kick:
+    $ref: './paths/api/v1/user-device/kick.yaml'
+  /api/v1/user_device/kick-others:
+    $ref: './paths/api/v1/user-device/kick-others.yaml'
+  /api/v1/push/register:
+    $ref: './paths/api/v1/push/register.yaml'
+  /api/v1/push/unregister:
+    $ref: './paths/api/v1/push/unregister.yaml'
+  /api/v1/friend/denylist/page:
+    $ref: './paths/api/v1/friend-denylist/page.yaml'
+  /api/v1/friend/denylist/add:
+    $ref: './paths/api/v1/friend-denylist/add.yaml'
+  /api/v1/friend/denylist/remove:
+    $ref: './paths/api/v1/friend-denylist/remove.yaml'
+  /api/v1/friend/list:
+    $ref: './paths/api/v1/friend/list.yaml'
+  /api/v1/friend/add:
+    $ref: './paths/api/v1/friend/add.yaml'
+  /api/v1/friend/confirm:
+    $ref: './paths/api/v1/friend/confirm.yaml'
+  /api/v1/friend/delete:
+    $ref: './paths/api/v1/friend/delete.yaml'
+  /api/v1/friend/move:
+    $ref: './paths/api/v1/friend/move.yaml'
+  /api/v1/friend/information:
+    $ref: './paths/api/v1/friend/information.yaml'
+  /api/v1/friend/change_remark:
+    $ref: './paths/api/v1/friend/change-remark.yaml'
+  /api/v1/friend/category/add:
+    $ref: './paths/api/v1/friend-category/add.yaml'
+  /api/v1/friend/category/delete:
+    $ref: './paths/api/v1/friend-category/delete.yaml'
+  /api/v1/friend/category/rename:
+    $ref: './paths/api/v1/friend-category/rename.yaml'
+  /api/v1/msg/history:
+    $ref: './paths/api/v1/msg/history.yaml'
+  /api/v1/msg/offline:
+    $ref: './paths/api/v1/msg/offline.yaml'
+  /api/v1/msg/offline_ack:
+    $ref: './paths/api/v1/msg/offline-ack.yaml'
+  /api/v1/msg/read_stats:
+    $ref: './paths/api/v1/msg/read-stats.yaml'
+  /api/v1/msg/pin:
+    $ref: './paths/api/v1/msg/pin.yaml'
+  /api/v1/msg/forward:
+    $ref: './paths/api/v1/msg/forward.yaml'
+  /api/v1/msg/reaction/add:
+    $ref: './paths/api/v1/msg/reaction-add.yaml'
+  /api/v1/msg/reaction/remove:
+    $ref: './paths/api/v1/msg/reaction-remove.yaml'
+  /api/v1/msg/reaction/list:
+    $ref: './paths/api/v1/msg/reaction-list.yaml'
+  /api/v1/conversation/online:
+    $ref: './paths/api/v1/conversation/online.yaml'
+  /api/v1/conversation/mine:
+    $ref: './paths/api/v1/conversation/mine.yaml'
+  /api/v1/conversation/pin:
+    $ref: './paths/api/v1/conversation/pin.yaml'
+  /api/v1/conversation/unpin:
+    $ref: './paths/api/v1/conversation/unpin.yaml'
+  /api/v1/conversation/pinned:
+    $ref: './paths/api/v1/conversation/pinned.yaml'
+  /api/v1/conversation/delete:
+    $ref: './paths/api/v1/conversation/delete.yaml'
+  /api/v1/conversation/restore:
+    $ref: './paths/api/v1/conversation/restore.yaml'
+  /api/v1/mention/list:
+    $ref: './paths/api/v1/mention/list.yaml'
+  /api/v1/mention/unread:
+    $ref: './paths/api/v1/mention/unread.yaml'
+  /api/v1/mention/mark_read:
+    $ref: './paths/api/v1/mention/mark-read.yaml'
+  /api/v1/mention/suggest:
+    $ref: './paths/api/v1/mention/suggest.yaml'
+  /api/v1/moment/create:
+    $ref: './paths/api/v1/moment/create.yaml'
+  /api/v1/moment/{moment_id}:
+    $ref: './paths/api/v1/moment/show.yaml'
+  /api/v1/moment/{moment_id}/delete:
+    $ref: './paths/api/v1/moment/delete.yaml'
+  /api/v1/moments/feed:
+    $ref: './paths/api/v1/moment/feed.yaml'
+  /api/v1/moments/user/{uid}:
+    $ref: './paths/api/v1/moment/user-posts.yaml'
+  /api/v1/moment/{moment_id}/like:
+    $ref: './paths/api/v1/moment/like.yaml'
+  /api/v1/moment/{moment_id}/unlike:
+    $ref: './paths/api/v1/moment/unlike.yaml'
+  /api/v1/moment/{moment_id}/comment:
+    $ref: './paths/api/v1/moment/add-comment.yaml'
+  /api/v1/moment/{moment_id}/comments:
+    $ref: './paths/api/v1/moment/comments.yaml'
+  /api/v1/moment/{moment_id}/comment/{comment_id}/delete:
+    $ref: './paths/api/v1/moment/delete-comment.yaml'
+  /api/v1/moment/{moment_id}/report:
+    $ref: './paths/api/v1/moment/report.yaml'
+  /api/v1/bot/register:
+    $ref: './paths/api/v1/bot/register.yaml'
+  /api/v1/bot/search:
+    $ref: './paths/api/v1/bot/search.yaml'
+  /api/v1/bot/send_message:
+    $ref: './paths/api/v1/bot/send_message.yaml'
+  /api/v1/bot/get:
+    $ref: './paths/api/v1/bot/get.yaml'
+  /api/v1/bot/update:
+    $ref: './paths/api/v1/bot/update.yaml'
+  /api/v1/bot/disable:
+    $ref: './paths/api/v1/bot/disable.yaml'
+  /api/v1/bot/enable:
+    $ref: './paths/api/v1/bot/enable.yaml'
+  /api/v1/bot/list_mine:
+    $ref: './paths/api/v1/bot/list_mine.yaml'
+  /api/v1/rtc/room/join:
+    $ref: './paths/api/v1/rtc/room_join.yaml'
+  /api/v1/group/add:
+    $ref: './paths/api/v1/group/add.yaml'
+  /api/v1/group/edit:
+    $ref: './paths/api/v1/group/edit.yaml'
+  /api/v1/group/set_e2ee_mode:
+    $ref: './paths/api/v1/group/set-e2ee-mode.yaml'
+  /api/v1/group/dissolve:
+    $ref: './paths/api/v1/group/dissolve.yaml'
+  /api/v1/group/detail:
+    $ref: './paths/api/v1/group/detail.yaml'
+  /api/v1/group/page:
+    $ref: './paths/api/v1/group/page.yaml'
+  /api/v1/group/search:
+    $ref: './paths/api/v1/group/search.yaml'
+  /api/v1/group/discover:
+    $ref: './paths/api/v1/group/discover.yaml'
+  /api/v1/group/featured:
+    $ref: './paths/api/v1/group/featured.yaml'
+  /api/v1/group/hot:
+    $ref: './paths/api/v1/group/hot.yaml'
+  /api/v1/group/categories:
+    $ref: './paths/api/v1/group/categories.yaml'
+  /api/v1/group/preview:
+    $ref: './paths/api/v1/group/preview.yaml'
+  /api/v1/group/msg_page:
+    $ref: './paths/api/v1/group/msg-page.yaml'
+  /api/v1/group/qrcode:
+    $ref: './paths/api/v1/group/qrcode.yaml'
+  /api/v1/group/face2face:
+    $ref: './paths/api/v1/group/face2face.yaml'
+  /api/v1/group/face2face_save:
+    $ref: './paths/api/v1/group/face2face-save.yaml'
+  /api/v1/group/remark:
+    $ref: './paths/api/v1/group/remark.yaml'
+  /api/v1/group/transfer:
+    $ref: './paths/api/v1/group/transfer.yaml'
+  /api/v1/group_member/join:
+    $ref: './paths/api/v1/group-member/join.yaml'
+  /api/v1/group_member/leave:
+    $ref: './paths/api/v1/group-member/leave.yaml'
+  /api/v1/group_member/page:
+    $ref: './paths/api/v1/group-member/page.yaml'
+  /api/v1/group_member/alias:
+    $ref: './paths/api/v1/group-member/alias.yaml'
+  /api/v1/group_member/same_group:
+    $ref: './paths/api/v1/group-member/same-group.yaml'
+  /api/v1/group_member/mute:
+    $ref: './paths/api/v1/group-member/mute.yaml'
+  /api/v1/group_member/unmute:
+    $ref: './paths/api/v1/group-member/unmute.yaml'
+  /api/v1/group_member/role:
+    $ref: './paths/api/v1/group-member/role.yaml'
+  /api/v1/group_notice/add:
+    $ref: './paths/api/v1/group-notice/add.yaml'
+  /api/v1/group_notice/edit:
+    $ref: './paths/api/v1/group-notice/edit.yaml'
+  /api/v1/group_notice/delete:
+    $ref: './paths/api/v1/group-notice/delete.yaml'
+  /api/v1/group_notice/page:
+    $ref: './paths/api/v1/group-notice/page.yaml'
+  /api/v1/group_notice/publish:
+    $ref: './paths/api/v1/group-notice/publish.yaml'
+  /api/v1/group_notice/latest:
+    $ref: './paths/api/v1/group-notice/latest.yaml'
+  /api/v1/group/notice/list:
+    $ref: './paths/api/v1/group-notice/list.yaml'
+  /api/v1/group/notice/detail:
+    $ref: './paths/api/v1/group-notice/detail.yaml'
+  /api/v1/group/notice/pin:
+    $ref: './paths/api/v1/group-notice/pin.yaml'
+  /api/v1/group/notice/unpin:
+    $ref: './paths/api/v1/group-notice/unpin.yaml'
+  /api/v1/group/notice/mark_read:
+    $ref: './paths/api/v1/group-notice/mark-read.yaml'
+  /api/v1/group_album/create:
+    $ref: './paths/api/v1/group-album/create.yaml'
+  /api/v1/group_album/list:
+    $ref: './paths/api/v1/group-album/list.yaml'
+  /api/v1/group_album/rename:
+    $ref: './paths/api/v1/group-album/rename.yaml'
+  /api/v1/group_album/delete:
+    $ref: './paths/api/v1/group-album/delete.yaml'
+  /api/v1/group_album/photo/upload:
+    $ref: './paths/api/v1/group-album/photo/upload.yaml'
+  /api/v1/group_album/photo/batch:
+    $ref: './paths/api/v1/group-album/photo/batch.yaml'
+  /api/v1/group_album/photo/list:
+    $ref: './paths/api/v1/group-album/photo/list.yaml'
+  /api/v1/group_album/photo/detail:
+    $ref: './paths/api/v1/group-album/photo/detail.yaml'
+  /api/v1/group_album/photo/delete:
+    $ref: './paths/api/v1/group-album/photo/delete.yaml'
+  /api/v1/group_album/photo/like:
+    $ref: './paths/api/v1/group-album/photo/like.yaml'
+  /api/v1/group_album/photo/unlike:
+    $ref: './paths/api/v1/group-album/photo/unlike.yaml'
+  /api/v1/group_album/photo/comment:
+    $ref: './paths/api/v1/group-album/photo/comment.yaml'
+  /api/v1/group_album/photo/comments:
+    $ref: './paths/api/v1/group-album/photo/comments.yaml'
+  /api/v1/group_album/cover/update:
+    $ref: './paths/api/v1/group-album/cover/update.yaml'
+  /api/v1/group/category/create:
+    $ref: './paths/api/v1/group-category/create.yaml'
+  /api/v1/group/category/list:
+    $ref: './paths/api/v1/group-category/list.yaml'
+  /api/v1/group/category/rename:
+    $ref: './paths/api/v1/group-category/rename.yaml'
+  /api/v1/group/category/delete:
+    $ref: './paths/api/v1/group-category/delete.yaml'
+  /api/v1/group/category/move_group:
+    $ref: './paths/api/v1/group-category/move-group.yaml'
+  /api/v1/group/category/sort:
+    $ref: './paths/api/v1/group-category/sort.yaml'
+  /api/v1/group/tag/add:
+    $ref: './paths/api/v1/group-tag/add.yaml'
+  /api/v1/group/tag/remove:
+    $ref: './paths/api/v1/group-tag/remove.yaml'
+  /api/v1/group/tag/list:
+    $ref: './paths/api/v1/group-tag/list.yaml'
+  /api/v1/group/tag/search:
+    $ref: './paths/api/v1/group-tag/search.yaml'
+  /api/v1/group/tag/hot:
+    $ref: './paths/api/v1/group-tag/hot.yaml'
+  /api/v1/group/vote/create:
+    $ref: './paths/api/v1/group-vote/create.yaml'
+  /api/v1/group/vote/list:
+    $ref: './paths/api/v1/group-vote/list.yaml'
+  /api/v1/group/vote/detail:
+    $ref: './paths/api/v1/group-vote/detail.yaml'
+  /api/v1/group/vote/cast:
+    $ref: './paths/api/v1/group-vote/cast.yaml'
+  /api/v1/group/vote/update:
+    $ref: './paths/api/v1/group-vote/update.yaml'
+  /api/v1/group/vote/cancel:
+    $ref: './paths/api/v1/group-vote/cancel.yaml'
+  /api/v1/group/vote/close:
+    $ref: './paths/api/v1/group-vote/close.yaml'
+  /api/v1/group/vote/my_vote:
+    $ref: './paths/api/v1/group-vote/my-vote.yaml'
+  /api/v1/group_schedule/create:
+    $ref: './paths/api/v1/group-schedule/create.yaml'
+  /api/v1/group_schedule/update:
+    $ref: './paths/api/v1/group-schedule/update.yaml'
+  /api/v1/group_schedule/cancel:
+    $ref: './paths/api/v1/group-schedule/cancel.yaml'
+  /api/v1/group_schedule/detail:
+    $ref: './paths/api/v1/group-schedule/detail.yaml'
+  /api/v1/group_schedule/list:
+    $ref: './paths/api/v1/group-schedule/list.yaml'
+  /api/v1/group_schedule/my_list:
+    $ref: './paths/api/v1/group-schedule/my-list.yaml'
+  /api/v1/group_schedule/confirm:
+    $ref: './paths/api/v1/group-schedule/confirm.yaml'
+  /api/v1/group/file/upload:
+    $ref: './paths/api/v1/group-file/upload.yaml'
+  /api/v1/group/file/download:
+    $ref: './paths/api/v1/group-file/download.yaml'
+  /api/v1/group/file/list:
+    $ref: './paths/api/v1/group-file/list.yaml'
+  /api/v1/group/file/delete:
+    $ref: './paths/api/v1/group-file/delete.yaml'
+  /api/v1/group/file/search:
+    $ref: './paths/api/v1/group-file/search.yaml'
+  /api/v1/group/file/categories:
+    $ref: './paths/api/v1/group-file/categories.yaml'
+  /api/v1/group/task/create:
+    $ref: './paths/api/v1/group-task/create.yaml'
+  /api/v1/group/task/update:
+    $ref: './paths/api/v1/group-task/update.yaml'
+  /api/v1/group/task/assign:
+    $ref: './paths/api/v1/group-task/assign.yaml'
+  /api/v1/group/task/submit:
+    $ref: './paths/api/v1/group-task/submit.yaml'
+  /api/v1/group/task/review:
+    $ref: './paths/api/v1/group-task/review.yaml'
+  /api/v1/group/task/list:
+    $ref: './paths/api/v1/group-task/list.yaml'
+  /api/v1/group/task/detail:
+    $ref: './paths/api/v1/group-task/detail.yaml'
+  /api/v1/group/task/my:
+    $ref: './paths/api/v1/group-task/my.yaml'
+  /api/v1/group/task/pending:
+    $ref: './paths/api/v1/group-task/pending.yaml'
+  /api/v1/channel/create:
+    $ref: './paths/api/v1/channel/create.yaml'
+  /api/v1/channel/{channel_id}:
+    $ref: './paths/api/v1/channel/show.yaml'
+  /api/v1/channel/by_custom_id/{custom_id}:
+    $ref: './paths/api/v1/channel/by-custom-id.yaml'
+  /api/v1/channel/{channel_id}/update:
+    $ref: './paths/api/v1/channel/update.yaml'
+  /api/v1/channel/{channel_id}/delete:
+    $ref: './paths/api/v1/channel/delete.yaml'
+  /api/v1/channel/{channel_id}/subscribe:
+    $ref: './paths/api/v1/channel/subscribe.yaml'
+  /api/v1/channel/{channel_id}/unsubscribe:
+    $ref: './paths/api/v1/channel/unsubscribe.yaml'
+  /api/v1/channels/subscribed:
+    $ref: './paths/api/v1/channel/subscribed.yaml'
+  /api/v1/channels/managed:
+    $ref: './paths/api/v1/channel/managed.yaml'
+  /api/v1/channels/unread/summary:
+    $ref: './paths/api/v1/channel/unread-summary.yaml'
+  /api/v1/channels/search:
+    $ref: './paths/api/v1/channel/search.yaml'
+  /api/v1/channels/discover:
+    $ref: './paths/api/v1/channel/discover.yaml'
+  /api/v1/channels/featured:
+    $ref: './paths/api/v1/channel/featured.yaml'
+  /api/v1/channels/trending:
+    $ref: './paths/api/v1/channel/trending.yaml'
+  /api/v1/channels/categories:
+    $ref: './paths/api/v1/channel/categories.yaml'
+  /api/v1/channels/sync:
+    $ref: './paths/api/v1/channel/sync.yaml'
+  /api/v1/channel/{channel_id}/webhook/create:
+    $ref: './paths/api/v1/channel/webhook-create.yaml'
+  /api/v1/channel/{channel_id}/webhook/list:
+    $ref: './paths/api/v1/channel/webhook-list.yaml'
+  /api/v1/channel/{channel_id}/webhook/{webhook_id}/disable:
+    $ref: './paths/api/v1/channel/webhook-disable.yaml'
+  /api/v1/webhook/channel/{token}:
+    $ref: './paths/api/v1/channel/webhook-incoming.yaml'
+  /api/v1/channel/{channel_id}/message:
+    $ref: './paths/api/v1/channel/message/publish.yaml'
+  /api/v1/channel/{channel_id}/messages:
+    $ref: './paths/api/v1/channel/message/list.yaml'
+  /api/v1/channel/{channel_id}/read:
+    $ref: './paths/api/v1/channel/message/mark-read.yaml'
+  /api/v1/channel/{channel_id}/message/{message_id}/view:
+    $ref: './paths/api/v1/channel/message/view.yaml'
+  /api/v1/channel/{channel_id}/message/{message_id}/reaction:
+    $ref: './paths/api/v1/channel/message/reaction-add.yaml'
+  /api/v1/channel/{channel_id}/message/{message_id}/reaction/{reaction_type}:
+    $ref: './paths/api/v1/channel/message/reaction-remove.yaml'
+  /api/v1/channel/{channel_id}/message/{message_id}/pin:
+    $ref: './paths/api/v1/channel/message/pin.yaml'
+  /api/v1/channel/{channel_id}/message/{message_id}/delete:
+    $ref: './paths/api/v1/channel/message/delete.yaml'
+  /api/v1/channel/{channel_id}/message/{message_id}/revoke:
+    $ref: './paths/api/v1/channel/message/revoke.yaml'
+  /api/v1/channel/{channel_id}/message/{message_id}/edit:
+    $ref: './paths/api/v1/channel/message/edit.yaml'
+  /api/v1/channel/{channel_id}/admin:
+    $ref: './paths/api/v1/channel/admin/add.yaml'
+  /api/v1/channel/{channel_id}/admins:
+    $ref: './paths/api/v1/channel/admin/list.yaml'
+  /api/v1/channel/{channel_id}/admin/{user_id}/role:
+    $ref: './paths/api/v1/channel/admin/update-role.yaml'
+  /api/v1/channel/{channel_id}/admin/{user_id}:
+    $ref: './paths/api/v1/channel/admin/remove.yaml'
+  /api/v1/channel/{channel_id}/stats:
+    $ref: './paths/api/v1/channel/stats/overview.yaml'
+  /api/v1/channel/{channel_id}/stats/daily:
+    $ref: './paths/api/v1/channel/stats/daily.yaml'
+  /api/v1/channel/{channel_id}/subscribers:
+    $ref: './paths/api/v1/channel/subscriber/list.yaml'
+  /api/v1/channel/{channel_id}/subscriber/{user_id}:
+    $ref: './paths/api/v1/channel/subscriber/remove.yaml'
+  /api/v1/channel/{channel_id}/invitation:
+    $ref: './paths/api/v1/channel/invitation/create.yaml'
+  /api/v1/channel/invitation/accept:
+    $ref: './paths/api/v1/channel/invitation/accept.yaml'
+  /api/v1/channel/invitation/reject:
+    $ref: './paths/api/v1/channel/invitation/reject.yaml'
+  /api/v1/channel/invitations/my:
+    $ref: './paths/api/v1/channel/invitation/my.yaml'
+  /api/v1/channel/invitations/sent:
+    $ref: './paths/api/v1/channel/invitation/sent.yaml'
+  /api/v1/channel/{channel_id}/order:
+    $ref: './paths/api/v1/channel/order/create.yaml'
+  /api/v1/channel/order/pay:
+    $ref: './paths/api/v1/channel/order/pay.yaml'
+  /api/v1/channel/orders/my:
+    $ref: './paths/api/v1/channel/order/my.yaml'
+  /api/v1/channel/order/{order_no}:
+    $ref: './paths/api/v1/channel/order/get.yaml'
+  /api/v1/e2ee/user_keys:
+    $ref: './paths/api/v1/e2ee/user-keys.yaml'
+  /api/v1/e2ee/group_member_keys:
+    $ref: './paths/api/v1/e2ee/group-member-keys.yaml'
+  /api/v1/e2ee/report_device_key:
+    $ref: './paths/api/v1/e2ee/report-device-key.yaml'
+  /api/v1/e2ee/key/status:
+    $ref: './paths/api/v1/e2ee/key-status.yaml'
+  /api/v1/e2ee/notifications/pull:
+    $ref: './paths/api/v1/e2ee/pull-notifications.yaml'
+  /api/v1/e2ee/recovery/start:
+    $ref: './paths/api/v1/e2ee/start-recovery.yaml'
+  /api/v1/e2ee/trust/record:
+    $ref: './paths/api/v1/e2ee/trust-record.yaml'
+  /api/v1/e2ee/backup/put:
+    $ref: './paths/api/v1/e2ee/backup-put.yaml'
+  /api/v1/e2ee/backup/get:
+    $ref: './paths/api/v1/e2ee/backup-get.yaml'
+  /api/v1/e2ee/backup/info:
+    $ref: './paths/api/v1/e2ee/backup-info.yaml'
+  /api/v1/e2ee/backup/delete:
+    $ref: './paths/api/v1/e2ee/backup-delete.yaml'
+  /api/v1/e2ee/compliance_key:
+    $ref: './paths/api/v1/e2ee/compliance-key.yaml'
+  /api/v1/e2ee/transfer/create:
+    $ref: './paths/api/v1/e2ee-transfer/create.yaml'
+  /api/v1/e2ee/transfer/accept:
+    $ref: './paths/api/v1/e2ee-transfer/accept.yaml'
+  /api/v1/e2ee/transfer/confirm:
+    $ref: './paths/api/v1/e2ee-transfer/confirm.yaml'
+  /api/v1/e2ee/transfer/cancel:
+    $ref: './paths/api/v1/e2ee-transfer/cancel.yaml'
+  /api/v1/e2ee/transfer/info:
+    $ref: './paths/api/v1/e2ee-transfer/info.yaml'
+  /api/v1/e2ee/transfer/pending:
+    $ref: './paths/api/v1/e2ee-transfer/pending.yaml'
+  /api/v1/e2ee/social/contacts:
+    $ref: './paths/api/v1/e2ee-social/contacts.yaml'
+  /api/v1/e2ee/social/contacts/add:
+    $ref: './paths/api/v1/e2ee-social/add-contact.yaml'
+  /api/v1/e2ee/social/contacts/remove:
+    $ref: './paths/api/v1/e2ee-social/remove-contact.yaml'
+  /api/v1/e2ee/social/create_shards:
+    $ref: './paths/api/v1/e2ee-social/create-shards.yaml'
+  /api/v1/e2ee/social/shards:
+    $ref: './paths/api/v1/e2ee-social/get-shards.yaml'
+  /api/v1/e2ee/social/recover:
+    $ref: './paths/api/v1/e2ee-social/recover.yaml'
+  /api/v1/e2ee/social/proxy_shards:
+    $ref: './paths/api/v1/e2ee-social/proxy-shards.yaml'
+  /api/v1/e2ee/social/decrypt_shard:
+    $ref: './paths/api/v1/e2ee-social/decrypt-shard.yaml'
+  /api/v1/app_version/check:
+    $ref: './paths/api/v1/app/version-check.yaml'
+  /api/v1/app/features:
+    $ref: './paths/api/v1/app/features.yaml'
+  /api/v1/app/manifest:
+    $ref: './paths/api/v1/app/manifest.yaml'
+  /api/v1/app/policy:
+    $ref: './paths/api/v1/app/policy.yaml'
+  /api/v1/app/ice_servers:
+    $ref: './paths/api/v1/app/ice-servers.yaml'
+  /api/v1/app_upgrade/report:
+    $ref: './paths/api/v1/app/upgrade-report.yaml'
+  /api/v1/feedback/page:
+    $ref: './paths/api/v1/feedback/page.yaml'
+  /api/v1/feedback/add:
+    $ref: './paths/api/v1/feedback/add.yaml'
+  /api/v1/feedback/change:
+    $ref: './paths/api/v1/feedback/change.yaml'
+  /api/v1/feedback/remove:
+    $ref: './paths/api/v1/feedback/remove.yaml'
+  /api/v1/feedback/reply:
+    $ref: './paths/api/v1/feedback/reply.yaml'
+  /api/v1/feedback/page_reply:
+    $ref: './paths/api/v1/feedback/page-reply.yaml'
+  /api/v1/fts/user_search:
+    $ref: './paths/api/v1/fts/user-search.yaml'
+  /api/v1/fts/recently_user:
+    $ref: './paths/api/v1/fts/recently-user.yaml'
+  /api/v1/fts/msg:
+    $ref: './paths/api/v1/fts/msg.yaml'
+  /api/v1/location/makeMyselfVisible:
+    $ref: './paths/api/v1/location/make-visible.yaml'
+  /api/v1/location/makeMyselfUnvisible:
+    $ref: './paths/api/v1/location/make-unvisible.yaml'
+  /api/v1/location/peopleNearby:
+    $ref: './paths/api/v1/location/people-nearby.yaml'
+  /api/v1/report/create:
+    $ref: './paths/api/v1/report/create.yaml'
+  /api/v1/moment/report/create:
+    $ref: './paths/api/v1/report/moment-create.yaml'
+  /api/v1/live_room/list:
+    $ref: './paths/api/v1/live-room/list.yaml'
+  /api/v1/live_room/my_list:
+    $ref: './paths/api/v1/live-room/my-list.yaml'
+  /api/v1/live_room/create:
+    $ref: './paths/api/v1/live-room/create.yaml'
+  /api/v1/live_room/start:
+    $ref: './paths/api/v1/live-room/start.yaml'
+  /api/v1/live_room/stop:
+    $ref: './paths/api/v1/live-room/stop.yaml'
+  /api/v1/live_room/detail:
+    $ref: './paths/api/v1/live-room/detail.yaml'
+  /api/v1/wallet/balance:
+    $ref: './paths/api/v1/wallet/balance.yaml'
+  /api/v1/wallet/transactions:
+    $ref: './paths/api/v1/wallet/transactions.yaml'
+  /api/v1/wallet/topup:
+    $ref: './paths/api/v1/wallet/topup.yaml'
+  /api/v1/wallet/withdraw:
+    $ref: './paths/api/v1/wallet/withdraw.yaml'
+  /api/v1/wallet/transfer/send:
+    $ref: './paths/api/v1/wallet/transfer_send.yaml'
+  /api/v1/wallet/recharge/{order_no}:
+    $ref: './paths/api/v1/wallet/recharge_order.yaml'
+  /api/v1/wallet/recharge/order:
+    $ref: './paths/api/v1/wallet/recharge_create.yaml'
+  /api/v1/wallet/recharge/pay:
+    $ref: './paths/api/v1/wallet/recharge_pay.yaml'
+  /api/v1/billing/plan/list:
+    $ref: './paths/api/v1/billing/plan-list.yaml'
+  /api/v1/billing/subscribe:
+    $ref: './paths/api/v1/billing/subscribe.yaml'
+  /api/v1/billing/renew:
+    $ref: './paths/api/v1/billing/renew.yaml'
+  /api/v1/billing/cancel:
+    $ref: './paths/api/v1/billing/cancel.yaml'
+  /api/v1/billing/subscription:
+    $ref: './paths/api/v1/billing/subscription.yaml'
+  /api/v1/billing/usage:
+    $ref: './paths/api/v1/billing/usage.yaml'
+  /api/v1/billing/quota:
+    $ref: './paths/api/v1/billing/quota.yaml'
+  /api/v1/billing/invoice/generate:
+    $ref: './paths/api/v1/billing/invoice-generate.yaml'
+  /api/v1/billing/invoice/pay:
+    $ref: './paths/api/v1/billing/invoice-pay.yaml'
+  /api/v1/billing/invoice/list:
+    $ref: './paths/api/v1/billing/invoice-list.yaml'
+  # ---- 新增 48 条路由覆盖（2026-06-07 审计补全）----
+  /api/v1/friend/reject:
+    $ref: './paths/api/v1/friend-reject/reject.yaml'
+  /api/v1/attachment/presign:
+    $ref: './paths/api/v1/attachment/presign.yaml'
+  /api/v1/attachment/confirm:
+    $ref: './paths/api/v1/attachment/confirm.yaml'
+  /api/v1/attachment/view_url:
+    $ref: './paths/api/v1/attachment/view_url.yaml'
+  /api/v1/agent/list:
+    $ref: './paths/api/v1/ai-agent/list.yaml'
+  # --------------------------------------------------------------------------
+  # Channel-first-class W2：项目协作（成员 / 里程碑 / 频道关联 / 四聚合）
+  # 真源：.contract/api_contract.json（contract-export）；Handler 见
+  # project_member_handler / project_milestone_handler / project_channel_handler
+  # --------------------------------------------------------------------------
+  /api/v1/projects/{project_id}/members:
+    $ref: './paths/api/v1/project/members-list.yaml'
+  /api/v1/projects/{project_id}/members/invite:
+    $ref: './paths/api/v1/project/members-invite.yaml'
+  /api/v1/projects/{project_id}/members/remove:
+    $ref: './paths/api/v1/project/members-remove.yaml'
+  /api/v1/projects/{project_id}/members/transfer_owner:
+    $ref: './paths/api/v1/project/members-transfer-owner.yaml'
+  /api/v1/projects/{project_id}/milestones:
+    $ref: './paths/api/v1/project/milestones.yaml'
+  /api/v1/milestones/{milestone_id}/update:
+    $ref: './paths/api/v1/project/milestone-update.yaml'
+  /api/v1/milestones/{milestone_id}/reach:
+    $ref: './paths/api/v1/project/milestone-reach.yaml'
+  /api/v1/projects/{project_id}/channels:
+    $ref: './paths/api/v1/project/channels.yaml'
+  /api/v1/projects/{project_id}/channels/{channel_id}/unlink:
+    $ref: './paths/api/v1/project/channel-unlink.yaml'
+  /api/v1/projects/{project_id}/links/update:
+    $ref: './paths/api/v1/project/links-update.yaml'
+  /api/v1/projects/{project_id}/aggregations/pinned:
+    $ref: './paths/api/v1/project/aggregations-pinned.yaml'
+  /api/v1/projects/{project_id}/aggregations/resources:
+    $ref: './paths/api/v1/project/aggregations-resources.yaml'
+  /api/v1/projects/{project_id}/aggregations/activity:
+    $ref: './paths/api/v1/project/aggregations-activity.yaml'
+  /api/v1/projects/{project_id}/aggregations/related_posts:
+    $ref: './paths/api/v1/project/aggregations-related-posts.yaml'
+  /api/v1/workspaces/{workspace_id}/projects:
+    $ref: './paths/api/v1/project/projects-list-create.yaml'
+  /api/v1/projects/{project_id}:
+    $ref: './paths/api/v1/project/project-show.yaml'
+  /api/v1/projects/{project_id}/update:
+    $ref: './paths/api/v1/project/project-update.yaml'
+  /api/v1/projects/{project_id}/status:
+    $ref: './paths/api/v1/project/project-status.yaml'
+  /api/v1/projects/{project_id}/tasks:
+    $ref: './paths/api/v1/project/tasks-list-create.yaml'
+  /api/v1/tasks/{task_id}:
+    $ref: './paths/api/v1/project/task-show.yaml'
+  /api/v1/tasks/{task_id}/update:
+    $ref: './paths/api/v1/project/task-update.yaml'
+  /api/v1/tasks/{task_id}/status:
+    $ref: './paths/api/v1/project/task-status.yaml'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT 载荷 `sub` 为 TSID integer 字符串；过期后前端需调用 `/passport/refresh`
+        而非直接重连（此前反转逻辑已于 1.0.0-rc.1 修复）。
+
+  schemas:
+    # ----------------------------------------------------------------------
+    # T3.2 split phase 1 (2026-05-16)：通用 schema 抽离为独立文件，
+    # 便于 review、按域演进、避免单文件膨胀至万行。
+    # 根 yaml 仍保持内部锚 #/components/schemas/<Name> 不变，
+    # 现有 paths 中的 $ref 无需调整。
+    # ----------------------------------------------------------------------
+    Envelope:
+      $ref: './components/schemas/Envelope.yaml'
+    User:
+      $ref: './components/schemas/User.yaml'
+    Message:
+      $ref: './components/schemas/Message.yaml'
+
+  parameters:
+    # ----------------------------------------------------------------------
+    # T3.2 split phase 2 (2026-05-16)：公共 query 参数抽出。
+    # 复用范围：分页参数 → admin 20+ 列表端点；会话/游标参数 → msg 多个端点。
+    # 文件名必须 PascalCase 与 components.parameters key 严格一致，
+    # 触发 redocly bundle 去重，避免 *ref_N YAML 锚点污染 codegen。
+    # ----------------------------------------------------------------------
+    PaginationPage:
+      $ref: './components/parameters/PaginationPage.yaml'
+    PaginationSize:
+      $ref: './components/parameters/PaginationSize.yaml'
+    PaginationKeyword:
+      $ref: './components/parameters/PaginationKeyword.yaml'
+    ConvKey:
+      $ref: './components/parameters/ConvKey.yaml'
+    SinceSeq:
+      $ref: './components/parameters/SinceSeq.yaml'
+    HistoryLimit:
+      $ref: './components/parameters/HistoryLimit.yaml'
+
+security:
+  - bearerAuth: []

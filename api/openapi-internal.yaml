@@ -1,0 +1,113 @@
+# ----------------------------------------------------------------------------
+# imboy/api/openapi-internal.yaml — IMBoy Internal API 编辑真源（surface internal）
+#
+# 三受众布局（2026-09-22 api-surface-reorg）：企业集成 internal v1 端点
+# （19 条 cowboy path / 23 端点，与 src/api/enterprise_internal_routes.erl
+# 冻结路由表逐条对应）。端点文件位于 paths/internal/v1/；认证方案
+# ibIntBearer（Bearer ib_int_<application_id>.<secret>）。
+# 人类集成文档：api/internal/v1/（README / endpoints / Postman）。
+# 汇总入口 api/openapi.yaml 由 gen_aggregate.py 生成，请勿手改。
+# ----------------------------------------------------------------------------
+openapi: 3.1.0
+info:
+  title: IMBoy Internal API — internal surface
+  version: 1.0.0
+  x-stability: stable
+  summary: IMBoy 企业内部集成 API（Internal API v1，冻结）
+  description: |
+    本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 19 条
+    path（23 个操作）。受众为企业 OA / 第三方集成系统开发者。
+
+    **认证**：所有请求携带 `Authorization: Bearer ib_int_<application_id>.<secret>`；
+    凭证由平台管理员在 Admin 管理台签发，scope 固定 10 枚举、无通配。
+
+    **响应模型**：成功响应为**裸 payload**（无 `{code,msg,payload}` 业务信封）；
+    错误响应统一 `{"error":{"code","message"}}`，13 个稳定错误码见
+    `components/responses/internal/`（README §7 冻结表）。
+
+    **限流与幂等**：三只独立桶 internal_read / internal_write / internal_sso；
+    写动作必须携带 `Idempotency-Key` 头（同 key 重放返回首次结果）。
+
+    **路由冻结**：method+path 不在冻结表内一律 resource_not_found（fail-closed）。
+    人类文档：[internal/v1/README.md](./internal/v1/README.md)（本 API 整个
+    v1/ 目录可直接交付集成方）。
+
+    **版本策略**：v1 已冻结——只追加新端点/新可选字段，不做破坏性变更。
+  license:
+    name: BUSL-1.1
+    url: https://mariadb.com/bsl11/
+  contact:
+    name: IMBoy Maintainers
+    url: https://github.com/imboy-pub/imboy
+
+servers:
+  - url: https://{apiDomain}
+    description: 生产环境（部署方按实际域名替换 apiDomain）
+    variables:
+      apiDomain:
+        default: api.imboy.app
+        description: 生产 API 域名占位；自托管/私有部署需改为对应域名
+  - url: http://127.0.0.1:{devPort}
+    description: 本地开发（IMBOYENV=local make run，端口见 imboy/CLAUDE.md）
+    variables:
+      devPort:
+        default: '9800'
+        description: 本地 HTTP 端口；可通过 HTTP_PORT 环境变量覆盖
+
+tags:
+  - name: internal
+    description: 企业集成 Internal API（ib_int 凭证；scope/限流/幂等见各端点扩展字段）
+
+paths:
+  /api/internal/v1/application:
+    $ref: './paths/internal/v1/application/self.yaml'
+  /api/internal/v1/identity-mappings:
+    $ref: './paths/internal/v1/identity/mappings.yaml'
+  /api/internal/v1/identity-mappings/resolve:
+    $ref: './paths/internal/v1/identity/resolve.yaml'
+  /api/internal/v1/identity-mappings/directory:
+    $ref: './paths/internal/v1/identity/directory.yaml'
+  /api/internal/v1/directory/users:
+    $ref: './paths/internal/v1/directory/users.yaml'
+  /api/internal/v1/groups:
+    $ref: './paths/internal/v1/group/create.yaml'
+  /api/internal/v1/groups/{group_id}:
+    $ref: './paths/internal/v1/group/detail.yaml'
+  /api/internal/v1/groups/{group_id}/members:
+    $ref: './paths/internal/v1/group/members.yaml'
+  /api/internal/v1/groups/{group_id}/members/roles:
+    $ref: './paths/internal/v1/group/member-roles.yaml'
+  /api/internal/v1/groups/{group_id}/messages:
+    $ref: './paths/internal/v1/group/messages.yaml'
+  /api/internal/v1/messages/direct:
+    $ref: './paths/internal/v1/message/direct.yaml'
+  /api/internal/v1/files/presign:
+    $ref: './paths/internal/v1/file/presign.yaml'
+  /api/internal/v1/files/confirm:
+    $ref: './paths/internal/v1/file/confirm.yaml'
+  /api/internal/v1/files/governance:
+    $ref: './paths/internal/v1/file/governance.yaml'
+  /api/internal/v1/friend-requests:
+    $ref: './paths/internal/v1/friend-request/create.yaml'
+  /api/internal/v1/webhook:
+    $ref: './paths/internal/v1/webhook/configure.yaml'
+  /api/internal/v1/webhook/deliveries:
+    $ref: './paths/internal/v1/webhook/deliveries.yaml'
+  /api/internal/v1/webhook/deliveries/{delivery_id}/replay:
+    $ref: './paths/internal/v1/webhook/replay.yaml'
+  /api/internal/v1/oa/sso/exchange:
+    $ref: './paths/internal/v1/oa-sso/exchange.yaml'
+
+components:
+  securitySchemes:
+    ibIntBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: ib_int_<application_id>.<secret>
+      description: |
+        企业集成凭证：与单个企业应用一一对应，授权范围 = 签发时授予的
+        scope 集合（固定 10 枚举、无通配）。secret 平台侧只存不可逆摘要，
+        泄露即轮换；应用停用/归档后所有请求返回 application_disabled（403）。
+
+security:
+  - ibIntBearer: []

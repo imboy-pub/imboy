@@ -1,0 +1,67 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/friend-request/create.yaml
+# POST /api/internal/v1/friend-requests — 发起好友申请（INT-11）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1friend-requests
+# Handler：src/api/enterprise_friend_request_handler.erl
+# 请求实证：handler 冻结合同只读三键（known_key：sender_user_id /
+# target_user_id / greeting）；响应实证 logic（request_status=pending 等）
+# ----------------------------------------------------------------------------
+post:
+  tags: [internal]
+  summary: 代 OA 用户发起好友申请（只发起，平台不自动通过）
+  description: |
+    仅可对**同组织已映射用户**发起；发送者形态固定为 human（代 OA 用户）。
+    平台没有自动通过/确认、删除好友、批量加好友的 API。
+  operationId: internalFriendRequestCreate
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: friend_requests:create
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [sender_user_id, target_user_id]
+          properties:
+            sender_user_id:
+              type: string
+              description: 发送者 OA 侧标识（human 形态）
+            target_user_id:
+              type: string
+              description: 目标用户 OA 侧标识（同组织已映射）
+            greeting:
+              type: string
+              description: 打招呼文案（缺省空串）
+  responses:
+    '200':
+      description: 申请受理结果（平台不自动通过）
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              request_status:
+                type: string
+                enum: [pending]
+              sender_user_id: { type: string }
+              target_user_id: { type: string }
+              replayed:
+                type: boolean
+                description: 幂等重放时为 true
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

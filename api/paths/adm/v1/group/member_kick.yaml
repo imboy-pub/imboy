@@ -1,0 +1,25 @@
+# POST /api/adm/group/member/kick — admin
+post:
+  tags: [admin]
+  summary: 管理后台踢出群成员
+  description: 管理员将指定用户从群组中移除。Remove a member from a group by admin.
+  operationId: adm_group_member_kick
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, uid]
+          properties:
+            gid: { type: integer, description: '群 ID' }
+            uid: { type: integer, description: '被踢用户 ID' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

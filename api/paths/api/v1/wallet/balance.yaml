@@ -1,0 +1,28 @@
+# GET /api/v1/wallet/balance
+get:
+  tags: [user]
+  summary: 查询钱包余额
+  description: |
+    ## 中文 / English
+    查询钱包余额
+  operationId: walletBalance
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      balance: { type: integer, description: 余额（分） }
+                      balance_yuan: { type: number, description: 余额（元） }
+                      frozen: { type: integer, description: 冻结金额（分） }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

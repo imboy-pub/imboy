@@ -1,0 +1,27 @@
+# GET /api/adm/admin/config/features — admin
+get:
+  tags: [admin]
+  summary: admin adm-admin - config_features
+  description: |
+    ## 中文 / English
+    管理后台 adm-admin handler 的 `config_features` 动作；路径 `/adm/admin/config/features`。
+    Admin handler `adm-admin`, action `config_features`. Path `/adm/admin/config/features`.
+  operationId: adm_admin_config_features
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    additionalProperties: true
+                    description: 功能开关键值对，key=功能名，value=boolean
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

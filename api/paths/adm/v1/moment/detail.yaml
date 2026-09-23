@@ -1,0 +1,93 @@
+# GET /api/adm/moment/detail/{moment_id} — admin
+get:
+  tags: [admin]
+  summary: admin adm-moment - detail
+  description: |
+    ## 中文 / English
+    管理后台 adm-moment handler 的 `detail` 动作；路径 `/adm/moment/detail/{moment_id}`。
+    Admin handler `adm-moment`, action `detail`. Path `/adm/moment/detail/{moment_id}`.
+  operationId: adm_moment_detail
+  parameters:
+    - in: path
+      name: moment_id
+      required: true
+      description: 动态 ID / Moment ID
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 动态详情（含 ACL 与举报列表）/ Moment detail with ACL and reports
+                    properties:
+                      id:
+                        type: integer
+                        format: int64
+                      author_uid:
+                        type: integer
+                        format: int64
+                      content:
+                        type: string
+                      media:
+                        type: array
+                        items: { type: object }
+                      visibility:
+                        type: integer
+                      allow_comment:
+                        type: boolean
+                      stats:
+                        type: object
+                        properties:
+                          like_count: { type: integer }
+                          comment_count: { type: integer }
+                      status:
+                        type: integer
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                      acl:
+                        type: object
+                        description: 访问控制列表 / ACL
+                        properties:
+                          allow_uids:
+                            type: array
+                            items: { type: integer, format: int64 }
+                          deny_uids:
+                            type: array
+                            items: { type: integer, format: int64 }
+                      reports:
+                        type: array
+                        description: 最多 50 条举报记录 / Up to 50 report records
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                            post_id:
+                              type: integer
+                              format: int64
+                            reporter_uid:
+                              type: integer
+                              format: int64
+                            reason: { type: string }
+                            description: { type: string }
+                            status: { type: integer }
+                            handled_by:
+                              type: integer
+                              format: int64
+                            handled_at: { type: string }
+                            created_at: { type: string }
+                            updated_at: { type: string }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

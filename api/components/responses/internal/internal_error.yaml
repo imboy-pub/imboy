@@ -1,0 +1,12 @@
+# Internal API v1 稳定错误码 internal_error（HTTP 500，README §7 冻结表）。
+description: '内部错误（安全兜底：未列入稳定表的码一律收敛为此值）'
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: '../../schemas/internal/ErrorEnvelope.yaml'
+      properties:
+        error:
+          properties:
+            code:
+              enum: [internal_error]

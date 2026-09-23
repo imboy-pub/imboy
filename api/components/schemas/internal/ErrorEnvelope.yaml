@@ -1,0 +1,29 @@
+# Internal API v1 错误信封（13 稳定错误码，README §7 冻结）。
+# 成功响应为裸 payload（无 {code,msg,payload} 信封）；错误响应统一本形态。
+type: object
+required: [error]
+properties:
+  error:
+    type: object
+    required: [code, message]
+    properties:
+      code:
+        type: string
+        description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+        enum:
+          - invalid_request
+          - invalid_credential
+          - credential_expired
+          - application_disabled
+          - organization_disabled
+          - insufficient_scope
+          - organization_boundary_violation
+          - resource_not_found
+          - idempotency_conflict
+          - identity_not_mapped
+          - rate_limited
+          - security_gate_closed
+          - internal_error
+      message:
+        type: string
+        description: 人类可读说明（文案不保证稳定）

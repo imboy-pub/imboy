@@ -1,0 +1,24 @@
+# POST /api/adm/storage/disable — admin
+post:
+  tags: [admin]
+  summary: 管理后台禁用存储
+  description: 禁用指定存储记录，使其不可访问。Disable a specified storage record to make it inaccessible.
+  operationId: adm_storage_disable
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [id]
+          properties:
+            id: { type: integer, description: '目标 ID' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

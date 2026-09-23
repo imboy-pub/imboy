@@ -1,0 +1,38 @@
+# GET /api/adm/app_version/version_stats — admin
+get:
+  tags: [admin]
+  summary: admin adm-app-version - version_stats
+  description: |
+    ## 中文 / English
+    管理后台 adm-app-version handler 的 `version_stats` 动作；路径 `/adm/app_version/version_stats`。
+    Admin handler `adm-app-version`, action `version_stats`. Path `/adm/app_version/version_stats`.
+  operationId: adm_app_version_version_stats
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      distribution:
+                        type: array
+                        description: 各版本设备数分布
+                        items:
+                          type: object
+                          additionalProperties: true
+                      events:
+                        type: array
+                        description: 近7天升级事件统计
+                        items:
+                          type: object
+                          additionalProperties: true
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

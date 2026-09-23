@@ -1,0 +1,70 @@
+# GET /api/group_notice/page — 公告分页 / Paginated notices
+get:
+  tags: [user]
+  summary: 群公告分页（管理后台视图）
+  description: |
+    ## 中文 / English
+    返回群公告分页列表（含草稿）；调用方须为该群成员（管理员可见草稿，
+    普通成员只见已发布）。
+    Paginate notices. Members see published only; admins see drafts too.
+  operationId: pageGroupNotice
+  parameters:
+    - in: query
+      name: gid
+      required: true
+      description: 群组 ID / Group ID
+      schema: { type: string }
+    - $ref: '../../../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 分页结果
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: group_notice_ds:page 返回的分页对象（字段随 DS 查询列决定）
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            notice_id:
+                              type: integer
+                              format: int64
+                            user_id:
+                              type: integer
+                              format: int64
+                            edit_user_id:
+                              type: integer
+                              format: int64
+                            body:
+                              type: string
+                            status:
+                              type: integer
+                              description: '0=待发布 1=已发布 2=取消发布'
+                            expired_at:
+                              type: string
+                              format: date-time
+                            updated_at:
+                              type: string
+                              format: date-time
+                            created_at:
+                              type: string
+                              format: date-time
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+    '4XX':
+      description: gid 必须 / 非群成员
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

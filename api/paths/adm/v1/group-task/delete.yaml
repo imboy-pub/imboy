@@ -1,0 +1,24 @@
+# POST /api/adm/group/task/delete — admin
+post:
+  tags: [admin]
+  summary: 管理后台删除群任务
+  description: 管理员删除指定群任务（软删除）。Delete a group task by admin (soft delete).
+  operationId: adm_group_task_delete
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [task_id]
+          properties:
+            task_id: { type: string, description: 'TSID 格式任务 ID / Task ID in TSID string format' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无权限 / 参数非法
+      content:
+        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

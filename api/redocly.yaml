@@ -2,15 +2,21 @@
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.5
 # 用途：
-#   - redocly lint api/openapi.yaml      # CI 校验（T4.1 引用）
-#   - redocly build-docs api/openapi.yaml -o docs/api.html  # 静态文档生成
-#   - redocly preview-docs api/openapi.yaml                  # 本地预览
+#   - redocly lint api/openapi-api.yaml ...   # CI 校验（三受众 root 分别 lint）
+#   - redocly build-docs api/openapi-api.yaml -o docs/api.html  # 静态文档生成
+#   - redocly preview-docs api/openapi-api.yaml                  # 本地预览
+# 三受众布局（2026-09-22）：编辑真源为三个 root；api/openapi.yaml 是
+#   gen_aggregate.py 生成的聚合桥接，不单独 lint。
 # 工具：@redocly/cli（待装 — npm i -g @redocly/cli 或 bunx）
 # 创建：2026-05-09 / iteration 70 / T3.5
 
 apis:
-  imboy@v1:
-    root: ./openapi.yaml
+  imboy-api@v1:
+    root: ./openapi-api.yaml
+  imboy-adm@v1:
+    root: ./openapi-adm.yaml
+  imboy-internal@v1:
+    root: ./openapi-internal.yaml
 
 # ------------------------------------------------------------------
 # Lint 规则（同时被 CI 和本地 redocly lint 使用）
