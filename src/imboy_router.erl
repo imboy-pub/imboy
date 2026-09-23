@@ -777,6 +777,25 @@ get_routes() ->
                     organization_api_handler, #{
                         action => department_member_admin
                     }},
+                %% Human Organization Directory（计划 §14.2 P1 CORE：类企业微信
+                %% 浏览；4 只读端点，Human JWT + active Organization member 门在
+                %% organization_directory_app；GET only）
+                {"/api/v1/organizations/:organization_id/directory/departments",
+                    organization_directory_handler, #{
+                        action => directory_departments
+                    }},
+                {"/api/v1/organizations/:organization_id/directory/members",
+                    organization_directory_handler, #{
+                        action => directory_members
+                    }},
+                {"/api/v1/organizations/:organization_id/directory/me",
+                    organization_directory_handler, #{
+                        action => directory_me
+                    }},
+                {"/api/v1/organizations/:organization_id/directory/search",
+                    organization_directory_handler, #{
+                        action => directory_search
+                    }},
                 %% default workspace（C05：显式 default relation，GET 读 /
                 %% POST set / DELETE clear 同路径按 method 分派）
                 {"/api/v1/organizations/:organization_id/default-workspace",
