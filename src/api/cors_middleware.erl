@@ -170,7 +170,9 @@ set_resp_header_if_defined(Value, Header, Req) ->
 face_policy(widget) ->
     #{
         credentials => false,
-        allow_methods => <<"GET, POST, OPTIONS">>,
+        %% PUT：附件裸上传（presign 返回的 upload 端点为 PUT，2026-09-23 补——
+        %% 缺 PUT 时浏览器预检直接拒，宿主页跨域上传全挂）
+        allow_methods => <<"GET, POST, PUT, OPTIONS">>,
         allow_headers => <<"Content-Type, x-cs-visit-token">>,
         expose_headers => <<"content-type, content-length">>
     };

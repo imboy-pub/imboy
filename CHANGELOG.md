@@ -22,6 +22,12 @@
 
 ---
 
+## [1.0.0-alpha.80] - 2026-09-23
+
+- 挂件面 CORS 修复：widget 预检 allow_methods 补 PUT（附件裸上传被浏览器预检 403）；生产配置补 `cors_widget_origins`（宿主页 imboy.pub / www.imboy.pub）
+
+---
+
 ## [1.0.0-alpha.79] - 2026-09-23
 
 - 客服挂件建会话幂等接续：同 contact 已有开放会话时原样返回（与新建同形状），访客重开面板/网络重试不再 409 中断；单会话约束保留，`session_already_open`→409 映射保留兼容
