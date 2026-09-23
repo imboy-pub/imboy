@@ -33,9 +33,21 @@ gates:
   # 提取依据：erlang.mk 走标准 eunit:test 输出（"mod: test...*failed*" 行）
   # ---------------------------------------------------------------------------
   full-eunit:
-    source: "pending: 首跑 nightly 用 --emit-known 盘点回填（人工 review 后入册）"
-    note: "本机全量 eunit 实测 45min（R-23），超出 P4-Q1 实测时间边界，首版留空"
-    known_failures: []
+    source: "2026-09-23 本地 main 树 cdd88b9c 全量实测回填（touch 后 8100 passed / 17 failed，逐条定性见下）"
+    note: >
+      入册 8 模块均为真失败（代码/测试/模板不一致或测试基建），修复前先收编防推送后首跑阻断；
+      adm_organization_handler_tests（旅程5）受并行 organization WIP 中间态影响、agent_task_logic_tests
+      （concurrent 类）疑似抖动，均暂不入册待观察。cs_pg_widget / group_user_id_sum_p0 单跑
+      CI 口径（EUNIT_CONFIG=config/sys）绿，属本地环境类不入册。
+    known_failures:
+      - user_logic_tests        # 注销申请链 mock 缺口：elib_pg 穿透打到假连接
+      - push_provider_jpush_tests    # jpush extras payload 断言不一致（badkey extras）
+      - push_notification_logic_tests
+      - adm_user_handler_tests  # or 查询契约漂移：'or' atom vs <<"__or">> binary
+      - e2ee_throttle_scope_config_tests  # shipped 模板缺 olm_claim/olm_claim_target 限流段
+      - enterprise_internal_rate_tests    # shipped 模板缺 enterprise rate buckets
+      - cors_face_tests         # adm_owner_activation_pg_pool_conflict（套件间池冲突，测试基建）
+      - ai_agent_proactive_tests  # 欢迎消息 E2EE 交付断言（待深查）
 
   # ---------------------------------------------------------------------------
   # pg-behavior-harnesses —— 失败标识粒度：harness 脚本路径（test/lib/.../*.escript）
