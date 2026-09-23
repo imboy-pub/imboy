@@ -70,6 +70,13 @@ if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
   source "$SCRIPT_DIR/lib/cs_deploy.sh"
 fi
 
+# 生产配置键预检（api/cs/all 都级联 backend；admin 不碰后端不检查）。
+# 惰性 source：check_prod_config 依赖下方 ok/fail/SSH_OPTS 定义。
+if [[ "$COMPONENT" == api || "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
+  # shellcheck source=lib/check_prod_config.sh
+  source "$SCRIPT_DIR/lib/check_prod_config.sh"
+fi
+
 if [[ "$ENV_FILE" != /* ]]; then
   ENV_FILE="$PWD/$ENV_FILE"
 fi
@@ -595,6 +602,14 @@ if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
   log "CS: domain=$CS_WIDGET_DOMAIN | root=$CS_REMOTE_ROOT | vhost=$CS_NGINX_CONF | build=$CS_BUILD_PATH | smoke_origin=$CS_SMOKE_SHOP_ORIGIN | mode=source-build | cookie=$(cs_redact "${DEPLOY_COOKIE:-}")"
 fi
 _ssh_connect
+
+# 生产配置键预检：backend 相关组件部署前，远端配置真源必须含全部必需键
+# 且值非空（缺键即 fail-fast，杜绝「新代码读新键、线上 4xx 才暴露」）。
+case "$COMPONENT" in
+  api|cs|all)
+    check_prod_config "$SERVER_USER@$SERVER_HOST" "$SERVER_PORT"
+    ;;
+esac
 
 case "$COMPONENT" in
   all)
