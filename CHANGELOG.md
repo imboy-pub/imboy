@@ -22,6 +22,16 @@
 
 ---
 
+## [1.0.0-alpha.78] - 2026-09-23
+
+> 本条目覆盖 `1.0.0-alpha.77` 后并入 main 的客服挂件生产化与附件能力扩展。
+
+- 企业附件白名单扩至 20 类常见文件（文本类 md/csv、gif/webp/bmp/svg、zip/7z/gzip、OLE2、OOXML 三件套、mp4/webm/mp3），魔数复核规则同步扩展；新增无 DB 依赖纯单元套件 `eb_asset_content_tests`（45 例）
+- 客服挂件前端（imboyadmin 侧同日发布）：附件选择框按白名单 accept 过滤 + MIME 硬校验；聊天界面与 launcher 外壳现代化翻新
+- adm 组织 owner-transfer 审计 detail 补记 previous_owner_id；imboy-deploy 部署脚本修正
+
+---
+
 ## [1.0.0-alpha.77] - 2026-09-18
 
 > 本条目汇总 `1.0.0-alpha.75` 之后并入 main 的企业组织 V1、客服挂件、Agent Runtime V3.1、
