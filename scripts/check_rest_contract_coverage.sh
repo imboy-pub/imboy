@@ -245,8 +245,13 @@ while IFS=$'\t' read -r method path handler auth spec suite case_ids operation; 
     echo "NO-GO ${method} ${path}: route/handler missing"
     status=NO-GO
   fi
-  if [[ "${auth}" == open* ]] && ! in_open "${path}"; then
-    echo "NO-GO ${method} ${path}: open auth registration missing"
+  # Full AUTH reconciliation (reverdict 2026-09-23, finding 5): every row's
+  # registered auth must equal the middleware-derived classification — not
+  # only open* rows. A route drifting jwt->open (or any other direction), or
+  # a mis-filled TSV auth column, is a NO-GO.
+  computed_auth=$(classify_auth "${path}")
+  if [[ "${computed_auth}" != "${auth}" ]]; then
+    echo "NO-GO ${method} ${path}: auth drift (tsv=${auth} computed=${computed_auth})"
     status=NO-GO
   fi
   if ! grep -Fq "  ${path}:" "$ROOT/api/openapi.yaml"; then
