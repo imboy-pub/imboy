@@ -76,6 +76,8 @@ dispatch(_, _Method, Req0, _State) ->
     Req0.
 
 %% @doc 工作区分页列表（搜索/状态筛选；资源计数随行返回）
+%% 企业菜单入口（plan §13.1）：organization_id 服务端强制过滤（w.organization_id
+%% 真源列），query 参数只表达 UI 状态；未携带时保持全局运营语义。
 -spec list_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 list_action(<<"GET">>, Req0, State) ->
     case adm_acl:ensure_permission(State, <<"workspaces:read">>, Req0) of
@@ -85,7 +87,8 @@ list_action(<<"GET">>, Req0, State) ->
             {Page, Size} = elib_param:page(Req0),
             {ok, Status} = elib_param:binary(status, Req0, <<"all">>),
             {ok, Keyword} = elib_param:binary(keyword, Req0, <<>>),
-            case workspace_logic:admin_page(Page, Size, Status, Keyword) of
+            OrgId = adm_enterprise_filter:organization_id_from_req(Req0),
+            case workspace_logic:admin_page(Page, Size, Status, Keyword, OrgId) of
                 {ok, P} ->
                     elib_response:success(Req0, normalize_ws_page(P));
                 {error, {Code, Msg}} ->
@@ -194,6 +197,8 @@ restore_action(_, Req0, _State) ->
     method_not_allowed(Req0).
 
 %% @doc 项目分页列表（只读；任务计数随行返回）
+%% 企业菜单入口（plan §13.1）：企业项目只读——本 handler 不新增写端点，
+%% organization_id 服务端强制过滤（p.workspace_id ∈ org 工作区集合）。
 -spec project_list_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 project_list_action(<<"GET">>, Req0, State) ->
     case adm_acl:ensure_permission(State, <<"workspaces:read">>, Req0) of
@@ -203,7 +208,8 @@ project_list_action(<<"GET">>, Req0, State) ->
             {Page, Size} = elib_param:page(Req0),
             {ok, Status} = elib_param:binary(status, Req0, <<"all">>),
             {ok, Keyword} = elib_param:binary(keyword, Req0, <<>>),
-            case project_logic:admin_page(Page, Size, Status, Keyword) of
+            OrgId = adm_enterprise_filter:organization_id_from_req(Req0),
+            case project_logic:admin_page(Page, Size, Status, Keyword, OrgId) of
                 {ok, P} ->
                     elib_response:success(Req0, normalize_project_page(P));
                 {error, {Code, Msg}} ->

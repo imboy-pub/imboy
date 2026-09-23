@@ -108,6 +108,10 @@ refund_order_action(_, Req0, _State) ->
     elib_response:error(Req0, <<"方法不允许"/utf8>>, ?ERR_BAD_REQUEST).
 
 %% @doc 获取频道列表
+%% 企业菜单入口（plan §13.1）：preset 只表达 UI 状态；服务端经
+%% adm_enterprise_filter 强制重验——enterprise 恒定 scope='workspace'
+%% + status=1（personal 频道企业入口零可见），O/W 过滤由服务端解析下推。
+%% 运营中心入口（无 preset）保留全局治理语义不变。
 -spec list(binary(), cowboy_req:req()) -> cowboy_req:req().
 list(<<"GET">>, Req0) ->
     {Page, Size} = elib_param:page(Req0),
@@ -130,12 +134,17 @@ list(<<"GET">>, Req0) ->
 
     %% 可选 access_type 过滤下沉到服务端分页
     %% 避免前端按 type 过滤导致 total/page 与可见行数不一致
-    Where =
+    Where0 =
         case proplists:get_value(<<"access_type">>, Qs) of
             undefined -> StatusWhere;
             <<>> -> StatusWhere;
             TypeBin -> StatusWhere#{access_type => ec_cnv:to_integer(TypeBin)}
         end,
+
+    %% 企业入口服务端强制过滤（§13.1：不接受仅靠 query string 伪装）
+    ScopeParams = adm_enterprise_filter:scope_params_from_req(Req0),
+    OrgWsIds = adm_enterprise_filter:org_workspace_ids(ScopeParams),
+    Where = adm_enterprise_filter:channel_where(Where0, ScopeParams, OrgWsIds),
 
     case channel_ds:page(Column, Where, <<"id desc">>, Page, Size) of
         {ok, Payload} ->

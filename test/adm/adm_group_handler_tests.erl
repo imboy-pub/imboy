@@ -40,13 +40,16 @@ init_list_with_pagination_filters_test_() ->
             ]},
             {elib_param, [
                 {'page', 1, fun(_Req) -> {1, 20} end},
-                {'int', 3, fun(Key, _Req, _Default) ->
-                    case Key of
-                        status -> {ok, 1};
-                        type -> {ok, 2}
-                    end
+                {'int', 3, fun
+                    (status, _Req, _Default) -> {ok, 1};
+                    (type, _Req, _Default) -> {ok, 2};
+                    (organization_id, _Req, _Default) -> {ok, 0};
+                    (workspace_id, _Req, _Default) -> {ok, 0}
                 end},
-                {'binary', 3, fun(keyword, _Req, _Default) -> {ok, <<>>} end}
+                {'binary', 3, fun
+                    (keyword, _Req, _Default) -> {ok, <<>>};
+                    (preset, _Req, _Default) -> {ok, <<>>}
+                end}
             ]},
             {group_repo, [
                 {'page', 4, fun(Page, Size, Where, OrderBy) ->
@@ -2099,5 +2102,204 @@ init_task_delete_soft_delete_success_test_() ->
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual("操作成功", maps:get(msg, RespReq))
+        end
+    ).
+
+%%%===================================================================
+%%% 企业菜单入口服务端强制过滤（plan §13.1；preset 只表达 UI 状态）
+%%%===================================================================
+
+enterprise_list_forces_workspace_scope_test_() ->
+    %% 企业入口无任何过滤参数：服务端默认强制 scope='workspace'——
+    %% personal 群在企业入口零可见（负例断言：谓词必含 scope 强制）。
+    ?WITH_MECKS(
+        [
+            {adm_user_logic, [
+                {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 9001, <<"role_id">> => 2}
+                end}
+            ]},
+            {elib_param, [
+                {'page', 1, fun(_Req) -> {1, 20} end},
+                {'int', 3, fun
+                    (status, _Req, _Default) -> {ok, -1};
+                    (type, _Req, _Default) -> {ok, -1};
+                    (organization_id, _Req, _Default) -> {ok, 0};
+                    (workspace_id, _Req, _Default) -> {ok, 0}
+                end},
+                {'binary', 3, fun
+                    (keyword, _Req, _Default) -> {ok, <<>>};
+                    (preset, _Req, _Default) -> {ok, <<"enterprise">>}
+                end}
+            ]},
+            {workspace_ds, [
+                {'admin_workspace_ids_by_organization', 1, fun(_) ->
+                    erlang:error(should_not_resolve_when_no_org)
+                end}
+            ]},
+            {group_repo, [
+                {'page', 4, fun(_Page, _Size, Where, _OrderBy) ->
+                    ?assertEqual(#{scope => <<"workspace">>}, Where),
+                    {ok, #{list => [], total => 0, page => 1, size => 20}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = #{method => <<"GET">>},
+            {ok, RespReq, _State} = adm_group_handler:init(Req, #{
+                action => list, adm_user_id => 9001
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            %% org=0 不触发真源解析（零 DB 依赖）
+            ?assertEqual(
+                0,
+                meck:num_calls(workspace_ds, admin_workspace_ids_by_organization, 1)
+            )
+        end
+    ).
+
+enterprise_list_with_org_uses_resolved_workspace_ids_test_() ->
+    %% Organization 过滤由服务端解析 workspace id 集合并以 IN 谓词下推。
+    ?WITH_MECKS(
+        [
+            {adm_user_logic, [
+                {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 9001, <<"role_id">> => 2}
+                end}
+            ]},
+            {elib_param, [
+                {'page', 1, fun(_Req) -> {1, 20} end},
+                {'int', 3, fun
+                    (status, _Req, _Default) -> {ok, -1};
+                    (type, _Req, _Default) -> {ok, -1};
+                    (organization_id, _Req, _Default) -> {ok, 8001};
+                    (workspace_id, _Req, _Default) -> {ok, 0}
+                end},
+                {'binary', 3, fun
+                    (keyword, _Req, _Default) -> {ok, <<>>};
+                    (preset, _Req, _Default) -> {ok, <<"enterprise">>}
+                end}
+            ]},
+            {workspace_ds, [
+                {'admin_workspace_ids_by_organization', 1, fun(8001) -> {ok, [7001, 7002]} end}
+            ]},
+            {group_repo, [
+                {'page', 4, fun(_Page, _Size, Where, _OrderBy) ->
+                    ?assertEqual(
+                        #{scope => <<"workspace">>, workspace_id => {in, [7001, 7002]}}, Where
+                    ),
+                    {ok, #{list => [], total => 0, page => 1, size => 20}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = #{method => <<"GET">>},
+            {ok, RespReq, _State} = adm_group_handler:init(Req, #{
+                action => list, adm_user_id => 9001
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq))
+        end
+    ).
+
+enterprise_list_org_resolution_failure_leaks_nothing_test_() ->
+    %% 真源解析失败（DB 故障）fail-closed：id = 0 假谓词，零行返回——
+    %% 不得兜底为全量（那会把 personal 群和企业群一起泄漏）。
+    ?WITH_MECKS(
+        [
+            {adm_user_logic, [
+                {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 9001, <<"role_id">> => 2}
+                end}
+            ]},
+            {elib_param, [
+                {'page', 1, fun(_Req) -> {1, 20} end},
+                {'int', 3, fun
+                    (status, _Req, _Default) -> {ok, -1};
+                    (type, _Req, _Default) -> {ok, -1};
+                    (organization_id, _Req, _Default) -> {ok, 8001};
+                    (workspace_id, _Req, _Default) -> {ok, 0}
+                end},
+                {'binary', 3, fun
+                    (keyword, _Req, _Default) -> {ok, <<>>};
+                    (preset, _Req, _Default) -> {ok, <<"enterprise">>}
+                end}
+            ]},
+            {workspace_ds, [
+                {'admin_workspace_ids_by_organization', 1, fun(8001) -> {error, db_down} end}
+            ]},
+            {group_repo, [
+                {'page', 4, fun(_Page, _Size, Where, _OrderBy) ->
+                    ?assertEqual(
+                        #{scope => <<"workspace">>, id => {op, <<"=">>, 0}}, Where
+                    ),
+                    {ok, #{list => [], total => 0, page => 1, size => 20}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = #{method => <<"GET">>},
+            {ok, RespReq, _State} = adm_group_handler:init(Req, #{
+                action => list, adm_user_id => 9001
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(0, maps:get(total, maps:get(payload, RespReq)))
+        end
+    ).
+
+non_enterprise_list_keeps_global_semantics_test_() ->
+    %% 运营中心入口（无 preset）保留全局治理语义：不注入 scope 谓词。
+    ?WITH_MECKS(
+        [
+            {adm_user_logic, [
+                {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 9001, <<"role_id">> => 2}
+                end}
+            ]},
+            {elib_param, [
+                {'page', 1, fun(_Req) -> {1, 20} end},
+                {'int', 3, fun
+                    (status, _Req, _Default) -> {ok, 1};
+                    (type, _Req, _Default) -> {ok, -1};
+                    (organization_id, _Req, _Default) -> {ok, 0};
+                    (workspace_id, _Req, _Default) -> {ok, 0}
+                end},
+                {'binary', 3, fun
+                    (keyword, _Req, _Default) -> {ok, <<>>};
+                    (preset, _Req, _Default) -> {ok, <<>>}
+                end}
+            ]},
+            {group_repo, [
+                {'page', 4, fun(_Page, _Size, Where, _OrderBy) ->
+                    ?assertEqual(#{status => 1}, Where),
+                    {ok, #{list => [], total => 0, page => 1, size => 20}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = #{method => <<"GET">>},
+            {ok, RespReq, _State} = adm_group_handler:init(Req, #{
+                action => list, adm_user_id => 9001
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq))
         end
     ).

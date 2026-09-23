@@ -96,7 +96,7 @@ list_forbidden_without_permission_test_() ->
             ?MOCK_NO_PLUGIN,
             ?MOCK_RESP,
             {workspace_logic, [
-                {'admin_page', 4, fun(_P, _S, _St, _K) -> erlang:error(should_not_query) end}
+                {'admin_page', 5, fun(_P, _S, _St, _K, _O) -> erlang:error(should_not_query) end}
             ]}
         ],
         fun() ->
@@ -116,7 +116,7 @@ list_forbidden_without_adm_user_id_test_() ->
             ?MOCK_NO_PLUGIN,
             ?MOCK_RESP,
             {workspace_logic, [
-                {'admin_page', 4, fun(_P, _S, _St, _K) -> erlang:error(should_not_query) end}
+                {'admin_page', 5, fun(_P, _S, _St, _K, _O) -> erlang:error(should_not_query) end}
             ]}
         ],
         fun() ->
@@ -197,13 +197,14 @@ list_success_with_tsid_string_test_() ->
             ?MOCK_RESP,
             {elib_param, [
                 {'page', 1, fun(_Req) -> {1, 10} end},
+                {'int', 3, fun(organization_id, _Req, _D) -> {ok, 0} end},
                 {'binary', 3, fun
                     (status, _Req, _D) -> {ok, <<"all">>};
                     (keyword, _Req, _D) -> {ok, <<>>}
                 end}
             ]},
             {workspace_logic, [
-                {'admin_page', 4, fun(1, 10, <<"all">>, <<>>) ->
+                {'admin_page', 5, fun(1, 10, <<"all">>, <<>>, 0) ->
                     {ok, #{
                         list => [
                             #{
@@ -374,5 +375,73 @@ invalid_workspace_id_rejected_test_() ->
                 #{}, #{action => archive, adm_user_id => ?ADM_UID}
             ),
             ?assertEqual(?ERR_BAD_REQUEST, maps:get(response_status, RespReq))
+        end
+    ).
+
+%%%===================================================================
+%%% 企业菜单入口 Organization 服务端过滤（plan §13.1；query 参数只表达 UI 状态）
+%%%===================================================================
+
+list_with_organization_id_passes_org_filter_test_() ->
+    %% 企业入口：organization_id 必须原样传到 logic/ds 层（服务端真源过滤）。
+    ?WITH_MECKS(
+        [
+            ?MOCK_METHOD(<<"GET">>),
+            ?MOCK_PERM_FIND,
+            ?MOCK_ROLE_ACL,
+            ?MOCK_NO_PLUGIN,
+            ?MOCK_RESP,
+            {elib_param, [
+                {'page', 1, fun(_Req) -> {1, 10} end},
+                {'int', 3, fun(organization_id, _Req, _D) -> {ok, 8001} end},
+                {'binary', 3, fun
+                    (status, _Req, _D) -> {ok, <<"all">>};
+                    (keyword, _Req, _D) -> {ok, <<>>}
+                end}
+            ]},
+            {workspace_logic, [
+                {'admin_page', 5, fun(1, 10, <<"all">>, <<>>, 8001) ->
+                    {ok, #{list => [], page => 1, size => 10, total => 0, total_page => 0}}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _} = adm_workspace_handler:init(
+                #{}, #{action => list, adm_user_id => ?ADM_UID}
+            ),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(1, meck:num_calls(workspace_logic, admin_page, 5))
+        end
+    ).
+
+project_list_with_organization_id_passes_org_filter_test_() ->
+    %% 企业项目入口：organization_id 服务端过滤 + 只读语义（不新增写端点）。
+    ?WITH_MECKS(
+        [
+            ?MOCK_METHOD(<<"GET">>),
+            ?MOCK_PERM_FIND,
+            ?MOCK_ROLE_ACL,
+            ?MOCK_NO_PLUGIN,
+            ?MOCK_RESP,
+            {elib_param, [
+                {'page', 1, fun(_Req) -> {1, 10} end},
+                {'int', 3, fun(organization_id, _Req, _D) -> {ok, 8002} end},
+                {'binary', 3, fun
+                    (status, _Req, _D) -> {ok, <<"all">>};
+                    (keyword, _Req, _D) -> {ok, <<>>}
+                end}
+            ]},
+            {project_logic, [
+                {'admin_page', 5, fun(1, 10, <<"all">>, <<>>, 8002) ->
+                    {ok, #{list => [], page => 1, size => 10, total => 0, total_page => 0}}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _} = adm_workspace_handler:init(
+                #{}, #{action => project_list, adm_user_id => ?ADM_UID}
+            ),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(1, meck:num_calls(project_logic, admin_page, 5))
         end
     ).

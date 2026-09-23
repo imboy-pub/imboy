@@ -1242,3 +1242,131 @@ assert_audit_governance(Data, AdmUserId, ChannelId, Action, TargetId, ExpectedEx
     ?assertEqual(TargetId, maps:get(<<"target_id">>, AuditBody)),
     ?assertEqual(ExpectedExtra, maps:get(<<"extra">>, AuditBody)),
     ?assert(maps:is_key(<<"occurred_at">>, AuditBody)).
+
+%%%===================================================================
+%%% 企业菜单入口服务端强制过滤（plan §13.1；preset 只表达 UI 状态）
+%%%===================================================================
+
+enterprise_list_forces_workspace_scope_and_active_status_test_() ->
+    %% 企业入口：服务端强制 scope='workspace' + status=1（personal 频道零可见，
+    %% 禁用频道零可见）；客户端 scope/status 查询参数不被信任。
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"GET">> end},
+                {'parse_qs', 1, fun(_Req) -> [{<<"status">>, <<"0">>}] end}
+            ]},
+            {elib_param, [
+                {'page', 1, fun(_Req) -> {1, 10} end},
+                {'int', 3, fun
+                    (organization_id, _Req, _Default) -> {ok, 0};
+                    (workspace_id, _Req, _Default) -> {ok, 0}
+                end},
+                {'binary', 3, fun(preset, _Req, _Default) -> {ok, <<"enterprise">>} end}
+            ]},
+            {channel_repo, [
+                {'tablename', 0, fun() -> <<"public.channel">> end}
+            ]},
+            {elib_pg, [
+                {'page_with_total', 6, fun(_Tb, _Col, Where, _Order, _Page, _Size) ->
+                    %% UI 传入 status=0，服务端强制覆盖为 1 + scope=workspace
+                    ?assertEqual(#{scope => <<"workspace">>, status => 1}, Where),
+                    {ok, #{list => [], page => 1, size => 10, total => 0, total_pages => 0}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_channel_handler:init(#{}, #{action => list}),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(0, maps:get(total, maps:get(payload, RespReq)))
+        end
+    ).
+
+non_enterprise_list_keeps_global_semantics_test_() ->
+    %% 运营中心入口（无 preset）：status=0 过滤保留，不注入 scope 谓词。
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"GET">> end},
+                {'parse_qs', 1, fun(_Req) -> [{<<"status">>, <<"0">>}] end}
+            ]},
+            {elib_param, [
+                {'page', 1, fun(_Req) -> {1, 10} end},
+                {'int', 3, fun
+                    (organization_id, _Req, _Default) -> {ok, 0};
+                    (workspace_id, _Req, _Default) -> {ok, 0}
+                end},
+                {'binary', 3, fun(preset, _Req, _Default) -> {ok, <<>>} end}
+            ]},
+            {channel_repo, [
+                {'tablename', 0, fun() -> <<"public.channel">> end}
+            ]},
+            {elib_pg, [
+                {'page_with_total', 6, fun(_Tb, _Col, Where, _Order, _Page, _Size) ->
+                    ?assertEqual(#{status => 0}, Where),
+                    {ok, #{list => [], page => 1, size => 10, total => 0, total_pages => 0}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_channel_handler:init(#{}, #{action => list}),
+            ?assertEqual(200, maps:get(response_status, RespReq))
+        end
+    ).
+
+enterprise_list_with_org_uses_resolved_workspace_ids_test_() ->
+    %% O/W 过滤由服务端解析 workspace id 集合后以 IN 谓词下推（跨 O 不可见）。
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"GET">> end},
+                {'parse_qs', 1, fun(_Req) -> [] end}
+            ]},
+            {elib_param, [
+                {'page', 1, fun(_Req) -> {1, 10} end},
+                {'int', 3, fun
+                    (organization_id, _Req, _Default) -> {ok, 8001};
+                    (workspace_id, _Req, _Default) -> {ok, 0}
+                end},
+                {'binary', 3, fun(preset, _Req, _Default) -> {ok, <<"enterprise">>} end}
+            ]},
+            {workspace_ds, [
+                {'admin_workspace_ids_by_organization', 1, fun(8001) -> {ok, [7001]} end}
+            ]},
+            {channel_repo, [
+                {'tablename', 0, fun() -> <<"public.channel">> end}
+            ]},
+            {elib_pg, [
+                {'page_with_total', 6, fun(_Tb, _Col, Where, _Order, _Page, _Size) ->
+                    ?assertEqual(
+                        #{
+                            scope => <<"workspace">>,
+                            status => 1,
+                            workspace_id => {in, [7001]}
+                        },
+                        Where
+                    ),
+                    {ok, #{list => [], page => 1, size => 10, total => 0, total_pages => 0}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_channel_handler:init(#{}, #{action => list}),
+            ?assertEqual(200, maps:get(response_status, RespReq))
+        end
+    ).

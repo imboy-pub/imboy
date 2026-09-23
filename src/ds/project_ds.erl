@@ -24,6 +24,7 @@
 -export([update_status/2]).
 %% Admin 运营管理查询（双体验 v2.5.2 WP7/T11b）
 -export([admin_page/4]).
+-export([admin_page/5]).
 -export([admin_batch_task_counts/1]).
 -export([admin_task_status_stats/1]).
 -export([admin_assignee_overview/2]).
@@ -138,12 +139,20 @@ update_status(ProjectId, Status) ->
 -spec admin_page(integer(), integer(), binary() | all, binary()) ->
     {ok, map()} | {error, term()}.
 admin_page(Page0, Size0, Status, Keyword) ->
+    admin_page(Page0, Size0, Status, Keyword, 0).
+
+%% @doc Admin 项目分页列表（OrgId > 0 时服务端强制 Organization 过滤：
+%% p.workspace_id ∈ (SELECT id FROM workspace WHERE organization_id = $N)，
+%% COUNT 与 DATA 共用同一谓词；企业菜单入口只读语义不变——不新增写端点）。
+-spec admin_page(integer(), integer(), binary() | all, binary(), non_neg_integer()) ->
+    {ok, map()} | {error, term()}.
+admin_page(Page0, Size0, Status, Keyword, OrgId) ->
     Page = max(Page0, 1),
     Size = max(min(Size0, 100), 1),
     PTb = project_repo:tablename(),
     WTb = workspace_repo:tablename(),
     UTb = user_repo:tablename(),
-    {WhereSql, Params} = admin_page_where(Status, Keyword),
+    {WhereSql, Params} = admin_page_where(Status, Keyword, OrgId, WTb),
     CountSql = <<"SELECT COUNT(*) AS count FROM ", PTb/binary, " p", WhereSql/binary>>,
     Total =
         case elib_pg:one(CountSql, Params) of
@@ -181,15 +190,38 @@ admin_page(Page0, Size0, Status, Keyword) ->
             {error, Reason}
     end.
 
--spec admin_page_where(binary() | all, binary()) -> {binary(), [term()]}.
-admin_page_where(all, Keyword) when byte_size(Keyword) > 0 ->
+%% OrgId > 0 时以参数化子查询下推 Organization 过滤（count 无 JOIN 也能复用；
+%% 别名 w2 避免与 DATA SQL 的 workspace JOIN 别名 w 冲突）
+-spec admin_page_where(binary() | all, binary(), non_neg_integer(), binary()) ->
+    {binary(), [term()]}.
+admin_page_where(all, Keyword, OrgId, WTb) when OrgId > 0, byte_size(Keyword) > 0 ->
+    OrgPred = org_subquery(WTb, 2),
+    {<<" WHERE p.name ILIKE $1 AND ", OrgPred/binary>>, [<<"%", Keyword/binary, "%">>, OrgId]};
+admin_page_where(all, _Keyword, OrgId, WTb) when OrgId > 0 ->
+    OrgPred = org_subquery(WTb, 1),
+    {<<" WHERE ", OrgPred/binary>>, [OrgId]};
+admin_page_where(all, Keyword, _OrgId, _WTb) when byte_size(Keyword) > 0 ->
     {<<" WHERE p.name ILIKE $1">>, [<<"%", Keyword/binary, "%">>]};
-admin_page_where(all, _Keyword) ->
+admin_page_where(all, _Keyword, _OrgId, _WTb) ->
     {<<>>, []};
-admin_page_where(Status, Keyword) when byte_size(Keyword) > 0 ->
+admin_page_where(Status, Keyword, OrgId, WTb) when OrgId > 0, byte_size(Keyword) > 0 ->
+    OrgPred = org_subquery(WTb, 3),
+    {<<" WHERE p.status = $1 AND p.name ILIKE $2 AND ", OrgPred/binary>>, [
+        Status, <<"%", Keyword/binary, "%">>, OrgId
+    ]};
+admin_page_where(Status, _Keyword, OrgId, WTb) when OrgId > 0 ->
+    OrgPred = org_subquery(WTb, 2),
+    {<<" WHERE p.status = $1 AND ", OrgPred/binary>>, [Status, OrgId]};
+admin_page_where(Status, Keyword, _OrgId, _WTb) when byte_size(Keyword) > 0 ->
     {<<" WHERE p.status = $1 AND p.name ILIKE $2">>, [Status, <<"%", Keyword/binary, "%">>]};
-admin_page_where(Status, _Keyword) ->
+admin_page_where(Status, _Keyword, _OrgId, _WTb) ->
     {<<" WHERE p.status = $1">>, [Status]}.
+
+-spec org_subquery(binary(), pos_integer()) -> binary().
+org_subquery(WTb, ParamNo) ->
+    ParamBin = integer_to_binary(ParamNo),
+    <<"p.workspace_id IN (SELECT w2.id FROM ", WTb/binary, " w2 WHERE w2.organization_id = $",
+        ParamBin/binary, ")">>.
 
 %% @doc Admin 批量任务计数（一条 GROUP BY 拿全页：总数 + done 数）
 -spec admin_batch_task_counts([integer()]) -> map().

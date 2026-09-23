@@ -38,6 +38,7 @@
 %% Admin 运营管理入口（双体验 v2.5.2 WP7/T11b；鉴权在 adm_workspace_handler 层
 %% 走 adm_acl，此处不做 Owner 校验——运营归档/恢复是平台侧动作）
 -export([admin_page/4]).
+-export([admin_page/5]).
 -export([admin_detail/1]).
 -export([admin_member_page/3]).
 -export([admin_archive/2]).
@@ -981,7 +982,14 @@ membership_conflict_msg(_) ->
 -spec admin_page(integer(), integer(), binary() | all, binary()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 admin_page(Page, Size, Status, Keyword) ->
-    case workspace_ds:admin_page(Page, Size, normalize_admin_status(Status), Keyword) of
+    admin_page(Page, Size, Status, Keyword, 0).
+
+%% @doc Admin 工作区分页列表（OrgId > 0 时服务端 Organization 过滤；
+%% 企业菜单入口的工作区按组织维度收窄，query 参数仅表达 UI 状态）
+-spec admin_page(integer(), integer(), binary() | all, binary(), non_neg_integer()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_page(Page, Size, Status, Keyword, OrgId) ->
+    case workspace_ds:admin_page(Page, Size, normalize_admin_status(Status), Keyword, OrgId) of
         {ok, #{list := []} = Result} ->
             %% 空页跳过资源计数查询
             {ok, Result};

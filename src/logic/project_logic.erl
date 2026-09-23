@@ -31,6 +31,7 @@
 %% Admin 运营管理入口（双体验 v2.5.2 WP7/T11b；只读，无写操作；
 %% 鉴权在 adm_workspace_handler 层走 adm_acl）
 -export([admin_page/4]).
+-export([admin_page/5]).
 -export([admin_detail/1]).
 
 -include("log.hrl").
@@ -220,8 +221,15 @@ normalize_description(_) -> <<>>.
 -spec admin_page(integer(), integer(), binary() | all, binary()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 admin_page(Page, Size, Status, Keyword) ->
+    admin_page(Page, Size, Status, Keyword, 0).
+
+%% @doc Admin 项目分页列表（OrgId > 0 时服务端 Organization 过滤；
+%% 企业菜单入口只读——本层不新增任何写路径）
+-spec admin_page(integer(), integer(), binary() | all, binary(), non_neg_integer()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_page(Page, Size, Status, Keyword, OrgId) ->
     Status2 = normalize_admin_status(Status),
-    case project_ds:admin_page(Page, Size, Status2, Keyword) of
+    case project_ds:admin_page(Page, Size, Status2, Keyword, OrgId) of
         {ok, #{list := []} = Result} ->
             %% 空页跳过任务计数查询
             {ok, Result};

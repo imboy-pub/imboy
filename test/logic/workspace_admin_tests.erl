@@ -66,7 +66,7 @@ admin_page_attaches_counts_test_() ->
     ?WITH_MECKS(
         [
             {workspace_ds, [
-                {'admin_page', 4, fun(1, 10, all, <<>>) ->
+                {'admin_page', 5, fun(1, 10, all, <<>>, 0) ->
                     {ok, #{list => [WsRow], page => 1, size => 10, total => 1, total_page => 1}}
                 end},
                 {'admin_batch_resource_counts', 1, fun([?WS_ID]) ->
@@ -94,7 +94,7 @@ admin_page_empty_list_no_count_query_test_() ->
     ?WITH_MECKS(
         [
             {workspace_ds, [
-                {'admin_page', 4, fun(_P, _S, _St, _K) ->
+                {'admin_page', 5, fun(_P, _S, _St, _K, _O) ->
                     {ok, #{list => [], page => 1, size => 10, total => 0, total_page => 0}}
                 end},
                 {'admin_batch_resource_counts', 1, fun([]) -> erlang:error(should_not_count) end}
