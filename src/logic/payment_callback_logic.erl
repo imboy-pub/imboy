@@ -124,15 +124,35 @@ handle_verified(Gateway, Notify, RawBody) ->
 
 %% @doc 从回调 map 提取 gateway_payment_no/biz_order_no/biz_type。
 %% 字段兼容：sandbox 用统一字段；live 各网关私有字段(支付宝 trade_no /
-%% 微信 transaction_id / Stripe payment_intent；订单号统一 out_trade_no)。
+%% 微信 transaction_id / Stripe data.object.id；订单号统一 out_trade_no)。
+%% Stripe 事件为原始 webhook JSON：支付单号在 data.object.id（charge 对象
+%% 另带 payment_intent），业务订单号在下单写入的 data.object.metadata.out_trade_no。
 %% user_id/amount/currency 不从回调取，由 enrich_from_order 从订单反查(更安全)。
 -spec extract(binary(), map()) -> {ok, map()} | {error, binary()}.
+extract(<<"stripe">>, Notify) ->
+    Obj = nested(Notify, [<<"data">>, <<"object">>], #{}),
+    Metadata = nested(Obj, [<<"metadata">>], #{}),
+    GwPayNo = first_nonempty([
+        pick(Notify, [<<"gateway_payment_no">>, <<"payment_intent">>]),
+        maps:get(<<"id">>, Obj, <<>>),
+        maps:get(<<"payment_intent">>, Obj, <<>>)
+    ]),
+    BizOrderNo = first_nonempty([
+        pick(Notify, [<<"biz_order_no">>, <<"out_trade_no">>]),
+        maps:get(<<"out_trade_no">>, Metadata, <<>>)
+    ]),
+    finish_extract(GwPayNo, BizOrderNo, <<"stripe">>, Notify);
 extract(Gateway, Notify) ->
     GwPayNo = pick(Notify, [
         <<"gateway_payment_no">>, <<"transaction_id">>, <<"trade_no">>, <<"payment_intent">>
     ]),
     BizOrderNo = pick(Notify, [<<"biz_order_no">>, <<"out_trade_no">>]),
-    %% biz_type 由订单号前缀推导(RCH=充值 / CH=频道)，回调不带也能判定
+    finish_extract(GwPayNo, BizOrderNo, Gateway, Notify).
+
+%% 提取公共校验尾：缺支付单号/缺业务订单号/业务类型不支持 → 拒绝（fail-closed）。
+-spec finish_extract(binary(), binary(), binary(), map()) ->
+    {ok, map()} | {error, binary()}.
+finish_extract(GwPayNo, BizOrderNo, Gateway, Notify) ->
     BizType = biz_type_of(BizOrderNo, to_int(maps:get(<<"biz_type">>, Notify, 0))),
     case {GwPayNo, BizType, BizOrderNo} of
         {<<>>, _, _} ->
@@ -149,6 +169,35 @@ extract(Gateway, Notify) ->
                 biz_order_no => BizOrderNo,
                 trade_no => resolve_trade_no(Gateway, GwPayNo, Notify)
             }}
+    end.
+
+%% 按键路径逐层取嵌套 map；任一层缺失/非 map 即落到 Default（畸形事件不崩溃）。
+-spec nested(map(), [binary()], map()) -> map().
+nested(Map, Path, Default) when is_map(Map) ->
+    lists:foldl(
+        fun
+            (K, Acc) when is_map(Acc) ->
+                case maps:get(K, Acc, Default) of
+                    M when is_map(M) -> M;
+                    _ -> Default
+                end;
+            (_, Acc) ->
+                Acc
+        end,
+        Map,
+        Path
+    );
+nested(_Map, _Path, Default) ->
+    Default.
+
+%% 候选值列表取第一个非空（配合 nested 用值而非键做候选）。
+-spec first_nonempty([binary()]) -> binary().
+first_nonempty([]) ->
+    <<>>;
+first_nonempty([V | Rest]) ->
+    case to_bin(V) of
+        <<>> -> first_nonempty(Rest);
+        B -> B
     end.
 
 %% @doc 从业务订单反查 user_id/amount/currency 补全 Fields。

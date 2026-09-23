@@ -245,3 +245,137 @@ callback_pay_passes_grace_minutes() ->
     ?assert(Grace > 30).
 
 %% 反向对照：用户主动支付路径仍是 pay/2（宽限 0），过期就该重新下
+
+%% ===================================================================
+%% live Stripe 事件形态（原始 webhook JSON）字段提取
+%% ===================================================================
+
+%% erlang_pay 验签 Stripe webhook 后透出的是原始事件 JSON：支付单号在
+%% data.object.id（PaymentIntent/charge/refund 对象主键），业务订单号在
+%% 下单写入的 data.object.metadata.out_trade_no。此前提取只读顶层键，
+%% live Stripe 回调恒「缺少支付单号」被安全拒绝（sandbox 腿不受影响）。
+stripe_live_mocks() ->
+    meck:new(payment_sign, [passthrough, non_strict]),
+    meck:new(elib_metric, [passthrough, non_strict]),
+    meck:new(recharge_order_ds, [non_strict]),
+    meck:new(wallet_ds, [non_strict]),
+    meck:new(payment_transaction_ds, [non_strict]),
+    meck:expect(elib_metric, increment, fun(_N, _D, _L) -> ok end),
+    meck:expect(wallet_ds, ensure_wallet, fun(_Uid) -> ok end),
+    meck:expect(payment_transaction_ds, find_by_gateway_no, fun(_G, _No) -> #{} end),
+    meck:expect(payment_transaction_ds, create, fun(_Data) -> {ok, 1} end),
+    meck:expect(payment_transaction_ds, mark_success, fun(_T, _E) -> {ok, 1} end).
+
+stripe_live_unload() ->
+    [
+        catch meck:unload(M)
+     || M <- [
+            payment_sign,
+            elib_metric,
+            recharge_order_ds,
+            wallet_ds,
+            payment_transaction_ds
+        ]
+    ].
+
+stripe_live_event_extraction_test() ->
+    StripeEvent = #{
+        <<"id">> => <<"evt_1">>,
+        <<"type">> => <<"payment_intent.succeeded">>,
+        <<"data">> => #{
+            <<"object">> => #{
+                <<"id">> => <<"pi_123">>,
+                <<"object">> => <<"payment_intent">>,
+                <<"amount">> => 1000,
+                <<"metadata">> => #{<<"out_trade_no">> => <<"RCH9">>}
+            }
+        }
+    },
+    stripe_live_mocks(),
+    meck:expect(payment_sign, verify, fun(_G, _R, _H) -> {ok, StripeEvent} end),
+    %% 参数模式即断言：从嵌套层提取出的支付单号/订单号/用户/金额必须正确
+    meck:expect(
+        recharge_order_ds,
+        find_by_order_no,
+        fun(<<"RCH9">>) ->
+            {ok, #{
+                <<"user_id">> => 9,
+                <<"amount">> => 1000,
+                <<"currency">> => <<"CNY">>
+            }}
+        end
+    ),
+    meck:expect(
+        recharge_order_ds,
+        credit_in_tx,
+        fun(_OrderNo, <<"pi_123">>, 9, 1000) -> {ok, 500} end
+    ),
+    try
+        ?assertEqual(
+            {ok, paid},
+            payment_callback_logic:handle(
+                <<"stripe">>,
+                #{},
+                #{raw => <<>>, headers => #{}}
+            )
+        )
+    after
+        stripe_live_unload()
+    end.
+
+stripe_live_event_missing_metadata_rejected_test() ->
+    %% metadata 缺 out_trade_no：安全拒绝（fail-closed），绝不反查/入账
+    StripeEvent = #{
+        <<"id">> => <<"evt_2">>,
+        <<"type">> => <<"payment_intent.succeeded">>,
+        <<"data">> => #{
+            <<"object">> => #{
+                <<"id">> => <<"pi_x">>, <<"amount">> => 1000
+            }
+        }
+    },
+    stripe_live_mocks(),
+    meck:expect(payment_sign, verify, fun(_G, _R, _H) -> {ok, StripeEvent} end),
+    meck:expect(
+        recharge_order_ds,
+        find_by_order_no,
+        fun(_) -> erlang:error(should_not_lookup_order) end
+    ),
+    try
+        Result = payment_callback_logic:handle(
+            <<"stripe">>,
+            #{},
+            #{raw => <<>>, headers => #{}}
+        ),
+        ?assertMatch({error, _}, Result),
+        ?assertEqual(0, meck:num_calls(recharge_order_ds, find_by_order_no, '_'))
+    after
+        stripe_live_unload()
+    end.
+
+stripe_live_event_malformed_metadata_safe_test() ->
+    %% metadata 非 map（畸形事件）：不崩溃，安全拒绝
+    StripeEvent = #{
+        <<"data">> => #{
+            <<"object">> => #{
+                <<"id">> => <<"pi_y">>, <<"metadata">> => 42
+            }
+        }
+    },
+    stripe_live_mocks(),
+    meck:expect(payment_sign, verify, fun(_G, _R, _H) -> {ok, StripeEvent} end),
+    meck:expect(
+        recharge_order_ds,
+        find_by_order_no,
+        fun(_) -> erlang:error(should_not_lookup_order) end
+    ),
+    try
+        Result = payment_callback_logic:handle(
+            <<"stripe">>,
+            #{},
+            #{raw => <<>>, headers => #{}}
+        ),
+        ?assertMatch({error, _}, Result)
+    after
+        stripe_live_unload()
+    end.
