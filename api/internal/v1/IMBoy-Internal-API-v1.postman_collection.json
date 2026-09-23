@@ -2,7 +2,7 @@
   "info": {
     "name": "IMBoy Internal API v1",
     "_postman_id": "74b0c0be-ae23-5011-b04e-a7776770f4bd",
-    "description": "IMBoy 企业内部集成 API（/api/internal/v1）。\n\n使用前设置两个变量：\n  1. base_url —— 由平台部署方提供；\n  2. credential —— 平台管理员在治理台签发的集成凭证（Bearer ib_int_<id>.<secret>），secret 明文仅在签发时可见一次。\n\n配套文档：README.md（概念）、endpoints.md（端点参考）、CHANGELOG.md（版本）。\n所有示例值均为合成数据，不含真实凭据。",
+    "description": "IMBoy 企业内部集成 API（/api/internal/v1）。\n\n本集合只收录冻结路由表中已实现、可调用的 23 个端点；组织、Workspace、客服坐席、企业频道、企业群分页、企业项目等待补合同见 endpoints.md 的企业数据 CRUD 覆盖审计，未实现路径不会作为假请求加入本集合。\n\n使用前设置两个变量：\n  1. base_url —— 由平台部署方提供；\n  2. credential —— 平台管理员在治理台签发的集成凭证（Bearer ib_int_<id>.<secret>），secret 明文仅在签发时可见一次。\n\n配套文档：README.md（概念）、endpoints.md（端点参考与覆盖审计）、CHANGELOG.md（版本）。\n所有示例值均为合成数据，不含真实凭据。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

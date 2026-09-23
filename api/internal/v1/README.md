@@ -11,6 +11,11 @@
 本目录就是给集成方的交付物：整个 `v1/` 目录可直接打包发给对接方。
 Base URL（协议/域名/端口）由部署方提供，本文档只约定路径与协议语义。
 
+> **不要把 Admin 菜单接口等同于 Internal API**：运营后台使用 Admin Cookie +
+> `/api/adm/*`；本目录使用 Application Credential + `/api/internal/v1/*`。
+> 两者不能互换。组织、Workspace、项目、企业频道、客服坐席等运营治理资源的
+> 当前覆盖与待补合同，见 [endpoints.md 的 CRUD 覆盖审计](./endpoints.md#企业数据-crud-覆盖审计2026-09-23)。
+
 ---
 
 ## 1. 你能集成什么
@@ -171,6 +176,8 @@ IMBoy → 前端/网关调 INT-14 原子交换（`single_use_code`：一个 code
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
   —— Postman / Apifox 直接导入（Collection v2.1），已含全部 23 个端点、按域分文件夹、
   示例请求体与 `{{base_url}}` / `{{credential}}` 变量；导入后填好两个变量即可发请求。
+  集合只收录当前冻结路由表中**已实现、可调用**的端点；CRUD 覆盖审计中标为
+  `待实现` 的路径不会作为假请求提前塞入集合。
   注意：示例体为合成数据、个别字段形态以机器契约为准
   （如 INT-03 请求为 `external_user_ids` 数组、INT-20 为
   `roles:[{external_user_id, role}]` 对象数组）。
