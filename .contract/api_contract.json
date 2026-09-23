@@ -1776,6 +1776,18 @@
         "static": false
       },
       {
+        "action": "channels",
+        "handler": "enterprise_channel_handler",
+        "path": "/api/internal/v1/channels",
+        "static": false
+      },
+      {
+        "action": "channel",
+        "handler": "enterprise_channel_handler",
+        "path": "/api/internal/v1/channels/:channel_id",
+        "static": false
+      },
+      {
         "action": "users",
         "handler": "enterprise_directory_handler",
         "path": "/api/internal/v1/directory/users",
@@ -1866,6 +1878,18 @@
         "static": false
       },
       {
+        "action": "projects",
+        "handler": "enterprise_project_handler",
+        "path": "/api/internal/v1/projects",
+        "static": false
+      },
+      {
+        "action": "project",
+        "handler": "enterprise_project_handler",
+        "path": "/api/internal/v1/projects/:project_id",
+        "static": false
+      },
+      {
         "action": "configure",
         "handler": "enterprise_webhook_handler",
         "path": "/api/internal/v1/webhook",
@@ -1881,6 +1905,18 @@
         "action": "replay",
         "handler": "enterprise_webhook_handler",
         "path": "/api/internal/v1/webhook/deliveries/:delivery_id/replay",
+        "static": false
+      },
+      {
+        "action": "workspaces",
+        "handler": "enterprise_workspace_handler",
+        "path": "/api/internal/v1/workspaces",
+        "static": false
+      },
+      {
+        "action": "workspace",
+        "handler": "enterprise_workspace_handler",
+        "path": "/api/internal/v1/workspaces/:workspace_id",
         "static": false
       }
     ],
@@ -3995,6 +4031,30 @@
         "action": "department_move",
         "handler": "organization_api_handler",
         "path": "/api/v1/organizations/:organization_id/departments/:department_id/move",
+        "static": false
+      },
+      {
+        "action": "directory_departments",
+        "handler": "organization_directory_handler",
+        "path": "/api/v1/organizations/:organization_id/directory/departments",
+        "static": false
+      },
+      {
+        "action": "directory_me",
+        "handler": "organization_directory_handler",
+        "path": "/api/v1/organizations/:organization_id/directory/me",
+        "static": false
+      },
+      {
+        "action": "directory_members",
+        "handler": "organization_directory_handler",
+        "path": "/api/v1/organizations/:organization_id/directory/members",
+        "static": false
+      },
+      {
+        "action": "directory_search",
+        "handler": "organization_directory_handler",
+        "path": "/api/v1/organizations/:organization_id/directory/search",
         "static": false
       },
       {
