@@ -208,9 +208,12 @@ push_after_commit(_Table, _Result) ->
     ok.
 
 %% principal 预取（application 发送主体；human 模式不依赖，缺省即拒）。
+%% find_tx/3 以 (organization_id, id) 定位（Org 边界在 SQL 内强制，F2 修复：
+%% 原 arity-2 调用运行时 undef → INT-09/10 真实 500）。
 with_principal(Conn, Ctx) ->
     AppId = maps:get(application_id, Ctx),
-    case enterprise_application_repo:find_tx(Conn, AppId) of
+    OrgId = maps:get(organization_id, Ctx),
+    case enterprise_application_repo:find_tx(Conn, OrgId, AppId) of
         {ok, App} ->
             case maps:get(<<"principal_user_id">>, App, null) of
                 P when is_integer(P), P > 0 -> Ctx#{principal_user_id => P};

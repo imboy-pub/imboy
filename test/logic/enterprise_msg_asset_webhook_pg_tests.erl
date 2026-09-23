@@ -516,6 +516,15 @@ enterprise_msg_asset_webhook_pg_test_() ->
                     with_tx(C, fun(C1) -> replay_cross_org(C1, State) end)},
                 {"replay_in_flight_rejected",
                     with_tx(C, fun(C1) -> replay_in_flight(C1, State) end)},
+                %% ⑩.5 repair-f2-high：handler 级真实分派回归（F2 B4 HIGH——
+                %% find_tx arity-2 运行时 undef → INT-09/12/23 真实 500；
+                %% logic 层直调覆盖不到 handler 壳，这里补上壳面用例）
+                {"repair-f2-high INT-09 handler dispatch",
+                    with_tx(C, fun(C1) -> repair_int09_handler(C1, State) end)},
+                {"repair-f2-high INT-12 webhook configure handler dispatch",
+                    with_tx(C, fun(C1) -> repair_int12_handler(C1, State) end)},
+                {"repair-f2-high INT-23 webhook deliveries handler dispatch",
+                    with_tx(C, fun(C1) -> repair_int23_handler(C1, State) end)},
                 %% ⑪ 投递执行 + worker 分派
                 {"execute_delivery_2xx_success", with_tx(C, fun(C1) -> exec_2xx(C1, State) end)},
                 {"execute_delivery_4xx_dead", with_tx(C, fun(C1) -> exec_4xx(C1, State) end)},
@@ -1689,3 +1698,158 @@ with_public_dns(Fun) ->
         _:{already_started, _} ->
             Fun()
     end.
+
+%%%===================================================================
+%%% repair-f2-high：handler 级真实分派回归（F2 B4 HIGH bug）
+%%%===================================================================
+%%% F2 发现：enterprise_message_handler:with_principal/2（INT-09/10）与
+%%% enterprise_webhook_handler:delivery_ctx/2、with_principal/2（INT-12/23）
+%%% 以 arity-2 调 enterprise_application_repo:find_tx/3（repo 只导出 /3）
+%%% → 运行时 undef → 端点真实 500。既有门禁全是 logic 层直调，覆盖不到
+%%% handler 壳——这里补壳面用例：marker 连接 shim elib_pg 池化入口
+%%% （push 套件同款）、meck cowboy_req 传输层（adm handler 套件同款），
+%%% 直调 handler:init/2 走真实壳代码（幂等 begin/complete、boundary、
+%%% principal 预取、logic、回包形状），断言非 5xx 且形状正确。
+
+repair_seed_grant(C, State) ->
+    {ok, _} =
+        enterprise_internal_ops:issue_grant_tx(C, ?ORG_A, maps:get(app_a, State), #{
+            scopes => [<<"messages:send">>, <<"webhooks:manage">>],
+            idempotency_key => <<"repair-f2-high-grant">>,
+            expires_at => <<"2099-01-01T00:00:00Z">>
+        }),
+    ok.
+
+%% 与认证链同形状的 ctx（context_tx 真链路求值；full api 套件 ctx_managed 同款）。
+repair_ctx(C, State) ->
+    AppA = maps:get(app_a, State),
+    {ok, #{grant_governed := Governed, effective_scopes := Effective}} =
+        enterprise_application_grant_logic:context_tx(C, ?ORG_A, AppA, ?SCOPES_FULL),
+    #{
+        organization_id => ?ORG_A,
+        application_id => AppA,
+        granted_scopes => Effective,
+        grant_governed => Governed,
+        principal_user_id => ?PRIN_A
+    }.
+
+%% handler 壳跑在 elib_pg:with_tx 里——池化入口 shim 到 marker 连接；
+%% 事务由外层用例 BEGIN/ROLLBACK 包住（幂等行等随用例回滚）。
+with_pool_shim(C, Fun) ->
+    ok = meck:new(elib_pg, [passthrough, no_link]),
+    ok = meck:expect(elib_pg, with_tx, 1, fun(F) -> F(C) end),
+    try
+        Fun()
+    after
+        meck:unload(elib_pg)
+    end.
+
+mock_cowboy(Method, Opts) ->
+    ok = meck:new(cowboy_req, [no_link]),
+    ok = meck:expect(cowboy_req, method, 1, fun(_R) -> Method end),
+    ok =
+        meck:expect(cowboy_req, header, 2, fun(_H, _R) ->
+            maps:get(idem_key, Opts, undefined)
+        end),
+    ok = meck:expect(cowboy_req, parse_qs, 1, fun(_R) -> maps:get(qs, Opts, []) end),
+    ok =
+        meck:expect(cowboy_req, parse_header, 2, fun(_H, _R) ->
+            {<<"application">>, <<"json">>, #{}}
+        end),
+    ok =
+        meck:expect(cowboy_req, read_body, 2, fun(_R, _O) ->
+            {ok, maps:get(body, Opts, <<"{}">>), req}
+        end),
+    ok =
+        meck:expect(cowboy_req, reply, 4, fun(Status, _H, Body, _R) ->
+            put(repair_f2_high_reply, {Status, Body}),
+            req
+        end),
+    erase(repair_f2_high_reply),
+    %% elib_param:post 有进程字典缓存——同进程多用例时各自先清。
+    erase({elib_param, post_vals}),
+    ok.
+
+%% 断言回包非 5xx（成功面：2xx）并返回解码后的 JSON 体。
+reply_captured() ->
+    {Status, Body} = get(repair_f2_high_reply),
+    ?assert(is_integer(Status) andalso Status >= 200 andalso Status < 300),
+    {Status, jsone:decode(Body)}.
+
+%% INT-09 POST /api/internal/v1/messages/direct（application 代发）：
+%% 修前在 with_principal/2 → find_tx(Conn, AppId) 处 undef → 500。
+repair_int09_handler(C, State) ->
+    repair_seed_grant(C, State),
+    Ctx = repair_ctx(C, State),
+    Body =
+        jsone:encode(#{
+            <<"sender_mode">> => <<"application">>,
+            <<"recipient_user_id">> => ?EXT_A1,
+            <<"msg_type">> => <<"text">>,
+            <<"content">> => <<"repair-f2-high INT-09 via handler"/utf8>>
+        }),
+    with_pool_shim(C, fun() ->
+        mock_cowboy(<<"POST">>, #{idem_key => <<"repair-f2-high-int09">>, body => Body}),
+        try
+            {ok, _Req, _State1} =
+                enterprise_message_handler:init(req, #{
+                    action => direct, enterprise_internal => Ctx
+                }),
+            {200, Decoded} = reply_captured(),
+            MsgId = maps:get(<<"msg_id">>, Decoded),
+            ?assert(is_binary(MsgId) andalso byte_size(MsgId) > 0)
+        after
+            meck:unload(cowboy_req)
+        end
+    end).
+
+%% INT-12 PUT /api/internal/v1/webhook（configure）：
+%% 修前在 with_principal/2 → find_tx(Conn, AppId) 处 undef → 500。
+repair_int12_handler(C, State) ->
+    repair_seed_grant(C, State),
+    Ctx = repair_ctx(C, State),
+    Body =
+        jsone:encode(#{
+            <<"url">> => <<"https://oa.example.com/hook">>,
+            <<"events">> => [<<"file.confirmed">>]
+        }),
+    with_public_dns(fun() ->
+        with_pool_shim(C, fun() ->
+            mock_cowboy(<<"PUT">>, #{idem_key => <<"repair-f2-high-int12">>, body => Body}),
+            try
+                {ok, _Req, _State1} =
+                    enterprise_webhook_handler:init(req, #{
+                        action => configure, enterprise_internal => Ctx
+                    }),
+                {200, Decoded} = reply_captured(),
+                ?assertEqual(<<"https://oa.example.com/hook">>, maps:get(<<"url">>, Decoded)),
+                Secret = maps:get(<<"secret">>, Decoded),
+                ?assert(is_binary(Secret) andalso byte_size(Secret) > 40)
+            after
+                meck:unload(cowboy_req)
+            end
+        end)
+    end).
+
+%% INT-23 GET /api/internal/v1/webhook/deliveries（投递列表 + 健康度摘要）：
+%% 修前在 delivery_ctx/2 → find_tx(Conn, AppId) 处 undef → 500。
+repair_int23_handler(C, State) ->
+    repair_seed_grant(C, State),
+    Ctx = repair_ctx(C, State),
+    with_pool_shim(C, fun() ->
+        mock_cowboy(<<"GET">>, #{qs => []}),
+        try
+            {ok, _Req, _State1} =
+                enterprise_webhook_handler:init(req, #{
+                    action => deliveries, enterprise_internal => Ctx
+                }),
+            {200, Decoded} = reply_captured(),
+            %% 形状：分页 list + total/page + summary（健康度摘要），见
+            %% enterprise_webhook_repo:list_deliveries_tx/5。
+            ?assert(is_list(maps:get(<<"list">>, Decoded))),
+            ?assert(is_map(maps:get(<<"summary">>, Decoded))),
+            ?assertMatch(#{<<"total">> := 0, <<"page">> := 1}, Decoded)
+        after
+            meck:unload(cowboy_req)
+        end
+    end).

@@ -231,7 +231,13 @@ delivery_ctx(Conn, Ctx0) ->
     AppId = maps:get(application_id, Ctx0, undefined),
     case is_integer(AppId) of
         true ->
-            case enterprise_application_repo:find_tx(Conn, AppId) of
+            %% find_tx/3 以 (organization_id, id) 定位（Org 边界在 SQL 内强制，
+            %% F2 修复：原 arity-2 调用运行时 undef → INT-23 真实 500）。
+            case
+                enterprise_application_repo:find_tx(
+                    Conn, maps:get(organization_id, Ctx0), AppId
+                )
+            of
                 {ok, App} ->
                     case maps:get(<<"principal_user_id">>, App, null) of
                         P when is_integer(P), P > 0 -> {ok, Ctx0#{principal_user_id => P}};
@@ -245,9 +251,12 @@ delivery_ctx(Conn, Ctx0) ->
     end.
 
 %% principal 预取（webhook 配置归属判定在 logic，此处只补 ctx）。
+%% find_tx/3 以 (organization_id, id) 定位（Org 边界在 SQL 内强制，F2 修复：
+%% 原 arity-2 调用运行时 undef → INT-12 真实 500）。
 with_principal(Conn, Ctx) ->
     AppId = maps:get(application_id, Ctx),
-    case enterprise_application_repo:find_tx(Conn, AppId) of
+    OrgId = maps:get(organization_id, Ctx),
+    case enterprise_application_repo:find_tx(Conn, OrgId, AppId) of
         {ok, App} ->
             case maps:get(<<"principal_user_id">>, App, null) of
                 P when is_integer(P), P > 0 -> Ctx#{principal_user_id => P};
