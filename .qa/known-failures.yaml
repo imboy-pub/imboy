@@ -33,21 +33,22 @@ gates:
   # 提取依据：erlang.mk 走标准 eunit:test 输出（"mod: test...*failed*" 行）
   # ---------------------------------------------------------------------------
   full-eunit:
-    source: "2026-09-23 本地 main 树 cdd88b9c 全量实测回填（touch 后 8100 passed / 17 failed，逐条定性见下）"
+    source: "2026-09-23 本地 main 树全量实测回填；同日修复轮后修订（8100 passed / 17 failed 逐条定性）"
     note: >
-      入册 8 模块均为真失败（代码/测试/模板不一致或测试基建），修复前先收编防推送后首跑阻断；
-      adm_organization_handler_tests（旅程5）受并行 organization WIP 中间态影响、agent_task_logic_tests
-      （concurrent 类）疑似抖动，均暂不入册待观察。cs_pg_widget / group_user_id_sum_p0 单跑
-      CI 口径（EUNIT_CONFIG=config/sys）绿，属本地环境类不入册。
+      修复轮终态：单跑即红的真失败 3 个已修并出册（user_logic 注销 mock 缺口 /
+      adm_user_handler 'or' 契约漂移 / cors_face 宽前缀契约演进），验证全绿。
+      e2ee_throttle_scope / enterprise_internal_rate 出册：模板与测试期望一致，
+      本地红纯因逐机 sys.config 限流值调优（60/120 vs 模板 30/60），CI 读模板必绿。
+      以下 4 模块**单跑全绿、仅全量跑红**（套件间干扰：meck/app-env/池残留），
+      入册防全量首跑阻断，待隔离治理后棘轮出册。
+      adm_organization_handler_tests（并行 organization WIP 中间态）、
+      agent_task_logic_tests（concurrent 抖动）、cs_pg_widget / group_user_id_sum_p0
+      （CI config/sys 口径单跑绿）均不入册。
     known_failures:
-      - user_logic_tests        # 注销申请链 mock 缺口：elib_pg 穿透打到假连接
-      - push_provider_jpush_tests    # jpush extras payload 断言不一致（badkey extras）
-      - push_notification_logic_tests
-      - adm_user_handler_tests  # or 查询契约漂移：'or' atom vs <<"__or">> binary
-      - e2ee_throttle_scope_config_tests  # shipped 模板缺 olm_claim/olm_claim_target 限流段
-      - enterprise_internal_rate_tests    # shipped 模板缺 enterprise rate buckets
-      - cors_face_tests         # adm_owner_activation_pg_pool_conflict（套件间池冲突，测试基建）
-      - ai_agent_proactive_tests  # 欢迎消息 E2EE 交付断言（待深查）
+      - push_provider_jpush_tests    # 全量套件间干扰（单跑 22/22 绿）
+      - push_notification_logic_tests  # 同上（单跑 32/32 绿）
+      - ai_agent_proactive_tests   # 同上（单跑 13/13 绿）
+      - cors_face_tests            # 全量形态为 adm_owner_activation 池冲突（单跑断言已修 8/8 绿）
 
   # ---------------------------------------------------------------------------
   # pg-behavior-harnesses —— 失败标识粒度：harness 脚本路径（test/lib/.../*.escript）

@@ -561,11 +561,27 @@ offline_leaves_syn_and_casts_offline_test_() ->
 apply_logout_sets_status_to_pending_test_() ->
     ?WITH_MECKS(
         [
+            %% 模拟真 with_tx 的 rollback 约定：拦截 throw({rollback,_})
+            %% 转返回 {rollback, Reason}（钱路径同款，见 elib_pg:with_tx/1）
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+                {'with_tx', 1, fun(Fun) ->
+                    try Fun(self()) of
+                        R -> R
+                    catch
+                        throw:{rollback, Rsn} -> {rollback, Rsn}
+                    end
+                end},
+                %% upsert_request_tx 的 INSERT..RETURNING 走 query/3（D-01 注销申请窄记录）
+                {'query', 3, fun(_Conn, _Sql, _Params) ->
+                    {ok, [#{<<"status">> => <<"requested">>}]}
+                end}
+            ]},
+            {elib_tsid, [
+                %% 单测环境未注册 TSID 生成器（imboy_app 启动才注册）
+                {'generate', 1, fun(_Name) -> <<"0999999999999999">> end}
             ]},
             {user_ds, [
-                {'update_status_in_tx', 2, fun(_Conn, _UidStatus) -> {ok, 1} end}
+                {'mark_logout_apply_in_tx', 2, fun(_Conn, _Uid) -> {ok, 1} end}
             ]},
             {user_log_ds, [
                 {'add_logout_apply_log', 3, fun(_Conn, _Uid, _Req0) -> ok end}
@@ -584,10 +600,22 @@ apply_logout_sets_status_to_pending_test_() ->
 %% ===================================================================
 
 cancel_logout_restores_status_to_active_test_() ->
-    ?WITH_MECK(
-        user_ds,
+    ?WITH_MECKS(
         [
-            {'update_status', 2, fun(_Uid, _Status) -> {ok, 1} end}
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) ->
+                    try Fun(self()) of
+                        R -> R
+                    catch
+                        throw:{rollback, Rsn} -> {rollback, Rsn}
+                    end
+                end},
+                %% cancel_request_tx 的 UPDATE 走 execute/3，返回受影响行数
+                {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+            ]},
+            {user_ds, [
+                {'unmark_logout_apply_in_tx', 2, fun(_Conn, _Uid) -> {ok, 1} end}
+            ]}
         ],
         fun() ->
             Uid = 123,
@@ -598,10 +626,23 @@ cancel_logout_restores_status_to_active_test_() ->
     ).
 
 cancel_logout_with_error_returns_error_test_() ->
-    ?WITH_MECK(
-        user_ds,
+    ?WITH_MECKS(
         [
-            {'update_status', 2, fun(_Uid, _Status) -> {error, database_error} end}
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) ->
+                    try Fun(self()) of
+                        R -> R
+                    catch
+                        throw:{rollback, Rsn} -> {rollback, Rsn}
+                    end
+                end},
+                {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+            ]},
+            {user_ds, [
+                {'unmark_logout_apply_in_tx', 2, fun(_Conn, _Uid) ->
+                    {error, database_error}
+                end}
+            ]}
         ],
         fun() ->
             Uid = 123,

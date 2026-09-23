@@ -79,16 +79,27 @@ classify_face_by_metadata_test() ->
 
 %% frame HTML 路径：按路径段识别（路由注册由 wiring manifest 后续应用，
 %% 判定不能依赖 route metadata 先存在）。
+%%
+%% 6133448a 起契约演进：classify_by_prefix 对 /api/v1/cs/widget/ 宽前缀整体
+%% 归 widget 面（挂件访客 API bootstrap/sessions/messages/assets 的预检 403
+%% 修复），因此该前缀下任何路径——含未注册的 frames/frame——都归 widget。
+%% 过宽防护锚改为 widget 前缀之外的近似拼写。
 classify_face_frame_path_test() ->
     ?assertEqual(
         widget, cors_middleware:classify_face(<<"/api/v1/cs/widget/frame/810001">>, #{})
     ),
-    %% 相似但不完全一致的路径不是 frame 面（不放宽）。
     ?assertEqual(
-        undefined, cors_middleware:classify_face(<<"/api/v1/cs/widget/frames">>, #{})
+        %% 未注册路径也归 widget 前缀面（宿主/网关 origin 预检必须放行，
+        %% 真实是否 404 由路由层裁决，与本中间件无关）
+        widget,
+        cors_middleware:classify_face(<<"/api/v1/cs/widget/frames">>, #{})
     ),
     ?assertEqual(
-        undefined, cors_middleware:classify_face(<<"/api/v1/cs/widget/frame">>, #{})
+        widget, cors_middleware:classify_face(<<"/api/v1/cs/widget/frame">>, #{})
+    ),
+    %% 前缀形状之外的近似拼写不放宽（widgetx ≠ widget）。
+    ?assertEqual(
+        undefined, cors_middleware:classify_face(<<"/api/v1/cs/widgetx/frame/1">>, #{})
     ).
 
 %% ===================================================================

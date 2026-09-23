@@ -24,7 +24,8 @@ init_list_with_status_and_keyword_test_() ->
                     ?assertEqual(<<"created_at DESC">>, OrderBy),
                     ?assertEqual(1, maps:get(status, Where)),
                     AndWhere = maps:get('and', Where),
-                    OrClauses = maps:get('or', AndWhere),
+                    %% build_where 契约：顶层 atom 'and' 包 binary <<"__or">>（ds 层解析约定）
+                    OrClauses = maps:get(<<"__or">>, AndWhere),
                     ?assertEqual(4, length(OrClauses)),
                     {ok, #{list => [#{<<"id">> => 1001}], total => 1, page => 3, size => 25}}
                 end}
