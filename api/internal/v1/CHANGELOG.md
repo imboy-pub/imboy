@@ -3,6 +3,18 @@
 本 API 遵循「冻结 + 只追加」纪律：v1 内不做破坏性变更（不改既有路径语义、
 不删字段、不收紧既有错误码）；破坏性演进将另开 v2 目录并行。
 
+## v1.1.0 — 2026-09-24（V2.1 只读扩面）
+
+- 新增 8 个只读 GET 端点 **INT-24..31**：Workspace 列表/详情（24/25）、
+  企业群列表/成员列表（26/27）、企业项目列表/详情（28/29）、企业频道
+  列表/详情（30/31）。全部 `Idempotency-Key` 不要求，限流桶 `internal_read`。
+- **INT-18 scope 修正**：群详情（GET）`groups:write` → `groups:read`
+  （与 routes registry / boundary spec 一致，属文档面 drift 修复）。
+- 面收敛：cowboy path 19 → 25、端点 23 → 31、scope 10 → 14
+  （migration 00000144 CHECK 扩到 14 值）。
+- Postman 集合同步补齐 8 条只读请求（31 端点），见 README §10；
+  本文件「真源与守护」指针同步修正为 `api/openapi.yaml` 聚合入口。
+
 ## v1.0.1 — 2026-09-23（文档澄清）
 
 - 增加企业数据 CRUD 覆盖审计，明确组织、Workspace、客服坐席、企业频道、
@@ -22,7 +34,8 @@
 ### 真源与守护
 
 - 路由/授权冻结表：`src/api/enterprise_internal_routes.erl`（+ `enterprise_internal_boundary.erl`）
-- 字段级 schema：`.contract/api/openapi.yaml`（`api_internal` 组）与 `.contract/api_contract.json`
+- 字段级 schema：`api/openapi.yaml`（聚合入口，`api_internal` 组）与
+  `.contract/api_contract.json`
 - 机械守护：`scripts/check_enterprise_release_manifest.py`（12 项断言：
   冻结表 ↔ cowboy 路由 ↔ OpenAPI ↔ 接线测试逐条相等；`/api/open/v1` 生产面 = 0）
 - 本目录为面向集成方的交付文档；与真源冲突时以真源为准，并视为文档缺陷修复。

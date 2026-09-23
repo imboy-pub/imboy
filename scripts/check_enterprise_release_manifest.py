@@ -43,8 +43,9 @@ DEFAULT_MANIFEST = os.environ.get(
 )
 
 PREFIX = "/api/internal/v1/"
-MANIFEST_ROUTE_COUNT = 23
-ROUTER_PATH_COUNT = 19
+# V2.1 只读扩面（INT-24..31）：路由 23→31、cowboy path 19→25（2026-09-24）
+MANIFEST_ROUTE_COUNT = 31
+ROUTER_PATH_COUNT = 25
 # 代码类扫描根（§8「含 alias / handler / migration / OpenAPI 全谱」）
 CODE_ROOTS = ("src", "config", "priv")
 CODE_SUFFIXES = {".erl", ".hrl", ".config", ".example", ".json", ".yaml", ".sql"}
@@ -231,15 +232,26 @@ def main() -> int:
         f"hdiff={set(contract_handlers) ^ set(handlers)}",
     )
 
-    # ---------------- ⑫ 接线测试必须把 23 / 19 / open=0 钉成常量 ----------------
+    # ---------------- ⑫ 接线测试必须把 31 / 25 / open=0 钉成常量 ----------------
+    # 路径数钉的变量名在接线测试里为 WiredPaths（路由列表为 Manifest），
+    # 两种历史命名（ManifestPaths / WiredPaths）均接受。
     wsrc = (repo / WIRING_TEST).read_text(encoding="utf-8")
+    path_pins = [
+        f"?assertEqual({ROUTER_PATH_COUNT}, length(ManifestPaths))",
+        f"?assertEqual({ROUTER_PATH_COUNT}, length(WiredPaths))",
+    ]
     pins = [
         f"?assertEqual({MANIFEST_ROUTE_COUNT}, length(Manifest))",
-        f"?assertEqual({ROUTER_PATH_COUNT}, length(ManifestPaths))",
         "?assertEqual(0, length([P || P <- Paths, lists:prefix(\"/api/open/v1/\", P)]))",
     ]
+    if not any(p in wsrc for p in path_pins):
+        pins.insert(1, " OR ".join(path_pins))
     unpinned = [p for p in pins if p not in wsrc]
-    check(not unpinned, "12) wiring_test_pins(23/19/open=0)", f"unpinned={unpinned}")
+    check(
+        not unpinned,
+        f"12) wiring_test_pins({MANIFEST_ROUTE_COUNT}/{ROUTER_PATH_COUNT}/open=0)",
+        f"unpinned={unpinned}",
+    )
 
     print()
     if failures:

@@ -1,4 +1,4 @@
-# Internal API v1 — 端点参考（23 端点）
+# Internal API v1 — 端点参考（31 端点）
 
 > 与代码冻结表（`src/api/enterprise_internal_routes.erl`）逐条一致；
 > 字段级机器契约见 `../openapi-internal.yaml`（编辑真源，
@@ -16,30 +16,31 @@
   Organization 与已授予 Workspace，不得复用 Admin 权限。
 
 因此，管理后台出现一个菜单，并不表示同名资源应自动暴露完整 Internal CRUD。
-当前冻结合同（INT-01..INT-23）的实际覆盖如下：
+当前冻结合同（INT-01..INT-31）的实际覆盖如下：
 
 | 企业数据 | 分页查看 | 新增 | 详情 | 修改 | 删除/归档 | 当前结论 |
 |---|---|---|---|---|---|---|
 | 组织治理 | — | — | INT-01 仅返回凭证所属组织上下文 | — | — | **不开放组织增删**；Application 不能创建或删除自己的授权父域 |
-| Workspace | — | — | — | — | — | **待实现**；当前只能在既有 Grant 边界内使用 `workspace_id` |
+| Workspace | INT-24 | — | INT-25 | — | — | **只读已实现（写操作为 P1 待补）**；写入仍只能经 Admin 面操作既有 Grant 边界 |
 | 客服坐席 | — | — | — | — | — | **待实现**；不得复用独立 Seat JWT 的坐席工作台接口 |
-| 企业频道 | — | — | — | — | — | **待实现**；只允许 `scope=workspace`，个人频道永久排除 |
-| 企业群 | — | INT-04 | INT-18 | INT-19 / INT-20 | INT-21 / INT-06 | **部分完成**；缺群分页和成员分页 |
-| 企业项目 | — | — | — | — | — | **待实现**；必须受 Workspace Grant 约束 |
+| 企业频道 | INT-30 | — | INT-31 | — | — | **只读已实现（写操作为 P1 待补）**；仅 `scope=workspace`，个人频道永久排除 |
+| 企业群 | INT-26 | INT-04 | INT-18 | INT-19 / INT-20 | INT-21 / INT-06 | **只读+写核心已实现**（成员分页 INT-27） |
+| 企业项目 | INT-28 | — | INT-29 | — | — | **只读已实现（写操作为 P1 待补）**；必须受 Workspace Grant 约束 |
 
 ### 需要追加的 Internal v1 合同
 
-以下是补齐上述企业数据所需的**最小追加面**。这些路径当前未进入
-`enterprise_internal_routes:routes/0`，所以现在调用会返回 404，也不会出现在下方
-Postman 集合中。必须先完成 handler、Grant/Scope、OpenAPI、审计和自动化测试，再作为
-v1 只追加端点发布。
+以下是补齐上述企业数据所需的**最小追加面**。其中 P0 只读四组（INT-24..31）
+已于 V2.1 落地——已进入 `enterprise_internal_routes:routes/0`、可调用，
+并出现在下方 Postman 集合中；下列仍标注**待补**的行（客服坐席、各资源 P1
+写操作）未进入 `routes/0`，当前调用会返回 404。必须先完成 handler、
+Grant/Scope、OpenAPI、审计和自动化测试，再作为 v1 只追加端点发布。
 
 | 优先级 | 资源 | 建议追加路径 | Scope | 语义 |
 |---|---|---|---|---|
-| P0 | Workspace | `GET /workspaces`、`GET /workspaces/{workspace_id}` | `workspaces:read` | Grant 过滤的 cursor 分页与详情 |
-| P0 | 企业群 | `GET /groups`、`GET /groups/{group_id}/members` | `groups:read` | 只返回 Application 可访问的 Workspace 企业群 |
-| P0 | 企业项目 | `GET /projects`、`GET /projects/{project_id}` | `projects:read` | Grant 过滤的 cursor 分页与详情 |
-| P0 | 企业频道 | `GET /channels`、`GET /channels/{channel_id}` | `channels:read` | 仅 `scope=workspace`，排除个人频道 |
+| P0 | Workspace | `GET /workspaces`、`GET /workspaces/{workspace_id}` | `workspaces:read` | ✅ 已实现（INT-24/25）；Grant 过滤的 cursor 分页与详情 |
+| P0 | 企业群 | `GET /groups`、`GET /groups/{group_id}/members` | `groups:read` | ✅ 已实现（INT-26/27）；只返回 Application 可访问的 Workspace 企业群 |
+| P0 | 企业项目 | `GET /projects`、`GET /projects/{project_id}` | `projects:read` | ✅ 已实现（INT-28/29）；Grant 过滤的 cursor 分页与详情 |
+| P0 | 企业频道 | `GET /channels`、`GET /channels/{channel_id}` | `channels:read` | ✅ 已实现（INT-30/31）；仅 `scope=workspace`，排除个人频道 |
 | P0 | 客服坐席 | `GET /customer-service/seats`、`GET /customer-service/seats/{seat_id}` | `customer_service:read` | Organization + Workspace 过滤的 cursor 分页与详情 |
 | P1 | Workspace | `POST /workspaces`、`PATCH /workspaces/{workspace_id}`、`DELETE /workspaces/{workspace_id}` | `workspaces:write` | 新建、修改、软归档；写请求必须幂等 |
 | P1 | 企业项目 | `POST /projects`、`PATCH /projects/{project_id}`、`DELETE /projects/{project_id}` | `projects:write` | 新建、修改、软归档；项目必须属于已授权 Workspace |
@@ -53,8 +54,8 @@ v1 只追加端点发布。
 - 所有 P1 写请求要求 `Idempotency-Key`，并记录真实 `origin_application_id`；
 - 组织创建、组织删除、Application/Credential 生命周期、Grant 签发/撤销仍只属于
   `/api/adm/*`，不会下放给 Application Credential；
-- 上述合同正式实现前，当前可导入 Postman 的权威集合仍是本目录的
-  `IMBoy-Internal-API-v1.postman_collection.json`（23 个已实现端点）。
+- 上述待补合同正式实现前，当前可导入 Postman 的权威集合仍是本目录的
+  `IMBoy-Internal-API-v1.postman_collection.json`（31 个已实现端点）。
 
 ## 应用与凭证
 
@@ -84,15 +85,49 @@ v1 只追加端点发布。
 | ID | 方法与路径 | Scope | 限流桶 | 幂等 |
 |---|---|---|---|---|
 | INT-04 | `POST /api/internal/v1/groups` | `groups:write` | write | K |
+| INT-26 | `GET /api/internal/v1/groups` | `groups:read` | read | — |
 | INT-05 | `PUT /api/internal/v1/groups/{group_id}/members` | `groups:write` | write | K |
+| INT-27 | `GET /api/internal/v1/groups/{group_id}/members` | `groups:read` | read | — |
 | INT-06 | `DELETE /api/internal/v1/groups/{group_id}/members` | `groups:write` | write | K |
-| INT-18 | `GET /api/internal/v1/groups/{group_id}` | `groups:write` | read | — |
+| INT-18 | `GET /api/internal/v1/groups/{group_id}` | `groups:read` | read | — |
 | INT-19 | `PATCH /api/internal/v1/groups/{group_id}` | `groups:write` | write | K |
 | INT-20 | `PUT /api/internal/v1/groups/{group_id}/members/roles` | `groups:write` | write | K |
 | INT-21 | `DELETE /api/internal/v1/groups/{group_id}` | `groups:write` | write | K |
 
 成员操作按 `user_id` 精确定位（必须是本组织已映射用户）；跨组织 `group_id`
 一律 `resource_not_found`（平台侧不区分「不存在」与「不归你」）。
+V2.1 FIX：群详情（INT-18）与群/成员只读分页（INT-26/27）scope 均为
+`groups:read`（此前文档误标 `groups:write`）。
+
+## Workspace（只读）
+
+| ID | 方法与路径 | Scope | 限流桶 | 幂等 |
+|---|---|---|---|---|
+| INT-24 | `GET /api/internal/v1/workspaces` | `workspaces:read` | read | — |
+| INT-25 | `GET /api/internal/v1/workspaces/{workspace_id}` | `workspaces:read` | read | — |
+
+Workspace keyset 列表与详情（V2.1 新增）；行集收窄为「当前生效 Grant 覆盖
+的 W 集合」，已归档 Workspace 不可见。写操作为 P1 待补。
+
+## 企业项目（只读）
+
+| ID | 方法与路径 | Scope | 限流桶 | 幂等 |
+|---|---|---|---|---|
+| INT-28 | `GET /api/internal/v1/projects` | `projects:read` | read | — |
+| INT-29 | `GET /api/internal/v1/projects/{project_id}` | `projects:read` | read | — |
+
+企业项目 keyset 列表与详情（V2.1 新增）；必须受 Workspace Grant 约束。
+写操作为 P1 待补。
+
+## 企业频道（只读）
+
+| ID | 方法与路径 | Scope | 限流桶 | 幂等 |
+|---|---|---|---|---|
+| INT-30 | `GET /api/internal/v1/channels` | `channels:read` | read | — |
+| INT-31 | `GET /api/internal/v1/channels/{channel_id}` | `channels:read` | read | — |
+
+工作区企业频道 keyset 列表与详情（V2.1 新增）；**仅 `scope=workspace` 的
+频道**（`status=1` 启用中），个人频道永久排除。写操作为 P1 待补。
 
 ## 企业文件（直传）
 

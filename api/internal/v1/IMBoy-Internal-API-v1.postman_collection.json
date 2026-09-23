@@ -2,7 +2,7 @@
   "info": {
     "name": "IMBoy Internal API v1",
     "_postman_id": "74b0c0be-ae23-5011-b04e-a7776770f4bd",
-    "description": "IMBoy 企业内部集成 API（/api/internal/v1）。\n\n本集合只收录冻结路由表中已实现、可调用的 23 个端点；组织、Workspace、客服坐席、企业频道、企业群分页、企业项目等待补合同见 endpoints.md 的企业数据 CRUD 覆盖审计，未实现路径不会作为假请求加入本集合。\n\n使用前设置两个变量：\n  1. base_url —— 由平台部署方提供；\n  2. credential —— 平台管理员在治理台签发的集成凭证（Bearer ib_int_<id>.<secret>），secret 明文仅在签发时可见一次。\n\n配套文档：README.md（概念）、endpoints.md（端点参考与覆盖审计）、CHANGELOG.md（版本）。\n所有示例值均为合成数据，不含真实凭据。",
+    "description": "IMBoy 企业内部集成 API（/api/internal/v1）。\n\n本集合收录冻结路由表中已实现、可调用的 31 个端点（V2.1 起含 Workspace / 企业群 / 企业项目 / 企业频道的 8 个只读端点 INT-24..31）；客服坐席与各资源 P1 写操作等待补合同见 endpoints.md 的企业数据 CRUD 覆盖审计，未实现路径不会作为假请求加入本集合。\n\n使用前设置两个变量：\n  1. base_url —— 由平台部署方提供；\n  2. credential —— 平台管理员在治理台签发的集成凭证（Bearer ib_int_<id>.<secret>），secret 明文仅在签发时可见一次。\n\n配套文档：README.md（概念）、endpoints.md（端点参考与覆盖审计）、CHANGELOG.md（版本）。\n所有示例值均为合成数据，不含真实凭据。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -30,6 +30,21 @@
       "key": "delivery_id",
       "value": "9100000000000000200",
       "description": "示例投递 ID（合成）"
+    },
+    {
+      "key": "workspace_id",
+      "value": "1",
+      "description": "示例 Workspace ID（须为本应用 Grant 覆盖的工作区）"
+    },
+    {
+      "key": "project_id",
+      "value": "9100000000000000600",
+      "description": "示例企业项目 ID（合成）"
+    },
+    {
+      "key": "channel_id",
+      "value": "9100000000000000700",
+      "description": "示例企业频道 ID（合成）"
     }
   ],
   "item": [
@@ -579,6 +594,253 @@
               }
             ],
             "description": "解散企业群。破坏性操作，请谨慎。"
+          }
+        },
+        {
+          "name": "INT-26 群列表（只读分页）",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "groups"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "分页查看本应用可访问的企业群（origin app + Grant 覆盖过滤）。无请求体。"
+          }
+        },
+        {
+          "name": "INT-27 群成员列表（只读分页）",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/groups/{{group_id}}/members",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "groups",
+                ":group_id}",
+                "members"
+              ],
+              "variable": [
+                {
+                  "key": "group_id",
+                  "value": "{{group_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "分页查看企业群成员（须在本应用 Grant 覆盖的群内）。无请求体。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workspace（只读）",
+      "description": "分页查看与详情（INT-24/25，scope=workspaces:read）；行集收窄为当前 Grant 覆盖的工作区。",
+      "item": [
+        {
+          "name": "INT-24 Workspace 列表（只读分页）",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/workspaces",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "workspaces"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "分页查看当前凭证可见（Grant 覆盖）的工作区；已归档不可见。无请求体。"
+          }
+        },
+        {
+          "name": "INT-25 Workspace 详情",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/workspaces/{{workspace_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "workspaces",
+                ":workspace_id}"
+              ],
+              "variable": [
+                {
+                  "key": "workspace_id",
+                  "value": "{{workspace_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "读取单个工作区详情（须在本应用 Grant 覆盖内）。无请求体。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "企业项目（只读）",
+      "description": "分页查看与详情（INT-28/29，scope=projects:read）；受 Workspace Grant 约束。",
+      "item": [
+        {
+          "name": "INT-28 项目列表（只读分页）",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/projects",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "projects"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "分页查看已授权工作区下的企业项目（W 过滤）。无请求体。"
+          }
+        },
+        {
+          "name": "INT-29 项目详情",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/projects/{{project_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "projects",
+                ":project_id}"
+              ],
+              "variable": [
+                {
+                  "key": "project_id",
+                  "value": "{{project_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "读取单个企业项目详情（project Grant 边界）。无请求体。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "企业频道（只读）",
+      "description": "分页查看与详情（INT-30/31，scope=channels:read）；仅 scope=workspace 且启用中的企业频道，个人频道永久排除。",
+      "item": [
+        {
+          "name": "INT-30 频道列表（只读分页）",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/channels",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "channels"
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "分页查看工作区企业频道（scope=workspace AND status=1，W 必填）。无请求体。"
+          }
+        },
+        {
+          "name": "INT-31 频道详情",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/channels/{{channel_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "channels",
+                ":channel_id}"
+              ],
+              "variable": [
+                {
+                  "key": "channel_id",
+                  "value": "{{channel_id}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "description": "读取单个企业频道详情（channel Grant 边界；status=1 only）。无请求体。"
           }
         }
       ]

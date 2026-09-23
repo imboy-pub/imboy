@@ -2,7 +2,7 @@
 
 > **版本**：v1.0（冻结）｜ **受众**：企业 OA / 第三方集成系统开发者
 > **Base Path**：`/api/internal/v1`
-> **机器契约**：`api/openapi-internal.yaml`（编辑真源，19 path / 23 端点，
+> **机器契约**：`api/openapi-internal.yaml`（编辑真源，25 path / 31 端点，
 > 字段级 schema 逐端点实证自 handler）；`api/openapi-internal.bundle.yaml`
 > （bundle 单文件，可直接导入 Postman / Apifox / openapi-generator）。
 > 本目录是面向集成方的交付文档。路由与合同由 12 项机械断言
@@ -26,12 +26,15 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 |---|---|
 | 应用与凭证 | 读取本应用信息（INT-01） |
 | 外部身份映射 | OA 用户 ↔ IMBoss 用户的绑定 / 解析 / 解绑 / 目录查询（INT-02/03/15/16/17） |
-| 企业群组 | 建群、增删成员、改群、成员角色（INT-04/05/06/18/19/20/21） |
+| 企业群组 | 建群、增删成员、改群、成员角色；详情/列表/成员只读（INT-04/05/06/18/19/20/21/26/27） |
+| Workspace 只读 | 列表与详情（INT-24/25） |
 | 企业文件 | 直传预签名 / 确认入库 / 治理（INT-07/08/22） |
 | 消息 | 应用身份直发、以人类身份代发；单聊与群聊（INT-09/10） |
 | 好友申请 | 代 OA 用户发起（只发起、不自动通过，见 §6）（INT-11） |
 | Webhook | 登记出站回调、查询/重放投递（INT-12/13/23） |
 | OA SSO | 一次性 code 原子交换登录态（INT-14） |
+| 企业项目只读 | 列表与详情（INT-28/29） |
+| 企业频道只读 | scope=workspace 列表与详情（INT-30/31） |
 
 **边界（务必了解）**：
 
@@ -71,7 +74,7 @@ Authorization: Bearer ib_int_<application_id>.<secret>
   所有请求返回 `application_disabled`（403）。
 - secret 在平台侧只保存不可逆摘要；**泄露即轮换**，无需担心「改不回来」。
 
-## 4. 授权（Scope，固定 10 枚举，无通配）
+## 4. 授权（Scope，固定 14 枚举，无通配）
 
 | Scope | 解锁能力 |
 |---|---|
@@ -79,6 +82,10 @@ Authorization: Bearer ib_int_<application_id>.<secret>
 | `identities:read` | 身份解析、目录查询 |
 | `identities:write` | 身份绑定 / 解绑 |
 | `groups:write` | 群组与成员管理 |
+| `groups:read` | 群组/成员只读（INT-18/26/27） |
+| `workspaces:read` | Workspace 列表与详情（INT-24/25） |
+| `projects:read` | 项目列表与详情（INT-28/29） |
+| `channels:read` | 频道列表与详情（INT-30/31） |
 | `files:write` | 文件直传与治理 |
 | `messages:send` | 以**应用身份**发消息 |
 | `messages:send_as_human` | 以**人类身份**代发消息（见 §6） |
@@ -166,7 +173,7 @@ IMBoy → 前端/网关调 INT-14 原子交换（`single_use_code`：一个 code
 
 ## 10. 端点参考与 Postman 集合
 
-- 人类阅读：[endpoints.md](./endpoints.md)（23 个端点，按域分组）。
+- 人类阅读：[endpoints.md](./endpoints.md)（31 个端点，按域分组）。
 - **机器契约**：`../openapi-internal.yaml`（编辑真源）与
   `../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
   schema 逐端点从 handler 实证（`src/api/enterprise_*_handler.erl`），
@@ -174,7 +181,7 @@ IMBoy → 前端/网关调 INT-14 原子交换（`single_use_code`：一个 code
   `x-imboy-scope` / `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
   标注。工具导入用 bundle 单文件。
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
-  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 23 个端点、按域分文件夹、
+  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 31 个端点、按域分文件夹、
   示例请求体与 `{{base_url}}` / `{{credential}}` 变量；导入后填好两个变量即可发请求。
   集合只收录当前冻结路由表中**已实现、可调用**的端点；CRUD 覆盖审计中标为
   `待实现` 的路径不会作为假请求提前塞入集合。
