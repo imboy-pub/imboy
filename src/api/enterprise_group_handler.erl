@@ -55,29 +55,37 @@ init(Req0, State0) ->
 %% ===================================================================
 
 -spec create(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+create(<<"GET">>, Req0, State) ->
+    %% INT-26（V2.1 新增）：企业群只读 keyset 列表——与 INT-04 共用本
+    %% cowboy path（同 path 不重复登记，方法分派与 INT-05/06 同款口径）；
+    %% 路由匹配仍按冻结表 GET /groups -> INT-26（scope groups:read）。
+    list_groups(Req0, State);
 create(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(
-        <<"POST">>, ?GROUP_CREATE_PATH, Params
-    ),
-    with_idempotency(
-        Req0,
-        Ctx,
-        <<"group">>,
-        IdemKey,
-        Digest,
-        fun(Conn) ->
-            Input = params_to_input(Params),
-            %% INT-04 的边界资源是请求体里的 workspace_id（manifest: workspace scoped）
-            with_boundary(
-                Conn, Ctx, <<"INT-04">>, maps:get(workspace_id, Input, undefined), fun() ->
-                    enterprise_group_logic:create_group_tx(Conn, Ctx, Input)
+    case enterprise_internal_idempotency:request_digest(<<"POST">>, ?GROUP_CREATE_PATH, Params) of
+        {ok, Digest} ->
+            with_idempotency(
+                Req0,
+                Ctx,
+                <<"group">>,
+                IdemKey,
+                Digest,
+                fun(Conn) ->
+                    Input = params_to_input(Params),
+                    %% INT-04 的边界资源是请求体里的 workspace_id（manifest: workspace scoped）
+                    with_boundary(
+                        Conn, Ctx, <<"INT-04">>, maps:get(workspace_id, Input, undefined), fun() ->
+                            enterprise_group_logic:create_group_tx(Conn, Ctx, Input)
+                        end
+                    )
                 end
-            )
-        end
-    );
+            );
+        {error, non_canonical} ->
+            %% §11：body 不可规范化（float/非法 JSON）→ 400 invalid_request
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
 create(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
@@ -85,6 +93,10 @@ create(_, Req0, _State) ->
 %% DELETE=移除。A2 decide 已按 method+path 在冻结表里判到 INT-05 / INT-06
 %% （scope 同为 groups:write），本壳只做方法分派与 405。
 -spec members(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+members(<<"GET">>, Req0, State) ->
+    %% INT-27（V2.1 新增）：群成员只读 keyset 列表——与 INT-05/06 共用本
+    %% path（方法分派；冻结表 GET -> INT-26/27 各自 scope/幂等语义生效）。
+    list_members(Req0, State);
 members(<<"PUT">>, Req0, State) ->
     members_op(add, <<"PUT">>, Req0, State);
 members(<<"DELETE">>, Req0, State) ->
@@ -98,28 +110,34 @@ members_op(Op, Method, Req0, State) ->
     GroupId = maps:get(group_id, State, 0),
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(
-        Method, members_path(GroupId), Params
-    ),
-    RouteId = route_id_of(Op),
-    with_idempotency(
-        Req0,
-        Ctx,
-        <<"group_members">>,
-        IdemKey,
-        Digest,
-        fun(Conn) ->
-            ExternalIds = maps:get(<<"external_user_ids">>, Params, undefined),
-            with_group_boundary(Conn, Ctx, RouteId, GroupId, fun() ->
-                case Op of
-                    add ->
-                        enterprise_group_logic:add_members_tx(Conn, Ctx, GroupId, ExternalIds);
-                    remove ->
-                        enterprise_group_logic:remove_members_tx(Conn, Ctx, GroupId, ExternalIds)
+    case enterprise_internal_idempotency:request_digest(Method, members_path(GroupId), Params) of
+        {ok, Digest} ->
+            RouteId = route_id_of(Op),
+            with_idempotency(
+                Req0,
+                Ctx,
+                <<"group_members">>,
+                IdemKey,
+                Digest,
+                fun(Conn) ->
+                    ExternalIds = maps:get(<<"external_user_ids">>, Params, undefined),
+                    with_group_boundary(Conn, Ctx, RouteId, GroupId, fun() ->
+                        case Op of
+                            add ->
+                                enterprise_group_logic:add_members_tx(
+                                    Conn, Ctx, GroupId, ExternalIds
+                                );
+                            remove ->
+                                enterprise_group_logic:remove_members_tx(
+                                    Conn, Ctx, GroupId, ExternalIds
+                                )
+                        end
+                    end)
                 end
-            end)
-        end
-    ).
+            );
+        {error, non_canonical} ->
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end.
 
 %% @doc INT-18（GET 详情）/ INT-19（PATCH 更新）/ INT-21（DELETE 归档）：同一
 %% path 的群生命周期端点（FULL-02 新增，待 A0 接线）。
@@ -145,8 +163,83 @@ member_roles(<<"PUT">>, Req0, State) ->
 member_roles(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-%% @doc 详情（单事务只读；无幂等键）。
--spec read_group(read_detail, cowboy_req:req(), map()) -> cowboy_req:req().
+%% ===================================================================
+%% V2.1 只读列表（INT-26/27）
+%% ===================================================================
+
+%% @doc INT-26：本 Application origin 建立的企业群 keyset 列表（kind=list：
+%% 行级「Grant 覆盖 W」收窄在列表 SQL 内）。
+-spec list_groups(cowboy_req:req(), map()) -> cowboy_req:req().
+list_groups(Req0, State) ->
+    Ctx = maps:get(enterprise_internal, State, #{}),
+    Qs = maps:from_list(cowboy_req:parse_qs(Req0)),
+    case enterprise_internal_read_page:parse_limit(Qs) of
+        {ok, Limit} ->
+            Opts = #{
+                limit => Limit,
+                cursor => enterprise_internal_read_page:parse_cursor(Qs)
+            },
+            Result =
+                elib_pg:with_tx(fun(Conn) ->
+                    with_boundary(Conn, Ctx, <<"INT-26">>, undefined, fun() ->
+                        enterprise_group_logic:list_groups_tx(Conn, Ctx, Opts)
+                    end)
+                end),
+            read_page_reply(Req0, <<"INT-26">>, Ctx, Result);
+        {error, invalid_request} ->
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end.
+
+%% @doc INT-27：群 active 成员 keyset 列表（群定位 → Grant 覆盖群所属 W →
+%% 成员分页；created_at ASC 唯一升序 family）。
+-spec list_members(cowboy_req:req(), map()) -> cowboy_req:req().
+list_members(Req0, State) ->
+    Ctx = maps:get(enterprise_internal, State, #{}),
+    GroupId = maps:get(group_id, State, 0),
+    Qs = maps:from_list(cowboy_req:parse_qs(Req0)),
+    case enterprise_internal_read_page:parse_limit(Qs) of
+        {ok, Limit} ->
+            Opts = #{
+                limit => Limit,
+                cursor => enterprise_internal_read_page:parse_cursor(Qs)
+            },
+            Result =
+                elib_pg:with_tx(fun(Conn) ->
+                    with_group_boundary(Conn, Ctx, <<"INT-27">>, GroupId, fun() ->
+                        enterprise_group_logic:list_members_tx(Conn, Ctx, GroupId, Opts)
+                    end)
+                end),
+            read_page_reply(Req0, <<"INT-27">>, Ctx, Result);
+        {error, invalid_request} ->
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end.
+
+%% @doc 只读列表应答（A-R 结构化访问日志：O/App/route/count，无逐项 PII）。
+-spec read_page_reply(cowboy_req:req(), binary(), map(), term()) -> cowboy_req:req().
+read_page_reply(Req0, RouteId, Ctx, Result) ->
+    case Result of
+        {ok, #{<<"items">> := Items} = Page} ->
+            ?INFO_LOG([
+                enterprise_internal_read,
+                #{
+                    route => RouteId,
+                    organization_id => maps:get(organization_id, Ctx, undefined),
+                    application_id => maps:get(application_id, Ctx, undefined),
+                    count => length(Items)
+                }
+            ]),
+            reply_json(Req0, 200, Page);
+        {error, {Code, _Detail}} ->
+            enterprise_internal_error:reply(Req0, Code);
+        {rollback, Reason} ->
+            ?ERROR_LOG("enterprise_group_handler list rollback: ~p~n", [Reason]),
+            enterprise_internal_error:reply(Req0, <<"internal_error">>);
+        {error, Reason} ->
+            ?ERROR_LOG("enterprise_group_handler list error: ~p~n", [Reason]),
+            enterprise_internal_error:reply(Req0, <<"internal_error">>)
+    end.
+
+%% @doc 详情（单事务只读；无幂等键）。-spec read_group(read_detail, cowboy_req:req(), map()) -> cowboy_req:req().
 read_group(read_detail, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     GroupId = maps:get(group_id, State, 0),
@@ -178,14 +271,16 @@ write_group(Op, RouteId, Method, Req0, State) ->
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
     ResourceType = resource_type_of(Op),
-    Digest = enterprise_internal_idempotency:request_digest(
-        Method, group_path(Op, GroupId), Params
-    ),
-    with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, fun(Conn) ->
-        with_group_boundary(Conn, Ctx, RouteId, GroupId, fun() ->
-            do_write_group(Conn, Ctx, Op, GroupId, Params)
-        end)
-    end).
+    case enterprise_internal_idempotency:request_digest(Method, group_path(Op, GroupId), Params) of
+        {ok, Digest} ->
+            with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, fun(Conn) ->
+                with_group_boundary(Conn, Ctx, RouteId, GroupId, fun() ->
+                    do_write_group(Conn, Ctx, Op, GroupId, Params)
+                end)
+            end);
+        {error, non_canonical} ->
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end.
 
 -spec do_write_group(any(), map(), update | archive | set_roles, term(), map()) ->
     {ok, map()} | {error, {binary(), term()}}.
@@ -279,15 +374,19 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun) ->
                 {ok, inserted} ->
                     case LogicFun(Conn) of
                         {ok, Result} ->
+                            %% §11 Completion：response 快照（status+完整 JSON 体）
+                            %% 与业务写/audit 同一事务提交。
+                            Body = jsone:encode(Result),
                             _ = enterprise_internal_idempotency:complete_tx(
                                 Conn,
                                 Ctx,
                                 ResourceType,
                                 IdemKey,
                                 resource_id_of(Result),
-                                200
+                                200,
+                                Body
                             ),
-                            {tx_ok, Result};
+                            {tx_ok, Body};
                         {error, {Code, _Detail}} ->
                             throw({rollback, {business_error, Code}})
                     end;
@@ -296,15 +395,17 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun) ->
             end
         end),
     case TxResult of
-        {tx_ok, Result} ->
-            reply_json(Req0, 200, Result);
+        {tx_ok, Body} ->
+            reply_json_body(Req0, 200, Body);
         {rollback, {business_error, Code}} ->
             enterprise_internal_error:reply(Req0, Code);
         {rollback, Reason} ->
             ?ERROR_LOG("enterprise_group_handler rollback (~s): ~p~n", [ResourceType, Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>);
-        {ok, replay, #{resource_id := RId, response_code := Code}} ->
-            replay_json(Req0, ResourceType, RId, Code);
+        {ok, replay, #{response_code := Code, response_body := Body}} ->
+            %% §11 Replay：按存储快照字节精确重放原 status + JSON body，
+            %% 仅附加 Idempotent-Replayed 头；不重执行业务/通知/audit。
+            replay_json_body(Req0, Code, Body);
         {ok, pending} ->
             enterprise_internal_error:reply(Req0, <<"idempotency_conflict">>);
         {error, digest_conflict} ->
@@ -314,14 +415,32 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun) ->
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
     end.
 
-%% @doc 重放应答：幂等表只持久化 {resource_id, response_code}，响应体按
-%% resource_type 以 resource_id 重建（A2 冻结形态；不新增响应体列）。
-replay_json(Req0, <<"group">>, RId, Code) ->
-    reply_json(Req0, ok_code(Code), #{<<"replayed">> => true, <<"group_id">> => RId});
-replay_json(Req0, ResourceType, RId, Code) ->
-    reply_json(Req0, ok_code(Code), #{
-        <<"replayed">> => true, <<"resource_type">> => ResourceType, <<"resource_id">> => RId
-    }).
+%% @doc 首次应答：直接回完整编码体（与 complete_tx 存储的字节一致）。
+-spec reply_json_body(cowboy_req:req(), non_neg_integer(), binary()) -> cowboy_req:req().
+reply_json_body(Req0, Status, Body) ->
+    cowboy_req:reply(
+        Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0
+    ).
+
+%% @doc 重放应答（§11 字节精确）：response_body 缺失（防御态——migration 144
+%% 已把旧行回填 '{}'）时以 "{}" 兜底，不重建业务体。
+-spec replay_json_body(cowboy_req:req(), non_neg_integer(), binary() | null) ->
+    cowboy_req:req().
+replay_json_body(Req0, Code, Body) ->
+    BodyBin =
+        case Body of
+            B when is_binary(B), B =/= <<>> -> B;
+            _ -> <<"{}">>
+        end,
+    Headers = maps:from_list([
+        enterprise_internal_idempotency:replay_header()
+    ]),
+    cowboy_req:reply(
+        ok_code(Code),
+        Headers#{<<"content-type">> => <<"application/json">>},
+        BodyBin,
+        Req0
+    ).
 
 resource_id_of(Result) when is_map(Result) ->
     case maps:find(<<"group_id">>, Result) of

@@ -19,6 +19,9 @@
 -export([page_by_member/4]).
 -export([count_by_owner/1]).
 -export([ids_by_organization/1]).
+%% V2.1 Internal 只读面（INT-24/25 adapter；plan §6.1 "workspace_repo adapter"）
+-export([internal_find_tx/3]).
+-export([internal_covered_page_tx/5]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -194,4 +197,74 @@ ids_by_organization(OrgId) when OrgId > 0 ->
             {ok, [maps:get(<<"id">>, Row) || Row <- Rows]};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% ===================================================================
+%% V2.1 Internal 只读面（INT-24/25 adapter）
+%% ===================================================================
+
+%% @doc INT-25 详情定位（Org 边界 + active）：返回最小投影列
+%% （id, name, owner_id, created_at）；跨 Org / 不存在 / 已归档 → {error, not_found}
+%% （IDOR 同不存在同体，不泄露存在性）。
+-spec internal_find_tx(any(), integer(), integer()) ->
+    {ok, map()} | {error, not_found | term()}.
+internal_find_tx(Conn, OrgId, WsId) when
+    is_integer(OrgId), is_integer(WsId), WsId > 0
+->
+    Sql =
+        <<"SELECT id, name, owner_id, created_at FROM ", (tablename())/binary,
+            " WHERE id = $1 AND organization_id = $2 AND status = 'active' LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, [WsId, OrgId]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc INT-24 keyset 列表：active + **仅 Grant 覆盖的 W**（kind=list 的
+%% 行级收窄是 SQL 义务，plan §6.2/边界 moduledoc：覆盖谓词 = 存在同一生效
+%% Grant 覆盖 scope 且 kind='none'（Org 全域）或显式命中该 W）。
+%% 排序 created_at DESC, id DESC；Pivot 为续页 keyset 元组（首页 undefined）；
+%% 调用方传 Limit（已按 §10.1 校验），本查询不加 1——has_more 判定在
+%% logic 层（以 Limit+1 调用）。
+-spec internal_covered_page_tx(
+    any(), integer(), integer(), undefined | {binary(), integer()}, pos_integer()
+) -> {ok, [map()]} | {error, term()}.
+internal_covered_page_tx(Conn, OrgId, AppId, Pivot, Limit) when
+    is_integer(OrgId), is_integer(AppId), is_integer(Limit), Limit > 0
+->
+    Scope = <<"workspaces:read">>,
+    GrantView = enterprise_application_grant_repo:effective_view(),
+    ScopeTb = enterprise_application_grant_repo:scope_tablename(),
+    WsTb = enterprise_application_grant_repo:workspace_tablename(),
+    CoveredExists =
+        <<
+            " AND EXISTS (SELECT 1 FROM ",
+            GrantView/binary,
+            " g",
+            " JOIN ",
+            ScopeTb/binary,
+            " s ON s.grant_id = g.grant_id",
+            " LEFT JOIN ",
+            WsTb/binary,
+            " gw ON gw.grant_id = g.grant_id",
+            "   AND gw.workspace_id = w.id",
+            " WHERE g.organization_id = $1 AND g.application_id = $2",
+            "   AND s.scope = $3",
+            "   AND (g.workspace_scope_kind = 'none' OR gw.grant_id IS NOT NULL))"
+        >>,
+    {KeysetClause, Params0} =
+        case Pivot of
+            undefined ->
+                {<<>>, []};
+            {CreatedAt, Id} ->
+                {<<" AND (w.created_at, w.id) < ($4, $5)">>, [CreatedAt, Id]}
+        end,
+    Sql =
+        <<"SELECT w.id, w.name, w.owner_id, w.created_at FROM ", (tablename())/binary, " w",
+            " WHERE w.organization_id = $1 AND w.status = 'active'", CoveredExists/binary,
+            KeysetClause/binary, " ORDER BY w.created_at DESC, w.id DESC", " LIMIT $",
+            (integer_to_binary(4 + length(Params0)))/binary>>,
+    case elib_pg:query(Conn, Sql, [OrgId, AppId, Scope] ++ Params0 ++ [Limit]) of
+        {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
     end.

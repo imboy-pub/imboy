@@ -1,0 +1,79 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/project/list.yaml
+# GET /api/internal/v1/projects — 项目列表（INT-28，V2.1 新增）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1projects
+# Handler：src/api/enterprise_project_handler.erl projects/3
+# 投影冻结（V2.1 §15.1 封闭投影）：
+#   items[]: project_id / name / owner_id / status / created_at
+# ----------------------------------------------------------------------------
+get:
+  tags: [internal]
+  summary: 项目列表（workspace_id 必填）
+  description: |
+    指定 Workspace 的项目 keyset 列表（created_at DESC, id DESC）。
+    workspace_id 必填——缺失/非整数 400 invalid_request（不用缺省 W 放大
+    可见域）；status 过滤 active|done|all（缺省 all）。项目无 archive 语义，
+    active 与 done 均可读。分页为 CURSOR-V2 签名游标（非法/过期/foreign 一律
+    400，客户端从首页重启）。
+  operationId: internalProjectList
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: workspace_id
+      in: query
+      required: true
+      description: Workspace TSID（必填）
+      schema: { type: integer, format: int64 }
+    - name: status
+      in: query
+      description: 状态过滤（缺省 all）
+      schema:
+        type: string
+        enum: [active, done, all]
+        default: all
+    - name: limit
+      in: query
+      description: 页大小（缺省 50；1..100，越界 400 拒绝不截断）
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    - name: cursor
+      in: query
+      description: 上一页返回的 next_cursor（opaque）
+      schema: { type: string }
+  x-imboy-scope: projects:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  responses:
+    '200':
+      description: 项目分页
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [items, limit, has_more, next_cursor]
+            additionalProperties: false
+            properties:
+              items:
+                type: array
+                items:
+                  type: object
+                  required: [project_id, name, owner_id, status, created_at]
+                  additionalProperties: false
+                  properties:
+                    project_id: { type: integer, format: int64 }
+                    name: { type: string }
+                    owner_id: { type: integer, format: int64 }
+                    status: { type: string, enum: [active, done] }
+                    created_at: { type: string, description: RFC3339 时间戳 }
+              limit: { type: integer, minimum: 1, maximum: 100 }
+              has_more: { type: boolean }
+              next_cursor: { type: [string, 'null'] }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

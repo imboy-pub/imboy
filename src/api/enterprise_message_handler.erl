@@ -51,23 +51,29 @@ direct(<<"POST">>, Req0, State) ->
     Ctx0 = maps:get(enterprise_internal, State, #{}),
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(
-        <<"POST">>, <<"/api/internal/v1/messages/direct">>, Params
-    ),
-    with_idempotency(
-        Req0,
-        Ctx0,
-        <<"enterprise_message">>,
-        IdemKey,
-        Digest,
-        <<"msg_c2c">>,
-        fun(Ctx, Conn) ->
-            enforce_dynamic(Conn, Ctx, <<"INT-09">>, undefined, Params)
-        end,
-        fun(Ctx, Conn) ->
-            enterprise_message_logic:direct_tx(Conn, Ctx, params_to_input(Params))
-        end
-    );
+    case
+        enterprise_internal_idempotency:request_digest(
+            <<"POST">>, <<"/api/internal/v1/messages/direct">>, Params
+        )
+    of
+        {ok, Digest} ->
+            with_idempotency(
+                Req0,
+                Ctx0,
+                <<"enterprise_message">>,
+                IdemKey,
+                Digest,
+                <<"msg_c2c">>,
+                fun(Ctx, Conn) ->
+                    enforce_dynamic(Conn, Ctx, <<"INT-09">>, undefined, Params)
+                end,
+                fun(Ctx, Conn) ->
+                    enterprise_message_logic:direct_tx(Conn, Ctx, params_to_input(Params))
+                end
+            );
+        {error, non_canonical} ->
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
 direct(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
@@ -77,31 +83,33 @@ group(<<"POST">>, Req0, State) ->
     Params0 = elib_param:post(Req0),
     GroupId = maps:get(group_id, State, 0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(
-        <<"POST">>, group_path(GroupId), Params0
-    ),
-    with_idempotency(
-        Req0,
-        Ctx0,
-        <<"enterprise_message">>,
-        IdemKey,
-        Digest,
-        <<"msg_c2g">>,
-        fun(Ctx, Conn) ->
-            %% INT-10 的边界资源是该群所属 workspace（workspace scoped +
-            %% group in workspace）：先按 Org 边界定位群（不泄露存在性），
-            %% 再用其 workspace_id 做 Grant workspace 边界判定。
-            case enterprise_group_logic:boundary_workspace_tx(Conn, Ctx, GroupId) of
-                {ok, WsId} ->
-                    enforce_dynamic(Conn, Ctx, <<"INT-10">>, WsId, Params0);
-                {error, _} = Err ->
-                    Err
-            end
-        end,
-        fun(Ctx, Conn) ->
-            enterprise_message_logic:group_tx(Conn, Ctx, GroupId, params_to_input(Params0))
-        end
-    );
+    case enterprise_internal_idempotency:request_digest(<<"POST">>, group_path(GroupId), Params0) of
+        {ok, Digest} ->
+            with_idempotency(
+                Req0,
+                Ctx0,
+                <<"enterprise_message">>,
+                IdemKey,
+                Digest,
+                <<"msg_c2g">>,
+                fun(Ctx, Conn) ->
+                    %% INT-10 的边界资源是该群所属 workspace（workspace scoped +
+                    %% group in workspace）：先按 Org 边界定位群（不泄露存在性），
+                    %% 再用其 workspace_id 做 Grant workspace 边界判定。
+                    case enterprise_group_logic:boundary_workspace_tx(Conn, Ctx, GroupId) of
+                        {ok, WsId} ->
+                            enforce_dynamic(Conn, Ctx, <<"INT-10">>, WsId, Params0);
+                        {error, _} = Err ->
+                            Err
+                    end
+                end,
+                fun(Ctx, Conn) ->
+                    enterprise_message_logic:group_tx(Conn, Ctx, GroupId, params_to_input(Params0))
+                end
+            );
+        {error, non_canonical} ->
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
 group(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
@@ -162,11 +170,11 @@ with_idempotency(Req0, Ctx0, ResourceType, IdemKey, Digest, MsgTable, BoundaryFu
             end
         end),
     case TxResult of
-        {tx_ok, Result} ->
+        {tx_ok, Result, Body} ->
             %% COMMIT 后离线推送（FULL-07）。幂等 replay 分支不走这里——同一条
             %% 消息不会因客户端重放而二次推送；失败只记日志，不改消息结果。
             ok = push_after_commit(MsgTable, Result),
-            reply_json(Req0, 200, Result);
+            reply_json_body(Req0, 200, Body);
         {rollback, {business_error, Code}} ->
             enterprise_webhook_logic:emit_event_failed(
                 Ctx0,
@@ -178,8 +186,8 @@ with_idempotency(Req0, Ctx0, ResourceType, IdemKey, Digest, MsgTable, BoundaryFu
         {rollback, Reason} ->
             ?ERROR_LOG("enterprise_message_handler tx rollback: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>);
-        {ok, replay, #{resource_id := _RId, response_code := Code}} ->
-            reply_json(Req0, ok_code(Code), #{<<"replayed">> => true});
+        {ok, replay, #{response_code := Code, response_body := Body}} ->
+            replay_json_body(Req0, Code, Body);
         {ok, pending} ->
             enterprise_internal_error:reply(Req0, <<"idempotency_conflict">>);
         {error, digest_conflict} ->
@@ -218,10 +226,11 @@ run_logic(Conn, Ctx0, Ctx, ResourceType, IdemKey, MsgTable, LogicFun) ->
     case LogicFun(Ctx, Conn) of
         {ok, #{<<"msg_id">> := MsgId} = Result} ->
             RowId = fetch_row_id(Conn, MsgTable, MsgId),
+            Body = jsone:encode(Result),
             _ = enterprise_internal_idempotency:complete_tx(
-                Conn, Ctx0, ResourceType, IdemKey, RowId, 200
+                Conn, Ctx0, ResourceType, IdemKey, RowId, 200, Body
             ),
-            {tx_ok, Result};
+            {tx_ok, Result, Body};
         {error, {Code, _Detail}} ->
             throw({rollback, {business_error, Code}})
     end.
@@ -251,6 +260,28 @@ ok_code(_) -> 200.
 reply_json(Req0, Status, Map) ->
     Body = jsone:encode(Map),
     cowboy_req:reply(Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0).
+
+-spec reply_json_body(cowboy_req:req(), non_neg_integer(), binary()) -> cowboy_req:req().
+reply_json_body(Req0, Status, Body) ->
+    cowboy_req:reply(
+        Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0
+    ).
+
+-spec replay_json_body(cowboy_req:req(), non_neg_integer(), binary() | null) ->
+    cowboy_req:req().
+replay_json_body(Req0, Code, Body) ->
+    BodyBin =
+        case Body of
+            B when is_binary(B), B =/= <<>> -> B;
+            _ -> <<"{}">>
+        end,
+    Headers = maps:from_list([enterprise_internal_idempotency:replay_header()]),
+    cowboy_req:reply(
+        ok_code(Code),
+        Headers#{<<"content-type">> => <<"application/json">>},
+        BodyBin,
+        Req0
+    ).
 
 idempotency_key(Req0) ->
     case cowboy_req:header(<<"idempotency-key">>, Req0) of

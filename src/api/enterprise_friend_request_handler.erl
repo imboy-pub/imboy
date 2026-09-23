@@ -55,7 +55,15 @@ create(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(<<"POST">>, ?CREATE_PATH, Params),
+    case enterprise_internal_idempotency:request_digest(<<"POST">>, ?CREATE_PATH, Params) of
+        {ok, Digest} -> create_tx(Req0, Ctx, IdemKey, Digest, Params);
+        {error, non_canonical} -> enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
+create(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec create_tx(cowboy_req:req(), map(), binary(), binary(), map()) -> cowboy_req:req().
+create_tx(Req0, Ctx, IdemKey, Digest, Params) ->
     TxResult =
         elib_pg:with_tx(fun(Conn) ->
             case
@@ -70,10 +78,11 @@ create(<<"POST">>, Req0, State) ->
                         )
                     of
                         {ok, Result} ->
+                            Body = jsone:encode(Result),
                             _ = enterprise_internal_idempotency:complete_tx(
-                                Conn, Ctx, <<"friend_request">>, IdemKey, null, 200
+                                Conn, Ctx, <<"friend_request">>, IdemKey, null, 200, Body
                             ),
-                            {tx_ok, Result};
+                            {tx_ok, Result, Body};
                         {error, {Code, _Detail}} ->
                             throw({rollback, {business_error, Code}})
                     end;
@@ -82,19 +91,18 @@ create(<<"POST">>, Req0, State) ->
             end
         end),
     case TxResult of
-        {tx_ok, Result} ->
-            %% COMMIT 后通知（独立池化路径；失败只记日志，不影响申请结果）
+        {tx_ok, Result, Body} ->
+            %% COMMIT 后通知（独立池化路径；失败只记日志，不影响申请结果；
+            %% replay 分支不走这里——同一申请不因客户端重放而二次通知，§11）
             notify_after_commit(Ctx, Result, Params),
-            reply_json(Req0, 200, Result);
+            reply_json_body(Req0, 200, Body);
         {rollback, {business_error, Code}} ->
             enterprise_internal_error:reply(Req0, Code);
         {rollback, Reason} ->
             ?ERROR_LOG("enterprise_friend_request_handler rollback: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>);
-        {ok, replay, #{response_code := Code}} ->
-            reply_json(Req0, ok_code(Code), #{
-                <<"replayed">> => true, <<"request_status">> => <<"pending">>
-            });
+        {ok, replay, #{response_code := Code, response_body := Body}} ->
+            replay_json_body(Req0, Code, Body);
         {ok, pending} ->
             enterprise_internal_error:reply(Req0, <<"idempotency_conflict">>);
         {error, digest_conflict} ->
@@ -102,9 +110,7 @@ create(<<"POST">>, Req0, State) ->
         {error, Reason} ->
             ?ERROR_LOG("enterprise_friend_request_handler idempotency error: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
-    end;
-create(_, Req0, _State) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+    end.
 
 %% @doc 提交后通知：外部 id 已在 logic 内校验为双侧 active 映射，这里独立
 %% 事务回读 uid（logic 结果只带 external id，不带 uid）。任一步失败只记日志。
@@ -160,6 +166,28 @@ ok_code(_) -> 200.
 reply_json(Req0, Status, Map) ->
     Body = jsone:encode(Map),
     cowboy_req:reply(Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0).
+
+-spec reply_json_body(cowboy_req:req(), non_neg_integer(), binary()) -> cowboy_req:req().
+reply_json_body(Req0, Status, Body) ->
+    cowboy_req:reply(
+        Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0
+    ).
+
+-spec replay_json_body(cowboy_req:req(), non_neg_integer(), binary() | null) ->
+    cowboy_req:req().
+replay_json_body(Req0, Code, Body) ->
+    BodyBin =
+        case Body of
+            B when is_binary(B), B =/= <<>> -> B;
+            _ -> <<"{}">>
+        end,
+    Headers = maps:from_list([enterprise_internal_idempotency:replay_header()]),
+    cowboy_req:reply(
+        ok_code(Code),
+        Headers#{<<"content-type">> => <<"application/json">>},
+        BodyBin,
+        Req0
+    ).
 
 idempotency_key(Req0) ->
     case cowboy_req:header(<<"idempotency-key">>, Req0) of

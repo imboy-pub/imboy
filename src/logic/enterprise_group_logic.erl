@@ -31,7 +31,9 @@
     update_group_tx/4,
     archive_group_tx/3,
     set_member_roles_tx/4,
-    boundary_workspace_tx/3
+    boundary_workspace_tx/3,
+    list_groups_tx/3,
+    list_members_tx/4
 ]).
 
 -define(MAX_TITLE_LEN, 200).
@@ -853,3 +855,149 @@ resolve_all_mapped(Conn, OrgId, AppId, Members) ->
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}
     end.
+
+%% ===================================================================
+%% V2.1 Internal 只读面（INT-26/27）
+%% ===================================================================
+
+%% @doc INT-26：本 Application origin 建立的企业群 keyset 列表
+%% （active workspace + scope=workspace + Grant 覆盖 W 收窄在 repo SQL 内；
+%% family=groups，filter 冻结为空 map——origin app 绑定已由 payload 顶层
+%% application_id 承担）。信封 {items, limit, has_more, next_cursor}。
+%% 投影冻结：group_id(int64), workspace_id(int64), title(string),
+%% member_count(integer), created_at(RFC3339 string)。
+-spec list_groups_tx(any(), map(), map()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+list_groups_tx(Conn, Ctx, Opts) when is_map(Opts) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    Limit = maps:get(limit, Opts, 50),
+    Cursor = maps:get(cursor, Opts, undefined),
+    Filter = #{},
+    case enterprise_internal_read_page:resolve(Cursor, Ctx, <<"groups">>, Filter) of
+        {ok, Pivot} ->
+            case
+                enterprise_group_repo:internal_origin_page_tx(
+                    Conn, OrgId, AppId, Pivot, Limit + 1
+                )
+            of
+                {ok, Rows0} when length(Rows0) > Limit ->
+                    group_page_reply(
+                        Conn, Ctx, lists:sublist(Rows0, Limit), Limit, true
+                    );
+                {ok, Rows} ->
+                    group_page_reply(Conn, Ctx, Rows, Limit, false);
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end;
+        {error, invalid_request} ->
+            {error, {<<"invalid_request">>, cursor_invalid}};
+        {error, security_gate_closed} ->
+            {error, {<<"security_gate_closed">>, cursor_signing_key_unavailable}}
+    end;
+list_groups_tx(_Conn, _Ctx, _Opts) ->
+    {error, {<<"invalid_request">>, opts_not_map}}.
+
+%% @doc INT-27：群 active 成员 keyset 列表（created_at ASC, id ASC——§10.2
+%% 唯一升序 family）。群定位与 Grant 覆盖判定由 handler 先行
+%% （boundary_workspace_tx + enforce INT-27）；本函数只做成员分页。
+%% cursor filter 冻结为 #{group_id => G}（游标跨群使用即拒绝）。
+%% 投影冻结：user_id(int64), role(integer 0..5), created_at(RFC3339 string)。
+-spec list_members_tx(any(), map(), integer(), map()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+list_members_tx(Conn, Ctx, GroupId, Opts) when
+    is_integer(GroupId), GroupId > 0, is_map(Opts)
+->
+    Limit = maps:get(limit, Opts, 50),
+    Cursor = maps:get(cursor, Opts, undefined),
+    Filter = #{<<"group_id">> => GroupId},
+    case enterprise_internal_read_page:resolve(Cursor, Ctx, <<"group_members">>, Filter) of
+        {ok, Pivot} ->
+            case enterprise_group_repo:internal_member_page_tx(Conn, GroupId, Pivot, Limit + 1) of
+                {ok, Rows0} when length(Rows0) > Limit ->
+                    member_page_reply(
+                        Conn, Ctx, GroupId, lists:sublist(Rows0, Limit), Limit, true
+                    );
+                {ok, Rows} ->
+                    member_page_reply(Conn, Ctx, GroupId, Rows, Limit, false);
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end;
+        {error, invalid_request} ->
+            {error, {<<"invalid_request">>, cursor_invalid}};
+        {error, security_gate_closed} ->
+            {error, {<<"security_gate_closed">>, cursor_signing_key_unavailable}}
+    end;
+list_members_tx(_Conn, _Ctx, _GroupId, _Opts) ->
+    {error, {<<"invalid_request">>, invalid_list_input}}.
+
+-spec group_view(map()) -> map().
+group_view(Row) ->
+    #{
+        <<"group_id">> => maps:get(<<"id">>, Row),
+        <<"workspace_id">> => maps:get(<<"workspace_id">>, Row),
+        <<"title">> => maps:get(<<"title">>, Row),
+        <<"member_count">> => maps:get(<<"member_count">>, Row),
+        <<"created_at">> => maps:get(<<"created_at">>, Row)
+    }.
+
+-spec member_view_page(map()) -> map().
+member_view_page(Row) ->
+    #{
+        <<"user_id">> => maps:get(<<"user_id">>, Row),
+        <<"role">> => maps:get(<<"role">>, Row),
+        <<"created_at">> => maps:get(<<"created_at">>, Row)
+    }.
+
+-spec group_page_reply(any(), map(), [map()], pos_integer(), boolean()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+group_page_reply(_Conn, Ctx, Rows, Limit, HasMore) ->
+    Next =
+        case HasMore andalso Rows =/= [] of
+            true ->
+                Last = lists:last(Rows),
+                Tuple = {maps:get(<<"created_at">>, Last), maps:get(<<"id">>, Last)},
+                case enterprise_internal_read_page:encode(Ctx, <<"groups">>, #{}, Tuple) of
+                    {ok, Cursor} -> Cursor;
+                    {error, EncodeReason} -> erlang:error({cursor_encode_failed, EncodeReason})
+                end;
+            false ->
+                null
+        end,
+    %% A-R：结构化访问日志在 handler；usage 计数面待 ck_eau_metric 扩展迁移
+    %%（A0 分配号，proposal 见 A2 RESULT）。
+    {ok, #{
+        <<"items">> => [group_view(R) || R <- Rows],
+        <<"limit">> => Limit,
+        <<"has_more">> => HasMore,
+        <<"next_cursor">> => Next
+    }}.
+
+-spec member_page_reply(any(), map(), pos_integer(), [map()], pos_integer(), boolean()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+member_page_reply(_Conn, Ctx, GroupId, Rows, Limit, HasMore) ->
+    Filter = #{<<"group_id">> => GroupId},
+    Next =
+        case HasMore andalso Rows =/= [] of
+            true ->
+                Last = lists:last(Rows),
+                %% 升序 family：tie-breaker 是 group_member.id（投影外键，
+                %% repo 行未携带时由 SQL 列补——internal_member_page_tx 已选 id）。
+                Tuple = {maps:get(<<"created_at">>, Last), maps:get(<<"id">>, Last)},
+                case
+                    enterprise_internal_read_page:encode(
+                        Ctx, <<"group_members">>, Filter, Tuple
+                    )
+                of
+                    {ok, Cursor} -> Cursor;
+                    {error, EncodeReason} -> erlang:error({cursor_encode_failed, EncodeReason})
+                end;
+            false ->
+                null
+        end,
+    {ok, #{
+        <<"items">> => [member_view_page(R) || R <- Rows],
+        <<"limit">> => Limit,
+        <<"has_more">> => HasMore,
+        <<"next_cursor">> => Next
+    }}.

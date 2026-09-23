@@ -33,7 +33,9 @@
     set_group_status_tx/3,
     set_member_role_tx/4,
     active_member_rows_tx/2,
-    active_member_rows_in_ws_tx/3
+    active_member_rows_in_ws_tx/3,
+    internal_origin_page_tx/5,
+    internal_member_page_tx/4
 ]).
 
 -include_lib("epgsql/include/epgsql.hrl").
@@ -438,3 +440,88 @@ placeholders([_ | Rest], N, <<>>) ->
 placeholders([_ | Rest], N, Acc) when is_binary(Acc) ->
     Next = <<Acc/binary, ", $", (integer_to_binary(N))/binary>>,
     placeholders(Rest, N + 1, Next).
+
+%% ===================================================================
+%% V2.1 Internal 只读面（INT-26/27 adapter）
+%% ===================================================================
+
+%% @doc INT-26 keyset 列表：本 Application origin 建立（enterprise_group_origin
+%% active）的企业群，active workspace 内 scope=workspace 群，行集收窄为
+%% Grant 覆盖 W（kind='none' 覆盖 Org 全域或显式命中该 W；覆盖谓词在 SQL 内，
+%% kind=list 的行级收窄义务，禁止整表回读后内存过滤）。
+%% 排序 created_at DESC, id DESC；Pivot 为续页 keyset 元组。
+-spec internal_origin_page_tx(
+    any(), integer(), integer(), undefined | {binary(), integer()}, pos_integer()
+) -> {ok, [map()]} | {error, term()}.
+internal_origin_page_tx(Conn, OrgId, AppId, Pivot, Limit) when
+    is_integer(OrgId), is_integer(AppId), is_integer(Limit), Limit > 0
+->
+    Scope = <<"groups:read">>,
+    GrantView = enterprise_application_grant_repo:effective_view(),
+    ScopeTb = enterprise_application_grant_repo:scope_tablename(),
+    WsTb = enterprise_application_grant_repo:workspace_tablename(),
+    OriginTb = enterprise_group_origin_repo:tablename(),
+    CoveredExists =
+        <<
+            " AND EXISTS (SELECT 1 FROM ",
+            GrantView/binary,
+            " g",
+            " JOIN ",
+            ScopeTb/binary,
+            " s ON s.grant_id = g.grant_id",
+            " LEFT JOIN ",
+            WsTb/binary,
+            " gw ON gw.grant_id = g.grant_id",
+            "   AND gw.workspace_id = g2.workspace_id",
+            " WHERE g.organization_id = $1 AND g.application_id = $2",
+            "   AND s.scope = $3",
+            "   AND (g.workspace_scope_kind = 'none' OR gw.grant_id IS NOT NULL))"
+        >>,
+    {KeysetClause, Params0} =
+        case Pivot of
+            undefined ->
+                {<<>>, []};
+            {CreatedAt, Id} ->
+                {<<" AND (g2.created_at, g2.id) < ($4, $5)">>, [CreatedAt, Id]}
+        end,
+    Sql =
+        <<"SELECT g2.id, g2.workspace_id, g2.title, g2.member_count, g2.created_at",
+            " FROM \"group\" g2", " JOIN ", OriginTb/binary, " o ON o.group_id = g2.id",
+            "   AND o.organization_id = $1 AND o.application_id = $2", "   AND o.status = 'active'",
+            " JOIN workspace w ON w.id = g2.workspace_id",
+            "   AND w.organization_id = $1 AND w.status = 'active'",
+            " WHERE g2.scope = 'workspace' AND g2.status = 1", CoveredExists/binary,
+            KeysetClause/binary, " ORDER BY g2.created_at DESC, g2.id DESC", " LIMIT $",
+            (integer_to_binary(4 + length(Params0)))/binary>>,
+    case elib_pg:query(Conn, Sql, [OrgId, AppId, Scope] ++ Params0 ++ [Limit]) of
+        {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc INT-27 群成员 keyset 列表：active（status=1）成员。
+%% 排序 created_at ASC, id ASC（§10.2 唯一升序 family；tie-breaker 是
+%% group_member.id，不在投影内，仅供 keyset 谓词）。
+%% 群定位与 Grant 覆盖判定由 handler 经 locate + boundary enforce（INT-27，
+%% workspace kind，W=群所属 W）承担。
+-spec internal_member_page_tx(
+    any(), pos_integer(), undefined | {binary(), integer()}, pos_integer()
+) -> {ok, [map()]} | {error, term()}.
+internal_member_page_tx(Conn, Gid, Pivot, Limit) when
+    is_integer(Gid), Gid > 0, is_integer(Limit), Limit > 0
+->
+    {KeysetClause, Params0} =
+        case Pivot of
+            undefined ->
+                {<<>>, []};
+            {CreatedAt, Id} ->
+                {<<" AND (m.created_at, m.id) > ($2, $3)">>, [CreatedAt, Id]}
+        end,
+    Sql =
+        <<"SELECT m.id, m.user_id, m.role, m.created_at FROM group_member m",
+            " WHERE m.group_id = $1 AND m.status = 1", KeysetClause/binary,
+            " ORDER BY m.created_at ASC, m.id ASC", " LIMIT $",
+            (integer_to_binary(2 + length(Params0)))/binary>>,
+    case elib_pg:query(Conn, Sql, [Gid] ++ Params0 ++ [Limit]) of
+        {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
+    end.

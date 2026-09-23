@@ -1,11 +1,73 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/internal/v1/group/create.yaml
 # POST /api/internal/v1/groups — 创建企业群组（INT-04）
+# GET    /api/internal/v1/groups — 企业群列表（INT-26，V2.1 新增）
 # 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1groups
 # Handler：src/api/enterprise_group_handler.erl + enterprise_group_logic create_group_tx
 # 请求/响应字段实证：logic 模块注释（workspace_id/title/members/owner/introduction；
 # 返回 {group_id, workspace_id, owner_user_id, member_count}）
 # ----------------------------------------------------------------------------
+# GET    /api/internal/v1/groups — 企业群列表（INT-26，V2.1 新增；只读）
+# ----------------------------------------------------------------------------
+get:
+  tags: [internal]
+  summary: 本应用建立的企业群列表
+  description: |
+    本 Application origin 建立（enterprise_group_origin active）的企业群
+    keyset 列表（created_at DESC, id DESC）。行集收窄为 active workspace 内
+    scope=workspace 且被生效 Grant 覆盖的 W（收窄谓词在服务端列表 SQL 内）。
+    人类自建群/他应用建群/已归档群不可见。分页为 CURSOR-V2 签名游标
+    （非法/过期/foreign 一律 400 invalid_request，客户端从首页重启）。
+  operationId: internalGroupList
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: limit
+      in: query
+      description: 页大小（缺省 50；1..100，越界 400 拒绝不截断）
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    - name: cursor
+      in: query
+      description: 上一页返回的 next_cursor（opaque）
+      schema: { type: string }
+  x-imboy-scope: groups:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  responses:
+    '200':
+      description: 企业群分页
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [items, limit, has_more, next_cursor]
+            additionalProperties: false
+            properties:
+              items:
+                type: array
+                items:
+                  type: object
+                  required: [group_id, workspace_id, title, member_count, created_at]
+                  additionalProperties: false
+                  properties:
+                    group_id: { type: integer, format: int64 }
+                    workspace_id: { type: integer, format: int64 }
+                    title: { type: string }
+                    member_count: { type: integer }
+                    created_at: { type: string, description: RFC3339 时间戳 }
+              limit: { type: integer, minimum: 1, maximum: 100 }
+              has_more: { type: boolean }
+              next_cursor: { type: [string, 'null'] }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }
 post:
   tags: [internal]
   summary: 创建 Workspace 企业群

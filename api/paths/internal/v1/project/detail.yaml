@@ -1,0 +1,50 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/project/detail.yaml
+# GET /api/internal/v1/projects/{project_id} — 项目详情（INT-29，V2.1 新增）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1projects~1{project_id}
+# Handler：src/api/enterprise_project_handler.erl project/3
+# 投影冻结（V2.1 §15.1 封闭投影）：列表项 + workspace_id + description。
+# ----------------------------------------------------------------------------
+get:
+  tags: [internal]
+  summary: 项目详情
+  description: |
+    单个项目详情。跨 Organization / 不存在 / 所属 Workspace 已归档一律
+    resource_not_found（IDOR 同不存在同体）；同 Organization 但无生效 Grant
+    覆盖项目所属 W → organization_boundary_violation（403）。
+  operationId: internalProjectDetail
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      description: 项目 TSID
+      schema: { type: integer, format: int64 }
+  x-imboy-scope: projects:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  responses:
+    '200':
+      description: 项目详情
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              [project_id, workspace_id, name, description, owner_id, status, created_at]
+            additionalProperties: false
+            properties:
+              project_id: { type: integer, format: int64 }
+              workspace_id: { type: integer, format: int64 }
+              name: { type: string }
+              description: { type: string }
+              owner_id: { type: integer, format: int64 }
+              status: { type: string, enum: [active, done] }
+              created_at: { type: string, description: RFC3339 时间戳 }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

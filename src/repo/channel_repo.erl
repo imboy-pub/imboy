@@ -17,6 +17,8 @@
 -export([list_subscribed/2]).
 -export([list_managed/1]).
 -export([update/2]).
+-export([internal_find_tx/3]).
+-export([internal_page_tx/4]).
 -export([update_tx/3]).
 -export([delete/1]).
 -export([delete_tx/2]).
@@ -543,3 +545,55 @@ normalize_since_param(SinceBin) when is_binary(SinceBin), SinceBin =/= <<>> ->
     end;
 normalize_since_param(_) ->
     <<"1970-01-01T00:00:00Z">>.
+
+%% ===================================================================
+%% V2.1 Internal 只读面（INT-30/31 adapter）
+%% ===================================================================
+
+%% @doc INT-31 详情定位（channel W 须经 workspace 归属 Org；scope=workspace
+%% AND status=1 强制——plan §6.2/§10.2）。跨 Org / 个人频道 / 非 status=1 /
+%% 不存在 → {error, not_found}（同体，不泄露存在性）。
+-spec internal_find_tx(any(), integer(), integer()) ->
+    {ok, map()} | {error, not_found | term()}.
+internal_find_tx(Conn, OrgId, ChannelId) when
+    is_integer(OrgId), is_integer(ChannelId), ChannelId > 0
+->
+    Sql =
+        <<"SELECT c.id, c.workspace_id, c.name, c.description,",
+            " c.subscriber_count, c.created_at FROM ", (tablename())/binary, " c",
+            " JOIN workspace w ON w.id = c.workspace_id",
+            " WHERE c.id = $1 AND w.organization_id = $2",
+            " AND w.status = 'active' AND c.scope = 'workspace' AND c.status = 1", " LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, [ChannelId, OrgId]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc INT-30 keyset 列表（workspace_id 必填由 handler 校验后传入；
+%% scope=workspace AND status=1 强制过滤）。排序 created_at DESC, id DESC。
+%% Grant 覆盖判定由 handler 经 boundary enforce（INT-30，workspace kind）
+%% 承担，本查询不重复覆盖谓词。
+-spec internal_page_tx(
+    any(), integer(), undefined | {binary(), integer()}, pos_integer()
+) -> {ok, [map()]} | {error, term()}.
+internal_page_tx(Conn, WsId, Pivot, Limit) when
+    is_integer(WsId), is_integer(Limit), Limit > 0
+->
+    {KeysetClause, Params0} =
+        case Pivot of
+            undefined ->
+                {<<>>, []};
+            {CreatedAt, Id} ->
+                {<<" AND (c.created_at, c.id) < ($2, $3)">>, [CreatedAt, Id]}
+        end,
+    Sql =
+        <<"SELECT c.id, c.workspace_id, c.name, c.subscriber_count, c.created_at", " FROM ",
+            (tablename())/binary, " c",
+            " WHERE c.workspace_id = $1 AND c.scope = 'workspace' AND c.status = 1",
+            KeysetClause/binary, " ORDER BY c.created_at DESC, c.id DESC", " LIMIT $",
+            (integer_to_binary(2 + length(Params0)))/binary>>,
+    case elib_pg:query(Conn, Sql, [WsId] ++ Params0 ++ [Limit]) of
+        {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
+    end.

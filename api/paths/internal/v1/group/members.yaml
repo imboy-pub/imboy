@@ -1,11 +1,79 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/internal/v1/group/members.yaml
 # PUT    /api/internal/v1/groups/{group_id}/members — 添加成员（INT-05）
+# GET    /api/internal/v1/groups/{group_id}/members — 成员列表（INT-27，V2.1 新增）
 # DELETE /api/internal/v1/groups/{group_id}/members — 移除成员（INT-06）
 # 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1groups~1{group_id}~1members
 # Handler：src/api/enterprise_group_handler.erl members_op（实证：external_user_ids 数组；
 # 响应实证自 logic 690-696：{group_id, member_count, added|removed, already_member|already_absent}）
 # ----------------------------------------------------------------------------
+# GET    /api/internal/v1/groups/{group_id}/members — 成员列表（INT-27，V2.1 新增；只读）
+# ----------------------------------------------------------------------------
+get:
+  tags: [internal]
+  summary: 企业群成员列表
+  description: |
+    群 active（status=1）成员 keyset 列表——§10.2 唯一升序 family
+    （created_at ASC, id ASC）。群定位跨 Org/个人群/已归档一律
+    resource_not_found（不泄露存在性）；同 Org 但无生效 Grant 覆盖群所属 W
+    → organization_boundary_violation（403）。分页为 CURSOR-V2 签名游标
+    （非法/过期/跨群游标一律 400 invalid_request）。
+  operationId: internalGroupMemberList
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: group_id
+      in: path
+      required: true
+      description: 企业群 TSID
+      schema: { type: integer, format: int64 }
+    - name: limit
+      in: query
+      description: 页大小（缺省 50；1..100，越界 400 拒绝不截断）
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    - name: cursor
+      in: query
+      description: 上一页返回的 next_cursor（opaque；绑定 group_id，跨群即拒）
+      schema: { type: string }
+  x-imboy-scope: groups:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  responses:
+    '200':
+      description: 成员分页（created_at ASC, id ASC）
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [items, limit, has_more, next_cursor]
+            additionalProperties: false
+            properties:
+              items:
+                type: array
+                items:
+                  type: object
+                  required: [user_id, role, created_at]
+                  additionalProperties: false
+                  properties:
+                    user_id: { type: integer, format: int64 }
+                    role:
+                      type: integer
+                      description: '0 未定义 1 成员 2/3 管理 4 群主 5 自定义（INT-20 同口径）'
+                    created_at: { type: string, description: RFC3339 入群时间戳 }
+              limit: { type: integer, minimum: 1, maximum: 100 }
+              has_more: { type: boolean }
+              next_cursor: { type: [string, 'null'] }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }
 put:
   tags: [internal]
   summary: 向企业群添加成员（幂等）

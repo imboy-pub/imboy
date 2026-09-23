@@ -12,6 +12,8 @@ get:
   description: |
     最小字段 + 成员硬上限（超限返回 invalid_request，绝不静默截断）。
     跨组织/个人群/已归档一律 resource_not_found（不泄露存在性）。
+    V2.1 §6.2/§7 FIX：读操作 scope 修正为 groups:read（与 routes registry/
+    boundary spec 一致；原 groups:write 是 drift）。
   operationId: internalGroupDetail
   security:
     - ibIntBearer: []
@@ -21,34 +23,39 @@ get:
       required: true
       description: 企业群 TSID
       schema: { type: integer, format: int64 }
-  x-imboy-scope: groups:write
+  x-imboy-scope: groups:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   responses:
     '200':
-      description: 群详情
+      description: 群详情（V2.1 §15.1：以修正后 leaf 为权威的封闭投影，与
+        enterprise_group_logic:group_detail_tx 实测键集逐字一致）
       content:
         application/json:
           schema:
             type: object
+            required:
+              [group_id, workspace_id, title, owner_user_id, member_count, members, origin]
+            additionalProperties: false
             properties:
               group_id: { type: integer, format: int64 }
               workspace_id: { type: integer, format: int64 }
               title: { type: string }
-              introduction: { type: string }
               owner_user_id: { type: integer, format: int64 }
               member_count: { type: integer }
               members:
                 type: array
                 items:
                   type: object
+                  required: [user_id, role, status]
+                  additionalProperties: false
                   properties:
                     user_id: { type: integer, format: int64 }
                     role: { type: string }
                     status: { type: string }
               origin:
                 type: [object, 'null']
-                description: 来源标记（owner_app / mine 等；非本应用建群为 null）
+                description: 来源标记（application_id/workspace_id/status/mine；非本应用建群为 null）
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
     '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }

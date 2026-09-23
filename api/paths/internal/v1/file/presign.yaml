@@ -4,7 +4,10 @@
 # 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1files~1presign
 # Handler：src/api/enterprise_asset_handler.erl presign/3
 # 请求/响应实证：enterprise_asset_logic 模块注释（file_name 必填 1..256、
-# mime_type 必填（白名单预检）、size_bytes 可选预检；返回 4 字段）
+# mime_type 必填（白名单预检）、size_bytes 可选预检）
+# V2.1 §15.1 修正：runtime 恒返回 object_key/put_url/expires_at(integer epoch
+# seconds) 三字段且无 file_id——OpenAPI 对齐（删除不存在的 file_id；expires_at
+# 由 ISO string 改 integer；三字段全部 required）
 # ----------------------------------------------------------------------------
 post:
   tags: [internal]
@@ -51,11 +54,14 @@ post:
         application/json:
           schema:
             type: object
+            required: [object_key, put_url, expires_at]
+            additionalProperties: false
             properties:
-              file_id: { type: integer, format: int64 }
               object_key: { type: string }
               put_url: { type: string, format: uri }
-              expires_at: { type: string, description: 过期时间（ISO-8601） }
+              expires_at:
+                type: integer
+                description: 过期时间（epoch seconds）
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
     '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }

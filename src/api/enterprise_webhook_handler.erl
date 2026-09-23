@@ -56,9 +56,19 @@ configure(<<"PUT">>, Req0, State) ->
     Ctx0 = maps:get(enterprise_internal, State, #{}),
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(
-        <<"PUT">>, <<"/api/internal/v1/webhook">>, Params
-    ),
+    case
+        enterprise_internal_idempotency:request_digest(
+            <<"PUT">>, <<"/api/internal/v1/webhook">>, Params
+        )
+    of
+        {ok, Digest} -> configure_tx(Req0, Ctx0, IdemKey, Digest, Params);
+        {error, non_canonical} -> enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
+configure(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec configure_tx(cowboy_req:req(), map(), binary(), binary(), map()) -> cowboy_req:req().
+configure_tx(Req0, Ctx0, IdemKey, Digest, Params) ->
     TxResult =
         elib_pg:with_tx(fun(Conn) ->
             case
@@ -72,10 +82,17 @@ configure(<<"PUT">>, Req0, State) ->
                         enterprise_webhook_logic:configure_tx(Conn, Ctx, params_to_input(Params))
                     of
                         {ok, Result} ->
+                            Body = jsone:encode(Result),
                             _ = enterprise_internal_idempotency:complete_tx(
-                                Conn, Ctx0, <<"enterprise_webhook_config">>, IdemKey, null, 200
+                                Conn,
+                                Ctx0,
+                                <<"enterprise_webhook_config">>,
+                                IdemKey,
+                                null,
+                                200,
+                                Body
                             ),
-                            {tx_ok, Result};
+                            {tx_ok, Body};
                         {error, {Code, _Detail}} ->
                             throw({rollback, {business_error, Code}})
                     end;
@@ -84,15 +101,15 @@ configure(<<"PUT">>, Req0, State) ->
             end
         end),
     case TxResult of
-        {tx_ok, Result} ->
-            reply_json(Req0, 200, Result);
+        {tx_ok, Body} ->
+            reply_json_body(Req0, 200, Body);
         {rollback, {business_error, Code}} ->
             enterprise_internal_error:reply(Req0, Code);
         {rollback, Reason} ->
             ?ERROR_LOG("enterprise_webhook_handler configure rollback: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>);
-        {ok, replay, #{response_code := Code}} ->
-            reply_json(Req0, ok_code(Code), #{<<"replayed">> => true});
+        {ok, replay, #{response_code := Code, response_body := Body}} ->
+            replay_json_body(Req0, Code, Body);
         {ok, pending} ->
             enterprise_internal_error:reply(Req0, <<"idempotency_conflict">>);
         {error, digest_conflict} ->
@@ -100,20 +117,28 @@ configure(<<"PUT">>, Req0, State) ->
         {error, Reason} ->
             ?ERROR_LOG("enterprise_webhook_handler configure error: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
-    end;
-configure(_, Req0, _State) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+    end.
 
 -spec replay(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 replay(<<"POST">>, Req0, State) ->
     Ctx0 = maps:get(enterprise_internal, State, #{}),
     DeliveryId = maps:get(delivery_id, State, undefined),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(
-        <<"POST">>,
-        <<"/api/internal/v1/webhook/deliveries/", (to_bin(DeliveryId))/binary, "/replay">>,
-        #{}
-    ),
+    case
+        enterprise_internal_idempotency:request_digest(
+            <<"POST">>,
+            <<"/api/internal/v1/webhook/deliveries/", (to_bin(DeliveryId))/binary, "/replay">>,
+            #{}
+        )
+    of
+        {ok, Digest} -> replay_tx(Req0, Ctx0, DeliveryId, IdemKey, Digest);
+        {error, non_canonical} -> enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
+replay(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec replay_tx(cowboy_req:req(), map(), term(), binary(), binary()) -> cowboy_req:req().
+replay_tx(Req0, Ctx0, DeliveryId, IdemKey, Digest) ->
     TxResult =
         elib_pg:with_tx(fun(Conn) ->
             case
@@ -124,10 +149,17 @@ replay(<<"POST">>, Req0, State) ->
                 {ok, inserted} ->
                     case enterprise_webhook_logic:replay_tx(Conn, Ctx0, to_bin(DeliveryId)) of
                         {ok, Result} ->
+                            Body = jsone:encode(Result),
                             _ = enterprise_internal_idempotency:complete_tx(
-                                Conn, Ctx0, <<"enterprise_webhook_replay">>, IdemKey, null, 200
+                                Conn,
+                                Ctx0,
+                                <<"enterprise_webhook_replay">>,
+                                IdemKey,
+                                null,
+                                200,
+                                Body
                             ),
-                            {tx_ok, Result};
+                            {tx_ok, Body};
                         {error, {Code, _Detail}} ->
                             throw({rollback, {business_error, Code}})
                     end;
@@ -136,15 +168,15 @@ replay(<<"POST">>, Req0, State) ->
             end
         end),
     case TxResult of
-        {tx_ok, Result} ->
-            reply_json(Req0, 200, Result);
+        {tx_ok, Body} ->
+            reply_json_body(Req0, 200, Body);
         {rollback, {business_error, Code}} ->
             enterprise_internal_error:reply(Req0, Code);
         {rollback, Reason} ->
             ?ERROR_LOG("enterprise_webhook_handler replay rollback: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>);
-        {ok, replay, #{response_code := Code}} ->
-            reply_json(Req0, ok_code(Code), #{<<"replayed">> => true});
+        {ok, replay, #{response_code := Code, response_body := Body}} ->
+            replay_json_body(Req0, Code, Body);
         {ok, pending} ->
             enterprise_internal_error:reply(Req0, <<"idempotency_conflict">>);
         {error, digest_conflict} ->
@@ -152,9 +184,7 @@ replay(<<"POST">>, Req0, State) ->
         {error, Reason} ->
             ?ERROR_LOG("enterprise_webhook_handler replay error: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
-    end;
-replay(_, Req0, _State) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+    end.
 
 %% @doc GET /api/internal/v1/webhook/deliveries（FULL-03 提议 INT-23，待 A0 接线）：
 %% 本 Application 的投递元数据列表 + 健康度摘要（成功率/重试/死信）。
@@ -238,6 +268,28 @@ to_bin(_) -> <<>>.
 reply_json(Req0, Status, Map) ->
     Body = jsone:encode(Map),
     cowboy_req:reply(Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0).
+
+-spec reply_json_body(cowboy_req:req(), non_neg_integer(), binary()) -> cowboy_req:req().
+reply_json_body(Req0, Status, Body) ->
+    cowboy_req:reply(
+        Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0
+    ).
+
+-spec replay_json_body(cowboy_req:req(), non_neg_integer(), binary() | null) ->
+    cowboy_req:req().
+replay_json_body(Req0, Code, Body) ->
+    BodyBin =
+        case Body of
+            B when is_binary(B), B =/= <<>> -> B;
+            _ -> <<"{}">>
+        end,
+    Headers = maps:from_list([enterprise_internal_idempotency:replay_header()]),
+    cowboy_req:reply(
+        ok_code(Code),
+        Headers#{<<"content-type">> => <<"application/json">>},
+        BodyBin,
+        Req0
+    ).
 
 idempotency_key(Req0) ->
     case cowboy_req:header(<<"idempotency-key">>, Req0) of

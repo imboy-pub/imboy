@@ -72,7 +72,20 @@ bind(<<"PUT">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(<<"PUT">>, ?BIND_PATH, Params),
+    case enterprise_internal_idempotency:request_digest(<<"PUT">>, ?BIND_PATH, Params) of
+        {ok, Digest} ->
+            bind_tx(Req0, Ctx, IdemKey, Digest, Params);
+        {error, non_canonical} ->
+            %% §11：body 不可规范化（float/非法 JSON）→ 400 invalid_request
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
+bind(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc INT-02 单事务幂等体（§11 v2：complete_tx/7 存 response 快照，
+%% replay 按存储快照字节精确重放）。
+-spec bind_tx(cowboy_req:req(), map(), binary(), binary(), map()) -> cowboy_req:req().
+bind_tx(Req0, Ctx, IdemKey, Digest, Params) ->
     TxResult =
         elib_pg:with_tx(fun(Conn) ->
             case
@@ -91,15 +104,17 @@ bind(<<"PUT">>, Req0, State) ->
                         end)
                     of
                         {ok, Result} ->
+                            Body = jsone:encode(Result),
                             _ = enterprise_internal_idempotency:complete_tx(
                                 Conn,
                                 Ctx,
                                 <<"identity_mapping">>,
                                 IdemKey,
                                 maps:get(<<"user_id">>, Result, null),
-                                200
+                                200,
+                                Body
                             ),
-                            {tx_ok, Result};
+                            {tx_ok, Body};
                         {error, {Code, _Detail}} ->
                             throw({rollback, {business_error, Code}})
                     end;
@@ -108,17 +123,15 @@ bind(<<"PUT">>, Req0, State) ->
             end
         end),
     case TxResult of
-        {tx_ok, Result} ->
-            reply_json(Req0, 200, Result);
+        {tx_ok, Body} ->
+            reply_json_body(Req0, 200, Body);
         {rollback, {business_error, Code}} ->
             enterprise_internal_error:reply(Req0, Code);
         {rollback, Reason} ->
             ?ERROR_LOG("enterprise_identity_handler bind rollback: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>);
-        {ok, replay, #{resource_id := RId, response_code := Code}} ->
-            reply_json(Req0, ok_code(Code), #{
-                <<"replayed">> => true, <<"user_id">> => RId, <<"status">> => <<"active">>
-            });
+        {ok, replay, #{response_code := Code, response_body := Body}} ->
+            replay_json_body(Req0, Code, Body);
         {ok, pending} ->
             enterprise_internal_error:reply(Req0, <<"idempotency_conflict">>);
         {error, digest_conflict} ->
@@ -126,9 +139,7 @@ bind(<<"PUT">>, Req0, State) ->
         {error, Reason} ->
             ?ERROR_LOG("enterprise_identity_handler bind idempotency error: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
-    end;
-bind(_, Req0, _State) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+    end.
 
 -spec resolve(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 resolve(<<"POST">>, Req0, State) ->
@@ -164,9 +175,15 @@ revoke(<<"DELETE">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(
-        <<"DELETE">>, ?BIND_PATH, Params
-    ),
+    case enterprise_internal_idempotency:request_digest(<<"DELETE">>, ?BIND_PATH, Params) of
+        {ok, Digest} -> revoke_tx(Req0, Ctx, IdemKey, Digest, Params);
+        {error, non_canonical} -> enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
+revoke(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec revoke_tx(cowboy_req:req(), map(), binary(), binary(), map()) -> cowboy_req:req().
+revoke_tx(Req0, Ctx, IdemKey, Digest, Params) ->
     TxResult =
         elib_pg:with_tx(fun(Conn) ->
             case
@@ -184,15 +201,17 @@ revoke(<<"DELETE">>, Req0, State) ->
                         end)
                     of
                         {ok, Result} ->
+                            Body = jsone:encode(Result),
                             _ = enterprise_internal_idempotency:complete_tx(
                                 Conn,
                                 Ctx,
                                 <<"identity_mapping_revoke">>,
                                 IdemKey,
                                 maps:get(<<"user_id">>, Result, null),
-                                200
+                                200,
+                                Body
                             ),
-                            {tx_ok, Result};
+                            {tx_ok, Body};
                         {error, {Code, _Detail}} ->
                             throw({rollback, {business_error, Code}})
                     end;
@@ -201,17 +220,15 @@ revoke(<<"DELETE">>, Req0, State) ->
             end
         end),
     case TxResult of
-        {tx_ok, Result} ->
-            reply_json(Req0, 200, Result);
+        {tx_ok, Body} ->
+            reply_json_body(Req0, 200, Body);
         {rollback, {business_error, Code}} ->
             enterprise_internal_error:reply(Req0, Code);
         {rollback, Reason} ->
             ?ERROR_LOG("enterprise_identity_handler revoke rollback: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>);
-        {ok, replay, #{resource_id := RId, response_code := Code}} ->
-            reply_json(Req0, ok_code(Code), #{
-                <<"replayed">> => true, <<"user_id">> => RId, <<"status">> => <<"removed">>
-            });
+        {ok, replay, #{response_code := Code, response_body := Body}} ->
+            replay_json_body(Req0, Code, Body);
         {ok, pending} ->
             enterprise_internal_error:reply(Req0, <<"idempotency_conflict">>);
         {error, digest_conflict} ->
@@ -219,9 +236,7 @@ revoke(<<"DELETE">>, Req0, State) ->
         {error, Reason} ->
             ?ERROR_LOG("enterprise_identity_handler revoke error: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
-    end;
-revoke(_, Req0, _State) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+    end.
 
 %% @doc INT-16（FULL-02 新增，待 A0 接线）：映射 cursor directory（受限分页）。
 %% 路由：POST /api/internal/v1/identity-mappings/directory -> #{action => directory}
@@ -297,6 +312,31 @@ to_bin(_) -> undefined.
 reply_json(Req0, Status, Map) ->
     Body = jsone:encode(Map),
     cowboy_req:reply(Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0).
+
+%% @doc 首次应答：回完整编码体（与 complete_tx 存储字节一致，§11）。
+-spec reply_json_body(cowboy_req:req(), non_neg_integer(), binary()) -> cowboy_req:req().
+reply_json_body(Req0, Status, Body) ->
+    cowboy_req:reply(
+        Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0
+    ).
+
+%% @doc 重放应答（§11 字节精确 + Idempotent-Replayed 头；快照缺失防御态
+%% 回 "{}"，不重建业务体）。
+-spec replay_json_body(cowboy_req:req(), non_neg_integer(), binary() | null) ->
+    cowboy_req:req().
+replay_json_body(Req0, Code, Body) ->
+    BodyBin =
+        case Body of
+            B when is_binary(B), B =/= <<>> -> B;
+            _ -> <<"{}">>
+        end,
+    Headers = maps:from_list([enterprise_internal_idempotency:replay_header()]),
+    cowboy_req:reply(
+        ok_code(Code),
+        Headers#{<<"content-type">> => <<"application/json">>},
+        BodyBin,
+        Req0
+    ).
 
 idempotency_key(Req0) ->
     case cowboy_req:header(<<"idempotency-key">>, Req0) of
