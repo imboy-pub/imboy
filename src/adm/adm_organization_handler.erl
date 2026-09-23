@@ -430,7 +430,10 @@ transfer_write(Req0, State, AdmUserId, OrgId, TargetUid) ->
                 AdmUserId,
                 OrgId,
                 <<"owner_transfer">>,
-                #{<<"target_user_id">> => TargetUid},
+                #{
+                    <<"target_user_id">> => TargetUid,
+                    <<"previous_owner_id">> => maps:get(previous_owner_id, Result, 0)
+                },
                 Req0
             ),
             _ = State,
