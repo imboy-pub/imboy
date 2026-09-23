@@ -384,13 +384,14 @@ case "$*" in
   *"build:widget"*)
     [ "${MOCK_FAIL_AT:-}" = "build" ] && exit 1
     D="$PWD/dist-widget"
-    mkdir -p "$D/widget" "$D/assets"
+    mkdir -p "$D/widget" "$D/assets" "$D/widget-assets"
     printf 'loader-js\n' >"$D/loader.js"
     printf '{"source_head":"%s","files":[]}\n' "$TEST_SOURCE_HEAD" >"$D/manifest.json"
     shasum -a 256 "$D/manifest.json" | awk '{print $1}' >"$D/manifest.sha256"
     printf 'ok\n' >"$D/health.txt"
     printf '<html>widget</html>\n' >"$D/widget/index.html"
     printf 'x' >"$D/assets/cs-widget-deadbeef.js"
+    printf 'frame-v2\n' >"$D/widget-assets/cs-widget.v2.js"
     log_event BUN_BUILD_WIDGET
     exit 0 ;;
   *"build"*)

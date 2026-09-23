@@ -342,6 +342,13 @@ server {
         root $CS_ROOT_REAL;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }
+    # S4 版本化帧资产（/w/ frame 引用 cs-widget.v2.js）：稳定别名内容随发布
+    # 原位更新，必须 no-cache 重验证（immutable 会把热修冻结最长一年）；
+    # 对齐 imboyadmin docker/widget/nginx.conf 冻结表。
+    location ^~ /widget-assets/ {
+        root $CS_ROOT_REAL;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+    }
     location ^~ /widget/ {
         root $CS_ROOT_REAL;
         add_header Cache-Control "no-store" always;
@@ -385,6 +392,8 @@ cs_verify_artifact_dir() {
   done
   [[ -d "$d/assets" ]] || fail "Widget 产物缺失: assets/"
   [[ -n "$(ls -A "$d/assets" 2>/dev/null)" ]] || fail "Widget 产物 assets/ 为空"
+  # S4 版本化帧资产：/w/ frame HTML 固定引用该字面路径，缺失即线上 404
+  [[ -s "$d/widget-assets/cs-widget.v2.js" ]] || fail "Widget 产物缺失: widget-assets/cs-widget.v2.js"
 }
 
 # 预 SSH 的 CS_BUILD_DIR 解析：固定从源码仓构建，禁止发布陈旧 ignored 产物。

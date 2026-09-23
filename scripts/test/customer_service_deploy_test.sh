@@ -272,7 +272,7 @@ printf '%s\tbun\t%s\n' "$FB_N" "$*" >>"$FB_LOG"
 [ "$1" = "run" ] && [ "$2" = "build:widget" ] || exit 91
 art="${CS_FAKE_ART_DIR:?CS_FAKE_ART_DIR required}"
 rm -rf "$art"
-mkdir -p "$art/assets" "$art/widget"
+mkdir -p "$art/assets" "$art/widget" "$art/widget-assets"
 printf '// widget loader fixture run 20260920t150315\n' >"$art/loader.js"
 printf '{"fixture":"widget-dist","run":"20260920t150315","source_head":"%s"}\n' \
   "$(git rev-parse HEAD)" >"$art/manifest.json"
@@ -281,6 +281,7 @@ printf '%s\n' "$h" >"$art/manifest.sha256"
 printf 'ok\n' >"$art/health.txt"
 printf '<!doctype html><div id="cs-widget-root"></div>\n' >"$art/widget/index.html"
 printf 'console.log("asset");\n' >"$art/assets/app.20260920t150315.js"
+printf 'console.log("frame v2");\n' >"$art/widget-assets/cs-widget.v2.js"
 exit 0
 FB
 
