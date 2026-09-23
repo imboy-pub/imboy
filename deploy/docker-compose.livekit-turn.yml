@@ -18,7 +18,7 @@
 #    （compose 对 environment 按 key 合并，此处整体覆盖该变量；差异仅 turn 段）。
 #    改基础配置时必须同步改这里，否则 TURN 形态下悄悄回退旧值。
 #
-# 依赖镜像：与基础 compose 相同（livekit/livekit-server:v1.13.7 精确 tag）。
+# 依赖镜像：与基础 compose 相同（livekit/livekit-server@sha256:5d3dcc47… digest 锁定）。
 
 services:
 

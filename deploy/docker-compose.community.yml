@@ -26,7 +26,7 @@
 #   - ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION}      （同一发布流水线构建）
 #   - dxflrs/garage:v2.3.0                   （官方，与 scripts/garage-install.sh 同版本）
 #   - nginx:1.27-alpine / certbot/certbot:latest（官方）
-#   - livekit/livekit-server:v1.13.7（官方，精确 tag 锁定 —— LK-01 版本合同；禁止浮动）
+#   - livekit/livekit-server@sha256:5d3dcc47…（官方 v1.13.7 amd64，image@digest 锁定 —— LK-01 版本合同；禁止浮动 tag）
 #
 # ─── 日志留存合规说明 / Log Retention Compliance Note ─────────────────────────
 # 等保2.0（GB/T 22239-2019）第三级要求：安全审计日志留存 ≥ 6 个月（约 180 天）。
@@ -358,8 +358,10 @@ services:
         max-file: "30"
 
   # ========== LiveKit SFU（群通话/屏幕共享媒体面）==========
-  # LK-01 版本合同：精确 tag v1.13.7（amd64 manifest digest
-  # sha256:5d3dcc47…，部署前 docker manifest inspect 核对；回滚 digest 见
+  # LK-01 版本合同：image@digest 双重锁定 v1.13.7（amd64/linux per-arch manifest
+  # digest sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52，
+  # 2026-09-23 registry API 复验；index digest 为 sha256:6fd3b708…，二者并存为真，
+  # 锁定以 per-arch 为准——生产为 x86_64。回滚 digest 见
   # .Codex/runs/.../A1/LK-01/version-lock-contract.md §1.3）。
   #
   # 信令：7880 仅绑 127.0.0.1，TLS 由反代终结（wss://<RTC_DOMAIN> → 7880）。
@@ -376,7 +378,7 @@ services:
   # imboy 在 /api/v1/rtc/room/join 里 consistent_hash(room_name) 决定发哪个
   # 节点的 ws_url，同房间参与者必落同一节点 → 节点间无需通信。
   imboy_livekit:
-    image: livekit/livekit-server:v1.13.7
+    image: livekit/livekit-server@sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52
     container_name: imboy_livekit
     restart: unless-stopped
     environment:

@@ -222,9 +222,16 @@ else
   bad "base+TURN overlay 渲染成功" "$(tail -5 "$TMP_ROOT/render.err")"
 fi
 
-LK_IMAGE_COUNT="$(grep -c 'image: livekit/livekit-server:v1.13.7$' "$RENDER" || true)"
-[ "$LK_IMAGE_COUNT" = 1 ] && ok "有且只有一份 LiveKit（精确 tag v1.13.7）" \
-  || bad "有且只有一份 LiveKit（精确 tag v1.13.7）" "count=$LK_IMAGE_COUNT"
+LK_DIGEST="sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52"
+LK_IMAGE_COUNT="$(grep -c "image: livekit/livekit-server@${LK_DIGEST}\$" "$RENDER" || true)"
+[ "$LK_IMAGE_COUNT" = 1 ] && ok "有且只有一份 LiveKit（image@digest 锁定 v1.13.7 amd64）" \
+  || bad "有且只有一份 LiveKit（image@digest 锁定 v1.13.7 amd64）" "count=$LK_IMAGE_COUNT"
+# digest 锁定强断言：渲染结果不得残留裸 tag 引用（防回退浮动 tag）
+if grep -q 'image: livekit/livekit-server:v' "$RENDER"; then
+  bad "无裸 tag LiveKit 引用" "$(grep 'image: livekit/livekit-server:v' "$RENDER" | head -2)"
+else
+  ok "无裸 tag LiveKit 引用"
+fi
 
 assert_not_grep "渲染无 redis"     '(^|[^a-z])redis'  "$RENDER"
 assert_not_grep "渲染无 coturn"    'coturn'           "$RENDER"
