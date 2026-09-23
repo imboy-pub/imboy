@@ -292,28 +292,29 @@ maybe_rotate(Conn, Principal, Rotate, Url, Events, Status) ->
             Secret = new_secret(),
             case enterprise_webhook_repo:set_secret_tx(Conn, Principal, Secret) of
                 {ok, updated} ->
-                    {ok,
-                        with_generation(
-                            Conn,
-                            Principal,
-                            result(Url, Events, Status, true, #{
-                                <<"secret">> => Secret
-                            })
-                        )};
+                    configured_reply(
+                        Conn,
+                        Principal,
+                        result(Url, Events, Status, true, #{
+                            <<"secret">> => Secret
+                        })
+                    );
                 {error, no_key} ->
                     {error, {<<"security_gate_closed">>, webhook_secret_key_missing}};
                 {error, Reason} ->
                     {error, {<<"internal_error">>, Reason}}
             end;
         false ->
-            {ok, with_generation(Conn, Principal, result(Url, Events, Status, false, #{}))}
+            configured_reply(Conn, Principal, result(Url, Events, Status, false, #{}))
     end.
 
-%% @doc 端点配置代际：任何配置写入都 +1；返回值同时进配置响应与后续入箱快照。
-with_generation(Conn, Principal, Result) ->
+%% @doc 配置成功统一出口：endpoint_generation 回填成功 → {ok, Result}；
+%% 代际持久化失败 → {error, internal_error}（§15.1：不得 2xx 缺字段返回成功，
+%% 让整个配置事务回滚）。
+configured_reply(Conn, Principal, Result) ->
     case enterprise_webhook_repo:bump_generation_tx(Conn, Principal) of
-        {ok, Gen} -> Result#{<<"endpoint_generation">> => Gen};
-        {error, _} -> Result
+        {ok, Gen} -> {ok, Result#{<<"endpoint_generation">> => Gen}};
+        {error, Reason} -> {error, {<<"internal_error">>, {generation_bump_failed, Reason}}}
     end.
 
 first_time(Conn, Principal) ->

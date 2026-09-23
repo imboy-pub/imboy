@@ -53,14 +53,20 @@ presign(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(
-        <<"POST">>, <<"/api/internal/v1/files/presign">>, Params
-    ),
-    with_idempotency(Req0, Ctx, <<"enterprise_asset_presign">>, IdemKey, Digest, fun(Conn) ->
-        with_boundary(Conn, Ctx, <<"INT-07">>, undefined, fun() ->
-            enterprise_asset_logic:presign_tx(Conn, Ctx, params_to_input(Params))
-        end)
-    end);
+    case
+        enterprise_internal_idempotency:request_digest(
+            <<"POST">>, <<"/api/internal/v1/files/presign">>, Params
+        )
+    of
+        {ok, Digest} ->
+            with_idempotency(Req0, Ctx, <<"enterprise_asset_presign">>, IdemKey, Digest, fun(Conn) ->
+                with_boundary(Conn, Ctx, <<"INT-07">>, undefined, fun() ->
+                    enterprise_asset_logic:presign_tx(Conn, Ctx, params_to_input(Params))
+                end)
+            end);
+        {error, non_canonical} ->
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
 presign(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
@@ -69,14 +75,20 @@ confirm(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(
-        <<"POST">>, <<"/api/internal/v1/files/confirm">>, Params
-    ),
-    with_idempotency(Req0, Ctx, <<"attachment">>, IdemKey, Digest, fun(Conn) ->
-        with_boundary(Conn, Ctx, <<"INT-08">>, undefined, fun() ->
-            enterprise_asset_logic:confirm_tx(Conn, Ctx, params_to_input(Params))
-        end)
-    end);
+    case
+        enterprise_internal_idempotency:request_digest(
+            <<"POST">>, <<"/api/internal/v1/files/confirm">>, Params
+        )
+    of
+        {ok, Digest} ->
+            with_idempotency(Req0, Ctx, <<"attachment">>, IdemKey, Digest, fun(Conn) ->
+                with_boundary(Conn, Ctx, <<"INT-08">>, undefined, fun() ->
+                    enterprise_asset_logic:confirm_tx(Conn, Ctx, params_to_input(Params))
+                end)
+            end);
+        {error, non_canonical} ->
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
 confirm(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
@@ -88,14 +100,24 @@ governance(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     Params = elib_param:post(Req0),
     IdemKey = idempotency_key(Req0),
-    Digest = enterprise_internal_idempotency:request_digest(
-        <<"POST">>, <<"/api/internal/v1/files/governance">>, Params
-    ),
-    with_idempotency(Req0, Ctx, <<"enterprise_asset_governance">>, IdemKey, Digest, fun(Conn) ->
-        with_boundary(Conn, Ctx, <<"INT-22">>, undefined, fun() ->
-            enterprise_asset_retention_logic:governance_tx(Conn, Ctx, params_to_input(Params))
-        end)
-    end);
+    case
+        enterprise_internal_idempotency:request_digest(
+            <<"POST">>, <<"/api/internal/v1/files/governance">>, Params
+        )
+    of
+        {ok, Digest} ->
+            with_idempotency(
+                Req0, Ctx, <<"enterprise_asset_governance">>, IdemKey, Digest, fun(Conn) ->
+                    with_boundary(Conn, Ctx, <<"INT-22">>, undefined, fun() ->
+                        enterprise_asset_retention_logic:governance_tx(
+                            Conn, Ctx, params_to_input(Params)
+                        )
+                    end)
+                end
+            );
+        {error, non_canonical} ->
+            enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
 governance(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
@@ -127,10 +149,17 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun) ->
                 {ok, inserted} ->
                     case LogicFun(Conn) of
                         {ok, Result} ->
+                            Body = jsone:encode(Result),
                             _ = enterprise_internal_idempotency:complete_tx(
-                                Conn, Ctx, ResourceType, IdemKey, resource_id_of(Result), 200
+                                Conn,
+                                Ctx,
+                                ResourceType,
+                                IdemKey,
+                                resource_id_of(Result),
+                                200,
+                                Body
                             ),
-                            {tx_ok, Result};
+                            {tx_ok, Body};
                         {error, {Code, _Detail}} ->
                             throw({rollback, {business_error, Code}})
                     end;
@@ -139,8 +168,8 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun) ->
             end
         end),
     case TxResult of
-        {tx_ok, Result} ->
-            reply_json(Req0, 200, Result);
+        {tx_ok, Body} ->
+            reply_json_body(Req0, 200, Body);
         {rollback, {business_error, Code}} ->
             enterprise_webhook_logic:emit_event_failed(
                 Ctx,
@@ -152,8 +181,8 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun) ->
         {rollback, Reason} ->
             ?ERROR_LOG("enterprise_asset_handler tx rollback: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>);
-        {ok, replay, #{resource_id := RId, response_code := Code}} ->
-            reply_json(Req0, ok_code(Code), #{<<"replayed">> => true, <<"file_id">> => RId});
+        {ok, replay, #{response_code := Code, response_body := Body}} ->
+            replay_json_body(Req0, Code, Body);
         {ok, pending} ->
             enterprise_internal_error:reply(Req0, <<"idempotency_conflict">>);
         {error, digest_conflict} ->
@@ -178,6 +207,28 @@ ok_code(_) -> 200.
 reply_json(Req0, Status, Map) ->
     Body = jsone:encode(Map),
     cowboy_req:reply(Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0).
+
+-spec reply_json_body(cowboy_req:req(), non_neg_integer(), binary()) -> cowboy_req:req().
+reply_json_body(Req0, Status, Body) ->
+    cowboy_req:reply(
+        Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0
+    ).
+
+-spec replay_json_body(cowboy_req:req(), non_neg_integer(), binary() | null) ->
+    cowboy_req:req().
+replay_json_body(Req0, Code, Body) ->
+    BodyBin =
+        case Body of
+            B when is_binary(B), B =/= <<>> -> B;
+            _ -> <<"{}">>
+        end,
+    Headers = maps:from_list([enterprise_internal_idempotency:replay_header()]),
+    cowboy_req:reply(
+        ok_code(Code),
+        Headers#{<<"content-type">> => <<"application/json">>},
+        BodyBin,
+        Req0
+    ).
 
 idempotency_key(Req0) ->
     case cowboy_req:header(<<"idempotency-key">>, Req0) of

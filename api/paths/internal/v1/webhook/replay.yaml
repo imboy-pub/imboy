@@ -3,7 +3,8 @@
 # POST /api/internal/v1/webhook/deliveries/{delivery_id}/replay — 重放投递（INT-13）
 # 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1webhook~1deliveries~1{delivery_id}~1replay
 # Handler：src/api/enterprise_webhook_handler.erl replay/3
-# 响应实证：handler replay 成功 {replayed: true}；幂等资源=新 delivery 行
+# V2.1 §15.1 修正：runtime registry idempotency=required（Idempotency-Key
+# 必填）；同 key 同 payload 按存储快照字节精确重放 + Idempotent-Replayed: true
 # ----------------------------------------------------------------------------
 post:
   tags: [internal]
@@ -22,19 +23,25 @@ post:
       schema: { type: string, minLength: 1 }
     - name: Idempotency-Key
       in: header
-      required: false
-      description: 幂等键（平台对 replay 派生专用幂等资源；可不传）
-      schema: { type: string }
+      required: true
+      description: 幂等键（1..128 可打印 ASCII；同 key 同 payload 精确重放原响应）
+      schema: { type: string, minLength: 1, maxLength: 128 }
   x-imboy-scope: webhooks:manage
   x-imboy-rate-bucket: internal_write
-  x-imboy-idempotency: platform_derived
+  x-imboy-idempotency: required
   responses:
     '200':
-      description: 重放受理
+      description: 重放受理（同 key 重放返回首次 status/body + Idempotent-Replayed 头）
+      headers:
+        Idempotent-Replayed:
+          description: 仅幂等重放路径出现（true）
+          schema: { type: string, enum: ['true'] }
       content:
         application/json:
           schema:
             type: object
+            required: [replayed]
+            additionalProperties: false
             properties:
               replayed:
                 type: boolean

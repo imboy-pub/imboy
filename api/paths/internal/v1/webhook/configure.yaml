@@ -55,6 +55,8 @@ put:
         application/json:
           schema:
             type: object
+            required: [url, events, status, rotated, endpoint_generation]
+            additionalProperties: false
             properties:
               url: { type: string, format: uri }
               events:
@@ -65,6 +67,11 @@ put:
               secret:
                 type: [string, 'null']
                 description: rotate=true 时返回新 secret 明文（仅此一次）；否则 null
+              endpoint_generation:
+                type: integer
+                description: |
+                  端点配置代际（任何配置写入 +1）。V2.1 §15.1：required——
+                  generation 持久化失败时整个配置事务失败，不以 2xx 缺字段返回。
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
     '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
