@@ -15,6 +15,16 @@
 # 本期盘点（2026-09-23，本地 main 树 cdd88b9c 实测，classify.sh --emit-known 机械生成）：
 #   elvis          实测 502 条（elvis 5.0.4 homebrew；含上一期 304 条存量，净增 198）
 #   gradualizer    实测 362 条（678 模块 failing 362；含上一期 277 条存量）
+# 收编构成审查（2026-09-23 review 轮，全量统计非抽样）：
+#   elvis        941 violations / 502 文件 / 32 条规则——全部为风格/结构/命名类
+#                （top: dont_repeat_yourself 253、behaviour_spelling 120、
+#                no_deep_nesting 93、no_throw 63、no_if_expression 54），
+#                无缺陷指示类规则上榜，收编安全。
+#   dialyzer     385 指纹构成：pattern/guard 类型收窄 238、契约不符 31、
+#                调用形态 17、Unknown function 7（imboy_hird→hird_audit/
+#                hird_tool_dispatch，模块真实存在于工作区级 hird/runtime/
+#                项目——跨项目依赖的已知豁免，非拼错）、Unknown type 1、
+#                其他 91。基线收编无误。
 #   eqwalizer-lib  本地无 ELP 环境未重盘，保留 2026-08-22 清单，待推送后首跑 nightly 回填
 #   full-eunit     本地全量未重盘（45min 边界），user_ds_tests 已单跑全绿；待首跑回填
 # 首版盘点来源（2026-08-22，macOS 本机实测，见文件末尾 diff 附注）：
@@ -45,10 +55,12 @@ gates:
       agent_task_logic_tests（concurrent 抖动）、cs_pg_widget / group_user_id_sum_p0
       （CI config/sys 口径单跑绿）均不入册。
     known_failures:
-      - push_provider_jpush_tests    # 全量套件间干扰（单跑 22/22 绿）
+      - push_provider_jpush_tests    # 套件间干扰，随跑序漂移（单跑 22/22 绿）
       - push_notification_logic_tests  # 同上（单跑 32/32 绿）
       - ai_agent_proactive_tests   # 同上（单跑 13/13 绿）
-      - cors_face_tests            # 全量形态为 adm_owner_activation 池冲突（单跑断言已修 8/8 绿）
+      - agent_task_logic_tests     # 同上（单跑 8/8 绿；concurrent 用例全量负载下互斥失败）
+      - msg_store_repo_tests       # 同上（单跑 53/53 绿；四跑新面孔）
+      - cors_face_tests            # 同上（池冲突形态；断言债已修 8/8 绿）
 
   # ---------------------------------------------------------------------------
   # pg-behavior-harnesses —— 失败标识粒度：harness 脚本路径（test/lib/.../*.escript）
