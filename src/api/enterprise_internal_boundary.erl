@@ -19,9 +19,26 @@
 %     self 类（INT-01/12/13/14）没有 org/workspace 资源边界——它们的边界是
 %     「自身 context」或「code 绑定」，由 repo 的 org/app 复合条件承担。
 %
-%% 未受管应用（grant_governed=false）一律 no-op：与广州期语义逐字一致
-%% （既有 210 条企业域用例不变）。受管应用则逐请求真库读、撤权/降权下一请求
-%% 即失败（fail-closed；读取失败/上下文形态非法 → security_gate_closed）。
+%% 未受管应用（零 Grant 行）不再有兼容旁路（V2.1 §5.2 / F-09 / D-06）：
+%% 生效 scope 恒为 allowed_scopes ∩ 生效 Grant scopes——零 Grant 即空集，
+%% scope gate 与本模块的边界判定都拒绝（insufficient_scope），不存在
+%% 「回退 allowed_scopes 且 Boundary no-op」的路径。受管应用逐请求真库读、
+%% 撤权/降权下一请求即失败（fail-closed；读取失败/上下文形态非法 →
+%% security_gate_closed）。
+%%
+%% kind 语义（V2.1 扩到 4 值）：
+%%   none      —— application self / code 绑定（INT-01/12/13/14/23），无
+%%                org/workspace 资源边界，仅 scope 门；
+%%   org       —— org 级资源：需同一生效 Grant 覆盖 scope + Org 全域；
+%%   workspace —— workspace 级资源（含 W 过滤必填的列表，如 INT-28/30）：
+%%                需同一生效 Grant 覆盖 scope + 目标 W（W 来自 path 绑定、
+%%                资源行所属 W 或必填 query 过滤参数）；
+%%   list      —— 覆盖 W 集合列表（INT-24/26）：enforce/4 只复验 scope 在
+%%                生效集（ctx 内判定，无额外 DB 读）；**行级收窄是 handler
+%%                义务**——列表 SQL 必须把行集限制为「覆盖该 scope 的生效
+%%                Grant 所覆盖的 W 集合」（org 全域 Grant = Org 内全部 W）。
+%%                A2 的列表 repo 查询必须显式实现该谓词，不得整表回读后
+%%                内存过滤放行。
 %
 %% 未登记 route id **fail-closed**（security_gate_closed）：新增路由若忘了登记
 %% 边界，宁可拒绝也不放行（本模块是「登记即受边界治理」的单一入口）。
@@ -52,6 +69,19 @@
 %% FULL-03 阶段新增（A0 接线；与 NEW_IDS 分开只为保留阶段来源）
 -define(FULL03_IDS, [
     <<"INT-23">>
+]).
+
+%% V2.1 阶段新增（plan §6.1/§6.2 冻结 INT-24..31 资源只读面；handler 由
+%% A2 实现、A0 接线 Router——本表只登记边界规格）
+-define(V21_IDS, [
+    <<"INT-24">>,
+    <<"INT-25">>,
+    <<"INT-26">>,
+    <<"INT-27">>,
+    <<"INT-28">>,
+    <<"INT-29">>,
+    <<"INT-30">>,
+    <<"INT-31">>
 ]).
 
 %%%===================================================================
@@ -103,9 +133,10 @@ spec(<<"INT-16">>) ->
 %% INT-17 成员 cursor directory（org scoped；给 workspace_id 时另按 workspace 边界）
 spec(<<"INT-17">>) ->
     {ok, #{kind => org, scope => <<"identities:read">>}};
-%% INT-18 群详情（workspace scoped + group in workspace）
+%% INT-18 群详情（workspace scoped + group in workspace；V2.1 scope 修正：
+%% 读操作降为 groups:read，与路由表/plan §6.2 逐字一致）
 spec(<<"INT-18">>) ->
-    {ok, #{kind => workspace, scope => <<"groups:write">>}};
+    {ok, #{kind => workspace, scope => <<"groups:read">>}};
 %% INT-19 群更新（同上）
 spec(<<"INT-19">>) ->
     {ok, #{kind => workspace, scope => <<"groups:write">>}};
@@ -118,6 +149,31 @@ spec(<<"INT-21">>) ->
 %% INT-22 附件留存/hold/purge 治理（org scoped）
 spec(<<"INT-22">>) ->
     {ok, #{kind => org, scope => <<"files:write">>}};
+%% ---- V2.1 新增（plan §6.2：全部只读，A-R audit；kind 语义见 moduledoc）----
+%% INT-24 Workspace 列表：行集收窄到覆盖 W 集合（kind=list，handler 义务）
+spec(<<"INT-24">>) ->
+    {ok, #{kind => list, scope => <<"workspaces:read">>}};
+%% INT-25 Workspace 详情（path W 边界）
+spec(<<"INT-25">>) ->
+    {ok, #{kind => workspace, scope => <<"workspaces:read">>}};
+%% INT-26 企业群列表：origin app + 覆盖 W 过滤（kind=list，handler 义务）
+spec(<<"INT-26">>) ->
+    {ok, #{kind => list, scope => <<"groups:read">>}};
+%% INT-27 群成员列表（group 所属 W 边界）
+spec(<<"INT-27">>) ->
+    {ok, #{kind => workspace, scope => <<"groups:read">>}};
+%% INT-28 项目列表（W 过滤必填——W 来自 query，enforce 用该 W）
+spec(<<"INT-28">>) ->
+    {ok, #{kind => workspace, scope => <<"projects:read">>}};
+%% INT-29 项目详情（project 所属 W 边界）
+spec(<<"INT-29">>) ->
+    {ok, #{kind => workspace, scope => <<"projects:read">>}};
+%% INT-30 频道列表（scope=workspace AND status=1；W 过滤必填）
+spec(<<"INT-30">>) ->
+    {ok, #{kind => workspace, scope => <<"channels:read">>}};
+%% INT-31 频道详情（channel 所属 W 边界；status=1 only）
+spec(<<"INT-31">>) ->
+    {ok, #{kind => workspace, scope => <<"channels:read">>}};
 spec(_RouteId) ->
     error.
 
@@ -140,13 +196,22 @@ frozen_ids() ->
 %%%===================================================================
 
 %% @doc 静态 scope 路由的边界判定（handler 在业务事务内、执行业务前调用）。
-%% WorkspaceId 仅 workspace 类路由需要（org 类忽略）。
+%% WorkspaceId 仅 workspace 类路由需要（org/list 类忽略；workspace 类路由
+%% 缺 WorkspaceId 上下文 → fail-closed）。
 -spec enforce(any(), map(), binary(), undefined | integer()) ->
     ok | {error, atom()}.
 enforce(Conn, Ctx, RouteId, WorkspaceId) ->
     case spec(RouteId) of
         {ok, #{kind := none}} ->
             ok;
+        {ok, #{kind := list, scope := Scope}} when is_binary(Scope) ->
+            %% 覆盖 W 集合列表（INT-24/26）：scope 必须在生效集（ctx 内判定，
+            %% 无额外 DB 读——中间件 scope gate 已判过，此处是边界层的
+            %% 纵深复验）；行级「覆盖 W 集合」收窄是 handler 的列表 SQL 义务。
+            case lists:member(Scope, effective_scopes_of(Ctx)) of
+                true -> ok;
+                false -> {error, insufficient_scope}
+            end;
         {ok, #{kind := Kind, scope := Scope}} when is_binary(Scope) ->
             enforce_kind(Conn, Ctx, Kind, WorkspaceId, Scope);
         {ok, #{kind := _Kind, scope := dynamic}} ->
@@ -226,5 +291,13 @@ candidate_ids() ->
         <<"INT-12">>,
         <<"INT-13">>,
         <<"INT-14">>
-        | ?NEW_IDS ++ ?FULL03_IDS
+        | ?NEW_IDS ++ ?FULL03_IDS ++ ?V21_IDS
     ].
+
+%% ctx 的生效 scope（认证链产物；零 Grant 应用恒为空集 → list 类路由拒绝）。
+-spec effective_scopes_of(map()) -> [binary()].
+effective_scopes_of(Ctx) when is_map(Ctx) ->
+    case maps:get(granted_scopes, Ctx, undefined) of
+        Scopes when is_list(Scopes) -> [S || S <- Scopes, is_binary(S)];
+        _ -> []
+    end.

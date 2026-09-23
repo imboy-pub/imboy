@@ -2,7 +2,8 @@
 
 %%%
 % enterprise_internal_routes 是 /api/internal/v1/* 冻结路由注册表
-% （EPGZ-02，manifest routes INT-01..INT-14 逐字映射）。
+% （EPGZ-02 起，FULL-02/03 扩到 23 条；V2.1 扩到 31 条 = plan §6.1
+% INT-01..INT-31 逐字映射）。
 %
 % 注册表是 internal 面的唯一路由真源：method+path 不在表内一律
 % {error, not_found}（上层映射 resource_not_found，fail-closed，
@@ -32,7 +33,7 @@
 prefix() ->
     ?PREFIX.
 
-%% @doc 冻结路由表（manifest INT-01..INT-14 逐行对应）。
+%% @doc 冻结路由表（plan §6.1 INT-01..INT-31 逐行对应；31 unique method+path）。
 -spec routes() -> [map(), ...].
 routes() ->
     [
@@ -196,12 +197,13 @@ routes() ->
             idempotency => not_required,
             sender_mode => none
         },
-        %% INT-18 群详情
+        %% INT-18 群详情（V2.1 scope 修正：读操作降为 groups:read——§6.2/§7；
+        %%      此前误用 groups:write 导致只读查看被迫要求写授权）
         #{
             id => <<"INT-18">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/groups/{group_id}">>,
-            scope => <<"groups:write">>,
+            scope => <<"groups:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -253,6 +255,93 @@ routes() ->
             method => <<"GET">>,
             path => <<"/api/internal/v1/webhook/deliveries">>,
             scope => <<"webhooks:manage">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% ---- V2.1 新增资源只读面（plan §6.1 冻结 INT-24..31；A1 只登记
+        %%      注册条目，handler 模块（enterprise_workspace_handler /
+        %%      enterprise_group_handler 扩展 / enterprise_project_handler /
+        %%      enterprise_channel_handler）由 A2 实现后经 A0 接线进
+        %%      imboy_router。注册表本身不引用 handler 模块名，编译期无
+        %%      依赖；match/2 在 Router 接线前即可对这 8 条做方法/路径/
+        %%      scope 求值（认证链负例天然可测，正例待 A2）。----
+        %% INT-24 Workspace 列表（只读 keyset；行集被 Grant 覆盖 W 收窄）
+        #{
+            id => <<"INT-24">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/workspaces">>,
+            scope => <<"workspaces:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% INT-25 Workspace 详情（path W 边界）
+        #{
+            id => <<"INT-25">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/workspaces/{workspace_id}">>,
+            scope => <<"workspaces:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% INT-26 企业群列表（只读 keyset；origin app + 覆盖 W 过滤）
+        #{
+            id => <<"INT-26">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/groups">>,
+            scope => <<"groups:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% INT-27 群成员列表（只读 keyset；group W 边界）
+        #{
+            id => <<"INT-27">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/groups/{group_id}/members">>,
+            scope => <<"groups:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% INT-28 企业项目列表（只读 keyset；W 过滤必填）
+        #{
+            id => <<"INT-28">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/projects">>,
+            scope => <<"projects:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% INT-29 项目详情（project W 边界）
+        #{
+            id => <<"INT-29">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/projects/{project_id}">>,
+            scope => <<"projects:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% INT-30 工作区频道列表（只读 keyset；scope=workspace AND status=1，W 必填）
+        #{
+            id => <<"INT-30">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/channels">>,
+            scope => <<"channels:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        %% INT-31 频道详情（channel W 边界；status=1 only）
+        #{
+            id => <<"INT-31">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/channels/{channel_id}">>,
+            scope => <<"channels:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none

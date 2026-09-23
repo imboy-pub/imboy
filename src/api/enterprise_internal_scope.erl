@@ -2,10 +2,10 @@
 
 %%%
 % enterprise_internal_scope 是 internal API 固定 scope 枚举与授权判定
-% （EPGZ-02，plan-gz §4.2 / manifest INV-4）。
+% （EPGZ-02，plan-gz §4.2 / manifest INV-4；V2.1 扩到 14 值，plan §7）。
 %
 % 冻结规则：
-%   * scope 全集恰为 10 个固定值，无 wildcard（"*" 不是合法授予）；
+%   * scope 全集恰为 14 个固定值，无 wildcard（"*" 不是合法授予）；
 %   * authorize/2 只做**逐字精确成员**判定——
 %       - required 不在全集（且非 "*"") → {error, invalid_scope}
 %         （调用方（handler）要求了不存在的 scope，属程序错误，fail-closed）；
@@ -13,7 +13,10 @@
 %         授予集都不满足，包括 granted 里的 "*" 字面量）；
 %       - granted 含 "*" 不代表任何授权（无隐含包含）；
 %   * messages:send_as_human / friend_requests:create / webhooks:manage
-%     必须显式授予，不被 messages:send 隐式包含（负例测试钉死）。
+%     必须显式授予，不被 messages:send 隐式包含（负例测试钉死）；
+%   * V2.1 新增 4 个只读 scope（groups:read / workspaces:read /
+%     projects:read / channels:read，INT-18/24..31）：read 不隐含 write、
+%     write 不隐含 read（§7「无 read implies write」双向成立）。
 %%%
 
 -export([all/0, authorize/2]).
@@ -22,7 +25,11 @@
     <<"application:read">>,
     <<"identities:read">>,
     <<"identities:write">>,
+    <<"groups:read">>,
     <<"groups:write">>,
+    <<"workspaces:read">>,
+    <<"projects:read">>,
+    <<"channels:read">>,
     <<"files:write">>,
     <<"messages:send">>,
     <<"messages:send_as_human">>,
@@ -35,7 +42,7 @@
 %%% API
 %%%===================================================================
 
-%% @doc 固定 scope 全集（manifest §4.2 冻结的 10 个）。
+%% @doc 固定 scope 全集（plan §7 冻结的 14 个；顺序与 §7 矩阵行序一致）。
 -spec all() -> [binary(), ...].
 all() ->
     ?SCOPES.

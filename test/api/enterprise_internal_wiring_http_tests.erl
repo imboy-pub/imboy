@@ -4,9 +4,13 @@
 % EPGZ-08 W4 —— 企业 internal 面**路由接线**黑盒测试（真 cowboy listener +
 % 真中间件链，不 mock 认证结论）。
 %
-% 覆盖（plan §6 白名单 / §10 门禁 / A0 control/internal-api-manifest.yaml）：
-%   ① 冻结路由表 14 条（INT-01..INT-14 → 13 个 cowboy path，INT-05/06 共 path）
-%      全部登记进 get_routes/0，且 handler 模块可加载（无 undef 悬挂）；
+% 覆盖（plan §6 白名单 / §10 门禁 / A0 control/internal-api-manifest.yaml；
+% V2.1 §6.1 扩到 31 条）：
+%   ① 冻结路由表 31 条（INT-01..31）；Router（共享路径）已接线 23 条 →
+%      19 个 cowboy path（同 path 多方法：INT-02/15、INT-05/06、INT-18/19/21）；
+%      INT-24..31 的 handler 由 A2 实现后经 A0 接线，此处对这 8 条断言注册
+%      形态（method/path/scope/idempotency=none/rate_bucket）与 match/2 可达；
+%      已接线 handler 模块可加载（无 undef 悬挂）；
 %   ② **零 /api/open/v1 生产面**：路由表内 0 条 + 真实请求 404；
 %   ③ internal 前缀**不在 open()/option()**（匿名不可达）；
 %   ④ 未认证请求落 enterprise_internal_middleware 认证链 → 401 invalid_credential
@@ -46,21 +50,30 @@ route_table() ->
     Paths = [P || {P, _H, _O} <- Routes],
 
     %% ①② 冻结表逐条登记 + 零 open 面
-    %% 23 条 INT（GZ 14 + FULL-02 新增 8 + FULL-03 新增 1）；19 个 cowboy path——
-    %% 同 path 多方法：INT-02/15、INT-05/06、INT-18/19/21。
+    %% 31 条 INT（GZ 14 + FULL-02 新增 8 + FULL-03 新增 1 + V2.1 新增 8）。
+    %% Router（共享路径，A0 接线）当前登记的是已实现 handler 的 23 条——
+    %% INT-24..31 的 handler（enterprise_workspace/project/channel_handler、
+    %% enterprise_group_handler 扩展）由 A2 实现后经 A0 接线进 imboy_router，
+    %% 故此处只断言「已接线面」的登记与形态；注册表全量形态另行断言（下方
+    %% manifest_v21_entries）。
     Manifest = enterprise_internal_routes:routes(),
-    ?assertEqual(23, length(Manifest)),
+    ?assertEqual(31, length(Manifest)),
+    %% Router（共享路径，A0 接线）当前登记的是已实现 handler 的 23 条——
+    %% V2.1 的 8 条（INT-24..31）由 A2 实现 handler 后经 A0 接线进
+    %% imboy_router；集成时本「已接线面」断言随之扩到 31/27 path（A0 机械更新）。
+    Wired = [R || R <- Manifest, not lists:member(maps:get(id, R), v21_ids())],
+    ?assertEqual(23, length(Wired)),
     %% 冻结表用 {name} 占位符语法，cowboy 路由用 :name —— 归一后逐条比对。
-    ManifestPaths = lists:usort([
+    WiredPaths = lists:usort([
         cowboy_path(binary_to_list(maps:get(path, R)))
-     || R <- Manifest
+     || R <- Wired
     ]),
-    ?assertEqual(19, length(ManifestPaths)),
+    ?assertEqual(19, length(WiredPaths)),
     lists:foreach(
         fun(P) ->
             ?assert(lists:member(P, Paths))
         end,
-        ManifestPaths
+        WiredPaths
     ),
     ?assertEqual(19, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
 
@@ -81,6 +94,100 @@ route_table() ->
     lists:foreach(
         fun({_P, Handler, _O}) -> ?assertNotEqual(false, code:ensure_loaded(Handler)) end,
         [R || R = {P, _H, _O} <- Routes, lists:prefix("/api/internal/v1/", P)]
+    ).
+
+%% V2.1 §6.1 新增、待 A2/A0 接线的 8 条路由 id。
+v21_ids() ->
+    [
+        <<"INT-24">>,
+        <<"INT-25">>,
+        <<"INT-26">>,
+        <<"INT-27">>,
+        <<"INT-28">>,
+        <<"INT-29">>,
+        <<"INT-30">>,
+        <<"INT-31">>
+    ].
+
+%% V2.1 §6.1/§6.2 冻结的 INT-24..31 注册形态 + INT-18 scope 修正
+%% （CON-01 的 A1 侧前置断言：31 unique method+path、scope 全在 14 值枚举、
+%%  新增 8 条全为 GET + idempotency=none + internal_read）。
+manifest_v21_entries_test_() ->
+    {timeout, 15, fun manifest_v21_entries/0}.
+
+manifest_v21_entries() ->
+    Manifest = enterprise_internal_routes:routes(),
+    %% 31 unique id + 31 unique method+path
+    Ids = [maps:get(id, R) || R <- Manifest],
+    ?assertEqual(31, length(lists:usort(Ids))),
+    MethodPaths = [{maps:get(method, R), maps:get(path, R)} || R <- Manifest],
+    ?assertEqual(31, length(lists:usort(MethodPaths))),
+    %% 所有注册 scope 都是固定 14 值枚举成员（动态 scope 除外）
+    All = enterprise_internal_scope:all(),
+    lists:foreach(
+        fun(R) ->
+            case maps:get(scope, R) of
+                {dynamic, _} -> ok;
+                S -> ?assert(lists:member(S, All), {scope_not_in_catalog, maps:get(id, R), S})
+            end
+        end,
+        Manifest
+    ),
+    %% INT-18 scope 修正：读操作降为 groups:read（§6.2/§7）
+    ById = #{maps:get(id, R) => R || R <- Manifest},
+    ?assertEqual(
+        <<"groups:read">>, maps:get(scope, maps:get(<<"INT-18">>, ById))
+    ),
+    %% INT-24..31 冻结形态：method/path/scope/idempotency
+    ExpectedV21 = [
+        {<<"INT-24">>, <<"GET">>, <<"/api/internal/v1/workspaces">>, <<"workspaces:read">>},
+        {<<"INT-25">>, <<"GET">>, <<"/api/internal/v1/workspaces/{workspace_id}">>,
+            <<"workspaces:read">>},
+        {<<"INT-26">>, <<"GET">>, <<"/api/internal/v1/groups">>, <<"groups:read">>},
+        {<<"INT-27">>, <<"GET">>, <<"/api/internal/v1/groups/{group_id}/members">>,
+            <<"groups:read">>},
+        {<<"INT-28">>, <<"GET">>, <<"/api/internal/v1/projects">>, <<"projects:read">>},
+        {<<"INT-29">>, <<"GET">>, <<"/api/internal/v1/projects/{project_id}">>,
+            <<"projects:read">>},
+        {<<"INT-30">>, <<"GET">>, <<"/api/internal/v1/channels">>, <<"channels:read">>},
+        {<<"INT-31">>, <<"GET">>, <<"/api/internal/v1/channels/{channel_id}">>, <<"channels:read">>}
+    ],
+    lists:foreach(
+        fun({Id, Method, Path, Scope}) ->
+            R = maps:get(Id, ById, #{}),
+            ?assertEqual(Method, maps:get(method, R, undefined), {Id, method}),
+            ?assertEqual(Path, maps:get(path, R, undefined), {Id, path}),
+            ?assertEqual(Scope, maps:get(scope, R, undefined), {Id, scope}),
+            ?assertEqual(not_required, maps:get(idempotency, R, undefined), {Id, idempotency}),
+            ?assertEqual(internal_read, maps:get(rate_bucket, R, undefined), {Id, rate_bucket}),
+            %% match/2 对未接线 Router 的路径也可做认证链级匹配（负例可测）
+            ?assertMatch({ok, R}, enterprise_internal_routes:match(Method, Path))
+        end,
+        ExpectedV21
+    ),
+    %% INT-24..31 的边界规格 kind 语义（§6.2）：列表=covered W（list）或必填
+    %% W 过滤（workspace）；详情=workspace
+    ?assertMatch(
+        {ok, #{kind := list, scope := <<"workspaces:read">>}},
+        enterprise_internal_boundary:spec(<<"INT-24">>)
+    ),
+    ?assertMatch(
+        {ok, #{kind := list, scope := <<"groups:read">>}},
+        enterprise_internal_boundary:spec(<<"INT-26">>)
+    ),
+    lists:foreach(
+        fun(Id) ->
+            ?assertMatch(
+                {ok, #{kind := workspace, scope := _}},
+                enterprise_internal_boundary:spec(Id)
+            )
+        end,
+        [<<"INT-25">>, <<"INT-27">>, <<"INT-28">>, <<"INT-29">>, <<"INT-30">>, <<"INT-31">>]
+    ),
+    %% INT-18 边界规格同步降为 groups:read（路由表 ↔ 边界表一致）
+    ?assertMatch(
+        {ok, #{kind := workspace, scope := <<"groups:read">>}},
+        enterprise_internal_boundary:spec(<<"INT-18">>)
     ).
 
 %%%===================================================================
