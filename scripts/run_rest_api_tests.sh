@@ -326,7 +326,7 @@ if grep -qx "$DB_NAME" <<<"$PRE_DBS"; then
 fi
 
 createdb -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$DB_NAME" ||
-  die 2 "createdb failed for $DB_NAME"
+  die 2 "createdb failed for $DB_NAME (target: $PG_USER@$PG_HOST:$PG_PORT — the scratch provider default is 127.0.0.1:4323; check REST_PG_PORT/IMBOY_PG_PORT if this server looks wrong)"
 # Only a database this run actually created may be dropped (or reported as
 # kept) by cleanup; an earlier death (e.g. postgres not ready) must not
 # report a false cleanup outcome for a database that never existed
