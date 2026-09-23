@@ -53,6 +53,13 @@ execute(Req, Env) ->
     %% 路径形状判定收进 is_cs_credential_path/1（函数级 -ifdef 保护，见定义处，
     %% 与 F-EB10-1 同款）；其余 /api/v1/cs/*（seat/治理动作）照常走签名 + JWT 门。
     IsCsCredentialPath = is_cs_credential_path(Path),
+    %% 2026-09-23 生产 902 修复：Web 坐席工作台（imboyadmin seat/）浏览器端
+    %% 无法持有 APP 设备签名密钥（HMAC 材料不能下发浏览器），QR 登录后消费
+    %% 的坐席合同路径族免 verify_sign；JWT 门不变（不在 open/option 名单，
+    %% condition 照常 do_authorization）。路径形状由
+    %% cs_http:is_web_seat_surface_path/1 冻结声明（cs_route_contract_tests
+    %% 双向核对）。与 IsCsCredentialPath 同款函数级 -ifdef 保护（见定义处）。
+    IsWebSeatPath = is_web_seat_path(Path),
     InOpenLi =
         (not IsEnterpriseTenantPath) andalso
             (IsPaymentCallback orelse IsChannelWebhook orelse IsMcpPath orelse
@@ -84,7 +91,7 @@ execute(Req, Env) ->
                 auth_ds:verify_sign(Req, Env);
             IsPassportPath, not IsWebQrLoginPath, Switch == <<"on">> ->
                 auth_ds:verify_sign(Req, Env);
-            InOpenLi == false, not IsCsCredentialPath, Switch == <<"on">> ->
+            InOpenLi == false, not IsCsCredentialPath, not IsWebSeatPath, Switch == <<"on">> ->
                 auth_ds:verify_sign(Req, Env);
             true ->
                 {ok, Req, Env}
@@ -157,5 +164,20 @@ is_cs_credential_path(Path) ->
 -else.
 -spec is_cs_credential_path(binary()) -> boolean().
 is_cs_credential_path(_Path) ->
+    false.
+-endif.
+
+%% ===================================================================
+%% Web 坐席面判定的特性裁剪保护（IsCsCredentialPath 同款）：未选中
+%% customer_service 档时恒 false——相关路由在生成期从未注册，普通 /api/v1
+%% 请求不受影响；选中档语义见 cs_http:is_web_seat_surface_path/1。
+%% ===================================================================
+-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE).
+-spec is_web_seat_path(binary()) -> boolean().
+is_web_seat_path(Path) ->
+    cs_http:is_web_seat_surface_path(Path).
+-else.
+-spec is_web_seat_path(binary()) -> boolean().
+is_web_seat_path(_Path) ->
     false.
 -endif.

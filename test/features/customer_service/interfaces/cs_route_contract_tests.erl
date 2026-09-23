@@ -17,6 +17,9 @@
 %%%   * credential 面一致性：动作表的 principal（cs_visit/cs_shop_key）与
 %%%     `cs_http:is_credential_surface_path/1` 双向核对（中间件免签/免 JWT 面
 %%%     与 handler 认证语义不漂移）。
+%%%   * Web 坐席面一致性：cs_seat 主体路径与
+%%%     `cs_http:is_web_seat_surface_path/1` 双向核对（浏览器无设备签名密钥，
+%%%     免签不免 JWT——2026-09-23 生产 902 修复的契约锚）。
 %%%   * Org 来源一致性：路径带 `:org_id` 的动作 org_source=path，A0 冻结路径
 %%%     org_source=param。
 %%%   * 静态判据：handler/http/auth/facade_call 源码零 DB、零 apply/list_to_atom、
@@ -563,6 +566,62 @@ a02_both_surfaces_share_facade_use_cases_test() ->
     ).
 
 %% ===================================================================
+%% Web 坐席面一致性（中间件免签（JWT 门不变）↔ principal 声明）
+%% ===================================================================
+
+%% 2026-09-23 生产 902 修复的契约锚：凡坐席主体（cs_seat，route metadata 或
+%% queue 的 GET case_auth）消费的 tenant 路径必须在
+%% cs_http:is_web_seat_surface_path/1 豁免面内（浏览器无 APP 设备签名密钥）；
+%% 访客/门店/治理面**不**豁免（照常签名 + JWT / 专用头）。
+web_seat_surface_matches_seat_principal_declaration_test() ->
+    lists:foreach(
+        fun({Path, _Action, _Methods, Principal}) ->
+            %% queue 同路径双主体：POST=门店（credential 面）、GET=坐席
+            %% （case_auth）——形状层面统一豁免，语义差异由 handler 裁决。
+            ExpectWebSeat =
+                Principal =:= cs_seat orelse
+                    Path =:= <<"/api/v1/cs/organizations/:org_id/sessions/queue">>,
+            ?assertEqual(
+                {Path, ExpectWebSeat},
+                {Path, cs_http:is_web_seat_surface_path(Path)}
+            )
+        end,
+        tenant_literal_routes()
+    ),
+    %% enterprise 面：坐席工作台复用的两条消息路径（浏览器与 APP 共用合同）。
+    ?assert(cs_http:is_web_seat_surface_path(<<"/api/v1/enterprise/conversations/123/messages">>)),
+    ?assert(
+        cs_http:is_web_seat_surface_path(
+            <<"/api/v1/enterprise/organizations/123/conversations/456/messages">>
+        )
+    ),
+    %% 负例真空证明：访客面 / widget 面 / 治理面 / ACK / 未知路径不得命中
+    %% （把任一正例改成这些形状时本审计必须报红）。
+    lists:foreach(
+        fun(Negative) ->
+            ?assertNot(cs_http:is_web_seat_surface_path(Negative))
+        end,
+        [
+            <<"/api/v1/cs/sessions">>,
+            <<"/api/v1/cs/sessions/123/messages">>,
+            <<"/api/v1/cs/sessions/123/rating">>,
+            <<"/api/v1/cs/widget/bootstrap">>,
+            <<"/api/v1/cs/widget/sessions/123/messages">>,
+            <<"/api/v1/cs/organizations/123/shop-keys">>,
+            <<"/api/v1/cs/organizations/123/shop-keys/456/revoke">>,
+            <<"/api/v1/cs/organizations/123/visit-tokens">>,
+            <<"/api/v1/cs/organizations/123/seats">>,
+            <<"/api/v1/cs/organizations/123/seats/456/suspend">>,
+            <<"/api/v1/cs/organizations/123/sessions/123/assets/789/content">>,
+            <<"/api/v1/enterprise/organizations/123/conversations/456/messages/789/ack">>,
+            <<"/api/v1/enterprise/organizations/123/assets/456/content">>,
+            <<"/api/v1/user/show">>,
+            <<"/api/v1/passport/qr_login/create">>,
+            <<"/w/wgt_pub_x">>
+        ]
+    ).
+
+%% ===================================================================
 %% credential 面一致性（中间件免签/免 JWT 面 ↔ handler 认证语义）
 %% ===================================================================
 
@@ -648,7 +707,9 @@ a03_router_helpers_are_compile_time_trimmed_test() ->
 a03_middleware_credential_surface_is_ifdef_guarded_test() ->
     Src = read_source("src/api/auth_middleware_api_v1.erl"),
     ?assert(string:find(Src, "-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE).") =/= nomatch),
-    ?assert(string:find(Src, "is_cs_credential_path") =/= nomatch).
+    ?assert(string:find(Src, "is_cs_credential_path") =/= nomatch),
+    %% Web 坐席面（902 修复）：中间件接线 + ifdef 保护同款在位。
+    ?assert(string:find(Src, "is_web_seat_path") =/= nomatch).
 
 %% ===================================================================
 %% 静态判据：接口层零 DB / 零动态派发 / 零 crypto

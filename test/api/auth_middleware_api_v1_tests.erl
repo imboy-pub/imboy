@@ -44,6 +44,49 @@ mobile_qr_login_paths_keep_device_signature_test_() ->
     ],
     [qr_login_auth_case(Path, protected) || Path <- Paths].
 
+%% 2026-09-23 生产 902 修复：Web 坐席面（imboyadmin seat/ 浏览器端，无法持有
+%% APP 设备签名密钥）跳过 verify_sign，但 JWT 门保持强制——condition 收到
+%% (Option=false, Open=false)，缺 Bearer 照常 401（do_authorization 语义）。
+web_seat_paths_skip_device_signature_keep_jwt_gate_test_() ->
+    Paths = [
+        <<"/api/v1/cs/me/seat-contexts">>,
+        <<"/api/v1/enterprise/organizations/123/conversations/456/messages">>
+    ],
+    [web_seat_auth_case(Path) || Path <- Paths].
+
+web_seat_auth_case(Path) ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'path', 1, fun(_Req) -> Path end},
+                {'header', 2, fun(<<"authorization">>, _Req) -> undefined end}
+            ]},
+            {config_ds, [
+                {'env', 2, fun(api_auth_switch, _Default) -> <<"on">> end}
+            ]},
+            {imboy_router, [
+                {'open', 0, fun() -> [] end},
+                {'option', 0, fun() -> [] end}
+            ]},
+            {auth_ds, [
+                {'remove_last_forward_slash', 1, fun(Value) -> Value end},
+                {'verify_sign', 2, fun(Req, Env) ->
+                    {stop, Req#{auth_error => 902, env => Env}}
+                end},
+                {'condition', 5, fun(Optional, Open, _Auth, Req, Env) ->
+                    {ok, Req#{jwt_gate => {Optional, Open}, env => Env}}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = auth_middleware_api_v1:execute(#{}, #{}),
+            %% 免设备签名：verify_sign 一次都不进（修复前 902 拦死点）。
+            ?assertEqual(0, meck:num_calls(auth_ds, verify_sign, 2)),
+            %% JWT 门不放宽：非 option 非 open → do_authorization 强校验分支。
+            ?assertMatch({ok, #{jwt_gate := {false, false}}}, Result)
+        end
+    ).
+
 qr_login_auth_case(Path, Expected) ->
     ?WITH_MECKS(
         [

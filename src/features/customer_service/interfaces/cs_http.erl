@@ -40,6 +40,7 @@
     is_tsid_key/1,
     tsid/1,
     is_credential_surface_path/1,
+    is_web_seat_surface_path/1,
     credential_in_query_string/1,
     check_forbidden/3,
     now_ms/0,
@@ -128,6 +129,85 @@ is_credential_surface_path(Path) when is_binary(Path) ->
                 false
         end;
 is_credential_surface_path(_Path) ->
+    false.
+
+%% @doc Web 坐席面路径（2026-09-23 生产 902 修复）：浏览器坐席工作台
+%% （imboyadmin `seat/`）经 QR 登录拿到 JWT 后消费的 /api/v1 坐席合同路径族。
+%%
+%% 为什么免**设备签名**（不是免 JWT）：`auth_middleware_api_v1` 的签名门
+%% （`auth_ds:verify_sign`）校验的是移动端设备 HMAC（did|vsn|cos|pkg），
+%% 密钥是 APP 内置 solidified key——**不能下发到浏览器**（等于公开）。
+%% SEAT-02 已为登录前四条 QR 会话路由做过同款豁免（IsWebQrLoginPath）；
+%% 本面把豁免延到登录后的坐席消费路径。这些路径不在 open/option 名单，
+%% 中间件 condition 照常走 do_authorization：缺 Bearer 即 401，JWT 门
+%% **没有**放宽。
+%%
+%% 判据是**冻结路径形状**（is_credential_surface_path 同款纪律）：与
+%% `cs_route_contract_tests` 的 web_seat_surface 双向核对——tenant 面
+%% cs_seat 主体（route metadata 或 case_auth）的路径必须命中本面；
+%% enterprise 面被工作台复用的两条消息路径也在列（浏览器与 APP 共用
+%% 同一合同，形状层面统一免签）。开发期 api_auth_switch=off 掩盖了这
+%% 一缺口；生产该开关是启动强制 on（imboy_app:ensure_api_auth_switch_on）。
+-spec is_web_seat_surface_path(binary()) -> boolean().
+is_web_seat_surface_path(Path) when is_binary(Path) ->
+    case segments(Path) of
+        %% BE-S01a：坐席上下文清单（工作台登录后第一跳）。
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"me">>, <<"seat-contexts">>] ->
+            true;
+        %% 坐席会话面（T-2 后 org 显式在路径）：queue（GET=坐席 case_auth /
+        %% POST=门店凭证面，同形状双方免签语义一致）；会话详情；
+        %% claim/transfer/close 生命周期。
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"organizations">>, _OrgId, <<"sessions">>, <<"queue">>] ->
+            true;
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"organizations">>, _OrgId, <<"sessions">>, _SessionId] ->
+            true;
+        [
+            <<"api">>,
+            <<"v1">>,
+            <<"cs">>,
+            <<"organizations">>,
+            _OrgId,
+            <<"sessions">>,
+            _SessionId,
+            Action
+        ] when
+            Action =:= <<"claim">>; Action =:= <<"transfer">>; Action =:= <<"close">>
+        ->
+            true;
+        %% 工作台 active/closed 两视图 / 转接目标 / 坐席 SSE 事件流。
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"organizations">>, _OrgId, <<"seats">>, <<"sessions">>] ->
+            true;
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"organizations">>, _OrgId, <<"transfer-targets">>] ->
+            true;
+        [
+            <<"api">>,
+            <<"v1">>,
+            <<"cs">>,
+            <<"organizations">>,
+            _OrgId,
+            <<"seats">>,
+            <<"me">>,
+            <<"events">>
+        ] ->
+            true;
+        %% A0 契约：坐席侧企业消息历史 + 发送（enterprise 真源复用路径）。
+        [<<"api">>, <<"v1">>, <<"enterprise">>, <<"conversations">>, _ConvId, <<"messages">>] ->
+            true;
+        [
+            <<"api">>,
+            <<"v1">>,
+            <<"enterprise">>,
+            <<"organizations">>,
+            _OrgId,
+            <<"conversations">>,
+            _ConvId,
+            <<"messages">>
+        ] ->
+            true;
+        _ ->
+            false
+    end;
+is_web_seat_surface_path(_Path) ->
     false.
 
 %% @doc 查询串里出现凭证样式的键即 true（widget 面凭证只准走专用头，

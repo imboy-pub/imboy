@@ -22,6 +22,12 @@
 
 ---
 
+## [1.0.0-alpha.82] - 2026-09-23
+
+- 生产 902 修复：Web 坐席工作台（管理后台 seat/）在 `api_auth_switch=on` 的生产环境被设备签名门拦死（信封 902"签名验证失败，请更新客户端"）——浏览器无法持有 APP 设备 HMAC 密钥，开发期 `off` 掩盖了设计缺口。`cs_http:is_web_seat_surface_path/1` 冻结声明坐席工作台消费的 `/api/v1` 合同路径族（seat-contexts/queue/详情/claim/transfer/close/active-closed 视图/转接目标/SSE 事件流 + 企业消息历史与发送两条复用路径），`auth_middleware_api_v1` 据此免 `verify_sign`；JWT 门不放宽（不在 open/option 名单，缺 Bearer 照常 401）
+
+---
+
 ## [1.0.0-alpha.81] - 2026-09-23
 
 - 挂件面 CORS 二段修复：`/api/v1/cs/widget/*` 路径前缀兜底归入 widget 面（此前落 undefined 走全局白名单，frame 跨域上传一律 403）；`cors_widget_origins` 补入网关域 cs.imboy.pub（挂件 frame 是实际跨域发起方）
