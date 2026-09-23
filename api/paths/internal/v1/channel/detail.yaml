@@ -1,0 +1,49 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/channel/detail.yaml
+# GET /api/internal/v1/channels/{channel_id} — 频道详情（INT-31，V2.1 新增）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1channels~1{channel_id}
+# Handler：src/api/enterprise_channel_handler.erl channel/3
+# 投影冻结（V2.1 §15.1 封闭投影）：列表项 + description。
+# ----------------------------------------------------------------------------
+get:
+  tags: [internal]
+  summary: 频道详情（scope=workspace AND status=1 only）
+  description: |
+    单个工作区频道详情。跨 Organization / 个人频道 / 已停用（status≠1）/ 已
+    删除 / 不存在一律 resource_not_found（IDOR 同不存在同体）；同 Organization
+    但无生效 Grant 覆盖频道所属 W → organization_boundary_violation（403）。
+  operationId: internalChannelDetail
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: channel_id
+      in: path
+      required: true
+      description: 频道 TSID
+      schema: { type: integer, format: int64 }
+  x-imboy-scope: channels:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  responses:
+    '200':
+      description: 频道详情
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              [channel_id, workspace_id, name, description, subscriber_count, created_at]
+            additionalProperties: false
+            properties:
+              channel_id: { type: integer, format: int64 }
+              workspace_id: { type: integer, format: int64 }
+              name: { type: string }
+              description: { type: string }
+              subscriber_count: { type: integer, format: int64 }
+              created_at: { type: string, description: RFC3339 时间戳 }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

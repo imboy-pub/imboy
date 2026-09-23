@@ -19,6 +19,8 @@
 -export([page_by_workspace/4]).
 -export([page_by_workspace_member/5]).
 -export([update_by_id/2]).
+-export([internal_find_tx/3]).
+-export([internal_page_tx/5]).
 -export([update_fields_tx/3]).
 
 -ifdef(EUNIT).
@@ -154,3 +156,67 @@ update_fields_tx(Conn, ProjectId, Data) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"id = $1">>, [ProjectId]),
     elib_pg:execute(Conn, Sql, Params).
+
+%% ===================================================================
+%% V2.1 Internal 只读面（INT-28/29 adapter）
+%% ===================================================================
+
+%% @doc INT-29 详情定位（project W 须经 workspace 归属 Org；active|done 均可读，
+%% plan §9 "无 archive"）。返回最小投影列；跨 Org / 不存在 → {error, not_found}
+%% （IDOR 同不存在同体）。
+-spec internal_find_tx(any(), integer(), integer()) ->
+    {ok, map()} | {error, not_found | term()}.
+internal_find_tx(Conn, OrgId, ProjectId) when
+    is_integer(OrgId), is_integer(ProjectId), ProjectId > 0
+->
+    Sql =
+        <<"SELECT p.id, p.workspace_id, p.name, p.description, p.owner_id,",
+            " p.status, p.created_at FROM ", (tablename())/binary, " p",
+            " JOIN workspace w ON w.id = p.workspace_id",
+            " WHERE p.id = $1 AND w.organization_id = $2", " AND w.status = 'active' LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, [ProjectId, OrgId]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc INT-28 keyset 列表（workspace_id 必填由 handler 校验后传入；
+%% Status :: active|done|all —— all 表示不过滤）。排序 created_at DESC, id DESC。
+%% Grant 覆盖判定由 handler 经 boundary enforce（INT-28，workspace kind，W 取自
+%% query）承担，本查询不再重复覆盖谓词。
+-spec internal_page_tx(
+    any(), integer(), all | binary(), undefined | {binary(), integer()}, pos_integer()
+) -> {ok, [map()]} | {error, term()}.
+internal_page_tx(Conn, WsId, Status, Pivot, Limit) when
+    is_integer(WsId), is_integer(Limit), Limit > 0
+->
+    {StatusClause, Params0} =
+        case Status of
+            all -> {<<>>, []};
+            S when is_binary(S) -> {<<" AND p.status = $2">>, [S]}
+        end,
+    %% 占位符序号：$1=WsId、status（可选 $2）、pivot（可选后续两枚）、LIMIT 恒最后
+    Base = 1 + length(Params0),
+    {KeysetClause, PivotParams} =
+        case Pivot of
+            undefined ->
+                {<<>>, []};
+            {CreatedAt, Id} ->
+                N1 = Base + 1,
+                N2 = Base + 2,
+                {
+                    <<" AND (p.created_at, p.id) < ($", (integer_to_binary(N1))/binary, ", $",
+                        (integer_to_binary(N2))/binary, ")">>,
+                    [CreatedAt, Id]
+                }
+        end,
+    LimitN = Base + 1 + length(PivotParams),
+    Sql =
+        <<"SELECT p.id, p.name, p.owner_id, p.status, p.created_at FROM ", (tablename())/binary,
+            " p", " WHERE p.workspace_id = $1", StatusClause/binary, KeysetClause/binary,
+            " ORDER BY p.created_at DESC, p.id DESC", " LIMIT $",
+            (integer_to_binary(LimitN))/binary>>,
+    case elib_pg:query(Conn, Sql, [WsId] ++ Params0 ++ PivotParams ++ [Limit]) of
+        {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
+    end.

@@ -1,0 +1,46 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/workspace/detail.yaml
+# GET /api/internal/v1/workspaces/{workspace_id} — Workspace 详情（INT-25，V2.1 新增）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1workspaces~1{workspace_id}
+# Handler：src/api/enterprise_workspace_handler.erl workspace/3
+# 投影冻结（V2.1 §15.1 封闭投影）：与列表项同投影。
+# ----------------------------------------------------------------------------
+get:
+  tags: [internal]
+  summary: Workspace 详情
+  description: |
+    单个 active Workspace 详情。跨 Organization / 不存在 / 已归档一律
+    resource_not_found（IDOR 同不存在同体，不泄露存在性）；同 Organization 但
+    无生效 Grant 覆盖该 W → organization_boundary_violation（403）。
+  operationId: internalWorkspaceDetail
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: Workspace TSID
+      schema: { type: integer, format: int64 }
+  x-imboy-scope: workspaces:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  responses:
+    '200':
+      description: Workspace 详情
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [workspace_id, name, owner_id, created_at]
+            additionalProperties: false
+            properties:
+              workspace_id: { type: integer, format: int64 }
+              name: { type: string }
+              owner_id: { type: integer, format: int64 }
+              created_at: { type: string, description: RFC3339 时间戳 }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
