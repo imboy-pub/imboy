@@ -40,11 +40,29 @@
 
 %% V1 企业附件 MIME 白名单：只放开可**按魔数复核**的少数类型。
 %% 刻意不含 `application/octet-stream` —— 那会让 mime 校验变成恒真。
+%% 扩表纪律：每个 MIME 必须在 `has_magic/2` 有对应可机械判定规则，
+%% 两者同步演进（见各子句注释）。
 -define(ALLOWED_MIMES, [
     <<"image/png">>,
     <<"image/jpeg">>,
+    <<"image/gif">>,
+    <<"image/webp">>,
+    <<"image/bmp">>,
+    <<"image/svg+xml">>,
     <<"application/pdf">>,
-    <<"text/plain">>
+    <<"text/plain">>,
+    <<"text/markdown">>,
+    <<"text/csv">>,
+    <<"application/zip">>,
+    <<"application/x-7z-compressed">>,
+    <<"application/gzip">>,
+    <<"application/msword">>,
+    <<"application/vnd.openxmlformats-officedocument.wordprocessingml.document">>,
+    <<"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">>,
+    <<"application/vnd.openxmlformats-officedocument.presentationml.presentation">>,
+    <<"video/mp4">>,
+    <<"video/webm">>,
+    <<"audio/mpeg">>
 ]).
 
 %% 企业附件单文件上限（25 MiB）。超过即拒，不进入对象存储。
@@ -101,7 +119,7 @@ validate_hash(Hash) when is_binary(Hash), byte_size(Hash) =:= 64 ->
 validate_hash(Hash) ->
     {error, {invalid_object_hash, Hash}}.
 
-%% @doc 按声明的 MIME 复核内容魔数（白名单四种类型各有一条可机械判定的前缀规则）。
+%% @doc 按声明的 MIME 复核内容魔数（与 ?ALLOWED_MIMES 一一对应，同步演进）。
 -spec sniff(term(), term()) -> ok | {error, {mime_content_mismatch, term()}}.
 sniff(Mime, Bytes) when is_binary(Mime), is_binary(Bytes), byte_size(Bytes) > 0 ->
     case has_magic(Mime, Bytes) of
@@ -115,16 +133,71 @@ has_magic(<<"image/png">>, Bytes) ->
     prefix(<<137, 80, 78, 71, 13, 10, 26, 10>>, Bytes);
 has_magic(<<"image/jpeg">>, Bytes) ->
     prefix(<<16#FF, 16#D8, 16#FF>>, Bytes);
+has_magic(<<"image/gif">>, Bytes) ->
+    prefix(<<"GIF87a">>, Bytes) orelse prefix(<<"GIF89a">>, Bytes);
+has_magic(<<"image/webp">>, Bytes) ->
+    %% RIFF 容器：前 4 字节 RIFF + 偏移 8..12 为 WEBP
+    prefix(<<"RIFF">>, Bytes) andalso byte_size(Bytes) >= 12 andalso
+        binary:part(Bytes, 8, 4) =:= <<"WEBP">>;
+has_magic(<<"image/bmp">>, Bytes) ->
+    prefix(<<"BM">>, Bytes);
+has_magic(<<"image/svg+xml">>, Bytes) ->
+    %% SVG 是文本：先过纯文本判定，再要求前 2KB 内出现 <svg 标记
+    text_plain_ok(Bytes) andalso svg_marker(Bytes);
 has_magic(<<"application/pdf">>, Bytes) ->
     prefix(<<"%PDF-">>, Bytes);
 has_magic(<<"text/plain">>, Bytes) ->
     text_plain_ok(Bytes);
+has_magic(<<"text/markdown">>, Bytes) ->
+    text_plain_ok(Bytes);
+has_magic(<<"text/csv">>, Bytes) ->
+    text_plain_ok(Bytes);
+has_magic(<<"application/zip">>, Bytes) ->
+    prefix(<<80, 75, 3, 4>>, Bytes);
+has_magic(<<"application/x-7z-compressed">>, Bytes) ->
+    prefix(<<55, 122, 188, 175, 39, 28>>, Bytes);
+has_magic(<<"application/gzip">>, Bytes) ->
+    prefix(<<16#1F, 16#8B>>, Bytes);
+has_magic(<<"application/msword">>, Bytes) ->
+    %% OLE2 复合文档（.doc/.xls/.ppt 老格式）
+    prefix(<<16#D0, 16#CF, 16#11, 16#E0, 16#A1, 16#B1, 16#1A, 16#E1>>, Bytes);
+%% OOXML（.docx/.xlsx/.pptx）本质是 zip 容器：魔数只复核到 PK 前缀
+%%（弱校验——容器内条目形状由消费方按声明 mime 解释；V1 接受此粒度）
+has_magic(<<"application/vnd.openxmlformats-officedocument.wordprocessingml.document">>, Bytes) ->
+    prefix(<<80, 75, 3, 4>>, Bytes);
+has_magic(<<"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">>, Bytes) ->
+    prefix(<<80, 75, 3, 4>>, Bytes);
+has_magic(<<"application/vnd.openxmlformats-officedocument.presentationml.presentation">>, Bytes) ->
+    prefix(<<80, 75, 3, 4>>, Bytes);
+has_magic(<<"video/mp4">>, Bytes) ->
+    %% ISO BMFF：偏移 4..8 为 ftyp
+    byte_size(Bytes) >= 12 andalso binary:part(Bytes, 4, 4) =:= <<"ftyp">>;
+has_magic(<<"video/webm">>, Bytes) ->
+    prefix(<<16#1A, 16#45, 16#DF, 16#A3>>, Bytes);
+has_magic(<<"audio/mpeg">>, Bytes) ->
+    prefix(<<"ID3">>, Bytes) orelse mpeg_frame_sync(Bytes);
 has_magic(_Other, _Bytes) ->
     false.
 
 %% text/plain：不得含 NUL 或非法 UTF-8 控制字节（避免把二进制伪装成文本）
 text_plain_ok(Bytes) ->
     binary:match(Bytes, <<0>>) =:= nomatch andalso no_control_noise(Bytes).
+
+svg_marker(Bytes) ->
+    Head =
+        case byte_size(Bytes) > 2048 of
+            true -> binary:part(Bytes, 0, 2048);
+            false -> Bytes
+        end,
+    binary:match(Head, <<"<svg">>) =/= nomatch.
+
+%% MP3 裸帧同步字：FF Ex/F F2/F3/FB/FA（11 位帧同步 + 层/保护位常见组合）
+mpeg_frame_sync(<<16#FF, X, _/binary>>) when
+    X =:= 16#FB orelse X =:= 16#FA orelse X =:= 16#F3 orelse X =:= 16#F2 orelse X =:= 16#E3
+->
+    true;
+mpeg_frame_sync(_Bytes) ->
+    false.
 
 no_control_noise(Bytes) ->
     %% 只允许 TAB/LF/CR 三个控制字符
