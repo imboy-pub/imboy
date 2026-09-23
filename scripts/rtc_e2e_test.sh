@@ -766,7 +766,9 @@ stage2_sfu() {
      && grep -qi "track" "$LOGDIR/s2_subscriber.log" 2>/dev/null; then
     ok "subscriber 收到 track 事件（subscribe 证据）"
   else
-    degr "subscriber 日志无 track 事件（CLI 输出形态差异），以双端连接+参与者 track 为准"
+    # A7 复核遗留项：订阅回执是媒体合同必要面（publish 有硬断言、subscribe
+    # 只有此处软降级会形成假绿窗口），缺失必须计 REQ_DEGRADED 进终局门。
+    degr_req "subscriber 日志无 track 事件（subscribe 回执缺失；双端连接+参与者 track 仅覆盖 publish 面）"
   fi
 
   say "-- S2.3 leave：断开后房间收敛"
