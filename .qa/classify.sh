@@ -134,8 +134,11 @@ clean_log "$LOGFILE" > "$CLEAN_LOG"
 if [ "$EMIT_KNOWN" -eq 1 ]; then
   echo "  ${GATE}:"
   echo "    known_failures:"
-  if extract_failures "$GATE" "$CLEAN_LOG" | grep -q .; then
-    extract_failures "$GATE" "$CLEAN_LOG" | awk '{printf "      - %s\n", $1}'
+  # 命令替换捕获后判断：不要写 `extract_failures ... | grep -q .` —— pipefail 下
+  # grep -q 命中即退出会令上游收 SIGPIPE，失败越多此判断越恒假（emit-known 假空）。
+  current_failures_emit="$(extract_failures "$GATE" "$CLEAN_LOG")"
+  if [ -n "$current_failures_emit" ]; then
+    printf '%s\n' "$current_failures_emit" | awk '{printf "      - %s\n", $1}'
   else
     echo "      []  # 本次运行无失败标识（保留空列表请手工改为 known_failures: [] 单行）"
   fi
