@@ -146,8 +146,18 @@ setup(Conn) ->
         FROM unnest($1::bigint[]) AS i ON CONFLICT (id) DO NOTHING},
         [[?OWNER1, ?OWNER2, ?JOINER, ?OUTSIDER]]
     ),
-    {ok, OrgAView} = organization_admin_logic:admin_create(1, <<"GZAPP09-A">>, ?OWNER1, <<"GZAPP09-A-WS1">>),
-    {ok, OrgBView} = organization_admin_logic:admin_create(1, <<"GZAPP09-B">>, ?OWNER2, <<"GZAPP09-B-WS1">>),
+    %% EADM-07（c784e36f）起 admin_create/5 携带 AuditCtx（平台审计写入
+    %% 组织创建事务）；harness 传最小真实形状（ip + request），审计行可读
+    %% 且与生产 org_create_write 同构。
+    AuditCtx =
+        #{ip => <<"127.0.0.1">>,
+          request => #{<<"method">> => <<"POST">>, <<"path">> => <<"/api/adm/organizations">>}},
+    {ok, OrgAView} = organization_admin_logic:admin_create(
+        1, <<"GZAPP09-A">>, ?OWNER1, <<"GZAPP09-A-WS1">>, AuditCtx
+    ),
+    {ok, OrgBView} = organization_admin_logic:admin_create(
+        1, <<"GZAPP09-B">>, ?OWNER2, <<"GZAPP09-B-WS1">>, AuditCtx
+    ),
     OrgA = maps:get(<<"id">>, maps:get(<<"organization">>, OrgAView)),
     WsA = maps:get(<<"id">>, maps:get(<<"default_workspace">>, OrgAView)),
     OrgB = maps:get(<<"id">>, maps:get(<<"organization">>, OrgBView)),

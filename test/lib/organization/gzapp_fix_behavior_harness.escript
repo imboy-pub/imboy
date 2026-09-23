@@ -361,8 +361,11 @@ probes(Conn, Counters) ->
     ),
 
     io:format("~n== F3 建企模板原语 + 加入编排（真库） ==~n"),
+    %% EADM-07 起 admin_create/5 携带 AuditCtx（见 gzapp_enterprise harness 同注）
     RA = organization_admin_logic:admin_create(
-        1, <<"GZFIX-建企验证"/utf8>>, ?CREATE_OWNER, <<"GZFIX-默认工作区"/utf8>>
+        1, <<"GZFIX-建企验证"/utf8>>, ?CREATE_OWNER, <<"GZFIX-默认工作区"/utf8>>,
+        #{ip => <<"127.0.0.1">>,
+          request => #{<<"method">> => <<"POST">>, <<"path">> => <<"/api/adm/organizations">>}}
     ),
     pass_val(Counters, <<"P14 admin_create → {ok,_}"/utf8>>, RA, fun is_ok/1),
     {OrgNew, WsNew} = created_ids(RA),
