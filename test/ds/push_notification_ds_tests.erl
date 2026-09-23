@@ -5,8 +5,10 @@
 -define(WITH_MECKS(Modules, Fun),
     (fun() ->
         ok = meck:new(Modules, [passthrough, no_link]),
-        try Fun()
-        after meck:unload(Modules)
+        try
+            Fun()
+        after
+            meck:unload(Modules)
         end
     end)()
 ).
@@ -37,11 +39,16 @@ send_to_users_empty_test() ->
 send_fcm_not_configured_test() ->
     %% 确保 push 配置不存在
     application:unset_env(imboy, push),
-    ?assertEqual({error, not_configured}, push_notification_ds:send_fcm(<<"token">>, <<"title">>, <<"body">>)).
+    ?assertEqual(
+        {error, not_configured}, push_notification_ds:send_fcm(<<"token">>, <<"title">>, <<"body">>)
+    ).
 
 send_apns_not_configured_test() ->
     application:unset_env(imboy, push),
-    ?assertEqual({error, not_configured}, push_notification_ds:send_apns(<<"token">>, <<"title">>, <<"body">>)).
+    ?assertEqual(
+        {error, not_configured},
+        push_notification_ds:send_apns(<<"token">>, <<"title">>, <<"body">>)
+    ).
 
 extract_push_info_tuple4_test() ->
     ?WITH_MECKS([push_token_repo, elib_async], fun() ->
@@ -58,4 +65,29 @@ send_to_users_with_tokens_test() ->
         meck:expect(push_token_repo, list_by_uids, fun([1, 2]) -> {ok, Rows} end),
         meck:expect(elib_async, async_retry, fun(_Fun, _Retry, _Delay) -> self() end),
         ?assertEqual(ok, push_notification_ds:send_to_users([1, 2], <<"title">>, <<"body">>))
+    end).
+
+%% send_to_user_with_data：Data 原样贯穿到 provider（jpush 分支全链）。
+send_to_user_with_data_threads_data_test() ->
+    ?WITH_MECKS([push_token_repo, elib_async, push_provider_jpush], fun() ->
+        Rows = [#{<<"platform">> => <<"jpush">>, <<"token">> => <<"rid-1">>}],
+        meck:expect(push_token_repo, list_by_uid, fun(1) -> {ok, Rows} end),
+        %% async_retry 真执行 fun（默认 mock 不执行，provider 不会被调）
+        meck:expect(elib_async, async_retry, fun(F, _Retry, _Delay) ->
+            F(),
+            self()
+        end),
+        meck:expect(push_provider_jpush, send, 4, fun(_Tok, T, B, D) ->
+            self() ! {jpush_called, T, B, D},
+            ok
+        end),
+        Data = #{<<"notify_type">> => <<"org_invite">>},
+        ?assertEqual(
+            ok, push_notification_ds:send_to_user_with_data(1, <<"title">>, <<"body">>, Data)
+        ),
+        receive
+            {jpush_called, <<"title">>, <<"body">>, Data} -> ok
+        after 1000 ->
+            erlang:error(data_not_threaded)
+        end
     end).

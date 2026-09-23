@@ -23,6 +23,7 @@
 -export([provider/0]).
 -export([device_type/0]).
 -export([send/3]).
+-export([send/4]).
 -export([classify/2]).
 
 %% JPush REST API v3 默认端点（测试/代理经 {jpush_push_url, ...} 覆盖）
@@ -47,7 +48,7 @@ provider() ->
 device_type() ->
     <<"android">>.
 
-%% @doc 向单个 RegistrationID 发送 Android 通知
+%% @doc 向单个 RegistrationID 发送 Android 通知（无自定义数据）。
 %%
 %% 返回值：
 %%   ok                            HTTP 200，推送受理
@@ -59,14 +60,28 @@ device_type() ->
 %%   {error, term()}                网络层错误原样透传，可重试
 -spec send(binary(), binary(), binary()) ->
     ok | {error, not_configured} | {error, {jpush_error, term()}} | {error, term()}.
-send(Token, Title, Body) when is_binary(Token), byte_size(Token) > 0 ->
+send(Token, Title, Body) ->
+    send(Token, Title, Body, #{}).
+
+%% @doc 向单个 RegistrationID 发送 Android 通知，携带固定常量路由数据。
+%%
+%% Data 是**固定常量**键值（如 #{<<"notify_type">> => <<"org_invite">>}），
+%% 仅用于客户端点击路由；禁止携带动态内容（消息正文/发送者身份等）——
+%% 与 title/body 的隐私不变量同口径。
+-spec send(binary(), binary(), binary(), #{binary() => binary()}) ->
+    ok | {error, not_configured} | {error, {jpush_error, term()}} | {error, term()}.
+send(Token, Title, Body, Data) when
+    is_binary(Token),
+    byte_size(Token) > 0,
+    is_map(Data)
+->
     case get_config() of
         {ok, AppKey, MasterSecret, Url} ->
             Headers = [
                 {<<"authorization">>, basic_auth(AppKey, MasterSecret)},
                 {<<"content-type">>, <<"application/json">>}
             ],
-            Payload = build_payload(Token, Title, Body),
+            Payload = build_payload(Token, Title, Body, Data),
             case push_provider_jpush_http:post(Url, Headers, Payload) of
                 {ok, Status, RespBody} ->
                     case classify(Status, RespBody) of
@@ -135,11 +150,22 @@ basic_auth(AppKey, MasterSecret) ->
     Credentials = <<AppKey/binary, ":", MasterSecret/binary>>,
     <<"Basic ", (base64:encode(Credentials))/binary>>.
 
-%% @doc 构造最小 Android 通知 body（fail-closed）
+%% @doc 构造 Android 通知 body（fail-closed）
 %%
 %% 仅 platform/audience/notification 三键；notification.android 仅
-%% title/alert，绝不携带 extras/消息正文/密文/发送者身份。
-build_payload(Token, Title, Body) ->
+%% title/alert。Data 非空时才添加 extras（固定常量路由键，见 send/4）；
+%% Data 为空 map 时形状与历史版本完全一致（send/3 路径零变化）。
+build_payload(Token, Title, Body, Data) ->
+    Android0 = #{
+        <<"title">> => Title,
+        <<"alert">> => Body
+    },
+    %% 注意 map_size 判空：case 的 `#{}` 模式匹配任意 map，会让 extras 永不加
+    Android =
+        case map_size(Data) of
+            0 -> Android0;
+            _ -> Android0#{<<"extras">> => Data}
+        end,
     jsone:encode(
         #{
             <<"platform">> => [device_type()],
@@ -147,10 +173,7 @@ build_payload(Token, Title, Body) ->
                 <<"registration_id">> => [Token]
             },
             <<"notification">> => #{
-                device_type() => #{
-                    <<"title">> => Title,
-                    <<"alert">> => Body
-                }
+                device_type() => Android
             }
         },
         [native_utf8]

@@ -62,9 +62,36 @@ notify_offline_user_online_test() ->
 notify_offline_user_offline_test() ->
     ?WITH_MECKS([imboy_syn, push_notification_ds], fun() ->
         meck:expect(imboy_syn, count_user, fun(1) -> 0 end),
-        meck:expect(push_notification_ds, send_to_user, fun(1, <<"title">>, <<"body">>) -> ok end),
+        meck:expect(push_notification_ds, send_to_user_with_data, 4, fun(Uid, T, B, D) ->
+            self() ! {ds_called, Uid, T, B, D},
+            ok
+        end),
         ?assertEqual(ok, push_notification_logic:notify_offline_user(1, <<"title">>, <<"body">>)),
-        ?assert(meck:called(push_notification_ds, send_to_user, [1, <<"title">>, <<"body">>]))
+        receive
+            %% /3 路径 Data 必须恰为空 map（不携带任何路由数据）
+            {ds_called, 1, <<"title">>, <<"body">>, D} -> ?assertEqual(#{}, D)
+        after 1000 ->
+            erlang:error(ds_not_called_with_empty_data)
+        end
+    end).
+
+%% /4 变体：自定义路由数据原样贯穿到 DS 层（邀请触达 notify_type 用）。
+notify_offline_user_with_data_test() ->
+    ?WITH_MECKS([imboy_syn, push_notification_ds], fun() ->
+        meck:expect(imboy_syn, count_user, fun(1) -> 0 end),
+        meck:expect(push_notification_ds, send_to_user_with_data, 4, fun(Uid, T, B, D) ->
+            self() ! {ds_called, Uid, T, B, D},
+            ok
+        end),
+        Data = #{<<"notify_type">> => <<"org_invite">>},
+        ?assertEqual(
+            ok, push_notification_logic:notify_offline_user(1, <<"title">>, <<"body">>, Data)
+        ),
+        receive
+            {ds_called, 1, <<"title">>, <<"body">>, Data} -> ok
+        after 1000 ->
+            erlang:error(data_not_threaded)
+        end
     end).
 
 notify_offline_users_all_online_test() ->
@@ -201,16 +228,19 @@ maybe_push_for_c2c_multi_device_online_test() ->
         end),
         meck:expect(imboy_syn, count_user, fun(2) -> 3 end),
         ?assertEqual(ok, push_notification_logic:maybe_push_for_c2c(1, 2, <<"text">>, <<"hi">>)),
-        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_user, '_'))
+        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_user, '_')),
+        ?assertEqual(
+            0, meck:num_calls(push_notification_ds, send_to_user_with_data, '_')
+        )
     end).
 
-%% 单设备离线（count_user=0）→ 推送；且 title/body 是静态常量
+%% 单设备离线（count_user=0）→ 推送；且 title/body 是静态常量、
+%% 不携带任何路由数据（Data 恰为空 map，隐私红线回归锚）。
 notify_offline_user_single_device_offline_uses_constant_payload_test() ->
     ?WITH_MECKS([imboy_syn, push_notification_ds], fun() ->
         meck:expect(imboy_syn, count_user, fun(1) -> 0 end),
-        meck:expect(push_notification_ds, send_to_user, fun(
-            1, <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>
-        ) ->
+        meck:expect(push_notification_ds, send_to_user_with_data, 4, fun(Uid, T, B, D) ->
+            self() ! {ds_called, Uid, T, B, D},
             ok
         end),
         ?assertEqual(
@@ -219,13 +249,12 @@ notify_offline_user_single_device_offline_uses_constant_payload_test() ->
                 1, <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>
             )
         ),
-        ?assert(
-            meck:called(
-                push_notification_ds,
-                send_to_user,
-                [1, <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>]
-            )
-        )
+        receive
+            {ds_called, 1, <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>, D} ->
+                ?assertEqual(#{}, D)
+        after 1000 ->
+            erlang:error(ds_not_called)
+        end
     end).
 
 %% c2g 负例：发送者即使离线，也绝不收到自己发出的群消息推送

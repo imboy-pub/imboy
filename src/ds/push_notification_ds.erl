@@ -8,9 +8,12 @@
 -include("log.hrl").
 
 -export([send_to_user/3]).
+-export([send_to_user_with_data/4]).
 -export([send_to_users/3]).
 -export([send_fcm/3]).
+-export([send_fcm/4]).
 -export([send_apns/3]).
+-export([send_apns/4]).
 -export([cleanup_inactive_tokens/1]).
 
 %% ===================================================================
@@ -23,11 +26,18 @@
 %% @param Body 推送内容
 -spec send_to_user(integer(), binary(), binary()) -> ok.
 send_to_user(Uid, Title, Body) ->
+    send_to_user_with_data(Uid, Title, Body, #{}).
+
+%% @doc 向单个用户的所有设备发送推送通知，携带固定常量路由数据。
+%% Data 仅允许固定常量键值（如 notify_type），禁止动态内容（隐私红线
+%% 与 title/body 常量同口径）；空 map = 与 send_to_user/3 完全同形状。
+-spec send_to_user_with_data(integer(), binary(), binary(), #{binary() => binary()}) -> ok.
+send_to_user_with_data(Uid, Title, Body, Data) when is_map(Data) ->
     case push_token_repo:list_by_uid(Uid) of
         {ok, Rows} when is_list(Rows), length(Rows) > 0 ->
             lists:foreach(
                 fun(Row) ->
-                    do_send_push(Row, Title, Body)
+                    do_send_push(Row, Title, Body, Data)
                 end,
                 Rows
             ),
@@ -65,24 +75,34 @@ send_to_users(Uids, Title, Body) ->
 %% 需要在 sys.config 配置 {push, [{fcm_project_id, "..."}, {fcm_service_account_key, "..."}]}
 -spec send_fcm(binary(), binary(), binary()) -> ok | {error, term()}.
 send_fcm(Token, Title, Body) ->
+    send_fcm(Token, Title, Body, #{}).
+
+%% @doc FCM 推送 + 固定常量路由数据（message.data；键值必须二进制）。
+-spec send_fcm(binary(), binary(), binary(), #{binary() => binary()}) ->
+    ok | {error, term()}.
+send_fcm(Token, Title, Body, Data) when is_map(Data) ->
     case get_fcm_config() of
         {ok, ProjectId, AccessToken} ->
             Url = <<"https://fcm.googleapis.com/v1/projects/", ProjectId/binary, "/messages:send">>,
-            Payload = jsone:encode(
+            NotificationMsg =
                 #{
-                    <<"message">> => #{
-                        <<"token">> => Token,
-                        <<"notification">> => #{
-                            <<"title">> => Title,
-                            <<"body">> => Body
-                        },
-                        <<"android">> => #{
-                            <<"priority">> => <<"high">>
-                        }
+                    <<"token">> => Token,
+                    <<"notification">> => #{
+                        <<"title">> => Title,
+                        <<"body">> => Body
+                    },
+                    <<"android">> => #{
+                        <<"priority">> => <<"high">>
                     }
                 },
-                [native_utf8]
-            ),
+            %% map_size 判空（case 的 `#{}` 模式匹配任意 map）：空 Data 时
+            %% 请求体与历史版本逐字节一致
+            Message =
+                case map_size(Data) of
+                    0 -> NotificationMsg;
+                    _ -> NotificationMsg#{<<"data">> => Data}
+                end,
+            Payload = jsone:encode(#{<<"message">> => Message}, [native_utf8]),
             Headers = [
                 {<<"authorization">>, <<"Bearer ", AccessToken/binary>>},
                 {<<"content-type">>, <<"application/json">>}
@@ -110,9 +130,15 @@ send_fcm(Token, Title, Body) ->
 %%           {apns_env, production | development}]}
 -spec send_apns(binary(), binary(), binary()) -> ok | {error, term()}.
 send_apns(Token, Title, Body) ->
+    send_apns(Token, Title, Body, #{}).
+
+%% @doc APNs 推送 + 固定常量路由数据（aps 之外的根级自定义键）。
+-spec send_apns(binary(), binary(), binary(), #{binary() => binary()}) ->
+    ok | {error, term()}.
+send_apns(Token, Title, Body, Data) when is_map(Data) ->
     case get_apns_config() of
         {ok, KeyId, TeamId, BundleId} ->
-            Payload = jsone:encode(
+            Aps =
                 #{
                     <<"aps">> => #{
                         <<"alert">> => #{
@@ -124,8 +150,14 @@ send_apns(Token, Title, Body) ->
                         <<"mutable-content">> => 1
                     }
                 },
-                [native_utf8]
-            ),
+            %% map_size 判空（case 的 `#{}` 模式匹配任意 map）：空 Data 时
+            %% 载荷与历史版本一致
+            Payload0 =
+                case map_size(Data) of
+                    0 -> Aps;
+                    _ -> maps:merge(Aps, Data)
+                end,
+            Payload = jsone:encode(Payload0, [native_utf8]),
             case get_apns_jwt(KeyId, TeamId) of
                 {ok, Jwt} ->
                     Host = get_apns_host(),
@@ -185,12 +217,15 @@ cleanup_inactive_tokens(InactiveDays) when InactiveDays > 0 ->
 
 %% @doc 根据平台选择推送方式（带重试）
 do_send_push(Row, Title, Body) ->
+    do_send_push(Row, Title, Body, #{}).
+
+do_send_push(Row, Title, Body, Data) when is_map(Data) ->
     {Platform, Token} = extract_push_info(Row),
     elib_async:async_retry(
         fun() ->
             case Platform of
                 <<"fcm">> ->
-                    case send_fcm(Token, Title, Body) of
+                    case send_fcm(Token, Title, Body, Data) of
                         ok -> ok;
                         % 不重试配置缺失
                         {error, not_configured} -> ok;
@@ -201,7 +236,7 @@ do_send_push(Row, Title, Body) ->
                         {error, Reason} -> error({push_failed, Reason})
                     end;
                 <<"apns">> ->
-                    case send_apns(Token, Title, Body) of
+                    case send_apns(Token, Title, Body, Data) of
                         ok -> ok;
                         {error, not_configured} -> ok;
                         % token 无效，不重试
@@ -209,7 +244,7 @@ do_send_push(Row, Title, Body) ->
                         {error, Reason} -> error({push_failed, Reason})
                     end;
                 <<"jpush">> ->
-                    send_jpush(Token, Title, Body);
+                    send_jpush(Token, Title, Body, Data);
                 _ ->
                     ?DEBUG_LOG(["Unknown push platform", Platform]),
                     ok
@@ -222,7 +257,10 @@ do_send_push(Row, Title, Body) ->
 
 %% @doc JPush 分派（EPGZ-07）：错误分类见 push_provider_jpush:send/3
 send_jpush(Token, Title, Body) ->
-    case push_provider_jpush:send(Token, Title, Body) of
+    send_jpush(Token, Title, Body, #{}).
+
+send_jpush(Token, Title, Body, Data) ->
+    case push_provider_jpush:send(Token, Title, Body, Data) of
         ok ->
             ok;
         % 未配置凭证：fail-closed 跳过，不重试

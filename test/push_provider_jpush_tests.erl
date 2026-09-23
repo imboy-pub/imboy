@@ -266,6 +266,44 @@ j4_send_ok_on_200_test() ->
         application:unset_env(imboy, push)
     end).
 
+%% send/4（组织邀请触达）：固定常量路由数据落 notification.android.extras。
+%% extras 仅允许常量键值（notify_type），title/alert 之外不得出现动态内容。
+j3_send_with_data_builds_extras_test() ->
+    ?WITH_MECKS([?JPUSH_HTTP], fun() ->
+        set_jpush_env(),
+        meck:expect(?JPUSH_HTTP, post, fun(_Url, _Headers, Body) ->
+            self() ! {j3d_captured, Body},
+            {ok, 200, <<"{\"sendno\":\"1\",\"msg_id\":\"1\"}">>}
+        end),
+        Data = #{<<"notify_type">> => <<"org_invite">>},
+        ?assertEqual(
+            ok, ?JPUSH_ADAPTER:send(<<"rid-jpush-001">>, ?PUSH_TITLE, ?PUSH_BODY, Data)
+        ),
+        Body = recv_captured(j3d_captured),
+        Json = decode_json(Body),
+        Android = maps:get(<<"android">>, maps:get(<<"notification">>, Json)),
+        ?assertEqual(?PUSH_TITLE, maps:get(<<"title">>, Android)),
+        ?assertEqual(?PUSH_BODY, maps:get(<<"alert">>, Android)),
+        ?assertEqual(Data, maps:get(<<"extras">>, Android)),
+        application:unset_env(imboy, push)
+    end).
+
+%% /3 与 /4 的边界锁：/3（Data 为空 map）payload 不含 extras 键——
+%% 历史请求形状逐字节不变（消息推送隐私红线回归锚）。
+j3_send_without_data_has_no_extras_test() ->
+    ?WITH_MECKS([?JPUSH_HTTP], fun() ->
+        set_jpush_env(),
+        meck:expect(?JPUSH_HTTP, post, fun(_Url, _Headers, Body) ->
+            self() ! {j3n_captured, Body},
+            {ok, 200, <<"{\"sendno\":\"1\",\"msg_id\":\"1\"}">>}
+        end),
+        ?assertEqual(ok, ?JPUSH_ADAPTER:send(<<"rid-1">>, ?PUSH_TITLE, ?PUSH_BODY)),
+        Json = decode_json(recv_captured(j3n_captured)),
+        Android = maps:get(<<"android">>, maps:get(<<"notification">>, Json)),
+        ?assertEqual(false, is_map_key(<<"extras">>, Android)),
+        application:unset_env(imboy, push)
+    end).
+
 %% J5 错误分类：400 + error.code=1003（registration_id 无效）→
 %% {jpush_error, invalid_token}。调用方（fan-out 层）据此调
 %% push_token_repo:deactivate_by_token —— 对齐 FCM 404/410 语义。
@@ -365,13 +403,13 @@ j6_fanout_dispatches_jpush_to_adapter_test() ->
             Fun(),
             self()
         end),
-        meck:expect(?JPUSH_ADAPTER, send, fun(<<"rid-jpush-001">>, ?PUSH_TITLE, ?PUSH_BODY) ->
+        meck:expect(?JPUSH_ADAPTER, send, fun(<<"rid-jpush-001">>, ?PUSH_TITLE, ?PUSH_BODY, _Data) ->
             ok
         end),
         ?assertEqual(ok, push_notification_ds:send_to_user(1, ?PUSH_TITLE, ?PUSH_BODY)),
         ?assert(
             meck:called(
-                ?JPUSH_ADAPTER, send, [<<"rid-jpush-001">>, ?PUSH_TITLE, ?PUSH_BODY]
+                ?JPUSH_ADAPTER, send, [<<"rid-jpush-001">>, ?PUSH_TITLE, ?PUSH_BODY, '_']
             )
         )
     end).
@@ -394,7 +432,7 @@ j6_fanout_invalid_token_deactivates_test() ->
             Fun(),
             self()
         end),
-        meck:expect(?JPUSH_ADAPTER, send, fun(<<"rid-stale-001">>, _T, _B) ->
+        meck:expect(?JPUSH_ADAPTER, send, fun(<<"rid-stale-001">>, _T, _B, _Data) ->
             {error, {jpush_error, invalid_token}}
         end),
         meck:expect(push_token_repo, deactivate_by_token, fun(<<"rid-stale-001">>) ->
@@ -424,7 +462,7 @@ j6_fanout_unauthorized_keeps_token_test() ->
             Fun(),
             self()
         end),
-        meck:expect(?JPUSH_ADAPTER, send, fun(<<"rid-keep-001">>, _T, _B) ->
+        meck:expect(?JPUSH_ADAPTER, send, fun(<<"rid-keep-001">>, _T, _B, _Data) ->
             {error, {jpush_error, unauthorized}}
         end),
         meck:expect(push_token_repo, deactivate_by_token, fun(_) ->
@@ -433,7 +471,7 @@ j6_fanout_unauthorized_keeps_token_test() ->
         ?assertEqual(ok, push_notification_ds:send_to_user(1, ?PUSH_TITLE, ?PUSH_BODY)),
         %% 前置：分派必须已发生（否则下面的"未下线"是消极断言恒真）
         ?assert(
-            meck:called(?JPUSH_ADAPTER, send, ['_', ?PUSH_TITLE, ?PUSH_BODY])
+            meck:called(?JPUSH_ADAPTER, send, ['_', ?PUSH_TITLE, ?PUSH_BODY, '_'])
         ),
         ?assertEqual(0, meck:num_calls(push_token_repo, deactivate_by_token, '_'))
     end).

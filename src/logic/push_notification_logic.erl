@@ -10,6 +10,7 @@
 -export([register_token/5]).
 -export([unregister_token/2]).
 -export([notify_offline_user/3]).
+-export([notify_offline_user/4]).
 -export([notify_offline_users/3]).
 -export([maybe_push_for_c2c/4]).
 -export([maybe_push_for_c2g/4]).
@@ -50,10 +51,16 @@ unregister_token(Uid, DeviceId) ->
 %% @doc 检查用户是否离线，如果离线则发送推送通知
 -spec notify_offline_user(integer(), binary(), binary()) -> ok.
 notify_offline_user(Uid, Title, Body) ->
+    notify_offline_user(Uid, Title, Body, #{}).
+
+%% @doc 离线推送 + 固定常量路由数据（如 notify_type；客户端点击路由用）。
+%% Data 禁止动态内容（消息正文/发送者身份等），与常量文案隐私红线同口径。
+-spec notify_offline_user(integer(), binary(), binary(), #{binary() => binary()}) -> ok.
+notify_offline_user(Uid, Title, Body, Data) when is_map(Data) ->
     case imboy_syn:count_user(Uid) of
         0 ->
             %% 用户完全离线，发送推送
-            push_notification_ds:send_to_user(Uid, Title, Body);
+            push_notification_ds:send_to_user_with_data(Uid, Title, Body, Data);
         _ ->
             %% 用户有在线设备，不推送
             ok
