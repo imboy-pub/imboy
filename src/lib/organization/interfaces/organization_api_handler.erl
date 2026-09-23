@@ -141,7 +141,7 @@ invitation_mine(Req0, State) ->
         status => query_atom(Req0, <<"status">>),
         limit => query_limit(Req0)
     },
-    respond(Req0, organization_invitation_app:list_for_target(Uid, Opts)).
+    respond_list(Req0, organization_invitation_app:list_for_target(Uid, Opts)).
 
 invitation_list(Req0, State) ->
     Uid = auth_ds:current_uid(State),
@@ -150,7 +150,7 @@ invitation_list(Req0, State) ->
             status => query_atom(Req0, <<"status">>),
             limit => query_limit(Req0)
         },
-        respond(Req0, organization_invitation_app:list_for_org(Uid, OrgId, Opts))
+        respond_list(Req0, organization_invitation_app:list_for_org(Uid, OrgId, Opts))
     end).
 
 invitation_create(Req0, State) ->
@@ -172,16 +172,14 @@ invitation_accept(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     Params = elib_param:post(Req0),
     with_organization_id(Req0, fun(OrgId) ->
-        Token = maps:get(<<"token">>, Params, undefined),
-        respond(
-            Req0,
-            organization_invitation_app:accept(
-                Uid,
-                OrgId,
-                Token,
-                #{membership_hook => fun organization_join_orchestrator:membership_hook/2}
-            )
-        )
+        Opts = #{membership_hook => fun organization_join_orchestrator:membership_hook/2},
+        case maps:get(<<"token">>, Params, undefined) of
+            Token when is_binary(Token), Token =/= <<>> ->
+                respond(Req0, organization_invitation_app:accept(Uid, OrgId, Token, Opts));
+            _ ->
+                %% 免口令（P0 定向邀请直达）：JWT 身份即 target 凭据。
+                respond(Req0, organization_invitation_app:accept_targeted(Uid, OrgId, Opts))
+        end
     end).
 
 %% C11 收口（GZAPP-01 编排化）：邀请首次消费成功后**同事务**完成统一加入
@@ -219,7 +217,7 @@ department_list(Req0, State) ->
                 undefined -> Params0;
                 Status -> Params0#{status => Status}
             end,
-        respond_dept(Req0, organization_department_app:list_departments(OrgId, Params))
+        respond_list_dept(Req0, organization_department_app:list_departments(OrgId, Params))
     end).
 
 department_create(Req0, State) ->
@@ -265,7 +263,7 @@ department_member_list(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     with_department_id(Req0, fun(OrgId, DeptId) ->
         Params = #{actor_user_id => Uid, department_id => DeptId},
-        respond_dept(Req0, organization_department_app:list_members(OrgId, Params))
+        respond_list_dept(Req0, organization_department_app:list_members(OrgId, Params))
     end).
 
 department_member_add(Req0, State) ->
@@ -468,11 +466,27 @@ respond(Req0, {error, {Code, Msg}}) when is_integer(Code), is_binary(Msg) ->
 respond(Req0, {error, _Reason}) ->
     elib_response:error(Req0, <<"请求处理失败，请稍后重试"/utf8>>, 500).
 
+%% v2 列表端点信封约定：裸列表包装为 #{list => Rows}。
+%% App 端 IMBoyHttpResponse.payloadList/2 只认 list 键（与
+%% /organizations/mine 的 map 形状一致）；此前裸数组 payload 会被
+%% App 解析成恒空列表（REAL BUG 2026-09-23：邀请页/部门页恒空）。
+respond_list(Req0, {ok, Rows}) when is_list(Rows) ->
+    respond(Req0, {ok, #{list => Rows}});
+respond_list(Req0, Other) ->
+    respond(Req0, Other).
+
 respond_dept(Req0, {ok, Payload}) ->
     elib_response:success(Req0, Payload);
 respond_dept(Req0, {error, Reason}) ->
     {Code, Msg} = map_dept_error(Reason),
     elib_response:error(Req0, Msg, Code).
+
+%% department 列表端点专用：错误走 map_dept_error 机械翻译，
+%% 成功裸列表包装 #{list => Rows}（信封约定见 respond_list/2 注释）。
+respond_list_dept(Req0, {ok, Rows}) when is_list(Rows) ->
+    respond_dept(Req0, {ok, #{list => Rows}});
+respond_list_dept(Req0, Other) ->
+    respond_dept(Req0, Other).
 
 %% department 应用层错误形状 → HTTP 状态机械翻译。
 %% 400 = 参数/形状/约束非法；403 = 调用者资格不足；404 = 目标不存在；

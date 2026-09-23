@@ -258,6 +258,76 @@ invitation_membership_hook_propagates_orchestrator_error_test_() ->
         end
     ).
 
+%% P0 免口令（定向邀请直达）：body 无 token → accept_targeted/3，
+%% 且 membership_hook 同样注入（免口令路径与口令路径共用编排契约）。
+invitation_accept_tokenless_routes_to_accept_targeted_test_() ->
+    ?WITH_MECKS(
+        invitation_accept_mocks(#{hook_result => ok, body => #{}}),
+        fun() ->
+            organization_api_handler:handle_action(
+                invitation_accept, post_req, #{current_uid => 305}
+            ),
+            receive
+                {accept_targeted_invitation, 305, ?ORG_ID, Opts} ->
+                    ?assert(maps:is_key(membership_hook, Opts)),
+                    ?assertEqual(
+                        ok,
+                        (maps:get(membership_hook, Opts))(fake_conn, #{})
+                    )
+            after 1000 -> erlang:error(no_accept_targeted_call)
+            end
+        end
+    ).
+
+%% 向后兼容锁：body 带非空 token 时仍走 accept/4（旧客户端口令路径不回归）。
+invitation_accept_with_token_keeps_legacy_path_test_() ->
+    ?WITH_MECKS(
+        invitation_accept_mocks(#{hook_result => ok, body => #{<<"token">> => <<"legacy">>}}),
+        fun() ->
+            organization_api_handler:handle_action(
+                invitation_accept, post_req, #{current_uid => 305}
+            ),
+            receive
+                {accept_invitation, 305, ?ORG_ID, <<"legacy">>, _Opts} -> ok
+            after 1000 -> erlang:error(no_accept_call)
+            end
+        end
+    ).
+
+%% v2 列表信封约定（REAL BUG 2026-09-23）：裸列表包装 #{list => Rows}——
+%% App 端 IMBoyHttpResponse.payloadList/2 只认 list 键，此前裸数组 payload
+%% 被 App 解析成恒空列表（我的邀请页/邀请管理页恒空）。
+invitation_mine_wraps_list_envelope_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(get_req) -> <<"GET">> end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(_Key, _Req, Default) -> Default end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Payload) ->
+                    #{response_status => 200, payload => Payload}
+                end}
+            ]},
+            {organization_invitation_app, [
+                {'list_for_target', 2, fun(_Uid, _Opts) ->
+                    {ok, [#{invitation_id => 1, status => pending}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = organization_api_handler:handle_action(
+                invitation_mine, get_req, #{current_uid => ?UID}
+            ),
+            ?assertEqual(200, maps:get(response_status, Result)),
+            ?assertMatch(
+                #{list := [#{invitation_id := 1}]}, maps:get(payload, Result)
+            )
+        end
+    ).
+
 %% ------------------------------------------------------------------
 %% Internal
 %% ------------------------------------------------------------------
@@ -389,10 +459,13 @@ dept_list_mocks(GetFun) ->
     ].
 
 %% invitation_accept POST：hook 注入 + hook→orchestrator 契约锁（GZAPP-01）。
+%% Overrides：hook_result（缺省 ok）、body（缺省带 token 的旧路径请求）。
 invitation_accept_mocks() ->
-    invitation_accept_mocks(#{hook_result => ok}).
+    invitation_accept_mocks(#{}).
 
-invitation_accept_mocks(#{hook_result := HookResult}) ->
+invitation_accept_mocks(Overrides) ->
+    HookResult = maps:get(hook_result, Overrides, ok),
+    Body = maps:get(body, Overrides, #{<<"token">> => <<"tok">>}),
     [
         {cowboy_req, [
             {'method', 1, fun(post_req) -> <<"POST">> end},
@@ -405,7 +478,7 @@ invitation_accept_mocks(#{hook_result := HookResult}) ->
             end}
         ]},
         {elib_param, [
-            {'post', 1, fun(_Req) -> #{<<"token">> => <<"tok">>} end},
+            {'post', 1, fun(_Req) -> Body end},
             {'get', 3, fun(_Key, _Req, Default) -> Default end}
         ]},
         {elib_response, [
@@ -417,6 +490,11 @@ invitation_accept_mocks(#{hook_result := HookResult}) ->
         {organization_invitation_app, [
             {'accept', 4, fun(Uid, OrgId, Token, Opts) ->
                 self() ! {accept_invitation, Uid, OrgId, Token, Opts},
+                {ok, #{status => accepted, already_accepted => false}}
+            end},
+            %% P0 免口令路径（定向邀请直达）
+            {'accept_targeted', 3, fun(Uid, OrgId, Opts) ->
+                self() ! {accept_targeted_invitation, Uid, OrgId, Opts},
                 {ok, #{status => accepted, already_accepted => false}}
             end}
         ]},

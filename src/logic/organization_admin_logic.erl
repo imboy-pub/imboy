@@ -1219,6 +1219,8 @@ admin_invitation_create(_AdmUserId, OrgId, TargetUid, ExpiresAt) when
     case elib_pg:with_tx(Tx) of
         {ok, View} ->
             ok = ?INFO_LOG([organization_admin_invitation_created, OrgId, TargetUid]),
+            %% 触达（P1）：与管理面/用户面共用同一触达模块（fire-and-forget）
+            _ = organization_invitation_notify:notify_created(TargetUid),
             {ok, View};
         {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
             {error, {Code, Msg}};

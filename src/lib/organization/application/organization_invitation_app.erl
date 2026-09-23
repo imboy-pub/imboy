@@ -11,6 +11,9 @@
 %%     （WHERE status='pending'）；target-only（digest 查找同语句锁 target 作用域，
 %%     非目标用户命中不了行）；幂等（重复 accept 读到 accepted 终态返回同一视图，
 %%     不产生第二次消费副作用）。
+%%   * accept_targeted（P0 定向邀请免口令）：target 身份（JWT）即凭据，行定位
+%%     换成 (org, target) 最新 pending/accepted 行，其余语义与 accept/4 同构；
+%%     口令路径保留向后兼容（旧版客户端凭 token accept 不受影响）。
 %%   * 与 membership 的衔接 = membership_hook（同事务、consume 成功后调用）；
 %%     V1 默认不注入（invitation 侧边界，membership adapter 由后续 Gate 集成）。
 %%     hook 失败 → 整个事务回滚（消费 + 成员变更原子）。
@@ -20,6 +23,7 @@
 -export([
     create/4,
     accept/4,
+    accept_targeted/3,
     reject/3,
     revoke/3,
     list_for_target/2,
@@ -61,6 +65,9 @@ create(InviterUid, OrgId, TargetUid, Opts) when is_map(Opts) ->
             Tx = fun(Conn) -> create_tx(Conn, Row) end,
             case elib_pg:with_tx(Tx) of
                 {ok, View} ->
+                    %% 触达（P1）：邀请已落库，离线推送 fire-and-forget；
+                    %% 发送结果绝不影响 create 结果。
+                    organization_invitation_notify:notify_created(TargetUid),
                     {ok, View#{token => Token}};
                 {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
                     {error, {Code, Msg}};
@@ -206,7 +213,13 @@ accept_tx(Conn, TargetUid, OrgId, Digest, Hook, RetriesLeft) ->
         {ok, Row} ->
             case organization_invitation:classify_accept(os:system_time(second), Row) of
                 ok ->
-                    consume_accept(Conn, Row, Hook, RetriesLeft, TargetUid, OrgId, Digest);
+                    consume_accept(
+                        Conn,
+                        Row,
+                        Hook,
+                        RetriesLeft,
+                        fun(N) -> accept_tx(Conn, TargetUid, OrgId, Digest, Hook, N) end
+                    );
                 replay_accepted ->
                     {ok, (view(Row))#{already_accepted => true}};
                 expired ->
@@ -218,7 +231,68 @@ accept_tx(Conn, TargetUid, OrgId, Digest, Hook, RetriesLeft) ->
             end
     end.
 
-consume_accept(Conn, Row, Hook, RetriesLeft, TargetUid, OrgId, Digest) ->
+%% @doc 免口令接受（P0 定向邀请直达）：target 身份（JWT）即凭据。
+%% 语义与 accept/4 完全同构（target-only / 一次性 / 幂等 / hook 同事务），
+%% 仅行定位不同：digest 定位换成 (org, target) 最新 pending/accepted 行。
+%% 定向邀请（target_user_id 必填，C11 V1）下这是安全的：行作用域仍是
+%% target-only 同语句裁决，非目标用户命中不了行。
+-spec accept_targeted(integer(), integer(), opts()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+accept_targeted(TargetUid, OrgId, Opts) when
+    is_integer(TargetUid),
+    TargetUid > 0,
+    is_integer(OrgId),
+    OrgId > 0,
+    is_map(Opts)
+->
+    Hook = maps:get(membership_hook, Opts, undefined),
+    Tx = fun(Conn) -> accept_targeted_tx(Conn, TargetUid, OrgId, Hook, 2) end,
+    case elib_pg:with_tx(Tx) of
+        {ok, View} ->
+            {ok, View};
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+            {error, {Code, Msg}};
+        {error, Reason} ->
+            ?ERROR_LOG([organization_invitation_accept_targeted_failed, OrgId, TargetUid, Reason]),
+            {error, {500, <<"接受邀请失败，请稍后重试"/utf8>>}}
+    end;
+accept_targeted(_, _, _) ->
+    {error, {400, <<"用户标识必须是有效值"/utf8>>}}.
+
+accept_targeted_tx(Conn, TargetUid, OrgId, Hook, RetriesLeft) ->
+    %% 1) lazy expire sweep（同 accept_tx：过期裁决基于行内真实 status）
+    case organization_invitation_pg:expire_due_tx(Conn, OrgId) of
+        {ok, _} -> ok;
+        {error, Reason0} -> throw({abort_tx, {internal, Reason0}})
+    end,
+    case organization_invitation_pg:find_latest_active_for_target_tx(Conn, OrgId, TargetUid) of
+        {error, not_found} ->
+            abort(404, <<"邀请不存在或已失效"/utf8>>);
+        {error, Reason1} ->
+            throw({abort_tx, {internal, Reason1}});
+        {ok, Row} ->
+            case organization_invitation:classify_accept(os:system_time(second), Row) of
+                ok ->
+                    consume_accept(
+                        Conn,
+                        Row,
+                        Hook,
+                        RetriesLeft,
+                        fun(N) -> accept_targeted_tx(Conn, TargetUid, OrgId, Hook, N) end
+                    );
+                replay_accepted ->
+                    {ok, (view(Row))#{already_accepted => true}};
+                expired ->
+                    abort(409, <<"邀请已过期"/utf8>>);
+                rejected ->
+                    abort(409, <<"邀请已被拒绝"/utf8>>);
+                revoked ->
+                    abort(409, <<"邀请已被撤销"/utf8>>)
+            end
+    end.
+
+%% Retry：并发对手在本事务读后提交消费时的重入续延（幂等收敛到终态）。
+consume_accept(Conn, Row, Hook, RetriesLeft, Retry) ->
     InvitationId = maps:get(<<"id">>, Row),
     case organization_invitation_pg:consume_pending_tx(Conn, InvitationId, accept) of
         {ok, Consumed} ->
@@ -232,8 +306,7 @@ consume_accept(Conn, Row, Hook, RetriesLeft, TargetUid, OrgId, Digest) ->
                     throw({abort_tx, {internal, {membership_hook, Reason}}})
             end;
         {error, not_pending} when RetriesLeft > 0 ->
-            %% 并发对手已在本事务读后提交消费：重读再裁决一次（幂等收敛到终态）
-            accept_tx(Conn, TargetUid, OrgId, Digest, Hook, RetriesLeft - 1);
+            Retry(RetriesLeft - 1);
         {error, not_pending} ->
             abort(409, <<"邀请已被处理"/utf8>>);
         {error, Reason} ->

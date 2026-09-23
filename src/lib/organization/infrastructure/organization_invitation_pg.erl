@@ -15,6 +15,7 @@
     target_user_tx/2,
     insert_tx/2,
     find_by_digest_tx/4,
+    find_latest_active_for_target_tx/3,
     find_tx/4,
     expire_due_tx/2,
     consume_pending_tx/3,
@@ -92,6 +93,21 @@ find_by_digest_tx(Conn, OrgId, TargetUid, Digest) ->
         <<"SELECT ", ?ROW_COLS, " FROM ", (invitation_table())/binary,
             " WHERE organization_id = $1 AND target_user_id = $2 AND token_digest = $3">>,
     one_tx(Conn, Sql, [OrgId, TargetUid, Digest]).
+
+%% @doc 按 (org, target) 读最新 pending/accepted 行（免口令 accept 路径）：
+%% target 身份即凭据（JWT），digest 不可用；pending 行是消费对象，
+%% accepted 终态用于幂等重放（重复点击收敛到同一视图）。
+%% 部分唯一索引保证 (org,target) 至多一个 pending；rejected/revoked/expired
+%% 不入选——终态非 accepted 的旧邀请不应被再次「接受成功」。
+-spec find_latest_active_for_target_tx(any(), integer(), integer()) ->
+    {ok, map()} | {error, not_found | term()}.
+find_latest_active_for_target_tx(Conn, OrgId, TargetUid) ->
+    Sql =
+        <<"SELECT ", ?ROW_COLS, " FROM ", (invitation_table())/binary,
+            " WHERE organization_id = $1 AND target_user_id = $2"
+            "   AND status IN ('pending', 'accepted')"
+            " ORDER BY id DESC LIMIT 1">>,
+    one_tx(Conn, Sql, [OrgId, TargetUid]).
 
 %% @doc 按 (org, id) 读行；TargetUid = 0 时不限 target（治理路径），
 %% 否则同语句锁 target 作用域（target-only 路径，无法读到他人邀请）。
