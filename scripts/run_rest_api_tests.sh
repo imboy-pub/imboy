@@ -153,8 +153,40 @@ esac
 # config/sys.config + Makefile above the CT working directory; a worktree
 # only carries the gitignored sys.local.config, so materialize the resolved
 # config as config/sys.config (RTF-05: the runner materializes the config,
-# same duty the CI job has). It is untracked and never staged by this run.
+# same duty the CI job has). It is untracked and never staged by this run —
+# but the release tree symlinks its sys.config here, so the file must be
+# left exactly as found: snapshot before overwrite, restore on every exit
+# path (review round 8, 2026-09-23).
+SYS_CONFIG_BACKUP=
+SYS_CONFIG_RESTORE_NEEDED=0
+sys_config_restore() {
+  [[ "$SYS_CONFIG_RESTORE_NEEDED" != "0" ]] || return 0
+  if [[ "$SYS_CONFIG_RESTORE_NEEDED" == "1" ]]; then
+    if cp "$SYS_CONFIG_BACKUP" "$ROOT/config/sys.config" 2>/dev/null; then
+      rm -f "$SYS_CONFIG_BACKUP" 2>/dev/null
+    else
+      echo "run_rest_api_tests: WARNING: could not restore config/sys.config (backup kept: $SYS_CONFIG_BACKUP)" >&2
+      CLEANUP_FAILED=1
+    fi
+  else
+    # The file did not exist before the run: remove the materialized copy.
+    rm -f "$ROOT/config/sys.config" 2>/dev/null
+  fi
+  SYS_CONFIG_RESTORE_NEEDED=0
+  return 0
+}
 if [[ "$CT_CONFIG" != "$ROOT/config/sys.config" ]]; then
+  if [[ -e "$ROOT/config/sys.config" ]]; then
+    SYS_CONFIG_BACKUP=$(mktemp "${TMPDIR:-/tmp}/sys.config.pre-rest.XXXXXX")
+    cp "$ROOT/config/sys.config" "$SYS_CONFIG_BACKUP"
+    SYS_CONFIG_RESTORE_NEEDED=1
+  else
+    SYS_CONFIG_RESTORE_NEEDED=2
+  fi
+  # Window guard: the full cleanup trap is wired further down; until then
+  # this provisional trap is the only restore path if the script dies here.
+  # It is replaced by the cleanup trap below.
+  trap sys_config_restore EXIT
   cp "$CT_CONFIG" "$ROOT/config/sys.config"
 fi
 export IMBOY_TEST_CONFIG="$CT_CONFIG"
@@ -239,6 +271,7 @@ scratch_databases() {
 }
 
 DROP_DONE=0
+DB_CREATED=0
 CLEANUP_DONE=0
 CLEANUP_FAILED=0
 cleanup() {
@@ -247,7 +280,7 @@ cleanup() {
   # EXIT trap; the second pass must be a no-op.
   [[ $CLEANUP_DONE -eq 1 ]] && return "$final"
   CLEANUP_DONE=1
-  if [[ $DROP_DONE -eq 0 && "${REST_KEEP_DB:-0}" != "1" ]]; then
+  if [[ $DB_CREATED -eq 1 && $DROP_DONE -eq 0 && "${REST_KEEP_DB:-0}" != "1" ]]; then
     # RTF-01: cleanup failure must not be swallowed. One grace retry (a
     # terminating backend can hold the drop briefly), then record it loudly:
     # marker file in the report root + CLEANUP_FAILED, which the normal exit
@@ -261,10 +294,12 @@ cleanup() {
       fi
     fi
     DROP_DONE=1
-  elif [[ "${REST_KEEP_DB:-0}" == "1" ]]; then
+  elif [[ "${REST_KEEP_DB:-0}" == "1" && $DB_CREATED -eq 1 ]]; then
     echo "run_rest_api_tests: REST_KEEP_DB=1; scratch database kept: $DB_NAME" >&2
     DROP_DONE=1
   fi
+  # Leave config/sys.config exactly as found on every exit path (round 8).
+  sys_config_restore
   return $final
 }
 trap cleanup EXIT
@@ -292,6 +327,11 @@ fi
 
 createdb -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" "$DB_NAME" ||
   die 2 "createdb failed for $DB_NAME"
+# Only a database this run actually created may be dropped (or reported as
+# kept) by cleanup; an earlier death (e.g. postgres not ready) must not
+# report a false cleanup outcome for a database that never existed
+# (review round 8, 2026-09-23).
+DB_CREATED=1
 
 for ext in $EXTENSIONS; do
   # Defense in depth: the names are interpolated into SQL, so only allow
