@@ -5,9 +5,10 @@
 %% 一次性 marker 库（inttest_marker_db 配方，env 前缀 FULL01_INTTEST，直连
 %% imboy_pg18:4323）。业务用例每条 BEGIN ... ROLLBACK，不留数据。
 %%
-%% 覆盖（plan-full §3.1 授权语义、§7 安全硬门）：
-%%   ① 未受管应用沿用广州期口径（grant_governed=false ⇒ allowed_scopes 生效、
-%%      Grant 边界不加限制）——既有 210 条企业域用例语义不漂移的前提
+%% 覆盖（plan-full §3.1 授权语义、§7 安全硬门；V2.1 §5.2 零 Grant deny）：
+%%   ① 零 Grant 恒 403：grant_governed=false 只是诊断标记，生效 scope 恒为
+%%      allowed_scopes ∩ 生效 Grant scopes = 空集——不存在「回退 allowed_scopes
+%%      且 Boundary no-op」的广州期旁路（F-09/D-06；本地 fixture 必须显式建 Grant）
 %%   ② 首个 Grant 即刻收窄：生效 scope = allowed_scopes ∩ 生效 Grant scopes
 %%      （双向交集：Grant 收窄 + Application 上限仍生效）
 %%   ③ 资源边界：workspace 必须由**同一个** Grant 同时覆盖 scope 与 workspace
@@ -112,7 +113,7 @@ grant_pg_test_() ->
         {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
             C = maps:get(conn, State),
             [
-                {"ungoverned_app_keeps_gz_scope_semantics", with_tx(C, fun ungoverned_oracle/1)},
+                {"zero_grant_denied_no_fallback", with_tx(C, fun zero_grant_denied_oracle/1)},
                 {"first_grant_narrows_effective_scope_immediately",
                     with_tx(C, fun first_grant_oracle/1)},
                 {"effective_scope_is_intersection_both_directions",
@@ -130,25 +131,53 @@ grant_pg_test_() ->
         end}}.
 
 %%%===================================================================
-%%% ① 未受管应用：广州期口径不变
+%%% ① 零 Grant：恒 403（V2.1 §5.2 / F-09 / D-06——未受管旁路已移除）
 %%%===================================================================
 
-ungoverned_oracle(C) ->
+zero_grant_denied_oracle(C) ->
     Fx = seed_fixture(C),
     AppA = maps:get(app_a, Fx),
-    %% 无任何 Grant：grant_governed=false，生效 scope = allowed_scopes
+    %% 无任何 Grant 行：grant_governed=false（仅诊断标记），生效 scope 恒为
+    %% 空集——**不回退** allowed_scopes（?SCOPES_A 含所需 scope 也不放行）。
     ?assertEqual(
-        {ok, #{grant_governed => false, effective_scopes => lists:usort(?SCOPES_A)}},
+        {ok, #{grant_governed => false, effective_scopes => []}},
         enterprise_application_grant_logic:context_tx(C, ?ORG_A, AppA, ?SCOPES_A)
     ),
     {ok, Ctx} = auth_ctx(C, Fx, a),
     ?assertEqual(false, maps:get(grant_governed, Ctx)),
-    ?assertEqual(lists:usort(?SCOPES_A), maps:get(granted_scopes, Ctx)),
-    %% 认证链放行 Grant 相关的静态 scope 路由
-    ?assertMatch({ok, #{route_id := <<"INT-01">>}}, decide(C, Fx, a, <<"GET">>, app_path(), [])),
-    %% 未受管 ⇒ Grant 边界层不加限制（org/workspace 边界仍由既有 handler 判定）
-    ?assertEqual(ok, require_workspace(C, Ctx, ?WS_A1, <<"groups:write">>)),
-    ?assertEqual(ok, require_workspace(C, Ctx, ?WS_B1, <<"groups:write">>)).
+    ?assertEqual([], maps:get(granted_scopes, Ctx)),
+    %% allowed_scopes 含所需 scope + 零 Grant → 静态路由恒 403 insufficient_scope
+    ?assertEqual(
+        {error, insufficient_scope}, decide(C, Fx, a, <<"GET">>, app_path(), [])
+    ),
+    %% Grant 边界层不再 no-op：workspace/org 判定同样拒绝
+    ?assertEqual(
+        {error, insufficient_scope}, require_workspace(C, Ctx, ?WS_A1, <<"groups:write">>)
+    ),
+    ?assertEqual(
+        {error, insufficient_scope},
+        enterprise_application_grant_logic:require_org_tx(C, Ctx, <<"identities:write">>)
+    ),
+    %% 边界接线表入口（kind=workspace / kind=list）在零 Grant ctx 上同样拒绝
+    ?assertEqual(
+        {error, insufficient_scope},
+        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-04">>, ?WS_A1)
+    ),
+    ?assertEqual(
+        {error, insufficient_scope},
+        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-24">>, undefined)
+    ),
+    %% 反向钉子：显式建 Grant（org 全域）后同一请求放行——证明上面拒绝
+    %% 来自零 Grant，而非夹具损坏（ctx 重新求值：生效 scope 已是交集结果）
+    {ok, _} = issue(C, ?ORG_A, AppA, <<"k-zero-grant-fix">>, ?SCOPES_A),
+    ?assertMatch(
+        {ok, #{route_id := <<"INT-01">>}}, decide(C, Fx, a, <<"GET">>, app_path(), [])
+    ),
+    {ok, Ctx2} = auth_ctx(C, Fx, a),
+    ?assertEqual(lists:usort(?SCOPES_A), maps:get(granted_scopes, Ctx2)),
+    ?assertEqual(
+        ok, require_workspace(C, Ctx2, ?WS_A1, <<"groups:write">>)
+    ).
 
 %%%===================================================================
 %%% ② 首个 Grant：生效 scope 立即收窄

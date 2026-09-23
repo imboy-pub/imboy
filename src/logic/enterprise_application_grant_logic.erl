@@ -3,16 +3,19 @@
 %%%
 % enterprise_application_grant_logic 是 Application Grant 的授权求值层
 % （FULL-01 / plan-full §3.1「Organization Grant + Workspace Grant；scope 与
-% 资源授权取交集，逐请求读取当前状态，撤权立即生效」）。
+% 资源授权取交集，逐请求读取当前状态，撤权立即生效」；V2.1 §5.2 移除
+% 未受管兼容旁路）。
 %
 % 求值模型（无缓存、无跨请求结论）：
-%   * **受管（grant_governed）**：该 Application 存在任何 Grant 行（含 revoked
-%     与已过期）即受 Grant 治理。授权行被 migration 00000139 的触发器禁止物理
-%     删除 ⇒ 受管状态只增不减：撤权把生效 scope 压到空集（fail-closed），
-%     绝不会退回未受管的（更宽的）广州期边界。
-%   * **生效 scope** = Application.allowed_scopes（能力上限，plan-gz §4.2 枚举）
-%     ∩ ⋃{生效 Grant 的 scope 集合}。未受管的应用不做这一步收窄，沿用广州期
-%     scope 治理（与 EPGZ-02 行为逐字一致，避免既有企业域用例的语义漂移）。
+%   * **生效 scope** = Application.allowed_scopes（能力上限，固定枚举）
+%     ∩ ⋃{生效 Grant 的 scope 集合}——**无条件求交**：零 Grant（从未授予、
+%     全部撤销或全部过期）⇒ 空集 ⇒ scope gate 与资源边界一律拒绝
+%     （403 insufficient_scope，§5.2 求值序第 9 步「at least one current
+%     active Grant exists」）。V2.1 起不存在「零 Grant 回退 allowed_scopes」
+%     的广州期兼容旁路；本地 fixture 必须显式创建 Grant（F-09/D-06）。
+%   * `grant_governed` 仅作**诊断标记**（该 Application 是否存在任何 Grant
+%     行，含 revoked/已过期；授权行被 00000139 触发器禁止物理删除 ⇒ 只增
+%     不减），不参与任何授权判定分支。
 %   * **资源边界**：workspace 级资源必须由**同一个**生效 Grant 同时覆盖 scope 与
 %     workspace（kind=none 覆盖 org 全域；kind=explicit 需显式命中）——不允许
 %     「scope 来自 A、workspace 来自 B」的拼接。org 级资源（manifest
@@ -43,9 +46,10 @@
 %% AppScopes 是 Application.allowed_scopes 解出的固定 scope 列表。
 %% 返回 {ok, #{grant_governed := boolean(), effective_scopes := [binary()]}}；
 %% 读取失败 fail-closed 成 {error, security_gate_closed}。
-%% 语义：未受管 ⇒ effective = AppScopes（广州期口径不变）；
-%%       受管   ⇒ effective = AppScopes ∩ 生效 Grant scopes（可为空集 =
-%%                该请求的 scope gate 必然拒绝，即「撤权/降级下一请求即失败」）。
+%% 语义（V2.1 §5.2）：生效 scope 恒为 AppScopes ∩ 生效 Grant scopes——
+%% 零 Grant ⇒ 空集（scope gate 必然拒绝，「撤权/降级/从未授权下一请求即
+%% 失败」统一成立）。grant_governed 只是诊断标记（是否存在任何 Grant 行），
+%% 不再作为回退 allowed_scopes 的开关。
 -spec context_tx(any(), integer(), integer(), [binary()]) ->
     {ok, #{grant_governed := boolean(), effective_scopes := [binary()]}}
     | {error, security_gate_closed}.
@@ -53,13 +57,11 @@ context_tx(Conn, OrgId, AppId, AppScopes) when
     is_integer(OrgId), is_integer(AppId), is_list(AppScopes)
 ->
     case enterprise_application_grant_repo:grant_governed_tx(Conn, OrgId, AppId) of
-        {ok, false} ->
-            {ok, #{grant_governed => false, effective_scopes => lists:usort(AppScopes)}};
-        {ok, true} ->
+        {ok, Governed} ->
             case enterprise_application_grant_repo:effective_scopes_tx(Conn, OrgId, AppId) of
                 {ok, GrantScopes} ->
                     {ok, #{
-                        grant_governed => true,
+                        grant_governed => Governed,
                         effective_scopes => intersect(AppScopes, GrantScopes)
                     }};
                 {error, _Reason} ->
@@ -74,10 +76,9 @@ context_tx(_Conn, _OrgId, _AppId, _AppScopes) ->
 %% @doc 资源边界求值（FULL-02 handler 在每个 workspace 级操作上逐请求调用）：
 %% Ctx 是认证链产物（enterprise_internal_auth:authenticate_tx/3 的返回）；
 %% RequiredScope 是该操作要求的**固定** scope。
-%%   * 未受管（grant_governed=false）⇒ ok（org/workspace 边界仍由既有 handler
-%%     逻辑判定，本层不加限制）；
-%%   * 受管 ⇒ 要求 RequiredScope 在**生效** scope 内，且存在同一生效 Grant
-%%     同时覆盖该 scope 与 WorkspaceId；否则拒绝。
+%% V2.1 §5.2：无未受管旁路——RequiredScope 必须在**生效** scope 内（零 Grant
+%% ⇒ 空集 ⇒ insufficient_scope），且存在同一生效 Grant 同时覆盖该 scope 与
+%% WorkspaceId。
 %% 拒绝码：insufficient_scope（scope 不在生效集）/ organization_boundary_violation
 %% （scope 有但无 Grant 覆盖该 workspace）/ security_gate_closed（读取失败或
 %% 上下文形态非法，fail-closed）。
@@ -90,10 +91,8 @@ context_tx(_Conn, _OrgId, _AppId, _AppScopes) ->
 require_workspace_tx(Conn, Ctx, WorkspaceId, RequiredScope) when
     is_map(Ctx), is_integer(WorkspaceId), is_binary(RequiredScope)
 ->
-    case ctx_grants(Ctx) of
-        {ok, false, _Effective} ->
-            ok;
-        {ok, true, Effective} ->
+    case ctx_effective_scopes(Ctx) of
+        {ok, Effective} ->
             case lists:member(RequiredScope, Effective) of
                 false ->
                     {error, insufficient_scope};
@@ -119,12 +118,11 @@ require_workspace_tx(_Conn, _Ctx, _WorkspaceId, _RequiredScope) ->
 %% @doc 资源边界求值（**org 级**资源，FULL-02；INT-02/03/07/08/09 等 manifest
 %% grant=org scoped 的路径）：Ctx 是认证链产物，RequiredScope 是该操作要求的
 %% 固定 scope。
-%%   * 未受管（grant_governed=false）⇒ ok（org 边界仍由既有 handler 逻辑判定，
-%%     本层不加限制——与广州期语义逐字一致）；
-%%   * 受管 ⇒ 要求 RequiredScope 在**生效** scope 内，且存在**覆盖 Org 全域**的
-%%     同一生效 Grant（workspace_scope_kind='none'）同时覆盖该 scope。显式
-%%     Workspace Grant 只覆盖列出的 workspace，不授权 org 级操作（否则窄授权
-%%     会被隐式放大，fail-open）。
+%% V2.1 §5.2：无未受管旁路——RequiredScope 必须在**生效** scope 内（零 Grant
+%% ⇒ 空集 ⇒ insufficient_scope），且存在**覆盖 Org 全域**的同一生效 Grant
+%% （workspace_scope_kind='none'）同时覆盖该 scope。显式 Workspace Grant
+%% 只覆盖列出的 workspace，不授权 org 级操作（否则窄授权会被隐式放大，
+%% fail-open）。
 %% 拒绝码同 require_workspace_tx/4：insufficient_scope（scope 不在生效集）/
 %% organization_boundary_violation（scope 有但无 Org 全域 Grant 覆盖）/
 %% security_gate_closed（读取失败或上下文形态非法，fail-closed）。
@@ -135,10 +133,8 @@ require_workspace_tx(_Conn, _Ctx, _WorkspaceId, _RequiredScope) ->
         | organization_boundary_violation
         | security_gate_closed}.
 require_org_tx(Conn, Ctx, RequiredScope) when is_map(Ctx), is_binary(RequiredScope) ->
-    case ctx_grants(Ctx) of
-        {ok, false, _Effective} ->
-            ok;
-        {ok, true, Effective} ->
+    case ctx_effective_scopes(Ctx) of
+        {ok, Effective} ->
             case lists:member(RequiredScope, Effective) of
                 false ->
                     {error, insufficient_scope};
@@ -165,21 +161,22 @@ require_org_tx(_Conn, _Ctx, _RequiredScope) ->
 %% Internal
 %% ===================================================================
 
-%% 从认证上下文取「是否受管 + 生效 scope」；形态非法（缺键/非布尔）fail-closed。
--spec ctx_grants(map()) -> {ok, boolean(), [binary()]} | {error, malformed_ctx}.
-ctx_grants(Ctx) ->
+%% 从认证上下文取「生效 scope」（含 org/app 身份形态校验）；形态非法
+%% （缺键/非整数/非列表）fail-closed。grant_governed 不再参与判定
+%% （V2.1：仅诊断标记，ctx 内有无该键不影响结果）。
+-spec ctx_effective_scopes(map()) -> {ok, [binary()]} | {error, malformed_ctx}.
+ctx_effective_scopes(Ctx) ->
     case
         {
             maps:get(organization_id, Ctx, undefined),
             maps:get(application_id, Ctx, undefined),
-            maps:get(grant_governed, Ctx, undefined),
             maps:get(granted_scopes, Ctx, undefined)
         }
     of
-        {OrgId, AppId, Governed, Scopes} when
-            is_integer(OrgId), is_integer(AppId), is_boolean(Governed), is_list(Scopes)
+        {OrgId, AppId, Scopes} when
+            is_integer(OrgId), is_integer(AppId), is_list(Scopes)
         ->
-            {ok, Governed, [S || S <- Scopes, is_binary(S)]};
+            {ok, [S || S <- Scopes, is_binary(S)]};
         _ ->
             {error, malformed_ctx}
     end.
