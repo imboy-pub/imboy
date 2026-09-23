@@ -10,17 +10,22 @@
 %%% 纯函数测试，仅调用 default_sidebar_config/0，不依赖 DB。
 %%%===================================================================
 
-%% C1 冻结表: {Label, Path, Permission, Roles}
+%% §13.1 目标菜单冻结表（ent-org-internal-v1 统一计划）: {Label, Path, Permission, Roles}
 -define(C1_LEAVES, [
-    {<<"企业组织"/utf8>>, <<"/organizations">>, <<"organizations:read">>, [1, 2, 3]},
-    {<<"企业业务数据"/utf8>>, <<"/enterprise-business">>, <<"enterprise_business:read">>, [1, 2]},
+    {<<"组织治理"/utf8>>, <<"/organizations">>, <<"organizations:read">>, [1, 2, 3]},
+    {<<"工作区"/utf8>>, <<"/workspaces">>, <<"workspaces:read">>, [1, 2]},
+    {<<"企业项目"/utf8>>, <<"/projects">>, <<"workspaces:read">>, [1, 2]},
+    {<<"企业群"/utf8>>, <<"/groups?preset=enterprise">>, <<"groups:read">>, [1, 2]},
+    {<<"企业频道"/utf8>>, <<"/channels?preset=enterprise">>, <<"channels:read">>, [1, 2]},
+    {<<"客服坐席"/utf8>>, <<"/customer-service">>, <<"customer_service:read">>, [1, 2]},
+    {<<"应用与集成"/utf8>>, <<"/enterprise/applications">>, <<"enterprise_business:read">>, [1, 2]},
     {<<"离岗交接"/utf8>>, <<"/enterprise-business/offboarding">>, <<"enterprise_business:read">>, [
         1, 2
     ]},
-    {<<"企业应用治理"/utf8>>, <<"/enterprise/applications">>, <<"enterprise_business:read">>, [1, 2]},
-    {<<"在线客服"/utf8>>, <<"/customer-service">>, <<"customer_service:read">>, [1, 2]},
-    {<<"坐席工作台"/utf8>>, <<"/customer-service/workspace">>, <<"customer_service:read">>, [1, 2]}
+    {<<"企业审计/业务数据"/utf8>>, <<"/enterprise-business">>, <<"enterprise_business:read">>, [1, 2]}
 ]).
+
+-define(SEAT_WORKBENCH_PATH, <<"/customer-service/workspace">>).
 
 sidebar_config() ->
     adm_admin_handler:default_sidebar_config().
@@ -52,18 +57,25 @@ contract_triples(Children) ->
     ]).
 
 %%--------------------------------------------------------------------
-%% 1. 「企业管理」顶级组存在，恰 6 个叶子
+%% 1. 「企业管理」顶级组存在，恰 9 个叶子（§13.1 目标菜单）
 %%--------------------------------------------------------------------
 
 sidebar_enterprise_group_exists_test_() ->
     [
         ?_assertMatch(#{<<"children">> := [_ | _]}, enterprise_group()),
-        ?_assertEqual(6, length(enterprise_children()))
+        ?_assertEqual(9, length(enterprise_children()))
     ].
 
 %%--------------------------------------------------------------------
-%% 2. 6 叶子逐条精确匹配（label + path + permission + roles，含顺序）
+%% 2. 9 叶子逐条精确匹配（label + path + permission + roles，含顺序）
 %%--------------------------------------------------------------------
+
+sidebar_seat_workbench_removed_test_() ->
+    Paths = [maps:get(<<"path">>, C) || C <- enterprise_children()],
+    [
+        ?_assertNot(lists:member(?SEAT_WORKBENCH_PATH, Paths)),
+        ?_assert(lists:member(<<"/customer-service">>, Paths))
+    ].
 
 sidebar_enterprise_leaves_exact_test_() ->
     Children = enterprise_children(),

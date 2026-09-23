@@ -1004,18 +1004,56 @@ default_sidebar_config() ->
             #{
                 <<"label">> => <<"企业管理"/utf8>>,
                 <<"icon">> => <<"Building2">>,
+                %% §13.1 目标菜单（9 叶子）：企业群/企业频道 path 携带
+                %% ?preset=enterprise（仅 UI 状态，服务端 adm_enterprise_filter
+                %% 强制 scope=workspace + O/W 过滤重验）。
                 <<"children">> => [
                     #{
                         <<"path">> => <<"/organizations">>,
                         <<"icon">> => <<"Building2">>,
-                        <<"label">> => <<"企业组织"/utf8>>,
+                        <<"label">> => <<"组织治理"/utf8>>,
                         <<"roles">> => [1, 2, 3],
                         <<"permission">> => <<"organizations:read">>
                     },
                     #{
-                        <<"path">> => <<"/enterprise-business">>,
-                        <<"icon">> => <<"BarChart3">>,
-                        <<"label">> => <<"企业业务数据"/utf8>>,
+                        <<"path">> => <<"/workspaces">>,
+                        <<"icon">> => <<"Building2">>,
+                        <<"label">> => <<"工作区"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"workspaces:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/projects">>,
+                        <<"icon">> => <<"FolderKanban">>,
+                        <<"label">> => <<"企业项目"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"workspaces:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/groups?preset=enterprise">>,
+                        <<"icon">> => <<"UsersRound">>,
+                        <<"label">> => <<"企业群"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"groups:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/channels?preset=enterprise">>,
+                        <<"icon">> => <<"Radio">>,
+                        <<"label">> => <<"企业频道"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"channels:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/customer-service">>,
+                        <<"icon">> => <<"Headphones">>,
+                        <<"label">> => <<"客服坐席"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/enterprise/applications">>,
+                        <<"icon">> => <<"ShieldCheck">>,
+                        <<"label">> => <<"应用与集成"/utf8>>,
                         <<"roles">> => [1, 2],
                         <<"permission">> => <<"enterprise_business:read">>
                     },
@@ -1027,25 +1065,11 @@ default_sidebar_config() ->
                         <<"permission">> => <<"enterprise_business:read">>
                     },
                     #{
-                        <<"path">> => <<"/enterprise/applications">>,
-                        <<"icon">> => <<"ShieldCheck">>,
-                        <<"label">> => <<"企业应用治理"/utf8>>,
+                        <<"path">> => <<"/enterprise-business">>,
+                        <<"icon">> => <<"BarChart3">>,
+                        <<"label">> => <<"企业审计/业务数据"/utf8>>,
                         <<"roles">> => [1, 2],
                         <<"permission">> => <<"enterprise_business:read">>
-                    },
-                    #{
-                        <<"path">> => <<"/customer-service">>,
-                        <<"icon">> => <<"Headphones">>,
-                        <<"label">> => <<"在线客服"/utf8>>,
-                        <<"roles">> => [1, 2],
-                        <<"permission">> => <<"customer_service:read">>
-                    },
-                    #{
-                        <<"path">> => <<"/customer-service/workspace">>,
-                        <<"icon">> => <<"MonitorSmartphone">>,
-                        <<"label">> => <<"坐席工作台"/utf8>>,
-                        <<"roles">> => [1, 2],
-                        <<"permission">> => <<"customer_service:read">>
                     }
                 ]
             },
