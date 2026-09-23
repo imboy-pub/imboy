@@ -1177,6 +1177,18 @@ paths:
     $ref: './paths/internal/v1/webhook/replay.yaml'
   /api/internal/v1/oa/sso/exchange:
     $ref: './paths/internal/v1/oa-sso/exchange.yaml'
+  /api/internal/v1/workspaces:
+    $ref: './paths/internal/v1/workspace/list.yaml'
+  /api/internal/v1/workspaces/{workspace_id}:
+    $ref: './paths/internal/v1/workspace/detail.yaml'
+  /api/internal/v1/projects:
+    $ref: './paths/internal/v1/project/list.yaml'
+  /api/internal/v1/projects/{project_id}:
+    $ref: './paths/internal/v1/project/detail.yaml'
+  /api/internal/v1/channels:
+    $ref: './paths/internal/v1/channel/list.yaml'
+  /api/internal/v1/channels/{channel_id}:
+    $ref: './paths/internal/v1/channel/detail.yaml'
 components:
   securitySchemes:
     bearerAuth:
@@ -1193,7 +1205,7 @@ components:
       bearerFormat: ib_int_<application_id>.<secret>
       description: |
         企业集成凭证：与单个企业应用一一对应，授权范围 = 签发时授予的
-        scope 集合（固定 10 枚举、无通配）。secret 平台侧只存不可逆摘要，
+        scope 集合（固定 14 枚举、无通配）。secret 平台侧只存不可逆摘要，
         泄露即轮换；应用停用/归档后所有请求返回 application_disabled（403）。
 
   schemas:
