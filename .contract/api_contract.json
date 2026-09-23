@@ -4070,6 +4070,12 @@
         "static": false
       },
       {
+        "action": "member_workspaces",
+        "handler": "organization_member_handler",
+        "path": "/api/v1/organizations/:organization_id/members/:user_id/workspaces",
+        "static": false
+      },
+      {
         "action": "owner_transfer",
         "handler": "organization_member_handler",
         "path": "/api/v1/organizations/:organization_id/members/transfer_owner",
@@ -4091,6 +4097,18 @@
         "action": "invitation_mine",
         "handler": "organization_api_handler",
         "path": "/api/v1/organizations/invitations/mine",
+        "static": false
+      },
+      {
+        "action": "invite_code_join_by_code",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/invite_code/join",
+        "static": false
+      },
+      {
+        "action": "invite_code_preview",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/invite_code/preview",
         "static": false
       },
       {
@@ -5237,7 +5255,7 @@
       {
         "action": "invalid_msgid",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:929"
+          "src/logic/msg_c2g_logic.erl:932"
         ]
       },
       {
@@ -5252,9 +5270,9 @@
           "src/logic/msg_c2c_logic.erl:294",
           "src/logic/msg_c2c_logic.erl:570",
           "src/logic/msg_c2c_logic.erl:636",
-          "src/logic/msg_c2g_logic.erl:333",
-          "src/logic/msg_c2g_logic.erl:683",
-          "src/logic/msg_c2g_logic.erl:852",
+          "src/logic/msg_c2g_logic.erl:336",
+          "src/logic/msg_c2g_logic.erl:686",
+          "src/logic/msg_c2g_logic.erl:855",
           "src/logic/msg_s2c_logic.erl:137"
         ]
       },
@@ -5269,8 +5287,8 @@
       {
         "action": "not_group_member",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:688",
-          "src/logic/msg_c2g_logic.erl:859"
+          "src/logic/msg_c2g_logic.erl:691",
+          "src/logic/msg_c2g_logic.erl:862"
         ]
       },
       {
@@ -5287,11 +5305,11 @@
           "src/logic/msg_c2c_logic.erl:634",
           "src/logic/msg_c2c_logic.erl:640",
           "src/logic/msg_c2c_logic.erl:886",
-          "src/logic/msg_c2g_logic.erl:681",
-          "src/logic/msg_c2g_logic.erl:686",
-          "src/logic/msg_c2g_logic.erl:847",
-          "src/logic/msg_c2g_logic.erl:856",
-          "src/logic/msg_c2g_logic.erl:931",
+          "src/logic/msg_c2g_logic.erl:684",
+          "src/logic/msg_c2g_logic.erl:689",
+          "src/logic/msg_c2g_logic.erl:850",
+          "src/logic/msg_c2g_logic.erl:859",
+          "src/logic/msg_c2g_logic.erl:934",
           "src/logic/msg_s2c_logic.erl:88",
           "src/logic/msg_s2c_logic.erl:108",
           "src/logic/msg_s2c_logic.erl:135"
@@ -5318,8 +5336,8 @@
       {
         "action": "service_unavailable",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:944",
-          "src/logic/msg_c2g_logic.erl:946"
+          "src/logic/msg_c2g_logic.erl:947",
+          "src/logic/msg_c2g_logic.erl:949"
         ]
       },
       {
