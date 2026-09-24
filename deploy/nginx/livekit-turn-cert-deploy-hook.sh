@@ -29,6 +29,20 @@
 
 set -euo pipefail
 
+# The L4 SNI installer stores only non-secret deployment paths/domains here.
+# Source it only when root owns it and neither group nor world can write it.
+HOOK_CONFIG="${LIVEKIT_TURN_HOOK_CONFIG:-/etc/imboy/livekit-l4-sni.env}"
+if [ -r "$HOOK_CONFIG" ]; then
+  [ "$(stat -c %u "$HOOK_CONFIG")" = 0 ] \
+    || { printf 'livekit-turn hook: unsafe config owner: %s\n' "$HOOK_CONFIG" >&2; exit 1; }
+  if find "$HOOK_CONFIG" -prune -perm /022 -print -quit | grep -q .; then
+    printf 'livekit-turn hook: writable config rejected: %s\n' "$HOOK_CONFIG" >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "$HOOK_CONFIG"
+fi
+
 TURN_DOMAIN="${TURN_DOMAIN:-turn.imboy.pub}"
 CERT_TARGET_DIR="${LIVEKIT_TURN_CERT_TARGET:-/etc/imboy/livekit-certs}"
 CONTAINER="${LIVEKIT_CONTAINER_NAME:-imboy_livekit}"

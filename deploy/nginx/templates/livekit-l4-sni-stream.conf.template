@@ -1,0 +1,14 @@
+map $ssl_preread_server_name $livekit_l4_sni_upstream {
+    __TURN_DOMAIN__ 127.0.0.1:15442;
+    default         127.0.0.1:10443;
+}
+
+server {
+    listen 0.0.0.0:443;
+    listen [::]:443;
+    ssl_preread on;
+    proxy_protocol on;
+    proxy_connect_timeout 5s;
+    proxy_timeout 1h;
+    proxy_pass $livekit_l4_sni_upstream;
+}

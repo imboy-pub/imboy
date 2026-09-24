@@ -124,6 +124,22 @@ bash install.sh --edition community
 若尚未创建 `.env`，直接运行安装器只会生成权限为 `600` 的模板并退出，不会猜测或
 对外使用客户的域名、邮箱和第三方账号。
 
+### 单公网 IP 共用 TURN/TLS 443
+
+已有宿主机 Nginx/OpenResty 占用 `443/TCP`，又需要 LiveKit embedded TURN 支持严格
+只放行 443 的网络时，使用独立的 L4 SNI 切换器：
+
+```bash
+sudo install -m 600 livekit-l4-sni.env.example /etc/imboy/livekit-l4-sni.env
+sudo editor /etc/imboy/livekit-l4-sni.env
+sudo bash install-livekit-l4-sni.sh --check
+sudo bash install-livekit-l4-sni.sh --apply
+```
+
+该脚本不会扩大 `install.sh` 的社区整栈职责，也不会卸载 eturnal/coturn；任一步失败
+自动恢复备份。拓扑、端口、预期输出、续期、重启检查和一键回滚见
+[LiveKit TURN/TLS 443 一键切换手册](../docs/guides/operations/deployment/livekit-turn-443-l4-sni.md)。
+
 ### 服务关系与域名
 
 ```text

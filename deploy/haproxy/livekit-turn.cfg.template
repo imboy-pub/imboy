@@ -1,0 +1,24 @@
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    user haproxy
+    group haproxy
+    daemon
+
+defaults
+    log global
+    mode tcp
+    option tcplog
+    timeout connect 5s
+    timeout client 1h
+    timeout server 1h
+
+# Nginx stream sends PROXY v1; LiveKit accepts PROXY v2 only.
+frontend livekit_turn_proxy_v1_in
+    bind 127.0.0.1:15442 accept-proxy
+    default_backend livekit_turn_proxy_v2_out
+
+backend livekit_turn_proxy_v2_out
+    # Deliberately no HAProxy "check": a bare TCP health probe is not a TLS
+    # ClientHello and otherwise creates a LiveKit TLS EOF log every two seconds.
+    server livekit 127.0.0.1:15443 send-proxy-v2
