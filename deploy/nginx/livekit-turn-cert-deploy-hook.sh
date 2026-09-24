@@ -24,8 +24,8 @@
 #   TURN_DOMAIN=turn.imboy.pub LIVEKIT_TURN_CERT_TARGET=/tmp/lk-certs \
 #     bash livekit-turn-cert-deploy-hook.sh /etc/letsencrypt/live/turn.imboy.pub
 #
-# 可调环境变量：TURN_DOMAIN / LIVEKIT_TURN_CERT_TARGET（默认 /etc/imboy/livekit-certs，
-# 与 docker-compose.livekit-turn.yml 的 LIVEKIT_TURN_CERT_DIR 宿主机侧约定一致）/
+# 可调环境变量：TURN_DOMAIN / LIVEKIT_TURN_CERT_TARGET（兼容旧名，优先）/
+# LIVEKIT_TURN_CERT_DIR（安装器使用的名称；默认 /etc/imboy/livekit-certs）/
 # LIVEKIT_CONTAINER_NAME（默认 imboy_livekit）。
 
 set -euo pipefail
@@ -45,7 +45,7 @@ if [ -r "$HOOK_CONFIG" ]; then
 fi
 
 TURN_DOMAIN="${TURN_DOMAIN:-turn.imboy.pub}"
-CERT_TARGET_DIR="${LIVEKIT_TURN_CERT_TARGET:-/etc/imboy/livekit-certs}"
+CERT_TARGET_DIR="${LIVEKIT_TURN_CERT_TARGET:-${LIVEKIT_TURN_CERT_DIR:-/etc/imboy/livekit-certs}}"
 CONTAINER="${LIVEKIT_CONTAINER_NAME:-imboy_livekit}"
 STAGE_FULLCHAIN="$CERT_TARGET_DIR/.fullchain.pem.staged"
 STAGE_PRIVKEY="$CERT_TARGET_DIR/.privkey.pem.staged"

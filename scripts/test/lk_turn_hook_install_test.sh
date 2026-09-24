@@ -78,8 +78,10 @@ MOCK
 chmod +x "$MOCK_BIN/docker"
 
 run_hook() { # run_hook <lineage>；MOCK_RESTART_RC/MOCK_INSPECT_STATE 由调用方设置
+  local target_name="LIVEKIT_TURN_CERT_TARGET"
+  [ "${USE_DIR_ALIAS:-0}" = 1 ] && target_name="LIVEKIT_TURN_CERT_DIR"
   env PATH="$MOCK_BIN:$PATH" TURN_DOMAIN="$TURN_DOM" \
-    LIVEKIT_TURN_CERT_TARGET="$TARGET_DIR" MOCK_LOG="$MOCK_LOG" \
+    "$target_name=$TARGET_DIR" MOCK_LOG="$MOCK_LOG" \
     ${MOCK_RESTART_RC:+MOCK_RESTART_RC="$MOCK_RESTART_RC"} \
     ${MOCK_INSPECT_STATE+MOCK_INSPECT_STATE="$MOCK_INSPECT_STATE"} \
     bash "$HOOK" "$1" \
@@ -151,7 +153,7 @@ mkdir -p "$LINEAGE_SAME"
 ln -s "$ARCHIVE_SAME/fullchain.pem" "$LINEAGE_SAME/fullchain.pem"
 ln -s "$ARCHIVE_SAME/privkey.pem" "$LINEAGE_SAME/privkey.pem"
 TARGET_DIR="$LINEAGE_SAME"; : >"$MOCK_LOG"
-RC="$(run_hook "$LINEAGE_SAME")"
+RC="$(USE_DIR_ALIAS=1 run_hook "$LINEAGE_SAME")"
 assert_rc 0 "$RC" "目标等于 lineage → exit 0" "$TMP_ROOT/hook.log"
 if [ -L "$LINEAGE_SAME/fullchain.pem" ]; then
   ok "lineage fullchain 符号链接保持不变"
@@ -164,6 +166,7 @@ else
   bad "lineage privkey 符号链接保持不变" "链接被覆盖"
 fi
 assert_grep "同目录模式明确跳过证书复制" '保留 Certbot 符号链接' "$TMP_ROOT/hook.log"
+assert_not_grep "安装器变量不会回退到旧默认目录" '/etc/imboy/livekit-certs' "$TMP_ROOT/hook.log"
 RESTART_COUNT="$(grep -c 'docker restart imboy_livekit' "$MOCK_LOG" || true)"
 if [ "$RESTART_COUNT" = 1 ]; then
   ok "同目录模式仍重启容器一次"
