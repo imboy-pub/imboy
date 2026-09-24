@@ -25,7 +25,9 @@
 %%      fcm/apns/web_push 回归放行、非法值（含大小写变体）仍 23514 拒绝
 %%   ⑥ migration 循环：down 136 五表+两守卫函数全消、push platform 值域恢复
 %%      原定义（jpush 拒/fcm 放行）→ up 136 全部重建 → 版本 136→135→136
-%%      → 重建后 oracle 复验（redirect 守卫 + jpush 放行）
+%%      → 推进到当前 head → 重建后 oracle 复验（redirect 守卫 + jpush 放行；
+%%      repo 口径复验须在 head 上执行：?COLUMNS 自 143 起含 version 列，
+%%      136 形态下 SELECT/RETURNING version 会 42703）
 %% marker 库供给失败（环境/配置/迁移任一不可用）显式 FAIL，无静默 skip。
 %%
 %% EPGZ-01R exact match 语义说明：text[] 元素级"逐字节相等"由 = ANY 谓词在
@@ -819,6 +821,15 @@ migration_cycle(State) ->
             {ok, _},
             insert_push_token(Conn, 987603, <<"android">>, <<"jpush">>)
         ),
+        %% 「136 重建」断言到此已钉死（版本 136 / 五表在册 / jpush 放行）。
+        %% 下方 repo 口径的复验改在推进到当前 head 后执行：head 期 repo 的
+        %% ?COLUMNS 自迁移 00000143 起含 enterprise_application.version，136
+        %% 形态下 create_tx RETURNING version 会 42703（era 漂移）。136 重建的
+        %% 五表正是 head 形态的同一批对象（140-145 只做增量列/约束，不换表），
+        %% 在 head 上复验等价，且额外证明「重建结果可被后续迁移无损推进」。
+        ok = erlang_migrate:up(MigConfig),
+        HeadAfterRebuild = migration_head(),
+        ?assertMatch({ok, HeadAfterRebuild, false}, erlang_migrate:version(MigConfig)),
         %% 重建后 oracle 复验：五表可写且约束/守卫仍在
         ok = exec(Conn, <<"BEGIN">>),
         try

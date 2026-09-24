@@ -147,16 +147,24 @@ a01_widget_migration_roundtrip_no_residue() ->
         Steps = down_steps_to(132),
         ?assert(Steps >= 1),
         ok = erlang_migrate:down(Config, Steps),
-        ?assertNot(table_exists(<<"customer_service_widget_installation">>)),
-        ?assertNot(table_exists(<<"customer_service_widget_identity_key">>)),
-        ?assertNot(table_exists(<<"customer_service_widget_nonce">>)),
-        ?assertNot(column_exists(<<"customer_service_visit_token">>, <<"widget_installation_id">>)),
-        ?assertNot(column_exists(<<"customer_service_visit_token">>, <<"anonymous_subject_hmac">>)),
-        ?assertNot(column_exists(<<"customer_service_visit_token">>, <<"last_seen_at">>)),
+        %% 回环内的存在性断言与 down/up 走同一独立连接：共享池连接若带
+        %% 残留事务快照，information_schema 会看到 down 前的目录态（假红，
+        %% 全量实测 a01「expected false, value true」而事后 head/dirty 全正常）。
+        %% 断言与期望值不变，仅换观测通道（与本 fun 既有的独立连接口径一致）。
+        ?assertNot(table_exists_on(Conn, <<"customer_service_widget_installation">>)),
+        ?assertNot(table_exists_on(Conn, <<"customer_service_widget_identity_key">>)),
+        ?assertNot(table_exists_on(Conn, <<"customer_service_widget_nonce">>)),
+        ?assertNot(
+            column_exists_on(Conn, <<"customer_service_visit_token">>, <<"widget_installation_id">>)
+        ),
+        ?assertNot(
+            column_exists_on(Conn, <<"customer_service_visit_token">>, <<"anonymous_subject_hmac">>)
+        ),
+        ?assertNot(column_exists_on(Conn, <<"customer_service_visit_token">>, <<"last_seen_at">>)),
         %% up 1 步 = 重新应用 132（widget 回归）；再跑一次 up 全量
         %% （补回 133/134，幂等：IF NOT EXISTS 全绿）
         ok = erlang_migrate:up(Config, 1),
-        ?assert(table_exists(<<"customer_service_widget_installation">>)),
+        ?assert(table_exists_on(Conn, <<"customer_service_widget_installation">>)),
         ok = erlang_migrate:up(Config)
     end),
     ?assert(column_exists(<<"customer_service_visit_token">>, <<"widget_installation_id">>)).
@@ -737,6 +745,27 @@ column_exists(Table, Column) ->
             [Table, Column],
             -1
         ).
+
+%% 指定连接上的存在性观测（迁移回环用）：与 table_exists/1、column_exists/2
+%% 同 SQL 同期望，仅把观测通道从共享池连接换成调用方给定的独立连接，
+%% 避免残留事务快照造成的目录陈旧读。
+table_exists_on(Conn, Table) ->
+    {ok, _, [{N}]} = epgsql:equery(
+        Conn,
+        "SELECT count(*)::int AS n FROM information_schema.tables"
+        " WHERE table_name = $1",
+        [Table]
+    ),
+    1 =:= N.
+
+column_exists_on(Conn, Table, Column) ->
+    {ok, _, [{N}]} = epgsql:equery(
+        Conn,
+        "SELECT count(*)::int AS n FROM information_schema.columns"
+        " WHERE table_name = $1 AND column_name = $2",
+        [Table, Column]
+    ),
+    1 =:= N.
 
 %% 列级断言：表内不存在任何明文承载列（返回违规列名列表，空 = 通过）。
 plaintext_columns(Table) ->

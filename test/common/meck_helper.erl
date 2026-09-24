@@ -42,7 +42,13 @@
     test_message/0,
     test_message/1,
     test_request/0,
-    test_request/1
+    test_request/1,
+
+    % 常驻调用者护栏（见文末 §常驻调用者护栏）
+    is_resident_caller/0,
+    is_resident_caller/1,
+    caller_module/1,
+    resident_caller_modules/0
 ]).
 
 %% ===================================================================
@@ -141,15 +147,172 @@ verify_mock(Module) ->
             {error, Error}
     end.
 
+%% ===================================================================
+%% 常驻调用者护栏（跨套件隔离纪律）
+%% ===================================================================
+%% 问题：meck 拦截是 VM 全局的，而全量 eunit 期间 imboy app 常驻。测试期
+%% 安装的期望 fun 是按**测试自身入参**写死的（多为 pattern-clause 断言型），
+%% 此时常驻 worker 打进来的调用参数不匹配 → function_clause 当场打死 worker
+%% → 池连接带孤儿命令回池 → epgsql unexpected_message 连环崩 → no_connection
+%% 风暴（ent-org-v21-closure gate4 实证：agent_task_logic ×2 / ai_agent_proactive
+%% 按运行顺序确定性变红，单跑全绿）。
+%%
+%% 纪律：经本 helper 安装的全部期望 fun 只对**测试侧调用者**生效；调用者
+%% 是 §常驻模块名单 中的长驻进程时改走原实现（meck:passthrough/1 —— 直接
+%% 调 <mod>_meck_original，meck:new 无条件备份原模块，与 passthrough 选项
+%% 无关，见 deps/meck/src/meck_proc.erl backup_original/4）。
+%%
+%% 调用者判据（proc_lib:initial_call/1，实证三种形态）：
+%%   * gen_server / gen_statem 进程 → {Mod, init, ['Argument__1']}   → 取第 1 位
+%%   * supervisor 进程               → {supervisor, Mod, ['Argument__1']} → 取第 2 位
+%%   * gen_event 进程                → {gen_event, ...}（handler 模块不可见，
+%%     故 imboy_domain_event 之类的 gen_event 宿主不入名单——其 handler 在
+%%     gen_event 进程内执行，无法按模块名识别）
+%%   * eunit 测试进程 / 裸 spawn     → false（实证），不入名单语义 → 期望生效
+%%
+%% §常驻模块名单的取得方式（可复现）：以 sys.local 同口径起 app，遍历
+%% processes() 对每个进程取 proc_lib:initial_call/1 并按上述形态归一出模块名，
+%% 取其中 imboy 自有模块集（tools/dump 脚本见 run evidence）。名单必须满足：
+%%   (a) 该模块确实拥有常驻进程（否则永远匹配不到，是死条目）；
+%%   (b) 没有套件要求「从该模块自身进程内发出的调用」命中期望——违反 (b)
+%%       会把「测 server 内路径」的期望让路掉。
+%%
+%% (b) 的排除项（显式登记，勿擅自加入名单）：
+%%   * login_attempt_ds —— 既是常驻 gen_server 又是单测 SUT：其 handle_call
+%%     在 server 进程内执行业务，入名单会让 login_attempt_ds_tests 的期望
+%%     被让路（is_locked 等用例红，v3 全量实证）。
+%%
+%% 说明：名单里不放库函数模块（ack_retry_cache / agent_rate_limiter）——
+%% 它们不拥有进程，永远不会成为调用者；不放 depcache 包装（imboy_cache，
+%% 其进程 initial_call 是 depcache）与 gen_event 宿主（imboy_domain_event）。
+
+-define(RESIDENT_CALLER_MODULES, [
+    %% imboy_sup 直属 worker（src/imboy_sup.erl Specs，逐项对照）
+    agent_payment_compensation_worker,
+    ai_agent_runtime,
+    barrel_mcp_registry,
+    barrel_mcp_session,
+    billing_invoice_worker,
+    bot_webhook_delivery_worker,
+    credential_retention_worker,
+    elib_metric,
+    imboy_cache_sync,
+    imboy_mcp_tools,
+    imboy_plugin_loader,
+    license_notice_worker,
+    msg_burn_logic,
+    moderation_sweep_logic,
+    olm_otk_cleanup_worker,
+    user_deletion_logic,
+    user_server,
+    %% 监督树自身（worker 崩溃重启期间的 supervisor 调用同样让路）
+    imboy_sup,
+    imboy_plugin_sup,
+    imboy_plugin_generic_sup,
+    %% msg_store_sup 子树
+    msg_store_sup,
+    msg_store_ds,
+    msg_store_worker,
+    %% WS / 路由注册表常驻进程
+    imboy_router_registry,
+    imboy_ws_action_registry
+]).
+
+%% 期望 fun 只对测试侧调用者生效；常驻进程走原实现。
+-spec guard_apply(fun(), [term()]) -> term().
+guard_apply(Fun, Args) ->
+    case is_resident_caller() of
+        true -> meck:passthrough(Args);
+        false -> apply(Fun, Args)
+    end.
+
+%% 调用方进程是否属常驻模块名单。
+-spec is_resident_caller() -> boolean().
+is_resident_caller() ->
+    is_resident_caller(caller_module(self())).
+
+-spec is_resident_caller(atom() | skip) -> boolean().
+is_resident_caller(skip) -> false;
+is_resident_caller(M) when is_atom(M) -> lists:member(M, ?RESIDENT_CALLER_MODULES).
+
+%% 归一化 proc_lib:initial_call/1 的三种形态（见上方判据）；非进程或非
+%% proc_lib 进程返回 skip（eunit 测试进程 / 裸 spawn / undefined 实证为
+%% false 或非法入参——本函数全覆盖，不抛错）。
+-spec caller_module(pid() | term()) -> atom() | skip.
+caller_module(Pid) when is_pid(Pid) ->
+    try proc_lib:initial_call(Pid) of
+        {supervisor, M, _A} when is_atom(M) -> M;
+        {M, _F, _A} when is_atom(M) -> M;
+        _NotProcLib -> skip
+    catch
+        _:_ -> skip
+    end;
+caller_module(_NotPid) ->
+    skip.
+
+%% 名单只读访问（供名单完整性回归测试使用）。
+-spec resident_caller_modules() -> [atom()].
+resident_caller_modules() -> ?RESIDENT_CALLER_MODULES.
+
+%% 静态 arity 包装（meck:expect 要求精确元数；全仓期望 arity 实测 0..15）。
+guard_wrap(Fun, 0) ->
+    fun() -> guard_apply(Fun, []) end;
+guard_wrap(Fun, 1) ->
+    fun(A1) -> guard_apply(Fun, [A1]) end;
+guard_wrap(Fun, 2) ->
+    fun(A1, A2) -> guard_apply(Fun, [A1, A2]) end;
+guard_wrap(Fun, 3) ->
+    fun(A1, A2, A3) -> guard_apply(Fun, [A1, A2, A3]) end;
+guard_wrap(Fun, 4) ->
+    fun(A1, A2, A3, A4) -> guard_apply(Fun, [A1, A2, A3, A4]) end;
+guard_wrap(Fun, 5) ->
+    fun(A1, A2, A3, A4, A5) -> guard_apply(Fun, [A1, A2, A3, A4, A5]) end;
+guard_wrap(Fun, 6) ->
+    fun(A1, A2, A3, A4, A5, A6) -> guard_apply(Fun, [A1, A2, A3, A4, A5, A6]) end;
+guard_wrap(Fun, 7) ->
+    fun(A1, A2, A3, A4, A5, A6, A7) -> guard_apply(Fun, [A1, A2, A3, A4, A5, A6, A7]) end;
+guard_wrap(Fun, 8) ->
+    fun(A1, A2, A3, A4, A5, A6, A7, A8) -> guard_apply(Fun, [A1, A2, A3, A4, A5, A6, A7, A8]) end;
+guard_wrap(Fun, 9) ->
+    fun(A1, A2, A3, A4, A5, A6, A7, A8, A9) ->
+        guard_apply(Fun, [A1, A2, A3, A4, A5, A6, A7, A8, A9])
+    end;
+guard_wrap(Fun, 10) ->
+    fun(A1, A2, A3, A4, A5, A6, A7, A8, A9, A10) ->
+        guard_apply(Fun, [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10])
+    end;
+guard_wrap(Fun, 11) ->
+    fun(A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11) ->
+        guard_apply(Fun, [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11])
+    end;
+guard_wrap(Fun, 12) ->
+    fun(A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12) ->
+        guard_apply(Fun, [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12])
+    end;
+guard_wrap(Fun, 13) ->
+    fun(A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13) ->
+        guard_apply(Fun, [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13])
+    end;
+guard_wrap(Fun, 14) ->
+    fun(A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14) ->
+        guard_apply(Fun, [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14])
+    end;
+guard_wrap(Fun, 15) ->
+    fun(A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15) ->
+        guard_apply(Fun, [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15])
+    end;
+guard_wrap(Fun, _Higher) ->
+    Fun.
+
 normalize_mock_fun(Fun, Arity) ->
     {arity, FunArity} = erlang:fun_info(Fun, arity),
     case FunArity of
         Arity ->
-            Fun;
+            guard_wrap(Fun, Arity);
         N when N =:= Arity - 1 ->
-            wrap_drop_first_arg(Fun, Arity);
+            guard_wrap(wrap_drop_first_arg(Fun, Arity), Arity);
         _ ->
-            Fun
+            guard_wrap(Fun, Arity)
     end.
 
 wrap_drop_first_arg(Fun, 1) ->

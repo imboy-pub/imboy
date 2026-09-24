@@ -1,9 +1,11 @@
-%% @doc AG31-04B：agent_run 三表（迁移 00000133，架构合同 §9.3-9.4 Frozen
+%% @doc AG31-04B：agent_run 三表（出生迁移 00000133，main db7516c4 重排后归
+%% 00000134，架构合同 §9.3-9.4 Frozen
 %% Run/Effect Schema Contract）的隔离 PG 验收测试。
 %%
 %% == 运行前置 ==
 %%
-%% 隔离一次性 PG（非 4323 共享库、非生产），库内已应用全链迁移到 00000133。
+%% 隔离一次性 PG（非 4323 共享库、非生产），库内已应用全链迁移到 head
+%% （≥ 00000134；三表归属迁移，db7516c4 重排前为 00000133）。
 %% 连接参数只经进程环境变量注入（不写入任何文件/日志）：
 %%
 %%   AG31_PG_HOST / AG31_PG_PORT / AG31_PG_DB / AG31_PG_USER / AG31_PG_PASSWORD(可空)
@@ -19,7 +21,12 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(CHAIN_HEAD, 133).
+-define(CHAIN_HEAD, 134).
+%% CHAIN_HEAD 动态下界口径（非 head 等值断言）：本套件三表（agent_run /
+%% agent_execution / agent_effect）出生编号 00000133，main db7516c4 重排
+%% agent 槽位（132/133 -> 133/134）后归 00000134 所有；head 其后继续前移
+%% （143/144/145...）。断言只钉「归属迁移已应用 + 非 dirty」，不钉 head
+%% （与 enterprise_app_lifecycle_migration_pg_tests 64dd8060 同款修法）。
 %% 夹具固定 id 区段（991000+，与 agent_grant_pg_tests 的 990000+ 不相交）
 -define(ID_DELEGATOR, 991010).
 -define(ID_AGENT, 991011).
@@ -67,7 +74,7 @@ agent_run_pg_test_() ->
             end},
             {"h: HITL approval chain (E07/E12/E13) + digest mismatch + revoke-during-approval",
                 fun() -> t_hitl(Conn) end},
-            {"i: chain head at 00000133 not dirty + structure re-assert", fun() ->
+            {"i: chain head >= 00000134 not dirty + structure re-assert", fun() ->
                 t_chain_head(Conn)
             end}
         ]
@@ -768,14 +775,16 @@ t_hitl(Conn) ->
     ok.
 
 %% ===================================================================
-%% i: 链头 00000133 非 dirty + 结构复断言（up/down/up 时间线库端锚点）
+%% i: 链头 ≥ 00000134（归属迁移已应用）非 dirty + 结构复断言（up/down/up 时间线库端锚点）
 %% ===================================================================
 
 t_chain_head(Conn) ->
     {ok, _, [{Version, Dirty}]} = epgsql:equery(
         Conn, "SELECT version, dirty FROM schema_migrations", []
     ),
-    ?assertEqual(?CHAIN_HEAD, Version),
+    %% head 动态（db7516c4 重排后三表归 134，head 其后继续前移）：
+    %% 只钉「归属迁移已应用」，不钉 head 等值（64dd8060 同款动态下界）。
+    ?assert(Version >= ?CHAIN_HEAD),
     ?assertEqual(false, Dirty),
     fixture_reset(Conn),
     {ok, 1} = insert_fixture_run(Conn, ?ID_RUN1, <<"ag31d-i-key">>, <<"queued">>),

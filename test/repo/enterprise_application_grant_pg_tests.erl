@@ -455,15 +455,18 @@ gz_upgrade_compat(State) ->
         lists:foreach(fun(T) -> ?assertNot(table_missing(Conn, T)) end, ?GZ_TABLES),
         ?assert(table_missing(Conn, <<"enterprise_application_grant">>)),
 
-        %% 2) 写入 GZ 期形态数据（模拟广州候选已有数据；提交，供后续用例复用）
+        %% 2) 写入 GZ 期形态数据（模拟广州候选已有数据；提交，供后续用例复用）。
+        %%    夹具按 GZ 期（136）schema 形态写入：head 期 repo 的 ?COLUMNS 自
+        %%    迁移 00000143 起含 enterprise_application.version，136 形态下
+        %%    RETURNING/SELECT version 会 42703（era 漂移）。真实 GZ 候选库本就
+        %%    由 GZ 期代码写入，用 136 列集的裸 SQL 模拟反而更忠实于「升级前
+        %%    数据」的目标形态。
         ok = exec(Conn, <<"BEGIN">>),
-        _Fx = seed_fixture(Conn),
-        {ok, _GzApp} = enterprise_application_repo:create_tx(
-            Conn, ?ORG_A, <<"gz-oa">>, <<"gz"/utf8>>
-        ),
+        ok = seed_env(Conn),
+        _AppAId = create_app_gz_era(Conn, ?ORG_A, <<"t996-app-a">>, <<"a"/utf8>>),
+        _AppBId = create_app_gz_era(Conn, ?ORG_B, <<"t996-app-b">>, <<"b"/utf8>>),
         %% GZ 期既有 Application（与夹具的 t996-app-a 并列存在）
-        {ok, GzAppRow} = enterprise_application_repo:find_by_key_tx(Conn, ?ORG_A, <<"gz-oa">>),
-        GzAppId = maps:get(<<"id">>, GzAppRow),
+        GzAppId = create_app_gz_era(Conn, ?ORG_A, <<"gz-oa">>, <<"gz"/utf8>>),
         ok = exec(Conn, [
             <<"INSERT INTO enterprise_application_credential (id, organization_id,">>,
             <<" application_id, credential_prefix, secret_digest, status, created_at)">>,
@@ -592,23 +595,54 @@ migration_cycle(State) ->
 %%% 夹具与辅助
 %%%===================================================================
 
-%% 双 Org + 双 Application + 三 workspace（A1/A2 ∈ ORG_A，B1 ∈ ORG_B）。
-%% 返回应用 id（TSID 由 repo 生成，不硬编码）。
-seed_fixture(C) ->
+%% 双 Org + 双 Owner + 三 workspace（A1/A2 ∈ ORG_A，B1 ∈ ORG_B）的基础环境，
+%% 不含 Application（GZ 期夹具与 head 期夹具共用；App 落行分 era，见
+%% create_app_gz_era/3）。
+seed_env(C) ->
     ok = seed_user(C, ?OWNER_A, <<"t996_owner_a">>),
     ok = seed_user(C, ?OWNER_B, <<"t996_owner_b">>),
     ok = seed_org(C, ?ORG_A, <<"t996_org_a">>, ?OWNER_A),
     ok = seed_org(C, ?ORG_B, <<"t996_org_b">>, ?OWNER_B),
-    {ok, AppA} = enterprise_application_repo:create_tx(C, ?ORG_A, <<"t996-app-a">>, <<"a"/utf8>>),
-    {ok, AppB} = enterprise_application_repo:create_tx(C, ?ORG_B, <<"t996-app-b">>, <<"b"/utf8>>),
     ok = seed_ws(C, ?WS_A1, <<"t996-ws-a1">>, ?ORG_A),
     ok = seed_ws(C, ?WS_A2, <<"t996-ws-a2">>, ?ORG_A),
     ok = seed_ws(C, ?WS_B1, <<"t996-ws-b1">>, ?ORG_B),
+    ok.
+
+%% head 期夹具（业务用例在当前 head schema 下运行）：Application 走 repo。
+%% 返回应用 id（TSID 由 repo 生成，不硬编码）。
+seed_fixture(C) ->
+    ok = seed_env(C),
+    {ok, AppA} = enterprise_application_repo:create_tx(C, ?ORG_A, <<"t996-app-a">>, <<"a"/utf8>>),
+    {ok, AppB} = enterprise_application_repo:create_tx(C, ?ORG_B, <<"t996-app-b">>, <<"b"/utf8>>),
     #{
         app_a => maps:get(<<"id">>, AppA),
         app_b => maps:get(<<"id">>, AppB),
         app_a_key => <<"t996-app-a">>
     }.
+
+%% GZ 期（迁移 00000136 形态）Application 落行：裸 SQL 固定 136 列集（无
+%% 143 的 version 列、无 140 的内容策略列；此时 status 值域 active|disabled）。
+%% head 期 repo 的 ?COLUMNS 含 version（143+），在 136 形态下 SELECT/RETURNING
+%% version 会 42703——迁移回环/GZ 兼容用例在 goto(136) 后写 App 必须走本函数。
+%% 列值与 repo create_tx/4 的默认形态一致（principal_user_id NULL、scopes []、
+%% allowlist 空），id 仍由 repo 的 TSID 命名空间生成。返回落行 id。
+create_app_gz_era(C, OrgId, Key, Name) ->
+    Id = enterprise_application_repo:next_id(),
+    case
+        elib_pg:query(
+            C,
+            <<
+                "INSERT INTO enterprise_application (id, organization_id, application_key,"
+                " name, status, allowed_scopes, allowed_redirect_uris, created_at, updated_at)"
+                " VALUES ($1, $2, $3, $4, 'active', '[]'::jsonb, '{}',"
+                " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id"
+            >>,
+            [Id, OrgId, Key, Name]
+        )
+    of
+        {ok, [#{<<"id">> := RowId} | _]} -> RowId;
+        {error, Reason} -> erlang:error({sql_error, Reason, gz_app_insert})
+    end.
 
 seed_user(C, Uid, Account) ->
     exec(C, [
