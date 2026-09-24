@@ -50,12 +50,12 @@ mkdir -p "$LOGDIR"
 # ── 租约常量（A0 登记，勿改）──────────────────────────────────────────────────
 LK_SIGNAL_PORT="${TEST_LIVEKIT_PORT:-17880}"
 LK_TCP_PORT="${TEST_RTC_TCP_PORT:-17881}"
-LK_UDP_START=51900
-LK_UDP_END=51950          # 租约段终点
-LK_MEDIA_START=51900      # 段内切分：51900-51920 媒体
-LK_MEDIA_END=51920
-LK_RELAY_START=51921      #          51921-51950 TURN relay
-LK_TURN_UDP=3478          # LiveKit embedded TURN 合同端口
+LK_UDP_START="${TEST_UDP_START:-51900}"
+LK_UDP_END="${TEST_UDP_END:-51950}"          # 租约段终点
+LK_MEDIA_START="${TEST_MEDIA_START:-51900}"  # 段内媒体范围
+LK_MEDIA_END="${TEST_MEDIA_END:-51920}"
+LK_RELAY_START="${TEST_RELAY_START:-51921}"  # 段内 TURN relay 范围
+LK_TURN_UDP="${TEST_TURN_UDP_PORT:-3478}"
 LK_IMAGE="livekit/livekit-server:v1.13.7"
 LK_IMAGE_AMD64_DIGEST="sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52"
 LK_CLI_IMAGE="livekit/livekit-cli:v2.1.1"
@@ -70,9 +70,9 @@ LK_HOST="${RTC_ADVERTISE_IP:-127.0.0.1}"
 # published port，代理还原回源地址）不受此问题影响。
 LK_HOST_NET="${RTC_E2E_HOST_NET:-0}"
 
-CONTAINER="imboy_lk_20260921T101700Z_livekit"
-NODE_NAME="lkrtc_e2e@127.0.0.1"
-NODE_COOKIE="imboy_lk_e2e_2026"
+CONTAINER="${RTC_E2E_CONTAINER:-imboy_lk_20260921T101700Z_livekit}"
+NODE_NAME="${RTC_E2E_NODE_NAME:-lkrtc_e2e@127.0.0.1}"
+NODE_COOKIE="${RTC_E2E_NODE_COOKIE:-imboy_lk_e2e_2026}"
 
 # scratch DB（租约库名；大小写敏感，须带引号创建）
 PGHOST="${PGHOST:-127.0.0.1}"
@@ -263,7 +263,7 @@ def turn_allocate(host: str, port: int, username: str, password: str, timeout=4.
             fam = v[1]
             xport = struct.unpack(">H", v[2:4])[0] ^ (MAGIC >> 16)
             if fam == 1:
-                ipbytes = bytes(a ^ b for a, b in zip(v[4:8], txn + struct.pack(">I", MAGIC)))
+                ipbytes = bytes(a ^ b for a, b in zip(v[4:8], struct.pack(">I", MAGIC)))
                 body["relayed"] = ".".join(str(b) for b in ipbytes) + f":{xport}"
             else:
                 body["relayed"] = f"<ipv6:{xport}>"
@@ -271,7 +271,7 @@ def turn_allocate(host: str, port: int, username: str, password: str, timeout=4.
             fam = v[1]
             xport = struct.unpack(">H", v[2:4])[0] ^ (MAGIC >> 16)
             if fam == 1:
-                ipbytes = bytes(a ^ b for a, b in zip(v[4:8], txn + struct.pack(">I", MAGIC)))
+                ipbytes = bytes(a ^ b for a, b in zip(v[4:8], struct.pack(">I", MAGIC)))
                 body["mapped"] = ".".join(str(b) for b in ipbytes) + f":{xport}"
         if t == 0x000D:
             body["lifetime"] = struct.unpack(">I", v[:4])[0]
@@ -465,9 +465,18 @@ ensure_cli_image() {
   docker pull "$LK_CLI_IMAGE" >>"$LOGDIR/docker_pull.log" 2>&1
 }
 
+cleanup_scratch_db() {
+  docker exec -e PGPASSWORD="$PGPASSWORD" imboy_pg18 \
+    psql -U "$PGUSER" -h 127.0.0.1 -d postgres \
+    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$SCRATCH_DB' AND pid <> pg_backend_pid();" \
+    -c "DROP DATABASE IF EXISTS \"$SCRATCH_DB\";"
+}
+
 # imboy 隔离节点：scratch 库 + 随机端口 + livekit 段指向本地容器
 start_imboy_node() {
   # scratch 库（幂等重建；护栏：拒绝共享库）
+  [[ "$SCRATCH_DB" =~ ^[A-Za-z0-9_]+$ ]] \
+    || { say "[BLOCKED] scratch 库名含非法字符: $SCRATCH_DB"; exit 2; }
   case "$SCRATCH_DB" in
     imboy_v1|postgres|template*) say "[BLOCKED] 拒绝共享库 $SCRATCH_DB"; exit 2 ;;
   esac
@@ -482,10 +491,10 @@ start_imboy_node() {
     -c "CREATE EXTENSION IF NOT EXISTS postgis;" \
     -c "CREATE EXTENSION IF NOT EXISTS vector;" \
     >>"$LOGDIR/scratch_db.log" 2>&1 || return 1
-  register_cleanup "docker exec -e PGPASSWORD=$PGPASSWORD imboy_pg18 psql -U $PGUSER -h 127.0.0.1 -d postgres -c 'DROP DATABASE IF EXISTS \"$SCRATCH_DB\";'"
+  register_cleanup cleanup_scratch_db
 
-  API_PORT="$(pick_port)"
-  ADM_PORT="$(pick_port)"
+  API_PORT="${RTC_E2E_HTTP_PORT:-$(pick_port)}"
+  ADM_PORT="${RTC_E2E_ADM_PORT:-$(pick_port)}"
   say "   imboy 节点: http_port=$API_PORT 库=$SCRATCH_DB"
 
   # 物化配置：example 为模板，改 db/端口，注入 livekit 段
@@ -514,6 +523,12 @@ PY
 
   # 种子+驻留节点 escript
   local seed="$LOGDIR/rtc_e2e_seed.escript"
+  local alias_dir="$LOGDIR/appalias/imboy" alias_ebin
+  mkdir -p "$alias_dir"
+  rm -rf "$alias_dir/ebin" "$alias_dir/priv"
+  ln -s "$WT/ebin" "$alias_dir/ebin"
+  ln -s "$WT/priv" "$alias_dir/priv"
+  alias_ebin="$alias_dir/ebin"
   cat > "$seed" <<ERLEOF
 #!/usr/bin/env escript
 %%! -noshell -noinput -config ${cfg%.config}
@@ -526,7 +541,7 @@ main([]) ->
     Root = "$WT",
     [code:add_patha(P) || P <- filelib:wildcard(Root ++ "/deps/*/ebin")],
     code:add_patha(Root ++ "/ebin"),
-    code:add_patha(Root ++ "/imboy/ebin"),
+    code:add_patha("$alias_ebin"),
     {ok, _} = application:ensure_all_started(imboy),
     T0 = erlang:system_time(millisecond),
     MkId = fun() ->
@@ -534,11 +549,12 @@ main([]) ->
             + (erlang:unique_integer([positive, monotonic]) rem 100000)
     end,
     [U1, U2, U3, G] = [MkId() || _ <- lists:seq(1, 4)],
+    Password = elib_password:generate(<<"lk-e2e-local-2026">>),
     lists:foreach(fun(U) ->
         {ok, _} = elib_pg:query(
             <<"INSERT INTO \\"user\\"(id,password,account,nickname,reg_ip,reg_cosv) "
-              "VALUES (\$1,'x',\$2,'lk_e2e_user','127.0.0.1','x')">>,
-            [U, iolist_to_binary([<<"lke2e-">>, integer_to_binary(U)])])
+              "VALUES (\$1,\$3,\$2,'lk_e2e_user','127.0.0.1','x')">>,
+            [U, iolist_to_binary([<<"lke2e-">>, integer_to_binary(U)]), Password])
     end, [U1, U2, U3]),
     {ok, _} = elib_pg:query(
         <<"INSERT INTO \\"group\\"(id, owner_uid, creator_uid, title) "
@@ -800,11 +816,16 @@ stage3_turn() {
     local relayed lifetime
     relayed="$(jq -r .relayed "$LOGDIR/turn_probe.json")"
     lifetime="$(jq -r .lifetime "$LOGDIR/turn_probe.json")"
-    local rport; rport="${relayed##*:}"
-    if [ -n "$rport" ] && [ "$rport" -ge "$LK_RELAY_START" ] && [ "$rport" -le "$LK_UDP_END" ]; then
+    local rhost rport
+    rhost="${relayed%:*}"
+    rport="${relayed##*:}"
+    if [ "$rhost" = "$LK_HOST" ] \
+        && [ -n "$rport" ] \
+        && [ "$rport" -ge "$LK_RELAY_START" ] \
+        && [ "$rport" -le "$LK_UDP_END" ]; then
       ok "Allocate 成功且 relayed=$relayed 落在 relay 段（协议级 relay 路径证据）"
     else
-      bad "relayed=$relayed 不在 relay 段 $LK_RELAY_START-$LK_UDP_END"
+      bad "relayed=$relayed 与 advertise=$LK_HOST 或 relay 段 $LK_RELAY_START-$LK_UDP_END 不一致"
     fi
     [ -n "$lifetime" ] && [ "$lifetime" -gt 0 ] && ok "LIFETIME=$lifetime" || bad "lifetime 异常: $lifetime"
   else
@@ -932,6 +953,9 @@ main() {
   [ -d ebin ] || { say "[BLOCKED] ebin/ 不存在：先 make compile"; BLOCKED=$((BLOCKED+1)); pre=1; }
   local p
   for p in "$LK_SIGNAL_PORT" "$LK_TCP_PORT"; do
+    port_free "$p" tcp || { say "[BLOCKED] 端口 $p/tcp 被占（租约冲突）"; BLOCKED=$((BLOCKED+1)); pre=1; }
+  done
+  for p in ${RTC_E2E_HTTP_PORT:-} ${RTC_E2E_ADM_PORT:-}; do
     port_free "$p" tcp || { say "[BLOCKED] 端口 $p/tcp 被占（租约冲突）"; BLOCKED=$((BLOCKED+1)); pre=1; }
   done
   for p in "$LK_TURN_UDP" "$LK_UDP_START" "$LK_UDP_END"; do
