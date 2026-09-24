@@ -337,7 +337,18 @@ send_text_allowed_when_e2ee_disabled_test_() ->
 %% 可达（豁免前整条欢迎链被吞，新用户永远等不到 agent 打招呼）。
 send_welcome_delivered_when_e2ee_required_test_() ->
     ?WITH_MECKS(
-        send_text_gate_mecks(#{e2ee_mode => required}),
+        send_text_gate_mecks(#{e2ee_mode => required}) ++
+            %% CI-00 同款修桩（见 send_welcome_template_path_test_ 注释）：
+            %% send_welcome/4 比 send_text/3 多一道 proactive_allowed 前置守卫
+            %% （ai_agent_ds:is_agent -> ai_agent_policy:allows(_, proactive)）。
+            %% 不钉死该守卫时：「单跑无 app → is_agent 异常回退 true 侥幸通过；
+            %% 全量 app 常驻 → 真库无 user_id=42 的 agent → is_agent=false →
+            %% 守卫按设计拒绝 → 不发消息」——本用例只验 E2EE 豁免这一段，
+            %% 前置守卫必须与兄弟用例同口径显式桩定，不依赖 DB 可用性。
+            [
+                {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{<<"role_status">> => 1}} end}]},
+                {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]}
+            ],
         fun() ->
             ?assertEqual(ok, ai_agent_proactive:send_welcome(42, 7, <<"小明"/utf8>>, #{})),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
