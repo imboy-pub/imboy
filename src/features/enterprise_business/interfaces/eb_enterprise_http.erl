@@ -14,8 +14,11 @@
 %%%   * 存储能力泄露判据 `storage_leak_scan/1`（生产侧与测试侧共用，A05）。
 %%%
 %%% **本模块不做**：不读库、不写 SQL、不引 `elib_pg`/`eb_pg_*`（A05 的静态判据）、
-%%% 不签发任何 URL、不接触对象存储（asset content 只把 facade 返回的字节原样流式
-%%% 写出，响应里不含 object key / storage endpoint / presigned）。
+%%% 不签发任何**存储侧** URL、不接触对象存储（asset content 只把 facade 返回的字节
+%%% 原样流式写出，响应里不含 object key / storage endpoint / presigned）。
+%%% CS-BE-01B 的唯一例外：presign（POST）响应投影 `upload.url`——它指向**本
+%%% API 自己**的字节上传端点（presign 路径的 PUT 用例，短 TTL 凭证在查询串），
+%%% 不是对象存储 URL、不含 object key（与 widget 面 `with_upload_url` 同安全级）。
 -module(eb_enterprise_http).
 
 -export([
@@ -24,8 +27,10 @@
     tsid/1,
     workspace_id/2,
     read_body/1,
+    read_upload_body/1,
     path_params/2,
     build_params/5,
+    with_seat_upload_url/3,
     respond/3,
     reply_error/2,
     reply_content/2,
@@ -190,6 +195,31 @@ decode(Raw) ->
         _NotObject -> {error, body_not_object}
     catch
         _:_ -> {error, malformed_json}
+    end.
+
+%% CS-BE-01B：字节上传线格式（presign 的 PUT 用例）——请求体是**原始字节**
+%% （附件内容，非 JSON；widget 面 `widget_asset_put` 同款先例）。返回
+%% `{ok, Bytes, Req}`（Req 已消费 body，可供后续 reply 复用）或
+%% `{error, {invalid_param, payload}}`（超传输上限，400 fail-closed）。
+%% 上限与 presign 申报 size 的企业面上界一致（25 MiB）；真正的 size 语义
+%% 校验（申报值=实际值、mime sniff、hash 复核）在 `eb_asset_app:put_object`，
+%% 这里是纯传输 DoS 门。
+-define(UPLOAD_MAX_BYTES, 25 * 1024 * 1024).
+
+-spec read_upload_body(cowboy_req:req()) ->
+    {ok, binary(), cowboy_req:req()} | {error, term()}.
+read_upload_body(Req) ->
+    read_upload_body(Req, []).
+
+read_upload_body(Req, Acc) ->
+    case cowboy_req:read_body(Req, #{length => 4 * 1024 * 1024, period => 10000}) of
+        {ok, Data, Req1} ->
+            {ok, iolist_to_binary(lists:reverse([Data | Acc])), Req1};
+        {more, Data, Req1} ->
+            case iolist_size(Acc) + byte_size(Data) > ?UPLOAD_MAX_BYTES of
+                true -> {error, {invalid_param, payload}};
+                false -> read_upload_body(Req1, [Data | Acc])
+            end
     end.
 
 normalize_body(Map) ->
@@ -405,8 +435,26 @@ coerce(int, Raw) when is_binary(Raw) ->
     end;
 coerce(binary, Raw) when is_binary(Raw), Raw =/= <<>> ->
     {ok, Raw};
+%% CS-BE-01B：TSID string 数组（asset_ids 的传输形态）→ pos integer 数组。
+%% 逐元素走 `tsid/1`（十进制 string / number 兼容，> 0；A02 投影口径），
+%% 任一元素非法即整体 `{error, invalid_value}`（调用方报 `{invalid_param, Key}`）。
+%% 空数组合法（与缺省同义，语义裁决在应用层）；查询串来源是 binary、进不了
+%% 本子句（fail-closed，不猜数组化）。
+coerce(list, Raw) when is_list(Raw) ->
+    case project_tsid_list(Raw, []) of
+        {ok, _} = Ok -> Ok;
+        error -> {error, invalid_value}
+    end;
 coerce(_Type, _Raw) ->
     {error, invalid_value}.
+
+project_tsid_list([], Acc) ->
+    {ok, lists:reverse(Acc)};
+project_tsid_list([Raw | Rest], Acc) ->
+    case tsid(Raw) of
+        {ok, Id} -> project_tsid_list(Rest, [Id | Acc]);
+        error -> error
+    end.
 
 %% @doc 入站 TSID：十进制字符串（A02 的传输形态）或 JSON number（兼容）。
 -spec tsid(term()) -> {ok, integer()} | error.
@@ -416,6 +464,73 @@ tsid(Raw) when is_binary(Raw) ->
     elib_tsid:from_binary(Raw);
 tsid(_Raw) ->
     error.
+
+%% ===================================================================
+%% CS-BE-01B：坐席面 presign 响应的 upload.url 投影
+%% ===================================================================
+
+%% @doc presign（POST）成功视图补 `upload.url`——指向**本 API 自己**的字节
+%% 上传端点（presign 路径的 PUT 用例），不是对象存储 URL、不含 object key /
+%% bucket / 签名串（A05 存储能力红线不触碰；与 widget 面
+%% `cs_widget_session_app:with_upload_url/4` 同构：代理端点 + 查询串凭证）。
+%%
+%% 查询串携带 `workspace_id`（TSID 十进制 string，A02）与 `upload_ref`
+%% （不透明、HMAC、短 TTL——短 TTL 语义即凭证自身的 `expires_at`，URL 只在
+%% 凭证有效期内可用）。base_url 未配置或非 https ⇒ 不加 url（fail-closed，
+%% 与现状同形；widget 面同款判定）。非 `{ok, Map}` 结果原样透传。
+%%
+%% URL 可得性 = 已通过路由级成员门（asset.write + sales|customer_service 职能）
+%% 的坐席；PUT 端点本身还复走同一授权门（比 widget 面「upload_ref 即唯一
+%% 凭证」更严），随后用例内复核凭证 TTL/篡改/同上传人/经办 ACL。
+-spec with_seat_upload_url(
+    cowboy_req:req(), integer(), {ok, map()} | {error, term()}
+) ->
+    {ok, map()} | {error, term()}.
+with_seat_upload_url(Req, WorkspaceId, {ok, View} = Ok) when is_map(View) ->
+    case seat_put_target(Req, WorkspaceId, View) of
+        undefined ->
+            Ok;
+        Url ->
+            Upload = maps:get(upload, View, #{}),
+            {ok, View#{upload := Upload#{url => Url, method => <<"PUT">>}}}
+    end;
+with_seat_upload_url(_Req, _WorkspaceId, Other) ->
+    Other.
+
+seat_put_target(Req, WorkspaceId, View) ->
+    Ref = maps:get(upload_ref, View, undefined),
+    case is_https_base(api_base_url()) andalso is_binary(Ref) andalso Ref =/= <<>> of
+        true ->
+            case org_id(Req) of
+                {ok, OrgId} when is_integer(WorkspaceId) ->
+                    Query = uri_string:compose_query([
+                        {<<"workspace_id">>, integer_to_binary(WorkspaceId)},
+                        {<<"upload_ref">>, Ref}
+                    ]),
+                    Path = iolist_to_binary([
+                        <<"/api/v1/enterprise/organizations/">>,
+                        integer_to_binary(OrgId),
+                        <<"/assets/presign">>
+                    ]),
+                    <<(api_base_url())/binary, Path/binary, $?, Query/binary>>;
+                _Other ->
+                    undefined
+            end;
+        false ->
+            undefined
+    end.
+
+%% API 绝对 URL 基址（`{imboy, base_url}`；仓内既有派生方式——widget 面
+%% `cs_widget_support:api_base/0` 同源配置，未配置 = 空串）。此处直读
+%% application env（等价 config_ds:env/3 的取值口径），保持本模块的静态
+%% 扫描面（A05：零 `*_ds:` 引用）不变。
+api_base_url() ->
+    application:get_env(imboy, base_url, <<>>).
+
+is_https_base(<<"https://", _Rest/binary>>) ->
+    true;
+is_https_base(_Other) ->
+    false.
 
 %% ===================================================================
 %% 响应映射

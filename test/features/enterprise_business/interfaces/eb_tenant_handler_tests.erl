@@ -885,10 +885,11 @@ a05_asset_download_writes_no_personal_attachment() ->
 
 %% @doc F6（RULING-2026-09-15 §七）presign 的**两面**合同。
 %%
-%% 生产装配：主密钥只来自服务端 application 配置 `imboy.eb_enterprise_keyring`
+%%% 生产装配：主密钥只来自服务端 application 配置 `imboy.eb_enterprise_keyring`
 %% （`eb_env_keyring` 严格解码）；HTTP 面不接收、动作表也不声明任何密钥参数。
 %%   * 正面：env 注入有效 keyring ⇒ presign **服务端解析成功**（200 + 不透明
-%%     upload_ref；响应仍无 URL/endpoint/object key）；
+%%     upload_ref；CS-BE-01B 起成功视图还投影 `upload.url`——指向本 API 的
+%%     presign PUT 端点，存储侧引用仍零出站）；
 %%   * 负面：env 无 keyring（部署缺陷/未配置）⇒ **500 missing_key** fail-closed，
 %%     绝不降级为明文、绝不伪装成 4xx，零副作用。
 %% 权限口径：两面都用测试装配补 `asset.write`（F1 的权限授予缺口），使请求能抵达
@@ -923,16 +924,55 @@ a05_presign_resolves_server_side_keyring() ->
             ?assertEqual(0, ?S:code(Resp)),
             View = ?S:payload(Resp),
             ?assert(is_binary(maps:get(<<"upload_ref">>, View, undefined))),
-            %% 响应面纪律不变：无 URL / endpoint / bucket / 签名串等真实存储能力
-            %% （storage_leak_scan 全量 needle 会误撞 A05 契约声明文本
-            %% `opaque_token_no_url_no_object_key`，故这里扫真实泄露标志）。
+            %% CS-BE-01B（契约放宽，取代旧「响应无 ://」判据）：presign 成功视图
+            %% 投影 `upload.url`——指向**本 API 自己**的 presign PUT 端点（短 TTL
+            %% 凭证在查询串），不是对象存储 URL。仍禁止一切**存储侧**能力：
+            %% object key / bucket / endpoint / S3 签名串一个都不许出现。
+            Upload = maps:get(<<"upload">>, View, undefined),
+            ?assert(is_map(Upload)),
+            ?assertEqual(<<"PUT">>, maps:get(<<"method">>, Upload, undefined)),
+            ?assert(is_integer(maps:get(<<"expires_at">>, Upload, undefined))),
             Raw = ?S:raw(Resp),
+            %% 保留旧判据中仍然成立的三条（X-Amz/endpoint/bucket——注意
+            %% `object_key` 字面量会误撞 upload.rule 的契约声明文本
+            %% `opaque_token_no_url_no_object_key`，故 object key / 存储引用
+            %% 的零出站在 upload.url **值**上断言，见下方 ExpectedPrefix 分支）。
             lists:foreach(
                 fun(Needle) ->
                     ?assertEqual({Needle, nomatch}, {Needle, binary:match(Raw, Needle)})
                 end,
-                [<<"://">>, <<"X-Amz-">>, <<"endpoint">>, <<"bucket">>]
-            )
+                [<<"X-Amz-">>, <<"endpoint">>, <<"bucket">>]
+            ),
+            %% upload.url 的存在性按 base_url 装配判定（https 基址 → 必在；未配置
+            %% → fail-closed 不投影）。eunit 配置（sys.local/scratch）带 https
+            %% base_url 时断言其形状：绝对 https + 本 org 的 presign 路径 +
+            %% 查询串携带 workspace_id/upload_ref。
+            case config_ds:env(base_url, <<>>) of
+                <<"https://", _/binary>> = Base ->
+                    Url = maps:get(<<"url">>, Upload, undefined),
+                    ?assert(is_binary(Url)),
+                    ExpectedPrefix = <<
+                        Base/binary,
+                        "/api/v1/enterprise/organizations/",
+                        (integer_to_binary(Org))/binary,
+                        "/assets/presign?"
+                    >>,
+                    ?assertEqual(
+                        {match, 0},
+                        begin
+                            Size = byte_size(ExpectedPrefix),
+                            case Url of
+                                <<ExpectedPrefix:Size/binary, _/binary>> -> {match, 0};
+                                _ -> nomatch
+                            end
+                        end
+                    ),
+                    %% upload.url 值上零存储能力（object key / S3 签名串）。
+                    ?assertEqual(nomatch, binary:match(Url, <<"object_key">>)),
+                    ?assertEqual(nomatch, binary:match(Url, <<"X-Amz-">>));
+                _Unconfigured ->
+                    ?assert(not maps:is_key(<<"url">>, Upload))
+            end
         end)
     after
         %% env 是 VM 级：两面互不污染，也不外泄到其他用例/套件。

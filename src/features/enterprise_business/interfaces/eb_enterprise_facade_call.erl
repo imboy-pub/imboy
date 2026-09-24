@@ -47,6 +47,10 @@ call(ack_delivery, OrgId, Params) ->
     enterprise_business_facade:ack_delivery(OrgId, Params);
 call(request_presign, OrgId, Params) ->
     enterprise_business_facade:request_presign(OrgId, Params);
+%% CS-BE-01B：presign 路径的 PUT 用例（坐席字节上传；payload=原始体字节，
+%% 由 handler 线格式层注入）。用例内复核凭证 TTL/篡改/同上传人/经办 ACL。
+call(put_object, OrgId, Params) ->
+    enterprise_business_facade:put_object(OrgId, Params);
 call(confirm_asset, OrgId, Params) ->
     enterprise_business_facade:confirm_asset(OrgId, Params);
 call(content_stream, OrgId, Params) ->
@@ -87,6 +91,7 @@ actions() ->
         append_message,
         ack_delivery,
         request_presign,
+        put_object,
         confirm_asset,
         content_stream,
         suspend_member,

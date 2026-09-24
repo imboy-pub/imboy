@@ -48,8 +48,10 @@
 
 -type owner() :: tenant | platform.
 %% `tsid` = 64-bit TSID：**传输层是 JSON/path 字符串**，投影成 integer 交给 application
-%% （A02：出站再编回 string）。
--type ptype() :: tsid | int | binary.
+%% （A02：出站再编回 string）。`list` = TSID string 数组（CS-BE-01B：坐席发送面
+%% `asset_ids` 的传输形态，widget 面 `widget_visitor_message` 同款；HTTP 层逐元素
+%% 投影成 pos integer，任一元素非法即整体拒绝）。
+-type ptype() :: tsid | int | binary | list.
 -type param() :: {atom(), ptype(), required | optional}.
 -type kase() :: #{
     method := binary(),
@@ -255,11 +257,19 @@ table(tenant) ->
                     {<<"GET">>, list_messages, [{after_id, tsid, optional}, {limit, int, optional}],
                         [{id, conversation_id}]},
                     %% F-SEC-02：写真源的动作需要写权限（路径级 read 只服务 GET 列表）。
+                    %% CS-BE-01B（坐席发送面协议补全）：`asset_ids` = TSID string 数组
+                    %% （list 传输形态，widget 面 widget_visitor_message 同款；HTTP 层
+                    %% 投影成 pos int）。空正文 + 有效 asset_ids 是合法附件消息，body
+                    %% 由此改 optional（纯文本消息仍要求非空 body 由应用层裁决：
+                    %% eb_message_app:validate_body——两者皆空 = 422 invalid_body）。
+                    %% 幂等 = 同一 client_msg_id + 同一 asset_ids 重放返回同一 message
+                    %% （canonical 事务冻结语义，CS-BE-01 的 assets 回显投影照常携带）。
                     {<<"POST">>, append_message,
                         [
                             {client_msg_id, binary, required},
                             {sender_type, binary, required},
-                            {body, binary, required},
+                            {body, binary, optional},
+                            {asset_ids, list, optional},
                             {contact_id, tsid, optional},
                             {identity_id, tsid, optional}
                         ],
@@ -291,6 +301,16 @@ table(tenant) ->
         %% BE-S01a：附件三动作职能白名单扩为 sales|customer_service（坐席
         %% 上传/确认/读取；经办 ACL 由 eb_asset_scope 的 assignee 门对全员
         %% 生效——sales 行为不变）。
+        %%
+        %% CS-BE-01B：presign 路径承载第二个用例——`PUT` = 字节上传（同一
+        %% path 的方法分派，**零路由变更**：cowboy 只按 path 匹配，方法门在
+        %% `eb_tenant_handler` 的 case_for；对齐 widget 面 widget_asset_put 的
+        %% 「presign 下发的 PUT 目标就是本端点」协议）。请求体是**原始字节**
+        %% （附件内容，非 JSON——线格式分支在 eb_tenant_handler），`upload_ref`
+        %% 经查询串携带（presign 响应的 upload.url 已把它拼好）。鉴权链照走
+        %% 路由级成员门（asset.write + sales|customer_service），再用例内
+        %% `eb_asset_app:put_object` 复核凭证（过期/篡改/同上传人/经办 ACL/
+        %% hash/size/mime）——全部既有实现，零复制。
         {presign,
             entry(
                 tenant,
@@ -308,7 +328,8 @@ table(tenant) ->
                             %% 进 PUT 登记与历史 assets[].file_name 投影）。
                             {file_name, binary, optional}
                         ],
-                        []}
+                        []},
+                    {<<"PUT">>, put_object, [{upload_ref, binary, required}], []}
                 ],
                 member_auth(<<"asset.write">>, [<<"sales">>, <<"customer_service">>]),
                 false,

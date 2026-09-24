@@ -46,7 +46,9 @@ tenant_literal_routes() ->
             <<"GET">>, <<"POST">>
         ]},
         {<<P/binary, "/conversations/:id/messages/:message_id/ack">>, ack_delivery, [<<"POST">>]},
-        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>]},
+        %% CS-BE-01B：presign 路径承载 POST（签发）+ PUT（字节上传）两个用例
+        %% （同路径方法分派，零路由变更；见 eb_enterprise_actions 的 presign 条目）。
+        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>, <<"PUT">>]},
         {<<P/binary, "/assets/confirm">>, confirm_asset, [<<"POST">>]},
         {<<P/binary, "/assets/:id/content">>, asset_content, [<<"GET">>]},
         {<<P/binary, "/members/:uid/suspend">>, suspend_member, [<<"POST">>]},
