@@ -3,295 +3,437 @@
 -include("eunit_setup.hrl").
 
 notify_channel_subscribed_succeeds_when_send_ok_test_() ->
-    ?WITH_MECKS([
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001], <<"channel_subscribed">>, <<>>, null, Payload, no_save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                ok
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_channel_subscribed(11, 1001),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, [1001], <<"channel_subscribed">>, <<>>, null, Payload, no_save) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_channel_subscribed(11, 1001),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_channel_unread_count_sends_expected_payload_test_() ->
-    ?WITH_MECKS([
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001], <<"channel_unread_count">>, <<>>, null, Payload, no_save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                ?assertEqual(8, maps:get(<<"unread_count">>, Payload)),
-                ok
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_channel_unread_count(11, 1001, 8),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(
+                    0, [1001], <<"channel_unread_count">>, <<>>, null, Payload, no_save
+                ) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ?assertEqual(8, maps:get(<<"unread_count">>, Payload)),
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_channel_unread_count(11, 1001, 8),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_channel_update_uses_subscribers_and_handles_unexpected_return_test_() ->
     Channel = #{<<"id">> => 11, <<"name">> => <<"channel-x">>},
-    ?WITH_MECKS([
-        {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
-        ]},
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_updated">>, <<>>, null, Payload, no_save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                ?assertEqual(Channel, maps:get(<<"channel">>, Payload)),
-                unexpected_return
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_channel_update(11, Channel),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(channel_ds, subscriber_uids, 1)),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(
+                    0, [1001, 2002], <<"channel_updated">>, <<>>, null, Payload, no_save
+                ) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ?assertEqual(Channel, maps:get(<<"channel">>, Payload)),
+                    unexpected_return
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_channel_update(11, Channel),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, subscriber_uids, 1)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_channel_update_still_returns_ok_when_subscribers_invalid_test_() ->
     Channel = #{<<"id">> => 11, <<"name">> => <<"channel-x">>},
-    ?WITH_MECKS([
-        {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> {error, db_down} end}
-        ]},
-        {msg_s2c_ds, [
-            {'send', 7, fun(_, _, _, _, _, _, _) ->
-                erlang:error(should_not_send_when_subscribers_invalid)
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_channel_update(11, Channel),
-        ?assertEqual(ok, Result),
-        ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'subscriber_uids', 1, fun(11) -> {error, db_down} end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(_, _, _, _, _, _, _) ->
+                    erlang:error(should_not_send_when_subscribers_invalid)
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_channel_update(11, Channel),
+            ?assertEqual(ok, Result),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_channel_update_still_returns_ok_when_subscriber_lookup_crashes_test_() ->
     Channel = #{<<"id">> => 11, <<"name">> => <<"channel-x">>},
-    ?WITH_MECKS([
-        {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> erlang:error(db_down) end}
-        ]},
-        {msg_s2c_ds, [
-            {'send', 7, fun(_, _, _, _, _, _, _) ->
-                erlang:error(should_not_send_when_subscriber_lookup_crashes)
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_channel_update(11, Channel),
-        ?assertEqual(ok, Result),
-        ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'subscriber_uids', 1, fun(11) -> erlang:error(db_down) end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(_, _, _, _, _, _, _) ->
+                    erlang:error(should_not_send_when_subscriber_lookup_crashes)
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_channel_update(11, Channel),
+            ?assertEqual(ok, Result),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_channel_unsubscribed_still_returns_ok_when_send_failed_test_() ->
-    ?WITH_MECKS([
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001], <<"channel_unsubscribed">>, <<>>, null, Payload, no_save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                {error, notify_failed}
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_channel_unsubscribed(11, 1001),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(
+                    0, [1001], <<"channel_unsubscribed">>, <<>>, null, Payload, no_save
+                ) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    {error, notify_failed}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_channel_unsubscribed(11, 1001),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_invitation_created_still_returns_ok_when_send_crashes_test_() ->
-    ?WITH_MECKS([
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [2002], <<"channel_invitation_created">>, <<>>, null, Payload, save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                erlang:error(mock_notify_crash)
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_invitation_created(11, 2002),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(
+                    0, [2002], <<"channel_invitation_created">>, <<>>, null, Payload, save
+                ) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    erlang:error(mock_notify_crash)
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_invitation_created(11, 2002),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_order_paid_still_returns_ok_when_send_returns_unexpected_test_() ->
-    ?WITH_MECKS([
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [2002], Action, <<>>, null, Payload, no_save) ->
-                ?assert(lists:member(Action, [<<"channel_order_paid">>, <<"channel_subscribed">>])),
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                unexpected_return
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_order_paid(11, 2002),
-        ?assertEqual(ok, Result),
-        ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, [2002], Action, <<>>, null, Payload, no_save) ->
+                    ?assert(
+                        lists:member(Action, [<<"channel_order_paid">>, <<"channel_subscribed">>])
+                    ),
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    unexpected_return
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_order_paid(11, 2002),
+            ?assertEqual(ok, Result),
+            ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_channel_deleted_still_returns_ok_when_send_failed_test_() ->
-    ?WITH_MECKS([
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_deleted">>, <<>>, null, Payload, save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                {error, notify_failed}
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_channel_deleted(11, [1001, 2002]),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, [1001, 2002], <<"channel_deleted">>, <<>>, null, Payload, save) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    {error, notify_failed}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_channel_deleted(11, [1001, 2002]),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_channel_deleted_filters_invalid_uids_and_still_sends_valid_ones_test_() ->
-    ?WITH_MECKS([
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_deleted">>, <<>>, null, Payload, save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                ok
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_channel_deleted(11, [1001, <<"bad">>, -1, 2002]),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, [1001, 2002], <<"channel_deleted">>, <<>>, null, Payload, save) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_channel_deleted(11, [1001, <<"bad">>, -1, 2002]),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 broadcast_channel_message_uses_subscribers_and_still_returns_ok_when_send_failed_test_() ->
     Message = #{<<"id">> => <<"msg_1">>, <<"content">> => <<"hello">>},
-    ?WITH_MECKS([
-        {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
-        ]},
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_message">>, <<>>, null, Payload, save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                ?assertEqual(<<"CHANNEL">>, maps:get(<<"type">>, Payload)),
-                ?assertEqual(<<"hello">>, maps:get(<<"content">>, Payload)),
-                {error, notify_failed}
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:broadcast_channel_message(11, Message),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(channel_ds, subscriber_uids, 1)),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, [1001, 2002], <<"channel_message">>, <<>>, null, Payload, save) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ?assertEqual(<<"CHANNEL">>, maps:get(<<"type">>, Payload)),
+                    ?assertEqual(<<"hello">>, maps:get(<<"content">>, Payload)),
+                    {error, notify_failed}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:broadcast_channel_message(11, Message),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, subscriber_uids, 1)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 broadcast_channel_message_filters_invalid_subscribers_and_sends_valid_ones_test_() ->
     Message = #{<<"id">> => <<"msg_1">>, <<"content">> => <<"hello">>},
-    ?WITH_MECKS([
-        {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> [1001, <<"bad">>, 0, 2002] end}
-        ]},
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_message">>, <<>>, null, Payload, save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                ?assertEqual(<<"CHANNEL">>, maps:get(<<"type">>, Payload)),
-                ?assertEqual(<<"hello">>, maps:get(<<"content">>, Payload)),
-                ok
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:broadcast_channel_message(11, Message),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'subscriber_uids', 1, fun(11) -> [1001, <<"bad">>, 0, 2002] end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, [1001, 2002], <<"channel_message">>, <<>>, null, Payload, save) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ?assertEqual(<<"CHANNEL">>, maps:get(<<"type">>, Payload)),
+                    ?assertEqual(<<"hello">>, maps:get(<<"content">>, Payload)),
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:broadcast_channel_message(11, Message),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 broadcast_channel_message_still_returns_ok_when_subscribers_invalid_test_() ->
     Message = #{<<"id">> => <<"msg_1">>, <<"content">> => <<"hello">>},
-    ?WITH_MECKS([
-        {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> {error, db_down} end}
-        ]},
-        {msg_s2c_ds, [
-            {'send', 7, fun(_, _, _, _, _, _, _) ->
-                erlang:error(should_not_send_when_subscribers_invalid)
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:broadcast_channel_message(11, Message),
-        ?assertEqual(ok, Result),
-        ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'subscriber_uids', 1, fun(11) -> {error, db_down} end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(_, _, _, _, _, _, _) ->
+                    erlang:error(should_not_send_when_subscribers_invalid)
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:broadcast_channel_message(11, Message),
+            ?assertEqual(ok, Result),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_message_deleted_uses_subscribers_and_still_returns_ok_when_send_failed_test_() ->
-    ?WITH_MECKS([
-        {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
-        ]},
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_message_deleted">>, <<>>, null, Payload, save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                ?assertEqual(99, maps:get(<<"message_id">>, Payload)),
-                {error, notify_failed}
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_message_deleted(11, 99),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(channel_ds, subscriber_uids, 1)),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(
+                    0, [1001, 2002], <<"channel_message_deleted">>, <<>>, null, Payload, save
+                ) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ?assertEqual(99, maps:get(<<"message_id">>, Payload)),
+                    {error, notify_failed}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_message_deleted(11, 99),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, subscriber_uids, 1)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_message_revoked_still_returns_ok_when_send_crashes_test_() ->
     RevokedAt = <<"2026-02-24T10:00:00Z">>,
-    ?WITH_MECKS([
-        {channel_ds, [
-            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
-        ]},
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_message_revoked">>, <<>>, null, Payload, save) ->
-                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                ?assertEqual(99, maps:get(<<"message_id">>, Payload)),
-                ?assertEqual(1001, maps:get(<<"revoked_by">>, Payload)),
-                ?assertEqual(RevokedAt, maps:get(<<"revoked_at">>, Payload)),
-                erlang:error(mock_notify_crash)
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_message_revoked(11, 99, 1001, RevokedAt),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(channel_ds, subscriber_uids, 1)),
-        ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(
+                    0, [1001, 2002], <<"channel_message_revoked">>, <<>>, null, Payload, save
+                ) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ?assertEqual(99, maps:get(<<"message_id">>, Payload)),
+                    ?assertEqual(1001, maps:get(<<"revoked_by">>, Payload)),
+                    ?assertEqual(RevokedAt, maps:get(<<"revoked_at">>, Payload)),
+                    erlang:error(mock_notify_crash)
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_message_revoked(11, 99, 1001, RevokedAt),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, subscriber_uids, 1)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
+
+%% ===================================================================
+%% ENT-BE-01：频道治理 admin 角色变更通知（add/remove/update_role）
+%% 与 remove_subscriber（踢出）通知复用既有 channel_unsubscribed 动作，
+%% 接线测试见 channel_logic_tests.erl。
+%% ===================================================================
+
+notify_admin_added_sends_expected_payload_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, [2002], <<"channel_admin_added">>, <<>>, null, Payload, save) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ?assertEqual(2, maps:get(<<"role">>, Payload)),
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_admin_added(11, 2002, 2),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
+
+notify_admin_added_still_returns_ok_when_send_failed_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, [2002], <<"channel_admin_added">>, <<>>, null, _Payload, save) ->
+                    {error, notify_failed}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_admin_added(11, 2002, 2),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
+
+notify_admin_removed_sends_expected_payload_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, [2002], <<"channel_admin_removed">>, <<>>, null, Payload, save) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_admin_removed(11, 2002),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
+
+notify_admin_role_updated_sends_expected_payload_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(
+                    0, [2002], <<"channel_admin_role_updated">>, <<>>, null, Payload, save
+                ) ->
+                    ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                    ?assertEqual(2, maps:get(<<"role">>, Payload)),
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_admin_role_updated(11, 2002, 2),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_invitation_accepted_still_returns_ok_when_second_send_fails_test_() ->
-    ?WITH_MECKS([
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, Uids, Action, <<>>, null, Payload, no_save) ->
-                case {Uids, Action} of
-                    {[1001], <<"channel_invitation_accepted">>} ->
-                        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                        ?assertEqual(2002, maps:get(<<"invitee_uid">>, Payload)),
-                        ok;
-                    {[2002], <<"channel_subscribed">>} ->
-                        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                        {error, notify_failed}
-                end
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_invitation_accepted(11, 1001, 2002),
-        ?assertEqual(ok, Result),
-        ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, Uids, Action, <<>>, null, Payload, no_save) ->
+                    case {Uids, Action} of
+                        {[1001], <<"channel_invitation_accepted">>} ->
+                            ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                            ?assertEqual(2002, maps:get(<<"invitee_uid">>, Payload)),
+                            ok;
+                        {[2002], <<"channel_subscribed">>} ->
+                            ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                            {error, notify_failed}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_invitation_accepted(11, 1001, 2002),
+            ?assertEqual(ok, Result),
+            ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).
 
 notify_invitation_accepted_still_returns_ok_when_first_send_crashes_test_() ->
-    ?WITH_MECKS([
-        {msg_s2c_ds, [
-            {'send', 7, fun(0, Uids, Action, <<>>, null, Payload, no_save) ->
-                case {Uids, Action} of
-                    {[1001], <<"channel_invitation_accepted">>} ->
-                        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                        erlang:error(mock_notify_crash);
-                    {[2002], <<"channel_subscribed">>} ->
-                        ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
-                        ok
-                end
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_logic_notify:notify_invitation_accepted(11, 1001, 2002),
-        ?assertEqual(ok, Result),
-        ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
-    end).
+    ?WITH_MECKS(
+        [
+            {msg_s2c_ds, [
+                {'send', 7, fun(0, Uids, Action, <<>>, null, Payload, no_save) ->
+                    case {Uids, Action} of
+                        {[1001], <<"channel_invitation_accepted">>} ->
+                            ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                            erlang:error(mock_notify_crash);
+                        {[2002], <<"channel_subscribed">>} ->
+                            ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                            ok
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_logic_notify:notify_invitation_accepted(11, 1001, 2002),
+            ?assertEqual(ok, Result),
+            ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
+        end
+    ).

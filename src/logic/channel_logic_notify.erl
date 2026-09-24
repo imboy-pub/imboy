@@ -15,6 +15,10 @@
 -export([notify_invitation_created/2]).
 -export([notify_invitation_accepted/3]).
 -export([notify_order_paid/2]).
+%% ENT-BE-01：频道治理 admin 角色变更 best-effort 系统通知
+-export([notify_admin_added/3]).
+-export([notify_admin_removed/2]).
+-export([notify_admin_role_updated/3]).
 
 -spec notify_channel_update(integer(), map()) -> ok.
 notify_channel_update(ChannelId, Channel) ->
@@ -116,6 +120,32 @@ notify_order_paid(ChannelId, Uid) ->
     send_safe([Uid], Action, Payload, no_save),
     Action2 = <<"channel_subscribed">>,
     send_safe([Uid], Action2, Payload, no_save).
+
+%% ===================================================================
+%% ENT-BE-01：频道治理 admin 角色变更通知（best-effort，仅成功路径接线）
+%% 语义与 channel_deleted / invitation_created 同类：目标用户的治理地位
+%% 发生持久变化，save 模式保证离线用户上线后可从 S2C 离线库补收。
+%% 只通知直接受影响的目标用户，不广播给全体订阅者（避免噪音），
+%% 也不是持久审计时间线（审计走 log_channel_action / 既有日志面）。
+%% ===================================================================
+
+-spec notify_admin_added(integer(), integer(), integer()) -> ok.
+notify_admin_added(ChannelId, NewAdminUid, Role) ->
+    Action = <<"channel_admin_added">>,
+    Payload = #{<<"channel_id">> => ChannelId, <<"role">> => Role},
+    send_safe([NewAdminUid], Action, Payload, save).
+
+-spec notify_admin_removed(integer(), integer()) -> ok.
+notify_admin_removed(ChannelId, AdminUid) ->
+    Action = <<"channel_admin_removed">>,
+    Payload = #{<<"channel_id">> => ChannelId},
+    send_safe([AdminUid], Action, Payload, save).
+
+-spec notify_admin_role_updated(integer(), integer(), integer()) -> ok.
+notify_admin_role_updated(ChannelId, TargetUid, Role) ->
+    Action = <<"channel_admin_role_updated">>,
+    Payload = #{<<"channel_id">> => ChannelId, <<"role">> => Role},
+    send_safe([TargetUid], Action, Payload, save).
 
 -spec send_safe(term(), binary(), map(), save | no_save) -> ok.
 send_safe(Uids, Action, Payload, SaveMode) when is_list(Uids) ->

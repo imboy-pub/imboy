@@ -3176,6 +3176,12 @@ update_admin_role_creator_success_test_() ->
         {channel_admin_ds, [
             {'get_role', 2, fun(11, 1001) -> 3 end},
             {'update_role', 3, fun(11, 2002, 2) -> {ok, 1} end}
+        ]},
+        %% ENT-BE-01：成功路径新增治理通知，隔离真实 send（断言见专项用例）
+        {msg_s2c_ds, [
+            {'send', 7, fun(0, [2002], <<"channel_admin_role_updated">>, <<>>, null, _P, save) ->
+                ok
+            end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -3184,6 +3190,82 @@ update_admin_role_creator_success_test_() ->
 
             ?assertEqual(ok, Result),
             ?assertEqual(1, meck:num_calls(channel_admin_ds, update_role, 3))
+        end)
+    end}.
+
+%% ENT-BE-01 before-failing：admin 角色治理成功路径必须通知目标用户
+update_admin_role_creator_success_notifies_target_test_() ->
+    ChannelIdBin = integer_to_binary(11),
+    MockConfigs = [
+        {channel_admin_ds, [
+            {'get_role', 2, fun(11, 1001) -> 3 end},
+            {'update_role', 3, fun(11, 2002, 2) -> {ok, 1} end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(
+                0, [2002], <<"channel_admin_role_updated">>, <<>>, null, Payload, save
+            ) ->
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(2, maps:get(<<"role">>, Payload)),
+                ok
+            end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:update_admin_role(1001, ChannelIdBin, 2002, 2),
+
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
+
+add_admin_creator_success_notifies_new_admin_test_() ->
+    ChannelIdBin = integer_to_binary(11),
+    MockConfigs = [
+        {channel_admin_ds, [
+            {'get_role', 2, fun(11, 1001) -> 3 end},
+            {'add', 1, fun(#{channel_id := 11, user_id := 2002, role := 2}) -> {ok, 1} end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(0, [2002], <<"channel_admin_added">>, <<>>, null, Payload, save) ->
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(2, maps:get(<<"role">>, Payload)),
+                ok
+            end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:add_admin(1001, ChannelIdBin, 2002, 2),
+
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_admin_ds, add, 1)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
+
+remove_admin_creator_success_notifies_removed_admin_test_() ->
+    ChannelIdBin = integer_to_binary(11),
+    MockConfigs = [
+        {channel_admin_ds, [
+            {'get_role', 2, fun(11, 1001) -> 3 end},
+            {'delete', 2, fun(11, 2002) -> {ok, 1} end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(0, [2002], <<"channel_admin_removed">>, <<>>, null, Payload, save) ->
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                ok
+            end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:remove_admin(1001, ChannelIdBin, 2002),
+
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_admin_ds, delete, 2)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
@@ -3213,6 +3295,14 @@ remove_subscriber_admin_success_updates_counter_test_() ->
                     _ -> erlang:error({unexpected_cache_key, Key})
                 end
             end}
+        ]},
+        %% ENT-BE-01 before-failing：踢出成功（changed）必须通知被踢用户
+        %% （复用 channel_unsubscribed 动作，与自主退订同语义）
+        {msg_s2c_ds, [
+            {'send', 7, fun(0, [2002], <<"channel_unsubscribed">>, <<>>, null, Payload, no_save) ->
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                ok
+            end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -3222,7 +3312,8 @@ remove_subscriber_admin_success_updates_counter_test_() ->
             ?assertEqual(ok, Result),
             ?assertEqual(1, meck:num_calls(channel_subscription_ds, delete, 3)),
             ?assertEqual(1, meck:num_calls(channel_ds, increment_subscribers, 3)),
-            ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1))
+            ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
@@ -3254,6 +3345,12 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
                     _ -> erlang:error({unexpected_cache_key, Key})
                 end
             end}
+        ]},
+        %% ENT-BE-01：noop（目标本就不在订阅中）不是成功移除，不得发通知
+        {msg_s2c_ds, [
+            {'send', 7, fun(_, _, _, _, _, _, _) ->
+                erlang:error(should_not_notify_when_remove_subscriber_noop)
+            end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -3263,7 +3360,8 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
             ?assertEqual(ok, Result),
             ?assertEqual(1, meck:num_calls(channel_subscription_ds, delete, 3)),
             ?assertEqual(0, meck:num_calls(channel_ds, increment_subscribers, 3)),
-            ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1))
+            ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 

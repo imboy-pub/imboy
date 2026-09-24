@@ -274,6 +274,10 @@ remove_subscriber(Uid, ChannelId, TargetUid) ->
             case Result of
                 changed ->
                     flush_remove_subscriber_cache(ChannelId),
+                    %% ENT-BE-01：踢出成功（changed）best-effort 通知被踢用户，
+                    %% 复用 channel_unsubscribed 动作（与自主退订同语义：客户端
+                    %% 将频道移出列表）；noop 幂等路径不发（未发生实际移除）。
+                    channel_logic_notify:notify_channel_unsubscribed(ChannelId, TargetUid),
                     channel_logic_common:log_channel_action(
                         Uid,
                         ChannelId,

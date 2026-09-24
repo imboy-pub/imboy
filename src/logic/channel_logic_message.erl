@@ -595,10 +595,14 @@ do_add_admin(ChannelId, NewAdminUid, Role) ->
         created_at => Now
     },
     case channel_admin_ds:add(Data) of
-        {ok, _} -> ok;
+        {ok, _} ->
+            %% ENT-BE-01：治理成功路径 best-effort 通知新管理员（失败仅记日志）
+            channel_logic_notify:notify_admin_added(ChannelId, NewAdminUid, Role),
+            ok;
         %% 稳定错误码（980 等）原样透传供 handler envelope 映射
         {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
-        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec remove_admin(integer(), binary(), integer()) -> ok | {error, binary()}.
@@ -615,9 +619,13 @@ remove_admin(Uid, ChannelIdBin, AdminUid) ->
                 true ->
                     %% T7 归档写守卫（R3 #13 收口）：守卫已下沉 channel_admin_ds 写事务
                     case channel_admin_ds:delete(ChannelId, AdminUid) of
-                        {ok, _} -> ok;
+                        {ok, _} ->
+                            %% ENT-BE-01：治理成功路径 best-effort 通知被移除管理员
+                            channel_logic_notify:notify_admin_removed(ChannelId, AdminUid),
+                            ok;
                         {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
-                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)}
                     end
             end
     end.
@@ -916,10 +924,14 @@ update_admin_role(Uid, ChannelId, TargetUid, Role) ->
         3 ->
             %% T7 归档写守卫（R3 #13 收口）：守卫已下沉 channel_admin_ds 写事务
             case channel_admin_ds:update_role(ChannelId, TargetUid, Role) of
-                {ok, _} -> ok;
+                {ok, _} ->
+                    %% ENT-BE-01：治理成功路径 best-effort 通知目标用户角色已变更
+                    channel_logic_notify:notify_admin_role_updated(ChannelId, TargetUid, Role),
+                    ok;
                 %% 稳定错误码（980 等）原样透传供 handler envelope 映射
                 {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
-                {error, _} -> {error, <<"更新角色失败"/utf8>>}
+                {error, _} ->
+                    {error, <<"更新角色失败"/utf8>>}
             end;
         _ ->
             {error, <<"无权限操作，仅创建者可修改角色"/utf8>>}
