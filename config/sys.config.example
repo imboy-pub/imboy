@@ -236,13 +236,8 @@
         {ice_servers, [
             #{urls => "stun:stun.l.google.com:19302"},
             #{urls => "stun:stun1.l.google.com:19302"}
-            % TURN 服务器（需部署 coturn，取消注释并填入真实地址和密钥）
-            % , #{urls => "turn:turn.example.com:3478",
-            %     username => "imboy",
-            %     credential => "your-turn-secret"}
-            % , #{urls => "turns:turn.example.com:5349",
-            %     username => "imboy",
-            %     credential => "your-turn-secret"}
+            % TURN 由 LiveKit embedded TURN 经信令自动下发(LiveKit 单服务合同),
+            % 此处不再手配 coturn/eturnal TURN 条目;1:1 链路无需客户端静态 ICE 配置。
         ]},
 
         {guanco, [
