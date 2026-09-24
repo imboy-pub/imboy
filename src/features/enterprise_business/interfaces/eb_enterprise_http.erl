@@ -329,9 +329,27 @@ build_params(Entry, Case, Req, Body, Ctx) ->
                             Err;
                         {ok, PathParams} ->
                             Base = maps:merge(server_derived(Ctx), PathParams),
-                            collect(maps:get(params, Case), Req, Body, Base)
+                            case collect(maps:get(params, Case), Req, Body, Base) of
+                                {ok, Params} ->
+                                    {ok, server_identity_override(Params, Ctx)};
+                                {error, _} = Err ->
+                                    Err
+                            end
                     end
             end
+    end.
+
+%% CS-INT-01 集成门发现（F-SEC-01 贯彻）：调用者业务身份只由认证事实派生
+%% （`eb_auth_app` 的 assignment 选择结果），不在 Body/查询串收取——collect
+%% 之后以服务端值强制覆盖，客户端自报的 `identity_id`（即便动作表声明为
+%% optional hint）不允许决定出站 sender / ACK 经办判定：
+%%   * `identity_id`         —— `eb_message_app` 出站消息 sender（append_message）
+%%   * `caller_identity_id`  —— ACK 经办门 / 坐席 ACL（`eb_message_app:ack_verify`）
+%% AuthContext 无 identity（owner 治理面、platform 等）时保持原 Params 不动。
+server_identity_override(Params, Ctx) ->
+    case maps:get(caller_identity_id, Ctx, undefined) of
+        undefined -> Params;
+        Bid -> Params#{identity_id => Bid, caller_identity_id => Bid}
     end.
 
 %% F6（RULING-2026-09-15 §七）：主密钥材料键在任何动作的 HTTP/JSON 面（正文与
