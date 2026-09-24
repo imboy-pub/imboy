@@ -741,6 +741,19 @@ neg12_malformed_request_test() ->
 neg13_rate_fail_closed(C) ->
     F = seed_sso_fixture(C),
     FullA = maps:get(credential, F),
+    %% V2.1 §5.2/F-09 零 Grant 拒绝：不种 Grant 时生效 scope 为空集，
+    %% scope 门先拒 insufficient_scope，到不了本用例的目标（限流门 fail-closed）。
+    %% 先给 AppA 种生效 Grant（生效 scope = allowed ∩ grant = sso:exchange）。
+    {ok, _} = enterprise_application_grant_repo:create_tx(
+        C,
+        ?ORG_A,
+        maps:get(app_id, F),
+        #{
+            scopes => [<<"sso:exchange">>],
+            expires_at => <<"2099-12-31T23:59:59Z">>,
+            idempotency_key => <<"epgz05-neg13-grant-a">>
+        }
+    ),
     application:unset_env(imboy, enterprise_internal_rate_limits),
     try
         ?assertEqual(

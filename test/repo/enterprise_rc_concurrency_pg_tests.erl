@@ -368,7 +368,8 @@ revoke_effective_next_request(State) ->
 idempotency_concurrent(State) ->
     C = maps:get(conn, State),
     Key = <<"full07rc-idem-key">>,
-    Digest = enterprise_internal_idempotency:request_digest(
+    %% 幂等 v2（本 run）：request_digest/3 返回 {ok, Digest} | {error, non_canonical}。
+    {ok, Digest} = enterprise_internal_idempotency:request_digest(
         <<"POST">>, <<"/api/internal/v1/messages/direct">>, #{<<"k">> => <<"v">>}
     ),
     Ctx = #{organization_id => ?ORG_A, application_id => app_a(State)},

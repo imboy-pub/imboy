@@ -210,6 +210,12 @@ prepare_case() ->
         self() ! {push_send, Token, Title, Body},
         ok
     end),
+    %% 26670a37 起通道携带固定路由 Data，DS 恒走 send/4——只桩 send/3 时
+    %% passthrough 会撞真实 HTTP seam（套件级 post mock 直接报错），零捕获。
+    meck:expect(push_provider_jpush, send, 4, fun(Token, Title, Body, _Data) ->
+        self() ! {push_send, Token, Title, Body},
+        ok
+    end),
     ok.
 
 %% ---- 按用例驱动：消息落库 → 提交后推送触发 ----
@@ -637,9 +643,10 @@ wire_payload_closed_and_pii_free(C, State) ->
     ]),
     try
         %% 让 adapter 走真实实现（默认桩只计数），只桩 HTTP seam ——
-        %% 验的是 adapter 真正发出的 wire body。
-        meck:expect(push_provider_jpush, send, 3, fun(Token, Title, Body) ->
-            meck:passthrough([Token, Title, Body])
+        %% 验的是 adapter 真正发出的 wire body。DS 恒走 send/4（26670a37），
+        %% 故穿透桩必须桩在 4 元上。
+        meck:expect(push_provider_jpush, send, 4, fun(Token, Title, Body, _Data) ->
+            meck:passthrough([Token, Title, Body, #{}])
         end),
         meck:expect(push_provider_jpush_http, post, fun(Url, Headers, Body) ->
             self() ! {wire, {Url, Headers, Body}},

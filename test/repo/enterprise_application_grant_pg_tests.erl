@@ -265,11 +265,11 @@ grant_scope_oracle(C) ->
     {ok, Grant} = issue(C, ?ORG_A, AppA, <<"k-scope">>, [<<"application:read">>]),
     GrantId = maps:get(<<"id">>, Grant),
 
-    %% 固定枚举恰 10 个；其余 9 个成员可逐条写入
+    %% 固定枚举恰 14 个（V2.1 冻结目录，迁移 144）；其余 13 个成员可逐条写入
     Fixed = enterprise_internal_scope:all(),
-    ?assertEqual(10, length(Fixed)),
+    ?assertEqual(14, length(Fixed)),
     Rest = [S || S <- Fixed, S =/= <<"application:read">>],
-    ?assertEqual(9, length(Rest)),
+    ?assertEqual(13, length(Rest)),
     lists:foreach(
         fun(Scope) -> ?assertMatch({ok, _}, insert_scope_row(C, GrantId, Scope)) end,
         Rest

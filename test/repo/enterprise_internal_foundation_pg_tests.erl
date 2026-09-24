@@ -603,13 +603,16 @@ idempotency_oracle(C) ->
         )
     ),
     %% claim 回填一次；第二次 already_claimed
+    %% 幂等 v2（本 run）：claim_tx 增至 7 元；完成态约束 ck_eii_completion
+    %% 要求 (response_code IS NULL) = (response_body IS NULL) 且 body 为合法
+    %% JSON——故完成回填必须带 JSON 响应体，不能传 null。
     ok = enterprise_internal_idempotency_repo:claim_tx(
-        C, ?ORG_A, AppAId, <<"idem-001">>, 987999, 200
+        C, ?ORG_A, AppAId, <<"idem-001">>, 987999, 200, <<"{}">>
     ),
     ?assertEqual(
         {error, already_claimed},
         enterprise_internal_idempotency_repo:claim_tx(
-            C, ?ORG_A, AppAId, <<"idem-001">>, 987998, 200
+            C, ?ORG_A, AppAId, <<"idem-001">>, 987998, 200, <<"{}">>
         )
     ),
     {ok, Claimed} = enterprise_internal_idempotency_repo:find_tx(C, ?ORG_A, AppAId, <<"idem-001">>),
