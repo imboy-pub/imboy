@@ -268,9 +268,14 @@ table(tenant) ->
                         %% CSB-02R：坐席队列视图（GET）——与 POST 门店开会话同路径
                         %% 按 method+auth_context 分流；workspace 可选（org-wide，
                         %% 显式给出则收窄）。坐席作用域由 cs_auth 在进用例前裁决。
+                        %% CS-BE-02（队列摘要）：clock_unit => second（DF-6 同族）
+                        %% ——本读面的 `at` 供 application 计算 waiting_seconds =
+                        %% at − queued_at（epoch 秒）；毫秒量纲会把等待时长放大
+                        %% 1000 倍。写路径不消费本 GET 的 `at`，量纲切换零外溢。
                         {<<"GET">>, seat_session_queue,
                             [{after_id, binary, optional}, {limit, binary, optional}], [], #{
-                                workspace => optional
+                                workspace => optional,
+                                clock_unit => second
                             }}
                     ],
                     shop_key_auth(),

@@ -112,6 +112,7 @@ FEATURE_BACKEND_MODULES = {
         "cs_http",
         "cs_id_port",
         "cs_infra_ports",
+        "cs_message_preview",
         "cs_org_lifecycle_facts",
         "cs_org_lifecycle_gate",
         "cs_org_lifecycle_port",

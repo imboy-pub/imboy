@@ -728,8 +728,9 @@ pos_int(V) ->
 %% ===================================================================
 %% 坐席工作台列表（CSB-02R §12.4）：队列 GET / active / closed 三视图共用。
 %% 与平台面 list_sessions/2 同源（同一 store 分页原语 + 键集口径），不复制
-%% 业务规则；本用例只补坐席面投影（来源 / contact 掩码名 / 末条安全摘要 /
-%% 稳定计数）。
+%% 业务规则；本用例只补坐席面投影（来源 / contact 掩码名 / 末条摘要 /
+%% 稳定计数）。CS-BE-02（队列摘要与等待时长）增补：queued 视图行带服务端
+%% `waiting_seconds`，`last_message` 增 `preview`（截断明文摘要，零密文出站）。
 %% ===================================================================
 
 %% @doc 坐席作用域的会话分页（org-wide；`workspace_id` 可选收窄到 0=不限）。
@@ -777,14 +778,33 @@ seat_session_page_fetch(OrgId, Status, AfterId, Limit, Params) ->
         {error, _} = Err ->
             Err;
         {ok, #{rows := Rows, total := Total, total_by_status := ByStatus}} ->
-            Views = [seat_session_view(Row) || Row <- Rows],
-            Next = next_cursor(Rows, Limit),
-            {ok, #{
-                sessions => Views,
-                total => Total,
-                total_by_status => ByStatus,
-                next_after_id => Next
-            }}
+            %% CS-BE-02：preview 解密可能 fail-closed（密文被篡改/AAD 不符）——
+            %% 整页 {error,_}，绝不夹带未验证内容（与 eb_message_app D5 同口径）。
+            case seat_session_views(Rows, Status, Params) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, Views} ->
+                    Next = next_cursor(Rows, Limit),
+                    {ok, #{
+                        sessions => Views,
+                        total => Total,
+                        total_by_status => ByStatus,
+                        next_after_id => Next
+                    }}
+            end
+    end.
+
+seat_session_views(Rows, Status, Params) ->
+    seat_session_views(Rows, Status, Params, []).
+
+seat_session_views([], _Status, _Params, Acc) ->
+    {ok, lists:reverse(Acc)};
+seat_session_views([Row | Rest], Status, Params, Acc) ->
+    case seat_session_view(Row, Status, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, View} ->
+            seat_session_views(Rest, Status, Params, [View | Acc])
     end.
 
 %% workspace 收窄：显式正整数生效；缺省/0 = org-wide（坐席作用域以 Org +
@@ -804,7 +824,17 @@ next_cursor(Rows, Limit) ->
 
 %% 坐席面行投影白名单（内部审计列 visit_token_id / close_reason /
 %% created_by_user_id 不直接出站——created_by_user_id 只参与来源推导）。
-seat_session_view(Row) ->
+%% CS-BE-02 增补：密文中转三列（last_message_body_cipher / _key_version /
+%% _aad_hash）也不在白名单——密文绝不出站，只喂 cs_message_preview。
+seat_session_view(Row, Status, Params) ->
+    case last_message_view(Row, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, LastMessage} ->
+            {ok, seat_view_with(Row, Status, Params, LastMessage)}
+    end.
+
+seat_view_with(Row, Status, Params, LastMessage) ->
     Base = maps:with(
         [
             id,
@@ -821,11 +851,28 @@ seat_session_view(Row) ->
         ],
         Row
     ),
-    Base#{
+    View0 = Base#{
         source => source_of(Row),
         contact => #{masked_name => masked_name(Row)},
-        last_message => last_message_view(Row)
-    }.
+        last_message => LastMessage
+    },
+    seat_waiting(View0, Status, Params, Row).
+
+%% CS-BE-02：`waiting_seconds`（仅队列视图）= 服务端时钟 `at` − `queued_at`，
+%% 下限 0（时钟回拨/同秒竞争防护）。`at` 由 handler 服务端注入（坐席队列 GET
+%% 的动作表已声明 clock_unit => second，与 DF-6 同族——毫秒量纲会放大 1000
+%% 倍）。active/closed 视图与缺 `at` 的直驱调用**不出该键**：字段只在语义
+%% 成立时存在，形状稳定可测。status 白名单两种形态（binary 透传 / atom）都
+%% 是 queued 语义（cs_app_support:session_status 的归一结果）。
+seat_waiting(View, Queued, Params, Row) when Queued =:= queued; Queued =:= <<"queued">> ->
+    case {maps:get(at, Params, undefined), maps:get(queued_at, Row, undefined)} of
+        {At, QueuedAt} when is_integer(At), is_integer(QueuedAt) ->
+            View#{waiting_seconds => erlang:max(0, At - QueuedAt)};
+        _MissingClock ->
+            View
+    end;
+seat_waiting(View, _ActiveOrClosed, _Params, _Row) ->
+    View.
 
 %% 来源推导（存储派生事实，浏览器不可申报）：
 %%   * visit_token_id 非空   → widget（访客经 widget/visit 令牌开会话）；
@@ -872,10 +919,20 @@ pad5(Bin) when byte_size(Bin) >= 5 ->
 pad5(Bin) ->
     pad5(<<"0", Bin/binary>>).
 
-%% 末条消息**安全摘要**：只含 id / sender_type / created_at——body_cipher、
-%% key_version、client_msg_id 等（密文与密钥面）不进本投影，workbench 未解锁
-%% E2EE 前不透出任何消息内容。
-last_message_view(Row) ->
+%% 末条消息摘要（CS-BE-02 起含 preview）：id / sender_type / created_at +
+%% `preview`（服务端解密后按 Unicode 码点截断的前 64 个字符，见
+%% `cs_message_preview`）。密文/密钥面（body_cipher、key_version、aad_hash、
+%% client_msg_id）不进本投影；撤回（hidden）行与附件-only（空正文）消息的
+%% preview 为 null 占位；keyring 未装配时整体降级为 null（不吐密文）。
+last_message_view(Row, Params) ->
+    case cs_message_preview:preview(Row, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Preview} ->
+            {ok, last_message_with(Row, Preview)}
+    end.
+
+last_message_with(Row, Preview) ->
     case maps:get(last_message_id, Row, undefined) of
         undefined ->
             undefined;
@@ -883,6 +940,7 @@ last_message_view(Row) ->
             #{
                 id => Id,
                 sender_type => maps:get(last_message_sender_type, Row, undefined),
-                created_at => maps:get(last_message_created_at, Row, undefined)
+                created_at => maps:get(last_message_created_at, Row, undefined),
+                preview => Preview
             }
     end.

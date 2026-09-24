@@ -83,7 +83,14 @@ cases() ->
         {timeout, 30, fun c5_platform_seats_page_cross_org/0},
         {timeout, 30, fun port_contract_has_new_callbacks/0},
         {timeout, 30, fun actions_and_facade_call_are_registered/0},
-        {timeout, 30, fun http_error_atoms_are_explicit_422/0}
+        {timeout, 30, fun http_error_atoms_are_explicit_422/0},
+        %% CS-BE-02（队列摘要与等待时长）：waiting_seconds 权威值 / preview
+        %% Unicode 截断 / 占位语义 / 敏感字段零出站（零 DB，fake store +
+        %% 显式 key_ref 注入——解密路径全真，仅数据源为 fake）。
+        {timeout, 30, fun cs_be02_waiting_seconds_is_authoritative/0},
+        {timeout, 30, fun cs_be02_preview_unicode_truncation/0},
+        {timeout, 30, fun cs_be02_preview_placeholder_semantics/0},
+        {timeout, 30, fun cs_be02_view_never_carries_cipher_material/0}
     ].
 
 %% ===================================================================
@@ -562,3 +569,220 @@ http_error_atoms_are_explicit_422() ->
     ?assertEqual(<<"invalid_after_id">>, cs_http:tag({invalid_after_id, <<"x">>})),
     ?assertEqual(<<"invalid_limit">>, cs_http:tag({invalid_limit, 0})),
     ?assertEqual(<<"invalid_status">>, cs_http:tag({invalid_status, <<"x">>})).
+
+%% ===================================================================
+%% CS-BE-02：队列摘要与等待时长（坐席三视图共用 seat_session_page）
+%% ===================================================================
+
+%% 坐席页行种子（fake store 直置；preview 的解密经 enterprise facade——
+%% 此处 meck 该 facade（仓库既有的跨 Feature 唯一入口），断言精确取末条的
+%% 键集契约（after_id = 末条 id − 1、limit = 1）。
+cs_be02_put_seat_row(Opts) ->
+    ok = ?FAKE:put_session_for_list(
+        maps:merge(
+            #{
+                organization_id => ?ORG,
+                workspace_id => ?WS,
+                contact_id => ?CONTACT,
+                conversation_id => ?CONV,
+                business_identity_id => undefined,
+                visit_token_id => undefined,
+                created_by_user_id => undefined,
+                status => queued,
+                version => 1,
+                queued_at => 1700000000,
+                claimed_at => undefined,
+                closed_at => undefined,
+                contact_display_name => <<"王小明"/utf8>>,
+                contact_subject_mask => undefined,
+                last_message_id => undefined,
+                last_message_sender_type => <<"contact">>,
+                last_message_created_at => 1700000100
+            },
+            Opts
+        )
+    ).
+
+cs_be02_seat_page(Opts) ->
+    cs_session_app:seat_session_page(?ORG, p(maps:merge(#{status => <<"queued">>}, Opts))).
+
+%% meck facade：末条 Id 的解密行（visible + body）。逐调用断言键集契约。
+cs_be02_meck_decrypted(Id, Plain) ->
+    meck:new(enterprise_business_facade, [passthrough]),
+    meck:expect(enterprise_business_facade, list_messages, fun(_Org, Query) ->
+        ?assertEqual(?WS, maps:get(workspace_id, Query)),
+        ?assertEqual(?CONV, maps:get(conversation_id, Query)),
+        ?assertEqual(1, maps:get(limit, Query)),
+        ?assertEqual(Id - 1, maps:get(after_id, Query)),
+        {ok, [#{id => Id, visibility => visible, body => Plain}]}
+    end).
+
+%% 多行页的按末条 id 分发 meck（Responses：MessageId => Row | empty | crash；
+%% 缺省 empty——未登记的末条按「已消失」降级）。
+cs_be02_meck_by_row(Responses) ->
+    meck:new(enterprise_business_facade, [passthrough]),
+    meck:expect(enterprise_business_facade, list_messages, fun(_Org, Query) ->
+        ?assertEqual(1, maps:get(limit, Query)),
+        Id = maps:get(after_id, Query) + 1,
+        case maps:get(Id, Responses, empty) of
+            empty ->
+                {ok, []};
+            crash ->
+                erlang:error({body_open_failed, Id, tampered});
+            Row ->
+                {ok, [Row]}
+        end
+    end).
+
+cs_be02_unmeck() ->
+    catch meck:unload(enterprise_business_facade).
+
+%% waiting_seconds 权威值：at − queued_at（epoch 秒，clock_unit => second 面）；
+%% 下限 0（时钟回拨防护）；active 视图与缺 at 的直驱调用不出该键。
+cs_be02_waiting_seconds_is_authoritative() ->
+    ok = ?FAKE:init(),
+    cs_be02_put_seat_row(#{id => 555000201, queued_at => 1700000000, last_message_id => undefined}),
+    {ok, #{sessions := [Row]}} = cs_be02_seat_page(#{at => 1700000065}),
+    ?assertEqual(65, maps:get(waiting_seconds, Row)),
+    %% 下限 0：at 早于 queued_at（回拨/同秒竞争）不出现负等待。
+    {ok, #{sessions := [RowClamped]}} = cs_be02_seat_page(#{at => 1699999900}),
+    ?assertEqual(0, maps:get(waiting_seconds, RowClamped)),
+    %% 缺 at（直驱调用/旧装配）不出键：字段只在语义成立时存在。
+    {ok, #{sessions := [RowNoClock]}} = cs_be02_seat_page(#{}),
+    ?assertNot(is_map_key(waiting_seconds, RowNoClock)),
+    %% active 视图无等待时长语义——键恒不出。
+    cs_be02_put_seat_row(#{
+        id => 555000202, status => active, claimed_at => 1700000050, last_message_id => undefined
+    }),
+    {ok, #{sessions := [ActiveRow]}} =
+        cs_be02_seat_page(#{status => <<"active">>, at => 1700000065}),
+    ?assertEqual(555000202, maps:get(id, ActiveRow)),
+    ?assertNot(is_map_key(waiting_seconds, ActiveRow)).
+
+%% preview 截断：按 Unicode 码点取前 64 个（UTF-8 安全，不在多字节字符中间
+%% 切断）；期望值在测试内独立构造（不用被测的 truncate 反推）。
+cs_be02_preview_unicode_truncation() ->
+    ok = ?FAKE:init(),
+    %% 73 个码点：3 ASCII + 70 个三字节 CJK——期望 = 3 ASCII + 61 CJK（64 码点）。
+    Chars = "abc" ++ lists:duplicate(70, $\x{5BA2}),
+    Plain = unicode:characters_to_binary(Chars, utf8),
+    Expected = unicode:characters_to_binary(lists:sublist(Chars, 64), utf8),
+    ?assert(byte_size(Plain) > 192),
+    cs_be02_put_seat_row(#{id => 555000211, last_message_id => 880011}),
+    cs_be02_meck_decrypted(880011, Plain),
+    try
+        {ok, #{sessions := [Row]}} = cs_be02_seat_page(#{at => 1700000065}),
+        LM = maps:get(last_message, Row),
+        Preview = maps:get(preview, LM),
+        ?assertEqual(Expected, Preview),
+        ?assertEqual(64, string:length(unicode:characters_to_list(Preview, utf8))),
+        %% 短文本（< 64 码点）原样出站，不加省略号后缀。
+        Short = <<"你好，请问在吗"/utf8>>,
+        meck:expect(enterprise_business_facade, list_messages, fun(_Org, _Query) ->
+            {ok, [#{id => 880011, visibility => visible, body => Short}]}
+        end),
+        {ok, #{sessions := [Row2]}} = cs_be02_seat_page(#{at => 1700000065}),
+        ?assertEqual(Short, maps:get(preview, maps:get(last_message, Row2)))
+    after
+        cs_be02_unmeck()
+    end.
+
+%% 占位语义：附件-only（空正文）/ 撤回（hidden）/ keyring 未装配（密文投影
+%% 无 body 键）/ 已 purge（首行 id ≠ 末条 id）⇒ preview 为 null（占位），
+%% last_message 骨架仍在；无消息：last_message 整体 undefined；解密失败
+%% （D5 的 erlang:error）⇒ 整页 {error,_} fail-closed。
+cs_be02_preview_placeholder_semantics() ->
+    ok = ?FAKE:init(),
+    cs_be02_put_seat_row(#{id => 555000221, last_message_id => 880021}),
+    cs_be02_put_seat_row(#{id => 555000222, last_message_id => 880022}),
+    cs_be02_put_seat_row(#{id => 555000223, last_message_id => 880023}),
+    cs_be02_put_seat_row(#{id => 555000224, last_message_id => 880024}),
+    cs_be02_put_seat_row(#{id => 555000225, last_message_id => 880025}),
+    cs_be02_put_seat_row(#{id => 555000226, last_message_id => undefined}),
+    cs_be02_meck_by_row(#{
+        %% 附件-only：空正文（BE-PATCH-01：附件消息 = 空正文 + asset_ids）。
+        880021 => #{id => 880021, visibility => visible, body => <<>>},
+        %% 撤回（hidden）：内容零透出，骨架保留。
+        880022 => #{id => 880022, visibility => hidden, body => <<"withdrawn secret">>},
+        %% keyring 不可用：facade 维持密文投影（无 body 键）——降级 null。
+        880023 => #{id => 880023, visibility => visible, body_cipher => <<"cipher">>},
+        %% 末条已被 purge：首行空——按消息消失降级 null。
+        880024 => empty
+    }),
+    try
+        {ok, #{sessions := Rows}} = cs_be02_seat_page(#{at => 1700000065, limit => 10}),
+        ById = maps:from_list([{maps:get(id, R), R} || R <- Rows]),
+        ?assertEqual(
+            undefined, maps:get(preview, maps:get(last_message, maps:get(555000221, ById)))
+        ),
+        HiddenLM = maps:get(last_message, maps:get(555000222, ById)),
+        ?assertEqual(880022, maps:get(id, HiddenLM)),
+        ?assertEqual(undefined, maps:get(preview, HiddenLM)),
+        ?assertEqual(
+            undefined, maps:get(preview, maps:get(last_message, maps:get(555000223, ById)))
+        ),
+        ?assertEqual(
+            undefined, maps:get(preview, maps:get(last_message, maps:get(555000224, ById)))
+        ),
+        %% 无消息：last_message 整体 undefined。
+        ?assertEqual(undefined, maps:get(last_message, maps:get(555000226, ById))),
+        %% 解密失败（D5 的 erlang:error）⇒ 整页 {error,_}，绝不夹带未验证内容。
+        meck:expect(enterprise_business_facade, list_messages, fun(_Org, _Q) ->
+            erlang:error({body_open_failed, 880025, tampered})
+        end),
+        ?assertMatch(
+            {error, {preview_open_failed, 880025, tampered}},
+            cs_be02_seat_page(#{at => 1700000065, limit => 10})
+        )
+    after
+        cs_be02_unmeck()
+    end.
+
+%% 红线：坐席视图（已授权面）的行与 last_message 都不含任何密文/密钥材料；
+%% 行键集恰为白名单 + 三增补键（source/contact/last_message[/waiting_seconds]）。
+cs_be02_view_never_carries_cipher_material() ->
+    ok = ?FAKE:init(),
+    cs_be02_put_seat_row(#{id => 555000231, last_message_id => 880031}),
+    cs_be02_meck_decrypted(880031, <<"plain preview text">>),
+    try
+        {ok, #{sessions := [Row]}} = cs_be02_seat_page(#{at => 1700000065}),
+        ?assertEqual(<<"plain preview text">>, maps:get(preview, maps:get(last_message, Row))),
+        ExpectedKeys =
+            [
+                id,
+                organization_id,
+                workspace_id,
+                contact_id,
+                conversation_id,
+                business_identity_id,
+                status,
+                version,
+                queued_at,
+                claimed_at,
+                closed_at,
+                source,
+                contact,
+                last_message,
+                waiting_seconds
+            ],
+        ?assertEqual(lists:sort(ExpectedKeys), lists:sort(maps:keys(Row))),
+        LM = maps:get(last_message, Row),
+        ?assertEqual([created_at, id, preview, sender_type], lists:sort(maps:keys(LM))),
+        RedLines = [
+            last_message_body_cipher,
+            last_message_key_version,
+            last_message_aad_hash,
+            body_cipher,
+            cipher,
+            key_version,
+            aad_hash,
+            client_msg_id,
+            key_ref,
+            key,
+            secret
+        ],
+        lists:foreach(fun(K) -> ?assertNot(is_map_key(K, Row)) end, RedLines),
+        lists:foreach(fun(K) -> ?assertNot(is_map_key(K, LM)) end, RedLines)
+    after
+        cs_be02_unmeck()
+    end.
