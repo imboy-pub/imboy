@@ -2214,6 +2214,15 @@ customer_service_tenant_routes() ->
 -spec customer_service_platform_routes() -> list().
 customer_service_platform_routes() ->
     [
+        %% 平台运营面坐席分页（跨企业）：organization_id 可选过滤（缺失 =
+        %% 全局，org_source=param_optional）；workspace 可选（坐席是 Org 级
+        %% 事实，workspace_id 仅 suspend/resume 审计事件需要）。不按 enabled
+        %% 过滤——运营面要能定位并恢复已停用坐席。
+        {"/api/adm/customer-service/seats", cs_platform_handler, #{
+            action => p_platform_seats,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:read">>
+        }},
         {"/api/adm/customer-service/organizations/:org_id/seats", cs_platform_handler, #{
             action => p_seats,
             auth_context => platform_admin,

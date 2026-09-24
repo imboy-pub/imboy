@@ -7,10 +7,12 @@
 %%%   1. **principal 是 `platform_admin`**：凭证是 Admin session（`adm_user_id`，
 %%%      adm_auth_middleware 注入），权限是 `customer_service:read|write`（由
 %%%      route metadata 决定）；
-%%%   2. **租户条件显式且强制**：Org 来自 `:org_id` 或冻结动作声明的显式参数，
-%%%      `workspace_id` 是必填参数——不存在「不带 Org 的全局列举」；用例调用与
-%%%      租户面共用同一 facade/application（CS-02-A02：**不复制业务逻辑**），SQL 侧仍是
-%%%      「第一、二个业务参数 = OrgId/WorkspaceId」。
+%%%   2. **租户条件显式**：Org 默认来自 `:org_id`（或冻结动作声明的显式参数），
+%%%      例外是 `p_platform_seats`（org_source=param_optional：organization_id
+%%%      可选过滤，缺失 = 跨企业全局列举）；`workspace_id` 对既有面是必填参数，
+%%%      动作表声明 `workspace => optional` 的用例缺失不 422（CSB-02R 同款门）；
+%%%      用例调用与租户面共用同一 facade/application（CS-02-A02：**不复制业务逻辑**），
+%%%      SQL 侧仍是「第一、二个业务参数 = OrgId/WorkspaceId」。
 %%%
 %%% **本模块不做**：不读库、不写 SQL、不做业务判定、不缓存事实、不签发任何 URL。
 -module(cs_platform_handler).
@@ -62,16 +64,20 @@ authorize(Entry, Case, Req0, Body, State, OrgId) ->
     end.
 
 invoke(Entry, Case, Req0, Body, OrgId, AuthContext) ->
-    case cs_http:workspace_id(Req0, Body) of
+    case workspace_gate(Case, Req0, Body) of
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
         {ok, WorkspaceId} ->
             %% BE-S01b：认证派生键随上下文注入（adm_user_id——provisioning 的
             %% 审计 actor 记录；认证上下文派生，客户端不可申报）。
-            Derived = maps:merge(
-                #{workspace_id => WorkspaceId, at => now(Case)},
-                identity_derived(AuthContext)
-            ),
+            Derived0 = maps:merge(#{at => now(Case)}, identity_derived(AuthContext)),
+            %% CSB-02R 平台面同款：optional workspace **缺省时键不存在**
+            %% （不是值为 undefined 的键）——作用域由 application 裁决。
+            Derived =
+                case WorkspaceId of
+                    Ws when is_integer(Ws) -> Derived0#{workspace_id => Ws};
+                    _ -> Derived0
+                end,
             case cs_http:build_params(Entry, Case, Req0, Body, Derived) of
                 {error, Reason} ->
                     cs_http:reply_error(Req0, Reason);
@@ -79,6 +85,21 @@ invoke(Entry, Case, Req0, Body, OrgId, AuthContext) ->
                     Result = cs_facade_call:call(maps:get(facade, Case), OrgId, Params),
                     cs_http:respond(Entry, Req0, Result)
             end
+    end.
+
+%% workspace 门（CSB-02R 租户面先例搬到平台面）：缺省 required（既有口径
+%% 不变——不存在「不带 workspace 的全局列举」的老口径只对带 Org 的既有面
+%% 生效）；动作表声明 `workspace => optional` 的用例缺失不 422（跨企业坐席
+%% 列表的 workspace 语义由 application 裁决），给出则照常校验 TSID。
+workspace_gate(Case, Req, Body) ->
+    case maps:get(workspace, Case, required) of
+        optional ->
+            case cs_http:workspace_id(Req, Body) of
+                {error, missing_workspace_id} -> {ok, undefined};
+                Other -> Other
+            end;
+        required ->
+            cs_http:workspace_id(Req, Body)
     end.
 
 %% 认证上下文 → 服务端派生参数（platform_admin 的 adm_user_id）。

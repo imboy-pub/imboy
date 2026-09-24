@@ -103,6 +103,9 @@ tenant_literal_routes() ->
 platform_literal_routes() ->
     P = <<"/api/adm/customer-service/organizations/:org_id">>,
     [
+        %% 平台运营面坐席分页（跨企业）：organization_id 可选过滤（缺失 =
+        %% 全局，org_source=param_optional）；workspace 可选；含已停用坐席。
+        {<<"/api/adm/customer-service/seats">>, p_platform_seats, [<<"GET">>], platform_admin},
         {<<P/binary, "/seats">>, p_seats, [<<"GET">>], platform_admin},
         %% BE-S01b（api-surface-freeze admin_provisioning）：事务化开通/修复坐席。
         {<<P/binary, "/provisioning">>, p_seat_provision, [<<"POST">>], platform_admin},
@@ -666,7 +669,10 @@ credential_surface_matches_principal_declaration_test() ->
             {ok, Entry} = cs_actions:platform(Action),
             case cs_actions:org_source(Entry) of
                 path -> ?assert(is_map_key(org_id, path_bindings(Path)));
-                param -> ?assertNot(is_map_key(org_id, path_bindings(Path)))
+                param -> ?assertNot(is_map_key(org_id, path_bindings(Path)));
+                %% 平台全局面（p_platform_seats）：org 是可选过滤，路径同样
+                %% 不带 :org_id 绑定。
+                param_optional -> ?assertNot(is_map_key(org_id, path_bindings(Path)))
             end
         end,
         platform_literal_routes()

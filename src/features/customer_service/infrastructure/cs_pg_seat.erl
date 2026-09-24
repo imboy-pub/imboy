@@ -13,6 +13,7 @@
     fetch_seat/2,
     list_dispatchable_seats/1,
     list_dispatchable_seats_page/3,
+    list_all_seats_page/3,
     set_seat_enabled/4,
     insert_event/2,
     insert_event_in/3,
@@ -82,6 +83,35 @@
     "           AND x.status = 'active') AS active_count"
     "  FROM customer_service_seat s"
     " WHERE s.organization_id = $1 AND s.enabled = true"
+    "   AND s.business_identity_id > $2"
+    " ORDER BY s.business_identity_id"
+    " LIMIT $3"
+>>).
+
+%% 平台运营面坐席分页（跨企业）：$1=0 全局 / >0 收窄单企业（显式 ::bigint cast
+%% 防多使用点参数类型推导不一致）；含已停用坐席；键集 business_identity_id
+%% 升序（TSID 全局唯一）。行投影带企业名/坐席显示名/默认 active Workspace
+%% （suspend/resume 审计事件的服务端落点——LATERAL 取该 Org 最小 active id）。
+-define(SQL_LIST_ALL_SEATS_PAGE, <<
+    "SELECT s.organization_id,"
+    "       o.name AS organization_name,"
+    "       i.display_name,"
+    "       s.business_identity_id, s.function_key, s.enabled, s.max_concurrent,"
+    "       ws.workspace_id,"
+    "       (SELECT count(*) FROM customer_service_session x"
+    "         WHERE x.organization_id = s.organization_id"
+    "           AND x.business_identity_id = s.business_identity_id"
+    "           AND x.status = 'active') AS active_count"
+    "  FROM customer_service_seat s"
+    "  JOIN organization o ON o.id = s.organization_id"
+    "  LEFT JOIN organization_business_identity i"
+    "    ON i.organization_id = s.organization_id AND i.id = s.business_identity_id"
+    "  LEFT JOIN LATERAL (SELECT w.id AS workspace_id"
+    "                       FROM workspace w"
+    "                      WHERE w.organization_id = s.organization_id"
+    "                        AND w.status = 'active'"
+    "                      ORDER BY w.id LIMIT 1) ws ON true"
+    " WHERE ($1::bigint = 0 OR s.organization_id = $1::bigint)"
     "   AND s.business_identity_id > $2"
     " ORDER BY s.business_identity_id"
     " LIMIT $3"
@@ -236,6 +266,7 @@ sql_statements() ->
         ?SQL_FETCH_SEAT,
         ?SQL_LIST_DISPATCHABLE,
         ?SQL_LIST_DISPATCHABLE_PAGE,
+        ?SQL_LIST_ALL_SEATS_PAGE,
         ?SQL_SET_ENABLED,
         ?SQL_SEAT_ORG_CONTEXTS,
         ?SQL_TRANSFER_TARGETS_PAGE,
@@ -319,6 +350,33 @@ list_dispatchable_seats_page(OrgId, AfterId, Limit) ->
         active_count
     ],
     case cs_pg_common:fetch_many(?SQL_LIST_DISPATCHABLE_PAGE, [OrgId, AfterId, Limit], PageKeys) of
+        {ok, Rows} ->
+            {ok, [
+                Row#{function_key => cs_pg_common:to_status(maps:get(function_key, Row))}
+             || Row <- Rows
+            ]};
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc 平台运营面坐席分页（跨企业可选 Org 过滤；含已停用——运营面要能定位
+%% 并恢复）。键集 business_identity_id 升序（TSID 全局唯一，跨企业游标不重
+%% 不漏）；行投影带 organization_name / display_name / 默认 active workspace_id。
+-spec list_all_seats_page(non_neg_integer(), non_neg_integer(), pos_integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_all_seats_page(OrgFilter, AfterId, Limit) ->
+    Keys = [
+        organization_id,
+        organization_name,
+        display_name,
+        business_identity_id,
+        function_key,
+        enabled,
+        max_concurrent,
+        active_count,
+        workspace_id
+    ],
+    case cs_pg_common:fetch_many(?SQL_LIST_ALL_SEATS_PAGE, [OrgFilter, AfterId, Limit], Keys) of
         {ok, Rows} ->
             {ok, [
                 Row#{function_key => cs_pg_common:to_status(maps:get(function_key, Row))}

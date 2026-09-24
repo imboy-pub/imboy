@@ -80,6 +80,7 @@ cases() ->
         {timeout, 30, fun c3_projection_never_leaks_digest/0},
         {timeout, 30, fun c3_pagination_cursor/0},
         {timeout, 30, fun c4_seats_page_shape_and_limits/0},
+        {timeout, 30, fun c5_platform_seats_page_cross_org/0},
         {timeout, 30, fun port_contract_has_new_callbacks/0},
         {timeout, 30, fun actions_and_facade_call_are_registered/0},
         {timeout, 30, fun http_error_atoms_are_explicit_422/0}
@@ -388,6 +389,95 @@ c4_seats_page_shape_and_limits() ->
     ).
 
 %% ===================================================================
+%% C5：平台运营面坐席分页（跨企业可选 Org 过滤；含已停用；投影带
+%% organization_name / display_name / workspace_id）
+%% ===================================================================
+
+c5_platform_seats_page_cross_org() ->
+    Org2 = ?ORG + 1,
+    Org2Identity = ?ID3 + 1,
+    ok = ?FAKE:seed_org(?ORG, <<"org-a">>),
+    ok = ?FAKE:seed_org(Org2, <<"org-b">>),
+    ok = ?FAKE:seed_workspace(?ORG, ?WS),
+    lists:foreach(
+        fun({Org, IdentityId, Enabled}) ->
+            ok = ?FAKE:put_seat_for_list(Org, #{
+                organization_id => Org,
+                business_identity_id => IdentityId,
+                function_key => customer_service,
+                enabled => Enabled,
+                max_concurrent => 2,
+                version => 1,
+                created_at => 1700000000,
+                updated_at => 1700000000
+            }),
+            ok = ?FAKE:put_identity_display(Org, IdentityId, <<"seat-name">>)
+        end,
+        [
+            {?ORG, ?ID1, true},
+            {?ORG, ?ID2, false},
+            {Org2, Org2Identity, true}
+        ]
+    ),
+    %% 全局视图（OrgFilter=0）：跨企业升序，且**已停用坐席也在列**。
+    {ok, #{seats := AllRows, next_after_id := undefined}} =
+        cs_seat_app:list_platform_seats(0, p(#{limit => 10})),
+    %% C4 与本用例共享 fake store 种子：只断言本用例种子按序出现在全局列表。
+    Seeded = [?ID1, ?ID2, Org2Identity],
+    ?assertEqual(
+        Seeded,
+        [Id || Id <- [maps:get(business_identity_id, R) || R <- AllRows], lists:member(Id, Seeded)]
+    ),
+    {value, DisabledRow} =
+        lists:search(
+            fun(R) -> maps:get(business_identity_id, R) =:= ?ID2 end,
+            AllRows
+        ),
+    ?assertNot(maps:get(enabled, DisabledRow)),
+    %% 投影逐键（白名单 + 可读字段 + 默认 workspace）。
+    lists:foreach(
+        fun(Row) ->
+            lists:foreach(
+                fun(Key) -> ?assert(is_map_key(Key, Row)) end,
+                [
+                    organization_id,
+                    organization_name,
+                    display_name,
+                    business_identity_id,
+                    function_key,
+                    enabled,
+                    max_concurrent,
+                    active_count,
+                    workspace_id
+                ]
+            )
+        end,
+        AllRows
+    ),
+    ?assertEqual(<<"org-a">>, maps:get(organization_name, hd(AllRows))),
+    ?assertEqual(?WS, maps:get(workspace_id, hd(AllRows))),
+    %% org 过滤收窄：只见该企业的行。
+    {ok, #{seats := OrgRows}} =
+        cs_seat_app:list_platform_seats(Org2, p(#{limit => 10})),
+    ?assertEqual([Org2Identity], [maps:get(business_identity_id, R) || R <- OrgRows]),
+    %% 分页/游标/边界与 C4 同口径（在单企业过滤作用域内断言，避开 C4 残留种子的干扰）。
+    {ok, #{seats := Page1, next_after_id := Next1}} =
+        cs_seat_app:list_platform_seats(?ORG, p(#{limit => <<"2">>})),
+    ?assertEqual([?ID1, ?ID2], [maps:get(business_identity_id, R) || R <- Page1]),
+    ?assertEqual(?ID2, Next1),
+    {ok, #{seats := Page2, next_after_id := undefined}} =
+        cs_seat_app:list_platform_seats(?ORG, p(#{limit => 2, after_id => ?ID2})),
+    ?assertEqual([?ID3], [maps:get(business_identity_id, R) || R <- Page2]),
+    ?assertMatch(
+        {error, {invalid_limit, <<"0">>}},
+        cs_seat_app:list_platform_seats(0, p(#{limit => <<"0">>}))
+    ),
+    ?assertMatch(
+        {error, {invalid_organization_id, -5}},
+        cs_seat_app:list_platform_seats(-5, p(#{}))
+    ).
+
+%% ===================================================================
 %% 端口契约 / 动作表 / 调用点表 / 错误映射
 %% ===================================================================
 
@@ -400,6 +490,7 @@ port_contract_has_new_callbacks() ->
             {list_shop_keys_page, 3},
             {list_visit_tokens_page, 3},
             {list_dispatchable_seats_page, 3},
+            {list_all_seats_page, 3},
             %% CSB-02R：坐席工作台分页 + widget 装配缺省 Workspace 解析。
             {seat_session_page, 5},
             {default_workspace, 1}
@@ -410,6 +501,7 @@ port_contract_has_new_callbacks() ->
     ?assert(lists:member({list_shop_keys_page, 3}, BehaviourCallbacks)),
     ?assert(lists:member({list_visit_tokens_page, 3}, BehaviourCallbacks)),
     ?assert(lists:member({list_dispatchable_seats_page, 3}, BehaviourCallbacks)),
+    ?assert(lists:member({list_all_seats_page, 3}, BehaviourCallbacks)),
     ?assert(lists:member({seat_session_page, 5}, BehaviourCallbacks)),
     ?assert(lists:member({default_workspace, 1}, BehaviourCallbacks)),
     %% PG 装配与 fake 都实现新 callback（behaviour 编译期已查；这里对导出再取证）。
@@ -422,7 +514,8 @@ port_contract_has_new_callbacks() ->
             {list_sessions_page, 5},
             {list_shop_keys_page, 3},
             {list_visit_tokens_page, 3},
-            {list_dispatchable_seats_page, 3}
+            {list_dispatchable_seats_page, 3},
+            {list_all_seats_page, 3}
         ]
     ).
 
@@ -432,6 +525,12 @@ actions_and_facade_call_are_registered() ->
     PAuth = maps:get(auth, PEntry),
     ?assertEqual(platform_admin, maps:get(auth_context, PAuth)),
     ?assertEqual(<<"customer_service:read">>, maps:get(required_permission, PAuth)),
+    %% C5：平台全局面坐席分页（org_source=param_optional，只读）。
+    {ok, PSeatEntry} = cs_actions:platform(p_platform_seats),
+    PSeatAuth = maps:get(auth, PSeatEntry),
+    ?assertEqual(platform_admin, maps:get(auth_context, PSeatAuth)),
+    ?assertEqual(<<"customer_service:read">>, maps:get(required_permission, PSeatAuth)),
+    ?assertEqual(param_optional, cs_actions:org_source(PSeatEntry)),
     %% C2/C3：租户治理动作 + owner/admin。
     lists:foreach(
         fun(Action) ->
@@ -446,13 +545,13 @@ actions_and_facade_call_are_registered() ->
     Declared = cs_facade_call:actions(),
     lists:foreach(
         fun(Fn) -> ?assert(lists:member(Fn, Declared)) end,
-        [list_sessions, list_shop_keys, list_visit_tokens]
+        [list_sessions, list_shop_keys, list_visit_tokens, list_platform_seats]
     ),
     %% facade 真实导出。
     Exports = customer_service_facade:module_info(exports),
     lists:foreach(
         fun(Fn) -> ?assert(lists:member({Fn, 2}, Exports)) end,
-        [list_sessions, list_shop_keys, list_visit_tokens]
+        [list_sessions, list_shop_keys, list_visit_tokens, list_platform_seats]
     ).
 
 http_error_atoms_are_explicit_422() ->

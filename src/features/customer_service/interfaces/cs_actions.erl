@@ -87,8 +87,10 @@
 %% 每个 Org 的成员/坐席事实由 application 聚合时逐 Org 复核）/ derived
 %% （CSD-BE-01R/01S，hosted-widget-contract S3：浏览器零申报面——bootstrap
 %% 由 public_widget_id 全局反查、持 token 动作面由 (installation_id, secret)
-%% 的 digest 全局命中行**权威派生**，handler 传 0 占位）。
--type org_source() :: path | param | self | derived.
+%% 的 digest 全局命中行**权威派生**，handler 传 0 占位）/ param_optional
+%% （平台运营面专属：`organization_id` 是**可选**过滤参数，缺失 = 跨企业
+%% 全局列举，handler 传 0 占位；给出则收窄到该企业）。
+-type org_source() :: path | param | self | derived | param_optional.
 
 -define(FEATURE, customer_service).
 
@@ -746,6 +748,23 @@ table(widget) ->
 %% ===================================================================
 table(platform) ->
     [
+        %% 平台运营面坐席分页（跨企业）：`/api/adm/customer-service/seats`，
+        %% organization_id 是可选过滤（org_source=param_optional，缺失 = 全局，
+        %% cs_http 传 OrgId=0 占位）；workspace 可选（坐席是 Org 级事实，
+        %% workspace_id 仅 suspend/resume 审计事件需要，行投影带默认 Workspace）。
+        %% 与 p_seats 的差别：不按 enabled 过滤（运营面要能定位并恢复已停用坐席），
+        %% 投影带 organization_name / display_name。
+        {p_platform_seats, (platform_entry(
+            [
+                {<<"GET">>, list_platform_seats,
+                    [{after_id, binary, optional}, {limit, binary, optional}], [], #{
+                        workspace => optional
+                    }}
+            ],
+            platform_auth(<<"customer_service:read">>)
+        ))#{
+            org_source => param_optional
+        }},
         {p_seats,
             platform_entry(
                 [

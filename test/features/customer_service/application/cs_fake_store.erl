@@ -29,6 +29,8 @@
     %% BE-S01a：坐席上下文 / 转接目标种子与读取面
     put_org_context/1,
     put_identity_display/3,
+    %% 平台全局面坐席分页的种子（SQL 侧 JOIN organization 的 fake 镜像）
+    seed_org/2,
     %% BE-S01b：provisioning 前置事实种子与故障注入
     seed_member/2,
     seed_provision_fail_after/1,
@@ -38,6 +40,7 @@
     fetch_seat/2,
     list_dispatchable_seats/1,
     list_dispatchable_seats_page/3,
+    list_all_seats_page/3,
     set_seat_enabled/4,
     list_seat_org_contexts/1,
     list_transfer_targets_page/4,
@@ -99,6 +102,7 @@ init() ->
     ets:insert(?TAB, [
         {counter, 0},
         {seats, #{}},
+        {orgs, #{}},
         {sessions, #{}},
         {shop_keys, #{}},
         {visit_tokens, #{}},
@@ -216,6 +220,74 @@ project_page_seat(Row) ->
         ],
         Row
     ).
+
+%% 平台运营面坐席分页（镜像 SQL_LIST_ALL_SEATS_PAGE：跨企业可选 Org 过滤、
+%% 不按 enabled 过滤、键集升序 + LIMIT；行含企业名/显示名/默认 workspace）。
+list_all_seats_page(OrgFilter, AfterId, Limit) ->
+    note_limit(Limit),
+    {seats, Seats} = hd(ets:lookup(?TAB, seats)),
+    {orgs, Orgs} = hd(ets:lookup(?TAB, orgs)),
+    {workspaces, WsMap} = hd(ets:lookup(?TAB, workspaces)),
+    {identity_displays, Displays} = hd(ets:lookup(?TAB, identity_displays)),
+    Rows0 = [
+        begin
+            IdentityId = maps:get(business_identity_id, Row),
+            Row0 = with_active_count(Org, Row),
+            project_all_seats_row(
+                Row0#{
+                    organization_name => org_name(Orgs, Org),
+                    display_name => maps:get({Org, IdentityId}, Displays, undefined),
+                    workspace_id => default_ws_id(WsMap, Org)
+                }
+            )
+        end
+     || {{Org, _Id}, Row} <- maps:to_list(Seats),
+        OrgFilter =:= 0 orelse Org =:= OrgFilter,
+        maps:get(business_identity_id, Row) > AfterId
+    ],
+    Ordered = lists:sort(
+        fun(A, B) ->
+            maps:get(business_identity_id, A) =< maps:get(business_identity_id, B)
+        end,
+        Rows0
+    ),
+    {ok, take(Ordered, Limit)}.
+
+%% 列表页行只含列表 SQL 的列（镜像 SQL_LIST_ALL_SEATS_PAGE 的 SELECT 列表）。
+project_all_seats_row(Row) ->
+    maps:with(
+        [
+            organization_id,
+            organization_name,
+            display_name,
+            business_identity_id,
+            function_key,
+            enabled,
+            max_concurrent,
+            active_count,
+            workspace_id
+        ],
+        Row
+    ).
+
+org_name(Orgs, OrgId) ->
+    case maps:get(OrgId, Orgs, undefined) of
+        #{name := Name} -> Name;
+        _ -> <<>>
+    end.
+
+%% SQL 侧 LATERAL 的 fake 镜像：该 Org 最小 active workspace id（无则 undefined）。
+default_ws_id(WsMap, OrgId) ->
+    Ids = [
+        maps:get(id, W)
+     || W <- maps:values(WsMap),
+        maps:get(organization_id, W, undefined) =:= OrgId,
+        maps:get(status, W, inactive) =:= active
+    ],
+    case Ids of
+        [] -> undefined;
+        _ -> lists:min(Ids)
+    end.
 
 list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit) ->
     note_limit(Limit),
@@ -378,6 +450,10 @@ set_seat_enabled(OrgId, IdentityId, Enabled, At) ->
 %% ===================================================================
 %% BE-S01a：坐席上下文聚合 / 转接目标（镜像 cs_pg_seat 的过滤与键集语义）
 %% ===================================================================
+
+%% 平台全局面坐席分页种子：organization 行（SQL 侧 JOIN organization.name）。
+seed_org(OrgId, Name) ->
+    update(orgs, fun(M) -> M#{OrgId => #{id => OrgId, name => Name}} end).
 
 %% 坐席上下文种子：Row 形如真库投影
 %% #{user_id, organization_id, organization_name, business_identity_id,

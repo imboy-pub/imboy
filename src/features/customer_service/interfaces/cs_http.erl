@@ -307,7 +307,10 @@ action_tables() ->
 %%     租户由 application 权威派生（bootstrap：public_widget_id 全局反查；
 %%     持 token 动作面：(installation_id, secret) 的 digest 全局命中行）；
 %%     客户端申报 `organization_id` 被动作表 client_forbidden 拦为
-%%     400 `server_derived_key_rejected`。
+%%     400 `server_derived_key_rejected`；
+%%   * `param_optional` —— 平台全局面（p_platform_seats）：organization_id 是
+%%     **可选**过滤参数——缺失 = 跨企业全局列举（OrgId=0 占位，同 self/derived
+%%     的占位语义），给出则收窄到该企业（非法值仍 422，不静默全局）。
 -spec org_id(map(), cowboy_req:req(), map()) -> {ok, integer()} | {error, term()}.
 org_id(Entry, Req, Body) ->
     case cs_actions:org_source(Entry) of
@@ -321,6 +324,16 @@ org_id(Entry, Req, Body) ->
             case value(organization_id, Req, Body) of
                 undefined ->
                     {error, missing_org_id};
+                Raw ->
+                    case tsid(Raw) of
+                        {ok, Id} -> {ok, Id};
+                        error -> {error, invalid_org_id}
+                    end
+            end;
+        param_optional ->
+            case value(organization_id, Req, Body) of
+                undefined ->
+                    {ok, 0};
                 Raw ->
                     case tsid(Raw) of
                         {ok, Id} -> {ok, Id};

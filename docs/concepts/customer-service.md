@@ -21,7 +21,7 @@
 
 **已实现：**
 
-- **坐席管理**：`customer_service_seat`（`function_key='customer_service'` 的业务身份才可成为坐席，FK 层拒绝 sales 身份）；租户面 `/cs/organizations/:org_id/seats*`；平台面 `/api/adm/customer-service/.../seats*`（suspend/resume）。
+- **坐席管理**：`customer_service_seat`（`function_key='customer_service'` 的业务身份才可成为坐席，FK 层拒绝 sales 身份）；租户面 `/cs/organizations/:org_id/seats*`；平台面 `/api/adm/customer-service/organizations/:org_id/seats`（单企业，workspace_id 必填，suspend/resume 同面）与 `/api/adm/customer-service/seats`（跨企业分页：`organization_id` 可选过滤、含已停用坐席、`after_id/limit` 键集分页）。
 - **会话状态机**：`customer_service_session`——claim/transfer/close/rating 全部 CAS（`expected_version`）；「同一企业会话至多一个非 closed 客服会话」（部分唯一索引）；rating 仅 closed 可评（1-5）。
 - **排队与认领**：键集分页队列（after_id）；claim 在 seat 行锁内做 (status,version) CAS。
 - **访客接入**：`customer_service_visit_token`（digest + 过期 + 吊销三条件校验才可发消息）；`customer_service_shop_key`（明文只返回一次）。

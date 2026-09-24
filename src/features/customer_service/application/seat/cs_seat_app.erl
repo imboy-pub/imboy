@@ -21,6 +21,8 @@
     resume_seat/2,
     fetch_seat/2,
     list_dispatchable_seats/2,
+    %% 平台运营面坐席分页（跨企业可选 Org 过滤）
+    list_platform_seats/2,
     session_detail/2,
     %% BE-S01a：坐席上下文清单（主体自身作用域）+ 转接目标最小投影
     seat_contexts/1,
@@ -215,6 +217,70 @@ list_dispatchable_seats(_OrgId, _Params) ->
 %% 既有投影字段（contracts-w2 C4：不变）。
 identity_projection() ->
     [business_identity_id, function_key, enabled, max_concurrent, active_count].
+
+%% ===================================================================
+%% 平台运营面坐席分页（跨企业可选 Org 过滤）
+%% ===================================================================
+
+%% @doc 平台运营面坐席分页列表（`p_platform_seats` → `list_platform_seats/2`）。
+%%
+%% 与 `list_dispatchable_seats/2` 的差别（运营面语义，不是第二套业务逻辑——
+%% 复用同一 page_cursor/page_view 组装与 store 端口）：
+%%   * OrgId=0（param_optional 缺省）= 跨企业全局；>0 = 收窄到该企业；
+%%   * 不按 enabled 过滤——运营面要能定位并恢复已停用坐席；
+%%   * 投影带 organization_name / display_name（列表可读）与默认 active
+%%     workspace_id（suspend/resume 审计事件的服务端落点）。
+-spec list_platform_seats(integer(), map()) -> {ok, map()} | {error, term()}.
+list_platform_seats(OrgId, Params) when is_map(Params) ->
+    case org_filter(OrgId) of
+        {error, _} = Err ->
+            Err;
+        {ok, OrgFilter} ->
+            case cs_app_support:page_cursor(Params) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, AfterId, Limit} ->
+                    case
+                        with_store(Params, fun(Store) ->
+                            Store:list_all_seats_page(OrgFilter, AfterId, Limit)
+                        end)
+                    of
+                        {error, _} = Err3 ->
+                            Err3;
+                        {ok, Rows} ->
+                            cs_app_support:page_view(
+                                seats,
+                                platform_projection(),
+                                Rows,
+                                Limit,
+                                business_identity_id
+                            )
+                    end
+            end
+    end;
+list_platform_seats(_OrgId, _Params) ->
+    {error, {invalid_argument, list_platform_seats}}.
+
+org_filter(0) ->
+    %% param_optional 缺省：跨企业全局（占位语义同 self/derived 的 0）。
+    {ok, 0};
+org_filter(OrgId) when is_integer(OrgId), OrgId > 0 ->
+    {ok, OrgId};
+org_filter(OrgId) ->
+    {error, {invalid_organization_id, OrgId}}.
+
+platform_projection() ->
+    [
+        organization_id,
+        organization_name,
+        display_name,
+        business_identity_id,
+        function_key,
+        enabled,
+        max_concurrent,
+        active_count,
+        workspace_id
+    ].
 
 %% ===================================================================
 %% 坐席会话详情（§12.4 表 2：GET /cs/sessions/:id 的应用用例）
