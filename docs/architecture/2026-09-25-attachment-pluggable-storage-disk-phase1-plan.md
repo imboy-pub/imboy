@@ -1,20 +1,20 @@
-# IMBoy 附件多存储驱动实施与验收计划
+# IMBoy 附件可插拔存储架构与 Disk 一期实施验收计划
 
 > **状态**：PLAN / READY_FOR_REVIEW，尚未实施
 >
 > **基线仓库**：`/Users/leeyi/project/imboy.pub/imboy`
 >
-> **BASE_SHA**：`12a289be5893d0a5236fc03879fa32720ece9fc5`
+> **BASE_SHA**：`693d3943cb6076fdae3817fed8934d73afe271c1`
 >
 > **日期**：2026-09-25
 >
-> **目标**：保持客户端附件协议不变，在 `sys.config` 中通过
-> `attachment_storage.driver = garage | disk | cos | oss` 选择新上传的存储；
-> 广州单机首先交付 `disk`，Garage 保持默认且零回归。
+> **目标**：建立供应商无关的 `attachment_storage` 内部边界，保持客户端附件协议
+> 不变；广州一期生产只交付 `driver=disk`。Garage 是默认配置、既有能力基线、历史附件
+> 兼容来源和回滚目标，不是一期新增交付能力。COS/OSS 属于可选 Post-MVP。
 >
 > **决策依据**：[ADR 0008](../adr/0008-pluggable-attachment-storage.md)
 
-## 1. 结论先行
+## 1. 目标与一期范围
 
 本计划不把 `s3_driver` 作为配置名，因为 `disk` 不是 S3。采用：
 
@@ -25,29 +25,49 @@
 }},
 ```
 
-切换配置只决定**新上传**的目标；每条附件记录保存实际 driver/bucket，旧附件继续从
-原位置读取。这样 Garage 切到 disk 后不需要立刻搬历史数据，回滚也只需把新上传开关
-切回，已写入 disk 的附件仍可按记录读取。
+切换配置只决定**新上传**的目标；每条附件记录保存实际存储位置，旧附件继续从原位置
+读取。Garage 切到 disk 后不需要立即迁移历史数据，回滚也只改变后续新上传；已写入
+disk 的附件仍按行内位置读取。
 
-广州一期的 DONE 定义是 `garage + disk` 双驱动可切换、历史数据兼容、真实文件闭环和
-备份恢复通过。`cos`、`oss` 必须在各自真实测试 bucket 完成外部验收后才可标记支持；
-没有凭据时只能是 `BLOCKED_EXTERNAL`，不得用 mock 冒充供应商通过。
+广州一期 DONE 定义是：供应商无关边界建立、Garage compatibility regression 通过、
+Disk production capability 完成、广州 `driver=disk` 的部署/重启/备份恢复/真实附件闭环
+通过。它不是“Garage + Disk 双驱动一起交付”。
+
+```text
+                    attachment_storage
+                           │
+                 ┌─────────┴─────────┐
+                 │                   │
+              Garage                Disk
+              BASELINE             TARGET
+              默认配置              广州一期
+              回归测试              生产部署
+              历史附件              新上传
+              回滚目标              新能力
+```
+
+一期生产路径固定为 `W0 -> W1 -> W2 -> W3 -> W4`。W5 COS、W6 OSS、W7 迁移工具均为
+`OPTIONAL / POST-MVP`；缺少真实第三方 bucket、凭据或授权不得阻塞广州 Disk 一期，也不得
+用 mock 将 COS/OSS 标记为 LIVE PASS。
 
 ## 2. 当前源码事实
 
 | 事实 | 当前位置 | 影响 |
 |---|---|---|
 | 客户端协议为 presign → 原始 PUT → confirm | `attach_handler.erl`、Flutter `attachment_api.dart` | disk 也必须返回可 PUT 的 URL，避免客户端升级 |
-| 业务层直接调用 Garage/S3 实现 | `attach_logic.erl` → `elib_oss.erl` | 需要单一 facade，不能在每个调用点加 driver 分支 |
+| 业务层直接调用历史 Garage/S3 模块 | `attach_logic.erl` → `elib_oss.erl` | 建立 Storage Boundary，迁移调用者后删除历史模块 |
 | confirm 会核实对象大小和 MIME | `attach_logic:verify_and_save/5` | driver 统一提供 `stat` |
 | 私有下载先查 DB ACL，再生成 URL | `attach_logic:view_url/2` | driver 选择必须发生在 ACL 通过之后 |
-| 公共资源当前可直拼 public URL | `elib_oss:public_url_for_key/1` | 混合驱动时必须改为后端 public gateway |
-| 删除散落在注销、企业留存、孤儿清理等路径 | 多个 logic 模块调用 `elib_oss:delete_object` | facade 必须覆盖全部调用者，逐项回归 |
+| 公共资源当前可直拼 public URL | `elib_oss:public_url_for_key/1` | 由统一边界按实际 location 生成，disk 改走 public gateway |
+| 删除散落在注销、企业留存、孤儿清理等路径 | 多个 logic 模块调用 `elib_oss:delete_object` | 所有 I/O 必须收敛到 Storage Boundary，逐项回归 |
 | pending 已记录 bucket，未记录 driver | `attach_pending_repo` | presign 与 confirm 跨配置切换会选错后端 |
 | pending 写入失败目前不阻断 presign | `attach_logic:presign/5` | 新设计中会丢失 driver 与上传授权，必须改为 fail-closed |
 | `attachment.path` 保存 object_key | attachment 表及客户端消息 | object_key 保持不变，位置元数据另列保存 |
 | 单文件上限 100 MB | `elib_oss:max_file_size/0`、Flutter | disk 上传必须流式，不得新增第二份 100 MB 内存副本 |
-| 另有 multipart→服务端临时文件→Garage 链路 | `attachment_upload_logic.erl` | 也必须经 facade 按 pending driver 分派，不能只改 presigned PUT |
+| 另有 multipart→服务端临时文件→Garage 链路 | `attachment_upload_logic.erl` | 也必须经 Storage Boundary 按 pending driver 分派，不能只改 presigned PUT |
+
+在当前基线，`rg -n -- "elib_oss" src test` 有 271 行文本命中、涉及 32 个文件。该数字只
+作为 W0 初始盘点，实施者必须在自己的 BASE_SHA 重新采样；W2 出口要求命中数为 0。
 
 ## 3. 目标架构
 
@@ -55,7 +75,7 @@
 flowchart LR
   APP[Flutter / 小程序] -->|presign, confirm, view_url| API[Attachment API]
   API --> LOGIC[attach_logic]
-  LOGIC --> STORE[attachment_storage facade]
+  LOGIC --> STORE[attachment_storage boundary]
   STORE --> G[Garage driver]
   STORE --> D[Disk driver]
   STORE --> C[COS driver]
@@ -68,7 +88,45 @@ flowchart LR
   LOGIC --> DB[(PostgreSQL attachment + pending)]
 ```
 
-### 3.1 不变的客户端契约
+### 3.1 Storage Boundary
+
+一期不做完整 Attachment Feature Slice 搬迁，先使用仓库已支持递归编译的窄边界目录：
+
+```text
+src/lib/attachment_storage/
+├── attachment_storage.erl
+├── attachment_storage_driver.erl
+├── attachment_storage_garage.erl
+└── attachment_storage_disk.erl
+```
+
+W5/W6 真正启动时才分别增加 COS/OSS driver，不在一期创建空模块或占位实现。业务层只
+调用 `attachment_storage`，不得直接调用具体 driver，也不得读取 Garage/Disk/COS/OSS
+配置。`attachment_storage_driver` 只定义真实需要的能力：presign PUT、文件 PUT、stat、
+private/public URL 和 delete。
+
+`elib_oss.erl` 是内部历史模块，不是公共 API，也不是兼容层。Provider I/O 调用迁入
+`attachment_storage`；其中混杂的 MIME、object key、owner、file category 等纯策略函数
+迁回现有业务归属模块，只有仍有多个调用者时才增加一个最小的 provider-neutral helper。
+W2 完成后删除 `elib_oss.erl`，不保留 deprecated wrapper。
+
+### 3.2 AttachmentStorageLocation
+
+业务代码使用明确的存储位置值，而不是传递零散 driver/bucket/key：
+
+```erlang
+-type storage_location() :: #{
+    driver := garage | disk | cos | oss,
+    container := binary() | undefined,
+    object_key := binary()
+}.
+```
+
+数据库一期仍保留 `storage_driver`、`storage_bucket`、`path`，避免纯命名引起额外迁移；
+domain API 将 `storage_bucket` 映射为 `container`，`path` 映射为 `object_key`。disk 的
+container 为 `undefined`。三者描述对象“在哪里”，driver 实现描述“如何访问”。
+
+### 3.3 不变的客户端契约
 
 ```text
 GET  /api/v1/attachment/presign -> put_url + object_key + expires_at
@@ -81,7 +139,7 @@ GET  <url>                      -> bytes / range bytes
 不得要求 Flutter 根据 driver 分支，不得把 access key、secret key 或真实磁盘路径返回
 给客户端。
 
-### 3.2 新增 disk 内部端点
+### 3.4 新增 disk 内部端点
 
 ```text
 PUT  /api/v1/attachment/storage/upload?key=...&mime=...&exp=...&sig=...
@@ -94,7 +152,7 @@ GET  /api/v1/attachment/public?key=...
 Authorization；它们使用独立 HMAC 签名。public 端点只允许数据库中已 confirm 且
 `scope=public` 的记录。
 
-### 3.3 disk 写入规则
+### 3.5 disk 写入规则
 
 1. key 必须通过现有 `owner_of_key` 与 pending 所有权校验；
 2. 规范化后目标路径必须仍位于 `root_dir`；
@@ -105,7 +163,7 @@ Authorization；它们使用独立 HMAC 签名。public 端点只允许数据库
 7. 失败删除 `.part`，周期任务清理超时临时文件；
 8. 每次上传前检查 `min_free_bytes`，不足返回 `507 Insufficient Storage`。
 
-### 3.4 disk 读取规则
+### 3.6 disk 读取规则
 
 - 私有资源沿用 `attach_logic:authorize` 后才签发下载 URL；
 - 支持完整 GET、HEAD 和一个 `Range: bytes=start-end`，合法范围返回 `206`；
@@ -162,18 +220,16 @@ Garage 行时才允许执行，否则 fail-closed。
 
 ```mermaid
 flowchart TD
-  W0[W0 基线和契约冻结] --> W1[W1 配置+位置元数据]
-  W1 --> W2[W2 facade+Garage 回归]
-  W2 --> W3[W3 disk 驱动+网关]
-  W3 --> W4[W4 部署+备份+广州验收]
-  W2 --> W5[W5 COS 驱动]
-  W2 --> W6[W6 OSS 驱动]
-  W4 --> W7[W7 迁移工具和总验收]
-  W5 --> W7
-  W6 --> W7
+  W0[W0 Baseline & Contract Freeze] --> W1[W1 Storage Location & Configuration]
+  W1 --> W2[W2 Storage Boundary & Garage Compatibility]
+  W2 --> W3[W3 Disk Driver & Signed Gateway]
+  W3 --> W4[W4 Guangzhou Disk Deployment & Acceptance]
+  W2 -. optional .-> W5[W5 COS Driver / Post-MVP]
+  W2 -. optional .-> W6[W6 OSS Driver / Post-MVP]
+  W4 -. optional .-> W7[W7 Attachment Migration / Post-MVP]
 ```
 
-### ST-00 基线与契约冻结
+### W0 Baseline & Contract Freeze
 
 - **Owned paths**：只读；证据目录 `docs/archive/evidence/attachment-storage-<UTC>/`
 - **工作**：记录 BASE_SHA、分支、状态；枚举全部 `elib_oss` 调用者、路由、配置注入、
@@ -182,64 +238,67 @@ flowchart TD
 - **检查**：`make compile`、附件相关 EUnit、Flutter 附件单测只作基线，不修缺陷。
 - **出口**：`AC-01`、`AC-02`；任何未知写/删调用点则 `BLOCKED_SCOPE`。
 
-### ST-01 配置、迁移与位置元数据
+### W1 Storage Location & Configuration
 
 - **Owned paths**：`config/sys.config.example`、`src/lib/imboy_env.erl`、
   `src/imboy_app.erl`、新迁移、attachment/pending repo+ds 及对应测试。
 - **工作**：解析 driver；对 active+已引用 driver fail-fast；迁移并回填存量 Garage 行；
   presign 必须先成功固化 pending driver/bucket 才返回 URL；confirm 固化 attachment
-  driver/bucket；down migration 守卫。
+  driver/bucket；在业务层组装 `AttachmentStorageLocation`；down migration 守卫。
 - **出口**：`AC-03` 至 `AC-07B`。
 
-### ST-02 存储 facade 与 Garage 零回归
+### W2 Storage Boundary & Garage Compatibility
 
-- **Owned paths**：新 `attachment_storage` behaviour/facade、Garage driver、
-  `elib_oss.erl` 兼容入口、现有调用者和测试。
-- **工作**：把 PUT/stat/GET URL/delete 统一分派；所有删除路径使用行内 driver；保留
-  对外函数直到调用收敛；禁止业务模块直接读 provider 配置；Garage 的 private/public
-  两种 scope 都必须走真实闭环；multipart 服务端上传也必须读取 pending driver，不能只
-  验证默认私有桶和 presigned PUT。
-- **出口**：Garage 单测和真实 Garage E2E 与基线一致，`AC-08` 至 `AC-11`。
+- **Owned paths**：`src/lib/attachment_storage/`、全部 `elib_oss` 调用者、对应测试、
+  `src/lib/CLAUDE.md`；最终删除 `src/lib/elib_oss.erl` 和旧测试文件。
+- **工作**：创建 behaviour 和统一入口；将现有 Garage I/O 迁入 Garage driver；所有上传、
+  stat、URL、删除和 multipart 路径改走 boundary；纯 MIME/key/category 策略迁到其业务
+  归属；业务模块不得读 provider 配置或调用具体 driver；Garage private/public 完成基线
+  回归；删除 `elib_oss.erl`，不保留 wrapper。
+- **硬门**：`! rg -n -- "elib_oss" src test` 返回成功且输出为空；`test ! -e
+  src/lib/elib_oss.erl`；Garage baseline regression 和既有附件 E2E 均通过。
+- **出口**：`AC-08` 至 `AC-11B`。
 
-### ST-03 disk 驱动与签名网关
+### W3 Disk Driver & Signed Gateway
 
 - **Owned paths**：disk driver、签名模块、disk handler、路由、OpenAPI、单元/集成测试。
 - **工作**：流式 PUT、原子 rename、stat/delete、GET/HEAD/Range、public scope 网关、
   路径穿越/符号链接/过期签名/篡改签名/磁盘不足守卫；confirm 后不可覆盖。
 - **出口**：`AC-12` 至 `AC-22`。
 
-### ST-04 部署、备份与广州单机验收
+### W4 Guangzhou Disk Deployment & Acceptance
 
 - **Owned paths**：`deploy/`、`scripts/`、运维文档和相关测试。
 - **工作**：disk profile 不启动 Garage；挂载 `${DATA_DIR}/attachments`；目录属主与
   `0700` 权限；preflight 校验绝对路径、可写性、余量和备份目标；备份/恢复同时覆盖 DB
-  与文件；增加 disk smoke。同步补齐社区 Compose 的 `imboy-public` 初始化、Website API
-  和公开读反向代理，并验证该公开面只暴露明确标记为 public 的对象。
+  与文件；增加 disk smoke；广州生产配置固定 `attachment_storage.driver=disk`；验证
+  Garage 历史对象与 Disk 新对象可同时读取。本阶段不新增 Garage 交付拓扑，也不把社区
+  Compose 的已知公开桶初始化缺口混入 Disk 主线。
 - **出口**：全新机安装、重启、备份、删除数据后恢复、再次下载均通过；`AC-23` 至
-  `AC-28`。生产部署仍需用户单独授权。
+  `AC-28` 及 `AC-31`。生产部署仍需用户单独授权。
 
-### ST-05 COS 驱动
+### W5 COS Driver（Optional / Post-MVP）
 
 - **Owned paths**：COS driver、provider 配置、契约测试、COS 运维文档。
 - **工作**：实现 virtual-hosted-style SigV4；禁止对 2024 后新 bucket 使用 path-style；
   验证 PUT/stat/GET/Range/delete 与 Content-Type。
 - **出口**：本地向量通过只算 `LOCAL_PASS`；真实广州 Region 测试 bucket 通过才算
-  `COS_LIVE_PASS`，否则 `BLOCKED_EXTERNAL`。
+  `COS_LIVE_PASS`，否则 `BLOCKED_EXTERNAL`。本阶段不阻塞 `GZ_DISK_PASS`。
 
-### ST-06 OSS 驱动
+### W6 OSS Driver（Optional / Post-MVP）
 
 - **Owned paths**：OSS driver、provider 配置、契约测试、OSS 运维文档。
 - **工作**：实现 OSS 原生 V4 或显式的 S3 compatibility 模式，不把 Garage 的
   `AWS4/.../s3/aws4_request` 无条件复用为 OSS 原生签名；验证完整操作集。
 - **出口**：本地向量通过只算 `LOCAL_PASS`；真实测试 bucket 通过才算
-  `OSS_LIVE_PASS`，否则 `BLOCKED_EXTERNAL`。
+  `OSS_LIVE_PASS`，否则 `BLOCKED_EXTERNAL`。本阶段不阻塞 `GZ_DISK_PASS`。
 
-### ST-07 可选迁移工具与总验收
+### W7 Attachment Migration（Optional / Post-MVP）
 
 - **Owned paths**：`scripts/migrate_attachment_storage.*`、迁移测试和运行手册。
 - **工作**：分页扫描来源 driver；复制到目标；按 size+hash 校验；单行事务更新位置；
   默认保留来源对象；显式 `--delete-source` 只能在二次扫描零差异后运行；可中断续跑。
-- **出口**：混合 driver、断点续跑、失败回滚和 dry-run 通过；`AC-29` 至 `AC-34`。
+- **出口**：断点续跑、失败回滚和 dry-run 通过；`AC-32` 至 `AC-34`。
 
 ## 6. 验收清单
 
@@ -257,17 +316,18 @@ flowchart TD
 | AC-07A | pending 写入失败时不返回 put_url | 故障注入后无可用 URL、无对象残留 |
 | AC-07B | presign 后切配置，confirm 仍用原 driver | 集成测试构造切换窗口并通过 |
 
-### Garage 与 facade
+### Storage Boundary 与 Garage Compatibility Regression
 
 | ID | 验收条件 | Oracle |
 |---|---|---|
-| AC-08 | Garage private/public 均完成 presign→PUT→confirm→view→delete | 两种 scope 字节一致且删除后 404 |
-| AC-09 | public/private/c2c/group/channel/moment/teaching ACL 不变 | 现有 ACL 套件全绿 |
-| AC-10 | 所有物理删除经 facade 按记录 driver 分派 | 静态门禁 + fake driver 调用计数 |
-| AC-11 | 客户端响应字段无破坏性变化 | OpenAPI diff + Flutter 现有测试 |
-| AC-11A | multipart 上传按 pending driver 分派 | Garage/disk 集成测试与故障标签断言 |
+| AC-08 | Garage baseline private/public regression | 既有 presign→PUT→confirm→view→delete 字节与状态语义不退化 |
+| AC-09 | Garage ACL regression | public/private/c2c/group/channel/moment/teaching 既有 ACL 套件全绿 |
+| AC-10 | Storage boundary delete dispatch | 所有物理删除按行内 location 分派；静态门禁 + fake driver 计数 |
+| AC-11 | Client contract regression | OpenAPI diff 无破坏变化，Flutter 现有测试全绿 |
+| AC-11A | Multipart storage routing regression | Garage/disk 均按 pending location 分派并保留既有故障标签 |
+| AC-11B | 历史模块完全退役 | `elib_oss` 在 `src test` 零引用且文件不存在，无 deprecated wrapper |
 
-### disk 功能与安全
+### Disk Production Capability
 
 | ID | 验收条件 | Oracle |
 |---|---|---|
@@ -283,7 +343,7 @@ flowchart TD
 | AC-21 | public gateway 只服务 confirmed public 行 | private/pending/not-found 均拒绝 |
 | AC-22 | 磁盘低于保留量拒绝新 PUT，不影响读取 | 可注入 disk-free oracle 测试 |
 
-### 运维、云厂商与迁移
+### 广州 Disk 运维验收与 Post-MVP
 
 | ID | 验收条件 | Oracle |
 |---|---|---|
@@ -293,9 +353,9 @@ flowchart TD
 | AC-26 | 磁盘 80% 告警、低于 reserve 拒绝上传 | 指标/告警测试 |
 | AC-27 | 日志不含 secret、sig、文件内容和绝对 root | gitleaks + Canary 扫描 |
 | AC-28 | 广州两账号真机图片/文件/音视频闭环 | DEVICE evidence；无真机则 BLOCKED_EXTERNAL |
-| AC-29 | COS 完整操作集在真实 bucket 通过 | COS_LIVE_PASS |
-| AC-30 | OSS 完整操作集在真实 bucket 通过 | OSS_LIVE_PASS |
-| AC-31 | 混合 Garage+disk 历史对象同时可读 | 配置切换集成测试 |
+| AC-29 | 可选 COS 完整操作集在真实 bucket 通过 | COS_LIVE_PASS；不阻塞 Disk 一期 |
+| AC-30 | 可选 OSS 完整操作集在真实 bucket 通过 | OSS_LIVE_PASS；不阻塞 Disk 一期 |
+| AC-31 | Garage 历史对象与 Disk 新对象同时可读 | 配置切换集成测试 |
 | AC-32 | 迁移 dry-run 零写入且计数准确 | before/after SQL + object count |
 | AC-33 | 迁移中断后续跑不重复损坏 | fault injection + resume |
 | AC-34 | 删除来源前二次校验，默认永不删除来源 | 命令行为测试 |
@@ -313,6 +373,8 @@ make dialyze
 make security-gate
 bash -n scripts/*.sh deploy/*.sh
 docker compose -f deploy/docker-compose.community.yml config >/dev/null
+! rg -n -- "elib_oss" src test
+test ! -e src/lib/elib_oss.erl
 git diff --check
 ```
 
@@ -332,9 +394,9 @@ flutter test test/unit_test/store/attachment_api_test.dart
 flutter test test/unit_test/page/chat/chat/attachment_handler_test.dart
 ```
 
-真实 HTTP E2E 必须对 `garage` 与 `disk` 各运行一次，并记录：presign 响应字段、PUT
-状态、confirm 结果、view URL、Range 响应、下载 SHA-256、delete 后 404。不得记录完整
-签名 URL 或凭据。
+真实 HTTP E2E 分两种语义记录：Garage 只证明 compatibility regression，Disk 才证明
+一期 production capability。两者均记录 presign 响应字段、PUT 状态、confirm 结果、
+view URL、Range 响应、下载 SHA-256、delete 后 404；不得记录完整签名 URL 或凭据。
 
 ## 8. 证据规则与终态
 
@@ -343,10 +405,13 @@ flutter test test/unit_test/page/chat/chat/attachment_handler_test.dart
 
 终态只能使用：
 
-- `LOCAL_CANDIDATE_PASS`：编译、静态门禁、单测和本地 Garage+disk E2E 全部通过；
-- `GZ_DISK_PASS`：在广州目标拓扑完成重启、备份恢复和真实客户端闭环；
+- `LOCAL_DISK_CANDIDATE_PASS`：编译、静态门禁、Garage baseline regression、Disk 本地
+  E2E 和 `elib_oss` 零引用删除硬门全部通过；
+- `GZ_DISK_PASS`：在广州目标拓扑完成重启、备份恢复、Garage 历史对象读取和真实客户端
+  Disk 新附件闭环；
 - `COS_LIVE_PASS` / `OSS_LIVE_PASS`：各自真实供应商 bucket 通过；
-- `PARTIAL`：MVP 通过但云厂商或设备证据缺失；
+- `PARTIAL`：本地 Disk candidate 通过但广州机器/设备证据缺失；COS/OSS 未执行不导致
+  Disk 一期为 PARTIAL；
 - `BLOCKED_EXTERNAL`：缺真实机器、设备、bucket 或用户授权；
 - `NO_GO`：任一安全、数据完整性、回滚或历史附件兼容 AC 失败。
 
@@ -369,6 +434,7 @@ flutter test test/unit_test/page/chat/chat/attachment_handler_test.dart
 - disk 写盘不是流式、磁盘满会产生 0 字节正式文件、失败残留不可回收；
 - 日志/证据泄露 secret、完整签名 URL、附件内容或真实用户数据；
 - 需要修改 Flutter 对外协议才能切换 driver；
+- `elib_oss.erl` 或其任何 `src/test` 引用仍存在，却宣称 W2 完成；
 - COS/OSS 只通过 mock 却被标记为 live pass；
 - 执行生产部署、真实数据迁移、源对象删除、push 或发布前未取得用户单独授权。
 
@@ -377,7 +443,7 @@ flutter test test/unit_test/page/chat/chat/attachment_handler_test.dart
 验证通过后按功能做本地提交，不混入共享工作树其他改动：
 
 1. `feat(storage): persist attachment storage location`
-2. `refactor(storage): route garage operations through facade`
+2. `refactor(storage): establish boundary and retire elib_oss`
 3. `feat(storage): add signed disk attachment driver`
 4. `feat(deploy): add disk attachment storage profile`
 5. `feat(storage): add cos attachment driver`（真实验收前不进入支持矩阵）
@@ -390,6 +456,7 @@ Git author/committer 使用命令级 `leeyi <leeyisoft@qq.com>`。本计划不�
 ## 11. 本轮不做
 
 - 不在本文档任务中实现驱动代码或执行数据库迁移；
+- 不在一期创建 COS/OSS 空模块、占位 driver 或假支持；
 - 不把 disk 宣称为多节点 HA 存储；
 - 不自动搬迁或删除任何历史 Garage 对象；
 - 不引入新的 AWS SDK，除非原生 OTP 实现经验证无法正确支持目标供应商；

@@ -1,9 +1,9 @@
-# ADR: 附件存储采用可切换驱动并固化每个对象的位置
+# ADR: 建立附件 Storage Boundary 并固化对象位置
 
 - Status: Proposed
 - Date: 2026-09-25
 - 关联：ADR 0001（四层单向依赖）、ADR 0007（Feature Slice）、
-  `docs/architecture/2026-09-25-attachment-storage-driver-plan.md`
+  `docs/architecture/2026-09-25-attachment-pluggable-storage-disk-phase1-plan.md`
 
 ## Context
 
@@ -20,11 +20,28 @@ Garage、腾讯云 COS 或阿里云 OSS。仅在 `sys.config` 增加一个分支
 4. COS 新 bucket 采用 virtual-hosted-style，OSS 的原生 V4 与 AWS SigV4 不是同一协议，
    不能假设改 endpoint 就能共用 Garage 签名器；
 5. 客户端不应因为运维切换存储驱动而重新发布。
+6. `elib_oss` 是混合 provider I/O 与附件策略的历史内部模块，名称和职责都不能作为
+   Garage、Disk、COS、OSS 的长期抽象边界。
 
 成熟自托管软件通常把本地文件系统限定在简单单机场景，把 S3/NAS 用于多节点；
 GitLab 还明确区分本地存储的代理上传/下载与对象存储的直传。本决策采用相同边界。
 
 ## Decision
+
+### 0. 一期只新增 Disk，Garage 是 compatibility baseline
+
+广州一期生产配置为 `attachment_storage.driver=disk`。Garage 继续作为社区默认 driver、
+既有能力回归基线、历史附件读取来源和回滚目标，但不作为一期新增交付能力。核心路径是：
+
+```text
+Garage 既有行为冻结
+    -> 建立 Storage Boundary
+    -> Garage compatibility regression
+    -> 实现 Disk driver
+    -> 广州只部署并验收 Disk
+```
+
+COS、OSS 和存量对象迁移工具均为 Optional/Post-MVP；缺少其外部条件不得阻塞 Disk 一期。
 
 ### 1. 配置使用附件存储名称，不叫 `s3_driver`
 
@@ -97,12 +114,25 @@ Garage/COS/OSS 的 `put_url` 和私有查看 URL 指向对象存储，public sco
 公开桶的稳定 URL；disk 的 URL 指向 IMBoy 自身的短时签名上传/下载端点。Flutter 无需
 知道当前驱动，也不新增 SDK。
 
-### 3. 在数据库固化对象位置
+### 3. 固化 AttachmentStorageLocation
 
 `attachment` 增加非空 `storage_driver` 和可空 `storage_bucket`；`attach_pending` 增加
 `storage_driver`，并允许现有 `bucket` 在 disk 行为 NULL。存量附件回填为 `garage`，
 bucket 按现有 scope 规则回填。数据库约束要求 Garage/COS/OSS 的 bucket 非空，disk 的
 bucket 为 NULL。
+
+业务层使用统一位置值：
+
+```erlang
+#{
+    driver => garage | disk | cos | oss,
+    container => binary() | undefined,
+    object_key => binary()
+}
+```
+
+数据库字段一期仍保留 `storage_bucket` 和 `path`，避免为了命名扩大迁移范围；domain API
+分别映射为 `container` 和 `object_key`。位置描述对象在哪里，driver 描述如何访问。
 
 - presign 时把当时的 driver 和 bucket 写入 pending；
 - pending 写入失败时 presign 必须失败，不能再以 best-effort 签发无登记 URL；
@@ -111,9 +141,20 @@ bucket 为 NULL。
 - 改配置只影响新上传，历史附件继续从原位置读取；
 - 数据迁移由独立、可恢复的迁移命令完成，不在启动时隐式搬文件。
 
-### 4. 增加一个存储 facade 和四个驱动
+### 4. 建立供应商无关的 Storage Boundary
 
-业务层只依赖 `attachment_storage` facade。驱动实现统一能力：
+业务层只依赖 `attachment_storage`。一期采用窄边界目录，不启动完整 Feature Slice 搬迁：
+
+```text
+src/lib/attachment_storage/
+├── attachment_storage.erl
+├── attachment_storage_driver.erl
+├── attachment_storage_garage.erl
+└── attachment_storage_disk.erl
+```
+
+COS/OSS 模块只在对应 Post-MVP 波次真正启动时增加，不在一期创建空实现。Driver contract
+只包含真实需要的存储能力：
 
 ```erlang
 -callback create_put_url(map()) -> {ok, binary()} | {error, term()}.
@@ -129,7 +170,11 @@ bucket 为 NULL。
 - `cos`：单独处理 virtual-hosted-style、COS endpoint 与真实兼容性；
 - `oss`：默认实现 OSS 原生 V4；若采用 S3 兼容模式，必须显式配置并完成实桶验收。
 
-`elib_oss` 先保留为兼容 facade，现有调用者逐步转入新 facade，不做无关重命名。
+业务模块不得直接调用具体 driver 或读取 provider 配置。`elib_oss` 不是公共 API：所有
+provider I/O 调用迁入 `attachment_storage`；MIME、object key、owner、file category 等
+纯策略迁回其现有业务归属，只有确有多个调用者时才增加一个最小 provider-neutral helper。
+调用收敛且 Garage baseline regression 通过后，删除 `elib_oss.erl` 及旧测试，不保留
+deprecated wrapper。硬门是 `rg -n -- "elib_oss" src test` 零命中。
 
 ### 5. disk 驱动只支持单机或共享持久卷
 
@@ -158,6 +203,8 @@ Garage/COS/OSS；启动检查和文档必须明确该限制。
 ### Positive
 
 - 广州单机可不安装 Garage，附件直接进入指定磁盘目录；
+- 新增能力范围明确为 Disk，Garage 只承担兼容回归和历史读取；
+- 历史 `elib_oss` 模块被完整退役，不形成双 facade；
 - 同一客户端可连接不同存储驱动的部署；
 - 配置切换不会破坏历史附件，也不会打断 pending 上传；
 - COS/OSS 差异被限制在驱动内，业务 ACL、对象 key、confirm 契约保持单一真源；
@@ -174,7 +221,7 @@ Garage/COS/OSS；启动检查和文档必须明确该限制。
 
 - `object_key` 和附件消息协议不变；
 - 切换配置不自动迁移存量文件；
-- Garage 仍是社区版默认驱动，disk 是广州单机交付选项。
+- Garage 仍是社区默认和回滚 driver，Disk 是广州一期唯一生产目标。
 
 ## Alternatives Considered
 
@@ -191,14 +238,24 @@ Garage/COS/OSS；启动检查和文档必须明确该限制。
 
 不采用。配置切换瞬间会让所有历史附件 404，也无法安全回滚。
 
-### 只做 `garage | disk`，预留未实现的 `cos | oss`
+### 一期把 Garage 和 Disk 都当新增能力交付
 
-MVP 实施顺序允许先交付 Garage+disk，但配置解析器不得把未实现驱动当成可用。
-COS/OSS 只有完成各自真实供应商验收后才进入支持矩阵。
+不采用。Garage 已是既有能力；一期只需要通过新边界证明它未退化，新增交付和生产验收
+集中在 Disk。
+
+### 保留 `elib_oss` 作为兼容 wrapper
+
+不采用。它是 IMBoy 内部模块，不存在外部兼容责任；保留会形成
+`attachment_storage -> elib_oss -> Garage` 的双 facade，并继续扩散供应商命名债务。
+
+### 一期同时创建 COS/OSS driver 占位
+
+不采用。未完成真实 bucket 验收的空模块没有交付价值。配置枚举可以保留未来值，但未
+实现 driver 必须 fail-fast，只有对应 Post-MVP 波次通过后才进入支持矩阵。
 
 ## References
 
-- [实施计划](../architecture/2026-09-25-attachment-storage-driver-plan.md)
+- [实施计划](../architecture/2026-09-25-attachment-pluggable-storage-disk-phase1-plan.md)
 - [Garage 安装指南](../guides/operations/garage-deployment.md)
 - [Mattermost 文件存储建议](https://docs.mattermost.com/deployment-guide/server/prepare-file-storage)
 - [GitLab Object Storage](https://docs.gitlab.com/administration/object_storage/)

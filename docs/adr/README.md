@@ -18,4 +18,4 @@
 | [0005](./0005-modular-monolith-boundaries.md) | 模块化单体边界与轻量插件扩展点（原 `architecture/adr/2026-03-15-modular-monolith-boundaries.md`） | Accepted |
 | [0006](./0006-ddd-migration-endpoint.md) | DDD 迁移终点线：触发式迁移，不设日历死线（原 `architecture/adr/2026-06-03-ddd-migration-endpoint.md`） | Accepted |
 | [0007](./0007-feature-slice-architecture.md) | Feature Slice 架构：业务功能按限界上下文纵切，清晰区分 Plugin / Feature / Product（规范文本 `architecture/feature-slice-rules.md`，9 条铁律） | Accepted |
-| [0008](./0008-pluggable-attachment-storage.md) | 附件存储采用可切换驱动并固化每个对象的位置 | Proposed |
+| [0008](./0008-pluggable-attachment-storage.md) | 建立供应商无关的附件 Storage Boundary，广州一期只新增 Disk | Proposed |

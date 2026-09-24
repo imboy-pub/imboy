@@ -122,8 +122,9 @@ Garage 根路径未签名访问返回 `403` 是正常安全行为，不代表服
 
 > **当前限制**：社区 Compose 的 `--default-bucket` 目前只自动创建私有桶 `imboy`，
 > Nginx 也只代理 S3 API。它可用于私有附件，但 `scope=public` 的头像等公开资源尚未完成
-> `imboy-public` + Website API 的一键初始化。该缺口已列入附件存储计划的 ST-04/AC-08；
-> 未通过公开资源闭环前，不要把社区 Compose 标记为完整附件验收通过。
+> `imboy-public` + Website API 的一键初始化。该缺口不属于广州 Disk 一期；W2/AC-08 的
+> Garage baseline regression 应在已具备 public bucket 的既有拓扑执行。社区 Compose
+> 未补齐公开资源闭环前，不得标记为完整附件验收通过。
 
 ## 方式 B：Linux 裸机安装 Garage v2.4.1
 
