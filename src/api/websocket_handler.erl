@@ -418,7 +418,7 @@ handle_client_ack(Tail, State) ->
             case validate_ack_params(Type, MsgId, DID, State) of
                 ok ->
                     ok = ?DEBUG_LOG({client_ack_received, Type, MsgId, DID}),
-                    websocket_logic:cancel_timer(CurrentUid, DID, MsgId),
+                    maybe_cancel_delivery(Type, CurrentUid, DID, MsgId),
                     AckConfirmMsg = #{
                         <<"id">> => MsgId,
                         <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
@@ -490,7 +490,7 @@ handle_protobuf_client_ack(Data, _RawMsg, State) ->
         case validate_ack_params(Type, MsgId, DID, State) of
             ok ->
                 ok = ?DEBUG_LOG({protobuf_client_ack_received, Type, MsgId, DID}),
-                websocket_logic:cancel_timer(CurrentUid, DID, MsgId),
+                maybe_cancel_delivery(Type, CurrentUid, DID, MsgId),
                 AckConfirmMsg = #{
                     <<"id">> => MsgId,
                     <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
@@ -756,8 +756,8 @@ ws_validation_error(MsgId, Action, Reason) ->
 -spec validate_ack_params(binary(), binary(), binary(), map()) -> ok | {error, binary()}.
 validate_ack_params(Type, MsgId, DID, State) ->
     %% WEBRTC：客户端对入站 webrtc 信令回 CLIENT_ACK,WEBRTC,... 缺此项会被判
-    %% invalid_type → ack_received 不置位 → 服务端重投 webrtc 消息 → 死循环根源。
-    %% 停重投由 cancel_timer(ok 分支)完成，process_ack_type 走 catch-all 无副作用。
+    %% invalid_type，客户端便无法收敛 ACK。WebRTC 信令是 [0] 单次投递，且同一
+    %% 通话的 ringing/answer/bye 共用 MsgId，因此只回 CONFIRM，不写通用 ACK 去重缓存。
     ValidTypes = [<<"C2C">>, <<"C2G">>, <<"S2C">>, <<"C2S">>, <<"WEBRTC">>],
     case lists:member(Type, ValidTypes) of
         false ->
@@ -1002,5 +1002,15 @@ process_ack_type(<<"S2C">>, MsgId, CurrentUid, DID) ->
     msg_s2c_logic:s2c_client_ack(MsgId, CurrentUid, DID);
 process_ack_type(<<"C2S">>, MsgId, _CurrentUid, _DID) ->
     ok = ?DEBUG_LOG({client_ack_processing_c2s, MsgId});
+process_ack_type(<<"WEBRTC">>, MsgId, _CurrentUid, _DID) ->
+    ok = ?DEBUG_LOG({client_ack_processing_webrtc, MsgId});
 process_ack_type(Type, MsgId, _CurrentUid, _DID) ->
     ok = ?WARN_LOG({client_ack_unknown_type, Type, MsgId}).
+
+%% WebRTC 的多个阶段有意复用通话 MsgId；若写入 ack_received，ringing 的 ACK
+%% 会把紧随其后的 answer 当成重复投递过滤掉。其投递列表固定为 [0]，无需取消重试。
+-spec maybe_cancel_delivery(binary(), integer(), binary(), binary()) -> ok.
+maybe_cancel_delivery(<<"WEBRTC">>, _CurrentUid, _DID, _MsgId) ->
+    ok;
+maybe_cancel_delivery(_Type, CurrentUid, DID, MsgId) ->
+    websocket_logic:cancel_timer(CurrentUid, DID, MsgId).

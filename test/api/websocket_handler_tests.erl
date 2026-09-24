@@ -153,6 +153,31 @@ websocket_handle_client_ack_success_test_() ->
         end
     ).
 
+websocket_handle_webrtc_ack_does_not_poison_call_msg_id_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {auth_ds, [
+                    {'current_uid', 1, fun(_State) -> 123 end}
+                ]},
+                {websocket_logic, [
+                    {'cancel_timer', 3, fun(_, _, _) -> erlang:error(unexpected_cancel) end}
+                ]},
+                {elib_dt, [
+                    {'millisecond', 0, fun() -> 1700000000123 end}
+                ]}
+            ],
+        fun() ->
+            State = #{did => <<"did_1">>, current_uid => 123},
+            {reply, {text, Bin}, _, hibernate} = websocket_handler:websocket_handle(
+                {text, <<"CLIENT_ACK,WEBRTC,call_msg_1,did_1">>}, State
+            ),
+            Decoded = jsone:decode(Bin, [{object_format, map}]),
+            ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"action">>, Decoded)),
+            ?assertEqual(0, meck:num_calls(websocket_logic, cancel_timer, 3))
+        end
+    ).
+
 websocket_handle_client_ack_did_mismatch_test_() ->
     ?WITH_MECKS(
         log_mocks() ++
