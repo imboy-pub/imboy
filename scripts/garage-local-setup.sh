@@ -2,7 +2,7 @@
 # Garage 本地 dev 环境一键脚本（配置文件挂载配方）
 # 用法：bash scripts/garage-local-setup.sh
 #
-# 背景（2026-09-12 重建实录）：dxflrs/garage:v2.0.0 的容器入口不再支持
+# 背景（2026-09-12 重建实录）：Garage v2 的容器入口不再支持
 # GARAGE_METADATA_DIR / GARAGE_DATA_DIR / GARAGE_S3_API_BIND_ADDR 等
 # env-only 启动配方（创建即退出）。必须挂载配置文件：
 #   /tmp/garage/garage.toml  → /etc/garage.toml (ro)
@@ -10,13 +10,13 @@
 #   /tmp/garage/data         → /tmp/garage/data   (bind)
 # 端口：S3 API 3900 / RPC 3901 / 公共 Web 3902（+admin 3909 仅本地回环）。
 #
-# 幂等：容器已在跑且默认桶存在 → 直接复用（不删数据不重建），
-# 打印接入配置后退出。密钥 secret 只在创建时可见：重建前可导出
+# 幂等：容器已在跑则直接复用（不删数据不重建），并继续检查布局、桶、权限和 Website。
+# 密钥 secret 只在创建时可见：重建前可导出
 # GARAGE_ACCESS_KEY / GARAGE_SECRET_KEY / GARAGE_RPC_SECRET 复用旧值。
 set -euo pipefail
 
 CONTAINER=garage-local
-IMAGE=dxflrs/garage:v2.0.0
+IMAGE=dxflrs/garage:v2.4.1
 GARAGE_DIR=/tmp/garage
 CONF=$GARAGE_DIR/garage.toml
 BUCKET=imboy
@@ -29,19 +29,7 @@ garage() { docker exec "$CONTAINER" /garage "$@"; }
 
 echo "==> 检查容器 $CONTAINER ..."
 if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
-  if garage bucket list 2>/dev/null | grep -qw "$BUCKET"; then
-    echo "    容器与桶 $BUCKET 已就绪 → 复用（不删数据不重建）"
-    KEY_ID=$(garage key list 2>/dev/null | awk '/imboy-key/{print $1}' | head -1)
-    echo ""
-    echo "==> S3:        http://127.0.0.1:${S3_PORT}"
-    echo "==> Public web: http://127.0.0.1:${WEB_PORT}"
-    echo "==> access_key=${KEY_ID:-<见 config/sys.local.config>}"
-    echo "==> secret_key 未回显（Garage 只在创建时展示；复用 sys.local.config 或"
-    echo "    重建前导出 GARAGE_SECRET_KEY）"
-    curl -s -o /dev/null -w "==> S3 连通性: HTTP %{http_code}\n" "http://127.0.0.1:${S3_PORT}/" || true
-    exit 0
-  fi
-  echo "    容器在跑但桶缺失 → 继续初始化布局/桶/密钥"
+  echo "    容器已运行 → 复用并幂等检查布局、桶、密钥和 Website 配置"
 else
   echo "==> 清理旧容器（数据在 ${GARAGE_DIR}，不受影响）..."
   docker rm -f "$CONTAINER" 2>/dev/null || true
@@ -93,13 +81,18 @@ EOF
 fi
 
 echo "==> 等待 Garage 就绪（最多 30s）..."
+ready=0
 for _ in $(seq 1 30); do
-  if curl -sf http://127.0.0.1:${S3_PORT}/ >/dev/null 2>&1; then
+  # 匿名 GET / 正常返回 403；任意非 000 HTTP 状态都表示端口已监听。
+  code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${S3_PORT}/" 2>/dev/null || true)"
+  if [ -n "$code" ] && [ "$code" != "000" ]; then
+    ready=1
     echo "    就绪！"
     break
   fi
   sleep 1
 done
+[ "$ready" -eq 1 ] || { echo "    ✗ Garage 启动超时，请检查 docker logs ${CONTAINER}" >&2; exit 1; }
 
 echo "==> 获取节点 ID 并配置布局..."
 NODE_ID=$(garage node id 2>/dev/null | awk '{print $1}' | head -1)
@@ -136,9 +129,10 @@ garage bucket allow "$BUCKET" --read --write --owner --key "$ACCESS_KEY" \
   || { echo "    ✗ ${BUCKET} 授权失败" >&2; exit 1; }
 garage bucket allow "$PUBLIC_BUCKET" --read --write --owner --key "$ACCESS_KEY" \
   || { echo "    ✗ ${PUBLIC_BUCKET} 授权失败" >&2; exit 1; }
+garage bucket website --allow "$PUBLIC_BUCKET" \
+  || { echo "    ✗ ${PUBLIC_BUCKET} Website 公开读取启用失败" >&2; exit 1; }
 
-# 注意：不设置 bucket 公开读（--read --public）。
-# 私有附件经后端 /v1/attachment/view_url 按需签发短时 presigned GET，避免整桶匿名可读。
+# 私有桶不开放匿名读；只有 scope=public 使用的独立桶通过 Website API 对外读取。
 
 echo ""
 echo "╔════════════════════════════════════════════════════════════╗"
@@ -146,17 +140,21 @@ echo "║  Garage 已就绪！将以下配置写入 config/sys.local.config     
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 echo ", {garage, #{"
-echo "    endpoint   => <<\"http://127.0.0.1:${S3_PORT}\">>"
-echo "    region     => <<\"garage\">>"
-echo "    bucket     => <<\"${BUCKET}\">>"
+echo "    endpoint         => <<\"http://127.0.0.1:${S3_PORT}\">>,"
+echo "    public_endpoint  => <<\"http://127.0.0.1:${S3_PORT}\">>,"
+echo "    region           => <<\"garage\">>,"
+echo "    bucket           => <<\"${BUCKET}\">>,"
+echo "    public_bucket    => <<\"${PUBLIC_BUCKET}\">>,"
+echo "    public_base_url  => <<\"http://${PUBLIC_BUCKET}.garage.localhost:${WEB_PORT}\">>,"
 if [ -n "${GARAGE_ACCESS_KEY:-}" ] || [ -n "${GARAGE_SECRET_KEY:-}" ]; then
-  echo "    access_key => <<\"${GARAGE_ACCESS_KEY:-}\">>"
+  echo "    access_key => <<\"${GARAGE_ACCESS_KEY:-}\">>,"
   echo "    secret_key => <<\"${GARAGE_SECRET_KEY:-}\">>"
 else
-  echo "    access_key => <<\"${ACCESS_KEY}\">>"
+  echo "    access_key => <<\"${ACCESS_KEY}\">>,"
   echo "    secret_key => <<\"见下方提示\">>"
 fi
 echo "}}"
+echo "    真机调试时请把 127.0.0.1/localhost 地址替换为手机可达的 HTTPS 域名。"
 echo ""
 if [ -z "${GARAGE_SECRET_KEY:-}" ]; then
   echo "ℹ  secret_key 仅在密钥**首次创建**时展示。若本次是复用旧数据卷："
