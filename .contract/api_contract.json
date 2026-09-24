@@ -4436,12 +4436,6 @@
         "static": false
       },
       {
-        "action": "credential",
-        "handler": "user_handler",
-        "path": "/api/v1/user/credential",
-        "static": false
-      },
-      {
         "action": "deletion_status",
         "handler": "user_handler",
         "path": "/api/v1/user/deletion_status",

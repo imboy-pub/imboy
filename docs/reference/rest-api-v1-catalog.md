@@ -136,7 +136,6 @@
 | GET | /api/v1/user/show | 公开 Open | user_handler#show | 获取公开信息 / Public info | Query: `id`(TSID) | `id`(TSID),`nickname`,`avatar`,`account`,`sign` |
 | POST | /api/v1/user/change_state | JWT | user_handler#change_state | 切换在线/隐身 / Toggle state | `state`(默认 hide) | `{}` |
 | POST | /api/v1/user/setting | JWT | user_handler#setting | 批量保存设置 / Save settings | `setting`(键值对列表) | `{}` |
-| GET | /api/v1/user/credential | JWT | user_handler#credential | WebRTC TURN/STUN 凭证 / Credential | 无 | `ttl`=86400,`turn_urls`,`stun_urls`,`username`,`credential` |
 | POST | /api/v1/user/change_password | JWT | user_handler#change_password | 修改密码 / Change password | 旧/新密码（见源码） | `{}` |
 | POST | /api/v1/user/set_password | JWT | user_handler#set_password | 设置密码 / Set password | 新密码（见源码） | `{}` |
 | POST | /api/v1/user/apply_logout | JWT | user_handler#apply_logout | 申请注销 / Apply logout | 见源码 | `{}`（恒成功） |
@@ -550,6 +549,14 @@
 | POST | /api/v1/live_room/start | JWT | live_room_handler#start | 开始直播 / Start | `room_id` | `{}`（仅房主） |
 | POST | /api/v1/live_room/stop | JWT | live_room_handler#stop | 停止直播 / Stop | `room_id` | `{}`（仅房主） |
 | GET | /api/v1/live_room/detail | JWT | live_room_handler#detail | 直播间详情 / Detail | `room_id` | room（非房主移除 `stream_key`） |
+
+## RTC 房间（LiveKit）/ RTC Room
+
+> 1:1 与群通话统一走 LiveKit Room：本端点校验资格并签发 LiveKit 接入 JWT（TTL 600s，identity=`<uid>_<did>`，权限 canPublish/canSubscribe/canPublishData）；客户端持 `ws_url + token` 直连 LiveKit SFU。旧 `GET /api/v1/user/credential`（eturnal TURN 凭证）端点已删除。房间名：group→`rtc_group_<gid>`；c2c→`rtc_c2c_<uid低>_<uid高>`（双方排序一致，保证两端进同一房间）。
+
+| 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload |
+|---|---|---|---|---|---|---|
+| POST | /api/v1/rtc/room/join | JWT | rtc_room_handler#join | 加入 RTC 房间（签发 LiveKit token）/ Join RTC room (issue LiveKit token) | Body: `kind`*(`group`/`c2c`),`target_id`*(群 gid 或对方 uid),`did`(设备标识,默认 `default`) | `ws_url`(如 `wss://rtc.imboy.pub`),`token`(LiveKit JWT),`room_name`；非好友/非群成员→业务错误；LiveKit 配置缺失→`livekit_not_configured` |
 
 ## 钱包 / Wallet
 

@@ -8,7 +8,7 @@
 - Git 跟踪 `sys.config`（默认基线）、`debug.config`、`cron.config` 与 `sys.config.example`、`sys.local.config.example` 模板。
 - 本地、生产和运行时生成的覆盖文件按 `.gitignore:11-15,43-45` 排除；`IMBOYENV=local` 会加载本地覆盖并生成运行时配置。仓库只能审计模板与加载逻辑，不能据未跟踪文件推断买家/生产环境的实际值。
 - `IMBOY_*` 环境变量运行时优先级最高,经 `imboy_env`/`config_ds` 读取
-- `vm.args`(节点名/cookie/端口)、`turnserver.conf`(TURN)、`nginx-imboy.conf`
+- `vm.args`(节点名/cookie/端口)、`nginx-imboy.conf`。原 `turnserver.conf`（coturn）已删除——TURN 不再有独立配置文件，由 LiveKit embedded TURN 承载：后端侧是 `{livekit, #{ws_url, api_key, api_secret}}` 配置段（`sys.config.example` 模板 + `IMBOY_LIVEKIT_*` env 覆盖，缺键时入会返回受控错误 `livekit_not_configured`），媒体侧是 `deploy/docker-compose.livekit-turn.yml` overlay（`LIVEKIT_TURN_ENABLED` 开关）
 - 生产 fail-fast:`imboy_app.erl` 的 `validate_runtime_config()` 在 strict env 下 `ensure_required_secret`(jwt_key/postgre_aes_key/adm_cookie_secret/solidified_key 等)+ `ensure_required_file` + `ensure_api_auth_switch_on`
 
 **Flutter**:`example.env`、`flutter_options.yaml`、build flavor;**Admin**:vite env(`VITE_API_BASE_URL` 等 build-arg)。

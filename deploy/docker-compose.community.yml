@@ -25,7 +25,8 @@
 #   - ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION}    （客服 Widget 静态产物，同上）
 #   - ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION}      （同一发布流水线构建）
 #   - dxflrs/garage:v2.3.0                   （官方，与 scripts/garage-install.sh 同版本）
-#   - nginx:1.27-alpine / certbot/certbot:latest / livekit/livekit-server:v1.9（官方）
+#   - nginx:1.27-alpine / certbot/certbot:latest（官方）
+#   - livekit/livekit-server@sha256:5d3dcc47…（官方 v1.13.7 amd64，image@digest 锁定 —— LK-01 版本合同；禁止浮动 tag）
 #
 # ─── 日志留存合规说明 / Log Retention Compliance Note ─────────────────────────
 # 等保2.0（GB/T 22239-2019）第三级要求：安全审计日志留存 ≥ 6 个月（约 180 天）。
@@ -182,7 +183,10 @@ services:
       IMBOY_GARAGE_ACCESS_KEY: ${IMBOY_GARAGE_ACCESS_KEY:?IMBOY_GARAGE_ACCESS_KEY is required - see deploy/.env.example}
       IMBOY_GARAGE_SECRET_KEY: ${IMBOY_GARAGE_SECRET_KEY:?IMBOY_GARAGE_SECRET_KEY is required - see deploy/.env.example}
       # ── LiveKit SFU（群通话/屏幕共享）/ LiveKit SFU ─────────────────────────
-      IMBOY_LIVEKIT_WS_URL: ${IMBOY_LIVEKIT_WS_URL:-wss://${API_DOMAIN}/livekit}
+      # LK-01 域名收敛：信令默认走独立 RTC 域 WSS（wss://<RTC_DOMAIN>，由 nginx
+      # 反代 7880），不再经 ${API_DOMAIN}/livekit 子路径。显式设置
+      # IMBOY_LIVEKIT_WS_URL 仍可覆盖（迁移过渡期用）。
+      IMBOY_LIVEKIT_WS_URL: ${IMBOY_LIVEKIT_WS_URL:-wss://${RTC_DOMAIN}}
       IMBOY_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
       IMBOY_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
       # 社区版固定标记（商务版才需要 professional/enterprise + License）
@@ -354,19 +358,31 @@ services:
         max-file: "30"
 
   # ========== LiveKit SFU（群通话/屏幕共享媒体面）==========
-  # WS 信令 7880 经 nginx /livekit/ 反代；媒体 UDP 50000-50200 与
-  # TCP 7881（ICE/TCP 兜底）直连宿主，需在防火墙/云安全组放行。
-  # 内置 TURN 未启用（需独立域名+TLS 证书），受限 NAT 先走 TCP 7881 兜底。
+  # LK-01 版本合同：image@digest 双重锁定 v1.13.7（amd64/linux per-arch manifest
+  # digest sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52，
+  # 2026-09-23 registry API 复验；index digest 为 sha256:6fd3b708…，二者并存为真，
+  # 锁定以 per-arch 为准——生产为 x86_64。回滚 digest 见
+  # .Codex/runs/.../A1/LK-01/version-lock-contract.md §1.3）。
+  #
+  # 信令：7880 仅绑 127.0.0.1，TLS 由反代终结（wss://<RTC_DOMAIN> → 7880）。
+  # 媒体：UDP 50000-50200（rtc.port_range，共存期维持）+ TCP 7881（ICE/TCP 兜底）
+  # 直连宿主，需在防火墙/云安全组放行。
+  #
+  # embedded TURN（turn.imboy.pub，TLS 5349 / UDP 3478，TURN_443=BLOCKED）：
+  # 由独立 overlay docker-compose.livekit-turn.yml 提供 —— ports 无法按变量
+  # 条件渲染，且共存期（W4）3478/5349 归 eturnal，提前发布会 bind 冲突崩溃。
+  # 安装器按 .env 的 LIVEKIT_TURN_ENABLED=true 装配该 overlay（W5 终态）。
+  #
+  # ⚠️ 无 redis 段 = standalone 单节点模式（项目级约束：全栈不引入 Redis）。
+  # redis 只在多节点分布式路由下必需。要横向扩展改用「应用层按房间分片」：
+  # imboy 在 /api/v1/rtc/room/join 里 consistent_hash(room_name) 决定发哪个
+  # 节点的 ws_url，同房间参与者必落同一节点 → 节点间无需通信。
   imboy_livekit:
-    image: livekit/livekit-server:v1.9
+    image: livekit/livekit-server@sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52
     container_name: imboy_livekit
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      # ⚠️ 无 redis 段 = standalone 单节点模式（项目级约束：全栈不引入 Redis）。
-      # redis 只在多节点分布式路由下必需。要横向扩展改用「应用层按房间分片」：
-      # imboy 在 /api/v1/rtc/room/join 里 consistent_hash(room_name) 决定发哪个
-      # 节点的 ws_url，同房间参与者必落同一节点 → 节点间无需通信。
       LIVEKIT_CONFIG: |
         port: 7880
         rtc:
@@ -386,6 +402,11 @@ services:
       - "127.0.0.1:7880:7880"
       - "7881:7881"
       - "50000-50200:50000-50200/udp"
+    deploy:
+      resources:
+        limits:
+          # LK-01 §5.3 容量合同：单节点无 Redis 形态 768m 上限（512m-768m 可调）
+          memory: ${LIVEKIT_MEM_LIMIT:-768M}
     logging:
       driver: "json-file"
       options:

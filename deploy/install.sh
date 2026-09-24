@@ -137,7 +137,9 @@ UPTRACE_SECRET_VARS="UPTRACE_SERVICE_SECRET UPTRACE_PG_PASSWORD UPTRACE_CLICKHOU
 # 必须人工填写的字段（机器无从知晓）
 # CS_WIDGET_DOMAIN 是客服托管 Widget 第三域（CSD-DEP-01）：标准部署三域必填，
 # fail-closed —— 证书签发、Nginx vhost、preflight 都依赖它。
-MANUAL_VARS="API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN CERTBOT_EMAIL"
+# RTC_DOMAIN/TURN_DOMAIN 是 LiveKit 两域（LK-DEP-01）：信令 WSS 与 embedded
+# TURN，证书签发（init-letsencrypt.sh）与 preflight 同样强依赖。
+MANUAL_VARS="API_DOMAIN ADMIN_DOMAIN CS_WIDGET_DOMAIN RTC_DOMAIN TURN_DOMAIN CERTBOT_EMAIL"
 
 # 替换 .env 中 KEY=... 行（按字段名精确匹配，值含特殊字符也安全；BSD/GNU 通用）。
 set_var() {
@@ -305,8 +307,11 @@ if [ ! -f .env ]; then
   printf '      API_DOMAIN     后端 API 域名（需已 DNS 解析到本机）\n'
   printf '      ADMIN_DOMAIN   管理后台域名（需已 DNS 解析到本机）\n'
   printf '      CS_WIDGET_DOMAIN 客服 Widget 域名（需已 DNS 解析到本机，三域两两不同）\n'
+  printf '      RTC_DOMAIN     LiveKit 信令域（wss:// 直连，需已 DNS 解析到本机）\n'
+  printf '      TURN_DOMAIN    LiveKit TURN 域（证书经 80 签发，需已 DNS 解析到本机）\n'
   printf '      CERTBOT_EMAIL  证书到期通知邮箱\n'
   printf '      第三方服务     仅填写实际启用的支付、短信、SMTP、Uptrace 配置\n'
+  printf '      LIVEKIT_TURN_ENABLED=true 需先完成两域证书签发并退场旧 TURN（见 .env.example）\n'
   printf '\n    填好后执行：bash install.sh --edition %s\n\n' "$EDITION"
   exit 0
 fi
@@ -360,6 +365,20 @@ fi
 if is_true "$UPTRACE_ENABLED_VALUE"; then
   COMPOSE_ARGS+=(-f docker-compose.uptrace.yml)
   COMPOSE_FILES="$COMPOSE_FILES docker-compose.uptrace.yml"
+fi
+# ── 1a) LiveKit embedded TURN overlay（LK-DEP-01，LIVEKIT_TURN_ENABLED=true）──
+# W5 终态前置门在 preflight（旧 TURN 须已退场 + 证书须就绪），这里只做装配：
+# 叠加 docker-compose.livekit-turn.yml 并把证书目录默认值展开写入 .env
+# （.env 不做嵌套变量展开，必须由安装器算成绝对可用的字面路径）。
+TURN_ENABLED_VALUE="$(get_var LIVEKIT_TURN_ENABLED || true)"
+if is_true "$TURN_ENABLED_VALUE"; then
+  [ -f docker-compose.livekit-turn.yml ] \
+    || die "LIVEKIT_TURN_ENABLED=true 但缺少 docker-compose.livekit-turn.yml —— 仓库不完整"
+  turn_data_dir="$(get_var DATA_DIR || true)"; turn_data_dir="${turn_data_dir:-./data}"
+  ensure_value LIVEKIT_TURN_CERT_DIR \
+    "${turn_data_dir}/certbot/conf/live/$(get_var TURN_DOMAIN)"
+  COMPOSE_ARGS+=(-f docker-compose.livekit-turn.yml)
+  COMPOSE_FILES="$COMPOSE_FILES docker-compose.livekit-turn.yml"
 fi
 compose() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
 COMPOSE_DISPLAY="docker compose"
@@ -477,6 +496,8 @@ if [ -n "$digest_note" ]; then digest_line="$digest_line  $digest_note"; fi
 
 adm="$(get_var ADMIN_DOMAIN)"
 cs="$(get_var CS_WIDGET_DOMAIN)"
+rtc="$(get_var RTC_DOMAIN)"
+turn="$(get_var TURN_DOMAIN)"
 if [ -n "$ADMIN_PHONE" ]; then
   admin_hint="（超管已创建，ADMIN_ID=${admin_id:-见上方输出}，可直接登录）"
 else
@@ -495,7 +516,8 @@ cat <<EOF
    管理后台 / Admin : https://${adm}   ${admin_hint}
    API / WebSocket  : https://${api}
    客服 Widget      : https://${cs}  (snippet: /v1/loader.js + data-widget-id)
-   LiveKit 信令     : wss://${api}/livekit  (媒体端口 TCP 7881 / UDP 50000-50200)
+   LiveKit 信令     : wss://${rtc}  (媒体端口 TCP 7881 / UDP 50000-50200)
+   LiveKit TURN     : $(is_true "$TURN_ENABLED_VALUE" && printf 'turn(s):%s:3478|5349  (UDP 3478 / TLS 5349 / relay 50201-50500)' "$turn" || printf '未启用（LIVEKIT_TURN_ENABLED=true 开启，前置条件见 .env.example）')
    Garage S3        : https://${api}/s3  (3900 不暴露公网)
 EOF
 if is_true "$UPTRACE_ENABLED_VALUE"; then

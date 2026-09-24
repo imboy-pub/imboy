@@ -466,8 +466,6 @@ validate_runtime_config() ->
             ok = ensure_required_file(login_rsa_priv_key_file),
             %% API 签名验证开关在生产环境必须显式开启
             ok = ensure_api_auth_switch_on(),
-            %% 若配置了 TURN 服务器，则 eturnal_secret 不可为空
-            ok = ensure_eturnal_secret_if_turn_configured(),
             %% 若启用了推送通知，则极光凭据不可为空
             ok = ensure_jpush_if_push_enabled(),
             %% 若启用了短信，则平台凭据不可为空
@@ -659,26 +657,6 @@ ensure_api_auth_switch_on() ->
                     "Set {api_auth_switch, <<\"on\">>} in sys.config or "
                     "export IMBOY_API_AUTH_SWITCH=on"}
             )
-    end.
-
-%% @doc 若配置了 TURN 服务器则要求 eturnal_secret 非空
--spec ensure_eturnal_secret_if_turn_configured() -> ok.
-ensure_eturnal_secret_if_turn_configured() ->
-    case config_ds:env(eturnal_turn_urls, []) of
-        [] ->
-            ok;
-        [_ | _] ->
-            case normalize_secret(config_ds:env(eturnal_secret, <<>>)) of
-                <<>> ->
-                    erlang:error(
-                        {missing_required_config,
-                            "eturnal_turn_urls is configured but eturnal_secret is empty. "
-                            "Set {eturnal_secret, <<\"your-turn-secret\">>} in sys.config or "
-                            "export IMBOY_ETURNAL_SECRET=<secret>"}
-                    );
-                _ ->
-                    ok
-            end
     end.
 
 %% @doc 确保 solidified_key / solidified_key_iv 已就绪

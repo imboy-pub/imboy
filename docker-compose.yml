@@ -1,10 +1,10 @@
 # =====================================================
-# Imboy 单一 docker-compose（profiles 切换 dev / pro / turn）
+# Imboy 单一 docker-compose（profiles 切换 dev / pro）
 #
 # 历史：
 #   * docker-compose.yml          (dev 数据库)
 #   * docker-compose-pg18-pro.yml (生产数据库)
-#   * docker-compose-turn.yml     (TURN 服务)
+#   * docker-compose-turn.yml     (TURN 服务，coturn)
 # 三份文件硬编码密码、容器名、端口分散在不同文件里，
 # 现在统一到本文件，通过 docker compose --profile 切换。
 #
@@ -12,12 +12,15 @@
 #   1. 第一次：cp .env.example .env 并填写 IMBOY_PG_PASSWORD / IMBOY_PG_PRO_PASSWORD
 #   2. dev 数据库：    docker compose --profile dev up -d
 #   3. 生产数据库：    docker compose --profile pro up -d
-#   4. TURN 服务：     docker compose --profile turn up -d
-#   5. 多 profile 同启：docker compose --profile dev --profile turn up -d
+#   4. 多 profile 同启：docker compose --profile dev --profile pro up -d
 #
 # 注意：
 #   * pro 与 dev 容器名 / volume 路径 / 端口完全独立，可同机共存。
 #   * 不带 --profile 时 `docker compose up -d` 不启动任何服务（避免误操作）。
+#
+# TURN 服务（原 --profile turn / coturn + config/turnserver.conf）已删除
+# （LK-DEP-01）：TURN 由 LiveKit embedded TURN 承载（deploy/ 的
+# docker-compose.livekit-turn.yml overlay，TLS 5349 + UDP 3478）。
 # =====================================================
 
 services:
@@ -80,19 +83,6 @@ services:
       options:
         max-size: "10m"
         max-file: "10"
-
-  coturn:
-    profiles: ["turn"]
-    image: coturn/coturn:4.6
-    container_name: imboy-coturn
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ./config/turnserver.conf:/etc/turnserver.conf:ro
-    # 端口说明（host 网络，无需 ports 映射）:
-    #   3478          STUN/TURN (UDP+TCP)
-    #   5349          STUN/TURN over TLS
-    #   49152-65535   relay 端口范围
 
 networks:
   default:

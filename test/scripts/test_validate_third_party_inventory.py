@@ -85,7 +85,6 @@ class ValidateTests(unittest.TestCase):
         # self-hosted / dev-only / no_data 行必须豁免
         self.assertNotIn("garage_s3", blocked_line)
         self.assertNotIn("livekit", blocked_line)
-        self.assertNotIn("eturnal_turn", blocked_line)
         self.assertNotIn("alipay_sandbox", blocked_line)
         self.assertNotIn("fcm", blocked_line)
 

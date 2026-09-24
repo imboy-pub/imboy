@@ -32,7 +32,7 @@
    - `IMBOY_*` 环境变量 — 部署期密钥与连接信息（Section C）
    - `IMBOYENV` 环境变量 — 运行环境标识（local / dev / prod）
 2. **生产 fail-fast** — 缺密钥就拒绝启动，不存在「上线后才发现没设」。
-3. **Docker 单文件** — 一个 `docker-compose.yml` + profile（dev / pro / turn），不再三件套。
+3. **Docker 单文件** — 一个 `docker-compose.yml` + profile（dev / pro；原 `turn` profile 已随 coturn 移除，TURN 由 LiveKit embedded TURN 承载，见 [livekit-single-service-runbook.md](./livekit-single-service-runbook.md)）。
 
 English:
 
@@ -41,7 +41,7 @@ English:
    - `IMBOY_*` env vars — deploy-time secrets and connection info (Section C)
    - `IMBOYENV` env var — runtime tag (local / dev / prod)
 2. **Fail-fast in prod** — missing secrets refuse to boot; never discover after go-live.
-3. **One docker-compose file** — single `docker-compose.yml` with profiles (dev / pro / turn) instead of three separate files.
+3. **One docker-compose file** — single `docker-compose.yml` with profiles (dev / pro). The old `turn` profile was removed along with coturn; TURN now lives in the LiveKit embedded TURN overlay — see the [LiveKit runbook](./livekit-single-service-runbook.md).
 
 ---
 
@@ -87,10 +87,14 @@ $EDITOR .env
 
 | 触发条件 / Trigger | 必填变量 / Required when triggered |
 |---|---|
-| `eturnal_turn_urls` 非空 / non-empty | `IMBOY_ETURNAL_SECRET` |
+| 生产环境启用 LiveKit 通话（compose 部署已内置） | `LIVEKIT_API_KEY`、`LIVEKIT_API_SECRET`（secret ≥32 字符；deploy/install.sh 自动生成） |
 | `push.enabled = true` (sys.config) | `IMBOY_JPUSH_APP_KEY`, `IMBOY_JPUSH_MASTER_SECRET` |
 | `sms.switch = <<"on">>` & `platform = <<"yjsms">>` | `IMBOY_YJSMS_ACCOUNT`, `IMBOY_YJSMS_SECRET` |
 | `sms.switch = <<"on">>` & `platform = <<"aliyun">>` | sys.config 中 aliyun.key_id / key_secret 不可为空 |
+
+> 中文：旧版此处的 `eturnal_turn_urls` / `IMBOY_ETURNAL_SECRET` 条目已删除 —— eturnal 凭证链
+> 已随 LiveKit 单服务迁移整体移除，TURN 由 LiveKit embedded TURN 承载
+> （详见 [livekit-single-service-runbook.md](./livekit-single-service-runbook.md)）。
 
 ---
 
@@ -121,14 +125,13 @@ docker compose --profile dev up -d
 # 生产 / Production (port 5181)
 docker compose --profile pro up -d
 
-# TURN/STUN（如需）/ Optional WebRTC TURN
-docker compose --profile turn up -d
-
 # 同时多实例 / Combined
-docker compose --profile dev --profile pro --profile turn up -d
+docker compose --profile dev --profile pro up -d
 ```
 
-> 中文：未设置 `IMBOY_PG_PASSWORD` 时 docker compose 会立刻报错并拒绝启动，不会留下默认密码风险。
+> 中文：原 `--profile turn`（coturn）已删除 —— TURN 由 LiveKit embedded TURN 承载，
+> 不再是独立 compose 服务（部署与开启方式见 [livekit-single-service-runbook.md](./livekit-single-service-runbook.md)）。
+> 未设置 `IMBOY_PG_PASSWORD` 时 docker compose 会立刻报错并拒绝启动，不会留下默认密码风险。
 > English: With `IMBOY_PG_PASSWORD` unset, `docker compose` errors out immediately — no default-password risk.
 
 ---
@@ -181,7 +184,7 @@ upstream imboy {
 | `error({missing_required_config, jwt_key})` | `IMBOY_JWT_KEY` 未设置 / unset | 设置环境变量后重启 / set env and restart |
 | `insecure_pg_password` | 数据库使用了弱密码（如 `password`、`123456`、空）/ weak DB password | 改强密码并 rotate / rotate to strong password |
 | `insecure_config: api_auth_switch` | 生产未开启 API 签名 / API sig disabled in prod | `IMBOY_API_AUTH_SWITCH=on` |
-| `eturnal_secret is empty` | 配了 TURN URL 但没 secret / TURN URL set without secret | `IMBOY_ETURNAL_SECRET=<secret>` |
+| 通话入会报 `livekit_not_configured` | LiveKit 三键（ws_url/api_key/api_secret）任一为空 / any LiveKit key empty | 补齐 `IMBOY_LIVEKIT_*`（或 compose 的 `LIVEKIT_API_KEY/SECRET`）后重启 / set them and restart |
 | `solidified_key not configured` (warning) | dev/local 使用稳定默认值 / stable dev default | 生产请显式设置 `IMBOY_SOLIDIFIED_KEY*` / set explicitly in prod |
 | `login_rsa_*_key_file not configured` (warning) | dev/local 落盘到 `priv/dev_keys/` / persisted to priv/dev_keys | 生产请配置 `IMBOY_LOGIN_RSA_*_FILE` 指向 release 外路径 / point to path outside release |
 

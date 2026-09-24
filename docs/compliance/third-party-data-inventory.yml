@@ -30,8 +30,9 @@
 #   * dpa_status 目前全部 unknown —— 独立开发者未与任何 provider 签署 DPA，
 #     如实标注。海外发布门因此为红：这正是本清单的设计意图，未搞定
 #     数据出境合规前不得声明海外运营。
-#   * self-hosted 组件（Garage/LiveKit/eturnal）dpa_status=not-applicable，
-#     数据不出第三方，但 region 标 self-hosted 以便披露。
+#   * self-hosted 组件（Garage/LiveKit，后者含 SFU 与 embedded TURN）dpa_status=not-applicable，
+#     数据不出第三方，但 region 标 self-hosted 以便披露。原 eturnal TURN 已随
+#     LiveKit 单服务迁移退场（turn 类别现由 livekit_turn 行声明）。
 
 meta:
   schema_version: 1
@@ -247,26 +248,26 @@ providers:
     build_flavors: backend
     evidence: imboy config/sys.pro.config garage endpoint s3.imboy.pub
   livekit:
-    provider: LiveKit SFU（自托管，自域名反代）
+    provider: LiveKit SFU（自托管单容器，信令经自域名反代）
     category: rtc
-    version: livekit_client 2.11.0（客户端）
-    purpose: 群语音/视频通话媒体转发
+    version: livekit-server v1.13.7（服务端）livekit_client 2.13.0（客户端）
+    purpose: 1:1 与群语音/视频通话媒体转发（SFU）
     data_fields: 音视频流, 参会者身份与房间元数据, IP
-    endpoints: wss://pro.imboy.pub/livekit
+    endpoints: wss://rtc.imboy.pub
     region: self-hosted
     necessity: optional
     consent: 用户主动发起/加入通话
     privacy_url: unknown
     dpa_status: not-applicable
-    retention: 不落盘（实时转发）
+    retention: 不落盘（实时转发，无 Egress/录制）
     deletion_api: not-applicable
     build_flavors: backend, imboyapp-android, imboyapp-ios
-    evidence: imboy config/sys.pro.config livekit ws_url pro.imboy.pub/livekit
-  eturnal_turn:
-    provider: eturnal TURN/STUN（自托管）
+    evidence: imboy deploy/docker-compose.community.yml livekit-server v1.13.7 与 config/sys.config.example livekit ws_url rtc.imboy.pub
+  livekit_turn:
+    provider: LiveKit embedded TURN/STUN（自托管，同一容器）
     category: turn
-    version: 自托管
-    purpose: RTC NAT 穿透与会话中继
+    version: livekit-server v1.13.7（embedded TURN）
+    purpose: RTC NAT 穿透与会话中继（UDP 3478 兼 STUN、TLS 5349）
     data_fields: 会话中继元数据, IP 地址
     endpoints: turn.imboy.pub
     region: self-hosted
@@ -277,7 +278,7 @@ providers:
     retention: 不落盘
     deletion_api: not-applicable
     build_flavors: backend, imboyapp-android, imboyapp-ios
-    evidence: imboy config/sys.pro.config eturnal_turn_urls turn.imboy.pub
+    evidence: imboy deploy/docker-compose.livekit-turn.yml turn.enabled turn.imboy.pub 5349 与 deploy/.env.example TURN_DOMAIN
   alipay_sandbox:
     provider: 支付宝沙箱网关
     category: payment

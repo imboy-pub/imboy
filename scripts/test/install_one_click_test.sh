@@ -30,6 +30,10 @@ set_env() {
 cp "$FIXTURE/.env.example" "$FIXTURE/.env"
 set_env API_DOMAIN api.test.invalid
 set_env ADMIN_DOMAIN admin.test.invalid
+# 三域 + LiveKit 两域（CSD-DEP-01 / LK-DEP-01）都是 MANUAL_VARS 必填项
+set_env CS_WIDGET_DOMAIN cs.test.invalid
+set_env RTC_DOMAIN rtc.test.invalid
+set_env TURN_DOMAIN turn.test.invalid
 set_env CERTBOT_EMAIL certbot@test.invalid
 set_env UPTRACE_ENABLED true
 set_env UPTRACE_DOMAIN uptrace.test.invalid

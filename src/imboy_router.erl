@@ -144,7 +144,6 @@ get_routes() ->
                 {"/api/v1/user/show", user_handler, #{action => show}},
                 {"/api/v1/user/change_state", user_handler, #{action => change_state}},
                 {"/api/v1/user/setting", user_handler, #{action => setting}},
-                {"/api/v1/user/credential", user_handler, #{action => credential}},
                 {"/api/v1/user/change_password", user_handler, #{action => change_password}},
                 {"/api/v1/user/set_password", user_handler, #{action => set_password}},
                 {"/api/v1/user/apply_logout", user_handler, #{action => apply_logout}},

@@ -26,8 +26,11 @@
 （o436562.ingest.sentry.io，DSN gitignored 编译期注入）、支付宝/微信支付/Stripe（经 erlang_pay，
 app 端无支付 SDK 仅包可见性唤起）、SMTP（smtp.qq.com）、LLM 双源（火山方舟 ark + 阿里百炼 maas）。
 
-Self-hosted（3）：Garage S3（s3.imboy.pub）、LiveKit SFU（pro.imboy.pub/livekit 反代）、eturnal
-TURN/STUN（turn.imboy.pub）——数据不出第三方，dpa_status=not-applicable。
+Self-hosted（3）：Garage S3（s3.imboy.pub）、LiveKit SFU（wss://rtc.imboy.pub，v1.13.7 单容器）、
+LiveKit embedded TURN/STUN（turn.imboy.pub，同一容器，UDP 3478 + TLS 5349）——数据不出第三方，
+dpa_status=not-applicable。
+（2026-09-21 LiveKit 单服务迁移更新：原第三行 eturnal TURN/STUN 已退场，turn 类别改由
+LiveKit embedded TURN 声明，行数与类别覆盖不变。）
 
 显式 no-data（7）：FCM 与 APNs（sys.pro.config 占位符，远程推送未接入，客户端仅本地通知）、
 极光 Push REST（appkey 仅用于 SMS/认证）、阿里云短信（platform=aliyun 有配置无实现，见"发现"）、
