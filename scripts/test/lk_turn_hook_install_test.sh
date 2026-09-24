@@ -143,6 +143,34 @@ assert_rc 0 "$RC" "容器不存在 → exit 0（不动 certbot 状态）" "$TMP_
 assert_file_present "容器不存在时证书仍分发" "$TARGET_DIR/fullchain.pem"
 assert_not_grep "容器不存在时不 restart" 'docker restart' "$MOCK_LOG"
 
+# 7) 目标就是 Certbot lineage：不得用 mv 覆盖 Certbot 管理的符号链接
+ARCHIVE_SAME="$TMP_ROOT/letsencrypt/archive/$TURN_DOM"
+LINEAGE_SAME="$TMP_ROOT/letsencrypt/live-same/$TURN_DOM"
+mkcert "$ARCHIVE_SAME" "$TURN_DOM"
+mkdir -p "$LINEAGE_SAME"
+ln -s "$ARCHIVE_SAME/fullchain.pem" "$LINEAGE_SAME/fullchain.pem"
+ln -s "$ARCHIVE_SAME/privkey.pem" "$LINEAGE_SAME/privkey.pem"
+TARGET_DIR="$LINEAGE_SAME"; : >"$MOCK_LOG"
+RC="$(run_hook "$LINEAGE_SAME")"
+assert_rc 0 "$RC" "目标等于 lineage → exit 0" "$TMP_ROOT/hook.log"
+if [ -L "$LINEAGE_SAME/fullchain.pem" ]; then
+  ok "lineage fullchain 符号链接保持不变"
+else
+  bad "lineage fullchain 符号链接保持不变" "链接被覆盖"
+fi
+if [ -L "$LINEAGE_SAME/privkey.pem" ]; then
+  ok "lineage privkey 符号链接保持不变"
+else
+  bad "lineage privkey 符号链接保持不变" "链接被覆盖"
+fi
+assert_grep "同目录模式明确跳过证书复制" '保留 Certbot 符号链接' "$TMP_ROOT/hook.log"
+RESTART_COUNT="$(grep -c 'docker restart imboy_livekit' "$MOCK_LOG" || true)"
+if [ "$RESTART_COUNT" = 1 ]; then
+  ok "同目录模式仍重启容器一次"
+else
+  bad "同目录模式仍重启容器一次" "count=$RESTART_COUNT"
+fi
+
 echo "== A04/A05 两域 vhost nginx -t（真 nginx，BT include/日志路径桩替换） =="
 
 NGX_TMP="$TMP_ROOT/nginx"; NGX_LOGS="$NGX_TMP/logs"; NGX_CONF="$NGX_TMP/conf.d"

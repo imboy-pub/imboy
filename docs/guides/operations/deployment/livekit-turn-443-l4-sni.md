@@ -104,16 +104,26 @@ TURN/TLS 映射到回环 15443；eturnal 为 inactive；证书输出包含
 LiveKit 重启会中断正在进行的通话，dry-run 和真实续期应放在低峰窗口：
 
 ```bash
-sudo certbot renew --dry-run --run-deploy-hooks --cert-name turn.imboy.pub
+# 新版 Certbot 直接在 dry-run 成功后执行已安装的 deploy hook；旧版拆成两步
+if certbot renew --help all 2>&1 | grep -q -- '--run-deploy-hooks'; then
+  sudo certbot renew --dry-run --run-deploy-hooks --cert-name turn.imboy.pub
+else
+  sudo certbot renew --dry-run --cert-name turn.imboy.pub
+  sudo env RENEWED_LINEAGE=/etc/letsencrypt/live/turn.imboy.pub \
+    RENEWED_DOMAINS=turn.imboy.pub \
+    /etc/letsencrypt/renewal-hooks/deploy/livekit-turn-cert.sh
+fi
+
 sudo systemctl is-active eturnal || true
 sudo openssl x509 -in /etc/letsencrypt/live/turn.imboy.pub/fullchain.pem \
   -noout -subject -issuer -enddate
 ```
 
-`--run-deploy-hooks` 不可省略：Certbot 的普通 `--dry-run` 默认不执行 deploy hook。
-测试成功时 hook 使用当前有效证书（不是 staging 临时证书）重启 LiveKit，因此仍会中断
-进行中的通话，必须安排在低峰窗口。命令会访问 Let's Encrypt staging，执行前还要遵守
-本组织的第三方交互授权规则。
+只执行普通 `--dry-run` 不会调用 deploy hook。支持 `--run-deploy-hooks` 的版本必须带上
+该参数；不认识该参数的旧版（例如 Debian 12 的 Certbot 2.1.0）必须在 dry-run 成功后
+显式调用已安装的 hook。两种方式都会让 hook 使用当前有效证书（不是 staging 临时证书）
+重启 LiveKit，因此会中断进行中的通话，必须安排在低峰窗口。命令会访问 Let's Encrypt
+staging，执行前还要遵守本组织的第三方交互授权规则。
 
 ## 六、重启后验证
 

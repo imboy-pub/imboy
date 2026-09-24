@@ -12,8 +12,9 @@
 #   1. 域名过滤：RENEWED_LINEAGE 目录名（或手工调用时的 $1）≠ TURN_DOMAIN 即退出 0；
 #   2. 校验源证书可解析且 SAN 含 TURN_DOMAIN，任何校验失败立即退出非零，
 #      目标目录保持旧证书不动（失败不留半配置，下一次续期自然重试）；
-#   3. 原子分发：先 install 到目标目录内的 .new 暂存文件并复验，再 mv 覆盖
-#      （同文件系统 rename，读端要么全旧要么全新，不存在半张证书）；
+#   3. 原子分发：目标目录与 Certbot lineage 不同时，先 install 到目标目录内的
+#      暂存文件并复验，再 mv 覆盖；两者相同时直接使用 lineage，绝不覆盖 Certbot
+#      管理的符号链接；
 #   4. 安全重启：先 docker inspect 确认容器在跑，再 restart。⚠️ LiveKit 重启 =
 #      **全部进行中通话立即中断**（room 状态在进程内存，LK-01 §5.2），客户端
 #      SDK 自动 RESUME 恢复；本 hook 只应在低峰续期窗口被触发。容器不在跑/不存在
@@ -51,6 +52,7 @@ STAGE_PRIVKEY="$CERT_TARGET_DIR/.privkey.pem.staged"
 
 die() { printf 'livekit-turn hook: ❌ %s\n' "$*" >&2; exit 1; }
 log() { printf 'livekit-turn hook: %s\n' "$*"; }
+canonical_dir() { (cd -P -- "$1" 2>/dev/null && pwd -P); }
 
 # 半配置防线：任何退出路径都清掉暂存文件（已 mv 的最终文件不受影响）
 cleanup_stage() { rm -f -- "$STAGE_FULLCHAIN" "$STAGE_PRIVKEY"; }
@@ -82,17 +84,29 @@ KEY_PUB="$(openssl pkey -pubout -in "$SRC_PRIVKEY" 2>/dev/null || true)"
   || die "fullchain 与 privkey 公钥不配对，拒绝分发"
 
 # ── 3) 原子分发：暂存 → 复验 → rename 覆盖 ──────────────────────────────────
-mkdir -p "$CERT_TARGET_DIR"
-install -m 644 "$SRC_FULLCHAIN" "$STAGE_FULLCHAIN"
-install -m 600 "$SRC_PRIVKEY" "$STAGE_PRIVKEY"
-# 暂存副本复验（防 install 中途写坏/磁盘错误把坏证书换上去）
-openssl x509 -noout -in "$STAGE_FULLCHAIN" 2>/dev/null \
-  || die "暂存证书复验失败，目标目录未改动"
-openssl pkey -noout -in "$STAGE_PRIVKEY" 2>/dev/null \
-  || die "暂存私钥复验失败，目标目录未改动"
-mv -f -- "$STAGE_FULLCHAIN" "$CERT_TARGET_DIR/fullchain.pem"
-mv -f -- "$STAGE_PRIVKEY" "$CERT_TARGET_DIR/privkey.pem"
-log "证书已分发到 ${CERT_TARGET_DIR}（fullchain.pem + privkey.pem）"
+SAME_AS_LINEAGE=0
+if [ -d "$CERT_TARGET_DIR" ]; then
+  TARGET_CANONICAL="$(canonical_dir "$CERT_TARGET_DIR")" \
+    || die "无法解析证书目标目录：$CERT_TARGET_DIR"
+  LINEAGE_CANONICAL="$(canonical_dir "$LINEAGE")" \
+    || die "无法解析 Certbot lineage：$LINEAGE"
+  [ "$TARGET_CANONICAL" = "$LINEAGE_CANONICAL" ] && SAME_AS_LINEAGE=1
+fi
+if [ "$SAME_AS_LINEAGE" = 1 ]; then
+  log "目标目录就是 Certbot lineage，保留 Certbot 符号链接并跳过证书复制"
+else
+  mkdir -p "$CERT_TARGET_DIR"
+  install -m 644 "$SRC_FULLCHAIN" "$STAGE_FULLCHAIN"
+  install -m 600 "$SRC_PRIVKEY" "$STAGE_PRIVKEY"
+  # 暂存副本复验（防 install 中途写坏/磁盘错误把坏证书换上去）
+  openssl x509 -noout -in "$STAGE_FULLCHAIN" 2>/dev/null \
+    || die "暂存证书复验失败，目标目录未改动"
+  openssl pkey -noout -in "$STAGE_PRIVKEY" 2>/dev/null \
+    || die "暂存私钥复验失败，目标目录未改动"
+  mv -f -- "$STAGE_FULLCHAIN" "$CERT_TARGET_DIR/fullchain.pem"
+  mv -f -- "$STAGE_PRIVKEY" "$CERT_TARGET_DIR/privkey.pem"
+  log "证书已分发到 ${CERT_TARGET_DIR}（fullchain.pem + privkey.pem）"
+fi
 
 # ── 4) 安全重启：先确认容器状态，再 restart ─────────────────────────────────
 # ⚠️ restart = 进行中通话全部中断（见文件头）；容器未运行/不存在时跳过。
