@@ -29,6 +29,7 @@
     validate_mime/1,
     validate_size/1,
     validate_hash/1,
+    validate_file_name/1,
     sniff/2,
     sha256_hex/1,
     to_retain_ms/1,
@@ -69,12 +70,14 @@
 -define(MAX_SIZE_BYTES, 25 * 1024 * 1024).
 
 %% 对外可见的资产字段白名单（**不含** object_key / 任何 URL 语义字段）。
+%% CS-BE-01：补 file_name（冻结契约 assets[].file_name 的数据源，迁移 146 起有列）。
 -define(ASSET_VIEW_KEYS, [
     id,
     status,
     object_hash,
     mime,
     size_bytes,
+    file_name,
     conversation_id,
     message_id,
     business_identity_id,
@@ -118,6 +121,22 @@ validate_hash(Hash) when is_binary(Hash), byte_size(Hash) =:= 64 ->
     end;
 validate_hash(Hash) ->
     {error, {invalid_object_hash, Hash}}.
+
+%% @doc CS-BE-01：展示文件名校验（presign 可选声明）。
+%% `undefined` 合法（未声明 = 列保持 NULL）；声明时须为 1..256 字节的二进制，
+%% 且含basename 后非空（与 src/logic/enterprise_asset_logic.erl valid_name/1 同口径）。
+%% 文件名是**展示值**：不参与 object_key 派生、不得含路径语义（basename 判定
+%% 拒绝纯路径分隔符），存储引用仍由白名单投影排除。
+-spec validate_file_name(term()) -> ok | {error, {invalid_file_name, term()}}.
+validate_file_name(undefined) ->
+    ok;
+validate_file_name(Name) when is_binary(Name), byte_size(Name) > 0, byte_size(Name) =< 256 ->
+    case filename:basename(Name) =/= <<>> of
+        true -> ok;
+        false -> {error, {invalid_file_name, Name}}
+    end;
+validate_file_name(Name) ->
+    {error, {invalid_file_name, Name}}.
 
 %% @doc 按声明的 MIME 复核内容魔数（与 ?ALLOWED_MIMES 一一对应，同步演进）。
 -spec sniff(term(), term()) -> ok | {error, {mime_content_mismatch, term()}}.
@@ -248,6 +267,7 @@ public_content_view(Bytes, Row) when is_binary(Bytes), is_map(Row) ->
         object_hash => maps:get(object_hash, View, undefined),
         mime => maps:get(mime, View, undefined),
         size_bytes => maps:get(size_bytes, View, undefined),
+        file_name => maps:get(file_name, View, undefined),
         conversation_id => maps:get(conversation_id, View, undefined),
         message_id => maps:get(message_id, View, undefined),
         status => maps:get(status, View, undefined),

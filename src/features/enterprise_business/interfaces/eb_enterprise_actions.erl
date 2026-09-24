@@ -303,7 +303,10 @@ table(tenant) ->
                             {object_hash, binary, required},
                             {message_id, tsid, optional},
                             {business_identity_id, tsid, optional},
-                            {retain_until, int, optional}
+                            {retain_until, int, optional},
+                            %% CS-BE-01：展示文件名（可选，1..256 字节；随凭证
+                            %% 进 PUT 登记与历史 assets[].file_name 投影）。
+                            {file_name, binary, optional}
                         ],
                         []}
                 ],

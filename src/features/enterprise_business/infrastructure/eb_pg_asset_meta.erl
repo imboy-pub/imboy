@@ -25,18 +25,19 @@
 -define(ASSET_COLUMNS,
     "a.id, a.organization_id, a.workspace_id, a.conversation_id, a.message_id,"
     " a.business_identity_id, a.uploaded_by_user_id, a.object_key, a.object_hash, a.mime,"
-    " a.size_bytes, a.status, a.key_version, a.retain_until, a.version, a.created_at,"
-    " a.deleted_at"
+    " a.size_bytes, a.status, a.key_version, a.file_name, a.retain_until, a.version,"
+    " a.created_at, a.deleted_at"
 ).
 
 %% 登记：status 恒为 pending_confirm（确认只能走 confirm_asset/3）。
+%% CS-BE-01：file_name（可空展示文件名，迁移 146 起有列）随登记落库。
 -define(SQL_INSERT_ASSET, <<
     "INSERT INTO enterprise_asset"
     " (id, organization_id, workspace_id, conversation_id, message_id, business_identity_id,"
     "  uploaded_by_user_id, object_key, object_hash, mime, size_bytes, status, key_version,"
-    "  retain_until, version)"
-    " SELECT $3, $1, $2, $4, $5, $6, $7, $8, $9, $10, $11, 'pending_confirm', $12,"
-    "        CASE WHEN $13::bigint IS NULL THEN NULL ELSE to_timestamp($13::bigint/1000) END, 1"
+    "  file_name, retain_until, version)"
+    " SELECT $3, $1, $2, $4, $5, $6, $7, $8, $9, $10, $11, 'pending_confirm', $12, $13,"
+    "        CASE WHEN $14::bigint IS NULL THEN NULL ELSE to_timestamp($14::bigint/1000) END, 1"
     "   FROM workspace w"
     "  WHERE w.organization_id = $1 AND w.id = $2"
     " ON CONFLICT DO NOTHING"
@@ -92,9 +93,9 @@ object_key(OrgId, WorkspaceId, AssetId) ->
 %% @doc 登记未确认资产元数据。
 %%
 %% `Descriptor`（原子键 map）：`id` 必填、`object_hash` 必填、`mime` / `size_bytes` /
-%% `key_version` / `retain_until`（Unix 秒）/ `conversation_id` / `message_id` /
-%% `business_identity_id` / `uploaded_by_user_id` 可选。`object_key` **不在**入参
-%% 白名单里：由 `object_key/3` 派生。
+%% `file_name`（CS-BE-01：可空展示文件名）/ `key_version` / `retain_until`（Unix 秒）/
+%% `conversation_id` / `message_id` / `business_identity_id` / `uploaded_by_user_id` 可选。
+%% `object_key` **不在**入参白名单里：由 `object_key/3` 派生。
 -spec insert_asset(integer(), integer(), map()) -> {ok, map()} | {error, term()}.
 insert_asset(OrgId, WorkspaceId, Descriptor) when is_map(Descriptor) ->
     eb_pg_exec:with_tenant(OrgId, WorkspaceId, fun() ->
@@ -117,6 +118,7 @@ insert_asset(OrgId, WorkspaceId, Descriptor) when is_map(Descriptor) ->
                     eb_pg_store_sql:nullify(maps:get(mime, Descriptor, undefined)),
                     eb_pg_store_sql:nullify(maps:get(size_bytes, Descriptor, undefined)),
                     eb_pg_store_sql:nullify(maps:get(key_version, Descriptor, undefined)),
+                    eb_pg_store_sql:nullify(maps:get(file_name, Descriptor, undefined)),
                     eb_pg_store_sql:nullify(maps:get(retain_until, Descriptor, undefined))
                 ],
                 case eb_pg_exec:insert_returning(?SQL_INSERT_ASSET, Params) of
@@ -188,6 +190,7 @@ asset_fields() ->
         {size_bytes, <<"size_bytes">>, int},
         {status, <<"status">>, atom},
         {key_version, <<"key_version">>, int},
+        {file_name, <<"file_name">>, bin},
         {retain_until, <<"retain_until">>, ts},
         {version, <<"version">>, int},
         {created_at, <<"created_at">>, ts},

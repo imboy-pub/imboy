@@ -670,7 +670,10 @@ table(widget) ->
                             %% object_hash（64 位小写 hex SHA-256）为必填，
                             %% PUT 后由服务端复核——此前 widget 面漏收该参数，
                             %% 桥接层送 undefined 进校验恒 500。
-                            {object_hash, binary, required}
+                            {object_hash, binary, required},
+                            %% CS-BE-01：展示文件名（可选；随凭证进 PUT 登记
+                            %% 与历史 assets[].file_name 投影）。
+                            {file_name, binary, optional}
                         ],
                         [{id, session_id}]}
                 ]

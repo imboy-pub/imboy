@@ -217,12 +217,7 @@ persist(Conn, OrgId, WorkspaceId, Message, _Snapshot, Params, AcceptedAt, Sealed
                     %% 其他重放 = 409 conflict。
                     case asset_replay_gate(Conn, OrgId, WorkspaceId, Stored, Params) of
                         ok ->
-                            {ok, #{
-                                message => Stored,
-                                audit_id => undefined,
-                                replayed => true,
-                                sealed => Sealed
-                            }};
+                            replay_result(Conn, OrgId, WorkspaceId, Stored, Sealed);
                         {error, _} = Err ->
                             Err
                     end;
@@ -233,6 +228,21 @@ persist(Conn, OrgId, WorkspaceId, Message, _Snapshot, Params, AcceptedAt, Sealed
             end;
         {error, _} = Err ->
             Err
+    end.
+
+%% CS-BE-01：重放回显同样带资产白名单投影（与首发同一形状——同一 client_msg_id
+%% 重放返回同一 message，含 assets）。
+replay_result(Conn, OrgId, WorkspaceId, Stored, Sealed) ->
+    case message_with_assets(Conn, OrgId, WorkspaceId, Stored) of
+        {error, _} = Err ->
+            Err;
+        WithAssets ->
+            {ok, #{
+                message => WithAssets,
+                audit_id => undefined,
+                replayed => true,
+                sealed => Sealed
+            }}
     end.
 
 %% ===================================================================
@@ -263,12 +273,32 @@ do_append_accept_audit(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sea
     },
     case eb_pg_audit:append_in(Conn, OrgId, Event) of
         {ok, AuditId} ->
+            accept_result(Conn, OrgId, WorkspaceId, Stored, AuditId, Sealed);
+        {error, _} = Err ->
+            Err
+    end.
+
+%% CS-BE-01：POST 回显补资产白名单投影——发送后立即读回绑定资产，与消息写入/
+%% 绑定/审计**同一事务**（本读不走独立连接，回滚即整体回滚）。读失败 = 事务
+%% 失败（fail-closed：绝不返回「无附件」的假成功回显）。投影列集与历史读面
+%% 逐字同款（冻结契约 {id,mime,size_bytes,file_name,status}）。
+accept_result(Conn, OrgId, WorkspaceId, Stored, AuditId, Sealed) ->
+    case message_with_assets(Conn, OrgId, WorkspaceId, Stored) of
+        {error, _} = Err ->
+            Err;
+        WithAssets ->
             {ok, #{
-                message => Stored,
+                message => WithAssets,
                 audit_id => AuditId,
                 replayed => false,
                 sealed => Sealed
-            }};
+            }}
+    end.
+
+message_with_assets(Conn, OrgId, WorkspaceId, Stored) ->
+    case eb_pg_store:message_assets_in(Conn, OrgId, WorkspaceId, maps:get(id, Stored)) of
+        {ok, Assets} ->
+            Stored#{assets => Assets};
         {error, _} = Err ->
             Err
     end.

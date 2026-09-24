@@ -66,7 +66,8 @@
 
 %% @doc `Params`：`workspace_id` / `conversation_id` / `mime` / `size_bytes` /
 %% `object_hash` / `actor_user_id` 必填；`message_id` / `business_identity_id` /
-%% `retain_until`（Unix 秒）/ `upload_ttl_seconds` / `key_ref` 可选；
+%% `file_name`（CS-BE-01：展示文件名，可选）/ `retain_until`（Unix 秒）/
+%% `upload_ttl_seconds` / `key_ref` 可选；
 %% 端口可用 `asset` / `store` / `crypto` / `clock` / `id` / `auth` 同键覆盖。
 -spec request_presign(integer(), map()) -> {ok, map()} | {error, term()}.
 request_presign(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
@@ -85,13 +86,14 @@ presign_args(Params) ->
     Mime = maps:get(mime, Params, undefined),
     Size = maps:get(size_bytes, Params, undefined),
     Hash = maps:get(object_hash, Params, undefined),
+    FileName = maps:get(file_name, Params, undefined),
     case actor_scope(Params) of
         {error, _} = Err ->
             Err;
         {ok, Actor} ->
             case {is_integer(Ws), is_integer(Conv)} of
                 {true, true} ->
-                    presign_validations(Ws, Conv, Actor, Mime, Size, Hash);
+                    presign_validations(Ws, Conv, Actor, Mime, Size, Hash, FileName);
                 _ ->
                     {error, {invalid_argument, {presign_scope, [Ws, Conv]}}}
             end
@@ -113,7 +115,7 @@ actor_scope(Params) ->
             {error, {invalid_argument, {presign_scope, [U, C]}}}
     end.
 
-presign_validations(Ws, Conv, Actor, Mime, Size, Hash) ->
+presign_validations(Ws, Conv, Actor, Mime, Size, Hash, FileName) ->
     case eb_asset_content:validate_mime(Mime) of
         {error, _} = Err ->
             Err;
@@ -126,16 +128,27 @@ presign_validations(Ws, Conv, Actor, Mime, Size, Hash) ->
                         {error, _} = Err ->
                             Err;
                         ok ->
-                            {ok, #{
-                                ws => Ws,
-                                conv => Conv,
-                                actor => Actor,
-                                mime => Mime,
-                                size => Size,
-                                hash => Hash
-                            }}
+                            file_name_arg(Ws, Conv, Actor, Mime, Size, Hash, FileName)
                     end
             end
+    end.
+
+%% CS-BE-01：file_name 是可选展示声明——非法值 fail-closed（不静默丢弃，
+%% 否则历史投影会出现「上传了却永远无文件名」的半截契约）。
+file_name_arg(Ws, Conv, Actor, Mime, Size, Hash, FileName) ->
+    case eb_asset_content:validate_file_name(FileName) of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            {ok, #{
+                ws => Ws,
+                conv => Conv,
+                actor => Actor,
+                mime => Mime,
+                size => Size,
+                hash => Hash,
+                file_name => FileName
+            }}
     end.
 
 presign_authorized(OrgId, Args, Params) ->
@@ -234,6 +247,7 @@ presign_mint(OrgId, Args, Retain, Params) ->
                     object_hash => maps:get(hash, Args),
                     mime => maps:get(mime, Args),
                     size_bytes => maps:get(size, Args),
+                    file_name => maps:get(file_name, Args, undefined),
                     retain_until => Retain,
                     conversation_id => maps:get(conv, Args),
                     message_id => msg_or_undefined(Params),
@@ -283,6 +297,7 @@ presign_view(AssetId, Args, Retain, ExpiresAt, Token) ->
         object_hash => maps:get(hash, Args),
         mime => maps:get(mime, Args),
         size_bytes => maps:get(size, Args),
+        file_name => maps:get(file_name, Args, undefined),
         retain_until => Retain,
         expires_at => ExpiresAt,
         upload => #{
@@ -408,6 +423,7 @@ asset_put_private(OrgId, Ws, Payload, Claims, Params) ->
                 object_hash => maps:get(object_hash, Claims),
                 mime => maps:get(mime, Claims),
                 size_bytes => maps:get(size_bytes, Claims),
+                file_name => maps:get(file_name, Claims, undefined),
                 payload => Payload,
                 conversation_id => maps:get(conversation_id, Claims, undefined),
                 message_id => maps:get(message_id, Claims, undefined),
@@ -427,6 +443,7 @@ asset_put_private(OrgId, Ws, Payload, Claims, Params) ->
                         object_hash => maps:get(object_hash, Claims),
                         mime => maps:get(mime, Claims),
                         size_bytes => maps:get(size_bytes, Claims),
+                        file_name => maps:get(file_name, Claims, undefined),
                         retain_until => maps:get(retain_until, Claims, undefined)
                     }};
                 {error, _} = Err ->
@@ -680,9 +697,7 @@ content_authorized(OrgId, Ws, Row, Actor, Params) ->
     Conv = maps:get(conversation_id, Row, undefined),
     case maps:get(kind, Actor) of
         member ->
-            case
-                eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, maps:get(id, Actor))
-            of
+            case eb_asset_scope:authorize(Auth, Store, OrgId, Ws, Conv, maps:get(id, Actor)) of
                 {error, _} = Err ->
                     Err;
                 ok ->

@@ -15,7 +15,13 @@
 %%%   * `limit` 必须是绑定参数（`$5`）且有上界。
 -module(eb_pg_message_ext).
 
--export([list_messages_after/3, default_limit/0, max_limit/0, sql_statements/0]).
+-export([
+    list_messages_after/3,
+    default_limit/0,
+    max_limit/0,
+    asset_projection_fields/0,
+    sql_statements/0
+]).
 
 -define(DEFAULT_LIMIT, 50).
 -define(MAX_LIMIT, 200).
@@ -46,10 +52,27 @@
     " WHERE w.organization_id = $1 AND w.id = $2"
 >>).
 
+%% CS-BE-01（历史消息资产投影）：一页消息的绑定资产**批量**读取（`ANY($3)`），
+%% 逐消息 N+1 在此被结构性排除——每页恒定 1 次消息查询 + 1 次资产查询。
+%%   * 投影白名单冻结为 {id, mime, size_bytes, file_name, status}（+分组用
+%%     message_id，出站前剥离）：**不含** object_key / 任何 URL / 上传凭证；
+%%   * 仅 `status = 'active'`：deleted（软删）与 pending_confirm（未绑定，
+%%     绑定门只放 active）不出历史投影；
+%%   * 双租户键钉在语句里（org = $1 / ws = $2）：跨 Org/Workspace 的资产
+%%     行在本语句层即不可见，不是投影层过滤。
+-define(SQL_LIST_MESSAGE_ASSETS, <<
+    "SELECT a.id, a.message_id, a.mime, a.size_bytes, a.file_name, a.status"
+    "  FROM enterprise_asset a"
+    " WHERE a.organization_id = $1 AND a.workspace_id = $2"
+    "   AND a.message_id = ANY($3::bigint[])"
+    "   AND a.status = 'active'"
+    " ORDER BY a.id"
+>>).
+
 %% @doc 冻结语句（双租户键机械判据用）。
 -spec sql_statements() -> [binary()].
 sql_statements() ->
-    [?SQL_LIST_MESSAGES_AFTER, ?SQL_SCOPE_OK].
+    [?SQL_LIST_MESSAGES_AFTER, ?SQL_LIST_MESSAGE_ASSETS, ?SQL_SCOPE_OK].
 
 -spec default_limit() -> pos_integer().
 default_limit() -> ?DEFAULT_LIMIT.
@@ -80,13 +103,67 @@ list_messages_after(OrgId, WorkspaceId, Query) when is_map(Query) ->
                     after_id(Query),
                     Limit
                 ],
-                eb_pg_exec:fetch_many(
-                    ?SQL_LIST_MESSAGES_AFTER, Params, eb_pg_store_sql:message_fields()
-                )
+                case
+                    eb_pg_exec:fetch_many(
+                        ?SQL_LIST_MESSAGES_AFTER, Params, eb_pg_store_sql:message_fields()
+                    )
+                of
+                    {ok, Rows} -> attach_page_assets(OrgId, WorkspaceId, Rows);
+                    {error, _} = Err -> Err
+                end
         end
     end);
 list_messages_after(_OrgId, _WorkspaceId, _Query) ->
     {error, invalid_query}.
+
+%% CS-BE-01：把一页消息各自绑定的资产白名单批量装配到行上。
+%% 空页零额外查询；非空页恒定再发 1 条批量语句（与页内消息数无关）。
+%% 资产查询失败 fail-closed（整页报错，绝不夹带「无附件」的降级行）。
+-spec attach_page_assets(integer(), integer(), [map()]) -> {ok, [map()]} | {error, term()}.
+attach_page_assets(_OrgId, _WorkspaceId, []) ->
+    {ok, []};
+attach_page_assets(OrgId, WorkspaceId, Rows) ->
+    MessageIds = [maps:get(id, Row) || Row <- Rows],
+    case
+        eb_pg_exec:fetch_many(
+            ?SQL_LIST_MESSAGE_ASSETS, [OrgId, WorkspaceId, MessageIds], asset_projection_fields()
+        )
+    of
+        {ok, AssetRows} ->
+            ByMessage = asset_rows_by_message(AssetRows),
+            {ok, [
+                Row#{assets => maps:get(maps:get(id, Row), ByMessage, [])}
+             || Row <- Rows
+            ]};
+        {error, _} = Err ->
+            Err
+    end.
+
+asset_rows_by_message(AssetRows) ->
+    lists:foldl(
+        fun(Asset, Acc) ->
+            MessageId = maps:get(message_id, Asset, undefined),
+            View = maps:without([message_id], Asset),
+            maps:update_with(
+                MessageId, fun(Existing) -> Existing ++ [View] end, [View], Acc
+            )
+        end,
+        #{},
+        AssetRows
+    ).
+
+%% @doc 冻结契约 assets:[{id,mime,size_bytes,file_name,status}] 的行归一化规格
+%% （message_id 仅作分组键，装配后剥离；status 归一为原子）。
+-spec asset_projection_fields() -> [{atom(), binary(), atom()}].
+asset_projection_fields() ->
+    [
+        {id, <<"id">>, int},
+        {message_id, <<"message_id">>, int},
+        {mime, <<"mime">>, bin},
+        {size_bytes, <<"size_bytes">>, int},
+        {file_name, <<"file_name">>, bin},
+        {status, <<"status">>, atom}
+    ].
 
 %% 游标缺省 0：`id > 0` 等价于首页；显式负数/非整数一律 fail-closed。
 after_id(Query) ->

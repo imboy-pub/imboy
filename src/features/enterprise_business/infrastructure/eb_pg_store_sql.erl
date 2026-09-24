@@ -222,6 +222,18 @@ sql(fetch_asset_ids_by_message) ->
         " WHERE a.organization_id = $1 AND a.workspace_id = $2 AND a.message_id = $3"
         " ORDER BY a.id"
     >>;
+%% CS-BE-01（历史消息资产投影）：canonical 事务内读某消息已绑定资产的**白名单
+%% 投影**（POST 回显用；同事务可见本事务刚写的 message_id 绑定）。列集与
+%% eb_pg_message_ext 的批量投影逐字同款——不含 object_key / URL / 上传凭证；
+%% 仅 active（deleted 软删不出回显）。
+sql(fetch_assets_by_message) ->
+    <<
+        "SELECT a.id, a.mime, a.size_bytes, a.file_name, a.status"
+        "  FROM enterprise_asset a"
+        " WHERE a.organization_id = $1 AND a.workspace_id = $2 AND a.message_id = $3"
+        "   AND a.status = 'active'"
+        " ORDER BY a.id"
+    >>;
 sql(fetch_policy_by_id) ->
     <<
         "SELECT id, organization_id, workspace_id, data_class, version, retention_days,"
@@ -380,6 +392,8 @@ statements() ->
         sql(lock_assets_by_ids),
         sql(bind_asset_message),
         sql(fetch_asset_ids_by_message),
+        %% CS-BE-01：POST 回显的资产白名单投影（canonical 事务内）。
+        sql(fetch_assets_by_message),
         sql(ack_delivery),
         sql(advance_assignment),
         sql(list_assignments),

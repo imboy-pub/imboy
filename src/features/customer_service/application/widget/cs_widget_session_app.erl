@@ -359,6 +359,8 @@ asset_presign(OrgId, Params) when is_map(Params) ->
                     %% CSB-02S D6 补全：object_hash 由 widget 面动作表收齐后
                     %% 透传（企业面 request_presign 必填，PUT 后服务端复核）。
                     object_hash => maps:get(object_hash, Params, undefined),
+                    %% CS-BE-01：展示文件名透传（可选；历史 assets[].file_name）。
+                    file_name => maps:get(file_name, Params, undefined),
                     %% CSB-02S D6：访客主体（令牌 contact，服务端派生）进企业
                     %% 面的访客作用域分支——企业面 member 校验照旧不放宽。
                     actor_contact_id => ContactId

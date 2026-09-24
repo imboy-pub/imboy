@@ -61,6 +61,8 @@
     lock_assets_in/4,
     bind_asset_message_in/6,
     message_asset_ids_in/4,
+    %% CS-BE-01：POST 回显用的资产白名单投影（canonical 事务内专用）。
+    message_assets_in/4,
     %% EB-03R：契约面补齐后的新增能力（实现下沉到各 eb_pg_*_ext 模块，本模块只做
     %% Port 实现的唯一入口——`eb_infra_ports:resolve(store)` 返回的模块必须实现
     %% `eb_store_port` 的全部 callback）。
@@ -420,6 +422,37 @@ message_asset_ids_in(Conn, OrgId, WorkspaceId, MessageId) ->
             of
                 {ok, Rows} ->
                     {ok, [maps:get(<<"id">>, Row) || Row <- Rows]};
+                {error, Reason} ->
+                    {error, eb_pg_store_sql:normalize_error(Reason)}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc CS-BE-01：在调用方事务内读某消息已绑定资产的**白名单投影**（POST 回显）。
+%% 列集与读面批量投影同款（eb_pg_message_ext:asset_projection_fields/0 的冻结
+%% 契约五键，剥离分组键 message_id）；同事务可见本事务刚写的绑定，跨租户由
+%% 语句双键裁决。只在 canonical 事务内使用（与 message_asset_ids_in 同口径）。
+-spec message_assets_in(term(), integer(), integer(), integer()) ->
+    {ok, [map()]} | {error, term()}.
+message_assets_in(Conn, OrgId, WorkspaceId, MessageId) ->
+    case tenant_error(OrgId, WorkspaceId) of
+        ok ->
+            case
+                elib_pg:query(Conn, eb_pg_store_sql:sql(fetch_assets_by_message), [
+                    OrgId, WorkspaceId, MessageId
+                ])
+            of
+                {ok, Rows} ->
+                    {ok, [
+                        maps:without(
+                            [message_id],
+                            eb_pg_store_sql:normalize(
+                                Row, eb_pg_message_ext:asset_projection_fields()
+                            )
+                        )
+                     || Row <- Rows
+                    ]};
                 {error, Reason} ->
                     {error, eb_pg_store_sql:normalize_error(Reason)}
             end;

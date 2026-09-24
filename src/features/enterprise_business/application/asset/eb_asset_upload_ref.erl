@@ -50,6 +50,10 @@
 %% 可选 claims：允许 `undefined`，但非 `undefined` 时必须是整数。
 -define(OPTIONAL_INT_FIELDS, [retain_until, message_id]).
 
+%% CS-BE-01：可选二进制 claims（展示文件名）。旧凭证（无该键）照常打开——
+%% claims 是 term_to_binary 的自由 map，加键不破坏既有 token。
+-define(OPTIONAL_BIN_FIELDS, [file_name]).
+
 %% @doc 构造 AAD：`(OrgId, WorkspaceId, ConversationId, MessageId|undefined)`。
 -spec aad(integer(), integer(), integer(), integer() | undefined) -> map().
 aad(OrgId, WorkspaceId, ConversationId, undefined) ->
@@ -106,9 +110,17 @@ missing_claims(Claims) ->
             V =/= undefined,
             not is_integer(V)
         ],
-    case Bad of
-        [] -> Missing ++ ActorMissing;
-        _ -> Missing ++ ActorMissing ++ [{invalid_optional, Bad}]
+    BadBin =
+        [
+            {F, V}
+         || F <- ?OPTIONAL_BIN_FIELDS,
+            V <- [maps:get(F, Claims, undefined)],
+            V =/= undefined,
+            not is_binary(V)
+        ],
+    case {Bad, BadBin} of
+        {[], []} -> Missing ++ ActorMissing;
+        _ -> Missing ++ ActorMissing ++ [{invalid_optional, Bad ++ BadBin}]
     end.
 
 %% @doc 打开并校验凭证：
