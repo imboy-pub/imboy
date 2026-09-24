@@ -317,7 +317,8 @@ head_schema_test(C) ->
         {ok, Version, Dirty} = erlang_migrate:version(#{conn => C, dir => "priv/migrations"}),
         ?assertEqual(false, Dirty),
         ?assertEqual(migration_head(), Version),
-        ?assertEqual(?THIS_MIGRATION, Version),
+        %% head 动态（144/145 入列后 ≥ 本迁移）：本套件只钉「143 已应用」，不钉 head。
+        ?assert(Version >= ?THIS_MIGRATION),
         %% Application：version 列 + 两条约束 + 列表索引
         ?assert(has_column(C, <<"enterprise_application">>, <<"version">>)),
         ?assert(has_constraint(C, <<"ck_ea_version">>)),
@@ -616,7 +617,8 @@ down_up_cycle_test(State) ->
             %% --- up 回 143 ---
             ok = erlang_migrate:up(MigConfig),
             ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig)),
-            ?assertEqual(?THIS_MIGRATION, migration_head()),
+            %% head 动态：只要求 ≥ 本迁移（144/145 入列后 head 前移）。
+            ?assert(migration_head() >= ?THIS_MIGRATION),
             %% 重建后对象复现
             ?assert(has_column(C, <<"enterprise_application">>, <<"version">>)),
             ?assert(has_constraint(C, <<"ck_ea_version">>)),
