@@ -14,6 +14,7 @@
     fetch_seat/2,
     list_dispatchable_seats/1,
     list_dispatchable_seats_page/3,
+    list_all_seats_page/3,
     set_seat_enabled/4,
     %% BE-S01a：坐席上下文聚合 / 转接目标
     list_seat_org_contexts/1,
@@ -76,6 +77,8 @@ fetch_seat(OrgId, IdentityId) -> cs_pg_seat:fetch_seat(OrgId, IdentityId).
 list_dispatchable_seats(OrgId) -> cs_pg_seat:list_dispatchable_seats(OrgId).
 list_dispatchable_seats_page(OrgId, AfterId, Limit) ->
     cs_pg_seat:list_dispatchable_seats_page(OrgId, AfterId, Limit).
+list_all_seats_page(OrgFilter, AfterId, Limit) ->
+    cs_pg_seat:list_all_seats_page(OrgFilter, AfterId, Limit).
 set_seat_enabled(OrgId, IdentityId, Enabled, At) ->
     cs_pg_seat:set_seat_enabled(OrgId, IdentityId, Enabled, At).
 list_seat_org_contexts(UserId) ->

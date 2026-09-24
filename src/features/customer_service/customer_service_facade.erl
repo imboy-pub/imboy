@@ -21,6 +21,7 @@
     resume_seat/2,
     fetch_seat/2,
     list_dispatchable_seats/2,
+    list_platform_seats/2,
     provision_seat/2,
     %% session
     open_session/2,
@@ -120,6 +121,13 @@ fetch_seat(OrgId, _Params) ->
 list_dispatchable_seats(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     cs_seat_app:list_dispatchable_seats(OrgId, Params);
 list_dispatchable_seats(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 平台运营面坐席分页（跨企业可选 Org 过滤；OrgId=0 = 全局，>0 收窄）。
+-spec list_platform_seats(integer(), map()) -> term().
+list_platform_seats(OrgId, Params) when is_integer(OrgId), OrgId >= 0, is_map(Params) ->
+    cs_seat_app:list_platform_seats(OrgId, Params);
+list_platform_seats(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% ===================================================================

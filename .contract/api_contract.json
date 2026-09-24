@@ -568,6 +568,12 @@
         "static": false
       },
       {
+        "action": "p_platform_seats",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/seats",
+        "static": false
+      },
+      {
         "action": "p_widget_installations",
         "handler": "cs_platform_handler",
         "path": "/api/adm/customer-service/widget-installations",

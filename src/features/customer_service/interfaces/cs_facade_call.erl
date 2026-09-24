@@ -49,6 +49,9 @@ call(provision_seat, OrgId, Params) ->
     customer_service_facade:provision_seat(OrgId, Params);
 call(list_dispatchable_seats, OrgId, Params) ->
     customer_service_facade:list_dispatchable_seats(OrgId, Params);
+%% 平台运营面坐席分页（跨企业可选 Org 过滤；OrgId=0 = 全局）。
+call(list_platform_seats, OrgId, Params) ->
+    customer_service_facade:list_platform_seats(OrgId, Params);
 call(suspend_seat, OrgId, Params) ->
     customer_service_facade:suspend_seat(OrgId, Params);
 call(resume_seat, OrgId, Params) ->
@@ -141,6 +144,7 @@ actions() ->
         create_seat,
         provision_seat,
         list_dispatchable_seats,
+        list_platform_seats,
         suspend_seat,
         resume_seat,
         list_shop_keys,

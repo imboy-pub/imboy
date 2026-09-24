@@ -60,6 +60,15 @@
     OrgId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
 ) ->
     {ok, [seat()]} | {error, term()}.
+%% @doc 平台运营面坐席分页（跨企业）：`OrgFilter = 0` 表示全局（可选 org 过滤
+%% 缺省的占位语义），`> 0` 收窄单企业；**不按 enabled 过滤**（运营面要能定位
+%% 并恢复已停用坐席）。行投影带 organization_name / display_name / 默认 active
+%% workspace_id。键集：business_identity_id 升序（TSID 全局唯一，跨企业游标
+%% 不重不漏）。
+-callback list_all_seats_page(
+    OrgFilter :: non_neg_integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
+) ->
+    {ok, [map()]} | {error, term()}.
 %% @doc 坐席开关（suspend/resume）；`enabled=false` 后新 claim 立即被拒。
 -callback set_seat_enabled(
     OrgId :: integer(), IdentityId :: integer(), Enabled :: boolean(), At :: integer()
