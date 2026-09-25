@@ -460,6 +460,9 @@ table(tenant) ->
         %% epoch 秒回显，不依赖 DB 时区）。workspace 可选（缺省 org-wide）。
         %% 指标：new_sessions / first_response{count,avg_seconds} /
         %% closed_sessions / rating{count,avg} / current{queued,active}。
+        %% DEFECT-2（CS-INT-03 发现）：此前漏 clock_unit => second，at 以毫秒
+        %% 注入——统计窗口换算错 1000 倍（缺省日推导到远未来，窗口 epoch 为
+        %% 毫秒量纲）。与 read-cursor/queue/heartbeat 的 DF-6 同族；两面同步修。
         {session_stats,
             entry(
                 [
@@ -468,7 +471,10 @@ table(tenant) ->
                             {date, binary, optional},
                             {tz_offset, int, optional}
                         ],
-                        [], #{workspace => optional}}
+                        [], #{
+                            workspace => optional,
+                            clock_unit => second
+                        }}
                 ],
                 governance_auth(),
                 server_common(),
@@ -948,7 +954,8 @@ table(platform) ->
                             {tz_offset, int, optional}
                         ],
                         [], #{
-                            workspace => optional
+                            workspace => optional,
+                            clock_unit => second
                         }}
                 ],
                 platform_auth(<<"customer_service:read">>)

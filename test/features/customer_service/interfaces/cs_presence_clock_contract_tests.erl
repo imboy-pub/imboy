@@ -8,7 +8,14 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(TTL_ACTIONS, [seat_presence_heartbeat, seat_presence_status, seat_presence_list]).
+-define(TTL_ACTIONS, [
+    seat_presence_heartbeat,
+    seat_presence_status,
+    seat_presence_list,
+    %% DEFECT-2：stats 窗口换算消费 at（epoch 秒）——毫秒注入即窗口错千倍。
+    session_stats,
+    p_session_stats
+]).
 
 all_ttl_actions_use_second_clock_test() ->
     [
@@ -16,7 +23,12 @@ all_ttl_actions_use_second_clock_test() ->
             second,
             maps:get(
                 clock_unit,
-                element_kase(cs_actions:tenant(Action)),
+                element_kase(
+                    case cs_actions:tenant(Action) of
+                        {ok, _} = Ok -> Ok;
+                        _ -> cs_actions:platform(Action)
+                    end
+                ),
                 undefined
             ),
             {action_missing_second_clock, Action}
