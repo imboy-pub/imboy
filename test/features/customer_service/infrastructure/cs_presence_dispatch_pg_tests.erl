@@ -45,7 +45,8 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun busy_derived_and_capacity_double_guard/0},
         {timeout, 60, fun dispatch_skips_away_offline_keeps_queued/0},
         {timeout, 60, fun concurrent_claims_exactly_one_wins/0},
-        {timeout, 60, fun dispatch_without_presence_key_is_backward_compatible/0}
+        {timeout, 60, fun dispatch_without_presence_key_is_backward_compatible/0},
+        {timeout, 60, fun widget_no_seat_single_queued_then_claimable/0}
     ];
 cases({error, Reason}) ->
     erlang:error({csbe05_pg_suite_db_unavailable, Reason}).
@@ -322,6 +323,57 @@ dispatch_without_presence_key_is_backward_compatible() ->
     catch
         Class:Reason:Stack ->
             erlang:Class({csbe05_backward_compat, Reason, Stack})
+    end.
+
+%% ===================================================================
+%% CS-WGT-02（CS-RUNTIME-05）：无在线 Seat 的访客会话行为回归
+%% ===================================================================
+
+%% 无在线 Seat：widget 访客 open_session 仍成功且**只创建一个** queued
+%% session（接待路径不依赖 presence；派单只影响 claim）；Seat 上线后
+%% 原（同一个）会话可被 claim——不换会话、不重建。
+
+widget_no_seat_single_queued_then_claimable() ->
+    Scope = ?FIX:new_scope(),
+    try
+        Identity = seat_identity(Scope),
+        T = 1700000000,
+        OrgId = org(Scope),
+        %% 无任何心跳（所有坐席 offline）→ 访客照常开会话。
+        SessionId = open_session(Scope),
+        QueuedCount = ?FIX:scalar(
+            <<
+                "SELECT count(*) FROM customer_service_session"
+                " WHERE organization_id = $1 AND id = $2 AND status = 'queued'"
+            >>,
+            [OrgId, SessionId]
+        ),
+        ?assertEqual(1, QueuedCount, "无在线 Seat 必须仍创建一个 queued session"),
+        TotalCount = ?FIX:scalar(
+            <<
+                "SELECT count(*) FROM customer_service_session"
+                " WHERE organization_id = $1 AND contact_id = $2"
+            >>,
+            [OrgId, maps:get(contact_id, Scope)]
+        ),
+        ?assertEqual(1, TotalCount, "不得创建多个会话（不建留言/工单旁路）"),
+        %% Seat 上线后：原会话（同一 id）可被 claim。
+        {ok, _} = cs_seat_app:seat_heartbeat(OrgId, #{
+            workspace_id => ws(Scope), business_identity_id => Identity, at => T
+        }),
+        {ok, Claimed} = cs_session_app:claim(OrgId, #{
+            workspace_id => ws(Scope),
+            session_id => SessionId,
+            business_identity_id => Identity,
+            expected_version => 1,
+            at => T + 1
+        }),
+        ?assertEqual(active, maps:get(status, Claimed)),
+        ?assertEqual(Identity, maps:get(business_identity_id, Claimed)),
+        ?assertEqual(SessionId, maps:get(id, Claimed), "claim 必须命中原 queued 会话")
+    catch
+        Class:Reason:Stack ->
+            erlang:Class({csbe05_widget_no_seat, Reason, Stack})
     end.
 
 %% ===================================================================
