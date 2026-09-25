@@ -928,6 +928,25 @@ table(platform) ->
                 ],
                 platform_auth(<<"customer_service:read">>)
             )},
+        %% CS-ADM-02（CS-GOV-03B）：平台运营面按需统计——只读 GET 统计视图。
+        %% 复用 CS-BE-07 租户面同一 session_stats facade 与窗口语义
+        %% （date 缺省=UTC 当日 + tz_offset 缺省 0，界 ±840 分钟；显式窗口
+        %% epoch 秒回显）；workspace 可选（缺省 org-wide，与租户面一致）。
+        %% 零预聚合零缓存——Admin UI 只投影服务端事实，不客户端重算。
+        {p_session_stats,
+            platform_entry(
+                [
+                    {<<"GET">>, session_stats,
+                        [
+                            {date, binary, optional},
+                            {tz_offset, int, optional}
+                        ],
+                        [], #{
+                            workspace => optional
+                        }}
+                ],
+                platform_auth(<<"customer_service:read">>)
+            )},
         {p_seat_suspend,
             platform_entry(
                 [

@@ -2306,6 +2306,14 @@ customer_service_platform_routes() ->
             auth_context => platform_admin,
             required_permission => <<"customer_service:read">>
         }},
+        %% CS-ADM-02（CS-GOV-03B）：平台运营面按需统计（只读；复用 CS-BE-07
+        %% session_stats facade；date/tz_offset 窗口语义与租户面同一实现；
+        %% workspace 可选，缺省 org-wide）。
+        {"/api/adm/customer-service/organizations/:org_id/stats/sessions", cs_platform_handler, #{
+            action => p_session_stats,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:read">>
+        }},
         {"/api/adm/customer-service/organizations/:org_id/sessions/:id", cs_platform_handler, #{
             action => p_session,
             auth_context => platform_admin,

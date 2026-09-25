@@ -141,6 +141,9 @@ platform_literal_routes() ->
         {<<P/binary, "/provisioning">>, p_seat_provision, [<<"POST">>], platform_admin},
         %% C1（contracts-w2）：平台 session 列表（只读）。
         {<<P/binary, "/sessions">>, p_session_list, [<<"GET">>], platform_admin},
+        %% CS-ADM-02（CS-GOV-03B）：平台运营面按需统计（只读；session_stats
+        %% facade 与租户面 CS-BE-07 同一实现；workspace 可选）。
+        {<<P/binary, "/stats/sessions">>, p_session_stats, [<<"GET">>], platform_admin},
         {<<P/binary, "/sessions/:id">>, p_session, [<<"GET">>], platform_admin},
         {<<P/binary, "/seats/:id/suspend">>, p_seat_suspend, [<<"POST">>], platform_admin},
         {<<P/binary, "/seats/:id/resume">>, p_seat_resume, [<<"POST">>], platform_admin},
