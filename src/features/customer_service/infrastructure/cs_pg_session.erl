@@ -27,6 +27,8 @@
     %% CS-BE-04：已读游标（单调 ACK 幂等 + 未读事实现算）
     ack_session_read/6,
     fetch_session_read_state/4,
+    %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数）
+    session_stats/4,
     sql_statements/0
 ]).
 
@@ -205,6 +207,40 @@
     " WHERE s.organization_id = $1"
     "   AND ($2::bigint = 0 OR s.workspace_id = $2)"
     " GROUP BY s.status"
+>>).
+
+%% CS-BE-07（按需统计）：窗口聚合三轴 + 当前 status 计数。窗口比较全部
+%% 用 to_timestamp($n::double precision)（epoch 秒 → UTC instant），与 DB
+%% 会话时区设置无关；Org/Workspace 同语句收窄（铁律 6；WorkspaceId=0 =
+%% org-wide）。AVG 走 float8（无样本 AVG 为 NULL → undefined，不用 0 伪装）。
+-define(SQL_STATS_NEW_SESSIONS, <<
+    "SELECT count(*) AS new_sessions,"
+    "       count(claimed_at) AS claimed_in_window,"
+    "       AVG(extract(epoch from (claimed_at - queued_at)))::float8 AS first_response_avg_seconds"
+    "  FROM customer_service_session s"
+    " WHERE s.organization_id = $1"
+    "   AND ($2::bigint = 0 OR s.workspace_id = $2)"
+    "   AND s.queued_at >= to_timestamp($3::double precision)"
+    "   AND s.queued_at < to_timestamp($4::double precision)"
+>>).
+
+-define(SQL_STATS_CLOSED, <<
+    "SELECT count(*) AS closed_sessions"
+    "  FROM customer_service_session s"
+    " WHERE s.organization_id = $1"
+    "   AND ($2::bigint = 0 OR s.workspace_id = $2)"
+    "   AND s.closed_at >= to_timestamp($3::double precision)"
+    "   AND s.closed_at < to_timestamp($4::double precision)"
+>>).
+
+-define(SQL_STATS_RATING, <<
+    "SELECT count(rating_at) AS rated_in_window,"
+    "       AVG(s.rating)::float8 AS avg_rating"
+    "  FROM customer_service_session s"
+    " WHERE s.organization_id = $1"
+    "   AND ($2::bigint = 0 OR s.workspace_id = $2)"
+    "   AND s.rating_at >= to_timestamp($3::double precision)"
+    "   AND s.rating_at < to_timestamp($4::double precision)"
 >>).
 
 %% CS-BE-03（CS-DEC-01 冻结）：会话锚定的客户上下文事实行。零白名单外列：
@@ -448,6 +484,64 @@ seat_session_total_by_status(OrgId, WorkspaceId) ->
             {ok, maps:merge(#{queued => 0, active => 0, closed => 0}, ByStatus)}
     end.
 
+%% ===================================================================
+%% CS-BE-07：按需统计（纯读；三轴窗口聚合 + 当前 status 计数现算）
+%% ===================================================================
+
+-spec session_stats(integer(), integer(), non_neg_integer(), non_neg_integer()) ->
+    {ok, map()} | {error, term()}.
+session_stats(OrgId, WorkspaceId, Start, End) ->
+    case
+        cs_pg_common:fetch_one(
+            ?SQL_STATS_NEW_SESSIONS,
+            [OrgId, WorkspaceId, Start, End],
+            [new_sessions, claimed_in_window, first_response_avg_seconds]
+        )
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, NewRow} ->
+            session_stats_closed(OrgId, WorkspaceId, Start, End, NewRow)
+    end.
+
+session_stats_closed(OrgId, WorkspaceId, Start, End, NewRow) ->
+    case
+        cs_pg_common:fetch_one(
+            ?SQL_STATS_CLOSED, [OrgId, WorkspaceId, Start, End], [closed_sessions]
+        )
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, ClosedRow} ->
+            session_stats_rating(OrgId, WorkspaceId, Start, End, NewRow, ClosedRow)
+    end.
+
+session_stats_rating(OrgId, WorkspaceId, Start, End, NewRow, ClosedRow) ->
+    case
+        cs_pg_common:fetch_one(
+            ?SQL_STATS_RATING,
+            [OrgId, WorkspaceId, Start, End],
+            [rated_in_window, avg_rating]
+        )
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, RatingRow} ->
+            session_stats_status(OrgId, WorkspaceId, NewRow, ClosedRow, RatingRow)
+    end.
+
+session_stats_status(OrgId, WorkspaceId, NewRow, ClosedRow, RatingRow) ->
+    case seat_session_total_by_status(OrgId, WorkspaceId) of
+        {error, _} = Err ->
+            Err;
+        {ok, ByStatus} ->
+            {ok,
+                maps:merge(
+                    maps:merge(NewRow, ClosedRow),
+                    maps:merge(RatingRow, #{status_counts => ByStatus})
+                )}
+    end.
+
 -spec sql_statements() -> [binary()].
 sql_statements() ->
     [
@@ -472,7 +566,12 @@ sql_statements() ->
         ?SQL_ACK_EFFECTIVE_CURSOR,
         ?SQL_TRANSFER_BOUNDARY_MAX,
         ?SQL_SESSION_READ_STATE,
-        ?SQL_TRANSFER_CURSOR_BOUNDARY
+        ?SQL_TRANSFER_CURSOR_BOUNDARY,
+        %% CS-BE-07：按需统计（新会话+首响 / 关闭 / 评分；当前 status 计数
+        %% 复用上面的 SQL_SEAT_SESSION_TOTAL_BY_STATUS）
+        ?SQL_STATS_NEW_SESSIONS,
+        ?SQL_STATS_CLOSED,
+        ?SQL_STATS_RATING
     ].
 
 %% ===================================================================

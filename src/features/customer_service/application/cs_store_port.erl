@@ -204,6 +204,24 @@
 ) ->
     {ok, [session()]} | {error, term()}.
 
+%% @doc CS-BE-07（按需统计）：窗口 [WindowStart, WindowEnd)（epoch 秒，UTC
+%% instant——date/tz_offset 已由 application 换算，store 不解释时区）上的
+%% 会话事实聚合，外加当前时刻 status 计数。返回键（application 白名单复核）：
+%%   * new_sessions / claimed_in_window / first_response_avg_seconds —— 开会话轴
+%%     （queued_at ∈ W；claimed 样本即 W 内新会话中 claimed_at 非空者，
+%%     avg_seconds = 平均 (claimed_at - queued_at) 秒，无样本为 undefined）
+%%   * closed_sessions —— 关闭轴（closed_at ∈ W，独立于开会话轴）
+%%   * rated_in_window / avg_rating —— 评分轴（rating_at ∈ W；未评分不进分母）
+%%   * status_counts —— 当前 status 计数（queued/active/closed 三键恒在）
+%% WorkspaceId=0 表示 org-wide。零预聚合、零缓存——每次现算。
+-callback session_stats(
+    OrgId :: integer(),
+    WorkspaceId :: integer(),
+    WindowStart :: non_neg_integer(),
+    WindowEnd :: non_neg_integer()
+) ->
+    {ok, Stats :: map()} | {error, term()}.
+
 %% @doc CSB-02R 坐席工作台分页（org-wide；WorkspaceId=0 表示不限 workspace）。
 %% 返回同作用域的稳定计数（列表页 + status 全量分布）；行含 contact 掩码
 %% 原料（display_name / subject_mask）与末条消息安全摘要（id / sender_type /

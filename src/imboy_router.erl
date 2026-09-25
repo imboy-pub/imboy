@@ -2141,6 +2141,14 @@ customer_service_tenant_routes() ->
             auth_context => enterprise_owner_admin,
             required_governance => [<<"owner">>, <<"admin">>]
         }},
+        %% CS-BE-07（按需统计）：治理面只读统计视图——GET /stats/sessions
+        %%（date/tz_offset 显式窗口；零预聚合零缓存，每次现算）。owner/admin
+        %% 治理权限（统计是运营数据，可见面与 seat-limit 同级）。
+        {"/api/v1/cs/organizations/:org_id/stats/sessions", cs_tenant_handler, #{
+            action => session_stats,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
         %% CS-BE-05（CS-DEC-02）：presence 心跳 lease——POST 刷新心跳并返回
         %% 派生运行态（online/away/busy/offline）；enabled 门在 application
         %% （suspend 立即 seat_disabled）。心跳只写自身 presence 行，不碰

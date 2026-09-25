@@ -203,7 +203,10 @@ otp_lib_whitelist() ->
         imboy_route_shape,
         %% CSD-BE-01 跑绿补录（Base 既有红：BE-PATCH-01 的 presign 查询串
         %% 组装用 uri_string:compose_query/1——OTP stdlib，非跨 Feature 依赖）。
-        uri_string
+        uri_string,
+        %% CS-BE-07：统计窗口换算（date ↔ UTC epoch 秒、日历日校验）——
+        %% OTP stdlib 纯时间函数，非跨 Feature 依赖。
+        calendar
     ].
 
 remote_calls_in_module(Mod) ->

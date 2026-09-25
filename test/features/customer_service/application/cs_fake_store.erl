@@ -63,6 +63,8 @@
     list_sessions_for_contact/3,
     list_sessions_page/5,
     seat_session_page/5,
+    %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数）
+    session_stats/4,
     default_workspace/1,
     insert_shop_key/2,
     fetch_shop_key/2,
@@ -367,6 +369,65 @@ binary_status(StatusBin) when is_binary(StatusBin) -> StatusBin;
 binary_status(Status) when is_atom(Status) -> atom_to_binary(Status, utf8).
 
 %% CSB-02R：widget 装配缺省 Workspace 解析（fake = 该 Org 最小 workspace 行）。
+%% CS-BE-07：按需统计——三轴窗口聚合 + 当前 status 计数（镜像 cs_pg_session
+%% 的 SQL 语义：epoch 秒整数比较；无样本 AVG = undefined；status_counts 三键
+%% 恒在、atom 键与 PG 的 to_status 口径一致）。
+session_stats(OrgId, WorkspaceId, Start, End) ->
+    {sessions, Sessions} = hd(ets:lookup(?TAB, sessions)),
+    InScope = [
+        S
+     || S <- maps:values(Sessions),
+        maps:get(organization_id, S) =:= OrgId,
+        WorkspaceId =:= 0 orelse maps:get(workspace_id, S) =:= WorkspaceId
+    ],
+    NewAxis = [
+        S
+     || S <- InScope,
+        in_window(maps:get(queued_at, S), Start, End)
+    ],
+    Claimed = [S || S <- NewAxis, maps:get(claimed_at, S, undefined) =/= undefined],
+    ClosedAxis = [
+        S
+     || S <- InScope,
+        in_window(maps:get(closed_at, S, undefined), Start, End)
+    ],
+    RatedAxis = [
+        S
+     || S <- InScope,
+        in_window(maps:get(rating_at, S, undefined), Start, End)
+    ],
+    StatusCounts = lists:foldl(
+        fun(S, Acc) ->
+            K = maps:get(status, S),
+            Acc#{K => maps:get(K, Acc, 0) + 1}
+        end,
+        #{queued => 0, active => 0, closed => 0},
+        InScope
+    ),
+    {ok, #{
+        new_sessions => length(NewAxis),
+        claimed_in_window => length(Claimed),
+        first_response_avg_seconds => avg_of([
+            maps:get(claimed_at, S) - maps:get(queued_at, S)
+         || S <- Claimed
+        ]),
+        closed_sessions => length(ClosedAxis),
+        rated_in_window => length(RatedAxis),
+        avg_rating => avg_of([maps:get(rating, S) || S <- RatedAxis]),
+        status_counts => StatusCounts
+    }}.
+
+in_window(Ts, Start, End) when is_integer(Ts) ->
+    Ts >= Start andalso Ts < End;
+in_window(_Ts, _Start, _End) ->
+    false.
+
+avg_of([]) ->
+    undefined;
+avg_of(Values) ->
+    Sum = lists:sum(Values),
+    Sum / length(Values).
+
 default_workspace(OrgId) ->
     {workspaces, Workspaces} = hd(ets:lookup(?TAB, workspaces)),
     case

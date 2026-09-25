@@ -442,18 +442,37 @@ table(tenant) ->
         %%（seat_limit 正整数；缺省=清除→unlimited）；GET 额度视图
         %%（seat_limit n|unlimited + used 现算计数）。治理权限
         %% enterprise_owner_admin（owner/admin，不因业务身份自动获得）。
+        %% CS-BE-07 对账修正：去掉冗余的 with_case_auth（PUT 覆盖与默认
+        %% auth 逐字相同——case_auth 只允许「收窄」，同值重复声明被
+        %% cs_route_contract_tests 的 case_auth_same_as_default 审计拒绝）。
         {seat_limit_governance,
-            with_case_auth(
-                entry(
-                    [
-                        {<<"PUT">>, seat_limit_set, [{seat_limit, integer, optional}], []},
-                        {<<"GET">>, seat_limit_view, [], []}
-                    ],
-                    governance_auth(),
-                    server_common(),
-                    path
-                ),
-                #{<<"PUT">> => governance_auth()}
+            entry(
+                [
+                    {<<"PUT">>, seat_limit_set, [{seat_limit, integer, optional}], []},
+                    {<<"GET">>, seat_limit_view, [], []}
+                ],
+                governance_auth(),
+                server_common(),
+                path
+            )},
+        %% CS-BE-07（按需统计）：治理面只读——GET 统计视图（date 缺省 =
+        %% 服务端时钟 UTC 当日；tz_offset 缺省 0，界 ±840 分钟；显式窗口
+        %% epoch 秒回显，不依赖 DB 时区）。workspace 可选（缺省 org-wide）。
+        %% 指标：new_sessions / first_response{count,avg_seconds} /
+        %% closed_sessions / rating{count,avg} / current{queued,active}。
+        {session_stats,
+            entry(
+                [
+                    {<<"GET">>, session_stats,
+                        [
+                            {date, binary, optional},
+                            {tz_offset, int, optional}
+                        ],
+                        [], #{workspace => optional}}
+                ],
+                governance_auth(),
+                server_common(),
+                path
             )},
         %% CS-BE-05（CS-DEC-02）：presence 心跳 lease——POST /seats/me/heartbeat
         %% 刷新心跳 lease 并返回派生运行态；PUT /seats/me/presence 设置/清除
@@ -474,9 +493,9 @@ table(tenant) ->
             with_case_auth(
                 entry(
                     [
-                        {<<"PUT">>, seat_manual_status,
-                            [{manual_status, binary, optional}], [],
-                            #{clock_unit => second}},
+                        {<<"PUT">>, seat_manual_status, [{manual_status, binary, optional}], [], #{
+                            clock_unit => second
+                        }},
                         {<<"GET">>, seat_presence, [], []}
                     ],
                     seat_auth(<<"conversation.read">>),

@@ -31,7 +31,9 @@
     append_session_message/2,
     list_contact_sessions/2,
     list_sessions/2,
-    seat_session_page/2
+    seat_session_page/2,
+    %% CS-BE-07：按需统计
+    session_stats/2
 ]).
 
 %% C1（contracts-w2）投影白名单：**逐字**；visit_token_id / close_reason /
@@ -921,6 +923,168 @@ last_message_with(Row, Preview) ->
             }
     end.
 
+%% ===================================================================
+%% CS-BE-07：按需统计（纯读；date + tz_offset 显式窗口，不依赖 DB 时区）
+%% ===================================================================
+
+%% Unix epoch 的格里历秒基准（calendar 换算用）。
+-define(GREGORIAN_EPOCH_SECONDS, 62167219200).
+%% 时区偏移上界（分钟）：UTC±14 覆盖全部现役时区（含 Kiribati +14）。
+-define(MAX_TZ_OFFSET_MINUTES, 840).
+
+%% @doc 客服统计（治理面 GET；零预聚合、零缓存，每次现算）。
+%%
+%% Params：
+%%   * `date`（可选，`YYYY-MM-DD`）：统计日；缺省 = 服务端时钟 `at` 的
+%%     **UTC 当日**（at 亦缺省时取服务器当前秒——两步兜底都显式，绝不隐式
+%%     依赖 DB 会话时区）；
+%%   * `tz_offset`（可选，整数分钟，缺省 0=UTC，界 ±840）：`date` 在该偏移
+%%     时区的 [00:00, 24:00) 折算为 UTC epoch 窗口；
+%%   * `workspace_id`（可选）：给出则收窄到该 workspace，缺省 org-wide；
+%%   * `store` / `at` 可注入（测试面）。
+%%
+%% 窗口 W = [window_start, window_end)（epoch 秒，UTC instant），指标公式：
+%%   * `new_sessions` = |queued_at ∈ W|（开会话轴）；
+%%   * `first_response` = {count, avg_seconds} over queued_at ∈ W 且已 claim
+%%     （avg = 平均 claimed_at − queued_at 秒）——**未 claim 不进分母**，
+%%     无样本 count=0 / avg_seconds=null；
+%%   * `closed_sessions` = |closed_at ∈ W|（关闭轴独立：昨日开今日关也计入）；
+%%   * `rating` = {count, avg} over rating_at ∈ W——**未评分不进分母**，
+%%     无样本 count=0 / avg=null；
+%%   * `current` = 当前时刻 queued/active 计数（不看窗口）。
+-spec session_stats(integer(), map()) -> {ok, map()} | {error, term()}.
+session_stats(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
+    case stats_workspace_scope(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            case stats_window(Params) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, Date, Tz, Start, End} ->
+                    stats_view(OrgId, WorkspaceId, Date, Tz, Start, End, Params)
+            end
+    end;
+session_stats(OrgId, _Params) ->
+    {error, {invalid_organization_id, OrgId}}.
+
+%% workspace 门：本用例 org-wide 聚合（缺省 0=不限）——显式给出须正整数，
+%% 其余形状与租户门口径一致（{invalid_workspace_id, 原值}）。
+stats_workspace_scope(Params) ->
+    case maps:get(workspace_id, Params, undefined) of
+        undefined ->
+            {ok, 0};
+        Ws when is_integer(Ws), Ws > 0 ->
+            {ok, Ws};
+        Other ->
+            {error, {invalid_workspace_id, Other}}
+    end.
+
+%% 窗口换算：date（缺省 = at 的 UTC 当日）+ tz_offset（缺省 0，界 ±840）→
+%% UTC epoch [start, end)。date 二进制形状严格 YYYY-MM-DD 且为真实日历日。
+stats_window(Params) ->
+    case stats_date(maps:get(date, Params, undefined), maps:get(at, Params, undefined)) of
+        {error, _} = Err ->
+            Err;
+        {ok, Date} ->
+            case stats_tz_offset(maps:get(tz_offset, Params, 0)) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, Tz} ->
+                    Start = gregorian_day_epoch(Date) - Tz * 60,
+                    {ok, date_binary(Date), Tz, Start, Start + 86400}
+            end
+    end.
+
+stats_date(undefined, At) ->
+    %% 缺省日 = at（服务端派生秒；测试可注入）的 UTC 当日；at 亦缺省取
+    %% 服务器当前秒——两步都显式 UTC（calendar:gregorian_seconds_to_date
+    %% 就是 UTC 换算），与 DB 会话时区无关。
+    Epoch =
+        case is_integer(At) of
+            true -> At;
+            false -> os:system_time(second)
+        end,
+    {Date, _Time} = calendar:gregorian_seconds_to_datetime(Epoch + ?GREGORIAN_EPOCH_SECONDS),
+    {ok, Date};
+stats_date(DateBin, _At) when is_binary(DateBin) ->
+    case DateBin of
+        <<Y:4/binary, "-", M:2/binary, "-", D:2/binary>> ->
+            case {digits_only(Y), digits_only(M), digits_only(D)} of
+                {true, true, true} ->
+                    Date = {b2i(Y), b2i(M), b2i(D)},
+                    case calendar:valid_date(Date) of
+                        true -> {ok, Date};
+                        false -> {error, {invalid_date, DateBin}}
+                    end;
+                _ ->
+                    {error, {invalid_date, DateBin}}
+            end;
+        _ ->
+            {error, {invalid_date, DateBin}}
+    end;
+stats_date(Other, _At) ->
+    {error, {invalid_date, Other}}.
+
+stats_tz_offset(V) when is_integer(V), abs(V) =< ?MAX_TZ_OFFSET_MINUTES ->
+    {ok, V};
+stats_tz_offset(V) ->
+    {error, {invalid_tz_offset, V}}.
+
+gregorian_day_epoch({Y, M, D}) ->
+    calendar:datetime_to_gregorian_seconds({{Y, M, D}, {0, 0, 0}}) - ?GREGORIAN_EPOCH_SECONDS.
+
+date_binary({Y, M, D}) ->
+    iolist_to_binary(io_lib:format("~4..0B-~2..0B-~2..0B", [Y, M, D])).
+
+digits_only(Bin) ->
+    Bin =/= <<>> andalso
+        lists:all(fun(C) -> C >= $0 andalso C =< $9 end, binary_to_list(Bin)).
+
+b2i(Bin) ->
+    binary_to_integer(Bin).
+
+%% 出站组装：store 事实 → 白名单视图（唯一出口；红线键在此裁剪）。
+%% count=0 时均值强制 undefined——PG AVG 无样本为 NULL，这里双保险，
+%% 0 绝不伪装成均值。
+stats_view(OrgId, WorkspaceId, DateBin, Tz, Start, End, Params) ->
+    case
+        with_store(Params, fun(Store) -> Store:session_stats(OrgId, WorkspaceId, Start, End) end)
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Facts} ->
+            Claimed = maps:get(claimed_in_window, Facts, 0),
+            Rated = maps:get(rated_in_window, Facts, 0),
+            StatusCounts = maps:get(status_counts, Facts, #{}),
+            {ok, #{
+                organization_id => OrgId,
+                workspace_id => WorkspaceId,
+                date => DateBin,
+                tz_offset => Tz,
+                window_start => Start,
+                window_end => End,
+                new_sessions => maps:get(new_sessions, Facts, 0),
+                first_response => #{
+                    count => Claimed,
+                    avg_seconds => zero_means_no_samples(
+                        Claimed, maps:get(first_response_avg_seconds, Facts, undefined)
+                    )
+                },
+                closed_sessions => maps:get(closed_sessions, Facts, 0),
+                rating => #{
+                    count => Rated,
+                    avg => zero_means_no_samples(Rated, maps:get(avg_rating, Facts, undefined))
+                },
+                current => #{
+                    queued => maps:get(queued, StatusCounts, 0),
+                    active => maps:get(active, StatusCounts, 0)
+                }
+            }}
+    end.
+
+zero_means_no_samples(0, _Avg) -> undefined;
+zero_means_no_samples(_N, Avg) -> Avg.
 
 %% ===================================================================
 %% CS-BE-05：默认派单的 presence 注入（annotate-then-select）
@@ -931,10 +1095,11 @@ last_message_with(Row, Preview) ->
 %% 无 derived_status 键 = 历史行为）——派单偏好不应因派生数据源抖动而
 %% 把可接单坐席全部排除；真正的容量/状态裁决在 claim DB CAS。
 presence_annotated(OrgId, Seats, Params) ->
-    Now = case maps:get(at, Params, undefined) of
-        At when is_integer(At) -> At;
-        _ -> os:system_time(second)
-    end,
+    Now =
+        case maps:get(at, Params, undefined) of
+            At when is_integer(At) -> At;
+            _ -> os:system_time(second)
+        end,
     case with_store(Params, fun(Store) -> Store:list_seat_presence(OrgId) end) of
         {ok, Presences} -> cs_presence:annotate(Seats, Presences, Now);
         {error, _} -> Seats

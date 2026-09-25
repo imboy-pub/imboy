@@ -72,6 +72,8 @@
     %% CS-BE-06：席位 entitlement（组织级人工 seat_limit；CS-DEC-03）
     seat_limit_set/2,
     seat_limit_view/2,
+    %% CS-BE-07：按需统计（date/tz_offset 显式窗口；零预聚合）
+    session_stats/2,
     %% CS-BE-05：presence 心跳 lease（运行态派生；CS-DEC-02）
     seat_heartbeat/2,
     seat_manual_status/2,
@@ -804,6 +806,16 @@ seat_limit_set(OrgId, _Params) ->
 seat_limit_view(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     cs_seat_app:seat_limit_view(OrgId, Params);
 seat_limit_view(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 按需统计（CS-BE-07）：date + tz_offset 显式窗口的会话事实聚合
+%% （新会话/首响/关闭/评分/当前 queued·active），零预聚合零缓存。
+%% 治理权限（enterprise_owner_admin）在 route metadata；窗口换算与出站
+%% 白名单在 application。
+-spec session_stats(integer(), map()) -> term().
+session_stats(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_session_app:session_stats(OrgId, Params);
+session_stats(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% @doc 心跳（CS-BE-05）：presence lease upsert + 派生运行态视图。at 是

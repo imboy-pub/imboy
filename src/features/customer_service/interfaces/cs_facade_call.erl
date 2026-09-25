@@ -122,6 +122,9 @@ call(seat_limit_set, OrgId, Params) ->
     customer_service_facade:seat_limit_set(OrgId, Params);
 call(seat_limit_view, OrgId, Params) ->
     customer_service_facade:seat_limit_view(OrgId, Params);
+%% CS-BE-07：按需统计（date/tz_offset 显式窗口；治理面只读）。
+call(session_stats, OrgId, Params) ->
+    customer_service_facade:session_stats(OrgId, Params);
 call(seat_heartbeat, OrgId, Params) ->
     customer_service_facade:seat_heartbeat(OrgId, Params);
 call(seat_manual_status, OrgId, Params) ->
@@ -161,6 +164,8 @@ actions() ->
         %% CS-BE-06：席位 entitlement 治理
         seat_limit_set,
         seat_limit_view,
+        %% CS-BE-07：按需统计
+        session_stats,
         %% CS-BE-05：presence 心跳 lease / 手动状态 / 运行态视图
         seat_heartbeat,
         seat_manual_status,

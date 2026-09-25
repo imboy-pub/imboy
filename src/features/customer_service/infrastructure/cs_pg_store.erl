@@ -48,6 +48,8 @@
     %% CS-BE-04：已读游标（单调 ACK 幂等 + 未读事实现算）
     ack_session_read/6,
     fetch_session_read_state/4,
+    %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数）
+    session_stats/4,
     %% shop key / visit token
     insert_shop_key/2,
     fetch_shop_key/2,
@@ -188,6 +190,10 @@ ack_session_read(OrgId, WorkspaceId, SessionId, IdentityId, LastReadMessageId, A
     ).
 fetch_session_read_state(OrgId, WorkspaceId, SessionId, IdentityId) ->
     cs_pg_session:fetch_session_read_state(OrgId, WorkspaceId, SessionId, IdentityId).
+
+%% CS-BE-07：按需统计（cs_store_port 同名 callback 的薄委派；纯读）。
+session_stats(OrgId, WorkspaceId, WindowStart, WindowEnd) ->
+    cs_pg_session:session_stats(OrgId, WorkspaceId, WindowStart, WindowEnd).
 
 %% CSB-02R：widget 装配的本 Org 缺省 Workspace 解析。
 default_workspace(OrgId) ->

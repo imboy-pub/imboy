@@ -852,6 +852,11 @@ classify({invalid_size_bytes, _}) ->
 %% C1~C4（contracts-w2）：列表查询参数的取值不成立——显式登记，无兜底。
 classify({invalid_after_id, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
+%% CS-BE-07：统计窗口参数的取值不成立（date 非日历日 / tz_offset 越界）。
+classify({invalid_date, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+classify({invalid_tz_offset, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_limit, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_status, _}) ->

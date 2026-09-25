@@ -101,6 +101,8 @@ contracts() ->
             {rate_session, 7},
             {list_sessions_for_contact, 3},
             {list_sessions_page, 5},
+            %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数；现算零缓存）
+            {session_stats, 4},
             {seat_session_page, 5},
             %% CS-BE-03（CS-DEC-01）：客户上下文只读事实（会话锚定事实行 /
             %% 同 contact 历史页 / 授权备注事实页）。

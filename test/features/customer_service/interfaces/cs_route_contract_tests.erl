@@ -115,7 +115,19 @@ tenant_literal_routes() ->
             visit_token_revoke,
             [<<"POST">>],
             enterprise_owner_admin
-        }
+        },
+        %% CS-BE-06（CS-DEC-03）：席位 entitlement 治理——PUT 配置/清除
+        %% seat_limit + GET 额度视图（本清单此前漏登记：路由/动作表已进而
+        %% 冻结清单未同步，a01 双向对账红——CS-BE-07 补齐对账面）。
+        {
+            <<O/binary, "/seat-limit">>,
+            seat_limit_governance,
+            [<<"PUT">>, <<"GET">>],
+            enterprise_owner_admin
+        },
+        %% CS-BE-07（按需统计）：治理面只读统计视图——GET date/tz_offset
+        %% 显式窗口（零预聚合零缓存）。
+        {<<O/binary, "/stats/sessions">>, session_stats, [<<"GET">>], enterprise_owner_admin}
     ].
 
 platform_literal_routes() ->
@@ -601,7 +613,11 @@ web_seat_surface_matches_seat_principal_declaration_test() ->
             %% （case_auth）——形状层面统一豁免，语义差异由 handler 裁决。
             ExpectWebSeat =
                 Principal =:= cs_seat orelse
-                    Path =:= <<"/api/v1/cs/organizations/:org_id/sessions/queue">>,
+                    Path =:= <<"/api/v1/cs/organizations/:org_id/sessions/queue">> orelse
+                    %% CS-BE-06：seat-limit 经浏览器管理台调用（owner/admin 无
+                    %% 设备签名密钥）——cs_http 的免签面已逐字登记，此处对账
+                    %% 补认（其余治理面照常签名）。
+                    Path =:= <<"/api/v1/cs/organizations/:org_id/seat-limit">>,
             ?assertEqual(
                 {Path, ExpectWebSeat},
                 {Path, cs_http:is_web_seat_surface_path(Path)}
