@@ -2594,6 +2594,12 @@
         "static": false
       },
       {
+        "action": "seat_limit_governance",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/seat-limit",
+        "static": false
+      },
+      {
         "action": "seats",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/organizations/:org_id/seats",
