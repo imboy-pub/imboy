@@ -345,6 +345,11 @@ finalize_auth(Conn, Row, App) ->
                 application_id => AppId,
                 credential_id => CredId,
                 application_key => maps:get(<<"application_key">>, App, undefined),
+                %% INT-BE-03：principal 随认证产物下传（Application 的锚定
+                %% 用户，可空），供审计行 actor_user_id 统一口径——原先只有
+                %% message/webhook 壳在 handler 层自行预取，其余 mutation 的
+                %% 审计 actor 只能落 null。
+                principal_user_id => maps:get(<<"principal_user_id">>, App, null),
                 granted_scopes => Effective,
                 grant_governed => Governed
             }};

@@ -437,7 +437,10 @@ finish_audit(
         <<"origin_application_id">> => AppId,
         <<"sender_kind">> => SenderKind,
         <<"sender_user_id">> => SenderUid,
-        <<"resource_type">> => ResourceType
+        <<"resource_type">> => ResourceType,
+        %% INT-BE-03 七字段口径补齐：correlation（Idempotency-Key 或请求级
+        %% 随机串，middleware 注入 ctx；直调 logic 的测试无该键 → null）。
+        <<"correlation_id">> => maps:get(correlation_id, Ctx, null)
     },
     case
         enterprise_message_repo:insert_audit_tx(

@@ -132,7 +132,45 @@ exchange_tx(Conn, Ctx, Params) ->
             ?ERROR_LOG([enterprise_oa_sso_exchange_ctx_invalid, #{}]),
             {error, <<"internal_error">>};
         true ->
-            exchange_authenticated(Conn, OrgId, AppId, Params)
+            %% INT-BE-03 冻结政策 INT-14=REQUIRED_AUDIT：交换成功审计与 code
+            %% CAS 消费同事务（审计失败 → internal_error → 调用方回滚 → code
+            %% 停留 issued）；重放已消费 code 走统一 404 拒绝、无业务变更 →
+            %% 无审计行，幂等由 CAS 保证（政策冻结条款）。
+            case exchange_authenticated(Conn, OrgId, AppId, Params) of
+                {ok, Payload} ->
+                    case audit_exchange(Conn, Ctx, Payload) of
+                        ok -> {ok, Payload};
+                        {error, _Reason} -> {error, <<"internal_error">>}
+                    end;
+                {error, _} = Err ->
+                    Err
+            end
+    end.
+
+%% @doc INT-BE-03 冻结政策 REQUIRED_AUDIT 审计接线（本模块私有）：调用
+%% enterprise_audit_event_repo:append_tx/3（append-only 真源的唯一 repo 入口）
+%% 在调用方事务内落审计行；actor_role 恒为 enterprise_application；
+%% detail 只放结构化摘要（application/correlation/user_id），无 code 原文、
+%% 无 nonce 原文、无 digest、无 Authorization。
+-spec audit_exchange(any(), map(), map()) -> ok | {error, term()}.
+audit_exchange(Conn, Ctx, Payload) ->
+    Detail = #{
+        <<"user_id">> => maps:get(<<"user_id">>, Payload, null),
+        <<"origin_application_id">> => maps:get(application_id, Ctx, null),
+        <<"correlation_id">> => maps:get(correlation_id, Ctx, null)
+    },
+    case
+        enterprise_audit_event_repo:append_tx(Conn, maps:get(organization_id, Ctx), #{
+            resource_type => <<"enterprise_oa_sso">>,
+            resource_id => null,
+            action => <<"oa.sso.exchanged">>,
+            actor_user_id => maps:get(<<"user_id">>, Payload, null),
+            actor_role => <<"enterprise_application">>,
+            detail => Detail
+        })
+    of
+        {ok, _AuditId} -> ok;
+        {error, Reason} -> {error, Reason}
     end.
 
 %% @doc HUMAN-SSO-01 请求字段语法校验（合同 §3.2）。

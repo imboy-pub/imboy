@@ -68,7 +68,28 @@ create_group_tx(Conn, Ctx, Input) when is_map(Input) ->
     AppId = maps:get(application_id, Ctx),
     case parse_create_input(Input) of
         {ok, Creator} ->
-            create_in_workspace(Conn, OrgId, AppId, Creator);
+            %% INT-BE-03 冻结政策 INT-04=REQUIRED_AUDIT：建群审计与业务写同事务。
+            case create_in_workspace(Conn, OrgId, AppId, Creator) of
+                {ok, Ok} ->
+                    case
+                        audit_mutation(
+                            Conn,
+                            Ctx,
+                            <<"group.created">>,
+                            maps:get(<<"group_id">>, Ok, null),
+                            #{
+                                <<"workspace_id">> => maps:get(<<"workspace_id">>, Ok, null),
+                                <<"owner_user_id">> => maps:get(<<"owner_user_id">>, Ok, null),
+                                <<"member_count">> => maps:get(<<"member_count">>, Ok, 0)
+                            }
+                        )
+                    of
+                        ok -> {ok, Ok};
+                        {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+                    end;
+                {error, _} = Err ->
+                    Err
+            end;
         {error, Detail} ->
             {error, {<<"invalid_request">>, Detail}}
     end;
@@ -80,7 +101,24 @@ create_group_tx(_Conn, _Ctx, _Other) ->
 -spec add_members_tx(any(), map(), integer(), [binary()]) ->
     {ok, map()} | {error, {binary(), term()}}.
 add_members_tx(Conn, Ctx, GroupId, ExternalIds) ->
-    mutate_members(Conn, Ctx, GroupId, ExternalIds, add).
+    %% INT-BE-03 冻结政策 INT-05=REQUIRED_AUDIT：成员添加审计与业务写同事务。
+    case mutate_members(Conn, Ctx, GroupId, ExternalIds, add) of
+        {ok, Ok} ->
+            case
+                audit_mutation(
+                    Conn,
+                    Ctx,
+                    <<"group.members.added">>,
+                    GroupId,
+                    member_audit_detail(Ok)
+                )
+            of
+                ok -> {ok, Ok};
+                {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
 
 %% @doc INT-06：从企业群幂等移除成员；不可破坏 owner invariant
 %% （群 owner（owner_uid）不可被 OA 移除；移除后必须仍剩 active 群主）。
@@ -88,7 +126,31 @@ add_members_tx(Conn, Ctx, GroupId, ExternalIds) ->
 -spec remove_members_tx(any(), map(), integer(), [binary()]) ->
     {ok, map()} | {error, {binary(), term()}}.
 remove_members_tx(Conn, Ctx, GroupId, ExternalIds) ->
-    mutate_members(Conn, Ctx, GroupId, ExternalIds, remove).
+    %% INT-BE-03 冻结政策 INT-06=REQUIRED_AUDIT：成员移除审计与业务写同事务。
+    case mutate_members(Conn, Ctx, GroupId, ExternalIds, remove) of
+        {ok, Ok} ->
+            case
+                audit_mutation(
+                    Conn,
+                    Ctx,
+                    <<"group.members.removed">>,
+                    GroupId,
+                    member_audit_detail(Ok)
+                )
+            of
+                ok -> {ok, Ok};
+                {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+%% 成员变更审计 detail：聚合计数 + 变更名单（external_user_id，OA 侧标识，
+%% 非 PII 明文口径同入参回显），供审计行自证变更范围。
+-spec member_audit_detail(map()) -> map().
+member_audit_detail(Ok) ->
+    Keys = [<<"added">>, <<"removed">>, <<"already_member">>, <<"already_absent">>],
+    maps:with(Keys, Ok).
 
 %%%===================================================================
 %%% FULL-02 生命周期（详情 / 更新 / 归档 / 成员角色）
@@ -156,12 +218,26 @@ update_group_tx(Conn, Ctx, GroupId, Input) when is_map(Input) ->
                         )
                     of
                         ok ->
-                            {ok, #{
-                                <<"group_id">> => Gid,
-                                <<"title">> => NewTitle,
-                                <<"introduction">> => NewIntro,
-                                <<"updated">> => true
-                            }};
+                            %% INT-BE-03 冻结政策 INT-19=REQUIRED_AUDIT。
+                            case
+                                audit_mutation(
+                                    Conn,
+                                    Ctx,
+                                    <<"group.updated">>,
+                                    Gid,
+                                    #{<<"title_changed">> => Title =/= undefined}
+                                )
+                            of
+                                ok ->
+                                    {ok, #{
+                                        <<"group_id">> => Gid,
+                                        <<"title">> => NewTitle,
+                                        <<"introduction">> => NewIntro,
+                                        <<"updated">> => true
+                                    }};
+                                {error, Reason} ->
+                                    {error, {<<"internal_error">>, {audit, Reason}}}
+                            end;
                         {error, not_found} ->
                             {error, {<<"resource_not_found">>, group_not_found}};
                         {error, Reason} ->
@@ -193,7 +269,25 @@ archive_group_tx(Conn, Ctx, GroupId) ->
             Gid = maps:get(<<"id">>, Group),
             case own_origin(Conn, Gid, OrgId, AppId) of
                 ok ->
-                    do_archive(Conn, Group, Gid);
+                    %% INT-BE-03 冻结政策 INT-21=REQUIRED_AUDIT：归档终态审计
+                    %% 与业务写同事务。
+                    case do_archive(Conn, Group, Gid) of
+                        {ok, Ok} ->
+                            case
+                                audit_mutation(
+                                    Conn,
+                                    Ctx,
+                                    <<"group.archived">>,
+                                    Gid,
+                                    #{<<"already_archived">> => maps:get(<<"already">>, Ok, false)}
+                                )
+                            of
+                                ok -> {ok, Ok};
+                                {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+                            end;
+                        {error, _} = Err ->
+                            Err
+                    end;
                 {error, _} = Err ->
                     Err
             end;
@@ -258,7 +352,31 @@ set_member_roles_tx(Conn, Ctx, GroupId, Roles) ->
                         {ok, ExtToUid} ->
                             case check_role_targets(Conn, Gid, OwnerUid, Wanted, ExtToUid) of
                                 ok ->
-                                    apply_roles(Conn, Gid, Wanted, ExtToUid);
+                                    %% INT-BE-03 冻结政策 INT-20=REQUIRED_AUDIT。
+                                    case apply_roles(Conn, Gid, Wanted, ExtToUid) of
+                                        {ok, Ok} ->
+                                            case
+                                                audit_mutation(
+                                                    Conn,
+                                                    Ctx,
+                                                    <<"group.member_roles.set">>,
+                                                    Gid,
+                                                    #{
+                                                        <<"updated">> =>
+                                                            maps:get(<<"updated">>, Ok, 0),
+                                                        <<"unchanged">> =>
+                                                            maps:get(<<"unchanged">>, Ok, 0)
+                                                    }
+                                                )
+                                            of
+                                                ok ->
+                                                    {ok, Ok};
+                                                {error, Reason} ->
+                                                    {error, {<<"internal_error">>, {audit, Reason}}}
+                                            end;
+                                        {error, _} = Err ->
+                                            Err
+                                    end;
                                 {error, _} = Err ->
                                     Err
                             end;
@@ -1006,3 +1124,35 @@ member_page_reply(_Conn, Ctx, GroupId, Rows, Limit, HasMore) ->
         <<"has_more">> => HasMore,
         <<"next_cursor">> => Next
     }}.
+
+%% ===================================================================
+%% INT-BE-03 冻结政策审计接线（REQUIRED_AUDIT 条目统一入口）
+%% ===================================================================
+
+%% @doc OA internal 面 mutation 审计（group.created / group.members.added /
+%% group.members.removed / group.updated / group.member_roles.set /
+%% group.archived）：调用 enterprise_audit_event_repo:append_tx/3（append-only
+%% 真源的唯一 repo 入口）在调用方事务内落审计行；actor_role 恒为
+%% enterprise_application；detail 只放结构化摘要（application/correlation/
+%% 聚合计数），无 secret / 无正文 / 无 Authorization。
+%% 审计失败 → {error, Reason} → 调用方以 internal_error 返回 → handler
+%% throw({rollback, _}) 业务整体回滚：审计失败必无业务行，业务失败必无审计行。
+-spec audit_mutation(any(), map(), binary(), term(), map()) -> ok | {error, term()}.
+audit_mutation(Conn, Ctx, Action, ResourceId, ExtraDetail) ->
+    Detail = maps:merge(ExtraDetail, #{
+        <<"origin_application_id">> => maps:get(application_id, Ctx, null),
+        <<"correlation_id">> => maps:get(correlation_id, Ctx, null)
+    }),
+    case
+        enterprise_audit_event_repo:append_tx(Conn, maps:get(organization_id, Ctx), #{
+            resource_type => <<"group">>,
+            resource_id => ResourceId,
+            action => Action,
+            actor_user_id => maps:get(principal_user_id, Ctx, undefined),
+            actor_role => <<"enterprise_application">>,
+            detail => Detail
+        })
+    of
+        {ok, _AuditId} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.

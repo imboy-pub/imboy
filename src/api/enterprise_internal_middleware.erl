@@ -95,7 +95,13 @@ normalize_code(Code) when is_binary(Code) -> Code.
 %% bindings 放进 Req，handler/handler_opts 才放进 Env（cowboy_router.erl
 %% 命中分支的返回值），所以两者来源不同，不能都从 Env 读。
 -spec inject_ctx(cowboy_req:req(), map(), map()) -> map().
-inject_ctx(Req, Env, Ctx) ->
+inject_ctx(Req, Env, Ctx0) ->
+    %% INT-BE-03：认证产物 ctx 携带请求关联 ID，供业务侧审计行
+    %% （enterprise_audit_event.detail.correlation_id）做请求级归因——
+    %% mutation 优先用 Idempotency-Key（审计行与幂等行可互查）；无幂等键的
+    %% 请求（GET / INT-14 single_use_code）用一次性随机串，保证审计行恒有
+    %% correlation 字段。该值只进审计/日志 detail，不参与任何鉴权判定。
+    Ctx = Ctx0#{correlation_id => correlation_id(Req)},
     Env1 = Env#{enterprise_internal_ctx => Ctx},
     case maps:find(handler_opts, Env) of
         {ok, Opts} when is_map(Opts) ->
@@ -103,6 +109,18 @@ inject_ctx(Req, Env, Ctx) ->
             Env1#{handler_opts := Merged#{enterprise_internal => Ctx}};
         _ ->
             Env1
+    end.
+
+%% 请求关联 ID：Idempotency-Key 优先，缺失生成 128-bit 随机 hex。
+-spec correlation_id(cowboy_req:req()) -> binary().
+correlation_id(Req) ->
+    case cowboy_req:header(<<"idempotency-key">>, Req) of
+        K when is_binary(K), K =/= <<>> -> K;
+        _ ->
+            iolist_to_binary([
+                io_lib:format("~64.16.0b", [R])
+             || R <- [binary:decode_unsigned(crypto:strong_rand_bytes(8))]
+            ])
     end.
 
 %% 路径绑定 → handler_opts 扁平合并。cowboy_router 恒为首个中间件，命中路由后

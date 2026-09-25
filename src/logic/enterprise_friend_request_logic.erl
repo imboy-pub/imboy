@@ -51,12 +51,49 @@ create_request_tx(Conn, Ctx, Input) when is_map(Input) ->
     Greeting = maps:get(greeting, Input, <<>>),
     case validate_input(SenderExt, TargetExt, Greeting) of
         ok ->
-            resolve_and_create(Conn, OrgId, AppId, SenderExt, TargetExt, Greeting);
+            %% INT-BE-03 冻结政策 INT-11=REQUIRED_AUDIT：代发起好友申请审计
+            %% 与 pending 落库同事务（审计失败 → error → 调用方整体回滚）。
+            case resolve_and_create(Conn, OrgId, AppId, SenderExt, TargetExt, Greeting) of
+                {ok, Ok} ->
+                    case audit_mutation(Conn, Ctx, SenderExt, TargetExt) of
+                        ok -> {ok, Ok};
+                        {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+                    end;
+                {error, _} = Err ->
+                    Err
+            end;
         {error, Detail} ->
             {error, {<<"invalid_request">>, Detail}}
     end;
 create_request_tx(_Conn, _Ctx, _Other) ->
     {error, {<<"invalid_request">>, input_not_map}}.
+
+%% @doc INT-BE-03 冻结政策 REQUIRED_AUDIT 审计接线（本模块私有）：调用
+%% enterprise_audit_event_repo:append_tx/3（append-only 真源的唯一 repo 入口）
+%% 在调用方事务内落审计行；actor_role 恒为 enterprise_application；resource_id
+%% 恒 null（user_friend 行无独立 TSID 主键可引），sender/target 以 OA 侧
+%% external_user_id 落 detail；无 secret / 无正文。
+-spec audit_mutation(any(), map(), binary(), binary()) -> ok | {error, term()}.
+audit_mutation(Conn, Ctx, SenderExt, TargetExt) ->
+    Detail = #{
+        <<"sender_user_id">> => SenderExt,
+        <<"target_user_id">> => TargetExt,
+        <<"origin_application_id">> => maps:get(application_id, Ctx, null),
+        <<"correlation_id">> => maps:get(correlation_id, Ctx, null)
+    },
+    case
+        enterprise_audit_event_repo:append_tx(Conn, maps:get(organization_id, Ctx), #{
+            resource_type => <<"friend_request">>,
+            resource_id => null,
+            action => <<"friend_request.created">>,
+            actor_user_id => maps:get(principal_user_id, Ctx, undefined),
+            actor_role => <<"enterprise_application">>,
+            detail => Detail
+        })
+    of
+        {ok, _AuditId} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @doc 提交后通知（best-effort，池化路径，由 handler 在事务提交之后调用；
 %% 失败不影响申请结果）。复用现有申请消息形态 apply_friend（S2C），

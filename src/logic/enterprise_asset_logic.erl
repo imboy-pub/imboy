@@ -198,18 +198,49 @@ save_confirmed(Conn, Ctx, ObjectKey, Hash, RealSize, RealType) ->
                 )
             of
                 ok ->
-                    ok = confirm_side_effects(Conn, Ctx, AttId),
-                    {ok, #{
-                        <<"file_id">> => AttId,
-                        <<"object_key">> => ObjectKey,
-                        <<"size">> => RealSize,
-                        <<"mime_type">> => RealType
-                    }};
+                    %% INT-BE-03 冻结政策 INT-08=REQUIRED_AUDIT：转正审计与
+                    %% 业务写同事务（审计失败 → error → 调用方整体回滚）。
+                    case audit_mutation(Conn, Ctx, <<"file.confirmed">>, AttId) of
+                        ok ->
+                            ok = confirm_side_effects(Conn, Ctx, AttId),
+                            {ok, #{
+                                <<"file_id">> => AttId,
+                                <<"object_key">> => ObjectKey,
+                                <<"size">> => RealSize,
+                                <<"mime_type">> => RealType
+                            }};
+                        {error, Reason} ->
+                            {error, {<<"internal_error">>, {audit, Reason}}}
+                    end;
                 {error, Reason} ->
                     {error, Reason}
             end;
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}
+    end.
+
+%% @doc INT-BE-03 冻结政策 REQUIRED_AUDIT 审计接线（本模块私有）：调用
+%% enterprise_audit_event_repo:append_tx/3 在调用方事务内落审计行；
+%% actor_role 恒为 enterprise_application；detail 只放结构化摘要
+%% （application/correlation/object_key），无 secret / 无正文。
+-spec audit_mutation(any(), map(), binary(), term()) -> ok | {error, term()}.
+audit_mutation(Conn, Ctx, Action, ResourceId) ->
+    Detail = #{
+        <<"origin_application_id">> => maps:get(application_id, Ctx, null),
+        <<"correlation_id">> => maps:get(correlation_id, Ctx, null)
+    },
+    case
+        enterprise_audit_event_repo:append_tx(Conn, maps:get(organization_id, Ctx), #{
+            resource_type => <<"attachment">>,
+            resource_id => ResourceId,
+            action => Action,
+            actor_user_id => maps:get(principal_user_id, Ctx, undefined),
+            actor_role => <<"enterprise_application">>,
+            detail => Detail
+        })
+    of
+        {ok, _AuditId} -> ok;
+        {error, Reason} -> {error, Reason}
     end.
 
 %% @doc confirm 的旁路副作用（聚合计量 + file.confirmed 事件）：与转正同事务。

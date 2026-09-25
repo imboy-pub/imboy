@@ -117,9 +117,22 @@ register_retention_tx(Conn, {AttachmentId, OrgId, AppId}) ->
 %% purged}}；失败 {error, {Code, Detail}}（码表见 moduledoc）。
 -spec governance_tx(any(), map(), map()) -> {ok, map()} | {error, {binary(), term()}}.
 governance_tx(Conn, Ctx, Input) when is_map(Input) ->
+    Op = maps:get(op, Input, undefined),
     case resolve_attachment(Conn, Ctx, maps:get(object_key, Input, undefined)) of
         {ok, Att} ->
-            apply_op(Conn, Ctx, maps:get(op, Input, undefined), Att, Input);
+            %% INT-BE-03 冻结政策 INT-22=REQUIRED_AUDIT：治理审计（audit_action
+            %% 冻结为 file.governance.op，具体 op 落 detail.op）与治理写同事务
+            %% ——审计失败 → error → 调用方整体回滚（purge 不可逆动作尤其要求
+            %% 留痕原子）。
+            case apply_op(Conn, Ctx, Op, Att, Input) of
+                {ok, Ok} ->
+                    case audit_mutation(Conn, Ctx, Op, maps:get(<<"id">>, Att, null)) of
+                        ok -> {ok, Ok};
+                        {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+                    end;
+                {error, _} = Err ->
+                    Err
+            end;
         {error, _} = Err ->
             Err
     end;
@@ -146,6 +159,10 @@ resolve_attachment(Conn, Ctx, ObjectKey) when is_binary(ObjectKey), ObjectKey =/
 resolve_attachment(_Conn, _Ctx, _ObjectKey) ->
     {error, {<<"invalid_request">>, object_key_required}}.
 
+%% @doc 治理 op 统一成功出口：INT-BE-03 冻结政策 INT-22=REQUIRED_AUDIT——
+%% 治理审计（audit_action 冻结为 file.governance.op，具体 op 落 detail.op）
+%% 与治理写在同一事务（审计失败 → error → 调用方整体回滚；purge 不可逆动作
+%% 尤其要求留痕原子）。
 -spec apply_op(any(), map(), term(), map(), map()) -> {ok, map()} | {error, {binary(), term()}}.
 apply_op(Conn, Ctx, <<"set_retention">>, Att, Input) ->
     with_row(Conn, Ctx, Att, fun(AttId) -> do_set_retention(Conn, AttId, Att, Input) end);
@@ -312,3 +329,39 @@ base_reply(AttId, Att, PurgedAt) ->
         <<"purged">> => false,
         <<"purged_at">> => PurgedAt
     }.
+
+%% ===================================================================
+%% INT-BE-03 冻结政策审计接线（REQUIRED_AUDIT 条目统一入口）
+%% ===================================================================
+
+%% @doc 附件治理审计（file.governance.op；detail.op = set_retention | hold |
+%% release_hold | purge）：调用 enterprise_audit_event_repo:append_tx/3
+%% （append-only 真源的唯一 repo 入口）在调用方事务内落审计行；actor_role
+%% 恒为 enterprise_application；detail 只放结构化摘要
+%% （application/correlation/object_key），无 secret / 无正文。
+-spec audit_mutation(any(), map(), binary(), term()) -> ok | {error, term()}.
+audit_mutation(Conn, Ctx, Op, ResourceId) ->
+    Detail = #{
+        <<"op">> => op_name(Op),
+        <<"origin_application_id">> => maps:get(application_id, Ctx, null),
+        <<"correlation_id">> => maps:get(correlation_id, Ctx, null)
+    },
+    case
+        enterprise_audit_event_repo:append_tx(Conn, maps:get(organization_id, Ctx), #{
+            resource_type => <<"attachment">>,
+            resource_id => ResourceId,
+            action => <<"file.governance.op">>,
+            actor_user_id => maps:get(principal_user_id, Ctx, undefined),
+            actor_role => <<"enterprise_application">>,
+            detail => Detail
+        })
+    of
+        {ok, _AuditId} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec op_name(term()) -> binary().
+op_name(Op) when is_binary(Op) ->
+    Op;
+op_name(_Other) ->
+    <<"unknown">>.

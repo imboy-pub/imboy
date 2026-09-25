@@ -48,10 +48,9 @@ bind_mapping_tx(Conn, Ctx, ExternalUserId, UserId) ->
             case validate_user_id(UserId) of
                 ok ->
                     OrgId = org_id(Ctx),
-                    AppId = app_id(Ctx),
                     case classify_target(Conn, OrgId, UserId) of
                         ok ->
-                            do_bind(Conn, OrgId, AppId, ExternalUserId, UserId);
+                            do_bind(Conn, Ctx, ExternalUserId, UserId);
                         {error, {Code, Detail}} ->
                             {error, {Code, Detail}}
                     end;
@@ -117,11 +116,27 @@ revoke_mapping_tx(Conn, Ctx, ExternalUserId) ->
                         )
                     of
                         ok ->
-                            {ok, #{
-                                <<"external_user_id">> => ExternalUserId,
-                                <<"status">> => <<"removed">>,
-                                <<"revoked">> => true
-                            }};
+                            %% INT-BE-03 冻结政策 INT-15=REQUIRED_AUDIT：撤销
+                            %% 审计与业务写同事务（resource_id 未知 → null，
+                            %% external_user_id 落 detail）。
+                            case
+                                audit_mutation(
+                                    Conn,
+                                    Ctx,
+                                    <<"identity.mapping.revoked">>,
+                                    null,
+                                    #{<<"external_user_id">> => ExternalUserId}
+                                )
+                            of
+                                ok ->
+                                    {ok, #{
+                                        <<"external_user_id">> => ExternalUserId,
+                                        <<"status">> => <<"removed">>,
+                                        <<"revoked">> => true
+                                    }};
+                                {error, Reason} ->
+                                    {error, {<<"internal_error">>, {audit, Reason}}}
+                            end;
                         {error, Reason} ->
                             {error, {<<"internal_error">>, Reason}}
                     end;
@@ -202,9 +217,11 @@ classify_target(Conn, OrgId, UserId) ->
             {error, {<<"internal_error">>, Reason}}
     end.
 
--spec do_bind(any(), integer(), integer(), binary(), integer()) ->
+-spec do_bind(any(), map(), binary(), integer()) ->
     {ok, map()} | {error, {binary(), term()}}.
-do_bind(Conn, OrgId, AppId, ExternalUserId, UserId) ->
+do_bind(Conn, Ctx, ExternalUserId, UserId) ->
+    OrgId = org_id(Ctx),
+    AppId = app_id(Ctx),
     case enterprise_external_identity_repo:bind_tx(Conn, OrgId, AppId, ExternalUserId, UserId) of
         {ok, Row} ->
             %% 聚合计量（只计数，不含 external_user_id/正文/PII，plan-full §5）。
@@ -212,7 +229,22 @@ do_bind(Conn, OrgId, AppId, ExternalUserId, UserId) ->
                 enterprise_application_usage_repo:bump_tx(Conn, OrgId, AppId, <<"identity.bound">>)
             of
                 ok ->
-                    {ok, mapping_view(Row)};
+                    %% INT-BE-03 冻结政策 INT-02=REQUIRED_AUDIT：绑定审计与业务
+                    %% 写同事务（审计失败 → 本返回 error → 调用方整体回滚）。
+                    case
+                        audit_mutation(
+                            Conn,
+                            Ctx,
+                            <<"identity.mapping.bound">>,
+                            maps:get(<<"id">>, Row, null),
+                            #{<<"external_user_id">> => ExternalUserId}
+                        )
+                    of
+                        ok ->
+                            {ok, mapping_view(Row)};
+                        {error, Reason} ->
+                            {error, {<<"internal_error">>, {audit, Reason}}}
+                    end;
                 {error, Reason} ->
                     {error, {<<"internal_error">>, Reason}}
             end;
@@ -223,6 +255,31 @@ do_bind(Conn, OrgId, AppId, ExternalUserId, UserId) ->
             {error, {<<"invalid_request">>, user_already_mapped}};
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}
+    end.
+
+%% @doc INT-BE-03 冻结政策 REQUIRED_AUDIT 的统一审计接线（本模块私有）：
+%% 调用 enterprise_audit_event_repo:append_tx/3（append-only 真源的唯一 repo
+%% 入口）在调用方事务内落审计行；actor_role 恒为 enterprise_application
+%% （OA internal 面），detail 只放结构化摘要（application/correlation/业务键），
+%% 无 secret / 无正文 / 无 Authorization。
+-spec audit_mutation(any(), map(), binary(), term(), map()) -> ok | {error, term()}.
+audit_mutation(Conn, Ctx, Action, ResourceId, ExtraDetail) ->
+    Detail = maps:merge(ExtraDetail, #{
+        <<"origin_application_id">> => maps:get(application_id, Ctx, null),
+        <<"correlation_id">> => maps:get(correlation_id, Ctx, null)
+    }),
+    case
+        enterprise_audit_event_repo:append_tx(Conn, org_id(Ctx), #{
+            resource_type => <<"enterprise_external_identity">>,
+            resource_id => ResourceId,
+            action => Action,
+            actor_user_id => maps:get(principal_user_id, Ctx, undefined),
+            actor_role => <<"enterprise_application">>,
+            detail => Detail
+        })
+    of
+        {ok, _AuditId} -> ok;
+        {error, Reason} -> {error, Reason}
     end.
 
 -spec mapping_view(map()) -> map().

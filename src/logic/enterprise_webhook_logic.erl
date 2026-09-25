@@ -234,7 +234,18 @@ configure_tx(Conn, Ctx, Input) when is_map(Input) ->
             %% 快照；此处只做拒绝性校验）。
             case bot_webhook_guard:validate_and_pin(Url) of
                 {ok, _Pin} ->
-                    configure_principal(Conn, Ctx, Url, Events, Status, Rotate);
+                    %% INT-BE-03 冻结政策 INT-12=REQUIRED_AUDIT：配置审计与
+                    %% upsert/secret/代际回填同事务（审计失败 → error → 调用方
+                    %% 整体回滚，绝不出现「配置生效但无审计」）。
+                    case configure_principal(Conn, Ctx, Url, Events, Status, Rotate) of
+                        {ok, Result} ->
+                            case audit_configure(Conn, Ctx, Url, Events, Status, Rotate) of
+                                ok -> {ok, Result};
+                                {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+                            end;
+                        {error, _} = Err ->
+                            Err
+                    end;
                 {error, Reason} ->
                     {error, {<<"invalid_request">>, {ssrf_or_invalid_url, Reason}}}
             end;
@@ -522,7 +533,7 @@ replay_finalize(Conn, Ctx, Delivery, BotId) ->
             {error, {<<"invalid_request">>, delivery_not_replayable}}
     end.
 
-replay_insert(Conn, _Ctx, Delivery, BotId) ->
+replay_insert(Conn, Ctx, Delivery, BotId) ->
     Original = maps:get(<<"payload">>, Delivery, <<"{}">>),
     EventId =
         try jsone:decode(Original) of
@@ -570,12 +581,28 @@ replay_insert(Conn, _Ctx, Delivery, BotId) ->
             },
             case enterprise_webhook_repo:insert_delivery_tx(Conn, Row) of
                 {ok, inserted} ->
-                    metric_replay(queued),
-                    %% INT-13 冻结合同（api/paths/internal/v1/webhook/replay.yaml
-                    %% '200'：required [replayed]，additionalProperties false）
-                    %% ——响应体恰为 {"replayed": true}；新投递行细节是服务端
-                    %% 内部状态，不外泄（INT-BE-02 conformance 实测漂移修复）。
-                    {ok, #{<<"replayed">> => true}};
+                    %% INT-BE-03 冻结政策 INT-13=REQUIRED_AUDIT：重放审计与
+                    %% 新投递行同事务（审计失败 → error → 调用方整体回滚——
+                    %% 新投递行与审计行要么都在、要么都不在）。
+                    case
+                        audit_mutation(
+                            Conn,
+                            Ctx,
+                            OriginalId,
+                            NewDeliveryId,
+                            maps:get(<<"event_type">>, Delivery, <<"message">>)
+                        )
+                    of
+                        ok ->
+                            metric_replay(queued),
+                            %% INT-13 冻结合同（api/paths/internal/v1/webhook/replay.yaml
+                            %% '200'：required [replayed]，additionalProperties false）
+                            %% ——响应体恰为 {"replayed": true}；新投递行细节是服务端
+                            %% 内部状态，不外泄（INT-BE-02 conformance 实测漂移修复）。
+                            {ok, #{<<"replayed">> => true}};
+                        {error, Reason} ->
+                            {error, {<<"internal_error">>, {audit, Reason}}}
+                    end;
                 {ok, duplicate} ->
                     %% 同一原行已有在途重放（唯一索引仲裁）
                     metric_replay(rejected),
@@ -968,3 +995,64 @@ ip_to_binary(_) ->
 
 occurred_at() ->
     elib_dt:to_rfc3339(erlang:system_time(millisecond), millisecond).
+
+%% ===================================================================
+%% INT-BE-03 冻结政策审计接线（REQUIRED_AUDIT 条目统一入口）
+%% ===================================================================
+
+%% @doc INT-12 配置审计（webhook.configured）：调用
+%% enterprise_audit_event_repo:append_tx/3（append-only 真源的唯一 repo 入口）
+%% 在调用方事务内落审计行；actor_role 恒为 enterprise_application；resource_id
+%% 恒 null（配置锚在 principal bot 行，resource_id 用 detail.application_id）；
+%% detail 只放结构化摘要，无 secret / 无 verify_token / 无 Authorization。
+-spec audit_configure(any(), map(), binary(), term(), atom(), boolean()) ->
+    ok | {error, term()}.
+audit_configure(Conn, Ctx, Url, Events, Status, Rotate) ->
+    Detail = #{
+        <<"url">> => Url,
+        <<"events">> => Events,
+        <<"status">> => atom_to_binary(Status, utf8),
+        <<"rotated">> => Rotate,
+        <<"origin_application_id">> => maps:get(application_id, Ctx, null),
+        <<"correlation_id">> => maps:get(correlation_id, Ctx, null)
+    },
+    case
+        enterprise_audit_event_repo:append_tx(Conn, maps:get(organization_id, Ctx), #{
+            resource_type => <<"enterprise_webhook_config">>,
+            resource_id => maps:get(application_id, Ctx, null),
+            action => <<"webhook.configured">>,
+            actor_user_id => maps:get(principal_user_id, Ctx, undefined),
+            actor_role => <<"enterprise_application">>,
+            detail => Detail
+        })
+    of
+        {ok, _AuditId} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc INT-13 重放审计（webhook.delivery.replayed）：detail 放原投递
+%% delivery_id / 新投递 delivery_id / event_type；resource_id 恒 null
+%% （delivery_id 是 binary 出站 ID，非 bigint 资源）。
+-spec audit_mutation(any(), map(), binary() | undefined, binary(), binary()) ->
+    ok | {error, term()}.
+audit_mutation(Conn, Ctx, OriginalId, NewDeliveryId, EventType) ->
+    Detail = #{
+        <<"original_delivery_id">> => OriginalId,
+        <<"delivery_id">> => NewDeliveryId,
+        <<"event_type">> => EventType,
+        <<"origin_application_id">> => maps:get(application_id, Ctx, null),
+        <<"correlation_id">> => maps:get(correlation_id, Ctx, null)
+    },
+    case
+        enterprise_audit_event_repo:append_tx(Conn, maps:get(organization_id, Ctx), #{
+            resource_type => <<"bot_delivery">>,
+            resource_id => null,
+            action => <<"webhook.delivery.replayed">>,
+            actor_user_id => maps:get(principal_user_id, Ctx, undefined),
+            actor_role => <<"enterprise_application">>,
+            detail => Detail
+        })
+    of
+        {ok, _AuditId} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.

@@ -1405,9 +1405,19 @@ replay_ok(C, State) ->
             <<"UPDATE bot_delivery SET status = 'dead' WHERE delivery_id = '", OldId/binary, "'">>
         ),
         {ok, Replay} = enterprise_webhook_logic:replay_tx(C, ctx_a(State), OldId),
-        NewId = maps:get(<<"delivery_id">>, Replay),
+        %% 冻结合同（2ff626f8 / INT-BE-02 conformance）：响应体恰为
+        %% {"replayed": true}——新投递行细节是服务端内部状态，不外泄；
+        %% 新行 ID 从 DB 以 replay_of 指针反查后继续做代际断言。
+        ?assertMatch(#{<<"replayed">> := true}, Replay),
+        NewId = maps:get(
+            <<"delivery_id">>,
+            one(
+                C,
+                <<"SELECT delivery_id FROM bot_delivery WHERE ewh_replay_of = $1">>,
+                [OldId]
+            )
+        ),
         ?assertMatch(true, is_binary(NewId) andalso NewId =/= OldId),
-        ?assertEqual(OldId, maps:get(<<"original_delivery_id">>, Replay)),
         Old = one(
             C,
             <<"SELECT payload::text AS payload FROM bot_delivery WHERE delivery_id = $1">>,
