@@ -1,747 +1,375 @@
-# Garage 对象存储部署指南 / Garage Object Storage Deployment Guide
+# 如何安装 Garage S3 并接入 IMBoy
 
-> **版本 / Version**: Garage v2.3.0 (2026-04-16)
-> **适用场景 / Scope**: 单节点二进制部署，替代 go-fastdfs，供 Erlang 后端和 Flutter 客户端使用
-> **最后更新 / Last updated**: 2026-05-28
+> **类型**：指南 · **读者**：第一次部署 IMBoy 的运维人员 · **适用版本**：Garage v2.4.1 · **最后验证**：2026-09-25
+>
+> **状态**：CURRENT。Garage 官方发布页在 2026-09-25 显示最新稳定版为
+> `v2.4.1`（发布于 2026-09-08）。本指南固定版本，不使用会静默升级的 `latest`。
 
----
+本指南用于单机 IMBoy 部署。最省事的方式是使用 IMBoy 社区版 Docker Compose；
+已有裸机 Erlang 服务时，可在 Linux 上单独安装 Garage 二进制。
 
-## 目录 / Table of Contents
+> Garage 单节点没有副本冗余。磁盘损坏会丢附件，生产环境必须备份
+> `${DATA_DIR}/garage` 或使用 `scripts/backup_garage.sh`。多节点 Garage 不在本文范围内。
 
-1. [架构概览](#架构概览)
-2. [安装](#安装)
-3. [配置](#配置)
-4. [systemd 服务](#systemd-服务)
-5. [初始化](#初始化)
-6. [Erlang 集成](#erlang-集成)
-7. [Flutter 集成](#flutter-集成)
-8. [验证与排障](#验证与排障)
+## 先选安装方式
 
----
-
-## 架构概览
-
-```
-Flutter App
-  ├── GET /api/v1/attachment/presign  →  Erlang 后端生成 presigned PUT URL
-  ├── PUT <presigned_url>         →  直传 Garage（不经 Erlang）
-  └── GET <public_url>            →  Garage 直读（bucket 公开读，无需签名）
-
-Erlang 后端
-  ├── 生成 presigned PUT URL       →  elib_s3_sign（AWS Sig V4，零额外依赖）
-  ├── 服务端上传（群文件/群相册）    →  httpc PUT → Garage
-  └── 孤儿附件物理删除              →  httpc DELETE → Garage
-
-Garage
-  ├── S3 API  :3900  （上传 / 下载 / 签名）
-  ├── RPC     :3901  （集群内部通信）
-  └── Admin   :3903  （管理 API）
-```
-
-**URL 格式（path-style，Garage 默认）**
-
-```
-http://<host>:3900/<bucket>/<object-key>
-
-示例：http://127.0.0.1:3900/imboy/file_1748000000_123456/photo.jpg
-```
-
----
-
-## 部署方式选择 / Deployment Options
-
-本项目提供两种 Garage 部署方式，按场景择一 / Two methods are provided; pick one:
-
-| 方式 / Method | 脚本 / Script | 适用 / Use case |
+| 你的情况 | 选择 | 入口 |
 |---|---|---|
-| 二进制 + systemd | `script/garage-install.sh` | **生产推荐**；自动识别 macOS(开发)/Linux(生产)，二进制安装，无 docker 依赖 |
-| Docker | `script/garage-local-setup.sh` | 快速本地试用；依赖 docker 运行时 |
+| 新装整套 IMBoy，Linux 已装 Docker | 方式 A，推荐 | `deploy/install.sh --edition community` |
+| 只给现有 Linux IMBoy 增加 Garage | 方式 B | `scripts/garage-install.sh` |
+| macOS 本地开发 | Docker 本地脚本 | `scripts/garage-local-setup.sh` |
+| 已有 Garage，需要升级 | 先备份再升级 | [安全升级](#安全升级已有-garage) |
 
-> 生产服务器优先二进制方式（`garage-install.sh`），避免引入 docker 运行时依赖；该脚本自动随机生成 `rpc_secret`/`admin_token`，默认不开放整桶公开读。
-> Production prefers the binary installer to avoid a docker runtime dependency; it auto-generates secrets and never enables bucket-wide public-read.
+不要同时运行方式 A 和方式 B，否则两套 Garage 会争用 `3900`、`3901`、`3903`
+端口。
 
-下面手动步骤适用于不使用脚本、需逐步理解配置的场景 / The manual steps below apply when not using the script.
+## 安装前准备
 
----
+### 1. 确认机器和磁盘
 
-## 安装
+Linux 生产机建议至少准备：
 
-### 下载二进制
-
-> Ubuntu / Debian 生产服务器推荐使用 `x86_64-unknown-linux-musl`（静态链接，无 glibc 依赖，在所有主流发行版通用）。
+- 64 位 x86_64 或 ARM64 Linux；
+- 4 GB 内存；
+- 一个不会随重启清空的磁盘目录；
+- 磁盘可用空间大于预计附件量的 2 倍，以便备份和升级；
+- 正确的系统时间，建议启用 NTP。
 
 ```bash
-# macOS Apple Silicon（开发机）
-curl -o garage \
-  'https://garagehq.deuxfleurs.fr/api/v1/download?version=v2.3.0&platform=aarch64-apple-darwin'
+uname -s
+uname -m
+df -h
+timedatectl status
+```
 
-# Linux x86_64 —— Ubuntu / Debian 生产服务器
-curl -o garage \
-  'https://garagehq.deuxfleurs.fr/api/v1/download?version=v2.3.0&platform=x86_64-unknown-linux-musl'
+`uname -s` 应为 `Linux`。`uname -m` 应为 `x86_64`、`aarch64` 或 `arm64`。
 
-# Linux ARM64（ARM 服务器 / 树莓派）
-curl -o garage \
-  'https://garagehq.deuxfleurs.fr/api/v1/download?version=v2.3.0&platform=aarch64-unknown-linux-musl'
+### 2. 确认端口用途
 
-chmod +x garage
-sudo mv garage /usr/local/bin/garage
+| 端口 | 用途 | 是否开放公网 |
+|---|---|---|
+| `3900` | S3 API | 不直接开放；生产经 Nginx `/s3/` 反代 |
+| `3901` | Garage 节点 RPC | 单机不开放公网 |
+| `3902` | Website API，仅服务 `scope=public` 对象 | 不直接开放；经独立文件域名反代 |
+| `3903` | Admin/Metrics API | 不开放公网 |
+
+```bash
+ss -lnt | grep -E ':(3900|3901|3902|3903)\b' || true
+```
+
+没有输出表示端口未被占用。若有输出，先确认占用进程，不要直接结束未知服务。
+
+## 方式 A：随 IMBoy 社区版一键安装
+
+该方式会安装固定镜像 `dxflrs/garage:v2.4.1`，数据持久化到
+`${DATA_DIR}/garage`。Garage 不直接暴露公网，客户端通过
+`https://<API_DOMAIN>/s3/` 上传和下载。
+
+### 1. 填写部署配置
+
+```bash
+cd /path/to/imboy/deploy
+cp .env.example .env
+chmod 600 .env
+```
+
+用文本编辑器打开 `.env`，至少填写域名、证书和安装器要求的项目。Garage 相关值：
+
+```dotenv
+IMBOY_GARAGE_ENDPOINT=http://garage:3900
+IMBOY_GARAGE_BUCKET=imboy
+IMBOY_GARAGE_ACCESS_KEY=GK_CHANGE_ME_GARAGE_ACCESS_KEY
+IMBOY_GARAGE_SECRET_KEY=CHANGE_ME_GARAGE_SECRET_KEY
+GARAGE_RPC_SECRET=CHANGE_ME_GARAGE_RPC_SECRET_64_HEX_CHARS_
+```
+
+正常使用 `deploy/install.sh` 时，安装器会幂等生成缺失的 Garage 随机密钥。
+不要把 `.env` 提交到 Git，也不要把真实密钥发到聊天或工单。
+
+### 2. 运行安装前检查
+
+```bash
+bash preflight.sh --edition community --docker
+```
+
+出现 `ERROR` 时先按提示修复。只有检查通过才继续。
+
+### 3. 启动整套服务
+
+```bash
+bash install.sh --edition community
+```
+
+第一次运行若只生成 `.env` 模板后退出，这是正常行为：填完配置后再次执行同一命令。
+
+### 4. 验证 Garage
+
+```bash
+docker compose -f docker-compose.community.yml ps garage
+docker compose -f docker-compose.community.yml exec garage /garage --version
+docker compose -f docker-compose.community.yml exec garage /garage status
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1/healthz
+```
+
+验收标准：
+
+- `garage` 容器状态为 `healthy`；
+- 版本输出包含 `v2.4.1`；
+- `garage status` 中节点位于 `HEALTHY NODES`；
+- IMBoy `/healthz` 返回 `200`。
+
+Garage 根路径未签名访问返回 `403` 是正常安全行为，不代表服务故障。
+
+> **当前限制**：社区 Compose 的 `--default-bucket` 目前只自动创建私有桶 `imboy`，
+> Nginx 也只代理 S3 API。它可用于私有附件，但 `scope=public` 的头像等公开资源尚未完成
+> `imboy-public` + Website API 的一键初始化。该缺口不属于广州 Disk 一期；W2/AC-08 的
+> Garage baseline regression 应在已具备 public bucket 的既有拓扑执行。社区 Compose
+> 未补齐公开资源闭环前，不得标记为完整附件验收通过。
+
+## 方式 B：Linux 裸机安装 Garage v2.4.1
+
+### 1. 运行仓库脚本
+
+```bash
+cd /path/to/imboy
+bash scripts/garage-install.sh
+```
+
+脚本会：
+
+1. 下载官方固定版本 `v2.4.1` Linux 二进制；
+2. 创建 `/etc/garage.toml`；
+3. 创建 `garage` 系统用户和持久化目录；
+4. 安装并启动 `garage.service`；
+5. 初始化单节点布局、私有 bucket、公开 bucket 和访问密钥；
+6. 仅对 `imboy-public` 启用 Garage Website 公开读取；
+7. 打印需要写入 IMBoy 本地配置的示例。
+
+脚本是幂等的，不会覆盖已有 `/etc/garage.toml`。若系统已安装其他版本，它也不会
+擅自升级，必须先走[安全升级](#安全升级已有-garage)。
+
+若已有配置缺少 `[s3_web]`，脚本会明确退出，避免自动拼接 TOML 破坏生产配置。请先
+备份 `/etc/garage.toml`，按本文的公开文件入口配置 Website API，重启 Garage 并确认
+`3902` 仅监听本机后，再重跑脚本完成 `imboy-public` 初始化。
+
+需要补入 `/etc/garage.toml` 的最小配置是：
+
+```toml
+[s3_web]
+bind_addr = "127.0.0.1:3902"
+root_domain = ".garage.localhost"
+index = "index.html"
+```
+
+编辑后执行 `sudo systemctl restart garage`。不要把 `3902` 绑定到公网 IP；外部访问必须
+经过下文带 TLS 的 Nginx 文件域名。
+
+> Garage v2.4.1 官方发布页只提供 Linux 二进制。macOS 请运行
+> `bash scripts/garage-local-setup.sh`，不要使用来源不明的二进制。
+
+### 2. 检查服务
+
+```bash
 garage --version
+sudo systemctl status garage --no-pager
+sudo garage -c /etc/garage.toml status
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3900/
 ```
 
----
+版本应包含 `v2.4.1`，服务应为 `active (running)`，节点应为 `HEALTHY`。
+最后一条命令预期返回 `403`。
 
-## 配置
+### 3. 配置 IMBoy
 
-### `/etc/garage.toml`（生产）
-
-```toml
-metadata_dir = "/var/lib/garage/meta"
-data_dir     = "/var/lib/garage/data"
-db_engine    = "lmdb"           # lmdb 性能最佳
-replication_factor = 1          # 单节点固定为 1
-rpc_bind_addr = "127.0.0.1:3901"  # 顶层字段，非 section / top-level field, NOT a section
-rpc_secret    = "<openssl rand -hex 32 生成 / generate with openssl rand -hex 32>"
-
-[s3_api]
-# 必须与 Erlang sys.config 和 Flutter 中的 region 完全一致
-s3_region     = "garage"
-api_bind_addr = "0.0.0.0:3900"  # 开发用 127.0.0.1:3900
-
-[admin]
-api_bind_addr = "127.0.0.1:3903"
-```
-
-### `~/garage.toml`（本地开发最简版）
-
-```toml
-metadata_dir = "/tmp/garage/meta"
-data_dir     = "/tmp/garage/data"
-db_engine    = "lmdb"
-replication_factor = 1
-rpc_bind_addr = "127.0.0.1:3901"
-rpc_secret    = "<openssl rand -hex 32>"
-
-[s3_api]
-s3_region     = "garage"
-api_bind_addr = "127.0.0.1:3900"
-```
-
----
-
-## systemd 服务
-
-```ini
-# /etc/systemd/system/garage.service
-[Unit]
-Description=Garage S3-compatible object store
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/garage -c /etc/garage.toml server
-Restart=on-failure
-RestartSec=5s
-User=garage
-Group=garage
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ReadWritePaths=/var/lib/garage
-
-[Install]
-WantedBy=multi-user.target
-```
+不要修改被 Git 跟踪的生产模板。把脚本最后打印的值写进
+`config/sys.local.config`，或使用环境变量：
 
 ```bash
-useradd -r -s /bin/false garage
-mkdir -p /var/lib/garage/meta /var/lib/garage/data
-chown -R garage:garage /var/lib/garage
-cp garage.toml /etc/garage.toml
-
-systemctl daemon-reload
-systemctl enable --now garage
-systemctl status garage
-journalctl -u garage -f
+export IMBOY_GARAGE_ENDPOINT='http://127.0.0.1:3900'
+export IMBOY_GARAGE_PUBLIC_ENDPOINT='https://api.example.com/s3'
+export IMBOY_GARAGE_BUCKET='imboy'
+export IMBOY_GARAGE_ACCESS_KEY='GK...'
+export IMBOY_GARAGE_SECRET_KEY='...'
 ```
 
----
-
-## 初始化
-
-> 首次部署执行一次，重启无需重复。
-
-```bash
-# 可选：设置别名
-alias gg='garage -c /etc/garage.toml'
-
-# 1. 查看节点 ID（启动约 3 秒后可用）
-gg status
-# 示例输出：
-# ==== HEALTHY NODES ====
-# ID                  Addr            Zone  Cap
-# b10c110d4f8b3f73…   127.0.0.1:3901
-
-# 2. 配置单节点布局（必须执行，否则无法存储）
-gg layout assign -z dc1 -c 200G b10c110d   # 取节点 ID 前 8 位
-
-# 3. 预览并应用布局
-gg layout show
-gg layout apply --version 1
-
-# 4. 创建 bucket
-gg bucket create imboy
-
-# 5. 创建 Access Key（凭证只显示一次，立即保存到安全位置）
-gg key create imboy-key
-# 输出：
-#   Key ID:     GKxxxxxxxxxxxxxxxxxx
-#   Secret key: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...
-
-# 6. 授权（仅服务端密钥可读写，不开放匿名访问）
-#    Authorize (server key only; NO anonymous public access)
-gg bucket allow imboy --read --write --owner --key imboy-key
-
-# 注意：不要设置 bucket 公开读。私有附件（聊天图片/文件）必须保密，
-# 下载一律经后端 GET /api/v1/attachment/view_url 按需签发短时 presigned GET URL。
-# DO NOT enable public-read. Private attachments must stay confidential;
-# downloads are served via short-lived presigned GET URLs issued by the backend
-# endpoint GET /api/v1/attachment/view_url. Never run `bucket allow imboy --read --public`.
-
-# 验证 / Verify
-gg bucket list
-gg key list
-```
-
-> ⚠️ **安全 / Security**：整桶公开读会让任何人凭 URL（且 ObjectKey 含时间戳可被推测）匿名读取私有聊天附件。本方案改为后端签发短时（默认 600s）presigned GET，配合 `u<Uid>/` 命名空间前缀做归属隔离。
-> Bucket-wide public-read would expose private chat attachments to anyone holding (or guessing) the URL. This design instead issues short-lived (default 600s) presigned GET URLs from the backend, combined with a `u<Uid>/` key-prefix namespace for ownership isolation.
-
----
-
-## Erlang 集成
-
-### sys.config
+对应的 Erlang 配置结构为：
 
 ```erlang
-%% config/sys.local.config（开发，.gitignore 中，不入 git）
 {garage, #{
-    endpoint   => <<"http://127.0.0.1:3900">>,
-    region     => <<"garage">>,
-    bucket     => <<"imboy">>,
-    access_key => <<"GKxxxxxxxxxxxxxxxxxx">>,
-    secret_key => <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>
-}},
-
-%% config/sys.config（生产模板，密钥通过环境变量 IMBOY_GARAGE_* 注入）
-{garage, #{
-    endpoint   => <<"http://127.0.0.1:3900">>,
-    region     => <<"garage">>,
-    bucket     => <<"imboy">>,
-    access_key => <<"REPLACE_WITH_ENV">>,
-    secret_key => <<"REPLACE_WITH_ENV">>
+    endpoint => <<"http://127.0.0.1:3900">>,
+    public_endpoint => <<"https://api.example.com/s3">>,
+    region => <<"garage">>,
+    bucket => <<"imboy">>,
+    public_bucket => <<"imboy-public">>,
+    public_base_url => <<"https://files.example.com">>,
+    access_key => {env, <<"IMBOY_GARAGE_ACCESS_KEY">>},
+    secret_key => {env, <<"IMBOY_GARAGE_SECRET_KEY">>}
 }},
 ```
 
-### 确认 inets 依赖
+`endpoint` 是后端访问 Garage 的内网地址；`public_endpoint` 是客户端上传和私有下载时
+使用的签名 S3 API 地址；`public_base_url` 是公开附件的匿名读取地址。三者不要写反，
+`public_base_url` 后面也不要再拼 bucket 名。真实密钥只放环境变量或权限为 `0600`
+的本地配置。
 
-`imboy.app.src` 的 `applications` 列表必须包含 `inets`（`httpc` 所在 OTP 应用）：
+### 4. 配置反向代理
 
-```erlang
-{applications, [kernel, stdlib, inets, ssl, crypto, ...]},
-```
+生产环境不要直接把 `3900`、`3902` 暴露公网。需要配置两条入口：
 
-### elib_s3_sign.erl（新建）
+1. `https://api.example.com/s3/...` 反代到 `127.0.0.1:3900`，用于带签名的上传和私有下载；
+2. `https://files.example.com/...` 反代到 `127.0.0.1:3902`，用于公开附件匿名读取，
+   并把上游 `Host` 固定为 `imboy-public.garage.localhost`。
 
-纯 OTP 实现 AWS Signature V4，零额外依赖。
+第一条可沿用仓库 Nginx 模板；第二条可参考生产 vhost 的 Website 分流：
 
-```erlang
--module(elib_s3_sign).
-%%% AWS Signature Version 4 — 供 Garage S3 API 鉴权
-%%% 依赖：OTP crypto（HMAC-SHA256）、inets（httpc）
--export([presign_put/5, presign_get/4, auth_header/6]).
--include("log.hrl").
+- `deploy/nginx/templates/imboy.conf.template`
+- `deploy/nginx/prod-vhosts/s3.imboy.pub.conf`
 
-%% @doc 生成 presigned PUT URL（供 Flutter 直传 Garage，不经 Erlang）
--spec presign_put(binary(), binary(), binary(), binary(), pos_integer()) -> binary().
-presign_put(Endpoint, Bucket, ObjKey, MimeType, Expires) ->
-    {Date, AmzDate} = amz_dates(),
-    Region  = gconf(region),
-    Access  = gconf(access_key),
-    Secret  = gconf(secret_key),
-    Cred    = <<Access/binary, "/", Date/binary, "/",
-                Region/binary, "/s3/aws4_request">>,
-    QS = iolist_to_binary([
-        "X-Amz-Algorithm=AWS4-HMAC-SHA256",
-        "&X-Amz-Credential=", uri_encode(Cred),
-        "&X-Amz-Date=",       AmzDate,
-        "&X-Amz-Expires=",    integer_to_binary(Expires),
-        "&X-Amz-SignedHeaders=host",
-        "&Content-Type=",     uri_encode(MimeType)
-    ]),
-    Host     = endpoint_host(Endpoint),
-    CanonReq = <<"PUT\n/", Bucket/binary, "/", ObjKey/binary, "\n",
-                  QS/binary, "\nhost:", Host/binary,
-                  "\n\nhost\nUNSIGNED-PAYLOAD">>,
-    STS      = string_to_sign(AmzDate, Date, Region, CanonReq),
-    SignKey  = signing_key(Secret, Date, Region, <<"s3">>),
-    Sig      = hex(hmac256(SignKey, STS)),
-    <<Endpoint/binary, "/", Bucket/binary, "/", ObjKey/binary,
-      "?", QS/binary, "&X-Amz-Signature=", Sig/binary>>.
+公开文件域名的最小 location 如下，放进已经配置好 TLS 的 `files.example.com` server：
 
-%% @doc 生成 presigned GET URL（bucket 非公开读时用）
--spec presign_get(binary(), binary(), binary(), pos_integer()) -> binary().
-presign_get(Endpoint, Bucket, ObjKey, Expires) ->
-    {Date, AmzDate} = amz_dates(),
-    Region  = gconf(region),
-    Access  = gconf(access_key),
-    Secret  = gconf(secret_key),
-    Cred    = <<Access/binary, "/", Date/binary, "/",
-                Region/binary, "/s3/aws4_request">>,
-    QS = iolist_to_binary([
-        "X-Amz-Algorithm=AWS4-HMAC-SHA256",
-        "&X-Amz-Credential=", uri_encode(Cred),
-        "&X-Amz-Date=",       AmzDate,
-        "&X-Amz-Expires=",    integer_to_binary(Expires),
-        "&X-Amz-SignedHeaders=host"
-    ]),
-    Host     = endpoint_host(Endpoint),
-    CanonReq = <<"GET\n/", Bucket/binary, "/", ObjKey/binary, "\n",
-                  QS/binary, "\nhost:", Host/binary,
-                  "\n\nhost\nUNSIGNED-PAYLOAD">>,
-    STS      = string_to_sign(AmzDate, Date, Region, CanonReq),
-    SignKey  = signing_key(Secret, Date, Region, <<"s3">>),
-    Sig      = hex(hmac256(SignKey, STS)),
-    <<Endpoint/binary, "/", Bucket/binary, "/", ObjKey/binary,
-      "?", QS/binary, "&X-Amz-Signature=", Sig/binary>>.
-
-%% @doc 生成 Authorization Header（Erlang 服务端 PUT/DELETE 使用）
--spec auth_header(binary(), binary(), binary(), binary(), binary(), binary()) -> binary().
-auth_header(Method, Bucket, ObjKey, MimeType, Body, AmzDate) ->
-    {Date, _} = amz_dates(),
-    Region    = gconf(region),
-    Access    = gconf(access_key),
-    Secret    = gconf(secret_key),
-    BodyHash  = hex(crypto:hash(sha256, Body)),
-    Host      = endpoint_host(gconf(endpoint)),
-    SignedHdrs = <<"host;x-amz-content-sha256;x-amz-date">>,
-    CanonReq = <<Method/binary, "\n/", Bucket/binary, "/", ObjKey/binary,
-                 "\n\nhost:", Host/binary,
-                 "\nx-amz-content-sha256:", BodyHash/binary,
-                 "\nx-amz-date:", AmzDate/binary,
-                 "\n\n", SignedHdrs/binary, "\n", BodyHash/binary>>,
-    STS      = string_to_sign(AmzDate, Date, Region, CanonReq),
-    SignKey  = signing_key(Secret, Date, Region, <<"s3">>),
-    Sig      = hex(hmac256(SignKey, STS)),
-    Cred     = <<Access/binary, "/", Date/binary, "/",
-                 Region/binary, "/s3/aws4_request">>,
-    <<"AWS4-HMAC-SHA256 Credential=", Cred/binary,
-      ",SignedHeaders=", SignedHdrs/binary,
-      ",Signature=", Sig/binary>>.
-
-%% ===== 内部函数 =====
-
-hmac256(Key, Data) -> crypto:mac(hmac, sha256, Key, Data).
-
-signing_key(Secret, Date, Region, Service) ->
-    K1 = hmac256(<<"AWS4", Secret/binary>>, Date),
-    K2 = hmac256(K1, Region),
-    K3 = hmac256(K2, Service),
-    hmac256(K3, <<"aws4_request">>).
-
-string_to_sign(AmzDate, Date, Region, CanonReq) ->
-    Scope = <<Date/binary, "/", Region/binary, "/s3/aws4_request">>,
-    Hash  = hex(crypto:hash(sha256, CanonReq)),
-    <<"AWS4-HMAC-SHA256\n", AmzDate/binary, "\n",
-      Scope/binary, "\n", Hash/binary>>.
-
-amz_dates() ->
-    {{Y, Mo, D}, {H, Mi, S}} = calendar:universal_time(),
-    Date = iolist_to_binary(
-               io_lib:format("~4..0B~2..0B~2..0B", [Y, Mo, D])),
-    AmzDate = iolist_to_binary(
-                  io_lib:format("~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0BZ",
-                                [Y, Mo, D, H, Mi, S])),
-    {Date, AmzDate}.
-
-endpoint_host(Endpoint) ->
-    [_, Host] = binary:split(Endpoint, <<"://">>),
-    Host.
-
-gconf(Key) ->
-    maps:get(Key, application:get_env(imboy, garage, #{}), <<>>).
-
-hex(Bin) ->
-    iolist_to_binary([io_lib:format("~2.16.0b", [X]) || <<X>> <= Bin]).
-
-uri_encode(B) ->
-    << <<(ue(C))/binary>> || <<C>> <= B >>.
-
-ue(C) when C >= $A, C =< $Z -> <<C>>;
-ue(C) when C >= $a, C =< $z -> <<C>>;
-ue(C) when C >= $0, C =< $9 -> <<C>>;
-ue($-) -> <<"-">>; ue($_) -> <<"_">>;
-ue($.) -> <<".">>; ue($~) -> <<"~">>;
-ue(C)  -> iolist_to_binary(io_lib:format("%~2.16.0B", [C])).
-```
-
-### elib_oss.erl — 核心函数（改写）
-
-```erlang
-%% 服务端上传（群文件 / 群相册等后端处理场景）
-upload_to_storage(FileId, FileName, FileBinary, MimeType) ->
-    #{endpoint := EP, bucket := Bkt} = garage_cfg(),
-    ObjKey  = object_key(FileId, FileName),
-    Url     = <<EP/binary, "/", Bkt/binary, "/", ObjKey/binary>>,
-    {_, AmzDate} = elib_s3_sign:amz_dates(),
-    Auth = elib_s3_sign:auth_header(
-               <<"PUT">>, Bkt, ObjKey, MimeType, FileBinary, AmzDate),
-    Headers = [
-        {"content-type",           binary_to_list(MimeType)},
-        {"x-amz-date",             binary_to_list(AmzDate)},
-        {"x-amz-content-sha256",   binary_to_list(
-                                       hex(crypto:hash(sha256, FileBinary)))},
-        {"authorization",          binary_to_list(Auth)}
-    ],
-    case httpc:request(put,
-                       {binary_to_list(Url), Headers,
-                        binary_to_list(MimeType), FileBinary},
-                       [{timeout, 30000}], []) of
-        {ok, {{_, C, _}, _, _}} when C =:= 200; C =:= 204 ->
-            {ok, public_url(EP, Bkt, ObjKey)};
-        {ok, {{_, C, _}, _, Body}} ->
-            ?ERROR_LOG(["elib_oss:upload_to_storage failed: ", C, " ", Body]),
-            {error, {http_error, C}};
-        {error, R} ->
-            ?ERROR_LOG(["elib_oss:upload_to_storage httpc error: ", R]),
-            {error, R}
-    end.
-
-%% Flutter 直传：生成 presigned PUT URL（文件不经过 Erlang）
-%% 返回 {PutUrl, ObjectKey, PublicUrl}
-presign_put(FileName, MimeType, ExpiresSeconds) ->
-    #{endpoint := EP, bucket := Bkt} = garage_cfg(),
-    FileId    = generate_file_id(),
-    ObjKey    = object_key(FileId, FileName),
-    PutUrl    = elib_s3_sign:presign_put(EP, Bkt, ObjKey, MimeType,
-                    min(86400, max(60, ExpiresSeconds))),
-    PublicUrl = public_url(EP, Bkt, ObjKey),
-    {PutUrl, ObjKey, PublicUrl}.
-
-%% 物理删除（孤儿清理 Phase 2）
-delete_object(ObjKey) ->
-    #{endpoint := EP, bucket := Bkt} = garage_cfg(),
-    Url = <<EP/binary, "/", Bkt/binary, "/", ObjKey/binary>>,
-    {_, AmzDate} = elib_s3_sign:amz_dates(),
-    Auth = elib_s3_sign:auth_header(
-               <<"DELETE">>, Bkt, ObjKey, <<>>, <<>>, AmzDate),
-    EmptyHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    Headers = [
-        {"x-amz-date",           binary_to_list(AmzDate)},
-        {"x-amz-content-sha256", EmptyHash},
-        {"authorization",        binary_to_list(Auth)}
-    ],
-    case httpc:request(delete, {binary_to_list(Url), Headers},
-                       [{timeout, 10000}], []) of
-        {ok, {{_, C, _}, _, _}} when C =:= 204; C =:= 200 -> ok;
-        {ok, {{_, C, _}, _, B}} -> {error, {http_error, C, B}};
-        {error, R}              -> {error, R}
-    end.
-
-%% 内部工具
-object_key(FileId, FileName) ->
-    SafeName = filename:basename(FileName),
-    <<FileId/binary, "/", SafeName/binary>>.
-
-public_url(EP, Bkt, ObjKey) ->
-    <<EP/binary, "/", Bkt/binary, "/", ObjKey/binary>>.
-
-garage_cfg() ->
-    application:get_env(imboy, garage, #{}).
-
-hex(Bin) ->
-    iolist_to_binary([io_lib:format("~2.16.0b", [X]) || <<X>> <= Bin]).
-```
-
-### attach_handler.erl — presign 接口（新建）
-
-```erlang
-%% 路由：GET /api/v1/attachment/presign?filename=x.jpg&mime_type=image/jpeg&expires=600
-%% 需要 JWT 认证，放在普通认证路由区（非 open 路由）
-presign(<<"GET">>, Req0, _State) ->
-    Qs       = cowboy_req:parse_qs(Req0),
-    FileName = proplists:get_value(<<"filename">>,  Qs, <<"file">>),
-    MimeType = proplists:get_value(<<"mime_type">>, Qs, <<"application/octet-stream">>),
-    ExpiresRaw = proplists:get_value(<<"expires">>, Qs, <<"600">>),
-    Expires  = min(86400, max(60, binary_to_integer(ExpiresRaw))),
-    case elib_oss:validate_file_type(MimeType) of
-        false ->
-            elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
-        true ->
-            {PutUrl, ObjKey, PublicUrl} =
-                elib_oss:presign_put(FileName, MimeType, Expires),
-            elib_response:success(Req0, #{
-                <<"put_url">>    => PutUrl,
-                <<"object_key">> => ObjKey,
-                <<"public_url">> => PublicUrl,
-                <<"expires_at">> => erlang:system_time(second) + Expires
-            }, "success.")
-    end;
-presign(_, Req0, _State) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
-```
-
-路由注册（`imboy_router.erl`）：
-
-```erlang
-%% 认证路由区（非 open）
-{"/api/v1/attachment/presign", attach_handler, #{action => presign}},
-```
-
----
-
-## Flutter 集成
-
-> Flutter 不需要任何 AWS SDK。
-> 上传使用 `dio` PUT 到 presigned URL（直连 Garage）。
-> 查看使用 public_url 直接展示（bucket 已设 public-read，无需签名）。
-
-### pubspec.yaml
-
-```yaml
-dependencies:
-  dio: ^5.4.0     # 已有
-  mime: ^1.0.4    # 新增，用于探测 MIME 类型
-```
-
-### attachment_api.dart
-
-```dart
-import 'dart:io';
-import 'package:dio/dio.dart';
-import 'package:mime/mime.dart';
-
-class PresignResult {
-  final String putUrl;
-  final String objectKey;
-  final String publicUrl;
-  final int expiresAt;
-
-  const PresignResult({
-    required this.putUrl,
-    required this.objectKey,
-    required this.publicUrl,
-    required this.expiresAt,
-  });
-
-  factory PresignResult.fromJson(Map<String, dynamic> j) => PresignResult(
-        putUrl:    j['put_url']    as String,
-        objectKey: j['object_key'] as String,
-        publicUrl: j['public_url'] as String,
-        expiresAt: j['expires_at'] as int,
-      );
-}
-
-class AttachmentUploadResult {
-  final String objectKey;
-  final String publicUrl;
-  final String mimeType;
-  final int size;
-
-  const AttachmentUploadResult({
-    required this.objectKey,
-    required this.publicUrl,
-    required this.mimeType,
-    required this.size,
-  });
-
-  /// 消息 payload 格式
-  Map<String, dynamic> toPayload() => {
-        'object_key': objectKey,
-        'url':        publicUrl,   // 直接当图片/文件 URL 使用
-        'mime_type':  mimeType,
-        'size':       size,
-      };
-}
-
-class AttachmentApi {
-  /// 专用 Dio 实例：不带业务拦截器，不加 Authorization header
-  /// ⚠️ presigned URL 已含签名，绝对不能再加 Authorization，否则签名冲突
-  static final _garageDio = Dio(
-    BaseOptions(
-      connectTimeout: const Duration(seconds: 30),
-      sendTimeout:    const Duration(minutes: 3),
-      receiveTimeout: const Duration(seconds: 30),
-      followRedirects: false,
-      validateStatus: (s) => s != null,
-    ),
-  );
-
-  /// Step 1：向 Erlang 后端请求 presigned PUT URL
-  static Future<PresignResult> requestPresignUrl({
-    required String filename,
-    required String mimeType,
-    int expires = 600,
-  }) async {
-    final resp = await apiClient.get<Map<String, dynamic>>(
-      '/api/v1/attachment/presign',
-      queryParameters: {
-        'filename':  filename,
-        'mime_type': mimeType,
-        'expires':   expires,
-      },
-    );
-    return PresignResult.fromJson(
-        resp.data!['payload'] as Map<String, dynamic>);
-  }
-
-  /// Step 2：直接 PUT 文件到 Garage（不经 Erlang）
-  static Future<void> _putToGarage({
-    required String presignedUrl,
-    required List<int> bytes,
-    required String mimeType,
-    void Function(int sent, int total)? onProgress,
-  }) async {
-    final resp = await _garageDio.put<dynamic>(
-      presignedUrl,
-      data: bytes,                 // dio 直接接受 Uint8List / List<int>
-      options: Options(
-        contentType: mimeType,
-        headers: {Headers.contentLengthHeader: bytes.length},
-      ),
-      onSendProgress: onProgress,
-    );
-
-    if (resp.statusCode != 200 && resp.statusCode != 204) {
-      throw Exception(
-          'Garage upload failed: HTTP ${resp.statusCode}\n${resp.data}');
-    }
-  }
-
-  /// 一步完成：拿 presigned URL → 上传 → 返回结果
-  static Future<AttachmentUploadResult> uploadFile(
-    File file, {
-    void Function(int sent, int total)? onProgress,
-  }) async {
-    final bytes    = await file.readAsBytes();
-    final filename = file.path.split('/').last;
-    final mimeType = lookupMimeType(file.path,
-                         headerBytes: bytes.sublist(0, 12)) ??
-                     'application/octet-stream';
-
-    final presign = await requestPresignUrl(
-        filename: filename, mimeType: mimeType);
-
-    await _putToGarage(
-      presignedUrl: presign.putUrl,
-      bytes:        bytes,
-      mimeType:     mimeType,
-      onProgress:   onProgress,
-    );
-
-    return AttachmentUploadResult(
-      objectKey: presign.objectKey,
-      publicUrl: presign.publicUrl,
-      mimeType:  mimeType,
-      size:      bytes.length,
-    );
-  }
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3902;
+    proxy_set_header Host imboy-public.garage.localhost;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
 
-### 替换 AssetsService.viewUrl
+不要把 Website API 代理到 S3 API 的 `3900`；匿名请求在 `3900` 返回 `403` 是正常行为。
 
-```dart
-// 旧：自制 HMAC-MD5 签名（废弃）
-// String viewUrl(String path) { ... MD5(uploadKey + ts) ... }
-
-// 新：bucket 公开读，直接返回 public_url，无需签名
-String viewUrl(String urlOrKey) {
-  // 已是完整 HTTP URL（新数据）
-  if (urlOrKey.startsWith('http')) return urlOrKey;
-  // 纯 object_key（兜底）
-  return '${Env.garageEndpoint}/${Env.garageBucket}/$urlOrKey';
-}
-```
-
-### 消息 payload 格式变化
-
-```dart
-// 旧（go-fastdfs）
-// { md5, url, path, size }
-
-// 新（Garage）
-final result = await AttachmentApi.uploadFile(file);
-final payload = result.toPayload();
-// { object_key, url, mime_type, size }
-```
-
----
-
-## 验证与排障
-
-### 逐步验证
+修改后先检查语法，再平滑重载：
 
 ```bash
-# 1. Garage 健康状态
-garage -c /etc/garage.toml status        # 期望：HEALTHY
-
-# 2. aws-cli 功能验证（最直接的方式）
-export AWS_ACCESS_KEY_ID=GKxxxxxxxxxxxxxxxxxx
-export AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
-export AWS_ENDPOINT_URL=http://127.0.0.1:3900
-export AWS_DEFAULT_REGION=garage
-
-echo "hello garage" > /tmp/test.txt
-aws s3 cp /tmp/test.txt s3://imboy/test.txt
-aws s3 ls s3://imboy/
-
-# 3. 验证公开读（无需凭证）
-curl http://127.0.0.1:3900/imboy/test.txt
-# 期望：返回 "hello garage"，HTTP 200
-
-# 4. Erlang shell 验证
-IMBOYENV=local make run
-
-# 服务端上传
-elib_oss:upload(<<"hello">>, <<"test.txt">>, #{mime_type => <<"text/plain">>}).
-% 期望：{ok, <<"http://127.0.0.1:3900/imboy/file_xxx.../test.txt">>, <<"file_xxx...">>}
-
-# 生成 presigned URL
-{PutUrl, ObjKey, PubUrl} = elib_oss:presign_put(<<"photo.jpg">>, <<"image/jpeg">>, 600).
-
-# 用 curl 验证 presigned URL
-curl -X PUT \
-  -H "Content-Type: image/jpeg" \
-  --data-binary @/tmp/test.jpg \
-  "$PutUrl"
-# 期望：HTTP 200 或 204
-
-curl "$PubUrl"
-# 期望：返回图片内容
-
-# 5. presign API 接口验证
-curl -H "Authorization: Bearer <jwt_token>" \
-  "http://localhost:8080/api/v1/attachment/presign?filename=a.jpg&mime_type=image/jpeg"
-# 期望：{ "put_url": "...", "object_key": "...", "public_url": "..." }
+sudo nginx -t
+sudo systemctl reload nginx
 ```
 
-### 常见问题
+### 5. 验证真实上传闭环
 
-| 症状 | 原因 | 解决 |
+先启动 IMBoy，再用测试账号 JWT 执行：
+
+```bash
+printf 'hello garage\n' > /tmp/imboy-garage-smoke.txt
+
+curl -sS \
+  -H 'Authorization: Bearer <TEST_JWT>' \
+  'https://api.example.com/api/v1/attachment/presign?filename=imboy-garage-smoke.txt&mime_type=text/plain&scope=private'
+```
+
+从响应中取 `put_url` 和 `object_key`，继续：
+
+```bash
+curl -i -X PUT \
+  -H 'Content-Type: text/plain' \
+  --data-binary @/tmp/imboy-garage-smoke.txt \
+  '<PUT_URL>'
+
+curl -sS -X POST \
+  -H 'Authorization: Bearer <TEST_JWT>' \
+  -H 'Content-Type: application/json' \
+  -d '{"object_key":"<OBJECT_KEY>","mime_type":"text/plain","size":13,"scope":"private"}' \
+  'https://api.example.com/api/v1/attachment/confirm'
+
+curl -sS \
+  -H 'Authorization: Bearer <TEST_JWT>' \
+  'https://api.example.com/api/v1/attachment/view_url?object_key=<URL_ENCODED_OBJECT_KEY>'
+```
+
+验收标准：PUT 返回 `2xx`，confirm 返回业务 `code=0`，view_url 返回短时 URL，
+下载后内容与 `/tmp/imboy-garage-smoke.txt` 完全一致。
+
+再把同一流程的 `scope` 改为 `public`：confirm 后返回的公开 URL 必须以
+`https://files.example.com/` 开头，无 Authorization 访问返回 `200`，内容 SHA-256
+与原文件一致。若公开流程失败，Garage 安装只能记为 `PARTIAL`，不能记为通过。
+
+## macOS 本地开发
+
+macOS 使用 Docker，数据写入 `/tmp/garage`，只适合开发测试：
+
+```bash
+cd /path/to/imboy
+bash scripts/garage-local-setup.sh
+docker exec garage-local /garage --version
+docker exec garage-local /garage status
+```
+
+脚本会固定使用 `dxflrs/garage:v2.4.1`。`/tmp/garage` 可能被系统清理，不可当生产数据盘。
+
+## 安全升级已有 Garage
+
+不要直接覆盖正在运行的二进制。先记录版本并备份：
+
+```bash
+garage --version
+sudo garage -c /etc/garage.toml status
+sudo systemctl stop garage
+sudo tar -C /var/lib -czf /var/backups/garage-before-v2.4.1.tgz garage
+sudo cp /usr/local/bin/garage /usr/local/bin/garage.previous
+```
+
+阅读官方对应版本升级说明后，根据 CPU 下载固定版本，检查版本，再替换二进制：
+
+```bash
+case "$(uname -m)" in
+  x86_64) GARAGE_PLATFORM=x86_64-unknown-linux-musl ;;
+  aarch64|arm64) GARAGE_PLATFORM=aarch64-unknown-linux-musl ;;
+  *) echo '不支持的 CPU 架构'; exit 1 ;;
+esac
+
+curl -fSL \
+  "https://garagehq.deuxfleurs.fr/_releases/v2.4.1/${GARAGE_PLATFORM}/garage" \
+  -o /tmp/garage-v2.4.1
+chmod 755 /tmp/garage-v2.4.1
+/tmp/garage-v2.4.1 --version
+sudo install -m 755 /tmp/garage-v2.4.1 /usr/local/bin/garage
+sudo systemctl start garage
+garage --version
+sudo garage -c /etc/garage.toml status
+```
+
+若启动或附件闭环失败，立即停止新进程，恢复旧二进制和备份数据，再调查原因：
+
+```bash
+sudo systemctl stop garage
+sudo cp /usr/local/bin/garage.previous /usr/local/bin/garage
+sudo systemctl start garage
+```
+
+不要在未验证备份可恢复前删除 `garage.previous` 或升级前备份。
+
+## 备份与恢复
+
+Docker 社区版至少备份 `${DATA_DIR}/garage`；裸机至少备份
+`/etc/garage.toml`、`/var/lib/garage/meta` 和 `/var/lib/garage/data`。
+
+项目提供 bucket 级备份入口：
+
+```bash
+bash scripts/backup_garage.sh --help
+```
+
+数据库中的附件元数据与 Garage 对象必须属于同一恢复点。只恢复 PostgreSQL 或只恢复
+Garage 都可能产生“数据库有记录但文件不存在”或“有对象但无人引用”的孤儿状态。
+
+## 常见问题
+
+| 现象 | 原因 | 处理 |
 |---|---|---|
-| `SignatureDoesNotMatch` | Content-Type 与签名时不一致 | Erlang presign 传的 mime_type 必须与 Flutter PUT 时 Content-Type 完全一致 |
-| Flutter PUT 返回 `403` | Presigned URL 已过期 | 增大 `expires` 参数（上限 86400s），缩短拿到 URL 到上传的间隔 |
-| Flutter PUT 返回 `400` | 多余的 Authorization header | 确保 `_garageDio` 实例没有业务 Authorization 拦截器 |
-| Erlang `{error, econnrefused}` | Garage 未启动或端口错误 | `systemctl status garage`，确认 3900 端口监听 |
-| GET public_url 返回 `403` | Bucket 未设 public-read | `garage bucket allow imboy --read --public` |
-| `clock skew` 错误 | 服务器时间偏差 > 5 分钟 | `timedatectl set-ntp true` 同步 NTP |
-| `layout not configured` | 未执行 layout assign/apply | 重新执行初始化步骤 2-4 |
+| 根路径返回 `403` | 未签名访问被拒绝 | 正常；用 `garage status` 和真实上传闭环判断 |
+| `SignatureDoesNotMatch` | 公网 Host、路径前缀、Region 或 Content-Type 与签名不一致 | 核对 `public_endpoint`、Nginx 是否保留 Host、上传 Content-Type |
+| 手机拿到 `http://garage:3900` | 把容器内网地址发给客户端 | 设置 `IMBOY_GARAGE_PUBLIC_ENDPOINT=https://<API_DOMAIN>/s3` |
+| `layout not configured` | 未应用单节点布局 | 重跑安装脚本，检查 `garage status` 与日志 |
+| 重启后文件消失 | 数据目录位于 `/tmp` 或未挂载持久卷 | 恢复备份并改用持久目录 |
+| 容器无法进入 shell | Garage 镜像基于 `scratch` | 使用 `docker exec <name> /garage ...`，不要执行 `/bin/sh` |
+| Docker 拉取 `unauthorized` | 本机 registry 凭据或网络问题 | 先修复 Docker Hub 登录/网络；不要把本地构建当官方镜像 |
 
-### 端口速查
+## 官方资料
 
-| 端口 | 用途 | 对外暴露 |
-|---|---|---|
-| **3900** | S3 API（Erlang 和 Flutter 使用） | 是（生产走 Nginx 代理） |
-| 3901 | RPC 集群内部通信 | 否 |
-| 3902 | Web 静态网站托管（可选） | 按需 |
-| 3903 | Admin API | 否（仅本机） |
+- [Garage 下载页](https://garagehq.deuxfleurs.fr/download/)
+- [Garage v2.4.1 发布构建列表](https://garagehq.deuxfleurs.fr/_releases.html)
+- [Garage Quick Start](https://garagehq.deuxfleurs.fr/documentation/quick-start/)
+- [Garage 公开 Website bucket](https://garagehq.deuxfleurs.fr/documentation/cookbook/exposing-websites/)
+- [Garage 生产集群部署](https://garagehq.deuxfleurs.fr/documentation/cookbook/real-world/)
+- [Garage systemd 指南](https://garagehq.deuxfleurs.fr/documentation/cookbook/systemd/)
