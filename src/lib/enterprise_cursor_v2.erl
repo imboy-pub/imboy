@@ -195,10 +195,19 @@ verify_payload(PayloadBin, MacBin, Secret) ->
 %% （foreign → invalid_request）。
 -spec check_structure(map()) -> {ok, map()} | {error, invalid | expired}.
 check_structure(Payload) ->
+    %% INT-BE-04 缺陷修复：A4 Human Directory 的 payload 域键是 `domain`
+    %% （signing 侧 organization_directory_app 既有约定；本模块头注释
+    %% 「A4 复用同一算法但 payload 域不同」）——原实现只读 `family`，
+    %% Human 游标 verify 恒 invalid，真实 HTTP 链路翻页恒 400。
+    FamilyKey =
+        case is_map_key(<<"family">>, Payload) of
+            true -> <<"family">>;
+            false -> <<"domain">>
+        end,
     case
         {
             maps:get(<<"v">>, Payload, undefined),
-            maps:get(<<"family">>, Payload, undefined),
+            maps:get(FamilyKey, Payload, undefined),
             maps:get(<<"issued_at">>, Payload, undefined)
         }
     of
@@ -312,13 +321,16 @@ is_valid_utf8(B) ->
 %%%===================================================================
 
 -spec b64url_encode(binary()) -> binary().
+%% INT-BE-04 缺陷修复：OTP base64 的 URL 安全模式选项是 `urlsafe`——
+%% 原值 `url` 非法被静默忽略，签出标准字母表（含 +/=），跨 HTTP 传输
+%% 会被 qs 解码破坏且与 decode 口径分裂（自签自验失败）。
 b64url_encode(Data) ->
-    base64:encode(Data, #{padding => false, mode => url}).
+    base64:encode(Data, #{padding => false, mode => urlsafe}).
 
 -spec b64url_decode(binary()) -> {ok, binary()} | error.
 b64url_decode(Data) ->
     try
-        {ok, base64:decode(Data, #{padding => false, mode => url})}
+        {ok, base64:decode(Data, #{padding => false, mode => urlsafe})}
     catch
         _:_ -> error
     end.
