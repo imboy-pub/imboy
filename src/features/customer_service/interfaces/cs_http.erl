@@ -171,9 +171,13 @@ is_web_seat_surface_path(Path) when is_binary(Path) ->
             _SessionId,
             Action
         ] when
-            Action =:= <<"claim">>; Action =:= <<"transfer">>; Action =:= <<"close">>;
+            Action =:= <<"claim">>;
+            Action =:= <<"transfer">>;
+            Action =:= <<"close">>;
             %% CS-BE-03：客户上下文只读投影（工作台右栏；cs_seat 主体）。
-            Action =:= <<"context">>
+            Action =:= <<"context">>;
+            %% CS-BE-04：会话已读游标（GET 读状态 / POST ACK；cs_seat 主体）。
+            Action =:= <<"read-cursor">>
         ->
             true;
         %% 工作台 active/closed 两视图 / 转接目标 / 坐席 SSE 事件流。
@@ -810,6 +814,10 @@ classify({invalid_limit, _}) ->
 classify({invalid_status, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({not_session_seat, _, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+%% CS-BE-04：ACK 候选游标非负整数取值不成立（形状由动作表 tsid 裁决，
+%% 这里覆盖负值等域值错误——显式登记，无兜底）。
+classify({invalid_message_id, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 %% CSB-03：installation 未配置 identity key（形状合法但取值不成立——
 %% 租户未启用签名身份换绑）。

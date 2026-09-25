@@ -2122,6 +2122,17 @@ customer_service_tenant_routes() ->
             required_function => <<"customer_service">>,
             required_permission => <<"conversation.read">>
         }},
+        %% CS-BE-04（CS-DEC-02）：会话已读游标——GET 读状态（游标+未读数，
+        %% 事实现算无冗余计数表）；POST ACK（单调前进不可回退，重复/乱序
+        %% 幂等；transfer 边界确立受让人新起点）。同路径双方法按 case_auth
+        %% 分流（GET=conversation.read / POST=conversation.write）；授权在
+        %% application 复核 session ownership（跨 Seat 403、跨 Org not_found）。
+        {"/api/v1/cs/organizations/:org_id/sessions/:id/read-cursor", cs_tenant_handler, #{
+            action => session_read_cursor,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
         %% CSB-02R：坐席工作台 active/closed 两视图（T-2 后 org 显式在路径）。
         %% 独立路径而非 /sessions?scope=seat 的理由：GET /api/v1/cs/sessions 已
         %% 冻结为访客面，route metadata 是 principal 的唯一分流依据。

@@ -87,7 +87,11 @@
     fetch_event_scope/2,
     list_events_page/4,
     event_watermark/2,
-    provision_seat/3
+    provision_seat/3,
+    %% CS-BE-04：已读游标（单调 ACK 幂等 + 未读事实现算的 fake 镜像）
+    seed_message/4,
+    ack_session_read/6,
+    fetch_session_read_state/4
 ]).
 
 -define(TAB, cs_fake_store_tab).
@@ -116,7 +120,9 @@ init() ->
         {org_contexts, #{}},
         {identity_displays, #{}},
         {members, #{}},
-        {provision_fail_after, infinity}
+        {provision_fail_after, infinity},
+        {read_cursors, #{}},
+        {messages, []}
     ]),
     ok.
 
@@ -1326,6 +1332,93 @@ put_seat(Seat) ->
     OrgId = maps:get(organization_id, Seat),
     update(seats, fun(M) -> M#{{OrgId, IdentityId} => Seat} end),
     ok.
+
+%% ===================================================================
+%% CS-BE-04：已读游标 fake（镜像 cs_pg_session 的机械单调语义；
+%% 授权复核在 application——本 fake 只提供游标与消息事实面）
+%% ===================================================================
+
+%% 消息事实种子（镜像 enterprise_message 的未读计算所需列）。
+seed_message(OrgId, WorkspaceId, ConversationId, Message) ->
+    Row = Message#{
+        organization_id => OrgId,
+        workspace_id => WorkspaceId,
+        conversation_id => ConversationId
+    },
+    update(messages, fun(L) -> [Row | L] end),
+    maps:get(id, Message).
+
+ack_session_read(OrgId, WorkspaceId, SessionId, IdentityId, LastReadMessageId, _At) ->
+    case fetch_session(OrgId, WorkspaceId, SessionId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Session} ->
+            ConvId = maps:get(conversation_id, Session),
+            %% 候选收敛：只承认会话 conversation 内已存在的消息 id（同
+            %% SQL_ACK_EFFECTIVE_CURSOR）；无更早消息则 0。
+            Effective =
+                lists:max(
+                    [0] ++
+                        [
+                            Id
+                         || #{
+                                id := Id,
+                                organization_id := OrgId,
+                                workspace_id := WorkspaceId,
+                                conversation_id := ConvId
+                            } <- messages(),
+                            Id =< LastReadMessageId
+                        ]
+                ),
+            Key = {OrgId, SessionId, IdentityId},
+            {read_cursors, Cursors} = hd(ets:lookup(?TAB, read_cursors)),
+            Prev = maps:get(Key, Cursors, 0),
+            %% 单调前进：新值 > 旧值才写（同 SQL_ACK_CURSOR_UPSERT 的 WHERE）。
+            case Effective > Prev of
+                true -> update(read_cursors, fun(M) -> M#{Key => Effective} end);
+                false -> ok
+            end,
+            read_state_of(OrgId, WorkspaceId, SessionId, IdentityId, Session)
+    end.
+
+fetch_session_read_state(OrgId, WorkspaceId, SessionId, IdentityId) ->
+    case fetch_session(OrgId, WorkspaceId, SessionId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Session} ->
+            read_state_of(OrgId, WorkspaceId, SessionId, IdentityId, Session)
+    end.
+
+read_state_of(OrgId, WorkspaceId, SessionId, IdentityId, Session) ->
+    ConvId = maps:get(conversation_id, Session),
+    Cursor = cursor_of(OrgId, SessionId, IdentityId),
+    Unread = length([
+        ok
+     || #{
+            id := Id,
+            organization_id := OrgId,
+            workspace_id := WorkspaceId,
+            conversation_id := ConvId,
+            sender_type := contact,
+            visibility := visible
+        } <-
+            messages(),
+        Id > Cursor
+    ]),
+    {ok, #{
+        session_id => SessionId,
+        business_identity_id => IdentityId,
+        last_read_message_id => Cursor,
+        unread_count => Unread
+    }}.
+
+cursor_of(OrgId, SessionId, IdentityId) ->
+    {read_cursors, Cursors} = hd(ets:lookup(?TAB, read_cursors)),
+    maps:get({OrgId, SessionId, IdentityId}, Cursors, 0).
+
+messages() ->
+    {messages, L} = hd(ets:lookup(?TAB, messages)),
+    L.
 
 %% ===================================================================
 %% 测试读取面（断言用）

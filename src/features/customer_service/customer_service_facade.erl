@@ -66,6 +66,9 @@
     seat_session_detail/2,
     %% CS-BE-03（CS-DEC-01）：客户上下文只读投影（session ownership 门）
     session_customer_context/2,
+    %% CS-BE-04（CS-DEC-02）：已读游标——单调 ACK（幂等）+ 读状态（未读数）
+    session_read_ack/2,
+    session_read_state/2,
     %% CSB-02R：坐席工作台（队列 GET + active/closed 列表，共用 seat_session_page）
     seat_session_queue/2,
     seat_session_list/2,
@@ -778,6 +781,34 @@ session_customer_context(
 session_customer_context(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, session_customer_context}};
 session_customer_context(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 已读游标 ACK（CS-BE-04 / CS-DEC-02）：last_read_message_id 与 at
+%% 的存在性先在形状层裁决（at 是服务端派生时钟，HTTP 面必在）；授权与
+%% 幂等语义在 application（cs_seat_app:ack_read）。
+-spec session_read_ack(integer(), map()) -> term().
+session_read_ack(
+    OrgId, #{business_identity_id := IdentityId, session_id := SessionId} = Params
+) when
+    is_integer(OrgId), is_integer(IdentityId), is_integer(SessionId), is_map(Params)
+->
+    cs_seat_app:ack_read(OrgId, Params);
+session_read_ack(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, session_read_ack}};
+session_read_ack(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 会话读状态（CS-BE-04）：游标 + 未读数（cursor 与消息事实现算）。
+-spec session_read_state(integer(), map()) -> term().
+session_read_state(
+    OrgId, #{business_identity_id := IdentityId, session_id := SessionId} = Params
+) when
+    is_integer(OrgId), is_integer(IdentityId), is_integer(SessionId), is_map(Params)
+->
+    cs_seat_app:read_state(OrgId, Params);
+session_read_state(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, session_read_state}};
+session_read_state(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% ===================================================================

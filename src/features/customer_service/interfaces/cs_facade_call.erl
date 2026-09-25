@@ -115,6 +115,11 @@ call(seat_session_detail, OrgId, Params) ->
 %% CS-BE-03（CS-DEC-01）：客户上下文只读投影。
 call(session_customer_context, OrgId, Params) ->
     customer_service_facade:session_customer_context(OrgId, Params);
+%% CS-BE-04（CS-DEC-02）：已读游标——单调 ACK（幂等）+ 读状态（未读数）。
+call(session_read_ack, OrgId, Params) ->
+    customer_service_facade:session_read_ack(OrgId, Params);
+call(session_read_state, OrgId, Params) ->
+    customer_service_facade:session_read_state(OrgId, Params);
 %% CSB-02R：坐席工作台（队列 GET + active/closed 列表）。
 call(seat_session_queue, OrgId, Params) ->
     customer_service_facade:seat_session_queue(OrgId, Params);
@@ -176,6 +181,9 @@ actions() ->
         seat_session_detail,
         %% CS-BE-03：客户上下文只读投影
         session_customer_context,
+        %% CS-BE-04：已读游标（单调 ACK + 读状态）
+        session_read_ack,
+        session_read_state,
         %% CSB-02R：坐席工作台
         seat_session_queue,
         seat_session_list,

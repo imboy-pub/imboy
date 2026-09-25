@@ -26,6 +26,9 @@
     session_detail/2,
     %% CS-BE-03（CS-DEC-01）：客户上下文只读投影（session ownership 门）。
     session_context/2,
+    %% CS-BE-04（CS-DEC-02）：已读游标——单调 ACK（幂等）+ 读状态（未读数）。
+    ack_read/2,
+    read_state/2,
     %% BE-S01a：坐席上下文清单（主体自身作用域）+ 转接目标最小投影
     seat_contexts/1,
     transfer_targets/2,
@@ -520,6 +523,125 @@ contact_notes(OrgId, ContactId, Params) ->
                 }
              || Row <- Rows
             ]}
+    end.
+
+%% ===================================================================
+%% CS-BE-04：已读游标（CS-DEC-02）——单调 ACK（幂等）+ 读状态（未读数）
+%% ===================================================================
+
+%% @doc 会话已读游标 ACK：把经办坐席的游标推进到 `last_read_message_id`。
+%%
+%% 冻结语义（CS-DEC-02 / 计划 v1.1 CS-BE-04）：
+%%   * 游标绑定 (org, session, 经办 identity)——不是全局 user；
+%%   * ACK 单调前进、不可回退：重复/乱序后到的旧 ACK 幂等（零副作用，
+%%     updated_at 不被刷新），后到的旧值不得覆盖新值；
+%%   * 候选游标只承认会话内已存在的消息 id（store 侧收敛到事实上界）；
+%%   * transfer 边界由改绑事务确立（见 cs_pg_session:transfer_session），
+%%     本用例不触碰他人游标。
+%%
+%% 授权（同 session_context 的门 + ownership 复核）：请求坐席必须是本 Org
+%% enabled 坐席（403 面）且是该会话**当前经办** identity（403 面）；
+%% 会话租户作用域由 store 同语句裁决（跨 Org 一律 not_found，防枚举）。
+%% queued 会话无经办（undefined）⇒ ownership 门自然拒绝。
+%%
+%% 时钟：`at` 由调用方注入（HTTP 面是服务端派生的 epoch 秒，客户端不可
+%% 报时；直驱测试显式传固定值）——写路径零 now() 依赖，可注入可重放。
+%%
+%% Params：workspace_id / session_id / business_identity_id /
+%% last_read_message_id / at 必填。返回 ACK 后的读状态
+%% `#{session_id, business_identity_id, last_read_message_id, unread_count}`。
+-spec ack_read(integer(), map()) -> {ok, cs_store_port:read_state()} | {error, term()}.
+ack_read(OrgId, Params) when is_map(Params) ->
+    LastReadMessageId = maps:get(last_read_message_id, Params, undefined),
+    case is_integer(LastReadMessageId) andalso LastReadMessageId >= 0 of
+        false ->
+            {error, {invalid_message_id, LastReadMessageId}};
+        true ->
+            read_cursor_gate(OrgId, Params, fun(Org, Ws, SessionId, IdentityId) ->
+                At = maps:get(at, Params, undefined),
+                case pos_int(At) of
+                    false ->
+                        {error, {invalid_argument, ack_read}};
+                    true ->
+                        with_store(Params, fun(Store) ->
+                            Store:ack_session_read(
+                                Org, Ws, SessionId, IdentityId, LastReadMessageId, At
+                            )
+                        end)
+                end
+            end)
+    end;
+ack_read(_OrgId, _Params) ->
+    {error, {invalid_argument, ack_read}}.
+
+%% @doc 会话读状态：游标 + 未读数（由 cursor 与消息事实**现算**，无冗余
+%% 计数表）。SSE 推送只是刷新提示，从不写游标——本读面是未读的唯一
+%% 事实出口。授权与 ack_read 同门（ownership 复核）。
+%%
+%% Params：workspace_id / session_id / business_identity_id 必填。
+-spec read_state(integer(), map()) -> {ok, cs_store_port:read_state()} | {error, term()}.
+read_state(OrgId, Params) when is_map(Params) ->
+    read_cursor_gate(OrgId, Params, fun(Org, Ws, SessionId, IdentityId) ->
+        with_store(Params, fun(Store) ->
+            Store:fetch_session_read_state(Org, Ws, SessionId, IdentityId)
+        end)
+    end);
+read_state(_OrgId, _Params) ->
+    {error, {invalid_argument, read_state}}.
+
+%% 已读游标用例的公共门：seat enabled 门（403 面）→ 会话租户作用域
+%% （not_found）→ session ownership 复核（403 面）→ 进入用例主体。
+read_cursor_gate(OrgId, Params, UseCase) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            IdentityId = maps:get(business_identity_id, Params, undefined),
+            case pos_int(IdentityId) of
+                false ->
+                    {error, {invalid_identity_id, IdentityId}};
+                true ->
+                    case
+                        with_store(Params, fun(Store) -> Store:fetch_seat(OrgId, IdentityId) end)
+                    of
+                        {error, not_found} ->
+                            {error, {seat_not_found, IdentityId}};
+                        {error, _} = Err ->
+                            Err;
+                        {ok, Seat} ->
+                            case maps:get(enabled, Seat, false) of
+                                false ->
+                                    {error, seat_disabled};
+                                true ->
+                                    read_cursor_owner_gate(
+                                        OrgId, WorkspaceId, IdentityId, Params, UseCase
+                                    )
+                            end
+                    end
+            end
+    end.
+
+read_cursor_owner_gate(OrgId, WorkspaceId, IdentityId, Params, UseCase) ->
+    SessionId = maps:get(session_id, Params, undefined),
+    case pos_int(SessionId) of
+        false ->
+            {error, {invalid_session_id, SessionId}};
+        true ->
+            case
+                with_store(Params, fun(Store) ->
+                    Store:fetch_session(OrgId, WorkspaceId, SessionId)
+                end)
+            of
+                {error, _} = Err ->
+                    Err;
+                {ok, Session} ->
+                    case maps:get(business_identity_id, Session, undefined) of
+                        IdentityId ->
+                            UseCase(OrgId, WorkspaceId, SessionId, IdentityId);
+                        Owner ->
+                            {error, {not_session_owner, IdentityId, Owner}}
+                    end
+            end
     end.
 
 %% ===================================================================

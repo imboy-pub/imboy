@@ -35,6 +35,9 @@
     fetch_session_customer_context/3,
     list_session_history_page/4,
     list_contact_notes_page/3,
+    %% CS-BE-04：已读游标（单调 ACK 幂等 + 未读事实现算）
+    ack_session_read/6,
+    fetch_session_read_state/4,
     %% shop key / visit token
     insert_shop_key/2,
     fetch_shop_key/2,
@@ -127,6 +130,14 @@ list_session_history_page(OrgId, ContactId, AfterId, Limit) ->
     cs_pg_session:list_session_history_page(OrgId, ContactId, AfterId, Limit).
 list_contact_notes_page(OrgId, ContactId, Limit) ->
     cs_pg_session:list_contact_notes_page(OrgId, ContactId, Limit).
+
+%% CS-BE-04：已读游标（cs_store_port 同名 callback 的薄委派）。
+ack_session_read(OrgId, WorkspaceId, SessionId, IdentityId, LastReadMessageId, At) ->
+    cs_pg_session:ack_session_read(
+        OrgId, WorkspaceId, SessionId, IdentityId, LastReadMessageId, At
+    ).
+fetch_session_read_state(OrgId, WorkspaceId, SessionId, IdentityId) ->
+    cs_pg_session:fetch_session_read_state(OrgId, WorkspaceId, SessionId, IdentityId).
 
 %% CSB-02R：widget 装配的本 Org 缺省 Workspace 解析。
 default_workspace(OrgId) ->

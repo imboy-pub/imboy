@@ -26,7 +26,8 @@
     event/0,
     widget_installation/0,
     widget_identity_key/0,
-    widget_bootstrap_token/0
+    widget_bootstrap_token/0,
+    read_state/0
 ]).
 
 -type seat() :: map().
@@ -37,6 +38,13 @@
 -type widget_installation() :: map().
 -type widget_identity_key() :: map().
 -type widget_bootstrap_token() :: map().
+%% CS-BE-04：会话读状态（游标 + 未读数）——ACK 与读面共用的返回形状。
+-type read_state() :: #{
+    session_id := integer(),
+    business_identity_id := integer(),
+    last_read_message_id := non_neg_integer(),
+    unread_count := non_neg_integer()
+}.
 
 %% -- identity 事实（A01 的应用侧前置校验数据源）----------------------------
 
@@ -218,6 +226,36 @@
     OrgId :: integer(), ContactId :: integer(), Limit :: pos_integer()
 ) ->
     {ok, [map()]} | {error, term()}.
+
+%% @doc CS-BE-04（CS-DEC-02）：会话已读游标 ACK。授权（seat 门 + session
+%% ownership）由 application 复核；本 callback 只做**机械单调写**：
+%%   * 单事务内把 `LastReadMessageId` 收敛为该会话 conversation 中
+%%     `id <= LastReadMessageId` 的最大已存在消息 id（不存在的/未来的 id
+%%     不越过消息事实上界），无更早消息则收敛为 0；
+%%   * 按「新值 > 旧值」单调 upsert（ON CONFLICT ... WHERE last_read <
+%%     EXCLUDED.last_read）——重复/乱序后到的旧 ACK 是零行 no-op（幂等，
+%%     updated_at 不被刷新），游标永不回退；
+%%   * `At` 由调用方注入（服务端时钟），时间写路径不用 now()。
+%% 返回 ACK 后的读状态（游标 + 由消息事实现算的 unread_count）。
+-callback ack_session_read(
+    OrgId :: integer(),
+    WorkspaceId :: integer(),
+    SessionId :: integer(),
+    IdentityId :: integer(),
+    LastReadMessageId :: non_neg_integer(),
+    At :: integer()
+) ->
+    {ok, read_state()} | {error, term()}.
+
+%% @doc CS-BE-04：会话读状态（游标 + 未读数）。未读数由 cursor 与
+%% enterprise_message 事实**同语句现算**（count(visible ∧ sender_type='contact'
+%% ∧ id > cursor)），无冗余计数表；cursor 不存在的经办从 0 起算（尚未读过
+%% 任何消息）。同语句绑定 (Org, Workspace, Session, Identity)——跨租户
+%% not_found；SSE 推送侧零写入路径，本读面是未读的唯一事实出口。
+-callback fetch_session_read_state(
+    OrgId :: integer(), WorkspaceId :: integer(), SessionId :: integer(), IdentityId :: integer()
+) ->
+    {ok, read_state()} | {error, term()}.
 
 %% -- shop key / visit token（digest 存储；明文不落库）------------------------
 

@@ -417,6 +417,27 @@ table(tenant) ->
                 server_common() ++ [business_identity_id],
                 path
             )},
+        %% CS-BE-04（CS-DEC-02）：会话已读游标——同路径双方法（session_queue
+        %% 同款分流）：GET = 读状态（游标 + 未读数，conversation.read）；
+        %% POST = ACK（单调前进、不可回退，重复/乱序幂等；conversation.write）。
+        %% `last_read_message_id` 是路径外唯一参数；`at` 是服务端派生时钟
+        %% （clock_unit => second，写路径 to_timestamp 量纲，客户端不可报时）。
+        {session_read_cursor,
+            with_case_auth(
+                entry(
+                    [
+                        {<<"GET">>, session_read_state, [], [{id, session_id}]},
+                        {<<"POST">>, session_read_ack, [{last_read_message_id, tsid, required}],
+                            [{id, session_id}], #{
+                                clock_unit => second
+                            }}
+                    ],
+                    seat_auth(<<"conversation.read">>),
+                    server_common() ++ [business_identity_id],
+                    path
+                ),
+                #{<<"POST">> => seat_auth(<<"conversation.write">>)}
+            )},
         %% CSB-02R：坐席 active/closed 两视图（T-2 后
         %% GET /api/v1/cs/organizations/:org_id/seats/sessions）。
         %% 独立路径的理由：GET /api/v1/cs/sessions 已冻结为访客面（cs_visit，

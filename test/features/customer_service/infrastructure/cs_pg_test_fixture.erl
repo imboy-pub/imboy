@@ -227,6 +227,8 @@ purge_cs_tables(Org) ->
                 end,
                 [
                     <<"customer_service_event">>,
+                    %% CS-BE-04：游标行 RESTRICT 引用 session/seat——先删。
+                    <<"customer_service_read_cursor">>,
                     <<"customer_service_session">>,
                     <<"customer_service_visit_token">>,
                     <<"customer_service_shop_key">>,

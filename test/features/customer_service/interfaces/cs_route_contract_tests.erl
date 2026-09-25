@@ -65,6 +65,15 @@ tenant_literal_routes() ->
         %% CS-BE-03（CS-DEC-01）：坐席客户上下文只读投影（白名单逐字冻结：
         %% 掩码名/来源/first/last seen/同 Org 历史会话/授权备注事实）。
         {<<O/binary, "/sessions/:id/context">>, session_customer_context, [<<"GET">>], cs_seat},
+        %% CS-BE-04（CS-DEC-02）：会话已读游标——同路径双方法（GET 读状态 /
+        %% POST ACK；route metadata 冻结主体 cs_seat，POST 权限由 case_auth
+        %% 收窄到 conversation.write）。
+        {
+            <<O/binary, "/sessions/:id/read-cursor">>,
+            session_read_cursor,
+            [<<"GET">>, <<"POST">>],
+            cs_seat
+        },
         %% CSB-02R：坐席工作台 active/closed 两视图（T-2 后 org 显式在路径——
         %% 旧 /api/v1/cs/seats/sessions 已删）。
         {<<O/binary, "/seats/sessions">>, seat_session_list, [<<"GET">>], cs_seat},

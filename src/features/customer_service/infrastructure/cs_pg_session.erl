@@ -24,6 +24,9 @@
     fetch_session_customer_context/3,
     list_session_history_page/4,
     list_contact_notes_page/3,
+    %% CS-BE-04：已读游标（单调 ACK 幂等 + 未读事实现算）
+    ack_session_read/6,
+    fetch_session_read_state/4,
     sql_statements/0
 ]).
 
@@ -265,6 +268,76 @@
     " LIMIT $3"
 >>).
 
+%% CS-BE-04（CS-DEC-02）：ACK 的单调 upsert。DO UPDATE 带 WHERE
+%% 「旧值 < 新值」：条件不满足即零行 no-op——重复/乱序后到的旧 ACK 不改
+%% 任何列（updated_at 不被刷新），游标永不回退。冲突键是
+%% uq_csrc_org_session_identity（游标绑定 org+session+经办 identity，
+%% 不是全局 user）。时间由注入的 At（epoch 秒）落库，不读 now()。
+-define(SQL_ACK_CURSOR_UPSERT, <<
+    "INSERT INTO customer_service_read_cursor"
+    " (id, organization_id, workspace_id, session_id, business_identity_id,"
+    "  last_read_message_id, created_at, updated_at)"
+    " VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7), to_timestamp($7))"
+    " ON CONFLICT (organization_id, session_id, business_identity_id) DO UPDATE"
+    "   SET last_read_message_id = EXCLUDED.last_read_message_id,"
+    "       updated_at = EXCLUDED.updated_at"
+    " WHERE customer_service_read_cursor.last_read_message_id"
+    "       < EXCLUDED.last_read_message_id"
+>>).
+
+%% CS-BE-04：ACK 目标收敛——候选游标只能指向该会话 conversation 中已存在的
+%% 消息 id（不存在的/未来的 id 不越过消息事实上界），无更早消息则 0。
+-define(SQL_ACK_EFFECTIVE_CURSOR, <<
+    "SELECT COALESCE(MAX(m.id), 0)::bigint AS effective"
+    "  FROM enterprise_message m"
+    " WHERE m.organization_id = $1 AND m.workspace_id = $2"
+    "   AND m.conversation_id = $3 AND m.id <= $4"
+>>).
+
+%% CS-BE-04：transfer 边界的取值——transfer 时刻会话内已存在的最大
+%% message id（无消息为 0）。
+-define(SQL_TRANSFER_BOUNDARY_MAX, <<
+    "SELECT COALESCE(MAX(m.id), 0)::bigint AS boundary"
+    "  FROM enterprise_message m"
+    " WHERE m.organization_id = $1 AND m.workspace_id = $2"
+    "   AND m.conversation_id = $3"
+>>).
+
+%% CS-BE-04：读状态单语句——游标（LEFT JOIN 本经办 identity 的游标行）
+%% 与未读数（enterprise_message 事实现算：visible ∧ sender_type='contact'
+%% ∧ id > cursor）。无冗余计数表；游标不存在（尚未读过）从 0 起算。
+-define(SQL_SESSION_READ_STATE, <<
+    "SELECT COALESCE(c.last_read_message_id, 0)::bigint AS last_read_message_id,"
+    "       (SELECT count(*) FROM enterprise_message m"
+    "         WHERE m.organization_id = s.organization_id"
+    "           AND m.workspace_id = s.workspace_id"
+    "           AND m.conversation_id = s.conversation_id"
+    "           AND m.id > COALESCE(c.last_read_message_id, 0)"
+    "           AND m.sender_type = 'contact'"
+    "           AND m.visibility = 'visible') AS unread_count"
+    "  FROM customer_service_session s"
+    "  LEFT JOIN customer_service_read_cursor c"
+    "    ON c.organization_id = s.organization_id"
+    "   AND c.session_id = s.id"
+    "   AND c.business_identity_id = $3"
+    " WHERE s.organization_id = $1 AND s.workspace_id = $2 AND s.id = $4"
+>>).
+
+%% CS-BE-04：transfer 边界 upsert（同改绑事务执行）——受让人游标写入
+%% 「transfer 时刻会话内已存在的最大 message id」（$6 = 已查得的边界值，
+%% 无消息为 0）。无条件覆盖（DO UPDATE 不带 WHERE）：transfer 是新
+%% assignment 边界的确立事件，不是 ACK——A→B→A 重受让时，前次游标被
+%% 新边界取代（transfer 前的历史对受让人默认 0 unread，CS-DEC-02）。
+-define(SQL_TRANSFER_CURSOR_BOUNDARY, <<
+    "INSERT INTO customer_service_read_cursor"
+    " (id, organization_id, workspace_id, session_id, business_identity_id,"
+    "  last_read_message_id, created_at, updated_at)"
+    " VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7), to_timestamp($7))"
+    " ON CONFLICT (organization_id, session_id, business_identity_id) DO UPDATE"
+    "   SET last_read_message_id = EXCLUDED.last_read_message_id,"
+    "       updated_at = EXCLUDED.updated_at"
+>>).
+
 -define(SEAT_SESSION_KEYS, [
     id,
     organization_id,
@@ -393,7 +466,13 @@ sql_statements() ->
         ?SQL_SEAT_SESSION_TOTAL_BY_STATUS,
         ?SQL_SESSION_CUSTOMER_CONTEXT,
         ?SQL_SESSION_HISTORY_PAGE,
-        ?SQL_CONTACT_NOTES_PAGE
+        ?SQL_CONTACT_NOTES_PAGE,
+        %% CS-BE-04：已读游标（单调 ACK upsert / 候选收敛 / 读状态 / transfer 边界）
+        ?SQL_ACK_CURSOR_UPSERT,
+        ?SQL_ACK_EFFECTIVE_CURSOR,
+        ?SQL_TRANSFER_BOUNDARY_MAX,
+        ?SQL_SESSION_READ_STATE,
+        ?SQL_TRANSFER_CURSOR_BOUNDARY
     ].
 
 %% ===================================================================
@@ -574,8 +653,33 @@ cas_claim_update(
 -spec transfer_session(integer(), integer(), integer(), integer(), integer(), integer(), map()) ->
     {ok, map()} | {error, term()}.
 transfer_session(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Event) ->
-    Params = [OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At],
-    cas_in_tx(?SQL_TRANSFER_UPDATE, Params, OrgId, WorkspaceId, SessionId, Event).
+    %% CS-BE-04：transfer 不再走共用 cas_in_tx——同事务在 CAS 成功后确立
+    %% 受让人的读游标边界（transfer 前的历史对受让人默认 0 unread，
+    %% CS-DEC-02）；任一步失败全回滚。
+    Result = elib_pg:with_tx(fun(Conn) ->
+        Params = [OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At],
+        case elib_pg:execute(Conn, ?SQL_TRANSFER_UPDATE, Params) of
+            {ok, 1} ->
+                write_event_or_rollback(Conn, OrgId, Event),
+                {ok, Session} = fetch_session_in(Conn, OrgId, WorkspaceId, SessionId),
+                ok =
+                    transfer_cursor_boundary_in(
+                        Conn,
+                        OrgId,
+                        WorkspaceId,
+                        SessionId,
+                        ToIdentityId,
+                        maps:get(conversation_id, Session),
+                        At
+                    ),
+                {ok, Session};
+            {ok, 0} ->
+                throw({rollback, {error, conflict}});
+            {error, Reason} ->
+                throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+        end
+    end),
+    undo_rollback(Result).
 
 -spec close_session(integer(), integer(), integer(), term(), integer(), integer(), map()) ->
     {ok, map()} | {error, term()}.
@@ -602,6 +706,121 @@ cas_in_tx(Sql, Params, OrgId, WorkspaceId, SessionId, Event) ->
         end
     end),
     undo_rollback(Result).
+
+%% ===================================================================
+%% CS-BE-04：已读游标（单调 ACK 幂等 + 未读事实现算）
+%% ===================================================================
+
+%% @doc 已读游标 ACK（单事务机械单调写；授权由 application 复核后进入）。
+%% 步骤：取会话（同语句租户裁决）→ 候选游标收敛到已存在消息事实上界 →
+%% 单调 upsert → 返回 ACK 后的读状态。任一步失败全回滚。
+-spec ack_session_read(integer(), integer(), integer(), integer(), non_neg_integer(), integer()) ->
+    {ok, cs_store_port:read_state()} | {error, term()}.
+ack_session_read(OrgId, WorkspaceId, SessionId, IdentityId, LastReadMessageId, At) ->
+    Result = elib_pg:with_tx(fun(Conn) ->
+        {ok, Session} = fetch_session_in(Conn, OrgId, WorkspaceId, SessionId),
+        ConversationId = maps:get(conversation_id, Session),
+        Effective = effective_cursor_in(
+            Conn, OrgId, WorkspaceId, ConversationId, LastReadMessageId
+        ),
+        upsert_cursor_in(Conn, OrgId, WorkspaceId, SessionId, IdentityId, Effective, At),
+        read_state_in(Conn, OrgId, WorkspaceId, SessionId, IdentityId)
+    end),
+    undo_rollback(Result).
+
+%% @doc 会话读状态（游标 + 未读数；单语句租户裁决，只读零副作用）。
+-spec fetch_session_read_state(integer(), integer(), integer(), integer()) ->
+    {ok, cs_store_port:read_state()} | {error, term()}.
+fetch_session_read_state(OrgId, WorkspaceId, SessionId, IdentityId) ->
+    case
+        cs_pg_common:fetch_one(
+            ?SQL_SESSION_READ_STATE, [OrgId, WorkspaceId, IdentityId, SessionId], [
+                last_read_message_id, unread_count
+            ]
+        )
+    of
+        {ok, #{last_read_message_id := Cursor, unread_count := Unread}} ->
+            {ok, #{
+                session_id => SessionId,
+                business_identity_id => IdentityId,
+                last_read_message_id => Cursor,
+                unread_count => Unread
+            }};
+        {error, _} = Err ->
+            Err
+    end.
+
+%% 候选游标收敛：只承认会话 conversation 内已存在的消息 id（<= 候选的最大
+%% id）；候选之前无任何消息（或候选 <= 0）则 0。
+effective_cursor_in(Conn, OrgId, WorkspaceId, ConversationId, Candidate) ->
+    case
+        elib_pg:query(Conn, ?SQL_ACK_EFFECTIVE_CURSOR, [
+            OrgId, WorkspaceId, ConversationId, Candidate
+        ])
+    of
+        {ok, [#{<<"effective">> := N}]} when is_integer(N), N >= 0 -> N;
+        {ok, _} -> throw({rollback, {error, {cursor_effective_unavailable, Candidate}}});
+        {error, Reason} -> throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+%% 单调 upsert：DO UPDATE 带 WHERE（旧值 < 新值），条件不满足即零行
+%% no-op（幂等）；成功与否都以回读状态为准。
+upsert_cursor_in(Conn, OrgId, WorkspaceId, SessionId, IdentityId, Effective, At) ->
+    Params = [
+        cs_tsid:new_id(cs_read_cursor), OrgId, WorkspaceId, SessionId, IdentityId, Effective, At
+    ],
+    case elib_pg:execute(Conn, ?SQL_ACK_CURSOR_UPSERT, Params) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+%% transfer 边界（在改绑事务内调用）：受让人游标 = transfer 时刻会话内
+%% 已存在的最大 message id（无消息为 0）；无条件覆盖旧游标行。
+transfer_cursor_boundary_in(Conn, OrgId, WorkspaceId, SessionId, ToIdentityId, ConversationId, At) ->
+    case elib_pg:query(?SQL_TRANSFER_BOUNDARY_MAX, [OrgId, WorkspaceId, ConversationId]) of
+        {ok, [#{<<"boundary">> := N}]} when is_integer(N), N >= 0 ->
+            Params = [
+                cs_tsid:new_id(cs_read_cursor),
+                OrgId,
+                WorkspaceId,
+                SessionId,
+                ToIdentityId,
+                N,
+                At
+            ],
+            case elib_pg:execute(Conn, ?SQL_TRANSFER_CURSOR_BOUNDARY, Params) of
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+            end;
+        {ok, _} ->
+            throw({rollback, {error, cursor_boundary_unavailable}});
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+read_state_in(Conn, OrgId, WorkspaceId, SessionId, IdentityId) ->
+    case
+        elib_pg:query(Conn, ?SQL_SESSION_READ_STATE, [OrgId, WorkspaceId, IdentityId, SessionId])
+    of
+        {ok, [Row]} ->
+            Normalized = cs_pg_common:normalize_row(
+                Row, [last_read_message_id, unread_count]
+            ),
+            {ok, #{
+                session_id => SessionId,
+                business_identity_id => IdentityId,
+                last_read_message_id => maps:get(last_read_message_id, Normalized),
+                unread_count => maps:get(unread_count, Normalized)
+            }};
+        {ok, []} ->
+            throw({rollback, {error, not_found}});
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
 
 %% ===================================================================
 %% 事务内辅助

@@ -97,6 +97,9 @@ contracts() ->
             {fetch_session_customer_context, 3},
             {list_session_history_page, 4},
             {list_contact_notes_page, 3},
+            %% CS-BE-04（CS-DEC-02）：已读游标（单调 ACK 幂等 / 读状态）。
+            {ack_session_read, 6},
+            {fetch_session_read_state, 4},
             {default_workspace, 1},
             %% shop key / visit token
             {insert_shop_key, 2},
