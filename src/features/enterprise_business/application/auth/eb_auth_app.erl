@@ -19,9 +19,17 @@
 %%%      （否则 `cross_identity` / `identity_assignment_missing`）。
 %%%   5. **三概念分离**（`eb_auth_permission`）：职能类型、动作权限、治理角色分别
 %%%      判定，`function_key` 不替代 permission，也不自动获得 governance role。
+%%%   6. **坐席门（CS-BE-01C / GAP-1）**：`enterprise_member` 选中的 assignment
+%%%      `function_key = customer_service` 时，**逐请求**经 `customer_service_facade`
+%%%      （铁律 5：跨单元只经 facade）读该坐席 seat 行——`enabled=false` 即
+%%%      `{error, seat_disabled}`（suspend 即时拒绝，错误码与 CS 面
+%%%      `cs_auth:seat_enabled_gate/3` 逐字一致）；seat 行不存在（从未开通坐席）
+%%%      维持既有授权行为（放行至后续 asset ACL / 用例门）；其他取数错误
+%%%      fail-closed 原样拒绝。`sales` 职能不属坐席域，门不触发、零 seat 查询。
 %%%
 %%% 本模块是**纯决策函数**：无 I/O、无进程、无隐式时间源（`now` 由请求注入）；
-%%% 唯一的对外读取经 `eb_auth_port`（只读契约，无任何写 callback）。拒绝路径不写
+%%% 事实读取经 `eb_auth_port`（只读契约，无任何写 callback），坐席门经
+%%% `customer_service_facade:fetch_seat/2`（跨单元只读）。拒绝路径不写
 %%% 任何东西、不改动注入事实、重复调用结果逐字相同。
 %%% 本卡不新建第二套 RBAC：治理角色与平台权限的权威来源仍是既有机制，本模块只消费
 %%% 经扩展点加载的事实。
@@ -146,16 +154,75 @@ member_permission(Requirement, Request, Facts, Member, Assignment) ->
         {error, _} = Err ->
             Err;
         ok ->
-            {ok, #{
-                auth_context => enterprise_member,
-                organization_id => maps:get(organization_id, Request, undefined),
-                user_id => maps:get(user_id, Assignment, undefined),
-                business_identity_id => maps:get(business_identity_id, Assignment, undefined),
-                function_key => maps:get(function_key, Assignment, undefined),
-                permissions => permissions_of(Facts),
-                governance_roles => governance_roles_of(Member)
-            }}
+            %% CS-BE-01C（GAP-1）：权限判定通过后、授权成功返回前过坐席门——
+            %% 只有「职能、身份、权限全部就绪」的 customer_service 请求才读一次
+            %% seat 事实（permission 不足的普通拒绝不触发 seat 查询，零副作用）。
+            OrgId = maps:get(organization_id, Request, undefined),
+            case
+                seat_enabled_gate(
+                    OrgId,
+                    maps:get(function_key, Assignment, undefined),
+                    maps:get(business_identity_id, Assignment, undefined)
+                )
+            of
+                {error, _} = Err2 ->
+                    Err2;
+                ok ->
+                    {ok, #{
+                        auth_context => enterprise_member,
+                        organization_id => maps:get(organization_id, Request, undefined),
+                        user_id => maps:get(user_id, Assignment, undefined),
+                        business_identity_id => maps:get(
+                            business_identity_id, Assignment, undefined
+                        ),
+                        function_key => maps:get(function_key, Assignment, undefined),
+                        permissions => permissions_of(Facts),
+                        governance_roles => governance_roles_of(Member)
+                    }}
+            end
     end.
+
+%% ===================================================================
+%% 坐席门（CS-BE-01C / GAP-1，2026-09-25）
+%% ===================================================================
+
+%% @doc customer_service 职能的 enterprise_member 坐席门。
+%%
+%% CS-INT-01 GAP-1：CS 面（`cs_seat` principal）suspend 坐席后 fail-closed，
+%% 但 eb 面（enterprise assets/messages）此前只查 active assignment、不查 seat，
+%% suspended 坐席仍可读写——本门闭合该缺口。语义与错误码对齐 CS 面
+%% `cs_auth:seat_enabled_gate/3`：
+%%
+%%   * seat 行存在且 `enabled = false` → `{error, seat_disabled}`（逐请求现读，
+%%     suspend 在下一个请求即失效，不缓存、不等 token 过期）；
+%%   * seat 行不存在（`{error, not_found}`，从未开通坐席）→ 维持 eb 面既有
+%%     授权行为（放行至后续 asset ACL / 用例门；`eb_tenant_handler_tests` 的
+%%     cs_seat_not_assignee 场景钉住该行为，本门不得提前拦截改标签）；
+%%   * 其他取数错误 → fail-closed 原样拒绝（不静默放行）；
+%%   * CS 职能但选中 assignment 的 identity 标识畸形/缺失 → 无法证明 seat
+%%     状态，fail-closed（`identity_assignment_missing`，与 CS 面兜底同标签）；
+%%   * `sales` 职能不属坐席域（seat 是客服坐席的域实体）→ 门不触发。
+%%
+%% 读取经 `customer_service_facade:fetch_seat/2`（铁律 5：单元间只经 facade；
+%% 只读）。查询带目标 `OrgId`（租户作用域显式，铁律 6）。
+seat_enabled_gate(OrgId, <<"customer_service">>, IdentityId) when
+    is_integer(OrgId), is_integer(IdentityId)
+->
+    case customer_service_facade:fetch_seat(OrgId, #{business_identity_id => IdentityId}) of
+        {ok, Seat} ->
+            case maps:get(enabled, Seat, false) of
+                true -> ok;
+                false -> {error, seat_disabled}
+            end;
+        {error, not_found} ->
+            ok;
+        {error, _Reason} = Err ->
+            Err
+    end;
+seat_enabled_gate(_OrgId, <<"customer_service">>, _MalformedIdentity) ->
+    {error, identity_assignment_missing};
+seat_enabled_gate(_OrgId, _NonSeatDomainFunction, _IdentityId) ->
+    ok.
 
 %% ===================================================================
 %% 治理类：active member + governance role（不因业务身份自动获得）

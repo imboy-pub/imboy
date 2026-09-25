@@ -223,69 +223,77 @@ member_route_denies_function_mismatch_test() ->
 %% §EB-D02 基数冻结：同一 user 在同一 Org 可同时持有一条 `sales` 与一条
 %% `customer_service` active assignment；授权按路由要求的职能挑那一条 identity，
 %% 而不是「取第一条 active」。同职能出现两条 active（脏数据）→ fail-closed。
-member_with_two_active_identities_selects_required_function_test() ->
-    Route = #{
-        auth_context => enterprise_member,
-        surface => tenant,
-        path => <<"/api/v1/enterprise/organizations/1/conversations">>,
-        required_function => <<"customer_service">>,
-        required_permission => <<"conversation.read">>
-    },
-    Facts = member_facts(#{
-        assignments => [
-            #{
-                business_identity_id => ?IDENTITY_SALES,
+%% CS-BE-01C：customer_service 职能的成功路径现经坐席门——meck seat enabled。
+member_with_two_active_identities_selects_required_function_test_() ->
+    EnabledSeat = [
+        {customer_service_facade, [
+            {fetch_seat, 2, fun(_OrgId, _Params) -> {ok, #{enabled => true}} end}
+        ]}
+    ],
+    ?WITH_MECKS(EnabledSeat, fun() ->
+        Route = #{
+            auth_context => enterprise_member,
+            surface => tenant,
+            path => <<"/api/v1/enterprise/organizations/1/conversations">>,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        },
+        Facts = member_facts(#{
+            assignments => [
+                #{
+                    business_identity_id => ?IDENTITY_SALES,
+                    organization_id => ?ORG_A,
+                    function_key => <<"sales">>,
+                    user_id => ?USER_A,
+                    status => active
+                },
+                #{
+                    business_identity_id => ?IDENTITY_CS,
+                    organization_id => ?ORG_A,
+                    function_key => <<"customer_service">>,
+                    user_id => ?USER_A,
+                    status => active
+                }
+            ]
+        }),
+        ?assertMatch(
+            {ok, #{
+                function_key := <<"customer_service">>,
+                business_identity_id := ?IDENTITY_CS
+            }},
+            eb_auth_app:authorize(Route, #{
+                credential => jwt_credential(#{}),
                 organization_id => ?ORG_A,
-                function_key => <<"sales">>,
-                user_id => ?USER_A,
-                status => active
-            },
-            #{
-                business_identity_id => ?IDENTITY_CS,
+                facts => {load, fun() -> {ok, Facts} end}
+            })
+        ),
+        Duplicated = member_facts(#{
+            assignments => [
+                #{
+                    business_identity_id => ?IDENTITY_SALES,
+                    organization_id => ?ORG_A,
+                    function_key => <<"sales">>,
+                    user_id => ?USER_A,
+                    status => active
+                },
+                #{
+                    business_identity_id => ?IDENTITY_SALES + 1,
+                    organization_id => ?ORG_A,
+                    function_key => <<"sales">>,
+                    user_id => ?USER_A,
+                    status => active
+                }
+            ]
+        }),
+        ?assertEqual(
+            {error, {multiple_active_assignment, <<"sales">>}},
+            eb_auth_app:authorize(Route#{required_function => <<"sales">>}, #{
+                credential => jwt_credential(#{}),
                 organization_id => ?ORG_A,
-                function_key => <<"customer_service">>,
-                user_id => ?USER_A,
-                status => active
-            }
-        ]
-    }),
-    ?assertMatch(
-        {ok, #{
-            function_key := <<"customer_service">>,
-            business_identity_id := ?IDENTITY_CS
-        }},
-        eb_auth_app:authorize(Route, #{
-            credential => jwt_credential(#{}),
-            organization_id => ?ORG_A,
-            facts => {load, fun() -> {ok, Facts} end}
-        })
-    ),
-    Duplicated = member_facts(#{
-        assignments => [
-            #{
-                business_identity_id => ?IDENTITY_SALES,
-                organization_id => ?ORG_A,
-                function_key => <<"sales">>,
-                user_id => ?USER_A,
-                status => active
-            },
-            #{
-                business_identity_id => ?IDENTITY_SALES + 1,
-                organization_id => ?ORG_A,
-                function_key => <<"sales">>,
-                user_id => ?USER_A,
-                status => active
-            }
-        ]
-    }),
-    ?assertEqual(
-        {error, {multiple_active_assignment, <<"sales">>}},
-        eb_auth_app:authorize(Route#{required_function => <<"sales">>}, #{
-            credential => jwt_credential(#{}),
-            organization_id => ?ORG_A,
-            facts => {load, fun() -> {ok, Duplicated} end}
-        })
-    ).
+                facts => {load, fun() -> {ok, Duplicated} end}
+            })
+        )
+    end).
 
 %% function_key 字符串不得被当作 permission 使用（新增 function 名不能替代权限）。
 function_key_cannot_substitute_permission_test() ->
@@ -1203,23 +1211,31 @@ identity_hint_absent_keeps_ambiguity_rejected_test() ->
     ).
 
 %% hint 恰命中一条 → 以会话经办身份执行（A01.36 承接人读不到继承历史的翻转）。
-identity_hint_exactly_one_flips_to_conversation_identity_test() ->
-    ?assertMatch(
-        {ok, #{business_identity_id := ?IDENTITY_SALES, function_key := <<"sales">>}},
-        eb_auth_app:authorize(conversation_hint_route(), #{
-            credential => jwt_credential(#{}),
-            organization_id => ?ORG_A,
-            facts => {load, fun() -> {ok, dual_function_facts(?IDENTITY_SALES)} end}
-        })
-    ),
-    ?assertMatch(
-        {ok, #{business_identity_id := ?IDENTITY_CS, function_key := <<"customer_service">>}},
-        eb_auth_app:authorize(conversation_hint_route(), #{
-            credential => jwt_credential(#{}),
-            organization_id => ?ORG_A,
-            facts => {load, fun() -> {ok, dual_function_facts(?IDENTITY_CS)} end}
-        })
-    ).
+%% CS-BE-01C：命中 CS 身份的分支经坐席门——meck seat enabled。
+identity_hint_exactly_one_flips_to_conversation_identity_test_() ->
+    EnabledSeat = [
+        {customer_service_facade, [
+            {fetch_seat, 2, fun(_OrgId, _Params) -> {ok, #{enabled => true}} end}
+        ]}
+    ],
+    ?WITH_MECKS(EnabledSeat, fun() ->
+        ?assertMatch(
+            {ok, #{business_identity_id := ?IDENTITY_SALES, function_key := <<"sales">>}},
+            eb_auth_app:authorize(conversation_hint_route(), #{
+                credential => jwt_credential(#{}),
+                organization_id => ?ORG_A,
+                facts => {load, fun() -> {ok, dual_function_facts(?IDENTITY_SALES)} end}
+            })
+        ),
+        ?assertMatch(
+            {ok, #{business_identity_id := ?IDENTITY_CS, function_key := <<"customer_service">>}},
+            eb_auth_app:authorize(conversation_hint_route(), #{
+                credential => jwt_credential(#{}),
+                organization_id => ?ORG_A,
+                facts => {load, fun() -> {ok, dual_function_facts(?IDENTITY_CS)} end}
+            })
+        )
+    end).
 
 %% hint 落空（零命中）→ 维持歧义拒绝：fail-closed 不放宽。
 identity_hint_zero_match_keeps_rejected_test() ->
