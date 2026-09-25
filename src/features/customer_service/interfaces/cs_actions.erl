@@ -439,6 +439,8 @@ table(tenant) ->
                 #{<<"POST">> => seat_auth(<<"conversation.write">>)}
             )},
         %% CS-BE-06（CS-DEC-03）：席位 entitlement 治理——PUT 配置/清除 limit
+        %% DEFECT-3（CS-INT-03 发现）：参数类型曾误写 `integer`（ptype 合法域
+        %% 是 `int`）——coerce 兜底拒绝，真实 HTTP PUT 恒 400 invalid_param。
         %%（seat_limit 正整数；缺省=清除→unlimited）；GET 额度视图
         %%（seat_limit n|unlimited + used 现算计数）。治理权限
         %% enterprise_owner_admin（owner/admin，不因业务身份自动获得）。
@@ -448,7 +450,7 @@ table(tenant) ->
         {seat_limit_governance,
             entry(
                 [
-                    {<<"PUT">>, seat_limit_set, [{seat_limit, integer, optional}], []},
+                    {<<"PUT">>, seat_limit_set, [{seat_limit, int, optional}], []},
                     {<<"GET">>, seat_limit_view, [], []}
                 ],
                 governance_auth(),

@@ -39,3 +39,17 @@ all_ttl_actions_use_second_clock_test() ->
 element_kase({ok, Entry}) ->
     [Kase | _] = maps:get(cases, Entry),
     Kase.
+
+%% DEFECT-3 回归锁：动作表参数类型必须是合法 ptype（integer/map 集合外的
+%% 拼写（如 `integer`）会被 coerce 兜底拒绝——真实 HTTP 面恒 4xx）。
+legal_ptype_test() ->
+    Legal = [tsid, int, binary, list, map],
+    Tables = [
+        cs_actions:tenant_actions(), cs_actions:platform_actions(), cs_actions:widget_actions()
+    ],
+    [
+        ?assert(lists:member(T, Legal), {illegal_ptype, P, T})
+     || {ok, E} <- Tables,
+        C <- maps:get(cases, E),
+        {P, T, _} <- element(3, C)
+    ].
