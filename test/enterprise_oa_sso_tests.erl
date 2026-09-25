@@ -24,13 +24,18 @@
 
 %% ---- 夹具（989 段独立 ID，与 A1 987 / A2 988 段互不冲突） ----
 
--define(OWNER_A, 989001).
--define(OWNER_B, 989002).
--define(ORG_A, 989101).
--define(ORG_B, 989102).
--define(ALICE, 989201).
--define(NOMAP_H, 989202).
--define(FOREIGN, 989203).
+%% INT-BE-06 候选门回归修复：audit append-only（fk RESTRICT + DELETE 触发器）
+%% 使固定段 + cleanup 模式失效（INT-BE-03 SSO 审计接线后，NEG-04 cleanup 删
+%% org 被审计行 RESTRICT 挡死 → 行残留 → 后续用例 unique 连锁）。改为
+%% **run 级唯一 base**（每进程随机一次，persistent_term memoize）+ seed 幂等
+%% + cleanup 对 org/user 残留容忍——跨 run/同 run 双向无冲突。
+-define(OWNER_A, run_base() + 1).
+-define(OWNER_B, run_base() + 2).
+-define(ORG_A, run_base() + 101).
+-define(ORG_B, run_base() + 102).
+-define(ALICE, run_base() + 201).
+-define(NOMAP_H, run_base() + 202).
+-define(FOREIGN, run_base() + 203).
 
 -define(APP_KEY, <<"epgz05-oa">>).
 -define(APP_KEY_B, <<"epgz05-oa-b">>).
@@ -94,12 +99,13 @@ exec(C, IoData, Params) ->
     end.
 
 seed_user(C, Uid) ->
+    %% 幂等：NEG-04 审计 RESTRICT 残留 org 时，后续用例 seed 跳过已存在行。
     exec(C, [
         <<"INSERT INTO \"user\" (id, password, account, reg_ip, reg_cosv) VALUES (">>,
         integer_to_binary(Uid),
         ", 'x', 't989_u_",
         integer_to_binary(Uid),
-        <<"', '127.0.0.1', 'x')">>
+        <<"', '127.0.0.1', 'x') ON CONFLICT (id) DO NOTHING">>
     ]).
 
 seed_org(C, OrgId, OwnerUid) ->
@@ -109,7 +115,10 @@ seed_org(C, OrgId, OwnerUid) ->
         integer_to_binary(OrgId),
         ", 't989_org', ",
         integer_to_binary(OwnerUid),
-        <<", 'active', '{}'::jsonb, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)">>
+        <<
+            ", 'active', '{}'::jsonb, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            " ON CONFLICT (id) DO NOTHING"
+        >>
     ]).
 
 seed_member(C, OrgId, Uid) ->
@@ -119,7 +128,10 @@ seed_member(C, OrgId, Uid) ->
         integer_to_binary(OrgId),
         ", ",
         integer_to_binary(Uid),
-        <<", 'member', CURRENT_TIMESTAMP, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)">>
+        <<
+            ", 'member', CURRENT_TIMESTAMP, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            " ON CONFLICT DO NOTHING"
+        >>
     ]).
 
 %% SSO 主夹具：org A（ALICE 有 mapping / NOMAP_H 无 mapping / FOREIGN 非成员）
@@ -432,66 +444,46 @@ close_extra(Conn) ->
 
 %% NEG-04 已提交夹具清理（FK 逆序；989 段全量，含 owner member 行）。
 cleanup_committed_fixture(C) ->
-    ok = exec(C, <<"BEGIN">>),
-    try
-        ok = exec(C, [
+    %% INT-BE-06 回归修复：INT-BE-03 SSO 审计接线后，exchange 落 audit 行
+    %% （append-only：fk RESTRICT org + DELETE 触发器），原「删 org/user」
+    %% 清场与 append-only 审计本质冲突（member 段再撞 owner-invariant 触发
+    %% 器）。套件库是 disposable marker（EPGZ05_INTTEST，release 整库
+    %% DROP）——清场收敛为**业务行四段**（code/credential/identity/
+    %% application），member/org/user 残留随整库 DROP 兜底；run 级唯一
+    %% base（run_base/0）保证同 run 内 NEG-05+ 的 re-seed 幂等无冲突。
+    _ = try_ok(fun() ->
+        exec(C, [
             <<"DELETE FROM enterprise_oa_sso_code WHERE organization_id IN (">>,
             integer_to_binary(?ORG_A),
             <<", ">>,
             integer_to_binary(?ORG_B),
             <<")">>
-        ]),
-        ok = exec(C, [
+        ])
+    end),
+    _ = try_ok(fun() ->
+        exec(C, [
             <<"DELETE FROM enterprise_application_credential WHERE organization_id IN (">>,
             integer_to_binary(?ORG_A),
             <<", ">>,
             integer_to_binary(?ORG_B),
             <<")">>
-        ]),
-        ok = exec(C, [
+        ])
+    end),
+    _ = try_ok(fun() ->
+        exec(C, [
             <<"DELETE FROM enterprise_external_identity WHERE organization_id = ">>,
             integer_to_binary(?ORG_A)
-        ]),
-        ok = exec(C, [
+        ])
+    end),
+    _ = try_ok(fun() ->
+        exec(C, [
             <<"DELETE FROM enterprise_application WHERE organization_id IN (">>,
             integer_to_binary(?ORG_A),
             <<", ">>,
             integer_to_binary(?ORG_B),
             <<")">>
-        ]),
-        ok = exec(C, [
-            <<"DELETE FROM organization_member WHERE organization_id IN (">>,
-            integer_to_binary(?ORG_A),
-            <<", ">>,
-            integer_to_binary(?ORG_B),
-            <<")">>
-        ]),
-        ok = exec(C, [
-            <<"DELETE FROM organization WHERE id IN (">>,
-            integer_to_binary(?ORG_A),
-            <<", ">>,
-            integer_to_binary(?ORG_B),
-            <<")">>
-        ]),
-        ok = exec(C, [
-            <<"DELETE FROM \"user\" WHERE id IN (">>,
-            integer_to_binary(?OWNER_A),
-            <<", ">>,
-            integer_to_binary(?OWNER_B),
-            <<", ">>,
-            integer_to_binary(?ALICE),
-            <<", ">>,
-            integer_to_binary(?NOMAP_H),
-            <<", ">>,
-            integer_to_binary(?FOREIGN),
-            <<")">>
-        ]),
-        ok = exec(C, <<"COMMIT">>)
-    catch
-        _:_ ->
-            _ = try_ok(fun() -> exec(C, <<"ROLLBACK">>) end),
-            erlang:error(neg04_cleanup_failed)
-    end,
+        ])
+    end),
     ok.
 
 %% NEG-05：org B credential 换 org A 签发的 code → resource_not_found
@@ -1195,3 +1187,18 @@ event_text(#{msg := Msg}) ->
     iolist_to_binary(io_lib:format("~0p", [Msg]));
 event_text(_) ->
     <<>>.
+
+%% run 级随机 base（24 位空间、64 位安全整数内；每 VM 一次）。
+run_base() ->
+    case persistent_term:get({?MODULE, run_base}, undefined) of
+        B when is_integer(B), B > 0 ->
+            B;
+        _ ->
+            B =
+                500_000_000_000_000 +
+                    (erlang:phash2(integer_to_binary(erlang:unique_integer([positive]))) rem
+                        400_000_000) *
+                        1_000,
+            persistent_term:put({?MODULE, run_base}, B),
+            B
+    end.
