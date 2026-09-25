@@ -806,9 +806,17 @@ shift_days(_From, Days) ->
 grant_idem(Input, ValidTo) ->
     Scopes = lists:sort(decode_scopes(maps:get(scopes, Input, []))),
     Ws = lists:sort(normalize_ids(maps:get(workspace_ids, Input, []))),
-    Kind = maps:get(workspace_scope_kind, Input, none),
+    %% INT-BE-05 缺陷修复：kind 经 handler 归一后是 atom（none/explicit），
+    %% 原实现把 atom 直接放进 iolist —— iolist_to_binary badarg，admin 面
+    %% 签发 Grant 必 500。统一转 binary（兼容 binary 直传形态）。
+    KindBin =
+        case maps:get(workspace_scope_kind, Input, none) of
+            K when is_atom(K) -> atom_to_binary(K, utf8);
+            K when is_binary(K) -> K;
+            _ -> <<"none">>
+        end,
     Payload = iolist_to_binary([
-        Kind,
+        KindBin,
         "|",
         lists:join(<<",">>, Scopes),
         "|",
