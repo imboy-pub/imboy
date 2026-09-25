@@ -583,6 +583,10 @@ flush_admin_permission_cache(AdminId) ->
         {adm_user_current, AdminId},
         {adm_user_rbac, AdminId},
         {adm_user_admin_permission, AdminId},
+        %% adm_acl:permissions/1 的统一权限缓存键（ENT-INT-01 W15 实证缺陷修复）：
+        %% 此前缺失导致 assign_role 撤权后 adm_acl 判权沿用旧角色最长 7200s——
+        %% 被降权 admin 在缓存窗口内仍可写（撤权延迟）。补齐后角色变更即时生效。
+        {adm_user_permission, AdminId},
         {adm_user_group_permission, AdminId},
         {adm_user_moment_permission, AdminId},
         {adm_user_report_permission, AdminId},
