@@ -2618,6 +2618,24 @@
         "static": false
       },
       {
+        "action": "seat_presence_heartbeat",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/seats/me/heartbeat",
+        "static": false
+      },
+      {
+        "action": "seat_presence_status",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/seats/me/presence",
+        "static": false
+      },
+      {
+        "action": "seat_presence_list",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/seats/presence",
+        "static": false
+      },
+      {
         "action": "seat_session_list",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/organizations/:org_id/seats/sessions",
@@ -2639,6 +2657,18 @@
         "action": "session_close",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/organizations/:org_id/sessions/:id/close",
+        "static": false
+      },
+      {
+        "action": "session_customer_context",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/sessions/:id/context",
+        "static": false
+      },
+      {
+        "action": "session_read_cursor",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/sessions/:id/read-cursor",
         "static": false
       },
       {
