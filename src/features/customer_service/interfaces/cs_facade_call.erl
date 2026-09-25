@@ -112,6 +112,9 @@ call(widget_asset_content, OrgId, Params) ->
     customer_service_facade:widget_asset_content(OrgId, Params);
 call(seat_session_detail, OrgId, Params) ->
     customer_service_facade:seat_session_detail(OrgId, Params);
+%% CS-BE-03（CS-DEC-01）：客户上下文只读投影。
+call(session_customer_context, OrgId, Params) ->
+    customer_service_facade:session_customer_context(OrgId, Params);
 %% CSB-02R：坐席工作台（队列 GET + active/closed 列表）。
 call(seat_session_queue, OrgId, Params) ->
     customer_service_facade:seat_session_queue(OrgId, Params);
@@ -171,6 +174,8 @@ actions() ->
         widget_asset_put,
         widget_asset_content,
         seat_session_detail,
+        %% CS-BE-03：客户上下文只读投影
+        session_customer_context,
         %% CSB-02R：坐席工作台
         seat_session_queue,
         seat_session_list,

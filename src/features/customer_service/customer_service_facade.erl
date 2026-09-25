@@ -64,6 +64,8 @@
     widget_asset_content/2,
     %% seat 会话详情（§12.4 表 2 补缺）
     seat_session_detail/2,
+    %% CS-BE-03（CS-DEC-01）：客户上下文只读投影（session ownership 门）
+    session_customer_context/2,
     %% CSB-02R：坐席工作台（队列 GET + active/closed 列表，共用 seat_session_page）
     seat_session_queue/2,
     seat_session_list/2,
@@ -760,6 +762,22 @@ seat_session_detail(
 seat_session_detail(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, seat_session_detail}};
 seat_session_detail(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 客户上下文只读投影（CS-BE-03 / CS-DEC-01 冻结白名单）：掩码名 /
+%% 来源 / first/last seen / 同 Org 历史会话 / 授权备注事实；电话、邮箱、
+%% 原始外部身份与任何密文材料永不投影。business_identity_id 是认证事实
+%% 派生键（HTTP 面服务端注入，客户端不可申报）。
+-spec session_customer_context(integer(), map()) -> term().
+session_customer_context(
+    OrgId, #{business_identity_id := IdentityId, session_id := SessionId} = Params
+) when
+    is_integer(OrgId), is_integer(IdentityId), is_integer(SessionId), is_map(Params)
+->
+    cs_seat_app:session_context(OrgId, Params);
+session_customer_context(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, session_customer_context}};
+session_customer_context(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% ===================================================================

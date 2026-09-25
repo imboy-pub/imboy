@@ -874,50 +874,17 @@ seat_waiting(View, Queued, Params, Row) when Queued =:= queued; Queued =:= <<"qu
 seat_waiting(View, _ActiveOrClosed, _Params, _Row) ->
     View.
 
-%% 来源推导（存储派生事实，浏览器不可申报）：
-%%   * visit_token_id 非空   → widget（访客经 widget/visit 令牌开会话）；
-%%   * created_by_user_id 非空 → seat（坐席在建会话时创建）；
-%%   * 其余                   → shop_key（门店接入 POST /sessions/queue）。
-source_of(#{visit_token_id := V}) when V =/= undefined -> <<"widget">>;
-source_of(#{created_by_user_id := U}) when U =/= undefined -> <<"seat">>;
-source_of(_Row) -> <<"shop_key">>.
+%% 来源推导与 contact 掩码名是坐席面读模型的公共语义（CS-BE-03 起由
+%% cs_session_app 与会话上下文共用）——唯一实现点在 `cs_app_support`
+%% （CS-DEC-01 白名单字段族，零复制）。
+source_of(Row) ->
+    cs_app_support:source_of(Row).
 
 %% contact 掩码名：优先 enterprise 侧既有 subject_mask（本就是掩码），
 %% 其次 display_name 打码（保留首尾各一字符，中间 ***），二者皆缺 →
 %% 稳定匿名柄 `guest#NNNNN`（contact_id 低五位，零 PII）。
 masked_name(Row) ->
-    Mask = maps:get(contact_subject_mask, Row, undefined),
-    Name = maps:get(contact_display_name, Row, undefined),
-    case {is_binary(Mask), Mask =/= <<>>, Mask =/= undefined} of
-        {true, true, true} ->
-            Mask;
-        _ ->
-            case is_binary(Name) andalso Name =/= <<>> of
-                true -> mask_display_name(Name);
-                false -> default_masked_name(maps:get(contact_id, Row, 0))
-            end
-    end.
-
-mask_display_name(Name) ->
-    Chars = unicode:characters_to_list(Name, utf8),
-    Masked =
-        case length(Chars) of
-            0 -> [];
-            1 -> "*";
-            2 -> [hd(Chars), $*];
-            _ -> [hd(Chars), $*, $*, $*, lists:last(Chars)]
-        end,
-    unicode:characters_to_binary(Masked, utf8).
-
-default_masked_name(ContactId) when is_integer(ContactId), ContactId > 0 ->
-    <<"guest#", (pad5(integer_to_binary(ContactId rem 100000)))/binary>>;
-default_masked_name(_ContactId) ->
-    <<"guest#00000">>.
-
-pad5(Bin) when byte_size(Bin) >= 5 ->
-    Bin;
-pad5(Bin) ->
-    pad5(<<"0", Bin/binary>>).
+    cs_app_support:masked_name(Row).
 
 %% 末条消息摘要（CS-BE-02 起含 preview）：id / sender_type / created_at +
 %% `preview`（服务端解密后按 Unicode 码点截断的前 64 个字符，见

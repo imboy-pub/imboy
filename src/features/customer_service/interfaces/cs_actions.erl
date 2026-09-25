@@ -400,6 +400,23 @@ table(tenant) ->
                 server_common() ++ [business_identity_id],
                 path
             )},
+        %% CS-BE-03（CS-DEC-01 冻结）：坐席客户上下文只读投影——白名单**仅限**
+        %% 掩码名 / 来源 / first/last seen / 同 Org 历史会话 / 授权备注事实；
+        %% 电话/邮箱/原始外部身份/密文/凭证/object key 永不进本响应。
+        %% after_id/limit 作用于历史会话页（binary 透传，application 校验——
+        %% seat_session_list 同款）。
+        {session_customer_context,
+            entry(
+                [
+                    {<<"GET">>, session_customer_context,
+                        [{after_id, binary, optional}, {limit, binary, optional}], [
+                            {id, session_id}
+                        ]}
+                ],
+                seat_auth(<<"conversation.read">>),
+                server_common() ++ [business_identity_id],
+                path
+            )},
         %% CSB-02R：坐席 active/closed 两视图（T-2 后
         %% GET /api/v1/cs/organizations/:org_id/seats/sessions）。
         %% 独立路径的理由：GET /api/v1/cs/sessions 已冻结为访客面（cs_visit，

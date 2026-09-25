@@ -2112,6 +2112,16 @@ customer_service_tenant_routes() ->
             required_function => <<"customer_service">>,
             required_permission => <<"conversation.read">>
         }},
+        %% CS-BE-03（CS-DEC-01 冻结）：坐席客户上下文只读投影（掩码名/来源/
+        %% first/last seen/同 Org 历史会话/授权备注事实；白名单外字段不存在；
+        %% session ownership 门在 application 复核——转接后新 Seat 可读、
+        %% 撤权立即拒绝）。:id/context 是 5 段路径，与上条 4 段 :id 不冲突。
+        {"/api/v1/cs/organizations/:org_id/sessions/:id/context", cs_tenant_handler, #{
+            action => session_customer_context,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
         %% CSB-02R：坐席工作台 active/closed 两视图（T-2 后 org 显式在路径）。
         %% 独立路径而非 /sessions?scope=seat 的理由：GET /api/v1/cs/sessions 已
         %% 冻结为访客面，route metadata 是 principal 的唯一分流依据。

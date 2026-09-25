@@ -21,6 +21,9 @@
     list_sessions_for_contact/3,
     list_sessions_page/5,
     seat_session_page/5,
+    fetch_session_customer_context/3,
+    list_session_history_page/4,
+    list_contact_notes_page/3,
     sql_statements/0
 ]).
 
@@ -201,6 +204,67 @@
     " GROUP BY s.status"
 >>).
 
+%% CS-BE-03（CS-DEC-01 冻结）：会话锚定的客户上下文事实行。零白名单外列：
+%% 只有来源两列（visit_token_id / created_by_user_id——来源推导输入）、
+%% 掩码原料（subject_mask 本就是掩码 / display_name 只做打码输入）与
+%% first/last seen（事实派生：first = contact.created_at，
+%% last = max(contact.created_at, 同 contact 全部会话活动峰值——
+%% queued/claimed/closed/rating 四列的 GREATEST；PG 的 GREATEST 忽略 NULL，
+%% MAX 无行时 COALESCE 回 created_at）。联系方式/原始外部身份/密文列
+%% （profile_cipher、subject_hmac、body_cipher…）一概不进本语句。
+-define(SQL_SESSION_CUSTOMER_CONTEXT, <<
+    "SELECT s.contact_id, s.workspace_id, s.visit_token_id, s.created_by_user_id,"
+    "       extract(epoch from c.created_at)::bigint AS first_seen,"
+    "       extract(epoch from GREATEST("
+    "           c.created_at,"
+    "           COALESCE((SELECT MAX(GREATEST(s2.queued_at, s2.claimed_at,"
+    "                                         s2.closed_at, s2.rating_at))"
+    "                       FROM customer_service_session s2"
+    "                      WHERE s2.organization_id = c.organization_id"
+    "                        AND s2.contact_id = c.id),"
+    "                    c.created_at)))::bigint AS last_seen,"
+    "       ci.subject_mask,"
+    "       c.display_name"
+    "  FROM customer_service_session s"
+    "  JOIN enterprise_contact c"
+    "    ON c.organization_id = s.organization_id AND c.id = s.contact_id"
+    "  LEFT JOIN LATERAL ("
+    "       SELECT i.subject_mask FROM enterprise_contact_identity i"
+    "        WHERE i.organization_id = s.organization_id AND i.contact_id = s.contact_id"
+    "        ORDER BY i.id LIMIT 1"
+    "  ) ci ON true"
+    " WHERE s.organization_id = $1 AND s.workspace_id = $2 AND s.id = $3"
+>>).
+
+%% CS-BE-03：同 contact 的同 Org 历史客服会话页（键集下推 `id < $3` +
+%% `ORDER BY id DESC LIMIT $4`，C1 冻结口径）；列 = 历史投影白名单，
+%% 无 visit_token_id / close_reason / created_by_user_id。
+-define(SQL_SESSION_HISTORY_PAGE, <<
+    "SELECT s.id, s.conversation_id, s.workspace_id, s.status, s.version, s.rating,"
+    "       extract(epoch from s.queued_at)::bigint AS queued_at,"
+    "       extract(epoch from s.claimed_at)::bigint AS claimed_at,"
+    "       extract(epoch from s.closed_at)::bigint AS closed_at"
+    "  FROM customer_service_session s"
+    " WHERE s.organization_id = $1 AND s.contact_id = $2"
+    "   AND ($3::bigint = 0 OR s.id < $3)"
+    " ORDER BY s.id DESC"
+    " LIMIT $4"
+>>).
+
+%% CS-BE-03：同 contact 的授权备注事实页（active 行，软删排除；按
+%% created_at/id DESC 稳定序）。EB 无 note 读面、密文材料禁出站
+%% （CS-DEC-01）——只取行事实（id / business_identity_id / created_at），
+%% 零正文、零密文列。
+-define(SQL_CONTACT_NOTES_PAGE, <<
+    "SELECT n.id, n.business_identity_id,"
+    "       extract(epoch from n.created_at)::bigint AS created_at"
+    "  FROM enterprise_note n"
+    " WHERE n.organization_id = $1 AND n.contact_id = $2"
+    "   AND n.status = 'active' AND n.deleted_at IS NULL"
+    " ORDER BY n.created_at DESC, n.id DESC"
+    " LIMIT $3"
+>>).
+
 -define(SEAT_SESSION_KEYS, [
     id,
     organization_id,
@@ -221,6 +285,32 @@
     last_message_sender_type,
     last_message_created_at
 ]).
+
+%% CS-BE-03 三段读模型的行键（与各自 SQL 列逐字对应；null → undefined）。
+-define(SESSION_CONTEXT_KEYS, [
+    contact_id,
+    workspace_id,
+    visit_token_id,
+    created_by_user_id,
+    first_seen,
+    last_seen,
+    subject_mask,
+    display_name
+]).
+
+-define(SESSION_HISTORY_KEYS, [
+    id,
+    conversation_id,
+    workspace_id,
+    status,
+    version,
+    rating,
+    queued_at,
+    claimed_at,
+    closed_at
+]).
+
+-define(CONTACT_NOTES_KEYS, [id, business_identity_id, created_at]).
 
 -spec seat_session_page(
     integer(),
@@ -300,8 +390,41 @@ sql_statements() ->
         ?SQL_LIST_SESSIONS_PAGE,
         ?SQL_SEAT_SESSION_PAGE,
         ?SQL_SEAT_SESSION_TOTAL,
-        ?SQL_SEAT_SESSION_TOTAL_BY_STATUS
+        ?SQL_SEAT_SESSION_TOTAL_BY_STATUS,
+        ?SQL_SESSION_CUSTOMER_CONTEXT,
+        ?SQL_SESSION_HISTORY_PAGE,
+        ?SQL_CONTACT_NOTES_PAGE
     ].
+
+%% ===================================================================
+%% CS-BE-03：客户上下文只读事实（零写副作用；全部同语句租户裁决）
+%% ===================================================================
+
+-spec fetch_session_customer_context(integer(), integer(), integer()) ->
+    {ok, map()} | {error, term()}.
+fetch_session_customer_context(OrgId, WorkspaceId, SessionId) ->
+    cs_pg_common:fetch_one(
+        ?SQL_SESSION_CUSTOMER_CONTEXT, [OrgId, WorkspaceId, SessionId], ?SESSION_CONTEXT_KEYS
+    ).
+
+-spec list_session_history_page(integer(), integer(), non_neg_integer(), pos_integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_session_history_page(OrgId, ContactId, AfterId, Limit) ->
+    case
+        cs_pg_common:fetch_many(
+            ?SQL_SESSION_HISTORY_PAGE, [OrgId, ContactId, AfterId, Limit], ?SESSION_HISTORY_KEYS
+        )
+    of
+        {ok, Rows} -> {ok, [to_status_value(Row) || Row <- Rows]};
+        {error, _} = Err -> Err
+    end.
+
+-spec list_contact_notes_page(integer(), integer(), pos_integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_contact_notes_page(OrgId, ContactId, Limit) ->
+    cs_pg_common:fetch_many(
+        ?SQL_CONTACT_NOTES_PAGE, [OrgId, ContactId, Limit], ?CONTACT_NOTES_KEYS
+    ).
 
 %% ===================================================================
 %% 基础读写

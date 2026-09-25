@@ -171,7 +171,9 @@ is_web_seat_surface_path(Path) when is_binary(Path) ->
             _SessionId,
             Action
         ] when
-            Action =:= <<"claim">>; Action =:= <<"transfer">>; Action =:= <<"close">>
+            Action =:= <<"claim">>; Action =:= <<"transfer">>; Action =:= <<"close">>;
+            %% CS-BE-03：客户上下文只读投影（工作台右栏；cs_seat 主体）。
+            Action =:= <<"context">>
         ->
             true;
         %% 工作台 active/closed 两视图 / 转接目标 / 坐席 SSE 事件流。
@@ -686,6 +688,11 @@ classify({governance_insufficient, _}) ->
 classify(platform_identity_mismatch) ->
     ?ERR_FORBIDDEN;
 classify(cross_org) ->
+    ?ERR_FORBIDDEN;
+%% CS-BE-03：客户上下文的 session ownership 门——请求坐席不是该会话当前
+%% 经办（含 queued 无经办 undefined）：授权面拒绝（403），不是资源不存在
+%% （会话存在性已由坐席工作台可见，404 反而制造枚举歧义）。
+classify({not_session_owner, _, _}) ->
     ?ERR_FORBIDDEN;
 classify({function_mismatch, _, _}) ->
     ?ERR_FORBIDDEN;

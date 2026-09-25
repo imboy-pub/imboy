@@ -92,6 +92,11 @@ contracts() ->
             {list_sessions_for_contact, 3},
             {list_sessions_page, 5},
             {seat_session_page, 5},
+            %% CS-BE-03（CS-DEC-01）：客户上下文只读事实（会话锚定事实行 /
+            %% 同 contact 历史页 / 授权备注事实页）。
+            {fetch_session_customer_context, 3},
+            {list_session_history_page, 4},
+            {list_contact_notes_page, 3},
             {default_workspace, 1},
             %% shop key / visit token
             {insert_shop_key, 2},

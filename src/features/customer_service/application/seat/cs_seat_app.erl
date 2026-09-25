@@ -24,6 +24,8 @@
     %% 平台运营面坐席分页（跨企业可选 Org 过滤）
     list_platform_seats/2,
     session_detail/2,
+    %% CS-BE-03（CS-DEC-01）：客户上下文只读投影（session ownership 门）。
+    session_context/2,
     %% BE-S01a：坐席上下文清单（主体自身作用域）+ 转接目标最小投影
     seat_contexts/1,
     transfer_targets/2,
@@ -322,6 +324,202 @@ fetch_detail(OrgId, Params) ->
         true ->
             Clean = maps:with([store, id, workspace_id], Params),
             cs_session_app:fetch_session(OrgId, Clean#{session_id => SessionId})
+    end.
+
+%% ===================================================================
+%% CS-BE-03：客户上下文只读投影（CS-DEC-01 字段白名单，逐字冻结）
+%% ===================================================================
+
+%% @doc 会话锚定的客户上下文（只读、零写副作用）。白名单**仅限**：
+%% 掩码名 / 来源 / first_seen / last_seen / 同 Org 历史客服会话列表 /
+%% 授权备注事实（EB 无 note 读面，密文材料禁出站）；电话、邮箱、原始
+%% 外部身份、跨组织资料、任何密文/凭证/object key 永不投影
+%% （越界字段需求一律 BLOCKED_SCOPE_EXPANSION）。
+%%
+%% 授权（沿用 session_detail 的 seat 门）+ **session ownership**：
+%% 请求坐席必须是该会话当前经办 identity——转接后新 Seat 可读、原 Seat
+%% 立即失去读权；queued 会话无经办 ⇒ 拒绝（不给 customer_service 粗暴
+%% 扩展 sales contact scope）。会话租户作用域由 store 同语句裁决
+%% （跨 Org 一律 not_found，不区分不存在与跨租户）。
+%%
+%% Params：workspace_id / session_id / business_identity_id 必填；
+%% after_id / limit 走 C1~C4 冻结键集口径（作用于历史会话页）。
+-spec session_context(integer(), map()) -> {ok, map()} | {error, term()}.
+session_context(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            session_context_seat_gate(OrgId, WorkspaceId, Params)
+    end;
+session_context(_OrgId, _Params) ->
+    {error, {invalid_argument, session_context}}.
+
+session_context_seat_gate(OrgId, WorkspaceId, Params) ->
+    IdentityId = maps:get(business_identity_id, Params, undefined),
+    case pos_int(IdentityId) of
+        false ->
+            {error, {invalid_identity_id, IdentityId}};
+        true ->
+            case with_store(Params, fun(Store) -> Store:fetch_seat(OrgId, IdentityId) end) of
+                {error, not_found} ->
+                    {error, {seat_not_found, IdentityId}};
+                {error, _} = Err ->
+                    Err;
+                {ok, Seat} ->
+                    case maps:get(enabled, Seat, false) of
+                        false -> {error, seat_disabled};
+                        true -> session_context_owner_gate(OrgId, WorkspaceId, IdentityId, Params)
+                    end
+            end
+    end.
+
+session_context_owner_gate(OrgId, WorkspaceId, IdentityId, Params) ->
+    SessionId = maps:get(session_id, Params, undefined),
+    case pos_int(SessionId) of
+        false ->
+            {error, {invalid_session_id, SessionId}};
+        true ->
+            case
+                with_store(Params, fun(Store) ->
+                    Store:fetch_session(OrgId, WorkspaceId, SessionId)
+                end)
+            of
+                {error, _} = Err ->
+                    Err;
+                {ok, Session} ->
+                    session_context_owned(OrgId, Session, IdentityId, Params)
+            end
+    end.
+
+%% ownership 复核：queued 会话 business_identity_id = undefined（无经办）。
+session_context_owned(OrgId, Session, IdentityId, Params) ->
+    case maps:get(business_identity_id, Session, undefined) of
+        IdentityId ->
+            assemble_session_context(OrgId, Session, Params);
+        Owner ->
+            {error, {not_session_owner, IdentityId, Owner}}
+    end.
+
+%% 客户上下文投影组装（白名单唯一出口）：
+%%   contact  = #{masked_name, first_seen, last_seen}
+%%   history  = page_view(sessions, …)（同 contact、同 Org、DESC 键集）
+%%   notes    = 授权备注事实行（active；软删排除；零正文零密文）
+assemble_session_context(OrgId, Session, Params) ->
+    case cs_app_support:page_cursor(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, AfterId, Limit} ->
+            assemble_context_facts(OrgId, Session, AfterId, Limit, Params)
+    end.
+
+assemble_context_facts(OrgId, Session, AfterId, Limit, Params) ->
+    case context_facts(OrgId, Session, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Contact, Source} ->
+            assemble_context_pages(OrgId, Session, Contact, Source, AfterId, Limit, Params)
+    end.
+
+assemble_context_pages(OrgId, Session, Contact, Source, AfterId, Limit, Params) ->
+    ContactId = maps:get(contact_id, Session),
+    case session_history(OrgId, ContactId, AfterId, Limit, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, History} ->
+            case contact_notes(OrgId, ContactId, Params) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, Notes} ->
+                    {ok, #{
+                        session_id => maps:get(id, Session),
+                        workspace_id => maps:get(workspace_id, Session),
+                        source => Source,
+                        contact => Contact,
+                        history => History,
+                        notes => Notes
+                    }}
+            end
+    end.
+
+context_facts(OrgId, Session, Params) ->
+    Read = fun(Store) ->
+        Store:fetch_session_customer_context(
+            OrgId, maps:get(workspace_id, Session), maps:get(id, Session)
+        )
+    end,
+    case with_store(Params, Read) of
+        {error, _} = Err ->
+            Err;
+        {ok, Row} ->
+            ContactId = maps:get(contact_id, Session),
+            {ok, contact_view(Row, ContactId), cs_app_support:source_of(source_facts(Row))}
+    end.
+
+source_facts(Row) ->
+    #{
+        visit_token_id => maps:get(visit_token_id, Row, undefined),
+        created_by_user_id => maps:get(created_by_user_id, Row, undefined)
+    }.
+
+contact_view(Row, ContactId) ->
+    #{
+        masked_name =>
+            cs_app_support:masked_name(#{
+                contact_subject_mask => maps:get(subject_mask, Row, undefined),
+                contact_display_name => maps:get(display_name, Row, undefined),
+                contact_id => ContactId
+            }),
+        first_seen => maps:get(first_seen, Row),
+        last_seen => maps:get(last_seen, Row)
+    }.
+
+-define(CONTEXT_HISTORY_PROJECTION, [
+    id,
+    conversation_id,
+    workspace_id,
+    status,
+    version,
+    rating,
+    queued_at,
+    claimed_at,
+    closed_at
+]).
+
+session_history(OrgId, ContactId, AfterId, Limit, Params) ->
+    case
+        with_store(Params, fun(Store) ->
+            Store:list_session_history_page(OrgId, ContactId, AfterId, Limit)
+        end)
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Rows} ->
+            cs_app_support:page_view(
+                sessions, ?CONTEXT_HISTORY_PROJECTION, Rows, Limit, id
+            )
+    end.
+
+%% 授权备注事实页：每页固定 20 行（id/created_by_identity_id/created_at）。
+-define(CONTEXT_NOTES_LIMIT, 20).
+
+contact_notes(OrgId, ContactId, Params) ->
+    case
+        with_store(Params, fun(Store) ->
+            Store:list_contact_notes_page(OrgId, ContactId, ?CONTEXT_NOTES_LIMIT)
+        end)
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Rows} ->
+            {ok, [
+                #{
+                    id => maps:get(id, Row),
+                    created_by_identity_id => maps:get(business_identity_id, Row, undefined),
+                    created_at => maps:get(created_at, Row)
+                }
+             || Row <- Rows
+            ]}
     end.
 
 %% ===================================================================

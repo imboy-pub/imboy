@@ -186,6 +186,39 @@
 -callback default_workspace(OrgId :: integer()) ->
     {ok, integer()} | {error, not_found | term()}.
 
+%% @doc CS-BE-03（CS-DEC-01 冻结）：会话锚定的客户上下文**事实行**——
+%% 会话来源两列（visit_token_id / created_by_user_id，来源推导的输入）
+%% 与 contact 事实派生（first_seen = contact.created_at、
+%% last_seen = max(contact.created_at, 同 contact 全部会话活动峰值)、
+%% 掩码原料（subject_mask / display_name——只做投影输入，密文列零入本语句）。
+%% session 级：同语句带 (Org, Workspace, id)——跨 Org 一律 not_found。
+%% 行内**不含**任何联系方式/原始外部身份/密文列（白名单外的列不进 SQL）。
+-callback fetch_session_customer_context(
+    OrgId :: integer(), WorkspaceId :: integer(), SessionId :: integer()
+) ->
+    {ok, map()} | {error, not_found | term()}.
+
+%% @doc CS-BE-03：同 Org 同 contact 的历史客服会话页（键集下推
+%% `id < after` + `ORDER BY id DESC LIMIT n`，C1 冻结口径）；同语句绑定
+%% (Org, contact)——他 contact 的会话恒不出页。列 = 历史投影白名单
+%% （id/conversation_id/workspace_id/status/version/rating/queued_at/
+%% claimed_at/closed_at），无 visit_token_id / close_reason。
+-callback list_session_history_page(
+    OrgId :: integer(),
+    ContactId :: integer(),
+    AfterId :: non_neg_integer(),
+    Limit :: pos_integer()
+) ->
+    {ok, [map()]} | {error, term()}.
+
+%% @doc CS-BE-03：同 contact 的**授权备注事实页**（active 行，软删排除）。
+%% EB 无 note 读面、密文材料禁出站（CS-DEC-01）——本语句只取行事实
+%% （id / business_identity_id / created_at），零正文、零密文列。
+-callback list_contact_notes_page(
+    OrgId :: integer(), ContactId :: integer(), Limit :: pos_integer()
+) ->
+    {ok, [map()]} | {error, term()}.
+
 %% -- shop key / visit token（digest 存储；明文不落库）------------------------
 
 -callback insert_shop_key(OrgId :: integer(), Key :: shop_key()) ->
