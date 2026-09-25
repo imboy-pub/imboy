@@ -505,10 +505,16 @@ table(tenant) ->
                 #{<<"PUT">> => seat_auth(<<"conversation.write">>)}
             )},
         %% Org 级运行态列表（工作台/管理面；与自动派单同一派生真源）。
+        %% DEFECT（CS-INT-02 发现）：此前漏声明 clock_unit => second，at 以
+        %% 毫秒缺省注入，presence TTL（last_heartbeat_at 是 epoch 秒）判定
+        %% 恒 offline——真实集成门实证：心跳当秒 list 仍 offline。与
+        %% seat_presence_heartbeat / seat_presence_status 同口径补 second。
         {seat_presence_list,
             entry(
                 [
-                    {<<"GET">>, seat_presence_list, [], []}
+                    {<<"GET">>, seat_presence_list, [], [], #{
+                        clock_unit => second
+                    }}
                 ],
                 seat_auth(<<"conversation.read">>),
                 server_common() ++ [business_identity_id],
