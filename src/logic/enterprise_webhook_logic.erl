@@ -571,11 +571,11 @@ replay_insert(Conn, _Ctx, Delivery, BotId) ->
             case enterprise_webhook_repo:insert_delivery_tx(Conn, Row) of
                 {ok, inserted} ->
                     metric_replay(queued),
-                    {ok, #{
-                        <<"delivery_id">> => NewDeliveryId,
-                        <<"event_id">> => EventId,
-                        <<"original_delivery_id">> => OriginalId
-                    }};
+                    %% INT-13 冻结合同（api/paths/internal/v1/webhook/replay.yaml
+                    %% '200'：required [replayed]，additionalProperties false）
+                    %% ——响应体恰为 {"replayed": true}；新投递行细节是服务端
+                    %% 内部状态，不外泄（INT-BE-02 conformance 实测漂移修复）。
+                    {ok, #{<<"replayed">> => true}};
                 {ok, duplicate} ->
                     %% 同一原行已有在途重放（唯一索引仲裁）
                     metric_replay(rejected),

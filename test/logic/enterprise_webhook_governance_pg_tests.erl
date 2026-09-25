@@ -425,6 +425,18 @@ last_delivery(C) ->
 %% 细节漂移：实测出现过把已置 dead 的旧行当成新在途行，导致 replay 走终态分支、
 %% 以及 dead→success 被终态守卫拒绝（A0 复核连跑复现）。这里改为**按状态**取
 %% 唯一的在途行——同一用例内它必然唯一，且不存在排序歧义。
+sole_replayed_delivery(C, OriginalId) ->
+    Row =
+        one(
+            C,
+            <<
+                "SELECT delivery_id FROM bot_delivery"
+                " WHERE ewh_replay_of = $1 ORDER BY created_at DESC LIMIT 1"
+            >>,
+            [OriginalId]
+        ),
+    maps:get(<<"delivery_id">>, Row).
+
 sole_pending_delivery(C) ->
     Rows = all(
         C,
@@ -1130,11 +1142,13 @@ replay_oracle(C, State) ->
         enterprise_webhook_logic:replay_tx(C, ctx_a(State), maps:get(<<"delivery_id">>, Pending))
     ),
 
-    %% 正常重放：新 delivery id / 保留 event id / ewh_replay_of / 归属与原行一致
-    {ok, Replay} = enterprise_webhook_logic:replay_tx(C, ctx_a(State), OldId),
-    NewId = maps:get(<<"delivery_id">>, Replay),
+    %% 正常重放：响应体恰为冻结合同 {"replayed": true}
+    %% （api/paths/internal/v1/webhook/replay.yaml '200'，additionalProperties
+    %% false——INT-BE-02 conformance 实测运行时漂移后对齐）；新 delivery 行改按
+    %% ewh_replay_of 反查（oracle 验证意图不变：新行存在且指向原行）
+    {ok, #{<<"replayed">> := true}} = enterprise_webhook_logic:replay_tx(C, ctx_a(State), OldId),
+    NewId = sole_replayed_delivery(C, OldId),
     ?assertNotEqual(OldId, NewId),
-    ?assertEqual(OldId, maps:get(<<"original_delivery_id">>, Replay)),
     NewRow = delivery_row(C, NewId),
     Env = jsone:decode(maps:get(<<"payload">>, NewRow)),
     OldEnv = jsone:decode(maps:get(<<"payload">>, Original)),
