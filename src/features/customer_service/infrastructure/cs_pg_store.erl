@@ -16,6 +16,11 @@
     list_dispatchable_seats_page/3,
     list_all_seats_page/3,
     set_seat_enabled/4,
+    %% CS-BE-06：席位 entitlement
+    seat_limit/1,
+    set_seat_limit/2,
+    create_seat_limit_checked/5,
+    set_enabled_checked/4,
     %% BE-S01a：坐席上下文聚合 / 转接目标
     list_seat_org_contexts/1,
     list_transfer_targets_page/4,
@@ -93,6 +98,36 @@ list_all_seats_page(OrgFilter, AfterId, Limit) ->
     cs_pg_seat:list_all_seats_page(OrgFilter, AfterId, Limit).
 set_seat_enabled(OrgId, IdentityId, Enabled, At) ->
     cs_pg_seat:set_seat_enabled(OrgId, IdentityId, Enabled, At).
+
+%% CS-BE-06：席位 entitlement（薄委派；tx 版由 store 侧 with_tx 包裹）。
+seat_limit(OrgId) ->
+    cs_pg_seat:seat_limit(OrgId, pool).
+set_seat_limit(OrgId, Limit) ->
+    cs_pg_seat:set_seat_limit(OrgId, Limit, pool).
+%% elib_pg:with_tx 的业务回滚信号是 {rollback, Reason}（throw 拦截分支）——
+%% 归一为调用方处处期望的 {error, Reason}（seat_limit_exceeded 等）。
+create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) ->
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            cs_pg_seat:create_seat_limit_tx(
+                Conn, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy
+            )
+        end)
+    of
+        {rollback, {error, Reason}} -> {error, Reason};
+        {rollback, Reason} -> {error, Reason};
+        Other -> Other
+    end.
+set_enabled_checked(OrgId, IdentityId, Enabled, At) ->
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            cs_pg_seat:set_enabled_limit_tx(Conn, OrgId, IdentityId, Enabled, At)
+        end)
+    of
+        {rollback, {error, Reason}} -> {error, Reason};
+        {rollback, Reason} -> {error, Reason};
+        Other -> Other
+    end.
 list_seat_org_contexts(UserId) ->
     cs_pg_seat:list_seat_org_contexts(UserId).
 list_transfer_targets_page(OrgId, ExcludeIdentityId, AfterId, Limit) ->

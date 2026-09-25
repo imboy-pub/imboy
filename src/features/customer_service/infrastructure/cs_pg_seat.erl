@@ -23,6 +23,11 @@
     provision_seat/3,
     list_seat_org_contexts/1,
     list_transfer_targets_page/4,
+    %% CS-BE-06：席位 entitlement（组织级人工 seat_limit；并发安全检查）
+    seat_limit/2,
+    set_seat_limit/3,
+    create_seat_limit_tx/6,
+    set_enabled_limit_tx/5,
     %% CS-BE-05：presence 心跳 lease（持久/共享可见运行态事实输入）
     heartbeat_seat/4,
     set_seat_manual_status/4,
@@ -66,6 +71,32 @@
 %% ===================================================================
 %% CS-BE-05：presence 心跳 lease（SQL 宏）
 %% ===================================================================
+
+%% ===================================================================
+%% CS-BE-06：席位 entitlement（组织级人工 seat_limit；CS-DEC-03）
+%% ===================================================================
+
+-define(SQL_SEAT_LIMIT_FETCH, <<
+    "SELECT seat_limit FROM customer_service_seat_limit"
+    " WHERE organization_id = $1"
+>>).
+
+-define(SQL_SEAT_LIMIT_UPSERT, <<
+    "INSERT INTO customer_service_seat_limit (organization_id, seat_limit, updated_at)"
+    " VALUES ($1, $2, CURRENT_TIMESTAMP)"
+    " ON CONFLICT (organization_id) DO UPDATE"
+    "   SET seat_limit = EXCLUDED.seat_limit, updated_at = CURRENT_TIMESTAMP"
+>>).
+
+-define(SQL_SEAT_LIMIT_DELETE, <<
+    "DELETE FROM customer_service_seat_limit WHERE organization_id = $1"
+>>).
+
+%% enabled 坐席现算计数（used；无冗余计数列，与 CS-BE-04 同纪律）。
+-define(SQL_SEAT_ENABLED_COUNT, <<
+    "SELECT count(*) AS n FROM customer_service_seat"
+    " WHERE organization_id = $1 AND enabled = true"
+>>).
 
 %% 心跳 upsert：只刷新 last_heartbeat_at（manual_status 不动——手动 away
 %% 不会被周期心跳冲掉）；行不存在则创建（首次心跳）。
@@ -324,6 +355,10 @@ sql_statements() ->
         ?SQL_IDENTITY_FUNCTION,
         ?SQL_INSERT_SEAT,
         ?SQL_FETCH_SEAT,
+        ?SQL_SEAT_LIMIT_FETCH,
+        ?SQL_SEAT_LIMIT_UPSERT,
+        ?SQL_SEAT_LIMIT_DELETE,
+        ?SQL_SEAT_ENABLED_COUNT,
         ?SQL_PRESENCE_HEARTBEAT,
         ?SQL_PRESENCE_MANUAL_SET,
         ?SQL_PRESENCE_FETCH,
@@ -399,6 +434,158 @@ list_seat_presence(OrgId) ->
         [OrgId],
         [organization_id, business_identity_id, last_heartbeat_at, manual_status]
     ).
+
+%% ===================================================================
+%% CS-BE-06：席位 entitlement（组织级人工 seat_limit；CS-DEC-03 冻结）
+%% ===================================================================
+
+%% @doc 读当前 limit：{ok, unlimited}（无行=现存组织默认）| {ok, pos_integer()}。
+-spec seat_limit(integer(), pool | pid()) -> {ok, unlimited | pos_integer()} | {error, term()}.
+seat_limit(OrgId, _Opts) ->
+    case cs_pg_common:fetch_one(?SQL_SEAT_LIMIT_FETCH, [OrgId], [seat_limit]) of
+        {ok, #{seat_limit := N}} when is_integer(N), N >= 1 -> {ok, N};
+        {ok, _} -> {ok, unlimited};
+        {error, not_found} -> {ok, unlimited};
+        {error, _} = Err -> Err
+    end.
+
+%% @doc 人工配置/清除 limit（undefined=删行→unlimited）。
+-spec set_seat_limit(integer(), pos_integer() | undefined, pool | pid()) ->
+    {ok, unlimited | pos_integer()} | {error, term()}.
+set_seat_limit(OrgId, undefined, _Opts) ->
+    case elib_pg:execute(?SQL_SEAT_LIMIT_DELETE, [OrgId]) of
+        {ok, _} -> {ok, unlimited};
+        {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}
+    end;
+set_seat_limit(OrgId, Limit, _Opts) when is_integer(Limit), Limit >= 1 ->
+    case elib_pg:execute(?SQL_SEAT_LIMIT_UPSERT, [OrgId, Limit]) of
+        {ok, _} -> {ok, Limit};
+        {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}
+    end;
+set_seat_limit(_OrgId, _Bad, _Opts) ->
+    {error, invalid_seat_limit}.
+
+%% per-org 事务锁：并发「计数+插入/翻转」串行化（N 并发恰 N 成功）。
+assert_limit_tx(Conn, OrgId) ->
+    %% INT-BE-06/CS-BE-06 实测：PG18 无 pg_advisory_xact_lock(int8, int4)
+    %% 两参签名（psql 复现 42883）——用单参版（key=OrgId，org 全局唯一即
+    %% 全局无碰撞）。
+    {ok, _, _} = epgsql:equery(
+        Conn, <<"SELECT pg_advisory_xact_lock($1::bigint)">>, [OrgId]
+    ),
+    case cs_pg_common:fetch_one_conn(Conn, ?SQL_SEAT_ENABLED_COUNT, [OrgId], [n]) of
+        {ok, #{n := N}} when is_integer(N) ->
+            case seat_limit_tx(Conn, OrgId) of
+                {ok, unlimited} -> ok;
+                {ok, Limit} when N >= Limit -> {error, seat_limit_exceeded};
+                {ok, _Limit} -> ok;
+                {error, Reason} -> {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+seat_limit_tx(Conn, OrgId) ->
+    case cs_pg_common:fetch_one_conn(Conn, ?SQL_SEAT_LIMIT_FETCH, [OrgId], [seat_limit]) of
+        {ok, #{seat_limit := N}} when is_integer(N), N >= 1 -> {ok, N};
+        {ok, _} -> {ok, unlimited};
+        {error, not_found} -> {ok, unlimited};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 创建坐席（limit 感知）：advisory 事务锁内「count enabled + 检查 +
+%% INSERT」原子完成——N 并发开第 N+1 个坐席恰一失败（seat_limit_exceeded）。
+-spec create_seat_limit_tx(
+    pid(), integer(), integer(), boolean(), pos_integer(), term()
+) -> {ok, map()} | {error, seat_limit_exceeded | term()}.
+create_seat_limit_tx(_Conn, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) ->
+    elib_pg:with_tx(fun(Conn1) ->
+        case Enabled of
+            false ->
+                insert_seat_in(Conn1, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy);
+            true ->
+                case assert_limit_tx(Conn1, OrgId) of
+                    ok ->
+                        insert_seat_in(
+                            Conn1, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy
+                        );
+                    {error, Reason} ->
+                        throw({rollback, {error, Reason}})
+                end
+        end
+    end).
+
+%% @doc enabled 翻转（limit 感知）：false→true 是「增」（超 limit 拒）；
+%% true→false 是「减」（存量超额可减，永不检查）。
+-spec set_enabled_limit_tx(
+    pid(), integer(), integer(), boolean(), term()
+) -> {ok, map()} | {error, seat_limit_exceeded | not_found | term()}.
+set_enabled_limit_tx(_Conn, OrgId, IdentityId, Enabled, At) ->
+    elib_pg:with_tx(fun(Conn1) ->
+        case Enabled of
+            false ->
+                do_set_enabled(Conn1, OrgId, IdentityId, false, At);
+            true ->
+                case is_seat_enabled(Conn1, OrgId, IdentityId) of
+                    {ok, true} ->
+                        %% 已启用：重放（幂等 provisioning），不重复计数不检查。
+                        do_set_enabled(Conn1, OrgId, IdentityId, true, At);
+                    {ok, false} ->
+                        case assert_limit_tx(Conn1, OrgId) of
+                            ok ->
+                                do_set_enabled(Conn1, OrgId, IdentityId, true, At);
+                            {error, Reason} ->
+                                throw({rollback, {error, Reason}})
+                        end;
+                    {error, not_found} = E ->
+                        throw({rollback, E});
+                    {error, Reason} ->
+                        throw({rollback, {error, Reason}})
+                end
+        end
+    end).
+
+is_seat_enabled(Conn, OrgId, IdentityId) ->
+    case
+        cs_pg_common:fetch_one_conn(
+            Conn,
+            <<
+                "SELECT enabled FROM customer_service_seat"
+                " WHERE organization_id = $1 AND business_identity_id = $2"
+            >>,
+            [OrgId, IdentityId],
+            [enabled]
+        )
+    of
+        {ok, #{enabled := Enabled}} -> {ok, Enabled};
+        {error, not_found} = E -> E;
+        {error, Reason} -> {error, Reason}
+    end.
+
+do_set_enabled(Conn, OrgId, IdentityId, Enabled, At) ->
+    case elib_pg:execute(Conn, ?SQL_SET_ENABLED, [OrgId, IdentityId, Enabled, At]) of
+        {ok, 1} -> fetch_seat_in(Conn, OrgId, IdentityId);
+        {ok, 0} -> throw({rollback, {error, not_found}});
+        {error, Reason} -> throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+%% 事务内 INSERT（create_seat_limit_tx 用；形状同池化 insert_seat）。
+insert_seat_in(Conn, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) ->
+    Params = [OrgId, IdentityId, Enabled, MaxConcurrent, cs_pg_common:nullify(CreatedBy)],
+    case elib_pg:execute(Conn, ?SQL_INSERT_SEAT, Params) of
+        {ok, 1} -> fetch_seat_in(Conn, OrgId, IdentityId);
+        {ok, 0} -> throw({rollback, {error, insert_failed}});
+        {error, Reason} -> throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+%% 事务内读回（fetch_seat 的 Conn 版）。
+fetch_seat_in(Conn, OrgId, IdentityId) ->
+    case cs_pg_common:fetch_one_conn(Conn, ?SQL_FETCH_SEAT, [OrgId, IdentityId], ?SEAT_KEYS) of
+        {ok, Row} ->
+            {ok, Row#{function_key => cs_pg_common:to_status(maps:get(function_key, Row))}};
+        {error, Reason} ->
+            throw({rollback, {error, Reason}})
+    end.
 
 %% ===================================================================
 %% identity 事实（A01 应用侧前置校验数据源）
@@ -673,8 +860,24 @@ provision_tx(Conn, OrgId, WorkspaceId, Provision) ->
     ok = provision_guard_member(Conn, OrgId, maps:get(user_id, Provision)),
     case elib_pg:query(Conn, ?SQL_PROVISION_FIND_IDENTITY, [OrgId, maps:get(user_id, Provision)]) of
         {ok, [Row | _]} ->
+            %% CS-BE-06：existing 分支——disabled→enabled 修复是「增」，
+            %% 先锁内检查；已 enabled 重放不重复计数不检查。
+            case before_seat(Row) of
+                enabled ->
+                    ok;
+                _ ->
+                    case assert_limit_tx(Conn, OrgId) of
+                        ok -> ok;
+                        {error, ReasonL} -> throw({rollback, {error, ReasonL}})
+                    end
+            end,
             provision_existing(Conn, OrgId, WorkspaceId, Provision, Row);
         {ok, []} ->
+            %% CS-BE-06：create 分支（新 identity + enabled seat）按 limit 检查。
+            case assert_limit_tx(Conn, OrgId) of
+                ok -> ok;
+                {error, ReasonL} -> throw({rollback, {error, ReasonL}})
+            end,
             provision_create(Conn, OrgId, WorkspaceId, Provision);
         {error, Reason} ->
             throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})

@@ -2133,6 +2133,14 @@ customer_service_tenant_routes() ->
             required_function => <<"customer_service">>,
             required_permission => <<"conversation.read">>
         }},
+        %% CS-BE-06（CS-DEC-03）：席位 entitlement 治理——PUT 配置/清除
+        %% 组织级 seat_limit（缺省=清除→unlimited）；GET 额度视图
+        %%（seat_limit n|unlimited + used 现算）。owner/admin 治理权限。
+        {"/api/v1/cs/organizations/:org_id/seat-limit", cs_tenant_handler, #{
+            action => seat_limit_governance,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
         %% CS-BE-05（CS-DEC-02）：presence 心跳 lease——POST 刷新心跳并返回
         %% 派生运行态（online/away/busy/offline）；enabled 门在 application
         %% （suspend 立即 seat_disabled）。心跳只写自身 presence 行，不碰

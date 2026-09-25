@@ -30,6 +30,9 @@
     ack_read/2,
     read_state/2,
     %% CS-BE-05：presence 心跳 lease（持久/共享可见运行态事实输入 + 派生）。
+    %% CS-BE-06：席位 entitlement（组织级人工 seat_limit；CS-DEC-03）。
+    set_seat_limit/2,
+    seat_limit_view/2,
     seat_heartbeat/2,
     set_seat_manual_status/2,
     seat_presence/2,
@@ -91,15 +94,19 @@ create_seat_in(OrgId, WorkspaceId, Params) ->
 insert_seat(OrgId, WorkspaceId, IdentityId, Params) ->
     Enabled = maps:get(enabled, Params, true),
     MaxConcurrent = maps:get(max_concurrent, Params, 1),
-    Seat = #{
-        organization_id => OrgId,
-        business_identity_id => IdentityId,
-        function_key => <<"customer_service">>,
-        enabled => Enabled,
-        max_concurrent => MaxConcurrent,
-        created_by_user_id => maps:get(created_by_user_id, Params, undefined)
-    },
-    case with_store(Params, fun(Store) -> Store:insert_seat(OrgId, Seat) end) of
+    %% CS-BE-06：limit 感知创建（advisory 事务锁内 count+检查+INSERT——
+    %% N 并发开第 N+1 个恰一失败 seat_limit_exceeded；disabled 落点不检查）。
+    case
+        with_store(Params, fun(Store) ->
+            Store:create_seat_limit_checked(
+                OrgId,
+                IdentityId,
+                Enabled,
+                MaxConcurrent,
+                maps:get(created_by_user_id, Params, undefined)
+            )
+        end)
+    of
         {error, _} = Err ->
             Err;
         {ok, Stored} ->
@@ -151,9 +158,12 @@ set_enabled_in(OrgId, WorkspaceId, Enabled, Action, Params) ->
         false ->
             {error, {invalid_argument, set_seat_enabled}};
         true ->
+            %% CS-BE-06：resume（false→true）是「增」——limit 感知事务
+            %% （advisory 锁 + count 检查，已启用重放幂等成功不重复计数）；
+            %% suspend（true→false）是「减」——存量超额可减，永不检查。
             case
                 with_store(Params, fun(Store) ->
-                    Store:set_seat_enabled(OrgId, IdentityId, Enabled, At)
+                    Store:set_enabled_checked(OrgId, IdentityId, Enabled, At)
                 end)
             of
                 {error, _} = Err ->
@@ -596,6 +606,79 @@ read_state(_OrgId, _Params) ->
 
 %% 已读游标用例的公共门：seat enabled 门（403 面）→ 会话租户作用域
 %% （not_found）→ session ownership 复核（403 面）→ 进入用例主体。
+%% ===================================================================
+%% CS-BE-06：席位 entitlement（组织级人工 seat_limit；CS-DEC-03 冻结）
+%% ===================================================================
+
+%% @doc 人工配置/清除 limit（tenant owner/admin；治理面在 HTTP 层
+%% governance_auth，应用层只判业务前提：Limit 为正整数或 undefined）。
+%% undefined = 删行 → unlimited（现存组织默认）。
+-spec set_seat_limit(integer(), map()) ->
+    {ok, map()} | {error, term()}.
+set_seat_limit(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _WorkspaceId} ->
+            Limit = maps:get(seat_limit, Params, undefined),
+            case Limit of
+                N when is_integer(N), N >= 1 ->
+                    limit_write(OrgId, Params, N);
+                undefined ->
+                    limit_write(OrgId, Params, undefined);
+                _Other ->
+                    {error, {invalid_seat_limit, Limit}}
+            end
+    end;
+set_seat_limit(_OrgId, _Params) ->
+    {error, {invalid_argument, set_seat_limit}}.
+
+limit_write(OrgId, Params, Limit) ->
+    case with_store(Params, fun(Store) -> Store:set_seat_limit(OrgId, Limit) end) of
+        {error, _} = Err ->
+            Err;
+        {ok, Effective} ->
+            {ok, Used} = used_enabled_count(OrgId, Params),
+            {ok, #{
+                organization_id => OrgId,
+                seat_limit => Effective,
+                used => Used
+            }}
+    end.
+
+%% @doc 额度视图：seat_limit（n | unlimited）+ used（enabled 现算计数）。
+-spec seat_limit_view(integer(), map()) -> {ok, map()} | {error, term()}.
+seat_limit_view(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _WorkspaceId} ->
+            case with_store(Params, fun(Store) -> Store:seat_limit(OrgId) end) of
+                {error, _} = Err ->
+                    Err;
+                {ok, Limit} ->
+                    {ok, Used} = used_enabled_count(OrgId, Params),
+                    {ok, #{
+                        organization_id => OrgId,
+                        seat_limit => Limit,
+                        used => Used
+                    }}
+            end
+    end;
+seat_limit_view(_OrgId, _Params) ->
+    {error, {invalid_argument, seat_limit_view}}.
+
+used_enabled_count(OrgId, Params) ->
+    with_store(Params, fun(Store) ->
+        case Store:list_dispatchable_seats(OrgId) of
+            {ok, Rows} ->
+                Used = length([1 || Row <- Rows, maps:get(enabled, Row, false) =:= true]),
+                {ok, Used};
+            {error, Reason} ->
+                {error, Reason}
+        end
+    end).
+
 %% ===================================================================
 %% CS-BE-05：presence 心跳 lease（CS-DEC-02：运行态派生、无新治理列）
 %% ===================================================================

@@ -438,6 +438,23 @@ table(tenant) ->
                 ),
                 #{<<"POST">> => seat_auth(<<"conversation.write">>)}
             )},
+        %% CS-BE-06（CS-DEC-03）：席位 entitlement 治理——PUT 配置/清除 limit
+        %%（seat_limit 正整数；缺省=清除→unlimited）；GET 额度视图
+        %%（seat_limit n|unlimited + used 现算计数）。治理权限
+        %% enterprise_owner_admin（owner/admin，不因业务身份自动获得）。
+        {seat_limit_governance,
+            with_case_auth(
+                entry(
+                    [
+                        {<<"PUT">>, seat_limit_set, [{seat_limit, integer, optional}], []},
+                        {<<"GET">>, seat_limit_view, [], []}
+                    ],
+                    governance_auth(),
+                    server_common(),
+                    path
+                ),
+                #{<<"PUT">> => governance_auth()}
+            )},
         %% CS-BE-05（CS-DEC-02）：presence 心跳 lease——POST /seats/me/heartbeat
         %% 刷新心跳 lease 并返回派生运行态；PUT /seats/me/presence 设置/清除
         %% 手动 away（manual_status 缺省 = clear）。`at` 是服务端派生时钟

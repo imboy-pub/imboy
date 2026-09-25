@@ -78,6 +78,23 @@
 ) ->
     {ok, [map()]} | {error, term()}.
 %% @doc 坐席开关（suspend/resume）；`enabled=false` 后新 claim 立即被拒。
+%% CS-BE-06：席位 entitlement（limit 感知创建/翻转 + 人工配置读写）。
+-callback seat_limit(OrgId :: integer()) ->
+    {ok, unlimited | pos_integer()} | {error, term()}.
+-callback set_seat_limit(OrgId :: integer(), Limit :: pos_integer() | undefined) ->
+    {ok, unlimited | pos_integer()} | {error, term()}.
+-callback create_seat_limit_checked(
+    OrgId :: integer(),
+    IdentityId :: integer(),
+    Enabled :: boolean(),
+    MaxConcurrent :: pos_integer(),
+    CreatedBy :: term()
+) ->
+    {ok, map()} | {error, seat_limit_exceeded | term()}.
+-callback set_enabled_checked(
+    OrgId :: integer(), IdentityId :: integer(), Enabled :: boolean(), At :: integer()
+) ->
+    {ok, map()} | {error, seat_limit_exceeded | not_found | term()}.
 -callback set_seat_enabled(
     OrgId :: integer(), IdentityId :: integer(), Enabled :: boolean(), At :: integer()
 ) ->
@@ -93,9 +110,16 @@
 %% `LIMIT`，C1~C4 模板口径）；同语句带 Org、仅 enabled、排除 ExcludeIdentityId
 %% （调用者本人）；行含 identity 显示名与 active 会话同语句计数。
 %% CS-BE-05：presence 心跳 lease（At 为服务端派生 epoch 秒，可注入）。
--callback heartbeat_seat(OrgId :: integer(), IdentityId :: integer(), AtSec :: integer(), Opts :: undefined) ->
+-callback heartbeat_seat(
+    OrgId :: integer(), IdentityId :: integer(), AtSec :: integer(), Opts :: undefined
+) ->
     {ok, map()} | {error, term()}.
--callback set_seat_manual_status(OrgId :: integer(), IdentityId :: integer(), AtSec :: integer(), ManualStatus :: binary() | undefined) ->
+-callback set_seat_manual_status(
+    OrgId :: integer(),
+    IdentityId :: integer(),
+    AtSec :: integer(),
+    ManualStatus :: binary() | undefined
+) ->
     {ok, map()} | {error, term()}.
 -callback fetch_seat_presence(OrgId :: integer(), IdentityId :: integer()) ->
     {ok, map()} | {error, term()}.

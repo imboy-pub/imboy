@@ -79,6 +79,11 @@ contracts() ->
             {list_dispatchable_seats_page, 3},
             {list_all_seats_page, 3},
             {set_seat_enabled, 4},
+            %% CS-BE-06：席位 entitlement
+            {seat_limit, 1},
+            {set_seat_limit, 2},
+            {create_seat_limit_checked, 5},
+            {set_enabled_checked, 4},
             %% BE-S01a：坐席上下文聚合 / 转接目标
             {list_seat_org_contexts, 1},
             {list_transfer_targets_page, 4},

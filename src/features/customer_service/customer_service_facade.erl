@@ -69,6 +69,9 @@
     %% CS-BE-04（CS-DEC-02）：已读游标——单调 ACK（幂等）+ 读状态（未读数）
     session_read_ack/2,
     session_read_state/2,
+    %% CS-BE-06：席位 entitlement（组织级人工 seat_limit；CS-DEC-03）
+    seat_limit_set/2,
+    seat_limit_view/2,
     %% CS-BE-05：presence 心跳 lease（运行态派生；CS-DEC-02）
     seat_heartbeat/2,
     seat_manual_status/2,
@@ -786,6 +789,21 @@ session_customer_context(
 session_customer_context(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, session_customer_context}};
 session_customer_context(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 席位 limit 配置（CS-BE-06）：seat_limit 正整数或缺省=清除→unlimited。
+%% 治理权限（enterprise_owner_admin）在 route metadata；应用层判租户前提。
+-spec seat_limit_set(integer(), map()) -> term().
+seat_limit_set(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_seat_app:set_seat_limit(OrgId, Params);
+seat_limit_set(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 额度视图（CS-BE-06）：seat_limit（n|unlimited）+ used 现算计数。
+-spec seat_limit_view(integer(), map()) -> term().
+seat_limit_view(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_seat_app:seat_limit_view(OrgId, Params);
+seat_limit_view(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% @doc 心跳（CS-BE-05）：presence lease upsert + 派生运行态视图。at 是

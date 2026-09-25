@@ -14,6 +14,7 @@
 
 -export([
     fetch_one/3,
+    fetch_one_conn/4,
     fetch_many/3,
     normalize_row/2,
     normalize_error/1,
@@ -32,6 +33,16 @@ fetch_one(Sql, Params, Keys) ->
         {ok, [Row | _]} -> {ok, Row};
         {ok, []} -> {error, not_found};
         {error, _} = Err -> Err
+    end.
+
+%% @doc 事务内连接版 fetch_one（CS-BE-06 limit 感知事务用；调用方持有
+%% with_tx 的 Conn——elib_pg:query/3 直用该连接并完成行→map 归一；
+%% 语句失败由调用方事务裁决）。
+fetch_one_conn(Conn, Sql, Params, Keys) ->
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, [Row | _]} -> {ok, normalize_row(Row, Keys)};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, normalize_error(Reason)}
     end.
 
 %% @doc 多行读取（归一化）。

@@ -44,6 +44,11 @@
     set_seat_enabled/4,
     list_seat_org_contexts/1,
     list_transfer_targets_page/4,
+    %% CS-BE-06：席位 entitlement（内存 fake；seat_limits 表）
+    seat_limit/1,
+    set_seat_limit/2,
+    create_seat_limit_checked/5,
+    set_enabled_checked/4,
     %% CS-BE-05：presence（内存表：{Org, Identity} => #{last_heartbeat_at, manual_status}）
     heartbeat_seat/4,
     set_seat_manual_status/4,
@@ -128,7 +133,8 @@ init() ->
         {provision_fail_after, infinity},
         {read_cursors, #{}},
         {messages, []},
-        {seat_presence, #{}}
+        {seat_presence, #{}},
+        {seat_limits, #{}}
     ]),
     ok.
 
@@ -490,6 +496,84 @@ list_seat_org_contexts(UserId) ->
     {ok, lists:sort(maps_get_list(UserId, M))}.
 
 %% ===================================================================
+%% CS-BE-06：席位 entitlement（内存 fake）
+%% ===================================================================
+
+seat_limit(OrgId) ->
+    {seat_limits, M} = hd(ets:lookup(?TAB, seat_limits)),
+    case maps:get(OrgId, M, undefined) of
+        N when is_integer(N), N >= 1 -> {ok, N};
+        _ -> {ok, unlimited}
+    end.
+
+set_seat_limit(OrgId, undefined) ->
+    {seat_limits, M} = hd(ets:lookup(?TAB, seat_limits)),
+    ets:insert(?TAB, {seat_limits, maps:remove(OrgId, M)}),
+    {ok, unlimited};
+set_seat_limit(OrgId, Limit) when is_integer(Limit), Limit >= 1 ->
+    {seat_limits, M} = hd(ets:lookup(?TAB, seat_limits)),
+    ets:insert(?TAB, {seat_limits, maps:put(OrgId, Limit, M)}),
+    {ok, Limit}.
+
+create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) ->
+    case Enabled of
+        false ->
+            insert_seat(OrgId, full_seat_map(OrgId, IdentityId, false, MaxConcurrent, CreatedBy));
+        true ->
+            Limit = limit_of(OrgId),
+            Used = used_count(OrgId),
+            case Used >= Limit of
+                true ->
+                    {error, seat_limit_exceeded};
+                false ->
+                    insert_seat(
+                        OrgId, full_seat_map(OrgId, IdentityId, true, MaxConcurrent, CreatedBy)
+                    )
+            end
+    end.
+
+%% 与 app 原构造同形（function_key/organization_id 必在——fetch 回读投影依赖）。
+full_seat_map(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) ->
+    #{
+        organization_id => OrgId,
+        business_identity_id => IdentityId,
+        function_key => <<"customer_service">>,
+        enabled => Enabled,
+        max_concurrent => MaxConcurrent,
+        created_by_user_id => CreatedBy
+    }.
+
+set_enabled_checked(OrgId, IdentityId, Enabled, At) ->
+    case set_seat_enabled(OrgId, IdentityId, Enabled, At) of
+        {ok, _} = Ok ->
+            Ok;
+        {error, not_active} ->
+            %% 假体语义对齐：fake 的 set_seat_enabled 在已启用重放时返回
+            %% not_active——重放应幂等成功（回读现态）。
+            case fetch_seat(OrgId, IdentityId) of
+                {ok, Row} -> {ok, Row};
+                Err -> Err
+            end;
+        Err ->
+            Err
+    end.
+
+limit_of(OrgId) ->
+    case seat_limit(OrgId) of
+        {ok, unlimited} -> 999999;
+        {ok, N} -> N
+    end.
+
+used_count(OrgId) ->
+    {seats, Seats} = hd(ets:lookup(?TAB, seats)),
+    length([
+        1
+     || {{O, _I}, S} <- maps:to_list(Seats),
+        O =:= OrgId,
+        maps:get(enabled, S, false) =:= true
+    ]).
+
+%% ===================================================================
 %% CS-BE-05：presence（内存 fake；跨 init 隔离）
 %% ===================================================================
 
@@ -506,10 +590,11 @@ set_seat_manual_status(OrgId, IdentityId, AtSec, ManualStatus) ->
     {seat_presence, M} = hd(ets:lookup(?TAB, seat_presence)),
     Row0 = maps:get({OrgId, IdentityId}, M),
     Row1 = Row0#{
-        manual_status => case ManualStatus of
-            <<"away">> -> <<"away">>;
-            _ -> undefined
-        end,
+        manual_status =>
+            case ManualStatus of
+                <<"away">> -> <<"away">>;
+                _ -> undefined
+            end,
         last_heartbeat_at => maps:get(last_heartbeat_at, Row0, AtSec)
     },
     ets:insert(?TAB, {seat_presence, maps:put({OrgId, IdentityId}, Row1, M)}),
@@ -534,19 +619,26 @@ list_seat_presence(OrgId) ->
         maps:with(
             [organization_id, business_identity_id, last_heartbeat_at, manual_status], P
         )
-     || {{O, _I}, P} <- maps:to_list(M), O =:= OrgId,
+     || {{O, _I}, P} <- maps:to_list(M),
+        O =:= OrgId,
         is_map_key(last_heartbeat_at, P) orelse is_map_key(manual_status, P)
     ]}.
 
 ensure_presence_row(OrgId, IdentityId) ->
     {seat_presence, M} = hd(ets:lookup(?TAB, seat_presence)),
     case maps:is_key({OrgId, IdentityId}, M) of
-        true -> ok;
+        true ->
+            ok;
         false ->
-            ets:insert(?TAB, {seat_presence, maps:put(
-                {OrgId, IdentityId},
-                #{organization_id => OrgId, business_identity_id => IdentityId},
-                M)})
+            ets:insert(
+                ?TAB,
+                {seat_presence,
+                    maps:put(
+                        {OrgId, IdentityId},
+                        #{organization_id => OrgId, business_identity_id => IdentityId},
+                        M
+                    )}
+            )
     end.
 
 presence_view(OrgId, IdentityId) ->

@@ -196,6 +196,16 @@ is_web_seat_surface_path(Path) when is_binary(Path) ->
             <<"events">>
         ] ->
             true;
+        %% CS-BE-06：席位 entitlement 治理（PUT 配置/清除 + GET 视图）。
+        [
+            <<"api">>,
+            <<"v1">>,
+            <<"cs">>,
+            <<"organizations">>,
+            _OrgId,
+            <<"seat-limit">>
+        ] ->
+            true;
         %% CS-BE-05：presence 心跳（POST）与手动状态/运行态视图（PUT/GET）。
         [
             <<"api">>,
