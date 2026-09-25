@@ -2133,6 +2133,32 @@ customer_service_tenant_routes() ->
             required_function => <<"customer_service">>,
             required_permission => <<"conversation.read">>
         }},
+        %% CS-BE-05（CS-DEC-02）：presence 心跳 lease——POST 刷新心跳并返回
+        %% 派生运行态（online/away/busy/offline）；enabled 门在 application
+        %% （suspend 立即 seat_disabled）。心跳只写自身 presence 行，不碰
+        %% 会话事实 → conversation.read。
+        {"/api/v1/cs/organizations/:org_id/seats/me/heartbeat", cs_tenant_handler, #{
+            action => seat_presence_heartbeat,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
+        %% 手动状态（PUT，case_auth 升 conversation.write）与自身运行态视图
+        %% （GET）：PUT manual_status=away（手动 away 优先于自动派生）/
+        %% 缺省 clear；GET 返回事实 + 派生 status。
+        {"/api/v1/cs/organizations/:org_id/seats/me/presence", cs_tenant_handler, #{
+            action => seat_presence_status,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
+        %% Org 级运行态列表（工作台/管理面；与自动派单同一派生真源）。
+        {"/api/v1/cs/organizations/:org_id/seats/presence", cs_tenant_handler, #{
+            action => seat_presence_list,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
         %% CSB-02R：坐席工作台 active/closed 两视图（T-2 后 org 显式在路径）。
         %% 独立路径而非 /sessions?scope=seat 的理由：GET /api/v1/cs/sessions 已
         %% 冻结为访客面，route metadata 是 principal 的唯一分流依据。

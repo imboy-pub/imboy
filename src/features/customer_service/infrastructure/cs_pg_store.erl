@@ -19,6 +19,11 @@
     %% BE-S01a：坐席上下文聚合 / 转接目标
     list_seat_org_contexts/1,
     list_transfer_targets_page/4,
+    %% CS-BE-05：presence 心跳 lease
+    heartbeat_seat/4,
+    set_seat_manual_status/4,
+    fetch_seat_presence/2,
+    list_seat_presence/1,
     %% session
     insert_session/3,
     fetch_session/3,
@@ -92,6 +97,16 @@ list_seat_org_contexts(UserId) ->
     cs_pg_seat:list_seat_org_contexts(UserId).
 list_transfer_targets_page(OrgId, ExcludeIdentityId, AfterId, Limit) ->
     cs_pg_seat:list_transfer_targets_page(OrgId, ExcludeIdentityId, AfterId, Limit).
+
+%% CS-BE-05：presence（cs_store_port 同名 callback 的薄委派）。
+heartbeat_seat(OrgId, IdentityId, AtSec, Opts) ->
+    cs_pg_seat:heartbeat_seat(OrgId, IdentityId, AtSec, Opts).
+set_seat_manual_status(OrgId, IdentityId, AtSec, ManualStatus) ->
+    cs_pg_seat:set_seat_manual_status(OrgId, IdentityId, AtSec, ManualStatus).
+fetch_seat_presence(OrgId, IdentityId) ->
+    cs_pg_seat:fetch_seat_presence(OrgId, IdentityId).
+list_seat_presence(OrgId) ->
+    cs_pg_seat:list_seat_presence(OrgId).
 
 %% session
 insert_session(OrgId, WorkspaceId, Session) ->

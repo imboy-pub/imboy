@@ -309,10 +309,19 @@ claim_event(Session, IdentityId, At, Params) ->
     }.
 
 %% 显式 claim：坐席必须存在；停用由 DB CAS 拒（这里先给可读错误）。
+%%
+%% CS-BE-05：默认派单（identity 缺省）注入 presence 派生——只选运行态
+%% `online` 的坐席（away/busy/offline 跳过；无 presence 行 = 从未上报心跳
+%% = offline，从严）。全部不在线 → no_seat_available → 会话保持 queued
+%% （CS-RUNTIME-02）。显式 claim（坐席主动接单）是在线事实本身，不做
+%% presence 过滤（enabled + 容量门照旧）。
 pick_seat(OrgId, undefined, Params) ->
     case with_store(Params, fun(Store) -> Store:list_dispatchable_seats(OrgId) end) of
-        {error, _} = Err -> Err;
-        {ok, Seats} -> cs_dispatch:select_seat(OrgId, Seats)
+        {error, _} = Err ->
+            Err;
+        {ok, Seats} ->
+            Snapshot = presence_annotated(OrgId, Seats, Params),
+            cs_dispatch:select_seat(OrgId, Snapshot)
     end;
 pick_seat(OrgId, IdentityId, Params) ->
     case with_store(Params, fun(Store) -> Store:fetch_seat(OrgId, IdentityId) end) of
@@ -910,4 +919,23 @@ last_message_with(Row, Preview) ->
                 created_at => maps:get(last_message_created_at, Row, undefined),
                 preview => Preview
             }
+    end.
+
+
+%% ===================================================================
+%% CS-BE-05：默认派单的 presence 注入（annotate-then-select）
+%% ===================================================================
+
+%% 拉 org 级 presence 事实行并逐行注入 derived_status；时钟取 Params.at
+%% （测试注入）缺省服务器当前秒。presence 读失败不阻断派单（退化为
+%% 无 derived_status 键 = 历史行为）——派单偏好不应因派生数据源抖动而
+%% 把可接单坐席全部排除；真正的容量/状态裁决在 claim DB CAS。
+presence_annotated(OrgId, Seats, Params) ->
+    Now = case maps:get(at, Params, undefined) of
+        At when is_integer(At) -> At;
+        _ -> os:system_time(second)
+    end,
+    case with_store(Params, fun(Store) -> Store:list_seat_presence(OrgId) end) of
+        {ok, Presences} -> cs_presence:annotate(Seats, Presences, Now);
+        {error, _} -> Seats
     end.

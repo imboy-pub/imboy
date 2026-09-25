@@ -92,6 +92,15 @@
 %% @doc BE-S01a：转接目标分页（键集下推 `business_identity_id > after` 升序 +
 %% `LIMIT`，C1~C4 模板口径）；同语句带 Org、仅 enabled、排除 ExcludeIdentityId
 %% （调用者本人）；行含 identity 显示名与 active 会话同语句计数。
+%% CS-BE-05：presence 心跳 lease（At 为服务端派生 epoch 秒，可注入）。
+-callback heartbeat_seat(OrgId :: integer(), IdentityId :: integer(), AtSec :: integer(), Opts :: undefined) ->
+    {ok, map()} | {error, term()}.
+-callback set_seat_manual_status(OrgId :: integer(), IdentityId :: integer(), AtSec :: integer(), ManualStatus :: binary() | undefined) ->
+    {ok, map()} | {error, term()}.
+-callback fetch_seat_presence(OrgId :: integer(), IdentityId :: integer()) ->
+    {ok, map()} | {error, term()}.
+-callback list_seat_presence(OrgId :: integer()) ->
+    {ok, [map()]} | {error, term()}.
 -callback list_transfer_targets_page(
     OrgId :: integer(),
     ExcludeIdentityId :: integer(),

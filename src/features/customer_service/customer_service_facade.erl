@@ -69,6 +69,11 @@
     %% CS-BE-04（CS-DEC-02）：已读游标——单调 ACK（幂等）+ 读状态（未读数）
     session_read_ack/2,
     session_read_state/2,
+    %% CS-BE-05：presence 心跳 lease（运行态派生；CS-DEC-02）
+    seat_heartbeat/2,
+    seat_manual_status/2,
+    seat_presence/2,
+    seat_presence_list/2,
     %% CSB-02R：坐席工作台（队列 GET + active/closed 列表，共用 seat_session_page）
     seat_session_queue/2,
     seat_session_list/2,
@@ -781,6 +786,54 @@ session_customer_context(
 session_customer_context(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, session_customer_context}};
 session_customer_context(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 心跳（CS-BE-05）：presence lease upsert + 派生运行态视图。at 是
+%% 服务端派生时钟（HTTP 面必在），客户端不可报时；授权/enabled 门在 application。
+-spec seat_heartbeat(integer(), map()) -> term().
+seat_heartbeat(
+    OrgId, #{business_identity_id := IdentityId, at := At} = Params
+) when
+    is_integer(OrgId), is_integer(IdentityId), is_integer(At), is_map(Params)
+->
+    cs_seat_app:seat_heartbeat(OrgId, Params);
+seat_heartbeat(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, seat_heartbeat}};
+seat_heartbeat(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 手动状态 set/clear（CS-BE-05）：manual_status <<"away">> 或缺省 clear。
+-spec seat_manual_status(integer(), map()) -> term().
+seat_manual_status(
+    OrgId, #{business_identity_id := IdentityId, at := At} = Params
+) when
+    is_integer(OrgId), is_integer(IdentityId), is_integer(At), is_map(Params)
+->
+    cs_seat_app:set_seat_manual_status(OrgId, Params);
+seat_manual_status(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, seat_manual_status}};
+seat_manual_status(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 单坐席运行态视图（CS-BE-05）：事实 + 派生 status。
+-spec seat_presence(integer(), map()) -> term().
+seat_presence(
+    OrgId, #{business_identity_id := IdentityId} = Params
+) when
+    is_integer(OrgId), is_integer(IdentityId), is_map(Params)
+->
+    cs_seat_app:seat_presence(OrgId, Params);
+seat_presence(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, seat_presence}};
+seat_presence(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc Org 级运行态视图（CS-BE-05）：工作台/管理面列表（与自动派单同
+%% 一派生真源）。
+-spec seat_presence_list(integer(), map()) -> term().
+seat_presence_list(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_seat_app:list_seat_presence(OrgId, Params);
+seat_presence_list(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% @doc 已读游标 ACK（CS-BE-04 / CS-DEC-02）：last_read_message_id 与 at

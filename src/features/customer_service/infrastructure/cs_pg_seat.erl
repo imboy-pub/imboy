@@ -23,6 +23,11 @@
     provision_seat/3,
     list_seat_org_contexts/1,
     list_transfer_targets_page/4,
+    %% CS-BE-05：presence 心跳 lease（持久/共享可见运行态事实输入）
+    heartbeat_seat/4,
+    set_seat_manual_status/4,
+    fetch_seat_presence/2,
+    list_seat_presence/1,
     sql_statements/0
 ]).
 
@@ -56,6 +61,61 @@
     "       extract(epoch from updated_at)::bigint AS updated_at"
     "  FROM customer_service_seat"
     " WHERE organization_id = $1 AND business_identity_id = $2"
+>>).
+
+%% ===================================================================
+%% CS-BE-05：presence 心跳 lease（SQL 宏）
+%% ===================================================================
+
+%% 心跳 upsert：只刷新 last_heartbeat_at（manual_status 不动——手动 away
+%% 不会被周期心跳冲掉）；行不存在则创建（首次心跳）。
+-define(SQL_PRESENCE_HEARTBEAT, <<
+    "INSERT INTO customer_service_seat_presence"
+    " (organization_id, business_identity_id, last_heartbeat_at, updated_at)"
+    " VALUES ($1, $2, to_timestamp($3), CURRENT_TIMESTAMP)"
+    " ON CONFLICT (organization_id, business_identity_id)"
+    " DO UPDATE SET last_heartbeat_at = EXCLUDED.last_heartbeat_at,"
+    "               updated_at = CURRENT_TIMESTAMP"
+>>).
+
+%% 手动状态 set/clear：ManualStatus 为 'away' 或 NULL（clear）。行不存在
+%% 则创建（last_heartbeat_at = At——设置 away 时人以在线事实为锚）。
+-define(SQL_PRESENCE_MANUAL_SET, <<
+    "INSERT INTO customer_service_seat_presence"
+    " (organization_id, business_identity_id, last_heartbeat_at, manual_status,"
+    "  updated_at)"
+    " VALUES ($1, $2, to_timestamp($3), $4, CURRENT_TIMESTAMP)"
+    " ON CONFLICT (organization_id, business_identity_id)"
+    " DO UPDATE SET manual_status = EXCLUDED.manual_status,"
+    "               updated_at = CURRENT_TIMESTAMP"
+>>).
+
+%% 单坐席 presence 快照（含派生输入：seat enabled/max_concurrent + 活跃计数）。
+%% LEFT JOIN：无 presence 行时心跳/手动列为 NULL（从未上报 → offline）；
+%% seat 行不存在 → 0 行（not_found）。
+-define(SQL_PRESENCE_FETCH, <<
+    "SELECT p.organization_id, p.business_identity_id,"
+    "       extract(epoch from p.last_heartbeat_at)::bigint AS last_heartbeat_at,"
+    "       p.manual_status, s.enabled, s.max_concurrent,"
+    "       (SELECT count(*) FROM customer_service_session x"
+    "         WHERE x.organization_id = s.organization_id"
+    "           AND x.business_identity_id = s.business_identity_id"
+    "           AND x.status = 'active') AS active_count"
+    "  FROM customer_service_seat s"
+    "  LEFT JOIN customer_service_seat_presence p"
+    "    ON p.organization_id = s.organization_id"
+    "   AND p.business_identity_id = s.business_identity_id"
+    " WHERE s.organization_id = $1 AND s.business_identity_id = $2"
+>>).
+
+%% Org 级 presence 行投影（cs_presence:annotate/3 的输入；仅事实输入，
+%% 派生在应用层完成）。
+-define(SQL_PRESENCE_LIST, <<
+    "SELECT organization_id, business_identity_id,"
+    "       extract(epoch from last_heartbeat_at)::bigint AS last_heartbeat_at,"
+    "       manual_status"
+    "  FROM customer_service_seat_presence"
+    " WHERE organization_id = $1"
 >>).
 
 -define(SQL_LIST_DISPATCHABLE, <<
@@ -264,6 +324,10 @@ sql_statements() ->
         ?SQL_IDENTITY_FUNCTION,
         ?SQL_INSERT_SEAT,
         ?SQL_FETCH_SEAT,
+        ?SQL_PRESENCE_HEARTBEAT,
+        ?SQL_PRESENCE_MANUAL_SET,
+        ?SQL_PRESENCE_FETCH,
+        ?SQL_PRESENCE_LIST,
         ?SQL_LIST_DISPATCHABLE,
         ?SQL_LIST_DISPATCHABLE_PAGE,
         ?SQL_LIST_ALL_SEATS_PAGE,
@@ -281,6 +345,60 @@ sql_statements() ->
         ?SQL_PROVISION_INSERT_ASSIGNMENT,
         ?SQL_PROVISION_UPSERT_SEAT
     ].
+
+%% ===================================================================
+%% CS-BE-05：presence 心跳 lease（持久/共享可见运行态事实输入）
+%% ===================================================================
+
+%% @doc 心跳 upsert：只刷新 last_heartbeat_at；At 是服务端派生时钟
+%% （epoch 秒，可注入），客户端不可报时。FK 保证仅对存在坐席可写。
+-spec heartbeat_seat(integer(), integer(), integer(), undefined) ->
+    {ok, map()} | {error, term()}.
+heartbeat_seat(OrgId, IdentityId, AtSec, _Opts) ->
+    case elib_pg:execute(?SQL_PRESENCE_HEARTBEAT, [OrgId, IdentityId, AtSec]) of
+        {ok, _} -> fetch_seat_presence(OrgId, IdentityId);
+        {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}
+    end.
+
+%% @doc 手动状态 set/clear：ManualStatus 为 <<"away">>（设 away）或
+%% undefined（clear）；AtSec 同 heartbeat 语义（锚定在线事实）。
+-spec set_seat_manual_status(integer(), integer(), integer(), binary() | undefined) ->
+    {ok, map()} | {error, term()}.
+set_seat_manual_status(OrgId, IdentityId, AtSec, ManualStatus) ->
+    Manual =
+        case ManualStatus of
+            <<"away">> -> <<"away">>;
+            _ -> undefined
+        end,
+    case elib_pg:execute(?SQL_PRESENCE_MANUAL_SET, [OrgId, IdentityId, AtSec, Manual]) of
+        {ok, _} -> fetch_seat_presence(OrgId, IdentityId);
+        {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}
+    end.
+
+%% @doc 单坐席 presence 快照：心跳/手动事实 + 派生输入（enabled /
+%% max_concurrent / active_count）。seat 不存在 → not_found；无 presence
+%% 行时心跳列为 undefined（从未上报 → offline）。
+-spec fetch_seat_presence(integer(), integer()) -> {ok, map()} | {error, term()}.
+fetch_seat_presence(OrgId, IdentityId) ->
+    Keys = [
+        organization_id,
+        business_identity_id,
+        last_heartbeat_at,
+        manual_status,
+        enabled,
+        max_concurrent,
+        active_count
+    ],
+    cs_pg_common:fetch_one(?SQL_PRESENCE_FETCH, [OrgId, IdentityId], Keys).
+
+%% @doc Org 级 presence 行投影（cs_presence:annotate/3 的输入）。
+-spec list_seat_presence(integer()) -> {ok, [map()]} | {error, term()}.
+list_seat_presence(OrgId) ->
+    cs_pg_common:fetch_many(
+        ?SQL_PRESENCE_LIST,
+        [OrgId],
+        [organization_id, business_identity_id, last_heartbeat_at, manual_status]
+    ).
 
 %% ===================================================================
 %% identity 事实（A01 应用侧前置校验数据源）

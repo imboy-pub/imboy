@@ -118,6 +118,14 @@ call(session_customer_context, OrgId, Params) ->
 %% CS-BE-04（CS-DEC-02）：已读游标——单调 ACK（幂等）+ 读状态（未读数）。
 call(session_read_ack, OrgId, Params) ->
     customer_service_facade:session_read_ack(OrgId, Params);
+call(seat_heartbeat, OrgId, Params) ->
+    customer_service_facade:seat_heartbeat(OrgId, Params);
+call(seat_manual_status, OrgId, Params) ->
+    customer_service_facade:seat_manual_status(OrgId, Params);
+call(seat_presence, OrgId, Params) ->
+    customer_service_facade:seat_presence(OrgId, Params);
+call(seat_presence_list, OrgId, Params) ->
+    customer_service_facade:seat_presence_list(OrgId, Params);
 call(session_read_state, OrgId, Params) ->
     customer_service_facade:session_read_state(OrgId, Params);
 %% CSB-02R：坐席工作台（队列 GET + active/closed 列表）。
@@ -146,6 +154,11 @@ actions() ->
         claim,
         transfer,
         close,
+        %% CS-BE-05：presence 心跳 lease / 手动状态 / 运行态视图
+        seat_heartbeat,
+        seat_manual_status,
+        seat_presence,
+        seat_presence_list,
         list_messages,
         fetch_session,
         list_sessions,

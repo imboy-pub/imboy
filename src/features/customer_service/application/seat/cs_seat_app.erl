@@ -29,6 +29,11 @@
     %% CS-BE-04（CS-DEC-02）：已读游标——单调 ACK（幂等）+ 读状态（未读数）。
     ack_read/2,
     read_state/2,
+    %% CS-BE-05：presence 心跳 lease（持久/共享可见运行态事实输入 + 派生）。
+    seat_heartbeat/2,
+    set_seat_manual_status/2,
+    seat_presence/2,
+    list_seat_presence/2,
     %% BE-S01a：坐席上下文清单（主体自身作用域）+ 转接目标最小投影
     seat_contexts/1,
     transfer_targets/2,
@@ -591,6 +596,162 @@ read_state(_OrgId, _Params) ->
 
 %% 已读游标用例的公共门：seat enabled 门（403 面）→ 会话租户作用域
 %% （not_found）→ session ownership 复核（403 面）→ 进入用例主体。
+%% ===================================================================
+%% CS-BE-05：presence 心跳 lease（CS-DEC-02：运行态派生、无新治理列）
+%% ===================================================================
+
+%% @doc 心跳：持久/共享可见 lease upsert（只刷 last_heartbeat_at，手动 away
+%% 不被周期心跳冲掉），返回派生后的运行态视图。
+%%
+%% Params：workspace_id / business_identity_id 必填；`at` 是服务端派生时钟
+%% （epoch 秒，actions 层 clock_unit => second，客户端不可报时）。
+%% 门：seat 存在 + enabled（suspend 立即 seat_disabled——离线坐席的心跳拒绝，
+%% 不产生"enabled=false 却派生 online"的矛盾状态）。
+-spec seat_heartbeat(integer(), map()) -> {ok, map()} | {error, term()}.
+seat_heartbeat(OrgId, Params) when is_map(Params) ->
+    presence_gate(OrgId, Params, fun(Org, IdentityId, At) ->
+        case
+            with_store(Params, fun(Store) ->
+                Store:heartbeat_seat(Org, IdentityId, At, undefined)
+            end)
+        of
+            {ok, Row} -> {ok, derive_presence_row(Row, Params)};
+            {error, _} = Err -> Err
+        end
+    end);
+seat_heartbeat(_OrgId, _Params) ->
+    {error, {invalid_argument, seat_heartbeat}}.
+
+%% @doc 手动状态 set/clear：ManualStatus 为 <<"away">>（手动 away 优先于
+%% 自动派生）或缺省/`undefined`（clear，回到自动派生）。
+-spec set_seat_manual_status(integer(), map()) -> {ok, map()} | {error, term()}.
+set_seat_manual_status(OrgId, Params) when is_map(Params) ->
+    Manual = maps:get(manual_status, Params, undefined),
+    case Manual of
+        <<"away">> ->
+            presence_gate(OrgId, Params, fun(Org, IdentityId, At) ->
+                derive_manual_set(Params, Org, IdentityId, At, Manual)
+            end);
+        _ when Manual =:= undefined; Manual =:= null ->
+            presence_gate(OrgId, Params, fun(Org, IdentityId, At) ->
+                derive_manual_set(Params, Org, IdentityId, At, undefined)
+            end);
+        Other ->
+            {error, {invalid_manual_status, Other}}
+    end;
+set_seat_manual_status(_OrgId, _Params) ->
+    {error, {invalid_argument, set_seat_manual_status}}.
+
+%% @doc 单坐席运行态视图（事实 + 派生 status；读面无 enabled 门——
+%% suspend 后的坐席依然可查自己的状态，只是派生含 enabled 事实）。
+-spec seat_presence(integer(), map()) -> {ok, map()} | {error, term()}.
+seat_presence(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _WorkspaceId} ->
+            IdentityId = maps:get(business_identity_id, Params, undefined),
+            case pos_int(IdentityId) of
+                false ->
+                    {error, {invalid_identity_id, IdentityId}};
+                true ->
+                    case
+                        with_store(Params, fun(Store) ->
+                            Store:fetch_seat_presence(OrgId, IdentityId)
+                        end)
+                    of
+                        {error, not_found} ->
+                            {error, {seat_not_found, IdentityId}};
+                        {error, _} = Err ->
+                            Err;
+                        {ok, Row} ->
+                            {ok, derive_presence_row(Row, Params)}
+                    end
+            end
+    end;
+seat_presence(_OrgId, _Params) ->
+    {error, {invalid_argument, seat_presence}}.
+
+%% @doc Org 级运行态视图（工作台/管理面列表；自动派单的同一派生真源）。
+-spec list_seat_presence(integer(), map()) -> {ok, [map()]} | {error, term()}.
+list_seat_presence(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _WorkspaceId} ->
+            case with_store(Params, fun(Store) -> Store:list_seat_presence(OrgId) end) of
+                {error, _} = Err ->
+                    Err;
+                {ok, Rows} ->
+                    Now = presence_now(Params),
+                    {ok, [derive_presence_row(Row, Now) || Row <- Rows]}
+            end
+    end;
+list_seat_presence(_OrgId, _Params) ->
+    {error, {invalid_argument, list_seat_presence}}.
+
+derive_manual_set(Params, Org, IdentityId, At, Manual) ->
+    case
+        with_store(Params, fun(Store) ->
+            Store:set_seat_manual_status(Org, IdentityId, At, Manual)
+        end)
+    of
+        {ok, Row} -> {ok, derive_presence_row(Row, Params)};
+        {error, _} = Err -> Err
+    end.
+
+%% presence 写用例公共门：seat 存在 + enabled（suspend 即拒）。
+presence_gate(OrgId, Params, UseCase) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _WorkspaceId} ->
+            IdentityId = maps:get(business_identity_id, Params, undefined),
+            At = maps:get(at, Params, undefined),
+            case pos_int(IdentityId) andalso pos_int(At) of
+                false ->
+                    {error, {invalid_argument, presence_gate}};
+                true ->
+                    case
+                        with_store(Params, fun(Store) ->
+                            Store:fetch_seat(OrgId, IdentityId)
+                        end)
+                    of
+                        {error, not_found} ->
+                            {error, {seat_not_found, IdentityId}};
+                        {error, _} = Err ->
+                            Err;
+                        {ok, Seat} ->
+                            case maps:get(enabled, Seat, false) of
+                                false ->
+                                    {error, seat_disabled};
+                                true ->
+                                    UseCase(OrgId, IdentityId, At)
+                            end
+                    end
+            end
+    end.
+
+%% 派生：行 + 注入时钟（Params.at 优先，缺省服务器当前秒）→ 附加 status 键。
+derive_presence_row(Row, Params) when is_map(Params) ->
+    derive_presence_row(Row, presence_now(Params));
+derive_presence_row(Row, NowSec) when is_integer(NowSec) ->
+    SeatInputs = #{
+        now_sec => NowSec,
+        max_concurrent => maps:get(max_concurrent, Row, 1),
+        active_count => maps:get(active_count, Row, 0)
+    },
+    Status = cs_presence:derive(Row, SeatInputs),
+    Row#{status => Status};
+derive_presence_row(Row, _NoClock) ->
+    Row.
+
+presence_now(Params) ->
+    case maps:get(at, Params, undefined) of
+        At when is_integer(At) -> At;
+        _ -> os:system_time(second)
+    end.
+
 read_cursor_gate(OrgId, Params, UseCase) ->
     case cs_app_support:tenant(OrgId, Params) of
         {error, _} = Err ->

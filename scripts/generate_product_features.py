@@ -127,6 +127,7 @@ FEATURE_BACKEND_MODULES = {
         "cs_pg_store",
         "cs_pg_token",
         "cs_platform_handler",
+        "cs_presence",
         "cs_ports",
         "cs_preflight_facts_pg",
         "cs_seat_app",

@@ -82,6 +82,11 @@ contracts() ->
             %% BE-S01a：坐席上下文聚合 / 转接目标
             {list_seat_org_contexts, 1},
             {list_transfer_targets_page, 4},
+            %% CS-BE-05：presence 心跳 lease
+            {heartbeat_seat, 4},
+            {set_seat_manual_status, 4},
+            {fetch_seat_presence, 2},
+            {list_seat_presence, 1},
             %% session
             {insert_session, 3},
             {fetch_session, 3},

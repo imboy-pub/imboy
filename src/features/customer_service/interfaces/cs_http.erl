@@ -196,6 +196,39 @@ is_web_seat_surface_path(Path) when is_binary(Path) ->
             <<"events">>
         ] ->
             true;
+        %% CS-BE-05：presence 心跳（POST）与手动状态/运行态视图（PUT/GET）。
+        [
+            <<"api">>,
+            <<"v1">>,
+            <<"cs">>,
+            <<"organizations">>,
+            _OrgId,
+            <<"seats">>,
+            <<"me">>,
+            <<"heartbeat">>
+        ] ->
+            true;
+        [
+            <<"api">>,
+            <<"v1">>,
+            <<"cs">>,
+            <<"organizations">>,
+            _OrgId,
+            <<"seats">>,
+            <<"me">>,
+            <<"presence">>
+        ] ->
+            true;
+        [
+            <<"api">>,
+            <<"v1">>,
+            <<"cs">>,
+            <<"organizations">>,
+            _OrgId,
+            <<"seats">>,
+            <<"presence">>
+        ] ->
+            true;
         %% A0 契约：坐席侧企业消息历史 + 发送（enterprise 真源复用路径）。
         [<<"api">>, <<"v1">>, <<"enterprise">>, <<"conversations">>, _ConvId, <<"messages">>] ->
             true;

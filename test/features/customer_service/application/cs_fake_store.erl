@@ -44,6 +44,11 @@
     set_seat_enabled/4,
     list_seat_org_contexts/1,
     list_transfer_targets_page/4,
+    %% CS-BE-05：presence（内存表：{Org, Identity} => #{last_heartbeat_at, manual_status}）
+    heartbeat_seat/4,
+    set_seat_manual_status/4,
+    fetch_seat_presence/2,
+    list_seat_presence/1,
     insert_session/3,
     fetch_session/3,
     claim_session/7,
@@ -122,7 +127,8 @@ init() ->
         {members, #{}},
         {provision_fail_after, infinity},
         {read_cursors, #{}},
-        {messages, []}
+        {messages, []},
+        {seat_presence, #{}}
     ]),
     ok.
 
@@ -430,16 +436,17 @@ put_seat_for_list(OrgId, Row) ->
     ok.
 
 with_active_count(OrgId, Row) ->
+    Row#{active_count => fake_active_count(OrgId, maps:get(business_identity_id, Row))}.
+
+fake_active_count(OrgId, IdentityId) ->
     {sessions, Sessions} = hd(ets:lookup(?TAB, sessions)),
-    IdentityId = maps:get(business_identity_id, Row),
-    Active = length([
+    length([
         S
      || S <- maps:values(Sessions),
         maps:get(organization_id, S) =:= OrgId,
         maps:get(business_identity_id, S, undefined) =:= IdentityId,
         maps:get(status, S) =:= active
-    ]),
-    Row#{active_count => Active}.
+    ]).
 
 set_seat_enabled(OrgId, IdentityId, Enabled, At) ->
     case fetch_seat(OrgId, IdentityId) of
@@ -481,6 +488,85 @@ put_identity_display(OrgId, IdentityId, DisplayName) ->
 list_seat_org_contexts(UserId) ->
     {org_contexts, M} = hd(ets:lookup(?TAB, org_contexts)),
     {ok, lists:sort(maps_get_list(UserId, M))}.
+
+%% ===================================================================
+%% CS-BE-05：presence（内存 fake；跨 init 隔离）
+%% ===================================================================
+
+heartbeat_seat(OrgId, IdentityId, AtSec, _Opts) ->
+    ensure_presence_row(OrgId, IdentityId),
+    {seat_presence, M} = hd(ets:lookup(?TAB, seat_presence)),
+    Row = maps:get({OrgId, IdentityId}, M),
+    Row1 = Row#{last_heartbeat_at => AtSec},
+    ets:insert(?TAB, {seat_presence, maps:put({OrgId, IdentityId}, Row1, M)}),
+    presence_view(OrgId, IdentityId).
+
+set_seat_manual_status(OrgId, IdentityId, AtSec, ManualStatus) ->
+    ensure_presence_row(OrgId, IdentityId),
+    {seat_presence, M} = hd(ets:lookup(?TAB, seat_presence)),
+    Row0 = maps:get({OrgId, IdentityId}, M),
+    Row1 = Row0#{
+        manual_status => case ManualStatus of
+            <<"away">> -> <<"away">>;
+            _ -> undefined
+        end,
+        last_heartbeat_at => maps:get(last_heartbeat_at, Row0, AtSec)
+    },
+    ets:insert(?TAB, {seat_presence, maps:put({OrgId, IdentityId}, Row1, M)}),
+    presence_view(OrgId, IdentityId).
+
+fetch_seat_presence(OrgId, IdentityId) ->
+    %% seat 不存在 → not_found（与 PG LEFT JOIN 语义一致：锚在 seat 行）。
+    {seats, Seats} = hd(ets:lookup(?TAB, seats)),
+    case maps:get({OrgId, IdentityId}, Seats, undefined) of
+        undefined ->
+            {error, not_found};
+        Seat ->
+            ensure_presence_row(OrgId, IdentityId),
+            {seat_presence, M} = hd(ets:lookup(?TAB, seat_presence)),
+            P = maps:get({OrgId, IdentityId}, M),
+            {ok, presence_row(P, Seat)}
+    end.
+
+list_seat_presence(OrgId) ->
+    {seat_presence, M} = hd(ets:lookup(?TAB, seat_presence)),
+    {ok, [
+        maps:with(
+            [organization_id, business_identity_id, last_heartbeat_at, manual_status], P
+        )
+     || {{O, _I}, P} <- maps:to_list(M), O =:= OrgId,
+        is_map_key(last_heartbeat_at, P) orelse is_map_key(manual_status, P)
+    ]}.
+
+ensure_presence_row(OrgId, IdentityId) ->
+    {seat_presence, M} = hd(ets:lookup(?TAB, seat_presence)),
+    case maps:is_key({OrgId, IdentityId}, M) of
+        true -> ok;
+        false ->
+            ets:insert(?TAB, {seat_presence, maps:put(
+                {OrgId, IdentityId},
+                #{organization_id => OrgId, business_identity_id => IdentityId},
+                M)})
+    end.
+
+presence_view(OrgId, IdentityId) ->
+    {seats, Seats} = hd(ets:lookup(?TAB, seats)),
+    Seat = maps:get({OrgId, IdentityId}, Seats, #{}),
+    {seat_presence, M} = hd(ets:lookup(?TAB, seat_presence)),
+    P = maps:get({OrgId, IdentityId}, M),
+    {ok, presence_row(P, Seat)}.
+
+presence_row(P, Seat) ->
+    Base = maps:with(
+        [organization_id, business_identity_id, last_heartbeat_at, manual_status], P
+    ),
+    Base#{
+        enabled => maps:get(enabled, Seat, true),
+        max_concurrent => maps:get(max_concurrent, Seat, 1),
+        active_count => fake_active_count(
+            maps:get(organization_id, P), maps:get(business_identity_id, P)
+        )
+    }.
 
 list_transfer_targets_page(OrgId, ExcludeIdentityId, AfterId, Limit) ->
     {seats, Seats} = hd(ets:lookup(?TAB, seats)),

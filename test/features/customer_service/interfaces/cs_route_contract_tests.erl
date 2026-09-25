@@ -81,6 +81,12 @@ tenant_literal_routes() ->
         {<<O/binary, "/transfer-targets">>, transfer_targets, [<<"GET">>], cs_seat},
         %% BE-S01a：坐席 SSE 占位（流式实现在 BE-S01b；先注册 501）。
         {<<O/binary, "/seats/me/events">>, seat_events, [<<"GET">>], cs_seat},
+        %% CS-BE-05（CS-DEC-02）：presence 心跳（POST）/ 手动状态与自身运行态
+        %% 视图（PUT/GET）/ Org 级运行态列表（GET）；PUT 由 case_auth 收窄到
+        %% conversation.write。
+        {<<O/binary, "/seats/me/heartbeat">>, seat_presence_heartbeat, [<<"POST">>], cs_seat},
+        {<<O/binary, "/seats/me/presence">>, seat_presence_status, [<<"PUT">>, <<"GET">>], cs_seat},
+        {<<O/binary, "/seats/presence">>, seat_presence_list, [<<"GET">>], cs_seat},
         {<<O/binary, "/seats">>, seats, [<<"GET">>, <<"POST">>], enterprise_owner_admin},
         {<<O/binary, "/seats/:id/suspend">>, seat_suspend, [<<"POST">>], enterprise_owner_admin},
         {<<O/binary, "/seats/:id/resume">>, seat_resume, [<<"POST">>], enterprise_owner_admin},

@@ -195,7 +195,9 @@ a02_max_concurrent_cap_and_dispatch() ->
             })
         )
     ),
-    %% dispatch（least-active）：A 满、B 空闲 → 自动派给 B
+    %% dispatch（least-active）：A 满、B 空闲且在线 → 自动派给 B
+    %%（CS-BE-05：自动派单只派给 presence 派生 online 的坐席——先心跳上线）。
+    {ok, _} = ?FAKE:heartbeat_seat(?ORG, ?SEAT_B, ?T0 + 3, undefined),
     S3 = open_session(),
     {ok, Active3} = cs_session_app:claim(
         ?ORG,

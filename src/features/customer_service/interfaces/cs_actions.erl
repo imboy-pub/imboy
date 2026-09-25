@@ -438,6 +438,46 @@ table(tenant) ->
                 ),
                 #{<<"POST">> => seat_auth(<<"conversation.write">>)}
             )},
+        %% CS-BE-05（CS-DEC-02）：presence 心跳 lease——POST /seats/me/heartbeat
+        %% 刷新心跳 lease 并返回派生运行态；PUT /seats/me/presence 设置/清除
+        %% 手动 away（manual_status 缺省 = clear）。`at` 是服务端派生时钟
+        %% （clock_unit => second，客户端不可报时）；enabled 门在 application
+        %% （suspend 立即 seat_disabled）。心跳不是会话写——用
+        %% conversation.read 权限（只写自身 presence 行，不碰会话事实）。
+        {seat_presence_heartbeat,
+            entry(
+                [
+                    {<<"POST">>, seat_heartbeat, [], [], #{clock_unit => second}}
+                ],
+                seat_auth(<<"conversation.read">>),
+                server_common() ++ [business_identity_id],
+                path
+            )},
+        {seat_presence_status,
+            with_case_auth(
+                entry(
+                    [
+                        {<<"PUT">>, seat_manual_status,
+                            [{manual_status, binary, optional}], [],
+                            #{clock_unit => second}},
+                        {<<"GET">>, seat_presence, [], []}
+                    ],
+                    seat_auth(<<"conversation.read">>),
+                    server_common() ++ [business_identity_id],
+                    path
+                ),
+                #{<<"PUT">> => seat_auth(<<"conversation.write">>)}
+            )},
+        %% Org 级运行态列表（工作台/管理面；与自动派单同一派生真源）。
+        {seat_presence_list,
+            entry(
+                [
+                    {<<"GET">>, seat_presence_list, [], []}
+                ],
+                seat_auth(<<"conversation.read">>),
+                server_common() ++ [business_identity_id],
+                path
+            )},
         %% CSB-02R：坐席 active/closed 两视图（T-2 后
         %% GET /api/v1/cs/organizations/:org_id/seats/sessions）。
         %% 独立路径的理由：GET /api/v1/cs/sessions 已冻结为访客面（cs_visit，
