@@ -78,14 +78,13 @@ Out of scope:
 
 ## 3. Protected Current State
 
-At authoring time the shared topology has only the three primary `main` worktrees plus the protected foreign detached `/private/tmp/intbe03-baseline`. The 39 patch-equivalent task branches and two empty RUN worktree directory trees have already been removed after verified recovery bundles were created. Execution must still re-sample twice and use the second stable sample as the actual baseline.
+At authoring time the shared topology has only the three primary `main` worktrees plus the protected foreign detached `/private/tmp/intbe03-baseline`. The 39 patch-equivalent task branches and two empty RUN worktree directory trees have already been removed after verified recovery bundles were created. The user then manually cleared the two formerly untracked design directories; this is an authorized user action and must not be treated as data-loss drift or automatically restored. Execution must still re-sample twice and use the second stable sample as the actual baseline.
 
 Known protected paths include:
 
 ```text
 imboy:
-  untracked docs/customer-service-v2/
-  untracked docs/enterprise-upgrade/
+  clean at post-user-cleanup snapshot
 
 imboyadmin:
   clean at authoring snapshot
@@ -105,9 +104,12 @@ macos/Podfile.lock worktree/index blob:
   f7466070b0d0834155bb7a39f37272e62db039e2
 macos/Podfile.lock cached diff SHA-256:
   dfa120849cef2b39f4f1953a31b1a2b333dd746546ea8713e918d8720142b015
-design-directory aggregate SHA-256:
-  7825316a7024478d05c72fe9e5d9dd0817c7330d3b486c164364ff6444cb05d9
 ```
+
+The old design input snapshot remains read-only at
+`.Codex/runs/cs-agent-entux-v1-20260924T164136Z-539f3dae/input-design-snapshot/`.
+It is historical evidence only. Do not copy it back into `imboy/docs/` unless
+the user separately requests restoration.
 
 These are not V2.1 closure inputs. Record path, status, worktree blob hash, index blob hash, diff hash, owner if known, and two-sample stability. Do not use `git stash`, `git reset`, `git clean`, blanket `git add`, or force removal.
 
@@ -452,7 +454,7 @@ Copy the following prompt into the next session exactly once:
 
 已知事实只能作为启动线索，必须现场复验：历史 V2.1 三仓候选和 2026-09-24 closure 修复均已在当前 main 祖先链；旧 V2.1 verifier 因 SHA 漂移失效；旧 closure run 缺 acceptance ledger、FINAL 和最终 verifier，不能续写成 PASS；当前静态合同曾为 25 paths / 31 ops / 0 ref。旧 run 和客服 run 的证据只能用于找到命令/夹具/缺陷，禁止把旧 PASS 重绑到新 SHA。
 
-Git 前置收敛已完成：39 个 patch-equivalent 任务分支已在 verified complete-history bundles 归档后删除，两个空 RUN worktree 目录树已清理；不得恢复或重新 merge 它们。当前受保护状态是 imboy 的两个 untracked 设计目录、imboyapp staged macos/Podfile.lock，以及 foreign detached `/private/tmp/intbe03-baseline`。启动时仍须双采样并记录 path/status/worktree hash/index blob/diff hash；不得 reset、clean、stash、覆盖、移动、提交或删除。所有 writer 在新 RUN_ID 的隔离 worktree 工作。旧客服 RUN 的 iOS tunnel 进程及现存端口、数据库、设备、worktree、branch、lease 一律先视为 foreign，机械证明所有权或正式 handoff 后才能使用。
+Git 前置收敛已完成：39 个 patch-equivalent 任务分支已在 verified complete-history bundles 归档后删除，两个空 RUN worktree 目录树已清理；不得恢复或重新 merge 它们。用户随后手动清理了原两个 untracked 设计目录，这是授权的人工作业，不得判作 data-loss drift，也不得从旧 snapshot 自动恢复。当前受保护状态是 imboyapp staged macos/Podfile.lock 和 foreign detached `/private/tmp/intbe03-baseline`。启动时仍须双采样并记录 path/status/worktree hash/index blob/diff hash；不得 reset、clean、stash、覆盖、移动、提交或删除。所有 writer 在新 RUN_ID 的隔离 worktree 工作。旧客服 RUN 的 iOS tunnel 进程及现存端口、数据库、设备、worktree、branch、lease 一律先视为 foreign，机械证明所有权或正式 handoff 后才能使用。
 
 A0 持久化 supervisor loop、heartbeat、last_progress、lease/watchdog、task queue、candidate SHA、acceptance ledger 和 transition audit。普通 TRANSIENT/WORKER_CRASH/WORKER_STALL/ENVIRONMENT/TEST_FAILURE/CODE_FAILURE 不得要求用户确认；有限重试、自动 reclaim/reassign，并继续其他 eligible cards。每卡最多 3 attempts、worker replacement 最多 2、环境重建最多 2；禁止无限 retry。只有 protected WIP 会被破坏、security violation、破坏性/生产动作、不可恢复 base drift、不可安全判断的 migration corruption、或未知且可能数据丢失时才 HARD_STOP。
 
