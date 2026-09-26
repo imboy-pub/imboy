@@ -1024,10 +1024,24 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  customer_service_read_cursor:
+    action: delete
+    owner: customer_service
+    reason: 坐席会话已读游标（业务身份维度）
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
   customer_service_seat:
     action: delete
     owner: customer_service
     reason: 客服坐席绑定
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
+  customer_service_seat_presence:
+    action: delete
+    owner: customer_service
+    reason: 坐席在线心跳/手工状态（业务身份维度，瞬时运营状态）
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
@@ -1318,6 +1332,8 @@ exclusions:
     reason: 聚合计数统计，无用户 PII
   config:
     reason: 系统配置表
+  customer_service_seat_limit:
+    reason: 组织级客服席位配额配置（组织资产，无用户 PII）；席位占用关系行在 tables 的 customer_service_seat
   schema_migrations:
     reason: 迁移版本登记
   schema_migrations_history:
