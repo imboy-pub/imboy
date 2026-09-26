@@ -591,6 +591,10 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "description": "解散企业群。破坏性操作，请谨慎。"
@@ -1212,6 +1216,10 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
               }
             ],
             "description": "对失败投递按 delivery_id 重放。"
