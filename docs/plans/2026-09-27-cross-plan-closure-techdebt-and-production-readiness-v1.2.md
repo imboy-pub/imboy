@@ -47,18 +47,19 @@ flowchart LR
 
 执行 W0 时必须重新采样；下表是计划编制基线，不得跳过运行时复核。
 
-| 仓库 | 计划基线 HEAD | 主工作树状态 | 受保护资产 |
+| 仓库 | 业务代码基线 | 执行 HEAD 合同 | 受保护资产 |
 |---|---|---|---|
-| `imboy` | `fa50dc60cde089640626542b0fa61e0f156b9c92` | `main` 干净 | `/private/tmp/intbe03-baseline` 外来 detached worktree，只读 |
-| `imboyapp` | `6f179511e689744bc9ab3a2faacef988bdd0481a` | `main` 有已暂存 `macos/Podfile.lock` | 该 blob 和 index 状态逐位保护 |
-| `imboyadmin` | `60a65af11259a0b5806dc82dec3eb3843d14fb7e` | `main` 干净 | 无本计划可写的 foreign WIP |
+| `imboy` | `fa50dc60cde089640626542b0fa61e0f156b9c92` | 必须是该 SHA 的后代；`fa50dc60..HEAD` 只允许本 V1.2、sidecar及其执行提示词文档 | `/private/tmp/intbe03-baseline` 外来 detached worktree，只读 |
+| `imboyapp` | `6f179511e689744bc9ab3a2faacef988bdd0481a` | 必须精确等于该 SHA；主工作树有已暂存 `macos/Podfile.lock` | 该 blob 和 index 状态逐位保护 |
+| `imboyadmin` | `60a65af11259a0b5806dc82dec3eb3843d14fb7e` | 必须精确等于该 SHA；主工作树干净 | 无本计划可写的 foreign WIP |
 
 迁移编制基线为 `00000149`。迁移号 `150` 只能由 `CP-CON-02` 在运行时重新确认 head 仍为 149 后领取；否则标记 `BLOCKED_MIGRATION_DRIFT`，禁止猜测新编号。
 
 ### 1.2 计划绑定
 
 - 本文件必须与同名 `.sha256` sidecar 一起强制加入 Git 跟踪。
-- W0 校验计划 SHA、三仓 HEAD、主工作树 dirty、worktree/branch、迁移 head、进程/端口/DB/设备占用。
+- W0 校验计划 SHA、三仓业务基线/执行 HEAD 合同、主工作树 dirty、worktree/branch、迁移 head、进程/端口/DB/设备占用。
+- `imboy` 不使用会被计划提交自我改变的“HEAD 精确等于业务基线”断言；必须同时验证 `fa50dc60..HEAD` 全是允许的 `docs/plans/*v1.2*` 计划/sidecar/提示词文件，且业务路径 diff 为空。
 - 任一输入漂移时，只允许生成 `control/baseline-drift.md`；禁止继续执行旧 DAG。
 - 允许的漂移只有用户明确确认的 foreign WIP，且必须记录所有权和保护指纹。
 
@@ -83,7 +84,7 @@ WT_ROOT=/Users/leeyi/project/imboy.pub/.Codex/worktrees/$RUN_ID
 规则：
 
 1. A0 是唯一集成者，也是唯一能写 `control/`、冻结 candidate 和运行 L3 的角色。
-2. 每个写卡在独立 worktree、独立分支执行；禁止 Worker 在三个主工作树直接写文件。
+2. 每个 Git 跟踪写卡在独立 worktree、独立分支执行；禁止 Worker 在三个主工作树直接写文件。唯一例外是 `CP-SEC-01/03/04` 的 ignored 本地 pro/dev config：由 A0 在 `imboy` 主工作树精确路径执行，前后记录文件指纹，禁止 staging/commit 这些 ignored 文件，且不得扩大到其他主工作树路径。
 3. 分支格式：`run/$RUN_ID/<repo>/<card-id>`；集成分支：`run/$RUN_ID/<repo>/integration`。
 4. Worker 只提交 `owned_paths`；Git author/committer 使用 `leeyi <leeyisoft@qq.com>`，仅命令级设置。
 5. A0 在集成 worktree按 DAG 顺序 cherry-pick；冲突即 `BLOCKED_INTEGRATION_CONFLICT`，不得自行删除一侧语义。
@@ -201,7 +202,7 @@ CP-00-02 必须把每张待派卡编译为 `control/cards/<card-id>.yaml`。`con
 - `owned_paths`：仅 `RUN_ROOT/control/**`。
 - `steps`：双采样三仓 HEAD/dirty/worktree/branch，间隔至少 60 秒；校验本计划 sidecar；登记 migration head、进程、端口、DB、设备和 foreign WIP 指纹。
 - `CP-00-A01`：两次采样一致，或漂移已明确归属且冻结。
-- `CP-00-A02`：计划 SHA 与 sidecar一致，三仓基线与 §1.1 一致。
+- `CP-00-A02`：计划 SHA 与 sidecar一致，三仓满足 §1.1 的业务基线和执行 HEAD 合同；`imboy` 业务路径 `fa50dc60..HEAD` diff 为空。
 - `stop`：任一不一致即 `BLOCKED_PLAN_DRIFT`。
 
 ### CP-00-02 隔离 worktree 和租约建立
@@ -214,7 +215,7 @@ CP-00-02 必须把每张待派卡编译为 `control/cards/<card-id>.yaml`。`con
 ### CP-SEC-01 本地百炼密钥立即围堵
 
 - `repo/cwd`：`imboy`；`/Users/leeyi/project/imboy.pub/imboy`。
-- `owner`：W-SEC；`owned_paths`：本地忽略的 `config/sys.pro.config`、`config/sys.dev.config`。
+- `owner`：A0-SEC-LOCAL（§2.1 唯一 ignored-config 例外）；`owned_paths`：本地忽略的 `config/sys.pro.config`、`config/sys.dev.config`。
 - `forbidden_paths`：Git 历史、runtime/example config、任何第三方控制台。
 - `depends`：CP-00-01；不等待其他产品决策。
 - `steps`：将两文件的 Bailian `api_key` 替换为 `{env, <<"BAILIAN_API_KEY">>}`；不记录真实值。
@@ -250,7 +251,7 @@ CP-00-02 必须把每张待派卡编译为 `control/cards/<card-id>.yaml`。`con
 
 ### CP-SEC-03 删除 eturnal 死配置
 
-- `repo/cwd`：imboy repo；W-SEC；仅本地忽略的 pro/dev config。
+- `repo/cwd`：imboy repo；A0-SEC-LOCAL；仅本地忽略的 pro/dev config。
 - `depends`：CP-SEC-01，同路径串行。
 - `steps`：删除 `eturnal_secret`、`eturnal_turn_urls`、`eturnal_stun_urls`。
 - `CP-SEC-A06`：pro/dev config 上述三键零命中。
@@ -259,7 +260,7 @@ CP-00-02 必须把每张待派卡编译为 `control/cards/<card-id>.yaml`。`con
 
 ### CP-SEC-04 LiveKit ws_url 收敛
 
-- `repo/cwd`：imboy repo；W-SEC；同 config 路径。
+- `repo/cwd`：imboy repo；A0-SEC-LOCAL；同 config 路径。
 - `depends`：CP-SEC-03。
 - `steps`：pro/dev `ws_url` 收敛为 `wss://rtc.imboy.pub`。
 - `CP-SEC-A08`：pro/dev/runtime 三份有效值一致。
