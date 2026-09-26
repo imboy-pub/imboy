@@ -173,7 +173,8 @@ init_assign_role_success_and_flush_cache_test_() ->
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual(1, meck:num_calls(adm_user_logic, assign_roles, 2)),
-            ?assertEqual(8, meck:num_calls(imboy_cache, flush, 1))
+            %% 9 = 8 既有键 + {adm_user_permission, AdminId}（撤权缓存一致性修复新增）
+            ?assertEqual(9, meck:num_calls(imboy_cache, flush, 1))
         end
     ).
 
