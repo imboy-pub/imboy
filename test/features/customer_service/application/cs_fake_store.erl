@@ -83,6 +83,7 @@
     fetch_widget_installation_by_public_id_global/1,
     list_widget_installations_page/3,
     revoke_widget_installation/3,
+    update_widget_installation/4,
     %% CSD-BE-01：测试注入面——强制 installation 状态（disabled 三态归一用）
     force_widget_installation_status/2,
     insert_widget_identity_key/3,
@@ -1182,6 +1183,30 @@ revoke_widget_installation(OrgId, InstallationId, At) ->
                     {error, not_found}
             end
     end.
+
+%% 镜像 cs_pg_widget:update_widget_installation/4 的决策语义：仅 active 行可改，
+%% 不可编辑键（public_widget_id/status）不在 Updates 投影内。
+update_widget_installation(OrgId, InstallationId, At, Updates) when is_map(Updates) ->
+    case fetch_widget_installation(OrgId, InstallationId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Row} ->
+            case maps:get(status, Row) of
+                active ->
+                    NewRow = maps:merge(Row, Updates#{
+                        version => maps:get(version, Row) + 1,
+                        updated_at => At
+                    }),
+                    update(widget_installations, fun(M) ->
+                        M#{InstallationId => NewRow}
+                    end),
+                    {ok, NewRow};
+                _ ->
+                    {error, installation_revoked}
+            end
+    end;
+update_widget_installation(_OrgId, _InstallationId, _At, _Updates) ->
+    {error, invalid_widget_installation}.
 
 insert_widget_identity_key(OrgId, InstallationId, Key) ->
     KeyVersion = maps:get(key_version, Key),

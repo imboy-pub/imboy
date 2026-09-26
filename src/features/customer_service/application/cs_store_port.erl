@@ -374,6 +374,13 @@
     OrgId :: integer(), InstallationId :: integer(), At :: integer()
 ) ->
     ok | {error, not_found | term()}.
+%% @doc 更新安装的可编辑配置（display_name / allowed_origins / branding /
+%% consent_version；同语句带 Org 且仅 active 行可改）。不可编辑键
+%%（public_widget_id / status）不在 Updates 投影内。
+-callback update_widget_installation(
+    OrgId :: integer(), InstallationId :: integer(), At :: integer(), Updates :: map()
+) ->
+    {ok, widget_installation()} | {error, not_found | installation_revoked | term()}.
 
 %% @doc 登记 signing key：只存 key_digest（sha256 hex），明文密钥绝不落库；
 %% (org, installation, key_version) 复合唯一，并发同版本归一为 conflict。

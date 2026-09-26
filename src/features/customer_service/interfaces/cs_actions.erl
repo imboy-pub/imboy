@@ -1016,6 +1016,21 @@ table(platform) ->
                 ),
                 #{<<"POST">> => platform_auth(<<"customer_service:write">>)}
             )},
+        {p_widget_installation_update,
+            platform_param_entry(
+                [
+                    {<<"PUT">>, update_widget_installation,
+                        [
+                            {display_name, binary, required},
+                            {allowed_origins, list, required},
+                            {branding, map, required},
+                            {consent_version, binary, required}
+                        ],
+                        [{id, id}], #{clock_unit => second}}
+                ],
+                platform_auth(<<"customer_service:write">>),
+                [id, store, new_public_widget_id]
+            )},
         {p_widget_installation_revoke,
             platform_param_entry(
                 [

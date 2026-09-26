@@ -2347,6 +2347,11 @@ customer_service_platform_routes() ->
             auth_context => platform_admin,
             required_permission => <<"customer_service:read">>
         }},
+        {"/api/adm/customer-service/widget-installations/:id", cs_platform_handler, #{
+            action => p_widget_installation_update,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:write">>
+        }},
         {"/api/adm/customer-service/widget-installations/:id/revoke", cs_platform_handler, #{
             action => p_widget_installation_revoke,
             auth_context => platform_admin,

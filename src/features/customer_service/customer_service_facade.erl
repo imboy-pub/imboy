@@ -45,6 +45,7 @@
     %% widget installation 管理
     list_widget_installations/2,
     create_widget_installation/2,
+    update_widget_installation/2,
     revoke_widget_installation/2,
     %% widget（CSB-02：application 合同；HTTP 面归 CSB-03）
     widget_bootstrap/2,
@@ -412,6 +413,33 @@ revoke_widget_installation(OrgId, #{id := Id, at := At} = Params) when
 revoke_widget_installation(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, revoke_widget_installation}};
 revoke_widget_installation(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec update_widget_installation(integer(), map()) -> term().
+update_widget_installation(
+    OrgId,
+    #{
+        id := Id,
+        display_name := DisplayName,
+        allowed_origins := AllowedOrigins,
+        branding := Branding,
+        consent_version := Consent,
+        at := At
+    } = Params
+) when
+    is_integer(OrgId),
+    is_integer(Id),
+    is_integer(At),
+    is_binary(DisplayName),
+    is_list(AllowedOrigins),
+    is_map(Branding),
+    is_binary(Consent),
+    is_map(Params)
+->
+    cs_widget_app:update_installation(OrgId, Params);
+update_widget_installation(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, update_widget_installation}};
+update_widget_installation(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% ===================================================================

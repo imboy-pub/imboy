@@ -19,6 +19,8 @@ widget_admin_app_test_() ->
         end,
         [
             fun create_list_revoke_uses_public_id_only/0,
+            fun update_installation_roundtrip/0,
+            fun update_rejected_for_revoked_and_bad_origins/0,
             fun invalid_origin_is_rejected_before_store/0,
             fun generated_public_widget_id_is_decimal_tsid/0
         ]}.
@@ -53,6 +55,68 @@ invalid_origin_is_rejected_before_store() ->
         )
     ),
     ?assertEqual({ok, Before}, cs_widget_app:list_installations(?ORG, params())).
+
+%% PUT 语义：四键全量提交；不可编辑键（public_widget_id/status）不受影响；
+%% 更新落审计事件 widget.installation.updated，version 前进。
+update_installation_roundtrip() ->
+    CreateParams = (params())#{new_public_widget_id => fun() -> <<"wgt_pub_upd">> end},
+    {ok, #{installation := Created}} = cs_widget_app:create_installation(?ORG, CreateParams),
+    Id = maps:get(id, Created),
+    Updates = CreateParams#{
+        id => Id,
+        display_name => <<"Renamed support">>,
+        allowed_origins => [<<"HTTPS://DOCS.EXAMPLE.COM">>, <<"https://shop.example.com">>],
+        branding => #{<<"display_name">> => <<"Docs">>, <<"internal">> => <<"drop">>},
+        consent_version => <<"v2">>,
+        at => ?T0 + 10
+    },
+    {ok, #{installation := Updated}} = cs_widget_app:update_installation(?ORG, Updates),
+    ?assertEqual(Id, maps:get(id, Updated)),
+    ?assertEqual(<<"wgt_pub_upd">>, maps:get(public_widget_id, Updated)),
+    ?assertEqual(active, maps:get(status, Updated)),
+    ?assertEqual(<<"Renamed support">>, maps:get(display_name, Updated)),
+    ?assertEqual(
+        [<<"https://docs.example.com">>, <<"https://shop.example.com">>],
+        lists:sort(maps:get(allowed_origins, Updated))
+    ),
+    ?assertEqual(#{<<"display_name">> => <<"Docs">>}, maps:get(branding, Updated)),
+    ?assertEqual(<<"v2">>, maps:get(consent_version, Updated)),
+    ?assertEqual(?T0 + 10, maps:get(updated_at, Updated)),
+    ?assert(maps:get(version, Updated) > maps:get(version, Created)),
+    %% 更新结果落库（同 Org fetch 可见），并追加 updated 审计事件。
+    {ok, Stored} = cs_fake_store:fetch_widget_installation(?ORG, Id),
+    ?assertEqual(<<"v2">>, maps:get(consent_version, Stored)),
+    ?assertEqual(1, length(cs_fake_store:events_with_action(<<"widget.installation.updated">>))).
+
+update_rejected_for_revoked_and_bad_origins() ->
+    CreateParams = (params())#{new_public_widget_id => fun() -> <<"wgt_pub_rej">> end},
+    {ok, #{installation := Created}} = cs_widget_app:create_installation(?ORG, CreateParams),
+    Id = maps:get(id, Created),
+    %% 非法 origin 在触达 store 前拒绝；空 origin 列表同样拒绝。
+    ?assertMatch(
+        {error, {invalid_origin, _}},
+        cs_widget_app:update_installation(
+            ?ORG, CreateParams#{id => Id, allowed_origins => [<<"ftp://shop.example.com">>]}
+        )
+    ),
+    ?assertMatch(
+        {error, {invalid_argument, allowed_origins}},
+        cs_widget_app:update_installation(
+            ?ORG, CreateParams#{id => Id, allowed_origins => []}
+        )
+    ),
+    ?assertMatch(
+        {error, {invalid_argument, display_name}},
+        cs_widget_app:update_installation(?ORG, CreateParams#{id => Id, display_name => <<>>})
+    ),
+    %% 已吊销行拒绝编辑（installation_revoked，HTTP 403 面）。
+    {ok, _} = cs_widget_app:revoke_installation(?ORG, CreateParams#{id => Id, at => ?T0 + 20}),
+    ?assertMatch(
+        {error, installation_revoked},
+        cs_widget_app:update_installation(
+            ?ORG, CreateParams#{id => Id, display_name => <<"after revoke">>}
+        )
+    ).
 
 %% CSD-BE-01R（R4，hosted-widget-contract S1）：public_widget_id 生成口径
 %% = TSID 十进制 string（FE loader `isValidPublicWidgetId` 只接受 1..26 位

@@ -32,6 +32,7 @@
 -export([
     list_installations/2,
     create_installation/2,
+    update_installation/2,
     revoke_installation/2,
     %% BE-W01 A05：动态 frame HTML 端点的公开 installation 投影（零凭证面）
     public_frame_installation/2,
@@ -202,6 +203,89 @@ revoke_installation(OrgId, Params) when is_map(Params) ->
     end;
 revoke_installation(_OrgId, _Params) ->
     {error, {invalid_argument, revoke_installation}}.
+
+%% PUT 语义：四个可编辑配置键全量提交（与 create 同一套校验口径——非空
+%% display_name / consent_version、branding 必为 map、allowed_origins 归一后
+%% 非空）。public_widget_id / status 不可经本用例变更（不在 Updates 投影）。
+-spec update_installation(integer(), map()) -> {ok, map()} | {error, term()}.
+update_installation(OrgId, Params) when is_map(Params) ->
+    Id = maps:get(id, Params, undefined),
+    At = maps:get(at, Params, undefined),
+    DisplayName = maps:get(display_name, Params, undefined),
+    ConsentVersion = maps:get(consent_version, Params, undefined),
+    Branding = maps:get(branding, Params, undefined),
+    case
+        {
+            cs_app_support:tenant(OrgId, Params),
+            cs_widget_support:pos_int(Id),
+            cs_widget_support:pos_int(At),
+            cs_widget_support:non_empty_binary(DisplayName),
+            cs_widget_support:non_empty_binary(ConsentVersion),
+            is_map(Branding)
+        }
+    of
+        {{error, _} = Err, _, _, _, _, _} ->
+            Err;
+        {{ok, _WorkspaceId}, false, _, _, _, _} ->
+            {error, {invalid_argument, update_installation}};
+        {{ok, _WorkspaceId}, _, false, _, _, _} ->
+            {error, {invalid_argument, update_installation}};
+        {{ok, _WorkspaceId}, _, _, false, _, _} ->
+            {error, {invalid_argument, display_name}};
+        {{ok, _WorkspaceId}, _, _, _, false, _} ->
+            {error, {invalid_argument, consent_version}};
+        {{ok, _WorkspaceId}, _, _, _, _, false} ->
+            {error, {invalid_argument, branding}};
+        {{ok, WorkspaceId}, true, true, true, true, true} ->
+            update_installation_origins(
+                OrgId, WorkspaceId, Id, At, DisplayName, ConsentVersion, Branding, Params
+            )
+    end;
+update_installation(_OrgId, _Params) ->
+    {error, {invalid_argument, update_installation}}.
+
+update_installation_origins(
+    OrgId, WorkspaceId, Id, At, DisplayName, ConsentVersion, Branding, Params
+) ->
+    case normalize_origins(maps:get(allowed_origins, Params, undefined), []) of
+        {error, _} = Err ->
+            Err;
+        {ok, []} ->
+            {error, {invalid_argument, allowed_origins}};
+        {ok, AllowedOrigins} ->
+            update_installation_in(
+                OrgId,
+                WorkspaceId,
+                Id,
+                At,
+                #{
+                    display_name => DisplayName,
+                    allowed_origins => AllowedOrigins,
+                    branding => cs_widget:branding_view(Branding),
+                    consent_version => ConsentVersion
+                },
+                Params
+            )
+    end.
+
+update_installation_in(OrgId, WorkspaceId, Id, At, Updates, Params) ->
+    case
+        cs_widget_support:with_store(Params, fun(Store) ->
+            Store:update_widget_installation(OrgId, Id, At, Updates)
+        end)
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Stored} ->
+            case
+                installation_event(
+                    Params, OrgId, WorkspaceId, <<"widget.installation.updated">>, Stored
+                )
+            of
+                ok -> {ok, #{installation => installation_view(Stored)}};
+                {error, _} = AuditErr -> AuditErr
+            end
+    end.
 
 revoke_installation_in(OrgId, WorkspaceId, Id, At, Params) ->
     case

@@ -21,6 +21,7 @@
     fetch_widget_installation_by_public_id_global/1,
     list_widget_installations_page/3,
     revoke_widget_installation/3,
+    update_widget_installation/4,
     insert_widget_identity_key/3,
     fetch_widget_identity_key/3,
     revoke_widget_identity_key/4,
@@ -141,6 +142,16 @@
     " WHERE organization_id = $1 AND id = $2 AND status = 'active'"
 >>).
 
+%% 可编辑投影只含配置键：public_widget_id / status / revoked_at 不在 SET 内。
+%% status='active' 谓词与 revoke 同口径——已吊销行零命中（0 行 → 应用层
+%% fetch 区分 not_found / installation_revoked，无存在性枚举差异）。
+-define(SQL_UPDATE_INSTALLATION, <<
+    "UPDATE customer_service_widget_installation"
+    "   SET display_name = $3, allowed_origins = $4::jsonb, branding = $5::jsonb,"
+    "       consent_version = $6, version = version + 1, updated_at = to_timestamp($7)"
+    " WHERE organization_id = $1 AND id = $2 AND status = 'active'"
+>>).
+
 -define(SQL_INSERT_IDENTITY_KEY, <<
     "INSERT INTO customer_service_widget_identity_key"
     " (id, organization_id, installation_id, key_digest, key_version, display_hint, expires_at)"
@@ -254,6 +265,7 @@ sql_statements() ->
         ?SQL_FETCH_INSTALLATION_BY_PUBLIC_ID,
         ?SQL_LIST_INSTALLATIONS_PAGE,
         ?SQL_REVOKE_INSTALLATION,
+        ?SQL_UPDATE_INSTALLATION,
         ?SQL_INSERT_IDENTITY_KEY,
         ?SQL_FETCH_IDENTITY_KEY,
         ?SQL_REVOKE_IDENTITY_KEY,
@@ -347,6 +359,38 @@ list_widget_installations_page(OrgId, AfterId, Limit) ->
 -spec revoke_widget_installation(integer(), integer(), integer()) -> ok | {error, term()}.
 revoke_widget_installation(OrgId, InstallationId, At) ->
     update_exactly_one(?SQL_REVOKE_INSTALLATION, [OrgId, InstallationId, At]).
+
+-spec update_widget_installation(integer(), integer(), integer(), map()) ->
+    {ok, map()} | {error, term()}.
+update_widget_installation(OrgId, InstallationId, At, Updates) when is_map(Updates) ->
+    Params = [
+        OrgId,
+        InstallationId,
+        maps:get(display_name, Updates),
+        cs_pg_common:jsonb(maps:get(allowed_origins, Updates, [])),
+        cs_pg_common:jsonb(maps:get(branding, Updates, #{})),
+        maps:get(consent_version, Updates),
+        At
+    ],
+    case elib_pg:execute(?SQL_UPDATE_INSTALLATION, Params) of
+        {ok, 1} ->
+            fetch_widget_installation(OrgId, InstallationId);
+        {ok, 0} ->
+            %% 0 行 = 不存在或已吊销（status='active' 谓词零命中）：fetch 区分，
+            %% 管理面 403 installation_revoked 与 404 not_found 语义不混装。
+            case fetch_widget_installation(OrgId, InstallationId) of
+                {ok, #{status := Status}} when Status =/= active ->
+                    {error, installation_revoked};
+                {ok, _} ->
+                    {error, not_found};
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, Reason} ->
+            {error, cs_pg_common:normalize_error(Reason)}
+    end;
+update_widget_installation(_OrgId, _InstallationId, _At, _Updates) ->
+    {error, invalid_widget_installation}.
 
 %% ===================================================================
 %% widget identity signing key（只存 digest）

@@ -74,6 +74,8 @@ call(list_widget_installations, OrgId, Params) ->
     customer_service_facade:list_widget_installations(OrgId, Params);
 call(create_widget_installation, OrgId, Params) ->
     customer_service_facade:create_widget_installation(OrgId, Params);
+call(update_widget_installation, OrgId, Params) ->
+    customer_service_facade:update_widget_installation(OrgId, Params);
 call(revoke_widget_installation, OrgId, Params) ->
     customer_service_facade:revoke_widget_installation(OrgId, Params);
 %% CSB-02：Widget 与 Seat 补缺用例（HTTP 动作行归 CSB-03；这里只登记
@@ -188,6 +190,7 @@ actions() ->
         revoke_visit_token,
         list_widget_installations,
         create_widget_installation,
+        update_widget_installation,
         revoke_widget_installation,
         %% CSB-02：Widget 与 Seat 补缺用例
         widget_bootstrap,

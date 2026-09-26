@@ -151,6 +151,8 @@ platform_literal_routes() ->
         {<<P/binary, "/sessions/:id/close">>, p_session_close, [<<"POST">>], platform_admin},
         {<<"/api/adm/customer-service/widget-installations">>, p_widget_installations,
             [<<"GET">>, <<"POST">>], platform_admin},
+        {<<"/api/adm/customer-service/widget-installations/:id">>, p_widget_installation_update,
+            [<<"PUT">>], platform_admin},
         {<<"/api/adm/customer-service/widget-installations/:id/revoke">>,
             p_widget_installation_revoke, [<<"POST">>], platform_admin}
     ].

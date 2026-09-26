@@ -68,6 +68,7 @@
     fetch_widget_installation_by_public_id_global/1,
     list_widget_installations_page/3,
     revoke_widget_installation/3,
+    update_widget_installation/4,
     insert_widget_identity_key/3,
     fetch_widget_identity_key/3,
     revoke_widget_identity_key/4,
@@ -229,6 +230,8 @@ list_widget_installations_page(OrgId, AfterId, Limit) ->
     cs_pg_widget:list_widget_installations_page(OrgId, AfterId, Limit).
 revoke_widget_installation(OrgId, InstallationId, At) ->
     cs_pg_widget:revoke_widget_installation(OrgId, InstallationId, At).
+update_widget_installation(OrgId, InstallationId, At, Updates) ->
+    cs_pg_widget:update_widget_installation(OrgId, InstallationId, At, Updates).
 insert_widget_identity_key(OrgId, InstallationId, Key) ->
     cs_pg_widget:insert_widget_identity_key(OrgId, InstallationId, Key).
 fetch_widget_identity_key(OrgId, InstallationId, KeyVersion) ->
