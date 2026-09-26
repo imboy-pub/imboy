@@ -1,4 +1,4 @@
-# IMBoy Enterprise Organization / Admin / Internal V1 V2.1 Final Closure Plan V2
+# IMBoy Enterprise Organization / Admin / Internal V1 V2.1 Final Closure Plan V2.1
 
 > Status: execution contract, not a new product plan
 > Date: 2026-09-26
@@ -6,6 +6,7 @@
 > Source plan SHA-256: `a866aa137eea856a9a6d9324d3cb46d3fb1f1fb8db73891808c85d1f17d23302`
 > Historical run: `.Codex/runs/ent-org-internal-v21-20260923T110542Z-929b7d41`
 > Incomplete closure run: `.Codex/runs/ent-org-v21-closure-20260924T042352Z-7cfd59c0`
+> Pre-closure recovery: `.Codex/recovery/enterprise-v21-preclosure-20260926T143307Z/`
 
 ## 0. Executive Verdict
 
@@ -17,6 +18,8 @@ Current disposition at plan authoring time:
 |---|---|---|
 | V2.1 implementation ancestry | `PASS` | Historical candidates `imboy 64dd8060`, `imboyadmin 365ed696`, `imboyapp eacc5301` are ancestors of current `main` |
 | Dedicated closure fixes ancestry | `PASS` | `imboy d4113fb6`, `imboyadmin 342a674d`, and `imboyapp e38ac726` are ancestors of current `main` |
+| Pre-closure Git convergence | `PASS` | 39/39 task branches had `git cherry plus=0`, were archived in verified complete-history bundles, and were deleted; the two empty RUN worktree directory trees were removed |
+| Post-cleanup baseline | `FROZEN_FOR_AUTHORING` | `imboy e92fc932`, `imboyadmin 60a65af`, `imboyapp 1292175d`; execution still performs a fresh two-sample baseline |
 | Current Internal contract shape | `PASS_STATIC_ONLY` | `25 paths / 31 operations / 0 $ref`; Postman has 31 requests and bundle has 31 operation IDs |
 | Historical V2.1 final evidence | `STALE` | Historical verifier already reported current HEAD/evidence SHA drift |
 | 2026-09-24 closure run | `INCOMPLETE_GOVERNANCE` | It has useful focused/Admin/Flutter evidence and a pre-test manifest, but no acceptance ledger, no `FINAL/`, and no final verifier verdict |
@@ -75,26 +78,40 @@ Out of scope:
 
 ## 3. Protected Current State
 
-At authoring time the shared `main` worktrees contain protected changes. Execution must re-sample them twice and use the second stable sample as the actual baseline.
+At authoring time the shared topology has only the three primary `main` worktrees plus the protected foreign detached `/private/tmp/intbe03-baseline`. The 39 patch-equivalent task branches and two empty RUN worktree directory trees have already been removed after verified recovery bundles were created. Execution must still re-sample twice and use the second stable sample as the actual baseline.
 
 Known protected paths include:
 
 ```text
 imboy:
-  staged customer_service source/test/router changes
   untracked docs/customer-service-v2/
   untracked docs/enterprise-upgrade/
 
 imboyadmin:
-  unstaged customer_service widget installation/provisioning changes
+  clean at authoring snapshot
 
 imboyapp:
   staged macos/Podfile.lock
 ```
 
+Authoring snapshot and protected hashes:
+
+```text
+imboy      e92fc93231435a1f57c47098564050d372298572
+imboyadmin 60a65af11259a0b5806dc82dec3eb3843d14fb7e
+imboyapp   1292175de67922592621f1b95467ede1804159f2
+
+macos/Podfile.lock worktree/index blob:
+  f7466070b0d0834155bb7a39f37272e62db039e2
+macos/Podfile.lock cached diff SHA-256:
+  dfa120849cef2b39f4f1953a31b1a2b333dd746546ea8713e918d8720142b015
+design-directory aggregate SHA-256:
+  7825316a7024478d05c72fe9e5d9dd0817c7330d3b486c164364ff6444cb05d9
+```
+
 These are not V2.1 closure inputs. Record path, status, worktree blob hash, index blob hash, diff hash, owner if known, and two-sample stability. Do not use `git stash`, `git reset`, `git clean`, blanket `git add`, or force removal.
 
-The completed customer-service run and all old enterprise runs are read-only evidence sources. Existing processes, ports, databases, devices, branches, worktrees, and leases remain foreign until runtime ownership is mechanically proven or formally handed off.
+The completed customer-service run and all old enterprise runs are read-only evidence sources. Its surviving iOS tunnel process is foreign and must not be killed or adopted. Existing processes, ports, databases, devices, branches, worktrees, and leases remain foreign until runtime ownership is mechanically proven or formally handed off.
 
 ## 4. Fast Execution Index
 
@@ -429,13 +446,13 @@ Copy the following prompt into the next session exactly once:
 ```text
 你是本任务唯一 A0 Supervisor。立即执行，不要再写一份方案：
 
-/Users/leeyi/project/imboy.pub/imboy/docs/plans/2026-09-26-enterprise-organization-admin-internal-v21-final-closure-plan-v2.md
+/Users/leeyi/project/imboy.pub/imboy/docs/plans/2026-09-26-enterprise-organization-admin-internal-v21-final-closure-plan-v2.1.md
 
 先完整读取该计划、相邻 .sha256、源计划 `2026-09-23-enterprise-organization-admin-internal-v1-unified-plan-v2.1.md`，以及根级和三个仓库当前有效的 AGENTS.md/CLAUDE.md。校验两个计划 SHA。目标不是重做产品需求，也不是新增功能，而是在当前源码上把 V2.1 的 21 个 CORE Acceptance、Android 真机、macOS App、候选/账本/证据/main 集成收口到可机械证明的用户调整后本地 100% 完成。
 
 已知事实只能作为启动线索，必须现场复验：历史 V2.1 三仓候选和 2026-09-24 closure 修复均已在当前 main 祖先链；旧 V2.1 verifier 因 SHA 漂移失效；旧 closure run 缺 acceptance ledger、FINAL 和最终 verifier，不能续写成 PASS；当前静态合同曾为 25 paths / 31 ops / 0 ref。旧 run 和客服 run 的证据只能用于找到命令/夹具/缺陷，禁止把旧 PASS 重绑到新 SHA。
 
-当前共享 main 有受保护 WIP：imboy 的客服 staged 改动与两个 untracked 设计目录，imboyadmin 的客服 unstaged 改动，imboyapp staged macos/Podfile.lock。启动时双采样并记录 path/status/worktree hash/index blob/diff hash；不得 reset、clean、stash、覆盖、移动、提交或删除。所有 writer 在新 RUN_ID 的隔离 worktree 工作。现存进程、端口、数据库、设备、worktree、branch、lease 一律先视为 foreign，机械证明所有权或正式 handoff 后才能使用。
+Git 前置收敛已完成：39 个 patch-equivalent 任务分支已在 verified complete-history bundles 归档后删除，两个空 RUN worktree 目录树已清理；不得恢复或重新 merge 它们。当前受保护状态是 imboy 的两个 untracked 设计目录、imboyapp staged macos/Podfile.lock，以及 foreign detached `/private/tmp/intbe03-baseline`。启动时仍须双采样并记录 path/status/worktree hash/index blob/diff hash；不得 reset、clean、stash、覆盖、移动、提交或删除。所有 writer 在新 RUN_ID 的隔离 worktree 工作。旧客服 RUN 的 iOS tunnel 进程及现存端口、数据库、设备、worktree、branch、lease 一律先视为 foreign，机械证明所有权或正式 handoff 后才能使用。
 
 A0 持久化 supervisor loop、heartbeat、last_progress、lease/watchdog、task queue、candidate SHA、acceptance ledger 和 transition audit。普通 TRANSIENT/WORKER_CRASH/WORKER_STALL/ENVIRONMENT/TEST_FAILURE/CODE_FAILURE 不得要求用户确认；有限重试、自动 reclaim/reassign，并继续其他 eligible cards。每卡最多 3 attempts、worker replacement 最多 2、环境重建最多 2；禁止无限 retry。只有 protected WIP 会被破坏、security violation、破坏性/生产动作、不可恢复 base drift、不可安全判断的 migration corruption、或未知且可能数据丢失时才 HARD_STOP。
 
