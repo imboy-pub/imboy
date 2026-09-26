@@ -568,6 +568,12 @@
         "static": false
       },
       {
+        "action": "p_session_stats",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/organizations/:org_id/stats/sessions",
+        "static": false
+      },
+      {
         "action": "p_platform_seats",
         "handler": "cs_platform_handler",
         "path": "/api/adm/customer-service/seats",
@@ -577,6 +583,12 @@
         "action": "p_widget_installations",
         "handler": "cs_platform_handler",
         "path": "/api/adm/customer-service/widget-installations",
+        "static": false
+      },
+      {
+        "action": "p_widget_installation_update",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/widget-installations/:id",
         "static": false
       },
       {
@@ -2699,6 +2711,12 @@
         "action": "shop_key_revoke",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/organizations/:org_id/shop-keys/:id/revoke",
+        "static": false
+      },
+      {
+        "action": "session_stats",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/stats/sessions",
         "static": false
       },
       {
