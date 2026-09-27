@@ -338,10 +338,13 @@ arch-check-self-test: ## 门禁自身金丝雀自检（10 条必须全触发）
 migrations-check: ## 校验 priv/migrations/ 命名与 up-down 配对（ADR-0002）
 	@bash scripts/check_migrations.sh
 
-# 客服域迁移门（CP-ASSET-01）：连真库校验"客服域迁移已全部应用"——
+# 客服域迁移门（CP-ASSET-01）：先跑静态门（复用 scripts/check_migrations.sh：
+# 版本号唯一 / up-down 成对 / 命名非空），再连真库校验"客服域迁移已全部应用"——
 # 对比 priv/migrations 里 customer_service 迁移与目标库 schema_migrations /
-# schema_migrations_history；空库 / 脏库（dirty 或缺中间版本）/ foreign 版本 /
-# 空 oracle 均非零退出。自测：scripts/test/customer_service_migration_gate_test.sh。
+# schema_migrations_history；静态违规 / 空库 / 脏库（dirty 或缺中间版本）/
+# foreign 版本 / 空 oracle 均非零退出。自测：
+# scripts/test/customer_service_migration_gate_test.sh（静态四负例 fixture +
+# 库状态四负例 + 固定名 imboy_cp12_gate01 正例）。
 # 用法：make cs-migration-gate PGDATABASE=... [PGHOST=... PGPORT=... PGUSER=... PGPASSWORD=...]
 .PHONY: cs-migration-gate
 cs-migration-gate: ## 客服域迁移是否已全部落库（连真库；PGDATABASE=...）

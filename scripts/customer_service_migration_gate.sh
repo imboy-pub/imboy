@@ -13,6 +13,9 @@
 #   * schema_migrations_history —— strict 模式逐版本流水（每版本一行）。
 #
 # 判定项（任一不过即非零退出，全部通过 exit 0）：
+#   S  静态门：复用 scripts/check_migrations.sh（MIG_DIR 环境变量指向同一目录）
+#      做迁移目录静态检查——版本号唯一、up/down 成对、命名/非空/自报版本自洽
+#      （不复制其解析逻辑；静态违规 = oracle 不合格，exit 4）；
 #   O  oracle 非空：--migrations-dir 存在、含 *.up.sql、且能识别出
 #      customer_service 域迁移（空/无 CS 迁移 = 空 oracle，exit 4）；
 #   E  库非空：schema_migrations 与 schema_migrations_history 两表必须存在
@@ -24,9 +27,10 @@
 #   F  无 foreign sentinel：history 与 schema_migrations 中不出现
 #      目录全集之外的版本（如 00000000）。
 #
-# 退出码：0=通过；2=库状态判定失败；4=oracle（迁移目录）参数不合格；
-#         5=连库失败。测试脚本 scripts/test/customer_service_migration_gate_test.sh
-#         断言四类负例均非零、正例为 0。
+# 退出码：0=通过；2=库状态判定失败；4=oracle 不合格（静态门违规或迁移目录
+#         无 *.up.sql / 无 CS 迁移）；5=连库失败。测试脚本
+#         scripts/test/customer_service_migration_gate_test.sh
+#         断言静态四负例 + 四类库负例均非零、正例为 0。
 #
 # 用法（PG 连接参数走 libpq 惯例，与 run_pg_behavior_harnesses.sh 一致）：
 #   PGHOST=127.0.0.1 PGPORT=4323 PGUSER=imboy_user PGPASSWORD=*** \
@@ -69,6 +73,15 @@ fail() { echo "  ❌ $*" >&2; FAILED=1; }
 ok()   { echo "  ✅ $*"; }
 
 FAILED=0
+
+# ---- S) 静态门：复用 scripts/check_migrations.sh（不复制解析逻辑）-----------
+# 通过 MIG_DIR 环境变量把同一目录传给静态门，覆盖其默认 priv/migrations；
+# 负例自测（重复版本号 / 缺 down / 不配对 / 版本乱序）用临时 fixture 目录。
+echo "── S) 静态门（scripts/check_migrations.sh @ ${MIG_DIR}）──"
+if ! MIG_DIR="$MIG_DIR" bash "$REPO_ROOT/scripts/check_migrations.sh"; then
+  echo "❌ 客服迁移门 oracle 不合格：静态检查未通过（重复版本号/缺 up/down/不配对/乱序等，见上方输出）" >&2
+  exit 4
+fi
 
 # ---- O) oracle：迁移目录与 CS 迁移识别 --------------------------------------
 if [ ! -d "$MIG_DIR" ]; then
