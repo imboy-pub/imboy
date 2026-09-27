@@ -406,8 +406,10 @@ constant_time_eq(_A, _B) ->
     false.
 
 %% 认证失败日志：只含 stage 与 stable 码——不含 prefix/secret/Authorization
-%% 值/请求体（redaction 红线，测试断言日志行零 secret）。
--spec log_reject(atom(), binary()) -> ok.
+%% 值/请求体（redaction 红线，测试断言日志行零 secret）。Code 是模块内
+%% stable 原子码（invalid_request/invalid_credential/…，见上方各拒绝点；
+%% snake_case 二进制码由 HTTP 适配器映射，不在此层）。
+-spec log_reject(atom(), atom()) -> ok.
 log_reject(Stage, Code) ->
     ?WARN_LOG([
         enterprise_internal_auth_rejected,

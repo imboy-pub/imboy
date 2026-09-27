@@ -1037,9 +1037,10 @@ gregorian_day_epoch({Y, M, D}) ->
 date_binary({Y, M, D}) ->
     iolist_to_binary(io_lib:format("~4..0B-~2..0B-~2..0B", [Y, M, D])).
 
+%% 输入来自 stats_date/2 的定长段（Y 4 字节、M/D 各 2 字节），不可能为空
+%% 二进制——无需（dialyzer 可证的死）空串卫兵。
 digits_only(Bin) ->
-    Bin =/= <<>> andalso
-        lists:all(fun(C) -> C >= $0 andalso C =< $9 end, binary_to_list(Bin)).
+    lists:all(fun(C) -> C >= $0 andalso C =< $9 end, binary_to_list(Bin)).
 
 b2i(Bin) ->
     binary_to_integer(Bin).

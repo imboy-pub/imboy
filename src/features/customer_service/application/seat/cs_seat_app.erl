@@ -816,6 +816,8 @@ presence_gate(OrgId, Params, UseCase) ->
     end.
 
 %% 派生：行 + 注入时钟（Params.at 优先，缺省服务器当前秒）→ 附加 status 键。
+%% 第二参只会是 map()（Params 直传）或 integer()（presence_now/1 两分支均返回
+%% epoch 秒），无其余形态。
 derive_presence_row(Row, Params) when is_map(Params) ->
     derive_presence_row(Row, presence_now(Params));
 derive_presence_row(Row, NowSec) when is_integer(NowSec) ->
@@ -825,9 +827,7 @@ derive_presence_row(Row, NowSec) when is_integer(NowSec) ->
         active_count => maps:get(active_count, Row, 0)
     },
     Status = cs_presence:derive(Row, SeatInputs),
-    Row#{status => Status};
-derive_presence_row(Row, _NoClock) ->
-    Row.
+    Row#{status => Status}.
 
 presence_now(Params) ->
     case maps:get(at, Params, undefined) of
