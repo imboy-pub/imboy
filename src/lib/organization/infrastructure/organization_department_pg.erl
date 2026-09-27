@@ -12,10 +12,15 @@
 
 -export([
     insert_department/5,
+    insert_department_tx/6,
     fetch_department/3,
+    fetch_department_tx/3,
     update_name/5,
+    update_name_tx/6,
     move_tx/5,
+    move_in_tx/6,
     archive_subtree_tx/4,
+    archive_subtree_in_tx/4,
     list_departments/3,
     list_active_subtree_ids/3,
     fetch_member/3,
@@ -75,6 +80,38 @@ insert_department(OrgId, ParentId, Name, ActorId, IdGen) ->
         {error, Reason} -> {error, Reason}
     end.
 
+%% @doc 建部门（调用方事务连接版，CP-ASSET-05）：由调用方在 elib_pg:with_tx
+%% 内传入 Conn，使「部门写 + 平台审计」同一事务提交。语义与 insert_department/5
+%% 逐字一致，仅连接来源从池换成调用方事务（RETURNING 单行，用 query 取首行）。
+-spec insert_department_tx(
+    epgsql:connection(), integer(), integer() | null, binary(), integer() | undefined, term()
+) ->
+    {ok, map()} | {error, term()}.
+insert_department_tx(Conn, OrgId, ParentId, Name, ActorId, IdGen) ->
+    Id = IdGen(),
+    case
+        normalize(
+            elib_pg:query(
+                Conn,
+                <<
+                    "INSERT INTO organization_department"
+                    " (id, organization_id, parent_id, name, status, version, created_by_user_id)"
+                    " VALUES ($1, $2, $3, $4, 'active', 1, $5)"
+                    " RETURNING ",
+                    ?DEPT_COLS/binary
+                >>,
+                [Id, OrgId, ParentId, Name, ActorId]
+            )
+        )
+    of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, insert_failed};
+        {error, #error{code = <<"23505">>}} -> {error, name_conflict};
+        {error, #error{code = <<"23514">>}} -> {error, cycle};
+        {error, #error{code = <<"23503">>}} -> {error, parent_not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
 %% @doc 取部门（org 作用域内；跨 Org 一律 not_found，不做租户枚举）。
 -spec fetch_department(integer(), integer(), term()) ->
     {ok, map()} | {error, not_found} | {error, term()}.
@@ -91,6 +128,26 @@ fetch_department(OrgId, DeptId, _Ctx) ->
     of
         {ok, undefined} -> {error, not_found};
         {ok, Row} -> {ok, Row};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 取部门（调用方事务连接版，CP-ASSET-05）：语义与 fetch_department/3 一致，
+%% 供调用方在 elib_pg:with_tx 内做事务内门禁读（不借第二个池连接）。
+-spec fetch_department_tx(epgsql:connection(), integer(), integer()) ->
+    {ok, map()} | {error, not_found} | {error, term()}.
+fetch_department_tx(Conn, OrgId, DeptId) ->
+    case
+        normalize(
+            elib_pg:query(
+                Conn,
+                <<"SELECT ", ?DEPT_COLS/binary,
+                    " FROM organization_department WHERE id = $1 AND organization_id = $2">>,
+                [DeptId, OrgId]
+            )
+        )
+    of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -139,6 +196,54 @@ update_name(OrgId, DeptId, Name, ActorId, ExpectedVersion) ->
             {error, Reason}
     end.
 
+%% @doc 改名（调用方事务连接版，CP-ASSET-05）：语义与 update_name/5 逐字一致
+%% （语句级 CAS、{ok,0} 归因回查），仅连接来源从池换成调用方事务；
+%% 归因回查用同事务内的锁读（locked_fetch），不出事务、不借第二个池连接。
+-spec update_name_tx(epgsql:connection(), integer(), integer(), binary(), integer() | undefined, integer()) ->
+    ok | {error, conflict} | {error, name_conflict} | {error, term()}.
+update_name_tx(Conn, OrgId, DeptId, Name, ActorId, ExpectedVersion) ->
+    case
+        elib_pg:execute(
+            Conn,
+            <<
+                "UPDATE organization_department"
+                " SET name = $3, updated_by_user_id = $4,"
+                "     version = version + 1, updated_at = CURRENT_TIMESTAMP"
+                " WHERE id = $1 AND organization_id = $2 AND version = $5 AND status = 'active'"
+            >>,
+            [DeptId, OrgId, Name, ActorId, ExpectedVersion]
+        )
+    of
+        {ok, 1} ->
+            ok;
+        {ok, 0} ->
+            %% 区分：不存在 / 版本冲突 / 非 active / 同名冲突
+            case locked_fetch(Conn, OrgId, DeptId) of
+                {ok, #{version := ExpectedVersion, status := active}} ->
+                    case
+                        elib_pg:query(
+                            Conn,
+                            <<
+                                "SELECT 1 FROM organization_department"
+                                " WHERE organization_id = $1 AND name = $2 AND status = 'active'"
+                                " AND id <> $3"
+                            >>,
+                            [OrgId, Name, DeptId]
+                        )
+                    of
+                        {ok, []} -> {error, conflict};
+                        {ok, _} -> {error, name_conflict};
+                        {error, Reason} -> {error, Reason}
+                    end;
+                _Other ->
+                    {error, conflict}
+            end;
+        {error, #error{code = <<"23505">>}} ->
+            {error, name_conflict};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 %% @doc move（单事务）：全 Org 节点按 id 全序加锁 → 锁内校验（存在/active/新父同
 %% Org 且 active）→ 锁内取新父祖先链 → 环裁决 → CAS 更新 parent_id。
 %% ExpectedVersion 并发裁决：锁串行化后仍是旧版本的请求按 stale 拒绝。
@@ -146,31 +251,40 @@ update_name(OrgId, DeptId, Name, ActorId, ExpectedVersion) ->
     {ok, map()} | {error, term()}.
 move_tx(OrgId, DeptId, NewParentId, ActorId, ExpectedVersion) ->
     elib_pg:with_tx(fun(Conn) ->
-        %% 1. 全序锁：该 Org 的全部部门行（相关树节点全部锁定）
-        case
-            epgsql:equery(
-                Conn,
-                <<
-                    "SELECT id FROM organization_department"
-                    " WHERE organization_id = $1 ORDER BY id FOR UPDATE"
-                >>,
-                [OrgId]
-            )
-        of
-            {ok, _Cols, _Locked} -> ok;
-            {error, PgErr} -> erlang:error({pg, PgErr})
-        end,
-        case locked_fetch(Conn, OrgId, DeptId) of
-            {error, not_found} ->
-                {error, not_found};
-            {ok, #{status := archived}} ->
-                {error, department_archived};
-            {ok, #{version := ExpectedVersion} = Dept} ->
-                move_locked(Conn, OrgId, Dept, NewParentId, ActorId);
-            {ok, _StaleVersion} ->
-                {error, conflict}
-        end
+        move_in_tx(Conn, OrgId, DeptId, NewParentId, ActorId, ExpectedVersion)
     end).
+
+%% @doc move（调用方事务连接版，CP-ASSET-05）：语义与 move_tx/5 事务体逐字一致，
+%% 由调用方在 elib_pg:with_tx 内传入 Conn，使「move 写 + 平台审计」同一事务提交。
+-spec move_in_tx(
+    epgsql:connection(), integer(), integer(), integer() | null, integer() | undefined, integer()
+) ->
+    {ok, map()} | {error, term()}.
+move_in_tx(Conn, OrgId, DeptId, NewParentId, ActorId, ExpectedVersion) ->
+    %% 1. 全序锁：该 Org 的全部部门行（相关树节点全部锁定）
+    case
+        epgsql:equery(
+            Conn,
+            <<
+                "SELECT id FROM organization_department"
+                " WHERE organization_id = $1 ORDER BY id FOR UPDATE"
+            >>,
+            [OrgId]
+        )
+    of
+        {ok, _Cols, _Locked} -> ok;
+        {error, PgErr} -> erlang:error({pg, PgErr})
+    end,
+    case locked_fetch(Conn, OrgId, DeptId) of
+        {error, not_found} ->
+            {error, not_found};
+        {ok, #{status := archived}} ->
+            {error, department_archived};
+        {ok, #{version := ExpectedVersion} = Dept} ->
+            move_locked(Conn, OrgId, Dept, NewParentId, ActorId);
+        {ok, _StaleVersion} ->
+            {error, conflict}
+    end.
 
 %% 锁内：新父校验 + 祖先链环裁决 + CAS 落库。
 move_locked(Conn, OrgId, Dept, NewParentId, ActorId) ->
@@ -243,46 +357,54 @@ move_update(Conn, _OrgId, Dept, NewParentId, _Ancestors, ActorId) ->
     {ok, map()} | {error, term()}.
 archive_subtree_tx(OrgId, DeptId, ActorId, _Ctx) ->
     elib_pg:with_tx(fun(Conn) ->
-        case
-            epgsql:equery(
-                Conn,
-                <<
-                    "SELECT id FROM organization_department"
-                    " WHERE organization_id = $1 ORDER BY id FOR UPDATE"
-                >>,
-                [OrgId]
-            )
-        of
-            {ok, _Cols, _Locked} -> ok;
-            {error, PgErr} -> erlang:error({pg, PgErr})
-        end,
-        case locked_fetch(Conn, OrgId, DeptId) of
-            {error, not_found} ->
-                {error, not_found};
-            {ok, #{status := archived} = Dept} ->
-                %% 幂等：已归档返回当前状态，零写入
-                {ok, Dept#{archive_idempotent => true}};
-            {ok, Dept} ->
-                SubtreeIds = locked_subtree_ids(Conn, OrgId, DeptId),
-                case
-                    epgsql:equery(
-                        Conn,
-                        <<
-                            "UPDATE organization_department"
-                            " SET status = 'archived', updated_by_user_id = $3,"
-                            "     updated_at = CURRENT_TIMESTAMP"
-                            " WHERE organization_id = $1 AND id = ANY($2) AND status = 'active'"
-                        >>,
-                        [OrgId, SubtreeIds, ActorId]
-                    )
-                of
-                    {ok, UpdatedCount} when is_integer(UpdatedCount) ->
-                        {ok, Dept#{archive_subtree_count => UpdatedCount}};
-                    {error, UpdErr} ->
-                        erlang:error({pg, UpdErr})
-                end
-        end
+        archive_subtree_in_tx(Conn, OrgId, DeptId, ActorId)
     end).
+
+%% @doc archive（调用方事务连接版，CP-ASSET-05）：语义与 archive_subtree_tx/4
+%% 事务体逐字一致，由调用方在 elib_pg:with_tx 内传入 Conn，使
+%% 「子树归档写 + 平台审计」同一事务提交。
+-spec archive_subtree_in_tx(epgsql:connection(), integer(), integer(), integer() | undefined) ->
+    {ok, map()} | {error, term()}.
+archive_subtree_in_tx(Conn, OrgId, DeptId, ActorId) ->
+    case
+        epgsql:equery(
+            Conn,
+            <<
+                "SELECT id FROM organization_department"
+                " WHERE organization_id = $1 ORDER BY id FOR UPDATE"
+            >>,
+            [OrgId]
+        )
+    of
+        {ok, _Cols, _Locked} -> ok;
+        {error, PgErr} -> erlang:error({pg, PgErr})
+    end,
+    case locked_fetch(Conn, OrgId, DeptId) of
+        {error, not_found} ->
+            {error, not_found};
+        {ok, #{status := archived} = Dept} ->
+            %% 幂等：已归档返回当前状态，零写入
+            {ok, Dept#{archive_idempotent => true}};
+        {ok, Dept} ->
+            SubtreeIds = locked_subtree_ids(Conn, OrgId, DeptId),
+            case
+                epgsql:equery(
+                    Conn,
+                    <<
+                        "UPDATE organization_department"
+                        " SET status = 'archived', updated_by_user_id = $3,"
+                        "     updated_at = CURRENT_TIMESTAMP"
+                        " WHERE organization_id = $1 AND id = ANY($2) AND status = 'active'"
+                    >>,
+                    [OrgId, SubtreeIds, ActorId]
+                )
+            of
+                {ok, UpdatedCount} when is_integer(UpdatedCount) ->
+                    {ok, Dept#{archive_subtree_count => UpdatedCount}};
+                {error, UpdErr} ->
+                    erlang:error({pg, UpdErr})
+            end
+    end.
 
 %% @doc 列出部门（org 内；可选 status 白名单过滤；id 升序=创建序）。
 -spec list_departments(integer(), active | archived | all, term()) ->

@@ -18,7 +18,11 @@
 %%%     mutation=403；read+write 角色读写皆可；仅有 write 无 read → 读 403；
 %%%   * 负例：无会话 401（middleware）/ 400 坏参数 / 404 不存在与跨组织 /
 %%%     409 stale version、archived 门禁、owner 保护 / 幂等 unchanged；
-%%%   * 审计：mutation 后 admin_operation_logs 出现 organization_* 记录。
+%%%   * 审计（CP-ASSET-05）：mutation 审计由 logic 在业务事务内经
+%%%     adm_operation_log_ds:insert_tx 写入（与业务写同原子性）——
+%%%     正向：mutation 后 admin_operation_logs 出现 organization_* 记录；
+%%%     注入回滚：8/8 调用点 meck insert_tx 强制失败 ⇒ 业务写整事务回滚
+%%%     （audit_injection_tests，验收 CP-ASSET-A10）。
 %%%
 %%% 库供给契约（inttest_marker_db 配方）：一次性 marker 库全链迁移，
 %%% 任一环境/迁移失败显式 error，无 skip 分支；erlfmt 口径与仓内一致。
@@ -256,7 +260,8 @@ adm_org_journeys_test_() ->
             {foreach, fun mocks_on/0, fun(_S) -> mocks_off() end, [
                 fun(_S) -> journeys_tests(Conn) end,
                 fun(_S) -> permission_matrix_tests(Conn) end,
-                fun(_S) -> negative_tests(Conn) end
+                fun(_S) -> negative_tests(Conn) end,
+                fun(_S) -> audit_injection_tests(Conn) end
             ]}
         end}}.
 
@@ -714,6 +719,233 @@ journey_audit_row(Conn) ->
             [OrgId, ?WRITE_UID]
         ),
     ?assert(Count >= 1).
+
+%% ------------------------------------------------------------------
+%% 组 C：审计事务内注入回滚（CP-ASSET-05 / CP-ASSET-A10）
+%% 8/8 调用点：meck adm_operation_log_ds:insert_tx 强制 {error, audit_injected}
+%% ⇒ 平台审计失败 ⇒ 业务写必须整事务回滚（状态/行数据不变、响应 500）。
+%% ------------------------------------------------------------------
+
+audit_injection_tests(Conn) ->
+    [
+        {"注入1 archive：审计失败 → 500 且 org 状态回滚为 active", fun() ->
+            Scope = seed_org(Conn, <<"inj-arch">>),
+            OrgId = maps:get(org_id, Scope),
+            with_audit_fail(fun() ->
+                RespReq = call(?WRITE_UID, org_archive, <<"POST">>, bindings(OrgId), <<>>),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"status">> := <<"active">>}]}, q(Conn, org_status_sql(), [OrgId])
+                )
+            end)
+        end},
+        {"注入2 owner_transfer：审计失败 → 500 且 owner 未变", fun() ->
+            Scope = seed_org(Conn, <<"inj-tr">>),
+            OrgId = maps:get(org_id, Scope),
+            Owner = maps:get(owner, Scope),
+            Admin = maps:get(admin, Scope),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        owner_transfer,
+                        <<"POST">>,
+                        bindings(OrgId),
+                        jsone:encode(#{<<"target_user_id">> => integer_to_binary(Admin)})
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch({ok, [#{<<"owner_id">> := Owner}]}, q(Conn, org_owner_sql(), [OrgId]))
+            end)
+        end},
+        {"注入3 member_suspend：审计失败 → 500 且成员仍 active", fun() ->
+            Scope = seed_org(Conn, <<"inj-mem">>),
+            OrgId = maps:get(org_id, Scope),
+            Member = maps:get(member, Scope),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        member_suspend,
+                        <<"POST">>,
+                        org_binding(OrgId, user_id, Member),
+                        <<>>
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"status">> := <<"active">>}]},
+                    q(Conn, member_status_sql(), [OrgId, Member])
+                )
+            end)
+        end},
+        {"注入4 invitation_create：审计失败 → 500 且邀请行回滚", fun() ->
+            Scope = seed_org(Conn, <<"inj-inv">>),
+            OrgId = maps:get(org_id, Scope),
+            Target = new_id(),
+            ok = exec(
+                Conn,
+                <<
+                    "INSERT INTO \"user\"(id,password,account,reg_ip,reg_cosv)"
+                    " VALUES ($1,'x',$2,'127.0.0.1','x')"
+                >>,
+                [Target, account(Target)]
+            ),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        invitations,
+                        <<"POST">>,
+                        bindings(OrgId),
+                        jsone:encode(#{<<"target_user_id">> => integer_to_binary(Target)})
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"count">> := 0}]},
+                    q(
+                        Conn,
+                        <<"SELECT count(*) FROM organization_invitation"
+                            " WHERE organization_id = $1 AND target_user_id = $2">>,
+                        [OrgId, Target]
+                    )
+                )
+            end)
+        end},
+        {"注入5 invitation_cancel：审计失败 → 500 且邀请仍 pending", fun() ->
+            Scope = seed_org(Conn, <<"inj-can">>),
+            OrgId = maps:get(org_id, Scope),
+            Target = new_id(),
+            ok = exec(
+                Conn,
+                <<
+                    "INSERT INTO \"user\"(id,password,account,reg_ip,reg_cosv)"
+                    " VALUES ($1,'x',$2,'127.0.0.1','x')"
+                >>,
+                [Target, account(Target)]
+            ),
+            %% 无注入创建成功（此时审计事务内正常写入）
+            RespReq =
+                call(
+                    ?WRITE_UID,
+                    invitations,
+                    <<"POST">>,
+                    bindings(OrgId),
+                    jsone:encode(#{<<"target_user_id">> => integer_to_binary(Target)})
+                ),
+            ?assertEqual(200, status_of(RespReq)),
+            InvitationId = binary_to_integer(maps:get(<<"invitation_id">>, payload_of(RespReq))),
+            with_audit_fail(fun() ->
+                RespReq2 =
+                    call(
+                        ?WRITE_UID,
+                        invitation_cancel,
+                        <<"POST">>,
+                        org_binding(OrgId, invitation_id, InvitationId),
+                        <<>>
+                    ),
+                ?assertEqual(500, status_of(RespReq2)),
+                ?assertMatch(
+                    {ok, [#{<<"status">> := <<"pending">>}]},
+                    q(Conn, <<"SELECT status FROM organization_invitation WHERE id = $1">>, [
+                        InvitationId
+                    ])
+                )
+            end)
+        end},
+        {"注入6 department_create：审计失败 → 500 且部门行回滚", fun() ->
+            Scope = seed_org(Conn, <<"inj-dep">>),
+            OrgId = maps:get(org_id, Scope),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        departments,
+                        <<"POST">>,
+                        bindings(OrgId),
+                        jsone:encode(#{<<"name">> => <<"注入审计部"/utf8>>})
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"count">> := 0}]},
+                    q(
+                        Conn,
+                        <<"SELECT count(*) FROM organization_department"
+                            " WHERE organization_id = $1 AND name = $2 AND status = 'active'">>,
+                        [OrgId, <<"注入审计部"/utf8>>]
+                    )
+                )
+            end)
+        end},
+        {"注入7 department_rename：审计失败 → 500 且名称/版本回滚", fun() ->
+            Scope = seed_org(Conn, <<"inj-ren">>),
+            OrgId = maps:get(org_id, Scope),
+            DeptId = maps:get(dept_id, Scope),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        department_rename,
+                        <<"POST">>,
+                        org_binding(OrgId, department_id, DeptId),
+                        jsone:encode(#{<<"name">> => <<"回滚后名"/utf8>>, <<"expected_version">> => 1})
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"name">> := _, <<"version">> := 1, <<"status">> := <<"active">>}]},
+                    q(Conn, dept_row_sql(), [DeptId])
+                )
+            end)
+        end},
+        {"注入8 department_archive：审计失败 → 500 且部门仍 active", fun() ->
+            Scope = seed_org(Conn, <<"inj-dar">>),
+            OrgId = maps:get(org_id, Scope),
+            DeptId = maps:get(dept_id, Scope),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        department_archive,
+                        <<"POST">>,
+                        org_binding(OrgId, department_id, DeptId),
+                        <<>>
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"status">> := <<"active">>}]}, q(Conn, dept_row_sql(), [DeptId])
+                )
+            end)
+        end},
+        {"注入回归：恢复审计后同操作成功且审计行落库（事务内路径正向验证）", fun() ->
+            Scope = seed_org(Conn, <<"inj-ok">>),
+            OrgId = maps:get(org_id, Scope),
+            RespReq = call(?WRITE_UID, org_archive, <<"POST">>, bindings(OrgId), <<>>),
+            ?assertEqual(200, status_of(RespReq)),
+            {ok, _, [{Count}]} =
+                epgsql:equery(
+                    Conn,
+                    <<"SELECT count(*) FROM admin_operation_logs"
+                        " WHERE target_id = $1 AND action = 'organization_archive'"
+                        " AND adm_user_id = $2">>,
+                    [OrgId, ?WRITE_UID]
+                ),
+            ?assert(Count >= 1)
+        end}
+    ].
+
+%% meck adm_operation_log_ds:insert_tx 强制失败；审计注入失败 ⇒ abort_tx 回滚。
+with_audit_fail(Fun) ->
+    ok = meck:new(adm_operation_log_ds, [passthrough, no_link, unstick]),
+    ok =
+        meck:expect(adm_operation_log_ds, insert_tx, fun(
+            _Conn, _AdmUserId, _Action, _TargetId, _TargetType, _Detail, _Ip
+        ) ->
+            {error, audit_injected}
+        end),
+    try Fun()
+    after catch meck:unload(adm_operation_log_ds)
+    end.
+
+dept_row_sql() ->
+    <<"SELECT name, version, status FROM organization_department WHERE id = $1">>.
 
 %% ------------------------------------------------------------------
 %% 权限矩阵
