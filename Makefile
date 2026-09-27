@@ -603,3 +603,7 @@ compile: app
 dialyze-check:
 	@$(MAKE) dialyze DIALYZER_OPTS="$(DIALYZER_OPTS)" > dialyze-last.log 2>&1 || true
 	@bash scripts/check_dialyzer_baseline.sh dialyze-last.log
+
+# L3 gate extension point (l3-gate.sh probes dialyze-local first):
+# ratchet semantics per CI-00/TD-04A (0 NEW fingerprints = green; literal warn-0 unreachable, 477 legacy)
+dialyze-local: dialyze-check
