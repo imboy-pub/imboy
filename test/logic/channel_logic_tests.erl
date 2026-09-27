@@ -3486,7 +3486,10 @@ get_messages_private_channel_allows_subscriber_test_() ->
                     <<"*">> ->
                         #{<<"id">> => 12, <<"creator_uid">> => 3003}
                 end
-            end}
+            end},
+            % CP-TD-01F：attach_my_reactions 会按当前用户汇总 reactions；
+            % meck strict 下未 expect 即 undef → crashed → get_messages 拿不到 {ok,_}
+            {'list_user_reactions', 2, fun(2002, _MessageIds) -> {ok, []} end}
         ]},
         {channel_admin_ds, [
             {'get_role', 2, fun(12, 2002) -> 0 end}
@@ -3528,7 +3531,9 @@ get_messages_paid_channel_admin_skips_subscription_and_purchase_checks_test_() -
                     <<"join_policy">> => 3,
                     <<"status">> => 1
                 }
-            end}
+            end},
+            % CP-TD-01F：同 private_channel 用例——reactions 汇总调用需 stub
+            {'list_user_reactions', 2, fun(1001, _MessageIds) -> {ok, []} end}
         ]},
         {channel_admin_ds, [
             {'get_role', 2, fun(13, 1001) -> 2 end}

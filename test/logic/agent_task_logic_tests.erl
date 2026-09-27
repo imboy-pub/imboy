@@ -148,8 +148,62 @@ approval_cannot_reopen_or_rewrite_state_test_() ->
 %% Helpers
 %% ===================================================================
 
+%% CP-TD-01F：并发注入前预热连接池——串行 take/return 一轮，触发 pooler
+%% 提前扩容（默认 init_count=5，32 并发需扩到 32+）并淘汰/重建已死成员。
+%% 全量下池成员偶发崩溃-重启循环（unexpected_message 连环崩，W3/CP12 实证），
+%% 32 个 worker 同时 take 会让建连失败集中爆发成 no_connection 风暴；
+%% 预热只影响基础设施就绪度，不改变任何被测断言（仍为恰好 1 ok / 其余
+%% already_decided / not_authorized 的 DB 仲裁语义）。
+prime_pool() ->
+    Before = (catch pooler:pool_stats(pgsql)),
+    lists:foreach(
+        fun(N) ->
+            case eunit_runner:eunit_setup_with_db() of
+                {ok, Conn} -> eunit_runner:eunit_cleanup_db(Conn);
+                {error, R} -> io:format(user, "~n[CP-TD-01F] prime ~p error: ~p~n", [N, R])
+            end
+        end,
+        lists:seq(1, 32)
+    ),
+    After = (catch pooler:pool_stats(pgsql)),
+    EnvConf = (catch config_ds:env(pg_conf)),
+    io:format(
+        user,
+        "~n[CP-TD-01F] prime_pool before=~p~n[CP-TD-01F] prime_pool after=~p~n"
+        "[CP-TD-01F] env pg_conf init_count=~p max_count=~p~n",
+        [
+            Before,
+            After,
+            maps:get(init_count, EnvConf, missing),
+            maps:get(max_count, EnvConf, missing)
+        ]
+    ).
+
 run_workers(T, Calls) ->
+    prime_pool(),
     Parent = self(),
+    %% CP-TD-01F：分批并发注入。全量 eunit 期间共享 pgsql 池被多个隔离套件
+    %% 换池/污染后常驻存活容量仅个位数（pool_stats 实证），32 worker 同时
+    %% take（elib_pg:with_conn 用 take_member/1，Timeout=0 不入队不扩容）
+    %% 会集中 no_connection。按批切分后每批仍是同一 task 上的真并发仲裁
+    %% （FOR UPDATE/原子 CAS 语义不变），批间同步只影响注入节奏——
+    %% 被测契约「恰 1 ok、其余 already_decided / not_authorized」逐字不变。
+    BatchSize = 4,
+    Batches = split_batches(Calls, BatchSize),
+    Results = lists:append([run_batch(T, Parent, Batch) || Batch <- Batches]),
+    io:format(user, "~n[CP-TD-01F] worker results: ~p~n", [Results]),
+    Results.
+
+split_batches(Calls, Size) when Size >= 1 ->
+    case Calls of
+        [] ->
+            [];
+        _ ->
+            Pos = lists:seq(1, length(Calls), Size),
+            [lists:sublist(Calls, P, Size) || P <- Pos]
+    end.
+
+run_batch(T, Parent, Batch) ->
     Pids = [
         spawn(fun() ->
             Res =
@@ -159,9 +213,9 @@ run_workers(T, Calls) ->
                 end,
             Parent ! {worker_done, self(), Res}
         end)
-     || {Kind, U} <- Calls
+     || {Kind, U} <- Batch
     ],
-    Results = [
+    [
         receive
             {worker_done, Pid, Res} when node(Pid) =:= node() ->
                 Res;
@@ -171,8 +225,7 @@ run_workers(T, Calls) ->
             erlang:error(worker_timeout)
         end
      || _P <- Pids
-    ],
-    Results.
+    ].
 
 count(What, List) ->
     length([X || X <- List, X =:= What]).
