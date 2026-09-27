@@ -148,11 +148,37 @@ setup_db() ->
         }),
     {ok, _} = application:ensure_all_started(pooler),
     #{server := Server, db := Db} = State,
-    case pooler:new_pool(pgsql_pool_conf(Server, Db)) of
+    PoolConf = pgsql_pool_conf(Server, Db),
+    case pooler:new_pool(PoolConf) of
         {ok, _Pid} ->
             State;
         {error, {already_started, _}} ->
-            erlang:error({adm_org_create_pg_pool_conflict, 'pgsql'})
+            %% A1c（CP-TD-A02）：共享 VM 里 app 的 pgsql 池（指向共享库）已就位，
+            %% 而产品代码 elib_pg:with_conn 硬编码 take_member(pgsql)——套件池必须
+            %% 同名。接管：先停 app 池、换挂本套件 marker 库池；close_db/1 再按
+            %% imboy pg_conf 重建 app 池还原共享 VM 状态，后续套件不受影响。
+            ok = pool_swap('pgsql', PoolConf, 20),
+            State
+    end.
+
+%% A1c：rm_pool/new_pool 均有异步窗口（rm 后名称短暂残留 already_present；
+%% 成员占用中 rm 返回 running）——重试收敛，杜绝接管竞态。
+%% rm_pool/new_pool 均有异步窗口：rm 后名称短暂残留（already_present）、
+%% 成员占用中 rm 返回 running——单发必竞态。交替「rm→new」重试直到新池
+%% （指向目标 conf）真正建立，杜绝接管/还原竞态（run19 实证）。
+pool_swap(_Pool, _Conf, 0) ->
+    erlang:error({pool_swap_failed, 'pgsql'});
+pool_swap(Pool, Conf, N) ->
+    _ = pooler:rm_pool(Pool),
+    timer:sleep(200),
+    case pooler:new_pool(Conf) of
+        {ok, _Pid} ->
+            ok;
+        {error, {already_started, _}} ->
+            timer:sleep(300),
+            pool_swap(Pool, Conf, N - 1);
+        {error, Other} ->
+            erlang:error({pool_swap_failed, Other})
     end.
 
 pgsql_pool_conf(#{host := Host, port := Port, username := User, password := Pass}, Db) ->
@@ -175,10 +201,15 @@ pgsql_pool_conf(#{host := Host, port := Port, username := User, password := Pass
     }.
 
 close_db(State) ->
-    try pooler:stop_pool(pgsql) of
-        _ -> ok
-    catch
-        _:_ -> ok
+    try pooler:rm_pool(pgsql) catch _:_ -> ok end, %% A1c: rm_pool/1 is the correct API (stop_pool/1 does not exist, the original try/catch had been silently swallowing undef)
+    %% A1c（CP-TD-A02）：按 imboy pg_conf 重建 app pgsql 池（还原共享 VM 状态，
+    %% 见 setup_db 接管注释），后续套件的 elib_pg 访问不受本套件影响。
+    case application:get_env(imboy, pg_conf) of
+        {ok, PgConf} when is_map(PgConf) ->
+            ok = pool_swap('pgsql', PgConf, 20),
+            ok;
+        _ ->
+            ok
     end,
     inttest_marker_db:release(State).
 

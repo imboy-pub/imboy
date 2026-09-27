@@ -19,8 +19,10 @@ insert_success_test_() ->
         [
             %% P0 收口后 insert 走 write_tx（归档守卫同事务）：mock 守卫直通
             {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(fake_conn, {group, 1}) -> ok end},
-                {'abort_on_error', 1, fun(ok) -> ok end}
+                %% A1c：P0 收口后守卫调用沉入 workspace_guard:write_tx/2（同模块
+                %% 本地调用 meck 拦截不到 ensure_writable_tx/abort_on_error——
+                %% 原写法恒走真守卫 fail-closed 503）。改 mock write_tx/2 直通。
+                {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
@@ -43,8 +45,10 @@ insert_with_empty_body_test_() ->
         [
             %% P0 收口后 insert 走 write_tx（归档守卫同事务）：mock 守卫直通
             {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(fake_conn, {group, 1}) -> ok end},
-                {'abort_on_error', 1, fun(ok) -> ok end}
+                %% A1c：P0 收口后守卫调用沉入 workspace_guard:write_tx/2（同模块
+                %% 本地调用 meck 拦截不到 ensure_writable_tx/abort_on_error——
+                %% 原写法恒走真守卫 fail-closed 503）。改 mock write_tx/2 直通。
+                {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
@@ -65,8 +69,10 @@ insert_with_long_content_test_() ->
         [
             %% P0 收口后 insert 走 write_tx（归档守卫同事务）：mock 守卫直通
             {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(fake_conn, {group, 1}) -> ok end},
-                {'abort_on_error', 1, fun(ok) -> ok end}
+                %% A1c：P0 收口后守卫调用沉入 workspace_guard:write_tx/2（同模块
+                %% 本地调用 meck 拦截不到 ensure_writable_tx/abort_on_error——
+                %% 原写法恒走真守卫 fail-closed 503）。改 mock write_tx/2 直通。
+                {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
@@ -88,8 +94,10 @@ insert_with_extra_fields_test_() ->
         [
             %% P0 收口后 insert 走 write_tx（归档守卫同事务）：mock 守卫直通
             {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(fake_conn, {group, 1}) -> ok end},
-                {'abort_on_error', 1, fun(ok) -> ok end}
+                %% A1c：P0 收口后守卫调用沉入 workspace_guard:write_tx/2（同模块
+                %% 本地调用 meck 拦截不到 ensure_writable_tx/abort_on_error——
+                %% 原写法恒走真守卫 fail-closed 503）。改 mock write_tx/2 直通。
+                {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
@@ -180,8 +188,10 @@ insert_with_special_characters_test_() ->
         [
             %% P0 收口后 insert 走 write_tx（归档守卫同事务）：mock 守卫直通
             {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(fake_conn, {group, 1}) -> ok end},
-                {'abort_on_error', 1, fun(ok) -> ok end}
+                %% A1c：P0 收口后守卫调用沉入 workspace_guard:write_tx/2（同模块
+                %% 本地调用 meck 拦截不到 ensure_writable_tx/abort_on_error——
+                %% 原写法恒走真守卫 fail-closed 503）。改 mock write_tx/2 直通。
+                {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
@@ -207,8 +217,10 @@ insert_with_multiline_content_test_() ->
         [
             %% P0 收口后 insert 走 write_tx（归档守卫同事务）：mock 守卫直通
             {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(fake_conn, {group, 1}) -> ok end},
-                {'abort_on_error', 1, fun(ok) -> ok end}
+                %% A1c：P0 收口后守卫调用沉入 workspace_guard:write_tx/2（同模块
+                %% 本地调用 meck 拦截不到 ensure_writable_tx/abort_on_error——
+                %% 原写法恒走真守卫 fail-closed 503）。改 mock write_tx/2 直通。
+                {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}

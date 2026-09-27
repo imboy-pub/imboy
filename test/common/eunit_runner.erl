@@ -11,7 +11,8 @@
     eunit_try_db/0,
     eunit_setup_with_db/0,
     eunit_setup_db_or_skip/0,
-    ensure_named_server/1
+    ensure_named_server/1,
+    ensure_boot_coordinator/0
 ]).
 
 %%%===================================================================
@@ -166,13 +167,25 @@ ensure_boot_coordinator() ->
     end.
 
 boot_coord_loop() ->
+    %% A1c（CP-TD-A02）：trap_exit——do_ensure_cache 重建的 imboy_cache 挂在本
+    %% 协程名下，cleanup_start_orphans 黑名单击杀幸存缓存时 EXIT(shutdown/killed)
+    %% 会传染本协程（非 trap 即死），后续所有 eunit_setup 的 send 全部 badarg、
+    %% 整段 app 套件连锁 cancel。trap 后 EXIT 信号降级为可丢弃消息。
+    process_flag(trap_exit, true),
+    boot_coord_loop_().
+boot_coord_loop_() ->
     receive
         {boot, From, Ref} ->
             From ! {Ref, do_boot()},
-            boot_coord_loop();
+            boot_coord_loop_();
         {ensure_cache, From, Ref} ->
             From ! {Ref, do_ensure_cache()},
-            boot_coord_loop()
+            boot_coord_loop_();
+        {'EXIT', _Pid, _Reason} ->
+            %% 被杀链接子进程的 EXIT 残留，丢弃
+            boot_coord_loop_();
+        _ ->
+            boot_coord_loop_()
     end.
 
 do_ensure_cache() ->
@@ -201,6 +214,14 @@ do_boot() ->
             {ok, {app_already_started, imboy}};
         false ->
             cleanup_start_orphans(),
+            %% A1c（CP-TD-A02）：上一次启动中途夭折会遗留 ranch 监听孤儿——
+            %% 黑名单（按原子名 whereis）够不到 {ranch_listener_sup, Ref} 元组名
+            %% sup，残留 19980/19970 绑定 → 重试恒 eaddrinuse（run14/16 实证
+            %% 重试风暴 169 连发）。显式停监听后再重试。
+            _ = (try ranch:stop_listener(imboy_listener) catch _:_ -> ok end),
+            _ = (try cowboy:stop_listener(imboy_listener) catch _:_ -> ok end),
+            _ = (try ranch:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
+            _ = (try cowboy:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
             case application:ensure_all_started(imboy) of
                 {ok, _} ->
                     quiesce_periodic_workers(),

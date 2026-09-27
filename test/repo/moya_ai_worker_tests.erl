@@ -57,7 +57,13 @@ setup_all() ->
     {ok, _} = application:ensure_all_started(meck),
     %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
     %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链；任一失败显式 error。
-    State = inttest_marker_db:provision(#{env_prefix => <<"MOYA_INTTEST">>}),
+    %% A1c：reuse => true —— 全套件 18 个 ai_tx 用例共享同一 marker 库/连接
+    %% （VM 级引用计数，末位 release 才 DROP）。本套件用例全部 BEGIN/ROLLBACK
+    %% 自持事务且串行，共享连接安全；全量长跑下 Docker 端口转发会对高连接数
+    %% 的 VM 按进程 econnrefused（evidence/CP-TD-A02 full_run1/2 实证），
+    %% 把 18 次 provision 压到 1 次，避开 refused 窗口。
+    State = inttest_marker_db:provision(#{env_prefix => <<"MOYA_INTTEST">>,
+                                          reuse => true}),
     ok = install_mocks(),
     State.
 

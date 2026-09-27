@@ -1067,7 +1067,6 @@ pin_message_returns_error_when_channel_id_type_invalid_test_() ->
     end}.
 
 delete_message_author_success_still_returns_ok_when_notify_fails_test_() ->
-    ChannelIdBin = integer_to_binary(11),
     MessageIdBin = integer_to_binary(99),
     MockConfigs = [
         {channel_message_ds, [
@@ -1090,8 +1089,12 @@ delete_message_author_success_still_returns_ok_when_notify_fails_test_() ->
             {'send', 7, fun(
                 0, [1001, 2002], <<"channel_message_deleted">>, <<>>, null, Payload, save
             ) ->
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Payload)),
-                ?assertEqual(MessageIdBin, maps:get(<<"message_id">>, Payload)),
+                %% A1c：notify_message_deleted(integer(), integer()) 合同——payload
+                %% channel_id/message_id 均为 integer（delete_message 已校验
+                %% is_integer(ChannelId)）。原 binary 期望是缺陷，断言崩溃被 send_safe
+                %% 吞掉后把「notify 返回 error」路径偷换成了「notify crash」路径。
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(99, maps:get(<<"message_id">>, Payload)),
                 {error, notify_failed}
             end}
         ]}
@@ -1106,7 +1109,6 @@ delete_message_author_success_still_returns_ok_when_notify_fails_test_() ->
     end}.
 
 delete_message_admin_success_still_returns_ok_when_notify_crashes_test_() ->
-    ChannelIdBin = integer_to_binary(11),
     MessageIdBin = integer_to_binary(100),
     MockConfigs = [
         {channel_message_ds, [
@@ -1129,7 +1131,8 @@ delete_message_admin_success_still_returns_ok_when_notify_crashes_test_() ->
             {'send', 7, fun(
                 0, [1001, 2002], <<"channel_message_deleted">>, <<>>, null, Payload, save
             ) ->
-                ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Payload)),
+                %% A1c：同上——payload channel_id 是 integer 合同，非 binary。
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 erlang:error(mock_notify_crash)
             end}
         ]}

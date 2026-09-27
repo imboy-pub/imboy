@@ -26,7 +26,9 @@ cs_preflight_facts_pg_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun cases/1}.
 
 setup() ->
-    ensure_test_pg_conf(),
+    %% A1c（CP-TD-A02）：同 cs_org_compat——原 ORG08 改写/停 app/重建池配方在
+    %% 共享 VM 里连锁毒化池状态（boot coordinator 被传染、pgsql 池 rm 后未
+    %% 还原），已废弃；直接 eunit_setup_with_db 走共享 app 池。
     case eunit_runner:eunit_setup_with_db() of
         {ok, Conn} ->
             {ok, Conn};
@@ -240,6 +242,10 @@ orchestrator_default_registry_full_aggregation() ->
 %% ===================================================================
 
 ensure_test_pg_conf() ->
+    %% A1c：已废弃（共享 VM 池状态毒化，见 setup 注释）。保留空实现避免引用
+    %% 断裂；原 ORG08 一次性容器路径如需复用，请以独立 VM/独立 run 进行。
+    ok.
+deprecated_ensure_test_pg_conf_body() ->
     _ = application:load(imboy),
     Port = list_to_integer(os:getenv("ORG08_PGPORT", "4393")),
     PgConf = #{
@@ -252,7 +258,7 @@ ensure_test_pg_conf() ->
                     host => "127.0.0.1",
                     username => "imboy_user",
                     password => "abc54321",
-                    database => "imboy_v1",
+                    database => os:getenv("ORG08_PGDB", "imboy_v1"),
                     port => Port,
                     ssl => false,
                     timeout => 4000,
