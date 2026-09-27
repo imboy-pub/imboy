@@ -195,50 +195,52 @@ connect_retry(Server, Db, Attempts) ->
 %% process* ::econnrefused"），剩余用例全部取消、make exit 2——且失败点
 %% 跨套件随机漂移（取决于哪个套件恰好在做 DB 连接）。
 %%
-%% safe_connect/1 用一次性 trap_exit 窗口吸收 sock 的 EXIT 信号，把连接
-%% 失败还原成普通 {error, Reason} 返回，交给调用点按既有重试/fail-fast
-%% 语义处理。成功路径语义不变：连接存活、由调用方 close（此前连接挂在
-%% 调用者身上的 link 在调用者存活期间本就存在，不受影响）。
+%% safe_connect/1 把 epgsql:connect 放进一次性 worker 进程执行：sock 永远
+%% 只 link 到 worker（worker 自身 trap_exit 并吸收 sock 的 EXIT 后才向
+%% 调用者回传结果），调用者从头到尾与 sock 零 link——连接失败确定性还原
+%% 为普通 {error, Reason}，不存在"信号迟到补刀"的竞态窗口。成功路径下
+%% 连接进程在 worker 退出时收到的是 normal exit 信号（gen_server 不 trap
+%% 时对 normal 信号免疫），连接存活、由调用方 close，语义与直连一致。
 %% ===================================================================
 -spec safe_connect(map()) -> {ok, epgsql:connection()} | {error, term()}.
 safe_connect(Opts) ->
-    OldTrap = process_flag(trap_exit, true),
-    try
-        case epgsql:connect(Opts) of
-            {ok, _Conn} = Ok ->
-                Ok;
-            {error, Reason} ->
-                %% 同源信号序保证：sock 的 EXIT 在其 {error,...} 回复之后
-                %% 必达；trap 窗口内吸收它，避免还原 trap 后补刀调用者。
-                flush_sock_exit(Reason),
-                {error, Reason}
-        end
-    catch
-        Class:R:S ->
-            flush_sock_exit(any),
-            erlang:raise(Class, R, S)
-    after
-        process_flag(trap_exit, OldTrap)
+    Parent = self(),
+    Worker =
+        spawn(fun() ->
+            process_flag(trap_exit, true),
+            Result =
+                try epgsql:connect(Opts) of
+                    {ok, _Conn} = Ok ->
+                        Ok;
+                    {error, _Reason} = Err ->
+                        %% sock 已 stop；trap 下其 EXIT 已成消息，吸收之
+                        flush_sock_exit(),
+                        Err
+                catch
+                    Class:R:S ->
+                        flush_sock_exit(),
+                        {safe_connect_raise, Class, R, S}
+                end,
+            Parent ! {safe_connect_result, self(), Result}
+        end),
+    receive
+        {safe_connect_result, Worker, {safe_connect_raise, Class, R, S}} ->
+            erlang:raise(Class, R, S);
+        {safe_connect_result, Worker, Result} ->
+            Result
+    after 120000 ->
+        %% epgsql connect 自带 timeout；此处仅兜底防 worker 意外挂死
+        erlang:error({safe_connect_worker_timeout, maps:get(host, Opts, undefined)})
     end.
 
-flush_sock_exit(any) ->
-    drain_sock_exit(any, 8);
-flush_sock_exit(Reason) ->
-    drain_sock_exit(Reason, 8).
-
-drain_sock_exit(Reason, N) when N > 0 ->
+flush_sock_exit() ->
     receive
-        {'EXIT', _Pid, Why} when Reason =:= any; Why =:= Reason ->
-            ok;
-        {'EXIT', _Pid, _Other} ->
-            %% 连接窗口内的其他 exit（理论上不该有）一并拉取丢弃：
-            %% 这些信号对调用者的存活语义本就不可存活。
-            drain_sock_exit(Reason, N - 1)
-    after 100 ->
+        {'EXIT', _Pid, _Why} ->
+            ok
+    after 5000 ->
+        %% 信号序保证必达；超时仅防极端调度下的挂死
         ok
-    end;
-drain_sock_exit(_Reason, 0) ->
-    ok.
+    end.
 
 create_db(Conn, DbName) ->
     case epgsql:squery(Conn, <<"CREATE DATABASE ", DbName/binary>>) of
