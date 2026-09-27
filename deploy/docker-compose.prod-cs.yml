@@ -1,0 +1,58 @@
+# IMBoy 商务版客服域 overlay（CP-ASSET-03）—— CS stack for the business edition
+#
+# 形态：-f 基线 -f 本文件 叠加（基线 = 商务交付的 docker-compose.prod.yml，
+# 不随开源仓分发）。社区版 docker-compose.community.yml 已内置同样的 CS 段，
+# 无需本 overlay；本文件把同等能力以增量形式补给商务版栈。
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod-cs.yml config   # 预演
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod-cs.yml up -d
+#
+# 与社区版 CS 结构机械等价（对照表见 deploy/cs-widget-overlay.md §4）：
+#   * imboy_widget：纯静态产物容器（imboyadmin 仓 Dockerfile.widget 构建，
+#     零业务配置 / 零 DB / 零队列 / 零 secret，只读根文件系统 + tmpfs /tmp）；
+#   * imboy_nginx 增量：注入 CS_WIDGET_DOMAIN 并把 NGINX_ENVSUBST_FILTER 扩为
+#     含该变量（envsubst 才会渲染 nginx/templates/cs-widget.conf.template 第三域
+#     vhost），depends_on 追加 imboy_widget（compose 对序列合并去重，基线其余
+#     依赖不受影响；environment 为逐 key 覆盖合并，基线其余变量原样保留）。
+#
+# 前置：.env 里 CS_WIDGET_DOMAIN 必填（与 API_DOMAIN / ADMIN_DOMAIN 两两不同，
+# 见 deploy/.env.example），证书签发/续期沿用基线 certbot（CS 域加入
+# nginx/init-letsencrypt.sh 的域名清单即可，见 cs-widget-overlay.md §1）。
+services:
+
+  # ========== 客服托管 Widget 静态运行时（与 community 版同构）==========
+  imboy_widget:
+    image: ${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.71}}
+    container_name: imboy_widget
+    hostname: widget.docker.imboy.pub
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health.txt"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== nginx 增量：第三域 vhost 渲染 + upstream 依赖 ==========
+  imboy_nginx:
+    environment:
+      # 客服 Widget 第三域（渲染 nginx/templates/cs-widget.conf.template）
+      CS_WIDGET_DOMAIN: ${CS_WIDGET_DOMAIN}
+      # 覆盖基线 filter：追加 CS_WIDGET_DOMAIN（$$ 为 compose 转义的字面 $）
+      NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM|CS_WIDGET_DOMAIN)$$"
+    depends_on:
+      - imboy_widget
