@@ -146,3 +146,31 @@ docker compose --env-file .env.example \
   -f docker-compose.prod.yml -f docker-compose.prod-cs.yml config > /tmp/cs_b.yaml
 # 对比两文件中 services.imboy_widget 与 services.imboy_nginx 的 CS 相关字段
 ```
+
+入仓实机复核记录（2026-09-27，docker compose v5.5.1；下述命令即上表证据的
+可复现形态，`<WT>` 为本 overlay 所在仓根）：
+
+```bash
+# 1) 语法/插值预演（A05）
+$ docker compose --env-file .env.example \
+    -f docker-compose.prod.yml -f <WT>/deploy/docker-compose.prod-cs.yml config -q
+$ echo $?                       # => 0
+
+# 2) 渲染两栈为 JSON，逐字段比对（A06）
+$ docker compose --env-file .env.example -f docker-compose.community.yml \
+    config --format json > /tmp/cs_a.json
+$ docker compose --env-file .env.example \
+    -f docker-compose.prod.yml -f <WT>/deploy/docker-compose.prod-cs.yml \
+    config --format json > /tmp/cs_b.json
+$ diff <(jq -S '.services.imboy_widget' /tmp/cs_a.json) \
+       <(jq -S '.services.imboy_widget' /tmp/cs_b.json) && echo WIDGET-IDENTICAL
+WIDGET-IDENTICAL                # diff 空 = imboy_widget 渲染后逐字节等价
+$ diff <(jq -S '.services.imboy_nginx.environment | {CS_WIDGET_DOMAIN,NGINX_ENVSUBST_FILTER}' /tmp/cs_a.json) \
+       <(jq -S '.services.imboy_nginx.environment | {CS_WIDGET_DOMAIN,NGINX_ENVSUBST_FILTER}' /tmp/cs_b.json) \
+    && echo NGINX-CS-KEYS-IDENTICAL
+NGINX-CS-KEYS-IDENTICAL
+$ diff <(jq -S '.services.imboy_nginx.depends_on | keys' /tmp/cs_a.json) \
+       <(jq -S '.services.imboy_nginx.depends_on | keys' /tmp/cs_b.json) \
+    && echo DEPENDS_ON_KEYS_IDENTICAL
+DEPENDS_ON_KEYS_IDENTICAL       # 两侧同为 backend/admin/livekit/widget 四键
+```
