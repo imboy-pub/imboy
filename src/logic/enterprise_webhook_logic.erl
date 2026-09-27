@@ -99,6 +99,13 @@
 
 -define(DEFAULT_RETENTION_DAYS, 30).
 
+%% CP-CON-02 / INT-23：CURSOR-V2 keyset 分页（DEC-INT23-COMPAT）。
+%% 页族冻结 webhook_deliveries（§10.2 白名单）；页大小上限与 repo 读面
+%% 硬上限一致（50）；旧 offset 参数 versioned 400 错误码。
+-define(CURSOR_FAMILY, <<"webhook_deliveries">>).
+-define(MAX_PAGE_SIZE, 50).
+-define(CURSOR_REQUIRED_V1, <<"cursor_required_v1">>).
+
 %%%===================================================================
 %%% 纯合同（envelope / 签名）
 %%%===================================================================
@@ -818,29 +825,218 @@ metric_replay(Result) ->
 %%% FULL-03 只读面：投递列表 / 统计 / 保留窗口
 %%%===================================================================
 
-%% @doc 本 Application 的投递列表 + 健康度摘要（org/app 归属过滤，页大小夹紧）。
+%% @doc 本 Application 的投递列表一页 + 健康度摘要（CP-CON-02 / DEC-INT23-COMPAT：
+%% CURSOR-V2 签名游标 keyset 分页，排序冻结 created_at DESC, delivery_id DESC）。
 %% 响应**不含 payload**（无正文/无 secret/无签名 URL），只有元数据 + 计数。
--spec deliveries_tx(any(), map(), map(), integer()) ->
+%%
+%% Params（atom 键）：
+%%   cursor    :: binary() | undefined（上一页 next_cursor）
+%%   page_size :: integer() | undefined（缺省 DefaultSize；[1,?MAX_PAGE_SIZE]，
+%%                越界/非整数一律 400 invalid_request，拒绝不静默截断）
+%%   status    :: binary() | undefined（参与 SQL 过滤与游标 filter 绑定）
+%% 旧 offset 参数 page / size 任一出现 → {error, {cursor_required_v1, _}}
+%% （versioned 400：DEC-INT23-COMPAT——不存在「带着 page 用游标」的过渡形态）。
+%%
+%% 游标为 CURSOR-V2 签名形态（§10.1；签名/验签本体在 src/lib/
+%% enterprise_cursor_v2.erl）：malformed / tampered / foreign-family /
+%% foreign 绑定（org/app/status filter）/ expired（>24h）一律 400
+%% invalid_request（不回显原因）；签名密钥缺失/非法 → 503
+%% security_gate_closed（has_more 页签不出下一页同样 503，绝不伪装成末页）。
+%% 游标只含排序键（created_at/delivery_id），不含任何 PII/正文。
+-spec deliveries_tx(any(), map(), map(), pos_integer()) ->
     {ok, map()} | {error, {binary(), term()}}.
 deliveries_tx(Conn, Ctx, Params, DefaultSize) when is_map(Params) ->
-    OrgId = maps:get(organization_id, Ctx),
-    AppId = maps:get(application_id, Ctx),
-    Filters = #{
-        size => maps:get(size, Params, DefaultSize),
-        status => status_filter(maps:get(status, Params, undefined))
-    },
-    Page = int_or(maps:get(page, Params, 1), 1),
-    case enterprise_webhook_repo:list_deliveries_tx(Conn, OrgId, AppId, Filters, Page) of
-        {ok, Result} ->
-            case delivery_stats_tx(Conn, Ctx) of
-                {ok, Summary} -> {ok, Result#{summary => Summary}};
-                {error, Reason} -> {error, {<<"internal_error">>, Reason}}
-            end;
-        {error, Reason} ->
-            {error, {<<"internal_error">>, Reason}}
+    case legacy_offset_params(Params) of
+        true ->
+            {error, {?CURSOR_REQUIRED_V1, legacy_offset_params_removed}};
+        false ->
+            OrgId = maps:get(organization_id, Ctx),
+            AppId = maps:get(application_id, Ctx),
+            Status = status_filter(maps:get(status, Params, undefined)),
+            case page_size_opts(Params, DefaultSize) of
+                {ok, PageSize} ->
+                    case resolve_cursor(maps:get(cursor, Params, undefined), Ctx, Status) of
+                        {ok, After} ->
+                            case
+                                enterprise_webhook_repo:page_deliveries_tx(
+                                    Conn, OrgId, AppId, Status, After, PageSize + 1
+                                )
+                            of
+                                {ok, Rows} when length(Rows) > PageSize ->
+                                    {Items, _Extra} = lists:split(PageSize, Rows),
+                                    reply_deliveries_page(
+                                        Conn, Ctx, Status, Items, PageSize, true
+                                    );
+                                {ok, Rows} ->
+                                    reply_deliveries_page(
+                                        Conn, Ctx, Status, Rows, PageSize, false
+                                    );
+                                {error, Reason} ->
+                                    {error, {<<"internal_error">>, Reason}}
+                            end;
+                        {error, {<<"security_gate_closed">>, _}} = Gate ->
+                            Gate;
+                        {error, Detail} ->
+                            {error, {<<"invalid_request">>, Detail}}
+                    end;
+                {error, Detail} ->
+                    {error, {<<"invalid_request">>, Detail}}
+            end
     end;
 deliveries_tx(_Conn, _Ctx, _Params, _DefaultSize) ->
-    {error, {<<"invalid_request">>, invalid_page_params}}.
+    {error, {<<"invalid_request">>, invalid_params}}.
+
+%% 旧 offset 参数门（DEC-INT23-COMPAT）：page/size 任一出现即拒——
+%% versioned 400 提示迁移到 cursor/page_size（handler 与 logic 双侧守门）。
+-spec legacy_offset_params(map()) -> boolean().
+legacy_offset_params(Params) ->
+    maps:is_key(page, Params) orelse maps:is_key(size, Params).
+
+%% @doc page_size 契约：缺省 DefaultSize；显式给出须为 [1, ?MAX_PAGE_SIZE]
+%% 整数——越界/非整数一律拒绝（不静默截断，与 directory 读面同纪律）。
+-spec page_size_opts(map(), pos_integer()) -> {ok, pos_integer()} | {error, term()}.
+page_size_opts(Params, DefaultSize) ->
+    case maps:get(page_size, Params, undefined) of
+        undefined ->
+            {ok, DefaultSize};
+        N when is_integer(N), N >= 1, N =< ?MAX_PAGE_SIZE ->
+            {ok, N};
+        _ ->
+            {error, {page_size_out_of_range, ?MAX_PAGE_SIZE}}
+    end.
+
+%% @doc 投递页组装：has_more 时先签下一页游标（密钥缺失 → 503，不伪装成
+%% 末页），再取健康度摘要。Limit+1 的额外行只用于 has_more 判定，不进 items。
+-spec reply_deliveries_page(
+    any(), map(), undefined | binary(), [map()], pos_integer(), boolean()
+) ->
+    {ok, map()} | {error, {binary(), term()}}.
+reply_deliveries_page(Conn, Ctx, Status, Items, PageSize, HasMore) ->
+    Next =
+        case HasMore of
+            false -> null;
+            true -> sign_page_cursor(Ctx, Status, sort_tuple(Items))
+        end,
+    case Next of
+        {error, _} = Err ->
+            Err;
+        _ ->
+            case delivery_stats_tx(Conn, Ctx) of
+                {ok, Summary} ->
+                    {ok, #{
+                        <<"items">> => Items,
+                        <<"page_size">> => PageSize,
+                        <<"has_more">> => HasMore,
+                        <<"next_cursor">> => Next,
+                        <<"summary">> => Summary
+                    }};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end
+    end.
+
+%% @doc 下一页 keyset sort_tuple（§10.2 页族 webhook_deliveries；只含排序键
+%% 不含 PII）：[末行 created_at, 末行 delivery_id]——delivery_id 兜底保证
+%% 重复 created_at 的稳定翻页（无重无漏）。
+-spec sort_tuple([map()]) -> [binary(), ...].
+sort_tuple(Items) ->
+    Last = lists:last(Items),
+    [maps:get(<<"created_at">>, Last), maps:get(<<"delivery_id">>, Last)].
+
+%% ===================================================================
+%% CURSOR-V2（§10.1）：验签 + 绑定 → keyset pivot；签发下一页游标
+%% ===================================================================
+
+%% @doc 游标求值：verify → family/org/app/filter(status) 逐字段绑定 →
+%% sort_tuple 形状。无游标 → {ok, undefined}（首页）。
+%% malformed / tampered / foreign-family / foreign 绑定 / expired → invalid；
+%% 签名密钥缺失 → security_gate_closed（调用方 503）。
+-spec resolve_cursor(undefined | binary(), map(), undefined | binary()) ->
+    {ok, undefined | {binary(), binary()}} | {error, term()}.
+resolve_cursor(undefined, _Ctx, _Status) ->
+    {ok, undefined};
+resolve_cursor(Cursor, Ctx, Status) when is_binary(Cursor) ->
+    case enterprise_cursor_v2:signing_key() of
+        {ok, Key} ->
+            case enterprise_cursor_v2:verify(Cursor, Key) of
+                {ok, Payload} ->
+                    binds_current(Payload, Ctx, Status);
+                {error, _InvalidOrExpired} ->
+                    %% 不回显原因（§10.1）；expired 与 invalid 同为 400。
+                    {error, invalid_cursor}
+            end;
+        {error, key_unavailable} ->
+            {error, {<<"security_gate_closed">>, cursor_signing_key_unavailable}}
+    end;
+resolve_cursor(_Cursor, _Ctx, _Status) ->
+    {error, invalid_cursor}.
+
+%% 绑定比对（§10.1 handler 义务）：family / organization_id / application_id /
+%% filter（status 整 map 相等——换 status 的旧游标不得翻新过滤行集）。
+-spec binds_current(map(), map(), undefined | binary()) ->
+    {ok, {binary(), binary()}} | {error, term()}.
+binds_current(Payload, Ctx, Status) ->
+    Filter = status_filter_map(Status),
+    Binds =
+        maps:get(<<"family">>, Payload, undefined) =:= ?CURSOR_FAMILY andalso
+            maps:get(<<"organization_id">>, Payload, undefined) =:=
+                maps:get(organization_id, Ctx, undefined) andalso
+            maps:get(<<"application_id">>, Payload, undefined) =:=
+                maps:get(application_id, Ctx, undefined) andalso
+            maps:get(<<"filter">>, Payload, undefined) =:= Filter,
+    case Binds of
+        true ->
+            pivot_of(maps:get(<<"sort_tuple">>, Payload, undefined));
+        false ->
+            {error, invalid_cursor}
+    end.
+
+%% sort_tuple 形状冻结：[created_at, delivery_id] 双 binary（RFC3339 时间串 +
+%% delivery id）；形状不符（跨族形状/缺键/非 binary）一律拒。
+-spec pivot_of(term()) -> {ok, {binary(), binary()}} | {error, term()}.
+pivot_of([CreatedAt, DeliveryId]) when
+    is_binary(CreatedAt),
+    byte_size(CreatedAt) > 0,
+    is_binary(DeliveryId),
+    byte_size(DeliveryId) > 0
+->
+    {ok, {CreatedAt, DeliveryId}};
+pivot_of(_SortTuple) ->
+    {error, invalid_cursor}.
+
+%% @doc 下一页游标签发（build_payload 规范形态）。密钥缺失 → 503
+%% security_gate_closed（has_more 页不得伪装成末页）；payload 不可规范化 →
+%% internal_error。
+-spec sign_page_cursor(map(), undefined | binary(), [binary()]) ->
+    binary() | {error, {binary(), term()}}.
+sign_page_cursor(Ctx, Status, SortTuple) ->
+    case enterprise_cursor_v2:signing_key() of
+        {ok, Key} ->
+            Payload = enterprise_cursor_v2:build_payload(
+                ?CURSOR_FAMILY,
+                maps:get(organization_id, Ctx, undefined),
+                maps:get(application_id, Ctx, undefined),
+                status_filter_map(Status),
+                SortTuple,
+                os:system_time(second)
+            ),
+            case enterprise_cursor_v2:sign(Payload, Key) of
+                {ok, Cursor} when is_binary(Cursor) ->
+                    Cursor;
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end;
+        {error, key_unavailable} ->
+            {error, {<<"security_gate_closed">>, cursor_signing_key_unavailable}}
+    end.
+
+%% 游标 filter 的冻结表示：无 status 过滤 → #{}；有 → 整值绑定（换 status
+%% 的旧游标一律拒）。
+-spec status_filter_map(undefined | binary()) -> map().
+status_filter_map(undefined) ->
+    #{};
+status_filter_map(Status) when is_binary(Status) ->
+    #{<<"status">> => Status}.
 
 %% @doc 投递健康度：状态计数 + 尝试/重试次数 + 死信数 + 成功率。
 %% 成功率口径：success / (success + dead)——**在途（pending/retry）不计入分母**，
@@ -898,16 +1094,6 @@ status_filter(Status) when is_binary(Status) ->
     end;
 status_filter(_) ->
     undefined.
-
-int_or(V, _Default) when is_integer(V) -> V;
-int_or(V, Default) when is_binary(V) ->
-    try binary_to_integer(V) of
-        I -> I
-    catch
-        _:_ -> Default
-    end;
-int_or(_, Default) ->
-    Default.
 
 %%%===================================================================
 %%% Internal

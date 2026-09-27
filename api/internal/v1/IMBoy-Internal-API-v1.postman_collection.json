@@ -1152,7 +1152,7 @@
           }
         },
         {
-          "name": "INT-23 查询投递列表",
+          "name": "INT-23 查询投递列表（cursor 分页）",
           "request": {
             "method": "GET",
             "url": {
@@ -1170,11 +1170,20 @@
               "query": [
                 {
                   "key": "status",
-                  "value": "pending"
+                  "value": "pending",
+                  "disabled": true,
+                  "description": "可选：按投递状态过滤（pending/retry/success/dead；参与游标绑定——换 status 的旧游标 400）"
                 },
                 {
-                  "key": "page",
-                  "value": "1"
+                  "key": "page_size",
+                  "value": "20",
+                  "description": "页大小，1..50（缺省 20）；越界/非整数一律 400 invalid_request（拒绝，不静默截断）"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true,
+                  "description": "上一页返回的 next_cursor（首页缺省）。CURSOR-V2 签名游标：base64url(canonical_json).base64url(HMAC-SHA256)，24h 有效；篡改/垃圾串/跨页族/换过滤/过期一律 400 invalid_request"
                 }
               ]
             },
@@ -1184,7 +1193,7 @@
                 "value": "Bearer {{credential}}"
               }
             ],
-            "description": "分页查询投递状态（status/page 查询参数）。无请求体。\n查询参数见 url.query。"
+            "description": "投递元数据 cursor 分页（CP-CON-02 切 CURSOR-V2 keyset，DEC-INT23-COMPAT；响应 {items, page_size, has_more, next_cursor, summary}，排序 created_at DESC, delivery_id DESC）。无请求体。\n注意：旧 offset 参数 page/size 任一出现即 400 cursor_required_v1（versioned 迁移错误）——不存在「带着 page 用游标」的过渡形态。"
           }
         },
         {

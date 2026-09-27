@@ -31,7 +31,7 @@
     encrypt_secret/1,
     insert_delivery_tx/2,
     find_delivery_tx/2,
-    list_deliveries_tx/5,
+    page_deliveries_tx/6,
     list_deliveries_admin_tx/6,
     delivery_stats_tx/3,
     purgeable_tx/4
@@ -306,31 +306,73 @@ find_delivery_tx(Conn, DeliveryId) ->
 %%% FULL-03 读面：投递列表 / 统计 / 保留窗口（全部只读，含硬上限）
 %%%===================================================================
 
-%% @doc 本 Application 的投递列表（metadata only——**不含 payload**，
-%% 无 secret/无正文/无签名 URL）。按 (org, app) 归属过滤（不是 bot_id 前缀
-%% 推导），分页与页大小夹紧（无界导出负例）。
-%% 手写 count+page 两条 SQL（不用 elib_pg:page_with_total——那是池化入口，
-%% 本读面要在调用方事务/直连连接上执行）。
--spec list_deliveries_tx(any(), integer(), integer(), map(), integer()) ->
-    {ok, map()} | {error, term()}.
-list_deliveries_tx(Conn, OrgId, AppId, Filters, Page0) ->
-    Page = clamp_page(Page0),
-    Size = clamp_size(maps:get(size, Filters, 20)),
-    Status = maps:get(status, Filters, undefined),
+%% @doc 本 Application 的投递列表一页（CP-CON-02 / DEC-INT23-COMPAT 切
+%% CURSOR-V2 keyset；metadata only——**不含 payload**，无 secret/无正文/
+%% 无签名 URL）。按 (org, app) 归属过滤（不是 bot_id 前缀推导），可选
+%% status 过滤；keyset 前开区间 `(created_at, delivery_id) < After`。
+%% 排序冻结 created_at DESC, delivery_id DESC——migration 150 的 partial
+%% index bot_delivery_ewh_keyset_idx (org, app, created_at DESC,
+%% delivery_id DESC) 服务该序（无 OFFSET、无 COUNT 导出）。
+%% After = undefined（首页）| {CreatedAt, DeliveryId}（上一页末行 keyset
+%% 值，由 CURSOR-V2 游标验签解出）；Limit 由 logic 传 PageSize+1（多取
+%% 一行判 has_more，额外行不进入 items）。
+-spec page_deliveries_tx(
+    any(),
+    integer(),
+    integer(),
+    undefined | binary(),
+    undefined | {binary(), binary()},
+    pos_integer()
+) ->
+    {ok, [map()]} | {error, term()}.
+page_deliveries_tx(Conn, OrgId, AppId, Status, After, Limit) ->
     Tb = elib_pg_sql:public_tablename(<<"bot_delivery">>),
-    {Where, Params} = list_where(OrgId, AppId, Status),
-    CountSql = <<"SELECT count(*) AS total FROM ", Tb/binary, " WHERE ", Where/binary>>,
-    case elib_pg:query(Conn, CountSql, Params) of
-        {ok, [#{<<"total">> := Total} | _]} ->
-            list_page(Conn, Tb, Where, Params, Status, Page, Size, Total);
-        {ok, _} ->
-            {ok, empty_page(Page, Size, Status)};
-        {error, Reason} ->
-            {error, Reason}
+    {BaseWhere, BaseParams} = list_where(OrgId, AppId, Status),
+    {Where, Params} = keyset_where(BaseWhere, BaseParams, After),
+    LimitP = length(Params) + 1,
+    Sql =
+        <<
+            "SELECT delivery_id, event_type, status, attempt_count, webhook_host,"
+            " ewh_replay_of, ewh_ledger_version, ewh_claimed_at, created_at, updated_at"
+            " FROM ",
+            Tb/binary,
+            " WHERE ",
+            Where/binary,
+            " ORDER BY created_at DESC, delivery_id DESC LIMIT $",
+            (integer_to_binary(LimitP))/binary
+        >>,
+    case elib_pg:query(Conn, Sql, Params ++ [Limit]) of
+        {ok, Rows} when is_list(Rows) -> {ok, Rows};
+        {ok, _N} when is_integer(_N) -> {ok, []};
+        {error, Reason} -> {error, Reason}
     end.
 
+%% keyset 前开区间拼接：After 为空即首页；否则行构造器比较
+%% (created_at, delivery_id) < ($n::timestamptz, $n+1::text)——
+%% delivery_id 兜底排序键保证重复 created_at 的稳定翻页（无重无漏）。
+-spec keyset_where(binary(), [term()], undefined | {binary(), binary()}) ->
+    {binary(), [term()]}.
+keyset_where(BaseWhere, BaseParams, undefined) ->
+    {BaseWhere, BaseParams};
+keyset_where(BaseWhere, BaseParams, {AfterCreated, AfterId}) ->
+    P1 = integer_to_binary(length(BaseParams) + 1),
+    P2 = integer_to_binary(length(BaseParams) + 2),
+    {
+        <<
+            BaseWhere/binary,
+            " AND (created_at, delivery_id) < ($",
+            P1/binary,
+            "::timestamptz, $",
+            P2/binary,
+            "::text)"
+        >>,
+        BaseParams ++ [AfterCreated, AfterId]
+    }.
+
 %% @doc Admin 治理面（FULL-08 / A-13）的投递**元数据**读面。
-%% 与 list_deliveries_tx/5 同归属过滤、同排序、同分页夹紧，只是**列集更宽**：
+%% 与 internal keyset 读面（page_deliveries_tx/6）同归属过滤、同排序，只是
+%% 分页仍为 offset 夹紧（Admin 治理面非 §10.1 internal list family，
+%% CP-CON-02 只迁 INT-23）且**列集更宽**：
 %%   * 补 correlation_id / next_retry_at / ewh_endpoint_generation —— Admin 治理
 %%     需要这些运维元数据，既有 internal 读面出于「最小暴露」没选；
 %%   * 补 `payload->>'event_id'` —— event_id 只存在于事件信封（payload）里，
@@ -368,39 +410,6 @@ list_deliveries_admin_tx(Conn, OrgId, AppId, Status, Page0, Size0) ->
         {ok, Rows} when is_list(Rows) -> {ok, Rows};
         {error, Reason} -> {error, Reason}
     end.
-
-list_page(Conn, Tb, Where, Params, Status, Page, Size, Total) ->
-    {LimitP, OffsetP} = {length(Params) + 1, length(Params) + 2},
-    Sql =
-        <<
-            "SELECT delivery_id, event_type, status, attempt_count, webhook_host,"
-            " ewh_replay_of, ewh_ledger_version, ewh_claimed_at, created_at, updated_at"
-            " FROM ",
-            Tb/binary,
-            " WHERE ",
-            Where/binary,
-            " ORDER BY created_at DESC, delivery_id DESC LIMIT $",
-            (integer_to_binary(LimitP))/binary,
-            " OFFSET $",
-            (integer_to_binary(OffsetP))/binary
-        >>,
-    case elib_pg:query(Conn, Sql, Params ++ [Size, (Page - 1) * Size]) of
-        {ok, Rows} when is_list(Rows) ->
-            {ok, #{
-                total => Total,
-                page => Page,
-                size => Size,
-                status => Status,
-                list => Rows
-            }};
-        {ok, _N} ->
-            {ok, empty_page(Page, Size, Status)};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-empty_page(Page, Size, Status) ->
-    #{total => 0, page => Page, size => Size, status => Status, list => []}.
 
 %% @doc 归属过滤（org+app 复合；status 可选）——企业与 bot 域行物理混表，
 %% 归属列非空才可能被本读面看到（bot 域行 NULL 天然不在集合内）。

@@ -63,6 +63,9 @@
 -define(PUBLIC_IP, {93, 184, 216, 34}).
 -define(PUBLIC_IP_STR, "93.184.216.34").
 -define(BODY_MARKER, <<"hello from oa">>).
+%% CP-CON-02：INT-23 CURSOR-V2 签名密钥（套件级注入；eunit 专用值）。
+-define(CURSOR_KEY_CFG, enterprise_internal_cursor_signing_key).
+-define(CURSOR_SECRET, <<"full03_cursor_signing_key_0123456789abcdef">>).
 
 %%%===================================================================
 %%% Fixture
@@ -84,6 +87,9 @@ setup_conn() ->
         [group_info, group_member, enterprise_message, enterprise_audit_event, msg_c2c, msg_c2g]
     ),
     {ok, _} = application:ensure_all_started(throttle),
+    %% CP-CON-02：INT-23 投递列表走 CURSOR-V2 验签（§10.1）——套件级注入
+    %% 签名密钥（与 enterprise_full_api_pg_tests / CP-CON-01 同款配方）。
+    ok = application:set_env(imboy, ?CURSOR_KEY_CFG, ?CURSOR_SECRET),
     State = inttest_marker_db:provision(#{
         env_prefix => <<"FULL03_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
@@ -96,6 +102,7 @@ setup_conn() ->
     catch
         Class:Reason:Stack ->
             _ = exec_quiet(C, <<"ROLLBACK">>),
+            application:unset_env(imboy, ?CURSOR_KEY_CFG),
             inttest_marker_db:release(State),
             erlang:raise(Class, {fixture_seed_failed, Reason}, Stack)
     end,
@@ -103,6 +110,7 @@ setup_conn() ->
     State#{conn => C, app_a => AppA, app_b => AppB}.
 
 close_conn(State) ->
+    application:unset_env(imboy, ?CURSOR_KEY_CFG),
     inttest_marker_db:release(State),
     ok.
 
@@ -1342,32 +1350,51 @@ read_surface_oracle(C, State) ->
     %% org B 的 app 也配一个（隔离断言用）
     {ok, _R2} = configure(C, ctx_b(State), #{url => ?URL2}),
 
-    {ok, List} = enterprise_webhook_logic:deliveries_tx(C, ctx_a(State), #{}, 20),
-    Ids = [maps:get(<<"delivery_id">>, R) || R <- maps:get(list, List)],
-    ?assert(lists:member(Mine, Ids)),
+    %% CP-CON-02：CURSOR-V2 keyset 读面（DEC-INT23-COMPAT）。
+    %% 首页（无游标）→ {items, page_size, has_more, next_cursor, summary}
+    {ok, P1} = enterprise_webhook_logic:deliveries_tx(C, ctx_a(State), #{}, 20),
+    Ids1 = [maps:get(<<"delivery_id">>, R) || R <- maps:get(<<"items">>, P1)],
+    ?assert(lists:member(Mine, Ids1)),
+    ?assertEqual(20, maps:get(<<"page_size">>, P1)),
     %% 列表行不含 payload（无正文/无 secret 的读面保证）
     lists:foreach(
         fun(Row) -> ?assertNot(maps:is_key(<<"payload">>, Row)) end,
-        maps:get(list, List)
+        maps:get(<<"items">>, P1)
     ),
+    %% 摘要随页返回
+    ?assert(is_map(maps:get(<<"summary">>, P1))),
+    %% 逐页遍历（page_size=1 强制翻页）：无重、无漏、终止性
+    Walked = walk_deliveries(C, ctx_a(State), undefined, [], 0),
+    ?assert(lists:member(Mine, Walked), "边界翻页无漏"),
+    ?assertEqual(length(Walked), length(lists:usort(Walked)), "边界翻页无重"),
     %% 归属隔离：org B 的列表看不到 org A 的行
-    {ok, ListB} = enterprise_webhook_logic:deliveries_tx(C, ctx_b(State), #{}, 20),
-    IdsB = [maps:get(<<"delivery_id">>, R) || R <- maps:get(list, ListB)],
-    ?assertNot(lists:member(Mine, IdsB)),
-    %% 页大小夹紧（无界导出负例）：size=999 → 50
-    {ok, Big} = enterprise_webhook_logic:deliveries_tx(C, ctx_a(State), #{size => 999}, 20),
-    ?assertEqual(50, maps:get(size, Big)),
-    {ok, Small} = enterprise_webhook_logic:deliveries_tx(C, ctx_a(State), #{size => 1}, 20),
-    ?assertEqual(1, maps:get(size, Small)),
-    ?assertEqual(1, length(maps:get(list, Small))),
-    %% page=0/负数回落 1；非法 status 过滤为 undefined（不注入）
-    {ok, Page0} = enterprise_webhook_logic:deliveries_tx(C, ctx_a(State), #{page => 0}, 20),
-    ?assertEqual(1, maps:get(page, Page0)),
+    WalkedB = walk_deliveries(C, ctx_b(State), undefined, [], 0),
+    ?assertNot(lists:member(Mine, WalkedB)),
+    %% 旧 offset 参数（DEC-INT23-COMPAT）：page/size 任一出现 → versioned 400
+    ?assertMatch(
+        {error, {<<"cursor_required_v1">>, _}},
+        enterprise_webhook_logic:deliveries_tx(C, ctx_a(State), #{page => 2}, 20)
+    ),
+    ?assertMatch(
+        {error, {<<"cursor_required_v1">>, _}},
+        enterprise_webhook_logic:deliveries_tx(C, ctx_a(State), #{size => 999}, 20)
+    ),
+    %% page_size 越界拒绝（无界导出负例：拒绝不夹紧）
+    ?assertMatch(
+        {error, {<<"invalid_request">>, _}},
+        enterprise_webhook_logic:deliveries_tx(C, ctx_a(State), #{page_size => 999}, 20)
+    ),
+    {ok, Small} = enterprise_webhook_logic:deliveries_tx(
+        C, ctx_a(State), #{page_size => 1}, 20
+    ),
+    ?assertEqual(1, maps:get(<<"page_size">>, Small)),
+    ?assertEqual(1, length(maps:get(<<"items">>, Small))),
+    %% 非法 status 过滤为 undefined（不注入；SQL 注释串当字面量不可命中）
     {ok, BadStatus} = enterprise_webhook_logic:deliveries_tx(
         C, ctx_a(State), #{status => <<"'; DROP TABLE bot_delivery; --">>}, 20
     ),
-    ?assertEqual(undefined, maps:get(status, BadStatus)),
-    %% 状态过滤生效
+    ?assert(is_list(maps:get(<<"items">>, BadStatus))),
+    %% 状态过滤生效（过滤换行集；换 status 的旧游标拒——见 cursor 套件）
     ok = exec(C, [
         <<"UPDATE bot_delivery SET status = 'dead' WHERE delivery_id = '">>,
         Mine,
@@ -1378,11 +1405,28 @@ read_surface_oracle(C, State) ->
     ),
     lists:foreach(
         fun(R) -> ?assertEqual(<<"dead">>, maps:get(<<"status">>, R)) end,
-        maps:get(list, DeadOnly)
+        maps:get(<<"items">>, DeadOnly)
     ),
-    %% 摘要随列表返回
-    ?assert(maps:is_key(summary, DeadOnly)),
+    ?assert(maps:is_key(<<"summary">>, DeadOnly)),
     ?assertEqual(emitted, emitted).
+
+%% 逐页遍历真库行集（page_size=1 强制多次翻页）：跟随 next_cursor 收集
+%% delivery_id，直到 has_more=false；防呆上限 200 页。
+walk_deliveries(C, Ctx, Cursor, Acc, Pages) when Pages < 200 ->
+    {ok, Page} = enterprise_webhook_logic:deliveries_tx(
+        C, Ctx, #{page_size => 1, cursor => Cursor}, 20
+    ),
+    Ids = [maps:get(<<"delivery_id">>, R) || R <- maps:get(<<"items">>, Page)],
+    case maps:get(<<"has_more">>, Page) of
+        false ->
+            Acc ++ Ids;
+        true ->
+            Next = maps:get(<<"next_cursor">>, Page),
+            ?assert(is_binary(Next), "has_more 页必须签发下一页游标"),
+            walk_deliveries(C, Ctx, Next, Acc ++ Ids, Pages + 1)
+    end;
+walk_deliveries(_C, _Ctx, _Cursor, _Acc, _Pages) ->
+    erlang:error(deliveries_walk_not_terminated).
 
 no_secret_or_body(C, State) ->
     {ok, R1} = configure(C, ctx_a(State), #{}),

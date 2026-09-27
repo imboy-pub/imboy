@@ -3,41 +3,56 @@
 # GET /api/internal/v1/webhook/deliveries — 投递列表（INT-23）
 # 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1webhook~1deliveries
 # Handler：src/api/enterprise_webhook_handler.erl deliveries/3
-# 请求实证：query page（默认 1）/ size（默认 20）/ status（可选）；
-# 响应实证：enterprise_webhook_logic deliveries_tx + repo SELECT 列
+# 请求实证：query cursor / page_size / status（CP-CON-02 切 CURSOR-V2 keyset，
+# DEC-INT23-COMPAT：旧 page/size 参数返回 versioned 400 cursor_required_v1）；
+# 响应实证：enterprise_webhook_logic deliveries_tx + repo page_deliveries_tx/6
 # ----------------------------------------------------------------------------
 get:
   tags: [internal]
-  summary: Webhook 投递列表 + 健康度摘要
+  summary: Webhook 投递列表 + 健康度摘要（cursor 分页）
   description: |
     本应用的投递元数据分页（**不含 payload/正文/secret/签名 URL**）。
-    summary 成功率口径 = success / (success + dead)，在途（pending/retry）
-    不计入分母。
+    CURSOR-V2 签名游标 keyset 分页（排序冻结 created_at DESC, delivery_id DESC
+    ——重复 created_at 由 delivery_id 兜底稳定翻页，无重无漏）。游标为
+    CURSOR-V2 签名形态（不透明，HMAC-SHA256，24h 有效，与页族
+    webhook_deliveries / organization / application / status 过滤逐字段绑定），
+    不可跨页族复用；篡改（哪怕 1 字节）、垃圾串、跨页族、换过滤条件、
+    过期（>24h）一律 400 invalid_request（不回显原因）；签名密钥不可用时
+    503 security_gate_closed。summary 成功率口径 = success / (success + dead)，
+    在途（pending/retry）不计入分母。
+    **旧 offset 参数 page/size 任一出现即 400 cursor_required_v1**
+    （versioned 迁移错误，DEC-INT23-COMPAT；不存在「带着 page 用游标」的
+    过渡形态）。
   operationId: internalWebhookDeliveries
   security:
     - ibIntBearer: []
   parameters:
-    - name: page
+    - name: cursor
       in: query
       required: false
-      description: 页码（默认 1）
-      schema: { type: integer, minimum: 1, default: 1 }
-    - name: size
+      description: >-
+        上一页返回的 next_cursor（首页缺省）。CURSOR-V2 签名游标：
+        base64url(canonical_json) ++ "." ++ base64url(HMAC-SHA256)，24h
+        有效；页族 webhook_deliveries，绑定 organization_id /
+        application_id / status 过滤（整 map 相等）。篡改、垃圾串、跨页族、
+        换过滤、过期（>24h）一律 400 invalid_request。
+      schema: { type: string }
+    - name: page_size
       in: query
       required: false
-      description: 页大小（默认 20，服务端夹紧上限）
-      schema: { type: integer, minimum: 1, default: 20 }
+      description: 页大小，1..50（缺省 20）；越界/非整数一律 400 invalid_request（拒绝，不静默截断）
+      schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
     - name: status
       in: query
       required: false
-      description: 按投递状态过滤
-      schema: { type: string }
+      description: 按投递状态过滤（pending/retry/success/dead；参与游标绑定——换 status 的旧游标 400）
+      schema: { type: string, enum: [pending, retry, success, dead] }
   x-imboy-scope: webhooks:manage
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   responses:
     '200':
-      description: 投递列表
+      description: 投递列表页
       content:
         application/json:
           schema:
@@ -53,6 +68,11 @@ get:
                     status: { type: string, description: 如 pending/retry/success/dead }
                     attempt_count: { type: integer }
                     correlation_id: { type: [string, 'null'] }
+              page_size: { type: integer }
+              has_more: { type: boolean }
+              next_cursor:
+                type: [string, 'null']
+                description: 下页游标（CURSOR-V2 签名形态；has_more=false 时 null）
               summary:
                 type: object
                 description: 投递健康度摘要
@@ -66,8 +86,25 @@ get:
                     type: [number, 'null']
                     description: success/(success+dead)；无已终结投递时 null
                   in_flight_count: { type: integer, description: pending+retry }
-    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '400':
+      description: >-
+        参数非法（游标五类拒绝 / page_size 越界 → invalid_request）；或旧
+        offset 参数 page/size 出现 → cursor_required_v1（versioned 迁移错误，
+        DEC-INT23-COMPAT）。
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum: [invalid_request, cursor_required_v1]
+                  message: { type: string }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
     '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

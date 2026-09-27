@@ -179,6 +179,11 @@ Workspace keyset 列表与详情（V2.1 新增）；行集收窄为「当前生�
 你方回调端将收到 `x-imboy-delivery / x-imboy-event / x-imboy-timestamp /
 x-imboy-signature` 四个签名头（验证方式见 README §8）。
 
+INT-23 分页为 CURSOR-V2 签名游标（`cursor` / `page_size`，缺省 20 上限 50；
+排序 `created_at DESC, delivery_id DESC`）。**旧 offset 参数 `page`/`size`
+任一出现即 400 `cursor_required_v1`**（versioned 迁移错误，DEC-INT23-COMPAT）；
+游标篡改/跨页族/换过滤/过期（>24h）一律 400 `invalid_request`。
+
 ## OA SSO
 
 | ID | 方法与路径 | Scope | 限流桶 | 幂等 |
