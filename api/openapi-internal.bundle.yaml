@@ -1297,10 +1297,15 @@ paths:
       - internal
       summary: 已映射身份目录（cursor 分页，无 list-all）
       description: |
-        本组织本应用已映射用户目录。受限 cursor directory：游标不透明且不可跨页族
-        复用；只返回最小字段（不返回姓名/手机号/邮箱等 PII）；不存在 list-all/export
-        形态。请求字段实证自 handler `page_opts/1`（cursor / page_size / workspace_id）；
-        响应实证自 `enterprise_directory_logic`（`{items, page_size, has_more, next_cursor}`）。
+        本组织本应用已映射用户目录。受限 cursor directory：游标为 CURSOR-V2
+        签名形态（不透明，HMAC-SHA256，24h 有效，与页族/organization/
+        application/workspace 过滤逐字段绑定），不可跨页族复用；篡改（哪怕
+        1 字节）、垃圾串、跨页族、换过滤条件、过期（>24h）及旧版未签名
+        形态一律 400 invalid_request（不回显原因）；签名密钥不可用时 503
+        security_gate_closed。只返回最小字段（不返回姓名/手机号/邮箱等
+        PII）；不存在 list-all/export 形态。请求字段实证自 handler
+        `page_opts/1`（cursor / page_size / workspace_id）；响应实证自
+        `enterprise_directory_logic`（`{items, page_size, has_more, next_cursor}`）。
       operationId: internalIdentityDirectory
       security:
       - ibIntBearer: []
@@ -1316,14 +1321,16 @@ paths:
               properties:
                 cursor:
                   type: string
-                  description: 上一页返回的 next_cursor（首页缺省）
+                  description: 上一页返回的 next_cursor（首页缺省）。CURSOR-V2 签名游标： base64url(canonical_json) ++ "." ++ base64url(HMAC-SHA256)，24h
+                    有效；页族 identity_mappings， 绑定 organization_id / application_id / workspace 过滤 （整 map 相等）。篡改、垃圾串、跨页族、换过滤、过期
+                    （>24h）及旧版未签名形态（无 HMAC 段）一律 400 invalid_request。
                 page_size:
                   type: integer
-                  description: 页大小（服务端夹紧上限）
+                  description: 页大小，1..100（缺省 50）；越界/非整数一律 400 invalid_request（拒绝，不静默截断）。
                 workspace_id:
                   type: integer
                   format: int64
-                  description: 按 workspace 过滤
+                  description: 按 workspace 过滤（参与 Grant 边界与游标绑定）
       responses:
         '200':
           description: 已映射目录页
@@ -1350,7 +1357,7 @@ paths:
                     type:
                     - string
                     - 'null'
-                    description: 下页游标（has_more=false 时 null）
+                    description: 下页游标（CURSOR-V2 签名形态；has_more=false 时 null）
         '400':
           description: 请求参数/形状非法
           content:
@@ -1568,6 +1575,10 @@ paths:
       summary: 可映射用户目录（cursor 分页，只回元数据）
       description: |
         查询本组织可映射（尚未绑定或已绑定）的平台用户，只返回最小元数据。
+        游标为 CURSOR-V2 签名形态（不透明，HMAC-SHA256，24h 有效，与页族/
+        organization/application/workspace 过滤逐字段绑定）；篡改、垃圾串、
+        跨页族、换过滤条件、过期（>24h）及旧版未签名形态一律 400
+        invalid_request；签名密钥不可用时 503 security_gate_closed。
         响应 items 字段实证自 `enterprise_directory_logic`：user_id /
         external_user_id（本应用未映射则 null）/ member_role 等。
       operationId: internalDirectoryUsers
@@ -1585,10 +1596,16 @@ paths:
               properties:
                 cursor:
                   type: string
-                  description: 上一页返回的 next_cursor（首页缺省）
+                  description: 上一页返回的 next_cursor（首页缺省）。CURSOR-V2 签名游标： base64url(canonical_json) ++ "." ++ base64url(HMAC-SHA256)，24h
+                    有效；页族 directory_users， 绑定 organization_id / application_id / workspace 过滤 （整 map 相等）。篡改、垃圾串、跨页族、换过滤、过期
+                    （>24h）及旧版未签名形态（无 HMAC 段）一律 400 invalid_request。
                 page_size:
                   type: integer
-                  description: 页大小（服务端夹紧上限）
+                  description: 页大小，1..100（缺省 50）；越界/非整数一律 400 invalid_request（拒绝，不静默截断）。
+                workspace_id:
+                  type: integer
+                  format: int64
+                  description: 按 workspace 过滤（要求 identities:read 的 Workspace Grant 覆盖；参与游标绑定）。
       responses:
         '200':
           description: 可映射用户目录页
@@ -1621,6 +1638,7 @@ paths:
                     type:
                     - string
                     - 'null'
+                    description: 下页游标（CURSOR-V2 签名形态；has_more=false 时 null）
         '400':
           description: 请求参数/形状非法
           content:

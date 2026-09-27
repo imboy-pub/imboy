@@ -79,6 +79,11 @@ Grant/Scope、OpenAPI、审计和自动化测试，再作为 v1 只追加端点�
   该用户对你的消息/群操作立即不可达（`identity_not_mapped`）。
 - **解析（INT-03）**：OA 标识 → 平台用户；未映射返回 `identity_not_mapped`（422）。
 - **目录（INT-16/17）**：查询本组织已映射/可映射用户（分页，只回元数据）。
+  游标为 CURSOR-V2 签名形态（HMAC-SHA256、24h 有效，绑定页族
+  identity_mappings / directory_users 与 organization / application /
+  workspace 过滤）：篡改、垃圾串、跨页族、换过滤、过期（>24h）及旧版
+  未签名形态一律 `invalid_request`（400）；签名密钥不可用
+  `security_gate_closed`（503）。page_size 1..100（缺省 50），越界拒绝。
 
 ## 企业群组
 
