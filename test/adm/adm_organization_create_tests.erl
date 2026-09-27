@@ -116,10 +116,31 @@ adm_org_create_test_() ->
         end}}.
 
 setup_db() ->
-    %% 纯套件（不启动 imboy app）：TSID 生成器（admin_op_log / organization /
-    %% workspace）init+register 幂等配方，缺了 org/ws ID 与审计行都写不进。
+    %% 纯套件（不启动 imboy app）：TSID 生成器 init+register 幂等配方。
+    %% admin_op_log / organization / workspace 供本套件直写 org/ws ID 与审计行；
+    %% group_info / group_member / channel / channel_admin /
+    %% channel_subscription 供 workspace_ds:do_create_template/5 —— 平台默认
+    %% workspace 模板同事务还要建默认 Group（group_info + group_member）与
+    %% 默认 Channel（channel + channel_admin + channel_subscription）
+    %% （workspace_ds.erl:194/:222 及 group_member_repo:upsert_active、
+    %% channel_admin_repo:add、channel_subscription_repo:upsert_active）。
+    %% 缺注册时 generate 崩 {elib_tsid_generator_not_registered, ...} →
+    %% 整事务回滚 → handler 500，且 ERROR_LOG 经 lager 被吞，日志无痕迹。
+    %% 全量跑时其他套件已注册同名生成器（persistent_term VM 全局）会掩盖此
+    %% 缺口，单跑本套件必须自足注册。
     _ = (catch elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})),
-    ok = elib_tsid:register([admin_op_log, organization, workspace]),
+    ok =
+        elib_tsid:register([
+            admin_op_log,
+            organization,
+            workspace,
+            group_info,
+            group_member,
+            channel,
+            channel_admin,
+            channel_subscription
+        ]),
+    ensure_depcache(),
     State =
         inttest_marker_db:provision(#{
             env_prefix => <<"ADM_ORG_CREATE_INTTEST">>,
@@ -160,6 +181,37 @@ close_db(State) ->
         _:_ -> ok
     end,
     inttest_marker_db:release(State).
+
+%% 默认 workspace 模板链（group_member_ds:join_group → group_ds:join）依赖
+%% 命名 depcache 实例 imboy_cache（ETS 'm:imboy_cache'）。本套件不启动 imboy
+%% app，单跑时须自足补建；全量跑时实例已由 eunit_setup 启动的 app 持有，此处
+%% 为 no-op：
+%%   * app 已启动（ETS 存在）→ 直接返回；
+%%   * eunit_boot_coordinator 存在（eunit_runner 全量自愈协议）→ 由长驻协调
+%%     进程重建，实例不随本套件 teardown 死亡；
+%%   * 单跑兜底 → setup 进程直接 start_link（VM 随套件结束回收，无跨套件
+%%     影响；imboy_cache:start_link 自带 already_started 收养）。
+ensure_depcache() ->
+    case ets:whereis('m:imboy_cache') of
+        undefined ->
+            case whereis(eunit_boot_coordinator) of
+                undefined ->
+                    _ = imboy_cache:start_link([{depcache_memory_max, 100}]),
+                    ok;
+                _CoordPid ->
+                    Ref = make_ref(),
+                    eunit_boot_coordinator ! {ensure_cache, self(), Ref},
+                    receive
+                        {Ref, ok} -> ok
+                    after 5000 ->
+                        %% 协调器超时：退化为 setup 进程自建（收养语义）
+                        _ = imboy_cache:start_link([{depcache_memory_max, 100}]),
+                        ok
+                    end
+            end;
+        _Tab ->
+            ok
+    end.
 
 mocks_on() ->
     lists:foreach(
@@ -500,9 +552,17 @@ injection_rollback() ->
     Owner = new_id(),
     ok = seed_user(Conn, Owner, 1, 0),
     Name = <<"eadm-create-inject-", (integer_to_binary(Owner))/binary>>,
+    %% 默认关系的真实写入原语是 organization_default_workspace_pg:
+    %% ensure_first_workspace_tx/3（链路：create_org_tx → workspace_ds
+    %% create_default_template_tx → organization_default_workspace_app:
+    %% ensure_first_workspace_tx → 本原语）。logic 头注释里的 upsert_tx
+    %% 已非 admin_create 调用面——mock 必须打在真实链上，否则注入无效、
+    %% 创建成功返回 200，本用例的 500 契约失守。
     case
         meck_helper:setup_mock(organization_default_workspace_pg, [
-            {'upsert_tx', 3, fun(_C, _O, _W) -> {error, injected_failure} end}
+            {'ensure_first_workspace_tx', 3, fun(_C, _O, _W) ->
+                {error, injected_failure}
+            end}
         ])
     of
         {ok, _} -> ok;
