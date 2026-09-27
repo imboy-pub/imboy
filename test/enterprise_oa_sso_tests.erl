@@ -423,7 +423,7 @@ receive_result(P) ->
 
 extra_conn(State) ->
     S = maps:get(server, State),
-    {ok, Conn} = epgsql:connect(#{
+    {ok, Conn} = inttest_marker_db:safe_connect(#{
         host => maps:get(host, S),
         port => maps:get(port, S),
         username => maps:get(username, S),

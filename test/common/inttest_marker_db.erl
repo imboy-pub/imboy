@@ -28,7 +28,7 @@
 %%   close_conn(State) -> inttest_marker_db:release(State).
 %%   %% State 内 conn 字段为已连接 epgsql pid；测试体自行 BEGIN/ROLLBACK。
 
--export([provision/1, release/1]).
+-export([provision/1, release/1, safe_connect/1]).
 
 -define(EXTENSIONS, [
     <<"pgcrypto">>,
@@ -59,7 +59,7 @@ provision(Opts) when is_map(Opts) ->
         ok = create_db(MaintConn, DbName),
         ok = ensure_extensions(Server, DbName),
         ok = migrate_result(migrate_fresh_db(Server, DbName)),
-        {ok, Conn} = epgsql:connect(conn_opts(Server, DbName)),
+        {ok, Conn} = safe_connect(conn_opts(Server, DbName)),
         #{conn => Conn, maint_conn => MaintConn, db => DbName, server => Server}
     catch
         Class:Reason:Stack ->
@@ -170,7 +170,7 @@ connect_retry(_Server, _Db, 0) ->
     erlang:error({marker_db_connect_failed, retry_exhausted});
 connect_retry(Server, Db, Attempts) ->
     Opts = conn_opts(Server, Db),
-    case epgsql:connect(Opts) of
+    case safe_connect(Opts) of
         {ok, Conn} ->
             Conn;
         {error, Reason} when
@@ -181,6 +181,64 @@ connect_retry(Server, Db, Attempts) ->
         {error, Reason} ->
             erlang:error({marker_db_connect_failed, Db, Reason})
     end.
+
+%% ===================================================================
+%% epgsql 连接的 EXIT 信号隔离（CP-TD-A02）
+%%
+%% epgsql:connect/1,4 内部 epgsql_sock:start_link/0（gen_server:start_link）
+%% 把连接进程 link 到调用者；连接失败（如全量高并发下瞬态 econnrefused，
+%% 见 connect_server/2 注释）时 sock 进程以裸原因（econnrefused 等）stop：
+%% 调用者即使正常拿到 {error, Reason} 返回值，仍会被紧随其后的
+%% {'EXIT', Sock, econnrefused} 信号杀死（非 trap_exit 进程收到非 normal
+%% exit 信号即死）。在 eunit 全量里所有用例内联运行在 eunit Runner 进程，
+%% 该信号杀掉 Runner → 顶层组 cancel（"*unexpected termination of test
+%% process* ::econnrefused"），剩余用例全部取消、make exit 2——且失败点
+%% 跨套件随机漂移（取决于哪个套件恰好在做 DB 连接）。
+%%
+%% safe_connect/1 用一次性 trap_exit 窗口吸收 sock 的 EXIT 信号，把连接
+%% 失败还原成普通 {error, Reason} 返回，交给调用点按既有重试/fail-fast
+%% 语义处理。成功路径语义不变：连接存活、由调用方 close（此前连接挂在
+%% 调用者身上的 link 在调用者存活期间本就存在，不受影响）。
+%% ===================================================================
+-spec safe_connect(map()) -> {ok, epgsql:connection()} | {error, term()}.
+safe_connect(Opts) ->
+    OldTrap = process_flag(trap_exit, true),
+    try
+        case epgsql:connect(Opts) of
+            {ok, _Conn} = Ok ->
+                Ok;
+            {error, Reason} ->
+                %% 同源信号序保证：sock 的 EXIT 在其 {error,...} 回复之后
+                %% 必达；trap 窗口内吸收它，避免还原 trap 后补刀调用者。
+                flush_sock_exit(Reason),
+                {error, Reason}
+        end
+    catch
+        Class:R:S ->
+            flush_sock_exit(any),
+            erlang:raise(Class, R, S)
+    after
+        process_flag(trap_exit, OldTrap)
+    end.
+
+flush_sock_exit(any) ->
+    drain_sock_exit(any, 8);
+flush_sock_exit(Reason) ->
+    drain_sock_exit(Reason, 8).
+
+drain_sock_exit(Reason, N) when N > 0 ->
+    receive
+        {'EXIT', _Pid, Why} when Reason =:= any; Why =:= Reason ->
+            ok;
+        {'EXIT', _Pid, _Other} ->
+            %% 连接窗口内的其他 exit（理论上不该有）一并拉取丢弃：
+            %% 这些信号对调用者的存活语义本就不可存活。
+            drain_sock_exit(Reason, N - 1)
+    after 100 ->
+        ok
+    end;
+drain_sock_exit(_Reason, 0) ->
+    ok.
 
 create_db(Conn, DbName) ->
     case epgsql:squery(Conn, <<"CREATE DATABASE ", DbName/binary>>) of
@@ -240,7 +298,7 @@ try_drop_db(Server, DbName) ->
 
 connect_maint_quiet(Server) ->
     try
-        {ok, _} = epgsql:connect(conn_opts(Server, maps:get(maint_db, Server, <<"postgres">>)))
+        {ok, _} = safe_connect(conn_opts(Server, maps:get(maint_db, Server, <<"postgres">>)))
     catch
         _:_ -> error
     end.

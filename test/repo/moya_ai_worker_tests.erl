@@ -810,7 +810,7 @@ setup_pair() ->
             password := Pass
         }
     } = State,
-    {ok, CB} = epgsql:connect(#{
+    {ok, CB} = inttest_marker_db:safe_connect(#{
         host => Host,
         port => Port,
         username => User,

@@ -87,7 +87,7 @@ setup_required() ->
         database => os:getenv("AG31_PG_DB")
     },
     {ok, Conn} =
-        case epgsql:connect(ConnOpts) of
+        case inttest_marker_db:safe_connect(ConnOpts) of
             {ok, C} -> {ok, C};
             {error, Reason} -> erlang:error({ag31_pg_connect_failed, Reason})
         end,

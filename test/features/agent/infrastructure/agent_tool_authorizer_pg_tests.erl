@@ -90,7 +90,7 @@ connect_required() ->
         password => os:getenv("AG31_PG_PASSWORD", ""),
         database => os:getenv("AG31_PG_DB")
     },
-    case epgsql:connect(ConnOpts) of
+    case inttest_marker_db:safe_connect(ConnOpts) of
         {ok, Conn} ->
             fixture_reset(Conn),
             Conn;

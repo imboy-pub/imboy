@@ -52,8 +52,8 @@ connect_required() ->
         password => os:getenv("AG31_PG_PASSWORD", ""),
         database => os:getenv("AG31_PG_DB")
     },
-    {ok, C1} = epgsql:connect(Opts),
-    {ok, C2} = epgsql:connect(Opts),
+    {ok, C1} = inttest_marker_db:safe_connect(Opts),
+    {ok, C2} = inttest_marker_db:safe_connect(Opts),
     fixture_reset(C1),
     seed(C1),
     [C1, C2].

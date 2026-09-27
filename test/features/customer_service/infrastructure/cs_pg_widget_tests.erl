@@ -855,7 +855,7 @@ down_steps_to(TargetVersion) ->
 
 %% 迁移往返：独立连接（不占池连接的 advisory 锁）。
 with_migrate_conn(Fun) ->
-    {ok, Conn} = epgsql:connect(config_ds:env(super_account)),
+    {ok, Conn} = inttest_marker_db:safe_connect(config_ds:env(super_account)),
     try
         Fun(Conn)
     after
