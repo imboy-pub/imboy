@@ -464,8 +464,9 @@ a03_identity_exchange_replay_expired_mismatch_all_rejected() ->
             )
         ),
         %% 跨 Org：令牌在错 Org 的 (installation, digest) 查找命中不了行。
+        %% CP-SEC-05（DEC-VISIT-TOKEN）：伪造/错位凭证统一 visit_token_invalid。
         ?assertEqual(
-            {error, not_found},
+            {error, visit_token_invalid},
             cs_widget_app:identity_exchange(
                 maps:get(other_org_id, Scope),
                 exchange_params(
@@ -1018,8 +1019,9 @@ csd_be01s_facade_derives_org_from_token_digest() ->
                 maps:get(session_id, Created), [maps:get(id, S) || S <- Sessions]
             )
         ),
-        %% 跨 installation：令牌 digest 在另一 installation 行命中不了 → 401
-        %% not_found（digest 绑定 (org, installation)，与 PG 语句同语义）。
+        %% 跨 installation：令牌 digest 在另一 installation 行命中不了 →
+        %% 401 visit_token_invalid（CP-SEC-05 DEC-VISIT-TOKEN：digest 绑定
+        %% (org, installation)，伪造/错位凭证统一凭证无效语义）。
         InstId2 = cs_fake_id:new_id(cs_session),
         {ok, _} =
             ?FAKE:insert_widget_installation(Org, #{
@@ -1031,15 +1033,15 @@ csd_be01s_facade_derives_org_from_token_digest() ->
                 consent_version => <<"consent-v1">>
             }),
         ?assertEqual(
-            {error, not_found},
+            {error, visit_token_invalid},
             customer_service_facade:widget_create_session(
                 0,
                 wp(Scope, #{installation_id => InstId2, secret => Secret})
             )
         ),
-        %% 未知 installation（无行）→ 同形 not_found（无存在性枚举）。
+        %% 未知 installation（无行）→ 同形 visit_token_invalid（无存在性枚举）。
         ?assertEqual(
-            {error, not_found},
+            {error, visit_token_invalid},
             customer_service_facade:widget_create_session(
                 0,
                 wp(Scope, #{installation_id => 999887766, secret => Secret})

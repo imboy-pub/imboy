@@ -260,6 +260,30 @@ public_frame_app_tests(_) ->
             end
         end},
 
+        %% CP-SEC-05（DEC-VISIT-TOKEN=FIX_401_VISIT_TOKEN_INVALID）：digest
+        %% 无命中行（伪造 secret）是凭证无效——application 层翻译为
+        %% `visit_token_invalid`，不把 not_found 泄漏给 HTTP 面（404/500）。
+        {"CP-SEC-05 forged digest translates to visit_token_invalid (not not_found)", fun() ->
+            ?FAKE:init(),
+            try
+                ok = seed_installation(?ORG, ?INSTALL, ?PUBID),
+                ?assertEqual(
+                    {error, visit_token_invalid},
+                    cs_widget_support:verify_bootstrap_token(
+                        ?ORG,
+                        #{
+                            store => ?FAKE,
+                            installation_id => ?INSTALL,
+                            at => 1700000500,
+                            secret => <<"wtok-forged-never-issued">>
+                        }
+                    )
+                )
+            after
+                ?FAKE:destroy()
+            end
+        end},
+
         {"S3 tenant is derived from the hit row (store global fetch proves it)", fun() ->
             ?FAKE:init(),
             try

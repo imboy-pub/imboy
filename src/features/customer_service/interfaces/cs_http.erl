@@ -678,6 +678,11 @@ classify({invalid_secret, _}) ->
     ?ERR_UNAUTHORIZED;
 classify(credential_invalid) ->
     ?ERR_UNAUTHORIZED;
+%% CP-SEC-05（DEC-VISIT-TOKEN=FIX_401_VISIT_TOKEN_INVALID）：伪造/跨租户
+%% 重放的 visit token（digest 无命中行）——凭证无效 401。application 层
+%% （cs_widget_support fetch/derive + cs_widget_app replay）统一翻译此原子。
+classify(visit_token_invalid) ->
+    ?ERR_UNAUTHORIZED;
 %% F-LAY-03：CS 域真原子（cs_session:assert_visitor_scope 产出）；下列 EB 侧
 %% 词汇（visit_token_revoked/visit_token_expired/shop_key_revoked/cross_contact）
 %% 是从 eb_auth_app 抄来的死条目，CS 链路永不产出，已删除。
