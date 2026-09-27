@@ -275,6 +275,21 @@ admin_department_list(OrgId, Status) ->
 %% 读：组织下 Workspace 只读关系事实（分页）
 %% ===================================================================
 
+%% is_default 投影（CP-CON-03）：每行的「是否本 Org 默认 Workspace」由服务端
+%% 真源 organization_default_workspace（迁移 00000130；PK=organization_id，
+%% 每 Org 至多一条显式默认关系）经 LEFT JOIN 计算，不回落 min-ID 推导
+%% （organization_default_workspace_pg 读取同口径）。无默认关系的 Org（0 条
+%% 合法）全部投影 false；默认指向 archived ws 的历史态照实投影 true（真源
+%% 如实，归档交接由 workspace 域守卫另行保证）。行数不变：JOIN 键含
+%% workspace_id，每行至多匹配一条（PK 唯一）。
+-define(ADMIN_WORKSPACE_PAGE_SQL,
+    <<"SELECT w.id, w.name, w.owner_id, w.organization_id, w.status,",
+        " w.created_at, w.updated_at,", " (odw.workspace_id IS NOT NULL) AS is_default",
+        " FROM workspace w", " LEFT JOIN organization_default_workspace odw",
+        "  ON odw.organization_id = w.organization_id AND odw.workspace_id = w.id",
+        " WHERE w.organization_id = $1", " ORDER BY w.id DESC LIMIT $2 OFFSET $3">>
+).
+
 -spec admin_workspace_page(integer(), integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 admin_workspace_page(OrgId, Page, Size) ->
@@ -290,11 +305,7 @@ admin_workspace_page(OrgId, Page, Size) ->
                     {ok, #{<<"count">> := C}} -> C;
                     _ -> 0
                 end,
-            DataSql =
-                <<"SELECT id, name, owner_id, organization_id, status, created_at, updated_at",
-                    " FROM workspace WHERE organization_id = $1",
-                    " ORDER BY id DESC LIMIT $2 OFFSET $3">>,
-            case elib_pg:query(DataSql, [OrgId, Size1, (Page1 - 1) * Size1]) of
+            case elib_pg:query(?ADMIN_WORKSPACE_PAGE_SQL, [OrgId, Size1, (Page1 - 1) * Size1]) of
                 {ok, Items} ->
                     TotalPage =
                         case Total > 0 of

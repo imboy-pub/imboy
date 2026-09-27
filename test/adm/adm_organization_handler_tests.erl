@@ -353,6 +353,9 @@ journeys_tests(Conn) ->
         {"旅程7 workspace 只读关系事实：列表返回 org 下 workspace", fun() -> journey_workspace_readonly(Conn) end},
         {"旅程8 审计：admin_operation_logs 出现 organization_archive 记录", fun() ->
             journey_audit_row(Conn)
+        end},
+        {"旅程9 workspace is_default 服务端真源投影：每 org 恰一 true/其余 false", fun() ->
+            journey_workspace_is_default(Conn)
         end}
     ].
 
@@ -644,6 +647,59 @@ journey_workspace_readonly(Conn) ->
     %% org 不存在 → 404
     RespReq2 = call(?WRITE_UID, workspaces, <<"GET">>, bindings(new_id()), <<>>),
     ?assertEqual(404, status_of(RespReq2)).
+
+%% 旅程9（CP-CON-03）：组织 workspace 列表投影的 is_default 由服务端真源
+%% organization_default_workspace（迁移 00000130，PK=organization_id 每 Org
+%% 至多一条）计算。断言：
+%%   * 显式默认关系存在：恰一行 is_default=true 且指向显式指向的 ws
+%%     （其余行 is_default=false）——不是 min-ID 推导；
+%%   * 无默认关系（0 条合法）：全部 is_default=false，不编造默认。
+journey_workspace_is_default(Conn) ->
+    %% Org A：seed 建 1 个 ws；再补第 2 个 ws；显式默认指向第 1 个
+    Scope = seed_org(Conn, <<"wsdef">>),
+    OrgA = maps:get(org_id, Scope),
+    WsDefault = maps:get(ws_id, Scope),
+    WsOther = new_id(),
+    ok = exec(
+        Conn,
+        <<
+            "INSERT INTO workspace(id,name,owner_id,organization_id,status) VALUES"
+            " ($1,$2,$3,$4,'active')"
+        >>,
+        [WsOther, <<"ws-def-other">>, maps:get(owner, Scope), OrgA]
+    ),
+    ok = exec(
+        Conn,
+        <<
+            "INSERT INTO organization_default_workspace(organization_id, workspace_id)"
+            " VALUES ($1,$2)"
+        >>,
+        [OrgA, WsDefault]
+    ),
+    RespReq = call(?WRITE_UID, workspaces, <<"GET">>, bindings(OrgA), <<>>),
+    ?assertEqual(200, status_of(RespReq)),
+    Page = payload_of(RespReq),
+    ?assertEqual(2, maps:get(total, Page)),
+    Rows = maps:get(list, Page),
+    %% 每行必须携带布尔 is_default（字段缺失即缺陷：?assertEqual 崩溃值差异）
+    TrueRows = [R || R <- Rows, maps:get(<<"is_default">>, R, missing) =:= true],
+    ?assertEqual(1, length(TrueRows)),
+    ?assertEqual(integer_to_binary(WsDefault), maps:get(<<"id">>, hd(TrueRows))),
+    FalseRows = [R || R <- Rows, maps:get(<<"is_default">>, R, missing) =:= false],
+    ?assertEqual(1, length(FalseRows)),
+    ?assertEqual(integer_to_binary(WsOther), maps:get(<<"id">>, hd(FalseRows))),
+    %% Org B：seed_org 不建默认关系（历史 Org 0 条合法）→ 全部 false、无 true
+    ScopeB = seed_org(Conn, <<"wsnd">>),
+    OrgB = maps:get(org_id, ScopeB),
+    RespReq2 = call(?WRITE_UID, workspaces, <<"GET">>, bindings(OrgB), <<>>),
+    ?assertEqual(200, status_of(RespReq2)),
+    RowsB = maps:get(list, payload_of(RespReq2)),
+    ?assert(length(RowsB) >= 1),
+    ?assertEqual(0, length([R || R <- RowsB, maps:get(<<"is_default">>, R, missing) =:= true])),
+    ?assertEqual(
+        length(RowsB),
+        length([R || R <- RowsB, maps:get(<<"is_default">>, R, missing) =:= false])
+    ).
 
 journey_audit_row(Conn) ->
     Scope = seed_org(Conn, <<"aud">>),

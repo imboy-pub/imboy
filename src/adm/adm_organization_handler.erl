@@ -879,6 +879,8 @@ normalize_org_detail(Detail) ->
 normalize_member_row(Row) ->
     elib_id:tsid_keys_to_bin(Row, ?MEMBER_ID_KEYS).
 
+%% is_default（CP-CON-03）不在 TSID 键列表：boolean 原样透传（jsone 编码为
+%% JSON true/false），由 logic 层 SQL 以 organization_default_workspace 真源计算。
 -spec normalize_workspace_row(map()) -> map().
 normalize_workspace_row(Row) ->
     elib_id:tsid_keys_to_bin(Row, ?WORKSPACE_ID_KEYS).
