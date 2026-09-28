@@ -49,6 +49,8 @@
 -export([wall_clock_ms/0, monotonic_ms/0]).
 %% TSID-02：跨配置测试显式 reset（F-12：禁止静默重配节点偷跑）
 -export([reset_for_test/0]).
+%% TSID-04：reservation 计数（观测 instrumentation，非公开 API 契约）
+-export([reservation_count/0]).
 
 %% ===================================================================
 %% 位布局常量
@@ -162,31 +164,96 @@ init(Opts) ->
     persistent_term:put(?PT_NODE_ID, CombinedNode),
     persistent_term:put(?PT_DC_BITS, DcBits),
 
+    %% TSID-04：有界逻辑时间参数（默认为计划 §3.3 候选起点，由 TSID-10
+    %% 基准定标确认）。§5.6 不变量：max_batch_chunk <= (lead + 1) * 2048。
+    Lead = maps:get(max_logical_lead_ms, Opts, 5),
+    CapWait = maps:get(capacity_wait_timeout_ms, Opts, 100),
+    MaxChunk = maps:get(max_batch_chunk, Opts, (Lead + 1) * 2048),
+    case
+        is_integer(Lead) andalso Lead >= 0 andalso
+            is_integer(CapWait) andalso CapWait > 0 andalso
+            is_integer(MaxChunk) andalso MaxChunk > 0 andalso
+            MaxChunk =< (Lead + 1) * 2048
+    of
+        true ->
+            ok;
+        false ->
+            error(
+                {elib_tsid_invalid_config, #{
+                    max_logical_lead_ms => Lead,
+                    capacity_wait_timeout_ms => CapWait,
+                    max_batch_chunk => MaxChunk,
+                    constraint => {max_batch_chunk_max, (Lead + 1) * 2048}
+                }}
+            )
+    end,
+
     %% TSID-03：完整 runtime 一次发布。全部 label 共享同一全局 cursor
     %% （跨 name 数值零交集）；幂等 re-init 保留既有 cursor 不回退。
+    %% TSID-04：limits 亦纳入配置冻结（静默改限 = 配置漂移）。
     Existing = persistent_term:get(?PT_RUNTIME, undefined),
-    {Cursor, RegLock, ExistingNames} =
+    {Cursor, RegLock, Stats, ExistingNames, ExistingLimits} =
         case Existing of
             undefined ->
-                {atomics:new(1, [{signed, true}]), atomics:new(1, [{signed, true}]), []};
-            #{cursor := C, reg_lock := L, names := Ns} ->
-                {C, L, sets:to_list(Ns)}
+                {
+                    atomics:new(1, [{signed, true}]),
+                    atomics:new(1, [{signed, true}]),
+                    atomics:new(1, [{signed, true}]),
+                    [],
+                    undefined
+                };
+            #{cursor := C, reg_lock := L, stats := S, names := Ns} = H ->
+                {C, L, S, sets:to_list(Ns), #{
+                    max_logical_lead_ms => maps:get(max_logical_lead_ms, H),
+                    capacity_wait_timeout_ms => maps:get(capacity_wait_timeout_ms, H),
+                    max_batch_chunk => maps:get(max_batch_chunk, H)
+                }}
         end,
+    RequestedLimits = #{
+        max_logical_lead_ms => Lead,
+        capacity_wait_timeout_ms => CapWait,
+        max_batch_chunk => MaxChunk
+    },
+    case ExistingLimits =:= undefined orelse ExistingLimits =:= RequestedLimits of
+        true ->
+            ok;
+        false ->
+            error(
+                {elib_tsid_already_initialized, #{
+                    existing => ExistingLimits,
+                    requested => RequestedLimits
+                }}
+            )
+    end,
     AllNames = lists:usort([default | Names] ++ ExistingNames),
-    publish_runtime(Cursor, RegLock, CombinedNode, DcBits, AllNames),
+    publish_runtime(
+        Cursor, RegLock, Stats, CombinedNode, DcBits, AllNames, Lead, CapWait, MaxChunk
+    ),
     ok.
 
 %% @private 原子发布完整 runtime handle（单一 PT 键，读者见旧或新，无撕裂）
 -spec publish_runtime(
-    atomics:atomics_ref(), atomics:atomics_ref(), 0..1023, 0..10, [atom()]
+    atomics:atomics_ref(),
+    atomics:atomics_ref(),
+    atomics:atomics_ref(),
+    0..1023,
+    0..10,
+    [atom()],
+    non_neg_integer(),
+    pos_integer(),
+    pos_integer()
 ) -> ok.
-publish_runtime(Cursor, RegLock, CombinedNode, DcBits, AllNames) ->
+publish_runtime(Cursor, RegLock, Stats, CombinedNode, DcBits, AllNames, Lead, CapWait, MaxChunk) ->
     Handle = #{
         cursor => Cursor,
         reg_lock => RegLock,
+        stats => Stats,
         combined_node => CombinedNode,
         dc_bits => DcBits,
-        names => sets:from_list(AllNames, [{version, 2}])
+        names => sets:from_list(AllNames, [{version, 2}]),
+        max_logical_lead_ms => Lead,
+        capacity_wait_timeout_ms => CapWait,
+        max_batch_chunk => MaxChunk
     },
     persistent_term:put(?PT_RUNTIME, Handle),
     ok.
@@ -275,28 +342,45 @@ generate() ->
 %%   GroupId = elib_tsid:generate(group).
 -spec generate(atom()) -> pos_integer().
 generate(Name) when is_atom(Name) ->
-    NowRel = wall_clock_ms() - ?EPOCH_MS,
-    %% 时钟边界 fail-closed（F-07/F-08）：纪元前/越过 42-bit 上界
-    %% 拒绝签发，绝不掩码或借位越过 MAX_ID
-    case NowRel < 0 of
-        true -> error({elib_tsid_clock_before_epoch, #{now_rel => NowRel}});
-        false -> ok
-    end,
-    case NowRel > ?MAX_REL_TS of
-        true ->
-            error(
-                {elib_tsid_timestamp_exhausted, #{
-                    now_rel => NowRel, max_rel_ts => ?MAX_REL_TS
-                }}
-            );
-        false ->
-            ok
-    end,
+    Handle = require_runtime(Name),
+    #{combined_node := NodeId} = Handle,
+    Deadline = monotonic_ms() + maps:get(capacity_wait_timeout_ms, Handle),
+    {First, _Last} = reserve(Handle, 1, Deadline),
+    %% count=1：First == Last，直接展开单值
+    slot_to_id(First, NodeId).
+
+%% @doc 使用 default 生成器批量生成 N 个 TSID (有序)
+-spec generate_n(pos_integer()) -> [pos_integer()].
+generate_n(N) when N > 0 ->
+    generate_n(default, N).
+
+%% @doc 使用指定生成器批量生成 N 个 TSID (有序)
+%%
+%% TSID-04：线性 slot 一次 CAS 预留连续区间，本地纯计算展开 ID。
+%% 普通批量（<= max_batch_chunk）恰一次成功 CAS；超大 N 按最大安全
+%% 连续区间分有界 chunk，每个 chunk 从最新 cursor 重新 reserve。单次
+%% 调用返回严格升序；任一 chunk 失败即整批 typed 失败（已消耗 slot
+%% 成为合法跳号，绝不重复）。等待一律用 monotonic deadline，不用
+%% 墙钟测超时。
+-spec generate_n(atom(), pos_integer()) -> [pos_integer()].
+generate_n(Name, N) when is_atom(Name), N > 0 ->
+    Handle = require_runtime(Name),
+    #{combined_node := NodeId} = Handle,
+    MaxChunk = maps:get(max_batch_chunk, Handle),
+    Deadline = monotonic_ms() + maps:get(capacity_wait_timeout_ms, Handle),
+    lists:append([
+        materialize_range(First, Last, NodeId)
+     || {First, Last} <- [reserve(Handle, C, Deadline) || C <- chunk_sizes(N, MaxChunk)]
+    ]).
+
+%% @private label 校验 + runtime 读取（一次通过，chunk 循环前完成）
+-spec require_runtime(atom()) -> map().
+require_runtime(Name) ->
     case runtime_handle() of
-        {ok, #{cursor := Cursor, combined_node := NodeId, names := Names}} ->
+        {ok, #{names := Names} = Handle} ->
             case sets:is_element(Name, Names) of
                 true ->
-                    cas_loop(Cursor, NodeId, NowRel);
+                    Handle;
                 false ->
                     error(
                         {elib_tsid_generator_not_registered,
@@ -311,66 +395,123 @@ generate(Name) when is_atom(Name) ->
             )
     end.
 
-%% @doc 使用 default 生成器批量生成 N 个 TSID (有序)
--spec generate_n(pos_integer()) -> [pos_integer()].
-generate_n(N) when N > 0 ->
-    generate_n(default, N).
+%% @private 超大 N 分有界 chunk（每个 chunk <= max_batch_chunk）
+-spec chunk_sizes(pos_integer(), pos_integer()) -> [pos_integer()].
+chunk_sizes(N, MaxChunk) when N =< MaxChunk ->
+    [N];
+chunk_sizes(N, MaxChunk) ->
+    [MaxChunk | chunk_sizes(N - MaxChunk, MaxChunk)].
 
-%% @doc 使用指定生成器批量生成 N 个 TSID (有序)
--spec generate_n(atom(), pos_integer()) -> [pos_integer()].
-generate_n(Name, N) when is_atom(Name), N > 0 ->
-    [generate(Name) || _ <- lists:seq(1, N)].
-
-%% @private CAS 循环 — 核心算法
-cas_loop(StateRef, NodeId, NowRel) ->
-    OldState = atomics:get(StateRef, 1),
-    OldTs = OldState bsr ?SEQUENCE_BITS,
-    OldSeq = OldState band ?SEQUENCE_MASK,
-
-    %% 有效时间戳: 取 max(当前时间, 上次时间) — 绝不倒退
-    %% 这是时钟回拨保护的核心：NTP 校时导致系统时间倒退时，
-    %% 沿用上次时间戳继续递增序列号，保证唯一性
-    EffTs = max(NowRel, OldTs),
-
-    %% 计算新的 (时间戳, 序列号)
-    {NewTs, NewSeq} =
-        case EffTs of
-            OldTs when OldSeq >= ?SEQUENCE_MASK ->
-                %% 同毫秒 + 序列溢出 → 借用下一毫秒
-                {OldTs + 1, 0};
-            OldTs ->
-                %% 同毫秒 + 序列未满 → 递增
-                {OldTs, OldSeq + 1};
-            _ ->
-                %% 新毫秒 → 序列归零
-                {EffTs, 0}
-        end,
-
-    NewState = (NewTs bsl ?SEQUENCE_BITS) bor NewSeq,
-
-    %% 42-bit 上界 fail-closed（F-07/F-08）：序列溢出借用下一毫秒不得
-    %% 越过 MAX_REL_TS；越过即拒绝签发（下一合法时刻要到 2164 年之后）
-    case NewTs > ?MAX_REL_TS of
+%% @private 单次 reservation：读时钟 → 纯 candidate → lead 检查 → CAS。
+%% CAS 冲突后从墙钟重读（F-05：绝不复用陈旧墙钟自旋）；冲突重试受
+%% monotonic deadline 预算约束，无饥饿自旋。
+-spec reserve(map(), pos_integer(), integer()) ->
+    {FirstSlot :: non_neg_integer(), LastSlot :: non_neg_integer()}.
+reserve(#{cursor := Cursor} = Handle, Count, Deadline) ->
+    Now = wall_clock_ms() - ?EPOCH_MS,
+    case Now < 0 of
+        true -> error({elib_tsid_clock_before_epoch, #{now_rel => Now}});
+        false -> ok
+    end,
+    case Now > ?MAX_REL_TS of
         true ->
             error(
                 {elib_tsid_timestamp_exhausted, #{
-                    new_ts => NewTs, max_rel_ts => ?MAX_REL_TS
+                    now_rel => Now, max_rel_ts => ?MAX_REL_TS
                 }}
             );
         false ->
             ok
     end,
+    Old = atomics:get(Cursor, 1),
+    case reserve_candidate(Old, Now, Count) of
+        {ok, First, Last} ->
+            commit_reserve(Handle, Old, First, Last, Deadline, Count);
+        {error, Reason} ->
+            error(Reason)
+    end.
 
-    %% 原子 CAS: 只有状态未被其他进程改变时才成功
-    case atomics:compare_exchange(StateRef, 1, OldState, NewState) of
-        ok ->
-            %% 成功 → 组装 64-bit ID
-            (NewTs bsl ?TIMESTAMP_SHIFT) bor
-                (NodeId bsl ?NODE_SHIFT) bor
-                NewSeq;
-        _ ->
-            %% 另一个进程抢先更新 → 重试 (无锁自旋)
-            cas_loop(StateRef, NodeId, NowRel)
+%% @private lead 检查 + CAS 提交（单值与 chunk 共用）
+commit_reserve(Handle, Old, First, Last, Deadline, Count) ->
+    #{cursor := Cursor, stats := Stats, max_logical_lead_ms := MaxLead} = Handle,
+    Now = wall_clock_ms() - ?EPOCH_MS,
+    Lead = (Last bsr ?SEQUENCE_BITS) - Now,
+    case Lead > MaxLead of
+        true ->
+            case wait_step(Deadline, Lead - MaxLead) of
+                ok ->
+                    reserve(Handle, Count, Deadline);
+                timeout ->
+                    error(
+                        {elib_tsid_capacity_exhausted, #{
+                            lead_ms => Lead,
+                            max_logical_lead_ms => MaxLead,
+                            phase => clock_wait
+                        }}
+                    )
+            end;
+        false ->
+            case atomics:compare_exchange(Cursor, 1, Old, Last) of
+                ok ->
+                    _ = atomics:add(Stats, 1, 1),
+                    {First, Last};
+                _Other ->
+                    %% 冲突：deadline 预算内用刷新后的墙钟重试（F-05）
+                    case monotonic_ms() >= Deadline of
+                        true ->
+                            error(
+                                {elib_tsid_capacity_exhausted, #{
+                                    phase => cas_contention
+                                }}
+                            );
+                        false ->
+                            reserve(Handle, Count, Deadline)
+                    end
+            end
+    end.
+
+%% @private 无 busy-spin 等待：睡眠由 deadline 剩余量约束；单调钟停滞
+%% （异常/seam 冻结）立即 fail-closed，绝不无限等待。
+%% 停滞检测：真实单调钟用微秒粒度（毫秒截断会把 <1ms 睡眠误判为
+%% 停滞）；seam 注入时 seam 值未变即停滞。
+-spec wait_step(integer(), pos_integer()) -> ok | timeout.
+wait_step(Deadline, NeededMs) ->
+    Before = monotonic_ms(),
+    case Before >= Deadline of
+        true ->
+            timeout;
+        false ->
+            Remaining = Deadline - Before,
+            Sleep = erlang:min(erlang:max(1, NeededMs), Remaining),
+            ok = timer:sleep(Sleep),
+            case monotonic_advanced(Before) of
+                true -> ok;
+                false -> timeout
+            end
+    end.
+
+-spec monotonic_advanced(integer()) -> boolean().
+monotonic_advanced(BeforeMs) ->
+    case get(?TEST_MONOTONIC_MS) of
+        undefined ->
+            erlang:monotonic_time(microsecond) > BeforeMs * 1000;
+        _SeamValue ->
+            monotonic_ms() > BeforeMs
+    end.
+
+%% @private slot 区间本地展开为 ID 列表（纯计算，无共享状态访问）
+-spec materialize_range(
+    non_neg_integer(), non_neg_integer(), 0..1023
+) -> [pos_integer()].
+materialize_range(First, Last, NodeId) ->
+    [slot_to_id(S, NodeId) || S <- lists:seq(First, Last)].
+
+%% @private reservation 成功计数（观测 instrumentation；测试与监控共用）
+-spec reservation_count() -> non_neg_integer().
+reservation_count() ->
+    case runtime_handle() of
+        {ok, #{stats := Stats}} -> atomics:get(Stats, 1);
+        error -> 0
     end.
 
 %% ===================================================================

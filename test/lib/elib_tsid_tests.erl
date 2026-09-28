@@ -730,3 +730,289 @@ register_before_init_rejected_test() ->
         {elib_tsid_not_initialized, _},
         catch_typed(fun() -> elib_tsid:register(early_label) end)
     ).
+
+%% ===================================================================
+%% TSID-04：batch reservation 与有界逻辑时间（T-101..T-109）
+%%
+%% slot 模型：一次 CAS 预留连续区间本地展开；lead 有界；等待用
+%% monotonic deadline；超大 N 分有界 chunk。默认参数为计划 §3.3 候选
+%% 起点值（lead=5 / capacity_wait=100 / chunk=(5+1)*2048），由 TSID-10
+%% 基准定标后确认。
+%% ===================================================================
+
+-define(LEAD_MS, 5).
+-define(CAP_WAIT_MS, 100).
+-define(MAX_CHUNK, ((?LEAD_MS + 1) * 2048)).
+
+%% T-101 各规模普通 batch：可容纳 chunk 恰一次成功 CAS；严格升序且唯一
+batch_sizes_one_cas_test() ->
+    ?SETUP(),
+    lists:foreach(
+        fun(N) ->
+            Before = elib_tsid:reservation_count(),
+            Ids = elib_tsid:generate_n(N),
+            After = elib_tsid:reservation_count(),
+            ?assertEqual(N, length(Ids)),
+            ?assertEqual(N, length(lists:usort(Ids))),
+            ?assertEqual(Ids, lists:sort(Ids)),
+            %% 普通 batch（<= max_batch_chunk）必须恰一次成功 reservation
+            ?assertEqual(1, After - Before)
+        end,
+        [1, 2, 2048, 2049, 10000]
+    ).
+
+%% T-102 batch 从 seq=2047 跨毫秒：展开 exact 无洞无重
+batch_spans_ms_exact_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+    with_fixed_clock(?EPOCH_MS + 200000, fun() ->
+        %% 填满 seq 0..2047（一次 2048 batch）
+        Full = elib_tsid:generate_n(2048),
+        ?assertEqual(2048, length(lists:usort(Full))),
+        %% 下一个 batch 从下一毫秒 seq 0 开始
+        Next = elib_tsid:generate_n(2),
+        #{timestamp := TsA, sequence := SeqA} = elib_tsid:parse(hd(Next)),
+        #{timestamp := TsB, sequence := SeqB} = elib_tsid:parse(lists:last(Next)),
+        ?assertEqual(?EPOCH_MS + 200001, TsA),
+        ?assertEqual(0, SeqA),
+        ?assertEqual(?EPOCH_MS + 200001, TsB),
+        ?assertEqual(1, SeqB),
+        %% 与前一批零重叠
+        ?assertEqual(2050, length(lists:usort(Full ++ Next)))
+    end).
+
+%% T-104/T-00 竞争者不再嵌入 batch 间隙：区间线性化
+batch_no_interleave_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{
+        dc_id => 1,
+        node_id => 1,
+        dc_bits => 3,
+        names => [batchprobe]
+    }),
+    Self = self(),
+    _Comp = spawn(fun() ->
+        Ids = [elib_tsid:generate(batchprobe) || _ <- lists:seq(1, 10000)],
+        Self ! {comp_ids, Ids}
+    end),
+    %% 单 chunk 批量（<= max_batch_chunk=12288）：一次 CAS 线性化，
+    %% 竞争者 ID 绝不嵌入区间内部（多 chunk 批量的块间插入是合法的）
+    Batch = elib_tsid:generate_n(batchprobe, 10000),
+    CompIds =
+        receive
+            {comp_ids, Ids} -> Ids
+        after 30000 -> error(timeout)
+        end,
+    BSet = sets:from_list(Batch, [{version, 2}]),
+    Inside = [C || C <- CompIds, not sets:is_element(C, BSet), inside_gap(C, Batch)],
+    ?assertEqual(0, length(Inside)),
+    ?assertEqual(20000, length(lists:usort(Batch ++ CompIds))).
+
+inside_gap(C, Batch) ->
+    {Lo, Hi} = find_gap(C, Batch, 20000),
+    Lo =/= none.
+
+find_gap(_C, _Batch, 0) ->
+    {none, none};
+find_gap(C, [B1, B2 | _Rest], _Budget) when C > B1, C < B2 ->
+    {B1, B2};
+find_gap(C, [_B1 | Rest], Budget) ->
+    find_gap(C, Rest, Budget - 1);
+find_gap(_C, _Batch, _) ->
+    {none, none}.
+
+%% T-106 回拨三态：小回拨继续 / 恰边界继续 / 越界等待超时 typed 失败
+rollback_three_states_test() ->
+    lists:foreach(
+        fun({Rollback, Expect}) ->
+            elib_tsid:reset_for_test(),
+            ok = elib_tsid:init(#{
+                dc_id => 1,
+                node_id => 1,
+                dc_bits => 3,
+                capacity_wait_timeout_ms => 10
+            }),
+            Base = ?EPOCH_MS + 300000,
+            %% 固定时钟下生成 1 个 ID：cursor 停在 Base 毫秒
+            with_fixed_clock(Base, fun() -> _ = elib_tsid:generate() end),
+            %% 时钟回拨 Rollback 毫秒：lead = Rollback
+            with_fixed_clock(Base - Rollback, fun() ->
+                case Expect of
+                    proceed ->
+                        Id = elib_tsid:generate(),
+                        %% ID 时间戳不随回拨倒退（>= cursor 毫秒 Base）
+                        ?assert(elib_tsid:timestamp(Id) >= Base);
+                    timeout ->
+                        ?assertMatch(
+                            {elib_tsid_capacity_exhausted, _},
+                            catch_typed(fun() -> elib_tsid:generate() end)
+                        )
+                end
+            end)
+        end,
+        [{3, proceed}, {?LEAD_MS, proceed}, {?LEAD_MS + 1, timeout}]
+    ).
+
+%% T-107 持续超 2048/ms：lead 永不超过配置上限；不无限借未来
+sustained_overload_lead_bounded_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{
+        dc_id => 1,
+        node_id => 1,
+        dc_bits => 3,
+        capacity_wait_timeout_ms => 10
+    }),
+    Clock = ?EPOCH_MS + 400000,
+    with_fixed_clock(Clock, fun() ->
+        %% 冻结时钟下持续生成：lead 逼近上限后必须 typed 失败
+        {Ids, Err} = overload_loop([], none),
+        %% 每个已发 ID 的时间戳都不超过时钟 + lead 上限
+        lists:foreach(
+            fun(Id) ->
+                ?assert(elib_tsid:timestamp(Id) =< Clock + ?LEAD_MS)
+            end,
+            Ids
+        ),
+        ?assertMatch({elib_tsid_capacity_exhausted, _}, Err),
+        %% 确实生成过多批（非空转）
+        ?assert(length(Ids) >= 2048)
+    end).
+
+overload_loop(Acc, Err) ->
+    try elib_tsid:generate() of
+        Id ->
+            case length(Acc) > 50000 of
+                true -> {lists:reverse(Acc), overflow_runaway};
+                false -> overload_loop([Id | Acc], Err)
+            end
+    catch
+        error:{elib_tsid_capacity_exhausted, _} = E -> {lists:reverse(Acc), E}
+    end.
+
+%% T-108 超大 N：完整 list 严格升序；CAS 次数 = chunk 数而非 N
+oversized_batch_chunks_test() ->
+    ?SETUP(),
+    N = 30000,
+    ExpectedChunks = ceil(N / ?MAX_CHUNK),
+    Before = elib_tsid:reservation_count(),
+    Ids = elib_tsid:generate_n(N),
+    After = elib_tsid:reservation_count(),
+    ?assertEqual(N, length(Ids)),
+    ?assertEqual(N, length(lists:usort(Ids))),
+    ?assertEqual(Ids, lists:sort(Ids)),
+    ?assertEqual(ExpectedChunks, After - Before).
+
+%% T-109 并发 batch：各 reservation 区间两两不重叠（线性化），不断言到达顺序
+concurrent_batch_disjoint_ranges_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{
+        dc_id => 1, node_id => 1, dc_bits => 3, names => [batchprobe]
+    }),
+    Self = self(),
+    Workers = 16,
+    PerWorker = 5000,
+    [
+        spawn(fun() ->
+            Ids = elib_tsid:generate_n(batchprobe, PerWorker),
+            Self ! {range, hd(Ids), lists:last(Ids), Ids}
+        end)
+     || _ <- lists:seq(1, Workers)
+    ],
+    Ranges = [
+        receive
+            {range, Lo, Hi, _Ids} -> {Lo, Hi}
+        end
+     || _ <- lists:seq(1, Workers)
+    ],
+    %% 两两不重叠
+    lists:foreach(
+        fun({I, {Lo1, Hi1}}) ->
+            lists:foreach(
+                fun
+                    ({J, {Lo2, Hi2}}) when J > I ->
+                        ?assert(Hi1 < Lo2 orelse Hi2 < Lo1);
+                    (_) ->
+                        ok
+                end,
+                lists:zip(lists:seq(1, Workers), Ranges)
+            )
+        end,
+        lists:zip(lists:seq(1, Workers), Ranges)
+    ).
+
+%% 调度器响应性：重负载下普通 sleep 不被长时间饿死
+scheduler_responsiveness_probe_test() ->
+    ?SETUP(),
+    Self = self(),
+    Load = [
+        spawn(fun() ->
+            _ = elib_tsid:generate_n(5000),
+            Self ! done
+        end)
+     || _ <- lists:seq(1, 8)
+    ],
+    T0 = erlang:monotonic_time(millisecond),
+    ok = timer:sleep(20),
+    Elapsed = erlang:monotonic_time(millisecond) - T0,
+    ?assert(Elapsed < 1000, "scheduler starved under load"),
+    [
+        receive
+            done -> ok
+        end
+     || _ <- lists:seq(1, 8)
+    ],
+    _ = Load,
+    ok.
+
+%% init 参数校验：非法 lead/chunk 组合拒绝启动
+init_limit_validation_test() ->
+    elib_tsid:reset_for_test(),
+    ?assertMatch(
+        {elib_tsid_invalid_config, _},
+        catch_typed(fun() ->
+            elib_tsid:init(#{
+                dc_id => 1, node_id => 1, dc_bits => 3, max_batch_chunk => 99999999
+            })
+        end)
+    ).
+
+%% T-103 混合并发：32 workers 混合 generate/generate_n，>= 1M IDs 全局唯一。
+%% 本测试验证唯一性与顺序，非容量行为：聚合需求 ~2M/s 在 2048/ms 节点
+%% 容量上限附近，deadline 放宽到 5000ms 避免竞争不公造成 capacity_exhausted
+%% （deadline 语义由 rollback 三态测试单独覆盖）。
+mixed_concurrency_1m_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{
+        dc_id => 1,
+        node_id => 1,
+        dc_bits => 3,
+        names => [user, group_info, attachment],
+        capacity_wait_timeout_ms => 5000
+    }),
+    Self = self(),
+    Workers = 32,
+    [
+        spawn(fun() ->
+            Ids = lists:append([
+                case I rem 3 of
+                    0 -> [elib_tsid:generate(user)];
+                    1 -> elib_tsid:generate_n(group_info, 200);
+                    2 -> elib_tsid:generate_n(attachment, 600)
+                end
+             || I <- lists:seq(1, 120)
+            ]),
+            Self ! {ids, Ids}
+        end)
+     || _ <- lists:seq(1, Workers)
+    ],
+    All = collect_ids_long(Workers, []),
+    ?assert(length(All) >= 1000000, "1M IDs 未达成"),
+    ?assertEqual(length(All), length(lists:usort(All))).
+
+collect_ids_long(0, Acc) ->
+    Acc;
+collect_ids_long(N, Acc) ->
+    receive
+        {ids, Ids} -> collect_ids_long(N - 1, Ids ++ Acc)
+    after 60000 -> error(timeout)
+    end.
