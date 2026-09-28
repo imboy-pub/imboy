@@ -290,6 +290,25 @@ a01_token_and_origin_tests(_) ->
             end)
         end},
 
+        %% CP-SEC-05（DEC-VISIT-TOKEN=FIX_401_VISIT_TOKEN_INVALID）：伪造
+        %% `visit_token_invalid`（与缺头 401、吊销/过期 401 同凭证面）。
+        {"A01 forged visit token is 401 visit_token_invalid (contract)", fun() ->
+            meck:expect(customer_service_facade, widget_create_session, fun(_Org, _Params) ->
+                {error, visit_token_invalid}
+            end),
+            ?S:with_listener(widget, widget_sessions, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/widget/sessions">>,
+                    #{<<"installation_id">> => ?INSTALL},
+                    #{<<"x-cs-visit-token">> => <<"wtok-forged-never-issued">>}
+                ),
+                ?assertEqual(401, ?S:status(Resp)),
+                ?assertEqual(<<"visit_token_invalid">>, ?S:msg(Resp))
+            end)
+        end},
+
         {"CSD-BE-01S session create zero-org body (OrgId placeholder 0 to facade)", fun() ->
             meck:expect(customer_service_facade, widget_create_session, fun(Org, Params) ->
                 %% CSD-BE-01S：零 org 申报面——OrgId 占位 0，租户由 facade

@@ -255,10 +255,7 @@ do_send_push(Row, Title, Body, Data) when is_map(Data) ->
         3000
     ).
 
-%% @doc JPush 分派（EPGZ-07）：错误分类见 push_provider_jpush:send/3
-send_jpush(Token, Title, Body) ->
-    send_jpush(Token, Title, Body, #{}).
-
+%% @doc JPush 分派（EPGZ-07）：错误分类见 push_provider_jpush:send/4
 send_jpush(Token, Title, Body, Data) ->
     case push_provider_jpush:send(Token, Title, Body, Data) of
         ok ->

@@ -257,6 +257,14 @@ a02_dispatch_claim_picks_real_seat() ->
     Org = org(Scope),
     Service = maps:get(service_identity_id, Scope),
     try
+        %% CS-BE-05（845cd9b1 起默认派单先做 presence 派生）：无 presence 行
+        %% = 从未上报心跳 = offline，从严过滤 → no_seat_available。
+        %% 派单前为该坐席种新鲜心跳（at 与 claim 注入时钟一致 → online）。
+        {ok, _} = cs_seat_app:seat_heartbeat(Org, #{
+            workspace_id => ws(Scope),
+            business_identity_id => Service,
+            at => 1700000000
+        }),
         SessionId = open_session_via_app(Scope),
         %% 不指定坐席：走 list_dispatchable_seats + least-active（真库计数）
         {ok, Active} = cs_session_app:claim(Org, #{

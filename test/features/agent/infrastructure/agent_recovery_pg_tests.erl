@@ -52,8 +52,8 @@ connect_required() ->
         password => os:getenv("AG31_PG_PASSWORD", ""),
         database => os:getenv("AG31_PG_DB")
     },
-    {ok, C1} = epgsql:connect(Opts),
-    {ok, C2} = epgsql:connect(Opts),
+    {ok, C1} = inttest_marker_db:safe_connect(Opts),
+    {ok, C2} = inttest_marker_db:safe_connect(Opts),
     fixture_reset(C1),
     seed(C1),
     [C1, C2].
@@ -138,7 +138,11 @@ t_chain_head([C1, _C2]) ->
     {ok, _, [{Version, Dirty}]} = epgsql:equery(
         C1, "SELECT version, dirty FROM schema_migrations", []
     ),
-    ?assertEqual(133, Version),
+    %% A1c：只钉「本域归属迁移（133）已应用」，不钉 head 等值——共享 DB 的
+    %% schema_migrations head 会随后续迁移（134-150）继续前移（agent_run_pg_tests
+    %% 的 t_chain_head/1 于 db7516c4/64dd8060 已改同款动态下界；本套件漏改，
+    %% 在 head 前移到 150 后恒 fail）。
+    ?assert(Version >= 133),
     ?assertEqual(false, Dirty),
     fixture_reset(C1),
     {ok, _, [{Residue}]} = epgsql:equery(

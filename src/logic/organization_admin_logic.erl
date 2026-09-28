@@ -30,22 +30,23 @@
     admin_invitation_list/3,
     admin_department_list/2,
     admin_workspace_page/3,
-    %% 写（全部走组织行锁 + 与 app 层同构的状态机裁决）
+    %% 写（全部走组织行锁 + 与 app 层同构的状态机裁决；治理写均带 AuditCtx，
+    %% 平台审计在业务事务内经 adm_operation_log_ds:insert_tx 写入——CP-ASSET-05）
     admin_create/5,
     admin_create_pending_owner/5,
     admin_create_pending_owner/6,
-    admin_archive/2,
-    admin_restore/2,
-    admin_transfer_owner/3,
-    admin_member_suspend/3,
-    admin_member_restore/3,
-    admin_member_remove/3,
-    admin_invitation_create/4,
-    admin_invitation_cancel/3,
-    admin_department_create/3,
-    admin_department_rename/4,
-    admin_department_move/4,
-    admin_department_archive/3
+    admin_archive/3,
+    admin_restore/3,
+    admin_transfer_owner/4,
+    admin_member_suspend/4,
+    admin_member_restore/4,
+    admin_member_remove/4,
+    admin_invitation_create/5,
+    admin_invitation_cancel/4,
+    admin_department_create/4,
+    admin_department_rename/5,
+    admin_department_move/5,
+    admin_department_archive/4
 ]).
 
 -include("log.hrl").
@@ -275,6 +276,21 @@ admin_department_list(OrgId, Status) ->
 %% 读：组织下 Workspace 只读关系事实（分页）
 %% ===================================================================
 
+%% is_default 投影（CP-CON-03）：每行的「是否本 Org 默认 Workspace」由服务端
+%% 真源 organization_default_workspace（迁移 00000130；PK=organization_id，
+%% 每 Org 至多一条显式默认关系）经 LEFT JOIN 计算，不回落 min-ID 推导
+%% （organization_default_workspace_pg 读取同口径）。无默认关系的 Org（0 条
+%% 合法）全部投影 false；默认指向 archived ws 的历史态照实投影 true（真源
+%% 如实，归档交接由 workspace 域守卫另行保证）。行数不变：JOIN 键含
+%% workspace_id，每行至多匹配一条（PK 唯一）。
+-define(ADMIN_WORKSPACE_PAGE_SQL,
+    <<"SELECT w.id, w.name, w.owner_id, w.organization_id, w.status,",
+        " w.created_at, w.updated_at,", " (odw.workspace_id IS NOT NULL) AS is_default",
+        " FROM workspace w", " LEFT JOIN organization_default_workspace odw",
+        "  ON odw.organization_id = w.organization_id AND odw.workspace_id = w.id",
+        " WHERE w.organization_id = $1", " ORDER BY w.id DESC LIMIT $2 OFFSET $3">>
+).
+
 -spec admin_workspace_page(integer(), integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 admin_workspace_page(OrgId, Page, Size) ->
@@ -290,11 +306,7 @@ admin_workspace_page(OrgId, Page, Size) ->
                     {ok, #{<<"count">> := C}} -> C;
                     _ -> 0
                 end,
-            DataSql =
-                <<"SELECT id, name, owner_id, organization_id, status, created_at, updated_at",
-                    " FROM workspace WHERE organization_id = $1",
-                    " ORDER BY id DESC LIMIT $2 OFFSET $3">>,
-            case elib_pg:query(DataSql, [OrgId, Size1, (Page1 - 1) * Size1]) of
+            case elib_pg:query(?ADMIN_WORKSPACE_PAGE_SQL, [OrgId, Size1, (Page1 - 1) * Size1]) of
                 {ok, Items} ->
                     TotalPage =
                         case Total > 0 of
@@ -835,40 +847,53 @@ valid_name(_) ->
 %% ===================================================================
 %% 写：archive / restore（幂等；镜像 organization_lifecycle 状态机，平台侧
 %% 无租户 actor 校验；复用 lifecycle_pg 锁与 set_status 原语）
+%% 平台审计（CP-ASSET-05）：状态迁移与 adm_operation_log_ds:insert_tx 同一
+%% 事务提交，审计写入失败 throw({abort_tx,{audit_failed,_}}) ⇒ 状态迁移一并回滚。
 %% ===================================================================
 
--spec admin_archive(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
-admin_archive(_AdmUserId, OrgId) ->
-    transition(OrgId, <<"archived">>).
+-spec admin_archive(integer(), integer(), map()) -> {ok, map()} | {error, {integer(), binary()}}.
+admin_archive(AdmUserId, OrgId, AuditCtx) ->
+    transition(AdmUserId, OrgId, <<"archived">>, AuditCtx).
 
--spec admin_restore(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
-admin_restore(_AdmUserId, OrgId) ->
-    transition(OrgId, <<"active">>).
+-spec admin_restore(integer(), integer(), map()) -> {ok, map()} | {error, {integer(), binary()}}.
+admin_restore(AdmUserId, OrgId, AuditCtx) ->
+    transition(AdmUserId, OrgId, <<"active">>, AuditCtx).
 
-transition(OrgId, TargetStatus) when is_integer(OrgId), OrgId > 0 ->
+transition(AdmUserId, OrgId, TargetStatus, AuditCtx) when is_integer(OrgId), OrgId > 0 ->
+    Action =
+        case TargetStatus of
+            <<"archived">> -> <<"archive">>;
+            <<"active">> -> <<"restore">>
+        end,
     Tx =
         fun(Conn) ->
-            case organization_lifecycle_pg:lock_organization_tx(Conn, OrgId) of
-                {ok, Org} ->
-                    case maps:get(<<"status">>, Org) of
-                        TargetStatus ->
-                            %% 幂等重放：状态未变，零写入（与 app 层同口径）
-                            {ok, {Org, false}};
-                        _Current ->
-                            case
-                                organization_lifecycle_pg:set_status_tx(Conn, OrgId, TargetStatus)
-                            of
-                                {ok, Updated} ->
-                                    {ok, {Updated, true}};
-                                {error, Reason} ->
-                                    throw({abort_tx, {internal, Reason}})
-                            end
-                    end;
-                {error, not_found} ->
-                    abort(404, <<"Organization 不存在"/utf8>>);
-                {error, Reason} ->
-                    throw({abort_tx, {internal, Reason}})
-            end
+            Res =
+                case organization_lifecycle_pg:lock_organization_tx(Conn, OrgId) of
+                    {ok, Org} ->
+                        case maps:get(<<"status">>, Org) of
+                            TargetStatus ->
+                                %% 幂等重放：状态未变，零写入（与 app 层同口径）
+                                {ok, {Org, false}};
+                            _Current ->
+                                case
+                                    organization_lifecycle_pg:set_status_tx(
+                                        Conn, OrgId, TargetStatus
+                                    )
+                                of
+                                    {ok, Updated} ->
+                                        {ok, {Updated, true}};
+                                    {error, Reason} ->
+                                        throw({abort_tx, {internal, Reason}})
+                                end
+                        end;
+                    {error, not_found} ->
+                        abort(404, <<"Organization 不存在"/utf8>>);
+                    {error, Reason} ->
+                        throw({abort_tx, {internal, Reason}})
+                end,
+            %% 平台审计（事务内；幂等重放同样留痕）：失败整事务回滚
+            ok = audit_governance_tx(Conn, AdmUserId, Action, OrgId, #{}, AuditCtx),
+            Res
         end,
     case elib_pg:with_tx(Tx) of
         {ok, {_Org, Changed}} ->
@@ -891,7 +916,7 @@ transition(OrgId, TargetStatus) when is_integer(OrgId), OrgId > 0 ->
             _ = ?ERROR_LOG([organization_admin_transition_failed, OrgId, TargetStatus, Reason]),
             {error, {500, <<"操作失败，请稍后重试"/utf8>>}}
     end;
-transition(_, _) ->
+transition(_, _, _, _) ->
     {error, {400, <<"organization_id 必须是正整数"/utf8>>}}.
 
 %% ===================================================================
@@ -904,24 +929,39 @@ transition(_, _) ->
 %% （expected-version 语义 app 层即不存在，此处如实不提供）。
 %% ===================================================================
 
--spec admin_transfer_owner(integer(), integer(), integer()) ->
+-spec admin_transfer_owner(integer(), integer(), integer(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_transfer_owner(_AdmUserId, OrgId, TargetUid) when
+admin_transfer_owner(AdmUserId, OrgId, TargetUid, AuditCtx) when
     is_integer(OrgId), OrgId > 0, is_integer(TargetUid), TargetUid > 0
 ->
     Tx =
         fun(Conn) ->
-            case organization_owner_store:lock_organization_tx(Conn, OrgId) of
-                {ok, #{<<"status">> := <<"active">>} = OrgRow} ->
-                    CurrentOwner = maps:get(<<"owner_id">>, OrgRow),
-                    transfer_locked(Conn, OrgId, CurrentOwner, TargetUid);
-                {ok, _Archived} ->
-                    abort(409, <<"Organization 已归档，不能转移 Owner"/utf8>>);
-                {error, not_found} ->
-                    abort(404, <<"Organization 不存在"/utf8>>);
-                {error, Reason1} ->
-                    throw({abort_tx, {internal, Reason1}})
-            end
+            Res =
+                case organization_owner_store:lock_organization_tx(Conn, OrgId) of
+                    {ok, #{<<"status">> := <<"active">>} = OrgRow} ->
+                        CurrentOwner = maps:get(<<"owner_id">>, OrgRow),
+                        transfer_locked(Conn, OrgId, CurrentOwner, TargetUid);
+                    {ok, _Archived} ->
+                        abort(409, <<"Organization 已归档，不能转移 Owner"/utf8>>);
+                    {error, not_found} ->
+                        abort(404, <<"Organization 不存在"/utf8>>);
+                    {error, Reason1} ->
+                        throw({abort_tx, {internal, Reason1}})
+                end,
+            %% 平台审计（事务内；CP-ASSET-05）：失败整事务回滚
+            {ok, TransferInfo} = Res,
+            ok = audit_governance_tx(
+                Conn,
+                AdmUserId,
+                <<"owner_transfer">>,
+                OrgId,
+                #{
+                    <<"target_user_id">> => TargetUid,
+                    <<"previous_owner_id">> => maps:get(previous_owner_id, TransferInfo, 0)
+                },
+                AuditCtx
+            ),
+            Res
         end,
     case elib_pg:with_tx(Tx) of
         {ok, Result} when is_map(Result) ->
@@ -941,7 +981,7 @@ admin_transfer_owner(_AdmUserId, OrgId, TargetUid) when
             _ = ?ERROR_LOG([organization_admin_owner_transfer_failed, OrgId, TargetUid, Reason]),
             {error, {500, <<"Owner 转移失败，请稍后重试"/utf8>>}}
     end;
-admin_transfer_owner(_, _, _) ->
+admin_transfer_owner(_, _, _, _) ->
     {error, {400, <<"organization_id 和 user_id 必须是正整数"/utf8>>}}.
 
 transfer_locked(Conn, OrgId, CurrentOwner, TargetUid) ->
@@ -997,37 +1037,49 @@ do_transfer_locked(Conn, OrgId, CurrentOwner, TargetUid) ->
 %% 避免把 DB 的 23514 当内部错误——与 app 层同口径）。
 %% ===================================================================
 
--spec admin_member_suspend(integer(), integer(), integer()) ->
+-spec admin_member_suspend(integer(), integer(), integer(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_member_suspend(_AdmUserId, OrgId, TargetUid) ->
-    member_transition(OrgId, TargetUid, suspend).
+admin_member_suspend(AdmUserId, OrgId, TargetUid, AuditCtx) ->
+    member_transition(AdmUserId, OrgId, TargetUid, suspend, AuditCtx).
 
--spec admin_member_restore(integer(), integer(), integer()) ->
+-spec admin_member_restore(integer(), integer(), integer(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_member_restore(_AdmUserId, OrgId, TargetUid) ->
-    member_transition(OrgId, TargetUid, restore).
+admin_member_restore(AdmUserId, OrgId, TargetUid, AuditCtx) ->
+    member_transition(AdmUserId, OrgId, TargetUid, restore, AuditCtx).
 
--spec admin_member_remove(integer(), integer(), integer()) ->
+-spec admin_member_remove(integer(), integer(), integer(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_member_remove(_AdmUserId, OrgId, TargetUid) ->
-    member_transition(OrgId, TargetUid, remove).
+admin_member_remove(AdmUserId, OrgId, TargetUid, AuditCtx) ->
+    member_transition(AdmUserId, OrgId, TargetUid, remove, AuditCtx).
 
-member_transition(OrgId, TargetUid, Action) when
+member_transition(AdmUserId, OrgId, TargetUid, Action, AuditCtx) when
     is_integer(OrgId), OrgId > 0, is_integer(TargetUid), TargetUid > 0
 ->
     Tx =
         fun(Conn) ->
-            %% 组织行先锁 + archived 门禁（C16：归档禁新写）
-            case organization_lifecycle_pg:lock_organization_tx(Conn, OrgId) of
-                {ok, #{<<"status">> := <<"active">>}} ->
-                    member_transition_locked(Conn, OrgId, TargetUid, Action);
-                {ok, _Archived} ->
-                    abort(409, <<"Organization 已归档，成员管理被拒绝"/utf8>>);
-                {error, not_found} ->
-                    abort(404, <<"Organization 不存在"/utf8>>);
-                {error, Reason1} ->
-                    throw({abort_tx, {internal, Reason1}})
-            end
+            Res =
+                %% 组织行先锁 + archived 门禁（C16：归档禁新写）
+                case organization_lifecycle_pg:lock_organization_tx(Conn, OrgId) of
+                    {ok, #{<<"status">> := <<"active">>}} ->
+                        member_transition_locked(Conn, OrgId, TargetUid, Action);
+                    {ok, _Archived} ->
+                        abort(409, <<"Organization 已归档，成员管理被拒绝"/utf8>>);
+                    {error, not_found} ->
+                        abort(404, <<"Organization 不存在"/utf8>>);
+                    {error, Reason1} ->
+                        throw({abort_tx, {internal, Reason1}})
+                end,
+            %% 平台审计（事务内；CP-ASSET-05）：失败整事务回滚
+            {ok, _} = Res,
+            ok = audit_governance_tx(
+                Conn,
+                AdmUserId,
+                member_action_name(Action),
+                OrgId,
+                #{<<"target_user_id">> => TargetUid},
+                AuditCtx
+            ),
+            Res
         end,
     case elib_pg:with_tx(Tx) of
         {ok, Result} when is_map(Result) ->
@@ -1042,8 +1094,12 @@ member_transition(OrgId, TargetUid, Action) when
             _ = ?ERROR_LOG([organization_admin_member_failed, Action, OrgId, TargetUid, Reason]),
             {error, {500, <<"操作失败，请稍后重试"/utf8>>}}
     end;
-member_transition(_, _, _) ->
+member_transition(_, _, _, _, _) ->
     {error, {400, <<"organization_id 和 user_id 必须是正整数"/utf8>>}}.
+
+member_action_name(suspend) -> <<"member_suspend">>;
+member_action_name(restore) -> <<"member_restore">>;
+member_action_name(remove) -> <<"member_remove">>.
 
 member_transition_locked(Conn, OrgId, TargetUid, Action) ->
     case organization_member_repo:find_for_update_tx(Conn, OrgId, TargetUid, <<"role,status">>) of
@@ -1156,9 +1212,9 @@ member_not_active_msg() ->
 %% handler 层。token 明文只返回一次；digest 不出投影）。
 %% ===================================================================
 
--spec admin_invitation_create(integer(), integer(), integer(), integer() | undefined) ->
+-spec admin_invitation_create(integer(), integer(), integer(), integer() | undefined, map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_invitation_create(_AdmUserId, OrgId, TargetUid, ExpiresAt) when
+admin_invitation_create(AdmUserId, OrgId, TargetUid, ExpiresAt, AuditCtx) when
     is_integer(OrgId), OrgId > 0, is_integer(TargetUid), TargetUid > 0
 ->
     Tx =
@@ -1206,6 +1262,15 @@ admin_invitation_create(_AdmUserId, OrgId, TargetUid, ExpiresAt) when
             },
             case organization_invitation_pg:insert_tx(Conn, FinalRow) of
                 ok ->
+                    %% 平台审计（事务内；CP-ASSET-05）：失败整事务回滚（邀请行一并回滚）
+                    ok = audit_governance_tx(
+                        Conn,
+                        AdmUserId,
+                        <<"invitation_create">>,
+                        OrgId,
+                        #{<<"target_user_id">> => TargetUid},
+                        AuditCtx
+                    ),
                     PendingRow = FinalRow#{status => <<"pending">>},
                     {ok, (invitation_view(PendingRow))#{token => Token}};
                 {error, pending_conflict} ->
@@ -1231,12 +1296,12 @@ admin_invitation_create(_AdmUserId, OrgId, TargetUid, ExpiresAt) when
             _ = ?ERROR_LOG([organization_admin_invitation_failed, create, OrgId, TargetUid, Reason]),
             {error, {500, <<"创建邀请失败，请稍后重试"/utf8>>}}
     end;
-admin_invitation_create(_, _, _, _) ->
+admin_invitation_create(_, _, _, _, _) ->
     {error, {400, <<"organization_id 和 target_user_id 必须是正整数"/utf8>>}}.
 
--spec admin_invitation_cancel(integer(), integer(), integer()) ->
+-spec admin_invitation_cancel(integer(), integer(), integer(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_invitation_cancel(_AdmUserId, OrgId, InvitationId) when
+admin_invitation_cancel(AdmUserId, OrgId, InvitationId, AuditCtx) when
     is_integer(OrgId), OrgId > 0, is_integer(InvitationId), InvitationId > 0
 ->
     Tx =
@@ -1271,11 +1336,29 @@ admin_invitation_cancel(_AdmUserId, OrgId, InvitationId) when
                                 )
                             of
                                 {ok, Consumed} ->
+                                    %% 平台审计（事务内；CP-ASSET-05）：失败整事务回滚
+                                    ok = audit_governance_tx(
+                                        Conn,
+                                        AdmUserId,
+                                        <<"invitation_cancel">>,
+                                        OrgId,
+                                        #{<<"invitation_id">> => InvitationId},
+                                        AuditCtx
+                                    ),
                                     {ok, invitation_view(Consumed)};
                                 {error, Reason3} ->
                                     throw({abort_tx, {internal, Reason3}})
                             end;
                         <<"revoked">> ->
+                            %% 幂等重放同样留痕（事务内；零写入仅审计）
+                            ok = audit_governance_tx(
+                                Conn,
+                                AdmUserId,
+                                <<"invitation_cancel">>,
+                                OrgId,
+                                #{<<"invitation_id">> => InvitationId},
+                                AuditCtx
+                            ),
                             {ok, (invitation_view(Row))#{already_terminal => true}};
                         <<"accepted">> ->
                             abort(409, <<"邀请已被接受"/utf8>>);
@@ -1303,7 +1386,7 @@ admin_invitation_cancel(_AdmUserId, OrgId, InvitationId) when
             ]),
             {error, {500, <<"操作失败，请稍后重试"/utf8>>}}
     end;
-admin_invitation_cancel(_, _, _) ->
+admin_invitation_cancel(_, _, _, _) ->
     {error, {400, <<"organization_id 和 invitation_id 必须是正整数"/utf8>>}}.
 
 %% 响应投影白名单：token_digest 永不出现（与 organization_invitation_app 同口径）；
@@ -1330,12 +1413,14 @@ invitation_view(Row) ->
 %% 写：部门 create / rename / move / archive
 %% （复用 organization_department domain 校验与 department_pg 原语；
 %% 原语的环防/跨 Org/同名冲突/CAS 裁决原样生效。updated_by 审计快照列
-%% 固定 undefined——平台操作者不是租户 user，操作者审计在 handler 层。）
+%% 固定 undefined——平台操作者不是租户 user。平台审计（CP-ASSET-05）：
+%% 部门写与 adm_operation_log_ds:insert_tx 在同一事务提交，审计失败
+%% 整事务回滚；门禁/校验读保持在事务外（与迁移前行为一致）。
 %% ===================================================================
 
--spec admin_department_create(integer(), integer(), map()) ->
+-spec admin_department_create(integer(), integer(), map(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_department_create(_AdmUserId, OrgId, #{<<"name">> := Name} = Params) when
+admin_department_create(AdmUserId, OrgId, #{<<"name">> := Name} = Params, AuditCtx) when
     is_integer(OrgId), OrgId > 0
 ->
     ParentId = normalize_parent(maps:get(<<"parent_id">>, Params, undefined)),
@@ -1349,41 +1434,62 @@ admin_department_create(_AdmUserId, OrgId, #{<<"name">> := Name} = Params) when
                 ok ->
                     case parent_gate(OrgId, ParentId) of
                         ok ->
-                            case
-                                organization_department_pg:insert_department(
-                                    OrgId,
-                                    ParentId,
-                                    string:trim(Name),
-                                    undefined,
-                                    fun elib_tsid:generate/0
-                                )
-                            of
-                                {ok, Row} ->
-                                    ok = ?INFO_LOG([
-                                        organization_admin_department_created,
-                                        OrgId,
-                                        maps:get(id, Row)
-                                    ]),
-                                    {ok, department_view(Row)};
-                                {error, name_conflict} ->
-                                    {error, {409, <<"同级同名部门已存在"/utf8>>}};
-                                {error, cycle} ->
-                                    {error, {400, <<"非法的部门父子关系"/utf8>>}};
-                                {error, parent_not_found} ->
-                                    {error, {404, <<"父部门不存在"/utf8>>}};
-                                {error, Reason} ->
-                                    _ = ?ERROR_LOG([
-                                        organization_admin_department_failed, create, OrgId, Reason
-                                    ]),
-                                    {error, {500, <<"操作失败，请稍后重试"/utf8>>}}
-                            end;
+                            department_create_tx(
+                                AdmUserId, OrgId, ParentId, string:trim(Name), AuditCtx
+                            );
                         {error, _} = GateErr ->
                             GateErr
                     end
             end
     end;
-admin_department_create(_AdmUserId, _OrgId, _Params) ->
+admin_department_create(_AdmUserId, _OrgId, _Params, _AuditCtx) ->
     {error, {400, <<"name 必填，organization_id 必须是正整数"/utf8>>}}.
+
+department_create_tx(AdmUserId, OrgId, ParentId, Name, AuditCtx) ->
+    Tx =
+        fun(Conn) ->
+            case
+                organization_department_pg:insert_department_tx(
+                    Conn, OrgId, ParentId, Name, undefined, fun elib_tsid:generate/0
+                )
+            of
+                {ok, Row} ->
+                    %% 平台审计（事务内；CP-ASSET-05）：失败整事务回滚
+                    ok = audit_governance_tx(
+                        Conn,
+                        AdmUserId,
+                        <<"department_create">>,
+                        OrgId,
+                        #{<<"name">> => Name, <<"parent_id">> => ParentId},
+                        AuditCtx
+                    ),
+                    {ok, department_view(Row)};
+                {error, name_conflict} ->
+                    abort(409, <<"同级同名部门已存在"/utf8>>);
+                {error, cycle} ->
+                    abort(400, <<"非法的部门父子关系"/utf8>>);
+                {error, parent_not_found} ->
+                    abort(404, <<"父部门不存在"/utf8>>);
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([
+                        organization_admin_department_failed, create, OrgId, Reason
+                    ]),
+                    throw({abort_tx, {internal, Reason}})
+            end
+        end,
+    case elib_pg:with_tx(Tx) of
+        {ok, View} ->
+            ok = ?INFO_LOG([organization_admin_department_created, OrgId, maps:get(id, View)]),
+            {ok, View};
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+            {error, {Code, Msg}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([organization_admin_department_failed, create, OrgId, Reason]),
+            {error, {500, <<"操作失败，请稍后重试"/utf8>>}};
+        {rollback, Reason} ->
+            _ = ?ERROR_LOG([organization_admin_department_failed, create, OrgId, Reason]),
+            {error, {500, <<"操作失败，请稍后重试"/utf8>>}}
+    end.
 
 parent_gate(_OrgId, null) ->
     ok;
@@ -1411,9 +1517,9 @@ normalize_parent(Bin) when is_binary(Bin) ->
 normalize_parent(Other) ->
     Other.
 
--spec admin_department_rename(integer(), integer(), integer(), map()) ->
+-spec admin_department_rename(integer(), integer(), integer(), map(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_department_rename(_AdmUserId, OrgId, DeptId, #{<<"name">> := Name} = Params) when
+admin_department_rename(AdmUserId, OrgId, DeptId, #{<<"name">> := Name} = Params, AuditCtx) when
     is_integer(OrgId), OrgId > 0, is_integer(DeptId), DeptId > 0
 ->
     Expected = require_expected_version(maps:get(<<"expected_version">>, Params, undefined)),
@@ -1425,44 +1531,83 @@ admin_department_rename(_AdmUserId, OrgId, DeptId, #{<<"name">> := Name} = Param
                 {error, _} = Err ->
                     Err;
                 {ok, ExpectedVersion} ->
-                    rename_gate(OrgId, DeptId, string:trim(Name), ExpectedVersion)
+                    department_rename_tx(
+                        AdmUserId,
+                        OrgId,
+                        DeptId,
+                        string:trim(Name),
+                        ExpectedVersion,
+                        Params,
+                        AuditCtx
+                    )
             end
     end;
-admin_department_rename(_, _, _, _) ->
+admin_department_rename(_, _, _, _, _) ->
     {error, {400, <<"name 与 expected_version 必填，ID 必须是正整数"/utf8>>}}.
 
-rename_gate(OrgId, DeptId, Name, ExpectedVersion) ->
-    case organization_department_pg:fetch_department(OrgId, DeptId, none) of
-        {error, not_found} ->
-            {error, {404, <<"部门不存在"/utf8>>}};
-        {ok, #{status := archived}} ->
-            {error, {409, <<"部门已归档，禁止修改"/utf8>>}};
-        {ok, _Dept} ->
-            case
-                organization_department_pg:update_name(
-                    OrgId, DeptId, Name, undefined, ExpectedVersion
-                )
-            of
-                ok ->
-                    fresh_department_view(OrgId, DeptId);
-                {error, conflict} ->
-                    {error, {409, <<"部门版本已过期（stale version），请刷新后重试"/utf8>>}};
-                {error, name_conflict} ->
-                    {error, {409, <<"同级同名部门已存在"/utf8>>}};
-                {error, Reason} ->
+department_rename_tx(AdmUserId, OrgId, DeptId, Name, ExpectedVersion, Params, AuditCtx) ->
+    Tx =
+        fun(Conn) ->
+            %% 门禁（事务内读；与迁移前同口径：404 不存在 / 409 已归档）
+            case organization_department_pg:fetch_department_tx(Conn, OrgId, DeptId) of
+                {error, not_found} ->
+                    abort(404, <<"部门不存在"/utf8>>);
+                {ok, #{status := archived}} ->
+                    abort(409, <<"部门已归档，禁止修改"/utf8>>);
+                {ok, _Dept} ->
+                    rename_cas_tx(Conn, AdmUserId, OrgId, DeptId, Name, ExpectedVersion, Params, AuditCtx);
+                {error, Reason0} ->
                     _ = ?ERROR_LOG([
-                        organization_admin_department_failed, rename, OrgId, DeptId, Reason
+                        organization_admin_department_failed, rename, OrgId, DeptId, Reason0
                     ]),
-                    {error, {500, <<"操作失败，请稍后重试"/utf8>>}}
-            end;
+                    throw({abort_tx, {internal, Reason0}})
+            end
+        end,
+    case elib_pg:with_tx(Tx) of
+        ok ->
+            %% 成功后回读新行出站（与迁移前口径一致：事务外池读已提交数据）
+            fresh_department_view(OrgId, DeptId);
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+            {error, {Code, Msg}};
         {error, Reason} ->
+            _ = ?ERROR_LOG([organization_admin_department_failed, rename, OrgId, DeptId, Reason]),
+            {error, {500, <<"操作失败，请稍后重试"/utf8>>}};
+        {rollback, Reason} ->
             _ = ?ERROR_LOG([organization_admin_department_failed, rename, OrgId, DeptId, Reason]),
             {error, {500, <<"操作失败，请稍后重试"/utf8>>}}
     end.
 
--spec admin_department_move(integer(), integer(), integer(), map()) ->
+rename_cas_tx(Conn, AdmUserId, OrgId, DeptId, Name, ExpectedVersion, Params, AuditCtx) ->
+    case
+        organization_department_pg:update_name_tx(
+            Conn, OrgId, DeptId, Name, undefined, ExpectedVersion
+        )
+    of
+        ok ->
+            %% 平台审计（事务内；CP-ASSET-05）：失败整事务回滚（CAS 写一并回滚）
+            ok = audit_governance_tx(
+                Conn,
+                AdmUserId,
+                <<"department_rename">>,
+                OrgId,
+                #{<<"department_id">> => DeptId, <<"request">> => Params},
+                AuditCtx
+            ),
+            ok;
+        {error, conflict} ->
+            abort(409, <<"部门版本已过期（stale version），请刷新后重试"/utf8>>);
+        {error, name_conflict} ->
+            abort(409, <<"同级同名部门已存在"/utf8>>);
+        {error, Reason} ->
+            _ = ?ERROR_LOG([
+                organization_admin_department_failed, rename, OrgId, DeptId, Reason
+            ]),
+            throw({abort_tx, {internal, Reason}})
+    end.
+
+-spec admin_department_move(integer(), integer(), integer(), map(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_department_move(_AdmUserId, OrgId, DeptId, Params) when
+admin_department_move(AdmUserId, OrgId, DeptId, Params, AuditCtx) when
     is_integer(OrgId), OrgId > 0, is_integer(DeptId), DeptId > 0
 ->
     NewParentId = normalize_parent(maps:get(<<"parent_id">>, Params, undefined)),
@@ -1475,50 +1620,104 @@ admin_department_move(_AdmUserId, OrgId, DeptId, Params) when
                 false ->
                     {error, {404, <<"Organization 不存在"/utf8>>}};
                 true ->
-                    move_gate(OrgId, DeptId, NewParentId, ExpectedVersion)
+                    department_move_tx(
+                        AdmUserId, OrgId, DeptId, NewParentId, ExpectedVersion, Params, AuditCtx
+                    )
             end
     end;
-admin_department_move(_, _, _, _) ->
+admin_department_move(_, _, _, _, _) ->
     {error, {400, <<"expected_version 必填，ID 必须是正整数"/utf8>>}}.
 
-move_gate(OrgId, DeptId, NewParentId, ExpectedVersion) ->
-    case
-        organization_department_pg:move_tx(OrgId, DeptId, NewParentId, undefined, ExpectedVersion)
-    of
-        {ok, Row} ->
+department_move_tx(AdmUserId, OrgId, DeptId, NewParentId, ExpectedVersion, Params, AuditCtx) ->
+    Tx =
+        fun(Conn) ->
+            case
+                organization_department_pg:move_in_tx(
+                    Conn, OrgId, DeptId, NewParentId, undefined, ExpectedVersion
+                )
+            of
+                {ok, Row} ->
+                    %% 平台审计（事务内；CP-ASSET-05）：失败整事务回滚
+                    ok = audit_governance_tx(
+                        Conn,
+                        AdmUserId,
+                        <<"department_move">>,
+                        OrgId,
+                        #{<<"department_id">> => DeptId, <<"request">> => Params},
+                        AuditCtx
+                    ),
+                    {ok, department_view(maps:merge(#{status => active}, Row))};
+                {error, not_found} ->
+                    abort(404, <<"部门不存在"/utf8>>);
+                {error, department_archived} ->
+                    abort(409, <<"部门已归档，禁止修改"/utf8>>);
+                {error, conflict} ->
+                    abort(409, <<"部门版本已过期（stale version），请刷新后重试"/utf8>>);
+                {error, {new_parent_not_found, _}} ->
+                    abort(404, <<"父部门不存在"/utf8>>);
+                {error, {new_parent_archived, _}} ->
+                    abort(409, <<"父部门已归档"/utf8>>);
+                {error, {self_parent, _}} ->
+                    abort(400, <<"不能移动到自身之下"/utf8>>);
+                {error, {cycle, _, _}} ->
+                    abort(400, <<"不能移动到自身子树之下"/utf8>>);
+                {error, {invalid_parent_id, _}} ->
+                    abort(400, <<"parent_id 必须是正整数或 null"/utf8>>);
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([organization_admin_department_failed, move, OrgId, DeptId, Reason]),
+                    throw({abort_tx, {internal, Reason}})
+            end
+        end,
+    case elib_pg:with_tx(Tx) of
+        {ok, View} ->
             ok = ?INFO_LOG([organization_admin_department_moved, OrgId, DeptId]),
-            {ok, department_view(maps:merge(#{status => active}, Row))};
-        {error, not_found} ->
-            {error, {404, <<"部门不存在"/utf8>>}};
-        {error, department_archived} ->
-            {error, {409, <<"部门已归档，禁止修改"/utf8>>}};
-        {error, conflict} ->
-            {error, {409, <<"部门版本已过期（stale version），请刷新后重试"/utf8>>}};
-        {error, {new_parent_not_found, _}} ->
-            {error, {404, <<"父部门不存在"/utf8>>}};
-        {error, {new_parent_archived, _}} ->
-            {error, {409, <<"父部门已归档"/utf8>>}};
-        {error, {self_parent, _}} ->
-            {error, {400, <<"不能移动到自身之下"/utf8>>}};
-        {error, {cycle, _, _}} ->
-            {error, {400, <<"不能移动到自身子树之下"/utf8>>}};
-        {error, {invalid_parent_id, _}} ->
-            {error, {400, <<"parent_id 必须是正整数或 null"/utf8>>}};
+            {ok, View};
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+            {error, {Code, Msg}};
         {error, Reason} ->
+            _ = ?ERROR_LOG([organization_admin_department_failed, move, OrgId, DeptId, Reason]),
+            {error, {500, <<"操作失败，请稍后重试"/utf8>>}};
+        {rollback, Reason} ->
             _ = ?ERROR_LOG([organization_admin_department_failed, move, OrgId, DeptId, Reason]),
             {error, {500, <<"操作失败，请稍后重试"/utf8>>}}
     end.
 
--spec admin_department_archive(integer(), integer(), integer()) ->
+-spec admin_department_archive(integer(), integer(), integer(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-admin_department_archive(_AdmUserId, OrgId, DeptId) when
+admin_department_archive(AdmUserId, OrgId, DeptId, AuditCtx) when
     is_integer(OrgId), OrgId > 0, is_integer(DeptId), DeptId > 0
 ->
     case org_exists(OrgId) of
         false ->
             {error, {404, <<"Organization 不存在"/utf8>>}};
         true ->
-            case organization_department_pg:archive_subtree_tx(OrgId, DeptId, undefined, none) of
+            Tx =
+                fun(Conn) ->
+                    case
+                        organization_department_pg:archive_subtree_in_tx(Conn, OrgId, DeptId, undefined)
+                    of
+                        {ok, Dept} ->
+                            %% 平台审计（事务内；CP-ASSET-05）：失败整事务回滚；
+                            %% 幂等命中（archive_idempotent）同样留痕（与迁移前口径一致）
+                            ok = audit_governance_tx(
+                                Conn,
+                                AdmUserId,
+                                <<"department_archive">>,
+                                OrgId,
+                                #{<<"department_id">> => DeptId},
+                                AuditCtx
+                            ),
+                            {ok, Dept};
+                        {error, not_found} ->
+                            abort(404, <<"部门不存在"/utf8>>);
+                        {error, Reason} ->
+                            _ = ?ERROR_LOG([
+                                organization_admin_department_failed, archive, OrgId, DeptId, Reason
+                            ]),
+                            throw({abort_tx, {internal, Reason}})
+                    end
+                end,
+            case elib_pg:with_tx(Tx) of
                 {ok, Dept} ->
                     Idempotent = maps:get(archive_idempotent, Dept, false),
                     case Idempotent of
@@ -1529,20 +1728,25 @@ admin_department_archive(_AdmUserId, OrgId, DeptId) when
                                 organization_admin_department_archived, OrgId, DeptId
                             ])
                     end,
-                    %% archive_subtree_tx 返回归档前旧行（status 仍 active）——
+                    %% archive_subtree 返回归档前旧行（status 仍 active）——
                     %% 与租户面 organization_department_app:archive_result 同款：
                     %% 成功后回读新行出站，幂等标记只用于裁决日志
                     fresh_department_view(OrgId, DeptId);
-                {error, not_found} ->
-                    {error, {404, <<"部门不存在"/utf8>>}};
+                {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+                    {error, {Code, Msg}};
                 {error, Reason} ->
+                    _ = ?ERROR_LOG([
+                        organization_admin_department_failed, archive, OrgId, DeptId, Reason
+                    ]),
+                    {error, {500, <<"操作失败，请稍后重试"/utf8>>}};
+                {rollback, Reason} ->
                     _ = ?ERROR_LOG([
                         organization_admin_department_failed, archive, OrgId, DeptId, Reason
                     ]),
                     {error, {500, <<"操作失败，请稍后重试"/utf8>>}}
             end
     end;
-admin_department_archive(_, _, _) ->
+admin_department_archive(_, _, _, _) ->
     {error, {400, <<"ID 必须是正整数"/utf8>>}}.
 
 require_expected_version(Value) ->
@@ -1568,6 +1772,38 @@ department_view(Row) when is_map(Row) ->
 %% ===================================================================
 %% 内部
 %% ===================================================================
+
+%% 平台治理审计（事务内；CP-ASSET-05）：与业务写共用同一 Conn 提交。
+%% 审计能静默丢失等于「治理写做了却没人知道是谁做的」，属治理链路完整性要求，
+%% 故这里不做任何错误吞没（镜像 EADM-01 audit_create_tx 范式）：
+%% 写入失败 throw({abort_tx, {audit_failed, Reason}}) ⇒ elib_pg 回滚整个事务，
+%% 业务写一并回滚（验收 CP-ASSET-A10）。
+%%
+%% action 传短名（如 <<"archive">>），DB action 列写 <<"organization_archive">>、
+%% detail 基础键与迁移前 handler 弱审计完全一致（organization_id + action + Extra）。
+-spec audit_governance_tx(term(), integer(), binary(), integer(), map(), map()) -> ok.
+audit_governance_tx(Conn, AdmUserId, Action, OrgId, Extra, AuditCtx) ->
+    Detail = maps:merge(
+        #{
+            <<"organization_id">> => OrgId,
+            <<"action">> => Action
+        },
+        Extra
+    ),
+    case
+        adm_operation_log_ds:insert_tx(
+            Conn,
+            AdmUserId,
+            <<"organization_", Action/binary>>,
+            OrgId,
+            <<"organization">>,
+            Detail,
+            maps:get(ip, AuditCtx, undefined)
+        )
+    of
+        ok -> ok;
+        {error, Reason} -> throw({abort_tx, {audit_failed, Reason}})
+    end.
 
 -spec org_exists(integer()) -> boolean().
 org_exists(OrgId) ->

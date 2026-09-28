@@ -17,12 +17,13 @@
 %   * Platform Admin 不映射 org owner/admin；不签发/代理/冒充租户 session；
 %   * 鉴权镜像 adm_workspace_handler：每个 action 显式走
 %     adm_acl:ensure_permission（fail-closed：无权限/无 adm_user_id 恒 403）；
-%   * handler 只做平台鉴权、参数转换（TSID string→int）、审计
-%     （adm_operation_log_ds）与稳定错误分类；业务一律经
-%     organization_admin_logic（平台通道，复用 src/lib/organization 的
-%     domain 校验与 infrastructure 原语）；
-%   * mutation 成功（含幂等 unchanged）即写平台审计：操作者 adm uid、
-%     目标 org、动作、请求摘要；审计失败不阻断已完成的业务操作。
+%   * handler 只做平台鉴权、参数转换（TSID string→int）与稳定错误分类；
+%     业务一律经 organization_admin_logic（平台通道，复用 src/lib/organization
+%     的 domain 校验与 infrastructure 原语）；
+%   * mutation 审计（CP-ASSET-05）：由 logic 在业务事务内经
+%     adm_operation_log_ds:insert_tx 写入（与业务写同原子性，审计失败整事务
+%     回滚）；handler 只组装请求侧事实（操作者 adm uid、IP、方法、路径
+%     = AuditCtx）传给 logic，不再有事务外补写审计的弱路径。
 %
 % TSID 传输规则：JSON 里 64-bit ID 一律 string 下发/接收（防 JS 精度丢失）。
 %%%
@@ -372,17 +373,17 @@ workspaces_action(_, Req0, _State) ->
 
 -spec org_archive_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 org_archive_action(<<"POST">>, Req0, State) ->
-    lifecycle_write(Req0, State, <<"archive">>, fun organization_admin_logic:admin_archive/2);
+    lifecycle_write(Req0, State, <<"archive">>, fun organization_admin_logic:admin_archive/3);
 org_archive_action(_, Req0, _State) ->
     method_not_allowed(Req0).
 
 -spec org_restore_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 org_restore_action(<<"POST">>, Req0, State) ->
-    lifecycle_write(Req0, State, <<"restore">>, fun organization_admin_logic:admin_restore/2);
+    lifecycle_write(Req0, State, <<"restore">>, fun organization_admin_logic:admin_restore/3);
 org_restore_action(_, Req0, _State) ->
     method_not_allowed(Req0).
 
--spec lifecycle_write(cowboy_req:req(), map(), binary(), fun((integer(), integer()) -> term())) ->
+-spec lifecycle_write(cowboy_req:req(), map(), binary(), fun((integer(), integer(), map()) -> term())) ->
     cowboy_req:req().
 lifecycle_write(Req0, State, ActionBin, Fun) ->
     case adm_acl:ensure_permission(State, ?ACL_WRITE, Req0) of
@@ -396,12 +397,12 @@ lifecycle_write(Req0, State, ActionBin, Fun) ->
                 {ok, OrgId} ->
                     %% 防御边界：logic 层未预期异常收敛为 500 JSON（带服务端日志），
                     %% 禁止裸冒泡成空 body 500。
+                    AuditCtx = audit_ctx(Req0),
                     Handled =
                         catch begin
-                            R = Fun(AdmUserId, OrgId),
+                            R = Fun(AdmUserId, OrgId, AuditCtx),
                             case R of
                                 {ok, Result} ->
-                                    audit(AdmUserId, OrgId, ActionBin, #{}, Req0),
                                     %% 消息串必须 /utf8：非 ASCII 字面量按 latin1 字节
                                     %% 列表拼 binary 会产生非法 UTF-8，jsone 编码 msg
                                     %% 时 badarg（E2E 实测，eunit 假 Req 不编码 msg 故未暴露）。
@@ -457,7 +458,7 @@ owner_transfer_action(<<"POST">>, Req0, State) ->
                         {ok, Data} ->
                             case parse_tsid_map(maps:get(<<"target_user_id">>, Data, <<>>)) of
                                 {ok, TargetUid} ->
-                                    transfer_write(Req0, State, AdmUserId, OrgId, TargetUid);
+                                    transfer_write(Req0, AdmUserId, OrgId, TargetUid);
                                 error ->
                                     elib_response:error(
                                         Req0,
@@ -471,20 +472,11 @@ owner_transfer_action(<<"POST">>, Req0, State) ->
 owner_transfer_action(_, Req0, _State) ->
     method_not_allowed(Req0).
 
-transfer_write(Req0, State, AdmUserId, OrgId, TargetUid) ->
-    case organization_admin_logic:admin_transfer_owner(AdmUserId, OrgId, TargetUid) of
+transfer_write(Req0, AdmUserId, OrgId, TargetUid) ->
+    case
+        organization_admin_logic:admin_transfer_owner(AdmUserId, OrgId, TargetUid, audit_ctx(Req0))
+    of
         {ok, Result} ->
-            audit(
-                AdmUserId,
-                OrgId,
-                <<"owner_transfer">>,
-                #{
-                    <<"target_user_id">> => TargetUid,
-                    <<"previous_owner_id">> => maps:get(previous_owner_id, Result, 0)
-                },
-                Req0
-            ),
-            _ = State,
             elib_response:success(Req0, normalize_result(Result), <<"Owner 已转移"/utf8>>);
         {error, {Code, Msg}} ->
             elib_response:error(Req0, Msg, Code)
@@ -510,19 +502,12 @@ member_action(<<"POST">>, Req0, State, Action) ->
                 {{ok, OrgId}, {ok, TargetUid}} ->
                     Fun =
                         case Action of
-                            suspend -> fun organization_admin_logic:admin_member_suspend/3;
-                            restore -> fun organization_admin_logic:admin_member_restore/3;
-                            remove -> fun organization_admin_logic:admin_member_remove/3
+                            suspend -> fun organization_admin_logic:admin_member_suspend/4;
+                            restore -> fun organization_admin_logic:admin_member_restore/4;
+                            remove -> fun organization_admin_logic:admin_member_remove/4
                         end,
-                    case Fun(AdmUserId, OrgId, TargetUid) of
+                    case Fun(AdmUserId, OrgId, TargetUid, audit_ctx(Req0)) of
                         {ok, Result} ->
-                            audit(
-                                AdmUserId,
-                                OrgId,
-                                <<"member_", (atom_to_binary(Action))/binary>>,
-                                #{<<"target_user_id">> => TargetUid},
-                                Req0
-                            ),
                             elib_response:success(Req0, normalize_result(Result));
                         {error, {Code, Msg}} ->
                             elib_response:error(Req0, Msg, Code)
@@ -562,17 +547,10 @@ invitation_create_write(Req0, AdmUserId, OrgId, Data) ->
             ExpiresAt = normalize_expires_at(maps:get(<<"expires_at">>, Data, undefined)),
             case
                 organization_admin_logic:admin_invitation_create(
-                    AdmUserId, OrgId, TargetUid, ExpiresAt
+                    AdmUserId, OrgId, TargetUid, ExpiresAt, audit_ctx(Req0)
                 )
             of
                 {ok, View} ->
-                    audit(
-                        AdmUserId,
-                        OrgId,
-                        <<"invitation_create">>,
-                        #{<<"target_user_id">> => TargetUid},
-                        Req0
-                    ),
                     elib_response:success(Req0, normalize_invitation_row(View));
                 {error, {Code, Msg}} ->
                     elib_response:error(Req0, Msg, Code)
@@ -602,17 +580,10 @@ invitation_cancel_action(<<"POST">>, Req0, State) ->
                 {{ok, OrgId}, {ok, InvitationId}} ->
                     case
                         organization_admin_logic:admin_invitation_cancel(
-                            AdmUserId, OrgId, InvitationId
+                            AdmUserId, OrgId, InvitationId, audit_ctx(Req0)
                         )
                     of
                         {ok, View} ->
-                            audit(
-                                AdmUserId,
-                                OrgId,
-                                <<"invitation_cancel">>,
-                                #{<<"invitation_id">> => InvitationId},
-                                Req0
-                            ),
                             elib_response:success(Req0, normalize_invitation_row(View));
                         {error, {Code, Msg}} ->
                             elib_response:error(Req0, Msg, Code)
@@ -643,21 +614,10 @@ department_create(Req0, State) ->
                         {ok, Data} ->
                             case
                                 organization_admin_logic:admin_department_create(
-                                    AdmUserId, OrgId, Data
+                                    AdmUserId, OrgId, Data, audit_ctx(Req0)
                                 )
                             of
                                 {ok, Row} ->
-                                    audit(
-                                        AdmUserId,
-                                        OrgId,
-                                        <<"department_create">>,
-                                        #{
-                                            <<"name">> => maps:get(<<"name">>, Data, <<>>),
-                                            <<"parent_id">> =>
-                                                to_json_value(maps:get(<<"parent_id">>, Data, null))
-                                        },
-                                        Req0
-                                    ),
                                     elib_response:success(Req0, normalize_department_row(Row));
                                 {error, {Code, Msg}} ->
                                     elib_response:error(Req0, Msg, Code)
@@ -669,7 +629,7 @@ department_create(Req0, State) ->
 -spec department_rename_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 department_rename_action(<<"POST">>, Req0, State) ->
     department_write_with_body(
-        Req0, State, rename, fun organization_admin_logic:admin_department_rename/4
+        Req0, State, rename, fun organization_admin_logic:admin_department_rename/5
     );
 department_rename_action(_, Req0, _State) ->
     method_not_allowed(Req0).
@@ -677,7 +637,7 @@ department_rename_action(_, Req0, _State) ->
 -spec department_move_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 department_move_action(<<"POST">>, Req0, State) ->
     department_write_with_body(
-        Req0, State, move, fun organization_admin_logic:admin_department_move/4
+        Req0, State, move, fun organization_admin_logic:admin_department_move/5
     );
 department_move_action(_, Req0, _State) ->
     method_not_allowed(Req0).
@@ -697,17 +657,10 @@ department_archive_action(<<"POST">>, Req0, State) ->
                 {{ok, OrgId}, {ok, DeptId}} ->
                     case
                         organization_admin_logic:admin_department_archive(
-                            AdmUserId, OrgId, DeptId
+                            AdmUserId, OrgId, DeptId, audit_ctx(Req0)
                         )
                     of
                         {ok, Row} ->
-                            audit(
-                                AdmUserId,
-                                OrgId,
-                                <<"department_archive">>,
-                                #{<<"department_id">> => DeptId},
-                                Req0
-                            ),
                             elib_response:success(Req0, normalize_department_row(Row));
                         {error, {Code, Msg}} ->
                             elib_response:error(Req0, Msg, Code)
@@ -735,21 +688,16 @@ department_write_with_body(Req0, State, Kind, Fun) ->
                         {error, Msg2} ->
                             elib_response:error(Req0, Msg2, ?ERR_BAD_REQUEST);
                         {ok, Data} ->
-                            department_write_apply(Req0, AdmUserId, OrgId, DeptId, Kind, Fun, Data)
+                            department_write_apply(
+                                Req0, AdmUserId, OrgId, DeptId, Kind, Fun, Data
+                            )
                     end
             end
     end.
 
-department_write_apply(Req0, AdmUserId, OrgId, DeptId, Kind, Fun, Data) ->
-    case Fun(AdmUserId, OrgId, DeptId, Data) of
+department_write_apply(Req0, AdmUserId, OrgId, DeptId, _Kind, Fun, Data) ->
+    case Fun(AdmUserId, OrgId, DeptId, Data, audit_ctx(Req0)) of
         {ok, Row} ->
-            audit(
-                AdmUserId,
-                OrgId,
-                <<"department_", (atom_to_binary(Kind))/binary>>,
-                #{<<"department_id">> => DeptId, <<"request">> => to_json_value(Data)},
-                Req0
-            ),
             elib_response:success(Req0, normalize_department_row(Row));
         {error, {Code, Msg}} ->
             elib_response:error(Req0, Msg, Code)
@@ -879,6 +827,8 @@ normalize_org_detail(Detail) ->
 normalize_member_row(Row) ->
     elib_id:tsid_keys_to_bin(Row, ?MEMBER_ID_KEYS).
 
+%% is_default（CP-CON-03）不在 TSID 键列表：boolean 原样透传（jsone 编码为
+%% JSON true/false），由 logic 层 SQL 以 organization_default_workspace 真源计算。
 -spec normalize_workspace_row(map()) -> map().
 normalize_workspace_row(Row) ->
     elib_id:tsid_keys_to_bin(Row, ?WORKSPACE_ID_KEYS).
@@ -988,31 +938,18 @@ to_json_value(V) ->
     V.
 
 %% ===================================================================
-%% 审计（镜像 adm_workspace_handler:audit_workspace_governance 模式：
-%% 审计失败不阻断已完成的业务操作）
+%% 审计上下文（CP-ASSET-05）
 %% ===================================================================
 
--spec audit(integer(), integer(), binary(), map(), cowboy_req:req()) -> ok.
-audit(AdmUserId, OrgId, Action, Extra, Req0) ->
-    Detail = maps:merge(
-        #{
-            <<"organization_id">> => OrgId,
-            <<"action">> => Action
-        },
-        Extra
-    ),
-    try
-        _ = adm_operation_log_ds:insert(
-            AdmUserId,
-            <<"organization_", Action/binary>>,
-            OrgId,
-            <<"organization">>,
-            Detail,
-            elib_req:peer_ip(Req0)
-        ),
-        ok
-    catch
-        Class:Reason:Stacktrace ->
-            ?DEBUG_LOG("organization governance audit failed: ~p", [{Class, Reason, Stacktrace}]),
-            ok
-    end.
+%% @doc 组装请求侧事实（操作者 IP、方法、路径）传给 logic；平台审计由 logic
+%% 在业务事务内经 adm_operation_log_ds:insert_tx 写入（审计失败整事务回滚）。
+%% handler 不再有事务外补写审计的弱路径（弱 audit/5 已删除，CP-ASSET-A11）。
+-spec audit_ctx(cowboy_req:req()) -> map().
+audit_ctx(Req0) ->
+    #{
+        ip => elib_req:peer_ip(Req0),
+        request => #{
+            <<"method">> => cowboy_req:method(Req0),
+            <<"path">> => cowboy_req:path(Req0)
+        }
+    }.

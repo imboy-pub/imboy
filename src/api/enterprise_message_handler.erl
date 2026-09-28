@@ -259,11 +259,6 @@ fetch_row_id(_Conn, _Table, _MsgId) ->
 ok_code(Code) when is_integer(Code), Code >= 200, Code < 300 -> Code;
 ok_code(_) -> 200.
 
--spec reply_json(cowboy_req:req(), non_neg_integer(), map()) -> cowboy_req:req().
-reply_json(Req0, Status, Map) ->
-    Body = jsone:encode(Map),
-    cowboy_req:reply(Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0).
-
 -spec reply_json_body(cowboy_req:req(), non_neg_integer(), binary()) -> cowboy_req:req().
 reply_json_body(Req0, Status, Body) ->
     cowboy_req:reply(

@@ -18,7 +18,11 @@
 %%%     mutation=403；read+write 角色读写皆可；仅有 write 无 read → 读 403；
 %%%   * 负例：无会话 401（middleware）/ 400 坏参数 / 404 不存在与跨组织 /
 %%%     409 stale version、archived 门禁、owner 保护 / 幂等 unchanged；
-%%%   * 审计：mutation 后 admin_operation_logs 出现 organization_* 记录。
+%%%   * 审计（CP-ASSET-05）：mutation 审计由 logic 在业务事务内经
+%%%     adm_operation_log_ds:insert_tx 写入（与业务写同原子性）——
+%%%     正向：mutation 后 admin_operation_logs 出现 organization_* 记录；
+%%%     注入回滚：8/8 调用点 meck insert_tx 强制失败 ⇒ 业务写整事务回滚
+%%%     （audit_injection_tests，验收 CP-ASSET-A10）。
 %%%
 %%% 库供给契约（inttest_marker_db 配方）：一次性 marker 库全链迁移，
 %%% 任一环境/迁移失败显式 error，无 skip 分支；erlfmt 口径与仓内一致。
@@ -256,7 +260,8 @@ adm_org_journeys_test_() ->
             {foreach, fun mocks_on/0, fun(_S) -> mocks_off() end, [
                 fun(_S) -> journeys_tests(Conn) end,
                 fun(_S) -> permission_matrix_tests(Conn) end,
-                fun(_S) -> negative_tests(Conn) end
+                fun(_S) -> negative_tests(Conn) end,
+                fun(_S) -> audit_injection_tests(Conn) end
             ]}
         end}}.
 
@@ -274,17 +279,41 @@ setup_db() ->
         }),
     {ok, _} = application:ensure_all_started(pooler),
     #{server := Server, db := Db} = State,
-    case pooler:new_pool(pgsql_pool_conf(Server, Db)) of
+    PoolConf = pgsql_pool_conf(Server, Db),
+    case pooler:new_pool(PoolConf) of
         {ok, _Pid} ->
             State;
         {error, {already_started, _}} ->
-            %% 共享 VM 里 pgsql 池已指向他库：本套件必须单跑（loudly fail，
-            %% 不静默复用他库连接——agent_preflight_facts_pg_tests 同款语义）
-            erlang:error({adm_org_pg_pool_conflict, 'pgsql'})
+            %% A1c（CP-TD-A02）：共享 VM 里 app 的 pgsql 池（指向共享库）已就位，
+            %% 而产品代码 elib_pg:with_conn 硬编码 take_member(pgsql)——套件池必须
+            %% 同名。接管：先停 app 池、换挂本套件 marker 库池；close_db/1 再按
+            %% imboy pg_conf 重建 app 池还原共享 VM 状态，后续套件不受影响。
+            ok = pool_swap('pgsql', PoolConf, 20),
+            State
     end.
 
 %% epgsql connect 参数原样透传（host/user/password 可能是 list 或 binary，
 %% 与 agent_preflight_facts_pg_tests:pool_conf 同形态；不做类型转换）
+%% A1c：rm_pool/new_pool 均有异步窗口（rm 后名称短暂残留 already_present；
+%% 成员占用中 rm 返回 running）——重试收敛，杜绝接管竞态。
+%% rm_pool/new_pool 均有异步窗口：rm 后名称短暂残留（already_present）、
+%% 成员占用中 rm 返回 running——单发必竞态。交替「rm→new」重试直到新池
+%% （指向目标 conf）真正建立，杜绝接管/还原竞态（run19 实证）。
+pool_swap(_Pool, _Conf, 0) ->
+    erlang:error({pool_swap_failed, 'pgsql'});
+pool_swap(Pool, Conf, N) ->
+    _ = pooler:rm_pool(Pool),
+    timer:sleep(200),
+    case pooler:new_pool(Conf) of
+        {ok, _Pid} ->
+            ok;
+        {error, {already_started, _}} ->
+            timer:sleep(300),
+            pool_swap(Pool, Conf, N - 1);
+        {error, Other} ->
+            erlang:error({pool_swap_failed, Other})
+    end.
+
 pgsql_pool_conf(#{host := Host, port := Port, username := User, password := Pass}, Db) ->
     #{
         name => pgsql,
@@ -305,10 +334,15 @@ pgsql_pool_conf(#{host := Host, port := Port, username := User, password := Pass
     }.
 
 close_db(State) ->
-    try pooler:stop_pool(pgsql) of
-        _ -> ok
-    catch
-        _:_ -> ok
+    try pooler:rm_pool(pgsql) catch _:_ -> ok end, %% A1c: rm_pool/1 is the correct API (stop_pool/1 does not exist, the original try/catch had been silently swallowing undef)
+    %% A1c（CP-TD-A02）：按 imboy pg_conf 重建 app pgsql 池（还原共享 VM 状态，
+    %% 见 setup_db 接管注释），后续套件的 elib_pg 访问不受本套件影响。
+    case application:get_env(imboy, pg_conf) of
+        {ok, PgConf} when is_map(PgConf) ->
+            ok = pool_swap('pgsql', PgConf, 20),
+            ok;
+        _ ->
+            ok
     end,
     inttest_marker_db:release(State).
 
@@ -353,6 +387,9 @@ journeys_tests(Conn) ->
         {"旅程7 workspace 只读关系事实：列表返回 org 下 workspace", fun() -> journey_workspace_readonly(Conn) end},
         {"旅程8 审计：admin_operation_logs 出现 organization_archive 记录", fun() ->
             journey_audit_row(Conn)
+        end},
+        {"旅程9 workspace is_default 服务端真源投影：每 org 恰一 true/其余 false", fun() ->
+            journey_workspace_is_default(Conn)
         end}
     ].
 
@@ -645,6 +682,59 @@ journey_workspace_readonly(Conn) ->
     RespReq2 = call(?WRITE_UID, workspaces, <<"GET">>, bindings(new_id()), <<>>),
     ?assertEqual(404, status_of(RespReq2)).
 
+%% 旅程9（CP-CON-03）：组织 workspace 列表投影的 is_default 由服务端真源
+%% organization_default_workspace（迁移 00000130，PK=organization_id 每 Org
+%% 至多一条）计算。断言：
+%%   * 显式默认关系存在：恰一行 is_default=true 且指向显式指向的 ws
+%%     （其余行 is_default=false）——不是 min-ID 推导；
+%%   * 无默认关系（0 条合法）：全部 is_default=false，不编造默认。
+journey_workspace_is_default(Conn) ->
+    %% Org A：seed 建 1 个 ws；再补第 2 个 ws；显式默认指向第 1 个
+    Scope = seed_org(Conn, <<"wsdef">>),
+    OrgA = maps:get(org_id, Scope),
+    WsDefault = maps:get(ws_id, Scope),
+    WsOther = new_id(),
+    ok = exec(
+        Conn,
+        <<
+            "INSERT INTO workspace(id,name,owner_id,organization_id,status) VALUES"
+            " ($1,$2,$3,$4,'active')"
+        >>,
+        [WsOther, <<"ws-def-other">>, maps:get(owner, Scope), OrgA]
+    ),
+    ok = exec(
+        Conn,
+        <<
+            "INSERT INTO organization_default_workspace(organization_id, workspace_id)"
+            " VALUES ($1,$2)"
+        >>,
+        [OrgA, WsDefault]
+    ),
+    RespReq = call(?WRITE_UID, workspaces, <<"GET">>, bindings(OrgA), <<>>),
+    ?assertEqual(200, status_of(RespReq)),
+    Page = payload_of(RespReq),
+    ?assertEqual(2, maps:get(total, Page)),
+    Rows = maps:get(list, Page),
+    %% 每行必须携带布尔 is_default（字段缺失即缺陷：?assertEqual 崩溃值差异）
+    TrueRows = [R || R <- Rows, maps:get(<<"is_default">>, R, missing) =:= true],
+    ?assertEqual(1, length(TrueRows)),
+    ?assertEqual(integer_to_binary(WsDefault), maps:get(<<"id">>, hd(TrueRows))),
+    FalseRows = [R || R <- Rows, maps:get(<<"is_default">>, R, missing) =:= false],
+    ?assertEqual(1, length(FalseRows)),
+    ?assertEqual(integer_to_binary(WsOther), maps:get(<<"id">>, hd(FalseRows))),
+    %% Org B：seed_org 不建默认关系（历史 Org 0 条合法）→ 全部 false、无 true
+    ScopeB = seed_org(Conn, <<"wsnd">>),
+    OrgB = maps:get(org_id, ScopeB),
+    RespReq2 = call(?WRITE_UID, workspaces, <<"GET">>, bindings(OrgB), <<>>),
+    ?assertEqual(200, status_of(RespReq2)),
+    RowsB = maps:get(list, payload_of(RespReq2)),
+    ?assert(length(RowsB) >= 1),
+    ?assertEqual(0, length([R || R <- RowsB, maps:get(<<"is_default">>, R, missing) =:= true])),
+    ?assertEqual(
+        length(RowsB),
+        length([R || R <- RowsB, maps:get(<<"is_default">>, R, missing) =:= false])
+    ).
+
 journey_audit_row(Conn) ->
     Scope = seed_org(Conn, <<"aud">>),
     OrgId = maps:get(org_id, Scope),
@@ -658,6 +748,233 @@ journey_audit_row(Conn) ->
             [OrgId, ?WRITE_UID]
         ),
     ?assert(Count >= 1).
+
+%% ------------------------------------------------------------------
+%% 组 C：审计事务内注入回滚（CP-ASSET-05 / CP-ASSET-A10）
+%% 8/8 调用点：meck adm_operation_log_ds:insert_tx 强制 {error, audit_injected}
+%% ⇒ 平台审计失败 ⇒ 业务写必须整事务回滚（状态/行数据不变、响应 500）。
+%% ------------------------------------------------------------------
+
+audit_injection_tests(Conn) ->
+    [
+        {"注入1 archive：审计失败 → 500 且 org 状态回滚为 active", fun() ->
+            Scope = seed_org(Conn, <<"inj-arch">>),
+            OrgId = maps:get(org_id, Scope),
+            with_audit_fail(fun() ->
+                RespReq = call(?WRITE_UID, org_archive, <<"POST">>, bindings(OrgId), <<>>),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"status">> := <<"active">>}]}, q(Conn, org_status_sql(), [OrgId])
+                )
+            end)
+        end},
+        {"注入2 owner_transfer：审计失败 → 500 且 owner 未变", fun() ->
+            Scope = seed_org(Conn, <<"inj-tr">>),
+            OrgId = maps:get(org_id, Scope),
+            Owner = maps:get(owner, Scope),
+            Admin = maps:get(admin, Scope),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        owner_transfer,
+                        <<"POST">>,
+                        bindings(OrgId),
+                        jsone:encode(#{<<"target_user_id">> => integer_to_binary(Admin)})
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch({ok, [#{<<"owner_id">> := Owner}]}, q(Conn, org_owner_sql(), [OrgId]))
+            end)
+        end},
+        {"注入3 member_suspend：审计失败 → 500 且成员仍 active", fun() ->
+            Scope = seed_org(Conn, <<"inj-mem">>),
+            OrgId = maps:get(org_id, Scope),
+            Member = maps:get(member, Scope),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        member_suspend,
+                        <<"POST">>,
+                        org_binding(OrgId, user_id, Member),
+                        <<>>
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"status">> := <<"active">>}]},
+                    q(Conn, member_status_sql(), [OrgId, Member])
+                )
+            end)
+        end},
+        {"注入4 invitation_create：审计失败 → 500 且邀请行回滚", fun() ->
+            Scope = seed_org(Conn, <<"inj-inv">>),
+            OrgId = maps:get(org_id, Scope),
+            Target = new_id(),
+            ok = exec(
+                Conn,
+                <<
+                    "INSERT INTO \"user\"(id,password,account,reg_ip,reg_cosv)"
+                    " VALUES ($1,'x',$2,'127.0.0.1','x')"
+                >>,
+                [Target, account(Target)]
+            ),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        invitations,
+                        <<"POST">>,
+                        bindings(OrgId),
+                        jsone:encode(#{<<"target_user_id">> => integer_to_binary(Target)})
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"count">> := 0}]},
+                    q(
+                        Conn,
+                        <<"SELECT count(*) FROM organization_invitation"
+                            " WHERE organization_id = $1 AND target_user_id = $2">>,
+                        [OrgId, Target]
+                    )
+                )
+            end)
+        end},
+        {"注入5 invitation_cancel：审计失败 → 500 且邀请仍 pending", fun() ->
+            Scope = seed_org(Conn, <<"inj-can">>),
+            OrgId = maps:get(org_id, Scope),
+            Target = new_id(),
+            ok = exec(
+                Conn,
+                <<
+                    "INSERT INTO \"user\"(id,password,account,reg_ip,reg_cosv)"
+                    " VALUES ($1,'x',$2,'127.0.0.1','x')"
+                >>,
+                [Target, account(Target)]
+            ),
+            %% 无注入创建成功（此时审计事务内正常写入）
+            RespReq =
+                call(
+                    ?WRITE_UID,
+                    invitations,
+                    <<"POST">>,
+                    bindings(OrgId),
+                    jsone:encode(#{<<"target_user_id">> => integer_to_binary(Target)})
+                ),
+            ?assertEqual(200, status_of(RespReq)),
+            InvitationId = binary_to_integer(maps:get(<<"invitation_id">>, payload_of(RespReq))),
+            with_audit_fail(fun() ->
+                RespReq2 =
+                    call(
+                        ?WRITE_UID,
+                        invitation_cancel,
+                        <<"POST">>,
+                        org_binding(OrgId, invitation_id, InvitationId),
+                        <<>>
+                    ),
+                ?assertEqual(500, status_of(RespReq2)),
+                ?assertMatch(
+                    {ok, [#{<<"status">> := <<"pending">>}]},
+                    q(Conn, <<"SELECT status FROM organization_invitation WHERE id = $1">>, [
+                        InvitationId
+                    ])
+                )
+            end)
+        end},
+        {"注入6 department_create：审计失败 → 500 且部门行回滚", fun() ->
+            Scope = seed_org(Conn, <<"inj-dep">>),
+            OrgId = maps:get(org_id, Scope),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        departments,
+                        <<"POST">>,
+                        bindings(OrgId),
+                        jsone:encode(#{<<"name">> => <<"注入审计部"/utf8>>})
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"count">> := 0}]},
+                    q(
+                        Conn,
+                        <<"SELECT count(*) FROM organization_department"
+                            " WHERE organization_id = $1 AND name = $2 AND status = 'active'">>,
+                        [OrgId, <<"注入审计部"/utf8>>]
+                    )
+                )
+            end)
+        end},
+        {"注入7 department_rename：审计失败 → 500 且名称/版本回滚", fun() ->
+            Scope = seed_org(Conn, <<"inj-ren">>),
+            OrgId = maps:get(org_id, Scope),
+            DeptId = maps:get(dept_id, Scope),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        department_rename,
+                        <<"POST">>,
+                        org_binding(OrgId, department_id, DeptId),
+                        jsone:encode(#{<<"name">> => <<"回滚后名"/utf8>>, <<"expected_version">> => 1})
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"name">> := _, <<"version">> := 1, <<"status">> := <<"active">>}]},
+                    q(Conn, dept_row_sql(), [DeptId])
+                )
+            end)
+        end},
+        {"注入8 department_archive：审计失败 → 500 且部门仍 active", fun() ->
+            Scope = seed_org(Conn, <<"inj-dar">>),
+            OrgId = maps:get(org_id, Scope),
+            DeptId = maps:get(dept_id, Scope),
+            with_audit_fail(fun() ->
+                RespReq =
+                    call(
+                        ?WRITE_UID,
+                        department_archive,
+                        <<"POST">>,
+                        org_binding(OrgId, department_id, DeptId),
+                        <<>>
+                    ),
+                ?assertEqual(500, status_of(RespReq)),
+                ?assertMatch(
+                    {ok, [#{<<"status">> := <<"active">>}]}, q(Conn, dept_row_sql(), [DeptId])
+                )
+            end)
+        end},
+        {"注入回归：恢复审计后同操作成功且审计行落库（事务内路径正向验证）", fun() ->
+            Scope = seed_org(Conn, <<"inj-ok">>),
+            OrgId = maps:get(org_id, Scope),
+            RespReq = call(?WRITE_UID, org_archive, <<"POST">>, bindings(OrgId), <<>>),
+            ?assertEqual(200, status_of(RespReq)),
+            {ok, _, [{Count}]} =
+                epgsql:equery(
+                    Conn,
+                    <<"SELECT count(*) FROM admin_operation_logs"
+                        " WHERE target_id = $1 AND action = 'organization_archive'"
+                        " AND adm_user_id = $2">>,
+                    [OrgId, ?WRITE_UID]
+                ),
+            ?assert(Count >= 1)
+        end}
+    ].
+
+%% meck adm_operation_log_ds:insert_tx 强制失败；审计注入失败 ⇒ abort_tx 回滚。
+with_audit_fail(Fun) ->
+    ok = meck:new(adm_operation_log_ds, [passthrough, no_link, unstick]),
+    ok =
+        meck:expect(adm_operation_log_ds, insert_tx, fun(
+            _Conn, _AdmUserId, _Action, _TargetId, _TargetType, _Detail, _Ip
+        ) ->
+            {error, audit_injected}
+        end),
+    try Fun()
+    after catch meck:unload(adm_operation_log_ds)
+    end.
+
+dept_row_sql() ->
+    <<"SELECT name, version, status FROM organization_department WHERE id = $1">>.
 
 %% ------------------------------------------------------------------
 %% 权限矩阵

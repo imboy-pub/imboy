@@ -88,7 +88,7 @@ annotate(Seats, Presences, NowSec) when is_list(Seats), is_list(Presences) ->
         is_map_key(business_identity_id, P)
     ]),
     [
-        case
+        S#{derived_status =>
             seat_status(
                 S,
                 maps:get(
@@ -97,11 +97,7 @@ annotate(Seats, Presences, NowSec) when is_list(Seats), is_list(Presences) ->
                     undefined
                 ),
                 NowSec
-            )
-        of
-            undefined -> S;
-            Derived -> S#{derived_status => Derived}
-        end
+            )}
      || S <- Seats, is_map(S)
     ];
 annotate(_Seats, _Presences, _NowSec) ->
@@ -116,6 +112,8 @@ dispatchable(_Other) -> false.
 %% 内部
 %% ===================================================================
 
+%% 仅接受 map 座椅快照（调用方 annotate/3 的列表推导已过滤 is_map/1）；
+%% manual_status/1 只返回 away | none，两形态已穷尽。
 seat_status(Seat, Presence, NowSec) when is_map(Seat) ->
     case manual_status(Presence) of
         away ->
@@ -124,12 +122,8 @@ seat_status(Seat, Presence, NowSec) when is_map(Seat) ->
             derive(Presence, NowSec, Seat);
         %% 无注入时钟的过渡形态：不做 TTL 裁决（见 annotate/3 文档）。
         none ->
-            online;
-        _ ->
-            offline
-    end;
-seat_status(_NotSeat, _Presence, _NowSec) ->
-    undefined.
+            online
+    end.
 
 manual_status(Presence) when is_map(Presence) ->
     case maps:get(manual_status, Presence, undefined) of

@@ -595,8 +595,10 @@ replay_token(OrgId, Installation, SubjectHmac, Secret, Params) ->
             Store:fetch_widget_bootstrap_token_by_digest(OrgId, InstallationId, Digest)
         end)
     of
+        %% CP-SEC-05（DEC-VISIT-TOKEN）：重放面 digest 无命中 = 伪造凭证，
+        %% 统一 visit_token_invalid（401），与 verify/derive 同口径。
         {error, not_found} ->
-            {error, not_found};
+            {error, visit_token_invalid};
         {error, _} = Err ->
             Err;
         {ok, Token} ->

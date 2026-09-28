@@ -70,6 +70,10 @@
 
 -define(FAR_FUTURE, <<"2099-01-01T00:00:00Z">>).
 
+%% CP-CON-01：INT-16/17 游标迁移 CURSOR-V2（§10.1）——真库链路的签名密钥。
+-define(CURSOR_KEY_CFG, enterprise_internal_cursor_signing_key).
+-define(CURSOR_SECRET, <<"full02_cursor_signing_key_0123456789abcdef">>).
+
 %%%===================================================================
 %%% Fixture
 %%%===================================================================
@@ -101,6 +105,9 @@ setup_conn() ->
         ]
     ),
     {ok, _} = application:ensure_all_started(throttle),
+    %% CP-CON-01：INT-16/17 游标走 CURSOR-V2 验签（§10.1）——套件级注入
+    %% 签名密钥（与 enterprise_internal_read_pg_tests 同款配方）。
+    ok = application:set_env(imboy, ?CURSOR_KEY_CFG, ?CURSOR_SECRET),
     State = inttest_marker_db:provision(#{
         env_prefix => <<"FULL02_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
@@ -113,6 +120,7 @@ setup_conn() ->
     catch
         Class:Reason:Stack ->
             _ = exec_quiet(C, <<"ROLLBACK">>),
+            application:unset_env(imboy, ?CURSOR_KEY_CFG),
             inttest_marker_db:release(State),
             erlang:raise(Class, {fixture_seed_failed, Reason}, Stack)
     end,
@@ -121,6 +129,7 @@ setup_conn() ->
     State#{conn => C, app_a => AppA, app_b => AppB, prin_a => PrinAppA, prin_b => PrinAppB}.
 
 close_conn(State) ->
+    application:unset_env(imboy, ?CURSOR_KEY_CFG),
     inttest_marker_db:release(State),
     ok.
 
@@ -670,7 +679,7 @@ dir_bad_cursor(C, State) ->
     UserCursor =
         case maps:get(<<"next_cursor">>, Users) of
             null ->
-                %% 成员不足一页时构造一个合法 users 游标（同编码规则）
+                %% 成员不足一页时构造一个旧形态 users 游标（验签必拒，同样 400）
                 base64:encode(<<"users:992011">>);
             Cur ->
                 Cur
@@ -685,7 +694,91 @@ dir_bad_cursor(C, State) ->
         enterprise_directory_logic:page_users_tx(C, Ctx, #{
             cursor => base64:encode(<<"users:not-a-number">>)
         })
+    ),
+    %% ---- CP-CON-01：CURSOR-V2（§10.1）五类用例的真库侧增量 ----
+    %% 真签 mappings 首页游标（fixture 有 4 条 active 映射，page_size=1 必 has_more）
+    {ok, P1} = enterprise_directory_logic:page_mappings_tx(C, Ctx, #{page_size => 1}),
+    RealCursor = maps:get(<<"next_cursor">>, P1),
+    ?assert(is_binary(RealCursor), "has_more 页必须签发真签游标"),
+    %% ② tampered：篡改 1 字节（payload 首字符——首字符 6 bit 恒为有效载荷位）
+    [EncP, EncM] = binary:split(RealCursor, <<".">>, [global]),
+    Tampered = <<(dir_flip_first(EncP))/binary, ".", EncM/binary>>,
+    TamperedMac = <<EncP/binary, ".", (dir_flip_first(EncM))/binary>>,
+    lists:foreach(
+        fun(Bad) ->
+            ?assertMatch(
+                {error, {<<"invalid_request">>, _}},
+                enterprise_directory_logic:page_mappings_tx(C, Ctx, #{cursor => Bad})
+            )
+        end,
+        [Tampered, TamperedMac]
+    ),
+    %% ⑤ expired：issued_at 早于 24h 窗口的真签游标（同族同绑定，仅时间过期）
+    Now = os:system_time(second),
+    {ok, Key} = enterprise_cursor_v2:signing_key(),
+    ExpiredPayload = enterprise_cursor_v2:build_payload(
+        <<"identity_mappings">>,
+        ?ORG_A,
+        maps:get(app_a, State),
+        #{},
+        [<<"f02-ext-a1">>],
+        Now - enterprise_cursor_v2:ttl_seconds() - 1
+    ),
+    {ok, Expired} = enterprise_cursor_v2:sign(ExpiredPayload, Key),
+    ?assertMatch(
+        {error, {<<"invalid_request">>, _}},
+        enterprise_directory_logic:page_mappings_tx(C, Ctx, #{cursor => Expired})
+    ),
+    %% ⑥ 旧 unsigned 形态（无 HMAC 段）：一律拒——无验签游标不得翻页。
+    %%    （f02-ext-a1 是 fixture 里真实存在的 active 映射键，旧实现会放行。）
+    lists:foreach(
+        fun(Bad) ->
+            ?assertMatch(
+                {error, {<<"invalid_request">>, _}},
+                enterprise_directory_logic:page_mappings_tx(C, Ctx, #{cursor => Bad})
+            )
+        end,
+        [
+            base64:encode(<<"mappings:f02-ext-a1">>),
+            base64:encode(<<"users:992011">>)
+        ]
+    ),
+    %% ⑦ 绑定：真签名但换 Org 的游标 → 拒（跨 Org 重放不构成越权）
+    ForeignOrgPayload = enterprise_cursor_v2:build_payload(
+        <<"identity_mappings">>,
+        ?ORG_B,
+        maps:get(app_a, State),
+        #{},
+        [<<"f02-ext-a1">>],
+        Now
+    ),
+    {ok, ForeignOrg} = enterprise_cursor_v2:sign(ForeignOrgPayload, Key),
+    ?assertMatch(
+        {error, {<<"invalid_request">>, _}},
+        enterprise_directory_logic:page_mappings_tx(C, Ctx, #{cursor => ForeignOrg})
+    ),
+    %% ① valid 对照：真签真绑定的游标续页放行（真签游标链路非仅负例）
+    ?assertMatch(
+        {ok, #{<<"page_size">> := 1}},
+        enterprise_directory_logic:page_mappings_tx(C, Ctx, #{
+            cursor => RealCursor, page_size => 1
+        })
     ).
+
+%% 翻转 base64url 首字符（同 enterprise_cursor_v2_tests：避开尾字符低位
+%% 填充比特可能无显著性的问题）。
+dir_flip_first(Bin) ->
+    Size = byte_size(Bin),
+    Head = binary:part(Bin, 1, Size - 1),
+    <<(dir_flip(binary:first(Bin))):8, Head/binary>>.
+
+dir_flip(C) when C >= $a, C =< $y -> C + 1;
+dir_flip($z) -> $a;
+dir_flip(C) when C >= $A, C =< $Y -> C + 1;
+dir_flip($Z) -> $A;
+dir_flip(C) when C >= $0, C =< $8 -> C + 1;
+dir_flip($9) -> $0;
+dir_flip(C) -> C bxor 1.
 
 %% @doc 仓储层硬闸（第二道防线）：即使调用方传 100000，也最多取 MAX_PAGE + 1 行
 %% ——「无界导出」在任何调用路径上都不可能（LIMIT 恒生效）。

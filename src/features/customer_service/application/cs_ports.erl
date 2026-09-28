@@ -133,6 +133,9 @@ contracts() ->
             {fetch_widget_installation_by_public_id_global, 1},
             {list_widget_installations_page, 3},
             {revoke_widget_installation, 3},
+            %% CP-TD-01G：cs_store_port 已声明 update_widget_installation/4
+            %% （安装配置更新面），冻结契约表补同步——closure 测试锁定两源一致。
+            {update_widget_installation, 4},
             {insert_widget_identity_key, 3},
             {fetch_widget_identity_key, 3},
             {revoke_widget_identity_key, 4},

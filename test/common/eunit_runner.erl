@@ -11,7 +11,8 @@
     eunit_try_db/0,
     eunit_setup_with_db/0,
     eunit_setup_db_or_skip/0,
-    ensure_named_server/1
+    ensure_named_server/1,
+    ensure_boot_coordinator/0
 ]).
 
 %%%===================================================================
@@ -91,6 +92,7 @@ eunit_setup() ->
     end,
 
     load_test_config(),
+    enforce_pool_capacity(),
     application:set_env(imboy, sql_driver, pgsql),
     application:set_env(imboy, env, test),
     application:set_env(imboy, http_port, test_http_port()),
@@ -165,13 +167,25 @@ ensure_boot_coordinator() ->
     end.
 
 boot_coord_loop() ->
+    %% A1c（CP-TD-A02）：trap_exit——do_ensure_cache 重建的 imboy_cache 挂在本
+    %% 协程名下，cleanup_start_orphans 黑名单击杀幸存缓存时 EXIT(shutdown/killed)
+    %% 会传染本协程（非 trap 即死），后续所有 eunit_setup 的 send 全部 badarg、
+    %% 整段 app 套件连锁 cancel。trap 后 EXIT 信号降级为可丢弃消息。
+    process_flag(trap_exit, true),
+    boot_coord_loop_().
+boot_coord_loop_() ->
     receive
         {boot, From, Ref} ->
             From ! {Ref, do_boot()},
-            boot_coord_loop();
+            boot_coord_loop_();
         {ensure_cache, From, Ref} ->
             From ! {Ref, do_ensure_cache()},
-            boot_coord_loop()
+            boot_coord_loop_();
+        {'EXIT', _Pid, _Reason} ->
+            %% 被杀链接子进程的 EXIT 残留，丢弃
+            boot_coord_loop_();
+        _ ->
+            boot_coord_loop_()
     end.
 
 do_ensure_cache() ->
@@ -200,8 +214,17 @@ do_boot() ->
             {ok, {app_already_started, imboy}};
         false ->
             cleanup_start_orphans(),
+            %% A1c（CP-TD-A02）：上一次启动中途夭折会遗留 ranch 监听孤儿——
+            %% 黑名单（按原子名 whereis）够不到 {ranch_listener_sup, Ref} 元组名
+            %% sup，残留 19980/19970 绑定 → 重试恒 eaddrinuse（run14/16 实证
+            %% 重试风暴 169 连发）。显式停监听后再重试。
+            _ = (try ranch:stop_listener(imboy_listener) catch _:_ -> ok end),
+            _ = (try cowboy:stop_listener(imboy_listener) catch _:_ -> ok end),
+            _ = (try ranch:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
+            _ = (try cowboy:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
             case application:ensure_all_started(imboy) of
                 {ok, _} ->
+                    quiesce_periodic_workers(),
                     {ok, {app_started, imboy}};
                 {error, {already_started, imboy}} ->
                     {ok, {app_already_started, imboy}};
@@ -212,6 +235,7 @@ do_boot() ->
                     cleanup_start_orphans(),
                     case application:ensure_all_started(imboy) of
                         {ok, _} ->
+                            quiesce_periodic_workers(),
                             {ok, {app_started, imboy}};
                         {error, {already_started, imboy}} ->
                             {ok, {app_already_started, imboy}};
@@ -293,6 +317,50 @@ cleanup_start_orphans() ->
         _:_ -> ok
     end,
     ok.
+
+%% ===================================================================
+%% 周期 worker 测试静默（CP-TD-01F 跨套件隔离）
+%% ===================================================================
+%% 问题（W3 全量两次实证）：imboy_sup 拉起的周期 worker 在全量 eunit 期间
+%% 持续真实轮询 PG，与套件的 elib_pg meck 竞态：
+%%   * msg_store_worker（1s tick staging 表）：meck 期间撞套件期望（收到
+%%     mock_conn 参数）→ meck:unload 窗口 undef（'function not exported'
+%%     {elib_pg,query,3}/{elib_pg,with_tx,1}）→ sup 反复重启风暴；
+%%   * bot_webhook_delivery_worker（1s claim_due outbox）：[WH01] batch
+%%     crash error:undef；
+%%   * msg_burn / moderation_sweep / user_deletion / credential_retention /
+%%     agent_payment_compensation 等周期 sweep 在 meck 窗口内打真库
+%%     （pg_down / purge failed / release_failed），白占 pooler 名额
+%%     （max_count=80 vs PG max_connections=100，并发套件高峰偶发
+%%     econnrefused）。
+%% 修法（仅测试基建）：app 首次启动成功后由本长驻协调进程串行
+%% terminate_child 静默下列周期 worker。测试侧一律直调导出函数
+%% （msg_store_worker:do_write / bot_webhook_delivery_worker:execute /
+%% agent_payment_compensation_worker:process_once）或 whereis-undefined
+%% 时自建受控实例（user_deletion_logic / msg_burn_logic 套件为该写法），
+%% 均不依赖常驻实例；套件自身的让位/自建实例不经 sup 注册，不受影响。
+%% terminate_child 为显式管理操作，permanent child 不会因此自动重启；
+%% app_already_started 分支不重复执行，不干扰运行中的套件状态。
+-define(PERIODIC_WORKER_STOP_SPECS, [
+    %% 每秒真实轮询型（W3 全量 CRASH 主角）
+    {msg_store_sup, msg_store_worker},
+    {imboy_sup, bot_webhook_delivery_worker},
+    %% 周期 sweep / 清理 / 补偿型（meck 窗口内真库错误 + 池名额占用）
+    {imboy_sup, msg_burn_logic},
+    {imboy_sup, moderation_sweep_logic},
+    {imboy_sup, user_deletion_logic},
+    {imboy_sup, credential_retention_worker},
+    {imboy_sup, agent_payment_compensation_worker}
+]).
+
+quiesce_periodic_workers() ->
+    lists:foreach(
+        fun({Sup, Id}) ->
+            _ = catch supervisor:terminate_child(Sup, Id),
+            ok
+        end,
+        ?PERIODIC_WORKER_STOP_SPECS
+    ).
 
 %% @doc 清理资源
 %% @param State setup 返回的状态
@@ -427,6 +495,40 @@ test_config_path() ->
             filename:join([project_root_dir(), "config", "sys.config"]);
         Path ->
             filename:absname(Path)
+    end.
+
+%% ===================================================================
+%% 测试池容量下限（CP-TD-01F 跨套件隔离）
+%% ===================================================================
+%% pooler:take_member/1（elib_pg:with_conn 所用）在无空闲成员时立即返回
+%% error_no_members——该 API 形态（Timeout=0）不入等待队列、不触发扩容，
+%% 池成员数永远停留在建池时的 init_count。配置漂移/污染路径会把 init_count
+%% 压回个位数（cs_preflight_facts_pg_tests:ensure_test_pg_conf 的
+%% set_env(imboy, pg_conf, #{init_count => 5, max_count => 40, ...}) 无条件
+%% 覆写且不恢复），重并发用例（agent_task 32 worker 等）在共享的小池上
+%% 集中 no_connection（W3/CP12 全量三轮实证）。
+%% 此处在 app 启动前把测试池容量钉到下限之上：只影响本测试节点的基础
+%% 设备就绪度，不改变任何业务语义与断言。
+-define(MIN_POOL_INIT_COUNT, 40).
+
+enforce_pool_capacity() ->
+    case application:get_env(imboy, pg_conf) of
+        {ok, PgConf} when is_map(PgConf) ->
+            Init = maps:get(init_count, PgConf, 0),
+            case Init >= ?MIN_POOL_INIT_COUNT of
+                true ->
+                    ok;
+                false ->
+                    Max = maps:get(max_count, PgConf, 0),
+                    NewMax = erlang:max(Max, ?MIN_POOL_INIT_COUNT + 8),
+                    application:set_env(
+                        imboy,
+                        pg_conf,
+                        PgConf#{init_count := ?MIN_POOL_INIT_COUNT, max_count := NewMax}
+                    )
+            end;
+        _ ->
+            ok
     end.
 
 test_http_port() ->

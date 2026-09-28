@@ -81,7 +81,7 @@ close_conn(State) ->
 connect_marker(State) ->
     #{host := Host, port := Port, username := User, password := Pass} = maps:get(server, State),
     #{db := Db} = State,
-    {ok, Conn} = epgsql:connect(#{
+    {ok, Conn} = inttest_marker_db:safe_connect(#{
         host => Host,
         port => Port,
         username => User,

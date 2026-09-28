@@ -172,6 +172,13 @@ fetch_token_by_digest(OrgId, Params, Secret) ->
             Store:fetch_widget_bootstrap_token_by_digest(OrgId, InstallationId, Digest)
         end)
     of
+        %% CP-SEC-05（DEC-VISIT-TOKEN=FIX_401_VISIT_TOKEN_INVALID）：digest
+        %% 无命中行 = 持有的 secret 不是任何已签发令牌（伪造/跨租户重放）——
+        %% 凭证无效语义，翻译为 visit_token_invalid（HTTP 面 401），不把
+        %% not_found 泄漏成 404/500。installation 存在性在 frame/bootstrap 面
+        %% 更早裁决（installation_unavailable），与此凭证面语义分离。
+        {error, not_found} ->
+            {error, visit_token_invalid};
         {error, _} = Err ->
             Err;
         {ok, Token} ->
@@ -200,6 +207,10 @@ derive_org_by_token(Params) when is_map(Params) ->
                     Store:fetch_widget_bootstrap_token_by_digest_global(InstallationId, Digest)
                 end)
             of
+                %% CP-SEC-05：同 fetch_token_by_digest——digest 无命中 = 伪造
+                %% 凭证，翻译 visit_token_invalid（401）。
+                {error, not_found} ->
+                    {error, visit_token_invalid};
                 {error, _} = Err ->
                     Err;
                 {ok, Token} ->

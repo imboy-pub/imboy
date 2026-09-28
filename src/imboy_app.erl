@@ -344,7 +344,22 @@ tsid_generator_names() ->
         %% ── SSO (P0-C) ──
         sso_identity,
         %% ── AI Agent ──
-        ai_agent_role_version
+        ai_agent_role_version,
+        %% ── Enterprise Business（enterprise_* 域补登，CP-TD-A02/A1d）──
+        %% 8 个生成器在 enterprise_* logic/repo 内有真实调用点且已编译进
+        %% ebin，但本清单此前漏注册：真节点调用即
+        %% elib_tsid_generator_not_registered 运行时崩溃（同 GZAPP-09
+        %% organization_invite_code 补登先例）。调用点现虽带
+        %% ensure-registered 惰性守卫，启动期登记仍是注册表权威来源，
+        %% elib_tsid_registration_guard_tests 强制此不变量。
+        enterprise_message,
+        enterprise_message_origin,
+        enterprise_audit_event,
+        enterprise_application,
+        enterprise_application_grant,
+        enterprise_application_credential,
+        enterprise_external_identity,
+        enterprise_oa_sso_code
     ].
 
 %% ===================================================================

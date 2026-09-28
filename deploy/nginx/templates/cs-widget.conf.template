@@ -3,7 +3,10 @@
 #
 # 与 imboy.conf.template 同目录，由 nginx 官方镜像 entrypoint 的 envsubst 渲染为
 # /etc/nginx/conf.d/cs-widget.conf；NGINX_ENVSUBST_FILTER 须包含 CS_WIDGET_DOMAIN
-# （见 docker-compose.community.yml / docker-compose.prod.yml 的 imboy_nginx 服务）。
+# ——社区版在 docker-compose.community.yml 的 imboy_nginx 直接内置；商务版基线
+# docker-compose.prod.yml（不随仓分发）的 filter 不含该变量，经 overlay
+# docker-compose.prod-cs.yml 注入 CS_WIDGET_DOMAIN 并扩展 filter（见
+# deploy/cs-widget-overlay.md）。
 #
 # 拓扑（冻结合同 hosted-widget-contract-v1 §S2/S4/S5/S6、计划卡 CSD-DEP-01）：
 #   https://<CS_WIDGET_DOMAIN>/v1/loader.js | /assets/ | /widget/ -> imboy_widget:8080（静态产物）

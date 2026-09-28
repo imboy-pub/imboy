@@ -51,7 +51,7 @@ setup_conn() ->
         ok = create_db(MaintConn, DbName),
         ok = ensure_extensions(Server, DbName),
         ok = migrate_result(migrate_fresh_db(Server, DbName)),
-        {ok, Conn} = epgsql:connect(conn_opts(Server, DbName)),
+        {ok, Conn} = inttest_marker_db:safe_connect(conn_opts(Server, DbName)),
         #{conn => Conn, maint_conn => MaintConn, db => DbName, server => Server}
     catch
         Class:Reason:Stack ->
@@ -149,7 +149,7 @@ create_db(Conn, DbName) ->
     end.
 
 connect_server(Server, Db) ->
-    case epgsql:connect(conn_opts(Server, Db)) of
+    case inttest_marker_db:safe_connect(conn_opts(Server, Db)) of
         {ok, Conn} -> Conn;
         {error, Reason} -> erlang:error({org_member_inttest_connect_failed, Db, Reason})
     end.
@@ -207,7 +207,7 @@ migrate_result({ok, _Applied}) -> ok;
 migrate_result({error, Reason}) -> erlang:error({org_member_inttest_migrate_failed, Reason}).
 
 try_drop_db(Server, DbName) ->
-    case epgsql:connect(conn_opts(Server, maint_db())) of
+    case inttest_marker_db:safe_connect(conn_opts(Server, maint_db())) of
         {ok, C} ->
             Drop =
                 try epgsql:squery(C, <<"DROP DATABASE ", DbName/binary>>) of

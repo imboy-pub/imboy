@@ -186,44 +186,110 @@ replay_tx(Req0, Ctx0, DeliveryId, IdemKey, Digest) ->
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
     end.
 
-%% @doc GET /api/internal/v1/webhook/deliveries（FULL-03 提议 INT-23，待 A0 接线）：
-%% 本 Application 的投递元数据列表 + 健康度摘要（成功率/重试/死信）。
-%% 只读、无 Idempotency-Key 要求、页大小夹紧；响应不含 payload/secret。
+%% @doc GET /api/internal/v1/webhook/deliveries（INT-23；CP-CON-02 切 CURSOR-V2
+%% keyset——DEC-INT23-COMPAT）：本 Application 的投递元数据分页 + 健康度摘要
+%% （成功率/重试/死信）。只读、无 Idempotency-Key 要求；响应不含 payload/secret。
+%% query：cursor（上一页 next_cursor）/ page_size（缺省 20，上限 50，越界 400）/
+%% status（可选过滤）；**旧 offset 参数 page/size 任一出现即 400
+%% cursor_required_v1（versioned 迁移错误，进事务前拒绝）**。
 -spec deliveries(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 deliveries(<<"GET">>, Req0, State) ->
     Ctx0 = maps:get(enterprise_internal, State, #{}),
     Qs = maps:from_list(cowboy_req:parse_qs(Req0)),
-    Params = #{
-        page => maps:get(<<"page">>, Qs, <<"1">>),
-        size => maps:get(<<"size">>, Qs, <<"20">>),
-        status => maps:get(<<"status">>, Qs, undefined)
-    },
-    TxResult =
-        elib_pg:with_tx(fun(Conn) ->
-            case delivery_ctx(Conn, Ctx0) of
-                {ok, Ctx} ->
-                    case enterprise_webhook_logic:deliveries_tx(Conn, Ctx, Params, 20) of
-                        {ok, Result} -> {tx_ok, Result};
-                        {error, {Code, _Detail}} -> throw({rollback, {business_error, Code}})
-                    end;
-                {error, Code} ->
-                    throw({rollback, {business_error, Code}})
+    case legacy_offset_qs(Qs) of
+        true ->
+            reply_versioned_400(Req0);
+        false ->
+            Params = #{
+                cursor => maps:get(<<"cursor">>, Qs, undefined),
+                page_size => page_size_of(Qs, 20),
+                status => maps:get(<<"status">>, Qs, undefined)
+            },
+            TxResult =
+                elib_pg:with_tx(fun(Conn) ->
+                    case delivery_ctx(Conn, Ctx0) of
+                        {ok, Ctx} ->
+                            case enterprise_webhook_logic:deliveries_tx(Conn, Ctx, Params, 20) of
+                                {ok, Result} ->
+                                    {tx_ok, Result};
+                                {error, {Code, _Detail}} ->
+                                    throw({rollback, {business_error, Code}})
+                            end;
+                        {error, Code} ->
+                            throw({rollback, {business_error, Code}})
+                    end
+                end),
+            case TxResult of
+                {tx_ok, Result} ->
+                    reply_json(Req0, 200, Result);
+                {rollback, {business_error, Code}} ->
+                    reply_error(Req0, Code);
+                {rollback, Reason} ->
+                    ?ERROR_LOG("enterprise_webhook_handler deliveries rollback: ~p~n", [Reason]),
+                    enterprise_internal_error:reply(Req0, <<"internal_error">>);
+                {error, Reason} ->
+                    ?ERROR_LOG("enterprise_webhook_handler deliveries error: ~p~n", [Reason]),
+                    enterprise_internal_error:reply(Req0, <<"internal_error">>)
             end
-        end),
-    case TxResult of
-        {tx_ok, Result} ->
-            reply_json(Req0, 200, Result);
-        {rollback, {business_error, Code}} ->
-            enterprise_internal_error:reply(Req0, Code);
-        {rollback, Reason} ->
-            ?ERROR_LOG("enterprise_webhook_handler deliveries rollback: ~p~n", [Reason]),
-            enterprise_internal_error:reply(Req0, <<"internal_error">>);
-        {error, Reason} ->
-            ?ERROR_LOG("enterprise_webhook_handler deliveries error: ~p~n", [Reason]),
-            enterprise_internal_error:reply(Req0, <<"internal_error">>)
     end;
 deliveries(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% 旧 offset 参数门（DEC-INT23-COMPAT）：page/size 任一出现即 versioned 400。
+-spec legacy_offset_qs(map()) -> boolean().
+legacy_offset_qs(Qs) ->
+    maps:is_key(<<"page">>, Qs) orelse maps:is_key(<<"size">>, Qs).
+
+%% page_size 解析：二进制整数原样转 integer；非数值保留原值交 logic 拒绝
+%% （400 invalid_request，不静默回落）。
+-spec page_size_of(map(), pos_integer()) -> pos_integer() | binary().
+page_size_of(Qs, Default) ->
+    case maps:get(<<"page_size">>, Qs, undefined) of
+        undefined ->
+            Default;
+        Bin when is_binary(Bin) ->
+            try
+                binary_to_integer(Bin)
+            catch
+                _:_ -> Bin
+            end;
+        Other ->
+            Other
+    end.
+
+%% deliveries 错误映射：versioned 迁移码走专属 400 信封，其余 stable 码走
+%% enterprise_internal_error（13 码冻结合同不动）。
+-spec reply_error(cowboy_req:req(), binary()) -> cowboy_req:req().
+reply_error(Req0, <<"cursor_required_v1">>) ->
+    reply_versioned_400(Req0);
+reply_error(Req0, Code) ->
+    enterprise_internal_error:reply(Req0, Code).
+
+%% versioned 400（DEC-INT23-COMPAT）：与 internal 错误信封同形态
+%% （{"error":{"code":...,"message":...}}，message 固定通用文案不回显请求
+%% 细节），code 为本读面专属迁移码 cursor_required_v1——不进
+%% enterprise_internal_error 的 13 个 stable 码（那是 EPGZ-02 冻结面，
+%% versioned 迁移错误不新造 stable 码）。
+-spec reply_versioned_400(cowboy_req:req()) -> cowboy_req:req().
+reply_versioned_400(Req0) ->
+    ?WARN_LOG([
+        enterprise_webhook_pagination_migrated,
+        #{
+            code => <<"cursor_required_v1">>,
+            method => cowboy_req:method(Req0),
+            path => cowboy_req:path(Req0)
+        }
+    ]),
+    Body = jsone:encode(#{
+        <<"error">> => #{
+            <<"code">> => <<"cursor_required_v1">>,
+            <<"message">> =>
+                <<"pagination migrated to signed cursor; use page_size and next_cursor">>
+        }
+    }),
+    cowboy_req:reply(
+        400, #{<<"content-type">> => <<"application/json">>}, Body, Req0
+    ).
 
 %% 读面 ctx：与 configure 同源的 principal 链路解析（无 principal → 明确错误，
 %% 不给存在性 oracle）。

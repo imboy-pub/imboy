@@ -1757,6 +1757,10 @@ with_pool_shim(C, Fun) ->
 mock_cowboy(Method, Opts) ->
     ok = meck:new(cowboy_req, [no_link]),
     ok = meck:expect(cowboy_req, method, 1, fun(_R) -> Method end),
+    %% CP-CON-02：INT-23 versioned 400 路径的 WARN_LOG 读 path（进事务前）
+    ok = meck:expect(
+        cowboy_req, path, 1, fun(_R) -> <<"/api/internal/v1/webhook/deliveries">> end
+    ),
     ok =
         meck:expect(cowboy_req, header, 2, fun(_H, _R) ->
             maps:get(idem_key, Opts, undefined)
@@ -1784,6 +1788,12 @@ mock_cowboy(Method, Opts) ->
 reply_captured() ->
     {Status, Body} = get(repair_f2_high_reply),
     ?assert(is_integer(Status) andalso Status >= 200 andalso Status < 300),
+    {Status, jsone:decode(Body)}.
+
+%% 原样取回包（CP-CON-02：INT-23 versioned 400 断言不能用 2xx 版本）。
+reply_captured_raw() ->
+    {Status, Body} = get(repair_f2_high_reply),
+    ?assert(is_integer(Status)),
     {Status, jsone:decode(Body)}.
 
 %% INT-09 POST /api/internal/v1/messages/direct（application 代发）：
@@ -1843,6 +1853,9 @@ repair_int12_handler(C, State) ->
 
 %% INT-23 GET /api/internal/v1/webhook/deliveries（投递列表 + 健康度摘要）：
 %% 修前在 delivery_ctx/2 → find_tx(Conn, AppId) 处 undef → 500。
+%% CP-CON-02：CURSOR-V2 keyset 读面（DEC-INT23-COMPAT）——形状为
+%% {items, page_size, has_more, next_cursor, summary}；旧 page/size query
+%% 出现即 versioned 400 cursor_required_v1（进事务前拒绝）。
 repair_int23_handler(C, State) ->
     repair_seed_grant(C, State),
     Ctx = repair_ctx(C, State),
@@ -1854,11 +1867,29 @@ repair_int23_handler(C, State) ->
                     action => deliveries, enterprise_internal => Ctx
                 }),
             {200, Decoded} = reply_captured(),
-            %% 形状：分页 list + total/page + summary（健康度摘要），见
-            %% enterprise_webhook_repo:list_deliveries_tx/5。
-            ?assert(is_list(maps:get(<<"list">>, Decoded))),
+            %% 形状：CURSOR-V2 页（items/page_size/has_more/next_cursor）+
+            %% summary（健康度摘要），见 enterprise_webhook_repo:
+            %% page_deliveries_tx/6（CP-CON-02 keyset）。
+            ?assert(is_list(maps:get(<<"items">>, Decoded))),
             ?assert(is_map(maps:get(<<"summary">>, Decoded))),
-            ?assertMatch(#{<<"total">> := 0, <<"page">> := 1}, Decoded)
+            ?assertEqual(false, maps:get(<<"has_more">>, Decoded)),
+            ?assertEqual(null, maps:get(<<"next_cursor">>, Decoded)),
+            ?assertEqual(20, maps:get(<<"page_size">>, Decoded))
+        after
+            meck:unload(cowboy_req)
+        end,
+        %% 旧 offset query（page/size 任一）→ 400 cursor_required_v1
+        mock_cowboy(<<"GET">>, #{qs => [{<<"page">>, <<"2">>}]}),
+        try
+            {ok, _Req2, _State2} =
+                enterprise_webhook_handler:init(req, #{
+                    action => deliveries, enterprise_internal => Ctx
+                }),
+            {400, Decoded400} = reply_captured_raw(),
+            ?assertEqual(
+                <<"cursor_required_v1">>,
+                maps:get(<<"code">>, maps:get(<<"error">>, Decoded400))
+            )
         after
             meck:unload(cowboy_req)
         end

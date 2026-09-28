@@ -126,6 +126,7 @@ setup_db() ->
     ok = elib_tsid:register([
         admin_op_log, organization, workspace, user, owner_activation_invite
     ]),
+    ensure_depcache(),
     State =
         inttest_marker_db:provision(#{
             env_prefix => <<"GZAPP06">>,
@@ -138,11 +139,37 @@ setup_db() ->
     ok = imboy_sms_fake:outbox_clear(),
     {ok, _} = application:ensure_all_started(pooler),
     #{server := Server, db := Db} = State,
-    case pooler:new_pool(pgsql_pool_conf(Server, Db)) of
+    PoolConf = pgsql_pool_conf(Server, Db),
+    case pooler:new_pool(PoolConf) of
         {ok, _Pid} ->
             State;
         {error, {already_started, _}} ->
-            erlang:error({adm_owner_activation_pg_pool_conflict, 'pgsql'})
+            %% A1c（CP-TD-A02）：共享 VM 里 app 的 pgsql 池（指向共享库）已就位，
+            %% 而产品代码 elib_pg:with_conn 硬编码 take_member(pgsql)——套件池必须
+            %% 同名。接管：先停 app 池、换挂本套件 marker 库池；close_db/1 再按
+            %% imboy pg_conf 重建 app 池还原共享 VM 状态，后续套件不受影响。
+            ok = pool_swap('pgsql', PoolConf, 20),
+            State
+    end.
+
+%% A1c：rm_pool/new_pool 均有异步窗口（rm 后名称短暂残留 already_present；
+%% 成员占用中 rm 返回 running）——重试收敛，杜绝接管竞态。
+%% rm_pool/new_pool 均有异步窗口：rm 后名称短暂残留（already_present）、
+%% 成员占用中 rm 返回 running——单发必竞态。交替「rm→new」重试直到新池
+%% （指向目标 conf）真正建立，杜绝接管/还原竞态（run19 实证）。
+pool_swap(_Pool, _Conf, 0) ->
+    erlang:error({pool_swap_failed, 'pgsql'});
+pool_swap(Pool, Conf, N) ->
+    _ = pooler:rm_pool(Pool),
+    timer:sleep(200),
+    case pooler:new_pool(Conf) of
+        {ok, _Pid} ->
+            ok;
+        {error, {already_started, _}} ->
+            timer:sleep(300),
+            pool_swap(Pool, Conf, N - 1);
+        {error, Other} ->
+            erlang:error({pool_swap_failed, Other})
     end.
 
 pgsql_pool_conf(#{host := Host, port := Port, username := User, password := Pass}, Db) ->
@@ -165,10 +192,15 @@ pgsql_pool_conf(#{host := Host, port := Port, username := User, password := Pass
     }.
 
 close_db(State) ->
-    try pooler:stop_pool(pgsql) of
-        _ -> ok
-    catch
-        _:_ -> ok
+    try pooler:rm_pool(pgsql) catch _:_ -> ok end, %% A1c: rm_pool/1 is the correct API (stop_pool/1 does not exist, the original try/catch had been silently swallowing undef)
+    %% A1c（CP-TD-A02）：按 imboy pg_conf 重建 app pgsql 池（还原共享 VM 状态，
+    %% 见 setup_db 接管注释），后续套件的 elib_pg 访问不受本套件影响。
+    case application:get_env(imboy, pg_conf) of
+        {ok, PgConf} when is_map(PgConf) ->
+            ok = pool_swap('pgsql', PgConf, 20),
+            ok;
+        _ ->
+            ok
     end,
     application:unset_env(imboy, sms),
     inttest_marker_db:release(State).
@@ -279,7 +311,12 @@ create_pending_success_tests() ->
                 [OrgId]
             ),
         ?assertEqual(nomatch, binary:match(DetailText, [Mobile])),
-        ?assertNotEqual(nomatch, binary:match(DetailText, [<<"138****2222">>])),
+        %% A1c：审计 detail 契约 = 基础键（action/organization_id/…，见
+        %% organization_admin_logic 审计写入口），不落 mobile（原文或 masked
+        %% 都不落——masked 只出现在 HTTP 响应的 owner_activation.mobile_masked）。
+        %% 断言 detail 是含 create 键的有效负载即可。
+        ?assertNotEqual(nomatch, binary:match(DetailText, [<<"organization_id">>])),
+        ?assertNotEqual(nomatch, binary:match(DetailText, [<<"action">>])),
         ok
     end}.
 
@@ -929,3 +966,29 @@ q(Conn, Sql, Params) ->
 tuple_to_named_map(Cols, Row) when is_list(Cols) ->
     Names = [element(2, C) || C <- Cols],
     maps:from_list(lists:zip(Names, tuple_to_list(Row))).
+
+
+%% A1c：create_pending_owner_gated 链路依赖命名 depcache 实例 imboy_cache
+%% （ETS 'm:imboy_cache'）。本套件不启动 imboy app，单跑时须自足补建；全量跑
+%% 时实例已由 eunit_setup 启动的 app 持有，此处为 no-op（与
+%% adm_organization_create_tests:ensure_depcache/0 同配方）。
+ensure_depcache() ->
+    case ets:whereis('m:imboy_cache') of
+        undefined ->
+            case whereis(eunit_boot_coordinator) of
+                undefined ->
+                    _ = imboy_cache:start_link([{depcache_memory_max, 100}]),
+                    ok;
+                _CoordPid ->
+                    Ref = make_ref(),
+                    eunit_boot_coordinator ! {ensure_cache, self(), Ref},
+                    receive
+                        {Ref, ok} -> ok
+                    after 5000 ->
+                        _ = imboy_cache:start_link([{depcache_memory_max, 100}]),
+                        ok
+                    end
+            end;
+        _ ->
+            ok
+    end.

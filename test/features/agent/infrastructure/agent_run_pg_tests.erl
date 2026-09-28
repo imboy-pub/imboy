@@ -99,7 +99,7 @@ connect_required() ->
         password => os:getenv("AG31_PG_PASSWORD", ""),
         database => os:getenv("AG31_PG_DB")
     },
-    case epgsql:connect(ConnOpts) of
+    case inttest_marker_db:safe_connect(ConnOpts) of
         {ok, Conn} -> Conn;
         {error, Reason} -> erlang:error({ag31_pg_connect_failed, Reason})
     end.
@@ -456,7 +456,7 @@ t_a11_lease_race(Conn) ->
         "UPDATE agent_run SET lease_expires_at = now() - interval '1 hour' WHERE id = $1",
         [?ID_RUN1]
     ),
-    {ok, Conn2} = epgsql:connect(
+    {ok, Conn2} = inttest_marker_db:safe_connect(
         #{
             host => os:getenv("AG31_PG_HOST"),
             port => list_to_integer(os:getenv("AG31_PG_PORT")),

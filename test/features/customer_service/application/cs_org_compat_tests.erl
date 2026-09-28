@@ -35,7 +35,11 @@ cs_org_compat_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun cases/1}.
 
 setup() ->
-    ensure_test_pg_conf(),
+    %% A1c（CP-TD-A02）：原 ORG08 一次性容器配方（改写 pg_conf + 停 app 重建池）
+    %% 在共享 VM 里会连锁毒化池状态：app 停止连带杀死 eunit_boot_coordinator、
+    %% pgsql 池 rm 后未及时还原 → 后续套件 take_member noproc 级联（run10b/11
+    %% 实证）。ORG08_PGDB 指向共享主库后，本套件与其它 app 池套件同构：直接
+    %% eunit_setup_with_db，不再改写 pg_conf、不再停 app。
     case eunit_runner:eunit_setup_with_db() of
         {ok, Conn} ->
             {ok, Conn};
@@ -454,6 +458,10 @@ a06_default_workspace_change_keeps_persisted_session_scope() ->
 %% pg_conf。旧版硬编码 4393/imboy_v1，验证容器不存在时 setup 恒 no_pool
 %% （把环境巧合当成了前提）。
 ensure_test_pg_conf() ->
+    %% A1c：已废弃（共享 VM 池状态毒化，见 setup 注释）。保留空实现避免引用
+    %% 断裂；原 ORG08 一次性容器路径如需复用，请以独立 VM/独立 run 进行。
+    ok.
+deprecated_ensure_test_pg_conf_body() ->
     _ = application:load(imboy),
     case os:getenv("ORG08_PGPORT") of
         false ->
@@ -470,7 +478,7 @@ ensure_test_pg_conf() ->
                             host => "127.0.0.1",
                             username => "imboy_user",
                             password => "abc54321",
-                            database => "imboy_v1",
+                            database => os:getenv("ORG08_PGDB", "imboy_v1"),
                             port => Port,
                             ssl => false,
                             timeout => 4000,

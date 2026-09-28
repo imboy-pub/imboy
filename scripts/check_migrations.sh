@@ -18,7 +18,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-MIG_DIR="priv/migrations"
+# 目标迁移目录可用环境变量 MIG_DIR 覆盖（供客服迁移门等复用方指向临时
+# fixture 目录做负例自测）；默认行为不变（仓库内 priv/migrations）。
+MIG_DIR="${MIG_DIR:-priv/migrations}"
 NAME_PATTERN='^[0-9]{8}_[a-z0-9_]+\.(up|down)\.sql$'
 CITE_PATTERN='^--[[:space:]]*(合并迁移回滚|合并迁移|迁移)[[:space:]]+0*[0-9]+'
 # 历史遗留断档：2026-06-08 基线压缩(70→9) + 2026-06-11 重编号(2953c7d2) 所致。

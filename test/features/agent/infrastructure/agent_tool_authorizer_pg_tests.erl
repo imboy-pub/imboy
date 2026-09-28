@@ -90,7 +90,7 @@ connect_required() ->
         password => os:getenv("AG31_PG_PASSWORD", ""),
         database => os:getenv("AG31_PG_DB")
     },
-    case epgsql:connect(ConnOpts) of
+    case inttest_marker_db:safe_connect(ConnOpts) of
         {ok, Conn} ->
             fixture_reset(Conn),
             Conn;
@@ -421,7 +421,10 @@ t_chain_head(Conn) ->
     {ok, _, [{Version, Dirty}]} = epgsql:equery(
         Conn, "SELECT version, dirty FROM schema_migrations", []
     ),
-    ?assertEqual(133, Version),
+    %% A1c：只钉「本域归属迁移（133）已应用」，不钉 head 等值——共享 DB 的
+    %% head 会随后续迁移（134-150）继续前移（agent_run_pg_tests 的
+    %% t_chain_head/1 已改同款动态下界；本套件漏改，head=150 后恒 fail）。
+    ?assert(Version >= 133),
     ?assertEqual(false, Dirty),
     fixture_reset(Conn),
     {ok, _, [{Residue}]} = epgsql:equery(
@@ -595,7 +598,12 @@ run_fixture_ctx(RunId, Key) ->
     }.
 
 now0() ->
-    calendar:universal_time().
+    %% A1c：断言时钟必须与夹具时钟一致。Grant 有效窗口按 ?NOW（2026-09-17 12:00）
+    %% 相对计算（seed 处 09-18 跨天教训同源），而这里原先传 calendar:universal_time()
+    %% （真实时钟）——09-19 起真实时钟越过 Exp=?NOW+86400，6/8 用例恒
+    %% {deny,grant_expired}（全量里被上游 cancel 级联掩盖，PG 中继修复后现形）。
+    %% 统一钉到 ?NOW，套件回归日期无关。
+    ?NOW.
 
 %% ===================================================================
 %% 断言辅助（02B/04B 同口径）

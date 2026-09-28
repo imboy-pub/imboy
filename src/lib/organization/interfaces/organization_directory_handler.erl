@@ -107,13 +107,12 @@ search(Req0, State) ->
 %% 信封映射
 %% ===================================================================
 
+%% app 层（?APP 四用例）契约返回 {ok, Payload} | {error, Code :: binary()}，
+%% 两形态已穷尽（Code 均为 stable 二进制码）。
 respond(Req0, {ok, Payload}) ->
     elib_response:success(Req0, Payload);
 respond(Req0, {error, Code}) when is_binary(Code) ->
-    reply_error(Req0, Code);
-respond(Req0, _Other) ->
-    %% 兜底：app 层不应产生此形态，fail-safe 落 internal_error（不回显细节）。
-    reply_error(Req0, <<"internal_error">>).
+    reply_error(Req0, Code).
 
 %% stable 码 → 真实 HTTP 状态 + {"error":{"code","message"}} 信封。
 %% 状态/文案映射复用 ?ERR 冻结表（同一 13 码集合，不新造码）。

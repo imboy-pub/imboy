@@ -42,6 +42,12 @@ publish_duplicate_request_does_not_increment_unread_test_() ->
             ]},
             {channel_subscription_repo, [
                 {'tablename', 0, fun() -> erlang:error(unread_must_not_change) end}
+            ]},
+            {workspace_guard, [
+                %% A1c：T7 归档写守卫需连真库（channel→workspace 行锁），与本套件
+                %% 的幂等语义无关——不 mock 时守卫对 fake_conn 查询异常走 fail-closed
+                %% {503, 服务器繁忙}，publish 恒失败。隔离 mock 放行。
+                {'ensure_writable_tx', 2, fun(_Conn, _Ref) -> ok end}
             ]}
         ],
         fun() ->
@@ -92,6 +98,10 @@ publish_inserted_message_increments_unread_after_tx_test_() ->
                 {'add_with_request_id', 3, fun(_Conn, _Data, <<"req-2">>) ->
                     {ok, 100, inserted}
                 end}
+            ]},
+            {workspace_guard, [
+                %% A1c：同上——T7 归档写守卫与本套件的幂等语义无关，mock 放行。
+                {'ensure_writable_tx', 2, fun(_Conn, _Ref) -> ok end}
             ]}
         ],
         fun() ->

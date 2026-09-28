@@ -85,7 +85,7 @@ connect_required() ->
         password => os:getenv("AG31_PG_PASSWORD", ""),
         database => os:getenv("AG31_PG_DB")
     },
-    case epgsql:connect(ConnOpts) of
+    case inttest_marker_db:safe_connect(ConnOpts) of
         {ok, Conn} -> Conn;
         {error, Reason} -> erlang:error({ag31_pg_connect_failed, Reason})
     end.
@@ -783,7 +783,7 @@ c_connect() ->
         password => os:getenv("AG31_PG_PASSWORD", ""),
         database => os:getenv("AG31_PG_DB")
     },
-    {ok, C} = epgsql:connect(ConnOpts),
+    {ok, C} = inttest_marker_db:safe_connect(ConnOpts),
     C.
 
 c_revoke_ctx(GrantId, ExpectedVersion) ->

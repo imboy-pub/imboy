@@ -338,6 +338,18 @@ arch-check-self-test: ## 门禁自身金丝雀自检（10 条必须全触发）
 migrations-check: ## 校验 priv/migrations/ 命名与 up-down 配对（ADR-0002）
 	@bash scripts/check_migrations.sh
 
+# 客服域迁移门（CP-ASSET-01）：先跑静态门（复用 scripts/check_migrations.sh：
+# 版本号唯一 / up-down 成对 / 命名非空），再连真库校验"客服域迁移已全部应用"——
+# 对比 priv/migrations 里 customer_service 迁移与目标库 schema_migrations /
+# schema_migrations_history；静态违规 / 空库 / 脏库（dirty 或缺中间版本）/
+# foreign 版本 / 空 oracle 均非零退出。自测：
+# scripts/test/customer_service_migration_gate_test.sh（静态四负例 fixture +
+# 库状态四负例 + 固定名 imboy_cp12_gate01 正例）。
+# 用法：make cs-migration-gate PGDATABASE=... [PGHOST=... PGPORT=... PGUSER=... PGPASSWORD=...]
+.PHONY: cs-migration-gate
+cs-migration-gate: ## 客服域迁移是否已全部落库（连真库；PGDATABASE=...）
+	@bash scripts/customer_service_migration_gate.sh
+
 .PHONY: terminology-check
 terminology-check: app ## 校验 priv/terminology/*.json 的结构、profile 与通用概念键
 	@erl -noinput -boot no_dot_erlang -pa imboy/ebin -pa ebin \
@@ -464,7 +476,67 @@ EUNIT_CONFIG ?= config/sys.local
 EUNIT_PROCESS_LIMIT ?= 32768
 EUNIT_ERL ?= erl -noinput -boot no_dot_erlang -kernel start_distribution false +P $(EUNIT_PROCESS_LIMIT) +Q 1024
 eunit-local:
-	@IMBOYENV=local $(MAKE) eunit ERL="$(EUNIT_ERL)" EUNIT_ERL_OPTS="-config $(EUNIT_CONFIG) -pa imboy/ebin -pa ebin -pa test"
+	@# A1c：erlang.mk beam-cache 防失步（CP-TD-A02）。L3 门顺序是 make compile →
+	@# eunit-local：当 .erlang.mk/imboy.test 标记与 ebin 内 beam 的 TEST/非TEST 模式
+	@# 失步时（历史运行中断/缓存残留），test-build 因 ebin/imboy.app 比 src 新
+	@# （$? 为空）而跳过 -DTEST=1 重编 → 全部 -ifdef(TEST) 导出缺失 → 依赖内部
+	@# 函数白盒导出的用例大面积 undef（13:56Z 门 38/40 失败根因）。删标记+清缓存，
+	@# 强制 beam-cache-restore-test 走「现 ebin 入缓存→clean-app→带 -DTEST=1
+	@# 干净重编」的确定性路径；erlang.mk 本体 vendored 不动，只在门入口加固。
+	@rm -f .erlang.mk/$(PROJECT).test
+	@rm -rf .erlang.mk/beam-cache/$(PROJECT)
+	@# A1c：PG 接入走 fork-per-connection 本地中继（test/common/pg_relay.py）。
+	@# 证据（evidence/CP-TD-A02 run1-4）：长命 eunit VM 的新建 TCP 连接会被
+	@# com.docker.backend @127.0.0.1:<pg端口> 按调用方进程楔死——持续 econnrefused
+	@# 不恢复，而同刻 pg_isready/全新进程连接正常（防火墙关闭、无过滤器，已排除
+	@# 并发/累计连接数与 PG 上限成因）；首例拒绝恒定出现在首轮全链迁移重 I/O 后。
+	@# 中继让触达 <目标端口> 的 connect 全部来自 fork 出的全新子进程，按进程楔死
+	@# 机制无法命中；eunit VM 只连 127.0.0.1:$(EUNIT_RELAY_PORT)。
+	@# 生成 <EUNIT_CONFIG>.config 的端口替换副本（sys.eunit-relay.config，不落 git）；
+	@# 无 python3 或配置里没有目标端口时自动退回直连，行为与旧版一致。
+	@if command -v python3 >/dev/null 2>&1 && [ "$(EUNIT_USE_RELAY)" != "0" ] && [ -f "$(EUNIT_CONFIG).config" ] \
+	     && grep -q "$(EUNIT_RELAY_TARGET)" "$(EUNIT_CONFIG).config"; then \
+	  sed -e "s/$(EUNIT_RELAY_TARGET)/$(EUNIT_RELAY_PORT)/g" \
+	      -e "s/{http_port, 9800}/{http_port, $(EUNIT_HTTP_PORT)}/" \
+	      -e "s/{http_port_adm, 9706}/{http_port_adm, $(EUNIT_HTTP_ADM_PORT)}/" \
+	      "$(EUNIT_CONFIG).config" \
+	    > config/sys.eunit-relay.config; \
+	  echo "== EUNIT PG RELAY: 127.0.0.1:$(EUNIT_RELAY_PORT) -> 127.0.0.1:$(EUNIT_RELAY_TARGET) (http $(EUNIT_HTTP_PORT)/adm $(EUNIT_HTTP_ADM_PORT)) =="; \
+	  ( while true; do python3 test/common/pg_relay.py $(EUNIT_RELAY_PORT) $(EUNIT_RELAY_TARGET); sleep 1; done ) & \
+	  relay_pid=$$!; \
+	  sleep 1; \
+	  IMBOYENV=local $(MAKE) eunit $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
+	    EUNIT_ERL_OPTS="-config config/sys.eunit-relay -pa imboy/ebin -pa ebin -pa test"; \
+	  rc=$$?; \
+	  pkill -P $$relay_pid 2>/dev/null; \
+	  kill $$relay_pid 2>/dev/null; \
+	  pkill -f "pg_relay.py $(EUNIT_RELAY_PORT)" 2>/dev/null; \
+	  rm -f config/sys.eunit-relay.config; \
+	  exit $$rc; \
+	else \
+	  sed -e "s/{http_port, 9800}/{http_port, $(EUNIT_HTTP_PORT)}/" \
+	      -e "s/{http_port_adm, 9706}/{http_port_adm, $(EUNIT_HTTP_ADM_PORT)}/" \
+	      "$(EUNIT_CONFIG).config" \
+	    > config/sys.eunit-relay.config; \
+	  echo "== EUNIT PG DIRECT: $(EUNIT_RELAY_TARGET) (http $(EUNIT_HTTP_PORT)/adm $(EUNIT_HTTP_ADM_PORT), EUNIT_USE_RELAY=0) =="; \
+	  IMBOYENV=local $(MAKE) eunit $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
+	    EUNIT_ERL_OPTS="-config config/sys.eunit-relay -pa imboy/ebin -pa ebin -pa test"; \
+	  rc=$$?; \
+	  rm -f config/sys.eunit-relay.config; \
+	  exit $$rc; \
+	fi
+
+# A1c：eunit-local 的 PG 中继端口。目标端口取本地 pg_conf 实际端口（4323）；
+# 中继监听端口避开常用段。inttest_marker_db 的 <PREFIX>_PG_* env 旋钮与
+# ORG08_PGPORT 亦应指向中继端口（由门运行环境导出）。
+EUNIT_RELAY_PORT ?= 15432
+EUNIT_RELAY_TARGET ?= 4323
+# A1c：eunit VM 的 HTTP/adm 监听改用私有端口——主树 agent 的 imboy 实例
+# （RTC 后端等）会间歇性绑定同款 9800/9706，撞 port → imboy 启动
+# {listener_start_failed,http,eaddrinuse} → 整段 app 套件连锁 cancel
+# （run12/14/15 实证）。
+EUNIT_HTTP_PORT ?= 19980
+EUNIT_HTTP_ADM_PORT ?= 19970
 
 # ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
 # 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担
@@ -591,3 +663,7 @@ compile: app
 dialyze-check:
 	@$(MAKE) dialyze DIALYZER_OPTS="$(DIALYZER_OPTS)" > dialyze-last.log 2>&1 || true
 	@bash scripts/check_dialyzer_baseline.sh dialyze-last.log
+
+# L3 gate extension point (l3-gate.sh probes dialyze-local first):
+# ratchet semantics per CI-00/TD-04A (0 NEW fingerprints = green; literal warn-0 unreachable, 477 legacy)
+dialyze-local: dialyze-check
