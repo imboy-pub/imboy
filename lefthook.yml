@@ -21,7 +21,10 @@ pre-commit:
     # 收窄为仅在涉及纵切单元或核心层时才跑，避免每次提交都付全仓代价。
     arch-check:
       glob: "{src/features,src/products,src/plugins,src/lib}/**/*.erl"
-      run: bash scripts/check_feature_architecture.sh
+      # Apple git（Xcode Git-157）给 hook 注入工具链 MANPATH，与 hook 环境组合会让
+      # 门尾的 python3（prune 门）在 dyld 装载期 SIGBUS（lefthook 报 exit 138）。
+      # 实证：保留 MANPATH 9/9 崩，剥离后 4/4 过；MANPATH 对各门禁无用，入口剥离无损。
+      run: env -u MANPATH bash scripts/check_feature_architecture.sh
 
 commit-msg:
   commands:
