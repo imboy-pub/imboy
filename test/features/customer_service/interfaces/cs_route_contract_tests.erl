@@ -37,6 +37,9 @@
 -define(HTTP_MODULE, "src/features/customer_service/interfaces/cs_http.erl").
 -define(AUTH_MODULE, "src/features/customer_service/interfaces/cs_auth.erl").
 -define(FACADE_CALL, "src/features/customer_service/interfaces/cs_facade_call.erl").
+-define(SEAT_CONSOLE_HANDLER,
+    "src/features/customer_service/interfaces/cs_seat_console_handler.erl"
+).
 
 %% ===================================================================
 %% 冻结的路由清单（path → 动作/方法/五类 principal）；与 router 字面登记互为审计面
@@ -154,7 +157,15 @@ platform_literal_routes() ->
         {<<"/api/adm/customer-service/widget-installations/:id">>, p_widget_installation_update,
             [<<"PUT">>], platform_admin},
         {<<"/api/adm/customer-service/widget-installations/:id/revoke">>,
-            p_widget_installation_revoke, [<<"POST">>], platform_admin}
+            p_widget_installation_revoke, [<<"POST">>], platform_admin},
+        %% seat-console-embed SC-BE：workspace 坐席工作台嵌入配置 CRUD
+        %% （widget-installations 同款：列表 GET 与创建 POST 同路径动作）。
+        {<<"/api/adm/customer-service/seat-consoles">>, p_seat_consoles, [<<"GET">>, <<"POST">>],
+            platform_admin},
+        {<<"/api/adm/customer-service/seat-consoles/:id">>, p_seat_console_update, [<<"PUT">>],
+            platform_admin},
+        {<<"/api/adm/customer-service/seat-consoles/:id/revoke">>, p_seat_console_revoke,
+            [<<"POST">>], platform_admin}
     ].
 
 %% CSB-03：widget 接入面（浏览器访客；principal 与访客同类——visit token 头）。
@@ -203,7 +214,12 @@ widget_literal_routes() ->
         %% CSD-BE-01（hosted-widget-contract S2/S4）：/w/:public_widget_id 动态
         %% frame HTML（iframe src 新落点；零凭证导航面——public_widget_id 全局
         %% 反查派生租户，浏览器零 org/workspace 申报面；兼容窗口内旧 frame 原样保留）。
-        {<<"/w/:public_widget_id">>, widget_public_frame_html, [<<"GET">>], cs_visit}
+        {<<"/w/:public_widget_id">>, widget_public_frame_html, [<<"GET">>], cs_visit},
+        %% seat-console-embed SC-BE：/seat/:public_seat_console_id 坐席工作台
+        %% 嵌入面（零凭证导航落点；租户由全局反查派生，浏览器零 org 申报面；
+        %% XFO 豁免 / 免签直通经 imboy_route_shape:is_cs_seat_console_frame_path/1
+        %% 单一真源登记）。
+        {<<"/seat/:public_seat_console_id">>, seat_console_frame_html, [<<"GET">>], cs_visit}
     ].
 
 %% ===================================================================
@@ -262,8 +278,10 @@ route_violations(Path, Handler, Opts, Known, EntryResult) ->
     ExpectedHandler =
         case Surface of
             platform -> cs_platform_handler;
-            %% BE-W01：widget 面有两个 handler（frame HTML 是零凭证导航端点）。
+            %% BE-W01：widget 面有多个 handler（frame HTML 是零凭证导航端点；
+            %% cs_seat_console_handler 为 seat-console-embed SC-BE 的 /seat/ 面）。
             widget when Handler =:= cs_widget_frame_handler -> cs_widget_frame_handler;
+            widget when Handler =:= cs_seat_console_handler -> cs_seat_console_handler;
             widget -> cs_widget_handler;
             _ -> cs_tenant_handler
         end,
@@ -764,6 +782,7 @@ interface_sources_have_no_db_or_dynamic_dispatch_test() ->
     Files = [
         ?TENANT_HANDLER,
         ?WIDGET_HANDLER,
+        ?SEAT_CONSOLE_HANDLER,
         ?PLATFORM_HANDLER,
         ?HTTP_MODULE,
         ?AUTH_MODULE,
@@ -1009,6 +1028,38 @@ csd_be01_public_frame_shape_single_source_test() ->
     ?assertNot(imboy_route_shape:is_cs_widget_frame_path(<<"/www/wgt_pub_x">>)),
     %% /w/ 免签直通面（与旧 frame 同一判定入口）。
     ?assert(cs_http:is_credential_surface_path(<<"/w/wgt_pub_x">>)).
+
+%% seat-console-embed SC-BE：/seat/* 形状登记进共享谓词族（XFO 豁免 / CORS
+%% 面 / 免签直通三处消费的单一真源）；恰两段、首段字面 seat；相似路径
+%% 不放宽；与 /w/ 两谓词互斥（无吞并、无重叠加宽）。
+seat_console_frame_shape_single_source_test() ->
+    ?assert(imboy_route_shape:is_cs_seat_console_frame_path(<<"/seat/sc_pub_x">>)),
+    ?assert(imboy_route_shape:is_cs_seat_console_frame_path(<<"/seat/1234567890">>)),
+    ?assertNot(imboy_route_shape:is_cs_seat_console_frame_path(<<"/seat">>)),
+    ?assertNot(imboy_route_shape:is_cs_seat_console_frame_path(<<"/seat/a/b">>)),
+    ?assertNot(imboy_route_shape:is_cs_seat_console_frame_path(<<"/seats/sc_pub_x">>)),
+    ?assertNot(imboy_route_shape:is_cs_seat_console_frame_path(<<"/search/sc_pub_x">>)),
+    ?assertNot(imboy_route_shape:is_cs_seat_console_frame_path(<<"/seatfw/sc_pub_x">>)),
+    %% A08：XFO 豁免**精确** /seat/*——widget 谓词不吞 /seat/，seat 谓词不吞
+    %% /w/ 与既有 widget frame 形状（两面互斥）。
+    ?assertNot(imboy_route_shape:is_cs_widget_frame_path(<<"/seat/sc_pub_x">>)),
+    ?assertNot(imboy_route_shape:is_cs_seat_console_frame_path(<<"/w/wgt_pub_x">>)),
+    ?assertNot(
+        imboy_route_shape:is_cs_seat_console_frame_path(<<"/api/v1/cs/widget/frame/810001">>)
+    ),
+    %% 免签直通面（cs_http 消费点与 /w/ 同一口径登记）。
+    ?assert(cs_http:is_credential_surface_path(<<"/seat/sc_pub_x">>)),
+    %% 平台 CRUD 四路由在册（路由表 ↔ 冻结清单双向对账由 a01 承担；此处锁
+    %% 存在性与方法形状逐字）。
+    {Pat, Opts} = ?S:route_opt(platform, p_seat_consoles),
+    ?assertEqual(<<"/api/adm/customer-service/seat-consoles">>, Pat),
+    ?assertEqual(p_seat_consoles, maps:get(action, Opts)),
+    {PatU, _} = ?S:route_opt(platform, p_seat_console_update),
+    ?assertEqual(<<"/api/adm/customer-service/seat-consoles/:id">>, PatU),
+    {PatR, _} = ?S:route_opt(platform, p_seat_console_revoke),
+    ?assertEqual(<<"/api/adm/customer-service/seat-consoles/:id/revoke">>, PatR),
+    {PatS, _} = ?S:route_opt(widget, seat_console_frame_html),
+    ?assertEqual(<<"/seat/:public_seat_console_id">>, PatS).
 
 %% CSB-03：widget 面凭证传输纪律——专用头合法、查询串即 400；Origin 归一化
 %% 复用 domain cs_widget（接口层只做归一与形状门，allowlist 匹配在 application）。

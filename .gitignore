@@ -127,3 +127,7 @@ tmp
 /config/sys.config
 # Makefile eunit-local 生成的 PG relay 端口替换副本（同样 untracked by design）
 /config/sys.eunit-relay.config
+# seat-console-embed run SC-BE：sc153_eunit scratch 库的 eunit 配置
+# （从 sys.config.example 派生、database=>"sc153_eunit"；untracked by design——
+# 与 sys.local.config 同类，非产品配置）
+/config/sys.sc153.config

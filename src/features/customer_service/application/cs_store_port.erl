@@ -27,6 +27,7 @@
     widget_installation/0,
     widget_identity_key/0,
     widget_bootstrap_token/0,
+    seat_console/0,
     read_state/0
 ]).
 
@@ -38,6 +39,8 @@
 -type widget_installation() :: map().
 -type widget_identity_key() :: map().
 -type widget_bootstrap_token() :: map().
+%% seat-console-embed SC-BE：控制台行（形状 = ?CONSOLE_KEYS 投影）。
+-type seat_console() :: map().
 %% CS-BE-04：会话读状态（游标 + 未读数）——ACK 与读面共用的返回形状。
 -type read_state() :: #{
     session_id := integer(),
@@ -438,6 +441,50 @@
     ExpiresAt :: integer()
 ) ->
     ok | {error, replay | term()}.
+
+%% -- seat console 嵌入（seat-console-embed SC-BE）---------------------------
+%%
+%% 控制台是 (Org, Workspace) 级资源：管理面 callback 携带 WorkspaceId，实现
+%% SQL 必须同语句带 (organization_id, workspace_id)。同一 (Org, Workspace)
+%% 至多一个 active 控制台由 DB 部分唯一索引裁决（23505 → conflict）。
+
+%% @doc 创建控制台：public_seat_console_id 全局唯一 + (Org,WS) active 槽位
+%% 唯一，冲突归一为 conflict。
+-callback insert_seat_console(OrgId :: integer(), Console :: map()) ->
+    {ok, map()} | {error, conflict | term()}.
+%% @doc 按 (Org, Workspace, id) 读取（任意 status；同语句带 Org+Workspace）。
+-callback fetch_seat_console(OrgId :: integer(), WorkspaceId :: integer(), ConsoleId :: integer()) ->
+    {ok, map()} | {error, not_found | term()}.
+%% @doc /seat/:id 嵌入面全局反查：输入只有公开 ID（浏览器不申报 Org），
+%% Org/Workspace 是**输出**（权威派生自命中的唯一行）；不存在 → not_found
+%% （application 归一 seat_console_unavailable，三态不区分）。
+-callback fetch_seat_console_by_public_id_global(PublicSeatConsoleId :: binary()) ->
+    {ok, map()} | {error, not_found | term()}.
+%% @doc 管理面列表：DESC 键集分页，同语句绑定 (Org, Workspace)。
+-callback list_seat_consoles_page(
+    OrgId :: integer(),
+    WorkspaceId :: integer(),
+    AfterId :: non_neg_integer(),
+    Limit :: pos_integer()
+) ->
+    {ok, [map()]} | {error, term()}.
+%% @doc 吊销控制台（status='revoked' + revoked_at；行保留以审计）。
+%% 仅 active 行翻转；0 行 → not_found（幂等裁决由 application 用 fetch 区分）。
+-callback revoke_seat_console(
+    OrgId :: integer(), WorkspaceId :: integer(), ConsoleId :: integer(), At :: integer()
+) ->
+    ok | {error, not_found | term()}.
+%% @doc 更新控制台可编辑配置（仅 allowed_origins；同语句带 (Org, Workspace)
+%% 且仅 active 行可改）。public_seat_console_id / workspace / status 不在
+%% Updates 投影内（不可经本用例变更）。
+-callback update_seat_console(
+    OrgId :: integer(),
+    WorkspaceId :: integer(),
+    ConsoleId :: integer(),
+    At :: integer(),
+    Updates :: map()
+) ->
+    {ok, map()} | {error, not_found | seat_console_revoked | term()}.
 
 %% -- event（客服域 append-only 状态审计 + BE-S01b 坐席 SSE 流读取）---------
 

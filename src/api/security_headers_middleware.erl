@@ -29,7 +29,12 @@ execute(Req0, Env) ->
         <<"x-content-type-options">>, <<"nosniff">>, Req0
     ),
     Req2 =
-        case imboy_route_shape:is_cs_widget_frame_path(cowboy_req:path(Req0)) of
+        case
+            imboy_route_shape:is_cs_widget_frame_path(cowboy_req:path(Req0)) orelse
+                %% seat-console-embed SC-BE：/seat/:id 嵌入面同款豁免（嵌入
+                %% 策略由 handler 的 frame-ancestors CSP 精确出，叠加 XFO 即全拒）。
+                imboy_route_shape:is_cs_seat_console_frame_path(cowboy_req:path(Req0))
+        of
             true ->
                 %% frame HTML 面：CSP 由 handler 精确出，不叠加 XFO（叠加即全拒）。
                 Req1;
@@ -63,5 +68,6 @@ execute(Req0, Env) ->
 
     {ok, Req6, Env}.
 
-%% frame 路径形状判定收敛在 imboy_route_shape:is_cs_widget_frame_path/1
+%% frame 路径形状判定收敛在 imboy_route_shape（is_cs_widget_frame_path/1 与
+%% is_cs_seat_console_frame_path/1，seat-console-embed SC-BE）
 %% （cors/security_headers/cs_http 三处共享的单一真源）。

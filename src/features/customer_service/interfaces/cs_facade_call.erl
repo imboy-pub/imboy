@@ -78,6 +78,19 @@ call(update_widget_installation, OrgId, Params) ->
     customer_service_facade:update_widget_installation(OrgId, Params);
 call(revoke_widget_installation, OrgId, Params) ->
     customer_service_facade:revoke_widget_installation(OrgId, Params);
+%% seat-console-embed SC-BE：控制台管理 CRUD 与 /seat/ 嵌入面的调用点登记。
+call(list_seat_consoles, OrgId, Params) ->
+    customer_service_facade:list_seat_consoles(OrgId, Params);
+call(create_seat_console, OrgId, Params) ->
+    customer_service_facade:create_seat_console(OrgId, Params);
+call(update_seat_console, OrgId, Params) ->
+    customer_service_facade:update_seat_console(OrgId, Params);
+call(revoke_seat_console, OrgId, Params) ->
+    customer_service_facade:revoke_seat_console(OrgId, Params);
+%% /seat/:public_seat_console_id 零凭证导航面：OrgId=0 同构占位（租户由命中
+%% 行派生，widget_public_frame_html 同款先例；调用点键 = facade 函数名）。
+call(seat_console_frame_html, _OrgId, Params) ->
+    customer_service_facade:seat_console_frame_html(0, Params);
 %% CSB-02：Widget 与 Seat 补缺用例（HTTP 动作行归 CSB-03；这里只登记
 %% facade 调用点，保证「有 facade 函数必有调用点」的机械核对闭合）。
 call(widget_bootstrap, OrgId, Params) ->
@@ -192,6 +205,12 @@ actions() ->
         create_widget_installation,
         update_widget_installation,
         revoke_widget_installation,
+        %% seat-console-embed SC-BE：控制台管理 CRUD 与 /seat/ 嵌入面
+        list_seat_consoles,
+        create_seat_console,
+        update_seat_console,
+        revoke_seat_console,
+        seat_console_frame_html,
         %% CSB-02：Widget 与 Seat 补缺用例
         widget_bootstrap,
         widget_frame_html,
