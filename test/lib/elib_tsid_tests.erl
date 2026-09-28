@@ -1,8 +1,14 @@
 -module(elib_tsid_tests).
 -include_lib("eunit/include/eunit.hrl").
 
--define(SETUP, fun() -> elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}) end).
+-define(SETUP, fun() ->
+    %% TSID-02 起不同配置 re-init 被拒绝（F-12），每个测试先显式
+    %% reset 再 init，保证测试顺序无关的确定性隔离
+    elib_tsid:reset_for_test(),
+    elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
+end).
 -define(SETUP_NAMED, fun() ->
+    elib_tsid:reset_for_test(),
     elib_tsid:init(#{
         dc_id => 1,
         node_id => 1,
@@ -139,12 +145,15 @@ base62_length_test() ->
 %% ===================================================================
 
 dc_bits_0_test() ->
-    elib_tsid:init(#{dc_id => 0, node_id => 500, dc_bits => 0}),
+    %% TSID-02 起不同配置 re-init 被拒绝（F-12），跨配置测试须显式 reset
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 0, node_id => 500, dc_bits => 0}),
     Id = elib_tsid:generate(),
     ?assert(Id > 0).
 
 dc_bits_5_test() ->
-    elib_tsid:init(#{dc_id => 31, node_id => 31, dc_bits => 5}),
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 31, node_id => 31, dc_bits => 5}),
     Id = elib_tsid:generate(),
     Parsed = elib_tsid:parse(Id),
     ?assertEqual(31, maps:get(dc_id, Parsed)),
@@ -156,10 +165,13 @@ dc_bits_5_test() ->
 
 different_nodes_no_collision_test() ->
     %% 模拟两个不同节点，验证 ID 不冲突
-    elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+    %% TSID-02 起跨配置场景须显式 reset（F-12：禁止静默重配节点）
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
     IdsNode1 = elib_tsid:generate_n(1000),
 
-    elib_tsid:init(#{dc_id => 1, node_id => 2, dc_bits => 3}),
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 2, dc_bits => 3}),
     IdsNode2 = elib_tsid:generate_n(1000),
 
     Combined = IdsNode1 ++ IdsNode2,
@@ -364,3 +376,243 @@ monotonic_clock_seam_test() ->
     put({elib_tsid, test_monotonic_ms}, 42),
     ?assertEqual(42, elib_tsid:monotonic_ms()),
     erase({elib_tsid, test_monotonic_ms}).
+
+%% ===================================================================
+%% TSID-02：63-bit 边界、输入校验与 calendar 精度（T-001..T-010）
+%%
+%% AC-02A 非法输入不再掩码成合法 ID；AC-02B MAX_ID 精确；
+%% AC-02C 全部生成值落在正 signed BIGINT；AC-02D calendar 精度如实声明。
+%% ===================================================================
+
+-define(EPOCH_MS, 1735689600000).
+-define(MAX_ID, 9223372036854775807).
+-define(TSID02_MAX_REL, 4398046511103).
+
+catch_typed(Fun) ->
+    %% 捕获 error:Reason 并返回 Reason，避免已弃用的裸 catch 表达式
+    try
+        Fun()
+    catch
+        error:Reason -> Reason
+    end.
+
+with_fixed_clock(WallMs, Fun) ->
+    put({elib_tsid, test_wall_ms}, WallMs),
+    try
+        Fun()
+    after
+        erase({elib_tsid, test_wall_ms})
+    end.
+
+%% T-001 42/10/11 编解码 golden vectors
+golden_vectors_test() ->
+    Vectors = [
+        {0, 0, 1},
+        {0, 1, 0},
+        {0, 1023, 2047},
+        {1, 0, 0},
+        {1, 129, 5},
+        {5619271, 517, 1234},
+        {?TSID02_MAX_REL, 1023, 2047}
+    ],
+    lists:foreach(
+        fun({Ts, Node, Seq}) ->
+            Id = (Ts bsl 21) bor (Node bsl 11) bor Seq,
+            ?assertEqual(Id, elib_tsid:slot_to_id((Ts bsl 11) bor Seq, Node)),
+            ?assertEqual(Node, elib_tsid:node_id(Id)),
+            ?assertEqual(?EPOCH_MS + Ts, elib_tsid:timestamp(Id)),
+            #{id := Id, timestamp := TsMs, sequence := Seq} = elib_tsid:parse(Id),
+            ?assertEqual(?EPOCH_MS + Ts, TsMs)
+        end,
+        Vectors
+    ),
+    %% 全零不是合法 TSID（须 >= 1）
+    ?assertMatch({elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:parse(0) end)),
+    ?assertMatch({elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:parse(-1) end)),
+    ?assertMatch(
+        {elib_tsid_invalid_input, _},
+        catch_typed(fun() -> elib_tsid:parse(not_integer) end)
+    ).
+
+%% T-002 MAX_ID 解析：字段 exact、正数、不掩码
+max_id_parse_test() ->
+    P = elib_tsid:parse(?MAX_ID),
+    ?assertEqual(?MAX_ID, maps:get(id, P)),
+    ?assertEqual(?EPOCH_MS + ?TSID02_MAX_REL, maps:get(timestamp, P)),
+    ?assertEqual(1023, elib_tsid:node_id(?MAX_ID)),
+    ?assertEqual(2047, maps:get(sequence, P)),
+    %% dc_bits 默认 3 → 1023 = (7 bsl 7) bor 127
+    ?assertEqual(7, maps:get(dc_id, P)),
+    ?assertEqual(127, maps:get(node_id, P)),
+    ?assertMatch({{2164, 5, 15}, {7, 35, 11}}, maps:get(created_at, P)),
+    %% 超界输入必须稳定拒绝，不得掩码成别的 TSID（F-09）
+    ?assertMatch(
+        {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:parse(?MAX_ID + 1) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:timestamp(?MAX_ID + 1) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_invalid_input, _},
+        catch_typed(fun() -> elib_tsid:node_id(?MAX_ID + 1) end)
+    ).
+
+%% T-003 最后合法毫秒用尽 → typed exhausted，绝不返回越界 ID
+last_ms_exhaustion_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+    LastId = with_fixed_clock(?EPOCH_MS + ?TSID02_MAX_REL, fun() ->
+        Ids = [elib_tsid:generate() || _ <- lists:seq(1, 2048)],
+        ?assertEqual(2048, length(lists:usort(Ids))),
+        %% node=129：最后合法 ID = (MAX_REL bsl 21) bor (129 bsl 11) bor 2047
+        ?assertEqual((?TSID02_MAX_REL bsl 21) bor (129 bsl 11) bor 2047, lists:last(Ids)),
+        lists:last(Ids)
+    end),
+    ?assert(LastId =< ?MAX_ID),
+    %% 第 2049 个：借用下一毫秒 = 越界 → typed error，不签发
+    with_fixed_clock(?EPOCH_MS + ?TSID02_MAX_REL, fun() ->
+        ?assertMatch(
+            {elib_tsid_timestamp_exhausted, _}, catch_typed(fun() -> elib_tsid:generate() end)
+        )
+    end).
+
+%% T-004 纪元前时钟 → 生成 fail-closed（确定性时钟，无 sleep/改系统钟）
+clock_beyond_2164_test() ->
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS + ?TSID02_MAX_REL + 5000, fun() ->
+        ?assertMatch(
+            {elib_tsid_timestamp_exhausted, _}, catch_typed(fun() -> elib_tsid:generate() end)
+        )
+    end).
+
+before_epoch_fail_closed_test() ->
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS - 1000, fun() ->
+        ?assertMatch(
+            {elib_tsid_clock_before_epoch, _}, catch_typed(fun() -> elib_tsid:generate() end)
+        )
+    end).
+
+%% T-005 decimal 边界 corpus：仅 1..MAX_ID 的十进制接受
+decimal_boundary_corpus_test() ->
+    Valid = #{
+        <<"1">> => 1,
+        <<"9">> => 9,
+        <<"123">> => 123,
+        <<"007">> => 7,
+        <<"9223372036854775807">> => ?MAX_ID
+    },
+    maps:fold(
+        fun(Bin, Expect, _) ->
+            ?assertEqual({ok, Expect}, elib_tsid:from_binary(Bin))
+        end,
+        ok,
+        Valid
+    ),
+    Invalid = [
+        <<>>,
+        <<"0">>,
+        <<"00">>,
+        <<"-1">>,
+        <<"+7">>,
+        <<" 7">>,
+        <<"7 ">>,
+        <<"0x10">>,
+        <<"abc">>,
+        <<"1.5">>,
+        <<"9223372036854775808">>,
+        <<"999999999999999999999999999999999999">>
+    ],
+    lists:foreach(
+        fun(Bin) -> ?assertEqual(error, elib_tsid:from_binary(Bin)) end,
+        Invalid
+    ).
+
+%% T-006 Base62 corpus：合法 round-trip；非 TSID 稳定拒绝（F-10）
+base62_corpus_test() ->
+    lists:foreach(
+        fun(Id) ->
+            ?assertEqual(Id, elib_tsid:from_base62(elib_tsid:to_base62(Id)))
+        end,
+        [1, 42, 2097152, 123456789012345, ?MAX_ID]
+    ),
+    Reject = [
+        <<>>,
+        <<"0">>,
+        <<"a!c">>,
+        <<"-z">>,
+        <<" ">>,
+        <<"zzzzzzzzzzz">>,
+        <<"zzzzzzzzzzzz">>
+    ],
+    lists:foreach(
+        fun(Bin) ->
+            ?assertMatch(
+                {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:from_base62(Bin) end)
+            )
+        end,
+        Reject
+    ),
+    %% 编码方向同样拒绝非 TSID
+    ?assertMatch({elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:to_base62(0) end)),
+    ?assertMatch(
+        {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:to_base62(?MAX_ID + 1) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_invalid_input, _},
+        catch_typed(fun() -> elib_tsid:to_base62(-1) end)
+    ).
+
+%% T-007 calendar 精度：timestamp 保留毫秒，created_at 是秒精度（F-11）
+calendar_precision_test() ->
+    P = elib_tsid:parse(?MAX_ID),
+    ?assertEqual(6133736111103, maps:get(timestamp, P)),
+    ?assertMatch({{2164, 5, 15}, {7, 35, 11}}, maps:get(created_at, P)).
+
+%% T-008 dc_bits 0..10 全边界：CombinedNode exact，无负移位/越界
+dc_bits_all_boundaries_test() ->
+    lists:foreach(
+        fun(DcBits) ->
+            elib_tsid:reset_for_test(),
+            NodeBits = 10 - DcBits,
+            MaxDc = (1 bsl DcBits) - 1,
+            MaxNode = (1 bsl NodeBits) - 1,
+            ok = elib_tsid:init(#{
+                dc_id => MaxDc, node_id => MaxNode, dc_bits => DcBits
+            }),
+            Id = elib_tsid:generate(),
+            ?assert(Id > 0),
+            ?assert(Id =< ?MAX_ID),
+            P = elib_tsid:parse(Id),
+            ?assertEqual(MaxDc, maps:get(dc_id, P)),
+            ?assertEqual(MaxNode, maps:get(node_id, P))
+        end,
+        lists:seq(0, 10)
+    ).
+
+%% T-009 重复同配置 init：幂等且 cursor 不回退
+same_config_reinit_idempotent_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+    Id1 = elib_tsid:generate(),
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+    Id2 = elib_tsid:generate(),
+    ?assert(Id2 > Id1).
+
+%% T-010 不同配置 re-init：typed reject，旧 runtime 不变（F-12）
+different_config_reinit_rejected_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+    Id1 = elib_tsid:generate(),
+    ?assertMatch(
+        {elib_tsid_already_initialized, _},
+        catch_typed(fun() -> elib_tsid:init(#{dc_id => 1, node_id => 2, dc_bits => 3}) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_already_initialized, _},
+        catch_typed(fun() -> elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 4}) end)
+    ),
+    %% 旧 runtime 不变：继续按旧节点生成且不回退
+    Id2 = elib_tsid:generate(),
+    ?assert(Id2 > Id1),
+    ?assertEqual(129, elib_tsid:node_id(Id2)).

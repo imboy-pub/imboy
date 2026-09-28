@@ -47,6 +47,8 @@
 %% 返回形状见上方 -export；本组函数语义变更必须同步冻结的测试。
 -export([reserve_candidate/3, slot_to_id/2, id_to_slot/1]).
 -export([wall_clock_ms/0, monotonic_ms/0]).
+%% TSID-02：跨配置测试显式 reset（F-12：禁止静默重配节点偷跑）
+-export([reset_for_test/0]).
 
 %% ===================================================================
 %% 位布局常量
@@ -112,6 +114,11 @@
 %%   dc_bits=3 → 8 DC × 128 nodes (默认)
 %%   dc_bits=4 → 16 DC × 64 nodes
 %%   dc_bits=5 → 32 DC × 32 nodes
+%%
+%% 幂等契约（TSID-02 冻结，F-12）：相同配置重复 init 幂等返回 ok 且
+%% cursor 不回退；不同配置 re-init 抛
+%% `{elib_tsid_already_initialized, #{existing => ..., requested => ...}}'，
+%% 旧 runtime 保持不变。测试如需换配置必须先 reset_for_test/0。
 -spec init(map()) -> ok.
 init(Opts) ->
     DcBits = maps:get(dc_bits, Opts, 3),
@@ -132,6 +139,24 @@ init(Opts) ->
 
     %% 合成 10-bit 节点标识
     CombinedNode = (DcId bsl NodeBits) bor NodeId,
+
+    %% 配置冻结（F-12）：已初始化时仅接受幂等同配置，拒绝静默重配节点
+    ExistingNode = persistent_term:get(?PT_NODE_ID, undefined),
+    ExistingDcBits = persistent_term:get(?PT_DC_BITS, undefined),
+    case
+        ExistingNode =:= undefined orelse
+            (ExistingNode =:= CombinedNode andalso ExistingDcBits =:= DcBits)
+    of
+        true ->
+            ok;
+        false ->
+            error(
+                {elib_tsid_already_initialized, #{
+                    existing => #{combined_node => ExistingNode, dc_bits => ExistingDcBits},
+                    requested => #{combined_node => CombinedNode, dc_bits => DcBits}
+                }}
+            )
+    end,
 
     persistent_term:put(?PT_NODE_ID, CombinedNode),
     persistent_term:put(?PT_DC_BITS, DcBits),
@@ -204,8 +229,24 @@ generate() ->
 %%   GroupId = elib_tsid:generate(group).
 -spec generate(atom()) -> pos_integer().
 generate(Name) when is_atom(Name) ->
-    NowRel = erlang:system_time(millisecond) - ?EPOCH_MS,
+    NowRel = wall_clock_ms() - ?EPOCH_MS,
     try
+        %% 时钟边界 fail-closed（F-07/F-08）：纪元前/越过 42-bit 上界
+        %% 拒绝签发，绝不掩码或借位越过 MAX_ID
+        case NowRel < 0 of
+            true -> error({elib_tsid_clock_before_epoch, #{now_rel => NowRel}});
+            false -> ok
+        end,
+        case NowRel > ?MAX_REL_TS of
+            true ->
+                error(
+                    {elib_tsid_timestamp_exhausted, #{
+                        now_rel => NowRel, max_rel_ts => ?MAX_REL_TS
+                    }}
+                );
+            false ->
+                ok
+        end,
         StateRef = persistent_term:get(?PT_STATE(Name)),
         NodeId = persistent_term:get(?PT_NODE_ID),
         cas_loop(StateRef, NodeId, NowRel)
@@ -253,6 +294,19 @@ cas_loop(StateRef, NodeId, NowRel) ->
 
     NewState = (NewTs bsl ?SEQUENCE_BITS) bor NewSeq,
 
+    %% 42-bit 上界 fail-closed（F-07/F-08）：序列溢出借用下一毫秒不得
+    %% 越过 MAX_REL_TS；越过即拒绝签发（下一合法时刻要到 2164 年之后）
+    case NewTs > ?MAX_REL_TS of
+        true ->
+            error(
+                {elib_tsid_timestamp_exhausted, #{
+                    new_ts => NewTs, max_rel_ts => ?MAX_REL_TS
+                }}
+            );
+        false ->
+            ok
+    end,
+
     %% 原子 CAS: 只有状态未被其他进程改变时才成功
     case atomics:compare_exchange(StateRef, 1, OldState, NewState) of
         ok ->
@@ -270,8 +324,15 @@ cas_loop(StateRef, NodeId, NowRel) ->
 %% ===================================================================
 
 %% @doc 解析 TSID 为各组成部分
+%%
+%% 仅接受 `1..?MAX_ID'（正 signed 63-bit）；非 integer、`=<0'、
+%% `>2^63-1' 抛 `{elib_tsid_invalid_input, _}'（F-09：不再掩码截断）。
+%%
+%% 精度声明（F-11）：`timestamp' 保留毫秒精度；
+%% `created_at' 为秒精度 datetime（毫秒被截断，不是四舍五入）。
 -spec parse(pos_integer()) -> map().
-parse(Id) when is_integer(Id), Id > 0 ->
+parse(Id) ->
+    validate_id(Id),
     RelTs = (Id bsr ?TIMESTAMP_SHIFT) band ?TIMESTAMP_MASK,
     Node = (Id bsr ?NODE_SHIFT) band ?NODE_MASK,
     Seq = Id band ?SEQUENCE_MASK,
@@ -290,14 +351,27 @@ parse(Id) when is_integer(Id), Id > 0 ->
     }.
 
 %% @doc 从 TSID 提取 Unix 毫秒时间戳
+%%
+%% 仅接受 `1..?MAX_ID'；越界输入抛 `{elib_tsid_invalid_input, _}'。
 -spec timestamp(pos_integer()) -> pos_integer().
 timestamp(Id) ->
+    validate_id(Id),
     ((Id bsr ?TIMESTAMP_SHIFT) band ?TIMESTAMP_MASK) + ?EPOCH_MS.
 
 %% @doc 从 TSID 提取节点标识 (含 DC)
+%%
+%% 仅接受 `1..?MAX_ID'；越界输入抛 `{elib_tsid_invalid_input, _}'。
 -spec node_id(pos_integer()) -> non_neg_integer().
 node_id(Id) ->
+    validate_id(Id),
     (Id bsr ?NODE_SHIFT) band ?NODE_MASK.
+
+%% @private 统一输入边界：1..MAX_ID（signed PostgreSQL BIGINT 正数域）
+-spec validate_id(term()) -> ok.
+validate_id(Id) when is_integer(Id), Id >= 1, Id =< ?MAX_ID ->
+    ok;
+validate_id(Id) ->
+    error({elib_tsid_invalid_input, #{id => Id, valid_range => {1, ?MAX_ID}}}).
 
 %% ===================================================================
 %% 内部 seam：纯 reservation 模型与时钟注入（TSID-01 冻结）
@@ -365,29 +439,51 @@ monotonic_ms() ->
     end.
 
 %% @doc 解析十进制字符串形式的 TSID（客户端以 decimal string 传输 64-bit ID）
+%%
+%% 仅接受值为 `1..?MAX_ID' 的纯十进制数字串；空串、符号（+/-）、空白、
+%% 非十进制、0、超界一律返回 error（TSID-02 冻结，F-09）。
 -spec from_binary(binary()) -> {ok, pos_integer()} | error.
-from_binary(Bin) when is_binary(Bin) ->
-    try binary_to_integer(Bin) of
-        Int when Int > 0 -> {ok, Int};
-        _ -> error
-    catch
-        _:_ -> error
+from_binary(Bin) when is_binary(Bin), byte_size(Bin) > 0 ->
+    case is_decimal_digits(Bin) of
+        true ->
+            case binary_to_integer(Bin) of
+                Int when Int >= 1, Int =< ?MAX_ID -> {ok, Int};
+                _ -> error
+            end;
+        false ->
+            error
     end;
 from_binary(_) ->
     error.
+
+%% @private 纯 ASCII 十进制数字（无符号/空白/其他字符）
+-spec is_decimal_digits(binary()) -> boolean().
+is_decimal_digits(Bin) ->
+    is_decimal_digits_1(Bin).
+
+is_decimal_digits_1(<<C, Rest/binary>>) when C >= $0, C =< $9 ->
+    is_decimal_digits_1(Rest);
+is_decimal_digits_1(<<>>) ->
+    true;
+is_decimal_digits_1(_) ->
+    false.
 
 %% ===================================================================
 %% Base62 编码 (可选, 用于 URL/日志场景)
 %% ===================================================================
 
 -define(BASE62_CHARS, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz").
+%% 62^11 > MAX_ID >= 62^10 → 合法 TSID 的 Base62 最长 11 字符
+-define(MAX_BASE62_LEN, 11).
 
 %% @doc 将 TSID 编码为 Base62 字符串 (最长 11 字符)
+%%
+%% 仅接受 `1..?MAX_ID'；非 TSID 输入抛 `{elib_tsid_invalid_input, _}'。
 -spec to_base62(pos_integer()) -> binary().
-to_base62(0) ->
-    <<"0">>;
-to_base62(Id) when is_integer(Id), Id > 0 ->
-    list_to_binary(to_base62_chars(Id, [])).
+to_base62(Id) when is_integer(Id), Id >= 1, Id =< ?MAX_ID ->
+    list_to_binary(to_base62_chars(Id, []));
+to_base62(Id) ->
+    error({elib_tsid_invalid_input, #{id => Id, valid_range => {1, ?MAX_ID}}}).
 
 to_base62_chars(0, Acc) ->
     Acc;
@@ -397,16 +493,55 @@ to_base62_chars(N, Acc) ->
     to_base62_chars(N div 62, [Char | Acc]).
 
 %% @doc 从 Base62 字符串解码为 TSID
+%%
+%% 仅接受可解码到 `1..?MAX_ID' 的合法 Base62 串；空串、非 Base62 字符、
+%% 超长（>11 字符必然溢出）、解码值越界一律抛
+%% `{elib_tsid_invalid_input, _}'（TSID-02 冻结，F-10）。
 -spec from_base62(binary()) -> pos_integer().
-from_base62(Bin) when is_binary(Bin) ->
-    from_base62_chars(binary_to_list(Bin), 0).
+from_base62(Bin) when is_binary(Bin), byte_size(Bin) > 0, byte_size(Bin) =< ?MAX_BASE62_LEN ->
+    case base62_to_int(Bin, 0) of
+        {ok, Id} when Id >= 1, Id =< ?MAX_ID ->
+            Id;
+        {ok, Id} ->
+            error(
+                {elib_tsid_invalid_input, #{
+                    decoded => Id, valid_range => {1, ?MAX_ID}
+                }}
+            );
+        error ->
+            error({elib_tsid_invalid_input, #{input => not_base62}})
+    end;
+from_base62(Bin) ->
+    error({elib_tsid_invalid_input, #{input => Bin, reason => empty_or_too_long}}).
 
-from_base62_chars([], Acc) ->
-    Acc;
-from_base62_chars([C | Rest], Acc) ->
-    Idx = base62_index(C),
-    from_base62_chars(Rest, Acc * 62 + Idx).
+base62_to_int(<<C, Rest/binary>>, Acc) ->
+    case base62_index(C) of
+        {ok, Idx} -> base62_to_int(Rest, Acc * 62 + Idx);
+        error -> error
+    end;
+base62_to_int(<<>>, Acc) ->
+    {ok, Acc}.
 
-base62_index(C) when C >= $0, C =< $9 -> C - $0;
-base62_index(C) when C >= $A, C =< $Z -> C - $A + 10;
-base62_index(C) when C >= $a, C =< $z -> C - $a + 36.
+base62_index(C) when C >= $0, C =< $9 -> {ok, C - $0};
+base62_index(C) when C >= $A, C =< $Z -> {ok, C - $A + 10};
+base62_index(C) when C >= $a, C =< $z -> {ok, C - $a + 36};
+base62_index(_) -> error.
+
+%% ===================================================================
+%% 测试 seam：显式重置（仅测试使用）
+%% ===================================================================
+
+%% @private 清除全部 persistent_term 状态（含每个 name 的 cursor）。
+%% 生产代码禁止调用：跨配置/跨节点场景的唯一合法重置入口是测试 seam，
+%% 用于满足 F-12「测试必须使用显式 reset」的冻结要求。
+-spec reset_for_test() -> ok.
+reset_for_test() ->
+    Names = persistent_term:get(?PT_NAMES, []),
+    lists:foreach(
+        fun(N) -> persistent_term:erase(?PT_STATE(N)) end,
+        [default | Names]
+    ),
+    persistent_term:erase(?PT_NAMES),
+    persistent_term:erase(?PT_NODE_ID),
+    persistent_term:erase(?PT_DC_BITS),
+    ok.
