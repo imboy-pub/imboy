@@ -282,3 +282,85 @@ from_binary_test() ->
     ?assertEqual(error, elib_tsid:from_binary(<<"-1">>)),
     ?assertEqual(error, elib_tsid:from_binary(<<"bad">>)),
     ?assertEqual(error, elib_tsid:from_binary(123)).
+
+%% ===================================================================
+%% TSID-01：时钟与 reservation 契约冻结
+%%
+%% 全部为固定时钟纯模型测试：时钟以参数注入，不依赖真实 sleep、
+%% 不修改系统时钟（AC-01A）。seam 函数为内部实现细节，不属于
+%% 公开 API 契约（AC-01B：公开 arity 与健康路径返回不变）。
+%% ===================================================================
+
+-define(MAX_REL_TS, 4398046511103).
+-define(LAST_VALID_SLOT, ((?MAX_REL_TS bsl 11) bor 2047)).
+
+reserve_candidate_fresh_cursor_test() ->
+    %% 全新 cursor（-1）：首个 slot 落在当前毫秒，seq=0
+    {ok, First, Last} = elib_tsid:reserve_candidate(-1, 1000, 1),
+    ?assertEqual(1000 bsl 11, First),
+    ?assertEqual(First, Last).
+
+reserve_candidate_rollback_holds_cursor_test() ->
+    %% 时钟回拨（1500 < cursor 毫秒 2000）：不回退，从 cursor 继续
+    Old = 2000 bsl 11,
+    {ok, First, _Last} = elib_tsid:reserve_candidate(Old, 1500, 1),
+    ?assertEqual(Old + 1, First).
+
+reserve_candidate_batch_spans_ms_test() ->
+    %% batch 从 seq 末尾跨入下一毫秒：线性 slot 连续展开
+    Old = (2000 bsl 11) bor 2047,
+    {ok, First, Last} = elib_tsid:reserve_candidate(Old, 2000, 2),
+    ?assertEqual(Old + 1, First),
+    ?assertEqual((2001 bsl 11) bor 1, Last).
+
+reserve_candidate_before_epoch_test() ->
+    %% 纪元前时钟：typed fail-closed，绝不借用未来毫秒
+    ?assertMatch(
+        {error, {elib_tsid_clock_before_epoch, _}},
+        elib_tsid:reserve_candidate(-1, -1, 1)
+    ).
+
+reserve_candidate_max_boundary_test() ->
+    %% 恰可容纳 42-bit 最后一个 slot；再多 1 个 → typed exhausted
+    {ok, _First, Last} = elib_tsid:reserve_candidate(?LAST_VALID_SLOT - 1, ?MAX_REL_TS, 1),
+    ?assertEqual(?LAST_VALID_SLOT, Last),
+    ?assertMatch(
+        {error, {elib_tsid_timestamp_exhausted, _}},
+        elib_tsid:reserve_candidate(?LAST_VALID_SLOT, ?MAX_REL_TS, 1)
+    ).
+
+reserve_candidate_conflict_refresh_test() ->
+    %% CAS 冲突模型：获胜者推进 cursor 后，失败者以刷新后的墙钟重算，
+    %% candidate 仍为 max(old + 1, now << 11)（F-05 冻结语义）
+    {ok, _F1, L1} = elib_tsid:reserve_candidate(-1, 1000, 1),
+    {ok, F2, _L2} = elib_tsid:reserve_candidate(L1, 1100, 1),
+    ?assertEqual(max(L1 + 1, 1100 bsl 11), F2).
+
+slot_to_id_layout_test() ->
+    %% slot → ID 展开：42/10/11 布局精确可表达，MAX_ID 是最后合法值
+    Slot = (1000 bsl 11) bor 5,
+    ?assertEqual((1000 bsl 21) bor (129 bsl 11) bor 5, elib_tsid:slot_to_id(Slot, 129)),
+    ?assertEqual(9223372036854775807, elib_tsid:slot_to_id(?LAST_VALID_SLOT, 1023)).
+
+id_to_slot_roundtrip_test() ->
+    Id = (12345 bsl 21) bor (129 bsl 11) bor 77,
+    ?assertEqual(Id, elib_tsid:slot_to_id(elib_tsid:id_to_slot(Id), 129)).
+
+wall_clock_seam_test() ->
+    %% 私有时钟 seam：默认真实墙钟；pdict 注入后完全受控（进程隔离）
+    Real = elib_tsid:wall_clock_ms(),
+    Now = erlang:system_time(millisecond),
+    ?assert(Real >= Now - 5000 andalso Real =< Now + 5),
+    put({elib_tsid, test_wall_ms}, 12345),
+    ?assertEqual(12345, elib_tsid:wall_clock_ms()),
+    erase({elib_tsid, test_wall_ms}),
+    Real2 = elib_tsid:wall_clock_ms(),
+    ?assert(Real2 >= Real).
+
+monotonic_clock_seam_test() ->
+    %% 私有单调钟 seam：默认真实单调钟（仅用于测间隔/超时，绝不入 ID）
+    M1 = elib_tsid:monotonic_ms(),
+    ?assert(M1 =< erlang:monotonic_time(millisecond) + 5),
+    put({elib_tsid, test_monotonic_ms}, 42),
+    ?assertEqual(42, elib_tsid:monotonic_ms()),
+    erase({elib_tsid, test_monotonic_ms}).

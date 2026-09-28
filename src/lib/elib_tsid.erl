@@ -42,6 +42,12 @@
 -export([to_base62/1, from_base62/1]).
 -export([registered/0]).
 
+%% 内部测试/实现 seam（TSID-01 冻结）：供 EUnit 固定时钟模型测试与新
+%% reservation 实现共用。不属于公开 API 契约——公开 arity 与健康路径
+%% 返回形状见上方 -export；本组函数语义变更必须同步冻结的测试。
+-export([reserve_candidate/3, slot_to_id/2, id_to_slot/1]).
+-export([wall_clock_ms/0, monotonic_ms/0]).
+
 %% ===================================================================
 %% 位布局常量
 %% ===================================================================
@@ -73,11 +79,20 @@
 -define(NODE_MASK, ((1 bsl ?NODE_BITS) - 1)).
 -define(TIMESTAMP_MASK, ((1 bsl ?TIMESTAMP_BITS) - 1)).
 
+%% 42-bit 相对时间戳上界（最后合法毫秒 2164-05-15T07:35:11.103Z）
+-define(MAX_REL_TS, ?TIMESTAMP_MASK).
+%% signed 63-bit 上界 = 最后合法 (ts,node,seq) 组合
+-define(MAX_ID, ((1 bsl 63) - 1)).
+
 %% persistent_term 键
 -define(PT_STATE(Name), {elib_tsid_state, Name}).
 -define(PT_NODE_ID, elib_tsid_node_id).
 -define(PT_DC_BITS, elib_tsid_dc_bits).
 -define(PT_NAMES, elib_tsid_names).
+
+%% 进程级时钟 seam 键（仅测试进程显式 put；生产路径无全局可变状态）
+-define(TEST_WALL_MS, {elib_tsid, test_wall_ms}).
+-define(TEST_MONOTONIC_MS, {elib_tsid, test_monotonic_ms}).
 
 %% ===================================================================
 %% 初始化
@@ -283,6 +298,71 @@ timestamp(Id) ->
 -spec node_id(pos_integer()) -> non_neg_integer().
 node_id(Id) ->
     (Id bsr ?NODE_SHIFT) band ?NODE_MASK.
+
+%% ===================================================================
+%% 内部 seam：纯 reservation 模型与时钟注入（TSID-01 冻结）
+%%
+%% 契约要点（变更须同步 elib_tsid_tests 的 TSID-01 测试组）：
+%%   - cursor 是线性 slot：Slot = Ts bsl 11 bor Seq，全程单调；
+%%   - candidate 区间 [First, Last] 满足 First = max(Old+1, Now bsl 11)；
+%%   - 时钟回拨由 cursor 吸收（First 沿用旧毫秒），绝不回退；
+%%   - 纪元前 / 越过 42-bit 上界一律 typed fail-closed，绝不掩码截断；
+%%   - wall_clock_ms / monotonic_ms 为进程级测试 seam：仅当调用进程
+%%     显式 put 测试键时偏离真实时钟，生产路径无全局可变状态。
+%% ===================================================================
+
+%% @private 纯函数：给定 cursor、当前相对毫秒与数量，计算连续 slot 区间
+-spec reserve_candidate(integer(), integer(), pos_integer()) ->
+    {ok, FirstSlot :: non_neg_integer(), LastSlot :: non_neg_integer()}
+    | {error, {elib_tsid_clock_before_epoch | elib_tsid_timestamp_exhausted, map()}}.
+reserve_candidate(OldCursor, NowRel, Count) when
+    is_integer(OldCursor), is_integer(NowRel), is_integer(Count), Count > 0
+->
+    case NowRel < 0 of
+        true ->
+            {error, {elib_tsid_clock_before_epoch, #{now_rel => NowRel}}};
+        false ->
+            First = max(OldCursor + 1, NowRel bsl ?SEQUENCE_BITS),
+            Last = First + Count - 1,
+            LastTs = Last bsr ?SEQUENCE_BITS,
+            case LastTs > ?MAX_REL_TS of
+                true ->
+                    {error,
+                        {elib_tsid_timestamp_exhausted, #{
+                            last_ts => LastTs, max_rel_ts => ?MAX_REL_TS
+                        }}};
+                false ->
+                    {ok, First, Last}
+            end
+    end.
+
+%% @private 纯函数：slot 展开为完整 ID（42/10/11 布局）
+-spec slot_to_id(non_neg_integer(), 0..1023) -> pos_integer().
+slot_to_id(Slot, CombinedNode) when is_integer(Slot), Slot >= 0 ->
+    Ts = Slot bsr ?SEQUENCE_BITS,
+    Seq = Slot band ?SEQUENCE_MASK,
+    (Ts bsl ?TIMESTAMP_SHIFT) bor (CombinedNode bsl ?NODE_SHIFT) bor Seq.
+
+%% @private 纯函数：ID 折叠回线性 slot（丢弃 node 段）
+-spec id_to_slot(pos_integer()) -> non_neg_integer().
+id_to_slot(Id) when is_integer(Id), Id > 0 ->
+    ((Id bsr ?TIMESTAMP_SHIFT) bsl ?SEQUENCE_BITS) bor (Id band ?SEQUENCE_MASK).
+
+%% @private 进程级墙钟 seam：测试用 put({elib_tsid, test_wall_ms}, Ms) 注入
+-spec wall_clock_ms() -> integer().
+wall_clock_ms() ->
+    case get(?TEST_WALL_MS) of
+        undefined -> erlang:system_time(millisecond);
+        Ms -> Ms
+    end.
+
+%% @private 进程级单调钟 seam：仅用于等待 deadline/超时，绝不编码进 ID
+-spec monotonic_ms() -> integer().
+monotonic_ms() ->
+    case get(?TEST_MONOTONIC_MS) of
+        undefined -> erlang:monotonic_time(millisecond);
+        Ms -> Ms
+    end.
 
 %% @doc 解析十进制字符串形式的 TSID（客户端以 decimal string 传输 64-bit ID）
 -spec from_binary(binary()) -> {ok, pos_integer()} | error.
