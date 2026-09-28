@@ -336,7 +336,7 @@ do_start_recovery_entry(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data =
-        try jsx:decode(Body, [return_maps]) of
+        try jsone:decode(Body) of
             D when is_map(D) -> D
         catch
             _:_ -> #{}

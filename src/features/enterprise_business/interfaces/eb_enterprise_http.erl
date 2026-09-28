@@ -190,7 +190,7 @@ read_body(Req) ->
 decode(<<>>) ->
     {ok, #{}};
 decode(Raw) ->
-    try jsx:decode(Raw, [return_maps]) of
+    try jsone:decode(Raw) of
         Map when is_map(Map) -> {ok, normalize_body(Map)};
         _NotObject -> {error, body_not_object}
     catch

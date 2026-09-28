@@ -188,7 +188,7 @@ http(State, Method, UrlPath, Opts) ->
                 undefined;
             _ ->
                 try
-                    jsx:decode(Body0, [return_maps])
+                    jsone:decode(Body0)
                 catch
                     _:_ -> undefined
                 end

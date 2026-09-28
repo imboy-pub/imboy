@@ -1519,7 +1519,7 @@ provisioning_flow_tests(_) ->
                         "/provisioning?workspace_id=", (int_bin(?WS))/binary>>,
                     #{
                         <<"user_id">> => 909091,
-                        <<"display_name">> => <<"客服一号">>,
+                        <<"display_name">> => <<"客服一号"/utf8>>,
                         <<"max_concurrent">> => 1
                     },
                     #{<<"authorization">> => <<"Bearer x">>}

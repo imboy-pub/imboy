@@ -987,12 +987,12 @@ a02_sse_tests(_) ->
                     <<"session_id">> => int_bin(?SESSION),
                     <<"status">> => <<"queued">>
                 },
-                jsx:decode(State, [return_maps])
+                jsone:decode(State)
             ),
             MsgData = cs_widget_handler:message_data(#{
                 id => 42, body => <<"hi">>, secret => <<"never">>
             }),
-            Decoded = jsx:decode(MsgData, [return_maps]),
+            Decoded = jsone:decode(MsgData),
             ?assertNot(is_map_key(<<"secret">>, Decoded)),
             ?assertEqual(<<"hi">>, maps:get(<<"body">>, Decoded))
         end}

@@ -53,7 +53,7 @@ assertion_verifier_cases(_) ->
         <<"jti">> => <<"jti-1">>,
         <<"sub">> => <<"u-1">>
     },
-    Canonical = jsx:encode(lists:sort(maps:to_list(Claims))),
+    Canonical = jsone:encode(lists:sort(maps:to_list(Claims)), [native_utf8]),
     %% lowercase 与生产 encode_hex/2 同口径（4fea324f：digest 惯例小写；
     %% 缺省大写会先在 digest 锚定处失配，掩盖签名断言本意）。
     Sig = binary:encode_hex(crypto:mac(hmac, sha256, Key, Canonical), lowercase),

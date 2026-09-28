@@ -128,7 +128,7 @@ handle_exchange(Req) ->
 -spec decode_otc(binary()) -> binary().
 decode_otc(Body) ->
     try
-        Data = jsx:decode(Body, [return_maps]),
+        Data = jsone:decode(Body),
         maps:get(<<"otc">>, Data, <<>>)
     catch
         _:_ -> <<>>

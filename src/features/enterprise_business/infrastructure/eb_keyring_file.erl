@@ -93,7 +93,7 @@ read_keyring_file(Path) ->
 %% 一律 `{error, _}`（错误项不含密钥内容——hex 材料不进错误项）。
 -spec decode_json(binary()) -> {ok, map()} | {error, term()}.
 decode_json(Json) when is_binary(Json) ->
-    try jsx:decode(Json, [return_maps]) of
+    try jsone:decode(Json) of
         #{<<"active_version">> := Active} = Doc when is_integer(Active), Active >= 1 ->
             case maps:get(<<"keys">>, Doc, undefined) of
                 Keys when is_map(Keys), map_size(Keys) >= 1 ->

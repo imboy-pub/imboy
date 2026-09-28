@@ -109,8 +109,8 @@ init_check_login_no_conflict_test_() ->
                     {ok, <<"{\"device_type\":\"ios\"}">>, #{}}
                 end}
             ]},
-            {jsx, [
-                {'decode', 2, fun(<<"{\"device_type\":\"ios\"}">>, [return_maps]) ->
+            {jsone, [
+                {'decode', 1, fun(<<"{\"device_type\":\"ios\"}">>) ->
                     #{<<"device_type">> => <<"ios">>}
                 end}
             ]},

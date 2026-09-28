@@ -182,7 +182,7 @@ request(Port, Method, Path0, Body, Headers0) ->
     parse(Raw).
 
 encode_body(Body) when is_binary(Body) -> Body;
-encode_body(Body) when is_map(Body) -> jsx:encode(Body).
+encode_body(Body) when is_map(Body) -> jsone:encode(Body, [native_utf8]).
 
 %% @doc 流式响应读取（SSE）：发请求后**限时**收字节，超时或对端关闭即返回
 %% 已收内容（原始 binary）——绝不等到连接关闭（SSE 不关）。
@@ -293,7 +293,7 @@ to_int(Bin) ->
 %% 响应信封（elib_response）：`#{code, msg, payload}`。
 -spec json(map()) -> map().
 json(#{body := Body}) ->
-    jsx:decode(Body, [return_maps]).
+    jsone:decode(Body).
 
 -spec code(map()) -> integer().
 code(Resp) ->

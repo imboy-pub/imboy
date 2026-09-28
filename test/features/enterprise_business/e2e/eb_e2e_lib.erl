@@ -240,8 +240,8 @@ req(Method, Path, Body0, Headers0, Opts) ->
     Resp.
 
 encode_body(Body) when is_binary(Body) -> Body;
-encode_body(Body) when is_map(Body) -> jsx:encode(Body);
-encode_body(Body) when is_list(Body) -> jsx:encode(Body);
+encode_body(Body) when is_map(Body) -> jsone:encode(Body, [native_utf8]);
+encode_body(Body) when is_list(Body) -> jsone:encode(Body, [native_utf8]);
 encode_body(undefined) -> <<>>.
 
 recv_all(Socket, Acc) ->
@@ -325,7 +325,7 @@ json(Resp) ->
         <<>> ->
             #{};
         Bin ->
-            try jsx:decode(Bin, [return_maps]) of
+            try jsone:decode(Bin) of
                 Map when is_map(Map) -> Map;
                 _NotObject -> #{}
             catch

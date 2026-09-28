@@ -129,7 +129,7 @@ sessions(Req0, State) ->
 check_login(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsx:decode(Body, [return_maps]),
+    Data = jsone:decode(Body),
     DType = maps:get(<<"device_type">>, Data, <<>>),
 
     case user_device_logic:validate_device_type(DType) of
@@ -160,7 +160,7 @@ check_login(Req0, State) ->
 kick(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsx:decode(Body, [return_maps]),
+    Data = jsone:decode(Body),
     DType = maps:get(<<"device_type">>, Data, <<>>),
     DID = maps:get(<<"device_id">>, Data, <<>>),
 
@@ -185,7 +185,7 @@ kick(Req0, State) ->
 kick_others(Req0, State) ->
     Uid = auth_ds:current_uid(State),
     {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data = jsx:decode(Body, [return_maps]),
+    Data = jsone:decode(Body),
     DType = maps:get(<<"device_type">>, Data, <<>>),
     DID = maps:get(<<"device_id">>, Data, <<>>),
 

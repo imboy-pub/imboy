@@ -110,7 +110,7 @@ a02_identity_list_returns_tsid_strings_real() ->
             ?assert(length(Rows) >= 1),
 
             %% 每个 TSID 字段都是 **string**（不是 number）。解码后的 JSON 对象键是
-            %% binary（jsx），故这里按 binary 键取。
+            %% binary（jsone），故这里按 binary 键取。
             ?assertEqual(
                 [],
                 [
@@ -156,7 +156,9 @@ a02_identity_list_returns_tsid_strings_real() ->
                 ])
             ),
             %% 非真空：同样的正则对「未编码」的载荷必须命中
-            RawNumbered = jsx:encode(#{<<"id">> => 123, <<"organization_id">> => 456}),
+            RawNumbered = jsone:encode(#{<<"id">> => 123, <<"organization_id">> => 456}, [
+                native_utf8
+            ]),
             ?assertEqual(
                 match,
                 re:run(RawNumbered, <<"\"(id|organization_id)\":[0-9]">>, [

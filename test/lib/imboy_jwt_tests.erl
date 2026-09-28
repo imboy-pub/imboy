@@ -61,10 +61,7 @@ header_is_jwt_hs256_test() ->
     Token = imboy_jwt:sign(#{<<"exp">> => ?FUTURE}, ?SECRET),
     [H, _, _] = binary:split(Token, <<".">>, [global]),
     %% 手工 base64url 解 header 断言 alg/typ（decode 用 OTP 内置 urlsafe 模式）
-    Header = jsx:decode(
-        base64:decode(H, #{mode => urlsafe, padding => false}),
-        [return_maps]
-    ),
+    Header = jsone:decode(base64:decode(H, #{mode => urlsafe, padding => false})),
     ?assertEqual(<<"HS256">>, maps:get(<<"alg">>, Header)),
     ?assertEqual(<<"JWT">>, maps:get(<<"typ">>, Header)).
 

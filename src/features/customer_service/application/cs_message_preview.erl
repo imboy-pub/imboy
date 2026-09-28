@@ -126,7 +126,7 @@ cs_optional_key(Map, Key, Params) ->
 
 %% @doc Unicode 码点截断（前 ?PREVIEW_MAX_CHARS 个码点，UTF-8 安全——
 %% 不会在多字节字符中间切断；截断策略在本函数冻结，测试逐字断言）。
-%% 明文来自 HTTP/JSON 面（jsx 解码保证 UTF-8）；理论上不可解码的残留由
+%% 明文来自 HTTP/JSON 面（jsone 解码保证 UTF-8）；理论上不可解码的残留由
 %% 守卫回落占位（不崩溃、不产出坏 UTF-8）。
 -spec truncate(binary()) -> binary() | undefined.
 truncate(Plain) when is_binary(Plain) ->

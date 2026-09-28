@@ -76,7 +76,7 @@ handle_request(Req0, State) ->
 %% Body: {"device_id": "xxx", "device_name": "Web Browser", "platform": "web"}
 handle_create(Req) ->
     {ok, Body, _} = cowboy_req:read_body(Req),
-    Data = jsx:decode(Body, [return_maps]),
+    Data = jsone:decode(Body),
     DeviceId = maps:get(<<"device_id">>, Data, <<>>),
     DeviceName = maps:get(<<"device_name">>, Data, <<"Web Browser">>),
     Platform = maps:get(<<"platform">>, Data, <<"web">>),
@@ -163,7 +163,7 @@ handle_status(Req) ->
 handle_scan(Req, State) ->
     Uid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req),
-    Data = jsx:decode(Body, [return_maps]),
+    Data = jsone:decode(Body),
 
     QRToken = maps:get(<<"qr_token">>, Data, <<>>),
 
@@ -266,7 +266,7 @@ handle_scan(Req, State) ->
 handle_confirm(Req, State) ->
     Uid = maps:get(current_uid, State, 0),
     {ok, Body, _} = cowboy_req:read_body(Req),
-    Data = jsx:decode(Body, [return_maps]),
+    Data = jsone:decode(Body),
 
     QRToken = maps:get(<<"qr_token">>, Data, <<>>),
 
@@ -382,7 +382,7 @@ handle_confirm(Req, State) ->
 %% Body: {"session_token": "xxx"}
 handle_cancel(Req, _State) ->
     {ok, Body, _} = cowboy_req:read_body(Req),
-    Data = jsx:decode(Body, [return_maps]),
+    Data = jsone:decode(Body),
 
     SessionToken = maps:get(<<"session_token">>, Data, <<>>),
 

@@ -9,7 +9,7 @@
 # redirect; the tag below is verified to match the mirror.
 # https://github.com/hexpm/hex_core.git
 # dep_hex_core = hex 0.11.0
-dep_hex_core = git https://github.com/hexpm/hex_core.git v0.11.0
+dep_hex_core = git https://github.com/hexpm/hex_core.git v0.19.0
 
 # https://erlang.mk/guide/deps.html
 # https://github.com/ninenines/ranch/tags
@@ -31,10 +31,9 @@ dep_jsone = git https://github.com/sile/jsone.git 1.9.0
 # https://github.com/zotonic/depcache.git
 dep_depcache = git https://github.com/zotonic/depcache.git 2.0.0
 
-# jsx an erlang application for consuming, producing and manipulating json
-# 2years https://github.com/talentdeficit/jsx/tags
-# business direct dep（customer_service / report / qr_login 等模块直用）
-dep_jsx = git https://github.com/talentdeficit/jsx.git v3.1.0
+# JSON 统一走 jsone（2026-09 收敛，原 jsx 直用已全部迁移；兼容契约见
+# test/lib/json_codec_equivalence_tests.erl——decode 默认 binary-key map、
+# encode 用 [native_utf8] 与旧 jsx 字节级一致）。
 
 # https://github.com/rabbitmq/ra
 # A Multi-Raft implementation for Erlang and Elixir that
@@ -117,7 +116,7 @@ dep_lager = git https://github.com/erlang-lager/lager.git 3.9.2
 dep_hut = git https://gitee.com/imboy-tripartite-deps/hut.git 1.4.0
 # Observer CLI 是一个可以被放入任何 Beam 节点的库，用于帮助 DevOps 人员诊断生产节点中的问题
 # 8months
-dep_observer_cli = git https://github.com/zhongwencool/observer_cli.git 1.7.4
+dep_observer_cli = git https://github.com/zhongwencool/observer_cli.git v2.0.0
 # Recon 希望成为一套可用于生产环境的工具，用于诊断 Erlang 问题或安全地检查生产环境。
 # 4months
 dep_recon = git https://github.com/ferd/recon.git 2.5.6
@@ -214,7 +213,7 @@ dep_rtps = git https://gitee.com/imboy-tripartite-deps/rtps.git master
 
 # gpb - Google Protocol Buffers compiler for Erlang
 # https://github.com/tomas-abrahamsson/gpb
-dep_gpb = git https://github.com/tomas-abrahamsson/gpb.git 4.21.7
+dep_gpb = git https://github.com/tomas-abrahamsson/gpb.git 5.0.0
 
 # --- OpenTelemetry（OTLP/HTTP 上报 Uptrace，见 src/lib/imboy_telemetry.erl）---
 # opentelemetry-erlang 是 rebar3 umbrella 仓库（apps/ 布局），无法走 git dep，

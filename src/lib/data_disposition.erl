@@ -70,7 +70,7 @@ parse_lines([Line | Rest], Section, Current, Acc) ->
         <<"exclusions:">> ->
             parse_lines(Rest, exclusions, none, flush_current(Current, Acc));
         _ when Section =:= none ->
-            parse_error(Line, <<"顶层只允许 meta:/tables:/exclusions: 段头">>);
+            parse_error(Line, <<"顶层只允许 meta:/tables:/exclusions: 段头"/utf8>>);
         _ when Section =:= meta ->
             %% meta 段字段（schema_version 等）：解析器不消费，跳过
             parse_lines(Rest, Section, Current, Acc);
@@ -83,7 +83,7 @@ parse_lines([Line | Rest], Section, Current, Acc) ->
                     NewCurrent = apply_field(Current, Key, Value, Section, Line),
                     parse_lines(Rest, Section, NewCurrent, Acc);
                 unsupported ->
-                    parse_error(Line, <<"无法解析的行（受限子集：两空格表名/四空格字段行）">>)
+                    parse_error(Line, <<"无法解析的行（受限子集：两空格表名/四空格字段行）"/utf8>>)
             end
     end.
 

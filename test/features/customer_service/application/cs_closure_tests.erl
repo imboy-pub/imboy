@@ -171,7 +171,6 @@ otp_lib_whitelist() ->
         elib_pg,
         elib_tsid,
         jsone,
-        jsx,
         crypto,
         erlang,
         lists,

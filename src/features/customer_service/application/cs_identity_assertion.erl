@@ -6,7 +6,7 @@
 %%% 断言契约（HTTP 面 assertion 对象）：
 %%%   `#{key_version := pos_integer(), claims := map(), sig := binary()}`
 %%%   其中 `sig = hex(HMAC-SHA256(Key, canonical(claims)))`、
-%%%   `canonical(claims) = jsx(键名字典序的键值对数组)`。
+%%%   `canonical(claims) = JSON(键名字典序的键值对数组)`（jsone native_utf8）。
 %%%
 %%% 判定顺序（失败原因唯一可复现，全部 fail-closed）：
 %%%   1. 形状：key_version 正整数 + claims 对象 + sig 非空 binary；
@@ -117,10 +117,11 @@ verify_signature(Key, Claims, Sig) ->
     end.
 
 %% canonical(claims)：键名一律 binary、按字典序排序的键值对数组再 JSON 编码
-%% （jsx 对 proplist 编码为对象）——同 claims 恒得同一字节串。
+%% （jsone 对 proplist 编码为对象；native_utf8 与旧 jsx 字节级一致，存量断言
+%% 兼容——契约见 test/lib/json_codec_equivalence_tests.erl）。
 canonical_claims(Claims) ->
     Pairs = [{key_bin(K), V} || {K, V} <- maps:to_list(Claims)],
-    jsx:encode(lists:sort(Pairs)).
+    jsone:encode(lists:sort(Pairs), [native_utf8]).
 
 key_bin(K) when is_binary(K) -> K;
 key_bin(K) when is_atom(K) -> atom_to_binary(K, utf8).

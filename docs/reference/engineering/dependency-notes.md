@@ -6,11 +6,11 @@
 
 **后端**(`imboy/Makefile` DEPS)显式声明约 27 个依赖,分组清晰:
 - Web:ranch/cowlib/cowboy/gun
-- 基础:erlware_commons/jose/gen_smtp/throttle/jsone/jsx/goldrush(jose 为 JWT 签发/验签库,业务入口 src/lib/imboy_jwt.erl)
+- 基础:erlware_commons/jose/gen_smtp/throttle/jsone/goldrush(jose 为 JWT 签发/验签库,业务入口 src/lib/imboy_jwt.erl;jsone 为唯一 JSON 库,2026-09 移除 jsx 直用,兼容契约见 test/lib/json_codec_equivalence_tests.erl)
 - 数据/中间件:epgsql/pooler/erlang_migrate/depcache/syn/ecron/uid
 - 运维/调试:telemetry/lager/observer_cli/recon/redbug/**sync**
 - 其他:simple_captcha/erlydtl、内部 `erlang_pay`
-- transitive dep 手工 pin 有注释说明(goldrush 为 lager 传递依赖、jsx 走 gitee 避免 hex_core sub-make)。
+- transitive dep 手工 pin 有注释说明(goldrush 为 lager 传递依赖;jsone 走上游 git tag)。
 - `LOCAL_DEPS`/`BUILD_DEPS`/`TEST_DEPS`/`DOC_DEPS` 分层明确;有 `rebar.lock`。
 
 **Flutter**(`imboyapp/pubspec.yaml`)**100+ 个直接依赖**(实测 dependencies 块远超 60，顶层依赖 100+)+ `pubspec.lock` 锁定，依赖膨胀明显。含较多 fork/同类库:

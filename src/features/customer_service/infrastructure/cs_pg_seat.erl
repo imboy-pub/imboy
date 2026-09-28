@@ -724,7 +724,7 @@ decode_workspaces(Row) ->
     case maps:get(workspaces, Row, undefined) of
         Bin when is_binary(Bin) ->
             try
-                Row#{workspaces := jsx:decode(Bin, [return_maps])}
+                Row#{workspaces := jsone:decode(Bin)}
             catch
                 _:_ -> Row#{workspaces := []}
             end;

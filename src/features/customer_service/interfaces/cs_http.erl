@@ -298,7 +298,7 @@ read_body(Req) ->
 decode(<<>>) ->
     {ok, #{}};
 decode(Raw) ->
-    try jsx:decode(Raw, [return_maps]) of
+    try jsone:decode(Raw) of
         Map when is_map(Map) -> {ok, normalize_body(Map)};
         _NotObject -> {error, body_not_object}
     catch
@@ -946,7 +946,7 @@ encode_entity(Other) ->
 
 encode_value(_Key, undefined) ->
     %% contracts-w2 C1~C4：`next_after_id: string|null` 等可空出站键——undefined
-    %% 统一编为 JSON null（jsx 默认把 undefined atom 写成字符串 "undefined"，
+    %% 统一编为 JSON null（jsone 默认把 undefined atom 写成字符串 "undefined"，
     %% 语义错误；JSON 惯例空值是 null）。
     null;
 encode_value(Key, Value) when is_integer(Value) ->

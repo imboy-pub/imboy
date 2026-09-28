@@ -868,12 +868,13 @@ comment_frame() ->
 %% @doc 状态事件的 data：resource-id + 状态（TSID string；零 secret）。
 -spec state_data(integer(), atom() | binary()) -> binary().
 state_data(SessionId, Status) when is_integer(SessionId) ->
-    jsx:encode(
+    jsone:encode(
         cs_http:encode_entity(#{
             resource => <<"cs.session">>,
             session_id => SessionId,
             status => status_bin(Status)
-        })
+        }),
+        [native_utf8]
     );
 state_data(_SessionId, _Status) ->
     <<"{}">>.
@@ -884,7 +885,7 @@ message_data(Message) when is_map(Message) ->
     Projected = maps:with(
         [id, conversation_id, body, mime, size_bytes, created_at, sender_kind, kind], Message
     ),
-    jsx:encode(cs_http:encode_entity(Projected));
+    jsone:encode(cs_http:encode_entity(Projected), [native_utf8]);
 message_data(_Other) ->
     <<"{}">>.
 

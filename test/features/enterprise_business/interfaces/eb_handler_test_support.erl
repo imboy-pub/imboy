@@ -212,8 +212,8 @@ request(Port, Method, Path, Body, Headers0) ->
     parse(Raw).
 
 encode_body(Body) when is_binary(Body) -> Body;
-encode_body(Body) when is_map(Body) -> jsx:encode(Body);
-encode_body(Body) when is_list(Body) -> jsx:encode(Body).
+encode_body(Body) when is_map(Body) -> jsone:encode(Body, [native_utf8]);
+encode_body(Body) when is_list(Body) -> jsone:encode(Body, [native_utf8]).
 
 recv_all(Socket, Acc) ->
     case gen_tcp:recv(Socket, 0, ?TIMEOUT) of
@@ -280,7 +280,7 @@ to_int(Bin) ->
 
 -spec json(map()) -> map().
 json(#{body := Body}) ->
-    jsx:decode(Body, [return_maps]).
+    jsone:decode(Body).
 
 %% 响应信封（`elib_response`）：`#{code, msg, payload}`。
 -spec code(map()) -> integer().

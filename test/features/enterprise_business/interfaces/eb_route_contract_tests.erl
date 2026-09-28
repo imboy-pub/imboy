@@ -369,7 +369,7 @@ a02_tsid_encoding_is_string_test() ->
     ).
 
 encode_nested(Term) ->
-    %% 把 atom 键转成 binary 键后比较（jsx 解码后的世界）
+    %% 把 atom 键转成 binary 键后比较（jsone 解码后的世界）
     (eb_enterprise_http:encode_entity(Term)).
 
 %% @doc A02 的非真空证明：若把 `is_tsid_key/1` 的判据改成「一切都算 TSID」或
@@ -684,7 +684,9 @@ a05_content_response_has_no_storage_capability_test() ->
         ?assertMatch({leak, _}, eb_enterprise_http:storage_leak_scan(maps:get(url, View))),
         ?assertMatch({leak, _}, eb_enterprise_http:storage_leak_scan(maps:get(endpoint, View))),
         %% ⑤ 「全量视图」扫一遍会命中（若有人把整个 View 序列化进响应，②必红）
-        ?assertMatch({leak, _}, eb_enterprise_http:storage_leak_scan(jsx:encode(View)))
+        ?assertMatch({leak, _}, eb_enterprise_http:storage_leak_scan(jsone:encode(View)), [
+            native_utf8
+        ])
     after
         _ = persistent_term:erase({eb09_content_probe, view}),
         ?S:stop(Name)
@@ -780,14 +782,15 @@ a06_ack_response_shape_has_no_delete_semantics_test() ->
         message_id => 11,
         canonical_unchanged => true
     },
-    Encoded = jsx:encode(eb_enterprise_http:encode_entity(RealShape)),
+    Encoded = jsone:encode(eb_enterprise_http:encode_entity(RealShape), [native_utf8]),
     Words = [
         <<"delete">>, <<"deleted">>, <<"archive">>, <<"archived">>, <<"purge">>, <<"removed">>
     ],
     ?assertEqual([], [W || W <- Words, binary:match(Encoded, W) =/= nomatch]),
     %% 非真空：把 canonical_unchanged 换成 deleted 后必须被同一扫描命中
-    Poisoned = jsx:encode(
-        eb_enterprise_http:encode_entity(RealShape#{canonical_unchanged => deleted})
+    Poisoned = jsone:encode(
+        eb_enterprise_http:encode_entity(RealShape#{canonical_unchanged => deleted}),
+        [native_utf8]
     ),
     ?assertNotEqual([], [W || W <- Words, binary:match(Poisoned, W) =/= nomatch]).
 

@@ -17,13 +17,16 @@ hex_of(Bytes) ->
     binary:encode_hex(Bytes, lowercase).
 
 valid_keyring_json() ->
-    jsx:encode(#{
-        <<"active_version">> => 2,
-        <<"keys">> => #{
-            <<"1">> => hex_of(crypto:strong_rand_bytes(32)),
-            <<"2">> => hex_of(crypto:strong_rand_bytes(32))
-        }
-    }).
+    jsone:encode(
+        #{
+            <<"active_version">> => 2,
+            <<"keys">> => #{
+                <<"1">> => hex_of(crypto:strong_rand_bytes(32)),
+                <<"2">> => hex_of(crypto:strong_rand_bytes(32))
+            }
+        },
+        [native_utf8]
+    ).
 
 temp_keyring_file(Name, Content, Mode) ->
     Path = filename:join(
@@ -63,12 +66,16 @@ decode_json_invalid_test() ->
     ?assertMatch({error, _}, eb_keyring_file:decode_json(<<"not-json">>)),
     ?assertMatch({error, _}, eb_keyring_file:decode_json(<<"[1,2]">>)),
     ?assertMatch(
-        {error, _}, eb_keyring_file:decode_json(jsx:encode(#{<<"active_version">> => 1}))
+        {error, _}, eb_keyring_file:decode_json(jsone:encode(#{<<"active_version">> => 1}))
     ),
     ?assertMatch(
         {error, _},
         eb_keyring_file:decode_json(
-            jsx:encode(#{<<"active_version">> => 1, <<"keys">> => #{<<"x">> => hex_of(<<0:256>>)}})
+            jsone:encode(
+                #{<<"active_version">> => 1, <<"keys">> => #{<<"x">> => hex_of(<<0:256>>)}}, [
+                    native_utf8
+                ]
+            )
         )
     ).
 

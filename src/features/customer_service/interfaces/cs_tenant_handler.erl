@@ -422,7 +422,7 @@ stream_headers() ->
 %% TSID integer 先经 cs_http:encode_entity 编为 string）。
 -spec event_frame(integer(), map()) -> binary().
 event_frame(Id, Envelope) when is_integer(Id), is_map(Envelope) ->
-    Data = jsx:encode(cs_http:encode_entity(Envelope)),
+    Data = jsone:encode(cs_http:encode_entity(Envelope), [native_utf8]),
     <<"id: ", (integer_to_binary(Id))/binary, "\nevent: ", (type_bin(Envelope))/binary, "\ndata: ",
         Data/binary, "\n\n">>;
 event_frame(_Id, _Envelope) ->

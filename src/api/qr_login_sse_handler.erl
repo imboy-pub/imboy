@@ -92,7 +92,7 @@ info(qr_sse_heartbeat, Req0, State) ->
     NewTimer = erlang:send_after(?HEARTBEAT_INTERVAL_MS, self(), qr_sse_heartbeat),
     {ok, Req, State#{heartbeat_timer => NewTimer}};
 info(Event, Req0, State) when is_map(Event) ->
-    Json = jsx:encode(Event),
+    Json = jsone:encode(Event, [native_utf8]),
     Chunk = <<"data: ", Json/binary, "\n\n">>,
     Req = cowboy_req:stream_body(Chunk, nofin, Req0),
     case maps:get(<<"status">>, Event, undefined) of

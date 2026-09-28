@@ -146,7 +146,7 @@ queue_split_tests(_) ->
                 ?assertEqual(0, ?S:code(Resp)),
                 [Row] = maps:get(<<"sessions">>, Payload),
                 ?assertEqual(int_bin(?SESSION), maps:get(<<"id">>, Row)),
-                %% JSON 往返后 status 是 binary（jsx）。
+                %% JSON 往返后 status 是 binary（jsone）。
                 ?assertEqual(<<"queued">>, maps:get(<<"status">>, Row)),
                 ?assertEqual(4, maps:get(<<"version">>, Row)),
                 ?assertEqual(1, maps:get(<<"total">>, Payload)),
@@ -305,7 +305,7 @@ seat_list_tests(_) ->
                 Payload = ?S:payload(Resp),
                 ?assertEqual([], maps:get(<<"sessions">>, Payload)),
                 ?assertEqual(2, maps:get(<<"total">>, Payload)),
-                %% JSON null（jsx 解出 null 原子）。
+                %% JSON null（jsone 解出 null 原子）。
                 ?assertEqual(null, maps:get(<<"next_after_id">>, Payload))
             end)
         end},

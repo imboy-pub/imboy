@@ -493,7 +493,7 @@ normalize_evidence_input(Raw) when is_binary(Raw); is_list(Raw) ->
     Bin = iolist_to_binary(Raw),
     Decoded =
         try
-            jsx:decode(Bin, [return_maps])
+            jsone:decode(Bin)
         catch
             _:_ -> invalid
         end,
@@ -605,7 +605,7 @@ decode_evidence(Map) when is_map(Map) ->
 decode_evidence(Bin) when is_binary(Bin) ->
     Decoded =
         try
-            jsx:decode(Bin, [return_maps])
+            jsone:decode(Bin)
         catch
             _:_ -> invalid
         end,

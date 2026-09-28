@@ -27,11 +27,14 @@ create_stores_session_and_returns_tokens_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{
-                <<"device_id">> => <<"web-device-1">>,
-                <<"device_name">> => <<"Chrome">>,
-                <<"platform">> => <<"web">>
-            }),
+            Body = jsone:encode(
+                #{
+                    <<"device_id">> => <<"web-device-1">>,
+                    <<"device_name">> => <<"Chrome">>,
+                    <<"platform">> => <<"web">>
+                },
+                [native_utf8]
+            ),
             Req0 = req(<<"POST">>, Body, []),
 
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, #{action => create}),
@@ -143,7 +146,7 @@ scan_updates_status_to_scanned_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => scan, current_uid => 1001},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
@@ -181,7 +184,7 @@ scan_returns_empty_device_fields_when_session_lacks_them_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => scan, current_uid => 1001},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
@@ -246,7 +249,7 @@ confirm_marks_session_confirmed_and_records_device_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => confirm, current_uid => 1001},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
@@ -278,7 +281,7 @@ cancel_updates_status_to_cancelled_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"session_token">> => SessionToken}),
+            Body = jsone:encode(#{<<"session_token">> => SessionToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, #{action => cancel}),
             ?assertEqual({success, #{<<"status">> => <<"cancelled">>}}, response_result(Req1))
@@ -306,7 +309,7 @@ scan_returns_expired_when_session_outdated_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => scan, current_uid => 1001},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
@@ -337,7 +340,7 @@ confirm_returns_already_used_for_duplicate_confirm_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => confirm, current_uid => 1001},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
@@ -368,7 +371,7 @@ confirm_returns_forbidden_for_cross_user_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => confirm, current_uid => 1001},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
@@ -384,7 +387,7 @@ scan_returns_invalid_qr_token_for_illegal_token_test_() ->
                 {imboy_cache, [{'get', 1, fun({qr_login_qr, _QRToken}) -> undefined end}]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => <<"not_a_valid_base64_token">>}),
+            Body = jsone:encode(#{<<"qr_token">> => <<"not_a_valid_base64_token">>}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => scan, current_uid => 1001},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
@@ -430,7 +433,7 @@ scan_broadcasts_scanned_event_on_success_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => scan, current_uid => 1001},
             {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
@@ -471,7 +474,7 @@ scan_does_not_broadcast_when_expired_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => scan, current_uid => 1001},
             {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
@@ -519,7 +522,7 @@ confirm_broadcasts_confirmed_event_with_token_on_success_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => confirm, current_uid => 1001},
             {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),
@@ -564,7 +567,7 @@ confirm_does_not_broadcast_when_forbidden_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsx:encode(#{<<"qr_token">> => QRToken}),
+            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => confirm, current_uid => 1001},
             {stop, _Req1, _State} = qr_login_handler:handle_request(Req0, State),

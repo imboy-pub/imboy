@@ -20,8 +20,7 @@
 | gun | ? | ISC |  |
 | hex_core | 0.11.0 | Apache-2.0 |  |
 | jose | 1.11.12 | MIT | git pin（gitee 镜像，refs/tags/1.11.12 核验同上游 commit）；JWT 签发/验签唯一库，业务入口 src/lib/imboy_jwt.erl |
-| jsone | 1.9.0 | MIT |  |
-| jsx | 3.1.0 | MIT |  |
+| jsone | 1.9.0 | MIT | 唯一 JSON 库（2026-09 收敛，原 jsx 直用全部迁移；契约见 test/lib/json_codec_equivalence_tests.erl） |
 | lager | 3.9.2 | Apache-2.0 |  |
 | meck | 0.9.2 | Apache-2.0 |  |
 | observer_cli | 1.7.4 | MIT |  |

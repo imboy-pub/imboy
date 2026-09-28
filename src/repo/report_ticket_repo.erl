@@ -24,7 +24,7 @@ create(TargetType, TargetId, ReporterUid, Reason, Desc) ->
 create(TargetType, TargetId, SubType, ScopeId, AuthorId, ReporterUid, Reason, Desc, Evidence) ->
     Tb = tablename(),
     Id = elib_tsid:generate(report_ticket),
-    EvidenceJson = jsx:encode(Evidence),
+    EvidenceJson = jsone:encode(Evidence, [native_utf8]),
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (id, target_type, target_id, target_sub_type, target_scope_id, target_author_id,"

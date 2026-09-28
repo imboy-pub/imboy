@@ -178,7 +178,7 @@ decrypt_event(Encrypt, AesKey) ->
 
 -spec decode_payload(binary()) -> {ok, map(), atom()} | {error, atom()}.
 decode_payload(Msg) ->
-    try jsx:decode(Msg, [return_maps]) of
+    try jsone:decode(Msg) of
         Event when is_map(Event) -> {ok, Event, encrypted};
         _NotObject -> {error, malformed_event}
     catch
@@ -227,13 +227,16 @@ reply(Event) ->
 -spec encode_reply(map(), binary()) -> binary().
 encode_reply(Event, Text) ->
     %% ToUserName / FromUserName 要**互换**：回复的收件人是发消息的用户
-    jsx:encode(#{
-        <<"ToUserName">> => maps:get(<<"FromUserName">>, Event, <<>>),
-        <<"FromUserName">> => maps:get(<<"ToUserName">>, Event, <<>>),
-        <<"CreateTime">> => erlang:system_time(second),
-        <<"MsgType">> => <<"text">>,
-        <<"Content">> => Text
-    }).
+    jsone:encode(
+        #{
+            <<"ToUserName">> => maps:get(<<"FromUserName">>, Event, <<>>),
+            <<"FromUserName">> => maps:get(<<"ToUserName">>, Event, <<>>),
+            <<"CreateTime">> => erlang:system_time(second),
+            <<"MsgType">> => <<"text">>,
+            <<"Content">> => Text
+        },
+        [native_utf8]
+    ).
 
 %%%===================================================================
 %%% Internal：工具

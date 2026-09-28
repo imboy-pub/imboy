@@ -283,7 +283,7 @@ handle_push_reply_text_test_() ->
         [cfg(?TOKEN, ?AES_KEY_TEXT, ?APPID, <<"收到啦">>)],
         fun() ->
             {ok, Raw} = moya_wechat_msg_logic:handle_push(encrypted_query(), event_body()),
-            Reply = jsx:decode(Raw, [return_maps]),
+            Reply = jsone:decode(Raw),
             %% 收发双方**互换**：回复的收件人是发消息的用户
             ?assertEqual(<<"oABCDEFGHIJKLMNOP">>, maps:get(<<"ToUserName">>, Reply)),
             ?assertEqual(?APPID, maps:get(<<"FromUserName">>, Reply)),

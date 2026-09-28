@@ -204,7 +204,7 @@ def runtime_catalog(repo: Path) -> dict:
     expression = (
         "F=imboy_feature:feature_names(),"
         "D=maps:from_list([{X,imboy_policy_catalog:dependencies(X)} || X <- F]),"
-        "io:format(\"CATALOG_JSON=~s~n\",[jsx:encode(#{features=>F,dependencies=>D})]),halt()."
+        "io:format(\"CATALOG_JSON=~s~n\",[jsone:encode(#{features=>F,dependencies=>D},[native_utf8])]),halt()."
     )
     completed = subprocess.run(args + ["-eval", expression], text=True, capture_output=True, check=False)
     marker = "CATALOG_JSON="

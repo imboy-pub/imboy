@@ -92,11 +92,15 @@ captcha(Req, _State) ->
                 #{
                     <<"content-type">> => <<"application/json; charset=utf-8">>
                 },
-                jsx:encode(#{
-                    code => 503,
-                    msg => <<"captcha_unavailable">>,
-                    hint => <<"ImageMagick `convert` missing; run: brew install imagemagick"/utf8>>
-                }),
+                jsone:encode(
+                    #{
+                        code => 503,
+                        msg => <<"captcha_unavailable">>,
+                        hint =>
+                            <<"ImageMagick `convert` missing; run: brew install imagemagick"/utf8>>
+                    },
+                    [native_utf8]
+                ),
                 Req
             )
     end.

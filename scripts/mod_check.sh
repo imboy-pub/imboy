@@ -3,7 +3,7 @@
 #
 # 用法：
 #   scripts/mod_check.sh check              # 审计 deps.mk 全部 dep_* 定义
-#   scripts/mod_check.sh check NAME...      # 只审计指定依赖（如: check cowboy jsx）
+#   scripts/mod_check.sh check NAME...      # 只审计指定依赖（如: check cowboy jsone）
 #   scripts/mod_check.sh up NAME...         # 升级到上游最新稳定版
 #   scripts/mod_check.sh up NAME=VER ...    # 升级到指定版本（tag 需真实存在）
 #   scripts/mod_check.sh up all             # 构建图内全部依赖升到最新稳定版

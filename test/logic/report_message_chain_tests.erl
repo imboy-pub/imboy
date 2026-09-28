@@ -220,7 +220,7 @@ decode_row_evidence(Row) ->
     Raw = maps:get(<<"evidence">>, Row, #{}),
     case Raw of
         Map when is_map(Map) -> Map;
-        Bin when is_binary(Bin) -> jsx:decode(Bin, [return_maps]);
+        Bin when is_binary(Bin) -> jsone:decode(Bin);
         _ -> #{}
     end.
 

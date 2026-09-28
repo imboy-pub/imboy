@@ -1177,7 +1177,7 @@ mobile_registered(Mobile) ->
 compat_error_message(#{<<"reason">> := Reason}) when is_binary(Reason) ->
     Reason;
 compat_error_message(Map) when is_map(Map) ->
-    jsx:encode(Map);
+    jsone:encode(Map, [native_utf8]);
 compat_error_message(Reason) when is_binary(Reason) ->
     Reason;
 compat_error_message(Reason) when is_list(Reason) ->
