@@ -178,8 +178,21 @@ for a in "$@"; do
 done
 case "$dst" in *:*) remote="${dst#*:}" ;; *) exit 2 ;; esac
 rpath="$(printf '%s' "$remote" | sed -f "$FB_SED")"
+# check_prod_config 守卫（1b2ca499）把临时 escript 传到远端 /tmp：fake 环境
+# 本地与"远端"同路径，真实 cp 会拒绝 identical 拷贝——语义上文件已在远端
+# 就位，直接成功。
+[ "$src" = "$rpath" ] && exit 0
 mkdir -p "$(dirname "$rpath")" || exit 3
 cp "$src" "$rpath" || exit 4
+exit 0
+FB
+
+  # ---- escript：check_prod_config 远端守卫桩。fake ssh 会真实执行守卫命令，
+  #      `command -v escript` 命中本桩即回 OK（守卫逻辑属生产路径，离线桩只
+  #      需保证预检不改变部署事务时序）。
+  cat >"$bd/escript" <<'FB'
+#!/usr/bin/env bash
+printf 'CONFIG_KEYS_OK\n'
 exit 0
 FB
 
@@ -407,6 +420,9 @@ run_deploy() { # 驱动真实入口；EXIT_CODE → RUN_RC
 # ---------- ops.events 计数/顺序读取 ----------
 opcount()     { awk -F'\t' -v k="$1" '$2==k{n++} END{print n+0}' "$SD/ops.events"; }
 opcount_tag() { awk -F'\t' -v k="$1" -v t="$2" '$2==k && $3==t{n++} END{print n+0}' "$SD/ops.events"; }
+# check_prod_config 守卫（1b2ca499）会先 scp 临时 escript 到远端 /tmp；
+# vhost 上传断言只统计 release/vhost 面（排除 guard 自身的传输）。
+opcount_scp_vhost() { awk -F'\t' '$2=="scp" && $3 !~ /imboy-config-key-guard\.escript/{n++} END{print n+0}' "$SD/ops.events"; }
 opseq()       { awk -F'\t' -v k="$1" -v t="$2" '$2==k && $3==t{print $1; exit}' "$SD/ops.events"; }
 opseq_nth()   { awk -F'\t' -v k="$1" -v t="$2" -v n="$3" '$2==k && $3==t{c++; if(c==n){print $1; exit}}' "$SD/ops.events"; }
 ck_order() { # $1..= 有序 "kind:tag[@n]" 对；tag 为空 = 仅按 kind 匹配；@n = 第 n 次出现；SEQ 必须严格递增
@@ -471,7 +487,7 @@ suite_a01() {
   ck_eq "prepare-release 恰一次" "$(opcount_tag cmd ': imboy-cs-op-prepare-release')" "1"
   ck_eq "rsync 上传恰一次"   "$(opcount rsync)" "1"
   ck_eq "verify-release 恰一次" "$(opcount_tag cmd ': imboy-cs-op-verify-release')" "1"
-  ck_eq "staged+final vhost 上传恰两次" "$(opcount scp)" "2"
+  ck_eq "staged+final vhost 上传恰两次" "$(opcount_scp_vhost)" "2"
   ck_eq "TLS/nginx -t 校验恰两次" "$(opcount_tag cmd ': imboy-cs-check-tls-vhost')" "2"
   ck_eq "upstream 发现恰两次" "$(opcount_tag cmd ': imboy-cs-op-discover-upstream')" "2"
   ck_eq "backend=deploy_api 恰一次（CS_DEPLOY_API_FN 注入点）" "$(opcount backend)" "1"
