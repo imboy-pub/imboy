@@ -159,6 +159,9 @@ exit code、计数、真实 oracle、证据路径和证据 SHA-256。
 ```text
 PENDING
 RUNNING
+RECONCILING
+RECOVERING
+RETRY_WAIT
 PASS
 FAIL
 BLOCKED_ENV
@@ -167,14 +170,17 @@ BLOCKED_CONFLICT
 BLOCKED_PLAN_DRIFT
 BLOCKED_SCOPE
 WAITING_USER_AUTH
+WAITING_OBSERVATION
 NOT_APPLICABLE
 ```
 
+- `PENDING/RUNNING/RECONCILING/RECOVERING/RETRY_WAIT` 是瞬态；FINAL 中数量必须为 0。
 - `PASS`：所有 Acceptance 同一候选、同一轮次满足。
 - `FAIL`：候选自身不满足判据；不能用 BLOCKED 美化。
 - `BLOCKED_ENV`：缺本地环境/设备/凭据，且已有可执行解除条件。
 - `BLOCKED_EXTERNAL`：上游或第三方缺陷，必须有协议级复现和替代路径评估。
 - `WAITING_USER_AUTH`：下一动作会造成外向、不可逆、付费、生产写或第三方影响。
+- `WAITING_OBSERVATION`：动作已完成但规定的稳定观察时间尚未走完；只能由计时器和 SLO oracle 解除。
 - `NOT_APPLICABLE`：W0 证明旧问题在当前输入不存在，须 A0 + 独立 Reviewer 双签。
 
 ### 3.2 证据目录
@@ -183,6 +189,7 @@ NOT_APPLICABLE
 /Users/leeyi/project/imboy.pub/.Codex/runs/prodready-v13-YYYYMMDDTHHMMSSZ-8hex/
   input/
   control/{input-manifest.json,candidates.txt,acceptance.tsv,ledger.tsv,leases.tsv,heartbeats.tsv}
+  control/{recovery-policy.json,recovery-ledger.tsv,runtime.json,run-step.sh,recover.sh}
   evidence/ACCEPTANCE_ID/
   reports/CARD_ID.md
   checkpoints/W0.md ... W8.md
@@ -192,8 +199,9 @@ NOT_APPLICABLE
 `acceptance.tsv` 固定列：
 
 ```text
-acceptance_id card_id wave required owner repo base_sha candidate_sha command timeout_s
-attempt exit_code observed_count oracle state evidence_path evidence_sha256 started_at finished_at note
+acceptance_id card_id wave required owner repo base_sha candidate_sha command_id command timeout_s
+idempotency_class max_attempts attempt exit_code observed_count oracle state last_event recovery_action
+evidence_path evidence_sha256 started_at finished_at note
 ```
 
 所有命令同时保存 stdout/stderr 和 `${PIPESTATUS[0]}`；证据写完立即 `sha256sum`。禁止回填伪造
@@ -219,6 +227,163 @@ heartbeat、改旧日志或只摘录有利片段。凭据只记录“来源类�
 rollback 是只撤该卡提交或恢复隔离资源；stop 条件为越权、WIP 漂移、资源无 lease、证据含敏感数据、
 命令目标不明确或连续两次失败。表中未声明的路径一律只读。
 
+### 3.5 命令幂等等级与重试预算
+
+每个 `command_id` 在首次调度前必须登记以下一种等级；缺失等级时 `run-step.sh` 拒绝执行：
+
+| 等级 | 自动重试上限 | 重试前强制动作 | 典型命令 |
+|---|---:|---|---|
+| `READ_ONLY` | 2 | 只读对账，指数退避 5s/20s | Git/TLS/DNS/指标查询、上游探针 |
+| `LOCAL_IDEMPOTENT` | 1 | 清理本命令产生的临时文件/进程，重验 candidate SHA | compile、unit、lint、build |
+| `LOCAL_REVERSIBLE` | 1 | 执行卡级 rollback 并验证 scratch 资源回到 before oracle | scratch migration、restore、seed |
+| `DEVICE_INTERACTIVE` | 1 | 保存诊断，重启候选 App，不重置真实设备或账号 | Android/macOS 旅程 |
+| `EXTERNAL_PROBE` | 2 | 只读重采样，退避 10s/30s | 生产健康、证书、TURN 探针 |
+| `EXTERNAL_WRITE` | 0 | 只允许只读 reconcile；结果不确定时禁止重放 | push、密钥轮换、生产迁移 |
+| `PRODUCTION_CANARY` | 0 | 命中阈值立即执行已授权 rollback | 流量切换、实例发布、入口切换 |
+
+表中“自动重试上限”是首次执行之外的 retry 数。状态机不得覆盖具体卡更严格的上限；取两者最小值。
+第二次尝试必须产生新的 `attempt_id`，但 candidate SHA、命令文本和输入指纹必须保持不变；若改变，
+它是新候选/新命令，不是 retry。
+
+### 3.6 权威 Failure -> Recovery -> Retry -> Next State 状态机
+
+W0 必须把下面 JSON 原样提取到 `control/recovery-policy.json`。它是恢复判定的唯一权威来源；
+聊天上下文、Agent 记忆、自然语言 checkpoint 和旧报告均不得参与状态推断。`recover.sh` 对
+`from + event` 必须恰好匹配一条规则；0 条或多条匹配一律执行 `STOP_POLICY_UNDEFINED` 并进入 FAIL。
+
+```json
+{
+  "version": 1,
+  "transient_states": ["PENDING", "RUNNING", "RECONCILING", "RECOVERING", "RETRY_WAIT"],
+  "paused_states": ["BLOCKED_ENV", "BLOCKED_EXTERNAL", "BLOCKED_CONFLICT", "BLOCKED_PLAN_DRIFT", "BLOCKED_SCOPE", "WAITING_USER_AUTH", "WAITING_OBSERVATION"],
+  "terminal_states": ["PASS", "FAIL", "NOT_APPLICABLE"],
+  "undefined_transition": {"action": "STOP_POLICY_UNDEFINED", "to": "FAIL"},
+  "rules": [
+    {"id":"R01","from":"PENDING","event":"DISPATCH","guard":"preflight_ok","action":"PERSIST_INTENT_AND_START","to":"RUNNING"},
+    {"id":"R02","from":"PENDING","event":"NOT_APPLICABLE_PROVED","guard":"a0_and_reviewer_signed","action":"FINALIZE_NA","to":"NOT_APPLICABLE"},
+    {"id":"R03","from":"RUNNING","event":"COMMAND_OK","guard":"oracle_and_evidence_ok","action":"FINALIZE_PASS","to":"PASS"},
+    {"id":"R04","from":"RUNNING","event":"COMMAND_FAIL_RECOVERABLE","guard":"retry_budget_remaining_and_not_external_write","action":"CAPTURE_AND_RECOVER","to":"RECOVERING"},
+    {"id":"R04B","from":"RUNNING","event":"COMMAND_FAIL_RECOVERABLE","guard":"retry_budget_exhausted","action":"CAPTURE_AND_STOP","to":"FAIL"},
+    {"id":"R05","from":"RUNNING","event":"COMMAND_FAIL_FATAL","guard":"always","action":"CAPTURE_AND_STOP","to":"FAIL"},
+    {"id":"R06","from":"RUNNING","event":"TIMEOUT_OR_COORDINATOR_CRASH","guard":"always","action":"RECONCILE_READ_ONLY","to":"RECONCILING"},
+    {"id":"R07","from":"RUNNING","event":"ENV_MISSING","guard":"no_candidate_defect_proved","action":"RECORD_UNBLOCK_CONDITION","to":"BLOCKED_ENV"},
+    {"id":"R08","from":"RUNNING","event":"EXTERNAL_DEPENDENCY_DOWN","guard":"protocol_evidence_present","action":"RECORD_ALTERNATIVES","to":"BLOCKED_EXTERNAL"},
+    {"id":"R09","from":"RUNNING","event":"LEASE_HELD_FOREIGN","guard":"always","action":"DO_NOT_PREEMPT","to":"BLOCKED_CONFLICT"},
+    {"id":"R10","from":"RUNNING","event":"PLAN_OR_CANDIDATE_DRIFT","guard":"always","action":"FREEZE_WRITES_AND_REBIND","to":"BLOCKED_PLAN_DRIFT"},
+    {"id":"R11","from":"RUNNING","event":"SCOPE_OR_FORBIDDEN_PATH_REQUIRED","guard":"always","action":"REQUEST_SCOPE","to":"BLOCKED_SCOPE"},
+    {"id":"R12","from":"RUNNING","event":"AUTH_REQUIRED","guard":"always","action":"EMIT_EXACT_AUTH_REQUEST","to":"WAITING_USER_AUTH"},
+    {"id":"R13","from":"RUNNING","event":"OBSERVATION_STARTED","guard":"deadline_and_slo_query_saved","action":"ARM_DURABLE_TIMER","to":"WAITING_OBSERVATION"},
+    {"id":"R14","from":"RUNNING","event":"EVIDENCE_INVALID","guard":"always","action":"QUARANTINE_EVIDENCE_AND_STOP","to":"FAIL"},
+    {"id":"R15","from":"RUNNING","event":"SECURITY_OR_DATA_P0","guard":"always","action":"SECURITY_STOP_AND_ROLLBACK","to":"FAIL"},
+    {"id":"R16","from":"RUNNING","event":"EXTERNAL_WRITE_OUTCOME_UNKNOWN","guard":"always","action":"DO_NOT_REPLAY_EMIT_RECONCILE_REQUEST","to":"WAITING_USER_AUTH"},
+    {"id":"R17","from":"RUNNING","event":"CANARY_THRESHOLD_BREACH","guard":"rollback_authorized","action":"ROLLBACK_PRODUCTION_AND_VERIFY","to":"FAIL"},
+    {"id":"R17A","from":"RECOVERING","event":"COORDINATOR_RESTART","guard":"always","action":"RECONCILE_INTERRUPTED_RECOVERY","to":"RECONCILING"},
+    {"id":"R17B","from":"RETRY_WAIT","event":"COORDINATOR_RESTART","guard":"retry_deadline_not_reached","action":"RESTORE_DURABLE_TIMER","to":"RETRY_WAIT"},
+    {"id":"R17C","from":"RECONCILING","event":"COORDINATOR_RESTART","guard":"always","action":"CONTINUE_READ_ONLY_RECONCILE","to":"RECONCILING"},
+    {"id":"R18","from":"RECONCILING","event":"RECONCILE_PROVES_PASS","guard":"same_intent_and_oracle","action":"FINALIZE_PASS_FROM_RECONCILE","to":"PASS"},
+    {"id":"R19","from":"RECONCILING","event":"RECONCILE_PROVES_NO_SIDE_EFFECT","guard":"retry_budget_remaining_and_not_external_write","action":"PREPARE_RECOVERY","to":"RECOVERING"},
+    {"id":"R20","from":"RECONCILING","event":"RECONCILE_PROVES_FAILURE","guard":"always","action":"CAPTURE_AND_STOP","to":"FAIL"},
+    {"id":"R21","from":"RECONCILING","event":"RECONCILE_INCONCLUSIVE_EXTERNAL_WRITE","guard":"always","action":"DO_NOT_REPLAY_EMIT_RECONCILE_REQUEST","to":"WAITING_USER_AUTH"},
+    {"id":"R21A","from":"RECONCILING","event":"RECONCILE_PROVES_RECOVERY_OK","guard":"retry_budget_remaining_and_local_action","action":"SCHEDULE_DURABLE_RETRY","to":"RETRY_WAIT"},
+    {"id":"R21B","from":"RECONCILING","event":"RECONCILE_PROVES_ROLLBACK_OK","guard":"production_rollback","action":"FINALIZE_FAILED_CHANGE_ROLLED_BACK","to":"FAIL"},
+    {"id":"R21C","from":"RECONCILING","event":"RECONCILE_PROVES_RECOVERY_FAIL","guard":"always","action":"CAPTURE_AND_STOP","to":"FAIL"},
+    {"id":"R22","from":"RECOVERING","event":"RECOVERY_OK","guard":"retry_budget_remaining","action":"SCHEDULE_DURABLE_RETRY","to":"RETRY_WAIT"},
+    {"id":"R23","from":"RECOVERING","event":"RECOVERY_FAIL","guard":"always","action":"CAPTURE_AND_STOP","to":"FAIL"},
+    {"id":"R24","from":"RETRY_WAIT","event":"RETRY_DUE","guard":"candidate_input_and_command_unchanged","action":"INCREMENT_ATTEMPT_AND_START","to":"RUNNING"},
+    {"id":"R25","from":"RETRY_WAIT","event":"INPUT_CHANGED","guard":"always","action":"FREEZE_WRITES_AND_REBIND","to":"BLOCKED_PLAN_DRIFT"},
+    {"id":"R26","from":"BLOCKED_ENV","event":"UNBLOCK_PROVED","guard":"evidence_present","action":"REQUEUE","to":"PENDING"},
+    {"id":"R27","from":"BLOCKED_EXTERNAL","event":"UNBLOCK_PROVED","guard":"protocol_or_alternative_passed","action":"REQUEUE","to":"PENDING"},
+    {"id":"R28","from":"BLOCKED_CONFLICT","event":"LEASE_RELEASE_PROVED","guard":"foreign_owner_untouched","action":"REQUEUE","to":"PENDING"},
+    {"id":"R29","from":"BLOCKED_PLAN_DRIFT","event":"PLAN_REBOUND","guard":"user_approved_sha_and_sidecar_ok","action":"REBASE_CONTROL_STATE","to":"PENDING"},
+    {"id":"R30","from":"BLOCKED_SCOPE","event":"SCOPE_AUTHORIZED","guard":"exact_paths_and_action_saved","action":"REQUEUE","to":"PENDING"},
+    {"id":"R31","from":"WAITING_USER_AUTH","event":"AUTH_GRANTED","guard":"authorization_matches_pending_request_and_explicitly_allows_replay_when_prior_outcome_unknown","action":"REQUEUE","to":"PENDING"},
+    {"id":"R32","from":"WAITING_OBSERVATION","event":"OBSERVATION_COMPLETE","guard":"deadline_reached_and_slo_pass","action":"FINALIZE_PASS","to":"PASS"},
+    {"id":"R33","from":"WAITING_OBSERVATION","event":"OBSERVATION_BREACH","guard":"always","action":"ROLLBACK_IF_AUTHORIZED_AND_STOP","to":"FAIL"}
+  ]
+}
+```
+
+### 3.7 事件分类优先级与恢复动作
+
+同一次执行若命中多个现象，`run-step.sh` 只能按以下从高到低顺序发出一个事件，避免不同 Agent
+对同一失败作出不同解释：
+
+```text
+COORDINATOR_RESTART（仅在恢复入口产生；RETRY_WAIT 已到期时改发 RETRY_DUE）
+SECURITY_OR_DATA_P0
+PLAN_OR_CANDIDATE_DRIFT
+EXTERNAL_WRITE_OUTCOME_UNKNOWN
+EVIDENCE_INVALID
+LEASE_HELD_FOREIGN
+SCOPE_OR_FORBIDDEN_PATH_REQUIRED
+AUTH_REQUIRED
+CANARY_THRESHOLD_BREACH
+ENV_MISSING / EXTERNAL_DEPENDENCY_DOWN
+TIMEOUT_OR_COORDINATOR_CRASH
+COMMAND_FAIL_FATAL / COMMAND_FAIL_RECOVERABLE
+COMMAND_OK
+```
+
+恢复动作也必须来自固定目录，不得临场生成破坏性命令：
+
+| 动作族 | 允许动作 | 禁止动作 |
+|---|---|---|
+| 本地进程 | 用 ledger 中 PID、start time、cwd、command hash 只结束本 run 进程 | `pkill` 模糊匹配、结束 foreign 服务 |
+| 本地文件 | 删除 `RUN_ROOT/tmp/command_id/attempt_id`；恢复卡片声明的 scratch 资源 | reset/clean/stash/覆盖主树 WIP |
+| 租约 | owner=本 RUN 且进程已不存在时原子释放 | 抢 foreign lease |
+| 数据库 | 仅对名称含 RUN_ID 的 scratch DB 执行卡级 rollback/recreate | 连接或修改生产 DB |
+| 设备 | 保存日志后 relaunch 同一候选；不清真实个人数据 | 擦除设备、切换个人账号、自动接受权限 |
+| 外向写 | 只读查询实际版本/digest/配置/审计事件 | 在结果不确定时自动重放写操作 |
+| Canary | 执行 W6 授权串内已经审批的精确 rollback 命令并运行 post-verifier | 临时改目标、扩大流量、跳过回滚验证 |
+
+### 3.8 崩溃恢复与无聊天记忆续跑协议
+
+A0 或 Worker 启动/恢复时必须先运行 `control/recover.sh --reconcile-all`，不能直接继续上一条聊天指令：
+
+1. 校验计划 sidecar、`recovery-policy.json` hash、三仓 candidate SHA、WIP 指纹和 runtime schema。
+2. 获取 `control/locks/recovery.lock`（用原子 `mkdir`，禁止依赖平台可能不存在的 `flock`）。
+3. 对所有瞬态 Acceptance 读取最后一条 `recovery-ledger.tsv`；核对 PID/start time/cwd/command hash、
+   lease、exit 文件、oracle 和 evidence hash。
+4. `RUNNING` 且进程仍属于本 run：只恢复监控，不启动副本；进程已结束：发出
+   `TIMEOUT_OR_COORDINATOR_CRASH` 并进入 RECONCILING。
+5. `EXTERNAL_WRITE/PRODUCTION_CANARY` 只能用远端只读事实对账；无法证明成功或失败时发出
+   `EXTERNAL_WRITE_OUTCOME_UNKNOWN`，进入 WAITING_USER_AUTH，绝不自动重放。
+6. 按 §3.6 唯一规则完成转移；每次转移先写临时文件、`fsync` 后原子 rename，再追加 ledger。
+7. 释放 recovery lock，按 DAG 只调度 `PENDING` 或到期 `RETRY_WAIT`；paused/terminal 不自动执行。
+
+`recovery-ledger.tsv` 为 append-only，固定列：
+
+```text
+transition_id utc acceptance_id card_id candidate_sha command_id idempotency_class attempt
+from_state event rule_id action action_exit to_state runtime_sha evidence_sha executor note
+```
+
+相同 `transition_id` 重放必须幂等：已有且整行 hash 相同则 no-op，不同则 `EVIDENCE_INVALID -> FAIL`。
+checkpoint 只缓存展示，不是恢复真源。恢复真源仅为：计划+sidecar、acceptance.tsv、
+recovery-policy.json、recovery-ledger.tsv、runtime.json、leases.tsv 和不可变 evidence。
+
+### 3.9 状态机故障注入验收
+
+W0 在任何业务写入前必须用临时 fixture 完成以下 12 个场景；每个场景从空目录重新初始化：
+
+| Fixture | 注入 | 必须得到的状态链 |
+|---|---|---|
+| F01 | 本地幂等命令首次 exit 1、恢复成功 | `PENDING -> RUNNING -> RECOVERING -> RETRY_WAIT -> RUNNING -> PASS` |
+| F02 | 本地命令两次失败 | `... -> RECOVERING -> RETRY_WAIT -> RUNNING -> FAIL`，不出现第三次 attempt |
+| F03 | RUNNING 时杀协调器，子进程仍活 | 重启只 attach/monitor，不启动第二进程 |
+| F04 | RUNNING 时进程消失且无 side effect | `RUNNING -> RECONCILING -> RECOVERING -> RETRY_WAIT` |
+| F05 | foreign lease 占用 | `RUNNING -> BLOCKED_CONFLICT`，foreign PID 未变化 |
+| F06 | candidate 或计划 hash 漂移 | `RUNNING -> BLOCKED_PLAN_DRIFT`，所有写停止 |
+| F07 | 证据 hash 被篡改 | `RUNNING -> FAIL`，原证据隔离且不能生成 PASS |
+| F08 | EXTERNAL_WRITE 在回执前断开 | `RUNNING -> RECONCILING -> WAITING_USER_AUTH`，远端写调用次数仍为 1 |
+| F09 | Canary 越过止损阈值 | 精确 rollback 仅 1 次，post-verifier 执行，终态 FAIL |
+| F10 | 未知 event 或重复匹配规则 | `STOP_POLICY_UNDEFINED -> FAIL`，不执行 recovery/retry |
+| F11 | RECOVERING 执行到一半时杀协调器 | `RECOVERING -> RECONCILING -> RETRY_WAIT`，cleanup/rollback 不重复产生副作用 |
+| F12 | RETRY_WAIT 退避期间重启协调器 | 保留原 retry deadline，到期后只增加 1 次 attempt |
+
+F01-F12 必须由 `control/test-recovery.sh` 自动运行，汇总 `12 passed / 0 failed`；随后再跑一次，
+transition 数和远端写 mock 调用次数保持幂等。任何 fixture 未通过，W0 FAIL，禁止进入 W1。
+
 ---
 
 ## 4. 波次与任务卡
@@ -234,9 +399,11 @@ W0 完成前禁止写业务代码。A0 可并行派发只读盘点，但自己�
 | `PR-W0-C03` Reviewer | A01；三仓只读 | 从 V1.2 `acceptance.tsv` 读取 13 个非 PASS 的 evidence/path 后逐项 `rg`、`git log --all -- "$AFFECTED_PATH"`、聚焦命令；1800s | `PR-W0-A03`：每项为 `REPRODUCED/FIXED_CURRENT/ABSENT/BLOCKED`，且有当前 SHA 和 oracle | 不修改；无法证明不得记已修 |
 | `PR-W0-C04` Security | A01；生产只读 | TLS/DNS/HTTP/nc、镜像/Compose 静态、密钥引用路径扫描；600s | `PR-W0-A04`：泄漏 key 影响节点、证书到期、443 owner、epmd/管理端口、现役 TURN/LiveKit 版本清单 | 禁止 SSH 写和明文凭据；需认证即 WAITING_USER_AUTH |
 | `PR-W0-C05` A0 | A01-A04；`RUN_ROOT/**` | 生成 acceptance.tsv、leases、DAG；校验 ID 唯一、依赖无环、Required 无空 oracle；120s | `PR-W0-A05`：全部检查 exit 0；每个旧非 PASS 恰映射一次 | 不允许用裸 `-` 状态；失败不进 W1 |
+| `PR-W0-C06` A0 | A05；仅 `RUN_ROOT/control/{recovery-policy.json,recovery-ledger.tsv,runtime.json,run-step.sh,recover.sh,test-recovery.sh,locks/**}` | 从 §3.6 提取 JSON；`jq empty control/recovery-policy.json`；`bash -n control/{run-step,recover,test-recovery}.sh`；`bash control/test-recovery.sh`，900s | `PR-W0-A06`：规则 ID 唯一；每个 `(from,event,guard)` 唯一；合法 state/action 100% 覆盖；F01-F12=`12 passed / 0 failed`；二次运行 transition/hash/外向写次数幂等 | fixture 只用 `RUN_ROOT/tmp/recovery-fixtures/**`；任一规则歧义、外向写重放或未知状态立即 FAIL |
 
 W0 checkpoint 必须明确：当前三个 base SHA、用户 WIP、仍需修复的真实集合、资源冲突、
-生产只读事实、计划是否漂移。旧报告计数与当前事实冲突时，以 W0 当前证据为准并解释差异。
+生产只读事实、计划是否漂移、恢复控制器版本/hash 和 F01-F12 结果。旧报告计数与当前事实冲突时，
+以 W0 当前证据为准并解释差异。`PR-W0-A06` 非 PASS 时任何 W1-W8 卡不得调度。
 
 ### W1：后端测试与静态分析可信化
 
@@ -471,8 +638,9 @@ prodready-v13-YYYYMMDDTHHMMSSZ-8hex（时间取当前 UTC，8hex 取安全随机
 8. 本启动只授权本地 worktree 内实现、测试和本地提交；不授权 push、PR、镜像发布、部署、生产写、密钥轮换/撤销、证书或 HAProxy/LiveKit 入口切换、旧 TURN stop/delete、云资源购买、第三方通知或使用真实联系方式。
 9. W6 遇到外向动作，输出一条含精确目标、SHA/digest、窗口、影响、动作、回滚阈值和 owner 的授权申请，状态置 WAITING_USER_AUTH 并停止该动作；不得沿用历史会话授权。
 10. Git author/committer 使用 leeyi <leeyisoft@qq.com>，只授权本地提交。每个独立功能单独提交，不混入用户或其他计划改动。
+11. 首先实现并通过计划 §3.5-§3.9 的持久化恢复控制器和 F01-F12。每次启动、上下文压缩或会话恢复都先运行 `control/recover.sh --reconcile-all`；只能从持久化状态续跑，禁止凭聊天记忆猜测上一步。外向写结果不确定时绝不自动重放。
 
-执行顺序：完成 W0 并提交 checkpoint；按 DAG 并行 W1-W3；A0 集成并完成 W4；T1 PASS 后才做 W5；T2 PASS 后做 W6 只读/隔离 preflight；需要生产写时停在授权门。每波结束更新 acceptance.tsv、ledger、checkpoint 和证据 manifest。连续工作直到 PASS、明确 FAIL/BLOCKED，或到达授权门，不向用户询问可由仓库、测试或只读采样自行确定的问题。
+执行顺序：完成 W0（包括 PR-W0-A06=PASS）并提交 checkpoint；按 DAG 并行 W1-W3；A0 集成并完成 W4；T1 PASS 后才做 W5；T2 PASS 后做 W6 只读/隔离 preflight；需要生产写时停在授权门。每波结束更新 acceptance.tsv、recovery-ledger.tsv、runtime.json、ledger、checkpoint 和证据 manifest。连续工作直到 PASS、明确 FAIL/BLOCKED，或到达授权门，不向用户询问可由仓库、测试或只读采样自行确定的问题。
 
 最终报告必须首屏给出：T1/T2/T3/T4/T5、PRODUCTION_READY、PASS/FAIL/BLOCKED/WAITING 计数、三仓候选 SHA、生产 digest（未部署写 NOT_PERFORMED）、未完成项的最小解除条件，以及 PUSH/DEPLOY/PRODUCTION_WRITE/KEY_ROTATION/LEGACY_TURN_REMOVAL 的实际状态。
 ```
@@ -502,8 +670,13 @@ BLOCKED_ENV=
 BLOCKED_EXTERNAL=
 BLOCKED_CONFLICT=
 WAITING_USER_AUTH=
+WAITING_OBSERVATION=
 NOT_APPLICABLE=
 PENDING=
+RUNNING=
+RECONCILING=
+RECOVERING=
+RETRY_WAIT=
 
 PUSH=PERFORMED|NOT_PERFORMED
 DEPLOY=PERFORMED|NOT_PERFORMED
@@ -524,6 +697,10 @@ T1/T2/T3 可 PASS、T4/T5 `WAITING_USER_AUTH/NOT_EXECUTED`、`PRODUCTION_READY=N
 
 - [ ] sidecar 与计划 SHA-256 一致；输入副本只读。
 - [ ] Acceptance ID 唯一；所有依赖指向存在项且 DAG 无环。
+- [ ] `recovery-policy.json` 可解析、rule/state/action 引用闭合、转移无歧义；F01-F12 两轮均为 `12 passed / 0 failed`。
+- [ ] 所有 command_id 已声明幂等等级和 max_attempts；EXTERNAL_WRITE/PRODUCTION_CANARY 自动重试数为 0。
+- [ ] 每次 resume 都先完成只读 reconcile；恢复真源不包含聊天记录；未知转移 fail-closed。
+- [ ] `recovery-ledger.tsv` append-only 且 transition_id 幂等；FINAL 中五种瞬态状态计数均为 0。
 - [ ] 每卡有 owner、依赖、仓库/cwd、Exclusive paths、命令、timeout、oracle、evidence、rollback、stop。
 - [ ] 三仓 main 只读，用户 WIP 前后指纹一致。
 - [ ] 最大并发含 A0 不超过 8；共享资源均有 lease。
@@ -534,6 +711,6 @@ T1/T2/T3 可 PASS、T4/T5 `WAITING_USER_AUTH/NOT_EXECUTED`、`PRODUCTION_READY=N
 - [ ] 备份做过恢复，回滚做过真实演练，监控做过告警负例。
 - [ ] 生产动作具有本轮精确授权；联系方式/第三方通知另行确认。
 - [ ] 旧 TURN stop/delete 使用第二授权且稳定期已满足。
-- [ ] FINAL 计数可由 acceptance.tsv 重算；四件套 hash 全 MATCH；`PENDING=0`。
+- [ ] FINAL 计数可由 acceptance.tsv 重算；四件套 hash 全 MATCH；`PENDING/RUNNING/RECONCILING/RECOVERING/RETRY_WAIT` 全为 0。
 
 本清单任何一项失败，计划执行质量不得评为 10/10，且 `PRODUCTION_READY` 不得为 PASS。
