@@ -797,6 +797,7 @@ if [ "$LOCAL_MODE" -eq 1 ]; then
   rsync -az --delete \
     --exclude='.git' \
     --exclude='_build/' \
+    --exclude='.erlang.mk/' \
     --exclude='_rel/' \
     --exclude='deps/' \
     --exclude='log/' \
