@@ -135,6 +135,12 @@ publish(Req0, State) ->
             Body = elib_param:post(Req0),
             case moya_review_logic:publish(Uid, SubmissionId, Body) of
                 {ok, Review, Already} ->
+                    %% 订阅消息下发为异步附加能力（spawn 在 logic 内），
+                    %% 失败不影响发布响应；Already=true 为幂等重放，不重复触发通知
+                    case Already of
+                        false -> moya_subscribe_logic:notify_review_published_async(SubmissionId);
+                        true -> ok
+                    end,
                     elib_response:success_rfc3339(
                         Req0,
                         #{

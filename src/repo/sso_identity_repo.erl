@@ -7,6 +7,7 @@
 
 -export([tablename/0]).
 -export([find_by_subject/2, find_by_subject_tx/3]).
+-export([find_subject_by_uid/2]).
 -export([upsert/4, upsert_tx/5]).
 
 -include_lib("kernel/include/logger.hrl").
@@ -26,6 +27,18 @@ find_by_subject(Provider, Subject) ->
 -spec find_by_subject_tx(any(), binary(), binary()) -> {ok, [map()]} | {error, term()}.
 find_by_subject_tx(Conn, Provider, Subject) ->
     elib_pg:query(Conn, find_subject_sql(), [Provider, Subject]).
+
+%% @doc 按 (provider, uid) 反查 subject（如 wechat_mini 的 openid）
+%% 订阅消息下发用：uid → openid 后才能调 subscribeMessage.send。
+%% 返回值含 subject（openid，PII）——只允许下发链路内联使用，禁止入日志。
+-spec find_subject_by_uid(binary(), integer()) -> {ok, [map()]} | {error, term()}.
+find_subject_by_uid(Provider, Uid) ->
+    Tb = tablename(),
+    elib_pg:query(
+        <<"SELECT id, provider, subject, uid, email FROM ", Tb/binary,
+            " WHERE provider = $1 AND uid = $2 LIMIT 1">>,
+        [Provider, Uid]
+    ).
 
 %% @doc upsert 身份映射（ON CONFLICT(provider, subject) DO UPDATE）
 -spec upsert(binary(), binary(), integer(), binary()) -> {ok, [map()]} | {error, term()}.

@@ -66,7 +66,7 @@ REL_RELEASE_DIR=$(find _rel/imboy/releases -maxdepth 1 -mindepth 1 -type d | sor
 VM_ARGS_FILE="$REL_RELEASE_DIR/vm.args"
 REL_VSN="$(basename "$REL_RELEASE_DIR")"
 REL_APP_EBIN="_rel/imboy/lib/imboy-${REL_VSN}/ebin"
-[ -d "$REL_APP_EBIN" ] || { echo "release 应用目录缺失: $REL_APP_EBIN，请执行 make rel"; exit 2; }
+[ -d "$REL_APP_EBIN" ] || { echo "release 应用目录缺失: ${REL_APP_EBIN}，请执行 make rel"; exit 2; }
 
 echo "编译并校验 release beam 新鲜度..."
 make compile >/dev/null

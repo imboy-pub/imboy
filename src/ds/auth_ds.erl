@@ -79,10 +79,18 @@ do_verify_sign(_Sign, _, undefined, _Method) ->
     false;
 do_verify_sign(Sign, PlainText, Key, <<"sha256">>) ->
     % 常数时间比较，防止逐字节比对泄露时序信息（HMAC 签名校验覆盖几乎所有API请求）
-    crypto:hash_equals(elib_hasher:hmac_sha256(PlainText, Key), Sign);
+    constant_time_equals(elib_hasher:hmac_sha256(PlainText, Key), Sign);
 do_verify_sign(Sign, PlainText, Key, <<"sha512">>) ->
-    crypto:hash_equals(elib_hasher:hmac_sha512(PlainText, Key), Sign);
+    constant_time_equals(elib_hasher:hmac_sha512(PlainText, Key), Sign);
 do_verify_sign(_, _, _, _) ->
+    false.
+
+%% crypto:hash_equals/2 对长度不等的入参抛 badarg，且本验证发生在 JWT 门之前，
+%% 未捕获的异常会把畸形 sign 变成匿名可触发的 HTTP 500（DEVICE_SIGN_v1 §6 实测）。
+%% 长度不等先收敛为 false（⇒ 干净的 902 应答），等长才进常时比较。
+constant_time_equals(Expected, Sign) when byte_size(Expected) =:= byte_size(Sign) ->
+    crypto:hash_equals(Expected, Sign);
+constant_time_equals(_, _) ->
     false.
 
 %% @doc 验证 Token

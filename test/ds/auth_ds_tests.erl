@@ -141,6 +141,43 @@ do_verify_sign_with_invalid_input_test() ->
     ),
     ?assertEqual(false, auth_ds:do_verify_sign(<<"sign">>, <<"plaintext">>, <<"key">>, <<"md5">>)).
 
+%% DEVICE_SIGN_v1 §6 回归：crypto:hash_equals/2 对不等长入参抛 badarg，
+%% 且签名验证在 JWT 门之前 —— 未捕获即匿名可触发的 HTTP 500。
+%% 修复后畸形/错配长度的 sign 必须收敛为 false（⇒ 干净 902），等长常时比较不变。
+do_verify_sign_malformed_sign_never_throws_test() ->
+    PlainText = <<"did-1|1.0.0|android|pub.imboy.apk">>,
+    Key = <<"test_key">>,
+    %% method=sha256（期望 44 字符 base64）但传 88 字符（sha512 长度错配）
+    ?assertEqual(
+        false,
+        auth_ds:do_verify_sign(binary:copy(<<"A">>, 88), PlainText, Key, <<"sha256">>)
+    ),
+    %% method=sha512（期望 88 字符）但传 44 字符（sha256 长度错配）
+    ?assertEqual(
+        false,
+        auth_ds:do_verify_sign(binary:copy(<<"B">>, 44), PlainText, Key, <<"sha512">>)
+    ),
+    %% 过短 / 空签名
+    ?assertEqual(false, auth_ds:do_verify_sign(<<"abc">>, PlainText, Key, <<"sha256">>)),
+    ?assertEqual(false, auth_ds:do_verify_sign(<<>>, PlainText, Key, <<"sha512">>)).
+
+%% 等长但不匹配的签名仍走常时比较返回 false；正确签名正常通过（修复不破坏主路径）。
+do_verify_sign_correct_length_and_valid_sign_test() ->
+    PlainText = <<"did-1|1.0.0|android|pub.imboy.apk">>,
+    Key = <<"test_key">>,
+    Sha256Sign = elib_hasher:hmac_sha256(PlainText, Key),
+    Sha512Sign = elib_hasher:hmac_sha512(PlainText, Key),
+    ?assertEqual(true, auth_ds:do_verify_sign(Sha256Sign, PlainText, Key, <<"sha256">>)),
+    ?assertEqual(true, auth_ds:do_verify_sign(Sha512Sign, PlainText, Key, <<"sha512">>)),
+    %% 等长但内容不同 ⇒ false
+    Forged = flip_first_byte(Sha256Sign),
+    ?assertEqual(false, auth_ds:do_verify_sign(Forged, PlainText, Key, <<"sha256">>)).
+
+flip_first_byte(<<First, Rest/binary>>) when First =:= $A ->
+    <<$B, Rest/binary>>;
+flip_first_byte(<<_, Rest/binary>>) ->
+    <<$A, Rest/binary>>.
+
 verify_token_with_valid_token_test_() ->
     ?WITH_MECKS(
         [
