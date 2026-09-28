@@ -287,16 +287,17 @@ generate_code_chars(N, Acc) ->
 
 %% 表名包裹（镜像 moya_learner_bind_repo:tb/1 的 atom 兼容处理：
 %% 直连测试模式下 public_tabename 可能返回 atom）。
--spec tb(atom() | binary()) -> binary().
+%% binary 分支已随 CI-00 成功类型移除（2026-09-28）：本仓调用点全为
+%% atom 字面量，binary 子句为 dialyzer 判定死代码；learner_bind 版
+%% 仍存 binary 调用点故保留，两仓不再完全镜像。
+-spec tb(atom()) -> binary().
 tb(group) ->
     %% GROUP 是保留字：只引末段 → public."group"（整段加引号 → 42P01）
     elib_pg_sql:public_tablename_quoted(<<"group">>);
 tb(Tb) when is_atom(Tb) ->
-    tablename(ec_cnv:to_binary(Tb));
-tb(Tb) ->
-    tablename(Tb).
+    tablename(ec_cnv:to_binary(Tb)).
 
 %% 显式 quoted 变体（可读性：JOIN 段直接用）
--spec tbq(atom() | binary()) -> binary().
+-spec tbq(atom()) -> binary().
 tbq(Tb) ->
     tb(Tb).

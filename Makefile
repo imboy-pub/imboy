@@ -507,6 +507,12 @@ eunit-local:
 	@# 干净重编」的确定性路径；erlang.mk 本体 vendored 不动，只在门入口加固。
 	@rm -f .erlang.mk/$(PROJECT).test
 	@rm -rf .erlang.mk/beam-cache/$(PROJECT)
+	@# A1c 补全（2026-09-28 15:13Z 门全 cancel 实证）：Makefile:184 覆写版
+	@# beam-cache-restore-test 只 touch 标记+清 beam，丢了 erlang.mk 原生路径
+	@# 里 clean-app 对 ebin/imboy.app 的删除。刚 make compile 过时 imboy.app
+	@# 比 src 新（$? 为空）→ test-build 仍跳过 -DTEST=1 重编 → ebin 空 beam、
+	@# imboy_app:start undef、用例全 cancel。补删使 -DTEST=1 重编真正触发。
+	@rm -f ebin/imboy.app
 	@# A1c：PG 接入走 fork-per-connection 本地中继（test/common/pg_relay.py）。
 	@# 证据（evidence/CP-TD-A02 run1-4）：长命 eunit VM 的新建 TCP 连接会被
 	@# com.docker.backend @127.0.0.1:<pg端口> 按调用方进程楔死——持续 econnrefused

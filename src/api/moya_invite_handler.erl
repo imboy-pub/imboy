@@ -170,16 +170,16 @@ path_group_id(Req) ->
     end.
 
 %% join body：code（非空 binary）+ learner_id（integer 或数字字符串）
--spec join_params(map() | list()) -> {ok, binary(), integer()} | error.
+%% spec 随 CI-00 成功类型收紧为 map()：唯一调用点 post body 经 jsone:decode
+%% 恒为 map()，list 兜底子句已被 dialyzer 判死代码移除。
+-spec join_params(map()) -> {ok, binary(), integer()} | error.
 join_params(Body) when is_map(Body) ->
     Code = maps:get(<<"code">>, Body, undefined),
     LearnerId = maps:get(<<"learner_id">>, Body, undefined),
     case {normalize_code(Code), normalize_id(LearnerId)} of
         {{ok, C}, {ok, L}} -> {ok, C, L};
         _ -> error
-    end;
-join_params(_) ->
-    error.
+    end.
 
 -spec normalize_code(term()) -> {ok, binary()} | error.
 normalize_code(Code) when is_binary(Code), Code =/= <<>> ->

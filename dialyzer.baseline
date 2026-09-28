@@ -314,6 +314,8 @@ moya_learner_bind_repo.erl|The pattern {error_error, _, <<50,51,53,48,53>>, uniq
 moya_learner_bind_repo.erl|The variable Tb can never match since previous clauses completely covered the type 'class_enrollment' | 'class_staff' | 'learner' | 'organization'
 moya_review_logic.erl|The variable _ can never match since previous clauses completely covered the type map()
 moya_submission_repo.erl|The pattern {error, {pgsql_error, #{code := <<50,51,53,48,53>>}}} can never match the type {'error', {'epgsql', 'empty_batch_result'} | {_, _, [{_, _} | {_, _, _} | {_, _, _, _}]} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [{_, _}]}} | {'ok', non_neg_integer(), [tuple()]}
+moya_subscribe_handler.erl|The pattern {'error', _Other} can never match since previous clauses completely covered the type {'error', 'invalid_templates'} | {'ok', non_neg_integer()}
+moya_subscribe_handler.erl|The variable _ can never match since previous clauses completely covered the type map()
 moya_task_logic.erl|The pattern 'undefined' can never match the type binary()
 msg_c2c_logic.erl|Expression produces a value of type 'ok' | {'error', _}, but this value is unmatched
 msg_c2c_logic.erl|Function c2c_conv_key/2 will never be called
@@ -332,6 +334,8 @@ olm_identity_logic.erl|The pattern 'true' can never match the type 'false'
 olm_identity_logic.erl|The pattern {'ok', _, _, Rows} can never match the type {'error', _} | {'ok', [map()]}
 olm_identity_repo.erl|The variable Other can never match since previous clauses completely covered the type {'error', _} | {'ok', non_neg_integer()} | {'ok', non_neg_integer(), [tuple()]}
 ops_report_logic.erl|The pattern {'error', Reason} can never match the type {'ok', #{'active_users' := integer(), 'messages' := integer(), 'new_users' := integer(), 'reports' := integer(), 'since' := binary(), 'top_reasons' := [{_, _}], 'until' := binary()}}
+organization_admin_logic.erl|The pattern {'error', Reason} can never match since previous clauses completely covered the type {'error', 'conflict' | 'department_archived' | 'not_found' | {'invalid_parent_id', _} | {'new_parent_archived', integer()} | {'new_parent_not_found', integer()} | {'self_parent', _} | {'cycle', _, [any()]}} | {'ok', #{'id' := _, 'organization_id' := _, 'parent_id' := _, 'version' := number()}}
+organization_admin_logic.erl|The pattern {'error', Reason} can never match since previous clauses completely covered the type {'error', 'not_found'} | {'ok', map()}
 organization_join_orchestrator.erl|The pattern {'error', Reason} can never match the type {'ok', integer()}
 organization_member_logic.erl|Function member_not_active/0 has no local return
 organization_owner_activation_logic.erl|Invalid type specification for function organization_owner_activation_logic:attempt_send/1. The success typing is organization_owner_activation_logic:attempt_send (_) -> {'error', 'invalid_args' | 'invalid_ctx'} But the spec is organization_owner_activation_logic:attempt_send (map()) -> 'ok' | {'error', binary()} The return types do not overlap
