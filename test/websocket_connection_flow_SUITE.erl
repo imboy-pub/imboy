@@ -198,11 +198,12 @@ establish_connection_with_expired_token_fails(Config) ->
     Uid = create_test_user(Config),
     Did = unique_did(),
 
-    %% 自签 exp 在 1 小时前的 JWT（jwerl exp_leeway 300s，-3600s 必过期）
+    %% 自签 exp 在 1 小时前的 JWT（imboy_jwt exp 严格判定，-3600s 必过期）
     JwtKey = config_ds:env(jwt_key, <<>>),
     Now = elib_dt:utc(second),
-    ExpiredToken = jwerl:sign(
-        #{uid => Uid, exp => Now - 3600, sub => <<"tk">>, did => <<>>}, hs256, JwtKey
+    ExpiredToken = imboy_jwt:sign(
+        #{<<"uid">> => Uid, <<"exp">> => Now - 3600, <<"sub">> => <<"tk">>, <<"did">> => <<>>},
+        JwtKey
     ),
 
     {rejected, 401, Headers, Body} = ws_connect(

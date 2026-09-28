@@ -67,14 +67,14 @@ if [ -z "$JWT_KEY" ]; then
   exit 1
 fi
 TOKEN="$(cd "$IMBOY_ROOT" && JWT_KEY="$JWT_KEY" TEACHER_UID="$TEACHER_UID" erl -noshell \
-  -pa ebin -pa deps/jose/ebin -pa deps/jsx/ebin -eval '
+  -pa ebin -pa deps/jose/ebin -eval '
     K = list_to_binary(os:getenv("JWT_KEY")),
     U = list_to_integer(os:getenv("TEACHER_UID")),
     E = erlang:system_time(second) + 600,
-    io:format("~s", [jwerl:sign(#{sub => <<"tk">>, exp => E, uid => U}, hs256, K)]),
+    io:format("~s", [imboy_jwt:sign(#{<<"sub">> => <<"tk">>, <<"exp">> => E, <<"uid">> => U}, K)]),
     halt(0).' 2>/dev/null | tail -1)"
 if [ -z "$TOKEN" ]; then
-  echo "  ✗ 签发 token 失败（jose/shim 没编好？make compile 后重试）"
+  echo "  ✗ 签发 token 失败（jose/imboy_jwt 没编好？make compile 后重试）"
   exit 1
 fi
 ok "签发教师 token（长度 ${#TOKEN}）"

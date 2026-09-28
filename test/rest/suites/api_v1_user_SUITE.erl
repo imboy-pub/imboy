@@ -158,9 +158,10 @@ user_003_tampered_token(Config) ->
     ).
 
 %% Authentication, expired class. Deterministic construction: token_ds
-%% signs and verifies with jwerl hs256 under config jwt_key and a 300 s
-%% exp_leeway, so a token signed now with exp = now - 400 is
-%% signature-valid and reliably expired. do_authorization maps 705 to a
+%% signs and verifies HS256 via imboy_jwt (pure jose) under config
+%% jwt_key with strict exp checking, so a token signed now with
+%% exp = now - 400 is signature-valid and reliably expired.
+%% do_authorization maps 705 to a
 %% real HTTP 401 with "Please refresh token". The middleware stops the
 %% request before user_handler:update/2, so no profile data changes.
 user_004_expired_token(Config) ->
@@ -170,14 +171,13 @@ user_004_expired_token(Config) ->
     Did = maps:get(did, LoggedIn),
     JwtKey = config_ds:env(jwt_key, <<>>),
     ExpiredToken =
-        jwerl:sign(
+        imboy_jwt:sign(
             #{
-                sub => <<"tk">>,
-                exp => erlang:system_time(second) - 400,
-                uid => Uid,
-                did => Did
+                <<"sub">> => <<"tk">>,
+                <<"exp">> => erlang:system_time(second) - 400,
+                <<"uid">> => Uid,
+                <<"did">> => Did
             },
-            hs256,
             JwtKey
         ),
     Request = update_request(),

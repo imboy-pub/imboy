@@ -146,3 +146,49 @@ encrypt_refreshtoken_binds_did_test_() ->
             token_ds:decrypt_token(Rtk)
         )
     end).
+
+%% ===================================================================
+%% 错误码映射（等价覆盖 websocket/api CT 的 expired/invalid 用例）
+%% ===================================================================
+
+%% 签名有效但 exp 已过 → 705（可刷新，客户端走 refresh 流程）。
+%% exp = now - 400：签名有效且确定过期（imboy_jwt exp 严格判定）。
+expired_token_returns_705_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Uid = 12345,
+        Now = erlang:system_time(second),
+        JwtKey = config_ds:env(jwt_key, <<>>),
+        Token = imboy_jwt:sign(
+            #{<<"sub">> => <<"tk">>, <<"exp">> => Now - 400, <<"uid">> => Uid}, JwtKey
+        ),
+        ?assertMatch(
+            {error, 705, "Please refresh token", _},
+            token_ds:decrypt_token(Token)
+        )
+    end).
+
+%% 畸形 token → 706（无效）。
+garbage_token_returns_706_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertMatch(
+            {error, 706, _, _},
+            token_ds:decrypt_token(<<"not.a.jwt">>)
+        )
+    end).
+
+%% 错误密钥签发的 token → 706（验签失败）。
+wrong_key_token_returns_706_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Token = imboy_jwt:sign(
+            #{
+                <<"sub">> => <<"tk">>,
+                <<"exp">> => erlang:system_time(second) + 600,
+                <<"uid">> => 12345
+            },
+            <<"a_totally_different_key_0123456789">>
+        ),
+        ?assertMatch(
+            {error, 706, _, _},
+            token_ds:decrypt_token(Token)
+        )
+    end).

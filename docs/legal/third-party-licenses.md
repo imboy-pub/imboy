@@ -15,7 +15,7 @@ scripts/license_inventory.sh --selftest   # 校验判别函数本身（10 条样
 ```
 
 判定依据是磁盘上真实的 LICENSE **正文**，不是包管理器元数据——元数据可以填错，
-正文不会。唯一的例外（jwerl）在清单里显式标注了"仅元数据"。
+正文不会。
 
 ## 覆盖范围
 
@@ -62,14 +62,13 @@ crate** 自建 FFI 绑定，保持 `fvod` 调用面兼容以使 `lib/` 零改动
 
 ## ⚠️ 需查明：无许可证授权的依赖
 
-以下三项都是我们自己在 `gitee.com/imboy-tripartite-deps` 下的 fork，fork 时丢了或从未有过许可证正文。
+以下两项都是我们自己在 `gitee.com/imboy-tripartite-deps` 下的 fork，fork 时丢了或从未有过许可证正文。
 **没有许可证 = 没有再分发权**，性质上和 AGPL 一样是分发阻断项，只是更容易解决。
 
 | 包 | 现状 | 动作 |
 |----|------|------|
 | `simple_captcha` | 无 LICENSE 正文，`app.src` 的 `{licenses,[]}` 为空 | 查明上游出处并补回 LICENSE；查不到则替换或自研 |
 | `ic_storage_space` | LICENSE 文件内容仅有 `Copyright 2021`，无任何授权条款 | 同上 |
-| `jwerl` | 无 LICENSE 正文，但 `app.src` 声明 `BSD-3` | 从上游补回 LICENSE 文件即可（低风险） |
 
 ## ℹ️ 已澄清：LGPL 不构成阻断
 

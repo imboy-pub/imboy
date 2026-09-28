@@ -45,7 +45,8 @@ encrypt_token(ID, Did) ->
 
 %% @doc 解析token
 %% 验证并解析JWT token，提取用户ID、过期时间和主题信息。
-%% 支持5分钟的时钟偏差容错，验证token签名和有效性。
+%% 验签与 exp/nbf/iat 时间校验由 imboy_jwt（纯 jose）完成；
+%% 过期返回 705（可刷新），验签/格式失败返回 706。
 %% @param Token JWT token字符串
 % token_ds:decrypt_token(token_ds:encrypt_token(1)).
 %% @returns 解析结果：成功时返回用户ID、过期时间和主题；失败时返回错误信息
@@ -53,44 +54,31 @@ encrypt_token(ID, Did) ->
     {ok, integer(), integer(), binary(), binary(), integer() | malformed | undefined}
     | {error, integer(), binary() | string(), map()}.
 decrypt_token(Token) ->
-    % 容忍 5 分钟时钟偏差
-    Opts = #{exp_leeway => 300},
     JwtKey = config_ds:env(jwt_key, <<>>),
-    try jwerl:verify(Token, hs256, JwtKey, #{}, Opts) of
+    try imboy_jwt:verify(Token, JwtKey) of
         {ok, Payload} ->
-            Uid = maps:get(uid, Payload, 0),
+            Uid = maps:get(<<"uid">>, Payload, 0),
             ID = ec_cnv:to_integer(Uid),
-            ExpireDAt = maps:get(exp, Payload, <<>>),
-            Sub = maps:get(sub, Payload, <<"tk">>),
+            ExpireDAt = maps:get(<<"exp">>, Payload, 0),
+            Sub = maps:get(<<"sub">>, Payload, <<"tk">>),
             % E2EE-013：绑定的设备 DID；legacy token 无此 claim → <<>>。
-            Did = to_did(maps:get(did, Payload, <<>>)),
+            Did = to_did(maps:get(<<"did">>, Payload, <<>>)),
             % Task 10 / LT-04：会话 epoch claim；无 = undefined（legacy 豁免），
             % 存在但非整数 = malformed（消费侧 fail-closed）。
-            Ep = to_epoch_claim(maps:get(ep, Payload, undefined)),
-            Now = elib_dt:utc(second),
-            if
-                ExpireDAt > Now ->
-                    {ok, ID, ExpireDAt, Sub, Did, Ep};
-                true ->
-                    {error, 705, "Please refresh token", #{uid => ID, expired_at => ExpireDAt}}
-            end;
-        %% jwerl 在启用 exp_leeway 后仍会自验 exp，过期时返回 {error, [exp]}。
-        %% 语义上属于"可刷新的过期 token"，应返回 705 与上面手动分支一致，
-        %% 避免客户端把 expired 当作 invalid 处理。
-        {error, ClaimErrs} = JWT_ERR when is_list(ClaimErrs) ->
-            case lists:member(exp, ClaimErrs) of
-                true ->
-                    ok = ?DEBUG_LOG(['JWT_EXPIRED', JWT_ERR]),
-                    {error, 705, "Please refresh token", #{err => JWT_ERR}};
-                false ->
-                    ok = ?DEBUG_LOG(['JWT_ERR', JWT_ERR]),
-                    {error, 706, "Invalid token", #{err => JWT_ERR}}
-            end;
+            Ep = to_epoch_claim(maps:get(<<"ep">>, Payload, undefined)),
+            {ok, ID, ExpireDAt, Sub, Did, Ep};
+        %% exp 严格判定在 imboy_jwt 内完成（默认 leeway 0，与旧链路净语义一致）。
+        %% 过期属于"可刷新"，返回 705 避免客户端把 expired 当作 invalid 处理。
+        {error, expired} = JWT_ERR ->
+            ok = ?DEBUG_LOG(['JWT_EXPIRED', JWT_ERR]),
+            {error, 705, "Please refresh token", #{err => JWT_ERR}};
         JWT_ERR ->
             ok = ?DEBUG_LOG(['JWT_ERR', JWT_ERR]),
             {error, 706, "Invalid token", #{err => JWT_ERR}}
     catch
         Class:Reason:Stacktrace ->
+            % imboy_jwt:verify 已收敛自身异常；此层兜底的是本函数体内的
+            % maps:get / ec_cnv:to_integer / 日志宏等本地异常（如 uid 非法字符串）。
             % 记录 token 解析异常
             ok = ?ERROR_LOG(
                 "Token decrypt failed: ~p:~p~nStacktrace: ~p",
@@ -121,18 +109,18 @@ do_encrypt_token(ID, Did, Second, Sub) ->
     Base =
         #{
             % sub (subject)：主题
-            sub => Sub,
+            <<"sub">> => Sub,
             % exp (expiration time)：过期时间
-            exp => ExpireDAt,
-            uid => ID
+            <<"exp">> => ExpireDAt,
+            <<"uid">> => ID
         },
     Data =
         case to_did(Did) of
             <<>> -> Base;
-            D -> Base#{did => D, ep => epoch_at_issue(ID)}
+            D -> Base#{<<"did">> => D, <<"ep">> => epoch_at_issue(ID)}
         end,
     JwtKey = config_ds:env(jwt_key, <<>>),
-    jwerl:sign(Data, hs256, JwtKey).
+    imboy_jwt:sign(Data, JwtKey).
 
 %% @doc 签发时的会话 epoch 现势值；不可确认时回落 1（安全方向见 do_encrypt_token）。
 -spec epoch_at_issue(integer() | binary()) -> non_neg_integer().

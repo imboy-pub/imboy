@@ -193,7 +193,7 @@ def b62_encode(data: bytes) -> str:
         pos -= size
     return "".join(out)
 
-# ── LiveKit access JWT（与 imboy rtc_room_logic: jwerl HS256 同构）───────────
+# ── LiveKit access JWT（与 imboy rtc_room_logic: imboy_jwt HS256 同构）─────
 def b64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 

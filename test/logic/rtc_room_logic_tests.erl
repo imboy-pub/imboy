@@ -78,24 +78,24 @@ test_token_claims() ->
     meck:expect(group_member_ds, is_member, fun(200, 5) -> true end),
     {ok, Grant} = rtc_room_logic:join(5, <<"devA">>, <<"group">>, 200),
     Token = maps:get(<<"token">>, Grant),
-    %% jwerl 往返：验签并断言 LiveKit 必需 claims
-    {ok, Claims} = jwerl:verify(Token, hs256, ?TEST_SECRET),
-    ?assertEqual(<<"testkey">>, maps:get(iss, Claims)),
-    ?assertEqual(<<"5_devA">>, maps:get(sub, Claims)),
+    %% imboy_jwt（纯 jose）往返：验签并断言 LiveKit 必需 claims
+    {ok, Claims} = imboy_jwt:verify(Token, ?TEST_SECRET),
+    ?assertEqual(<<"testkey">>, maps:get(<<"iss">>, Claims)),
+    ?assertEqual(<<"5_devA">>, maps:get(<<"sub">>, Claims)),
     %% name claim：参与者展示名（客户端 Participant.name 直接取此值）
-    ?assertEqual(<<"测试用户"/utf8>>, maps:get(name, Claims)),
-    Video = maps:get(video, Claims),
-    ?assertEqual(<<"rtc_group_200">>, maps:get(room, Video)),
-    ?assertEqual(true, maps:get(roomJoin, Video)),
-    ?assertEqual(true, maps:get(canPublish, Video)),
-    ?assertEqual(true, maps:get(canSubscribe, Video)),
-    ?assertEqual(true, maps:get(canPublishData, Video)),
+    ?assertEqual(<<"测试用户"/utf8>>, maps:get(<<"name">>, Claims)),
+    Video = maps:get(<<"video">>, Claims),
+    ?assertEqual(<<"rtc_group_200">>, maps:get(<<"room">>, Video)),
+    ?assertEqual(true, maps:get(<<"roomJoin">>, Video)),
+    ?assertEqual(true, maps:get(<<"canPublish">>, Video)),
+    ?assertEqual(true, maps:get(<<"canSubscribe">>, Video)),
+    ?assertEqual(true, maps:get(<<"canPublishData">>, Video)),
     Now = erlang:system_time(second),
-    Exp = maps:get(exp, Claims),
+    Exp = maps:get(<<"exp">>, Claims),
     ?assert(Exp > Now),
     ?assert(Exp =< Now + 601),
     %% nbf 回拨 10s 容忍时钟偏差
-    Nbf = maps:get(nbf, Claims),
+    Nbf = maps:get(<<"nbf">>, Claims),
     ?assert(Nbf =< Now),
     ?assert(Nbf > Now - 60).
 
@@ -105,10 +105,10 @@ test_device_identity_varies_by_did() ->
     meck:expect(group_member_ds, is_member, fun(300, 8) -> true end),
     {ok, G1} = rtc_room_logic:join(8, <<"devA">>, <<"group">>, 300),
     {ok, G2} = rtc_room_logic:join(8, <<"devB">>, <<"group">>, 300),
-    {ok, C1} = jwerl:verify(maps:get(<<"token">>, G1), hs256, ?TEST_SECRET),
-    {ok, C2} = jwerl:verify(maps:get(<<"token">>, G2), hs256, ?TEST_SECRET),
-    ?assertEqual(<<"8_devA">>, maps:get(sub, C1)),
-    ?assertEqual(<<"8_devB">>, maps:get(sub, C2)).
+    {ok, C1} = imboy_jwt:verify(maps:get(<<"token">>, G1), ?TEST_SECRET),
+    {ok, C2} = imboy_jwt:verify(maps:get(<<"token">>, G2), ?TEST_SECRET),
+    ?assertEqual(<<"8_devA">>, maps:get(<<"sub">>, C1)),
+    ?assertEqual(<<"8_devB">>, maps:get(<<"sub">>, C2)).
 
 %% 缺失整个 livekit 配置：必须返回受控业务错误（handler 层转 4xx），
 %% 不得因 badmatch 崩成 500

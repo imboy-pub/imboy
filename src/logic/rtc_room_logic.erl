@@ -70,24 +70,25 @@ build_grant(Uid, Did, RoomName, Perms) ->
             Now = erlang:system_time(second),
             %% identity 带设备后缀，避免同账号多设备入同房被互踢
             Identity = <<(integer_to_binary(Uid))/binary, "_", Did/binary>>,
+            %% claims 用 binary key（jose JSON 层原生形态，见 imboy_jwt）
             Claims = #{
-                iss => ApiKey,
-                sub => Identity,
+                <<"iss">> => ApiKey,
+                <<"sub">> => Identity,
                 %% name claim：参与者的展示名。LiveKit 客户端的 Participant.name
                 %% 直接取此值；不签发时客户端只能回退显示 identity（形如
                 %% “1024_abc123”的技术标识）。查不到昵称时回退 uid。
-                name => display_name(Uid),
-                nbf => Now - 10,
-                exp => Now + ?TOKEN_TTL_SECONDS,
-                video => #{
-                    room => RoomName,
-                    roomJoin => true,
-                    canPublish => maps:get(can_publish, Perms, false),
-                    canSubscribe => maps:get(can_subscribe, Perms, true),
-                    canPublishData => maps:get(can_publish_data, Perms, false)
+                <<"name">> => display_name(Uid),
+                <<"nbf">> => Now - 10,
+                <<"exp">> => Now + ?TOKEN_TTL_SECONDS,
+                <<"video">> => #{
+                    <<"room">> => RoomName,
+                    <<"roomJoin">> => true,
+                    <<"canPublish">> => maps:get(can_publish, Perms, false),
+                    <<"canSubscribe">> => maps:get(can_subscribe, Perms, true),
+                    <<"canPublishData">> => maps:get(can_publish_data, Perms, false)
                 }
             },
-            Token = jwerl:sign(Claims, hs256, ApiSecret),
+            Token = imboy_jwt:sign(Claims, ApiSecret),
             {ok, #{
                 <<"ws_url">> => WsUrl,
                 <<"token">> => Token,

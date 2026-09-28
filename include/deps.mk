@@ -33,7 +33,7 @@ dep_depcache = git https://github.com/zotonic/depcache.git 2.0.0
 
 # jsx an erlang application for consuming, producing and manipulating json
 # 2years https://github.com/talentdeficit/jsx/tags
-# dep by jwerl
+# business direct dep（customer_service / report / qr_login 等模块直用）
 dep_jsx = git https://github.com/talentdeficit/jsx.git v3.1.0
 
 # https://github.com/rabbitmq/ra
@@ -44,7 +44,8 @@ dep_ra = git https://gitee.com/imboy-tripartite-deps/ra.git v2.15.4
 dep_khepri = git https://gitee.com/imboy-tripartite-deps/khepri.git main
 
 # jose JWT/JWS/JWE library (potatosalad/erlang-jose)
-# jwerl -> jose 切换方案 A：src/jwerl.erl shim 基于 jose 重新实现 jwerl API
+# 纯 jose 方案：业务 JWT 签发/验签统一走 src/lib/imboy_jwt.erl（仅 HS256），
+# 原 jwerl 兼容 shim（src/jwerl.erl）已于 2026-09-28 移除。
 # OTP29 实证：IS_DEP=1 时 erlang.mk 剥离 -Werror，22 处 catch 弃用警告不阻断构建
 # gitee 镜像已核验：refs/tags/1.11.12 -> c8b669c86d73300d2af377c7c0f08b4df06fedbe（与上游 tag 同 commit）
 dep_jose = git https://gitee.com/imboy-tripartite-deps/erlang-jose.git 1.11.12

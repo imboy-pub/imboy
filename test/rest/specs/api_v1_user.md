@@ -69,7 +69,7 @@ The client posts a profile update body with `Authorization: Bearer <tampered>` a
 
 #### Given
 
-A logged-in fixture user and the running service's JWT key read via `config_ds:env(jwt_key, <<>>)`. `token_ds` signs with `jwerl:sign(..., hs256, JwtKey)` and verifies with a 300 s `exp_leeway`, so a token signed **now** with `exp = now - 400` is signature-valid but reliably expired. This is deterministic — no sleeping for real TTLs — and the exact mechanism `token_ds` itself uses (RTF-06 required the token generation/expiry mechanism be investigated in `src/ds/token_ds.erl` before attempting this class).
+A logged-in fixture user and the running service's JWT key read via `config_ds:env(jwt_key, <<>>)`. `token_ds` signs and verifies through `imboy_jwt` (pure `jose`, HS256 only, strict `exp` checking with no leeway), so a token signed **now** with `exp = now - 400` is signature-valid but reliably expired. This is deterministic — no sleeping for real TTLs — and the exact mechanism `token_ds` itself uses (RTF-06 required the token generation/expiry mechanism be investigated in `src/ds/token_ds.erl` before attempting this class).
 
 #### When
 

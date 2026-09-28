@@ -32,7 +32,7 @@
 | IMB-2026-001 | `vodozemac` / `flutter_vodozemac` 0.5.0 为 **AGPL-3.0**。网络条款要求向使用者提供完整对应源码，与私有化售卖不相容 | `Open` | 已拍板③：基于上游 **Apache-2.0** 的 vodozemac Rust crate 自建 FFI 绑定，保持 `fvod` 调用面兼容使 `lib/` 零改动。追踪 **X15**，未实施 |
 | IMB-2026-002 | `simple_captcha` 无 LICENSE 正文，`app.src` 的 `licenses` 为空 | `Open` | **无许可证 = 无再分发权**，与 AGPL 同级阻断。我方在 gitee 的 fork，需查明上游补回 LICENSE；查不到则替换或自研 |
 | IMB-2026-003 | `ic_storage_space` 的 LICENSE 文件内容**仅有 `Copyright 2021`**，无任何授权条款 | `Open` | 同上 |
-| IMB-2026-004 | `jwerl` 无 LICENSE 正文，仅 `app.src` 元数据声明 BSD-3 | `Open` | 低风险，从上游补回正文即可 |
+| IMB-2026-004 | `jwerl` 无 LICENSE 正文，仅 `app.src` 元数据声明 BSD-3 | `Resolved`（2026-09-28 关闭） | `jwerl` 已于 2026-09-28 彻底移除（含基于 jose 的 jwerl 兼容 shim `src/jwerl.erl`），JWT 签发/验签统一改由 `src/lib/imboy_jwt.erl`（纯 jose 实现）承担，风险消除 |
 
 > 001–004 由 `scripts/license_inventory.sh --check` 机器可查。详见
 > [`../../../legal/third-party-licenses.md`](https://github.com/imboy-pub/imboy/blob/main/docs/legal/third-party-licenses.md)。

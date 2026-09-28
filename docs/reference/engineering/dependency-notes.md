@@ -6,7 +6,7 @@
 
 **后端**(`imboy/Makefile` DEPS)显式声明约 27 个依赖,分组清晰:
 - Web:ranch/cowlib/cowboy/gun
-- 基础:erlware_commons/jwerl/gen_smtp/throttle/jsone/jsx/goldrush
+- 基础:erlware_commons/jose/gen_smtp/throttle/jsone/jsx/goldrush(jose 为 JWT 签发/验签库,业务入口 src/lib/imboy_jwt.erl)
 - 数据/中间件:epgsql/pooler/erlang_migrate/depcache/syn/ecron/uid
 - 运维/调试:telemetry/lager/observer_cli/recon/redbug/**sync**
 - 其他:simple_captcha/erlydtl、内部 `erlang_pay`
