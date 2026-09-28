@@ -234,17 +234,16 @@ generate_named_monotonic_test() ->
     UserIds = elib_tsid:generate_n(user, 5000),
     ?assertEqual(UserIds, lists:sort(UserIds)).
 
-named_generators_independent_test() ->
-    %% 不同生成器拥有独立的 sequence 计数器
-    %% 同一毫秒内可能产生相同数值的 ID (这是预期行为)
+named_generators_zero_intersection_test() ->
+    %% TSID-03：所有 label 共享全局 cursor，跨生成器数值零交集
     ?SETUP_NAMED(),
     UserIds = elib_tsid:generate_n(user, 100),
     GroupIds = elib_tsid:generate_n(group_info, 100),
     %% 各自内部唯一
     ?assertEqual(100, length(lists:usort(UserIds))),
     ?assertEqual(100, length(lists:usort(GroupIds))),
-    %% 但跨生成器可能有交集 (独立号段的正常行为)
-    ok.
+    %% 跨生成器零交集（旧独立号段行为已被 TSID-03 取代）
+    ?assertEqual(200, length(lists:usort(UserIds ++ GroupIds))).
 
 named_concurrent_unique_test() ->
     %% 同一命名生成器并发下 ID 唯一
@@ -616,3 +615,118 @@ different_config_reinit_rejected_test() ->
     Id2 = elib_tsid:generate(),
     ?assert(Id2 > Id1),
     ?assertEqual(129, elib_tsid:node_id(Id2)).
+
+%% ===================================================================
+%% TSID-03：单全局 cursor 与注册竞态修复
+%% ===================================================================
+
+cross_name_fixed_clock_zero_dup_test() ->
+    %% 固定时钟同毫秒交替生成：任意 label 两两数值不同且严格递增
+    ?SETUP_NAMED(),
+    with_fixed_clock(?EPOCH_MS + 200000, fun() ->
+        Ids = [
+            elib_tsid:generate(user),
+            elib_tsid:generate(group_info),
+            elib_tsid:generate(attachment),
+            elib_tsid:generate(default),
+            elib_tsid:generate(user),
+            elib_tsid:generate(group_info)
+        ],
+        ?assertEqual(6, length(lists:usort(Ids))),
+        ?assertEqual(Ids, lists:sort(Ids))
+    end).
+
+single_global_cursor_inventory_test() ->
+    %% AC-03B：只有一个 cursor；旧每 name 独立 state 键不复存在
+    ?SETUP_NAMED(),
+    %% 旧键残留检查（字面量对应已废弃的 {elib_tsid_state, Name}）
+    ?assertEqual(
+        undefined,
+        persistent_term:get({elib_tsid_state, user}, undefined)
+    ),
+    ?assertEqual(
+        undefined,
+        persistent_term:get({elib_tsid_state, group_info}, undefined)
+    ),
+    %% 全局 cursor 行为证明：跨 label 连续生成共享同一 slot 空间
+    Id1 = elib_tsid:generate(user),
+    Id2 = elib_tsid:generate(group_info),
+    #{sequence := S1} = elib_tsid:parse(Id1),
+    #{sequence := S2} = elib_tsid:parse(Id2),
+    ?assert(S2 >= S1).
+
+concurrent_register_no_lost_labels_test() ->
+    %% AC-03/F-13：并发注册不同名称经锁串行化，零丢失（旧实现每轮必丢）
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+    N = 30,
+    Self = self(),
+    Ready = counters:new(N, []),
+    Workers = [
+        spawn(fun() ->
+            counters:add(Ready, 1, 1),
+            wait_counter(Ready, N),
+            ok = elib_tsid:register(list_to_atom("tsid03_t_n" ++ integer_to_list(I))),
+            Self ! done
+        end)
+     || I <- lists:seq(1, N)
+    ],
+    [
+        receive
+            done -> ok
+        end
+     || _ <- lists:seq(1, N)
+    ],
+    _ = Workers,
+    Registered = elib_tsid:registered(),
+    Missing = [
+        list_to_atom("tsid03_t_n" ++ integer_to_list(I))
+     || I <- lists:seq(1, N),
+        not lists:member(list_to_atom("tsid03_t_n" ++ integer_to_list(I)), Registered)
+    ],
+    ?assertEqual([], Missing).
+
+wait_counter(Counter, N) ->
+    case counters:get(Counter, 1) >= N of
+        true -> ok;
+        false -> wait_counter(Counter, N)
+    end.
+
+cross_name_1m_concurrent_uniqueness_test() ->
+    %% AC-03A：4 label × 16 workers 共 1M IDs，全局零重复
+    ?SETUP_NAMED(),
+    ok = elib_tsid:register([msg_c2c, extra_probe]),
+    Self = self(),
+    Names = [user, group_info, attachment, msg_c2c],
+    Workers = 16,
+    PerWorker = 62500,
+    [
+        spawn(fun() ->
+            Ids = [
+                elib_tsid:generate(lists:nth(1 + (I rem 4), Names))
+             || I <- lists:seq(1, PerWorker)
+            ],
+            Self ! {ids, Ids}
+        end)
+     || _ <- lists:seq(1, Workers)
+    ],
+    All = collect_ids(Workers, []),
+    ?assertEqual(1000000, length(All)),
+    ?assertEqual(1000000, length(lists:usort(All))).
+
+registered_sorted_compat_test() ->
+    %% registered/0 兼容：排序 atom 列表
+    ?SETUP(),
+    ok = elib_tsid:register([zz_label, aa_label]),
+    Names = elib_tsid:registered(),
+    ?assertEqual(Names, lists:sort(Names)),
+    ?assert(lists:member(zz_label, Names)),
+    ?assert(lists:member(aa_label, Names)).
+
+register_before_init_rejected_test() ->
+    %% 注册先于 init：typed 拒绝（runtime 未发布）
+    elib_tsid:reset_for_test(),
+    ?assertMatch(
+        {elib_tsid_not_initialized, _},
+        catch_typed(fun() -> elib_tsid:register(early_label) end)
+    ).

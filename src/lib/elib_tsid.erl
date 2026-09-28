@@ -22,10 +22,10 @@
 %   - 时钟回拨 → 沿用上次时间戳 + 递增序列，绝不产生重复
 %   - 序列溢出 → 借用下一毫秒时间戳，绝不阻塞
 %
-% 命名生成器:
-%   每张表/业务有独立的 sequence 计数器，互不干扰。
-%   同一节点同一毫秒内，不同命名生成器可能产生相同数值的 ID，
-%   但因为它们属于不同的数据库表，主键不冲突。
+% 命名生成器（TSID-03 起全局 cursor）:
+%   所有 label 共享同一全局 sequence cursor。
+%   同一节点上任意两个 label（含 default）产生的 ID 数值永不相同，
+%   跨表/跨域可直接按数值关联；label 仅作治理与兼容标签。
 %
 % 使用:
 %   elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}).
@@ -87,10 +87,11 @@
 -define(MAX_ID, ((1 bsl 63) - 1)).
 
 %% persistent_term 键
--define(PT_STATE(Name), {elib_tsid_state, Name}).
+%% TSID-03 起唯一权威：完整 runtime handle 一次发布（全局 cursor + 节点
+%% 配置 + label 集合快照 + 注册互斥锁）。旧每 name 独立 state 键废弃。
+-define(PT_RUNTIME, elib_tsid_runtime).
 -define(PT_NODE_ID, elib_tsid_node_id).
 -define(PT_DC_BITS, elib_tsid_dc_bits).
--define(PT_NAMES, elib_tsid_names).
 
 %% 进程级时钟 seam 键（仅测试进程显式 put；生产路径无全局可变状态）
 -define(TEST_WALL_MS, {elib_tsid, test_wall_ms}).
@@ -161,20 +162,40 @@ init(Opts) ->
     persistent_term:put(?PT_NODE_ID, CombinedNode),
     persistent_term:put(?PT_DC_BITS, DcBits),
 
-    %% 初始化 default 生成器
-    init_generator(default),
-
-    %% 初始化命名生成器
-    ExistingNames = persistent_term:get(?PT_NAMES, []),
+    %% TSID-03：完整 runtime 一次发布。全部 label 共享同一全局 cursor
+    %% （跨 name 数值零交集）；幂等 re-init 保留既有 cursor 不回退。
+    Existing = persistent_term:get(?PT_RUNTIME, undefined),
+    {Cursor, RegLock, ExistingNames} =
+        case Existing of
+            undefined ->
+                {atomics:new(1, [{signed, true}]), atomics:new(1, [{signed, true}]), []};
+            #{cursor := C, reg_lock := L, names := Ns} ->
+                {C, L, sets:to_list(Ns)}
+        end,
     AllNames = lists:usort([default | Names] ++ ExistingNames),
-    lists:foreach(fun init_generator/1, Names),
-    persistent_term:put(?PT_NAMES, AllNames),
+    publish_runtime(Cursor, RegLock, CombinedNode, DcBits, AllNames),
+    ok.
+
+%% @private 原子发布完整 runtime handle（单一 PT 键，读者见旧或新，无撕裂）
+-spec publish_runtime(
+    atomics:atomics_ref(), atomics:atomics_ref(), 0..1023, 0..10, [atom()]
+) -> ok.
+publish_runtime(Cursor, RegLock, CombinedNode, DcBits, AllNames) ->
+    Handle = #{
+        cursor => Cursor,
+        reg_lock => RegLock,
+        combined_node => CombinedNode,
+        dc_bits => DcBits,
+        names => sets:from_list(AllNames, [{version, 2}])
+    },
+    persistent_term:put(?PT_RUNTIME, Handle),
     ok.
 
 %% @doc 注册命名生成器
 %%
 %% 可在 init/1 之后动态注册新的命名生成器。
-%% 重复注册同一名称是安全的（幂等）。
+%% 重复注册同一名称是安全的（幂等）。并发注册不同名称经注册互斥锁
+%% 串行化，无丢更新（TSID-03，F-13）；注册是冷路径，生成热路径不经锁。
 %%
 %% 示例:
 %%   elib_tsid:register(user).
@@ -184,29 +205,54 @@ register(Names) when is_list(Names) ->
     lists:foreach(fun(N) -> register(N) end, Names),
     ok;
 register(Name) when is_atom(Name) ->
-    init_generator(Name),
-    ExistingNames = persistent_term:get(?PT_NAMES, []),
-    case lists:member(Name, ExistingNames) of
-        true -> ok;
-        false -> persistent_term:put(?PT_NAMES, lists:sort([Name | ExistingNames]))
-    end,
-    ok.
+    case runtime_handle() of
+        {ok, #{reg_lock := RegLock}} ->
+            with_reg_lock(RegLock, fun() ->
+                %% 锁内重读：合并到最新 handle 再发布
+                #{names := Names0} = H0 = persistent_term:get(?PT_RUNTIME),
+                case sets:is_element(Name, Names0) of
+                    true ->
+                        ok;
+                    false ->
+                        H1 = H0#{names := sets:add_element(Name, Names0)},
+                        persistent_term:put(?PT_RUNTIME, H1)
+                end
+            end),
+            ok;
+        error ->
+            error({elib_tsid_not_initialized, 'call elib_tsid:init/1 before register/1'})
+    end.
 
 %% @doc 列出所有已注册的生成器名称
 -spec registered() -> [atom()].
 registered() ->
-    persistent_term:get(?PT_NAMES, [default]).
+    case runtime_handle() of
+        {ok, #{names := Names}} ->
+            lists:sort(sets:to_list(Names));
+        error ->
+            [default]
+    end.
 
-%% @private 初始化单个生成器的 atomics 状态
-init_generator(Name) ->
-    Key = ?PT_STATE(Name),
-    case persistent_term:get(Key, undefined) of
-        undefined ->
-            StateRef = atomics:new(1, [{signed, true}]),
-            persistent_term:put(Key, StateRef);
-        _Exists ->
-            %% 已存在则跳过（幂等）
-            ok
+%% @private 读取当前 runtime handle
+-spec runtime_handle() -> {ok, map()} | error.
+runtime_handle() ->
+    case persistent_term:get(?PT_RUNTIME, undefined) of
+        #{} = H -> {ok, H};
+        undefined -> error
+    end.
+
+%% @private 注册互斥锁：CAS 自旋（仅冷路径；持锁区间内无热路径操作）
+-spec with_reg_lock(atomics:atomics_ref(), fun()) -> term().
+with_reg_lock(RegLock, Fun) ->
+    case atomics:compare_exchange(RegLock, 1, 0, 1) of
+        ok ->
+            try
+                Fun()
+            after
+                ok = atomics:put(RegLock, 1, 0)
+            end;
+        _ ->
+            with_reg_lock(RegLock, Fun)
     end.
 
 %% ===================================================================
@@ -220,9 +266,9 @@ generate() ->
 
 %% @doc 使用指定的命名生成器生成一个 TSID
 %%
-%% 每个命名生成器拥有独立的 sequence 计数器，互不干扰。
-%% 不同生成器在同一毫秒可能产生相同数值的 ID，
-%% 但因为它们对应不同的数据库表，不会冲突。
+%% TSID-03 起所有 label 共享同一全局 cursor：同一节点上任意两个
+%% 生成器（含 default）产生的 ID 数值永不相同，跨表/跨域引用可
+%% 直接按数值关联。label 仅作治理与兼容标签，不再分配独立数值空间。
 %%
 %% 示例:
 %%   UserId  = elib_tsid:generate(user).
@@ -230,31 +276,39 @@ generate() ->
 -spec generate(atom()) -> pos_integer().
 generate(Name) when is_atom(Name) ->
     NowRel = wall_clock_ms() - ?EPOCH_MS,
-    try
-        %% 时钟边界 fail-closed（F-07/F-08）：纪元前/越过 42-bit 上界
-        %% 拒绝签发，绝不掩码或借位越过 MAX_ID
-        case NowRel < 0 of
-            true -> error({elib_tsid_clock_before_epoch, #{now_rel => NowRel}});
-            false -> ok
-        end,
-        case NowRel > ?MAX_REL_TS of
-            true ->
-                error(
-                    {elib_tsid_timestamp_exhausted, #{
-                        now_rel => NowRel, max_rel_ts => ?MAX_REL_TS
-                    }}
-                );
-            false ->
-                ok
-        end,
-        StateRef = persistent_term:get(?PT_STATE(Name)),
-        NodeId = persistent_term:get(?PT_NODE_ID),
-        cas_loop(StateRef, NodeId, NowRel)
-    catch
-        error:badarg when Name =:= default ->
+    %% 时钟边界 fail-closed（F-07/F-08）：纪元前/越过 42-bit 上界
+    %% 拒绝签发，绝不掩码或借位越过 MAX_ID
+    case NowRel < 0 of
+        true -> error({elib_tsid_clock_before_epoch, #{now_rel => NowRel}});
+        false -> ok
+    end,
+    case NowRel > ?MAX_REL_TS of
+        true ->
+            error(
+                {elib_tsid_timestamp_exhausted, #{
+                    now_rel => NowRel, max_rel_ts => ?MAX_REL_TS
+                }}
+            );
+        false ->
+            ok
+    end,
+    case runtime_handle() of
+        {ok, #{cursor := Cursor, combined_node := NodeId, names := Names}} ->
+            case sets:is_element(Name, Names) of
+                true ->
+                    cas_loop(Cursor, NodeId, NowRel);
+                false ->
+                    error(
+                        {elib_tsid_generator_not_registered,
+                            {Name, 'call elib_tsid:register/1 first'}}
+                    )
+            end;
+        error when Name =:= default ->
             error({elib_tsid_not_initialized, 'call elib_tsid:init/1 first'});
-        error:badarg ->
-            error({elib_tsid_generator_not_registered, {Name, 'call elib_tsid:register/1 first'}})
+        error ->
+            error(
+                {elib_tsid_generator_not_registered, {Name, 'call elib_tsid:register/1 first'}}
+            )
     end.
 
 %% @doc 使用 default 生成器批量生成 N 个 TSID (有序)
@@ -531,17 +585,12 @@ base62_index(_) -> error.
 %% 测试 seam：显式重置（仅测试使用）
 %% ===================================================================
 
-%% @private 清除全部 persistent_term 状态（含每个 name 的 cursor）。
+%% @private 清除全部 persistent_term 状态（全局 cursor 与注册表）。
 %% 生产代码禁止调用：跨配置/跨节点场景的唯一合法重置入口是测试 seam，
 %% 用于满足 F-12「测试必须使用显式 reset」的冻结要求。
 -spec reset_for_test() -> ok.
 reset_for_test() ->
-    Names = persistent_term:get(?PT_NAMES, []),
-    lists:foreach(
-        fun(N) -> persistent_term:erase(?PT_STATE(N)) end,
-        [default | Names]
-    ),
-    persistent_term:erase(?PT_NAMES),
+    persistent_term:erase(?PT_RUNTIME),
     persistent_term:erase(?PT_NODE_ID),
     persistent_term:erase(?PT_DC_BITS),
     ok.
