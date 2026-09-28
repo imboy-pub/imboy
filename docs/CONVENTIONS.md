@@ -217,6 +217,7 @@ GET /api/v1/messages?cursorAfter=123456789012345678&limit=50
 ## 工具链联动
 
 - **lefthook pre-commit**：`commitlint` + `gitleaks` + 各端 formatter
+- **lefthook pre-push**：推送前质量门（Gradualizer ratchet 等）。⚠️ 生效前提是分支 upstream 可被 `HEAD @{push}` 解析——新 clone 后必须执行 `git config remote.pushDefault gitcode && git branch --set-upstream-to=gitcode/main main`，否则 lefthook 会以 "no matching push files" **静默跳过全部门禁**（2026-09-29 三仓实证修复，详见各仓 lefthook.yml 注释）
 - **CI（quality.yml）**：本约定的自动化检查由 `oasdiff` / `eslint` / `elvis` / `dart_code_metrics` 落地
 - **codegen**：`imboy/api/codegen/` 生成的客户端代码自动符合「字段命名」§3 与「错误响应」§4
 - **codemap**：变更后由 `doc-updater` agent 同步至 `src/*/CLAUDE.md` 模块文档（旧 `docs/archive/CODEMAPS/` 因数据失真已于 2026-07-25 删除）

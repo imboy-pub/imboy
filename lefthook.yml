@@ -44,6 +44,10 @@ commit-msg:
 # Ratchet 语义：只拦"基线外的新增失败模块"；存量失败（.gradualizer-baseline.txt 内）警告放行，
 # 与 CI 观察模式一致。修绿模块后跑 make gradualize-baseline 收紧基线（只准减不准增）。
 # 排除清单与 Makefile GRADUALIZE_EXCLUDE 对齐：imboy_pb（gpb 生成）、elib_str（触发上游崩溃）。
+# ⚠️ 门禁生效前提：lefthook 需算出 push 文件集（首选 HEAD @{push}）。新 clone 后执行
+#   git config remote.pushDefault gitcode && git branch --set-upstream-to=gitcode/main main
+# 否则会以 "no matching push files" 静默跳过全部命令（2026-09-29 三仓实证；
+# lefthook 2.1.9 internal/git/repo.go PushFiles：回退解析 origin/HEAD 得 main 后 diff HEAD main 恒空）。
 pre-push:
   commands:
     gradualize-changed:
