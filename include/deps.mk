@@ -14,10 +14,10 @@ dep_hex_core = git https://github.com/hexpm/hex_core.git v0.11.0
 # https://erlang.mk/guide/deps.html
 # https://github.com/ninenines/ranch/tags
 # Ranch is a socket acceptor pool for TCP protocols.
-dep_ranch = git https://github.com/ninenines/ranch.git 2.2.0
-dep_cowlib = git https://github.com/ninenines/cowlib.git 2.16.0
-dep_cowboy = git https://github.com/ninenines/cowboy.git 2.14.2
-dep_gun = git https://github.com/ninenines/gun.git 2.2.0
+dep_ranch = git https://github.com/ninenines/ranch.git 2.3.0
+dep_cowlib = git https://github.com/ninenines/cowlib.git 2.20.0
+dep_cowboy = git https://github.com/ninenines/cowboy.git 2.19.0
+dep_gun = git https://github.com/ninenines/gun.git 2.6.0
 
 # gen_smtp Email服务端、客户端
 # https://github.com/gen-smtp/gen_smtp.git
@@ -64,11 +64,11 @@ dep_hnc_csv = git https://github.com/hnc-agency/hnc-csv main
 # syn 全局进程注册表和进程组管理器，能够自动管理动态集群（添加/删除节点）并从网络分裂中恢复。
 # Syn 是 Erlang/OTP global的 registry 和 pg模块的替代品。Syn 实现了 强最终一致性。
 # https://github.com/ostinelli/syn
-dep_syn = git https://github.com/ostinelli/syn.git 3.3.0
+dep_syn = git https://github.com/ostinelli/syn.git 3.4.2
 
 # erlware_commons 为与 Erlang 一起分发的 stdlib 应用程序的扩展，被 qdate 依赖
 # https://github.com/erlware/erlware_commons.git
-dep_erlware_commons = git https://github.com/erlware/erlware_commons.git v1.8.1
+dep_erlware_commons = git https://github.com/erlware/erlware_commons.git v1.9.1
 # qdate_localtime 这是 erlang_localtime 的一个分支 ，专门针对与 qdate的兼容性进行了修改。两者大多兼容，但多年来出现了一些分歧。
 # 被 qdate 依赖
 # https://github.com/choptastic/qdate_localtime.git
@@ -85,7 +85,7 @@ dep_throttle = git https://github.com/lambdaclass/throttle.git 0.3.0
 
 # ecron 用于 Erlang 的轻量级/高效的类似 cron 的作业调度库。
 # https://github.com/zhongwencool/ecron
-dep_ecron = git https://github.com/zhongwencool/ecron.git v1.1.0
+dep_ecron = git https://github.com/zhongwencool/ecron.git v1.1.1
 # Erlang 的纯函数式和泛型编程
 # 6months
 dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
@@ -119,7 +119,7 @@ dep_hut = git https://gitee.com/imboy-tripartite-deps/hut.git 1.4.0
 dep_observer_cli = git https://github.com/zhongwencool/observer_cli.git 1.7.4
 # Recon 希望成为一套可用于生产环境的工具，用于诊断 Erlang 问题或安全地检查生产环境。
 # 4months
-dep_recon = git https://github.com/ferd/recon.git 2.5.4
+dep_recon = git https://github.com/ferd/recon.git 2.5.6
 # fs Native Listener (Mac Windows Linux) 被 sync 依赖
 # 8months
 dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
@@ -128,7 +128,7 @@ dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
 dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git v0.4.1
 # telemetry 用于指标和仪器的动态调度库。
 # 3months
-dep_telemetry = git https://github.com/beam-telemetry/telemetry.git v1.2.1
+dep_telemetry = git https://github.com/beam-telemetry/telemetry.git v1.4.2
 # 8months
 dep_system_monitor = git https://gitee.com/imboy-tripartite-deps/system_monitor.git 2.2.6
 # erlang tracing debugger
@@ -138,7 +138,7 @@ dep_redbug = git https://github.com/massemanet/redbug.git 2.0.10
 # PropEr：一个受 QuickCheck 启发的 Erlang 基于属性的测试工具
 # 6months https://github.com/proper-testing/proper.git
 dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git v1.5.0
-dep_meck = git https://github.com/eproxus/meck.git v1.0.0
+dep_meck = git https://github.com/eproxus/meck.git v1.2.0
 # 第一个完整实现的 Aho-Corasick 算法的 erlang 版本。
 # 6years
 dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git master
@@ -148,7 +148,7 @@ dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git 
 dep_uid = git https://github.com/fogfish/uid.git master
 # Django templates for Erlang
 # 8years
-dep_erlydtl = git https://github.com/erlydtl/erlydtl.git 0.14.0
+dep_erlydtl = git https://github.com/erlydtl/erlydtl.git 0.15.0
 
 # Erlang Postgres 客户端和连接池
 # https://github.com/erleans/pgo.git
@@ -162,7 +162,7 @@ dep_pg_types = ln ../../pg_types
 # https://gitee.com/imboy-pub/erlang_pay
 dep_erlang_pay = git https://gitee.com/imboy-pub/erlang_pay.git main
 
-dep_pooler = git https://github.com/epgsql/pooler.git 1.6.0
+dep_pooler = git https://github.com/epgsql/pooler.git 1.7.0
 dep_epgsql = git https://github.com/epgsql/epgsql.git 4.8.0
 # https://github.com/epgsql/epgsql.git
 #dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git devel
@@ -224,7 +224,7 @@ dep_gpb = git https://github.com/tomas-abrahamsson/gpb.git 4.21.7
 # https://github.com/open-telemetry/opentelemetry-erlang
 dep_opentelemetry_api = hex 1.5.0
 dep_opentelemetry = hex 1.7.0
-dep_opentelemetry_exporter = hex 1.10.0
+dep_opentelemetry_exporter = hex 1.11.0
 dep_grpcbox = hex 0.18.0
 dep_tls_certificate_check = hex 1.35.0
 # grpcbox 传递依赖

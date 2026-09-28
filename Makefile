@@ -675,3 +675,21 @@ dialyze-check:
 # L3 gate extension point (l3-gate.sh probes dialyze-local first):
 # ratchet semantics per CI-00/TD-04A (0 NEW fingerprints = green; literal warn-0 unreachable, 477 legacy)
 dialyze-local: dialyze-check
+
+# ==================== 依赖版本审计 / 定点升级 ====================
+# mod-check：审计 include/deps.mk 全部依赖的上游最新版本
+#   （git 走 ls-remote tags，hex 走 hex.pm API；并发度可 MOD_CHECK_JOBS=16 调）
+# mod-up：定点升级，如 make mod-up MOD="cowboy cowlib"（默认升到最新稳定版）
+#   或 make mod-up MOD="cowboy=2.15.0"（指定版本）。
+#   make mod-up MOD=all：构建图内全部依赖升到最新稳定版
+#   （已最新/pin分支 自动跳过；大版本升级含在内，注意编译+测试验证）。
+#   只改 deps.mk，可 git 回滚；升级后需 rm -rf deps/<name> 并清
+#   .erlang.mk/dep_built/<name> 再 make（erlang.mk 构建戳记不会因删目录失效）。
+.PHONY: mod-check
+mod-check: ## 依赖审计: 检查 deps.mk 中哪些依赖可升级
+	@bash scripts/mod_check.sh check
+
+.PHONY: mod-up
+mod-up: ## 依赖升级: make mod-up MOD="name[=ver] ..." 或 MOD=all（图内全部）
+	@test -n "$(MOD)" || { echo "用法: make mod-up MOD=\"name[=ver] ...\"  例如 make mod-up MOD=\"cowboy cowlib=2.17.0\" 或 make mod-up MOD=all"; exit 1; }
+	@bash scripts/mod_check.sh up $(MOD)
