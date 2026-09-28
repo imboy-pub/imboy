@@ -128,11 +128,15 @@ eunit_setup() ->
             {Ref, {ok, S}} ->
                 S;
             {Ref, {error, Reason}} ->
-                io:format("Warning: Failed to start imboy app: ~p~n", [Reason]),
-                io:format("Tests that require app will be skipped~n"),
+                %% WH-04：io:format 会被 eunit 输出捕获吞掉（final5 全量实证
+                %% 342 次 boot 失败 0 条告警），改走 logger 直落原始日志。
+                logger:error("[eunit_setup] boot failed, app-dependent tests will error: ~120p", [Reason]),
                 {app_not_started, test_continues}
-        after 60000 ->
-            io:format("Warning: boot coordinator timeout~n"),
+        after 120000 ->
+            %% WH-04：60s→120s——migration_dirty 长预算重试（见 do_boot
+            %% 的 ?BOOT_MAX_ATTEMPTS_DIRTY）最坏 75s+启动耗时，原 60s
+            %% 会在重试中途先行超时使长预算失效。
+            logger:error("[eunit_setup] boot coordinator timeout"),
             {app_not_started, test_continues}
         end,
     % 缓存实例自愈（详见 do_ensure_cache）：每次 setup 顺带检查命名表
@@ -208,6 +212,21 @@ do_ensure_cache() ->
             ok
     end.
 
+%% WH-04：boot 重试参数。常规失败最坏 4×(启动耗时+3s)≈20s，远小于 setup
+%% 的 boot 接收超时。migration_dirty 属「可自愈型」失败单独给长预算：
+%% 共享测试库会被并发会话/本套件的迁移churn测试（cs_pg_widget_tests
+%% a01_roundtrip 对共享库跑 erlang_migrate:down 20+ 步 DDL 再 up，见其
+%% 139-168 行）短暂置 dirty，churn 完成自动复清，窗口可达 60-120s；此间
+%% 所有 app boot 在 imboy_app 的 maybe_migrate() 处中止（早于 TSID/syn
+%% init，下游呈 TSID not_registered / syn badarg 误导形态——final5 全量
+%% 实证 342 次失败）。长预算 25×3s≈75s+启动耗时 < setup 120s 超时，
+%% 等 churn 自然让出；真·死 dirty（迁移被杀无人恢复）也只是更慢地失败
+%% 且每次失败都有 logger 直落的可见日志。其余失败（eaddrinuse/配置错）
+%% 保持短预算快速失败，不被单点故障拖慢整轮。
+-define(BOOT_MAX_ATTEMPTS, 4).
+-define(BOOT_MAX_ATTEMPTS_DIRTY, 25).
+-define(BOOT_RETRY_SLEEP_MS, 3000).
+
 do_boot() ->
     case app_running(imboy) of
         true ->
@@ -222,28 +241,45 @@ do_boot() ->
             _ = (try cowboy:stop_listener(imboy_listener) catch _:_ -> ok end),
             _ = (try ranch:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
             _ = (try cowboy:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
-            case application:ensure_all_started(imboy) of
-                {ok, _} ->
-                    quiesce_periodic_workers(),
-                    {ok, {app_started, imboy}};
-                {error, {already_started, imboy}} ->
-                    {ok, {app_already_started, imboy}};
-                {error, _StartReason} ->
-                    % 首次尝试若被 eunit 5s 测试超时打断（caller 被杀 → app
-                    % master 中止），会留下 barrel 单例与 ranch listener 孤儿；
-                    % 清掉后重试一次，避免一次超时毒化整轮。
-                    cleanup_start_orphans(),
-                    case application:ensure_all_started(imboy) of
-                        {ok, _} ->
-                            quiesce_periodic_workers(),
-                            {ok, {app_started, imboy}};
-                        {error, {already_started, imboy}} ->
-                            {ok, {app_already_started, imboy}};
-                        {error, RetryReason} ->
-                            {error, RetryReason}
-                    end
-            end
+            boot_attempt(?BOOT_MAX_ATTEMPTS)
     end.
+
+%% WH-04：有界退避重试。Reason 含 migration_dirty 时升级为长预算
+%%（?BOOT_MAX_ATTEMPTS_DIRTY），其余按 ?BOOT_MAX_ATTEMPTS 短预算。
+boot_attempt(AttemptsLeft) when AttemptsLeft =< 0 ->
+    {error, max_boot_attempts};
+boot_attempt(AttemptsLeft) ->
+    case application:ensure_all_started(imboy) of
+        {ok, _} ->
+            quiesce_periodic_workers(),
+            {ok, {app_started, imboy}};
+        {error, {already_started, imboy}} ->
+            {ok, {app_already_started, imboy}};
+        {error, Reason} ->
+            %% A1c：首次尝试若被 eunit 5s 测试超时打断（caller 被杀 → app
+            %% master 中止），会留下 barrel 单例与 ranch listener 孤儿；清掉
+            %% 后重试，避免一次超时毒化整轮。
+            logger:error("[eunit_boot_failed] attempts_left=~p reason=~120p",
+                [AttemptsLeft, Reason]),
+            cleanup_start_orphans(),
+            _ = (try ranch:stop_listener(imboy_listener) catch _:_ -> ok end),
+            _ = (try cowboy:stop_listener(imboy_listener) catch _:_ -> ok end),
+            _ = (try ranch:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
+            _ = (try cowboy:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
+            timer:sleep(?BOOT_RETRY_SLEEP_MS),
+            Next =
+                case is_migration_dirty(Reason) of
+                    true -> erlang:max(AttemptsLeft - 1, ?BOOT_MAX_ATTEMPTS_DIRTY);
+                    false -> AttemptsLeft - 1
+                end,
+            boot_attempt(Next)
+    end.
+
+%% WH-04：识别可自愈的 migration_dirty 失败（ensure_all_started 的错误
+%% 形状随 OTP 版本有 {imboy, {migration_dirty,_}} / 平铺等变体，按格式化
+%% 串匹配最稳）。
+is_migration_dirty(Reason) ->
+    string:find(lists:flatten(io_lib:format("~0p", [Reason])), "migration_dirty") =/= nomatch.
 
 app_running(App) ->
     lists:keymember(App, 1, application:which_applications()).

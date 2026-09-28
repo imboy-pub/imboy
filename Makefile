@@ -571,7 +571,7 @@ eunit-local:
 	  ( while true; do python3 test/common/pg_relay.py $(EUNIT_RELAY_PORT) $(EUNIT_RELAY_TARGET); sleep 1; done ) & \
 	  relay_pid=$$!; \
 	  sleep 1; \
-	  IMBOYENV=local $(MAKE) eunit $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
+	  IMBOYENV=local $(MAKE) eunit IMBOY_EUNIT_INNER=1 $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
 	    EUNIT_ERL_OPTS="-config config/sys.eunit-relay -pa imboy/ebin -pa ebin -pa test"; \
 	  rc=$$?; \
 	  pkill -P $$relay_pid 2>/dev/null; \
@@ -585,7 +585,7 @@ eunit-local:
 	      "$(EUNIT_CONFIG).config" \
 	    > config/sys.eunit-relay.config; \
 	  echo "== EUNIT PG DIRECT: $(EUNIT_RELAY_TARGET) (http $(EUNIT_HTTP_PORT)/adm $(EUNIT_HTTP_ADM_PORT), EUNIT_USE_RELAY=0) =="; \
-	  IMBOYENV=local $(MAKE) eunit $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
+	  IMBOYENV=local $(MAKE) eunit IMBOY_EUNIT_INNER=1 $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
 	    EUNIT_ERL_OPTS="-config config/sys.eunit-relay -pa imboy/ebin -pa ebin -pa test"; \
 	  rc=$$?; \
 	  rm -f config/sys.eunit-relay.config; \
@@ -603,6 +603,25 @@ EUNIT_RELAY_TARGET ?= 4323
 # （run12/14/15 实证）。
 EUNIT_HTTP_PORT ?= 19980
 EUNIT_HTTP_ADM_PORT ?= 19970
+
+# WH-03（2026-09-28）：plain `IMBOYENV=local make eunit` 与 eunit-local 同轨。
+# 现状（2026-09-28 final4 全量实证）：plain eunit 走 erlang.mk 原生路径，
+# EUNIT_ERL_OPTS 无 -config；且 erlang.mk 的 `-pa test -pa ebin` 因 -pa 后者优先，
+# ebin 的 src/lib/eunit_runner.beam 压过 test/common 同名模块，其 eunit_setup
+# 内部 ensure_config_loaded/0 在 pg_conf 缺失时硬失败 → 68 个 DB 测试文件、
+# 551 处 missing_config、586 个 context setup failed 全量 cancel——这正是原始
+# 报障「大面积 cancel」的主体。eunit-local 已备齐全部解法（-config 注入 +
+# PG 中继 + 私有 HTTP 端口 + A1c/WH-01T/WH-02 确定性重建），此处把用户习惯
+# 命令直接委派给它：单冒号规则在本文件（include erlang.mk 之后）后定义即覆盖
+# erlang.mk 的 eunit（前置并集、配方取后定义），仅 IMBOYENV=local 且非
+# eunit-local 内层调用时生效；eunit-local 的内层 $(MAKE) eunit 已带
+# IMBOY_EUNIT_INNER=1 防递归。非 local 环境（CI 显式构造的调用）不受影响。
+ifeq ($(IMBOYENV),local)
+ifeq ($(IMBOY_EUNIT_INNER),)
+eunit: eunit-local
+	$(verbose) :
+endif
+endif
 
 # ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
 # 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担
