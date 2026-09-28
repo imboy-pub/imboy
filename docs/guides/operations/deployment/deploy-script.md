@@ -6,6 +6,37 @@
 
 ---
 
+## 运维处置卡片（owner / 止损 / 回滚）· W3-A04
+
+| 要素 | 值 |
+|---|---|
+| **Owner** | IMBoy Ops（待用户指名，指名后替换本行） |
+| **Escalation** | ① IMBoy Ops 值班 → ② 待指名平台负责人（IM/电话占位）→ ③ 脚本本身缺陷提 issue 到 imboy 仓（附 `--verbose` 日志） |
+
+### 止损线（量化，触发即回滚）
+
+- **自动止损**（脚本内置，无需人工）：smoke 验证失败 / 新节点 40s 未就绪 /
+  nginx 切换失败——脚本自动恢复 symlink/vhost（见"失败语义（不变量）"）。
+- **人工止损**：nginx 切换成功后 **10 分钟观察窗**内，5xx > 1%（5 分钟窗口）
+  或消息投递 p99 > 1s 持续 5 分钟，或 WS 连接较切换前掉 > 50%——立即执行
+  下方回滚，不在新节点上排障。
+
+### 回滚（紧急回滚 = nginx 切回旧色节点）
+
+```bash
+# 方式 1：脚本回滚（推荐，切 nginx 指向旧节点）
+bash scripts/imboy-deploy.sh rollback
+
+# 方式 2：手动回滚（脚本不可用时）
+ssh -p $SERVER_PORT $SERVER_USER@$SERVER_HOST \
+  "sed -i 's/9801/9800/' /path/to/nginx.conf && nginx -s reload"
+```
+
+前提：旧节点仍在运行（`DEPLOY_STOP_OLD=false`，或手动重启旧版本目录，见
+"常见问题 → 回滚时旧节点未运行"）。回滚后确认指标回绿再收尾。
+
+---
+
 ## 概述
 
 `scripts/imboy-deploy.sh` 是统一的部署入口，支持两种模式：

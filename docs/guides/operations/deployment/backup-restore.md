@@ -1,5 +1,46 @@
 # IMBoy 备份与恢复指南
 
+---
+
+## 运维处置卡片（owner / 止损 / 回滚）· W3-A04
+
+| 要素 | 值 |
+|---|---|
+| **Owner** | IMBoy Ops（待用户指名，指名后替换本行） |
+| **Escalation** | ① IMBoy Ops 值班 → ② 待指名平台负责人（IM/电话占位）→ ③ PG/TimescaleDB 恢复疑难（hypertable 报错等）联系 DBA/厂商支持 |
+
+### 止损线（恢复操作的"何时中止/放弃"，触发即停手评估，不硬扛）
+
+恢复是高危操作，以下任一条件成立即**中止当前恢复**，保持现状，升级 escalation：
+
+1. **超时**：全量恢复耗时超过 RTO 目标（30 分钟）仍未完成——中止，评估改用
+   更新的备份点或 PITR 缩小恢复范围；
+2. **校验不符**：恢复后行数校验（restore_pg.sh 内置 / 手工双边对比）不一致，
+   特别是 hypertable 表报 `chunk ... has no dimension slices`——该库**禁止接入
+   生产流量**，回到测试库路径重做；
+3. **目标错库**：发现恢复目标不是预定的 `imboy_restore_test`/演练库——立即
+   停止，核对 `--target` 后重新开始；误写主库时按下述回滚处置；
+4. **备份源可疑**：备份文件完整性校验（`pg_restore --list`）失败——换备份点，
+   不带病恢复。
+
+**止血动作**：中止后旧库/旧数据目录不动（见回滚），先保在线服务可用性，
+再决定换备份点重试或外部求援。
+
+### 回滚（恢复失败/中止后回到恢复前状态）
+
+- **PITR 路径**（本文"PITR 恢复"第 2 步已把原数据目录 `mv` 到 `main.bak`）：
+  ```bash
+  sudo systemctl stop postgresql
+  sudo rm -rf /var/lib/postgresql/18/main          # 半成品恢复目录
+  sudo mv /var/lib/postgresql/18/main.bak /var/lib/postgresql/18/main
+  sudo systemctl start postgresql                   # 回到恢复前状态
+  ```
+- **restore_pg.sh 路径**：目标库是独立演练库（如 `imboy_restore_test`）时，
+  `dropdb` 丢弃半成品即可，生产库未被动过——这也是"先恢复到测试库验证"
+  的意义。
+
+---
+
 ## 备份策略
 
 | 类型 | 频率 | 保留期 | 工具 |

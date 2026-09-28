@@ -1,5 +1,50 @@
 # IMBoy 监控指南
 
+---
+
+## 告警处置卡片（owner / 止损 / 回滚）· W3-A04
+
+监控/告警栈自身的运维三要素（业务告警的处置动作见各条告警规则的
+`runbook` 注解，`deploy/prometheus/rules/imboy-alerts.yml`）：
+
+| 要素 | 值 |
+|---|---|
+| **Owner** | IMBoy Ops（待用户指名，指名后替换本行） |
+| **Escalation** | ① IMBoy Ops 值班 → ② 待指名平台负责人（IM/电话占位）→ ③ 监控栈持续不可用 > 30 分钟视为盲飞事件，升级为生产事故处理 |
+
+### 止损（触发条件 + 止血动作）
+
+- **告警风暴**（>10 条/分钟，常见于后端宕机引发 up/延迟/5xx 连锁）：
+  用 amtool 按 alertname/instance 聚合静默非根因告警，保住 critical 通道信噪比：
+  ```bash
+  amtool silence add alertname=~"ImBoy.*" severity="warning" -d 30m \
+    --comment "根因处置中，静默衍生告警"
+  ```
+- **监控栈自身故障**（Prometheus/Alertmanager 容器退出或 up 缺失）：
+  立即重启对应容器恢复采集；**盲飞期间冻结一切生产变更**（部署/扩容/迁移），
+  恢复后再解除。
+- **误报确认**：单条规则连续误报 ≥2 次——先静默该 alertname（带注释与期限），
+  再修阈值，不允许长期挂静默不修因。
+
+### 回滚（监控配置变更失败）
+
+改 rules/告警路由后 Prometheus 起不来或 `promtool check rules` 失败时
+（`imboy_prometheus`/`imboy_alertmanager` 在 `docker-compose.community.yml`
+的 `monitoring` profile 下）：
+
+```bash
+cd deploy
+git checkout -- prometheus/rules/imboy-alerts.yml   # 还原规则文件
+docker compose -f docker-compose.community.yml --profile monitoring \
+  restart imboy_prometheus
+promtool check rules prometheus/rules/imboy-alerts.yml   # 确认回绿再离场
+```
+
+Alertmanager 侧同理：还原 `alertmanager/alertmanager.yml`（或重跑
+`render.sh` 用上次 env 渲染）后重启 `imboy_alertmanager`。
+
+---
+
 ## 关键监控指标
 
 ### 应用层
