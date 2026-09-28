@@ -365,3 +365,5 @@ workspace_logic.erl|The pattern {'ok', Updated} can never match the type {'error
 workspace_member_repo.erl|Function count_by_role_tx/3 has no local return
 workspace_member_repo.erl|Invalid type specification for function workspace_member_repo:count_by_role_tx/3. The success typing is workspace_member_repo:count_by_role_tx (_, _, _) -> none() But the spec is workspace_member_repo:count_by_role_tx (any(), integer(), binary()) -> non_neg_integer() The return types do not overlap
 workspace_member_repo.erl|The call elib_pg:one (Conn :: any(), Sql :: <<_:8, _:_*1>>, [any(), ...]) will never return since the success typing is (binary() | maybe_improper_list(binary() | maybe_improper_list(any(), binary() | []) | byte(), binary() | []), [any()], any()) -> {'error', _} | {'ok', _} and the contract is (iodata(), [term()], D) -> {'ok', map() | D} | {'error', term()} when D :: term()
+jwerl.erl|The pattern <Binary, 'left'> can never match the type <binary(), 'both'>
+jwerl.erl|The pattern <Binary, 'right'> can never match the type <binary(), 'both'>
