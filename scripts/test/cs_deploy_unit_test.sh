@@ -39,6 +39,9 @@ trap cleanup EXIT
 # ---------- 复制被测脚本 + 蓝绿桩 ----------
 cp scripts/imboy-deploy.sh "$TEST_SCRIPTS/imboy-deploy.sh"
 cp scripts/lib/cs_deploy.sh "$TEST_SCRIPTS/lib/cs_deploy.sh"
+# 1b2ca499 起 imboy-deploy.sh 对 api/cs/all 惰性 source 生产配置键预检库，
+# harness 必须同步携带（否则 source 失败，事务在构建前即死）。
+cp scripts/lib/check_prod_config.sh "$TEST_SCRIPTS/lib/check_prod_config.sh"
 cat >"$TEST_SCRIPTS/lib/blue_green_deploy.sh" <<'STUB'
 #!/usr/bin/env bash
 # CSD-CLI-01 测试桩：只记录被调用与参数，可注入失败。
@@ -292,6 +295,15 @@ case "$cmd" in
     exit 0 ;;
   *"deploy-meta.json"*)
     printf '%s\n' "$TEST_SOURCE_HEAD"
+    exit 0 ;;
+  *"command -v escript"*)
+    # check_prod_config 远端守卫执行命令（1b2ca499 引入）：离线桩直接回 OK。
+    # 守卫自身逻辑属生产路径，本 harness 只保证其不改变 cs/api/all 事务时序。
+    log_event CONFIG_GUARD
+    printf 'CONFIG_KEYS_OK\n'
+    exit 0 ;;
+  *"imboy-config-key-guard.escript"*)
+    # 守卫清理远端临时 escript 的 ssh 调用：静默成功。
     exit 0 ;;
   *)
     log_event "SSH_OTHER:$(printf '%s' "$cmd" | cut -c1-40)"
@@ -963,6 +975,144 @@ if [ "$rc" -eq 0 ] && [ "$(event_count ADMIN_REALPATH)" = 1 ] && [ "$(event_coun
   ok "回归: admin 行为不变（无蓝绿、无 CS smoke）"
 else
   bad "回归: admin" "rc=$rc realpath=$(event_count ADMIN_REALPATH)"
+fi
+
+# =============================================================================
+echo "== A07. cs-widget 网关模板合同（Seat 嵌入路由，SC-OPS-A01..A04） =="
+# 直接对 deploy/nginx/templates/cs-widget.conf.template 做 location 级断言：
+# 既有 Widget 面不变量 + Seat 增量（/seat/ frame、/seat-assets/ 静态、四组
+# API 精确放行、Seat SSE）。负例通过变异副本证明检查器能捕获回归。
+CS_TEMPLATE="$PWD/deploy/nginx/templates/cs-widget.conf.template"
+
+# 取含固定子串的第 nth 个 location 块（从 location 行到首个独立收尾大括号）；
+# nth 缺省 1。location / 在模板出现两次（:80 301 跳转 + :443 兜底），需取第 2 个。
+tpl_block_at() { # $1=file $2=fixed substring $3=occurrence(从1起)
+  awk -v pat="$2" -v want="${3:-1}" 'index($0, pat) { hit++; if (hit == want) inf=1 } inf { print; if ($0 ~ /^[[:space:]]*}[[:space:]]*$/) exit }' "$1"
+}
+tpl_block() { # $1=file $2=fixed substring
+  tpl_block_at "$1" "$2" 1
+}
+
+# 聚合检查器：输出 TPLERR 行；供正例（应零输出）与负例（应非零）共用
+cs_template_contract_errors() { # $1=template file
+  local f="$1" blk
+  # Seat 动态 frame：backend、300s 超时对齐 /w/、零 add_header、零 buffering 开关
+  blk="$(tpl_block "$f" 'location ^~ /seat/ {')"
+  [ -n "$blk" ] || echo "TPLERR: 缺 location ^~ /seat/（Seat 动态 frame）"
+  if [ -n "$blk" ]; then
+    printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_backend:9800;' || echo "TPLERR: /seat/ 未指向 imboy_backend:9800"
+    printf '%s\n' "$blk" | grep -qF 'proxy_read_timeout 300s;'  || echo "TPLERR: /seat/ 缺 300s 读超时"
+    printf '%s\n' "$blk" | grep -qF 'proxy_send_timeout 300s;'  || echo "TPLERR: /seat/ 缺 300s 写超时"
+    printf '%s\n' "$blk" | grep -qF 'proxy_set_header Host              $http_host;' || echo "TPLERR: /seat/ Host 头须为 \$http_host"
+    printf '%s\n' "$blk" | grep -q  'add_header'      && echo "TPLERR: /seat/ 出现 add_header（网关零注入）"
+    printf '%s\n' "$blk" | grep -q  'proxy_buffering' && echo "TPLERR: /seat/ 出现 proxy_buffering（HTML 无需，镜像 /w/）"
+  fi
+  # Seat 静态别名：widget 容器、零缓存头注入（容器按 S6 下发）
+  blk="$(tpl_block "$f" 'location ^~ /seat-assets/ {')"
+  [ -n "$blk" ] || echo "TPLERR: 缺 location ^~ /seat-assets/（Seat 稳定别名静态面）"
+  if [ -n "$blk" ]; then
+    printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_widget:8080;' || echo "TPLERR: /seat-assets/ 未指向 imboy_widget:8080"
+    printf '%s\n' "$blk" | grep -q  'add_header'     && echo "TPLERR: /seat-assets/ 出现 add_header（缓存头必须由容器下发）"
+    printf '%s\n' "$blk" | grep -q  'Cache-Control'  && echo "TPLERR: /seat-assets/ 出现 Cache-Control（网关不得覆写）"
+  fi
+  # Seat SSE：关缓冲/关缓存 + 3600s
+  blk="$(tpl_block "$f" 'location ~ ^/api/v1/cs/sessions/')"
+  [ -n "$blk" ] || echo "TPLERR: 缺 Seat SSE 正则 location"
+  if [ -n "$blk" ]; then
+    printf '%s\n' "$blk" | grep -qF 'location ~ ^/api/v1/cs/sessions/[0-9A-Za-z_-]+/events$' || echo "TPLERR: Seat SSE 正则形状漂移"
+    printf '%s\n' "$blk" | grep -qF 'proxy_buffering off;'          || echo "TPLERR: Seat SSE 缺 proxy_buffering off"
+    printf '%s\n' "$blk" | grep -qF 'proxy_cache off;'              || echo "TPLERR: Seat SSE 缺 proxy_cache off"
+    printf '%s\n' "$blk" | grep -qF 'chunked_transfer_encoding on;' || echo "TPLERR: Seat SSE 缺 chunked_transfer_encoding on"
+    printf '%s\n' "$blk" | grep -qF 'proxy_read_timeout 3600s;'     || echo "TPLERR: Seat SSE 读超时须 3600s"
+    printf '%s\n' "$blk" | grep -qF 'proxy_send_timeout 3600s;'     || echo "TPLERR: Seat SSE 写超时须 3600s"
+  fi
+  # 四组 API 精确放行（含既有 widget 组）
+  local loc
+  for loc in 'location /api/v1/cs/widget/ {' 'location /api/v1/cs/ {' \
+             'location /api/v1/passport/qr_login/ {' \
+             'location /api/v1/enterprise/conversations/ {' \
+             'location /api/v1/enterprise/organizations/ {'; do
+    blk="$(tpl_block "$f" "$loc")"
+    if [ -z "$blk" ]; then echo "TPLERR: 缺 API 精确前缀 location: $loc"; continue; fi
+    printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_backend:9800;' || echo "TPLERR: $loc 未指向 imboy_backend:9800"
+  done
+  # 禁止项：全 /api/v1/ 通配（两种书写形态）
+  grep -qE '^[[:space:]]*location /api/v1/ \{' "$f" && echo "TPLERR: 出现全 /api/v1/ 通配代理（禁止项）"
+  grep -qE '^[[:space:]]*location /api/v1/[[:space:]]*$' "$f" && echo "TPLERR: 出现全 /api/v1/ 通配代理（禁止项，无大括号形态）"
+  # 既有 Widget 面不变量（spot-check）
+  blk="$(tpl_block "$f" 'location ~ ^/api/v1/cs/widget/sessions/')"
+  printf '%s\n' "$blk" | grep -qF 'proxy_buffering off;' && printf '%s\n' "$blk" | grep -qF 'proxy_read_timeout 3600s;' \
+    || echo "TPLERR: Widget SSE 块不变量漂移（buffering off/3600s）"
+  blk="$(tpl_block "$f" 'location ^~ /w/ {')"
+  printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_backend:9800;' && printf '%s\n' "$blk" | grep -qF 'proxy_read_timeout 300s;' \
+    || echo "TPLERR: /w/ 动态 frame 块不变量漂移"
+  blk="$(tpl_block_at "$f" 'location / {' 2)"
+  printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_widget:8080;' || echo "TPLERR: location / 兜底不再指向静态容器（fail-closed 漂移）"
+  grep -qF 'location = /v1/loader.js' "$f"  || echo "TPLERR: 缺 loader 静态面"
+  grep -qF 'location ^~ /assets/' "$f"      || echo "TPLERR: 缺 assets 静态面"
+  grep -qF 'location ^~ /widget/ {' "$f"    || echo "TPLERR: 缺 widget 壳静态面"
+  # 安全头边界：server 级最小集恰一次；XFO/CSP/Cache-Control 零注入
+  [ "$(grep -cF 'add_header Strict-Transport-Security' "$f")" = "1" ] || echo "TPLERR: HSTS 须 server 级唯一来源"
+  grep -qF 'add_header X-Content-Type-Options nosniff' "$f" || echo "TPLERR: 缺 nosniff"
+  grep -qF 'add_header Referrer-Policy' "$f"                || echo "TPLERR: 缺 Referrer-Policy"
+  grep -q  'add_header X-Frame-Options' "$f"                && echo "TPLERR: 网关注入 XFO（禁止）"
+  grep -q  'add_header Content-Security-Policy' "$f"        && echo "TPLERR: 网关注入 CSP（禁止）"
+  grep -q  'add_header Cache-Control' "$f"                  && echo "TPLERR: 网关注入 Cache-Control（缓存头归容器）"
+  # upstream 计数：backend 9 处（2 SSE + /w/ + /seat/ + 5 组 API）；widget 5 处
+  [ "$(grep -cF 'proxy_pass http://imboy_backend:9800;' "$f")" = "9" ] || echo "TPLERR: backend upstream 数量漂移"
+  [ "$(grep -cF 'proxy_pass http://imboy_widget:8080;' "$f")" = "5" ]  || echo "TPLERR: widget upstream 数量漂移"
+}
+
+if [ -f "$CS_TEMPLATE" ]; then
+  TPL_ERRS="$(cs_template_contract_errors "$CS_TEMPLATE" | grep -c 'TPLERR' || true)"
+  if [ "${TPL_ERRS:-1}" = "0" ]; then
+    ok "模板合同检查器全绿（Seat frame/静态/SSE/四组 API/负向禁止项/既有 Widget 面不变量）"
+  else
+    bad "模板合同检查器报错" "$(cs_template_contract_errors "$CS_TEMPLATE" | head -5 | tr '\n' ';')"
+  fi
+
+  # 逐项正例（可读性：失败时能直接定位漂移面）
+  grep -qF 'location ^~ /seat/ {' "$CS_TEMPLATE" \
+    && ok "A01 /seat/ 动态 frame 块存在" || bad "A01 /seat/ 块缺失" ""
+  grep -qF 'location ^~ /seat-assets/ {' "$CS_TEMPLATE" \
+    && ok "A01 /seat-assets/ 静态块存在" || bad "A01 /seat-assets/ 块缺失" ""
+  for loc in '/api/v1/cs/widget/' '/api/v1/cs/' '/api/v1/passport/qr_login/' \
+             '/api/v1/enterprise/conversations/' '/api/v1/enterprise/organizations/'; do
+    grep -qF "location $loc {" "$CS_TEMPLATE" \
+      && ok "A02 API 精确前缀存在: $loc" || bad "A02 API 前缀缺失: $loc" ""
+  done
+  if grep -qE '^[[:space:]]*location /api/v1/ \{' "$CS_TEMPLATE"; then
+    bad "A02 全 /api/v1/ 通配出现（禁止项）" ""
+  else
+    ok "A02 无全 /api/v1/ 通配（四组之外不达 backend）"
+  fi
+
+  # 负例：变异副本必须被检查器捕获（证明回归可测）
+  tpl_neg() { # $1=描述 $2=sed 表达式（BSD sed 兼容）
+    local m="$TMP_ROOT/tpl-mutant.$$" n
+    sed -E "$2" "$CS_TEMPLATE" >"$m"
+    n="$(cs_template_contract_errors "$m" | grep -c 'TPLERR' || true)"
+    rm -f "$m"
+    if [ "${n:-0}" -ge 1 ]; then ok "模板负例被捕获: $1"; else bad "模板负例未被捕获: $1" "检查器误放行"; fi
+  }
+  tpl_neg "删除 /seat/ 动态块"           '/location \^~ \/seat\/ \{/,/^[[:space:]]*}[[:space:]]*$/d'
+  tpl_neg "删除 /seat-assets/ 静态块"    '/location \^~ \/seat-assets\/ \{/,/^[[:space:]]*}[[:space:]]*$/d'
+  tpl_neg "Seat SSE 关缓冲被移除"        '/proxy_buffering off;/d'
+  tpl_neg "qr_login 组被改名（组缺失）"  's/location \/api\/v1\/passport\/qr_login\/ \{/location \/api\/v1\/passport\/qr_loginX \{/'
+  tpl_neg "cs/ 前缀被放大为全通配"       's/location \/api\/v1\/cs\/ \{/location \/api\/v1\/ \{/'
+  # seat-assets 被注入缓存头：awk 注入（BSD sed 替换串不支持 \n）
+  m_inject="$TMP_ROOT/tpl-mutant-inject.$$"
+  awk '{print} /location \^~ \/seat-assets\/ \{/ {print "            add_header Cache-Control \"public, max-age=31536000, immutable\" always;"}' \
+    "$CS_TEMPLATE" >"$m_inject"
+  n_inject="$(cs_template_contract_errors "$m_inject" | grep -c 'TPLERR' || true)"
+  rm -f "$m_inject"
+  if [ "${n_inject:-0}" -ge 1 ]; then
+    ok "模板负例被捕获: seat-assets 被注入缓存头"
+  else
+    bad "模板负例未被捕获: seat-assets 被注入缓存头" "检查器误放行"
+  fi
+else
+  bad "cs-widget 模板缺失" "$CS_TEMPLATE"
 fi
 
 # =============================================================================

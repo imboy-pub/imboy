@@ -98,7 +98,9 @@ fi
 # ---- A1) admin 侧产物名 == 合同 --------------------------------------------
 ADMIN_DIR="${ADMIN_REPO_DIR:-$REPO_ROOT/../imboyadmin}"
 if [ ! -d "$ADMIN_DIR" ]; then
-  echo "⚠️  SKIPPED: imboyadmin 仓不可达（$ADMIN_DIR）——admin 侧未核对" >&2
+  # ${ADMIN_DIR} 必须加大括号：紧随的全角字符会被 bash 并入变量名解析
+  # （darwin arm64 bash 3.2 实测），导致 unbound variable 而非预期 exit 3。
+  echo "⚠️  SKIPPED: imboyadmin 仓不可达（${ADMIN_DIR}）——admin 侧未核对" >&2
   echo "    指定：ADMIN_REPO_DIR=/path/to/imboyadmin $0" >&2
   exit 3
 fi

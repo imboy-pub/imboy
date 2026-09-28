@@ -208,9 +208,13 @@ else
 fi
 
 # C-52：用真实执行行证明 reload → stop/drain → migrate，不能拿章节标题充数。
+# 模式同步说明（2026-09-28）：blue_green 的迁移命令现按 staging 组装为
+# make ctl ARGS='$MIGRATE_CMD'（db migrate / db migrate --dir ...），
+# 字面量 'db migrate' 模式不再命中执行行；本修复只更新 grep 形状，
+# 时序不变量（reload < stop < migrate）与断言强度不变。
 SW_LINE="$(grep -nE '^[[:space:]]*nginx -t && nginx -s reload' "$DEPLOY" | tail -1 | cut -d: -f1)"
 STOP_LINE="$(grep -nE '^[[:space:]]+stop_old_node$' "$DEPLOY" | tail -1 | cut -d: -f1)"
-MG_LINE="$(grep -nE "^[[:space:]]*ssh_exec .*make ctl ARGS='db migrate'" "$DEPLOY" | head -1 | cut -d: -f1)"
+MG_LINE="$(grep -nE "^[[:space:]]*ssh_exec .*make ctl ARGS=" "$DEPLOY" | head -1 | cut -d: -f1)"
 if [ -n "$SW_LINE" ] && [ -n "$STOP_LINE" ] && [ -n "$MG_LINE" ] \
    && [ "$SW_LINE" -lt "$STOP_LINE" ] && [ "$STOP_LINE" -lt "$MG_LINE" ]; then
   ok "真实时序为 reload → stop/drain → migrate（${SW_LINE} < ${STOP_LINE} < ${MG_LINE}）"

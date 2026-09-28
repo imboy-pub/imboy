@@ -22,6 +22,9 @@ cleanup() {
 trap cleanup EXIT
 
 cp scripts/imboy-deploy.sh "$TEST_DEPLOY"
+# 1b2ca499 起 imboy-deploy.sh 对 api/cs/all 惰性 source 生产配置键预检库，
+# harness 需同步携带（baseline-drift 机械同步，不改任何 oracle 语义）。
+cp scripts/lib/check_prod_config.sh "$TEST_SCRIPT_DIR/lib/check_prod_config.sh"
 printf '%s\n' 0.0.0 >"$TMP_ROOT/VERSION"
 printf '%s\n' '## [1.0.0] - 2026-09-14' >"$TMP_ROOT/CHANGELOG.md"
 printf '%s\n' \
@@ -81,10 +84,22 @@ case "$cmd" in
     [ "${MOCK_GATE_STATE:-ok}" = ok ] || exit 2
     printf '%s\n' "${MOCK_CTL_NODE:-08171234@127.0.0.1}"
     ;;
+  *"command -v escript"*)
+    # check_prod_config 远端守卫执行（1b2ca499）：离线桩回 OK，保证 api 流
+    # 事务时序不被新预检阻断（守卫逻辑属生产路径，另有其卡负责）。
+    printf 'CONFIG_KEYS_OK\n'
+    ;;
   *"make ctl ARGS='db migrate'"*)
     printf '%s\n' "$cmd" >>"$MOCK_LOG"
     ;;
 esac
+exit 0
+MOCK
+
+# check_prod_config 守卫先把临时 escript scp 到远端 /tmp：无此桩会走真实
+# scp（example.invalid 必然失败）。离线桩直接成功。
+cat >"$MOCK_BIN/scp" <<'MOCK'
+#!/usr/bin/env bash
 exit 0
 MOCK
 chmod +x "$MOCK_BIN/ssh"
@@ -97,7 +112,7 @@ case " $* " in
   *) exit 0 ;;
 esac
 MOCK
-chmod +x "$MOCK_BIN/rsync" "$MOCK_BIN/git" "$TEST_SCRIPT_DIR/lib/blue_green_deploy.sh"
+chmod +x "$MOCK_BIN/rsync" "$MOCK_BIN/scp" "$MOCK_BIN/git" "$TEST_SCRIPT_DIR/lib/blue_green_deploy.sh"
 
 PASS=0
 FAIL=0

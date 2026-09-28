@@ -174,3 +174,14 @@ $ diff <(jq -S '.services.imboy_nginx.depends_on | keys' /tmp/cs_a.json) \
     && echo DEPENDS_ON_KEYS_IDENTICAL
 DEPENDS_ON_KEYS_IDENTICAL       # 两侧同为 backend/admin/livekit/widget 四键
 ```
+
+---
+
+## 6. Seat 控制台嵌入增量 / Seat console embed delta
+
+`nginx/templates/cs-widget.conf.template` 已扩展 Seat 控制台嵌入路由
+（`/seat/:public_seat_console_id` 动态 frame、`/seat-assets/` 静态别名、
+四组 Seat API 精确代理与 Seat SSE）。overlay / community compose 无需任何
+配置增量（渲染同一模板）；路由细节、安全头边界与回滚方法见
+[cs-seat-console-embed.md](./cs-seat-console-embed.md)。
+**本地候选验证完成，生产未部署未授权。**
