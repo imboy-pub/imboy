@@ -48,16 +48,10 @@ start(_Type, _Args) ->
     %% 内部异常自吞，不阻断主启动链
     ok = imboy_telemetry:init(),
     _ = imboy_syn:init(),
-    % 初始化 TSID 分布式ID生成器
-    TsidDcId = application:get_env(imboy, tsid_dc_id, 1),
-    TsidNodeId = application:get_env(imboy, tsid_node_id, 1),
-    TsidDcBits = application:get_env(imboy, tsid_dc_bits, 3),
-    ok = elib_tsid:init(#{
-        dc_id => TsidDcId,
-        node_id => TsidNodeId,
-        dc_bits => TsidDcBits,
-        names => tsid_generator_names()
-    }),
+    %% TSID-06：TSID 初始化移交 imboy_sup 的 elib_tsid_guard child
+    %% （lifetime lock → durable fence → 完整 runtime 发布）。监听器先于
+    %% sup 启动的窗口内 generate 会 fail-closed 报 not_initialized，
+    %% 流量由 /readyz（guard 状态）就绪门挡住。
     % 初始化集群管理（join_cluster 内部已含 License 节点数告警）
     _ = imboy_cluster:init(),
     % 初始化验证码 ETS 表

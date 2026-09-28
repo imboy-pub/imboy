@@ -51,6 +51,8 @@
 -export([reset_for_test/0]).
 %% TSID-04：reservation 计数（观测 instrumentation，非公开 API 契约）
 -export([reservation_count/0]).
+%% TSID-06：guard 集成 seam（guarded runtime 发布与 fence 检查共用）
+-export([runtime_handle/0, guarded_publish/1, combine_node/3]).
 
 %% ===================================================================
 %% 位布局常量
@@ -258,6 +260,77 @@ publish_runtime(Cursor, RegLock, Stats, CombinedNode, DcBits, AllNames, Lead, Ca
     persistent_term:put(?PT_RUNTIME, Handle),
     ok.
 
+%% @private TSID-06 guard 集成：发布 guarded runtime。
+%% cursor 初始化为 (FloorTs bsl 11) - 1——首个可分配 slot 在 FloorTs 毫秒
+%% seq=0，绝不低于 durable floor；guard_ref atomics[status, safe_before]
+%% 只在 guard 成功持久化后由 guard 写入（publish-before-durable 机械不存在）。
+%% 同 VM guard 重启：新 floor 恒 >= 既有 cursor（fence 不变式），只前跳
+%% 不回退（跳号合法，重复不合法）。
+-spec guarded_publish(map()) -> ok | {error, term()}.
+guarded_publish(#{
+    combined_node := CombinedNode,
+    dc_bits := DcBits,
+    names := Names,
+    max_logical_lead_ms := Lead,
+    capacity_wait_timeout_ms := CapWait,
+    max_batch_chunk := MaxChunk,
+    cursor_floor_ts := FloorTs,
+    guard_ref := GRef,
+    guard_pid := GPid
+}) ->
+    case
+        is_integer(CombinedNode) andalso CombinedNode >= 0 andalso CombinedNode =< 1023 andalso
+            is_integer(FloorTs) andalso FloorTs >= 0 andalso FloorTs =< ?MAX_REL_TS andalso
+            is_integer(Lead) andalso Lead >= 0 andalso
+            is_integer(CapWait) andalso CapWait > 0 andalso
+            is_integer(MaxChunk) andalso MaxChunk > 0 andalso MaxChunk =< (Lead + 1) * 2048
+    of
+        true ->
+            %% 配置冻结：同 VM 已有 runtime 时仅接受幂等同配置 guard 重启
+            Existing = persistent_term:get(?PT_RUNTIME, undefined),
+            case Existing of
+                undefined ->
+                    ok;
+                #{
+                    combined_node := CombinedNode,
+                    dc_bits := DcBits,
+                    max_logical_lead_ms := Lead,
+                    capacity_wait_timeout_ms := CapWait,
+                    max_batch_chunk := MaxChunk
+                } ->
+                    ok;
+                _ ->
+                    error(
+                        {elib_tsid_already_initialized, #{
+                            existing => maps:with(
+                                [combined_node, dc_bits, max_logical_lead_ms], Existing
+                            )
+                        }}
+                    )
+            end,
+            Cursor = atomics:new(1, [{signed, true}]),
+            ok = atomics:put(Cursor, 1, (FloorTs bsl ?SEQUENCE_BITS) - 1),
+            persistent_term:put(?PT_NODE_ID, CombinedNode),
+            persistent_term:put(?PT_DC_BITS, DcBits),
+            Handle = #{
+                cursor => Cursor,
+                reg_lock => atomics:new(1, [{signed, true}]),
+                stats => atomics:new(1, [{signed, true}]),
+                combined_node => CombinedNode,
+                dc_bits => DcBits,
+                names => sets:from_list([default | Names], [{version, 2}]),
+                max_logical_lead_ms => Lead,
+                capacity_wait_timeout_ms => CapWait,
+                max_batch_chunk => MaxChunk,
+                guard_ref => GRef,
+                guard_pid => GPid
+            },
+            persistent_term:put(?PT_RUNTIME, Handle),
+            ok;
+        false ->
+            {error, {elib_tsid_invalid_config, #{guard_publish => bad_args}}}
+    end.
+
 %% @doc 注册命名生成器
 %%
 %% 可在 init/1 之后动态注册新的命名生成器。
@@ -299,6 +372,12 @@ registered() ->
         error ->
             [default]
     end.
+
+%% @private 组合 10-bit CombinedNode（guard 配置装配用）
+-spec combine_node(non_neg_integer(), non_neg_integer(), 0..10) -> 0..1023.
+combine_node(DcId, NodeId, DcBits) ->
+    NodeBits = ?NODE_BITS - DcBits,
+    (DcId bsl NodeBits) bor NodeId.
 
 %% @private 读取当前 runtime handle
 -spec runtime_handle() -> {ok, map()} | error.
@@ -433,7 +512,7 @@ reserve(#{cursor := Cursor} = Handle, Count, Deadline) ->
 
 %% @private lead 检查 + CAS 提交（单值与 chunk 共用）
 commit_reserve(Handle, Old, First, Last, Deadline, Count) ->
-    #{cursor := Cursor, stats := Stats, max_logical_lead_ms := MaxLead} = Handle,
+    #{max_logical_lead_ms := MaxLead} = Handle,
     Now = wall_clock_ms() - ?EPOCH_MS,
     Lead = (Last bsr ?SEQUENCE_BITS) - Now,
     case Lead > MaxLead of
@@ -451,22 +530,73 @@ commit_reserve(Handle, Old, First, Last, Deadline, Count) ->
                     )
             end;
         false ->
-            case atomics:compare_exchange(Cursor, 1, Old, Last) of
+            %% durable fence 检查（TSID-06，仅 guarded runtime）：
+            %% ts 必须低于已持久化 safe_before；逼近则同步请求 guard
+            %% 续租（合并去重），绝不越过 durable horizon
+            case fence_gate(Handle, Last, Deadline) of
                 ok ->
-                    _ = atomics:add(Stats, 1, 1),
-                    {First, Last};
-                _Other ->
-                    %% 冲突：deadline 预算内用刷新后的墙钟重试（F-05）
-                    case monotonic_ms() >= Deadline of
+                    commit_cas(Handle, Old, First, Last, Deadline, Count);
+                retry ->
+                    reserve(Handle, Count, Deadline)
+            end
+    end.
+
+commit_cas(Handle, Old, First, Last, Deadline, Count) ->
+    #{cursor := Cursor, stats := Stats} = Handle,
+    case atomics:compare_exchange(Cursor, 1, Old, Last) of
+        ok ->
+            _ = atomics:add(Stats, 1, 1),
+            {First, Last};
+        _Other ->
+            %% 冲突：deadline 预算内用刷新后的墙钟重试（F-05）
+            case monotonic_ms() >= Deadline of
+                true ->
+                    error(
+                        {elib_tsid_capacity_exhausted, #{
+                            phase => cas_contention
+                        }}
+                    );
+                false ->
+                    reserve(Handle, Count, Deadline)
+            end
+    end.
+
+%% @private fence 门（standalone 测试 runtime 无 guard_ref 直通）
+%% 返回 ok=可提交 | retry=已续租需重走 reserve；fenced/续租失败直接抛
+-spec fence_gate(map(), non_neg_integer(), integer()) -> ok | retry.
+fence_gate(Handle, Last, Deadline) ->
+    case maps:find(guard_ref, Handle) of
+        error ->
+            ok;
+        {ok, GRef} ->
+            case atomics:get(GRef, 1) of
+                1 ->
+                    LastTs = Last bsr ?SEQUENCE_BITS,
+                    case LastTs >= atomics:get(GRef, 2) of
                         true ->
-                            error(
-                                {elib_tsid_capacity_exhausted, #{
-                                    phase => cas_contention
-                                }}
-                            );
+                            renew_fence(Handle, LastTs, Deadline);
                         false ->
-                            reserve(Handle, Count, Deadline)
-                    end
+                            ok
+                    end;
+                Status ->
+                    error({elib_tsid_fenced, #{status => Status}})
+            end
+    end.
+
+%% @private 请求 guard 续租并重验；预算耗尽即 typed 失败
+-spec renew_fence(map(), non_neg_integer(), integer()) -> retry.
+renew_fence(#{guard_pid := GPid} = _Handle, Horizon, Deadline) ->
+    Remaining = Deadline - monotonic_ms(),
+    case Remaining =< 0 of
+        true ->
+            error({elib_tsid_fenced, #{phase => renew_deadline}});
+        false ->
+            case gen_server:call(GPid, {renew_fence, Horizon}, Remaining) of
+                {ok, _NewSafeBefore} ->
+                    %% 续租成功：重走完整 reserve（含新 fence 检查）
+                    retry;
+                {error, Reason} ->
+                    error(Reason)
             end
     end.
 

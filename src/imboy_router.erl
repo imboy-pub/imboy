@@ -34,6 +34,10 @@ get_routes() ->
             % 此前 /healthz 只在 throttle_middleware 白名单里出现，没有路由 → 404，
             % compose/helm 的 healthcheck 配了也永远不健康。
             {"/healthz", healthz_handler, #{}},
+            % TSID-06：liveness 只表示 BEAM 活着；readiness 聚合 PG 与
+            % TSID guard；/healthz 保留为 readiness 兼容别名
+            {"/livez", healthz_handler, #{mode => live}},
+            {"/readyz", healthz_handler, #{}},
 
             {"/privacy-policy", cowboy_static,
                 {priv_file, imboy, "static/legal/privacy_policy.html"}},
@@ -1493,6 +1497,8 @@ open() ->
         <<"/privacy-policy">>,
         <<"/account-deletion">>,
         <<"/healthz">>,
+        <<"/livez">>,
+        <<"/readyz">>,
         <<"/metrics">>,
         %% Phase 4 T4.1：A2A 发现端点按规范匿名可达
         <<"/.well-known/agent.json">>,

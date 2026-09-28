@@ -980,7 +980,12 @@ init_limit_validation_test() ->
 %% 本测试验证唯一性与顺序，非容量行为：聚合需求 ~2M/s 在 2048/ms 节点
 %% 容量上限附近，deadline 放宽到 5000ms 避免竞争不公造成 capacity_exhausted
 %% （deadline 语义由 rollback 三态测试单独覆盖）。
-mixed_concurrency_1m_test() ->
+mixed_concurrency_1m_test_() ->
+    %% 1M 生成 + usort 常在 2-4s 之间浮动：显式 60s timetrap 替代
+    %% eunit 默认 5s（避免环境噪声导致的边缘超时）
+    {timeout, 60, fun mixed_concurrency_1m_body/0}.
+
+mixed_concurrency_1m_body() ->
     elib_tsid:reset_for_test(),
     ok = elib_tsid:init(#{
         dc_id => 1,

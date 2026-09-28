@@ -9,6 +9,50 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+%% @private TSID guard child：lifetime lock + durable fence + runtime 发布。
+%% 配置来自 application env（与 imboy_app 旧内联 init 同源），state 目录
+%% 默认 priv/tsid（TSID-07 在部署配置中显式化为持久卷挂载点）。
+tsid_guard_spec() ->
+    #{
+        id => elib_tsid_guard,
+        start => {elib_tsid_guard, start_link, [tsid_guard_config()]},
+        restart => permanent,
+        shutdown => 10000,
+        type => worker,
+        modules => [elib_tsid_guard]
+    }.
+
+tsid_guard_config() ->
+    DcId = application:get_env(imboy, tsid_dc_id, 1),
+    NodeId = application:get_env(imboy, tsid_node_id, 1),
+    DcBits = application:get_env(imboy, tsid_dc_bits, 3),
+    StateDir =
+        case application:get_env(imboy, tsid_state_dir, default) of
+            default ->
+                case code:priv_dir(imboy) of
+                    {error, bad_name} -> "priv/tsid";
+                    Priv -> filename:join(Priv, "tsid")
+                end;
+            Dir ->
+                Dir
+        end,
+    #{
+        root => StateDir,
+        combined_node => elib_tsid:combine_node(DcId, NodeId, DcBits),
+        dc_bits => DcBits,
+        names => imboy_app:tsid_generator_names(),
+        store_bootstrap => application:get_env(imboy, tsid_store_bootstrap, existing),
+        lock_provider => flock,
+        max_logical_lead_ms => application:get_env(imboy, tsid_max_logical_lead_ms, 5),
+        capacity_wait_timeout_ms =>
+            application:get_env(imboy, tsid_capacity_wait_timeout_ms, 100),
+        fence_window_ms => application:get_env(imboy, tsid_fence_window_ms, 1000),
+        fence_renew_margin_ms =>
+            application:get_env(imboy, tsid_fence_renew_margin_ms, 100),
+        startup_clock_wait_timeout_ms =>
+            application:get_env(imboy, tsid_startup_clock_wait_timeout_ms, 5000)
+    }.
+
 %% @doc 初始化 supervisor
 %% Note: Side effects in init/1 may cause issues, use ok to ignore return values
 init([]) ->
@@ -276,6 +320,11 @@ init([]) ->
 
     Specs =
         [
+            %% TSID-06：durable future fence guard 必须早于任何可生成 ID 的
+            %% worker（计划 §8.3）。guard 启动失败（锁被同 Node 双实例持有、
+            %% store 损坏、配置非法）即拒绝进入可生成状态（fail-closed）；
+            %% 监听器早于本 sup 启动，就绪窗口由 /readyz（guard 状态）挡住。
+            tsid_guard_spec(),
             IMBoyCache,
             % , PgoChildSpec
             DomainEventBus,

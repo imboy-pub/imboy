@@ -7,11 +7,16 @@
 %%%   - compose/helm 的 healthcheck 配了也永远不健康
 %%%   - deploy.sh 的就绪判断只能退化成"端口通不通"，而端口通 ≠ 服务可用
 %%%
-%%% 语义（刻意区分，不合并成一个"活着"）：
+%%% TSID-06 起语义三分（计划 §4.1）：
+%%%   /livez  —— liveness：BEAM/Cowboy 能执行到这里即活着；依赖故障
+%%%              （TSID guard fenced / PG 挂）不触发容器重启风暴
+%%%   /readyz —— readiness：聚合 PostgreSQL 与 TSID guard；不可生成 ID
+%%%              或连不上库时 503，不接流量
+%%%   /healthz —— /readyz 的兼容别名（保持既有响应字段并追加 tsid）
+%%%
+%%% 判据：
 %%%   200 = 依赖就绪，可以接流量
-%%%   503 = 进程活着但**依赖不可用**（当前只看 PG），不应被灌流量
-%%% 判据要求的正是"PG 挂掉返 503" —— 若 PG 挂了仍返 200，蓝绿切流会把流量
-%%% 切到一个连不上库的节点上，比不切更糟。
+%%%   503 = 进程活着但**依赖不可用**，不应被灌流量
 %%%
 %%% 这个端点在**每次探活**时被打，因此：
 %%%   - 不查业务表，只做一次最轻的连通性探测（SELECT 1）
@@ -20,8 +25,8 @@
 %%% ⚠️ 这里**刻意不做缓存**。初版用 persistent_term 缓存 2s，是错的：
 %%%   persistent_term:put/2 每次写会触发**全局 GC**（扫描所有进程寻找旧值引用），
 %%%   代价与进程数成正比 —— 本节点每个 WS 连接一个进程，量级上千。
-%%%   而探活恰好在**部署期**最密集（deploy.sh 每 2s 探一次），等于在系统最吃紧
-%%%   的时刻反复触发全局 GC。
+%%%   而探活恰好在**部署期**最密集（deploy.sh 每 2s 探一次），等于在系统最吃紧的
+%%%   时刻反复触发全局 GC。
 %%%   缓存本来要省的那点开销：SELECT 1 对 PG 是白菜价，探活间隔 30s、
 %%%   部署轮询总共也就 20 次。**为省一个不存在的开销引入一个真实的抖动源。**
 %%% @end
@@ -32,8 +37,25 @@
 %% 运行镜像是 debian-slim，没有 curl/wget，探不了 HTTP；
 %% 但 release 自带 `bin/imboy eval`，直接调这个函数即可，无需额外工具。
 -export([probe_db/0]).
+%% TSID-06：tsid_readiness/0 供探针/部署脚本直调；probe/2 为纯决策
+%% 函数，EUnit 合同测试与端点逻辑共用同一判据。
+-export([tsid_readiness/0, probe/2]).
 
+%% @doc /livez：liveness 恒 200（BEAM 活着即可，不看任何依赖）
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
+init(Req0, #{mode := live} = State) ->
+    Req = cowboy_req:reply(
+        200,
+        #{
+            <<"content-type">> => <<"application/json; charset=utf-8">>,
+            %% 探针结果绝不能被任何中间层缓存，否则挂了还一直返 200
+            <<"cache-control">> => <<"no-store">>
+        },
+        <<"{\"status\":\"live\"}">>,
+        Req0
+    ),
+    {ok, Req, State};
+%% @doc /readyz 与 /healthz（兼容别名）：PG + TSID guard 聚合
 init(Req0, State) ->
     %% ⚠️ 版本号**只对内网可见**。nginx 对 /metrics 返 403，但**没有拦 /healthz**，
     %% 所以本端点是公网可达且匿名的；向匿名者精确报版本号等于替攻击者做 CVE 匹配。
@@ -47,28 +69,52 @@ init(Req0, State) ->
             false -> <<"hidden">>
         end,
     Nodes = nodes_json(lists:usort([node() | nodes()])),
-    {Code, Body} =
-        case probe_db() of
-            true ->
-                {200,
-                    <<"{\"status\":\"ok\",\"db\":\"up\",\"nodes\":", Nodes/binary,
-                        ",\"version\":\"", Vsn/binary, "\"}">>};
-            false ->
-                {503,
-                    <<"{\"status\":\"degraded\",\"db\":\"down\",\"nodes\":", Nodes/binary,
-                        ",\"version\":\"", Vsn/binary, "\"}">>}
-        end,
+    Tsid = tsid_readiness(),
+    {Code, Body} = probe_body(probe_db(), Tsid, Vsn, Nodes),
     Req = cowboy_req:reply(
         Code,
         #{
             <<"content-type">> => <<"application/json; charset=utf-8">>,
-            %% 探针结果绝不能被任何中间层缓存，否则挂了还一直返 200
             <<"cache-control">> => <<"no-store">>
         },
         Body,
         Req0
     ),
     {ok, Req, State}.
+
+probe_body(true, ready, Vsn, Nodes) ->
+    {200,
+        <<"{\"status\":\"ok\",\"db\":\"up\",\"tsid\":\"ready\",\"nodes\":", Nodes/binary,
+            ",\"version\":\"", Vsn/binary, "\"}">>};
+probe_body(true, Tsid, Vsn, Nodes) ->
+    TsidBin = atom_to_binary(Tsid, utf8),
+    {503,
+        <<"{\"status\":\"degraded\",\"db\":\"up\",\"tsid\":\"", TsidBin/binary, "\",\"nodes\":",
+            Nodes/binary, ",\"version\":\"", Vsn/binary, "\"}">>};
+probe_body(false, Tsid, Vsn, Nodes) ->
+    TsidBin = atom_to_binary(Tsid, utf8),
+    {503,
+        <<"{\"status\":\"degraded\",\"db\":\"down\",\"tsid\":\"", TsidBin/binary, "\",\"nodes\":",
+            Nodes/binary, ",\"version\":\"", Vsn/binary, "\"}">>}.
+
+%% @doc TSID guard readiness：从 runtime handle 的 guard_ref atomics 读取，
+%% 不查询 guard 进程、不暴露路径等敏感信息。
+%% not_configured = 未启用 guard 的模式（本地裸 init 开发态）。
+-spec tsid_readiness() -> ready | fenced | stopping | not_configured.
+tsid_readiness() ->
+    elib_tsid_guard:probe().
+
+%% @doc 纯决策函数（EUnit 合同测试与端点共用判据）：
+%% live → 恒 200；ready → 聚合 db 与 tsid，任一不可用即 503。
+-spec probe(live | ready, #{db := boolean(), tsid := atom()}) ->
+    {200 | 503, live | ready}.
+probe(live, _) ->
+    {200, live};
+probe(ready, #{db := Db, tsid := Tsid}) ->
+    case {Db, Tsid} of
+        {true, ready} -> {200, ready};
+        _ -> {503, ready}
+    end.
 
 %% @doc 最轻的连通性探测：`SELECT 1`。
 %% 不查任何业务表 —— 业务表为空是合法状态，不该被判成不健康。
