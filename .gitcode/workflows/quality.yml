@@ -1,0 +1,111 @@
+# GitCode 流水线兜底 — imboy 质量快门（零外部依赖：迁移门 + 架构门）
+#
+# 背景：本仓远端主推 gitcode，.github/workflows/（GitHub Actions）在 gitcode 上
+# 不会触发，本文件是 gitcode 侧唯一的远端质量门。本地 lefthook（pre-commit +
+# pre-push gradualize）为第一道且已实证可靠，此处只兜零依赖的纯 bash 门。
+#
+# 范围说明（为何不放 Erlang 构建/eunit/elvis/contract/secrets）：
+#   - Erlang/OTP 28 在 gitcode runner 的安装配方未经验证（无 setup-beam 等第三方
+#     action 兼容性结论），构建+测试链路由本机 pre-push 与 GitHub CI 承担；
+#   - gitleaks 等需从 GitHub release 下载二进制，gitcode runner 网络可达性未知；
+#   - 以下两个 job 纯 bash（find/grep/awk），任何 Linux runner 都能跑。
+#
+# 语法依据（2026-09-29 docs.gitcode.com 流水线章节）：
+#   - 文件位置 .gitcode/workflows/*.yml（仅识别 .yml/.yaml）
+#   - checkout 非自动，须显式 uses: checkout（内置 action）
+#   - runs-on 为标签数组 [os, arch, 规格]；slim=1C/4G
+name: quality
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+jobs:
+  migrations:
+    name: Migration files gate (ADR-0002)
+    runs-on: [ubuntu-latest, x64, slim]
+    timeout-minutes: 5
+    steps:
+      - name: 检出代码
+        uses: checkout
+
+      - name: 命名格式 / up-down 成对 / 版本号唯一
+        run: bash scripts/check_migrations.sh
+
+  architecture-gates:
+    name: Architecture gates (layer / size / silent-catch)
+    runs-on: [ubuntu-latest, x64, small]
+    timeout-minutes: 5
+    steps:
+      - name: 检出代码
+        uses: checkout
+
+      # 移植自 .github/workflows/quality.yml（GitHub 已验证配方，2026-06-03 P1-5）。
+      # ⚠️ 基线 2026-09-29 按 gitcode 首跑实测重设：GitHub Actions 因 github 远端
+      # 长期未推早已失守，enterprise_* 存量（12 条层违规 / 41 个超标文件）无人拦
+      # 着进了 main。本门棘轮语义 = 只拦新增，存量修复方向不变。
+      - name: 层边界（API→Repo ≤ 12 / Repo→Logic 必须为 0）
+        run: |
+          set -euo pipefail
+
+          # 注释里提到一个模块名不是调用它。Erlang 注释用几个 % 都合法——
+          # 剥掉 file:line 前缀后从第一个 % 截断，再重新判定（防假红）。
+          violations() {
+            grep -rn "$1" "$2" --include="*.erl" 2>/dev/null | awk -v pat="$1" '
+              { line = $0
+                sub(/^[^:]*:[0-9]+:/, "", line)
+                sub(/%.*/, "", line)
+                if (line ~ pat) print
+              }' || true
+          }
+
+          echo "=== API → Repo (baseline 12, ratchet) ==="
+          api_repo_hits=$(violations "_repo:" src/api/)
+          api_repo=$(printf '%s' "$api_repo_hits" | grep -c . || true)
+          echo "API→Repo violations: $api_repo"
+          if [ "$api_repo" -gt 12 ]; then
+            echo "$api_repo_hits"
+            echo "::error::API→Repo violations $api_repo exceed baseline 12 (ratchet)"
+            exit 1
+          fi
+
+          echo "=== Repo → Logic (must be 0) ==="
+          repo_logic_hits=$(violations "_logic:" src/repo/)
+          repo_logic=$(printf '%s' "$repo_logic_hits" | grep -c . || true)
+          echo "Repo→Logic violations: $repo_logic"
+          if [ "$repo_logic" -gt 0 ]; then
+            echo "$repo_logic_hits"
+            echo "::error::Repo layer must not call Logic directly ($repo_logic violations)"
+            exit 1
+          fi
+
+      - name: 文件大小（手写 .erl ≤ 800 行，基线 41 个 ratchet）
+        run: |
+          set -euo pipefail
+          # 基线 41（2026-09-29 gitcode 实测重设，原 GitHub 基线 15 已失真）：
+          # 只拦第 42 个新增超标文件。
+          oversized=$(find src -name "*.erl" ! -name "imboy_pb.erl" -exec wc -l {} + \
+            | awk '$1 > 800 && !/total/ {print}' || true)
+          if [ -n "$oversized" ]; then
+            count=$(echo "$oversized" | wc -l | tr -d ' ')
+            echo "::warning::$count files exceed 800 lines (baseline 41 files, ratchet)"
+            echo "$oversized"
+            if [ "$count" -gt 41 ]; then
+              echo "::error::New oversized files detected (baseline 41, found $count)"
+              exit 1
+            fi
+          fi
+
+      - name: 静默吞错（catch _:_ 必须为 0）
+        run: |
+          set -euo pipefail
+          silent=$(grep -rn "catch _:_ ->" src/ --include="*.erl" | grep -vc "%%" || true)
+          echo "Silent catch _:_ count: $silent"
+          if [ "$silent" -gt 0 ]; then
+            echo "::error::Found $silent silent catch _:_ — use catch _:Err + logger:warning instead"
+            grep -rn "catch _:_ ->" src/ --include="*.erl" | grep -v "%%"
+            exit 1
+          fi
