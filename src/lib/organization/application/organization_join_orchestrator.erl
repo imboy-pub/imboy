@@ -2,16 +2,18 @@
 
 %%% @doc Organization 加入编排（GZAPP-01 核心）。
 %%%
-%%% 统一入口 `join_tx/4`：同一事务内完成「org 成员 → 默认 Workspace 成员 →
+%%% 统一入口 `join_tx/5`：同一事务内完成「org 成员 → 默认 Workspace 成员 →
 %%% 全员群(General) → 公告频道(Announcements)」四级落地，被两个上游共享：
 %%%
 %%%   1. `organization_invitation_app:accept/4` 的 membership_hook
 %%%      （organization_api_handler 注入，invitation 定向邀请接受链）；
-%%%   2. `organization_invite_code_app:join_by_code/3`（org 邀请码加入链）。
+%%%   2. `organization_invite_code_app`（org 邀请码加入链，码上携带初始
+%%%      role：admin|member，缺省 member——角色由发码方决定）。
 %%%
 %%% 编排语义（与广州企业 APP 闭环 V1 冻结）：
-%%%   * 同事务 upsert organization_member(role=member)——幂等：active 同角色
-%%%     unchanged；active 异角色 role_conflict 409（不降级既有角色）；
+%%%   * 同事务 upsert organization_member(role=入参 Role，缺省 member)——
+%%%     幂等：active 同角色 unchanged；active 异角色 role_conflict 409
+%%%     （不降级既有角色）；
 %%%   * `organization_default_workspace_pg:find_tx/2` 读显式默认 WS
 %%%     （C05：不回落 min-ID 推导）；**默认 WS 缺失时只写 org member
 %%%     （不阻塞，workspace_id => none）**；
@@ -29,7 +31,7 @@
 %%%     Group Member ⊆ Workspace Member 校验依赖先写 workspace_member
 %%%     （同事务可见）。
 
--export([join_tx/4, membership_hook/2]).
+-export([join_tx/5, membership_hook/2]).
 
 -include("log.hrl").
 
@@ -38,16 +40,19 @@
 %% ===================================================================
 
 %% @doc 同事务加入编排。Outcome = joined | unchanged（org member 维度）。
+%% Role = 凭证（码/邀请）携带的初始角色，仅 admin|member 生效，其余防御
+%% 归一 member（发码方上游已校验；DB CHECK 兜底）。
 %% Summary = #{organization_id, workspace_id, group_id, channel_id}，
 %% 默认 WS 缺失时三项均为 none。失败 throw({abort_tx, Reason}) 由
 %% elib_pg:with_tx 归一回滚（上游归一为 {error, Reason}）。
--spec join_tx(any(), integer(), integer(), integer() | null) ->
+-spec join_tx(any(), integer(), integer(), integer() | null, binary()) ->
     {ok, joined | unchanged, map()}.
-join_tx(Conn, OrgId, Uid, InvitedBy) ->
-    %% 1) 锁组织行 + 生命周期裁决（C16：archived 拒绝加入，稳定 409）
+join_tx(Conn, OrgId, Uid, InvitedBy, Role0) ->
+    Role = normalize_role(Role0),
+    %% 1) 锁组织行 + 生命周期裁决（C16：archived/pending/rejected 拒绝加入，稳定 409）
     ok = ensure_org_active_tx(Conn, OrgId),
-    %% 2) org member upsert（幂等；role=member，不触碰治理角色）
-    {ok, Outcome} = ensure_org_member_tx(Conn, OrgId, Uid, InvitedBy),
+    %% 2) org member upsert（幂等；role=凭证携带的初始角色，不触碰既有治理角色）
+    {ok, Outcome} = ensure_org_member_tx(Conn, OrgId, Uid, InvitedBy, Role),
     %% 3) 默认 WS（显式关系唯一真源；缺失只写 org member 不阻塞）
     case organization_default_workspace_pg:find_tx(Conn, OrgId) of
         {error, not_found} ->
@@ -63,19 +68,25 @@ join_tx(Conn, OrgId, Uid, InvitedBy) ->
             join_workspace_tx(Conn, OrgId, Uid, InvitedBy, WsId, Outcome)
     end.
 
+%% 角色防御归一：仅 admin 保留，其余（member/垃圾值）一律 member。
+-spec normalize_role(binary()) -> binary().
+normalize_role(<<"admin">>) -> <<"admin">>;
+normalize_role(_) -> <<"member">>.
+
 %% ===================================================================
 %% invitation accept 挂点（C11 membership_hook 的编排化实现）
 %% ===================================================================
 
 %% @doc organization_invitation_app:accept 的 membership_hook 适配器：
-%% 从消费后的邀请行取作用域三要素，转入统一编排。失败 {error, Reason}
-%% → accept 事务整体回滚（消费 + 成员变更原子）。
+%% 从消费后的邀请行取作用域三要素，转入统一编排。定向邀请暂不携带角色
+%% 语义（member 起步）；失败 {error, Reason} → accept 事务整体回滚
+%% （消费 + 成员变更原子）。
 -spec membership_hook(any(), map()) -> ok | {error, term()}.
 membership_hook(Conn, Row) ->
     OrgId = positive(maps:get(<<"organization_id">>, Row, undefined)),
     TargetUid = positive(maps:get(<<"target_user_id">>, Row, undefined)),
     InvitedBy = nullable(maps:get(<<"invited_by">>, Row, undefined)),
-    try join_tx(Conn, OrgId, TargetUid, InvitedBy) of
+    try join_tx(Conn, OrgId, TargetUid, InvitedBy, <<"member">>) of
         {ok, _Outcome, _Summary} -> ok
     catch
         %% workspace_logic/invitation_app 同口径：业务 abort 直接透传错误值
@@ -86,7 +97,7 @@ membership_hook(Conn, Row) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-%% 组织行 FOR SHARE：锁序起点；archived 409 / 不存在 404。
+%% 组织行 FOR SHARE：锁序起点；archived/pending/rejected 409 / 不存在 404。
 -spec ensure_org_active_tx(any(), integer()) -> ok.
 ensure_org_active_tx(Conn, OrgId) ->
     case
@@ -96,6 +107,10 @@ ensure_org_active_tx(Conn, OrgId) ->
     of
         {ok, #{<<"status">> := <<"active">>}} ->
             ok;
+        {ok, #{<<"status">> := <<"pending">>}} ->
+            abort(409, <<"Organization 待审核，审核通过后才能加入"/utf8>>);
+        {ok, #{<<"status">> := <<"rejected">>}} ->
+            abort(409, <<"Organization 未通过审核，不能加入"/utf8>>);
         {ok, _Archived} ->
             abort(409, <<"Organization 已归档，不能加入"/utf8>>);
         {error, not_found} ->
@@ -105,10 +120,10 @@ ensure_org_active_tx(Conn, OrgId) ->
     end.
 
 %% org member upsert：active 同角色 unchanged / 异角色 409 / 其余激活或新建。
--spec ensure_org_member_tx(any(), integer(), integer(), integer() | null) ->
+-spec ensure_org_member_tx(any(), integer(), integer(), integer() | null, binary()) ->
     {ok, joined | unchanged}.
-ensure_org_member_tx(Conn, OrgId, Uid, InvitedBy) ->
-    case organization_member_repo:upsert_active_tx(Conn, OrgId, Uid, <<"member">>, InvitedBy) of
+ensure_org_member_tx(Conn, OrgId, Uid, InvitedBy, Role) ->
+    case organization_member_repo:upsert_active_tx(Conn, OrgId, Uid, Role, InvitedBy) of
         {ok, changed, _} ->
             _ = ?INFO_LOG([organization_join_orchestrator_member, OrgId, Uid, changed]),
             {ok, joined};

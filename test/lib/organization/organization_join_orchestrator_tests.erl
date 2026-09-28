@@ -128,7 +128,7 @@ join_tx_full_chain_test_() ->
         with_mocks([], fun() ->
             {ok, joined, Summary} =
                 organization_join_orchestrator:join_tx(
-                    fake_conn, ?ORG_ID, ?TARGET, ?OWNER
+                    fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                 ),
             ?assertEqual(
                 [
@@ -182,7 +182,7 @@ join_tx_idempotent_replay_test_() ->
             fun() ->
                 {ok, unchanged, Summary} =
                     organization_join_orchestrator:join_tx(
-                        fake_conn, ?ORG_ID, ?TARGET, ?OWNER
+                        fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                     ),
                 ?assertEqual(?WS_ID, maps:get(workspace_id, Summary))
             end
@@ -203,7 +203,7 @@ join_tx_no_default_ws_test_() ->
             fun() ->
                 {ok, joined, Summary} =
                     organization_join_orchestrator:join_tx(
-                        fake_conn, ?ORG_ID, ?TARGET, ?OWNER
+                        fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                     ),
                 ?assertEqual(none, maps:get(workspace_id, Summary)),
                 ?assertEqual(none, maps:get(group_id, Summary)),
@@ -231,7 +231,7 @@ join_tx_guards_test_() ->
                     ?assertThrow(
                         {abort_tx, {409, _}},
                         organization_join_orchestrator:join_tx(
-                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER
+                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                         )
                     )
                 end
@@ -250,7 +250,7 @@ join_tx_guards_test_() ->
                     ?assertThrow(
                         {abort_tx, {404, _}},
                         organization_join_orchestrator:join_tx(
-                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER
+                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                         )
                     )
                 end
@@ -269,7 +269,7 @@ join_tx_guards_test_() ->
                     ?assertThrow(
                         {abort_tx, {409, _}},
                         organization_join_orchestrator:join_tx(
-                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER
+                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                         )
                     )
                 end
@@ -292,7 +292,7 @@ join_tx_guards_test_() ->
                     ?assertThrow(
                         {abort_tx, {?ERR_WORKSPACE_ARCHIVED, _}},
                         organization_join_orchestrator:join_tx(
-                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER
+                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                         )
                     ),
                     %% ws member 未写（守卫在 upsert 之前）
@@ -316,7 +316,7 @@ join_tx_guards_test_() ->
                     ?assertThrow(
                         {abort_tx, {409, _}},
                         organization_join_orchestrator:join_tx(
-                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER
+                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                         )
                     )
                 end
@@ -332,7 +332,7 @@ join_tx_guards_test_() ->
                 fun() ->
                     {ok, joined, Summary} =
                         organization_join_orchestrator:join_tx(
-                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER
+                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                         ),
                     ?assertEqual(none, maps:get(group_id, Summary)),
                     ?assertEqual(none, maps:get(channel_id, Summary)),
@@ -353,7 +353,7 @@ join_tx_guards_test_() ->
                     ?assertThrow(
                         {abort_tx, {internal, {general_group_join, ?GID, membership_required}}},
                         organization_join_orchestrator:join_tx(
-                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER
+                            fake_conn, ?ORG_ID, ?TARGET, ?OWNER, <<"member">>
                         )
                     )
                 end

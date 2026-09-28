@@ -39,6 +39,7 @@ code_row() ->
         <<"organization_id">> => ?ORG_ID,
         <<"code">> => <<"ABCD2345">>,
         <<"created_by">> => ?OWNER,
+        <<"role">> => <<"member">>,
         <<"expires_at">> => os:system_time(second) + 604800,
         <<"expired">> => false,
         <<"status">> => <<"active">>,
@@ -54,7 +55,7 @@ default_mocks() ->
         {organization_invite_code_pg, [
             {'generate_code', 0, fun() -> <<"ZZZZ9999">> end},
             {'revoke_active_by_org_tx', 2, fun(fake_conn, _OrgId) -> {ok, 0} end},
-            {'add_tx', 5, fun(fake_conn, _OrgId, Code, _By, _Exp) ->
+            {'add_tx', 6, fun(fake_conn, _OrgId, Code, _By, _Exp, _Role) ->
                 {ok, (code_row())#{<<"code">> => Code}}
             end},
             {'find_active_by_org_tx', 2, fun(fake_conn, _OrgId) ->
@@ -72,6 +73,7 @@ default_mocks() ->
             {'find_organization_for_share_tx', 3, fun(fake_conn, _OrgId, _Cols) ->
                 {ok, #{
                     <<"id">> => ?ORG_ID,
+                    <<"name">> => <<"演示组织"/utf8>>,
                     <<"owner_id">> => ?OWNER,
                     <<"status">> => <<"active">>
                 }}
@@ -85,7 +87,7 @@ default_mocks() ->
         ]},
         %% join 编排挂点（编排行为由 organization_join_orchestrator_tests 冻结）
         {organization_join_orchestrator, [
-            {'join_tx', 4, fun(fake_conn, OrgId, Uid, _InvitedBy) ->
+            {'join_tx', 5, fun(fake_conn, OrgId, Uid, _InvitedBy, _Role) ->
                 self() ! {orchestrator_join, fake_conn, OrgId, Uid},
                 {ok, joined, #{organization_id => OrgId, workspace_id => none}}
             end}
@@ -147,9 +149,75 @@ create_success_test_() ->
             ?assert(is_integer(maps:get(expires_at, View))),
             %% 撤旧先于插入（重新生成=旧码失效）
             ?assert(meck:called(organization_invite_code_pg, revoke_active_by_org_tx, 2)),
-            ?assert(meck:called(organization_invite_code_pg, add_tx, 5))
+            ?assert(meck:called(organization_invite_code_pg, add_tx, 6))
         end)
     end}.
+
+create_role_test_() ->
+    [
+        {"create role=admin：码上透传 admin（发码方决定初始角色）", fun() ->
+            with_mocks(
+                [
+                    {organization_invite_code_pg, [
+                        {'add_tx', 6, fun(fake_conn, _OrgId, Code, _By, _Exp, Role) ->
+                            put(t_code_role, Role),
+                            {ok, (code_row())#{<<"code">> => Code, <<"role">> => Role}}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    set_role(?OWNER, <<"owner">>),
+                    try
+                        {ok, View} =
+                            organization_invite_code_app:create(?OWNER, ?ORG_ID, #{
+                                role => <<"admin">>
+                            }),
+                        ?assertEqual(<<"admin">>, maps:get(role, View)),
+                        ?assertEqual(<<"admin">>, erlang:erase(t_code_role))
+                    after
+                        erlang:erase(t_code_role)
+                    end
+                end
+            )
+        end},
+        {"create 非法 role → 400（owner 不入枚举/垃圾值拒绝）", fun() ->
+            with_mocks([], fun() ->
+                set_role(?OWNER, <<"owner">>),
+                ?assertMatch(
+                    {error, {400, _}},
+                    organization_invite_code_app:create(?OWNER, ?ORG_ID, #{role => <<"owner">>})
+                ),
+                ?assertMatch(
+                    {error, {400, _}},
+                    organization_invite_code_app:create(?OWNER, ?ORG_ID, #{role => <<"hacker">>})
+                )
+            end)
+        end},
+        {"create role 大小写/空白归一（' ADMIN ' → admin）", fun() ->
+            with_mocks(
+                [
+                    {organization_invite_code_pg, [
+                        {'add_tx', 6, fun(fake_conn, _OrgId, Code, _By, _Exp, Role) ->
+                            put(t_code_role, Role),
+                            {ok, (code_row())#{<<"code">> => Code, <<"role">> => Role}}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    set_role(?OWNER, <<"owner">>),
+                    try
+                        {ok, _} =
+                            organization_invite_code_app:create(?OWNER, ?ORG_ID, #{
+                                role => <<" ADMIN ">>
+                            }),
+                        ?assertEqual(<<"admin">>, erlang:erase(t_code_role))
+                    after
+                        erlang:erase(t_code_role)
+                    end
+                end
+            )
+        end}
+    ].
 
 create_guards_test_() ->
     [
@@ -221,7 +289,7 @@ create_code_conflict_retry_test_() ->
             with_mocks(
                 [
                     {organization_invite_code_pg, [
-                        {'add_tx', 5, fun(fake_conn, _O, _Code, _B, _E) ->
+                        {'add_tx', 6, fun(fake_conn, _O, _Code, _B, _E, _R) ->
                             case get(t_conflict_once) of
                                 undefined ->
                                     put(t_conflict_once, true),
@@ -247,7 +315,7 @@ create_code_conflict_retry_test_() ->
             with_mocks(
                 [
                     {organization_invite_code_pg, [
-                        {'add_tx', 5, fun(_C, _O, _Code, _B, _E) ->
+                        {'add_tx', 6, fun(_C, _O, _Code, _B, _E, _R) ->
                             {error, code_conflict}
                         end}
                     ]}
@@ -477,7 +545,7 @@ join_by_code_test_() ->
             with_mocks(
                 [
                     {organization_join_orchestrator, [
-                        {'join_tx', 4, fun(_C, _O, _U, _B) ->
+                        {'join_tx', 5, fun(_C, _O, _U, _B, _R) ->
                             throw({abort_tx, {?ERR_WORKSPACE_ARCHIVED, <<"工作区已归档"/utf8>>}})
                         end}
                     ]}
@@ -496,7 +564,7 @@ join_by_code_test_() ->
             with_mocks(
                 [
                     {organization_join_orchestrator, [
-                        {'join_tx', 4, fun(_C, OrgId, _U, _B) ->
+                        {'join_tx', 5, fun(_C, OrgId, _U, _B, _R) ->
                             {ok, unchanged, #{organization_id => OrgId}}
                         end}
                     ]}
@@ -649,6 +717,51 @@ preview_by_code_test_() ->
                 end
             )
         end},
+        {"有效码 preview 返回码上 role（发码方决定初始角色）", fun() ->
+            with_mocks(
+                [
+                    {organization_invite_code_pg, [
+                        {'find_active_by_code_global_tx', 2, fun(_C, _Code) ->
+                            {ok, (code_row())#{<<"role">> => <<"admin">>}}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    {ok, View} = organization_invite_code_app:preview_by_code(
+                        ?TARGET, <<"ABCD2345">>
+                    ),
+                    ?assertEqual(<<"admin">>, maps:get(role, View))
+                end
+            )
+        end},
+        {"目标 org pending / rejected 409（注册审核门，00000155）", fun() ->
+            lists:foreach(
+                fun(Status) ->
+                    with_mocks(
+                        [
+                            {organization_member_repo, [
+                                {'find_organization_for_share_tx', 3, fun(_C, _O, _Cols) ->
+                                    {ok, #{
+                                        <<"id">> => ?ORG_ID,
+                                        <<"name">> => <<"X">>,
+                                        <<"status">> => Status
+                                    }}
+                                end}
+                            ]}
+                        ],
+                        fun() ->
+                            ?assertMatch(
+                                {error, {409, _}},
+                                organization_invite_code_app:preview_by_code(
+                                    ?TARGET, <<"ABCD2345">>
+                                )
+                            )
+                        end
+                    )
+                end,
+                [<<"pending">>, <<"rejected">>]
+            )
+        end},
         {"空码 / 非 binary 统一 981", fun() ->
             with_mocks([], fun() ->
                 ?assertMatch(
@@ -743,7 +856,7 @@ join_by_code_only_test_() ->
             with_mocks(
                 [
                     {organization_join_orchestrator, [
-                        {'join_tx', 4, fun(_C, _O, _U, _B) ->
+                        {'join_tx', 5, fun(_C, _O, _U, _B, _R) ->
                             throw({abort_tx, {?ERR_WORKSPACE_ARCHIVED, <<"工作区已归档"/utf8>>}})
                         end}
                     ]}
@@ -760,7 +873,7 @@ join_by_code_only_test_() ->
             with_mocks(
                 [
                     {organization_join_orchestrator, [
-                        {'join_tx', 4, fun(_C, OrgId, _U, _B) ->
+                        {'join_tx', 5, fun(_C, OrgId, _U, _B, _R) ->
                             {ok, unchanged, #{organization_id => OrgId}}
                         end}
                     ]}

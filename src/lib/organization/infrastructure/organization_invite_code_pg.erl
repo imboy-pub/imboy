@@ -12,7 +12,7 @@
 
 -export([
     generate_code/0,
-    add_tx/5,
+    add_tx/6,
     find_active_by_code_tx/3,
     find_active_by_code_global_tx/2,
     find_active_by_org_tx/2,
@@ -25,7 +25,7 @@
 -define(INVITE_CODE_LEN, 8).
 
 -define(ROW_COLS,
-    "id, organization_id, code, created_by,"
+    "id, organization_id, code, created_by, role,"
     "       extract(epoch from expires_at)::bigint AS expires_at,"
     "       (expires_at < CURRENT_TIMESTAMP) AS expired,"
     "       status,"
@@ -47,21 +47,22 @@ generate_code() ->
 %% 写
 %%--------------------------------------------------------------------
 
-%% @doc 事务内插入邀请码行（id 由本层 elib_tsid 生成；expires_at epoch 秒）。
+%% @doc 事务内插入邀请码行（id 由本层 elib_tsid 生成；expires_at epoch 秒；
+%% role = 凭码加入后的初始角色，仅 admin|member，由调用方校验后传入）。
 %% code 撞全局唯一约束或部分唯一索引 uk_organization_invite_code_org_active
 %% （一组织至多一个 active 码）均归一 {error, code_conflict}，
 %% 由调用方（app 层）重新生成码后重试。
--spec add_tx(any(), integer(), binary(), integer() | null, integer()) ->
+-spec add_tx(any(), integer(), binary(), integer() | null, integer(), binary()) ->
     {ok, map()} | {error, code_conflict | term()}.
-add_tx(Conn, OrgId, Code, CreatedBy, ExpiresAtEpoch) ->
+add_tx(Conn, OrgId, Code, CreatedBy, ExpiresAtEpoch, Role) ->
     Tb = code_table(),
     Id = elib_tsid:generate(organization_invite_code),
     Sql =
         <<"INSERT INTO ", Tb/binary,
-            " (id, organization_id, code, created_by, expires_at, status, created_at, updated_at)",
-            " VALUES ($1, $2, $3, $4, to_timestamp($5), 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            " (id, organization_id, code, created_by, role, expires_at, status, created_at, updated_at)",
+            " VALUES ($1, $2, $3, $4, $5, to_timestamp($6), 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             " RETURNING ", ?ROW_COLS>>,
-    case elib_pg:query(Conn, Sql, [Id, OrgId, Code, CreatedBy, ExpiresAtEpoch]) of
+    case elib_pg:query(Conn, Sql, [Id, OrgId, Code, CreatedBy, Role, ExpiresAtEpoch]) of
         {ok, [Row | _]} ->
             {ok, Row};
         {ok, []} ->

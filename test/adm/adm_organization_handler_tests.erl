@@ -5,9 +5,10 @@
 
 %%% Platform Admin Organization 治理 API（TASK_ID=ORG-ADM-ORG-API）
 %%%
-%%% 覆盖面（合同 20 条端点 = 18 条路由，list/invitations/departments 三条同路径
-%%% 承载 GET 列表 + POST create 双语义（list POST create 为 EADM-01 合同））：
-%%%   * route contract：18 条 /api/adm/organizations* 路由（20 端点）注册 +
+%%% 覆盖面（合同 22 条端点 = 20 条路由，list/invitations/departments 三条同路径
+%%% 承载 GET 列表 + POST create 双语义（list POST create 为 EADM-01 合同）；
+%%% invite_code 同路径 GET/POST/DELETE 三语义；review/:review 为注册审核）：
+%%%   * route contract：20 条 /api/adm/organizations* 路由（22 端点）注册 +
 %%%     handler/action 正确；固定路径先于通配；organizations 面不暴露 workspace
 %%%     写路由（平台对 Workspace 只读关系事实）；方法分派 405；
 %%%   * 旅程正例（marker 库真库，env 前缀 ADM_ORG_INTTEST）：查询+详情 /
@@ -144,7 +145,7 @@ org_binding(OrgId, Key, Value) ->
 %% ===================================================================
 
 adm_org_routes_registered_test_() ->
-    {"adm organizations 面 18 条路由注册且 handler/action 正确",
+    {"adm organizations 面 20 条路由注册且 handler/action 正确",
         ?_assertEqual(
             [], lists:filter(fun(Route) -> not route_registered(Route) end, expected_routes())
         )}.
@@ -199,6 +200,75 @@ adm_org_method_dispatch_test_() ->
             end
         ]}}.
 
+%% review 端点 HTTP 分派（meck，无 DB）：动作只能来自 binding(review)
+%% （路由无尾随匹配，path_info 恒 undefined——曾误用 path_info 致恒 400，
+%% 本用例锁死该回归）。body 可选：reason 透传审核 Ctx。
+adm_org_review_dispatch_test_() ->
+    ?WITH_MECKS(
+        ?ADM_MOCKS ++
+            [
+                {organization_admin_logic, [
+                    {'admin_review', 4, fun(AdmUid, OrgId, Action, Ctx) ->
+                        put(
+                            review_calls,
+                            case get(review_calls) of
+                                undefined -> [];
+                                Calls -> Calls
+                            end ++
+                                [{AdmUid, OrgId, Action, maps:get(reason, Ctx, undefined)}]
+                        ),
+                        {ok, #{
+                            organization_id => OrgId,
+                            status => review_target(Action),
+                            changed => true
+                        }}
+                    end}
+                ]}
+            ],
+        fun() ->
+            put(review_calls, []),
+            Approve = call(
+                ?WRITE_UID, review, <<"POST">>, review_binding(1, <<"approve">>), <<>>
+            ),
+            ?assertEqual(200, status_of(Approve)),
+            Reject = call(
+                ?WRITE_UID,
+                review,
+                <<"POST">>,
+                review_binding(1, <<"reject">>),
+                <<"{\"reason\":\"资料不全\"}"/utf8>>
+            ),
+            ?assertEqual(200, status_of(Reject)),
+            %% 非法 review 动作 → 400，且不触达 logic
+            ?assertEqual(
+                400,
+                status_of(
+                    call(?WRITE_UID, review, <<"POST">>, review_binding(1, <<"bogus">>), <<>>)
+                )
+            ),
+            %% review 仅承载 POST
+            ?assertEqual(
+                405,
+                status_of(
+                    call(?WRITE_UID, review, <<"PUT">>, review_binding(1, <<"approve">>), <<>>)
+                )
+            ),
+            ?assertEqual(
+                [
+                    {?WRITE_UID, 1, approve, undefined},
+                    {?WRITE_UID, 1, reject, <<"资料不全"/utf8>>}
+                ],
+                get(review_calls)
+            )
+        end
+    ).
+
+review_binding(OrgId, Review) ->
+    maps:put(review, Review, bindings(OrgId)).
+
+review_target(approve) -> <<"active">>;
+review_target(reject) -> <<"rejected">>.
+
 expected_routes() ->
     H = adm_organization_handler,
     A = fun(Action) -> #{action => Action} end,
@@ -220,6 +290,8 @@ expected_routes() ->
             A(member_remove)},
         {<<"/api/adm/organizations/:organization_id/invitations/:invitation_id/cancel">>, H,
             A(invitation_cancel)},
+        {<<"/api/adm/organizations/:organization_id/invite_code">>, H, A(invite_code)},
+        {<<"/api/adm/organizations/:organization_id/review/:review">>, H, A(review)},
         {<<"/api/adm/organizations/:organization_id/departments/:department_id/rename">>, H,
             A(department_rename)},
         {<<"/api/adm/organizations/:organization_id/departments/:department_id/move">>, H,
@@ -334,7 +406,12 @@ pgsql_pool_conf(#{host := Host, port := Port, username := User, password := Pass
     }.
 
 close_db(State) ->
-    try pooler:rm_pool(pgsql) catch _:_ -> ok end, %% A1c: rm_pool/1 is the correct API (stop_pool/1 does not exist, the original try/catch had been silently swallowing undef)
+    %% A1c: rm_pool/1 is the correct API (stop_pool/1 does not exist, the original try/catch had been silently swallowing undef)
+    try
+        pooler:rm_pool(pgsql)
+    catch
+        _:_ -> ok
+    end,
     %% A1c（CP-TD-A02）：按 imboy pg_conf 重建 app pgsql 池（还原共享 VM 状态，
     %% 见 setup_db 接管注释），后续套件的 elib_pg 访问不受本套件影响。
     case application:get_env(imboy, pg_conf) of
@@ -832,8 +909,10 @@ audit_injection_tests(Conn) ->
                     {ok, [#{<<"count">> := 0}]},
                     q(
                         Conn,
-                        <<"SELECT count(*) FROM organization_invitation"
-                            " WHERE organization_id = $1 AND target_user_id = $2">>,
+                        <<
+                            "SELECT count(*) FROM organization_invitation"
+                            " WHERE organization_id = $1 AND target_user_id = $2"
+                        >>,
                         [OrgId, Target]
                     )
                 )
@@ -897,8 +976,10 @@ audit_injection_tests(Conn) ->
                     {ok, [#{<<"count">> := 0}]},
                     q(
                         Conn,
-                        <<"SELECT count(*) FROM organization_department"
-                            " WHERE organization_id = $1 AND name = $2 AND status = 'active'">>,
+                        <<
+                            "SELECT count(*) FROM organization_department"
+                            " WHERE organization_id = $1 AND name = $2 AND status = 'active'"
+                        >>,
                         [OrgId, <<"注入审计部"/utf8>>]
                     )
                 )
@@ -951,9 +1032,11 @@ audit_injection_tests(Conn) ->
             {ok, _, [{Count}]} =
                 epgsql:equery(
                     Conn,
-                    <<"SELECT count(*) FROM admin_operation_logs"
+                    <<
+                        "SELECT count(*) FROM admin_operation_logs"
                         " WHERE target_id = $1 AND action = 'organization_archive'"
-                        " AND adm_user_id = $2">>,
+                        " AND adm_user_id = $2"
+                    >>,
                     [OrgId, ?WRITE_UID]
                 ),
             ?assert(Count >= 1)
@@ -969,8 +1052,10 @@ with_audit_fail(Fun) ->
         ) ->
             {error, audit_injected}
         end),
-    try Fun()
-    after catch meck:unload(adm_operation_log_ds)
+    try
+        Fun()
+    after
+        catch meck:unload(adm_operation_log_ds)
     end.
 
 dept_row_sql() ->

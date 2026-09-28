@@ -3,7 +3,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
-create_tx_uses_database_defaults_and_returns_row_test_() ->
+create_tx_passes_explicit_status_and_returns_row_test_() ->
     ?WITH_MECKS(
         [
             {elib_tsid, [
@@ -13,9 +13,10 @@ create_tx_uses_database_defaults_and_returns_row_test_() ->
                 {'query', 3, fun(fake_conn, Sql, Params) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assertNotEqual(nomatch, binary:match(SqlBin, <<"INSERT INTO">>)),
+                    ?assertNotEqual(nomatch, binary:match(SqlBin, <<"(id,name,owner_id,status">>)),
                     ?assertNotEqual(nomatch, binary:match(SqlBin, <<"CURRENT_TIMESTAMP">>)),
                     ?assertNotEqual(nomatch, binary:match(SqlBin, <<"RETURNING id,name">>)),
-                    ?assertEqual([101, <<"Acme">>, 201], Params),
+                    ?assertEqual([101, <<"Acme">>, 201, <<"pending">>], Params),
                     {ok, [#{<<"id">> => 101, <<"name">> => <<"Acme">>}]}
                 end}
             ]}
@@ -23,7 +24,7 @@ create_tx_uses_database_defaults_and_returns_row_test_() ->
         fun() ->
             ?assertMatch(
                 {ok, #{<<"id">> := 101}},
-                organization_repo:create_tx(fake_conn, 201, <<"Acme">>)
+                organization_repo:create_tx(fake_conn, 201, <<"Acme">>, <<"pending">>)
             )
         end
     ).

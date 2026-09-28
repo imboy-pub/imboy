@@ -5,9 +5,15 @@
 %% 只封装语句与行集；锁序与业务裁决在 organization_lifecycle（application）。
 %% 与既有治理写保持「组织行先、成员行后」的同一锁顺序（C04/ORG-01 口径）。
 %% 不新增 DDL（M08 = NO_SEPARATE_DDL_BY_DEFAULT）：status 枚举沿用
-%% 00000095 的 CHECK（active | archived），归档时间复用 updated_at。
+%% 00000095 + 00000155 的 CHECK（active | archived | pending | rejected），
+%% 归档时间复用 updated_at。
 
--export([lock_organization_tx/2, lock_member_role_tx/3, set_status_tx/3]).
+-export([
+    lock_organization_tx/2,
+    lock_member_role_tx/3,
+    set_status_tx/3,
+    set_review_status_tx/3
+]).
 
 -define(COLUMNS, <<"id,name,owner_id,status,branding,settings,created_at,updated_at">>).
 
@@ -52,6 +58,26 @@ set_status_tx(Conn, OrgId, Status) when Status =:= <<"active">>; Status =:= <<"a
             " WHERE id = $2 RETURNING ", ?COLUMNS/binary>>,
     one_tx(Conn, Sql, [Status, OrgId]);
 set_status_tx(_Conn, _OrgId, _Other) ->
+    {error, bad_status}.
+
+%% 注册审核 CAS 推进（00000155）：仅 pending 行生效，返回行数 0/1——
+%% 并发审核/重复点击天然幂等收敛（0 行 = 已被处理，调用方归一 409）。
+%% TargetStatus 仅 active（approve）| rejected（reject）。
+-spec set_review_status_tx(any(), integer(), binary()) ->
+    {ok, 0 | 1} | {error, term()}.
+set_review_status_tx(Conn, OrgId, TargetStatus) when
+    TargetStatus =:= <<"active">>; TargetStatus =:= <<"rejected">>
+->
+    Sql =
+        <<"UPDATE ", (org_table())/binary,
+            " SET status = $1, updated_at = CURRENT_TIMESTAMP"
+            " WHERE id = $2 AND status = 'pending'">>,
+    case elib_pg:execute(Conn, Sql, [TargetStatus, OrgId]) of
+        {ok, Count} when is_integer(Count) -> {ok, Count};
+        {ok, _, _} -> {ok, 0};
+        {error, Reason} -> {error, Reason}
+    end;
+set_review_status_tx(_Conn, _OrgId, _Other) ->
     {error, bad_status}.
 
 %% ------------------------------------------------------------------

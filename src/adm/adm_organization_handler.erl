@@ -93,6 +93,10 @@ dispatch(member_remove, Method, Req0, State) ->
     member_action(Method, Req0, State, remove);
 dispatch(invitation_cancel, Method, Req0, State) ->
     invitation_cancel_action(Method, Req0, State);
+dispatch(invite_code, Method, Req0, State) ->
+    invite_code_action(Method, Req0, State);
+dispatch(review, Method, Req0, State) ->
+    review_action(Method, Req0, State);
 dispatch(department_rename, Method, Req0, State) ->
     department_rename_action(Method, Req0, State);
 dispatch(department_move, Method, Req0, State) ->
@@ -383,7 +387,9 @@ org_restore_action(<<"POST">>, Req0, State) ->
 org_restore_action(_, Req0, _State) ->
     method_not_allowed(Req0).
 
--spec lifecycle_write(cowboy_req:req(), map(), binary(), fun((integer(), integer(), map()) -> term())) ->
+-spec lifecycle_write(cowboy_req:req(), map(), binary(), fun(
+    (integer(), integer(), map()) -> term()
+)) ->
     cowboy_req:req().
 lifecycle_write(Req0, State, ActionBin, Fun) ->
     case adm_acl:ensure_permission(State, ?ACL_WRITE, Req0) of
@@ -592,6 +598,147 @@ invitation_cancel_action(<<"POST">>, Req0, State) ->
     end;
 invitation_cancel_action(_, Req0, _State) ->
     method_not_allowed(Req0).
+
+%% ------------------------------------------------------------------
+%% 邀请码（QR 入企码；码是凭证，read-only 不暴露——全部 organizations:write）：
+%% GET=读当前 active 码 / POST=生成或重新生成（重新生成=旧码失效）/
+%% DELETE=撤销。同路径分 method（镜像 invitations 段惯例）。
+%% ------------------------------------------------------------------
+
+-spec invite_code_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+invite_code_action(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, ?ACL_WRITE, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_org_id(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, OrgId} ->
+                    case organization_admin_logic:admin_invite_code_get(OrgId) of
+                        {ok, View} ->
+                            elib_response:success(Req0, normalize_invite_code(View));
+                        {error, {Code, Msg}} ->
+                            elib_response:error(Req0, Msg, Code)
+                    end
+            end
+    end;
+invite_code_action(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, ?ACL_WRITE, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            AdmUserId = maps:get(adm_user_id, State, 0),
+            case parse_org_id(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, OrgId} ->
+                    case read_body_map(Req0) of
+                        {error, Msg2} ->
+                            elib_response:error(Req0, Msg2, ?ERR_BAD_REQUEST);
+                        {ok, Data} ->
+                            Role = maps:get(<<"role">>, Data, <<"member">>),
+                            ExpiresIn = normalize_expires_in(
+                                maps:get(<<"expires_in">>, Data, undefined)
+                            ),
+                            case
+                                organization_admin_logic:admin_invite_code_create(
+                                    AdmUserId, OrgId, Role, ExpiresIn, audit_ctx(Req0)
+                                )
+                            of
+                                {ok, View} ->
+                                    elib_response:success(Req0, normalize_invite_code(View));
+                                {error, {Code, Msg}} ->
+                                    elib_response:error(Req0, Msg, Code)
+                            end
+                    end
+            end
+    end;
+invite_code_action(<<"DELETE">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, ?ACL_WRITE, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            AdmUserId = maps:get(adm_user_id, State, 0),
+            case parse_org_id(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, OrgId} ->
+                    case
+                        organization_admin_logic:admin_invite_code_revoke(
+                            AdmUserId, OrgId, audit_ctx(Req0)
+                        )
+                    of
+                        {ok, Result} ->
+                            elib_response:success(Req0, normalize_result(Result));
+                        {error, {Code, Msg}} ->
+                            elib_response:error(Req0, Msg, Code)
+                    end
+            end
+    end;
+invite_code_action(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+normalize_expires_in(Value) ->
+    case elib_cnv:safe_to_integer(Value) of
+        N when is_integer(N), N > 0 -> N;
+        _ -> undefined
+    end.
+
+normalize_invite_code(View) ->
+    maps:with([organization_id, code, role, status, expires_at, created_at], View).
+
+%% ------------------------------------------------------------------
+%% 写：注册审核 approve / reject（POST body 可选 reason，仅入审计）
+%% ------------------------------------------------------------------
+
+-spec review_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+review_action(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, ?ACL_WRITE, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            AdmUserId = maps:get(adm_user_id, State, 0),
+            case parse_org_id(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, OrgId} ->
+                    Ctx0 = audit_ctx(Req0),
+                    case read_body_map(Req0) of
+                        {error, _} ->
+                            %% body 可选：非 JSON/空 body 不阻断审核
+                            do_review(Req0, AdmUserId, OrgId, Ctx0);
+                        {ok, Data} ->
+                            do_review(
+                                Req0,
+                                AdmUserId,
+                                OrgId,
+                                Ctx0#{reason => maps:get(<<"reason">>, Data, undefined)}
+                            )
+                    end
+            end
+    end;
+review_action(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+do_review(Req0, AdmUserId, OrgId, Ctx) ->
+    Action =
+        case cowboy_req:binding(review, Req0, <<>>) of
+            <<"approve">> -> approve;
+            <<"reject">> -> reject;
+            _ -> undefined
+        end,
+    case Action of
+        undefined ->
+            elib_response:error(Req0, <<"审核动作无效"/utf8>>, ?ERR_BAD_REQUEST);
+        _ ->
+            case organization_admin_logic:admin_review(AdmUserId, OrgId, Action, Ctx) of
+                {ok, Result} ->
+                    elib_response:success(Req0, normalize_result(Result));
+                {error, {Code, Msg}} ->
+                    elib_response:error(Req0, Msg, Code)
+            end
+    end.
 
 %% ------------------------------------------------------------------
 %% 写：部门 create / rename / move / archive

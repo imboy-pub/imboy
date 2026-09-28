@@ -4,7 +4,7 @@
 
 -export([
     tablename/0,
-    create_tx/3,
+    create_tx/4,
     find_by_id/1,
     find_for_update_tx/2,
     update_tx/5,
@@ -18,15 +18,17 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"organization">>).
 
--spec create_tx(any(), integer(), binary()) -> {ok, map()} | {error, term()}.
-create_tx(Conn, OwnerUid, Name) ->
+%% Status 由调用方决定：APP 建企传 'pending'（注册审核），平台/Admin 路径
+%% 自行 INSERT（status='active'，视为已审核）。DB CHECK 兜底枚举合法性。
+-spec create_tx(any(), integer(), binary(), binary()) -> {ok, map()} | {error, term()}.
+create_tx(Conn, OwnerUid, Name, Status) ->
     Id = elib_tsid:generate(organization),
     Sql =
         <<"INSERT INTO ", (tablename())/binary,
             " (id,name,owner_id,status,branding,settings,created_at,updated_at)",
-            " VALUES ($1,$2,$3,'active','{}'::jsonb,'{}'::jsonb,",
+            " VALUES ($1,$2,$3,$4,'{}'::jsonb,'{}'::jsonb,",
             "CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING ", ?COLUMNS/binary>>,
-    one_tx(Conn, Sql, [Id, Name, OwnerUid]).
+    one_tx(Conn, Sql, [Id, Name, OwnerUid, Status]).
 
 -spec find_by_id(integer()) -> {ok, map()} | {error, not_found | term()}.
 find_by_id(OrgId) when is_integer(OrgId), OrgId > 0 ->

@@ -532,10 +532,18 @@ write_tx(Uid, OrgId, Fun, ErrorMsg) when is_integer(Uid), Uid > 0, is_integer(Or
                     Conn, OrgId, <<"id,owner_id,status">>
                 )
             of
-                {ok, #{<<"status">> := <<"active">>} = Row} -> Row;
-                {ok, _Archived} -> abort(409, <<"组织已归档，成员管理操作被拒绝"/utf8>>);
-                {error, not_found} -> abort(404, <<"组织不存在"/utf8>>);
-                {error, Reason1} -> throw({abort_tx, {internal, Reason1}})
+                {ok, #{<<"status">> := <<"active">>} = Row} ->
+                    Row;
+                {ok, #{<<"status">> := <<"pending">>}} ->
+                    abort(409, <<"组织待审核，审核通过后才能进行成员管理操作"/utf8>>);
+                {ok, #{<<"status">> := <<"rejected">>}} ->
+                    abort(409, <<"组织未通过审核，成员管理操作被拒绝"/utf8>>);
+                {ok, _Archived} ->
+                    abort(409, <<"组织已归档，成员管理操作被拒绝"/utf8>>);
+                {error, not_found} ->
+                    abort(404, <<"组织不存在"/utf8>>);
+                {error, Reason1} ->
+                    throw({abort_tx, {internal, Reason1}})
             end,
         ActorRole =
             case

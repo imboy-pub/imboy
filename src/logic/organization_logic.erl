@@ -75,6 +75,10 @@ update(_, _, _, _, _) ->
 %% 全部在同一事务内，失败零残留（计划 §106「不能留下半初始化状态」）。
 %% APP 建企只收一个名称，故默认工作区用固定名（Admin 侧由调用方显式给名）。
 %%
+%% 注册审核（00000155）：APP 建企落 status='pending'——运营后台审核通过
+%% （approve → active）前禁止邀请新成员/生成邀请码；Admin 平台建企不走本
+%% 函数，直接 active（平台操作视为已审核）。
+%%
 %% 此前本路径只写 org + owner 成员（裸建企）：owner 名下没有任何工作区，
 %% 真机上表现为「创建企业后进入工作区壳看到『还没有工作区』」；更严重的是
 %% organization_default_workspace 无行 → 后续凭邀请码/邀请加入的成员拿到的
@@ -82,7 +86,7 @@ update(_, _, _, _, _) ->
 %% 全员群和公告频道关系正确」不成立）。
 create_validated(Uid, Name) ->
     Tx = fun(Conn) ->
-        case organization_repo:create_tx(Conn, Uid, Name) of
+        case organization_repo:create_tx(Conn, Uid, Name, <<"pending">>) of
             {ok, Org} ->
                 OrgId = maps:get(<<"id">>, Org),
                 case organization_member_repo:find_active_tx(Conn, OrgId, Uid, <<"role">>) of

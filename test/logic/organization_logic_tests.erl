@@ -13,7 +13,7 @@ create_relies_on_owner_trigger_and_returns_owner_role_test_() ->
                 {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end}
             ]},
             {organization_repo, [
-                {'create_tx', 3, fun(fake_conn, ?UID, <<"Acme">>) ->
+                {'create_tx', 4, fun(fake_conn, ?UID, <<"Acme">>, <<"pending">>) ->
                     {ok, #{
                         <<"id">> => ?ORG_ID,
                         <<"name">> => <<"Acme">>,

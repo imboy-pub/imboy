@@ -9,9 +9,11 @@
 %%%     不重复实现授权原语；
 %%%   * join 不直接写 member，而是统一走 organization_join_orchestrator
 %%%     （org member → 默认 WS → 全员群 → 公告频道 同事务编排）；
+%%%   * 码上携带 role（凭码加入后的初始角色，仅 admin|member，默认
+%%%     member）：角色由发码方决定，扫码者不能自选（防越权自提）；
 %%%   * 错误口径：981 码无效/已失效（含跨 Org 输码——同语句 org 作用域
 %%%     命中不了行，不泄露组织存在性）、982 已过期、980 默认 WS 已归档、
-%%%     403 非治理建码、409 org 已归档、404 org 不存在。
+%%%     403 非治理建码、409 org 已归档/待审核/驳回、404 org 不存在。
 
 -export([
     create/3,
@@ -19,7 +21,9 @@
     get/2,
     join_by_code/3,
     preview_by_code/2,
-    join_by_code_only/2
+    join_by_code_only/2,
+    ttl_seconds/0,
+    normalize_role/1
 ]).
 
 -include("error_code.hrl").
@@ -27,41 +31,67 @@
 
 -define(CODE_TTL_SECONDS, 7 * 24 * 60 * 60).
 -define(CODE_RETRY_LIMIT, 3).
+%% 码角色枚举（与迁移 ck_organization_invite_code_role 同口径；owner 不入枚举）。
+-define(CODE_ROLES, [<<"admin">>, <<"member">>]).
 
 %% ===================================================================
 %% create —— 生成组织邀请码（owner/admin；重新生成=旧码失效）
 %% ===================================================================
 
-%% @doc 生成组织邀请码（仅组织 Owner/Admin；org archived 409；7 天有效）。
-%% 同事务先撤销本组织既有 active 码（一组织至多一个 active 码；重新
-%% 生成即旧码失效）；code 全局唯一冲突（23505→code_conflict）时换码
-%% 重开事务重试 ≤3 次（镜像 workspace_logic:insert_invite_code/4）。
-%% 返回 {ok, #{code, expires_at}}（expires_at epoch 秒）。
+%% @doc 生成组织邀请码（仅组织 Owner/Admin；org archived/pending/rejected
+%% 409；7 天有效）。Opts.role = 凭码加入后的初始角色（admin|member，缺省
+%% member；非法值 400）。同事务先撤销本组织既有 active 码（一组织至多
+%% 一个 active 码；重新生成即旧码失效）；code 全局唯一冲突（23505→
+%% code_conflict）时换码重开事务重试 ≤3 次（镜像
+%% workspace_logic:insert_invite_code/4）。返回 {ok, #{code, role, expires_at}}
+%% （expires_at epoch 秒）。
 -spec create(integer(), integer(), map()) ->
     {ok, map()} | {error, {integer(), binary()}}.
-create(ActorUid, OrgId, _Opts) when
-    is_integer(ActorUid), ActorUid > 0, is_integer(OrgId), OrgId > 0
+create(ActorUid, OrgId, Opts) when
+    is_integer(ActorUid), ActorUid > 0, is_integer(OrgId), OrgId > 0, is_map(Opts)
 ->
-    ExpiresAt = os:system_time(second) + ?CODE_TTL_SECONDS,
-    case insert_code_tx(ActorUid, OrgId, ExpiresAt, ?CODE_RETRY_LIMIT) of
-        {ok, Row} ->
-            _ = ?INFO_LOG([organization_invite_code_created, OrgId, ActorUid]),
-            {ok, view(Row)};
-        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
-            {error, {Code, Msg}};
-        {error, Reason} ->
-            _ = ?ERROR_LOG([organization_invite_code_create_failed, OrgId, ActorUid, Reason]),
-            {error, {500, <<"生成组织邀请码失败，请稍后重试"/utf8>>}}
+    case normalize_role(maps:get(role, Opts, <<"member">>)) of
+        invalid ->
+            {error, {400, <<"role 仅支持 admin 或 member"/utf8>>}};
+        Role ->
+            ExpiresAt = os:system_time(second) + ?CODE_TTL_SECONDS,
+            case insert_code_tx(ActorUid, OrgId, ExpiresAt, Role, ?CODE_RETRY_LIMIT) of
+                {ok, Row} ->
+                    _ = ?INFO_LOG([organization_invite_code_created, OrgId, ActorUid, Role]),
+                    {ok, view(Row)};
+                {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+                    {error, {Code, Msg}};
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([organization_invite_code_create_failed, OrgId, ActorUid, Reason]),
+                    {error, {500, <<"生成组织邀请码失败，请稍后重试"/utf8>>}}
+            end
     end;
 create(_, _, _) ->
     {error, {400, <<"organization_id 与 user_id 必须是正整数"/utf8>>}}.
 
+%% 码角色归一：binary trim+lowercase 后须命中枚举；其余 invalid。
+%% 导出供平台面（organization_admin_logic）复用同一校验口径。
+-spec normalize_role(term()) -> binary() | invalid.
+normalize_role(Role0) when is_binary(Role0) ->
+    Role = string:lowercase(string:trim(Role0)),
+    case lists:member(Role, ?CODE_ROLES) of
+        true -> Role;
+        false -> invalid
+    end;
+normalize_role(_) ->
+    invalid.
+
+%% 码有效期（秒）：平台面建码与租户面共用同一 TTL。
+-spec ttl_seconds() -> pos_integer().
+ttl_seconds() ->
+    ?CODE_TTL_SECONDS.
+
 %% 治理门 + 撤旧 + 插入（单事务）；code_conflict 由外层换码重试。
--spec insert_code_tx(integer(), integer(), integer(), non_neg_integer()) ->
+-spec insert_code_tx(integer(), integer(), integer(), binary(), non_neg_integer()) ->
     {ok, map()} | {error, term()}.
-insert_code_tx(_ActorUid, _OrgId, _ExpiresAt, 0) ->
+insert_code_tx(_ActorUid, _OrgId, _ExpiresAt, _Role, 0) ->
     {error, code_retry_exhausted};
-insert_code_tx(ActorUid, OrgId, ExpiresAt, Left) ->
+insert_code_tx(ActorUid, OrgId, ExpiresAt, Role, Left) ->
     %% R3-7：撤旧只在**首次尝试**做。重试若仍撤旧，会把并发生成中对手刚拿到
     %% 的码静默撤销（对手收到 200 但码已死）——首次已保证"重新生成=旧码失效"。
     Mode =
@@ -71,7 +101,7 @@ insert_code_tx(ActorUid, OrgId, ExpiresAt, Left) ->
         end,
     Code = organization_invite_code_pg:generate_code(),
     Tx = fun(Conn) ->
-        %% 治理门（组织行先锁 → actor owner/admin；archived 409）
+        %% 治理门（组织行先锁 → actor owner/admin；archived/pending/rejected 409）
         ok = ensure_governance_tx(Conn, OrgId, ActorUid, reject_archived),
         %% 撤旧是「重新生成=旧码失效」的语义前提，失败即中止整个事务
         case Mode of
@@ -85,13 +115,13 @@ insert_code_tx(ActorUid, OrgId, ExpiresAt, Left) ->
             insert_only ->
                 ok
         end,
-        organization_invite_code_pg:add_tx(Conn, OrgId, Code, ActorUid, ExpiresAt)
+        organization_invite_code_pg:add_tx(Conn, OrgId, Code, ActorUid, ExpiresAt, Role)
     end,
     case elib_pg:with_tx(Tx) of
         {ok, Row} ->
             {ok, Row};
         {error, code_conflict} ->
-            insert_code_tx(ActorUid, OrgId, ExpiresAt, Left - 1);
+            insert_code_tx(ActorUid, OrgId, ExpiresAt, Role, Left - 1);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -101,8 +131,8 @@ insert_code_tx(ActorUid, OrgId, ExpiresAt, Left) ->
 %% ===================================================================
 
 %% @doc 撤销本组织全部有效邀请码（幂等：无 active 码 → revoked 0）。
-%% 撤销后输码即 981；归档组织允许撤销（收紧操作，不设 409 门——
-%% 镜像 workspace_logic:revoke_invite_code/2 对归档工作区的口径）。
+%% 撤销后输码即 981；归档/待审核/驳回组织允许撤销（收紧操作，不设 409
+%% 门——镜像 workspace_logic:revoke_invite_code/2 对归档工作区的口径）。
 -spec revoke(integer(), integer()) ->
     {ok, #{revoked := non_neg_integer()}} | {error, {integer(), binary()}}.
 revoke(ActorUid, OrgId) when
@@ -159,7 +189,7 @@ get(_, _) ->
 %% ===================================================================
 
 %% @doc 凭码加入组织（任意登录用户）：码校验 981/982 → 统一加入编排
-%% （organization_join_orchestrator:join_tx/4：org member → 默认 WS →
+%% （organization_join_orchestrator:join_tx/5：org member → 默认 WS →
 %% 全员群 → 公告频道，同事务、幂等可重放）。
 %% 非字符串/空/跨 Org 码统一 981（不泄露组织存在性）。
 -spec join_by_code(integer(), integer(), binary()) ->
@@ -202,7 +232,9 @@ lookup_and_join_tx(Conn, OrgId, Uid, Code) ->
         {ok, #{<<"expired">> := true}} ->
             abort(?ERR_WORKSPACE_INVITE_EXPIRED, <<"组织邀请码已过期"/utf8>>);
         {ok, Row} ->
-            organization_join_orchestrator:join_tx(Conn, OrgId, Uid, created_by_of(Row))
+            organization_join_orchestrator:join_tx(
+                Conn, OrgId, Uid, created_by_of(Row), code_role(Row)
+            )
     end.
 
 %% ===================================================================
@@ -210,8 +242,9 @@ lookup_and_join_tx(Conn, OrgId, Uid, Code) ->
 %% ===================================================================
 
 %% @doc 凭码预览目标组织（code-only join 的确认步骤，任意登录用户）：
-%% 码本身全局唯一即凭据，按码全局反查 → {ok, #{organization_id, name}}。
-%% 码校验 981/982 同 join 口径；org 已归档 409 / 不存在 981。
+%% 码本身全局唯一即凭据，按码全局反查 → {ok, #{organization_id, name, role}}
+%% （role = 凭码加入后的初始角色，供确认页展示）。码校验 981/982 同 join
+%% 口径；org 已归档/待审核/驳回 409 / 不存在 981。
 -spec preview_by_code(integer(), binary()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 preview_by_code(Uid, Code0) when is_integer(Uid), Uid > 0 ->
@@ -247,14 +280,18 @@ lookup_preview_tx(Conn, Code) ->
             throw({abort_tx, {internal, {code_lookup, Reason}}});
         {ok, #{<<"expired">> := true}} ->
             abort(?ERR_WORKSPACE_INVITE_EXPIRED, <<"组织邀请码已过期"/utf8>>);
-        {ok, #{<<"organization_id">> := OrgId}} ->
+        {ok, Row = #{<<"organization_id">> := OrgId}} ->
             case
                 organization_member_repo:find_organization_for_share_tx(
                     Conn, OrgId, <<"id,name,status">>
                 )
             of
                 {ok, #{<<"name">> := Name, <<"status">> := <<"active">>}} ->
-                    {ok, #{organization_id => OrgId, name => Name}};
+                    {ok, #{organization_id => OrgId, name => Name, role => code_role(Row)}};
+                {ok, #{<<"status">> := <<"pending">>}} ->
+                    abort(409, <<"Organization 待审核，审核通过后才能加入"/utf8>>);
+                {ok, #{<<"status">> := <<"rejected">>}} ->
+                    abort(409, <<"Organization 未通过审核，不能加入"/utf8>>);
                 {ok, _Archived} ->
                     abort(409, <<"Organization 已归档，不能加入"/utf8>>);
                 {error, not_found} ->
@@ -266,7 +303,7 @@ lookup_preview_tx(Conn, Code) ->
 
 %% @doc 凭码加入组织（code-only，任意登录用户）：码全局唯一即凭据，
 %% 按码反查 organization_id 后走统一加入编排（与 join_by_code 同一
-%% organization_join_orchestrator:join_tx/4：org member → 默认 WS →
+%% organization_join_orchestrator:join_tx/5：org member → 默认 WS →
 %% 全员群 → 公告频道，同事务、幂等可重放）。非字符串/空/无效码统一 981。
 -spec join_by_code_only(integer(), binary()) ->
     {ok, joined | unchanged, map()} | {error, {integer(), binary()}}.
@@ -304,12 +341,22 @@ lookup_and_join_global_tx(Conn, Uid, Code) ->
         {ok, #{<<"expired">> := true}} ->
             abort(?ERR_WORKSPACE_INVITE_EXPIRED, <<"组织邀请码已过期"/utf8>>);
         {ok, Row = #{<<"organization_id">> := OrgId}} when is_integer(OrgId), OrgId > 0 ->
-            organization_join_orchestrator:join_tx(Conn, OrgId, Uid, created_by_of(Row))
+            organization_join_orchestrator:join_tx(
+                Conn, OrgId, Uid, created_by_of(Row), code_role(Row)
+            )
     end.
 
 %% ===================================================================
 %% 内部
 %% ===================================================================
+
+%% 码上角色投影：缺列（历史行/防御）回退 member（迁移 DEFAULT 兜底一致）。
+-spec code_role(map()) -> binary().
+code_role(Row) ->
+    case maps:get(<<"role">>, Row, <<"member">>) of
+        <<"admin">> -> <<"admin">>;
+        _ -> <<"member">>
+    end.
 
 %% 非 binary（JSON number/array 等）或 trim 后为空统一归一 <<>>（981 短路，
 %% 省一次 DB roundtrip；真实 SQL 同口径查不到行）。
@@ -330,8 +377,10 @@ created_by_of(Row) ->
 
 %% 治理门（镜像 organization_member_logic:write_tx 的锁序与裁决：
 %% 组织行 FOR SHARE 先、成员行 FOR SHARE 后；owner/admin 放行）。
-%% ArchivedPolicy = reject_archived（create/get：C16 archived 禁新写）
-%%              | allow_archived（revoke：收紧操作放行）。
+%% ArchivedPolicy = reject_archived（create/get：仅 active 放行——
+%%                  archived/pending/rejected 均禁新写）
+%%              | allow_archived（revoke：收紧操作放行，pending/rejected
+%%                  亦放行——撤码只会收窄加入面，无放大风险）。
 -spec ensure_governance_tx(any(), integer(), integer(), reject_archived | allow_archived) ->
     ok.
 ensure_governance_tx(Conn, OrgId, ActorUid, ArchivedPolicy) ->
@@ -342,8 +391,12 @@ ensure_governance_tx(Conn, OrgId, ActorUid, ArchivedPolicy) ->
     of
         {ok, #{<<"status">> := <<"active">>}} ->
             ok;
-        {ok, _Archived} when ArchivedPolicy =:= allow_archived ->
+        {ok, _NotWritable} when ArchivedPolicy =:= allow_archived ->
             ok;
+        {ok, #{<<"status">> := <<"pending">>}} ->
+            abort(409, <<"Organization 待审核，审核通过后才能操作邀请码"/utf8>>);
+        {ok, #{<<"status">> := <<"rejected">>}} ->
+            abort(409, <<"Organization 未通过审核，不能操作邀请码"/utf8>>);
         {ok, _Archived} ->
             abort(409, <<"Organization 已归档，不能生成邀请码"/utf8>>);
         {error, not_found} ->
@@ -368,6 +421,7 @@ view(Row) ->
     #{
         organization_id => maps:get(<<"organization_id">>, Row, undefined),
         code => maps:get(<<"code">>, Row, undefined),
+        role => code_role(Row),
         status => maps:get(<<"status">>, Row, undefined),
         expires_at => maps:get(<<"expires_at">>, Row, undefined),
         created_at => maps:get(<<"created_at">>, Row, undefined)

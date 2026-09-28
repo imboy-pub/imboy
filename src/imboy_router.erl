@@ -1176,6 +1176,13 @@ get_routes() ->
                 adm_organization_handler, #{action => member_remove}},
             {"/api/adm/organizations/:organization_id/invitations/:invitation_id/cancel",
                 adm_organization_handler, #{action => invitation_cancel}},
+            % QR 入企码（邀请码）平台面：码是凭证，read-only 不暴露——
+            % GET/POST/DELETE 全部 organizations:write；审计 adm_operation_log。
+            {"/api/adm/organizations/:organization_id/invite_code",
+                adm_organization_handler, #{action => invite_code}},
+            % 注册审核（00000155：APP 建企 → pending，平台 approve/reject）
+            {"/api/adm/organizations/:organization_id/review/:review",
+                adm_organization_handler, #{action => review}},
             {"/api/adm/organizations/:organization_id/departments/:department_id/rename",
                 adm_organization_handler, #{action => department_rename}},
             {"/api/adm/organizations/:organization_id/departments/:department_id/move",

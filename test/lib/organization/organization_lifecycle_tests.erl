@@ -100,6 +100,77 @@ archive_restore_idempotent_command_test_() ->
     end).
 
 %% ===================================================================
+%% 真 PG：注册审核门（00000155）——pending 组织堵洞
+%% ===================================================================
+
+pending_review_gate_test_() ->
+    {
+        "注册审核门（00000155）：pending 组织 lifecycle/邀新/出码全 409；"
+        "平台 reject→rejected 终态、approve→active 唯一出口；非 pending 再审核 409",
+        ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+            Uid = new_uid(),
+            MemberUid = new_uid(),
+            OrgP = new_uid(),
+            OrgR = new_uid(),
+            OrgA = new_uid(),
+            AdmUid = 1,
+            ok = meck:new(elib_log, [passthrough, no_link]),
+            ok = meck:expect(elib_log, internal_log, fun(_L, _M, _Mod, _Line) -> ok end),
+            try
+                lists:foreach(fun create_user/1, [Uid, MemberUid]),
+                create_org_with_status(OrgP, Uid, <<"pending">>),
+                create_org_with_status(OrgR, Uid, <<"rejected">>),
+                create_org_with_status(OrgA, Uid, <<"pending">>),
+                %% ① pending：lifecycle 堵洞（尤其 restore 不得把 pending 推成 active）
+                {error, {409, _}} = organization_lifecycle:archive(Uid, OrgP),
+                {error, {409, _}} = organization_lifecycle:restore(Uid, OrgP),
+                %% ② pending：成员治理写（邀请新成员）被拒
+                {error, {409, _}} = organization_member_logic:invite(
+                    Uid, OrgP, MemberUid, <<"member">>
+                ),
+                %% ③ pending：租户面邀请码被拒
+                {error, {409, _}} = organization_invite_code_app:create(Uid, OrgP, #{}),
+                %% ④ 平台 reject：pending → rejected 终态
+                {ok, #{status := <<"rejected">>}} =
+                    organization_admin_logic:admin_review(AdmUid, OrgP, reject, #{}),
+                org_status_is(OrgP, <<"rejected">>),
+                %% ⑤ rejected 终态：再审核 409、lifecycle 409
+                {error, {409, _}} = organization_admin_logic:admin_review(
+                    AdmUid, OrgP, approve, #{}
+                ),
+                {error, {409, _}} = organization_lifecycle:restore(Uid, OrgP),
+                %% ⑥ 已 rejected 的组织再审核（approve）也 409
+                {error, {409, _}} = organization_admin_logic:admin_review(
+                    AdmUid, OrgR, approve, #{}
+                ),
+                %% ⑦ pending approve → active（唯一放行出口）
+                {ok, #{status := <<"active">>}} =
+                    organization_admin_logic:admin_review(AdmUid, OrgA, approve, #{}),
+                org_status_is(OrgA, <<"active">>),
+                %% ⑧ 已 active 再 approve → 409（非待审核状态）
+                {error, {409, _}} = organization_admin_logic:admin_review(
+                    AdmUid, OrgA, approve, #{}
+                ),
+                %% ⑨ active 化后成员治理与出码恢复正常
+                {ok, _} = organization_invite_code_app:create(Uid, OrgA, #{}),
+                {ok, _InviteStatus, _} =
+                    organization_member_logic:invite(Uid, OrgA, MemberUid, <<"member">>)
+            after
+                _ = (catch meck:unload(elib_log)),
+                lists:foreach(
+                    fun(O) ->
+                        _ = elib_pg:query(
+                            <<"DELETE FROM public.organization WHERE id = $1">>, [O]
+                        )
+                    end,
+                    [OrgP, OrgR, OrgA]
+                ),
+                lists:foreach(fun cleanup_user/1, [Uid, MemberUid])
+            end
+        end)
+    }.
+
+%% ===================================================================
 %% handler 三 action 分派（meck，无 DB）
 %% ===================================================================
 
@@ -218,12 +289,15 @@ create_user(Uid) ->
     ok.
 
 create_org_with_owner(OrgId, OwnerUid) ->
+    create_org_with_status(OrgId, OwnerUid, <<"active">>).
+
+create_org_with_status(OrgId, OwnerUid, Status) ->
     {ok, _} = elib_pg:query(
         <<
-            "INSERT INTO public.organization (id, name, owner_id)"
-            " VALUES ($1, 'lifecycle-probe', $2)"
+            "INSERT INTO public.organization (id, name, owner_id, status)"
+            " VALUES ($1, 'lifecycle-probe', $2, $3)"
         >>,
-        [OrgId, OwnerUid]
+        [OrgId, OwnerUid, Status]
     ),
     ok.
 

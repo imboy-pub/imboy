@@ -43,6 +43,10 @@
     admin_member_remove/4,
     admin_invitation_create/5,
     admin_invitation_cancel/4,
+    admin_invite_code_get/1,
+    admin_invite_code_create/5,
+    admin_invite_code_revoke/3,
+    admin_review/4,
     admin_department_create/4,
     admin_department_rename/5,
     admin_department_move/5,
@@ -50,6 +54,9 @@
 ]).
 
 -include("log.hrl").
+
+%% 平台建码换码重试上限（镜像 invite_code_app 的 ?CODE_RETRY_LIMIT）。
+-define(INVITE_CODE_RETRY_LIMIT, 3).
 
 %% ===================================================================
 %% 读：组织分页 + 搜索（status=all|active|archived；keyword 按组织名/ID）
@@ -107,10 +114,14 @@ page_where(Status, Keyword) ->
     %% epgsql 会收到「占位符多于参数」的语句并在结果解码阶段以 function_clause 崩成 500
     %% （实测：GET /api/adm/organizations?status=active ⇒ 配置向导拉不到组织列表）。
     %% 故这里 Conds 与 Params 成对构造；`::text` 让枚举/varchar 两种列型都能绑。
+    %% 枚举覆盖 00000155 全状态：active|archived|pending|rejected（待审核列表
+    %% 即 status=pending 筛选）。
     {Conds0, StatusParams} =
         case Status of
             <<"active">> -> {[<<" o.status::text = $1">>], [<<"active">>]};
             <<"archived">> -> {[<<" o.status::text = $1">>], [<<"archived">>]};
+            <<"pending">> -> {[<<" o.status::text = $1">>], [<<"pending">>]};
+            <<"rejected">> -> {[<<" o.status::text = $1">>], [<<"rejected">>]};
             _ -> {[], []}
         end,
     KwParams =
@@ -874,6 +885,12 @@ transition(AdmUserId, OrgId, TargetStatus, AuditCtx) when is_integer(OrgId), Org
                             TargetStatus ->
                                 %% 幂等重放：状态未变，零写入（与 app 层同口径）
                                 {ok, {Org, false}};
+                            <<"pending">> ->
+                                %% 审核状态机唯一放行出口是 admin_review，
+                                %% 平台 archive/restore 不得把 pending 推成 active
+                                abort(409, <<"Organization 待审核，审核通过前不能执行此操作"/utf8>>);
+                            <<"rejected">> ->
+                                abort(409, <<"Organization 未通过审核，不能执行此操作"/utf8>>);
                             _Current ->
                                 case
                                     organization_lifecycle_pg:set_status_tx(
@@ -1555,7 +1572,9 @@ department_rename_tx(AdmUserId, OrgId, DeptId, Name, ExpectedVersion, Params, Au
                 {ok, #{status := archived}} ->
                     abort(409, <<"部门已归档，禁止修改"/utf8>>);
                 {ok, _Dept} ->
-                    rename_cas_tx(Conn, AdmUserId, OrgId, DeptId, Name, ExpectedVersion, Params, AuditCtx);
+                    rename_cas_tx(
+                        Conn, AdmUserId, OrgId, DeptId, Name, ExpectedVersion, Params, AuditCtx
+                    );
                 {error, Reason0} ->
                     _ = ?ERROR_LOG([
                         organization_admin_department_failed, rename, OrgId, DeptId, Reason0
@@ -1664,7 +1683,9 @@ department_move_tx(AdmUserId, OrgId, DeptId, NewParentId, ExpectedVersion, Param
                 {error, {invalid_parent_id, _}} ->
                     abort(400, <<"parent_id 必须是正整数或 null"/utf8>>);
                 {error, Reason} ->
-                    _ = ?ERROR_LOG([organization_admin_department_failed, move, OrgId, DeptId, Reason]),
+                    _ = ?ERROR_LOG([
+                        organization_admin_department_failed, move, OrgId, DeptId, Reason
+                    ]),
                     throw({abort_tx, {internal, Reason}})
             end
         end,
@@ -1694,7 +1715,9 @@ admin_department_archive(AdmUserId, OrgId, DeptId, AuditCtx) when
             Tx =
                 fun(Conn) ->
                     case
-                        organization_department_pg:archive_subtree_in_tx(Conn, OrgId, DeptId, undefined)
+                        organization_department_pg:archive_subtree_in_tx(
+                            Conn, OrgId, DeptId, undefined
+                        )
                     of
                         {ok, Dept} ->
                             %% 平台审计（事务内；CP-ASSET-05）：失败整事务回滚；
@@ -1768,6 +1791,240 @@ fresh_department_view(OrgId, DeptId) ->
 %% department_pg 行键为原子（normalize_row）；统一二进制键出站由 handler 归一化
 department_view(Row) when is_map(Row) ->
     Row#{organization_id => maps:get(organization_id, Row, undefined), id => maps:get(id, Row)}.
+
+%% ===================================================================
+%% 写：组织邀请码（平台通道，QR 入企码；created_by=NULL 平台口径——
+%% adm_user.id 不指向 user 表，镜像 admin_invitation invited_by=NULL 先例）。
+%% 租户治理门不做（平台鉴权由 handler 层 adm_acl 承担）；org 状态门禁与
+%% app 层同构：仅 active 可建码（pending/rejected/archived 409），撤销
+%% 放行任何状态（收紧操作）。一组织至多一个 active 码；重新生成=旧码失效。
+%% ===================================================================
+
+-spec admin_invite_code_get(integer()) -> {ok, map()} | {error, {404, binary()} | {500, binary()}}.
+admin_invite_code_get(OrgId) when is_integer(OrgId), OrgId > 0 ->
+    Tx = fun(Conn) ->
+        organization_invite_code_pg:find_active_by_org_tx(Conn, OrgId)
+    end,
+    case elib_pg:with_tx(Tx) of
+        {ok, Row} ->
+            {ok, invite_code_view(Row)};
+        {error, not_found} ->
+            {error, {404, <<"该组织当前没有有效邀请码"/utf8>>}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([organization_admin_invite_code_failed, get, OrgId, Reason]),
+            {error, {500, <<"读取邀请码失败，请稍后重试"/utf8>>}}
+    end;
+admin_invite_code_get(_) ->
+    {error, {400, <<"organization_id 必须是正整数"/utf8>>}}.
+
+-spec admin_invite_code_create(integer(), integer(), binary(), integer() | undefined, map()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_invite_code_create(AdmUserId, OrgId, Role, ExpiresIn, AuditCtx) when
+    is_integer(OrgId), OrgId > 0
+->
+    case organization_invite_code_app:normalize_role(Role) of
+        invalid ->
+            {error, {400, <<"role 仅支持 admin 或 member"/utf8>>}};
+        NormRole ->
+            ExpiresAt =
+                case is_integer(ExpiresIn) andalso ExpiresIn > 0 of
+                    true -> os:system_time(second) + ExpiresIn;
+                    false -> os:system_time(second) + organization_invite_code_app:ttl_seconds()
+                end,
+            insert_code_with_retry(
+                AdmUserId, OrgId, NormRole, ExpiresAt, ?INVITE_CODE_RETRY_LIMIT, AuditCtx
+            )
+    end;
+admin_invite_code_create(_, _, _, _, _) ->
+    {error, {400, <<"organization_id 必须是正整数"/utf8>>}}.
+
+%% 换码重试（镜像 invite_code_app:insert_code_tx 的收敛策略；差异仅
+%% 治理门：平台通道只裁决 org 状态，不做成员角色校验）。
+insert_code_with_retry(_AdmUserId, _OrgId, _Role, _ExpiresAt, 0, _AuditCtx) ->
+    {error, {500, <<"生成邀请码失败，请稍后重试"/utf8>>}};
+insert_code_with_retry(AdmUserId, OrgId, Role, ExpiresAt, Left, AuditCtx) ->
+    %% R3-7（与 invite_code_app:insert_code_tx 同口径）：撤旧只在**首次尝试**
+    %% 做，重试 insert_only——否则重试窗口内并发建码者刚拿到的码会被静默撤销。
+    Mode =
+        case Left =:= ?INVITE_CODE_RETRY_LIMIT of
+            true -> revoke_first;
+            false -> insert_only
+        end,
+    Code = organization_invite_code_pg:generate_code(),
+    Tx = fun(Conn) ->
+        case organization_lifecycle_pg:lock_organization_tx(Conn, OrgId) of
+            {ok, #{<<"status">> := <<"active">>}} ->
+                ok;
+            {ok, #{<<"status">> := <<"pending">>}} ->
+                abort(409, <<"Organization 待审核，审核通过后才能生成邀请码"/utf8>>);
+            {ok, #{<<"status">> := <<"rejected">>}} ->
+                abort(409, <<"Organization 未通过审核，不能生成邀请码"/utf8>>);
+            {ok, _Archived} ->
+                abort(409, <<"Organization 已归档，不能生成邀请码"/utf8>>);
+            {error, not_found} ->
+                abort(404, <<"Organization 不存在"/utf8>>);
+            {error, Reason1} ->
+                throw({abort_tx, {internal, Reason1}})
+        end,
+        case Mode of
+            revoke_first ->
+                case organization_invite_code_pg:revoke_active_by_org_tx(Conn, OrgId) of
+                    {ok, _} -> ok;
+                    {error, Reason2} -> throw({abort_tx, {internal, {revoke_old_code, Reason2}}})
+                end;
+            insert_only ->
+                ok
+        end,
+        case organization_invite_code_pg:add_tx(Conn, OrgId, Code, null, ExpiresAt, Role) of
+            {ok, Row} ->
+                ok = audit_governance_tx(
+                    Conn,
+                    AdmUserId,
+                    <<"invite_code_create">>,
+                    OrgId,
+                    #{<<"role">> => Role},
+                    AuditCtx
+                ),
+                {ok, Row};
+            {error, code_conflict} ->
+                {error, code_conflict};
+            {error, Reason3} ->
+                throw({abort_tx, {internal, Reason3}})
+        end
+    end,
+    case elib_pg:with_tx(Tx) of
+        {ok, Row} ->
+            _ = ?INFO_LOG([organization_admin_invite_code_created, OrgId, Role]),
+            {ok, invite_code_view(Row)};
+        {error, code_conflict} ->
+            insert_code_with_retry(AdmUserId, OrgId, Role, ExpiresAt, Left - 1, AuditCtx);
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+            {error, {Code, Msg}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([organization_admin_invite_code_failed, create, OrgId, Reason]),
+            {error, {500, <<"生成邀请码失败，请稍后重试"/utf8>>}}
+    end.
+
+-spec admin_invite_code_revoke(integer(), integer(), map()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_invite_code_revoke(AdmUserId, OrgId, AuditCtx) when is_integer(OrgId), OrgId > 0 ->
+    Tx = fun(Conn) ->
+        case organization_lifecycle_pg:lock_organization_tx(Conn, OrgId) of
+            {ok, _AnyStatus} ->
+                ok;
+            {error, not_found} ->
+                abort(404, <<"Organization 不存在"/utf8>>);
+            {error, Reason1} ->
+                throw({abort_tx, {internal, Reason1}})
+        end,
+        Res = organization_invite_code_pg:revoke_active_by_org_tx(Conn, OrgId),
+        ok = audit_governance_tx(Conn, AdmUserId, <<"invite_code_revoke">>, OrgId, #{}, AuditCtx),
+        Res
+    end,
+    case elib_pg:with_tx(Tx) of
+        {ok, Count} ->
+            _ = ?INFO_LOG([organization_admin_invite_code_revoked, OrgId, Count]),
+            {ok, #{organization_id => OrgId, revoked => Count}};
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+            {error, {Code, Msg}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([organization_admin_invite_code_failed, revoke, OrgId, Reason]),
+            {error, {500, <<"撤销邀请码失败，请稍后重试"/utf8>>}}
+    end;
+admin_invite_code_revoke(_, _, _) ->
+    {error, {400, <<"organization_id 必须是正整数"/utf8>>}}.
+
+invite_code_view(Row) ->
+    #{
+        organization_id => maps:get(<<"organization_id">>, Row, undefined),
+        code => maps:get(<<"code">>, Row, undefined),
+        role => safe_role(maps:get(<<"role">>, Row, <<"member">>)),
+        status => maps:get(<<"status">>, Row, undefined),
+        expires_at => maps:get(<<"expires_at">>, Row, undefined),
+        created_at => maps:get(<<"created_at">>, Row, undefined)
+    }.
+
+safe_role(<<"admin">>) -> <<"admin">>;
+safe_role(_) -> <<"member">>.
+
+%% ===================================================================
+%% 写：注册审核 approve / reject（00000155；CAS 仅 pending 行生效——
+%% 并发审核/重复点击幂等收敛，0 行归一 409「非待审核状态」）。
+%% reject 的 reason 仅入审计 detail，不写组织行（状态机单真源）。
+%% ===================================================================
+
+-spec admin_review(integer(), integer(), approve | reject, map()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_review(AdmUserId, OrgId, Action, AuditCtx) when
+    is_integer(OrgId), OrgId > 0, Action =:= approve; Action =:= reject
+->
+    TargetStatus =
+        case Action of
+            approve -> <<"active">>;
+            reject -> <<"rejected">>
+        end,
+    Tx = fun(Conn) ->
+        case organization_lifecycle_pg:lock_organization_tx(Conn, OrgId) of
+            {ok, #{<<"status">> := <<"pending">>}} ->
+                ok;
+            {ok, #{<<"status">> := <<"active">>}} ->
+                abort(409, <<"Organization 已是审核通过状态"/utf8>>);
+            {ok, #{<<"status">> := <<"rejected">>}} ->
+                abort(409, <<"Organization 已被驳回（终态）"/utf8>>);
+            {ok, #{<<"status">> := <<"archived">>}} ->
+                abort(409, <<"Organization 已归档，无待审核事项"/utf8>>);
+            {error, not_found} ->
+                abort(404, <<"Organization 不存在"/utf8>>);
+            {error, Reason1} ->
+                throw({abort_tx, {internal, Reason1}})
+        end,
+        case organization_lifecycle_pg:set_review_status_tx(Conn, OrgId, TargetStatus) of
+            {ok, 1} ->
+                ok = audit_governance_tx(
+                    Conn,
+                    AdmUserId,
+                    case Action of
+                        approve -> <<"approve">>;
+                        reject -> <<"reject">>
+                    end,
+                    OrgId,
+                    review_detail(Action, AuditCtx),
+                    AuditCtx
+                ),
+                {ok, changed};
+            {ok, 0} ->
+                %% 锁行后仍 0 行：理论不可达（防御），按并发已处理归一
+                abort(409, <<"Organization 不在待审核状态"/utf8>>);
+            {error, Reason2} ->
+                throw({abort_tx, {internal, Reason2}})
+        end
+    end,
+    case elib_pg:with_tx(Tx) of
+        {ok, changed} ->
+            _ = ?INFO_LOG([organization_admin_reviewed, Action, OrgId]),
+            {ok, #{organization_id => OrgId, status => TargetStatus, changed => true}};
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+            {error, {Code, Msg}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([organization_admin_review_failed, Action, OrgId, Reason]),
+            {error, {500, <<"审核操作失败，请稍后重试"/utf8>>}};
+        {rollback, Reason} ->
+            _ = ?ERROR_LOG([organization_admin_review_failed, Action, OrgId, Reason]),
+            {error, {500, <<"审核操作失败，请稍后重试"/utf8>>}}
+    end;
+admin_review(_, _, _, _) ->
+    {error, {400, <<"审核参数无效"/utf8>>}}.
+
+%% reject 可带 reason（handler 从 body 提取放 AuditCtx.reason）；approve 无 extra。
+review_detail(reject, AuditCtx) ->
+    case maps:get(reason, AuditCtx, undefined) of
+        Reason when is_binary(Reason), byte_size(Reason) > 0 ->
+            #{<<"reason">> => Reason};
+        _ ->
+            #{}
+    end;
+review_detail(approve, _AuditCtx) ->
+    #{}.
 
 %% ===================================================================
 %% 内部

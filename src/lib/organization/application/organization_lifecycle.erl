@@ -5,7 +5,9 @@
 %% Core Contract C16：
 %%   * Organization 支持 create、active、archive、restore；普通 V1 API
 %%     不提供物理 delete。
-%%   * SOURCE OF TRUTH：organization.status（枚举不变：active | archived）。
+%%   * SOURCE OF TRUTH：organization.status（枚举 active | archived |
+%%     pending | rejected，见迁移 00000155：pending/rejected 为注册审核
+%%     态，其出口只有运营审核 approve/reject，不走本模块）。
 %%   * archive/restore 是幂等 command + 审计；重复命令返回稳定当前状态，
 %%     不产生重复审计事件。
 %%   * MUST NOT：archive 自动恢复/撤销 member、Workspace、Assignment、
@@ -13,6 +15,9 @@
 %%   * archived 禁新写、授权只读与 restore 放行——写入口的拒绝由各入口
 %%     自行裁决（organization_logic:update、organization_member_logic:write_tx、
 %%     organization_owner_transfer 等已按 status='active' 门禁）。
+%%   * 生命周期门（00000155）：archive 仅 active 可发起，restore 仅
+%%     archived 可发起；pending/rejected 一律 409——尤其 restore 不得把
+%%     pending 直接推成 active 绕过运营审核。
 %%
 %% 鉴权口径与既有治理写一致：仅 active owner/admin 可 archive/restore。
 
@@ -85,10 +90,17 @@ transition_tx(Conn, ActorUid, OrgId, TargetStatus) ->
         {error, Reason2} ->
             throw({abort_tx, {internal, Reason2}})
     end,
-    %% 3) 幂等推进：目标状态 == 当前状态 → 直接返回当前行（不写、不审计）
+    %% 3) 生命周期门 + 幂等推进：目标状态 == 当前状态 → 直接返回当前行
+    %%    （不写、不审计）；pending/rejected 不是本模块的合法起点/终点
+    %%    （其出口只有运营审核 approve/reject），一律 409——restore 尤其
+    %%    不得把 pending 推成 active 绕过审核。
     case maps:get(<<"status">>, Org) of
         TargetStatus ->
             {ok, {Org, false}};
+        <<"pending">> ->
+            abort(409, <<"Organization 待审核，审核通过前不能执行此操作"/utf8>>);
+        <<"rejected">> ->
+            abort(409, <<"Organization 未通过审核，不能执行此操作"/utf8>>);
         _Current ->
             case organization_lifecycle_pg:set_status_tx(Conn, OrgId, TargetStatus) of
                 {ok, Updated} ->
