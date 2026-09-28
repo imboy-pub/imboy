@@ -43,10 +43,11 @@ dep_ra = git https://gitee.com/imboy-tripartite-deps/ra.git v2.15.4
 # Khepri 是一个用于 Erlang 和 Elixir 的树状复制磁盘数据库库。
 dep_khepri = git https://gitee.com/imboy-tripartite-deps/khepri.git main
 
-# jwerl JWT library
-# 2years https://github.com/G-Corp/jwerl
-dep_jwerl = git https://github.com/G-Corp/jwerl.git 1.2.0
-# dep_jwerl = git https://gitee.com/mirrors_emqx/jwerl 1.1.1
+# jose JWT/JWS/JWE library (potatosalad/erlang-jose)
+# jwerl -> jose 切换方案 A：src/jwerl.erl shim 基于 jose 重新实现 jwerl API
+# OTP29 实证：IS_DEP=1 时 erlang.mk 剥离 -Werror，22 处 catch 弃用警告不阻断构建
+# gitee 镜像已核验：refs/tags/1.11.12 -> c8b669c86d73300d2af377c7c0f08b4df06fedbe（与上游 tag 同 commit）
+dep_jose = git https://gitee.com/imboy-tripartite-deps/erlang-jose.git 1.11.12
 
 # goldrush 提供了快速的事件流处理
 # 6years
