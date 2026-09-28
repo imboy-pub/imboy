@@ -123,8 +123,11 @@ prepare_case(Conn) ->
     ok.
 
 capture_provider_ok() ->
-    meck:expect(push_provider_jpush, send, 3, fun(Token, Title, Body) ->
-        self() ! {provider_send, {Token, Title, Body}},
+    %% CP-TD-A02/A1d：产品链路自 26670a37 起改调 send/4（Token,Title,Body,Data，
+    %% Data 为固定常量路由键值）；旧 send/3 桩在 meck passthrough 下穿透真实现，
+    %% eunit 无凭证 → not_configured fail-closed → 永远收不到 provider_send 消息。
+    meck:expect(push_provider_jpush, send, 4, fun(Token, Title, Body, Data) ->
+        self() ! {provider_send, {Token, Title, Body, Data}},
         ok
     end).
 
@@ -387,7 +390,13 @@ cross_user_rebind_oracle(C) ->
     ?assertEqual([], take_provider_sends()),
     %% 给 B 推送命中且只命中 T1 一次
     ?assertEqual(ok, push_notification_ds:send_to_user(?UID_B, ?PUSH_TITLE, ?PUSH_BODY)),
-    ?assertEqual([{?T1, ?PUSH_TITLE, ?PUSH_BODY}], take_provider_sends()),
+    %% send/4：Data 为固定常量路由键值（不允许动态内容，键值均 binary）。
+    %% assertMatch 模式变量不外溢且 drain 只能一次：先形状断言，再显式绑定 Data0。
+    SendsB = take_provider_sends(),
+    ?assertMatch([{?T1, ?PUSH_TITLE, ?PUSH_BODY, _Data0}], SendsB),
+    [{?T1, ?PUSH_TITLE, ?PUSH_BODY, Data0}] = SendsB,
+    ?assert(is_map(Data0)),
+    ?assert(lists:all(fun(K) -> is_binary(K) end, maps:keys(Data0))),
     ok.
 
 cross_device_rebind_oracle(C) ->
@@ -442,7 +451,7 @@ logout_oracle(C) ->
     ?assertEqual([?T2], active_tokens(?UID_A)),
     ?assertEqual(0, active_token_count(C, ?T1)),
     ?assertEqual(ok, push_notification_ds:send_to_user(?UID_A, ?PUSH_TITLE, ?PUSH_BODY)),
-    ?assertEqual([?T2], [T || {T, _, _} <- take_provider_sends()]),
+    ?assertEqual([?T2], [T || {T, _, _, _} <- take_provider_sends()]),
 
     %% 幂等：重复登出同一设备不再改动任何行
     ?assertEqual(ok, push_notification_logic:unregister_token(?UID_A, ?D1)),
@@ -478,7 +487,7 @@ fanout_oracle(C) ->
     ?assertEqual(ok, push_notification_ds:send_to_user(?UID_A, ?PUSH_TITLE, ?PUSH_BODY)),
     ?assertEqual(
         lists:sort([?T1, ?T2, ?T3]),
-        lists:sort([T || {T, _, _} <- take_provider_sends()])
+        lists:sort([T || {T, _, _, _} <- take_provider_sends()])
     ),
 
     %% 逐行按 platform 分派：fcm 行不得被投给 JPush 适配器（跨通道不串台）
@@ -488,13 +497,13 @@ fanout_oracle(C) ->
     ?assertEqual(ok, push_notification_ds:send_to_user(?UID_A, ?PUSH_TITLE, ?PUSH_BODY)),
     ?assertEqual(
         lists:sort([?T1, ?T2, ?T3]),
-        lists:sort([T || {T, _, _} <- take_provider_sends()])
+        lists:sort([T || {T, _, _, _} <- take_provider_sends()])
     ),
 
     %% 失效 token：T1 的 provider 报 1003 → 下线 T1，T2/T3 不受影响
     meck:expect(push_provider_jpush, send, fun
-        (?T1, _T, _B) -> {error, {jpush_error, invalid_token}};
-        (_Tk, _T, _B) -> ok
+        (?T1, _T, _B, _Data) -> {error, {jpush_error, invalid_token}};
+        (_Tk, _T, _B, _Data) -> ok
     end),
     ?assertEqual(ok, push_notification_ds:send_to_user(?UID_A, ?PUSH_TITLE, ?PUSH_BODY)),
     ?assertEqual(0, active_token_count(C, ?T1)),
@@ -508,7 +517,7 @@ fanout_oracle(C) ->
     ?assertEqual(ok, push_notification_ds:send_to_user(?UID_A, ?PUSH_TITLE, ?PUSH_BODY)),
     ?assertEqual(
         lists:sort([?T2, ?T3]),
-        lists:sort([T || {T, _, _} <- take_provider_sends()])
+        lists:sort([T || {T, _, _, _} <- take_provider_sends()])
     ),
 
     %% 无 token 用户：no-op，不炸
@@ -552,8 +561,10 @@ payload_oracle(C) ->
     try
         %% 让 adapter 走真实实现（prepare_case 里为「只数调用次数」桩住了它），
         %% 只桩 HTTP seam —— 验的是 adapter 真正发出的 wire body。
-        meck:expect(push_provider_jpush, send, 3, fun(T, Ti, B) ->
-            meck:passthrough([T, Ti, B])
+        %% CP-TD-A02/A1d：产品已改调 send/4，重桩须同为 /4 passthrough；
+        %% c2c 路径 Data=#{} → build_payload 不加 extras，wire body 逐字节不变。
+        meck:expect(push_provider_jpush, send, 4, fun(T, Ti, B, D) ->
+            meck:passthrough([T, Ti, B, D])
         end),
         meck:expect(push_provider_jpush_http, post, fun(Url, Headers, Body) ->
             self() ! {wire, {Url, Headers, Body}},
