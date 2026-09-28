@@ -9,7 +9,13 @@
 %%%   跨账号隔离；store 不可用 fail-closed；legacy/malformed claim 语义。
 
 uid() ->
-    erlang:unique_integer([positive]) rem 1000000000 + 1000.
+    %% A1e（CP-TD-A02 run2 实证）：unique_integer rem 1e9 + 1000 落在小整数域，
+    %% 与其他套件的固定小 uid（adm/adm_session 测试用 2350、3951 等）共享
+    %% {auth_session_epoch, Uid} 缓存键空间；并行套件 bump 后的 60s memo
+    %% 会毒化本套件 missing-row 断言（current_epoch 得 {ok,2}，表内实无行）。
+    %% 改用 TSID：本轮唯一、不与小 uid 域相交（同 group_user_id_sum_p0_tests
+    %% 的防撞先例）；user_auth_epoch.user_id 为 bigint，TSID 容纳无虞。
+    elib_tsid:generate().
 
 %% 缺行默认 epoch=1（已知默认态，非未知态）
 current_epoch_missing_row_defaults_to_1_test_() ->
