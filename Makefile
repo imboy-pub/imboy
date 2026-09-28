@@ -123,6 +123,32 @@ EUNIT_TEST_SPEC = (fun() -> Excl = [], Mods = lists:append([$1]), [M || M <- Mod
 -include include/generated/imboy_product_features_erlc.mk
 ERLC_EXCLUDE ?= $(IMBOY_FEATURE_ERLC_EXCLUDE)
 
+# WH-02（2026-09-28）：ebin「beam 缺失但 .app 新」死态自愈守卫。erlang.mk 的
+# ebin/imboy.app:: 规则只按「src 比 .app 新」($?) 驱动补编：并发会话/中断造成
+# 个别 beam 文件缺失而 .app 仍新时，make 判定一切最新 → 不补编 → eunit 报
+# *** test module not found ***（本日实证两例：adm_appeal_handler、
+# rtc_room_handler——后者 20:38 新增 src，全量重编产出后又被并发会话移走，
+# 期间 make 全程判定最新、零补编动作）。erlang.mk vendored 不动；利用
+# test-build 是双冒号目标、本规则写在 include 之前即先执行：守卫发现任一
+# （未被 ERLC_EXCLUDE 排除的）src 模块缺 beam 就删 ebin/$(PROJECT).app，
+# 令随后 .app 目标以 $?=全量 走 -DTEST=1 干净重编（罕见路径触发一次约 4 分钟
+# 全量重编，正确性优先）。.app 本就缺失时无需守卫——原生路径即全量重编。
+# TEST/非TEST 模式失步由 WH-01T 的标记机制负责，本守卫只管存在性，单一职责。
+# ERLC_EXCLUDE_PATHS 取下方覆写（按 basename 递归过滤），配方延迟求值，
+# 执行期已定义。
+test-build:: beam-presence-guard
+.PHONY: beam-presence-guard
+beam-presence-guard:
+	@if [ -f ebin/$(PROJECT).app ]; then \
+	  for f in $$(find src -name '*.erl'); do \
+	    case " $(ERLC_EXCLUDE_PATHS) " in *" $$f "*) continue ;; esac; \
+	    if [ ! -f "ebin/$$(basename "$$f" .erl).beam" ]; then \
+	      echo "== WH-02: ebin beam missing for $$f, force full -DTEST=1 recompile =="; \
+	      rm -f ebin/$(PROJECT).app; break; \
+	    fi; \
+	  done; \
+	fi
+
 include erlang.mk
 
 # 本仓源码位于 src/<子目录>/*.erl（erlang.mk 递归 find），erlang.mk 默认的
@@ -174,13 +200,25 @@ imboy-prune-excluded-beams:
 # ② 根本解法需架构决策：恢复双槽（带 mtime 修正）或 test 构建独立 ebin 目录。
 # WH-01S 修复（2026-09-28 当日）：问题①已由下方 restore-test 的
 # 「touch .test + 清 ebin」落点修复（guard 时机在编译前；只动 test 侧，
-# restore-app 保持空操作以避免与常驻 make run dev server 互踩——当日
+# 避免与常驻 make run dev server 互踩——当日
 # 47 例假失败经 -DTEST=1 批量单模块验证全转绿，见工作区
 # .Codex/runs/crossplan-v12-20260927T000125Z-b7fd6733/notes/test-diagnosis-20260928/）。
+# WH-01T 补全（2026-09-28 傍晚，plain `make eunit` 17:26 全量失败实证）：
+# ① restore-app 空操作把 erlang.mk 原生语义里「app 侧清标记」一并丢了——
+#   make run/make compile 后标记残留，下一次 test-build 因标记存在而跳过
+#   beam-cache-restore-test，ebin 陈旧口径直接带病参赛。恢复为仅删标记
+#   （不搬槽位，不触碰 ebin，仍不干扰常驻 dev server）。
+# ② restore-test 只 touch 标记+清 beam，未删 ebin/$(PROJECT).app：app 目标
+#   因 .app 比 src 新而跳过 -DTEST=1 重编 → ebin 空壳 → mass undef /
+#   meck {undefined_module,…} / "test module not found"（同 eunit-local
+#   A1c 注释的「补删 ebin/imboy.app」，此处让 plain eunit / ct 同享该修复）。
+#   删 .app 必须先于清 beam：中途被打断时只要 .app 已删，下次 eunit 即因
+#   .app 缺失全量重建自愈；反之「无 beam 但 .app 在」是不会自愈的死态。
 beam-cache-restore-app:
-	@:
+	$(verbose) rm -f $(ERLANG_MK_TMP)/$(PROJECT).test
 beam-cache-restore-test:
 	$(verbose) touch $(ERLANG_MK_TMP)/$(PROJECT).test
+	$(verbose) rm -f ebin/$(PROJECT).app
 	$(verbose) rm -f ebin/*.beam
 
 define compile_proto.erl
@@ -506,11 +544,12 @@ eunit-local:
 	@# 干净重编」的确定性路径；erlang.mk 本体 vendored 不动，只在门入口加固。
 	@rm -f .erlang.mk/$(PROJECT).test
 	@rm -rf .erlang.mk/beam-cache/$(PROJECT)
-	@# A1c 补全（2026-09-28 15:13Z 门全 cancel 实证）：Makefile:184 覆写版
-	@# beam-cache-restore-test 只 touch 标记+清 beam，丢了 erlang.mk 原生路径
-	@# 里 clean-app 对 ebin/imboy.app 的删除。刚 make compile 过时 imboy.app
-	@# 比 src 新（$? 为空）→ test-build 仍跳过 -DTEST=1 重编 → ebin 空 beam、
-	@# imboy_app:start undef、用例全 cancel。补删使 -DTEST=1 重编真正触发。
+	@# A1c 补全（2026-09-28 15:13Z 门全 cancel 实证）：覆写版 beam-cache-restore-test
+	@# 当年只 touch 标记+清 beam，丢了 erlang.mk 原生路径里对 ebin/imboy.app 的
+	@# 删除 → test-build 跳过 -DTEST=1 重编 → ebin 空 beam、用例全 cancel。
+	@# 该缺口已由 WH-01T 在 beam-cache-restore-test 覆写处修复（见上方 Makefile
+	@# restore-app/restore-test，删 .app 先于清 beam）；此处三连删保留为
+	@# eunit-local 门入口的纵深防御（显式硬复位，不依赖覆写语义）。
 	@rm -f ebin/imboy.app
 	@# A1c：PG 接入走 fork-per-connection 本地中继（test/common/pg_relay.py）。
 	@# 证据（evidence/CP-TD-A02 run1-4）：长命 eunit VM 的新建 TCP 连接会被
