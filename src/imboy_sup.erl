@@ -3,6 +3,8 @@
 
 -export([start_link/0]).
 -export([init/1]).
+%% TSID-07：部署配置链合同测试直调（env > application env > 默认 的合成结果）
+-export([tsid_guard_config/0]).
 
 %% @doc 启动 supervisor
 -spec start_link() -> {ok, pid()} | {error, term()}.

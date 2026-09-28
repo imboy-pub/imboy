@@ -12,11 +12,11 @@ spec:
   selector:
     matchLabels:
       {{- include "imboy.backend.selectorLabels" . | nindent 6 }}
+  # rollout 策略（TSID-07 / AC-07A）：默认 Recreate——先停旧 Pod 再起新
+  # Pod，消灭并发写 TSID state 的重叠窗口（同 Node 双实例 = 唯一性反例根因）。
+  # RollingUpdate 仅在无共享 TSID state 的多副本拓扑（独立 NodeId）下允许。
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0        # 零停机滚动更新
+    type: {{ .Values.backend.strategy.type | default "Recreate" }}
   template:
     metadata:
       labels:
@@ -208,6 +208,12 @@ spec:
             - name: backend-priv
               mountPath: /opt/imboy/priv_runtime
             {{- end }}
+            {{- if .Values.backend.persistence.tsid.enabled }}
+            # TSID durable fence 状态（TSID-07 / AC-07B）：必须持久化，
+            # 落镜像层 = 重启失忆 = ID 重复
+            - name: backend-tsid
+              mountPath: {{ .Values.backend.tsid.stateDir }}
+            {{- end }}
 
       volumes:
         {{- if .Values.backend.persistence.log.enabled }}
@@ -219,6 +225,11 @@ spec:
         - name: backend-priv
           persistentVolumeClaim:
             claimName: {{ include "imboy.fullname" . }}-backend-priv
+        {{- end }}
+        {{- if .Values.backend.persistence.tsid.enabled }}
+        - name: backend-tsid
+          persistentVolumeClaim:
+            claimName: {{ include "imboy.fullname" . }}-backend-tsid
         {{- end }}
 
       {{- with .Values.nodeSelector }}
@@ -270,6 +281,27 @@ spec:
       storage: {{ .Values.backend.persistence.priv.size }}
   {{- if .Values.backend.persistence.priv.storageClass }}
   storageClassName: {{ .Values.backend.persistence.priv.storageClass }}
+  {{- end }}
+{{- end }}
+---
+{{- if .Values.backend.persistence.tsid.enabled }}
+# TSID durable fence 状态卷（TSID-07 / AC-07B）：双槽 48B record + manifest，
+# 与 log/priv 独立（快照、恢复、扩容互不影响）
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "imboy.fullname" . }}-backend-tsid
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "imboy.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.backend.persistence.tsid.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.persistence.tsid.size }}
+  {{- if .Values.backend.persistence.tsid.storageClass }}
+  storageClassName: {{ .Values.backend.persistence.tsid.storageClass }}
   {{- end }}
 {{- end }}
 {{- end }}

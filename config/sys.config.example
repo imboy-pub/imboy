@@ -184,14 +184,33 @@
         % 频道消息撤回窗口（秒），默认 120 秒；设置为 0 表示不限制时间窗
         {channel_revoke_window_seconds, 120},
 
-        % TSID 分布式ID生成器配置
+        % TSID 分布式ID生成器配置（TSID-06/07：由 imboy_sup 的 elib_tsid_guard
+        % child 消费；全部键可被 IMBOY_TSID_* 环境变量覆盖，非法值启动即失败）
 
         % 数据中心ID (0-7, dc_bits=3 时支持 8 个DC)
         {tsid_dc_id, 1},
-        % 节点ID (0-127, dc_bits=3 时每DC支持 128 个节点)
+        % 节点ID (0-127, dc_bits=3 时每DC支持 128 个节点；同一 dc 内唯一，
+        % 重复 = 同 CombinedNode 双写 = ID 碰撞，部署层必须保证不重)
         {tsid_node_id, 1},
         % DC位数 (全集群必须统一)
         {tsid_dc_bits, 3},
+        % durable fence 状态目录：必须位于持久卷（容器部署由 IMBOY_TSID_STATE_DIR
+        % 显式注入，如 /opt/imboy/tsid_state）。缺省 priv/tsid 仅适合本地开发
+        % ——落镜像层/容器层的 state 在重建后丢失 durable safe_before = ID 重复。
+        %{tsid_state_dir, "/var/lib/imboy/tsid"},
+        % store bootstrap 合同：existing（默认）= 无有效槽即拒绝启动，绝不
+        % 静默 fresh；fresh 仅首次部署/离线 cutover 显式使用
+        {tsid_store_bootstrap, existing},
+        % 逻辑时间领先上限（ms）：ID 时间戳最多领先墙钟多少（§5.6 有界逻辑时间）
+        {tsid_max_logical_lead_ms, 5},
+        % 容量等待预算（ms）：clock-wait / CAS 冲突的 deadline
+        {tsid_capacity_wait_timeout_ms, 100},
+        % durable fence 窗口（ms）：persist 的 safe_before 超前墙钟多少
+        {tsid_fence_window_ms, 1000},
+        % 续租余量（ms）：cursor 逼近 safe_before - margin 时触发续租
+        {tsid_fence_renew_margin_ms, 100},
+        % 启动时钟回拨容忍（ms）：恢复时墙钟落后 durable floor 的 bounded wait
+        {tsid_startup_clock_wait_timeout_ms, 5000},
 
         % 账号注销自动清理配置
 

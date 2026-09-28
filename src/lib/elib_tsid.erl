@@ -373,11 +373,32 @@ registered() ->
             [default]
     end.
 
-%% @private 组合 10-bit CombinedNode（guard 配置装配用）
+%% @private 组合 10-bit CombinedNode（guard 配置装配用）。
+%% 越界输入必须 error 而非静默 bor：NodeId 溢出 node 位段会覆盖 dc 位
+%% （如 (1,200,3) bor 出 200——dc 信息丢失且与其它合法组合碰撞可能），
+%% 这是部署配置链的最后一道布局校验（TSID-07 / AC-07C）。
 -spec combine_node(non_neg_integer(), non_neg_integer(), 0..10) -> 0..1023.
-combine_node(DcId, NodeId, DcBits) ->
+combine_node(DcId, NodeId, DcBits) when
+    is_integer(DcId),
+    DcId >= 0,
+    DcBits >= 0,
+    DcBits =< ?NODE_BITS,
+    is_integer(NodeId),
+    NodeId >= 0,
+    NodeId < (1 bsl (?NODE_BITS - DcBits)),
+    DcId < (1 bsl DcBits)
+->
     NodeBits = ?NODE_BITS - DcBits,
-    (DcId bsl NodeBits) bor NodeId.
+    (DcId bsl NodeBits) bor NodeId;
+combine_node(DcId, NodeId, DcBits) ->
+    error(
+        {elib_tsid_invalid_config, #{
+            dc_id => DcId,
+            node_id => NodeId,
+            dc_bits => DcBits,
+            constraint => {combined_node_bits, ?NODE_BITS}
+        }}
+    ).
 
 %% @private 读取当前 runtime handle
 -spec runtime_handle() -> {ok, map()} | error.

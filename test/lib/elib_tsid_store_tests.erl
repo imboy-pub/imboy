@@ -12,7 +12,10 @@
 -define(MAX_REL_PLUS_1, 4398046511104).
 
 tmp_root() ->
-    Dir = "/tmp/tsid_store_test_" ++ integer_to_list(erlang:unique_integer([positive])),
+    Dir =
+        "/tmp/tsid_store_test_" ++
+            integer_to_list(erlang:unique_integer([positive])) ++ "_" ++
+            integer_to_list(os:system_time(microsecond)),
     ok = filelib:ensure_dir(Dir ++ "/x"),
     Dir.
 

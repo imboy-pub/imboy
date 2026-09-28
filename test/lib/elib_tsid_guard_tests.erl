@@ -11,7 +11,10 @@
 -define(DC_BITS, 3).
 
 tmp_root() ->
-    Dir = "/tmp/tsid_guard_test_" ++ integer_to_list(erlang:unique_integer([positive])),
+    Dir =
+        "/tmp/tsid_guard_test_" ++
+            integer_to_list(erlang:unique_integer([positive])) ++ "_" ++
+            integer_to_list(os:system_time(microsecond)),
     ok = filelib:ensure_dir(Dir ++ "/x"),
     Dir.
 
