@@ -350,6 +350,14 @@ migrations-check: ## 校验 priv/migrations/ 命名与 up-down 配对（ADR-0002
 cs-migration-gate: ## 客服域迁移是否已全部落库（连真库；PGDATABASE=...）
 	@bash scripts/customer_service_migration_gate.sh
 
+# 跨仓 Widget 资产配对门（CP-ASSET-04）：后端 frame 资产常量 ↔ imboyadmin
+# 产物名的一致性检查；配对关系单源登记在 priv/cs_widget_asset_pairing.json。
+# admin 仓默认取同父目录 ../imboyadmin，CI/工作树布局用 ADMIN_REPO_DIR 指定；
+# admin 不可达时 exit 3（SKIPPED，"没核对"不冒充"一致"）。
+.PHONY: widget-asset-pairing-check
+widget-asset-pairing-check: ## CS widget 资产名后端↔admin 配对一致（ADMIN_REPO_DIR=...）
+	@bash scripts/check_widget_asset_pairing.sh
+
 .PHONY: terminology-check
 terminology-check: app ## 校验 priv/terminology/*.json 的结构、profile 与通用概念键
 	@erl -noinput -boot no_dot_erlang -pa imboy/ebin -pa ebin \

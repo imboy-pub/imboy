@@ -1,0 +1,30 @@
+{
+  "contract": "hosted-widget-contract-v1 S4 (frozen) — CS widget frame 资产路径跨仓配对表",
+  "updated_by": "CP-ASSET-04 (crossplan-v12)",
+  "single_source_note": "本文件是后端常量与 imboyadmin 产物名配对关系的唯一真源（single source of truth）：两侧检查器（imboy scripts/check_widget_asset_pairing.sh 与 imboyadmin scripts/check-widget-asset-pairing.mts）都只读这一份数据，改资产名时先改这里再同步两端，配对门会在任一侧漂移时非零。",
+  "pairs": [
+    {
+      "face": "public_frame",
+      "asset_path": "widget-assets/cs-widget.v2.js",
+      "backend": {
+        "source": "src/features/customer_service/interfaces/cs_widget_handler.erl",
+        "macro": "PUBLIC_FRAME_ASSET_JS"
+      },
+      "admin": {
+        "sources": [
+          { "file": "scripts/widget-manifest.mts", "const": "STABLE_ASSET_ALIAS" },
+          { "file": "scripts/widget-verify.mts", "const": "STABLE_ASSET_ENTRY" }
+        ]
+      }
+    },
+    {
+      "face": "legacy_frame",
+      "asset_path": "widget-assets/cs-widget.v1.js",
+      "backend": {
+        "source": "src/features/customer_service/interfaces/cs_widget_frame_handler.erl",
+        "macro": "FRAME_ASSET_JS"
+      },
+      "admin": null
+    }
+  ]
+}
