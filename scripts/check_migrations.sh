@@ -8,7 +8,8 @@
 #      {error,{no_down_migration,V}}，卡死该版本之后的整条回滚链）
 #   3) 版本号唯一（重复会让 erlang_migrate_source:scan/1 直接 duplicate_versions）
 #   4) up 文件非空
-#   5) 文件内注释头自报的版本号与文件名一致
+#   5) 文件内注释头自报的版本号与文件名一致（两种自报格式：
+#      "-- 迁移 N: ..." 与文件名式自引 "-- NNNNNNNN_<slug>.up.sql"）
 #   6) 编号连续性（仅告警：erlang_migrate 只要求递增，不要求连续）
 #
 # 注意：本脚本需兼容 macOS 自带 bash 3.2——该版本的解析器无法处理
@@ -124,6 +125,24 @@ while IFS= read -r stem; do
       sed -E 's/^[^0-9]*0*([0-9]+).*/\1/')
     if [ "$((10#$cited))" != "$ver_num" ]; then
       fail "注释头自报版本 $((10#$cited)) 与文件名版本 $ver_num 不一致: $base"
+    fi
+  fi
+
+  # 文件名式自引（PR-W3-C01 盲区补漏）：注释行里以完整文件名自引本迁移
+  # （如 "-- 00000152_moya_subscribe_grant.up.sql"）时，slug 与本文件一致
+  # 即视为注释头自报，版本必须与文件名一致。slug 不同的文件名引用是对
+  # 其他迁移的合法交叉引用，不校验。此前 00000151/152 的注释头写
+  # 152/153 即因此格式不在 CITE_PATTERN 内而被静默跳过。
+  cite_slug="${base#*_}"        # 去版本前缀: <slug>.up.sql
+  cite_slug="${cite_slug%.*}"   # <slug>.up
+  cite_slug="${cite_slug%.*}"   # <slug>
+  self_cite=$(grep -E "^--[[:space:]]*[0-9]+_${cite_slug}\.(up|down)\.sql" "$up" |
+    head -1 || true)
+  if [ -n "$self_cite" ]; then
+    cited_self=$(printf '%s\n' "$self_cite" |
+      sed -E 's/^--[[:space:]]*0*([0-9]+)_.*/\1/')
+    if [ "$((10#$cited_self))" != "$ver_num" ]; then
+      fail "注释头文件名自引版本 $((10#$cited_self)) 与文件名版本 $ver_num 不一致: $base"
     fi
   fi
 done < "$tmp_stems"

@@ -1,4 +1,4 @@
--- 00000153_moya_invite_code.up.sql
+-- 00000152_moya_invite_code.up.sql
 -- 老师邀请码表（W3 服务端依赖之二：老师发码 → 家长进班确认页 → 绑定监护关系）。
 -- 迁移契约：up=可重复执行，down=安全回滚（fail-closed 预检）。禁止
 -- BEGIN/COMMIT——erlang_migrate 外层单事务包裹。
@@ -21,7 +21,7 @@
 --     DB 唯一约束强制"一班一码"；过期行不可再被复用/加入。
 --   * FK 均 CASCADE：邀请码是短生命周期凭证而非持久审计数据，
 --     班级/创建者删除时随之清理（审计诉求由结构化日志承担，
---     镜像 00000150 moya_subscribe_grant 的口径）。
+--     镜像 00000151 moya_subscribe_grant 的口径）。
 
 CREATE TABLE IF NOT EXISTS moya_invite_code (
     code        text                     NOT NULL,
