@@ -1174,14 +1174,14 @@ negative_matrix(S) ->
     ok.
 
 %% ------------------------------------------------------------------
-%% ④ covered_operation_ids：登记集合 ↔ 冻结表 31 ID 精确相等
+%% ④ covered_operation_ids：登记集合 ↔ 冻结表 32 ID 精确相等
 %% ------------------------------------------------------------------
 
 assert_coverage() ->
     Expected =
         lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
     Actual = intbe02_http_support:covered_ids(),
-    ?assertEqual(31, length(Expected)),
+    ?assertEqual(32, length(Expected)),
     ?assertEqual(Expected, Actual, {coverage_gap, Expected -- Actual, Actual -- Expected}).
 
 %%%===================================================================

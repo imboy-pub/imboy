@@ -8,7 +8,7 @@
 %
 % 覆盖（冻结表 enterprise_internal_audit_policy）：
 %   ① 政策覆盖完整性：policies() 精确覆盖路由表全部非 GET operation
-%      （REQUIRED 16 + DEVIATION 4 = 20，无遗漏无表外）；
+%      （REQUIRED 17 + DEVIATION 4 = 21，无遗漏无表外）；
 %   ② REQUIRED_AUDIT 逐条：真 HTTP mutation 成功 → 对应 action 审计计数
 %      +1，且审计行含七字段口径（organization_id / resource_type +
 %      resource_id / action / actor_role+actor_user_id /
@@ -55,7 +55,7 @@ policy_coverage() ->
         length(lists:usort(Required ++ Deviation)),
         overlapping_verdicts
     ),
-    ?assertEqual(16, length(Required)),
+    ?assertEqual(17, length(Required)),
     ?assertEqual(4, length(Deviation)),
     %% DEVIATION 冻结集合（豁免不得静默扩散）
     ?assertEqual(
@@ -341,6 +341,19 @@ positive_with_audit(S) ->
     NewDlv = detail_of_action(C, <<"webhook.delivery.replayed">>, <<"delivery_id">>),
     ?assert(is_binary(NewDlv), new_delivery_in_detail),
 
+    %% ---- INT-32 测试投递（REQUIRED；v1.1.1 追加，端点已由 INT-12 配置）----
+    with_dns(fun() ->
+        http_ok(
+            Port,
+            <<"POST">>,
+            <<"/api/internal/v1/webhook/test-delivery">>,
+            #{},
+            A,
+            <<"intbe03-idem-32">>
+        )
+    end),
+    assert_audit_increment(C, <<"webhook.test_delivered">>, 0, 1),
+
     %% ---- INT-14 SSO exchange（REQUIRED；幂等豁免但审计 REQUIRED）----
     {ok, #{<<"code">> := SsoCode}} =
         enterprise_oa_sso_logic:issue_code_tx(C, 995017, #{
@@ -393,7 +406,7 @@ positive_with_audit(S) ->
         A
     ),
     TotalBefore = total_audit(C),
-    ?assertEqual(15, TotalBefore),
+    ?assertEqual(16, TotalBefore),
 
     %% ---- INT-21 归档（REQUIRED；最后执行）----
     http_ok(Port, <<"DELETE">>, GrpPath, #{}, A, <<"intbe03-idem-21">>),
@@ -414,6 +427,7 @@ positive_with_audit(S) ->
         <<"friend_request.created">> => 1,
         <<"webhook.configured">> => 1,
         <<"webhook.delivery.replayed">> => 1,
+        <<"webhook.test_delivered">> => 1,
         <<"oa.sso.exchanged">> => 1,
         <<"identity.mapping.revoked">> => 1
     },

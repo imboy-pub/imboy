@@ -196,6 +196,19 @@ policies() ->
                     "audit_action 冻结为 file.governance.op，具体 op 落 detail.op"/utf8
                 >>
         },
+        #{
+            id => <<"INT-32">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/webhook/test-delivery">>,
+            verdict => required_audit,
+            audit_action => <<"webhook.test_delivered">>,
+            audit_resource_type => <<"bot_delivery">>,
+            reason =>
+                <<
+                    "测试投递合成 webhook.ping 出站事件入箱并触发真实外发，"
+                    "与 INT-13 重放同等改变投递面，必须留痕"/utf8
+                >>
+        },
         %% ---- REGISTERED_DEVIATION（4 条）----
         #{
             id => <<"INT-03">>,

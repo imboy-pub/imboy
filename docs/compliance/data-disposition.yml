@@ -435,6 +435,20 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  moya_invite_code:
+    action: delete
+    owner: moya
+    reason: 老师班级邀请码（短生命周期凭证，非持久审计数据）
+    mechanism: FK on delete cascade（group/创建者删除连带清理，审计走结构化日志）
+    review: self-evident
+    retention: n/a
+  moya_subscribe_grant:
+    action: delete
+    owner: moya
+    reason: 订阅消息一次性授权额度（uid 关联；openid 不入库）
+    mechanism: FK on delete cascade（user 删除连带清理，消费审计走结构化日志）
+    review: self-evident
+    retention: n/a
   msg_c2c:
     action: delete
     owner: messages

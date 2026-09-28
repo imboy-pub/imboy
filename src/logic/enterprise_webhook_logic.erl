@@ -501,7 +501,8 @@ ping_emit(Conn, Ctx, Principal, Url) ->
             Env = envelope(Ctx, ?EVENT_PING, #{
                 resource_type => <<"webhook">>,
                 resource_id => Generation,
-                event_id => EventId
+                event_id => EventId,
+                delivery_id => DeliveryId
             }),
             Delivery = #{
                 delivery_id => DeliveryId,
@@ -520,12 +521,19 @@ ping_emit(Conn, Ctx, Principal, Url) ->
             case enterprise_webhook_repo:insert_delivery_tx(Conn, Delivery) of
                 {ok, inserted} ->
                     metric_emit(emitted),
-                    {ok, #{
-                        <<"delivery_id">> => DeliveryId,
-                        <<"event_type">> => ?EVENT_PING,
-                        <<"enqueued">> => true,
-                        <<"endpoint_generation">> => Generation
-                    }};
+                    %% INT-BE-03 冻结政策 INT-32=REQUIRED_AUDIT：投递入箱与
+                    %% 审计同事务（审计失败 → 整体回滚，不出现「已入箱无审计」）。
+                    case audit_test_delivery(Conn, Ctx, DeliveryId, Generation) of
+                        ok ->
+                            {ok, #{
+                                <<"delivery_id">> => DeliveryId,
+                                <<"event_type">> => ?EVENT_PING,
+                                <<"enqueued">> => true,
+                                <<"endpoint_generation">> => Generation
+                            }};
+                        {error, Reason} ->
+                            {error, {<<"internal_error">>, {audit, Reason}}}
+                    end;
                 {ok, duplicate} ->
                     %% evt-<event_id> 命中既有行（event_id 撞号，概率可忽略）：
                     %% 如实返回未入箱，不伪装成功
@@ -1326,6 +1334,33 @@ audit_mutation(Conn, Ctx, OriginalId, NewDeliveryId, EventType) ->
             resource_type => <<"bot_delivery">>,
             resource_id => null,
             action => <<"webhook.delivery.replayed">>,
+            actor_user_id => maps:get(principal_user_id, Ctx, undefined),
+            actor_role => <<"enterprise_application">>,
+            detail => Detail
+        })
+    of
+        {ok, _AuditId} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc INT-32 测试投递审计（webhook.test_delivered）：detail 放
+%% delivery_id / endpoint_generation / event_type；resource_id 恒 null
+%% （delivery_id 是 binary 出站 ID，非 bigint 资源，与 INT-13 同口径）。
+-spec audit_test_delivery(any(), map(), binary(), integer()) ->
+    ok | {error, term()}.
+audit_test_delivery(Conn, Ctx, DeliveryId, Generation) ->
+    Detail = #{
+        <<"delivery_id">> => DeliveryId,
+        <<"event_type">> => ?EVENT_PING,
+        <<"endpoint_generation">> => Generation,
+        <<"origin_application_id">> => maps:get(application_id, Ctx, null),
+        <<"correlation_id">> => maps:get(correlation_id, Ctx, null)
+    },
+    case
+        enterprise_audit_event_repo:append_tx(Conn, maps:get(organization_id, Ctx), #{
+            resource_type => <<"bot_delivery">>,
+            resource_id => null,
+            action => <<"webhook.test_delivered">>,
             actor_user_id => maps:get(principal_user_id, Ctx, undefined),
             actor_role => <<"enterprise_application">>,
             detail => Detail
