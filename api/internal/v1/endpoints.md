@@ -1,4 +1,4 @@
-# Internal API v1 — 端点参考（31 端点）
+# Internal API v1 — 端点参考（32 端点）
 
 > 与代码冻结表（`src/api/enterprise_internal_routes.erl`）逐条一致；
 > 字段级机器契约见 `../openapi-internal.yaml`（编辑真源，
@@ -55,7 +55,7 @@ Grant/Scope、OpenAPI、审计和自动化测试，再作为 v1 只追加端点�
 - 组织创建、组织删除、Application/Credential 生命周期、Grant 签发/撤销仍只属于
   `/api/adm/*`，不会下放给 Application Credential；
 - 上述待补合同正式实现前，当前可导入 Postman 的权威集合仍是本目录的
-  `IMBoy-Internal-API-v1.postman_collection.json`（31 个已实现端点）。
+  `IMBoy-Internal-API-v1.postman_collection.json`（32 个已实现端点）。
 
 ## 应用与凭证
 
@@ -174,10 +174,14 @@ Workspace keyset 列表与详情（V2.1 新增）；行集收窄为「当前生�
 | INT-12 | `PUT /api/internal/v1/webhook` | `webhooks:manage` | write | K |
 | INT-13 | `POST /api/internal/v1/webhook/deliveries/{delivery_id}/replay` | `webhooks:manage` | write | K |
 | INT-23 | `GET /api/internal/v1/webhook/deliveries` | `webhooks:manage` | read | — |
+| INT-32 | `POST /api/internal/v1/webhook/test-delivery` | `webhooks:manage` | write | K |
 
-登记/更新回调地址；投递状态分页查询；失败投递可按 `delivery_id` 重放。
+登记/更新回调地址；投递状态分页查询；失败投递可按 `delivery_id` 重放；
+测试投递（INT-32，v1.1.1）发出合成 `webhook.ping` 事件验证回调链路（该事件
+类型**不可订阅**，仅本端点产生）。
 你方回调端将收到 `x-imboy-delivery / x-imboy-event / x-imboy-timestamp /
-x-imboy-signature` 四个签名头（验证方式见 README §8）。
+x-imboy-signature` 四个签名头；可订阅事件白名单（4 值）、回调正文信封
+结构与 5/30/300s 重试节奏见 [README §8](./README.md#8-webhook-出站你方系统将收到的回调)。
 
 INT-23 分页为 CURSOR-V2 签名游标（`cursor` / `page_size`，缺省 20 上限 50；
 排序 `created_at DESC, delivery_id DESC`）。**旧 offset 参数 `page`/`size`

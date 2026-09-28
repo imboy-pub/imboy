@@ -3,6 +3,58 @@
 本 API 遵循「冻结 + 只追加」纪律：v1 内不做破坏性变更（不改既有路径语义、
 不删字段、不收紧既有错误码）；破坏性演进将另开 v2 目录并行。
 
+## v1.1.1 — 2026-09-28（文档澄清：Webhook 交付细节补齐）
+
+- **修复 README §2 失效指针**：快速开始第 3 步原指向「§5 的端点表与
+  `.contract/api/openapi.yaml`」——README 无端点表（§5 为限流与幂等），
+  端点表在 endpoints.md；机器契约为 `api/openapi-internal.yaml`（bundle
+  单文件可导入）。属文档面 drift 修复，冻结合同无变化。
+- **README §8 补齐 Webhook 交付细节**（此前集成方无法从交付文档获知）：
+  - 可订阅事件白名单 4 值：`message.enterprise.accepted` / `message.enterprise.failed`
+    / `file.confirmed` / `group.member.changed`（末者为白名单预留、当前版本
+    无触发点，订阅合法但暂不投递）；
+  - 回调正文信封结构（8 键封闭、version=1、occurred_at 为 ISO-8601 UTC 毫秒）；
+  - 签名原文 = `<timestamp> "." <raw body>`（HMAC-SHA256 hex）；
+  - 重试节奏 5/30/300s 三次退避后入死信。
+- 如实标注两个既有语义边界：`resource.id` 为平台消息表行 ID，与 INT-09/10
+  响应的 `msg_id` 是不同标识符（信封无 correlation_id）；`message.enterprise.failed`
+  当前信封不含失败原因（reason_code 不外显）。
+- endpoints.md Webhook 节同步事件枚举指引（单一真源指向 README §8）。
+- **Postman 集合示例体修正（12 处与契约不一致）**：INT-02（去契约外
+  `workspace_id`）、INT-03（`external_user_id` → `external_user_ids` 数组）、
+  INT-04（`external_user_ids` → `members`）、INT-07/08（补缺失的整个请求体：
+  `file_name`/`mime_type`/`object_key`）、INT-09（`to_id` → `recipient_user_id`、
+  补 `msg_type`）、INT-10（补 `msg_type`）、INT-11（`external_user_id` →
+  `sender_user_id`+`target_user_id`）、INT-12（`webhook_url`/`name` →
+  `url`+必填 `events`）、INT-14（补 `redirect_uri`/`nonce`）、INT-20
+  （`external_user_ids`+`roles` 平行数组 → `roles:[{external_user_id,role}]`）、
+  INT-22（`file_id` → `op`+`object_key`）。端点数与 URL 集不变（31）。
+- **OpenAPI 机器契约补充枚举**（不改变路由/字段，纯收紧文档表达）：
+  INT-12 请求与响应的 `events`、INT-23 的 `status` 过滤参数与响应
+  `event_type`/`status` 均补白名单/状态机 enum；bundle 与聚合入口已重新
+  生成（`flatten_internal.py` / `gen_aggregate.py`，--check 通过）。
+- **429 追加 `Retry-After` 响应头**（纯追加，信封体与状态码不变）：
+  服务端在超限拒绝时返回 delta-seconds（＝限流窗口剩余毫秒向上取整，
+  下限 1s，per_minute 桶 ⇒ 1..60）。实现：`enterprise_internal_rate` 已有
+  的窗口剩余值经 `enterprise_internal_auth`（`take_retry_after_seconds/0`，
+  一次性取出即清）传递给 `enterprise_internal_middleware`，经
+  `enterprise_internal_error:reply/3` 附加；`decide/4` 返回契约
+  （A2 冻结测试按 atom 断言）不变。新增 eunit
+  `middleware_rate_limited_retry_after`（秒数边界 + 一次性语义）。
+- **新增端点 INT-32 `POST /webhook/test-delivery`**（连通性测试，31→32 端点）：
+  向当前配置的出站端点投递合成 `webhook.ping` 事件，走与真实事件完全相同的
+  入箱/SSRF pin/签名/重试管线（INT-23 可查、INT-13 可重放）。scope 复用
+  `webhooks:manage`、幂等 required；`webhook.ping` 事件类型**不可订阅**
+  （订阅白名单保持 4 值），仅本端点产生。实现：`enterprise_webhook_logic:
+  emit_ping_tx/2`（独立路径：不检查订阅、错误上抛、返回 delivery_id）+
+  `enterprise_webhook_handler:test_delivery/3`；路由/boundary/manifest/
+  OpenAPI/Postman/接线测试（正例 + 幂等矩阵第 17 条）全链同步。
+- **INT-09/10 响应追加可选字段 `webhook_resource_id`**（纯追加）：
+  与 webhook 事件 `resource.id` 同源的消息表行 ID，补齐「回调 ↔ 发起
+  响应」关联缺口（此前集成方只能靠自身业务记录关联）；实现位于
+  `enterprise_message_logic:finish_audit/10` 响应 map（单聊/群聊共用，
+  恒返回）。README §8 关联指引同步更新。
+
 ## v1.1.0 — 2026-09-24（V2.1 只读扩面）
 
 - 新增 8 个只读 GET 端点 **INT-24..31**：Workspace 列表/详情（24/25）、

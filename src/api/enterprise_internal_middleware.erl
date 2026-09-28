@@ -52,12 +52,27 @@ execute(Req, Env) ->
         {ok, Ctx} ->
             {ok, Req, inject_ctx(Req, Env, Ctx)};
         {error, Code} ->
-            {stop, enterprise_internal_error:reply(Req, normalize_code(Code))}
+            BinCode = normalize_code(Code),
+            {stop, enterprise_internal_error:reply(Req, BinCode, extra_headers(BinCode))}
     end.
 
 %%%===================================================================
 %%% Internal
 %%%===================================================================
+
+%% 稳定码 → 追加响应头。当前仅 429 rate_limited 附 Retry-After
+%% （delta-seconds）：值由 rate_gate 暂存、take_retry_after_seconds/0 一次性
+%% 取出即清（见该函数注释）；未限流/无值时不带头，信封体不变。
+-spec extra_headers(binary()) -> [{binary(), binary()}].
+extra_headers(<<"rate_limited">>) ->
+    case enterprise_internal_auth:take_retry_after_seconds() of
+        Sec when is_integer(Sec), Sec > 0 ->
+            [{<<"retry-after">>, integer_to_binary(Sec)}];
+        _ ->
+            []
+    end;
+extra_headers(_Code) ->
+    [].
 
 %% 池化认证闭包：parse + 单事务认证链（格式错误在此归一 invalid_credential）。
 %% 返回码沿用 enterprise_internal_auth 的内部 **atom** 约定，由本模块的

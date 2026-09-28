@@ -45,7 +45,7 @@ get:
     - name: status
       in: query
       required: false
-      description: 按投递状态过滤（pending/retry/success/dead；参与游标绑定——换 status 的旧游标 400）
+      description: 按投递状态过滤（pending/retry/success/dead；参与游标绑定——换 status 的旧游标 400；success/dead 为终结态，仅终结态可 INT-13 重放）
       schema: { type: string, enum: [pending, retry, success, dead] }
   x-imboy-scope: webhooks:manage
   x-imboy-rate-bucket: internal_read
@@ -64,8 +64,15 @@ get:
                   type: object
                   properties:
                     delivery_id: { type: string }
-                    event_type: { type: string }
-                    status: { type: string, description: 如 pending/retry/success/dead }
+                    event_type:
+                      type: string
+                      enum:
+                        - message.enterprise.accepted
+                        - message.enterprise.failed
+                        - group.member.changed
+                        - file.confirmed
+                        - webhook.ping
+                    status: { type: string, enum: [pending, retry, success, dead] }
                     attempt_count: { type: integer }
                     correlation_id: { type: [string, 'null'] }
               page_size: { type: integer }

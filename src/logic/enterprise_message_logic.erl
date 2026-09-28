@@ -468,6 +468,10 @@ finish_audit(
             ),
             {ok, #{
                 <<"msg_id">> => MsgId,
+                %% v1.1.1 纯追加：webhook 关联键＝message.enterprise.accepted/failed
+                %% 事件 resource.id 的同源值（消息表行 ID，与 msg_id 是两个标识符），
+                %% 集成方以此把回调关联回发起响应（信封无 correlation_id 的补位）。
+                <<"webhook_resource_id">> => RowId,
                 <<"sender_kind">> => SenderKind,
                 <<"sender_user_id">> => SenderUid,
                 <<"origin_kind">> => ?ORIGIN_KIND,

@@ -84,6 +84,11 @@
     <<"INT-31">>
 ]).
 
+%% v1.1.1 追加（INT-32 测试投递；webhook application 自属面）
+-define(V111_IDS, [
+    <<"INT-32">>
+]).
+
 %%%===================================================================
 %%% 边界规格
 %%%===================================================================
@@ -174,6 +179,10 @@ spec(<<"INT-30">>) ->
 %% INT-31 频道详情（channel 所属 W 边界；status=1 only）
 spec(<<"INT-31">>) ->
     {ok, #{kind => workspace, scope => <<"channels:read">>}};
+%% INT-32 测试投递（v1.1.1 追加；与 INT-12/13/23 同为 application 自属面，
+%% 无 org/workspace 资源边界，仅 scope 门）
+spec(<<"INT-32">>) ->
+    {ok, #{kind => none, scope => <<"webhooks:manage">>}};
 spec(_RouteId) ->
     error.
 
@@ -291,7 +300,7 @@ candidate_ids() ->
         <<"INT-12">>,
         <<"INT-13">>,
         <<"INT-14">>
-        | ?NEW_IDS ++ ?FULL03_IDS ++ ?V21_IDS
+        | ?NEW_IDS ++ ?FULL03_IDS ++ ?V21_IDS ++ ?V111_IDS
     ].
 
 %% ctx 的生效 scope（认证链产物；零 Grant 应用恒为空集 → list 类路由拒绝）。

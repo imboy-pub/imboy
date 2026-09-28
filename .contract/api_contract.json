@@ -1936,6 +1936,12 @@
         "handler": "enterprise_workspace_handler",
         "path": "/api/internal/v1/workspaces/:workspace_id",
         "static": false
+      },
+      {
+        "action": "test_delivery",
+        "handler": "enterprise_webhook_handler",
+        "path": "/api/internal/v1/webhook/test-delivery",
+        "static": false
       }
     ],
     "api_v1": [

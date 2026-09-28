@@ -345,6 +345,17 @@ routes() ->
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
+        },
+        %% INT-32 测试投递（v1.1.1 追加）：合成 webhook.ping 事件出站，
+        %% 验证集成方回调链路。与 INT-12/13/23 同为 application 自属面。
+        #{
+            id => <<"INT-32">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/webhook/test-delivery">>,
+            scope => <<"webhooks:manage">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
         }
     ].
 

@@ -116,7 +116,7 @@
             "description": "把 OA 侧用户标识绑定到平台用户。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"external_user_id\": \"oa-1001\",\n  \"user_id\": 9100000000000000300,\n  \"workspace_id\": 1\n}",
+              "raw": "{\n  \"external_user_id\": \"oa-1001\",\n  \"user_id\": 9100000000000000300\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -155,7 +155,7 @@
             "description": "OA 标识 → 平台用户。未映射返回 identity_not_mapped(422)。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"external_user_id\": \"oa-1001\"\n}",
+              "raw": "{\n  \"external_user_ids\": [\n    \"oa-1001\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -323,7 +323,7 @@
             "description": "创建企业群并拉入初始成员。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"项目协同群\",\n  \"workspace_id\": 1,\n  \"external_user_ids\": [\n    \"oa-1001\",\n    \"oa-1002\"\n  ]\n}",
+              "raw": "{\n  \"workspace_id\": 1,\n  \"title\": \"项目协同群\",\n  \"members\": [\n    \"oa-1001\",\n    \"oa-1002\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -555,7 +555,7 @@
             "description": "调整成员角色。roles 的合法取值请在联调时向平台方确认。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"external_user_ids\": [\n    \"oa-1001\"\n  ],\n  \"roles\": [\n    \"member\"\n  ]\n}",
+              "raw": "{\n  \"roles\": [\n    {\n      \"external_user_id\": \"oa-1001\",\n      \"role\": \"member\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -880,7 +880,16 @@
                 "value": "{{$guid}}"
               }
             ],
-            "description": "第一段：请求对象存储预签名。请求体字段（对象键/大小/类型等）在对接启动时由平台方提供字段说明；本示例暂不预填。"
+            "description": "第一段：请求对象存储预签名。请求体字段（对象键/大小/类型等）在对接启动时由平台方提供字段说明；本示例暂不预填。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"file_name\": \"notice.pdf\",\n  \"mime_type\": \"application/pdf\",\n  \"size_bytes\": 20480\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         },
         {
@@ -910,7 +919,16 @@
                 "value": "{{$guid}}"
               }
             ],
-            "description": "第二段：直传完成后确认入库，取得可引用的文件标识。"
+            "description": "第二段：直传完成后确认入库，取得可引用的文件标识。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object_key\": \"ent/9100000000000000001/9100000000000000003/2026/09/notice.pdf\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         },
         {
@@ -947,7 +965,7 @@
             "description": "文件生命周期/元数据治理动作。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"file_id\": 9100000000000000400\n}",
+              "raw": "{\n  \"op\": \"set_retention\",\n  \"object_key\": \"ent/9100000000000000001/9100000000000000003/2026/09/notice.pdf\",\n  \"retention_days\": 30,\n  \"reason\": \"OA 审计留存\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -996,7 +1014,7 @@
             "description": "sender_mode=application：以应用身份发；sender_mode=human：代人类发（追加 principal_user_id，消耗 messages:send_as_human）。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sender_mode\": \"application\",\n  \"to_id\": 9100000000000000300,\n  \"content\": \"您好，来自 OA 的通知\"\n}",
+              "raw": "{\n  \"sender_mode\": \"application\",\n  \"recipient_user_id\": \"oa-1002\",\n  \"msg_type\": \"text\",\n  \"content\": \"您好，来自 OA 的通知\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1046,7 +1064,7 @@
             "description": "向企业群发送托管消息。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sender_mode\": \"application\",\n  \"content\": \"项目群通知\"\n}",
+              "raw": "{\n  \"sender_mode\": \"application\",\n  \"msg_type\": \"text\",\n  \"content\": \"项目群通知\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1094,7 +1112,7 @@
             "description": "以 human 形态代 OA 用户发起；平台不会自动通过，由对方确认。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"external_user_id\": \"oa-1002\",\n  \"greeting\": \"我是 OA 里的同事\"\n}",
+              "raw": "{\n  \"sender_user_id\": \"oa-1001\",\n  \"target_user_id\": \"oa-1002\",\n  \"greeting\": \"我是 OA 里的同事\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1142,7 +1160,7 @@
             "description": "设置你方回调 URL 与关注的事件。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"webhook_url\": \"https://oa.example.com/imboy/callback\",\n  \"name\": \"OA 回调\"\n}",
+              "raw": "{\n  \"url\": \"https://oa.example.com/imboy/callback\",\n  \"events\": [\n    \"message.enterprise.accepted\",\n    \"message.enterprise.failed\",\n    \"file.confirmed\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1233,6 +1251,42 @@
             ],
             "description": "对失败投递按 delivery_id 重放。"
           }
+        },
+        {
+          "name": "INT-32 测试投递（合成 webhook.ping）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "demo-idem-32",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/webhook/test-delivery",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "webhook",
+                "test-delivery"
+              ]
+            },
+            "description": "向当前配置的回调端点投递合成 webhook.ping 事件验证连通性；需先 INT-12 配置。返回 delivery_id 可用于 INT-23 查询 / INT-13 重放。"
+          }
         }
       ]
     },
@@ -1271,7 +1325,7 @@
             "description": "code 为一次性（single_use_code），重放即失败。独立限流桶。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"code\": \"ONE-TIME-CODE-FROM-OA-FLOW\"\n}",
+              "raw": "{\n  \"code\": \"ONE-TIME-CODE-FROM-OA-FLOW\",\n  \"redirect_uri\": \"https://oa.example.com/imboy/sso/callback\",\n  \"nonce\": \"9f2c7b1e\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

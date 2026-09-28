@@ -50,32 +50,32 @@ route_table() ->
     Paths = [P || {P, _H, _O} <- Routes],
 
     %% ①② 冻结表逐条登记 + 零 open 面
-    %% 31 条 INT（GZ 14 + FULL-02 新增 8 + FULL-03 新增 1 + V2.1 新增 8）。
+    %% 32 条 INT（GZ 14 + FULL-02 新增 8 + FULL-03 新增 1 + V2.1 新增 8 + v1.1.1 新增 1）。
     %% Router（共享路径，A0 接线）当前登记的是已实现 handler 的 23 条——
     %% INT-24..31 的 handler（enterprise_workspace/project/channel_handler、
     %% enterprise_group_handler 扩展）由 A2 实现后经 A0 接线进 imboy_router，
     %% 故此处只断言「已接线面」的登记与形态；注册表全量形态另行断言（下方
     %% manifest_v21_entries）。
     Manifest = enterprise_internal_routes:routes(),
-    ?assertEqual(31, length(Manifest)),
+    ?assertEqual(32, length(Manifest)),
     %% Router（共享路径，A0 已于集成接线）：INT-24..31 的 8 条全部进
     %% imboy_router；其中 INT-26/27 复用既有 cowboy path（GET 方法分派在
     %% handler 内），故 31 端点对应 25 条唯一 path（19 既有 + 6 新增）。
     Wired = Manifest,
-    ?assertEqual(31, length(Wired)),
+    ?assertEqual(32, length(Wired)),
     %% 冻结表用 {name} 占位符语法，cowboy 路由用 :name —— 归一后逐条比对。
     WiredPaths = lists:usort([
         cowboy_path(binary_to_list(maps:get(path, R)))
      || R <- Wired
     ]),
-    ?assertEqual(25, length(WiredPaths)),
+    ?assertEqual(26, length(WiredPaths)),
     lists:foreach(
         fun(P) ->
             ?assert(lists:member(P, Paths))
         end,
         WiredPaths
     ),
-    ?assertEqual(25, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
+    ?assertEqual(26, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
 
     %% ③ internal 前缀不在匿名白名单；零 open 面
     Open = imboy_router:open(),
@@ -106,9 +106,9 @@ manifest_v21_entries() ->
     Manifest = enterprise_internal_routes:routes(),
     %% 31 unique id + 31 unique method+path
     Ids = [maps:get(id, R) || R <- Manifest],
-    ?assertEqual(31, length(lists:usort(Ids))),
+    ?assertEqual(32, length(lists:usort(Ids))),
     MethodPaths = [{maps:get(method, R), maps:get(path, R)} || R <- Manifest],
-    ?assertEqual(31, length(lists:usort(MethodPaths))),
+    ?assertEqual(32, length(lists:usort(MethodPaths))),
     %% 所有注册 scope 都是固定 14 值枚举成员（动态 scope 除外）
     All = enterprise_internal_scope:all(),
     lists:foreach(
@@ -690,6 +690,23 @@ positive_chain(S) ->
     #{<<"replayed">> := true} = assert_ok_json(R13),
     cover(<<"INT-13">>),
 
+    %% ---- INT-32 POST webhook/test-delivery（端点已配置 → ping 入箱）----
+    R32 = with_dns(fun() ->
+        intbe02_http_support:http(
+            Port,
+            <<"POST">>,
+            <<"/api/internal/v1/webhook/test-delivery">>,
+            #{},
+            maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-32">>))
+        )
+    end),
+    #{
+        <<"enqueued">> := true,
+        <<"event_type">> := <<"webhook.ping">>,
+        <<"delivery_id">> := _
+    } = assert_ok_json(R32),
+    cover(<<"INT-32">>),
+
     %% ---- INT-14 POST oa/sso/exchange（真签发真消费；code 一次性）----
     {ok, #{<<"code">> := SsoCode}} =
         enterprise_oa_sso_logic:issue_code_tx(C, 995017, #{
@@ -856,11 +873,13 @@ positive_chain(S) ->
             <<"intbe02-idem-13">>, R13},
         {<<"INT-15">>, <<"DELETE">>, <<"/api/internal/v1/identity-mappings">>, Body15,
             <<"intbe02-idem-15">>, R15},
-        {<<"INT-21">>, <<"DELETE">>, GrpPath, #{}, <<"intbe02-idem-21">>, R21}
+        {<<"INT-21">>, <<"DELETE">>, GrpPath, #{}, <<"intbe02-idem-21">>, R21},
+        {<<"INT-32">>, <<"POST">>, <<"/api/internal/v1/webhook/test-delivery">>, #{},
+            <<"intbe02-idem-32">>, R32}
     ].
 
 %% ------------------------------------------------------------------
-%% ② 幂等矩阵：16 条 required mutation 逐一同 key 同 body 精确重放 +
+%% ② 幂等矩阵：17 条 required mutation 逐一同 key 同 body 精确重放 +
 %%    同 key 异 body 409 + 缺/畸形 key 400
 %% ------------------------------------------------------------------
 

@@ -196,6 +196,13 @@ paths:
                         - application_disabled
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -604,6 +611,13 @@ paths:
                         - identity_not_mapped
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -950,6 +964,13 @@ paths:
                         - idempotency_conflict
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -1209,6 +1230,13 @@ paths:
                         - insufficient_scope
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -1486,6 +1514,13 @@ paths:
                         - insufficient_scope
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -1767,6 +1802,13 @@ paths:
                         - insufficient_scope
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -2057,6 +2099,13 @@ paths:
                         - insufficient_scope
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -2508,6 +2557,13 @@ paths:
                         - identity_not_mapped
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -2836,6 +2892,13 @@ paths:
                         - resource_not_found
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -3198,6 +3261,13 @@ paths:
                         - idempotency_conflict
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -3537,6 +3607,13 @@ paths:
                         - idempotency_conflict
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -3870,6 +3947,13 @@ paths:
                         - resource_not_found
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -4309,6 +4393,13 @@ paths:
                         - identity_not_mapped
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -4704,6 +4795,13 @@ paths:
                         - identity_not_mapped
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -5119,6 +5217,13 @@ paths:
                         - identity_not_mapped
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -5274,6 +5379,13 @@ paths:
                   msg_id:
                     type: integer
                     format: int64
+                  webhook_resource_id:
+                    type: integer
+                    format: int64
+                    description: |
+                      v1.1.1 追加。webhook 关联键：与 message.enterprise.accepted /
+                      failed 事件 resource.id 同源（消息表行 ID）。与 msg_id 是
+                      **两个不同标识符**；集成方以此把回调关联回本次发送响应。
                   sender_kind:
                     type: string
                   sender_user_id:
@@ -5545,6 +5657,13 @@ paths:
                         - identity_not_mapped
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -5698,6 +5817,13 @@ paths:
                   msg_id:
                     type: integer
                     format: int64
+                  webhook_resource_id:
+                    type: integer
+                    format: int64
+                    description: |
+                      v1.1.1 追加。webhook 关联键：与 message.enterprise.accepted /
+                      failed 事件 resource.id 同源（消息表行 ID）。与 msg_id 是
+                      **两个不同标识符**；集成方以此把回调关联回本次发送响应。
                   sender_kind:
                     type: string
                     description: application | human
@@ -5971,6 +6097,13 @@ paths:
                         - identity_not_mapped
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -6288,6 +6421,13 @@ paths:
                         - idempotency_conflict
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -6641,6 +6781,13 @@ paths:
                         - idempotency_conflict
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -7031,6 +7178,13 @@ paths:
                         - idempotency_conflict
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -7427,6 +7581,13 @@ paths:
                         - identity_not_mapped
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -7550,7 +7711,16 @@ paths:
                   type: array
                   items:
                     type: string
-                  description: 订阅事件列表（⊆ 事件白名单；空列表 = 只停用订阅）
+                    enum:
+                    - message.enterprise.accepted
+                    - message.enterprise.failed
+                    - group.member.changed
+                    - file.confirmed
+                  description: |
+                    订阅事件列表（⊆ 事件白名单；空列表 = 只停用订阅）。
+                    白名单固定 4 值；其中 group.member.changed 为预留值（当前版本
+                    无触发点，订阅合法但暂不产生投递）。事件语义与回调正文信封
+                    见集成方文档 api/internal/v1/README.md §8。
                 status:
                   type: string
                   enum:
@@ -7582,6 +7752,11 @@ paths:
                     type: array
                     items:
                       type: string
+                      enum:
+                      - message.enterprise.accepted
+                      - message.enterprise.failed
+                      - group.member.changed
+                      - file.confirmed
                   status:
                     type: string
                     enum:
@@ -7769,6 +7944,13 @@ paths:
                         - idempotency_conflict
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -7893,7 +8075,7 @@ paths:
       - name: status
         in: query
         required: false
-        description: 按投递状态过滤（pending/retry/success/dead；参与游标绑定——换 status 的旧游标 400）
+        description: 按投递状态过滤（pending/retry/success/dead；参与游标绑定——换 status 的旧游标 400；success/dead 为终结态，仅终结态可 INT-13 重放）
         schema:
           type: string
           enum:
@@ -7921,9 +8103,19 @@ paths:
                           type: string
                         event_type:
                           type: string
+                          enum:
+                          - message.enterprise.accepted
+                          - message.enterprise.failed
+                          - group.member.changed
+                          - file.confirmed
+                          - webhook.ping
                         status:
                           type: string
-                          description: 如 pending/retry/success/dead
+                          enum:
+                          - pending
+                          - retry
+                          - success
+                          - dead
                         attempt_count:
                           type: integer
                         correlation_id:
@@ -8062,6 +8254,13 @@ paths:
                         - insufficient_scope
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -8450,6 +8649,13 @@ paths:
                         - idempotency_conflict
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -8532,6 +8738,366 @@ paths:
                       code:
                         enum:
                         - internal_error
+  /api/internal/v1/webhook/test-delivery:
+    post:
+      tags:
+      - internal
+      summary: 出站连通性测试（合成 webhook.ping 投递）
+      description: |
+        向当前配置的出站端点投递一条合成 `webhook.ping` 事件，供你方验证回调
+        链路：URL 可达性、四签名头（`x-imboy-delivery/event/timestamp/signature`）
+        的验证逻辑、防火墙放行。投递走与真实事件完全相同的入箱管线——
+        SSRF guard 即时 pin、8 键信封、5/30/300s 退避重试、死信与重放；
+        结果在 INT-23 投递列表可见、终态后可 INT-13 重放。
+
+        语义边界：
+        - `webhook.ping` **不在可订阅白名单**（INT-12 `events` 填它会被拒绝）；
+          本端点是它唯一的产生途径，也不依赖当前订阅列表；
+        - 端点未配置 / disabled / 被安全守卫拒绝 → `invalid_request`（400）；
+        - 成功仅代表**已入箱**（`enqueued:true`），不代表对方已接收——投递结果
+          请以 INT-23 的 `status`（pending/retry/success/dead）为准。
+      operationId: internalWebhookTestDelivery
+      security:
+      - ibIntBearer: []
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        description: 幂等键（同 key 重放返回首次结果，不重复入箱）
+        schema:
+          type: string
+          minLength: 1
+      x-imboy-scope: webhooks:manage
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      responses:
+        '200':
+          description: 测试投递已受理入箱
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - delivery_id
+                - event_type
+                - enqueued
+                - endpoint_generation
+                additionalProperties: false
+                properties:
+                  delivery_id:
+                    type: string
+                    description: 可用于 INT-23 查询 / INT-13 重放
+                  event_type:
+                    type: string
+                    enum:
+                    - webhook.ping
+                  enqueued:
+                    type: boolean
+                    description: true=已入箱；false=event_id 撞号未入箱（可忽略概率）
+                  endpoint_generation:
+                    type: integer
+                    description: 投递绑定的端点配置代际
+        '400':
+          description: 请求参数/形状非法
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - invalid_request
+        '401':
+          description: 凭证缺失/格式错/不存在的 locator
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - invalid_credential
+        '403':
+          description: 凭证未被授予所需 scope
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - insufficient_scope
+        '409':
+          description: Idempotency-Key 与既有请求冲突
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - idempotency_conflict
+        '429':
+          description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - rate_limited
+        '500':
+          description: 内部错误（安全兜底：未列入稳定表的码一律收敛为此值）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/oa/sso/exchange:
     post:
       tags:
@@ -8803,6 +9369,13 @@ paths:
                         - identity_not_mapped
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -9092,6 +9665,13 @@ paths:
                         - insufficient_scope
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -9434,6 +10014,13 @@ paths:
                         - resource_not_found
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -9744,6 +10331,13 @@ paths:
                         - insufficient_scope
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -10099,6 +10693,13 @@ paths:
                         - resource_not_found
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -10396,6 +10997,13 @@ paths:
                         - insufficient_scope
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:
@@ -10745,6 +11353,13 @@ paths:
                         - resource_not_found
         '429':
           description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
           content:
             application/json:
               schema:

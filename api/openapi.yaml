@@ -1173,6 +1173,8 @@ paths:
     $ref: './paths/internal/v1/webhook/deliveries.yaml'
   /api/internal/v1/webhook/deliveries/{delivery_id}/replay:
     $ref: './paths/internal/v1/webhook/replay.yaml'
+  /api/internal/v1/webhook/test-delivery:
+    $ref: './paths/internal/v1/webhook/test-delivery.yaml'
   /api/internal/v1/oa/sso/exchange:
     $ref: './paths/internal/v1/oa-sso/exchange.yaml'
   /api/internal/v1/workspaces:

@@ -1,0 +1,55 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/internal/v1/webhook/test-delivery.yaml
+# POST /api/internal/v1/webhook/test-delivery — 测试投递（INT-32，v1.1.1 追加）
+# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1webhook~1test-delivery
+# Handler：src/api/enterprise_webhook_handler.erl test_delivery/3
+# ----------------------------------------------------------------------------
+post:
+  tags: [internal]
+  summary: 出站连通性测试（合成 webhook.ping 投递）
+  description: |
+    向当前配置的出站端点投递一条合成 `webhook.ping` 事件，供你方验证回调
+    链路：URL 可达性、四签名头（`x-imboy-delivery/event/timestamp/signature`）
+    的验证逻辑、防火墙放行。投递走与真实事件完全相同的入箱管线——
+    SSRF guard 即时 pin、8 键信封、5/30/300s 退避重试、死信与重放；
+    结果在 INT-23 投递列表可见、终态后可 INT-13 重放。
+
+    语义边界：
+    - `webhook.ping` **不在可订阅白名单**（INT-12 `events` 填它会被拒绝）；
+      本端点是它唯一的产生途径，也不依赖当前订阅列表；
+    - 端点未配置 / disabled / 被安全守卫拒绝 → `invalid_request`（400）；
+    - 成功仅代表**已入箱**（`enqueued:true`），不代表对方已接收——投递结果
+      请以 INT-23 的 `status`（pending/retry/success/dead）为准。
+  operationId: internalWebhookTestDelivery
+  security:
+    - ibIntBearer: []
+  parameters:
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: 幂等键（同 key 重放返回首次结果，不重复入箱）
+      schema: { type: string, minLength: 1 }
+  x-imboy-scope: webhooks:manage
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  responses:
+    '200':
+      description: 测试投递已受理入箱
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [delivery_id, event_type, enqueued, endpoint_generation]
+            additionalProperties: false
+            properties:
+              delivery_id: { type: string, description: 可用于 INT-23 查询 / INT-13 重放 }
+              event_type: { type: string, enum: [webhook.ping] }
+              enqueued: { type: boolean, description: true=已入箱；false=event_id 撞号未入箱（可忽略概率） }
+              endpoint_generation: { type: integer, description: 投递绑定的端点配置代际 }
+    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
+    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
+    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

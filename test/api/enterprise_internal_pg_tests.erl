@@ -179,6 +179,7 @@ enterprise_internal_pg_test_() ->
                 {"middleware_route_and_flow", with_tx(C, fun middleware_route_and_flow/1)},
                 {"middleware_rate_fail_closed", middleware_rate_fail_closed_test()},
                 {"middleware_rate_limited", middleware_rate_limited_test()},
+                {"middleware_rate_limited_retry_after", middleware_retry_after_test()},
                 {"middleware_idempotency_key_required",
                     with_tx(C, fun middleware_idem_key_required/1)},
                 {"middleware_int14_exempt_idempotency", middleware_int14_exempt_test()},
@@ -644,6 +645,55 @@ middleware_rate_limited_test() ->
                 enterprise_internal_auth:decide(
                     <<"GET">>, <<"/api/internal/v1/application">>, H, AuthFun
                 )
+            )
+        after
+            ok = application:set_env(imboy, enterprise_internal_rate_limits, ?RATE_CFG)
+        end
+    end).
+
+%% 429 Retry-After 头数据源：rate_gate 暂存换算后的整秒（per_minute 窗口
+%% ⇒ 1..60），take_retry_after_seconds/0 一次性取出即清——第二次取必须
+%% undefined（worker 进程复用不得把上一请求秒数泄漏给后续无关响应）；
+%% 未限流请求不得产生值。信封体与状态码不因此变化（纯追加头）。
+middleware_retry_after_test() ->
+    ?_test(begin
+        AppId = 988777012,
+        application:set_env(
+            imboy,
+            enterprise_internal_rate_limits,
+            #{internal_read => 1, internal_write => 1, internal_sso => 1}
+        ),
+        try
+            H = #{<<"authorization">> => <<"Bearer ib_int_1.x">>},
+            AuthFun = fun() ->
+                {ok, #{application_id => AppId, granted_scopes => [<<"application:read">>]}}
+            end,
+            %% 同进程前序用例（如 middleware_rate_limited_test）直调 decide
+            %% 触发 put 而不经 middleware 的 take——生产路径 put/take 恒配对
+            %% （put 仅在 limited 分支，middleware 对 rate_limited 必 take），
+            %% 但测试直调链会残留。此处先清（erase 即清理）再进入断言段。
+            _ = enterprise_internal_auth:take_retry_after_seconds(),
+            ?assertMatch(
+                {ok, _},
+                enterprise_internal_auth:decide(
+                    <<"GET">>, <<"/api/internal/v1/application">>, H, AuthFun
+                )
+            ),
+            ?assertEqual(
+                {error, rate_limited},
+                enterprise_internal_auth:decide(
+                    <<"GET">>, <<"/api/internal/v1/application">>, H, AuthFun
+                )
+            ),
+            Sec = enterprise_internal_auth:take_retry_after_seconds(),
+            ?assert(
+                is_integer(Sec) andalso Sec >= 1 andalso Sec =< 60,
+                "Retry-After 秒必须在 1..60（per_minute 窗口向上取整）"
+            ),
+            ?assertEqual(
+                undefined,
+                enterprise_internal_auth:take_retry_after_seconds(),
+                "取出即清：第二次取必须 undefined"
             )
         after
             ok = application:set_env(imboy, enterprise_internal_rate_limits, ?RATE_CFG)

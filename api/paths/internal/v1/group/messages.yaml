@@ -65,6 +65,13 @@ post:
             type: object
             properties:
               msg_id: { type: integer, format: int64 }
+              webhook_resource_id:
+                type: integer
+                format: int64
+                description: |
+                  v1.1.1 追加。webhook 关联键：与 message.enterprise.accepted /
+                  failed 事件 resource.id 同源（消息表行 ID）。与 msg_id 是
+                  **两个不同标识符**；集成方以此把回调关联回本次发送响应。
               sender_kind: { type: string }
               sender_user_id:
                 type: [integer, 'null']

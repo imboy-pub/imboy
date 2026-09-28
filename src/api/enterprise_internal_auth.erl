@@ -43,10 +43,16 @@
     parse_bearer/1,
     authenticate_tx/3,
     authenticate/2,
-    decide/4
+    decide/4,
+    take_retry_after_seconds/0
 ]).
 
 -include("log.hrl").
+
+%% rate_gate → middleware 的 429 Retry-After 通道（进程字典键）。
+%% decide/4 的错误返回形态（{error, atom()}，A2 冻结测试按 atom 断言）保持
+%% 不变，秒数经此键在同请求进程内传递，take 后即清（见 take_retry_after_seconds/0）。
+-define(PD_RETRY_AFTER_SECONDS, {enterprise_internal_auth, retry_after_seconds}).
 
 %%%===================================================================
 %%% API
@@ -148,6 +154,15 @@ decide(Method, Path, Headers, AuthFun) when is_map(Headers) ->
             end
     end.
 
+%% @doc 取出本请求限流拒绝的 Retry-After 秒数（一次性：取后即清）。
+%% rate_gate 在 {limited, _} 分支以进程字典暂存换算后的整秒；cowboy 中间件
+%% 与认证链在同一请求进程内顺序执行，enterprise_internal_middleware 在回复
+%% 429 前调用本函数取值生成 Retry-After 头。取后清除保证 worker 进程复用
+%% 不会把上一请求的秒数泄漏给后续无关响应；未限流/已消费时返回 undefined。
+-spec take_retry_after_seconds() -> pos_integer() | undefined.
+take_retry_after_seconds() ->
+    erlang:erase(?PD_RETRY_AFTER_SECONDS).
+
 %%%===================================================================
 %%% 认证链
 %%%===================================================================
@@ -190,8 +205,12 @@ rate_gate(#{rate_bucket := Bucket} = Route, Headers, Ctx) ->
     case enterprise_internal_rate:check(Bucket, AppId) of
         {ok, _Remaining} ->
             idempotency_gate(Route, Headers, Ctx);
-        {limited, _RetryAfter} ->
+        {limited, RetryAfterMs} ->
             log_reject(rate_limit, rate_limited),
+            %% 429 Retry-After 头数据源（纯追加，不改变拒绝语义）：
+            %% throttle 返回毫秒，HTTP delta-seconds 需整秒——向上取整且
+            %% 至少 1s，避免窗口尾沿发出 Retry-After: 0。
+            _ = erlang:put(?PD_RETRY_AFTER_SECONDS, ceil_seconds(RetryAfterMs)),
             {error, rate_limited};
         {error, rate_not_configured} ->
             %% INV-9：缺配置 fail-closed，绝不放行
@@ -415,3 +434,9 @@ log_reject(Stage, Code) ->
         enterprise_internal_auth_rejected,
         #{stage => Stage, code => Code}
     ]).
+
+%% 毫秒 → HTTP delta-seconds：向上取整，下限 1（Retry-After: 0 无意义，
+%% 且窗口尾沿 0ms 会误导客户端立即重试再撞限流）。
+-spec ceil_seconds(non_neg_integer()) -> pos_integer().
+ceil_seconds(Ms) when is_integer(Ms), Ms >= 0 ->
+    max(1, (Ms + 999) div 1000).

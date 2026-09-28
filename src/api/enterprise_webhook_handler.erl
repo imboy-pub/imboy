@@ -43,6 +43,7 @@ init(Req0, State0) ->
             configure -> configure(Method, Req0, State);
             replay -> replay(Method, Req0, State);
             deliveries -> deliveries(Method, Req0, State);
+            test_delivery -> test_delivery(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -183,6 +184,76 @@ replay_tx(Req0, Ctx0, DeliveryId, IdemKey, Digest) ->
             enterprise_internal_error:reply(Req0, enterprise_internal_idempotency:conflict_code());
         {error, Reason} ->
             ?ERROR_LOG("enterprise_webhook_handler replay error: ~p~n", [Reason]),
+            enterprise_internal_error:reply(Req0, <<"internal_error">>)
+    end.
+
+%% @doc POST /api/internal/v1/webhook/test-delivery（INT-32，v1.1.1 追加）：
+%% 向当前配置的出站端点投递一条合成 webhook.ping 事件，验证回调链路
+%% （URL 可达性、签名头验证逻辑、防火墙放行）。幂等资源 = ping delivery 行
+%% （幂等键 evt-<event_id>），同 Idempotency-Key 重放返回首次结果；
+%% 端点未配置/disabled → 400 invalid_request。无请求体。
+-spec test_delivery(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+test_delivery(<<"POST">>, Req0, State) ->
+    Ctx0 = maps:get(enterprise_internal, State, #{}),
+    IdemKey = idempotency_key(Req0),
+    case
+        enterprise_internal_idempotency:request_digest(
+            <<"POST">>, <<"/api/internal/v1/webhook/test-delivery">>, #{}
+        )
+    of
+        {ok, Digest} -> test_delivery_tx(Req0, Ctx0, IdemKey, Digest);
+        {error, non_canonical} -> enterprise_internal_error:reply(Req0, <<"invalid_request">>)
+    end;
+test_delivery(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec test_delivery_tx(cowboy_req:req(), map(), binary(), binary()) -> cowboy_req:req().
+test_delivery_tx(Req0, Ctx0, IdemKey, Digest) ->
+    TxResult =
+        elib_pg:with_tx(fun(Conn) ->
+            case
+                enterprise_internal_idempotency:begin_tx(
+                    Conn, Ctx0, <<"enterprise_webhook_ping">>, IdemKey, Digest
+                )
+            of
+                {ok, inserted} ->
+                    Ctx = with_principal(Conn, Ctx0),
+                    case enterprise_webhook_logic:emit_ping_tx(Conn, Ctx) of
+                        {ok, Result} ->
+                            Body = jsone:encode(Result),
+                            _ = enterprise_internal_idempotency:complete_tx(
+                                Conn,
+                                Ctx0,
+                                <<"enterprise_webhook_ping">>,
+                                IdemKey,
+                                null,
+                                200,
+                                Body
+                            ),
+                            {tx_ok, Body};
+                        {error, {Code, _Detail}} ->
+                            throw({rollback, {business_error, Code}})
+                    end;
+                Other ->
+                    Other
+            end
+        end),
+    case TxResult of
+        {tx_ok, Body} ->
+            reply_json_body(Req0, 200, Body);
+        {rollback, {business_error, Code}} ->
+            enterprise_internal_error:reply(Req0, Code);
+        {rollback, Reason} ->
+            ?ERROR_LOG("enterprise_webhook_handler test_delivery rollback: ~p~n", [Reason]),
+            enterprise_internal_error:reply(Req0, <<"internal_error">>);
+        {ok, replay, #{response_code := Code, response_body := Body}} ->
+            replay_json_body(Req0, Code, Body);
+        {ok, pending} ->
+            enterprise_internal_error:reply(Req0, <<"idempotency_conflict">>);
+        {error, digest_conflict} ->
+            enterprise_internal_error:reply(Req0, enterprise_internal_idempotency:conflict_code());
+        {error, Reason} ->
+            ?ERROR_LOG("enterprise_webhook_handler test_delivery error: ~p~n", [Reason]),
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
     end.
 

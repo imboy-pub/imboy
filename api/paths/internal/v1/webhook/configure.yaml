@@ -39,8 +39,18 @@ put:
               description: HTTPS 回调地址（SSRF guard 即时校验）
             events:
               type: array
-              items: { type: string }
-              description: 订阅事件列表（⊆ 事件白名单；空列表 = 只停用订阅）
+              items:
+                type: string
+                enum:
+                  - message.enterprise.accepted
+                  - message.enterprise.failed
+                  - group.member.changed
+                  - file.confirmed
+              description: |
+                订阅事件列表（⊆ 事件白名单；空列表 = 只停用订阅）。
+                白名单固定 4 值；其中 group.member.changed 为预留值（当前版本
+                无触发点，订阅合法但暂不产生投递）。事件语义与回调正文信封
+                见集成方文档 api/internal/v1/README.md §8。
             status:
               type: string
               enum: [enabled, disabled]
@@ -61,7 +71,13 @@ put:
               url: { type: string, format: uri }
               events:
                 type: array
-                items: { type: string }
+                items:
+                  type: string
+                  enum:
+                    - message.enterprise.accepted
+                    - message.enterprise.failed
+                    - group.member.changed
+                    - file.confirmed
               status: { type: string, enum: [enabled, disabled] }
               rotated: { type: boolean }
               secret:

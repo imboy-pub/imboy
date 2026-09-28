@@ -1,5 +1,15 @@
 # Internal API v1 稳定错误码 rate_limited（HTTP 429，README §7 冻结表）。
+# v1.1.1：追加 Retry-After 响应头（delta-seconds；超限拒绝时恒携带，
+# 值 = 限流窗口剩余时间向上取整、下限 1s，per_minute 桶 ⇒ 1..60）。
+# 纯追加，信封体不变。
 description: '触发限流（fail-closed）'
+headers:
+  Retry-After:
+    description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 60
 content:
   application/json:
     schema:

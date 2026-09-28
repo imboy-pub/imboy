@@ -24,7 +24,8 @@
     http_status/1,
     message/1,
     error_body/1,
-    reply/2
+    reply/2,
+    reply/3
 ]).
 
 -include("log.hrl").
@@ -122,6 +123,14 @@ error_body(Code) ->
 %% 只记 stable 码与路径，不记凭证/头值/正文（redaction 红线）。
 -spec reply(cowboy_req:req(), binary()) -> cowboy_req:req().
 reply(Req, Code) ->
+    reply(Req, Code, []).
+
+%% @doc reply/2 的追加头变体：信封体与状态码不变，仅附加响应头
+%% （当前仅 429 rate_limited 的 Retry-After；ExtraHeaders 不得覆盖
+%% content-type——调用方为仓内唯一适配器 enterprise_internal_middleware）。
+-spec reply(cowboy_req:req(), binary(), [{binary(), binary()}]) ->
+    cowboy_req:req().
+reply(Req, Code, ExtraHeaders) ->
     ?WARN_LOG([
         enterprise_internal_rejected,
         #{
@@ -132,7 +141,10 @@ reply(Req, Code) ->
     ]),
     cowboy_req:reply(
         http_status(Code),
-        #{<<"content-type">> => <<"application/json">>},
+        maps:merge(
+            #{<<"content-type">> => <<"application/json">>},
+            maps:from_list(ExtraHeaders)
+        ),
         error_body(Code),
         Req
     ).

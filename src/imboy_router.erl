@@ -585,6 +585,23 @@ get_routes() ->
                 %% path（同路径双条目的第二条恒被遮蔽），故 method 分派在 handler
                 %% 侧（moya_task_handler:resolve_action/2，同 project_task_handler）。
                 {"/api/v1/moya/tasks", moya_task_handler, #{action => tasks}},
+                %% 订阅消息授权上报（客户端 requestSubscribeMessage accept 模板回执；
+                %% JWT 主路由区；契约见 moya_subscribe_logic report/2）
+                {"/api/v1/moya/subscribe/report", moya_subscribe_handler, #{
+                    action => report
+                }},
+                %% 老师邀请码（W3 服务端依赖之二：家长凭码加入班级并绑定监护关系）。
+                %% create_code 仅该班 active class_staff / org owner（deny-by-default）；
+                %% info/join 凭码访问，码校验失败统一折叠 404（防探测）。
+                {"/api/v1/moya/classes/:id/invite-code", moya_invite_handler, #{
+                    action => create_code
+                }},
+                {"/api/v1/moya/invite/info", moya_invite_handler, #{
+                    action => info
+                }},
+                {"/api/v1/moya/invite/join", moya_invite_handler, #{
+                    action => join
+                }},
 
                 {"/api/v1/report/create", report_handler, #{action => create}},
 
@@ -2457,6 +2474,10 @@ enterprise_internal_routes() ->
         %% INT-23 投递列表 + 健康度摘要（FULL-03；只读，无 payload）
         {"/api/internal/v1/webhook/deliveries", enterprise_webhook_handler, #{
             action => deliveries
+        }},
+        %% INT-32 测试投递（v1.1.1 追加）：合成 webhook.ping 事件出站
+        {"/api/internal/v1/webhook/test-delivery", enterprise_webhook_handler, #{
+            action => test_delivery
         }},
         %% ---- V2.1 INT-24..31 资源只读面（A2 实现；A0 机械接线）----
         %% INT-26/27 复用上方 groups 两行（同 path 单注册，GET 分派在 handler 内）

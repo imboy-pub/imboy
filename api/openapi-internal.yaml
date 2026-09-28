@@ -2,7 +2,7 @@
 # imboy/api/openapi-internal.yaml — IMBoy Internal API 编辑真源（surface internal）
 #
 # 三受众布局（2026-09-22 api-surface-reorg）：企业集成 internal v1 端点
-# （25 条 cowboy path / 31 端点（V2.1 INT-24..31），与
+# （26 条 cowboy path / 32 端点（V2.1 INT-24..31 + v1.1.1 INT-32），与
 # src/api/enterprise_internal_routes.erl 冻结路由表逐条对应）。端点文件位于
 # paths/internal/v1/；认证方案
 # ibIntBearer（Bearer ib_int_<application_id>.<secret>）。
@@ -96,6 +96,8 @@ paths:
     $ref: './paths/internal/v1/webhook/deliveries.yaml'
   /api/internal/v1/webhook/deliveries/{delivery_id}/replay:
     $ref: './paths/internal/v1/webhook/replay.yaml'
+  /api/internal/v1/webhook/test-delivery:
+    $ref: './paths/internal/v1/webhook/test-delivery.yaml'
   /api/internal/v1/oa/sso/exchange:
     $ref: './paths/internal/v1/oa-sso/exchange.yaml'
   /api/internal/v1/workspaces:

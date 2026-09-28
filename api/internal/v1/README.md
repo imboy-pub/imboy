@@ -31,7 +31,7 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 | 企业文件 | 直传预签名 / 确认入库 / 治理（INT-07/08/22） |
 | 消息 | 应用身份直发、以人类身份代发；单聊与群聊（INT-09/10） |
 | 好友申请 | 代 OA 用户发起（只发起、不自动通过，见 §6）（INT-11） |
-| Webhook | 登记出站回调、查询/重放投递（INT-12/13/23） |
+| Webhook | 登记出站回调、查询/重放投递、连通性测试（INT-12/13/23/32） |
 | OA SSO | 一次性 code 原子交换登录态（INT-14） |
 | 企业项目只读 | 列表与详情（INT-28/29） |
 | 企业频道只读 | scope=workspace 列表与详情（INT-30/31） |
@@ -57,7 +57,8 @@ curl -sS "$BASE_URL/api/internal/v1/application" \
   -H "Authorization: Bearer ib_int_9100000000000000003.YOUR-SECRET" | jq
 ```
 
-3. 之后按 §5 的端点表与 `.contract/api/openapi.yaml` 的字段 schema 开发。
+3. 之后按 [endpoints.md](./endpoints.md) 的端点表与 `../openapi-internal.yaml`
+   （编辑真源；工具导入用 `../openapi-internal.bundle.yaml`）的字段 schema 开发。
 
 ---
 
@@ -100,7 +101,9 @@ Scope 由管理员签发时授予，集成方**不可自选**、不存在 `*` �
 ## 5. 限流与幂等
 
 **限流**：三只独立桶 —— `internal_read`（读）/ `internal_write`（写）/
-`internal_sso`（SSO 交换）。超限返回 `rate_limited`（429）；具体阈值由部署配置，
+`internal_sso`（SSO 交换）。超限返回 `rate_limited`（429），并携带
+`Retry-After` 响应头（delta-seconds＝窗口剩余时间向上取整，最小 1s；
+v1.1.1 起提供）；具体阈值由部署配置，
 **认证失败也计读桶**（fail-closed：挡不住时宁可错杀）。
 
 **幂等**：所有写动作（下表标 `required`）必须携带 `Idempotency-Key` 头，
@@ -160,10 +163,49 @@ Scope 由管理员签发时授予，集成方**不可自选**、不存在 `*` �
 | `x-imboy-delivery` | 投递 ID（幂等去重用） |
 | `x-imboy-event` | 事件类型 |
 | `x-imboy-timestamp` | 时间戳 |
-| `x-imboy-signature` | 签名 |
+| `x-imboy-signature` | 签名（HMAC-SHA256 hex，签名原文 = `<timestamp> "." <raw body>`） |
 
-投递失败自动重试，最终进入死信；可用 INT-23 查询、INT-13 按 `delivery_id`
-重放（幂等键由平台侧派生）。
+**可订阅事件（固定白名单，INT-12 `events` 只接受以下值）**：
+
+| event_type | 触发时机 | resource |
+|---|---|---|
+| `message.enterprise.accepted` | 企业托管消息受理成功（INT-09/10，与消息同事务） | `{type: "msg_c2c" \| "msg_c2g", id: 消息表行 ID}` |
+| `message.enterprise.failed` | 企业托管消息发送失败（业务回滚后独立事务；当前信封**不含**失败原因，仅事件本身表明该消息未受理） | `{type: "msg_c2c" \| "msg_c2g", id: 消息表行 ID}` |
+| `file.confirmed` | 附件确认入库（INT-08，与转正同事务） | `{type: "attachment", id: 附件行 ID}` |
+| `group.member.changed` | **白名单预留，当前版本无触发点**：订阅合法，但暂不会产生投递 | — |
+| `webhook.ping` | **不可订阅**（INT-12 `events` 填它会被拒绝）；仅由 INT-32 测试投递产生 | `{type: "webhook", id: 端点配置代际}` |
+
+> **注意**：`resource.id` 是平台侧消息表行 ID（int64），与 INT-09/10 响应返回的
+> `msg_id`（客户端消息 ID）是**两个不同标识符**。v1.1.1 起 INT-09/10 响应追加
+> `webhook_resource_id` 字段（与事件 `resource.id` 同源），集成方以此把回调
+> 关联回本次发送响应；此前发起的消息只能以你方业务侧记录关联。
+
+**回调正文信封（键集封闭，多一个键都是合同变更）**：
+
+```json
+{
+  "event_id": "…",
+  "delivery_id": "…",
+  "event_type": "message.enterprise.accepted",
+  "version": 1,
+  "occurred_at": "2026-09-28T08:30:00.123Z",
+  "organization_id": 9100000000000000001,
+  "application_id": 9100000000000000003,
+  "resource": { "type": "msg_c2c", "id": 7200000000000000042 }
+}
+```
+
+- `occurred_at` 为 ISO-8601 UTC（毫秒、`Z` 结尾）；信封**不含**消息正文、
+  secret 或签名 URL；需要正文细节时由你方按 `resource.id` 自行关联。
+- `version` 当前恒为 `1`；变更会作为新 `version` 值发布，不会静默改字段。
+
+投递失败按 **5s / 30s / 300s 三次退避**自动重试，全部失败后进入死信；
+可用 INT-23 查询、INT-13 按 `delivery_id` 重放（幂等键由平台侧派生）。
+
+**连通性测试（INT-32）**：`POST /webhook/test-delivery` 向当前端点投递一条
+合成 `webhook.ping` 事件（走与真实事件完全相同的入箱/签名/重试管线），用于
+联调期验证 URL、签名验证逻辑与防火墙放行；成功仅代表已入箱，投递结果以
+INT-23 的 `status` 为准。端点未配置/disabled 时返回 `invalid_request`（400）。
 
 ## 9. OA SSO（一次性 code 交换）
 
@@ -173,7 +215,7 @@ IMBoy → 前端/网关调 INT-14 原子交换（`single_use_code`：一个 code
 
 ## 10. 端点参考与 Postman 集合
 
-- 人类阅读：[endpoints.md](./endpoints.md)（31 个端点，按域分组）。
+- 人类阅读：[endpoints.md](./endpoints.md)（32 个端点，按域分组）。
 - **机器契约**：`../openapi-internal.yaml`（编辑真源）与
   `../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
   schema 逐端点从 handler 实证（`src/api/enterprise_*_handler.erl`），
@@ -181,13 +223,13 @@ IMBoy → 前端/网关调 INT-14 原子交换（`single_use_code`：一个 code
   `x-imboy-scope` / `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
   标注。工具导入用 bundle 单文件。
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
-  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 31 个端点、按域分文件夹、
+  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 32 个端点、按域分文件夹、
   示例请求体与 `{{base_url}}` / `{{credential}}` 变量；导入后填好两个变量即可发请求。
   集合只收录当前冻结路由表中**已实现、可调用**的端点；CRUD 覆盖审计中标为
   `待实现` 的路径不会作为假请求提前塞入集合。
-  注意：示例体为合成数据、个别字段形态以机器契约为准
-  （如 INT-03 请求为 `external_user_ids` 数组、INT-20 为
-  `roles:[{external_user_id, role}]` 对象数组）。
+  注意：示例体为合成数据（ID / 域名 / object_key 均为占位值，替换后使用）；
+  v1.1.1 起示例字段名与必填集已与机器契约逐端点对齐（此前 INT-02/03/04/
+  07/08/09/10/11/12/14/20/22 共 12 处示例与契约不一致，已全部修正）。
 
 ## 11. 版本与变更
 

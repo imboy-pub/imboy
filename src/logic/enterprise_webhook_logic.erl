@@ -37,6 +37,7 @@
 
 -export([
     events_whitelist/0,
+    ping_event_type/0,
     envelope/3,
     envelope_keys/0,
     signature_base/2,
@@ -48,6 +49,7 @@
     replay_tx/3,
     emit_event_tx/4,
     emit_event_failed/4,
+    emit_ping_tx/2,
     execute_delivery/1,
     deliveries_tx/4,
     delivery_stats_tx/2,
@@ -64,6 +66,11 @@
     <<"group.member.changed">>,
     <<"file.confirmed">>
 ]).
+
+%% INT-32 测试投递专用事件类型（v1.1.1 追加）：**不在** EVENTS_WHITELIST
+%% （订阅面保持 4 值不变——configure 的 events 校验会拒绝订阅它）；仅由
+%% emit_ping_tx 显式产生，INT-23 投递列表可见、INT-13 可重放。
+-define(EVENT_PING, <<"webhook.ping">>).
 
 -define(ENVELOPE_VERSION, 1).
 -define(RETRY_SCHEDULE, [5, 30, 300]).
@@ -452,6 +459,91 @@ emit_event_failed(Ctx, EventType, Resource, ReasonCode) ->
         Class:Reason ->
             ?ERROR_LOG("[EPGZ04] emit_event_failed crash ~p:~p~n", [Class, Reason]),
             ok
+    end.
+
+%% @doc INT-32 测试投递的事件类型常量（见 ?EVENT_PING 注释：不入订阅白名单）。
+-spec ping_event_type() -> binary().
+ping_event_type() ->
+    ?EVENT_PING.
+
+%% @doc INT-32 测试投递：向当前已配置且 enabled 的出站端点投递一条合成
+%% webhook.ping 事件（v1.1.1 追加）。与 emit_event_tx 的三点差异构成独立
+%% 路径（非旁路复用）：
+%%   ① 不检查订阅列表（目的即验证链路本身；真实事件仍严格走订阅过滤）；
+%%   ② 错误上抛 {error, {invalid_request, _}} 而非 {ok, skipped}——调用方
+%%     必须明确知道端点未配置/disabled/被 SSRF guard 拒绝；
+%%   ③ 成功返回 delivery_id（集成方接 INT-23 查询 / INT-13 重放闭环）。
+%% 入箱管线与真实事件完全一致：SSRF guard 即时 pin、8 键信封、幂等键
+%% evt-<event_id>（同 ping 不重复入箱；重放走新行新键）。
+-spec emit_ping_tx(any(), map()) -> {ok, map()} | {error, {binary(), term()}}.
+emit_ping_tx(Conn, Ctx) ->
+    Principal = maps:get(principal_user_id, Ctx, undefined),
+    case is_integer(Principal) andalso Principal > 0 of
+        false ->
+            {error, {<<"invalid_request">>, no_principal}};
+        true ->
+            case current_url(Conn, Principal) of
+                <<>> ->
+                    {error, {<<"invalid_request">>, endpoint_not_configured}};
+                Url ->
+                    ping_emit(Conn, Ctx, Principal, Url)
+            end
+    end.
+
+-spec ping_emit(any(), map(), integer(), binary()) ->
+    {ok, map()} | {error, {binary(), term()}}.
+ping_emit(Conn, Ctx, Principal, Url) ->
+    case bot_webhook_guard:validate_and_pin(Url) of
+        {ok, Pin} ->
+            EventId = new_event_id(),
+            DeliveryId = new_delivery_id(),
+            Generation = current_generation(Conn, Principal),
+            Env = envelope(Ctx, ?EVENT_PING, #{
+                resource_type => <<"webhook">>,
+                resource_id => Generation,
+                event_id => EventId
+            }),
+            Delivery = #{
+                delivery_id => DeliveryId,
+                bot_id => enterprise_webhook_repo:delivery_bot_id(Principal),
+                event_type => ?EVENT_PING,
+                payload => jsone:encode(Env),
+                correlation_id => new_correlation_id(),
+                idempotency_key => <<"evt-", EventId/binary>>,
+                webhook_url => Url,
+                webhook_host => maps:get(host, Pin),
+                pinned_ip => ip_to_binary(maps:get(ip, Pin)),
+                owner_organization_id => maps:get(organization_id, Ctx),
+                owner_application_id => maps:get(application_id, Ctx),
+                endpoint_generation => Generation
+            },
+            case enterprise_webhook_repo:insert_delivery_tx(Conn, Delivery) of
+                {ok, inserted} ->
+                    metric_emit(emitted),
+                    {ok, #{
+                        <<"delivery_id">> => DeliveryId,
+                        <<"event_type">> => ?EVENT_PING,
+                        <<"enqueued">> => true,
+                        <<"endpoint_generation">> => Generation
+                    }};
+                {ok, duplicate} ->
+                    %% evt-<event_id> 命中既有行（event_id 撞号，概率可忽略）：
+                    %% 如实返回未入箱，不伪装成功
+                    metric_emit(duplicate),
+                    {ok, #{
+                        <<"delivery_id">> => DeliveryId,
+                        <<"event_type">> => ?EVENT_PING,
+                        <<"enqueued">> => false,
+                        <<"endpoint_generation">> => Generation
+                    }};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, {ping_insert, Reason}}}
+            end;
+        {error, Reason} ->
+            %% 与 emit 链同款留痕但不阻断（此处是显式测试动作，必须上抛）
+            ?WARN_LOG("[INT32] webhook ping guard rejected: ~p~n", [Reason]),
+            metric_emit(skipped),
+            {error, {<<"invalid_request">>, {guard_rejected, Reason}}}
     end.
 
 %%%===================================================================
