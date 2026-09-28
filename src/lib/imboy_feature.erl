@@ -144,7 +144,10 @@ route_feature(api, Handler, _Action) when
     Handler =:= cs_tenant_handler;
     Handler =:= cs_widget_handler;
     %% BE-W01：动态 frame HTML handler（widget 面同族）。
-    Handler =:= cs_widget_frame_handler
+    Handler =:= cs_widget_frame_handler;
+    %% seat-console-embed SC-BE：/seat/:public_seat_console_id 嵌入面
+    %% （widget 面同族——零凭证导航，运行时门与编译期裁剪双保险）。
+    Handler =:= cs_seat_console_handler
 ->
     customer_service;
 route_feature(admin, cs_platform_handler, _Action) ->

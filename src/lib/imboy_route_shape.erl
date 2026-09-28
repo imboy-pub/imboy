@@ -16,7 +16,7 @@
 %%% features→api / api→features 均不可，故落在 lib）。
 -module(imboy_route_shape).
 
--export([is_cs_widget_frame_path/1]).
+-export([is_cs_widget_frame_path/1, is_cs_seat_console_frame_path/1]).
 
 %% @doc frame HTML 路径段形状（两条，见模块 doc）。绑定变量段（installation_id /
 %% public_widget_id）取任意值，其余段字面精确匹配；相似路径（`/frame`、
@@ -31,6 +31,21 @@ is_cs_widget_frame_path(Path) when is_binary(Path) ->
         _Other -> false
     end;
 is_cs_widget_frame_path(_Path) ->
+    false.
+
+%% @doc 坐席控制台嵌入面（seat-console-embed SC-BE）路径段形状：恰两段
+%% `[<<"seat">>, PublicSeatConsoleId]`——绑定变量段取任意值，首段字面精确
+%% 匹配；相似路径（`/seat`、`/seat/a/b` 多一段少一段、`/seats/...`、
+%% `/search/...`）一律 false，不放宽。消费方与 is_cs_widget_frame_path/1
+%% 相同三处（security_headers_middleware / cors_middleware / cs_http
+%% credential-surface），语义同款：XFO 豁免 + widget CORS 面 + 免签直通。
+-spec is_cs_seat_console_frame_path(binary()) -> boolean().
+is_cs_seat_console_frame_path(Path) when is_binary(Path) ->
+    case segments(Path) of
+        [<<"seat">>, _PublicSeatConsoleId] -> true;
+        _Other -> false
+    end;
+is_cs_seat_console_frame_path(_Path) ->
     false.
 
 segments(Path) ->

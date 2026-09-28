@@ -574,6 +574,24 @@
         "static": false
       },
       {
+        "action": "p_seat_consoles",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/seat-consoles",
+        "static": false
+      },
+      {
+        "action": "p_seat_console_update",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/seat-consoles/:id",
+        "static": false
+      },
+      {
+        "action": "p_seat_console_revoke",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/seat-consoles/:id/revoke",
+        "static": false
+      },
+      {
         "action": "p_platform_seats",
         "handler": "cs_platform_handler",
         "path": "/api/adm/customer-service/seats",
@@ -1926,6 +1944,12 @@
         "static": false
       },
       {
+        "action": "test_delivery",
+        "handler": "enterprise_webhook_handler",
+        "path": "/api/internal/v1/webhook/test-delivery",
+        "static": false
+      },
+      {
         "action": "workspaces",
         "handler": "enterprise_workspace_handler",
         "path": "/api/internal/v1/workspaces",
@@ -1935,12 +1959,6 @@
         "action": "workspace",
         "handler": "enterprise_workspace_handler",
         "path": "/api/internal/v1/workspaces/:workspace_id",
-        "static": false
-      },
-      {
-        "action": "test_delivery",
-        "handler": "enterprise_webhook_handler",
-        "path": "/api/internal/v1/webhook/test-delivery",
         "static": false
       }
     ],
@@ -3884,6 +3902,12 @@
         "static": false
       },
       {
+        "action": "create_code",
+        "handler": "moya_invite_handler",
+        "path": "/api/v1/moya/classes/:id/invite-code",
+        "static": false
+      },
+      {
         "action": "list",
         "handler": "moya_roster_handler",
         "path": "/api/v1/moya/classes/:id/learners",
@@ -3899,6 +3923,18 @@
         "action": "contexts",
         "handler": "moya_context_handler",
         "path": "/api/v1/moya/contexts",
+        "static": false
+      },
+      {
+        "action": "info",
+        "handler": "moya_invite_handler",
+        "path": "/api/v1/moya/invite/info",
+        "static": false
+      },
+      {
+        "action": "join",
+        "handler": "moya_invite_handler",
+        "path": "/api/v1/moya/invite/join",
         "static": false
       },
       {
@@ -3965,6 +4001,12 @@
         "action": "withdraw",
         "handler": "moya_assignment_handler",
         "path": "/api/v1/moya/submissions/:id/withdraw",
+        "static": false
+      },
+      {
+        "action": "report",
+        "handler": "moya_subscribe_handler",
+        "path": "/api/v1/moya/subscribe/report",
         "static": false
       },
       {
@@ -4880,6 +4922,12 @@
         "static": false
       },
       {
+        "action": "seat_console_frame_html",
+        "handler": "cs_seat_console_handler",
+        "path": "/seat/:public_seat_console_id",
+        "static": false
+      },
+      {
         "action": "widget_public_frame_html",
         "handler": "cs_widget_handler",
         "path": "/w/:public_widget_id",
@@ -5064,7 +5112,7 @@
     }
   },
   "error_code_summary": {
-    "defines": 188,
+    "defines": 190,
     "distinct_codes": [
       0,
       1,
@@ -5226,7 +5274,9 @@
       5484,
       5485,
       5486,
-      5487
+      5487,
+      5488,
+      5489
     ],
     "note": "flutter 全量契约由 C1 imboyapp/scripts/generate_error_code.dart --check 承担",
     "segments": {
@@ -5237,7 +5287,7 @@
       "5100": 7,
       "5200": 6,
       "5300": 7,
-      "5400": 33,
+      "5400": 35,
       "700": 2,
       "900": 43
     },

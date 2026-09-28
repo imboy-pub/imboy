@@ -1713,6 +1713,15 @@ customer_service_wire_route({Path, cs_widget_frame_handler, Opts}) when is_map(O
         feature => customer_service,
         auth_facts => eb_pg_auth_facts
     }};
+%% seat-console-embed SC-BE：/seat/:public_seat_console_id 嵌入面与
+%% cs_widget_handler 同属 widget 面——面级不变量键（surface/feature/auth_facts）
+%% 逐字同款，防面间漂移。
+customer_service_wire_route({Path, cs_seat_console_handler, Opts}) when is_map(Opts) ->
+    {Path, cs_seat_console_handler, Opts#{
+        surface => widget,
+        feature => customer_service,
+        auth_facts => eb_pg_auth_facts
+    }};
 customer_service_wire_route({Path, cs_platform_handler, Opts}) when is_map(Opts) ->
     {Path, cs_platform_handler, Opts#{
         surface => platform,
@@ -2252,6 +2261,19 @@ customer_service_tenant_routes() ->
             action => widget_public_frame_html,
             auth_context => cs_visit
         }},
+        %% seat-console-embed SC-BE：坐席工作台嵌入面 `GET
+        %% /seat/:public_seat_console_id`（iframe src 零凭证导航落点，合同冻结
+        %% 形状）。零凭证导航面：租户归属由 public_seat_console_id 全局反查
+        %% **派生**；HTML 壳零 org/workspace/JWT/secret/api-base；错误统一 404
+        %% seat_console_unavailable。handler 专用（cs_seat_console_handler），
+        %% surface=widget 注入走 customer_service_wire_route 同款分支；根段
+        %% seat 与 /api/*、/w/*、/adm/* 均不冲突；auth_middleware 对 /seat/*
+        %% 直通、XFO 豁免经 imboy_route_shape:is_cs_seat_console_frame_path/1
+        %% 单一真源登记。Seat JWT 语义零涉及（本面只发 HTML 壳）。
+        {"/seat/:public_seat_console_id", cs_seat_console_handler, #{
+            action => seat_console_frame_html,
+            auth_context => cs_visit
+        }},
         {"/api/v1/cs/widget/sessions", cs_widget_handler, #{
             action => widget_sessions,
             auth_context => cs_visit
@@ -2371,6 +2393,25 @@ customer_service_platform_routes() ->
         }},
         {"/api/adm/customer-service/widget-installations/:id/revoke", cs_platform_handler, #{
             action => p_widget_installation_revoke,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:write">>
+        }},
+        %% —— seat-console-embed SC-BE：workspace 坐席工作台嵌入配置 CRUD
+        %% （widget-installations 同款三元组口径；organization_id/workspace_id
+        %% 是显式请求参数，创建生成 public_seat_console_id，同 (Org,WS) 活跃
+        %% 槽位唯一 → 409；PUT 只改 allowed_origins；revoke 幂等）——
+        {"/api/adm/customer-service/seat-consoles", cs_platform_handler, #{
+            action => p_seat_consoles,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:read">>
+        }},
+        {"/api/adm/customer-service/seat-consoles/:id", cs_platform_handler, #{
+            action => p_seat_console_update,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:write">>
+        }},
+        {"/api/adm/customer-service/seat-consoles/:id/revoke", cs_platform_handler, #{
+            action => p_seat_console_revoke,
             auth_context => platform_admin,
             required_permission => <<"customer_service:write">>
         }}

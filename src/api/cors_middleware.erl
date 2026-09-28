@@ -49,7 +49,12 @@ execute(Req0, Env) ->
 %% 解析进 Env）+ 路径前缀判定 CORS 面。未标注返回 undefined（既有全局行为）。
 -spec classify_face(binary(), map()) -> widget | admin | seat | undefined.
 classify_face(Path, HandlerOpts) when is_binary(Path) ->
-    case imboy_route_shape:is_cs_widget_frame_path(Path) of
+    case
+        imboy_route_shape:is_cs_widget_frame_path(Path) orelse
+            %% seat-console-embed SC-BE：/seat/:id 嵌入面同归 widget CORS 面
+            %% （iframe src 导航；嵌入策略由 handler 的 frame-ancestors 出）。
+            imboy_route_shape:is_cs_seat_console_frame_path(Path)
+    of
         true ->
             %% frame HTML 端点（iframe src 导航）：归属 widget 面；路由注册由
             %% wiring manifest 应用，判定不依赖 metadata 先存在。
@@ -95,7 +100,8 @@ classify_by_prefix(Path) ->
             undefined
     end.
 
-%% frame 路径形状判定收敛在 imboy_route_shape:is_cs_widget_frame_path/1
+%% frame 路径形状判定收敛在 imboy_route_shape（is_cs_widget_frame_path/1 与
+%% is_cs_seat_console_frame_path/1，seat-console-embed SC-BE）
 %% （cors/security_headers/cs_http 三处共享的单一真源）。
 
 %% ===================================================================
@@ -153,7 +159,11 @@ face_security_headers(ReqOriginal, Req0) ->
         <<"x-content-type-options">>, <<"nosniff">>, Req0
     ),
     Req2 =
-        case imboy_route_shape:is_cs_widget_frame_path(cowboy_req:path(ReqOriginal)) of
+        case
+            imboy_route_shape:is_cs_widget_frame_path(cowboy_req:path(ReqOriginal)) orelse
+                %% seat-console-embed SC-BE：/seat/:id 同款 XFO 豁免。
+                imboy_route_shape:is_cs_seat_console_frame_path(cowboy_req:path(ReqOriginal))
+        of
             true -> Req1;
             false -> cowboy_req:set_resp_header(<<"x-frame-options">>, <<"DENY">>, Req1)
         end,
