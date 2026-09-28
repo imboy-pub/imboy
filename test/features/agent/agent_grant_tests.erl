@@ -821,6 +821,11 @@ forward_audit(TestPid, Event, Report) ->
     end.
 
 with_audit_capture(F) ->
+    %% 加固（2026-09-28 diag-07/08）：审计行经 logger:info 发射，裸 VM（无 -config）
+    %% 的 primary level 默认 notice 会静默丢弃 info 事件——handler 永不被调用、
+    %% recv_audit 超时。进入时自设 info，退出恢复原级别，使捕获不依赖运行口径。
+    OldLevel = maps:get(level, logger:get_primary_config(), notice),
+    ok = logger:set_primary_config(level, info),
     case logger:add_handler(ag31_grant_test_capture, ?MODULE, #{config => self()}) of
         ok ->
             ok;
@@ -831,7 +836,8 @@ with_audit_capture(F) ->
     try
         F()
     after
-        _ = logger:remove_handler(ag31_grant_test_capture)
+        _ = logger:remove_handler(ag31_grant_test_capture),
+        ok = logger:set_primary_config(level, OldLevel)
     end,
     ok.
 
