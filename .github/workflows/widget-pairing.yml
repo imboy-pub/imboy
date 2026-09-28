@@ -1,0 +1,53 @@
+name: Widget Asset Pairing Gate
+
+# 跨仓 Widget 资产配对门（CP-ASSET-04 / CP-ASSET-A08）—— CI 接线。
+#
+# 背景：CS widget frame HTML 引用的版本化 JS 路径是跨仓冻结合同
+# （hosted-widget-contract-v1 S4）：后端 -define 常量 ↔ admin manifest 产物名，
+# 两处各改各的会让 /w/ frame 静默 404。配对关系单源登记在
+# priv/cs_widget_asset_pairing.json，本门在任一侧漂移时非零退出。
+# V1.2 CP-ASSET-A08 曾 FAIL：脚本双侧存在但两仓 CI 均未接线——本文件即整改。
+#
+# 与 contract-gate.yml 的跨仓 checkout 同款：两仓 GitHub 远端均 PUBLIC
+# （imboy-pub/imboy-admin-frontend），GITHUB_TOKEN 只读 checkout 即可；
+# CI 校验的是兄弟仓远端 main 快照，本地未推送改动不在 CI 覆盖范围
+# （本地跑 make widget-asset-pairing-check ADMIN_REPO_DIR=... 补位）。
+# 脚本 exit 3（admin 仓不可达）在本 workflow 不应出现——checkout 失败即红，
+# "没核对"不冒充"一致"。
+#
+# 触发器口径（V1.3 PR-W2-C03）：仅 pull_request / 手动，不挂 push 与 cron；
+# 远端 run 需后续授权后才实际生效。
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  widget-pairing:
+    name: Widget asset pairing (backend macro vs admin manifest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout imboy (contract owner side)
+        uses: actions/checkout@v7
+        with:
+          path: imboy
+
+      - name: Checkout imboyadmin (PUBLIC, asset-name mirror)
+        uses: actions/checkout@v7
+        with:
+          repository: imboy-pub/imboy-admin-frontend
+          path: imboyadmin
+          ref: main
+
+      # B1 后端 -define 常量 + A1 admin manifest/verify 常量 都必须等于
+      # priv/cs_widget_asset_pairing.json 的 asset_path；任一漂移 exit 2。
+      - name: Run pairing gate
+        working-directory: imboy
+        run: |
+          set -euo pipefail
+          ADMIN_REPO_DIR="$GITHUB_WORKSPACE/imboyadmin" make widget-asset-pairing-check
