@@ -547,9 +547,17 @@ ensure_dir(Dir) ->
             end
     end.
 
-%% 拒绝 symlink：根目录、节点目录、槽文件、manifest 任一是链接即拒绝
+%% 拒绝 symlink：根目录、节点目录、槽文件、manifest 任一是链接即拒绝。
+%% 槽文件必须在内——read_slot 会跟随链接，替换 clock.a 指向旧
+%% generation record 可把 durable floor 回退到旧 fence（审计探针实证）。
 validate_no_symlink(Root, Dir) ->
-    Paths = [Root, Dir, filename:join(Dir, "manifest")],
+    Paths = [
+        Root,
+        Dir,
+        filename:join(Dir, "manifest"),
+        slot_path(Dir, a),
+        slot_path(Dir, b)
+    ],
     case lists:any(fun is_symlink/1, Paths) of
         true ->
             {error, symlink_rejected};

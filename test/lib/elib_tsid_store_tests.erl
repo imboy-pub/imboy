@@ -335,3 +335,26 @@ symlink_rejected_test() ->
         elib_tsid_store:open(cfg(Link))
     ),
     ok = file:delete(Link).
+
+%% 审计探针回归：槽文件本身换成 symlink（指向旧 generation record）
+%% 必须被拒绝——read_slot 会跟随链接，放行即可把 durable floor 回退
+%% 到旧 fence（safe_before=1000/gen=1），破坏跨重启时钟保护。
+slot_symlink_rejected_test() ->
+    Root = tmp_root(),
+    {ok, S0} = elib_tsid_store:open(cfg(Root)),
+    {ok, S1} = elib_tsid_store:persist(S0, 1000),
+    {ok, _S2} = elib_tsid_store:persist(S1, 2000),
+    Dir = elib_tsid_store:dir(S1),
+    LH = elib_tsid_store:layout_hash(?NODE, ?DC_BITS),
+    %% 伪造"旧状态"槽文件内容，放别处备用
+    OldPath = filename:join(Root, "old-clock-record"),
+    ok = file:write_file(OldPath, elib_tsid_store:encode_record(LH, ?NODE, 1, 1000, 1)),
+    %% 用 symlink 替换当前槽 a，删除槽 b 制造"单旧槽"局面
+    ok = file:delete(elib_tsid_store:slot_path(Dir, a)),
+    ok = file:make_symlink(OldPath, elib_tsid_store:slot_path(Dir, a)),
+    ok = file:delete(elib_tsid_store:slot_path(Dir, b)),
+    ?assertMatch(
+        {error, symlink_rejected},
+        elib_tsid_store:open(cfg(Root))
+    ),
+    ok = file:delete(OldPath).
