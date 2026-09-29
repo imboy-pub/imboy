@@ -13,6 +13,22 @@
 #   https://<CS_WIDGET_DOMAIN>/w/<public_widget_id>               -> imboy_backend:9800（动态 frame HTML）
 #   https://<CS_WIDGET_DOMAIN>/api/v1/cs/widget/*                 -> imboy_backend:9800（同源 Widget API + SSE）
 #
+# Seat 控制台嵌入增量（计划卡 SC-OPS、冻结合同 build-contract seat；代理组
+# 语义经 backlog r3-B1 收敛为攻击面最小化 —— REVIEW-2 P2）：
+#   https://<CS_WIDGET_DOMAIN>/seat/:public_seat_console_id       -> imboy_backend:9800（Seat 动态 frame HTML）
+#   https://<CS_WIDGET_DOMAIN>/seat-assets/cs-seat.v1.{js,css}    -> imboy_widget:8080（稳定别名静态资产）
+#   https://<CS_WIDGET_DOMAIN>/api/v1/cs/widget/*                 -> imboy_backend:9800（访客 Widget API，既有独立前缀）
+#   https://<CS_WIDGET_DOMAIN>/api/v1/cs/…（坐席子路径精确正则）   -> imboy_backend:9800（Seat workspace API；
+#                                     /api/v1/cs/organizations/:org/seats/me/events 为 SSE，单独正则块关缓冲）
+#   https://<CS_WIDGET_DOMAIN>/api/v1/passport/qr_login/*         -> imboy_backend:9800（Seat 扫码登录）
+#   https://<CS_WIDGET_DOMAIN>/api/v1/enterprise/conversations/*  -> imboy_backend:9800（Seat 会话历史面）
+#   https://<CS_WIDGET_DOMAIN>/api/v1/enterprise/organizations/…（坐席子路径
+#                                     精确正则：assets presign/confirm/:id/content + conversations/:conv/messages）
+#   禁止：全 /api/v1/ 通配代理，亦禁止 /api/v1/cs/、/api/v1/enterprise/
+#   organizations/ 整族前缀回潮（收敛后嵌入 origin 只可达坐席工作台实际调用
+#   的子路径；治理面/访客面不匹配 → location / → 静态容器 404，fail-closed；
+#   负例断言在 AD negatives-gateway-minimality.spec.ts）。
+#
 # 安全头边界（合同 S6；本 vhost 不注入 XFO / CSP，原因见下方 server 块内注释）：
 #   · 缓存头（no-cache / immutable / no-store）全部由 imboy_widget 容器内 nginx
 #     按 S6 冻结表下发（imboyadmin 仓 docker/widget/nginx.conf），网关不覆写、
@@ -67,10 +83,47 @@ server {
         proxy_send_timeout 3600s;
     }
 
+    # ── Seat 工作台 SSE 长连接：GET /api/v1/cs/organizations/:org/seats/me/events
+    # 与上方 Widget SSE 同构（计划 SC-OPS-A03）：正则 location 优先于下方
+    # /api/v1/cs/ 前缀 location；必须关缓冲/关缓存，坐席队列与事件推送才能
+    # 实时到达。读/写超时对齐 Widget SSE（3600s）。两个 SSE 正则互不重叠：
+    # /widget/sessions/.../events 归 Widget 块，/organizations/.../seats/me/events
+    # 归本块（路径以 imboy_router 的 seat SSE 端点为准）。
+    location ~ ^/api/v1/cs/organizations/[0-9A-Za-z_-]+/seats/me/events$ {
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding on;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
     # ── 动态 frame：GET /w/:public_widget_id → backend（合同 S4）──────────────
     # HTML 壳的 CSP frame-ancestors 由 backend 按 installation allowlist 逐请求
     # 下发、Cache-Control: no-store；网关不注入任何可能与之取交集的头。
     location ^~ /w/ {
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # ── 动态 frame：GET /seat/:public_seat_console_id → backend ───────────────
+    # Seat 控制台 HTML 壳（冻结合同 backend_frame_route=/seat/:public_seat_console_id）。
+    # CSP frame-ancestors / XFO 豁免登记 / Cache-Control: no-store 全部由 backend
+    # 逐请求下发（计划 SC-OPS-A04）；网关零注入 —— 与 /w/ 同一边界。HTML 无流式
+    # 需求，不做 buffering 开关，超时对齐 /w/ 块。前缀 /seat/ 与静态面
+    # /seat-assets/ 互不重叠（nginx 前缀匹配按字符逐字比较，"-a" ≠ "/a"）。
+    location ^~ /seat/ {
         proxy_pass http://imboy_backend:9800;
         proxy_http_version 1.1;
         proxy_set_header Host              $http_host;
@@ -86,6 +139,70 @@ server {
     # 窗口，backend 原样保留）。上传代理端点 .../assets/upload 走本路径，
     # client_max_body_size 与 API vhost 对齐（50m）。
     location /api/v1/cs/widget/ {
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # ── 同源 Seat API：坐席工作台精确子路径正则（SC-OPS-A02；r3-B1 收敛）──────
+    # 不再是 /api/v1/cs/ 整族前缀：嵌入 origin 只放行坐席工作台实际调用的
+    # 子路径（允许集三源交叉推导：AD seatApiClient 客户端白名单 ∩ imboy_router
+    # 真实路由 ∩ E2E journey 调用面）。覆盖：me/seat-contexts、
+    # organizations/:org/(transfer-targets | sessions/queue | sessions/:id
+    # （+claim/transfer/close/read-cursor/context）| seats/sessions |
+    # seats/me/heartbeat | seats/me/presence)。seats/me/events 由上方 SSE
+    # 正则独占（先匹配、关缓冲），本正则刻意不含 events。治理面（seats 列表
+    # 与 suspend/resume、shop-keys、visit-tokens、seat-limit、stats/sessions、
+    # seats/presence 团队列表）与访客面（/api/v1/cs/sessions*）一律不匹配 →
+    # 落 location / → 静态容器 404（fail-closed）。请求体上限沿用本 server
+    # 级 client_max_body_size 50m。
+    location ~ ^/api/v1/cs/(me/seat-contexts|organizations/[0-9A-Za-z_-]+/(transfer-targets|sessions/(queue|[0-9A-Za-z_-]+(/(claim|transfer|close|read-cursor|context))?)|seats/(sessions|me/(heartbeat|presence))))$ {
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # ── Seat 扫码登录 / 企业会话 / 坐席企业子路径：精确放行（SC-OPS-A02）────
+    # /api/v1/passport/qr_login/ 与 /api/v1/enterprise/conversations/ 两组保持
+    # 精确前缀；/api/v1/enterprise/organizations/ 收敛为坐席工作台实际子路径
+    # 正则（r3-B1）：assets/(presign|confirm|:id/content)（presign 同路径还承载
+    # presign 下发 upload.url 的裸 PUT 字节上传，查询串凭证 upload_ref）+
+    # conversations/:conv/messages（坐席发送企业真源写路径）。business-identities
+    # / contacts / conversations 集合 / messages ack / members suspend /
+    # offboarding 等治理面一律不匹配 → 静态 404。四组之外的一切 /api/v1/*
+    # 路径一律不达 backend —— 本 vhost 刻意没有 location /api/v1/ 通配，
+    # 未匹配路径落回下方 location / → 静态容器 404（fail-closed）。
+    location /api/v1/passport/qr_login/ {
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+    location /api/v1/enterprise/conversations/ {
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+    location ~ ^/api/v1/enterprise/organizations/[0-9A-Za-z_-]+/(assets/(presign|confirm|[0-9A-Za-z_-]+/content)|conversations/[0-9A-Za-z_-]+/messages)$ {
         proxy_pass http://imboy_backend:9800;
         proxy_http_version 1.1;
         proxy_set_header Host              $http_host;
@@ -117,6 +234,19 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
     location ^~ /widget/ {
+        proxy_pass http://imboy_widget:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # ── Seat 稳定别名静态资产 → imboy_widget:8080（SC-OPS-A01/A04）────────────
+    # /seat-assets/cs-seat.v1.{js,css} 是冻结合同 stable_aliases；缓存头由静态
+    # 容器按 S6 纪律下发（seat_assets = no-cache,must-revalidate，内容随发布原位
+    # 更新，immutable 会把热修冻结），网关不覆写、不追加任何影响缓存的头。
+    location ^~ /seat-assets/ {
         proxy_pass http://imboy_widget:8080;
         proxy_http_version 1.1;
         proxy_set_header Host              $http_host;

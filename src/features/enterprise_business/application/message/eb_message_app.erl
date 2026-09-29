@@ -87,6 +87,9 @@
 %%   accepted_at       可选（Unix 秒；缺省经注入时钟端口）
 %%   audit_action      可选（缺省 `message.accept`）
 %%   notify            可选 fun/1（realtime 发布器；缺省显式报告未装配）
+%%   persist_hook      可选 fun/2（REVIEW-3 F-2：canonical 事务内的旁路写钩子，
+%%                     `(Conn, StoredMessage) -> ok | {error, Reason}`；消息+
+%%                     审计写毕、提交前调用，返回错误即整体回滚；缺省无钩子）
 %%   canonical_tx / store / clock / id 可选端口覆盖
 %%
 %% 返回 `{ok, #{accepted, message, message_id, replayed, audit_id, notification,
@@ -215,21 +218,38 @@ sender_type_atom(Other) ->
     {error, {unknown_sender_type, Other}}.
 
 append_tx(OrgId, WorkspaceId, SenderType, ClientMsgId, AcceptedAt, Params) ->
-    TxParams = tx_params(Params, SenderType, ClientMsgId, AcceptedAt),
-    case canonical_tx(Params) of
+    case persist_hook(maps:get(persist_hook, Params, undefined)) of
         {error, _} = Err ->
             Err;
-        {ok, CanonicalTx} ->
-            try CanonicalTx:accept_message(OrgId, WorkspaceId, TxParams) of
+        {ok, PersistHook} ->
+            TxParams = tx_params(Params, SenderType, ClientMsgId, AcceptedAt, PersistHook),
+            case canonical_tx(Params) of
                 {error, _} = Err ->
                     Err;
-                {ok, TxResult} ->
-                    accepted(OrgId, WorkspaceId, TxResult, Params)
-            catch
-                Class:Reason ->
-                    {error, {canonical_tx_failed, {Class, Reason}}}
+                {ok, CanonicalTx} ->
+                    try CanonicalTx:accept_message(OrgId, WorkspaceId, TxParams) of
+                        {error, _} = Err ->
+                            Err;
+                        {ok, TxResult} ->
+                            accepted(OrgId, WorkspaceId, TxResult, Params)
+                    catch
+                        Class:Reason ->
+                            {error, {canonical_tx_failed, {Class, Reason}}}
+                    end
             end
     end.
+
+%% REVIEW-3 F-2：canonical 事务内的旁路写钩子（如客服 `message.appended`
+%% 事件行并轨写，消息与事件原子可见）。形状冻结为 `fun/2`——
+%% `(Conn, StoredMessage) -> ok | {error, Reason}`；`undefined` = 无钩子。
+%% 非法值 fail-closed（`{invalid_persist_hook, _}`），不静默丢弃——调用方
+%% 要么不传，要么传对。
+persist_hook(undefined) ->
+    {ok, undefined};
+persist_hook(Fun) when is_function(Fun, 2) ->
+    {ok, Fun};
+persist_hook(Other) ->
+    {error, {invalid_persist_hook, Other}}.
 
 %% 事务参数**显式白名单**构造：调用方给的 `enforce_consent` 等旁路键一律不转发。
 %%
@@ -237,7 +257,7 @@ append_tx(OrgId, WorkspaceId, SenderType, ClientMsgId, AcceptedAt, Params) ->
 %% 原样优先；缺省经 `eb_env_keyring` 从服务端 env 解析 active key_ref。env 缺失
 %% 时 resolve 返回 undefined，canonical tx 的 seal 照旧 `{error, missing_key}`
 %% fail-closed（500 面），不降级、不造默认密钥。
-tx_params(Params, SenderType, ClientMsgId, AcceptedAt) ->
+tx_params(Params, SenderType, ClientMsgId, AcceptedAt, PersistHook) ->
     %% BE-PATCH-01：附件消息允许空正文（canonical seal 接受空二进制）；此处
     %% 把 undefined 归一为 <<>>，缺键不再下探。
     Body =
@@ -252,7 +272,9 @@ tx_params(Params, SenderType, ClientMsgId, AcceptedAt) ->
         sender_type => SenderType,
         key_ref => eb_env_keyring:resolve_key_ref(maps:get(key_ref, Params, undefined)),
         accepted_at => AcceptedAt,
-        enforce_consent => true
+        enforce_consent => true,
+        %% REVIEW-3 F-2：事务内旁路写钩子（undefined = 无）。
+        persist_hook => PersistHook
     },
     Base =
         case validate_asset_ids(maps:get(asset_ids, Params, undefined)) of

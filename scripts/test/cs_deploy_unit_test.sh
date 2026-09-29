@@ -10,6 +10,10 @@
 #   A04 五个故障点回滚 oracle + 首次安装失败无残余（fake 文件系统断言 symlink 指向）
 #   A05 verbose 输出脱敏断言（cookie/证书私钥零出现，仅脱敏占位）
 #   A06 all -l backend 恰一次且顺序 api→admin→cs；既有组件行为不回归
+#   A07 cs-widget 网关模板合同（Seat 嵌入；seat SSE 正则 ↔ imboy_router
+#       真实路由表逐段对照，REVIEW-2 P1 防再漂移闭环）
+#   A08 preflight base_url ↔ CS_WIDGET_DOMAIN 比对检查（SC-EMBED §5；正例/
+#       缺失口径/三类漂移负例 + 变异自证：阉割或弱化检查器后负例必不再报错）
 # =============================================================================
 set -uo pipefail
 
@@ -39,6 +43,9 @@ trap cleanup EXIT
 # ---------- 复制被测脚本 + 蓝绿桩 ----------
 cp scripts/imboy-deploy.sh "$TEST_SCRIPTS/imboy-deploy.sh"
 cp scripts/lib/cs_deploy.sh "$TEST_SCRIPTS/lib/cs_deploy.sh"
+# 1b2ca499 起 imboy-deploy.sh 对 api/cs/all 惰性 source 生产配置键预检库，
+# harness 必须同步携带（否则 source 失败，事务在构建前即死）。
+cp scripts/lib/check_prod_config.sh "$TEST_SCRIPTS/lib/check_prod_config.sh"
 cat >"$TEST_SCRIPTS/lib/blue_green_deploy.sh" <<'STUB'
 #!/usr/bin/env bash
 # CSD-CLI-01 测试桩：只记录被调用与参数，可注入失败。
@@ -292,6 +299,15 @@ case "$cmd" in
     exit 0 ;;
   *"deploy-meta.json"*)
     printf '%s\n' "$TEST_SOURCE_HEAD"
+    exit 0 ;;
+  *"command -v escript"*)
+    # check_prod_config 远端守卫执行命令（1b2ca499 引入）：离线桩直接回 OK。
+    # 守卫自身逻辑属生产路径，本 harness 只保证其不改变 cs/api/all 事务时序。
+    log_event CONFIG_GUARD
+    printf 'CONFIG_KEYS_OK\n'
+    exit 0 ;;
+  *"imboy-config-key-guard.escript"*)
+    # 守卫清理远端临时 escript 的 ssh 调用：静默成功。
     exit 0 ;;
   *)
     log_event "SSH_OTHER:$(printf '%s' "$cmd" | cut -c1-40)"
@@ -963,6 +979,282 @@ if [ "$rc" -eq 0 ] && [ "$(event_count ADMIN_REALPATH)" = 1 ] && [ "$(event_coun
   ok "回归: admin 行为不变（无蓝绿、无 CS smoke）"
 else
   bad "回归: admin" "rc=$rc realpath=$(event_count ADMIN_REALPATH)"
+fi
+
+# =============================================================================
+echo "== A07. cs-widget 网关模板合同（Seat 嵌入路由，SC-OPS-A01..A04） =="
+# 直接对 deploy/nginx/templates/cs-widget.conf.template 做 location 级断言：
+# 既有 Widget 面不变量 + Seat 增量（/seat/ frame、/seat-assets/ 静态、四组
+# API 精确放行、Seat SSE）。负例通过变异副本证明检查器能捕获回归。
+CS_TEMPLATE="$PWD/deploy/nginx/templates/cs-widget.conf.template"
+
+# 取含固定子串的第 nth 个 location 块（从 location 行到首个独立收尾大括号）；
+# nth 缺省 1。location / 在模板出现两次（:80 301 跳转 + :443 兜底），需取第 2 个。
+tpl_block_at() { # $1=file $2=fixed substring $3=occurrence(从1起)
+  awk -v pat="$2" -v want="${3:-1}" 'index($0, pat) { hit++; if (hit == want) inf=1 } inf { print; if ($0 ~ /^[[:space:]]*}[[:space:]]*$/) exit }' "$1"
+}
+tpl_block() { # $1=file $2=fixed substring
+  tpl_block_at "$1" "$2" 1
+}
+
+# 聚合检查器：输出 TPLERR 行；供正例（应零输出）与负例（应非零）共用
+cs_template_contract_errors() { # $1=template file
+  local f="$1" blk
+  # Seat 动态 frame：backend、300s 超时对齐 /w/、零 add_header、零 buffering 开关
+  blk="$(tpl_block "$f" 'location ^~ /seat/ {')"
+  [ -n "$blk" ] || echo "TPLERR: 缺 location ^~ /seat/（Seat 动态 frame）"
+  if [ -n "$blk" ]; then
+    printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_backend:9800;' || echo "TPLERR: /seat/ 未指向 imboy_backend:9800"
+    printf '%s\n' "$blk" | grep -qF 'proxy_read_timeout 300s;'  || echo "TPLERR: /seat/ 缺 300s 读超时"
+    printf '%s\n' "$blk" | grep -qF 'proxy_send_timeout 300s;'  || echo "TPLERR: /seat/ 缺 300s 写超时"
+    printf '%s\n' "$blk" | grep -qF 'proxy_set_header Host              $http_host;' || echo "TPLERR: /seat/ Host 头须为 \$http_host"
+    printf '%s\n' "$blk" | grep -q  'add_header'      && echo "TPLERR: /seat/ 出现 add_header（网关零注入）"
+    printf '%s\n' "$blk" | grep -q  'proxy_buffering' && echo "TPLERR: /seat/ 出现 proxy_buffering（HTML 无需，镜像 /w/）"
+  fi
+  # Seat 静态别名：widget 容器、零缓存头注入（容器按 S6 下发）
+  blk="$(tpl_block "$f" 'location ^~ /seat-assets/ {')"
+  [ -n "$blk" ] || echo "TPLERR: 缺 location ^~ /seat-assets/（Seat 稳定别名静态面）"
+  if [ -n "$blk" ]; then
+    printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_widget:8080;' || echo "TPLERR: /seat-assets/ 未指向 imboy_widget:8080"
+    printf '%s\n' "$blk" | grep -q  'add_header'     && echo "TPLERR: /seat-assets/ 出现 add_header（缓存头必须由容器下发）"
+    printf '%s\n' "$blk" | grep -q  'Cache-Control'  && echo "TPLERR: /seat-assets/ 出现 Cache-Control（网关不得覆写）"
+  fi
+  # Seat SSE：关缓冲/关缓存 + 3600s；正则须与 imboy_router 真实端点合同
+  # （REVIEW-2 P1 机制闭环：此前静态合同只锁 harness 渲染产物，模板正则指向
+  # 不存在的 /api/v1/cs/sessions/:id/events 时无任何断言拦截）。
+  blk="$(tpl_block "$f" 'location ~ ^/api/v1/cs/organizations/')"
+  [ -n "$blk" ] || echo "TPLERR: 缺 Seat SSE 正则 location"
+  if [ -n "$blk" ]; then
+    printf '%s\n' "$blk" | grep -qF 'proxy_buffering off;'          || echo "TPLERR: Seat SSE 缺 proxy_buffering off"
+    printf '%s\n' "$blk" | grep -qF 'proxy_cache off;'              || echo "TPLERR: Seat SSE 缺 proxy_cache off"
+    printf '%s\n' "$blk" | grep -qF 'chunked_transfer_encoding on;' || echo "TPLERR: Seat SSE 缺 chunked_transfer_encoding on"
+    printf '%s\n' "$blk" | grep -qF 'proxy_read_timeout 3600s;'     || echo "TPLERR: Seat SSE 读超时须 3600s"
+    printf '%s\n' "$blk" | grep -qF 'proxy_send_timeout 3600s;'     || echo "TPLERR: Seat SSE 写超时须 3600s"
+  fi
+  # 模板 ↔ 真实路由表对照（对照粒度）：把路由表 seat SSE 端点的每个 :param
+  # 槽机械替换为模板既定单段字符类 [0-9A-Za-z_-]+ 得到骨架；模板 SSE
+  # location 行去掉 ^/$ 锚与反斜杠转义后须与骨架逐字相等 —— 字面段
+  # organizations/seats/me/events（含 api/v1/cs 前缀）逐段对应，参数槽允许
+  # 转义写法差异（如 \-），段序列/段数不允许任何差异。
+  ROUTE_SEAT_SSE="$(grep -oE '"/api/v1/cs/organizations/:org_id/seats/me/events"' "$PWD/src/imboy_router.erl" 2>/dev/null | head -1 | tr -d '"')"
+  [ -n "$ROUTE_SEAT_SSE" ] || echo "TPLERR: 路由表缺 seat SSE 端点（src/imboy_router.erl: organizations/:org_id/seats/me/events）"
+  if [ -n "$ROUTE_SEAT_SSE" ] && [ -n "$blk" ]; then
+    want_skel="$(printf '%s\n' "$ROUTE_SEAT_SSE" | sed -E 's/:[A-Za-z_][A-Za-z0-9_]*/[0-9A-Za-z_-]+/g')"
+    got_pat="$(printf '%s\n' "$blk" | head -1 | sed -E 's/.*location[[:space:]]+~[[:space:]]+\^//; s/\$[[:space:]]*\{.*//' | tr -d '\\')"
+    [ "$got_pat" = "$want_skel" ] || echo "TPLERR: Seat SSE 正则与路由表漂移 (want=$want_skel got=$got_pat)"
+  fi
+  # 历史漂移形态负向禁止（P1 原 bug 形态）：location 行出现
+  # /api/v1/cs/sessions/…/events 即 FAIL —— 路由表无此端点；Widget 块
+  # /cs/widget/sessions/ 不含该子串不受影响；模板头部注释中的历史字样
+  # 非 nginx 指令，不计。
+  grep -qE '^[[:space:]]*location .*/api/v1/cs/sessions/[^[:space:]]*/events' "$f" \
+    && echo "TPLERR: 出现历史漂移形态 cs/sessions/…/events（路由表无此端点）"
+  # 四组 API 精确放行（含既有 widget 组）
+  local loc
+  for loc in 'location /api/v1/cs/widget/ {' 'location /api/v1/cs/ {' \
+             'location /api/v1/passport/qr_login/ {' \
+             'location /api/v1/enterprise/conversations/ {' \
+             'location /api/v1/enterprise/organizations/ {'; do
+    blk="$(tpl_block "$f" "$loc")"
+    if [ -z "$blk" ]; then echo "TPLERR: 缺 API 精确前缀 location: $loc"; continue; fi
+    printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_backend:9800;' || echo "TPLERR: $loc 未指向 imboy_backend:9800"
+  done
+  # 禁止项：全 /api/v1/ 通配（两种书写形态）
+  grep -qE '^[[:space:]]*location /api/v1/ \{' "$f" && echo "TPLERR: 出现全 /api/v1/ 通配代理（禁止项）"
+  grep -qE '^[[:space:]]*location /api/v1/[[:space:]]*$' "$f" && echo "TPLERR: 出现全 /api/v1/ 通配代理（禁止项，无大括号形态）"
+  # 既有 Widget 面不变量（spot-check）
+  blk="$(tpl_block "$f" 'location ~ ^/api/v1/cs/widget/sessions/')"
+  printf '%s\n' "$blk" | grep -qF 'proxy_buffering off;' && printf '%s\n' "$blk" | grep -qF 'proxy_read_timeout 3600s;' \
+    || echo "TPLERR: Widget SSE 块不变量漂移（buffering off/3600s）"
+  blk="$(tpl_block "$f" 'location ^~ /w/ {')"
+  printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_backend:9800;' && printf '%s\n' "$blk" | grep -qF 'proxy_read_timeout 300s;' \
+    || echo "TPLERR: /w/ 动态 frame 块不变量漂移"
+  blk="$(tpl_block_at "$f" 'location / {' 2)"
+  printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_widget:8080;' || echo "TPLERR: location / 兜底不再指向静态容器（fail-closed 漂移）"
+  grep -qF 'location = /v1/loader.js' "$f"  || echo "TPLERR: 缺 loader 静态面"
+  grep -qF 'location ^~ /assets/' "$f"      || echo "TPLERR: 缺 assets 静态面"
+  grep -qF 'location ^~ /widget/ {' "$f"    || echo "TPLERR: 缺 widget 壳静态面"
+  # 安全头边界：server 级最小集恰一次；XFO/CSP/Cache-Control 零注入
+  [ "$(grep -cF 'add_header Strict-Transport-Security' "$f")" = "1" ] || echo "TPLERR: HSTS 须 server 级唯一来源"
+  grep -qF 'add_header X-Content-Type-Options nosniff' "$f" || echo "TPLERR: 缺 nosniff"
+  grep -qF 'add_header Referrer-Policy' "$f"                || echo "TPLERR: 缺 Referrer-Policy"
+  grep -q  'add_header X-Frame-Options' "$f"                && echo "TPLERR: 网关注入 XFO（禁止）"
+  grep -q  'add_header Content-Security-Policy' "$f"        && echo "TPLERR: 网关注入 CSP（禁止）"
+  grep -q  'add_header Cache-Control' "$f"                  && echo "TPLERR: 网关注入 Cache-Control（缓存头归容器）"
+  # upstream 计数：backend 9 处（2 SSE + /w/ + /seat/ + 5 组 API）；widget 5 处
+  [ "$(grep -cF 'proxy_pass http://imboy_backend:9800;' "$f")" = "9" ] || echo "TPLERR: backend upstream 数量漂移"
+  [ "$(grep -cF 'proxy_pass http://imboy_widget:8080;' "$f")" = "5" ]  || echo "TPLERR: widget upstream 数量漂移"
+}
+
+if [ -f "$CS_TEMPLATE" ]; then
+  TPL_ERRS="$(cs_template_contract_errors "$CS_TEMPLATE" | grep -c 'TPLERR' || true)"
+  if [ "${TPL_ERRS:-1}" = "0" ]; then
+    ok "模板合同检查器全绿（Seat frame/静态/SSE↔路由表对照/四组 API/负向禁止项/既有 Widget 面不变量）"
+  else
+    bad "模板合同检查器报错" "$(cs_template_contract_errors "$CS_TEMPLATE" | head -5 | tr '\n' ';')"
+  fi
+
+  # 逐项正例（可读性：失败时能直接定位漂移面）
+  grep -qF 'location ^~ /seat/ {' "$CS_TEMPLATE" \
+    && ok "A01 /seat/ 动态 frame 块存在" || bad "A01 /seat/ 块缺失" ""
+  grep -qF 'location ^~ /seat-assets/ {' "$CS_TEMPLATE" \
+    && ok "A01 /seat-assets/ 静态块存在" || bad "A01 /seat-assets/ 块缺失" ""
+  for loc in '/api/v1/cs/widget/' '/api/v1/cs/' '/api/v1/passport/qr_login/' \
+             '/api/v1/enterprise/conversations/' '/api/v1/enterprise/organizations/'; do
+    grep -qF "location $loc {" "$CS_TEMPLATE" \
+      && ok "A02 API 精确前缀存在: $loc" || bad "A02 API 前缀缺失: $loc" ""
+  done
+  if grep -qE '^[[:space:]]*location /api/v1/ \{' "$CS_TEMPLATE"; then
+    bad "A02 全 /api/v1/ 通配出现（禁止项）" ""
+  else
+    ok "A02 无全 /api/v1/ 通配（四组之外不达 backend）"
+  fi
+
+  # A03 正例对照：模板 seat SSE 正则 ↔ imboy_router 真实路由表（REVIEW-2 P1
+  # 防再漂移）。粒度同检查器：路由表端点 :param 槽机械替换为模板既定单段
+  # 字符类 [0-9A-Za-z_-]+ 得骨架；模板 SSE location 行去 ^/$ 锚与反斜杠转义
+  # 后逐字相等 —— 字面段逐段对应，参数槽允许转义差异。
+  ROUTE_SEAT_SSE="$(grep -oE '"/api/v1/cs/organizations/:org_id/seats/me/events"' src/imboy_router.erl 2>/dev/null | head -1 | tr -d '"')"
+  TPL_SEAT_SSE_PAT="$(grep -E '^[[:space:]]*location ~ \^.*seats/me/events' "$CS_TEMPLATE" 2>/dev/null | head -1 \
+    | sed -E 's/.*location[[:space:]]+~[[:space:]]+\^//; s/\$[[:space:]]*\{.*//' | tr -d '\\')"
+  ROUTE_SEAT_SSE_SKEL="$(printf '%s' "$ROUTE_SEAT_SSE" | sed -E 's/:[A-Za-z_][A-Za-z0-9_]*/[0-9A-Za-z_-]+/g')"
+  if [ -n "$ROUTE_SEAT_SSE" ] && [ "$TPL_SEAT_SSE_PAT" = "$ROUTE_SEAT_SSE_SKEL" ]; then
+    ok "A03 模板↔路由表对照: seat SSE 正则骨架 = 真实端点：$ROUTE_SEAT_SSE_SKEL"
+  else
+    bad "A03 模板↔路由表对照: seat SSE 正则与真实端点漂移" "route=[$ROUTE_SEAT_SSE] skel=[$ROUTE_SEAT_SSE_SKEL] tpl=[$TPL_SEAT_SSE_PAT]"
+  fi
+
+  # 负例：变异副本必须被检查器捕获（证明回归可测）
+  tpl_neg() { # $1=描述 $2=sed 表达式（BSD sed 兼容）
+    local m="$TMP_ROOT/tpl-mutant.$$" n
+    sed -E "$2" "$CS_TEMPLATE" >"$m"
+    n="$(cs_template_contract_errors "$m" | grep -c 'TPLERR' || true)"
+    rm -f "$m"
+    if [ "${n:-0}" -ge 1 ]; then ok "模板负例被捕获: $1"; else bad "模板负例未被捕获: $1" "检查器误放行"; fi
+  }
+  tpl_neg "删除 /seat/ 动态块"           '/location \^~ \/seat\/ \{/,/^[[:space:]]*}[[:space:]]*$/d'
+  tpl_neg "删除 /seat-assets/ 静态块"    '/location \^~ \/seat-assets\/ \{/,/^[[:space:]]*}[[:space:]]*$/d'
+  tpl_neg "Seat SSE 关缓冲被移除"        '/proxy_buffering off;/d'
+  tpl_neg "qr_login 组被改名（组缺失）"  's/location \/api\/v1\/passport\/qr_login\/ \{/location \/api\/v1\/passport\/qr_loginX \{/'
+  tpl_neg "cs/ 前缀被放大为全通配"       's/location \/api\/v1\/cs\/ \{/location \/api\/v1\/ \{/'
+  # seat-assets 被注入缓存头：awk 注入（BSD sed 替换串不支持 \n）
+  m_inject="$TMP_ROOT/tpl-mutant-inject.$$"
+  awk '{print} /location \^~ \/seat-assets\/ \{/ {print "            add_header Cache-Control \"public, max-age=31536000, immutable\" always;"}' \
+    "$CS_TEMPLATE" >"$m_inject"
+  n_inject="$(cs_template_contract_errors "$m_inject" | grep -c 'TPLERR' || true)"
+  rm -f "$m_inject"
+  if [ "${n_inject:-0}" -ge 1 ]; then
+    ok "模板负例被捕获: seat-assets 被注入缓存头"
+  else
+    bad "模板负例未被捕获: seat-assets 被注入缓存头" "检查器误放行"
+  fi
+  # 历史漂移形态负例（P1 原 bug）：向真实块之后注入一条指向不存在端点的
+  # cs/sessions/…/events location 行，其余面不动 —— 检查器必须 FAIL，且由
+  # 路由表对照断言（而非缺块/计数旁路）捕获。
+  m_drift="$TMP_ROOT/tpl-mutant-drift.$$"
+  awk '{print} /seats\/me\/events\$ \{/ {print "    location ~ ^/api/v1/cs/sessions/[0-9A-Za-z_-]+/events$ {"}' \
+    "$CS_TEMPLATE" >"$m_drift"
+  n_drift="$(cs_template_contract_errors "$m_drift" | grep -c 'TPLERR' || true)"
+  rm -f "$m_drift"
+  if [ "${n_drift:-0}" -ge 1 ]; then
+    ok "模板负例被捕获: 注入历史漂移形态 cs/sessions/…/events"
+  else
+    bad "模板负例未被捕获: 注入历史漂移形态 cs/sessions/…/events" "检查器误放行"
+  fi
+else
+  bad "cs-widget 模板缺失" "$CS_TEMPLATE"
+fi
+
+# =============================================================================
+echo "== A08. preflight base_url ↔ CS_WIDGET_DOMAIN 比对检查（SC-EMBED §5） =="
+# deploy/preflight.sh 不可整体 source（主流程 source 时即执行并 exit）；沿用 A00
+# 「提取纯函数 + 测试桩」方式：awk 抠出 check_base_url_matches_cs_widget_domain
+# 函数定义，配 ok/err 桩独立执行。断言面：正例过检、缺失口径（交 check_var 不
+# 重复计）、三类漂移负例必抓、错误文案含 §5 修复指引；变异自证（删 err 分支 /
+# 弱化为仅 scheme 比对后负例不再报错）证明本组断言真实依赖检查逻辑 —— 检查被
+# 删除或弱化时本测试组必然 FAIL，非恒真。
+PREFLIGHT_SH="$PWD/deploy/preflight.sh"
+
+pf_fn() { # $1=file $2=函数名 → 打印函数定义（函数头行到首个顶格 }）；同 A07 tpl_block_at 手法
+  awk -v pat="$2() {" 'index($0, pat) { inf=1 } inf { print; if ($0 ~ /^\}[[:space:]]*$/) exit }' "$1"
+}
+
+PF_STUB="$TMP_ROOT/pf_check_stub.$$"
+cat >"$PF_STUB" <<'PFSTUB'
+ERRORS=0
+ok() { :; }
+warn() { :; }
+info() { :; }
+err() { ERRORS=$((ERRORS+1)); printf 'PFERR: %s\n' "$1"; }
+PFSTUB
+
+pf_base_url_errors() { # $1=preflight文件 $2=base_url $3=domain → PFERR 行数
+  (
+    # shellcheck disable=SC1090
+    source "$PF_STUB"
+    eval "$(pf_fn "$1" check_base_url_matches_cs_widget_domain)"
+    check_base_url_matches_cs_widget_domain "IMBOY_BASE_URL" "$2" "CS_WIDGET_DOMAIN" "$3"
+  ) | grep -c 'PFERR' || true
+}
+
+if [ -f "$PREFLIGHT_SH" ] && [ -n "$(pf_fn "$PREFLIGHT_SH" check_base_url_matches_cs_widget_domain)" ]; then
+  # 正例：恰为 https://<CS_WIDGET_DOMAIN>（合法形态）必须过检
+  assert_eq "preflight 正例: https://<CS_WIDGET_DOMAIN> 过检" "0" \
+    "$(pf_base_url_errors "$PREFLIGHT_SH" "https://cs.imboy.test" "cs.imboy.test")"
+  # 缺失口径：任一值缺失不在此计错（交由 check_var 报告，preflight 现有口径）
+  assert_eq "preflight 缺失口径: base_url 空值不重复计错" "0" \
+    "$(pf_base_url_errors "$PREFLIGHT_SH" "" "cs.imboy.test")"
+  assert_eq "preflight 缺失口径: 域空值不重复计错" "0" \
+    "$(pf_base_url_errors "$PREFLIGHT_SH" "https://cs.imboy.test" "")"
+  # 负例：http:// / 尾斜杠 / 带路径 / 域不符，检查器必须报错
+  for pf_drift in "http://cs.imboy.test" "https://cs.imboy.test/" "https://cs.imboy.test/api" "https://api.imboy.test"; do
+    n="$(pf_base_url_errors "$PREFLIGHT_SH" "$pf_drift" "cs.imboy.test")"
+    if [ "${n:-0}" -ge 1 ]; then
+      ok "preflight 负例被捕获: base_url=$pf_drift"
+    else
+      bad "preflight 负例未被捕获: base_url=$pf_drift" "检查器误放行"
+    fi
+  done
+  # 可读错误与修复指引：负例文案必须指向部署文档 §5
+  PF_ERR_OUT="$(
+    # shellcheck disable=SC1090
+    source "$PF_STUB"
+    eval "$(pf_fn "$PREFLIGHT_SH" check_base_url_matches_cs_widget_domain)"
+    check_base_url_matches_cs_widget_domain "IMBOY_BASE_URL" "https://api.imboy.test" "CS_WIDGET_DOMAIN" "cs.imboy.test"
+  )"
+  case "$PF_ERR_OUT" in
+    *'deploy/cs-seat-console-embed.md §5'*) ok "错误文案含修复指引（deploy/cs-seat-console-embed.md §5）" ;;
+    *) bad "错误文案缺 §5 修复指引" "$(printf '%s' "$PF_ERR_OUT" | head -1)" ;;
+  esac
+
+  # 变异自证 1（err 分支变 no-op）：同一负例必须不再报错 —— 证明负例断言真实
+  # 依赖检查器的 err 调用（检查被删除时本测试组必然 FAIL）。手术必须保留合法
+  # 语法（把 err 调用替换为冒号 no-op 而非删行——删行会留下空 then 分支，bash
+  # 3.2 eval 直接语法错 → 函数未定义 → 「不再报错」空洞成立，证明变装饰）；
+  # 变异体必须仍可定义才计证明（手术破坏语法时本组 FAIL，不假绿）。
+  PF_MUTANT1="$TMP_ROOT/preflight-mutant1.$$"
+  sed 's/^\( *\)err "/\1: "mutated-err-removed/' "$PREFLIGHT_SH" >"$PF_MUTANT1"
+  PF_M1_DEFINED="$(
+    # shellcheck disable=SC1090
+    source "$PF_STUB"
+    eval "$(pf_fn "$PF_MUTANT1" check_base_url_matches_cs_widget_domain)" 2>/dev/null
+    type check_base_url_matches_cs_widget_domain >/dev/null 2>&1 && echo yes || echo no
+  )"
+  if [ "$PF_M1_DEFINED" = "yes" ]; then
+    assert_eq "变异自证1: err 分支变 no-op 后负例不再报错（断言非恒真）" "0" \
+      "$(pf_base_url_errors "$PF_MUTANT1" "https://api.imboy.test" "cs.imboy.test")"
+  else
+    bad "变异自证1 的变异体无法定义（手术破坏语法，证明失效）" "function undefined"
+  fi
+  # 变异自证 2（严格相等弱化为仅 scheme 检查）：域不符形态必须放行 —— 证明
+  # 负例断言真实依赖「恰为 https://<域>」的严格比对（弱化时本测试组必然 FAIL）。
+  PF_MUTANT2="$TMP_ROOT/preflight-mutant2.$$"
+  sed 's|"$url" != "https://${dom}"|"$url" != https://*|' "$PREFLIGHT_SH" >"$PF_MUTANT2"
+  assert_eq "变异自证2: 比对弱化为仅 scheme 后域不符不再报错" "0" \
+    "$(pf_base_url_errors "$PF_MUTANT2" "https://api.imboy.test" "cs.imboy.test")"
+  rm -f "$PF_MUTANT1" "$PF_MUTANT2"
+else
+  bad "preflight.sh 缺 check_base_url_matches_cs_widget_domain" "$PREFLIGHT_SH"
 fi
 
 # =============================================================================

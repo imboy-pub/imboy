@@ -76,6 +76,40 @@ ok "宿主端口 ${PORT} 空闲"
 [[ -n "$DIST" && -d "$DIST" ]] || { echo "--dist 需要 build:widget 产物目录（--help）" >&2; exit 2; }
 ok "v1 内容物：${DIST}"
 
+# ── STEP 0.1 产物清单 fail-closed 校验（SC-OPS-A05）──────────────────────────
+# Seat 控制台嵌入后（冻结合同 control/build-contract.json seat），v1 产物必须
+# 同时携带 Widget 面与 Seat 面：/seat/:id frame HTML 引用稳定别名
+# /seat-assets/cs-seat.v1.{js,css}，缺任一文件 = 线上 frame 静默 404，
+# 故 fail-closed 拒绝演练（缺什么在错误里列全）。manifest.sha256 与
+# manifest.json 的一致性为完整性预检（防呆不防恶）。
+say "STEP 0.1 产物清单 fail-closed 校验（Widget + Seat 面）"
+MISSING=""
+for f in loader.js manifest.json manifest.sha256 health.txt \
+         widget/index.html seat/index.html \
+         widget-assets/cs-widget.v2.js \
+         seat-assets/cs-seat.v1.js seat-assets/cs-seat.v1.css; do
+  [[ -s "$DIST/$f" ]] || MISSING="$MISSING $f"
+done
+if [[ -n "$MISSING" ]]; then
+  bad "产物缺失或为空:${MISSING}（SC-OPS-A05 fail-closed）"
+  exit 1
+fi
+ok "必需产物齐全（widget 面 + seat-assets/cs-seat.v1.{js,css} + 双 HTML 壳）"
+if [[ -n "$(ls -A "$DIST/assets" 2>/dev/null)" ]]; then
+  ok "assets/ 非空"
+else
+  bad "assets/ 为空（hashed 资产缺失，SC-OPS-A05 fail-closed）"
+  exit 1
+fi
+SUM_CALC="$(shasum -a 256 "$DIST/manifest.json" | awk '{print $1}')"
+SUM_REG="$(awk '{print $1; exit}' "$DIST/manifest.sha256")"
+if [[ -n "$SUM_REG" && "$SUM_CALC" == "$SUM_REG" ]]; then
+  ok "manifest.sha256 与 manifest.json 一致"
+else
+  bad "manifest.sha256 与 manifest.json 不一致（SC-OPS-A05 fail-closed）" "calc=${SUM_CALC:0:12} reg=${SUM_REG:0:12}"
+  exit 1
+fi
+
 # ── STEP 1：构建 v0（合成空壳页，模拟旧 artifact）────────────────────────────
 say "STEP 1 构建 v0 空壳页镜像（合成旧产物）"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/csww-dep01.XXXXXX")"
@@ -121,6 +155,12 @@ CODE_L="$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/loader.js")"
 CODE_W="$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/widget/")"
 [[ "$CODE_H" == 200 && "$CODE_L" == 200 && "$CODE_W" == 200 ]] \
   && ok "healthz/loader.js/widget 全部 200" || bad "200 断言失败 h=${CODE_H} l=${CODE_L} w=${CODE_W}"
+CODE_SJS="$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/seat-assets/cs-seat.v1.js")"
+CODE_SCSS="$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/seat-assets/cs-seat.v1.css")"
+CODE_SEAT="$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/seat/")"
+[[ "$CODE_SJS" == 200 && "$CODE_SCSS" == 200 ]] \
+  && ok "seat-assets 稳定别名 200（v1 含 Seat 面）" || bad "seat-assets 非 200 js=${CODE_SJS} css=${CODE_SCSS}"
+[[ "$CODE_SEAT" == 200 ]] && ok "seat/ HTML 壳 200（v1 含 Seat 入口）" || bad "seat/ 非 200：${CODE_SEAT}"
 
 # ── STEP 4：缓存头断言（A04）+ v1 资产指纹 ───────────────────────────────────
 say "STEP 4 缓存策略断言 + v1 资产指纹"
@@ -137,7 +177,9 @@ ET_L="$(curl -sI "${BASE}/loader.js" | tr -d '\r' | awk -F': ' 'tolower($1)=="et
 HASH_LOADER_V1="$(curl -s "${BASE}/loader.js" | shasum -a 256 | awk '{print $1}')"
 HASH_ASSET_V1="$(curl -s "${BASE}/assets/cs-widget.js" | shasum -a 256 | awk '{print $1}')"
 HASH_HTML_V1="$(curl -s "${BASE}/widget/" | shasum -a 256 | awk '{print $1}')"
-ok "v1 资产指纹已记录 loader=${HASH_LOADER_V1:0:12} asset=${HASH_ASSET_V1:0:12} html=${HASH_HTML_V1:0:12}"
+HASH_SEATJS_V1="$(curl -s "${BASE}/seat-assets/cs-seat.v1.js" | shasum -a 256 | awk '{print $1}')"
+HASH_SEATCSS_V1="$(curl -s "${BASE}/seat-assets/cs-seat.v1.css" | shasum -a 256 | awk '{print $1}')"
+ok "v1 资产指纹已记录 loader=${HASH_LOADER_V1:0:12} asset=${HASH_ASSET_V1:0:12} html=${HASH_HTML_V1:0:12} seat-js=${HASH_SEATJS_V1:0:12} seat-css=${HASH_SEATCSS_V1:0:12}"
 
 # ── STEP 5：SSE 经容器反代断言（A05，可选）───────────────────────────────────
 say "STEP 5 SSE 经容器反代断言（可选）"
@@ -187,8 +229,9 @@ RUNNING_IMG="$(docker inspect -f '{{.Image}}' "$CTR")"
 [[ "$RUNNING_IMG" == "$DIGEST_V1" ]] && ok "restart 后镜像 digest 不变" || bad "restart 后镜像 digest 变化"
 HASH_LOADER_R="$(curl -s "${BASE}/loader.js" | shasum -a 256 | awk '{print $1}')"
 HASH_ASSET_R="$(curl -s "${BASE}/assets/cs-widget.js" | shasum -a 256 | awk '{print $1}')"
-[[ "$HASH_LOADER_R" == "$HASH_LOADER_V1" && "$HASH_ASSET_R" == "$HASH_ASSET_V1" ]] \
-  && ok "restart 后静态资产 hash 不变" || bad "restart 后资产 hash 变化"
+HASH_SEATJS_R="$(curl -s "${BASE}/seat-assets/cs-seat.v1.js" | shasum -a 256 | awk '{print $1}')"
+[[ "$HASH_LOADER_R" == "$HASH_LOADER_V1" && "$HASH_ASSET_R" == "$HASH_ASSET_V1" && "$HASH_SEATJS_R" == "$HASH_SEATJS_V1" ]] \
+  && ok "restart 后静态资产 hash 不变（含 seat-assets）" || bad "restart 后资产 hash 变化（seat-js ${HASH_SEATJS_R:0:12} vs ${HASH_SEATJS_V1:0:12}）"
 if [[ -n "${DRYRUN_KEYFILES:-}" ]]; then
   KEYHASH_AFTER="$(printf '%s' "${DRYRUN_KEYFILES}" | tr ',' '\n' | sort | xargs shasum -a 256 | shasum -a 256 | awk '{print $1}')"
   [[ "$KEYHASH_BEFORE" == "$KEYHASH_AFTER" ]] && ok "key 文件 restart 前后指纹一致（key 稳定）" || bad "key 文件指纹变化"

@@ -528,6 +528,12 @@ docs-stop:
 # （ensure_dev_rsa_keypair / imboy_migrate 均依赖 priv_dir），?TEST_WITH_DB 全
 # skip。补 -pa imboy/ebin：worktree 内 `ln -s . imboy` 后 lib 位可解析；主树无
 # imboy/ 子目录，该 -pa 指向不存在目录被 erl 静默忽略，零副作用。
+# R2-1（2026-09-29）：手工 `ln -s . imboy` 在新 worktree 里必然缺席（F-R1 实证：
+# eb_tenant_handler_tests 因 {terminology_priv_dir_error,bad_name} 全套件
+# no_pool），改为 eunit-local 目标内自动创建/自动清理（rm -f imboy 在 rc 捕获后
+# 立即执行，成功失败都清，不落 git status）。application:load 救不了 lib 位：
+# OTP 的 code:lib_dir(App) 扫描的是 code path 上「名为 <App> 的目录下的 ebin」，
+# 与 app 是否已 load 无关（实证：load ok 后 lib_dir 仍 bad_name）。
 .PHONY: eunit-local
 # EUNIT_CONFIG 可覆盖配置文件（默认 config/sys.local）：CI 无 sys.local.config，
 # 物化 sys.config 后以 EUNIT_CONFIG=config/sys 传同口径全量（见 backend-ci.yml）。
@@ -571,9 +577,11 @@ eunit-local:
 	  ( while true; do python3 test/common/pg_relay.py $(EUNIT_RELAY_PORT) $(EUNIT_RELAY_TARGET); sleep 1; done ) & \
 	  relay_pid=$$!; \
 	  sleep 1; \
+	  ln -sfn . imboy; \
 	  IMBOYENV=local $(MAKE) eunit IMBOY_EUNIT_INNER=1 $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
 	    EUNIT_ERL_OPTS="-config config/sys.eunit-relay -pa imboy/ebin -pa ebin -pa test"; \
 	  rc=$$?; \
+	  rm -f imboy; \
 	  pkill -P $$relay_pid 2>/dev/null; \
 	  kill $$relay_pid 2>/dev/null; \
 	  pkill -f "pg_relay.py $(EUNIT_RELAY_PORT)" 2>/dev/null; \
@@ -585,9 +593,11 @@ eunit-local:
 	      "$(EUNIT_CONFIG).config" \
 	    > config/sys.eunit-relay.config; \
 	  echo "== EUNIT PG DIRECT: $(EUNIT_RELAY_TARGET) (http $(EUNIT_HTTP_PORT)/adm $(EUNIT_HTTP_ADM_PORT), EUNIT_USE_RELAY=0) =="; \
+	  ln -sfn . imboy; \
 	  IMBOYENV=local $(MAKE) eunit IMBOY_EUNIT_INNER=1 $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
 	    EUNIT_ERL_OPTS="-config config/sys.eunit-relay -pa imboy/ebin -pa ebin -pa test"; \
 	  rc=$$?; \
+	  rm -f imboy; \
 	  rm -f config/sys.eunit-relay.config; \
 	  exit $$rc; \
 	fi

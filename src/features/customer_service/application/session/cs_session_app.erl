@@ -582,37 +582,60 @@ append_message_in(OrgId, WorkspaceId, Params) ->
                 {error, _} = Err ->
                     Err;
                 {ok, SenderType} ->
-                    FacadeParams = facade_message_params(Session, SenderType, WorkspaceId, Params),
-                    case dispatch_message(OrgId, FacadeParams) of
-                        {error, _} = Err2 ->
-                            Err2;
-                        {ok, Accepted} ->
-                            %% BE-S01b（sse-event-contract）：message.appended
-                            %% 事件——坐席/访客/widget 三条消息路径的唯一写入点
-                            %% 都汇经本用例，一次埋点全覆盖。审计丢失显式失败
-                            %% （audit_append_failed），不静默降级为"发了没事件"。
-                            case message_event(Params, OrgId, WorkspaceId, Session, Accepted) of
-                                ok -> {ok, Accepted};
-                                {error, _} = AuditErr -> AuditErr
-                            end
+                    case message_event_hook(Params, OrgId, WorkspaceId, Session) of
+                        {error, _} = HookErr ->
+                            HookErr;
+                        {ok, Hook} ->
+                            FacadeParams = facade_message_params(
+                                Session, SenderType, WorkspaceId, Params
+                            ),
+                            %% BE-S01b（sse-event-contract）+ REVIEW-3 F-2：
+                            %% message.appended 事件——坐席/访客/widget 三条消息
+                            %% 路径的唯一写入点都汇经本用例，一次埋点全覆盖。
+                            %% 事件行经 `persist_hook` **并入 canonical 事务**：
+                            %% 消息与事件原子可见，"消息已入库、坐席/访客无推送"
+                            %% 的瞬时窗口消失；事件写失败 ⇒ 整个事务回滚（消息
+                            %% 不落库），同 client_msg_id 重试即安全（无半态）。
+                            %% 审计丢失显式失败（audit_append_failed），不静默
+                            %% 降级为"发了没事件"。
+                            dispatch_message(OrgId, FacadeParams#{persist_hook => Hook})
                     end
             end
     end.
 
-%% 事件只带资源 ID（payload_limits 合同：零正文/零附件引用细节）。
-message_event(Params, OrgId, WorkspaceId, Session, Accepted) ->
-    append_event(Params, OrgId, #{
-        session_id => maps:get(id, Session),
-        business_identity_id => maps:get(business_identity_id, Session, undefined),
-        actor_user_id => maps:get(actor_user_id, Params, undefined),
-        actor_kind => actor_kind_of(Params),
-        action => <<"message.appended">>,
-        detail => #{<<"message_id">> => message_id_of(Accepted)},
-        workspace_id => WorkspaceId
-    }).
+%% F-2：canonical 事务内的 `message.appended` 事件写钩子。canonical tx 在
+%% 消息+审计+附件绑定写毕、事务仍开放时以 `(Conn, StoredMessage)` 调用本闭包；
+%% 闭包用与外层同源的 store 端口（注入面一致）在**同一事务**内写事件行。
+%% 返回 `{error, {audit_append_failed, _}}` 由 canonical tx 裁决整体回滚。
+message_event_hook(Params, OrgId, WorkspaceId, Session) ->
+    case cs_app_support:store_port(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Store} ->
+            Base = #{
+                session_id => maps:get(id, Session),
+                business_identity_id => maps:get(business_identity_id, Session, undefined),
+                actor_user_id => maps:get(actor_user_id, Params, undefined),
+                actor_kind => actor_kind_of(Params),
+                action => <<"message.appended">>,
+                workspace_id => WorkspaceId
+            },
+            {ok, fun(Conn, StoredMessage) ->
+                %% 事件只带资源 ID（payload_limits 合同：零正文/零附件引用细节）。
+                Event = Base#{
+                    detail => #{<<"message_id">> => message_id_of(StoredMessage)}
+                },
+                case Store:append_event_in(Conn, OrgId, Event) of
+                    {ok, _EventId} -> ok;
+                    {error, Reason} -> {error, {audit_append_failed, Reason}}
+                end
+            end}
+    end.
 
 message_id_of(#{message_id := Id}) when is_integer(Id) -> Id;
 message_id_of(#{message := #{id := Id}}) when is_integer(Id) -> Id;
+%% canonical tx 侧传回的 StoredMessage 是 enterprise 归一化消息行（原子键 id）。
+message_id_of(#{id := Id}) when is_integer(Id) -> Id;
 message_id_of(_Other) -> undefined.
 
 actor_kind_of(Params) ->
@@ -789,8 +812,10 @@ seat_session_page_fetch(OrgId, Status, AfterId, Limit, Params) ->
         {error, _} = Err ->
             Err;
         {ok, #{rows := Rows, total := Total, total_by_status := ByStatus}} ->
-            %% CS-BE-02：preview 解密可能 fail-closed（密文被篡改/AAD 不符）——
-            %% 整页 {error,_}，绝不夹带未验证内容（与 eb_message_app D5 同口径）。
+            %% CS-BE-02 / F-R5：preview 的解密失败（body_open_failed 族）在
+            %% `cs_message_preview` 内降级为 null 占位 + warning——单条解不开
+            %% 的正文不拖垮整页（密文未解出，零内容泄漏）；其余真实异常
+            %% （DB 错、编程错误）仍整页 {error,_} 上抛。
             case seat_session_views(Rows, Status, Params) of
                 {error, _} = Err2 ->
                     Err2;
@@ -901,7 +926,8 @@ masked_name(Row) ->
 %% `preview`（服务端解密后按 Unicode 码点截断的前 64 个字符，见
 %% `cs_message_preview`）。密文/密钥面（body_cipher、key_version、aad_hash、
 %% client_msg_id）不进本投影；撤回（hidden）行与附件-only（空正文）消息的
-%% preview 为 null 占位；keyring 未装配时整体降级为 null（不吐密文）。
+%% preview 为 null 占位；keyring 未装配与解密失败（F-R5）时整体降级为
+%% null（不吐密文、不整页失败）。
 last_message_view(Row, Params) ->
     case cs_message_preview:preview(Row, Params) of
         {error, _} = Err ->

@@ -47,6 +47,13 @@
     create_widget_installation/2,
     update_widget_installation/2,
     revoke_widget_installation/2,
+    %% seat console 嵌入管理（seat-console-embed SC-BE）
+    list_seat_consoles/2,
+    create_seat_console/2,
+    update_seat_console/2,
+    revoke_seat_console/2,
+    %% seat-console-embed：public_seat_console_id 全局反查的嵌入投影（/seat/ 面）
+    seat_console_frame_html/2,
     %% widget（CSB-02：application 合同；HTTP 面归 CSB-03）
     widget_bootstrap/2,
     %% BE-W01 A05：动态 frame HTML 的公开 installation 投影
@@ -440,6 +447,68 @@ update_widget_installation(
 update_widget_installation(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, update_widget_installation}};
 update_widget_installation(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% ===================================================================
+%% seat console 嵌入管理（seat-console-embed SC-BE）
+%% ===================================================================
+
+-spec list_seat_consoles(integer(), map()) -> term().
+list_seat_consoles(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_seat_console_app:list_consoles(OrgId, Params);
+list_seat_consoles(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec create_seat_console(integer(), map()) -> term().
+create_seat_console(OrgId, #{allowed_origins := AllowedOrigins} = Params) when
+    is_integer(OrgId), is_list(AllowedOrigins), is_map(Params)
+->
+    cs_seat_console_app:create_console(OrgId, Params);
+create_seat_console(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, create_seat_console}};
+create_seat_console(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec update_seat_console(integer(), map()) -> term().
+update_seat_console(
+    OrgId, #{id := Id, allowed_origins := AllowedOrigins, at := At} = Params
+) when
+    is_integer(OrgId),
+    is_integer(Id),
+    is_integer(At),
+    is_list(AllowedOrigins),
+    is_map(Params)
+->
+    cs_seat_console_app:update_console(OrgId, Params);
+update_seat_console(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, update_seat_console}};
+update_seat_console(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec revoke_seat_console(integer(), map()) -> term().
+revoke_seat_console(OrgId, #{id := Id, at := At} = Params) when
+    is_integer(OrgId), is_integer(Id), is_integer(At), is_map(Params)
+->
+    cs_seat_console_app:revoke_console(OrgId, Params);
+revoke_seat_console(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, revoke_seat_console}};
+revoke_seat_console(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% seat-console-embed：public_seat_console_id **全局**反查的嵌入投影
+%% （/seat/:public_seat_console_id 零凭证导航面；widget_public_frame_html 的
+%% /seat/ 镜像同名先例——调用点键 = facade 函数名的机械核对契约）。
+%% OrgId 形参仅为 facade 调用点表 `cs_facade_call:call/3` 的同构占位（传 0）：
+%% 本用例的租户归属是命中行的**派生输出**。不存在 / revoked 一律
+%% `{error, seat_console_unavailable}`（三态归一；handler 直映 404，无枚举）。
+-spec seat_console_frame_html(integer(), map()) -> term().
+seat_console_frame_html(_OrgId, #{public_seat_console_id := PublicId} = Params) when
+    is_binary(PublicId), is_map(Params)
+->
+    cs_seat_console_app:public_frame_console_by_public_id(Params);
+seat_console_frame_html(_OrgId, Params) when is_map(Params) ->
+    {error, {invalid_argument, seat_console_frame_html}};
+seat_console_frame_html(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% ===================================================================

@@ -16,11 +16,14 @@
 %%%   * keyring 可用 ⇒ 解出明文，按 Unicode 码点截断前 64 个出站；
 %%%   * keyring 不可用（env 未装配）⇒ facade 维持**密文投影**（无 body 键）
 %%%     ⇒ preview 为 null——不报错、不吐半解密内容（D5 降级口径）；
-%%%   * 解密失败（密文被篡改/AAD 不符——D5 以 erlang:error fail-closed）
-%%%     ⇒ 本模块捕获并转 `{error, {preview_open_failed, Id, Reason}}`，
-%%%     调用方整页 fail-closed，绝不夹带未验证内容；
+%%%   * 解密失败（密文被篡改/旧密钥遗留/AAD 不符——D5 以 erlang:error
+%%%     fail-closed）⇒ 本模块捕获并**降级为 null 占位**（F-R5：单条解不开的
+%%%     正文不得拖垮整页队列/列表；密文未解出，零内容泄漏），并记一条含
+%%%     message id 的 warning——reason 族是结构化原子/整数（aad_mismatch、
+%%%     {key_version_mismatch, _, _} 等），不含任何密文或明文材料（零 PII）；
 %%%   * 基础设施不可用（exit 类：读池未起/进程崩溃）⇒ preview 降级 null
 %%%     （主列表路径不受拖累；密文未解出，零内容泄漏）；
+%%%   * 其他真实异常（DB 错误、编程错误）原样上抛——不吞基础设施故障。
 %%%   * 密文只在 enterprise 侧内存中转，customer_service 代码与坐席视图行
 %%%     （cs_session_app:seat_session_view 白名单）均不接触密文材料——
 %%%     出站只有截断后的明文 preview。
@@ -32,6 +35,7 @@
 %%%   * 附件-only 消息（明文为空二进制——BE-PATCH-01：附件消息 = 空正文
 %%%     + asset_ids）；
 %%%   * 末条已被 purge（facade 首行 id ≠ 末条 id）；
+%%%   * 解密失败（body_open_failed 族——密文被篡改/旧密钥遗留/AAD 不符）；
 %%%   * keyring 不可用。
 %%%
 %%% 代价说明：每队列行一次 facade 单行读（PK/复合索引范围扫描，页上限 50
@@ -74,10 +78,13 @@ preview_of(Id, Row, Params) ->
             Err
     end.
 
-%% D5 的解密失败是 erlang:error（进程级 fail-closed）；队列读面把它收敛成
-%% 业务错误元组，让整页走 {error,_} 通道（不夹带未验证内容、不裸崩）。
-%% 基础设施不可用（exit 类：PG 池未起/进程崩溃——如零 DB 测试直驱）时
-%% preview 降级 null：主列表路径不受拖累，密文未解出、零内容泄漏。
+%% D5 的解密失败是 erlang:error（进程级 fail-closed）；F-R5 起队列读面把它
+%% 降级为 null 占位（不整页失败——单条旧密钥遗留/被篡改消息不得让坐席队列
+%% 变成「服务暂时不可用」），并记一条含 message id 的 warning 帮运维定位。
+%% warning 不携带任何密文/明文材料：reason 族（aad_mismatch、
+%% {key_version_mismatch, _, _}、{open_failed, auth_atom} 等）是结构化
+%% 原子/整数，零 PII。基础设施不可用（exit 类：PG 池未起/进程崩溃——如
+%% 零 DB 测试直驱）同样降级 null。其他真实异常（DB 错、编程错误）原样上抛。
 fetch_last_decrypted(Id, Row, Params) ->
     OrgId = maps:get(organization_id, Row, undefined),
     WorkspaceId = maps:get(workspace_id, Row, undefined),
@@ -104,10 +111,19 @@ fetch_last_decrypted(Id, Row, Params) ->
             Err
     catch
         error:{body_open_failed, BadId, Reason} ->
-            {error, {preview_open_failed, BadId, Reason}};
+            preview_open_failed_placeholder(BadId, Reason);
         exit:_InfrastructureUnavailable ->
             {ok, undefined}
     end.
+
+%% 解密失败 → null 占位 + 一条 warning（F-R5 降级口径）。日志走 report
+%% map（what + message_id + reason 结构化键，无格式化串拼接内容）。
+preview_open_failed_placeholder(BadId, Reason) ->
+    logger:warning(
+        #{what => cs_preview_open_failed, message_id => BadId, reason => Reason},
+        #{domain => [imboy, customer_service]}
+    ),
+    {ok, undefined}.
 
 preview_body(_Id, <<>>) ->
     %% 附件-only：空正文——占位 null。

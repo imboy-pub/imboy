@@ -1,6 +1,8 @@
 -module(imboy_sup).
 -behaviour(supervisor).
 
+-include("generated/imboy_product_features.hrl").
+
 -export([start_link/0]).
 -export([init/1]).
 %% TSID-07：部署配置链合同测试直调（env > application env > 默认 的合成结果）
@@ -349,7 +351,7 @@ init([]) ->
             McpRegistry,
             McpSession,
             McpTools
-        ] ++ CacheSyncSpec,
+        ] ++ eb_retention_purge_children() ++ CacheSyncSpec,
     % intensity/period 放宽：顶层 supervisor 下挂了十余个 worker，
     % 5次/50s 门槛偏紧，短时多个worker同时重启（如DB抖动）易触发supervisor整体退出
     % CI-00：再放宽到 50/60s——全量 eunit 实测单个 child（imboy_cache）被
@@ -357,6 +359,29 @@ init([]) ->
     % 拖垮整个 app（run10）；单子进程崩溃风暴不应带崩整个 IM 服务。
     Restart = #{strategy => one_for_one, intensity => 50, period => 60},
     {ok, {Restart, Specs}}.
+
+%% 企业留存 bounded purge 定时 worker（R4-②：默认禁用 + 目标空 = 不清理任何
+%% 行，需 sys.config 显式启用；补全 F-1 孤儿资产清理的调度入口）。模块属于
+%% enterprise_business 特性（生成器 FEATURE_BACKEND_MODULES 已登记）：特性未
+%% 选中时 worker 被物理裁剪，本子进程组随之整体剔除——避免 boot 期 undef
+%% （F-EB10-1 同类崩溃面，与 imboy_router 的特性段同一保护口径；条件编译放
+%% 文件级整函数分支，erlfmt 不支持函数体内 -ifdef）。
+-ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS).
+eb_retention_purge_children() ->
+    [
+        #{
+            id => eb_retention_purge_worker,
+            start => {eb_retention_purge_worker, start_link, []},
+            restart => permanent,
+            shutdown => 5000,
+            type => worker,
+            modules => [eb_retention_purge_worker]
+        }
+    ].
+-else.
+eb_retention_purge_children() ->
+    [].
+-endif.
 
 configure_pg_pool(#{start_mfa := {epgsql, connect, Args}} = PgConf) ->
     PgConf#{start_mfa := {imboy_pg_connection, connect, Args}};

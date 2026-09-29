@@ -56,6 +56,15 @@ execute(Req, Env) ->
         %% 反查派生。`/w` 根段全站唯一（CS widget 专属命名空间）。
         <<"/w/", _Tail/binary>> ->
             {ok, Req, Env};
+        %% seat-console-embed SC-BE（SC-INT 修复 DEF-SC153-01）：`/seat/:public_
+        %% seat_console_id` 动态 frame HTML——零凭证导航面（iframe src 落点，无
+        %% IMBoy 设备/JWT/签名），与 /w/ 同款直通；租户归属由 public_seat_
+        %% console_id 全局反查**派生**，XFO 豁免经
+        %% imboy_route_shape:is_cs_seat_console_frame_path/1 单一真源登记。
+        %% `/seat` 根段全站唯一（seat 嵌入专属命名空间，与 /api/*、/w/*、
+        %% /adm/*、/static/* 均不冲突）。Seat JWT 语义零涉及（本面只发 HTML 壳）。
+        <<"/seat/", _Tail/binary>> ->
+            {ok, Req, Env};
         _ ->
             OpenLi = imboy_router:open(),
             OptionLi = imboy_router:option(),

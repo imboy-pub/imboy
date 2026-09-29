@@ -95,7 +95,16 @@
     touch_widget_bootstrap_token/4,
     revoke_widget_bootstrap_token/4,
     record_widget_nonce/4,
+    %% seat console 嵌入（seat-console-embed SC-BE）
+    insert_seat_console/2,
+    fetch_seat_console/3,
+    fetch_seat_console_by_public_id_global/1,
+    list_seat_consoles_page/4,
+    revoke_seat_console/4,
+    update_seat_console/5,
     append_event/2,
+    %% REVIEW-3 F-2：canonical 事务内变体（fake 与 append_event 逐字同语义）
+    append_event_in/3,
     %% BE-S01b：SSE 读面 + admin provisioning
     fetch_event_scope/2,
     list_events_page/4,
@@ -126,6 +135,7 @@ init() ->
         {widget_installations, #{}},
         {widget_identity_keys, #{}},
         {widget_nonces, #{}},
+        {seat_consoles, #{}},
         {events, []},
         {identity_functions, #{}},
         {assignment_users, #{}},
@@ -1390,10 +1400,160 @@ record_widget_nonce(OrgId, InstallationId, JtiDigest, ExpiresAt) ->
             ok
     end.
 
+%% ===================================================================
+%% seat console 嵌入 callbacks（seat-console-embed SC-BE；镜像
+%% cs_pg_seat_console 的决策语义：公开 ID 全局唯一 + (Org,WS) active 槽位
+%% 唯一 → conflict；吊销仅翻转 active 行；update 仅 allowed_origins）
+%% ===================================================================
+
+insert_seat_console(OrgId, Console) ->
+    {seat_consoles, Consoles} = hd(ets:lookup(?TAB, seat_consoles)),
+    PublicId = maps:get(public_seat_console_id, Console),
+    Ws = maps:get(workspace_id, Console),
+    %% uq_cssc_org_ws_active：(Org, WS) 至多一个 active 行。
+    SlotDup = [
+        C
+     || C <- maps:values(Consoles),
+        maps:get(organization_id, C) =:= OrgId,
+        maps:get(workspace_id, C) =:= Ws,
+        maps:get(status, C) =:= active
+    ],
+    %% uq_cssc_public_seat_console_id：公开 ID **全局**唯一（不分 Org）。
+    PubDup = [C || C <- maps:values(Consoles), maps:get(public_seat_console_id, C) =:= PublicId],
+    case {SlotDup, PubDup} of
+        {[_ | _], _} ->
+            {error, conflict};
+        {_, [_ | _]} ->
+            {error, conflict};
+        {[], []} ->
+            Id = maps:get(id, Console),
+            Row = Console#{
+                organization_id => OrgId,
+                status => active,
+                revoked_at => undefined,
+                version => 1,
+                created_at => 1700000000,
+                updated_at => 1700000000
+            },
+            update(seat_consoles, fun(M) -> M#{Id => Row} end),
+            {ok, Row}
+    end.
+
+fetch_seat_console(OrgId, WorkspaceId, ConsoleId) ->
+    {seat_consoles, Consoles} = hd(ets:lookup(?TAB, seat_consoles)),
+    case maps:get(ConsoleId, Consoles, undefined) of
+        undefined ->
+            {error, not_found};
+        Row ->
+            case
+                maps:get(organization_id, Row) =:= OrgId andalso
+                    maps:get(workspace_id, Row) =:= WorkspaceId
+            of
+                true -> {ok, Row};
+                false -> {error, not_found}
+            end
+    end.
+
+%% 全局反查（/seat/ 面）：无 Org 输入，镜像真库 `WHERE
+%% public_seat_console_id = $1`（全局唯一 → 单行）。
+fetch_seat_console_by_public_id_global(PublicSeatConsoleId) ->
+    {seat_consoles, Consoles} = hd(ets:lookup(?TAB, seat_consoles)),
+    Match = [
+        C
+     || C <- maps:values(Consoles),
+        maps:get(public_seat_console_id, C) =:= PublicSeatConsoleId
+    ],
+    case Match of
+        [Row | _] -> {ok, Row};
+        [] -> {error, not_found}
+    end.
+
+list_seat_consoles_page(OrgId, WorkspaceId, AfterId, Limit) ->
+    {seat_consoles, Consoles} = hd(ets:lookup(?TAB, seat_consoles)),
+    Rows0 = [
+        Row
+     || Row <- maps:values(Consoles),
+        maps:get(organization_id, Row) =:= OrgId,
+        maps:get(workspace_id, Row) =:= WorkspaceId,
+        AfterId =:= 0 orelse maps:get(id, Row) < AfterId
+    ],
+    Rows = lists:sublist(
+        lists:sort(fun(A, B) -> maps:get(id, A) > maps:get(id, B) end, Rows0), Limit
+    ),
+    {ok, Rows}.
+
+revoke_seat_console(OrgId, WorkspaceId, ConsoleId, At) ->
+    case fetch_seat_console(OrgId, WorkspaceId, ConsoleId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Row} ->
+            case maps:get(status, Row) of
+                active ->
+                    NewRow = Row#{
+                        status => revoked,
+                        revoked_at => At,
+                        version => maps:get(version, Row) + 1,
+                        updated_at => At
+                    },
+                    update(seat_consoles, fun(M) -> M#{ConsoleId => NewRow} end),
+                    ok;
+                _ ->
+                    {error, not_found}
+            end
+    end.
+
+%% 镜像 cs_pg_seat_console:update_seat_console/5 的决策语义：仅 active 行可改，
+%% 不可编辑键（public_seat_console_id / workspace_id / status）不在 Updates
+%% 投影内（Updates 只带 allowed_origins + 可选 expected_version——投影由
+%% store 侧收敛）。F-6：expected_version 提供时按 version CAS 裁决，不匹配
+%% → {error, {cas_mismatch, Detail}}（与 PG 实现同形状，携带当前 version）；
+%% 缺省 = LWW。
+update_seat_console(OrgId, WorkspaceId, ConsoleId, At, Updates) when is_map(Updates) ->
+    case fetch_seat_console(OrgId, WorkspaceId, ConsoleId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Row} ->
+            case maps:get(status, Row) of
+                active ->
+                    case cas_gate(maps:get(expected_version, Updates, undefined), Row) of
+                        ok ->
+                            Patch = maps:with([allowed_origins], Updates),
+                            NewRow = maps:merge(Row, Patch#{
+                                version => maps:get(version, Row) + 1,
+                                updated_at => At
+                            }),
+                            update(seat_consoles, fun(M) -> M#{ConsoleId => NewRow} end),
+                            {ok, NewRow};
+                        {error, _} = CasErr ->
+                            CasErr
+                    end;
+                _ ->
+                    {error, seat_console_revoked}
+            end
+    end;
+update_seat_console(_OrgId, _WorkspaceId, _ConsoleId, _At, _Updates) ->
+    {error, invalid_seat_console}.
+
+%% F-6（fake 侧镜像）：expected_version 缺省恒过（LWW）；提供时须与当前
+%% version 相等，否则 cas_mismatch（Detail 带 expected/actual version）。
+cas_gate(undefined, _Row) ->
+    ok;
+cas_gate(Expected, Row) ->
+    Actual = maps:get(version, Row),
+    case Expected =:= Actual of
+        true -> ok;
+        false -> {error, {cas_mismatch, #{expected_version => Expected, actual_version => Actual}}}
+    end.
+
 append_event(OrgId, Event) ->
     EventId = next_counter(),
     update(events, fun(L) -> L ++ [Event#{id => EventId, organization_id => OrgId}] end),
     {ok, EventId}.
+
+%% REVIEW-3 F-2：canonical 事务内变体。fake 无真事务，与 append_event/2
+%% 逐字同语义（消息路径的 persist_hook 经此落"内存事件行"）。
+append_event_in(_Conn, OrgId, Event) ->
+    append_event(OrgId, Event).
 
 %% ===================================================================
 %% BE-S01b：SSE 读面（fake 镜像键集升序读页 / 游标裁决 / 水位）+

@@ -303,6 +303,10 @@ a03_message_goes_only_through_eb_facade() ->
     ?assertEqual(business_identity, maps:get(sender_type, TxParams)),
     ?assertEqual(Identity, maps:get(identity_id, TxParams)),
     ?assertEqual(?USER_A, maps:get(actor_user_id, TxParams)),
+    %% REVIEW-3 F-2：message.appended 事件写钩子随 TxParams 进 canonical tx
+    %%（fun/2 = (Conn, StoredMessage)；事件行由 canonical 事务内并轨写，
+    %% 消息与事件原子可见——真库语义见 cs_message_event_tx_tests）。
+    ?assert(is_function(maps:get(persist_hook, TxParams, undefined), 2)),
     %% 不落客服私有副本：fake store 的 sessions 里没有 body/message 键
     {ok, Session} = ?FAKE:fetch_session(?ORG, ?WS, SessionId),
     ?assertEqual(false, maps:is_key(body, Session)),

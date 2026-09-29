@@ -38,6 +38,12 @@
 %%   message_id        可选；缺省由注入 ID 端口生成
 %%   audit_action      可选；审计 action 名（缺省 `message.accept`）
 %%   enforce_consent   可选；默认 true（无合成 consent 一律 fail-closed，§2.1 #9）
+%%   persist_hook      可选；REVIEW-3 F-2 事务内旁路写钩子（如客服
+%%                     `message.appended` 事件行并轨写）。`fun((Conn, Stored) ->
+%%                     ok | {error, Reason})`：非重放路径在消息+附件+审计写毕、
+%%                     事务仍开放时调用；返回 `{error, Reason}` ⇒ 整体回滚，
+%%                     调用方拿到 `{error, Reason}`（Reason 原样上浮）。缺省
+%%                     undefined = 无钩子。
 %%
 %% 返回 `{ok, #{message, audit_id, replayed, sealed}}` 或 `{error, Reason}`。
 -spec accept_message(integer(), integer(), map()) -> {ok, map()} | {error, term()}.
@@ -50,6 +56,15 @@ accept_message(OrgId, WorkspaceId, Params) when
             [{reraise, false}]
         )
     of
+        %% REVIEW-3 F-2：persist_hook 失败的专用回滚信号（run_persist_hook 抛
+        %% `{persist_hook_failed, HookReason}`，epgsql reraise=false 对其单层
+        %% 包裹为 `{rollback, _}`）——在此解包回原始 HookReason，调用方拿到的
+        %% 错误形状与钩子自身返回逐字一致（如 `{audit_append_failed, _}`）。
+        {rollback, {persist_hook_failed, HookReason}} -> {error, HookReason};
+        %% R4-①（round 3 登记项①）：消息行 INSERT 成功之后的任何错误都经
+        %% `{accept_failed, _}` 标签裁决整体回滚（见 persist/8）——在此单点
+        %% 解包，调用方错误形状与修复前逐字一致（`{error, not_found}` 等）。
+        {rollback, {accept_failed, Reason}} -> {error, Reason};
         {rollback, Reason} -> {error, Reason};
         Result -> Result
     end;
@@ -209,25 +224,49 @@ build_and_seal(Conn, OrgId, WorkspaceId, Policy, Snapshot, Params, AcceptedAt) -
 persist(Conn, OrgId, WorkspaceId, Message, _Snapshot, Params, AcceptedAt, Sealed) ->
     case eb_pg_store:append_message_in(Conn, OrgId, WorkspaceId, Message) of
         {ok, Stored} ->
-            case maps:get(replayed, Stored, false) of
-                true ->
-                    %% 重放：不追加第二条接受审计（§2.1 #18）。asset_ids 奇偶
-                    %% 校验（BE-PATCH-01，attachment-state-machine 幂等口径）：
-                    %% 同一 client_msg_id + 同一 asset_ids 重放 = 同一 message；
-                    %% 其他重放 = 409 conflict。
-                    case asset_replay_gate(Conn, OrgId, WorkspaceId, Stored, Params) of
-                        ok ->
-                            replay_result(Conn, OrgId, WorkspaceId, Stored, Sealed);
-                        {error, _} = Err ->
-                            Err
-                    end;
-                false ->
-                    append_accept_audit(
-                        Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sealed
-                    )
-            end;
+            accept_after_insert(
+                Conn,
+                OrgId,
+                WorkspaceId,
+                Stored,
+                Params,
+                AcceptedAt,
+                Sealed,
+                maps:get(replayed, Stored, false)
+            );
+        {error, _} = Err ->
+            %% INSERT 未落任何行：空事务 COMMIT 无害，错误形状原样返回。
+            Err
+    end.
+
+%% 消息行已 INSERT 之后的分叉。R4-①（round 3 登记项①的修复）：
+%% epgsql with_tx(reraise=false) 对**正常返回一律 COMMIT**——非重放路径的
+%% `{error,_}`（bind_assets 的 not_found/invalid_argument、审计/回读失败等）
+%% 若原样返回，会提交「消息已提交、附件/审计缺失」的半提交：行对外可见、
+%% 调用方却拿到错误、重试再产一条新消息。故统一以专用标签
+%% `throw({accept_failed, Reason})` 裁决整体回滚，accept_message 单点解包；
+%% 标签刻意避开 `{rollback, _}` 形（reraise=false 会再包一层，同 F-2
+%% persist_hook 的实测教训）。重放路径本请求零新写（行已在他事务提交），
+%% COMMIT 无害，维持正常返回。
+accept_after_insert(Conn, OrgId, WorkspaceId, Stored, Params, _AcceptedAt, Sealed, true) ->
+    %% 重放：不追加第二条接受审计（§2.1 #18），也不触发
+    %% persist_hook——原事务提交时消息与钩子写入（如客服事件
+    %% 行）已原子落库，重放再写会产生重复事件帧。asset_ids
+    %% 奇偶校验（BE-PATCH-01，attachment-state-machine 幂等
+    %% 口径）：同一 client_msg_id + 同一 asset_ids 重放 =
+    %% 同一 message；其他重放 = 409 conflict。
+    case asset_replay_gate(Conn, OrgId, WorkspaceId, Stored, Params) of
+        ok ->
+            replay_result(Conn, OrgId, WorkspaceId, Stored, Sealed);
         {error, _} = Err ->
             Err
+    end;
+accept_after_insert(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sealed, false) ->
+    case append_accept_audit(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sealed) of
+        {ok, _} = Ok ->
+            Ok;
+        {error, Reason} ->
+            throw({accept_failed, Reason})
     end.
 
 %% CS-BE-01：重放回显同样带资产白名单投影（与首发同一形状——同一 client_msg_id
@@ -273,9 +312,39 @@ do_append_accept_audit(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sea
     },
     case eb_pg_audit:append_in(Conn, OrgId, Event) of
         {ok, AuditId} ->
-            accept_result(Conn, OrgId, WorkspaceId, Stored, AuditId, Sealed);
+            case run_persist_hook(Conn, OrgId, WorkspaceId, Stored, Params) of
+                ok ->
+                    accept_result(Conn, OrgId, WorkspaceId, Stored, AuditId, Sealed);
+                {error, _} = HookErr ->
+                    %% 不可达兜底（run_persist_hook 以 throw 裁决回滚），保类型诚实。
+                    HookErr
+            end;
         {error, _} = Err ->
             Err
+    end.
+
+%% REVIEW-3 F-2：事务内旁路写钩子（如客服 message.appended 事件行并轨写）。
+%% 在消息+附件绑定+接受审计写毕、事务仍开放时执行；写失败 ⇒ `throw(
+%% {persist_hook_failed, HookReason})`，由 with_tx 的 catch 裁决 ROLLBACK。
+%% **不得**改成以 `{error, _}` 正常返回结束：epgsql:with_transaction 只对
+%% 异常回滚，正常返回一律 COMMIT，那会留下"消息已提交、钩子未写"的半提交，
+%% 恰是 F-2 要消灭的形状。
+%%
+%% 标签刻意**不**用 `{rollback, _}` 形：本路径 with_tx 是 reraise=false，
+%% epgsql 会把抛出的 Reason 再包一层 `{rollback, _}`（对 `{rollback, X}` 形
+%% throw 实测得 `{rollback, {rollback, X}}`）；用专用标签让 accept_message
+%% 单点解包回原始 HookReason。
+run_persist_hook(Conn, _OrgId, _WorkspaceId, Stored, Params) ->
+    case maps:get(persist_hook, Params, undefined) of
+        undefined ->
+            ok;
+        Hook when is_function(Hook, 2) ->
+            case Hook(Conn, Stored) of
+                ok ->
+                    ok;
+                {error, HookReason} ->
+                    throw({persist_hook_failed, HookReason})
+            end
     end.
 
 %% CS-BE-01：POST 回显补资产白名单投影——发送后立即读回绑定资产，与消息写入/

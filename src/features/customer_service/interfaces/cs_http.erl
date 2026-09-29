@@ -69,6 +69,8 @@
 -spec is_credential_surface_path(binary()) -> boolean().
 is_credential_surface_path(Path) when is_binary(Path) ->
     imboy_route_shape:is_cs_widget_frame_path(Path) orelse
+        %% seat-console-embed SC-BE：/seat/:id 零凭证导航面同款免签直通。
+        imboy_route_shape:is_cs_seat_console_frame_path(Path) orelse
         case segments(Path) of
             %% GET /api/v1/cs/sessions（访客列自己的会话）
             [<<"api">>, <<"v1">>, <<"cs">>, <<"sessions">>] ->
@@ -607,6 +609,13 @@ respond(_Entry, Req, {error, Reason}) ->
     reply_error(Req, Reason).
 
 -spec reply_error(cowboy_req:req(), term()) -> cowboy_req:req().
+%% F-6（REVIEW-3）：CAS 失败对外契约——409 + `cas_mismatch` 标签，envelope
+%% payload 携带期望/当前 version（纯整数，无其他内部细节；调用方据此提示
+%% 「已被他人更新」并刷新重试）。classify({cas_mismatch, _}) → 409 既有映射
+%% 不变，本子句只是把 Detail 展开进响应体。
+reply_error(Req, {cas_mismatch, Detail}) when is_map(Detail) ->
+    Data = maps:with([expected_version, actual_version], Detail),
+    elib_response:error_with_status(Req, ?ERR_CONFLICT, <<"cas_mismatch">>, Data, ?ERR_CONFLICT);
 reply_error(Req, Reason) ->
     Status = status(Reason),
     elib_response:error_with_status(Req, Status, tag(Reason), Status).
@@ -648,6 +657,11 @@ classify(credential_in_query_string) ->
 %% 与旧 frame 的 invalid_tsid 同为 400 形状面（无枚举，不区分形状错与不存在
 %% ——不存在的 installation 走 404 installation_unavailable）。
 classify(invalid_public_widget_id) ->
+    ?ERR_BAD_REQUEST;
+%% seat-console-embed SC-BE：/seat/:public_seat_console_id 路径绑定形状非法
+%% （空/越界字符集）——与 invalid_public_widget_id 同为 400 形状面（无枚举，
+%% 不区分形状错与不存在——不存在的控制台走 404 seat_console_unavailable）。
+classify(invalid_public_seat_console_id) ->
     ?ERR_BAD_REQUEST;
 %% CSB-03：Origin 头形状非法（含 path/userinfo/非法端口等）——fail-closed 400。
 classify({invalid_origin, _}) ->
@@ -756,6 +770,9 @@ classify(installation_revoked) ->
     ?ERR_FORBIDDEN;
 classify(identity_key_revoked) ->
     ?ERR_FORBIDDEN;
+%% seat-console-embed SC-BE：控制台管理面的 403 词汇——已吊销行拒绝编辑。
+classify(seat_console_revoked) ->
+    ?ERR_FORBIDDEN;
 %% CSB-02S D6：访客附件作用域——令牌 contact 与会话 contact 不符（403 面）。
 classify({forbidden, contact_scope_mismatch}) ->
     ?ERR_FORBIDDEN;
@@ -775,6 +792,11 @@ classify({session_not_found, _}) ->
 %% `installation_unavailable`，不泄漏 installation 存在性差异。旧 frame 面的
 %% `installation_revoked`=403 分类保留（兼容窗口，见下方 403 段）。
 classify(installation_unavailable) ->
+    ?ERR_NOT_FOUND;
+%% seat-console-embed SC-BE：public_seat_console_id 反查面（/seat/:id）的统一
+%% 404——不存在 / revoked(kill switch) 三态归一 `seat_console_unavailable`，
+%% 不泄漏控制台存在性差异。
+classify(seat_console_unavailable) ->
     ?ERR_NOT_FOUND;
 %% F-LAY-01：seat 绑定不存在的业务身份 → 与 EB 面 404 同口径（此前 500）。
 classify({identity_not_found, _}) ->

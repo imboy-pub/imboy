@@ -18,6 +18,7 @@
     with_id/2,
     new_id/2,
     append_event/3,
+    store_port/1,
     pos_int/1,
     non_empty_binary/1,
     page_cursor/1,
@@ -147,6 +148,12 @@ with_store(Params, Fun) ->
         {ok, Store} -> Fun(Store);
         {error, _} = Err -> Err
     end.
+
+%% @doc 只解析 store 端口模块（REVIEW-3 F-2：append_message 的 canonical
+%% 事务钩子要在闭包内持有同一 store——注入面与 `with_store/2` 逐字同口径）。
+-spec store_port(map()) -> {ok, module()} | {error, term()}.
+store_port(Params) ->
+    port(store, Params).
 
 %% @doc 解析 id 端口并执行；`Params` 里 `id` 键可注入覆盖。
 -spec with_id(map(), fun((module()) -> T)) -> T | {error, term()}.

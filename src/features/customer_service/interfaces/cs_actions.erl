@@ -740,6 +740,19 @@ table(widget) ->
                         []}
                 ]
             )},
+        %% seat-console-embed SC-BE：/seat/:public_seat_console_id 动态 frame
+        %% HTML（坐席工作台嵌入面）。handler 自行解析路径绑定（不经 cs_actions
+        %% 的 dispatch——零凭证导航面）；此处登记只为动作表/路由表/契约测试
+        %% 三方一致。租户归属是命中行的派生输出（public_seat_console_id 全局
+        %% 反查），浏览器零 org/workspace 申报面（org_source 如实登记为
+        %% derived）。Seat JWT 语义零涉及——本面只发 HTML 壳，无任何令牌面。
+        {seat_console_frame_html,
+            widget_token_entry(
+                [
+                    {<<"GET">>, seat_console_frame_html,
+                        [{public_seat_console_id, binary, required}], []}
+                ]
+            )},
         %% 会话建立（POST）与访客会话列表（GET）同路径动作（cowboy 只按 path
         %% 匹配——seats/shop-keys 同款先例）。
         {widget_sessions,
@@ -1035,6 +1048,51 @@ table(platform) ->
             platform_param_entry(
                 [
                     {<<"POST">>, revoke_widget_installation, [], [{id, id}], #{
+                        clock_unit => second
+                    }}
+                ],
+                platform_auth(<<"customer_service:write">>),
+                [store]
+            )},
+        %% —— seat console 嵌入（seat-console-embed SC-BE）：workspace 坐席
+        %% 工作台的嵌入配置 CRUD。列表 GET 与创建 POST 同路径动作（cowboy 只
+        %% 按 path 匹配——widget-installations 同款先例）；organization_id 是
+        %% 显式请求参数（org_source=param），workspace_id 必填（face 级门）。
+        %% 创建生成 public_seat_console_id（TSID 十进制 string，服务端事实，
+        %% 客户端提供即 400）；同 (Org, Workspace) 活跃槽位唯一（409）。
+        {p_seat_consoles,
+            with_case_auth(
+                platform_param_entry(
+                    [
+                        {<<"GET">>, list_seat_consoles,
+                            [{after_id, binary, optional}, {limit, binary, optional}], []},
+                        {<<"POST">>, create_seat_console, [{allowed_origins, list, required}], [],
+                            #{clock_unit => second}}
+                    ],
+                    platform_auth(<<"customer_service:read">>),
+                    [id, store, new_public_seat_console_id]
+                ),
+                #{<<"POST">> => platform_auth(<<"customer_service:write">>)}
+            )},
+        %% PUT 只改 allowed_origins（public id / 作用域 / status 不可经本面
+        %% 变更——动作表白名单本就不投影这些键；app 层另有纵深防御门）。
+        %% F-6（REVIEW-3）：expected_version 可选（rating 的 expected_version
+        %% in-body 同形状；缺省 = 旧 LWW 行为，既有调用方零破坏）——提供即
+        %% 乐观并发控制，不匹配 → 409 cas_mismatch（响应携带当前 version）。
+        {p_seat_console_update,
+            platform_param_entry(
+                [
+                    {<<"PUT">>, update_seat_console,
+                        [{allowed_origins, list, required}, {expected_version, int, optional}],
+                        [{id, id}], #{clock_unit => second}}
+                ],
+                platform_auth(<<"customer_service:write">>),
+                [id, store, new_public_seat_console_id]
+            )},
+        {p_seat_console_revoke,
+            platform_param_entry(
+                [
+                    {<<"POST">>, revoke_seat_console, [], [{id, id}], #{
                         clock_unit => second
                     }}
                 ],

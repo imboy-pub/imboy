@@ -78,8 +78,16 @@
     touch_widget_bootstrap_token/4,
     revoke_widget_bootstrap_token/4,
     record_widget_nonce/4,
+    %% seat console 嵌入（seat-console-embed SC-BE）
+    insert_seat_console/2,
+    fetch_seat_console/3,
+    fetch_seat_console_by_public_id_global/1,
+    list_seat_consoles_page/4,
+    revoke_seat_console/4,
+    update_seat_console/5,
     %% event + SSE 读面（BE-S01b）
     append_event/2,
+    append_event_in/3,
     fetch_event_scope/2,
     list_events_page/4,
     event_watermark/2,
@@ -251,8 +259,24 @@ revoke_widget_bootstrap_token(OrgId, InstallationId, TokenId, At) ->
 record_widget_nonce(OrgId, InstallationId, JtiDigest, ExpiresAt) ->
     cs_pg_widget:record_widget_nonce(OrgId, InstallationId, JtiDigest, ExpiresAt).
 
+%% seat console 嵌入（seat-console-embed SC-BE）
+insert_seat_console(OrgId, Console) ->
+    cs_pg_seat_console:insert_seat_console(OrgId, Console).
+fetch_seat_console(OrgId, WorkspaceId, ConsoleId) ->
+    cs_pg_seat_console:fetch_seat_console(OrgId, WorkspaceId, ConsoleId).
+fetch_seat_console_by_public_id_global(PublicSeatConsoleId) ->
+    cs_pg_seat_console:fetch_seat_console_by_public_id_global(PublicSeatConsoleId).
+list_seat_consoles_page(OrgId, WorkspaceId, AfterId, Limit) ->
+    cs_pg_seat_console:list_seat_consoles_page(OrgId, WorkspaceId, AfterId, Limit).
+revoke_seat_console(OrgId, WorkspaceId, ConsoleId, At) ->
+    cs_pg_seat_console:revoke_seat_console(OrgId, WorkspaceId, ConsoleId, At).
+update_seat_console(OrgId, WorkspaceId, ConsoleId, At, Updates) ->
+    cs_pg_seat_console:update_seat_console(OrgId, WorkspaceId, ConsoleId, At, Updates).
+
 %% event（append-only 审计）
 append_event(OrgId, Event) -> cs_pg_seat:insert_event(OrgId, Event).
+%% REVIEW-3 F-2：调用方事务内变体（canonical 事务并轨写，消息与事件原子可见）。
+append_event_in(Conn, OrgId, Event) -> cs_pg_seat:insert_event_in(Conn, OrgId, Event).
 
 %% event SSE 读面（BE-S01b：游标裁决 / 键集读页 / 水位）
 fetch_event_scope(OrgId, EventId) -> cs_pg_seat:fetch_event_scope(OrgId, EventId).

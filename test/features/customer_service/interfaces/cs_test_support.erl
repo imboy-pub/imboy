@@ -47,9 +47,10 @@ handler_of(platform) -> cs_platform_handler;
 handler_of(widget) -> cs_widget_handler;
 handler_of(_Tenant) -> cs_tenant_handler.
 
-%% widget 面的 handler 集合（route_opt 按 action 匹配时两个 handler 都可见）。
+%% widget 面的 handler 集合（route_opt 按 action 匹配时各 handler 都可见；
+%% cs_seat_console_handler 为 seat-console-embed SC-BE 的 /seat/ 嵌入面）。
 widget_handlers() ->
-    [cs_widget_handler, cs_widget_frame_handler].
+    [cs_widget_handler, cs_widget_frame_handler, cs_seat_console_handler].
 
 %% @doc 按面 + 动作起监听器：从真路由表取该动作的 path 与 Opts，叠加注入
 %% （auth_facts 换成 cs_fake_facts；current_uid/adm_user_id 扮演中间件）。

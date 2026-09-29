@@ -162,6 +162,14 @@
         %% 同 body 在窗口内重放原结果，窗口外按新请求处理。
         {enterprise_internal_idempotency_ttl_seconds, 86400},
 
+        %% REVIEW-3 F-1：bounded purge 的孤儿 pending 资产清理年龄阈值（秒，缺省 24h）。
+        %% presign 每次调用都铸造 pending_confirm 资产行；status='pending_confirm' 且
+        %% message_id IS NULL 且 created_at 早于 now-本值 的孤儿资产由 eb_pg_purge
+        %% 随批清理（对象先删、元数据后删，retain_until 未到期 / active hold 覆盖仍不清理）。
+        %% 消费方：src/features/enterprise_business/infrastructure/eb_pg_purge.erl
+        %%（非法值 fail-closed：purge 整体拒绝，宁可多保留）。
+        {eb_purge_orphan_asset_age_seconds, 86400},
+
         %% API 签名验证开关（<<"on">> | <<"off">>）
         %% 生产环境建议设为 <<"on">>，开发/测试可留 <<"off">>
         {api_auth_switch, <<"off">>},
@@ -231,6 +239,15 @@
         {olm_otk_cleanup_interval_ms, 86400000},
         % 已消费 OTK 审计保留天数（Logic 层换算 seconds）
         {olm_otk_retention_days, 7},
+
+        % 企业留存 bounded purge 定时 worker（R4-②；默认禁用 + 目标空 = 不清理
+        % 任何行。目标为显式 (org, workspace) 清单——运维按部署实际租户列出；
+        % 批次守卫语义全由 purge 端口 + DB 触发器裁决，purge 不可逆）
+        {eb_retention_purge_enabled, false},
+        % 扫批间隔，默认 24 小时（F-1 的按天 bounded purge 运维节奏）
+        {eb_retention_purge_interval_ms, 86400000},
+        % 显式目标清单，示例为非真实租户；非法条目被跳过并计数
+        % {eb_retention_purge_targets, [#{org_id => 501, workspace_id => 601}]},
 
         % 推送通知配置（FCM / APNs / JPush）— 凭据走 SECTION C
         {push, [

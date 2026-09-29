@@ -87,6 +87,23 @@ static_and_webrtc_pass_through_without_auth_test_() ->
         ?assertEqual(passthrough, route(<<"/webrtc/signal">>))
     end).
 
+%% seat-console-embed SC-INT（DEF-SC153-01 回归锁）：/w/ 与 /seat/ 动态 frame
+%% HTML 都是零凭证导航面（iframe src 落点，无 IMBoy 设备/JWT/签名），必须直通。
+%% 此前 /w/ 也未在此钉死——/seat/ 分支漏写时没有任何用例拦截，实测匿名
+%% GET /seat/:id 落兜底签名门 401 未登录。两条都钉死，漏一条即红。
+widget_and_seat_frame_pass_through_without_auth_test_() ->
+    ?WITH_MECKS(dispatch_mocks(), fun() ->
+        ?assertEqual(passthrough, route(<<"/w/702000000000000101">>)),
+        %% 直通是**前缀级**（与 /w/ 同款）：更深层本无路由，cowboy 路由树 404
+        %% 兜底；严格两段形状门（XFO/凭证面）在 imboy_route_shape，不在此层。
+        ?assertEqual(passthrough, route(<<"/w/a/b">>)),
+        ?assertEqual(passthrough, route(<<"/seat/7003004002001001">>)),
+        ?assertEqual(passthrough, route(<<"/seat/a/b">>)),
+        %% 相似根段不得误匹配：/seats/、/search 落兜底签名门
+        ?assertEqual(fallback, route(<<"/seats/7003004002001001">>)),
+        ?assertEqual(fallback, route(<<"/search/abc">>))
+    end).
+
 unmatched_path_falls_back_to_open_list_and_condition_test_() ->
     ?WITH_MECKS(dispatch_mocks(), fun() ->
         ?assertEqual(fallback, route(<<"/">>)),
