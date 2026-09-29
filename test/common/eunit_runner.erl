@@ -135,6 +135,20 @@ eunit_setup() ->
             io:format("Warning: boot coordinator timeout~n"),
             {app_not_started, test_continues}
         end,
+    %% 禁用 sync 热重载器（IMBOYENV=local 时它随 DEPS 进 VM）。实证
+    %% （2026-09-29 probe3/probe4）：sync 重编任一模块（如 config_ds）后
+    %% 数百毫秒内 msg_store_worker 无声消失（无 crash、无 terminate 日志，
+    %% whereis=undefined）→ staging 永不转运 → 全部消息等待型集成测试
+    %% c2c/c2g_message_not_ready（eunit 全量 16932 行 staging 0 处理的根因）。
+    %% 主防线在 do_boot：预启动 sync 并 pause（防 boot 窗口内的编译赛跑）。
+    %% 此处 post-boot stop(sync) 是第二道保险：sync 是开发期工具，测试 VM
+    %% 里零价值且直接破坏被测系统——boot 返回后彻底移除（含防 scanner
+    %% 崩溃重启后 paused 复位的尾部窗口）；不在依赖链上，stop 不影响
+    %% imboy 生命周期。
+    case State of
+        {app_started, _} -> catch application:stop(sync);
+        _ -> ok
+    end,
     % 缓存实例自愈（详见 do_ensure_cache）：每次 setup 顺带检查命名表
     Ref2 = make_ref(),
     eunit_boot_coordinator ! {ensure_cache, self(), Ref2},
@@ -213,15 +227,54 @@ do_boot() ->
         true ->
             {ok, {app_already_started, imboy}};
         false ->
+            %% sync 禁编（主防线）：imboy.app applications 含 sync（DEPS +=
+            %% sync），ensure_all_started 链式拉起 sync_scanner 后，其扫描链
+            %% compare_beams（首跑 2s 定时）→ compare_src_files →
+            %% process_queue 会在 imboy start/2 完成之前重编过期 beam 并
+            %% code:purge 静默击杀在役 worker（probe4 铁证：Recompiled →
+            %% 250ms 内 msg_store_worker whereis=undefined，无 crash 无
+            %% terminate）。post-boot stop(sync) 必输赛跑（solo-mr5：编译在
+            %% stop 前 85ms 已发生，即 boot 返回之前）。故在拉起 imboy 链
+            %% 之前先预启动 sync 并立即 pause：paused=true 吸收全部扫描/
+            %% 编译 cast（首编译最早 ~2s 后，pause 在 ~ms 内落地且早于一切
+            %% 定时器首跑），后续 ensure_all_started(imboy) 对已启动的 sync
+            %% 直接跳过。双保险见 eunit_setup 的 post-boot stop(sync)。
+            _ =
+                (case application:ensure_all_started(sync) of
+                    {ok, _} ->
+                        catch gen_server:cast(sync_scanner, pause);
+                    _ ->
+                        ok
+                end),
             cleanup_start_orphans(),
             %% A1c（CP-TD-A02）：上一次启动中途夭折会遗留 ranch 监听孤儿——
             %% 黑名单（按原子名 whereis）够不到 {ranch_listener_sup, Ref} 元组名
             %% sup，残留 19980/19970 绑定 → 重试恒 eaddrinuse（run14/16 实证
             %% 重试风暴 169 连发）。显式停监听后再重试。
-            _ = (try ranch:stop_listener(imboy_listener) catch _:_ -> ok end),
-            _ = (try cowboy:stop_listener(imboy_listener) catch _:_ -> ok end),
-            _ = (try ranch:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
-            _ = (try cowboy:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
+            _ =
+                (try
+                    ranch:stop_listener(imboy_listener)
+                catch
+                    _:_ -> ok
+                end),
+            _ =
+                (try
+                    cowboy:stop_listener(imboy_listener)
+                catch
+                    _:_ -> ok
+                end),
+            _ =
+                (try
+                    ranch:stop_listener(imboy_listener_tls)
+                catch
+                    _:_ -> ok
+                end),
+            _ =
+                (try
+                    cowboy:stop_listener(imboy_listener_tls)
+                catch
+                    _:_ -> ok
+                end),
             case application:ensure_all_started(imboy) of
                 {ok, _} ->
                     quiesce_periodic_workers(),
@@ -342,8 +395,14 @@ cleanup_start_orphans() ->
 %% terminate_child 为显式管理操作，permanent child 不会因此自动重启；
 %% app_already_started 分支不重复执行，不干扰运行中的套件状态。
 -define(PERIODIC_WORKER_STOP_SPECS, [
-    %% 每秒真实轮询型（W3 全量 CRASH 主角）
-    {msg_store_sup, msg_store_worker},
+    %% 每秒真实轮询型（W3 全量 CRASH 主角）。msg_store_worker 已移出本名单
+    %% （2026-09-29 probe6 铁证）：worker 本体健康——探针 VM boot 后 1s tick
+    %% 即清空 36 行 staging 积压（pending 36→0, processed 36）；而集成套件
+    %% （msg_reaction 等 c2c/c2g_message_not_ready 9 败）stage 后轮询等真实
+    %% 异步转正，依赖常驻 worker。历史上它是"W3 全量 CRASH 主角"，但该不稳
+    %% 的真实根因已被本轮修复消除：sync 热重载 code:purge 静默杀 worker
+    %% （do_boot 现预启动+pause+post stop 三重禁编）与双库分裂（补缺不覆写）。
+    %% claim 设计本身并发安全（FOR UPDATE SKIP LOCKED + 30s 租约 + 退避重试）。
     {imboy_sup, bot_webhook_delivery_worker},
     %% 周期 sweep / 清理 / 补偿型（meck 窗口内真库错误 + 池名额占用）
     {imboy_sup, msg_burn_logic},
@@ -471,13 +530,26 @@ load_test_config() ->
             io:format("Warning: Failed to load config ~p: ~p~n", [ConfigPath, Reason])
     end.
 
+%% 补缺不覆写：-config（eunit-local 的 sys.eunit-relay，或 CI 物化口径）先于本函数
+%% 加载并提供全套 env；此处再无条件 set_env 会用 config/sys.config（example 物化）
+%% 的库指向覆盖它，造成「池化连接（app 启动时 env）与测试体连接（覆盖后 env）
+%% 指向不同数据库」——实证（2026-09-29）：sys.local 指向 imboy_test_v1，覆盖后
+%% 测试写 staging 进 imboy_v1，而 msg_store_worker 的池仍在 imboy_test_v1 claim
+%% （恒空）→ staging 16932 行 0 转运 → 全部消息等待型集成测试
+%% c2c/c2g_message_not_ready。改为仅补 undefined 键：有 -config 时保持其口径
+%% （写/读同库），无 -config 裸跑时 fallback 加载语义不变。
 load_config_entries(ConfigList) ->
     lists:foreach(
         fun
             ({App, Env}) when is_atom(App) andalso is_list(Env) ->
                 lists:foreach(
                     fun({Key, Value}) ->
-                        application:set_env(App, Key, Value)
+                        case application:get_env(App, Key) of
+                            undefined ->
+                                application:set_env(App, Key, Value);
+                            {ok, _} ->
+                                ok
+                        end
                     end,
                     Env
                 );
