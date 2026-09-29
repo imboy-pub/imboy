@@ -103,6 +103,8 @@
     revoke_seat_console/4,
     update_seat_console/5,
     append_event/2,
+    %% REVIEW-3 F-2：canonical 事务内变体（fake 与 append_event 逐字同语义）
+    append_event_in/3,
     %% BE-S01b：SSE 读面 + admin provisioning
     fetch_event_scope/2,
     list_events_page/4,
@@ -1547,6 +1549,11 @@ append_event(OrgId, Event) ->
     EventId = next_counter(),
     update(events, fun(L) -> L ++ [Event#{id => EventId, organization_id => OrgId}] end),
     {ok, EventId}.
+
+%% REVIEW-3 F-2：canonical 事务内变体。fake 无真事务，与 append_event/2
+%% 逐字同语义（消息路径的 persist_hook 经此落"内存事件行"）。
+append_event_in(_Conn, OrgId, Event) ->
+    append_event(OrgId, Event).
 
 %% ===================================================================
 %% BE-S01b：SSE 读面（fake 镜像键集升序读页 / 游标裁决 / 水位）+

@@ -496,6 +496,13 @@
 -callback append_event(OrgId :: integer(), Event :: event()) ->
     {ok, integer()} | {error, term()}.
 
+%% @doc REVIEW-3 F-2：在**调用方事务内**追加同一条客服状态审计（带连接的
+%% 变体）。消息路径经 `persist_hook` 把 `message.appended` 事件行并入
+%% enterprise canonical 事务——消息与事件原子可见，"消息已入库、坐席/访客
+%% 无推送"的瞬时窗口消失。与 `append_event/2` 语义逐字同款，只是不自带事务。
+-callback append_event_in(Conn :: term(), OrgId :: integer(), Event :: event()) ->
+    {ok, integer()} | {error, term()}.
+
 %% @doc BE-S01b（sse-event-contract）：按事件 id 读取作用域（Org+Workspace），
 %% 供游标合法性裁决——事件存在但 (Org, Workspace) 与流作用域不符 ⇒ 跨租户
 %% 游标（403 面）；不存在 ⇒ 游标缺失/超窗（resync 面）。`{error, not_found}`
