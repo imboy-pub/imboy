@@ -166,10 +166,11 @@ count_by_role_tx(Conn, WsId, Role) ->
     Sql =
         <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
             " WHERE workspace_id = $1 AND role = $2 AND status = 'active'">>,
-    %% one/2,3 是池化连接版（首参 Sql）；最后 Owner 保护必须在事务同快照上计数，
-    %% 走 execute(Conn, ...)（SELECT 返回 {ok, N, Rows}）。
-    case elib_pg:execute(Conn, Sql, [WsId, Role]) of
-        {ok, _N, [#{<<"count">> := Count} | _]} -> Count;
+    %% 最后 Owner 保护必须在事务同快照上计数，走 query(Conn, ...)：elib_pg:execute
+    %% 是 parse+execute_batch 透传（行 = 原生 tuple），map 键匹配永失败 → 恒返 0
+    %% → Owner 保护永不触发。query 走 equery + rows_to_maps 返回 map 行。
+    case elib_pg:query(Conn, Sql, [WsId, Role]) of
+        {ok, [#{<<"count">> := Count} | _]} -> Count;
         _ -> 0
     end.
 

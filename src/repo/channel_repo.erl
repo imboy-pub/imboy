@@ -112,11 +112,13 @@ find_by_id_tx(Conn, ChannelId, Column) ->
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => ChannelId, status => 1}, #{
         limit => 1
     }),
-    %% one/2,3 是池化连接版（首参 Sql）；事务内同快照必须 execute(Conn, ...)。
-    %% 语义与 find_by_id/2 对齐：无行返回 #{}（one 的 Default 语义）。
-    case elib_pg:execute(Conn, Sql, Params) of
-        {ok, _N, [Row | _]} -> Row;
-        {ok, _N, []} -> #{};
+    %% 事务内同快照走 query(Conn, ...)：elib_pg:execute 是 parse+execute_batch
+    %% 透传（行 = 原生 tuple，无列名可转 map），而 query 走 equery + rows_to_maps
+    %% 返回 map 行——与本函数 spec 和上层 map 键匹配一致。epgsql 行形态差异的
+    %% 取证见 PR-W4-A01 be-06 重裁决（elib_pg_tests 钉值 {ok,1,[{42}]}）。
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, [Row | _]} -> Row;
+        {ok, []} -> #{};
         {error, Reason} -> {error, Reason}
     end.
 

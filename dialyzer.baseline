@@ -102,8 +102,6 @@ channel_handler.erl|The pattern {'error', {Code, Msg}} can never match the type 
 channel_handler_comment.erl|The pattern {'error', {Code, Msg}} can never match the type {'error', <<_:96, _:_*24>>}
 channel_handler_message.erl|The pattern 'ok' can never match the type {'error', binary()}
 channel_handler_message.erl|The pattern {'error', {Code, Msg}} can never match the type {'error', binary()}
-channel_logic_common.erl|The pattern #{<<111,119,110,101,114,95,105,100>> := OwnerUid} can never match the type {'error', _} | #{}
-channel_logic_common.erl|The pattern #{<<99,114,101,97,116,111,114,95,117,105,100>> := CreatorUid} can never match the type {'error', _} | #{}
 channel_logic_invitation.erl|The pattern {'ok', InvalidInvitation} can never match the type {'error', 'not_found'}
 channel_logic_invitation.erl|The pattern {'ok', UnexpectedInvitations} can never match the type {'error', _}
 channel_logic_invitation.erl|The variable Unexpected can never match since previous clauses completely covered the type 'ok' | {'error', _}
@@ -345,4 +343,3 @@ workspace_ds.erl|The pattern {'ok', _} can never match the type {'error', _}
 workspace_handler.erl|The pattern {'ok', WS} can never match the type {'error', {400 | 403 | 404 | 500, <<_:64, _:_*8>>}}
 workspace_invite_repo.erl|The pattern {error, {pgsql_error, #{code := <<50,51,53,48,53>>}}} can never match the type {'error', 'closed' | 'sock_closed' | 'sock_error' | 'sync_required' | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [{_, _}]}}
 workspace_logic.erl|The pattern {'ok', Updated} can never match the type {'error', _}
-workspace_member_repo.erl|The pattern {ok, _N, [#{<<99,111,117,110,116>> := Count} | _]} can never match the type {'error', {'epgsql', 'empty_batch_result'} | {_, _, [{_, _} | {_, _, _} | {_, _, _, _}]} | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [{_, _}]}} | {'ok', non_neg_integer()} | {'ok', non_neg_integer(), [tuple()]}
