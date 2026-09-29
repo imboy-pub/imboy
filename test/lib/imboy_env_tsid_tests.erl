@@ -8,6 +8,9 @@
 %%%   2) 配置链端到端（imboy_sup:tsid_guard_config/0）：
 %%%      env > application env > 默认 的合成；越界 node/dc 在 combine_node
 %%%      处 error（sup 启动即失败 = AC-07C 运行时 fail-closed）
+%%%   3) R1 加固合同：lock_provider 环境分档硬编码（配置面为零）+
+%%%      误配键拒启（tsid_lock_provider 任何环境禁设；seam 双键仅
+%%%      test 轨道合法，非 test 设置即 error）
 %%%
 %%% AC-07D：本套测试涉及的 TSID 变量全部为非敏感项（路径/节点号/时序参数）。
 -module(imboy_env_tsid_tests).
@@ -185,6 +188,100 @@ config_chain_out_of_range_rejected_test() ->
     ).
 
 %% ===================================================================
+%% R1 加固合同：lock_provider 环境分档硬编码 + 误配键拒启
+%%（杜绝配置误设：配置面为零，越轨配置 fail-fast）
+%% ===================================================================
+
+%% 分档纯函数值域矩阵：prod 与一切未知值恒 flock（默认即最保守生产配置）；
+%% test 恒 registry。<<"pro">>/<<"production">> 等非白名单值一律按生产对待。
+lock_provider_matrix_test() ->
+    ?assertEqual(flock, imboy_sup:lock_provider_for(<<"prod">>)),
+    ?assertEqual(flock, imboy_sup:lock_provider_for(<<"pro">>)),
+    ?assertEqual(flock, imboy_sup:lock_provider_for(<<"production">>)),
+    ?assertEqual(flock, imboy_sup:lock_provider_for(<<"staging">>)),
+    ?assertEqual(registry, imboy_sup:lock_provider_for(<<"test">>)).
+
+%% local 探测注入：finder 返回 false → registry（macOS 形态）；
+%% 找到路径 → flock（Linux 形态）。不依赖本机是否装 flock。
+local_lock_provider_probe_test() ->
+    ?assertEqual(registry, imboy_sup:local_lock_provider(fun(_) -> false end)),
+    ?assertEqual(flock, imboy_sup:local_lock_provider(fun(_) -> "/usr/bin/flock" end)).
+
+%% tsid_lock_provider 键已从配置面删除：prod 轨道显式设置即拒启
+%%（防误设 registry 致跨 VM 互斥失效——双实例红线绕过）。
+lock_provider_key_forbidden_test() ->
+    with_runtime_env(<<"prod">>, fun() ->
+        application:set_env(imboy, tsid_lock_provider, registry),
+        try
+            ?assertMatch(
+                {tsid_config_forbidden, #{key := tsid_lock_provider}},
+                catch_typed(fun imboy_sup:tsid_guard_config/0)
+            )
+        after
+            application:unset_env(imboy, tsid_lock_provider)
+        end
+    end).
+
+%% 非 test 轨道设置 seam 键 → 拒启（测试基建泄漏进生产配置的检测）：
+%% 防假 scan 从 floor 0 起跳导致的 ID 重用（唯一性反例）。
+seam_keys_forbidden_outside_test_test() ->
+    with_runtime_env(<<"prod">>, fun() ->
+        application:set_env(imboy, tsid_bootstrap_env_fun, fun(_) -> false end),
+        application:set_env(
+            imboy, tsid_bootstrap_scan_fun, fun(_) -> {ok, #{floor_safe_before => 0}} end
+        ),
+        try
+            ?assertMatch(
+                {tsid_config_forbidden, #{
+                    keys := [tsid_bootstrap_env_fun, tsid_bootstrap_scan_fun]
+                }},
+                catch_typed(fun imboy_sup:tsid_guard_config/0)
+            )
+        after
+            application:unset_env(imboy, tsid_bootstrap_env_fun),
+            application:unset_env(imboy, tsid_bootstrap_scan_fun)
+        end
+    end).
+
+%% test 轨道：seam 成对注入透传 + lock_provider 恒 registry；
+%% 半设（只设其一）按配置错误拒启。
+seam_passthrough_test_track_test() ->
+    with_runtime_env(<<"test">>, fun() ->
+        EnvF = fun(_) -> false end,
+        ScanF = fun(_) -> {ok, #{floor_safe_before => 0}} end,
+        application:set_env(imboy, tsid_bootstrap_env_fun, EnvF),
+        application:set_env(imboy, tsid_bootstrap_scan_fun, ScanF),
+        try
+            Cfg = imboy_sup:tsid_guard_config(),
+            ?assertEqual(registry, maps:get(lock_provider, Cfg)),
+            ?assertEqual(EnvF, maps:get(bootstrap_env_fun, Cfg)),
+            ?assertEqual(ScanF, maps:get(bootstrap_scan_fun, Cfg))
+        after
+            application:unset_env(imboy, tsid_bootstrap_env_fun),
+            application:unset_env(imboy, tsid_bootstrap_scan_fun)
+        end,
+        application:set_env(imboy, tsid_bootstrap_scan_fun, ScanF),
+        try
+            ?assertMatch(
+                {tsid_config_invalid, _},
+                catch_typed(fun imboy_sup:tsid_guard_config/0)
+            )
+        after
+            application:unset_env(imboy, tsid_bootstrap_scan_fun)
+        end
+    end).
+
+%% prod 端到端：无任何 TSID 特殊键时 lock_provider 恒 flock、无 seam 键
+%%（与 config_chain_defaults_test 同口径，补 lock_provider/seam 断言）。
+prod_lock_provider_hardcoded_test() ->
+    with_runtime_env(<<"prod">>, fun() ->
+        Cfg = imboy_sup:tsid_guard_config(),
+        ?assertEqual(flock, maps:get(lock_provider, Cfg)),
+        ?assertEqual(false, maps:is_key(bootstrap_env_fun, Cfg)),
+        ?assertEqual(false, maps:is_key(bootstrap_scan_fun, Cfg))
+    end).
+
+%% ===================================================================
 %% 内部助手
 %% ===================================================================
 
@@ -201,4 +298,20 @@ catch_typed(Fun) ->
         Fun()
     catch
         error:R -> R
+    end.
+
+%% R1 加固合同用例的运行时分档模拟：IMBOYENV OS 变量优先于 application
+%% env（imboy_env:current/0 合同），故直接 putenv 覆盖；测后恢复原值，
+%% 不破坏外部启动方式（eunit 轨道 eunit_setup 已声明 test，还原后回到
+%% test；分套件独立跑时还原为未设置 → current() 缺省 prod，同样正确）。
+with_runtime_env(EnvBin, Fun) ->
+    Old = os:getenv("IMBOYENV"),
+    os:putenv("IMBOYENV", binary_to_list(EnvBin)),
+    try
+        Fun()
+    after
+        case Old of
+            false -> os:unsetenv("IMBOYENV");
+            _ -> os:putenv("IMBOYENV", Old)
+        end
     end.
