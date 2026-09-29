@@ -36,7 +36,7 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun preview_truncated_from_last_text_message/0},
         {timeout, 60, fun attachment_only_and_no_message_placeholders/0},
         {timeout, 60, fun hidden_last_message_has_no_preview/0},
-        {timeout, 60, fun tampered_cipher_fails_the_whole_page/0},
+        {timeout, 60, fun tampered_cipher_degrades_preview_to_null/0},
         {timeout, 60, fun keyring_unavailable_degrades_preview_to_null/0},
         {timeout, 60, fun row_projection_never_carries_cipher_material/0}
     ];
@@ -154,14 +154,21 @@ hidden_last_message_has_no_preview() ->
         ?FIX:cleanup(Scope)
     end.
 
-%% 密文被篡改：整页 fail-closed（{preview_open_failed, Id, Reason}），
-%% 绝不夹带未验证内容（与 eb_message_app D5 同口径）。
-tampered_cipher_fails_the_whole_page() ->
+%% 密文被篡改/解不开（F-R5）：该行 preview 降级 null（骨架 id/sender_type/
+%% created_at 保留），**页不失败**（队列 200 语义——单条旧密钥遗留消息不得
+%% 拖垮整页坐席队列）；同页好密文行 preview 不受影响（混合页各归各位）。
+tampered_cipher_degrades_preview_to_null() ->
     Scope = ?FIX:new_scope(),
     try
         KeyRef = ?FIX:key_ref(),
-        SessionId = open_queued_session(Scope, first_conversation(Scope), 1700000000),
-        append_visitor_text(Scope, SessionId, <<"csbe02-tamper-1">>, <<"tamper me"/utf8>>, KeyRef),
+        BadConv = second_conversation(Scope),
+        GoodConv = second_conversation(Scope),
+        _BadSession = open_queued_session(Scope, BadConv, 1700000000),
+        GoodSessionId = open_queued_session(Scope, GoodConv, 1700000010),
+        BadMessageId =
+            insert_contact_message(
+                Scope, BadConv, <<"csbe02-tamper-1">>, <<"tamper me"/utf8>>, KeyRef
+            ),
         ok = ?FIX:exec(
             <<
                 "UPDATE enterprise_message SET body_cipher = 'deadbeef-not-a-cipher'"
@@ -169,10 +176,16 @@ tampered_cipher_fails_the_whole_page() ->
             >>,
             [org(Scope)]
         ),
-        ?assertMatch(
-            {error, {preview_open_failed, _Id, _Reason}},
-            seat_page(Scope, #{at => 1700000100, key_ref => KeyRef})
-        )
+        append_visitor_text(Scope, GoodSessionId, <<"csbe02-tamper-2">>, <<"good tail">>, KeyRef),
+        {ok, #{sessions := Rows}} = seat_page(Scope, #{at => 1700000100, key_ref => KeyRef}),
+        ByConv = maps:from_list([{maps:get(conversation_id, R), R} || R <- Rows]),
+        %% 坏密文行：页不失败，preview null，末条骨架保留。
+        BadLM = maps:get(last_message, maps:get(BadConv, ByConv)),
+        ?assertEqual(BadMessageId, maps:get(id, BadLM)),
+        ?assertEqual(undefined, maps:get(preview, BadLM)),
+        %% 同页好密文行：preview 正常出站。
+        GoodLM = maps:get(last_message, maps:get(GoodConv, ByConv)),
+        ?assertEqual(<<"good tail">>, maps:get(preview, GoodLM))
     after
         ?FIX:cleanup(Scope)
     end.

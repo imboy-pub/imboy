@@ -22,6 +22,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-export([init/1, log/2]).
+
 -define(FAKE, cs_fake_store).
 -define(ORG, 820000000000001).
 -define(WS, 820000000000002).
@@ -637,6 +639,62 @@ cs_be02_meck_by_row(Responses) ->
 cs_be02_unmeck() ->
     catch meck:unload(enterprise_business_facade).
 
+%% F-R5 降级 warning 捕获（真 logger handler；logger 是 sticky 内核模块不
+%% meck——与 agent_tool_authorizer_tests 同一惯例）。仅转发本套件关注的
+%% `cs_preview_open_failed` report，其余行不影响其他测试的输出。
+-define(PREVIEW_WARN_HANDLER, r3_fr5_preview_warning_capture).
+
+with_preview_warning_capture(F) ->
+    case logger:add_handler(?PREVIEW_WARN_HANDLER, ?MODULE, #{config => self()}) of
+        ok ->
+            ok;
+        {error, {already_exist, _}} ->
+            ok = logger:remove_handler(?PREVIEW_WARN_HANDLER),
+            ok = logger:add_handler(?PREVIEW_WARN_HANDLER, ?MODULE, #{config => self()})
+    end,
+    try
+        F()
+    after
+        _ = logger:remove_handler(?PREVIEW_WARN_HANDLER)
+    end,
+    ok.
+
+recv_preview_warning() ->
+    receive
+        {r3_fr5_preview_warning, Report} -> Report
+    after 2000 -> erlang:error(preview_open_failed_warning_not_emitted)
+    end.
+
+drain_preview_warnings() ->
+    drain_preview_warnings(0).
+
+drain_preview_warnings(N) ->
+    receive
+        {r3_fr5_preview_warning, _} -> drain_preview_warnings(N + 1)
+    after 300 -> N
+    end.
+
+%% logger handler 回调（必须导出——logger 从其管理进程回调）。
+init(Config) ->
+    {ok, #{config => maps:get(config, Config, self())}}.
+
+log(#{msg := {report, Report}} = _Event, HandlerConfig) when is_map(Report) ->
+    case maps:get(what, Report, undefined) of
+        cs_preview_open_failed ->
+            TestPid = maps:get(config, HandlerConfig, undefined),
+            case is_pid(TestPid) of
+                true ->
+                    TestPid ! {r3_fr5_preview_warning, Report},
+                    ok;
+                false ->
+                    ok
+            end;
+        _Other ->
+            ok
+    end;
+log(_Event, _HandlerConfig) ->
+    ok.
+
 %% waiting_seconds 权威值：at − queued_at（epoch 秒，clock_unit => second 面）；
 %% 下限 0（时钟回拨防护）；active 视图与缺 at 的直驱调用不出该键。
 cs_be02_waiting_seconds_is_authoritative() ->
@@ -688,9 +746,10 @@ cs_be02_preview_unicode_truncation() ->
     end.
 
 %% 占位语义：附件-only（空正文）/ 撤回（hidden）/ keyring 未装配（密文投影
-%% 无 body 键）/ 已 purge（首行 id ≠ 末条 id）⇒ preview 为 null（占位），
-%% last_message 骨架仍在；无消息：last_message 整体 undefined；解密失败
-%% （D5 的 erlang:error）⇒ 整页 {error,_} fail-closed。
+%% 无 body 键）/ 已 purge（首行 id ≠ 末条 id）/ 解密失败（F-R5：D5 的
+%% erlang:error）⇒ preview 为 null（占位），last_message 骨架仍在，页不失败；
+%% 无消息：last_message 整体 undefined；解密失败降级同时记一条含 message id
+%% 的 warning（真 logger handler 捕获断言——logger 是 sticky 内核不 meck）。
 cs_be02_preview_placeholder_semantics() ->
     ok = ?FAKE:init(),
     cs_be02_put_seat_row(#{id => 555000221, last_message_id => 880021}),
@@ -707,7 +766,9 @@ cs_be02_preview_placeholder_semantics() ->
         %% keyring 不可用：facade 维持密文投影（无 body 键）——降级 null。
         880023 => #{id => 880023, visibility => visible, body_cipher => <<"cipher">>},
         %% 末条已被 purge：首行空——按消息消失降级 null。
-        880024 => empty
+        880024 => empty,
+        %% 解密失败（D5 的 erlang:error）：F-R5 起该行降级 null，页不失败。
+        880025 => crash
     }),
     try
         {ok, #{sessions := Rows}} = cs_be02_seat_page(#{at => 1700000065, limit => 10}),
@@ -726,14 +787,25 @@ cs_be02_preview_placeholder_semantics() ->
         ),
         %% 无消息：last_message 整体 undefined。
         ?assertEqual(undefined, maps:get(last_message, maps:get(555000226, ById))),
-        %% 解密失败（D5 的 erlang:error）⇒ 整页 {error,_}，绝不夹带未验证内容。
-        meck:expect(enterprise_business_facade, list_messages, fun(_Org, _Q) ->
-            erlang:error({body_open_failed, 880025, tampered})
-        end),
-        ?assertMatch(
-            {error, {preview_open_failed, 880025, tampered}},
-            cs_be02_seat_page(#{at => 1700000065, limit => 10})
-        )
+        %% 解密失败（D5 的 erlang:error）⇒ 该行 preview null、骨架保留、页
+        %% 不失败（F-R5：单条解不开的正文不拖垮整页队列）。
+        BadLM = maps:get(last_message, maps:get(555000225, ById)),
+        ?assertEqual(880025, maps:get(id, BadLM)),
+        ?assertEqual(undefined, maps:get(preview, BadLM)),
+        %% 降级伴随恰一条 warning：含 message id、结构化 reason（零 PII）。
+        with_preview_warning_capture(fun() ->
+            {ok, #{sessions := RowsFail}} = cs_be02_seat_page(#{at => 1700000065, limit => 10}),
+            ByIdFail = maps:from_list([{maps:get(id, R), R} || R <- RowsFail]),
+            ?assertEqual(
+                undefined,
+                maps:get(preview, maps:get(last_message, maps:get(555000225, ByIdFail)))
+            ),
+            Warn = recv_preview_warning(),
+            ?assertEqual(cs_preview_open_failed, maps:get(what, Warn)),
+            ?assertEqual(880025, maps:get(message_id, Warn)),
+            ?assert(is_map_key(reason, Warn)),
+            ?assertEqual(0, drain_preview_warnings())
+        end)
     after
         cs_be02_unmeck()
     end.
