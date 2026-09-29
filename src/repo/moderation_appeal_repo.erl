@@ -98,7 +98,7 @@ list_page(Page, Size, Status) ->
             " reviewer_id, review_reason, reviewed_at, created_at"
             " FROM ",
             Tb/binary,
-            Where,
+            Where/binary,
             " ORDER BY created_at DESC"
             " LIMIT $",
             (integer_to_binary(length(Params) + 1))/binary,

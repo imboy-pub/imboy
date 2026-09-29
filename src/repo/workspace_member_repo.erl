@@ -166,8 +166,10 @@ count_by_role_tx(Conn, WsId, Role) ->
     Sql =
         <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
             " WHERE workspace_id = $1 AND role = $2 AND status = 'active'">>,
-    case elib_pg:one(Conn, Sql, [WsId, Role]) of
-        {ok, #{<<"count">> := Count}} -> Count;
+    %% one/2,3 是池化连接版（首参 Sql）；最后 Owner 保护必须在事务同快照上计数，
+    %% 走 execute(Conn, ...)（SELECT 返回 {ok, N, Rows}）。
+    case elib_pg:execute(Conn, Sql, [WsId, Role]) of
+        {ok, _N, [#{<<"count">> := Count} | _]} -> Count;
         _ -> 0
     end.
 

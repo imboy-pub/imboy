@@ -347,8 +347,11 @@ update(Uid, <<"email">>, Email, Code) when Code =/= <<>> ->
         {ok, _} ->
             case maps:size(user_ds:find_by_email(Email, <<"id">>)) of
                 0 ->
-                    user_ds:bind_email(Uid, Email),
-                    {ok, <<"success">>};
+                    %% bind_email/update 失败时不得向用户报 success（P1：错误路径吞没）
+                    case user_ds:bind_email(Uid, Email) of
+                        {ok, _} -> {ok, <<"success">>};
+                        {error, _} -> {error, {1, <<"">>, <<"绑定失败，请稍后重试"/utf8>>}}
+                    end;
                 _ ->
                     {error, {1, <<"">>, <<"Email 被占用"/utf8>>}}
             end;
@@ -360,8 +363,10 @@ update(Uid, <<"mobile">>, Mobile, Code) when Code =/= <<>> ->
         {ok, _} ->
             case maps:size(user_ds:find_by_mobile(Mobile, <<"id">>)) of
                 0 ->
-                    user_ds:update_field(Uid, <<"mobile">>, Mobile),
-                    {ok, <<"success">>};
+                    case user_ds:update_field(Uid, <<"mobile">>, Mobile) of
+                        {ok, _} -> {ok, <<"success">>};
+                        {error, _} -> {error, {1, <<"">>, <<"绑定失败，请稍后重试"/utf8>>}}
+                    end;
                 _ ->
                     {error, {1, <<"">>, <<"手机号被占用"/utf8>>}}
             end;

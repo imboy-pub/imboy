@@ -112,8 +112,11 @@ find_by_id_tx(Conn, ChannelId, Column) ->
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => ChannelId, status => 1}, #{
         limit => 1
     }),
-    case elib_pg:one(Conn, Sql, Params) of
-        {ok, Row} -> Row;
+    %% one/2,3 是池化连接版（首参 Sql）；事务内同快照必须 execute(Conn, ...)。
+    %% 语义与 find_by_id/2 对齐：无行返回 #{}（one 的 Default 语义）。
+    case elib_pg:execute(Conn, Sql, Params) of
+        {ok, _N, [Row | _]} -> Row;
+        {ok, _N, []} -> #{};
         {error, Reason} -> {error, Reason}
     end.
 
