@@ -26,7 +26,12 @@ digest(N) ->
     <<N:256/unsigned-big>>.
 
 tmp_path() ->
-    Dir = "/tmp/tsid_bootstrap_test_" ++ integer_to_list(erlang:unique_integer([positive])),
+    %% pid + nanosecond fingerprint: a path can never repeat across eunit
+    %% runs, BEAMs, or restarts (plain unique_integer counters per VM can
+    Dir =
+        "/tmp/tsid_bootstrap_test_" ++
+            integer_to_list(erlang:phash2(self())) ++ "_" ++
+            integer_to_list(os:system_time(nanosecond)),
     ok = filelib:ensure_dir(Dir ++ "/x"),
     filename:join(Dir, "tsid.bootstrap").
 
