@@ -80,7 +80,7 @@ collect_ids(0, Acc) ->
 collect_ids(N, Acc) ->
     receive
         {ids, Ids} -> collect_ids(N - 1, Ids ++ Acc)
-    after 5000 ->
+    after 60000 ->
         error(timeout)
     end.
 
@@ -356,6 +356,28 @@ slot_to_id_layout_test() ->
 id_to_slot_roundtrip_test() ->
     Id = (12345 bsl 21) bor (129 bsl 11) bor 77,
     ?assertEqual(Id, elib_tsid:slot_to_id(elib_tsid:id_to_slot(Id), 129)).
+
+%% T-09 fuzz 发现（TSID-09）：id_to_slot 对 0/负数/超 MAX_ID 曾走
+%% function_clause 而非 typed error（与 parse/1 的 F-09 口径不一致）——
+%% 现统一 {elib_tsid_invalid_input,_}；上界含 MAX_ID 本身（合法）
+id_to_slot_typed_rejection_test() ->
+    ?assertMatch(
+        {elib_tsid_invalid_input, #{id := 0}},
+        catch_typed(fun() -> elib_tsid:id_to_slot(0) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_invalid_input, #{id := -1}},
+        catch_typed(fun() -> elib_tsid:id_to_slot(-1) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_invalid_input, #{id := 9223372036854775808}},
+        catch_typed(fun() -> elib_tsid:id_to_slot(9223372036854775808) end)
+    ),
+    %% 上界值本身合法（round-trip 不炸）
+    ?assertEqual(
+        (4398046511103 bsl 11) bor 2047,
+        elib_tsid:id_to_slot(9223372036854775807)
+    ).
 
 wall_clock_seam_test() ->
     %% 私有时钟 seam：默认真实墙钟；pdict 注入后完全受控（进程隔离）
@@ -692,9 +714,26 @@ wait_counter(Counter, N) ->
         false -> wait_counter(Counter, N)
     end.
 
-cross_name_1m_concurrent_uniqueness_test() ->
-    %% AC-03A：4 label × 16 workers 共 1M IDs，全局零重复
-    ?SETUP_NAMED(),
+cross_name_1m_concurrent_uniqueness_test_() ->
+    %% 1M 生成在负载波动下可超 eunit 默认 5s：显式 90s timetrap
+    %% （与 mixed_concurrency_1m 同口径）
+    {timeout, 90, fun cross_name_1m_concurrent_uniqueness_body/0}.
+
+cross_name_1m_concurrent_uniqueness_body() ->
+    %% AC-03A：4 label × 16 workers 共 1M IDs，全局零重复。
+    %% 容量口径与 mixed_concurrency_1m（T-103）一致：纯 generate 聚合需求
+    %% 峰值 ~2.3M/s 超出单节点 2048/ms 容量，lead 到 5ms 上限后依赖
+    %% capacity_wait 预算消化——TSID-09 实测默认 100ms 预算在环境抖动下
+    %% 会 typed capacity_exhausted（有界逻辑时间按设计 fail-closed），
+    %% 本测试验证唯一性而非容量，deadline 放宽到 5000ms。
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{
+        dc_id => 1,
+        node_id => 1,
+        dc_bits => 3,
+        names => [user, group_info, attachment],
+        capacity_wait_timeout_ms => 5000
+    }),
     ok = elib_tsid:register([msg_c2c, extra_probe]),
     Self = self(),
     Names = [user, group_info, attachment, msg_c2c],

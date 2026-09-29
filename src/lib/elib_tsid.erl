@@ -763,10 +763,15 @@ slot_to_id(Slot, CombinedNode) when is_integer(Slot), Slot >= 0 ->
     Seq = Slot band ?SEQUENCE_MASK,
     (Ts bsl ?TIMESTAMP_SHIFT) bor (CombinedNode bsl ?NODE_SHIFT) bor Seq.
 
-%% @private 纯函数：ID 折叠回线性 slot（丢弃 node 段）
+%% @private 纯函数：ID 折叠回线性 slot（丢弃 node 段）。
+%% 输入合同与 parse/1 同口径（F-09）：仅 canonical `1..MAX_ID'，越界
+%% typed 拒绝——TSID-09 fuzz 实证 0/负值曾走 function_clause 而非
+%% typed error，oracle 口径不一致。
 -spec id_to_slot(pos_integer()) -> non_neg_integer().
-id_to_slot(Id) when is_integer(Id), Id > 0 ->
-    ((Id bsr ?TIMESTAMP_SHIFT) bsl ?SEQUENCE_BITS) bor (Id band ?SEQUENCE_MASK).
+id_to_slot(Id) when is_integer(Id), Id >= 1, Id =< ?MAX_ID ->
+    ((Id bsr ?TIMESTAMP_SHIFT) bsl ?SEQUENCE_BITS) bor (Id band ?SEQUENCE_MASK);
+id_to_slot(Id) ->
+    error({elib_tsid_invalid_input, #{id => Id, valid_range => {1, ?MAX_ID}}}).
 
 %% @private 进程级墙钟 seam：测试用 put({elib_tsid, test_wall_ms}, Ms) 注入
 -spec wall_clock_ms() -> integer().
