@@ -87,6 +87,7 @@ FEATURE_BACKEND_MODULES = {
         "eb_purge_port",
         "eb_retention",
         "eb_retention_app",
+        "eb_retention_purge_worker",
         "eb_store_port",
         "eb_system_clock",
         "eb_tenant_handler",

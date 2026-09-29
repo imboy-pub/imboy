@@ -221,6 +221,15 @@
         % 已消费 OTK 审计保留天数（Logic 层换算 seconds）
         {olm_otk_retention_days, 7},
 
+        % 企业留存 bounded purge 定时 worker（R4-②；默认禁用 + 目标空 = 不清理
+        % 任何行。目标为显式 (org, workspace) 清单——运维按部署实际租户列出；
+        % 批次守卫语义全由 purge 端口 + DB 触发器裁决，purge 不可逆）
+        {eb_retention_purge_enabled, false},
+        % 扫批间隔，默认 24 小时（F-1 的按天 bounded purge 运维节奏）
+        {eb_retention_purge_interval_ms, 86400000},
+        % 显式目标清单，示例为非真实租户；非法条目被跳过并计数
+        % {eb_retention_purge_targets, [#{org_id => 501, workspace_id => 601}]},
+
         % 推送通知配置（FCM / APNs / JPush）— 凭据走 SECTION C
         {push, [
             % 总开关，true 启用推送
