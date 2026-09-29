@@ -6,8 +6,9 @@
 - 关联 ADR：无前序（本篇为 ID 命名空间首篇）
 
 > **2026-09-29 更新（TSID correctness hardening 落地后）**：
-> 本篇暂缓，由 TSID 正确性加固计划（计划原文不入仓，由执行环境持有并以
-> SHA-256 `92eef9736…` 锚定；状态见同日期 `-status.md` 附录）取代其紧迫性。与本文写作时的现状相比，实现已发生以下变化：
+> 本篇暂缓，由 TSID 正确性加固计划（计划原文见同目录
+> `2026-09-28-tsid-correctness-hardening-implementation-plan.md`，SHA-256
+> `92eef9736…` 锚定；状态见同日期 `-status.md` 附录）取代其紧迫性。与本文写作时的现状相比，实现已发生以下变化：
 >
 > 1. **全局唯一语义已强化**：所有命名生成器（label）共享同一全局 cursor，同一节点上
 >    任意两个生成器产生的 ID 数值永不相同（`elib_tsid:generate/1` 的 label 仅是治理
