@@ -166,11 +166,15 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, RequiredRole) ->
 
     Payload = maps:get(<<"payload">>, Data),
     %% S0-1: 信封带 ver 字段（出站=当前版本，架构保险）
+    %% from 必须编码为 JSON string（协议规范：ID 一律 binary；对齐 msg_c2c_logic
+    %% 的 ec_cnv:to_binary）。此前直传 integer 导致 JSON number，客户端
+    %% `data['from'] == currentUid`（String）恒 false，自己发的群消息被误判
+    %% 为他人消息（未读/@ 提醒误计、给自己弹通知）。
     MsgBase = #{
         <<"ver">> => ?CUR_MSG_VER,
         <<"id">> => MsgId,
         <<"type">> => <<"C2G">>,
-        <<"from">> => CurrentUid,
+        <<"from">> => ec_cnv:to_binary(CurrentUid),
         <<"to">> => Gid,
         <<"payload">> => Payload,
         <<"created_at">> => CreatedAtRfc,

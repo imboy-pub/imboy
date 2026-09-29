@@ -14,7 +14,7 @@
 ]).
 
 %% 供 msg_c2s_logic:handle_sync 等模块复用的工具函数
--export([encode_history_msg/2, next_seq_from_rows/2]).
+-export([encode_history_msg/2, next_seq_from_rows/2, process_message/1]).
 
 %% E2EE per-device fan-out 信封过滤（发生率压降路径2）；纯判定函数导出供 eunit
 -export([c2c_deliverable_to_device/3]).
@@ -190,18 +190,18 @@ encode_history_msg(_CurrentUid, Row) ->
     Row5 =
         case FromId of
             undefined -> Row4;
-            _ -> Row4#{<<"from">> => FromId}
+            _ -> Row4#{<<"from">> => message_ds:envelope_id_to_binary(FromId)}
         end,
     Row6 =
         case ToId of
             null -> Row5;
             undefined -> Row5;
-            _ -> Row5#{<<"to">> => ToId}
+            _ -> Row5#{<<"to">> => message_ds:envelope_id_to_binary(ToId)}
         end,
     case GroupId of
         null -> Row6;
         undefined -> Row6;
-        _ -> Row6#{<<"group_id">> => GroupId}
+        _ -> Row6#{<<"group_id">> => message_ds:envelope_id_to_binary(GroupId)}
     end.
 
 %% epgsql returns jsonb columns as their JSON text representation. Decode them
@@ -364,7 +364,7 @@ process_message(Msg) when is_map(Msg) ->
             undefined ->
                 Msg3;
             _ ->
-                Msg3#{<<"from">> => FromId}
+                Msg3#{<<"from">> => message_ds:envelope_id_to_binary(FromId)}
         end,
 
     case ToId of
@@ -373,7 +373,7 @@ process_message(Msg) when is_map(Msg) ->
         ToList when is_list(ToList) ->
             Msg4#{<<"to">> => ToList};
         _ ->
-            Msg4#{<<"to">> => ToId}
+            Msg4#{<<"to">> => message_ds:envelope_id_to_binary(ToId)}
     end.
 
 -spec process_offline_ack(integer(), binary(), list(), binary()) ->

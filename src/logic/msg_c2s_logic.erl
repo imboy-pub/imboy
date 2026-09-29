@@ -197,7 +197,8 @@ send_service_response(To, MsgId, CurrentUid, From, Payload0, RespMap, TopicId, C
         <<"msg_type">> => <<"text">>,
         <<"topic_id">> => TopicId,
         <<"from">> => To,
-        <<"to">> => From,
+        %% From 为 integer，信封 ID 须归一化为 binary（S0 协议规范）
+        <<"to">> => message_ds:envelope_id_to_binary(From),
         <<"payload">> => #{
             <<"text">> => elib_str:replace_single_quote(maps:get(<<"result">>, RespMap, <<>>))
         },

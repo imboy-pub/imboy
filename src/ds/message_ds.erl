@@ -20,6 +20,8 @@
 -export([stamp_sender_device/2, with_sender_device/2]).
 -export([offline_envelope/2]).
 -export([build_adm_union_sql/1]).
+-export([envelope_id_to_binary/1]).
+-export([encode_websocket_message/1]).
 
 %% ===================================================================
 %% API
@@ -242,6 +244,22 @@ assemble_msg(Type, From, To, Payload, MsgId) ->
     %% 调用 assemble_msg/8
     assemble_msg(Type, From, To, Payload2, MsgId, MsgType, Action, E2EE).
 
+%% @doc JSON 信封 ID 字段归一化为 binary。
+%%
+%% S0 协议规范：TSID/uid 等 ID 在 JSON 信封中一律为字符串（binary）——
+%% TSID 大整数超出 JS 安全范围，且客户端按 String 比较身份
+%% （data['from'] == currentUid）。DB bigint 出来的 integer 若直传，
+%% jsone 会编码成 JSON number，历史上曾导致客户端把自己发的群消息
+%% 误判为他人消息（未读/@ 提醒误计）。所有信封出口统一经此转换。
+%%
+%% integer → binary；其余值（binary/null/undefined 等）原样返回，
+%% 调用方无需额外 guard。
+-spec envelope_id_to_binary(integer() | binary() | atom()) -> binary() | atom().
+envelope_id_to_binary(Id) when is_integer(Id) ->
+    ec_cnv:to_binary(Id);
+envelope_id_to_binary(Id) ->
+    Id.
+
 %% @doc 编码 WebSocket 消息（v2.0 格式）
 %% 将数据库消息或内部消息转换为 v2.0 WebSocket 格式。
 %% 字段提升到顶层：msg_type、action、e2ee 都在消息顶层。
@@ -265,21 +283,24 @@ assemble_msg(Type, From, To, Payload, MsgId) ->
 encode_websocket_message(Msg) ->
     Type = maps:get(<<"type">>, Msg),
 
-    %% 兼容两种格式：from_id（数据库）和 from（内部）
-    From =
+    %% 兼容两种格式：from_id（数据库）和 from（内部）；
+    %% 出口统一做 ID 归一化（见 envelope_id_to_binary/1）
+    From = envelope_id_to_binary(
         case maps:get(<<"from">>, Msg, undefined) of
             undefined ->
                 maps:get(<<"from_id">>, Msg);
             FromVal ->
                 FromVal
-        end,
-    To =
+        end
+    ),
+    To = envelope_id_to_binary(
         case maps:get(<<"to">>, Msg, undefined) of
             undefined ->
                 maps:get(<<"to_id">>, Msg);
             ToVal ->
                 ToVal
-        end,
+        end
+    ),
 
     %% v2.0: msg_type、action、e2ee 都在顶层（不需要根据 type 过滤）
     MsgType = maps:get(<<"msg_type">>, Msg, <<>>),
