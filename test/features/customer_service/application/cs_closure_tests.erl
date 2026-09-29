@@ -205,7 +205,10 @@ otp_lib_whitelist() ->
         uri_string,
         %% CS-BE-07：统计窗口换算（date ↔ UTC epoch 秒、日历日校验）——
         %% OTP stdlib 纯时间函数，非跨 Feature 依赖。
-        calendar
+        calendar,
+        %% R3-FR5 跑绿补录：cs_message_preview 降级口径的 warning 走 OTP
+        %% logger（结构化 report，无跨 Feature 依赖）；cs 域首个合法用户。
+        logger
     ].
 
 remote_calls_in_module(Mod) ->
