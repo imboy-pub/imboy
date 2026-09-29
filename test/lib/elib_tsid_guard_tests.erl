@@ -153,6 +153,17 @@ dual_guard_exclusion_test() ->
     ?assertEqual(ready, elib_tsid_guard:status(P1)),
     stop_guard(P1).
 
+%% 锁 provider 不可用 / 未知名：启动期 typed 拒绝（init 预检，
+%% review D2 处置——provider_available 的运行时调用点）。
+%% 预检先于锁获取与 store open，无资源需要清理。
+lock_provider_unavailable_test() ->
+    Root = tmp_root(),
+    %% 未知名：provider_available function_clause 被预检归一为 typed stop
+    ?assertMatch(
+        {error, {lock_provider_unavailable, no_such_provider}},
+        start_trapped((fast_cfg(Root))#{lock_provider => no_such_provider})
+    ).
+
 %% T-212 guard 崩溃（kill -9）→ 锁自动释放 → 新 guard 可接管
 %% 被 kill 的 guard 由 trap_exit 的 owner 进程持有链接：'killed' 退出
 %% 信号经链接传播会杀死未 trap 的测试进程（eunit 测试进程不 trap）。
@@ -250,19 +261,38 @@ readyz_fenced_is_503_test() ->
 %% 把 guard 挪到 worker 之后造成"worker 先于 fence 就绪"的窗口。
 %% ===================================================================
 
-guard_child_first_in_sup_test() ->
-    Beam = code:which(imboy_sup),
-    AppDir = filename:dirname(filename:dirname(Beam)),
-    Src = filename:join(AppDir, "src/imboy_sup.erl"),
-    {ok, Bin} = file:read_file(Src),
-    Lines = binary:split(Bin, <<"\n">>, [global]),
-    SpecsI = first_line(Lines, <<"Specs =">>),
-    GuardI = first_line(Lines, <<"tsid_guard_spec(),">>),
-    CacheI = first_line_from(Lines, <<"IMBoyCache">>, GuardI + 1),
-    %% Specs 列表存在、guard 在其中、且位于首个常规 worker（imboy_cache）之前
-    ?assert(SpecsI > 0),
-    ?assert(GuardI > SpecsI),
-    ?assert(CacheI > GuardI).
+guard_child_first_in_sup_test_() ->
+    case sup_src_path() of
+        {ok, Src} ->
+            fun() ->
+                {ok, Bin} = file:read_file(Src),
+                Lines = binary:split(Bin, <<"\n">>, [global]),
+                SpecsI = first_line(Lines, <<"Specs =">>),
+                GuardI = first_line(Lines, <<"tsid_guard_spec(),">>),
+                CacheI = first_line_from(Lines, <<"IMBoyCache">>, GuardI + 1),
+                %% Specs 列表存在、guard 在其中、且位于首个常规 worker（imboy_cache）之前
+                ?assert(SpecsI > 0),
+                ?assert(GuardI > SpecsI),
+                ?assert(CacheI > GuardI)
+            end;
+        false ->
+            {skip,
+                "imboy_sup source not available (installed release); "
+                "structural assertion requires the dev source tree"}
+    end.
+
+sup_src_path() ->
+    case code:which(imboy_sup) of
+        Beam when is_list(Beam) ->
+            AppDir = filename:dirname(filename:dirname(Beam)),
+            Src = filename:join(AppDir, "src/imboy_sup.erl"),
+            case filelib:is_file(Src) of
+                true -> {ok, Src};
+                false -> false
+            end;
+        _NonExistingOrCover ->
+            false
+    end.
 
 %% ===================================================================
 %% 内部助手

@@ -153,6 +153,10 @@ run(InvPath, OutDir, Conn) ->
                 lists:sort(InBoth)
             ),
         Scanned = [plain(maps:get(table, R)) || R <- Rows],
+        %% 防御纵深：当前 mapfoldl 对 InBoth 每表恒产出一行（失败也落
+        %% scan_error 行），故 Missing 恒为空——真正的失败闸门是下方
+        %% ScanErrors（review F3）。本检查兜底未来重构改为可跳表时
+        %% 不静默漏表。
         Missing = [T || {T, _} <- lists:sort(InBoth), not lists:member(T, Scanned)],
         case Missing of
             [] ->
