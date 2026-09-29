@@ -44,6 +44,10 @@ def handle(client):
     except OSError:
         client.close()
         return
+    # timeout 只用于握手；不清掉会被 fork 子进程继承——空闲 PG 连接 10s
+    # 无数据 → pipe 的 upstream.recv 抛 timeout OSError → 关连接 → VM 侧
+    # 周期性 sock_closed 风暴（oracle R1B1a 实证 584 次断连 + 尾部 cancelled）。
+    upstream.settimeout(None)
     p1 = os.fork()
     if p1 == 0:
         # 子进程 1：client -> upstream
