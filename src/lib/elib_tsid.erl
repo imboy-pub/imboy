@@ -167,8 +167,8 @@ init(Opts) ->
     persistent_term:put(?PT_DC_BITS, DcBits),
 
     %% TSID-04：有界逻辑时间参数。缺省 lead=512 由 TSID-10 定标：实测
-    %% 峰值 9.9M/s（基线 CPU 速率）下 1M-id 突发需借支 ~388ms 逻辑时间，
-    %% 512ms 留 32% 余量；且 lead 上限先于 durable fence（window=1000ms）
+    %% 峰值 9.9M/s（基线 CPU 速率）下 1M-id 突发需借支 ~392ms 逻辑时间，
+    %% 512ms 留 31% 余量；且 lead 上限先于 durable fence（window=1000ms）
     %% 绑定，热路径零磁盘 I/O；崩溃烧槽由 fence window 承担，与 lead
     %% 无关（guard 恢复从持久化 safe_before 续起）。
     %% §5.6 不变量：max_batch_chunk <= (lead + 1) * 2048。

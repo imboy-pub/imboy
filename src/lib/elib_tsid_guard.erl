@@ -13,8 +13,9 @@
 %%% 并发请求由 gen_server 天然合并（重复 horizon 直接复用新 fence）。
 %%%
 %%% 故障策略（计划 §6）：
-%%%   持久化失败 → FENCED（当前 fence 余量内调用方继续，到 margin 后
-%%%   全部拒绝）；恢复后成功提交更高 fence 才回 READY。
+%%%   持久化失败 → FENCED：调用方随即将收到的下一次请求立即得到
+%%%   {error, elib_tsid_fenced}（无宽限窗——实现取比计划更严格的
+%%%   fail-closed 方向）；恢复后成功提交更高 fence 才回 READY。
 %%%   锁丢失（port/registry 退出）→ FENCED 并停止——绝不换 NodeId 偷跑。
 %%%   双实例 → 后到者锁获取失败拒绝启动（AC-06A）。
 -module(elib_tsid_guard).

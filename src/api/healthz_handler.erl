@@ -104,8 +104,9 @@ probe_body(false, Tsid, Vsn, Nodes) ->
 tsid_readiness() ->
     elib_tsid_guard:probe().
 
-%% @doc 纯决策函数（EUnit 合同测试与端点共用判据）：
-%% live → 恒 200；ready → 聚合 db 与 tsid，任一不可用即 503。
+%% @doc 纯决策函数（EUnit 合同测试专用）：live → 恒 200；
+%% ready → 聚合 db 与 tsid，任一不可用即 503。端点路径（init/2）经
+%% probe_body/4 内联同一判据——修改此处判据时必须同步 probe_body/4。
 -spec probe(live | ready, #{db := boolean(), tsid := atom()}) ->
     {200 | 503, live | ready}.
 probe(live, _) ->

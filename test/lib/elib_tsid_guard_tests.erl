@@ -225,8 +225,8 @@ tsid_readiness_contract_test() ->
 
 %% livez 永远 200（BEAM 活着即可）
 livez_always_ok_test() ->
-    ?assertEqual({200, live}, healthz_handler:probe(live, #{tsid => not_configured})),
-    ?assertEqual({200, live}, healthz_handler:probe(live, #{tsid => fenced})).
+    ?assertEqual({200, live}, healthz_handler:probe(live, #{db => false, tsid => not_configured})),
+    ?assertEqual({200, live}, healthz_handler:probe(live, #{db => false, tsid => fenced})).
 
 %% readyz 聚合：TSID fenced → 503
 readyz_fenced_is_503_test() ->
