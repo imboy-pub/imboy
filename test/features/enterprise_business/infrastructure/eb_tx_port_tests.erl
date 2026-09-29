@@ -27,6 +27,7 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun accept_message_commits_message_policy_and_audit_together/0},
         {timeout, 60, fun accept_message_is_idempotent_on_client_msg_id/0},
         {timeout, 60, fun accept_message_rolls_back_without_a_half_commit/0},
+        {timeout, 60, fun accept_message_rolls_back_post_insert_asset_error/0},
         {timeout, 60, fun accept_message_fails_closed_on_missing_policy/0},
         {timeout, 60, fun append_conversation_audit_writes_audit_in_its_own_transaction/0},
         {timeout, 60, fun export_surface_is_named_use_cases_only/0}
@@ -103,6 +104,35 @@ accept_message_rolls_back_without_a_half_commit() ->
                 [Org, <<"eb03r-tx-3">>]
             )
         )
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+%% R4-①（round 3 登记项①）回归：asset 校验失败发生在消息行 INSERT **之后**
+%%（bind_assets 的业务性 {error, not_found}）。epgsql with_tx(reraise=false)
+%% 对正常返回一律 COMMIT——若该错误未被转成回滚，消息行会以「无附件、调用方
+%% 却拿到错误」的半提交形状落库。本用例钉死：消息行与审计都必须缺席。
+accept_message_rolls_back_post_insert_asset_error() ->
+    Scope = eb_pg_test_fixture:new_scope(),
+    try
+        {Org, Ws} = tenant(Scope),
+        Before = audit_count(Org),
+        %% 作用域内不存在的 asset_id：bind_assets 锁行后 Missing 非空 → not_found
+        Params = maps:put(
+            asset_ids, [999999999999999], accept_params(Scope, <<"r4-halfcommit-1">>)
+        ),
+        ?assertEqual({error, not_found}, eb_pg_tx:accept_message(Org, Ws, Params)),
+        ?assertEqual(
+            0,
+            eb_pg_test_fixture:scalar(
+                <<
+                    "SELECT count(*) AS n FROM enterprise_message"
+                    " WHERE organization_id=$1 AND client_msg_id=$2"
+                >>,
+                [Org, <<"r4-halfcommit-1">>]
+            )
+        ),
+        ?assertEqual(Before, audit_count(Org))
     after
         eb_pg_test_fixture:cleanup(Scope)
     end.

@@ -61,6 +61,10 @@ accept_message(OrgId, WorkspaceId, Params) when
         %% 包裹为 `{rollback, _}`）——在此解包回原始 HookReason，调用方拿到的
         %% 错误形状与钩子自身返回逐字一致（如 `{audit_append_failed, _}`）。
         {rollback, {persist_hook_failed, HookReason}} -> {error, HookReason};
+        %% R4-①（round 3 登记项①）：消息行 INSERT 成功之后的任何错误都经
+        %% `{accept_failed, _}` 标签裁决整体回滚（见 persist/8）——在此单点
+        %% 解包，调用方错误形状与修复前逐字一致（`{error, not_found}` 等）。
+        {rollback, {accept_failed, Reason}} -> {error, Reason};
         {rollback, Reason} -> {error, Reason};
         Result -> Result
     end;
@@ -220,27 +224,49 @@ build_and_seal(Conn, OrgId, WorkspaceId, Policy, Snapshot, Params, AcceptedAt) -
 persist(Conn, OrgId, WorkspaceId, Message, _Snapshot, Params, AcceptedAt, Sealed) ->
     case eb_pg_store:append_message_in(Conn, OrgId, WorkspaceId, Message) of
         {ok, Stored} ->
-            case maps:get(replayed, Stored, false) of
-                true ->
-                    %% 重放：不追加第二条接受审计（§2.1 #18），也不触发
-                    %% persist_hook——原事务提交时消息与钩子写入（如客服事件
-                    %% 行）已原子落库，重放再写会产生重复事件帧。asset_ids
-                    %% 奇偶校验（BE-PATCH-01，attachment-state-machine 幂等
-                    %% 口径）：同一 client_msg_id + 同一 asset_ids 重放 =
-                    %% 同一 message；其他重放 = 409 conflict。
-                    case asset_replay_gate(Conn, OrgId, WorkspaceId, Stored, Params) of
-                        ok ->
-                            replay_result(Conn, OrgId, WorkspaceId, Stored, Sealed);
-                        {error, _} = Err ->
-                            Err
-                    end;
-                false ->
-                    append_accept_audit(
-                        Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sealed
-                    )
-            end;
+            accept_after_insert(
+                Conn,
+                OrgId,
+                WorkspaceId,
+                Stored,
+                Params,
+                AcceptedAt,
+                Sealed,
+                maps:get(replayed, Stored, false)
+            );
+        {error, _} = Err ->
+            %% INSERT 未落任何行：空事务 COMMIT 无害，错误形状原样返回。
+            Err
+    end.
+
+%% 消息行已 INSERT 之后的分叉。R4-①（round 3 登记项①的修复）：
+%% epgsql with_tx(reraise=false) 对**正常返回一律 COMMIT**——非重放路径的
+%% `{error,_}`（bind_assets 的 not_found/invalid_argument、审计/回读失败等）
+%% 若原样返回，会提交「消息已提交、附件/审计缺失」的半提交：行对外可见、
+%% 调用方却拿到错误、重试再产一条新消息。故统一以专用标签
+%% `throw({accept_failed, Reason})` 裁决整体回滚，accept_message 单点解包；
+%% 标签刻意避开 `{rollback, _}` 形（reraise=false 会再包一层，同 F-2
+%% persist_hook 的实测教训）。重放路径本请求零新写（行已在他事务提交），
+%% COMMIT 无害，维持正常返回。
+accept_after_insert(Conn, OrgId, WorkspaceId, Stored, Params, _AcceptedAt, Sealed, true) ->
+    %% 重放：不追加第二条接受审计（§2.1 #18），也不触发
+    %% persist_hook——原事务提交时消息与钩子写入（如客服事件
+    %% 行）已原子落库，重放再写会产生重复事件帧。asset_ids
+    %% 奇偶校验（BE-PATCH-01，attachment-state-machine 幂等
+    %% 口径）：同一 client_msg_id + 同一 asset_ids 重放 =
+    %% 同一 message；其他重放 = 409 conflict。
+    case asset_replay_gate(Conn, OrgId, WorkspaceId, Stored, Params) of
+        ok ->
+            replay_result(Conn, OrgId, WorkspaceId, Stored, Sealed);
         {error, _} = Err ->
             Err
+    end;
+accept_after_insert(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sealed, false) ->
+    case append_accept_audit(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sealed) of
+        {ok, _} = Ok ->
+            Ok;
+        {error, Reason} ->
+            throw({accept_failed, Reason})
     end.
 
 %% CS-BE-01：重放回显同样带资产白名单投影（与首发同一形状——同一 client_msg_id
