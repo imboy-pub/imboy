@@ -37,6 +37,11 @@ main(_) ->
         names => [user, group_info],
         lock_provider => registry,
         store_bootstrap => fresh,
+        %% Harness seam (empty-DB semantics, mirrors eunit fast_cfg):
+        %% the soak exercises generation/renewal/crash-free behaviour, not
+        %% the bootstrap decision itself, so no real DB scan happens here.
+        bootstrap_env_fun => fun(_K) -> false end,
+        bootstrap_scan_fun => fun(_O) -> {ok, #{floor_safe_before => 0}} end,
         fence_window_ms => 1000,
         fence_renew_margin_ms => 100,
         startup_clock_wait_timeout_ms => 1000,

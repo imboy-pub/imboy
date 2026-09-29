@@ -175,6 +175,16 @@ legacy_ack_takeover_test() ->
     ?assert(Ts2 >= MaxTs),
     stop_guard(P2).
 
+%% scan 内部崩溃（如真库连接不可用）必须收敛为 typed STOP，绝不 raw crash
+scan_crash_typed_stop_test() ->
+    Root = tmp_root(),
+    BoomF = fun(_Opts) -> erlang:error({pooler_down, no_member}) end,
+    Cfg = (fast_cfg(Root))#{store_bootstrap => fresh, bootstrap_scan_fun => BoomF},
+    ?assertMatch(
+        {error, {bootstrap_crash, #{reason := {pooler_down, no_member}}}},
+        start_trapped(Cfg)
+    ).
+
 %% 割接 manifest 在而 store 双槽丢失：FAIL 级（不静默重建 fence）
 store_lost_manifest_present_test() ->
     Root = tmp_root(),

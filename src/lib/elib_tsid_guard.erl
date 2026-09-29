@@ -289,7 +289,19 @@ bootstrap_decide(Config, Extra) ->
         },
         Extra
     ),
-    elib_tsid_bootstrap:decide(Ctx).
+    %% Any crash inside the decision (e.g. the DB pool unavailable under a
+    %% real scan) must surface as a typed STOP, never as a raw init crash.
+    try
+        elib_tsid_bootstrap:decide(Ctx)
+    catch
+        Class:Reason:Stack ->
+            {stop,
+                {bootstrap_crash, #{
+                    class => Class,
+                    reason => Reason,
+                    stack => lists:sublist(Stack, 8)
+                }}}
+    end.
 
 boot_with_floor(Config, Lock, Store0, PersistedFloor) ->
     WallF = maps:get(wall_clock_ms, Config, fun erlang:system_time/1),

@@ -185,6 +185,18 @@ guard_cfg(Root) ->
         names => [user, group_info],
         lock_provider => registry,
         store_bootstrap => existing,
+        %% Harness seam: the T-214 crash loop models a node whose cutover
+        %% already completed — the operator-confirmed ACK lets the first
+        %% boot adopt the legacy store, every later boot is a plain
+        %% proceed_existing restart.
+        bootstrap_env_fun =>
+            fun
+                ("IMBOY_TSID_BOOTSTRAP_LEGACY_ACK") ->
+                    "I-CONFIRM-OLD-WRITER-STOPPED";
+                (_) ->
+                    false
+            end,
+        bootstrap_scan_fun => fun(_O) -> {ok, #{floor_safe_before => 0}} end,
         fence_window_ms => 1000,
         fence_renew_margin_ms => 100,
         startup_clock_wait_timeout_ms => 5000,
