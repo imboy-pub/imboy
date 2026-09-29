@@ -386,3 +386,15 @@ first_index([L | Rest], Pat, I) ->
         nomatch -> first_index(Rest, Pat, I + 1);
         _ -> I
     end.
+
+%% owner.lock 被替换为 symlink：启动期拒绝（store 槽 symlink 修复的
+%% 同族补全——flock 会跟随链接打开攻击者选定的 inode，绕过双实例互斥）
+owner_lock_symlink_rejected_test() ->
+    Root = tmp_root(),
+    NodeDir = filename:join(Root, io_lib:format("node-~4..0B", [?NODE])),
+    ok = filelib:ensure_dir(filename:join(NodeDir, "x")),
+    ok = file:make_symlink("/nonexistent-target", filename:join(NodeDir, "owner.lock")),
+    ?assertMatch(
+        {error, symlink_rejected},
+        start_trapped(fast_cfg(Root))
+    ).

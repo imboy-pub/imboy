@@ -22,9 +22,11 @@
 %%%   crc32            u32 覆盖前述全部字节
 %%%
 %%% 写入协议（任一步失败：不发布、只清理本次 temp、已存在有效槽不动）：
-%%%   1. 选择 generation 较旧/无效的槽为目标
+%%%   0. 单调守卫：proposed > 当前最大 safe_before 才写；相等幂等返回；
+%%%      更小 → {error, non_monotonic_fence}
+%%%   1. 选择 safe_before 较旧/无效的槽为目标
 %%%   2. 同目录 exclusive 创建唯一 temp
-%%%   3. 写完整 record；file:sync(temp)；close 错误同样检查
+%%%   3. 写完整 record（generation 恒 0）；file:sync(temp)；close 错误同样检查
 %%%   4. 文件权限收紧 0600
 %%%   5. rename(temp, target)
 %%%   6. 父目录 directory sync（file:open(Dir,[read,directory,raw])+sync）
@@ -36,8 +38,11 @@
 %%%   - 0 valid + 双 absent → {error, no_valid_slot}（bootstrap 决策在上层）
 %%%   - 0 valid + 任一 corrupt → {error, corrupt_no_valid}（保留坏文件取证）
 %%%   - 1 valid → 选用并标记 degraded（下次 persist 优先修复另一槽）
-%%%   - 2 valid → generation 大者胜；同 generation 不同 payload →
-%%%     {error, split_brain}
+%%%   - 2 valid → 世代判据 = safe_before 大者胜；两个 v1 槽（generation
+%%%     均非 0）同 generation 而 safe_before 不同 → {error, split_brain}；
+%%%     safe_before 相同即安全语义相同（generation/written_at_ms 为诊断
+%%%     字段），取 a。generation=0 是新算法标记，与 v1 槽混存时直接按
+%%%     safe_before 恢复（零格式迁移）。
 -module(elib_tsid_store).
 
 -export([
@@ -186,28 +191,29 @@ recover(Dir, CombinedNode, LayoutHash, Bootstrap) ->
                 generation = S1#slot.generation
             }};
         {[S1, S2], _} ->
-            case {S1#slot.generation, S2#slot.generation} of
-                {G, G} when
-                    S1#slot.safe_before =:= S2#slot.safe_before
-                ->
-                    %% 同 generation 同值：双写幂等，正常
-                    {ok, #store{
-                        dir = Dir,
-                        combined_node = CombinedNode,
-                        layout_hash = LayoutHash,
-                        slots = {slot_state(SlotA), slot_state(SlotB)},
-                        generation = G
-                    }};
-                {G, G} ->
+            %% 世代判据：safe_before 即世代（单写者 + 持久化单调守卫下
+            %% 严格递增，与系统同寿）。generation=0 表示新算法写入；
+            %% 非 0 是 v1 历史记录，仅用于保留旧 split-brain 识别：
+            %% 两个旧槽同 generation 而 safe_before 不同 = 同代不同内容，
+            %% 仍是 split_brain。其余组合一律按 safe_before 大者恢复；
+            %% safe_before 相同即安全语义相同（generation/written_at_ms
+            %% 均为诊断字段），取 a 为稳定选择。
+            SameOldGen = S1#slot.generation =/= 0 andalso S1#slot.generation =:= S2#slot.generation,
+            case SameOldGen andalso S1#slot.safe_before =/= S2#slot.safe_before of
+                true ->
                     {error, split_brain};
-                {G1, G2} ->
-                    Max = max(G1, G2),
+                false ->
+                    Winner =
+                        case S1#slot.safe_before >= S2#slot.safe_before of
+                            true -> S1;
+                            false -> S2
+                        end,
                     {ok, #store{
                         dir = Dir,
                         combined_node = CombinedNode,
                         layout_hash = LayoutHash,
                         slots = {slot_state(SlotA), slot_state(SlotB)},
-                        generation = Max
+                        generation = Winner#slot.generation
                     }}
             end
     end.
@@ -228,20 +234,39 @@ persist(Store, SafeBefore) ->
 %%           kill -9），验证各断点后的恢复不变量
 %%   written_at_ms - 诊断字段覆盖（测试确定性）
 %%
-%% 成功返回的 store 携带新 generation；失败绝不触碰已存在有效槽。
+%% 成功返回的 store 携带新状态；失败绝不触碰已存在有效槽。
+%% 单调守卫由 store 层自己执行（不依赖 guard）：
+%%   proposed > current_max → 写入
+%%   proposed = current_max → 幂等返回，不产生新 record
+%%   proposed < current_max → {error, non_monotonic_fence}（STOP 级）
+%% generation 字段自本次起恒写 0：双槽择新改由 safe_before 承担
+%% （safe_before 严格递增、与系统同寿，u32 计数器早于 2164 耗尽的
+%% 生命周期缺陷就此消除）；非 0 generation 仅见于 v1 历史记录。
 -spec persist(store(), non_neg_integer(), map()) ->
     {ok, store()} | {error, term()}.
 persist(
-    #store{dir = Dir, combined_node = Node, layout_hash = LH, generation = Gen} = S0,
+    #store{dir = Dir, combined_node = Node, layout_hash = LH} = S0,
     SafeBefore,
     Opts
 ) ->
     true =
         is_integer(SafeBefore) andalso SafeBefore >= 0 andalso
             SafeBefore =< ?MAX_REL_TS_PLUS_1 orelse error({invalid_safe_before, SafeBefore}),
-    NewGen = Gen + 1,
+    case current_max_safe_before(S0) of
+        Current when is_integer(Current), SafeBefore < Current ->
+            {error, {non_monotonic_fence, #{proposed => SafeBefore, current => Current}}};
+        Current when is_integer(Current), SafeBefore =:= Current ->
+            {ok, S0};
+        _ ->
+            persist_write(S0, SafeBefore, Opts)
+    end.
+
+persist_write(
+    #store{dir = Dir, combined_node = Node, layout_hash = LH} = S0, SafeBefore, Opts
+) ->
+    NewGen = 0,
     WrittenAt = maps:get(written_at_ms, Opts, os:system_time(millisecond)),
-    Target = older_slot(S0),
+    Target = target_slot(S0),
     TargetPath = slot_path(Dir, Target),
     TempPath = temp_path(Dir, NewGen),
     maybe_fault(Opts, before_temp_create),
@@ -519,10 +544,12 @@ read_slot(Dir, Name, LayoutHash, CombinedNode) ->
     end.
 
 %% 选择目标槽：无效槽优先（修复 DEGRADED），否则 generation 较旧者
-older_slot(#store{slots = {A, B}}) ->
+%% 选择目标槽：无效槽优先（修复 DEGRADED），否则 safe_before 较小者
+%% （世代语义：覆盖旧的保留新的）；safe_before 相同取 a（稳定规则）
+target_slot(#store{slots = {A, B}}) ->
     case {A#slot.state, B#slot.state} of
         {valid, valid} ->
-            case A#slot.generation =< B#slot.generation of
+            case A#slot.safe_before =< B#slot.safe_before of
                 true -> a;
                 false -> b
             end;
@@ -532,6 +559,14 @@ older_slot(#store{slots = {A, B}}) ->
             a;
         _ ->
             a
+    end.
+
+%% 当前有效槽中的最大 safe_before（无 valid 槽 → none）
+current_max_safe_before(#store{slots = {A, B}}) ->
+    Sbs = [SB || S <- [A, B], S#slot.state =:= valid, SB <- [S#slot.safe_before]],
+    case Sbs of
+        [] -> none;
+        _ -> lists:max(Sbs)
     end.
 
 ensure_dir(Dir) ->

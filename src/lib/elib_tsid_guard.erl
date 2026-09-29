@@ -150,6 +150,17 @@ init_with_lock(Config, Root, CombinedNode, Provider) ->
 init_acquire_lock(Config, Root, CombinedNode, Provider) ->
     LockPath = filename:join([Root, node_dir(CombinedNode), "owner.lock"]),
     _ = filelib:ensure_dir(LockPath),
+    %% symlink 审计修复（补 store 槽文件检查的最后一项）：owner.lock 被
+    %% 换成链接会让 flock 打开攻击者选定的 inode，锁互斥语义被绕过；
+    %% 不存在（首次启动）不是链接，放行。
+    case file:read_link(LockPath) of
+        {ok, _} ->
+            {stop, symlink_rejected};
+        {error, _} ->
+            acquire_lock(Config, Root, CombinedNode, LockPath, Provider)
+    end.
+
+acquire_lock(Config, Root, CombinedNode, LockPath, Provider) ->
     TimeoutMs = maps:get(lock_timeout_ms, Config, 5000),
     case elib_tsid_lock:acquire(LockPath, TimeoutMs, Provider) of
         {ok, Lock} ->

@@ -91,11 +91,11 @@ persist_and_reopen_test() ->
     _ = S1_,
     {ok, S2} = elib_tsid_store:persist(S1, 2000),
     ?assertMatch(
-        #{generation := 2, safe_before := 2000, degraded := false}, elib_tsid_store:status(S2)
+        #{generation := 0, safe_before := 2000, degraded := false}, elib_tsid_store:status(S2)
     ),
-    %% 独立重新打开（existing 语义）：恢复出最高 generation 的 safe_before
+    %% 独立重新打开（existing 语义）：按 safe_before 世代恢复出最高水位
     {ok, R} = elib_tsid_store:open(cfg(Root)),
-    ?assertMatch(#{generation := 2, safe_before := 2000}, elib_tsid_store:status(R)).
+    ?assertMatch(#{generation := 0, safe_before := 2000}, elib_tsid_store:status(R)).
 
 bootstrap_existing_requires_slots_test() ->
     Root = tmp_root(),
@@ -139,43 +139,43 @@ reopen_and_check(Root, ExpectGen, ExpectSafeBefore) ->
 t202_temp_create_crash_test() ->
     {Root, _S2} = crash_at(after_temp_create),
     %% 旧双槽完好：恢复 gen2/2000，绝不回退
-    reopen_and_check(Root, 2, 2000).
+    reopen_and_check(Root, 0, 2000).
 
 t202_temp_write_crash_test() ->
     {Root, _} = crash_at(after_write),
-    reopen_and_check(Root, 2, 2000).
+    reopen_and_check(Root, 0, 2000).
 
 t203_sync_crash_test() ->
     {Root, _} = crash_at(after_sync),
-    reopen_and_check(Root, 2, 2000).
+    reopen_and_check(Root, 0, 2000).
 
 t203_close_crash_test() ->
     {Root, _} = crash_at(after_close),
-    reopen_and_check(Root, 2, 2000).
+    reopen_and_check(Root, 0, 2000).
 
 t204_rename_crash_test() ->
     {Root, _} = crash_at(after_rename),
-    %% rename 已落（进程死后 OS 可见）：新槽有效，选 gen3；无论选择哪个
-    %% 都不低于旧 safe_before
-    R = reopen_and_check(Root, 3, 3000),
+    %% rename 已落（进程死后 OS 可见）：新槽（generation=0）有效，
+    %% safe_before 世代判定选新槽 3000，双槽有效不降级
+    R = reopen_and_check(Root, 0, 3000),
     ?assertMatch(#{degraded := false}, elib_tsid_store:status(R)).
 
 t205_dirsync_crash_test() ->
     {Root, _} = crash_at(after_dirsync),
-    reopen_and_check(Root, 3, 3000).
+    reopen_and_check(Root, 0, 3000).
 
 t205_readback_crash_test() ->
     {Root, _} = crash_at(after_readback),
-    reopen_and_check(Root, 3, 3000).
+    reopen_and_check(Root, 0, 3000).
 
 crash_then_continue_test() ->
-    %% 崩溃后新 store 可继续持久化且 generation 递增不回退
+    %% 崩溃后新 store 可继续持久化且 safe_before 水位不回退
     {Root, _} = crash_at(after_sync),
     {ok, R0} = elib_tsid_store:open(cfg(Root)),
     {ok, R1} = elib_tsid_store:persist(R0, 5000),
-    ?assertMatch(#{generation := 3, safe_before := 5000}, elib_tsid_store:status(R1)),
+    ?assertMatch(#{generation := 0, safe_before := 5000}, elib_tsid_store:status(R1)),
     {ok, R2} = elib_tsid_store:open(cfg(Root)),
-    ?assertMatch(#{generation := 3, safe_before := 5000}, elib_tsid_store:status(R2)).
+    ?assertMatch(#{generation := 0, safe_before := 5000}, elib_tsid_store:status(R2)).
 
 %% ===================================================================
 %% T-206..T-210 损坏与故障
@@ -194,11 +194,11 @@ t206_single_slot_corrupt_test() ->
     %% 重开：b 有效，degraded
     {ok, R0} = elib_tsid_store:open(cfg(Root)),
     ?assertMatch(
-        #{generation := 2, safe_before := 2000, degraded := true}, elib_tsid_store:status(R0)
+        #{generation := 0, safe_before := 2000, degraded := true}, elib_tsid_store:status(R0)
     ),
     %% 下次 persist 修复损坏槽（目标选 a）→ 再次重开双槽有效
     {ok, R1} = elib_tsid_store:persist(R0, 3000),
-    ?assertMatch(#{generation := 3}, elib_tsid_store:status(R1)),
+    ?assertMatch(#{generation := 0}, elib_tsid_store:status(R1)),
     {ok, R2} = elib_tsid_store:open(cfg(Root)),
     ?assertMatch(#{degraded := false, safe_before := 3000}, elib_tsid_store:status(R2)).
 
@@ -305,7 +305,7 @@ t210_readonly_dir_test() ->
     {ok, R0} = elib_tsid_store:open(cfg(Root)),
     ?assertMatch(#{safe_before := 2000}, elib_tsid_store:status(R0)),
     {ok, R1} = elib_tsid_store:persist(R0, 3000),
-    ?assertMatch(#{safe_before := 3000, generation := 3}, elib_tsid_store:status(R1)).
+    ?assertMatch(#{safe_before := 3000, generation := 0}, elib_tsid_store:status(R1)).
 
 %% 越界 safe_before 拒绝
 invalid_safe_before_rejected_test() ->
@@ -358,3 +358,80 @@ slot_symlink_rejected_test() ->
         elib_tsid_store:open(cfg(Root))
     ),
     ok = file:delete(OldPath).
+
+%% ===================================================================
+%% safe_before 世代语义（审计 P2#5 处置：generation 弃用写 0）
+%% ===================================================================
+
+%% 过渡混合：新算法槽（gen=0）与 v1 槽（gen 非 0）并存 → 直接按
+%% safe_before 大者恢复，零格式迁移
+transition_mixed_generation_test() ->
+    Root = tmp_root(),
+    {ok, S0} = elib_tsid_store:open(cfg(Root)),
+    Dir = elib_tsid_store:dir(S0),
+    LH = elib_tsid_store:layout_hash(?NODE, ?DC_BITS),
+    %% a = 新算法（gen=0, SB=2000）；b = v1 旧槽（gen=5, SB=1000）
+    ok = file:write_file(
+        elib_tsid_store:slot_path(Dir, a),
+        elib_tsid_store:encode_record(LH, ?NODE, 0, 2000, 7)
+    ),
+    ok = file:write_file(
+        elib_tsid_store:slot_path(Dir, b),
+        elib_tsid_store:encode_record(LH, ?NODE, 5, 1000, 7)
+    ),
+    {ok, R} = elib_tsid_store:open(cfg(Root)),
+    ?assertMatch(#{generation := 0, safe_before := 2000}, elib_tsid_store:status(R)).
+
+%% 双 gen=0（纯新语义）：safe_before 大者胜
+dual_zero_generation_test() ->
+    Root = tmp_root(),
+    {ok, S0} = elib_tsid_store:open(cfg(Root)),
+    Dir = elib_tsid_store:dir(S0),
+    LH = elib_tsid_store:layout_hash(?NODE, ?DC_BITS),
+    ok = file:write_file(
+        elib_tsid_store:slot_path(Dir, a),
+        elib_tsid_store:encode_record(LH, ?NODE, 0, 1000, 7)
+    ),
+    ok = file:write_file(
+        elib_tsid_store:slot_path(Dir, b),
+        elib_tsid_store:encode_record(LH, ?NODE, 0, 2000, 7)
+    ),
+    {ok, R} = elib_tsid_store:open(cfg(Root)),
+    ?assertMatch(#{safe_before := 2000}, elib_tsid_store:status(R)).
+
+%% 单调守卫：更小 safe_before 被 store 层拒绝（STOP 级，不写不发布）
+non_monotonic_persist_rejected_test() ->
+    Root = tmp_root(),
+    {ok, S1} = elib_tsid_store:open(cfg(Root)),
+    {ok, S2} = elib_tsid_store:persist(S1, 2000),
+    ?assertMatch(
+        {error, {non_monotonic_fence, #{proposed := 500, current := 2000}}},
+        elib_tsid_store:persist(S2, 500)
+    ),
+    %% 拒绝后磁盘状态不变，仍可正常恢复
+    {ok, R} = elib_tsid_store:open(cfg(Root)),
+    ?assertMatch(#{safe_before := 2000}, elib_tsid_store:status(R)).
+
+%% 幂等：相同 safe_before 不产生新 record，原 store 原样返回
+persist_same_safe_before_idempotent_test() ->
+    Root = tmp_root(),
+    {ok, S1} = elib_tsid_store:open(cfg(Root)),
+    {ok, S2} = elib_tsid_store:persist(S1, 1000),
+    ?assertEqual({ok, S2}, elib_tsid_store:persist(S2, 1000)),
+    {ok, R} = elib_tsid_store:open(cfg(Root)),
+    ?assertMatch(#{safe_before := 1000}, elib_tsid_store:status(R)).
+
+%% 写槽选择：双有效槽覆盖 safe_before 较小者（保留大的作后备）
+target_slot_overwrites_lower_test() ->
+    Root = tmp_root(),
+    {ok, S0} = elib_tsid_store:open(cfg(Root)),
+    {ok, S1} = elib_tsid_store:persist(S0, 1000),
+    {ok, S2} = elib_tsid_store:persist(S1, 2000),
+    {ok, S3} = elib_tsid_store:persist(S2, 3000),
+    %% 三次写：a=3000(gen0), b=2000(gen0)——目标槽覆盖 SB 较小者位置
+    Dir = elib_tsid_store:dir(S3),
+    {ok, Bin} = file:read_file(elib_tsid_store:slot_path(Dir, b)),
+    {ok, #{safe_before := SbB}} = elib_tsid_store:decode_record(Bin),
+    ?assert(SbB =< 3000),
+    {ok, R} = elib_tsid_store:open(cfg(Root)),
+    ?assertMatch(#{safe_before := 3000, degraded := false}, elib_tsid_store:status(R)).
