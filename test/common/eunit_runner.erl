@@ -97,6 +97,21 @@ eunit_setup() ->
     application:set_env(imboy, env, test),
     application:set_env(imboy, http_port, test_http_port()),
     application:set_env(imboy, dsync_enabled, false),
+    %% TSID guard 的锁 provider：eunit VM 无 flock 外部命令的机器（macOS）
+    %% 上 flock 会 fail-fast 拒启并连带 WH-04 重试二次 boot 的 keyring 残留
+    %% 误报；eunit 轨道恒用 registry（纯 Erlang 测试 provider，语义见
+    %% elib_tsid_lock 头注）。生产缺省 flock 不受影响（imboy_sup 只在
+    %% {imboy, tsid_lock_provider} 显式配置时才换轨）。
+    application:set_env(imboy, tsid_lock_provider, registry),
+    %% TSID 自举 seam（经 imboy_sup:tsid_guard_config 透传给 guard）：
+    %% eunit scratch 库未迁移/无 TSID id 列，真 scan 必以 schema_drift
+    %% 拒启；假 env（全缺省）+ 零 floor 与 tsid10_soak 的测试语义一致。
+    application:set_env(imboy, tsid_bootstrap_env_fun, fun(_K) -> false end),
+    application:set_env(
+        imboy,
+        tsid_bootstrap_scan_fun,
+        fun(_Ctx) -> {ok, #{floor_safe_before => 0}} end
+    ),
     %% 测试环境社区版用户配额拉高：注册/好友全链流程测试会真注册用户，
     %% 本地库测试数据积累极易越过社区版默认 max_users=100 触发 402
     application:set_env(imboy, community_max_users, 1000000),
@@ -130,7 +145,9 @@ eunit_setup() ->
             {Ref, {error, Reason}} ->
                 %% WH-04：io:format 会被 eunit 输出捕获吞掉（final5 全量实证
                 %% 342 次 boot 失败 0 条告警），改走 logger 直落原始日志。
-                logger:error("[eunit_setup] boot failed, app-dependent tests will error: ~120p", [Reason]),
+                logger:error("[eunit_setup] boot failed, app-dependent tests will error: ~120p", [
+                    Reason
+                ]),
                 {app_not_started, test_continues}
         after 120000 ->
             %% WH-04：60s→120s——migration_dirty 长预算重试（见 do_boot
@@ -237,10 +254,30 @@ do_boot() ->
             %% 黑名单（按原子名 whereis）够不到 {ranch_listener_sup, Ref} 元组名
             %% sup，残留 19980/19970 绑定 → 重试恒 eaddrinuse（run14/16 实证
             %% 重试风暴 169 连发）。显式停监听后再重试。
-            _ = (try ranch:stop_listener(imboy_listener) catch _:_ -> ok end),
-            _ = (try cowboy:stop_listener(imboy_listener) catch _:_ -> ok end),
-            _ = (try ranch:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
-            _ = (try cowboy:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
+            _ =
+                (try
+                    ranch:stop_listener(imboy_listener)
+                catch
+                    _:_ -> ok
+                end),
+            _ =
+                (try
+                    cowboy:stop_listener(imboy_listener)
+                catch
+                    _:_ -> ok
+                end),
+            _ =
+                (try
+                    ranch:stop_listener(imboy_listener_tls)
+                catch
+                    _:_ -> ok
+                end),
+            _ =
+                (try
+                    cowboy:stop_listener(imboy_listener_tls)
+                catch
+                    _:_ -> ok
+                end),
             boot_attempt(?BOOT_MAX_ATTEMPTS)
     end.
 
@@ -259,13 +296,35 @@ boot_attempt(AttemptsLeft) ->
             %% A1c：首次尝试若被 eunit 5s 测试超时打断（caller 被杀 → app
             %% master 中止），会留下 barrel 单例与 ranch listener 孤儿；清掉
             %% 后重试，避免一次超时毒化整轮。
-            logger:error("[eunit_boot_failed] attempts_left=~p reason=~120p",
-                [AttemptsLeft, Reason]),
+            logger:error(
+                "[eunit_boot_failed] attempts_left=~p reason=~120p",
+                [AttemptsLeft, Reason]
+            ),
             cleanup_start_orphans(),
-            _ = (try ranch:stop_listener(imboy_listener) catch _:_ -> ok end),
-            _ = (try cowboy:stop_listener(imboy_listener) catch _:_ -> ok end),
-            _ = (try ranch:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
-            _ = (try cowboy:stop_listener(imboy_listener_tls) catch _:_ -> ok end),
+            _ =
+                (try
+                    ranch:stop_listener(imboy_listener)
+                catch
+                    _:_ -> ok
+                end),
+            _ =
+                (try
+                    cowboy:stop_listener(imboy_listener)
+                catch
+                    _:_ -> ok
+                end),
+            _ =
+                (try
+                    ranch:stop_listener(imboy_listener_tls)
+                catch
+                    _:_ -> ok
+                end),
+            _ =
+                (try
+                    cowboy:stop_listener(imboy_listener_tls)
+                catch
+                    _:_ -> ok
+                end),
             timer:sleep(?BOOT_RETRY_SLEEP_MS),
             Next =
                 case is_migration_dirty(Reason) of
