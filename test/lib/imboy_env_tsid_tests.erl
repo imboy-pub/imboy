@@ -209,16 +209,20 @@ local_lock_provider_probe_test() ->
 
 %% tsid_lock_provider 键已从配置面删除：prod 轨道显式设置即拒启
 %%（防误设 registry 致跨 VM 互斥失效——双实例红线绕过）。
+%% after 用 snapshot/restore 还原进入前状态（而非无条件 unset）——
+%% eunit 全量轨道的 eunit_setup 可能已设置同名键，无条件清除会在
+%% app 重启时使 guard 走真实现（schema_drift 拒启 → boot 波动）。
 lock_provider_key_forbidden_test() ->
     with_runtime_env(<<"prod">>, fun() ->
-        application:set_env(imboy, tsid_lock_provider, registry),
+        Snap = snapshot_app_env([tsid_lock_provider]),
         try
+            application:set_env(imboy, tsid_lock_provider, registry),
             ?assertMatch(
                 {tsid_config_forbidden, #{key := tsid_lock_provider}},
                 catch_typed(fun imboy_sup:tsid_guard_config/0)
             )
         after
-            application:unset_env(imboy, tsid_lock_provider)
+            restore_app_env(Snap)
         end
     end).
 
@@ -226,11 +230,12 @@ lock_provider_key_forbidden_test() ->
 %% 防假 scan 从 floor 0 起跳导致的 ID 重用（唯一性反例）。
 seam_keys_forbidden_outside_test_test() ->
     with_runtime_env(<<"prod">>, fun() ->
-        application:set_env(imboy, tsid_bootstrap_env_fun, fun(_) -> false end),
-        application:set_env(
-            imboy, tsid_bootstrap_scan_fun, fun(_) -> {ok, #{floor_safe_before => 0}} end
-        ),
+        Snap = snapshot_app_env([tsid_bootstrap_env_fun, tsid_bootstrap_scan_fun]),
         try
+            application:set_env(imboy, tsid_bootstrap_env_fun, fun(_) -> false end),
+            application:set_env(
+                imboy, tsid_bootstrap_scan_fun, fun(_) -> {ok, #{floor_safe_before => 0}} end
+            ),
             ?assertMatch(
                 {tsid_config_forbidden, #{
                     keys := [tsid_bootstrap_env_fun, tsid_bootstrap_scan_fun]
@@ -238,47 +243,54 @@ seam_keys_forbidden_outside_test_test() ->
                 catch_typed(fun imboy_sup:tsid_guard_config/0)
             )
         after
-            application:unset_env(imboy, tsid_bootstrap_env_fun),
-            application:unset_env(imboy, tsid_bootstrap_scan_fun)
+            restore_app_env(Snap)
         end
     end).
 
 %% test 轨道：seam 成对注入透传 + lock_provider 恒 registry；
-%% 半设（只设其一）按配置错误拒启。
+%% 半设（清 env 留 scan）按配置错误拒启。after 还原进入前状态，
+%% 保住 eunit 轨道 eunit_setup 的 seam 设置不被测试清掉。
 seam_passthrough_test_track_test() ->
     with_runtime_env(<<"test">>, fun() ->
         EnvF = fun(_) -> false end,
         ScanF = fun(_) -> {ok, #{floor_safe_before => 0}} end,
-        application:set_env(imboy, tsid_bootstrap_env_fun, EnvF),
-        application:set_env(imboy, tsid_bootstrap_scan_fun, ScanF),
+        Snap = snapshot_app_env([tsid_bootstrap_env_fun, tsid_bootstrap_scan_fun]),
         try
+            application:set_env(imboy, tsid_bootstrap_env_fun, EnvF),
+            application:set_env(imboy, tsid_bootstrap_scan_fun, ScanF),
             Cfg = imboy_sup:tsid_guard_config(),
             ?assertEqual(registry, maps:get(lock_provider, Cfg)),
             ?assertEqual(EnvF, maps:get(bootstrap_env_fun, Cfg)),
-            ?assertEqual(ScanF, maps:get(bootstrap_scan_fun, Cfg))
-        after
+            ?assertEqual(ScanF, maps:get(bootstrap_scan_fun, Cfg)),
+            %% 半设：清 env 留 scan → 拒启
             application:unset_env(imboy, tsid_bootstrap_env_fun),
-            application:unset_env(imboy, tsid_bootstrap_scan_fun)
-        end,
-        application:set_env(imboy, tsid_bootstrap_scan_fun, ScanF),
-        try
             ?assertMatch(
                 {tsid_config_invalid, _},
                 catch_typed(fun imboy_sup:tsid_guard_config/0)
             )
         after
-            application:unset_env(imboy, tsid_bootstrap_scan_fun)
+            restore_app_env(Snap)
         end
     end).
 
-%% prod 端到端：无任何 TSID 特殊键时 lock_provider 恒 flock、无 seam 键
-%%（与 config_chain_defaults_test 同口径，补 lock_provider/seam 断言）。
+%% prod 端到端：干净 prod 配置（无任何 TSID 特殊键）→ lock_provider 恒
+%% flock、无 seam 键。eunit 轨道 eunit_setup 会预设 seam 双键，而 prod
+%% 分档下它们的存在本身即 forbidden（拒启是正确行为，见
+%% seam_keys_forbidden_outside_test_test）——故本用例先快照并临时清空
+%% 轨道预设，验证"干净"形态，测后还原。
 prod_lock_provider_hardcoded_test() ->
     with_runtime_env(<<"prod">>, fun() ->
-        Cfg = imboy_sup:tsid_guard_config(),
-        ?assertEqual(flock, maps:get(lock_provider, Cfg)),
-        ?assertEqual(false, maps:is_key(bootstrap_env_fun, Cfg)),
-        ?assertEqual(false, maps:is_key(bootstrap_scan_fun, Cfg))
+        Snap = snapshot_app_env([tsid_bootstrap_env_fun, tsid_bootstrap_scan_fun]),
+        try
+            application:unset_env(imboy, tsid_bootstrap_env_fun),
+            application:unset_env(imboy, tsid_bootstrap_scan_fun),
+            Cfg = imboy_sup:tsid_guard_config(),
+            ?assertEqual(flock, maps:get(lock_provider, Cfg)),
+            ?assertEqual(false, maps:is_key(bootstrap_env_fun, Cfg)),
+            ?assertEqual(false, maps:is_key(bootstrap_scan_fun, Cfg))
+        after
+            restore_app_env(Snap)
+        end
     end).
 
 %% ===================================================================
@@ -299,6 +311,23 @@ catch_typed(Fun) ->
     catch
         error:R -> R
     end.
+
+%% application env 快照/还原：eunit 全量轨道下 eunit_setup 会预设
+%% tsid seam 键，测试用例 after 必须还原进入前状态（而非无条件 unset），
+%% 否则测试之后 app 一旦重启（boot 重试等）guard 将失去 seam 走真实现
+%% （scratch 库 schema_drift → 拒启 → boot 波动）。与 adm_passport_handler
+%% 测试的 snapshot_runtime_env/restore_runtime_env 同款纪律。
+snapshot_app_env(Keys) ->
+    [{K, application:get_env(imboy, K)} || K <- Keys].
+
+restore_app_env([{K, undefined} | T]) ->
+    application:unset_env(imboy, K),
+    restore_app_env(T);
+restore_app_env([{K, {ok, V}} | T]) ->
+    application:set_env(imboy, K, V),
+    restore_app_env(T);
+restore_app_env([]) ->
+    ok.
 
 %% R1 加固合同用例的运行时分档模拟：IMBOYENV OS 变量优先于 application
 %% env（imboy_env:current/0 合同），故直接 putenv 覆盖；测后恢复原值，
