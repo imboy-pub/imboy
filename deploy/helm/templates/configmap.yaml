@@ -27,6 +27,20 @@ data:
   IMBOY_PG_PORT: {{ .Values.externalDatabase.port | toString | quote }}
   IMBOY_PG_DB: {{ .Values.externalDatabase.database | quote }}
 
+  # ---------- TSID durable generator（TSID-07，全非敏感：路径/节点号/时序）----------
+  # stateDir 与 deployment-backend.yaml 的 backend-tsid 卷挂载点一致；
+  # 非法值（越界 node/dc、非正整数）由后端启动链 fail-closed 拒绝。
+  IMBOY_TSID_STATE_DIR: {{ .Values.backend.tsid.stateDir | quote }}
+  IMBOY_TSID_DC_ID: {{ .Values.backend.tsid.dcId | toString | quote }}
+  IMBOY_TSID_NODE_ID: {{ .Values.backend.tsid.nodeId | toString | quote }}
+  IMBOY_TSID_DC_BITS: {{ .Values.backend.tsid.dcBits | toString | quote }}
+  IMBOY_TSID_STORE_BOOTSTRAP: {{ .Values.backend.tsid.storeBootstrap | default "existing" | quote }}
+  IMBOY_TSID_MAX_LOGICAL_LEAD_MS: {{ .Values.backend.tsid.maxLogicalLeadMs | default 512 | toString | quote }}
+  IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS: {{ .Values.backend.tsid.capacityWaitTimeoutMs | default 100 | toString | quote }}
+  IMBOY_TSID_FENCE_WINDOW_MS: {{ .Values.backend.tsid.fenceWindowMs | default 1000 | toString | quote }}
+  IMBOY_TSID_FENCE_RENEW_MARGIN_MS: {{ .Values.backend.tsid.fenceRenewMarginMs | default 100 | toString | quote }}
+  IMBOY_TSID_STARTUP_CLOCK_WAIT_TIMEOUT_MS: {{ .Values.backend.tsid.startupClockWaitTimeoutMs | default 5000 | toString | quote }}
+
   # ---------- 域名（URL 相关，注入 BASE_URL / WS_URL）----------
   IMBOY_BASE_URL: {{ printf "https://%s" .Values.ingress.api.host | quote }}
   IMBOY_WS_URL: {{ printf "wss://%s/ws" .Values.ingress.api.host | quote }}

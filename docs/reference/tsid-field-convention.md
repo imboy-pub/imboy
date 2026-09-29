@@ -1,6 +1,6 @@
 # TSID 字段约定
 
-> Last Updated: 2026-04-11  
+> Last Updated: 2026-09-29（TSID correctness hardening 后同步）  
 > Status: 长期协议契约文档  
 > Scope: 所有 REST API 与 WebSocket API 中 TSID 字段的传输格式约定
 
@@ -20,15 +20,33 @@ TSID（Time-Sorted ID）是 Imboy 使用的分布式 ID 生成方案，取代原
 |------|------|------|
 | 符号位 | 1 | 始终为 0（正整数） |
 | 时间戳 | 42 | 相对于纪元（2025-01-01 00:00:00 UTC）的毫秒数 |
-| 节点 ID | 10 | 3 位数据中心 + 7 位节点 |
-| 序列号 | 11 | 每毫秒每节点最多 2048 个 ID |
+| 节点 ID | 10 | 按 `dc_bits`（1..10，缺省 3；应用层 API 允许 0=纯 node 模式，部署链 preflight 限 1..10）动态切分为 dc_id + node_id |
+| 序列号 | 11 | 每毫秒每节点最多 2048 个 ID（= 节点持续容量 2048 ids/ms） |
 
-**特性**：
+**特性**（2026-09 TSID correctness hardening 后）：
 
-- **纪元**：2025-01-01 00:00:00 UTC
-- **时间跨度**：139.5 年（2025 → 2164）
-- **生成吞吐量**：单节点 200 万+ ID/秒
-- **数据库类型**：PostgreSQL `BIGINT`
+- **纪元**：2025-01-01 00:00:00 UTC；时间跨度 139.5 年（2025 → 2164）
+- **全局唯一语义**：同一节点上所有命名生成器（label，含 default）共享同一全局
+  cursor——任意两个生成器产生的 ID 数值永不相同；label 仅是治理/兼容标签，
+  跨表/跨域引用可直接按数值关联
+- **时间戳精度**：毫秒；高吞吐下 ID 内 ts 允许有界领先墙钟
+  （`max_logical_lead_ms` 缺省 512ms，borrow 未来毫秒，崩溃恢复由 durable
+  fence 保证不重不越）——因此 ID 提取的时间戳是生成序的近似，排序请用 ID 本身
+- **生成吞吐量**：持续容量 2048 ids/ms/节点（≈205 万 ID/s）；短突发实测
+  10M+ ID/s（基准证据见 hardening status 附录）；多节点水平扩展
+- **有界逻辑时间**：突发超过容量时 fail-closed（typed `capacity_exhausted`），
+  绝不无限借未来
+- **数据库类型**：PostgreSQL `BIGINT`（signed 63-bit 上界有校验）
+- **错误族**：全部 typed error（非静默回退）——`elib_tsid_not_initialized` /
+  `elib_tsid_capacity_exhausted`（clock_wait | cas_contention）/
+  `elib_tsid_fenced` / `elib_tsid_invalid_config` / `elib_tsid_invalid_input` /
+  `elib_tsid_clock_before_epoch` / `elib_tsid_timestamp_exhausted` /
+  `elib_tsid_invalid_input`（越界输入）等
+- **部署与 cutover**：多实例唯一性依赖 `IMBOY_TSID_DC_ID`/`IMBOY_TSID_NODE_ID`
+  配置 + preflight 位布局校验 + 双槽 durable 状态 + lifetime lock；
+  存量 BIGSERIAL→TSID 迁移与回滚见
+  `docs/architecture/tsid-cutover-runbook.md` 与
+  `docs/architecture/tsid-rollback-decision-table.md`
 
 ---
 

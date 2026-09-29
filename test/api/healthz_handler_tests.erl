@@ -13,13 +13,16 @@
 
 setup() ->
     meck:new(elib_pg, [no_link, passthrough]),
-    %% 每个用例前清掉探测缓存，否则上一条的结果会串味
-    catch persistent_term:erase({healthz, db}),
+    %% TSID-06 起 /healthz = /readyz 别名（聚合 PG + TSID）。本套件测端点
+    %% 合同（状态码/响应体/缓存），TSID readiness 行为已由 guard 套件覆盖，
+    %% 这里统一 mock guard 为 ready；probe_db 系列不触碰该 mock
+    meck:new(elib_tsid_guard, [no_link, passthrough]),
+    meck:expect(elib_tsid_guard, probe, fun() -> ready end),
     ok.
 
 cleanup(_) ->
     catch meck:unload(elib_pg),
-    catch persistent_term:erase({healthz, db}),
+    catch meck:unload(elib_tsid_guard),
     ok.
 
 probe_test_() ->

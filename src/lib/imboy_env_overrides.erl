@@ -17,6 +17,7 @@
 %%%   IMBOY_CS_WIDGET_INTAKE_BUSINESS_IDENTITY_ID -> cs_widget_intake_business_identity_id
 %%%   IMBOY_CORS_WIDGET_ORIGINS               -> cors_widget_origins（逗号分隔）
 %%%   IMBOY_CORS_ADMIN_ORIGINS                -> cors_admin_origins（逗号分隔）
+%%%   IMBOY_TSID_*（TSID-07 部署参数，见 override_tsid/0）-> tsid_*
 -module(imboy_env_overrides).
 
 -export([
@@ -24,7 +25,8 @@
     override_cors_face_origins/0,
     override_trusted_proxy_ips/0,
     override_payment_mode/0,
-    override_payment_gateway_enabled/0
+    override_payment_gateway_enabled/0,
+    override_tsid/0
 ]).
 
 -include_lib("kernel/include/file.hrl").
@@ -278,6 +280,100 @@ override_payment_gateway_enabled() ->
                 end,
             application:set_env(imboy, payment_gateway_enabled, Enabled),
             ok;
+        _ ->
+            ok
+    end.
+
+%% ===================================================================
+%% TSID-07：durable generator 部署参数（全部非敏感，fail-closed）
+%% ===================================================================
+
+%% @doc 覆盖 TSID durable generator 的部署参数（AC-07C：非法值拒绝启动）。
+%%
+%% 全部为非敏感项（状态目录路径 / 节点号 / 时序参数），经 ConfigMap/env 明文
+%% 注入（AC-07D：无 secret、无 PII）。语义上界（dc_bits+node_bits=10、
+%% node_id < 2^(10-dc_bits)）由 elib_tsid:combine_node/3 在 guard 启动时
+%% 校验 fail-fast；deploy/preflight.sh 提前一层拦截（部署期而非运行期）。
+%%   IMBOY_TSID_STATE_DIR                     -> tsid_state_dir（路径，string）
+%%   IMBOY_TSID_DC_ID / NODE_ID / DC_BITS     -> 对应 tsid_*（非负整数）
+%%   IMBOY_TSID_STORE_BOOTSTRAP               -> fresh | existing（原子，严格）
+%%   IMBOY_TSID_MAX_LOGICAL_LEAD_MS           -> tsid_max_logical_lead_ms（正整数）
+%%   IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS      -> tsid_capacity_wait_timeout_ms（正整数）
+%%   IMBOY_TSID_FENCE_WINDOW_MS               -> tsid_fence_window_ms（正整数）
+%%   IMBOY_TSID_FENCE_RENEW_MARGIN_MS         -> tsid_fence_renew_margin_ms（正整数）
+%%   IMBOY_TSID_STARTUP_CLOCK_WAIT_TIMEOUT_MS -> tsid_startup_clock_wait_timeout_ms
+%%                                              （正整数）
+-spec override_tsid() -> ok.
+override_tsid() ->
+    ok = override_tsid_string_key("IMBOY_TSID_STATE_DIR", tsid_state_dir),
+    ok = override_nonneg_integer_key("IMBOY_TSID_DC_ID", tsid_dc_id),
+    ok = override_nonneg_integer_key("IMBOY_TSID_NODE_ID", tsid_node_id),
+    ok = override_positive_integer_key("IMBOY_TSID_DC_BITS", tsid_dc_bits),
+    ok = override_tsid_bootstrap(),
+    ok = override_positive_integer_key("IMBOY_TSID_MAX_LOGICAL_LEAD_MS", tsid_max_logical_lead_ms),
+    ok =
+        override_positive_integer_key(
+            "IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS", tsid_capacity_wait_timeout_ms
+        ),
+    ok = override_positive_integer_key("IMBOY_TSID_FENCE_WINDOW_MS", tsid_fence_window_ms),
+    ok =
+        override_positive_integer_key(
+            "IMBOY_TSID_FENCE_RENEW_MARGIN_MS", tsid_fence_renew_margin_ms
+        ),
+    ok =
+        override_positive_integer_key(
+            "IMBOY_TSID_STARTUP_CLOCK_WAIT_TIMEOUT_MS", tsid_startup_clock_wait_timeout_ms
+        ).
+
+%% 路径键：非空即覆盖（存在性/可写性由 guard+store 启动链处理）
+override_tsid_string_key(EnvVar, AppKey) ->
+    case os:getenv(EnvVar) of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            application:set_env(imboy, AppKey, string:trim(Value)),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% 非负整数键（dc_id/node_id 允许 0；时序参数用正整数版本）
+override_nonneg_integer_key(EnvVar, AppKey) ->
+    case os:getenv(EnvVar) of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            try list_to_integer(string:trim(Value)) of
+                N when N >= 0 ->
+                    application:set_env(imboy, AppKey, N),
+                    ok;
+                _ ->
+                    erlang:error({invalid_env, EnvVar, Value})
+            catch
+                _:_ ->
+                    erlang:error({invalid_env, EnvVar, Value})
+            end;
+        _ ->
+            ok
+    end.
+
+%% bootstrap 合同（TSID-05/08）：fresh 仅首次部署显式使用；existing 是
+%% 常态（无有效槽即拒绝启动，绝不静默 fresh——那等于丢弃 durable fence）
+override_tsid_bootstrap() ->
+    case os:getenv("IMBOY_TSID_STORE_BOOTSTRAP") of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            case string:trim(string:lowercase(Value)) of
+                "fresh" ->
+                    application:set_env(imboy, tsid_store_bootstrap, fresh),
+                    ok;
+                "existing" ->
+                    application:set_env(imboy, tsid_store_bootstrap, existing),
+                    ok;
+                _ ->
+                    erlang:error({invalid_env, "IMBOY_TSID_STORE_BOOTSTRAP", Value})
+            end;
         _ ->
             ok
     end.

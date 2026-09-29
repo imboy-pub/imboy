@@ -48,16 +48,10 @@ start(_Type, _Args) ->
     %% 内部异常自吞，不阻断主启动链
     ok = imboy_telemetry:init(),
     _ = imboy_syn:init(),
-    % 初始化 TSID 分布式ID生成器
-    TsidDcId = application:get_env(imboy, tsid_dc_id, 1),
-    TsidNodeId = application:get_env(imboy, tsid_node_id, 1),
-    TsidDcBits = application:get_env(imboy, tsid_dc_bits, 3),
-    ok = elib_tsid:init(#{
-        dc_id => TsidDcId,
-        node_id => TsidNodeId,
-        dc_bits => TsidDcBits,
-        names => tsid_generator_names()
-    }),
+    %% TSID-06：TSID 初始化移交 imboy_sup 的 elib_tsid_guard child
+    %% （lifetime lock → durable fence → 完整 runtime 发布）。监听器先于
+    %% sup 启动的窗口内 generate 会 fail-closed 报 not_initialized，
+    %% 流量由 /readyz（guard 状态）就绪门挡住。
     % 初始化集群管理（join_cluster 内部已含 License 节点数告警）
     _ = imboy_cluster:init(),
     % 初始化验证码 ETS 表
@@ -194,11 +188,11 @@ stop(_State) ->
 %% TSID 命名生成器配置
 %% ===================================================================
 
-%% @doc 返回需要独立号段的 TSID 命名生成器列表
+%% @doc 返回需要注册的 TSID 命名生成器（label）清单
 %%
-%% 每个名称对应一张实体表，拥有独立的 sequence 计数器。
-%% 同一节点同一毫秒内，不同生成器可能产生相同数值的 ID，
-%% 但因为它们属于不同的数据库表，主键不冲突。
+%% TSID-03 起全部 label 共享同一全局 cursor：同一节点上任意两个
+%% 生成器产生的 ID 数值永不相同，跨表/跨域引用可直接按数值关联。
+%% label 仅是治理/兼容标签（审计与门面语义），不分配独立数值空间。
 -spec tsid_generator_names() -> [atom()].
 tsid_generator_names() ->
     [

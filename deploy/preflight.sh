@@ -100,6 +100,34 @@ check_domains_distinct() {
     fi
 }
 
+# 位布局合同（与 src/lib/elib_tsid.erl 对齐）：[sign=0][ts:42][node:10][seq:11]，
+# node 10 bits = dc_bits + node_bits；非法配置后端启动即失败，这里提前拦截。
+check_tsid_range() {
+    # check_tsid_range <VAR> <值> <MIN> <MAX>
+    local var="$1" val="$2" min="$3" max="$4"
+    if [[ -z "$val" ]]; then
+        return 0  # 缺省值合法（compose/env 有默认），不算错误
+    fi
+    if ! [[ "$val" =~ ^[0-9]+$ ]]; then
+        err "$var 必须是非负整数（当前: ${val}）"
+        return 0
+    fi
+    if (( val < min || val > max )); then
+        err "$var 越界：允许 [${min}, ${max}]（当前: ${val}）"
+    fi
+}
+
+check_tsid_positive_int() {
+    # check_tsid_positive_int <VAR> <值>
+    local var="$1" val="$2"
+    if [[ -z "$val" ]]; then
+        return 0
+    fi
+    if ! [[ "$val" =~ ^[0-9]+$ ]] || (( val < 1 )); then
+        err "$var 必须是正整数（当前: ${val}）"
+    fi
+}
+
 # --self-test：以负向 fixtures 自检上述规则函数（每个用例必须被抓到才算过）
 run_secret_rules_self_test() {
     echo "▶ LT-06 secret 规则 + 三域唯一性规则自测（负向 fixtures 必须全部被抓到）"
@@ -130,6 +158,28 @@ run_secret_rules_self_test() {
     ERRORS=0
     check_domains_distinct "A" "api.fixt" "B" "cs.fixt" >/dev/null
     if (( ERRORS == 0 )); then ok "自测7 不同域名放行"; passed=$((passed+1)); else err "自测7 失败：不同域名被误拒"; failed=$((failed+1)); fi
+
+    # TSID-07：TSID 配置规则负向 fixtures（越界/非法值必须被抓到）
+    ERRORS=0; check_tsid_range T_NODE "200" 0 127 >/dev/null
+    if (( ERRORS == 1 )); then ok "自测8 TSID node_id 越界被拒"; passed=$((passed+1)); else err "自测8 失败：node_id 越界未被拒"; failed=$((failed+1)); fi
+
+    ERRORS=0; check_tsid_range T_NODE "7" 0 7 >/dev/null
+    if (( ERRORS == 0 )); then ok "自测9 TSID node_id 边界(=max)放行"; passed=$((passed+1)); else err "自测9 失败：边界值被误拒"; failed=$((failed+1)); fi
+
+    ERRORS=0; check_tsid_range T_DC "8" 0 7 >/dev/null
+    if (( ERRORS == 1 )); then ok "自测10 TSID dc_id 越界被拒"; passed=$((passed+1)); else err "自测10 失败：dc_id 越界未被拒"; failed=$((failed+1)); fi
+
+    ERRORS=0; check_tsid_range T_BITS "abc" 1 10 >/dev/null
+    if (( ERRORS == 1 )); then ok "自测11 TSID dc_bits 非整数被拒"; passed=$((passed+1)); else err "自测11 失败：非整数未被拒"; failed=$((failed+1)); fi
+
+    ERRORS=0; check_tsid_positive_int T_LEAD "0" >/dev/null
+    if (( ERRORS == 1 )); then ok "自测12 TSID 时序参数 0 被拒"; passed=$((passed+1)); else err "自测12 失败：0 未被拒"; failed=$((failed+1)); fi
+
+    ERRORS=0; check_tsid_positive_int T_LEAD "" >/dev/null
+    if (( ERRORS == 0 )); then ok "自测13 TSID 时序参数缺省放行"; passed=$((passed+1)); else err "自测13 失败：缺省被误拒"; failed=$((failed+1)); fi
+
+    ERRORS=0; check_tsid_range T_EMPTY "" 0 127 >/dev/null
+    if (( ERRORS == 0 )); then ok "自测14 TSID 数值缺省放行"; passed=$((passed+1)); else err "自测14 失败：缺省被误拒"; failed=$((failed+1)); fi
 
     echo ""
     if (( failed > 0 )); then
@@ -619,6 +669,53 @@ else
         info "社区版运行中，无需 License 文件"
     fi
 fi
+
+
+# ── 2d. TSID durable generator 配置（TSID-07）─────────────────────────────────
+echo ""
+echo "▶ 2d. 检查 TSID durable generator 配置 / TSID config"
+
+TSID_DC_BITS="${IMBOY_TSID_DC_BITS:-3}"
+TSID_DC_ID="${IMBOY_TSID_DC_ID:-1}"
+TSID_NODE_ID="${IMBOY_TSID_NODE_ID:-1}"
+TSID_BOOTSTRAP="${IMBOY_TSID_STORE_BOOTSTRAP:-existing}"
+
+# dc_bits：1..10（dc_bits + node_bits = 10）
+check_tsid_range IMBOY_TSID_DC_BITS "$TSID_DC_BITS" 1 10
+# dc_id：< 2^dc_bits；node_id：< 2^(10-dc_bits)（bash 无 2**，用位移 $((1 << n))）
+check_tsid_range IMBOY_TSID_DC_ID "$TSID_DC_ID" 0 $(( (1 << TSID_DC_BITS) - 1 ))
+check_tsid_range IMBOY_TSID_NODE_ID "$TSID_NODE_ID" 0 $(( (1 << (10 - TSID_DC_BITS)) - 1 ))
+
+# bootstrap 合同：fresh 仅首次部署；existing 是常态
+case "$TSID_BOOTSTRAP" in
+    fresh|existing) ;;
+    *) err "IMBOY_TSID_STORE_BOOTSTRAP 仅支持 fresh|existing（当前: ${TSID_BOOTSTRAP}）" ;;
+esac
+
+# 时序参数（缺省合法；显式配置则必须正整数）
+check_tsid_positive_int IMBOY_TSID_MAX_LOGICAL_LEAD_MS "${IMBOY_TSID_MAX_LOGICAL_LEAD_MS:-}"
+check_tsid_positive_int IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS "${IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS:-}"
+check_tsid_positive_int IMBOY_TSID_FENCE_WINDOW_MS "${IMBOY_TSID_FENCE_WINDOW_MS:-}"
+check_tsid_positive_int IMBOY_TSID_FENCE_RENEW_MARGIN_MS "${IMBOY_TSID_FENCE_RENEW_MARGIN_MS:-}"
+check_tsid_positive_int IMBOY_TSID_STARTUP_CLOCK_WAIT_TIMEOUT_MS "${IMBOY_TSID_STARTUP_CLOCK_WAIT_TIMEOUT_MS:-}"
+
+# state 卷：backend_tsid 必须存在且可写（compose 把它挂到 /opt/imboy/tsid_state；
+# 缺失/不可写 = durable fence 无法持久化 = 重启失忆 = ID 重复）
+TSID_HOST_DIR="${SCRIPT_DIR}/${DATA_DIR:-./data}/backend_tsid"
+if [[ ! -d "$TSID_HOST_DIR" ]]; then
+    err "TSID 状态目录不存在: ${TSID_HOST_DIR}（mkdir -p 并 chown 给容器运行用户后再部署）"
+elif [[ ! -w "$TSID_HOST_DIR" ]]; then
+    err "TSID 状态目录不可写: ${TSID_HOST_DIR}"
+else
+    ok "TSID 状态目录可写: ${TSID_HOST_DIR}"
+    # fresh + 目录已有状态 = 会无视历史 durable fence（等于主动丢防线），拒绝
+    if [[ "$TSID_BOOTSTRAP" == "fresh" ]] && [[ -n "$(ls -A "$TSID_HOST_DIR" 2>/dev/null)" ]]; then
+        err "IMBOY_TSID_STORE_BOOTSTRAP=fresh 但 ${TSID_HOST_DIR} 非空：fresh 会无视已有 durable fence（ID 可能重复）。确认要重置请先清空该目录"
+    fi
+fi
+
+# 单机 preflight 无法验证跨机 node_id 唯一性（每个部署点各自的 .env）
+info "跨机部署请人工确认各节点 IMBOY_TSID_NODE_ID 互不相同（同 DC 内重复 = ID 碰撞）"
 
 # ── 3. 系统资源 ───────────────────────────────────────────────────────────────
 echo ""

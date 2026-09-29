@@ -223,9 +223,30 @@ services:
       # 动态插件写操作总开关（默认 false）。关闭时 /api/adm/plugin/* 的 7 个写端点
       # 返回「功能未启用」；内置功能开关（channel/moment/...）是纯 manifest，不受影响。
       IMBOY_PLUGIN_LIFECYCLE_ENABLED: ${IMBOY_PLUGIN_LIFECYCLE_ENABLED:-false}
+      # ── TSID durable generator（TSID-07，全非敏感）──────────────────────────
+      # stateDir 指向下方 backend_tsid 持久卷：durable safe_before 是重启后
+      # 不生成重复 ID 的唯一防线，落容器层 = 重建即失忆。node_id 同 DC 内必须
+      # 唯一；重复 = 同 CombinedNode 双写 = ID 碰撞（lifetime lock 会拒绝第二
+      # 个 READY 实例，但别用 `docker compose up --scale imboy_backend=2` 试——
+      # 固定 container_name 已在部署层阻止 scale）。
+      IMBOY_TSID_STATE_DIR: ${IMBOY_TSID_STATE_DIR:-/opt/imboy/tsid_state}
+      IMBOY_TSID_DC_ID: ${IMBOY_TSID_DC_ID:-1}
+      IMBOY_TSID_NODE_ID: ${IMBOY_TSID_NODE_ID:-1}
+      IMBOY_TSID_DC_BITS: ${IMBOY_TSID_DC_BITS:-3}
+      # store bootstrap 合同：existing（默认）= 无有效槽即拒绝启动；
+      # fresh 仅首次部署在 .env 显式设置，cutover 后必须移除
+      IMBOY_TSID_STORE_BOOTSTRAP: ${IMBOY_TSID_STORE_BOOTSTRAP:-existing}
+      IMBOY_TSID_MAX_LOGICAL_LEAD_MS: ${IMBOY_TSID_MAX_LOGICAL_LEAD_MS:-512}
+      IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS: ${IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS:-100}
+      IMBOY_TSID_FENCE_WINDOW_MS: ${IMBOY_TSID_FENCE_WINDOW_MS:-1000}
+      IMBOY_TSID_FENCE_RENEW_MARGIN_MS: ${IMBOY_TSID_FENCE_RENEW_MARGIN_MS:-100}
+      IMBOY_TSID_STARTUP_CLOCK_WAIT_TIMEOUT_MS: ${IMBOY_TSID_STARTUP_CLOCK_WAIT_TIMEOUT_MS:-5000}
     volumes:
       - ${DATA_DIR:-./data}/backend_log:/opt/imboy/log
       - ${DATA_DIR:-./data}/backend_priv:/opt/imboy/priv_runtime
+      # TSID durable fence 状态（TSID-07）：双槽 48B record + manifest，
+      # 与 log/priv 独立；目录属主必须与容器运行用户一致（preflight 检查）
+      - ${DATA_DIR:-./data}/backend_tsid:/opt/imboy/tsid_state
     expose:
       - "9800"
     ports:
