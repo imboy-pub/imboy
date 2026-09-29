@@ -15,6 +15,10 @@ BEGIN
 END;
 $$;
 
-DROP TABLE IF EXISTS customer_service_seat_console;
+-- 次序修正（REVIEW-3 F-5 车道 r3-f5，回改先例：56508b83 修 143 down 次序语义、
+-- d8e45ad7 补已应用迁移的 down）：DROP TABLE 会级联删除其上全部索引，原次序
+-- （先 DROP TABLE 后 DROP INDEX）使两条 DROP INDEX 成为静默 no-op；按 147
+-- 同款「先索引后表」次序排列，使 down 真实按声明语义逐项回滚。
 DROP INDEX IF EXISTS i_cssc_org_ws_status;
 DROP INDEX IF EXISTS uq_cssc_org_ws_active;
+DROP TABLE IF EXISTS customer_service_seat_console;

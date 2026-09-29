@@ -110,7 +110,13 @@ a01_down_with_rows_fails_closed() ->
         ok = cs_pg_seat_console:revoke_seat_console(Org, Ws, RevokedId, now_sec()),
         %% 有行（含 revoked 行）→ down 返回 {error, _} 且表保持原样
         %% （fail-closed：已分发的 public_seat_console_id 不得静默丢弃）。
-        {error, _} = with_migrate_down(1),
+        %% down 步数**按在册版本推导到 153**，不写死 1：fail-closed 门在
+        %% 153.down 内，head 前移（如 154 起）后 down 1 步只回滚更晚的纯
+        %% 索引迁移（无守卫，成功返回 ok）而根本没轮到 153 的门——历史
+        %% 教训同 cs_pg_widget_tests（断言两度被 head 前移打红）。
+        Steps = down_steps_to(153),
+        ?assert(Steps >= 1),
+        {error, _} = with_migrate_down(Steps),
         ?assert(table_exists(?TABLE)),
         {ok, [_, _]} = cs_pg_seat_console:list_seat_consoles_page(Org, Ws, 0, 50),
         %% 失败的 down 按契约置 dirty（fail-closed 语义的一部分）；force/2
