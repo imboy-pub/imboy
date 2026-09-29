@@ -37,6 +37,8 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun partial_unique_blocks_second_active_slot/0},
         {timeout, 60, fun revoke_frees_slot_and_row_is_kept/0},
         {timeout, 60, fun workspace_fk_cross_tenant_rejected/0},
+        {timeout, 60, fun f4_create_is_single_transaction/0},
+        {timeout, 60, fun f6_update_expected_version_cas/0},
         {timeout, 120, fun a01_down_with_rows_fails_closed/0}
     ];
 cases({error, Reason}) ->
@@ -311,6 +313,118 @@ workspace_fk_cross_tenant_rejected() ->
                 Org,
                 console(Org, OtherOrgWs, ?FIX:id(), #{public_id => <<"sc_pub_fk1">>})
             )
+    after
+        _ = purge_scope(Org),
+        ok = ?FIX:cleanup(Scope)
+    end.
+
+%% ===================================================================
+%% F-4 / F-6（REVIEW-3）：创建单事务原子 + PUT 可选乐观并发控制
+%% ===================================================================
+
+%% F-4 三态（真 DB）：
+%%   a) 首次创建成功（INSERT 与回读同事务，行 + 投影同时可读）；
+%%   c) 真冲突语义不变：另一 active 控制台已存在 → conflict（23505 → 409）；
+%%   b) 事务内回读失败（meck 注入瞬时故障）→ 整体回滚（行不落库，公开 ID
+%%      反查 not_found）→ 重试（新 TSID）创建成功——孤儿行窗口不复存在。
+f4_create_is_single_transaction() ->
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    Ws = maps:get(workspace_id, Scope),
+    try
+        %% a) 首次创建成功
+        {ok, First} = cs_pg_seat_console:insert_seat_console(
+            Org, console(Org, Ws, ?FIX:id(), #{public_id => <<"sc_pub_f4a">>})
+        ),
+        ?assertEqual(active, maps:get(status, First)),
+        ?assertEqual(1, maps:get(version, First)),
+        %% c) 真冲突：同 (Org,WS) 另一 active 控制台已存在 → conflict
+        {error, conflict} = cs_pg_seat_console:insert_seat_console(
+            Org, console(Org, Ws, ?FIX:id(), #{public_id => <<"sc_pub_f4c">>})
+        ),
+        %% b) 回读失败 → 回滚：先吊销释放槽位，再注入 fetch_one_conn 瞬时故障
+        ok = cs_pg_seat_console:revoke_seat_console(Org, Ws, maps:get(id, First), now_sec()),
+        meck:new(cs_pg_common, [passthrough, no_link]),
+        meck:expect(
+            cs_pg_common,
+            fetch_one_conn,
+            4,
+            fun(_Conn, _Sql, _Params, _Keys) -> {error, {db, transient_fetch_failure}} end
+        ),
+        {error, {db, transient_fetch_failure}} =
+            cs_pg_seat_console:insert_seat_console(
+                Org, console(Org, Ws, ?FIX:id(), #{public_id => <<"sc_pub_f4b">>})
+            ),
+        meck:unload(cs_pg_common),
+        %% 回滚证据：行不落库（公开 ID 全局反查 not_found；列表恰含被吊销的
+        %% 首行——本套件列表无 status 谓词，revoked 行保留可见，按 id 对齐）。
+        {error, not_found} =
+            cs_pg_seat_console:fetch_seat_console_by_public_id_global(<<"sc_pub_f4b">>),
+        {ok, [Listed]} = cs_pg_seat_console:list_seat_consoles_page(Org, Ws, 0, 50),
+        ?assertEqual(maps:get(id, First), maps:get(id, Listed)),
+        %% 重试（新 id）天然安全：无孤儿行占位
+        {ok, Retried} = cs_pg_seat_console:insert_seat_console(
+            Org, console(Org, Ws, ?FIX:id(), #{public_id => <<"sc_pub_f4b2">>})
+        ),
+        ?assertEqual(active, maps:get(status, Retried))
+    after
+        catch meck:unload(cs_pg_common),
+        _ = purge_scope(Org),
+        ok = ?FIX:cleanup(Scope)
+    end.
+
+%% F-6 四态（真 DB）：
+%%   1) 无 expected_version = 旧 LWW 行为（更新成功，version 前进）；
+%%   2) expected_version 匹配 → 更新成功（version + 1）；
+%%   3) 不匹配 → {error, {cas_mismatch, Detail}}（携带当前 version），行不被
+%%      改写；
+%%   4) revoked 后 PUT 仍安全：带/不带 expected_version 同口径
+%%      seat_console_revoked（revoke×PUT 竞争语义未破坏）。
+f6_update_expected_version_cas() ->
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    Ws = maps:get(workspace_id, Scope),
+    Id = ?FIX:id(),
+    try
+        {ok, _} = cs_pg_seat_console:insert_seat_console(
+            Org, console(Org, Ws, Id, #{public_id => <<"sc_pub_f6">>})
+        ),
+        %% 1) 无 expected_version = 旧 LWW
+        {ok, Lww} = cs_pg_seat_console:update_seat_console(
+            Org, Ws, Id, now_sec(), #{allowed_origins => [<<"https://lww.example.com">>]}
+        ),
+        ?assertEqual(2, maps:get(version, Lww)),
+        ?assertEqual([<<"https://lww.example.com">>], maps:get(allowed_origins, Lww)),
+        %% 2) 匹配 → 成功
+        {ok, Matched} = cs_pg_seat_console:update_seat_console(
+            Org,
+            Ws,
+            Id,
+            now_sec(),
+            #{allowed_origins => [<<"https://matched.example.com">>], expected_version => 2}
+        ),
+        ?assertEqual(3, maps:get(version, Matched)),
+        ?assertEqual([<<"https://matched.example.com">>], maps:get(allowed_origins, Matched)),
+        %% 3) 不匹配 → cas_mismatch（409 面，携带当前 version），行不被改写
+        {error, {cas_mismatch, Detail}} = cs_pg_seat_console:update_seat_console(
+            Org,
+            Ws,
+            Id,
+            now_sec(),
+            #{allowed_origins => [<<"https://stale.example.com">>], expected_version => 1}
+        ),
+        ?assertEqual(#{expected_version => 1, actual_version => 3}, Detail),
+        {ok, Unchanged} = cs_pg_seat_console:fetch_seat_console(Org, Ws, Id),
+        ?assertEqual([<<"https://matched.example.com">>], maps:get(allowed_origins, Unchanged)),
+        ?assertEqual(3, maps:get(version, Unchanged)),
+        %% 4) revoked 后 PUT 仍安全（带/不带 expected_version 同口径）
+        ok = cs_pg_seat_console:revoke_seat_console(Org, Ws, Id, now_sec()),
+        {error, seat_console_revoked} = cs_pg_seat_console:update_seat_console(
+            Org, Ws, Id, now_sec(), #{allowed_origins => []}
+        ),
+        {error, seat_console_revoked} = cs_pg_seat_console:update_seat_console(
+            Org, Ws, Id, now_sec(), #{allowed_origins => [], expected_version => 3}
+        )
     after
         _ = purge_scope(Org),
         ok = ?FIX:cleanup(Scope)

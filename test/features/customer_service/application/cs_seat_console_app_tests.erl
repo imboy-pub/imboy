@@ -36,6 +36,7 @@ seat_console_app_test_() ->
             fun public_id_shape_gate/0,
             fun create_conflict_and_projection_whitelist/0,
             fun update_keeps_public_id_and_status/0,
+            fun update_expected_version_gate_and_cas/0,
             fun revoke_is_idempotent_then_create_rebuilds/0,
             fun public_frame_by_public_id/0,
             fun generated_public_id_is_decimal_tsid/0
@@ -301,6 +302,63 @@ update_keeps_public_id_and_status() ->
         {error, {invalid_argument, update_console}},
         cs_seat_console_app:update_console(?ORG, params())
     ).
+
+%% ===================================================================
+%% F-6（REVIEW-3）：expected_version 形状门 + store 透传 + CAS 裁决
+%% ===================================================================
+
+update_expected_version_gate_and_cas() ->
+    reset(),
+    {ok, #{seat_console := Created}} = cs_seat_console_app:create_console(
+        ?ORG, (params())#{new_public_seat_console_id => fun() -> <<"sc_pub_ev">> end}
+    ),
+    Id = maps:get(id, Created),
+    %% 缺省 = 旧 LWW 行为（既有调用方零破坏）
+    {ok, #{seat_console := U1}} =
+        cs_seat_console_app:update_console(?ORG, (params())#{id => Id, at => ?T0 + 1}),
+    ?assertEqual(2, maps:get(version, U1)),
+    %% 形状门：expected_version 非（正）整数 → 422，且不触 store（version 不动）
+    ?assertMatch(
+        {error, {invalid_argument, expected_version}},
+        cs_seat_console_app:update_console(
+            ?ORG, (params())#{id => Id, at => ?T0 + 2, expected_version => 0}
+        )
+    ),
+    ?assertMatch(
+        {error, {invalid_argument, expected_version}},
+        cs_seat_console_app:update_console(
+            ?ORG, (params())#{id => Id, at => ?T0 + 2, expected_version => <<"2">>}
+        )
+    ),
+    {ok, #{seat_console := Still}} =
+        cs_seat_console_app:update_console(?ORG, (params())#{id => Id, at => ?T0 + 3}),
+    ?assertEqual(3, maps:get(version, Still)),
+    %% store 透传 + CAS 裁决（fake store 镜像 PG 决策语义）：
+    %% 匹配 → 成功；不匹配 → {error, {cas_mismatch, Detail}}（携带当前 version）。
+    {ok, #{seat_console := U4}} = cs_seat_console_app:update_console(
+        ?ORG, (params())#{id => Id, at => ?T0 + 4, expected_version => 3}
+    ),
+    ?assertEqual(4, maps:get(version, U4)),
+    ?assertMatch(
+        {error, {cas_mismatch, #{expected_version := 2, actual_version := 4}}},
+        cs_seat_console_app:update_console(
+            ?ORG, (params())#{id => Id, at => ?T0 + 5, expected_version => 2}
+        )
+    ),
+    %% CAS 失败不改写行：不匹配 PUT 之后，以 version=4 为基准的下一次更新
+    %% 仍成功（若失败 PUT 实际生效，version 已是 5，本次会 cas_mismatch），
+    %% 且 origins 是本次提交值而非失败 PUT 的值。
+    {ok, #{seat_console := Untouched}} = cs_seat_console_app:update_console(
+        ?ORG,
+        (params())#{
+            id => Id,
+            at => ?T0 + 6,
+            expected_version => 4,
+            allowed_origins => [<<"https://after.example.com">>]
+        }
+    ),
+    ?assertEqual(5, maps:get(version, Untouched)),
+    ?assertEqual([<<"https://after.example.com">>], maps:get(allowed_origins, Untouched)).
 
 revoke_is_idempotent_then_create_rebuilds() ->
     reset(),

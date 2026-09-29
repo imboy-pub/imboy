@@ -609,6 +609,13 @@ respond(_Entry, Req, {error, Reason}) ->
     reply_error(Req, Reason).
 
 -spec reply_error(cowboy_req:req(), term()) -> cowboy_req:req().
+%% F-6（REVIEW-3）：CAS 失败对外契约——409 + `cas_mismatch` 标签，envelope
+%% payload 携带期望/当前 version（纯整数，无其他内部细节；调用方据此提示
+%% 「已被他人更新」并刷新重试）。classify({cas_mismatch, _}) → 409 既有映射
+%% 不变，本子句只是把 Detail 展开进响应体。
+reply_error(Req, {cas_mismatch, Detail}) when is_map(Detail) ->
+    Data = maps:with([expected_version, actual_version], Detail),
+    elib_response:error_with_status(Req, ?ERR_CONFLICT, <<"cas_mismatch">>, Data, ?ERR_CONFLICT);
 reply_error(Req, Reason) ->
     Status = status(Reason),
     elib_response:error_with_status(Req, Status, tag(Reason), Status).

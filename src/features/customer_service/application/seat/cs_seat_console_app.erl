@@ -13,7 +13,10 @@
 %%%   * 同一 (Org, Workspace) 至多一个 active 控制台：DB 部分唯一索引裁决，
 %%%     23505 归一 `{error, conflict}`（HTTP 409）；
 %%%   * PUT 只改 allowed_origins（version + 1）；public id / 作用域 / status
-%%%     不可经本用例变更（不在 Updates 投影，显式提交即 422）；
+%%%     不可经本用例变更（不在 Updates 投影，显式提交即 422）；可选
+%%%     expected_version（正整数）启用乐观并发控制（F-6）：不匹配 →
+%%%     `{error, {cas_mismatch, Detail}}`（HTTP 409 + 当前 version），缺省 =
+%%%     旧 LWW 行为；
 %%%   * 吊销幂等：重复 revoke 返回既有 revoked 行的公开投影（不 404）；
 %%%   * /seat/:id 嵌入面：public_seat_console_id **全局**反查，active 门内
 %%%     出 `frame_view` 投影（零 org/workspace/secret）；不存在 / revoked
@@ -125,10 +128,14 @@ insert_console(OrgId, Draft, Params) ->
 %% PUT 语义：唯一可编辑键 = allowed_origins（全量提交，domain 全套校验）。
 %% public_seat_console_id / status 不可经本用例变更：显式提交即 422
 %% （HTTP 面动作表白名单本就不会投影这两个键——本门是纵深防御的 app 层裁决）。
+%% F-6（REVIEW-3）：expected_version 可选——提供（正整数）即乐观并发控制，
+%% 不匹配 → `{error, {cas_mismatch, Detail}}`（HTTP 409，Detail 携带当前
+%% version）；缺省 = 旧 LWW 行为（既有调用方零破坏）。
 -spec update_console(integer(), map()) -> {ok, map()} | {error, term()}.
 update_console(OrgId, Params) when is_map(Params) ->
     Id = maps:get(id, Params, undefined),
     At = maps:get(at, Params, undefined),
+    ExpectedVersion = maps:get(expected_version, Params, undefined),
     ImmutableSubmitted =
         maps:is_key(public_seat_console_id, Params) orelse maps:is_key(status, Params),
     case
@@ -136,24 +143,33 @@ update_console(OrgId, Params) when is_map(Params) ->
             cs_app_support:tenant(OrgId, Params),
             cs_app_support:pos_int(Id),
             cs_app_support:pos_int(At),
-            ImmutableSubmitted
+            ImmutableSubmitted,
+            expected_version_gate(ExpectedVersion)
         }
     of
-        {{error, _} = Err, _, _, _} ->
+        {{error, _} = Err, _, _, _, _} ->
             Err;
-        {{ok, _WorkspaceId}, false, _, _} ->
+        {{ok, _WorkspaceId}, false, _, _, _} ->
             {error, {invalid_argument, update_console}};
-        {{ok, _WorkspaceId}, _, false, _} ->
+        {{ok, _WorkspaceId}, _, false, _, _} ->
             {error, {invalid_argument, update_console}};
-        {{ok, _WorkspaceId}, _, _, true} ->
+        {{ok, _WorkspaceId}, _, _, true, _} ->
             {error, {invalid_argument, seat_console_immutable_fields}};
-        {{ok, WorkspaceId}, true, true, false} ->
-            update_origins(OrgId, WorkspaceId, Id, At, Params)
+        {{ok, _WorkspaceId}, _, _, _, {error, _} = Err} ->
+            Err;
+        {{ok, WorkspaceId}, true, true, false, ok} ->
+            update_origins(OrgId, WorkspaceId, Id, At, ExpectedVersion, Params)
     end;
 update_console(_OrgId, _Params) ->
     {error, {invalid_argument, update_console}}.
 
-update_origins(OrgId, WorkspaceId, Id, At, Params) ->
+%% F-6 形状门：expected_version 缺省合法（LWW）；提供必须是正整数
+%% （version 自 1 起）。形状错误在触达 store 前拒绝（422 面）。
+expected_version_gate(undefined) -> ok;
+expected_version_gate(V) when is_integer(V), V >= 1 -> ok;
+expected_version_gate(_) -> {error, {invalid_argument, expected_version}}.
+
+update_origins(OrgId, WorkspaceId, Id, At, ExpectedVersion, Params) ->
     case normalize_origins(maps:get(allowed_origins, Params, undefined)) of
         {error, _} = Err ->
             Err;
@@ -161,7 +177,12 @@ update_origins(OrgId, WorkspaceId, Id, At, Params) ->
             {error, {invalid_argument, allowed_origins}};
         {ok, AllowedOrigins} ->
             update_console_in(
-                OrgId, WorkspaceId, Id, At, #{allowed_origins => AllowedOrigins}, Params
+                OrgId,
+                WorkspaceId,
+                Id,
+                At,
+                #{allowed_origins => AllowedOrigins, expected_version => ExpectedVersion},
+                Params
             )
     end.
 

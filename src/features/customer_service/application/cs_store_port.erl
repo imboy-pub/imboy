@@ -476,7 +476,10 @@
     ok | {error, not_found | term()}.
 %% @doc 更新控制台可编辑配置（仅 allowed_origins；同语句带 (Org, Workspace)
 %% 且仅 active 行可改）。public_seat_console_id / workspace / status 不在
-%% Updates 投影内（不可经本用例变更）。
+%% Updates 投影内（不可经本用例变更）。F-6（REVIEW-3）：Updates 可携带可选
+%% `expected_version`（正整数）启用乐观并发控制——version 不匹配 →
+%% `{error, {cas_mismatch, #{expected_version, actual_version}}}`（HTTP 409，
+%% 响应携带当前 version）；缺省 = 旧 LWW 行为（向后兼容）。
 -callback update_seat_console(
     OrgId :: integer(),
     WorkspaceId :: integer(),
@@ -484,7 +487,8 @@
     At :: integer(),
     Updates :: map()
 ) ->
-    {ok, map()} | {error, not_found | seat_console_revoked | term()}.
+    {ok, map()}
+    | {error, not_found | seat_console_revoked | {cas_mismatch, map()} | term()}.
 
 %% -- event（客服域 append-only 状态审计 + BE-S01b 坐席 SSE 流读取）---------
 

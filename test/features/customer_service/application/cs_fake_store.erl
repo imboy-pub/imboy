@@ -1502,7 +1502,10 @@ revoke_seat_console(OrgId, WorkspaceId, ConsoleId, At) ->
 
 %% 镜像 cs_pg_seat_console:update_seat_console/5 的决策语义：仅 active 行可改，
 %% 不可编辑键（public_seat_console_id / workspace_id / status）不在 Updates
-%% 投影内（Updates 只带 allowed_origins——投影由 store 侧收敛）。
+%% 投影内（Updates 只带 allowed_origins + 可选 expected_version——投影由
+%% store 侧收敛）。F-6：expected_version 提供时按 version CAS 裁决，不匹配
+%% → {error, {cas_mismatch, Detail}}（与 PG 实现同形状，携带当前 version）；
+%% 缺省 = LWW。
 update_seat_console(OrgId, WorkspaceId, ConsoleId, At, Updates) when is_map(Updates) ->
     case fetch_seat_console(OrgId, WorkspaceId, ConsoleId) of
         {error, _} = Err ->
@@ -1510,19 +1513,35 @@ update_seat_console(OrgId, WorkspaceId, ConsoleId, At, Updates) when is_map(Upda
         {ok, Row} ->
             case maps:get(status, Row) of
                 active ->
-                    Patch = maps:with([allowed_origins], Updates),
-                    NewRow = maps:merge(Row, Patch#{
-                        version => maps:get(version, Row) + 1,
-                        updated_at => At
-                    }),
-                    update(seat_consoles, fun(M) -> M#{ConsoleId => NewRow} end),
-                    {ok, NewRow};
+                    case cas_gate(maps:get(expected_version, Updates, undefined), Row) of
+                        ok ->
+                            Patch = maps:with([allowed_origins], Updates),
+                            NewRow = maps:merge(Row, Patch#{
+                                version => maps:get(version, Row) + 1,
+                                updated_at => At
+                            }),
+                            update(seat_consoles, fun(M) -> M#{ConsoleId => NewRow} end),
+                            {ok, NewRow};
+                        {error, _} = CasErr ->
+                            CasErr
+                    end;
                 _ ->
                     {error, seat_console_revoked}
             end
     end;
 update_seat_console(_OrgId, _WorkspaceId, _ConsoleId, _At, _Updates) ->
     {error, invalid_seat_console}.
+
+%% F-6（fake 侧镜像）：expected_version 缺省恒过（LWW）；提供时须与当前
+%% version 相等，否则 cas_mismatch（Detail 带 expected/actual version）。
+cas_gate(undefined, _Row) ->
+    ok;
+cas_gate(Expected, Row) ->
+    Actual = maps:get(version, Row),
+    case Expected =:= Actual of
+        true -> ok;
+        false -> {error, {cas_mismatch, #{expected_version => Expected, actual_version => Actual}}}
+    end.
 
 append_event(OrgId, Event) ->
     EventId = next_counter(),

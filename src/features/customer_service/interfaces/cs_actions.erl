@@ -1076,10 +1076,14 @@ table(platform) ->
             )},
         %% PUT 只改 allowed_origins（public id / 作用域 / status 不可经本面
         %% 变更——动作表白名单本就不投影这些键；app 层另有纵深防御门）。
+        %% F-6（REVIEW-3）：expected_version 可选（rating 的 expected_version
+        %% in-body 同形状；缺省 = 旧 LWW 行为，既有调用方零破坏）——提供即
+        %% 乐观并发控制，不匹配 → 409 cas_mismatch（响应携带当前 version）。
         {p_seat_console_update,
             platform_param_entry(
                 [
-                    {<<"PUT">>, update_seat_console, [{allowed_origins, list, required}],
+                    {<<"PUT">>, update_seat_console,
+                        [{allowed_origins, list, required}, {expected_version, int, optional}],
                         [{id, id}], #{clock_unit => second}}
                 ],
                 platform_auth(<<"customer_service:write">>),

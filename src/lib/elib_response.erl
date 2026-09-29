@@ -4,7 +4,7 @@
 %%%
 -export([success/4, success/1, success/2, success/3, success_rfc3339/2, success_rfc3339/3]).
 -export([error/4, error/1, error/2, error/3]).
--export([error_with_status/4]).
+-export([error_with_status/4, error_with_status/5]).
 -export([error_with_code/2, error_with_code/3]).
 -export([handle_logic_result/2, handle_logic_result_with/4]).
 -export([json_decode_field/2, json_decode_list_field/2]).
@@ -122,6 +122,15 @@ error(Req, Msg, Code, Options) ->
     cowboy_req:req().
 error_with_status(Req, HttpStatus, Msg, Code) ->
     reply_json_with_status(HttpStatus, Code, Msg, #{}, Req, #{}).
+
+%% @doc 同 error_with_status/4，另在 envelope payload 中携带附加数据。
+%% 供需要「错误响应带当前状态」的并发合同使用（如 F-6 CAS 失败回带当前
+%% version）；纯增量入口，既有 /4 调用方行为不变。
+%% @param Data envelope payload（map；jsone 可编码即合法）
+-spec error_with_status(cowboy_req:req(), pos_integer(), binary() | list(), map(), integer()) ->
+    cowboy_req:req().
+error_with_status(Req, HttpStatus, Msg, Data, Code) ->
+    reply_json_with_status(HttpStatus, Code, Msg, Data, Req, #{}).
 
 %% @doc 尝试解析指定字段的JSON字符串为结构化数据
 %% @param Row 数据行（map 或 proplists:proplist() 格式）
