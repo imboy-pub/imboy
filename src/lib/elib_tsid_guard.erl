@@ -137,11 +137,14 @@ init_with_lock(Config, Root, CombinedNode, Provider) ->
     %% provider 预检（provider_available 的唯一运行时调用点）：锁提供者
     %% 不可用（如生产无 flock 命令）或未知名（function_clause）一律在
     %% 启动期以明确原因拒绝，而非埋在 acquire 的 {error, no_flock} 里。
-    case catch elib_tsid_lock:provider_available(Provider) of
+    try elib_tsid_lock:provider_available(Provider) of
         true ->
             init_acquire_lock(Config, Root, CombinedNode, Provider);
-        _FalseOrBadarg ->
+        _False ->
             {stop, {lock_provider_unavailable, Provider}}
+    catch
+        %% 未知名 provider：function_clause 归一为 typed stop
+        _C:_R -> {stop, {lock_provider_unavailable, Provider}}
     end.
 
 init_acquire_lock(Config, Root, CombinedNode, Provider) ->
