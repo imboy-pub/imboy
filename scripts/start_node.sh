@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 # 用法: ./script/start_node.sh <nodename> [cookie] [port] [exclude_apps] [daemon]
-# 例如: ./script/start_node.sh node1 imboycookie 9801
-# 例如: ./script/start_node.sh node2 imboycookie 9802 "imadm,imcron"
-# 例如: ./script/start_node.sh node3 imboycookie 9803 "imadm" daemon
+# 例如: ./script/start_node.sh node1 <your-cookie> 9801
+# 例如: ./script/start_node.sh node2 <your-cookie> 9802 "imadm,imcron"
+# 例如: ./script/start_node.sh node3 imboy_local_dev_only 9803 "imadm" daemon
 
 NODE="${1:-}"
-COOKIE="${2:-imboycookie}"
+COOKIE="${2:-imboy_local_dev_only}"
 PORT="${3:-9800}"
 EXCLUDE_APPS="${4:-}"
 DAEMON="${5:-}"

@@ -29,7 +29,7 @@ PG_CONTAINER="${PG_CONTAINER:-imboy_pg18}"
 PG_USER="${IMBOY_PG_USERNAME:-imboy_user}"
 PG_DB="${IMBOY_PG_DATABASE:-imboy_v1}"
 NODE="${IMBOY_CTL_NODE:-imboy_dev@127.0.0.1}"       # vm.args 真值默认
-COOKIE="${IMBOY_CTL_COOKIE:-imboycookie}"
+COOKIE="${IMBOY_CTL_COOKIE:-imboy_local_dev_only}"
 WELCOME_TIMEOUT="${WELCOME_TIMEOUT:-30}"            # 欢迎消息 send_next 异步落库轮询上限秒
 DOCKER_BIN="${DOCKER_BIN:-$( command -v docker || echo /Applications/Docker.app/Contents/Resources/bin/docker )}"
 

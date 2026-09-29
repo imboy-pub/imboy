@@ -22,7 +22,7 @@ RPC="${ROOT}/scripts/smoke/commercial_rpc.escript"
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:9800}"
 export IMBOY_CTL_NODE="${IMBOY_CTL_NODE:-imboy_dev@127.0.0.1}"
-export IMBOY_CTL_COOKIE="${IMBOY_CTL_COOKIE:-imboycookie}"
+export IMBOY_CTL_COOKIE="${IMBOY_CTL_COOKIE:-imboy_local_dev_only}"
 
 export PGHOST="${PGHOST:-127.0.0.1}"
 export PGPORT="${PGPORT:-4323}"

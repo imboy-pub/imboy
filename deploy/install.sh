@@ -441,15 +441,17 @@ fi
 # ── 7) 超管创建（可选：--admin-phone/--admin-password 传入时）───────────────
 # 部署机只有 Docker 没有 Erlang，imboy_ctl（escript）在 backend 容器内执行：
 # 镜像 runtime 阶段已 COPY imboy_ctl，escript 用镜像自带的 ERTS（include_erts）。
-# 节点名/cookie 来自镜像 release 的 vm.args（config/vm.args：
-#   -name imboy_dev@127.0.0.1 / -setcookie imboycookie）。
+# 节点名/cookie 来自镜像 release 的 vm.args；cookie 严禁在仓库写死（W6-A02）：
+# 部署时必须经 env IMBOY_CTL_COOKIE 注入（与镜像 vm.args 的 -setcookie 一致），
+# 未设置即中止（fail-closed）。
 # 明文密码经 env 传入容器（不落宿主机命令行），容器内再作为 argv 交给 escript。
 admin_id=""
 if [ -n "$ADMIN_PHONE" ]; then
   say "创建超级管理员 (imboy_ctl adm create)"
+  : "${IMBOY_CTL_COOKIE:?未设置 IMBOY_CTL_COOKIE —— 需与后端镜像 vm.args 的 -setcookie 一致；生产部署必须使用随机值并经 secrets/env 注入，不得复用任何仓库样例值}"
   # shellcheck disable=SC2016  # 手机号/密码必须在容器内展开（不落宿主机命令行与进程表）
   ctl_out="$(IMBOY_CTL_NODE='imboy_dev@127.0.0.1' \
-      IMBOY_CTL_COOKIE='imboycookie' \
+      IMBOY_CTL_COOKIE="$IMBOY_CTL_COOKIE" \
       IMBOY_CTL_PHONE="$ADMIN_PHONE" \
       IMBOY_CTL_PASSWORD="$ADMIN_PASSWORD" \
       compose exec -T \

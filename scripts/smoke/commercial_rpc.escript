@@ -12,12 +12,12 @@
 %%%
 %%% 节点与 cookie 经环境变量注入（与 scripts/imboy_ctl 同口径）：
 %%%   IMBOY_CTL_NODE（默认 imboy_dev@127.0.0.1）
-%%%   IMBOY_CTL_COOKIE（默认 imboycookie）
+%%%   IMBOY_CTL_COOKIE（默认 imboy_local_dev_only）
 %%%-------------------------------------------------------------------
 
 main(Args) ->
     Node = list_to_atom(os:getenv("IMBOY_CTL_NODE", "imboy_dev@127.0.0.1")),
-    Cookie = list_to_atom(os:getenv("IMBOY_CTL_COOKIE", "imboycookie")),
+    Cookie = list_to_atom(os:getenv("IMBOY_CTL_COOKIE", "imboy_local_dev_only")),
     %% 目标节点用 IP 主机名，必须 longnames（与 scripts/imboy_ctl 同口径）
     Self = list_to_atom(
         "smoke_rpc_" ++ integer_to_list(erlang:unique_integer([positive])) ++ "@127.0.0.1"

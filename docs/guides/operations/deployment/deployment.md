@@ -196,10 +196,10 @@ _rel/imboy/bin/imboy start
 
 ```bash
 # 节点 1
-make start node=node1 port=9801 cookie=imboycookie
+make start node=node1 port=9801 cookie=<your-cookie>
 
 # 节点 2
-make start node=node2 port=9802 cookie=imboycookie
+make start node=node2 port=9802 cookie=<your-cookie>
 
 # 在 node2 shell 中加入集群
 net_adm:ping('imboy_node1@hostname').

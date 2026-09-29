@@ -133,7 +133,7 @@ adm_user_repo:reset_password(1, HashedPwd).
 ### 2.5 Erlang 节点 Cookie
 
 ```bash
-# 默认 cookie 为 imboycookie，生产必须修改
+# 仓库不得写死任何真实 cookie；样例一律用占位符，生产用随机值经 secrets 注入
 NEW_COOKIE=$(openssl rand -hex 16)
 echo "IMBOY_CTL_COOKIE=${NEW_COOKIE}" >> /etc/imboy/.env.deploy
 

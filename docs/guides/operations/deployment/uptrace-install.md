@@ -581,7 +581,7 @@ certbot renew --dry-run   # 模拟续期一次，验证整条链路
 ```bash
 cd /www/wwwroot/imboy-api            # 开发节点工作区
 echo 'IMBOY_UPTRACE_DSN=http://<DEV_TOKEN>@trace.imboy.pub/2' >> .env.local
-scripts/start_node.sh imboydev imboycookie 9700 "" daemon
+scripts/start_node.sh imboydev <your-cookie> 9700 "" daemon
 ```
 
 > `.env.local` 会被 `start_node.sh` 在启动前自动加载，且不入 git。
