@@ -78,34 +78,34 @@ a09_after_id_keyset_paging_is_stable_across_inserts() ->
         Ids = [Base + N * 1000 || N <- lists:seq(1, 5)],
         [insert_msg(Scope, <<"a09-", (integer_to_binary(I))/binary>>, I, due_at()) || I <- Ids],
         %% 第 1 页（键集：after_id 缺省 = 首页）
-        {ok, Page1} = list_messages(Org, Ws, Conv, #{limit => 2}),
+        {ok, Page1} = list_messages(Scope, #{limit => 2}),
         ?assertEqual([hd(Ids), lists:nth(2, Ids)], message_ids(Page1)),
         %% 第 2 页（游标 = 第 1 页末条）
         Cursor = lists:nth(2, Ids),
-        {ok, Page2Before} = list_messages(Org, Ws, Conv, #{after_id => Cursor, limit => 2}),
+        {ok, Page2Before} = list_messages(Scope, #{after_id => Cursor, limit => 2}),
         ?assertEqual([lists:nth(3, Ids), lists:nth(4, Ids)], message_ids(Page2Before)),
         %% 翻页之间插入 id **小于游标** 的行（键集语义：不得影响第 2 页）
         LateId = hd(Ids) + 500,
         insert_msg(Scope, <<"a09-late">>, LateId, due_at()),
-        {ok, Page2After} = list_messages(Org, Ws, Conv, #{after_id => Cursor, limit => 2}),
+        {ok, Page2After} = list_messages(Scope, #{after_id => Cursor, limit => 2}),
         ?assertEqual(message_ids(Page2Before), message_ids(Page2After)),
         ?assertEqual(Page2Before, Page2After),
         %% 新增行确实存在（正控制：证明上面的「不变」不是因为它没写进去）
-        {ok, All} = list_messages(Org, Ws, Conv, #{limit => 200}),
+        {ok, All} = list_messages(Scope, #{limit => 200}),
         ?assert(lists:member(LateId, message_ids(All))),
         %% 分页边界：limit 越界 / after_id 非法一律 fail-closed（不静默当首页）
-        ?assertMatch({error, {invalid_limit, 0}}, list_messages(Org, Ws, Conv, #{limit => 0})),
-        ?assertMatch({error, {invalid_limit, 999}}, list_messages(Org, Ws, Conv, #{limit => 999})),
+        ?assertMatch({error, {invalid_limit, 0}}, list_messages(Scope, #{limit => 0})),
+        ?assertMatch({error, {invalid_limit, 999}}, list_messages(Scope, #{limit => 999})),
         ?assertMatch(
-            {error, {invalid_after_id, -1}}, list_messages(Org, Ws, Conv, #{after_id => -1})
+            {error, {invalid_after_id, -1}}, list_messages(Scope, #{after_id => -1})
         ),
         ?assertMatch(
             {error, {invalid_after_id, <<"x">>}},
-            list_messages(Org, Ws, Conv, #{after_id => <<"x">>})
+            list_messages(Scope, #{after_id => <<"x">>})
         ),
         ?assertMatch(
             {error, {invalid_conversation_id, undefined}},
-            list_messages(Org, Ws, undefined, #{})
+            list_messages(Scope, #{conversation_id => undefined})
         )
     after
         ?FIX:cleanup(Scope)
@@ -123,7 +123,7 @@ a09_cursor_semantics_for_missing_and_deleted_ids() ->
         [insert_msg(Scope, <<"a09b-", (integer_to_binary(I))/binary>>, I, due_at()) || I <- Ids],
         %% ① 游标指向**从未存在**的 id（落在 I2 与 I3 之间）：返回 I3..I5
         Missing = lists:nth(2, Ids) + 500,
-        {ok, R1} = list_messages(Org, Ws, Conv, #{after_id => Missing}),
+        {ok, R1} = list_messages(Scope, #{after_id => Missing}),
         ?assertEqual([lists:nth(3, Ids), lists:nth(4, Ids), lists:nth(5, Ids)], message_ids(R1)),
         %% ② 物理删除 I3（bounded purge 真删），再用 I3 作为游标：
         %%    结果与「用 I2 作为游标」逐字相同 —— 游标是位置，不是引用。
@@ -131,11 +131,11 @@ a09_cursor_semantics_for_missing_and_deleted_ids() ->
         {ok, Purged} = eb_retention_app:purge_batch(Org, #{workspace_id => Ws, now => now_secs()}),
         ?assert(maps:get(deleted, Purged) >= 1),
         ?assertEqual(0, alive(Org, Ws, lists:nth(3, Ids))),
-        {ok, AfterDeleted} = list_messages(Org, Ws, Conv, #{after_id => lists:nth(3, Ids)}),
-        {ok, AfterPrev} = list_messages(Org, Ws, Conv, #{after_id => lists:nth(2, Ids)}),
+        {ok, AfterDeleted} = list_messages(Scope, #{after_id => lists:nth(3, Ids)}),
+        {ok, AfterPrev} = list_messages(Scope, #{after_id => lists:nth(2, Ids)}),
         ?assertEqual(message_ids(AfterPrev), message_ids(AfterDeleted)),
         %% ③ 游标大于所有 id ⇒ 空页（不是报错，也不是从头开始）
-        {ok, EmptyPage} = list_messages(Org, Ws, Conv, #{after_id => lists:last(Ids) + 100000}),
+        {ok, EmptyPage} = list_messages(Scope, #{after_id => lists:last(Ids) + 100000}),
         ?assertEqual([], EmptyPage)
     after
         ?FIX:cleanup(Scope)
@@ -195,7 +195,11 @@ a10_readonly_history_entry_touches_nothing() ->
         Before = message_row(Org, Ws, MsgId),
         DeliveriesBefore = deliveries(Org, Ws, MsgId),
         {ok, Listed} = eb_message_app:list_messages(Org, #{
-            workspace_id => Ws, conversation_id => Conv, after_id => MsgId - 1, limit => 10
+            workspace_id => Ws,
+            conversation_id => Conv,
+            after_id => MsgId - 1,
+            limit => 10,
+            key_ref => ?FIX:keyring_ref(Scope)
         }),
         ?assert(lists:member(MsgId, message_ids(Listed))),
         ?assertEqual(Before, message_row(Org, Ws, MsgId)),
@@ -861,7 +865,7 @@ insert_msg(Scope, ClientMsgId, MsgId, RetainUntil) ->
     Aad = #{
         organization_id => Org, workspace_id => Ws, conversation_id => Conv, message_id => MsgId
     },
-    {ok, Sealed} = eb_managed_crypto:seal(Aad, <<"eb06-rw-body">>, ?FIX:key_ref(1)),
+    {ok, Sealed} = eb_managed_crypto:seal(Aad, <<"eb06-rw-body">>, ?FIX:keyring_ref(Scope)),
     {ok, _Row} = eb_pg_store:append_message(Org, Ws, #{
         id => MsgId,
         conversation_id => Conv,
@@ -891,9 +895,24 @@ make_due(Scope, MsgId) ->
         [maps:get(org_id, Scope), maps:get(workspace_id, Scope), MsgId, due_at()]
     ).
 
-list_messages(Org, Ws, ConversationId, Extra) ->
+list_messages(Scope, Extra) ->
+    %% 显式回传 scope 级 keyring（与 insert_msg 同一把 key）：读面解密真正
+    %% 执行且与 IMBOY_EB_ENTERPRISE_KEYRING_FILE 是否导出无关——修掉
+    %% 「keyring 缺席=密文投影假绿 / keyring 在场=随机单 key 必挂」的二态
+    %% 依赖（单跑 3 FAIL 的治根）。
+    Org = maps:get(org_id, Scope),
+    Ws = maps:get(workspace_id, Scope),
+    Conv = maps:get(conversation_id, Scope),
     eb_message_app:list_messages(
-        Org, maps:merge(#{workspace_id => Ws, conversation_id => ConversationId}, Extra)
+        Org,
+        maps:merge(
+            #{
+                workspace_id => Ws,
+                conversation_id => Conv,
+                key_ref => ?FIX:keyring_ref(Scope)
+            },
+            Extra
+        )
     ).
 
 message_ids(Rows) ->

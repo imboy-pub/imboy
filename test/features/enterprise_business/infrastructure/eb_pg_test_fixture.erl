@@ -29,6 +29,7 @@
     resource_aad/4,
     key_ref/0,
     key_ref/1,
+    keyring_ref/1,
     store/0,
     table/1
 ]).
@@ -205,6 +206,7 @@ new_scope(Opts) ->
             false ->
                 ok
         end,
+    ScopeKey = crypto:strong_rand_bytes(32),
     #{
         owner_user_id => Owner,
         actor_user_id => Actor,
@@ -218,8 +220,22 @@ new_scope(Opts) ->
         assignment_id => Assignment,
         contact_id => Contact,
         conversation_id => Conversation,
-        policy_id => Policy
+        policy_id => Policy,
+        %% scope 级消息密钥（eb06 治根）：同 scope 写入统一用这一把、读取经
+        %% keyring_ref/1 显式回传同一把 —— 写读闭环不再依赖
+        %% IMBOY_EB_ENTERPRISE_KEYRING_FILE 是否导出（历史行为：keyring 缺席
+        %% 时读面走密文投影、断言退化为纯结构检查 = 假绿；keyring 在场时随机
+        %% 单 key 密文必 authentication_failed = 单跑 3 FAIL）。
+        scope_key => ScopeKey
     }.
+
+%% @doc scope 级 keyring 形态 key_ref：写入（seal）与读取（list 显式 key_ref）
+%% 都用它，同 scope 内任意多行互相可解；keys map 形态走 resolve_keyring，
+%% 与生产 keyring 的解析路径同构。
+-spec keyring_ref(map()) -> map().
+keyring_ref(Scope) ->
+    Key = maps:get(scope_key, Scope),
+    #{key => Key, key_version => 1, keys => #{1 => Key}}.
 
 insert_conversation(Conversation, Org, Workspace, Contact, Sales, WithConsent) ->
     case WithConsent of
