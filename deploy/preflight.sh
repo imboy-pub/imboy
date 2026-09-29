@@ -100,9 +100,27 @@ check_domains_distinct() {
     fi
 }
 
+# 校验 imboy.base_url（IMBOY_BASE_URL → {imboy, base_url}）恰为 Widget 网关 origin：
+# check_base_url_matches_cs_widget_domain <URL_VAR> <url> <DOMAIN_VAR> <domain>
+# 坐席附件 presign 下发 upload.url 的绝对基址即该值，必须恰为 https://<CS_WIDGET_DOMAIN>
+#（https、无路径、无尾斜杠）——配错源的表现是坐席附件链 fail-closed 整体不可用
+#（DEF-SC153-14，规格见 deploy/cs-seat-console-embed.md §5）。缺失值交由 check_var
+# 报告，此处不重复计（与 check_secret_strength 同口径）。
+check_base_url_matches_cs_widget_domain() {
+    local url_var="$1" url="$2" dom_var="$3" dom="$4"
+    if [[ -z "$url" || -z "$dom" ]]; then
+        return 0
+    fi
+    if [[ "$url" != "https://${dom}" ]]; then
+        err "${url_var}（${url}）必须恰为 https://<${dom_var}>（即 https://${dom}，https、无路径、无尾斜杠）——坐席附件 presign 以其为上传基址，配错源整条附件链 fail-closed 不可用；修复见 deploy/cs-seat-console-embed.md §5（DEF-SC153-14）"
+    else
+        ok "${url_var} 与 ${dom_var} 一致（${url}）"
+    fi
+}
+
 # --self-test：以负向 fixtures 自检上述规则函数（每个用例必须被抓到才算过）
 run_secret_rules_self_test() {
-    echo "▶ LT-06 secret 规则 + 三域唯一性规则自测（负向 fixtures 必须全部被抓到）"
+    echo "▶ LT-06 secret 规则 + 三域唯一性 + base_url↔Widget 域比对规则自测（负向 fixtures 必须全部被抓到）"
     local passed=0 failed=0
 
     ERRORS=0; check_secret_strength "T_KEY" "short" >/dev/null
@@ -130,6 +148,23 @@ run_secret_rules_self_test() {
     ERRORS=0
     check_domains_distinct "A" "api.fixt" "B" "cs.fixt" >/dev/null
     if (( ERRORS == 0 )); then ok "自测7 不同域名放行"; passed=$((passed+1)); else err "自测7 失败：不同域名被误拒"; failed=$((failed+1)); fi
+
+    # SC-EMBED §5：base_url ↔ Widget 域比对规则 fixtures（正例放行 + 三类漂移必抓）
+    ERRORS=0
+    check_base_url_matches_cs_widget_domain "T_URL" "https://cs.fixt" "T_DOM" "cs.fixt" >/dev/null
+    if (( ERRORS == 0 )); then ok "自测8 base_url 恰为 Widget 域 origin 放行"; passed=$((passed+1)); else err "自测8 失败：合法 base_url 被误拒"; failed=$((failed+1)); fi
+
+    ERRORS=0
+    check_base_url_matches_cs_widget_domain "T_URL" "http://cs.fixt" "T_DOM" "cs.fixt" >/dev/null
+    if (( ERRORS == 1 )); then ok "自测9 base_url http:// 被拒"; passed=$((passed+1)); else err "自测9 失败：http:// 未被拒"; failed=$((failed+1)); fi
+
+    ERRORS=0
+    check_base_url_matches_cs_widget_domain "T_URL" "https://cs.fixt/" "T_DOM" "cs.fixt" >/dev/null
+    if (( ERRORS == 1 )); then ok "自测10 base_url 尾斜杠被拒"; passed=$((passed+1)); else err "自测10 失败：尾斜杠未被拒"; failed=$((failed+1)); fi
+
+    ERRORS=0
+    check_base_url_matches_cs_widget_domain "T_URL" "https://api.fixt" "T_DOM" "cs.fixt" >/dev/null
+    if (( ERRORS == 1 )); then ok "自测11 base_url 域不符被拒"; passed=$((passed+1)); else err "自测11 失败：域不符未被拒"; failed=$((failed+1)); fi
 
     echo ""
     if (( failed > 0 )); then
@@ -248,6 +283,12 @@ check_domains_distinct "RTC_DOMAIN" "${RTC_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_W
 check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "API_DOMAIN" "${API_DOMAIN:-}"
 check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "ADMIN_DOMAIN" "${ADMIN_DOMAIN:-}"
 check_domains_distinct "TURN_DOMAIN" "${TURN_DOMAIN:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
+# imboy.base_url ↔ CS_WIDGET_DOMAIN 硬约束（deploy/cs-seat-console-embed.md §5 /
+# DEF-SC153-14）：坐席附件 presign 下发 upload.url 的绝对基址 = {imboy, base_url}
+#（.env 经 IMBOY_BASE_URL 注入），必须恰为 Widget 网关 origin —— 配错源的表现是
+# 坐席附件链 fail-closed 整体不可用，preflight 在此拦下，避免带病上线。
+check_var "IMBOY_BASE_URL"
+check_base_url_matches_cs_widget_domain "IMBOY_BASE_URL" "${IMBOY_BASE_URL:-}" "CS_WIDGET_DOMAIN" "${CS_WIDGET_DOMAIN:-}"
 if ! is_email "${CERTBOT_EMAIL:-}"; then err "CERTBOT_EMAIL 格式无效"; fi
 
 # ── 2a. LiveKit 域名 DNS 解析（可选开关，开启即 fail-closed）─────────────────

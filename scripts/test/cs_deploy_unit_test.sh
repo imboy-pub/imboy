@@ -12,6 +12,8 @@
 #   A06 all -l backend 恰一次且顺序 api→admin→cs；既有组件行为不回归
 #   A07 cs-widget 网关模板合同（Seat 嵌入；seat SSE 正则 ↔ imboy_router
 #       真实路由表逐段对照，REVIEW-2 P1 防再漂移闭环）
+#   A08 preflight base_url ↔ CS_WIDGET_DOMAIN 比对检查（SC-EMBED §5；正例/
+#       缺失口径/三类漂移负例 + 变异自证：阉割或弱化检查器后负例必不再报错）
 # =============================================================================
 set -uo pipefail
 
@@ -1161,6 +1163,98 @@ if [ -f "$CS_TEMPLATE" ]; then
   fi
 else
   bad "cs-widget 模板缺失" "$CS_TEMPLATE"
+fi
+
+# =============================================================================
+echo "== A08. preflight base_url ↔ CS_WIDGET_DOMAIN 比对检查（SC-EMBED §5） =="
+# deploy/preflight.sh 不可整体 source（主流程 source 时即执行并 exit）；沿用 A00
+# 「提取纯函数 + 测试桩」方式：awk 抠出 check_base_url_matches_cs_widget_domain
+# 函数定义，配 ok/err 桩独立执行。断言面：正例过检、缺失口径（交 check_var 不
+# 重复计）、三类漂移负例必抓、错误文案含 §5 修复指引；变异自证（删 err 分支 /
+# 弱化为仅 scheme 比对后负例不再报错）证明本组断言真实依赖检查逻辑 —— 检查被
+# 删除或弱化时本测试组必然 FAIL，非恒真。
+PREFLIGHT_SH="$PWD/deploy/preflight.sh"
+
+pf_fn() { # $1=file $2=函数名 → 打印函数定义（函数头行到首个顶格 }）；同 A07 tpl_block_at 手法
+  awk -v pat="$2() {" 'index($0, pat) { inf=1 } inf { print; if ($0 ~ /^\}[[:space:]]*$/) exit }' "$1"
+}
+
+PF_STUB="$TMP_ROOT/pf_check_stub.$$"
+cat >"$PF_STUB" <<'PFSTUB'
+ERRORS=0
+ok() { :; }
+warn() { :; }
+info() { :; }
+err() { ERRORS=$((ERRORS+1)); printf 'PFERR: %s\n' "$1"; }
+PFSTUB
+
+pf_base_url_errors() { # $1=preflight文件 $2=base_url $3=domain → PFERR 行数
+  (
+    # shellcheck disable=SC1090
+    source "$PF_STUB"
+    eval "$(pf_fn "$1" check_base_url_matches_cs_widget_domain)"
+    check_base_url_matches_cs_widget_domain "IMBOY_BASE_URL" "$2" "CS_WIDGET_DOMAIN" "$3"
+  ) | grep -c 'PFERR' || true
+}
+
+if [ -f "$PREFLIGHT_SH" ] && [ -n "$(pf_fn "$PREFLIGHT_SH" check_base_url_matches_cs_widget_domain)" ]; then
+  # 正例：恰为 https://<CS_WIDGET_DOMAIN>（合法形态）必须过检
+  assert_eq "preflight 正例: https://<CS_WIDGET_DOMAIN> 过检" "0" \
+    "$(pf_base_url_errors "$PREFLIGHT_SH" "https://cs.imboy.test" "cs.imboy.test")"
+  # 缺失口径：任一值缺失不在此计错（交由 check_var 报告，preflight 现有口径）
+  assert_eq "preflight 缺失口径: base_url 空值不重复计错" "0" \
+    "$(pf_base_url_errors "$PREFLIGHT_SH" "" "cs.imboy.test")"
+  assert_eq "preflight 缺失口径: 域空值不重复计错" "0" \
+    "$(pf_base_url_errors "$PREFLIGHT_SH" "https://cs.imboy.test" "")"
+  # 负例：http:// / 尾斜杠 / 带路径 / 域不符，检查器必须报错
+  for pf_drift in "http://cs.imboy.test" "https://cs.imboy.test/" "https://cs.imboy.test/api" "https://api.imboy.test"; do
+    n="$(pf_base_url_errors "$PREFLIGHT_SH" "$pf_drift" "cs.imboy.test")"
+    if [ "${n:-0}" -ge 1 ]; then
+      ok "preflight 负例被捕获: base_url=$pf_drift"
+    else
+      bad "preflight 负例未被捕获: base_url=$pf_drift" "检查器误放行"
+    fi
+  done
+  # 可读错误与修复指引：负例文案必须指向部署文档 §5
+  PF_ERR_OUT="$(
+    # shellcheck disable=SC1090
+    source "$PF_STUB"
+    eval "$(pf_fn "$PREFLIGHT_SH" check_base_url_matches_cs_widget_domain)"
+    check_base_url_matches_cs_widget_domain "IMBOY_BASE_URL" "https://api.imboy.test" "CS_WIDGET_DOMAIN" "cs.imboy.test"
+  )"
+  case "$PF_ERR_OUT" in
+    *'deploy/cs-seat-console-embed.md §5'*) ok "错误文案含修复指引（deploy/cs-seat-console-embed.md §5）" ;;
+    *) bad "错误文案缺 §5 修复指引" "$(printf '%s' "$PF_ERR_OUT" | head -1)" ;;
+  esac
+
+  # 变异自证 1（err 分支变 no-op）：同一负例必须不再报错 —— 证明负例断言真实
+  # 依赖检查器的 err 调用（检查被删除时本测试组必然 FAIL）。手术必须保留合法
+  # 语法（把 err 调用替换为冒号 no-op 而非删行——删行会留下空 then 分支，bash
+  # 3.2 eval 直接语法错 → 函数未定义 → 「不再报错」空洞成立，证明变装饰）；
+  # 变异体必须仍可定义才计证明（手术破坏语法时本组 FAIL，不假绿）。
+  PF_MUTANT1="$TMP_ROOT/preflight-mutant1.$$"
+  sed 's/^\( *\)err "/\1: "mutated-err-removed/' "$PREFLIGHT_SH" >"$PF_MUTANT1"
+  PF_M1_DEFINED="$(
+    # shellcheck disable=SC1090
+    source "$PF_STUB"
+    eval "$(pf_fn "$PF_MUTANT1" check_base_url_matches_cs_widget_domain)" 2>/dev/null
+    type check_base_url_matches_cs_widget_domain >/dev/null 2>&1 && echo yes || echo no
+  )"
+  if [ "$PF_M1_DEFINED" = "yes" ]; then
+    assert_eq "变异自证1: err 分支变 no-op 后负例不再报错（断言非恒真）" "0" \
+      "$(pf_base_url_errors "$PF_MUTANT1" "https://api.imboy.test" "cs.imboy.test")"
+  else
+    bad "变异自证1 的变异体无法定义（手术破坏语法，证明失效）" "function undefined"
+  fi
+  # 变异自证 2（严格相等弱化为仅 scheme 检查）：域不符形态必须放行 —— 证明
+  # 负例断言真实依赖「恰为 https://<域>」的严格比对（弱化时本测试组必然 FAIL）。
+  PF_MUTANT2="$TMP_ROOT/preflight-mutant2.$$"
+  sed 's|"$url" != "https://${dom}"|"$url" != https://*|' "$PREFLIGHT_SH" >"$PF_MUTANT2"
+  assert_eq "变异自证2: 比对弱化为仅 scheme 后域不符不再报错" "0" \
+    "$(pf_base_url_errors "$PF_MUTANT2" "https://api.imboy.test" "cs.imboy.test")"
+  rm -f "$PF_MUTANT1" "$PF_MUTANT2"
+else
+  bad "preflight.sh 缺 check_base_url_matches_cs_widget_domain" "$PREFLIGHT_SH"
 fi
 
 # =============================================================================
