@@ -50,6 +50,7 @@ cases({ok, _Conn}) ->
         {timeout, ?TIMEOUT_S, fun a02_identity_list_returns_tsid_strings_real/0},
         {timeout, ?TIMEOUT_S, fun c5_identity_list_pagination_real/0},
         {timeout, ?TIMEOUT_S, fun a03_401_without_credential_real/0},
+        {timeout, ?TIMEOUT_S, fun a03_asset_surface_401_without_credential_real/0},
         {timeout, ?TIMEOUT_S, fun a03_403_cross_org_real/0},
         {timeout, ?TIMEOUT_S, fun a03_403_suspended_member_real/0},
         {timeout, ?TIMEOUT_S, fun a03_403_function_mismatch_real/0},
@@ -256,6 +257,55 @@ a03_401_without_credential_real() ->
                 Port,
                 <<"GET">>,
                 qs(?S:path(tenant, contacts, #{org_id => Org}), [{<<"workspace_id">>, Ws}])
+            ),
+            ?assertEqual(401, maps:get(status, Resp)),
+            ?assertEqual(<<"credential_missing">>, ?S:msg(Resp))
+        end)
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+%% R2-1（round-1 预留三例落位）：资产三面（presign / confirm_asset /
+%% asset_content）与 contacts 同一授权门——`current_uid = 0`（未登录）⇒
+%% 401 credential_missing，且**不触库**（授权门在 body 读取与 facade 之前，
+%% 参数形状无关：空 JSON 体与占位 asset id 均可）。
+a03_asset_surface_401_without_credential_real() ->
+    Scope = ?FIX:new_scope(),
+    try
+        Org = maps:get(org_id, Scope),
+        Ws = maps:get(workspace_id, Scope),
+        %% presign：POST 无凭证 —— 401
+        ?S:with_listener(tenant, presign, session(real, 0), fun(Port) ->
+            Resp = ?S:request(
+                Port,
+                <<"POST">>,
+                qs(?S:path(tenant, presign, #{org_id => Org}), [{<<"workspace_id">>, Ws}]),
+                <<"{}">>,
+                #{<<"content-type">> => <<"application/json">>}
+            ),
+            ?assertEqual(401, maps:get(status, Resp)),
+            ?assertEqual(<<"credential_missing">>, ?S:msg(Resp))
+        end),
+        %% confirm：POST 无凭证 —— 401
+        ?S:with_listener(tenant, confirm_asset, session(real, 0), fun(Port) ->
+            Resp = ?S:request(
+                Port,
+                <<"POST">>,
+                qs(?S:path(tenant, confirm_asset, #{org_id => Org}), [{<<"workspace_id">>, Ws}]),
+                <<"{}">>,
+                #{<<"content-type">> => <<"application/json">>}
+            ),
+            ?assertEqual(401, maps:get(status, Resp)),
+            ?assertEqual(<<"credential_missing">>, ?S:msg(Resp))
+        end),
+        %% content：GET 无凭证 —— 401（asset id 为占位值，授权门在前）
+        ?S:with_listener(tenant, asset_content, session(real, 0), fun(Port) ->
+            Resp = ?S:request(
+                Port,
+                <<"GET">>,
+                qs(?S:path(tenant, asset_content, #{org_id => Org, id => 1}), [
+                    {<<"workspace_id">>, Ws}
+                ])
             ),
             ?assertEqual(401, maps:get(status, Resp)),
             ?assertEqual(<<"credential_missing">>, ?S:msg(Resp))
