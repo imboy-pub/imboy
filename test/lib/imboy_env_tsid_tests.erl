@@ -163,7 +163,7 @@ config_chain_defaults_test() ->
     Cfg = imboy_sup:tsid_guard_config(),
     ?assertEqual(129, maps:get(combined_node, Cfg)),
     ?assertEqual(existing, maps:get(store_bootstrap, Cfg)),
-    ?assertEqual(5, maps:get(max_logical_lead_ms, Cfg)),
+    ?assertEqual(512, maps:get(max_logical_lead_ms, Cfg)),
     ?assertEqual(1000, maps:get(fence_window_ms, Cfg)).
 
 %% 越界 node_id（dc_bits=3 上限 127）→ combine_node error →

@@ -166,9 +166,13 @@ init(Opts) ->
     persistent_term:put(?PT_NODE_ID, CombinedNode),
     persistent_term:put(?PT_DC_BITS, DcBits),
 
-    %% TSID-04：有界逻辑时间参数（默认为计划 §3.3 候选起点，由 TSID-10
-    %% 基准定标确认）。§5.6 不变量：max_batch_chunk <= (lead + 1) * 2048。
-    Lead = maps:get(max_logical_lead_ms, Opts, 5),
+    %% TSID-04：有界逻辑时间参数。缺省 lead=512 由 TSID-10 定标：实测
+    %% 峰值 9.9M/s（基线 CPU 速率）下 1M-id 突发需借支 ~388ms 逻辑时间，
+    %% 512ms 留 32% 余量；且 lead 上限先于 durable fence（window=1000ms）
+    %% 绑定，热路径零磁盘 I/O；崩溃烧槽由 fence window 承担，与 lead
+    %% 无关（guard 恢复从持久化 safe_before 续起）。
+    %% §5.6 不变量：max_batch_chunk <= (lead + 1) * 2048。
+    Lead = maps:get(max_logical_lead_ms, Opts, 512),
     CapWait = maps:get(capacity_wait_timeout_ms, Opts, 100),
     MaxChunk = maps:get(max_batch_chunk, Opts, (Lead + 1) * 2048),
     case
@@ -444,8 +448,8 @@ generate() ->
 generate(Name) when is_atom(Name) ->
     Handle = require_runtime(Name),
     #{combined_node := NodeId} = Handle,
-    Deadline = monotonic_ms() + maps:get(capacity_wait_timeout_ms, Handle),
-    {First, _Last} = reserve(Handle, 1, Deadline),
+    Budget = {timeout, maps:get(capacity_wait_timeout_ms, Handle)},
+    {First, _Last} = reserve(Handle, 1, Budget),
     %% count=1：First == Last，直接展开单值
     slot_to_id(First, NodeId).
 
@@ -467,10 +471,10 @@ generate_n(Name, N) when is_atom(Name), N > 0 ->
     Handle = require_runtime(Name),
     #{combined_node := NodeId} = Handle,
     MaxChunk = maps:get(max_batch_chunk, Handle),
-    Deadline = monotonic_ms() + maps:get(capacity_wait_timeout_ms, Handle),
+    Budget = {timeout, maps:get(capacity_wait_timeout_ms, Handle)},
     lists:append([
         materialize_range(First, Last, NodeId)
-     || {First, Last} <- [reserve(Handle, C, Deadline) || C <- chunk_sizes(N, MaxChunk)]
+     || {First, Last} <- [reserve(Handle, C, Budget) || C <- chunk_sizes(N, MaxChunk)]
     ]).
 
 %% @private label 校验 + runtime 读取（一次通过，chunk 循环前完成）
@@ -505,9 +509,12 @@ chunk_sizes(N, MaxChunk) ->
 %% @private 单次 reservation：读时钟 → 纯 candidate → lead 检查 → CAS。
 %% CAS 冲突后从墙钟重读（F-05：绝不复用陈旧墙钟自旋）；冲突重试受
 %% monotonic deadline 预算约束，无饥饿自旋。
--spec reserve(map(), pos_integer(), integer()) ->
+%% Budget 为 {timeout, Ms}（未物化）或 {deadline, AbsMs}（已物化）：
+%% 热路径零单调钟开销，首次需要等待/冲突重试时才惰性物化，物化后
+%% 递归全程携带同一绝对 deadline（预算守恒，不因重试重置）。
+-spec reserve(map(), pos_integer(), {timeout, pos_integer()} | {deadline, integer()}) ->
     {FirstSlot :: non_neg_integer(), LastSlot :: non_neg_integer()}.
-reserve(#{cursor := Cursor} = Handle, Count, Deadline) ->
+reserve(#{cursor := Cursor} = Handle, Count, Budget) ->
     Now = wall_clock_ms() - ?EPOCH_MS,
     case Now < 0 of
         true -> error({elib_tsid_clock_before_epoch, #{now_rel => Now}});
@@ -526,21 +533,24 @@ reserve(#{cursor := Cursor} = Handle, Count, Deadline) ->
     Old = atomics:get(Cursor, 1),
     case reserve_candidate(Old, Now, Count) of
         {ok, First, Last} ->
-            commit_reserve(Handle, Old, First, Last, Deadline, Count);
+            %% TSID-10：lead 判定复用同一读数 Now——commit_reserve 里重新
+            %% 取钟会把 VM 毫秒 tick 的读数滞后（同一毫秒读出两次相同值）
+            %% 算成领先，触发无谓的 wait_step/sleep（基准实测 p99 +2.3ms）
+            commit_reserve(Handle, Old, First, Last, Now, Budget, Count);
         {error, Reason} ->
             error(Reason)
     end.
 
 %% @private lead 检查 + CAS 提交（单值与 chunk 共用）
-commit_reserve(Handle, Old, First, Last, Deadline, Count) ->
+commit_reserve(Handle, Old, First, Last, Now, Budget, Count) ->
     #{max_logical_lead_ms := MaxLead} = Handle,
-    Now = wall_clock_ms() - ?EPOCH_MS,
     Lead = (Last bsr ?SEQUENCE_BITS) - Now,
     case Lead > MaxLead of
         true ->
+            Deadline = deadline_from(Budget),
             case wait_step(Deadline, Lead - MaxLead) of
                 ok ->
-                    reserve(Handle, Count, Deadline);
+                    reserve(Handle, Count, {deadline, Deadline});
                 timeout ->
                     error(
                         {elib_tsid_capacity_exhausted, #{
@@ -554,22 +564,24 @@ commit_reserve(Handle, Old, First, Last, Deadline, Count) ->
             %% durable fence 检查（TSID-06，仅 guarded runtime）：
             %% ts 必须低于已持久化 safe_before；逼近则同步请求 guard
             %% 续租（合并去重），绝不越过 durable horizon
-            case fence_gate(Handle, Last, Deadline) of
+            case fence_gate(Handle, Last, Budget) of
                 ok ->
-                    commit_cas(Handle, Old, First, Last, Deadline, Count);
+                    commit_cas(Handle, Old, First, Last, Budget, Count);
                 retry ->
-                    reserve(Handle, Count, Deadline)
+                    reserve(Handle, Count, Budget)
             end
     end.
 
-commit_cas(Handle, Old, First, Last, Deadline, Count) ->
+commit_cas(Handle, Old, First, Last, Budget, Count) ->
     #{cursor := Cursor, stats := Stats} = Handle,
     case atomics:compare_exchange(Cursor, 1, Old, Last) of
         ok ->
             _ = atomics:add(Stats, 1, 1),
             {First, Last};
         _Other ->
-            %% 冲突：deadline 预算内用刷新后的墙钟重试（F-05）
+            %% 冲突：deadline 预算内用刷新后的墙钟重试（F-05）；
+            %% 预算在此物化一次并随重试守恒
+            Deadline = deadline_from(Budget),
             case monotonic_ms() >= Deadline of
                 true ->
                     error(
@@ -578,14 +590,20 @@ commit_cas(Handle, Old, First, Last, Deadline, Count) ->
                         }}
                     );
                 false ->
-                    reserve(Handle, Count, Deadline)
+                    reserve(Handle, Count, {deadline, Deadline})
             end
     end.
 
+%% @private 等待预算物化：{timeout, Ms} 首次转绝对 deadline；{deadline, D} 直通
+-spec deadline_from({timeout, pos_integer()} | {deadline, integer()}) -> integer().
+deadline_from({deadline, D}) -> D;
+deadline_from({timeout, T}) -> monotonic_ms() + T.
+
 %% @private fence 门（standalone 测试 runtime 无 guard_ref 直通）
 %% 返回 ok=可提交 | retry=已续租需重走 reserve；fenced/续租失败直接抛
--spec fence_gate(map(), non_neg_integer(), integer()) -> ok | retry.
-fence_gate(Handle, Last, Deadline) ->
+-spec fence_gate(map(), non_neg_integer(), {timeout, pos_integer()} | {deadline, integer()}) ->
+    ok | retry.
+fence_gate(Handle, Last, Budget) ->
     case maps:find(guard_ref, Handle) of
         error ->
             ok;
@@ -595,7 +613,7 @@ fence_gate(Handle, Last, Deadline) ->
                     LastTs = Last bsr ?SEQUENCE_BITS,
                     case LastTs >= atomics:get(GRef, 2) of
                         true ->
-                            renew_fence(Handle, LastTs, Deadline);
+                            renew_fence(Handle, LastTs, Budget);
                         false ->
                             ok
                     end;
@@ -605,8 +623,11 @@ fence_gate(Handle, Last, Deadline) ->
     end.
 
 %% @private 请求 guard 续租并重验；预算耗尽即 typed 失败
--spec renew_fence(map(), non_neg_integer(), integer()) -> retry.
-renew_fence(#{guard_pid := GPid} = _Handle, Horizon, Deadline) ->
+-spec renew_fence(
+    map(), non_neg_integer(), {timeout, pos_integer()} | {deadline, integer()}
+) -> retry.
+renew_fence(#{guard_pid := GPid} = _Handle, Horizon, Budget) ->
+    Deadline = deadline_from(Budget),
     Remaining = Deadline - monotonic_ms(),
     case Remaining =< 0 of
         true ->

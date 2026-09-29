@@ -63,11 +63,11 @@ ERL_FLAGS="-pa deps/epgsql/ebin" escript tsid_scanner.escript \
 
 | floor 超前墙钟 | 行为 | 出处 |
 |---|---|---|
-| ≤ `max_logical_lead_ms` (5ms) | 首批 ID ts 全 ≥ floor | bootstrap-floor.json 场景 A |
-| > 5ms 且 ≤ `max_initial_lead_ms` (60s) | guard 可启动，但 generate 在墙钟追上 floor 前 typed `capacity_exhausted(clock_wait)`（deadline 内等待） | bootstrap 脚本首轮实测（30s floor） |
+| ≤ `max_logical_lead_ms` (512ms，缺省定标值) | 首批 ID ts 全 ≥ floor | bootstrap-floor.json 场景 A |
+| > 512ms 且 ≤ `max_initial_lead_ms` (60s) | guard 可启动，但 generate 在墙钟追上 floor 前 typed `capacity_exhausted(clock_wait)`（deadline 内等待） | bootstrap 脚本首轮实测（30s floor） |
 | > `max_initial_lead_ms` (60s) | guard **拒绝启动** `clock_behind`（= BLOCKED_CUTOVER 的运行时防线） | bootstrap-floor.json 场景 B |
 
-> 结论：**cutover floor 只允许超前墙钟 ≤ 60s**（boot 容忍）；> 5ms 时首批 ID 会等墙钟
+> 结论：**cutover floor 只允许超前墙钟 ≤ 60s**（boot 容忍）；> max_logical_lead_ms（缺省 512ms）时首批 ID 会等墙钟
 > 追平（deadline 内）。若历史高水位超前当前时钟超过 60s（如导量携带未来 ts），
 > 必须 **BLOCKED_CUTOVER**：先人工修正数据或调整容忍参数并评审，不得强行启动。
 

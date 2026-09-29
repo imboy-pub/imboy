@@ -202,7 +202,7 @@
         % 静默 fresh；fresh 仅首次部署/离线 cutover 显式使用
         {tsid_store_bootstrap, existing},
         % 逻辑时间领先上限（ms）：ID 时间戳最多领先墙钟多少（§5.6 有界逻辑时间）
-        {tsid_max_logical_lead_ms, 5},
+        {tsid_max_logical_lead_ms, 512},
         % 容量等待预算（ms）：clock-wait / CAS 冲突的 deadline
         {tsid_capacity_wait_timeout_ms, 100},
         % durable fence 窗口（ms）：persist 的 safe_before 超前墙钟多少

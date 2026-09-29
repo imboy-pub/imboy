@@ -63,7 +63,7 @@ backend:
     dcBits: 3
     storeBootstrap: existing
     # 逻辑时间领先上限（ms）：ID 时间戳最多领先墙钟多少（§5.6 有界逻辑时间）
-    maxLogicalLeadMs: 5
+    maxLogicalLeadMs: 512
     capacityWaitTimeoutMs: 100
     # durable fence 窗口与续租余量（ms）
     fenceWindowMs: 1000

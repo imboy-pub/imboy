@@ -774,9 +774,9 @@ register_before_init_rejected_test() ->
 %% TSID-04：batch reservation 与有界逻辑时间（T-101..T-109）
 %%
 %% slot 模型：一次 CAS 预留连续区间本地展开；lead 有界；等待用
-%% monotonic deadline；超大 N 分有界 chunk。默认参数为计划 §3.3 候选
-%% 起点值（lead=5 / capacity_wait=100 / chunk=(5+1)*2048），由 TSID-10
-%% 基准定标后确认。
+%% monotonic deadline；超大 N 分有界 chunk。机制类测试固定小参数
+%% （lead=5 / chunk=(5+1)*2048）以快速触发边界；生产缺省（TSID-10
+%% 定标 lead=512）由 imboy_env_tsid_tests 的默认链测试覆盖。
 %% ===================================================================
 
 -define(LEAD_MS, 5).
@@ -869,7 +869,8 @@ rollback_three_states_test() ->
                 dc_id => 1,
                 node_id => 1,
                 dc_bits => 3,
-                capacity_wait_timeout_ms => 10
+                capacity_wait_timeout_ms => 10,
+                max_logical_lead_ms => ?LEAD_MS
             }),
             Base = ?EPOCH_MS + 300000,
             %% 固定时钟下生成 1 个 ID：cursor 停在 Base 毫秒
@@ -899,7 +900,8 @@ sustained_overload_lead_bounded_test() ->
         dc_id => 1,
         node_id => 1,
         dc_bits => 3,
-        capacity_wait_timeout_ms => 10
+        capacity_wait_timeout_ms => 10,
+        max_logical_lead_ms => ?LEAD_MS
     }),
     Clock = ?EPOCH_MS + 400000,
     with_fixed_clock(Clock, fun() ->
@@ -930,7 +932,14 @@ overload_loop(Acc, Err) ->
 
 %% T-108 超大 N：完整 list 严格升序；CAS 次数 = chunk 数而非 N
 oversized_batch_chunks_test() ->
-    ?SETUP(),
+    %% 显式小 lead：chunk 上限 (5+1)*2048 使 N=30000 分 3 块
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{
+        dc_id => 1,
+        node_id => 1,
+        dc_bits => 3,
+        max_logical_lead_ms => ?LEAD_MS
+    }),
     N = 30000,
     ExpectedChunks = ceil(N / ?MAX_CHUNK),
     Before = elib_tsid:reservation_count(),

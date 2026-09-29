@@ -35,7 +35,7 @@ data:
   IMBOY_TSID_NODE_ID: {{ .Values.backend.tsid.nodeId | toString | quote }}
   IMBOY_TSID_DC_BITS: {{ .Values.backend.tsid.dcBits | toString | quote }}
   IMBOY_TSID_STORE_BOOTSTRAP: {{ .Values.backend.tsid.storeBootstrap | default "existing" | quote }}
-  IMBOY_TSID_MAX_LOGICAL_LEAD_MS: {{ .Values.backend.tsid.maxLogicalLeadMs | default 5 | toString | quote }}
+  IMBOY_TSID_MAX_LOGICAL_LEAD_MS: {{ .Values.backend.tsid.maxLogicalLeadMs | default 512 | toString | quote }}
   IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS: {{ .Values.backend.tsid.capacityWaitTimeoutMs | default 100 | toString | quote }}
   IMBOY_TSID_FENCE_WINDOW_MS: {{ .Values.backend.tsid.fenceWindowMs | default 1000 | toString | quote }}
   IMBOY_TSID_FENCE_RENEW_MARGIN_MS: {{ .Values.backend.tsid.fenceRenewMarginMs | default 100 | toString | quote }}

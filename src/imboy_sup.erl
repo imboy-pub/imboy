@@ -45,7 +45,7 @@ tsid_guard_config() ->
         names => imboy_app:tsid_generator_names(),
         store_bootstrap => application:get_env(imboy, tsid_store_bootstrap, existing),
         lock_provider => flock,
-        max_logical_lead_ms => application:get_env(imboy, tsid_max_logical_lead_ms, 5),
+        max_logical_lead_ms => application:get_env(imboy, tsid_max_logical_lead_ms, 512),
         capacity_wait_timeout_ms =>
             application:get_env(imboy, tsid_capacity_wait_timeout_ms, 100),
         fence_window_ms => application:get_env(imboy, tsid_fence_window_ms, 1000),

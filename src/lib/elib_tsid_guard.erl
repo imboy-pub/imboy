@@ -114,7 +114,8 @@ init(Config) ->
     Provider = maps:get(lock_provider, Config, flock),
     Window = maps:get(fence_window_ms, Config, 1000),
     Margin = maps:get(fence_renew_margin_ms, Config, 100),
-    Lead = maps:get(max_logical_lead_ms, Config, 5),
+    %% TSID-10 定标：缺省与 elib_tsid init 一致（512）
+    Lead = maps:get(max_logical_lead_ms, Config, 512),
     %% §5.6 不变量校验（fail-closed）
     Valid =
         is_integer(Window) andalso Window > Lead andalso
@@ -217,9 +218,15 @@ publish_and_ready(Config, Lock, Store1, StartTs, SafeBefore) ->
         combined_node => maps:get(combined_node, Config),
         dc_bits => maps:get(dc_bits, Config),
         names => maps:get(names, Config, []),
-        max_logical_lead_ms => maps:get(max_logical_lead_ms, Config, 5),
+        max_logical_lead_ms => maps:get(max_logical_lead_ms, Config, 512),
         capacity_wait_timeout_ms => maps:get(capacity_wait_timeout_ms, Config, 100),
-        max_batch_chunk => maps:get(max_batch_chunk, Config, 12288),
+        %% max_batch_chunk 仅显式配置时透传；缺省由 elib_tsid init 按
+        %% §5.6 不变量派生 (lead+1)*2048，避免硬编码与 lead 脱钩
+        max_batch_chunk =>
+            case maps:find(max_batch_chunk, Config) of
+                {ok, V} -> V;
+                error -> (maps:get(max_logical_lead_ms, Config, 512) + 1) * 2048
+            end,
         %% cursor 初始化为 (start_ts << 11) - 1：首个可分配 slot 恰在
         %% start_ts 毫秒 seq=0，绝不低于 durable floor
         cursor_floor_ts => StartTs,
