@@ -173,7 +173,16 @@ token_credential(Req, Optional) ->
         Raw when is_binary(Raw), Raw =/= <<>> ->
             {ok, #{secret => Raw}};
         _ when Optional ->
-            {ok, #{}};
+            %% CSB-02R：bootstrap 场景无 visit 头——注入服务端持有的
+            %% subject_key（env `cs_widget_subject_key`，部署合同材料）。
+            %% 缺该 env 时返回空 map：bootstrap_args 的 shape 校验仍会
+            %% fail-closed（422），部署配置缺失不被静默放过。
+            case config_ds:env(cs_widget_subject_key, <<>>) of
+                SK when is_binary(SK), SK =/= <<>> ->
+                    {ok, #{subject_key => SK}};
+                _ ->
+                    {ok, #{}}
+            end;
         _ ->
             {error, credential_missing}
     end.
