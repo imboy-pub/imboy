@@ -370,7 +370,8 @@ do_renew(#state{guard_ref = GRef, store = Store} = State) ->
                     _ = schedule_tick(State2),
                     State2#state{store = Store1};
                 {error, _Reason} ->
-                    %% 持久化失败：FENCED（余量内调用方可继续，margin 后拒绝）
+                    %% 持久化失败：FENCED——调用方下一次 fence_gate 立即
+                    %% 得到 typed fenced（无宽限窗，fail-closed）
                     ok = atomics:put(GRef, 1, ?STATUS_FENCED),
                     State3 =
                         reply_waiting(
