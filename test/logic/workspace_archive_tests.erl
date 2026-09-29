@@ -55,6 +55,19 @@ run_with_mocks(MockConfigs, TestFun) ->
 %%% archive / restore（Owner only + 审计列）
 %%% ===================================================================
 
+wait_archive_sql() ->
+    receive
+        {archive_sql, Sql, Params} ->
+            %% 审计列：status/archived_at/archived_by 同写
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"archived_at = $1">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"archived_by = $2">>)),
+            ?assertEqual([?OWNER, ?WS_ID], tl(Params));
+        _Other ->
+            wait_archive_sql()
+    after 500 ->
+        ?assert(false, "archive UPDATE not executed")
+    end.
+
 archive_test_() ->
     Self = self(),
     [
@@ -64,16 +77,11 @@ archive_test_() ->
                     {ok, #{workspace_id := ?WS_ID, status := <<"archived">>, archived_by := ?OWNER}},
                     workspace_logic:archive(?OWNER, ?WS_ID)
                 ),
-                receive
-                    {archive_sql, Sql, Params} ->
-                        %% 审计列：status/archived_at/archived_by 同写
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"archived_at = $1">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"archived_by = $2">>)),
-                        ?assertEqual([?OWNER, ?WS_ID], tl(Params));
-                    Other ->
-                        ?assert(false, io_lib:format("unexpected ~p", [Other]))
-                after 500 -> ?assert(false, "archive UPDATE not executed")
-                end,
+                %% 哨兵 receive：非目标消息（eunit 用例串行复用进程邮箱，
+                %% 跨用例陈旧消息先于目标到达属常态）跳过继续等，不以通配
+                %% 兜底直接判死——即跨候选稳定失败例6的根因，取证见
+                %% stable-failures-root-cause-20260929.md。
+                wait_archive_sql(),
                 %% C05/ORG-05：归档同事务触发 Org 默认工作区交接钩子
                 %% （此处 ws 行归属列为 null → 个人域 undefined，钩子仍被调用）
                 receive

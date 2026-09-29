@@ -545,7 +545,7 @@ fanout_oracle(C) ->
         ok,
         push_notification_logic:maybe_push_for_c2c(?UID_A, ?UID_B, <<"text">>, ?PII_MARKER)
     ),
-    ?assertEqual([{<<"rid995-b1">>, ?PUSH_TITLE, ?PUSH_BODY}], take_provider_sends()),
+    ?assertEqual([{<<"rid995-b1">>, ?PUSH_TITLE, ?PUSH_BODY, #{}}], take_provider_sends()),
     ok.
 
 %%%===================================================================
