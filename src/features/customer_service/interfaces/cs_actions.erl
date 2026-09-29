@@ -306,7 +306,7 @@ table(tenant) ->
                             {body, binary, required},
                             {client_msg_id, binary, required}
                         ],
-                        [{id, session_id}]}
+                        [{id, session_id}], #{clock_unit => second}}
                 ],
                 visit_auth(),
                 server_common() ++ [contact_id, business_identity_id],
