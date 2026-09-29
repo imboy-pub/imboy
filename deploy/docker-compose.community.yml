@@ -46,7 +46,7 @@ services:
 
   # ========== PostgreSQL 18 + 扩展 ==========
   imboy_pg18:
-    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:-1.0.0-alpha.71}}
+    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:-1.0.0-alpha.82}}
     container_name: imboy_pg18
     hostname: pg.docker.imboy.pub
     restart: unless-stopped
@@ -94,7 +94,8 @@ services:
   # 升级注意：若曾手工扩展过集群（layout version > 1），需移除 --single-node
   # 参数并以完整 garage.toml 自行管理布局（超出社区版支持范围）。
   garage:
-    image: dxflrs/garage:v2.4.1
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020
     container_name: imboy_garage
     hostname: garage.docker.imboy.pub
     restart: unless-stopped
@@ -137,7 +138,7 @@ services:
 
   # ========== imboy 后端（Erlang/OTP + Cowboy）==========
   imboy_backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.71}}
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.82}}
     container_name: imboy_backend
     hostname: backend.docker.imboy.pub
     restart: unless-stopped
@@ -288,7 +289,7 @@ services:
 
   # ========== imboy-admin-frontend（React + Vite，静态）==========
   imboy_admin:
-    image: ${ADMIN_IMAGE:-ghcr.io/imboy-pub/imboy-admin:${IMBOY_VERSION:-1.0.0-alpha.71}}
+    image: ${ADMIN_IMAGE:-ghcr.io/imboy-pub/imboy-admin:${IMBOY_VERSION:-1.0.0-alpha.82}}
     container_name: imboy_admin
     hostname: admin.docker.imboy.pub
     restart: unless-stopped
@@ -318,7 +319,7 @@ services:
   # nginx 的 CS_WIDGET_DOMAIN vhost（nginx/templates/cs-widget.conf.template）。
   # 运行时合同（CSD-IMG-01）：只读根文件系统 + tmpfs /tmp（pid/temp/日志全落 /tmp）。
   imboy_widget:
-    image: ${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.71}}
+    image: ${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.82}}
     container_name: imboy_widget
     hostname: widget.docker.imboy.pub
     restart: unless-stopped
@@ -346,7 +347,8 @@ services:
   # ========== nginx 反向代理 + certbot 自动 TLS ==========
   # 首次部署后执行一次 `bash nginx/init-letsencrypt.sh` 签发证书；之后自动续期。
   imboy_nginx:
-    image: nginx:1.27-alpine
+    # digest pinned 2026-09-29（与本地 docker images --digests 记录一致）
+    image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
     container_name: imboy_nginx
     restart: unless-stopped
     depends_on:
@@ -383,7 +385,8 @@ services:
 
   # ========== certbot 自动签发 / 续期 TLS 证书 ==========
   imboy_certbot:
-    image: certbot/certbot:latest
+    # P0: 去 latest。v5.8.0 = 取证时最新稳定（2026-09-01 发布，与 latest 同指）
+    image: certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20
     container_name: imboy_certbot
     restart: unless-stopped
     volumes:
@@ -418,6 +421,8 @@ services:
   # imboy 在 /api/v1/rtc/room/join 里 consistent_hash(room_name) 决定发哪个
   # 节点的 ws_url，同房间参与者必落同一节点 → 节点间无需通信。
   imboy_livekit:
+    # digest 已验证可解析（2026-09-29）：= v1.13.7 的 linux/amd64 子 manifest；
+    # v1.13.7 多架构顶层 = sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
     image: livekit/livekit-server@sha256:5d3dcc475d064536d9948ebe4eeab8e3b24d6f07a46f6d71a3415a2901bbdc52
     container_name: imboy_livekit
     restart: unless-stopped
@@ -462,7 +467,8 @@ services:
 
   # ========== Prometheus 指标采集 / Metrics scraping ==========
   imboy_prometheus:
-    image: prom/prometheus:v2.55.0
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: prom/prometheus:v2.55.0@sha256:378f4e03703557d1c6419e6caccf922f96e6d88a530f7431d66a4c4f4b1000fe
     container_name: imboy_prometheus
     restart: unless-stopped
     profiles: ["monitoring"]
@@ -489,7 +495,8 @@ services:
   # ========== Alertmanager 告警通知 / Alert notification ==========
   # 配置文件：./alertmanager/alertmanager.yml（默认 receiver=null，需配置邮件/钉钉后生效）
   imboy_alertmanager:
-    image: prom/alertmanager:v0.27.0
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
     container_name: imboy_alertmanager
     restart: unless-stopped
     profiles: ["monitoring"]
@@ -518,7 +525,8 @@ services:
   # 收集后端 + nginx 的容器日志，供 Grafana 查询
   # 配置文件：./loki/loki.yml；数据保留：30 天（见 loki.yml limits_config.retention_period）
   imboy_loki:
-    image: grafana/loki:3.3.2
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: grafana/loki:3.3.2@sha256:8af2de1abbdd7aa92b27c9bcc96f0f4140c9096b507c77921ffddf1c6ad6c48f
     container_name: imboy_loki
     restart: unless-stopped
     profiles: ["monitoring"]
@@ -547,7 +555,8 @@ services:
   # 从 Docker json-file 容器日志中拉取日志，推送到 Loki
   # 配置文件：./promtail/promtail.yml
   imboy_promtail:
-    image: grafana/promtail:3.3.2
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: grafana/promtail:3.3.2@sha256:cb4990801ec58975c5e231057c2bcf204c85fac428eec65ad66e0016c64b9608
     container_name: imboy_promtail
     restart: unless-stopped
     profiles: ["monitoring"]
@@ -575,7 +584,8 @@ services:
 
   # ========== Grafana 可视化仪表盘 / Visualization dashboard ==========
   imboy_grafana:
-    image: grafana/grafana:11.3.0
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: grafana/grafana:11.3.0@sha256:a0f881232a6fb71a0554a47d0fe2203b6888fe77f4cefb7ea62bed7eb54e13c3
     container_name: imboy_grafana
     restart: unless-stopped
     profiles: ["monitoring"]

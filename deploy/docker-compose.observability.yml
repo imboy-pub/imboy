@@ -22,7 +22,8 @@ services:
   # 备份/TLS 检查没有常驻端点供抓取，只能由作业自己推。
   # 产出方已就绪：scripts/lib/metrics_push.sh 的 push_backup_result / push_tls_expiry。
   imboy_pushgateway:
-    image: prom/pushgateway:v1.9.0
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: prom/pushgateway:v1.9.0@sha256:98a458415f8f5afcfd45622d289a0aa67063563bec0f90d598ebc76783571936
     container_name: imboy_pushgateway
     restart: unless-stopped
     command:
@@ -50,7 +51,8 @@ services:
   # ---------- node_exporter：宿主机资源（B-24）----------
   # 面板 node_filesystem_avail_bytes / node_filesystem_size_bytes 依赖它。
   imboy_node_exporter:
-    image: prom/node-exporter:v1.8.2
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: prom/node-exporter:v1.8.2@sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706
     container_name: node_exporter
     restart: unless-stopped
     # ⚠️ 必须 host pid + 挂载宿主机根：否则采到的是**容器自己**的文件系统，
@@ -79,7 +81,8 @@ services:
   # 面板/告警 pg_stat_database_numbackends、pg_settings_max_connections、
   # pg_stat_database_xact_commit/rollback 依赖它。
   imboy_postgres_exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: prometheuscommunity/postgres-exporter:v0.15.0@sha256:386b12d19eab2a37d7cd8ca8b4c7491cc7a830d9581f49af6c98a393da9605e6
     container_name: postgres_exporter
     restart: unless-stopped
     environment:

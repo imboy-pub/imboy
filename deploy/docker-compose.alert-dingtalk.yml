@@ -30,7 +30,8 @@
 
 services:
   imboy_dingtalk_adapter:
-    image: timonwong/prometheus-webhook-dingtalk:v2.1.0
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: timonwong/prometheus-webhook-dingtalk:v2.1.0@sha256:0323304b27801cb039719dbc0647274a593111dd7b5a5482e8fff77c7ddfd102
     container_name: dingtalk-webhook
     restart: unless-stopped
     command:

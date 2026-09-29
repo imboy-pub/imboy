@@ -13,7 +13,8 @@
 #   * 入口直接 exec nginx（不走官方 docker-entrypoint.sh——本镜像 nginx.conf
 #     为构建期固化，无 envsubst 模板，绕开 entrypoint 对 /etc/nginx 的写需求）；
 #   * 后端上游为构建期 ARG（镜像不可变原则：升级与回滚都以 tag 为单位，A06）。
-ARG NGINX_IMAGE=nginx:1.27-alpine
+# digest pinned 2026-09-29（与 community.yml 同源）
+ARG NGINX_IMAGE=nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
 FROM ${NGINX_IMAGE}
 
 # SSE 直通上游（构建期固化）。演练用宿主后端时传：

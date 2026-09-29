@@ -2,7 +2,8 @@
 # IMBoy itself does not depend on these services.
 services:
   uptrace_pg_init:
-    image: postgres:18-alpine
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     restart: "no"
     depends_on:
       imboy_pg18:
@@ -24,7 +25,8 @@ services:
         SQL
 
   uptrace_clickhouse:
-    image: ${UPTRACE_CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.3}
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: ${UPTRACE_CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.3@sha256:3ec149f28d2f3727877198ff5cdbad89b7a4c5d4ec47ac2a983347d35924c6f9}
     container_name: imboy_uptrace_clickhouse
     restart: unless-stopped
     environment:
@@ -47,7 +49,8 @@ services:
           memory: ${UPTRACE_CLICKHOUSE_MEM_LIMIT:-4096M}
 
   uptrace_redis:
-    image: ${UPTRACE_REDIS_IMAGE:-redis:7.4.2-alpine}
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: ${UPTRACE_REDIS_IMAGE:-redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952}
     container_name: imboy_uptrace_redis
     restart: unless-stopped
     environment:
@@ -62,7 +65,8 @@ services:
       retries: 20
 
   uptrace:
-    image: ${UPTRACE_IMAGE:-uptrace/uptrace:2.0.3}
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: ${UPTRACE_IMAGE:-uptrace/uptrace:2.0.3@sha256:5e42ea5f3bb95b6e3840155cd9b0c75e642ffaabf729fbca3ecadd3d4e3d1fb5}
     container_name: imboy_uptrace
     restart: unless-stopped
     depends_on:
@@ -92,7 +96,8 @@ services:
           memory: ${UPTRACE_MEM_LIMIT:-2048M}
 
   uptrace_otelcol:
-    image: ${UPTRACE_OTELCOL_IMAGE:-otel/opentelemetry-collector-contrib:0.145.0}
+    # digest pinned 2026-09-29（registry manifest HEAD 取多架构顶层；tag 保留便于人读）
+    image: ${UPTRACE_OTELCOL_IMAGE:-otel/opentelemetry-collector-contrib:0.145.0@sha256:a7343f01869071ea3f4c5e1e97df1bb1b3c4d5c77247db80e053a80b9df530c4}
     container_name: imboy_uptrace_otelcol
     restart: unless-stopped
     depends_on:

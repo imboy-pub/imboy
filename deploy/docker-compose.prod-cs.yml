@@ -22,7 +22,7 @@ services:
 
   # ========== 客服托管 Widget 静态运行时（与 community 版同构）==========
   imboy_widget:
-    image: ${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.71}}
+    image: ${IMBOY_WIDGET_IMAGE:-ghcr.io/imboy-pub/imboy-widget:${IMBOY_VERSION:-1.0.0-alpha.82}}
     container_name: imboy_widget
     hostname: widget.docker.imboy.pub
     restart: unless-stopped
