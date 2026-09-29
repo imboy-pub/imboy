@@ -4,7 +4,7 @@
 > **（不入仓**，勿按文件名在仓内检索：SHA-256 `92eef9736...` 锚定；计划原文与
 > `.sha256` 由执行环境持有、保持入仓前状态，本附录为独立文件不修改计划原文）
 > 附录更新：2026-09-29（TSID-11）
-> 附录更新：2026-09-29（TSID-11）
+> 附录更新：2026-09-29（catalog v1 / 自举状态机合同 / 主键治理后续事项）
 
 ## 1. 执行概况
 
@@ -62,3 +62,74 @@
 全部证据位于执行环境 `$EVIDENCE_ROOT`（BASELINE / CARDS / TESTS / BENCH / CRASH / FINAL），
 每卡 `CARDS/TSID-<NN>/RESULT.json` 含验收映射、verify 明细、findings 与证据 SHA-256；
 最终 manifest 见 `FINAL/`（G-Gate 生成）。
+
+## 5. 后续事项（独立登记）：主键生成方式治理 + catalog 递减
+
+- **状态**：Open（未排期）。本节仅登记目标、路径与约束，不构成本轮交付。
+- **治理目标**（用户裁决原话语义）：TSID 只用于**需要跨数据中心/跨地域分布式同步**
+  的实体表主键（用户 ID、群 ID、频道 ID 这一类）；不做分布式同步的实体不应使用 TSID。
+- **批次化路径**（每批固定七步）：
+  1. 选中一批非同步实体；
+  2. 主键迁移为数据库本地生成（bigserial / uuid），含历史数据回填策略；
+  3. 调用点改造；
+  4. catalog 移除对应列；
+  5. catalog version+1（digest 随 version 与清单联动变化）；
+  6. digest 重绑：既有割接 manifest 的 `catalog_digest` 与新 digest 不符属预期
+     FAIL（`catalog_changed`），按 runbook 重新割接/绑定；
+  7. 全量 Gate 重跑。
+- **约束**：
+  - catalog 收缩只能发生在治理迁移完成之后，绝不能先于它（论证见 §6）；
+  - 每次递减必须同步更新 manifest 绑定与证据。
+
+## 6. v1 catalog（现状口径）
+
+- **范围**：全部运行时 TSID 主键列（约 104 个；最终数字与清单
+  **以 `elib_tsid_catalog:primary_keys()` 为准**——数据核对回填前该函数为空列表占位，
+  此时的 `digest()` 锚定空清单，不得用于割接）。
+- **为何取现状口径**（撞号风险论证）：
+  1. 第一次 cutover 前，凡可能已写入历史 TSID 的主键列必须全部纳入扫描保护；
+  2. 任何漏扫列中的历史 TSID 都会在重启自举（auto_scan 取 max(id)+1）时被新 ID 撞号；
+  3. 因此 v1 宁全勿漏：catalog 收缩只能发生在治理迁移（§5）完成之后。
+- **数据来源**：call-sites × migrations DDL 静态扫描生成，人工逐条核对。
+- **绑定机制**：`digest()`（对 {version, 排序后清单} 的 SHA-256）→ 写入割接 manifest
+  的 `catalog_digest` 字段（`elib_tsid_bootstrap`，魔数 IMBTSIDB1）→ 自举校验不符即
+  `{stop, catalog_changed}`（FAIL 级，见 §7）。
+
+## 7. 首启自举状态机（pristine-only）
+
+设计合同见 `src/lib/elib_tsid_bootstrap.erl` 头注释（本轮冻结；运行时实现未落地，见 §8）。
+
+- **pristine 判定**：无割接 manifest **且** store 无 durable floor。状态机接管 pristine
+  判定后，现役 `store_bootstrap=fresh|existing`（调用方自我声明）退役为被取代机制——
+  防止误配 fresh 绕过 manifest/floor 检查烧号；guard 接线状态见 §8。
+- **STOP 矩阵**（全部 FAIL 级 `{stop, Reason}`，不得降 warning）：
+
+| STOP 原因 | 触发条件 |
+|---|---|
+| `blocked_legacy_writer` | 无 manifest 且 store 有 floor（旧 writer 未证明停写，或首启中断于 persist 之后、写 manifest 之前）；仅 `IMBOY_TSID_BOOTSTRAP_LEGACY_ACK` 可显式接管 |
+| `store_lost` | 有 manifest 且 store floor 丢失/清零 |
+| `store_corrupt` | store 打开损坏（corrupt_no_valid / split_brain） |
+| `store_identity_mismatch` | 身份/布局不符（store 内部 manifest 或本割接 manifest） |
+| `catalog_changed` | manifest 的 `catalog_digest` ≠ 当前 digest |
+| `{bootstrap_env, D}` | 环境变量非法（不静默取默认） |
+| `{bootstrap_scan, R}` | auto_scan 扫描失败 |
+
+- **环境变量**（非法值一律 `{stop, ...}`）：
+
+| 变量 | 语义 |
+|---|---|
+| `IMBOY_TSID_BOOTSTRAP_MODE` | `auto_scan`（缺省）\| `manual_floor` |
+| `IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS` | 整数 unix 毫秒；manual_floor 必填；换算 `floor_safe_before = (ms-EPOCH)<<11` |
+| `IMBOY_TSID_BOOTSTRAP_LEGACY_ACK` | 唯一合法值 `I-CONFIRM-OLD-WRITER-STOPPED`；操作员确认旧版停写，补写 manifest 后按 legacy_ack 接管现有 floor |
+
+- **decide/1 返回合同**：`proceed_existing`（正常重启）/ `proceed_floor`（pristine 首启）/
+  `adopt_existing`（LEGACY_ACK 接管）/ `{stop, Reason}`。
+
+## 8. 验证状态
+
+- **RELEASE=NO_GO 维持不变**（LOCAL_CANDIDATE_PASS / EXTERNAL_VALIDATION_PENDING 口径不变）。
+- EXT-04（目标 PVC/存储类 crash 矩阵）、EXT-05（目标环境双实例锁）维持外部 NO_GO。
+- §6/§7 所述 catalog/scan/bootstrap 为**合同先行**交付：`elib_tsid_scan` 与
+  `elib_tsid_bootstrap` 的运行时实现、guard 接线、escript 退役（步骤 6）、catalog_check
+  均未落地；逐项完成对照见证据树 `gate-supplement/catalog-v1-addendum.md`。
+- 本轮 Gate 重跑：由主协调者冻结后执行——**待补**。
