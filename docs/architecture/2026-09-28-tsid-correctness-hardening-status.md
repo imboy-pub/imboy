@@ -158,6 +158,11 @@ floor 0 起跳）与跨 VM 互斥失效（registry 为同 VM 语义，双实例�
   application env，覆盖外部启动方式；eunit VM 一次性无需还原）。
 - 合同测试 +6 用例（分档矩阵/local 探测注入/禁键拒启/seam 透传与半设
   拒启/prod 端到端）；TSID 八套件 196 用例全绿（190 + 新增 6）。
+- review 轮修复（2352d288）：合同用例 after 由无条件 unset 改为
+  snapshot/restore 纪律——旧写法会清掉 eunit 轨道 eunit_setup 的 seam
+  预设，app 重启时 guard 将走真 scan（schema_drift 拒启，复现 boot
+  波动）；prod 端到端用例补"快照+临时清空轨道预设"（其旧版通过系
+  泄漏顺带清键的假绿）。修复后双形态 15/15 + 全套件 196 复绿。
 
 **部署注意**：升级到本提交后，配置中残留 `{imboy, tsid_lock_provider}`
 会使应用拒启（错误消息含移除指引）——这是设计行为，删除该键即可；
