@@ -78,12 +78,13 @@ server {
         proxy_send_timeout 3600s;
     }
 
-    # ── Seat 工作台 SSE 长连接：GET /api/v1/cs/sessions/:id/events ────────────
+    # ── Seat 工作台 SSE 长连接：GET /api/v1/cs/organizations/:org/seats/me/events
     # 与上方 Widget SSE 同构（计划 SC-OPS-A03）：正则 location 优先于下方
     # /api/v1/cs/ 前缀 location；必须关缓冲/关缓存，坐席队列与事件推送才能
     # 实时到达。读/写超时对齐 Widget SSE（3600s）。两个 SSE 正则互不重叠：
-    # /widget/sessions/.../events 归 Widget 块，/sessions/.../events 归本块。
-    location ~ ^/api/v1/cs/sessions/[0-9A-Za-z_-]+/events$ {
+    # /widget/sessions/.../events 归 Widget 块，/organizations/.../seats/me/events
+    # 归本块（路径以 imboy_router 的 seat SSE 端点为准）。
+    location ~ ^/api/v1/cs/organizations/[0-9A-Za-z_-]+/seats/me/events$ {
         proxy_pass http://imboy_backend:9800;
         proxy_http_version 1.1;
         proxy_set_header Host              $http_host;
