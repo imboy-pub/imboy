@@ -416,14 +416,21 @@ find_staged(Type, MsgId) ->
 %% @end
 %%-------------------------------------------------------------------
 -spec enqueue(binary(), binary(), map()) -> ok.
-enqueue(Type, MsgId, Data) ->
+enqueue(Type, _MsgId, _Data) ->
     %% B-26：imboy_msg_sent_total{type} 的唯一产出点。面板
     %% `sum(rate(imboy_msg_sent_total[1m])) by (type)` 引用它，而此前**没有任何代码
     %% 产出这个名字** → 消息吞吐面板永久 "No data"。
     %% 选 enqueue 而非 send_next 作为口径：这里是"消息被接受并将落库"的唯一漏斗，
     %% send_next 按在线设备重试会重复计数，口径会虚高。
     _ = elib_metric:increment(imboy_msg_sent_total, 1, #{type => Type}),
-    gen_server:cast(?SERVER, {enqueue, Type, MsgId, Data}).
+    %% kick 修复（2026-09-29）：此前 gen_server:cast(?SERVER, {enqueue, ...})
+    %% 双重死链——?SERVER 在本模块指 msg_store_ds（lib 模块，非注册进程，
+    %% cast 静默无操作），且 msg_store_worker 也从不匹配 {enqueue,...} 元组
+    %% （只认 kick）。结果 kick 从未生效，staging 转正只能靠 worker 1s
+    %% 周期 tick 兜底（发送可见性延迟恒 ~1s）。现直接向 worker 发 kick，
+    %% 立即触发 drain；Data 已入 staging 库，worker 从 DB claim，无需随
+    %% cast 携带（MsgId/Data 保留参数位以稳定 API 签名）。
+    gen_server:cast(msg_store_worker, kick).
 
 %%-------------------------------------------------------------------
 %% @doc  标记消息已处理，删除备份表记录（异步操作）

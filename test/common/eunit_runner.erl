@@ -247,6 +247,15 @@ do_boot() ->
                         ok
                 end),
             cleanup_start_orphans(),
+            %% 测试模式禁用 msg_store_worker 周期 tick（纯 kick 驱动）：
+            %% worker 现已常驻（见 PERIODIC_WORKER_STOP_SPECS 注释），但其
+            %% 每秒 tick 的异步 drain 会在其他套件的 meck 窗口内调用 elib_pg
+            %% 池化版（mark_processed 走 query/2），污染全局调用计数类白盒
+            %% 断言（adm_message_handler 审计 fails-closed 用例 R1B1 实证：
+            %% num_calls(elib_pg, query, 2) 期望 0）。正常发送路径 stage 后
+            %% enqueue 必发 kick，集成套件的真实异步转正不受影响；须在 app
+            %% 启动前 set_env，worker init 读取后决定是否武装 tick 定时器。
+            application:set_env(imboy, msg_store_worker_tick_ms, 0),
             %% A1c（CP-TD-A02）：上一次启动中途夭折会遗留 ranch 监听孤儿——
             %% 黑名单（按原子名 whereis）够不到 {ranch_listener_sup, Ref} 元组名
             %% sup，残留 19980/19970 绑定 → 重试恒 eaddrinuse（run14/16 实证
