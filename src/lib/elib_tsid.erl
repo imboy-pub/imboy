@@ -316,13 +316,24 @@ guarded_publish(#{
             ok = atomics:put(Cursor, 1, (FloorTs bsl ?SEQUENCE_BITS) - 1),
             persistent_term:put(?PT_NODE_ID, CombinedNode),
             persistent_term:put(?PT_DC_BITS, DcBits),
+            %% 合并既有 runtime 的动态注册 label（guard crash 被 sup
+            %% 重启后不丢 register/1 加的 label——review F6）
+            ExistingNames =
+                case Existing of
+                    #{names := EN} -> sets:to_list(EN);
+                    _ -> []
+                end,
             Handle = #{
                 cursor => Cursor,
                 reg_lock => atomics:new(1, [{signed, true}]),
                 stats => atomics:new(1, [{signed, true}]),
                 combined_node => CombinedNode,
                 dc_bits => DcBits,
-                names => sets:from_list([default | Names], [{version, 2}]),
+                names =>
+                    sets:from_list(
+                        [default | Names] ++ ExistingNames,
+                        [{version, 2}]
+                    ),
                 max_logical_lead_ms => Lead,
                 capacity_wait_timeout_ms => CapWait,
                 max_batch_chunk => MaxChunk,
@@ -633,12 +644,22 @@ renew_fence(#{guard_pid := GPid} = _Handle, Horizon, Budget) ->
         true ->
             error({elib_tsid_fenced, #{phase => renew_deadline}});
         false ->
-            case gen_server:call(GPid, {renew_fence, Horizon}, Remaining) of
+            RenewRes =
+                try
+                    gen_server:call(GPid, {renew_fence, Horizon}, Remaining)
+                catch
+                    %% guard 已死（noproc）/call 超时——fail-closed 且保持
+                    %% typed 错误族（review F5：裸 exit 违反错误族合同）
+                    _C:_R -> {exit, unreachable}
+                end,
+            case RenewRes of
                 {ok, _NewSafeBefore} ->
                     %% 续租成功：重走完整 reserve（含新 fence 检查）
                     retry;
                 {error, Reason} ->
-                    error(Reason)
+                    error(Reason);
+                {exit, _} ->
+                    error({elib_tsid_fenced, #{phase => renew_unreachable}})
             end
     end.
 

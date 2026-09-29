@@ -3,7 +3,7 @@
 > 状态：**LOCAL_EVIDENCE_ONLY**。本 runbook 全部步骤只在 scratch/clone DB 上验证过；
 > 生产 cutover 属外部验证（未执行），RELEASE=NO_GO 不变。
 >
-> 工具：`tsid_scanner.escript`（只读扫描）、`bootstrap_floor.escript`（合同验证参考实现）。
+> 工具：`tsid_scanner.escript`（只读扫描）、`tsid_bootstrap_floor.escript`（合同验证参考实现）。
 
 ## 0. 前置条件（全部满足才可进入步骤 1）
 
@@ -44,7 +44,7 @@ ERL_FLAGS="-pa deps/epgsql/ebin" escript tsid_scanner.escript \
 ## 4. 离线 bootstrap（floor 写入 durable store）
 
 1. 在新部署的持久卷目录（`IMBOY_TSID_STATE_DIR`）预置 floor：
-   - 参考 `bootstrap_floor.escript` 的场景 A：fresh store + `persist(SafeBefore = FloorCandidate + fence_window_ms)`
+   - 参考 `tsid_bootstrap_floor.escript` 的场景 A：fresh store + `persist(SafeBefore = FloorCandidate + fence_window_ms)`
    - `SafeBefore` 必须 ≥ `FloorCandidate + fence_window_ms`（否则首批 ID 无分配空间）
 2. **bootstrap 合同（fresh/existing 明确）**：
    - `IMBOY_TSID_STORE_BOOTSTRAP=fresh` 仅本步骤的离线工具使用；
@@ -77,6 +77,7 @@ ERL_FLAGS="-pa deps/epgsql/ebin" escript tsid_scanner.escript \
 |---|---|
 | 二扫 digest 漂移 | 停写不彻底：找 writer（§3.4），重新停写 |
 | `future_beyond_tolerance` | 有数据 ts 超前墙钟 > 60s：BLOCKED_CUTOVER，人工核查来源 |
+| `table_scan_errors`（scanner） | 任一表扫描失败即 BLOCKED_CUTOVER——失败表不计入高水位，floor 会偏低，禁止放行；修复查询/权限后重扫 |
 | `negative_id` / `beyond_max_id` | 历史 bug 遗留：评估修复或剔除，**不可静默放行** |
 | guard 启动 `clock_behind` | floor 超前 > 60s：BLOCKED_CUTOVER（见上） |
 | guard 启动 `no_valid_slot` | bootstrap 未执行或路径错：检查 `IMBOY_TSID_STATE_DIR` 挂载 |

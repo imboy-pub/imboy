@@ -22,19 +22,23 @@ main([OutJson]) ->
     %%   层1 guard boot：floor 超前墙钟 > max_initial_lead_ms(默认60s) →
     %%      clock_behind 拒启（场景 B 验证）
     %%   层2 generator lead：floor 在 boot 容忍内但 > max_logical_lead_ms
-    %%      (默认5ms) → 首批 generate 在墙钟追上 floor 前 typed
+    %%      (缺省定标 512ms) → 首批 generate 在墙钟追上 floor 前 typed
     %%      capacity_exhausted（clock_wait）——有界逻辑时间 §5.6。
     %%   因此 AC-08B 的可执行口径：floor 超前墙钟 <= max_logical_lead_ms
     %%   时，首批 ID 的 ts 全部 >= floor（> 全部历史 timestamp）。
-    %% 场景 A：历史最大 ts = 当前 + 2ms（floor 领先 2ms < 5ms lead 上限）
+    %% 场景 A：历史最大 ts = 当前 + 2ms（floor 领先 2ms < 512ms lead 上限）
     HistMaxTs = NowRel + 2,
     FloorCandidate = HistMaxTs + 1,
     Root = "/tmp/tsid08_boot_" ++ integer_to_list(erlang:unique_integer([positive])),
     ok = filelib:ensure_dir(Root ++ "/x"),
     %% 离线 bootstrap：fresh store + persist(NewSafeBefore) 预置 floor
     %% （复刻 guard boot_ready 的公式：safe_before = max(Now, Floor) + window）
-    StoreCfg = #{root => Root, combined_node => 129, dc_bits => 3,
-                 store_bootstrap => fresh},
+    StoreCfg = #{
+        root => Root,
+        combined_node => 129,
+        dc_bits => 3,
+        store_bootstrap => fresh
+    },
     {ok, S0} = elib_tsid_store:open(StoreCfg),
     BootstrapSafeBefore = FloorCandidate + 1000,
     {ok, _S1} = elib_tsid_store:persist(S0, BootstrapSafeBefore),
@@ -58,18 +62,20 @@ main([OutJson]) ->
     MinTsRel = lists:min([I bsr 21 || I <- Ids]),
     MaxTsRel = lists:max([I bsr 21 || I <- Ids]),
     Unique = length(lists:usort(Ids)),
-    %% AC-08B 断言：首批 ID 的 ts 全部 > 历史最大 timestamp
-    %% 注意：min_ts 可能等于 HistMaxTs（fence 从 BootstrapSafeBefore 内分配，
-    %% cursor 起点覆盖 fence 区间），严格大于由 cursor 起步保证——验证
-    %% min_ts >= FloorCandidate - window（fence 允许的首个合法 ts），
-    %% 且全部 ID ts < BootstrapSafeBefore + 续租推进（不越 fence）
-    GeFloor = MinTsRel >= FloorCandidate - 1000,
-    GeHistStrict = MinTsRel > HistMaxTs - 1000,
+    %% AC-08B 断言（review F8：与 runbook 口径对齐，采用严格版）：
+    %% cursor 起点 = max(wall, persisted floor)（guard boot_ready 公式），
+    %% 故首批 ID 的 min_ts >= FloorCandidate 严格成立；fence 从
+    %% BootstrapSafeBefore = floor+1000 起步（max_batch_chunk 任何单次
+    %% 预约上限为 (lead+1)*2048 = 1050624 slots = 513ms < 1000ms 窗口，
+    %% 单 chunk 绝不越过 BootstrapSafeBefore）
+    GeFloor = MinTsRel >= FloorCandidate,
+    GeHistStrict = MinTsRel > HistMaxTs,
     UniqueOk = Unique =:= 5000,
-    Status = case GeFloor andalso UniqueOk of
-        true -> <<"PASS">>;
-        false -> <<"FAIL">>
-    end,
+    Status =
+        case GeFloor andalso UniqueOk of
+            true -> <<"PASS">>;
+            false -> <<"FAIL">>
+        end,
     Result = #{
         status => Status,
         hist_max_ts_rel => HistMaxTs,
@@ -80,15 +86,18 @@ main([OutJson]) ->
             unique => Unique,
             min_ts_rel => MinTsRel,
             max_ts_rel => MaxTsRel,
-            all_ge_floor_minus_window => GeFloor,
-            all_gt_hist_minus_window => GeHistStrict,
+            all_ge_floor_strict => GeFloor,
+            all_gt_hist_strict => GeHistStrict,
             unique_ok => UniqueOk
         },
-        note => <<"cutover contract: floor = scanner high-water + 1, written into durable store offline; guard starts with bootstrap=existing and recovers the floor; first batch is allocated inside the new fence, all unique">>
+        note =>
+            <<"cutover contract: floor = scanner high-water + 1, written into durable store offline; guard starts with bootstrap=existing and recovers the floor; first batch is allocated inside the new fence, all unique">>
     },
     ok = file:write_file(OutJson, [jenc(Result), $\n]),
-    io:format("BOOTSTRAP_FLOOR_~ts min_ts=~p floor=~p unique=~p~n",
-              [Status, MinTsRel, FloorCandidate, Unique]),
+    io:format(
+        "BOOTSTRAP_FLOOR_~ts min_ts=~p floor=~p unique=~p~n",
+        [Status, MinTsRel, FloorCandidate, Unique]
+    ),
     elib_tsid_guard:stop(Pid),
     elib_tsid:reset_for_test(),
     %% 场景 B：超容忍 floor → 拒启（BLOCKED_CUTOVER 的运行时防线）
@@ -98,10 +107,11 @@ main([OutJson]) ->
     FutureFloor = NowRel + 7 * 86400000,
     {ok, _} = elib_tsid_store:persist(SB0, FutureFloor + 1000),
     StartB = start_trapped(GuardCfg#{root => RootB}),
-    GuardBlocked = case StartB of
-        {error, {clock_behind, _}} -> true;
-        _ -> false
-    end,
+    GuardBlocked =
+        case StartB of
+            {error, {clock_behind, _}} -> true;
+            _ -> false
+        end,
     Result2 = Result#{
         scenario_b_future_beyond_tolerance => #{
             floor => FutureFloor,
@@ -115,7 +125,8 @@ main([OutJson]) ->
         <<"PASS">> ->
             io:format("FAIL: future floor beyond tolerance was NOT rejected~n"),
             halt(1);
-        _ -> halt(1)
+        _ ->
+            halt(1)
     end;
 main(_) ->
     io:format("usage: tsid_bootstrap_floor.escript <out.json>~n"),
@@ -126,21 +137,32 @@ start_trapped(Cfg) ->
     Parent = self(),
     spawn(fun() ->
         process_flag(trap_exit, true),
-        R = try elib_tsid_guard:start_link(Cfg)
-            catch _:E -> {error, E}
+        R =
+            try
+                elib_tsid_guard:start_link(Cfg)
+            catch
+                _:E -> {error, E}
             end,
-        receive {'EXIT', _, _} -> ok after 0 -> ok end,
+        receive
+            {'EXIT', _, _} -> ok
+        after 0 -> ok
+        end,
         Parent ! {start_trapped, self(), R}
     end),
-    receive {start_trapped, _, R} -> R
+    receive
+        {start_trapped, _, R} -> R
     after 15000 -> error(helper_timeout)
     end.
 
-wait_ready(_Pid, 0) -> error(guard_not_ready);
+wait_ready(_Pid, 0) ->
+    error(guard_not_ready);
 wait_ready(Pid, N) ->
     case elib_tsid_guard:status(Pid) of
-        ready -> ok;
-        _ -> timer:sleep(100), wait_ready(Pid, N - 1)
+        ready ->
+            ok;
+        _ ->
+            timer:sleep(100),
+            wait_ready(Pid, N - 1)
     end.
 
 jenc(M) when is_map(M) ->

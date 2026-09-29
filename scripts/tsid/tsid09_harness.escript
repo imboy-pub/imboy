@@ -32,7 +32,9 @@ usage() ->
 p105() ->
     elib_tsid:reset_for_test(),
     ok = elib_tsid:init(#{
-        dc_id => 1, node_id => 1, dc_bits => 3,
+        dc_id => 1,
+        node_id => 1,
+        dc_bits => 3,
         names => [user, group_info],
         max_logical_lead_ms => 50,
         capacity_wait_timeout_ms => 2000
@@ -45,7 +47,13 @@ p105() ->
     L0 = Now bsl 11,
     Results = [elib_tsid:reserve_candidate(L0, Now + Off, 1) || Off <- [0, 1, 2, 3, 4, 5]],
     %% 全部成功且 First 单调不减（失败者以更新的 now 重算 → First >= L0+1）
-    AllOk = lists:all(fun({ok, _, _}) -> true; (_) -> false end, Results),
+    AllOk = lists:all(
+        fun
+            ({ok, _, _}) -> true;
+            (_) -> false
+        end,
+        Results
+    ),
     Firsts = [F || {ok, F, _} <- Results],
     Monotonic = Firsts =:= lists:sort(Firsts),
     Expand = fun({ok, F, L}) -> [elib_tsid:slot_to_id(S, 129) || S <- lists:seq(F, L)] end,
@@ -53,23 +61,37 @@ p105() ->
     UniqueSamples = length(lists:usort(AllSamples)) =:= length(AllSamples),
     %% 完整 runtime 混合并发（16 workers x 2000）在 deadline 预算内完成（无饥饿）
     Self = self(),
-    [spawn(fun() ->
-        Ids = [elib_tsid:generate(user) || _ <- lists:seq(1, 2000)],
-        Self ! {done, length(lists:usort(Ids))}
-    end) || _ <- lists:seq(1, 16)],
+    [
+        spawn(fun() ->
+            Ids = [elib_tsid:generate(user) || _ <- lists:seq(1, 2000)],
+            Self ! {done, length(lists:usort(Ids))}
+        end)
+     || _ <- lists:seq(1, 16)
+    ],
     N = 16 * 2000,
     Got = collect(N, 30000),
     elib_tsid:reset_for_test(),
     Pass = AllOk andalso Monotonic andalso UniqueSamples andalso (lists:sum(Got) =:= N),
-    io:format("~s~n", [enc(#{test => <<"T-105_cas_conflict_refresh">>,
-        status => pass_fail(Pass),
-        candidate_layer => #{all_ok => AllOk, first_monotonic => Monotonic,
-                             unique => UniqueSamples},
-        runtime_hunger_free => #{workers => 16, ids_per_worker => 2000,
-                                 unique_collected => lists:sum(Got)}})]),
+    io:format("~s~n", [
+        enc(#{
+            test => <<"T-105_cas_conflict_refresh">>,
+            status => pass_fail(Pass),
+            candidate_layer => #{
+                all_ok => AllOk,
+                first_monotonic => Monotonic,
+                unique => UniqueSamples
+            },
+            runtime_hunger_free => #{
+                workers => 16,
+                ids_per_worker => 2000,
+                unique_collected => lists:sum(Got)
+            }
+        })
+    ]),
     halt(pbool(Pass)).
 
-collect(0, _) -> [];
+collect(0, _) ->
+    [];
 collect(N, Timeout) when Timeout =< 0 -> [];
 collect(N, Timeout) ->
     T0 = erlang:monotonic_time(millisecond),
@@ -92,10 +114,17 @@ p214() ->
     %% 必须 >= 上一轮结束时的 durable safe_before（否则就是穿越了 fence）
     FenceOk = lists:all(fun(X) -> X end, MinTsList),
     Pass = (Bad =:= 0) andalso (TotalUnique =:= Total) andalso FenceOk,
-    io:format("~s~n", [enc(#{test => <<"T-214_100_crash_cycles">>,
-        status => pass_fail(Pass),
-        cycles => Cycles, total_ids => Total, unique_ids => TotalUnique,
-        failures => Bad, fence_never_crossed_each_cycle => FenceOk})]),
+    io:format("~s~n", [
+        enc(#{
+            test => <<"T-214_100_crash_cycles">>,
+            status => pass_fail(Pass),
+            cycles => Cycles,
+            total_ids => Total,
+            unique_ids => TotalUnique,
+            failures => Bad,
+            fence_never_crossed_each_cycle => FenceOk
+        })
+    ]),
     elib_tsid:reset_for_test(),
     halt(pbool(Pass)).
 
@@ -104,23 +133,26 @@ crash_loop(_Root, 0, AllIds, MinTsList, Bad) ->
 crash_loop(Root, N, AllIds, MinTsList, Bad) ->
     %% 首轮（计数=初值）fresh bootstrap；此后全部 existing（从 durable floor 恢复）
     IsFirst = (length(MinTsList) =:= 0),
-    Cfg = case IsFirst of
-        true -> (guard_cfg(Root))#{store_bootstrap => fresh};
-        false -> guard_cfg(Root)
-    end,
+    Cfg =
+        case IsFirst of
+            true -> (guard_cfg(Root))#{store_bootstrap => fresh};
+            false -> guard_cfg(Root)
+        end,
     Self = self(),
     Helper = spawn(fun() ->
         process_flag(trap_exit, true),
-        R = try
-            {ok, Pid} = elib_tsid_guard:start_link(Cfg),
-            wait_ready(Pid, 100),
-            Ids = [elib_tsid:generate(user) || _ <- lists:seq(1, 50)],
-            MinTs = lists:min([I bsr 21 || I <- Ids]),
-            FenceBefore = guard_fence(),
-            exit(Pid, kill),
-            {ids_ok, Ids, MinTs, FenceBefore}
-        catch C:E -> {crash, C, E}
-        end,
+        R =
+            try
+                {ok, Pid} = elib_tsid_guard:start_link(Cfg),
+                wait_ready(Pid, 100),
+                Ids = [elib_tsid:generate(user) || _ <- lists:seq(1, 50)],
+                MinTs = lists:min([I bsr 21 || I <- Ids]),
+                FenceBefore = guard_fence(),
+                exit(Pid, kill),
+                {ids_ok, Ids, MinTs, FenceBefore}
+            catch
+                C:E -> {crash, C, E}
+            end,
         Self ! {cycle, self(), R}
     end),
     receive
@@ -129,8 +161,13 @@ crash_loop(Root, N, AllIds, MinTsList, Bad) ->
             %% 但绝不低于上上轮 durable floor）——用"上轮 fence 不高于本轮 min_ts
             %% + window"近似；严格零重复由全局 usort 保证
             ok = wait_dead(Helper),
-            crash_loop(Root, N - 1, [Ids | AllIds],
-                       [true | MinTsList], Bad);
+            crash_loop(
+                Root,
+                N - 1,
+                [Ids | AllIds],
+                [true | MinTsList],
+                Bad
+            );
         {cycle, Helper, {crash, C, E}} ->
             ok = wait_dead(Helper),
             io:format(standard_error, "cycle ~p crash: ~p:~p~n", [N, C, E]),
@@ -158,11 +195,15 @@ guard_fence() ->
     {ok, #{guard_ref := GRef}} = elib_tsid:runtime_handle(),
     atomics:get(GRef, 2).
 
-wait_ready(_Pid, 0) -> error(guard_not_ready);
+wait_ready(_Pid, 0) ->
+    error(guard_not_ready);
 wait_ready(Pid, N) ->
     case elib_tsid_guard:status(Pid) of
-        ready -> ok;
-        _ -> timer:sleep(50), wait_ready(Pid, N - 1)
+        ready ->
+            ok;
+        _ ->
+            timer:sleep(50),
+            wait_ready(Pid, N - 1)
     end.
 
 wait_dead(Helper) ->
@@ -196,13 +237,20 @@ p303() ->
     Pass = MinNewTs >= Floor andalso UniqueOk,
     elib_tsid_guard:stop(Pid),
     elib_tsid:reset_for_test(),
-    io:format("~s~n", [enc(#{test => <<"T-303_no_overlap_with_history">>,
-        status => pass_fail(Pass),
-        hist_max_ts_rel => HistMaxTs, floor_candidate => Floor,
-        new_ids => 10000, new_min_ts_rel => MinNewTs, new_max_ts_rel => MaxNewTs,
-        all_above_floor => MinNewTs >= Floor,
-        disjoint_by_ts_argument => MinNewTs > HistMaxTs,
-        unique_ok => UniqueOk})]),
+    io:format("~s~n", [
+        enc(#{
+            test => <<"T-303_no_overlap_with_history">>,
+            status => pass_fail(Pass),
+            hist_max_ts_rel => HistMaxTs,
+            floor_candidate => Floor,
+            new_ids => 10000,
+            new_min_ts_rel => MinNewTs,
+            new_max_ts_rel => MaxNewTs,
+            all_above_floor => MinNewTs >= Floor,
+            disjoint_by_ts_argument => MinNewTs > HistMaxTs,
+            unique_ok => UniqueOk
+        })
+    ]),
     halt(pbool(Pass)).
 
 %% -------------------------------------------------------------------
@@ -212,24 +260,41 @@ pfuzz() ->
     Cases = 20000,
     {Typed, RoundTrips, Bad} = fuzz_loop(Cases, 0, 0, 0),
     Pass = (Bad =:= 0),
-    io:format("~s~n", [enc(#{test => <<"parse_fuzz_fixed_seed">>,
-        status => pass_fail(Pass),
-        cases => Cases, typed_rejected => Typed, round_trips => RoundTrips,
-        uncaught_crash => Bad, seed => <<"exsss {20260929,1,1}">>})]),
+    io:format("~s~n", [
+        enc(#{
+            test => <<"parse_fuzz_fixed_seed">>,
+            status => pass_fail(Pass),
+            cases => Cases,
+            typed_rejected => Typed,
+            round_trips => RoundTrips,
+            uncaught_crash => Bad,
+            seed => <<"exsss {20260929,1,1}">>
+        })
+    ]),
     halt(pbool(Pass)).
 
-fuzz_loop(0, Typed, RT, Bad) -> {Typed, RT, Bad};
+fuzz_loop(0, Typed, RT, Bad) ->
+    {Typed, RT, Bad};
 fuzz_loop(N, Typed, RT, Bad) ->
     X = rand:uniform(340282366920938463463374607431768211455),
     %% 造 64-bit 空间内的任意值（含负数/边界）
-    V = case rand:uniform(6) of
-        1 -> X rem 9223372036854775808 - 4611686018427387904;  %% 任意 signed 63
-        2 -> 0;
-        3 -> 9223372036854775807;
-        4 -> -rand:uniform(1000);
-        5 -> rand:uniform(1000000);
-        6 -> (rand:uniform(4398046511104) bsl 21) bor (rand:uniform(1024) bsl 11) bor rand:uniform(2048) - 1
-    end,
+    V =
+        case rand:uniform(6) of
+            %% 任意 signed 63
+            1 ->
+                X rem 9223372036854775808 - 4611686018427387904;
+            2 ->
+                0;
+            3 ->
+                9223372036854775807;
+            4 ->
+                -rand:uniform(1000);
+            5 ->
+                rand:uniform(1000000);
+            6 ->
+                (rand:uniform(4398046511104) bsl 21) bor (rand:uniform(1024) bsl 11) bor
+                    rand:uniform(2048) - 1
+        end,
     {T2, R2, B2} =
         try
             Slot = elib_tsid:id_to_slot(V),
@@ -251,13 +316,19 @@ pmutation() ->
     %%  a) id_to_slot 对负数 → typed 拒绝（若 oracle 真空会放行）
     %%  b) slot 展开重叠检测：两个错位 node 的 slot_to_id 必不同（oracle 能发现碰撞）
     %%  c) store decode 对单字节翻转必报 bad_crc（oracle 能发现损坏）
-    {ok, Golden} = case code:which(elib_tsid_store) of
-        F when is_list(F) -> {ok, F};
-        _ -> error(store_not_loaded)
-    end,
+    {ok, Golden} =
+        case code:which(elib_tsid_store) of
+            F when is_list(F) -> {ok, F};
+            _ -> error(store_not_loaded)
+        end,
     _ = Golden,
-    A = try elib_tsid:id_to_slot(-1), {a_fail, false}
-        catch error:{elib_tsid_invalid_input, _} -> {a_ok, true} end,
+    A =
+        try
+            elib_tsid:id_to_slot(-1),
+            {a_fail, false}
+        catch
+            error:{elib_tsid_invalid_input, _} -> {a_ok, true}
+        end,
     %% b) 同 slot 不同 node 必得不同 ID（若 node 位实现被破坏则碰撞）
     Id1 = elib_tsid:slot_to_id((100 bsl 11) bor 7, 129),
     Id2 = elib_tsid:slot_to_id((100 bsl 11) bor 7, 130),
@@ -265,17 +336,23 @@ pmutation() ->
     %% c) store 单字节翻转 → bad_crc
     {Bin0, _} = elib_tsid_store:golden_vector(),
     Flip = flip_byte(Bin0, 10),
-    C = case elib_tsid_store:decode_record(Flip) of
-        {error, bad_crc} -> {c_ok, true};
-        _ -> {c_fail, false}
-    end,
+    C =
+        case elib_tsid_store:decode_record(Flip) of
+            {error, bad_crc} -> {c_ok, true};
+            _ -> {c_fail, false}
+        end,
     Pass = element(2, A) andalso element(2, B) andalso element(2, C),
-    io:format("~s~n", [enc(#{test => <<"mutation_proof_oracle_not_vacuum">>,
-        status => pass_fail(Pass),
-        oracle_negative_input => element(2, A),
-        oracle_node_collision => element(2, B),
-        oracle_crc_corruption => element(2, C),
-        note => <<"deliberate invariant breakages (negative input pass-through / node-bit collision / CRC corruption pass-through) all captured by oracle">>})]),
+    io:format("~s~n", [
+        enc(#{
+            test => <<"mutation_proof_oracle_not_vacuum">>,
+            status => pass_fail(Pass),
+            oracle_negative_input => element(2, A),
+            oracle_node_collision => element(2, B),
+            oracle_crc_corruption => element(2, C),
+            note =>
+                <<"deliberate invariant breakages (negative input pass-through / node-bit collision / CRC corruption pass-through) all captured by oracle">>
+        })
+    ]),
     halt(pbool(Pass)).
 
 flip_byte(Bin, Pos) ->

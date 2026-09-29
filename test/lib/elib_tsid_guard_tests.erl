@@ -20,6 +20,9 @@ tmp_root() ->
 
 %% 小窗口配置：fence 快速逼近，触发续租路径
 fast_cfg(Root) ->
+    %% max_logical_lead_ms 显式小值：TSID-10 缺省定标为 512 后，缺省值会
+    %% 违反本套件小窗口配置的 guard 校验（Window=100 须 > Lead）；机制
+    %% 测试显式注入参数，不镜像生产缺省
     #{
         root => Root,
         combined_node => ?NODE,
@@ -27,6 +30,7 @@ fast_cfg(Root) ->
         names => [user, group_info],
         lock_provider => registry,
         store_bootstrap => fresh,
+        max_logical_lead_ms => 50,
         fence_window_ms => 100,
         fence_renew_margin_ms => 20,
         startup_clock_wait_timeout_ms => 1000,
