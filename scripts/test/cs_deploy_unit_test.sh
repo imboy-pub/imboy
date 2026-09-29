@@ -10,6 +10,8 @@
 #   A04 五个故障点回滚 oracle + 首次安装失败无残余（fake 文件系统断言 symlink 指向）
 #   A05 verbose 输出脱敏断言（cookie/证书私钥零出现，仅脱敏占位）
 #   A06 all -l backend 恰一次且顺序 api→admin→cs；既有组件行为不回归
+#   A07 cs-widget 网关模板合同（Seat 嵌入；seat SSE 正则 ↔ imboy_router
+#       真实路由表逐段对照，REVIEW-2 P1 防再漂移闭环）
 # =============================================================================
 set -uo pipefail
 
@@ -1015,17 +1017,36 @@ cs_template_contract_errors() { # $1=template file
     printf '%s\n' "$blk" | grep -q  'add_header'     && echo "TPLERR: /seat-assets/ 出现 add_header（缓存头必须由容器下发）"
     printf '%s\n' "$blk" | grep -q  'Cache-Control'  && echo "TPLERR: /seat-assets/ 出现 Cache-Control（网关不得覆写）"
   fi
-  # Seat SSE：关缓冲/关缓存 + 3600s
-  blk="$(tpl_block "$f" 'location ~ ^/api/v1/cs/sessions/')"
+  # Seat SSE：关缓冲/关缓存 + 3600s；正则须与 imboy_router 真实端点合同
+  # （REVIEW-2 P1 机制闭环：此前静态合同只锁 harness 渲染产物，模板正则指向
+  # 不存在的 /api/v1/cs/sessions/:id/events 时无任何断言拦截）。
+  blk="$(tpl_block "$f" 'location ~ ^/api/v1/cs/organizations/')"
   [ -n "$blk" ] || echo "TPLERR: 缺 Seat SSE 正则 location"
   if [ -n "$blk" ]; then
-    printf '%s\n' "$blk" | grep -qF 'location ~ ^/api/v1/cs/sessions/[0-9A-Za-z_-]+/events$' || echo "TPLERR: Seat SSE 正则形状漂移"
     printf '%s\n' "$blk" | grep -qF 'proxy_buffering off;'          || echo "TPLERR: Seat SSE 缺 proxy_buffering off"
     printf '%s\n' "$blk" | grep -qF 'proxy_cache off;'              || echo "TPLERR: Seat SSE 缺 proxy_cache off"
     printf '%s\n' "$blk" | grep -qF 'chunked_transfer_encoding on;' || echo "TPLERR: Seat SSE 缺 chunked_transfer_encoding on"
     printf '%s\n' "$blk" | grep -qF 'proxy_read_timeout 3600s;'     || echo "TPLERR: Seat SSE 读超时须 3600s"
     printf '%s\n' "$blk" | grep -qF 'proxy_send_timeout 3600s;'     || echo "TPLERR: Seat SSE 写超时须 3600s"
   fi
+  # 模板 ↔ 真实路由表对照（对照粒度）：把路由表 seat SSE 端点的每个 :param
+  # 槽机械替换为模板既定单段字符类 [0-9A-Za-z_-]+ 得到骨架；模板 SSE
+  # location 行去掉 ^/$ 锚与反斜杠转义后须与骨架逐字相等 —— 字面段
+  # organizations/seats/me/events（含 api/v1/cs 前缀）逐段对应，参数槽允许
+  # 转义写法差异（如 \-），段序列/段数不允许任何差异。
+  ROUTE_SEAT_SSE="$(grep -oE '"/api/v1/cs/organizations/:org_id/seats/me/events"' "$PWD/src/imboy_router.erl" 2>/dev/null | head -1 | tr -d '"')"
+  [ -n "$ROUTE_SEAT_SSE" ] || echo "TPLERR: 路由表缺 seat SSE 端点（src/imboy_router.erl: organizations/:org_id/seats/me/events）"
+  if [ -n "$ROUTE_SEAT_SSE" ] && [ -n "$blk" ]; then
+    want_skel="$(printf '%s\n' "$ROUTE_SEAT_SSE" | sed -E 's/:[A-Za-z_][A-Za-z0-9_]*/[0-9A-Za-z_-]+/g')"
+    got_pat="$(printf '%s\n' "$blk" | head -1 | sed -E 's/.*location[[:space:]]+~[[:space:]]+\^//; s/\$[[:space:]]*\{.*//' | tr -d '\\')"
+    [ "$got_pat" = "$want_skel" ] || echo "TPLERR: Seat SSE 正则与路由表漂移 (want=$want_skel got=$got_pat)"
+  fi
+  # 历史漂移形态负向禁止（P1 原 bug 形态）：location 行出现
+  # /api/v1/cs/sessions/…/events 即 FAIL —— 路由表无此端点；Widget 块
+  # /cs/widget/sessions/ 不含该子串不受影响；模板头部注释中的历史字样
+  # 非 nginx 指令，不计。
+  grep -qE '^[[:space:]]*location .*/api/v1/cs/sessions/[^[:space:]]*/events' "$f" \
+    && echo "TPLERR: 出现历史漂移形态 cs/sessions/…/events（路由表无此端点）"
   # 四组 API 精确放行（含既有 widget 组）
   local loc
   for loc in 'location /api/v1/cs/widget/ {' 'location /api/v1/cs/ {' \
@@ -1066,7 +1087,7 @@ cs_template_contract_errors() { # $1=template file
 if [ -f "$CS_TEMPLATE" ]; then
   TPL_ERRS="$(cs_template_contract_errors "$CS_TEMPLATE" | grep -c 'TPLERR' || true)"
   if [ "${TPL_ERRS:-1}" = "0" ]; then
-    ok "模板合同检查器全绿（Seat frame/静态/SSE/四组 API/负向禁止项/既有 Widget 面不变量）"
+    ok "模板合同检查器全绿（Seat frame/静态/SSE↔路由表对照/四组 API/负向禁止项/既有 Widget 面不变量）"
   else
     bad "模板合同检查器报错" "$(cs_template_contract_errors "$CS_TEMPLATE" | head -5 | tr '\n' ';')"
   fi
@@ -1085,6 +1106,20 @@ if [ -f "$CS_TEMPLATE" ]; then
     bad "A02 全 /api/v1/ 通配出现（禁止项）" ""
   else
     ok "A02 无全 /api/v1/ 通配（四组之外不达 backend）"
+  fi
+
+  # A03 正例对照：模板 seat SSE 正则 ↔ imboy_router 真实路由表（REVIEW-2 P1
+  # 防再漂移）。粒度同检查器：路由表端点 :param 槽机械替换为模板既定单段
+  # 字符类 [0-9A-Za-z_-]+ 得骨架；模板 SSE location 行去 ^/$ 锚与反斜杠转义
+  # 后逐字相等 —— 字面段逐段对应，参数槽允许转义差异。
+  ROUTE_SEAT_SSE="$(grep -oE '"/api/v1/cs/organizations/:org_id/seats/me/events"' src/imboy_router.erl 2>/dev/null | head -1 | tr -d '"')"
+  TPL_SEAT_SSE_PAT="$(grep -E '^[[:space:]]*location ~ \^.*seats/me/events' "$CS_TEMPLATE" 2>/dev/null | head -1 \
+    | sed -E 's/.*location[[:space:]]+~[[:space:]]+\^//; s/\$[[:space:]]*\{.*//' | tr -d '\\')"
+  ROUTE_SEAT_SSE_SKEL="$(printf '%s' "$ROUTE_SEAT_SSE" | sed -E 's/:[A-Za-z_][A-Za-z0-9_]*/[0-9A-Za-z_-]+/g')"
+  if [ -n "$ROUTE_SEAT_SSE" ] && [ "$TPL_SEAT_SSE_PAT" = "$ROUTE_SEAT_SSE_SKEL" ]; then
+    ok "A03 模板↔路由表对照: seat SSE 正则骨架 = 真实端点：$ROUTE_SEAT_SSE_SKEL"
+  else
+    bad "A03 模板↔路由表对照: seat SSE 正则与真实端点漂移" "route=[$ROUTE_SEAT_SSE] skel=[$ROUTE_SEAT_SSE_SKEL] tpl=[$TPL_SEAT_SSE_PAT]"
   fi
 
   # 负例：变异副本必须被检查器捕获（证明回归可测）
@@ -1110,6 +1145,19 @@ if [ -f "$CS_TEMPLATE" ]; then
     ok "模板负例被捕获: seat-assets 被注入缓存头"
   else
     bad "模板负例未被捕获: seat-assets 被注入缓存头" "检查器误放行"
+  fi
+  # 历史漂移形态负例（P1 原 bug）：向真实块之后注入一条指向不存在端点的
+  # cs/sessions/…/events location 行，其余面不动 —— 检查器必须 FAIL，且由
+  # 路由表对照断言（而非缺块/计数旁路）捕获。
+  m_drift="$TMP_ROOT/tpl-mutant-drift.$$"
+  awk '{print} /seats\/me\/events\$ \{/ {print "    location ~ ^/api/v1/cs/sessions/[0-9A-Za-z_-]+/events$ {"}' \
+    "$CS_TEMPLATE" >"$m_drift"
+  n_drift="$(cs_template_contract_errors "$m_drift" | grep -c 'TPLERR' || true)"
+  rm -f "$m_drift"
+  if [ "${n_drift:-0}" -ge 1 ]; then
+    ok "模板负例被捕获: 注入历史漂移形态 cs/sessions/…/events"
+  else
+    bad "模板负例未被捕获: 注入历史漂移形态 cs/sessions/…/events" "检查器误放行"
   fi
 else
   bad "cs-widget 模板缺失" "$CS_TEMPLATE"
