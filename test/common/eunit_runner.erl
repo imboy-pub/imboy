@@ -149,6 +149,19 @@ eunit_setup() ->
         {app_started, _} -> catch application:stop(sync);
         _ -> ok
     end,
+    %% WH-01 让位：imboy_sup 的 bot_webhook_delivery_worker 每 1s poll
+    %% claim_due，会抢在用例断言前认领测试刚插入的 pending 投递并真实
+    %% 外发 HTTP（重试耗尽后 status=dead，claim_due 断言 false——实证
+    %% be-02 第七轮 claim_due_only_due 偶发失败）。测试 VM 里 terminate
+    %% 让位（elib_metric/plugin 族同款惯例）；一次性 VM 不复原；worker
+    %% 专属单测走 execute/1 直调、不经 sup 实例，不受影响。
+    case State of
+        {app_started, _} ->
+            _ = catch supervisor:terminate_child(imboy_sup, bot_webhook_delivery_worker),
+            ok;
+        _ ->
+            ok
+    end,
     % 缓存实例自愈（详见 do_ensure_cache）：每次 setup 顺带检查命名表
     Ref2 = make_ref(),
     eunit_boot_coordinator ! {ensure_cache, self(), Ref2},

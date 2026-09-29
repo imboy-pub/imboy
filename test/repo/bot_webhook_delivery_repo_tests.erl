@@ -54,6 +54,17 @@ claim_due_only_due_test_() ->
     ?TEST_WITH_DB(fun() ->
         D = did(),
         {ok, inserted} = bot_webhook_delivery_repo:insert(base(D)),
+        %% 共享库跨轮残留：历史轮认领行（60s 租约到期回 due）可堆积超过
+        %% LIMIT 50，ORDER BY next_retry_at 下新插入的 D 排队尾认领不到
+        %% （be-02 偶发失败实证）。同款 defensive UPDATE（见 exclusive 用例）
+        %% 把 D 定为最老 due，断言只依赖本用例试数据。
+        {ok, _} = elib_pg:execute(
+            <<
+                "UPDATE public.bot_delivery SET next_retry_at = NOW() - INTERVAL '1 day'"
+                " WHERE delivery_id = $1"
+            >>,
+            [D]
+        ),
         {ok, Rows} = bot_webhook_delivery_repo:claim_due(50),
         ?assert(lists:any(fun(R) -> maps:get(<<"delivery_id">>, R) =:= D end, Rows)),
         %% 已投递行不再被认领
