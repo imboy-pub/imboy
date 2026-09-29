@@ -6,9 +6,8 @@
 - 关联 ADR：无前序（本篇为 ID 命名空间首篇）
 
 > **2026-09-29 更新（TSID correctness hardening 落地后）**：
-> 本篇暂缓，由 TSID 正确性加固计划（计划原文见同目录
-> `2026-09-28-tsid-correctness-hardening-implementation-plan.md`，SHA-256
-> `92eef9736…` 锚定；状态见同日期 `-status.md` 附录）取代其紧迫性。与本文写作时的现状相比，实现已发生以下变化：
+> 本篇暂缓，由 TSID 正确性加固计划（计划原文不入仓，由执行环境持有并以
+> SHA-256 `92eef9736…` 锚定；状态见同日期 `-status.md` 附录）取代其紧迫性。与本文写作时的现状相比，实现已发生以下变化：
 >
 > 1. **全局唯一语义已强化**：所有命名生成器（label）共享同一全局 cursor，同一节点上
 >    任意两个生成器产生的 ID 数值永不相同（`elib_tsid:generate/1` 的 label 仅是治理
@@ -111,5 +110,8 @@ PRIMARY KEY (id)
 
 ## 备注
 
-- 本篇状态 `Proposed`：落地代码（`elib_tsid:init` 扩展 + `.env.example` + parse/契约同步）待随下一个需要多实例的特性一起实现；当前先冻结**设计**与**位分配方案**，避免日后临时切位破坏存量。
+- 本篇状态 `Deferred`（DEFERRED_BY_TSID_HARDENING，与顶部一致；2026-09-29 前
+  曾为 `Proposed`）：落地代码（`elib_tsid:init` 扩展 + `.env.example` +
+  parse/契约同步）待随下一个需要多实例的特性一起实现；当前先冻结**设计**与
+  **位分配方案**，避免日后临时切位破坏存量。
 - 若将来确认「永远不会做多实例数据合并」，本 ADR 可被一篇 `Superseded` 直接取代而不留代码债（因为默认 origin_bits=0 等于没改）。
