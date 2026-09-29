@@ -79,12 +79,23 @@ jobs:
   # 全量 EUnit — nightly 真实结果（无 continue-on-error）
   # 全量 test/*_tests 本地实测 ~45 分钟（R-23 记录）。
   # P4-Q1：nightly-gate.sh 包装 —— retry（FLAKY）+ classify（NEW 阻断）。
-  # timeout 100：45min gate + 失败 retry 一次（45min）+ 缓冲。
+  #
+  # W1-A05：注入 scratch PG（job 内 docker build imboy-pg18:ci，与
+  # pg-behavior-harnesses 同 Dockerfile、共享 gha 缓存 scope=pg18，不推
+  # registry）。容器映射宿主 4323 + 建库 imboy_v1 + 预装扩展 + 迁移到 head，
+  # 与 config/sys.config.example 的 pg_conf/super_account 逐字对齐 —— 测试读
+  # config/sys（example 物化）零配置手术即连真库。W1-A01 实证：无 PG 时
+  # ?TEST_WITH_APP/?TEST_WITH_DB 套件 app 起不来连环 cancel；扩展未预装时
+  # foundation 迁移 v1 即败（migration_dirty 连锁，见 evidence/PR-W1-A01）。
+  # EUNIT_USE_RELAY=0：fork-per-connection 中继是 macOS Docker Desktop 后端
+  # 楔死 bug 的本地对策（CP-TD-A02），Linux runner 无此问题，直连更少一跳。
+  # timeout 200：首次镜像构建（~60min，gha 缓存后秒级）+ 迁移（~10min）+
+  # eunit 45min + 失败 retry 一次（45min）+ 缓冲；缓存命中后 ~100min。
   # ----------------------------------------------------------------
   full-eunit:
     name: Full EUnit (nightly, classified)
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 200
     needs: [compile]
     outputs:
       classify: ${{ steps.gate.outputs.summary }}
@@ -116,6 +127,45 @@ jobs:
         # example 物化，否则 eunit 起节点时 config 缺失直接崩。
         run: cp config/sys.config.example config/sys.config
 
+      - name: Build PG image from docker/pg18_Dockerfile (no registry push)
+        # 与 pg-behavior-harnesses job 同镜像同 scope：nightly 两个 PG job 谁先
+        # 跑谁付首次构建，后者 gha 缓存秒级命中。
+        run: |
+          docker buildx build             --file docker/pg18_Dockerfile             --tag imboy-pg18:ci             --load             --cache-from type=gha,scope=pg18             --cache-to type=gha,scope=pg18,mode=max             docker/
+
+      - name: Start scratch PG on 127.0.0.1:4323 (imboy_v1)
+        # 端口/库/账号与 config/sys.config.example 的 pg_conf + super_account
+        # 逐字一致（4323:5432 映射 + POSTGRES_DB=imboy_v1），config/sys 口径
+        # 零改动即连；夜间一次性 scratch，跑完随 runner 销毁。
+        run: |
+          set -euo pipefail
+          docker run -d --name imboy_pg_eunit             -e POSTGRES_USER=imboy_user             -e POSTGRES_PASSWORD=abc54321             -e POSTGRES_DB=imboy_v1             -p 4323:5432 imboy-pg18:ci
+          for i in $(seq 1 60); do
+            if docker exec imboy_pg_eunit pg_isready -U imboy_user -d imboy_v1 >/dev/null 2>&1; then
+              echo "PG ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::PG 未在 60s 内就绪"; docker logs imboy_pg_eunit; exit 1
+
+      - name: Apply extensions and migrations to head
+        # W1-A01 教训：迁移文件不含 CREATE EXTENSION，扩展必须先铺（foundation
+        # v1 依赖 timescaledb/postgis/pg_jieba/pgcrypto）；schema 未到 head 时
+        # imboy_app:start 的 imboy_migrate 会 {out_of_order,...} 使 app 起不来。
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "4323"
+          PGUSER: imboy_user
+          PGPASSWORD: abc54321
+          PGDATABASE: imboy_v1
+        run: |
+          set -euo pipefail
+          for ext in timescaledb postgis pg_jieba pgcrypto pg_trgm vector citext \
+                     btree_gin btree_gist '"uuid-ossp"' hstore unaccent; do
+            eval "docker exec imboy_pg_eunit psql -U imboy_user -d imboy_v1 -c \"CREATE EXTENSION IF NOT EXISTS $ext;\""
+          done
+          ./scripts/drill_migrate.escript up
+
       - name: Run full EUnit (retry + classify)
         id: gate
         run: |
@@ -123,8 +173,14 @@ jobs:
           # .otp/imboy OTP 布局 symlink 让 code:priv_dir(imboy) 可解析 + -pa 注入；
           # EUNIT_CONFIG=config/sys 等价配置注入，sys.config 已从 example 物化）。
           # 原 `make eunit` 裸口径缺 -config 注入，依赖 app 启动的用例级联失败。
+          # 不带 EUNIT_MODS = erlang.mk 默认全量 test/*_tests（本地 4 批分跑仅是
+          # 宿主 8min SIGTERM 限制的适配，CI 单跑无此限制，见 W1-A01）。
           bash .qa/nightly-gate.sh full-eunit eunit-full.log \
-            -- env IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys
+            -- env IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys EUNIT_USE_RELAY=0
+
+      - name: Dump PG logs on failure
+        if: failure()
+        run: docker logs imboy_pg_eunit || true
 
       - name: Summarize EUnit result
         if: always()
