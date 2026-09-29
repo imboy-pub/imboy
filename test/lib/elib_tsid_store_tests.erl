@@ -435,3 +435,21 @@ target_slot_overwrites_lower_test() ->
     ?assert(SbB =< 3000),
     {ok, R} = elib_tsid_store:open(cfg(Root)),
     ?assertMatch(#{safe_before := 3000, degraded := false}, elib_tsid_store:status(R)).
+
+%% 两个 v1 槽异 generation（gen 与 safe_before 同向）：按 safe_before
+%% 大者恢复，等价于旧 gen 择大语义，不误判 split_brain
+legacy_distinct_generations_test() ->
+    Root = tmp_root(),
+    {ok, S0} = elib_tsid_store:open(cfg(Root)),
+    Dir = elib_tsid_store:dir(S0),
+    LH = elib_tsid_store:layout_hash(?NODE, ?DC_BITS),
+    ok = file:write_file(
+        elib_tsid_store:slot_path(Dir, a),
+        elib_tsid_store:encode_record(LH, ?NODE, 5, 1000, 7)
+    ),
+    ok = file:write_file(
+        elib_tsid_store:slot_path(Dir, b),
+        elib_tsid_store:encode_record(LH, ?NODE, 6, 2000, 7)
+    ),
+    {ok, R} = elib_tsid_store:open(cfg(Root)),
+    ?assertMatch(#{generation := 6, safe_before := 2000}, elib_tsid_store:status(R)).
