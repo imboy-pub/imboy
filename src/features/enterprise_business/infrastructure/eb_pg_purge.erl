@@ -20,6 +20,28 @@
 %%%
 %%% 资格裁决复用 domain：`eb_retention:purge_eligible/3`（retain_until 未到 /
 %%% active hold 覆盖 → 不清理）；被裁决为不合格的行只记录 skipped（多保留）。
+%%%
+%%% == F-1（REVIEW-3）：孤儿 pending 资产清理 ==
+%%%
+%%% presign 每次调用都铸造新 `pending_confirm` 资产行+token（`eb_asset_app` 的
+%%% `request_presign/2`），从未 confirm、从未绑定消息的孤儿资产（message_id NULL）
+%%% 原先永不入批，元数据行与对象存储对象无限累积。本模块在同一批次内追加孤儿
+%%% pending 资产候选：
+%%%
+%%%   * 候选谓词（与消息候选同一租户两键 + SKIP LOCKED + LIMIT）：
+%%%     `status = 'pending_confirm' AND message_id IS NULL`
+%%%     `AND created_at <= now - age AND (retain_until IS NULL OR retain_until <= now)`。
+%%%     age 默认 24h（`imboy` app env `eb_purge_orphan_asset_age_seconds`，或
+%%%     `purge_batch/3` Opts `orphan_asset_age_seconds` 显式覆盖；非法值 fail-closed）。
+%%%   * **顺序不变量与消息路径一致（FND-4）**：对象先删（事务外，`delete_private/3`
+%%%     的 not_found 幂等化放行）、元数据后删（事务内，DB 守卫
+%%%     `trg_enterprise_asset_purge_guard` 仍逐行终审）。
+%%%   * 已 confirm 绑定消息的资产不在此列（message purge 的业务）；绑定消息但未
+%%%     confirm 的 pending 资产（message_id 非空）也不在此列——由其消息的保留期
+%%%     治理，孤儿 age 不扩大到它们。
+%%%   * 残余窗口（如实登记）：对象回收在事务外，若资产行恰在此窗口内被并发
+%%%     confirm，对象已删而行转为 active——confirm 的完整性复核（object_unreadable）
+%%%     会 fail-closed 拒绝，不产生数据损坏；窗口为毫秒级且目标本就是超龄弃置对象。
 -module(eb_pg_purge).
 
 -include_lib("epgsql/include/epgsql.hrl").
@@ -29,7 +51,17 @@
 -define(DEFAULT_BATCH_LIMIT, 100).
 -define(MAX_BATCH_LIMIT, 1000).
 -define(PURGE_ACTION, <<"message.purge">>).
+-define(ORPHAN_PURGE_ACTION, <<"asset.purge">>).
 -define(PURGE_GUC, <<"SET LOCAL imboy.enterprise_purge = 'on'">>).
+
+%% F-1：孤儿 pending 资产的年龄阈值（秒），默认 24h。理由：
+%%   * 上传凭证 TTL 上界 1h（`?MAX_UPLOAD_TTL_SEC`）——超龄即**永久**不可能再被
+%%     confirm，清理不误伤任何在途上传；
+%%   * 与既有配置惯例同量级（`enterprise_internal_idempotency_ttl_seconds = 86400`），
+%%     适配按天调度的 bounded purge 运维节奏；
+%%   * 对比 `eb_asset_app:cleanup_pending/2` 的 1h 默认更保守：purge 是不可逆物理
+%%     通道，多留一天换时钟偏差 / 排查窗口的余量。
+-define(DEFAULT_ORPHAN_ASSET_AGE_SEC, 86400).
 
 -define(SQL_CANDIDATES, <<
     "SELECT id, organization_id, workspace_id, conversation_id, retain_until"
@@ -65,6 +97,32 @@
     " WHERE organization_id = $1 AND workspace_id = $2 AND message_id = ANY($3::bigint[])"
 >>).
 
+%% F-1：孤儿 pending 资产候选。retain_until 门与 DB 守卫
+%% （trg_enterprise_asset_purge_guard 的 retain_until <= now()）同判据——
+%% 未固化的（presign 未带保留期，孤儿常态）视为可清；已固化未到期的一律不选，
+%% 避免对象已被预删而事务被守卫整批回滚。$3 = 过期线（(Now-age) 毫秒），
+%% $4 = 注入时钟毫秒（供 retain_until 门使用），$5 = LIMIT。
+-define(SQL_ORPHAN_ASSET_CANDIDATES, <<
+    "SELECT id, organization_id, workspace_id, conversation_id, retain_until"
+    "  FROM enterprise_asset"
+    " WHERE organization_id = $1 AND workspace_id = $2"
+    "   AND status = 'pending_confirm'"
+    "   AND message_id IS NULL"
+    "   AND created_at <= to_timestamp($3::bigint/1000)"
+    "   AND (retain_until IS NULL OR retain_until <= to_timestamp($4::bigint/1000))"
+    " ORDER BY created_at, id"
+    " LIMIT $5"
+    " FOR UPDATE SKIP LOCKED"
+>>).
+
+%% F-1：孤儿资产元数据删除。语句内复述候选谓词（纵深防御：即便候选与删除之间
+%% 状态被并发改写，也不会误删非孤儿行；计数不符即整批回滚）。
+-define(SQL_DELETE_ORPHAN_ASSETS, <<
+    "DELETE FROM enterprise_asset"
+    " WHERE organization_id = $1 AND workspace_id = $2 AND id = ANY($3::bigint[])"
+    "   AND status = 'pending_confirm' AND message_id IS NULL"
+>>).
+
 %% active hold 必须按 domain 的 hold_covers/2 口径给出 conversation_id / message_id：
 %% message scope 的会话由所属消息解析（同一条语句内完成，租户两键都在）。
 -define(SQL_ACTIVE_HOLDS, <<
@@ -81,21 +139,26 @@
 
 %% @doc 执行一批 bounded purge。
 %%
-%% Opts：`now`（必填，注入时钟 Unix 秒）、`batch_limit`（可选，1..1000，默认 100）。
+%% Opts：`now`（必填，注入时钟 Unix 秒）、`batch_limit`（可选，1..1000，默认 100）、
+%% `orphan_asset_age_seconds`（可选，F-1 孤儿 pending 资产年龄阈值；缺省读
+%% `imboy` app env `eb_purge_orphan_asset_age_seconds`，再缺省 86400）。
 %%
-%% 返回 `{ok, #{purged, deleted, eligible, skipped, audit_id}}` 或 `{error, Reason}`。
-%% `skipped` 是 `[{MessageId, {ineligible, Reason}}]`（domain 裁决），
-%% `deleted` 恒等于 `length(purged)`。
+%% 返回 `{ok, #{purged, deleted, orphan_assets_purged, orphan_assets_deleted,
+%% skipped, object_delete_failures, audit_id}}` 或 `{error, Reason}`。
+%% `skipped` 是 `[{MessageId|AssetId, {ineligible|orphan_asset_ineligible, Reason}}]`
+%% （domain 裁决），`deleted` 恒等于 `length(purged)`（消息数；孤儿资产数单列）。
 -spec purge_batch(integer(), integer(), map()) -> {ok, map()} | {error, term()}.
 purge_batch(OrgId, WorkspaceId, Opts) when is_map(Opts) ->
     case validate(OrgId, WorkspaceId, Opts) of
-        {ok, Now, Limit} -> run(OrgId, WorkspaceId, Now, Limit);
-        {error, _} = Err -> Err
+        {ok, Now, Limit, Age} ->
+            run(OrgId, WorkspaceId, Now, Limit, Age);
+        {error, _} = Err ->
+            Err
     end;
 purge_batch(_OrgId, _WorkspaceId, _Opts) ->
     {error, invalid_opts}.
 
-%% 参数校验顺序固定：租户 → 注入时钟 → 批量上限（任一失败都不触库）。
+%% 参数校验顺序固定：租户 → 注入时钟 → 批量上限 → 孤儿年龄（任一失败都不触库）。
 validate(OrgId, WorkspaceId, Opts) ->
     case tenant_error(OrgId, WorkspaceId) of
         {error, _} = Err ->
@@ -106,8 +169,13 @@ validate(OrgId, WorkspaceId, Opts) ->
                     Err;
                 {ok, Now} ->
                     case batch_limit(Opts) of
-                        {error, _} = Err -> Err;
-                        {ok, Limit} -> {ok, Now, Limit}
+                        {error, _} = Err ->
+                            Err;
+                        {ok, Limit} ->
+                            case orphan_asset_age(Opts) of
+                                {error, _} = Err -> Err;
+                                {ok, Age} -> {ok, Now, Limit, Age}
+                            end
                     end
             end
     end.
@@ -121,26 +189,39 @@ sql_statements() ->
         ?SQL_ASSETS_OF_MESSAGES,
         ?SQL_DELETE_ASSETS,
         ?SQL_DELETE_DELIVERIES,
-        ?SQL_DELETE_MESSAGES
+        ?SQL_DELETE_MESSAGES,
+        ?SQL_ORPHAN_ASSET_CANDIDATES,
+        ?SQL_DELETE_ORPHAN_ASSETS
     ].
 
 %% ===================================================================
 %% 事务主体
 %% ===================================================================
 
-run(OrgId, WorkspaceId, Now, Limit) ->
-    %% FND-4：对象字节回收发生在**元数据事务之前**（对象存储无事务性）。
+run(OrgId, WorkspaceId, Now, Limit, AgeSec) ->
+    %% FND-4：对象回收发生在**元数据事务之前**（对象存储无事务性）。
     %% 顺序不变量：对象先删、元数据后删 ⇒ 事务若回滚，下批重试时对象侧
     %% not_found 被幂等化放行（目标状态已达成），元数据再删 —— 永不出现
     %% 「元数据已删而对象残留」的孤儿；反向顺序则会因 not_found 死循环。
-    case reclaim_objects(OrgId, WorkspaceId, Now, Limit) of
+    case reclaim_objects(OrgId, WorkspaceId, Now, Limit, AgeSec) of
         {error, _} = Err ->
             Err;
-        {ok, Keep, ObjectFailures} ->
+        {ok, Keep, ObjectFailures, OrphanKeep, OrphanFailures} ->
             case
                 elib_pg:with_tx(
                     fun(Conn) ->
-                        do_purge(Conn, OrgId, WorkspaceId, Now, Limit, Keep, ObjectFailures)
+                        do_purge(
+                            Conn,
+                            OrgId,
+                            WorkspaceId,
+                            Now,
+                            Limit,
+                            AgeSec,
+                            Keep,
+                            OrphanKeep,
+                            ObjectFailures,
+                            OrphanFailures
+                        )
                     end,
                     [{reraise, false}]
                 )
@@ -153,7 +234,7 @@ run(OrgId, WorkspaceId, Now, Limit) ->
 %% 事务外对象回收：重选候选（与事务内同判据）→ 域裁决 → 逐 asset 回收。
 %% 对象删除失败的消息**不进本批**（元数据与对象都不动 ⇒ 行仍 eligible，
 %% 下批自动重试 —— 可重试状态由数据本身承载，不另设队列）。
-reclaim_objects(OrgId, WorkspaceId, Now, Limit) ->
+reclaim_objects(OrgId, WorkspaceId, Now, Limit, AgeSec) ->
     AssetPort = asset_port(),
     case elib_pg:query(?SQL_CANDIDATES, [OrgId, WorkspaceId, Now * 1000, Limit]) of
         {ok, Rows} ->
@@ -171,9 +252,28 @@ reclaim_objects(OrgId, WorkspaceId, Now, Limit) ->
                 {ok, Holds} ->
                     {Eligible, _Skipped} = eligible(Candidates, Holds, Now),
                     Ids = [maps:get(message_id, M) || M <- Eligible],
-                    case Ids of
-                        [] -> {ok, [], []};
-                        _ -> reclaim_each(AssetPort, OrgId, WorkspaceId, Eligible, Ids, Now)
+                    case reclaim_each(AssetPort, OrgId, WorkspaceId, Ids, Now) of
+                        {ok, Keep, Failures} ->
+                            %% F-1：孤儿 pending 资产的对象回收（同一 hold 快照裁决）
+                            case
+                                reclaim_orphans(
+                                    AssetPort,
+                                    OrgId,
+                                    WorkspaceId,
+                                    Now,
+                                    Limit,
+                                    AgeSec,
+                                    Holds,
+                                    Failures
+                                )
+                            of
+                                {ok, OrphanKeep, OrphanFailures} ->
+                                    {ok, Keep, Failures, OrphanKeep, OrphanFailures};
+                                {error, _} = Err ->
+                                    Err
+                            end;
+                        {error, _} = Err ->
+                            Err
                     end;
                 {error, _} = Err ->
                     Err
@@ -182,8 +282,15 @@ reclaim_objects(OrgId, WorkspaceId, Now, Limit) ->
             {error, {candidate_query_failed, Reason}}
     end.
 
-reclaim_each(AssetPort, OrgId, WorkspaceId, _Eligible, Ids, Now) ->
-    case asset_rows(OrgId, WorkspaceId, Ids) of
+reclaim_each(AssetPort, OrgId, WorkspaceId, Ids, Now) ->
+    case
+        case Ids of
+            [] -> {ok, []};
+            _ -> asset_rows(OrgId, WorkspaceId, Ids)
+        end
+    of
+        {error, _} = Err ->
+            Err;
         {ok, Assets} ->
             {Keep, Failures} = lists:foldl(
                 fun(Asset, {KeepAcc, FailAcc}) ->
@@ -220,9 +327,41 @@ reclaim_each(AssetPort, OrgId, WorkspaceId, _Eligible, Ids, Now) ->
                 {Ids, []},
                 Assets
             ),
-            {ok, Keep, Failures};
+            {ok, Keep, Failures}
+    end.
+
+%% F-1：孤儿 pending 资产的事务外对象回收（与消息路径同一 FND-4 不变量）。
+%% 资格口径：候选 SQL（age + status + message_id IS NULL + retain_until 门）+
+%% active hold 裁决（复用消息同批加载的 hold 快照）。对象删除失败的资产不进本批；
+%% 元数据已被并发通道回收的（`not_found`）目标状态已达成，静默放行。
+reclaim_orphans(AssetPort, OrgId, WorkspaceId, Now, Limit, AgeSec, Holds, FailAcc) ->
+    case orphan_asset_rows(OrgId, WorkspaceId, Now, Limit, AgeSec) of
         {error, _} = Err ->
-            Err
+            Err;
+        {ok, Orphans} ->
+            {OrphanEligible, _Skipped} = orphan_eligible(Orphans, Holds, Now),
+            {Kept, Failures} = lists:foldl(
+                fun(Asset, {KeepAcc, FailAcc0}) ->
+                    AssetId = maps:get(id, Asset),
+                    case AssetPort:delete_private(OrgId, WorkspaceId, AssetId) of
+                        ok ->
+                            {[AssetId | KeepAcc], FailAcc0};
+                        {error, {object_store, not_found}} ->
+                            %% 幂等化：对象已不在（上次事务回滚后的重试）
+                            {[AssetId | KeepAcc], FailAcc0};
+                        {error, not_found} ->
+                            %% 元数据已被并发通道（cleanup/既有 purge）回收 ⇒ 无行可删
+                            {KeepAcc, FailAcc0};
+                        {error, Reason} ->
+                            {KeepAcc, [
+                                {undefined, AssetId, {object_delete_failed, Reason}} | FailAcc0
+                            ]}
+                    end
+                end,
+                {[], FailAcc},
+                OrphanEligible
+            ),
+            {ok, Kept, Failures}
     end.
 
 asset_rows(OrgId, WorkspaceId, Ids) ->
@@ -249,7 +388,18 @@ active_holds_standalone(OrgId, WorkspaceId) ->
 asset_port() ->
     eb_infra_ports:asset().
 
-do_purge(Conn, OrgId, WorkspaceId, Now, Limit, KeepIds, ObjectFailures) ->
+do_purge(
+    Conn,
+    OrgId,
+    WorkspaceId,
+    Now,
+    Limit,
+    AgeSec,
+    KeepIds,
+    OrphanKeep,
+    ObjectFailures,
+    OrphanFailures
+) ->
     %% 1) 进入 bounded purge 上下文（DB 守卫第一步；失败宁可多保留）
     case epgsql:squery(Conn, ?PURGE_GUC) of
         {ok, _, _} ->
@@ -258,30 +408,43 @@ do_purge(Conn, OrgId, WorkspaceId, Now, Limit, KeepIds, ObjectFailures) ->
                     case active_holds(Conn, OrgId, WorkspaceId) of
                         {ok, Holds} ->
                             case eligible(Candidates, Holds, Now) of
-                                {[], Skipped} ->
-                                    %% 无可清理行：不删、不写审计（跳过原因如实返回）
-                                    {ok, summary([], Skipped, undefined, ObjectFailures)};
-                                {Eligible0, Skipped} ->
+                                {[], Skipped0} ->
+                                    %% 无可清理消息行：仍要裁决孤儿资产（F-1）
+                                    orphan_phase(
+                                        Conn,
+                                        OrgId,
+                                        WorkspaceId,
+                                        Now,
+                                        Limit,
+                                        AgeSec,
+                                        Holds,
+                                        [],
+                                        OrphanKeep,
+                                        Skipped0,
+                                        ObjectFailures,
+                                        OrphanFailures
+                                    );
+                                {Eligible0, Skipped0} ->
                                     %% FND-4：对象回收失败的消息已被剔除（元数据不动可重试）
                                     Eligible = [
                                         M
                                      || M <- Eligible0,
                                         lists:member(maps:get(message_id, M), KeepIds)
                                     ],
-                                    case Eligible of
-                                        [] ->
-                                            {ok, summary([], Skipped, undefined, ObjectFailures)};
-                                        _ ->
-                                            delete_and_audit(
-                                                Conn,
-                                                OrgId,
-                                                WorkspaceId,
-                                                Now,
-                                                Eligible,
-                                                Skipped,
-                                                ObjectFailures
-                                            )
-                                    end
+                                    orphan_phase(
+                                        Conn,
+                                        OrgId,
+                                        WorkspaceId,
+                                        Now,
+                                        Limit,
+                                        AgeSec,
+                                        Holds,
+                                        Eligible,
+                                        OrphanKeep,
+                                        Skipped0,
+                                        ObjectFailures,
+                                        OrphanFailures
+                                    )
                             end;
                         {error, _} = Err ->
                             Err
@@ -291,6 +454,52 @@ do_purge(Conn, OrgId, WorkspaceId, Now, Limit, KeepIds, ObjectFailures) ->
             end;
         {error, Reason} ->
             {error, {purge_context_failed, Reason}}
+    end.
+
+%% F-1：事务内的孤儿资产阶段——重选候选（与事务外同 SQL，FOR UPDATE SKIP LOCKED），
+%% 以事务内最新 hold 快照再裁决一次，只保留对象已成功回收的行，然后随本批一起删除。
+orphan_phase(
+    Conn,
+    OrgId,
+    WorkspaceId,
+    Now,
+    Limit,
+    AgeSec,
+    Holds,
+    MsgEligible,
+    OrphanKeep,
+    Skipped0,
+    ObjectFailures,
+    OrphanFailures
+) ->
+    case orphan_candidates(Conn, OrgId, WorkspaceId, Now, Limit, AgeSec) of
+        {error, _} = Err ->
+            Err;
+        {ok, Orphans} ->
+            {OrphanEligible0, Skipped1} = orphan_eligible(Orphans, Holds, Now),
+            OrphanEligible = [
+                A
+             || A <- OrphanEligible0,
+                lists:member(maps:get(id, A), OrphanKeep)
+            ],
+            Skipped = Skipped0 ++ Skipped1,
+            Failures = ObjectFailures ++ OrphanFailures,
+            case {MsgEligible, OrphanEligible} of
+                {[], []} ->
+                    %% 无可清理行：不删、不写审计（跳过原因如实返回）
+                    {ok, summary([], [], Skipped, undefined, Failures)};
+                {_, _} ->
+                    delete_and_audit(
+                        Conn,
+                        OrgId,
+                        WorkspaceId,
+                        Now,
+                        MsgEligible,
+                        OrphanEligible,
+                        Skipped,
+                        Failures
+                    )
+            end
     end.
 
 candidates(Conn, OrgId, WorkspaceId, Now, Limit) ->
@@ -308,6 +517,78 @@ candidates(Conn, OrgId, WorkspaceId, Now, Limit) ->
             ]};
         {error, Reason} ->
             {error, {candidate_query_failed, Reason}}
+    end.
+
+%% F-1：事务内孤儿候选（与事务外同一冻结 SQL）。
+orphan_candidates(Conn, OrgId, WorkspaceId, Now, Limit, AgeSec) ->
+    case
+        elib_pg:query(Conn, ?SQL_ORPHAN_ASSET_CANDIDATES, [
+            OrgId, WorkspaceId, (Now - AgeSec) * 1000, Now * 1000, Limit
+        ])
+    of
+        {ok, Rows} ->
+            {ok, [orphan_asset_map(Row) || Row <- Rows]};
+        {error, Reason} ->
+            {error, {orphan_candidate_query_failed, Reason}}
+    end.
+
+%% F-1：事务外孤儿候选（对象回收前的预选）。
+orphan_asset_rows(OrgId, WorkspaceId, Now, Limit, AgeSec) ->
+    case
+        elib_pg:query(?SQL_ORPHAN_ASSET_CANDIDATES, [
+            OrgId, WorkspaceId, (Now - AgeSec) * 1000, Now * 1000, Limit
+        ])
+    of
+        {ok, Rows} ->
+            {ok, [orphan_asset_map(Row) || Row <- Rows]};
+        {error, Reason} ->
+            {error, {orphan_candidate_query_failed, Reason}}
+    end.
+
+orphan_asset_map(Row) ->
+    #{
+        id => maps:get(<<"id">>, Row),
+        organization_id => maps:get(<<"organization_id">>, Row),
+        workspace_id => maps:get(<<"workspace_id">>, Row),
+        conversation_id => value_or_undefined(maps:get(<<"conversation_id">>, Row)),
+        retain_until => or_unix(maps:get(<<"retain_until">>, Row))
+    }.
+
+%% F-1：孤儿资产的资格裁决（域侧纵深；DB 守卫仍是最终兜底）：
+%%   1. retain_until 已固化且未到期 → 跳过（与 trg_enterprise_asset_purge_guard 同判据；
+%%      未固化 = presign 未带保留期，孤儿常态，视为可清）；
+%%   2. 任一 active hold 覆盖（workspace / conversation；message scope 对
+%%      message_id NULL 恒不覆盖）→ 跳过，避免整批被 DB 守卫回滚（失败宁可多保留）；
+%%   3. 否则 eligible（age 与 message_id IS NULL 已由候选 SQL 保证）。
+orphan_eligible(Orphans, Holds, Now) ->
+    lists:foldr(
+        fun(Asset, {Ok, Skipped}) ->
+            case orphan_asset_gate(Asset, Holds, Now) of
+                eligible ->
+                    {[Asset | Ok], Skipped};
+                {ineligible, Reason} ->
+                    {Ok, [{maps:get(id, Asset), {orphan_asset_ineligible, Reason}} | Skipped]}
+            end
+        end,
+        {[], []},
+        Orphans
+    ).
+
+orphan_asset_gate(Asset, Holds, Now) ->
+    case maps:get(retain_until, Asset) of
+        RetainUntil when is_integer(RetainUntil), RetainUntil > Now ->
+            {ineligible, retain_not_reached};
+        _ExpiredOrUnbound ->
+            Target = #{
+                organization_id => maps:get(organization_id, Asset),
+                workspace_id => maps:get(workspace_id, Asset),
+                conversation_id => maps:get(conversation_id, Asset),
+                message_id => undefined
+            },
+            case lists:any(fun(Hold) -> eb_retention:hold_covers(Hold, Target) end, Holds) of
+                true -> {ineligible, active_hold};
+                false -> eligible
+            end
     end.
 
 %% 只加载 active hold（released_at IS NULL）；release 后立即失效（domain 亦按此判）。
@@ -348,9 +629,26 @@ eligible(Candidates, Holds, Now) ->
         Candidates
     ).
 
-delete_and_audit(Conn, OrgId, WorkspaceId, Now, Eligible, Skipped, ObjectFailures) ->
-    Ids = [maps:get(message_id, Message) || Message <- Eligible],
-    %% 先删子表（asset / delivery），再删消息：与 RESTRICT FK 顺序一致。
+delete_and_audit(Conn, OrgId, WorkspaceId, Now, MsgEligible, OrphanEligible, Skipped, Failures) ->
+    Ids = [maps:get(message_id, Message) || Message <- MsgEligible],
+    OrphanIds = [maps:get(id, Asset) || Asset <- OrphanEligible],
+    %% 先删子表（asset / delivery），再删消息：与 RESTRICT FK 顺序一致；
+    %% 孤儿资产（F-1）无消息外键，随后按 id 精确删除。
+    case delete_message_rows(Conn, OrgId, WorkspaceId, Now, Ids) of
+        ok ->
+            case delete_orphan_rows(Conn, OrgId, WorkspaceId, OrphanIds) of
+                ok ->
+                    write_audit(Conn, OrgId, WorkspaceId, Now, Ids, OrphanIds, Skipped, Failures);
+                {error, Reason} ->
+                    {error, {sql, sql_state(Reason), constraint_name(Reason)}}
+            end;
+        {error, Reason} ->
+            {error, {sql, sql_state(Reason), constraint_name(Reason)}}
+    end.
+
+delete_message_rows(_Conn, _OrgId, _WorkspaceId, _Now, []) ->
+    ok;
+delete_message_rows(Conn, OrgId, WorkspaceId, Now, Ids) ->
     case delete_children(Conn, OrgId, WorkspaceId, Ids) of
         ok ->
             case
@@ -361,9 +659,7 @@ delete_and_audit(Conn, OrgId, WorkspaceId, Now, Eligible, Skipped, ObjectFailure
                 {ok, Deleted} when is_integer(Deleted) ->
                     case Deleted =:= length(Ids) of
                         true ->
-                            write_audit(
-                                Conn, OrgId, WorkspaceId, Now, Ids, Skipped, ObjectFailures
-                            );
+                            ok;
                         false ->
                             %% 影响行数与候选不符（并发/守卫变化）→ 整批回滚，多保留
                             throw({rollback, {purge_count_mismatch, length(Ids), Deleted}})
@@ -371,10 +667,29 @@ delete_and_audit(Conn, OrgId, WorkspaceId, Now, Eligible, Skipped, ObjectFailure
                 {ok, Deleted, _Rows} when is_integer(Deleted) ->
                     throw({rollback, {purge_count_mismatch, length(Ids), Deleted}});
                 {error, Reason} ->
-                    {error, {sql, sql_state(Reason), constraint_name(Reason)}}
+                    {error, Reason}
             end;
         {error, Reason} ->
-            {error, {sql, sql_state(Reason), constraint_name(Reason)}}
+            {error, Reason}
+    end.
+
+%% F-1：孤儿资产删除。语句内复述候选谓词（status/message_id 租户两键），
+%% 计数不符（并发改写）→ 整批回滚，多保留。
+delete_orphan_rows(_Conn, _OrgId, _WorkspaceId, []) ->
+    ok;
+delete_orphan_rows(Conn, OrgId, WorkspaceId, OrphanIds) ->
+    case elib_pg:execute(Conn, ?SQL_DELETE_ORPHAN_ASSETS, [OrgId, WorkspaceId, OrphanIds]) of
+        {ok, Deleted} when is_integer(Deleted) ->
+            case Deleted =:= length(OrphanIds) of
+                true ->
+                    ok;
+                false ->
+                    throw({rollback, {orphan_purge_count_mismatch, length(OrphanIds), Deleted}})
+            end;
+        {ok, Deleted, _Rows} when is_integer(Deleted) ->
+            throw({rollback, {orphan_purge_count_mismatch, length(OrphanIds), Deleted}});
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 delete_children(Conn, OrgId, WorkspaceId, Ids) ->
@@ -388,35 +703,46 @@ delete_children(Conn, OrgId, WorkspaceId, Ids) ->
             Err
     end.
 
-write_audit(Conn, OrgId, WorkspaceId, Now, Ids, Skipped, ObjectFailures) ->
+write_audit(Conn, OrgId, WorkspaceId, Now, Ids, OrphanIds, Skipped, Failures) ->
+    %% 逐批一条审计：批内删了消息 → message.purge（既有口径不变）；
+    %% 只删了孤儿资产 → asset.purge（F-1）。一行未删不会走到这里（无空审计）。
+    {Action, ResourceType} =
+        case Ids of
+            [] -> {?ORPHAN_PURGE_ACTION, <<"enterprise_asset">>};
+            _ -> {?PURGE_ACTION, <<"enterprise_message">>}
+        end,
     Event = #{
         id => eb_tsid:new_id(enterprise_audit),
-        resource_type => <<"enterprise_message">>,
+        resource_type => ResourceType,
         resource_id => undefined,
-        action => ?PURGE_ACTION,
+        action => Action,
         detail => #{
             <<"workspace_id">> => WorkspaceId,
             <<"worker">> => <<"eb_pg_purge">>,
             <<"injected_now">> => Now,
             <<"deleted">> => length(Ids),
             <<"message_ids">> => Ids,
+            <<"orphan_assets_deleted">> => length(OrphanIds),
+            <<"orphan_asset_ids">> => OrphanIds,
             <<"skipped">> => length(Skipped),
-            <<"object_delete_failures">> => length(ObjectFailures)
+            <<"object_delete_failures">> => length(Failures)
         }
     },
     case eb_pg_audit:append_in(Conn, OrgId, Event) of
         {ok, AuditId} ->
-            {ok, summary(Ids, Skipped, AuditId, ObjectFailures)};
+            {ok, summary(Ids, OrphanIds, Skipped, AuditId, Failures)};
         {error, Reason} ->
             {error, {audit_failed, Reason}}
     end.
 
-summary(Ids, Skipped, AuditId, ObjectFailures) ->
+summary(Ids, OrphanIds, Skipped, AuditId, Failures) ->
     #{
         purged => Ids,
         deleted => length(Ids),
+        orphan_assets_purged => OrphanIds,
+        orphan_assets_deleted => length(OrphanIds),
         skipped => Skipped,
-        object_delete_failures => ObjectFailures,
+        object_delete_failures => Failures,
         audit_id => AuditId
     }.
 
@@ -443,6 +769,20 @@ batch_limit(Opts) ->
         Other -> {error, {invalid_batch_limit, Other}}
     end.
 
+%% F-1：孤儿资产年龄阈值。解析顺序：显式 Opts → `imboy` app env
+%% `eb_purge_orphan_asset_age_seconds` → ?DEFAULT_ORPHAN_ASSET_AGE_SEC。
+%% 非法值 fail-closed（purge 整体拒绝 ⇒ 宁可多保留），绝不静默回落默认值。
+orphan_asset_age(Opts) ->
+    case maps:get(orphan_asset_age_seconds, Opts, env_orphan_asset_age()) of
+        Age when is_integer(Age), Age >= 0 -> {ok, Age};
+        Other -> {error, {invalid_orphan_asset_age, Other}}
+    end.
+
+env_orphan_asset_age() ->
+    application:get_env(
+        imboy, eb_purge_orphan_asset_age_seconds, ?DEFAULT_ORPHAN_ASSET_AGE_SEC
+    ).
+
 to_unix(Value) when is_integer(Value) ->
     Value;
 to_unix(Value) when is_binary(Value) ->
@@ -450,6 +790,11 @@ to_unix(Value) when is_binary(Value) ->
         Seconds when is_integer(Seconds) -> Seconds;
         _ -> undefined
     end.
+
+%% F-1：孤儿资产的 retain_until 允许 NULL（presign 未带保留期）——
+%% null 原样映射为 undefined（未固化），不进 to_unix（binary/integer 专用）。
+or_unix(null) -> undefined;
+or_unix(Value) -> to_unix(Value).
 
 atom_scope(<<"workspace">>) -> workspace;
 atom_scope(<<"conversation">>) -> conversation;

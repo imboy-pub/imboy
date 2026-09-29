@@ -162,6 +162,14 @@
         %% 同 body 在窗口内重放原结果，窗口外按新请求处理。
         {enterprise_internal_idempotency_ttl_seconds, 86400},
 
+        %% REVIEW-3 F-1：bounded purge 的孤儿 pending 资产清理年龄阈值（秒，缺省 24h）。
+        %% presign 每次调用都铸造 pending_confirm 资产行；status='pending_confirm' 且
+        %% message_id IS NULL 且 created_at 早于 now-本值 的孤儿资产由 eb_pg_purge
+        %% 随批清理（对象先删、元数据后删，retain_until 未到期 / active hold 覆盖仍不清理）。
+        %% 消费方：src/features/enterprise_business/infrastructure/eb_pg_purge.erl
+        %%（非法值 fail-closed：purge 整体拒绝，宁可多保留）。
+        {eb_purge_orphan_asset_age_seconds, 86400},
+
         %% API 签名验证开关（<<"on">> | <<"off">>）
         %% 生产环境建议设为 <<"on">>，开发/测试可留 <<"off">>
         {api_auth_switch, <<"off">>},
