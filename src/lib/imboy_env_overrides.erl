@@ -358,7 +358,8 @@ override_nonneg_integer_key(EnvVar, AppKey) ->
     end.
 
 %% bootstrap 合同（TSID-05/08）：fresh 仅首次部署显式使用；existing 是
-%% 常态（无有效槽即拒绝启动，绝不静默 fresh——那等于丢弃 durable fence）
+%% 常态（双槽全缺不再静默当 fresh，而是交 elib_tsid_bootstrap 状态机
+%% 判定：pristine 扫描授权或 FAIL 级拒绝）
 override_tsid_bootstrap() ->
     case os:getenv("IMBOY_TSID_STORE_BOOTSTRAP") of
         false ->

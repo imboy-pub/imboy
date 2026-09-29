@@ -1,8 +1,10 @@
 %%% elib_tsid_guard — TSID durable future fence guard（TSID-06）
 %%%
-%%% 生命周期：acquire lifetime lock → open store（先锁后读）→ 校验
-%%% 时钟与恢复 floor → 持久化新 fence → 一次性发布完整 runtime
-%%% （cursor 初始化为 (start_ts << 11) - 1）→ READY。
+%%% 生命周期：acquire lifetime lock → open store（先锁后读）→ 首启自举
+%%% gate（elib_tsid_bootstrap 状态机：pristine-only，判定授权或 FAIL 级
+%%% 拒绝；guard 只执行授权结果——floor 持久化 AC-05D、割接 manifest，
+%%% 运行期永不自我升级）→ 校验时钟与恢复 floor → 持久化新 fence →
+%%% 一次性发布完整 runtime（cursor 初始化为 (start_ts << 11) - 1）→ READY。
 %%%
 %%% 状态机（发布进 runtime handle 的 guard_ref atomics，热路径只读）：
 %%%   slot1 status：0=FENCED / 1=READY / 2=STOPPING
@@ -66,6 +68,9 @@
 %%   startup_clock_wait_timeout_ms（默认 5000）
 %%   capacity_wait_timeout_ms（默认 100）
 %%   wall_clock_ms（可选测试 seam 覆盖）
+%%   bootstrap_env_fun（可选自举 seam，缺省 os:getenv/1：割接环境变量读取）
+%%   bootstrap_scan_fun（可选自举 seam，缺省 elib_tsid_scan:scan/1：停写
+%%   高水位扫描；测试注入假 scan，绝不连库）
 %%   max_initial_lead_ms（默认 60000：恢复 floor 允许领先时钟的量）
 -spec start_link(map()) -> {ok, pid()} | {error, term()}.
 start_link(Config) ->
@@ -160,7 +165,7 @@ init_acquire_lock(Config, Root, CombinedNode, Provider) ->
             acquire_lock(Config, Root, CombinedNode, LockPath, Provider)
     end.
 
-acquire_lock(Config, Root, CombinedNode, LockPath, Provider) ->
+acquire_lock(Config, _Root, _CombinedNode, LockPath, Provider) ->
     TimeoutMs = maps:get(lock_timeout_ms, Config, 5000),
     case elib_tsid_lock:acquire(LockPath, TimeoutMs, Provider) of
         {ok, Lock} ->
@@ -178,22 +183,113 @@ acquire_lock(Config, Root, CombinedNode, LockPath, Provider) ->
 
 %% 先锁后读（计划：恢复时先锁后读）
 boot_after_lock(Config, Lock) ->
-    Root = maps:get(root, Config),
-    CombinedNode = maps:get(combined_node, Config),
-    StoreCfg = #{
-        root => Root,
-        combined_node => CombinedNode,
-        dc_bits => maps:get(dc_bits, Config),
-        store_bootstrap => maps:get(store_bootstrap, Config, existing)
-    },
+    StoreCfg = store_cfg(Config),
     case elib_tsid_store:open(StoreCfg) of
         {error, Reason} ->
-            {error, {store_open, Reason}};
+            %% store 打不开：Reason 原样交给自举状态机分类（FAIL 级 stop
+            %% 或 pristine 授权后以 fresh 重开）
+            bootstrap_open_error(Config, Lock, StoreCfg, Reason);
         {ok, Store0} ->
-            %% 恢复 floor：fresh 空 store 从当前时钟起步
-            #{safe_before := PersistedFloor} = elib_tsid_store:status(Store0),
-            boot_with_floor(Config, Lock, Store0, PersistedFloor)
+            #{safe_before := StoreFloor} = elib_tsid_store:status(Store0),
+            bootstrap_gate(Config, Lock, Store0, StoreFloor)
     end.
+
+store_cfg(Config) ->
+    #{
+        root => maps:get(root, Config),
+        combined_node => maps:get(combined_node, Config),
+        dc_bits => maps:get(dc_bits, Config),
+        store_bootstrap => maps:get(store_bootstrap, Config, existing)
+    }.
+
+%% -------------------------------------------------------------------
+%% 首启自举 gate（elib_tsid_bootstrap 状态机）：判定权在状态机，guard
+%% 只执行授权结果；状态机 {stop, R} → guard 启动失败（acquire_lock 的
+%% 错误路径统一释放锁）。
+%% -------------------------------------------------------------------
+
+%% store 打开失败路径：状态机分类为 FAIL 级 stop，或 pristine 授权
+%% （proceed_floor）——此时以 store_bootstrap => fresh 重开一次再走
+%% floor 提交流程；重开仍失败则维持 store_open 错误。
+bootstrap_open_error(Config, Lock, StoreCfg, Reason) ->
+    Ctx = #{store_floor => 0, store_open_error => Reason},
+    case bootstrap_decide(Config, Ctx) of
+        {stop, R} ->
+            {error, R};
+        {ok, #{action := proceed_floor, floor_safe_before := Floor} = Ret} ->
+            case elib_tsid_store:open(StoreCfg#{store_bootstrap := fresh}) of
+                {ok, Store0} ->
+                    floor_commit(Config, Lock, Store0, Floor, Ret);
+                {error, R2} ->
+                    {error, {store_open, R2}}
+            end;
+        {ok, Other} ->
+            %% 合同外动作（open 失败时不可能 proceed_existing/adopt）
+            {error, {bootstrap_unexpected_action, maps:get(action, Other, Other)}}
+    end.
+
+%% store 打开成功路径：按状态机判定分发
+bootstrap_gate(Config, Lock, Store0, StoreFloor) ->
+    case bootstrap_decide(Config, #{store_floor => StoreFloor}) of
+        {ok, #{action := proceed_existing}} ->
+            boot_with_floor(Config, Lock, Store0, StoreFloor);
+        {ok, #{action := proceed_floor, floor_safe_before := Floor} = Ret} ->
+            floor_commit(Config, Lock, Store0, Floor, Ret);
+        {ok, #{action := adopt_existing, floor_safe_before := Floor} = Ret} ->
+            manifest_then_boot(Config, Lock, Store0, Floor, Ret);
+        {stop, R} ->
+            {error, R};
+        {ok, Other} ->
+            {error, {bootstrap_unexpected_action, maps:get(action, Other, Other)}}
+    end.
+
+%% pristine 首启：floor 持久化成功才继续（AC-05D）；空库（floor=0，
+%% 扫描确认无历史 ID）免 persist 直接落 manifest
+floor_commit(Config, Lock, Store0, 0, Ret) ->
+    manifest_then_boot(Config, Lock, Store0, 0, Ret);
+floor_commit(Config, Lock, Store0, Floor, Ret) when Floor > 0 ->
+    case elib_tsid_store:persist(Store0, Floor) of
+        {ok, Store1} ->
+            manifest_then_boot(Config, Lock, Store1, Floor, Ret);
+        {error, R} ->
+            {error, {bootstrap_persist, R}}
+    end.
+
+%% 割接 manifest 落盘成功才进入恢复流程
+manifest_then_boot(Config, Lock, Store, Floor, Ret) ->
+    case write_bootstrap_manifest(Config, Ret) of
+        ok ->
+            boot_with_floor(Config, Lock, Store, Floor);
+        {error, R} ->
+            {error, {bootstrap_manifest_write, R}}
+    end.
+
+%% manifest 内容 = decide 返回字段（去掉控制键 action），combined_node
+%% 由 guard 补齐（manifest 布局字段，与 ctx 同源）
+write_bootstrap_manifest(Config, Ret) ->
+    Manifest = maps:remove(action, Ret#{combined_node => maps:get(combined_node, Config)}),
+    elib_tsid_bootstrap:write_manifest(bootstrap_manifest_path(Config), Manifest).
+
+bootstrap_manifest_path(Config) ->
+    filename:join([
+        maps:get(root, Config), node_dir(maps:get(combined_node, Config)), "tsid.bootstrap"
+    ]).
+
+%% 自举状态机 ctx：seam 键缺省真实实现（测试注入 bootstrap_env_fun /
+%% bootstrap_scan_fun），wall_clock_fun 与恢复路径同一时钟源
+bootstrap_decide(Config, Extra) ->
+    Ctx = maps:merge(
+        #{
+            catalog_digest => elib_tsid_catalog:digest(),
+            combined_node => maps:get(combined_node, Config),
+            manifest_path => bootstrap_manifest_path(Config),
+            env_fun => maps:get(bootstrap_env_fun, Config, fun os:getenv/1),
+            scan_fun => maps:get(bootstrap_scan_fun, Config, fun elib_tsid_scan:scan/1),
+            wall_clock_fun => maps:get(wall_clock_ms, Config, fun erlang:system_time/1)
+        },
+        Extra
+    ),
+    elib_tsid_bootstrap:decide(Ctx).
 
 boot_with_floor(Config, Lock, Store0, PersistedFloor) ->
     WallF = maps:get(wall_clock_ms, Config, fun erlang:system_time/1),

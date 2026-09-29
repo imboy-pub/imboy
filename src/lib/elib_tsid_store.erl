@@ -244,11 +244,7 @@ persist(Store, SafeBefore) ->
 %% 生命周期缺陷就此消除）；非 0 generation 仅见于 v1 历史记录。
 -spec persist(store(), non_neg_integer(), map()) ->
     {ok, store()} | {error, term()}.
-persist(
-    #store{dir = Dir, combined_node = Node, layout_hash = LH} = S0,
-    SafeBefore,
-    Opts
-) ->
+persist(S0, SafeBefore, Opts) ->
     true =
         is_integer(SafeBefore) andalso SafeBefore >= 0 andalso
             SafeBefore =< ?MAX_REL_TS_PLUS_1 orelse error({invalid_safe_before, SafeBefore}),

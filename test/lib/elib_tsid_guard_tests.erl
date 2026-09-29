@@ -9,6 +9,8 @@
 
 -define(NODE, 129).
 -define(DC_BITS, 3).
+%% 与 elib_tsid_guard 的 ?EPOCH_MS 同源（未导出，测试本地复制）
+-define(EPOCH_MS, 1735689600000).
 
 tmp_root() ->
     Dir =
@@ -19,10 +21,21 @@ tmp_root() ->
     Dir.
 
 %% 小窗口配置：fence 快速逼近，触发续租路径
+remove_if_exists(P) ->
+    case file:delete(P) of
+        ok -> ok;
+        {error, enoent} -> ok;
+        {error, _} = E -> E
+    end.
+
 fast_cfg(Root) ->
     %% max_logical_lead_ms 显式小值：TSID-10 缺省定标为 512 后，缺省值会
     %% 违反本套件小窗口配置的 guard 校验（Window=100 须 > Lead）；机制
-    %% 测试显式注入参数，不镜像生产缺省
+    %% 测试显式注入参数，不镜像生产缺省。
+    %% 自举 seam（割接状态机集成）：所有 guard 启动测试统一注入——
+    %%   bootstrap_env_fun：恒 false，隔离宿主环境变量；
+    %%   bootstrap_scan_fun：假 scan，绝不连库（空库口径 floor=0）。
+    %% 需要特定 env / scan 结果的用例在各自测试中覆写对应键。
     #{
         root => Root,
         combined_node => ?NODE,
@@ -34,7 +47,9 @@ fast_cfg(Root) ->
         fence_window_ms => 100,
         fence_renew_margin_ms => 20,
         startup_clock_wait_timeout_ms => 1000,
-        capacity_wait_timeout_ms => 5000
+        capacity_wait_timeout_ms => 5000,
+        bootstrap_env_fun => fun(_K) -> false end,
+        bootstrap_scan_fun => fun(_Opts) -> {ok, #{floor_safe_before => 0}} end
     }.
 
 %% ===================================================================
@@ -71,7 +86,9 @@ guard_ready_and_generates_test() ->
     ?assert(Ts < SafeBefore),
     stop_guard(Pid).
 
-%% 重启恢复：floor 不回退（T-214 缩影）
+%% 重启恢复：floor 不回退（T-214 缩影）。割接新矩阵下第二次启动依赖
+%% 首启落盘的割接 manifest → decide 走 proceed_existing（正常重启分支），
+%% 语义与旧实现（直接读 store floor）一致。
 guard_restart_floor_no_regression_test() ->
     Root = tmp_root(),
     {ok, P1} = elib_tsid_guard:start_link(fast_cfg(Root)),
@@ -87,6 +104,146 @@ guard_restart_floor_no_regression_test() ->
     %% 重启后首个 ts 不低于重启前最大 ts（durable floor 生效）
     ?assert(Ts2 >= MaxTs),
     stop_guard(P2).
+
+%% ===================================================================
+%% 首启自举 gate（elib_tsid_bootstrap 状态机集成）：判定权在状态机，
+%% guard 只执行授权结果。本节扫描一律注入假 scan（绝不连库）。
+%% ===================================================================
+
+%% pristine auto_scan 启动成功：假 scan 返回略超当前时钟的历史高水位
+%% → AC-05D floor 持久化成功 → 割接 manifest 落盘 → READY，且生成
+%% 不越授权 floor。store_bootstrap 取 existing：双槽全缺先被 open 拒绝
+%% （no_valid_slot），由状态机 pristine 授权后 guard 以 fresh 重开。
+pristine_auto_scan_boots_ready_test() ->
+    Root = tmp_root(),
+    Floor = rel_now() + 5000,
+    Cfg = (fast_cfg(Root))#{
+        store_bootstrap => existing,
+        bootstrap_scan_fun => fun(_Opts) -> {ok, #{floor_safe_before => Floor}} end
+    },
+    {ok, Pid} = elib_tsid_guard:start_link(Cfg),
+    ok = wait_ready(Pid, 50),
+    ?assert(filelib:is_file(manifest_path(Root))),
+    {ok, Store} = elib_tsid_store:open(read_store_cfg(Root)),
+    #{safe_before := SB} = elib_tsid_store:status(Store),
+    ?assert(SB >= Floor),
+    Id = elib_tsid:generate(user),
+    Ts = (Id bsr 21) band ((1 bsl 42) - 1),
+    ?assert(Ts >= Floor),
+    stop_guard(Pid).
+
+%% pristine auto_scan 扫描失败：FAIL 级拒绝启动（绝不静默当 fresh）
+pristine_scan_failure_stops_test() ->
+    Root = tmp_root(),
+    Cfg = (fast_cfg(Root))#{
+        store_bootstrap => existing,
+        bootstrap_scan_fun => fun(_Opts) -> {error, simulated_scan_failure} end
+    },
+    ?assertMatch({error, {bootstrap_scan, _}}, start_trapped(Cfg)).
+
+%% 旧 writer 未证明停写：store 有 durable floor 而割接 manifest 缺失 →
+%% FAIL 级拒绝启动（blocked_legacy_writer）
+blocked_legacy_writer_stops_test() ->
+    Root = tmp_root(),
+    {ok, Pid} = elib_tsid_guard:start_link(fast_cfg(Root)),
+    ok = wait_ready(Pid, 50),
+    stop_guard(Pid),
+    ok = file:delete(manifest_path(Root)),
+    Cfg = (fast_cfg(Root))#{store_bootstrap => existing},
+    ?assertMatch({error, blocked_legacy_writer}, start_trapped(Cfg)).
+
+%% LEGACY_ACK：操作员确认旧 writer 停写（env 显式确认值）→ 补写割接
+%% manifest 后按 adopt_existing 接管现有 floor，生成不回退
+legacy_ack_takeover_test() ->
+    Root = tmp_root(),
+    {ok, P1} = elib_tsid_guard:start_link(fast_cfg(Root)),
+    ok = wait_ready(P1, 50),
+    Ids = [elib_tsid:generate(user) || _ <- lists:seq(1, 10)],
+    MaxTs = lists:max([(I bsr 21) band ((1 bsl 42) - 1) || I <- Ids]),
+    stop_guard(P1),
+    ok = file:delete(manifest_path(Root)),
+    AckFun = fun
+        ("IMBOY_TSID_BOOTSTRAP_LEGACY_ACK") -> "I-CONFIRM-OLD-WRITER-STOPPED";
+        (_) -> false
+    end,
+    Cfg = (fast_cfg(Root))#{store_bootstrap => existing, bootstrap_env_fun => AckFun},
+    {ok, P2} = elib_tsid_guard:start_link(Cfg),
+    ok = wait_ready(P2, 50),
+    ?assert(filelib:is_file(manifest_path(Root))),
+    Id2 = elib_tsid:generate(user),
+    Ts2 = (Id2 bsr 21) band ((1 bsl 42) - 1),
+    ?assert(Ts2 >= MaxTs),
+    stop_guard(P2).
+
+%% 割接 manifest 在而 store 双槽丢失：FAIL 级（不静默重建 fence）
+store_lost_manifest_present_test() ->
+    Root = tmp_root(),
+    {ok, Pid} = elib_tsid_guard:start_link(fast_cfg(Root)),
+    ok = wait_ready(Pid, 50),
+    stop_guard(Pid),
+    NodeDir = filename:join(Root, io_lib:format("node-~4..0B", [?NODE])),
+    %% 首启只发生过 boot_ready 一次 persist（fresh 空库 floor=0 时
+    %% proceed_floor 跳过 persist），双槽中可能只有一颗有值——删除须容忍
+    %% enoent，被删后 existing 模式 open 返回 no_valid_slot。
+    remove_if_exists(filename:join(NodeDir, "clock.a")),
+    remove_if_exists(filename:join(NodeDir, "clock.b")),
+    Cfg = (fast_cfg(Root))#{store_bootstrap => existing},
+    ?assertMatch({error, store_lost}, start_trapped(Cfg)).
+
+%% 割接 manifest 的 catalog_digest 与当前 catalog 不符：FAIL 级
+%% （catalog 收缩/变更后旧 manifest 不可信，需操作员重做割接）。
+%% 坏 manifest 经 write_manifest 合同 API 构造（不手写二进制）。
+catalog_changed_stops_test() ->
+    Root = tmp_root(),
+    {ok, Pid} = elib_tsid_guard:start_link(fast_cfg(Root)),
+    ok = wait_ready(Pid, 50),
+    stop_guard(Pid),
+    Bad = #{
+        mode => auto_scan,
+        combined_node => ?NODE,
+        floor_safe_before => 42,
+        created_at_rel_ms => rel_now(),
+        catalog_digest => binary:copy(<<7>>, 32)
+    },
+    ok = elib_tsid_bootstrap:write_manifest(manifest_path(Root), Bad),
+    Cfg = (fast_cfg(Root))#{store_bootstrap => existing},
+    ?assertMatch({error, catalog_changed}, start_trapped(Cfg)).
+
+%% pristine manual_floor：env 指定 floor → 无需扫描直接授权启动。
+%% floor 值取 epoch 后 1234ms——无论状态机按 ts 域还是 slot 域换算
+%% （(ms-EPOCH)<<11）都低于当前时钟，本用例只验证接线不绑定换算口径。
+manual_floor_bootstrap_test() ->
+    Root = tmp_root(),
+    UnixMs = 1735689600000 + 1234,
+    EnvFun = fun
+        ("IMBOY_TSID_BOOTSTRAP_MODE") -> "manual_floor";
+        ("IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS") -> integer_to_list(UnixMs);
+        (_) -> false
+    end,
+    Cfg = (fast_cfg(Root))#{store_bootstrap => existing, bootstrap_env_fun => EnvFun},
+    {ok, Pid} = elib_tsid_guard:start_link(Cfg),
+    ok = wait_ready(Pid, 50),
+    ?assert(filelib:is_file(manifest_path(Root))),
+    {ok, Store} = elib_tsid_store:open(read_store_cfg(Root)),
+    #{safe_before := SB} = elib_tsid_store:status(Store),
+    ?assert(SB > (1234 bsl 11)),
+    stop_guard(Pid).
+
+%% manual_floor 配非法 floor env：FAIL 级 {bootstrap_env, _}；
+%% scan_fun 注入即崩函数，证明 manual_floor 路径绝不触发扫描
+manual_floor_bad_env_stops_test() ->
+    Root = tmp_root(),
+    EnvFun = fun
+        ("IMBOY_TSID_BOOTSTRAP_MODE") -> "manual_floor";
+        ("IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS") -> "not-an-integer";
+        (_) -> false
+    end,
+    Cfg = (fast_cfg(Root))#{
+        store_bootstrap => existing,
+        bootstrap_env_fun => EnvFun,
+        bootstrap_scan_fun => fun(_Opts) -> error(scan_must_not_be_called) end
+    },
+    ?assertMatch({error, {bootstrap_env, _}}, start_trapped(Cfg)).
 
 %% ===================================================================
 %% T-202(守护级) 持久化失败 → FENCED → 不再发 ID；恢复后回 READY
@@ -297,6 +454,18 @@ sup_src_path() ->
 %% ===================================================================
 %% 内部助手
 %% ===================================================================
+
+%% 当前相对毫秒（guard safe_before 同一口径）
+rel_now() ->
+    os:system_time(millisecond) - ?EPOCH_MS.
+
+%% 割接 manifest 路径（elib_tsid_guard bootstrap_manifest_path 同构）
+manifest_path(Root) ->
+    filename:join([Root, io_lib:format("node-~4..0B", [?NODE]), "tsid.bootstrap"]).
+
+%% 只读重开 store（status 校验 floor 持久化；不 persist）
+read_store_cfg(Root) ->
+    #{root => Root, combined_node => ?NODE, dc_bits => ?DC_BITS}.
 
 %% 在 trap_exit 的辅助进程里执行 start_link，返回 {ok,Pid}|{error,R}
 %% （失败路径的 exit 信号不杀死测试进程）
