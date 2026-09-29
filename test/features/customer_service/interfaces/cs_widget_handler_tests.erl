@@ -65,6 +65,7 @@ widget_test_() ->
             fun a01_token_and_origin_tests/1,
             fun a06_capability_and_matrix_tests/1,
             fun asset_content_tests/1,
+            fun asset_upload_tests/1,
             fun a02_sse_tests/1,
             fun a03_cors_tests/1,
             fun a04_throttle_tests/1,
@@ -701,6 +702,94 @@ a06_capability_and_matrix_tests(_) ->
                     ?assertEqual(401, ?S:status(Resp))
                 end
             )
+        end}
+    ].
+
+%% ===================================================================
+%% 访客附件上传面（REVIEW-2 凭证负例缺口闭环：`widget_asset_upload` /
+%% `widget_asset_confirm` 在本套件此前零覆盖——E2E A05 只证明合法链，
+%% BE 接口层的拒绝面必须在这里锁死）。凭证门与 session create 同源
+%% （a01 口径）：缺头 401、查询串携带 400、无效 token 由 facade 裁决
+%% 映射 401；零 DB（meck facade + cs_fake_facts）。
+%% ===================================================================
+
+asset_upload_tests(_) ->
+    PresignPath = <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary, "/assets/presign">>,
+    [
+        {"BE-S01 presign without visit-token header is 401 and never reaches facade", fun() ->
+            meck:expect(customer_service_facade, widget_asset_upload, fun(_O, _P) ->
+                {ok, #{}}
+            end),
+            ?S:with_listener(widget, widget_asset_upload, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    PresignPath,
+                    #{},
+                    #{}
+                ),
+                ?assertEqual(401, ?S:status(Resp)),
+                ?assertNot(meck:called(customer_service_facade, widget_asset_upload, '_'))
+            end)
+        end},
+
+        {"BE-S01 presign credential in query string is 400 (token travels in header only)", fun() ->
+                ?S:with_listener(widget, widget_asset_upload, widget_inject(), fun(Port) ->
+                    Resp = ?S:request(
+                        Port,
+                        <<"POST">>,
+                        <<PresignPath/binary, "?token=", ?TOKEN/binary>>,
+                        #{},
+                        #{}
+                    ),
+                    ?assertEqual(400, ?S:status(Resp)),
+                    ?assertEqual(<<"credential_in_query_string">>, ?S:msg(Resp))
+                end)
+            end},
+
+        {"BE-S01 presign invalid visit token is 401 visit_token_invalid (facade ruling maps to credential face)",
+            fun() ->
+                meck:expect(customer_service_facade, widget_asset_upload, fun(_O, _P) ->
+                    {error, visit_token_invalid}
+                end),
+                %% 参数面取合法形状（四必填齐全），让请求穿过参数校验到达
+                %% facade——本用例锁的是凭证裁决，不是参数校验（422 是另一条门）。
+                Body = #{
+                    <<"installation_id">> => int_bin(?INSTALL),
+                    <<"mime">> => <<"text/plain">>,
+                    <<"size_bytes">> => 3,
+                    <<"object_hash">> =>
+                        <<"a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8">>
+                },
+                ?S:with_listener(widget, widget_asset_upload, widget_inject(), fun(Port) ->
+                    Resp = ?S:request(
+                        Port,
+                        <<"POST">>,
+                        PresignPath,
+                        Body,
+                        #{<<"x-cs-visit-token">> => <<"wtok-forged-never-issued">>}
+                    ),
+                    ?assertEqual(401, ?S:status(Resp)),
+                    ?assertEqual(<<"visit_token_invalid">>, ?S:msg(Resp))
+                end)
+            end},
+
+        {"BE-S01 confirm without visit-token header is 401 and never reaches facade", fun() ->
+            meck:expect(customer_service_facade, widget_asset_confirm, fun(_O, _P) ->
+                {ok, #{}}
+            end),
+            ?S:with_listener(widget, widget_asset_confirm, widget_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/v1/cs/widget/sessions/", (int_bin(?SESSION))/binary,
+                        "/assets/confirm">>,
+                    #{<<"upload_ref">> => <<"ref-1">>},
+                    #{}
+                ),
+                ?assertEqual(401, ?S:status(Resp)),
+                ?assertNot(meck:called(customer_service_facade, widget_asset_confirm, '_'))
+            end)
         end}
     ].
 
