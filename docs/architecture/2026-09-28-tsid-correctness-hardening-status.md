@@ -129,7 +129,36 @@
 
 - **RELEASE=NO_GO 维持不变**（LOCAL_CANDIDATE_PASS / EXTERNAL_VALIDATION_PENDING 口径不变）。
 - EXT-04（目标 PVC/存储类 crash 矩阵）、EXT-05（目标环境双实例锁）维持外部 NO_GO。
-- §6/§7 所述 catalog/scan/bootstrap 为**合同先行**交付：`elib_tsid_scan` 与
-  `elib_tsid_bootstrap` 的运行时实现、guard 接线、escript 退役（步骤 6）、catalog_check
-  均未落地；逐项完成对照见证据树 `gate-supplement/catalog-v1-addendum.md`。
-- 本轮 Gate 重跑：由主协调者冻结后执行——**待补**。
+- §6/§7 所述 catalog/scan/bootstrap 合同先行交付**已全部落地**（提交链
+  352bee53→5ccf04e6：实现、guard 接线、escript 退役、catalog_check）；
+  逐项完成对照见证据树 `gate-supplement/catalog-v1-addendum.md`。
+- 本轮 Gate 重跑：**已完成**（2026-09-29，24 命令落档、finalize 复算 24/24、
+  TSID 套件 190 用例全绿；证据树 `20260929T113446Z-5ccf04e6`，审查轮与
+  合入后增量审查结论见其 `FINAL/` 与 `REPORT.md`）。
+
+## 9. 配置面加固（R1，2026-09-30，dd2be7ea）
+
+0cc0d7ce（TSID guard eunit 轨道豁免）合入 main 后的 review 轮（证据树
+`FINAL/post-merge-review-8c070819.md`）登记 R1：测试 seam 与 lock_provider
+切换无环境门槛，生产 sys.config 误设可分别导致 ID 重用（假 scan 从
+floor 0 起跳）与跨 VM 互斥失效（registry 为同 VM 语义，双实例红线绕过）。
+本轮按「**默认硬编码最优配置**」原则加固落地：
+
+- **lock_provider 配置面删除**，环境分档硬编码（`imboy_sup:lock_provider_for/1`）：
+  prod（及一切未知值，含 <<"pro">>/拼错值）恒 flock；test 恒 registry；
+  local/dev 探测 flock 可用则用、缺失回落 registry（仅单机开发场景）。
+  未知环境一律按生产对待——与 `imboy_env:current/0` fail-safe 哲学一致
+  （未设置即 prod），**默认即最保守生产配置**。任何环境显式设置
+  `{imboy, tsid_lock_provider}` → `{tsid_config_forbidden,_}` 拒启。
+- **seam 双键仅 test 轨道存在**（`imboy_sup:maybe_bootstrap_seams/1`）：
+  非 test 轨道代码路径不读 `tsid_bootstrap_env_fun/scan_fun`，检测到设置
+  即拒启；test 轨道半设/类型不符亦拒启（收硬 0cc0d7ce 的静默忽略）。
+- eunit_setup 删除 `tsid_lock_provider` set_env，改为
+  `os:putenv("IMBOYENV","test")` 轨道环境声明（IMBOYENV 优先于
+  application env，覆盖外部启动方式；eunit VM 一次性无需还原）。
+- 合同测试 +6 用例（分档矩阵/local 探测注入/禁键拒启/seam 透传与半设
+  拒启/prod 端到端）；TSID 八套件 196 用例全绿（190 + 新增 6）。
+
+**部署注意**：升级到本提交后，配置中残留 `{imboy, tsid_lock_provider}`
+会使应用拒启（错误消息含移除指引）——这是设计行为，删除该键即可；
+`tsid_bootstrap_env_fun/scan_fun` 同理，仅 eunit 轨道合法。
