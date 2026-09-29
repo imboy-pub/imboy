@@ -40,13 +40,19 @@ tsid_guard_config() ->
             Dir ->
                 Dir
         end,
-    #{
+    GuardConf0 = #{
         root => StateDir,
         combined_node => elib_tsid:combine_node(DcId, NodeId, DcBits),
         dc_bits => DcBits,
         names => imboy_app:tsid_generator_names(),
         store_bootstrap => application:get_env(imboy, tsid_store_bootstrap, existing),
-        lock_provider => flock,
+        %% lock_provider 缺省仍为 flock（生产 Linux 口径不变）；无 flock 的
+        %% 开发/测试环境（macOS 等）经 {imboy, tsid_lock_provider} 切 registry
+        %%（elib_tsid_lock 官方预留的测试 provider，纯 Erlang、无外部命令）。
+        %% 未配置且本机无 flock 时 guard 启动即 {lock_provider_unavailable,
+        %% flock} fail-fast——WH-04 重试二次 boot 还会撞 eb_keyring_file 的
+        %% 首启残留 env，报出误导性的 keyring_source_conflict（R5 归因实证）。
+        lock_provider => application:get_env(imboy, tsid_lock_provider, flock),
         max_logical_lead_ms => application:get_env(imboy, tsid_max_logical_lead_ms, 512),
         capacity_wait_timeout_ms =>
             application:get_env(imboy, tsid_capacity_wait_timeout_ms, 100),
@@ -55,7 +61,24 @@ tsid_guard_config() ->
             application:get_env(imboy, tsid_fence_renew_margin_ms, 100),
         startup_clock_wait_timeout_ms =>
             application:get_env(imboy, tsid_startup_clock_wait_timeout_ms, 5000)
-    }.
+    },
+    %% 自举 seam 传递（elib_tsid_guard 官方可选字段 bootstrap_env_fun /
+    %% bootstrap_scan_fun，tsid10_soak 同款用法）：测试基建经
+    %% {imboy, tsid_bootstrap_env_fun}/{imboy, tsid_bootstrap_scan_fun}
+    %% 注入假 env/scan——eunit scratch 库未迁移/无 TSID id 列，真 scan
+    %% 必以 schema_drift 拒启。生产不设这两个 env → 走缺省真实现，
+    %% 行为零变化。
+    case
+        {
+            application:get_env(imboy, tsid_bootstrap_env_fun),
+            application:get_env(imboy, tsid_bootstrap_scan_fun)
+        }
+    of
+        {{ok, EnvFun}, {ok, ScanFun}} when is_function(EnvFun, 1), is_function(ScanFun, 1) ->
+            GuardConf0#{bootstrap_env_fun => EnvFun, bootstrap_scan_fun => ScanFun};
+        _ ->
+            GuardConf0
+    end.
 
 %% @doc 初始化 supervisor
 %% Note: Side effects in init/1 may cause issues, use ok to ignore return values
