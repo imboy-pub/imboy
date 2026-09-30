@@ -9,8 +9,9 @@
 %%% 钉在 eunit 层，避免再出现 v1（104 表）式的批量漏登。
 %%%
 %%% 三组断言：
-%%%  1. v2 审计补全的 79 项（含审计点名 5 表与全部特例主键列名）在册；
-%%%  2. catalog 形态：183 项、无重复、version 2、digest 稳定 32 字节；
+%%%  1. v2 审计补全的 79 项 + v3 运行时/台账 3 项（含审计点名 5 表与
+%%%     全部特例主键列名）在册；
+%%%  2. catalog 形态：186 项、无重复、version 3、digest 稳定 32 字节；
 %%%  3. 迁移静态解析 ⊆ catalog：宽松解析 priv/migrations/*.up.sql
 %%%     （顺序模拟 CREATE TABLE / DROP TABLE / ALTER ADD PRIMARY KEY，
 %%%     剥 public. 前缀与引号标识符、去注释与 $$ 块、字符串字面量脱敏），
@@ -19,9 +20,8 @@
 %%%     单独钉住 (id, created_at) 形态与 id bigint 首列，作为
 %%%     elib_tsid_scan:partition_pk_ok 的放行前提。
 %%%
-%%% 宽松容错：解析抛错的迁移文件跳过并计数（上限断言），绝不因解析
-%%% 边角让测试在未改业务代码时变红；只有「真实单列 bigint 主键表未入
-%%% 册」这一契约破坏才会红。
+%%% 解析抛错的迁移文件必须使测试失败；跳过任何文件都会留下 catalog
+%%% 漏检窗口。
 %%%-------------------------------------------------------------------
 -module(elib_tsid_catalog_tests).
 
@@ -41,6 +41,16 @@ audit_v2_entries_present_test() ->
     ?assert(lists:member({agent_grant, id}, Catalog)),
     ?assert(lists:member({agent_grant_event, id}, Catalog)),
     ?assert(lists:member({customer_service_seat_console, id}, Catalog)).
+
+%% v3（2026-09-30 生产首启事故）：migrations 之外的三个单列 bigint 主键表。
+%% msg_store_staging 为运行时建表（TSID 写入），两个 schema_migrations* 为
+%% erlang_migrate 台账表（version 列）——漏登即生产 unclassified_primary_keys
+%% 拒启（fail-closed + heart 复活循环）。
+v3_runtime_and_ledger_tables_present_test() ->
+    Catalog = elib_tsid_catalog:primary_keys(),
+    ?assert(lists:member({msg_store_staging, id}, Catalog)),
+    ?assert(lists:member({schema_migrations, version}, Catalog)),
+    ?assert(lists:member({schema_migrations_history, version}, Catalog)).
 
 %% v2（2026-09-30 审计补全）在 v1 的 104 项之上新增的 79 项。
 audit_v2_added() ->
@@ -130,11 +140,11 @@ audit_v2_added() ->
 %% 2. catalog 形态
 %% ===================================================================
 
-catalog_v2_shape_test() ->
+catalog_shape_test() ->
     Catalog = elib_tsid_catalog:primary_keys(),
-    ?assertEqual(183, length(Catalog)),
+    ?assertEqual(186, length(Catalog)),
     ?assertEqual([], Catalog -- lists:usort(Catalog)),
-    ?assertEqual(2, elib_tsid_catalog:version()),
+    ?assertEqual(3, elib_tsid_catalog:version()),
     D = elib_tsid_catalog:digest(),
     ?assertEqual(32, byte_size(D)),
     ?assertEqual(D, elib_tsid_catalog:digest()).
@@ -145,9 +155,9 @@ catalog_v2_shape_test() ->
 
 migrations_single_bigint_pk_covered_test() ->
     {Tables, Skipped} = scan_migrations(),
-    %% 宽松容错上限与解析健全性下限（基线：155 文件 / 226 建表 / 0 跳过；
+    %% 零跳过合同与解析健全性下限（基线：155 文件 / 226 建表 / 0 跳过；
     %% 未达下限说明 cwd 或仓库结构异常，属环境漂移而非测试误报）。
-    ?assert(Skipped =< 5),
+    ?assertEqual(0, Skipped),
     ?assert(maps:size(Tables) >= 200),
     Catalog = elib_tsid_catalog:primary_keys(),
     Single =
@@ -159,7 +169,7 @@ migrations_single_bigint_pk_covered_test() ->
             is_bigint(maps:get(C, maps:get(cols, Entry, #{}), undefined))
         ],
     Missing = [{T, C} || {T, C} <- Single, not lists:member({bta(T), bta(C)}, Catalog)],
-    %% 非空转下限（当前基线 179）：解析退化（如文本倒序）会让 Single
+    %% 非空转下限（当前基线 179，仅 migrations 解析口径）：解析退化（如文本倒序）会让 Single
     %% 静默变空、上方断言空转通过——此下限保证解析必须真正咬到 DDL。
     ?assert(length(Single) >= 170),
     ?assertEqual([], Missing).

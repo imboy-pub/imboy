@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% @doc TSID 实体 catalog（v2 = 现状口径·审计补全版）
+%%% @doc TSID 实体 catalog（v3 = 现状口径·全量补全版）
 %%%
 %%% == 治理目标（未来 catalog 递减的唯一准绳） ==
 %%% TSID 只用于「需要跨数据中心 / 跨地域做分布式同步」的实体表主键
@@ -30,6 +30,17 @@
 %%% DDL 主键列名后全量补全：104 + 79 = 183 项（179 张单列 bigint 主键
 %%% + 4 张 hypertable 复合主键特例）。
 %%%
+%%% == v3 变更记录（2026-09-30，生产首启 unclassified 修复） ==
+%%% v2 的静态扫描只覆盖 priv/migrations，漏掉三个 migrations 之外的
+%%% 单列 bigint 主键表：msg_store_staging（msg_store_repo 运行时
+%%% ensure_table_exists 建表，id 由 elib_tsid:generate(msg_store) 写入）、
+%%% schema_migrations / schema_migrations_history（erlang_migrate 台账表，
+%%% version BIGINT PRIMARY KEY，值为迁移号非 TSID）。生产真实 schema 首启
+%%% 被反向发现判为 unclassified_primary_keys 拒启；v3 补全为 186 项
+%%% （182 张单列 bigint 主键 + 4 张 hypertable 复合主键特例）。台账表
+%%% 入册只为通过「无豁免清单」的反向发现，version 值极小、对 floor
+%%% 无实质影响。
+%%%
 %%% == 数据来源与绑定 ==
 %%% 由静态扫描（call-sites × migrations DDL 顺序模拟：CREATE / DROP /
 %%% ALTER ADD PRIMARY KEY）生成并经人工逐条核对；version() 与 digest()
@@ -41,7 +52,7 @@
 
 -export([version/0, primary_keys/0, is_tsid_table/1, digest/0]).
 
--define(CATALOG_VERSION, 2).
+-define(CATALOG_VERSION, 3).
 
 -spec version() -> pos_integer().
 version() ->
@@ -50,8 +61,10 @@ version() ->
 %% 每项为一个「需要 TSID 主键的表」：{表名 atom, 列名 atom}。
 %% 绝大多数为 id；主键列名以 migrations DDL 为准（见各特例说明）。
 -spec primary_keys() -> [{Table :: atom(), Column :: atom()}].
-%% v2（现状口径·审计补全）：183 项 = 真实 schema（priv/migrations 顺序
-%% 执行）的全部单列 bigint 主键表 179 张 + hypertable 复合主键特例 4 张。
+%% v3（现状口径·全量补全）：186 项 = 真实 schema 的全部单列 bigint 主键
+%% 表 182 张 + hypertable 复合主键特例 4 张。除 priv/migrations 外还覆盖
+%% 运行时建表（msg_store_staging）与 erlang_migrate 台账表（两个
+%% schema_migrations*，主键列 version）。
 %% 逐表映射 migrations 真实表名并验证主键形态（核对证据：gate-supplement
 %% catalog-v1-addendum + 2026-09-30 审计补全对照）。
 %% 特殊形态（主键列非 id）：mcp_client 为 client_id；adm_auth_epoch 为
@@ -193,6 +206,8 @@ primary_keys() ->
         {msg_reaction, id},
         {msg_s2c, id},
         {msg_store, id},
+        %% 运行时建表（msg_store_repo:ensure_table_exists），非 migrations 产物
+        {msg_store_staging, id},
         {msg_topic, id},
         {olm_fallback_key, id},
         {olm_identity, id},
@@ -219,6 +234,10 @@ primary_keys() ->
         {report_ticket, id},
         {review_asset, id},
         {review_queue, id},
+        %% erlang_migrate 台账表（version BIGINT PRIMARY KEY，值非 TSID；
+        %% 入册仅为通过反向发现的无豁免判定）
+        {schema_migrations, version},
+        {schema_migrations_history, version},
         {sensitive_word, id},
         {sso_config, id},
         {sso_identity, id},
