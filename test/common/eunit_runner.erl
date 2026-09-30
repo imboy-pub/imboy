@@ -415,6 +415,13 @@ cleanup_start_orphans() ->
     catch
         _:_ -> ok
     end,
+    %% TSID F-12 残骸：前序套件（guard_tests 以 ?NODE=129 启停 guard）经
+    %% guarded_publish 留下的 elib_tsid VM 级 persistent_term 状态，会让
+    %% 本 VM 后续真实 app boot 的 guard publish 撞 already_initialized
+    %% 红线 → app 启动失败级联 cancel（全量轨道顺序依赖性波动的根因）。
+    %% 本函数仅在 imboy 未运行时被调用——此刻 reset 恰为安全窗口；
+    %% 测试 seam 语义见 elib_tsid:reset_for_test/0 头注（F-12 冻结要求）。
+    _ = elib_tsid:reset_for_test(),
     ok.
 
 %% ===================================================================

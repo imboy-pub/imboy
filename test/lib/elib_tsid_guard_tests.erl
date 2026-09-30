@@ -577,3 +577,19 @@ owner_lock_symlink_rejected_test() ->
         {error, symlink_rejected},
         start_trapped(fast_cfg(Root))
     ).
+
+%% F-12 混跑卫生（R2 登记项落地）：套件收尾显式复位 elib_tsid 的 VM 级
+%% 发布状态——上方用例以 ?NODE=129 启停 guard 后 elib_tsid 仍持已初始化
+%% runtime，同 VM 内后续真实 app boot 会撞 already_initialized。eunit_runner
+%% 的 cleanup_start_orphans 亦已兜底（boot 前统一复位），此处为套件级
+%% 双保险：任何仅运行本套件的轨道（单套件直跑）也零泄漏。
+guard_tests_tail_state_reset_test() ->
+    elib_tsid:reset_for_test(),
+    ?assertMatch(
+        {elib_tsid_not_initialized, _},
+        try elib_tsid:generate() of
+            _ -> ok
+        catch
+            error:{elib_tsid_not_initialized, _} = E -> E
+        end
+    ).
