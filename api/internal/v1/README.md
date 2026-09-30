@@ -2,7 +2,7 @@
 
 > **版本**：v1.0（冻结）｜ **受众**：企业 OA / 第三方集成系统开发者
 > **Base Path**：`/api/internal/v1`
-> **机器契约**：`api/openapi-internal.yaml`（编辑真源，25 path / 31 端点，
+> **机器契约**：`api/openapi-internal.yaml`（编辑真源，26 path / 32 端点，
 > 字段级 schema 逐端点实证自 handler）；`api/openapi-internal.bundle.yaml`
 > （bundle 单文件，可直接导入 Postman / Apifox / openapi-generator）。
 > 本目录是面向集成方的交付文档。路由与合同由 12 项机械断言
@@ -209,9 +209,19 @@ INT-23 的 `status` 为准。端点未配置/disabled 时返回 `invalid_request
 
 ## 9. OA SSO（一次性 code 交换）
 
-流程：OA 侧登录成功 → 向 IMBoy 换取一次性 code → 用户浏览器携带 code 到
-IMBoy → 前端/网关调 INT-14 原子交换（`single_use_code`：一个 code 只能成功
-交换一次，重放即失败）。完成即建立 IMBoy 会话，无需再传 OA 凭据。
+流程：用户已登录 IMBoy → IMBoy 客户端以 Human JWT 调用
+`POST /api/v1/oa/sso/code`，提交 `application_key`、预注册的 `redirect_uri`
+与随机 `nonce` → 浏览器 / WebView 携带一次性 `code` 和 `state=nonce` 到
+OA 回调地址 → **OA 服务端**使用本应用 Credential 调 INT-14，提交
+`code`、同一 `redirect_uri` 与 `nonce` → 取得企业、应用、平台用户及
+OA 外部用户标识 → **OA 建立自己的登录会话**。
+
+- code 固定 60 秒有效，绑定企业、应用、redirect 与 nonce；只能成功交换
+  一次，过期 / 重放 / 绑定不符均拒绝。身份映射及用户有效状态由 IMBoy 验证。
+- INT-14 返回身份事实，不返回 IMBoy JWT、应用 secret 或 OA 会话 Cookie；
+  OA 负责验证回调 state、设置自己的会话并处理登录失败。
+- Application Credential 只放在 OA 服务端；不能交给浏览器 / WebView。
+  本协议是 **IMBoy → OA** 单点登录，不提供 OA 反向登录 IMBoy 的会话接口。
 
 ## 10. 端点参考与 Postman 集合
 
