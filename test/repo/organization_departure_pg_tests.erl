@@ -23,7 +23,11 @@ run(SocketPath) ->
                     archived,
                     dependency,
                     second_workspace_owner,
-                    second_channel_owner
+                    second_channel_owner,
+                    platform,
+                    platform_dependency,
+                    platform_channel_owner,
+                    platform_audit_failure
                 ]
             ],
             [verbose]
@@ -63,11 +67,29 @@ setup_mocks(Conn) ->
     meck:new(imboy_cache, [non_strict, no_link]),
     meck:expect(imboy_cache, flush, fun(_) -> ok end),
     meck:new(imboy_domain_event, [non_strict, no_link]),
-    meck:expect(imboy_domain_event, publish, fun(_) -> ok end).
+    meck:expect(imboy_domain_event, publish, fun(_) -> ok end),
+    meck:new(adm_operation_log_ds, [non_strict, no_link]),
+    meck:expect(adm_operation_log_ds, insert_tx, fun(
+        C, 900, Action, 10, <<"organization">>, Detail, Ip
+    ) ->
+        ?assertEqual(Conn, C),
+        ?assertEqual(<<"organization_member_remove">>, Action),
+        ?assertEqual(2, maps:get(<<"target_user_id">>, Detail)),
+        case Ip of
+            audit_failure ->
+                {error, injected_audit_failure};
+            _ ->
+                {ok, 1} = epgsql:equery(C, <<"INSERT INTO departure_audit VALUES($1,$2)">>, [
+                    900, 10
+                ]),
+                ok
+        end
+    end).
 
 schema(Conn) ->
     Statements = [
-        "CREATE TABLE organization(id bigint PRIMARY KEY,owner_id bigint,status text)",
+        "CREATE TABLE organization(id bigint PRIMARY KEY,owner_id bigint,status text,name text,branding jsonb,settings jsonb,created_at timestamptz,updated_at timestamptz)",
+        "CREATE TABLE departure_audit(actor bigint,organization_id bigint)",
         "CREATE TABLE organization_member(organization_id bigint,user_id bigint,role text,status text,updated_at timestamptz,PRIMARY KEY(organization_id,user_id))",
         "CREATE TABLE workspace(id bigint PRIMARY KEY,organization_id bigint,owner_id bigint,status text)",
         "CREATE TABLE workspace_member(workspace_id bigint,user_id bigint,status text,updated_at timestamptz,PRIMARY KEY(workspace_id,user_id))",
@@ -98,10 +120,10 @@ schema(Conn) ->
 reset(Conn, Mode) ->
     execute(
         Conn,
-        "TRUNCATE organization,organization_member,workspace,workspace_member,project,project_task,\"group\",group_member,group_member_generation,msg_store_seq,channel,channel_subscription,channel_admin,organization_business_identity_assignment"
+        "TRUNCATE departure_audit,organization,organization_member,workspace,workspace_member,project,project_task,\"group\",group_member,group_member_generation,msg_store_seq,channel,channel_subscription,channel_admin,organization_business_identity_assignment"
     ),
     lists:foreach(fun(Sql) -> execute(Conn, Sql) end, [
-        "INSERT INTO organization VALUES(10,1,'active'),(11,1,'active')",
+        "INSERT INTO organization(id,owner_id,status) VALUES(10,1,'active'),(11,1,'active')",
         "INSERT INTO organization_member VALUES(10,1,'owner','active',NULL),(10,2,'member','active',NULL),(11,2,'member','active',NULL)",
         "INSERT INTO workspace VALUES(20,10,1,'active'),(21,10,1,'archived'),(22,11,1,'active')",
         "INSERT INTO workspace_member VALUES(20,2,'active',NULL),(21,2,'active',NULL),(22,2,'active',NULL)",
@@ -128,6 +150,10 @@ mode(Conn, second_workspace_owner) ->
     execute(Conn, "UPDATE workspace SET owner_id=2 WHERE id=21");
 mode(Conn, second_channel_owner) ->
     execute(Conn, "UPDATE channel SET creator_uid=2 WHERE id=41");
+mode(Conn, platform_channel_owner) ->
+    mode(Conn, second_channel_owner);
+mode(Conn, platform_dependency) ->
+    mode(Conn, dependency);
 mode(_, _) ->
     ok.
 
@@ -136,18 +162,44 @@ verify(Conn, Mode) ->
     Before = snapshot(Conn),
     Result =
         case Mode of
-            offboard -> organization_member_logic:remove(1, 10, 2);
-            _ -> organization_member_logic:leave(2, 10)
+            offboard ->
+                organization_member_logic:remove(1, 10, 2);
+            M when M =:= platform; M =:= platform_dependency; M =:= platform_channel_owner ->
+                organization_admin_logic:admin_member_remove(900, 10, 2, #{});
+            platform_audit_failure ->
+                organization_admin_logic:admin_member_remove(900, 10, 2, #{ip => audit_failure});
+            _ ->
+                organization_member_logic:leave(2, 10)
         end,
-    case lists:member(Mode, [dependency, second_workspace_owner, second_channel_owner]) of
+    case
+        lists:member(Mode, [
+            dependency,
+            second_workspace_owner,
+            second_channel_owner,
+            platform_dependency,
+            platform_channel_owner,
+            platform_audit_failure
+        ])
+    of
         true ->
-            ?assertMatch({error, {409, _}}, Result),
+            Code =
+                case Mode of
+                    platform_audit_failure -> 500;
+                    _ -> 409
+                end,
+            ?assertMatch({error, {Code, _}}, Result),
             ?assertEqual(Before, snapshot(Conn)),
             ?assertEqual(0, meck:num_calls(group_ds, leave, '_')),
             ?assertEqual(0, meck:num_calls(imboy_cache, flush, '_')),
             ?assertEqual(0, meck:num_calls(imboy_domain_event, publish, '_'));
         false ->
             ?assertMatch({ok, #{affected_workspaces := [_, _]}}, Result),
+            Audit =
+                case Mode of
+                    platform -> [{900, 10}];
+                    _ -> []
+                end,
+            ?assertEqual(Audit, rows(Conn, <<"SELECT * FROM departure_audit">>, [])),
             successful(Conn)
     end.
 
@@ -185,6 +237,7 @@ snapshot(Conn) ->
     [
         rows(Conn, iolist_to_binary(["SELECT * FROM ", Table, " ORDER BY 1,2"]), [])
      || Table <- [
+            "departure_audit",
             "organization_member",
             "workspace_member",
             "group_member",

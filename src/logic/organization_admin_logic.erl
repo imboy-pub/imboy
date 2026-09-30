@@ -1100,10 +1100,15 @@ member_transition(AdmUserId, OrgId, TargetUid, Action, AuditCtx) when
         end,
     case elib_pg:with_tx(Tx) of
         {ok, Result} when is_map(Result) ->
+            lists:foreach(
+                fun workspace_ds:member_removed/1, maps:get(affected_workspaces, Result, [])
+            ),
             ok = ?INFO_LOG([member_audit_tag(Action), OrgId, TargetUid]),
             {ok, Result};
         {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
             {error, {Code, Msg}};
+        {error, {membership_conflict, _}} ->
+            {error, {409, <<"该成员仍有需交接的群、频道、项目或任务，请先完成交接"/utf8>>}};
         {rollback, Reason} ->
             _ = ?ERROR_LOG([organization_admin_member_failed, Action, OrgId, TargetUid, Reason]),
             {error, {500, <<"操作失败，请稍后重试"/utf8>>}};
@@ -1159,9 +1164,11 @@ decide_member(_Conn, _OrgId, _TargetUid, remove, #{<<"role">> := <<"owner">>}) -
 decide_member(Conn, OrgId, TargetUid, remove, #{<<"status">> := Status}) when
     Status =:= <<"active">>; Status =:= <<"suspended">>
 ->
+    Workspaces = workspace_ds:remove_organization_memberships_tx(Conn, OrgId, TargetUid),
     case remove_member_row_tx(Conn, OrgId, TargetUid) of
         ok ->
-            {ok, member_result(OrgId, TargetUid, undefined, <<"removed">>)};
+            Result = member_result(OrgId, TargetUid, undefined, <<"removed">>),
+            {ok, Result#{affected_workspaces => Workspaces}};
         {error, Reason} ->
             case organization_member_logic:dependent_resources_conflict(Reason) of
                 {conflict, Message} ->
