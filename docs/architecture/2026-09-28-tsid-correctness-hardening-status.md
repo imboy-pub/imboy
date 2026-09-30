@@ -83,9 +83,9 @@
 
 ## 6. v1 catalog（现状口径）
 
-- **范围**：全部运行时 TSID 主键列（约 104 个；最终数字与清单
-  **以 `elib_tsid_catalog:primary_keys()` 为准**——数据核对回填前该函数为空列表占位，
-  此时的 `digest()` 锚定空清单，不得用于割接）。
+- **范围**：全部运行时 TSID 主键列（104 个；数字与清单
+  **以 `elib_tsid_catalog:primary_keys()` 为准**——数据核对回填已完成，`digest()`
+  锚定当前 104 表清单，割接 manifest 绑定该 digest）。
 - **为何取现状口径**（撞号风险论证）：
   1. 第一次 cutover 前，凡可能已写入历史 TSID 的主键列必须全部纳入扫描保护；
   2. 任何漏扫列中的历史 TSID 都会在重启自举（auto_scan 取 max(id)+1）时被新 ID 撞号；
@@ -97,11 +97,15 @@
 
 ## 7. 首启自举状态机（pristine-only）
 
-设计合同见 `src/lib/elib_tsid_bootstrap.erl` 头注释（本轮冻结；运行时实现未落地，见 §8）。
+设计合同与运行时实现均在 `src/lib/elib_tsid_bootstrap.erl`（`decide/1` 与 manifest
+读写已落地并接入 guard 启动链，见 §8）。
 
-- **pristine 判定**：无割接 manifest **且** store 无 durable floor。状态机接管 pristine
-  判定后，现役 `store_bootstrap=fresh|existing`（调用方自我声明）退役为被取代机制——
-  防止误配 fresh 绕过 manifest/floor 检查烧号；guard 接线状态见 §8。
+- **pristine 判定**：无割接 manifest **且** store 无 durable floor。状态机已接管 pristine
+  判定（接入 guard 启动链，见 §8），`store_bootstrap=fresh|existing` 的「调用方自我
+  声明」语义已被取代：生产装配缺省 `existing`（双槽 absent 时报 `no_valid_slot` 交
+  状态机判定），`fresh` 打开仅发生在状态机授权 `proceed_floor` 之后由 guard 内部
+  重开——误配 fresh 无法再绕过 manifest/floor 检查烧号；preflight 另保留
+  fresh+非空目录拒绝。
 - **STOP 矩阵**（全部 FAIL 级 `{stop, Reason}`，不得降 warning）：
 
 | STOP 原因 | 触发条件 |
@@ -119,7 +123,7 @@
 | 变量 | 语义 |
 |---|---|
 | `IMBOY_TSID_BOOTSTRAP_MODE` | `auto_scan`（缺省）\| `manual_floor` |
-| `IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS` | 整数 unix 毫秒；manual_floor 必填；换算 `floor_safe_before = (ms-EPOCH)<<11` |
+| `IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS` | 整数 unix 毫秒；manual_floor 必填；换算 `floor_safe_before = ms - EPOCH_MS`（相对毫秒域，**无移位**；带 `<<11` 的是 ID 的 slot/cursor 域，floor 与 store 的 `safe_before` 同域，guard 直接与墙钟 rel-ms 比较） |
 | `IMBOY_TSID_BOOTSTRAP_LEGACY_ACK` | 唯一合法值 `I-CONFIRM-OLD-WRITER-STOPPED`；操作员确认旧版停写，补写 manifest 后按 legacy_ack 接管现有 floor |
 
 - **decide/1 返回合同**：`proceed_existing`（正常重启）/ `proceed_floor`（pristine 首启）/
@@ -129,7 +133,23 @@
 
 - **RELEASE=NO_GO 维持不变**（LOCAL_CANDIDATE_PASS / EXTERNAL_VALIDATION_PENDING 口径不变）。
 - EXT-04（目标 PVC/存储类 crash 矩阵）、EXT-05（目标环境双实例锁）维持外部 NO_GO。
-- §6/§7 所述 catalog/scan/bootstrap 为**合同先行**交付：`elib_tsid_scan` 与
-  `elib_tsid_bootstrap` 的运行时实现、guard 接线、escript 退役（步骤 6）、catalog_check
-  均未落地；逐项完成对照见证据树 `gate-supplement/catalog-v1-addendum.md`。
+- §6/§7 所述 catalog/scan/bootstrap 已由**合同先行**推进为**代码落地**（以下均为
+  本地代码可核实的事实，不涉及任何生产/外部验证，不影响 NO_GO 口径）：
+  - `elib_tsid_scan` 与 `elib_tsid_bootstrap` 的运行时实现已在 `src/lib/` 落地
+    （`scan/1` / `check_schema/2` / `bootstrap_floor/1`；`decide/1` /
+    `write_manifest/2` / `read_manifest/1`）；
+  - guard 接线已落地：`imboy_sup` 把 `elib_tsid_guard` 置于子进程列表首位
+    （早于任何可生成 ID 的 worker），启动链 acquire lifetime lock → open store →
+    `elib_tsid_bootstrap:decide/1` → 授权后 persist floor + 写割接 manifest 才
+    进入可生成状态；测试可经 `bootstrap_env_fun` / `bootstrap_scan_fun` 注入假
+    env/scan，生产缺省真实实现；
+  - catalog v1 已回填 104 表并经逐表核对（`elib_tsid_catalog:primary_keys/0`；
+    mcp_client 主键 client_id、消息表 hypertable 复合主键等特殊形态已在
+    catalog/scan 注释登记）；
+  - escript 退役（步骤 6）已完成：`scripts/tsid/tsid_scanner.escript` 与
+    `tsid_bootstrap_floor.escript` 均改为复用 `src/lib/elib_tsid_scan.erl`
+    唯一权威实现的 thin CLI shell（后者头部标注 DEPRECATED），脚本内不再自带 SQL；
+  - catalog_check 已落地：`scripts/tsid/tsid_catalog_check.escript`（CI gate，复用
+    `elib_tsid_scan:check_schema/2`）。
+  逐项完成对照见证据树 `gate-supplement/catalog-v1-addendum.md`。
 - 本轮 Gate 重跑：由主协调者冻结后执行——**待补**。
