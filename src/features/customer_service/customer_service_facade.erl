@@ -17,6 +17,7 @@
 -export([
     %% seat
     create_seat/2,
+    govern_seat/2,
     suspend_seat/2,
     resume_seat/2,
     fetch_seat/2,
@@ -99,6 +100,12 @@
 %% ===================================================================
 %% seat
 %% ===================================================================
+
+%% Trusted adapters must authorize the operation before providing their connection.
+govern_seat(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_seat_governance_app:govern(OrgId, Params);
+govern_seat(_, _) ->
+    {error, {invalid_argument, govern_seat}}.
 
 -spec create_seat(integer(), map()) -> term().
 create_seat(OrgId, #{business_identity_id := IdentityId} = Params) when

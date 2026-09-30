@@ -19,8 +19,10 @@ run(Socket) ->
             " function_key text, enabled boolean, max_concurrent integer, created_by_user_id bigint,"
             " version integer DEFAULT 1, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());"
             "CREATE TABLE customer_service_seat_limit (organization_id bigint PRIMARY KEY, seat_limit integer);"
-            "CREATE TABLE organization_business_identity(organization_id bigint,id bigint,function_key text);"
-            "INSERT INTO organization_business_identity VALUES(1,1,'customer_service'),(1,2,'customer_service');"
+            "CREATE TABLE organization_business_identity(organization_id bigint,id bigint,function_key text,status text DEFAULT 'active');"
+            "INSERT INTO organization_business_identity VALUES(1,1,'customer_service','active'),(1,2,'customer_service','active');"
+            "CREATE TABLE organization(id bigint PRIMARY KEY,status text); INSERT INTO organization VALUES(1,'active'),(2,'active');"
+            "CREATE TABLE workspace(id bigint,organization_id bigint,status text); INSERT INTO workspace VALUES(10,1,'active'),(20,2,'active');"
             "CREATE TABLE customer_service_event(id bigint PRIMARY KEY,organization_id bigint,workspace_id bigint NOT NULL,"
             "session_id bigint,business_identity_id bigint,actor_user_id bigint,actor_kind text,action text,detail jsonb);"
         >>),
@@ -43,7 +45,7 @@ run(Socket) ->
         end),
         meck:new(cs_tsid, [non_strict, no_link]),
         meck:expect(cs_tsid, new_id, fun(_) -> erlang:unique_integer([positive, monotonic]) end),
-        eunit:test(cases(C) ++ audit_cases(C), [verbose])
+        eunit:test(cases(C) ++ audit_cases(C) ++ governance_cases(C), [verbose])
     after
         meck:unload(),
         epgsql:close(C)
@@ -214,6 +216,164 @@ with_rejected_audit(C, Fun) ->
     after
         sql(C, <<"ALTER TABLE customer_service_event DROP CONSTRAINT reject_audit">>)
     end.
+
+governance_cases(C) ->
+    [
+        {"governance lists disabled seats with keyset paging", fun() ->
+            seed(C, false),
+            ?assertMatch({ok, _}, govern(1, create, (seat_params(2))#{enabled => false})),
+            {ok, [First]} = govern(1, list, #{limit => 1}),
+            ?assertEqual(1, maps:get(business_identity_id, First)),
+            ?assertEqual(false, maps:get(enabled, First)),
+            {ok, [Second]} = govern(1, list, #{limit => 1, after_id => 1}),
+            ?assertEqual(2, maps:get(business_identity_id, Second)),
+            ?assertMatch(
+                {ok, #{business_identity_id := 2}}, govern(1, detail, #{business_identity_id => 2})
+            ),
+            ?assertEqual(
+                {rollback, {error, not_found}}, govern(2, detail, #{business_identity_id => 2})
+            ),
+            {ok, []} = govern(2, list, #{})
+        end},
+        {"governance settings have optimistic version checks", fun() ->
+            seed(C, false),
+            ?assertMatch(
+                {ok, #{enabled := true, max_concurrent := 4, version := 2}},
+                govern(1, update, (seat_params(1))#{
+                    expected_version => 1, enabled => true, max_concurrent => 4
+                })
+            ),
+            ?assertEqual(
+                {rollback, {error, conflict}},
+                govern(1, update, (seat_params(1))#{expected_version => 1, enabled => false})
+            ),
+            ?assertMatch(
+                {ok, #{enabled := true, max_concurrent := 4, version := 2}},
+                govern(1, detail, #{business_identity_id => 1})
+            ),
+            ?assertEqual(1, count(C, <<"SELECT count(*) FROM customer_service_event">>)),
+            {ok, _, [{<<"application">>, null, <<"77">>, <<"synthetic-governance-request">>}]} =
+                epgsql:equery(
+                    C,
+                    <<"SELECT actor_kind,actor_user_id,detail->>'application_id',detail->>'correlation_id' FROM customer_service_event">>,
+                    []
+                )
+        end},
+        {"two governance updates cannot consume the same version", fun() ->
+            seed(C, false),
+            Parent = self(),
+            Ref = make_ref(),
+            [
+                spawn(fun() ->
+                    Parent !
+                        {Ref,
+                            govern(
+                                1,
+                                update,
+                                (seat_params(1))#{expected_version => 1, max_concurrent => Max}
+                            )}
+                end)
+             || Max <- [2, 3]
+            ],
+            Results = [
+                receive
+                    {Ref, R} -> R
+                after 10000 -> error(timeout)
+                end
+             || _ <- [2, 3]
+            ],
+            ?assertEqual(1, length([ok || {ok, _} <- Results])),
+            ?assertEqual(1, length([ok || {rollback, {error, conflict}} <- Results])),
+            ?assertEqual(1, count(C, <<"SELECT count(*) FROM customer_service_event">>))
+        end},
+        {"governance audit and outer completion failures undo settings", fun() ->
+            seed(C, false),
+            with_rejected_audit(C, fun() ->
+                ?assertMatch(
+                    {rollback, {error, {audit_append_failed, _}}},
+                    govern(1, update, (seat_params(1))#{
+                        expected_version => 1, enabled => true, max_concurrent => 4
+                    })
+                ),
+                assert_enabled(C, false)
+            end),
+            ?assertEqual(
+                {rollback, completion_failure},
+                elib_pg:with_tx(fun(Conn) ->
+                    {ok, _} = customer_service_facade:govern_seat(
+                        1, governance_params(Conn, create, seat_params(2))
+                    ),
+                    throw({rollback, completion_failure})
+                end)
+            ),
+            ?assertEqual(
+                0,
+                count(
+                    C, <<"SELECT count(*) FROM customer_service_seat WHERE business_identity_id=2">>
+                )
+            ),
+            ?assertEqual(0, count(C, <<"SELECT count(*) FROM customer_service_event">>))
+        end},
+        {"governance enforces active parents and permits retiring a seat", fun() ->
+            seed(C, true),
+            ?assertEqual(
+                {rollback, {error, {not_found, workspace}}},
+                govern(1, create, (seat_params(2))#{workspace_id => 20})
+            ),
+            sql(C, <<"UPDATE organization_business_identity SET status='inactive' WHERE id=1">>),
+            try
+                ?assertEqual(
+                    {rollback, {error, {not_found, identity}}},
+                    govern(1, update, (seat_params(1))#{expected_version => 1, enabled => true})
+                ),
+                ?assertMatch(
+                    {ok, #{enabled := false}},
+                    govern(1, update, (seat_params(1))#{expected_version => 1, enabled => false})
+                )
+            after
+                sql(C, <<"UPDATE organization_business_identity SET status='active' WHERE id=1">>)
+            end,
+            sql(C, <<"UPDATE organization SET status='inactive' WHERE id=1">>),
+            try
+                ?assertEqual({rollback, {error, {not_found, organization}}}, govern(1, list, #{}))
+            after
+                sql(C, <<"UPDATE organization SET status='active' WHERE id=1">>)
+            end
+        end},
+        {"governance retains limits and rejects malformed settings", fun() ->
+            seed(C, true),
+            sql(C, <<"INSERT INTO customer_service_seat_limit VALUES(1,1)">>),
+            ?assertEqual(
+                {rollback, {error, seat_limit_exceeded}}, govern(1, create, seat_params(2))
+            ),
+            ?assertEqual(
+                {error, {invalid_argument, govern_seat}},
+                govern(1, update, (seat_params(1))#{expected_version => 1, max_concurrent => 0})
+            ),
+            ?assertEqual(
+                {error, {invalid_argument, govern_seat}},
+                govern(1, update, (seat_params(1))#{expected_version => 1})
+            ),
+            ?assertEqual(
+                {error, {invalid_argument, govern_seat}},
+                govern(1, detail, #{business_identity_id => 9223372036854775808})
+            ),
+            ?assertEqual(0, count(C, <<"SELECT count(*) FROM customer_service_event">>))
+        end}
+    ].
+
+govern(OrgId, Operation, Params) ->
+    elib_pg:with_tx(fun(Conn) ->
+        customer_service_facade:govern_seat(OrgId, governance_params(Conn, Operation, Params))
+    end).
+
+governance_params(Conn, Operation, Params) ->
+    Params#{
+        connection => Conn,
+        operation => Operation,
+        application_id => 77,
+        correlation_id => <<"synthetic-governance-request">>
+    }.
 
 rollback_enabled(Enabled) ->
     ?assertEqual(

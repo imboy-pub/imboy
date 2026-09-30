@@ -19,6 +19,7 @@
     %% CS-BE-06：席位 entitlement
     seat_limit/1,
     set_seat_limit/2,
+    govern_seat/4,
     create_seat_limit_checked/5,
     create_seat_limit_checked/6,
     set_enabled_checked/4,
@@ -119,6 +120,9 @@ set_seat_limit(OrgId, Limit) ->
     cs_pg_seat:set_seat_limit(OrgId, Limit, pool).
 %% elib_pg:with_tx 的业务回滚信号是 {rollback, Reason}（throw 拦截分支）——
 %% 归一为调用方处处期望的 {error, Reason}（seat_limit_exceeded 等）。
+govern_seat(Conn, OrgId, Operation, Params) ->
+    cs_pg_seat_governance:govern(Conn, OrgId, Operation, Params).
+
 create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) ->
     create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy, undefined).
 

@@ -90,6 +90,7 @@ contracts() ->
             %% CS-BE-06：席位 entitlement
             {seat_limit, 1},
             {set_seat_limit, 2},
+            {govern_seat, 4},
             {create_seat_limit_checked, 5},
             {create_seat_limit_checked, 6},
             {set_enabled_checked, 4},
@@ -185,6 +186,7 @@ contracts() ->
 facade_targets() ->
     [
         cs_seat_app,
+        cs_seat_governance_app,
         %% BE-S01b：坐席 SSE 事件流用例（sse-event-contract 的 application 面）。
         cs_seat_event_app,
         %% 1ee3cc67：seat console 管理面（list/create/update/revoke 的 facade

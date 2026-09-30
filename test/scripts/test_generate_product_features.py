@@ -368,6 +368,15 @@ class ProductFeatureManifestTest(unittest.TestCase):
         self.assertTrue(modules, "enterprise feature directory must not be empty")
         self.assertEqual(modules, set(MODULE.FEATURE_BACKEND_MODULES["enterprise_business"]))
 
+    def test_customer_service_backend_modules_cover_feature_directory(self):
+        feature_dir = SCRIPT.parents[1] / "src/features/customer_service"
+        modules = {
+            re.search(r"^-module\(([a-z][a-z0-9_]*)\)", path.read_text(), re.M).group(1)
+            for path in feature_dir.rglob("*.erl")
+        }
+        self.assertTrue(modules, "customer service directory must not be empty")
+        self.assertEqual(modules, set(MODULE.FEATURE_BACKEND_MODULES["customer_service"]))
+
     def test_enterprise_selection_drives_erlc_exclude_and_defines(self):
         catalog = MODULE.source_catalog(SCRIPT.parents[1])
         selected = MODULE.render(MODULE.validate(self.manifest(["enterprise_business"]), catalog))

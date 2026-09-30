@@ -86,6 +86,15 @@
     {ok, unlimited | pos_integer()} | {error, term()}.
 -callback set_seat_limit(OrgId :: integer(), Limit :: pos_integer() | undefined) ->
     {ok, unlimited | pos_integer()} | {error, term()}.
+%% Caller owns the transaction and authorization; this operation never checks out
+%% another connection. Mutation failures abort the caller's transaction.
+-callback govern_seat(
+    Conn :: pid(),
+    OrgId :: integer(),
+    Operation :: list | detail | create | update,
+    Params :: map()
+) ->
+    {ok, map() | [map()]} | {error, term()}.
 -callback create_seat_limit_checked(
     OrgId :: integer(),
     IdentityId :: integer(),
