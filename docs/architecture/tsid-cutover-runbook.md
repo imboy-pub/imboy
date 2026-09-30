@@ -93,6 +93,70 @@ pristine（无割接 manifest **且** store 无 durable floor）时缺省模式�
 - **自动自举（auto_scan / manual_floor）不构成、也不能替代单写者证明**——它是
   「无并发写者前提下的取数便利」，不是停写证明本身。
 
+## 4a. catalog digest 变更的显式重绑（catalog rebind）
+
+catalog 递减/扩容（版本 v3 → v4 ...）后，既有割接 manifest 绑定的
+`catalog_digest` 与新版 `elib_tsid_catalog:digest()` 不符，启动即
+`{stop, catalog_changed}`（FAIL 级，默认行为不变）。唯一放行通道是操作员
+**显式重绑（rebind）**：以 `IMBOY_TSID_BOOTSTRAP_REBIND_ACK` 同时确认
+「所有旧 writer 已停止」并**精确绑定 old/new 两个 digest**。
+
+```bash
+# ACK 值格式（严格，无 trim，十六进制 64 字符×2）：
+IMBOY_TSID_BOOTSTRAP_REBIND_ACK=\
+I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:<old_digest_hex>:<new_digest_hex>
+
+# old：部署现场割接 manifest 当前绑定的 digest（node 目录 tsid.bootstrap 末 36
+#      字节中的 32B digest；或上一版的 known_versions 溯源值）
+# new：新版代码的 catalog digest（erl -pa ebin -eval
+#      'io:format("~s~n",[binary:encode_hex(elib_tsid_catalog:digest())])'）
+```
+
+Compose 部署使用 overlay（不编辑 base 注释）：
+
+```bash
+cd deploy
+export IMBOY_TSID_BOOTSTRAP_LEGACY_ACK='I-CONFIRM-OLD-WRITER-STOPPED'   # 本事件惰性，占位须为合法值
+export IMBOY_TSID_BOOTSTRAP_REBIND_ACK='I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:<old>:<new>'
+docker compose -f docker-compose.community.yml -f docker-compose.tsid-cutover.yml up -d
+# 完成（/readyz → tsid: ready 且首批 ID 校验通过）后仅用 base 重启：
+docker compose -f docker-compose.community.yml up -d
+```
+
+重绑状态机前置条件（全部满足才授权，任一不满足即 FAIL 级 STOP，绝不自动 GO；
+实现 `elib_tsid_bootstrap:maybe_rebind/6` R0..R7）：
+
+1. 已取得 lifetime lock（guard 持锁后进入自举；第二实例 `lock_unavailable` 拒启）。
+2. manifest identity（combined_node）、store identity（内部 manifest +
+   layout_hash 绑定 dc_bits）全部一致——身份不符先于重绑判定 FAIL。
+3. ACK 前缀即操作员对「所有旧 writer 已停止」的显式确认。
+4. ACK 精确绑定 expected old digest（= manifest 现值）与 current new digest
+   （= 当前 catalog）——交换/过期/错绑 → `{stop, {bootstrap_env,
+   {rebind_ack_digest_mismatch, _}}}`（detail 携带四路 digest 取证）。
+5. transition 必须在已验证溯源 allowlist（`elib_tsid_catalog:known_versions/0` ×
+   `verified_rebind_transitions/0`，当前仅 v1→v2、v2→v3 单步）：未知 digest、
+   跨步（v1→v3）、降级一律 `{stop, blocked_catalog_transition_unrecognized}`
+   （BLOCKED_CATALOG_TRANSITION_UNRECOGNIZED）。
+6. 当前 catalog 口径的全量 schema 校验 + 高水位扫描必须成功（scan 失败 /
+   schema 漂移 / DB 不可达 → `{stop, {rebind_scan, _}}`）。
+7. ProposedFloor = **max(StoreSafeBefore, ScanFloor)**：数据库当前 max 不是
+   已删除历史 ID 的证明，store floor 绝不因重绑扫描而降低。
+
+授权后的执行顺序（guard `floor_commit` → `manifest_then_boot` → 既有
+`boot_ready`，与 pristine 首启同一条 AC-05D 链）：先 durable persist
+ProposedFloor（fsync + readback，单调不降），成功后才原子写绑定新 digest 的
+割接 manifest（temp → rename → dirsync，mode=catalog_rebind），最后按既有
+boot_ready 持久化 max(now, floor)+fence_window 并发布 runtime。
+
+崩溃恢复（各断点均 fail-closed，**不得删除文件、不得 fresh reset**）：
+
+| 崩溃点 | 磁盘事实 | 重启行为 |
+|---|---|---|
+| persist 前 | manifest 仍绑旧 digest | 无 ACK：维持 `{stop, catalog_changed}`；携 ACK：重新授权 |
+| persist 后、manifest 前 | store floor 已提高 | 携 ACK 重试取 max(已提高 store, 新扫描)，绝不回退；无 ACK 仍 STOP |
+| manifest durable 后、runtime 发布前 | 新 manifest + 已提高 store | 正常恢复（proceed_existing），无需 ACK |
+| store/manifest 损坏、身份不符、scan 失败、DB 不可达 | — | STOP（store_corrupt / store_lost / identity / rebind_scan），不删文件 |
+
 ## 5. 启动新版与首批验证（AC-08B 执行口径）
 
 1. 以 `existing` 启动新版后端；guard 从 durable store 恢复 floor
@@ -123,5 +187,9 @@ pristine（无割接 manifest **且** store 无 durable floor）时缺省模式�
 | `negative_id` / `beyond_max_id` | 历史 bug 遗留：评估修复或剔除，**不可静默放行** |
 | guard 启动 `clock_behind` | floor 超前 > 60s：BLOCKED_CUTOVER（见上） |
 | guard 启动 `no_valid_slot` | bootstrap 未执行或路径错：检查 `IMBOY_TSID_STATE_DIR` 挂载 |
-| guard 启动 `{stop, blocked_legacy_writer}` | 无 manifest 且 store 有 floor（§4 预置 floor 后首启即此状态）：确认旧 writer 已按 §3 停写后，设 `IMBOY_TSID_BOOTSTRAP_LEGACY_ACK=I-CONFIRM-OLD-WRITER-STOPPED` 显式确认接管；**不得**清空 store 或改走 auto_scan 绕过（见 §4「单写者边界」） |
+| guard 启动 `{stop, blocked_legacy_writer}` | 无 manifest 且 store 有 floor（§4 预置 floor 后首启即此状态）：确认旧 writer 已按 §3 停写后，设 `IMBOY_TSID_BOOTSTRAP_LEGACY_ACK=I-CONFIRM-OLD-WRITER-STOPPED` 显式确认接管（compose 部署叠加 `deploy/docker-compose.tsid-cutover.yml`，勿编辑 base 注释）；**不得**清空 store 或改走 auto_scan 绕过（见 §4「单写者边界」） |
+| guard 启动 `{stop, catalog_changed}` | catalog 版本变更后既有 manifest 失配（预期 FAIL）：按 §4a 以 `IMBOY_TSID_BOOTSTRAP_REBIND_ACK` 显式重绑；**不得**清空/重建 store 或 manifest 绕过 |
+| guard 启动 `{stop, blocked_catalog_transition_unrecognized}` | 重绑 transition 未经验证（未知 digest / 跨步 / 降级）：按 §4a 核对 known_versions 溯源；仍不通即代码未覆盖该 transition，STOP 保持，需评审扩展 allowlist |
+| guard 启动 `{stop, {bootstrap_env, {rebind_ack_digest_mismatch, D}}}` | ACK 的 old/new digest 与现场不符（交换/过期/错绑）：按 D 的四路取证重新求取 old（manifest 现值）与 new（当前 catalog digest） |
+| guard 启动 `{stop, {rebind_scan, R}}` | 重绑扫描失败（schema 漂移 / DB 不可达）：修复后重试；失败不计入 floor，禁止放行 |
 | 双实例锁拒绝 `lock_taken` | 同 Node 另一实例存活：确认旧实例已退出 |

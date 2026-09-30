@@ -207,3 +207,52 @@ floor 0 起跳）与跨 VM 互斥失效（registry 为同 VM 语义，双实例�
 **部署注意**：升级到本提交后，配置中残留 `{imboy, tsid_lock_provider}`
 会使应用拒启（错误消息含移除指引）——这是设计行为，删除该键即可；
 `tsid_bootstrap_env_fun/scan_fun` 同理，仅 eunit 轨道合法。
+
+## 10. catalog digest 显式重绑状态机（2026-09-30 本轮交付）
+
+目标：补齐 catalog 变更后的安全 rebind 路径——此前 manifest digest 失配只能
+`{stop, catalog_changed}`（§5 治理路径第 6 步只有"按 runbook 重新割接"的
+占位语义，无可执行通道）。
+
+- **默认行为不变**：digest 失配且无显式 rebind 意图 → `{stop, catalog_changed}`
+  （`elib_tsid_bootstrap:maybe_rebind/6` R0；既有用例钉住）。
+- **显式 rebind 前置条件 R0..R7**（全部满足才授权，任一不满足 FAIL 级 STOP，
+  绝不自动 GO）：lifetime lock 已取得（ctx `lifetime_lock_held`，guard 持锁后
+  传入）；ACK（`IMBOY_TSID_BOOTSTRAP_REBIND_ACK`）前缀即操作员确认所有旧
+  writer 已停止，且值精确绑定 old/new 两个 digest（64 hex ×2）；transition 在
+  `elib_tsid_catalog:known_versions/0` × `verified_rebind_transitions/0` 的已
+  验证溯源 allowlist（当前仅 {1,2}、{2,3} 单步；未知/跨步/降级 →
+  `{stop, blocked_catalog_transition_unrecognized}`）；store floor 在（丢失 =
+  `store_lost` 优先，重绑绝不借 persist 重建已丢 store）；当前 catalog 全量
+  schema 校验 + 高水位扫描成功（失败 → `{stop, {rebind_scan, _}}`）；
+  ProposedFloor = max(StoreSafeBefore, ScanFloor)——数据库当前 max 不是已删除
+  历史 ID 的证明，floor 绝不降低。
+- **执行顺序**（guard `floor_commit` → `manifest_then_boot` → 既有 `boot_ready`，
+  与 pristine 首启同一条 AC-05D 链）：durable persist ProposedFloor（fsync/
+  readback/单调）→ 原子写绑定新 digest 的 manifest（mode 字节 3 =
+  catalog_rebind）→ 既有 boot_ready（持久化 max(now,floor)+window 后发布）。
+  无新增 generation counter；双槽新旧判定仍用 safe_before，同 safe_before
+  不同内容仍 split_brain。
+- **崩溃恢复**：persist 前 = 旧 manifest 仍 mismatch；persist 后 manifest 前 =
+  store floor 已提高、重试取 max(store, scan) 不回退；manifest durable 后 =
+  proceed_existing 正常恢复；损坏/身份不符/scan 失败/DB 不可达一律 STOP 不删
+  文件；第二实例拿不到 lock → lock_unavailable。逐断点用例见
+  `test/lib/elib_tsid_rebind_tests.erl`（decide 级，参与全量轨道）与
+  `elib_tsid_guard_tests` rebind 集成段（guard 级，F-12 专项轨道）。
+- **溯源锚点**（v1/v2 digest 为 git 历史独立编译重算，v2 另经
+  "当前清单剔除 v3 新增 3 项"同哈希链自证——`elib_tsid_catalog_tests`
+  provenance 段钉住）：
+  - v1（104 项，blob 352bee53）：
+    `b0b595e3056df30d866ffebe32011bb11388f0326cd2a803589ff811d873bdb5`
+  - v2（183 项，blob 8f1a164d）：
+    `96e3051fd92080222830779d9f5ba98884c22e8a7a9ce0e3aa461773885d6d1c`
+  - v3（186 项，当前）：
+    `6124ea1405217d97ea2d699ba7e997c494dd35984811390b5d125ac145986199`
+  未来 catalog 递减/扩容（v4+）时必须同步：追加历史 digest 到
+  `known_versions/0`、追加 `{3, 4}` 到 `verified_rebind_transitions/0`、
+  更新本表。
+- **部署面**：新增 `deploy/docker-compose.tsid-cutover.yml` overlay（base 不
+  注入 ACK；两键均 `${VAR:?}` required interpolation，未设置即 compose config
+  非零；cutover 后仅用 base 即 ACK 不存在）。Helm 侧
+  `bootstrapLegacyAck` 的条件渲染行为不变（空值=不注入键；精确值=注入；
+  错误值=guard fail-closed 拒启）。操作手册见 runbook §4a 与 §6 异常表。
