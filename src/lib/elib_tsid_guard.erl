@@ -235,6 +235,15 @@ bootstrap_gate(Config, Lock, Store0, StoreFloor) ->
             boot_with_floor(Config, Lock, Store0, StoreFloor);
         {ok, #{action := proceed_floor, floor_safe_before := Floor} = Ret} ->
             floor_commit(Config, Lock, Store0, Floor, Ret);
+        {ok, #{action := rebind_floor, floor_safe_before := Floor} = Ret} ->
+            %% catalog digest 显式重绑（状态机已验 R0..R7）：执行顺序合同
+            %% 与 pristine 首启一致——先 durable persist ProposedFloor
+            %% （floor_commit，AC-05D fsync/readback、单调不降），成功后才
+            %% 原子写绑定新 digest 的 manifest（manifest_then_boot），最后
+            %% 进入既有 boot_with_floor。persist 与 manifest 之间的任意
+            %% 崩溃窗口都满足状态机的重绑崩溃恢复合同（重试取
+            %% max(store, scan)，绝不回退）。
+            floor_commit(Config, Lock, Store0, Floor, Ret);
         {ok, #{action := adopt_existing, floor_safe_before := Floor} = Ret} ->
             manifest_then_boot(Config, Lock, Store0, Floor, Ret);
         {stop, R} ->
@@ -243,8 +252,9 @@ bootstrap_gate(Config, Lock, Store0, StoreFloor) ->
             {error, {bootstrap_unexpected_action, maps:get(action, Other, Other)}}
     end.
 
-%% pristine 首启：floor 持久化成功才继续（AC-05D）；空库（floor=0，
-%% 扫描确认无历史 ID）免 persist 直接落 manifest
+%% pristine 首启 / catalog rebind：floor 持久化成功才继续（AC-05D）；空库
+%% （floor=0，扫描确认无历史 ID）免 persist 直接落 manifest——rebind 路径
+%% floor 恒 > 0（状态机 R5），必经 durable persist 后才写割接 manifest
 floor_commit(Config, Lock, Store0, 0, Ret) ->
     manifest_then_boot(Config, Lock, Store0, 0, Ret);
 floor_commit(Config, Lock, Store0, Floor, Ret) when Floor > 0 ->
@@ -276,13 +286,17 @@ bootstrap_manifest_path(Config) ->
     ]).
 
 %% 自举状态机 ctx：seam 键缺省真实实现（测试注入 bootstrap_env_fun /
-%% bootstrap_scan_fun），wall_clock_fun 与恢复路径同一时钟源
+%% bootstrap_scan_fun），wall_clock_fun 与恢复路径同一时钟源。
+%% lifetime_lock_held => true：guard 在 acquire_lock 成功后才走到这里，
+%% 对状态机的 catalog rebind 授权（R4 前置）显式声明持锁事实——decide
+%% 级调用方（含测试）不传该键即视为未持锁，重绑授权拒绝。
 bootstrap_decide(Config, Extra) ->
     Ctx = maps:merge(
         #{
             catalog_digest => elib_tsid_catalog:digest(),
             combined_node => maps:get(combined_node, Config),
             manifest_path => bootstrap_manifest_path(Config),
+            lifetime_lock_held => true,
             env_fun => maps:get(bootstrap_env_fun, Config, fun os:getenv/1),
             scan_fun => maps:get(bootstrap_scan_fun, Config, fun elib_tsid_scan:scan/1),
             wall_clock_fun => maps:get(wall_clock_ms, Config, fun erlang:system_time/1)

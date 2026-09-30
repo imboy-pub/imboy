@@ -402,7 +402,7 @@ floor_from_env_direct_test() ->
 manifest_roundtrip_all_modes_test() ->
     P = tmp_path(),
     Cases =
-        [{auto_scan, 0}, {manual_floor, 1000}, {legacy_ack, 4398046511103}],
+        [{auto_scan, 0}, {manual_floor, 1000}, {legacy_ack, 4398046511103}, {catalog_rebind, 2000}],
     lists:foreach(
         fun({Mode, Floor}) ->
             ok = elib_tsid_bootstrap:write_manifest(P, (manifest_map(Floor))#{mode => Mode}),
@@ -475,7 +475,8 @@ manifest_bad_magic_version_mode_range_test() ->
     Body2 = <<"IMBTSIDB1", 2:16/unsigned-big, 0:8, 7:16, 0:64, 0:64, (digest(1))/binary>>,
     ok = file:write_file(P, <<Body2/binary, (erlang:crc32(Body2)):32>>),
     ?assertEqual({error, bad_version}, elib_tsid_bootstrap:read_manifest(P)),
-    Body3 = <<"IMBTSIDB1", 1:16/unsigned-big, 3:8, 7:16, 0:64, 0:64, (digest(1))/binary>>,
+    %% mode 字节 0..3 合法（3=catalog_rebind）；4 起非法。
+    Body3 = <<"IMBTSIDB1", 1:16/unsigned-big, 4:8, 7:16, 0:64, 0:64, (digest(1))/binary>>,
     ok = file:write_file(P, <<Body3/binary, (erlang:crc32(Body3)):32>>),
     ?assertEqual({error, bad_mode}, elib_tsid_bootstrap:read_manifest(P)),
     Body4 = <<"IMBTSIDB1", 1:16/unsigned-big, 0:8, 2000:16, 0:64, 0:64, (digest(1))/binary>>,

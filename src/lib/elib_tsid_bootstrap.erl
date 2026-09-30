@@ -9,7 +9,8 @@
 %%% 割接 manifest：<root>/node-<NNNN>/tsid.bootstrap，二进制定长 + CRC32，
 %%% 魔数 IMBTSIDB1；写协议与 elib_tsid_store 的 durable 写一致：
 %%% temp exclusive → write → sync → chmod 0600 → rename → dirsync。
-%%% 字段：version(16)、mode(8: 0=auto_scan 1=manual_floor 2=legacy_ack)、
+%%% 字段：version(16)、mode(8: 0=auto_scan 1=manual_floor 2=legacy_ack
+%%%        3=catalog_rebind)、
 %%% combined_node(16)、floor_safe_before(64)、created_at_rel_ms(64)、
 %%% catalog_digest(32B SHA-256)、CRC32。
 %%%
@@ -26,14 +27,48 @@
 %%%   身份/布局不符（store 内部 manifest 或本 manifest）
 %%%                                              → {stop, store_identity_mismatch}
 %%%   manifest 的 catalog_digest ≠ 当前 digest    → {stop, catalog_changed}
+%%%     （默认行为不变；唯一显式例外是下方 catalog rebind 路径）
 %%%   环境变量非法                                → {stop, {bootstrap_env, D}}
 %%%   auto_scan 扫描失败                          → {stop, {bootstrap_scan, R}}
+%%%
+%%% == catalog rebind（digest 失配的显式重绑；默认仍 STOP，绝不自动 GO） ==
+%%% manifest 绑定的 catalog_digest 与当前 catalog 不符时，唯一放行通道是
+%%% 操作员设置 IMBOY_TSID_BOOTSTRAP_REBIND_ACK 显式重绑，且必须同时满足
+%%% （实现见 maybe_rebind/6 的 R0..R7）：已取得 lifetime lock
+%%% （ctx.lifetime_lock_held）；manifest/CombinedNode/dc_bits/store 身份
+%%% 一致（进入该分支前已由矩阵前序检查证毕）；操作员以 ACK 前缀显式确认
+%%% 所有旧 writer 已停止；ACK 同时精确绑定 expected old digest 与 current
+%%% new digest（交换/过期/错绑 → {bootstrap_env, rebind_ack_digest_mismatch}）；
+%%% transition 在 catalog 已验证溯源 allowlist（known_versions ×
+%%% verified_rebind_transitions）中，未知 → {stop,
+%%% blocked_catalog_transition_unrecognized}；store floor 在（丢失 = store_lost，
+%%% 重绑不得借 persist 重建已丢 store）；当前 catalog 全量 schema 校验 +
+%%% 高水位扫描成功（失败 → {stop, {rebind_scan, R}}）。授权 ProposedFloor =
+%%% max(StoreFloor, ScanFloor)——数据库当前 max 不是已删除历史 ID 的证明，
+%%% floor 绝不降低。授权产物 action=rebind_floor 由 guard 执行：先 durable
+%%% persist ProposedFloor（fsync/readback、单调不降），再原子写绑定新
+%%% digest 的 manifest，最后进入既有 boot_ready。
+%%%
+%%% rebind 崩溃恢复（各断点均 fail-closed，绝不 fresh reset / 删文件）：
+%%%   persist 前崩溃                → manifest 仍绑旧 digest：重启维持
+%%%                                  catalog_changed（或携 ACK 显式重试）
+%%%   persist 后、manifest 前崩溃   → store floor 已提高：携 ACK 重试时
+%%%                                  ProposedFloor = max(已提高 store, 新扫描)，
+%%%                                  绝不回退
+%%%   manifest durable 后、runtime 发布前崩溃 → 重启走 proceed_existing
+%%%                                  （新 manifest + 已提高 store 的正常恢复）
+%%%   store/manifest 损坏、身份不符、scan 失败、DB 不可达 → STOP
+%%%   第二实例拿不到 lifetime lock  → guard 层 lock_unavailable 拒启
 %%%
 %%% 环境变量（非法值一律 {stop, ...}，不静默取默认）：
 %%%   IMBOY_TSID_BOOTSTRAP_MODE          = auto_scan（缺省）| manual_floor
 %%%   IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS = 整数 unix 毫秒（manual_floor 必填；
 %%%                                        floor_safe_before = ms - EPOCH_MS）
 %%%   IMBOY_TSID_BOOTSTRAP_LEGACY_ACK    = I-CONFIRM-OLD-WRITER-STOPPED
+%%%   IMBOY_TSID_BOOTSTRAP_REBIND_ACK    = I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:
+%%%                                        <old_digest_hex>:<new_digest_hex>
+%%%                                        （仅 catalog_changed 悬置时被读取；
+%%%                                        其它状态下惰性，不参与判定）
 %%%
 %%% Decision order (English notes below are implementation contract):
 %%% store_open_error classification -> manifest read/identity -> digest
@@ -79,12 +114,21 @@
 -define(MODE_AUTO_SCAN, 0).
 -define(MODE_MANUAL_FLOOR, 1).
 -define(MODE_LEGACY_ACK, 2).
+-define(MODE_CATALOG_REBIND, 3).
 
 %% Env vars: values must match exactly (no trim / loose parsing).
 -define(ENV_MODE, "IMBOY_TSID_BOOTSTRAP_MODE").
 -define(ENV_FLOOR_UNIX_MS, "IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS").
 -define(ENV_LEGACY_ACK, "IMBOY_TSID_BOOTSTRAP_LEGACY_ACK").
 -define(LEGACY_ACK_VALUE, "I-CONFIRM-OLD-WRITER-STOPPED").
+-define(ENV_REBIND_ACK, "IMBOY_TSID_BOOTSTRAP_REBIND_ACK").
+%% REBIND_ACK 值格式（严格，无 trim）：
+%%   I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:<old_hex64>:<new_hex64>
+%% 前缀本身即「操作员确认所有旧 writer 已停止」的显式确认语句；
+%% <old_hex64> 必须精确等于 manifest 当前绑定的 catalog_digest，
+%% <new_hex64> 必须精确等于当前 elib_tsid_catalog:digest()——两个
+%% digest 都锚定进 ACK，交换/过期/错绑自然 fail-closed。
+-define(REBIND_ACK_PREFIX, "I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND").
 
 %% Ctx：
 %%   store_floor      => store 打开后的 durable safe_before（0 = 无）
@@ -142,7 +186,7 @@ decide_manifest(Ctx, EnvF, ScanF, WallF) ->
     EffectiveFloor = effective_floor(Ctx),
     case read_manifest(maps:get(manifest_path, Ctx)) of
         {ok, M} ->
-            decide_manifest_ok(Ctx, M, EffectiveFloor);
+            decide_manifest_ok(Ctx, M, EffectiveFloor, EnvF, ScanF, WallF);
         absent ->
             decide_pristine(Ctx, EnvF, ScanF, WallF, EffectiveFloor);
         {error, R} ->
@@ -158,14 +202,17 @@ effective_floor(Ctx) ->
     end.
 
 %% Manifest present: identity -> digest -> floor existence (matrix order).
-decide_manifest_ok(Ctx, M, EffectiveFloor) ->
+%% digest 不符的默认行为保持不变：无显式 rebind 意图 → {stop, catalog_changed}。
+%% 只有 REBIND_ACK 显式给出且全部前置条件满足时才走重绑授权
+%% （maybe_rebind/6），且授权绝不降低 store floor、绝不跳过高水位扫描。
+decide_manifest_ok(Ctx, M, EffectiveFloor, EnvF, ScanF, WallF) ->
     case maps:get(combined_node, M) =:= maps:get(combined_node, Ctx) of
         false ->
             {stop, store_identity_mismatch};
         true ->
             case maps:get(catalog_digest, M) =:= maps:get(catalog_digest, Ctx) of
                 false ->
-                    {stop, catalog_changed};
+                    maybe_rebind(Ctx, M, EffectiveFloor, EnvF, ScanF, WallF);
                 true ->
                     case EffectiveFloor of
                         0 ->
@@ -174,6 +221,148 @@ decide_manifest_ok(Ctx, M, EffectiveFloor) ->
                             {ok, #{action => proceed_existing}}
                     end
             end
+    end.
+
+%%--------------------------------------------------------------------
+%% catalog digest 显式重绑（rebind）授权路径。默认无意图 → catalog_changed
+%%（R0，合同钉住）。有 ACK 时按 R1..R7 顺序判定（语义与断言矩阵见模块头
+%% 与 elib_tsid_rebind_tests）：格式 → old/new 绑定 → transition 溯源
+%% allowlist → lifetime lock → store floor 在 → 当前 catalog 全量扫描成功。
+%% ProposedFloor = max(StoreFloor, ScanFloor)（数据库当前 max 不是已删除
+%% 历史 ID 的证明，floor 绝不降低）。授权产物由 guard 执行：先 durable
+%% persist（fsync/readback、单调不降），再原子写绑定新 digest 的 manifest，
+%% 最后进入既有 boot_ready。无法证明 transition 安全时必须 STOP。
+%%--------------------------------------------------------------------
+maybe_rebind(Ctx, M, StoreFloor, EnvF, ScanF, WallF) ->
+    case rebind_ack(EnvF) of
+        not_set ->
+            %% 默认行为合同：无显式 rebind 意图即 FAIL（不降 warning）。
+            {stop, catalog_changed};
+        {stop, _} = Stop ->
+            Stop;
+        {ok, #{old_digest := OldD, new_digest := NewD}} ->
+            ManifestD = maps:get(catalog_digest, M),
+            CurrentD = maps:get(catalog_digest, Ctx),
+            case OldD =:= ManifestD andalso NewD =:= CurrentD of
+                false ->
+                    {stop,
+                        {bootstrap_env,
+                            {rebind_ack_digest_mismatch, #{
+                                ack_old_digest => OldD,
+                                ack_new_digest => NewD,
+                                manifest_digest => ManifestD,
+                                current_digest => CurrentD
+                            }}}};
+                true ->
+                    rebind_check_transition(Ctx, StoreFloor, ScanF, WallF, OldD, NewD)
+            end
+    end.
+
+rebind_check_transition(Ctx, StoreFloor, ScanF, WallF, OldD, NewD) ->
+    case rebind_transition_verified(OldD, NewD) of
+        false ->
+            {stop, blocked_catalog_transition_unrecognized};
+        true ->
+            %% 严格 true 才算持锁；缺失/其它值一律按未持锁 fail-closed。
+            case maps:get(lifetime_lock_held, Ctx, false) of
+                true ->
+                    rebind_check_floor(Ctx, StoreFloor, ScanF, WallF);
+                _ ->
+                    {stop, rebind_lock_not_held}
+            end
+    end.
+
+rebind_check_floor(_Ctx, 0, _ScanF, _WallF) ->
+    %% manifest 在而 store durable floor 丢失：重绑绝不能借 persist 把
+    %% 已丢失的 store「重建」出来——store_lost 优先于一切重绑授权。
+    {stop, store_lost};
+rebind_check_floor(Ctx, StoreFloor, ScanF, WallF) when is_integer(StoreFloor), StoreFloor > 0 ->
+    rebind_scan(Ctx, StoreFloor, ScanF, WallF);
+rebind_check_floor(_Ctx, Bad, _ScanF, _WallF) ->
+    {stop, {store_floor_invalid, Bad}}.
+
+%% 当前 catalog 口径的全量扫描（与 pristine auto_scan 同一 scan 合同：
+%% 内含 schema 校验 + 反向发现 + 高水位），加 rebind 标记供 scan 实现与
+%% 测试区分场景。扫描结果与 store floor 取 max——扫描只能抬高 floor。
+rebind_scan(Ctx, StoreFloor, ScanF, WallF) ->
+    Catalog = elib_tsid_catalog:primary_keys(),
+    case ScanF(#{catalog => Catalog, rebind => true}) of
+        {ok, #{floor_safe_before := ScanFloor}} when
+            is_integer(ScanFloor), ScanFloor >= 0, ScanFloor =< ?MAX_REL_TS
+        ->
+            rebind_authorize(Ctx, max(StoreFloor, ScanFloor), WallF);
+        {ok, #{floor_safe_before := Bad}} ->
+            {stop, {rebind_scan, {invalid_floor, Bad}}};
+        {ok, Other} ->
+            {stop, {rebind_scan, {invalid_scan_result, Other}}};
+        {error, R} ->
+            {stop, {rebind_scan, R}}
+    end.
+
+rebind_authorize(Ctx, ProposedFloor, WallF) ->
+    case now_rel_ms(WallF) of
+        {stop, _} = Stop ->
+            Stop;
+        {ok, NowRel} ->
+            {ok, #{
+                action => rebind_floor,
+                floor_safe_before => ProposedFloor,
+                mode => catalog_rebind,
+                catalog_digest => maps:get(catalog_digest, Ctx),
+                combined_node => maps:get(combined_node, Ctx),
+                created_at_rel_ms => NowRel
+            }}
+    end.
+
+%% transition 溯源：两个 digest 都必须是已发布 catalog 版本（known_versions），
+%% 且版本对在已验证邻接表中。跨步/降级/未知 digest 一律 false。
+rebind_transition_verified(OldD, NewD) ->
+    Known = elib_tsid_catalog:known_versions(),
+    case {lists:keyfind(OldD, 2, Known), lists:keyfind(NewD, 2, Known)} of
+        {{FromV, _}, {ToV, _}} ->
+            lists:member({FromV, ToV}, elib_tsid_catalog:verified_rebind_transitions());
+        _ ->
+            false
+    end.
+
+%% REBIND_ACK 读取与解析：只在 catalog digest 失配分支被调用；其它状态
+%% （manifest 缺失 / digest 已匹配）下设置该变量是惰性的、不参与判定。
+%% 非法值（格式错/段数错/非十六进制/长度错）在失配状态下一律 fail-closed。
+rebind_ack(EnvF) ->
+    case EnvF(?ENV_REBIND_ACK) of
+        false ->
+            not_set;
+        Value when is_list(Value) ->
+            parse_rebind_ack(Value);
+        Other ->
+            {stop, {bootstrap_env, {bad_rebind_ack, Other}}}
+    end.
+
+parse_rebind_ack(Value) ->
+    case string:split(Value, ":", all) of
+        [?REBIND_ACK_PREFIX, OldHex, NewHex] ->
+            case {hex_digest(OldHex), hex_digest(NewHex)} of
+                {{ok, OldD}, {ok, NewD}} ->
+                    {ok, #{old_digest => OldD, new_digest => NewD}};
+                _ ->
+                    {stop, {bootstrap_env, {bad_rebind_ack, Value}}}
+            end;
+        _ ->
+            {stop, {bootstrap_env, {bad_rebind_ack, Value}}}
+    end.
+
+%% 严格 64 个十六进制字符（大 小写均收，binary:decode_hex 口径）→ 32 字节。
+hex_digest(Hex) ->
+    HexBin = unicode:characters_to_binary(Hex),
+    case is_binary(HexBin) andalso byte_size(HexBin) =:= 64 of
+        true ->
+            try
+                {ok, binary:decode_hex(HexBin)}
+            catch
+                _:_ -> error
+            end;
+        false ->
+            error
     end.
 
 %% No manifest: floor == 0 -> pristine first boot; floor > 0 -> a legacy
@@ -391,6 +580,8 @@ mode_field(Manifest) ->
             {ok, ?MODE_MANUAL_FLOOR};
         legacy_ack ->
             {ok, ?MODE_LEGACY_ACK};
+        catalog_rebind ->
+            {ok, ?MODE_CATALOG_REBIND};
         Other ->
             {error, {bad_manifest_field, {mode, Other}}}
     end.
@@ -594,5 +785,7 @@ mode_from_byte(?MODE_MANUAL_FLOOR) ->
     {ok, manual_floor};
 mode_from_byte(?MODE_LEGACY_ACK) ->
     {ok, legacy_ack};
+mode_from_byte(?MODE_CATALOG_REBIND) ->
+    {ok, catalog_rebind};
 mode_from_byte(_) ->
     {error, bad_mode}.

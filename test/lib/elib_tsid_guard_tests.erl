@@ -256,6 +256,123 @@ manual_floor_bad_env_stops_test() ->
     ?assertMatch({error, {bootstrap_env, _}}, start_trapped(Cfg)).
 
 %% ===================================================================
+%% catalog digest 显式重绑（rebind）集成：manifest 绑真实 v2 digest、
+%% 当前 catalog v3（真实 digest，取自 known_versions/0 溯源锚点），
+%% REBIND_ACK 精确绑定 v2→v3。与 decide 级矩阵
+%% （elib_tsid_rebind_tests）互补，此处验证 guard 执行链：persist →
+%% manifest 换绑 → boot_ready → 生成不回退 → 重启 proceed_existing。
+%% ===================================================================
+
+rebind_ack_env(V2Hex, V3Hex) ->
+    fun
+        ("IMBOY_TSID_BOOTSTRAP_REBIND_ACK") ->
+            "I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:" ++ V2Hex ++ ":" ++ V3Hex;
+        (_) ->
+            false
+    end.
+
+known_hex(V) ->
+    {V, D} = lists:keyfind(V, 1, elib_tsid_catalog:known_versions()),
+    binary_to_list(binary:encode_hex(D)).
+
+%% 把割接 manifest 换写成旧版 digest 绑定（模拟 catalog 升级后的既有部署）
+write_stale_manifest(Root, Digest, Floor) ->
+    Bad = #{
+        mode => auto_scan,
+        combined_node => ?NODE,
+        floor_safe_before => Floor,
+        created_at_rel_ms => rel_now(),
+        catalog_digest => Digest
+    },
+    ok = elib_tsid_bootstrap:write_manifest(manifest_path(Root), Bad).
+
+%% 重绑成功：READY、manifest 换绑新 digest（mode=catalog_rebind）、首个 ID
+%% 高于旧 durable floor 与 scan floor、重启免 ACK 正常恢复且不重复。
+catalog_rebind_boots_ready_test() ->
+    Root = tmp_root(),
+    {ok, P1} = elib_tsid_guard:start_link(fast_cfg(Root)),
+    ok = wait_ready(P1, 50),
+    Ids1 = [elib_tsid:generate(user) || _ <- lists:seq(1, 20)],
+    stop_guard(P1),
+    {ok, Store0} = elib_tsid_store:open(read_store_cfg(Root)),
+    #{safe_before := OldSB} = elib_tsid_store:status(Store0),
+    %% scan floor 抬到旧 durable fence 之上（1500ms）：ProposedFloor =
+    %% max(OldSB, OldSB+1500)，首个 ID 的 ts = max(墙钟, floor)——无论墙钟
+    %% 是否已越过 floor，都严格高于 OldSB 且不低于 scan floor（重绑后
+    %% 首个 ID 绝不落在任一已知高水位之下）。
+    ScanFloor = OldSB + 1500,
+    write_stale_manifest(Root, hd([D || {2, D} <- elib_tsid_catalog:known_versions()]), OldSB),
+    ScanF = fun(_Opts) -> {ok, #{floor_safe_before => ScanFloor}} end,
+    Cfg = (fast_cfg(Root))#{
+        store_bootstrap => existing,
+        bootstrap_env_fun => rebind_ack_env(known_hex(2), known_hex(3)),
+        bootstrap_scan_fun => ScanF
+    },
+    {ok, P2} = elib_tsid_guard:start_link(Cfg),
+    ok = wait_ready(P2, 50),
+    %% manifest 已原子换绑：新 v3 digest + catalog_rebind 模式。
+    {ok, M} = elib_tsid_bootstrap:read_manifest(manifest_path(Root)),
+    ?assertEqual(catalog_rebind, maps:get(mode, M)),
+    ?assertEqual(elib_tsid_catalog:digest(), maps:get(catalog_digest, M)),
+    %% 首个 ID：ts 高于重绑前的 durable floor 与 scan floor（不撞任何水位）。
+    Id2 = elib_tsid:generate(user),
+    Ts2 = (Id2 bsr 21) band ((1 bsl 42) - 1),
+    ?assert(Ts2 > OldSB),
+    ?assert(Ts2 >= ScanFloor),
+    %% 重启（免 ACK，base 形态）：proceed_existing 正常恢复，ID 不回退不重复。
+    stop_guard(P2),
+    {ok, P3} = elib_tsid_guard:start_link((fast_cfg(Root))#{store_bootstrap => existing}),
+    ok = wait_ready(P3, 50),
+    Ids3 = [elib_tsid:generate(user) || _ <- lists:seq(1, 20)],
+    ?assertEqual(41, length(lists:usort(Ids1 ++ [Id2] ++ Ids3))),
+    Ts3 = lists:max([(I bsr 21) band ((1 bsl 42) - 1) || I <- Ids3]),
+    ?assert(Ts3 >= Ts2),
+    stop_guard(P3).
+
+%% 错误 ACK（new digest 错绑）：guard 拒启，磁盘无副作用（manifest 仍绑
+%% 旧 digest、store floor 不变）。
+catalog_rebind_wrong_ack_stops_test() ->
+    Root = tmp_root(),
+    {ok, P1} = elib_tsid_guard:start_link(fast_cfg(Root)),
+    ok = wait_ready(P1, 50),
+    stop_guard(P1),
+    {ok, Store0} = elib_tsid_store:open(read_store_cfg(Root)),
+    #{safe_before := OldSB} = elib_tsid_store:status(Store0),
+    V2D = hd([D || {2, D} <- elib_tsid_catalog:known_versions()]),
+    write_stale_manifest(Root, V2D, OldSB),
+    %% new 段错绑 v2（不是当前 v3）→ digest mismatch。
+    Cfg = (fast_cfg(Root))#{
+        store_bootstrap => existing,
+        bootstrap_env_fun => rebind_ack_env(known_hex(2), known_hex(2)),
+        bootstrap_scan_fun => fun(_) -> {ok, #{floor_safe_before => OldSB}} end
+    },
+    ?assertMatch(
+        {error, {bootstrap_env, {rebind_ack_digest_mismatch, _}}},
+        start_trapped(Cfg)
+    ),
+    {ok, M} = elib_tsid_bootstrap:read_manifest(manifest_path(Root)),
+    ?assertEqual(V2D, maps:get(catalog_digest, M)),
+    {ok, Store1} = elib_tsid_store:open(read_store_cfg(Root)),
+    ?assertEqual(OldSB, maps:get(safe_before, elib_tsid_store:status(Store1))).
+
+%% 无 ACK（默认行为回归钉）：manifest 绑旧 digest + store 有 floor + 无
+%% rebind 意图 → catalog_changed（既有用例 catalog_changed_stops_test 用
+%% 捏造 digest；此处用真实 v2 溯源 digest 复核同一路径）。
+catalog_rebind_no_ack_default_stops_test() ->
+    Root = tmp_root(),
+    {ok, P1} = elib_tsid_guard:start_link(fast_cfg(Root)),
+    ok = wait_ready(P1, 50),
+    stop_guard(P1),
+    {ok, Store0} = elib_tsid_store:open(read_store_cfg(Root)),
+    #{safe_before := SB} = elib_tsid_store:status(Store0),
+    V2D = hd([D || {2, D} <- elib_tsid_catalog:known_versions()]),
+    write_stale_manifest(Root, V2D, SB),
+    ?assertMatch(
+        {error, catalog_changed},
+        start_trapped((fast_cfg(Root))#{store_bootstrap => existing})
+    ).
+
+%% ===================================================================
 %% T-202(守护级) 持久化失败 → FENCED → 不再发 ID；恢复后回 READY
 %% ===================================================================
 
