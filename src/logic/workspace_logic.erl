@@ -449,17 +449,10 @@ remove_member(Uid, WsId, TargetUid) ->
     end.
 
 remove_member_checked(WsId, TargetUid) ->
-    case elib_pg:with_tx(fun(Conn) -> remove_member_tx(Conn, WsId, TargetUid) end) of
+    case elib_pg:with_tx(fun(Conn) -> workspace_ds:remove_member_tx(Conn, WsId, TargetUid) end) of
         Result when is_map(Result) ->
+            ok = workspace_ds:member_removed(Result),
             AffectedGroups = maps:get(affected_groups, Result, []),
-            lists:foreach(
-                fun(#{group_id := Gid}) -> group_ds:leave(TargetUid, Gid) end,
-                AffectedGroups
-            ),
-            imboy_domain_event:publish([
-                {member_removed, Gid, TargetUid}
-             || #{group_id := Gid} <- AffectedGroups
-            ]),
             _ = ?INFO_LOG([
                 workspace_member_removed,
                 WsId,
@@ -475,64 +468,6 @@ remove_member_checked(WsId, TargetUid) ->
             _ = ?ERROR_LOG([workspace_remove_failed, WsId, TargetUid, Reason]),
             {error, {500, <<"移除失败，请稍后重试"/utf8>>}}
     end.
-
-remove_member_tx(Conn, WsId, TargetUid) ->
-    %% 冲突检查（同事务，防检查-移除间竞态；fail-closed）
-    case workspace_member_repo:owned_projects_of_user(Conn, WsId, TargetUid) of
-        {ok, [_ | _] = Projects} ->
-            throw({abort_tx, {membership_conflict, #{owned_projects => Projects}}});
-        {ok, []} ->
-            ok;
-        {error, Reason} ->
-            throw({abort_tx, Reason})
-    end,
-    case workspace_member_repo:unfinished_tasks_of_user(Conn, WsId, TargetUid) of
-        {ok, [_ | _] = Tasks} ->
-            throw({abort_tx, {membership_conflict, #{unfinished_tasks => Tasks}}});
-        {ok, []} ->
-            ok;
-        {error, Reason2} ->
-            throw({abort_tx, Reason2})
-    end,
-    %% 无冲突：先禁用下属 workspace 群成员（同事务，满足移除保护触发器）
-    {ok, Affected} = workspace_member_repo:list_active_workspace_groups_of_user(
-        Conn, WsId, TargetUid
-    ),
-    DisableSql = <<"UPDATE group_member SET status = 0, updated_at = $1 WHERE id = $2">>,
-    lists:foreach(
-        fun(#{<<"gm_id">> := GmId}) ->
-            case elib_pg:execute(Conn, DisableSql, [elib_dt:now(), GmId]) of
-                {ok, 1} -> ok;
-                {error, DisableReason} -> throw({abort_tx, DisableReason})
-            end
-        end,
-        Affected
-    ),
-    %% E2EE-2026-012 §7.4（Task 8/LT-03）：workspace removal 关闭各群的
-    %% open 历史世代（与 status=0 同事务；成员行保留但授权谓词只认 open 世代，
-    %% 关闭后其历史访问即失效）。
-    lists:foreach(
-        fun(#{<<"group_id">> := Gid}) ->
-            group_member_ds:close_history_generation(Conn, Gid, TargetUid, <<"workspace_remove">>)
-        end,
-        Affected
-    ),
-    %% 再 removed 父关系（触发器在 COMMIT 校验无残留 active 下级）
-    ok = workspace_member_repo:remove_tx(Conn, WsId, TargetUid),
-    AffectedOut = [#{group_id => G} || #{<<"group_id">> := G} <- Affected],
-    %% 审计：受影响资源清单入服务端日志（T7 归档审计列之外的成员治理审计）
-    _ = ?INFO_LOG([
-        workspace_member_cascade,
-        WsId,
-        TargetUid,
-        {disabled_group_members, AffectedOut}
-    ]),
-    #{
-        workspace_id => WsId,
-        user_id => TargetUid,
-        status => <<"removed">>,
-        affected_groups => AffectedOut
-    }.
 
 %% @doc 改角色（仅 Owner；最后 Owner 保护；Guest↔member/owner 均可由 Owner 调整）
 -spec change_role(integer(), integer(), integer(), binary()) ->
@@ -969,6 +904,8 @@ membership_conflict_msg(#{owned_projects := Projects}) ->
 membership_conflict_msg(#{unfinished_tasks := Tasks}) ->
     Titles = elib_cnv:implode(<<"、"/utf8>>, [maps:get(<<"title">>, T, <<"">>) || T <- Tasks]),
     <<"membership_conflict：该用户有未完成任务（"/utf8, Titles/binary, "），须先改派或完成后再移除"/utf8>>;
+membership_conflict_msg(#{owned_channels := _}) ->
+    <<"该用户仍是频道创建者，请先移交频道再移除工作区成员"/utf8>>;
 membership_conflict_msg(_) ->
     <<"membership_conflict：该用户存在未完成的成员关系冲突"/utf8>>.
 

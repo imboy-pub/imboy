@@ -33,7 +33,7 @@
 -export([update_branding/3]).
 -export([read_branding/1]).
 -export([overview/2]).
--export([ws_transfer_tx/3]).
+-export([ws_transfer_tx/3, remove_member_tx/3, member_removed/1]).
 -export([branding_public_view/1]).
 -export([resource_counts/1]).
 %% Admin 运营管理查询（双体验 v2.5.2 WP7/T11b；仅供 workspace_logic admin 函数调用）
@@ -598,3 +598,77 @@ public_view(WS) when is_map(WS) ->
 -spec clamp(integer(), integer(), integer()) -> integer().
 clamp(Value, Min, Max) ->
     max(Min, min(Max, Value)).
+
+%% 同事务撤销下属群、频道及父成员资格，供工作区与组织退出共用。
+-spec remove_member_tx(any(), integer(), integer()) -> map().
+remove_member_tx(Conn, WsId, TargetUid) ->
+    ensure_removal_dependencies_tx(Conn, WsId, TargetUid),
+    %% 无冲突：先禁用下属 workspace 群成员（同事务，满足移除保护触发器）
+    {ok, Affected} = workspace_member_repo:list_active_workspace_groups_of_user(
+        Conn, WsId, TargetUid
+    ),
+    disable_groups_tx(Conn, TargetUid, Affected),
+    Channels =
+        case workspace_member_repo:remove_channels_tx(Conn, WsId, TargetUid) of
+            {ok, Rows} -> Rows;
+            {error, ChannelReason} -> throw({abort_tx, ChannelReason})
+        end,
+    %% 再 removed 父关系（触发器在 COMMIT 校验无残留 active 下级）
+    case workspace_member_repo:remove_tx(Conn, WsId, TargetUid) of
+        ok -> ok;
+        {error, RemoveReason} -> throw({abort_tx, RemoveReason})
+    end,
+    AffectedOut = [#{group_id => G} || #{<<"group_id">> := G} <- Affected],
+    #{
+        workspace_id => WsId,
+        user_id => TargetUid,
+        status => <<"removed">>,
+        affected_groups => AffectedOut,
+        affected_channels => [#{channel_id => C} || #{<<"channel_id">> := C} <- Channels]
+    }.
+
+%% 只能在事务提交成功后调用；回滚不改变实时成员与投递缓存。
+-spec member_removed(map()) -> ok.
+member_removed(#{user_id := Uid} = Result) ->
+    Groups = maps:get(affected_groups, Result, []),
+    lists:foreach(fun(#{group_id := Gid}) -> group_ds:leave(Uid, Gid) end, Groups),
+    lists:foreach(
+        fun(#{channel_id := Cid}) ->
+            imboy_cache:flush({channel_subs, Cid}),
+            imboy_cache:flush({channel, Cid})
+        end,
+        maps:get(affected_channels, Result, [])
+    ),
+    imboy_domain_event:publish([{member_removed, Gid, Uid} || #{group_id := Gid} <- Groups]),
+    ok.
+
+disable_groups_tx(Conn, Uid, Groups) ->
+    lists:foreach(
+        fun(#{<<"gm_id">> := Id, <<"group_id">> := Gid}) ->
+            case workspace_member_repo:disable_group_member_tx(Conn, Id) of
+                ok -> ok;
+                {error, Reason} -> throw({abort_tx, Reason})
+            end,
+            group_member_ds:close_history_generation(Conn, Gid, Uid, <<"workspace_remove">>)
+        end,
+        Groups
+    ).
+
+ensure_removal_dependencies_tx(Conn, WsId, TargetUid) ->
+    %% 冲突检查（同事务，防检查-移除间竞态；fail-closed）
+    case workspace_member_repo:owned_projects_of_user(Conn, WsId, TargetUid) of
+        {ok, [_ | _] = Projects} ->
+            throw({abort_tx, {membership_conflict, #{owned_projects => Projects}}});
+        {ok, []} ->
+            ok;
+        {error, Reason} ->
+            throw({abort_tx, Reason})
+    end,
+    case workspace_member_repo:unfinished_tasks_of_user(Conn, WsId, TargetUid) of
+        {ok, [_ | _] = Tasks} ->
+            throw({abort_tx, {membership_conflict, #{unfinished_tasks => Tasks}}});
+        {ok, []} ->
+            ok;
+        {error, Reason2} ->
+            throw({abort_tx, Reason2})
+    end.

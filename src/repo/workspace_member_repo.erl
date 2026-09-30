@@ -23,6 +23,8 @@
 -export([list_active_workspace_groups_of_user/3]).
 -export([owned_projects_of_user/3]).
 -export([unfinished_tasks_of_user/3]).
+-export([remove_channels_tx/3]).
+-export([disable_group_member_tx/2]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -240,5 +242,47 @@ unfinished_tasks_of_user(Conn, WsId, Uid) ->
             " ORDER BY t.id ASC">>,
     case elib_pg:query(Conn, Sql, [WsId, Uid]) of
         {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 撤销工作区频道资格；与父成员移除使用同一事务。保留频道及消息。
+%% RETURNING 清单也包含仅有管理员资格的频道，供提交后清理投递缓存。
+-spec remove_channels_tx(any(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
+remove_channels_tx(Conn, WsId, Uid) ->
+    ensure_channel_handover_tx(Conn, WsId, Uid),
+    Sql = <<
+        "WITH subscriptions AS ("
+        " UPDATE channel_subscription cs SET status = 0"
+        " FROM channel c WHERE cs.channel_id = c.id AND c.workspace_id = $1"
+        " AND c.scope = 'workspace' AND cs.user_id = $2 AND cs.status = 1"
+        " RETURNING cs.channel_id),"
+        " counts AS (UPDATE channel c SET subscriber_count = GREATEST(0, c.subscriber_count - 1),"
+        " updated_at = CURRENT_TIMESTAMP FROM subscriptions s WHERE c.id = s.channel_id"
+        " RETURNING c.id),"
+        " admins AS (DELETE FROM channel_admin ca USING channel c"
+        " WHERE ca.channel_id = c.id AND c.workspace_id = $1 AND c.scope = 'workspace'"
+        " AND ca.user_id = $2 RETURNING ca.channel_id)"
+        " SELECT channel_id FROM subscriptions UNION SELECT channel_id FROM admins"
+        " ORDER BY channel_id"
+    >>,
+    elib_pg:query(Conn, Sql, [WsId, Uid]).
+
+ensure_channel_handover_tx(Conn, WsId, Uid) ->
+    Sql = <<
+        "SELECT id, name FROM channel WHERE workspace_id = $1"
+        " AND scope = 'workspace' AND creator_uid = $2 AND status = 1 ORDER BY id"
+    >>,
+    case elib_pg:query(Conn, Sql, [WsId, Uid]) of
+        {ok, []} -> ok;
+        {ok, Channels} -> throw({abort_tx, {membership_conflict, #{owned_channels => Channels}}});
+        {error, Reason} -> throw({abort_tx, Reason})
+    end.
+
+-spec disable_group_member_tx(any(), integer()) -> ok | {error, term()}.
+disable_group_member_tx(Conn, MemberId) ->
+    Sql = <<"UPDATE group_member SET status = 0, updated_at = $1 WHERE id = $2">>,
+    case elib_pg:execute(Conn, Sql, [elib_dt:now(), MemberId]) of
+        {ok, 1} -> ok;
+        {ok, _} -> {error, member_not_active};
         {error, Reason} -> {error, Reason}
     end.

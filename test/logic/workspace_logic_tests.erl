@@ -469,6 +469,7 @@ remove_member_cascades_group_members_test_() ->
                         #{<<"gm_id">> => 555002, <<"group_id">> => 777002, <<"title">> => <<"Dev">>}
                     ]}
                 end},
+                {'remove_channels_tx', 3, fun(_, ?WS_ID, ?MEMBER) -> {ok, []} end},
                 {'remove_tx', 3, fun(_, WsId, Uid) ->
                     put(t_wl_parent_removed, {WsId, Uid}),
                     ok
