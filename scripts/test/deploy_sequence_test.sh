@@ -44,6 +44,25 @@ case "$cmd" in
     printf '%s\n' "${MOCK_NGINX_COLOR:-green}"
     exit 0
     ;;
+  *"PORTS="*"sed -nE"*"server[[:space:]]"*)
+    [ "${MOCK_FAIL_AT:-}" != "rollback_unknown" ] || exit 2
+    [ "${MOCK_FAIL_AT:-}" != "discovery_tool" ] || exit 2
+    if [ -n "${MOCK_NGINX_PORT:-}" ]; then
+      printf '%s\n' "$MOCK_NGINX_PORT"
+    elif [ -n "${MOCK_NGINX_COLOR:-}" ]; then
+      case "$MOCK_NGINX_COLOR" in blue) echo 9800 ;; green) echo 9801 ;; *) echo "$MOCK_NGINX_COLOR" ;; esac
+    else
+      case "${MOCK_CURRENT_COLOR:-blue}" in blue) echo 9800 ;; green) echo 9801 ;; none) echo 9800 ;; legacy) echo 9802 ;; esac
+    fi
+    exit 0
+    ;;
+  *"! ss -tlnH"*"grep -q ."*)
+    exit 0
+    ;;
+  *"ss -tlnH"*"grep -q ."*)
+    [ "${MOCK_CURRENT_COLOR:-blue}" != none ]
+    exit
+    ;;
   *"BLUE_STATE="*"GREEN_STATE="*)
     [ "${MOCK_FAIL_AT:-}" != "discovery_tool" ] || exit 2
     printf '%s\n' "${MOCK_CURRENT_COLOR:-blue}"
@@ -63,6 +82,14 @@ case "$cmd" in
     ;;
   *"OLD_PID="*)
     printf '%s\n' "/usr/local/imboy-0.9.0-oldnode"
+    exit 0
+    ;;
+  *"PID="*"lsof -ti:"*"/proc/"*)
+    printf '%s\n' "${MOCK_ACTIVE_RELEASE_DIR:-/usr/local/imboy-0.9.0-oldnode}"
+    exit 0
+    ;;
+  *"date +%s%3N"*)
+    printf '%s\n' 1790791200000
     exit 0
     ;;
   *"version IN (108,109,110,111,112) AND dirty = true"*)
@@ -126,6 +153,13 @@ case "$cmd" in
     case "$cmd" in
       *"IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES="*) printf '%s\n' PLUGIN_KEY_CONFIGURED >>"$MOCK_LOG" ;;
     esac
+    case "$cmd" in
+      *"IMBOY_TSID_STATE_DIR="*"IMBOY_TSID_NODE_ID='1'"*) printf '%s\n' TSID_BLUE_CONFIGURED >>"$MOCK_LOG" ;;
+      *"IMBOY_TSID_STATE_DIR="*"IMBOY_TSID_NODE_ID='2'"*) printf '%s\n' TSID_GREEN_CONFIGURED >>"$MOCK_LOG" ;;
+    esac
+    case "$cmd" in
+      *"IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS='1790791200000'"*) printf '%s\n' TSID_FLOOR_RESOLVED >>"$MOCK_LOG" ;;
+    esac
     exit 0
     ;;
   *"curl -fsS"*"/healthz"*)
@@ -170,6 +204,10 @@ case "$cmd" in
         ;;
       *) exit 0 ;;
     esac
+    ;;
+  *"for round in TERM KILL"*"pgrep -x heart"*)
+    printf '%s\n' CLEAN_RELEASE_PROCESSES >>"$MOCK_LOG"
+    exit 0
     ;;
   *"LISTENERS="*"ss -tlnH"*)
     case "${MOCK_FAIL_AT:-}" in
@@ -219,6 +257,7 @@ run_deploy() {
     MOCK_LOG="$MOCK_LOG" \
     MOCK_FAIL_AT="$fail_at" \
     MOCK_CURRENT_COLOR="$current_color" \
+    MOCK_NGINX_PORT="${MOCK_NGINX_PORT:-}" \
     MOCK_BOUNDARY_READY="${MOCK_BOUNDARY_READY:-1}" \
     MOCK_BOUNDARY_FINAL_READY="${MOCK_BOUNDARY_FINAL_READY:-}" \
     MOCK_BOUNDARY_DIRTY="${MOCK_BOUNDARY_DIRTY:-0}" \
@@ -238,6 +277,7 @@ run_deploy() {
     IMBOY_DEPLOY_CS_NGINX_CONF=/etc/nginx/cs.conf \
     IMBOY_DEPLOY_BLUE_PORT=9800 \
     IMBOY_DEPLOY_GREEN_PORT=9801 \
+    IMBOY_DEPLOY_LEGACY_PORT="${TEST_LEGACY_PORT:-}" \
     IMBOY_DEPLOY_NODE_HOST=127.0.0.1 \
     IMBOY_DEPLOY_COOKIE=testcookie \
     IMBOY_DEPLOY_BRANCH=main \
@@ -249,6 +289,12 @@ run_deploy() {
     IMBOY_DEPLOY_SALES_RELEASE="${TEST_SALES_RELEASE:-true}" \
     IMBOY_DEPLOY_E2EE_MODE="${TEST_E2EE_MODE:-}" \
     IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE="$TEST_PLUGIN_KEY" \
+    IMBOY_DEPLOY_TSID_STATE_DIR="${TEST_TSID_STATE_DIR:-}" \
+    IMBOY_DEPLOY_TSID_BLUE_NODE_ID="${TEST_TSID_BLUE_NODE_ID:-}" \
+    IMBOY_DEPLOY_TSID_GREEN_NODE_ID="${TEST_TSID_GREEN_NODE_ID:-}" \
+    IMBOY_DEPLOY_TSID_BOOTSTRAP_MODE="${TEST_TSID_BOOTSTRAP_MODE:-}" \
+    IMBOY_DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS="${TEST_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}" \
+    IMBOY_DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK="${TEST_TSID_BOOTSTRAP_LEGACY_ACK:-}" \
     IMBOY_DEPLOY_INTERNAL=1 \
     bash "$DEPLOY" "$@" example.invalid "$TEST_VSN" testnode \
     >"$TMP_ROOT/output.log" 2>&1
@@ -323,6 +369,48 @@ if run_deploy "" blue; then
   fi
 else
   bad "成功路径应退出 0" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_NGINX_PORT=9802 \
+   TEST_LEGACY_PORT=9802 \
+   TEST_TSID_STATE_DIR=/var/lib/imboy/tsid-v2 \
+   TEST_TSID_BLUE_NODE_ID=1 \
+   TEST_TSID_GREEN_NODE_ID=2 \
+   TEST_TSID_BOOTSTRAP_MODE=manual_floor \
+   TEST_TSID_BOOTSTRAP_FLOOR_UNIX_MS=now \
+   TEST_TSID_BOOTSTRAP_LEGACY_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
+   run_deploy "" legacy; then
+  stop="$(event_line STOP)"
+  daemon="$(event_line DAEMON)"
+  switch="$(event_line SWITCH)"
+  if [ -n "$stop" ] && [ -n "$daemon" ] && [ -n "$switch" ] \
+     && [ "$stop" -lt "$daemon" ] && [ "$daemon" -lt "$switch" ] \
+     && grep -q -x TSID_BLUE_CONFIGURED "$MOCK_LOG" \
+     && grep -q -x TSID_FLOOR_RESOLVED "$MOCK_LOG"; then
+    ok "legacy 端口迁移先停旧 writer，再以 .env TSID 参数启动蓝槽并切流"
+  else
+    bad "legacy → 蓝绿初始化时序或 TSID 参数错误" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
+else
+  bad "legacy → 蓝绿初始化应由单一部署命令完成" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_NGINX_PORT=9802 \
+   TEST_LEGACY_PORT=9802 \
+   TEST_TSID_STATE_DIR=/var/lib/imboy/tsid-v2 \
+   TEST_TSID_BLUE_NODE_ID=1 \
+   TEST_TSID_GREEN_NODE_ID=2 \
+   TEST_TSID_BOOTSTRAP_MODE=manual_floor \
+   TEST_TSID_BOOTSTRAP_FLOOR_UNIX_MS=now \
+   TEST_TSID_BOOTSTRAP_LEGACY_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
+   run_deploy health legacy; then
+  bad "legacy 候选健康失败时部署应退出非零" ""
+elif [ -n "$(event_line CLEAN_RELEASE_PROCESSES)" ] \
+     && [ -n "$(event_line RECOVER_OLD)" ] \
+     && [ -n "$(event_line RECOVERY_HEALTH)" ]; then
+  ok "legacy 候选健康失败时回收候选并自动恢复旧节点"
+else
+  bad "legacy 候选健康失败后未完整恢复" "$(tr '\n' ',' <"$MOCK_LOG")"
 fi
 
 if MOCK_RELEASE_EXISTS=1 \
@@ -503,6 +591,9 @@ if run_deploy health blue; then
 else
   assert_absent "health 失败后不切流" SWITCH
   assert_absent "health 失败后不迁移" MIGRATE
+  [ -n "$(event_line CLEAN_RELEASE_PROCESSES)" ] \
+    && ok "health 失败后自动回收候选节点" \
+    || bad "health 失败后遗留候选节点" "$(tr '\n' ',' <"$MOCK_LOG")"
 fi
 
 if MOCK_BOUNDARY_READY=0 run_deploy health blue; then
@@ -514,15 +605,29 @@ else
 fi
 
 if run_deploy stop blue; then
-  bad "旧节点停止失败应退出非零" ""
+  [ -n "$(event_line CLEAN_RELEASE_PROCESSES)" ] && [ -n "$(event_line MIGRATE)" ] \
+    && ok "旧节点优雅停止失败后精确回收进程并继续迁移" \
+    || bad "旧节点优雅停止失败后未完成定向回收" "$(tr '\n' ',' <"$MOCK_LOG")"
 else
-  assert_absent "旧节点停止失败后不迁移" MIGRATE
+  bad "旧节点优雅停止失败不应阻断可恢复发布" "$(<"$TMP_ROOT/output.log")"
 fi
 
-if run_deploy stop_timeout blue; then
-  bad "旧节点停止超时时应退出非零" ""
+if MOCK_NGINX_PORT=9802 \
+   TEST_LEGACY_PORT=9802 \
+   TEST_TSID_STATE_DIR=/var/lib/imboy/tsid-v2 \
+   TEST_TSID_BLUE_NODE_ID=1 \
+   TEST_TSID_GREEN_NODE_ID=2 \
+   TEST_TSID_BOOTSTRAP_MODE=manual_floor \
+   TEST_TSID_BOOTSTRAP_FLOOR_UNIX_MS=now \
+   TEST_TSID_BOOTSTRAP_LEGACY_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
+   run_deploy stop_timeout legacy; then
+  [ -n "$(event_line CLEAN_RELEASE_PROCESSES)" ] \
+    && [ -n "$(event_line DAEMON)" ] \
+    && [ -n "$(event_line SWITCH)" ] \
+    && ok "legacy 9802 优雅停止超时后精确回收并继续发布" \
+    || bad "legacy 9802 超时回收后未完成发布" "$(tr '\n' ',' <"$MOCK_LOG")"
 else
-  assert_absent "旧节点停止超时后不迁移" MIGRATE
+  bad "legacy 9802 优雅停止超时不应阻断可恢复发布" "$(<"$TMP_ROOT/output.log")"
 fi
 
 if run_deploy port_open blue; then

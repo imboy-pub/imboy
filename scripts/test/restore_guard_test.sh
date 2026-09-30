@@ -223,10 +223,11 @@ else
     "switch=${SW_LINE} stop=${STOP_LINE} migrate=${MG_LINE}"
 fi
 
-if grep -qE 'ssh_exec .*timeout 20s .*bin/imboy.* stop' "$DEPLOY"; then
-  ok "旧节点 stop 有独立 20s 超时并在超时后阻断迁移"
+if grep -qE 'if ! ssh_exec .*timeout 20s .*bin/imboy.* stop' "$DEPLOY" \
+   && grep -q 'stop_release_processes "$OLD_DIR"' "$DEPLOY"; then
+  ok "旧节点 stop 有 20s 优雅期限，超时后按 release 根目录精确回收"
 else
-  bad "旧节点 stop 缺少可执行的 20s 超时门禁" ""
+  bad "旧节点 stop 超时后缺少精确进程回收" ""
 fi
 
 RECOVERY_BODY="$(sed -n '/^recover_old_node_before_cutover()/,/^}/p' "$DEPLOY")"
@@ -240,9 +241,9 @@ else
   bad "切流前失败可能遗留 Nginx 指向已停止节点" "$RECOVERY_BODY"
 fi
 
-if grep -q 'NGINX_COLOR="$(probe_nginx_color)"' "$DEPLOY" \
+if grep -q 'NGINX_PORT="$(probe_nginx_port)"' "$DEPLOY" \
    && grep -q 'find_release_for_port "$OLD_PORT"' "$DEPLOY" \
-   && grep -q '检测到现有部署停机，先恢复' "$DEPLOY" \
+   && grep -q '检测到活动槽停机，先恢复' "$DEPLOY" \
    && grep -q 'FAIL_RECOVERY_ATTEMPTED=0' "$DEPLOY"; then
   ok "双端口均停时依据 Nginx upstream 恢复既有服务，不误判为首次安装"
 else

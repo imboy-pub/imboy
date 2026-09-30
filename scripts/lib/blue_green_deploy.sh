@@ -105,6 +105,7 @@ PRODADM_CONF="${IMBOY_DEPLOY_PRODADM_CONF:-/www/server/panel/vhost/nginx/prodadm
 CS_NGINX_CONF="${IMBOY_DEPLOY_CS_NGINX_CONF:-}"
 BLUE_PORT="${IMBOY_DEPLOY_BLUE_PORT:-9800}"
 GREEN_PORT="${IMBOY_DEPLOY_GREEN_PORT:-9801}"
+LEGACY_PORT="${IMBOY_DEPLOY_LEGACY_PORT:-}"
 NODE_HOST="${IMBOY_DEPLOY_NODE_HOST:-127.0.0.1}"
 COOKIE="${IMBOY_DEPLOY_COOKIE:-imboy_local_dev_only}"
 BRANCH="${IMBOY_DEPLOY_BRANCH:-main}"
@@ -117,6 +118,13 @@ DB_NAME="${IMBOY_DEPLOY_DB_NAME:-}"
 DB_USER="${IMBOY_DEPLOY_DB_USER:-}"
 EXPAND_MIGRATIONS="${IMBOY_DEPLOY_EXPAND_MIGRATIONS:-}"
 PLUGIN_TRUSTED_PUBLIC_KEY_FILE="${IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}"
+TSID_STATE_DIR="${IMBOY_DEPLOY_TSID_STATE_DIR:-}"
+TSID_BLUE_NODE_ID="${IMBOY_DEPLOY_TSID_BLUE_NODE_ID:-}"
+TSID_GREEN_NODE_ID="${IMBOY_DEPLOY_TSID_GREEN_NODE_ID:-}"
+TSID_BOOTSTRAP_MODE="${IMBOY_DEPLOY_TSID_BOOTSTRAP_MODE:-}"
+TSID_BOOTSTRAP_FLOOR_UNIX_MS="${IMBOY_DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}"
+TSID_BOOTSTRAP_LEGACY_ACK="${IMBOY_DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK:-}"
+TSID_BOOTSTRAP_REBIND_ACK="${IMBOY_DEPLOY_TSID_BOOTSTRAP_REBIND_ACK:-}"
 BOUNDARY_CUTOVER_MARKER="$PROJECT_DIR/.deploy-c2g-boundary-v109-ready"
 E2EE_ATTESTATION_SCHEMA_PREDICATE="to_regclass('public.e2ee_group_session_attestation') IS NOT NULL AND to_regclass('public.e2ee_group_session_member') IS NOT NULL AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_attestation' AND is_nullable='NO' AND (ordinal_position || ':' || column_name || ':' || udt_name) IN ('1:group_id:int8','2:session_id:varchar','3:sender_uid:int8','4:sender_did:varchar','5:room_key_msg_id:varchar','6:recipient_uids:_int8','7:start_seq:int8','8:end_seq:int8','9:created_at:timestamptz','10:updated_at:timestamptz')) = 10 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_attestation' AND (column_name, character_maximum_length) IN (('session_id',256),('sender_did',128),('room_key_msg_id',40))) = 3 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_member' AND is_nullable='NO' AND (ordinal_position || ':' || column_name || ':' || udt_name) IN ('1:group_id:int8','2:session_id:varchar','3:user_id:int8','4:generation_no:int4','5:generation_start_seq:int8')) = 5 AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_member' AND column_name='session_id' AND character_maximum_length=256) AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.e2ee_group_session_attestation') AND convalidated AND ((conname='e2ee_group_session_attestation_pkey' AND contype='p' AND conkey=ARRAY[1,2]::smallint[]) OR (conname='e2ee_group_session_attestation_session_id_key' AND contype='u' AND conkey=ARRAY[2]::smallint[]) OR (conname='e2ee_group_session_attestation_room_key_msg_id_key' AND contype='u' AND conkey=ARRAY[5]::smallint[]) OR (conname='chk_e2ee_group_session_ids' AND contype='c' AND conkey=ARRAY[1,3,2,4,5]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (group_id > 0 AND sender_uid > 0 AND octet_length(session_id::text) >= 1 AND octet_length(session_id::text) <= 256 AND octet_length(sender_did::text) >= 1 AND octet_length(sender_did::text) <= 128 AND octet_length(room_key_msg_id::text) >= 1 AND octet_length(room_key_msg_id::text) <= 40)') OR (conname='chk_e2ee_group_session_range' AND contype='c' AND conkey=ARRAY[7,8]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (start_seq >= 1 AND end_seq >= start_seq)') OR (conname='chk_e2ee_group_session_recipients' AND contype='c' AND conkey=ARRAY[6]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (array_ndims(recipient_uids) = 1 AND cardinality(recipient_uids) >= 1 AND cardinality(recipient_uids) <= 5000 AND array_position(recipient_uids, NULL::bigint) IS NULL AND (0 < ALL (recipient_uids)))'))) = 6 AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.e2ee_group_session_member') AND convalidated AND ((conname='e2ee_group_session_member_pkey' AND contype='p' AND conkey=ARRAY[1,2,3]::smallint[]) OR (conname='fk_e2ee_group_session_member_session' AND contype='f' AND conkey=ARRAY[1,2]::smallint[] AND confrelid=to_regclass('public.e2ee_group_session_attestation') AND confkey=ARRAY[1,2]::smallint[] AND confupdtype='a' AND confdeltype='a' AND confmatchtype='s') OR (conname='chk_e2ee_group_session_member_values' AND contype='c' AND conkey=ARRAY[1,3,4,5]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (group_id > 0 AND user_id > 0 AND generation_no > 0 AND generation_start_seq >= 1)'))) = 3 AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='e2ee_group_session_member' AND indexname='idx_e2ee_group_session_member_grant' AND indexdef LIKE '%(group_id, user_id, generation_no, session_id)%')"
 SALES_RELEASE="${IMBOY_DEPLOY_SALES_RELEASE:-true}"
@@ -132,6 +140,7 @@ OLD_NODE_STOPPED=0
 OLD_DIR=""
 TRAFFIC_SWITCHED=0
 FAIL_RECOVERY_ATTEMPTED=0
+CANDIDATE_STARTED=0
 BOUNDARY_BOOTSTRAP=0
 BOUNDARY_CUTOVER_PENDING=0
 BOUNDARY_SCHEMA_REQUIRED=0
@@ -157,6 +166,36 @@ PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE="$RELEASE_DIR/etc/plugin_trusted_ed25519.pub"
 [[ "$GREEN_PORT" =~ ^[0-9]+$ ]] && [ "$GREEN_PORT" -ge 1024 ] && [ "$GREEN_PORT" -le 65535 ] \
   || { echo "无效 GREEN_PORT / invalid GREEN_PORT" >&2; exit 1; }
 [[ "$BLUE_PORT" != "$GREEN_PORT" ]] || { echo "蓝绿端口不得相同 / blue and green ports must differ" >&2; exit 1; }
+if [ -n "$LEGACY_PORT" ]; then
+  [[ "$LEGACY_PORT" =~ ^[0-9]+$ ]] && [ "$LEGACY_PORT" -ge 1024 ] && [ "$LEGACY_PORT" -le 65535 ] \
+    || { echo "无效 LEGACY_PORT / invalid legacy port" >&2; exit 1; }
+  [[ "$LEGACY_PORT" != "$BLUE_PORT" && "$LEGACY_PORT" != "$GREEN_PORT" ]] \
+    || { echo "LEGACY_PORT 不得与蓝绿端口相同" >&2; exit 1; }
+fi
+if [ -n "$TSID_STATE_DIR" ]; then
+  [[ "$TSID_STATE_DIR" =~ ^/[a-zA-Z0-9._/-]+$ && "$TSID_STATE_DIR" != "/" \
+     && "$TSID_STATE_DIR" != *..* ]] \
+    || { echo "无效 TSID_STATE_DIR / invalid TSID state dir" >&2; exit 1; }
+  [[ "$TSID_BLUE_NODE_ID" =~ ^[0-9]+$ && "$TSID_GREEN_NODE_ID" =~ ^[0-9]+$ ]] \
+    && [ "$TSID_BLUE_NODE_ID" -le 127 ] && [ "$TSID_GREEN_NODE_ID" -le 127 ] \
+    && [ "$TSID_BLUE_NODE_ID" != "$TSID_GREEN_NODE_ID" ] \
+    || { echo "蓝绿 TSID node_id 必须不同且位于 0..127" >&2; exit 1; }
+fi
+case "$TSID_BOOTSTRAP_MODE" in ""|auto_scan|manual_floor) ;; *) echo "无效 TSID bootstrap mode" >&2; exit 1 ;; esac
+if [ "$TSID_BOOTSTRAP_MODE" = manual_floor ]; then
+  [[ "$TSID_BOOTSTRAP_FLOOR_UNIX_MS" = now || "$TSID_BOOTSTRAP_FLOOR_UNIX_MS" =~ ^[0-9]{13}$ ]] \
+    || { echo "manual_floor 需要 now 或 13 位 unix 毫秒" >&2; exit 1; }
+fi
+if [ -n "$TSID_BOOTSTRAP_LEGACY_ACK" ] \
+   && [ "$TSID_BOOTSTRAP_LEGACY_ACK" != "I-CONFIRM-OLD-WRITER-STOPPED" ]; then
+  echo "无效 TSID legacy ACK" >&2
+  exit 1
+fi
+if [ -n "$TSID_BOOTSTRAP_REBIND_ACK" ] \
+   && [[ ! "$TSID_BOOTSTRAP_REBIND_ACK" =~ ^I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:[0-9A-Fa-f]{64}:[0-9A-Fa-f]{64}$ ]]; then
+  echo "无效 TSID rebind ACK" >&2
+  exit 1
+fi
 [[ "$PROJECT_DIR" =~ ^/[a-zA-Z0-9._/-]+$ && "$PROJECT_DIR" != *..* ]] \
   || { echo "PROJECT_DIR 必须是无 .. 的安全绝对路径 / unsafe PROJECT_DIR" >&2; exit 1; }
 [[ "$NGINX_CONF" =~ ^/[a-zA-Z0-9._/-]+$ && "$NGINX_CONF" != *..* ]] \
@@ -213,6 +252,9 @@ ok()   { echo -e "\033[32m✓ $*\033[0m"; }
 fail() {
   local message="$*"
   trap - ERR
+  if declare -F cleanup_new_node_before_cutover >/dev/null 2>&1; then
+    cleanup_new_node_before_cutover || true
+  fi
   if declare -F recover_old_node_before_cutover >/dev/null 2>&1; then
     recover_old_node_before_cutover || true
   fi
@@ -268,6 +310,84 @@ ssh_upload() {
     "umask 022; cat > '$target_file'" <"$source_file"
 }
 
+safe_release_dir() {
+  local dir=$1
+  [[ "$dir" =~ ^/usr/local/imboy-[a-zA-Z0-9._-]+-[a-zA-Z0-9_-]+$ \
+     || "$dir" = "$PROJECT_DIR/_rel/imboy" ]]
+}
+
+find_running_release_for_port() {
+  local port=$1
+  ssh_capture "
+    command -v lsof >/dev/null 2>&1 || exit 2
+    PID=\$(lsof -ti:$port -sTCP:LISTEN | head -1) || exit 3
+    [ -n \"\$PID\" ] || exit 4
+    tr '\\0' '\\n' < \"/proc/\$PID/cmdline\" 2>/dev/null \
+      | awk 'p { print; exit } /^-root\$/ { p=1 }'
+  "
+}
+
+stop_release_processes() {
+  local dir=$1
+  safe_release_dir "$dir" || return 2
+  ssh_exec "
+    command -v pgrep >/dev/null 2>&1 || exit 2
+    for round in TERM KILL; do
+      for H in \$(pgrep -x heart || true); do
+        if tr '\\0' '\\n' < \"/proc/\$H/environ\" 2>/dev/null \
+             | grep -Fq \"HEART_COMMAND=\\\"$dir\"; then
+          kill -\$round \$H 2>/dev/null || true
+        fi
+      done
+      for P in \$(pgrep -x beam.smp || true); do
+        ROOT=\$(tr '\\0' '\\n' < \"/proc/\$P/cmdline\" 2>/dev/null \
+          | awk 'p { print; exit } /^-root\$/ { p=1 }')
+        [ \"\$ROOT\" = '$dir' ] && kill -\$round \$P 2>/dev/null || true
+      done
+      [ \"\$round\" = TERM ] && sleep 2
+    done
+    sleep 1
+    for H in \$(pgrep -x heart || true); do
+      tr '\\0' '\\n' < \"/proc/\$H/environ\" 2>/dev/null \
+        | grep -Fq \"HEART_COMMAND=\\\"$dir\" && exit 1
+    done
+    for P in \$(pgrep -x beam.smp || true); do
+      ROOT=\$(tr '\\0' '\\n' < \"/proc/\$P/cmdline\" 2>/dev/null \
+        | awk 'p { print; exit } /^-root\$/ { p=1 }')
+      [ \"\$ROOT\" = '$dir' ] && exit 1
+    done
+    exit 0
+  "
+}
+
+cleanup_new_node_before_cutover() {
+  [ "$CANDIDATE_STARTED" -eq 1 ] || return 0
+  [ "$TRAFFIC_SWITCHED" -eq 0 ] || return 0
+  CANDIDATE_STARTED=0
+  log "回收切流前失败的新节点: $RELEASE_DIR"
+  stop_release_processes "$RELEASE_DIR"
+}
+
+cleanup_inactive_target() {
+  local dir
+  while IFS= read -r dir; do
+    [ -n "$dir" ] || continue
+    [ "$dir" != "${ACTIVE_DIR:-}" ] || continue
+    safe_release_dir "$dir" || fail "目标端口残留 release 目录不安全: $dir"
+    log "清理目标槽残留进程: $dir (port=$APP_PORT)"
+    stop_release_processes "$dir" \
+      || fail "目标槽残留进程无法安全停止: $dir"
+  done < <(ssh_capture "
+    for DIR in /usr/local/imboy-*; do
+      [ -d \"\$DIR\" ] || continue
+      grep -qsE '\\{http_port,[[:space:]]*$APP_PORT\\}' \"\$DIR\"/releases/*/sys.config \
+        && printf '%s\\n' \"\$DIR\"
+    done
+  ")
+  ssh_exec "! ss -tlnH \"sport = :$APP_PORT\" 2>/dev/null | grep -q ." \
+    || fail "目标端口 $APP_PORT 仍被未知进程占用，拒绝误杀"
+}
+
 # 轮询端口，最多等 40s（每 2s 一次，共 20 次）
 # Poll until port is bound, timeout 40 s (2 s × 20 attempts)
 # 单次 SSH 调用在远端执行整个等待循环，避免 20 次往返
@@ -313,17 +433,25 @@ wait_for_health_status() {
   "
 }
 
-probe_nginx_color() {
+probe_nginx_port() {
   ssh_capture "
     [ -r '$NGINX_CONF' ] || exit 2
-    BLUE_UPSTREAM=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$BLUE_PORT;/{n++} END{print n+0}' '$NGINX_CONF') || exit 3
-    GREEN_UPSTREAM=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$GREEN_PORT;/{n++} END{print n+0}' '$NGINX_CONF') || exit 4
-    if [ \"\$BLUE_UPSTREAM\" -eq 1 ] && [ \"\$GREEN_UPSTREAM\" -eq 0 ]; then echo blue
-    elif [ \"\$GREEN_UPSTREAM\" -eq 1 ] && [ \"\$BLUE_UPSTREAM\" -eq 0 ]; then echo green
-    elif [ \"\$BLUE_UPSTREAM\" -eq 0 ] && [ \"\$GREEN_UPSTREAM\" -eq 0 ]; then echo none
-    else echo conflict
-    fi
+    PORTS=\$(sed -nE 's/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:([0-9]+);[[:space:]]*$/\\1/p' '$NGINX_CONF' | sort -u)
+    set -- \$PORTS
+    [ \$# -eq 1 ] || { [ \$# -eq 0 ] && echo none || echo conflict; exit 0; }
+    echo \"\$1\"
   "
+}
+
+probe_nginx_color() {
+  local port
+  port="$(probe_nginx_port)" || return
+  case "$port" in
+    "$BLUE_PORT") echo blue ;;
+    "$GREEN_PORT") echo green ;;
+    none|conflict) echo "$port" ;;
+    *) echo legacy ;;
+  esac
 }
 
 find_release_for_port() {
@@ -369,16 +497,17 @@ stop_old_node() {
   [ "$OLD_NODE_STOPPED" -eq 0 ] || return 0
   [ -n "$OLD_PORT" ] || return 0
   log "停止旧节点并关闭既有长连接 (port=$OLD_PORT)... / Draining old node..."
-  OLD_DIR="$(ssh_capture \
-    "command -v lsof >/dev/null 2>&1 || exit 2; \
-     OLD_PID=\$(lsof -ti:$OLD_PORT -sTCP:LISTEN | head -1) || exit 3; \
-     [ -n \"\$OLD_PID\" ] && ps -o cmd= -p \"\$OLD_PID\" | grep -oE -- '-root [^ ]+' | awk '{print \$2}' | head -1")" || OLD_DIR=""
+  OLD_DIR="$(find_running_release_for_port "$OLD_PORT")" || OLD_DIR=""
   [ -n "$OLD_DIR" ] || fail "无法定位旧节点 release 目录，拒绝在旧连接仍存活时迁移"
-  [[ "$OLD_DIR" =~ ^/usr/local/imboy-[a-zA-Z0-9._-]+-[a-zA-Z0-9_-]+$ ]] \
+  safe_release_dir "$OLD_DIR" \
     || fail "旧节点 release 目录不符合安全模板，拒绝拼入远端命令: $OLD_DIR"
-  ssh_exec "command -v timeout >/dev/null 2>&1 && timeout 20s '$OLD_DIR/bin/imboy' stop" \
-    || fail "旧节点停止失败或 20s 超时，拒绝执行完整迁移"
+  # 从这里开始的任意失败都必须尝试恢复原节点，包括 stop 部分成功的情况。
   OLD_NODE_STOPPED=1
+  if ! ssh_exec "command -v timeout >/dev/null 2>&1 && timeout 20s '$OLD_DIR/bin/imboy' stop"; then
+    log "旧节点 20s 内未优雅停止，继续按 release 根目录精确回收 heart/beam"
+  fi
+  stop_release_processes "$OLD_DIR" \
+    || fail "旧节点 stop 返回后仍有归属进程，拒绝执行完整迁移"
   wait_for_port_closed "$OLD_PORT" \
     || fail "旧节点端口在 20s 后仍开放，拒绝执行完整迁移"
   ok "旧节点已停止，既有 WebSocket 已断开并将重连到新节点"
@@ -647,6 +776,7 @@ if [ "$ROLLBACK" -eq 1 ]; then
     esac || { restore_configs; echo 'Nginx upstream 替换未生效，已恢复配置' >&2; exit 1; }
     for CONF in '$PRODADM_CONF' '$CS_NGINX_CONF'; do
       [ -n \"\$CONF\" ] && [ -f \"\$CONF\" ] || continue
+      grep -q 'http://127.0.0.1:$CUR_PORT;' \"\$CONF\" || continue
       sed -i 's|http://127.0.0.1:$CUR_PORT;|http://127.0.0.1:$RB_PORT;|g' \"\$CONF\"
       grep -q 'http://127.0.0.1:$RB_PORT;' \"\$CONF\" \
         && ! grep -q 'http://127.0.0.1:$CUR_PORT;' \"\$CONF\" \
@@ -667,51 +797,47 @@ fi
 # =============================================================================
 # 1️⃣ 检测当前运行色 / Detect active color
 # =============================================================================
-log "检测蓝绿运行状态... / Detecting active blue-green slot..."
-
-if ! CURRENT_COLOR="$(ssh_capture "
-  command -v ss >/dev/null 2>&1 || exit 2
-  BLUE_STATE=\$(ss -tlnH \"sport = :$BLUE_PORT\") || exit 3
-  GREEN_STATE=\$(ss -tlnH \"sport = :$GREEN_PORT\") || exit 4
-  if [ -n \"\$BLUE_STATE\" ] && [ -n \"\$GREEN_STATE\" ]; then echo conflict
-  elif [ -n \"\$BLUE_STATE\" ]; then echo blue
-  elif [ -n \"\$GREEN_STATE\" ]; then echo green
-  else echo none
-  fi
-")"; then
-  fail "无法可靠探测蓝绿监听状态，拒绝推断为首次安装 / active-slot detection failed"
-fi
-
-case "$CURRENT_COLOR" in
-  blue|green|none) ;;
-  conflict) fail "蓝绿端口同时监听，拒绝选择部署目标 / both slots are active。
-  常见原因：上次部署失败后新节点未清理。确认 Nginx 仍指向活动端口后，
-  停掉非活动端口残留：ssh $SERVER_HOST \"<非活动节点目录>/bin/imboy stop\"" ;;
-  *) fail "蓝绿监听状态返回未知结果 / unknown active-slot state: $CURRENT_COLOR" ;;
+log "检测 Nginx 活动 upstream... / Detecting active upstream..."
+NGINX_PORT="$(probe_nginx_port)" \
+  || fail "无法读取 Nginx upstream，拒绝猜测活动节点"
+case "$NGINX_PORT" in
+  "$BLUE_PORT") CURRENT_COLOR=blue; OLD_PORT=$BLUE_PORT ;;
+  "$GREEN_PORT") CURRENT_COLOR=green; OLD_PORT=$GREEN_PORT ;;
+  none) fail "首次部署缺少可验证的蓝绿 upstream；请先在 Nginx 预置蓝或绿端口" ;;
+  conflict) fail "Nginx 配置包含多个 upstream 端口，拒绝猜测活动节点" ;;
+  *)
+    [[ "$NGINX_PORT" =~ ^[0-9]+$ ]] \
+      || fail "Nginx upstream 端口非法: $NGINX_PORT"
+    [ -n "$LEGACY_PORT" ] && [ "$NGINX_PORT" = "$LEGACY_PORT" ] \
+      || fail "Nginx 指向配置外端口 $NGINX_PORT；请在 .env.deploy 设置匹配的 DEPLOY_LEGACY_PORT"
+    CURRENT_COLOR=legacy
+    OLD_PORT=$LEGACY_PORT
+    ;;
 esac
 
-if [ "$CURRENT_COLOR" = "none" ]; then
-  NGINX_COLOR="$(probe_nginx_color)" \
-    || fail "两个应用端口均未监听，且无法可靠探测 Nginx upstream；拒绝误判为首次安装"
-  case "$NGINX_COLOR" in
-    blue)  CURRENT_COLOR=blue;  OLD_PORT=$BLUE_PORT ;;
-    green) CURRENT_COLOR=green; OLD_PORT=$GREEN_PORT ;;
-    none)  fail "首次部署缺少可验证的蓝绿 upstream，拒绝在构建、启动或迁移前继续；请先按部署模板预置 Nginx vhost" ;;
-    conflict) fail "两个应用端口均未监听，但 Nginx upstream 不是唯一蓝/绿色；拒绝猜测恢复目标" ;;
-    *) fail "Nginx upstream 状态未知，拒绝误判为首次安装: $NGINX_COLOR" ;;
-  esac
-
-  if [ "$CURRENT_COLOR" != "none" ]; then
-    OLD_DIR="$(find_release_for_port "$OLD_PORT")" \
-      || fail "检测到现有部署停机，但找不到配置 port=$OLD_PORT 的历史 release；拒绝继续发布"
-    [[ "$OLD_DIR" =~ ^/usr/local/imboy-[a-zA-Z0-9._-]+-[a-zA-Z0-9_-]+$ ]] \
-      || fail "历史 release 目录不符合安全模板，拒绝恢复: $OLD_DIR"
-    log "检测到现有部署停机，先恢复 Nginx 当前指向的 $CURRENT_COLOR 节点"
+if ! ssh_exec "ss -tlnH \"sport = :$OLD_PORT\" 2>/dev/null | grep -q ."; then
+  if [ "$CURRENT_COLOR" = legacy ]; then
+    fail "Nginx 指向的 legacy 端口 $OLD_PORT 未监听，拒绝在服务状态未知时迁移"
+  fi
+  if OLD_DIR="$(find_release_for_port "$OLD_PORT")"; then
+    safe_release_dir "$OLD_DIR" || fail "历史 release 目录不安全: $OLD_DIR"
+    log "检测到活动槽停机，先恢复 Nginx 当前指向的 $CURRENT_COLOR 节点"
     OLD_NODE_STOPPED=1
     recover_old_node_before_cutover \
-      || fail "现有 $CURRENT_COLOR 节点恢复失败，拒绝在服务不可用时继续发布"
+      || fail "现有 $CURRENT_COLOR 节点恢复失败，拒绝继续发布"
     FAIL_RECOVERY_ATTEMPTED=0
+  else
+    CURRENT_COLOR=none
+    OLD_PORT=""
   fi
+fi
+
+ACTIVE_DIR=""
+if [ "$CURRENT_COLOR" != none ]; then
+  ACTIVE_DIR="$(find_running_release_for_port "$OLD_PORT")" \
+    || fail "无法定位 Nginx 活动端口 $OLD_PORT 的 release 根目录"
+  safe_release_dir "$ACTIVE_DIR" \
+    || fail "活动 release 目录不符合安全模板: $ACTIVE_DIR"
 fi
 
 if [ "$CURRENT_COLOR" = "none" ] && [ "$SKIP_MIGRATE" -eq 1 ]; then
@@ -723,20 +849,23 @@ fi
 case "$CURRENT_COLOR" in
   blue)  TARGET_COLOR=green; APP_PORT=$GREEN_PORT; OLD_PORT=$BLUE_PORT; START_AUTO_MIGRATE=false ;;
   green) TARGET_COLOR=blue;  APP_PORT=$BLUE_PORT;  OLD_PORT=$GREEN_PORT; START_AUTO_MIGRATE=false ;;
-  *)     TARGET_COLOR=blue;  APP_PORT=$BLUE_PORT;   OLD_PORT="";         START_AUTO_MIGRATE=true  ;;
+  legacy) TARGET_COLOR=blue; APP_PORT=$BLUE_PORT; START_AUTO_MIGRATE=false ;;
+  *)
+    if [ "$NGINX_PORT" = "$GREEN_PORT" ]; then TARGET_COLOR=green; APP_PORT=$GREEN_PORT
+    else TARGET_COLOR=blue; APP_PORT=$BLUE_PORT
+    fi
+    OLD_PORT=""
+    START_AUTO_MIGRATE=true
+    ;;
 esac
 
 ok "当前: $CURRENT_COLOR → 目标: $TARGET_COLOR (port=$APP_PORT) / Current: $CURRENT_COLOR → Target: $TARGET_COLOR"
+cleanup_inactive_target
 
 # =============================================================================
 # 2️⃣ 安全确认目标目录 / Confirm target dir is safe to overwrite
 # =============================================================================
 if ssh_exec "[ -d '$RELEASE_DIR' ]"; then
-  ACTIVE_DIR=""
-  if [ "$CURRENT_COLOR" != "none" ]; then
-    ACTIVE_DIR="$(find_release_for_port "$OLD_PORT")" \
-      || fail "目标目录已存在，但无法确认当前活动 release，拒绝覆盖"
-  fi
   if [ "$ACTIVE_DIR" = "$RELEASE_DIR" ]; then
     ssh_exec "test \"\$(cat '$RELEASE_DIR/etc/source-head' 2>/dev/null)\" = '$SOURCE_HEAD'" \
       || fail "同版本活动 release 的 source HEAD 与本次候选不一致，拒绝幂等误判"
@@ -753,36 +882,8 @@ if ssh_exec "[ -d '$RELEASE_DIR' ]"; then
       timeout 10s '$RELEASE_DIR/bin/imboy' stop >/dev/null 2>&1 || true
     fi
   "
-  # 优雅 stop 无效的常见形态：boot 崩溃 + -heart 复活循环（beam 秒级重启，
-  # 心跳进程的 -pid 可能指向已死的旧 beam）。必须先杀 heart 再杀 beam，
-  # 顺序反了会被 heart 立刻拉起新实例。
-  # 归属判定不用 pgrep -f 文本匹配（远端 shell 自身 argv 含该文本会误伤）：
-  #   heart → /proc/$H/environ 的 HEART_COMMAND 含 release 目录（relx 写入），
-  #   beam  → /proc/$P/cmdline 的 -root 后继参数精确等于 release 目录。
-  # 此分支已确认 RELEASE_DIR 非活动 release，且下方 fail-closed 检查与
-  # C-51 健康门继续兜底。
-  ssh_exec "
-    command -v pgrep >/dev/null 2>&1 || exit 2
-    for round in TERM KILL; do
-      for H in \$(pgrep -x heart || true); do
-        if tr '\\0' '\\n' < \"/proc/\$H/environ\" 2>/dev/null | grep -Fq \"HEART_COMMAND=\\\"$RELEASE_DIR\"; then
-          kill -\$round \$H 2>/dev/null || true
-        fi
-      done
-      for P in \$(pgrep -x beam.smp || true); do
-        ROOT=\$(tr '\\0' '\\n' < \"/proc/\$P/cmdline\" 2>/dev/null | grep -A1 '^-root\$' | tail -1)
-        [ \"\$ROOT\" = '$RELEASE_DIR' ] && kill -\$round \$P 2>/dev/null || true
-      done
-      if [ \"\$round\" = TERM ]; then sleep 2; fi
-    done
-    sleep 1
-    exit 0
-  "
-  ssh_exec "
-    command -v pgrep >/dev/null 2>&1 || exit 2
-    ! { pgrep -a beam.smp 2>/dev/null || true; pgrep -a heart 2>/dev/null || true; } \
-      | grep -F -- '$RELEASE_DIR'
-  " || fail "上次失败 release 仍有残留进程，拒绝删除其运行目录"
+  stop_release_processes "$RELEASE_DIR" \
+    || fail "上次失败 release 仍有残留进程，拒绝删除其运行目录"
   ssh_exec "rm -rf -- '$RELEASE_DIR'"
   ok "失败残留已安全清理，可重复发布"
 fi
@@ -962,8 +1063,38 @@ fi
 # =============================================================================
 # 5️⃣ 启动新节点 + 轮询确认就绪 / Start new node + poll for readiness
 # =============================================================================
+# legacy → 蓝绿首次割接必须先停旧 writer；失败时 fail() 会恢复旧节点。
+if [ "$CURRENT_COLOR" = legacy ]; then
+  [ "$TSID_BOOTSTRAP_LEGACY_ACK" = "I-CONFIRM-OLD-WRITER-STOPPED" ] \
+    || fail "legacy 首次割接要求在 .env.deploy 配置 DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK"
+  stop_old_node
+fi
+
+TSID_BOOTSTRAP_ENV=""
+if [ -n "$TSID_STATE_DIR" ]; then
+  case "$TARGET_COLOR" in
+    blue) TSID_NODE_ID=$TSID_BLUE_NODE_ID ;;
+    green) TSID_NODE_ID=$TSID_GREEN_NODE_ID ;;
+  esac
+  if [ "$TSID_BOOTSTRAP_FLOOR_UNIX_MS" = now ]; then
+    TSID_BOOTSTRAP_FLOOR_UNIX_MS="$(ssh_capture "date +%s%3N")" \
+      || fail "无法从服务器读取 TSID manual floor 时钟"
+    [[ "$TSID_BOOTSTRAP_FLOOR_UNIX_MS" =~ ^[0-9]{13}$ ]] \
+      || fail "服务器返回的 TSID manual floor 时钟非法"
+  fi
+  TSID_BOOTSTRAP_ENV="IMBOY_TSID_STATE_DIR='$TSID_STATE_DIR' IMBOY_TSID_NODE_ID='$TSID_NODE_ID'"
+  [ -z "$TSID_BOOTSTRAP_MODE" ] \
+    || TSID_BOOTSTRAP_ENV="$TSID_BOOTSTRAP_ENV IMBOY_TSID_BOOTSTRAP_MODE='$TSID_BOOTSTRAP_MODE'"
+  [ -z "$TSID_BOOTSTRAP_FLOOR_UNIX_MS" ] \
+    || TSID_BOOTSTRAP_ENV="$TSID_BOOTSTRAP_ENV IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS='$TSID_BOOTSTRAP_FLOOR_UNIX_MS'"
+  [ -z "$TSID_BOOTSTRAP_LEGACY_ACK" ] \
+    || TSID_BOOTSTRAP_ENV="$TSID_BOOTSTRAP_ENV IMBOY_TSID_BOOTSTRAP_LEGACY_ACK='$TSID_BOOTSTRAP_LEGACY_ACK'"
+  [ -z "$TSID_BOOTSTRAP_REBIND_ACK" ] \
+    || TSID_BOOTSTRAP_ENV="$TSID_BOOTSTRAP_ENV IMBOY_TSID_BOOTSTRAP_REBIND_ACK='$TSID_BOOTSTRAP_REBIND_ACK'"
+fi
 log "启动新节点 (port=$APP_PORT)... / Starting new node..."
-ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='$E2EE_MODE' IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE' ./bin/imboy daemon"
+CANDIDATE_STARTED=1
+ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='$E2EE_MODE' IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE' $TSID_BOOTSTRAP_ENV ./bin/imboy daemon"
 
 # 轮询取代原来的固定 sleep 5，在慢服务器上不会误报失败
 # Polling replaces fixed sleep 5; won't false-fail on slow servers
@@ -1006,6 +1137,7 @@ if [ -n "$OLD_PORT" ]; then
       || { restore_configs; echo 'Nginx upstream 替换失败，已回滚 / replacement failed, rolled back' >&2; exit 1; }
     for CONF in '$PRODADM_CONF' '$CS_NGINX_CONF'; do
       [ -n \"\$CONF\" ] && [ -f \"\$CONF\" ] || continue
+      grep -q 'http://127.0.0.1:$OLD_PORT;' \"\$CONF\" || continue
       sed -i 's|http://127.0.0.1:$OLD_PORT;|http://127.0.0.1:$APP_PORT;|g' \"\$CONF\"
       grep -q 'http://127.0.0.1:$APP_PORT;' \"\$CONF\" \
         && ! grep -q 'http://127.0.0.1:$OLD_PORT;' \"\$CONF\" \
@@ -1020,6 +1152,11 @@ if [ -n "$OLD_PORT" ]; then
   "
   TRAFFIC_SWITCHED=1
   ok "Nginx 已切换至 $TARGET_COLOR / Nginx switched to $TARGET_COLOR"
+elif [ "$CURRENT_COLOR" = none ]; then
+  [ "$(probe_nginx_port)" = "$APP_PORT" ] \
+    || fail "首次安装的 Nginx upstream 未指向目标端口 $APP_PORT"
+  TRAFFIC_SWITCHED=1
+  ok "首次安装沿用已预置的 $TARGET_COLOR upstream"
 else
   fail "内部状态错误：缺少旧端口却进入切流阶段"
 fi
