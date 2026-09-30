@@ -494,56 +494,52 @@ seat_limit_tx(Conn, OrgId) ->
     end.
 
 %% @doc 创建坐席（limit 感知）：advisory 事务锁内「count enabled + 检查 +
-%% INSERT」原子完成——N 并发开第 N+1 个坐席恰一失败（seat_limit_exceeded）。
+%% INSERT」原子完成；使用调用方连接，不另起事务——N 并发开第 N+1 个坐席恰一失败（seat_limit_exceeded）。
 -spec create_seat_limit_tx(
     pid(), integer(), integer(), boolean(), pos_integer(), term()
 ) -> {ok, map()} | {error, seat_limit_exceeded | term()}.
-create_seat_limit_tx(_Conn, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) ->
-    elib_pg:with_tx(fun(Conn1) ->
-        case Enabled of
-            false ->
-                insert_seat_in(Conn1, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy);
-            true ->
-                case assert_limit_tx(Conn1, OrgId) of
-                    ok ->
-                        insert_seat_in(
-                            Conn1, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy
-                        );
-                    {error, Reason} ->
-                        throw({rollback, {error, Reason}})
-                end
-        end
-    end).
+create_seat_limit_tx(Conn, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) ->
+    case Enabled of
+        false ->
+            insert_seat_in(Conn, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy);
+        true ->
+            case assert_limit_tx(Conn, OrgId) of
+                ok ->
+                    insert_seat_in(
+                        Conn, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy
+                    );
+                {error, Reason} ->
+                    throw({rollback, {error, Reason}})
+            end
+    end.
 
 %% @doc enabled 翻转（limit 感知）：false→true 是「增」（超 limit 拒）；
-%% true→false 是「减」（存量超额可减，永不检查）。
+%% true→false 是「减」（存量超额可减，永不检查）；使用调用方事务连接。
 -spec set_enabled_limit_tx(
     pid(), integer(), integer(), boolean(), term()
 ) -> {ok, map()} | {error, seat_limit_exceeded | not_found | term()}.
-set_enabled_limit_tx(_Conn, OrgId, IdentityId, Enabled, At) ->
-    elib_pg:with_tx(fun(Conn1) ->
-        case Enabled of
-            false ->
-                do_set_enabled(Conn1, OrgId, IdentityId, false, At);
-            true ->
-                case is_seat_enabled(Conn1, OrgId, IdentityId) of
-                    {ok, true} ->
-                        %% 已启用：重放（幂等 provisioning），不重复计数不检查。
-                        do_set_enabled(Conn1, OrgId, IdentityId, true, At);
-                    {ok, false} ->
-                        case assert_limit_tx(Conn1, OrgId) of
-                            ok ->
-                                do_set_enabled(Conn1, OrgId, IdentityId, true, At);
-                            {error, Reason} ->
-                                throw({rollback, {error, Reason}})
-                        end;
-                    {error, not_found} = E ->
-                        throw({rollback, E});
-                    {error, Reason} ->
-                        throw({rollback, {error, Reason}})
-                end
-        end
-    end).
+set_enabled_limit_tx(Conn, OrgId, IdentityId, Enabled, At) ->
+    case Enabled of
+        false ->
+            do_set_enabled(Conn, OrgId, IdentityId, false, At);
+        true ->
+            case is_seat_enabled(Conn, OrgId, IdentityId) of
+                {ok, true} ->
+                    %% 已启用：重放（幂等 provisioning），不重复计数不检查。
+                    do_set_enabled(Conn, OrgId, IdentityId, true, At);
+                {ok, false} ->
+                    case assert_limit_tx(Conn, OrgId) of
+                        ok ->
+                            do_set_enabled(Conn, OrgId, IdentityId, true, At);
+                        {error, Reason} ->
+                            throw({rollback, {error, Reason}})
+                    end;
+                {error, not_found} = E ->
+                    throw({rollback, E});
+                {error, Reason} ->
+                    throw({rollback, {error, Reason}})
+            end
+    end.
 
 is_seat_enabled(Conn, OrgId, IdentityId) ->
     case
