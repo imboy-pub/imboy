@@ -88,7 +88,14 @@ issue_code(Uid, Params) ->
 issue_code_tx(Conn, Uid, Params) when is_integer(Uid), Uid > 0 ->
     case validate_issue_params(Params) of
         {ok, ApplicationKey, RedirectUri, Nonce} ->
-            issue_validated(Conn, Uid, ApplicationKey, RedirectUri, Nonce);
+            issue_validated(
+                Conn,
+                Uid,
+                ApplicationKey,
+                RedirectUri,
+                Nonce,
+                maps:get(<<"organization_id">>, Params, undefined)
+            );
         {error, invalid_param} ->
             {error, {?ERR_INVALID_PARAM, <<"参数不合法"/utf8>>}}
     end;
@@ -185,7 +192,7 @@ validate_issue_params(Params) when is_map(Params) ->
     case
         valid_application_key(ApplicationKey) andalso
             valid_redirect_uri(RedirectUri) andalso
-            valid_nonce(Nonce)
+            valid_nonce(Nonce) andalso valid_issue_organization(Params)
     of
         true ->
             {ok, ApplicationKey, RedirectUri, Nonce};
@@ -194,6 +201,15 @@ validate_issue_params(Params) when is_map(Params) ->
     end;
 validate_issue_params(_) ->
     {error, invalid_param}.
+
+valid_issue_organization(Params) ->
+    case maps:find(<<"organization_id">>, Params) of
+        error ->
+            true;
+        {ok, OrgId} ->
+            is_integer(OrgId) andalso OrgId > 0 andalso
+                OrgId =< 9223372036854775807
+    end.
 
 %% @doc INT-14 请求字段语法校验（合同 §4.2）。
 %% 语法与语义分离：语法非法 invalid_request；格式合法但绑定不匹配归
@@ -217,10 +233,10 @@ validate_exchange_params(_) ->
 %%% HUMAN-SSO-01 签发主流程
 %%%===================================================================
 
--spec issue_validated(any(), integer(), binary(), binary(), binary()) ->
+-spec issue_validated(any(), integer(), binary(), binary(), binary(), integer() | undefined) ->
     {ok, map()} | {error, {integer(), binary()}}.
-issue_validated(Conn, Uid, ApplicationKey, RedirectUri, Nonce) ->
-    case resolve_application_tx(Conn, Uid, ApplicationKey) of
+issue_validated(Conn, Uid, ApplicationKey, RedirectUri, Nonce, ExpectedOrgId) ->
+    case resolve_application_tx(Conn, Uid, ApplicationKey, ExpectedOrgId) of
         {ok, App} ->
             AppId = maps:get(<<"id">>, App),
             OrgId = maps:get(<<"organization_id">>, App),
@@ -285,14 +301,20 @@ issue_persist(Conn, Uid, OrgId, AppId, RedirectUri, Nonce) ->
 %%      零候选 = 非成员（forbidden，NEG-H03 区分于 404）；
 %%      恰一 = 命中；多义 = fail-closed not_found（不提供多 Org oracle）；
 %%   3. 命中后校验 organization active（非 active 与 app 不可用同族 404）。
--spec resolve_application_tx(any(), integer(), binary()) ->
+-spec resolve_application_tx(any(), integer(), binary(), integer() | undefined) ->
     {ok, map()} | {error, not_found | forbidden | term()}.
-resolve_application_tx(Conn, Uid, ApplicationKey) ->
+resolve_application_tx(Conn, Uid, ApplicationKey, ExpectedOrgId) ->
     case applications_by_key_tx(Conn, ApplicationKey) of
         {ok, []} ->
             {error, not_found};
         {ok, Rows} ->
-            Active = [R || R <- Rows, maps:get(<<"status">>, R) =:= <<"active">>],
+            Active = [
+                R
+             || R <- Rows,
+                maps:get(<<"status">>, R) =:= <<"active">>,
+                ExpectedOrgId =:= undefined orelse
+                    maps:get(<<"organization_id">>, R) =:= ExpectedOrgId
+            ],
             case Active of
                 [] ->
                     {error, not_found};

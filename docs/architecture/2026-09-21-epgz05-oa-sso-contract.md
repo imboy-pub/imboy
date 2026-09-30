@@ -79,6 +79,9 @@ OA backend 建立自己的 HttpOnly/Secure/SameSite 会话（IMBoy 不发任何�
 | `application_key` | string | 是 | 目标企业应用公开标识（非秘密）；8..128 可打印字符 |
 | `redirect_uri` | string | 是 | 必须与该 application 预注册 redirect URI **逐字节 exact match**；HTTPS；禁止 fragment；长度 ≤2048 |
 | `nonce` | string | 是 | 客户端 CSPRNG 生成，16..128 字符 `[A-Za-z0-9_-]`；即 ② 中 `state` 参数原值 |
+| `organization_id` | integer | 多企业客户端必须传；旧客户端兼容可省略 | 当前选定企业的正数 int64 ID；服务端只解析该企业内的应用，并重新验证有效成员关系；不匹配时拒绝，不回退其他企业 |
+
+2026-10-01 扩展：明确传入的 `organization_id` 必须为 JSON 正整数，最大为 `9223372036854775807`；null、字符串、浮点及超限值返回 400。省略时保留原先按有效成员关系收敛的兼容路径，多义仍返回 404。本字段不授予企业权限。App 的宿主失效保护已经接入，发送此字段及企业应用配置发现仍待客户端后续接线。
 
 ### 3.3 响应字段（成功，现有 human 信封 HTTP 200）
 
