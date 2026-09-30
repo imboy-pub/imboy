@@ -102,7 +102,7 @@ put_object(Bucket, ObjectKey, Bin, MimeType) ->
     Endpoint = endpoint(),
     Url = elib_s3_sign:presign_put(Endpoint, Bucket, ObjectKey, MimeType, 300),
     Req = {binary_to_list(Url), [], binary_to_list(MimeType), Bin},
-    case httpc:request(put, Req, [], []) of
+    case httpc:request(put, Req, [{timeout, 30000}], []) of
         {ok, {{_, S, _}, _, _}} when S >= 200, S < 300 ->
             ok;
         {ok, {{_, S, _}, _, Body}} ->

@@ -1,6 +1,7 @@
 -module(group_file_atomic_pg_tests).
 -include_lib("eunit/include/eunit.hrl").
 -export([run/1]).
+-define(KEY, <<"tenant/u1/g11/20261001/random/a.txt">>).
 
 run(Socket) ->
     {ok, C} = epgsql:connect(#{
@@ -19,6 +20,9 @@ run(Socket) ->
                     {atom_to_list(Mode), fun() -> verify(C, Mode) end}
                  || Mode <- [
                         success,
+                        pending_registration_failure,
+                        storage_timeout,
+                        pending_remove_failure,
                         attachment_failure,
                         file_failure,
                         revoked_during_upload,
@@ -34,28 +38,26 @@ run(Socket) ->
 
 verify_scope(C) ->
     sql(C, <<
-        "DELETE FROM attachment; DELETE FROM group_file;"
+        "DELETE FROM attachment; DELETE FROM group_file; DELETE FROM attach_pending;"
         "UPDATE organization_member SET status='active';"
         "UPDATE group_member SET status=1;"
     >>),
-    meck:expect(elib_oss, upload, fun(_, _, _) ->
-        {ok, <<"https://storage.example.com/test-file/a.txt">>, <<"test-file">>}
-    end),
+    meck:expect(elib_oss, put_object, fun(<<"private">>, ?KEY, _, _) -> ok end),
     ?assertEqual(
         {ok, <<"test-file">>},
         group_file_ds:upload_file(11, 1, <<"a.txt">>, <<0, 1, 2>>, <<"text/plain">>)
     ),
     ?assertMatch(
-        {ok, [#{<<"object_key">> := <<"test-file/a.txt">>}]},
+        {ok, [#{<<"object_key">> := ?KEY}]},
         group_file_ds:list_files(11, 1, 1, 10)
     ),
     ?assertEqual({ok, <<"https://storage.example.com/signed">>}, group_file_logic:download(101, 1)),
     ?assertMatch(
-        {ok, [#{<<"object_key">> := <<"test-file/a.txt">>}]},
+        {ok, [#{<<"object_key">> := ?KEY}]},
         group_file_ds:search_files(11, <<"a">>, 1, 10, 1)
     ),
     ?assertMatch(
-        {ok, [#{<<"object_key">> := <<"test-file/a.txt">>}]},
+        {ok, [#{<<"object_key">> := ?KEY}]},
         group_file_repo:list_by_category(11, <<"document">>, 1, 10)
     ),
     lists:foreach(
@@ -126,6 +128,9 @@ schema(C) ->
         "file_size bigint CHECK(file_size<>4),file_type text,file_category text,file_url text,"
         "file_hash text,uploader_id bigint,download_count int,status int,"
         "created_at timestamptz,updated_at timestamptz);"
+        "CREATE TABLE attach_pending(object_key text PRIMARY KEY,bucket text,scope text,creator_user_id bigint,created_at timestamptz);"
+        "CREATE FUNCTION reject_pending_delete() RETURNS trigger LANGUAGE plpgsql AS $$ "
+        "BEGIN RAISE EXCEPTION 'injected delete failure'; END $$;"
         "CREATE TABLE attachment(id bigint PRIMARY KEY,file_hash256 text,mime_type text,ext text,"
         "name text,path text UNIQUE,url text,size bigint CHECK(size<>2),info jsonb,"
         "referer_time int,last_referer_user_id bigint,last_referer_at timestamptz,"
@@ -176,9 +181,14 @@ mocks(C) ->
     meck:expect(group_ds, is_member, fun(_, _) -> true end),
     meck:new(elib_oss, [non_strict, no_link]),
     meck:expect(elib_oss, validate_file_type, fun(_) -> true end),
+    meck:expect(elib_oss, max_file_size, fun() -> 1000 end),
+    meck:expect(elib_oss, build_object_key, fun(1, <<"group">>, <<"11">>, <<"a.txt">>) -> ?KEY end),
+    meck:expect(elib_oss, generate_file_id, fun() -> <<"test-file">> end),
+    meck:expect(elib_oss, get_url, fun(?KEY) -> {ok, <<"https://storage.example.com/key">>} end),
+    meck:expect(elib_oss, delete_object, fun(<<"private">>, ?KEY) -> ok end),
     meck:expect(elib_oss, get_file_category, fun(_) -> document end),
     meck:expect(elib_oss, get_bucket, fun(<<"group">>) -> <<"private">> end),
-    meck:expect(elib_oss, presign_get_for_key, fun(<<"private">>, <<"test-file/a.txt">>, 600) ->
+    meck:expect(elib_oss, presign_get_for_key, fun(<<"private">>, ?KEY, 600) ->
         <<"https://storage.example.com/signed">>
     end),
     meck:new(workspace_guard, [passthrough, no_link]),
@@ -191,10 +201,32 @@ mocks(C) ->
 
 verify(C, Mode) ->
     sql(C, <<
-        "DELETE FROM attachment; DELETE FROM group_file;"
+        "DELETE FROM attachment; DELETE FROM group_file; DELETE FROM attach_pending;"
         "UPDATE organization_member SET status='active'; UPDATE group_member SET status=1"
     >>),
-    meck:expect(elib_oss, upload, fun(_, _, _) ->
+    case Mode of
+        pending_registration_failure ->
+            sql(
+                C,
+                <<"ALTER TABLE attach_pending ADD CONSTRAINT reject_group CHECK(scope<>'group') NOT VALID">>
+            );
+        pending_remove_failure ->
+            sql(
+                C,
+                <<"CREATE TRIGGER pending_remove_failure BEFORE DELETE ON attach_pending FOR EACH ROW EXECUTE FUNCTION reject_pending_delete()">>
+            );
+        _ ->
+            ok
+    end,
+    BeforePut = meck:num_calls(elib_oss, put_object, 4),
+    meck:expect(elib_oss, put_object, fun(<<"private">>, ?KEY, _, _) ->
+        ?assertEqual(
+            1,
+            count(
+                C,
+                <<"attach_pending WHERE bucket='private' AND creator_user_id=1 AND scope='group'">>
+            )
+        ),
         case Mode of
             revoked_during_upload ->
                 sql(
@@ -206,7 +238,10 @@ verify(C, Mode) ->
             _ ->
                 ok
         end,
-        {ok, <<"https://storage.example.com/test-file/a.txt">>, <<"test-file">>}
+        case Mode of
+            storage_timeout -> {error, timeout};
+            _ -> ok
+        end
     end),
     Data =
         case Mode of
@@ -216,11 +251,20 @@ verify(C, Mode) ->
         end,
     Result = group_file_ds:upload_file(11, 1, <<"a.txt">>, Data, <<"text/plain">>),
     case Mode of
-        success ->
+        pending_registration_failure ->
+            ?assertMatch({error, _}, Result),
+            ?assertEqual(BeforePut, meck:num_calls(elib_oss, put_object, 4)),
+            ?assertEqual(0, count(C, <<"attach_pending">>)),
+            sql(C, <<"ALTER TABLE attach_pending DROP CONSTRAINT reject_group">>),
+            assert_empty(C);
+        storage_timeout ->
+            ?assertEqual({error, timeout}, Result),
+            assert_empty(C);
+        Completed when Completed =:= success; Completed =:= pending_remove_failure ->
             ?assertEqual({ok, <<"test-file">>}, Result),
             ?assertEqual(1, count(C, <<"group_file">>)),
             ?assertEqual(1, count(C, <<"attachment">>)),
-            {ok, _, [{101, 1, <<"group">>, <<"11">>, <<"test-file/a.txt">>}]} = epgsql:equery(
+            {ok, _, [{101, 1, <<"group">>, <<"11">>, ?KEY}]} = epgsql:equery(
                 C,
                 <<"SELECT group_file_id,creator_user_id,scope,scope_ref,path FROM attachment">>,
                 []
@@ -237,7 +281,30 @@ verify(C, Mode) ->
         revoked_group_during_upload ->
             ?assertEqual({error, forbidden}, Result),
             assert_empty(C)
-    end.
+    end,
+    verify_pending(C, Mode).
+
+verify_pending(C, Mode) when Mode =:= success; Mode =:= pending_registration_failure ->
+    ?assertEqual(0, count(C, <<"attach_pending">>));
+verify_pending(C, pending_remove_failure) ->
+    ?assertEqual(1, count(C, <<"attach_pending">>)),
+    sql(
+        C,
+        <<"DROP TRIGGER pending_remove_failure ON attach_pending; UPDATE attach_pending SET created_at=NOW()-INTERVAL '3 hours'">>
+    ),
+    BeforeDelete = meck:num_calls(elib_oss, delete_object, 2),
+    ?assertEqual({ok, #{cleaned => 0, errors => 0}}, attachment_ds:pending_cleanup(2)),
+    ?assertEqual(BeforeDelete, meck:num_calls(elib_oss, delete_object, 2)),
+    ?assertEqual(1, count(C, <<"attachment">>));
+verify_pending(C, _FailedMode) ->
+    ?assertEqual(1, count(C, <<"attach_pending">>)),
+    sql(C, <<"UPDATE attach_pending SET created_at=NOW()-INTERVAL '3 hours'">>),
+    meck:expect(elib_oss, delete_object, fun(<<"private">>, ?KEY) -> {error, unavailable} end),
+    ?assertEqual({ok, #{cleaned => 0, errors => 1}}, attachment_ds:pending_cleanup(2)),
+    ?assertEqual(1, count(C, <<"attach_pending">>)),
+    meck:expect(elib_oss, delete_object, fun(<<"private">>, ?KEY) -> ok end),
+    ?assertEqual({ok, #{cleaned => 1, errors => 0}}, attachment_ds:pending_cleanup(2)),
+    ?assertEqual(0, count(C, <<"attach_pending">>)).
 
 assert_empty(C) ->
     ?assertEqual(0, count(C, <<"group_file">>)),

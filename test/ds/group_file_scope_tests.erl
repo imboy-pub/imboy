@@ -32,7 +32,7 @@ denied(Op) ->
     meck:expect(workspace_guard, write_tx_or_skip, fun(_, _) -> ok end),
     meck:new(elib_oss, [non_strict, no_link]),
     meck:expect(elib_oss, validate_file_type, fun(_) -> true end),
-    meck:expect(elib_oss, upload, fun(_, _, _) -> {error, must_not_upload} end),
+    meck:expect(elib_oss, put_object, fun(_, _, _, _) -> {error, must_not_upload} end),
     try
         Result =
             case Op of
@@ -48,7 +48,7 @@ denied(Op) ->
         ?assertEqual(0, meck:num_calls(group_file_repo, search_by_name, 4)),
         ?assertEqual(0, meck:num_calls(group_file_repo, category_stats, 1)),
         ?assertEqual(0, meck:num_calls(group_file_repo, soft_delete_tx, 2)),
-        ?assertEqual(0, meck:num_calls(elib_oss, upload, 3))
+        ?assertEqual(0, meck:num_calls(elib_oss, put_object, 4))
     after
         meck:unload()
     end.

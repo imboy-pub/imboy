@@ -42,7 +42,7 @@
 %% @param FileType MIME类型
 %% @return {ok, FileId} | {error, Reason}
 -spec upload_file(integer(), integer(), binary(), binary(), binary()) ->
-    {ok, integer()} | {error, term()}.
+    {ok, binary()} | {error, term()}.
 upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
     % 1. 验证群成员身份
     case has_file_access(Gid, UploaderId) of
@@ -68,54 +68,78 @@ upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
             end
     end.
 
-%% @doc OSS 上传 + 落库（T7：预检通过后执行；落库在 {group, Gid} 守卫事务内，
-%% 预检与落库之间存在归档竞态窗口——落库被拒时 Garage 残留孤儿对象，
-%% 无 DB 不一致，可接受）。
+%% @doc 上传前登记真实对象路径；PUT 或元数据事务失败时由 pending 清理器回收。
 -spec do_upload_file(integer(), integer(), binary(), binary(), binary()) ->
-    {ok, integer()} | {error, term()}.
+    {ok, binary()} | {error, term()}.
 do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
-    case elib_oss:upload(FileBinary, FileName, #{mime_type => FileType}) of
-        {error, file_too_large} ->
+    case byte_size(FileBinary) > elib_oss:max_file_size() of
+        true ->
             {error, file_too_large};
-        {error, invalid_file_type} ->
-            {error, invalid_file_type};
-        {ok, FileUrl, FileId} ->
-            FileHash = erlang:md5(FileBinary),
-            FileHashHex = binary:encode_hex(FileHash),
-            Category = elib_oss:get_file_category(FileType),
-            CategoryBin = atom_to_binary(Category, utf8),
-            Now = elib_dt:now(),
-            Data = #{
-                group_id => Gid,
-                file_id => FileId,
-                file_name => FileName,
-                file_size => byte_size(FileBinary),
-                file_type => FileType,
-                file_category => CategoryBin,
-                file_url => FileUrl,
-                file_hash => FileHashHex,
-                uploader_id => UploaderId,
-                download_count => 0,
-                status => 1,
-                created_at => Now,
-                updated_at => Now
-            },
-            %% 群文件与附件授权记录必须一起提交；任一失败不报告成功。
-            elib_pg:with_tx(fun(Conn) ->
-                ok = workspace_guard:abort_on_error(
-                    attachment_ds:ensure_upload_scope_tx(Conn, {group, Gid}, UploaderId)
-                ),
-                case group_file_repo:insert_tx(Conn, Data) of
-                    {ok, GroupFileId} ->
-                        ok = write_attachment_tx(Conn, Data, GroupFileId),
-                        {ok, FileId};
-                    {error, Reason} ->
-                        throw({abort_tx, Reason})
-                end
-            end);
-        {error, UploadErr} ->
-            {error, UploadErr}
+        false ->
+            ObjectKey = elib_oss:build_object_key(
+                UploaderId, <<"group">>, integer_to_binary(Gid), FileName
+            ),
+            Bucket = elib_oss:get_bucket(<<"group">>),
+            case attachment_ds:pending_add(ObjectKey, Bucket, <<"group">>, UploaderId) of
+                ok ->
+                    case elib_oss:put_object(Bucket, ObjectKey, FileBinary, FileType) of
+                        ok ->
+                            save_uploaded_file(
+                                Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey
+                            );
+                        {error, _} = Error ->
+                            Error
+                    end;
+                {error, _} = Error ->
+                    Error
+            end
     end.
+
+save_uploaded_file(Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey) ->
+    {ok, FileUrl} = elib_oss:get_url(ObjectKey),
+    FileId = elib_oss:generate_file_id(),
+    Now = elib_dt:now(),
+    Data = #{
+        group_id => Gid,
+        file_id => FileId,
+        file_name => FileName,
+        file_size => byte_size(FileBinary),
+        file_type => FileType,
+        file_category => atom_to_binary(elib_oss:get_file_category(FileType), utf8),
+        file_url => FileUrl,
+        file_hash => binary:encode_hex(erlang:md5(FileBinary)),
+        uploader_id => UploaderId,
+        download_count => 0,
+        status => 1,
+        created_at => Now,
+        updated_at => Now
+    },
+    %% 群文件与附件授权记录必须一起提交；任一失败保留 pending。
+    Result = elib_pg:with_tx(fun(Conn) ->
+        ok = workspace_guard:abort_on_error(
+            attachment_ds:ensure_upload_scope_tx(Conn, {group, Gid}, UploaderId)
+        ),
+        case group_file_repo:insert_tx(Conn, Data) of
+            {ok, GroupFileId} ->
+                ok = write_attachment_tx(Conn, Data, GroupFileId, ObjectKey),
+                {ok, FileId};
+            {error, Reason} ->
+                throw({abort_tx, Reason})
+        end
+    end),
+    finish_upload(Result, ObjectKey).
+
+finish_upload({ok, _} = Result, ObjectKey) ->
+    %% 销账失败不回滚已提交文件；清理器 NOT EXISTS attachment 防止误删。
+    try attachment_ds:pending_remove(ObjectKey) of
+        ok -> ok;
+        Reason -> ?ERROR_LOG(["group file pending_remove failed: ", Reason])
+    catch
+        Class:Reason -> ?ERROR_LOG(["group file pending_remove failed: ", Class, Reason])
+    end,
+    Result;
+finish_upload(Result, _ObjectKey) ->
+    Result.
 
 %% @doc 下载文件
 %% @param FileId 文件ID（主键）
@@ -247,28 +271,23 @@ authorize_delete(Uid, UploaderId, Gid) ->
 %% 内部函数
 %% ===================================================================
 
-%% @doc BUG#137：群文件上传成功后补写 attachment 记录（scope=group）。
-%% ObjectKey 与 elib_oss:upload_to_storage/4 完全一致（FileId/basename），
-%% attachment.path 即该 key；view_url 读鉴权按 scope=group + scope_ref=Gid
-%% 校验群成员后签发 presign GET。
-%% 同群文件记录一个事务；失败回滚两条记录，不留下无法授权下载的成功文件。
--spec write_attachment_tx(any(), map(), integer()) -> ok.
+%% @doc 同事务写入群文件的真实存储路径（含命名空间前缀），不由业务 ID 重建。
+-spec write_attachment_tx(any(), map(), integer(), binary()) -> ok.
 write_attachment_tx(
     Conn,
     #{
         group_id := Gid,
         uploader_id := UploaderId,
         file_name := FileName,
-        file_id := FileId,
         file_url := FileUrl,
         file_type := FileType,
         file_size := FileSize,
         file_hash := FileHashHex
     },
-    GroupFileId
+    GroupFileId,
+    ObjectKey
 ) ->
     SafeName = filename:basename(FileName),
-    ObjectKey = <<FileId/binary, "/", SafeName/binary>>,
     Attach = #{
         <<"file_hash256">> => FileHashHex,
         <<"mime_type">> => FileType,

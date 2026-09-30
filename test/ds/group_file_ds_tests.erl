@@ -36,11 +36,36 @@ upload_file_success_test_() ->
             ?assertEqual(FileType, Type),
             true
         end),
-        meck:expect(elib_oss, upload, fun(Binary, Name, Opts) ->
-            ?assertEqual(FileBinary, Binary),
+        ObjectKey = <<"tenant/u100/g1/20261001/random/test.pdf">>,
+        meck:expect(elib_oss, build_object_key, fun(100, <<"group">>, <<"1">>, Name) ->
             ?assertEqual(FileName, Name),
-            ?assertEqual(#{mime_type => FileType}, Opts),
-            {ok, FileUrl, FileId}
+            ObjectKey
+        end),
+        meck:expect(elib_oss, get_bucket, fun(<<"group">>) -> <<"private">> end),
+        meck:expect(elib_oss, get_url, fun(Key) ->
+            ?assertEqual(ObjectKey, Key),
+            {ok, FileUrl}
+        end),
+        meck:expect(elib_oss, generate_file_id, fun() -> FileId end),
+        meck:expect(attachment_ds, pending_add, fun(Key, <<"private">>, <<"group">>, 100) ->
+            ?assertEqual(ObjectKey, Key),
+            self() ! registered,
+            ok
+        end),
+        meck:expect(elib_oss, put_object, fun(<<"private">>, Key, Binary, Type) ->
+            receive
+                registered -> ok
+            after 0 -> ?assert(false)
+            end,
+            ?assertEqual(ObjectKey, Key),
+            ?assertEqual(FileBinary, Binary),
+            ?assertEqual(FileType, Type),
+            ok
+        end),
+        meck:expect(attachment_ds, pending_remove, fun(Key) ->
+            ?assertEqual(ObjectKey, Key),
+            self() ! removed,
+            ok
         end),
         meck:expect(elib_oss, get_file_category, fun(Type) ->
             ?assertEqual(FileType, Type),
@@ -77,7 +102,7 @@ upload_file_success_test_() ->
 
         % BUG#137：上传成功须补写 scope=group 附件记录（Garage 私桶裸 URL
         % 无签名且 attachment 表无记录 → 下载端 404）。验证 ObjectKey 与
-        % elib_oss:upload_to_storage/4 一致（FileId/basename）。
+        % 上传时选定的含前缀真实路径一致。
         meck:new(elib_pg, [passthrough]),
         meck:expect(elib_pg, with_tx, fun(F) -> F(conn) end),
         meck:expect(attachment_ds, ensure_upload_scope_tx, fun(conn, {group, 1}, 100) -> ok end),
@@ -92,7 +117,7 @@ upload_file_success_test_() ->
             ),
             ?assertEqual(FileType, maps:get(<<"mime_type">>, Attach)),
             ?assertEqual(FileName, maps:get(<<"name">>, Attach)),
-            ?assertEqual(<<FileId/binary, "/", FileName/binary>>, maps:get(<<"path">>, Attach)),
+            ?assertEqual(ObjectKey, maps:get(<<"path">>, Attach)),
             ?assertEqual(FileUrl, maps:get(<<"url">>, Attach)),
             ?assertEqual(byte_size(FileBinary), maps:get(<<"size">>, Attach)),
             ?assertEqual(<<"group">>, maps:get(<<"scope">>, Attach)),
@@ -102,6 +127,10 @@ upload_file_success_test_() ->
         end),
 
         Result = group_file_ds:upload_file(Gid, UploaderId, FileName, FileBinary, FileType),
+        receive
+            removed -> ok
+        after 0 -> ?assert(false)
+        end,
 
         % 反证：write_attachment 必须真实执行过（meck expect 不强制调用次数，
         % 仅靠断言不够——save 从未被调用时测试依然会绿）
@@ -160,7 +189,7 @@ upload_file_too_large_test_() ->
 
         meck:new(elib_oss, [passthrough]),
         meck:expect(elib_oss, validate_file_type, fun(_) -> true end),
-        meck:expect(elib_oss, upload, fun(_, _, _) -> {error, file_too_large} end),
+        meck:expect(elib_oss, max_file_size, fun() -> 399 end),
 
         Result = group_file_ds:upload_file(Gid, UploaderId, FileName, FileBinary, FileType),
 

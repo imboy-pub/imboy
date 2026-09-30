@@ -747,7 +747,7 @@ subdomain_closure_test_() ->
                     {error, {980, _}},
                     group_file_ds:upload_file(?GID, ?UID, <<"a.txt">>, <<0>>, <<"text/plain">>)
                 ),
-                ?assertEqual(0, meck:num_calls(elib_oss, upload, 3)),
+                ?assertEqual(0, meck:num_calls(elib_oss, put_object, 4)),
                 ?assertMatch(
                     {error, {980, _}}, group_file_ds:delete_file(?FILE_PK, ?UID)
                 ),
@@ -1088,7 +1088,7 @@ group_file_upload_closure_test_() ->
             OssMustNot =
                 {elib_oss, [
                     {'validate_file_type', 1, fun(_) -> true end},
-                    {'upload', 3, fun(_, _, _) -> {error, must_not_upload} end}
+                    {'put_object', 4, fun(_, _, _, _) -> {error, must_not_upload} end}
                 ]},
             run_with_mocks(archived_mocks() ++ [MemberMock, OssMustNot], fun() ->
                 ?assertMatch(
@@ -1108,11 +1108,17 @@ group_file_upload_closure_test_() ->
             OssOk =
                 {elib_oss, [
                     {'validate_file_type', 1, fun(_) -> true end},
-                    {'upload', 3, fun(_, _, _) -> {ok, <<"http://u">>, <<"fid">>} end},
+                    {'max_file_size', 0, fun() -> 1000 end},
+                    {'build_object_key', 4, fun(_, _, _, _) -> <<"key">> end},
+                    {'get_bucket', 1, fun(_) -> <<"private">> end},
+                    {'get_url', 1, fun(_) -> {ok, <<"http://u">>} end},
+                    {'generate_file_id', 0, fun() -> <<"fid">> end},
+                    {'put_object', 4, fun(_, _, _, _) -> ok end},
                     {'get_file_category', 1, fun(_) -> image end}
                 ]},
             SaveMustNot =
                 {attachment_ds, [
+                    {'pending_add', 4, fun(_, _, _, _) -> ok end},
                     {'save', 4, fun(_, _, _, _) -> must_not_save end}
                 ]},
             RaceMock =
@@ -1142,11 +1148,21 @@ group_file_upload_closure_test_() ->
             OssMock =
                 {elib_oss, [
                     {'validate_file_type', 1, fun(_) -> true end},
-                    {'upload', 3, fun(_, _, _) -> {ok, <<"http://u">>, <<"fid">>} end},
+                    {'max_file_size', 0, fun() -> 1000 end},
+                    {'build_object_key', 4, fun(_, _, _, _) -> <<"key">> end},
+                    {'get_bucket', 1, fun(_) -> <<"private">> end},
+                    {'get_url', 1, fun(_) -> {ok, <<"http://u">>} end},
+                    {'generate_file_id', 0, fun() -> <<"fid">> end},
+                    {'put_object', 4, fun(_, _, _, _) -> ok end},
                     {'get_file_category', 1, fun(_) -> image end}
                 ]},
             InsertMock = {group_file_repo, [{'insert_tx', 2, fun(_, _) -> {ok, 1} end}]},
-            SaveOk = {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]},
+            SaveOk =
+                {attachment_ds, [
+                    {'pending_add', 4, fun(_, _, _, _) -> ok end},
+                    {'pending_remove', 1, fun(_) -> ok end},
+                    {'save', 4, fun(_, _, _, _) -> ok end}
+                ]},
             run_with_mocks(
                 personal_mocks() ++ [MemberMock, OssMock, InsertMock, SaveOk],
                 fun() ->

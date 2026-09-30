@@ -641,7 +641,8 @@ put_object_2xx_returns_ok_test_() ->
         [
             {elib_s3_sign, [{'presign_put', 5, fun(_, _, _, _, _) -> <<"http://h/b/k">> end}]},
             {httpc, [
-                {'request', 4, fun(put, _, _, _) ->
+                {'request', 4, fun(put, _, HttpOptions, _) ->
+                    ?assertEqual(30000, proplists:get_value(timeout, HttpOptions)),
                     {ok, {{<<"HTTP/1.1">>, 200, <<"OK">>}, [], <<>>}}
                 end}
             ]}
