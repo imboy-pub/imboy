@@ -62,6 +62,21 @@ backend:
     nodeId: 1
     dcBits: 3
     storeBootstrap: existing
+    # 首启自举（TSID-05/08，elib_tsid_bootstrap 直读 os env）：与
+    # storeBootstrap 正交并列——storeBootstrap 管 store 槽位打开合同，
+    # 这里三键管 pristine 首启（无割接 manifest 且 store 无 floor）如何
+    # 求 floor、以及旧 writer 接管确认（割接全流程见
+    # docs/architecture/tsid-cutover-runbook.md）。
+    # bootstrapMode：auto_scan（缺省，扫库求 floor）| manual_floor（必须
+    #   配 bootstrapFloorUnixMs：整数 unix 毫秒，floor = ms - 1735689600000）。
+    # bootstrapFloorUnixMs：manual_floor 必填，auto_scan 下不读取，空串安全。
+    # bootstrapLegacyAck：唯一合法值 I-CONFIRM-OLD-WRITER-STOPPED。保持
+    #   空串 = 不注入该键（configmap 模板按非空才渲染；空串会被读成已
+    #   设置的非法值，pristine 首启拒启）。旧 writer 接管时 --set 精确值，
+    #   割接完成后改回空串。
+    bootstrapMode: auto_scan
+    bootstrapFloorUnixMs: ""
+    bootstrapLegacyAck: ""
     # 逻辑时间领先上限（ms）：ID 时间戳最多领先墙钟多少（§5.6 有界逻辑时间）
     maxLogicalLeadMs: 512
     capacityWaitTimeoutMs: 100
