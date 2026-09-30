@@ -95,7 +95,7 @@ happy_path_mocks(Fault) ->
             end},
             {'find_by_owner_and_name', 4, fun(_, _, _, _) -> #{} end},
             {'find_by_request_id', 4, fun(_, _, _, _) -> #{} end},
-            {'count_by_owner', 1, fun(_) -> 0 end},
+            {'count_by_owner_tx', 2, fun(fake_conn, _) -> {ok, 0} end},
             {'find_by_id', 2, fun(_, _) ->
                 #{<<"id">> => ?WS_ID, <<"branding">> => <<"{}">>}
             end}
@@ -249,7 +249,7 @@ request_id_idempotent_body() ->
         meck(workspace_repo, [
             {'find_by_request_id', 4, fun(?ORG_ID, ?OWNER, <<"req-42">>, _) -> Existing end},
             {'find_by_owner_and_name', 4, fun(_, _, _, _) -> #{} end},
-            {'count_by_owner', 1, fun(_) -> 0 end},
+            {'count_by_owner_tx', 2, fun(fake_conn, _) -> {ok, 0} end},
             {'find_by_id', 2, fun(_, _) -> Existing end},
             {'add', 2, fun(_, _) ->
                 put(t_re_create, true),
@@ -286,7 +286,7 @@ semantic_key_idempotent_body() ->
         meck(workspace_repo, [
             {'find_by_owner_and_name', 4, fun(?ORG_ID, ?OWNER, <<"Team WS">>, _) -> Existing end},
             {'find_by_request_id', 4, fun(_, _, _, _) -> #{} end},
-            {'count_by_owner', 1, fun(_) -> 0 end},
+            {'count_by_owner_tx', 2, fun(fake_conn, _) -> {ok, 100} end},
             {'find_by_id', 2, fun(_, _) -> Existing end},
             {'add', 2, fun(_, _) ->
                 put(t_re_create, true),
@@ -298,6 +298,7 @@ semantic_key_idempotent_body() ->
             workspace_ds:create_template(?OWNER, ?ORG_ID, <<"Team WS">>, undefined)
         ),
         ?assert(undefined =:= get(t_re_create), "must not re-create workspace"),
+        ?assertEqual(0, meck:num_calls(workspace_repo, count_by_owner_tx, '_')),
         reset_sentinels(),
         ok
     end.
@@ -313,7 +314,7 @@ owner_workspace_limit_body() ->
     begin
         reset_sentinels(),
         meck(workspace_repo, [
-            {'count_by_owner', 1, fun(_) -> 100 end},
+            {'count_by_owner_tx', 2, fun(fake_conn, _) -> {ok, 100} end},
             {'find_by_request_id', 4, fun(_, _, _, _) -> #{} end},
             {'find_by_owner_and_name', 4, fun(_, _, _, _) -> #{} end}
         ]),
@@ -404,3 +405,18 @@ standard_workspace_reads_include_organization_id_test_() ->
 meck(Module, Expectations) ->
     {ok, _} = meck_helper:setup_mock(Module, Expectations),
     ok.
+
+owner_workspace_count_failure_test_() ->
+    ?WITH_MECKS(happy_path_mocks(none), fun() -> owner_workspace_count_failure_body() end).
+
+owner_workspace_count_failure_body() ->
+    reset_sentinels(),
+    meck:expect(workspace_repo, count_by_owner_tx, fun(fake_conn, ?OWNER) ->
+        {error, synthetic_count_failure}
+    end),
+    ?assertMatch(
+        {error, {owner_workspace_count_failed, synthetic_count_failure}},
+        workspace_ds:create_template(?OWNER, ?ORG_ID, <<"Count failure">>, undefined)
+    ),
+    ?assertEqual(undefined, get(t_ws_add)),
+    reset_sentinels().

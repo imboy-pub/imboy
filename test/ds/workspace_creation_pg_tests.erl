@@ -1,0 +1,97 @@
+%%% Actual template creation, owner quota races and rollback on synthetic PG.
+-module(workspace_creation_pg_tests).
+-include_lib("eunit/include/eunit.hrl").
+
+creation_test_() ->
+    {timeout, 900,
+        {setup, fun intbe02_http_support:setup_all/0, fun intbe02_http_support:teardown_all/1, fun(
+            S
+        ) ->
+            {timeout, 900, fun() -> creation(S) end}
+        end}}.
+
+creation(S) ->
+    [elib_tsid:register(T) || T <- [workspace, channel, channel_admin, channel_subscription]],
+    C = maps:get(conn, S),
+    {ok, 2} = workspace_repo:count_by_owner_tx(C, 995001),
+    assert_same_request(C),
+    ok = intbe02_http_support:sql_exec(
+        C,
+        <<"INSERT INTO workspace(id,name,owner_id,organization_id,status,branding) SELECT 996000+n,'synthetic-quota-'||n,995001,995101,'active','{}'::jsonb FROM generate_series(1,96) n">>
+    ),
+    {ok, 99} = workspace_repo:count_by_owner_tx(C, 995001),
+    Results = race([<<"Quota A">>, <<"Quota B">>]),
+    ?assertEqual(1, length([R || {ok, R, created} <- Results]), {creation_results, Results}),
+    [Created] = [R || {ok, R, created} <- Results],
+    ?assertEqual(1, length([R || R = {error, owner_workspace_limit} <- Results])),
+    {ok, 100} = workspace_repo:count_by_owner_tx(C, 995001),
+    WsId = maps:get(workspace_id, Created),
+    Name = maps:get(<<"name">>, maps:get(workspace, Created)),
+    ?assertMatch(
+        {ok, #{workspace_id := WsId}, existing},
+        workspace_ds:create_template(995001, 995101, Name, undefined)
+    ),
+    ?assertMatch(
+        {ok, #{workspace_id := WsId}, existing},
+        workspace_ds:create_template(995001, 995101, <<"Renamed retry">>, Name)
+    ),
+    assert_template(C, Created),
+    assert_count_failure(C).
+
+race(Names) ->
+    Parent = self(),
+    Workers = [
+        spawn(fun() ->
+            receive
+                go ->
+                    Parent ! {self(), workspace_ds:create_template(995001, 995101, Name, Name)}
+            end
+        end)
+     || Name <- Names
+    ],
+    [Pid ! go || Pid <- Workers],
+    [
+        receive
+            {Pid, R} -> R
+        after 10000 -> error(workspace_creation_timeout)
+        end
+     || Pid <- Workers
+    ].
+
+assert_same_request(C) ->
+    Results = race([<<"Same request">>, <<"Same request">>]),
+    ?assertEqual(1, length([R || {ok, R, created} <- Results])),
+    ?assertEqual(1, length([R || {ok, R, existing} <- Results])),
+    [W, W] = [maps:get(workspace_id, R) || {ok, R, _} <- Results],
+    {ok, 3} = workspace_repo:count_by_owner_tx(C, 995001).
+
+assert_template(C, #{workspace_id := W, group_id := G, channel_id := Ch}) ->
+    #{<<"n">> := 1} = intbe02_http_support:one(
+        C,
+        <<"SELECT count(*) AS n FROM workspace_member WHERE workspace_id=$1 AND user_id=995001 AND role='owner' AND status='active'">>,
+        [W]
+    ),
+    #{<<"n">> := 1} = intbe02_http_support:one(
+        C,
+        <<"SELECT count(*) AS n FROM \"group\" WHERE id=$1 AND workspace_id=$2 AND scope='workspace'">>,
+        [G, W]
+    ),
+    #{<<"n">> := 1} = intbe02_http_support:one(
+        C,
+        <<"SELECT count(*) AS n FROM channel WHERE id=$1 AND workspace_id=$2 AND scope='workspace'">>,
+        [Ch, W]
+    ).
+
+assert_count_failure(C) ->
+    ok = intbe02_http_support:sql_exec(C, <<"BEGIN">>),
+    ok = intbe02_http_support:sql_exec(
+        C,
+        <<"CREATE ROLE synthetic_quota_count_reader NOLOGIN">>
+    ),
+    try
+        ok = intbe02_http_support:sql_exec(C, <<"SET LOCAL ROLE synthetic_quota_count_reader">>),
+        ?assertMatch({error, _}, workspace_repo:count_by_owner_tx(C, 995001))
+    after
+        ok = intbe02_http_support:sql_exec(C, <<"ROLLBACK">>)
+    end,
+    {ok, 100} = workspace_repo:count_by_owner_tx(C, 995001).

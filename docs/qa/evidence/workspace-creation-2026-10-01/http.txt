@@ -1,0 +1,19 @@
+======================== EUnit ========================
+module 'enterprise_internal_wiring_http_tests'
+  enterprise_internal_wiring_http_tests: route_table...[0.008 s] ok
+  enterprise_internal_wiring_http_tests: manifest_v21_entries...ok
+  enterprise_internal_wiring_http_tests: http_wiring...[0.063 s] ok
+  enterprise_internal_wiring_http_tests: boundary_parity...ok
+  enterprise_internal_wiring_http_tests: dispatch_compiles...[0.002 s] ok
+  enterprise_internal_wiring_http_tests: normalize_code...ok
+  enterprise_internal_wiring_http_tests: -conformance_test_/0-fun-0-...07:50:41.888 [error] [EPGZ04] emit_event_failed crash error:{badmatch,ok}
+07:50:41.895 [error] [EPGZ04] emit_event_failed crash error:{badmatch,ok}
+07:50:41.965 [error] [EPGZ04] emit_event_failed crash error:{badmatch,ok}
+07:50:41.981 [error] [EPGZ04] emit_event_failed crash error:{badmatch,ok}
+[2.964 s] ok
+  [done in 7.366 s]
+module 'workspace_creation_pg_tests'
+  workspace_creation_pg_tests: -creation_test_/0-fun-0-...[3.062 s] ok
+  [done in 3.065 s]
+=======================================================
+  All 8 tests passed.

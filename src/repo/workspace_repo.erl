@@ -17,7 +17,7 @@
 -export([update_by_id/2]).
 -export([update_owner_tx/3]).
 -export([page_by_member/4]).
--export([count_by_owner/1]).
+-export([count_by_owner_tx/2]).
 -export([ids_by_organization/1]).
 %% V2.1 Internal 只读面（INT-24/25 adapter；plan §6.1 "workspace_repo adapter"）
 -export([internal_find_tx/3]).
@@ -172,16 +172,16 @@ page_by_member(Uid, Page, Size, Column) ->
             {error, Reason}
     end.
 
-%% @doc 用户创建的 active 工作区数量（防滥建上限用）
--spec count_by_owner(integer()) -> non_neg_integer().
-count_by_owner(OwnerUid) ->
-    Tb = tablename(),
+%% Count through the caller's transaction; errors must not become zero quota usage.
+-spec count_by_owner_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+count_by_owner_tx(Conn, OwnerUid) ->
     Sql =
-        <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
+        <<"SELECT COUNT(*) AS count FROM ", (tablename())/binary,
             " WHERE owner_id = $1 AND status = 'active'">>,
-    case elib_pg:one(Sql, [OwnerUid]) of
-        {ok, #{<<"count">> := Count}} -> Count;
-        _ -> 0
+    case elib_pg:query(Conn, Sql, [OwnerUid]) of
+        {ok, [#{<<"count">> := N}]} when is_integer(N), N >= 0 -> {ok, N};
+        {error, Reason} -> {error, Reason};
+        Other -> {error, {invalid_count_result, Other}}
     end.
 
 %% @doc Organization 名下全部 workspace id（Admin 企业入口 O 维度过滤真源；

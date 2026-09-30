@@ -1,0 +1,15 @@
+{
+  "base_sha": "769a552b4d4aea5455a4f1a975a61eed62955945",
+  "sources": {
+    "scripts/test/customer_service_internal_http_gate.sh": "93a785adc31e297c51fad28415805e55ba75b2c2f56d1d0d9a85a0dd7f86c400",
+    "src/ds/workspace_ds.erl": "1201e42a744a8f7b17319fb7cb609c9d610619747b63a2b48baa0b2e1f102685",
+    "src/repo/workspace_repo.erl": "98489033f2ed0c01998c69676006b4c4f5242525d9e078d773e697931298eebb",
+    "test/ds/workspace_creation_pg_tests.erl": "4e7144a9d954ba98fd19784c1c0d345eec82c420da7b46dd2e106ee367ceae00",
+    "test/ds/workspace_template_tests.erl": "09b98f65444e438f5578d726068099e998aa97e7edaef6f8d42cb56063a28139",
+    "test/ds/workspace_org_default_relation_tests.erl": "7216676ccaa262bf4c72856d5d94082484eb1d3d20d04029af371430b99f1216"
+  },
+  "artifacts": {
+    "http.txt": "216c617cda436a062d9cc9ae0af0f99bf9aae525a351b23965606541b59074b8",
+    "image-id.txt": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+  }
+}

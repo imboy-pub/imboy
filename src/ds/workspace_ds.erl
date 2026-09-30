@@ -16,8 +16,8 @@
 %        b) request_id 幂等：request_id 写入 branding 的内部键 "_request_id"
 %           （下划线前缀键不出现在 API 输出——branding 白名单只读
 %           name/logo/primaryColor），同 Owner + 同 _request_id 命中 → 返回既有资源。
-%      并发同请求竞态由语义键兜底（最终仍可能产生同名双工作区，但单请求重试
-%      路径不产生重复资源；彻底唯一化需要后续迁移加唯一约束，移交记录）。
+%      同 Owner 的创建在事务内串行锁定；配额与幂等查询使用同一 Conn，
+%      不额外 checkout，不因并发重试生成同名双工作区。
 %   3. branding 白名单键治理：仅 name/logo/primaryColor 可读写。
 %%%
 
@@ -80,6 +80,10 @@ create_template(OwnerUid, OrgId, Name, RequestId) ->
 
 create_template_tx(Conn, OwnerUid, OrgId, Name, RequestId) ->
     ok = ensure_organization_creator_tx(Conn, OrgId, OwnerUid),
+    case elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock($1::bigint)">>, [OwnerUid]) of
+        {ok, _} -> ok;
+        {error, LockReason} -> throw({abort_tx, {owner_lock_failed, LockReason}})
+    end,
     %% 幂等前置（同事务先查后插）：
     %% 1) request_id 精确命中（同 Owner）→ 返回既有
     case normalize_request_id(RequestId) of
@@ -99,16 +103,19 @@ check_semantic_idempotent(Conn, OwnerUid, OrgId, Name) ->
     check_semantic_idempotent(Conn, OwnerUid, OrgId, Name, <<>>).
 
 check_semantic_idempotent(Conn, OwnerUid, OrgId, Name, RequestId) ->
-    case workspace_repo:count_by_owner(OwnerUid) >= ?MAX_WORKSPACES_PER_OWNER of
-        true ->
+    case workspace_repo:find_by_owner_and_name(OrgId, OwnerUid, Name, Conn) of
+        WS when map_size(WS) > 0 -> existing_workspace_result(Conn, WS);
+        _ -> create_with_quota(Conn, OwnerUid, OrgId, Name, RequestId)
+    end.
+
+create_with_quota(Conn, OwnerUid, OrgId, Name, RequestId) ->
+    case workspace_repo:count_by_owner_tx(Conn, OwnerUid) of
+        {ok, Count} when Count >= ?MAX_WORKSPACES_PER_OWNER ->
             throw({abort_tx, owner_workspace_limit});
-        false ->
-            case workspace_repo:find_by_owner_and_name(OrgId, OwnerUid, Name, Conn) of
-                WS when map_size(WS) > 0 ->
-                    existing_workspace_result(Conn, WS);
-                _ ->
-                    do_create_template(Conn, OwnerUid, OrgId, Name, RequestId)
-            end
+        {ok, _} ->
+            do_create_template(Conn, OwnerUid, OrgId, Name, RequestId);
+        {error, Reason} ->
+            throw({abort_tx, {owner_workspace_count_failed, Reason}})
     end.
 
 ensure_organization_creator_tx(_Conn, undefined, _OwnerUid) ->

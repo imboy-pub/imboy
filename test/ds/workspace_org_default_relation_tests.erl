@@ -68,7 +68,7 @@ create_mocks() ->
             end},
             {'find_by_owner_and_name', 4, fun(_, _, _, _) -> #{} end},
             {'find_by_request_id', 4, fun(_, _, _, _) -> #{} end},
-            {'count_by_owner', 1, fun(_) -> 0 end}
+            {'count_by_owner_tx', 2, fun(fake_conn, _) -> {ok, 0} end}
         ]},
         {organization_member_repo, [
             {'find_organization_for_share_tx', 3, fun(_, ?ORG_ID, <<"id,status">>) ->
