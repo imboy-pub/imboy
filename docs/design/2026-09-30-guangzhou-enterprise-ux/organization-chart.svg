@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1050" viewBox="0 0 1440 1050">
+<rect width="1440" height="1050" fill="#edf2f7"/>
+<text x="48" y="57" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="29" fill="#26364b" font-weight="700">企业组织架构 · 按部门找人，按权限维护</text>
+<text x="48" y="87" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="16" fill="#738397" font-weight="400">员工浏览部门树 / 宽屏查看关系图 / 管理员维护组织</text>
+<text x="48" y="139" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">员工 · 手机通讯录</text>
+<rect x="48" y="159" width="375" height="732" fill="#fff" rx="22"/>
+<text x="72" y="194" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="600">9:41</text>
+<text x="72" y="237" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="23" fill="#26364b" font-weight="700">示例企业 A ⌄</text>
+<text x="72" y="262" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#7a899b" font-weight="400">企业通讯录 / 组织架构</text>
+<rect x="70" y="284" width="331" height="42" fill="#f3f6fa" rx="9"/>
+<text x="86" y="311" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#8797ab" font-weight="400">搜索同事或部门</text>
+<text x="74" y="366" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#26364b" font-weight="600">▾  销售部</text>
+<text x="300" y="366" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#75869c" font-weight="400">直属 2 人</text>
+<path d="M91,385 L91,542" stroke="#bacbe0" fill="none" stroke-width="2"/>
+<text x="110" y="410" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">▾  广州销售组</text>
+<text x="290" y="410" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#75869c" font-weight="400">直属 1 人</text>
+<rect x="125" y="430" width="36" height="36" fill="#eaf1fc" rx="8"/>
+<text x="134" y="455" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="16" fill="#4575ad" font-weight="400">王</text>
+<text x="173" y="451" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="400">王同事</text>
+<text x="110" y="497" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="400">客户协作组</text>
+<text x="293" y="497" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#75869c" font-weight="400">暂无成员</text>
+<text x="110" y="540" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#2767d5" font-weight="400">查看销售部直属成员  ›</text>
+<text x="74" y="597" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#26364b" font-weight="600">▸  行政部</text>
+<text x="300" y="597" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#75869c" font-weight="400">直属 1 人</text>
+<rect x="70" y="657" width="331" height="102" fill="#f1f6fe" rx="10"/>
+<text x="87" y="684" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">部门与工作区分别管理</text>
+<text x="87" y="714" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#75869c" font-weight="400">部门负责找人；工作区限定群与公告。</text>
+<text x="87" y="738" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#75869c" font-weight="400">加入部门不自动加入工作区。</text>
+<rect x="49" y="823" width="373" height="67" fill="#fafbfd" rx="0"/>
+<text x="75" y="863" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#738397" font-weight="600">消息</text>
+<text x="166" y="863" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#2767d5" font-weight="600">通讯录</text>
+<text x="257" y="863" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#738397" font-weight="600">工作台</text>
+<text x="348" y="863" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#738397" font-weight="600">我</text>
+<text x="471" y="139" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">管理员 · 部门关系图与详情</text>
+<rect x="471" y="159" width="920" height="732" fill="#fff" rx="18"/>
+<text x="501" y="206" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="24" fill="#26364b" font-weight="700">组织架构</text>
+<text x="501" y="232" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#75869c" font-weight="400">示例企业 A · 部门上下级关系</text>
+<rect x="1201" y="182" width="157" height="41" fill="#2767d5" rx="8"/>
+<text x="1229" y="208" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#fff" font-weight="600">新建部门</text>
+<rect x="776" y="272" width="290" height="66" fill="#2767d5" rx="12"/>
+<text x="858" y="313" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="21" fill="#fff" font-weight="600">示例企业 A</text>
+<path d="M921,338 L921,368" stroke="#bacbe0" fill="none" stroke-width="2"/>
+<path d="M692,368 L1150,368" stroke="#bacbe0" fill="none" stroke-width="2"/>
+<path d="M692,368 L692,402" stroke="#bacbe0" fill="none" stroke-width="2"/>
+<path d="M1150,368 L1150,402" stroke="#bacbe0" fill="none" stroke-width="2"/>
+<rect x="564" y="402" width="256" height="70" fill="#eef4fe" rx="12"/>
+<text x="650" y="433" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">销售部</text>
+<text x="636" y="457" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#75869c" font-weight="400">上级：示例企业 A</text>
+<rect x="1022" y="402" width="256" height="70" fill="#f5f7fb" rx="12"/>
+<text x="1105" y="433" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">行政部</text>
+<text x="1092" y="457" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#75869c" font-weight="400">上级：示例企业 A</text>
+<path d="M692,472 L692,499" stroke="#bacbe0" fill="none" stroke-width="2"/>
+<path d="M611,499 L850,499" stroke="#bacbe0" fill="none" stroke-width="2"/>
+<path d="M611,499 L611,526" stroke="#bacbe0" fill="none" stroke-width="2"/>
+<path d="M850,499 L850,526" stroke="#bacbe0" fill="none" stroke-width="2"/>
+<rect x="505" y="526" width="214" height="61" fill="#f8fafd" rx="12"/>
+<text x="555" y="563" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#26364b" font-weight="400">广州销售组</text>
+<rect x="743" y="526" width="214" height="61" fill="#f8fafd" rx="12"/>
+<text x="792" y="563" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#26364b" font-weight="400">客户协作组</text>
+<rect x="501" y="624" width="859" height="214" fill="#f7f9fc" rx="12"/>
+<text x="521" y="657" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">销售部 · 选中部门</text>
+<text x="521" y="690" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#26364b" font-weight="400">上级部门   示例企业 A</text>
+<text x="521" y="717" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#26364b" font-weight="400">子部门      广州销售组、客户协作组</text>
+<text x="521" y="744" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#26364b" font-weight="400">成员维护   从本企业有效成员中选择</text>
+<rect x="521" y="772" width="145" height="43" fill="#fff" rx="8"/>
+<text x="548" y="800" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#426caa" font-weight="400">修改名称</text>
+<rect x="681" y="772" width="145" height="43" fill="#fff" rx="8"/>
+<text x="708" y="800" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#426caa" font-weight="400">调整上级</text>
+<rect x="841" y="772" width="145" height="43" fill="#fff" rx="8"/>
+<text x="868" y="800" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#426caa" font-weight="400">维护成员</text>
+<rect x="1001" y="772" width="145" height="43" fill="#fff" rx="8"/>
+<text x="1028" y="800" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#426caa" font-weight="400">更多操作</text>
+<text x="48" y="946" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#26364b" font-weight="600">点击部门查看直属成员；一人可属于多个部门。员工阅读与管理员维护使用各自权限。</text>
+<text x="48" y="981" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#748398" font-weight="400">当前数据支持部门树，不把图中连线解释为个人汇报关系；人数为虚构示例，不是跨子部门汇总。</text>
+</svg>

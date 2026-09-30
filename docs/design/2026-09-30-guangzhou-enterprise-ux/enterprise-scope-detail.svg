@@ -1,0 +1,183 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1610" viewBox="0 0 1500 1610">
+<rect width="1500" height="1610" fill="#edf2f7"/>
+<text x="55" y="55" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="30" fill="#26364b" font-weight="700">IMBoy · 一套界面，清楚区分个人与工作</text>
+<text x="55" y="87" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="16" fill="#738297" font-weight="400">Scope 切换 / 消息范围 / 老板管理 / OA 状态 · 丰富版布局提案</text>
+<text x="55" y="132" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">01  个人空间</text>
+<rect x="55" y="150" width="420" height="575" fill="#fff" rx="14"/>
+<text x="78" y="180" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="600">9:41</text>
+<text x="385" y="180" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="400">5G  ▰</text>
+<text x="78" y="225" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="23" fill="#26364b" font-weight="700">个人空间 ⌄</text>
+<text x="78" y="249" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#7a899b" font-weight="400">好友、个人群与个人频道</text>
+<rect x="75" y="268" width="380" height="39" fill="#f3f6fa" rx="8"/>
+<text x="89" y="293" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#8b98a9" font-weight="400">搜索当前空间</text>
+<rect x="55" y="666" width="420" height="59" fill="#fafbfd" rx="0"/>
+<text x="83" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#276ce5" font-weight="600">消息</text>
+<text x="181" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">联系人</text>
+<text x="279" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">频道</text>
+<text x="377" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">我</text>
+<rect x="75" y="330" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="86" y="357" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">个</text>
+<text x="128" y="347" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">个人好友</text>
+<text x="128" y="369" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">周末有时间一起吃饭吗？</text>
+<text x="357" y="350" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400">2</text>
+<rect x="75" y="397" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="86" y="424" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">朋</text>
+<text x="128" y="414" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">朋友群</text>
+<text x="128" y="436" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">个人群聊 · 与公司无关</text>
+<text x="357" y="417" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400"></text>
+<rect x="75" y="464" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="86" y="491" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">我</text>
+<text x="128" y="481" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">我订阅的频道</text>
+<text x="128" y="503" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">个人内容与订阅</text>
+<text x="357" y="484" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400"></text>
+<rect x="75" y="549" width="380" height="72" fill="#f1f5fb" rx="10"/>
+<text x="89" y="575" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">工作消息</text>
+<text x="89" y="600" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#276ce5" font-weight="400">示例企业 · 总部有新消息 →</text>
+<text x="78" y="651" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#748397" font-weight="400">个人消息不混入工作区列表</text>
+<text x="540" y="132" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">02  统一切换面板</text>
+<rect x="540" y="150" width="420" height="575" fill="#fff" rx="14"/>
+<text x="563" y="180" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="600">9:41</text>
+<text x="870" y="180" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="400">5G  ▰</text>
+<text x="563" y="225" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="23" fill="#26364b" font-weight="700">切换空间 ⌄</text>
+<text x="563" y="249" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#7a899b" font-weight="400">个人与企业是两个入口层级</text>
+<rect x="560" y="268" width="380" height="39" fill="#f3f6fa" rx="8"/>
+<text x="574" y="293" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#8b98a9" font-weight="400">搜索当前空间</text>
+<rect x="540" y="666" width="420" height="59" fill="#fafbfd" rx="0"/>
+<text x="568" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#276ce5" font-weight="600">消息</text>
+<text x="666" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">通讯录</text>
+<text x="764" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">工作台</text>
+<text x="862" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">我</text>
+<rect x="560" y="330" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="571" y="357" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">个</text>
+<text x="613" y="347" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">个人空间</text>
+<text x="613" y="369" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">私人聊天与订阅</text>
+<text x="842" y="350" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400">进入</text>
+<text x="562" y="420" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#758397" font-weight="400">我的企业</text>
+<rect x="560" y="437" width="380" height="123" fill="#edf3ff" rx="10"/>
+<text x="578" y="464" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#276ce5" font-weight="600">示例企业</text>
+<text x="578" y="492" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#26364b" font-weight="400">总部 · 当前工作区</text>
+<text x="875" y="492" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#276ce5" font-weight="400">✓</text>
+<text x="578" y="525" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#26364b" font-weight="400">销售协作 · 已加入</text>
+<rect x="560" y="579" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="571" y="606" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">另</text>
+<text x="613" y="596" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">另一家示例企业</text>
+<text x="613" y="618" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">进入后恢复该企业的工作区</text>
+<text x="842" y="599" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400">›</text>
+<text x="563" y="651" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#276ce5" font-weight="400">通过邀请加入企业 / 输入邀请码</text>
+<text x="1025" y="132" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">03  工作区消息</text>
+<rect x="1025" y="150" width="420" height="575" fill="#fff" rx="14"/>
+<text x="1048" y="180" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="600">9:41</text>
+<text x="1355" y="180" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="400">5G  ▰</text>
+<text x="1048" y="225" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="23" fill="#26364b" font-weight="700">示例企业 ⌄</text>
+<text x="1048" y="249" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#7a899b" font-weight="400">总部  ⌄  ·  仅显示当前工作区资源</text>
+<rect x="1045" y="268" width="380" height="39" fill="#f3f6fa" rx="8"/>
+<text x="1059" y="293" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#8b98a9" font-weight="400">搜索当前空间</text>
+<rect x="1025" y="666" width="420" height="59" fill="#fafbfd" rx="0"/>
+<text x="1053" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#276ce5" font-weight="600">消息</text>
+<text x="1151" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">通讯录</text>
+<text x="1249" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">工作台</text>
+<text x="1347" y="702" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">我</text>
+<text x="1048" y="338" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#276ce5" font-weight="600">全部     群聊     公告</text>
+<rect x="1045" y="364" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="1056" y="391" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">总</text>
+<text x="1098" y="381" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">总部 · 全员群</text>
+<text x="1098" y="403" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">陈同事：下午的安排已收到。</text>
+<text x="1327" y="384" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400">3</text>
+<rect x="1045" y="431" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="1056" y="458" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">总</text>
+<text x="1098" y="448" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">总部 · 公告</text>
+<text x="1098" y="470" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">关于国庆期间的工作安排</text>
+<text x="1327" y="451" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400">1</text>
+<rect x="1045" y="498" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="1056" y="525" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">协</text>
+<text x="1098" y="515" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">协作群</text>
+<text x="1098" y="537" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">工作区群聊 · 已授权成员</text>
+<text x="1327" y="518" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400"></text>
+<rect x="1045" y="565" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="1056" y="592" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">O</text>
+<text x="1098" y="582" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">OA 通知</text>
+<text x="1098" y="604" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">来自企业应用 · 不标为端到端加密</text>
+<text x="1327" y="585" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400"></text>
+<text x="1048" y="651" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#276ce5" font-weight="400">个人新消息 → 返回个人空间查看</text>
+<text x="55" y="802" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">04  同事详情</text>
+<rect x="55" y="820" width="420" height="575" fill="#fff" rx="14"/>
+<text x="78" y="850" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="600">9:41</text>
+<text x="385" y="850" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="400">5G  ▰</text>
+<text x="78" y="895" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="23" fill="#26364b" font-weight="700">企业通讯录 ⌄</text>
+<text x="78" y="919" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#7a899b" font-weight="400">企业范围找人 · 工作区成员关系独立</text>
+<rect x="75" y="938" width="380" height="39" fill="#f3f6fa" rx="8"/>
+<text x="89" y="963" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#8b98a9" font-weight="400">搜索当前空间</text>
+<rect x="55" y="1336" width="420" height="59" fill="#fafbfd" rx="0"/>
+<text x="83" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">消息</text>
+<text x="181" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#276ce5" font-weight="600">通讯录</text>
+<text x="279" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">工作台</text>
+<text x="377" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">我</text>
+<rect x="210" y="1001" width="110" height="90" fill="#eef3fb" rx="16"/>
+<text x="241" y="1059" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="34" fill="#4677b7" font-weight="600">陈</text>
+<text x="226" y="1120" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="22" fill="#26364b" font-weight="700">陈同事</text>
+<text x="170" y="1150" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#748397" font-weight="400">销售部 · 当前企业成员</text>
+<rect x="93" y="1180" width="344" height="46" fill="#276ce5" rx="9"/>
+<text x="210" y="1209" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="16" fill="#fff" font-weight="600">发起聊天</text>
+<text x="79" y="1264" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#748397" font-weight="400">聊天具体归属沿用现有会话合同</text>
+<text x="79" y="1288" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">不因同属公司而把个人私聊改成企业数据</text>
+<text x="540" y="802" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">05  OA 工作台状态</text>
+<rect x="540" y="820" width="420" height="575" fill="#fff" rx="14"/>
+<text x="563" y="850" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="600">9:41</text>
+<text x="870" y="850" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="400">5G  ▰</text>
+<text x="563" y="895" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="23" fill="#26364b" font-weight="700">工作台 ⌄</text>
+<text x="563" y="919" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#7a899b" font-weight="400">示例企业 · 客户 OA H5 容器</text>
+<rect x="560" y="938" width="380" height="39" fill="#f3f6fa" rx="8"/>
+<text x="574" y="963" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#8b98a9" font-weight="400">搜索当前空间</text>
+<rect x="540" y="1336" width="420" height="59" fill="#fafbfd" rx="0"/>
+<text x="568" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">消息</text>
+<text x="666" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">通讯录</text>
+<text x="764" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#276ce5" font-weight="600">工作台</text>
+<text x="862" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">我</text>
+<rect x="560" y="998" width="380" height="192" fill="#f6f8fc" rx="12"/>
+<text x="584" y="1033" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="22" fill="#26364b" font-weight="600">企业办公系统</text>
+<text x="584" y="1069" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#748397" font-weight="400">此区域展示客户现有 OA 页面</text>
+<text x="584" y="1097" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#748397" font-weight="400">审批、考勤等业务由 OA 本身提供</text>
+<text x="584" y="1160" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#276ce5" font-weight="400">原生返回 / 关闭 · 受控网页容器</text>
+<rect x="560" y="1210" width="380" height="89" fill="#fff3e8" rx="10"/>
+<text x="577" y="1238" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">会话失效时</text>
+<text x="577" y="1266" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#bc6a21" font-weight="400">重新进入办公系统  /  返回消息</text>
+<text x="577" y="1287" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#7c8897" font-weight="400">未配置或平台不支持时隐藏工作台入口</text>
+<text x="1025" y="802" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="19" fill="#26364b" font-weight="600">06  老板管理</text>
+<rect x="1025" y="820" width="420" height="575" fill="#fff" rx="14"/>
+<text x="1048" y="850" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="600">9:41</text>
+<text x="1355" y="850" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#26364b" font-weight="400">5G  ▰</text>
+<text x="1048" y="895" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="23" fill="#26364b" font-weight="700">管理企业 ⌄</text>
+<text x="1048" y="919" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#7a899b" font-weight="400">示例企业 · 企业管理员</text>
+<rect x="1045" y="938" width="380" height="39" fill="#f3f6fa" rx="8"/>
+<text x="1059" y="963" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="13" fill="#8b98a9" font-weight="400">搜索当前空间</text>
+<rect x="1025" y="1336" width="420" height="59" fill="#fafbfd" rx="0"/>
+<text x="1053" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">消息</text>
+<text x="1151" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">通讯录</text>
+<text x="1249" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#788698" font-weight="600">工作台</text>
+<text x="1347" y="1372" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#276ce5" font-weight="600">我</text>
+<rect x="1045" y="1001" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="1056" y="1028" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">成</text>
+<text x="1098" y="1018" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">成员与部门</text>
+<text x="1098" y="1040" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">邀请、成员角色、部门维护</text>
+<text x="1327" y="1021" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400">›</text>
+<rect x="1045" y="1063" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="1056" y="1090" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">群</text>
+<text x="1098" y="1080" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">群与公告</text>
+<text x="1098" y="1102" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">阅读入口与管理动作分开</text>
+<text x="1327" y="1083" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400">›</text>
+<rect x="1045" y="1125" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="1056" y="1152" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">工</text>
+<text x="1098" y="1142" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">工作区</text>
+<text x="1098" y="1164" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">成员范围、默认工作区、归档</text>
+<text x="1327" y="1145" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400">›</text>
+<rect x="1045" y="1187" width="40" height="40" fill="#eaf0fa" rx="9"/>
+<text x="1056" y="1214" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#3970b7" font-weight="600">企</text>
+<text x="1098" y="1204" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#26364b" font-weight="600">企业设置</text>
+<text x="1098" y="1226" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">信息、安全与生命周期</text>
+<text x="1327" y="1207" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#276ce5" font-weight="400">›</text>
+<text x="1048" y="1287" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="12" fill="#748397" font-weight="400">离岗、解散等危险动作放详情“更多”</text>
+<text x="55" y="1450" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="17" fill="#26364b" font-weight="600">建议合并：企业目录首页、双工具入口、重复群/频道入口、广州工作区概览与项目一级导航。</text>
+<text x="55" y="1484" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="16" fill="#64758a" font-weight="400">必须保留：个人频道、授权边界、群与频道数据、业务托管会话、历史消息与离岗审计。</text>
+<text x="55" y="1521" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#748397" font-weight="400">同事聊天、资源聚合与未读分域需核验现有接口；此图展示目标交互，不代表当前已经实现。</text>
+<text x="55" y="1550" font-family="PingFang SC,Microsoft YaHei,sans-serif" font-size="14" fill="#748397" font-weight="400">名称、人物与消息均为虚构示例。单一工作区自动进入；多工作区才展开选择，不把工作区等同部门。</text>
+</svg>
