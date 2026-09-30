@@ -12,14 +12,22 @@ run(SocketPath) ->
     }),
     try
         schema(C),
+        setup_pool(C),
         eunit:test(
             [
                 {"enterprise group attachment access", fun() -> verify(C) end},
                 {"enterprise channel attachment scope", fun() -> verify_channel(C) end}
-            ],
+            ] ++
+                [
+                    {atom_to_list(Kind) ++ " " ++ atom_to_list(Mode), fun() ->
+                        verify_upload_lock(C, SocketPath, Kind, Mode)
+                    end}
+                 || Kind <- [group, channel], Mode <- [suspend, remove_workspace]
+                ],
             [verbose]
         )
     after
+        meck:unload(),
         epgsql:close(C)
     end.
 
@@ -161,3 +169,86 @@ channel_allowed(C, ChannelId) ->
         [ChannelId, 1]
     ),
     Result.
+
+setup_pool(C) ->
+    meck:new(config_ds, [non_strict, no_link]),
+    meck:expect(config_ds, env, fun(sql_driver) -> pgsql end),
+    meck:new(pooler, [non_strict, no_link]),
+    meck:expect(pooler, take_member, fun(pgsql) -> C end),
+    meck:expect(pooler, return_member, fun(pgsql, C0) when C0 =:= C -> ok end),
+    meck:expect(pooler, return_member, fun(pgsql, C0, _) when C0 =:= C -> ok end).
+
+verify_upload_lock(C, Socket, Kind, Mode) ->
+    sql(C, <<
+        "UPDATE workspace SET status='active';"
+        "UPDATE organization_member SET status='active',role='member';"
+        "UPDATE workspace_member SET status='active'"
+    >>),
+    sql(C, <<"BEGIN">>),
+    ?assertEqual(ok, attachment_ds:ensure_upload_scope_tx(C, {Kind, 11}, 1)),
+    Token = make_ref(),
+    Parent = self(),
+    spawn(fun() -> revoke_concurrently(Parent, Token, Socket, Mode) end),
+    BackendPid =
+        receive
+            {Token, backend, Pid} -> Pid
+        after 2000 -> error(worker_not_started)
+        end,
+    await_lock(C, BackendPid, 200),
+    Key = iolist_to_binary([atom_to_binary(Kind), <<"-">>, atom_to_binary(Mode)]),
+    {ok, 1} = epgsql:equery(
+        C,
+        <<"INSERT INTO attachment VALUES($1,'group','11',1,5,NULL)">>,
+        [Key]
+    ),
+    sql(C, <<"COMMIT">>),
+    receive
+        {Token, result, Result} -> ?assertEqual({ok, 1}, Result)
+    after 2000 -> error(revoke_not_finished)
+    end,
+    sql(C, <<"BEGIN">>),
+    ?assertEqual({error, forbidden}, attachment_ds:ensure_upload_scope_tx(C, {Kind, 11}, 1)),
+    sql(C, <<"ROLLBACK">>),
+    {ok, _, [{1}]} = epgsql:equery(
+        C,
+        <<"SELECT count(*) FROM attachment WHERE path=$1">>,
+        [Key]
+    ).
+
+revoke_concurrently(Parent, Token, Socket, Mode) ->
+    {ok, C} = epgsql:connect(#{
+        host => {local, Socket},
+        port => 0,
+        username => "departure_test",
+        database => "postgres"
+    }),
+    try
+        {ok, _, [{BackendPid}]} = epgsql:equery(C, <<"SELECT pg_backend_pid()">>, []),
+        Parent ! {Token, backend, BackendPid},
+        Query =
+            case Mode of
+                suspend ->
+                    <<"UPDATE organization_member SET status='suspended' WHERE organization_id=10 AND user_id=1">>;
+                remove_workspace ->
+                    <<"UPDATE workspace_member SET status='removed' WHERE workspace_id=100 AND user_id=1">>
+            end,
+        Parent ! {Token, result, epgsql:equery(C, Query, [])}
+    after
+        epgsql:close(C)
+    end.
+
+await_lock(_C, _Pid, 0) ->
+    error(revocation_did_not_wait_for_upload);
+await_lock(C, Pid, Attempts) ->
+    {ok, _, [{Blocked}]} = epgsql:equery(
+        C,
+        <<"SELECT cardinality(pg_blocking_pids($1)) > 0">>,
+        [Pid]
+    ),
+    case Blocked of
+        true ->
+            ok;
+        false ->
+            timer:sleep(10),
+            await_lock(C, Pid, Attempts - 1)
+    end.

@@ -256,14 +256,14 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher, Anc
             elib_pg:with_tx(fun(Conn) ->
                 %% T7 归档写守卫（A2 收口）：附件转正落库（attachment 元数据写）与
                 %% 守卫同事务——scope=group/channel 时按 {group, Ref}/{channel, Ref}
-                %% 锁 workspace 行（FOR UPDATE），archived 拒绝（稳定错误码 980）；
+                %% 按 Org/成员 → Workspace 锁序重验资格；archived 拒绝（错误码 980）；
                 %% c2c/moment/private/public 为个人域直通（T7 结项：scope 落库不可变
                 %% + 读 ACL 恒绑定原 scope，无进 workspace 路径——设计决定非遗漏，
                 %% 判定依据详见 workspace_resolver 的 attachment 子句注释）。
                 case attach_scope_target(Scope, ScopeRef) of
                     {ok, Target} ->
                         ok = workspace_guard:abort_on_error(
-                            workspace_guard:ensure_writable_tx(Conn, Target)
+                            attachment_ds:ensure_upload_scope_tx(Conn, Target, Uid)
                         );
                     passthrough ->
                         ok

@@ -61,3 +61,48 @@ active_channel_admin_keeps_attachment_access_test_() ->
             ?assertEqual(0, meck:num_calls(channel_subscription_ds, is_subscribed, 2))
         end
     ).
+
+confirm_rechecks_parent_after_head_test_() ->
+    [confirm_parent_revoked(Scope) || Scope <- [<<"group">>, <<"channel">>]].
+
+confirm_parent_revoked(Scope) ->
+    ?WITH_MECKS(
+        [
+            {group_member_ds, [{'is_member', 2, fun(_, _) -> true end}]},
+            {channel_admin_ds, [{'get_role', 2, fun(_, _) -> 3 end}]},
+            {attachment_ds, [
+                {'authorize_channel_scope', 2, fun(_, _) -> true end},
+                {'ensure_upload_scope_tx', 3, fun(fake_conn, _, 7) -> {error, forbidden} end},
+                {'save', 4, fun(_, _, _, _) -> ok end},
+                {'pending_remove', 1, fun(_) -> ok end}
+            ]},
+            {elib_oss, [
+                {'get_bucket', 1, fun(_) -> <<"bucket">> end},
+                {'head_object', 2, fun(_, _) ->
+                    {ok, #{size => 1, content_type => <<"image/png">>}}
+                end}
+            ]},
+            {workspace_guard, [{'ensure_writable_tx', 2, fun(_, _) -> ok end}]},
+            {elib_pg, [
+                {'with_tx', 1, fun(F) ->
+                    try
+                        F(fake_conn)
+                    catch
+                        throw:{abort_tx, R} -> {error, R}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            Key = elib_oss:build_object_key(7, Scope, <<"9">>, <<"a.png">>),
+            ?assertEqual(
+                {error, forbidden},
+                attach_logic:confirm(7, Key, Scope, <<"9">>, #{
+                    <<"anchor_msg_id">> => <<"test-msg">>
+                })
+            ),
+            ?assertEqual(1, meck:num_calls(elib_oss, head_object, 2)),
+            ?assertEqual(0, meck:num_calls(attachment_ds, save, 4)),
+            ?assertEqual(0, meck:num_calls(attachment_ds, pending_remove, 1))
+        end
+    ).

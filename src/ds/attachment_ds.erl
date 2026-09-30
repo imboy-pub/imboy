@@ -23,6 +23,7 @@
 -export([find_path_by_id/1]).
 -export([authorize_group_access/2]).
 -export([authorize_channel_scope/2]).
+-export([ensure_upload_scope_tx/3]).
 
 %% ===================================================================
 %% API Functions
@@ -181,3 +182,24 @@ find_path_by_id(Id) ->
 -spec authorize_channel_scope(integer(), integer()) -> boolean().
 authorize_channel_scope(ChannelId, Uid) ->
     attachment_repo:authorize_channel_scope(ChannelId, Uid).
+
+%% 锁父级资格后复用原归档守卫；最终检查和元数据保存使用同一连接。
+-spec ensure_upload_scope_tx(any(), {group | channel, integer() | binary()}, integer()) ->
+    ok | {error, term()}.
+ensure_upload_scope_tx(Conn, {Kind, Ref}, Uid) ->
+    Id = elib_cnv:safe_to_integer(Ref),
+    Target = {Kind, Id},
+    case attachment_repo:lock_upload_organization_tx(Conn, Target, Uid) of
+        ok ->
+            case workspace_guard:ensure_writable_tx(Conn, Target) of
+                ok ->
+                    case attachment_repo:authorize_upload_scope_tx(Conn, Kind, Id, Uid) of
+                        true -> ok;
+                        false -> {error, forbidden}
+                    end;
+                {error, _} = E ->
+                    E
+            end;
+        {error, _} = E ->
+            E
+    end.

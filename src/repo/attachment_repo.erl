@@ -54,6 +54,7 @@
 %% @doc 单 statement 校验群附件的当前世代边界。
 -export([authorize_group_access/2]).
 -export([authorize_channel_scope/2, channel_scope_access_sql/0]).
+-export([lock_upload_organization_tx/3, authorize_upload_scope_tx/4]).
 %% 真库回归直接执行生产 SQL，避免用 mock/字符串包含断言替代 PostgreSQL 语义。
 -export([group_access_sql/1]).
 
@@ -448,9 +449,66 @@ authorize_channel_scope(_, _) ->
 
 -spec channel_scope_access_sql() -> binary().
 channel_scope_access_sql() ->
+    scope_access_sql(channel).
+
+scope_access_sql(Kind) ->
     ScopeSql = resource_scope_access_sql(),
-    <<"SELECT EXISTS (SELECT 1 FROM public.channel grp ", "WHERE grp.id = $1 AND grp.status = 1 ",
-        ScopeSql/binary, ") AS allowed">>.
+    Table = scope_table(Kind),
+    <<"SELECT EXISTS (SELECT 1 FROM ", Table/binary, " grp ",
+        "WHERE grp.id = $1 AND grp.status = 1 ", ScopeSql/binary, ") AS allowed">>.
+
+scope_table(group) -> <<"public.\"group\"">>;
+scope_table(channel) -> <<"public.channel">>.
+
+%% Org → Org member → Workspace 锁序与暂停/退出一致；HEAD 完成后才拿锁。
+-spec lock_upload_organization_tx(any(), {group | channel, integer()}, integer()) ->
+    ok | {error, forbidden | term()}.
+lock_upload_organization_tx(Conn, {Kind, Id}, Uid) ->
+    Table = scope_table(Kind),
+    Sql =
+        <<"SELECT ws.organization_id FROM ", Table/binary, " grp ",
+            "LEFT JOIN public.workspace ws ON ws.id = grp.workspace_id ",
+            "WHERE grp.id = $1 AND grp.status = 1">>,
+    case elib_pg:query(Conn, Sql, [Id]) of
+        {ok, [#{<<"organization_id">> := null}]} -> ok;
+        {ok, [#{<<"organization_id">> := OrgId}]} -> lock_upload_member_tx(Conn, OrgId, Uid);
+        {ok, []} -> {error, forbidden};
+        {error, _} = E -> E
+    end.
+
+lock_upload_member_tx(Conn, OrgId, Uid) ->
+    case organization_member_repo:find_organization_for_share_tx(Conn, OrgId, <<"status">>) of
+        {ok, #{<<"status">> := <<"active">>}} ->
+            case organization_member_repo:find_active_for_share_tx(Conn, OrgId, Uid, <<"role">>) of
+                {ok, _} -> ok;
+                {error, not_found} -> {error, forbidden};
+                {error, _} = E -> E
+            end;
+        {ok, _} ->
+            {error, forbidden};
+        {error, not_found} ->
+            {error, forbidden};
+        {error, _} = E ->
+            E
+    end.
+
+%% 在 Workspace 锁后锁工作区成员，阻止移除的最终 UPDATE 越过当前附件提交。
+-spec authorize_upload_scope_tx(any(), group | channel, integer(), integer()) -> boolean().
+authorize_upload_scope_tx(Conn, Kind, Id, Uid) ->
+    Table = scope_table(Kind),
+    LockSql =
+        <<"SELECT wm.status FROM public.workspace_member wm ",
+            "WHERE wm.user_id = $2 AND wm.workspace_id = ", "(SELECT workspace_id FROM ",
+            Table/binary, " WHERE id = $1) FOR SHARE">>,
+    case elib_pg:query(Conn, LockSql, [Id, Uid]) of
+        {ok, _} ->
+            case elib_pg:query(Conn, scope_access_sql(Kind), [Id, Uid]) of
+                {ok, [#{<<"allowed">> := true}]} -> true;
+                _ -> false
+            end;
+        _ ->
+            false
+    end.
 
 %% 固定 grp 别名供群、频道共用；只拼接内部 SQL，参数仍使用 $1/$2。
 -spec resource_scope_access_sql() -> binary().

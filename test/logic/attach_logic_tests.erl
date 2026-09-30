@@ -259,11 +259,11 @@ confirm_group_persists_anchor_message_id_test_() ->
                 end}
             ]},
             {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(fake_conn, {group, <<"66">>}) -> ok end},
                 {'abort_on_error', 1, fun(ok) -> ok end}
             ]},
             {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
             {attachment_ds, [
+                {'ensure_upload_scope_tx', 3, fun(fake_conn, {group, <<"66">>}, 1) -> ok end},
                 {'save', 4, fun(_, _, _, _) -> ok end},
                 {'pending_remove', 1, fun(_) -> ok end},
                 {'find_by_path', 1, fun(_) -> {error, not_found} end}
