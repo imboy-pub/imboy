@@ -19,6 +19,10 @@ run(Socket) ->
             " function_key text, enabled boolean, max_concurrent integer, created_by_user_id bigint,"
             " version integer DEFAULT 1, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());"
             "CREATE TABLE customer_service_seat_limit (organization_id bigint PRIMARY KEY, seat_limit integer);"
+            "CREATE TABLE organization_business_identity(organization_id bigint,id bigint,function_key text);"
+            "INSERT INTO organization_business_identity VALUES(1,1,'customer_service'),(1,2,'customer_service');"
+            "CREATE TABLE customer_service_event(id bigint PRIMARY KEY,organization_id bigint,workspace_id bigint NOT NULL,"
+            "session_id bigint,business_identity_id bigint,actor_user_id bigint,actor_kind text,action text,detail jsonb);"
         >>),
         meck:new(config_ds, [non_strict, no_link]),
         meck:expect(config_ds, env, fun(sql_driver) -> pgsql end),
@@ -37,7 +41,9 @@ run(Socket) ->
             Conn = erase(seat_tx_connection),
             epgsql:close(Conn)
         end),
-        eunit:test(cases(C), [verbose])
+        meck:new(cs_tsid, [non_strict, no_link]),
+        meck:expect(cs_tsid, new_id, fun(_) -> erlang:unique_integer([positive, monotonic]) end),
+        eunit:test(cases(C) ++ audit_cases(C), [verbose])
     after
         meck:unload(),
         epgsql:close(C)
@@ -116,6 +122,99 @@ cases(C) ->
         end}
     ].
 
+audit_cases(C) ->
+    [
+        {"audit rejection rolls back create and permits a clean retry", fun() ->
+            seed(C, true),
+            with_rejected_audit(C, fun() ->
+                ?assertMatch(
+                    {error, {audit_append_failed, _}},
+                    cs_seat_app:create_seat(1, seat_params(2))
+                ),
+                ?assertEqual(
+                    0,
+                    count(
+                        C,
+                        <<"SELECT count(*) FROM customer_service_seat WHERE business_identity_id=2">>
+                    )
+                ),
+                ?assertEqual(0, count(C, <<"SELECT count(*) FROM customer_service_event">>))
+            end),
+            ?assertMatch({ok, _}, cs_seat_app:create_seat(1, seat_params(2))),
+            ?assertEqual(
+                1,
+                count(
+                    C,
+                    <<"SELECT count(*) FROM customer_service_event WHERE action='seat.created' AND workspace_id=10 AND business_identity_id=2">>
+                )
+            )
+        end},
+        {"audit rejection rolls back suspend", fun() ->
+            seed(C, true),
+            with_rejected_audit(C, fun() ->
+                ?assertMatch(
+                    {error, {audit_append_failed, _}},
+                    cs_seat_app:suspend_seat(1, seat_params(1))
+                ),
+                assert_enabled(C, true),
+                ?assertEqual(0, count(C, <<"SELECT count(*) FROM customer_service_event">>))
+            end)
+        end},
+        {"audit rejection rolls back resume", fun() ->
+            seed(C, false),
+            with_rejected_audit(C, fun() ->
+                ?assertMatch(
+                    {error, {audit_append_failed, _}},
+                    cs_seat_app:resume_seat(1, seat_params(1))
+                ),
+                assert_enabled(C, false),
+                ?assertEqual(0, count(C, <<"SELECT count(*) FROM customer_service_event">>))
+            end)
+        end},
+        {"successful operations commit one correctly scoped event each", fun() ->
+            seed(C, false),
+            ?assertMatch({ok, _}, cs_seat_app:create_seat(1, (seat_params(2))#{enabled => false})),
+            ?assertMatch({ok, _}, cs_seat_app:resume_seat(1, seat_params(2))),
+            ?assertMatch({ok, _}, cs_seat_app:suspend_seat(1, seat_params(2))),
+            {ok, _, Rows} = epgsql:equery(
+                C,
+                <<"SELECT action,workspace_id,business_identity_id,actor_user_id FROM customer_service_event ORDER BY id">>,
+                []
+            ),
+            ?assertEqual(
+                [
+                    {<<"seat.created">>, 10, 2, 99},
+                    {<<"seat.resumed">>, 10, 2, 99},
+                    {<<"seat.suspended">>, 10, 2, 99}
+                ],
+                Rows
+            ),
+            {ok, _, [{false, 3}]} = epgsql:equery(
+                C,
+                <<"SELECT enabled,version FROM customer_service_seat WHERE business_identity_id=2">>,
+                []
+            )
+        end}
+    ].
+
+seat_params(IdentityId) ->
+    #{
+        workspace_id => 10,
+        business_identity_id => IdentityId,
+        at => 1700000000,
+        actor_user_id => 99,
+        created_by_user_id => 99,
+        reason => <<"synthetic test">>
+    }.
+
+with_rejected_audit(C, Fun) ->
+    sql(C, <<"ALTER TABLE customer_service_event ADD CONSTRAINT reject_audit CHECK(false)">>),
+    try
+        Fun()
+    after
+        sql(C, <<"ALTER TABLE customer_service_event DROP CONSTRAINT reject_audit">>)
+    end.
+
 rollback_enabled(Enabled) ->
     ?assertEqual(
         {rollback, audit_failure},
@@ -133,7 +232,7 @@ assert_enabled(C, Enabled) ->
     ).
 
 seed(C, Enabled) ->
-    sql(C, <<"TRUNCATE customer_service_seat,customer_service_seat_limit">>),
+    sql(C, <<"TRUNCATE customer_service_event,customer_service_seat,customer_service_seat_limit">>),
     {ok, 1} = epgsql:equery(
         C,
         <<"INSERT INTO customer_service_seat(organization_id,business_identity_id,function_key,enabled,max_concurrent) VALUES(1,1,'customer_service',$1,1)">>,

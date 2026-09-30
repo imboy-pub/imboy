@@ -48,7 +48,9 @@
     seat_limit/1,
     set_seat_limit/2,
     create_seat_limit_checked/5,
+    create_seat_limit_checked/6,
     set_enabled_checked/4,
+    set_enabled_checked/5,
     %% CS-BE-05：presence（内存表：{Org, Identity} => #{last_heartbeat_at, manual_status}）
     heartbeat_seat/4,
     set_seat_manual_status/4,
@@ -602,6 +604,25 @@ create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) 
                         OrgId, full_seat_map(OrgId, IdentityId, true, MaxConcurrent, CreatedBy)
                     )
             end
+    end.
+
+%% This memory fake models successful audit writes; rollback is verified in PG.
+create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy, Event) ->
+    case create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) of
+        {ok, _} = Result ->
+            {ok, _} = append_event(OrgId, Event),
+            Result;
+        Error ->
+            Error
+    end.
+
+set_enabled_checked(OrgId, IdentityId, Enabled, At, Event) ->
+    case set_enabled_checked(OrgId, IdentityId, Enabled, At) of
+        {ok, _} = Result ->
+            {ok, _} = append_event(OrgId, Event),
+            Result;
+        Error ->
+            Error
     end.
 
 %% 与 app 原构造同形（function_key/organization_id 必在——fetch 回读投影依赖）。

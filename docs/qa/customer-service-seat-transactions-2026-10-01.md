@@ -35,3 +35,5 @@ end.
 坐席应用管理的列表／详情／开通／调整／停用接口仍需追加合同、显式 Grant、幂等及审计。现有 cs_seat_app 的创建和启停事件尚在操作完成后单独写入，必须继续合并成同一事务；本修复仅让底层正确参与调用方事务，不宣称已完成该原子审计闭环。
 
 English summary: seat create/enable transaction helpers now use their caller's connection. Six isolated PostgreSQL checks, eighteen application tests and the feature architecture gate passed. Full audit atomicity, application management APIs and production readiness remain open.
+
+后续状态更新：上述“审计尚未合并”是本报告基线时的历史状态，现已由 [坐席审计原子性验收](./customer-service-seat-audit-atomicity-2026-10-01.md) 补齐；应用管理接口及完整投产验收仍未完成。

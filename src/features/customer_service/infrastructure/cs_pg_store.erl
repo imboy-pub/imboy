@@ -20,7 +20,9 @@
     seat_limit/1,
     set_seat_limit/2,
     create_seat_limit_checked/5,
+    create_seat_limit_checked/6,
     set_enabled_checked/4,
+    set_enabled_checked/5,
     %% BE-S01a：坐席上下文聚合 / 转接目标
     list_seat_org_contexts/1,
     list_transfer_targets_page/4,
@@ -118,11 +120,15 @@ set_seat_limit(OrgId, Limit) ->
 %% elib_pg:with_tx 的业务回滚信号是 {rollback, Reason}（throw 拦截分支）——
 %% 归一为调用方处处期望的 {error, Reason}（seat_limit_exceeded 等）。
 create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) ->
+    create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy, undefined).
+
+create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy, Event) ->
     case
         elib_pg:with_tx(fun(Conn) ->
-            cs_pg_seat:create_seat_limit_tx(
+            Result = cs_pg_seat:create_seat_limit_tx(
                 Conn, OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy
-            )
+            ),
+            audited_seat(Conn, OrgId, Result, Event)
         end)
     of
         {rollback, {error, Reason}} -> {error, Reason};
@@ -130,15 +136,29 @@ create_seat_limit_checked(OrgId, IdentityId, Enabled, MaxConcurrent, CreatedBy) 
         Other -> Other
     end.
 set_enabled_checked(OrgId, IdentityId, Enabled, At) ->
+    set_enabled_checked(OrgId, IdentityId, Enabled, At, undefined).
+
+set_enabled_checked(OrgId, IdentityId, Enabled, At, Event) ->
     case
         elib_pg:with_tx(fun(Conn) ->
-            cs_pg_seat:set_enabled_limit_tx(Conn, OrgId, IdentityId, Enabled, At)
+            Result = cs_pg_seat:set_enabled_limit_tx(Conn, OrgId, IdentityId, Enabled, At),
+            audited_seat(Conn, OrgId, Result, Event)
         end)
     of
         {rollback, {error, Reason}} -> {error, Reason};
         {rollback, Reason} -> {error, Reason};
         Other -> Other
     end.
+%% Audited entry points commit the seat and its event together; old arities remain
+%% available for existing infrastructure callers that do not supply an event.
+audited_seat(_Conn, _OrgId, Result, undefined) ->
+    Result;
+audited_seat(Conn, OrgId, {ok, _} = Result, Event) ->
+    case cs_pg_seat:insert_event_in(Conn, OrgId, Event) of
+        {ok, _} -> Result;
+        {error, Reason} -> throw({rollback, {error, {audit_append_failed, Reason}}})
+    end.
+
 list_seat_org_contexts(UserId) ->
     cs_pg_seat:list_seat_org_contexts(UserId).
 list_transfer_targets_page(OrgId, ExcludeIdentityId, AfterId, Limit) ->

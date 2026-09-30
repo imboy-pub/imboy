@@ -94,8 +94,14 @@ create_seat_in(OrgId, WorkspaceId, Params) ->
 insert_seat(OrgId, WorkspaceId, IdentityId, Params) ->
     Enabled = maps:get(enabled, Params, true),
     MaxConcurrent = maps:get(max_concurrent, Params, 1),
-    %% CS-BE-06：limit 感知创建（advisory 事务锁内 count+检查+INSERT——
-    %% N 并发开第 N+1 个恰一失败 seat_limit_exceeded；disabled 落点不检查）。
+    Event = #{
+        workspace_id => WorkspaceId,
+        business_identity_id => IdentityId,
+        actor_user_id => maps:get(created_by_user_id, Params, undefined),
+        action => <<"seat.created">>,
+        detail => #{<<"max_concurrent">> => MaxConcurrent, <<"enabled">> => Enabled}
+    },
+    %% The store commits capacity enforcement, seat creation and audit together.
     case
         with_store(Params, fun(Store) ->
             Store:create_seat_limit_checked(
@@ -103,27 +109,13 @@ insert_seat(OrgId, WorkspaceId, IdentityId, Params) ->
                 IdentityId,
                 Enabled,
                 MaxConcurrent,
-                maps:get(created_by_user_id, Params, undefined)
+                maps:get(created_by_user_id, Params, undefined),
+                Event
             )
         end)
     of
-        {error, _} = Err ->
-            Err;
-        {ok, Stored} ->
-            case
-                append_event(Params, OrgId, WorkspaceId, #{
-                    business_identity_id => IdentityId,
-                    actor_user_id => maps:get(created_by_user_id, Params, undefined),
-                    action => <<"seat.created">>,
-                    detail => #{
-                        <<"max_concurrent">> => MaxConcurrent,
-                        <<"enabled">> => Enabled
-                    }
-                })
-            of
-                ok -> {ok, Stored#{workspace_id => WorkspaceId}};
-                {error, _} = AuditErr -> AuditErr
-            end
+        {error, _} = Err -> Err;
+        {ok, Stored} -> {ok, Stored#{workspace_id => WorkspaceId}}
     end.
 
 %% ===================================================================
@@ -158,28 +150,20 @@ set_enabled_in(OrgId, WorkspaceId, Enabled, Action, Params) ->
         false ->
             {error, {invalid_argument, set_seat_enabled}};
         true ->
-            %% CS-BE-06：resume（false→true）是「增」——limit 感知事务
-            %% （advisory 锁 + count 检查，已启用重放幂等成功不重复计数）；
-            %% suspend（true→false）是「减」——存量超额可减，永不检查。
+            Event = #{
+                workspace_id => WorkspaceId,
+                business_identity_id => IdentityId,
+                actor_user_id => maps:get(actor_user_id, Params, undefined),
+                action => Action,
+                detail => #{<<"reason">> => maps:get(reason, Params, undefined)}
+            },
             case
                 with_store(Params, fun(Store) ->
-                    Store:set_enabled_checked(OrgId, IdentityId, Enabled, At)
+                    Store:set_enabled_checked(OrgId, IdentityId, Enabled, At, Event)
                 end)
             of
-                {error, _} = Err ->
-                    Err;
-                {ok, Seat} ->
-                    case
-                        append_event(Params, OrgId, WorkspaceId, #{
-                            business_identity_id => IdentityId,
-                            actor_user_id => maps:get(actor_user_id, Params, undefined),
-                            action => Action,
-                            detail => #{<<"reason">> => maps:get(reason, Params, undefined)}
-                        })
-                    of
-                        ok -> {ok, Seat#{workspace_id => WorkspaceId}};
-                        {error, _} = AuditErr -> AuditErr
-                    end
+                {error, _} = Err -> Err;
+                {ok, Seat} -> {ok, Seat#{workspace_id => WorkspaceId}}
             end
     end.
 
@@ -1051,9 +1035,6 @@ max_concurrent(Params) ->
 %% ===================================================================
 %% 内部辅助
 %% ===================================================================
-
-append_event(Params, OrgId, WorkspaceId, Event) ->
-    cs_app_support:append_event(Params, OrgId, Event#{workspace_id => WorkspaceId}).
 
 with_store(Params, Fun) ->
     cs_app_support:with_store(Params, Fun).

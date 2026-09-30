@@ -98,6 +98,22 @@
     OrgId :: integer(), IdentityId :: integer(), Enabled :: boolean(), At :: integer()
 ) ->
     {ok, map()} | {error, seat_limit_exceeded | not_found | term()}.
+%% Event-aware variants persist the operation and audit in one transaction.
+-callback create_seat_limit_checked(
+    OrgId :: integer(),
+    IdentityId :: integer(),
+    Enabled :: boolean(),
+    MaxConcurrent :: pos_integer(),
+    CreatedBy :: term(),
+    Event :: event()
+) -> {ok, map()} | {error, term()}.
+-callback set_enabled_checked(
+    OrgId :: integer(),
+    IdentityId :: integer(),
+    Enabled :: boolean(),
+    At :: integer(),
+    Event :: event()
+) -> {ok, map()} | {error, term()}.
 -callback set_seat_enabled(
     OrgId :: integer(), IdentityId :: integer(), Enabled :: boolean(), At :: integer()
 ) ->
