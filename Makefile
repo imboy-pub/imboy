@@ -112,7 +112,15 @@ EDOC_OPTS = {doclet, edown_doclet}
 # restart_child 复原；loader/priv_plugins/sup_metrics 三个套件同理）。
 # 注意需同时过滤 src 模块条目——eunit 运行 {module, X} 会自动附带 X_tests；
 # 套件恢复后源模块条目一并移除。Excl 机制保留，未来再有独占套件时使用。
-EUNIT_TEST_SPEC = (fun() -> Excl = [], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
+# 2026-09-30 F-12 独占隔离：elib_tsid_tests / elib_tsid_guard_tests /
+# elib_tsid_bootstrap_harness_tests 三个套件操纵 VM 级 TSID 全局状态
+# （elib_tsid:reset_for_test + 测试配置 init/自建 guard），与在役 app guard
+# 共存会清掉/改写全局 runtime——全量轨道实证（20260930T031736Z-e36a1549
+# logs/0035）：中段执行后下游 app 套件 capacity_exhausted(lead_ms=33305) /
+# generator_not_registered 级联失败，而三套件单跑全绿、受害套件单跑全绿
+# （friend_repo_tests 13/13 隔离复跑 RC=0）。Excl 排除出全量 VM，覆盖由
+# 专项单跑承载（make eunit-local t=<模块名>，Gate G1/G3/G5 证据线）。
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid_tests, elib_tsid_guard_tests, elib_tsid_bootstrap_harness_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属
 # 模块清单（include/generated/imboy_product_features_erlc.mk），erlang.mk 原生
