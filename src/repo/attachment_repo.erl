@@ -425,6 +425,18 @@ group_access_sql(Tb) ->
         " AND gm.user_id = gmg.user_id AND gm.status = 1 ",
         "JOIN public.\"group\" grp ON grp.id = gmg.group_id AND grp.status = 1 ",
         "WHERE a.path = $1 AND a.scope = 'group' AND a.status >= 0 ",
+        %% 企业暂停不删除下级关系；下载必须在同一 statement 重验父级资格。
+        %% 个人工作区保留原会员模型；归档工作区只读，归档企业不再授权。
+        "AND ((grp.scope = 'personal' AND grp.workspace_id IS NULL) OR ",
+        " (grp.scope = 'workspace' AND EXISTS (SELECT 1 FROM public.workspace ws ",
+        "  LEFT JOIN public.organization org ON org.id = ws.organization_id ",
+        "  LEFT JOIN public.organization_member om ON om.organization_id = org.id ",
+        "   AND om.user_id = $2 AND om.status = 'active' ",
+        "  WHERE ws.id = grp.workspace_id AND ws.status IN ('active','archived') ",
+        "   AND (ws.organization_id IS NULL OR (org.status = 'active' AND om.user_id = $2)) ",
+        "   AND (EXISTS (SELECT 1 FROM public.workspace_member wm ",
+        "    WHERE wm.workspace_id = ws.id AND wm.user_id = $2 AND wm.status = 'active') ",
+        "    OR om.role IN ('owner','admin'))))) ",
         "AND ((a.group_file_id IS NULL AND a.anchor_conv_seq IS NOT NULL ",
         "      AND gmg.start_seq <= a.anchor_conv_seq) ",
         " OR (a.group_file_id IS NOT NULL AND EXISTS (",
