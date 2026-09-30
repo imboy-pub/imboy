@@ -35,6 +35,20 @@ data:
   IMBOY_TSID_NODE_ID: {{ .Values.backend.tsid.nodeId | toString | quote }}
   IMBOY_TSID_DC_BITS: {{ .Values.backend.tsid.dcBits | toString | quote }}
   IMBOY_TSID_STORE_BOOTSTRAP: {{ .Values.backend.tsid.storeBootstrap | default "existing" | quote }}
+  # 首启自举（TSID-05/08，elib_tsid_bootstrap 直读 os env）：与 storeBootstrap
+  # 正交并列——本键管 store 槽位打开合同，下面三键管 pristine 首启（无割接
+  # manifest 且 store 无 durable floor）如何求 floor、以及旧 writer 接管确认。
+  # bootstrapMode：auto_scan（缺省，扫库求 floor）| manual_floor（配
+  # bootstrapFloorUnixMs 人工下限：整数 unix 毫秒，floor = ms - 1735689600000）。
+  IMBOY_TSID_BOOTSTRAP_MODE: {{ .Values.backend.tsid.bootstrapMode | default "auto_scan" | quote }}
+  IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS: {{ .Values.backend.tsid.bootstrapFloorUnixMs | default "" | toString | quote }}
+  # legacy writer 接管确认：唯一合法值 I-CONFIRM-OLD-WRITER-STOPPED，仅在
+  # 显式设置时注入——envFrom 会全量注入本 ConfigMap 键，而该值按"已设置即
+  # 必须精确匹配"校验，空串会被读成已设置的非法值，pristine 首启一律
+  # fail-closed 拒启（空串 ≠ 未设置）。
+{{- if .Values.backend.tsid.bootstrapLegacyAck }}
+  IMBOY_TSID_BOOTSTRAP_LEGACY_ACK: {{ .Values.backend.tsid.bootstrapLegacyAck | quote }}
+{{- end }}
   IMBOY_TSID_MAX_LOGICAL_LEAD_MS: {{ .Values.backend.tsid.maxLogicalLeadMs | default 512 | toString | quote }}
   IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS: {{ .Values.backend.tsid.capacityWaitTimeoutMs | default 100 | toString | quote }}
   IMBOY_TSID_FENCE_WINDOW_MS: {{ .Values.backend.tsid.fenceWindowMs | default 1000 | toString | quote }}

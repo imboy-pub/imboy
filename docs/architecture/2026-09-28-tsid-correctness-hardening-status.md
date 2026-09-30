@@ -83,9 +83,9 @@
 
 ## 6. v1 catalog（现状口径）
 
-- **范围**：全部运行时 TSID 主键列（约 104 个；最终数字与清单
-  **以 `elib_tsid_catalog:primary_keys()` 为准**——数据核对回填前该函数为空列表占位，
-  此时的 `digest()` 锚定空清单，不得用于割接）。
+- **范围**：全部运行时 TSID 主键列（104 个；数字与清单
+  **以 `elib_tsid_catalog:primary_keys()` 为准**——数据核对回填已完成，`digest()`
+  锚定当前 104 表清单，割接 manifest 绑定该 digest）。
 - **为何取现状口径**（撞号风险论证）：
   1. 第一次 cutover 前，凡可能已写入历史 TSID 的主键列必须全部纳入扫描保护；
   2. 任何漏扫列中的历史 TSID 都会在重启自举（auto_scan 取 max(id)+1）时被新 ID 撞号；
@@ -97,11 +97,15 @@
 
 ## 7. 首启自举状态机（pristine-only）
 
-设计合同见 `src/lib/elib_tsid_bootstrap.erl` 头注释（本轮冻结；运行时实现未落地，见 §8）。
+设计合同与运行时实现均在 `src/lib/elib_tsid_bootstrap.erl`（`decide/1` 与 manifest
+读写已落地并接入 guard 启动链，见 §8）。
 
-- **pristine 判定**：无割接 manifest **且** store 无 durable floor。状态机接管 pristine
-  判定后，现役 `store_bootstrap=fresh|existing`（调用方自我声明）退役为被取代机制——
-  防止误配 fresh 绕过 manifest/floor 检查烧号；guard 接线状态见 §8。
+- **pristine 判定**：无割接 manifest **且** store 无 durable floor。状态机已接管 pristine
+  判定（接入 guard 启动链，见 §8），`store_bootstrap=fresh|existing` 的「调用方自我
+  声明」语义已被取代：生产装配缺省 `existing`（双槽 absent 时报 `no_valid_slot` 交
+  状态机判定），`fresh` 打开仅发生在状态机授权 `proceed_floor` 之后由 guard 内部
+  重开——误配 fresh 无法再绕过 manifest/floor 检查烧号；preflight 另保留
+  fresh+非空目录拒绝。
 - **STOP 矩阵**（全部 FAIL 级 `{stop, Reason}`，不得降 warning）：
 
 | STOP 原因 | 触发条件 |
@@ -119,7 +123,7 @@
 | 变量 | 语义 |
 |---|---|
 | `IMBOY_TSID_BOOTSTRAP_MODE` | `auto_scan`（缺省）\| `manual_floor` |
-| `IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS` | 整数 unix 毫秒；manual_floor 必填；换算 `floor_safe_before = (ms-EPOCH)<<11` |
+| `IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS` | 整数 unix 毫秒；manual_floor 必填；换算 `floor_safe_before = ms - EPOCH_MS`（相对毫秒域，**无移位**；带 `<<11` 的是 ID 的 slot/cursor 域，floor 与 store 的 `safe_before` 同域，guard 直接与墙钟 rel-ms 比较） |
 | `IMBOY_TSID_BOOTSTRAP_LEGACY_ACK` | 唯一合法值 `I-CONFIRM-OLD-WRITER-STOPPED`；操作员确认旧版停写，补写 manifest 后按 legacy_ack 接管现有 floor |
 
 - **decide/1 返回合同**：`proceed_existing`（正常重启）/ `proceed_floor`（pristine 首启）/
@@ -129,7 +133,65 @@
 
 - **RELEASE=NO_GO 维持不变**（LOCAL_CANDIDATE_PASS / EXTERNAL_VALIDATION_PENDING 口径不变）。
 - EXT-04（目标 PVC/存储类 crash 矩阵）、EXT-05（目标环境双实例锁）维持外部 NO_GO。
-- §6/§7 所述 catalog/scan/bootstrap 为**合同先行**交付：`elib_tsid_scan` 与
-  `elib_tsid_bootstrap` 的运行时实现、guard 接线、escript 退役（步骤 6）、catalog_check
-  均未落地；逐项完成对照见证据树 `gate-supplement/catalog-v1-addendum.md`。
-- 本轮 Gate 重跑：由主协调者冻结后执行——**待补**。
+- §6/§7 所述 catalog/scan/bootstrap 已由**合同先行**推进为**代码落地**（以下均为
+  本地代码可核实的事实，不涉及任何生产/外部验证，不影响 NO_GO 口径）：
+  - `elib_tsid_scan` 与 `elib_tsid_bootstrap` 的运行时实现已在 `src/lib/` 落地
+    （`scan/1` / `check_schema/2` / `bootstrap_floor/1`；`decide/1` /
+    `write_manifest/2` / `read_manifest/1`）；
+  - guard 接线已落地：`imboy_sup` 把 `elib_tsid_guard` 置于子进程列表首位
+    （早于任何可生成 ID 的 worker），启动链 acquire lifetime lock → open store →
+    `elib_tsid_bootstrap:decide/1` → 授权后 persist floor + 写割接 manifest 才
+    进入可生成状态；测试可经 `bootstrap_env_fun` / `bootstrap_scan_fun` 注入假
+    env/scan，生产缺省真实实现；
+  - catalog 已回填并经逐表核对（`elib_tsid_catalog:primary_keys/0`；v1 104 表
+    之后经 2026-09-30 第三方审计补全为 v2 183 表——179 单列 bigint 主键 +
+    4 hypertable 特例；mcp_client 主键 client_id、消息表 hypertable 复合主键
+    等特殊形态已在 catalog/scan 注释登记）；
+  - escript 退役（步骤 6）已完成：`scripts/tsid/tsid_scanner.escript` 与
+    `tsid_bootstrap_floor.escript` 均改为复用 `src/lib/elib_tsid_scan.erl`
+    唯一权威实现的 thin CLI shell（后者头部标注 DEPRECATED），脚本内不再自带 SQL；
+  - catalog_check 已落地：`scripts/tsid/tsid_catalog_check.escript`（CI gate，复用
+    `elib_tsid_scan:check_schema/2`）。
+  逐项完成对照见证据树 `gate-supplement/catalog-v1-addendum.md`。
+- Gate 重跑：2026-09-29 已完成一轮（24 命令落档、finalize 复算 24/24、
+  TSID 套件 190 用例全绿；证据树 `20260929T113446Z-5ccf04e6`）；
+  2026-09-30 审计修复候选（v2 catalog + db Gate 修复 + 三键贯通 + 文档对齐）
+  的 LOCAL_CANDIDATE 重跑见证据树候选轮目录。
+- §6/§7 所述 catalog/scan/bootstrap 合同先行交付**已全部落地**（提交链
+  352bee53→5ccf04e6：实现、guard 接线、escript 退役、catalog_check）；
+  逐项完成对照见证据树 `gate-supplement/catalog-v1-addendum.md`。
+- 本轮 Gate 重跑：**已完成**（2026-09-29，24 命令落档、finalize 复算 24/24、
+  TSID 套件 190 用例全绿；证据树 `20260929T113446Z-5ccf04e6`，审查轮与
+  合入后增量审查结论见其 `FINAL/` 与 `REPORT.md`）。
+
+## 9. 配置面加固（R1，2026-09-30，dd2be7ea）
+
+0cc0d7ce（TSID guard eunit 轨道豁免）合入 main 后的 review 轮（证据树
+`FINAL/post-merge-review-8c070819.md`）登记 R1：测试 seam 与 lock_provider
+切换无环境门槛，生产 sys.config 误设可分别导致 ID 重用（假 scan 从
+floor 0 起跳）与跨 VM 互斥失效（registry 为同 VM 语义，双实例红线绕过）。
+本轮按「**默认硬编码最优配置**」原则加固落地：
+
+- **lock_provider 配置面删除**，环境分档硬编码（`imboy_sup:lock_provider_for/1`）：
+  prod（及一切未知值，含 <<"pro">>/拼错值）恒 flock；test 恒 registry；
+  local/dev 探测 flock 可用则用、缺失回落 registry（仅单机开发场景）。
+  未知环境一律按生产对待——与 `imboy_env:current/0` fail-safe 哲学一致
+  （未设置即 prod），**默认即最保守生产配置**。任何环境显式设置
+  `{imboy, tsid_lock_provider}` → `{tsid_config_forbidden,_}` 拒启。
+- **seam 双键仅 test 轨道存在**（`imboy_sup:maybe_bootstrap_seams/1`）：
+  非 test 轨道代码路径不读 `tsid_bootstrap_env_fun/scan_fun`，检测到设置
+  即拒启；test 轨道半设/类型不符亦拒启（收硬 0cc0d7ce 的静默忽略）。
+- eunit_setup 删除 `tsid_lock_provider` set_env，改为
+  `os:putenv("IMBOYENV","test")` 轨道环境声明（IMBOYENV 优先于
+  application env，覆盖外部启动方式；eunit VM 一次性无需还原）。
+- 合同测试 +6 用例（分档矩阵/local 探测注入/禁键拒启/seam 透传与半设
+  拒启/prod 端到端）；TSID 八套件 196 用例全绿（190 + 新增 6）。
+- review 轮修复（2352d288）：合同用例 after 由无条件 unset 改为
+  snapshot/restore 纪律——旧写法会清掉 eunit 轨道 eunit_setup 的 seam
+  预设，app 重启时 guard 将走真 scan（schema_drift 拒启，复现 boot
+  波动）；prod 端到端用例补"快照+临时清空轨道预设"（其旧版通过系
+  泄漏顺带清键的假绿）。修复后双形态 15/15 + 全套件 196 复绿。
+
+**部署注意**：升级到本提交后，配置中残留 `{imboy, tsid_lock_provider}`
+会使应用拒启（错误消息含移除指引）——这是设计行为，删除该键即可；
+`tsid_bootstrap_env_fun/scan_fun` 同理，仅 eunit 轨道合法。

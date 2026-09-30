@@ -12,17 +12,21 @@
 > 1. **全局唯一语义已强化**：所有命名生成器（label）共享同一全局 cursor，同一节点上
 >    任意两个生成器产生的 ID 数值永不相同（`elib_tsid:generate/1` 的 label 仅是治理
 >    标签，不再分配独立数值空间）——本文「背景」中对"现有方案"的描述已过时。
-> 2. **多实例撞键防线已内建**：`dc_bits` 参数化（1..10，`IMBOY_TSID_DC_BITS`）+
->    combine_node 位布局 fail-closed 校验 + 双槽 durable 状态 store（含 generation）
->    + 同 CombinedNode lifetime lock 互斥 + cutover 高水位合同（时序与 bootstrap
->    env 键见 `deploy/.env.example` 时序段与 `deploy/docker-compose.community.yml`
->    /helm configmap 的全量键；`docs/architecture/tsid-cutover-runbook.md`）。
+> 2. **多实例撞键防线已内建**：`dc_bits` 参数化（代码合同 0..10，部署 preflight
+>    收紧为 1..10；`IMBOY_TSID_DC_BITS`）+ combine_node 位布局 fail-closed 校验 +
+>    双槽 durable fence store（双槽择新以 safe_before 为世代判据；generation 字段
+>    恒写 0，非 0 仅见于 v1 历史槽的 split-brain 识别）+ 同 CombinedNode lifetime
+>    lock 互斥 + cutover 高水位合同（时序参数与 bootstrap 三键
+>    `IMBOY_TSID_BOOTSTRAP_MODE` / `IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS` /
+>    `IMBOY_TSID_BOOTSTRAP_LEGACY_ACK` 见 `deploy/.env.example` TSID 段与
+>    `deploy/docker-compose.community.yml` /helm configmap 的全量键；
+>    `docs/architecture/tsid-cutover-runbook.md`）。
 >    「两个实例默认都用 dc=1,node=1 静默撞键」在同机场景已由 preflight 校验
 >    （fresh+非空目录拒绝）与 lifetime lock 堵住；跨机 node_id 唯一性仍需
 >    部署清单人工保证（preflight 自身如此声明）。
 > 3. **origin_bits 提案推迟**：在上述防线落地后再评估是否仍需把部署实例维度编码进
 >    ID 位布局。再评估触发条件：出现真实的跨实例数据合并/联邦需求。届时本文的位
->    分配方案仍可作为起点，但需基于新位布局合同（63-bit 上界、dc_bits 1..10）重新推导。
+>    分配方案仍可作为起点，但需基于新位布局合同（63-bit 上界、dc_bits 0..10）重新推导。
 
 ## 背景
 

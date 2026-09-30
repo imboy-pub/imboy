@@ -234,8 +234,27 @@ services:
       IMBOY_TSID_NODE_ID: ${IMBOY_TSID_NODE_ID:-1}
       IMBOY_TSID_DC_BITS: ${IMBOY_TSID_DC_BITS:-3}
       # store bootstrap 合同：existing（默认）= 无有效槽即拒绝启动；
-      # fresh 仅首次部署在 .env 显式设置，cutover 后必须移除
+      # fresh 仅首次部署在 .env 显式设置，cutover 后必须移除。
+      # 旧键仍被 imboy_env_overrides 读取（store 槽位打开合同），与下方
+      # BOOTSTRAP_* 三键（pristine 首启自举，elib_tsid_bootstrap 直读）
+      # 正交并列、各管一层。
       IMBOY_TSID_STORE_BOOTSTRAP: ${IMBOY_TSID_STORE_BOOTSTRAP:-existing}
+      # 首启自举（TSID-05/08）：pristine 首启（无割接 manifest 且 store 无
+      # durable floor）如何求 floor。mode：auto_scan（缺省，扫描数据库求
+      # floor）| manual_floor（用下方人工下限，割接场景见
+      # docs/architecture/tsid-cutover-runbook.md）。
+      IMBOY_TSID_BOOTSTRAP_MODE: ${IMBOY_TSID_BOOTSTRAP_MODE:-auto_scan}
+      # manual_floor 必填：整数 unix 毫秒；内部换算 floor = ms -
+      # 1735689600000（EPOCH 2025-01-01T00:00:00Z）。auto_scan 模式下
+      # 不读取；manual_floor 缺值时 fail-closed 拒启（合同：必填）。
+      IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS: ${IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}
+      # legacy writer 接管确认（无 manifest 但 store 有 floor 时必填）：
+      # 唯一合法值 I-CONFIRM-OLD-WRITER-STOPPED。⚠️ 默认必须整键不注入——
+      # 该值按"已设置即必须精确匹配"校验，空串会被读成已设置的非法值，
+      # pristine 首启一律拒启（空串 ≠ 未设置），而 .env 经 ${VAR:-} 透传
+      # 只能得到空串、无法表达"不注入"，故此处不落映射行：割接时取消
+      # 下一行注释，完成后必须恢复注释。
+      # IMBOY_TSID_BOOTSTRAP_LEGACY_ACK: I-CONFIRM-OLD-WRITER-STOPPED
       IMBOY_TSID_MAX_LOGICAL_LEAD_MS: ${IMBOY_TSID_MAX_LOGICAL_LEAD_MS:-512}
       IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS: ${IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS:-100}
       IMBOY_TSID_FENCE_WINDOW_MS: ${IMBOY_TSID_FENCE_WINDOW_MS:-1000}
