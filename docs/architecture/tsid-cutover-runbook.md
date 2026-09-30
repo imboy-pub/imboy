@@ -34,7 +34,14 @@ ERL_FLAGS="-pa deps/epgsql/ebin" escript tsid_scanner.escript \
 
 ## 3. 停写合同（AC-08C，全程必须明确）
 
-停写范围 = **所有写 TSID 列的路径**（193 表，见 inventory-merged.tsv），最小集合：
+停写范围 = **旧 TSID-08 inventory 覆盖的所有 TSID 落表路径**（193 张去重后、
+非 excluded 的表，见历史证据 `inventory-merged.tsv`），最小集合：
+
+> 数字口径：104 是已退役的 v1 运行时调用点 catalog；183 是已被取代的 v2
+> migrations 扫描 catalog；186 是当前 v3 catalog（182 张单列 bigint 主键表 +
+> 4 张 hypertable 特例，含 3 张 migrations 外表）；193 是旧 inventory 的
+> 停写/扫描覆盖面，还包含 TSID 位于复合主键或关联列的表。四者不能互换，
+> 当前启动时的 manifest digest 只绑定 v3 的 186 项。
 
 1. 停后端应用流量（nginx/LB 摘除或 `docker compose stop imboy_backend` / helm scale 0）
 2. 停后台 worker（消息清扫、账单、审核等全部 imboy_sup 子进程随应用停止）

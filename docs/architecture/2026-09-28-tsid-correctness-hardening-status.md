@@ -5,6 +5,7 @@
 > `.sha256` 由执行环境持有、保持入仓前状态，本附录为独立文件不修改计划原文）
 > 附录更新：2026-09-29（TSID-11）
 > 附录更新：2026-09-29（catalog v1 / 自举状态机合同 / 主键治理后续事项）
+> 附录更新：2026-09-30（catalog v2/v3 演进与 TSID-08 inventory 口径）
 
 ## 1. 执行概况
 
@@ -81,15 +82,26 @@
   - catalog 收缩只能发生在治理迁移完成之后，绝不能先于它（论证见 §6）；
   - 每次递减必须同步更新 manifest 绑定与证据。
 
-## 6. v1 catalog（现状口径）
+## 6. catalog 口径与演进
 
-- **范围**：全部运行时 TSID 主键列（104 个；数字与清单
-  **以 `elib_tsid_catalog:primary_keys()` 为准**——数据核对回填已完成，`digest()`
-  锚定当前 104 表清单，割接 manifest 绑定该 digest）。
+- **v1（历史口径，104 项）**：按运行时 `elib_tsid:generate/*` 调用点回溯得到；
+  该口径漏掉了复制既有 TSID、间接写入及部分新模块的主键表，已被 v2 取代，
+  不得再作为当前扫描或 manifest 绑定清单。
+- **v2（历史 migration 口径，183 项）**：覆盖 migrations 最终 schema 的
+  179 张单列 bigint 主键表，以及 4 张 `(id, created_at)` hypertable 特例；
+  后续生产首启证明它仍漏掉 migrations 之外的运行时/台账表，已被 v3 取代。
+- **v3（当前权威口径，186 项）**：以 `elib_tsid_catalog:primary_keys()` 为准，
+  在 v2 上补入 `msg_store_staging`、`schema_migrations` 和
+  `schema_migrations_history`，即 182 张单列 bigint 主键表 + 4 张 hypertable
+  特例；`digest()` 锚定此 v3 清单并写入割接 manifest。
+- **TSID-08 inventory（历史证据口径，193 表）**：`inventory-merged.tsv` 经
+  去重、排除 6 个显式 excluded 项后供旧 scanner 扫描的 TSID 落表清单；它还
+  包含 TSID 位于复合主键或关联列而非本表单列 bigint 主键的表，所以不等于
+  当前 v3 catalog 的 186 项。193 用于解释旧 cutover 证据，不是当前 catalog 数量。
 - **为何取现状口径**（撞号风险论证）：
   1. 第一次 cutover 前，凡可能已写入历史 TSID 的主键列必须全部纳入扫描保护；
   2. 任何漏扫列中的历史 TSID 都会在重启自举（auto_scan 取 max(id)+1）时被新 ID 撞号；
-  3. 因此 v1 宁全勿漏：catalog 收缩只能发生在治理迁移（§5）完成之后。
+  3. 因此当前 v3 宁全勿漏：catalog 收缩只能发生在治理迁移（§5）完成之后。
 - **数据来源**：call-sites × migrations DDL 静态扫描生成，人工逐条核对。
 - **绑定机制**：`digest()`（对 {version, 排序后清单} 的 SHA-256）→ 写入割接 manifest
   的 `catalog_digest` 字段（`elib_tsid_bootstrap`，魔数 IMBTSIDB1）→ 自举校验不符即
@@ -143,10 +155,10 @@
     `elib_tsid_bootstrap:decide/1` → 授权后 persist floor + 写割接 manifest 才
     进入可生成状态；测试可经 `bootstrap_env_fun` / `bootstrap_scan_fun` 注入假
     env/scan，生产缺省真实实现；
-  - catalog 已回填并经逐表核对（`elib_tsid_catalog:primary_keys/0`；v1 104 表
-    之后经 2026-09-30 第三方审计补全为 v2 183 表——179 单列 bigint 主键 +
-    4 hypertable 特例；mcp_client 主键 client_id、消息表 hypertable 复合主键
-    等特殊形态已在 catalog/scan 注释登记）；
+  - catalog 已回填并经逐表核对（`elib_tsid_catalog:primary_keys/0`；v1 104 项
+    经第三方审计补全为 v2 183 项，生产首启再补齐 3 张 migrations 外表形成
+    v3 186 项——182 单列 bigint 主键 + 4 hypertable 特例；mcp_client 主键
+    client_id、消息表 hypertable 复合主键等特殊形态已在 catalog/scan 注释登记）；
   - escript 退役（步骤 6）已完成：`scripts/tsid/tsid_scanner.escript` 与
     `tsid_bootstrap_floor.escript` 均改为复用 `src/lib/elib_tsid_scan.erl`
     唯一权威实现的 thin CLI shell（后者头部标注 DEPRECATED），脚本内不再自带 SQL；

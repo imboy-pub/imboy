@@ -1,8 +1,9 @@
 %%% elib_tsid_catalog_db_plumb_tests — pure-unit coverage for the
 %%% migration plumbing exported by elib_tsid_catalog_db_tests.
 %%%
-%%% Never contacts a database: epgsql:squery/2 is meck-mocked for the
-%%% apply-path cases; everything else is pure text / ordering logic.
+%%% Never contacts a database: inttest_marker_db:safe_connect/1 and
+%%% epgsql:squery/2 are meck-mocked for failure/apply-path cases; everything
+%%% else is pure text / ordering logic.
 %%% Covers:
 %%%   - numeric-prefix ordering (non-padded names sort numerically;
 %%%     prefix-less and duplicated prefixes are rejected, never skipped);
@@ -11,8 +12,8 @@
 %%%     inside literals, comments containing ';');
 %%%   - CREATE EXTENSION failure tolerance vs critical failure
 %%%     collection (execution continues, replay returns {error, Fs});
-%%%   - unset DSN yields {skip, _} from connect_scratch/0 — the
-%%%     function_clause regression of the gated suite stays fixed.
+%%%   - only an unset DSN yields {skip, _}; invalid DSN and configured-but-
+%%%     unavailable scratch DB fail closed.
 -module(elib_tsid_catalog_db_plumb_tests).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -273,6 +274,30 @@ unset_dsn_skips_suite_test_() ->
             ?_assertMatch({skip, _}, ?SUT:connect_scratch())
         end}.
 
+invalid_dsn_fails_suite_test_() ->
+    {setup, fun() -> set_dsn("invalid://dsn") end, fun restore_dsn/1, fun(_Old) ->
+        ?_assertMatch({error, {invalid_dsn, _}}, ?SUT:connect_scratch())
+    end}.
+
+configured_dsn_connect_failure_fails_suite_test_() ->
+    {setup,
+        fun() ->
+            Old = set_dsn("postgres://postgres@127.0.0.1:5432/tsid_scratch"),
+            meck:new(inttest_marker_db, [no_link]),
+            meck:expect(inttest_marker_db, safe_connect, 1, {error, econnrefused}),
+            Old
+        end,
+        fun(Old) ->
+            meck:unload(inttest_marker_db),
+            restore_dsn(Old)
+        end,
+        fun(_Old) ->
+            ?_assertEqual(
+                {error, {scratch_setup_failed, {connect_failed, econnrefused}}},
+                ?SUT:connect_scratch()
+            )
+        end}.
+
 %%% ==================================================================
 %%% Helpers
 %%% ==================================================================
@@ -296,6 +321,18 @@ squery_history() ->
     %% 本仓 meck 版本的 history 元素为三元组 {CallerPid, {M, F, Args}, Result}
     %% （对齐 test/lib/log_redact_tests.erl 的既有解析口径）。
     [Sql || {_Pid, {_M, _F, [_Conn, Sql]}, _Result} <- meck:history(epgsql)].
+
+set_dsn(Value) ->
+    Old = os:getenv(?ENV_DSN),
+    true = os:putenv(?ENV_DSN, Value),
+    Old.
+
+restore_dsn(false) ->
+    true = os:unsetenv(?ENV_DSN),
+    ok;
+restore_dsn(Old) ->
+    true = os:putenv(?ENV_DSN, Old),
+    ok.
 
 tmp_dir(Label) ->
     %% os:tmpdir/0 在 eunit 环境的 OTP 版本不可用（error:undef），

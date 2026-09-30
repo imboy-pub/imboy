@@ -3,8 +3,9 @@
 %%% Gated suite: runs against a throwaway PostgreSQL database ONLY when the
 %%% environment variable IMBOY_TSID_CATALOG_CHECK_DSN is set and non-empty
 %%% (e.g. postgres://user:password@host:5432/scratch). When unset the whole
-%%% suite conditional-skips (generator mode, repo convention). Connection or
-%%% setup failures print the reason and skip — they are never test failures.
+%%% suite conditional-skips (generator mode, repo convention). Once the DSN is
+%%% configured, invalid configuration, connection, migration, or fixture setup
+%%% failures are test failures: a configured Gate must never fail open.
 %%%
 %%% !!! DESTRUCTIVE !!! The DSN MUST point at a dedicated throwaway database:
 %%% the fixture DROP SCHEMA ... CASCADE + recreates the scratch schema, and
@@ -23,7 +24,7 @@
 %%%     migrations contain no CREATE EXTENSION of their own, so in practice
 %%%     the scratch DB must have the extensions pre-installed.
 %%%   - any other statement failure is collected; after the replay finishes
-%%%     the suite skips with the collected reasons rather than comparing a
+%%%     the suite fails with the collected reasons rather than comparing a
 %%%     catalog against a half-built schema (no false green).
 %%%
 %%% What is verified (contract of src/lib/elib_tsid_scan.erl):
@@ -83,7 +84,9 @@ catalog_db_test_() ->
             %% generator 不能直接返回裸 {skip, _}（非合法 eunit fixture 表示，
             %% eunit_data 会把整个元组当错误打出 **{skip,...} 并 Error 2）；
             %% 包成测试函数体返回 {skip, Reason} 才是 eunit 一等语义。
-            fun() -> {skip, Reason} end
+            fun() -> {skip, Reason} end;
+        {error, Reason} ->
+            fun() -> erlang:error(Reason) end
     end.
 
 %%% ------------------------------------------------------------------
@@ -147,16 +150,16 @@ connect_scratch() ->
         {error, not_set} ->
             {skip, ?ENV_DSN " not set; TSID catalog <-> scratch-DB check skipped"};
         {error, Reason} ->
-            {skip, lists:flatten(io_lib:format("invalid " ?ENV_DSN ": ~tp", [Reason]))};
+            {error, {invalid_dsn, Reason}};
         {ok, ConnMap} ->
             try open_scratch(ConnMap) of
                 {ok, Conn} ->
                     {ok, Conn};
                 {error, R} ->
-                    skip_on_connect_failure({scratch_setup_failed, R})
+                    {error, {scratch_setup_failed, R}}
             catch
-                _:R ->
-                    skip_on_connect_failure({scratch_setup_failed, R})
+                Class:R ->
+                    {error, {scratch_setup_failed, {Class, R}}}
             end
     end.
 
@@ -170,13 +173,8 @@ dsn_env() ->
         Value -> Value
     end.
 
-skip_on_connect_failure(Reason) ->
-    Msg = io_lib:format("scratch DB unavailable (~tp); suite skipped", [Reason]),
-    io:format("~ts~n", [Msg]),
-    {skip, lists:flatten(Msg)}.
-
 open_scratch(ConnMap) ->
-    case epgsql:connect(ConnMap) of
+    case inttest_marker_db:safe_connect(ConnMap) of
         {ok, Conn} ->
             case scratch_ready(Conn) of
                 ok ->
