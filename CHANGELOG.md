@@ -15,9 +15,11 @@
 
 - TSID 主键生成正确性加固：64-bit ID 唯一性防线从进程内状态升级为 durable 双槽 fence（safe_before 严格递增、越线即拒启）+ 跨进程 lifetime lock（生产 flock，owner 崩溃内核自动释放）+ pristine-only 首启自举状态机（无割接 manifest 且库内已有数据时拒绝静默归零；割接 manifest 持久化 + CRC32 + catalog digest 绑定）；v1 catalog（104 主键列）与库内高水位扫描进 boot 门（schema drift / catalog mismatch 拒启）；bootstrap 决策崩溃一律收敛为 typed stop，绝不 raw crash（`352bee53…5ccf04e6`）
 - TSID 配置面收紧（**升级注意**）：`tsid_lock_provider` 键从配置面删除，lock provider 按环境硬编码（生产及一切未知环境恒 `flock`；eunit 轨道恒 `registry`；local 探测）；`tsid_bootstrap_env_fun/scan_fun` 仅 eunit 轨道合法，生产配置携带任一键即启动拒启（防误配导致的 ID 重用与跨实例互斥失效）——配置中残留旧键会使应用拒启，错误消息含移除指引，属设计行为（`dd2be7ea…03c6e6cb`）
+- TSID catalog 审计补全（**升级注意**）：第三方审计发现 v1 catalog（运行时调用点口径，104 表）漏登 79 张单列 bigint 主键表，真实完整 schema 首次启动会被扫描器以 `unclassified_primary_keys` 拒启（fail-closed）。v2 = 183 项（179 单列 + 4 hypertable 特例），catalog version 1→2——**既有割接 manifest 的 digest 失配属预期**，按割接 runbook 重新绑定；`IMBOY_TSID_BOOTSTRAP_MODE/_FLOOR_UNIX_MS/_LEGACY_ACK` 三键已贯通 Compose/Helm/.env.example（LEGACY_ACK 缺省必须整键不注入，空串视为已设置的非法值拒启）（`8f1a164d…102fd6ac`）
 
 ### Fixed
 
+- TSID catalog scratch-DB 门控测试：未设 DSN 时由 function_clause 崩溃（exit 2）修复为干净 skip；scratch 底座由空 schema 改为全量迁移重放（数字序 / dollar-quote 状态机拆分 / 扩展容错 / 残缺 schema 不假绿），`catalog ↔ migrated schema` 真库对照可经 `IMBOY_TSID_CATALOG_CHECK_DSN` 门控执行（`18e94ffb`）
 - 契约漂移 #2：管理后台内置角色 4/5/6（内容审核/安全治理/客服）补展示名——抽 `shared/adminRoles.ts` 单一映射对齐后端 `role_acl/1` 真源（imboyadmin `cf9ad7b`）
 - 契约漂移 #7（收口）：上行 WS action 注册表与下行 S2C action 清单均入契约门（`api_contract.json` `ws_actions`/`ws_s2c_actions` 段，format_version 3）；App 上行常量收编 `C2SAction` 并接单向比对（imboyapp `783b752f`）；新发现 #9（App WS `message_reaction` 通道服务端不认）登记待拍板
 
