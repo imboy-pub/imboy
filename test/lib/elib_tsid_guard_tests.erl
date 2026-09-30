@@ -584,12 +584,20 @@ owner_lock_symlink_rejected_test() ->
 %% 的 cleanup_start_orphans 亦已兜底（boot 前统一复位），此处为套件级
 %% 双保险：任何仅运行本套件的轨道（单套件直跑）也零泄漏。
 guard_tests_tail_state_reset_test() ->
-    elib_tsid:reset_for_test(),
-    ?assertMatch(
-        {elib_tsid_not_initialized, _},
-        try elib_tsid:generate() of
-            _ -> ok
-        catch
-            error:{elib_tsid_not_initialized, _} = E -> E
-        end
-    ).
+    case elib_tsid:runtime_handle() of
+        {ok, #{guard_pid := Pid}} when is_pid(Pid), is_process_alive(Pid) ->
+            %% 全量轨道 app 已在役（真实 guard 持 runtime）：复位会
+            %% 掏空在役生成状态，绝不可清——混跑卫生由 eunit_runner
+            %% 的 boot 前复位（仅 app 未运行窗口）负责。
+            ok;
+        _ ->
+            elib_tsid:reset_for_test(),
+            ?assertMatch(
+                {elib_tsid_not_initialized, _},
+                try elib_tsid:generate() of
+                    _ -> ok
+                catch
+                    error:{elib_tsid_not_initialized, _} = E -> E
+                end
+            )
+    end.
