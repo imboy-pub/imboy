@@ -81,6 +81,7 @@ upload_file_success_test_() ->
         meck:new(elib_pg, [passthrough]),
         meck:expect(elib_pg, with_tx, fun(F) -> F(conn) end),
         meck:new(attachment_ds, [passthrough]),
+        meck:expect(attachment_ds, ensure_upload_scope_tx, fun(conn, {group, 1}, 100) -> ok end),
         meck:expect(attachment_ds, save, fun(Conn, CreatedAt, Uid, Attaches) ->
             self() ! attachment_saved,
             ?assertEqual(conn, Conn),

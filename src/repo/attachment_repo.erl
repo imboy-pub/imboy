@@ -157,12 +157,10 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     % 构建带ON CONFLICT的INSERT SQL
     {Sql, Params} = elib_pg_sql:insert(tablename(), NewAttach2),
     FullSql = [Sql, <<" ">>, OnConflictUpdate],
-    _ = elib_pg:execute(Conn, FullSql, Params),
-    % Res = epgsql:execute_batch(Conn, [{Stmt1, []}]),
-    % elib_log:info(io_lib:format("attachment_repo:save/4: Res ~p ~n", [Res])),
-    % 递归保存附近信息
-    save(Conn, CreatedAt, Uid, Tail),
-    ok.
+    case elib_pg:execute(Conn, FullSql, Params) of
+        {ok, _Count} -> save(Conn, CreatedAt, Uid, Tail);
+        {error, Reason} -> throw({abort_tx, {attachment_save_failed, Reason}})
+    end.
 
 %% ===================================================================
 %% Admin Query Functions

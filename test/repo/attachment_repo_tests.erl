@@ -361,3 +361,24 @@ channel_scope_query_failure_denies_test_() ->
             ?assertNot(attachment_repo:authorize_channel_scope(9, 7))
         end
     ).
+
+attachment_write_error_aborts_transaction_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [{'execute', 3, fun(_, _, _) -> {error, write_failed} end}]},
+            {elib_tsid, [{'generate', 1, fun(_) -> 123 end}]}
+        ],
+        fun() ->
+            Attach = #{
+                <<"mime_type">> => <<"text/plain">>,
+                <<"name">> => <<"a.txt">>,
+                <<"path">> => <<"u1/a.txt">>,
+                <<"url">> => <<"u1/a.txt">>,
+                <<"size">> => 1
+            },
+            ?assertThrow(
+                {abort_tx, {attachment_save_failed, write_failed}},
+                attachment_repo:save(fake_conn, 1700000000, 1, [Attach])
+            )
+        end
+    ).

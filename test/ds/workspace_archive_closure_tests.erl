@@ -74,6 +74,7 @@ tx_fun() ->
 %%% 归档 workspace + 全资源可解析的 mock 基座
 archived_mocks() ->
     [
+        attachment_parent_member_mock(),
         {workspace_resolver, [
             {'resolve_workspace', 1, fun
                 ({workspace, ?WS_ID}) -> {ok, ?WS_ID};
@@ -120,6 +121,7 @@ archived_mocks() ->
 %%% personal 资源直通（回归红线：个人频道/群零行为变化）
 personal_mocks() ->
     [
+        attachment_parent_member_mock(),
         {workspace_resolver, [
             {'resolve_workspace', 1, fun(_) -> personal end}
         ]},
@@ -131,6 +133,14 @@ personal_mocks() ->
             {'execute', 3, fun(_C, _S, _P) -> {ok, 1} end}
         ]}
     ].
+
+%% 本组验证归档守卫；父级有效成员事实由独立真实 PG 场景覆盖。
+attachment_parent_member_mock() ->
+    {attachment_repo, [
+        {'lock_upload_organization_tx', 3, fun(_, _, _) -> ok end},
+        {'authorize_upload_scope_tx', 4, fun(_, _, _, _) -> true end},
+        {'authorize_channel_scope', 2, fun(_, _) -> true end}
+    ]}.
 
 %% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），
 %% ?WITH_MECKS 包在 {Desc, fun} 体内 = 静默空转。此 helper 立即执行等价语义：
@@ -1087,8 +1097,7 @@ group_file_upload_closure_test_() ->
         end},
         {"group file attachment write aborted in-tx on archived (window race)", fun() ->
             %% 前置检查通过后归档竞态落进检查-写窗口：write_tx 的
-            %% 同事务守卫兜底——attachment 行绝不落库（save 不执行），
-            %% 且 fail-open 设计不变（返回 ok、只记日志，不放大成上传失败）。
+            %% 同事务守卫兜底——group_file 与 attachment 均不落库。
             %% 驱动公开入口 upload_file/5：预检（自动提交 one/2）读到 active，
             %% 落库守卫（事务内 query/3）已翻为 archived——窗口竞态。
             MemberMock = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
