@@ -53,6 +53,7 @@
 
 %% @doc 单 statement 校验群附件的当前世代边界。
 -export([authorize_group_access/2]).
+-export([authorize_channel_scope/2, channel_scope_access_sql/0]).
 %% 真库回归直接执行生产 SQL，避免用 mock/字符串包含断言替代 PostgreSQL 语义。
 -export([group_access_sql/1]).
 
@@ -419,15 +420,44 @@ authorize_group_access(ObjectKey, Uid) ->
 
 -spec group_access_sql(binary()) -> binary().
 group_access_sql(Tb) ->
+    ScopeSql = resource_scope_access_sql(),
     <<"SELECT EXISTS (SELECT 1 FROM ", Tb/binary, " a ", "JOIN public.group_member_generation gmg ",
         " ON a.scope_ref = gmg.group_id::text AND gmg.user_id = $2 ", " AND gmg.end_seq IS NULL ",
         "JOIN public.group_member gm ON gm.group_id = gmg.group_id ",
         " AND gm.user_id = gmg.user_id AND gm.status = 1 ",
         "JOIN public.\"group\" grp ON grp.id = gmg.group_id AND grp.status = 1 ",
-        "WHERE a.path = $1 AND a.scope = 'group' AND a.status >= 0 ",
-        %% 企业暂停不删除下级关系；下载必须在同一 statement 重验父级资格。
-        %% 个人工作区保留原会员模型；归档工作区只读，归档企业不再授权。
-        "AND ((grp.scope = 'personal' AND grp.workspace_id IS NULL) OR ",
+        "WHERE a.path = $1 AND a.scope = 'group' AND a.status >= 0 ", ScopeSql/binary,
+        "AND ((a.group_file_id IS NULL AND a.anchor_conv_seq IS NOT NULL ",
+        "      AND gmg.start_seq <= a.anchor_conv_seq) ",
+        " OR (a.group_file_id IS NOT NULL AND EXISTS (",
+        "      SELECT 1 FROM public.group_file gf ",
+        "      WHERE gf.id = a.group_file_id AND gf.group_id = gmg.group_id ",
+        "        AND gf.status = 1)))) AS allowed">>.
+
+%% @doc 频道附件的父级范围资格；订阅/付费/频道角色仍由原逻辑裁决。
+-spec authorize_channel_scope(integer(), integer()) -> boolean().
+authorize_channel_scope(ChannelId, Uid) when
+    is_integer(ChannelId), ChannelId > 0, is_integer(Uid), Uid > 0
+->
+    case elib_pg:one(channel_scope_access_sql(), [ChannelId, Uid]) of
+        {ok, #{<<"allowed">> := true}} -> true;
+        _ -> false
+    end;
+authorize_channel_scope(_, _) ->
+    false.
+
+-spec channel_scope_access_sql() -> binary().
+channel_scope_access_sql() ->
+    ScopeSql = resource_scope_access_sql(),
+    <<"SELECT EXISTS (SELECT 1 FROM public.channel grp ", "WHERE grp.id = $1 AND grp.status = 1 ",
+        ScopeSql/binary, ") AS allowed">>.
+
+%% 固定 grp 别名供群、频道共用；只拼接内部 SQL，参数仍使用 $1/$2。
+-spec resource_scope_access_sql() -> binary().
+resource_scope_access_sql() ->
+    %% 企业暂停不删除下级关系；下载必须在同一 statement 重验父级资格。
+    %% 个人工作区保留原会员模型；归档工作区只读，归档企业不再授权。
+    <<"AND ((grp.scope = 'personal' AND grp.workspace_id IS NULL) OR ",
         " (grp.scope = 'workspace' AND EXISTS (SELECT 1 FROM public.workspace ws ",
         "  LEFT JOIN public.organization org ON org.id = ws.organization_id ",
         "  LEFT JOIN public.organization_member om ON om.organization_id = org.id ",
@@ -436,13 +466,7 @@ group_access_sql(Tb) ->
         "   AND (ws.organization_id IS NULL OR (org.status = 'active' AND om.user_id = $2)) ",
         "   AND (EXISTS (SELECT 1 FROM public.workspace_member wm ",
         "    WHERE wm.workspace_id = ws.id AND wm.user_id = $2 AND wm.status = 'active') ",
-        "    OR om.role IN ('owner','admin'))))) ",
-        "AND ((a.group_file_id IS NULL AND a.anchor_conv_seq IS NOT NULL ",
-        "      AND gmg.start_seq <= a.anchor_conv_seq) ",
-        " OR (a.group_file_id IS NOT NULL AND EXISTS (",
-        "      SELECT 1 FROM public.group_file gf ",
-        "      WHERE gf.id = a.group_file_id AND gf.group_id = gmg.group_id ",
-        "        AND gf.status = 1)))) AS allowed">>.
+        "    OR om.role IN ('owner','admin'))))) ">>.
 
 %% @doc 按 id 查询附件 path（ObjectKey），供 admin 下载端点签发 presign GET
 %% 仅返回未软删除（status >= 0）的记录

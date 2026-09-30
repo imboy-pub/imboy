@@ -12,7 +12,13 @@ run(SocketPath) ->
     }),
     try
         schema(C),
-        eunit:test([{"enterprise group attachment access", fun() -> verify(C) end}], [verbose])
+        eunit:test(
+            [
+                {"enterprise group attachment access", fun() -> verify(C) end},
+                {"enterprise channel attachment scope", fun() -> verify_channel(C) end}
+            ],
+            [verbose]
+        )
     after
         epgsql:close(C)
     end.
@@ -24,6 +30,7 @@ schema(C) ->
         "CREATE TABLE workspace(id bigint PRIMARY KEY,organization_id bigint,status text);"
         "CREATE TABLE workspace_member(workspace_id bigint,user_id bigint,status text);"
         "CREATE TABLE \"group\"(id bigint PRIMARY KEY,status int,scope text,workspace_id bigint);"
+        "CREATE TABLE channel(id bigint PRIMARY KEY,status int,scope text,workspace_id bigint);"
         "CREATE TABLE group_member(group_id bigint,user_id bigint,status int);"
         "CREATE TABLE group_member_generation(group_id bigint,user_id bigint,start_seq bigint,end_seq bigint);"
         "CREATE TABLE group_file(id bigint,group_id bigint,status int);"
@@ -35,6 +42,8 @@ schema(C) ->
         "INSERT INTO workspace_member VALUES(100,1,'active'),(200,1,'active'),(300,1,'active');"
         "INSERT INTO \"group\" VALUES(11,1,'workspace',100),(22,1,'workspace',200),"
         "(33,1,'personal',NULL),(44,1,'workspace',300);"
+        "INSERT INTO channel VALUES(11,1,'workspace',100),(22,1,'workspace',200),"
+        "(33,1,'personal',NULL),(44,1,'workspace',300),(55,0,'personal',NULL);"
         "INSERT INTO group_member SELECT id,1,1 FROM \"group\";"
         "INSERT INTO group_member_generation SELECT id,1,5,NULL FROM \"group\";"
         "INSERT INTO group_file VALUES(9,11,1);"
@@ -108,3 +117,47 @@ sql(C, Query) ->
             false -> [R]
         end
     ).
+
+verify_channel(C) ->
+    sql(C, <<
+        "UPDATE workspace SET status='active';"
+        "UPDATE organization_member SET status='active',role='member';"
+        "UPDATE workspace_member SET status='active'"
+    >>),
+    ?assert(channel_allowed(C, 11)),
+    ?assert(channel_allowed(C, 33)),
+    ?assert(channel_allowed(C, 44)),
+    ?assertNot(channel_allowed(C, 55)),
+    ?assertNot(channel_allowed(C, 999)),
+    sql(C, <<"UPDATE organization_member SET status='suspended' WHERE organization_id=10">>),
+    ?assertNot(channel_allowed(C, 11)),
+    ?assert(channel_allowed(C, 22)),
+    ?assert(channel_allowed(C, 33)),
+    sql(C, <<"UPDATE organization_member SET status='removed' WHERE organization_id=10">>),
+    ?assertNot(channel_allowed(C, 11)),
+    sql(C, <<"DELETE FROM organization_member WHERE organization_id=10">>),
+    ?assertNot(channel_allowed(C, 11)),
+    sql(C, <<
+        "INSERT INTO organization_member VALUES(10,1,'active','member');"
+        "UPDATE workspace_member SET status='removed' WHERE workspace_id=100"
+    >>),
+    ?assertNot(channel_allowed(C, 11)),
+    sql(C, <<"UPDATE organization_member SET role='admin' WHERE organization_id=10">>),
+    ?assert(channel_allowed(C, 11)),
+    sql(C, <<"UPDATE organization SET status='archived' WHERE id=10">>),
+    ?assertNot(channel_allowed(C, 11)),
+    sql(C, <<
+        "UPDATE organization SET status='active' WHERE id=10;"
+        "UPDATE workspace SET status='archived' WHERE id=100"
+    >>),
+    ?assert(channel_allowed(C, 11)),
+    sql(C, <<"UPDATE workspace_member SET status='removed' WHERE workspace_id=300">>),
+    ?assertNot(channel_allowed(C, 44)).
+
+channel_allowed(C, ChannelId) ->
+    {ok, _, [{Result}]} = epgsql:equery(
+        C,
+        attachment_repo:channel_scope_access_sql(),
+        [ChannelId, 1]
+    ),
+    Result.

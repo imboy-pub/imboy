@@ -521,6 +521,11 @@ authorize_moment_scope(_Uid, _Rec) ->
 %% 「无权向该范围上传」）。
 -spec has_channel_attachment_access(integer(), integer()) -> boolean().
 has_channel_attachment_access(Uid, ChannelId) ->
+    attachment_ds:authorize_channel_scope(ChannelId, Uid) andalso
+        has_channel_attachment_entitlement(Uid, ChannelId).
+
+-spec has_channel_attachment_entitlement(integer(), integer()) -> boolean().
+has_channel_attachment_entitlement(Uid, ChannelId) ->
     case channel_logic_common:get_user_role(ChannelId, Uid) of
         Role when is_integer(Role), Role > 0 ->
             true;

@@ -95,6 +95,7 @@ presign_group_non_member_forbidden_test_() ->
 presign_channel_subscriber_ok_test_() ->
     ?WITH_MECKS(
         [
+            {attachment_ds, [{'authorize_channel_scope', 2, fun(_, _) -> true end}]},
             %% 非频道管理角色（get_role → 0），走订阅判定
             {channel_admin_ds, [{'get_role', 2, fun(_, _) -> 0 end}]},
             {channel_ds, [
@@ -114,6 +115,7 @@ presign_channel_subscriber_ok_test_() ->
 presign_channel_non_subscriber_forbidden_test_() ->
     ?WITH_MECKS(
         [
+            {attachment_ds, [{'authorize_channel_scope', 2, fun(_, _) -> true end}]},
             {channel_admin_ds, [{'get_role', 2, fun(_, _) -> 0 end}]},
             {channel_ds, [
                 {'find_by_id', 2, fun(9, _Fields) -> #{<<"access_type">> => 0} end}
@@ -132,6 +134,7 @@ presign_channel_non_subscriber_forbidden_test_() ->
 presign_paid_channel_subscription_without_purchase_forbidden_test_() ->
     ?WITH_MECKS(
         [
+            {attachment_ds, [{'authorize_channel_scope', 2, fun(_, _) -> true end}]},
             {channel_ds, [
                 {'find_by_id', 2, fun(9, _Fields) ->
                     #{
@@ -535,6 +538,7 @@ authorize_channel_subscriber_grants_test_() ->
     ?WITH_MECKS(
         [
             {attachment_ds, [
+                {'authorize_channel_scope', 2, fun(_, _) -> true end},
                 {'find_by_path', 1, fun(_K) ->
                     {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
                 end}
@@ -555,6 +559,7 @@ authorize_channel_non_subscriber_denies_test_() ->
     ?WITH_MECKS(
         [
             {attachment_ds, [
+                {'authorize_channel_scope', 2, fun(_, _) -> true end},
                 {'find_by_path', 1, fun(_K) ->
                     {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
                 end}
@@ -575,6 +580,7 @@ authorize_paid_channel_purchased_grants_test_() ->
     ?WITH_MECKS(
         [
             {attachment_ds, [
+                {'authorize_channel_scope', 2, fun(_, _) -> true end},
                 {'find_by_path', 1, fun(_K) ->
                     {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
                 end}
@@ -603,6 +609,7 @@ authorize_paid_channel_subscription_without_purchase_denies_test_() ->
     ?WITH_MECKS(
         [
             {attachment_ds, [
+                {'authorize_channel_scope', 2, fun(_, _) -> true end},
                 {'find_by_path', 1, fun(_K) ->
                     {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
                 end}
@@ -633,6 +640,7 @@ authorize_channel_uploader_subscribed_grants_test_() ->
     ?WITH_MECKS(
         [
             {attachment_ds, [
+                {'authorize_channel_scope', 2, fun(_, _) -> true end},
                 {'find_by_path', 1, fun(_K) ->
                     {ok, #{
                         <<"scope">> => <<"channel">>,

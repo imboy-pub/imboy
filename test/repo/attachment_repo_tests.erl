@@ -348,3 +348,16 @@ authorize_group_access_fails_closed_test_() ->
             ?assertNot(attachment_repo:authorize_group_access(<<"u1/g66/a.png">>, 7))
         end
     ).
+
+channel_scope_query_failure_denies_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [{'one', 2, fun(_, [9, 7]) -> {error, unavailable} end}],
+        fun() ->
+            ?assertNot(attachment_repo:authorize_channel_scope(0, 7)),
+            ?assertNot(attachment_repo:authorize_channel_scope(9, 0)),
+            ?assertNot(attachment_repo:authorize_channel_scope(<<"9">>, 7)),
+            ?assertEqual(0, meck:num_calls(elib_pg, one, 2)),
+            ?assertNot(attachment_repo:authorize_channel_scope(9, 7))
+        end
+    ).

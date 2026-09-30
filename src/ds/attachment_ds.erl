@@ -22,6 +22,7 @@
 
 -export([find_path_by_id/1]).
 -export([authorize_group_access/2]).
+-export([authorize_channel_scope/2]).
 
 %% ===================================================================
 %% API Functions
@@ -176,3 +177,7 @@ find_path_by_id(Id) ->
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+-spec authorize_channel_scope(integer(), integer()) -> boolean().
+authorize_channel_scope(ChannelId, Uid) ->
+    attachment_repo:authorize_channel_scope(ChannelId, Uid).
