@@ -24,6 +24,8 @@ deploy/
 │                                # 7 核心服务：pg18 + garage + backend + admin + nginx
 │                                # + certbot + livekit；监控 5 服务走 --profile monitoring
 ├── docker-compose.uptrace.yml   # 可选 Uptrace overlay（默认关闭）
+├── docker-compose.tsid-cutover.yml # TSID 割接 overlay（ACK 确认通道，仅割接时叠加；
+│                                # 手册见 docs/architecture/tsid-cutover-runbook.md §4a）
 ├── uptrace/                     # Uptrace / OTel Collector / nginx 配置
 ├── docker-compose.demo.yml      # 最小两服务演示栈（零配置评估）/ Minimal 2-service demo stack
 ├── docker-compose.prod.yml      # ⚠️ 商务版走单独交付渠道，不在开源仓内 / Business edition, NOT in the open-source repo

@@ -1,0 +1,44 @@
+# =============================================================================
+# TSID cutover overlay — 操作员确认通道（ACK）的显式注入层
+# =============================================================================
+# 用法（与 base 叠加，不修改 base）：
+#   export IMBOY_TSID_BOOTSTRAP_LEGACY_ACK='I-CONFIRM-OLD-WRITER-STOPPED'
+#   export IMBOY_TSID_BOOTSTRAP_REBIND_ACK='I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:<old_digest_hex>:<new_digest_hex>'
+#   docker compose -f docker-compose.community.yml -f docker-compose.tsid-cutover.yml up -d
+#
+# 设计合同（与 elib_tsid_bootstrap 状态机一一对应）：
+#   1. base compose（docker-compose.community.yml）保持不注入任何 ACK——
+#      两个键在 base 中均为注释态（空串 ≠ 未设置：空串会被状态机读成
+#      已设置的非法值并 fail-closed 拒启），日常启动/重启绝不经过本文件。
+#   2. 本 overlay 对两个 ACK 键使用 required interpolation（${VAR:?...}）：
+#      叠加本文件而未导出对应变量时 `docker compose config`/`up` 直接非零
+#      失败，绝不渲染成空串默认值。
+#   3. IMBOY_TSID_BOOTSTRAP_LEGACY_ACK：legacy writer 接管确认（无割接
+#      manifest 且 store 有 durable floor 时唯一放行通道），唯一合法值
+#      I-CONFIRM-OLD-WRITER-STOPPED（精确匹配，无 trim）。
+#   4. IMBOY_TSID_BOOTSTRAP_REBIND_ACK：catalog digest 显式重绑确认
+#      （manifest 绑定的 catalog_digest 与当前 catalog 不符时的唯一放行
+#      通道）。值必须精确绑定 expected old digest 与 current new digest：
+#      I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:<old_hex>:<new_hex>
+#      两段各 64 个十六进制字符；old = 部署割接 manifest 当前绑定的
+#      digest，new = 新版代码 elib_tsid_catalog 的 digest（见
+#      docs/architecture/tsid-cutover-runbook.md §4a 的求取命令）。
+#      交换 / 过期 / 错绑一律 fail-closed 拒启。
+#   5. 两个通道各管一种悬置状态，互不替代：REBIND_ACK 只在 catalog_changed
+#      悬置时被读取，LEGACY_ACK 只在无 manifest 的 blocked 分支被读取；
+#      另一侧悬置不存在时对应 ACK 为惰性（不参与判定，不构成放行）。
+#      因此单次割接事件只需为本事件实际悬置的通道提供真实值，另一键
+#      满足渲染所需的任意非空占位即可——例如 catalog rebind 事件中
+#      LEGACY_ACK 给精确值、REBIND_ACK 给真实绑定；legacy 接管事件反之。
+#   6. cutover 完成后回到仅使用 base：`docker compose -f docker-compose.
+#      community.yml up -d`（不再叠加本文件），ACK 键即不存在；残留的
+#      REBIND_ACK 在 digest 已匹配的正常重启中是惰性的（见合同 5）。
+# =============================================================================
+
+services:
+  imboy_backend:
+    environment:
+      # legacy writer 接管确认：唯一合法值 I-CONFIRM-OLD-WRITER-STOPPED。
+      IMBOY_TSID_BOOTSTRAP_LEGACY_ACK: "${IMBOY_TSID_BOOTSTRAP_LEGACY_ACK:?exact acknowledgement required: I-CONFIRM-OLD-WRITER-STOPPED}"
+      # catalog rebind 确认：old/new digest 精确绑定（各 64 个 hex 字符）。
+      IMBOY_TSID_BOOTSTRAP_REBIND_ACK: "${IMBOY_TSID_BOOTSTRAP_REBIND_ACK:?exact acknowledgement required: I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:<old_digest_hex>:<new_digest_hex>}"
