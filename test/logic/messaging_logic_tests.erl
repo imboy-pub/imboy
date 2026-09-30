@@ -68,8 +68,9 @@ encode_history_msg_decodes_jsonb_columns_test() ->
     Msg = messaging_logic:encode_history_msg(1002, Row),
     ?assertEqual(#{<<"protocol">> => <<"olm">>, <<"version">> => 3}, maps:get(<<"e2ee">>, Msg)),
     ?assertEqual(<<>>, maps:get(<<"payload">>, Msg)),
-    ?assertEqual(1001, maps:get(<<"from">>, Msg)),
-    ?assertEqual(1002, maps:get(<<"to">>, Msg)).
+    %% S0 契约（e23a9df0）：信封 ID 统一归一化为 binary 字符串。
+    ?assertEqual(<<"1001">>, maps:get(<<"from">>, Msg)),
+    ?assertEqual(<<"1002">>, maps:get(<<"to">>, Msg)).
 
 route_ws_delegates_c2c_to_existing_logic_modules_test_() ->
     ?WITH_MECK(
@@ -193,9 +194,9 @@ history_range_fetch_advances_cursor_test_() ->
             ?assertEqual(7, maps:get(<<"next_seq">>, Res)),
             ?assertEqual(true, maps:get(<<"has_more">>, Res)),
             ?assertEqual(2, length(maps:get(<<"messages">>, Res))),
-            % from_id/to_id 重命名为 from/to
+            % from_id/to_id 重命名为 from/to（S0 契约：ID 归一化 binary）
             [First | _] = maps:get(<<"messages">>, Res),
-            ?assertEqual(100, maps:get(<<"from">>, First)),
+            ?assertEqual(<<"100">>, maps:get(<<"from">>, First)),
             ?assertEqual(false, maps:is_key(<<"from_id">>, First))
         end
     ).
