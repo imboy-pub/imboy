@@ -98,20 +98,9 @@ project(_, Req0, _State) ->
 -spec list_opts(map()) -> {ok, map()} | {error, invalid_request}.
 list_opts(Qs) ->
     WsId =
-        case maps:get(<<"workspace_id">>, Qs, undefined) of
-            Bin when is_binary(Bin) ->
-                case is_all_digits(Bin) of
-                    true ->
-                        try
-                            binary_to_integer(Bin)
-                        catch
-                            _:_ -> invalid
-                        end;
-                    false ->
-                        invalid
-                end;
-            _ ->
-                invalid
+        case elib_tsid:from_binary(maps:get(<<"workspace_id">>, Qs, undefined)) of
+            {ok, ParsedId} -> ParsedId;
+            error -> invalid
         end,
     Status =
         case maps:get(<<"status">>, Qs, undefined) of
@@ -146,28 +135,13 @@ with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
 -spec binding_tsid(map(), atom()) -> integer().
 binding_tsid(State, Key) ->
     case maps:get(Key, State, 0) of
-        B when is_binary(B) ->
-            case is_all_digits(B) of
-                true ->
-                    try
-                        binary_to_integer(B)
-                    catch
-                        _:_ -> 0
-                    end;
-                false ->
-                    0
-            end;
-        I when is_integer(I) ->
-            I;
-        _ ->
-            0
+        Id when is_integer(Id), Id > 0, Id =< 9223372036854775807 -> Id;
+        Value ->
+            case elib_tsid:from_binary(Value) of
+                {ok, Id} -> Id;
+                error -> 0
+            end
     end.
-
--spec is_all_digits(binary()) -> boolean().
-is_all_digits(<<>>) ->
-    false;
-is_all_digits(Bin) ->
-    lists:all(fun(C) -> C >= $0 andalso C =< $9 end, binary_to_list(Bin)).
 
 -spec reply_page_result(cowboy_req:req(), binary(), map(), term()) -> cowboy_req:req().
 reply_page_result(Req0, RouteId, Ctx, Result) ->

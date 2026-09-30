@@ -40,6 +40,14 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 
 - 本 API 与 Admin 管理面（`/api/adm/*`）、人类用户面（`/api/v1/*`）**三前缀互不相交**：
   集成凭证调不了另外两个面，另外两面的凭据也调不了本 API。
+- 路径中的群、工作区、项目和频道 ID，以及项目／频道列表的
+  `workspace_id` 查询参数，必须是十进制正整数，范围 `1..9223372036854775807`
+  （PostgreSQL BIGINT / int64）。非法格式、零、负数或越界值返回 HTTP 400
+  `invalid_request`；凭证无效时仍优先返回 HTTP 401。
+  Resource path IDs and workspace query IDs must be positive decimal int64 values;
+  invalid values return 400 after credential authentication.
+  Webhook `delivery_id` 是不透明字符串，必须原样传递，不应用此整数规则。
+  Webhook delivery IDs are opaque strings and must be passed unchanged.
 - IMBoy **不提供 Open Platform 公网面**（不存在 `/api/open/v1/*` 生产路由）。
 - 通过本 API 发送的企业托管消息为**固定非端到端加密**，不进入人类用户间
   C2C/C2G 的 E2EE 存储面；平台侧保留审计事实（发送者为应用、或应用代人类）。

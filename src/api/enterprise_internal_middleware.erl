@@ -50,7 +50,11 @@ execute(Req, Env) ->
     AuthFun = pool_auth_fun(Headers),
     case enterprise_internal_auth:decide(Method, Path, Headers, AuthFun) of
         {ok, Ctx} ->
-            {ok, Req, inject_ctx(Req, Env, Ctx)};
+            Bindings = bindings(Req),
+            case lists:member(invalid_tsid, maps:values(Bindings)) of
+                true -> {stop, enterprise_internal_error:reply(Req, <<"invalid_request">>)};
+                false -> {ok, Req, inject_ctx(Req, Env, Ctx, Bindings)}
+            end;
         {error, Code} ->
             BinCode = normalize_code(Code),
             {stop, enterprise_internal_error:reply(Req, BinCode, extra_headers(BinCode))}
@@ -106,11 +110,11 @@ normalize_code(Code) when is_atom(Code) -> atom_to_binary(Code, utf8);
 normalize_code(Code) when is_binary(Code) -> Code.
 
 %% 认证产物 + 路径绑定注入：上下文进 Env#handler_opts，
-%% 路径绑定（{:group_id}/{:delivery_id}）从 **Req** 取——cowboy_router 把
+%% 路径资源 ID 绑定从 **Req** 取——cowboy_router 把
 %% bindings 放进 Req，handler/handler_opts 才放进 Env（cowboy_router.erl
 %% 命中分支的返回值），所以两者来源不同，不能都从 Env 读。
--spec inject_ctx(cowboy_req:req(), map(), map()) -> map().
-inject_ctx(Req, Env, Ctx0) ->
+-spec inject_ctx(cowboy_req:req(), map(), map(), map()) -> map().
+inject_ctx(Req, Env, Ctx0, Bindings) ->
     %% INT-BE-03：认证产物 ctx 携带请求关联 ID，供业务侧审计行
     %% （enterprise_audit_event.detail.correlation_id）做请求级归因——
     %% mutation 优先用 Idempotency-Key（审计行与幂等行可互查）；无幂等键的
@@ -120,7 +124,7 @@ inject_ctx(Req, Env, Ctx0) ->
     Env1 = Env#{enterprise_internal_ctx => Ctx},
     case maps:find(handler_opts, Env) of
         {ok, Opts} when is_map(Opts) ->
-            Merged = maps:merge(Opts, bindings(Req)),
+            Merged = maps:merge(Opts, Bindings),
             Env1#{handler_opts := Merged#{enterprise_internal => Ctx}};
         _ ->
             Env1
@@ -147,35 +151,25 @@ bindings(Req) ->
         _ -> #{}
     end.
 
-%% cowboy 的路径段恒为 binary；{group_id} / {delivery_id} 是 TSID，若原样
+%% cowboy 的资源 ID 路径段恒为 binary；这些 ID 是 TSID，若原样
 %% 下传，worker 侧壳 maps:get(group_id, State, 0) 拿到 binary 会绕过默认值
 %% 直接进 logic → 被当成非法入参。这里按**已知 TSID 段名**收敛为整数
-%% （只白名单两个名字，其余绑定原样保留，不做通用数字猜测）。
--spec normalize_binding(atom(), binary()) -> integer() | binary().
+%% （只白名单资源 ID 名，其余绑定原样保留，不做通用数字猜测）。
+-spec normalize_binding(atom(), binary()) -> integer() | binary() | invalid_tsid.
 normalize_binding(Key, Value) when is_binary(Value) ->
     case Key of
         group_id -> to_tsid(Value);
-        delivery_id -> to_tsid(Value);
+        workspace_id -> to_tsid(Value);
+        project_id -> to_tsid(Value);
+        channel_id -> to_tsid(Value);
         _ -> Value
     end;
 normalize_binding(_Key, Value) ->
     Value.
 
--spec to_tsid(binary()) -> integer() | binary().
+-spec to_tsid(binary()) -> pos_integer() | invalid_tsid.
 to_tsid(Value) ->
-    case is_all_digits(Value) of
-        true ->
-            try
-                binary_to_integer(Value)
-            catch
-                _:_ -> Value
-            end;
-        false ->
-            Value
+    case elib_tsid:from_binary(Value) of
+        {ok, Id} -> Id;
+        error -> invalid_tsid
     end.
-
--spec is_all_digits(binary()) -> boolean().
-is_all_digits(<<>>) ->
-    false;
-is_all_digits(Bin) ->
-    lists:all(fun(C) -> C >= $0 andalso C =< $9 end, binary_to_list(Bin)).

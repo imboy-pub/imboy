@@ -20,8 +20,7 @@
 %     ——deny precedence 第 5/6 步顺序不可倒置。
 %
 % path 绑定：{workspace_id} 段 cowboy 恒给 binary，本壳按 TSID 数字段
-% 收敛为 integer（enterprise_internal_middleware 只白名单 group_id/
-% delivery_id，本模块自收敛，不改共享中间件）。
+% 中间件统一校验 BIGINT 范围；本壳复用 TSID 解析器保护直接调用。
 %%%
 
 -behavior(cowboy_rest).
@@ -117,31 +116,15 @@ with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
 -spec binding_tsid(map(), atom()) -> integer().
 binding_tsid(State, Key) ->
     case maps:get(Key, State, 0) of
-        B when is_binary(B) ->
-            case is_all_digits(B) of
-                true ->
-                    try
-                        binary_to_integer(B)
-                    catch
-                        _:_ -> 0
-                    end;
-                false ->
-                    0
-            end;
-        I when is_integer(I) ->
-            I;
-        _ ->
-            0
+        Id when is_integer(Id), Id > 0, Id =< 9223372036854775807 -> Id;
+        Value ->
+            case elib_tsid:from_binary(Value) of
+                {ok, Id} -> Id;
+                error -> 0
+            end
     end.
 
--spec is_all_digits(binary()) -> boolean().
-is_all_digits(<<>>) ->
-    false;
-is_all_digits(Bin) ->
-    lists:all(fun(C) -> C >= $0 andalso C =< $9 end, binary_to_list(Bin)).
-
-%% @doc 列表应答（只读路径；A-R 结构化访问日志——只记 O/App/route/count，
-%% 不记逐项 PII / 响应体 / filter 明细）。
+%% @doc 列表应答：访问日志只记组织、应用、路由和数量，不记 PII 或响应体。
 -spec reply_page_result(cowboy_req:req(), binary(), map(), term()) -> cowboy_req:req().
 reply_page_result(Req0, RouteId, Ctx, Result) ->
     case Result of
