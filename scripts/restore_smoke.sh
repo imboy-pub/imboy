@@ -77,12 +77,15 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 # ---------- 找最新备份 ----------
+# glob `${POSTGRES_DB}_2*.dump` 只认全量产物（时间戳以 2 开头）：
+# backup_pg.sh 另会产出 `<db>_schema_<ts>.dump`（--schema-only），它没有数据，
+# 拿来做恢复演练会被行数断言误判为"备份不可恢复"。
 command -v docker >/dev/null 2>&1 || fail "docker 未安装"
 [ -d "$BACKUP_DIR" ] || fail "备份目录不存在: ${BACKUP_DIR}"
 
-LATEST="$(find "$BACKUP_DIR" -name "${POSTGRES_DB}_*.dump" -type f -print0 2>/dev/null \
+LATEST="$(find "$BACKUP_DIR" -name "${POSTGRES_DB}_2*.dump" -type f -print0 2>/dev/null \
   | xargs -0 ls -t 2>/dev/null | head -1 || true)"
-[ -n "$LATEST" ] || fail "在 ${BACKUP_DIR} 未找到 ${POSTGRES_DB}_*.dump 备份"
+[ -n "$LATEST" ] || fail "在 ${BACKUP_DIR} 未找到 ${POSTGRES_DB}_*.dump 全量备份"
 info "使用备份: ${LATEST}"
 
 # ---------- 恢复到临时库；无论成败都删掉临时库 ----------

@@ -15,8 +15,8 @@ gen-appup:
 
 # Node runner with all customizable parameters
 #
-# make start node=node1 port=9801 cookie=imboycookie exclude="app1,app2" daemon=daemon
-# make start node=node2 port=9802 cookie=imboycookie exclude="imadm,imcron" daemon=daemon
+# make start node=node1 port=9801 cookie=<your-cookie> exclude="app1,app2" daemon=daemon
+# make start node=node2 port=9802 cookie=<your-cookie> exclude="imadm,imcron" daemon=daemon
 .PHONY: start
 start:
 	./script/start_node.sh $(node) $(cookie) $(port) $(exclude) $(daemon)

@@ -84,7 +84,7 @@ start_link() ->
 init([]) ->
     % 表结构由 msg_store_ds 在监督树启动时统一初始化，worker 不重复执行 DDL
     _ = ?INFO_LOG("msg_store_worker started successfully"),
-    {ok, idle, start_tick(#state{})}.
+    {ok, idle, maybe_start_tick(tick_interval_ms(), #state{})}.
 
 -spec callback_mode() -> state_functions.
 callback_mode() ->
@@ -94,7 +94,12 @@ callback_mode() ->
 -spec idle(gen_statem:event_type(), term(), state()) ->
     {next_state, state_name(), state(), [gen_statem:transition_action()]}
     | {keep_state, state()}.
-idle({cast, kick}, _Content, State) ->
+%% gen_statem state_functions 回调的实参形态是 idle(EventType原子, Content,
+%% State)——kick 子句头此前误写为 idle({cast, kick}, _Content, State)，第一
+%% 参数模式是元组、永远匹配不到原子 cast，kick 100% 落入 catch-all 被静默
+%% 吞掉（probe6l 铁证：P ! tick 走 idle(info,tick) 转运成功，cast kick
+%% consume 记录 {consume,{cast,kick},idle,idle} 状态不变）。
+idle(cast, kick, State) ->
     {next_state, draining, cancel_tick(State), [{next_event, internal, drain}]};
 idle(info, tick, State) ->
     {next_state, draining, cancel_tick(State), [{next_event, internal, drain}]};
@@ -108,17 +113,21 @@ idle(_EventType, _Event, State) ->
 draining(internal, drain, State) ->
     case claim_and_process_batch() of
         {ok, 0} ->
-            {next_state, idle, start_tick(State)};
+            {next_state, idle, maybe_start_tick(tick_interval_ms(), State)};
         {ok, N} when N >= ?BATCH_SIZE ->
             {keep_state, State, [{next_event, internal, drain}]};
         {ok, _N} ->
-            {next_state, idle, start_tick(State)};
+            {next_state, idle, maybe_start_tick(tick_interval_ms(), State)};
         {error, Reason} ->
             _ = ?ERROR_LOG([msg_store_worker, drain_error, Reason]),
-            {next_state, idle, start_tick(State)}
+            {next_state, idle, maybe_start_tick(tick_interval_ms(), State)}
     end;
-draining({cast, kick}, _Content, State) ->
-    {keep_state, State};
+draining(cast, kick, State) ->
+    %% 批处理进行中到达的 kick 重新排队一次 drain：当前 claim 是事务时点
+    %% 快照，可能未覆盖 kick 前后才落库的行；若吞掉，该批消息要等下一个
+    %% kick/tick（测试模式 tick=0 时会永久滞留）。子句头同 idle 的教训：
+    %% 必须 idle/draining(原子 EventType, Content, State) 形态。
+    {keep_state, State, [{next_event, internal, drain}]};
 draining(info, tick, State) ->
     {keep_state, State};
 draining(_EventType, _Event, State) ->
@@ -138,8 +147,23 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 %% ==================== Internal Functions ====================
 
-start_tick(State) ->
-    TimerRef = erlang:send_after(?BATCH_INTERVAL, self(), tick),
+%% tick 间隔可经 app env 覆盖；<=0 或非整数表示禁用周期 tick（纯 kick
+%% 驱动）。测试 VM（eunit_runner do_boot）设 0：每秒 tick 的异步 drain
+%% 会在其他套件的 meck 窗口内调用 elib_pg 池化版（如 mark_processed 走
+%% query/2），污染按全局调用计数断言的白盒用例（adm_message_handler
+%% 审计 fails-closed 用例实证：num_calls(elib_pg, query, 2) 期望 0）。
+%% 正常发送路径 stage 后 enqueue 必发 kick，kick 驱动足以支撑集成套件
+%% 的真实异步转正；生产不设该 env，保持 1s 兜底 tick。
+tick_interval_ms() ->
+    application:get_env(imboy, msg_store_worker_tick_ms, ?BATCH_INTERVAL).
+
+maybe_start_tick(Ms, State) when is_integer(Ms), Ms > 0 ->
+    start_tick(Ms, State);
+maybe_start_tick(_Disabled, State) ->
+    State.
+
+start_tick(Ms, State) ->
+    TimerRef = erlang:send_after(Ms, self(), tick),
     State#state{tick_timer = TimerRef}.
 
 cancel_tick(State = #state{tick_timer = undefined}) ->
@@ -149,14 +173,22 @@ cancel_tick(State = #state{tick_timer = TimerRef}) ->
     State#state{tick_timer = undefined}.
 
 claim_and_process_batch() ->
-    case msg_store_repo:claim_pending(?BATCH_SIZE, ?LEASE_SECONDS) of
-        {ok, []} ->
-            {ok, 0};
-        {ok, Rows} ->
-            _ = [process_row(Row) || Row <- Rows],
-            {ok, length(Rows)};
-        {error, Reason} ->
-            {error, Reason}
+    %% 防崩包裹：elib_pg 被测试 meck 的窗口内，worker 的 tick/kick 仍会
+    %% 触发 drain，with_tx 返回 meck 桩值 → case_clause 崩溃 → permanent
+    %% 子进程每秒重启风暴。包住后仅记 drain_error，窗口过后自然恢复。
+    try
+        case msg_store_repo:claim_pending(?BATCH_SIZE, ?LEASE_SECONDS) of
+            {ok, []} ->
+                {ok, 0};
+            {ok, Rows} ->
+                _ = [process_row(Row) || Row <- Rows],
+                {ok, length(Rows)};
+            {error, Reason} ->
+                {error, Reason}
+        end
+    catch
+        _Class:_Reason ->
+            {error, drain_crash}
     end.
 
 process_row(Row) ->

@@ -13,6 +13,10 @@
 #  10. Erlang 节点宕机 / Erlang node down
 #  11. PG 连接池耗尽 / PG connection pool exhausted
 #  12. 备份健康 / Backup health
+#  13. E2EE/OLM 密钥与安全事件 / E2EE (OLM) key & security events (W3-A04)
+#  14. License 有效性/到期/配额 / License validity, expiry & quota (W3-A04)
+#  15. 在线用户陡降 / Online user drop (W3-A04)
+#  16. 红包过期 job 心跳与失败 / Red packet expiry job heartbeat & errors (W3-A04)
 #
 # 接入告警渠道 / Alert routing:
 #   在 Prometheus alertmanager.yml 中配置 receiver（钉钉 / Slack / PagerDuty 等）
@@ -719,3 +723,318 @@ groups:
             1. 确认节点存活且 ecron 已启动：make ctl ARGS="node status"
             2. 查 sys.config 的 ecron jobs 是否还有 payment_reconcile 项
             3. 查 payment_reconcile_error_total 是否在涨（跑了但一直失败）
+
+      # ── W3-A04 对账执行失败：与上面 Stalled 互补——那条管"没跑"，这条管"跑了但一直失败" ──
+      # 阈值依据：对账每小时一次（ecron），error_total 仅在 run/1 异常捕获分支递增
+      # （src/logic/payment_reconcile_logic.erl:82/101），零容忍：任何一次失败都意味着
+      # 本轮漏单未被扫描，资金差异无人发现，故 >0 即触发、critical。
+      - alert: IMBoyPaymentReconcileErrors
+        expr: sum(increase(payment_reconcile_error_total[1h])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: payment
+        annotations:
+          summary: "支付对账执行失败 / Payment reconciliation run failed"
+          description: >
+            对账 job 在跑但最近 1 小时内有执行以异常结束——本轮流水未被完整扫描，
+            漏单与差异将无人发现（停摆由 IMBoyPaymentReconcileStalled 另行覆盖）。
+            Reconciliation run(s) ended with an exception in the last hour.
+          runbook: >
+            1. 查异常日志：grep payment_reconcile /var/log/imboy/*.log | tail -50
+            2. 区分 run 入口失败（DB 不可达）与逐单修复失败（看堆栈模块）
+            3. 连续多轮失败时，人工对账当日流水兜底：核对 payment_transaction 与渠道账单
+
+  # ============================================================
+  # 13. E2EE/OLM 密钥与安全事件 / E2EE (OLM) Key & Security Events
+  # 指标来源：src/logic/olm_identity_logic.erl 的 elib_metric:increment 调用点
+  # （计数器，经 /metrics 导出）。E2EE 域告警按两类设计：
+  #   - 密钥可用性（otk_exhausted / prekey_unavailable）：协议允许偶发，
+  #     客户端补传密钥即自愈，>5 次/10min 持续才说明补传管道断裂
+  #   - 安全事件（claim_unauthorized / identity_pop_rejected / fallback_unsigned）：
+  #     攻击面信号，低阈值高敏感
+  # ============================================================
+  - name: imboy.e2ee
+    interval: 30s
+    rules:
+
+      # OTK 耗尽：给该用户建立新 E2EE 会话时一次性预共享密钥已用完。
+      # 阈值依据：单用户偶发耗尽属协议正常流程（等客户端 refill），
+      # 10 分钟内 >5 次说明客户端密钥补传管道断裂，受影响用户加密消息发不出。
+      - alert: ImBoyOlmOtkExhausted
+        expr: sum(increase(olm_otk_exhausted_total[10m])) > 5
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "E2EE OTK 密钥持续耗尽 / E2EE OTK persistently exhausted"
+          description: >
+            近 10 分钟 OTK 耗尽 {{ $value | humanize }} 次（阈值 >5）。偶发耗尽是协议
+            正常现象（等客户端补传），持续耗尽说明密钥补传管道断裂，受影响用户无法
+            建立新的端到端加密会话。
+            Sustained OTK exhaustion means the key refill pipeline is broken;
+            affected users cannot establish new E2EE sessions.
+          runbook: >
+            1. 查受影响用户分布：grep otk_exhausted /var/log/imboy/*.log | tail -50
+            2. 确认客户端版本是否刚发过版（refill 逻辑变更）
+            3. 抽一个受影响账号验证 /api olm/upload 接口是否正常
+
+      # 预共享密钥不可用：对端从未上传 prekey 或已失效，会话无法建立。
+      # 阈值依据：与 OTK 耗尽同型——新注册用户未上传首批密钥会偶发，
+      # >5 次/10min 持续说明上传/拉取链路系统性故障。
+      - alert: ImBoyOlmPrekeyUnavailable
+        expr: sum(increase(olm_prekey_unavailable_total[10m])) > 5
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "E2EE 预共享密钥持续不可用 / E2EE prekeys persistently unavailable"
+          description: >
+            近 10 分钟 prekey 不可用 {{ $value | humanize }} 次（阈值 >5）。
+            对端无可用预共享密钥，端到端加密会话无法建立。
+            Prekeys persistently unavailable; E2EE sessions cannot be established.
+          runbook: >
+            1. 查 olm prekey 存储表读写是否有报错（grep prekey /var/log/imboy/*.log）
+            2. 确认 olm 上传接口（claim/upload）HTTP 5xx 是否同时上涨
+            3. 对照 ImBoyOlmOtkExhausted 是否同现（同源故障）
+
+      # 未授权 claim：有人用别人身份拉取密钥（伪造/越权），安全攻击信号。
+      # 阈值依据：合法客户端不会触发该路径，出现即为信号，>0 零容忍。
+      # 若生产基线证明旧客户端 bug 造成噪声，再上调并记录于此。
+      - alert: ImBoyOlmClaimUnauthorized
+        expr: sum(increase(olm_claim_unauthorized_total[10m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "E2EE 出现未授权密钥 claim / Unauthorized E2EE key claim"
+          description: >
+            近 10 分钟出现 {{ $value }} 次未授权 claim——有人尝试用非本人身份拉取
+            E2EE 密钥（伪造请求或越权探测），属安全事件。
+            Unauthorized key claims detected: possible forgery or probing.
+          runbook: >
+            1. 定位来源：grep claim_unauthorized /var/log/imboy/*.log，提取 device_id/IP
+            2. 核对涉事账号是否有异地登录/令牌异常
+            3. 评估是否临时封禁来源，必要时走安全事件流程
+
+      # 身份密钥 PoP 验签被拒：设备身份证明失败（客户端损坏或篡改）。
+      # 阈值依据：个别事件可能是旧客户端版本不匹配，10 分钟 >3 次
+      # 说明系统性客户端损坏或身份伪造尝试。
+      - alert: ImBoyOlmIdentityPopRejected
+        expr: sum(increase(olm_identity_pop_rejected_total[10m])) > 3
+        for: 0m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "E2EE 身份密钥验签被拒激增 / Spike in E2EE identity PoP rejections"
+          description: >
+            近 10 分钟身份密钥 PoP 验签被拒 {{ $value }} 次（阈值 >3）。
+            个别事件可能是客户端版本不匹配，激增说明系统性客户端故障或身份伪造。
+          runbook: >
+            1. 按设备版本聚合被拒记录，确认是否集中在某一客户端版本
+            2. 若集中旧版本：评估强制升级；若分散：按安全事件处理
+            3. 与 ImBoyOlmClaimUnauthorized 同现时优先按攻击处置
+
+      # 走了未签名 fallback：E2EE 完整性防线被绕过的降级路径被使用。
+      # 阈值依据：fallback 是兼容性兜底，稳态应为零流量；>3 次/10min
+      # 说明有客户端持续绕过签名校验（降级攻击或损坏客户端）。
+      - alert: ImBoyOlmFallbackUnsigned
+        expr: sum(increase(olm_fallback_unsigned_total[10m])) > 3
+        for: 0m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "E2EE 未签名降级路径被使用 / Unsigned E2EE fallback in use"
+          description: >
+            近 10 分钟未签名 fallback 使用 {{ $value }} 次（阈值 >3）。
+            fallback 为兼容兜底，稳态应无流量；持续出现说明签名校验被绕过。
+          runbook: >
+            1. 定位走 fallback 的设备/账号：grep fallback_unsigned /var/log/imboy/*.log
+            2. 确认是旧协议版本残留还是主动降级尝试
+            3. 计划收紧 fallback 策略前先确认存量客户端占比
+
+  # ============================================================
+  # 14. License 有效性/到期/配额 / License Validity, Expiry & Quota
+  # 指标来源：src/api/metrics_handler.erl license_metrics/0（gauge，
+  # 经 /metrics 导出）。注意两个防误报关键事实（源自 src/lib/imboy_license.erl）：
+  #   - 社区版是合法稳态：valid=0、expires_at=0（ms）、max_nodes=1。
+  #     不能直接对 valid==0 或 expires_at 时间差告警，否则社区部署常亮
+  #   - expires_at 是毫秒时间戳（imboy_license:info() 原样导出），与
+  #     time() 秒比较需 /1000
+  #   - max=0 表示不限量（check_user_quota 注释），所有配额告警需 >0 guard
+  # ============================================================
+  - name: imboy.license
+    interval: 60s
+    rules:
+
+      # License 由有效转为无效（过期超 7 天宽限/域名绑定不匹配/验签失败 → 降级社区版）。
+      # 阈值依据：用 offset 1h 对比「1 小时前还是 1」过滤掉从未有过 license 的
+      # 社区部署（valid 恒 0 是合法稳态），只捕获降级事件。
+      - alert: ImBoyLicenseInvalid
+        expr: >
+          imboy_license_valid{job="imboy_backend"} == 0
+          and
+          imboy_license_valid{job="imboy_backend"} offset 1h == 1
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "License 已失效（降级社区版）/ License became invalid (degraded to community)"
+          description: >
+            imboy_license_valid 由 1 变 0：license 过期超 7 天宽限、域名绑定不匹配或
+            验签失败，商业版能力已降级为社区版。社区部署（从未有 license）不会触发本告警。
+          runbook: >
+            1. 查降级原因：grep "license" /var/log/imboy/*.log（过期/域名/签名三类）
+            2. 域名问题：核对当前 host 与 license 绑定域名列表
+            3. 联系授权方续期/重签后：重启或 imboy_license:load_and_validate() 重新加载
+
+      # License 即将到期（含已过期）。14 天提前量与 TLS 到期告警口径一致：
+      # 续期涉及商务流程，需给足人工处理时间。
+      - alert: ImBoyLicenseExpiringSoon
+        expr: >
+          imboy_license_expires_at{job="imboy_backend"} > 0
+          and
+          (imboy_license_expires_at{job="imboy_backend"} / 1000 - time()) < 14 * 86400
+        for: 10m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "License 14 天内到期 / License expires within 14 days"
+          description: >
+            License 将在 {{ $value | humanizeDuration }} 后到期（负值=已过期）。
+            过期后仍有 7 天宽限期（GRACE_DAYS=7）按授权运行，宽限期满降级社区版。
+            社区版（expires_at=0）不触发本告警。
+          runbook: >
+            1. 联系授权方续期，拿到新 license 文件
+            2. 替换后重载：_rel/imboy/bin/imboy eval 'imboy_license:load_and_validate().'
+            3. 确认 imboy_license_valid 回 1、告警恢复
+
+      # 用户配额接近上限：注册在 current >= max 时被 check_user_quota 拒绝。
+      # 阈值依据：90% 提前预警，为续期/扩容留出操作窗口。max=0（不限量）不触发。
+      # 社区版上限默认 100 人，接近时告警是有效提醒（达到社区版规模上限）。
+      - alert: ImBoyLicenseUserQuotaNear
+        expr: >
+          (imboy_license_users_max{job="imboy_backend"} > 0)
+          and
+          (imboy_license_users_current{job="imboy_backend"}
+            / imboy_license_users_max{job="imboy_backend"} > 0.9)
+        for: 10m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "License 用户配额即将用尽 / License user quota near exhaustion"
+          description: >
+            注册用户数已达 license 上限的 {{ $value | humanizePercentage }}（阈值 90%）。
+            达到上限后新用户注册将被 check_user_quota 拒绝。
+          runbook: >
+            1. 确认当前配额：管理后台「License 信息」或 imboy_license:info()
+            2. 商业版：续期/升配；社区版（默认 100 人）：评估升级商业版
+            3. 若属误配（max 配低）：核对 license 文件配额字段
+
+      # 节点配额已超限：新节点接入被 check_node_quota 拒绝。
+      # 阈值依据：节点配额是小整数（社区版 1 / 试用版 3），"接近 90%" 在 1/1 时
+      # 恒真会常亮，故只对「已超限」告警（current > max）。
+      - alert: ImBoyLicenseNodeQuotaExceeded
+        expr: >
+          (imboy_license_nodes_max{job="imboy_backend"} > 0)
+          and
+          (imboy_license_nodes_current{job="imboy_backend"}
+            > imboy_license_nodes_max{job="imboy_backend"})
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "License 节点配额已超限 / License node quota exceeded"
+          description: >
+            当前节点数已超过 license 允许的上限，新节点接入将被 check_node_quota 拒绝。
+          runbook: >
+            1. 确认是否误扩容：imboy_license:info() 核对 max_nodes
+            2. 需要多节点：续期升配后重启节点
+            3. 误扩容：缩容到配额内，避免脑裂告警噪声
+
+  # ============================================================
+  # 15. 在线用户陡降 / Online User Drop
+  # imboy_online_users 来自 syn:registry_count(imboy)（唯一在线用户数），
+  # 比连接数更接近"真实用户掉线"——连接抖动重连不会减少唯一用户数。
+  # ============================================================
+  - name: imboy.online_users
+    interval: 30s
+    rules:
+
+      # 镜像 ImBoyWSConnectionsDrop 的写法（10 分钟跌 >50%），但基线提高到 >50：
+      # 在线用户数低于 50 的小规模部署波动占比天然大，避免误报。
+      # severity=critical：唯一用户级陡降排除连接抖动，是大规模掉线的确证信号。
+      - alert: ImBoyOnlineUsersDrop
+        expr: >
+          imboy_online_users{job="imboy_backend"} > 50
+          and
+          (imboy_online_users{job="imboy_backend"}
+            / imboy_online_users{job="imboy_backend"} offset 10m) < 0.5
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "在线用户数陡降 / Online users dropped sharply"
+          description: >
+            在线用户数（syn 唯一用户）较 10 分钟前下降超过 50%（当前基线 >50）。
+            唯一用户级下降排除了连接抖动重连，是大规模掉线/整区域故障的确证。
+          runbook: >
+            1. 与 ImBoyWSConnectionsDrop 对照：同现为接入层/后端故障，仅本条为客户端侧异常
+            2. 查后端异常日志与最近变更：tail -200 /var/log/imboy/*.log
+            3. 确认消息收发是否仍正常（受影响用户是否只是掉线统计问题）
+
+  # ============================================================
+  # 16. 红包过期 job 心跳与失败 / Red Packet Expiry Job Heartbeat & Errors
+  # 指标来源：src/logic/red_packet_logic.erl run_expire_refund/1（ecron 每小时
+  # 第 23 分执行，见 config/sys.config.example）。job 设计为「异常记日志后跳过、
+  # 恒 ok 不抛给调度器」——意味着失败完全静默，必须靠指标告警。
+  # ============================================================
+  - name: imboy.red_packet
+    interval: 60s
+    rules:
+
+      # 心跳停摆：镜像 IMBoyPaymentReconcileStalled 的模式（同为小时级 job，
+      # 3 小时窗口 = 连续 3 轮未执行）。
+      - alert: ImBoyRedPacketExpireStalled
+        expr: increase(red_packet_expire_run_total[3h]) == 0
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "红包过期退款 job 已停摆 / Red packet expiry job stalled"
+          description: >
+            近 3 小时红包过期 job 无一次执行记录（正常每小时第 23 分执行），
+            过期未领完的红包余额将一直滞留。
+          runbook: >
+            1. 确认 ecron 在跑：make ctl ARGS="node status"，查 cron.config 是否含 job
+            2. 手动补跑一轮：_rel/imboy/bin/imboy eval 'red_packet_logic:run_expire_refund().'
+            3. 与对账 job 停摆同现时优先查 ecron 整体故障
+
+      # 执行失败：job 在跑但持续抛异常（恒 ok 的静默失败设计使错误不上报调度器）。
+      # 阈值依据：>0 零容忍——单次失败即本轮红包未退款，用户资金滞留。
+      - alert: ImBoyRedPacketExpireErrors
+        expr: sum(increase(red_packet_expire_error_total[1h])) > 0
+        for: 0m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "红包过期退款 job 执行失败 / Red packet expiry job failed"
+          description: >
+            近 1 小时红包过期 job 有执行以异常结束（run_failed）。该 job 失败时
+            静默跳过本轮，过期红包余额不会退回发送者。
+          runbook: >
+            1. 查异常：grep red_packet_expire /var/log/imboy/*.log | tail -50
+            2. 修复原因后补跑：_rel/imboy/bin/imboy eval 'red_packet_logic:run_expire_refund().'
+            3. 抽查若干过期红包确认余额已退回

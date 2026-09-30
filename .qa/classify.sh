@@ -108,14 +108,17 @@ summary_failed_count() {
 }
 
 # 从 known-failures.yaml 提取 gates.<gate>.known_failures 清单（awk 状态机，零 yq 依赖；
-# 依赖本仓 yaml 的固定缩进：gate 两空格、列表项六空格 "- "；空行/注释行不终结 gates 块）。
+# 依赖本仓 yaml 的固定缩进：gate 两空格、列表项六空格 "- "；空行/注释行不终结 gates 块。
+# W1-A05：入册项可带行尾注释（full-eunit 段 6 条干扰项即带定性注释），必须剥掉——
+# 否则带注释 known 项与 gate 提取的裸模块名永不相等 -> KNOWN 全误判 NEW（nightly 永红），
+# 本地传导测试（evidence/PR-W1-A05/gate-transmission/known）实测复现后修复）。
 load_known() {
   local gate="$1" yaml="$2"
   awk -v want="  ${gate}:" '
     /^gates:/     { in_gates=1; active=0; next }
     in_gates && /^[^[:space:]#]/ { in_gates=0; active=0; next }  # 顶格非注释 = gates 块结束
     in_gates && /^  [A-Za-z0-9_-]+:$/ { active = ($0 == want) ? 1 : 0; next }
-    active && /^      - / { sub(/^      - /, ""); print }
+    active && /^      - / { sub(/^      - /, ""); sub(/[[:space:]]*#.*$/, ""); print }
   ' "$yaml" | sort -u
 }
 

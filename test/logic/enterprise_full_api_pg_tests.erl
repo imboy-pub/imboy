@@ -2168,7 +2168,7 @@ bnd_spec_align_test() ->
         %% 契约，因此边界 ids 与冻结表必须**完全相等**，不存在「待接线」差集；
         %% 若将来仍有未接线新增，此断言会立即变红（差集恒为空）。
         ?assertEqual([], lists:sort(enterprise_internal_boundary:ids()) -- FrozenIds),
-        ?assertEqual(31, length(lists:usort(enterprise_internal_boundary:ids())))
+        ?assertEqual(32, length(lists:usort(enterprise_internal_boundary:ids())))
     end).
 
 %% @doc **接线点机械断言**：handler 模块的 beam 抽象码里必须真实存在对

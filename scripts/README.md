@@ -22,7 +22,7 @@
 
 ```bash
 export IMBOY_CTL_NODE=imboy_dev@127.0.0.1
-export IMBOY_CTL_COOKIE=imboycookie
+export IMBOY_CTL_COOKIE=imboy_local_dev_only
 escript scripts/imboy_ctl db migrate
 ```
 

@@ -7,8 +7,22 @@
 %%% 过期拒绝；登出 bump 后服务端拒绝（旧 cookie 复用无效）；legacy 裸 HMAC 拒绝；
 %%% store 不可用 fail-closed；epoch 持久化与跨账号隔离。
 
+%% unique_integer 是 VM 级单调：每轮 eunit 新 VM 都从低位重复同一 ID 序列，
+%% 与 adm_auth_epoch 跨轮残留行确定性碰撞（be-02 两轮实证：issue/bump 写过
+%% 的 admin_id 本轮再查即非缺行默认 1）。混入本 VM 启动熵做基址，VM 内仍
+%% 单调互不重号，跨轮不复用历史 admin_id。
 uid() ->
-    erlang:unique_integer([positive]) rem 1000000000 + 1000.
+    erlang:unique_integer([positive]) rem 100000000 + uid_base().
+
+uid_base() ->
+    case persistent_term:get({?MODULE, uid_base}, undefined) of
+        undefined ->
+            B = 1000 + erlang:phash2(erlang:system_time(nanosecond)) rem 899000000,
+            persistent_term:put({?MODULE, uid_base}, B),
+            B;
+        B ->
+            B
+    end.
 
 uid_bin() ->
     ec_cnv:to_binary(uid()).

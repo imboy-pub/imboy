@@ -16,6 +16,7 @@
 -export([maybe_push_for_c2g/4]).
 -export([maybe_push_for_enterprise_c2c/2]).
 -export([maybe_push_for_enterprise_c2g/3]).
+-export([notify_org_invitation/1]).
 
 %% ===================================================================
 %% Token 管理 API
@@ -87,6 +88,28 @@ notify_offline_users(Uids, Title, Body) ->
 %% 与 maybe_push_for_c2g/4 都忽略第 3 参（文案恒为上面两个常量），命名自解释
 %% 以免被误读成「企业消息真的是 text」。
 -define(ENTERPRISE_ONLY_MSG_TYPE, <<"enterprise">>).
+
+%% 组织邀请触达的域常量入口（无内容入参）：org_invite 文案与点击路由常量
+%% 收口在定义方——契约测试（push_token_contract_pg_tests
+%% notify_offline_apis_unreachable_from_src）机械化保证 `notify_offline_user`
+%% 字面量零生产直调方，调用方（organization_invitation_notify）拿不到内容
+%% 入参通道，未来任何动态正文都无法在扫描下静默溜入。
+-define(ORG_INVITE_TITLE, <<"组织邀请"/utf8>>).
+-define(ORG_INVITE_BODY,
+    <<"你收到一条新的组织邀请，请打开 App 在「组织 · 我的邀请」中处理"/utf8>>
+).
+%% 点击路由常量：客户端据 notify_type=org_invite 直达「我的邀请」页。
+-define(ORG_INVITE_DATA, #{<<"notify_type">> => <<"org_invite">>}).
+
+%% @doc 组织邀请创建成功后的离线触达入口（异步 fire-and-forget，在线不推）。
+-spec notify_org_invitation(integer()) -> ok.
+notify_org_invitation(TargetUid) when is_integer(TargetUid), TargetUid > 0 ->
+    elib_async:async(fun() ->
+        notify_offline_user(TargetUid, ?ORG_INVITE_TITLE, ?ORG_INVITE_BODY, ?ORG_INVITE_DATA)
+    end),
+    ok;
+notify_org_invitation(_) ->
+    ok.
 
 %% @doc C2C 消息离线推送入口
 %% 在消息发送后异步调用，检查接收方是否离线

@@ -119,6 +119,21 @@ main() {
         echo "ERROR: dialyzer log 不存在: $log_file" >&2; exit 2
     fi
 
+    # ---- 执行完整性门（CI-00 oracle：缺 "Proceeding with analysis" 必红）----
+    # 截断/执行失败的 log（如 dialyze 被 SIGTERM 杀掉、启动即失败）指纹集不完整，
+    # 直接比对会假绿（空集/子集 → NEW=0）。此处先行拦截：
+    #   - log 无 "Proceeding with analysis"（分析段缺失），或
+    #   - 最后一个 "Proceeding with analysis" 之后无 " done in "（分析段未终止）
+    # 即判为执行未完成 → exit 3，与 ratchet RED（NEW>0 → exit 1）分离。
+    # --update 模式同样拦截：不允许用截断 log 生成基线。
+    local last_proceeding last_done_in
+    last_proceeding="$(grep -n 'Proceeding with analysis' "$log_file" | tail -1 | cut -d: -f1 || true)"
+    last_done_in="$(grep -nE '^[[:space:]]*done in ' "$log_file" | tail -1 | cut -d: -f1 || true)"
+    if [[ -z "$last_proceeding" || -z "$last_done_in" || "$last_done_in" -lt "$last_proceeding" ]]; then
+        echo "DIALYZER BASELINE GATE: RED —— dialyzer 执行未完成（log 缺 'Proceeding with analysis' 分析段或缺 'done in' 终止行），判定为截断/执行失败，不可与基线比对（与新增告警的 ratchet RED 分离）。" >&2
+        exit 3
+    fi
+
     local current
     current="$(mktemp)"
     parse_dialyzer_log "$log_file" | LC_ALL=C sort -u > "$current"

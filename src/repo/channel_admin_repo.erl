@@ -72,8 +72,10 @@ find(ChannelId, Uid) ->
 find_tx(Conn, ChannelId, Uid) ->
     Tb = tablename(),
     Sql = <<"SELECT * FROM ", Tb/binary, " WHERE channel_id = $1 AND user_id = $2 LIMIT 1">>,
-    case elib_pg:one(Conn, Sql, [ChannelId, Uid]) of
-        {ok, Row} -> Row;
+    %% elib_pg:one/2,3 是池化连接版（首参为 Sql）；事务内必须走 execute(Conn, ...)
+    %% 同快照读取（R3-5）。SELECT 经 execute 返回 {ok, N, Rows}。
+    case elib_pg:execute(Conn, Sql, [ChannelId, Uid]) of
+        {ok, _N, [Row | _]} -> Row;
         _ -> #{}
     end.
 

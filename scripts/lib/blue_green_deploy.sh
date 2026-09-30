@@ -40,7 +40,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 #   IMBOY_DEPLOY_BLUE_PORT   蓝端口         Blue port           (default: 9800)
 #   IMBOY_DEPLOY_GREEN_PORT  绿端口         Green port          (default: 9801)
 #   IMBOY_DEPLOY_NODE_HOST   节点 host      Node host           (default: 127.0.0.1)
-#   IMBOY_DEPLOY_COOKIE      节点 cookie    Node cookie         (default: imboy)
+#   IMBOY_DEPLOY_COOKIE      节点 cookie    Node cookie         (default: 见 config/vm.args)
 #   IMBOY_DEPLOY_BRANCH      部署分支       Deploy branch       (default: main)
 #   IMBOY_DEPLOY_SOURCE_HEAD 本地已确认的 40 位 Git HEAD
 #   IMBOY_DEPLOY_STOP_OLD    完整迁移必须为 true；--no-migrate 时强制为 false
@@ -106,7 +106,7 @@ CS_NGINX_CONF="${IMBOY_DEPLOY_CS_NGINX_CONF:-}"
 BLUE_PORT="${IMBOY_DEPLOY_BLUE_PORT:-9800}"
 GREEN_PORT="${IMBOY_DEPLOY_GREEN_PORT:-9801}"
 NODE_HOST="${IMBOY_DEPLOY_NODE_HOST:-127.0.0.1}"
-COOKIE="${IMBOY_DEPLOY_COOKIE:-imboy}"
+COOKIE="${IMBOY_DEPLOY_COOKIE:-imboy_local_dev_only}"
 BRANCH="${IMBOY_DEPLOY_BRANCH:-main}"
 SOURCE_HEAD="${IMBOY_DEPLOY_SOURCE_HEAD:-}"
 # --local 模式下远端迁移 staging 目录（空 = 非 -l 模式，迁移读 release 内 priv/migrations）
@@ -1059,8 +1059,8 @@ else
   # CTL_NODE 必须显式指定为本次刚启动的节点名，Makefile 默认值 imboy@127.0.0.1
   # 与 vm.args 里实际写入的 ${NODE_NAME}@${NODE_HOST} 不一致，不传会报
   # "cannot reach 'imboy@127.0.0.1'" 并中止部署（实测复现）。同理 cookie
-  # 也必须显式传 IMBOY_CTL_COOKIE，否则 imboy_ctl 默认 cookie=imboy，
-  # 当 IMBOY_DEPLOY_COOKIE（如 .env.deploy 的 imboycookie）不是默认值时连不上。
+  # 也必须显式传 IMBOY_CTL_COOKIE，否则 imboy_ctl 默认 cookie 与节点不一致，
+  # 当 IMBOY_DEPLOY_COOKIE（如 .env.deploy 的旧值）不是当前值时连不上。
   # --local 模式迁移从 staging 读（与本次源码快照一致）；否则读 release 内 priv/migrations
   MIGRATE_CMD="db migrate"
   [ -n "$MIGRATE_STAGING" ] && MIGRATE_CMD="db migrate --dir $MIGRATE_STAGING"

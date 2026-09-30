@@ -12,6 +12,32 @@
 
 ---
 
+## 运维处置卡片（owner / 止损 / 回滚）· W3-A04
+
+| 要素 | 值 |
+|---|---|
+| **Owner** | IMBoy Ops（待用户指名，指名后替换本行） |
+| **Escalation** | ① IMBoy Ops 值班（升级窗口内必须在线）→ ② 待指名平台负责人（IM/电话占位）→ ③ 涉及厂商组件（LiveKit/PG/TimescaleDB）时联系对应支持渠道 |
+
+### 止损线（量化，触发即执行，不在新版本上排障）
+
+升级完成后进入 **15 分钟观察窗**，任一条件成立即止损回滚（§6）：
+
+1. HTTP 5xx 错误率 > 1%（5 分钟窗口，对照告警 ImBoyHTTPErrorRateHigh）；
+2. 消息投递 p99 > 2s 持续 2 分钟（对照 ImBoyMsgDeliveryLatencyCritical）；
+3. WS 连接较升级前基线下降 > 50%（对照 ImBoyWSConnectionsDrop / ImBoyOnlineUsersDrop）；
+4. 迁移步骤（§2）执行报错或超时 10 分钟无进展——先回滚 release，schema 走 PITR 评估。
+
+**止血动作**：观察窗内不发布、不扩容、不改配置；触发任一条立即执行 §6 回滚，
+回滚完成、指标回绿后再进入排障。
+
+### 回滚
+
+见 §6 回滚步骤（完整：切旧 release → PITR → 回滚后验证）。止损场景优先用
+"切回旧 release"路径；仅当 §2 的 schema 变更已破坏性执行时才动用 PITR。
+
+---
+
 ## 目录 / Table of Contents
 
 1. [升级前检查 / Pre-upgrade Checks](#1-升级前检查)

@@ -103,7 +103,7 @@ fi
 # ----------------------------------------------------------------------------
 # 1) 建频道（RPC，OwnerUid 用运营账号 uid，Name/其余按需）：
 #    escript scripts/imboy_ctl 无 channel 子命令，用 erl RPC：
-#    erl -noshell -name s@127.0.0.1 -setcookie imboy -eval \
+#    erl -noshell -name s@127.0.0.1 -setcookie <your-cookie> -eval \
 #      "rpc:call('imboy@127.0.0.1', channel_logic, create_channel,
 #         [OwnerUid, <<\"imboy 官方\"/utf8>>, 0, #{}, 1]), halt()."
 # 2) 建 webhook（须频道管理员 role>=2），返回完整 token（仅此一次）：

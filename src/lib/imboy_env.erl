@@ -143,6 +143,9 @@ override_from_env() ->
     %% 避免每次调整都要重编 release（默认 120/min 会让连续巡检 429）
     ok = override_throttle_rate("IMBOY_THROTTLE_API_PER_USER", api_per_user),
     ok = override_throttle_rate("IMBOY_THROTTLE_API_PER_IP", api_per_ip),
+    %% GAP-09：passport 登录面（meta/captcha/do_login）走独立 passport_per_ip=5/min，
+    %% 浏览器 E2E 每用例 goto /login 即 3 请求，5/min 秒穿且无法经上两行放宽
+    ok = override_throttle_rate("IMBOY_THROTTLE_PASSPORT_PER_IP", passport_per_ip),
 
     %% Redis 配置覆盖
     ok = override_redis(),

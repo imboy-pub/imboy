@@ -270,7 +270,7 @@ install_ctl_wrapper() {
 # ERTS 执行（镜像已 COPY /opt/imboy/bin/imboy_ctl）。
 exec docker compose -f '$COMMUNITY_YML' exec -T \\
   -e IMBOY_CTL_NODE='imboy_dev@127.0.0.1' \\
-  -e IMBOY_CTL_COOKIE='imboycookie' \\
+  -e IMBOY_CTL_COOKIE='imboy_local_dev_only' \\
   imboy_backend \\
   sh -c 'exec /opt/imboy/erts-*/bin/escript /opt/imboy/bin/imboy_ctl "\$@"' golden "\$@"
 EOF

@@ -55,10 +55,25 @@ cleanup_user(Uid) ->
     ]).
 
 ensure_sweeper() ->
+    ensure_sweeper(unavailable).
+
+ensure_sweeper(Behavior) ->
     application:set_env(imboy, user_deletion_enabled, true),
     application:set_env(imboy, user_deletion_retention_days, ?GRACE),
     application:set_env(imboy, user_deletion_batch_size, 10),
     application:set_env(imboy, user_deletion_max_attempts, 5),
+    %% [语境固化] EB/CS/Agent 域 provider 已登记（0c53bc17 ORG-08、
+    %% d62faaf2 ORG02-AGENT-DOMAIN），preflight 不再走「缺域=拒」分支，
+    %% 原断言依赖的 ORG-02 裁决 A 语境（DEPENDENCY_FACTS_UNAVAILABLE →
+    %% 同轮重试至 failed）需显式复现：注入五域 stub 注册表并置
+    %% unavailable 行为（同款用法见 organization_preflight_tests）。
+    %% 用例 after 中 unset，防跨模块并发污染共享 app env。
+    ok = application:set_env(
+        imboy,
+        deletion_preflight_providers,
+        organization_preflight_stub_providers:full_registry()
+    ),
+    ok = application:set_env(imboy, preflight_stub_behavior, Behavior),
     case whereis(user_deletion_logic) of
         undefined ->
             {ok, _} = user_deletion_logic:start_link(),
@@ -66,6 +81,11 @@ ensure_sweeper() ->
         _Pid ->
             ok
     end.
+
+reset_preflight_stub() ->
+    application:unset_env(imboy, deletion_preflight_providers),
+    application:unset_env(imboy, preflight_stub_behavior),
+    ok.
 
 %% ===================================================================
 %% 1. 多域端到端：消息/朋友圈/附件/E2EE 密钥/群所有权转移
@@ -163,6 +183,7 @@ multi_domain_e2e_test_() ->
                 user_deletion_job_repo:find_by_user(Uid),
             {_Pos, _Len} = binary:match(LastError, <<"DEPENDENCY_FACTS_UNAVAILABLE">>)
         after
+            reset_preflight_stub(),
             cleanup_user(Uid),
             cleanup_user(Member),
             _ = elib_pg:query(<<"DELETE FROM public.\"group\" WHERE id = $1">>, [GroupId])
@@ -210,6 +231,7 @@ balance_gate_and_retry_test_() ->
                 user_deletion_job_repo:find_by_user(Uid),
             {_Pos, _Len} = binary:match(LastError, <<"DEPENDENCY_FACTS_UNAVAILABLE">>)
         after
+            reset_preflight_stub(),
             cleanup_user(Uid)
         end
     end).
@@ -222,6 +244,28 @@ user_status(Uid) ->
 %% ===================================================================
 %% 3. 并发 worker 认领：同一任务只被一个 worker 拿到
 %% ===================================================================
+
+%% 放行路径：五域 stub 全部放行（ok_all）→ preflight 通过 → 删除事务真执行
+%% → 任务 completed、用户主行消失。provider 登记完成（0c53bc17/d62faaf2）后
+%% 该语义此前无用例覆盖（stable-failures-root-cause-20260929.md 处置建议）。
+all_providers_allow_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Uid = new_uid(),
+        try
+            ok = create_user(Uid),
+            ok = seed_expired_request(Uid),
+            ok = ensure_sweeper(ok_all),
+            {ok, 1} = user_deletion_logic:cleanup_now(),
+            {ok, []} = elib_pg:query(
+                <<"SELECT id FROM public.\"user\" WHERE id = $1">>, [Uid]
+            ),
+            {ok, #{<<"status">> := <<"completed">>}} =
+                user_deletion_job_repo:find_by_user(Uid)
+        after
+            reset_preflight_stub(),
+            cleanup_user(Uid)
+        end
+    end).
 
 concurrent_claim_test_() ->
     ?TEST_WITH_DB(fun() ->
@@ -253,6 +297,7 @@ concurrent_claim_test_() ->
             1 = length(Winners),
             1 = length(Losers)
         after
+            reset_preflight_stub(),
             cleanup_user(Uid)
         end
     end).
@@ -295,6 +340,7 @@ garage_enqueue_best_effort_test_() ->
                 <<"SELECT id FROM public.\"user\" WHERE id = $1">>, [Uid]
             )
         after
+            reset_preflight_stub(),
             cleanup_user(Uid)
         end
     end).

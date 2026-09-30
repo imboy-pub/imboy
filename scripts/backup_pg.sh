@@ -6,7 +6,10 @@
 # 使用 pg_dump 自定义格式（-Fc，支持并行恢复+压缩）。
 #
 # 用法 / Usage:
-#   bash script/backup_pg.sh                 # 用 .env / 环境变量
+#   bash script/backup_pg.sh                 # 用 .env / 环境变量（默认全量）
+#   bash script/backup_pg.sh --full          # 全量备份（默认；与无参等价）
+#   bash script/backup_pg.sh --schema-only   # 仅 schema（文档 BACKUP-RESTORE.md
+#                                            # 承诺的"迁移前 schema 备份"模式）
 #   BACKUP_DIR=/data/backups bash script/backup_pg.sh
 #   cron 示例（每日 03:00 UTC）:
 #     0 3 * * * cd /opt/imboy/deploy && bash ../script/backup_pg.sh >> /var/log/imboy-backup.log 2>&1
@@ -25,6 +28,20 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[backup_pg]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[backup_pg]${NC} $*"; }
 fail()  { echo -e "${RED}[backup_pg] ERROR:${NC} $*" >&2; exit 1; }
+
+# ---------- 参数解析 ----------
+# 文档（docs/guides/operations/deployment/BACKUP-RESTORE.md）写的是
+# `backup_pg.sh --full` / `backup_pg.sh --schema-only`；此前脚本不解析参数，
+# `--schema-only` 被静默忽略、实际产出全量——按文档操作的运维会拿到语义
+# 错位的产物。这里把两个 flag 补齐；无参保持全量（cron 向后兼容）。
+MODE="full"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --full)        MODE="full"; shift ;;
+    --schema-only) MODE="schema-only"; shift ;;
+    *) fail "未知参数: $1（支持 --full / --schema-only）" ;;
+  esac
+done
 
 # ---------- 指标推送（闭合 IMBoyBackupNotRunning 告警的产出方）----------
 # shellcheck source=scripts/lib/metrics_push.sh
@@ -48,12 +65,22 @@ docker ps --format '{{.Names}}' | grep -qx "$PG_CONTAINER" \
 mkdir -p "$BACKUP_DIR"
 # 时间戳由 shell 生成（脚本运行时）
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT="${BACKUP_DIR}/${POSTGRES_DB}_${TS}.dump"
+# schema-only 产物用独立命名（<db>_schema_<ts>.dump）：
+#   1) 一眼可分辨；2) 下游（restore_smoke.sh / retention 清理）按
+#      `${POSTGRES_DB}_2*.dump` glob 只认全量——schema 备份按文档要永久保留，
+#      不参与 7 天轮换，也不能被每日恢复演练当全量用。
+DUMP_EXTRA_ARGS=()
+case "$MODE" in
+  full)         OUT="${BACKUP_DIR}/${POSTGRES_DB}_${TS}.dump" ;;
+  schema-only)  OUT="${BACKUP_DIR}/${POSTGRES_DB}_schema_${TS}.dump"
+                DUMP_EXTRA_ARGS=(--schema-only) ;;
+esac
 
 # ---------- 执行备份 ----------
-info "开始备份 db=${POSTGRES_DB} → ${OUT}"
+info "开始备份 mode=${MODE} db=${POSTGRES_DB} → ${OUT}"
 if docker exec -i "$PG_CONTAINER" \
       pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --no-owner --no-privileges \
+      "${DUMP_EXTRA_ARGS[@]+"${DUMP_EXTRA_ARGS[@]}"}" \
       > "$OUT"; then
   SIZE="$(du -h "$OUT" | cut -f1)"
   info "备份完成: ${OUT} (${SIZE})"
@@ -90,7 +117,9 @@ fi
 push_offsite "$OUT" || fail "异地推送失败：本地备份已生成但**没有异地副本**"
 
 # ---------- 清理过期备份 ----------
-DELETED="$(find "$BACKUP_DIR" -name "${POSTGRES_DB}_*.dump" -type f -mtime "+${RETENTION_DAYS}" -print -delete | wc -l | tr -d ' ')"
+# glob `${POSTGRES_DB}_2*.dump` 只匹配全量产物（时间戳以 2 开头），
+# 不动 _schema_ 备份（文档口径：schema 备份永久保留）。
+DELETED="$(find "$BACKUP_DIR" -name "${POSTGRES_DB}_2*.dump" -type f -mtime "+${RETENTION_DAYS}" -print -delete | wc -l | tr -d ' ')"
 [ "$DELETED" -gt 0 ] && info "清理 ${DELETED} 个超过 ${RETENTION_DAYS} 天的旧备份"
 
 BACKUP_OK=1

@@ -71,10 +71,10 @@
 %%%
 %%%  # 创建超级管理员（仅允许一次，幂等拒绝重复创建；install.sh 无浏览器部署入口）
 %%%  escript scripts/imboy_ctl adm create --phone <手机号> --password <明文密码> [-n <昵称>]
-%%% 前置：imboy@127.0.0.1 节点已启动（或通过 --node 指定），cookie=imboy。
+%%% 前置：imboy@127.0.0.1 节点已启动（或通过 --node 指定），cookie=imboy_local_dev_only（与 config/vm.args 配对）。
 
 -define(DEFAULT_NODE, 'imboy@127.0.0.1').
--define(DEFAULT_COOKIE, imboy).
+-define(DEFAULT_COOKIE, imboy_local_dev_only).
 -define(RPC_TIMEOUT, 15000).
 
 %% ---------------------------------------------------------------------------

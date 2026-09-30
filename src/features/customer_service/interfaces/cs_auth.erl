@@ -212,7 +212,7 @@ decide_in(cs_visit, _Route, Credential, OrgId, State) ->
     %% 在认证层翻译，业务层的 not_found 保持 404（避免枚举仍由同语句保证）。
     case
         customer_service_facade:verify_visit_token(OrgId, #{
-            secret => maps:get(raw, Credential), at => now_ms(State)
+            secret => maps:get(raw, Credential), at => now_sec(State)
         })
     of
         {ok, Scope} ->
@@ -375,11 +375,16 @@ facts_module(State) ->
 governance_roles_of(Member) ->
     [R || R <- maps:get(governance_roles, Member, []), is_binary(R)].
 
-%% 时钟：可注入（测试），缺省系统毫秒。只用于 visit token 过期判定。
-now_ms(State) ->
+%% 时钟：可注入（测试），缺省系统秒。只用于 visit token 过期判定。
+%% 量纲必须与 visit token 行的 expires_at/revoked_at（epoch 秒，widget 面签发
+%% 同源）一致——毫秒基准会让 `Now >= ExpiresAt` 恒真，param org 面（
+%% /cs/sessions/:id/{messages,rating} 等 cs_visit 路由）一律 401 token_expired
+%% （DF-4 同族终局，2026-09-30 真机走查实证；此前 6c405e69 条目层补丁不
+%% 达意——缺陷在本鉴权层的比较基准，不在动作表 opts）。
+now_sec(State) ->
     case maps:get(now, State, undefined) of
         N when is_integer(N) -> N;
-        _ -> os:system_time(millisecond)
+        _ -> os:system_time(second)
     end.
 
 %% —— cowboy 请求读取的薄封装（便于纯测试注入 proplist/map 形态的伪请求）——

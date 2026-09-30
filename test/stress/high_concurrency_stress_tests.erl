@@ -274,7 +274,13 @@ do_burst_messages() ->
             spawn(fun() ->
                 MsgId = integer_to_binary(elib_tsid:generate()),
                 MsgData = #{
-                    <<"payload">> => <<N/integer, "爆发测试"/utf8>>,
+                    %% N 必须经 integer_to_binary（ASCII 数字）：原
+                    %% <<N/integer, ...>> 把 128..255 的 N 当单字节拼进
+                    %% UTF8 串产生非法序列，jsone_encode escape_string
+                    %% badarg——BurstSize≥129 时确定性挂（127 过/73 挂实证）
+                    <<"payload">> => iolist_to_binary(
+                        [integer_to_binary(N), "爆发测试" / utf8]
+                    ),
                     <<"msg_type">> => <<"text">>,
                     <<"action">> => <<"send">>,
                     <<"created_at">> => elib_dt:millisecond()
@@ -290,7 +296,10 @@ do_burst_messages() ->
                             _ -> failure
                         end
                     catch
-                        _:_ -> error
+                        C:R:ST ->
+                            %% 诊断：burst 内异常原样外吐（曾 73/200 error 无从定位）
+                            io:format("[burst-diag] ~p:~p~n~p~n", [C, R, ST]),
+                            error
                     end,
                 Parent ! {result, self(), Result}
             end)

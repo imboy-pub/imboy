@@ -5,6 +5,12 @@
 
 tablename_returns_expected_table_test_() ->
     ?TEST_SIMPLE(fun() ->
+        % W1-A05：public_tablename/1 读 config_ds:env(sql_driver)，而 -config 注入的
+        % env 在 application:load(imboy) 之前对 get_env 不可见（undefined）。全量跑
+        % 时靠更早模块顺带 load 才绿；本模块单独跑或居批次首位（backend-ci.yml
+        % moment-eunit job 即此形态）时稳定红（实测 Failed:1 exit 2）。显式幂等
+        % load 使断言自足，消除套件顺序耦合；不启 app、无进程副作用。
+        _ = application:load(imboy),
         ?assertEqual(<<"public.moment_post">>, moment_post_repo:tablename()),
         ?assertEqual(<<"public.moment_like">>, moment_like_repo:tablename())
     end).

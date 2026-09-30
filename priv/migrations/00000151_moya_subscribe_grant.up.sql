@@ -1,4 +1,4 @@
--- 00000152_moya_subscribe_grant.up.sql
+-- 00000151_moya_subscribe_grant.up.sql
 -- 订阅消息一次性授权额度表（W3 服务端依赖之一：老师发布回评 → 家长服务通知）。
 -- 迁移契约：up=可重复执行，down=安全回滚（fail-closed 预检）。禁止
 -- BEGIN/COMMIT——erlang_migrate 外层单事务包裹。

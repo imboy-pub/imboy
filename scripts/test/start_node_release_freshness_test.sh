@@ -23,7 +23,7 @@ SH
 chmod +x "$TMP_ROOT/_rel/imboy/bin/imboy" "$TMP_ROOT/mock-bin/make"
 
 run_start() {
-  PATH="$TMP_ROOT/mock-bin:$PATH" bash "$TMP_ROOT/scripts/start_node.sh" test imboycookie 9800 "" daemon \
+  PATH="$TMP_ROOT/mock-bin:$PATH" bash "$TMP_ROOT/scripts/start_node.sh" test imboy_local_dev_only 9800 "" daemon \
     >/dev/null 2>&1
 }
 
