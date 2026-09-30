@@ -1052,6 +1052,13 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  customer_service_seat_console:
+    action: delete
+    owner: customer_service
+    reason: 客服坐席控制台嵌入配置（Org 资产；public_seat_console_id 非 secret 且行内不含用户内容）
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
   customer_service_seat_presence:
     action: delete
     owner: customer_service
