@@ -25,6 +25,7 @@
 -export([unfinished_tasks_of_user/3]).
 -export([remove_channels_tx/3]).
 -export([disable_group_member_tx/2]).
+-export([lock_organization_memberships_tx/3, owned_groups_of_user/3]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -196,11 +197,10 @@ update_role_tx(Conn, WsId, Uid, Role) ->
 -spec remove_tx(any(), integer(), integer()) -> ok | {error, term()}.
 remove_tx(Conn, WsId, Uid) ->
     Tb = tablename(),
-    Now = elib_dt:now(),
     Sql =
-        <<"UPDATE ", Tb/binary, " SET status = 'removed', updated_at = $1",
-            " WHERE workspace_id = $2 AND user_id = $3 AND status = 'active'">>,
-    case elib_pg:execute(Conn, Sql, [Now, WsId, Uid]) of
+        <<"UPDATE ", Tb/binary, " SET status = 'removed', updated_at = CURRENT_TIMESTAMP",
+            " WHERE workspace_id = $1 AND user_id = $2 AND status = 'active'">>,
+    case elib_pg:execute(Conn, Sql, [WsId, Uid]) of
         {ok, 1} -> ok;
         {ok, _} -> {error, member_not_active};
         {error, Reason} -> {error, Reason}
@@ -280,9 +280,29 @@ ensure_channel_handover_tx(Conn, WsId, Uid) ->
 
 -spec disable_group_member_tx(any(), integer()) -> ok | {error, term()}.
 disable_group_member_tx(Conn, MemberId) ->
-    Sql = <<"UPDATE group_member SET status = 0, updated_at = $1 WHERE id = $2">>,
-    case elib_pg:execute(Conn, Sql, [elib_dt:now(), MemberId]) of
+    Sql = <<"UPDATE group_member SET status = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1">>,
+    case elib_pg:execute(Conn, Sql, [MemberId]) of
         {ok, 1} -> ok;
         {ok, _} -> {error, member_not_active};
         {error, Reason} -> {error, Reason}
     end.
+
+%% 退出只撤销目标组织内的资格；包括已归档工作区，防止恢复后重新获得权限。
+-spec lock_organization_memberships_tx(any(), integer(), integer()) ->
+    {ok, [map()]} | {error, term()}.
+lock_organization_memberships_tx(Conn, OrgId, Uid) ->
+    Sql = <<
+        "SELECT w.id AS workspace_id, w.owner_id FROM workspace w"
+        " JOIN workspace_member wm ON wm.workspace_id = w.id"
+        " WHERE w.organization_id = $1 AND wm.user_id = $2 AND wm.status = 'active'"
+        " ORDER BY w.id FOR UPDATE OF w, wm"
+    >>,
+    elib_pg:query(Conn, Sql, [OrgId, Uid]).
+
+-spec owned_groups_of_user(any(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
+owned_groups_of_user(Conn, WsId, Uid) ->
+    Sql = <<
+        "SELECT id, title FROM \"group\" WHERE workspace_id = $1"
+        " AND scope = 'workspace' AND owner_uid = $2 AND status = 1 ORDER BY id"
+    >>,
+    elib_pg:query(Conn, Sql, [WsId, Uid]).

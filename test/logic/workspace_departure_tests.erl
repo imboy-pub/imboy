@@ -23,6 +23,7 @@ removal_case(Mode) ->
                 end},
                 {owned_projects_of_user, 3, fun(_, _, _) -> {ok, []} end},
                 {unfinished_tasks_of_user, 3, fun(_, _, _) -> {ok, []} end},
+                {owned_groups_of_user, 3, fun(_, _, _) -> {ok, []} end},
                 {list_active_workspace_groups_of_user, 3, fun(_, _, _) -> {ok, []} end},
                 {remove_channels_tx, 3, fun(conn, 10, 2) -> remove_channels(Mode) end},
                 {remove_tx, 3, fun(conn, 10, 2) ->

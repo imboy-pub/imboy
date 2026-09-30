@@ -1,9 +1,9 @@
 -module(organization_member_logic).
 
-%% Organization 治理成员。该关系不派生 Workspace 或 Group 成员资格。
+%% Organization 成员关系不派生 Workspace 资格；离场同事务撤销本组织的协作资格。
 %%
 %% `suspend/3` 与 `remove/3` 的**依赖资源守卫**（EB-08 租约内的精确 removal/suspend
-%% 段）：两者都是 `organization_member` 这一张 Core 表的**通用**状态迁移——
+%% 段）：suspend 保留可恢复关系，remove/leave 同事务撤销本组织协作关系——
 %%   * `suspend/3` 把 active 成员置为 suspended（可恢复的撤权第一步，不删个人账号）；
 %%   * `remove/3` 在数据库守卫（同语句 BEFORE 触发器）拒绝「仍被依赖资源引用」的
 %%     移除时，把该拒绝**翻译**成 409（`dependent_resources_conflict/1`）。
@@ -17,6 +17,7 @@
     invite/4,
     change_role/4,
     remove/3,
+    leave/2,
     transfer_owner/3,
     suspend/3,
     restore/3,
@@ -159,13 +160,33 @@ remove(Uid, OrgId, TargetUid) when is_integer(TargetUid), TargetUid > 0 ->
         fun(Conn, Org, _ActorRole) -> remove_tx(Conn, Uid, Org, OrgId, TargetUid) end,
         <<"移除失败，请稍后重试"/utf8>>
     ),
-    case Result of
-        {ok, _} -> ?INFO_LOG([organization_member_removed, OrgId, Uid, TargetUid]);
-        _ -> ok
-    end,
-    Result;
+    finish_departure(Result, OrgId, Uid, TargetUid);
 remove(_, _, _) ->
     {error, {400, <<"user_id 必须是正整数"/utf8>>}}.
+
+%% 员工本人退出复用 offboard 路由；身份只来自 Human JWT。
+-spec leave(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
+leave(Uid, OrgId) ->
+    Result = write_tx(
+        Uid,
+        OrgId,
+        fun(Conn, _Org, {Role, Status}) ->
+            case Role of
+                <<"owner">> -> abort(409, <<"请先移交企业负责人，再退出企业"/utf8>>);
+                _ -> remove_active_tx(Conn, OrgId, Uid, Status)
+            end
+        end,
+        <<"退出失败，请稍后重试"/utf8>>,
+        self_leave
+    ),
+    finish_departure(Result, OrgId, Uid, Uid).
+
+finish_departure({ok, Result}, OrgId, Actor, Target) ->
+    lists:foreach(fun workspace_ds:member_removed/1, maps:get(affected_workspaces, Result, [])),
+    ?INFO_LOG([organization_member_removed, OrgId, Actor, Target]),
+    {ok, Result};
+finish_departure(Error, _OrgId, _Actor, _Target) ->
+    Error.
 
 -spec transfer_owner(integer(), integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
@@ -311,12 +332,15 @@ remove_by_role_tx(Conn, Uid, Org, OrgId, TargetUid, Status, Member) ->
             remove_active_tx(Conn, OrgId, TargetUid, Status)
     end.
 
-remove_active_tx(Conn, OrgId, TargetUid, <<"active">>) ->
-    remove_row_tx(
-        Conn, OrgId, TargetUid, organization_member_repo:remove_tx(Conn, OrgId, TargetUid)
-    );
-remove_active_tx(Conn, OrgId, TargetUid, _Suspended) ->
-    remove_row_tx(Conn, OrgId, TargetUid, remove_member_row_tx(Conn, OrgId, TargetUid)).
+remove_active_tx(Conn, OrgId, TargetUid, Status) ->
+    Workspaces = workspace_ds:remove_organization_memberships_tx(Conn, OrgId, TargetUid),
+    Result =
+        case Status of
+            <<"active">> -> organization_member_repo:remove_tx(Conn, OrgId, TargetUid);
+            _ -> remove_member_row_tx(Conn, OrgId, TargetUid)
+        end,
+    {ok, Member} = remove_row_tx(Conn, OrgId, TargetUid, Result),
+    {ok, Member#{affected_workspaces => Workspaces}}.
 
 remove_row_tx(_Conn, OrgId, TargetUid, Result) ->
     case Result of
@@ -524,58 +548,63 @@ constraint_name(_Other) ->
     undefined.
 
 %% 组织行先锁、成员行后锁，所有治理写保持同一锁顺序。
-write_tx(Uid, OrgId, Fun, ErrorMsg) when is_integer(Uid), Uid > 0, is_integer(OrgId), OrgId > 0 ->
+write_tx(Uid, OrgId, Fun, ErrorMsg) ->
+    write_tx(Uid, OrgId, Fun, ErrorMsg, governance).
+
+write_tx(Uid, OrgId, Fun, ErrorMsg, Mode) when
+    is_integer(Uid), Uid > 0, is_integer(OrgId), OrgId > 0
+->
     Tx = fun(Conn) ->
-        Org =
-            case
-                organization_member_repo:find_organization_for_share_tx(
-                    Conn, OrgId, <<"id,owner_id,status">>
-                )
-            of
-                {ok, #{<<"status">> := <<"active">>} = Row} ->
-                    Row;
-                {ok, #{<<"status">> := <<"pending">>}} ->
-                    abort(409, <<"组织待审核，审核通过后才能进行成员管理操作"/utf8>>);
-                {ok, #{<<"status">> := <<"rejected">>}} ->
-                    abort(409, <<"组织未通过审核，成员管理操作被拒绝"/utf8>>);
-                {ok, _Archived} ->
-                    abort(409, <<"组织已归档，成员管理操作被拒绝"/utf8>>);
-                {error, not_found} ->
-                    abort(404, <<"组织不存在"/utf8>>);
-                {error, Reason1} ->
-                    throw({abort_tx, {internal, Reason1}})
-            end,
-        ActorRole =
-            case
-                organization_member_repo:find_active_for_share_tx(
-                    Conn, OrgId, Uid, <<"role">>
-                )
-            of
-                {ok, #{<<"role">> := Role}} when Role =:= <<"owner">>; Role =:= <<"admin">> ->
-                    Role;
-                {ok, _} ->
-                    abort(403, <<"仅 Organization Owner 或 Admin 可执行此操作"/utf8>>);
-                {error, not_found} ->
-                    abort(403, <<"仅 Organization Owner 或 Admin 可执行此操作"/utf8>>);
-                {error, Reason2} ->
-                    throw({abort_tx, {internal, Reason2}})
-            end,
+        Org = organization_for_write_tx(Conn, OrgId, Mode),
+        ActorRole = actor_role_tx(Conn, OrgId, Uid, Mode),
         Fun(Conn, Org, ActorRole)
     end,
     case elib_pg:with_tx(Tx) of
-        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
-            {error, {Code, Msg}};
-        {error, {internal, Reason}} ->
-            ?ERROR_LOG([organization_member_write_failed, OrgId, Uid, Reason]),
-            internal_error(ErrorMsg);
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) -> {error, {Code, Msg}};
+        {error, {membership_conflict, _}} ->
+            {error, {409, <<"该成员仍有需交接的群、频道、项目或任务，请先完成交接"/utf8>>}};
         {error, Reason} ->
             ?ERROR_LOG([organization_member_write_failed, OrgId, Uid, Reason]),
             internal_error(ErrorMsg);
         Result ->
             Result
     end;
-write_tx(_, _, _, _) ->
-    {error, {400, <<"organization_id 必须是正整数"/utf8>>}}.
+write_tx(_, _, _, _, _) ->
+    {error, {400, <<"organization_id 和 user_id 必须是正整数"/utf8>>}}.
+
+organization_for_write_tx(Conn, OrgId, Mode) ->
+    case
+        organization_member_repo:find_organization_for_share_tx(
+            Conn, OrgId, <<"id,owner_id,status">>
+        )
+    of
+        {ok, #{<<"status">> := <<"active">>} = Row} -> Row;
+        {ok, #{<<"status">> := <<"archived">>} = Row} when Mode =:= self_leave -> Row;
+        {ok, #{<<"status">> := <<"pending">>}} -> abort(409, <<"组织待审核，审核通过后才能进行成员管理操作"/utf8>>);
+        {ok, #{<<"status">> := <<"rejected">>}} -> abort(409, <<"组织未通过审核，成员管理操作被拒绝"/utf8>>);
+        {ok, _} -> abort(409, <<"组织已归档，成员管理操作被拒绝"/utf8>>);
+        {error, not_found} -> abort(404, <<"组织不存在"/utf8>>);
+        {error, Reason} -> throw({abort_tx, {internal, Reason}})
+    end.
+
+actor_role_tx(Conn, OrgId, Uid, self_leave) ->
+    case organization_member_repo:find_for_update_tx(Conn, OrgId, Uid, <<"role,status">>) of
+        {ok, #{<<"role">> := Role, <<"status">> := Status}} when ?REMOVABLE_SOURCE(Status) ->
+            {Role, Status};
+        {ok, _} ->
+            member_not_active();
+        {error, not_found} ->
+            abort(403, <<"你不是本企业成员"/utf8>>);
+        {error, Reason} ->
+            throw({abort_tx, {internal, Reason}})
+    end;
+actor_role_tx(Conn, OrgId, Uid, governance) ->
+    case organization_member_repo:find_active_for_share_tx(Conn, OrgId, Uid, <<"role">>) of
+        {ok, #{<<"role">> := Role}} when Role =:= <<"owner">>; Role =:= <<"admin">> -> Role;
+        {ok, _} -> abort(403, <<"仅 Organization Owner 或 Admin 可执行此操作"/utf8>>);
+        {error, not_found} -> abort(403, <<"仅 Organization Owner 或 Admin 可执行此操作"/utf8>>);
+        {error, Reason} -> throw({abort_tx, {internal, Reason}})
+    end.
 
 ensure_role_grant_allowed(Uid, Org, <<"admin">>) ->
     ensure_primary_owner(Uid, Org);

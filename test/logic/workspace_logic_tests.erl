@@ -443,7 +443,7 @@ remove_member_cascades_group_members_test_() ->
                 {'execute', 3, fun
                     (_Conn, <<"WITH lock_row AS ", _/binary>>, _) ->
                         {ok, 1};
-                    (_Conn, Sql, [_, GmId]) ->
+                    (_Conn, Sql, [GmId]) ->
                         Prev =
                             case get(t_wl_disable_calls) of
                                 undefined -> [];
@@ -470,6 +470,7 @@ remove_member_cascades_group_members_test_() ->
                     ]}
                 end},
                 {'remove_channels_tx', 3, fun(_, ?WS_ID, ?MEMBER) -> {ok, []} end},
+                {'owned_groups_of_user', 3, fun(_, ?WS_ID, ?MEMBER) -> {ok, []} end},
                 {'remove_tx', 3, fun(_, WsId, Uid) ->
                     put(t_wl_parent_removed, {WsId, Uid}),
                     ok

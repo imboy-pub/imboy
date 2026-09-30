@@ -115,6 +115,22 @@ invalid_path_id_returns_400_test_() ->
         end
     ).
 
+self_offboard_uses_authenticated_uid_without_body_test_() ->
+    ?WITH_MECKS(handler_mocks(), fun() ->
+        Result = organization_member_handler:handle_action(
+            member_offboard,
+            self_req,
+            #{current_uid => ?UID}
+        ),
+        ?assertEqual(200, maps:get(response_status, Result)),
+        receive
+            {leave, ?UID, ?ORG_ID} -> ok
+        after 0 -> ?assert(false)
+        end,
+        ?assertEqual(0, meck:num_calls(elib_param, post, 1)),
+        ?assertEqual(0, meck:num_calls(organization_member_logic, remove, 3))
+    end).
+
 router_registers_specific_role_before_member_route_test() ->
     {ok, Router} = file:read_file("src/imboy_router.erl"),
     Collection = binary:match(Router, <<"organizations/:organization_id/members\"">>),
@@ -153,11 +169,13 @@ handler_mocks() ->
                 (put_req) -> <<"PUT">>;
                 (delete_req) -> <<"DELETE">>;
                 (transfer_req) -> <<"POST">>;
+                (self_req) -> <<"POST">>;
                 (invalid_req) -> <<"GET">>
             end},
             {'binding', 2, fun
                 (organization_id, invalid_req) -> <<"bad">>;
                 (organization_id, _) -> integer_to_binary(?ORG_ID);
+                (user_id, self_req) -> integer_to_binary(?UID);
                 (user_id, _) -> integer_to_binary(?TARGET)
             end},
             {'reply', 4, fun(405, Headers, _Body, _Req) ->
@@ -180,6 +198,10 @@ handler_mocks() ->
             {'error', 3, fun(_Req, _Msg, Code) -> #{response_status => Code} end}
         ]},
         {organization_member_logic, [
+            {'leave', 2, fun(Uid, OrgId) ->
+                self() ! {leave, Uid, OrgId},
+                {ok, #{user_id => Uid, status => <<"removed">>}}
+            end},
             {'list', 4, fun(Uid, OrgId, Page, Size) ->
                 self() ! {list, Uid, OrgId, Page, Size},
                 {ok, #{list => []}}

@@ -34,6 +34,7 @@
 -export([read_branding/1]).
 -export([overview/2]).
 -export([ws_transfer_tx/3, remove_member_tx/3, member_removed/1]).
+-export([remove_organization_memberships_tx/3]).
 -export([branding_public_view/1]).
 -export([resource_counts/1]).
 %% Admin 运营管理查询（双体验 v2.5.2 WP7/T11b；仅供 workspace_logic admin 函数调用）
@@ -671,4 +672,21 @@ ensure_removal_dependencies_tx(Conn, WsId, TargetUid) ->
             ok;
         {error, Reason2} ->
             throw({abort_tx, Reason2})
+    end,
+    case workspace_member_repo:owned_groups_of_user(Conn, WsId, TargetUid) of
+        {ok, []} -> ok;
+        {ok, Groups} -> throw({abort_tx, {membership_conflict, #{owned_groups => Groups}}});
+        {error, GroupReason} -> throw({abort_tx, GroupReason})
+    end.
+
+-spec remove_organization_memberships_tx(any(), integer(), integer()) -> [map()].
+remove_organization_memberships_tx(Conn, OrgId, Uid) ->
+    Rows =
+        case workspace_member_repo:lock_organization_memberships_tx(Conn, OrgId, Uid) of
+            {ok, Workspaces} -> Workspaces;
+            {error, Reason} -> throw({abort_tx, Reason})
+        end,
+    case lists:any(fun(#{<<"owner_id">> := Owner}) -> Owner =:= Uid end, Rows) of
+        true -> throw({abort_tx, {409, <<"请先移交工作区负责人，再退出企业或移除成员"/utf8>>}});
+        false -> [remove_member_tx(Conn, WsId, Uid) || #{<<"workspace_id">> := WsId} <- Rows]
     end.

@@ -367,6 +367,9 @@ common_mocks(ActorUid, ActorRole) ->
         {elib_pg, [
             {'with_tx', 1, fun run_tx/1}
         ]},
+        {workspace_member_repo, [
+            {lock_organization_memberships_tx, 3, fun(_, ?ORG_ID, _) -> {ok, []} end}
+        ]},
         {organization_member_repo, [
             {'find_organization_for_share_tx', 3, fun(_, ?ORG_ID, <<"id,owner_id,status">>) ->
                 {ok, #{
@@ -664,6 +667,9 @@ remove_mocks(RemoveTxFun) ->
     [
         {elib_pg, [
             {'with_tx', 1, fun run_tx/1}
+        ]},
+        {workspace_member_repo, [
+            {lock_organization_memberships_tx, 3, fun(_, ?ORG_ID, _) -> {ok, []} end}
         ]},
         {organization_member_repo, [
             {'find_organization_for_share_tx', 3, fun(_, ?ORG_ID, <<"id,owner_id,status">>) ->

@@ -107,7 +107,7 @@ member_workspaces(Req0, State) ->
 %% 成员生命周期命令共用形状（organization_id + user_id 绑定，POST 命令语义）：
 %%   * suspend  → logic suspend/3（active → suspended，可逆撤权第一步）；
 %%   * restore  → logic restore/3（suspended → active，EB-D07 复位端）；
-%%   * offboard → logic remove/3（active|suspended → removed 终态，EB-08 两步
+%%   * offboard → 本人调用 leave/2，治理他人调用 remove/3（active|suspended → removed 终态，EB-08 两步
 %%     离场的 S3；「offboard」与 DB 守卫 trg_organization_member_offboarding_guard
 %%     同名同义，不另发明语义）。
 member_command(suspend, Req0, State) ->
@@ -123,7 +123,12 @@ member_command(restore, Req0, State) ->
 member_command(offboard, Req0, State) ->
     Uid = auth_ds:current_uid(State),
     with_ids(Req0, fun(OrgId, TargetUid) ->
-        respond(Req0, organization_member_logic:remove(Uid, OrgId, TargetUid))
+        Result =
+            case TargetUid =:= Uid of
+                true -> organization_member_logic:leave(Uid, OrgId);
+                false -> organization_member_logic:remove(Uid, OrgId, TargetUid)
+            end,
+        respond(Req0, Result)
     end).
 
 transfer_owner(Req0, State) ->
