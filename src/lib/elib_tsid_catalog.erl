@@ -51,8 +51,28 @@
 -module(elib_tsid_catalog).
 
 -export([version/0, primary_keys/0, is_tsid_table/1, digest/0]).
+%% catalog rebind 溯源（elib_tsid_bootstrap catalog_changed 显式重绑路径）：
+%% 历史版本 digest 锚点 + 已验证迁移邻接表。均为纯函数，不连库。
+-export([known_versions/0, verified_rebind_transitions/0]).
 
 -define(CATALOG_VERSION, 3).
+
+%% v1/v2 历史 digest（32 字节 SHA-256，与 digest() 同一哈希链），溯源取证：
+%% 分别由 git 历史版本 352bee53（v1，104 项）与 8f1a164d（v2，183 项）的
+%% primary_keys/0 独立编译重算得出，v2 常量另由 eunit 用「当前清单剔除
+%% v3 新增 3 项」自证（见 elib_tsid_catalog_tests provenance 段）。
+%% v1 常量无法在当前代码内重构自证（v1→v2 为 79 项扩容），以 git blob
+%% 取证为准；两个常量相互独立且与 v3 digest 互异（测试钉住）。
+-define(V1_DIGEST,
+    <<16#B0, 16#B5, 16#95, 16#E3, 16#05, 16#6D, 16#F3, 16#0D, 16#86, 16#6F, 16#FE, 16#BE, 16#32,
+        16#01, 16#1B, 16#B1, 16#13, 16#88, 16#F0, 16#32, 16#6C, 16#D2, 16#A8, 16#03, 16#58, 16#9F,
+        16#F8, 16#11, 16#D8, 16#73, 16#BD, 16#B5>>
+).
+-define(V2_DIGEST,
+    <<16#96, 16#E3, 16#05, 16#1F, 16#D9, 16#20, 16#80, 16#22, 16#28, 16#30, 16#77, 16#9D, 16#9F,
+        16#5B, 16#A9, 16#88, 16#84, 16#C2, 16#2E, 16#8A, 16#7A, 16#9C, 16#E0, 16#E3, 16#AA, 16#46,
+        16#17, 16#73, 16#88, 16#5D, 16#6D, 16#1C>>
+).
 
 -spec version() -> pos_integer().
 version() ->
@@ -280,3 +300,30 @@ is_tsid_table(Table) ->
 digest() ->
     Rows = lists:sort(primary_keys()),
     crypto:hash(sha256, term_to_binary({?CATALOG_VERSION, Rows})).
+
+%%--------------------------------------------------------------------
+%% @doc catalog rebind 溯源锚点：全部已发布 catalog 版本的 {版本, digest}。
+%%
+%% 供 elib_tsid_bootstrap 的 catalog_changed 显式重绑路径验证 transition
+%% 溯源——manifest 中绑定的旧 digest 必须能在本表找到对应已发布版本，
+%% 否则该 transition 未经验证（BLOCKED_CATALOG_TRANSITION_UNRECOGNIZED）。
+%% 当前版本条目直接引用 digest()（权威源），历史版本为静态常量。
+%% catalog 递减/扩容时：新增版本须在此追加历史 digest 并同步
+%% verified_rebind_transitions/0。
+%%--------------------------------------------------------------------
+-spec known_versions() -> [{Version :: pos_integer(), Digest :: binary()}].
+known_versions() ->
+    [{1, ?V1_DIGEST}, {2, ?V2_DIGEST}, {?CATALOG_VERSION, digest()}].
+
+%%--------------------------------------------------------------------
+%% @doc 已验证的 catalog rebind 迁移邻接表（allowlist）。
+%%
+%% 只登记「真实发布过且经人工核对」的单步版本迁移；跨步（如 v1→v3）、
+%% 降级（高版本 manifest 绑回低版本 digest）与未知 digest 一律不在册，
+%% 重绑路径必须 STOP（BLOCKED_CATALOG_TRANSITION_UNRECOGNIZED），不得
+%% 自动放行。v1→v2（2026-09-30 审计扩容）与 v2→v3（2026-09-30 生产首启
+%% 补全）为已发布历史迁移；未来 v4 发布时在两处同步追加 {3, 4}。
+%%--------------------------------------------------------------------
+-spec verified_rebind_transitions() -> [{FromV :: pos_integer(), ToV :: pos_integer()}].
+verified_rebind_transitions() ->
+    [{1, 2}, {2, 3}].

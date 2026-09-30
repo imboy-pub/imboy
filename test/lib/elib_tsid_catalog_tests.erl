@@ -150,6 +150,58 @@ catalog_shape_test() ->
     ?assertEqual(D, elib_tsid_catalog:digest()).
 
 %% ===================================================================
+%% 2b. catalog rebind 溯源（known_versions / verified_rebind_transitions）
+%% ===================================================================
+
+%% 形态：三个已发布版本、版本号升序、当前版本条目与 digest() 权威源一致、
+%% 三个 digest 两两互异且均为 32 字节（防常量誊抄错位）。
+known_versions_shape_test() ->
+    Known = elib_tsid_catalog:known_versions(),
+    ?assertEqual([1, 2, 3], [V || {V, _} <- Known]),
+    ?assertEqual(elib_tsid_catalog:digest(), proplists:get_value(3, Known)),
+    Digests = [D || {_, D} <- Known],
+    ?assertEqual(3, length(lists:usort(Digests))),
+    lists:foreach(fun(D) -> ?assertEqual(32, byte_size(D)) end, Digests).
+
+%% v2 常量自证：v3 清单恰为 v2 + 3 项（v3 变更记录），故用当前清单剔除
+%% 这 3 项按同一哈希链（sha256(term_to_binary({2, sorted}))）可重构 v2
+%% digest——常量誊抄错误在此即刻暴露。
+known_versions_v2_digest_selfverifying_test() ->
+    V3Only = [
+        {msg_store_staging, id},
+        {schema_migrations, version},
+        {schema_migrations_history, version}
+    ],
+    V2List = elib_tsid_catalog:primary_keys() -- V3Only,
+    ?assertEqual(183, length(V2List)),
+    ExpectV2 = crypto:hash(sha256, term_to_binary({2, lists:sort(V2List)})),
+    ?assertEqual(ExpectV2, proplists:get_value(2, elib_tsid_catalog:known_versions())).
+
+%% v1 常量无法在当前代码内重构自证（v1→v2 为 79 项扩容），钉住与 v2/v3
+%% 互异 + 32 字节形状；其 git 溯源取证（352bee53 独立编译重算）登记于
+%% 硬化状态文档 §10。
+known_versions_v1_anchor_test() ->
+    V1 = proplists:get_value(1, elib_tsid_catalog:known_versions()),
+    ?assertEqual(32, byte_size(V1)),
+    ?assertNotEqual(V1, proplists:get_value(2, elib_tsid_catalog:known_versions())),
+    ?assertNotEqual(V1, elib_tsid_catalog:digest()).
+
+%% 已验证迁移邻接：恰为已发布的单步 v1→v2 与 v2→v3；全部端点必须在
+%% known_versions 中；不含跨步/降级/自环。
+verified_rebind_transitions_shape_test() ->
+    Trans = elib_tsid_catalog:verified_rebind_transitions(),
+    ?assertEqual([{1, 2}, {2, 3}], Trans),
+    Known = [V || {V, _} <- elib_tsid_catalog:known_versions()],
+    lists:foreach(
+        fun({From, To}) ->
+            ?assert(lists:member(From, Known)),
+            ?assert(lists:member(To, Known)),
+            ?assert(From < To)
+        end,
+        Trans
+    ).
+
+%% ===================================================================
 %% 3. 迁移静态解析 ⊆ catalog（反向发现口径的防漂移钉子）
 %% ===================================================================
 
