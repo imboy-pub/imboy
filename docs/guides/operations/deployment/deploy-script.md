@@ -253,7 +253,7 @@ ssh -p $SERVER_PORT $SERVER_USER@$SERVER_HOST \
 | SSH ControlMaster | 整个部署只握手一次，所有命令复用同一 TCP 连接 |
 | 远端编译 | `git pull` + `make rel` 在服务器上执行，避免本地环境差异 |
 | 节点命名 | `DEPLOY_NODE_NAME@127.0.0.1`；留空时使用 `MMDDHHmm@127.0.0.1` |
-| 端口轮询 | 新节点就绪检测用 40s 轮询替代固定 sleep，慢服务器不误报 |
+| 就绪检测 | 新节点就绪检测用 40s 轮询（每 2s 探 `GET /healthz`，需 HTTP 200 且自报 `version` 与目标版本一致才判就绪，见 `scripts/lib/blue_green_deploy.sh` 的 `wait_for_health/2`），替代固定 sleep，慢服务器不误报 |
 | 输入校验 | `SERVER_HOST`、`VSN`、`COOKIE` 等均有正则校验，防注入 |
 | 错误中止 | `set -Eeuo pipefail`，任意步骤失败立即终止 |
 | 退出清理 | `trap cleanup EXIT` 确保 SSH 连接正常关闭 |
@@ -280,11 +280,13 @@ upstream 替换失败已回滚
 
 检查 `NGINX_CONF` 路径是否正确，以及配置文件中的端口格式是否为 `server 127.0.0.1:XXXX;`。
 
-### 新节点 40s 未就绪
+### 新节点 40s 未就绪或版本不符
 
 ```
-✗ 新节点 40s 内未就绪 (port=9801)
+✗ 新节点 40s 内未就绪或版本不符 (port=9801, expect=<VSN>)
 ```
+
+就绪判定要求 `/healthz` 返回 200 且自报 `version` 与目标版本一致；最常见原因是目标色端口上有上一次部署的残留进程。
 
 SSH 到服务器查看日志：
 

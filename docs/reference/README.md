@@ -40,6 +40,13 @@
 |------|------|
 | [engineering/](./engineering/engineering-overview.md) | CI/配置/依赖/Docker/日志/可观测/发布/技术债笔记 + 迁移命名规范 |
 
+## 构建与配置
+
+| 文档 | 内容 |
+|------|------|
+| [make-commands.md](./make-commands.md) | Make 目标全量参考（AUTO-GENERATED，真源 `Makefile` + `include/*.mk`） |
+| [env-vars.md](./env-vars.md) | 环境变量与配置参考：生产 fail-fast 必填 / 条件必填 / 可选分类（真源 `deploy/.env.example` + `config/sys.*.config` + `imboy_env.erl`） |
+
 ## 静态类型检查
 
 | 文档 | 内容 |

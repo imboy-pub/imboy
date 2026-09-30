@@ -101,11 +101,10 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 EOF
 
-# 执行迁移（按编号顺序）
-for f in priv/migrations/0000*.sql; do
-    echo "执行: $f"
-    sudo -u postgres psql -d imboy -f "$f"
-done
+# 执行迁移：无需手动跑 SQL —— 节点启动时 imboy_app 检测 auto_migrate=true（默认开启）
+# 自动调用 imboy_migrate:migrate/0，按 8 位顺序编号执行 priv/migrations/*.up.sql
+# （erlang_migrate strict 模式；.down.sql 仅回滚用，不会被自动执行；
+# 历史记录在 schema_migrations_history 表，乱序迁移会报错而非被静默跳过）
 ```
 
 ### 2. 编译发布
@@ -144,6 +143,11 @@ _rel/imboy/bin/imboy stop
 # HTTP 健康检查
 curl -s http://localhost:9800/api/v1/init | jq .
 
+# 健康探针端点（语义见 src/api/healthz_handler.erl）
+curl -s http://localhost:9800/livez | jq .    # liveness：BEAM 活着即恒 200，不检查任何依赖
+curl -s http://localhost:9800/readyz | jq .   # readiness：聚合 PG + TSID guard，就绪 200 / 依赖不可用 503
+curl -s http://localhost:9800/healthz | jq .  # /readyz 的兼容别名（保留既有响应字段并追加 tsid）
+
 # Prometheus 指标
 curl -s -H "Accept: text/plain" http://localhost:9800/metrics
 
@@ -153,6 +157,9 @@ _rel/imboy/bin/imboy remote_console
 > syn:count(imboy).          % 在线用户数
 > observer_cli:start().       % 系统监控
 ```
+
+> - `/healthz` 公网匿名可达：外网请求 `version` 恒报 `"hidden"`，仅内网（如部署探活走 127.0.0.1）报真实 vsn，避免替匿名者做 CVE 版本匹配。
+> - 容器 healthcheck 真源在后端 `Dockerfile`（约 135 行）：`bin/imboy ping` + `bin/imboy eval` 调 `healthz_handler:probe_db()`（运行镜像 debian-slim 无 curl/wget，不走 HTTP 探测）。
 
 ---
 
@@ -195,14 +202,17 @@ _rel/imboy/bin/imboy start
 ## 多节点集群
 
 ```bash
-# 节点 1
-make start node=node1 port=9801 cookie=<your-cookie>
+# 节点 1（用法: start_node.sh <nodename> [cookie] [port] [exclude_apps] [daemon]，需先 make rel）
+./scripts/start_node.sh node1 <your-cookie> 9801
 
 # 节点 2
-make start node=node2 port=9802 cookie=<your-cookie>
+./scripts/start_node.sh node2 <your-cookie> 9802
 
-# 在 node2 shell 中加入集群
-net_adm:ping('imboy_node1@hostname').
+# 停止节点
+./scripts/stop_node.sh node2
+
+# 在 node2 shell 中加入集群（节点 host 默认 127.0.0.1，可用 IMBOY_NODE_HOST 覆盖）
+net_adm:ping('node1@127.0.0.1').
 ```
 
 ---

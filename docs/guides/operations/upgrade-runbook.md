@@ -396,8 +396,8 @@ make feature-smoke \
 ```bash
 BASE=https://api.imboy.pub
 
-# 健康检查
-curl -s "${BASE}/health" | jq .
+# 健康检查（/healthz = /readyz 兼容别名；公网匿名访问 version 恒报 "hidden"）
+curl -s "${BASE}/healthz" | jq .
 
 # 应用初始化 — 1.0.0 字段变化：
 #   - upload_key / upload_scene 现在始终返回 "" (旧 go-fastdfs 字段已废弃)

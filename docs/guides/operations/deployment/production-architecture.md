@@ -53,10 +53,13 @@ upstream `pro_imboy_api` → `127.0.0.1:9800`
 
 | location | 处理方式 | 说明 |
 |----------|----------|------|
-| `/api/v1/*` `/api/adm/*` `/app_version/*` | 反代 `:9800` | API 请求 |
-| `/api/adm/` | alias 静态目录 | React SPA 文件 |
-| `/assets/` | 静态缓存 1 年 | 前端资源 |
-| `/` | 301 → `/api/adm/` | 根路径跳转 |
+| `/api/*`、`^/(v1|adm-api|app_version)/` | 反代 `:9800` | 后端 REST API |
+| `/adm/*` | 反代 `:9800` | 后端 Admin API（/adm/user/list 等） |
+| `= /adm`、`= /adm/` | 302 → `/` | 旧路径重定向回 SPA 根 |
+| `/adm/assets/` | alias 静态目录 | Vite base=/adm/ 打包的 SPA 资产 |
+| `/assets/` | 静态缓存 1 年 | 带 hash 的构建产物 |
+| `= /index.html` | no-cache | 每次向服务器 revalidate |
+| `/` | SPA try_files → `/index.html` | React SPA 页面路由 |
 
 静态文件目录：`/www/wwwroot/prodadm.imboy.pub/`
 

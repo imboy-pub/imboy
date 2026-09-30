@@ -91,7 +91,7 @@ This confirms: you have the right to submit this code, and you agree to license 
 
 ```bash
 # 后端
-cd imboy && make compile && make eunit
+cd imboy && make compile && IMBOYENV=local make eunit
 
 # 客户端
 cd imboyapp && flutter pub get && flutter test
@@ -101,6 +101,40 @@ cd imboy-admin-frontend && bun install && bun run test
 ```
 
 详细开发说明见各子项目 `README.md` 与 `CLAUDE.md`。
+
+### 后端测试流程（imboy）
+
+框架：EUnit（mock 用 meck）。数据库类用例需要真 PG 连接配置——给 EUnit VM 注入 `-config`（`EUNIT_ERL_OPTS`）这一步已由 `make eunit-local` 封装，**不要手工拼参**：
+
+```bash
+IMBOYENV=local make eunit                    # 全量（IMBOYENV=local 下自动等价 eunit-local）
+IMBOYENV=local make eunit t=elib_uri_tests   # 单模块（含 DB 用例同走 eunit-local 路径）
+make eunit-local                             # 显式入口：-config 注入 + PG 中继 + 私有端口
+EUNIT_CONFIG=config/sys make eunit-local     # CI 同款口径（无 sys.local.config 的环境）
+```
+
+要点：
+
+- `make eunit-local` 默认读 `config/sys.local`（`EUNIT_CONFIG` 可覆盖），自动替换 PG/HTTP 端口并起 `test/common/pg_relay.py` 中继（`EUNIT_USE_RELAY=0` 直连）
+- 本地 `imboy_v1` schema 必须已迁移到最新，否则 app 启动 `{out_of_order, ...}`、全套件被取消
+- 少数操纵 VM 级全局状态的套件（`elib_tsid_*` 三套件）已被排除出全量轨道，覆盖由单跑承载：`make eunit-local t=<模块名>`
+- REST 黑盒：`make rest-api-test`（runner 自持隔离 scratch DB，凭证只来自环境变量）
+- E2EE 全套验证：`make e2ee-verify`；覆盖率目标见根 `CLAUDE.md`（Repo 80% / Logic 70% / Handler 60%）
+
+### 后端常用命令速查
+
+完整命令参考（自动生成，真源 `Makefile`）见 [docs/reference/make-commands.md](./docs/reference/make-commands.md)；环境变量见 [docs/reference/env-vars.md](./docs/reference/env-vars.md)。
+
+| 命令 | 用途 |
+|------|------|
+| `make compile` | 编译 |
+| `IMBOYENV=local make run` | 本地启动（自动加载 `config/sys.local.config`） |
+| `IMBOYENV=local make eunit [t=<模块>]` | 测试 |
+| `make dialyze-check` | Dialyzer 递减基线门（基线外新增即红） |
+| `make format` / `make format-check` | erlfmt 写入 / 检查 |
+| `make security-gate` | 零密码学守护 + 模块边界 + 纵切架构三重门禁 |
+| `make contract-check` | 跨仓契约预检（改契约面时必跑） |
+| `make ctl ARGS="node status"` | 节点 CLI |
 
 ---
 
@@ -260,7 +294,7 @@ git checkout -b feat/your-feature
 
 ### 3. 开发中
 
-- 遵循现有代码风格（后端：`efmt`；前端：`prettier` + `eslint`；Flutter：`dart format`）
+- 遵循现有代码风格（后端：`erlfmt`，pre-commit 由 lefthook 强制 `erlfmt --check`，`make format` 可写入；前端：`prettier` + `eslint`；Flutter：`dart format`）
 - 为新功能添加测试，目标覆盖率 **≥ 80%**
 - 保持 commit 粒度清晰，不要一个 commit 塞十件事
 
@@ -268,9 +302,20 @@ git checkout -b feat/your-feature
 
 | 子项目 | 命令 |
 |--------|------|
-| 后端 | `make compile && make eunit && make ct && make dialyze && bash script/check_module_boundaries.sh` |
+| 后端 | `make format-check && make compile && IMBOYENV=local make eunit && make dialyze-check && make security-gate` |
 | 客户端 | `flutter analyze && flutter test` |
 | 管理后台 | `bun run lint && bun run test && bun run build` |
+
+后端 PR 检查清单：
+
+- [ ] `make format-check` 通过（erlfmt）
+- [ ] `IMBOYENV=local make eunit` 全绿；涉及 DB 用例的单跑用 `make eunit-local t=<模块>`
+- [ ] `make dialyze-check` 无基线外新增告警
+- [ ] `make security-gate` 通过（服务端零密码学 / Handler→Logic→DS→Repo 边界 / 纵切架构）
+- [ ] 改动跨仓契约面（错误码 / 路由 / DB 枚举 / EntityId）→ `make contract-regen` 已跑且 `make contract-check` 通过（见下方「契约变更 SOP」）
+- [ ] 新增迁移文件 → `make migrations-check` 通过（up-down 成对）
+- [ ] 改动 ecron 定时作业 → `make cron-check` 通过
+- [ ] 每个 commit 已 `git commit -s` 附 DCO 签名
 
 ### 5. 创建 PR
 
@@ -396,7 +441,7 @@ dart run scripts/generate_error_code.dart --check
 
 ### 后端（Erlang）
 
-见 `imboy/doc/standards/` 目录：
+见 [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)：
 
 - UTF-8 字符串必须带 `/utf8` 后缀
 - 错误码使用 `?ERR_XXX` 宏，不用裸数字
@@ -436,7 +481,7 @@ dart run scripts/generate_error_code.dart --check
 
 1. 更新根 `VERSION` 文件
 2. 更新根 `CHANGELOG.md`（`[Unreleased]` → 新版本）
-3. 三端同步版本：`imboy/Makefile` / `imboyapp/pubspec.yaml` / `imboy-admin-frontend/package.json`
+3. 三端同步版本：imboy 仓 `VERSION` 文件（`Makefile` 经 `cat VERSION` 读取，改 relx.config 无效）/ `imboyapp/pubspec.yaml` / `imboy-admin-frontend/package.json`
 4. 打 tag `vX.Y.Z` 并推送
 5. CI 自动构建产物：`aab`、`ipa`、`docker image`、`source tarball`
 6. 创建 GitHub Release 并附带产物

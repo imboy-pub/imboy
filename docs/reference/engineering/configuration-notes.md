@@ -30,6 +30,15 @@
 3. **多环境一致性校验**(低):`.example` 与实际 config 的键集 diff 进 preflight,防漏配新键。
 4. **fail-fast 覆盖面复核**(中):`validate_runtime_config` 依赖 `is_strict_env` 判定;记录并测试"误配 IMBOYENV 导致 strict 判定错误"的兜底(见 review 对 P1-A3 的裁决)。
 
+## ecron 定时任务键名约束（易错）
+
+周期作业统一在 `config/sys.config.example` 的 `{ecron, [...]}` 段定义。当前 pin 的 ecron v1.1.1（`include/deps.mk`，`sys.config.example` 内注释所写 v1.1.0 已过时）只消费 `local_jobs`（每节点各跑）或 `global_jobs`（集群单实例，依赖 global 注册与 quorum）两个键；写成 `{jobs, [...]}` 不报错但**整段静默不生效**（2026-09-09 之前入仓的作业块曾因此从未被调度，已修正为 `local_jobs`；仓内作业均幂等/带守卫，双节点重复执行安全）。
+
+两点运维须知（源自 wiki Configuration 页回流，2026-09-30）：
+
+1. **作业在节点重启后才真正激活**。旧版本升级后首次重启时各作业第一次实际运行：支付对账首跑回看约 25 小时，清理类按各自阈值扫描——属预期行为，不必告警。
+2. **验活方法**：节点启动后执行 `ecron:statistic().`，应返回各作业且 `status => activate`、`ok` 计数随周期增长；返回 `[]` 即配置键名有误或 ecron 未启动。
+
 ## 相关模块
 
 `imboy/config/*.config`、`imboy/config/vm.args`、`imboy/src/lib/imboy_env.erl`、`imboy/src/ds/config_ds.erl`、`imboy/src/imboy_app.erl`(validate_runtime_config)、`imboyapp/example.env`、`imboyadmin/vite.config.ts`
