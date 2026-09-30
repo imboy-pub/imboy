@@ -21,9 +21,6 @@
 %   IMBOY_SMTP_USERNAME    -> smtp_option 中的 username
 %   IMBOY_SMTP_PASSWORD    -> smtp_option 中的 password
 %   IMBOY_SMTP_RELAY / PORT / SSL / FROM -> smtp_option 对应字段
-%   IMBOY_REDIS_PASSWORD   -> redis_options 中的 password
-%   IMBOY_REDIS_HOST       -> redis_options 中的 host
-%   IMBOY_REDIS_PORT       -> redis_options 中的 port
 %   IMBOY_API_AUTH_SWITCH  -> {imboy, api_auth_switch}
 %   IMBOY_PASSWORD_SALT    -> {imboy, password_salt}
 %   IMBOY_JPUSH_APP_KEY    -> {imboy, jpush_app_key}
@@ -146,9 +143,6 @@ override_from_env() ->
     %% GAP-09：passport 登录面（meta/captcha/do_login）走独立 passport_per_ip=5/min，
     %% 浏览器 E2E 每用例 goto /login 即 3 请求，5/min 秒穿且无法经上两行放宽
     ok = override_throttle_rate("IMBOY_THROTTLE_PASSPORT_PER_IP", passport_per_ip),
-
-    %% Redis 配置覆盖
-    ok = override_redis(),
 
     %% 百度千帆 API 配置覆盖
     ok = override_qianfan(),
@@ -434,20 +428,6 @@ override_sms() ->
             NewOpts1 = maybe_override_proplist_binary(SmsOpts, switch, "IMBOY_SMS_SWITCH"),
             NewOpts2 = maybe_override_proplist_binary(NewOpts1, platform, "IMBOY_SMS_PLATFORM"),
             application:set_env(imboy, sms, NewOpts2),
-            ok;
-        _ ->
-            ok
-    end.
-
-%% @doc 覆盖 Redis 配置
--spec override_redis() -> ok.
-override_redis() ->
-    case application:get_env(imboy, redis_options) of
-        {ok, RedisOpts} when is_list(RedisOpts) ->
-            NewOpts1 = maybe_override_proplist(RedisOpts, password, "IMBOY_REDIS_PASSWORD"),
-            NewOpts2 = maybe_override_proplist(NewOpts1, host, "IMBOY_REDIS_HOST"),
-            NewOpts3 = maybe_override_proplist_int(NewOpts2, port, "IMBOY_REDIS_PORT"),
-            application:set_env(imboy, redis_options, NewOpts3),
             ok;
         _ ->
             ok
