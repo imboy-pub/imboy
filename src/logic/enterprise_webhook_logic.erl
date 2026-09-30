@@ -453,7 +453,7 @@ emit_event_failed(Ctx, EventType, Resource, ReasonCode) ->
         ok
     end,
     try
-        {ok, ok} = elib_pg:with_tx(Fun),
+        ok = elib_pg:with_tx(Fun),
         ok
     catch
         Class:Reason ->

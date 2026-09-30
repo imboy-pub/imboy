@@ -1,0 +1,10 @@
+{
+  "base_sha": "1e67bf0bd1fb797ba572dc885b24c065d448f297",
+  "sources": {
+    "src/logic/enterprise_webhook_logic.erl": "c647c57bb243e2b5478e2cf0417e69ed55cca29cd8a672dad817399e2ec0e38f",
+    "scripts/test/customer_service_internal_http_gate.sh": "cfc7766996ce3a411688a8aec77010a4312a1f05a27342908a5e1b0aef1e0cbc"
+  },
+  "artifacts": {
+    "http.txt": "c0cd755ebd16ead1bc0275fbc7a9e35ff76006116fb8fedaa6c42e515f3e75fc"
+  }
+}

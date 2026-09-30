@@ -61,6 +61,9 @@ expr = ('application:set_env(lager,handlers,[{lager_console_backend,[{level,erro
 with (out / 'http.log').open('w') as log:
     subprocess.run(['erl', '-noshell', '-pa', *paths, str(out / 'beams'), '-eval', expr],
                    stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
-print((out / 'http.log').read_text())
+report = (out / 'http.log').read_text()
+if '[EPGZ04] emit_event_failed crash' in report:
+    raise SystemExit('failed-event emission crashed; inspect ' + str(out / 'http.log'))
+print(report)
 PY
 printf 'Evidence: %s\n' "$RUN_DIR"
