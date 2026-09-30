@@ -230,8 +230,10 @@ offline_with_custom_parameters_test_() ->
             ?assertEqual(2, maps:get(<<"total">>, C2C)),
             ?assertMatch([_], C2CList),
             [C2CMsg] = C2CList,
-            ?assertEqual(11, maps:get(<<"from">>, C2CMsg)),
-            ?assertEqual(22, maps:get(<<"to">>, C2CMsg)),
+            %% S0 契约（e23a9df0）：信封 ID 统一归一化为 binary 字符串
+            %% （TSID 大整数超 JS 安全范围）。
+            ?assertEqual(<<"11">>, maps:get(<<"from">>, C2CMsg)),
+            ?assertEqual(<<"22">>, maps:get(<<"to">>, C2CMsg)),
             ?assertEqual(false, maps:is_key(<<"from_id">>, C2CMsg)),
             ?assertEqual(false, maps:is_key(<<"to_id">>, C2CMsg)),
 

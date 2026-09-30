@@ -278,6 +278,17 @@ do_ensure_cache() ->
 do_boot() ->
     case app_running(imboy) of
         true ->
+            %% app 已在而 runtime 被清的残骸窗口：TSID 自家套件测后
+            %% reset_for_test/0 清空 runtime，后续套件走本捷径无人补 init
+            %% → 自该点起全量轨道所有 elib_tsid:generate 级联全灭（run#2
+            %% 实证 61/64 失败同此单点；单套件复现全绿反证首启链路健康）。
+            %% 兜底必须在 app 启动确认之后：首启分支由 guard publish 建立
+            %% runtime（含 catalog 校验），setup 前抢跑 init 会扰乱 guard
+            %% 前置状态（round2 实证 56 连发 catalog_changed 拒启）。
+            %% 参数复刻 sup publish（imboy_sup:tsid_guard_config/0 默认
+            %% 1/1/3 + imboy_app:tsid_generator_names() 全集）——裸 names=[]
+            %% 会让按名 generate 的 ds 层（bot_ds:generate(user) 等）全灭。
+            ok = ensure_tsid_runtime(),
             {ok, {app_already_started, imboy}};
         false ->
             %% sync 禁编（主防线）：imboy.app applications 含 sync（DEPS +=
@@ -409,6 +420,22 @@ app_running(App) ->
 %%    不死（套件隔离治理前的历史泄漏）；或 app 启动中途被杀泄漏。名字被占
 %%    → 之后每次 imboy_sup child start 都 {already_started}。
 %% ② ranch listener：启动中途被杀时已绑定 http_port，之后每次启动 eaddrinuse。
+%% TSID 残骸兜底（语义见 do_boot 调用点注释）：仅在 app 已启动确认后调用。
+%% runtime 缺失时按 sup publish 同款参数幂等补建（names 用全集，供 ds 层
+%% 按名 generate；guard 已就绪的场合零开销跳过）。
+ensure_tsid_runtime() ->
+    case elib_tsid:runtime_handle() of
+        {ok, _} ->
+            ok;
+        error ->
+            elib_tsid:init(#{
+                dc_id => 1,
+                node_id => 1,
+                dc_bits => 3,
+                names => imboy_app:tsid_generator_names()
+            })
+    end.
+
 cleanup_start_orphans() ->
     lists:foreach(
         fun(Name) ->

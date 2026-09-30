@@ -150,6 +150,8 @@ contracts() ->
             {record_widget_nonce, 4},
             %% event（append-only 状态审计）+ BE-S01b SSE 读面 / provisioning
             {append_event, 2},
+            %% R3-F2：canonical tx 内追加同一条审计（c049a285 契约补登记）
+            {append_event_in, 3},
             {fetch_event_scope, 2},
             {list_events_page, 4},
             {event_watermark, 2},
