@@ -209,6 +209,12 @@ if [[ -n "${DEPLOY_LEGACY_PORT:-}" ]]; then
      && "$DEPLOY_LEGACY_PORT" != "$DEPLOY_GREEN_PORT" ]] \
     || fail "DEPLOY_LEGACY_PORT 不得与蓝绿端口相同"
 fi
+if [[ -n "${DEPLOY_LEGACY_RELEASE_DIR:-}" ]]; then
+  [[ "$DEPLOY_LEGACY_RELEASE_DIR" =~ ^/usr/local/imboy-[a-zA-Z0-9._-]+-[a-zA-Z0-9_-]+$ ]] \
+    || fail "DEPLOY_LEGACY_RELEASE_DIR 不符合安全 release 路径模板"
+  [[ -n "${DEPLOY_LEGACY_PORT:-}" ]] \
+    || fail "配置 DEPLOY_LEGACY_RELEASE_DIR 时必须同时配置 DEPLOY_LEGACY_PORT"
+fi
 if [[ -n "${DEPLOY_TSID_STATE_DIR:-}" ]]; then
   [[ "$DEPLOY_TSID_STATE_DIR" =~ ^/[a-zA-Z0-9._/-]+$ \
      && "$DEPLOY_TSID_STATE_DIR" != "/" \
@@ -380,6 +386,7 @@ deploy_api() {
     "IMBOY_DEPLOY_BLUE_PORT=$DEPLOY_BLUE_PORT"
     "IMBOY_DEPLOY_GREEN_PORT=$DEPLOY_GREEN_PORT"
     "IMBOY_DEPLOY_LEGACY_PORT=${DEPLOY_LEGACY_PORT:-}"
+    "IMBOY_DEPLOY_LEGACY_RELEASE_DIR=${DEPLOY_LEGACY_RELEASE_DIR:-}"
     "IMBOY_DEPLOY_COOKIE=$DEPLOY_COOKIE"
     "IMBOY_DEPLOY_BRANCH=$DEPLOY_BRANCH"
     "IMBOY_DEPLOY_SOURCE_HEAD=$BACKEND_SOURCE_HEAD"

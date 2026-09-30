@@ -69,6 +69,9 @@ case "$cmd" in
     exit 0
     ;;
   *"for DIR in "*"/usr/local/imboy-"*)
+    if [ "${MOCK_FIND_RELEASE_FAIL:-0}" = 1 ] && [[ "$cmd" = *"ls -dt"* ]]; then
+      exit 1
+    fi
     printf '%s\n' "${MOCK_ACTIVE_RELEASE_DIR:-/usr/local/imboy-0.9.0-oldnode}"
     exit 0
     ;;
@@ -265,6 +268,7 @@ run_deploy() {
     MOCK_MARKER_READY="${MOCK_MARKER_READY:-1}" \
     MOCK_RELEASE_EXISTS="${MOCK_RELEASE_EXISTS:-0}" \
     MOCK_ACTIVE_RELEASE_DIR="${MOCK_ACTIVE_RELEASE_DIR:-/usr/local/imboy-0.9.0-oldnode}" \
+    MOCK_FIND_RELEASE_FAIL="${MOCK_FIND_RELEASE_FAIL:-0}" \
     MOCK_SOURCE_HEAD_MATCH="${MOCK_SOURCE_HEAD_MATCH:-1}" \
     MOCK_REMOTE_SOURCE_HEAD="${MOCK_REMOTE_SOURCE_HEAD:-}" \
     TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" \
@@ -278,6 +282,7 @@ run_deploy() {
     IMBOY_DEPLOY_BLUE_PORT=9800 \
     IMBOY_DEPLOY_GREEN_PORT=9801 \
     IMBOY_DEPLOY_LEGACY_PORT="${TEST_LEGACY_PORT:-}" \
+    IMBOY_DEPLOY_LEGACY_RELEASE_DIR="${TEST_LEGACY_RELEASE_DIR:-}" \
     IMBOY_DEPLOY_NODE_HOST=127.0.0.1 \
     IMBOY_DEPLOY_COOKIE=testcookie \
     IMBOY_DEPLOY_BRANCH=main \
@@ -369,6 +374,28 @@ if run_deploy "" blue; then
   fi
 else
   bad "成功路径应退出 0" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_NGINX_PORT=9802 \
+   MOCK_FIND_RELEASE_FAIL=1 \
+   TEST_LEGACY_PORT=9802 \
+   TEST_LEGACY_RELEASE_DIR=/usr/local/imboy-0.9.0-oldnode \
+   TEST_TSID_STATE_DIR=/var/lib/imboy/tsid-v2 \
+   TEST_TSID_BLUE_NODE_ID=1 \
+   TEST_TSID_GREEN_NODE_ID=2 \
+   TEST_TSID_BOOTSTRAP_MODE=manual_floor \
+   TEST_TSID_BOOTSTRAP_FLOOR_UNIX_MS=now \
+   TEST_TSID_BOOTSTRAP_LEGACY_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
+   run_deploy "" none; then
+  if [ -n "$(event_line DAEMON)" ] \
+     && [ -n "$(event_line SWITCH)" ] \
+     && [ -z "$(event_line RECOVER_OLD)" ]; then
+    ok "legacy upstream 停机后使用 .env 恢复点断点续发"
+  else
+    bad "legacy 停机断点续发时序错误" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
+else
+  bad "legacy upstream 停机后应从 .env 恢复点继续发布" "$(<"$TMP_ROOT/output.log")"
 fi
 
 if MOCK_NGINX_PORT=9802 \

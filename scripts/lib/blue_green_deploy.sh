@@ -106,6 +106,7 @@ CS_NGINX_CONF="${IMBOY_DEPLOY_CS_NGINX_CONF:-}"
 BLUE_PORT="${IMBOY_DEPLOY_BLUE_PORT:-9800}"
 GREEN_PORT="${IMBOY_DEPLOY_GREEN_PORT:-9801}"
 LEGACY_PORT="${IMBOY_DEPLOY_LEGACY_PORT:-}"
+LEGACY_RELEASE_DIR="${IMBOY_DEPLOY_LEGACY_RELEASE_DIR:-}"
 NODE_HOST="${IMBOY_DEPLOY_NODE_HOST:-127.0.0.1}"
 COOKIE="${IMBOY_DEPLOY_COOKIE:-imboy_local_dev_only}"
 BRANCH="${IMBOY_DEPLOY_BRANCH:-main}"
@@ -171,6 +172,12 @@ if [ -n "$LEGACY_PORT" ]; then
     || { echo "无效 LEGACY_PORT / invalid legacy port" >&2; exit 1; }
   [[ "$LEGACY_PORT" != "$BLUE_PORT" && "$LEGACY_PORT" != "$GREEN_PORT" ]] \
     || { echo "LEGACY_PORT 不得与蓝绿端口相同" >&2; exit 1; }
+fi
+if [ -n "$LEGACY_RELEASE_DIR" ]; then
+  [[ "$LEGACY_RELEASE_DIR" =~ ^/usr/local/imboy-[a-zA-Z0-9._-]+-[a-zA-Z0-9_-]+$ ]] \
+    || { echo "LEGACY_RELEASE_DIR 不符合安全 release 路径模板" >&2; exit 1; }
+  [ -n "$LEGACY_PORT" ] \
+    || { echo "LEGACY_RELEASE_DIR 要求同时配置 LEGACY_PORT" >&2; exit 1; }
 fi
 if [ -n "$TSID_STATE_DIR" ]; then
   [[ "$TSID_STATE_DIR" =~ ^/[a-zA-Z0-9._/-]+$ && "$TSID_STATE_DIR" != "/" \
@@ -465,7 +472,21 @@ find_release_for_port() {
       fi
     done
     exit 1
-  "
+  " || return 1
+}
+
+find_stopped_release_for_port() {
+  local port=$1 dir
+  if dir="$(find_release_for_port "$port")" && [ -n "$dir" ]; then
+    printf '%s\n' "$dir"
+    return 0
+  fi
+  if [ "$port" = "$LEGACY_PORT" ] && [ -n "$LEGACY_RELEASE_DIR" ] \
+     && ssh_exec "[ -x '$LEGACY_RELEASE_DIR/bin/imboy' ]"; then
+    printf '%s\n' "$LEGACY_RELEASE_DIR"
+    return 0
+  fi
+  return 1
 }
 
 # 保留端口探测供"旧节点是否还活着"这类不关心版本的判断使用。
@@ -816,17 +837,20 @@ case "$NGINX_PORT" in
 esac
 
 if ! ssh_exec "ss -tlnH \"sport = :$OLD_PORT\" 2>/dev/null | grep -q ."; then
-  if [ "$CURRENT_COLOR" = legacy ]; then
-    fail "Nginx 指向的 legacy 端口 $OLD_PORT 未监听，拒绝在服务状态未知时迁移"
-  fi
-  if OLD_DIR="$(find_release_for_port "$OLD_PORT")"; then
+  if OLD_DIR="$(find_stopped_release_for_port "$OLD_PORT")"; then
     safe_release_dir "$OLD_DIR" || fail "历史 release 目录不安全: $OLD_DIR"
-    log "检测到活动槽停机，先恢复 Nginx 当前指向的 $CURRENT_COLOR 节点"
     OLD_NODE_STOPPED=1
-    recover_old_node_before_cutover \
-      || fail "现有 $CURRENT_COLOR 节点恢复失败，拒绝继续发布"
-    FAIL_RECOVERY_ATTEMPTED=0
+    if [ "$CURRENT_COLOR" = legacy ]; then
+      log "检测到 legacy 已停机，保留 $OLD_DIR 作为恢复点并继续割接"
+    else
+      log "检测到活动槽停机，先恢复 Nginx 当前指向的 $CURRENT_COLOR 节点"
+      recover_old_node_before_cutover \
+        || fail "现有 $CURRENT_COLOR 节点恢复失败，拒绝继续发布"
+      FAIL_RECOVERY_ATTEMPTED=0
+    fi
   else
+    [ "$CURRENT_COLOR" != legacy ] \
+      || fail "Nginx 指向的 legacy 端口 $OLD_PORT 未监听，且无法定位可信旧 release 恢复点"
     CURRENT_COLOR=none
     OLD_PORT=""
   fi
@@ -834,8 +858,12 @@ fi
 
 ACTIVE_DIR=""
 if [ "$CURRENT_COLOR" != none ]; then
-  ACTIVE_DIR="$(find_running_release_for_port "$OLD_PORT")" \
-    || fail "无法定位 Nginx 活动端口 $OLD_PORT 的 release 根目录"
+  if [ "$OLD_NODE_STOPPED" -eq 1 ] && [ -n "$OLD_DIR" ]; then
+    ACTIVE_DIR="$OLD_DIR"
+  else
+    ACTIVE_DIR="$(find_running_release_for_port "$OLD_PORT")" \
+      || fail "无法定位 Nginx 活动端口 $OLD_PORT 的 release 根目录"
+  fi
   safe_release_dir "$ACTIVE_DIR" \
     || fail "活动 release 目录不符合安全模板: $ACTIVE_DIR"
 fi

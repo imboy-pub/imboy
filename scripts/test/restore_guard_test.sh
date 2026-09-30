@@ -242,10 +242,11 @@ else
 fi
 
 if grep -q 'NGINX_PORT="$(probe_nginx_port)"' "$DEPLOY" \
-   && grep -q 'find_release_for_port "$OLD_PORT"' "$DEPLOY" \
+   && grep -q 'find_stopped_release_for_port "$OLD_PORT"' "$DEPLOY" \
    && grep -q '检测到活动槽停机，先恢复' "$DEPLOY" \
+   && grep -q '检测到 legacy 已停机' "$DEPLOY" \
    && grep -q 'FAIL_RECOVERY_ATTEMPTED=0' "$DEPLOY"; then
-  ok "双端口均停时依据 Nginx upstream 恢复既有服务，不误判为首次安装"
+  ok "停机 upstream 使用可信 release 恢复点，不误判为首次安装"
 else
   bad "重复部署仍可能把既有停机状态误判为首次安装" ""
 fi
