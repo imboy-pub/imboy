@@ -95,17 +95,21 @@ eunit_setup() ->
     enforce_pool_capacity(),
     application:set_env(imboy, sql_driver, pgsql),
     application:set_env(imboy, env, test),
+    %% eunit 轨道环境声明：IMBOYENV OS 变量优先于 application env
+    %% （imboy_env:current/0 合同），显式 putenv 覆盖外部启动方式
+    %% （如 IMBOYENV=local make eunit），保证 VM 内 current() 恒 <<"test">>
+    %% ——lock_provider 分档（registry）与自举 seam 透传都以此为准。
+    %% eunit VM 一次性，无需还原。
+    os:putenv("IMBOYENV", "test"),
     application:set_env(imboy, http_port, test_http_port()),
     application:set_env(imboy, dsync_enabled, false),
-    %% TSID guard 的锁 provider：eunit VM 无 flock 外部命令的机器（macOS）
-    %% 上 flock 会 fail-fast 拒启并连带 WH-04 重试二次 boot 的 keyring 残留
-    %% 误报；eunit 轨道恒用 registry（纯 Erlang 测试 provider，语义见
-    %% elib_tsid_lock 头注）。生产缺省 flock 不受影响（imboy_sup 只在
-    %% {imboy, tsid_lock_provider} 显式配置时才换轨）。
-    application:set_env(imboy, tsid_lock_provider, registry),
-    %% TSID 自举 seam（经 imboy_sup:tsid_guard_config 透传给 guard）：
-    %% eunit scratch 库未迁移/无 TSID id 列，真 scan 必以 schema_drift
-    %% 拒启；假 env（全缺省）+ 零 floor 与 tsid10_soak 的测试语义一致。
+    %% TSID guard 锁 provider 不再 set_env（R1 加固）：tsid_lock_provider
+    %% 键已从配置面删除，test 分档由 imboy_sup:lock_provider_for/1 硬编码
+    %% 为 registry（纯 Erlang 测试 provider，语义见 elib_tsid_lock 头注）。
+    %% TSID 自举 seam（仅 test 轨道合法，经 imboy_sup:tsid_guard_config
+    %% 透传给 guard）：eunit scratch 库未迁移/无 TSID id 列，真 scan 必以
+    %% schema_drift 拒启；假 env（全缺省）+ 零 floor 与 tsid10_soak 的
+    %% 测试语义一致。
     application:set_env(imboy, tsid_bootstrap_env_fun, fun(_K) -> false end),
     application:set_env(
         imboy,

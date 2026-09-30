@@ -11,6 +11,11 @@
 
 ## [Unreleased]
 
+### Security
+
+- TSID 主键生成正确性加固：64-bit ID 唯一性防线从进程内状态升级为 durable 双槽 fence（safe_before 严格递增、越线即拒启）+ 跨进程 lifetime lock（生产 flock，owner 崩溃内核自动释放）+ pristine-only 首启自举状态机（无割接 manifest 且库内已有数据时拒绝静默归零；割接 manifest 持久化 + CRC32 + catalog digest 绑定）；v1 catalog（104 主键列）与库内高水位扫描进 boot 门（schema drift / catalog mismatch 拒启）；bootstrap 决策崩溃一律收敛为 typed stop，绝不 raw crash（`352bee53…5ccf04e6`）
+- TSID 配置面收紧（**升级注意**）：`tsid_lock_provider` 键从配置面删除，lock provider 按环境硬编码（生产及一切未知环境恒 `flock`；eunit 轨道恒 `registry`；local 探测）；`tsid_bootstrap_env_fun/scan_fun` 仅 eunit 轨道合法，生产配置携带任一键即启动拒启（防误配导致的 ID 重用与跨实例互斥失效）——配置中残留旧键会使应用拒启，错误消息含移除指引，属设计行为（`dd2be7ea…03c6e6cb`）
+
 ### Fixed
 
 - 契约漂移 #2：管理后台内置角色 4/5/6（内容审核/安全治理/客服）补展示名——抽 `shared/adminRoles.ts` 单一映射对齐后端 `role_acl/1` 真源（imboyadmin `cf9ad7b`）
