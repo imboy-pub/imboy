@@ -23,8 +23,8 @@ member_group_dispatch_test_() ->
                     put(directory_limit, Limit),
                     {ok, []}
                 end},
-                {'list_member_workspace_groups', 4, fun(100, 1, Cursor, Limit) ->
-                    put(member_page_call, {Cursor, Limit}),
+                {'list_member_workspace_groups', 5, fun(100, 1, Cursor, Limit, Preview) ->
+                    put(member_page_call, {Cursor, Limit, Preview}),
                     {ok, #{list => [], has_more => false, next_cursor => 0}}
                 end}
             ]},
@@ -43,12 +43,21 @@ member_group_dispatch_test_() ->
                     group_list, #{member_only => 1, cursor => 123, limit => 500}, #{}
                 )
             ),
-            ?assertEqual({123, 200}, erase(member_page_call)),
+            ?assertEqual({123, 200, false}, erase(member_page_call)),
             ?assertEqual(
                 {error, 400}, workspace_handler:handle_action(group_list, #{member_only => 2}, #{})
             ),
             ?assertEqual(undefined, erase(directory_limit)),
             ?assertEqual(undefined, erase(member_page_call)),
+            workspace_handler:handle_action(group_list, #{member_only => 1, preview => 1}, #{}),
+            ?assertEqual({0, 100, true}, erase(member_page_call)),
+            ?assertEqual(
+                {error, 400}, workspace_handler:handle_action(group_list, #{preview => 1}, #{})
+            ),
+            ?assertEqual(
+                {error, 400},
+                workspace_handler:handle_action(group_list, #{member_only => 1, preview => 2}, #{})
+            ),
             put(deny_workspace, true),
             ?assertEqual(
                 {error, 403}, workspace_handler:handle_action(group_list, #{member_only => 1}, #{})

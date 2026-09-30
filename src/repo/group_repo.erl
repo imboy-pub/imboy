@@ -1,5 +1,5 @@
 -module(group_repo).
--export([workspace_groups/2, member_workspace_groups/4]).
+-export([workspace_groups/2, member_workspace_groups/4, member_workspace_groups/5]).
 %%%
 % group_repo 是 group repository 缩写
 % 群组数据仓库层，提供群组数据的基础数据库操作
@@ -240,20 +240,44 @@ workspace_groups(WorkspaceId, Limit) ->
     elib_pg:query(Sql, [WorkspaceId, Limit]).
 
 member_workspace_groups(WorkspaceId, Uid, AfterId, Limit) ->
-    Sql =
-        <<"SELECT ", (workspace_group_columns())/binary, " FROM \"group\" g",
-            " JOIN workspace w ON w.id=g.workspace_id",
+    member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, false).
+
+member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) ->
+    Eligible =
+        <<"SELECT ", (workspace_group_columns())/binary, ",gen.start_seq AS member_start_seq",
+            " FROM \"group\" g JOIN workspace w ON w.id=g.workspace_id",
             " LEFT JOIN organization o ON o.id=w.organization_id",
+            " JOIN group_member_generation gen ON gen.group_id=g.id",
+            " AND gen.user_id=$2 AND gen.end_seq IS NULL",
             " WHERE g.workspace_id=$1 AND g.scope='workspace' AND g.status=1 AND g.id>$3",
             " AND w.status IN ('active','archived')",
             " AND (w.organization_id IS NULL OR o.status='active')",
             " AND EXISTS (SELECT 1 FROM workspace_member wm WHERE wm.workspace_id=w.id",
             " AND wm.user_id=$2 AND wm.status='active')",
             " AND EXISTS (SELECT 1 FROM group_member gm WHERE gm.group_id=g.id",
-            " AND gm.user_id=$2 AND gm.status=1)",
-            " AND EXISTS (SELECT 1 FROM group_member_generation gen WHERE gen.group_id=g.id",
-            " AND gen.user_id=$2 AND gen.end_seq IS NULL)", " ORDER BY g.id ASC LIMIT $4">>,
+            " AND gm.user_id=$2 AND gm.status=1)", " ORDER BY g.id ASC LIMIT $4">>,
+    Sql =
+        case Preview of
+            false ->
+                Eligible;
+            true ->
+                <<"WITH eligible AS (", Eligible/binary, ") SELECT g.*,h.latest_message",
+                    " FROM eligible g LEFT JOIN LATERAL (", (workspace_latest_message_sql())/binary,
+                    ") h ON true ORDER BY g.id ASC">>
+        end,
     elib_pg:query(Sql, [WorkspaceId, Uid, AfterId, Limit]).
+
+%% ACK is delivery, not read: include acknowledged timeline rows. The live table
+%% carries edits/revokes/deletion; immutable archive payloads cannot replace it.
+workspace_latest_message_sql() ->
+    <<"SELECT jsonb_build_object('msg_id',m.msg_id,'conv_seq',tl.conv_seq,",
+        "'msg_type',m.msg_type,'payload',m.payload,'e2ee',m.e2ee,",
+        "'server_ts',m.server_ts,'expire_at',m.expire_at) AS latest_message",
+        " FROM public.msg_c2g_timeline tl JOIN public.msg_c2g m",
+        " ON m.msg_id=tl.msg_id AND m.created_at=tl.created_at AND m.to_id=tl.to_gid",
+        " WHERE tl.to_uid=$2 AND tl.to_gid=g.id AND tl.conv_seq IS NOT NULL",
+        " AND tl.conv_seq>=g.member_start_seq", " AND (m.expire_at IS NULL OR m.expire_at>NOW())",
+        " ORDER BY tl.conv_seq DESC,tl.created_at DESC LIMIT 1">>.
 
 workspace_group_columns() ->
     <<"g.id,g.type,g.join_limit,g.content_limit,g.owner_uid,g.creator_uid,",

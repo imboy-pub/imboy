@@ -1,5 +1,5 @@
 -module(workspace_ds).
--export([groups/2, member_groups/4]).
+-export([groups/2, member_groups/4, member_groups/5]).
 -compile([nowarn_deprecated_catch]).
 %%%
 % workspace_ds 是 workspace domain service 缩写
@@ -697,3 +697,6 @@ groups(WorkspaceId, Limit) ->
 
 member_groups(WorkspaceId, Uid, AfterId, Limit) ->
     group_repo:member_workspace_groups(WorkspaceId, Uid, AfterId, Limit).
+
+member_groups(WorkspaceId, Uid, AfterId, Limit, Preview) ->
+    group_repo:member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview).

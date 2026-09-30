@@ -8,7 +8,10 @@ get:
     SQL 重验工作区、工作区成员及所属企业状态。归档工作区允许只读，归档企业拒绝。
     企业身份与工作区身份独立，外部协作者不会因此获得企业目录或文件权限。
     本人模式使用 id 升序游标分页；将 next_cursor 传入下一次请求，直到 has_more=false。
-    该接口返回群资源资料，不授予历史消息或附件读取权限；不得仅凭群 ID 展示本地旧摘要。
+    preview=1（仅本人模式）返回 member_start_seq 和 latest_message（可为 null）。
+    摘要取当前代次中最后一条仍存在且未过期的本人时间线消息；含已送达消息，送达 ACK 不代表已读。
+    消息内容来自当前投递表，保留编辑、撤回及本人删除语义，不回落到不可变归档或本地旧摘要。
+    遵循现有投递数据保留策略；更早内容不生成摘要。该模式不授予其他历史或附件权限。
   operationId: workspaceGroupList
   parameters:
     - in: path
@@ -17,6 +20,10 @@ get:
       schema: { type: integer, format: int64, minimum: 1 }
     - in: query
       name: member_only
+      schema: { type: integer, enum: [0, 1], default: 0 }
+    - in: query
+      name: preview
+      description: 仅 member_only=1 可启用；读取当前有效代次的消息摘要
       schema: { type: integer, enum: [0, 1], default: 0 }
     - in: query
       name: limit
@@ -52,6 +59,19 @@ get:
                             scope: { type: string, enum: [workspace] }
                             workspace_id: { type: integer, format: int64 }
                             status: { type: integer, enum: [1] }
+                            member_start_seq: { type: integer, format: int64, minimum: 1 }
+                            latest_message:
+                              type: object
+                              nullable: true
+                              required: [msg_id, conv_seq, msg_type, payload, server_ts, expire_at]
+                              properties:
+                                msg_id: { type: string }
+                                conv_seq: { type: integer, format: int64, minimum: 1 }
+                                msg_type: { type: string }
+                                payload: { type: object }
+                                e2ee: { type: object, nullable: true }
+                                server_ts: { type: string, format: date-time }
+                                expire_at: { type: string, format: date-time, nullable: true }
                       has_more:
                         type: boolean
                         description: 仅本人模式返回

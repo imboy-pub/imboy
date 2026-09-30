@@ -39,7 +39,7 @@
 %% 新增函数，不改上方任何既有函数签名；personal 路径行为零变化。
 -export([add/5]).
 -export([edit_checked/3]).
--export([list_workspace_groups/2, list_member_workspace_groups/4]).
+-export([list_workspace_groups/2, list_member_workspace_groups/4, list_member_workspace_groups/5]).
 
 -include("log.hrl").
 -include("group_role.hrl").
@@ -750,7 +750,11 @@ list_workspace_groups(WorkspaceId, Limit) ->
     end.
 
 %% 查询资格在 SQL 中再次校验，不以工作区目录代替群成员关系。
-list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit) when
+list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit) ->
+    list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, false).
+
+list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) when
+    is_boolean(Preview),
     is_integer(AfterId),
     AfterId >= 0,
     AfterId =< 9223372036854775807,
@@ -758,7 +762,7 @@ list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit) when
     Limit > 0,
     Limit =< 200
 ->
-    case workspace_ds:member_groups(WorkspaceId, Uid, AfterId, Limit + 1) of
+    case workspace_ds:member_groups(WorkspaceId, Uid, AfterId, Limit + 1, Preview) of
         {ok, Rows} ->
             Page = lists:sublist(Rows, Limit),
             HasMore = length(Rows) > Limit,
@@ -768,11 +772,16 @@ list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit) when
                     false -> 0
                 end,
             {ok, #{
-                list => [group_transfer(R) || R <- Page], has_more => HasMore, next_cursor => Next
+                list => [
+                    group_transfer(elib_response:json_decode_field(R, <<"latest_message">>))
+                 || R <- Page
+                ],
+                has_more => HasMore,
+                next_cursor => Next
             }};
         {error, Reason} ->
             ?ERROR_LOG([member_workspace_groups_failed, WorkspaceId, Reason]),
             {error, <<"查询失败，请稍后重试"/utf8>>}
     end;
-list_member_workspace_groups(_, _, _, _) ->
+list_member_workspace_groups(_, _, _, _, _) ->
     {error, <<"分页参数无效"/utf8>>}.
