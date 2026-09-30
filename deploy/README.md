@@ -176,6 +176,26 @@ Uptrace 默认关闭。启用时在 `.env` 设置 `UPTRACE_ENABLED=true`，填�
 - `--edition business`：改用商务版 `docker-compose.prod.yml` + sales-policy
   overlay（缺文件时提示商务索取方式）
 
+### imboy.base_url 硬约束（CS Widget / Seat 附件预签名基址）
+
+后端配置 `{imboy, base_url}` 由 `.env` 的 `IMBOY_BASE_URL` 注入（读方
+`src/lib/imboy_env.erl`），是客服 Widget 与 Seat 工作台附件 presign 下发
+`upload.url` 的**绝对基址**。三条硬约束（DEF-SC153-14，规格详见
+[cs-seat-console-embed.md §5](./cs-seat-console-embed.md)）：
+
+1. **必须公网 HTTPS**：仅 `https://` 起始、无路径、无尾斜杠。非 `https://`
+   时后端 fail-closed——presign 不下发 `upload.url`，附件上传整体不可用。
+2. **必须恰为 `https://<CS_WIDGET_DOMAIN>`**：客服 Widget frame（`/w/*`）与
+   Seat 工作台 frame（`/seat/`）都从 `CS_WIDGET_DOMAIN` 网关域加载，
+   `upload.url` 必须与其同源。指错域（误填 `API_DOMAIN`、内网地址或另一
+   环境的域名）会使附件预签名指向错误主机，坐席/访客侧 PUT 直接失败、
+   零资产落库。例：`CS_WIDGET_DOMAIN=cs.imboy.pub` 时必须
+   `IMBOY_BASE_URL=https://cs.imboy.pub`。
+3. **preflight 机器校验**：`bash preflight.sh`（`install.sh` 的前置环节）对
+   `IMBOY_BASE_URL ↔ CS_WIDGET_DOMAIN` 做精确比对，`http://`、尾斜杠、域名
+   不符均报 ERROR 拒绝部署；该规则的负向 fixtures 自测见
+   `bash preflight.sh --self-test` 输出中的自测 15-18。
+
 ---
 
 ## 手工五步部署（仅在需要逐步排查时使用）
