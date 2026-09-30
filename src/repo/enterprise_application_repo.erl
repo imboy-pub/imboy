@@ -24,6 +24,7 @@
     find_tx/3,
     find_by_key_tx/3,
     list_page_tx/5,
+    workbench_entries_tx/3,
     update_status_tx/4,
     update_name_tx/4,
     update_scopes_tx/4,
@@ -45,6 +46,28 @@
 %% ===================================================================
 %% API functions
 %% ===================================================================
+
+%% 当前企业的 Human OA 配置；最小投影，无凭证，identity 用 EXISTS 防止重复。
+-spec workbench_entries_tx(any(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
+workbench_entries_tx(Conn, OrgId, Uid) ->
+    elib_pg:query(
+        Conn,
+        <<
+            "SELECT a.id AS application_id, a.organization_id, a.application_key,"
+            " a.name, a.allowed_redirect_uris FROM enterprise_application a"
+            " JOIN organization o ON o.id = a.organization_id AND o.status = 'active'"
+            " JOIN organization_member om ON om.organization_id = o.id"
+            " AND om.user_id = $2 AND om.status = 'active'"
+            " JOIN \"user\" u ON u.id = om.user_id AND u.status = 1 AND u.account_type = 0"
+            " WHERE a.organization_id = $1 AND a.status = 'active'"
+            " AND cardinality(a.allowed_redirect_uris) > 0"
+            " AND EXISTS (SELECT 1 FROM enterprise_external_identity ei"
+            " WHERE ei.organization_id = a.organization_id AND ei.application_id = a.id"
+            " AND ei.user_id = $2 AND ei.status = 'active')"
+            " ORDER BY a.id LIMIT 20"
+        >>,
+        [OrgId, Uid]
+    ).
 
 -spec tablename() -> binary().
 tablename() ->

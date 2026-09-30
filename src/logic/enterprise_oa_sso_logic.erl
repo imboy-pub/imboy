@@ -50,6 +50,8 @@
 -export([
     issue_code/2,
     issue_code_tx/3,
+    entries/2,
+    entries_tx/3,
     exchange/2,
     exchange_tx/3,
     validate_issue_params/1,
@@ -68,6 +70,44 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+%% 配置发现按显式企业限定；无权或无配置统一空列表，不枚举其他企业。
+entries(Uid, _OrgId) when not is_integer(Uid); Uid =< 0 ->
+    {error, {?ERR_UNAUTHORIZED, <<"未登录，请先登录"/utf8>>}};
+entries(Uid, OrgId) when is_integer(OrgId), OrgId > 0, OrgId =< 9223372036854775807 ->
+    case elib_pg:with_tx(fun(Conn) -> entries_tx(Conn, Uid, OrgId) end) of
+        {ok, _} = Result -> Result;
+        _ -> {error, {?ERR_INTERNAL_SERVER_ERROR, <<"配置读取失败"/utf8>>}}
+    end;
+entries(_, _) ->
+    {error, {?ERR_INVALID_PARAM, <<"organization_id 必须是正整数"/utf8>>}}.
+
+entries_tx(Conn, Uid, OrgId) ->
+    case enterprise_application_repo:workbench_entries_tx(Conn, OrgId, Uid) of
+        {ok, Rows} ->
+            Entries = lists:filtermap(fun entry/1, Rows),
+            {ok, #{<<"entries">> => Entries}};
+        {error, _} ->
+            {error, {?ERR_INTERNAL_SERVER_ERROR, <<"配置读取失败"/utf8>>}}
+    end.
+
+entry(#{<<"allowed_redirect_uris">> := [Redirect | _], <<"application_key">> := Key} = Row) ->
+    case valid_redirect_uri(Redirect) andalso valid_application_key(Key) of
+        true ->
+            Name = unicode:characters_to_list(maps:get(<<"name">>, Row, <<>>)),
+            {true, #{
+                <<"kind">> => <<"oa">>,
+                <<"organization_id">> => maps:get(<<"organization_id">>, Row),
+                <<"application_id">> => maps:get(<<"application_id">>, Row),
+                <<"application_key">> => Key,
+                <<"label">> => unicode:characters_to_binary(lists:sublist(Name, 64)),
+                <<"redirect_uri">> => Redirect
+            }};
+        false ->
+            false
+    end;
+entry(_) ->
+    false.
 
 %% @doc HUMAN-SSO-01 池化签发入口（handler 用）。
 %% Uid 为 Human JWT 身份（auth_ds:current_uid/1）；非正整数按未认证拒绝。

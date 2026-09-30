@@ -209,6 +209,9 @@ INT-23 的 `status` 为准。端点未配置/disabled 时返回 `invalid_request
 
 ## 9. OA SSO（一次性 code 交换）
 
+客户端先以 Human JWT 调用 `GET /api/v1/workbench/entries?organization_id=<当前企业ID>`。
+`payload.entries` 返回该企业授权 OA 条目（最多 20，按应用 ID 升序）：`kind`、`organization_id`、`application_id`、`application_key`、`label`、`redirect_uri`。没有授权配置返回空数组；省略 / 非法企业 ID 返回 400。该配置发现接口属于 Human 认证面，不能使用 Application Credential。客户端必须匹配当前企业，不从其他企业取第一项；有多个应用时需要明确选择。
+
 流程：用户已登录 IMBoy → IMBoy 客户端以 Human JWT 调用
 `POST /api/v1/oa/sso/code`，提交 `application_key`、预注册的 `redirect_uri`
 与随机 `nonce` → 浏览器 / WebView 携带一次性 `code` 和 `state=nonce` 到

@@ -89,6 +89,7 @@ get_routes() ->
             % 客户 OA backend 再用 Application Credential 调 INT-14 原子消费。
             % Flutter WebView 只拿 code，不注入 IMBoy JWT / Application secret。
             {"/api/v1/oa/sso/code", enterprise_oa_sso_handler, #{action => code}},
+            {"/api/v1/workbench/entries", enterprise_oa_sso_handler, #{action => entries}},
 
             % 墨芽习字：微信小程序「消息推送」接收端点（免 Bearer，见 open/0）
             % GET  = 保存配置时的验签（原样回 echostr）
@@ -1182,11 +1183,13 @@ get_routes() ->
                 adm_organization_handler, #{action => invitation_cancel}},
             % QR 入企码（邀请码）平台面：码是凭证，read-only 不暴露——
             % GET/POST/DELETE 全部 organizations:write；审计 adm_operation_log。
-            {"/api/adm/organizations/:organization_id/invite_code",
-                adm_organization_handler, #{action => invite_code}},
+            {"/api/adm/organizations/:organization_id/invite_code", adm_organization_handler, #{
+                action => invite_code
+            }},
             % 注册审核（00000155：APP 建企 → pending，平台 approve/reject）
-            {"/api/adm/organizations/:organization_id/review/:review",
-                adm_organization_handler, #{action => review}},
+            {"/api/adm/organizations/:organization_id/review/:review", adm_organization_handler, #{
+                action => review
+            }},
             {"/api/adm/organizations/:organization_id/departments/:department_id/rename",
                 adm_organization_handler, #{action => department_rename}},
             {"/api/adm/organizations/:organization_id/departments/:department_id/move",

@@ -33,6 +33,7 @@ init(Req0, State0) ->
     Req1 =
         case Action of
             code -> code(Method, Req0, State);
+            entries -> entries(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -40,6 +41,22 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+entries(<<"GET">>, Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    {ok, RawId} = elib_param:binary(organization_id, Req0, <<>>),
+    OrgId =
+        case re:run(RawId, <<"^[1-9][0-9]{0,18}$">>, [{capture, none}]) of
+            match -> binary_to_integer(RawId);
+            nomatch -> 0
+        end,
+    case enterprise_oa_sso_logic:entries(Uid, OrgId) of
+        {ok, Result} -> elib_response:success(Req0, Result);
+        {error, {401, Msg}} -> elib_response:error_with_status(Req0, 401, Msg, 401);
+        {error, {Code, Msg}} -> elib_response:error(Req0, Msg, Code)
+    end;
+entries(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc HUMAN-SSO-01：Human JWT 身份只取 auth_ds:current_uid/1（认证中间件
 %% 注入），绝不读 body 里的用户标识。
