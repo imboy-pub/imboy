@@ -79,6 +79,14 @@ contracts() ->
             {list_dispatchable_seats_page, 3},
             {list_all_seats_page, 3},
             {set_seat_enabled, 4},
+            %% 1ee3cc67：workspace seat console embed（冻结契约表欠登记补录，
+            %% cs_closure 端口合同在 2d397442 排他逻辑重排后重新入榜暴露）
+            {insert_seat_console, 2},
+            {fetch_seat_console, 3},
+            {fetch_seat_console_by_public_id_global, 1},
+            {list_seat_consoles_page, 4},
+            {revoke_seat_console, 4},
+            {update_seat_console, 5},
             %% CS-BE-06：席位 entitlement
             {seat_limit, 1},
             {set_seat_limit, 2},
@@ -177,6 +185,9 @@ facade_targets() ->
         cs_seat_app,
         %% BE-S01b：坐席 SSE 事件流用例（sse-event-contract 的 application 面）。
         cs_seat_event_app,
+        %% 1ee3cc67：seat console 管理面（list/create/update/revoke 的 facade
+        %% 委派目标；cs_closure 在 2d397442 排他重排后重新入榜暴露欠登记）。
+        cs_seat_console_app,
         cs_session_app,
         cs_access_app,
         cs_widget_app,
