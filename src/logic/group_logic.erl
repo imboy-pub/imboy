@@ -39,7 +39,7 @@
 %% 新增函数，不改上方任何既有函数签名；personal 路径行为零变化。
 -export([add/5]).
 -export([edit_checked/3]).
--export([list_workspace_groups/2]).
+-export([list_workspace_groups/2, list_member_workspace_groups/4]).
 
 -include("log.hrl").
 -include("group_role.hrl").
@@ -741,16 +741,38 @@ edit_checked(Uid, Gid, Data) ->
 %% personal 群列表接口零行为变化）。命中部分索引 i_group_scope_ws。
 -spec list_workspace_groups(integer(), integer()) -> {ok, [map()]} | {error, binary()}.
 list_workspace_groups(WorkspaceId, Limit) ->
-    Sql =
-        <<"SELECT id,type,join_limit,content_limit,owner_uid,creator_uid,",
-            "member_max,member_count,introduction,avatar,title,status,scope,workspace_id,",
-            "updated_at,created_at FROM \"group\"",
-            " WHERE workspace_id = $1 AND scope = 'workspace' AND status = 1",
-            " ORDER BY created_at DESC, id DESC LIMIT $2">>,
-    case elib_pg:query(Sql, [WorkspaceId, Limit]) of
+    case workspace_ds:groups(WorkspaceId, Limit) of
         {ok, Rows} ->
             {ok, [group_transfer(R) || R <- Rows]};
         {error, Reason} ->
             ?ERROR_LOG([list_workspace_groups_failed, WorkspaceId, Reason]),
             {error, <<"查询失败，请稍后重试"/utf8>>}
     end.
+
+%% 查询资格在 SQL 中再次校验，不以工作区目录代替群成员关系。
+list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit) when
+    is_integer(AfterId),
+    AfterId >= 0,
+    AfterId =< 9223372036854775807,
+    is_integer(Limit),
+    Limit > 0,
+    Limit =< 200
+->
+    case workspace_ds:member_groups(WorkspaceId, Uid, AfterId, Limit + 1) of
+        {ok, Rows} ->
+            Page = lists:sublist(Rows, Limit),
+            HasMore = length(Rows) > Limit,
+            Next =
+                case HasMore of
+                    true -> maps:get(<<"id">>, lists:last(Page));
+                    false -> 0
+                end,
+            {ok, #{
+                list => [group_transfer(R) || R <- Page], has_more => HasMore, next_cursor => Next
+            }};
+        {error, Reason} ->
+            ?ERROR_LOG([member_workspace_groups_failed, WorkspaceId, Reason]),
+            {error, <<"查询失败，请稍后重试"/utf8>>}
+    end;
+list_member_workspace_groups(_, _, _, _) ->
+    {error, <<"分页参数无效"/utf8>>}.

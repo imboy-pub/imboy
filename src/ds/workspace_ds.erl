@@ -1,4 +1,5 @@
 -module(workspace_ds).
+-export([groups/2, member_groups/4]).
 -compile([nowarn_deprecated_catch]).
 %%%
 % workspace_ds 是 workspace domain service 缩写
@@ -690,3 +691,9 @@ remove_organization_memberships_tx(Conn, OrgId, Uid) ->
         true -> throw({abort_tx, {409, <<"请先移交工作区负责人，再退出企业或移除成员"/utf8>>}});
         false -> [remove_member_tx(Conn, WsId, Uid) || #{<<"workspace_id">> := WsId} <- Rows]
     end.
+
+groups(WorkspaceId, Limit) ->
+    group_repo:workspace_groups(WorkspaceId, Limit).
+
+member_groups(WorkspaceId, Uid, AfterId, Limit) ->
+    group_repo:member_workspace_groups(WorkspaceId, Uid, AfterId, Limit).

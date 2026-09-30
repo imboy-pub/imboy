@@ -250,16 +250,27 @@ group_list(Req0, State) ->
                 {error, {Code, Msg}} ->
                     elib_response:error(Req0, Msg, Code);
                 {ok, _Role} ->
-                    Limit = elib_param:int(limit, Req0, 100),
-                    Limit2 = max(1, min(Limit, 200)),
-                    case group_logic:list_workspace_groups(WsId, Limit2) of
-                        {ok, Groups} ->
-                            elib_response:success(Req0, #{workspace_id => WsId, list => Groups});
-                        {error, Msg2} ->
-                            elib_response:error(Req0, Msg2)
-                    end
+                    {ok, Limit} = elib_param:int(limit, Req0, 100),
+                    {ok, MemberOnly} = elib_param:int(member_only, Req0, 0),
+                    {ok, Cursor} = elib_param:int(cursor, Req0, 0),
+                    workspace_group_response(
+                        Req0, WsId, Uid, MemberOnly, Cursor, max(1, min(Limit, 200))
+                    )
             end
     end.
+
+workspace_group_response(Req, WsId, Uid, 1, Cursor, Limit) ->
+    case group_logic:list_member_workspace_groups(WsId, Uid, Cursor, Limit) of
+        {ok, Page} -> elib_response:success(Req, Page#{workspace_id => WsId});
+        {error, Message} -> elib_response:error(Req, Message)
+    end;
+workspace_group_response(Req, WsId, _Uid, 0, _Cursor, Limit) ->
+    case group_logic:list_workspace_groups(WsId, Limit) of
+        {ok, Groups} -> elib_response:success(Req, #{workspace_id => WsId, list => Groups});
+        {error, Message} -> elib_response:error(Req, Message)
+    end;
+workspace_group_response(Req, _WsId, _Uid, _MemberOnly, _Cursor, _Limit) ->
+    elib_response:error(Req, <<"member_only 必须为 0 或 1"/utf8>>, 400).
 
 %% @doc 工作区成员列表（active 成员可读；分页 ≤100）
 -spec member_list(cowboy_req:req(), map()) -> cowboy_req:req().

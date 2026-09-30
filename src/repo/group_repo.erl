@@ -1,4 +1,5 @@
 -module(group_repo).
+-export([workspace_groups/2, member_workspace_groups/4]).
 %%%
 % group_repo 是 group repository 缩写
 % 群组数据仓库层，提供群组数据的基础数据库操作
@@ -229,3 +230,32 @@ pick_value(Map, [Key | Rest], Default) ->
         error ->
             pick_value(Map, Rest, Default)
     end.
+
+%% 工作区资源目录与本人会话资源共用 DTO 列；后者按当前资格分页。
+workspace_groups(WorkspaceId, Limit) ->
+    Sql =
+        <<"SELECT ", (workspace_group_columns())/binary, " FROM \"group\" g",
+            " WHERE g.workspace_id = $1 AND g.scope = 'workspace' AND g.status = 1",
+            " ORDER BY g.created_at DESC, g.id DESC LIMIT $2">>,
+    elib_pg:query(Sql, [WorkspaceId, Limit]).
+
+member_workspace_groups(WorkspaceId, Uid, AfterId, Limit) ->
+    Sql =
+        <<"SELECT ", (workspace_group_columns())/binary, " FROM \"group\" g",
+            " JOIN workspace w ON w.id=g.workspace_id",
+            " LEFT JOIN organization o ON o.id=w.organization_id",
+            " WHERE g.workspace_id=$1 AND g.scope='workspace' AND g.status=1 AND g.id>$3",
+            " AND w.status IN ('active','archived')",
+            " AND (w.organization_id IS NULL OR o.status='active')",
+            " AND EXISTS (SELECT 1 FROM workspace_member wm WHERE wm.workspace_id=w.id",
+            " AND wm.user_id=$2 AND wm.status='active')",
+            " AND EXISTS (SELECT 1 FROM group_member gm WHERE gm.group_id=g.id",
+            " AND gm.user_id=$2 AND gm.status=1)",
+            " AND EXISTS (SELECT 1 FROM group_member_generation gen WHERE gen.group_id=g.id",
+            " AND gen.user_id=$2 AND gen.end_seq IS NULL)", " ORDER BY g.id ASC LIMIT $4">>,
+    elib_pg:query(Sql, [WorkspaceId, Uid, AfterId, Limit]).
+
+workspace_group_columns() ->
+    <<"g.id,g.type,g.join_limit,g.content_limit,g.owner_uid,g.creator_uid,",
+        "g.member_max,g.member_count,g.introduction,g.avatar,g.title,g.status,g.scope,g.workspace_id,",
+        "g.updated_at,g.created_at">>.

@@ -107,6 +107,8 @@ paths:
     $ref: './paths/api/v1/organization/member.yaml'
   /api/v1/workspaces:
     $ref: './paths/api/v1/workspace/workspaces.yaml'
+  /api/v1/workspaces/{workspace_id}/groups:
+    $ref: './paths/api/v1/workspace/groups.yaml'
   /brand:
     $ref: './paths/api/v1/system/brand.yaml'
   /api/v1/passport/login:
