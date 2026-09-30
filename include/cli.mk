@@ -7,24 +7,18 @@ efmt:
 	./efmt -w ./apps/*/src/*.erl
 
 
-# make gen-appup OLD_VERSION=0.6.1 PROJECT_VERSION=0.6.2
-# make gen-appup OLD_VERSION=0.6.5 PROJECT_VERSION=0.7.0
-.PHONY: gen-appup
-gen-appup:
-	bash script/gen_appup.sh $(OLD_VERSION) $(PROJECT_VERSION)
-
 # Node runner with all customizable parameters
 #
 # make start node=node1 port=9801 cookie=<your-cookie> exclude="app1,app2" daemon=daemon
 # make start node=node2 port=9802 cookie=<your-cookie> exclude="imadm,imcron" daemon=daemon
 .PHONY: start
 start:
-	./script/start_node.sh $(node) $(cookie) $(port) $(exclude) $(daemon)
+	./scripts/start_node.sh $(node) $(cookie) $(port) $(exclude) $(daemon)
 
 # Stop running node
 # Example: make stop node=node1
 stop:
-	./script/stop_node.sh $(node)
+	./scripts/stop_node.sh $(node)
 
 # Clean all .beam files recursively
 # Example: make clean-beam
