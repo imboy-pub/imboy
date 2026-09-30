@@ -21,6 +21,7 @@
 -export([bind_moment_scope_ref/2]).
 
 -export([find_path_by_id/1]).
+-export([find_path_by_group_file/2]).
 -export([authorize_group_access/2]).
 -export([authorize_channel_scope/2]).
 -export([authorize_group_scope/2]).
@@ -50,6 +51,10 @@ save(Conn, CreatedAt, Uid, Attach) ->
 -spec authorize_group_scope(integer(), integer()) -> boolean().
 authorize_group_scope(Gid, Uid) ->
     attachment_repo:authorize_group_scope(Gid, Uid).
+
+-spec find_path_by_group_file(integer(), integer()) -> {ok, binary()} | {error, term()}.
+find_path_by_group_file(Gid, FileId) ->
+    attachment_repo:find_path_by_group_file(Gid, FileId).
 
 %% G3: adm_attach_handler 不应直调 attachment_repo
 -spec stats() -> map().

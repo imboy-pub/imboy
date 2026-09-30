@@ -62,7 +62,10 @@ upload(Gid, CurrentUid, FileName, FileBinary, FileType) ->
 %% @return {ok, FileUrl} | {error, Reason}
 -spec download(integer(), integer()) -> {ok, binary()} | {error, term()}.
 download(FileId, CurrentUid) ->
-    group_file_ds:download_file(FileId, CurrentUid).
+    case group_file_ds:download_file(FileId, CurrentUid) of
+        {ok, ObjectKey} -> attach_logic:view_url(CurrentUid, ObjectKey);
+        {error, _} = E -> E
+    end.
 
 %% @doc 删除文件
 %% @param FileId 文件ID（主键ID）

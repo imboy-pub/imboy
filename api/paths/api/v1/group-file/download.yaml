@@ -6,6 +6,8 @@ get:
     ## 中文 / English
     下载 / 取 URL
     Download / get URL
+    根据已绑定的群附件重新鉴权后返回 Location；无绑定记录拒绝，不从历史 file_url 猜测归属。
+    Reauthorize the bound group attachment before returning Location. Unbound records are denied.
   operationId: downloadGroupFile
   parameters:
     - in: query
@@ -14,15 +16,15 @@ get:
       description: 文件 ID / File ID
       schema: { type: integer, minimum: 1 }
   responses:
-    '200':
+    '302':
       description: 302 重定向到文件 URL（handler 直接调用 cowboy_req:reply(302)，无 JSON payload）
       headers:
         Location:
           schema:
             type: string
             format: uri
-          description: 文件直链 URL
-    '4XX':
-      description: 参数非法 / 无权限 / 不存在
+          description: 鉴权后的文件 URL；Garage 为短期签名，旧存储沿用已授权历史路径 / Authorized URL, short-lived for Garage
+    '200':
+      description: 业务失败信封（参数非法 / 无权限 / 不存在），读取 code 判断 / Business-error envelope; inspect code
       content:
         application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }

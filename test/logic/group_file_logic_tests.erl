@@ -97,9 +97,14 @@ upload_file_too_large_test_() ->
 download_success_test_() ->
     ?WITH_MECKS(
         [
+            {attach_logic, [
+                {'view_url', 2, fun(100, <<"bound/key">>) ->
+                    {ok, <<"https://example.com/signed">>}
+                end}
+            ]},
             {group_file_ds, [
                 {'download_file', 2, fun(_, _) ->
-                    {ok, <<"http://example.com/file.pdf">>}
+                    {ok, <<"bound/key">>}
                 end}
             ]}
         ],

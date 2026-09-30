@@ -538,6 +538,9 @@ with_scope(Test) ->
     fun() ->
         meck:new(attachment_ds, [passthrough]),
         meck:expect(attachment_ds, authorize_group_scope, fun(_, _) -> true end),
+        meck:expect(attachment_ds, find_path_by_group_file, fun(_, _) ->
+            {ok, <<"http://example.com/file.pdf">>}
+        end),
         meck:expect(attachment_ds, ensure_upload_scope_tx, fun(_, _, _) -> ok end),
         try
             Test()

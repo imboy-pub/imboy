@@ -72,7 +72,7 @@ find_by_id(FileId) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:build_select(
         Tb,
-        <<"id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at">>,
+        select_columns(),
         #{id => FileId},
         #{limit => 1}
     ),
@@ -89,7 +89,7 @@ find_by_file_id(FileId) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:build_select(
         Tb,
-        <<"id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at">>,
+        select_columns(),
         #{file_id => FileId},
         #{limit => 1}
     ),
@@ -117,7 +117,7 @@ list_by_group(Gid, Page, Size, Options) ->
         end,
     {Sql, Params} = elib_pg_sql:build_select(
         Tb,
-        <<"id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at">>,
+        select_columns(),
         Where,
         #{order_by => [{created_at, desc}], limit => Size, offset => Offset}
     ),
@@ -134,10 +134,11 @@ list_by_group(Gid, Page, Size, Options) ->
 search_by_name(Gid, Keyword, Page, Size) ->
     Tb = tablename(),
     Offset = (Page - 1) * Size,
+    Columns = select_columns(),
     Sql =
-        <<"SELECT id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at FROM ",
-            Tb/binary, " WHERE group_id = $1 ", " AND status = 1 ", " AND file_name LIKE $2 ",
-            " ORDER BY created_at DESC ", " LIMIT $3 OFFSET $4">>,
+        <<"SELECT ", Columns/binary, " FROM ", Tb/binary, " WHERE group_id = $1 ",
+            " AND status = 1 ", " AND file_name LIKE $2 ", " ORDER BY created_at DESC ",
+            " LIMIT $3 OFFSET $4">>,
     Params = [Gid, <<"%", Keyword/binary, "%">>, Size, Offset],
     elib_pg:query(Sql, Params).
 
@@ -154,7 +155,7 @@ list_by_category(Gid, Category, Page, Size) ->
     Offset = (Page - 1) * Size,
     {Sql, Params} = elib_pg_sql:build_select(
         Tb,
-        <<"id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at">>,
+        select_columns(),
         #{group_id => Gid, status => 1, file_category => Category},
         #{order_by => [{created_at, desc}], limit => Size, offset => Offset}
     ),
@@ -246,3 +247,12 @@ category_stats(Gid) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% 新客户端使用已绑定的 object_key；旧 file_url 字段保留历史兼容。
+select_columns() ->
+    <<
+        "id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at,"
+        "(SELECT a.path FROM public.attachment a WHERE a.group_file_id=group_file.id "
+        "AND a.scope='group' AND a.scope_ref=group_file.group_id::text "
+        "AND a.status>=0 ORDER BY a.id LIMIT 1) AS object_key"
+    >>.

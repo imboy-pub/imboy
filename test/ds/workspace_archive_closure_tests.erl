@@ -140,7 +140,8 @@ attachment_parent_member_mock() ->
         {'lock_upload_organization_tx', 3, fun(_, _, _) -> ok end},
         {'authorize_upload_scope_tx', 4, fun(_, _, _, _) -> true end},
         {'authorize_channel_scope', 2, fun(_, _) -> true end},
-        {'authorize_group_scope', 2, fun(_, _) -> true end}
+        {'authorize_group_scope', 2, fun(_, _) -> true end},
+        {'find_path_by_group_file', 2, fun(_, _) -> {ok, <<"u">>} end}
     ]}.
 
 %% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），

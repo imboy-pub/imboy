@@ -3,6 +3,8 @@ get:
   tags: [user]
   summary: 群文件搜索
   description: |
+    可空 object_key 来自群附件绑定，打开前通过 attachment/view_url 重新鉴权。
+    Nullable object_key comes from the group attachment binding; reauthorize before opening.
     ## 中文 / English
     群文件搜索
     Search group files

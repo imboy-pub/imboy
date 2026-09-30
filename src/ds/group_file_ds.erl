@@ -120,12 +120,12 @@ do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
 %% @doc 下载文件
 %% @param FileId 文件ID（主键）
 %% @param CurrentUid 当前用户ID
-%% @return {ok, FileUrl} | {error, Reason}
+%% @return {ok, ObjectKey} | {error, Reason}，Logic 继续调用附件读授权签发 URL。
 -spec download_file(integer(), integer()) -> {ok, binary()} | {error, term()}.
 download_file(FileId, CurrentUid) ->
     % 1. 查询文件信息
     case group_file_repo:find_by_id(FileId) of
-        #{<<"id">> := _, <<"group_id">> := Gid, <<"status">> := 1, <<"file_url">> := FileUrl} ->
+        #{<<"id">> := _, <<"group_id">> := Gid, <<"status">> := 1} ->
             % 2. 验证群成员身份
             case has_file_access(Gid, CurrentUid) of
                 false ->
@@ -140,7 +140,7 @@ download_file(FileId, CurrentUid) ->
                             end),
                         ok
                     end),
-                    {ok, FileUrl}
+                    attachment_ds:find_path_by_group_file(Gid, FileId)
             end;
         _ ->
             {error, not_found}

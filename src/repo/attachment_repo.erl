@@ -50,6 +50,7 @@
 -export([find_by_path/1]).
 
 -export([find_path_by_id/1]).
+-export([find_path_by_group_file/2]).
 
 %% @doc 单 statement 校验群附件的当前世代边界。
 -export([authorize_group_access/2]).
@@ -404,6 +405,18 @@ find_by_path(ObjectKey) ->
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {error, not_found};
         {error, R} -> {error, R}
+    end.
+
+%% 仅采用已有群文件绑定；不从裸 URL 猜测附件归属。
+-spec find_path_by_group_file(integer(), integer()) -> {ok, binary()} | {error, term()}.
+find_path_by_group_file(Gid, FileId) ->
+    Sql =
+        <<"SELECT path FROM public.attachment WHERE group_file_id=$1 ",
+            "AND scope='group' AND scope_ref=$2::bigint::text AND status>=0 ORDER BY id LIMIT 1">>,
+    case elib_pg:one(Sql, [FileId, Gid]) of
+        {ok, #{<<"path">> := Path}} when is_binary(Path), Path =/= <<>> -> {ok, Path};
+        {ok, _} -> {error, not_found};
+        {error, _} = E -> E
     end.
 
 %% @doc 群附件下载授权。聊天附件按 anchor_conv_seq 检查当前 generation；独立

@@ -6,6 +6,8 @@ get:
     ## 中文 / English
     群文件列表（含分页/分类过滤）
     List group files
+    items 增加可空 object_key，来自有效群附件绑定；客户端应在打开时通过 attachment/view_url 重新鉴权。
+    Nullable object_key comes from the active attachment binding. Reauthorize through attachment/view_url when opening.
   operationId: listGroupFile
   parameters:
     - in: query
