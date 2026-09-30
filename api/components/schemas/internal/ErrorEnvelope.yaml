@@ -1,4 +1,4 @@
-# Internal API v1 错误信封（13 稳定错误码，README §7 冻结）。
+# Internal API v1 错误信封（16 稳定错误码，README §7 冻结）。
 # 成功响应为裸 payload（无 {code,msg,payload} 信封）；错误响应统一本形态。
 type: object
 required: [error]
@@ -24,6 +24,9 @@ properties:
           - rate_limited
           - security_gate_closed
           - internal_error
+          - version_conflict
+          - resource_conflict
+          - seat_limit_exceeded
       message:
         type: string
         description: 人类可读说明（文案不保证稳定）

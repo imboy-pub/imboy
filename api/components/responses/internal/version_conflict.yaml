@@ -1,0 +1,12 @@
+description: 坐席版本已变化，请刷新后重新提交
+content:
+  application/json:
+    schema:
+      allOf:
+      - $ref: ../../schemas/internal/ErrorEnvelope.yaml
+      properties:
+        error:
+          properties:
+            code:
+              enum:
+              - version_conflict

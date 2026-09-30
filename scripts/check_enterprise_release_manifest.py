@@ -36,16 +36,12 @@ AUTH_MW = "src/api/auth_middleware.erl"
 BOUNDARY = "src/api/enterprise_internal_boundary.erl"
 CONTRACT = ".contract/api_contract.json"
 WIRING_TEST = "test/api/enterprise_internal_wiring_http_tests.erl"
-DEFAULT_MANIFEST = os.environ.get(
-    "IMBOY_INTERNAL_MANIFEST",
-    "/Users/leeyi/project/imboy.pub/.Codex/runs/"
-    "enterprise-internal-20260921T101806Z/control/internal-api-manifest.yaml",
-)
+DEFAULT_MANIFEST = os.environ.get("IMBOY_INTERNAL_MANIFEST", str(Path(__file__).resolve().parents[1] / "api/internal/v1/manifest.yaml"))
 
 PREFIX = "/api/internal/v1/"
 # V2.1 只读扩面（INT-24..31）：路由 23→31、cowboy path 19→25（2026-09-24）
-MANIFEST_ROUTE_COUNT = 32
-ROUTER_PATH_COUNT = 26
+MANIFEST_ROUTE_COUNT = 36
+ROUTER_PATH_COUNT = 28
 # 代码类扫描根（§8「含 alias / handler / migration / OpenAPI 全谱」）
 CODE_ROOTS = ("src", "config", "priv")
 CODE_SUFFIXES = {".erl", ".hrl", ".config", ".example", ".json", ".yaml", ".sql"}

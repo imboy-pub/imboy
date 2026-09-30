@@ -45,6 +45,16 @@
       "key": "channel_id",
       "value": "9100000000000000700",
       "description": "示例企业频道 ID（合成）"
+    },
+    {
+      "key": "business_identity_id",
+      "value": "995701",
+      "description": "合成示例，须替换为同企业的活跃 customer_service 身份"
+    },
+    {
+      "key": "seat_version",
+      "value": "1",
+      "description": "修改时使用详情返回的 version"
     }
   ],
   "item": [
@@ -1326,6 +1336,98 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"code\": \"ONE-TIME-CODE-FROM-OA-FLOW\",\n  \"redirect_uri\": \"https://oa.example.com/imboy/sso/callback\",\n  \"nonce\": \"9f2c7b1e\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "企业客服坐席",
+      "description": "需要企业全域 Grant 与独立读写 scope；workspace_id 仅用于审计，坐席不签发登录凭证。",
+      "item": [
+        {
+          "name": "坐席列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/customer-service/seats"
+          }
+        },
+        {
+          "name": "坐席详情",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/customer-service/seats/{{business_identity_id}}"
+          }
+        },
+        {
+          "name": "创建坐席",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/customer-service/seats",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"workspace_id\": {{workspace_id}}, \"business_identity_id\": {{business_identity_id}}, \"max_concurrent\": 2}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "修改坐席",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/customer-service/seats/{{business_identity_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"workspace_id\": {{workspace_id}}, \"expected_version\": {{seat_version}}, \"enabled\": false}",
               "options": {
                 "raw": {
                   "language": "json"

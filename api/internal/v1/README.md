@@ -2,7 +2,7 @@
 
 > **版本**：v1.0（冻结）｜ **受众**：企业 OA / 第三方集成系统开发者
 > **Base Path**：`/api/internal/v1`
-> **机器契约**：`api/openapi-internal.yaml`（编辑真源，26 path / 32 端点，
+> **机器契约**：`api/openapi-internal.yaml`（编辑真源，28 path / 36 端点，
 > 字段级 schema 逐端点实证自 handler）；`api/openapi-internal.bundle.yaml`
 > （bundle 单文件，可直接导入 Postman / Apifox / openapi-generator）。
 > 本目录是面向集成方的交付文档。路由与合同由 12 项机械断言
@@ -83,7 +83,7 @@ Authorization: Bearer ib_int_<application_id>.<secret>
   所有请求返回 `application_disabled`（403）。
 - secret 在平台侧只保存不可逆摘要；**泄露即轮换**，无需担心「改不回来」。
 
-## 4. 授权（Scope，固定 14 枚举，无通配）
+## 4. 授权（Scope，固定 16 枚举，无通配）
 
 | Scope | 解锁能力 |
 |---|---|
@@ -101,6 +101,8 @@ Authorization: Bearer ib_int_<application_id>.<secret>
 | `friend_requests:create` | 发起好友申请 |
 | `webhooks:manage` | Webhook 登记与投递管理 |
 | `sso:exchange` | OA SSO 一次性 code 交换 |
+| `customer_service:read` | 企业坐席列表与详情（企业全域 Grant） |
+| `customer_service:write` | 创建、修改、停用坐席（企业全域 Grant） |
 
 Scope 由管理员签发时授予，集成方**不可自选**、不存在 `*` 通配；
 两个消息域端点（INT-09/10）按请求里的 `sender_mode` 动态要求
@@ -144,7 +146,7 @@ v1.1.1 起提供）；具体阈值由部署配置，
 { "error": { "code": "insufficient_scope", "message": "..." } }
 ```
 
-13 个稳定错误码（`code` 为机器可读、snake_case、**长期稳定**，勿按 message 文案做逻辑）：
+16 个稳定错误码（`code` 为机器可读、snake_case、**长期稳定**，勿按 message 文案做逻辑）：
 
 | code | HTTP | 含义 |
 |---|---|---|
@@ -161,6 +163,10 @@ v1.1.1 起提供）；具体阈值由部署配置，
 | `rate_limited` | 429 | 触发限流（fail-closed） |
 | `security_gate_closed` | 503 | 平台安全闸关闭（暂时拒绝服务） |
 | `internal_error` | 500 | 内部错误（安全兜底：未列入稳定表的码一律收敛为此值） |
+
+| `version_conflict` | 409 | 坐席版本已变化，刷新后重新提交 |
+| `resource_conflict` | 409 | 坐席已存在 |
+| `seat_limit_exceeded` | 409 | 企业坐席额度不足 |
 
 ## 8. Webhook 出站（你方系统将收到的回调）
 
@@ -242,7 +248,7 @@ OA 外部用户标识 → **OA 建立自己的登录会话**。
 - **机器契约**：`../openapi-internal.yaml`（编辑真源）与
   `../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
   schema 逐端点从 handler 实证（`src/api/enterprise_*_handler.erl`），
-  13 个稳定错误码为可复用 response 组件；scope / 限流桶 / 幂等要求以
+  16 个稳定错误码为可复用 response 组件；scope / 限流桶 / 幂等要求以
   `x-imboy-scope` / `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
   标注。工具导入用 bundle 单文件。
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
@@ -258,3 +264,9 @@ OA 外部用户标识 → **OA 建立自己的登录会话**。
 
 - 本 API **已冻结为 v1**：只会追加新端点/新可选字段，不会破坏性变更既有形状。
 - 变更记录见 [CHANGELOG.md](./CHANGELOG.md)。
+
+## 客服坐席集成 / Customer service seats
+
+INT-33..36 管理企业坐席配置，不签发 Seat JWT。坐席主键为 business_identity_id，必须对应本企业 customer_service 业务身份；workspace_id 只是审计位置。读写权限分别授予，必须有覆盖对应 scope 的企业全域 Grant，仅 Workspace Grant 不足。PATCH 必须带 expected_version 以及 enabled/max_concurrent 至少一个；停用用 enabled=false，不删除历史。列表默认 limit=50，最大100，按 ID 升序，包含停用项。应用、企业或 Grant 撤销后，包括幂等重放在内的下一请求仍须通过授权检查。
+
+English: Seats belong to the organization. Workspace IDs select audit locations only. Reads and writes need separate scopes and organization-wide grants. Updates require optimistic versions; disabling retains history. Signed cursors bind organization, application and seat-list family.

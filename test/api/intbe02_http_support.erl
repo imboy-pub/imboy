@@ -85,7 +85,11 @@
 -define(SECRET_SSO, <<"intbe02_secret_sso_0123456789abcdef">>).
 
 -define(SCOPES_READ4, [
-    <<"workspaces:read">>, <<"groups:read">>, <<"projects:read">>, <<"channels:read">>
+    <<"workspaces:read">>,
+    <<"groups:read">>,
+    <<"projects:read">>,
+    <<"channels:read">>,
+    <<"customer_service:read">>
 ]).
 
 %% 窄写应用 scope：groups:write（+ groups:read 便于分组判别）——供「未覆盖
@@ -108,7 +112,9 @@
     <<"messages:send">>,
     <<"messages:send_as_human">>,
     <<"friend_requests:create">>,
-    <<"webhooks:manage">>
+    <<"webhooks:manage">>,
+    <<"customer_service:read">>,
+    <<"customer_service:write">>
 ]).
 
 -define(EXT_H1, <<"intbe02-ext-h1">>).
@@ -284,6 +290,10 @@ seed_matrix(C) ->
     ),
     seed_org(C, ?ORG_A, ?OWNER_A, <<"intbe02-org-a">>),
     seed_org(C, ?ORG_B, ?OWNER_B, <<"intbe02-org-b">>),
+    ok = sql_exec(
+        C,
+        <<"INSERT INTO organization_business_identity(id,organization_id,function_key,display_name) VALUES (995701,995101,'customer_service','synthetic-api-seat'),(995702,995102,'customer_service','synthetic-foreign-seat')">>
+    ),
     lists:foreach(
         fun(Uid) -> seed_org_member(C, ?ORG_A, Uid) end,
         [?H_A1, ?H_A2, ?H_A3, ?PRIN_A, ?ALICE]
@@ -530,7 +540,7 @@ ensure_pool(State) ->
     },
     {ok, _} = application:ensure_all_started(pooler),
     catch pooler:rm_pool(pgsql),
-    _ = pooler:new_pool(#{
+    {ok, _} = pooler:new_pool(#{
         name => pgsql,
         max_count => 8,
         init_count => 2,

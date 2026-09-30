@@ -5,7 +5,7 @@
 % plan-gz §6 / manifest stable_error_codes）。
 %
 % 合同（冻结）：
-%   * 错误码只取 manifest stable_error_codes 的 13 个 snake_case 二进制，
+%   * 错误码只取 manifest stable_error_codes 的 16 个 snake_case 二进制，
 %     不新造码；未知码按 internal_error 处理（fail-safe）。
 %   * HTTP 状态映射固定：401 invalid_credential/credential_expired；
 %     403 application_disabled/organization_disabled/insufficient_scope/
@@ -43,7 +43,10 @@
     <<"rate_limited">>,
     <<"security_gate_closed">>,
     <<"invalid_request">>,
-    <<"internal_error">>
+    <<"internal_error">>,
+    <<"version_conflict">>,
+    <<"resource_conflict">>,
+    <<"seat_limit_exceeded">>
 ]).
 
 -define(STATUS_MAP, #{
@@ -59,6 +62,9 @@
     <<"rate_limited">> => 429,
     <<"security_gate_closed">> => 503,
     <<"invalid_request">> => 400,
+    <<"version_conflict">> => 409,
+    <<"resource_conflict">> => 409,
+    <<"seat_limit_exceeded">> => 409,
     <<"internal_error">> => 500
 }).
 
@@ -75,6 +81,9 @@
     <<"rate_limited">> => <<"rate limited">>,
     <<"security_gate_closed">> => <<"security gate closed">>,
     <<"invalid_request">> => <<"invalid request">>,
+    <<"version_conflict">> => <<"resource version conflict">>,
+    <<"resource_conflict">> => <<"resource already exists">>,
+    <<"seat_limit_exceeded">> => <<"seat limit exceeded">>,
     <<"internal_error">> => <<"internal error">>
 }).
 

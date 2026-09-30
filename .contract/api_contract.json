@@ -34,8 +34,10 @@
     "/brand",
     "/healthz",
     "/help",
+    "/livez",
     "/metrics",
-    "/privacy-policy"
+    "/privacy-policy",
+    "/readyz"
   ],
   "endpoints": {
     "adm": [
@@ -1198,6 +1200,12 @@
         "static": false
       },
       {
+        "action": "invite_code",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/invite_code",
+        "static": false
+      },
+      {
         "action": "members",
         "handler": "adm_organization_handler",
         "path": "/api/adm/organizations/:organization_id/members",
@@ -1261,6 +1269,12 @@
         "action": "org_restore",
         "handler": "adm_organization_handler",
         "path": "/api/adm/organizations/:organization_id/restore",
+        "static": false
+      },
+      {
+        "action": "review",
+        "handler": "adm_organization_handler",
+        "path": "/api/adm/organizations/:organization_id/review/:review",
         "static": false
       },
       {
@@ -1821,6 +1835,18 @@
         "action": "channel",
         "handler": "enterprise_channel_handler",
         "path": "/api/internal/v1/channels/:channel_id",
+        "static": false
+      },
+      {
+        "action": "seats",
+        "handler": "enterprise_cs_seat_handler",
+        "path": "/api/internal/v1/customer-service/seats",
+        "static": false
+      },
+      {
+        "action": "seat",
+        "handler": "enterprise_cs_seat_handler",
+        "path": "/api/internal/v1/customer-service/seats/:business_identity_id",
         "static": false
       },
       {
@@ -4802,6 +4828,12 @@
         "static": false
       },
       {
+        "action": "entries",
+        "handler": "enterprise_oa_sso_handler",
+        "path": "/api/v1/workbench/entries",
+        "static": false
+      },
+      {
         "action": "create",
         "handler": "workspace_handler",
         "path": "/api/v1/workspaces",
@@ -4967,6 +4999,12 @@
       },
       {
         "action": null,
+        "handler": "healthz_handler",
+        "path": "/livez",
+        "static": false
+      },
+      {
+        "action": null,
         "handler": "metrics_handler",
         "path": "/metrics",
         "static": false
@@ -4976,6 +5014,12 @@
         "handler": "cowboy_static",
         "path": "/privacy-policy",
         "static": true
+      },
+      {
+        "action": null,
+        "handler": "healthz_handler",
+        "path": "/readyz",
+        "static": false
       },
       {
         "action": null,
@@ -5425,7 +5469,7 @@
       {
         "action": "invalid_msgid",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:932"
+          "src/logic/msg_c2g_logic.erl:936"
         ]
       },
       {
@@ -5440,9 +5484,9 @@
           "src/logic/msg_c2c_logic.erl:294",
           "src/logic/msg_c2c_logic.erl:570",
           "src/logic/msg_c2c_logic.erl:636",
-          "src/logic/msg_c2g_logic.erl:336",
-          "src/logic/msg_c2g_logic.erl:686",
-          "src/logic/msg_c2g_logic.erl:855",
+          "src/logic/msg_c2g_logic.erl:340",
+          "src/logic/msg_c2g_logic.erl:690",
+          "src/logic/msg_c2g_logic.erl:859",
           "src/logic/msg_s2c_logic.erl:137"
         ]
       },
@@ -5457,8 +5501,8 @@
       {
         "action": "not_group_member",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:691",
-          "src/logic/msg_c2g_logic.erl:862"
+          "src/logic/msg_c2g_logic.erl:695",
+          "src/logic/msg_c2g_logic.erl:866"
         ]
       },
       {
@@ -5475,11 +5519,11 @@
           "src/logic/msg_c2c_logic.erl:634",
           "src/logic/msg_c2c_logic.erl:640",
           "src/logic/msg_c2c_logic.erl:886",
-          "src/logic/msg_c2g_logic.erl:684",
-          "src/logic/msg_c2g_logic.erl:689",
-          "src/logic/msg_c2g_logic.erl:850",
-          "src/logic/msg_c2g_logic.erl:859",
-          "src/logic/msg_c2g_logic.erl:934",
+          "src/logic/msg_c2g_logic.erl:688",
+          "src/logic/msg_c2g_logic.erl:693",
+          "src/logic/msg_c2g_logic.erl:854",
+          "src/logic/msg_c2g_logic.erl:863",
+          "src/logic/msg_c2g_logic.erl:938",
           "src/logic/msg_s2c_logic.erl:88",
           "src/logic/msg_s2c_logic.erl:108",
           "src/logic/msg_s2c_logic.erl:135"
@@ -5488,7 +5532,7 @@
       {
         "action": "pull_offline_msg",
         "sources": [
-          "src/ds/message_ds.erl:443"
+          "src/ds/message_ds.erl:464"
         ]
       },
       {
@@ -5506,8 +5550,8 @@
       {
         "action": "service_unavailable",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:947",
-          "src/logic/msg_c2g_logic.erl:949"
+          "src/logic/msg_c2g_logic.erl:951",
+          "src/logic/msg_c2g_logic.erl:953"
         ]
       },
       {

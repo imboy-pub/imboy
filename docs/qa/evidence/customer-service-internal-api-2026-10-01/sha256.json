@@ -1,0 +1,9 @@
+{
+  "src/api/enterprise_cs_seat_handler.erl": "0bcc721346b6934c85bffbe0ed329f80ba3a26e1af65103df15ad372e02c0e97",
+  "src/logic/enterprise_cs_seat_logic.erl": "d13f4d53754922424891002f536f93d913568c8e4787abdae0661712abd14638",
+  "scripts/test/customer_service_internal_http_gate.sh": "1b240979fcb1fa7c2f168c5e8e189b4f3ad734074a44be332f78470454699434",
+  "test/api/enterprise_internal_wiring_http_tests.erl": "7db7579f5b20e34930a439b0760fe6473eeaa80763f0998ea1a26d32f3f27c1e",
+  "api/internal/v1/manifest.yaml": "8ed67dd4d5da9534f134d203c5b4e425ca5278d6adf264829e19fc9908851c87",
+  "docs/qa/evidence/customer-service-internal-api-2026-10-01/image-id.txt": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0",
+  "docs/qa/evidence/customer-service-internal-api-2026-10-01/http.txt": "558c37bcd2ca23cdeeccd72d0b2b339ca4bd495c21655b316452e167e1a1e812"
+}

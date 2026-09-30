@@ -32,7 +32,8 @@ metrics() ->
         <<"directory.page">>,
         <<"file.confirmed">>,
         <<"message.accepted">>,
-        <<"message.failed">>
+        <<"message.failed">>,
+        <<"seat.read">>
     ].
 
 %% @doc 计量 +1（当月桶）。Metric 必须是固定枚举成员（非成员 → invalid_metric，

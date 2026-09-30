@@ -183,6 +183,14 @@ spec(<<"INT-31">>) ->
 %% 无 org/workspace 资源边界，仅 scope 门）
 spec(<<"INT-32">>) ->
     {ok, #{kind => none, scope => <<"webhooks:manage">>}};
+spec(<<"INT-33">>) ->
+    {ok, #{kind => org, scope => <<"customer_service:read">>}};
+spec(<<"INT-34">>) ->
+    {ok, #{kind => org, scope => <<"customer_service:read">>}};
+spec(<<"INT-35">>) ->
+    {ok, #{kind => org, scope => <<"customer_service:write">>}};
+spec(<<"INT-36">>) ->
+    {ok, #{kind => org, scope => <<"customer_service:write">>}};
 spec(_RouteId) ->
     error.
 
@@ -300,7 +308,8 @@ candidate_ids() ->
         <<"INT-12">>,
         <<"INT-13">>,
         <<"INT-14">>
-        | ?NEW_IDS ++ ?FULL03_IDS ++ ?V21_IDS ++ ?V111_IDS
+        | ?NEW_IDS ++ ?FULL03_IDS ++ ?V21_IDS ++ ?V111_IDS ++
+            [<<"INT-33">>, <<"INT-34">>, <<"INT-35">>, <<"INT-36">>]
     ].
 
 %% ctx 的生效 scope（认证链产物；零 Grant 应用恒为空集 → list 类路由拒绝）。

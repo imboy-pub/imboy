@@ -2538,6 +2538,9 @@ enterprise_internal_routes() ->
         }},
         %% ---- V2.1 INT-24..31 资源只读面（A2 实现；A0 机械接线）----
         %% INT-26/27 复用上方 groups 两行（同 path 单注册，GET 分派在 handler 内）
+        {"/api/internal/v1/customer-service/seats", enterprise_cs_seat_handler, #{action => seats}},
+        {"/api/internal/v1/customer-service/seats/:business_identity_id",
+            enterprise_cs_seat_handler, #{action => seat}},
         {"/api/internal/v1/workspaces", enterprise_workspace_handler, #{action => workspaces}},
         {"/api/internal/v1/workspaces/:workspace_id", enterprise_workspace_handler, #{
             action => workspace

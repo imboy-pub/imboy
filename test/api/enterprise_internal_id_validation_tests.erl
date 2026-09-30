@@ -9,7 +9,8 @@ id_validation_test_() ->
         fun valid_bindings/0,
         fun authentication_precedence/0,
         fun query_ranges/0,
-        fun direct_handler_ranges/0
+        fun direct_handler_ranges/0,
+        fun seat_query_ranges/0
     ]}.
 
 setup() ->
@@ -78,7 +79,7 @@ path_ranges() ->
                 invalid_ids()
             )
         end,
-        [group_id, workspace_id, project_id, channel_id]
+        [group_id, workspace_id, project_id, channel_id, business_identity_id]
     ),
     ?assertEqual(0, meck:num_calls(elib_pg, with_tx, '_')).
 
@@ -105,7 +106,7 @@ valid_bindings() ->
                 [{<<"1">>, 1}, {integer_to_binary(?MAX), ?MAX}, {<<"0001">>, 1}]
             )
         end,
-        [group_id, workspace_id, project_id, channel_id]
+        [group_id, workspace_id, project_id, channel_id, business_identity_id]
     ),
     lists:foreach(
         fun(DeliveryId) ->
@@ -164,3 +165,21 @@ direct_handler_ranges() ->
             {enterprise_channel_handler, channel, channel_id}
         ]
     ).
+
+seat_query_ranges() ->
+    lists:foreach(
+        fun(Qs) ->
+            Req = (request(#{}))#{qs => Qs},
+            {ok, Reply, _} = enterprise_cs_seat_handler:init(Req, #{
+                action => seats, enterprise_internal => #{}
+            }),
+            assert_invalid(Reply)
+        end,
+        [
+            #{<<"limit">> => <<"0">>},
+            #{<<"limit">> => <<"101">>},
+            #{<<"limit">> => true},
+            #{<<"organization_id">> => <<"10">>}
+        ]
+    ),
+    ?assertEqual(0, meck:num_calls(elib_pg, with_tx, '_')).

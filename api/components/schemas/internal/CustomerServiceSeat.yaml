@@ -1,0 +1,24 @@
+type: object
+additionalProperties: false
+required:
+- organization_id
+- business_identity_id
+- enabled
+- max_concurrent
+- version
+properties:
+  organization_id: &id001
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  business_identity_id: *id001
+  enabled:
+    type: boolean
+  max_concurrent:
+    type: integer
+    minimum: 1
+    maximum: 2147483647
+  version:
+    type: integer
+    minimum: 1

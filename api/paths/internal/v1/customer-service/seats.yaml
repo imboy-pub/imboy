@@ -1,0 +1,153 @@
+get:
+  tags:
+  - internal
+  summary: 企业客服坐席列表
+  operationId: internalCustomerServiceSeatList
+  security:
+  - ibIntBearer: []
+  x-imboy-scope: customer_service:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  description: 需要企业全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。 包括停用坐席；按 business_identity_id
+    升序。签名游标绑定企业、应用及列表类型；不接受企业或工作空间过滤参数。
+  parameters:
+  - name: limit
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 50
+    description: 页大小，默认50，1..100；越界拒绝。
+  - name: cursor
+    in: query
+    schema:
+      type: string
+    description: 上一页返回的签名 next_cursor；绑定本企业、本应用及列表类型。
+  responses:
+    '200':
+      description: 坐席分页
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - items
+            - limit
+            - has_more
+            - next_cursor
+            properties:
+              items:
+                type: array
+                items:
+                  $ref: ../../../../components/schemas/internal/CustomerServiceSeat.yaml
+              limit:
+                type: integer
+                minimum: 1
+                maximum: 100
+              has_more:
+                type: boolean
+              next_cursor:
+                type:
+                - string
+                - 'null'
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '404':
+      $ref: ../../../../components/responses/internal/resource_not_found.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      $ref: ../../../../components/responses/internal/security_gate_closed.yaml
+post:
+  tags:
+  - internal
+  summary: 创建企业客服坐席
+  operationId: internalCustomerServiceSeatCreate
+  security:
+  - ibIntBearer: []
+  x-imboy-scope: customer_service:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  description: 需要企业全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
+  parameters:
+  - name: Idempotency-Key
+    in: header
+    required: true
+    description: 有效 ASCII 幂等键；同业务重试复用此值。
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: ^[ -~]+$
+  responses:
+    '200':
+      description: 企业客服坐席配置
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/internal/CustomerServiceSeat.yaml
+      headers:
+        Idempotent-Replayed:
+          description: 是否重放首次已提交响应；重放时为 true。
+          schema:
+            type: string
+            enum:
+            - 'true'
+    '409':
+      description: 幂等键冲突、版本冲突、坐席已存在或企业坐席额度不足。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '404':
+      $ref: ../../../../components/responses/internal/resource_not_found.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      $ref: ../../../../components/responses/internal/security_gate_closed.yaml
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: false
+          required:
+          - workspace_id
+          - business_identity_id
+          properties:
+            workspace_id:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9223372036854775807
+              description: 同企业的活跃工作空间，用于审计
+            business_identity_id:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9223372036854775807
+            enabled:
+              type: boolean
+              default: true
+            max_concurrent:
+              type: integer
+              minimum: 1
+              maximum: 2147483647
+              default: 1

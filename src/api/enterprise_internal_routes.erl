@@ -356,6 +356,42 @@ routes() ->
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
+        },
+        #{
+            id => <<"INT-33">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/customer-service/seats">>,
+            scope => <<"customer_service:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-34">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/customer-service/seats/{business_identity_id}">>,
+            scope => <<"customer_service:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-35">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/customer-service/seats">>,
+            scope => <<"customer_service:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-36">>,
+            method => <<"PATCH">>,
+            path => <<"/api/internal/v1/customer-service/seats/{business_identity_id}">>,
+            scope => <<"customer_service:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
         }
     ].
 

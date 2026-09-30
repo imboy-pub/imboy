@@ -220,15 +220,17 @@ enterprise_internal_pg_test_() ->
     <<"messages:send_as_human">>,
     <<"friend_requests:create">>,
     <<"webhooks:manage">>,
-    <<"sso:exchange">>
+    <<"sso:exchange">>,
+    <<"customer_service:read">>,
+    <<"customer_service:write">>
 ]).
 
 scope_fixed_enum_test() ->
     ?_test(begin
         %% all() 返回 V2.1 §7 的固定顺序（不做 sort：顺序也是契约），
-        %% 恰好 14 个——多一个/少一个都判失败（CON-02 口径）。
+        %% 恰好 16 个——多一个/少一个都判失败（CON-02 口径）。
         ?assertEqual(?V21_SCOPES, enterprise_internal_scope:all()),
-        ?assertEqual(14, length(enterprise_internal_scope:all())),
+        ?assertEqual(16, length(enterprise_internal_scope:all())),
         %% 显式授予才可用；未授予即拒
         ?assertEqual(
             ok,
@@ -320,7 +322,10 @@ error_envelope_status_test() ->
             <<"rate_limited">> => 429,
             <<"security_gate_closed">> => 503,
             <<"invalid_request">> => 400,
-            <<"internal_error">> => 500
+            <<"internal_error">> => 500,
+            <<"version_conflict">> => 409,
+            <<"resource_conflict">> => 409,
+            <<"seat_limit_exceeded">> => 409
         },
         ?assertEqual(
             lists:sort(maps:keys(Expected)), lists:sort(enterprise_internal_error:codes())

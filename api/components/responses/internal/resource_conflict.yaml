@@ -1,0 +1,12 @@
+description: 坐席已存在
+content:
+  application/json:
+    schema:
+      allOf:
+      - $ref: ../../schemas/internal/ErrorEnvelope.yaml
+      properties:
+        error:
+          properties:
+            code:
+              enum:
+              - resource_conflict

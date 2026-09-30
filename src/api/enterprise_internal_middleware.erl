@@ -162,6 +162,7 @@ normalize_binding(Key, Value) when is_binary(Value) ->
         workspace_id -> to_tsid(Value);
         project_id -> to_tsid(Value);
         channel_id -> to_tsid(Value);
+        business_identity_id -> to_tsid(Value);
         _ -> Value
     end;
 normalize_binding(_Key, Value) ->

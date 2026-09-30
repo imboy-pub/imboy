@@ -3,6 +3,14 @@
 本 API 遵循「冻结 + 只追加」纪律：v1 内不做破坏性变更（不改既有路径语义、
 不删字段、不收紧既有错误码）；破坏性演进将另开 v2 目录并行。
 
+## v1.2 候选 — 2026-10-01（未发布 / unreleased）
+
+- 新增 INT-33..36 企业坐席配置，28 path / 36 端点。
+- 新增 customer_service:read/write 显式权限和 3 个稳定 409 错误码。
+- 企业全域 Grant、事务内幂等与应用审计；PATCH 版本校验和停用保留历史。
+- Migration 159 不自动授予权限；存在新权限或用量时拒绝 down，不删数据。
+- English: Unreleased additive seat governance contract. Local HTTP conformance passes; production release remains pending.
+
 ## 2026-10-01 — 文档修正（协议与路由不变）
 
 - README §9 修正 OA SSO 方向：已登录 IMBoy 的 Human 客户端签发 code，

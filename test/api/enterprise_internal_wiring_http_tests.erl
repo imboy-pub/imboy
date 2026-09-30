@@ -57,25 +57,25 @@ route_table() ->
     %% 故此处只断言「已接线面」的登记与形态；注册表全量形态另行断言（下方
     %% manifest_v21_entries）。
     Manifest = enterprise_internal_routes:routes(),
-    ?assertEqual(32, length(Manifest)),
+    ?assertEqual(36, length(Manifest)),
     %% Router（共享路径，A0 已于集成接线）：INT-24..31 的 8 条全部进
     %% imboy_router；其中 INT-26/27 复用既有 cowboy path（GET 方法分派在
     %% handler 内），故 31 端点对应 25 条唯一 path（19 既有 + 6 新增）。
     Wired = Manifest,
-    ?assertEqual(32, length(Wired)),
+    ?assertEqual(36, length(Wired)),
     %% 冻结表用 {name} 占位符语法，cowboy 路由用 :name —— 归一后逐条比对。
     WiredPaths = lists:usort([
         cowboy_path(binary_to_list(maps:get(path, R)))
      || R <- Wired
     ]),
-    ?assertEqual(26, length(WiredPaths)),
+    ?assertEqual(28, length(WiredPaths)),
     lists:foreach(
         fun(P) ->
             ?assert(lists:member(P, Paths))
         end,
         WiredPaths
     ),
-    ?assertEqual(26, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
+    ?assertEqual(28, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
 
     %% ③ internal 前缀不在匿名白名单；零 open 面
     Open = imboy_router:open(),
@@ -106,9 +106,9 @@ manifest_v21_entries() ->
     Manifest = enterprise_internal_routes:routes(),
     %% 31 unique id + 31 unique method+path
     Ids = [maps:get(id, R) || R <- Manifest],
-    ?assertEqual(32, length(lists:usort(Ids))),
+    ?assertEqual(36, length(lists:usort(Ids))),
     MethodPaths = [{maps:get(method, R), maps:get(path, R)} || R <- Manifest],
-    ?assertEqual(32, length(lists:usort(MethodPaths))),
+    ?assertEqual(36, length(lists:usort(MethodPaths))),
     %% 所有注册 scope 都是固定 14 值枚举成员（动态 scope 除外）
     All = enterprise_internal_scope:all(),
     lists:foreach(
@@ -316,7 +316,10 @@ normalize_code() ->
         {rate_limited, <<"rate_limited">>},
         {security_gate_closed, <<"security_gate_closed">>},
         {invalid_request, <<"invalid_request">>},
-        {internal_error, <<"internal_error">>}
+        {internal_error, <<"internal_error">>},
+        {version_conflict, <<"version_conflict">>},
+        {resource_conflict, <<"resource_conflict">>},
+        {seat_limit_exceeded, <<"seat_limit_exceeded">>}
     ],
     ?assertEqual(
         lists:sort(enterprise_internal_error:codes()),
@@ -370,8 +373,11 @@ normalize_code() ->
 
 conformance_test_() ->
     {timeout, 900,
-        {setup, fun intbe02_http_support:setup_all/0, fun intbe02_http_support:teardown_all/1,
-            fun run_conformance/1}}.
+        {setup, fun intbe02_http_support:setup_all/0, fun intbe02_http_support:teardown_all/1, fun(
+            S
+        ) ->
+            {timeout, 900, fun() -> run_conformance(S) end}
+        end}}.
 
 run_conformance(S) ->
     #{conn := C} = S,
@@ -379,9 +385,10 @@ run_conformance(S) ->
     G = positive_chain(S),
     idempotency_matrix(S, G),
     negative_matrix(S),
+    seat_concurrent_update(S),
+    seat_negative_matrix(S),
     assert_coverage(),
-    %% eunit setup 型 instantiator 必须返回 test set（断言已在上方就地执行）
-    [].
+    ok.
 
 %% INT-13 正例需要一条本 App 归属、终态（success）的 bot_delivery 行。
 %% 企业行生而 pending 是 DB 守卫（trg_ewh_delivery_guard）强制，故沿用
@@ -831,6 +838,49 @@ positive_chain(S) ->
     #{<<"channel_id">> := ChnA1} = assert_ok_json(R31),
     cover(<<"INT-31">>),
 
+    %% Seat configuration is org-owned, with workspace selected for auditing only.
+    SeatPath = <<"/api/internal/v1/customer-service/seats/995701">>,
+    Body35 = #{<<"workspace_id">> => WsA1, <<"business_identity_id">> => 995701},
+    R35 = intbe02_http_support:http(
+        Port,
+        <<"POST">>,
+        <<"/api/internal/v1/customer-service/seats">>,
+        Body35,
+        maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-35">>))
+    ),
+    #{<<"business_identity_id">> := 995701, <<"version">> := SeatVersion} = assert_ok_json(R35),
+    cover(<<"INT-35">>),
+    R33 = intbe02_http_support:http(
+        Port,
+        <<"GET">>,
+        <<"/api/internal/v1/customer-service/seats">>,
+        <<>>,
+        A
+    ),
+    #{<<"items">> := SeatItems} = assert_page(R33),
+    ?assert(
+        lists:any(fun(Row) -> maps:get(<<"business_identity_id">>, Row) =:= 995701 end, SeatItems)
+    ),
+    cover(<<"INT-33">>),
+    R34 = intbe02_http_support:http(Port, <<"GET">>, SeatPath, <<>>, A),
+    #{<<"business_identity_id">> := 995701} = assert_ok_json(R34),
+    cover(<<"INT-34">>),
+    Body36 = #{
+        <<"workspace_id">> => WsA1,
+        <<"expected_version">> => SeatVersion,
+        <<"enabled">> => false
+    },
+    R36 = intbe02_http_support:http(
+        Port,
+        <<"PATCH">>,
+        SeatPath,
+        Body36,
+        maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-36">>))
+    ),
+    #{<<"enabled">> := false, <<"version">> := NextSeatVersion} = assert_ok_json(R36),
+    ?assertEqual(SeatVersion + 1, NextSeatVersion),
+    cover(<<"INT-36">>),
+
     %% ---- INT-21 DELETE /groups/{id}（归档终态，最后执行）----
     R21 =
         intbe02_http_support:http(
@@ -875,8 +925,175 @@ positive_chain(S) ->
             <<"intbe02-idem-15">>, R15},
         {<<"INT-21">>, <<"DELETE">>, GrpPath, #{}, <<"intbe02-idem-21">>, R21},
         {<<"INT-32">>, <<"POST">>, <<"/api/internal/v1/webhook/test-delivery">>, #{},
-            <<"intbe02-idem-32">>, R32}
+            <<"intbe02-idem-32">>, R32},
+        {<<"INT-35">>, <<"POST">>, <<"/api/internal/v1/customer-service/seats">>, Body35,
+            <<"intbe02-idem-35">>, R35},
+        {<<"INT-36">>, <<"PATCH">>, SeatPath, Body36, <<"intbe02-idem-36">>, R36}
     ].
+
+seat_concurrent_update(S) ->
+    Port = maps:get(port, S),
+    A = intbe02_http_support:auth(maps:get(cred_a, S)),
+    Path = <<"/api/internal/v1/customer-service/seats/995701">>,
+    Parent = self(),
+    Workers = [
+        spawn(fun() ->
+            receive
+                go ->
+                    Response = intbe02_http_support:http(
+                        Port,
+                        <<"PATCH">>,
+                        Path,
+                        #{
+                            <<"workspace_id">> => 995201,
+                            <<"expected_version">> => 2,
+                            <<"max_concurrent">> => N
+                        },
+                        maps:merge(
+                            A,
+                            intbe02_http_support:idem(
+                                <<"seat-concurrent-", (integer_to_binary(N))/binary>>
+                            )
+                        )
+                    ),
+                    Parent ! {self(), Response}
+            end
+        end)
+     || N <- [2, 3]
+    ],
+    [Pid ! go || Pid <- Workers],
+    Responses = [
+        receive
+            {Pid, R} -> R
+        after 10000 -> error(seat_concurrency_timeout)
+        end
+     || Pid <- Workers
+    ],
+    ?assertEqual([200, 409], lists:sort([maps:get(status, R) || R <- Responses])),
+    [assert_err(R, <<"version_conflict">>) || R <- Responses, maps:get(status, R) =:= 409],
+    #{<<"version">> := 3} = assert_ok_json(
+        intbe02_http_support:http(Port, <<"GET">>, Path, <<>>, A)
+    ),
+    seat_audit_rollback(S, A, Path).
+
+seat_audit_rollback(S, A, Path) ->
+    C = maps:get(conn, S),
+    Port = maps:get(port, S),
+    ok = intbe02_http_support:sql_exec(
+        C,
+        <<"ALTER TABLE customer_service_event ADD CONSTRAINT synthetic_seat_audit_failure CHECK (false) NOT VALID">>
+    ),
+    try
+        R = intbe02_http_support:http(
+            Port,
+            <<"PATCH">>,
+            Path,
+            #{<<"workspace_id">> => 995201, <<"expected_version">> => 3, <<"max_concurrent">> => 5},
+            maps:merge(A, intbe02_http_support:idem(<<"seat-audit-rollback">>))
+        ),
+        assert_err(R, <<"internal_error">>),
+        #{<<"version">> := 3} = assert_ok_json(
+            intbe02_http_support:http(Port, <<"GET">>, Path, <<>>, A)
+        ),
+        #{<<"n">> := 0} = intbe02_http_support:one(
+            C,
+            <<"SELECT count(*) AS n FROM enterprise_internal_idempotency WHERE idempotency_key='seat-audit-rollback'">>
+        )
+    after
+        ok = intbe02_http_support:sql_exec(
+            C, <<"ALTER TABLE customer_service_event DROP CONSTRAINT synthetic_seat_audit_failure">>
+        )
+    end.
+
+seat_negative_matrix(S) ->
+    Port = maps:get(port, S),
+    C = maps:get(conn, S),
+    A = intbe02_http_support:auth(maps:get(cred_a, S)),
+    RO = intbe02_http_support:auth(maps:get(cred_ro, S)),
+    Narrow = intbe02_http_support:auth(maps:get(cred_c, S)),
+    Seats = <<"/api/internal/v1/customer-service/seats">>,
+    Detail = <<Seats/binary, "/995701">>,
+    lists:foreach(
+        fun({Method, Path}) ->
+            assert_err(
+                intbe02_http_support:http(
+                    Port,
+                    Method,
+                    Path,
+                    #{},
+                    maps:merge(RO, intbe02_http_support:idem(<<"seat-missing-scope">>))
+                ),
+                <<"insufficient_scope">>
+            )
+        end,
+        [
+            {<<"GET">>, Seats},
+            {<<"GET">>, Detail},
+            {<<"POST">>, Seats},
+            {<<"PATCH">>, Detail}
+        ]
+    ),
+    assert_err(
+        intbe02_http_support:http(Port, <<"GET">>, Seats, <<>>, Narrow),
+        <<"organization_boundary_violation">>
+    ),
+    assert_err(
+        intbe02_http_support:http(Port, <<"GET">>, <<Seats/binary, "/995702">>, <<>>, A),
+        <<"resource_not_found">>
+    ),
+    Ws = intbe02_http_support:fixture(ws_a1, x),
+    Request = fun(Method, Path, Body, Key) ->
+        intbe02_http_support:http(
+            Port,
+            Method,
+            Path,
+            Body,
+            maps:merge(A, intbe02_http_support:idem(Key))
+        )
+    end,
+    assert_err(
+        Request(
+            <<"PATCH">>,
+            Detail,
+            #{<<"workspace_id">> => Ws, <<"expected_version">> => 1, <<"enabled">> => true},
+            <<"seat-stale-version">>
+        ),
+        <<"version_conflict">>
+    ),
+    assert_err(
+        Request(
+            <<"POST">>,
+            Seats,
+            #{<<"workspace_id">> => Ws, <<"business_identity_id">> => 995701},
+            <<"seat-duplicate">>
+        ),
+        <<"resource_conflict">>
+    ),
+    assert_err(
+        Request(
+            <<"POST">>,
+            Seats,
+            #{<<"workspace_id">> => Ws, <<"business_identity_id">> => 995702},
+            <<"seat-foreign">>
+        ),
+        <<"resource_not_found">>
+    ),
+    AppId = integer_to_binary(maps:get(app_a, S)),
+    ok = intbe02_http_support:sql_exec(
+        C,
+        <<"DELETE FROM enterprise_application_grant_scope s USING enterprise_application_grant g WHERE s.grant_id=g.id AND g.organization_id=995101 AND g.application_id=",
+            AppId/binary, " AND s.scope='customer_service:write'">>
+    ),
+    %% Replaying a committed key must still fail after the write grant is revoked.
+    assert_err(
+        Request(
+            <<"PATCH">>,
+            Detail,
+            #{<<"workspace_id">> => Ws, <<"expected_version">> => 1, <<"enabled">> => false},
+            <<"intbe02-idem-36">>
+        ),
+        <<"insufficient_scope">>
+    ).
 
 %% ------------------------------------------------------------------
 %% ② 幂等矩阵：17 条 required mutation 逐一同 key 同 body 精确重放 +
@@ -899,7 +1116,46 @@ idempotency_matrix(S, Specs) ->
                     maps:merge(A, intbe02_http_support:idem(Key))
                 ),
             ?assertEqual(200, maps:get(status, Replay), {replay_status, Key}),
-            ?assertEqual(maps:get(body, First), maps:get(body, Replay), {replay_body, Key})
+            ?assertEqual(maps:get(body, First), maps:get(body, Replay), {replay_body, Key}),
+            ?assertEqual(
+                <<"true">>, intbe02_http_support:json_header_val(Replay, <<"idempotent-replayed">>)
+            )
+        end,
+        Specs
+    ),
+    %% Newly added mutations: digest conflict and absent/malformed key for each route.
+    lists:foreach(
+        fun({Id, Method, Path, Body, Key, _First}) ->
+            case lists:member(Id, [<<"INT-35">>, <<"INT-36">>]) of
+                false ->
+                    ok;
+                true ->
+                    Different = Body#{<<"enabled">> => true, <<"max_concurrent">> => 7},
+                    assert_err(
+                        intbe02_http_support:http(
+                            Port,
+                            Method,
+                            Path,
+                            Different,
+                            maps:merge(A, intbe02_http_support:idem(Key))
+                        ),
+                        <<"idempotency_conflict">>
+                    ),
+                    assert_err(
+                        intbe02_http_support:http(Port, Method, Path, Body, A),
+                        <<"invalid_request">>
+                    ),
+                    assert_err(
+                        intbe02_http_support:http(
+                            Port,
+                            Method,
+                            Path,
+                            Body,
+                            maps:merge(A, intbe02_http_support:idem(binary:copy(<<"k">>, 129)))
+                        ),
+                        <<"invalid_request">>
+                    )
+            end
         end,
         Specs
     ),
@@ -1181,7 +1437,7 @@ assert_coverage() ->
     Expected =
         lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
     Actual = intbe02_http_support:covered_ids(),
-    ?assertEqual(32, length(Expected)),
+    ?assertEqual(36, length(Expected)),
     ?assertEqual(Expected, Actual, {coverage_gap, Expected -- Actual, Actual -- Expected}).
 
 %%%===================================================================

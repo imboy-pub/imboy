@@ -1,0 +1,12 @@
+description: 企业坐席额度不足
+content:
+  application/json:
+    schema:
+      allOf:
+      - $ref: ../../schemas/internal/ErrorEnvelope.yaml
+      properties:
+        error:
+          properties:
+            code:
+              enum:
+              - seat_limit_exceeded

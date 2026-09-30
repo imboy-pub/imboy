@@ -1,0 +1,138 @@
+get:
+  tags:
+  - internal
+  summary: 企业客服坐席详情
+  operationId: internalCustomerServiceSeatDetail
+  security:
+  - ibIntBearer: []
+  x-imboy-scope: customer_service:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  description: 需要企业全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
+  parameters:
+  - name: business_identity_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    description: 本企业 customer_service 业务身份 TSID，即坐席主键。
+  responses:
+    '200':
+      description: 企业客服坐席配置
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/internal/CustomerServiceSeat.yaml
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '404':
+      $ref: ../../../../components/responses/internal/resource_not_found.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      $ref: ../../../../components/responses/internal/security_gate_closed.yaml
+patch:
+  tags:
+  - internal
+  summary: 修改或停用企业客服坐席
+  operationId: internalCustomerServiceSeatUpdate
+  security:
+  - ibIntBearer: []
+  x-imboy-scope: customer_service:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  description: 需要企业全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
+  parameters:
+  - name: business_identity_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    description: 本企业 customer_service 业务身份 TSID，即坐席主键。
+  - name: Idempotency-Key
+    in: header
+    required: true
+    description: 有效 ASCII 幂等键；同业务重试复用此值。
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: ^[ -~]+$
+  responses:
+    '200':
+      description: 企业客服坐席配置
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/internal/CustomerServiceSeat.yaml
+      headers:
+        Idempotent-Replayed:
+          description: 是否重放首次已提交响应；重放时为 true。
+          schema:
+            type: string
+            enum:
+            - 'true'
+    '409':
+      description: 幂等键冲突、版本冲突、坐席已存在或企业坐席额度不足。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '404':
+      $ref: ../../../../components/responses/internal/resource_not_found.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      $ref: ../../../../components/responses/internal/security_gate_closed.yaml
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: false
+          required:
+          - workspace_id
+          - expected_version
+          properties:
+            workspace_id:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9223372036854775807
+              description: 同企业的活跃工作空间，用于审计
+            expected_version:
+              type: integer
+              minimum: 1
+              maximum: 2147483647
+            enabled:
+              type: boolean
+            max_concurrent:
+              type: integer
+              minimum: 1
+              maximum: 2147483647
+          anyOf:
+          - required:
+            - enabled
+          - required:
+            - max_concurrent
