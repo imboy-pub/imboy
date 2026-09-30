@@ -339,12 +339,15 @@ scan_tables([{Table, Column} | Rest], Conn, QueryFun, Acc) ->
 %% Identifier interpolation safety: see the module doc. Table/Column passed
 %% the ^[a-z][a-z0-9_]*$ whitelist in normalize_catalog/1 before this point;
 %% PostgreSQL identifiers cannot be bound parameters and this statement has
-%% no value inputs at all. ORDER BY ... DESC LIMIT 1 avoids full-table
-%% aggregation (count(*)/max() are forbidden here by contract).
+%% no value inputs at all. Identifiers are double-quoted: catalog contains
+%% reserved-word table names (group / user) whose bare form is a 42601
+%% syntax error; for the whitelisted lowercase names quoting is semantically
+%% identical. ORDER BY ... DESC LIMIT 1 avoids full-table aggregation
+%% (count(*)/max() are forbidden here by contract).
 table_max_id(Conn, Table, Column, QueryFun) ->
     Sql =
-        <<"SELECT ", Column/binary, " FROM ", Table/binary, " ORDER BY ", Column/binary,
-            " DESC LIMIT 1">>,
+        <<"SELECT ", (q(Column))/binary, " FROM ", (q(Table))/binary, " ORDER BY ",
+            (q(Column))/binary, " DESC LIMIT 1">>,
     case QueryFun(Conn, Sql, []) of
         {ok, []} ->
             {ok, undefined};
@@ -363,6 +366,9 @@ table_max_id(Conn, Table, Column, QueryFun) ->
         {error, Reason} ->
             {error, {max_query_failed, {Table, Column}, Reason}}
     end.
+
+q(Name) ->
+    <<"\"", Name/binary, "\"">>.
 
 %% elib_tsid:id_to_slot/1 raises for ids outside 1..MAX_ID; a historical
 %% max id in that range is impossible for TSID data and is a hard failure.

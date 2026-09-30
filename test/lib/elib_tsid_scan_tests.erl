@@ -34,10 +34,12 @@ schema_fun(SchemaMap) ->
 
 %% Mirrors the per-table max SQL the scanner builds. A shape change breaks
 %% the fixture lookup on purpose — that pins "ORDER BY .. DESC LIMIT 1,
-%% no count(*)/max()" as part of the contract.
+%% no count(*)/max()" and double-quoted identifiers (reserved-word table
+%% names like "group"/"user" are bare-identifier syntax errors) as part
+%% of the contract.
 max_sql(Table, Column) ->
-    <<"SELECT ", Column/binary, " FROM ", Table/binary, " ORDER BY ", Column/binary,
-        " DESC LIMIT 1">>.
+    <<"SELECT \"", Column/binary, "\" FROM \"", Table/binary, "\" ORDER BY \"", Column/binary,
+        "\" DESC LIMIT 1">>.
 
 query_fun(MaxByIdent) ->
     fun(_Conn, Sql, []) ->
@@ -412,7 +414,7 @@ default_seams_binary_key_regression_test() ->
                         <<"column_name">> => <<"id">>
                     }
                 ]};
-            (_Conn, <<"SELECT id FROM adm_user", _/binary>>, []) ->
+            (_Conn, <<"SELECT \"id\" FROM \"adm_user\"", _/binary>>, []) ->
                 {ok, [#{<<"id">> => 12345}]}
         end
     ),
@@ -425,6 +427,18 @@ default_seams_binary_key_regression_test() ->
     after
         meck:unload(elib_pg)
     end.
+
+reserved_keyword_table_quoted_test() ->
+    %% 2026-09-30 生产事故回归：catalog 含 {group, id}/{user, id} 等保留字
+    %% 表名，裸拼 FROM group 是 42601 语法错误（max_query_failed → guard
+    %% fail-closed 拒启 + heart 复活循环）。query_fun 经 max_sql/2 只匹配
+    %% 双引号形态的 SQL——裸标识符形态在此失配报 unexpected_sql。
+    Catalog = [{<<"group">>, <<"id">>}, {<<"user">>, <<"id">>}],
+    Opts = opts(Catalog, ok_schema(Catalog), #{
+        {<<"group">>, <<"id">>} => [],
+        {<<"user">>, <<"id">>} => []
+    }),
+    ?assertMatch({ok, #{floor_safe_before := 0}}, elib_tsid_scan:scan(Opts)).
 
 %% ===================================================================
 %% helpers
