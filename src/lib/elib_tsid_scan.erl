@@ -72,7 +72,7 @@
 -type schema_fun() :: fun((Conn :: term()) -> {ok, schema_map()} | {error, term()}).
 
 %% Data-path seam for per-table max queries. Rows are maps keyed by the
-%% column-name atom (the shape elib_pg:query/3 returns).
+%% column-name binary (the shape elib_pg:query/3 returns via rows_to_maps).
 -type query_fun() ::
     fun((Conn :: term(), Sql :: iodata(), Params :: [term()]) -> {ok, [map()]} | {error, term()}).
 
@@ -349,8 +349,9 @@ table_max_id(Conn, Table, Column, QueryFun) ->
         {ok, []} ->
             {ok, undefined};
         {ok, [Row]} ->
-            Key = binary_to_atom(Column, utf8),
-            case maps:find(Key, Row) of
+            %% Column 已归一为 binary（normalize_catalog），与
+            %% elib_pg:rows_to_maps 的 binary-key 行形状一致。
+            case maps:find(Column, Row) of
                 {ok, Id} when is_integer(Id) ->
                     {ok, Id};
                 {ok, Other} ->
@@ -519,4 +520,14 @@ build_schema_map(ColumnRows, PkRows) ->
     #{columns => Columns, primary_keys => PrimaryKeys}.
 
 v(Key, Row) when is_map(Row) ->
-    maps:get(Key, Row, undefined).
+    case maps:get(name_key(Key), Row, undefined) of
+        undefined -> maps:get(Key, Row, undefined);
+        Value -> Value
+    end.
+
+%% epgsql 的 #column.name 是 binary：elib_pg:rows_to_maps 产出 binary-key
+%% map，schema 行按 binary key 取值；atom key 仅作注入测试的兜底。
+name_key(Key) when is_atom(Key) ->
+    atom_to_binary(Key, utf8);
+name_key(Key) ->
+    Key.

@@ -95,9 +95,9 @@ all_empty_database_floor_zero_test() ->
 multi_table_floor_with_empty_mix_test() ->
     Catalog = [{<<"a">>, <<"id">>}, {<<"b">>, <<"id">>}, {<<"c">>, <<"id">>}],
     Opts = opts(Catalog, ok_schema(Catalog), #{
-        {<<"a">>, <<"id">>} => [#{id => 12345}],
+        {<<"a">>, <<"id">>} => [#{<<"id">> => 12345}],
         {<<"b">>, <<"id">>} => [],
-        {<<"c">>, <<"id">>} => [#{id => 999999}]
+        {<<"c">>, <<"id">>} => [#{<<"id">> => 999999}]
     }),
     SlotA = elib_tsid:id_to_slot(12345),
     SlotC = elib_tsid:id_to_slot(999999),
@@ -114,7 +114,7 @@ multi_table_floor_with_empty_mix_test() ->
 bootstrap_floor_standalone_entry_test() ->
     Catalog = [{<<"a">>, <<"id">>}, {<<"b">>, <<"id">>}],
     Opts = opts(Catalog, ok_schema(Catalog), #{
-        {<<"a">>, <<"id">>} => [#{id => 42}],
+        {<<"a">>, <<"id">>} => [#{<<"id">> => 42}],
         {<<"b">>, <<"id">>} => []
     }),
     ?assertEqual(
@@ -308,7 +308,7 @@ invalid_tsid_value_test() ->
     Catalog = [{<<"user">>, <<"id">>}],
     %% id 0 is outside elib_tsid:id_to_slot/1's 1..MAX_ID contract → FAIL
     Opts = opts(Catalog, ok_schema(Catalog), #{
-        {<<"user">>, <<"id">>} => [#{id => 0}]
+        {<<"user">>, <<"id">>} => [#{<<"id">> => 0}]
     }),
     ?assertMatch(
         {error, {invalid_tsid_value, #{table := <<"user">>, column := <<"id">>, id := 0}}},
@@ -364,7 +364,7 @@ single_snapshot_per_scan_test() ->
     Catalog = [{<<"a">>, <<"id">>}, {<<"b">>, <<"id">>}],
     Conn = snapshot_count_conn(),
     Base = opts(Catalog, ok_schema(Catalog), #{
-        {<<"a">>, <<"id">>} => [#{id => 7}],
+        {<<"a">>, <<"id">>} => [#{<<"id">> => 7}],
         {<<"b">>, <<"id">>} => []
     }),
     Opts = Base#{conn_fun => Conn},
@@ -374,6 +374,57 @@ single_snapshot_per_scan_test() ->
     put(scan_conn_openings, 0),
     {ok, _} = elib_tsid_scan:bootstrap_floor(Opts),
     ?assertEqual(1, get(scan_conn_openings)).
+
+%% ===================================================================
+%% default seams 回归（真实 epgsql 返回形状）
+%% ===================================================================
+
+%% 2026-09-30 生产事故回归：epgsql 的 #column.name 是 binary，
+%% elib_pg:rows_to_maps 产出 binary-key map；build_schema_map 的 v/2
+%% 曾用 atom key 取值 → 列名全 undefined → catalog 183 项全部
+%% schema_drift missing（guard fail-closed 拒启，heart 复活循环）。
+%% table_max_id 的 binary_to_atom 查 key 同源：非空表全报
+%% unexpected_row_shape。default seams 此前零测试覆盖，本用例用
+%% binary-key 行形状钉死 schema 与 floor 两阶段全链路。
+default_seams_binary_key_regression_test() ->
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(
+        elib_pg,
+        with_tx,
+        fun(F, _Opts) -> F(fake_conn) end
+    ),
+    meck:expect(
+        elib_pg,
+        query,
+        fun
+            (_Conn, <<"SELECT table_name, column_name", _/binary>>, []) ->
+                {ok, [
+                    #{
+                        <<"table_name">> => <<"adm_user">>,
+                        <<"column_name">> => <<"id">>,
+                        <<"data_type">> => <<"bigint">>
+                    }
+                ]};
+            (_Conn, <<"SELECT tc.table_name AS table_name", _/binary>>, []) ->
+                {ok, [
+                    #{
+                        <<"table_name">> => <<"adm_user">>,
+                        <<"column_name">> => <<"id">>
+                    }
+                ]};
+            (_Conn, <<"SELECT id FROM adm_user", _/binary>>, []) ->
+                {ok, [#{<<"id">> => 12345}]}
+        end
+    ),
+    try
+        %% atom catalog（elib_tsid_catalog:primary_keys 的真实形状）
+        %% 走 default conn/schema/query seams 全链路
+        ExpectFloor = (elib_tsid:id_to_slot(12345) bsr 11) + 1,
+        {ok, #{floor_safe_before := ExpectFloor}} =
+            elib_tsid_scan:scan(#{catalog => [{adm_user, id}]})
+    after
+        meck:unload(elib_pg)
+    end.
 
 %% ===================================================================
 %% helpers
