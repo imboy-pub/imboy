@@ -696,19 +696,16 @@ claim_session(OrgId, WorkspaceId, SessionId, IdentityId, ExpectedVersion, Claime
     undo_rollback(Result).
 
 claim_tx(Conn, OrgId, WorkspaceId, SessionId, IdentityId, ExpectedVersion, ClaimedAt, Event) ->
+    lock_available_seat(Conn, OrgId, IdentityId),
+    cas_claim_update(
+        Conn, OrgId, WorkspaceId, SessionId, IdentityId, ExpectedVersion, ClaimedAt, Event
+    ).
+
+%% Claim and transfer share the target-seat lock and capacity decision.
+lock_available_seat(Conn, OrgId, IdentityId) ->
     case elib_pg:query(Conn, ?SQL_LOCK_SEAT, [OrgId, IdentityId]) of
         {ok, [SeatRow]} ->
-            check_seat_capacity(Conn, OrgId, IdentityId, SeatRow),
-            cas_claim_update(
-                Conn,
-                OrgId,
-                WorkspaceId,
-                SessionId,
-                IdentityId,
-                ExpectedVersion,
-                ClaimedAt,
-                Event
-            );
+            check_seat_capacity(Conn, OrgId, IdentityId, SeatRow);
         {ok, []} ->
             throw({rollback, {error, seat_not_found}});
         {error, Reason} ->
@@ -756,6 +753,7 @@ transfer_session(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, A
     %% 受让人的读游标边界（transfer 前的历史对受让人默认 0 unread，
     %% CS-DEC-02）；任一步失败全回滚。
     Result = elib_pg:with_tx(fun(Conn) ->
+        lock_available_seat(Conn, OrgId, ToIdentityId),
         Params = [OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At],
         case elib_pg:execute(Conn, ?SQL_TRANSFER_UPDATE, Params) of
             {ok, 1} ->
@@ -878,7 +876,7 @@ upsert_cursor_in(Conn, OrgId, WorkspaceId, SessionId, IdentityId, Effective, At)
 %% transfer 边界（在改绑事务内调用）：受让人游标 = transfer 时刻会话内
 %% 已存在的最大 message id（无消息为 0）；无条件覆盖旧游标行。
 transfer_cursor_boundary_in(Conn, OrgId, WorkspaceId, SessionId, ToIdentityId, ConversationId, At) ->
-    case elib_pg:query(?SQL_TRANSFER_BOUNDARY_MAX, [OrgId, WorkspaceId, ConversationId]) of
+    case elib_pg:query(Conn, ?SQL_TRANSFER_BOUNDARY_MAX, [OrgId, WorkspaceId, ConversationId]) of
         {ok, [#{<<"boundary">> := N}]} when is_integer(N), N >= 0 ->
             Params = [
                 cs_tsid:new_id(cs_read_cursor),
