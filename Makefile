@@ -120,13 +120,16 @@ EDOC_OPTS = {doclet, edown_doclet}
 # generator_not_registered 级联失败，而三套件单跑全绿、受害套件单跑全绿
 # （friend_repo_tests 13/13 隔离复跑 RC=0）。Excl 排除出全量 VM，覆盖由
 # 专项单跑承载（make eunit-local t=<模块名>，Gate G1/G3/G5 证据线）。
+# 全量 EUNIT_MODS 对存在 src 模块的套件只列源模块名，eunit:test({module,
+# elib_tsid}) 再自动附带 elib_tsid_tests；因此 Excl 必须写源模块名，只有
+# 无同名 src 模块的 bootstrap_harness 直接写测试模块名。
 # 注意：t= 单跑路径绝不能套用同一过滤器——否则被排除套件的单跑会变成
 # 空模块列表的静默假绿（eunit:test([]) → ok）。故 ifdef t 分流：
 # 单跑直通原样运行，仅全量轨道（无 t）应用 Excl。
 ifdef t
 EUNIT_TEST_SPEC = (fun() -> lists:append([$1]) end)()
 else
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid_tests, elib_tsid_guard_tests, elib_tsid_bootstrap_harness_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, elib_tsid_guard, elib_tsid_bootstrap_harness_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 endif
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属
