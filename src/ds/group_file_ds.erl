@@ -6,9 +6,9 @@
 %
 % T7 归档写守卫（P0 后续批）：上传/删除为内容写——upload_file 的 OSS 上传
 % 是对外副作用，无法进 DB 事务，故在动 Garage 之前 ensure_writable 预检
-% （归档后零上传），落库在 write_tx 守卫事务内；delete_file 同事务守卫；
+% （归档后零上传），落库在同一守卫事务内；delete_file 同事务守卫；
 % download_file 的下载计数是派生读写（freeze：归档跳过计数，下载读取
-% 永不 403）；soft_delete（adm 治理 G3 入口）同事务守卫（{group_file,PK}）。
+% 在有效成员授权后允许归档工作区只读）；soft_delete（adm 治理 G3 入口）同事务守卫。
 %%%
 
 -export([upload_file/5]).
@@ -17,7 +17,7 @@
 -export([list_files/4]).
 -export([list_files/5]).
 -export([search_files/5]).
--export([get_file_categories/1]).
+-export([get_file_categories/2]).
 -export([count_by_group/1]).
 %% G3 thin wrappers for adm_group_handler
 -export([find_by_id/1]).
@@ -45,7 +45,7 @@
     {ok, integer()} | {error, term()}.
 upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
     % 1. 验证群成员身份
-    case group_ds:is_member(UploaderId, Gid) of
+    case has_file_access(Gid, UploaderId) of
         false ->
             {error, not_member};
         true ->
@@ -125,14 +125,14 @@ do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
 download_file(FileId, CurrentUid) ->
     % 1. 查询文件信息
     case group_file_repo:find_by_id(FileId) of
-        #{<<"id">> := _, <<"group_id">> := Gid, <<"file_url">> := FileUrl} ->
+        #{<<"id">> := _, <<"group_id">> := Gid, <<"status">> := 1, <<"file_url">> := FileUrl} ->
             % 2. 验证群成员身份
-            case group_ds:is_member(CurrentUid, Gid) of
+            case has_file_access(Gid, CurrentUid) of
                 false ->
                     {error, not_member};
                 true ->
                     % 3. 增加下载计数（T7 派生读写 freeze：归档时跳过计数，
-                    %    下载读取永不 403）
+                    %    归档只读仍需群和父级资格）
                     spawn(fun() ->
                         _ =
                             workspace_guard:write_tx_or_skip({group, Gid}, fun(Conn) ->
@@ -154,13 +154,16 @@ download_file(FileId, CurrentUid) ->
 delete_file(FileId, CurrentUid) ->
     % 1. 查询文件信息
     case group_file_repo:find_by_id(FileId) of
-        #{<<"id">> := _, <<"group_id">> := Gid, <<"uploader_id">> := UploaderId} ->
+        #{<<"id">> := _, <<"group_id">> := Gid, <<"status">> := 1, <<"uploader_id">> := UploaderId} ->
             % 2. 验证权限（上传者或管理员）
-            case check_delete_permission(CurrentUid, UploaderId, Gid) of
+            case authorize_delete(CurrentUid, UploaderId, Gid) of
                 {ok, true} ->
                     % 3. 软删除文件（T7：{group, Gid} 行锁与写入同事务）
                     case
-                        workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+                        elib_pg:with_tx(fun(Conn) ->
+                            ok = workspace_guard:abort_on_error(
+                                attachment_ds:ensure_upload_scope_tx(Conn, {group, Gid}, CurrentUid)
+                            ),
                             group_file_repo:soft_delete_tx(Conn, FileId)
                         end)
                     of
@@ -197,7 +200,7 @@ list_files(Gid, CurrentUid, Page, Size) ->
     {ok, list(map())} | {error, term()}.
 list_files(Gid, CurrentUid, Page, Size, Options) ->
     % 1. 验证群成员身份
-    case group_ds:is_member(CurrentUid, Gid) of
+    case has_file_access(Gid, CurrentUid) of
         false ->
             {error, not_member};
         true ->
@@ -215,7 +218,7 @@ list_files(Gid, CurrentUid, Page, Size, Options) ->
     {ok, list(map())} | {error, term()}.
 search_files(Gid, Keyword, Page, Size, CurrentUid) ->
     % 1. 验证群成员身份
-    case group_ds:is_member(CurrentUid, Gid) of
+    case has_file_access(Gid, CurrentUid) of
         false ->
             {error, not_member};
         true ->
@@ -223,13 +226,22 @@ search_files(Gid, Keyword, Page, Size, CurrentUid) ->
             group_file_repo:search_by_name(Gid, Keyword, Page, Size)
     end.
 
-%% @doc 获取群文件分类统计
-%% @param Gid 群组ID
-%% @return {ok, [{Category, Count, TotalSize}]} | {error, Reason}
--spec get_file_categories(integer()) ->
-    {ok, list({binary(), integer(), integer()})} | {error, term()}.
-get_file_categories(Gid) ->
-    group_file_repo:category_stats(Gid).
+%% @doc 获取分类统计，必须携带当前用户并重验群与父级资格。
+-spec get_file_categories(integer(), integer()) -> {ok, list()} | {error, term()}.
+get_file_categories(Gid, CurrentUid) ->
+    case attachment_ds:authorize_group_scope(Gid, CurrentUid) of
+        true -> group_file_repo:category_stats(Gid);
+        false -> {error, not_member}
+    end.
+
+has_file_access(Gid, Uid) ->
+    group_ds:is_member(Uid, Gid) andalso attachment_ds:authorize_group_scope(Gid, Uid).
+
+authorize_delete(Uid, UploaderId, Gid) ->
+    case attachment_ds:authorize_group_scope(Gid, Uid) of
+        true -> check_delete_permission(Uid, UploaderId, Gid);
+        false -> {error, not_member}
+    end.
 
 %% ===================================================================
 %% 内部函数

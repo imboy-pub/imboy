@@ -54,6 +54,7 @@
 %% @doc 单 statement 校验群附件的当前世代边界。
 -export([authorize_group_access/2]).
 -export([authorize_channel_scope/2, channel_scope_access_sql/0]).
+-export([authorize_group_scope/2]).
 -export([lock_upload_organization_tx/3, authorize_upload_scope_tx/4]).
 %% 真库回归直接执行生产 SQL，避免用 mock/字符串包含断言替代 PostgreSQL 语义。
 -export([group_access_sql/1]).
@@ -449,9 +450,31 @@ authorize_channel_scope(_, _) ->
 channel_scope_access_sql() ->
     scope_access_sql(channel).
 
-scope_access_sql(Kind) ->
+%% 群文件目录也需重验有效群成员与父级资格，不能信任成员缓存。
+-spec authorize_group_scope(integer(), integer()) -> boolean().
+authorize_group_scope(Gid, Uid) when
+    is_integer(Gid), Gid > 0, is_integer(Uid), Uid > 0
+->
+    case elib_pg:one(group_scope_access_sql(), [Gid, Uid]) of
+        {ok, #{<<"allowed">> := true}} -> true;
+        _ -> false
+    end;
+authorize_group_scope(_, _) ->
+    false.
+
+-spec group_scope_access_sql() -> binary().
+group_scope_access_sql() ->
     ScopeSql = resource_scope_access_sql(),
-    Table = scope_table(Kind),
+    <<"SELECT EXISTS (SELECT 1 FROM public.\"group\" grp ",
+        "JOIN public.group_member gm ON gm.group_id = grp.id ",
+        "AND gm.user_id = $2 AND gm.status = 1 ", "WHERE grp.id = $1 AND grp.status = 1 ",
+        ScopeSql/binary, ") AS allowed">>.
+
+scope_access_sql(group) ->
+    group_scope_access_sql();
+scope_access_sql(channel) ->
+    ScopeSql = resource_scope_access_sql(),
+    Table = scope_table(channel),
     <<"SELECT EXISTS (SELECT 1 FROM ", Table/binary, " grp ",
         "WHERE grp.id = $1 AND grp.status = 1 ", ScopeSql/binary, ") AS allowed">>.
 

@@ -13,7 +13,7 @@
 %% ===================================================================
 
 upload_file_success_test_() ->
-    fun() ->
+    with_scope(fun() ->
         Gid = 1,
         UploaderId = 100,
         FileName = <<"test.pdf"/utf8>>,
@@ -80,7 +80,6 @@ upload_file_success_test_() ->
         % elib_oss:upload_to_storage/4 一致（FileId/basename）。
         meck:new(elib_pg, [passthrough]),
         meck:expect(elib_pg, with_tx, fun(F) -> F(conn) end),
-        meck:new(attachment_ds, [passthrough]),
         meck:expect(attachment_ds, ensure_upload_scope_tx, fun(conn, {group, 1}, 100) -> ok end),
         meck:expect(attachment_ds, save, fun(Conn, CreatedAt, Uid, Attaches) ->
             self() ! attachment_saved,
@@ -112,7 +111,6 @@ upload_file_success_test_() ->
             ?assert(false)
         end,
 
-        meck:unload(attachment_ds),
         meck:unload(elib_pg),
         meck:unload(group_file_repo),
         meck:unload(workspace_resolver),
@@ -121,10 +119,10 @@ upload_file_success_test_() ->
         meck:unload(group_ds),
 
         ?assertEqual({ok, FileId}, Result)
-    end.
+    end).
 
 upload_file_invalid_type_test_() ->
-    fun() ->
+    with_scope(fun() ->
         Gid = 1,
         UploaderId = 100,
         FileName = <<"test.exe">>,
@@ -143,10 +141,10 @@ upload_file_invalid_type_test_() ->
         meck:unload(group_ds),
 
         ?assertEqual({error, invalid_file_type}, Result)
-    end.
+    end).
 
 upload_file_too_large_test_() ->
-    fun() ->
+    with_scope(fun() ->
         Gid = 1,
         UploaderId = 100,
         FileName = <<"large.pdf"/utf8>>,
@@ -171,14 +169,14 @@ upload_file_too_large_test_() ->
         meck:unload(group_ds),
 
         ?assertEqual({error, file_too_large}, Result)
-    end.
+    end).
 
 %% ===================================================================
 %% download_file/2 测试
 %% ===================================================================
 
 download_file_success_test_() ->
-    fun() ->
+    with_scope(fun() ->
         FileId = 1,
         CurrentUid = 100,
         FileUrl = <<"http://example.com/file.pdf">>,
@@ -186,7 +184,7 @@ download_file_success_test_() ->
 
         meck:new(group_file_repo, [passthrough]),
         meck:expect(group_file_repo, find_by_id, fun(_) ->
-            #{<<"id">> => 1, <<"group_id">> => 1, <<"file_url">> => FileUrl}
+            #{<<"status">> => 1, <<"id">> => 1, <<"group_id">> => 1, <<"file_url">> => FileUrl}
         end),
         meck:expect(group_file_repo, increment_download_tx, fun(_Conn, DownloadFileId) ->
             Parent ! {increment_download_called, DownloadFileId},
@@ -215,16 +213,17 @@ download_file_success_test_() ->
         meck:unload(workspace_resolver),
         meck:unload(group_file_repo),
         ok
-    end.
+    end).
 
 download_file_not_member_test_() ->
-    fun() ->
+    with_scope(fun() ->
         FileId = 1,
         CurrentUid = 999,
 
         meck:new(group_file_repo, [passthrough]),
         meck:expect(group_file_repo, find_by_id, fun(_) ->
             #{
+                <<"status">> => 1,
                 <<"id">> => 1,
                 <<"group_id">> => 1,
                 <<"file_url">> => <<"http://example.com/file.pdf">>
@@ -240,10 +239,10 @@ download_file_not_member_test_() ->
         meck:unload(group_file_repo),
 
         ?assertMatch({error, not_member}, Result)
-    end.
+    end).
 
 download_file_not_found_test_() ->
-    fun() ->
+    with_scope(fun() ->
         FileId = 999999,
         CurrentUid = 100,
 
@@ -255,20 +254,20 @@ download_file_not_found_test_() ->
         meck:unload(group_file_repo),
 
         ?assertMatch({error, not_found}, Result)
-    end.
+    end).
 
 %% ===================================================================
 %% delete_file/2 测试
 %% ===================================================================
 
 delete_file_as_uploader_test_() ->
-    fun() ->
+    with_scope(fun() ->
         FileId = 1,
         CurrentUid = 100,
 
         meck:new(group_file_repo, [passthrough]),
         meck:expect(group_file_repo, find_by_id, fun(_) ->
-            #{<<"id">> => 1, <<"group_id">> => 1, <<"uploader_id">> => 100}
+            #{<<"status">> => 1, <<"id">> => 1, <<"group_id">> => 1, <<"uploader_id">> => 100}
         end),
         meck:expect(group_file_repo, soft_delete_tx, fun(_Conn, _) -> {ok, 1} end),
         %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
@@ -284,16 +283,16 @@ delete_file_as_uploader_test_() ->
         meck:unload(group_file_repo),
 
         ?assertMatch(ok, Result)
-    end.
+    end).
 
 delete_file_as_admin_test_() ->
-    fun() ->
+    with_scope(fun() ->
         FileId = 1,
         CurrentUid = 100,
 
         meck:new(group_file_repo, [passthrough]),
         meck:expect(group_file_repo, find_by_id, fun(_) ->
-            #{<<"id">> => 1, <<"group_id">> => 1, <<"uploader_id">> => 200}
+            #{<<"status">> => 1, <<"id">> => 1, <<"group_id">> => 1, <<"uploader_id">> => 200}
         end),
         meck:expect(group_file_repo, soft_delete_tx, fun(_Conn, _) -> {ok, 1} end),
         %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
@@ -316,16 +315,16 @@ delete_file_as_admin_test_() ->
         meck:unload(group_file_repo),
 
         ?assertMatch(ok, Result)
-    end.
+    end).
 
 delete_file_permission_denied_test_() ->
-    fun() ->
+    with_scope(fun() ->
         FileId = 1,
         CurrentUid = 100,
 
         meck:new(group_file_repo, [passthrough]),
         meck:expect(group_file_repo, find_by_id, fun(_) ->
-            #{<<"id">> => 1, <<"group_id">> => 1, <<"uploader_id">> => 200}
+            #{<<"status">> => 1, <<"id">> => 1, <<"group_id">> => 1, <<"uploader_id">> => 200}
         end),
 
         meck:new(group_member_repo, [passthrough]),
@@ -340,20 +339,20 @@ delete_file_permission_denied_test_() ->
         meck:unload(group_file_repo),
 
         ?assertMatch({error, permission_denied}, Result)
-    end.
+    end).
 
 %% ===================================================================
 %% list_files/4 测试
 %% ===================================================================
 
 list_files_success_test_() ->
-    fun() ->
+    with_scope(fun() ->
         Gid = 1,
         CurrentUid = 100,
         Page = 1,
         Size = 20,
         ExpectedFiles = [
-            #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
+            #{<<"status">> => 1, <<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
         ],
 
         meck:new(group_ds, [passthrough]),
@@ -374,10 +373,10 @@ list_files_success_test_() ->
         meck:unload(group_ds),
 
         ?assertEqual({ok, ExpectedFiles}, Result)
-    end.
+    end).
 
 list_files_not_member_test_() ->
-    fun() ->
+    with_scope(fun() ->
         Gid = 1,
         CurrentUid = 999,
         Page = 1,
@@ -391,10 +390,10 @@ list_files_not_member_test_() ->
         meck:unload(group_ds),
 
         ?assertMatch({error, not_member}, Result)
-    end.
+    end).
 
 list_files_with_category_test_() ->
-    fun() ->
+    with_scope(fun() ->
         Gid = 1,
         CurrentUid = 100,
         Page = 1,
@@ -402,6 +401,7 @@ list_files_with_category_test_() ->
         Options = #{category => <<"document">>},
         ExpectedFiles = [
             #{
+                <<"status">> => 1,
                 <<"id">> => 1,
                 <<"file_name">> => <<"test.pdf"/utf8>>,
                 <<"file_category">> => <<"document">>
@@ -426,21 +426,21 @@ list_files_with_category_test_() ->
         meck:unload(group_ds),
 
         ?assertEqual({ok, ExpectedFiles}, Result)
-    end.
+    end).
 
 %% ===================================================================
 %% search_files/4 测试
 %% ===================================================================
 
 search_files_success_test_() ->
-    fun() ->
+    with_scope(fun() ->
         Gid = 1,
         Keyword = <<"test"/utf8>>,
         Page = 1,
         Size = 20,
         CurrentUid = 42,
         ExpectedFiles = [
-            #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
+            #{<<"status">> => 1, <<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
         ],
 
         meck:new(group_file_repo, [passthrough]),
@@ -460,11 +460,11 @@ search_files_success_test_() ->
         meck:unload(group_ds),
 
         ?assertEqual({ok, ExpectedFiles}, Result)
-    end.
+    end).
 
 %% 安全回归：非群成员不能搜索群文件（曾经代码注释承认跳过成员校验）
 search_files_not_member_test_() ->
-    fun() ->
+    with_scope(fun() ->
         meck:new(group_ds, [passthrough]),
         meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> false end),
 
@@ -473,10 +473,10 @@ search_files_not_member_test_() ->
         meck:unload(group_ds),
 
         ?assertEqual({error, not_member}, Result)
-    end.
+    end).
 
 search_files_repo_error_test_() ->
-    fun() ->
+    with_scope(fun() ->
         Gid = 1,
         Keyword = <<"test"/utf8>>,
         Page = 1,
@@ -493,14 +493,14 @@ search_files_repo_error_test_() ->
         meck:unload(group_ds),
 
         ?assertEqual({error, db_unavailable}, Result)
-    end.
+    end).
 
 %% ===================================================================
 %% get_file_categories/1 测试
 %% ===================================================================
 
 get_file_categories_success_test_() ->
-    fun() ->
+    with_scope(fun() ->
         Gid = 1,
         ExpectedStats = [
             #{<<"file_category">> => <<"document">>, <<"count">> => 10, <<"total_size">> => 1024000}
@@ -511,15 +511,15 @@ get_file_categories_success_test_() ->
             {ok, ExpectedStats}
         end),
 
-        Result = group_file_ds:get_file_categories(Gid),
+        Result = group_file_ds:get_file_categories(Gid, 100),
 
         meck:unload(group_file_repo),
 
         ?assertEqual({ok, ExpectedStats}, Result)
-    end.
+    end).
 
 get_file_categories_empty_test_() ->
-    fun() ->
+    with_scope(fun() ->
         Gid = 999999,
 
         meck:new(group_file_repo, [passthrough]),
@@ -527,9 +527,21 @@ get_file_categories_empty_test_() ->
             {ok, []}
         end),
 
-        Result = group_file_ds:get_file_categories(Gid),
+        Result = group_file_ds:get_file_categories(Gid, 100),
 
         meck:unload(group_file_repo),
 
         ?assertEqual({ok, []}, Result)
+    end).
+
+with_scope(Test) ->
+    fun() ->
+        meck:new(attachment_ds, [passthrough]),
+        meck:expect(attachment_ds, authorize_group_scope, fun(_, _) -> true end),
+        meck:expect(attachment_ds, ensure_upload_scope_tx, fun(_, _, _) -> ok end),
+        try
+            Test()
+        after
+            meck:unload(attachment_ds)
+        end
     end.

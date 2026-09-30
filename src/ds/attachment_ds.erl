@@ -23,6 +23,7 @@
 -export([find_path_by_id/1]).
 -export([authorize_group_access/2]).
 -export([authorize_channel_scope/2]).
+-export([authorize_group_scope/2]).
 -export([ensure_upload_scope_tx/3]).
 
 %% ===================================================================
@@ -45,6 +46,10 @@ tablename() ->
 -spec save(pid(), binary(), integer(), [map()]) -> ok.
 save(Conn, CreatedAt, Uid, Attach) ->
     attachment_repo:save(Conn, CreatedAt, Uid, Attach).
+
+-spec authorize_group_scope(integer(), integer()) -> boolean().
+authorize_group_scope(Gid, Uid) ->
+    attachment_repo:authorize_group_scope(Gid, Uid).
 
 %% G3: adm_attach_handler 不应直调 attachment_repo
 -spec stats() -> map().

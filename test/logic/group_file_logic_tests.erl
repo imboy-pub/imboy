@@ -374,7 +374,7 @@ get_categories_success_test_() ->
                 {'is_member', 2, fun(100, 1) -> true end}
             ]},
             {group_file_ds, [
-                {'get_file_categories', 1, fun(_) ->
+                {'get_file_categories', 2, fun(1, 100) ->
                     {ok, [
                         {<<"document">>, 10, 1024000}
                     ]}
@@ -403,7 +403,7 @@ get_categories_empty_test_() ->
                 {'is_member', 2, fun(100, 1) -> true end}
             ]},
             {group_file_ds, [
-                {'get_file_categories', 1, fun(_) ->
+                {'get_file_categories', 2, fun(1, 100) ->
                     {ok, []}
                 end}
             ]}

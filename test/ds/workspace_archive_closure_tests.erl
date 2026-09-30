@@ -139,7 +139,8 @@ attachment_parent_member_mock() ->
     {attachment_repo, [
         {'lock_upload_organization_tx', 3, fun(_, _, _) -> ok end},
         {'authorize_upload_scope_tx', 4, fun(_, _, _, _) -> true end},
-        {'authorize_channel_scope', 2, fun(_, _) -> true end}
+        {'authorize_channel_scope', 2, fun(_, _) -> true end},
+        {'authorize_group_scope', 2, fun(_, _) -> true end}
     ]}.
 
 %% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），
@@ -726,6 +727,7 @@ subdomain_closure_test_() ->
                     {'find_by_id', 1, fun(_) ->
                         #{
                             <<"id">> => ?FILE_PK,
+                            <<"status">> => 1,
                             <<"group_id">> => ?GID,
                             <<"uploader_id">> => ?UID,
                             <<"file_url">> => <<"u">>
@@ -762,6 +764,7 @@ subdomain_closure_test_() ->
                     {'find_by_id', 1, fun(_) ->
                         #{
                             <<"id">> => ?FILE_PK,
+                            <<"status">> => 1,
                             <<"group_id">> => ?GID,
                             <<"file_url">> => <<"u">>
                         }

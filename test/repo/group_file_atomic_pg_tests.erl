@@ -14,16 +14,66 @@ run(Socket) ->
         schema(C),
         mocks(C),
         eunit:test(
-            [
-                {atom_to_list(Mode), fun() -> verify(C, Mode) end}
-             || Mode <- [success, attachment_failure, file_failure, revoked_during_upload]
-            ],
+            [{"file operations recheck current scope", fun() -> verify_scope(C) end}] ++
+                [
+                    {atom_to_list(Mode), fun() -> verify(C, Mode) end}
+                 || Mode <- [
+                        success,
+                        attachment_failure,
+                        file_failure,
+                        revoked_during_upload,
+                        revoked_group_during_upload
+                    ]
+                ],
             [verbose]
         )
     after
         meck:unload(),
         epgsql:close(C)
     end.
+
+verify_scope(C) ->
+    sql(C, <<
+        "DELETE FROM attachment; DELETE FROM group_file;"
+        "UPDATE organization_member SET status='active';"
+        "UPDATE group_member SET status=1;"
+    >>),
+    meck:expect(elib_oss, upload, fun(_, _, _) ->
+        {ok, <<"https://storage.example.com/test-file/a.txt">>, <<"test-file">>}
+    end),
+    ?assertEqual(
+        {ok, <<"test-file">>},
+        group_file_ds:upload_file(11, 1, <<"a.txt">>, <<0, 1, 2>>, <<"text/plain">>)
+    ),
+    ?assertMatch({ok, [_]}, group_file_ds:list_files(11, 1, 1, 10)),
+    ?assertMatch({ok, [_]}, group_file_logic:get_categories(<<"11">>, 1)),
+    lists:foreach(
+        fun(Revoke) ->
+            sql(C, Revoke),
+            ?assertEqual({error, not_member}, group_file_ds:list_files(11, 1, 1, 10)),
+            ?assertEqual({error, not_member}, group_file_ds:search_files(11, <<"a">>, 1, 10, 1)),
+            ?assertEqual({error, not_member}, group_file_logic:get_categories(<<"11">>, 1)),
+            ?assertEqual({error, not_member}, group_file_ds:download_file(101, 1)),
+            ?assertEqual({error, not_member}, group_file_ds:delete_file(101, 1)),
+            ?assertEqual(1, count(C, <<"group_file WHERE status=1">>)),
+            sql(C, <<
+                "UPDATE organization_member SET status='active';"
+                "UPDATE workspace_member SET status='active'; UPDATE group_member SET status=1"
+            >>)
+        end,
+        [
+            <<"UPDATE organization_member SET status='suspended'">>,
+            <<"UPDATE workspace_member SET status='removed'">>,
+            <<"UPDATE group_member SET status=0">>
+        ]
+    ),
+    sql(C, <<"UPDATE workspace SET status='archived'">>),
+    ?assertMatch({ok, [_]}, group_file_ds:list_files(11, 1, 1, 10)),
+    ?assertMatch({error, {980, _}}, group_file_ds:delete_file(101, 1)),
+    sql(C, <<"UPDATE workspace SET status='active'">>),
+    ?assertEqual(ok, group_file_ds:delete_file(101, 1)),
+    ?assertEqual({ok, []}, group_file_ds:list_files(11, 1, 1, 10)),
+    ?assertEqual({error, not_found}, group_file_ds:download_file(101, 1)).
 
 schema(C) ->
     sql(C, <<
@@ -37,6 +87,8 @@ schema(C) ->
         "INSERT INTO workspace VALUES(100,10,'active');"
         "INSERT INTO workspace_member VALUES(100,1,'active');"
         "INSERT INTO \"group\" VALUES(11,1,'workspace',100);"
+        "CREATE TABLE group_member(group_id bigint,user_id bigint,status int);"
+        "INSERT INTO group_member VALUES(11,1,1);"
         "CREATE TABLE group_file(id bigint PRIMARY KEY,group_id bigint,file_id text,file_name text,"
         "file_size bigint CHECK(file_size<>4),file_type text,file_category text,file_url text,"
         "file_hash text,uploader_id bigint,download_count int,status int,"
@@ -69,7 +121,7 @@ mocks(C) ->
 verify(C, Mode) ->
     sql(C, <<
         "DELETE FROM attachment; DELETE FROM group_file;"
-        "UPDATE organization_member SET status='active'"
+        "UPDATE organization_member SET status='active'; UPDATE group_member SET status=1"
     >>),
     meck:expect(elib_oss, upload, fun(_, _, _) ->
         case Mode of
@@ -78,6 +130,8 @@ verify(C, Mode) ->
                     C,
                     <<"UPDATE organization_member SET status='suspended'">>
                 );
+            revoked_group_during_upload ->
+                sql(C, <<"UPDATE group_member SET status=0">>);
             _ ->
                 ok
         end,
@@ -107,6 +161,9 @@ verify(C, Mode) ->
             ?assertMatch({error, _}, Result),
             assert_empty(C);
         revoked_during_upload ->
+            ?assertEqual({error, forbidden}, Result),
+            assert_empty(C);
+        revoked_group_during_upload ->
             ?assertEqual({error, forbidden}, Result),
             assert_empty(C)
     end.

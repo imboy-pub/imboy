@@ -141,29 +141,23 @@ get_categories(Gid, CurrentUid) ->
     % 1. 解码群组ID
     Gid2 = ec_cnv:to_integer(Gid),
 
-    % 2. 验证群成员身份
-    case group_ds:is_member(CurrentUid, Gid2) of
-        false ->
-            {error, not_member};
-        true ->
-            % 3. 获取分类统计
-            case group_file_ds:get_file_categories(Gid2) of
-                {ok, Stats} ->
-                    % 4. 格式化结果
-                    CategoryStats = lists:map(
-                        fun({Category, Count, TotalSize}) ->
-                            #{
-                                <<"category">> => Category,
-                                <<"count">> => Count,
-                                <<"total_size">> => TotalSize
-                            }
-                        end,
-                        Stats
-                    ),
-                    {ok, CategoryStats};
-                {error, Reason} ->
-                    {error, Reason}
-            end
+    % 2. 分类统计与列表共用群和父级范围授权。
+    case group_file_ds:get_file_categories(Gid2, CurrentUid) of
+        {ok, Stats} ->
+            % 4. 格式化结果
+            CategoryStats = lists:map(
+                fun({Category, Count, TotalSize}) ->
+                    #{
+                        <<"category">> => Category,
+                        <<"count">> => Count,
+                        <<"total_size">> => TotalSize
+                    }
+                end,
+                Stats
+            ),
+            {ok, CategoryStats};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% ===================================================================
