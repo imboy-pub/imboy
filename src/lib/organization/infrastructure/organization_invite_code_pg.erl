@@ -14,6 +14,7 @@
     generate_code/0,
     add_tx/6,
     find_active_by_code_tx/3,
+    find_active_by_code_for_share_tx/3,
     find_active_by_code_global_tx/2,
     find_active_by_org_tx/2,
     revoke_active_by_org_tx/2
@@ -27,7 +28,7 @@
 -define(ROW_COLS,
     "id, organization_id, code, created_by, role,"
     "       extract(epoch from expires_at)::bigint AS expires_at,"
-    "       (expires_at < CURRENT_TIMESTAMP) AS expired,"
+    "       (expires_at < clock_timestamp()) AS expired,"
     "       status,"
     "       extract(epoch from created_at)::bigint AS created_at,"
     "       extract(epoch from updated_at)::bigint AS updated_at"
@@ -99,9 +100,19 @@ revoke_active_by_org_tx(Conn, OrgId) ->
 -spec find_active_by_code_tx(any(), integer(), binary()) ->
     {ok, map()} | {error, not_found | term()}.
 find_active_by_code_tx(Conn, OrgId, Code) ->
+    find_code_tx(Conn, OrgId, Code, <<>>).
+
+%% Join revalidation holds the organization lock before locking its invite row.
+-spec find_active_by_code_for_share_tx(any(), integer(), binary()) ->
+    {ok, map()} | {error, not_found | term()}.
+find_active_by_code_for_share_tx(Conn, OrgId, Code) ->
+    find_code_tx(Conn, OrgId, Code, <<" FOR SHARE">>).
+
+find_code_tx(Conn, OrgId, Code, Lock) ->
     Sql =
         <<"SELECT ", ?ROW_COLS, " FROM ", (code_table())/binary,
-            " WHERE organization_id = $1 AND code = $2 AND status = 'active' LIMIT 1">>,
+            " WHERE organization_id = $1 AND code = $2 AND status = 'active' LIMIT 1",
+            Lock/binary>>,
     one_tx(Conn, Sql, [OrgId, Code]).
 
 %% @doc 事务内按码**全局**查有效邀请码（GZAPP-J11 code-only join/preview；

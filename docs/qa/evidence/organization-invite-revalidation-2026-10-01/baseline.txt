@@ -1,0 +1,37 @@
+======================== EUnit ========================
+module 'enterprise_internal_wiring_http_tests'
+  enterprise_internal_wiring_http_tests: route_table...[0.009 s] ok
+  enterprise_internal_wiring_http_tests: manifest_v21_entries...[0.001 s] ok
+  enterprise_internal_wiring_http_tests: http_wiring...[0.064 s] ok
+  enterprise_internal_wiring_http_tests: boundary_parity...ok
+  enterprise_internal_wiring_http_tests: dispatch_compiles...[0.002 s] ok
+  enterprise_internal_wiring_http_tests: normalize_code...ok
+  enterprise_internal_wiring_http_tests: -conformance_test_/0-fun-0-...[5.588 s] ok
+  [done in 10.025 s]
+module 'workspace_creation_pg_tests'
+  workspace_creation_pg_tests: -creation_test_/0-fun-0-...*failed*
+in function organization_invite_race_pg_checks:race/3 (test/lib/organization/organization_invite_race_pg_checks.erl, line 35)
+in call from organization_invite_race_pg_checks:'-run/1-lc$^1/1-1-'/4 (test/lib/organization/organization_invite_race_pg_checks.erl, line 10)
+in call from organization_invite_race_pg_checks:run/1 (test/lib/organization/organization_invite_race_pg_checks.erl, line 10)
+in call from workspace_creation_pg_tests:creation/1 (test/ds/workspace_creation_pg_tests.erl, line 16)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+**error:{assertMatch,[{module,organization_invite_race_pg_checks},
+              {line,35},
+              {comment,{scoped,revoke,
+                               {ok,joined,
+                                   #{organization_id => 995901,
+                                     workspace_id => none,group_id => none,
+                                     channel_id => none}}}},
+              {expression,"Result"},
+              {pattern,"{ error , { Expected , _ } }"},
+              {value,{ok,joined,
+                         #{organization_id => 995901,workspace_id => none,
+                           group_id => none,channel_id => none}}}]}
+  output:<<"">>
+
+  [done in 0.028 s]
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 7.

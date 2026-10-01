@@ -231,7 +231,8 @@ lookup_and_join_tx(Conn, OrgId, Uid, Code) ->
             throw({abort_tx, {internal, {code_lookup, Reason}}});
         {ok, #{<<"expired">> := true}} ->
             abort(?ERR_WORKSPACE_INVITE_EXPIRED, <<"组织邀请码已过期"/utf8>>);
-        {ok, Row} ->
+        {ok, _Row} ->
+            Row = locked_code_tx(Conn, OrgId, Code),
             organization_join_orchestrator:join_tx(
                 Conn, OrgId, Uid, created_by_of(Row), code_role(Row)
             )
@@ -259,7 +260,7 @@ preview_by_code(Uid, Code0) when is_integer(Uid), Uid > 0 ->
     end,
     case elib_pg:with_tx(Tx) of
         {ok, View} ->
-            _ = ?INFO_LOG([organization_invite_code_previewed, Uid, Code]),
+            _ = ?INFO_LOG([organization_invite_code_previewed, Uid]),
             {ok, View};
         {error, {Code2, Msg}} when is_integer(Code2), is_binary(Msg) ->
             {error, {Code2, Msg}};
@@ -280,13 +281,14 @@ lookup_preview_tx(Conn, Code) ->
             throw({abort_tx, {internal, {code_lookup, Reason}}});
         {ok, #{<<"expired">> := true}} ->
             abort(?ERR_WORKSPACE_INVITE_EXPIRED, <<"组织邀请码已过期"/utf8>>);
-        {ok, Row = #{<<"organization_id">> := OrgId}} ->
+        {ok, #{<<"organization_id">> := OrgId}} ->
             case
                 organization_member_repo:find_organization_for_share_tx(
                     Conn, OrgId, <<"id,name,status">>
                 )
             of
                 {ok, #{<<"name">> := Name, <<"status">> := <<"active">>}} ->
+                    Row = locked_code_tx(Conn, OrgId, Code),
                     {ok, #{organization_id => OrgId, name => Name, role => code_role(Row)}};
                 {ok, #{<<"status">> := <<"pending">>}} ->
                     abort(409, <<"Organization 待审核，审核通过后才能加入"/utf8>>);
@@ -340,7 +342,8 @@ lookup_and_join_global_tx(Conn, Uid, Code) ->
             throw({abort_tx, {internal, {code_lookup, Reason}}});
         {ok, #{<<"expired">> := true}} ->
             abort(?ERR_WORKSPACE_INVITE_EXPIRED, <<"组织邀请码已过期"/utf8>>);
-        {ok, Row = #{<<"organization_id">> := OrgId}} when is_integer(OrgId), OrgId > 0 ->
+        {ok, #{<<"organization_id">> := OrgId}} when is_integer(OrgId), OrgId > 0 ->
+            Row = locked_code_tx(Conn, OrgId, Code),
             organization_join_orchestrator:join_tx(
                 Conn, OrgId, Uid, created_by_of(Row), code_role(Row)
             )
@@ -349,6 +352,26 @@ lookup_and_join_global_tx(Conn, Uid, Code) ->
 %% ===================================================================
 %% 内部
 %% ===================================================================
+
+%% Recheck after obtaining the org lock; retain the code lock through membership writes.
+locked_code_tx(Conn, OrgId, Code) ->
+    case
+        organization_member_repo:find_organization_for_share_tx(Conn, OrgId, <<"id,name,status">>)
+    of
+        {ok, _} -> ok;
+        {error, not_found} -> abort(?ERR_WORKSPACE_INVITE_INVALID, <<"组织邀请码无效或已失效"/utf8>>);
+        {error, Reason} -> throw({abort_tx, {internal, {organization_lookup, Reason}}})
+    end,
+    case organization_invite_code_pg:find_active_by_code_for_share_tx(Conn, OrgId, Code) of
+        {ok, #{<<"expired">> := true}} ->
+            abort(?ERR_WORKSPACE_INVITE_EXPIRED, <<"组织邀请码已过期"/utf8>>);
+        {ok, Row} ->
+            Row;
+        {error, not_found} ->
+            abort(?ERR_WORKSPACE_INVITE_INVALID, <<"组织邀请码无效或已失效"/utf8>>);
+        {error, Reason2} ->
+            throw({abort_tx, {internal, {code_lookup, Reason2}}})
+    end.
 
 %% 码上角色投影：缺列（历史行/防御）回退 member（迁移 DEFAULT 兜底一致）。
 -spec code_role(map()) -> binary().

@@ -1,0 +1,38 @@
+[
+  {
+    "path": "src/lib/organization/application/organization_invite_code_app.erl",
+    "sha256": "6f69a43da7407ea666b4d2b85558f9eba3a11411d610ca7c3d99321ca0172dfb"
+  },
+  {
+    "path": "src/lib/organization/infrastructure/organization_invite_code_pg.erl",
+    "sha256": "b50c5561f4553522faa194a68548d295211813b6bb547d8f3817f24abf0be773"
+  },
+  {
+    "path": "test/lib/organization/organization_invite_race_pg_checks.erl",
+    "sha256": "640495d548666baa6f1353ee5e26f68c61abbc793dd5a10453ffaf863625b398"
+  },
+  {
+    "path": "test/lib/organization/organization_invite_code_app_tests.erl",
+    "sha256": "0de4161eb333643678d8a6f9e93be17a29ef73ba6c809b149d6e860a9180eeed"
+  },
+  {
+    "path": "test/ds/workspace_creation_pg_tests.erl",
+    "sha256": "a8c41902f7de9616ef804ff66a418e49f1e5530de07d309ea8fa3d7cdabac7a6"
+  },
+  {
+    "path": "scripts/test/customer_service_internal_http_gate.sh",
+    "sha256": "f4d5914242fc0425dd0e2f6efc312a53d9f31cf412e5d16469262571ed8bf77d"
+  },
+  {
+    "path": "docs/qa/evidence/organization-invite-revalidation-2026-10-01/baseline.txt",
+    "sha256": "79d16fd347a432db128d8d19916bfd58c2de2f7bbf849477032ea1a92e1071e5"
+  },
+  {
+    "path": "docs/qa/evidence/organization-invite-revalidation-2026-10-01/pg-http.txt",
+    "sha256": "8c0702f13d41508680fe08748a0b64387bb9ccbc8410dffbfbec411d00e58101"
+  },
+  {
+    "path": "docs/qa/evidence/organization-invite-revalidation-2026-10-01/unit.txt",
+    "sha256": "3aebb08384854d7181693b55e32bfe6dd147a4f5fb92786db8bdd21b6e8bfa08"
+  }
+]

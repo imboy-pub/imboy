@@ -64,6 +64,9 @@ default_mocks() ->
             {'find_active_by_code_tx', 3, fun(fake_conn, _OrgId, _Code) ->
                 {ok, code_row()}
             end},
+            {'find_active_by_code_for_share_tx', 3, fun(Conn, OrgId, Code) ->
+                organization_invite_code_pg:find_active_by_code_tx(Conn, OrgId, Code)
+            end},
             {'find_active_by_code_global_tx', 2, fun(fake_conn, _Code) ->
                 {ok, code_row()}
             end}
@@ -722,6 +725,9 @@ preview_by_code_test_() ->
                 [
                     {organization_invite_code_pg, [
                         {'find_active_by_code_global_tx', 2, fun(_C, _Code) ->
+                            {ok, (code_row())#{<<"role">> => <<"admin">>}}
+                        end},
+                        {'find_active_by_code_for_share_tx', 3, fun(_C, _O, _Code) ->
                             {ok, (code_row())#{<<"role">> => <<"admin">>}}
                         end}
                     ]}
