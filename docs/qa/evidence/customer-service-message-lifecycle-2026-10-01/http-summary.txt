@@ -1,0 +1,16 @@
+======================== EUnit ========================
+module 'enterprise_internal_wiring_http_tests'
+  enterprise_internal_wiring_http_tests: route_table...[0.009 s] ok
+  enterprise_internal_wiring_http_tests: manifest_v21_entries...[0.001 s] ok
+  enterprise_internal_wiring_http_tests: http_wiring...[0.066 s] ok
+  enterprise_internal_wiring_http_tests: boundary_parity...ok
+  enterprise_internal_wiring_http_tests: dispatch_compiles...[0.003 s] ok
+  enterprise_internal_wiring_http_tests: normalize_code...ok
+  enterprise_internal_wiring_http_tests: -conformance_test_/0-fun-0-...[5.546 s] ok
+  [done in 10.026 s]
+module 'workspace_creation_pg_tests'
+  workspace_creation_pg_tests: -creation_test_/0-fun-0-...12:11:35.301 [error] [organization_invitation_accept_targeted_failed,995902,995011,
+[8.168 s] ok
+  [done in 8.171 s]
+=======================================================
+  All 8 tests passed.

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuite tests="21" failures="0" errors="0" skipped="0" time="3.803" name="Customer service marker journey">
+  <testcase time="0.025" name="cs_pg_tests:0 a01_seat_fk_rejects_sales_identity_at_db">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.020" name="cs_pg_tests:0 a01_duplicate_seat_pk_conflicts">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="1.063" name="cs_pg_tests:0 a02_concurrent_claim_exactly_one_wins">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="1.030" name="cs_pg_tests:0 a02_concurrent_claims_respect_max_concurrent">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="1.021" name="cs_pg_tests:0 a02_suspended_seat_rejects_claim_at_db">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.029" name="cs_pg_tests:0 a02_dispatch_claim_picks_real_seat">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.035" name="cs_pg_tests:0 transfer_close_rate_db_semantics">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.021" name="cs_pg_tests:0 rating_out_of_range_rejected_by_db_check">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.080" name="cs_pg_tests:0 a04_rebind_keeps_session_and_messages">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.038" name="cs_pg_tests:0 a05_visit_token_expiry_and_revocation_at_db">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.052" name="cs_pg_tests:0 a03_messages_land_only_in_enterprise_tables">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.027" name="cs_message_lifecycle_pg_checks:0 closed_visitor">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.067" name="cs_message_lifecycle_pg_checks:0 close_during_send">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.074" name="cs_message_lifecycle_pg_checks:0 claim_during_send">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.021" name="cs_pg_tests:0 cross_org_session_is_not_found">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.022" name="cs_pg_tests:0 event_table_is_append_only">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.032" name="cs_pg_tests:0 bes01b_provision_seat_pg_tx_audit_idempotent_rollback">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.026" name="cs_pg_tests:0 c1_sessions_page_desc_keyset_and_cross_org">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.019" name="cs_pg_tests:0 c2_shop_keys_page_and_cross_org">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.019" name="cs_pg_tests:0 c3_visit_tokens_page_and_cross_org">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.019" name="cs_pg_tests:0 c4_seats_page_keyset">
+    <system-out>
+    </system-out>
+  </testcase>
+</testsuite>

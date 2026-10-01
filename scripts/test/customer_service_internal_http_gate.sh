@@ -52,6 +52,8 @@ files += ['test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wir
 files += ['test/lib/organization/organization_invite_race_pg_checks.erl',
           'test/lib/organization/organization_membership_journey_pg_checks.erl',
           'test/features/customer_service/infrastructure/cs_pg_test_fixture.erl',
+          'test/features/customer_service/infrastructure/cs_pg_tests.erl',
+          'test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl',
           'test/features/customer_service/infrastructure/cs_session_open_pg_checks.erl']
 cmd = ['erlc', '+debug_info', '+nowarn_unused_function', '+{parse_transform,lager_transform}',
        '-o', str(out / 'beams'), '-I', 'include', '-I', 'src']

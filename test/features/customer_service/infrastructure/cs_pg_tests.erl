@@ -18,6 +18,9 @@
 %%% 本套件由 A0 在 scratch PG 队列独占运行；本地门禁只做编译自检。
 -module(cs_pg_tests).
 
+%% Reuse these real-store cases inside the existing owned marker DB harness.
+-export([cases/1]).
+
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("epgsql/include/epgsql.hrl").
 
@@ -51,6 +54,9 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a04_rebind_keeps_session_and_messages/0},
         {timeout, 60, fun a05_visit_token_expiry_and_revocation_at_db/0},
         {timeout, 60, fun a03_messages_land_only_in_enterprise_tables/0},
+        {timeout, 60, fun cs_message_lifecycle_pg_checks:closed_visitor/0},
+        {timeout, 60, fun cs_message_lifecycle_pg_checks:close_during_send/0},
+        {timeout, 60, fun cs_message_lifecycle_pg_checks:claim_during_send/0},
         {timeout, 60, fun cross_org_session_is_not_found/0},
         {timeout, 60, fun event_table_is_append_only/0},
         %% BE-S01b（A07）：admin provisioning 单事务 + 审计 + 幂等 + 回滚（真库）。

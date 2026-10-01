@@ -1,0 +1,29 @@
+cs_pg_tests: closed_visitor_message_is_rejected...*failed*
+in function cs_pg_tests:closed_visitor_message_is_rejected/0 (test/features/customer_service/infrastructure/cs_pg_tests.erl, line 529)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,cs_pg_tests},
+              {line,529},
+              {expression,"cs_session_app : append_session_message ( Org , # { workspace_id => ws ( Scope ) , session_id => SessionId , contact_id => maps : get ( contact_id , Scope ) , client_msg_id => << \"synthetic-after-close\" >> , body => << \"late visitor message\" >> , key_ref => ? FIX : key_ref ( ) , accepted_at => 1700000011 , notify => fun ( _ ) -> ok end } )"},
+              {expected,{error,session_already_closed}},
+              {value,{ok,#{message =>
+                               #{id => 115632726509619200,version => 1,
+                                 organization_id => 115632726482356227,
+                                 workspace_id => 115632726482356228,
+                                 conversation_id => 115632726482356235,
+                                 created_at => 1790827580,key_version => 1,...},
+                           notification =>
+                               #{organization_id => 115632726482356227,
+                                 workspace_id => 115632726482356228,
+                                 resource_type => <<"enterprise_message">>,
+                                 conversation_id => 115632726482356235,
+                                 resource_id => 115632726509619200},
+                           message_id => 115632726509619200,accepted => true,
+                           replayed => false,audit_id => 115632726534785024,
+                           publisher => ok}}}]}
+  output:<<"">>

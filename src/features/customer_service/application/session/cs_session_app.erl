@@ -616,6 +616,8 @@ message_event_hook(Params, OrgId, WorkspaceId, Session) ->
                 },
                 case Store:append_event_in(Conn, OrgId, Event) of
                     {ok, _EventId} -> ok;
+                    {error, session_already_closed} = Err -> Err;
+                    {error, conflict} = Err -> Err;
                     {error, Reason} -> {error, {audit_append_failed, Reason}}
                 end
             end}
@@ -645,6 +647,8 @@ dispatch_message(_OrgId, _FacadeParams) ->
 -endif.
 
 %% 坐席必须active且是当前经办；访客必须等于会话 contact。
+sender_shape(#{status := closed}, _Params) ->
+    {error, session_already_closed};
 sender_shape(Session, Params) ->
     SessionIdentity = maps:get(business_identity_id, Session, undefined),
     SessionContact = maps:get(contact_id, Session, undefined),

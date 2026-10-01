@@ -14,6 +14,7 @@
 -export([
     insert_session/3,
     insert_session/4,
+    append_message_event_in/3,
     fetch_session/3,
     claim_session/7,
     transfer_session/7,
@@ -76,6 +77,11 @@
 -define(SQL_LOCK_SEAT, <<
     "SELECT enabled, max_concurrent FROM customer_service_seat"
     " WHERE organization_id = $1 AND business_identity_id = $2 FOR UPDATE"
+>>).
+
+-define(SQL_LOCK_MESSAGE_SEAT, <<
+    "SELECT business_identity_id FROM customer_service_seat"
+    " WHERE organization_id=$1 AND business_identity_id=$2 FOR KEY SHARE"
 >>).
 
 -define(SQL_COUNT_ACTIVE, <<
@@ -549,6 +555,7 @@ sql_statements() ->
         ?SQL_INSERT_SESSION,
         ?SQL_FETCH_SESSION,
         ?SQL_LOCK_SEAT,
+        ?SQL_LOCK_MESSAGE_SEAT,
         ?SQL_COUNT_ACTIVE,
         ?SQL_CLAIM_UPDATE,
         ?SQL_TRANSFER_UPDATE,
@@ -948,6 +955,41 @@ read_state_in(Conn, OrgId, WorkspaceId, SessionId, IdentityId) ->
 %% ===================================================================
 %% 事务内辅助
 %% ===================================================================
+
+%% Seat before session matches claim/transfer order; KEY SHARE permits concurrent
+%% messages while preventing the event FK from reversing that order after the lock.
+append_message_event_in(Conn, OrgId, Event) ->
+    Identity = maps:get(business_identity_id, Event, undefined),
+    case lock_message_seat(Conn, OrgId, Identity) of
+        ok ->
+            Sql = <<(?SQL_FETCH_SESSION)/binary, " FOR UPDATE">>,
+            Params = [OrgId, maps:get(workspace_id, Event), maps:get(session_id, Event)],
+            case elib_pg:query(Conn, Sql, Params) of
+                {ok, [#{<<"status">> := <<"closed">>}]} ->
+                    {error, session_already_closed};
+                {ok, [Row]} ->
+                    case
+                        cs_pg_common:nullify(Identity) =:= maps:get(<<"business_identity_id">>, Row)
+                    of
+                        true -> cs_pg_seat:insert_event_in(Conn, OrgId, Event);
+                        false -> {error, conflict}
+                    end;
+                {ok, []} ->
+                    {error, not_found};
+                {error, Reason} ->
+                    {error, cs_pg_common:normalize_error(Reason)}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+lock_message_seat(_Conn, _OrgId, Identity) when Identity =:= undefined; Identity =:= null -> ok;
+lock_message_seat(Conn, OrgId, Identity) ->
+    case elib_pg:query(Conn, ?SQL_LOCK_MESSAGE_SEAT, [OrgId, Identity]) of
+        {ok, [_]} -> ok;
+        {ok, []} -> {error, seat_not_found};
+        {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}
+    end.
 
 write_event_or_rollback(Conn, OrgId, Event) ->
     case cs_pg_seat:insert_event_in(Conn, OrgId, Event) of

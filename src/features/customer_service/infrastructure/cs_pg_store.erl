@@ -304,7 +304,10 @@ update_seat_console(OrgId, WorkspaceId, ConsoleId, At, Updates) ->
 %% event（append-only 审计）
 append_event(OrgId, Event) -> cs_pg_seat:insert_event(OrgId, Event).
 %% REVIEW-3 F-2：调用方事务内变体（canonical 事务并轨写，消息与事件原子可见）。
-append_event_in(Conn, OrgId, Event) -> cs_pg_seat:insert_event_in(Conn, OrgId, Event).
+append_event_in(Conn, OrgId, #{action := <<"message.appended">>} = Event) ->
+    cs_pg_session:append_message_event_in(Conn, OrgId, Event);
+append_event_in(Conn, OrgId, Event) ->
+    cs_pg_seat:insert_event_in(Conn, OrgId, Event).
 
 %% event SSE 读面（BE-S01b：游标裁决 / 键集读页 / 水位）
 fetch_event_scope(OrgId, EventId) -> cs_pg_seat:fetch_event_scope(OrgId, EventId).
