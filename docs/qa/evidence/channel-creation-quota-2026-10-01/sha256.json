@@ -1,0 +1,47 @@
+{
+  "base": "2466d1651585d8d05a9020ac1a1f948181a04fdb",
+  "sources": [
+    {
+      "path": "src/ds/channel_ds.erl",
+      "sha256": "7b46839ba2f8ef6241e9698dd151f8b78f52ee2f2fa462e580d5c21822db4414"
+    },
+    {
+      "path": "src/logic/channel_logic_message.erl",
+      "sha256": "cc362c877095f5296fe3ae2fc78b9ef453542db64e91da74f53122fb9545cde2"
+    },
+    {
+      "path": "src/repo/channel_repo.erl",
+      "sha256": "f8191d157e72de3b2340d305c6919a29c44c49e3011bd9e2d525e28f7a4aad34"
+    },
+    {
+      "path": "test/ds/channel_creation_tx_pg_checks.erl",
+      "sha256": "b503b8fc3caa0df881ac7f5fcaaf1f9030d77b3b1bd9a82f3e3076b26a08de9c"
+    },
+    {
+      "path": "test/ds/channel_ds_tests.erl",
+      "sha256": "7bacc1312e7ce42913b780ab55cb7a8c7be8e7b599354647adda8d3dd9b24194"
+    },
+    {
+      "path": "test/logic/channel_logic_message_tests.erl",
+      "sha256": "1de837afe2fa2c65c9e56c493efe5ec09a93c9ca380fc3cd26b94e0eddea015f"
+    },
+    {
+      "path": "test/logic/channel_logic_tests.erl",
+      "sha256": "2e694cb382bf2333982aa60d0374adf86a0ac3723efb2b14e134dd6639212651"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/qa/evidence/channel-creation-quota-2026-10-01/http.txt",
+      "sha256": "d9933e003152bcb484fc55f9e883e6cf48bbd0b0718a4b0a036c9dd95d090789"
+    },
+    {
+      "path": "docs/qa/evidence/channel-creation-quota-2026-10-01/image-id.txt",
+      "sha256": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+    },
+    {
+      "path": "docs/qa/evidence/channel-creation-quota-2026-10-01/unit.txt",
+      "sha256": "059e78e4c83ad3a7dfb6597ac7201cce90d1f2f0d6517af22a453105a25c8c1e"
+    }
+  ]
+}

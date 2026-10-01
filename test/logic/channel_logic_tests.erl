@@ -4003,52 +4003,40 @@ mark_as_read_returns_error_when_custom_id_payload_invalid_after_decode_unexpecte
         end)
     end}.
 
-create_channel_returns_error_when_managed_query_fails_test_() ->
+create_channel_returns_error_when_quota_query_fails_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_managed', 1, fun(1001) -> {error, db_down} end},
-            {'create_channel', 3, fun(_, _, _) ->
-                erlang:error(should_not_call_create_channel_when_managed_query_fails)
-            end}
+            {'create_channel', 3, fun(1001, <<"my-channel">>, #{max_channels := 10}) ->
+                {error, <<"quota_db_down">>}
+            end},
+            {'find_by_id', 2, fun(_, _) -> erlang:error(should_not_reload_failed_create) end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
-            Result = channel_logic:create_channel(1001, <<"my-channel">>, #{}, 10),
-            ?assertEqual({error, <<"db_down">>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_ds, create_channel, 3))
-        end)
-    end}.
-
-create_channel_returns_error_when_managed_payload_not_list_test_() ->
-    MockConfigs = [
-        {channel_ds, [
-            {'list_managed', 1, fun(1001) -> {ok, invalid_payload} end},
-            {'create_channel', 3, fun(_, _, _) ->
-                erlang:error(should_not_call_create_channel_when_managed_payload_invalid)
-            end}
-        ]}
-    ],
-    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
-        ?_test(begin
-            Result = channel_logic:create_channel(1001, <<"my-channel">>, #{}, 10),
-            ?assertEqual({error, <<"invalid_payload">>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_ds, create_channel, 3))
+            ?assertEqual(
+                {error, <<"quota_db_down">>},
+                channel_logic:create_channel(1001, <<"my-channel">>, #{}, 10)
+            ),
+            ?assertEqual(0, meck:num_calls(channel_ds, find_by_id, 2))
         end)
     end}.
 
 create_channel_returns_error_when_reload_payload_not_map_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_managed', 1, fun(1001) -> {ok, []} end},
-            {'create_channel', 3, fun(1001, <<"my-channel">>, #{}) -> {ok, 11} end},
+            {'create_channel', 3, fun(1001, <<"my-channel">>, #{max_channels := 10}) ->
+                {ok, 11}
+            end},
             {'find_by_id', 2, fun(11, ?CHANNEL_SAFE_COLUMNS) -> invalid_payload end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
-            Result = channel_logic:create_channel(1001, <<"my-channel">>, #{}, 10),
-            ?assertEqual({error, <<"invalid_payload">>}, Result),
+            ?assertEqual(
+                {error, <<"invalid_payload">>},
+                channel_logic:create_channel(1001, <<"my-channel">>, #{}, 10)
+            ),
             ?assertEqual(1, meck:num_calls(channel_ds, create_channel, 3)),
             ?assertEqual(1, meck:num_calls(channel_ds, find_by_id, 2))
         end)

@@ -365,3 +365,24 @@ get_channel_by_custom_id_editor_unsubscribed_returns_false_test_() ->
             ?assertEqual(1, maps:get(user_role, Channel))
         end
     ).
+
+create_channel_custom_lookup_failure_is_closed_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'find_by_custom_id', 1, fun(<<"synthetic-id">>) -> {error, db_down} end},
+                {'create_channel', 3, fun(_, _, _) ->
+                    erlang:error(should_not_create_on_lookup_error)
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"db_down">>},
+                channel_logic_message:create_channel(
+                    1001, <<"channel">>, #{custom_id => <<"synthetic-id">>}, 20
+                )
+            ),
+            ?assertEqual(0, meck:num_calls(channel_ds, create_channel, 3))
+        end
+    ).

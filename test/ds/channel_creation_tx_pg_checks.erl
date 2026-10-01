@@ -24,6 +24,7 @@ run(C) ->
     reject_admin(C, Opts),
     reject_archived_workspace(C, Opts),
     assert_creator(C, Ch),
+    assert_quota(C),
     ok.
 
 assert_creator(C, Ch) ->
@@ -99,3 +100,64 @@ reject_archived_workspace(C, Opts) ->
         <<"SELECT status FROM workspace WHERE id=$1">>,
         [995201]
     ).
+
+assert_quota(C) ->
+    {ok, Before} = channel_repo:count_managed_tx(C, 995001),
+    Parent = self(),
+    Opts = #{max_channels => Before + 1},
+    Workers = [
+        spawn(fun() ->
+            receive
+                go -> Parent ! {self(), channel_ds:create_channel(995001, Name, Opts)}
+            end
+        end)
+     || Name <- [<<"synthetic-quota-a">>, <<"synthetic-quota-b">>]
+    ],
+    [P ! go || P <- Workers],
+    Results = [
+        receive
+            {P, R} -> R
+        after 10000 -> error(channel_quota_race_timeout)
+        end
+     || P <- Workers
+    ],
+    ?assertEqual(1, length([Id || {ok, Id} <- Results])),
+    ?assertEqual(1, length([E || E = {error, <<"已达频道创建上限"/utf8>>} <- Results])),
+    {ok, After} = channel_repo:count_managed_tx(C, 995001),
+    ?assertEqual(Before + 1, After),
+    [Id] = [I || {ok, I} <- Results],
+    assert_creator(C, Id),
+    ?assertEqual(
+        {error, channel_creation_limit},
+        elib_pg:with_tx(fun(Tx) ->
+            channel_ds:create_channel_tx(Tx, 995001, <<"synthetic-quota-full">>, Opts)
+        end)
+    ),
+    assert_absent(C, <<"synthetic-quota-full">>),
+    ?assertEqual(
+        {error, invalid_channel_limit},
+        elib_pg:with_tx(fun(Tx) ->
+            channel_ds:create_channel_tx(Tx, 995001, <<"synthetic-quota-invalid">>, #{
+                max_channels => 0
+            })
+        end)
+    ),
+    assert_absent(C, <<"synthetic-quota-invalid">>),
+    assert_count_failure(C).
+
+assert_count_failure(C) ->
+    ok = intbe02_http_support:sql_exec(C, <<"CREATE ROLE synthetic_channel_count_reader NOLOGIN">>),
+    try
+        ?assertMatch(
+            {error, {channel_quota_count_failed, _}},
+            elib_pg:with_tx(fun(Tx) ->
+                {ok, _} = elib_pg:query(
+                    Tx, <<"SET LOCAL ROLE synthetic_channel_count_reader">>, []
+                ),
+                channel_ds:create_channel_tx(Tx, 995001, <<"synthetic-quota-count-error">>, #{})
+            end)
+        ),
+        assert_absent(C, <<"synthetic-quota-count-error">>)
+    after
+        ok = intbe02_http_support:sql_exec(C, <<"DROP ROLE synthetic_channel_count_reader">>)
+    end.

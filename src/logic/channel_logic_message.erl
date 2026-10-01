@@ -51,34 +51,19 @@ message_transfer(Message) when is_map(Message) ->
 -spec create_channel(integer(), binary(), map(), integer()) ->
     {ok, map()} | {error, binary()}.
 create_channel(Uid, Name, Opts, MaxChannels) ->
-    case channel_ds:list_managed(Uid) of
-        {ok, Channels} when is_list(Channels) ->
-            case length(Channels) >= MaxChannels of
-                true ->
-                    {error, <<"已达频道创建上限"/utf8>>};
-                false ->
-                    case maps:get(custom_id, Opts, undefined) of
-                        undefined ->
-                            do_create_channel(Uid, Name, Opts);
-                        CustomId when is_binary(CustomId), CustomId =/= <<>> ->
-                            case channel_ds:find_by_custom_id(CustomId) of
-                                Channel when is_map(Channel), map_size(Channel) =:= 0 ->
-                                    do_create_channel(Uid, Name, Opts);
-                                Channel when is_map(Channel) ->
-                                    {error, <<"自定义ID已被使用"/utf8>>};
-                                {error, _} ->
-                                    do_create_channel(Uid, Name, Opts)
-                            end;
-                        _ ->
-                            do_create_channel(Uid, Name, Opts)
-                    end
+    Options = Opts#{max_channels => MaxChannels},
+    case maps:get(custom_id, Opts, undefined) of
+        CustomId when is_binary(CustomId), CustomId =/= <<>> ->
+            case channel_ds:find_by_custom_id(CustomId) of
+                Channel when is_map(Channel), map_size(Channel) =:= 0 ->
+                    do_create_channel(Uid, Name, Options);
+                Channel when is_map(Channel) ->
+                    {error, <<"自定义ID已被使用"/utf8>>};
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)}
             end;
-        {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        {ok, UnexpectedChannels} ->
-            {error, elib_cnv:safe_to_binary(UnexpectedChannels)};
-        Unexpected ->
-            {error, elib_cnv:safe_to_binary(Unexpected)}
+        _ ->
+            do_create_channel(Uid, Name, Options)
     end.
 
 do_create_channel(Uid, Name, Opts) ->

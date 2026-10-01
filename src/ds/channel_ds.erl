@@ -56,6 +56,8 @@
 -spec create_channel(integer(), binary(), map()) -> {ok, integer()} | {error, any()}.
 create_channel(Uid, Name, Opts) ->
     case elib_pg:with_tx(fun(Conn) -> create_channel_tx(Conn, Uid, Name, Opts) end) of
+        {error, channel_creation_limit} ->
+            {error, <<"已达频道创建上限"/utf8>>};
         {error, {Code, Msg}} when is_integer(Code) ->
             {error, {Code, Msg}};
         {error, Reason} ->
@@ -89,6 +91,7 @@ create_channel_tx(Conn, Uid, Name, Opts) ->
         _ ->
             ok
     end,
+    ensure_creation_quota_tx(Conn, Uid, maps:get(max_channels, Opts, 20)),
     case channel_repo:add(Conn, Data) of
         {ok, ChannelId} ->
             add_creator_tx(Conn, ChannelId, Uid, Now),
@@ -96,6 +99,20 @@ create_channel_tx(Conn, Uid, Name, Opts) ->
         {error, Reason} ->
             throw({abort_tx, Reason})
     end.
+
+ensure_creation_quota_tx(Conn, Uid, Limit) when is_integer(Limit), Limit > 0 ->
+    %% Negative user IDs separate this lock from the workspace owner's positive ID lock.
+    case elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock(-$1::bigint)">>, [Uid]) of
+        {ok, _} -> ok;
+        {error, LockReason} -> throw({abort_tx, {channel_quota_lock_failed, LockReason}})
+    end,
+    case channel_repo:count_managed_tx(Conn, Uid) of
+        {ok, N} when N < Limit -> ok;
+        {ok, _} -> throw({abort_tx, channel_creation_limit});
+        {error, Reason} -> throw({abort_tx, {channel_quota_count_failed, Reason}})
+    end;
+ensure_creation_quota_tx(_Conn, _Uid, _Limit) ->
+    throw({abort_tx, invalid_channel_limit}).
 
 add_creator_tx(Conn, ChannelId, Uid, Now) ->
     case channel_subscription_repo:upsert_active(Conn, ChannelId, Uid) of

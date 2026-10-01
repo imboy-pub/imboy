@@ -15,7 +15,7 @@
 -export([list_by_ids/2]).
 -export([list_by_ids_since/2]).
 -export([list_subscribed/2]).
--export([list_managed/1]).
+-export([list_managed/1, count_managed_tx/2]).
 -export([update/2]).
 -export([internal_find_tx/3]).
 -export([internal_page_tx/4]).
@@ -232,6 +232,19 @@ list_subscribed(Uid, Column) ->
             "WHERE s.user_id = $1 AND s.status = 1 AND c.status = 1 "
             "ORDER BY s.is_pinned DESC, s.subscribed_at DESC">>,
     elib_pg:query(Sql, [Uid]).
+
+%% Count the same active managed-channel set as list_managed/1, on the caller connection.
+-spec count_managed_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+count_managed_tx(Conn, Uid) ->
+    Sql =
+        <<"SELECT COUNT(*) AS count FROM ", (tablename())/binary, " c JOIN ",
+            (channel_admin_repo:tablename())/binary,
+            " a ON a.channel_id=c.id WHERE a.user_id=$1 AND c.status=1">>,
+    case elib_pg:query(Conn, Sql, [Uid]) of
+        {ok, [#{<<"count">> := N}]} when is_integer(N), N >= 0 -> {ok, N};
+        {error, Reason} -> {error, Reason};
+        Other -> {error, {invalid_count_result, Other}}
+    end.
 
 %% @doc 查询用户管理的频道列表
 %% @param Uid 用户ID

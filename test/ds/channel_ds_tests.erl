@@ -136,6 +136,7 @@ create_channel_subscribes_creator_in_tx_test_() ->
                 {'now', 0, fun() -> 1700000000000 end}
             ]},
             {channel_repo, [
+                {'count_managed_tx', 2, fun(fake_conn, 100) -> {ok, 0} end},
                 {'add', 2, fun(_Conn, _Data) -> {ok, 77} end},
                 {'increment_subscribers', 3, fun(fake_conn, 77, 1) -> {ok, 1} end}
             ]},
@@ -146,7 +147,8 @@ create_channel_subscribes_creator_in_tx_test_() ->
                 {'add', 2, fun(_Conn, _AdminData) -> {ok, 1} end}
             ]},
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                {'query', 3, fun(fake_conn, _, [100]) -> {ok, []} end}
             ]}
         ],
         fun() ->
