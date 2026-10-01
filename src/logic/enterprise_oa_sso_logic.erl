@@ -175,8 +175,13 @@ exchange_authorized_tx(Conn, Ctx, Params) ->
                 {ok, Payload} ->
                     %% code/identity 等锁可以跨凭证截止时间，成功前再次复核。
                     case credential_current_tx(Conn, maps:get(credential_id, Ctx)) of
-                        ok -> {ok, Payload};
-                        Error -> Error
+                        ok ->
+                            case scope_current_tx(Conn, Ctx) of
+                                ok -> {ok, Payload};
+                                ScopeError -> ScopeError
+                            end;
+                        Error ->
+                            Error
                     end;
                 Error ->
                     Error
@@ -195,8 +200,19 @@ lock_authority_tx(Conn, #{
             {error, <<"invalid_credential">>};
         {ok, Row} ->
             case credential_current_tx(Conn, CredId) of
-                ok -> authority_status(Row);
-                Error -> Error
+                ok ->
+                    case authority_status(Row) of
+                        ok ->
+                            scope_result(
+                                enterprise_application_grant_repo:scope_tx(
+                                    Conn, OrgId, AppId, <<"sso:exchange">>
+                                )
+                            );
+                        StatusError ->
+                            StatusError
+                    end;
+                Error ->
+                    Error
             end;
         {error, not_found} ->
             {error, <<"invalid_credential">>};
@@ -212,6 +228,20 @@ authority_status(#{<<"organization_status">> := Status}) when Status =/= <<"acti
     {error, <<"organization_disabled">>};
 authority_status(_) ->
     ok.
+
+scope_current_tx(Conn, Ctx) ->
+    scope_result(
+        enterprise_application_grant_repo:scope_tx(
+            Conn,
+            maps:get(organization_id, Ctx),
+            maps:get(application_id, Ctx),
+            <<"sso:exchange">>
+        )
+    ).
+
+scope_result({ok, true}) -> ok;
+scope_result({ok, false}) -> {error, <<"insufficient_scope">>};
+scope_result({error, _}) -> {error, <<"security_gate_closed">>}.
 
 credential_current_tx(Conn, CredId) ->
     case enterprise_application_credential_repo:expired_tx(Conn, CredId) of

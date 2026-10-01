@@ -23,7 +23,9 @@ run(S) ->
     identity_revocation(S),
     authority_revocation(S),
     credential_deadline(S),
-    authority_deadline(S).
+    authority_deadline(S),
+    grant_deadline(S),
+    new_grant_race(S).
 
 issue(S) ->
     Redirect = <<"https://oa.customer.example.com/sso/cb">>,
@@ -108,7 +110,7 @@ revoke_during_exchange(S, {Name, Table, Column, Revoked, Active, Where}, Status,
     Before = audit_count(C),
     ok = intbe02_http_support:sql_exec(C, <<"BEGIN">>),
     try
-        {ok, 1} = elib_pg:execute(C, Sql, [Digest, Revoked]),
+        {ok, 1} = write_fact(C, Sql, Digest, Revoked),
         Parent = self(),
         Ref = make_ref(),
         spawn(fun() -> Parent ! {Ref, exchange(S, Body)} end),
@@ -137,7 +139,7 @@ revoke_during_exchange(S, {Name, Table, Column, Revoked, Active, Where}, Status,
         ?assertEqual(Before, audit_count(C))
     after
         intbe02_http_support:sql_exec(C, <<"ROLLBACK">>),
-        {ok, 1} = elib_pg:execute(C, Sql, [Digest, Active])
+        {ok, 1} = write_fact(C, Sql, Digest, Active)
     end.
 
 authority_revocation(S) ->
@@ -146,6 +148,25 @@ authority_revocation(S) ->
     CredWhere =
         <<"application_id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>,
     Facts = [
+        {
+            {"application-scopes", <<"enterprise_application">>, <<"allowed_scopes">>, <<"[]">>,
+                <<"[\"sso:exchange\"]">>, AppWhere},
+            403,
+            <<"insufficient_scope">>
+        },
+        {
+            {"grant-revoked", <<"enterprise_application_grant">>, <<"status">>, <<"revoked">>,
+                <<"active">>, CredWhere},
+            403,
+            <<"insufficient_scope">>
+        },
+        {
+            {"grant-scopes", <<"enterprise_application_grant">>, <<"scopes">>,
+                [<<"application:read">>], [<<"sso:exchange">>], CredWhere},
+            403,
+            <<"insufficient_scope">>
+        },
+
         {
             {"application", <<"enterprise_application">>, <<"status">>, <<"disabled">>,
                 <<"active">>, AppWhere},
@@ -169,6 +190,32 @@ authority_revocation(S) ->
         fun({Fact, Status, Code}) -> revoke_during_exchange(S, Fact, Status, Code) end, Facts
     ).
 
+write_fact(C, {grant_scopes, Where}, Digest, Scopes) ->
+    {ok, [G]} = elib_pg:query(
+        C,
+        <<"SELECT id, organization_id, application_id, version FROM enterprise_application_grant WHERE ",
+            Where/binary>>,
+        [Digest]
+    ),
+    ok = enterprise_application_grant_repo:replace_scopes_tx(
+        C,
+        maps:get(<<"organization_id">>, G),
+        maps:get(<<"application_id">>, G),
+        maps:get(<<"id">>, G),
+        maps:get(<<"version">>, G),
+        Scopes
+    ),
+    {ok, 1};
+write_fact(C, Sql, Digest, Value) ->
+    elib_pg:execute(C, Sql, [Digest, Value]).
+
+fact_update_sql(<<"enterprise_application_grant">>, <<"scopes">>, Where) ->
+    {grant_scopes, Where};
+fact_update_sql(<<"enterprise_application_grant">> = Table, Column, Where) ->
+    <<"UPDATE ", Table/binary, " SET ", Column/binary,
+        "=$2, revoked_at=CASE WHEN $2='revoked' THEN clock_timestamp() ELSE NULL END,"
+        " revoked_by_user_id=CASE WHEN $2='revoked' THEN 995001 ELSE NULL END WHERE ",
+        Where/binary>>;
 fact_update_sql(<<"enterprise_application_credential">> = Table, Column, Where) ->
     <<"UPDATE ", Table/binary, " SET ", Column/binary,
         "=$2, revoked_at=CASE WHEN $2='revoked' THEN clock_timestamp() ELSE NULL END WHERE ",
@@ -224,6 +271,87 @@ authority_deadline(S) ->
         )
     end.
 
+grant_deadline(S) ->
+    C = maps:get(conn, S),
+    {Digest, Body} = issue(S),
+    AppId = maps:get(app_sso, S),
+    {ok, 1} = elib_pg:execute(
+        C,
+        <<"UPDATE enterprise_application_grant SET expires_at=clock_timestamp()+interval '3 seconds' WHERE application_id=$1">>,
+        [AppId]
+    ),
+    Before = audit_count(C),
+    try
+        [R] = hold_exchange(S, Digest, Body, 1, grant),
+        save("oa-grant-deadline-response.json", [R]),
+        ?assertEqual(403, maps:get(status, R)),
+        ?assertEqual(<<"insufficient_scope">>, error_code(R)),
+        {ok, [Row]} = enterprise_query(C, Digest),
+        ?assertEqual(null, maps:get(<<"consumed_at">>, Row)),
+        ?assertEqual(Before, audit_count(C))
+    after
+        {ok, 1} = elib_pg:execute(
+            C,
+            <<"UPDATE enterprise_application_grant SET expires_at=clock_timestamp()+interval '1 day' WHERE application_id=$1">>,
+            [AppId]
+        )
+    end.
+
+new_grant_race(S) ->
+    C = maps:get(conn, S),
+    {Digest, Body} = issue(S),
+    AppId = maps:get(app_sso, S),
+    Where =
+        <<"idempotency_key='intbe02-g-sso' AND application_id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>,
+    Before = audit_count(C),
+    ok = intbe02_http_support:sql_exec(C, <<"BEGIN">>),
+    try
+        {ok, 1} = write_fact(C, {grant_scopes, Where}, Digest, [<<"application:read">>]),
+        Parent = self(),
+        Ref = make_ref(),
+        spawn(fun() -> Parent ! {Ref, exchange(S, Body)} end),
+        await_grant_waiter(C),
+        {ok, _} = enterprise_application_grant_repo:create_tx(C, 995101, AppId, #{
+            scopes => [<<"sso:exchange">>],
+            workspace_scope_kind => none,
+            expires_at => elib_dt:to_rfc3339(erlang:system_time(second) + 86400, second),
+            idempotency_key => <<"oa-sso-grant-phantom">>
+        }),
+        ok = intbe02_http_support:sql_exec(C, <<"COMMIT">>),
+        R =
+            receive
+                {Ref, Result} -> Result
+            after 10000 -> error(exchange_timeout)
+            end,
+        save("oa-new-grant-response.json", [R]),
+        ?assertEqual(403, maps:get(status, R)),
+        ?assertEqual(<<"insufficient_scope">>, error_code(R)),
+        {ok, [Row]} = enterprise_query(C, Digest),
+        ?assertEqual(null, maps:get(<<"consumed_at">>, Row)),
+        Retry = exchange(S, Body),
+        save("oa-new-grant-retry-response.json", [Retry]),
+        ?assertEqual(200, maps:get(status, Retry)),
+        ?assertEqual(Before + 1, audit_count(C))
+    after
+        intbe02_http_support:sql_exec(C, <<"ROLLBACK">>),
+        {ok, 1} = write_fact(C, {grant_scopes, Where}, Digest, [<<"sso:exchange">>]),
+        {ok, _} = elib_pg:execute(
+            C,
+            <<"UPDATE enterprise_application_grant SET status='revoked', revoked_at=clock_timestamp(), revoked_by_user_id=995001 WHERE application_id=$1 AND idempotency_key='oa-sso-grant-phantom' AND status='active'">>,
+            [AppId]
+        )
+    end.
+
+await_grant_waiter(C) ->
+    ?assert(
+        wait(
+            C,
+            <<"SELECT count(*)>0 AS ready FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid))>0 AND query LIKE 'SELECT id FROM enterprise_application_grant%'">>,
+            [],
+            100
+        )
+    ).
+
 hold_exchange(S, Digest, Body, Count, Expire) ->
     C = maps:get(conn, S),
     ok = intbe02_http_support:sql_exec(C, <<"BEGIN">>),
@@ -257,6 +385,8 @@ await_deadline(C, Digest, Expire) ->
         case Expire of
             true ->
                 <<"SELECT expires_at<=clock_timestamp() AS ready FROM enterprise_oa_sso_code WHERE code_digest=$1">>;
+            grant ->
+                <<"SELECT expires_at<=clock_timestamp() AS ready FROM enterprise_application_grant WHERE application_id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>;
             credential ->
                 <<"SELECT expires_at<=clock_timestamp() AS ready FROM enterprise_application_credential WHERE application_id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>
         end,

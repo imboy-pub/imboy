@@ -42,7 +42,8 @@
     effective_scopes_tx/3,
     effective_grants_tx/3,
     workspace_covered_tx/5,
-    org_covered_tx/4
+    org_covered_tx/4,
+    scope_tx/4
 ]).
 
 -include_lib("epgsql/include/epgsql.hrl").
@@ -103,6 +104,39 @@ next_id() ->
         false -> elib_tsid:register(enterprise_application_grant)
     end,
     elib_tsid:generate(enterprise_application_grant).
+
+%% 已锁定应用后按全序锁 Grant 父行；治理降级先 CAS 父行再替换子 scope。
+scope_tx(Conn, OrgId, AppId, Scope) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT id FROM enterprise_application_grant WHERE organization_id=$1 AND application_id=$2 ORDER BY id FOR SHARE">>,
+            [OrgId, AppId]
+        )
+    of
+        {ok, Rows} ->
+            locked_scope_tx(Conn, OrgId, AppId, Scope, [maps:get(<<"id">>, R) || R <- Rows]);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% 只用实际持锁的父行求交集，排除两个查询之间新建的未锁 Grant。
+%% 等锁后及成功前使用实时 DB 时钟。
+locked_scope_tx(Conn, OrgId, AppId, Scope, GrantIds) ->
+    Sql = <<
+        "SELECT EXISTS (SELECT 1 FROM enterprise_application_grant g"
+        " JOIN enterprise_application_grant_scope s ON s.grant_id=g.id"
+        " JOIN enterprise_application a ON a.organization_id=g.organization_id AND a.id=g.application_id"
+        " WHERE g.organization_id=$1 AND g.application_id=$2 AND s.scope=$3"
+        " AND g.id=ANY($4::bigint[])"
+        " AND a.allowed_scopes ? $3 AND g.status='active'"
+        " AND g.valid_from<=clock_timestamp() AND g.expires_at>clock_timestamp()) AS allowed"
+    >>,
+    case elib_pg:query(Conn, Sql, [OrgId, AppId, Scope, GrantIds]) of
+        {ok, [#{<<"allowed">> := Allowed}]} -> {ok, Allowed};
+        {error, Reason} -> {error, Reason};
+        _ -> {error, scope_read_failed}
+    end.
 
 %% @doc 事务内创建 Grant（父行 + scope 集合 + 可选显式 workspace 集合）。
 %% Spec（map）：
