@@ -59,7 +59,12 @@ files += ['test/lib/organization/organization_invite_race_pg_checks.erl',
           'test/features/customer_service/infrastructure/cs_pg_test_fixture.erl',
           'test/features/customer_service/infrastructure/cs_pg_tests.erl',
           'test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl',
-          'test/features/customer_service/infrastructure/cs_session_open_pg_checks.erl']
+          'test/features/customer_service/infrastructure/cs_session_open_pg_checks.erl',
+          'test/features/customer_service/application/cs_widget_app_tests.erl',
+          'test/features/customer_service/application/cs_fake_store.erl',
+          'test/features/customer_service/application/cs_fake_id.erl',
+          'test/features/customer_service/application/cs_fake_canonical_tx.erl',
+          'test/features/enterprise_business/infrastructure/eb_pg_test_fixture.erl']
 cmd = ['erlc', '+debug_info', '+nowarn_unused_function', '+{parse_transform,lager_transform}',
        '-o', str(out / 'beams'), '-I', 'include', '-I', 'src']
 for path in paths:

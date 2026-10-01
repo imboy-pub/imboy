@@ -1,0 +1,25 @@
+*failed*
+in function cs_fake_canonical_tx:reset/0
+  called as reset()
+in call from cs_widget_app_tests:a06_widget_lifecycle_smoke/0 (test/features/customer_service/application/cs_widget_app_tests.erl, line 748)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:undef
+  output:<<"">>
+
+  cs_widget_app_tests: csb02s_d2_bootstrap_token_ttl_two_directions...[0.044 s] ok
+  cs_widget_app_tests: origin_normalization_edges...ok
+  cs_widget_app_tests: csd_be01s_same_origin_host_allowed...[0.030 s] ok
+  cs_widget_app_tests: csd_be01s_facade_derives_org_from_token_digest...[0.047 s] ok
+  [done in 0.584 s]
+=======================================================
+  Failed: 2.  Skipped: 0.  Passed: 9.
+">>
+
+  [done in 77.688 s]
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 7.

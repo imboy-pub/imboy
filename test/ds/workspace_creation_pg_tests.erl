@@ -44,6 +44,12 @@ creation(S) ->
     cs_session_open_pg_checks:run(C),
     customer_service_seat_http_checks:run(S),
     customer_service_widget_expiry_http_checks:run(S),
+    ?assertEqual(
+        ok,
+        eunit:test(
+            {"Widget application regression", cs_widget_app_tests:cases({ok, C})}, [verbose]
+        )
+    ),
     ReportDir = filename:join(os:getenv("IMBOY_GATE_RUN_DIR", "/tmp"), "cs-journey"),
     ok = filelib:ensure_dir(filename:join(ReportDir, "placeholder")),
     ?assertEqual(

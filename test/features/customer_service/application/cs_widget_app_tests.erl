@@ -20,6 +20,7 @@
 %%%
 %%% 环境不可用 ⇒ `erlang:error/1`（不是 skip）：环境问题不得被当成 PASS。
 -module(cs_widget_app_tests).
+-export([cases/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 

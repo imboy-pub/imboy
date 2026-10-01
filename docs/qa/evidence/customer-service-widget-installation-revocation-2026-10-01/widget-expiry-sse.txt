@@ -1,0 +1,5 @@
+retry: 5000
+id: 0
+event: state
+data: {"status":"queued","resource":"cs.session","session_id":"115644356945512448"}
+

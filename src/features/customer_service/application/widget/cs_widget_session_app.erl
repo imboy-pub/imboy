@@ -578,20 +578,30 @@ session_in_scope(OrgId, Params, Scope) ->
             end
     end.
 
-%% 令牌级作用域：digest 命中 + 未吊销/未过期 + 默认 Workspace 事实解析。
+%% 令牌级作用域：有效令牌 + active 接入 + 默认 Workspace 事实解析。
 visitor_scope(OrgId, Params) ->
     case cs_widget_support:verify_bootstrap_token(OrgId, Params) of
         {error, _} = Err ->
             Err;
         {ok, Token} ->
-            case cs_widget_support:resolve_default_workspace(OrgId, Params) of
-                {error, _} = Err2 ->
-                    Err2;
-                {ok, WorkspaceId} ->
-                    {ok, #{
-                        token => Token,
-                        contact_id => maps:get(contact_id, Token),
-                        workspace_id => WorkspaceId
-                    }}
+            case
+                cs_widget_support:fetch_installation(
+                    Params, OrgId, maps:get(installation_id, Params)
+                )
+            of
+                {error, _} = Err2 -> Err2;
+                {ok, _} -> visitor_workspace_scope(OrgId, Params, Token)
             end
+    end.
+
+visitor_workspace_scope(OrgId, Params, Token) ->
+    case cs_widget_support:resolve_default_workspace(OrgId, Params) of
+        {error, _} = Err2 ->
+            Err2;
+        {ok, WorkspaceId} ->
+            {ok, #{
+                token => Token,
+                contact_id => maps:get(contact_id, Token),
+                workspace_id => WorkspaceId
+            }}
     end.

@@ -1,0 +1,25 @@
+*failed*
+in function customer_service_widget_expiry_http_checks:denied/3 (test/api/customer_service_widget_expiry_http_checks.erl, line 134)
+in call from customer_service_widget_expiry_http_checks:revocation/5 (test/api/customer_service_widget_expiry_http_checks.erl, line 120)
+in call from customer_service_widget_expiry_http_checks:run_case/2 (test/api/customer_service_widget_expiry_http_checks.erl, line 15)
+in call from customer_service_widget_expiry_http_checks:'-run/1-lc$^0/1-0-'/2 (test/api/customer_service_widget_expiry_http_checks.erl, line 9)
+in call from customer_service_widget_expiry_http_checks:run/1 (test/api/customer_service_widget_expiry_http_checks.erl, line 9)
+in call from workspace_creation_pg_tests:creation/1 (test/ds/workspace_creation_pg_tests.erl, line 46)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+**error:{assertMatch,[{module,customer_service_widget_expiry_http_checks},
+              {line,134},
+              {expression,"gun : await ( P , Ref , 5000 )"},
+              {pattern,"{ response , _ , 403 , _ }"},
+              {value,{response,nofin,200,
+                               [{<<"referrer-policy">>,<<"strict-origi"...>>},
+                                {<<"access-contr"...>>,<<"Content-"...>>},
+                                {<<"access-c"...>>,<<"GET,"...>>},
+                                {<<"acce"...>>,<<...>>},
+                                {<<...>>,...},
+                                {...}|...]}}]}
+  output:<<"">>
+
+  [done in 62.005 s]
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 7.

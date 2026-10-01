@@ -1,0 +1,9 @@
+ine,<<"2072">>},
+                      {routine,<<"ExecConstraints">>},
+                      {schema_name,<<"public">>},
+                      {severity,<<"ERROR">>},
+                      {table_name,<<"channel_subscription">>}]}}}}}]
+[83.617 s] ok
+  [done in 83.620 s]
+=======================================================
+  All 8 tests passed.
