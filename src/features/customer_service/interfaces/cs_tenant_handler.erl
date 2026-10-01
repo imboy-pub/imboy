@@ -333,9 +333,12 @@ stream_loop(Req, OrgId, Params, State, #{deadline := Deadline} = Ctx) ->
 recheck_or_poll(Req, OrgId, Params, State, Ctx = #{polls := Polls}) ->
     case (Polls + 1) rem ?SSE_RECHECK_EVERY of
         0 ->
+            Identity = maps:get(business_identity_id, Params),
             case cs_auth:authorize(recheck_metadata(State), Req, State) of
-                {ok, _} ->
+                {ok, #{business_identity_id := Identity}} ->
                     poll(Req, OrgId, Params, State, Ctx#{polls := Polls + 1});
+                {ok, _NewIdentity} ->
+                    revocation_close(Req, OrgId, Params, identity_assignment_missing);
                 {error, Reason} ->
                     revocation_close(Req, OrgId, Params, Reason)
             end;
@@ -388,6 +391,8 @@ revocation_close(Req, OrgId, Params, seat_disabled) ->
     close_with_revocation(Req, OrgId, Params, <<"seat.changed">>, <<"seat">>);
 revocation_close(Req, OrgId, Params, {seat_not_found, _}) ->
     close_with_revocation(Req, OrgId, Params, <<"seat.changed">>, <<"seat">>);
+revocation_close(Req, OrgId, Params, {permission_missing, _}) ->
+    close_with_revocation(Req, OrgId, Params, <<"assignment.changed">>, <<"assignment">>);
 revocation_close(Req, OrgId, Params, identity_assignment_missing) ->
     close_with_revocation(Req, OrgId, Params, <<"assignment.changed">>, <<"assignment">>);
 revocation_close(Req, OrgId, Params, {member_not_active, _}) ->

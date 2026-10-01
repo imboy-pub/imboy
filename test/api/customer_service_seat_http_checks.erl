@@ -25,7 +25,8 @@ run(H) ->
          || {K, V} <- Old
         ]
     end.
-journey(H, S) ->
+journey(H, S0) ->
+    S = S0#{next_seat => second_seat(S0)},
     Org = maps:get(org_id, S),
     Actor = maps:get(actor_user_id, S),
     Service = maps:get(service_identity_id, S),
@@ -71,7 +72,7 @@ finish(H, S, Id) ->
     ?assertEqual(2, ?FIX:count(maps:get(org_id, S), messages)).
 
 transfer_check(H, S, Id) ->
-    Next = second_seat(S),
+    Next = maps:get(next_seat, S),
     Ws = maps:get(workspace_id, S),
     Bid = maps:get(service_identity_id, Next),
     ?assertEqual(

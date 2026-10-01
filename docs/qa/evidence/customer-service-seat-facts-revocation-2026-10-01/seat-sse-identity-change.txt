@@ -1,0 +1,15 @@
+retry: 2000
+id: 115640184193943552
+event: seat.changed
+data: {"reason":"revoked","type":"seat.changed","organization_id":"115640179764758531","workspace_id":"115640179764758532","resource_type":"seat","resource_id":"115640179764758536","event_id":"115640184193943552","occurred_at":"2026-10-01T13:05:37.000+08:00","resource_version":1}
+
+id: 115640205318555648
+event: seat.changed
+data: {"reason":"created","type":"seat.changed","organization_id":"115640179764758531","workspace_id":"115640179764758532","resource_type":"seat","resource_id":"115640179764758536","event_id":"115640205318555648","occurred_at":"2026-10-01T13:05:47.000+08:00","resource_version":1}
+
+: keep-alive
+
+id: 0
+event: assignment.changed
+data: {"reason":"revoked","type":"assignment.changed","organization_id":"115640179764758531","workspace_id":"115640179764758532","resource_type":"assignment","resource_id":"115640179764758536","event_id":"0","occurred_at":"2026-10-01T13:06:17.102+08:00","resource_version":1}
+

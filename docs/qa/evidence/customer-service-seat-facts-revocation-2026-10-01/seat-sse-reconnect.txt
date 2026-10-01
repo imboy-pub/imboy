@@ -1,0 +1,5 @@
+retry: 2000
+id: 115640179982862336
+event: message.appended
+data: {"reason":"created","type":"message.appended","organization_id":"115640179764758531","workspace_id":"115640179764758532","resource_type":"message","resource_id":"115640179945113600","event_id":"115640179982862336","occurred_at":"2026-10-01T13:05:35.000+08:00","resource_version":1}
+

@@ -1,0 +1,7 @@
+  cs_seat_event_negative_tests: -events_malformed_authorization_tests/1-fun-2- (Seat events GET with a non-Bearer scheme (Basic) is 401)...[0.001 s] ok
+  cs_seat_event_negative_tests: -events_malformed_authorization_tests/1-fun-1- (Seat events GET with a scheme-only Bearer (no token) is 401)...[0.001 s] ok
+  cs_seat_event_negative_tests: -events_malformed_authorization_tests/1-fun-0- (Seat events GET with an empty Bearer token is 401)...[0.001 s] ok
+  cs_seat_event_negative_tests: -heartbeat_foreign_org_tests/1-fun-4- (Heartbeat with the seat assignment homed in another org is 403 and never reaches seat_heartbeat)...[0.001 s] ok
+  [done in 0.119 s]
+=======================================================
+  All 58 tests passed.

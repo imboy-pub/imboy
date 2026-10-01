@@ -1,0 +1,10 @@
+in call from customer_service_seat_http_checks:run/1 (test/api/customer_service_seat_http_checks.erl, line 17)
+in call from workspace_creation_pg_tests:creation/1 (test/ds/workspace_creation_pg_tests.erl, line 45)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+**error:{sse_frame_missing,fin,
+                   <<"retry: 2000\nid: 115639900501706752\nevent: seat.changed\ndata: {\"r"...>>}
+  output:<<"">>
+
+  [done in 26.592 s]
+=======================================================

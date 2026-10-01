@@ -38,6 +38,9 @@ send_with_stream(H, S) ->
         ),
         gun:close(P),
         reconnect(H, S, Cursor, Message),
+        facts_revoked(H, S, maps:get(<<"event_id">>, Message), assignment),
+        facts_revoked(H, S, maps:get(<<"event_id">>, Message), member),
+        identity_changed(H, S, maps:get(<<"event_id">>, Message)),
         R
     after
         gun:close(P)
@@ -73,6 +76,111 @@ reconnect(H, S, Cursor, Message) ->
     after
         gun:close(P),
         {ok, _} = cs_seat_app:resume_seat(Org, Params)
+    end.
+
+%% Controlled authorization facts, actual stream recheck and actual request denial.
+facts_revoked(H, S, Cursor, Kind) ->
+    {P, Ref} = open(H, S, #{<<"last-event-id">> => Cursor}),
+    try
+        change_fact(S, Kind, false),
+        {Revoked, Raw, Finished} = wait(P, Ref, fun(E) ->
+            maps:get(<<"event_id">>, E) =:= <<"0">> andalso
+                maps:get(<<"reason">>, E) =:= <<"revoked">>
+        end),
+        ?assertEqual(<<"assignment.changed">>, maps:get(<<"type">>, Revoked)),
+        save("seat-sse-" ++ atom_to_list(Kind) ++ ".txt", Raw),
+        case Finished of
+            true -> ok;
+            false -> ?assertMatch({data, fin, _}, gun:await(P, Ref, 5000))
+        end,
+        denied(H, S),
+        ?assertEqual(
+            403,
+            maps:get(
+                status, ?HTTP:send(H, S, <<"synthetic-revoked-", (atom_to_binary(Kind))/binary>>)
+            )
+        )
+    after
+        gun:close(P),
+        change_fact(S, Kind, true)
+    end.
+change_fact(S, assignment, Active) ->
+    Sql =
+        case Active of
+            true ->
+                <<"UPDATE organization_business_identity_assignment SET status='active',ended_at=NULL WHERE organization_id=$1 AND user_id=$2">>;
+            false ->
+                <<"UPDATE organization_business_identity_assignment SET status='ended',ended_at=now() WHERE organization_id=$1 AND user_id=$2">>
+        end,
+    cs_pg_test_fixture:exec(Sql, [maps:get(org_id, S), maps:get(actor_user_id, S)]);
+change_fact(S, member, Active) ->
+    Status =
+        case Active of
+            true -> <<"active">>;
+            false -> <<"suspended">>
+        end,
+    cs_pg_test_fixture:exec(
+        <<"UPDATE organization_member SET status=$3 WHERE organization_id=$1 AND user_id=$2">>, [
+            maps:get(org_id, S), maps:get(actor_user_id, S), Status
+        ]
+    ).
+
+identity_changed(H, S, Cursor) ->
+    {P, Ref} = open(H, S, #{<<"last-event-id">> => Cursor}),
+    try
+        change_identity(S, false),
+        {E, Raw, Finished} = wait(P, Ref, fun(X) ->
+            maps:get(<<"event_id">>, X) =:= <<"0">> andalso
+                maps:get(<<"reason">>, X) =:= <<"revoked">>
+        end),
+        ?assertEqual(<<"assignment.changed">>, maps:get(<<"type">>, E)),
+        ?assertEqual(
+            integer_to_binary(maps:get(service_identity_id, S)), maps:get(<<"resource_id">>, E)
+        ),
+        save("seat-sse-identity-change.txt", Raw),
+        case Finished of
+            true -> ok;
+            false -> ?assertMatch({data, fin, _}, gun:await(P, Ref, 5000))
+        end,
+        {Fresh, FRef} = open(H, S, #{}),
+        try
+            {_Initial, FRaw, false} = wait(Fresh, FRef, fun(X) ->
+                maps:get(<<"type">>, X) =:= <<"resync.required">>
+            end),
+            save("seat-sse-new-identity.txt", FRaw)
+        after
+            gun:close(Fresh)
+        end,
+        ?assertEqual(403, maps:get(status, ?HTTP:send(H, S, <<"synthetic-old-identity-session">>)))
+    after
+        gun:close(P),
+        change_identity(S, true)
+    end.
+change_identity(S, Restore) ->
+    Org = maps:get(org_id, S),
+    Actor = maps:get(actor_user_id, S),
+    Next = maps:get(next_seat, S),
+    Peer = maps:get(actor_user_id, Next),
+    Target = maps:get(service_identity_id, Next),
+    case Restore of
+        false ->
+            ok = cs_pg_test_fixture:exec(
+                <<"UPDATE organization_business_identity_assignment SET status='ended',ended_at=now() WHERE organization_id=$1 AND user_id=$2">>,
+                [Org, Peer]
+            ),
+            cs_pg_test_fixture:exec(
+                <<"UPDATE organization_business_identity_assignment SET business_identity_id=$3,version=version+1 WHERE organization_id=$1 AND user_id=$2">>,
+                [Org, Actor, Target]
+            );
+        true ->
+            ok = cs_pg_test_fixture:exec(
+                <<"UPDATE organization_business_identity_assignment SET business_identity_id=$3,version=version+1 WHERE organization_id=$1 AND user_id=$2">>,
+                [Org, Actor, maps:get(service_identity_id, S)]
+            ),
+            cs_pg_test_fixture:exec(
+                <<"UPDATE organization_business_identity_assignment SET status='active',ended_at=NULL WHERE organization_id=$1 AND user_id=$2">>,
+                [Org, Peer]
+            )
     end.
 
 message(E) -> maps:get(<<"type">>, E) =:= <<"message.appended">>.
