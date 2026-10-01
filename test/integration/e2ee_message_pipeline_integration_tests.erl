@@ -76,6 +76,8 @@ test_raw_ciphertext_payload_survives_pipeline() ->
         )
     ),
 
+    %% stage 只登记意图；与生产入口一样显式交给 worker，不依赖周期 tick。
+    ok = msg_store_ds:enqueue(<<"c2c">>, MsgId, #{}),
     %% 等待 msg_store_worker 异步落正式表
     {ok, Row} = wait_for_final_row(MsgId),
 
@@ -233,6 +235,7 @@ test_sender_did_survives_pipeline_to_offline_envelope() ->
         )
     ),
 
+    ok = msg_store_ds:enqueue(<<"c2c">>, MsgId, #{}),
     %% 1) worker 把 staging 行搬进 msg_c2c 时不得丢字段
     {ok, Row} = wait_for_sender_did_row(MsgId),
     ?assertEqual(SenderDid, maps:get(<<"sender_did">>, Row)),

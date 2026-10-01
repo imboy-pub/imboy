@@ -33,12 +33,18 @@ setup() ->
     {ok, Member} = create_test_user(<<"e2ee_c2g_member">>),
     {ok, Gid} = create_test_group(Owner, <<"e2ee_c2g_test_group">>),
     ok = group_member_ds:add_member(Gid, Member),
-    Context = #{owner => Owner, member => Member, gid => Gid},
+    PreviousArchive = application:get_env(imboy, msg_archive_enabled),
+    application:set_env(imboy, msg_archive_enabled, true),
+    Context = #{owner => Owner, member => Member, gid => Gid, previous_archive => PreviousArchive},
     persistent_term:put({?MODULE, test_context}, Context),
     Context.
 
-cleanup(_Context) ->
+cleanup(#{previous_archive := PreviousArchive}) ->
     persistent_term:erase({?MODULE, test_context}),
+    case PreviousArchive of
+        undefined -> application:unset_env(imboy, msg_archive_enabled);
+        {ok, Value} -> application:set_env(imboy, msg_archive_enabled, Value)
+    end,
     ok.
 
 get_context() ->
