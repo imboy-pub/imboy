@@ -45,7 +45,7 @@ if not paths:
 # Read application metadata only; compile every product module from current source.
 paths.insert(0, str(deps / 'ebin'))
 files = [str(p) for p in pathlib.Path('src').rglob('*.erl')]
-files += ['test/common/meck_helper.erl', 'test/api/qr_login_sse_handler_tests.erl',
+files += ['test/common/eunit_runner.erl', 'test/common/meck_helper.erl', 'test/api/qr_login_sse_handler_tests.erl',
           'test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wiring_http_tests.erl',
           'test/common/inttest_marker_db.erl', 'test/ds/workspace_creation_pg_tests.erl',
           'test/api/enterprise_workspace_write_http_checks.erl',
