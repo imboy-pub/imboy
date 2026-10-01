@@ -2106,8 +2106,7 @@ bnd_fail_closed(C, State) ->
     ).
 
 %% @doc 机械对齐：边界 spec 覆盖**全部**冻结路由（少一条即红）；kind 与 manifest
-%% 的 grant 语义逐条一致。INT-15..22 已由 A0 在 FULL-02 集成时登记进冻结表与
-%% Router（并进 manifest/契约），故两侧都必须是 22 条全集。
+%% 的 grant 语义逐条一致。当前合同包括 INT-01..42，逐项验证而非只比数量。
 bnd_spec_align_test() ->
     ?_test(begin
         FrozenIds = lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
@@ -2139,7 +2138,27 @@ bnd_spec_align_test() ->
             {<<"INT-22">>, org},
             {<<"INT-12">>, none},
             {<<"INT-13">>, none},
-            {<<"INT-14">>, none}
+            {<<"INT-14">>, none},
+            {<<"INT-23">>, none},
+            {<<"INT-24">>, list},
+            {<<"INT-25">>, workspace},
+            {<<"INT-26">>, list},
+            {<<"INT-27">>, workspace},
+            {<<"INT-28">>, workspace},
+            {<<"INT-29">>, workspace},
+            {<<"INT-30">>, workspace},
+            {<<"INT-31">>, workspace},
+            {<<"INT-32">>, none},
+            {<<"INT-33">>, org},
+            {<<"INT-34">>, org},
+            {<<"INT-35">>, org},
+            {<<"INT-36">>, org},
+            {<<"INT-37">>, org},
+            {<<"INT-38">>, workspace},
+            {<<"INT-39">>, workspace},
+            {<<"INT-40">>, workspace},
+            {<<"INT-41">>, workspace},
+            {<<"INT-42">>, workspace}
         ],
         lists:foreach(
             fun({Id, Kind}) ->
@@ -2168,7 +2187,10 @@ bnd_spec_align_test() ->
         %% 契约，因此边界 ids 与冻结表必须**完全相等**，不存在「待接线」差集；
         %% 若将来仍有未接线新增，此断言会立即变红（差集恒为空）。
         ?assertEqual([], lists:sort(enterprise_internal_boundary:ids()) -- FrozenIds),
-        ?assertEqual(32, length(lists:usort(enterprise_internal_boundary:ids())))
+        ?assertEqual(
+            lists:sort([Id || {Id, _} <- Expected]),
+            lists:sort(enterprise_internal_boundary:ids())
+        )
     end).
 
 %% @doc **接线点机械断言**：handler 模块的 beam 抽象码里必须真实存在对
@@ -2235,8 +2257,16 @@ usage_shape_test() ->
     ?_test(begin
         %% metric 枚举是固定集合（与 DB CHECK 同源）
         ?assertEqual(
-            6,
-            length(enterprise_application_usage_repo:metrics())
+            [
+                <<"identity.bound">>,
+                <<"identity.revoked">>,
+                <<"directory.page">>,
+                <<"file.confirmed">>,
+                <<"message.accepted">>,
+                <<"message.failed">>,
+                <<"seat.read">>
+            ],
+            enterprise_application_usage_repo:metrics()
         ),
         %% 固定枚举里没有任何「正文/内容」类自由文本键
         lists:foreach(
@@ -2275,6 +2305,29 @@ usage_meter(C, State) ->
         )
     ),
     %% 列集封闭（无正文/PII 列）+ 计量行禁删
+    lists:foreach(
+        fun(Metric) ->
+            ?assertEqual(ok, enterprise_application_usage_repo:bump_tx(C, OrgId, AppId, Metric))
+        end,
+        enterprise_application_usage_repo:metrics()
+    ),
+    {ok, MetricRows} = elib_pg:query(
+        C,
+        <<"SELECT DISTINCT metric FROM enterprise_application_usage WHERE organization_id=$1 AND application_id=$2 ORDER BY metric">>,
+        [OrgId, AppId]
+    ),
+    ?assertEqual(
+        lists:sort(enterprise_application_usage_repo:metrics()),
+        [maps:get(<<"metric">>, Row) || Row <- MetricRows]
+    ),
+    ?assertEqual(
+        <<"23514">>,
+        rejected_code(
+            C,
+            <<"INSERT INTO enterprise_application_usage(organization_id,application_id,metric,period_start,counter) VALUES($1,$2,'freedom.text',CURRENT_DATE,1)">>,
+            [OrgId, AppId]
+        )
+    ),
     Cols = [
         maps:get(<<"column_name">>, R)
      || R <-

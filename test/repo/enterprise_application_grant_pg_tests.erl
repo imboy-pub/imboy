@@ -265,11 +265,32 @@ grant_scope_oracle(C) ->
     {ok, Grant} = issue(C, ?ORG_A, AppA, <<"k-scope">>, [<<"application:read">>]),
     GrantId = maps:get(<<"id">>, Grant),
 
-    %% 固定枚举恰 14 个（V2.1 冻结目录，迁移 144）；其余 13 个成员可逐条写入
+    %% 显式锁定当前合同；每项权限还必须通过真实数据库 CHECK。
     Fixed = enterprise_internal_scope:all(),
-    ?assertEqual(14, length(Fixed)),
+    ?assertEqual(
+        lists:sort([
+            <<"application:read">>,
+            <<"identities:read">>,
+            <<"identities:write">>,
+            <<"groups:read">>,
+            <<"groups:write">>,
+            <<"workspaces:read">>,
+            <<"projects:read">>,
+            <<"channels:read">>,
+            <<"files:write">>,
+            <<"messages:send">>,
+            <<"messages:send_as_human">>,
+            <<"friend_requests:create">>,
+            <<"webhooks:manage">>,
+            <<"sso:exchange">>,
+            <<"customer_service:read">>,
+            <<"customer_service:write">>,
+            <<"workspaces:write">>,
+            <<"channels:write">>
+        ]),
+        lists:sort(Fixed)
+    ),
     Rest = [S || S <- Fixed, S =/= <<"application:read">>],
-    ?assertEqual(13, length(Rest)),
     lists:foreach(
         fun(Scope) -> ?assertMatch({ok, _}, insert_scope_row(C, GrantId, Scope)) end,
         Rest
