@@ -21,6 +21,10 @@ retention_purge_test_() ->
     {setup, fun setup/0, fun cleanup_db/1, fun cases/1}.
 
 setup() ->
+    Previous = eb_pg_test_fixture:select_asset_stub(),
+    {asset_stub, Previous, setup_db()}.
+
+setup_db() ->
     case eunit_runner:eunit_setup_with_db() of
         {ok, Conn} ->
             case eb_pg_test_fixture:ensure_purge_role() of
@@ -31,11 +35,19 @@ setup() ->
             {error, Reason}
     end.
 
+cleanup_db({asset_stub, Previous, Result}) ->
+    try
+        cleanup_db(Result)
+    after
+        eb_pg_test_fixture:restore_asset_store(Previous)
+    end;
 cleanup_db({ok, Conn}) ->
     eunit_runner:eunit_cleanup_db(Conn);
 cleanup_db(_Other) ->
     ok.
 
+cases({asset_stub, _Previous, Result}) ->
+    cases(Result);
 cases({ok, _Conn}) ->
     [
         {timeout, 60, fun a06_injected_clock_drives_candidate_selection/0},

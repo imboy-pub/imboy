@@ -12,6 +12,7 @@
 %%%     不区分「不存在」与「不属于你」（避免枚举）。
 %%%   * 状态跃迁用 CAS 形状的 `WHERE status = ...`：并发两次 confirm 只有一个成功。
 -module(eb_pg_asset_meta).
+-export([key_prefix/2]).
 
 -export([
     insert_asset/3,
@@ -81,13 +82,15 @@ sql_statements() ->
 %% 跨 Org 的同 id 资产必然落在不同 key 上（A11 的作用域证据）。
 -spec object_key(integer(), integer(), integer()) -> binary().
 object_key(OrgId, WorkspaceId, AssetId) ->
+    <<(key_prefix(OrgId, WorkspaceId))/binary, (integer_to_binary(AssetId))/binary>>.
+
+key_prefix(OrgId, WorkspaceId) ->
     iolist_to_binary([
         "enterprise/",
         integer_to_binary(OrgId),
         "/",
         integer_to_binary(WorkspaceId),
-        "/",
-        integer_to_binary(AssetId)
+        "/"
     ]).
 
 %% @doc 登记未确认资产元数据。

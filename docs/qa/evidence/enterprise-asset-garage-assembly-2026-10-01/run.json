@@ -1,0 +1,43 @@
+{
+  "status": "PARTIAL",
+  "base": "7cc1449aabfd2625a2c4464c195319458614e150",
+  "native_asset_gate_exit": 0,
+  "stub_store_cases_passed": 6,
+  "default_http_gate_exit": 0,
+  "default_http_cases_passed": 26,
+  "identity_schema_bodies_passed": 4,
+  "source_hashes": {
+    "scripts/test/customer_service_internal_http_gate.sh": "6484a4b0857aeea8b8bb53868066a6cfe550c7c8560594b6f18b95f474d59b41",
+    "scripts/test/enterprise_asset_garage_gate.sh": "878ec24302a4e6cd4970504aed5b56003d97d1d6e4cb4ac8eb3b367fb9efb3aa",
+    "src/features/enterprise_business/application/asset/eb_asset_app.erl": "8315f87030ea44cd5c5bfa11bd03ddcfc870965757ab0175890277373d80689a",
+    "src/features/enterprise_business/infrastructure/eb_asset_object_garage.erl": "cc5b754ace4fa3df0f52120f4ec8580dc9b63d3d4afd4c303ebfbe9c8ec7d677",
+    "src/features/enterprise_business/infrastructure/eb_asset_store.erl": "95718b1f2c9bb43031dc45e8a937f7f0f8d03f77883246f90680188e3c4908c6",
+    "src/features/enterprise_business/infrastructure/eb_infra_ports.erl": "bda7d9a2f3c6cc3a126e51517c35c336ef1c0d96c4cc83e6be3590aa72866859",
+    "src/features/enterprise_business/infrastructure/eb_pg_asset_meta.erl": "466d6e3b5064d49520d43c804c7240ea05b2130808aaf13b81e6572203626252",
+    "test/features/enterprise_business/application/asset/eb_asset_tests.erl": "97b8fd27953c94bb90bc49bf94a1e2f9b52a3a3c8fe3a3f6ce19c61884fe9698",
+    "test/features/enterprise_business/e2e/eb_e2e_runner.erl": "1868528f7c6edac8d34c35d3e802f943593ce8968836bec686f8d300e18efbbd",
+    "test/features/enterprise_business/infrastructure/eb_asset_store_tests.erl": "f412918d4c49f2d02ab2bc89d4952443c41f590f223fc99bc061a0001e23016f",
+    "test/features/enterprise_business/infrastructure/eb_pg_test_fixture.erl": "8d945d1b4c8c19f0c0f6507f7b2a156db4ba37f515fb451c549ae0f0919a6e66",
+    "test/features/enterprise_business/infrastructure/eb_purge_orphan_asset_pg_tests.erl": "e5c9d32c51b48edcbde6ac7f0893ddf18077e4df6522a8152fbf6e93d45365fb",
+    "test/features/enterprise_business/infrastructure/eb_retention_pg_tests.erl": "e5941b0322c0b3119b8ddd7ccc2185d256bea1a87abbecf029aed45811cc1b03",
+    "test/features/enterprise_business/interfaces/eb_tenant_handler_tests.erl": "edce2386eebedc5a7937e8852eb0b3453e5f7506ff968a6569e0eb2a2ff3ec6f",
+    "test/api/enterprise_asset_garage_pg_checks.erl": "d11f506986bd2117176e8f41020c7813d38de14feea849e3a4e75dcf7d409076",
+    "src/lib/elib_oss.erl": "2ad86f2802dcf89aacce0145bef671b7ba08f519525075d613336f7e2443795e",
+    "src/lib/elib_s3_sign.erl": "fc64b562f2bbb65886982bbff5996ae7c2b7b81394855cb0333073ffbd8134fe"
+  },
+  "command": "IMBOY_DEPS_ROOT=/path/to/independent/deps IMBOY_ASSET_GARAGE_PG_CHECK=1 bash scripts/test/enterprise_asset_garage_gate.sh",
+  "garage_image": "dxflrs/garage:v2.3.0",
+  "production_default": "garage",
+  "test_selection": "explicit eb_asset_object_store=stub, with previous selection restored",
+  "concurrent_put": "two actual application calls share one upload_ref: exactly one success, one rejection; later duplicate rejected and original bytes still readable/confirmable",
+  "reservation": "metadata unique constraint precedes object write; storage failure retains pending row for bounded cleanup; metadata rejection performs no object write",
+  "not_proven": [
+    "browser or real HTTP attachment journey",
+    "full legacy asset/retention/purge suites",
+    "automatic pending cleanup scheduling",
+    "legacy in-memory object migration",
+    "Garage v2.4.1",
+    "physical devices",
+    "production readiness"
+  ]
+}

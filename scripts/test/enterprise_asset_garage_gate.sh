@@ -94,4 +94,7 @@ done
 [[ "$ready" == 1 ]] || { echo 'Garage restart failed' >&2; exit 1; }
 ERL_CRASH_DUMP="$RUN_DIR/erl_crash.dump" erl -noshell -pa "$RUN_DIR/beams" -s check verify >> "$RUN_DIR/result.log" 2>&1
 cat "$RUN_DIR/result.log"
+if [[ "${IMBOY_ASSET_GARAGE_PG_CHECK:-0}" == 1 ]]; then
+  bash scripts/test/customer_service_internal_http_gate.sh | tee "$RUN_DIR/asset-pg.log"
+fi
 printf 'Evidence: %s\n' "$RUN_DIR"

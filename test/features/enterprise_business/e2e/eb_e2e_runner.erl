@@ -22,6 +22,14 @@ main() ->
 
 -spec run() -> non_neg_integer().
 run() ->
+    Previous = eb_pg_test_fixture:select_asset_stub(),
+    try
+        run_stub()
+    after
+        eb_pg_test_fixture:restore_asset_store(Previous)
+    end.
+
+run_stub() ->
     eb_e2e_lib:reset(),
     io:format("== EB-11 Foundation 独立 E2E（两 Org + 隔离端口 + 私有测试对象前缀）==~n"),
     io:format(

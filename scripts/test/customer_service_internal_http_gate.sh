@@ -55,6 +55,7 @@ files += ['test/common/meck_helper.erl', 'test/api/qr_login_sse_handler_tests.er
           'test/api/workspace_channel_limit_http_checks.erl',
           'test/api/customer_service_seat_http_checks.erl',
           'test/api/customer_service_browser_fixture.erl',
+          'test/api/enterprise_asset_garage_pg_checks.erl',
           'test/api/customer_service_seat_sse_checks.erl',
           'test/api/customer_service_widget_expiry_http_checks.erl',
           'test/api/enterprise_oa_expiry_http_checks.erl']
@@ -75,6 +76,16 @@ for path in paths:
     cmd += ['-pa', path]
 with (out / 'compile.log').open('w') as log:
     subprocess.run(cmd + files, stdout=log, stderr=subprocess.STDOUT, check=True)
+# Only test modules expose case lists for reuse in the disposable native PG run.
+asset_tests = [
+    'test/features/enterprise_business/infrastructure/eb_asset_store_tests.erl',
+    'test/features/enterprise_business/infrastructure/eb_retention_pg_tests.erl',
+    'test/features/enterprise_business/infrastructure/eb_purge_orphan_asset_pg_tests.erl',
+    'test/features/enterprise_business/application/asset/eb_asset_tests.erl',
+    'test/features/enterprise_business/interfaces/eb_tenant_handler_tests.erl',
+    'test/features/enterprise_business/e2e/eb_e2e_runner.erl']
+with (out / 'compile.log').open('a') as log:
+    subprocess.run(cmd + ['+export_all'] + asset_tests, stdout=log, stderr=subprocess.STDOUT, check=True)
 expr = ('application:set_env(lager,handlers,[{lager_console_backend,[{level,error}]}]), '
         'application:ensure_all_started(lager), '
         'application:load(imboy), application:set_env(imboy,sql_driver,pgsql), '
@@ -83,7 +94,11 @@ expr = ('application:set_env(lager,handlers,[{lager_console_backend,[{level,erro
         '{ok,_} = imboy_cache:start_link([]), '
         'case eunit:test([enterprise_internal_wiring_http_tests,workspace_creation_pg_tests,qr_login_sse_handler_tests],[verbose]) of '
         'ok -> halt(0); _ -> halt(1) end.')
+asset_mode = os.environ.get('IMBOY_ASSET_GARAGE_PG_CHECK') == '1'
+if asset_mode:
+    expr = expr[:expr.index('case eunit:test')] + 'enterprise_asset_garage_pg_checks:run(), halt(0).'
 browser_runner = os.environ.get('IMBOY_CS_BROWSER_RUNNER')
+assert not (asset_mode and browser_runner), 'choose asset PG or browser mode'
 if browser_runner:
     import socket, time
     runner = pathlib.Path(browser_runner).resolve(strict=True)
@@ -127,8 +142,9 @@ else:
     report = (out / 'http.log').read_text()
     if '[EPGZ04] emit_event_failed crash' in report:
         raise SystemExit('failed-event emission crashed; inspect ' + str(out / 'http.log'))
-    subprocess.run(['python3', 'scripts/test/check_identity_http_contract.py',
-                    str(out / 'identity-responses.json')], check=True)
+    if not asset_mode:
+        subprocess.run(['python3', 'scripts/test/check_identity_http_contract.py',
+                        str(out / 'identity-responses.json')], check=True)
     print(report)
 PY
 printf 'Evidence: %s\n' "$RUN_DIR"

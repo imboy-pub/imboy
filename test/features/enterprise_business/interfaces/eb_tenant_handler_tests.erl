@@ -30,6 +30,10 @@ tenant_suite_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun cases/1}.
 
 setup() ->
+    Previous = eb_pg_test_fixture:select_asset_stub(),
+    {asset_stub, Previous, setup_db()}.
+
+setup_db() ->
     case eunit_runner:eunit_setup_with_db() of
         {ok, Conn} ->
             case ?FIX:ensure_purge_role() of
@@ -40,11 +44,19 @@ setup() ->
             {error, Reason}
     end.
 
+cleanup({asset_stub, Previous, Result}) ->
+    try
+        cleanup(Result)
+    after
+        eb_pg_test_fixture:restore_asset_store(Previous)
+    end;
 cleanup({ok, Conn}) ->
     eunit_runner:eunit_cleanup_db(Conn);
 cleanup(Other) ->
     Other.
 
+cases({asset_stub, _Previous, Result}) ->
+    cases(Result);
 cases({ok, _Conn}) ->
     [
         {timeout, ?TIMEOUT_S, fun a02_identity_list_returns_tsid_strings_real/0},

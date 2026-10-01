@@ -5,7 +5,11 @@
 
 put(Key, Bytes, Meta) when is_binary(Key), is_binary(Bytes), byte_size(Bytes) > 0 ->
     configured(fun() ->
-        Mime = maps:get(mime, Meta, <<"application/octet-stream">>),
+        Mime =
+            case maps:get(mime, Meta, undefined) of
+                Value when is_binary(Value), byte_size(Value) > 0 -> Value;
+                _ -> <<"application/octet-stream">>
+            end,
         case elib_oss:put_object(elib_oss:get_bucket(<<"private">>), Key, Bytes, Mime) of
             ok -> ok;
             {error, _} -> {error, storage_unavailable}

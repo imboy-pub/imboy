@@ -12,6 +12,7 @@
 %%% 其行按设计不可 DELETE，因此清场后仍会保留少量合成行（连同被 RESTRICT FK
 %%% 引用的消息行）。这是 EB-01 冻结语义，不是本夹具的缺陷；隔离靠唯一 TSID。
 -module(eb_pg_test_fixture).
+-export([select_asset_stub/0, restore_asset_store/1]).
 
 -export([
     id/0,
@@ -444,3 +445,14 @@ account(Id) ->
 
 name(Prefix, Id) ->
     <<Prefix/binary, (integer_to_binary(Id))/binary>>.
+
+%% Explicit test selection; never make missing production config fall back to memory.
+select_asset_stub() ->
+    Previous = application:get_env(imboy, eb_asset_object_store),
+    ok = application:set_env(imboy, eb_asset_object_store, stub),
+    Previous.
+
+restore_asset_store(undefined) ->
+    application:unset_env(imboy, eb_asset_object_store);
+restore_asset_store({ok, Value}) ->
+    application:set_env(imboy, eb_asset_object_store, Value).

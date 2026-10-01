@@ -18,14 +18,26 @@ asset_store_test_() ->
     {setup, fun setup/0, fun cleanup_db/1, fun cases/1}.
 
 setup() ->
+    Previous = eb_pg_test_fixture:select_asset_stub(),
+    {asset_stub, Previous, setup_db()}.
+
+setup_db() ->
     eunit_runner:eunit_setup_with_db().
 
+cleanup_db({asset_stub, Previous, Result}) ->
+    try
+        cleanup_db(Result)
+    after
+        eb_pg_test_fixture:restore_asset_store(Previous)
+    end;
 cleanup_db({ok, Conn}) ->
     _ = eb_asset_object_stub:reset(),
     eunit_runner:eunit_cleanup_db(Conn);
 cleanup_db(_Other) ->
     ok.
 
+cases({asset_stub, _Previous, Result}) ->
+    cases(Result);
 cases({ok, _Conn}) ->
     [
         {timeout, 60, fun a11a_asset_port_is_assembled/0},

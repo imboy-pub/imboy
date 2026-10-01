@@ -304,7 +304,7 @@ presign_view(AssetId, Args, Retain, ExpiresAt, Token) ->
             method => <<"PUT">>,
             token => Token,
             expires_at => ExpiresAt,
-            adapter => <<"local_private_object_store">>,
+            adapter => <<"private_object_store">>,
             rule => <<"opaque_token_no_url_no_object_key">>
         }
     }.

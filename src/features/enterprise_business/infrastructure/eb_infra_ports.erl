@@ -71,9 +71,7 @@ audit() -> eb_pg_audit.
 
 %% @doc 企业私有对象 + asset metadata 端口实现（EB-03R：R0-5 修复，不再 not_implemented）。
 %%
-%% 对象读写经**本地替身** adapter（进程内 ETS 桶）实现契约语义（装配 / 作用域 /
-%% 错误传播）；真实 Garage 验收**未运行**（A11 边界声明），报告不得据此声明真实
-%% 对象存储验收通过。
+%% 默认对象存储为 Garage；测试替身须通过 eb_asset_object_store=stub 显式选择。
 -spec asset() -> implementation().
 asset() -> eb_asset_store.
 
