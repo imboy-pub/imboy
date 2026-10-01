@@ -1,0 +1,26 @@
+{
+  "status": "PARTIAL",
+  "focused_browser_exit": 0,
+  "backend_base": "1ec3086337217d0f5cc67bbe0cf1cb54e285a590",
+  "admin_base": "1a345538c62e4d98bcb43139c80a9fa3e42867e3",
+  "source_hashes": {
+    "backend": {
+      "test/api/customer_service_browser_fixture.erl": "8e63fbc17edb5252ea7b5fa2767899a5bf462c734c1a25e1d0b545456c9b0b5c",
+      "scripts/test/customer_service_internal_http_gate.sh": "84aef8eba7ac22751f9de59ba7b11ef99432fae5a343b845a2356af5982b3e88"
+    },
+    "admin": {
+      "scripts/test/customer-service-browser-journey.mjs": "c9a28f35028c69b2f95cc84bc7a58753b57f769600950eb0a11ec4990218111d",
+      "tests/e2e/customer-service-real/helpers/static-host.mjs": "aea10cf3d6c77b2e841ee7381971f83242274f74ae29c3901f2aedfbf7c8f2a3"
+    }
+  },
+  "reused_build": "../cs-widget-browser-2026-10-01/build",
+  "build_manifest_sha256": "594c5dc67614411b331761e062817f107f7b66d7dd9ce29625e3450f5e4db2d7",
+  "oracle": "active seat suspended via real application facade; old actual browser credential write gets HTTP 403; page removes composer; resumed seat logs in via fresh QR SSE and closes same session; PG exactly four messages and suspend/resume events",
+  "not_proven": [
+    "governance HTTP/UI suspend authorization",
+    "permanent JWT revocation",
+    "real object storage attachments",
+    "physical devices",
+    "full contract and production readiness"
+  ]
+}

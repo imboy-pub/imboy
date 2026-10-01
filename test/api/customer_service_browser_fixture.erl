@@ -42,7 +42,11 @@ run() ->
             seat_a => seat(S),
             seat_b => seat(Next)
         }),
-        ok = await_done(erlang:monotonic_time(millisecond) + 180000),
+        ok = await_done(
+            S,
+            [maps:get(service_identity_id, S), maps:get(service_identity_id, Next)],
+            erlang:monotonic_time(millisecond) + 180000
+        ),
         save_proof(Org)
     after
         intbe02_http_support:teardown_all(H),
@@ -68,15 +72,43 @@ seat(S) ->
         headers => customer_service_seat_http_checks:headers(S)
     }.
 
-await_done(Deadline) ->
+await_done(S, Identities, Deadline) ->
     case filelib:is_file(filename:join(os:getenv("IMBOY_GATE_RUN_DIR"), "browser.done")) of
         true ->
             ok;
         false ->
+            process_control(S, Identities),
             true = erlang:monotonic_time(millisecond) < Deadline,
             receive
-            after 100 -> await_done(Deadline)
+            after 100 -> await_done(S, Identities, Deadline)
             end
+    end.
+
+process_control(S, Identities) ->
+    Path = filename:join(os:getenv("IMBOY_GATE_RUN_DIR"), "browser-control.json"),
+    case file:read_file(Path) of
+        {error, enoent} ->
+            ok;
+        {ok, Bytes} ->
+            #{<<"action">> := Action, <<"identity_id">> := Raw} = jsone:decode(Bytes),
+            Id = binary_to_integer(Raw),
+            true = lists:member(Id, Identities),
+            {Fun, Enabled} =
+                case Action of
+                    <<"suspend">> -> {fun cs_seat_app:suspend_seat/2, false};
+                    <<"resume">> -> {fun cs_seat_app:resume_seat/2, true}
+                end,
+            {ok, Seat} = Fun(maps:get(org_id, S), #{
+                workspace_id => maps:get(workspace_id, S),
+                business_identity_id => Id,
+                actor_user_id => maps:get(owner_user_id, S),
+                at => os:system_time(second)
+            }),
+            Enabled = maps:get(enabled, Seat),
+            ok = file:delete(Path),
+            save("browser-control-done.json", #{
+                action => Action, identity_id => Raw, enabled => Enabled
+            })
     end.
 
 save_proof(Org) ->
@@ -106,7 +138,9 @@ save_proof(Org) ->
             <<"session.claimed">>,
             <<"session.transferred">>,
             <<"session.closed">>,
-            <<"session.rated">>
+            <<"session.rated">>,
+            <<"seat.suspended">>,
+            <<"seat.resumed">>
         ]
     ],
     save("browser-db-proof.json", #{sessions => Sessions, messages => Messages, events => Events}).

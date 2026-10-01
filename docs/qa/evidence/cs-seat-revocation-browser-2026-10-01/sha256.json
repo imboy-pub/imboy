@@ -1,0 +1,16 @@
+{
+  "browser-control-done.json": "68c3c21f5ee9fa14696cc3bd5c10db5d94fa8223b7e247d60018bca2ddb4cd82",
+  "browser-db-proof.json": "1f2872cc769874057846670452de841d67553bbd91199b6914f61aabe2897c48",
+  "browser-responses.json": "c4c172a54e885bb9f12bfd94294cb0f8380f8982d5eb0b21ee900ff06cf45d37",
+  "browser-result.json": "2cb85e59f1cb44173aa067baba6c2f520450c018efae679d7777abd1fdd05a33",
+  "browser.log": "fbb1e216b62cc3fb74c3d5b3d01082ed7fa9e9e37c2c754badb6ee1ea7040c0b",
+  "compile.log": "d5cd2d48d00eda22ef76abdb413a53f509f0b5a2c515c65801e151d3bd8a4363",
+  "http.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "image-id.txt": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0",
+  "run.json": "19045047caad701c3745d892efdb6b46eb68abc1b81f07656b6327032528c7b5",
+  "seat-reconnected.png": "c18b3a45d1a7bd3b0fe5650ee57f8d150e6a8fd6530d1ebb87b90392cb3114e6",
+  "seat-revoked.png": "af75e03293f677a363a884a9a49ad3f33f49769d768e9671b33f3c195278d6ef",
+  "seat-workbench.png": "ffdaf9e698a74b5e5091d0f79cb6ec827720ab44a88e6bb55293ec6fedaaeafa",
+  "visitor-chat.png": "a3faeaa5c46437627ba87dee4d34a39a3faf798cb14a6b8206166affa973f2ae",
+  "visitor-rated.png": "1985943da2d7d4def44f784fe70b07078b1bf48e96a90d22e120b2082341e6f0"
+}

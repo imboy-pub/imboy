@@ -1,0 +1,58 @@
+{
+  "status": "PASS",
+  "oracle": "built Widget + real HTTP + isolated PG; seat controls use actual built workbench pages after real QR confirm with synthetic mobile credentials",
+  "responses": [
+    {
+      "path": "/api/v1/cs/organizations/115673511347095555/sessions/queue",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "path": "/api/v1/passport/qr_login/scan",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "path": "/api/v1/passport/qr_login/confirm",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "path": "/api/v1/passport/qr_login/scan",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "path": "/api/v1/passport/qr_login/confirm",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "action": "concurrent-browser-claim",
+      "statuses": [
+        409,
+        200
+      ]
+    },
+    {
+      "action": "automatic-seat-reconnect",
+      "disconnects": 1,
+      "newEventRequests": 2
+    },
+    {
+      "action": "seat-revoked",
+      "oldBrowserWriteStatus": 403,
+      "composerEnabled": false
+    },
+    {
+      "path": "/api/v1/passport/qr_login/scan",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "path": "/api/v1/passport/qr_login/confirm",
+      "status": 200,
+      "code": 0
+    }
+  ]
+}
