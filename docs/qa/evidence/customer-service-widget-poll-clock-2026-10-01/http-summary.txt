@@ -1,0 +1,11 @@
+70353664, 995011, 2026-10-01 05:18:19.174817+00, null, 0, 0, t, f, f, 1).">>},
+                      {file,<<"execMain.c">>},
+                      {line,<<"2072">>},
+                      {routine,<<"ExecConstraints">>},
+                      {schema_name,<<"public">>},
+                      {severity,<<"ERROR">>},
+                      {table_name,<<"channel_subscription">>}]}}}}}]
+[51.882 s] ok
+  [done in 51.885 s]
+=======================================================
+  All 8 tests passed.

@@ -642,7 +642,8 @@ stream_loop(Req, OrgId, Params, #{deadline := Deadline} = Ctx) ->
             stream_step(Req, OrgId, Params, Ctx)
     end.
 
-stream_step(Req, OrgId, Params, Ctx) ->
+stream_step(Req, OrgId, Params0, Ctx) ->
+    Params = Params0#{at => cs_http:now_sec()},
     #{cursor := Cursor} = Ctx,
     case poll_messages(OrgId, Params, Cursor) of
         {ok, Messages} when is_list(Messages) ->

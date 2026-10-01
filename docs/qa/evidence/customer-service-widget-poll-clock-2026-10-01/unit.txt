@@ -1,0 +1,55 @@
+======================== EUnit ========================
+module 'cs_widget_handler_tests'
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-109- (A01 bootstrap issues token once (200; TSID string; origin normalized))...[0.064 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-94- (CSD-BE-01R bootstrap body organization_id is server-derived (400, contract code))...[0.002 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-90- (A01 bootstrap origin header is scheme/host/port normalized)...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-85- (A01 bootstrap without Origin header is a structured 400)...[0.002 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-79- (A01 bootstrap with malformed Origin is 400 invalid_origin)...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-75- (A01 bootstrap origin outside installation allowlist is 403 (no ACAO))...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-69- (A01 client-declared server-derived keys are rejected with 400)...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-65- (A01 widget session create without token header is 401 and never reaches use case)...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-60- (A01 credential in query string is a 400 (token travels in header only))...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-56- (A01 client body secret is a 400 (server-derived credential))...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-52- (A01 forged visit token is 401 visit_token_invalid (contract))...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-47- (CSD-BE-01S session create zero-org body (OrgId placeholder 0 to facade))...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-37- (CSD-BE-01S declared organization_id on sessions is 400 (contract code))...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-33- (A01 missing installation_id is a structured 422)...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-29- (A01 wrong method is 405)...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-26- (A01 visitor message: client_msg_id required (422) and TSID string outbound)...[0.003 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-15- (A01 visitor history honors after_id cursor (compensation semantics))...[0.001 s] ok
+  cs_widget_handler_tests: -a01_token_and_origin_tests/1-fun-7- (A01 identity exchange passes the assertion map through)...[0.001 s] ok
+  cs_widget_handler_tests: -a06_capability_and_matrix_tests/1-fun-22- (A06 identity exchange defaults to capability_disabled (403, explicit tag))...[0.003 s] ok
+  cs_widget_handler_tests: -a06_capability_and_matrix_tests/1-fun-18- (A06 identity exchange enabled path still routes the assertion chain)...[0.070 s] ok
+  cs_widget_handler_tests: -a06_capability_and_matrix_tests/1-fun-10- (A06 admin cookie is not a widget credential (401))...[0.001 s] ok
+  cs_widget_handler_tests: -a06_capability_and_matrix_tests/1-fun-5- (A06 widget visit token is not a seat credential (401))...[0.002 s] ok
+  cs_widget_handler_tests: -a06_capability_and_matrix_tests/1-fun-2- (A06 widget visit token is not a platform admin credential (401))...[0.001 s] ok
+  cs_widget_handler_tests: -asset_content_tests/1-fun-25- (BE-S01b content proxy streams asset bytes with mime content-type)...[0.001 s] ok
+  cs_widget_handler_tests: -asset_content_tests/1-fun-12- (BE-S01b content proxy without token is 401 before the use case)...[0.001 s] ok
+  cs_widget_handler_tests: -asset_content_tests/1-fun-8- (BE-S01b content proxy cross-session asset is structured 404 JSON (not bytes))...[0.001 s] ok
+  cs_widget_handler_tests: -asset_content_tests/1-fun-3- (BE-S01b content proxy with credential in query string is 400)...[0.001 s] ok
+  cs_widget_handler_tests: -asset_upload_tests/1-fun-18- (BE-S01 presign without visit-token header is 401 and never reaches facade)...[0.001 s] ok
+  cs_widget_handler_tests: -asset_upload_tests/1-fun-13- (BE-S01 presign credential in query string is 400 (token travels in header only))...[0.001 s] ok
+  cs_widget_handler_tests: -asset_upload_tests/1-fun-9- (BE-S01 presign invalid visit token is 401 visit_token_invalid (facade ruling maps to credential face))...[0.001 s] ok
+  cs_widget_handler_tests: -asset_upload_tests/1-fun-4- (BE-S01 confirm without visit-token header is 401 and never reaches facade)...[0.002 s] ok
+  cs_widget_handler_tests: sse_poll_clock (SSE expiry uses the current poll clock instead of the opening clock)...[0.081 s] ok
+  cs_widget_handler_tests: -a02_sse_tests/1-fun-73- (A02 SSE opens with retry line and current state resource-id event)...[0.312 s] ok
+  cs_widget_handler_tests: -a02_sse_tests/1-fun-59- (A02 Last-Event-ID resumes from the message cursor without replay)...[0.321 s] ok
+  cs_widget_handler_tests: -a02_sse_tests/1-fun-48- (DF-5 SSE polling read carries session_id so message frames survive)...[0.312 s] ok
+  cs_widget_handler_tests: -a02_sse_tests/1-fun-41- (DF-10 poll hitting terminal revocation closes the stream instead of silent keep-open)...[0.033 s] ok
+  cs_widget_handler_tests: -a02_sse_tests/1-fun-35- (A02 idle stream emits keep-alive comment lines)...[0.315 s] ok
+  cs_widget_handler_tests: -a02_sse_tests/1-fun-30- (A02 session status change produces a follow-up state event)...[0.318 s] ok
+  cs_widget_handler_tests: -a02_sse_tests/1-fun-23- (CSD-BE-01S agent message delivered as an SSE message frame mid-stream)...[0.305 s] ok
+  cs_widget_handler_tests: -a02_sse_tests/1-fun-14- (A02 SSE without token is a structured 401 before the stream opens)...[0.005 s] ok
+  cs_widget_handler_tests: -a02_sse_tests/1-fun-10- (A02 SSE for a session outside the token scope is 404 (never streams))...[0.003 s] ok
+  cs_widget_handler_tests: -a02_sse_tests/1-fun-6- (A02 SSE frames are exact text/event-stream syntax (unit))...ok
+  cs_widget_handler_tests: -a03_cors_tests/1-fun-12- (A03 success echoes the normalized specific origin (never wildcard))...[0.002 s] ok
+  cs_widget_handler_tests: -a03_cors_tests/1-fun-5- (A03 rejected request gains no ACAO from the handler (credentials untouched))...[0.001 s] ok
+  cs_widget_handler_tests: -a04_throttle_tests/1-fun-3- (A04 third widget request inside the window is throttled with 429)...13:18:04.821 [warning] [rate_limited,
+ #{scope => cs_widget_per_ip,path => <<"/api/v1/cs/widget/bootstrap">>,
+   key => <<"127.0.0.1">>,key_type => ip}]
+[0.021 s] ok
+  cs_widget_handler_tests: -a05_contract_and_seat_tests/1-fun-13- (A05 seat session detail via GET /api/v1/cs/sessions/:id (200; TSID string))...[0.001 s] ok
+  cs_widget_handler_tests: -a05_contract_and_seat_tests/1-fun-2- (A05 seat session detail without seat JWT is 401)...[0.001 s] ok
+  [done in 3.071 s]
+=======================================================
+  All 47 tests passed.

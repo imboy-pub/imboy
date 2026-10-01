@@ -803,6 +803,8 @@ events_path() ->
 
 a02_sse_tests(_) ->
     [
+        {"SSE expiry uses the current poll clock instead of the opening clock",
+            fun sse_poll_clock/0},
         {"A02 SSE opens with retry line and current state resource-id event", fun() ->
             meck:expect(customer_service_facade, widget_list_sessions, fun(Org, Params) ->
                 %% CSD-BE-01S：零 org 申报面——OrgId 占位 0（facade 侧派生）。
@@ -1264,3 +1266,40 @@ a05_contract_and_seat_tests(_) ->
 
 to_bin(Bin) when is_binary(Bin) -> Bin;
 to_bin(List) when is_list(List) -> unicode:characters_to_binary(List).
+
+%% Controlled clock/facade, real Cowboy stream: the first poll crosses expiry.
+sse_poll_clock() ->
+    Clock = counters:new(3, []),
+    meck:new(cs_http, [passthrough]),
+    meck:expect(cs_http, now_sec, fun() ->
+        counters:add(Clock, 1, 1),
+        100 + counters:get(Clock, 1)
+    end),
+    meck:expect(customer_service_facade, widget_list_sessions, fun(_, P) ->
+        counters:put(Clock, 2, maps:get(at, P)),
+        {ok, [#{id => ?SESSION, status => claimed}]}
+    end),
+    meck:expect(customer_service_facade, widget_history_after, fun(_, P) ->
+        counters:put(Clock, 3, maps:get(at, P)),
+        case maps:get(at, P) > counters:get(Clock, 2) of
+            true -> {error, token_expired};
+            false -> {ok, [#{id => 77, body => <<"expired-message">>, kind => text}]}
+        end
+    end),
+    try
+        ?S:with_listener(widget, widget_session_events, sse_inject(), fun(Port) ->
+            Raw = ?S:stream_request(
+                Port,
+                <<"GET">>,
+                events_path(),
+                <<>>,
+                #{<<"x-cs-visit-token">> => ?TOKEN},
+                400
+            ),
+            ?assert(string:find(Raw, <<"event: state">>) =/= nomatch),
+            ?assert(counters:get(Clock, 3) > counters:get(Clock, 2)),
+            ?assert(string:find(Raw, <<"expired-message">>) =:= nomatch)
+        end)
+    after
+        meck:unload(cs_http)
+    end.
