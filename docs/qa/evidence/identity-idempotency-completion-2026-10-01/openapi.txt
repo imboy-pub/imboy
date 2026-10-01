@@ -1,0 +1,5 @@
+validating api/openapi-internal.yaml using lint rules for api 'imboy-internal@v1'...
+api/openapi-internal.yaml: validated in 34ms
+
+Woohoo! Your API description is valid. 🎉
+

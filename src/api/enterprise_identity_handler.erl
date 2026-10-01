@@ -105,7 +105,7 @@ bind_tx(Req0, Ctx, IdemKey, Digest, Params) ->
                     of
                         {ok, Result} ->
                             Body = jsone:encode(Result),
-                            _ = enterprise_internal_idempotency:complete_tx(
+                            ok = enterprise_internal_idempotency:must_complete_tx(
                                 Conn,
                                 Ctx,
                                 <<"identity_mapping">>,
@@ -202,7 +202,7 @@ revoke_tx(Req0, Ctx, IdemKey, Digest, Params) ->
                     of
                         {ok, Result} ->
                             Body = jsone:encode(Result),
-                            _ = enterprise_internal_idempotency:complete_tx(
+                            ok = enterprise_internal_idempotency:must_complete_tx(
                                 Conn,
                                 Ctx,
                                 <<"identity_mapping_revoke">>,

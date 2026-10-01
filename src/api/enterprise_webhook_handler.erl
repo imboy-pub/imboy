@@ -84,7 +84,7 @@ configure_tx(Req0, Ctx0, IdemKey, Digest, Params) ->
                     of
                         {ok, Result} ->
                             Body = jsone:encode(Result),
-                            _ = enterprise_internal_idempotency:complete_tx(
+                            ok = enterprise_internal_idempotency:must_complete_tx(
                                 Conn,
                                 Ctx0,
                                 <<"enterprise_webhook_config">>,
@@ -151,7 +151,7 @@ replay_tx(Req0, Ctx0, DeliveryId, IdemKey, Digest) ->
                     case enterprise_webhook_logic:replay_tx(Conn, Ctx0, to_bin(DeliveryId)) of
                         {ok, Result} ->
                             Body = jsone:encode(Result),
-                            _ = enterprise_internal_idempotency:complete_tx(
+                            ok = enterprise_internal_idempotency:must_complete_tx(
                                 Conn,
                                 Ctx0,
                                 <<"enterprise_webhook_replay">>,
@@ -221,7 +221,7 @@ test_delivery_tx(Req0, Ctx0, IdemKey, Digest) ->
                     case enterprise_webhook_logic:emit_ping_tx(Conn, Ctx) of
                         {ok, Result} ->
                             Body = jsone:encode(Result),
-                            _ = enterprise_internal_idempotency:complete_tx(
+                            ok = enterprise_internal_idempotency:must_complete_tx(
                                 Conn,
                                 Ctx0,
                                 <<"enterprise_webhook_ping">>,

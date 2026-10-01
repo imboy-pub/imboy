@@ -46,7 +46,8 @@ files += ['test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wir
           'test/common/inttest_marker_db.erl', 'test/ds/workspace_creation_pg_tests.erl',
           'test/api/enterprise_workspace_write_http_checks.erl',
           'test/ds/channel_creation_tx_pg_checks.erl',
-          'test/api/enterprise_channel_write_http_checks.erl']
+          'test/api/enterprise_channel_write_http_checks.erl',
+          'test/api/enterprise_identity_contract_http_checks.erl']
 cmd = ['erlc', '+debug_info', '+nowarn_unused_function', '+{parse_transform,lager_transform}',
        '-o', str(out / 'beams'), '-I', 'include', '-I', 'src']
 for path in paths:
@@ -67,6 +68,8 @@ with (out / 'http.log').open('w') as log:
 report = (out / 'http.log').read_text()
 if '[EPGZ04] emit_event_failed crash' in report:
     raise SystemExit('failed-event emission crashed; inspect ' + str(out / 'http.log'))
+subprocess.run(['python3', 'scripts/test/check_identity_http_contract.py',
+                str(out / 'identity-responses.json')], check=True)
 print(report)
 PY
 printf 'Evidence: %s\n' "$RUN_DIR"

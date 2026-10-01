@@ -230,7 +230,7 @@ run_logic(Conn, Ctx0, Ctx, ResourceType, IdemKey, MsgTable, LogicFun) ->
         {ok, #{<<"msg_id">> := MsgId} = Result} ->
             RowId = fetch_row_id(Conn, MsgTable, MsgId),
             Body = jsone:encode(Result),
-            _ = enterprise_internal_idempotency:complete_tx(
+            ok = enterprise_internal_idempotency:must_complete_tx(
                 Conn, Ctx0, ResourceType, IdemKey, RowId, 200, Body
             ),
             {tx_ok, Result, Body};

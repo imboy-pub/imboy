@@ -1,0 +1,31 @@
+======================== EUnit ========================
+module 'enterprise_internal_wiring_http_tests'
+  enterprise_internal_wiring_http_tests: route_table...[0.008 s] ok
+  enterprise_internal_wiring_http_tests: manifest_v21_entries...ok
+  enterprise_internal_wiring_http_tests: http_wiring...[0.070 s] ok
+  enterprise_internal_wiring_http_tests: boundary_parity...ok
+  enterprise_internal_wiring_http_tests: dispatch_compiles...[0.002 s] ok
+  enterprise_internal_wiring_http_tests: normalize_code...ok
+  enterprise_internal_wiring_http_tests: -conformance_test_/0-fun-0-...*failed*
+in function enterprise_identity_contract_http_checks:completion_failure/2 (test/api/enterprise_identity_contract_http_checks.erl, line 62)
+in call from enterprise_identity_contract_http_checks:run/1 (test/api/enterprise_identity_contract_http_checks.erl, line 9)
+in call from enterprise_internal_wiring_http_tests:run_conformance/1 (test/api/enterprise_internal_wiring_http_tests.erl, line 390)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+**error:{assertEqual,[{module,enterprise_identity_contract_http_checks},
+              {line,62},
+              {comment,<<"{\"external_user_id\":\"intbe02-ext-h4\",\"status\":\"a"...>>},
+              {expression,"maps : get ( status , R )"},
+              {expected,500},
+              {value,200}]}
+  output:<<"">>
+
+  [done in 7.485 s]
+module 'workspace_creation_pg_tests'
+  workspace_creation_pg_tests: -creation_test_/0-fun-0-...[3.216 s] ok
+  [done in 3.219 s]
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 7.

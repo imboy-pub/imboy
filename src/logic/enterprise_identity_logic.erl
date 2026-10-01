@@ -172,7 +172,7 @@ validate_external_id(_) ->
     {error, invalid_external_id}.
 
 -spec validate_user_id(integer()) -> ok | {error, term()}.
-validate_user_id(U) when is_integer(U), U > 0 ->
+validate_user_id(U) when is_integer(U), U > 0, U =< 9223372036854775807 ->
     ok;
 validate_user_id(_) ->
     {error, invalid_user_id}.

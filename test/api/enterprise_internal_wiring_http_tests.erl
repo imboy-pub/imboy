@@ -387,6 +387,7 @@ run_conformance(S) ->
     negative_matrix(S),
     seat_concurrent_update(S),
     seat_negative_matrix(S),
+    enterprise_identity_contract_http_checks:run(S),
     enterprise_channel_write_http_checks:run(S),
     enterprise_workspace_write_http_checks:run(S),
     assert_coverage(),

@@ -36,6 +36,7 @@
     request_digest/3,
     begin_tx/5,
     complete_tx/7,
+    must_complete_tx/7,
     required/1,
     ttl_seconds/0,
     conflict_code/0,
@@ -127,6 +128,16 @@ complete_tx(Conn, Ctx, ResourceType, Key, ResourceId, ResponseCode, ResponseBody
     enterprise_internal_idempotency_repo:claim_tx(
         Conn, OrgId, AppId, Key, ResourceId, ResponseCode, ResponseBody
     ).
+
+%% Mandatory completion for HTTP callers: never acknowledge a missing replay snapshot.
+-spec must_complete_tx(
+    any(), map(), binary(), binary(), integer() | null, integer(), binary() | null
+) -> ok.
+must_complete_tx(Conn, Ctx, Type, Key, Id, Status, Body) ->
+    case complete_tx(Conn, Ctx, Type, Key, Id, Status, Body) of
+        ok -> ok;
+        _ -> throw({rollback, {business_error, <<"internal_error">>}})
+    end.
 
 %% @doc 路由是否要求 Idempotency-Key（required 才要求；INT-14 豁免）。
 -spec required(map()) -> boolean().

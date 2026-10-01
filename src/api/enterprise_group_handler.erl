@@ -377,7 +377,7 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun) ->
                             %% §11 Completion：response 快照（status+完整 JSON 体）
                             %% 与业务写/audit 同一事务提交。
                             Body = jsone:encode(Result),
-                            _ = enterprise_internal_idempotency:complete_tx(
+                            ok = enterprise_internal_idempotency:must_complete_tx(
                                 Conn,
                                 Ctx,
                                 ResourceType,

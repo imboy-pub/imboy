@@ -1,0 +1,91 @@
+{
+  "base_sha": "448b9551af6f1fc4f27d6ef8a0017e83697b48b1",
+  "sources": [
+    {
+      "path": "api/openapi-internal.bundle.yaml",
+      "sha256": "d200d0ddaaa3b03b43ee0b2203db2f2f663c88074a7bb527e23d8cf7df0e2b0c"
+    },
+    {
+      "path": "api/paths/internal/v1/identity/mappings.yaml",
+      "sha256": "52fa9a1c9227628eada2b826e844ff27aa90c842ecb2c7492c859cc46dd6817e"
+    },
+    {
+      "path": "scripts/test/check_identity_http_contract.py",
+      "sha256": "f510a5d16f83878eccf523ecf06be0fd981bbdce0002b52a0dec2e31089e5dbd"
+    },
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "71a9db5a42b989ff7fddf15579bef2cd92fe414b3bac56f40fd46dbc66e1204c"
+    },
+    {
+      "path": "src/api/enterprise_asset_handler.erl",
+      "sha256": "757ee89929180c65d69038508d37f812e9f4604fff255d287dc7ceade2a7afdd"
+    },
+    {
+      "path": "src/api/enterprise_friend_request_handler.erl",
+      "sha256": "50ad0c5cc6de7f857d6aef03aa244f41e6082d1784f180b0f1c5a1d3bb27bf19"
+    },
+    {
+      "path": "src/api/enterprise_group_handler.erl",
+      "sha256": "86ef35102e09d7840d637e9ed57a743bce7234c1501d0d6f47f262c475f1857b"
+    },
+    {
+      "path": "src/api/enterprise_identity_handler.erl",
+      "sha256": "c63fd1a3fd9b6fd6a5cf2f84cd996438f20e5f94f5c1e3b2d8bb5b0583d3a3c7"
+    },
+    {
+      "path": "src/api/enterprise_internal_idempotency.erl",
+      "sha256": "5bcf45ea9533e2a139ea60ee95595a6e2d22eb06b7182f16765875b62a709b92"
+    },
+    {
+      "path": "src/api/enterprise_message_handler.erl",
+      "sha256": "aaab592ae278d74db81c05ddec9a3fd31680f1768289743cacd3b7444342cd79"
+    },
+    {
+      "path": "src/api/enterprise_webhook_handler.erl",
+      "sha256": "8bad237ed9f1dd07cbdb69db90914eaae4f8124183e721ec873ba5d7dbf5d1a9"
+    },
+    {
+      "path": "src/logic/enterprise_identity_logic.erl",
+      "sha256": "26cb0d894c42a06693ab1f6e2202e2fbb13144b9eaffddce7b075913b93f5213"
+    },
+    {
+      "path": "test/api/enterprise_identity_contract_http_checks.erl",
+      "sha256": "14a3f5c6349ae4432f80f82a50d6da1cbb6afa7c4e79f626fbd568b678279b74"
+    },
+    {
+      "path": "test/api/enterprise_internal_wiring_http_tests.erl",
+      "sha256": "2f99044f23caf9f28b4972ecb756ed09e3b45ad3d6c8b3210ae4da77f4a9be91"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "baseline-failure.txt",
+      "sha256": "9457818abbbe985c75170c3fe3540f5969247bf159e4b1508a692255537379bc"
+    },
+    {
+      "path": "contracts.txt",
+      "sha256": "4bce3ec4260383aeb61086f6d7459d522cbcd51411a7f7c5191b8b70d972f408"
+    },
+    {
+      "path": "gate.txt",
+      "sha256": "0b0fe2133d39ee4057dfeca8a43b98b27293d8708772f3f7b7e1dac65c929181"
+    },
+    {
+      "path": "http.txt",
+      "sha256": "cc2858271ebf4b1b9aa2309dd942ed94fd97131efb6a8d7bb1517109561659e3"
+    },
+    {
+      "path": "identity-responses.json",
+      "sha256": "b418a13402742cde66ea3820d48852ea449541299f6715098364937b2f25a99f"
+    },
+    {
+      "path": "image-id.txt",
+      "sha256": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+    },
+    {
+      "path": "openapi.txt",
+      "sha256": "a6a922954eaeacf6d3e6ab00d917b8a2ba168cd5e41cae80fe9a88d7e77c851b"
+    }
+  ]
+}

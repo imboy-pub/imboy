@@ -150,7 +150,7 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun) ->
                     case LogicFun(Conn) of
                         {ok, Result} ->
                             Body = jsone:encode(Result),
-                            _ = enterprise_internal_idempotency:complete_tx(
+                            ok = enterprise_internal_idempotency:must_complete_tx(
                                 Conn,
                                 Ctx,
                                 ResourceType,

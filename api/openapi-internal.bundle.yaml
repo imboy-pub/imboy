@@ -347,10 +347,8 @@ paths:
       tags:
       - internal
       summary: 绑定外部身份（OA 用户 → 平台用户）
-      description: |
-        把 OA 侧用户标识绑定到本组织平台用户（TSID）。字段实证自
-        `enterprise_identity_handler:bind/3` + `enterprise_identity_logic:mapping_view/1`。
-        幂等重放返回 `{replayed: true, user_id, status}` 形态。
+      description: '绑定本组织有效 Human 成员的外部标识。首次执行返回 external_user_id、user_id、status=active；幂等重放保留首次响应原字节，用 Idempotent-Replayed:
+        true 响应头标识，不添加 replayed 正文字段。重放是历史提交快照；查询当前映射应调用 resolve。'
       operationId: internalIdentityBind
       security:
       - ibIntBearer: []
@@ -362,6 +360,7 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
       x-imboy-scope: identities:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -382,38 +381,39 @@ paths:
                   type: integer
                   format: int64
                   description: 平台用户 TSID（须为本组织成员）
+                  minimum: 1
+                  maximum: 9223372036854775807
       responses:
         '200':
           description: 绑定结果
           content:
             application/json:
               schema:
-                oneOf:
-                - type: object
-                  description: 首次绑定 / 幂等重放命中
-                  properties:
-                    replayed:
-                      type: boolean
-                    external_user_id:
-                      type: string
-                    user_id:
-                      type: integer
-                      format: int64
-                    status:
-                      type: string
-                      description: 映射状态（如 active）
-                - type: object
-                  description: 幂等重放（带 user_id 资源定位）
-                  properties:
-                    replayed:
-                      type: boolean
-                      enum:
-                      - true
-                    user_id:
-                      type: integer
-                      format: int64
-                    status:
-                      type: string
+                type: object
+                additionalProperties: false
+                required:
+                - external_user_id
+                - user_id
+                - status
+                properties:
+                  external_user_id:
+                    type: string
+                  user_id:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+                  status:
+                    type: string
+                    enum:
+                    - active
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次提交的响应快照时为 true。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -755,6 +755,7 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
       x-imboy-scope: identities:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -788,6 +789,18 @@ paths:
                     type: boolean
                     enum:
                     - true
+                required:
+                - external_user_id
+                - status
+                - revoked
+                additionalProperties: false
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次提交的响应快照时为 true。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:

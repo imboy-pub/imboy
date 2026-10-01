@@ -79,7 +79,7 @@ create_tx(Req0, Ctx, IdemKey, Digest, Params) ->
                     of
                         {ok, Result} ->
                             Body = jsone:encode(Result),
-                            _ = enterprise_internal_idempotency:complete_tx(
+                            ok = enterprise_internal_idempotency:must_complete_tx(
                                 Conn, Ctx, <<"friend_request">>, IdemKey, null, 200, Body
                             ),
                             {tx_ok, Result, Body};
