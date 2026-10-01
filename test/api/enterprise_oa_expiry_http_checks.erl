@@ -20,7 +20,10 @@ run(S) ->
     ?assertEqual(Before, audit_count(C)),
     concurrent_once(S),
     audit_failure_retry(S),
-    identity_revocation(S).
+    identity_revocation(S),
+    authority_revocation(S),
+    credential_deadline(S),
+    authority_deadline(S).
 
 issue(S) ->
     Redirect = <<"https://oa.customer.example.com/sso/cb">>,
@@ -94,12 +97,14 @@ identity_revocation(S) ->
         {"account", <<"\"user\"">>, <<"status">>, 0, 1,
             <<"id=(SELECT user_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>}
     ],
-    lists:foreach(fun(Fact) -> revoke_during_exchange(S, Fact) end, Facts).
+    lists:foreach(
+        fun(Fact) -> revoke_during_exchange(S, Fact, 422, <<"identity_not_mapped">>) end, Facts
+    ).
 
-revoke_during_exchange(S, {Name, Table, Column, Revoked, Active, Where}) ->
+revoke_during_exchange(S, {Name, Table, Column, Revoked, Active, Where}, Status, Code) ->
     C = maps:get(conn, S),
     {Digest, Body} = issue(S),
-    Sql = <<"UPDATE ", Table/binary, " SET ", Column/binary, "=$2 WHERE ", Where/binary>>,
+    Sql = fact_update_sql(Table, Column, Where),
     Before = audit_count(C),
     ok = intbe02_http_support:sql_exec(C, <<"BEGIN">>),
     try
@@ -109,10 +114,14 @@ revoke_during_exchange(S, {Name, Table, Column, Revoked, Active, Where}) ->
         spawn(fun() -> Parent ! {Ref, exchange(S, Body)} end),
         Blocked = wait(
             C,
-            <<"SELECT count(*)>0 AS ready FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid))>0 AND (query LIKE '%enterprise_external_identity eei%' OR query LIKE '%organization_member%')">>,
+            <<"SELECT count(*)>0 AS ready FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid))>0 AND (query LIKE '%enterprise_external_identity eei%' OR query LIKE '%organization_member%' OR query LIKE '%enterprise_application%' OR query LIKE '%organization o%')">>,
             [],
             100
         ),
+        case Name of
+            "application-expired" -> await_deadline(C, Digest, credential);
+            _ -> ok
+        end,
         ok = intbe02_http_support:sql_exec(C, <<"COMMIT">>),
         R =
             receive
@@ -120,8 +129,8 @@ revoke_during_exchange(S, {Name, Table, Column, Revoked, Active, Where}) ->
             after 10000 -> error(exchange_timeout)
             end,
         save("oa-revoke-" ++ Name ++ "-response.json", [R]),
-        ?assertEqual(422, maps:get(status, R)),
-        ?assertEqual(<<"identity_not_mapped">>, error_code(R)),
+        ?assertEqual(Status, maps:get(status, R)),
+        ?assertEqual(Code, error_code(R)),
         ?assert(Blocked),
         {ok, [Row]} = enterprise_query(C, Digest),
         ?assertEqual(null, maps:get(<<"consumed_at">>, Row)),
@@ -129,6 +138,90 @@ revoke_during_exchange(S, {Name, Table, Column, Revoked, Active, Where}) ->
     after
         intbe02_http_support:sql_exec(C, <<"ROLLBACK">>),
         {ok, 1} = elib_pg:execute(C, Sql, [Digest, Active])
+    end.
+
+authority_revocation(S) ->
+    AppWhere = <<"id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>,
+    OrgWhere = <<"id=(SELECT organization_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>,
+    CredWhere =
+        <<"application_id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>,
+    Facts = [
+        {
+            {"application", <<"enterprise_application">>, <<"status">>, <<"disabled">>,
+                <<"active">>, AppWhere},
+            403,
+            <<"application_disabled">>
+        },
+        {
+            {"organization", <<"organization">>, <<"status">>, <<"archived">>, <<"active">>,
+                OrgWhere},
+            403,
+            <<"organization_disabled">>
+        },
+        {
+            {"credential", <<"enterprise_application_credential">>, <<"status">>, <<"revoked">>,
+                <<"active">>, CredWhere},
+            401,
+            <<"invalid_credential">>
+        }
+    ],
+    lists:foreach(
+        fun({Fact, Status, Code}) -> revoke_during_exchange(S, Fact, Status, Code) end, Facts
+    ).
+
+fact_update_sql(<<"enterprise_application_credential">> = Table, Column, Where) ->
+    <<"UPDATE ", Table/binary, " SET ", Column/binary,
+        "=$2, revoked_at=CASE WHEN $2='revoked' THEN clock_timestamp() ELSE NULL END WHERE ",
+        Where/binary>>;
+fact_update_sql(Table, Column, Where) ->
+    <<"UPDATE ", Table/binary, " SET ", Column/binary, "=$2 WHERE ", Where/binary>>.
+
+credential_deadline(S) ->
+    C = maps:get(conn, S),
+    {Digest, Body} = issue(S),
+    AppId = maps:get(app_sso, S),
+    {ok, 1} = elib_pg:execute(
+        C,
+        <<"UPDATE enterprise_application_credential SET expires_at=clock_timestamp()+interval '3 seconds' WHERE application_id=$1">>,
+        [AppId]
+    ),
+    Before = audit_count(C),
+    try
+        [R] = hold_exchange(S, Digest, Body, 1, credential),
+        save("oa-credential-deadline-response.json", [R]),
+        ?assertEqual(401, maps:get(status, R)),
+        ?assertEqual(<<"credential_expired">>, error_code(R)),
+        {ok, [Row]} = enterprise_query(C, Digest),
+        ?assertEqual(null, maps:get(<<"consumed_at">>, Row)),
+        ?assertEqual(Before, audit_count(C))
+    after
+        {ok, 1} = elib_pg:execute(
+            C,
+            <<"UPDATE enterprise_application_credential SET expires_at=NULL WHERE application_id=$1">>,
+            [AppId]
+        )
+    end.
+
+authority_deadline(S) ->
+    C = maps:get(conn, S),
+    AppId = maps:get(app_sso, S),
+    {ok, 1} = elib_pg:execute(
+        C,
+        <<"UPDATE enterprise_application_credential SET expires_at=clock_timestamp()+interval '3 seconds' WHERE application_id=$1">>,
+        [AppId]
+    ),
+    try
+        Fact =
+            {"application-expired", <<"enterprise_application">>, <<"status">>, <<"disabled">>,
+                <<"active">>,
+                <<"id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>},
+        revoke_during_exchange(S, Fact, 401, <<"credential_expired">>)
+    after
+        {ok, 1} = elib_pg:execute(
+            C,
+            <<"UPDATE enterprise_application_credential SET expires_at=NULL WHERE application_id=$1">>,
+            [AppId]
+        )
     end.
 
 hold_exchange(S, Digest, Body, Count, Expire) ->
@@ -144,19 +237,7 @@ hold_exchange(S, Digest, Body, Count, Expire) ->
             fun(_) -> spawn(fun() -> Parent ! {Ref, exchange(S, Body)} end) end, lists:seq(1, Count)
         ),
         await_waiters(C, Count),
-        case Expire of
-            true ->
-                ?assert(
-                    wait(
-                        C,
-                        <<"SELECT expires_at<=clock_timestamp() AS ready FROM enterprise_oa_sso_code WHERE code_digest=$1">>,
-                        [Digest],
-                        100
-                    )
-                );
-            false ->
-                ok
-        end,
+        await_deadline(C, Digest, Expire),
         ok = intbe02_http_support:sql_exec(C, <<"COMMIT">>),
         [
             receive
@@ -168,6 +249,18 @@ hold_exchange(S, Digest, Body, Count, Expire) ->
     after
         intbe02_http_support:sql_exec(C, <<"ROLLBACK">>)
     end.
+
+await_deadline(_C, _Digest, false) ->
+    ok;
+await_deadline(C, Digest, Expire) ->
+    Sql =
+        case Expire of
+            true ->
+                <<"SELECT expires_at<=clock_timestamp() AS ready FROM enterprise_oa_sso_code WHERE code_digest=$1">>;
+            credential ->
+                <<"SELECT expires_at<=clock_timestamp() AS ready FROM enterprise_application_credential WHERE application_id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>
+        end,
+    ?assert(wait(C, Sql, [Digest], 100)).
 
 await_waiters(C, Count) ->
     %% Queued contenders can block on each other, not directly on the holder.

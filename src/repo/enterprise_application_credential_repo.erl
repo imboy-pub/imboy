@@ -22,7 +22,9 @@
     find_active_by_prefix/1,
     find_active_by_prefix_tx/2,
     revoke_tx/3,
-    touch_last_used_tx/2
+    touch_last_used_tx/2,
+    authority_for_share_tx/4,
+    expired_tx/2
 ]).
 
 -include_lib("epgsql/include/epgsql.hrl").
@@ -104,6 +106,34 @@ create_tx1(Conn, OrgId, AppId, CredentialPrefix, Digest, ExpiresAt) ->
             {error, prefix_conflict};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% 已认证上下文的事务内事实；锁序为组织、应用、凭证，锁持有到提交。
+authority_for_share_tx(Conn, OrgId, AppId, CredId) ->
+    Sql = <<
+        "SELECT o.status AS organization_status, a.status AS application_status,"
+        " c.status AS credential_status FROM organization o"
+        " JOIN enterprise_application a ON a.organization_id=o.id"
+        " JOIN enterprise_application_credential c ON c.organization_id=o.id AND c.application_id=a.id"
+        " WHERE o.id=$1 AND a.id=$2 AND c.id=$3 FOR SHARE OF o, a, c"
+    >>,
+    case elib_pg:query(Conn, Sql, [OrgId, AppId, CredId]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% 必须在取得权限行锁后调用，避免等锁前的投影/事务开始时间判断过期。
+expired_tx(Conn, CredId) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT COALESCE(expires_at<=clock_timestamp(), false) AS expired FROM enterprise_application_credential WHERE id=$1">>,
+            [CredId]
+        )
+    of
+        {ok, [#{<<"expired">> := Expired}]} -> {ok, Expired};
+        _ -> {error, expiry_read_failed}
     end.
 
 %% @doc 按 prefix 全局定位凭证行（任意状态；active/expiry 判定在认证层）。
@@ -189,9 +219,12 @@ revoke_tx(Conn, OrgId, Id) ->
 -spec touch_last_used_tx(any(), integer()) -> ok | {error, not_found | term()}.
 touch_last_used_tx(Conn, Id) ->
     Now = elib_dt:now(),
+    %% 使用时间只是尽力记录；权限锁/撤销持锁时跳过，不阻塞认证。
     Sql =
         <<"UPDATE ", (tablename())/binary,
-            " SET last_used_at = $1::timestamptz WHERE id = $2 AND status = 'active'">>,
+            " SET last_used_at = $1::timestamptz WHERE id IN (SELECT id FROM ",
+            (tablename())/binary,
+            " WHERE id = $2 AND status = 'active' FOR NO KEY UPDATE SKIP LOCKED)">>,
     case elib_pg:execute(Conn, Sql, [Now, Id]) of
         {ok, 1} -> ok;
         {ok, 0} -> {error, not_found};

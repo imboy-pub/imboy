@@ -149,7 +149,7 @@ issue_code_tx(_Conn, _Uid, _Params) ->
     {ok, map()} | {error, binary()}.
 exchange(Ctx, Params) ->
     Fun = fun(Conn) ->
-        case exchange_tx(Conn, Ctx, Params) of
+        case exchange_authorized_tx(Conn, Ctx, Params) of
             %% 返回错误值不会自动回滚，包含 REQUIRED_AUDIT 软失败。
             {error, Code} ->
                 ?WARN_LOG([
@@ -165,6 +165,59 @@ exchange(Ctx, Params) ->
             {error, Code};
         Result ->
             Result
+    end.
+
+%% 中间件认证事务已结束，在业务事务内复核并锁定权限事实。
+exchange_authorized_tx(Conn, Ctx, Params) ->
+    case lock_authority_tx(Conn, Ctx) of
+        ok ->
+            case exchange_tx(Conn, Ctx, Params) of
+                {ok, Payload} ->
+                    %% code/identity 等锁可以跨凭证截止时间，成功前再次复核。
+                    case credential_current_tx(Conn, maps:get(credential_id, Ctx)) of
+                        ok -> {ok, Payload};
+                        Error -> Error
+                    end;
+                Error ->
+                    Error
+            end;
+        Error ->
+            Error
+    end.
+
+lock_authority_tx(Conn, #{
+    organization_id := OrgId, application_id := AppId, credential_id := CredId
+}) ->
+    case
+        enterprise_application_credential_repo:authority_for_share_tx(Conn, OrgId, AppId, CredId)
+    of
+        {ok, #{<<"credential_status">> := Status}} when Status =/= <<"active">> ->
+            {error, <<"invalid_credential">>};
+        {ok, Row} ->
+            case credential_current_tx(Conn, CredId) of
+                ok -> authority_status(Row);
+                Error -> Error
+            end;
+        {error, not_found} ->
+            {error, <<"invalid_credential">>};
+        {error, _} ->
+            {error, <<"internal_error">>}
+    end;
+lock_authority_tx(_, _) ->
+    {error, <<"internal_error">>}.
+
+authority_status(#{<<"application_status">> := Status}) when Status =/= <<"active">> ->
+    {error, <<"application_disabled">>};
+authority_status(#{<<"organization_status">> := Status}) when Status =/= <<"active">> ->
+    {error, <<"organization_disabled">>};
+authority_status(_) ->
+    ok.
+
+credential_current_tx(Conn, CredId) ->
+    case enterprise_application_credential_repo:expired_tx(Conn, CredId) of
+        {ok, false} -> ok;
+        {ok, true} -> {error, <<"credential_expired">>};
+        {error, _} -> {error, <<"internal_error">>}
     end.
 
 %% @doc INT-14 事务内交换（测试直连用；任何错误时调用方须回滚）。
