@@ -1,0 +1,53 @@
+<testcase time="1.048" name="cs_message_lifecycle_pg_checks:0 suspended_seat">
+    <error type="error">
+::in function cs_message_lifecycle_pg_checks:'-suspended_seat/0-fun-2-'/1 (test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl, line 33)
+in call from cs_message_lifecycle_pg_checks:with_session/1 (test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl, line 61)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{assertEqual,[{module,cs_message_lifecycle_pg_checks},
+              {line,33},
+              {expression,"send_seat ( S )"},
+              {expected,{error,seat_disabled}},
+              {value,{ok,#{message =&gt;
+                               #{id =&gt; 115634593381746688,version =&gt; 1,
+                                 organization_id =&gt; 115634591257331715,
+                                 workspace_id =&gt; 115634591257331716,
+                                 conversation_id =&gt; 115634591257331723,
+                                 created_at =&gt; 1790828470,key_version =&gt; 1,
+                                 visibility =&gt; visible,
+                                 actor_user_id =&gt; 115634591257331713,
+                                 retention_days =&gt; 1095,
+                                 client_msg_id =&gt;
+                                     &lt;&lt;"synthetic-seat-lifecycle"&gt;&gt;,
+                                 policy_id =&gt; 115634591257331724,
+                                 sender_type =&gt; business_identity,
+                                 sender_business_identity_id =&gt;
+                                     115634591257331720,
+                                 sender_contact_id =&gt; undefined,
+                                 replayed =&gt; false,
+                                 content_hash =&gt;
+                                     &lt;&lt;"13ed336dc9f4465b10285d1a7ef4aad1a00e73f559e8aa434f03f58e51d8734e"&gt;&gt;,
+                                 body_cipher =&gt;
+                                     &lt;&lt;"vwUcaHMkn5q9/kI7KI+YZP9CQURdpijEUA7zIpVD4xWB2ZYQwEXMJS3pBmkujlVtVf1YeOQi3rZHLoqOMNK54k+U"&gt;&gt;,
+                                 aad_hash =&gt;
+                                     &lt;&lt;"cf5542872369facecb7c0ce4368f385c3e318a67050cbf566e9592625a4498c1"&gt;&gt;,
+                                 policy_version =&gt; 1,
+                                 retain_until =&gt; 1794608011,assets =&gt; []},
+                           notification =&gt;
+                               #{organization_id =&gt; 115634591257331715,
+                                 workspace_id =&gt; 115634591257331716,
+                                 resource_type =&gt; &lt;&lt;"enterprise_message"&gt;&gt;,
+                                 conversation_id =&gt; 115634591257331723,
+                                 resource_id =&gt; 115634593381746688},
+                           message_id =&gt; 115634593381746688,accepted =&gt; true,
+                           replayed =&gt; false,audit_id =&gt; 115634593425786880,
+                           publisher =&gt; ok}}}]}
+    </error>
+    <system-out>
+    </system-out>
+  </testcase>
+  

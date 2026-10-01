@@ -1,7 +1,13 @@
 %%% Real canonical transactions; synthetic row holders control interleavings only.
 -module(cs_message_lifecycle_pg_checks).
 -include_lib("eunit/include/eunit.hrl").
--export([closed_visitor/0, close_during_send/0, claim_during_send/0]).
+-export([
+    closed_visitor/0,
+    close_during_send/0,
+    claim_during_send/0,
+    suspended_seat/0,
+    suspension_during_send/0
+]).
 -define(FIX, cs_pg_test_fixture).
 
 closed_visitor() ->
@@ -21,6 +27,93 @@ closed_visitor() ->
 
 close_during_send() -> race(<<"closed">>, {error, session_already_closed}).
 claim_during_send() -> race(<<"active">>, {error, conflict}).
+
+suspended_seat() ->
+    with_session(fun(S) ->
+        Org = maps:get(org_id, S),
+        Params = #{
+            workspace_id => maps:get(workspace_id, S),
+            business_identity_id => maps:get(service_identity_id, S),
+            actor_user_id => maps:get(actor_user_id, S),
+            at => 1700000010
+        },
+        {ok, _} = cs_session_app:claim(Org, Params#{
+            session_id => maps:get(session_id, S), expected_version => 1
+        }),
+        {ok, _} = cs_seat_app:suspend_seat(Org, Params),
+        ?assertEqual({error, seat_disabled}, send_seat(S)),
+        assert_no_message(S),
+        {ok, #{accepted := true}} = send(S),
+        {ok, _} = cs_seat_app:resume_seat(Org, Params),
+        {ok, #{accepted := true, replayed := false}} = send_seat(S),
+        ?assertEqual(2, ?FIX:count(Org, messages))
+    end).
+
+send_seat(S) ->
+    cs_session_app:append_session_message(maps:get(org_id, S), #{
+        workspace_id => maps:get(workspace_id, S),
+        session_id => maps:get(session_id, S),
+        business_identity_id => maps:get(service_identity_id, S),
+        actor_user_id => maps:get(actor_user_id, S),
+        client_msg_id => <<"synthetic-seat-lifecycle">>,
+        body => <<"synthetic seat message">>,
+        key_ref => ?FIX:key_ref(),
+        accepted_at => 1700000011,
+        notify => fun(_) -> ok end
+    }).
+
+suspension_during_send() ->
+    with_session(fun(S) ->
+        {ok, _} = cs_session_app:claim(maps:get(org_id, S), #{
+            workspace_id => maps:get(workspace_id, S),
+            session_id => maps:get(session_id, S),
+            business_identity_id => maps:get(service_identity_id, S),
+            expected_version => 1,
+            at => 1700000010
+        }),
+        Parent = self(),
+        Ref = make_ref(),
+        Holder = spawn(fun() -> hold_seat(S, Parent, Ref) end),
+        try
+            Backend =
+                receive
+                    {Ref, locked, Pid} -> Pid
+                after 10000 -> error(holder_timeout)
+                end,
+            spawn(fun() -> Parent ! {Ref, sent, send_seat(S)} end),
+            ?assert(wait_for_blocked(Backend, 100)),
+            Holder ! {Ref, commit},
+            receive
+                {Ref, released, ok} -> ok
+            after 10000 -> error(commit_timeout)
+            end,
+            Result =
+                receive
+                    {Ref, sent, R} -> R
+                after 10000 -> error(send_timeout)
+                end,
+            ?assertEqual({error, seat_disabled}, Result),
+            assert_no_message(S)
+        after
+            Holder ! {Ref, commit}
+        end
+    end).
+
+hold_seat(S, Parent, Ref) ->
+    Result = elib_pg:with_tx(fun(C) ->
+        {ok, 1} = elib_pg:execute(
+            C,
+            <<"UPDATE customer_service_seat SET enabled=false WHERE organization_id=$1 AND business_identity_id=$2">>,
+            [maps:get(org_id, S), maps:get(service_identity_id, S)]
+        ),
+        {ok, [#{<<"pid">> := Pid}]} = elib_pg:query(C, <<"SELECT pg_backend_pid() AS pid">>, []),
+        Parent ! {Ref, locked, Pid},
+        receive
+            {Ref, commit} -> ok
+        after 10000 -> error(holder_commit_timeout)
+        end
+    end),
+    Parent ! {Ref, released, Result}.
 
 with_session(Fun) ->
     S = ?FIX:new_scope(),

@@ -618,6 +618,7 @@ message_event_hook(Params, OrgId, WorkspaceId, Session) ->
                     {ok, _EventId} -> ok;
                     {error, session_already_closed} = Err -> Err;
                     {error, conflict} = Err -> Err;
+                    {error, seat_disabled} = Err -> Err;
                     {error, Reason} -> {error, {audit_append_failed, Reason}}
                 end
             end}

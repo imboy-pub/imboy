@@ -80,8 +80,8 @@
 >>).
 
 -define(SQL_LOCK_MESSAGE_SEAT, <<
-    "SELECT business_identity_id FROM customer_service_seat"
-    " WHERE organization_id=$1 AND business_identity_id=$2 FOR KEY SHARE"
+    "SELECT enabled FROM customer_service_seat"
+    " WHERE organization_id=$1 AND business_identity_id=$2 FOR SHARE"
 >>).
 
 -define(SQL_COUNT_ACTIVE, <<
@@ -956,11 +956,11 @@ read_state_in(Conn, OrgId, WorkspaceId, SessionId, IdentityId) ->
 %% 事务内辅助
 %% ===================================================================
 
-%% Seat before session matches claim/transfer order; KEY SHARE permits concurrent
-%% messages while preventing the event FK from reversing that order after the lock.
+%% Seat before session matches claim/transfer order. SHARE permits concurrent
+%% messages but serializes suspension, so an in-flight seat write cannot outlive it.
 append_message_event_in(Conn, OrgId, Event) ->
     Identity = maps:get(business_identity_id, Event, undefined),
-    case lock_message_seat(Conn, OrgId, Identity) of
+    case lock_message_seat(Conn, OrgId, Identity, maps:get(actor_kind, Event)) of
         ok ->
             Sql = <<(?SQL_FETCH_SESSION)/binary, " FOR UPDATE">>,
             Params = [OrgId, maps:get(workspace_id, Event), maps:get(session_id, Event)],
@@ -983,9 +983,11 @@ append_message_event_in(Conn, OrgId, Event) ->
             Err
     end.
 
-lock_message_seat(_Conn, _OrgId, Identity) when Identity =:= undefined; Identity =:= null -> ok;
-lock_message_seat(Conn, OrgId, Identity) ->
+lock_message_seat(_Conn, _OrgId, Identity, _Kind) when Identity =:= undefined; Identity =:= null ->
+    ok;
+lock_message_seat(Conn, OrgId, Identity, Kind) ->
     case elib_pg:query(Conn, ?SQL_LOCK_MESSAGE_SEAT, [OrgId, Identity]) of
+        {ok, [#{<<"enabled">> := false}]} when Kind =:= <<"seat">> -> {error, seat_disabled};
         {ok, [_]} -> ok;
         {ok, []} -> {error, seat_not_found};
         {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}

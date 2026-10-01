@@ -57,6 +57,8 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun cs_message_lifecycle_pg_checks:closed_visitor/0},
         {timeout, 60, fun cs_message_lifecycle_pg_checks:close_during_send/0},
         {timeout, 60, fun cs_message_lifecycle_pg_checks:claim_during_send/0},
+        {timeout, 60, fun cs_message_lifecycle_pg_checks:suspended_seat/0},
+        {timeout, 60, fun cs_message_lifecycle_pg_checks:suspension_during_send/0},
         {timeout, 60, fun cross_org_session_is_not_found/0},
         {timeout, 60, fun event_table_is_append_only/0},
         %% BE-S01b（A07）：admin provisioning 单事务 + 审计 + 幂等 + 回滚（真库）。
