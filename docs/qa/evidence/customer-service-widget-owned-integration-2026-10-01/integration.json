@@ -1,0 +1,16 @@
+{
+  "base": "c8383b2a924e84af8eea015f7671e3508c17dcb4",
+  "candidate": "59de4a3848923c30f535aa1fc096fdb22ed21c5f",
+  "commits": [
+    "feb3e5f7048a7615e3604b30c0bf3630198bb201",
+    "2365a25e710e2701c93725e2a57fc2751feb192c",
+    "00888761b2d15f100a50a26242e2d4d0c728889d",
+    "59de4a3848923c30f535aa1fc096fdb22ed21c5f"
+  ],
+  "foreign_wip_preserved": true,
+  "shared_widget_hunk_preserved": true,
+  "index_tree_matches_candidate": true,
+  "main_status_preserved": true,
+  "production_ready": false,
+  "run": "/tmp/imboy-seat-http.MKpjtJ"
+}
