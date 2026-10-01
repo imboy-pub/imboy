@@ -1,0 +1,14 @@
+$ bun scripts/check-widget-asset-pairing.mts
+[pairing] admin root = /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-admin
+[pairing] imboy root = /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-backend
+[pairing] face=public_frame — /w/ frame 引用的版本化入口 JS（hosted-widget-contract S4）
+  [ OK ] [public_frame] 配对表接线一致（backend src/features/customer_service/interfaces/cs_widget_handler.erl / PUBLIC_FRAME_ASSET_JS）
+  [ OK ] [public_frame] 本仓 STABLE_ASSET_ALIAS == 后端 PUBLIC_FRAME_ASSET_JS == widget-assets/cs-widget.v2.js
+  [ OK ] [public_frame] 本仓 STABLE_ASSET_ENTRY == 后端 PUBLIC_FRAME_ASSET_JS == widget-assets/cs-widget.v2.js
+[pairing] face=seat_console — /seat/:public_seat_console_id frame 引用的版本化坐席工作台入口（SC-BLD；后端面已由 SC-INT 落地：cs_seat_console_handler.erl）
+  [ OK ] [seat_console] 配对表接线一致（backend src/features/customer_service/interfaces/cs_seat_console_handler.erl / SEAT_FRAME_ASSET_JS）
+  [ OK ] [seat_console] 本仓 STABLE_SEAT_ASSET_ALIAS == 后端 SEAT_FRAME_ASSET_JS == seat-assets/cs-seat.v1.js
+  [ OK ] [seat_console] 本仓 STABLE_SEAT_ASSET_ENTRY == 后端 SEAT_FRAME_ASSET_JS == seat-assets/cs-seat.v1.js
+  [ OK ] [seat_console] CSS 别名单真源派生：manifest.mts STABLE_SEAT_ASSET_ALIAS.replace(/.js/→.css)
+  [ OK ] [seat_console] CSS 别名配对自洽：STABLE_SEAT_ASSET_ENTRY_CSS == STABLE_SEAT_ASSET_ALIAS.js→.css == seat-assets/cs-seat.v1.css
+[pairing] PASS：后端资产常量与 Admin manifest 输出名互验一致

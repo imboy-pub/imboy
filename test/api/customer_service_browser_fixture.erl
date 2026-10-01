@@ -34,6 +34,7 @@ run() ->
             created_by_user_id => maps:get(owner_user_id, S)
         }),
         ok = save("browser-fixture.json", #{
+            attachments => attachments(),
             public_seat_console_id => integer_to_binary(Console),
             port => maps:get(port, H),
             organization_id => integer_to_binary(Org),
@@ -64,7 +65,8 @@ setup_keys() ->
     }),
     app_version_ds:set_sign_key(
         <<"synthetic">>, <<"seat-test">>, <<"synthetic.seat">>, <<"synthetic-seat-device-key">>
-    ).
+    ),
+    setup_storage().
 
 seat(S) ->
     #{
@@ -124,11 +126,21 @@ save_proof(Org) ->
         <<"SELECT action FROM customer_service_event WHERE organization_id=$1 ORDER BY id">>, [Org]
     ),
     ?assertMatch([#{<<"status">> := <<"closed">>, <<"rating">> := 5}], Sessions),
-    ?assertEqual(4, length(Messages)),
-    ?assertEqual(2, length([M || M <- Messages, maps:get(<<"sender_type">>, M) =:= <<"contact">>])),
+    ExpectedEach =
+        case attachments() of
+            true -> 3;
+            false -> 2
+        end,
+    Expected = 2 * ExpectedEach,
+    ?assertEqual(Expected, length(Messages)),
+    ?assertEqual(
+        ExpectedEach, length([M || M <- Messages, maps:get(<<"sender_type">>, M) =:= <<"contact">>])
+    ),
     SeatMessages = [M || M <- Messages, maps:get(<<"sender_type">>, M) =:= <<"business_identity">>],
-    ?assertEqual(2, length(SeatMessages)),
-    ?assertEqual(4, length(lists:usort([maps:get(<<"client_msg_id">>, M) || M <- Messages]))),
+    ?assertEqual(ExpectedEach, length(SeatMessages)),
+    ?assertEqual(
+        Expected, length(lists:usort([maps:get(<<"client_msg_id">>, M) || M <- Messages]))
+    ),
     Actions = [maps:get(<<"action">>, E) || E <- Events],
     ?assertEqual(1, length([A || A <- Actions, A =:= <<"session.claimed">>])),
     [
@@ -143,7 +155,58 @@ save_proof(Org) ->
             <<"seat.resumed">>
         ]
     ],
-    save("browser-db-proof.json", #{sessions => Sessions, messages => Messages, events => Events}).
+    Assets = asset_proof(Org),
+    save("browser-db-proof.json", #{
+        sessions => Sessions, messages => Messages, events => Events, assets => Assets
+    }).
 
 save(Name, Value) ->
     file:write_file(filename:join(os:getenv("IMBOY_GATE_RUN_DIR"), Name), jsone:encode(Value)).
+
+attachments() -> os:getenv("IMBOY_CS_BROWSER_ATTACHMENTS") =:= "1".
+
+setup_storage() ->
+    application:set_env(imboy, base_url, list_to_binary(os:getenv("CSWW_E2E_HOST_ORIGIN"))),
+    ok = cs_route_contract_tests:web_seat_surface_matches_seat_principal_declaration_test(),
+    case attachments() of
+        false ->
+            ok;
+        true ->
+            {ok, _} = application:ensure_all_started(inets),
+            application:unset_env(imboy, eb_asset_object_store),
+            application:set_env(imboy, garage, #{
+                endpoint => list_to_binary(os:getenv("IMBOY_TEST_ENDPOINT")),
+                bucket => <<"synthetic-enterprise-assets">>,
+                region => <<"garage">>,
+                access_key => list_to_binary(os:getenv("IMBOY_TEST_ACCESS")),
+                secret_key => list_to_binary(os:getenv("IMBOY_TEST_SECRET"))
+            })
+    end.
+
+asset_proof(Org) ->
+    {ok, Assets} = elib_pg:query(
+        <<"SELECT id::text,message_id::text,status,object_hash,mime,size_bytes FROM enterprise_asset WHERE organization_id=$1 ORDER BY id">>,
+        [Org]
+    ),
+    case attachments() of
+        false ->
+            ?assertEqual([], Assets);
+        true ->
+            ?assertEqual(2, length(Assets)),
+            [
+                begin
+                    ?assertEqual(<<"active">>, maps:get(<<"status">>, A)),
+                    ?assert(is_binary(maps:get(<<"message_id">>, A)))
+                end
+             || A <- Assets
+            ],
+            Expected = [
+                eb_asset_content:sha256_hex(Bytes)
+             || Bytes <-
+                    [<<"synthetic visitor attachment\n">>, <<"synthetic seat attachment\n">>]
+            ],
+            ?assertEqual(
+                lists:sort(Expected), lists:sort([maps:get(<<"object_hash">>, A) || A <- Assets])
+            )
+    end,
+    Assets.

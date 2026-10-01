@@ -1,0 +1,34 @@
+[
+  {
+    "path": "/api/v1/cs/organizations/115679820855379971/sessions/queue",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/scan",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/confirm",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/scan",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/confirm",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "action": "concurrent-browser-claim",
+    "statuses": [
+      409,
+      200
+    ]
+  }
+]

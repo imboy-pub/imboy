@@ -20,6 +20,7 @@
 %%%      `business_identity_id` 等于**会话当前**经办身份；否则 `{forbidden, not_assignee}`。
 %%%      交接后（会话经办身份指向接任者）这条判定自动翻面：接任者通过、原经办被拒。
 -module(eb_asset_scope).
+-include("generated/imboy_product_features.hrl").
 
 -export([authorize/6, authorize_contact/5, member_only/5, active_assignment_for/3]).
 
@@ -104,7 +105,11 @@ assignee_check(Store, OrgId, WorkspaceId, ConversationId, Facts) ->
         true ->
             case Store:fetch_conversation(OrgId, WorkspaceId, ConversationId) of
                 {ok, Conversation} ->
-                    identity_gate(
+                    conversation_identity_gate(
+                        Store,
+                        OrgId,
+                        WorkspaceId,
+                        ConversationId,
                         maps:get(business_identity_id, Conversation, undefined),
                         maps:get(assignments, Facts, [])
                     );
@@ -141,3 +146,31 @@ active_assignment_for(IdentityId, FunctionKey, Assignments) when is_list(Assignm
     end;
 active_assignment_for(_IdentityId, _FunctionKey, _Assignments) ->
     {error, {forbidden, not_assignee}}.
+
+%% Sales uses the enterprise handler; managed CS uses its current session owner.
+conversation_identity_gate(Store, Org, Ws, Conv, IntakeId, Assignments) ->
+    case Store:fetch_identity(Org, Ws, IntakeId) of
+        {ok, #{function_key := <<"customer_service">>}} ->
+            cs_identity_gate(Org, Ws, Conv, IntakeId, Assignments);
+        {ok, #{function_key := <<"sales">>}} ->
+            identity_gate(IntakeId, Assignments);
+        _ ->
+            {error, {forbidden, no_assignee}}
+    end.
+
+-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE).
+cs_identity_gate(Org, Ws, Conv, IntakeId, Assignments) ->
+    case
+        customer_service_facade:conversation_assignee(Org, #{
+            workspace_id => Ws, conversation_id => Conv
+        })
+    of
+        {ok, #{business_identity_id := Id}} -> identity_gate(Id, Assignments);
+        %% An enterprise CS conversation without a managed session keeps its prior ACL.
+        {error, not_found} -> identity_gate(IntakeId, Assignments);
+        {error, _} = Err -> Err
+    end.
+-else.
+cs_identity_gate(_Org, _Ws, _Conv, _IntakeId, _Assignments) ->
+    {error, {forbidden, customer_service_unavailable}}.
+-endif.

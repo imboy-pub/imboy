@@ -255,6 +255,28 @@ is_web_seat_surface_path(Path) when is_binary(Path) ->
             <<"messages">>
         ] ->
             true;
+        %% 浏览器附件接口只免设备签名；JWT、职能及经办权限仍由原认证链验证。
+        [
+            <<"api">>,
+            <<"v1">>,
+            <<"enterprise">>,
+            <<"organizations">>,
+            _OrgId,
+            <<"assets">>,
+            Action
+        ] when Action =:= <<"presign">>; Action =:= <<"confirm">> ->
+            true;
+        [
+            <<"api">>,
+            <<"v1">>,
+            <<"enterprise">>,
+            <<"organizations">>,
+            _OrgId,
+            <<"assets">>,
+            _AssetId,
+            <<"content">>
+        ] ->
+            true;
         _ ->
             false
     end;

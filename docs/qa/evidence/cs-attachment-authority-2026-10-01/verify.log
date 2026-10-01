@@ -1,0 +1,9 @@
+$ bun scripts/widget-verify.mts
+[widget-verify] PASS: 12 files, assets hashed=3, seat-assets=2, sourcemap=0, admin-chunk=0, admin-api=0, secret-pattern=0
+  稳定别名一致: widget-assets/cs-widget.v2.js ≡ assets/cs-widget-Bg_2DNCm.js (sha256=36cdff7ec710…)
+  坐席稳定别名一致: seat-assets/cs-seat.v1.js ≡ assets/cs-seat-BRUJeVdv.js (sha256=e57ada5d1940…)
+  坐席稳定别名一致: seat-assets/cs-seat.v1.css ≡ assets/cs-seat-_XZfiGXM.css (sha256=2547f6557d7b…)
+  词面审查（非门禁）: widget-assets/cs-widget.v2.js 命中 22 次 secret/token
+  词面审查（非门禁）: seat-assets/cs-seat.v1.js 命中 58 次 token
+  词面审查（非门禁）: assets/cs-seat-BRUJeVdv.js 命中 58 次 token
+  词面审查（非门禁）: assets/cs-widget-Bg_2DNCm.js 命中 22 次 secret/token

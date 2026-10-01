@@ -1,0 +1,30 @@
+<!doctype html>
+<!--
+  CSW-01：客服 Widget iframe 聊天应用独立入口。
+
+  - 该页面由 loader.js 以 iframe 方式嵌入到商家站点；
+  - 独立于 Admin SPA（不依赖 Router / Admin session / /api/adm），
+    仅与同源 Widget 后端合同 `/api/v1/cs/widget/*` 通信；
+  - `bun run build:widget` 产出独立 artifact（dist-widget/widget/index.html）。
+-->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex,nofollow" />
+    <!--
+      CSP：iframe 内自足，禁止外联（connect-src 'self' 即同源 Widget API）；
+      style-src 'unsafe-inline' 仅为品牌主色等少量内联样式（无第三方注入面）；
+      frame-ancestors 无法经 meta 生效（由部署层响应头控制）。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'"
+    />
+    <title>客服聊天</title>
+    <script type="module" crossorigin src="/assets/cs-widget-Bg_2DNCm.js"></script>
+  </head>
+  <body>
+    <div id="cs-widget-root"></div>
+  </body>
+</html>

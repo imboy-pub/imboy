@@ -1,0 +1,10 @@
+{
+  "status": "PARTIAL",
+  "browser_run": "/tmp/imboy-seat-http.r8Z2vN",
+  "oracle": "Winning second Seat receives 403 forbidden.not_assignee for real visitor attachment; initial intake identity differs from current session owner. No JWT/config/upload_ref archived.",
+  "source_sha256": {
+    "src/features/customer_service/interfaces/cs_http.erl": "710cd74f6e4fde803c8e321d9f59e80ad960a23c6263f75562e555077d57dba4",
+    "test/api/customer_service_browser_fixture.erl": "2a099383176eab624af5a39e6e8dcd4bff8eef59df763be7f2c94fdba6abc3cb",
+    "test/features/customer_service/interfaces/cs_route_contract_tests.erl": "09631dfa983a30316c2b511800c5e98cc478f9631afdb2a18e1deb83761b3203"
+  }
+}

@@ -1,0 +1,52 @@
+======================== EUnit ========================
+module 'enterprise_internal_wiring_http_tests'
+  enterprise_internal_wiring_http_tests: route_table...[0.010 s] ok
+  enterprise_internal_wiring_http_tests: manifest_v21_entries...[0.001 s] ok
+  enterprise_internal_wiring_http_tests: http_wiring...[0.103 s] ok
+  enterprise_internal_wiring_http_tests: boundary_parity...ok
+  enterprise_internal_wiring_http_tests: dispatch_compiles...[0.003 s] ok
+  enterprise_internal_wiring_http_tests: normalize_code...ok
+  enterprise_internal_wiring_http_tests: -conformance_test_/0-fun-0-...[19.017 s] ok
+  [done in 23.702 s]
+module 'workspace_creation_pg_tests'
+  workspace_creation_pg_tests: -creation_test_/0-fun-0-...18:27:16.839 [error] [organization_invitation_accept_targeted_failed,995902,995011,
+ {internal,
+     {membership_hook,
+         {internal,
+             {announcements_subscribe,115680659261097984,
+                 {error,error,<<"23514">>,check_violation,
+                     <<"new row for relation \"channel_subscription\" violates check constraint \"synthetic_membership_subscribe_fail\"">>,
+                     [{constraint_name,
+                          <<"synthetic_membership_subscribe_fail">>},
+                      {detail,
+                          <<"Failing row contains (115680659288360960, 115680659261097984, 995011, 2026-10-01 10:27:16.834464+00, null, 0, 0, t, f, f, 1).">>},
+                      {file,<<"execMain.c">>},
+                      {line,<<"2072">>},
+                      {routine,<<"ExecConstraints">>},
+                      {schema_name,<<"public">>},
+                      {severity,<<"ERROR">>},
+                      {table_name,<<"channel_subscription">>}]}}}}}]
+[88.899 s] ok
+  [done in 88.902 s]
+module 'qr_login_sse_handler_tests'
+  qr_login_sse_handler_tests:52: -init_with_valid_session_token_returns_cowboy_loop_test_/0-fun-4-...[0.001 s] ok
+  qr_login_sse_handler_tests:74: -init_calls_stream_reply_with_sse_headers_test_/0-fun-5-...[0.002 s] ok
+  qr_login_sse_handler_tests:101: -init_calls_subscribe_with_session_token_and_self_test_/0-fun-5-...ok
+  qr_login_sse_handler_tests:128: -init_without_session_token_returns_400_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:146: -init_with_empty_session_token_returns_400_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:162: -info_scanned_event_streams_chunk_and_keeps_loop_test_/0-fun-7-...ok
+  qr_login_sse_handler_tests:181: -info_confirmed_event_streams_chunk_and_stops_test_/0-fun-4-...ok
+  qr_login_sse_handler_tests:195: -info_expired_event_streams_chunk_and_stops_test_/0-fun-2-...ok
+  qr_login_sse_handler_tests:205: -info_cancelled_event_streams_chunk_and_keeps_loop_test_/0-fun-2-...ok
+  qr_login_sse_handler_tests:214: -info_waiting_event_streams_chunk_and_keeps_loop_test_/0-fun-2-...ok
+  qr_login_sse_handler_tests:223: -info_non_map_message_keeps_loop_silently_test_/0-fun-4-...ok
+  qr_login_sse_handler_tests:245: -terminate_unsubscribes_when_session_token_present_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:269: -init_starts_heartbeat_timer_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:285: -info_heartbeat_emits_sse_comment_chunk_test_/0-fun-4-...ok
+  qr_login_sse_handler_tests:305: -info_heartbeat_keeps_loop_test_/0-fun-2-...ok
+  qr_login_sse_handler_tests:320: -info_heartbeat_reschedules_timer_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:338: -terminate_cancels_heartbeat_timer_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:356: -terminate_does_not_call_unsubscribe_when_state_lacks_token_test_/0-fun-4-...ok
+  [done in 1.370 s]
+=======================================================
+  All 26 tests passed.

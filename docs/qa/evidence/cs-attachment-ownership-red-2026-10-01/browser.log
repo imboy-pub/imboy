@@ -1,0 +1,8 @@
+file:///Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-admin/scripts/test/customer-service-browser-journey.mjs:147
+      throw new Error('Seat attachment content was rejected; see attachment-content-error.json')
+            ^
+
+Error: Seat attachment content was rejected; see attachment-content-error.json
+    at file:///Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-admin/scripts/test/customer-service-browser-journey.mjs:147:13
+
+Node.js v26.4.0

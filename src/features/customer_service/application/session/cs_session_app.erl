@@ -30,6 +30,7 @@
     rate/2,
     append_session_message/2,
     append_conversation_message/2,
+    conversation_assignee/2,
     list_contact_sessions/2,
     list_sessions/2,
     seat_session_page/2,
@@ -1165,3 +1166,21 @@ fetch_control_session_for(Params, Org, Ws, Id) ->
         {error, _} = Err ->
             Err
     end.
+
+%% The intake identity remains stable; claim/transfer owner lives on the CS session.
+conversation_assignee(Org, #{workspace_id := Ws, conversation_id := Conv} = Params) ->
+    with_store(Params, fun(Store) ->
+        case Store:fetch_conversation_session(Org, Ws, Conv) of
+            {ok, #{business_identity_id := Id}} when is_integer(Id) ->
+                case Store:fetch_seat(Org, Id) of
+                    {ok, #{enabled := true}} -> {ok, #{business_identity_id => Id}};
+                    {ok, _} -> {error, {forbidden, seat_disabled}};
+                    {error, not_found} -> {error, {forbidden, no_seat}};
+                    {error, _} = Err -> Err
+                end;
+            {ok, _} ->
+                {error, {forbidden, no_assignee}};
+            {error, _} = Err ->
+                Err
+        end
+    end).

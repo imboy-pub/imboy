@@ -33,6 +33,7 @@
     rate/2,
     append_session_message/2,
     append_conversation_message/2,
+    conversation_assignee/2,
     list_contact_sessions/2,
     list_sessions/2,
     %% shop key / visit token
@@ -1112,3 +1113,11 @@ append_conversation_message(
     cs_session_app:append_conversation_message(OrgId, Params);
 append_conversation_message(_, _) ->
     {error, {invalid_argument, append_conversation_message}}.
+
+%% Trusted cross-feature read: no HTTP route or client-supplied owner.
+conversation_assignee(Org, #{workspace_id := Ws, conversation_id := Conv} = Params) when
+    is_integer(Org), is_integer(Ws), is_integer(Conv)
+->
+    cs_session_app:conversation_assignee(Org, Params);
+conversation_assignee(_, _) ->
+    {error, {invalid_argument, conversation_assignee}}.

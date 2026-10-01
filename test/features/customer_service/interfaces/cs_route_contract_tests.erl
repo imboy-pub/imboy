@@ -655,6 +655,11 @@ web_seat_surface_matches_seat_principal_declaration_test() ->
             <<"/api/v1/enterprise/organizations/123/conversations/456/messages">>
         )
     ),
+    lists:foreach(fun(Path) -> ?assert(cs_http:is_web_seat_surface_path(Path)) end, [
+        <<"/api/v1/enterprise/organizations/123/assets/presign">>,
+        <<"/api/v1/enterprise/organizations/123/assets/confirm">>,
+        <<"/api/v1/enterprise/organizations/123/assets/456/content">>
+    ]),
     %% 负例真空证明：访客面 / widget 面 / 治理面 / ACK / 未知路径不得命中
     %% （把任一正例改成这些形状时本审计必须报红）。
     lists:foreach(
@@ -674,7 +679,9 @@ web_seat_surface_matches_seat_principal_declaration_test() ->
             <<"/api/v1/cs/organizations/123/seats/456/suspend">>,
             <<"/api/v1/cs/organizations/123/sessions/123/assets/789/content">>,
             <<"/api/v1/enterprise/organizations/123/conversations/456/messages/789/ack">>,
-            <<"/api/v1/enterprise/organizations/123/assets/456/content">>,
+            <<"/api/v1/enterprise/organizations/123/assets/456/content/extra">>,
+            <<"/api/v1/enterprise/organizations/123/assets/presign/extra">>,
+            <<"/api/v1/enterprise/organizations/123/assets/456/delete">>,
             <<"/api/v1/user/show">>,
             <<"/api/v1/passport/qr_login/create">>,
             <<"/w/wgt_pub_x">>

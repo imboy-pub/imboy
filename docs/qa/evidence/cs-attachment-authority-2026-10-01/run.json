@@ -1,0 +1,93 @@
+{
+  "status": "PARTIAL",
+  "browser_exit": 0,
+  "regression_exit": 0,
+  "browser_run": "/tmp/imboy-seat-http.vXDbMH",
+  "garage_run": "/tmp/imboy-asset-garage.Z4tryP",
+  "regression_run": "/tmp/imboy-seat-http.XuTJY3",
+  "backend_base": "77d77f1836a92b22cd1e63fb0fb961836d363f38",
+  "admin_base": "54aeadc2989cb64a9ce3f5dab2403557c5d86039",
+  "source_hashes": {
+    "backend": [
+      {
+        "path": "scripts/test/customer_service_internal_http_gate.sh",
+        "sha256": "62de1a2d8b941fc2225c89094fc7a5465a7077bf13b2a6f359dd0c8f1a8c1150"
+      },
+      {
+        "path": "scripts/test/enterprise_asset_garage_gate.sh",
+        "sha256": "61d19662c1d658416b5016850a2fad1ae99bc19f159fbd88b6c9ee7e0b1981b4"
+      },
+      {
+        "path": "src/features/customer_service/application/session/cs_session_app.erl",
+        "sha256": "b9f65f53efbbbca2829e4b4ef44fce8b60f7c5a8c40fc0ca8dcfe1bce7ee6088"
+      },
+      {
+        "path": "src/features/customer_service/customer_service_facade.erl",
+        "sha256": "5ecd47141f49de94aedd30201af8e16236c5dd2be4b842d717241764ec2c6d26"
+      },
+      {
+        "path": "src/features/customer_service/interfaces/cs_http.erl",
+        "sha256": "710cd74f6e4fde803c8e321d9f59e80ad960a23c6263f75562e555077d57dba4"
+      },
+      {
+        "path": "src/features/enterprise_business/application/asset/eb_asset_scope.erl",
+        "sha256": "abbb756aa4dd0aceccdc421dbaec503ecffd06721726b1f1ca4e8a265357f818"
+      },
+      {
+        "path": "test/api/customer_service_browser_fixture.erl",
+        "sha256": "2a099383176eab624af5a39e6e8dcd4bff8eef59df763be7f2c94fdba6abc3cb"
+      },
+      {
+        "path": "test/features/customer_service/interfaces/cs_route_contract_tests.erl",
+        "sha256": "09631dfa983a30316c2b511800c5e98cc478f9631afdb2a18e1deb83761b3203"
+      }
+    ],
+    "admin": [
+      {
+        "path": "scripts/test/customer-service-browser-journey.mjs",
+        "sha256": "6dda041085ed19cfed04cb5e06dbfbc442d27bb4f450f8eb27220ed120ee816a"
+      },
+      {
+        "path": "src/modules/customer_service/seat/seatApiClient.test.ts",
+        "sha256": "130b3a71897829c05dd01237c5b76493bcc71520f44d07a6eb4aacf2475dccaa"
+      },
+      {
+        "path": "src/modules/customer_service/seat/seatApiClient.ts",
+        "sha256": "19a649b7ce32390e64e4e1d4b868fafec75d9db624d1b31d1109e4ee3572a93e"
+      },
+      {
+        "path": "src/widget/customer_service/app/widgetApi.test.ts",
+        "sha256": "fcdd95b45375de6b1e1be05fd21f1263aa71a2424dd570140fb14b10eb580577"
+      },
+      {
+        "path": "src/widget/customer_service/app/widgetApi.ts",
+        "sha256": "1874f2083f58d31b4625259d02a5f4d87eea9fa8601729d64857db3cb67bafc7"
+      },
+      {
+        "path": "src/widget/customer_service/loader.test.ts",
+        "sha256": "860491ec65c735dd35113588279b8ae68382f6e969ef12b2c5bdfbff15b705ed"
+      },
+      {
+        "path": "src/widget/customer_service/loader.ts",
+        "sha256": "9d21d71577d492afc83d4682a26f52802b457905e209f3dda25444d6a27d14b6"
+      },
+      {
+        "path": "tests/e2e/customer-service-real/helpers/static-host.mjs",
+        "sha256": "ec50f440a24300312b3ae62d2a37be6d7f2e46d371f71b2c9c6c15a59e1dfad1"
+      }
+    ]
+  },
+  "build_manifest_sha256": "c9dd627c036ff063e5e7059dcd988332b5ab6d06df8c2c04be5d379e510b77ac",
+  "oracle": "Real native HTTP/PG/Garage and built Chromium Widget/Seat: bidirectional byte equality; anonymous 401; transfer previous Seat 403/current Seat 200 and exact bytes; suspended Seat 403; six unique messages and two active linked hashes; QR SSE zero poll; concurrent claims 200/409; TCP reconnect; resume/fresh QR/close/rate.",
+  "build_binding": "Manifest records pre-change base HEAD; archived current modified source hashes bind the actual tested build. This is focused local evidence, not a frozen full-contract release gate.",
+  "not_proven": [
+    "full legacy asset suites",
+    "pending cleanup scheduling and history migration",
+    "governance HTTP/UI suspend authorization",
+    "physical devices",
+    "complete six-goal contract and production readiness"
+  ],
+  "asset_pg_exit": 0,
+  "asset_pg_run": "/tmp/imboy-seat-http.4wjGu9",
+  "claim_winner": "seat_b"
+}

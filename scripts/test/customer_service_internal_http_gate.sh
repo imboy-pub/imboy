@@ -55,6 +55,7 @@ files += ['test/common/meck_helper.erl', 'test/api/qr_login_sse_handler_tests.er
           'test/api/workspace_channel_limit_http_checks.erl',
           'test/api/customer_service_seat_http_checks.erl',
           'test/api/customer_service_browser_fixture.erl',
+          'test/features/customer_service/interfaces/cs_route_contract_tests.erl',
           'test/api/enterprise_asset_garage_pg_checks.erl',
           'test/api/customer_service_seat_sse_checks.erl',
           'test/api/customer_service_widget_expiry_http_checks.erl',
@@ -105,7 +106,8 @@ if browser_runner:
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         host_port = sock.getsockname()[1]
-    os.environ['CSWW_E2E_HOST_ORIGIN'] = f'http://127.0.0.1:{host_port}'
+    scheme = 'https' if os.environ.get('IMBOY_CS_BROWSER_ATTACHMENTS') == '1' else 'http'
+    os.environ['CSWW_E2E_HOST_ORIGIN'] = f'{scheme}://127.0.0.1:{host_port}'
     os.environ['CSWW_E2E_HOST_PORT'] = str(host_port)
     browser_expr = expr[:expr.index('case eunit:test')] + 'customer_service_browser_fixture:run(), halt(0).'
     with (out / 'http.log').open('w') as log:
