@@ -214,7 +214,7 @@ admin_archive_writes_audit_columns_test_() ->
         {elib_pg, [
             {'with_tx', 1, tx_fun()},
             %% C05/ORG-05：归档交接需事务内读归属 Org（null=个人域，钩子仍被调）
-            {'query', 3, fun(_Conn, <<"SELECT organization_id FROM workspace", _/binary>>, _) ->
+            {'query', 3, fun(_Conn, <<"UPDATE workspace SET status = 'archived'", _/binary>>, _) ->
                 {ok, [#{<<"organization_id">> => null}]}
             end},
             {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
@@ -251,7 +251,7 @@ admin_archive_writes_audit_columns_test_() ->
                 %% 新契约核心 = 返回 archived_by:null（DB 列写 NULL，操作者审计
                 %% 由 admin_operation_logs 承担）；真库端到端见
                 %% workspace_admin_archive_fk_tests（归档后列值断言）
-                ?assertEqual(1, meck:num_calls(elib_pg, execute, 3))
+                ?assertEqual(1, meck:num_calls(elib_pg, query, 3))
             end}
         ]}.
 
@@ -270,13 +270,10 @@ admin_archive_is_not_owner_gated_test_() ->
                     {elib_pg, [
                         {'with_tx', 1, tx_fun()},
                         {'query', 3, fun(
-                            _Conn, <<"SELECT organization_id FROM workspace", _/binary>>, _
+                            _Conn, <<"UPDATE workspace SET status = 'archived'", _/binary>>, _
                         ) ->
-                            {ok, [#{<<"organization_id">> => null}]}
-                        end},
-                        {'execute', 3, fun(_Conn, _Sql, _Params) ->
                             Self ! archived,
-                            {ok, 1}
+                            {ok, [#{<<"organization_id">> => null}]}
                         end}
                     ]},
                     {organization_default_workspace_app, [
@@ -303,7 +300,7 @@ admin_archive_double_rejected_409_test_() ->
             ws_exists_mocks(),
             {elib_pg, [
                 {'with_tx', 1, tx_fun()},
-                {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 0} end}
+                {'query', 3, fun(_Conn, _Sql, _Params) -> {ok, []} end}
             ]}
         ],
         fun() ->
@@ -392,13 +389,10 @@ admin_archive_then_business_write_rejected_980_test_() ->
                         {'with_tx', 1, tx_fun()},
                         %% C05/ORG-05：归档交接需事务内读归属 Org（null=个人域）
                         {'query', 3, fun(
-                            _Conn, <<"SELECT organization_id FROM workspace", _/binary>>, _
+                            _Conn, <<"UPDATE workspace SET status = 'archived'", _/binary>>, _
                         ) ->
-                            {ok, [#{<<"organization_id">> => null}]}
-                        end},
-                        {'execute', 3, fun(_Conn, _Sql, _Params) ->
                             Self ! archived,
-                            {ok, 1}
+                            {ok, [#{<<"organization_id">> => null}]}
                         end},
                         %% admin_archive 落库后 workspace.status = archived：
                         %% workspace_guard 的行状态读取命中归档分支

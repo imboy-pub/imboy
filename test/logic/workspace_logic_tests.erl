@@ -1518,7 +1518,7 @@ governor_mocks() ->
         {elib_pg, [
             {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
             {'query', 3, fun
-                (fake_conn, <<"SELECT organization_id FROM workspace", _/binary>>, _) ->
+                (fake_conn, <<"UPDATE workspace SET status = 'archived'", _/binary>>, _) ->
                     {ok, [#{<<"organization_id">> => ?ORG_ID}]};
                 (_C, _S, _P) ->
                     {ok, []}

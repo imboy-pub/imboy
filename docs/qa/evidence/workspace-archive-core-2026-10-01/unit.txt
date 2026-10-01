@@ -1,0 +1,89 @@
+======================== EUnit ========================
+module 'workspace_template_tests'
+  workspace_template_tests:159: -template_creates_all_resources_test_/0-fun-1-...[0.007 s] ok
+  workspace_template_tests:188: -personal_workspace_keeps_organization_null_test_/0-fun-3-...ok
+  workspace_template_tests:207: -template_fault_injection_rolls_back_test_/0-fun-1-...ok
+  workspace_template_tests:229: -request_id_idempotent_test_/0-fun-1-...[0.022 s] ok
+  workspace_template_tests:273: -semantic_key_idempotent_test_/0-fun-1-...[0.025 s] ok
+  workspace_template_tests:311: -owner_workspace_limit_test_/0-fun-1-...[0.019 s] ok
+  workspace_template_tests:353: -organization_scope_guards_test_/0-fun-4-...ok
+  workspace_template_tests:388: -standard_workspace_reads_include_organization_id_test_/0-fun-3-...ok
+  workspace_template_tests:410: -owner_workspace_count_failure_test_/0-fun-1-...ok
+  [done in 1.599 s]
+module 'workspace_org_default_relation_tests'
+  workspace_org_default_relation_tests: -create_sets_first_default_test_/0-fun-11- (org workspace creation sets default in the same tx (hook exactly once))...[0.207 s] ok
+  workspace_org_default_relation_tests: -create_sets_first_default_test_/0-fun-7- (personal workspace creation passes undefined through the hook)...[0.208 s] ok
+  workspace_org_default_relation_tests: -create_sets_first_default_test_/0-fun-4- (idempotent hit does not touch the default relation)...[0.210 s] ok
+  workspace_org_default_relation_tests: -archive_hands_over_default_test_/0-fun-11- (archive reads org scope in-tx and invokes handover hook)...[0.114 s] ok
+  workspace_org_default_relation_tests: -archive_hands_over_default_test_/0-fun-7- (personal workspace archive passes undefined (no handover))...[0.115 s] ok
+  workspace_org_default_relation_tests: -archive_hands_over_default_test_/0-fun-3- (admin archive invokes the same handover hook)...[0.111 s] ok
+  [done in 0.983 s]
+module 'workspace_archive_tests'
+  workspace_archive_tests: -archive_test_/0-fun-26- (owner archives with audit columns)...[0.133 s] ok
+  workspace_archive_tests: -archive_test_/0-fun-21- (non owner cannot archive (403))...[0.134 s] ok
+  workspace_archive_tests: -archive_test_/0-fun-18- (double archive rejected 409)...[0.139 s] ok
+  workspace_archive_tests: -archive_test_/0-fun-15- (archiving last default workspace rejected 409 (G3 strong handover))...[0.135 s] ok
+  workspace_archive_tests: -archive_test_/0-fun-11- (restore clears audit columns)...[0.136 s] ok
+  workspace_archive_tests: -archive_test_/0-fun-5- (restore non-archived rejected 409)...[0.136 s] ok
+  workspace_archive_tests: -archive_test_/0-fun-2- (guard passes again after restore)...[0.140 s] ok
+  workspace_archive_tests: -archived_write_rejection_test_/0-fun-25- (group message write rejected in tx (R3 #1))...[0.067 s] ok
+  workspace_archive_tests: -archived_write_rejection_test_/0-fun-22- (group notice write rejected (R3 #17, P0 收口后同事务守卫))...[0.102 s] ok
+  workspace_archive_tests: -archived_write_rejection_test_/0-fun-15- (group notice mark_read skips instead of 403 (R3 #18))...[0.099 s] ok
+  workspace_archive_tests: -archived_write_rejection_test_/0-fun-12- (channel publish rejected in tx (R3 #6))...[0.096 s] ok
+  workspace_archive_tests: -personal_not_affected_test_/0-fun-5- (personal group message write passes without workspace query)...[0.063 s] ok
+  [done in 1.416 s]
+module 'workspace_logic_tests'
+  workspace_logic_tests:60: -role_matrix_test_/0-fun-1-...ok
+  workspace_logic_tests:116: -my_role_matrix_test_/0-fun-1-...ok
+  workspace_logic_tests:187: -invite_idempotent_and_no_auto_join_test_/0-fun-1-...[0.037 s] ok
+  workspace_logic_tests:272: -invite_rejects_when_denylist_between_test_/0-fun-2-...ok
+  workspace_logic_tests:299: -invite_requires_existing_user_test_/0-fun-1-...ok
+  workspace_logic_tests:320: -invite_rejects_invalid_role_test_/0-fun-1-...ok
+  workspace_logic_tests:368: -remove_member_conflict_owned_projects_test_/0-fun-1-...[0.013 s] ok
+  workspace_logic_tests:416: -remove_member_conflict_unfinished_tasks_test_/0-fun-1-...ok
+  workspace_logic_tests:496: -remove_member_cascades_group_members_test_/0-fun-1-...[0.003 s] ok
+  workspace_logic_tests:555: -remove_member_protections_test_/0-fun-1-...ok
+  workspace_logic_tests:622: -change_role_last_owner_protection_test_/0-fun-1-...[0.001 s] ok
+  workspace_logic_tests:676: -change_role_succeeds_with_second_owner_test_/0-fun-1-...ok
+  workspace_logic_tests:723: -change_role_rechecks_actor_after_lock_test_/0-fun-3-...[0.001 s] ok
+  workspace_logic_tests:777: -transfer_owner_test_/0-fun-1-...ok
+  workspace_logic_tests:861: -branding_whitelist_test_/0-fun-1-...[0.061 s] ok
+  workspace_logic_tests:915: -archived_workspace_rejects_member_admin_test_/0-fun-1-...[0.001 s] ok
+  workspace_logic_tests:957: -create_validation_test_/0-fun-1-...ok
+  workspace_logic_tests:987: -create_maps_owner_limit_test_/0-fun-1-...ok
+  workspace_logic_tests:1002: -user_scope_creates_only_personal_workspace_test_/0-fun-3-...[0.001 s] ok
+  workspace_logic_tests:1024: -workspace_scope_requires_organization_test_/0-fun-2-...ok
+  workspace_logic_tests:1079: -generate_invite_code_owner_flow_test_/0-fun-4-...ok
+  workspace_logic_tests:1122: -generate_invite_code_governance_test_/0-fun-16-...ok
+  workspace_logic_tests:1150: -generate_invite_code_governance_test_/0-fun-2-...ok
+  workspace_logic_tests:1197: -generate_invite_code_retries_on_code_conflict_test_/0-fun-4-...[0.001 s] ok
+  workspace_logic_tests:1241: -revoke_invite_code_test_/0-fun-17-...ok
+  workspace_logic_tests:1268: -revoke_invite_code_test_/0-fun-2-...ok
+  workspace_logic_tests:1293: -join_by_code_invalid_or_expired_test_/0-fun-14-...ok
+  workspace_logic_tests:1321: -join_by_code_invalid_or_expired_test_/0-fun-2-...ok
+  workspace_logic_tests:1371: -join_by_code_happy_and_idempotent_test_/0-fun-6-...ok
+  workspace_logic_tests:1414: -join_by_code_workspace_not_found_test_/0-fun-2-...[0.001 s] ok
+  workspace_logic_tests:1460: -join_by_code_guard_passthrough_test_/0-fun-3-...[0.001 s] ok
+  workspace_logic_tests: -governor_authorization_test_/0-fun-55- (ws owner short-circuits without org lookup)...ok
+  workspace_logic_tests: -governor_authorization_test_/0-fun-45- (org admin (non ws member) may archive org workspace)...ok
+  workspace_logic_tests: -governor_authorization_test_/0-fun-36- (org admin may invite into org workspace)...ok
+  workspace_logic_tests: -governor_authorization_test_/0-fun-21- (ws member without org role still 403)...ok
+  workspace_logic_tests: -governor_authorization_test_/0-fun-12- (personal workspace non owner still 403 (no org fallback))...ok
+  [done in 2.843 s]
+module 'workspace_admin_tests'
+  workspace_admin_tests:81: -admin_page_attaches_counts_test_/0-fun-6-...ok
+  workspace_admin_tests:102: -admin_page_empty_list_no_count_query_test_/0-fun-2-...ok
+  workspace_admin_tests:119: -admin_detail_not_found_test_/0-fun-2-...ok
+  workspace_admin_tests:164: -admin_detail_assembly_test_/0-fun-5-...ok
+  workspace_admin_tests:196: -admin_member_page_test_/0-fun-2-...ok
+  workspace_admin_tests: -admin_archive_writes_audit_columns_test_/0-fun-5- (admin archive writes audit columns)...ok
+  workspace_admin_tests: -admin_archive_is_not_owner_gated_test_/0-fun-6- (admin archive is not owner gated)...[0.112 s] ok
+  workspace_admin_tests:305: -admin_archive_double_rejected_409_test_/0-fun-2-...ok
+  workspace_admin_tests:319: -admin_archive_not_found_test_/0-fun-2-...ok
+  workspace_admin_tests: -admin_restore_clears_audit_columns_test_/0-fun-6- (admin restore clears audit columns)...[0.077 s] ok
+  workspace_admin_tests:366: -admin_restore_not_archived_409_test_/0-fun-2-...ok
+  workspace_admin_tests: -admin_archive_then_business_write_rejected_980_test_/0-fun-8- (admin archive then business write rejected 980)...[0.118 s] ok
+  workspace_admin_tests:444: -admin_restore_then_business_write_allowed_test_/0-fun-3-...ok
+  [done in 0.986 s]
+=======================================================
+  All 76 tests passed.

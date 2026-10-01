@@ -1,0 +1,17 @@
+{
+  "base_sha": "f2bf91a159eb79966d46a8ddb063e29cf53809fd",
+  "sources": {
+    "src/ds/workspace_ds.erl": "1da6adf7676df8b345c934560a2f15b31987c80d6a7ed5f44e954d0131b58dc8",
+    "src/logic/workspace_logic.erl": "3fc84ae978a94cfa1e081c7bf48d2a78a7d6cdea8ec85d12e4e68ed4fd0ec9e9",
+    "src/repo/workspace_repo.erl": "44649b32d7b18b5ad42fef1b8855801c32e2aadd54418e73634e01426a76361d",
+    "test/ds/workspace_creation_pg_tests.erl": "d4c5f5dad8a3fe6712e1605ca11f21fd58bb1b322dca0ceccb7c12d2d24d3d7c",
+    "test/ds/workspace_org_default_relation_tests.erl": "229217540d38e9ff3726d84ac74324ef18614eb95fee0c54123db24ea81242de",
+    "test/logic/workspace_admin_tests.erl": "d03607cdfebd33be68c765e358860b1adeb3d863863d2aed4d15c99059b8d313",
+    "test/logic/workspace_archive_tests.erl": "fa9629b527767f0a7136de6ecd844056f267558cda7ba5c6c14b48f4c4dd381e",
+    "test/logic/workspace_logic_tests.erl": "83ddedd01bc4828f260bc2abe60bc11635c4ed162411245f0294c8849ffdfc51"
+  },
+  "artifacts": {
+    "unit.txt": "f128c20c78b3093ae82e35618509fc32bb70c04b698040dbc38e53a83debd3a0",
+    "http.txt": "f198bcf431693ae1090f5cc03ca4bac0f66c98848ac6f6be687fcc83352bbf6d"
+  }
+}

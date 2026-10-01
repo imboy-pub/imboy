@@ -36,7 +36,55 @@ creation(S) ->
         workspace_ds:create_template(995001, 995101, <<"Renamed retry">>, Name)
     ),
     assert_template(C, Created),
-    assert_count_failure(C).
+    assert_count_failure(C),
+    assert_archive(C, Created).
+
+assert_archive(C, #{workspace_id := W} = Created) ->
+    ?assertMatch({ok, _}, organization_default_workspace_app:set(995001, 995101, W)),
+    ?assertMatch(
+        {error, {default_workspace_handover_required, _}},
+        elib_pg:with_tx(fun(Tx) -> workspace_ds:archive_tx(Tx, W, null, undefined) end)
+    ),
+    #{<<"status">> := <<"active">>, <<"archived_by">> := null} =
+        intbe02_http_support:one(C, <<"SELECT status, archived_by FROM workspace WHERE id=$1">>, [W]),
+    ?assertMatch(
+        {error, {default_workspace_handover_invalid, cross_org}},
+        elib_pg:with_tx(fun(Tx) -> workspace_ds:archive_tx(Tx, W, null, 995211) end)
+    ),
+    {ok, W} = organization_default_workspace_app:get(995101),
+    assert_archive_db_failure(C, W),
+    ?assertMatch(
+        {ok, #{status := <<"archived">>, archived_by := null}},
+        workspace_logic:admin_archive(995999, W, #{replacement_workspace_id => 995201})
+    ),
+    {ok, 995201} = organization_default_workspace_app:get(995101),
+    #{<<"status">> := <<"archived">>, <<"archived_by">> := null} =
+        intbe02_http_support:one(C, <<"SELECT status, archived_by FROM workspace WHERE id=$1">>, [W]),
+    ?assertMatch({error, {409, _}}, workspace_logic:admin_archive(995999, W)),
+    assert_template(C, Created).
+
+assert_archive_db_failure(C, W) ->
+    ok = intbe02_http_support:sql_exec(
+        C,
+        <<"ALTER TABLE workspace ADD CONSTRAINT synthetic_archive_reject CHECK(status <> 'archived') NOT VALID">>
+    ),
+    try
+        ?assertMatch(
+            {error, _},
+            elib_pg:with_tx(fun(Tx) -> workspace_ds:archive_tx(Tx, W, null, 995201) end)
+        ),
+        #{<<"status">> := <<"active">>} = intbe02_http_support:one(
+            C,
+            <<"SELECT status FROM workspace WHERE id=$1">>,
+            [W]
+        ),
+        {ok, W} = organization_default_workspace_app:get(995101)
+    after
+        ok = intbe02_http_support:sql_exec(
+            C,
+            <<"ALTER TABLE workspace DROP CONSTRAINT synthetic_archive_reject">>
+        )
+    end.
 
 race(Names) ->
     Parent = self(),

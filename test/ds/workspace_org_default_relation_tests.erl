@@ -40,7 +40,7 @@ tx_query(Sql0) ->
         <<"SELECT id, name, logo, owner_id, organization_id, status, branding, created_at",
             " FROM workspace WHERE id = $1">> ->
             {ok, [workspace_readback_row()]};
-        <<"SELECT organization_id FROM workspace WHERE id = $1">> ->
+        <<"UPDATE workspace SET status = 'archived'", _/binary>> ->
             {ok, [#{<<"organization_id">> => get(t_org_db_id)}]};
         _ ->
             {ok, []}
@@ -234,7 +234,7 @@ run_archive_mocks(OrgDbId, TestFun) ->
             {'with_tx', 1, tx_fun()},
             {'query', 3, fun(_Conn, Sql, _Params) ->
                 case norm_sql(Sql) of
-                    <<"SELECT organization_id FROM workspace WHERE id = $1">> ->
+                    <<"UPDATE workspace SET status = 'archived'", _/binary>> ->
                         {ok, [#{<<"organization_id">> => OrgDbId}]};
                     _ ->
                         {ok, []}

@@ -16,6 +16,7 @@
 -export([find_by_request_id/4]).
 -export([update_by_id/2]).
 -export([update_owner_tx/3]).
+-export([archive_tx/4]).
 -export([page_by_member/4]).
 -export([count_by_owner_tx/2]).
 -export([ids_by_organization/1]).
@@ -136,6 +137,21 @@ update_owner_tx(Conn, WsId, NewOwnerUid) ->
         {ok, 1} -> ok;
         {ok, _} -> {error, workspace_not_found};
         {error, Reason} -> {error, Reason}
+    end.
+
+%% Archive and obtain authoritative Organization in the same statement.
+-spec archive_tx(any(), integer(), integer() | null, binary()) ->
+    {ok, integer() | null} | {error, term()}.
+archive_tx(Conn, WsId, ActorUid, Now) ->
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET status = 'archived', archived_at = $1, archived_by = $2, updated_at = $1",
+            " WHERE id = $3 AND status = 'active' RETURNING organization_id">>,
+    case elib_pg:query(Conn, Sql, [Now, ActorUid, WsId]) of
+        {ok, [#{<<"organization_id">> := OrgId}]} -> {ok, OrgId};
+        {ok, []} -> {error, already_archived};
+        {error, Reason} -> {error, Reason};
+        Other -> {error, {invalid_archive_result, Other}}
     end.
 
 %% @doc 我的工作区列表（JOIN workspace_member，仅 active 成员身份）

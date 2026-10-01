@@ -32,6 +32,7 @@
 -export([page_by_member/3]).
 -export([update_profile/3]).
 -export([update_branding/3]).
+-export([archive_tx/4]).
 -export([read_branding/1]).
 -export([overview/2]).
 -export([ws_transfer_tx/3, remove_member_tx/3, member_removed/1]).
@@ -333,6 +334,32 @@ update_profile(WsId, Name, Logo) ->
     case workspace_repo:update_by_id(WsId, Data) of
         {ok, _} -> {ok, find_by_id(WsId)};
         {error, Reason} -> {error, Reason}
+    end.
+
+%% Trusted transaction core; callers authorize the operation and audit the actor.
+%% A non-human actor is NULL in the human FK, never an application/admin ID.
+-spec archive_tx(any(), integer(), integer() | null, integer() | undefined) -> {ok, map()}.
+archive_tx(Conn, WsId, ActorUid, ReplacementWsId) ->
+    Now = elib_dt:now(),
+    case workspace_repo:archive_tx(Conn, WsId, ActorUid, Now) of
+        {ok, OrgDbId} ->
+            OrgId =
+                case OrgDbId of
+                    null -> undefined;
+                    N when is_integer(N), N > 0 -> N;
+                    _ -> throw({abort_tx, invalid_organization_id})
+                end,
+            ok = organization_default_workspace_app:replace_on_archive_tx(
+                Conn, OrgId, WsId, ReplacementWsId
+            ),
+            {ok, #{
+                workspace_id => WsId,
+                status => <<"archived">>,
+                archived_by => ActorUid,
+                archived_at => Now
+            }};
+        {error, Reason} ->
+            throw({abort_tx, Reason})
     end.
 
 %% @doc branding 白名单读（仅 name/logo/primaryColor）

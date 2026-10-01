@@ -659,7 +659,9 @@ archive(Uid, WsId, Opts) when is_map(Opts) ->
             case
                 elib_pg:with_tx(
                     fun(Conn) ->
-                        archive_tx(Conn, WsId, Uid, normalize_replacement(ReplacementWsId))
+                        workspace_ds:archive_tx(
+                            Conn, WsId, Uid, normalize_replacement(ReplacementWsId)
+                        )
                     end
                 )
             of
@@ -700,31 +702,6 @@ handover_invalid_msg(not_active) ->
     <<"指定的替代默认工作区已归档，不能作为默认"/utf8>>;
 handover_invalid_msg(_) ->
     <<"指定的替代默认工作区不存在"/utf8>>.
-
-archive_tx(Conn, WsId, Uid, ReplacementWsId) ->
-    Now = elib_dt:now(),
-    Sql =
-        <<"UPDATE workspace SET status = 'archived', archived_at = $1,",
-            " archived_by = $2, updated_at = $1", " WHERE id = $3 AND status = 'active'">>,
-    case elib_pg:execute(Conn, Sql, [Now, Uid, WsId]) of
-        {ok, 1} ->
-            %% Org 默认工作区同事务交接（C05/ORG-05）：默认永不指向
-            %% archived Workspace——replace_with_min_active / clear；
-            %% 个人域（organization_id 为空）不动作。失败回滚整个归档。
-            ok = organization_default_workspace_app:replace_on_archive_tx(
-                Conn, organization_id_of_tx(Conn, WsId), WsId, ReplacementWsId
-            ),
-            {ok, #{
-                workspace_id => WsId,
-                status => <<"archived">>,
-                archived_by => Uid,
-                archived_at => Now
-            }};
-        {ok, 0} ->
-            throw({abort_tx, already_archived});
-        {error, Reason} ->
-            throw({abort_tx, Reason})
-    end.
 
 %% @doc 恢复工作区（Owner or org owner/admin，GZAPP-02/G7；清空归档审计列；恢复后写操作放行）
 -spec restore(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
@@ -1013,8 +990,8 @@ admin_archive(AdmUserId, WsId, Opts) when is_map(Opts) ->
             case
                 elib_pg:with_tx(
                     fun(Conn) ->
-                        admin_archive_tx(
-                            Conn, WsId, AdmUserId, normalize_replacement(ReplacementWsId)
+                        workspace_ds:archive_tx(
+                            Conn, WsId, null, normalize_replacement(ReplacementWsId)
                         )
                     end
                 )
@@ -1042,41 +1019,6 @@ admin_archive(AdmUserId, WsId, Opts) when is_map(Opts) ->
             end;
         _ ->
             {error, {404, <<"工作区不存在"/utf8>>}}
-    end.
-
-admin_archive_tx(Conn, WsId, _AdmUserId, ReplacementWsId) ->
-    Now = elib_dt:now(),
-    %% archived_by 列带 FK → "user"(id)（迁移 00000076），而运营操作者是
-    %% adm_user.id，写入库必 23503 回滚成 500——admin 路径固定写 NULL，
-    %% 操作者审计由 handler 层 audit_workspace_governance（admin_operation_logs）
-    %% 承担；user 侧 Owner 归档（archive/2）不受影响，仍写 Uid。
-    Sql =
-        <<"UPDATE workspace SET status = 'archived', archived_at = $1,",
-            " archived_by = NULL, updated_at = $1", " WHERE id = $2 AND status = 'active'">>,
-    case elib_pg:execute(Conn, Sql, [Now, WsId]) of
-        {ok, 1} ->
-            %% 与 Owner 归档同口径：Org 默认工作区同事务交接（C05/ORG-05）
-            ok = organization_default_workspace_app:replace_on_archive_tx(
-                Conn, organization_id_of_tx(Conn, WsId), WsId, ReplacementWsId
-            ),
-            {ok, #{
-                workspace_id => WsId,
-                status => <<"archived">>,
-                archived_by => null,
-                archived_at => Now
-            }};
-        {ok, 0} ->
-            throw({abort_tx, already_archived});
-        {error, Reason} ->
-            throw({abort_tx, Reason})
-    end.
-
-%% 归档交接用：事务内读取工作区归属 Org（个人域返回 undefined 不动作）。
--spec organization_id_of_tx(any(), integer()) -> integer() | undefined.
-organization_id_of_tx(Conn, WsId) ->
-    case elib_pg:query(Conn, <<"SELECT organization_id FROM workspace WHERE id = $1">>, [WsId]) of
-        {ok, [#{<<"organization_id">> := OrgId} | _]} when OrgId =/= null -> OrgId;
-        _ -> undefined
     end.
 
 %% @doc 运营恢复（平台侧；清空归档审计列；恢复后写守卫放行）

@@ -192,8 +192,14 @@ archive_mocks(CurrStatus, Self) ->
                 (fake_conn, <<"SELECT status FROM workspace", _/binary>>, _) ->
                     {ok, [#{<<"status">> => ws_status_of(CurrStatus)}]};
                 %% C05/ORG-05：归档交接需事务内读归属 Org（本 mock 返回 null=个人域）
-                (fake_conn, <<"SELECT organization_id FROM workspace", _/binary>>, _) ->
-                    {ok, [#{<<"organization_id">> => null}]}
+                (fake_conn, <<"UPDATE workspace SET status = 'archived'", _/binary>> = Sql, Params) ->
+                    case ws_status_of(CurrStatus) of
+                        <<"active">> ->
+                            Self ! {archive_sql, Sql, Params},
+                            {ok, [#{<<"organization_id">> => null}]};
+                        _ ->
+                            {ok, []}
+                    end
             end},
             {'execute', 3, fun(fake_conn, Sql, Params) ->
                 case Sql of
