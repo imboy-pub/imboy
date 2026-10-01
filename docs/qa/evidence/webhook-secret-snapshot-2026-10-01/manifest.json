@@ -1,0 +1,74 @@
+[
+  {
+    "path": "native-compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "native-credential-lifecycle-http.jsonl",
+    "sha256": "b4f0c7acbf2423fc6d83d9e0601f3d6862e92afae6a79ed18db64b406bc27889"
+  },
+  {
+    "path": "native-credential-repeat-rotation.json",
+    "sha256": "7e4aa1a8952e44faca4198f15d31cabe499eefe050305ecc9396ab5ab8e90f6c"
+  },
+  {
+    "path": "native-governance-audit-checks.json",
+    "sha256": "77f45513994be3e344dad633a67db04db0bff901c31e68d60e127495d073a04a"
+  },
+  {
+    "path": "native-http.log",
+    "sha256": "5b2a1bc621a0c5169c32b72ea15b6cbb972e98844bc60ecc8599a13c18704b0d"
+  },
+  {
+    "path": "native-image-id.txt",
+    "sha256": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+  },
+  {
+    "path": "native-webhook-secret-snapshot.json",
+    "sha256": "4eb5913667bf79ba15a185505910c1336a6c1271f60c1c144b6a59ff7cb2573e"
+  },
+  {
+    "path": "native-webhook-snapshot-faults.json",
+    "sha256": "b5d466f684a4a2251f76d0b37d3331a6ab33700962b386437d81ef4c6addbfb6"
+  },
+  {
+    "path": "native-webhook-write-failures.jsonl",
+    "sha256": "9f230883e27e8e6c13132f49fe6b90203f2418905b64762ff19e1f7fd37f2c9b"
+  },
+  {
+    "path": "red-compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "red-http.log",
+    "sha256": "6d90134f1653491924782719d053d73248984da99b29f6a7458e701cae50e02f"
+  },
+  {
+    "path": "red-webhook-secret-snapshot.json",
+    "sha256": "4690fcb97e2b057df63db8e27366434dd10b8b8ef389e7bf3886970a3accf90e"
+  },
+  {
+    "path": "regression-compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "regression-http.log",
+    "sha256": "15ba9c72a2f090a16435bd2e82c915bc269a5f98676a9d92de8cd770a1e1d19c"
+  },
+  {
+    "path": "regression-image-id.txt",
+    "sha256": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+  },
+  {
+    "path": "regression-internal-operation-coverage.json",
+    "sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1"
+  },
+  {
+    "path": "result.json",
+    "sha256": "9e631d3b0afe5a775f400e24f74dd0cfa70dcf86d220cf6f7a399833f53075c6"
+  },
+  {
+    "path": "source-sha.json",
+    "sha256": "1a58826ab5dd325b316267068ba9f4cf903c5d3782308c7e2c460e924b3ba9ae"
+  }
+]

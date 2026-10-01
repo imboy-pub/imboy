@@ -104,11 +104,12 @@ begin_tx(Conn, Ctx, ResourceType, Key, Digest) when
                 null ->
                     {ok, pending};
                 Code when is_integer(Code) ->
-                    {ok, replay, #{
+                    Replay = #{
                         resource_id => maps:get(<<"resource_id">>, Row, null),
                         response_code => Code,
                         response_body => maps:get(<<"response_body">>, Row, null)
-                    }}
+                    },
+                    open_snapshot(Ctx, ResourceType, Key, Replay)
             end;
         {error, _} = Err ->
             Err
@@ -124,10 +125,14 @@ begin_tx(Conn, Ctx, ResourceType, Key, Digest) when
 complete_tx(Conn, Ctx, ResourceType, Key, ResourceId, ResponseCode, ResponseBody) ->
     OrgId = maps:get(organization_id, Ctx),
     AppId = maps:get(application_id, Ctx),
-    _ = ResourceType,
-    enterprise_internal_idempotency_repo:claim_tx(
-        Conn, OrgId, AppId, Key, ResourceId, ResponseCode, ResponseBody
-    ).
+    case seal_snapshot(Ctx, ResourceType, Key, ResourceId, ResponseCode, ResponseBody) of
+        {ok, Stored} ->
+            enterprise_internal_idempotency_repo:claim_tx(
+                Conn, OrgId, AppId, Key, ResourceId, ResponseCode, Stored
+            );
+        {error, _} = Error ->
+            Error
+    end.
 
 %% Mandatory completion for HTTP callers: never acknowledge a missing replay snapshot.
 -spec must_complete_tx(
@@ -175,6 +180,83 @@ replay_header() ->
 %%%===================================================================
 %%% Internal
 %%%===================================================================
+
+%% Webhook responses contain a signing secret. Keep exact response bytes inside
+%% authenticated encryption; bind them to the tenant, app, key and result metadata.
+seal_snapshot(Ctx, <<"enterprise_webhook_config">> = Type, Key, Id, Code, Body) ->
+    Binding = snapshot_binding(Ctx, Type, Key, Id, Code),
+    case snapshot_key(postgre_aes_key, Binding) of
+        {ok, CipherKey} ->
+            case elib_cipher:aes_gcm_encrypt(Body, CipherKey) of
+                {ok, Cipher} -> {ok, jsone:encode(#{<<"_imboy_snapshot_v1">> => Cipher})};
+                {error, _} -> {error, invalid_snapshot}
+            end;
+        {error, _} = Error ->
+            Error
+    end;
+seal_snapshot(_Ctx, _Type, _Key, _Id, _Code, Body) ->
+    {ok, Body}.
+
+open_snapshot(Ctx, <<"enterprise_webhook_config">> = Type, Key, Replay) ->
+    try jsone:decode(maps:get(response_body, Replay)) of
+        #{<<"_imboy_snapshot_v1">> := Cipher} = Envelope when map_size(Envelope) =:= 1 ->
+            Binding = snapshot_binding(
+                Ctx,
+                Type,
+                Key,
+                maps:get(resource_id, Replay),
+                maps:get(response_code, Replay)
+            ),
+            case decrypt_snapshot(Cipher, Binding, [postgre_aes_key, postgre_aes_key_old]) of
+                {ok, Body} -> {ok, replay, Replay#{response_body => Body}};
+                {error, _} = Error -> Error
+            end;
+        #{<<"_imboy_snapshot_v1">> := _} ->
+            {error, invalid_snapshot};
+        Legacy when is_map(Legacy) ->
+            %% Existing plaintext snapshots remain readable until their original TTL.
+            {ok, replay, Replay};
+        _ ->
+            {error, invalid_snapshot}
+    catch
+        _:_ -> {error, invalid_snapshot}
+    end;
+open_snapshot(_Ctx, _Type, _Key, Replay) ->
+    {ok, replay, Replay}.
+
+snapshot_binding(Ctx, Type, Key, Id, Code) ->
+    jsone:encode([
+        <<"internal-snapshot-v1">>,
+        maps:get(organization_id, Ctx),
+        maps:get(application_id, Ctx),
+        Type,
+        Key,
+        Id,
+        Code
+    ]).
+
+snapshot_key(Name, Binding) ->
+    case config_ds:env(Name, <<>>) of
+        Master when is_binary(Master), byte_size(Master) > 0 ->
+            {ok, crypto:mac(hmac, sha256, Master, Binding)};
+        Master when is_list(Master), Master =/= [] ->
+            {ok, crypto:mac(hmac, sha256, list_to_binary(Master), Binding)};
+        _ ->
+            {error, invalid_snapshot}
+    end.
+
+decrypt_snapshot(_Cipher, _Binding, []) ->
+    {error, invalid_snapshot};
+decrypt_snapshot(Cipher, Binding, [Name | Rest]) ->
+    case snapshot_key(Name, Binding) of
+        {ok, CipherKey} ->
+            case elib_cipher:aes_gcm_decrypt(Cipher, CipherKey) of
+                {ok, _} = Result -> Result;
+                _ -> decrypt_snapshot(Cipher, Binding, Rest)
+            end;
+        _ ->
+            decrypt_snapshot(Cipher, Binding, Rest)
+    end.
 
 -spec canonical_body(binary() | map() | list()) ->
     {ok, binary()} | {error, non_canonical}.

@@ -1,0 +1,14 @@
+{
+  "baseline_sha": "c380f68a6ac56166974244b11f93cfe6c0c7f56e",
+  "red_run": "d6oSBC",
+  "red_exit_code": 1,
+  "native_run": "iKHPuM",
+  "native_exit_code": 0,
+  "historical_plaintext_rows_rewritten": false,
+  "production_operations": false,
+  "global_goal_status": "PARTIAL",
+  "regression_run": "ODm7ZE",
+  "regression_exit_code": 0,
+  "regression_tests": 28,
+  "internal_operation_count": 42
+}
