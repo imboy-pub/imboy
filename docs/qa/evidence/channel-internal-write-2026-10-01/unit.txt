@@ -1,0 +1,774 @@
+======================== EUnit ========================
+module 'channel_ds_tests'
+  channel_ds_tests:32: -subscribe_increments_counter_when_state_changes_test_/0-fun-4-...08:58:37.514 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"subscribe">>},
+ {result,<<"changed">>},
+ {cost_ms,0}]
+[0.012 s] ok
+  channel_ds_tests:62: -subscribe_is_idempotent_when_already_active_test_/0-fun-4-...08:58:37.636 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"subscribe">>},
+ {result,<<"noop">>},
+ {cost_ms,0}]
+ok
+  channel_ds_tests:92: -unsubscribe_decrements_counter_when_state_changes_test_/0-fun-4-...08:58:37.753 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"unsubscribe">>},
+ {result,<<"changed">>},
+ {cost_ms,0}]
+[0.001 s] ok
+  channel_ds_tests:122: -unsubscribe_is_idempotent_when_already_inactive_test_/0-fun-4-...08:58:37.871 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"unsubscribe">>},
+ {result,<<"noop">>},
+ {cost_ms,0}]
+ok
+  channel_ds_tests:153: -create_channel_subscribes_creator_in_tx_test_/0-fun-5-...ok
+  channel_ds_tests:186: -create_channel_aborts_when_creator_subscription_fails_test_/0-fun-3-...[0.001 s] ok
+  channel_ds_tests:218: -subscribe_returns_error_when_tx_aborts_test_/0-fun-4-...08:58:38.220 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"subscribe">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_ds_tests:248: -unsubscribe_returns_error_when_tx_aborts_test_/0-fun-4-...08:58:38.336 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"unsubscribe">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_ds_tests:278: -subscribe_rejects_archived_workspace_in_same_transaction_test_/0-fun-2-...08:58:38.452 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"subscribe">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+[0.001 s] ok
+  08:58:38.568 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"unsubscribe">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+channel_ds_tests:310: -unsubscribe_rejects_archived_workspace_in_same_transaction_test_/0-fun-2-...ok
+  channel_ds_tests:343: -is_subscribed_returns_true_when_subscription_exists_test_/0-fun-2-...[0.001 s] ok
+  channel_ds_tests:355: -is_subscribed_returns_false_when_subscription_missing_test_/0-fun-2-...ok
+  channel_ds_tests:381: -update_encodes_tags_as_jsonb_before_update_test_/0-fun-2-...[0.002 s] ok
+  channel_ds_tests:403: -update_encodes_empty_tags_list_as_empty_json_array_test_/0-fun-2-...ok
+  channel_ds_tests:425: -update_passes_through_text_fields_when_no_tags_test_/0-fun-2-...ok
+  channel_ds_tests:452: -insert_reaction_retries_once_after_dead_connection_test_/0-fun-3-...[0.001 s] ok
+  channel_ds_tests:478: -delete_reaction_retries_once_when_pool_is_temporarily_empty_test_/0-fun-3-...ok
+  [done in 1.511 s]
+module 'workspace_archive_closure_tests'
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-70- (channel_comment add/delete/like/unlike rejected 980 (R3 #9))...[0.122 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-60- (channel reaction insert/delete rejected 980 (R3 #10))...[0.138 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-54- (channel message update/delete/revoke rejected 980)...[0.142 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-46- (channel settings update/delete rejected 980)...[0.131 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-40- (channel admin add/delete/update_role rejected 980 (R3 #13))...[0.108 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-32- (workspace-scope channel creation rejected 980)...[0.140 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-27- (channel invitation create/accept/reject rejected 980)...[0.111 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-19- (channel webhook create short-circuits before bot user)...[0.123 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-13- (channel webhook disable rejected 980)...[0.108 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-9- (message view insert skips when archived (derived, read stays open))...[0.128 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-5- (personal channel comment/reaction pass without workspace lock)...[0.142 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-36- (group profile update_by_id rejected 980 (edit/set_e2ee_mode 共用))...[0.112 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-32- (group dissolve rejected 980)...[0.129 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-25- (group member join rejected 980 in tx)...[0.119 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-21- (group member leave freezes silently when archived)...[0.159 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-15- (group member role change rejected 980 in tx)...[0.121 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-8- (workspace group creation rejected 980 (workspace_add_tx))...[0.189 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-3- (personal group profile update passes without workspace lock)...[0.112 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-140- (vote writes rejected 980 (create/cast/close/record))...[0.140 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-126- (vote logic normalizes 980 (close_vote))...[0.154 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-120- (schedule writes rejected 980 (create/update/cancel/participant/remind))...[0.126 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-104- (schedule remind marking skips + zero push leak when archived)...[0.148 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-96- (album writes rejected 980 (album/photo/like/comment))...[0.150 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-76- (album upload_photo short-circuits before OSS when archived)...[0.168 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-70- (file upload/delete rejected 980 (upload before OSS))...[0.185 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-58- (file download stays open with frozen counter when archived)...[0.148 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-52- (task writes rejected 980 (task/assignment/adm))...[0.139 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-38- (task logic propagates 980 instead of swallowing (create/assign))...[0.178 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-28- (tag writes rejected 980 (add/remove/delete))...[0.110 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-19- (category move_group freezes silently when archived (personal org))...[0.105 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-15- (personal sub-domain writes pass without workspace lock)...[0.268 s] ok
+  workspace_archive_closure_tests: -attachment_save_closure_test_/0-fun-44- (group-scope attachment confirm rejected 980)...08:58:43.509 [error] ["attach_logic confirm save tx failed: ",
+ {980,
+  <<229,183,165,228,189,156,229,140,186,229,183,178,229,189,146,230,161,163,
+    239,188,140,229,134,153,230,147,141,228,189,156,232,162,171,230,139,146,
+    231,187,157>>}]
+[0.173 s] ok
+  workspace_archive_closure_tests: -attachment_save_closure_test_/0-fun-40- (channel-scope attachment confirm rejected 980)...08:58:43.673 [error] ["attach_logic confirm save tx failed: ",
+ {980,
+  <<229,183,165,228,189,156,229,140,186,229,183,178,229,189,146,230,161,163,
+    239,188,140,229,134,153,230,147,141,228,189,156,232,162,171,230,139,146,
+    231,187,157>>}]
+[0.163 s] ok
+  workspace_archive_closure_tests: -attachment_save_closure_test_/0-fun-36- (c2c-scope attachment confirm passes (personal domain))...[0.164 s] ok
+  workspace_archive_closure_tests: -attachment_save_closure_test_/0-fun-25- (moment-scope attachment confirm passes under archived workspace (T7 closed))...[0.151 s] ok
+  workspace_archive_closure_tests: -attachment_save_closure_test_/0-fun-15- (private-scope attachment confirm passes under archived workspace (T7 closed))...[0.149 s] ok
+  workspace_archive_closure_tests: -group_file_upload_closure_test_/0-fun-37- (group file upload into archived workspace rejected 980 before OSS)...[0.168 s] ok
+  workspace_archive_closure_tests: -group_file_upload_closure_test_/0-fun-31- (group file attachment write aborted in-tx on archived (window race))...[0.222 s] ok
+  workspace_archive_closure_tests: -group_file_upload_closure_test_/0-fun-15- (personal group file upload unaffected (zero regression))...[0.238 s] ok
+  workspace_archive_closure_tests: -guard_helper_test_/0-fun-13- (write_tx executes fun after guard passes)...[0.109 s] ok
+  workspace_archive_closure_tests: -guard_helper_test_/0-fun-9- (write_tx_or_skip returns skipped when archived)...[0.097 s] ok
+  workspace_archive_closure_tests: -guard_helper_test_/0-fun-5- (write_tx_or_skip returns written when active)...[0.064 s] ok
+  [done in 6.178 s]
+module 'channel_logic_message_tests'
+  channel_logic_message_tests:28: -get_channel_editor_unsubscribed_returns_false_test_/0-fun-4-...[0.001 s] ok
+  channel_logic_message_tests:53: -get_channel_creator_always_subscribed_test_/0-fun-4-...ok
+  channel_logic_message_tests:81: -get_channel_role_zero_queries_subscription_test_/0-fun-4-...ok
+  channel_logic_message_tests:116: -get_paid_channel_returns_purchase_state_test_/0-fun-3-...ok
+  channel_logic_message_tests:144: -get_paid_channel_returns_true_for_purchased_user_test_/0-fun-2-...ok
+  channel_logic_message_tests:174: -get_paid_custom_channel_includes_price_and_purchase_state_test_/0-fun-3-...[0.001 s] ok
+  channel_logic_message_tests:216: -update_channel_custom_id_first_set_persists_test_/0-fun-4-...ok
+  channel_logic_message_tests:256: -update_channel_custom_id_locked_ignored_test_/0-fun-4-...ok
+  channel_logic_message_tests:287: -update_channel_custom_id_duplicate_returns_error_test_/0-fun-2-...ok
+  channel_logic_message_tests:309: -update_channel_custom_id_invalid_format_returns_error_test_/0-fun-3-...ok
+  channel_logic_message_tests:334: -update_channel_returns_permission_denied_for_role_below_two_test_/0-fun-2-...ok
+  channel_logic_message_tests:359: -get_channel_by_custom_id_editor_unsubscribed_returns_false_test_/0-fun-4-...ok
+  channel_logic_message_tests:378: -create_channel_custom_lookup_failure_is_closed_test_/0-fun-3-...ok
+  [done in 0.635 s]
+module 'channel_scope_tests'
+  channel_scope_tests:35: -create_scope_validation_test_/0-fun-1-...[0.001 s] ok
+  channel_scope_tests:107: -update_rejects_scope_mutation_test_/0-fun-1-...ok
+  channel_scope_tests:145: -list_workspace_channels_partitions_by_scope_test_/0-fun-1-...ok
+  channel_scope_tests:180: -list_workspace_channels_status_filter_test_/0-fun-1-...ok
+  [done in 0.410 s]
+module 'channel_logic_tests'
+  channel_logic_tests:66: -publish_message_with_admin_role_succeeds_test_/0-fun-13-...[0.002 s] ok
+08:58:46.220 [error] ["moderation_policy wordlist unavailable, fail-open: ",
+ {'EXIT',
+     {badarg,
+         [{ets,lookup,
+              ['m:imboy_cache',{moderation_sensitive_words}],
+              [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+          {depcache,get_concurrent,5,[{file,"src/depcache.erl"},{line,1231}]},
+          {depcache,get_ets,2,[{file,"src/depcache.erl"},{line,680}]},
+          {depcache,get_wait,2,[{file,"src/depcache.erl"},{line,470}]},
+          {depcache,memo,5,[{file,"src/depcache.erl"},{line,303}]},
+          {moderation_policy,cached_words,0,
+              [{file,"src/logic/moderation_policy.erl"},{line,113}]},
+          {moderation_policy,inspect,2,
+              [{file,"src/logic/moderation_policy.erl"},{line,43}]},
+          {channel_logic_message,do_publish_message,6,
+              [{file,"src/logic/channel_logic_message.erl"},{line,421}]}]}}]
+  channel_logic_tests:116: -publish_message_creator_fallback_succeeds_test_/0-fun-8-...08:58:46.323 [error] ["moderation_policy wordlist unavailable, fail-open: ",
+ {'EXIT',
+     {badarg,
+         [{ets,lookup,
+              ['m:imboy_cache',{moderation_sensitive_words}],
+              [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+          {depcache,get_concurrent,5,[{file,"src/depcache.erl"},{line,1231}]},
+          {depcache,get_ets,2,[{file,"src/depcache.erl"},{line,680}]},
+          {depcache,get_wait,2,[{file,"src/depcache.erl"},{line,470}]},
+          {depcache,memo,5,[{file,"src/depcache.erl"},{line,303}]},
+          {moderation_policy,cached_words,0,
+              [{file,"src/logic/moderation_policy.erl"},{line,113}]},
+          {moderation_policy,inspect,2,
+              [{file,"src/logic/moderation_policy.erl"},{line,43}]},
+          {channel_logic_message,do_publish_message,6,
+              [{file,"src/logic/channel_logic_message.erl"},{line,421}]}]}}]
+[0.001 s] ok
+  channel_logic_tests:159: -publish_message_with_admin_role_still_returns_ok_when_broadcast_crashes_test_/0-fun-10-...08:58:46.427 [error] ["moderation_policy wordlist unavailable, fail-open: ",
+ {'EXIT',
+     {badarg,
+         [{ets,lookup,
+              ['m:imboy_cache',{moderation_sensitive_words}],
+              [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+          {depcache,get_concurrent,5,[{file,"src/depcache.erl"},{line,1231}]},
+          {depcache,get_ets,2,[{file,"src/depcache.erl"},{line,680}]},
+          {depcache,get_wait,2,[{file,"src/depcache.erl"},{line,470}]},
+          {depcache,memo,5,[{file,"src/depcache.erl"},{line,303}]},
+          {moderation_policy,cached_words,0,
+              [{file,"src/logic/moderation_policy.erl"},{line,113}]},
+          {moderation_policy,inspect,2,
+              [{file,"src/logic/moderation_policy.erl"},{line,43}]},
+          {channel_logic_message,do_publish_message,6,
+              [{file,"src/logic/channel_logic_message.erl"},{line,421}]}]}}]
+08:58:46.427 [error] [channel_logic_notify_send_crashed,<<"channel_message">>,
+ {uid_count,2},
+ {mock_notify_crash,
+     [{channel_logic_tests,
+          '-publish_message_with_admin_role_still_returns_ok_when_broadcast_crashes_test_/0-fun-1-',
+          7,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,154}]},
+      {channel_logic_notify,send_safe,4,
+          [{file,"src/logic/channel_logic_notify.erl"},{line,158}]},
+      {channel_logic_message,maybe_notify_new_message,3,
+          [{file,"src/logic/channel_logic_message.erl"},{line,471}]},
+      {channel_logic_message,do_publish_message,6,
+          [{file,"src/logic/channel_logic_message.erl"},{line,439}]},
+      {channel_logic_tests,
+          '-publish_message_with_admin_role_still_returns_ok_when_broadcast_crashes_test_/0-fun-10-',
+          0,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,160}]},
+      {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+      {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+      {msg_s2c_ds,send,
+          [0,
+           [2001,2002],
+           <<"channel_message">>,<<>>,null,
+           #{<<"author_id">> => 1001,<<"channel_id">> => 11,
+             <<"content">> => <<"hello">>,<<"id">> => 109,
+             <<"msg_type">> => <<"text">>,<<"payload">> => <<"{}">>,
+             <<"type">> => <<"CHANNEL">>},
+           save],
+          []}]}]
+ok
+  channel_logic_tests:191: -publish_message_with_non_admin_role_fails_test_/0-fun-5-...ok
+  channel_logic_tests:224: -publish_message_when_storage_fails_returns_error_test_/0-fun-7-...08:58:46.584 [error] ["moderation_policy wordlist unavailable, fail-open: ",
+ {'EXIT',
+     {badarg,
+         [{ets,lookup,
+              ['m:imboy_cache',{moderation_sensitive_words}],
+              [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+          {depcache,get_concurrent,5,[{file,"src/depcache.erl"},{line,1231}]},
+          {depcache,get_ets,2,[{file,"src/depcache.erl"},{line,680}]},
+          {depcache,get_wait,2,[{file,"src/depcache.erl"},{line,470}]},
+          {depcache,memo,5,[{file,"src/depcache.erl"},{line,303}]},
+          {moderation_policy,cached_words,0,
+              [{file,"src/logic/moderation_policy.erl"},{line,113}]},
+          {moderation_policy,inspect,2,
+              [{file,"src/logic/moderation_policy.erl"},{line,43}]},
+          {channel_logic_message,do_publish_message,6,
+              [{file,"src/logic/channel_logic_message.erl"},{line,421}]}]}}]
+ok
+  channel_logic_tests:260: -publish_message_returns_error_when_loading_new_message_fails_test_/0-fun-6-...08:58:46.676 [error] ["moderation_policy wordlist unavailable, fail-open: ",
+ {'EXIT',
+     {badarg,
+         [{ets,lookup,
+              ['m:imboy_cache',{moderation_sensitive_words}],
+              [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+          {depcache,get_concurrent,5,[{file,"src/depcache.erl"},{line,1231}]},
+          {depcache,get_ets,2,[{file,"src/depcache.erl"},{line,680}]},
+          {depcache,get_wait,2,[{file,"src/depcache.erl"},{line,470}]},
+          {depcache,memo,5,[{file,"src/depcache.erl"},{line,303}]},
+          {moderation_policy,cached_words,0,
+              [{file,"src/logic/moderation_policy.erl"},{line,113}]},
+          {moderation_policy,inspect,2,
+              [{file,"src/logic/moderation_policy.erl"},{line,43}]},
+          {channel_logic_message,do_publish_message,6,
+              [{file,"src/logic/channel_logic_message.erl"},{line,421}]}]}}]
+ok
+  channel_logic_tests:307: -publish_message_accepts_custom_id_fallback_test_/0-fun-9-...08:58:46.778 [error] ["moderation_policy wordlist unavailable, fail-open: ",
+ {'EXIT',
+     {badarg,
+         [{ets,lookup,
+              ['m:imboy_cache',{moderation_sensitive_words}],
+              [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+          {depcache,get_concurrent,5,[{file,"src/depcache.erl"},{line,1231}]},
+          {depcache,get_ets,2,[{file,"src/depcache.erl"},{line,680}]},
+          {depcache,get_wait,2,[{file,"src/depcache.erl"},{line,470}]},
+          {depcache,memo,5,[{file,"src/depcache.erl"},{line,303}]},
+          {moderation_policy,cached_words,0,
+              [{file,"src/logic/moderation_policy.erl"},{line,113}]},
+          {moderation_policy,inspect,2,
+              [{file,"src/logic/moderation_policy.erl"},{line,43}]},
+          {channel_logic_message,do_publish_message,6,
+              [{file,"src/logic/channel_logic_message.erl"},{line,421}]}]}}]
+[0.001 s] ok
+  channel_logic_tests:340: -get_channel_by_custom_id_includes_role_for_admin_test_/0-fun-7-...[0.001 s] ok
+  channel_logic_tests:373: -get_channel_by_custom_id_checks_subscription_for_non_admin_test_/0-fun-8-...ok
+  channel_logic_tests:406: -get_channel_by_custom_id_checks_subscription_when_admin_role_unexpected_test_/0-fun-8-...[0.001 s] ok
+  channel_logic_tests:434: -get_channel_returns_error_when_repo_returns_non_map_payload_test_/0-fun-5-...ok
+  channel_logic_tests:458: -get_channel_by_custom_id_returns_error_when_repo_returns_non_map_payload_test_/0-fun-5-...ok
+  channel_logic_tests:488: -get_channel_by_custom_id_returns_error_when_channel_id_invalid_test_/0-fun-5-...ok
+  channel_logic_tests:524: -update_channel_success_still_returns_ok_when_notify_crashes_test_/0-fun-10-...08:58:47.293 [error] [channel_logic_notify_send_crashed,<<"channel_updated">>,
+ {uid_count,2},
+ {mock_notify_crash,
+     [{channel_logic_tests,
+          '-update_channel_success_still_returns_ok_when_notify_crashes_test_/0-fun-0-',
+          7,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,519}]},
+      {channel_logic_notify,send_safe,4,
+          [{file,"src/logic/channel_logic_notify.erl"},{line,158}]},
+      {channel_logic_message,do_update_channel,2,
+          [{file,"src/logic/channel_logic_message.erl"},{line,234}]},
+      {channel_logic_tests,
+          '-update_channel_success_still_returns_ok_when_notify_crashes_test_/0-fun-10-',
+          0,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,525}]},
+      {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+      {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+      {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]},
+      {msg_s2c_ds,send,
+          [0,
+           [1001,2002],
+           <<"channel_updated">>,<<>>,null,
+           #{<<"channel">> =>
+                 #{<<"creator_uid">> => 1001,<<"description">> => <<"desc">>,
+                   <<"id">> => 11,<<"name">> => <<"Channel X">>},
+             <<"channel_id">> => 11},
+           no_save],
+          []}]}]
+ok
+  channel_logic_tests:551: -update_channel_returns_permission_denied_when_admin_role_unexpected_test_/0-fun-5-...ok
+  channel_logic_tests:589: -update_channel_success_still_returns_ok_when_notify_fails_test_/0-fun-10-...08:58:47.442 [warning] [channel_logic_notify_send_failed,<<"channel_updated">>,
+ {uid_count,2},
+ notify_failed]
+ok
+  channel_logic_tests:617: -update_channel_returns_error_when_reload_payload_not_map_test_/0-fun-7-...[0.001 s] ok
+  channel_logic_tests:644: -delete_channel_success_still_returns_ok_when_notify_crashes_test_/0-fun-7-...08:58:47.604 [error] [channel_logic_notify_send_crashed,<<"channel_deleted">>,
+ {uid_count,2},
+ {mock_notify_crash,
+     [{channel_logic_tests,
+          '-delete_channel_success_still_returns_ok_when_notify_crashes_test_/0-fun-0-',
+          7,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,639}]},
+      {channel_logic_notify,send_safe,4,
+          [{file,"src/logic/channel_logic_notify.erl"},{line,158}]},
+      {channel_logic_message,delete_channel,2,
+          [{file,"src/logic/channel_logic_message.erl"},{line,261}]},
+      {channel_logic_tests,
+          '-delete_channel_success_still_returns_ok_when_notify_crashes_test_/0-fun-7-',
+          0,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,645}]},
+      {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+      {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+      {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]},
+      {msg_s2c_ds,send,
+          [0,
+           [1001,2002],
+           <<"channel_deleted">>,<<>>,null,
+           #{<<"channel_id">> => 11},
+           save],
+          []}]}]
+ok
+  channel_logic_tests:669: -delete_channel_success_still_returns_ok_when_notify_fails_test_/0-fun-7-...08:58:47.688 [warning] [channel_logic_notify_send_failed,<<"channel_deleted">>,
+ {uid_count,2},
+ notify_failed]
+[0.001 s] ok
+  channel_logic_tests:694: -delete_channel_still_returns_ok_when_subscriber_lookup_crashes_test_/0-fun-7-...ok
+  channel_logic_tests:737: -get_messages_paid_channel_requires_purchase_test_/0-fun-7-...ok
+  channel_logic_tests:788: -get_messages_paid_channel_allows_purchased_user_test_/0-fun-8-...ok
+  channel_logic_tests:829: -get_messages_paid_channel_rejects_subscription_without_purchase_test_/0-fun-8-...ok
+  channel_logic_tests:859: -get_messages_returns_error_when_repo_query_fails_test_/0-fun-4-...ok
+  channel_logic_tests:887: -get_messages_returns_error_when_repo_payload_not_list_test_/0-fun-4-...ok
+  channel_logic_tests:925: -get_messages_filters_non_map_entries_test_/0-fun-5-...08:58:48.242 [error] ["channel_list_user_reactions_crashed",1001,
+ {undef,[{channel_ds,list_user_reactions,[1001,"c"],[]},
+         {channel_logic_message,attach_my_reactions,2,
+                                [{file,"src/logic/channel_logic_message.erl"},
+                                 {line,934}]},
+         {channel_logic_message,get_messages,4,
+                                [{file,"src/logic/channel_logic_message.erl"},
+                                 {line,489}]},
+         {channel_logic_tests,'-get_messages_filters_non_map_entries_test_/0-fun-5-',
+                              0,
+                              [{file,"test/logic/channel_logic_tests.erl"},
+                               {line,926}]},
+         {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+         {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+         {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]},
+         {eunit_proc,handle_test,2,[{file,"eunit_proc.erl"},{line,541}]}]}]
+[0.001 s] ok
+  channel_logic_tests:946: -get_messages_returns_error_when_channel_payload_invalid_test_/0-fun-4-...ok
+  channel_logic_tests:985: -pin_message_returns_error_when_reload_after_update_fails_test_/0-fun-5-...ok
+  channel_logic_tests:1006: -pin_message_returns_error_when_repo_returns_non_map_payload_test_/0-fun-6-...ok
+  channel_logic_tests:1032: -pin_message_returns_error_when_message_id_decode_unexpected_test_/0-fun-7-...ok
+  channel_logic_tests:1061: -pin_message_returns_error_when_channel_id_type_invalid_test_/0-fun-6-...ok
+  channel_logic_tests:1103: -delete_message_author_success_still_returns_ok_when_notify_fails_test_/0-fun-10-...08:58:48.582 [warning] [channel_logic_notify_send_failed,<<"channel_message_deleted">>,
+ {uid_count,2},
+ notify_failed]
+ok
+  channel_logic_tests:1141: -delete_message_admin_success_still_returns_ok_when_notify_crashes_test_/0-fun-9-...08:58:48.688 [error] [channel_logic_notify_send_crashed,<<"channel_message_deleted">>,
+ {uid_count,2},
+ {mock_notify_crash,
+     [{channel_logic_tests,
+          '-delete_message_admin_success_still_returns_ok_when_notify_crashes_test_/0-fun-1-',
+          7,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,1136}]},
+      {channel_logic_notify,send_safe,4,
+          [{file,"src/logic/channel_logic_notify.erl"},{line,158}]},
+      {channel_logic_message,delete_message,2,
+          [{file,"src/logic/channel_logic_message.erl"},{line,695}]},
+      {channel_logic_tests,
+          '-delete_message_admin_success_still_returns_ok_when_notify_crashes_test_/0-fun-9-',
+          0,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,1142}]},
+      {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+      {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+      {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]},
+      {msg_s2c_ds,send,
+          [0,
+           [1001,2002],
+           <<"channel_message_deleted">>,<<>>,null,
+           #{<<"channel_id">> => 11,<<"message_id">> => 100},
+           save],
+          []}]}]
+[0.001 s] ok
+  channel_logic_tests:1177: -delete_message_returns_permission_denied_when_not_author_or_admin_test_/0-fun-8-...ok
+  channel_logic_tests:1204: -delete_message_returns_error_when_message_not_found_test_/0-fun-7-...ok
+  channel_logic_tests:1240: -delete_message_returns_repo_error_as_binary_test_/0-fun-8-...ok
+  channel_logic_tests:1267: -delete_message_returns_error_when_repo_returns_non_map_payload_test_/0-fun-7-...ok
+  channel_logic_tests:1306: -delete_message_returns_error_when_required_fields_missing_test_/0-fun-8-...ok
+  channel_logic_tests:1344: -delete_message_returns_error_when_required_fields_type_invalid_test_/0-fun-8-...ok
+  channel_logic_tests:1398: -create_invitation_success_notifies_invitee_test_/0-fun-14-...[0.001 s] ok
+  channel_logic_tests:1433: -create_invitation_rejects_when_denylist_between_test_/0-fun-6-...ok
+  channel_logic_tests:1457: -create_invitation_rejects_non_private_channel_test_/0-fun-4-...ok
+  channel_logic_tests:1480: -create_invitation_returns_error_when_channel_not_found_test_/0-fun-4-...ok
+  channel_logic_tests:1503: -create_invitation_returns_error_when_channel_id_decode_unexpected_test_/0-fun-5-...ok
+  channel_logic_tests:1524: -create_invitation_returns_error_when_channel_payload_invalid_test_/0-fun-4-...ok
+  channel_logic_tests:1546: -create_invitation_rejects_disabled_channel_test_/0-fun-4-...ok
+  channel_logic_tests:1587: -create_invitation_ds_binary_error_passthrough_test_/0-fun-10-...ok
+  channel_logic_tests:1629: -create_invitation_ds_atom_error_converted_to_binary_test_/0-fun-10-...ok
+  channel_logic_tests:1671: -create_invitation_ds_unexpected_result_converted_to_binary_test_/0-fun-10-...ok
+  channel_logic_tests:1710: -create_invitation_returns_error_when_loading_created_invitation_fails_test_/0-fun-11-...[0.001 s] ok
+  channel_logic_tests:1751: -create_invitation_returns_error_when_loading_created_invitation_payload_not_map_test_/0-fun-11-...ok
+  channel_logic_tests:1778: -get_my_invitations_success_transfers_ids_test_/0-fun-5-...ok
+  channel_logic_tests:1798: -get_my_invitations_returns_error_on_repo_error_test_/0-fun-3-...ok
+  channel_logic_tests:1813: -get_my_invitations_returns_error_when_repo_payload_not_list_test_/0-fun-2-...ok
+  channel_logic_tests:1838: -get_my_invitations_filters_non_map_entries_test_/0-fun-4-...ok
+  channel_logic_tests:1856: -get_sent_invitations_returns_error_on_repo_error_test_/0-fun-3-...ok
+  channel_logic_tests:1871: -get_sent_invitations_returns_error_when_repo_payload_not_list_test_/0-fun-2-...ok
+  channel_logic_tests:1895: -get_sent_invitations_success_transfers_ids_test_/0-fun-5-...ok
+  channel_logic_tests:1926: -accept_invitation_already_accepted_is_idempotent_and_silent_test_/0-fun-7-...ok
+  channel_logic_tests:1972: -accept_invitation_success_notifies_inviter_and_invitee_test_/0-fun-12-...ok
+  channel_logic_tests:2006: -accept_invitation_success_still_returns_ok_when_notify_fails_test_/0-fun-9-...08:58:50.774 [warning] [channel_logic_notify_send_failed,<<"channel_invitation_accepted">>,
+ {uid_count,1},
+ notify_failed]
+08:58:50.774 [warning] [channel_logic_notify_send_failed,<<"channel_subscribed">>,
+ {uid_count,1},
+ notify_failed]
+ok
+  channel_logic_tests:2040: -accept_invitation_success_still_returns_ok_when_notify_crashes_test_/0-fun-9-...08:58:50.862 [error] [channel_logic_notify_send_crashed,<<"channel_invitation_accepted">>,
+ {uid_count,1},
+ {mock_notify_crash,
+     [{channel_logic_tests,
+          '-accept_invitation_success_still_returns_ok_when_notify_crashes_test_/0-fun-0-',
+          7,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,2035}]},
+      {channel_logic_notify,send_safe,4,
+          [{file,"src/logic/channel_logic_notify.erl"},{line,158}]},
+      {channel_logic_notify,notify_invitation_accepted,3,
+          [{file,"src/logic/channel_logic_notify.erl"},{line,111}]},
+      {channel_logic_tests,
+          '-accept_invitation_success_still_returns_ok_when_notify_crashes_test_/0-fun-9-',
+          0,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,2041}]},
+      {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+      {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+      {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]},
+      {msg_s2c_ds,send,
+          [0,
+           [1001],
+           <<"channel_invitation_accepted">>,<<>>,null,
+           #{<<"channel_id">> => 11,<<"invitee_uid">> => 2002},
+           no_save],
+          []}]}]
+[0.001 s] ok
+08:58:50.862 [error] [channel_logic_notify_send_crashed,<<"channel_subscribed">>,
+ {uid_count,1},
+ {mock_notify_crash,
+     [{channel_logic_tests,
+          '-accept_invitation_success_still_returns_ok_when_notify_crashes_test_/0-fun-0-',
+          7,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,2035}]},
+      {channel_logic_notify,send_safe,4,
+          [{file,"src/logic/channel_logic_notify.erl"},{line,158}]},
+      {channel_logic_tests,
+          '-accept_invitation_success_still_returns_ok_when_notify_crashes_test_/0-fun-9-',
+          0,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,2041}]},
+      {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+      {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+      {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]},
+      {eunit_proc,handle_test,2,[{file,"eunit_proc.erl"},{line,541}]},
+      {msg_s2c_ds,send,
+          [0,
+           [2002],
+           <<"channel_subscribed">>,<<>>,null,
+           #{<<"channel_id">> => 11},
+           no_save],
+          []}]}]
+  channel_logic_tests:2065: -accept_invitation_when_invitation_load_fails_returns_not_found_test_/0-fun-7-...[0.001 s] ok
+  channel_logic_tests:2097: -accept_invitation_rejects_when_invitee_uid_mismatch_test_/0-fun-7-...ok
+  channel_logic_tests:2131: -accept_invitation_binary_error_passthrough_test_/0-fun-8-...ok
+  channel_logic_tests:2166: -accept_invitation_atom_error_is_converted_to_binary_test_/0-fun-8-...ok
+  channel_logic_tests:2200: -accept_invitation_subscribe_error_converted_to_binary_test_/0-fun-9-...ok
+  channel_logic_tests:2216: -reject_invitation_atom_error_is_converted_to_binary_test_/0-fun-3-...ok
+  channel_logic_tests:2236: -reject_invitation_success_returns_ok_test_/0-fun-5-...ok
+  channel_logic_tests:2252: -reject_invitation_binary_error_passthrough_test_/0-fun-3-...ok
+  channel_logic_tests:2267: -reject_invitation_unexpected_return_converted_to_binary_test_/0-fun-3-...ok
+  channel_logic_tests:2309: -create_order_success_returns_transferred_order_test_/0-fun-8-...[0.002 s] ok
+  channel_logic_tests:2357: -create_order_persists_requested_payment_method_test_/0-fun-8-...ok
+  channel_logic_tests:2382: -create_order_rejects_non_paid_channel_test_/0-fun-4-...ok
+  channel_logic_tests:2405: -create_order_propagates_channel_lookup_error_test_/0-fun-4-...ok
+  channel_logic_tests:2426: -create_order_returns_error_when_channel_payload_invalid_test_/0-fun-4-...ok
+  channel_logic_tests:2448: -create_order_returns_error_when_channel_id_decode_unexpected_test_/0-fun-5-...ok
+  channel_logic_tests:2482: -create_order_returns_not_found_when_order_reload_returns_non_map_test_/0-fun-6-...ok
+  channel_logic_tests:2514: -create_order_unexpected_ds_result_converted_to_binary_test_/0-fun-7-...ok
+  channel_logic_tests:2535: -pay_order_requires_owner_test_/0-fun-4-...ok
+  channel_logic_tests:2553: -pay_order_propagates_lookup_error_before_owner_check_test_/0-fun-4-...ok
+  channel_logic_tests:2571: -pay_order_returns_not_found_when_repo_returns_non_map_payload_test_/0-fun-4-...ok
+  channel_logic_tests:2594: -pay_order_returns_not_found_when_required_fields_invalid_test_/0-fun-4-...ok
+  channel_logic_tests:2638: -pay_order_success_sends_paid_and_subscribed_notifications_test_/0-fun-17-...ok
+  channel_logic_tests:2686: -pay_order_success_still_returns_ok_when_notify_fails_test_/0-fun-10-...08:58:52.215 [warning] [channel_logic_notify_send_failed,<<"channel_order_paid">>,
+ {uid_count,1},
+ notify_failed]
+08:58:52.216 [warning] [channel_logic_notify_send_failed,<<"channel_subscribed">>,
+ {uid_count,1},
+ notify_failed]
+ok
+  channel_logic_tests:2727: -pay_order_success_still_returns_ok_when_notify_crashes_test_/0-fun-10-...08:58:52.313 [error] [channel_logic_notify_send_crashed,<<"channel_order_paid">>,
+ {uid_count,1},
+ {mock_notify_crash,
+     [{channel_logic_tests,
+          '-pay_order_success_still_returns_ok_when_notify_crashes_test_/0-fun-0-',
+          7,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,2722}]},
+      {channel_logic_notify,send_safe,4,
+          [{file,"src/logic/channel_logic_notify.erl"},{line,158}]},
+      {channel_logic_notify,notify_order_paid,2,
+          [{file,"src/logic/channel_logic_notify.erl"},{line,120}]},
+      {channel_logic_order,settle,7,
+          [{file,"src/logic/channel_logic_order.erl"},{line,270}]},
+      {channel_logic_tests,
+          '-pay_order_success_still_returns_ok_when_notify_crashes_test_/0-fun-10-',
+          0,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,2728}]},
+      {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+      {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+      {msg_s2c_ds,send,
+          [0,
+           [2002],
+           <<"channel_order_paid">>,<<>>,null,
+           #{<<"channel_id">> => 11},
+           no_save],
+          []}]}]
+[0.001 s] ok
+08:58:52.313 [error] [channel_logic_notify_send_crashed,<<"channel_subscribed">>,
+ {uid_count,1},
+ {mock_notify_crash,
+     [{channel_logic_tests,
+          '-pay_order_success_still_returns_ok_when_notify_crashes_test_/0-fun-0-',
+          7,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,2722}]},
+      {channel_logic_notify,send_safe,4,
+          [{file,"src/logic/channel_logic_notify.erl"},{line,158}]},
+      {channel_logic_order,settle,7,
+          [{file,"src/logic/channel_logic_order.erl"},{line,270}]},
+      {channel_logic_tests,
+          '-pay_order_success_still_returns_ok_when_notify_crashes_test_/0-fun-10-',
+          0,
+          [{file,"test/logic/channel_logic_tests.erl"},{line,2728}]},
+      {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+      {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+      {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]},
+      {msg_s2c_ds,send,
+          [0,
+           [2002],
+           <<"channel_subscribed">>,<<>>,null,
+           #{<<"channel_id">> => 11},
+           no_save],
+          []}]}]
+  channel_logic_tests:2769: -pay_order_already_paid_does_not_send_duplicate_notifications_test_/0-fun-9-...ok
+  channel_logic_tests:2811: -pay_order_not_found_or_expired_returns_readable_error_test_/0-fun-9-...ok
+  channel_logic_tests:2847: -pay_order_unexpected_gateway_result_converted_to_binary_test_/0-fun-7-...ok
+  channel_logic_tests:2870: -get_order_returns_transferred_order_for_owner_test_/0-fun-3-...ok
+  channel_logic_tests:2893: -get_order_rejects_non_owner_test_/0-fun-2-...ok
+  channel_logic_tests:2908: -get_order_returns_not_found_message_test_/0-fun-2-...ok
+  channel_logic_tests:2923: -get_order_propagates_lookup_error_test_/0-fun-2-...ok
+  channel_logic_tests:2938: -get_order_returns_error_when_repo_returns_unexpected_term_test_/0-fun-2-...ok
+  channel_logic_tests:2951: -get_order_returns_not_found_when_repo_returns_non_map_payload_test_/0-fun-2-...ok
+  channel_logic_tests:2971: -get_order_returns_not_found_when_required_fields_invalid_test_/0-fun-2-...ok
+  channel_logic_tests:2994: -get_my_orders_returns_transferred_orders_test_/0-fun-3-...ok
+  channel_logic_tests:3021: -get_my_orders_filters_non_map_entries_test_/0-fun-3-...ok
+  channel_logic_tests:3038: -get_my_orders_propagates_repo_error_test_/0-fun-2-...ok
+  channel_logic_tests:3051: -get_my_orders_returns_error_when_repo_payload_not_list_test_/0-fun-2-...ok
+  channel_logic_tests:3064: -get_my_orders_returns_error_when_repo_returns_unexpected_term_test_/0-fun-2-...ok
+  channel_logic_tests:3077: -get_admins_returns_error_when_repo_fails_test_/0-fun-2-...ok
+  channel_logic_tests:3090: -get_admins_returns_error_when_repo_payload_not_list_test_/0-fun-2-...ok
+  channel_logic_tests:3108: -get_admins_filters_non_map_entries_test_/0-fun-3-...ok
+  channel_logic_tests:3126: -get_admins_returns_error_when_channel_id_decode_unexpected_test_/0-fun-3-...[0.001 s] ok
+  channel_logic_tests:3146: -update_admin_role_returns_error_when_channel_id_decode_unexpected_test_/0-fun-5-...ok
+  channel_logic_tests:3168: -update_admin_role_requires_creator_test_/0-fun-5-...ok
+  channel_logic_tests:3191: -update_admin_role_creator_success_test_/0-fun-5-...ok
+  channel_logic_tests:3218: -update_admin_role_creator_success_notifies_target_test_/0-fun-7-...ok
+  channel_logic_tests:3242: -add_admin_creator_success_notifies_new_admin_test_/0-fun-8-...ok
+  channel_logic_tests:3266: -remove_admin_creator_success_notifies_removed_admin_test_/0-fun-7-...ok
+  channel_logic_tests:3312: -remove_subscriber_admin_success_updates_counter_test_/0-fun-12-...08:58:53.498 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,undefined},
+ {action,<<"remove_subscriber">>},
+ {result,<<"changed">>},
+ {cost_ms,0}]
+[0.001 s] ok
+  channel_logic_tests:3360: -remove_subscriber_is_idempotent_when_target_already_inactive_test_/0-fun-11-...08:58:53.639 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,undefined},
+ {action,<<"remove_subscriber">>},
+ {result,<<"noop">>},
+ {cost_ms,0}]
+ok
+  channel_logic_tests:3402: -remove_subscriber_tx_error_returns_failure_test_/0-fun-8-...08:58:53.759 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,undefined},
+ {action,<<"remove_subscriber">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_logic_tests:3427: -remove_subscriber_requires_admin_role_test_/0-fun-5-...08:58:53.834 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,undefined},
+ {action,<<"remove_subscriber">>},
+ {result,<<"denied">>},
+ {cost_ms,0}]
+ok
+  channel_logic_tests:3467: -get_messages_private_channel_requires_subscription_test_/0-fun-6-...ok
+  channel_logic_tests:3517: -get_messages_private_channel_allows_subscriber_test_/0-fun-7-...ok
+  channel_logic_tests:3568: -get_messages_paid_channel_admin_skips_subscription_and_purchase_checks_test_/0-fun-10-...[0.001 s] ok
+  channel_logic_tests:3599: -subscribe_private_channel_already_subscribed_is_idempotent_test_/0-fun-11-...ok
+  channel_logic_tests:3624: -subscribe_public_channel_already_subscribed_is_idempotent_test_/0-fun-6-...ok
+  channel_logic_tests:3650: -subscribe_paid_channel_already_subscribed_skips_purchase_check_test_/0-fun-8-...ok
+  channel_logic_tests:3679: -subscribe_public_channel_propagates_ds_atom_error_as_binary_test_/0-fun-6-...ok
+  channel_logic_tests:3702: -subscribe_returns_error_when_channel_payload_invalid_test_/0-fun-6-...ok
+  channel_logic_tests:3730: -subscribe_returns_error_when_channel_id_decode_unexpected_test_/0-fun-7-...ok
+  channel_logic_tests:3758: -subscribe_private_channel_rejects_unexpected_invitation_state_test_/0-fun-6-...ok
+  channel_logic_tests:3783: -subscribe_returns_error_when_ds_subscribe_fails_test_/0-fun-5-...ok
+  channel_logic_tests:3803: -unsubscribe_propagates_ds_atom_error_as_binary_test_/0-fun-4-...ok
+  channel_logic_tests:3823: -unsubscribe_propagates_unexpected_ds_result_as_binary_test_/0-fun-4-...ok
+  channel_logic_tests:3845: -unsubscribe_returns_error_when_channel_id_decode_unexpected_test_/0-fun-5-...ok
+  channel_logic_tests:3896: -mark_as_read_clears_unread_only_for_current_user_test_/0-fun-11-...ok
+  channel_logic_tests:3917: -mark_as_read_returns_error_when_channel_not_found_test_/0-fun-2-...ok
+  channel_logic_tests:3969: -mark_as_read_falls_back_to_custom_id_when_decode_returns_unexpected_term_test_/0-fun-13-...ok
+  channel_logic_tests:3997: -mark_as_read_returns_error_when_custom_id_payload_invalid_after_decode_unexpected_test_/0-fun-7-...ok
+  channel_logic_tests:4016: -create_channel_returns_error_when_quota_query_fails_test_/0-fun-4-...ok
+  channel_logic_tests:4035: -create_channel_returns_error_when_reload_payload_not_map_test_/0-fun-5-...ok
+  channel_logic_tests:4085: -get_channel_stats_uses_aggregation_query_test_/0-fun-14-...ok
+  channel_logic_tests:4111: -get_channel_stats_returns_error_when_channel_not_found_test_/0-fun-3-...ok
+  channel_logic_tests:4128: -get_channel_stats_returns_error_when_channel_payload_invalid_test_/0-fun-4-...ok
+  channel_logic_tests:4148: -get_channel_stats_returns_error_when_channel_id_decode_unexpected_test_/0-fun-5-...ok
+  channel_logic_tests:4183: -get_channel_stats_returns_zero_when_no_messages_test_/0-fun-8-...ok
+  channel_logic_tests:4213: -get_channel_stats_returns_error_when_message_aggregation_fails_test_/0-fun-5-...ok
+  channel_logic_tests:4245: -get_channel_stats_returns_error_when_reaction_query_fails_test_/0-fun-5-...ok
+  channel_logic_tests:4262: -get_daily_stats_returns_error_when_repo_payload_not_list_test_/0-fun-3-...ok
+  channel_logic_tests:4290: -get_daily_stats_filters_non_map_entries_test_/0-fun-6-...ok
+  channel_logic_tests:4309: -get_daily_stats_returns_error_when_repo_returns_unexpected_term_test_/0-fun-3-...ok
+  channel_logic_tests:4325: -get_daily_stats_returns_error_when_channel_id_decode_unexpected_test_/0-fun-3-...ok
+  channel_logic_tests:4350: -record_message_view_returns_error_when_message_id_decode_unexpected_test_/0-fun-8-...ok
+  channel_logic_tests:4376: -add_reaction_returns_error_when_message_id_decode_unexpected_test_/0-fun-6-...ok
+  channel_logic_tests:4401: -remove_reaction_returns_error_when_message_id_decode_unexpected_test_/0-fun-6-...ok
+  channel_logic_tests:4428: -record_message_view_returns_error_when_has_viewed_message_fails_test_/0-fun-8-...ok
+  channel_logic_tests:4453: -record_message_view_returns_error_when_has_viewed_message_returns_unexpected_test_/0-fun-8-...[0.001 s] ok
+  channel_logic_tests:4479: -record_message_view_returns_error_when_insert_message_view_returns_unexpected_test_/0-fun-9-...ok
+  channel_logic_tests:4506: -add_reaction_returns_error_when_insert_reaction_returns_unexpected_test_/0-fun-8-...ok
+  channel_logic_tests:4529: -remove_reaction_returns_error_when_delete_reaction_returns_unexpected_test_/0-fun-7-...ok
+  channel_logic_tests:4552: -add_reaction_hides_database_connection_error_test_/0-fun-5-...ok
+  channel_logic_tests:4616: -revoke_message_author_success_within_window_test_/0-fun-17-...ok
+  channel_logic_tests:4671: -revoke_message_author_success_still_returns_ok_when_notify_crashes_test_/0-fun-13-...[0.001 s] ok
+  channel_logic_tests:4715: -revoke_message_returns_timeout_error_when_window_expired_test_/0-fun-9-...ok
+  channel_logic_tests:4749: -revoke_message_is_idempotent_when_already_revoked_test_/0-fun-8-...08:58:57.404 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,991},
+ {action,<<"revoke_message">>},
+ {result,<<"ok">>},
+ {cost_ms,0}]
+ok
+  channel_logic_tests:4781: -revoke_message_returns_permission_denied_for_non_author_non_admin_test_/0-fun-6-...08:58:57.478 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,991},
+ {action,<<"revoke_message">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_logic_tests:4808: -revoke_message_returns_error_when_repo_returns_non_map_payload_test_/0-fun-7-...08:58:57.549 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,992},
+ {action,<<"revoke_message">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_logic_tests:4844: -revoke_message_returns_error_when_required_fields_missing_test_/0-fun-7-...08:58:57.620 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,993},
+ {action,<<"revoke_message">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_logic_tests:4882: -revoke_message_returns_error_when_required_fields_type_invalid_test_/0-fun-7-...08:58:57.693 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,995},
+ {action,<<"revoke_message">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_logic_tests:4927: -revoke_message_treats_non_boolean_revoked_field_as_not_revoked_test_/0-fun-10-...ok
+  channel_logic_tests:4972: -revoke_message_returns_timeout_error_when_created_at_invalid_test_/0-fun-9-...[0.001 s] ok
+  channel_logic_tests:4991: -subscribe_delegates_to_subscription_module_test_/0-fun-3-...ok
+  channel_logic_tests:5006: -unsubscribe_delegates_to_subscription_module_test_/0-fun-3-...ok
+  channel_logic_tests:5022: -sync_channels_delegates_to_sync_module_test_/0-fun-3-...ok
+  channel_logic_tests:5044: -sync_channels_returns_empty_when_user_has_no_subscriptions_test_/0-fun-6-...ok
+  channel_logic_tests:5061: -sync_channels_returns_error_when_subscription_query_fails_test_/0-fun-2-...ok
+  channel_logic_tests:5079: -sync_channels_returns_error_when_subscription_payload_not_list_test_/0-fun-4-...ok
+  channel_logic_tests:5112: -sync_channels_filters_invalid_subscription_entries_test_/0-fun-6-...ok
+  channel_logic_tests:5132: -sync_channels_returns_error_when_delta_query_fails_test_/0-fun-3-...ok
+  channel_logic_tests:5153: -sync_channels_returns_error_when_delta_payload_not_list_test_/0-fun-5-...ok
+  channel_logic_tests:5188: -sync_channels_filters_non_map_delta_entries_test_/0-fun-8-...ok
+  channel_logic_tests:5227: -sync_channels_success_transfers_channels_test_/0-fun-8-...ok
+  channel_logic_tests:5248: -get_subscribed_channels_delegates_to_subscription_module_test_/0-fun-3-...ok
+  channel_logic_tests:5264: -get_managed_channels_delegates_to_subscription_module_test_/0-fun-3-...ok
+  channel_logic_tests:5280: -get_subscribers_delegates_to_subscription_module_test_/0-fun-3-...ok
+  channel_logic_tests:5299: -get_subscribed_channels_returns_error_when_repo_fails_test_/0-fun-4-...ok
+  channel_logic_tests:5318: -get_subscribed_channels_returns_error_when_repo_payload_not_list_test_/0-fun-4-...ok
+  channel_logic_tests:5343: -get_subscribed_channels_filters_non_map_entries_test_/0-fun-4-...ok
+  channel_logic_tests:5363: -get_managed_channels_returns_error_when_repo_fails_test_/0-fun-4-...ok
+  channel_logic_tests:5382: -get_managed_channels_returns_error_when_repo_payload_not_list_test_/0-fun-4-...ok
+  channel_logic_tests:5407: -get_managed_channels_filters_non_map_entries_test_/0-fun-4-...ok
+  channel_logic_tests:5422: -get_subscribers_returns_error_when_repo_fails_test_/0-fun-2-...ok
+  channel_logic_tests:5437: -get_subscribers_returns_error_when_channel_id_decode_unexpected_test_/0-fun-3-...ok
+  channel_logic_tests:5451: -get_subscribers_returns_error_when_repo_payload_not_list_test_/0-fun-2-...ok
+  channel_logic_tests:5469: -get_subscribers_filters_non_map_entries_test_/0-fun-4-...ok
+  channel_logic_tests:5490: -search_channels_returns_error_when_repo_fails_test_/0-fun-4-...ok
+  channel_logic_tests:5509: -search_channels_returns_error_when_repo_payload_not_list_test_/0-fun-4-...ok
+  channel_logic_tests:5534: -search_channels_filters_non_map_entries_test_/0-fun-6-...ok
+  channel_logic_tests:5556: -get_discover_channels_returns_error_when_repo_fails_test_/0-fun-4-...ok
+  channel_logic_tests:5575: -get_discover_channels_returns_error_when_repo_payload_not_list_test_/0-fun-4-...ok
+  channel_logic_tests:5600: -get_discover_channels_filters_non_map_entries_test_/0-fun-6-...ok
+  channel_logic_tests:5661: -edit_message_author_success_within_window_writes_edited_at_test_/0-fun-17-...ok
+  channel_logic_tests:5687: -edit_message_returns_permission_denied_for_non_author_test_/0-fun-4-...08:58:59.863 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,991},
+ {action,<<"edit_message">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_logic_tests:5722: -edit_message_returns_timeout_error_when_window_expired_test_/0-fun-7-...ok
+  channel_logic_tests:5745: -edit_message_rejects_revoked_message_test_/0-fun-4-...08:58:59.982 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,991},
+ {action,<<"edit_message">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+[0.001 s] ok
+  channel_logic_tests:5760: -edit_message_returns_error_when_content_empty_test_/0-fun-5-...08:59:00.015 [info] [channel_action,
+ {uid,1001},
+ {channel_id,11},
+ {message_id,991},
+ {action,<<"edit_message">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_logic_tests:5820: -accept_invitation_preserves_archived_980_tuple_test_/0-fun-4-...ok
+  channel_logic_tests:5852: -accept_invitation_subscribe_path_preserves_archived_980_tuple_test_/0-fun-6-...ok
+  channel_logic_tests:5867: -reject_invitation_preserves_archived_980_tuple_test_/0-fun-2-...[0.001 s] ok
+  [done in 14.068 s]
+=======================================================
+  All 279 tests passed.

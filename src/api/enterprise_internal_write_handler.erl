@@ -1,7 +1,7 @@
--module(enterprise_workspace_write_handler).
--export([write/4]).
+-module(enterprise_internal_write_handler).
+-export([write/5]).
 
-write(Req, Ctx, Operation, IdentityId) ->
+write(Req, Ctx, Operation, IdentityId, Logic) ->
     Key = cowboy_req:header(<<"idempotency-key">>, Req),
     case enterprise_internal_idempotency:valid_key(Key) of
         false ->
@@ -21,7 +21,7 @@ write(Req, Ctx, Operation, IdentityId) ->
                     case {is_map(Body), Digest} of
                         {true, {ok, Hash}} ->
                             Result = elib_pg:with_tx(fun(Conn) ->
-                                enterprise_workspace_write_logic:write_tx(
+                                Logic:write_tx(
                                     Conn, Ctx, Operation, Key, Hash, IdentityId, Body
                                 )
                             end),

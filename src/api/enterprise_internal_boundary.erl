@@ -197,6 +197,12 @@ spec(<<"INT-38">>) ->
     {ok, #{kind => workspace, scope => <<"workspaces:write">>}};
 spec(<<"INT-39">>) ->
     {ok, #{kind => workspace, scope => <<"workspaces:write">>}};
+spec(<<"INT-40">>) ->
+    {ok, #{kind => workspace, scope => <<"channels:write">>}};
+spec(<<"INT-41">>) ->
+    {ok, #{kind => workspace, scope => <<"channels:write">>}};
+spec(<<"INT-42">>) ->
+    {ok, #{kind => workspace, scope => <<"channels:write">>}};
 spec(_RouteId) ->
     error.
 
@@ -322,7 +328,10 @@ candidate_ids() ->
                 <<"INT-36">>,
                 <<"INT-37">>,
                 <<"INT-38">>,
-                <<"INT-39">>
+                <<"INT-39">>,
+                <<"INT-40">>,
+                <<"INT-41">>,
+                <<"INT-42">>
             ]
     ].
 

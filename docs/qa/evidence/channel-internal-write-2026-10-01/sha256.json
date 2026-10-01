@@ -1,0 +1,166 @@
+{
+  "base": "a21477724259bb5fd4718c2baed4a05d2944af74",
+  "sources": [
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "0a8ce39c7ea36437d78fb3c0174e4cc57592bf02ced066776f96c6f97a2d457b"
+    },
+    {
+      "path": "api/components/schemas/internal/ChannelWriteResult.yaml",
+      "sha256": "f450e34df0acea8639cf40d2b7685b88f2c4ca69d5d21870a5d1ea973e891e0f"
+    },
+    {
+      "path": "api/flatten_internal.py",
+      "sha256": "0b3f9d9d9eafbecce2e866e49700227176fef7647f15e6b97ca1ee6997977141"
+    },
+    {
+      "path": "api/internal/v1/IMBoy-Internal-API-v1.postman_collection.json",
+      "sha256": "0028ccbcf495afba4ae0b4d3076ba00a3e252416417dffbdedb6e8718ab78daa"
+    },
+    {
+      "path": "api/internal/v1/README.md",
+      "sha256": "362a396427f83d510ad608069551fca1736ecfc7e53bff56b8fa57e936860035"
+    },
+    {
+      "path": "api/internal/v1/endpoints.md",
+      "sha256": "2891d80c43c8131b10d22df31b6d175de5d09340c27606c963867690e0d9476b"
+    },
+    {
+      "path": "api/internal/v1/manifest.yaml",
+      "sha256": "e34ef69cc17738efce12ae8c15228ea970ba2f2577d20c3caba2781438d36fdd"
+    },
+    {
+      "path": "api/openapi-internal.bundle.yaml",
+      "sha256": "aabbdf668d8f58741a547e559c9b7b179a0ad5730d2dc653a5ccce2075f609af"
+    },
+    {
+      "path": "api/openapi-internal.yaml",
+      "sha256": "111d2a89cc12b53be32cb0d18701ecceea8b03103b3447af96a61a1051f0b551"
+    },
+    {
+      "path": "api/openapi.yaml",
+      "sha256": "601b0c01050cd3671bfdb3b129c3e48308e6832de85246cd982a2e1172a87220"
+    },
+    {
+      "path": "api/paths/internal/v1/channel/detail.yaml",
+      "sha256": "0783222969650c64e86c5b4b84af09e7731b2f5bc0251346195cda15bea81a1f"
+    },
+    {
+      "path": "api/paths/internal/v1/channel/list.yaml",
+      "sha256": "92f84a0f9183adbd36010b12bdeb8945b2439948cfb9689fab624b6ae9591328"
+    },
+    {
+      "path": "priv/migrations/00000161_channel_internal_write.down.sql",
+      "sha256": "de48ab32e29c88e0c96edfe5ee06727f587475fd57061554e0ad4f465e1fbcdb"
+    },
+    {
+      "path": "priv/migrations/00000161_channel_internal_write.up.sql",
+      "sha256": "083fe2abbd9ec32947dd0fcdc1bc6ce9b3cb9ca8668420f4920bcfabcc8db939"
+    },
+    {
+      "path": "scripts/check_enterprise_release_manifest.py",
+      "sha256": "f981eebdf1523921dcf68c5306a34019d01dafdbfa2410d22dfce91f115b2563"
+    },
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "1b53b3d8ac822b007a8d9a930445bfbf1adac831144153b9758916969541d419"
+    },
+    {
+      "path": "src/api/enterprise_channel_handler.erl",
+      "sha256": "19ec355de369855f4ff5a64257bd00697d5fdd2b31c989f30b3746872fba489d"
+    },
+    {
+      "path": "src/api/enterprise_internal_boundary.erl",
+      "sha256": "ad04ed68ab26ae4414e67f260a89ae35618df61a7fc3a3bf236442e0c0fabbe5"
+    },
+    {
+      "path": "src/api/enterprise_internal_routes.erl",
+      "sha256": "e8f379ec029bff9a09bde357f912fab222641fe0f03562808712e49e9e578384"
+    },
+    {
+      "path": "src/api/enterprise_internal_scope.erl",
+      "sha256": "bffdce33f92bbd1284e28e446c3360e20b2a3c8633376345044c61958151d484"
+    },
+    {
+      "path": "src/api/enterprise_internal_write_handler.erl",
+      "sha256": "2cdded7df0bb15c0f09f94f2be38b1f890218f788273d743aaa1ca424650be7e"
+    },
+    {
+      "path": "src/api/enterprise_workspace_handler.erl",
+      "sha256": "44ae439393065b2e25f22e2bb9f256c1044e19c63ed5cc60cabee297e1dbdf3a"
+    },
+    {
+      "path": "src/logic/enterprise_channel_logic.erl",
+      "sha256": "9b97824ce700e25510bca851ee50066189a6ef091b04b3806e9dfd3acbabdd34"
+    },
+    {
+      "path": "src/logic/enterprise_channel_write_logic.erl",
+      "sha256": "6a61cea17d6fdfeeb8823339634daa584a71dba9dc5f3c04f777928888492dbb"
+    },
+    {
+      "path": "src/repo/channel_repo.erl",
+      "sha256": "91501bd666854c8b3652c1687b4a821a8bf73e5c1ca2407623b52f4fdfa42686"
+    },
+    {
+      "path": "test/api/enterprise_channel_write_http_checks.erl",
+      "sha256": "bcbbdc2e00ac571ddf2514673f0703c8fb0f621bffcca643f84cc2221efa7def"
+    },
+    {
+      "path": "test/api/enterprise_internal_pg_tests.erl",
+      "sha256": "afef8ef8ece76a9ebd79a13494cca30c4fd4b5e5ee485e6fa095d19c0b8b73cc"
+    },
+    {
+      "path": "test/api/enterprise_internal_wiring_http_tests.erl",
+      "sha256": "2302f1ee7afba1d8a95dea614cbe53c4cda01eefb800f32c1e97713451944272"
+    },
+    {
+      "path": "test/api/intbe02_http_support.erl",
+      "sha256": "b26a4d9cbdb5c30546ad25631cab1108e8a339288c6d3fe2d3f84aa608cee490"
+    },
+    {
+      "path": "test/migrations/test_channel_internal_write.py",
+      "sha256": "d70755b0b644261a2c1df1e61f1aef11155f5a1bdf7cdacd9a48d0ed8c82c8c9"
+    }
+  ],
+  "deleted": [
+    "src/api/enterprise_workspace_write_handler.erl"
+  ],
+  "evidence": [
+    {
+      "path": "docs/qa/evidence/channel-internal-write-2026-10-01/aggregate.txt",
+      "sha256": "d4a92adc87b9d18b253fbc6a515b7c2d6ad075759465a1096498a69d30fc1a96"
+    },
+    {
+      "path": "docs/qa/evidence/channel-internal-write-2026-10-01/bundle.txt",
+      "sha256": "b7a0169528c66c72a585a9f9a2d233e44e3466aa88465d2cd3c5610fa7abb11c"
+    },
+    {
+      "path": "docs/qa/evidence/channel-internal-write-2026-10-01/contracts.txt",
+      "sha256": "5f80f2f02144ec6edb4a481d17e438c588be9c5382dffcff709abef193ae754c"
+    },
+    {
+      "path": "docs/qa/evidence/channel-internal-write-2026-10-01/http.txt",
+      "sha256": "9017a6d57f4a357d508892c6e3de24515f49eaf5dbc06459cfeb1887b6ca9239"
+    },
+    {
+      "path": "docs/qa/evidence/channel-internal-write-2026-10-01/image-id.txt",
+      "sha256": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+    },
+    {
+      "path": "docs/qa/evidence/channel-internal-write-2026-10-01/migration-files.txt",
+      "sha256": "5ed9a9f842a3a3409d0771d3f9806297aa4aaa3b2bfa8e656cf05c7f8914746e"
+    },
+    {
+      "path": "docs/qa/evidence/channel-internal-write-2026-10-01/migration.txt",
+      "sha256": "a625e200c3447efb4308011fc58ec81717c4513c7420c4279c608752f588ff92"
+    },
+    {
+      "path": "docs/qa/evidence/channel-internal-write-2026-10-01/openapi.txt",
+      "sha256": "eca7409e61f1e8f9f5ba49247f58ef85b9e38b3f2e4e6278f456054b70ff492b"
+    },
+    {
+      "path": "docs/qa/evidence/channel-internal-write-2026-10-01/unit.txt",
+      "sha256": "40e18a17babe798c17a8b774bc083915196735040d285aa5e5c127a52f14abd0"
+    }
+  ]
+}

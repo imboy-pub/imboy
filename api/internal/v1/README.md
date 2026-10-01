@@ -2,7 +2,7 @@
 
 > **版本**：v1.0（冻结）｜ **受众**：企业 OA / 第三方集成系统开发者
 > **Base Path**：`/api/internal/v1`
-> **机器契约**：`api/openapi-internal.yaml`（编辑真源，28 path / 39 端点，
+> **机器契约**：`api/openapi-internal.yaml`（编辑真源，28 path / 42 端点，
 > 字段级 schema 逐端点实证自 handler）；`api/openapi-internal.bundle.yaml`
 > （bundle 单文件，可直接导入 Postman / Apifox / openapi-generator）。
 > 本目录是面向集成方的交付文档。路由与合同由 12 项机械断言
@@ -34,7 +34,7 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 | Webhook | 登记出站回调、查询/重放投递、连通性测试（INT-12/13/23/32） |
 | OA SSO | 一次性 code 原子交换登录态（INT-14） |
 | 企业项目只读 | 列表与详情（INT-28/29） |
-| 企业频道只读 | scope=workspace 列表与详情（INT-30/31） |
+| 企业频道 | 列表与详情（INT-30/31）；创建、修改、软归档（INT-40..42） |
 
 **边界（务必了解）**：
 
@@ -83,7 +83,7 @@ Authorization: Bearer ib_int_<application_id>.<secret>
   所有请求返回 `application_disabled`（403）。
 - secret 在平台侧只保存不可逆摘要；**泄露即轮换**，无需担心「改不回来」。
 
-## 4. 授权（Scope，固定 17 枚举，无通配）
+## 4. 授权（Scope，固定 18 枚举，无通配）
 
 | Scope | 解锁能力 |
 |---|---|
@@ -95,6 +95,7 @@ Authorization: Bearer ib_int_<application_id>.<secret>
 | `workspaces:read` | Workspace 列表与详情（INT-24/25） |
 | `projects:read` | 项目列表与详情（INT-28/29） |
 | `channels:read` | 频道列表与详情（INT-30/31） |
+| `channels:write` | 企业频道创建、修改和软归档（INT-40..42；工作空间 Grant） |
 | `files:write` | 文件直传与治理 |
 | `messages:send` | 以**应用身份**发消息 |
 | `messages:send_as_human` | 以**人类身份**代发消息（见 §6） |
@@ -272,3 +273,8 @@ INT-33..36 管理企业坐席配置，不签发 Seat JWT。坐席主键为 busin
 English: Seats belong to the organization. Workspace IDs select audit locations only. Reads and writes need separate scopes and organization-wide grants. Updates require optimistic versions; disabling retains history. Signed cursors bind organization, application and seat-list family.
 
 工作空间写管理：INT-37..39，独立 workspaces:write（不自动授予）。创建指定本企业 Owner/Admin；修改与软归档使用 expected_version；默认归档须显式同企业替代项及其 Grant。GET 工作空间追加 version。应用审计、资源及幂等响应同事务；归档后的同 key 重放仍需当前有效 Grant。
+
+
+企业频道写管理：INT-40 POST /channels（workspace_id、creator_user_id、name；可选 description/avatar）、INT-41 PATCH /channels/{channel_id}（expected_version 及至少一个资料字段）、INT-42 DELETE /channels/{channel_id}（expected_version）。创建者须为有效企业成员（企业 Owner 包含）及工作空间 Owner/Member，Guest 不可创建；复用现有 20 个有效管理频道配额。创建固定非公开、免费且邀请制（visibility=1/access_type=0/join_policy=1）；归属、创建者及策略不允许在此接口修改。GET 增加 version；资料或治理状态更新增加版本，订阅计数等派生更新不增加版本。归档 status=0，消息、订阅及管理员关系保留。当前 Grant 在重放前验证，撤权后的同 key 重试拒绝；应用 actor 与幂等记录同事务。
+
+English summary: Internal channel writes require an explicit channels:write grant scoped to the target Workspace. Creation checks current Organization and Workspace membership, preserves the existing channel quota, and creates a non-public channel. Profile changes and soft archive require an optimistic governance version. Audit and byte-exact authorized replay are atomic; archive retains history and identities.

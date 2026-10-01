@@ -57,12 +57,12 @@ route_table() ->
     %% 故此处只断言「已接线面」的登记与形态；注册表全量形态另行断言（下方
     %% manifest_v21_entries）。
     Manifest = enterprise_internal_routes:routes(),
-    ?assertEqual(39, length(Manifest)),
+    ?assertEqual(42, length(Manifest)),
     %% Router（共享路径，A0 已于集成接线）：INT-24..31 的 8 条全部进
     %% imboy_router；其中 INT-26/27 复用既有 cowboy path（GET 方法分派在
     %% handler 内），故 31 端点对应 25 条唯一 path（19 既有 + 6 新增）。
     Wired = Manifest,
-    ?assertEqual(39, length(Wired)),
+    ?assertEqual(42, length(Wired)),
     %% 冻结表用 {name} 占位符语法，cowboy 路由用 :name —— 归一后逐条比对。
     WiredPaths = lists:usort([
         cowboy_path(binary_to_list(maps:get(path, R)))
@@ -106,9 +106,9 @@ manifest_v21_entries() ->
     Manifest = enterprise_internal_routes:routes(),
     %% 31 unique id + 31 unique method+path
     Ids = [maps:get(id, R) || R <- Manifest],
-    ?assertEqual(39, length(lists:usort(Ids))),
+    ?assertEqual(42, length(lists:usort(Ids))),
     MethodPaths = [{maps:get(method, R), maps:get(path, R)} || R <- Manifest],
-    ?assertEqual(39, length(lists:usort(MethodPaths))),
+    ?assertEqual(42, length(lists:usort(MethodPaths))),
     %% 所有注册 scope 都是固定 14 值枚举成员（动态 scope 除外）
     All = enterprise_internal_scope:all(),
     lists:foreach(
@@ -387,6 +387,7 @@ run_conformance(S) ->
     negative_matrix(S),
     seat_concurrent_update(S),
     seat_negative_matrix(S),
+    enterprise_channel_write_http_checks:run(S),
     enterprise_workspace_write_http_checks:run(S),
     assert_coverage(),
     ok.
@@ -1438,7 +1439,7 @@ assert_coverage() ->
     Expected =
         lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
     Actual = intbe02_http_support:covered_ids(),
-    ?assertEqual(39, length(Expected)),
+    ?assertEqual(42, length(Expected)),
     ?assertEqual(Expected, Actual, {coverage_gap, Expected -- Actual, Actual -- Expected}).
 
 %%%===================================================================

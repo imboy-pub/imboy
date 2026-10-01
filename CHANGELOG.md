@@ -11,6 +11,8 @@
 
 ## [Unreleased]
 
+- 企业频道应用接口新增创建、资料修改及软归档，要求明确 channels:write、工作空间授权、版本与幂等；审计和资源同事务，历史资料保留。
+
 ### Security
 
 - TSID 主键生成正确性加固：64-bit ID 唯一性防线从进程内状态升级为 durable 双槽 fence（safe_before 严格递增、越线即拒启）+ 跨进程 lifetime lock（生产 flock，owner 崩溃内核自动释放）+ pristine-only 首启自举状态机（无割接 manifest 且库内已有数据时拒绝静默归零；割接 manifest 持久化 + CRC32 + catalog digest 绑定）；v1 catalog（104 主键列）与库内高水位扫描进 boot 门（schema drift / catalog mismatch 拒启）；bootstrap 决策崩溃一律收敛为 typed stop，绝不 raw crash（`352bee53…5ccf04e6`）

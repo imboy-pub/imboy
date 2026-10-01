@@ -9,7 +9,7 @@
 %   GET /api/internal/v1/channels               -> #{action => channels}
 %   GET /api/internal/v1/channels/:channel_id   -> #{action => channel}
 % —— 必须经 enterprise_internal_middleware（scope channels:read →
-%    rate internal_read fail-closed）。只读：无幂等键、无写入。
+%    rate internal_read fail-closed）。写面 INT-40..42 使用 channels:write、必需幂等键及同事务应用审计。
 %
 % INT-30 边界（kind=workspace，W 取自 query）：workspace_id **必填**；
 % scope=workspace AND status=1 过滤在 repo SQL 内强制。
@@ -33,10 +33,37 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
     Req1 =
-        case Action of
-            channels -> channels(Method, Req0, State);
-            channel -> channel(Method, Req0, State);
-            _ -> Req0
+        case {Action, Method} of
+            {channels, <<"POST">>} ->
+                enterprise_internal_write_handler:write(
+                    Req0,
+                    maps:get(enterprise_internal, State),
+                    create,
+                    0,
+                    enterprise_channel_write_logic
+                );
+            {channel, <<"PATCH">>} ->
+                enterprise_internal_write_handler:write(
+                    Req0,
+                    maps:get(enterprise_internal, State),
+                    update,
+                    binding_tsid(State, channel_id),
+                    enterprise_channel_write_logic
+                );
+            {channel, <<"DELETE">>} ->
+                enterprise_internal_write_handler:write(
+                    Req0,
+                    maps:get(enterprise_internal, State),
+                    archive,
+                    binding_tsid(State, channel_id),
+                    enterprise_channel_write_logic
+                );
+            {channels, _} ->
+                channels(Method, Req0, State);
+            {channel, _} ->
+                channel(Method, Req0, State);
+            _ ->
+                Req0
         end,
     {ok, Req1, State}.
 

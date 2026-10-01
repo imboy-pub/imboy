@@ -1,26 +1,25 @@
-# ----------------------------------------------------------------------------
-# imboy/api/paths/internal/v1/channel/detail.yaml
-# GET /api/internal/v1/channels/{channel_id} — 频道详情（INT-31，V2.1 新增）
-# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1channels~1{channel_id}
-# Handler：src/api/enterprise_channel_handler.erl channel/3
-# 投影冻结（V2.1 §15.1 封闭投影）：列表项 + description。
-# ----------------------------------------------------------------------------
 get:
-  tags: [internal]
+  tags:
+  - internal
   summary: 频道详情（scope=workspace AND status=1 only）
-  description: |
-    单个工作区频道详情。跨 Organization / 个人频道 / 已停用（status≠1）/ 已
+  description: '单个工作区频道详情。跨 Organization / 个人频道 / 已停用（status≠1）/ 已
+
     删除 / 不存在一律 resource_not_found（IDOR 同不存在同体）；同 Organization
+
     但无生效 Grant 覆盖频道所属 W → organization_boundary_violation（403）。
+
+    '
   operationId: internalChannelDetail
   security:
-    - ibIntBearer: []
+  - ibIntBearer: []
   parameters:
-    - name: channel_id
-      in: path
-      required: true
-      description: 频道 TSID
-      schema: { type: integer, format: int64 }
+  - name: channel_id
+    in: path
+    required: true
+    description: 频道 TSID
+    schema:
+      type: integer
+      format: int64
   x-imboy-scope: channels:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -32,18 +31,210 @@ get:
           schema:
             type: object
             required:
-              [channel_id, workspace_id, name, description, subscriber_count, created_at]
+            - channel_id
+            - workspace_id
+            - name
+            - description
+            - subscriber_count
+            - created_at
+            - version
             additionalProperties: false
             properties:
-              channel_id: { type: integer, format: int64 }
-              workspace_id: { type: integer, format: int64 }
-              name: { type: string }
-              description: { type: string }
-              subscriber_count: { type: integer, format: int64 }
-              created_at: { type: string, description: RFC3339 时间戳 }
-    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
-    '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
-    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
-    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+              channel_id:
+                type: integer
+                format: int64
+              workspace_id:
+                type: integer
+                format: int64
+              name:
+                type: string
+              description:
+                type: string
+              subscriber_count:
+                type: integer
+                format: int64
+              created_at:
+                type: string
+                description: RFC3339 时间戳
+              version:
+                type: integer
+                format: int64
+                minimum: 1
+                maximum: 9223372036854775807
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '404':
+      $ref: ../../../../components/responses/internal/resource_not_found.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+patch:
+  tags:
+  - internal
+  summary: 修改企业频道资料
+  operationId: internalChannelUpdate
+  description: INT-41。独立 channels:write 与目标工作空间 Grant；不自动授予。创建者须为有效企业成员（企业 Owner 包含）且是工作空间
+    Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
+    expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前 Grant。409
+    可能为版本、配额/归档状态或幂等冲突，以 error.code 区分。
+  security:
+  - ibIntBearer: []
+  x-imboy-scope: channels:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    description: 企业频道 TSID
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: Idempotency-Key
+    in: header
+    required: true
+    description: ASCII 幂等键，1..128；同业务重试复用。
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 128
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: false
+          required:
+          - expected_version
+          properties:
+            name:
+              type: string
+              minLength: 1
+              maxLength: 200
+            description:
+              type: string
+              maxLength: 2000
+            avatar:
+              type: string
+              maxLength: 320
+            expected_version:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9223372036854775807
+          minProperties: 2
+  responses:
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '404':
+      $ref: ../../../../components/responses/internal/resource_not_found.yaml
+    '409':
+      $ref: ../../../../components/responses/internal/version_conflict.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      $ref: ../../../../components/responses/internal/security_gate_closed.yaml
+    '200':
+      description: 企业频道结果；归档 status=0，保留历史与身份关系。
+      headers:
+        Idempotent-Replayed:
+          description: 同 key 和规范化内容重试时返回 true。
+          schema:
+            type: string
+            enum:
+            - 'true'
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/internal/ChannelWriteResult.yaml
+delete:
+  tags:
+  - internal
+  summary: 归档企业频道
+  operationId: internalChannelArchive
+  description: INT-42。独立 channels:write 与目标工作空间 Grant；不自动授予。创建者须为有效企业成员（企业 Owner 包含）且是工作空间
+    Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
+    expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前 Grant。409
+    可能为版本、配额/归档状态或幂等冲突，以 error.code 区分。
+  security:
+  - ibIntBearer: []
+  x-imboy-scope: channels:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    description: 企业频道 TSID
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: Idempotency-Key
+    in: header
+    required: true
+    description: ASCII 幂等键，1..128；同业务重试复用。
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 128
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: false
+          required:
+          - expected_version
+          properties:
+            expected_version:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9223372036854775807
+  responses:
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '404':
+      $ref: ../../../../components/responses/internal/resource_not_found.yaml
+    '409':
+      $ref: ../../../../components/responses/internal/version_conflict.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      $ref: ../../../../components/responses/internal/security_gate_closed.yaml
+    '200':
+      description: 企业频道结果；归档 status=0，保留历史与身份关系。
+      headers:
+        Idempotent-Replayed:
+          description: 同 key 和规范化内容重试时返回 true。
+          schema:
+            type: string
+            enum:
+            - 'true'
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/internal/ChannelWriteResult.yaml

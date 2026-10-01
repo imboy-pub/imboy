@@ -419,6 +419,33 @@ routes() ->
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
+        },
+        #{
+            id => <<"INT-40">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/channels">>,
+            scope => <<"channels:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-41">>,
+            method => <<"PATCH">>,
+            path => <<"/api/internal/v1/channels/{channel_id}">>,
+            scope => <<"channels:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-42">>,
+            method => <<"DELETE">>,
+            path => <<"/api/internal/v1/channels/{channel_id}">>,
+            scope => <<"channels:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
         }
     ].
 

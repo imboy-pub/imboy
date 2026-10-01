@@ -17,7 +17,9 @@
 -export([list_subscribed/2]).
 -export([list_managed/1, count_managed_tx/2]).
 -export([update/2]).
--export([internal_find_tx/3]).
+-export([
+    internal_find_tx/3, internal_write_find_tx/4, internal_creator_tx/4, internal_creator_org_tx/3
+]).
 -export([internal_page_tx/4]).
 -export([update_tx/3]).
 -export([delete/1]).
@@ -578,7 +580,7 @@ internal_find_tx(Conn, OrgId, ChannelId) when
 ->
     Sql =
         <<"SELECT c.id, c.workspace_id, c.name, c.description,",
-            " c.subscriber_count, c.created_at FROM ", (tablename())/binary, " c",
+            " c.subscriber_count, c.version, c.created_at FROM ", (tablename())/binary, " c",
             " JOIN workspace w ON w.id = c.workspace_id",
             " WHERE c.id = $1 AND w.organization_id = $2",
             " AND w.status = 'active' AND c.scope = 'workspace' AND c.status = 1", " LIMIT 1">>,
@@ -606,12 +608,79 @@ internal_page_tx(Conn, WsId, Pivot, Limit) when
                 {<<" AND (c.created_at, c.id) < ($2, $3)">>, [CreatedAt, Id]}
         end,
     Sql =
-        <<"SELECT c.id, c.workspace_id, c.name, c.subscriber_count, c.created_at", " FROM ",
-            (tablename())/binary, " c",
+        <<"SELECT c.id, c.workspace_id, c.name, c.subscriber_count, c.version, c.created_at",
+            " FROM ", (tablename())/binary, " c",
             " WHERE c.workspace_id = $1 AND c.scope = 'workspace' AND c.status = 1",
             KeysetClause/binary, " ORDER BY c.created_at DESC, c.id DESC", " LIMIT $",
             (integer_to_binary(2 + length(Params0)))/binary>>,
     case elib_pg:query(Conn, Sql, [WsId] ++ Params0 ++ [Limit]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
+    end.
+
+%% Organization-scoped lookup includes archived rows only for authorized idempotent replay.
+internal_write_find_tx(Conn, Org, Id, Lock) ->
+    Suffix =
+        case Lock of
+            true -> <<" FOR UPDATE OF c">>;
+            false -> <<>>
+        end,
+    Sql = <<
+        "SELECT c.id,c.workspace_id,c.name,c.description,c.avatar,c.creator_uid,"
+        "c.visibility,c.access_type,c.join_policy,c.status,c.subscriber_count,c.version,"
+        "c.created_at,c.updated_at FROM ",
+        (tablename())/binary,
+        " c JOIN workspace w ON w.id=c.workspace_id WHERE c.id=$1 "
+        "AND w.organization_id=$2 AND c.scope='workspace'",
+        Suffix/binary
+    >>,
+    case elib_pg:query(Conn, Sql, [Id, Org]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+%% Lock Organization qualification before Workspace, matching organization governance order.
+internal_creator_org_tx(Conn, Org, Uid) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT owner_id FROM organization WHERE id=$1 AND status='active' FOR SHARE">>,
+            [Org]
+        )
+    of
+        {ok, [#{<<"owner_id">> := Uid}]} ->
+            ok;
+        {ok, [_]} ->
+            case
+                elib_pg:query(
+                    Conn,
+                    <<
+                        "SELECT user_id FROM organization_member WHERE organization_id=$1 "
+                        "AND user_id=$2 AND status='active' FOR SHARE"
+                    >>,
+                    [Org, Uid]
+                )
+            of
+                {ok, [_]} -> ok;
+                {ok, []} -> {error, forbidden};
+                {error, R} -> {error, R}
+            end;
+        {ok, []} ->
+            {error, forbidden};
+        {error, R} ->
+            {error, R}
+    end.
+
+%% Parent Workspace is already locked; lock active member and Human account next.
+internal_creator_tx(Conn, _Org, Ws, Uid) ->
+    Sql = <<
+        "SELECT wm.role FROM workspace_member wm JOIN \"user\" u ON u.id=wm.user_id "
+        "WHERE wm.workspace_id=$1 AND wm.user_id=$2 AND wm.status='active' "
+        "AND wm.role IN ('owner','member') AND u.status=1 FOR SHARE OF wm,u"
+    >>,
+    case elib_pg:query(Conn, Sql, [Ws, Uid]) of
+        {ok, [_]} -> ok;
+        {ok, []} -> {error, forbidden};
+        {error, R} -> {error, R}
     end.

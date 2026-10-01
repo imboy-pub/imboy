@@ -2,7 +2,7 @@
   "info": {
     "name": "IMBoy Internal API v1",
     "_postman_id": "74b0c0be-ae23-5011-b04e-a7776770f4bd",
-    "description": "IMBoy 企业内部集成 API（/api/internal/v1）。\n\n本集合收录冻结路由表中已实现、可调用的 31 个端点（V2.1 起含 Workspace / 企业群 / 企业项目 / 企业频道的 8 个只读端点 INT-24..31）；客服坐席与各资源 P1 写操作等待补合同见 endpoints.md 的企业数据 CRUD 覆盖审计，未实现路径不会作为假请求加入本集合。\n\n使用前设置两个变量：\n  1. base_url —— 由平台部署方提供；\n  2. credential —— 平台管理员在治理台签发的集成凭证（Bearer ib_int_<id>.<secret>），secret 明文仅在签发时可见一次。\n\n配套文档：README.md（概念）、endpoints.md（端点参考与覆盖审计）、CHANGELOG.md（版本）。\n所有示例值均为合成数据，不含真实凭据。",
+    "description": "IMBoy 企业集成 API，42 个已实现操作、28 条路由路径。配套 README.md 和 endpoints.md。设置部署方提供的 base_url、管理员签发的 credential；写请求使用固定业务幂等键，修改/归档填写当前版本。所有示例均为合成数据。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -70,6 +70,16 @@
       "key": "replacement_workspace_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "creator_user_id",
+      "value": "",
+      "description": "填写已授权的有效企业及工作空间成员 ID"
+    },
+    {
+      "key": "channel_version",
+      "value": "1",
+      "description": "填写当前实际版本"
     }
   ],
   "item": [
@@ -1550,6 +1560,96 @@
           }
         }
       ]
+    },
+    {
+      "name": "Channel Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{credential}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{idempotency_key}}"
+          }
+        ],
+        "url": "{{base_url}}/api/internal/v1/channels",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"workspace_id\": {{workspace_id}},\n  \"creator_user_id\": {{creator_user_id}},\n  \"name\": \"合成企业频道\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Channel Update",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{credential}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{idempotency_key}}"
+          }
+        ],
+        "url": "{{base_url}}/api/internal/v1/channels/{{channel_id}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"expected_version\": {{channel_version}},\n  \"name\": \"合成修改\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Channel Archive",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{credential}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{idempotency_key}}"
+          }
+        ],
+        "url": "{{base_url}}/api/internal/v1/channels/{{channel_id}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"expected_version\": {{channel_version}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
     }
   ]
 }

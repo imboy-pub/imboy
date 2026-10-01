@@ -1,0 +1,64 @@
+type: object
+additionalProperties: false
+required:
+- channel_id
+- workspace_id
+- name
+- description
+- avatar
+- creator_uid
+- visibility
+- access_type
+- join_policy
+- status
+- subscriber_count
+- version
+- created_at
+- updated_at
+properties:
+  channel_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  workspace_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  creator_uid:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  version:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  name:
+    type: string
+    minLength: 1
+    maxLength: 200
+  description:
+    type: string
+    maxLength: 2000
+  avatar:
+    type: string
+    maxLength: 320
+  visibility:
+    type: integer
+  access_type:
+    type: integer
+  join_policy:
+    type: integer
+  status:
+    type: integer
+  subscriber_count:
+    type: integer
+  created_at:
+    type: string
+    format: date-time
+  updated_at:
+    type: string
+    format: date-time

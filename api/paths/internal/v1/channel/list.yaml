@@ -1,40 +1,40 @@
-# ----------------------------------------------------------------------------
-# imboy/api/paths/internal/v1/channel/list.yaml
-# GET /api/internal/v1/channels — 工作区频道列表（INT-30，V2.1 新增）
-# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1channels
-# Handler：src/api/enterprise_channel_handler.erl channels/3
-# 投影冻结（V2.1 §15.1 封闭投影）：
-#   items[]: channel_id / workspace_id / name / subscriber_count / created_at
-# ----------------------------------------------------------------------------
 get:
-  tags: [internal]
+  tags:
+  - internal
   summary: 工作区频道列表（workspace_id 必填；scope=workspace AND status=1）
-  description: |
-    指定 Workspace 的工作区频道 keyset 列表（created_at DESC, id DESC）。
+  description: '指定 Workspace 的工作区频道 keyset 列表（created_at DESC, id DESC）。
+
     workspace_id 必填——缺失/非整数 400 invalid_request。行集恒被
+
     scope=workspace AND status=1 过滤（个人频道/已停用/已删除频道不可见）。
+
     分页为 CURSOR-V2 签名游标（非法/过期/foreign 一律 400，客户端从首页重启）。
+
+    '
   operationId: internalChannelList
   security:
-    - ibIntBearer: []
+  - ibIntBearer: []
   parameters:
-    - name: workspace_id
-      in: query
-      required: true
-      description: Workspace TSID（必填）
-      schema: { type: integer, format: int64 }
-    - name: limit
-      in: query
-      description: 页大小（缺省 50；1..100，越界 400 拒绝不截断）
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 100
-        default: 50
-    - name: cursor
-      in: query
-      description: 上一页返回的 next_cursor（opaque）
-      schema: { type: string }
+  - name: workspace_id
+    in: query
+    required: true
+    description: Workspace TSID（必填）
+    schema:
+      type: integer
+      format: int64
+  - name: limit
+    in: query
+    description: 页大小（缺省 50；1..100，越界 400 拒绝不截断）
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 50
+  - name: cursor
+    in: query
+    description: 上一页返回的 next_cursor（opaque）
+    schema:
+      type: string
   x-imboy-scope: channels:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -45,27 +45,149 @@ get:
         application/json:
           schema:
             type: object
-            required: [items, limit, has_more, next_cursor]
+            required:
+            - items
+            - limit
+            - has_more
+            - next_cursor
             additionalProperties: false
             properties:
               items:
                 type: array
                 items:
                   type: object
-                  required: [channel_id, workspace_id, name, subscriber_count, created_at]
+                  required:
+                  - channel_id
+                  - workspace_id
+                  - name
+                  - subscriber_count
+                  - created_at
+                  - version
                   additionalProperties: false
                   properties:
-                    channel_id: { type: integer, format: int64 }
-                    workspace_id: { type: integer, format: int64 }
-                    name: { type: string }
-                    subscriber_count: { type: integer, format: int64 }
-                    created_at: { type: string, description: RFC3339 时间戳 }
-              limit: { type: integer, minimum: 1, maximum: 100 }
-              has_more: { type: boolean }
-              next_cursor: { type: [string, 'null'] }
-    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
-    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
-    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
-    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }
+                    channel_id:
+                      type: integer
+                      format: int64
+                    workspace_id:
+                      type: integer
+                      format: int64
+                    name:
+                      type: string
+                    subscriber_count:
+                      type: integer
+                      format: int64
+                    created_at:
+                      type: string
+                      description: RFC3339 时间戳
+                    version:
+                      type: integer
+                      format: int64
+                      minimum: 1
+                      maximum: 9223372036854775807
+              limit:
+                type: integer
+                minimum: 1
+                maximum: 100
+              has_more:
+                type: boolean
+              next_cursor:
+                type:
+                - string
+                - 'null'
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      $ref: ../../../../components/responses/internal/security_gate_closed.yaml
+post:
+  tags:
+  - internal
+  summary: 创建企业频道
+  operationId: internalChannelCreate
+  description: INT-40。独立 channels:write 与目标工作空间 Grant；不自动授予。创建者须为有效企业成员（企业 Owner 包含）且是工作空间
+    Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
+    expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前 Grant。409
+    可能为版本、配额/归档状态或幂等冲突，以 error.code 区分。
+  security:
+  - ibIntBearer: []
+  x-imboy-scope: channels:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  parameters:
+  - name: Idempotency-Key
+    in: header
+    required: true
+    description: ASCII 幂等键，1..128；同业务重试复用。
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 128
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: false
+          required:
+          - workspace_id
+          - creator_user_id
+          - name
+          properties:
+            name:
+              type: string
+              minLength: 1
+              maxLength: 200
+            description:
+              type: string
+              maxLength: 2000
+            avatar:
+              type: string
+              maxLength: 320
+            workspace_id:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9223372036854775807
+            creator_user_id:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9223372036854775807
+  responses:
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '404':
+      $ref: ../../../../components/responses/internal/resource_not_found.yaml
+    '409':
+      $ref: ../../../../components/responses/internal/version_conflict.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      $ref: ../../../../components/responses/internal/security_gate_closed.yaml
+    '200':
+      description: 企业频道结果；归档 status=0，保留历史与身份关系。
+      headers:
+        Idempotent-Replayed:
+          description: 同 key 和规范化内容重试时返回 true。
+          schema:
+            type: string
+            enum:
+            - 'true'
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/internal/ChannelWriteResult.yaml

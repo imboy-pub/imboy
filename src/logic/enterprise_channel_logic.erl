@@ -109,6 +109,7 @@ item_view(Row) ->
         <<"channel_id">> => maps:get(<<"id">>, Row),
         <<"workspace_id">> => maps:get(<<"workspace_id">>, Row),
         <<"name">> => maps:get(<<"name">>, Row),
+        <<"version">> => maps:get(<<"version">>, Row),
         <<"subscriber_count">> => maps:get(<<"subscriber_count">>, Row),
         <<"created_at">> => maps:get(<<"created_at">>, Row)
     }.

@@ -41,22 +41,28 @@ init(Req0, State0) ->
     Req1 =
         case {Action, Method} of
             {workspaces, <<"POST">>} ->
-                enterprise_workspace_write_handler:write(
-                    Req0, maps:get(enterprise_internal, State), create, 0
+                enterprise_internal_write_handler:write(
+                    Req0,
+                    maps:get(enterprise_internal, State),
+                    create,
+                    0,
+                    enterprise_workspace_write_logic
                 );
             {workspace, <<"PATCH">>} ->
-                enterprise_workspace_write_handler:write(
+                enterprise_internal_write_handler:write(
                     Req0,
                     maps:get(enterprise_internal, State),
                     update,
-                    binding_tsid(State, workspace_id)
+                    binding_tsid(State, workspace_id),
+                    enterprise_workspace_write_logic
                 );
             {workspace, <<"DELETE">>} ->
-                enterprise_workspace_write_handler:write(
+                enterprise_internal_write_handler:write(
                     Req0,
                     maps:get(enterprise_internal, State),
                     archive,
-                    binding_tsid(State, workspace_id)
+                    binding_tsid(State, workspace_id),
+                    enterprise_workspace_write_logic
                 );
             {workspaces, _} ->
                 workspaces(Method, Req0, State);

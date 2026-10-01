@@ -1,0 +1,1 @@
+openapi.yaml: up to date with openapi-api.yaml, openapi-adm.yaml, openapi-internal.yaml

@@ -1,4 +1,4 @@
-# Internal API v1 — 端点参考（39 端点）
+# Internal API v1 — 端点参考（42 端点）
 
 > 与代码冻结表（`src/api/enterprise_internal_routes.erl`）逐条一致；
 > 字段级机器契约见 `../openapi-internal.yaml`（编辑真源，
@@ -16,14 +16,14 @@
   Organization 与已授予 Workspace，不得复用 Admin 权限。
 
 因此，管理后台出现一个菜单，并不表示同名资源应自动暴露完整 Internal CRUD。
-当前冻结合同（INT-01..INT-39）的实际覆盖如下：
+当前冻结合同（INT-01..INT-42）的实际覆盖如下：
 
 | 企业数据 | 分页查看 | 新增 | 详情 | 修改 | 删除/归档 | 当前结论 |
 |---|---|---|---|---|---|---|
 | 组织治理 | — | — | INT-01 仅返回凭证所属组织上下文 | — | — | **不开放组织增删**；Application 不能创建或删除自己的授权父域 |
 | Workspace | INT-24 | INT-37 | INT-25 | INT-38 | INT-39 | 创建、修改及软归档已实现；独立 workspaces:write，版本并发保护及应用审计 |
 | 客服坐席 | INT-33 | INT-35 | INT-34 | INT-36 | INT-36 enabled=false | 企业级配置接口；保留历史，不签发 Seat JWT |
-| 企业频道 | INT-30 | — | INT-31 | — | — | **只读已实现（写操作为 P1 待补）**；仅 `scope=workspace`，个人频道永久排除 |
+| 企业频道 | INT-30 | INT-40 | INT-31 | INT-41 | INT-42 | 创建、修改、软归档已实现；仅 workspace，版本与应用审计保护 |
 | 企业群 | INT-26 | INT-04 | INT-18 | INT-19 / INT-20 | INT-21 / INT-06 | **只读+写核心已实现**（成员分页 INT-27） |
 | 企业项目 | INT-28 | — | INT-29 | — | — | **只读已实现（写操作为 P1 待补）**；必须受 Workspace Grant 约束 |
 
@@ -44,18 +44,18 @@ Grant/Scope、OpenAPI、审计和自动化测试，再作为 v1 只追加端点�
 | P0 | 客服坐席 | `GET /customer-service/seats`、`GET /customer-service/seats/{business_identity_id}` | `customer_service:read` | INT-33/34：企业全域 Grant，ID 升序 cursor 分页与详情 |
 | 已实现 | Workspace | `POST /workspaces`、`PATCH /workspaces/{workspace_id}`、`DELETE /workspaces/{workspace_id}` | `workspaces:write` | 新建、修改、软归档；写请求必须幂等 |
 | P1 | 企业项目 | `POST /projects`、`PATCH /projects/{project_id}`、`DELETE /projects/{project_id}` | `projects:write` | 新建、修改、软归档；项目必须属于已授权 Workspace |
-| P1 | 企业频道 | `POST /channels`、`PATCH /channels/{channel_id}`、`DELETE /channels/{channel_id}` | `channels:write` | 新建、修改、软归档；`scope/workspace_id` 创建后不可变 |
+| 已实现 INT-40..42 | 企业频道 | `POST /channels`、`PATCH /channels/{channel_id}`、`DELETE /channels/{channel_id}` | `channels:write` | 新建、修改、软归档；`scope/workspace_id` 创建后不可变 |
 | P1 | 客服坐席 | `POST /customer-service/seats`、`PATCH /customer-service/seats/{business_identity_id}` | `customer_service:write` | INT-35/36：开通、版本校验调整并发/状态、PATCH 停用；不签发 Admin 或 Seat 身份 |
 
 约束：
 
 - 所有列表使用 `cursor + limit`，不提供无界导出；默认 `limit=50`，最大 `100`；
 - `DELETE` 是可审计的软归档/停用，不做物理删除；
-- 所有 P1 写请求要求 `Idempotency-Key`，并记录真实 `origin_application_id`；
+- 所有 P1 写请求要求 `Idempotency-Key`，并记录真实应用来源（资源既有 origin_application_id 或同事务审计的 application_id）；
 - 组织创建、组织删除、Application/Credential 生命周期、Grant 签发/撤销仍只属于
   `/api/adm/*`，不会下放给 Application Credential；
 - 上述待补合同正式实现前，当前可导入 Postman 的权威集合仍是本目录的
-  `IMBoy-Internal-API-v1.postman_collection.json`（32 个已实现端点）。
+  `IMBoy-Internal-API-v1.postman_collection.json`（42 个已实现操作）。
 
 ## 应用与凭证
 
@@ -112,7 +112,7 @@ V2.1 FIX：群详情（INT-18）与群/成员只读分页（INT-26/27）scope �
 | INT-25 | `GET /api/internal/v1/workspaces/{workspace_id}` | `workspaces:read` | read | — |
 
 Workspace keyset 列表与详情（V2.1 新增）；行集收窄为「当前生效 Grant 覆盖
-的 W 集合」，已归档 Workspace 不可见。写操作为 P1 待补。
+的 W 集合」，已归档 Workspace 不可见。写操作 INT-37..39 已实现。
 
 ## 企业项目（只读）
 
@@ -124,7 +124,7 @@ Workspace keyset 列表与详情（V2.1 新增）；行集收窄为「当前生�
 企业项目 keyset 列表与详情（V2.1 新增）；必须受 Workspace Grant 约束。
 写操作为 P1 待补。
 
-## 企业频道（只读）
+## 企业频道（读取与写管理）
 
 | ID | 方法与路径 | Scope | 限流桶 | 幂等 |
 |---|---|---|---|---|
@@ -132,7 +132,7 @@ Workspace keyset 列表与详情（V2.1 新增）；行集收窄为「当前生�
 | INT-31 | `GET /api/internal/v1/channels/{channel_id}` | `channels:read` | read | — |
 
 工作区企业频道 keyset 列表与详情（V2.1 新增）；**仅 `scope=workspace` 的
-频道**（`status=1` 启用中），个人频道永久排除。写操作为 P1 待补。
+频道**（`status=1` 启用中），个人频道永久排除。写操作 INT-40..42 已实现，详见下文。
 
 ## 企业文件（直传）
 
@@ -212,3 +212,20 @@ INT-23 分页为 CURSOR-V2 签名游标（`cursor` / `page_size`，缺省 20 上
 只接受企业全域 Grant；workspace_id 是审计位置，坐席不归工作空间。创建必须给出 workspace_id/business_identity_id；修改必须给出 workspace_id/expected_version，以及 enabled/max_concurrent 至少一个。未知请求字段拒绝。停用使用 PATCH enabled=false，保留配置和历史。业务身份必须为本企业 customer_service；仅显式停用允许处理失效身份。
 
 English: Org-owned seat configuration. Separate read/write scopes and organization-wide grants are required. Updates use optimistic versions and disabling retains history. Workspace/channel writes remain pending; project writes are deferred for this phase.
+
+
+## 企业频道写管理（INT-40..42）
+
+| ID | 方法与路径 | Scope | 归属边界 | 幂等 |
+|---|---|---|---|---|
+| INT-40 | POST /api/internal/v1/channels | channels:write | workspace_id 指定的工作空间 | 必需 |
+| INT-41 | PATCH /api/internal/v1/channels/{channel_id} | channels:write | 频道所属工作空间 | 必需 |
+| INT-42 | DELETE /api/internal/v1/channels/{channel_id} | channels:write | 频道所属工作空间 | 必需 |
+
+POST 必需 workspace_id、creator_user_id、name，可选 description、avatar。企业 Owner 或有效在册企业成员且是工作空间 Owner/Member 才可作为创建者；Guest、离职、停用账号被拒绝。不隐式增加企业或空间成员，不签发 Human 身份。频道始终是企业非公开频道（visibility=1、access_type=0、join_policy=1），复用现有管理频道配额。
+
+PATCH 必需 expected_version，并至少修改 name/description/avatar 一项；DELETE 必需 expected_version，为 status=0 软归档。scope、workspace_id、creator_user_id、策略与未知字段拒绝；旧版本 409 version_conflict。GET 返回治理 version，旧用户/Admin 入口的资料与状态变更也受版本触发器保护，订阅计数变化不增加治理版本。归档保留历史消息、订阅及管理员关系。
+
+资源变更、带 application_id/correlation_id 且 actor_user_id=NULL 的应用审计，以及幂等结果共用事务。资源实际归属仍为工作空间所在企业；审计记录应用来源。重试必须复用同业务 key、方法、路径及相同规范化 JSON 内容；重放前验证当前生效 Grant，撤权后拒绝。幂等键为 1..128 ASCII，详情见机器契约。
+
+English summary: Three channel write operations are implemented with explicit Workspace-scoped channels:write, eligible Human creator membership, non-public visibility, quota, optimistic governance versions, atomic application audit and authorized idempotent replay. Soft archive preserves channel history and identity relations.

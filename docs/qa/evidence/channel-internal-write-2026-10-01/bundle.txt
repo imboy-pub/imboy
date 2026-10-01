@@ -1,0 +1,1 @@
+openapi-internal.bundle.yaml: up to date (28 paths / 42 ops, 0 $ref)
