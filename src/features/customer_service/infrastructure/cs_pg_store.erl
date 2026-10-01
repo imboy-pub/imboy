@@ -34,6 +34,7 @@
     list_seat_presence/1,
     %% session
     insert_session/3,
+    insert_session/4,
     fetch_session/3,
     claim_session/7,
     transfer_session/7,
@@ -179,6 +180,9 @@ list_seat_presence(OrgId) ->
     cs_pg_seat:list_seat_presence(OrgId).
 
 %% session
+insert_session(OrgId, WorkspaceId, Session, Event) ->
+    cs_pg_session:insert_session(OrgId, WorkspaceId, Session, Event).
+
 insert_session(OrgId, WorkspaceId, Session) ->
     cs_pg_session:insert_session(OrgId, WorkspaceId, Session).
 fetch_session(OrgId, WorkspaceId, SessionId) ->

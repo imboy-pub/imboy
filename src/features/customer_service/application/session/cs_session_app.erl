@@ -108,28 +108,17 @@ insert_session(OrgId, WorkspaceId, ContactId, ConversationId, At, Params) ->
                 queued_at => At,
                 created_by_user_id => maps:get(created_by_user_id, Params, undefined)
             },
-            case
-                with_store(Params, fun(Store) ->
-                    Store:insert_session(OrgId, WorkspaceId, Draft)
-                end)
-            of
-                {error, _} = Err ->
-                    Err;
-                {ok, Stored} ->
-                    case
-                        append_event(Params, OrgId, #{
-                            session_id => SessionId,
-                            actor_user_id => maps:get(created_by_user_id, Params, undefined),
-                            actor_kind => <<"visitor">>,
-                            action => <<"session.opened">>,
-                            detail => #{<<"contact_id">> => ContactId},
-                            workspace_id => WorkspaceId
-                        })
-                    of
-                        ok -> {ok, Stored};
-                        {error, _} = AuditErr -> AuditErr
-                    end
-            end
+            Event = #{
+                session_id => SessionId,
+                actor_user_id => maps:get(created_by_user_id, Params, undefined),
+                actor_kind => <<"visitor">>,
+                action => <<"session.opened">>,
+                detail => #{<<"contact_id">> => ContactId},
+                workspace_id => WorkspaceId
+            },
+            with_store(Params, fun(Store) ->
+                Store:insert_session(OrgId, WorkspaceId, Draft, Event)
+            end)
     end.
 
 %% ===================================================================
@@ -749,9 +738,6 @@ fetch_session_for(Params, OrgId, WorkspaceId, SessionId) ->
 
 actor_kind(Params) ->
     maps:get(actor_kind, Params, <<"tenant_admin">>).
-
-append_event(Params, OrgId, Event) ->
-    cs_app_support:append_event(Params, OrgId, Event).
 
 with_store(Params, Fun) ->
     cs_app_support:with_store(Params, Fun).

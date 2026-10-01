@@ -1,0 +1,52 @@
+test/api/intbe02_http_support.erl:191:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  191|     catch throttle:setup(api_per_ip, 100000, per_minute),
+%     |     ^
+
+test/api/intbe02_http_support.erl:192:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  192|     catch throttle:setup(api_per_user, 100000, per_minute),
+%     |     ^
+
+test/api/intbe02_http_support.erl:253:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  253|     catch ets:delete(?COVERED_TAB),
+%     |     ^
+
+test/api/intbe02_http_support.erl:550:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  550|     catch pooler:rm_pool(pgsql),
+%     |     ^
+
+test/api/intbe02_http_support.erl:560:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  560|     catch pooler:rm_pool(pgsql),
+%     |     ^
+
+test/api/intbe02_http_support.erl:647:18: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  647|             case catch binary_to_integer(SizeBin, 16) of
+%     |                  ^
+
+test/api/intbe02_http_support.erl:690:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  690|         catch meck:unload(elib_oss)
+%     |         ^
+
+test/api/intbe02_http_support.erl:710:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  710|         catch meck:unload(inet)
+%     |         ^
+
+test/features/customer_service/infrastructure/cs_pg_test_fixture.erl:157:5: Warning: variable 'Seat' is unused
+%  157|     Seat = id(),
+%     |     ^
+

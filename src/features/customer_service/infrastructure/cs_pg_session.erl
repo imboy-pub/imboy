@@ -13,6 +13,7 @@
 
 -export([
     insert_session/3,
+    insert_session/4,
     fetch_session/3,
     claim_session/7,
     transfer_session/7,
@@ -611,16 +612,7 @@ list_contact_notes_page(OrgId, ContactId, Limit) ->
 -spec insert_session(integer(), integer(), map()) -> {ok, map()} | {error, term()}.
 insert_session(OrgId, WorkspaceId, Draft) when is_map(Draft) ->
     SessionId = maps:get(id, Draft),
-    Params = [
-        SessionId,
-        OrgId,
-        WorkspaceId,
-        maps:get(contact_id, Draft),
-        maps:get(conversation_id, Draft),
-        cs_pg_common:nullify(maps:get(visit_token_id, Draft, undefined)),
-        cs_pg_common:nullify(maps:get(queued_at, Draft, undefined)),
-        cs_pg_common:nullify(maps:get(created_by_user_id, Draft, undefined))
-    ],
+    Params = session_insert_params(OrgId, WorkspaceId, Draft),
     case elib_pg:execute(?SQL_INSERT_SESSION, Params) of
         {ok, 1} -> fetch_session(OrgId, WorkspaceId, SessionId);
         {ok, 0} -> {error, no_row};
@@ -628,6 +620,40 @@ insert_session(OrgId, WorkspaceId, Draft) when is_map(Draft) ->
     end;
 insert_session(_OrgId, _WorkspaceId, _Draft) ->
     {error, invalid_session}.
+
+%% Opening and its audit are atomic, using the same connection as CAS transitions.
+-spec insert_session(integer(), integer(), map(), map()) -> {ok, map()} | {error, term()}.
+insert_session(OrgId, WorkspaceId, Draft, Event) when is_map(Draft), is_map(Event) ->
+    undo_rollback(
+        elib_pg:with_tx(fun(Conn) ->
+            Params = session_insert_params(OrgId, WorkspaceId, Draft),
+            case elib_pg:execute(Conn, ?SQL_INSERT_SESSION, Params) of
+                {ok, 1} ->
+                    write_event_or_rollback(Conn, OrgId, Event),
+                    fetch_session_in(Conn, OrgId, WorkspaceId, maps:get(id, Draft));
+                {ok, 0} ->
+                    throw({rollback, {error, no_row}});
+                {error, Reason} ->
+                    throw(
+                        {rollback, {error, map_insert_error(cs_pg_common:normalize_error(Reason))}}
+                    )
+            end
+        end)
+    );
+insert_session(_OrgId, _WorkspaceId, _Draft, _Event) ->
+    {error, invalid_session}.
+
+session_insert_params(OrgId, WorkspaceId, Draft) ->
+    [
+        maps:get(id, Draft),
+        OrgId,
+        WorkspaceId,
+        maps:get(contact_id, Draft),
+        maps:get(conversation_id, Draft),
+        cs_pg_common:nullify(maps:get(visit_token_id, Draft, undefined)),
+        cs_pg_common:nullify(maps:get(queued_at, Draft, undefined)),
+        cs_pg_common:nullify(maps:get(created_by_user_id, Draft, undefined))
+    ].
 
 %% 同一 (Org, conversation) 已有未关闭 session 时，由 DB 部分唯一索引
 %% uq_csss_org_conv_open 裁决为业务冲突——映射 conflict（cs_http 409 通道），

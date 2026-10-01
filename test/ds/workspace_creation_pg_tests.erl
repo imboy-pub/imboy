@@ -40,7 +40,8 @@ creation(S) ->
     assert_template(C, Created),
     assert_count_failure(C),
     assert_archive(C, Created),
-    organization_membership_journey_pg_checks:run(C).
+    organization_membership_journey_pg_checks:run(C),
+    cs_session_open_pg_checks:run(C).
 
 assert_archive(C, #{workspace_id := W} = Created) ->
     ?assertMatch({ok, _}, organization_default_workspace_app:set(995001, 995101, W)),

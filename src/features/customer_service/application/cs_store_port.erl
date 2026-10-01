@@ -163,6 +163,12 @@
 
 %% -- session ---------------------------------------------------------------
 
+%% The event-aware form persists the queued session and its audit atomically.
+-callback insert_session(
+    OrgId :: integer(), WorkspaceId :: integer(), Session :: session(), Event :: event()
+) ->
+    {ok, session()} | {error, conflict | term()}.
+
 -callback insert_session(OrgId :: integer(), WorkspaceId :: integer(), Session :: session()) ->
     {ok, session()} | {error, conflict | term()}.
 -callback fetch_session(OrgId :: integer(), WorkspaceId :: integer(), SessionId :: integer()) ->

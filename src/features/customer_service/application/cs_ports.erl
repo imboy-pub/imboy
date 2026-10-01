@@ -105,6 +105,7 @@ contracts() ->
             {list_seat_presence, 1},
             %% session
             {insert_session, 3},
+            {insert_session, 4},
             {fetch_session, 3},
             {claim_session, 7},
             {transfer_session, 7},

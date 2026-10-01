@@ -57,6 +57,7 @@
     fetch_seat_presence/2,
     list_seat_presence/1,
     insert_session/3,
+    insert_session/4,
     fetch_session/3,
     claim_session/7,
     transfer_session/7,
@@ -775,6 +776,15 @@ list_transfer_targets_page(OrgId, ExcludeIdentityId, AfterId, Limit) ->
         Rows0
     ),
     {ok, lists:sublist(Rows1, Limit)}.
+
+insert_session(OrgId, WorkspaceId, Draft, Event) ->
+    case insert_session(OrgId, WorkspaceId, Draft) of
+        {ok, Row} ->
+            {ok, _} = append_event(OrgId, Event),
+            {ok, Row};
+        {error, _} = Err ->
+            Err
+    end.
 
 insert_session(OrgId, WorkspaceId, Draft) ->
     SessionId = maps:get(id, Draft),

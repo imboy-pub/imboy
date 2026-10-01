@@ -1,0 +1,54 @@
+======================== EUnit ========================
+module 'cs_application_tests'
+  cs_application_tests: a01_seat_requires_customer_service_identity...[0.001 s] ok
+  cs_application_tests: a01_duplicate_seat_conflicts...ok
+  cs_application_tests: a02_double_claim_second_conflicts...[0.002 s] ok
+  cs_application_tests: a02_max_concurrent_cap_and_dispatch...ok
+  cs_application_tests: a02_suspended_seat_rejects_claim...ok
+  cs_application_tests: a03_message_goes_only_through_eb_facade...[0.002 s] ok
+  cs_application_tests: a03_seat_mismatch_and_contact_mismatch_rejected...ok
+  cs_application_tests: a04_rebind_keeps_session_and_history_continuous...ok
+  cs_application_tests: a05_visit_token_scope_and_revocation...[0.007 s] ok
+  cs_application_tests: close_then_rate_then_double_actions_rejected...ok
+  cs_application_tests: facade_delegates_and_validates_shape...[0.001 s] ok
+  cs_application_tests: a03_env_keyring_assembly...ok
+  cs_application_tests: s01a_seat_contexts_aggregate_projection...ok
+  cs_application_tests: s01a_transfer_targets_exclude_self_and_project...ok
+  cs_application_tests: s01b_provision_fresh_and_audit...ok
+  cs_application_tests: s01b_provision_retry_is_idempotent_and_repairs_seat...ok
+  cs_application_tests: s01b_provision_guards_reject_non_member_and_bad_workspace...ok
+  cs_application_tests: s01b_provision_partial_failure_leaves_no_residue...ok
+  [done in 0.067 s]
+module 'cs_list_contract_tests'
+  cs_list_contract_tests: c1_projection_is_exact_whitelist...ok
+  cs_list_contract_tests: c1_status_whitelist_rejects_unknown...ok
+  cs_list_contract_tests: c1_invalid_after_id_is_422_atom...[0.001 s] ok
+  cs_list_contract_tests: c1_limit_bounds_default_50...ok
+  cs_list_contract_tests: c1_desc_keyset_and_next_after_id...ok
+  cs_list_contract_tests: c1_empty_list_has_null_cursor...ok
+  cs_list_contract_tests: c2_projection_never_leaks_digest...ok
+  cs_list_contract_tests: c2_pagination_cursor...ok
+  cs_list_contract_tests: c3_projection_never_leaks_digest...ok
+  cs_list_contract_tests: c3_pagination_cursor...ok
+  cs_list_contract_tests: c4_seats_page_shape_and_limits...ok
+  cs_list_contract_tests: c5_platform_seats_page_cross_org...ok
+  cs_list_contract_tests: port_contract_has_new_callbacks...[0.001 s] ok
+  cs_list_contract_tests: actions_and_facade_call_are_registered...[0.001 s] ok
+  cs_list_contract_tests: http_error_atoms_are_explicit_422...[0.001 s] ok
+  cs_list_contract_tests: cs_be02_waiting_seconds_is_authoritative...ok
+  cs_list_contract_tests: cs_be02_preview_unicode_truncation...[0.044 s] ok
+  cs_list_contract_tests: cs_be02_preview_placeholder_semantics...[0.331 s] ok
+  cs_list_contract_tests: cs_be02_view_never_carries_cipher_material...[0.027 s] ok
+  [done in 0.464 s]
+module 'cs_closure_tests'
+  cs_closure_tests: all_remote_calls_within_whitelist_test...[0.039 s] ok
+  cs_closure_tests: eb_inner_module_reference_is_flagged_test...[0.003 s] ok
+  cs_closure_tests: whitelist_and_module_set_are_alive_test...[0.003 s] ok
+  cs_closure_tests: port_contracts_match_behaviour_info_test...ok
+  cs_closure_tests: assembly_covers_every_port_test...[0.001 s] ok
+  cs_closure_tests: facade_delegates_only_to_declared_targets_test...[0.001 s] ok
+  cs_closure_tests: facade_reference_whitelist_is_empty_test...ok
+  cs_closure_tests: session_app_calls_eb_facade_for_messages_test...[0.002 s] ok
+  [done in 0.073 s]
+=======================================================
+  All 45 tests passed.
