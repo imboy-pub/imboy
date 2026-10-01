@@ -39,10 +39,31 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
     Req1 =
-        case Action of
-            workspaces -> workspaces(Method, Req0, State);
-            workspace -> workspace(Method, Req0, State);
-            _ -> Req0
+        case {Action, Method} of
+            {workspaces, <<"POST">>} ->
+                enterprise_workspace_write_handler:write(
+                    Req0, maps:get(enterprise_internal, State), create, 0
+                );
+            {workspace, <<"PATCH">>} ->
+                enterprise_workspace_write_handler:write(
+                    Req0,
+                    maps:get(enterprise_internal, State),
+                    update,
+                    binding_tsid(State, workspace_id)
+                );
+            {workspace, <<"DELETE">>} ->
+                enterprise_workspace_write_handler:write(
+                    Req0,
+                    maps:get(enterprise_internal, State),
+                    archive,
+                    binding_tsid(State, workspace_id)
+                );
+            {workspaces, _} ->
+                workspaces(Method, Req0, State);
+            {workspace, _} ->
+                workspace(Method, Req0, State);
+            _ ->
+                Req0
         end,
     {ok, Req1, State}.
 

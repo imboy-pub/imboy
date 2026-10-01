@@ -43,7 +43,8 @@ if not paths:
 paths.insert(0, str(deps / 'ebin'))
 files = [str(p) for p in pathlib.Path('src').rglob('*.erl')]
 files += ['test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wiring_http_tests.erl',
-          'test/common/inttest_marker_db.erl', 'test/ds/workspace_creation_pg_tests.erl']
+          'test/common/inttest_marker_db.erl', 'test/ds/workspace_creation_pg_tests.erl',
+          'test/api/enterprise_workspace_write_http_checks.erl']
 cmd = ['erlc', '+debug_info', '+nowarn_unused_function', '+{parse_transform,lager_transform}',
        '-o', str(out / 'beams'), '-I', 'include', '-I', 'src']
 for path in paths:

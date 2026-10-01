@@ -2,7 +2,7 @@
 
 > **版本**：v1.0（冻结）｜ **受众**：企业 OA / 第三方集成系统开发者
 > **Base Path**：`/api/internal/v1`
-> **机器契约**：`api/openapi-internal.yaml`（编辑真源，28 path / 36 端点，
+> **机器契约**：`api/openapi-internal.yaml`（编辑真源，28 path / 39 端点，
 > 字段级 schema 逐端点实证自 handler）；`api/openapi-internal.bundle.yaml`
 > （bundle 单文件，可直接导入 Postman / Apifox / openapi-generator）。
 > 本目录是面向集成方的交付文档。路由与合同由 12 项机械断言
@@ -83,7 +83,7 @@ Authorization: Bearer ib_int_<application_id>.<secret>
   所有请求返回 `application_disabled`（403）。
 - secret 在平台侧只保存不可逆摘要；**泄露即轮换**，无需担心「改不回来」。
 
-## 4. 授权（Scope，固定 16 枚举，无通配）
+## 4. 授权（Scope，固定 17 枚举，无通配）
 
 | Scope | 解锁能力 |
 |---|---|
@@ -270,3 +270,5 @@ OA 外部用户标识 → **OA 建立自己的登录会话**。
 INT-33..36 管理企业坐席配置，不签发 Seat JWT。坐席主键为 business_identity_id，必须对应本企业 customer_service 业务身份；workspace_id 只是审计位置。读写权限分别授予，必须有覆盖对应 scope 的企业全域 Grant，仅 Workspace Grant 不足。PATCH 必须带 expected_version 以及 enabled/max_concurrent 至少一个；停用用 enabled=false，不删除历史。列表默认 limit=50，最大100，按 ID 升序，包含停用项。应用、企业或 Grant 撤销后，包括幂等重放在内的下一请求仍须通过授权检查。
 
 English: Seats belong to the organization. Workspace IDs select audit locations only. Reads and writes need separate scopes and organization-wide grants. Updates require optimistic versions; disabling retains history. Signed cursors bind organization, application and seat-list family.
+
+工作空间写管理：INT-37..39，独立 workspaces:write（不自动授予）。创建指定本企业 Owner/Admin；修改与软归档使用 expected_version；默认归档须显式同企业替代项及其 Grant。GET 工作空间追加 version。应用审计、资源及幂等响应同事务；归档后的同 key 重放仍需当前有效 Grant。

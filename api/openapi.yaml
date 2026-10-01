@@ -1211,7 +1211,7 @@ components:
       bearerFormat: ib_int_<credential_id>.<secret>
       description: |
         企业集成凭证：与单个企业应用一一对应，授权范围 = 签发时授予的
-        scope 集合（固定 16 枚举、无通配）。secret 平台侧只存不可逆摘要，
+        scope 集合（固定 17 枚举、无通配）。secret 平台侧只存不可逆摘要，
         泄露即轮换；应用停用/归档后所有请求返回 application_disabled（403）。
 
   schemas:

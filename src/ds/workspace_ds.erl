@@ -21,7 +21,7 @@
 %   3. branding 白名单键治理：仅 name/logo/primaryColor 可读写。
 %%%
 
--export([create_template/4]).
+-export([create_template/4, create_template_tx/5]).
 %% 建企路径专用（R3-3/F3）：建 Organization 时同事务创建默认 Workspace 模板。
 %% 与 create_template/4 的差异：**不走 owner 工作区配额与语义幂等前置**——
 %% 建企时该 Org 尚无任何工作区（本函数创建它），配额检查会按 owner 的

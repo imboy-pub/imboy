@@ -1,4 +1,4 @@
-# Versioned current manifest: INT-01..36. Historical run manifest remains untouched.
+# Versioned current manifest: INT-01..39. Historical run manifest remains untouched.
 # IMBoy Enterprise Internal API Manifest — frozen by A0 at BASE-00
 # RUN_ID: enterprise-internal-20260921T043945Z
 # Stage coverage: STAGE_GZ (INT-01..INT-14 + human-side SSO code issuance)
@@ -467,6 +467,37 @@ mechanical_assertions:  # re-runnable script: control/assert_manifest.sh
     scope: customer_service:write
     grant: org scoped
     resource: org seat update
+    actor: application
+    idempotency: required
+    rate: internal_write
+    sender_mode: none
+
+  - id: INT-37
+    method: POST
+    path: /api/internal/v1/workspaces
+    scope: workspaces:write
+    grant: org scoped
+    resource: workspace
+    actor: application
+    idempotency: required
+    rate: internal_write
+    sender_mode: none
+  - id: INT-38
+    method: PATCH
+    path: /api/internal/v1/workspaces/{workspace_id}
+    scope: workspaces:write
+    grant: workspace scoped
+    resource: workspace
+    actor: application
+    idempotency: required
+    rate: internal_write
+    sender_mode: none
+  - id: INT-39
+    method: DELETE
+    path: /api/internal/v1/workspaces/{workspace_id}
+    scope: workspaces:write
+    grant: workspace scoped
+    resource: workspace
     actor: application
     idempotency: required
     rate: internal_write

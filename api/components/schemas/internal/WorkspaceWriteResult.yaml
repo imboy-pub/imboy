@@ -1,0 +1,58 @@
+type: object
+additionalProperties: false
+required:
+- workspace_id
+- name
+- logo
+- owner_id
+- status
+- version
+- branding
+- created_at
+- updated_at
+properties:
+  workspace_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  owner_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  version:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  name:
+    type: string
+  logo:
+    type:
+    - string
+    - 'null'
+  status:
+    type: string
+    enum:
+    - active
+    - archived
+  branding:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        minLength: 1
+        maxLength: 200
+      logo:
+        type: string
+        maxLength: 2048
+      primaryColor:
+        type: string
+  created_at:
+    type: string
+    format: date-time
+  updated_at:
+    type: string
+    format: date-time

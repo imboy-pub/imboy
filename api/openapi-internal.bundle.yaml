@@ -15,10 +15,10 @@ info:
   summary: IMBoy 企业内部集成 API（Internal API v1，冻结）
   description: |
     本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 28 条
-    path（36 个操作）。受众为企业 OA / 第三方集成系统开发者。
+    path（39 个操作）。受众为企业 OA / 第三方集成系统开发者。
 
     **认证**：所有请求携带 `Authorization: Bearer ib_int_<credential_id>.<secret>`；
-    凭证由平台管理员在 Admin 管理台签发，scope 固定 16 枚举、无通配。
+    凭证由平台管理员在 Admin 管理台签发，scope 固定 17 枚举、无通配。
 
     **响应模型**：成功响应为**裸 payload**（无 `{code,msg,payload}` 业务信封）；
     错误响应统一 `{"error":{"code","message"}}`，16 个稳定错误码见
@@ -10038,6 +10038,7 @@ paths:
                       - name
                       - owner_id
                       - created_at
+                      - version
                       additionalProperties: false
                       properties:
                         workspace_id:
@@ -10051,6 +10052,11 @@ paths:
                         created_at:
                           type: string
                           description: RFC3339 时间戳
+                        version:
+                          type: integer
+                          format: int64
+                          minimum: 1
+                          maximum: 9223372036854775807
                   limit:
                     type: integer
                     minimum: 1
@@ -10339,54 +10345,137 @@ paths:
                       code:
                         enum:
                         - security_gate_closed
-  /api/internal/v1/workspaces/{workspace_id}:
-    get:
+    post:
       tags:
       - internal
-      summary: Workspace 详情
-      description: |
-        单个 active Workspace 详情。跨 Organization / 不存在 / 已归档一律
-        resource_not_found（IDOR 同不存在同体，不泄露存在性）；同 Organization 但
-        无生效 Grant 覆盖该 W → organization_boundary_violation（403）。
-      operationId: internalWorkspaceDetail
+      summary: 创建企业工作空间
+      operationId: internalWorkspaceCreate
       security:
       - ibIntBearer: []
+      x-imboy-scope: workspaces:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      description: 创建需要企业全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档需要目标工作空间 Grant。expected_version 为当前版本，过期返回 version_conflict。默认空间归档须显式指定同企业且有授权的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
+        Grant。未知字段拒绝。
       parameters:
-      - name: workspace_id
-        in: path
+      - name: Idempotency-Key
+        in: header
         required: true
-        description: Workspace TSID
+        description: 有效 ASCII 幂等键；同业务重试复用此值。
         schema:
-          type: integer
-          format: int64
-      x-imboy-scope: workspaces:read
-      x-imboy-rate-bucket: internal_read
-      x-imboy-idempotency: not_required
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       responses:
         '200':
-          description: Workspace 详情
+          description: 工作空间当前状态
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                - workspace_id
+                - name
+                - logo
+                - owner_id
+                - status
+                - version
+                - branding
+                - created_at
+                - updated_at
+                properties:
+                  workspace_id:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+                  owner_id:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+                  version:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+                  name:
+                    type: string
+                  logo:
+                    type:
+                    - string
+                    - 'null'
+                  status:
+                    type: string
+                    enum:
+                    - active
+                    - archived
+                  branding:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      name:
+                        type: string
+                        minLength: 1
+                        maxLength: 200
+                      logo:
+                        type: string
+                        maxLength: 2048
+                      primaryColor:
+                        type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+          headers:
+            Idempotent-Replayed:
+              description: 是否重放首次已提交响应；重放时为 true。
+              schema:
+                type: string
+                enum:
+                - 'true'
+        '409':
+          description: 版本、幂等键、创建额度或默认交接冲突
           content:
             application/json:
               schema:
                 type: object
                 required:
-                - workspace_id
-                - name
-                - owner_id
-                - created_at
-                additionalProperties: false
+                - error
                 properties:
-                  workspace_id:
-                    type: integer
-                    format: int64
-                  name:
-                    type: string
-                  owner_id:
-                    type: integer
-                    format: int64
-                  created_at:
-                    type: string
-                    description: RFC3339 时间戳
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    properties:
+                      code:
+                        type: string
+                        description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                        enum:
+                        - invalid_request
+                        - invalid_credential
+                        - credential_expired
+                        - application_disabled
+                        - organization_disabled
+                        - insufficient_scope
+                        - organization_boundary_violation
+                        - resource_not_found
+                        - idempotency_conflict
+                        - identity_not_mapped
+                        - rate_limited
+                        - security_gate_closed
+                        - internal_error
+                        - version_conflict
+                        - resource_conflict
+                        - seat_limit_exceeded
+                      message:
+                        type: string
+                        description: 人类可读说明（文案不保证稳定）
         '400':
           description: 请求参数/形状非法
           content:
@@ -10664,6 +10753,1384 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - owner_user_id
+              - name
+              properties:
+                owner_user_id:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  maximum: 9223372036854775807
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+  /api/internal/v1/workspaces/{workspace_id}:
+    get:
+      tags:
+      - internal
+      summary: Workspace 详情
+      description: |
+        单个 active Workspace 详情。跨 Organization / 不存在 / 已归档一律
+        resource_not_found（IDOR 同不存在同体，不泄露存在性）；同 Organization 但
+        无生效 Grant 覆盖该 W → organization_boundary_violation（403）。
+      operationId: internalWorkspaceDetail
+      security:
+      - ibIntBearer: []
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        description: Workspace TSID
+        schema:
+          type: integer
+          format: int64
+      x-imboy-scope: workspaces:read
+      x-imboy-rate-bucket: internal_read
+      x-imboy-idempotency: not_required
+      responses:
+        '200':
+          description: Workspace 详情
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - workspace_id
+                - name
+                - owner_id
+                - created_at
+                - version
+                additionalProperties: false
+                properties:
+                  workspace_id:
+                    type: integer
+                    format: int64
+                  name:
+                    type: string
+                  owner_id:
+                    type: integer
+                    format: int64
+                  created_at:
+                    type: string
+                    description: RFC3339 时间戳
+                  version:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+        '400':
+          description: 请求参数/形状非法
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - invalid_request
+        '401':
+          description: 凭证缺失/格式错/不存在的 locator
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - invalid_credential
+        '403':
+          description: 凭证未被授予所需 scope
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - insufficient_scope
+        '404':
+          description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - resource_not_found
+        '429':
+          description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - rate_limited
+        '500':
+          description: 内部错误（安全兜底：未列入稳定表的码一律收敛为此值）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - internal_error
+    patch:
+      tags:
+      - internal
+      summary: 修改企业工作空间
+      operationId: internalWorkspaceUpdate
+      security:
+      - ibIntBearer: []
+      x-imboy-scope: workspaces:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      description: 创建需要企业全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档需要目标工作空间 Grant。expected_version 为当前版本，过期返回 version_conflict。默认空间归档须显式指定同企业且有授权的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
+        Grant。未知字段拒绝。
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+        description: 本企业的目标工作空间 TSID
+      - name: Idempotency-Key
+        in: header
+        required: true
+        description: 有效 ASCII 幂等键；同业务重试复用此值。
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
+      responses:
+        '200':
+          description: 工作空间当前状态
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                - workspace_id
+                - name
+                - logo
+                - owner_id
+                - status
+                - version
+                - branding
+                - created_at
+                - updated_at
+                properties:
+                  workspace_id:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+                  owner_id:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+                  version:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+                  name:
+                    type: string
+                  logo:
+                    type:
+                    - string
+                    - 'null'
+                  status:
+                    type: string
+                    enum:
+                    - active
+                    - archived
+                  branding:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      name:
+                        type: string
+                        minLength: 1
+                        maxLength: 200
+                      logo:
+                        type: string
+                        maxLength: 2048
+                      primaryColor:
+                        type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+          headers:
+            Idempotent-Replayed:
+              description: 是否重放首次已提交响应；重放时为 true。
+              schema:
+                type: string
+                enum:
+                - 'true'
+        '409':
+          description: 版本、幂等键、创建额度或默认交接冲突
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    properties:
+                      code:
+                        type: string
+                        description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                        enum:
+                        - invalid_request
+                        - invalid_credential
+                        - credential_expired
+                        - application_disabled
+                        - organization_disabled
+                        - insufficient_scope
+                        - organization_boundary_violation
+                        - resource_not_found
+                        - idempotency_conflict
+                        - identity_not_mapped
+                        - rate_limited
+                        - security_gate_closed
+                        - internal_error
+                        - version_conflict
+                        - resource_conflict
+                        - seat_limit_exceeded
+                      message:
+                        type: string
+                        description: 人类可读说明（文案不保证稳定）
+        '400':
+          description: 请求参数/形状非法
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - invalid_request
+        '401':
+          description: 凭证缺失/格式错/不存在的 locator
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - invalid_credential
+        '403':
+          description: 凭证未被授予所需 scope
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - insufficient_scope
+        '404':
+          description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - resource_not_found
+        '429':
+          description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - rate_limited
+        '500':
+          description: 内部错误（安全兜底：未列入稳定表的码一律收敛为此值）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - expected_version
+              properties:
+                expected_version:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  maximum: 9223372036854775807
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                logo:
+                  type: string
+                  maxLength: 2048
+                branding:
+                  type: object
+                  additionalProperties: false
+                  minProperties: 1
+                  properties:
+                    name:
+                      type: string
+                      minLength: 1
+                      maxLength: 200
+                    logo:
+                      type: string
+                      maxLength: 2048
+                    primaryColor:
+                      type: string
+                      pattern: ^#[0-9a-fA-F]{6}$
+              minProperties: 2
+    delete:
+      tags:
+      - internal
+      summary: 归档企业工作空间
+      operationId: internalWorkspaceArchive
+      security:
+      - ibIntBearer: []
+      x-imboy-scope: workspaces:write
+      x-imboy-rate-bucket: internal_write
+      x-imboy-idempotency: required
+      description: 创建需要企业全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档需要目标工作空间 Grant。expected_version 为当前版本，过期返回 version_conflict。默认空间归档须显式指定同企业且有授权的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
+        Grant。未知字段拒绝。
+      parameters:
+      - name: workspace_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+        description: 本企业的目标工作空间 TSID
+      - name: Idempotency-Key
+        in: header
+        required: true
+        description: 有效 ASCII 幂等键；同业务重试复用此值。
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
+      responses:
+        '200':
+          description: 工作空间当前状态
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                - workspace_id
+                - name
+                - logo
+                - owner_id
+                - status
+                - version
+                - branding
+                - created_at
+                - updated_at
+                properties:
+                  workspace_id:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+                  owner_id:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+                  version:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                    maximum: 9223372036854775807
+                  name:
+                    type: string
+                  logo:
+                    type:
+                    - string
+                    - 'null'
+                  status:
+                    type: string
+                    enum:
+                    - active
+                    - archived
+                  branding:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      name:
+                        type: string
+                        minLength: 1
+                        maxLength: 200
+                      logo:
+                        type: string
+                        maxLength: 2048
+                      primaryColor:
+                        type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+          headers:
+            Idempotent-Replayed:
+              description: 是否重放首次已提交响应；重放时为 true。
+              schema:
+                type: string
+                enum:
+                - 'true'
+        '409':
+          description: 版本、幂等键、创建额度或默认交接冲突
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    properties:
+                      code:
+                        type: string
+                        description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                        enum:
+                        - invalid_request
+                        - invalid_credential
+                        - credential_expired
+                        - application_disabled
+                        - organization_disabled
+                        - insufficient_scope
+                        - organization_boundary_violation
+                        - resource_not_found
+                        - idempotency_conflict
+                        - identity_not_mapped
+                        - rate_limited
+                        - security_gate_closed
+                        - internal_error
+                        - version_conflict
+                        - resource_conflict
+                        - seat_limit_exceeded
+                      message:
+                        type: string
+                        description: 人类可读说明（文案不保证稳定）
+        '400':
+          description: 请求参数/形状非法
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - invalid_request
+        '401':
+          description: 凭证缺失/格式错/不存在的 locator
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - invalid_credential
+        '403':
+          description: 凭证未被授予所需 scope
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - insufficient_scope
+        '404':
+          description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - resource_not_found
+        '429':
+          description: 触发限流（fail-closed）
+          headers:
+            Retry-After:
+              description: 重试等待秒数（delta-seconds）＝当前窗口剩余时间向上取整（≥1）。
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - rate_limited
+        '500':
+          description: 内部错误（安全兜底：未列入稳定表的码一律收敛为此值）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - insufficient_scope
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - expected_version
+              properties:
+                expected_version:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  maximum: 9223372036854775807
+                replacement_workspace_id:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  maximum: 9223372036854775807
   /api/internal/v1/projects:
     get:
       tags:
@@ -13779,5 +15246,5 @@ components:
       bearerFormat: ib_int_<credential_id>.<secret>
       description: |
         企业集成凭证：与单个企业应用一一对应，授权范围 = 签发时授予的
-        scope 集合（固定 16 枚举、无通配）。secret 平台侧只存不可逆摘要，
+        scope 集合（固定 17 枚举、无通配）。secret 平台侧只存不可逆摘要，
         泄露即轮换；应用停用/归档后所有请求返回 application_disabled（403）。

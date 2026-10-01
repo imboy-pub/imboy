@@ -1,4 +1,4 @@
-# Internal API v1 — 端点参考（36 端点）
+# Internal API v1 — 端点参考（39 端点）
 
 > 与代码冻结表（`src/api/enterprise_internal_routes.erl`）逐条一致；
 > 字段级机器契约见 `../openapi-internal.yaml`（编辑真源，
@@ -16,12 +16,12 @@
   Organization 与已授予 Workspace，不得复用 Admin 权限。
 
 因此，管理后台出现一个菜单，并不表示同名资源应自动暴露完整 Internal CRUD。
-当前冻结合同（INT-01..INT-36）的实际覆盖如下：
+当前冻结合同（INT-01..INT-39）的实际覆盖如下：
 
 | 企业数据 | 分页查看 | 新增 | 详情 | 修改 | 删除/归档 | 当前结论 |
 |---|---|---|---|---|---|---|
 | 组织治理 | — | — | INT-01 仅返回凭证所属组织上下文 | — | — | **不开放组织增删**；Application 不能创建或删除自己的授权父域 |
-| Workspace | INT-24 | — | INT-25 | — | — | **只读已实现（写操作为 P1 待补）**；写入仍只能经 Admin 面操作既有 Grant 边界 |
+| Workspace | INT-24 | INT-37 | INT-25 | INT-38 | INT-39 | 创建、修改及软归档已实现；独立 workspaces:write，版本并发保护及应用审计 |
 | 客服坐席 | INT-33 | INT-35 | INT-34 | INT-36 | INT-36 enabled=false | 企业级配置接口；保留历史，不签发 Seat JWT |
 | 企业频道 | INT-30 | — | INT-31 | — | — | **只读已实现（写操作为 P1 待补）**；仅 `scope=workspace`，个人频道永久排除 |
 | 企业群 | INT-26 | INT-04 | INT-18 | INT-19 / INT-20 | INT-21 / INT-06 | **只读+写核心已实现**（成员分页 INT-27） |
@@ -42,7 +42,7 @@ Grant/Scope、OpenAPI、审计和自动化测试，再作为 v1 只追加端点�
 | P0 | 企业项目 | `GET /projects`、`GET /projects/{project_id}` | `projects:read` | ✅ 已实现（INT-28/29）；Grant 过滤的 cursor 分页与详情 |
 | P0 | 企业频道 | `GET /channels`、`GET /channels/{channel_id}` | `channels:read` | ✅ 已实现（INT-30/31）；仅 `scope=workspace`，排除个人频道 |
 | P0 | 客服坐席 | `GET /customer-service/seats`、`GET /customer-service/seats/{business_identity_id}` | `customer_service:read` | INT-33/34：企业全域 Grant，ID 升序 cursor 分页与详情 |
-| P1 | Workspace | `POST /workspaces`、`PATCH /workspaces/{workspace_id}`、`DELETE /workspaces/{workspace_id}` | `workspaces:write` | 新建、修改、软归档；写请求必须幂等 |
+| 已实现 | Workspace | `POST /workspaces`、`PATCH /workspaces/{workspace_id}`、`DELETE /workspaces/{workspace_id}` | `workspaces:write` | 新建、修改、软归档；写请求必须幂等 |
 | P1 | 企业项目 | `POST /projects`、`PATCH /projects/{project_id}`、`DELETE /projects/{project_id}` | `projects:write` | 新建、修改、软归档；项目必须属于已授权 Workspace |
 | P1 | 企业频道 | `POST /channels`、`PATCH /channels/{channel_id}`、`DELETE /channels/{channel_id}` | `channels:write` | 新建、修改、软归档；`scope/workspace_id` 创建后不可变 |
 | P1 | 客服坐席 | `POST /customer-service/seats`、`PATCH /customer-service/seats/{business_identity_id}` | `customer_service:write` | INT-35/36：开通、版本校验调整并发/状态、PATCH 停用；不签发 Admin 或 Seat 身份 |
@@ -205,6 +205,9 @@ INT-23 分页为 CURSOR-V2 签名游标（`cursor` / `page_size`，缺省 20 上
 | INT-34 | `GET /api/internal/v1/customer-service/seats/{business_identity_id}` | `customer_service:read` | read | — |
 | INT-35 | `POST /api/internal/v1/customer-service/seats` | `customer_service:write` | write | K |
 | INT-36 | `PATCH /api/internal/v1/customer-service/seats/{business_identity_id}` | `customer_service:write` | write | K |
+| INT-37 | `POST /api/internal/v1/workspaces` | `workspaces:write` | write | K |
+| INT-38 | `PATCH /api/internal/v1/workspaces/{workspace_id}` | `workspaces:write` | write | K |
+| INT-39 | `DELETE /api/internal/v1/workspaces/{workspace_id}` | `workspaces:write` | write | K |
 
 只接受企业全域 Grant；workspace_id 是审计位置，坐席不归工作空间。创建必须给出 workspace_id/business_identity_id；修改必须给出 workspace_id/expected_version，以及 enabled/max_concurrent 至少一个。未知请求字段拒绝。停用使用 PATCH enabled=false，保留配置和历史。业务身份必须为本企业 customer_service；仅显式停用允许处理失效身份。
 

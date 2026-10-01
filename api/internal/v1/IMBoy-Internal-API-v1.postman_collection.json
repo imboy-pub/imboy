@@ -55,6 +55,21 @@
       "key": "seat_version",
       "value": "1",
       "description": "修改时使用详情返回的 version"
+    },
+    {
+      "key": "owner_user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workspace_version",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "replacement_workspace_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -1434,6 +1449,104 @@
                 }
               }
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "工作空间写管理",
+      "item": [
+        {
+          "name": "创建工作空间",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/workspaces",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"owner_user_id\": {{owner_user_id}},\n  \"name\": \"企业工作空间\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "须显式 workspaces:write Grant。填写 Owner/Admin Uid 与目标版本；归档为软归档，默认空间必须显式交接。"
+          }
+        },
+        {
+          "name": "修改工作空间",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/workspaces/{{workspace_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expected_version\": {{workspace_version}},\n  \"name\": \"企业工作空间\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "须显式 workspaces:write Grant。填写 Owner/Admin Uid 与目标版本；归档为软归档，默认空间必须显式交接。"
+          }
+        },
+        {
+          "name": "归档工作空间",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/workspaces/{{workspace_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expected_version\": {{workspace_version}},\n  \"replacement_workspace_id\": {{replacement_workspace_id}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "须显式 workspaces:write Grant。填写 Owner/Admin Uid 与目标版本；归档为软归档，默认空间必须显式交接。"
           }
         }
       ]

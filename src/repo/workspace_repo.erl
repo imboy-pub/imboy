@@ -16,7 +16,7 @@
 -export([find_by_request_id/4]).
 -export([update_by_id/2]).
 -export([update_owner_tx/3]).
--export([archive_tx/4]).
+-export([archive_tx/4, internal_lock_tx/3, update_profile_tx/5]).
 -export([page_by_member/4]).
 -export([count_by_owner_tx/2]).
 -export([ids_by_organization/1]).
@@ -228,7 +228,7 @@ internal_find_tx(Conn, OrgId, WsId) when
     is_integer(OrgId), is_integer(WsId), WsId > 0
 ->
     Sql =
-        <<"SELECT id, name, owner_id, created_at FROM ", (tablename())/binary,
+        <<"SELECT id, name, owner_id, version, created_at FROM ", (tablename())/binary,
             " WHERE id = $1 AND organization_id = $2 AND status = 'active' LIMIT 1">>,
     case elib_pg:query(Conn, Sql, [WsId, OrgId]) of
         {ok, [Row | _]} -> {ok, Row};
@@ -276,11 +276,32 @@ internal_covered_page_tx(Conn, OrgId, AppId, Pivot, Limit) when
                 {<<" AND (w.created_at, w.id) < ($4, $5)">>, [CreatedAt, Id]}
         end,
     Sql =
-        <<"SELECT w.id, w.name, w.owner_id, w.created_at FROM ", (tablename())/binary, " w",
-            " WHERE w.organization_id = $1 AND w.status = 'active'", CoveredExists/binary,
+        <<"SELECT w.id, w.name, w.owner_id, w.version, w.created_at FROM ", (tablename())/binary,
+            " w", " WHERE w.organization_id = $1 AND w.status = 'active'", CoveredExists/binary,
             KeysetClause/binary, " ORDER BY w.created_at DESC, w.id DESC", " LIMIT $",
             (integer_to_binary(4 + length(Params0)))/binary>>,
     case elib_pg:query(Conn, Sql, [OrgId, AppId, Scope] ++ Params0 ++ [Limit]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
+    end.
+
+%% Scoped lock also allows an archived row for authorized idempotent replay.
+internal_lock_tx(Conn, OrgId, WsId) ->
+    Sql =
+        <<"SELECT id,name,logo,owner_id,organization_id,status,branding,version,created_at,updated_at FROM ",
+            (tablename())/binary, " WHERE organization_id=$1 AND id=$2 FOR UPDATE">>,
+    case elib_pg:query(Conn, Sql, [OrgId, WsId]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+update_profile_tx(Conn, WsId, Name, Logo, Branding) ->
+    Sql =
+        <<"UPDATE ", (tablename())/binary,
+            " SET name=$2,logo=$3,branding=$4::jsonb,updated_at=$5 WHERE id=$1 AND status='active' RETURNING id">>,
+    case elib_pg:query(Conn, Sql, [WsId, Name, Logo, jsone:encode(Branding), elib_dt:now()]) of
+        {ok, [#{<<"id">> := WsId}]} -> ok;
+        {ok, []} -> {error, not_found};
+        {error, R} -> {error, R}
     end.

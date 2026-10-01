@@ -95,7 +95,7 @@
 %% 窄写应用 scope：groups:write（+ groups:read 便于分组判别）——供「未覆盖
 %% Workspace 写拒绝」负例使用（scope 必须满足、Grant 覆盖必须失败，二者
 %% 才能把 403 归因到边界而不是 scope）。
--define(SCOPES_W_NARROW, [<<"groups:read">>, <<"groups:write">>]).
+-define(SCOPES_W_NARROW, [<<"groups:read">>, <<"groups:write">>, <<"workspaces:write">>]).
 
 %% App A：13 个固定 scope（除 sso:exchange——该 scope 走独立 SSO 应用），
 %% org 全域 Grant；主链全部正例/幂等用例都用它。
@@ -114,7 +114,8 @@
     <<"friend_requests:create">>,
     <<"webhooks:manage">>,
     <<"customer_service:read">>,
-    <<"customer_service:write">>
+    <<"customer_service:write">>,
+    <<"workspaces:write">>
 ]).
 
 -define(EXT_H1, <<"intbe02-ext-h1">>).
@@ -161,6 +162,10 @@ setup_all() ->
             end
         end,
         [
+            workspace,
+            channel,
+            channel_admin,
+            channel_subscription,
             group_info,
             group_member,
             enterprise_message,

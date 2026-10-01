@@ -5,7 +5,7 @@
 % （EPGZ-02，plan-gz §4.2 / manifest INV-4；V2.1 原 14 值，坐席接口追加 2 值）。
 %
 % 冻结规则：
-%   * scope 全集恰为 16 个固定值，无 wildcard（"*" 不是合法授予）；
+%   * scope 全集恰为 17 个固定值，无 wildcard（"*" 不是合法授予）；
 %   * authorize/2 只做**逐字精确成员**判定——
 %       - required 不在全集（且非 "*"") → {error, invalid_scope}
 %         （调用方（handler）要求了不存在的 scope，属程序错误，fail-closed）；
@@ -37,14 +37,15 @@
     <<"webhooks:manage">>,
     <<"sso:exchange">>,
     <<"customer_service:read">>,
-    <<"customer_service:write">>
+    <<"customer_service:write">>,
+    <<"workspaces:write">>
 ]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-%% @doc 固定 scope 全集（固定 16 个；原枚举顺序保留，坐席读写追加）。
+%% @doc 固定 scope 全集（固定 17 个；原枚举顺序保留，坐席读写追加）。
 -spec all() -> [binary(), ...].
 all() ->
     ?SCOPES.

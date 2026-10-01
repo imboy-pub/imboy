@@ -1,37 +1,37 @@
-# ----------------------------------------------------------------------------
-# imboy/api/paths/internal/v1/workspace/list.yaml
-# GET /api/internal/v1/workspaces — Workspace 列表（INT-24，V2.1 新增）
-# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1workspaces
-# Handler：src/api/enterprise_workspace_handler.erl workspaces/3
-# 投影冻结（V2.1 §15.1 封闭投影，实现前登记 A2 RESULT.json）：
-#   items[]: workspace_id / name / owner_id / created_at
-# ----------------------------------------------------------------------------
 get:
-  tags: [internal]
+  tags:
+  - internal
   summary: Workspace 列表（仅 Grant 覆盖的工作区）
-  description: |
-    active Workspace keyset 列表；行集收窄为「当前生效 Grant 覆盖的 W 集合」
+  description: 'active Workspace keyset 列表；行集收窄为「当前生效 Grant 覆盖的 W 集合」
+
     （org 全域 Grant = Org 内全部 W，显式 Grant = 列出的 W）——收窄谓词在
+
     服务端列表 SQL 内实现。已归档 Workspace 不可见。
+
     分页为 CURSOR-V2 签名游标：cursor 透传 next_cursor 值；非法/过期/跨
+
     family/O/App/filter 的游标一律 400 invalid_request（不回显原因），客户端
+
     只能从首页重启。
+
+    '
   operationId: internalWorkspaceList
   security:
-    - ibIntBearer: []
+  - ibIntBearer: []
   parameters:
-    - name: limit
-      in: query
-      description: 页大小（缺省 50；1..100，越界 400 拒绝不截断）
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 100
-        default: 50
-    - name: cursor
-      in: query
-      description: 上一页返回的 next_cursor（opaque；不得解析或拼接）
-      schema: { type: string }
+  - name: limit
+    in: query
+    description: 页大小（缺省 50；1..100，越界 400 拒绝不截断）
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 50
+  - name: cursor
+    in: query
+    description: 上一页返回的 next_cursor（opaque；不得解析或拼接）
+    schema:
+      type: string
   x-imboy-scope: workspaces:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -42,28 +42,138 @@ get:
         application/json:
           schema:
             type: object
-            required: [items, limit, has_more, next_cursor]
+            required:
+            - items
+            - limit
+            - has_more
+            - next_cursor
             additionalProperties: false
             properties:
               items:
                 type: array
                 items:
                   type: object
-                  required: [workspace_id, name, owner_id, created_at]
+                  required:
+                  - workspace_id
+                  - name
+                  - owner_id
+                  - created_at
+                  - version
                   additionalProperties: false
                   properties:
-                    workspace_id: { type: integer, format: int64 }
-                    name: { type: string }
-                    owner_id: { type: integer, format: int64 }
-                    created_at: { type: string, description: RFC3339 时间戳 }
-              limit: { type: integer, minimum: 1, maximum: 100 }
-              has_more: { type: boolean }
+                    workspace_id:
+                      type: integer
+                      format: int64
+                    name:
+                      type: string
+                    owner_id:
+                      type: integer
+                      format: int64
+                    created_at:
+                      type: string
+                      description: RFC3339 时间戳
+                    version:
+                      type: integer
+                      format: int64
+                      minimum: 1
+                      maximum: 9223372036854775807
+              limit:
+                type: integer
+                minimum: 1
+                maximum: 100
+              has_more:
+                type: boolean
               next_cursor:
-                type: [string, 'null']
+                type:
+                - string
+                - 'null'
                 description: has_more=true 时非 null；否则恒 null
-    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
-    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
-    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
-    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      $ref: ../../../../components/responses/internal/security_gate_closed.yaml
+post:
+  tags:
+  - internal
+  summary: 创建企业工作空间
+  operationId: internalWorkspaceCreate
+  security:
+  - ibIntBearer: []
+  x-imboy-scope: workspaces:write
+  x-imboy-rate-bucket: internal_write
+  x-imboy-idempotency: required
+  description: 创建需要企业全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档需要目标工作空间 Grant。expected_version
+    为当前版本，过期返回 version_conflict。默认空间归档须显式指定同企业且有授权的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
+    Grant。未知字段拒绝。
+  parameters:
+  - name: Idempotency-Key
+    in: header
+    required: true
+    description: 有效 ASCII 幂等键；同业务重试复用此值。
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: ^[ -~]+$
+  responses:
+    '200':
+      description: 工作空间当前状态
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/internal/WorkspaceWriteResult.yaml
+      headers:
+        Idempotent-Replayed:
+          description: 是否重放首次已提交响应；重放时为 true。
+          schema:
+            type: string
+            enum:
+            - 'true'
+    '409':
+      description: 版本、幂等键、创建额度或默认交接冲突
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '404':
+      $ref: ../../../../components/responses/internal/resource_not_found.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      $ref: ../../../../components/responses/internal/security_gate_closed.yaml
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: false
+          required:
+          - owner_user_id
+          - name
+          properties:
+            owner_user_id:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9223372036854775807
+            name:
+              type: string
+              minLength: 1
+              maxLength: 200

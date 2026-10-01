@@ -105,6 +105,7 @@ workspace_view(Row) ->
         <<"workspace_id">> => maps:get(<<"id">>, Row),
         <<"name">> => maps:get(<<"name">>, Row),
         <<"owner_id">> => maps:get(<<"owner_id">>, Row),
+        <<"version">> => maps:get(<<"version">>, Row),
         <<"created_at">> => maps:get(<<"created_at">>, Row)
     }.
 

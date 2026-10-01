@@ -230,7 +230,7 @@ scope_fixed_enum_test() ->
         %% all() 返回 V2.1 §7 的固定顺序（不做 sort：顺序也是契约），
         %% 恰好 16 个——多一个/少一个都判失败（CON-02 口径）。
         ?assertEqual(?V21_SCOPES, enterprise_internal_scope:all()),
-        ?assertEqual(16, length(enterprise_internal_scope:all())),
+        ?assertEqual(17, length(enterprise_internal_scope:all())),
         %% 显式授予才可用；未授予即拒
         ?assertEqual(
             ok,

@@ -191,6 +191,12 @@ spec(<<"INT-35">>) ->
     {ok, #{kind => org, scope => <<"customer_service:write">>}};
 spec(<<"INT-36">>) ->
     {ok, #{kind => org, scope => <<"customer_service:write">>}};
+spec(<<"INT-37">>) ->
+    {ok, #{kind => org, scope => <<"workspaces:write">>}};
+spec(<<"INT-38">>) ->
+    {ok, #{kind => workspace, scope => <<"workspaces:write">>}};
+spec(<<"INT-39">>) ->
+    {ok, #{kind => workspace, scope => <<"workspaces:write">>}};
 spec(_RouteId) ->
     error.
 
@@ -309,7 +315,15 @@ candidate_ids() ->
         <<"INT-13">>,
         <<"INT-14">>
         | ?NEW_IDS ++ ?FULL03_IDS ++ ?V21_IDS ++ ?V111_IDS ++
-            [<<"INT-33">>, <<"INT-34">>, <<"INT-35">>, <<"INT-36">>]
+            [
+                <<"INT-33">>,
+                <<"INT-34">>,
+                <<"INT-35">>,
+                <<"INT-36">>,
+                <<"INT-37">>,
+                <<"INT-38">>,
+                <<"INT-39">>
+            ]
     ].
 
 %% ctx 的生效 scope（认证链产物；零 Grant 应用恒为空集 → list 类路由拒绝）。

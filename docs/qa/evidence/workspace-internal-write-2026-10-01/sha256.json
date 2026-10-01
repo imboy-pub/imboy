@@ -1,0 +1,130 @@
+{
+  "base_sha": "d609244f4c6e35a9bd1fab383108d971cfe1559f",
+  "sources": [
+    {
+      "path": "api/components/schemas/internal/WorkspaceWriteResult.yaml",
+      "sha256": "ea78ab4ab001f58b26d43ae358988abeddf4af9d21490d84b0f92fa4b41ee416"
+    },
+    {
+      "path": "api/flatten_internal.py",
+      "sha256": "6fc2cd51051ea72dfca6060df5c81bbde295b7218230fde2599c3bae9022de87"
+    },
+    {
+      "path": "api/internal/v1/CHANGELOG.md",
+      "sha256": "bd9f3bf683e0a02956681cc7ebe46b19cc398cbe67e1538519d7c6aaff1badba"
+    },
+    {
+      "path": "api/internal/v1/IMBoy-Internal-API-v1.postman_collection.json",
+      "sha256": "bbfa8e56d6615d6a9a13b48fcb89ca5f0d64cdc91743c8bcc04405a69cb17794"
+    },
+    {
+      "path": "api/internal/v1/README.md",
+      "sha256": "2ae32f33bd2b95c0631ff2f14d3d4f619b22276ec5ea2b221e99d1022c64b3df"
+    },
+    {
+      "path": "api/internal/v1/endpoints.md",
+      "sha256": "db1a690f0905e7128b09498890fb517cd06d335ed53cd4d670de93e1ba61c4a2"
+    },
+    {
+      "path": "api/internal/v1/manifest.yaml",
+      "sha256": "a9d1040a01a29f98c7b17b84b2f481680229ba2e899a4fa7c7267e09b4b52ae2"
+    },
+    {
+      "path": "api/openapi-internal.bundle.yaml",
+      "sha256": "84f3573f188f4d2dfee3820c28d0bc8fe7af63d0e0ee86d0854602b3202b935d"
+    },
+    {
+      "path": "api/openapi-internal.yaml",
+      "sha256": "eefecdca61cd4972465bdbde4309d6fb4d4763a760934583d165683b90a2b541"
+    },
+    {
+      "path": "api/openapi.yaml",
+      "sha256": "da782a682e46ea3d8902a7cffbe3a7ff675702d621139e88fab5c93463677b1d"
+    },
+    {
+      "path": "api/paths/internal/v1/workspace/detail.yaml",
+      "sha256": "767029041a57b2293f2d35a7855d44cfc0e0492a9a82b147d9cd8439bb15b447"
+    },
+    {
+      "path": "api/paths/internal/v1/workspace/list.yaml",
+      "sha256": "de5291bb48d5aa6f2720b8b18eed35b9df5b9ff87d400c097a425830b43ba8bf"
+    },
+    {
+      "path": "priv/migrations/00000160_workspace_internal_write.down.sql",
+      "sha256": "34706e4767c4aec2adae9b4ffdf6ec61f91db84894e553fb981425a257193e5c"
+    },
+    {
+      "path": "priv/migrations/00000160_workspace_internal_write.up.sql",
+      "sha256": "07ff7e49b5144b653704e21b432fe4ab500a45c78ca7397327306e99a2c65d3e"
+    },
+    {
+      "path": "scripts/check_enterprise_release_manifest.py",
+      "sha256": "dbf1c1d02d7198cbc207ffae7679fdbb832900d63b8f8304d94d19ddfc616ec0"
+    },
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "6fb3f8daae7fb2653ce37db7b0a8d9c2c1003692dcc1637710c97a5d77510b2d"
+    },
+    {
+      "path": "src/api/enterprise_internal_boundary.erl",
+      "sha256": "3c4d53bb5f16aabbcf2875dd7226983397b54e563ccbc329267c205809951510"
+    },
+    {
+      "path": "src/api/enterprise_internal_routes.erl",
+      "sha256": "c26e5099f38f98e2bdb45a80fb024616aef1f2514e1b266eef725b2c7e7baa1f"
+    },
+    {
+      "path": "src/api/enterprise_internal_scope.erl",
+      "sha256": "c96537f85b250c268e473ea17861173ca8364360c50063119ff29f234bbe2a24"
+    },
+    {
+      "path": "src/api/enterprise_workspace_handler.erl",
+      "sha256": "fc0edc207e9b8111792cc239445be5685ebc815268b15a28984a098ca12dd769"
+    },
+    {
+      "path": "src/api/enterprise_workspace_write_handler.erl",
+      "sha256": "7d6ad48919ce5b89a0598f01ab5bb3f9bc02b7c94ef8489d2e6fb6400c73dec7"
+    },
+    {
+      "path": "src/ds/workspace_ds.erl",
+      "sha256": "2e5a2941328263f6867c40e135342ad63e6f15afc75e7d92e18d73edcd4361f2"
+    },
+    {
+      "path": "src/logic/enterprise_workspace_logic.erl",
+      "sha256": "780208fb8282b9c677e6e421011f138923cf06b8a0f5eb40a7d1d1c3ae692be8"
+    },
+    {
+      "path": "src/logic/enterprise_workspace_write_logic.erl",
+      "sha256": "26e6a6c176ebbb1bb8b22f6bc5ea652d81c440115739e7db0284f9e9c6e858bc"
+    },
+    {
+      "path": "src/repo/workspace_repo.erl",
+      "sha256": "905352f28fb55a2c4e46dd280b2f81694ce113d99a1aa33c07c3a93d2bbf3ec5"
+    },
+    {
+      "path": "test/api/enterprise_internal_pg_tests.erl",
+      "sha256": "ce1488b04c23ae918bf7a10a4692000422b8ee9933c156f6b1748efbbbebee76"
+    },
+    {
+      "path": "test/api/enterprise_internal_wiring_http_tests.erl",
+      "sha256": "c17e36014b8e678599ae7148f836ccbd586000c51e771c6ce8987953d8cd9d57"
+    },
+    {
+      "path": "test/api/enterprise_workspace_write_http_checks.erl",
+      "sha256": "fd41b897841cccdf6b25cdf9400ed5a8fe73d30f2aa050948679769be1cd5db7"
+    },
+    {
+      "path": "test/api/intbe02_http_support.erl",
+      "sha256": "f72a24a7f49ab805d113f8d13b916ad4842ac6c020568816f7c01b6bf321f681"
+    },
+    {
+      "path": "test/migrations/test_workspace_internal_write.py",
+      "sha256": "d19d4ea15c170fa96c7c9a2167f3a116532595fd975c84ef1488eea677ca4f9c"
+    }
+  ],
+  "artifacts": {
+    "http.txt": "0ed635082bbc86b0a936bece8f06ac026b69308b57447e91006056e7ab7b5844",
+    "image-id.txt": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0",
+    "migration.txt": "beeb284874817dca574bde2b340a33224229da18a99a8fb95ae66bc6e7e18937"
+  }
+}

@@ -392,6 +392,33 @@ routes() ->
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
+        },
+        #{
+            id => <<"INT-37">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/workspaces">>,
+            scope => <<"workspaces:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-38">>,
+            method => <<"PATCH">>,
+            path => <<"/api/internal/v1/workspaces/{workspace_id}">>,
+            scope => <<"workspaces:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-39">>,
+            method => <<"DELETE">>,
+            path => <<"/api/internal/v1/workspaces/{workspace_id}">>,
+            scope => <<"workspaces:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
         }
     ].
 
