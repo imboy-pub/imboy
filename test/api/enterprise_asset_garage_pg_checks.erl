@@ -17,6 +17,7 @@ run() ->
             secret_key => env("IMBOY_TEST_SECRET")
         },
         application:set_env(imboy, garage, Config),
+        human_group_journey(H),
         S = cs_pg_test_fixture:new_scope(),
         ok = cs_pg_test_fixture:exec(
             <<"UPDATE organization_business_identity_assignment SET business_identity_id=$3,function_key='customer_service' WHERE organization_id=$1 AND user_id=$2">>,
@@ -51,6 +52,55 @@ run() ->
         intbe02_http_support:teardown_all(H),
         inttest_marker_db:release(H)
     end.
+
+human_group_journey(#{conn := C}) ->
+    %% setup_all seeds member rows directly; seed their normal open history generation.
+    ok = intbe02_http_support:sql_exec(
+        C,
+        <<"INSERT INTO group_member_generation(group_id,user_id,generation_no,start_seq) VALUES ($1,$2,1,1)">>,
+        [995301, 995011]
+    ),
+    Bytes = <<"synthetic enterprise human group file">>,
+    {ok, #{<<"file_id">> := FileKey}} = group_file_logic:upload(
+        <<"995301">>, 995011, <<"synthetic-human.txt">>, Bytes, <<"text/plain">>
+    ),
+    #{<<"id">> := FileId} = group_file_repo:find_by_file_id(FileKey),
+    #{<<"path">> := ObjectKey} = intbe02_http_support:one(
+        C,
+        <<"SELECT path FROM attachment WHERE group_file_id=$1 AND scope='group' AND scope_ref='995301' AND status=1">>,
+        [FileId]
+    ),
+    {ok, Url} = group_file_logic:download(FileId, 995011),
+    {ok, {{_, 200, _}, _, Bytes}} = httpc:request(
+        get, {binary_to_list(Url), []}, [{autoredirect, false}], [{body_format, binary}]
+    ),
+    ?assertEqual({error, not_member}, group_file_logic:download(FileId, 995021)),
+    {ok, _} = organization_member_logic:suspend(995001, 995101, 995011),
+    assert_revoked_group_file(FileId, ObjectKey, Bytes),
+    {ok, _} = organization_member_logic:restore(995001, 995101, 995011),
+    {ok, _} = group_file_logic:download(FileId, 995011),
+    ok = group_file_logic:delete(FileId, 995011),
+    ?assertEqual({error, forbidden}, attach_logic:view_url(995011, ObjectKey)),
+    ok = elib_oss:delete_object(elib_oss:get_bucket(<<"group">>), ObjectKey),
+    io:format(
+        "PASS: human enterprise group upload and real signed-byte read; cross-tenant and suspended list/search/category/download/upload/delete denied; restore and cleanup~n"
+    ).
+
+assert_revoked_group_file(FileId, ObjectKey, Bytes) ->
+    ?assertEqual({error, forbidden}, attach_logic:view_url(995011, ObjectKey)),
+    ?assertEqual({error, not_member}, group_file_logic:download(FileId, 995011)),
+    ?assertEqual({error, not_member}, group_file_logic:list(<<"995301">>, 995011, 1, 10)),
+    ?assertEqual(
+        {error, not_member}, group_file_logic:search(<<"995301">>, <<"synthetic">>, 1, 10, 995011)
+    ),
+    ?assertEqual({error, not_member}, group_file_logic:get_categories(<<"995301">>, 995011)),
+    ?assertEqual({error, not_member}, group_file_logic:delete(FileId, 995011)),
+    ?assertEqual(
+        {error, not_member},
+        group_file_logic:upload(
+            <<"995301">>, 995011, <<"denied.txt">>, Bytes, <<"text/plain">>
+        )
+    ).
 
 journey(S) ->
     Org = maps:get(org_id, S),
