@@ -1,0 +1,35 @@
+{
+  "base": "95115377440b4be992cef0713658663a3c11553f",
+  "sources": [
+    {
+      "path": "src/ds/channel_ds.erl",
+      "sha256": "d7790ca60f4730d8bc8ec3bf075032afe32c6550f3eee52964c16896a4a9c363"
+    },
+    {
+      "path": "test/ds/channel_creation_tx_pg_checks.erl",
+      "sha256": "15dfa6ecf5cc3cc1923de0589654d5dac3a34f079d5317dade4c8807e4a92535"
+    },
+    {
+      "path": "test/ds/workspace_creation_pg_tests.erl",
+      "sha256": "2a74c50e0c052bd5c44fcea4dee84322eb10e251f495125df187f54e62da0476"
+    },
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "f6017c0625ad10be8bb65b5453bfd69530665fc8e1f4966c4fb789f22194262f"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/qa/evidence/channel-creation-tx-2026-10-01/http.txt",
+      "sha256": "362f3e4af094d6535fe4b00b846d6f74d7722aaba9de8de268df815c56a843dd"
+    },
+    {
+      "path": "docs/qa/evidence/channel-creation-tx-2026-10-01/image-id.txt",
+      "sha256": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+    },
+    {
+      "path": "docs/qa/evidence/channel-creation-tx-2026-10-01/unit.txt",
+      "sha256": "cbbb2a6d238f6fc8f04b3dfc46a0b77ba0cd49ad6ec728eada2e0489850ae1b3"
+    }
+  ]
+}

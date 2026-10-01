@@ -1,0 +1,124 @@
+======================== EUnit ========================
+module 'channel_ds_tests'
+  channel_ds_tests:32: -subscribe_increments_counter_when_state_changes_test_/0-fun-4-...08:31:40.224 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"subscribe">>},
+ {result,<<"changed">>},
+ {cost_ms,0}]
+[0.008 s] ok
+  channel_ds_tests:62: -subscribe_is_idempotent_when_already_active_test_/0-fun-4-...08:31:40.326 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"subscribe">>},
+ {result,<<"noop">>},
+ {cost_ms,0}]
+ok
+  channel_ds_tests:92: -unsubscribe_decrements_counter_when_state_changes_test_/0-fun-4-...08:31:40.431 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"unsubscribe">>},
+ {result,<<"changed">>},
+ {cost_ms,0}]
+ok
+  channel_ds_tests:122: -unsubscribe_is_idempotent_when_already_inactive_test_/0-fun-4-...08:31:40.535 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"unsubscribe">>},
+ {result,<<"noop">>},
+ {cost_ms,0}]
+ok
+  channel_ds_tests:151: -create_channel_subscribes_creator_in_tx_test_/0-fun-5-...ok
+  channel_ds_tests:184: -create_channel_aborts_when_creator_subscription_fails_test_/0-fun-3-...[0.001 s] ok
+  channel_ds_tests:216: -subscribe_returns_error_when_tx_aborts_test_/0-fun-4-...08:31:40.851 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"subscribe">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_ds_tests:246: -unsubscribe_returns_error_when_tx_aborts_test_/0-fun-4-...08:31:40.956 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"unsubscribe">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+[0.001 s] ok
+  channel_ds_tests:276: -subscribe_rejects_archived_workspace_in_same_transaction_test_/0-fun-2-...08:31:41.064 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"subscribe">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+ok
+  channel_ds_tests:308: -unsubscribe_rejects_archived_workspace_in_same_transaction_test_/0-fun-2-...08:31:41.170 [info] [channel_subscription_action,
+ {uid,100},
+ {channel_id,1},
+ {action,<<"unsubscribe">>},
+ {result,<<"error">>},
+ {cost_ms,0}]
+[0.001 s] ok
+  channel_ds_tests:341: -is_subscribed_returns_true_when_subscription_exists_test_/0-fun-2-...[0.001 s] ok
+  channel_ds_tests:353: -is_subscribed_returns_false_when_subscription_missing_test_/0-fun-2-...ok
+  channel_ds_tests:379: -update_encodes_tags_as_jsonb_before_update_test_/0-fun-2-...[0.002 s] ok
+  channel_ds_tests:401: -update_encodes_empty_tags_list_as_empty_json_array_test_/0-fun-2-...ok
+  channel_ds_tests:423: -update_passes_through_text_fields_when_no_tags_test_/0-fun-2-...ok
+  channel_ds_tests:450: -insert_reaction_retries_once_after_dead_connection_test_/0-fun-3-...ok
+  channel_ds_tests:476: -delete_reaction_retries_once_when_pool_is_temporarily_empty_test_/0-fun-3-...ok
+  [done in 1.336 s]
+module 'workspace_archive_closure_tests'
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-70- (channel_comment add/delete/like/unlike rejected 980 (R3 #9))...[0.099 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-60- (channel reaction insert/delete rejected 980 (R3 #10))...[0.118 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-54- (channel message update/delete/revoke rejected 980)...[0.105 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-46- (channel settings update/delete rejected 980)...[0.118 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-40- (channel admin add/delete/update_role rejected 980 (R3 #13))...[0.101 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-32- (workspace-scope channel creation rejected 980)...[0.127 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-27- (channel invitation create/accept/reject rejected 980)...[0.104 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-19- (channel webhook create short-circuits before bot user)...[0.116 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-13- (channel webhook disable rejected 980)...[0.101 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-9- (message view insert skips when archived (derived, read stays open))...[0.117 s] ok
+  workspace_archive_closure_tests: -channel_closure_test_/0-fun-5- (personal channel comment/reaction pass without workspace lock)...[0.128 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-36- (group profile update_by_id rejected 980 (edit/set_e2ee_mode 共用))...[0.106 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-32- (group dissolve rejected 980)...[0.121 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-25- (group member join rejected 980 in tx)...[0.111 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-21- (group member leave freezes silently when archived)...[0.149 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-15- (group member role change rejected 980 in tx)...[0.114 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-8- (workspace group creation rejected 980 (workspace_add_tx))...[0.178 s] ok
+  workspace_archive_closure_tests: -group_closure_test_/0-fun-3- (personal group profile update passes without workspace lock)...[0.108 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-140- (vote writes rejected 980 (create/cast/close/record))...[0.133 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-126- (vote logic normalizes 980 (close_vote))...[0.146 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-120- (schedule writes rejected 980 (create/update/cancel/participant/remind))...[0.120 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-104- (schedule remind marking skips + zero push leak when archived)...[0.138 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-96- (album writes rejected 980 (album/photo/like/comment))...[0.143 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-76- (album upload_photo short-circuits before OSS when archived)...[0.159 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-70- (file upload/delete rejected 980 (upload before OSS))...[0.175 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-58- (file download stays open with frozen counter when archived)...[0.141 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-52- (task writes rejected 980 (task/assignment/adm))...[0.135 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-38- (task logic propagates 980 instead of swallowing (create/assign))...[0.168 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-28- (tag writes rejected 980 (add/remove/delete))...[0.104 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-19- (category move_group freezes silently when archived (personal org))...[0.099 s] ok
+  workspace_archive_closure_tests: -subdomain_closure_test_/0-fun-15- (personal sub-domain writes pass without workspace lock)...[0.257 s] ok
+  workspace_archive_closure_tests: -attachment_save_closure_test_/0-fun-44- (group-scope attachment confirm rejected 980)...08:31:45.735 [error] ["attach_logic confirm save tx failed: ",
+ {980,
+  <<229,183,165,228,189,156,229,140,186,229,183,178,229,189,146,230,161,163,
+    239,188,140,229,134,153,230,147,141,228,189,156,232,162,171,230,139,146,
+    231,187,157>>}]
+[0.163 s] ok
+  workspace_archive_closure_tests: -attachment_save_closure_test_/0-fun-40- (channel-scope attachment confirm rejected 980)...08:31:45.891 [error] ["attach_logic confirm save tx failed: ",
+ {980,
+  <<229,183,165,228,189,156,229,140,186,229,183,178,229,189,146,230,161,163,
+    239,188,140,229,134,153,230,147,141,228,189,156,232,162,171,230,139,146,
+    231,187,157>>}]
+[0.152 s] ok
+  workspace_archive_closure_tests: -attachment_save_closure_test_/0-fun-36- (c2c-scope attachment confirm passes (personal domain))...[0.154 s] ok
+  workspace_archive_closure_tests: -attachment_save_closure_test_/0-fun-25- (moment-scope attachment confirm passes under archived workspace (T7 closed))...[0.141 s] ok
+  workspace_archive_closure_tests: -attachment_save_closure_test_/0-fun-15- (private-scope attachment confirm passes under archived workspace (T7 closed))...[0.143 s] ok
+  workspace_archive_closure_tests: -group_file_upload_closure_test_/0-fun-37- (group file upload into archived workspace rejected 980 before OSS)...[0.160 s] ok
+  workspace_archive_closure_tests: -group_file_upload_closure_test_/0-fun-31- (group file attachment write aborted in-tx on archived (window race))...[0.213 s] ok
+  workspace_archive_closure_tests: -group_file_upload_closure_test_/0-fun-15- (personal group file upload unaffected (zero regression))...[0.190 s] ok
+  workspace_archive_closure_tests: -guard_helper_test_/0-fun-13- (write_tx executes fun after guard passes)...[0.092 s] ok
+  workspace_archive_closure_tests: -guard_helper_test_/0-fun-9- (write_tx_or_skip returns skipped when archived)...[0.091 s] ok
+  workspace_archive_closure_tests: -guard_helper_test_/0-fun-5- (write_tx_or_skip returns written when active)...[0.060 s] ok
+  [done in 5.724 s]
+=======================================================
+  All 59 tests passed.

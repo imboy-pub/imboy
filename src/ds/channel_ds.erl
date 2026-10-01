@@ -4,7 +4,7 @@
 % 频道领域服务层，提供缓存和复杂业务操作
 %%%
 
--export([create_channel/3]).
+-export([create_channel/3, create_channel_tx/4]).
 -export([find_by_id_tx/3, archive_with_authz/2, restore_with_authz/2]).
 -export([is_subscribed/2]).
 -export([subscriber_uids/1]).
@@ -55,75 +55,64 @@
 %% @param Opts 其他选项（description, avatar, custom_id, tags, visibility, access_type, join_policy）
 -spec create_channel(integer(), binary(), map()) -> {ok, integer()} | {error, any()}.
 create_channel(Uid, Name, Opts) ->
-    Visibility = maps:get(visibility, Opts, 0),
-    AccessType = maps:get(access_type, Opts, 0),
-    JoinPolicy = maps:get(join_policy, Opts, 0),
-    Now = elib_dt:now(),
-    Data = #{
-        name => Name,
-        visibility => Visibility,
-        access_type => AccessType,
-        join_policy => JoinPolicy,
-        creator_uid => Uid,
-        created_at => Now,
-        updated_at => Now
-    },
-    Data2 = add_optional_fields(Data, Opts),
-
-    case
-        elib_pg:with_tx(fun(Conn) ->
-            %% T7 归档写守卫（P0 收口）：workspace 域频道创建 = 对 workspace 的
-            %% 写入，archived 时拒绝（{workspace, WsId} 行锁与建频道同事务）；
-            %% personal 频道无 workspace_id，直通（零行为变化）。
-            case maps:get(workspace_id, Data2, undefined) of
-                WsId when is_integer(WsId), WsId > 0 ->
-                    ok = workspace_guard:abort_on_error(
-                        workspace_guard:ensure_writable_tx(Conn, {workspace, WsId})
-                    );
-                _ ->
-                    ok
-            end,
-            % 创建频道
-            case channel_repo:add(Conn, Data2) of
-                {ok, ChannelId} ->
-                    %% BUG#149：创建者随频道创建即成为订阅者（订阅行+计数同一事务）。
-                    %% 邀请制私有频道的邀请链路查真实订阅表
-                    %%（channel_logic_invitation:create_invitation → is_subscribed），
-                    %% 缺行会让创建者无法邀请任何人（频道创建上限内的所有新频道受影响）。
-                    ok =
-                        case channel_subscription_repo:upsert_active(Conn, ChannelId, Uid) of
-                            {ok, _Changed} -> ok;
-                            {error, SubReason} -> throw({abort_tx, SubReason})
-                        end,
-                    ok =
-                        case channel_repo:increment_subscribers(Conn, ChannelId, 1) of
-                            {ok, _} -> ok;
-                            {error, CntReason} -> throw({abort_tx, CntReason})
-                        end,
-                    % 添加创建者为管理员（角色3）
-                    AdminData = #{
-                        channel_id => ChannelId,
-                        user_id => Uid,
-                        % 创建者
-                        role => 3,
-                        created_at => Now
-                    },
-                    case channel_admin_repo:add(Conn, AdminData) of
-                        {ok, _} -> {ok, ChannelId};
-                        {error, Reason} -> throw({abort_tx, Reason})
-                    end;
-                {error, Reason} ->
-                    throw({abort_tx, Reason})
-            end
-        end)
-    of
+    case elib_pg:with_tx(fun(Conn) -> create_channel_tx(Conn, Uid, Name, Opts) end) of
         {error, {Code, Msg}} when is_integer(Code) ->
-            %% 归档守卫（980）等稳定错误码原样透传供 handler envelope 映射，不 flatten
             {error, {Code, Msg}};
         {error, Reason} ->
             {error, normalize_error(Reason)};
         Result ->
             Result
+    end.
+
+%% @doc 调用方持有事务；频道、创建者订阅及管理员身份与上层审计一起提交。
+%% 本函数不负责成员资格或应用 Grant，授权必须由入口完成。
+-spec create_channel_tx(epgsql:connection(), integer(), binary(), map()) -> {ok, integer()}.
+create_channel_tx(Conn, Uid, Name, Opts) ->
+    Now = elib_dt:now(),
+    Data = add_optional_fields(
+        #{
+            name => Name,
+            visibility => maps:get(visibility, Opts, 0),
+            access_type => maps:get(access_type, Opts, 0),
+            join_policy => maps:get(join_policy, Opts, 0),
+            creator_uid => Uid,
+            created_at => Now,
+            updated_at => Now
+        },
+        Opts
+    ),
+    case maps:get(workspace_id, Data, undefined) of
+        WsId when is_integer(WsId), WsId > 0 ->
+            ok = workspace_guard:abort_on_error(
+                workspace_guard:ensure_writable_tx(Conn, {workspace, WsId})
+            );
+        _ ->
+            ok
+    end,
+    case channel_repo:add(Conn, Data) of
+        {ok, ChannelId} ->
+            add_creator_tx(Conn, ChannelId, Uid, Now),
+            {ok, ChannelId};
+        {error, Reason} ->
+            throw({abort_tx, Reason})
+    end.
+
+add_creator_tx(Conn, ChannelId, Uid, Now) ->
+    case channel_subscription_repo:upsert_active(Conn, ChannelId, Uid) of
+        {ok, _} -> ok;
+        {error, SubReason} -> throw({abort_tx, SubReason})
+    end,
+    case channel_repo:increment_subscribers(Conn, ChannelId, 1) of
+        {ok, _} -> ok;
+        {error, CountReason} -> throw({abort_tx, CountReason})
+    end,
+    case
+        channel_admin_repo:add(Conn, #{
+            channel_id => ChannelId, user_id => Uid, role => 3, created_at => Now
+        })
+    of
+        {ok, _} -> ok;
+        {error, AdminReason} -> throw({abort_tx, AdminReason})
     end.
 
 %% @doc 添加可选字段

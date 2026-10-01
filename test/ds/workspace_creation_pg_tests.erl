@@ -13,6 +13,7 @@ creation_test_() ->
 creation(S) ->
     [elib_tsid:register(T) || T <- [workspace, channel, channel_admin, channel_subscription]],
     C = maps:get(conn, S),
+    channel_creation_tx_pg_checks:run(C),
     {ok, 2} = workspace_repo:count_by_owner_tx(C, 995001),
     assert_same_request(C),
     ok = intbe02_http_support:sql_exec(
