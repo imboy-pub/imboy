@@ -37,6 +37,7 @@ run_fixture() ->
         Flags = maps:get(<<"payload">>, Features),
         ?assertEqual(true, maps:get(<<"channel">>, Flags)),
         ?assertEqual(false, maps:get(<<"e2ee">>, Flags)),
+        Directory = seed_directory(H),
         Dir = os:getenv("IMBOY_GATE_RUN_DIR"),
         ok = file:write_file(
             filename:join(Dir, "mobile-fixture.json"),
@@ -46,6 +47,7 @@ run_fixture() ->
                 password => ?PASSWORD,
                 sign_key => ?KEY,
                 organization_id => <<"995101">>,
+                directory => Directory,
                 package => <<"pub.imboy.app.gzcustomer">>,
                 synthetic_only => true
             })
@@ -55,6 +57,30 @@ run_fixture() ->
         ?HTTP:teardown_all(H),
         inttest_marker_db:release(H)
     end.
+
+seed_directory(#{conn := C}) ->
+    Root = organization_directory_fixture:id(),
+    Child = organization_directory_fixture:id(),
+    ok = ?HTTP:sql_exec(
+        C,
+        <<"INSERT INTO organization_department(id,organization_id,parent_id,name,created_by_user_id) VALUES ($1,995101,NULL,$3,995001),($2,995101,$1,$4,995001)">>,
+        [Root, Child, <<"合成销售部"/utf8>>, <<"合成广州组"/utf8>>]
+    ),
+    ok = ?HTTP:sql_exec(
+        C,
+        <<"INSERT INTO organization_department_member(organization_id,department_id,user_id,added_by_user_id) VALUES (995101,$1,995012,995001)">>,
+        [Child]
+    ),
+    ok = ?HTTP:sql_exec(
+        C,
+        <<"UPDATE \"user\" SET nickname=$1 WHERE id=995012">>,
+        [<<"合成员工甲"/utf8>>]
+    ),
+    #{
+        root_department => integer_to_binary(Root),
+        child_department => integer_to_binary(Child),
+        member => <<"995012">>
+    }.
 
 await_device_done(Dir, Deadline) ->
     case filelib:is_file(filename:join(Dir, "mobile.done")) of
