@@ -34,6 +34,13 @@
     {
       "path": "src/features/enterprise_business/infrastructure/eb_pg_asset_meta.erl",
       "sha256": "01cd5ada75401d5a3f64b17016fa084fc819c066d8622710ced2af09a2534ab2"
+    },
+    {
+      "path": "scripts/generate_product_features.py",
+      "sha256": "1628bc6f1f7717b9063a3d68a046bf04bf815ca1bb3396ee88f078982caaafe3"
     }
-  ]
+  ],
+  "regression_exit": 0,
+  "regression_evidence": "/tmp/imboy-seat-http.ZYsn2y",
+  "regression_top_level_checks": 26
 }

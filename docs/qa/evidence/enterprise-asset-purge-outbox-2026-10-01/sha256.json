@@ -12,7 +12,11 @@
     "sha256": "2aeeb57af89321b38125b06115952edcf5d442c97f14e6fc4ffcf0cbbd546705"
   },
   {
+    "path": "regression.log",
+    "sha256": "1ce178d8d114f607170fe669fd3a4c0e7321eb72f26711a058b751a981392211"
+  },
+  {
     "path": "run.json",
-    "sha256": "03c0d63ee13a7ff2ebfdaf7605453944de508a5d903cc4b852fec72340f7c73f"
+    "sha256": "06b246a8ab47f662a5c4a11c4b50453b6d425ec5cd5646bfc457d7918799fa41"
   }
 ]

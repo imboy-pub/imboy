@@ -14,4 +14,4 @@ IMBOY_DEPS_ROOT=/path/to/independent/deps IMBOY_ASSET_GARAGE_PG_CHECK=1 IMBOY_AS
 
 待修：消息附件和孤儿附件两条回收路径都必须在外部删除前持久裁决，阻止确认、消息绑定和新增保留声明越过裁决；失败及审计回滚应有可恢复状态。不能只将对象删除移进普通数据库事务，因为外部成功后事务仍可能回滚，导致活跃元数据引用缺失对象。必须保留现有租户隔离、批量上限、保留期、hold、审计和权限约束，并取得真实交错验证。
 
-证据在 evidence/enterprise-asset-purge-confirmation-race-red-2026-10-01。未提交失败检查、未合入主仓、未启用调度、未使用真实用户数据或执行生产操作。run.json 绑定变更前 HEAD 与实际测试源码；归档不包含生成凭证、配置或崩溃转储。
+证据在 evidence/enterprise-asset-purge-confirmation-race-red-2026-10-01。本页记录旧源失败；当前检查已随新方案更新并验证。没有启用调度、使用真实用户数据或执行生产操作。run.json 绑定变更前 HEAD 与实际测试源码；归档不包含生成凭证、配置或崩溃转储。
