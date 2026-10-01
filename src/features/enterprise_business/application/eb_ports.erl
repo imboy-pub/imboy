@@ -218,7 +218,8 @@ contracts() ->
             {insert_asset, 3},
             {fetch_asset, 3},
             {confirm_asset, 3},
-            {cleanup_asset, 3}
+            {cleanup_asset, 3},
+            {cleanup_pending_private, 5}
         ],
         auth() => [
             {load_request_facts, 1}

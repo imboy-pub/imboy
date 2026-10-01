@@ -791,6 +791,11 @@ cleanup_gate(OrgId, Ws, Row, AssetId, Now, Ttl, Params) ->
     case maps:get(status, Row, undefined) of
         pending_confirm ->
             cleanup_age_gate(OrgId, Ws, Row, AssetId, Now, Ttl, Params);
+        deleted ->
+            case maps:get(pending_object_delete, Row, false) of
+                true -> cleanup_delete(OrgId, Ws, AssetId, Params);
+                false -> {skipped, AssetId, not_pending}
+            end;
         _Other ->
             {skipped, AssetId, not_pending}
     end.
@@ -818,19 +823,13 @@ cleanup_hold_gate(OrgId, Ws, Row, AssetId, Params) ->
             end
     end.
 
-%% 先推进元数据（CAS 形状），再回收对象；对象回收失败必须显式报错，不得静默成功。
+%% Deletion intent survives network failure; eligibility is rechecked atomically by the port.
 cleanup_delete(OrgId, Ws, AssetId, Params) ->
     Asset = port(Params, asset),
-    case Asset:cleanup_asset(OrgId, Ws, AssetId) of
-        ok ->
-            case Asset:delete_private(OrgId, Ws, AssetId) of
-                ok ->
-                    {deleted, AssetId};
-                {error, Reason} ->
-                    {skipped, AssetId, {object_delete_failed, Reason}}
-            end;
-        {error, Reason} ->
-            {skipped, AssetId, {metadata_cleanup_failed, Reason}}
+    Clock = port(Params, clock),
+    case Asset:cleanup_pending_private(OrgId, Ws, AssetId, Clock:now(), cleanup_ttl(Params)) of
+        ok -> {deleted, AssetId};
+        {error, Reason} -> {skipped, AssetId, {cleanup_failed, Reason}}
     end.
 
 %% ===================================================================

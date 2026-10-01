@@ -1,0 +1,16 @@
+PASS: real Garage bytes survive server and client restart; anonymous denial, tenant prefix, invalid signature, delete and missing config
+======================== EUnit ========================
+eb_asset_store_tests: a11a_asset_port_is_assembled...[0.002 s] ok
+eb_asset_store_tests: a11b_put_then_stream_round_trips_within_scope...[1.082 s] ok
+eb_asset_store_tests: a11b_cross_org_stream_and_delete_fail...[0.023 s] ok
+eb_asset_store_tests: a11c_bottom_failures_are_propagated...[0.031 s] ok
+eb_asset_store_tests: delete_private_removes_the_object_only...[0.023 s] ok
+eb_asset_store_tests: metadata_lifecycle_is_reachable_through_the_port...[0.023 s] ok
+=======================================================
+  All 6 tests passed.
+PASS: real cleanup workspace lock observed; concurrent confirmation and new hold prevent object deletion; released hold permits cleanup
+PASS: future retention and unmarked legacy tombstones keep their real objects; pending intent blocks rollback; empty-intent down/up succeeds
+PASS: default Garage assembly; real PG presign/PUT/confirm/content, ACL, duplicate/concurrent PUT safety, metadata reservation, missing and invalid config
+
+Evidence: /tmp/imboy-seat-http.fV7R8j
+Evidence: /tmp/imboy-asset-garage.VnvSyp

@@ -1,0 +1,52 @@
+{
+  "status": "LOCAL_SCOPED_PASS",
+  "base_sha": "f137be06643a7a8d3d7674d544c653ec90ecfabe",
+  "native_exit": 0,
+  "regression_exit": 0,
+  "native_evidence": "/tmp/imboy-seat-http.fV7R8j",
+  "regression_evidence": "/tmp/imboy-seat-http.0cjnvr",
+  "sources": [
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "983d061f437c9e27cadf65c4883dd1a4b893475e8114c01166101671e5f3413a"
+    },
+    {
+      "path": "src/features/enterprise_business/application/asset/eb_asset_app.erl",
+      "sha256": "67bbcb8eb5f2ef4b76367e12e5915a588854c514b5fe7858e9f443acaf33835f"
+    },
+    {
+      "path": "src/features/enterprise_business/application/eb_asset_port.erl",
+      "sha256": "73fc1428064ff53cebde83cca51a3a5eb17705d1309c5c3ed864181f0ef47184"
+    },
+    {
+      "path": "src/features/enterprise_business/application/eb_ports.erl",
+      "sha256": "1093c6ab0a766898a96dbcbab461a4acadcd7593bcad44eccba1d581930da303"
+    },
+    {
+      "path": "src/features/enterprise_business/infrastructure/eb_asset_store.erl",
+      "sha256": "ae84ddbde9ff4f227cb9ea1bf73fcbd1b97dd576e6bc3c02ba09e365dfc605fd"
+    },
+    {
+      "path": "src/features/enterprise_business/infrastructure/eb_pg_asset_meta.erl",
+      "sha256": "940911e122a249778803cd93ea6038b883081c39349bbd8b8043731a835998ae"
+    },
+    {
+      "path": "test/api/enterprise_asset_garage_pg_checks.erl",
+      "sha256": "ca48b5000c1f68751724c929fdbcde035a97e95abccb0064cb13270324c023f0"
+    },
+    {
+      "path": "test/features/enterprise_business/application/eb_ports_tests.erl",
+      "sha256": "e7d31236a19c0738844737b13feede2054f6a0e4bd2aa333db061fb6356d50a6"
+    },
+    {
+      "path": "priv/migrations/00000162_enterprise_asset_cleanup_retry.up.sql",
+      "sha256": "e9a8c7db95280d516fe58a272e65e56b6f0d36bd92117c47f0777eaa15b863a3"
+    },
+    {
+      "path": "priv/migrations/00000162_enterprise_asset_cleanup_retry.down.sql",
+      "sha256": "11431f4bb6118efb18c718f64e012104ad7e3a9ca630451642657df1cda1695a"
+    }
+  ],
+  "browser_exit": 0,
+  "browser_evidence": "/tmp/imboy-seat-http.zAceEz"
+}

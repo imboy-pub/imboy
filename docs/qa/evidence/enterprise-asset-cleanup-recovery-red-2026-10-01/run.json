@@ -1,0 +1,30 @@
+{
+  "status": "FAIL",
+  "exit_code": 1,
+  "run": "/tmp/imboy-seat-http.wjy3b6",
+  "backend_base": "f137be06643a7a8d3d7674d544c653ec90ecfabe",
+  "source_hashes": [
+    {
+      "path": "test/api/enterprise_asset_garage_pg_checks.erl",
+      "sha256": "7fc01db5f42902ba8d56782fbfc7add51806b1939b443c6b7eb88f0434a9d4df"
+    },
+    {
+      "path": "src/features/enterprise_business/application/asset/eb_asset_app.erl",
+      "sha256": "8315f87030ea44cd5c5bfa11bd03ddcfc870965757ab0175890277373d80689a"
+    },
+    {
+      "path": "src/features/enterprise_business/infrastructure/eb_pg_asset_meta.erl",
+      "sha256": "466d6e3b5064d49520d43c804c7240ea05b2130808aaf13b81e6572203626252"
+    },
+    {
+      "path": "src/features/enterprise_business/infrastructure/eb_asset_store.erl",
+      "sha256": "95718b1f2c9bb43031dc45e8a937f7f0f8d03f77883246f90680188e3c4908c6"
+    }
+  ],
+  "oracle": "Real isolated PG and Garage: pending object written; deletion config unavailable; metadata wrongly transitions to deleted; restoring storage and retrying skips it while actual object remains. Assertion expecting retryable pending fails.",
+  "not_proven": [
+    "cleanup race safety",
+    "automatic cleanup scheduling",
+    "production readiness"
+  ]
+}

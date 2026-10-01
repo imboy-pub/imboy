@@ -156,6 +156,7 @@ ports_have_explicit_frozen_contracts_test() ->
     ?assertEqual(
         [
             {cleanup_asset, 3},
+            {cleanup_pending_private, 5},
             {confirm_asset, 3},
             {delete_private, 3},
             {fetch_asset, 3},
@@ -298,6 +299,7 @@ asset_port_callback_names_cannot_leak_storage_handle_test() ->
     ?assertEqual(
         [
             cleanup_asset,
+            cleanup_pending_private,
             confirm_asset,
             delete_private,
             fetch_asset,

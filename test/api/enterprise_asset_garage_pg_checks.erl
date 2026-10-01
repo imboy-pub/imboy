@@ -24,6 +24,12 @@ run() ->
         ),
         journey(S),
         rollback_object(S),
+        cleanup_recovery(S, Config),
+        cleanup_concurrency(S),
+        cleanup_ineligible(S),
+        ok = eb_ports_tests:ports_contracts_match_declared_callbacks_test(),
+        ok = eb_ports_tests:ports_have_explicit_frozen_contracts_test(),
+        ok = eb_ports_tests:asset_port_callback_names_cannot_leak_storage_handle_test(),
         application:unset_env(imboy, garage),
         Org = maps:get(org_id, S),
         Ws = maps:get(workspace_id, S),
@@ -142,3 +148,185 @@ concurrent_put(Org, Params) ->
     ],
     ?assertEqual(1, length([ok || {ok, _} <- Results])),
     ?assertEqual(1, length([error || {error, _} <- Results])).
+
+%% Storage failure must leave a retryable pending asset, not a hidden orphan.
+cleanup_recovery(S, Config) ->
+    Org = maps:get(org_id, S),
+    Ws = maps:get(workspace_id, S),
+    Id = cs_pg_test_fixture:id(),
+    Bytes = <<"synthetic expired pending cleanup">>,
+    {ok, _} = eb_asset_store:put_private(Org, Ws, #{
+        id => Id, payload => Bytes, object_hash => eb_asset_content:sha256_hex(Bytes)
+    }),
+    ok = cs_pg_test_fixture:exec(
+        <<"UPDATE enterprise_asset SET created_at=now()-interval '2 hours' WHERE organization_id=$1 AND workspace_id=$2 AND id=$3">>,
+        [Org, Ws, Id]
+    ),
+    Params = #{workspace_id => Ws, asset_ids => [Id]},
+    application:unset_env(imboy, garage),
+    First =
+        try
+            eb_asset_app:cleanup_pending(Org, Params)
+        after
+            application:set_env(imboy, garage, Config)
+        end,
+    {ok, Row} = eb_asset_store:fetch_asset(Org, Ws, Id),
+    {ok, Down} = file:read_file("priv/migrations/00000162_enterprise_asset_cleanup_retry.down.sql"),
+    [Guard, _] = binary:split(Down, <<"DROP INDEX">>),
+    {error, GuardError} = elib_pg:query(Guard, []),
+    ?assertEqual(<<"P0001">>, eb_pg_exec:error_of(GuardError)),
+    {ok, Retry} = eb_asset_app:cleanup_pending(Org, Params),
+    Object = eb_asset_object_garage:get(
+        maps:get(object_key, Row), eb_pg_asset_meta:key_prefix(Org, Ws)
+    ),
+    ok = file:write_file(
+        filename:join(os:getenv("IMBOY_GATE_RUN_DIR"), "cleanup-recovery.json"),
+        jsone:encode(#{
+            first_deleted => maps:get(deleted, element(2, First)),
+            status_after_failure => maps:get(status, Row),
+            pending_delete_after_failure => maps:get(pending_object_delete, Row),
+            retry_deleted => maps:get(deleted, Retry),
+            retry_skip_count => length(maps:get(skipped, Retry)),
+            object_remains => element(1, Object) =:= ok
+        })
+    ),
+    ?assertEqual(deleted, maps:get(status, Row)),
+    ?assertEqual(true, maps:get(pending_object_delete, Row)),
+    ?assertEqual([Id], maps:get(deleted, Retry)),
+    ?assertEqual({error, not_found}, Object),
+    {ok, Final} = eb_asset_store:fetch_asset(Org, Ws, Id),
+    ?assertEqual(false, maps:get(pending_object_delete, Final)).
+
+cleanup_concurrency(S) ->
+    Org = maps:get(org_id, S),
+    Ws = maps:get(workspace_id, S),
+    {Id, Bytes} = expired_pending(Org, Ws),
+    Parent = self(),
+    Worker = elib_pg:with_tx(fun(Conn) ->
+        {ok, [_]} = elib_pg:query(
+            Conn,
+            <<"SELECT id FROM workspace WHERE organization_id=$1 AND id=$2 FOR UPDATE">>,
+            [Org, Ws]
+        ),
+        Pid = cleanup_worker(Parent, Org, Ws, Id),
+        ok = await_cleanup_lock(Conn, 100),
+        {ok, [_]} = elib_pg:query(
+            Conn,
+            <<"UPDATE enterprise_asset SET status='active' WHERE organization_id=$1 AND workspace_id=$2 AND id=$3 AND status='pending_confirm' RETURNING id">>,
+            [Org, Ws, Id]
+        ),
+        Pid
+    end),
+    assert_cleanup_skipped(Worker),
+    {ok, {content_stream, Bytes}} = eb_asset_store:stream_content(Org, Ws, Id),
+    {HeldId, HeldBytes} = expired_pending(Org, Ws),
+    HoldId = cs_pg_test_fixture:id(),
+    HeldWorker = elib_pg:with_tx(fun(Conn) ->
+        {ok, [_]} = elib_pg:query(
+            Conn,
+            <<"INSERT INTO enterprise_retention_hold(id,organization_id,workspace_id,scope_type,reason_code) VALUES($3,$1,$2,'workspace','synthetic-cleanup-hold') RETURNING id">>,
+            [Org, Ws, HoldId]
+        ),
+        Pid = cleanup_worker(Parent, Org, Ws, HeldId),
+        ok = await_cleanup_lock(Conn, 100),
+        Pid
+    end),
+    assert_cleanup_skipped(HeldWorker),
+    {ok, {content_stream, HeldBytes}} = eb_asset_store:stream_content(Org, Ws, HeldId),
+    ok = cs_pg_test_fixture:exec(
+        <<"UPDATE enterprise_retention_hold SET released_at=now(),released_by_user_id=$4 WHERE organization_id=$1 AND workspace_id=$2 AND id=$3">>,
+        [Org, Ws, HoldId, maps:get(owner_user_id, S)]
+    ),
+    {ok, #{deleted := [HeldId]}} = eb_asset_app:cleanup_pending(Org, #{
+        workspace_id => Ws, asset_ids => [HeldId]
+    }),
+    io:format(
+        "PASS: real cleanup workspace lock observed; concurrent confirmation and new hold prevent object deletion; released hold permits cleanup~n"
+    ).
+
+expired_pending(Org, Ws) ->
+    Id = cs_pg_test_fixture:id(),
+    Bytes = <<"synthetic concurrent pending cleanup">>,
+    {ok, _} = eb_asset_store:put_private(Org, Ws, #{
+        id => Id, payload => Bytes, object_hash => eb_asset_content:sha256_hex(Bytes)
+    }),
+    ok = cs_pg_test_fixture:exec(
+        <<"UPDATE enterprise_asset SET created_at=now()-interval '2 hours' WHERE organization_id=$1 AND workspace_id=$2 AND id=$3">>,
+        [Org, Ws, Id]
+    ),
+    {Id, Bytes}.
+
+cleanup_worker(Parent, Org, Ws, Id) ->
+    spawn(fun() ->
+        Parent !
+            {self(), eb_asset_app:cleanup_pending(Org, #{workspace_id => Ws, asset_ids => [Id]})}
+    end).
+
+await_cleanup_lock(Conn, Attempts) ->
+    {ok, _} = elib_pg:query(Conn, <<"SELECT pg_stat_clear_snapshot()">>, []),
+    {ok, [#{<<"n">> := N}]} = elib_pg:query(
+        Conn,
+        <<"SELECT count(*)::integer AS n FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%SELECT id FROM workspace%'">>,
+        []
+    ),
+    case N of
+        1 -> ok;
+        _ when Attempts > 0 -> receive
+            after 10 -> await_cleanup_lock(Conn, Attempts - 1)
+            end;
+        _ -> error(cleanup_did_not_lock_workspace)
+    end.
+
+assert_cleanup_skipped(Pid) ->
+    receive
+        {Pid, {ok, #{deleted := []}}} -> ok;
+        {Pid, Other} -> error({cleanup_should_skip, Other})
+    after 10000 -> error(cleanup_worker_timeout)
+    end.
+
+cleanup_ineligible(S) ->
+    Org = maps:get(org_id, S),
+    Ws = maps:get(workspace_id, S),
+    {Retained, RetainedBytes} = expired_pending(Org, Ws),
+    ok = cs_pg_test_fixture:exec(
+        <<"UPDATE enterprise_asset SET retain_until=now()+interval '1 day' WHERE organization_id=$1 AND workspace_id=$2 AND id=$3">>,
+        [Org, Ws, Retained]
+    ),
+    {Legacy, LegacyBytes} = expired_pending(Org, Ws),
+    ok = eb_asset_store:cleanup_asset(Org, Ws, Legacy),
+    {ok, #{deleted := []}} = eb_asset_app:cleanup_pending(Org, #{
+        workspace_id => Ws, asset_ids => [Retained, Legacy]
+    }),
+    [
+        begin
+            {ok, Row} = eb_asset_store:fetch_asset(Org, Ws, Id),
+            ?assertEqual(false, maps:get(pending_object_delete, Row)),
+            {ok, #{bytes := Bytes}} = eb_asset_object_garage:get(
+                maps:get(object_key, Row), eb_pg_asset_meta:key_prefix(Org, Ws)
+            )
+        end
+     || {Id, Bytes} <- [{Retained, RetainedBytes}, {Legacy, LegacyBytes}]
+    ],
+    migration_roundtrip(),
+    io:format(
+        "PASS: future retention and unmarked legacy tombstones keep their real objects; pending intent blocks rollback; empty-intent down/up succeeds~n"
+    ).
+
+migration_roundtrip() ->
+    {ok, Down} = file:read_file("priv/migrations/00000162_enterprise_asset_cleanup_retry.down.sql"),
+    {ok, Up} = file:read_file("priv/migrations/00000162_enterprise_asset_cleanup_retry.up.sql"),
+    ok = elib_pg:with_tx(fun(Conn) ->
+        [
+            begin
+                ?assert(element(1, R) =:= ok)
+            end
+         || R <- epgsql:squery(Conn, Down)
+        ],
+        [
+            begin
+                ?assert(element(1, R) =:= ok)
+            end
+         || R <- epgsql:squery(Conn, Up)
+        ],
+        ok
+    end).

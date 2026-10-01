@@ -1,0 +1,6 @@
+PASS: real Garage bytes survive server and client restart; anonymous denial, tenant prefix, invalid signature, delete and missing config
+PASS: real visitor and two Seat workbench pages: QR, concurrent claim, offline recovery, revocation, fresh login, close, rating
+
+Browser evidence: /tmp/imboy-seat-http.zAceEz
+Evidence: /tmp/imboy-seat-http.zAceEz
+Evidence: /tmp/imboy-asset-garage.SCEox9

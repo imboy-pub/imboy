@@ -19,6 +19,8 @@
     fetch_asset/3,
     confirm_asset/3,
     cleanup_asset/3,
+    claim_pending_cleanup/5,
+    finish_pending_cleanup/3,
     object_key/3,
     sql_statements/0
 ]).
@@ -27,7 +29,7 @@
     "a.id, a.organization_id, a.workspace_id, a.conversation_id, a.message_id,"
     " a.business_identity_id, a.uploaded_by_user_id, a.object_key, a.object_hash, a.mime,"
     " a.size_bytes, a.status, a.key_version, a.file_name, a.retain_until, a.version,"
-    " a.created_at, a.deleted_at"
+    " a.created_at, a.deleted_at, a.pending_object_delete"
 ).
 
 %% 登记：status 恒为 pending_confirm（确认只能走 confirm_asset/3）。
@@ -197,5 +199,63 @@ asset_fields() ->
         {retain_until, <<"retain_until">>, ts},
         {version, <<"version">>, int},
         {created_at, <<"created_at">>, ts},
-        {deleted_at, <<"deleted_at">>, ts}
+        {deleted_at, <<"deleted_at">>, ts},
+        {pending_object_delete, <<"pending_object_delete">>, raw}
     ].
+
+%% Workspace FOR UPDATE conflicts with hold INSERT's FK KEY SHARE lock.
+%% Claim is committed before network deletion; confirm can never revive this tombstone.
+claim_pending_cleanup(Org, Ws, Id, Now, Ttl) ->
+    Result = elib_pg:with_tx(fun(Conn) ->
+        case
+            elib_pg:query(
+                Conn,
+                <<"SELECT id FROM workspace WHERE organization_id=$1 AND id=$2 FOR UPDATE">>,
+                [Org, Ws]
+            )
+        of
+            {ok, [_]} -> claim_pending_in(Conn, Org, Ws, Id, Now, Ttl);
+            {ok, []} -> {error, not_found};
+            {error, Reason} -> throw({rollback, {error, Reason}})
+        end
+    end),
+    case Result of
+        {rollback, Error} -> Error;
+        Other -> Other
+    end.
+
+claim_pending_in(Conn, Org, Ws, Id, Now, Ttl) ->
+    Sql = <<
+        "UPDATE enterprise_asset a SET status='deleted',pending_object_delete=true,"
+        " deleted_at=now(),updated_at=now(),version=version+1"
+        " WHERE a.organization_id=$1 AND a.workspace_id=$2 AND a.id=$3"
+        " AND a.status='pending_confirm' AND a.message_id IS NULL"
+        " AND a.created_at <= to_timestamp($4::bigint-$5::bigint)"
+        " AND (a.retain_until IS NULL OR a.retain_until <= to_timestamp($4::bigint))"
+        " AND NOT EXISTS (SELECT 1 FROM enterprise_retention_hold h"
+        " WHERE h.organization_id=$1 AND h.workspace_id=$2 AND h.released_at IS NULL"
+        " AND (h.scope_type='workspace' OR"
+        " (h.scope_type='conversation' AND h.scope_conversation_id=a.conversation_id) OR"
+        " (h.scope_type='message' AND h.scope_message_id=a.message_id)))"
+        " RETURNING a.object_key"
+    >>,
+    case elib_pg:query(Conn, Sql, [Org, Ws, Id, Now, Ttl]) of
+        {ok, [#{<<"object_key">> := Key}]} -> {ok, Key};
+        {ok, []} -> {error, not_eligible};
+        {error, Reason} -> throw({rollback, {error, Reason}})
+    end.
+
+finish_pending_cleanup(Org, Ws, Id) ->
+    case
+        elib_pg:execute(
+            <<
+                "UPDATE enterprise_asset SET pending_object_delete=false,"
+                "updated_at=now(),version=version+1 WHERE organization_id=$1 AND workspace_id=$2"
+                " AND id=$3 AND status='deleted' AND pending_object_delete"
+            >>,
+            [Org, Ws, Id]
+        )
+    of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.

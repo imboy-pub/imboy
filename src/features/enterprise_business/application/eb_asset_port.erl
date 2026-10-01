@@ -82,3 +82,7 @@
 %% 只改元数据状态，不代调用方决定对象回收与保留期。
 -callback cleanup_asset(OrgId :: integer(), WorkspaceId :: integer(), AssetId :: asset_id()) ->
     ok | {error, conflict | not_found | term()}.
+
+%% Atomically claim eligible pending metadata and durably retry object deletion.
+-callback cleanup_pending_private(integer(), integer(), asset_id(), integer(), non_neg_integer()) ->
+    ok | {error, term()}.

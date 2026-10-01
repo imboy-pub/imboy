@@ -1,0 +1,30 @@
+[
+  {
+    "path": "asset-pg.log",
+    "sha256": "bf02135f4fd84014d351fe4fc13eba7cc742f7561cd762d100c9e05afab5b7bd"
+  },
+  {
+    "path": "browser-gate.log",
+    "sha256": "81a01295716bfeeb809fc8bb1613125f6ace7a8ae72a550358c8f41d3ce3709a"
+  },
+  {
+    "path": "cleanup-recovery.json",
+    "sha256": "845c97ad7b80c5b8c0dadec9202cbc3e94bcb59168108036d1ca05a4484a1fde"
+  },
+  {
+    "path": "compile.log",
+    "sha256": "d5cd2d48d00eda22ef76abdb413a53f509f0b5a2c515c65801e151d3bd8a4363"
+  },
+  {
+    "path": "native-gate.log",
+    "sha256": "ff7b1aad838cf15082d0cfa850cb0bc3c1da5a5de0bff361ff3927cacdaa9973"
+  },
+  {
+    "path": "regression.log",
+    "sha256": "b35166ef2edbc5a1e1b63c9cd6275a1eafcf988a6507247cd7cea80d6ac3a705"
+  },
+  {
+    "path": "run.json",
+    "sha256": "6c243c8174f25d1c57c1389efd3730abe867e63804db3e12d167a87055134e30"
+  }
+]

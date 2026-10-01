@@ -40,6 +40,7 @@
     fetch_asset/3,
     confirm_asset/3,
     cleanup_asset/3,
+    cleanup_pending_private/5,
     scope_key/3
 ]).
 
@@ -177,3 +178,31 @@ with_object_store(Fun) ->
         stub -> Fun(eb_asset_object_stub);
         _ -> {error, invalid_object_store}
     end.
+
+cleanup_pending_private(Org, Ws, Id, Now, Ttl) when
+    is_integer(Org), is_integer(Ws), is_integer(Id), is_integer(Now), is_integer(Ttl), Ttl >= 0
+->
+    case eb_pg_asset_meta:fetch_asset(Org, Ws, Id) of
+        {ok, #{status := deleted, pending_object_delete := true, object_key := Key}} ->
+            delete_pending_object(Org, Ws, Id, Key);
+        {ok, #{status := pending_confirm}} ->
+            case eb_pg_asset_meta:claim_pending_cleanup(Org, Ws, Id, Now, Ttl) of
+                {ok, Key} -> delete_pending_object(Org, Ws, Id, Key);
+                {error, _} = Err -> Err
+            end;
+        {ok, _} ->
+            {error, not_eligible};
+        {error, _} = Err ->
+            Err
+    end;
+cleanup_pending_private(_, _, _, _, _) ->
+    {error, invalid_cleanup_scope}.
+
+delete_pending_object(Org, Ws, Id, Key) ->
+    with_object_store(fun(ObjectStore) ->
+        case ObjectStore:delete(Key, eb_pg_asset_meta:key_prefix(Org, Ws)) of
+            ok -> eb_pg_asset_meta:finish_pending_cleanup(Org, Ws, Id);
+            {error, not_found} -> eb_pg_asset_meta:finish_pending_cleanup(Org, Ws, Id);
+            {error, Reason} -> {error, {object_store, Reason}}
+        end
+    end).

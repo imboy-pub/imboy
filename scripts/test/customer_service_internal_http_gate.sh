@@ -57,6 +57,7 @@ files += ['test/common/meck_helper.erl', 'test/api/qr_login_sse_handler_tests.er
           'test/api/customer_service_browser_fixture.erl',
           'test/features/customer_service/interfaces/cs_route_contract_tests.erl',
           'test/api/enterprise_asset_garage_pg_checks.erl',
+          'test/features/enterprise_business/application/eb_ports_tests.erl',
           'test/api/customer_service_seat_sse_checks.erl',
           'test/api/customer_service_widget_expiry_http_checks.erl',
           'test/api/enterprise_oa_expiry_http_checks.erl']
