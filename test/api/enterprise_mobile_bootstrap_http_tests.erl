@@ -133,6 +133,7 @@ run() ->
         Port = maps:get(port, H),
         assert_init(Port, Headers),
         assert_login(Port, Headers),
+        assert_oa_login_journey(H),
         save_proof()
     after
         ?HTTP:teardown_all(H),
@@ -153,6 +154,98 @@ configure(#{conn := C}) ->
         <<"UPDATE \"user\" SET account=$1,password=$2 WHERE id=$3">>,
         [?ACCOUNT, Hash, ?UID]
     ).
+
+%% Use the real device-bound login token, not a manufactured human JWT.
+assert_oa_login_journey(#{conn := C, port := Port, app_sso := App} = H) ->
+    {ok, _} = enterprise_external_identity_repo:bind_tx(
+        C, 995101, App, <<"synthetic-mobile-oa-user">>, ?UID
+    ),
+    Login = login(Port, headers(), ?PASSWORD),
+    Token = maps:get(<<"token">>, maps:get(<<"payload">>, Login)),
+    Auth = maps:merge(headers(), ?HTTP:auth(Token)),
+    Entries = request(
+        Port,
+        <<"GET">>,
+        <<"/api/v1/workbench/entries?organization_id=995101">>,
+        #{},
+        Auth
+    ),
+    [Entry] = maps:get(<<"entries">>, maps:get(<<"payload">>, Entries)),
+    ?assertEqual(<<"intbe02-oa-sso">>, maps:get(<<"application_key">>, Entry)),
+    Params = #{
+        <<"application_key">> => maps:get(<<"application_key">>, Entry),
+        <<"redirect_uri">> => maps:get(<<"redirect_uri">>, Entry),
+        <<"nonce">> => ?HTTP:fixture(nonce, H),
+        <<"organization_id">> => 995101
+    },
+    Code = oa_issue(Port, Params, Auth),
+    Exchange = maps:with([<<"redirect_uri">>, <<"nonce">>], Params),
+    Good = oa_exchange(H, Exchange#{<<"code">> => Code}),
+    ?assertEqual(200, maps:get(status, Good)),
+    Payload = jsone:decode(maps:get(body, Good)),
+    ?assertEqual(?UID, maps:get(<<"user_id">>, Payload)),
+    ?assertEqual(<<"synthetic-mobile-oa-user">>, maps:get(<<"external_user_id">>, Payload)),
+    ?assertEqual(404, maps:get(status, oa_exchange(H, Exchange#{<<"code">> => Code}))),
+    WrongOrg = request(
+        Port,
+        <<"POST">>,
+        <<"/api/v1/oa/sso/code">>,
+        Params#{<<"organization_id">> => 995102},
+        Auth
+    ),
+    ?assertNotEqual(0, maps:get(<<"code">>, WrongOrg)),
+    Unused = oa_issue(Port, Params, Auth),
+    Blocked = request(
+        Port,
+        <<"POST">>,
+        <<"/api/v1/organizations/995101/members/995011/offboard">>,
+        #{},
+        Auth
+    ),
+    ?assertEqual(409, maps:get(<<"code">>, Blocked)),
+    prepare_oa_departure(C),
+    Left = request(
+        Port,
+        <<"POST">>,
+        <<"/api/v1/organizations/995101/members/995011/offboard">>,
+        #{},
+        Auth
+    ),
+    ?assertEqual(0, maps:get(<<"code">>, Left)),
+    assert_oa_after_leave(H, Params, Auth, Exchange#{<<"code">> => Unused}).
+
+%% Fixture ownership is outside the SSO boundary; keep the real departure guard.
+prepare_oa_departure(C) ->
+    ok = ?HTTP:sql_exec(C, <<"UPDATE project SET owner_id=995012 WHERE id=995401">>),
+    ok = ?HTTP:sql_exec(C, <<"UPDATE \"group\" SET owner_uid=995012 WHERE id=995301">>),
+    ok = ?HTTP:sql_exec(C, <<"UPDATE channel SET creator_uid=995012 WHERE id=995501">>).
+
+oa_issue(Port, Params, Auth) ->
+    Issued = request(Port, <<"POST">>, <<"/api/v1/oa/sso/code">>, Params, Auth),
+    ?assertEqual(0, maps:get(<<"code">>, Issued)),
+    maps:get(<<"code">>, maps:get(<<"payload">>, Issued)).
+
+oa_exchange(H, Body) ->
+    ?HTTP:http(
+        maps:get(port, H),
+        <<"POST">>,
+        <<"/api/internal/v1/oa/sso/exchange">>,
+        Body,
+        ?HTTP:auth(maps:get(cred_sso, H))
+    ).
+
+assert_oa_after_leave(#{port := Port} = H, Params, Auth, Unused) ->
+    Entries = request(
+        Port,
+        <<"GET">>,
+        <<"/api/v1/workbench/entries?organization_id=995101">>,
+        #{},
+        Auth
+    ),
+    ?assertEqual([], maps:get(<<"entries">>, maps:get(<<"payload">>, Entries))),
+    Denied = request(Port, <<"POST">>, <<"/api/v1/oa/sso/code">>, Params, Auth),
+    ?assertNotEqual(0, maps:get(<<"code">>, Denied)),
+    ?assertEqual(422, maps:get(status, oa_exchange(H, Unused))).
 
 headers() ->
     #{
@@ -282,6 +375,10 @@ save_proof() ->
             device_signature_denied => true,
             token_device_bound => true,
             organization_access => true,
+            oa_device_login_to_exchange => true,
+            oa_replay_denied => true,
+            oa_cross_organization_denied => true,
+            oa_departure_revoked => true,
             native_device => false
         })
     ).
