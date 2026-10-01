@@ -29,6 +29,7 @@ cases(State) ->
         {timeout, 300, fun() -> suspended_and_removed_fail_closed(State) end},
         {timeout, 300, fun() -> outsider_and_missing_org_same_shape(State) end},
         {timeout, 300, fun() -> unauthenticated_is_401(State) end},
+        {timeout, 300, fun() -> invalid_device_signature_is_rejected(State) end},
         {timeout, 300, fun() -> archived_org_is_organization_disabled(State) end},
         {timeout, 300, fun() -> search_hits_identity_not_contact(State) end},
         {timeout, 300, fun() -> members_cursor_limit_exhausts_finite(State) end},
@@ -137,8 +138,18 @@ outsider_and_missing_org_same_shape(State) ->
 unauthenticated_is_401(State) ->
     S = scope(State),
     B = org_path(maps:get(org_id, S)),
-    R = ?SUP:http(State, <<"GET">>, <<B/binary, "/departments">>, #{}),
+    R = ?SUP:http(State, <<"GET">>, <<B/binary, "/departments">>, #{
+        headers => ?SUP:device_headers()
+    }),
     ?assertEqual(401, maps:get(status, R), maps:get(body, R)).
+
+invalid_device_signature_is_rejected(State) ->
+    S = scope(State),
+    Headers = (?SUP:bearer(maps:get(owner_user_id, S)))#{<<"sign">> => <<"invalid">>},
+    R = ?SUP:http(State, <<"GET">>, <<(org_path(maps:get(org_id, S)))/binary, "/members">>, #{
+        headers => Headers
+    }),
+    ?assertEqual(902, maps:get(<<"code">>, maps:get(json, R)), maps:get(body, R)).
 
 %% ===================================================================
 %% archived org → 403 organization_disabled

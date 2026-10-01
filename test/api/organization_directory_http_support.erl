@@ -12,6 +12,8 @@
 %%%      HTTP 层零 mock、认证链零 mock——Human token 由
 %%%      `token_ds:encrypt_token/1` 对合成 user 真签发（HS256 测试密钥
 %%%      签发/校验同进程自洽；legacy 空 did 形态，verify 侧无设备比对）。
+%%%      请求同时携带合成设备 HMAC，签名密钥经生产 DS 写入 marker 库；
+%%%      api_auth_switch 显式开启，teardown 恢复原认证配置。
 %%%
 %%% 合成租户由 `organization_directory_fixture:new_scope/0` 建立（随机
 %%% TSID；场景矩阵：suspended/removed/outsider/archived org/跨 Org 隔离
@@ -24,12 +26,14 @@
     http/3,
     http/4,
     bearer/1,
+    device_headers/0,
     base/1,
     sql_exec/2,
     one/2
 ]).
 
 -define(LISTENER, orgdir_http_listener).
+-define(DEVICE_KEY, <<"synthetic-orgdir-device-key-only">>).
 
 -define(MIDDLEWARES, [
     cowboy_router,
@@ -70,6 +74,12 @@ setup_all() ->
     {ok, _} = application:ensure_all_started(throttle),
     catch throttle:setup(api_per_ip, 100000, per_minute),
     catch throttle:setup(api_per_user, 100000, per_minute),
+    Previous = [
+        {K, application:get_env(imboy, K)}
+     || K <-
+            [jwt_key, enterprise_internal_cursor_signing_key, api_auth_switch]
+    ],
+    application:set_env(imboy, api_auth_switch, <<"on">>),
     %% Human JWT 测试密钥（token_ds 签发 / auth_ds 校验同 env 自洽）。
     application:set_env(imboy, jwt_key, <<"orgdir_http_test_jwt_key_0123456789">>),
     %% CURSOR-V2 签名密钥（enterprise_cursor_v2:signing_key/0 读；缺失 → 503）。
@@ -81,6 +91,12 @@ setup_all() ->
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
     ensure_pool(State),
+    ok = app_version_ds:set_sign_key(
+        <<"synthetic">>, <<"orgdir-test">>, <<"synthetic.orgdir">>, ?DEVICE_KEY
+    ),
+    ?DEVICE_KEY = app_version_ds:sign_key(
+        <<"synthetic">>, <<"orgdir-test">>, <<"synthetic.orgdir">>
+    ),
     Scope =
         try
             organization_directory_fixture:new_scope()
@@ -99,7 +115,7 @@ setup_all() ->
         #{env => #{dispatch => Dispatch}, middlewares => ?MIDDLEWARES}
     ),
     Port = ranch:get_port(?LISTENER),
-    State#{scope => Scope, port => Port}.
+    State#{scope => Scope, port => Port, previous_env => Previous}.
 
 -spec teardown_all(map()) -> ok.
 teardown_all(State) ->
@@ -110,8 +126,13 @@ teardown_all(State) ->
     end,
     release_pool(),
     _ = inttest_marker_db:release(State),
-    application:unset_env(imboy, jwt_key),
-    application:unset_env(imboy, enterprise_internal_cursor_signing_key),
+    lists:foreach(
+        fun
+            ({K, {ok, Value}}) -> application:set_env(imboy, K, Value);
+            ({K, undefined}) -> application:unset_env(imboy, K)
+        end,
+        maps:get(previous_env, State)
+    ),
     ok.
 
 ensure_pool(State) ->
@@ -157,7 +178,21 @@ base(State) ->
 %% Human JWT：token_ds 真签发（legacy 空 did；verify 侧无设备比对、
 %% auth_session epoch 走 DB —— 合成 user 无 session 行 → epoch 回落放行）。
 bearer(Uid) when is_integer(Uid) ->
-    #{<<"authorization">> => <<"Bearer ", (token_ds:encrypt_token(Uid))/binary>>}.
+    (device_headers())#{
+        <<"authorization">> => <<"Bearer ", (token_ds:encrypt_token(Uid))/binary>>
+    }.
+
+device_headers() ->
+    #{
+        <<"cos">> => <<"synthetic">>,
+        <<"vsn">> => <<"orgdir-test">>,
+        <<"pkg">> => <<"synthetic.orgdir">>,
+        <<"did">> => <<"synthetic-orgdir-device">>,
+        <<"method">> => <<"sha256">>,
+        <<"sign">> => elib_hasher:hmac_sha256(
+            <<"synthetic-orgdir-device|orgdir-test|synthetic|synthetic.orgdir">>, ?DEVICE_KEY
+        )
+    }.
 
 -spec http(map(), binary(), map()) -> map().
 http(State, UrlPath, Opts) ->
