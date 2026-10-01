@@ -1,0 +1,18 @@
+{
+  "status": "PARTIAL",
+  "browser_exit": 0,
+  "browser_run": "/tmp/imboy-seat-http.1prpif",
+  "garage_run": "/tmp/imboy-asset-garage.YvNasr",
+  "backend_head": "72210b062474472859c88f793da3d768b075928b",
+  "admin_base": "58bbffd13b144833a5fa9f2ce603fb99842d9b35",
+  "runner_sha256": "d6ecde246f2a6fe003f5a57b5d9985c1589d608e1b3fbf9204eb1a61cc7db76d",
+  "reused_build": "../cs-attachment-authority-2026-10-01/build",
+  "build_manifest_sha256": "c9dd627c036ff063e5e7059dcd988332b5ab6d06df8c2c04be5d379e510b77ac",
+  "oracle": "Real host refresh restores visitor history and byte-identical Seat attachment; fresh QR login after suspend/resume reloads and downloads both original attachments. PG remains exactly six unique messages, two active bound hashes and one closed session rated five. Original auth/concurrency/TCP-recovery/transfer/revocation checks also pass.",
+  "not_proven": [
+    "physical devices",
+    "entire contract and production readiness",
+    "automatic cleanup scheduling",
+    "browser restart recovery beyond sessionStorage lifetime"
+  ]
+}

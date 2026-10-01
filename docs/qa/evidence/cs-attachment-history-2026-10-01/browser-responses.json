@@ -1,0 +1,91 @@
+[
+  {
+    "path": "/api/v1/cs/organizations/115681717953759235/sessions/queue",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/scan",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/confirm",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/scan",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/confirm",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "action": "concurrent-browser-claim",
+    "statuses": [
+      409,
+      200
+    ]
+  },
+  {
+    "action": "anonymous-attachment-denied",
+    "status": 401
+  },
+  {
+    "action": "bidirectional-attachment-download",
+    "visitorBytes": 29,
+    "seatBytes": 26
+  },
+  {
+    "action": "visitor-refresh-attachment-history",
+    "attachmentCount": 2,
+    "bytes": 26
+  },
+  {
+    "action": "automatic-seat-reconnect",
+    "disconnects": 1,
+    "newEventRequests": 2
+  },
+  {
+    "action": "attachment-after-transfer",
+    "seat": "previous",
+    "status": 403,
+    "code": 403
+  },
+  {
+    "action": "attachment-after-transfer",
+    "seat": "current",
+    "status": 200
+  },
+  {
+    "action": "suspended-seat-attachment-denied",
+    "status": 403
+  },
+  {
+    "action": "seat-revoked",
+    "oldBrowserWriteStatus": 403,
+    "composerEnabled": false
+  },
+  {
+    "path": "/api/v1/passport/qr_login/scan",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/confirm",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "action": "fresh-seat-login-attachment-history",
+    "attachmentCount": 2,
+    "bytes": [
+      29,
+      26
+    ]
+  }
+]
