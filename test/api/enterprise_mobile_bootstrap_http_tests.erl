@@ -14,24 +14,9 @@ bootstrap_test_() -> {timeout, 180, fun run/0}.
 run_fixture() ->
     H = ?HTTP:setup_all(),
     try
-        configure(H),
+        NativeGovernance = prepare_native_governance(H),
+        configure_native(H),
         Port = maps:get(port, H),
-        Origin = iolist_to_binary(["http://127.0.0.1:", integer_to_list(Port)]),
-        application:set_env(
-            imboy,
-            ws_url,
-            iolist_to_binary(["ws://127.0.0.1:", integer_to_list(Port), "/api/v1/ws"])
-        ),
-        application:set_env(imboy, upload_url, Origin),
-        application:set_env(imboy, base_url, Origin),
-        application:set_env(imboy, product_experience, chat),
-        application:set_env(imboy, product_profile, enterprise),
-        application:set_env(imboy, features, #{e2ee => false}),
-        ok = app_version_ds:set_sign_key(
-            <<"android">>, <<"1">>, <<"pub.imboy.app.gzcustomer">>, ?KEY
-        ),
-        assert_init(Port, headers()),
-        assert_login(Port, headers()),
         Features = request(Port, <<"GET">>, <<"/api/v1/app/features">>, #{}, headers()),
         ?assertEqual(0, maps:get(<<"code">>, Features)),
         Flags = maps:get(<<"payload">>, Features),
@@ -51,6 +36,7 @@ run_fixture() ->
                 organization_id => <<"995101">>,
                 directory => Directory,
                 native_oa => NativeOa,
+                native_org_governance => NativeGovernance,
                 join_code => maps:get(code, Invite),
                 package => <<"pub.imboy.app.gzcustomer">>,
                 synthetic_only => true
@@ -59,10 +45,62 @@ run_fixture() ->
         ok = file:change_mode(filename:join(Dir, "mobile-fixture.json"), 8#600),
         await_device_done(Dir, erlang:monotonic_time(millisecond) + 1800000),
         assert_native_leave(H, Dir),
-        assert_native_oa(H, Dir)
+        assert_native_oa(H, Dir),
+        assert_native_governance(H, Dir, NativeGovernance)
     after
         ?HTTP:teardown_all(H),
         inttest_marker_db:release(H)
+    end.
+
+configure_native(H) ->
+    configure(H),
+    Port = maps:get(port, H),
+    Origin = iolist_to_binary(["http://127.0.0.1:", integer_to_list(Port)]),
+    application:set_env(
+        imboy,
+        ws_url,
+        iolist_to_binary(["ws://127.0.0.1:", integer_to_list(Port), "/api/v1/ws"])
+    ),
+    application:set_env(imboy, upload_url, Origin),
+    application:set_env(imboy, base_url, Origin),
+    application:set_env(imboy, product_experience, chat),
+    application:set_env(imboy, product_profile, enterprise),
+    application:set_env(imboy, features, #{e2ee => false}),
+    ok = app_version_ds:set_sign_key(
+        <<"android">>, <<"1">>, <<"pub.imboy.app.gzcustomer">>, ?KEY
+    ),
+    assert_init(Port, headers()),
+    assert_login(Port, headers()).
+
+prepare_native_governance(_) ->
+    case os:getenv("IMBOY_NATIVE_ORG_GOVERNANCE") of
+        false ->
+            false;
+        "1" ->
+            {ok, #{owner_id := ?UID}} = organization_owner_transfer:transfer(
+                995001, 995101, ?UID
+            ),
+            true;
+        _ ->
+            erlang:error(invalid_native_governance_mode)
+    end.
+
+assert_native_governance(_, _, false) ->
+    ok;
+assert_native_governance(#{conn := C}, Dir, true) ->
+    case filelib:is_file(filename:join(Dir, "mobile.success")) of
+        false ->
+            ok;
+        true ->
+            #{<<"governed">> := 1} = ?HTTP:one(
+                C,
+                <<"SELECT count(*) AS governed FROM organization_department WHERE organization_id=$1 AND name=$2 AND status='archived' AND created_by_user_id=$3 AND version>=2">>,
+                [995101, <<"native-owner-renamed">>, ?UID]
+            ),
+            ok = file:write_file(
+                filename:join(Dir, "native-governance-oracle.json"),
+                jsone:encode(#{status => <<"PASS">>, created_renamed_archived => 1})
+            )
     end.
 
 prepare_native_oa(#{conn := C, app_sso := App, cred_sso := Credential}) ->
