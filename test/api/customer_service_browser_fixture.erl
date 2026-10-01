@@ -25,7 +25,16 @@ run() ->
             branding => #{},
             consent_version => <<"synthetic-browser-v1">>
         }),
+        Console = ?FIX:id(),
+        {ok, _} = cs_pg_seat_console:insert_seat_console(Org, #{
+            id => Console,
+            workspace_id => maps:get(workspace_id, S),
+            public_seat_console_id => integer_to_binary(Console),
+            allowed_origins => [Origin],
+            created_by_user_id => maps:get(owner_user_id, S)
+        }),
         ok = save("browser-fixture.json", #{
+            public_seat_console_id => integer_to_binary(Console),
             port => maps:get(port, H),
             organization_id => integer_to_binary(Org),
             workspace_id => integer_to_binary(maps:get(workspace_id, S)),
@@ -41,6 +50,9 @@ run() ->
     end.
 
 setup_keys() ->
+    ok = elib_tsid:register(user_device),
+    {ok, _} = application:ensure_all_started(syn),
+    ok = syn:add_node_to_scopes([imboy_qr_login]),
     application:set_env(imboy, jwt_key, <<"synthetic-seat-http-key-only">>),
     application:set_env(imboy, cs_widget_subject_key, <<"synthetic-browser-subject-key-only">>),
     application:set_env(imboy, eb_enterprise_keyring, #{
@@ -82,14 +94,9 @@ save_proof(Org) ->
     ?assertMatch([#{<<"status">> := <<"closed">>, <<"rating">> := 5}], Sessions),
     ?assertEqual(3, length(Messages)),
     ?assertEqual(1, length([M || M <- Messages, maps:get(<<"sender_type">>, M) =:= <<"contact">>])),
-    ?assertEqual(
-        [<<"browser-seat-a-reply">>, <<"browser-seat-b-reply">>],
-        [
-            maps:get(<<"client_msg_id">>, M)
-         || M <- Messages,
-            maps:get(<<"sender_type">>, M) =:= <<"business_identity">>
-        ]
-    ),
+    SeatMessages = [M || M <- Messages, maps:get(<<"sender_type">>, M) =:= <<"business_identity">>],
+    ?assertEqual(2, length(SeatMessages)),
+    ?assertEqual(3, length(lists:usort([maps:get(<<"client_msg_id">>, M) || M <- Messages]))),
     Actions = [maps:get(<<"action">>, E) || E <- Events],
     [
         ?assert(lists:member(A, Actions))

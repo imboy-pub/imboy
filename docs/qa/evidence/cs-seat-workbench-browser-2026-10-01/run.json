@@ -1,0 +1,37 @@
+{
+  "status": "PARTIAL",
+  "browser_exit": 0,
+  "regression_exit": 0,
+  "backend_base": "75d25d9e0e5cf8a42e4a9d53fb64bbe038f519ef",
+  "admin_base": "1dc267b14e114bbce15fe8dc9afa72cba2442d04",
+  "source_hashes": {
+    "backend": {
+      "src/api/qr_login_sse_handler.erl": "6ca498a9204514af7a0eb30343afa80703d3499e164554ce06ed98ba0906ace1",
+      "test/api/qr_login_sse_handler_tests.erl": "92f106fa7f37a85199c0351523a22edb654461afef425e5168bf4c043bf64e18",
+      "test/api/customer_service_browser_fixture.erl": "bdd34ce2f43a9aadce99314d1a400872b2ff7628935c5d40a60ccb4b2b7dd169",
+      "scripts/test/customer_service_internal_http_gate.sh": "84aef8eba7ac22751f9de59ba7b11ef99432fae5a343b845a2356af5982b3e88"
+    },
+    "admin": {
+      "scripts/test/customer-service-browser-journey.mjs": "9a2b2079c2165f8781c4f78a6507afd579c7f6a468a705ca7bb09a9efa627786",
+      "scripts/test/customer-service-static-host.test.mjs": "7218e7a9933eb3d52dee69584c68febb76f50128e9d234d930f5b02f23702937",
+      "tests/e2e/customer-service-real/helpers/static-host.mjs": "20477c12beb2b5db8ab68e939336a61814103f4080b408141510cedc71f64cb7"
+    }
+  },
+  "reused_build": "../cs-widget-browser-2026-10-01/build",
+  "build_manifest_sha256": "594c5dc67614411b331761e062817f107f7b66d7dd9ce29625e3450f5e4db2d7",
+  "checks": [
+    "real Widget + two built Seat Console pages",
+    "synthetic mobile HTTP scan/confirm, actual QR SSE delivery to each browser, no QR status polling",
+    "actual workbench buttons: claim, reply, transfer, close",
+    "visitor SSE replies and rating, canonical PG facts",
+    "18 QR unit tests; baseline correct-return mock fails 6",
+    "26 isolated conformance/PG/QR checks; 4 real identity contract bodies"
+  ],
+  "pending": [
+    "real mobile scan/device acceptance",
+    "object-storage attachments",
+    "two browser concurrent claim and reconnect/revocation",
+    "complete CS acceptance and six-goal delivery",
+    "production release"
+  ]
+}

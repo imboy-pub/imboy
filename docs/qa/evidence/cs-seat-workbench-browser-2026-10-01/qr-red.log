@@ -1,0 +1,116 @@
+======================== EUnit ========================
+module 'qr_login_sse_handler_tests'
+  qr_login_sse_handler_tests:50: -init_with_valid_session_token_returns_cowboy_loop_test_/0-fun-4-...ok
+  qr_login_sse_handler_tests:69: -init_calls_stream_reply_with_sse_headers_test_/0-fun-5-...[0.002 s] ok
+  qr_login_sse_handler_tests:87: -init_calls_subscribe_with_session_token_and_self_test_/0-fun-5-...ok
+  qr_login_sse_handler_tests:104: -init_without_session_token_returns_400_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:117: -init_with_empty_session_token_returns_400_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:131: -info_scanned_event_streams_chunk_and_keeps_loop_test_/0-fun-7-...*failed*
+in function qr_login_sse_handler_tests:'-info_scanned_event_streams_chunk_and_keeps_loop_test_/0-fun-7-'/0 (test/api/qr_login_sse_handler_tests.erl, line 138)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,qr_login_sse_handler_tests},
+              {line,138},
+              {expression,"Req1"},
+              {expected,#{chunks => [],qs => []}},
+              {value,ok}]}
+  output:<<"">>
+
+  qr_login_sse_handler_tests:150: -info_confirmed_event_streams_chunk_and_stops_test_/0-fun-4-...*failed*
+in function qr_login_sse_handler_tests:'-info_confirmed_event_streams_chunk_and_stops_test_/0-fun-4-'/0 (test/api/qr_login_sse_handler_tests.erl, line 157)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,qr_login_sse_handler_tests},
+              {line,157},
+              {expression,"Req1"},
+              {expected,#{chunks => [],qs => []}},
+              {value,ok}]}
+  output:<<"">>
+
+  qr_login_sse_handler_tests:164: -info_expired_event_streams_chunk_and_stops_test_/0-fun-2-...*failed*
+in function qr_login_sse_handler_tests:'-info_expired_event_streams_chunk_and_stops_test_/0-fun-2-'/0 (test/api/qr_login_sse_handler_tests.erl, line 168)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,qr_login_sse_handler_tests},
+              {line,168},
+              {expression,"Result"},
+              {expected,{stop,#{chunks => [],qs => []},
+                              #{session_token => <<"s1">>}}},
+              {value,{stop,ok,#{session_token => <<"s1">>}}}]}
+  output:<<"">>
+
+  qr_login_sse_handler_tests:174: -info_cancelled_event_streams_chunk_and_keeps_loop_test_/0-fun-2-...*failed*
+in function qr_login_sse_handler_tests:'-info_cancelled_event_streams_chunk_and_keeps_loop_test_/0-fun-2-'/0 (test/api/qr_login_sse_handler_tests.erl, line 178)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,qr_login_sse_handler_tests},
+              {line,178},
+              {expression,"Result"},
+              {expected,{ok,#{chunks => [],qs => []},
+                            #{session_token => <<"s1">>}}},
+              {value,{ok,ok,#{session_token => <<"s1">>}}}]}
+  output:<<"">>
+
+  qr_login_sse_handler_tests:183: -info_waiting_event_streams_chunk_and_keeps_loop_test_/0-fun-2-...*failed*
+in function qr_login_sse_handler_tests:'-info_waiting_event_streams_chunk_and_keeps_loop_test_/0-fun-2-'/0 (test/api/qr_login_sse_handler_tests.erl, line 187)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,qr_login_sse_handler_tests},
+              {line,187},
+              {expression,"Result"},
+              {expected,{ok,#{chunks => [],qs => []},
+                            #{session_token => <<"s1">>}}},
+              {value,{ok,ok,#{session_token => <<"s1">>}}}]}
+  output:<<"">>
+
+  qr_login_sse_handler_tests:192: -info_non_map_message_keeps_loop_silently_test_/0-fun-4-...ok
+  qr_login_sse_handler_tests:213: -terminate_unsubscribes_when_session_token_present_test_/0-fun-3-...[0.001 s] ok
+  qr_login_sse_handler_tests:231: -init_starts_heartbeat_timer_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:245: -info_heartbeat_emits_sse_comment_chunk_test_/0-fun-4-...*failed*
+in function qr_login_sse_handler_tests:'-info_heartbeat_emits_sse_comment_chunk_test_/0-fun-4-'/0 (test/api/qr_login_sse_handler_tests.erl, line 252)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,qr_login_sse_handler_tests},
+              {line,252},
+              {expression,"Req1"},
+              {expected,#{chunks => [],qs => []}},
+              {value,ok}]}
+  output:<<"">>
+
+  qr_login_sse_handler_tests:265: -info_heartbeat_keeps_loop_test_/0-fun-2-...ok
+  qr_login_sse_handler_tests:280: -info_heartbeat_reschedules_timer_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:297: -terminate_cancels_heartbeat_timer_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:312: -terminate_does_not_call_unsubscribe_when_state_lacks_token_test_/0-fun-4-...ok
+  [done in 1.313 s]
+=======================================================
+  Failed: 6.  Skipped: 0.  Passed: 12.

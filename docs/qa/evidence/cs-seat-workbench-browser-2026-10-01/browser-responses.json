@@ -1,0 +1,27 @@
+[
+  {
+    "path": "/api/v1/cs/organizations/115665116873361411/sessions/queue",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/scan",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/confirm",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/scan",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/confirm",
+    "status": 200,
+    "code": 0
+  }
+]
