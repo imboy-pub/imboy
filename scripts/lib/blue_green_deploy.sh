@@ -923,8 +923,15 @@ fi
 # =============================================================================
 if [ "$LOCAL_MODE" -eq 1 ]; then
   log "[--local] 同步本地源码到远端 $PROJECT_DIR ... / Syncing local source to remote..."
-  rsync -az --delete \
+  # 内容比较避免本地生成器 touch 造成重复上传；改变的源码使用远端当前时间，
+  # 避免旧时间戳（恢复文件/切换分支）让 make 漏编。
+  rsync -az --checksum --no-times --delete \
     --exclude='.git' \
+    --exclude='/ebin/' \
+    --exclude='/test/' \
+    --exclude='/.Codex/' \
+    --exclude='/.codex/' \
+    --exclude='/.agents/' \
     --exclude='_build/' \
     --exclude='.erlang.mk/' \
     --exclude='_rel/' \
@@ -994,10 +1001,8 @@ ssh_exec "
   # 构建前把版本行强制对齐到 .env.deploy 指定的 VSN，避免产物名与解包名漂移。
   # git reset --hard 每次会还原此改动，幂等重写无害。
   sed -i 's/^{release, {imboy, \"[^\"]*\"}/{release, {imboy, \"$VSN\"}/' relx.config relxpro.config
-  # 全量清理后重编：-l 模式 rsync 会同步本地自动生成的 ebin/imboy.app（已列新模块），
-  # 但 --exclude='*.beam' 排除了对应 beam，致 erlang.mk 因 .app mtime 较新而跳过重建，
-  # release 组装时报 module_not_found。make clean 强制从源码全量重编，规避此陷阱。
-  make clean
+  # 只在缓存不完整、版本/编译模式变化时清理应用，保留依赖与正常增量编译。
+  bash scripts/lib/prepare_release_build.sh '$VSN'
   IMBOYENV=pro \
     RELX_DEV_MODE=false \
     RELX_INCLUDE_ERTS=true \
