@@ -14,7 +14,7 @@
 % 详见 docs/architecture/resource-access-control.md。
 %%%
 
--export([presign/5, confirm/5, view_url/2]).
+-export([presign/5, confirm/5, view_url/2, download/1]).
 
 -ifdef(TEST).
 %% 纯函数，导出仅为可直接验收「不做套件协商」这一 fail-closed 语义
@@ -408,7 +408,7 @@ view_url(Uid, ObjectKey) ->
     case attachment_ds:find_by_path(ObjectKey) of
         {ok, Rec} ->
             case authorize(Uid, Rec) of
-                true -> sign_view(Rec, ObjectKey);
+                true -> authorized_view(Uid, Rec, ObjectKey);
                 false -> {error, forbidden}
             end;
         {error, not_found} ->
@@ -424,6 +424,53 @@ view_url(Uid, ObjectKey) ->
                 " reason=",
                 Reason
             ]),
+            {error, forbidden}
+    end.
+
+%% Group/channel URLs are capabilities checked again on every HTTP read.
+authorized_view(_, Rec, <<"/", _/binary>> = ObjectKey) ->
+    sign_view(Rec, ObjectKey);
+authorized_view(Uid, #{<<"scope">> := Scope}, ObjectKey) when
+    Scope =:= <<"group">>; Scope =:= <<"channel">>
+->
+    case attachment_download_ticket:issue(Uid, ObjectKey, config_ds:env(jwt_key, <<>>)) of
+        {ok, Ticket} ->
+            Base = config_ds:env(base_url, <<>>),
+            case uri_string:parse(Base) of
+                #{scheme := Scheme, host := Host} when
+                    (Scheme =:= <<"http">> orelse Scheme =:= <<"https">>), Host =/= <<>>
+                ->
+                    Query = uri_string:compose_query([{<<"ticket">>, Ticket}]),
+                    {ok, <<
+                        (string:trim(Base, trailing, "/"))/binary,
+                        "/api/v1/attachment/content?",
+                        Query/binary
+                    >>};
+                _ ->
+                    {error, forbidden}
+            end;
+        _ ->
+            {error, forbidden}
+    end;
+authorized_view(_, Rec, ObjectKey) ->
+    sign_view(Rec, ObjectKey).
+
+download(Ticket) ->
+    case attachment_download_ticket:verify(Ticket, config_ds:env(jwt_key, <<>>)) of
+        {ok, Uid, ObjectKey} -> download_authorized(Uid, ObjectKey);
+        _ -> {error, forbidden}
+    end.
+
+download_authorized(Uid, ObjectKey) ->
+    case attachment_ds:find_by_path(ObjectKey) of
+        {ok, #{<<"scope">> := Scope} = Rec} when
+            Scope =:= <<"group">>; Scope =:= <<"channel">>
+        ->
+            case authorize(Uid, Rec) of
+                true -> sign_view(Rec, ObjectKey);
+                false -> {error, forbidden}
+            end;
+        _ ->
             {error, forbidden}
     end.
 
@@ -449,6 +496,8 @@ sign_view(Rec, ObjectKey) ->
 
 %% @doc 读归属鉴权分发：Rec = #{scope, scope_ref, creator_user_id}
 -spec authorize(integer(), map()) -> boolean().
+authorize(_, #{<<"status">> := Status}) when not is_integer(Status); Status < 0 ->
+    false;
 authorize(Uid, Rec) ->
     authorize(maps:get(<<"scope">>, Rec, <<"private">>), Uid, Rec).
 

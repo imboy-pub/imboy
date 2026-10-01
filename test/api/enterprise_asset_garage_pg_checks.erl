@@ -53,7 +53,11 @@ run() ->
         inttest_marker_db:release(H)
     end.
 
-human_group_journey(#{conn := C}) ->
+human_group_journey(#{conn := C, port := Port}) ->
+    application:set_env(imboy, jwt_key, <<"synthetic-download-gateway-secret-only">>),
+    application:set_env(
+        imboy, base_url, iolist_to_binary(["http://127.0.0.1:", integer_to_list(Port)])
+    ),
     %% setup_all seeds member rows directly; seed their normal open history generation.
     ok = intbe02_http_support:sql_exec(
         C,
@@ -75,15 +79,46 @@ human_group_journey(#{conn := C}) ->
         get, {binary_to_list(Url), []}, [{autoredirect, false}], [{body_format, binary}]
     ),
     ?assertEqual({error, not_member}, group_file_logic:download(FileId, 995021)),
+    check_gateway_range(Url, Bytes),
     {ok, _} = organization_member_logic:suspend(995001, 995101, 995011),
+    {ok, {{_, 403, _}, _, _}} = gateway_get(Url, []),
     assert_revoked_group_file(FileId, ObjectKey, Bytes),
     {ok, _} = organization_member_logic:restore(995001, 995101, 995011),
-    {ok, _} = group_file_logic:download(FileId, 995011),
+    {ok, {{_, 200, _}, _, Bytes}} = gateway_get(Url, []),
     ok = group_file_logic:delete(FileId, 995011),
     ?assertEqual({error, forbidden}, attach_logic:view_url(995011, ObjectKey)),
+    {ok, {{_, 403, _}, _, _}} = gateway_get(Url, []),
     ok = elib_oss:delete_object(elib_oss:get_bucket(<<"group">>), ObjectKey),
     io:format(
         "PASS: human enterprise group upload and real signed-byte read; cross-tenant and suspended list/search/category/download/upload/delete denied; restore and cleanup~n"
+    ).
+
+gateway_get(Url, Headers) ->
+    httpc:request(
+        get,
+        {binary_to_list(Url), Headers},
+        [{autoredirect, false}, {timeout, 10000}],
+        [{body_format, binary}]
+    ).
+
+check_gateway_range(Url, Bytes) ->
+    #{path := <<"/api/v1/attachment/content">>} = uri_string:parse(Url),
+    {ok, {{_, 200, _}, HeadHeaders, _}} = httpc:request(
+        head, {binary_to_list(Url), []}, [{autoredirect, false}], []
+    ),
+    ?assertEqual(
+        integer_to_list(byte_size(Bytes)), proplists:get_value("content-length", HeadHeaders)
+    ),
+    {ok, {{_, 206, _}, Headers, Part}} = gateway_get(Url, [{"range", "bytes=0-8"}]),
+    ?assertEqual(binary:part(Bytes, 0, 9), Part),
+    ?assertEqual("private, no-store", proplists:get_value("cache-control", Headers)),
+    {ok, {{_, 416, _}, _, _}} = gateway_get(Url, [{"range", "bytes=0-1,3-4"}]),
+    Base = config_ds:env(base_url, <<>>),
+    {ok, {{_, 403, _}, _, _}} = gateway_get(
+        <<Base/binary, "/api/v1/attachment/content?ticket=malformed">>, []
+    ),
+    {ok, {{_, 403, _}, _, _}} = gateway_get(
+        <<Base/binary, "/api/v1/attachment/content">>, []
     ).
 
 assert_revoked_group_file(FileId, ObjectKey, Bytes) ->

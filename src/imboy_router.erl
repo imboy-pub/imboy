@@ -679,6 +679,7 @@ get_routes() ->
                 {"/api/v1/attachment/confirm", attach_handler, #{action => confirm}},
                 % 附件下载短时签发 URL，替代 bucket 公开读（需 JWT 认证）
                 {"/api/v1/attachment/view_url", attach_handler, #{action => view_url}},
+                {"/api/v1/attachment/content", attachment_download_handler, #{}},
                 % 附件 multipart 直传（大文件流式：form-data file 字段 → 临时文件
                 % → Garage；需 JWT 认证；confirm 仍是唯一落库真源）
                 {"/api/v1/attachment/upload", attach_handler, #{action => upload}},
@@ -1524,6 +1525,8 @@ open() ->
         %% 端点本身保留，登录用户与管理端照常可用。
         <<"/api/v1/init">>,
         <<"/api/v1/app/features">>,
+        %% Dedicated download capability; handler verifies signature and current ACL.
+        <<"/api/v1/attachment/content">>,
         <<"/api/v1/app/manifest">>,
         <<"/api/v1/app/policy">>,
         <<"/api/v1/user/show">>,

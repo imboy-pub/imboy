@@ -54,10 +54,7 @@ active_channel_admin_keeps_attachment_access_test_() ->
             ]}
         ],
         fun() ->
-            ?assertEqual(
-                {ok, <<"https://signed">>},
-                attach_logic:view_url(7, <<"u7/channel/a.png">>)
-            ),
+            assert_channel_gateway_url(),
             ?assertEqual(0, meck:num_calls(channel_subscription_ds, is_subscribed, 2))
         end
     ).
@@ -106,3 +103,20 @@ confirm_parent_revoked(Scope) ->
             ?assertEqual(0, meck:num_calls(attachment_ds, pending_remove, 1))
         end
     ).
+
+assert_channel_gateway_url() ->
+    Previous = [{Key, application:get_env(imboy, Key)} || Key <- [jwt_key, base_url]],
+    try
+        application:set_env(imboy, jwt_key, <<"synthetic-channel-download-secret">>),
+        application:set_env(imboy, base_url, <<"http://127.0.0.1:9800">>),
+        {ok, Url} = attach_logic:view_url(7, <<"u7/channel/a.png">>),
+        ?assertMatch(#{path := <<"/api/v1/attachment/content">>}, uri_string:parse(Url))
+    after
+        lists:foreach(
+            fun
+                ({Key, {ok, Value}}) -> application:set_env(imboy, Key, Value);
+                ({Key, undefined}) -> application:unset_env(imboy, Key)
+            end,
+            Previous
+        )
+    end.

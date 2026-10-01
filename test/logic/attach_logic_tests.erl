@@ -510,7 +510,7 @@ authorize_group_member_grants_test_() ->
             {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
         ],
         fun() ->
-            ?assertEqual({ok, <<"https://sig">>}, attach_logic:view_url(7, <<"u1/g66/a.png">>))
+            assert_gateway_url(7, <<"u1/g66/a.png">>)
         end
     ).
 
@@ -551,7 +551,7 @@ authorize_channel_subscriber_grants_test_() ->
             {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
         ],
         fun() ->
-            ?assertEqual({ok, <<"https://sig">>}, attach_logic:view_url(7, <<"u1/ch9/a.png">>))
+            assert_gateway_url(7, <<"u1/ch9/a.png">>)
         end
     ).
 
@@ -600,7 +600,7 @@ authorize_paid_channel_purchased_grants_test_() ->
             {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
         ],
         fun() ->
-            ?assertEqual({ok, <<"https://sig">>}, attach_logic:view_url(7, <<"u7/ch9/a.png">>))
+            assert_gateway_url(7, <<"u7/ch9/a.png">>)
         end
     ).
 
@@ -657,7 +657,7 @@ authorize_channel_uploader_subscribed_grants_test_() ->
             {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
         ],
         fun() ->
-            ?assertEqual({ok, <<"https://sig">>}, attach_logic:view_url(7, <<"u7/ch9/a.png">>))
+            assert_gateway_url(7, <<"u7/ch9/a.png">>)
         end
     ).
 
@@ -777,5 +777,52 @@ view_url_fails_closed_on_query_error_test_() ->
         fun() ->
             ?assertEqual({error, forbidden}, attach_logic:view_url(1, <<"u1/file/a.png">>)),
             ?assertEqual(0, meck:num_calls(elib_oss, presign_get_for_key, 3))
+        end
+    ).
+
+assert_gateway_url(Uid, ObjectKey) ->
+    Previous = [{Key, application:get_env(imboy, Key)} || Key <- [jwt_key, base_url]],
+    Secret = <<"synthetic-attachment-url-secret-only">>,
+    try
+        application:set_env(imboy, jwt_key, Secret),
+        application:set_env(imboy, base_url, <<"http://127.0.0.1:9800">>),
+        {ok, Url} = attach_logic:view_url(Uid, ObjectKey),
+        #{
+            host := <<"127.0.0.1">>,
+            path := <<"/api/v1/attachment/content">>,
+            query := Query
+        } = uri_string:parse(Url),
+        Ticket = proplists:get_value(<<"ticket">>, uri_string:dissect_query(Query)),
+        ?assertEqual({ok, Uid, ObjectKey}, attachment_download_ticket:verify(Ticket, Secret))
+    after
+        lists:foreach(
+            fun
+                ({Key, {ok, Value}}) -> application:set_env(imboy, Key, Value);
+                ({Key, undefined}) -> application:unset_env(imboy, Key)
+            end,
+            Previous
+        )
+    end.
+
+soft_deleted_group_and_channel_downloads_are_denied_test_() ->
+    Secret = <<"synthetic-deleted-attachment-secret">>,
+    ?WITH_MECKS(
+        [
+            {config_ds, [{'env', 2, fun(jwt_key, _) -> Secret end}]},
+            {attachment_ds, [
+                {'find_by_path', 1, fun(Key) ->
+                    {ok, #{<<"scope">> => Key, <<"status">> => -1}}
+                end}
+            ]}
+        ],
+        fun() ->
+            lists:foreach(
+                fun(Scope) ->
+                    ?assertEqual({error, forbidden}, attach_logic:view_url(7, Scope)),
+                    {ok, Ticket} = attachment_download_ticket:issue(7, Scope, Secret),
+                    ?assertEqual({error, forbidden}, attach_logic:download(Ticket))
+                end,
+                [<<"group">>, <<"channel">>]
+            )
         end
     ).
