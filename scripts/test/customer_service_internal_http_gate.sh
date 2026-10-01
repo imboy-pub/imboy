@@ -36,6 +36,7 @@ python3 - <<'PY'
 import os, pathlib, subprocess, shutil
 out = pathlib.Path(os.environ['IMBOY_GATE_RUN_DIR'])
 deps = pathlib.Path(os.environ['IMBOY_GATE_DEPS_ROOT'])
+os.environ['ERL_CRASH_DUMP'] = str(out / 'erl_crash.dump')
 # Freeze metadata before compilation; a shared build can replace ebin meanwhile.
 shutil.copyfile(deps / 'ebin' / 'imboy.app', out / 'beams' / 'imboy.app')
 paths = [str(p) for p in (deps / 'deps').glob('*/ebin')]
@@ -44,7 +45,8 @@ if not paths:
 # Read application metadata only; compile every product module from current source.
 paths.insert(0, str(deps / 'ebin'))
 files = [str(p) for p in pathlib.Path('src').rglob('*.erl')]
-files += ['test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wiring_http_tests.erl',
+files += ['test/common/meck_helper.erl', 'test/api/qr_login_sse_handler_tests.erl',
+          'test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wiring_http_tests.erl',
           'test/common/inttest_marker_db.erl', 'test/ds/workspace_creation_pg_tests.erl',
           'test/api/enterprise_workspace_write_http_checks.erl',
           'test/ds/channel_creation_tx_pg_checks.erl',
@@ -79,7 +81,7 @@ expr = ('application:set_env(lager,handlers,[{lager_console_backend,[{level,erro
         'application:set_env(imboy,postgre_aes_key,<<"SYNTHETIC-CONFORMANCE-AES-KEY">>), '
         'application:set_env(imboy,pg_conf,#{start_mfa => {epgsql,connect,[#{}]}}), '
         '{ok,_} = imboy_cache:start_link([]), '
-        'case eunit:test([enterprise_internal_wiring_http_tests,workspace_creation_pg_tests],[verbose]) of '
+        'case eunit:test([enterprise_internal_wiring_http_tests,workspace_creation_pg_tests,qr_login_sse_handler_tests],[verbose]) of '
         'ok -> halt(0); _ -> halt(1) end.')
 browser_runner = os.environ.get('IMBOY_CS_BROWSER_RUNNER')
 if browser_runner:

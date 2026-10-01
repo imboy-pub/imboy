@@ -88,17 +88,17 @@ info(qr_sse_heartbeat, Req0, State) ->
     %% 不触发 onmessage），重启 timer。维持 TCP keepalive 防 cowboy idle_timeout。
     %% Heartbeat: send SSE comment, browsers auto-filter (no onmessage triggered),
     %% then reschedule timer to maintain TCP keepalive.
-    Req = cowboy_req:stream_body(<<": heartbeat\n\n">>, nofin, Req0),
+    ok = cowboy_req:stream_body(<<": heartbeat\n\n">>, nofin, Req0),
     NewTimer = erlang:send_after(?HEARTBEAT_INTERVAL_MS, self(), qr_sse_heartbeat),
-    {ok, Req, State#{heartbeat_timer => NewTimer}};
+    {ok, Req0, State#{heartbeat_timer => NewTimer}};
 info(Event, Req0, State) when is_map(Event) ->
     Json = jsone:encode(Event, [native_utf8]),
     Chunk = <<"data: ", Json/binary, "\n\n">>,
-    Req = cowboy_req:stream_body(Chunk, nofin, Req0),
+    ok = cowboy_req:stream_body(Chunk, nofin, Req0),
     case maps:get(<<"status">>, Event, undefined) of
-        <<"confirmed">> -> {stop, Req, State};
-        <<"expired">> -> {stop, Req, State};
-        _ -> {ok, Req, State}
+        <<"confirmed">> -> {stop, Req0, State};
+        <<"expired">> -> {stop, Req0, State};
+        _ -> {ok, Req0, State}
     end;
 info(_Other, Req, State) ->
     %% 非 map 消息（system / tcp / 其他）容错：保持 loop，不中断
