@@ -38,6 +38,7 @@ run_fixture() ->
         ?assertEqual(true, maps:get(<<"channel">>, Flags)),
         ?assertEqual(false, maps:get(<<"e2ee">>, Flags)),
         Directory = seed_directory(H),
+        NativeOa = prepare_native_oa(H),
         {ok, Invite} = organization_invite_code_app:create(995002, 995102, #{}),
         Dir = os:getenv("IMBOY_GATE_RUN_DIR"),
         ok = file:write_file(
@@ -49,16 +50,69 @@ run_fixture() ->
                 sign_key => ?KEY,
                 organization_id => <<"995101">>,
                 directory => Directory,
+                native_oa => NativeOa,
                 join_code => maps:get(code, Invite),
                 package => <<"pub.imboy.app.gzcustomer">>,
                 synthetic_only => true
             })
         ),
+        ok = file:change_mode(filename:join(Dir, "mobile-fixture.json"), 8#600),
         await_device_done(Dir, erlang:monotonic_time(millisecond) + 1800000),
-        assert_native_leave(H, Dir)
+        assert_native_leave(H, Dir),
+        assert_native_oa(H, Dir)
     after
         ?HTTP:teardown_all(H),
         inttest_marker_db:release(H)
+    end.
+
+prepare_native_oa(#{conn := C, app_sso := App, cred_sso := Credential}) ->
+    case os:getenv("IMBOY_NATIVE_OA_REDIRECT") of
+        false ->
+            #{};
+        Raw ->
+            Redirect = list_to_binary(Raw),
+            ?assertMatch(
+                {match, _},
+                re:run(
+                    Redirect,
+                    <<"^https://127\\.0\\.0\\.1:[1-9][0-9]{0,4}/sso/cb$">>
+                )
+            ),
+            ?assert(maps:get(port, uri_string:parse(Redirect)) =< 65535),
+            ok = ?HTTP:sql_exec(
+                C,
+                <<"UPDATE enterprise_application SET allowed_redirect_uris=$2::text[] WHERE id=$1">>,
+                [App, [Redirect]]
+            ),
+            {ok, _} = enterprise_external_identity_repo:bind_tx(
+                C, 995101, App, <<"synthetic-mobile-oa-user">>, ?UID
+            ),
+            #{
+                redirect_uri => Redirect,
+                application_key => <<"intbe02-oa-sso">>,
+                credential => Credential
+            }
+    end.
+
+assert_native_oa(#{conn := C, app_sso := App}, Dir) ->
+    case filelib:is_file(filename:join(Dir, "native-oa.success")) of
+        false ->
+            ok;
+        true ->
+            #{<<"consumed">> := 1} = ?HTTP:one(
+                C,
+                <<"SELECT count(*) AS consumed FROM enterprise_oa_sso_code WHERE application_id=$1 AND user_id=$2 AND consumed_at IS NOT NULL">>,
+                [App, ?UID]
+            ),
+            #{<<"audited">> := Audited} = ?HTTP:one(
+                C,
+                <<"SELECT count(*) AS audited FROM enterprise_audit_event WHERE organization_id=995101 AND action='oa.sso.exchanged'">>
+            ),
+            ?assertEqual(1, Audited),
+            ok = file:write_file(
+                filename:join(Dir, "native-oa-oracle.json"),
+                jsone:encode(#{status => <<"PASS">>, consumed => 1, audited => 1})
+            )
     end.
 
 seed_directory(#{conn := C}) ->
