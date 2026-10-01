@@ -1443,7 +1443,35 @@ assert_coverage() ->
         lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
     Actual = intbe02_http_support:covered_ids(),
     ?assertEqual(42, length(Expected)),
-    ?assertEqual(Expected, Actual, {coverage_gap, Expected -- Actual, Actual -- Expected}).
+    ?assertEqual(Expected, Actual, {coverage_gap, Expected -- Actual, Actual -- Expected}),
+    write_coverage(Actual).
+
+write_coverage(Actual) ->
+    case os:getenv("IMBOY_GATE_RUN_DIR") of
+        false ->
+            ok;
+        Dir ->
+            Rows = [
+                #{
+                    id => maps:get(id, R),
+                    method => maps:get(method, R),
+                    path => maps:get(path, R),
+                    behavior_assertions_passed => true
+                }
+             || R <- enterprise_internal_routes:routes(), lists:member(maps:get(id, R), Actual)
+            ],
+            ok = file:write_file(
+                filename:join(Dir, "internal-operation-coverage.json"),
+                jsone:encode(#{
+                    covered_operation_ids => Actual,
+                    operations => Rows,
+                    external_limits => [
+                        <<"object HEAD stub for INT-08">>,
+                        <<"public DNS fixture; no real outbound webhook delivery">>
+                    ]
+                })
+            )
+    end.
 
 %%%===================================================================
 %%% conformance 内部助手
@@ -1464,13 +1492,48 @@ assert_err(Resp, Code) ->
         {status_mismatch, Code, maps:get(status, Resp), maps:get(body, Resp)}
     ),
     Body = maps:get(body, Resp),
-    case binary:match(Body, Code) of
-        nomatch -> error({envelope_missing_code, Code, maps:get(status, Resp), Body});
-        _ -> ok
-    end,
-    %% 信封不得回显 credential 值（redaction 红线）且必含 "code" 键
-    ?assertEqual(nomatch, binary:match(Body, <<"deadbeef">>)),
-    ?assertNotEqual(nomatch, binary:match(Body, <<"\"code\"">>)).
+    assert_error_json(Body, Code).
+
+%% The previous substring oracle accepted a wrong code if the message matched.
+error_envelope_requires_exact_code_test() ->
+    Forged = jsone:encode(#{
+        <<"error">> => #{
+            <<"code">> => <<"invalid_request">>, <<"message">> => <<"invalid_credential">>
+        }
+    }),
+    ?assertException(
+        error,
+        {assertEqual, _},
+        assert_error_json(Forged, <<"invalid_credential">>)
+    ).
+
+integration_readme_scope_contract_test() ->
+    {ok, Readme} = file:read_file("api/internal/v1/README.md"),
+    {match, Captures} = re:run(
+        Readme,
+        <<"\\| `([a-z_]+:[a-z_]+)` \\|">>,
+        [global, {capture, [1], binary}]
+    ),
+    ?assertEqual(
+        lists:sort(enterprise_internal_scope:all()),
+        lists:usort([Scope || [Scope] <- Captures])
+    ),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(
+            Readme,
+            <<"Authorization: Bearer <credential_prefix>.<secret>">>
+        )
+    ).
+
+assert_error_json(Body, Code) ->
+    #{<<"error">> := Error} = Json = jsone:decode(Body),
+    ?assertEqual([<<"error">>], maps:keys(Json)),
+    ?assertEqual([<<"code">>, <<"message">>], lists:sort(maps:keys(Error))),
+    ?assertEqual(Code, maps:get(<<"code">>, Error)),
+    Message = maps:get(<<"message">>, Error),
+    ?assert(is_binary(Message) andalso byte_size(Message) > 0),
+    ?assertEqual(nomatch, binary:match(Body, <<"deadbeef">>)).
 
 %% 200 + JSON object（schema 对齐的最低门：能解码且为 map）
 assert_ok_json(Resp) ->
@@ -1518,13 +1581,7 @@ assert_error_envelope(Response, Code) ->
     ?assert(is_binary(Code)),
     {Status, Body} = split_response(Response),
     ?assertEqual(enterprise_internal_error:http_status(Code), Status),
-    case binary:match(Body, Code) of
-        nomatch -> error({envelope_missing_code, Code, Status, Body});
-        _ -> ok
-    end,
-    %% 信封不得回显 credential / Authorization 值（redaction 红线）
-    ?assertEqual(nomatch, binary:match(Body, <<"deadbeef">>)),
-    ?assertNotEqual(nomatch, binary:match(Body, <<"\"code\"">>)).
+    assert_error_json(Body, Code).
 
 split_response(Response) ->
     [Head, Body] = binary:split(Response, <<"\r\n\r\n">>),

@@ -25,7 +25,7 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 | 域 | 能力 |
 |---|---|
 | 应用与凭证 | 读取本应用信息（INT-01） |
-| 外部身份映射 | OA 用户 ↔ IMBoss 用户的绑定 / 解析 / 解绑 / 目录查询（INT-02/03/15/16/17） |
+| 外部身份映射 | OA 用户 ↔ IMBoy 用户的绑定 / 解析 / 解绑 / 目录查询（INT-02/03/15/16/17） |
 | 企业群组 | 建群、增删成员、改群、成员角色；详情/列表/成员只读（INT-04/05/06/18/19/20/21/26/27） |
 | Workspace 只读 | 列表与详情（INT-24/25） |
 | 企业文件 | 直传预签名 / 确认入库 / 治理（INT-07/08/22） |
@@ -75,13 +75,15 @@ curl -sS "$BASE_URL/api/internal/v1/application" \
 所有请求必须携带：
 
 ```
-Authorization: Bearer ib_int_<application_id>.<secret>
+Authorization: Bearer <credential_prefix>.<secret>
 ```
 
-- 凭证与**单个企业应用**一一对应，其授权范围 = 签发时授予的 scope 集合（§4）。
+- 每份凭证只属于一个企业应用，同一应用可以有多份凭证。有效权限为应用 allowed_scopes 与当前生效 Grant scopes 的交集；没有 Grant、全部撤销或全部过期时不回退为应用默认权限。
 - 凭证可由平台管理员**轮换**（旧凭证立即失效）与**撤销**；应用被停用/归档后
   所有请求返回 `application_disabled`（403）。
 - secret 在平台侧只保存不可逆摘要；**泄露即轮换**，无需担心「改不回来」。
+
+`credential_prefix` 是服务端签发的完整 `ib_int_...` 前缀，不是 application_id；也不要用返回的 credential_id 自行重建。签发／轮换响应的 `secret` 字段实际给出可直接使用的完整凭证，原样作为 Bearer 值保存。
 
 ## 4. 授权（Scope，固定 18 枚举，无通配）
 
@@ -93,6 +95,7 @@ Authorization: Bearer ib_int_<application_id>.<secret>
 | `groups:write` | 群组与成员管理 |
 | `groups:read` | 群组/成员只读（INT-18/26/27） |
 | `workspaces:read` | Workspace 列表与详情（INT-24/25） |
+| `workspaces:write` | Workspace 创建、修改与软归档（INT-37..39；不自动授予） |
 | `projects:read` | 项目列表与详情（INT-28/29） |
 | `channels:read` | 频道列表与详情（INT-30/31） |
 | `channels:write` | 企业频道创建、修改和软归档（INT-40..42；工作空间 Grant） |
@@ -164,14 +167,15 @@ v1.1.1 起提供）；具体阈值由部署配置，
 | `rate_limited` | 429 | 触发限流（fail-closed） |
 | `security_gate_closed` | 503 | 平台安全闸关闭（暂时拒绝服务） |
 | `internal_error` | 500 | 内部错误（安全兜底：未列入稳定表的码一律收敛为此值） |
-
-| `version_conflict` | 409 | 坐席版本已变化，刷新后重新提交 |
-| `resource_conflict` | 409 | 坐席已存在 |
+| `version_conflict` | 409 | 资源版本已变化，刷新后重新提交 |
+| `resource_conflict` | 409 | 资源已存在，例如坐席重复开通 |
 | `seat_limit_exceeded` | 409 | 企业坐席额度不足 |
 
 ## 8. Webhook 出站（你方系统将收到的回调）
 
-出站投递带以下签名头，供你方验证请求确实来自 IMBoy（**旋转凭证后旧签名一律不通过**）：
+出站投递使用独立的 Webhook HMAC secret，与 Internal API 的 Bearer 凭证不同。通过 INT-12（`PUT /webhook`）设置 `rotate: true` 轮换签名密钥，响应只返回新 secret 一次；轮换 API 凭证不会轮换此密钥。接收方更新为新签名密钥后，旧密钥生成的签名不能通过验证。
+
+出站投递包含以下签名头：
 
 | 头 | 含义 |
 |---|---|

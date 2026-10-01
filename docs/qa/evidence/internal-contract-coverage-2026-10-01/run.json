@@ -1,0 +1,46 @@
+{
+  "base_sha": "29ecf78531f25772ba3d059125a852d7e6502932",
+  "exit_code": 0,
+  "run_dir": "/tmp/imboy-seat-http.i8ImXk",
+  "operation_count": 42,
+  "unique_path_count": 28,
+  "eunit_count": 28,
+  "sources": [
+    {
+      "path": "test/api/enterprise_internal_wiring_http_tests.erl",
+      "sha256": "ee26a5877003ac5a96259dbc36db6aaef73cfae31c94cd8036b738abbe7ac8cd"
+    },
+    {
+      "path": "src/api/enterprise_internal_routes.erl",
+      "sha256": "e8f379ec029bff9a09bde357f912fab222641fe0f03562808712e49e9e578384"
+    },
+    {
+      "path": "src/api/enterprise_internal_scope.erl",
+      "sha256": "bffdce33f92bbd1284e28e446c3360e20b2a3c8633376345044c61958151d484"
+    },
+    {
+      "path": "src/api/enterprise_internal_error.erl",
+      "sha256": "db51d476d815d8dcb9cb7ea9b82575811a35ac07bb49c23ae09c248531981754"
+    },
+    {
+      "path": "api/internal/v1/README.md",
+      "sha256": "cc7efcbf688e2c27fc2be2a28b1e3b29b1cccd98670df0d9f30bf831204531d5"
+    },
+    {
+      "path": "api/openapi-internal.yaml",
+      "sha256": "45c4d56c72b0baff60b0e17bfa116214d550886a2cfd9bbfc298c35c918064c8"
+    },
+    {
+      "path": "api/openapi-internal.bundle.yaml",
+      "sha256": "f49e5c5dd3b1e89c5c98938e082e69fb31ff8f09a31a45c9ad8972a7926c1f84"
+    },
+    {
+      "path": "api/openapi.yaml",
+      "sha256": "0353eb7b49ddaa1791bdaf9bbb60589e33f1c34d2ccefa6168b719237e2239b9"
+    },
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "294a526b9494ad9be20bb36d8e54c7e675c24da346293602053a54a0c562d1a1"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+[
+  {
+    "path": "aggregate.log",
+    "sha256": "9b79118d3569e692031ec9d31f8148f338f804a9f76621aff8524de2f4f3abcd"
+  },
+  {
+    "path": "compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "http.log",
+    "sha256": "b420cb0c7fa35b1bfc7af6b28f00ee69c17e8e55b3619c05eb1c6749a7fb2002"
+  },
+  {
+    "path": "image-id.txt",
+    "sha256": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+  },
+  {
+    "path": "internal-operation-coverage.json",
+    "sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1"
+  },
+  {
+    "path": "manifest.log",
+    "sha256": "5f80f2f02144ec6edb4a481d17e438c588be9c5382dffcff709abef193ae754c"
+  },
+  {
+    "path": "run.json",
+    "sha256": "36add5c64843f4aee0b6d1be9c87b3c54702a85ddfee22a7e58f952e10b71353"
+  },
+  {
+    "path": "yaml-check.json",
+    "sha256": "6b254e91d34bb10eff81b8085445491011d8f553e6c3bde18ce97d561ccb8e05"
+  }
+]
