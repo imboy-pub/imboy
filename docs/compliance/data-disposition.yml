@@ -1129,6 +1129,13 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  enterprise_asset_delete_queue:
+    action: retain
+    owner: enterprise
+    reason: 已提交的企业对象删除意图，个人账号注销不得丢弃待清理对象的定位信息
+    mechanism: drain 按组织和工作空间删除对象，存储端确认删除或对象不存在后才删除队列记录；失败保留供重试
+    review: self-evident
+    retention: until object deletion acknowledged
   enterprise_audit_event:
     action: retain
     owner: enterprise
