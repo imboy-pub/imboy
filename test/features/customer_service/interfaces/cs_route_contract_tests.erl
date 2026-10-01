@@ -808,9 +808,7 @@ interface_sources_have_no_db_or_dynamic_dispatch_test() ->
                 <<"apply(">>,
                 <<"list_to_atom">>,
                 <<"binary_to_atom">>,
-                <<"crypto:">>,
-                <<"view_url">>,
-                <<"presign">>
+                <<"crypto:">>
             ],
             lists:foreach(
                 fun(Needle) ->
@@ -820,10 +818,42 @@ interface_sources_have_no_db_or_dynamic_dispatch_test() ->
                     )
                 end,
                 Forbidden
-            )
+            ),
+            ?assertEqual([], asset_operation_references(read_source(File)), {asset_call, File})
         end,
         Files
     ).
+
+asset_operation_references_test() ->
+    ?assertEqual(
+        [],
+        asset_operation_references(
+            <<"action() -> <<\"presign\">>. % store:presign().\n">>
+        )
+    ),
+    ?assertEqual(
+        [presign, view_url, presign_put],
+        asset_operation_references(
+            <<"f() -> store:presign (x), fun store:view_url/1, store:presign_put(x).">>
+        )
+    ).
+
+asset_operation_references(Src) ->
+    {ok, Tokens, _} = erl_scan:string(unicode:characters_to_list(Src)),
+    asset_operation_tokens(Tokens).
+
+asset_operation_tokens([{atom, _, Name}, Next | Rest]) ->
+    Text = atom_to_list(Name),
+    Forbidden = lists:prefix("presign", Text) orelse lists:prefix("view_url", Text),
+    Reference = element(1, Next) =:= '(' orelse element(1, Next) =:= '/',
+    case Forbidden andalso Reference of
+        true -> [Name | asset_operation_tokens([Next | Rest])];
+        false -> asset_operation_tokens([Next | Rest])
+    end;
+asset_operation_tokens([_ | Rest]) ->
+    asset_operation_tokens(Rest);
+asset_operation_tokens([]) ->
+    [].
 
 %% ===================================================================
 %% 出站编码（A02 TSID string）
