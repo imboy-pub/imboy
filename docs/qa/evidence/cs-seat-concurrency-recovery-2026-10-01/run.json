@@ -1,0 +1,40 @@
+{
+  "status": "PARTIAL",
+  "browser_exit": 0,
+  "tcp_tests_passed": 3,
+  "backend_base": "35cba45f6f4cac412f90ebc2edd530d458467877",
+  "admin_base": "fc8766fa13611679be8dd763fc5c88234aa225c3",
+  "source_hashes": {
+    "backend": {
+      "test/api/customer_service_browser_fixture.erl": "053ed22ef7c21c8d151818510d3f21bd7229544035d3ea7808245a57e9edde88"
+    },
+    "admin": {
+      "scripts/test/customer-service-browser-journey.mjs": "fba9d894fab811e9cdf40926c7dc8ff6ef34294dfe06038fc61773ec32d6e8e2",
+      "scripts/test/customer-service-static-host.test.mjs": "14ef3cf204f94e5ad5df78f368b5cb04cb2f83bf6cd6aefcce36506f30eea348",
+      "tests/e2e/customer-service-real/helpers/static-host.mjs": "aea10cf3d6c77b2e841ee7381971f83242274f74ae29c3901f2aedfbf7c8f2a3"
+    }
+  },
+  "reused_build": "../cs-widget-browser-2026-10-01/build",
+  "build_manifest_sha256": "594c5dc67614411b331761e062817f107f7b66d7dd9ce29625e3450f5e4db2d7",
+  "claim": {
+    "action": "concurrent-browser-claim",
+    "statuses": [
+      409,
+      200
+    ]
+  },
+  "reconnect": {
+    "action": "automatic-seat-reconnect",
+    "disconnects": 1,
+    "newEventRequests": 2
+  },
+  "outage_mechanism": "Chromium context offline plus closeAllConnections on the owned gateway; all gateway streams drop, only winner is kept offline; visitor and other seat may reconnect",
+  "not_proven": [
+    "arbitrary-duration outage",
+    "credential-revocation UI",
+    "object-storage attachments",
+    "physical devices",
+    "full CS-02 and six-goal completion",
+    "production readiness"
+  ]
+}

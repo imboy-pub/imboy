@@ -92,12 +92,13 @@ save_proof(Org) ->
         <<"SELECT action FROM customer_service_event WHERE organization_id=$1 ORDER BY id">>, [Org]
     ),
     ?assertMatch([#{<<"status">> := <<"closed">>, <<"rating">> := 5}], Sessions),
-    ?assertEqual(3, length(Messages)),
-    ?assertEqual(1, length([M || M <- Messages, maps:get(<<"sender_type">>, M) =:= <<"contact">>])),
+    ?assertEqual(4, length(Messages)),
+    ?assertEqual(2, length([M || M <- Messages, maps:get(<<"sender_type">>, M) =:= <<"contact">>])),
     SeatMessages = [M || M <- Messages, maps:get(<<"sender_type">>, M) =:= <<"business_identity">>],
     ?assertEqual(2, length(SeatMessages)),
-    ?assertEqual(3, length(lists:usort([maps:get(<<"client_msg_id">>, M) || M <- Messages]))),
+    ?assertEqual(4, length(lists:usort([maps:get(<<"client_msg_id">>, M) || M <- Messages]))),
     Actions = [maps:get(<<"action">>, E) || E <- Events],
+    ?assertEqual(1, length([A || A <- Actions, A =:= <<"session.claimed">>])),
     [
         ?assert(lists:member(A, Actions))
      || A <- [

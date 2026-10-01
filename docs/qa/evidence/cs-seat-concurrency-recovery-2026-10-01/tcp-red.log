@@ -1,0 +1,20 @@
+✔ current build assets and public frame are reachable through the real host (44.711292ms)
+✔ legacy or missing public widget identifiers fail before serving (134.710792ms)
+✖ disconnecting an SSE consumer closes its upstream TCP response (1008.63875ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1256.923
+
+✖ failing tests:
+
+test at scripts/test/customer-service-static-host.test.mjs:66:1
+✖ disconnecting an SSE consumer closes its upstream TCP response (1008.63875ms)
+  Error: upstream TCP stayed open after consumer disconnect
+      at Timeout.<anonymous> (file:///Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-admin/scripts/test/customer-service-static-host.test.mjs:86:41)
+      at listOnTimeout (node:internal/timers:605:17)
+      at process.processTimers (node:internal/timers:541:7)

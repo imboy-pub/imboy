@@ -1,0 +1,39 @@
+[
+  {
+    "path": "/api/v1/cs/organizations/115671607116302339/sessions/queue",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/scan",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/confirm",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/scan",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "path": "/api/v1/passport/qr_login/confirm",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "action": "concurrent-browser-claim",
+    "statuses": [
+      409,
+      200
+    ]
+  },
+  {
+    "action": "automatic-seat-reconnect",
+    "disconnects": 1,
+    "newEventRequests": 2
+  }
+]

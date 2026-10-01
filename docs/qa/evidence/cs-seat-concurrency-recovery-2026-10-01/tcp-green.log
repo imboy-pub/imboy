@@ -1,0 +1,11 @@
+✔ current build assets and public frame are reachable through the real host (44.929625ms)
+✔ legacy or missing public widget identifiers fail before serving (131.823625ms)
+✔ disconnecting an SSE consumer closes its upstream TCP response (6.074417ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 235.429709
