@@ -173,16 +173,14 @@ token_credential(Req, Optional) ->
         Raw when is_binary(Raw), Raw =/= <<>> ->
             {ok, #{secret => Raw}};
         _ when Optional ->
-            %% CSB-02R：bootstrap 场景无 visit 头——注入服务端持有的
-            %% subject_key（env `cs_widget_subject_key`，部署合同材料）。
-            %% 缺该 env 时返回空 map：bootstrap_args 的 shape 校验仍会
-            %% fail-closed（422），部署配置缺失不被静默放过。
-            case config_ds:env(cs_widget_subject_key, <<>>) of
-                SK when is_binary(SK), SK =/= <<>> ->
-                    {ok, #{subject_key => SK}};
-                _ ->
-                    {ok, #{}}
-            end;
+            %% CSB-02R：bootstrap 场景无 visit 头——返回空 map 即可。
+            %% subject_key 的 env 装配在 application 层
+            %% （cs_widget_env:merge_subject_key，facade `widget_bootstrap/1`
+            %% 的 merge_bootstrap 第一步）注入同一 env
+            %% `cs_widget_subject_key`；缺 env 时 shape 校验照旧
+            %% fail-closed（422），部署配置缺失不被静默放过。handler 面
+            %% 保持零 DS 直调（CS-02 接口层静态审计契约）。
+            {ok, #{}};
         _ ->
             {error, credential_missing}
     end.
