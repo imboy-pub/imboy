@@ -19,7 +19,8 @@ run(S) ->
     ?assertEqual(null, maps:get(<<"consumed_at">>, Row)),
     ?assertEqual(Before, audit_count(C)),
     concurrent_once(S),
-    audit_failure_retry(S).
+    audit_failure_retry(S),
+    identity_revocation(S).
 
 issue(S) ->
     Redirect = <<"https://oa.customer.example.com/sso/cb">>,
@@ -83,6 +84,52 @@ audit_failure_retry(S) ->
     {ok, [Consumed]} = enterprise_query(C, Digest),
     ?assertNotEqual(null, maps:get(<<"consumed_at">>, Consumed)),
     ?assertEqual(Before + 1, audit_count(C)).
+
+identity_revocation(S) ->
+    Facts = [
+        {"mapping", <<"enterprise_external_identity">>, <<"status">>, <<"removed">>, <<"active">>,
+            <<"application_id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1) AND user_id=995017">>},
+        {"member", <<"organization_member">>, <<"status">>, <<"suspended">>, <<"active">>,
+            <<"organization_id=(SELECT organization_id FROM enterprise_oa_sso_code WHERE code_digest=$1) AND user_id=995017">>},
+        {"account", <<"\"user\"">>, <<"status">>, 0, 1,
+            <<"id=(SELECT user_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>}
+    ],
+    lists:foreach(fun(Fact) -> revoke_during_exchange(S, Fact) end, Facts).
+
+revoke_during_exchange(S, {Name, Table, Column, Revoked, Active, Where}) ->
+    C = maps:get(conn, S),
+    {Digest, Body} = issue(S),
+    Sql = <<"UPDATE ", Table/binary, " SET ", Column/binary, "=$2 WHERE ", Where/binary>>,
+    Before = audit_count(C),
+    ok = intbe02_http_support:sql_exec(C, <<"BEGIN">>),
+    try
+        {ok, 1} = elib_pg:execute(C, Sql, [Digest, Revoked]),
+        Parent = self(),
+        Ref = make_ref(),
+        spawn(fun() -> Parent ! {Ref, exchange(S, Body)} end),
+        Blocked = wait(
+            C,
+            <<"SELECT count(*)>0 AS ready FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid))>0 AND (query LIKE '%enterprise_external_identity eei%' OR query LIKE '%organization_member%')">>,
+            [],
+            100
+        ),
+        ok = intbe02_http_support:sql_exec(C, <<"COMMIT">>),
+        R =
+            receive
+                {Ref, Result} -> Result
+            after 10000 -> error(exchange_timeout)
+            end,
+        save("oa-revoke-" ++ Name ++ "-response.json", [R]),
+        ?assertEqual(422, maps:get(status, R)),
+        ?assertEqual(<<"identity_not_mapped">>, error_code(R)),
+        ?assert(Blocked),
+        {ok, [Row]} = enterprise_query(C, Digest),
+        ?assertEqual(null, maps:get(<<"consumed_at">>, Row)),
+        ?assertEqual(Before, audit_count(C))
+    after
+        intbe02_http_support:sql_exec(C, <<"ROLLBACK">>),
+        {ok, 1} = elib_pg:execute(C, Sql, [Digest, Active])
+    end.
 
 hold_exchange(S, Digest, Body, Count, Expire) ->
     C = maps:get(conn, S),

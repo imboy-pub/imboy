@@ -514,6 +514,7 @@ consume_and_resolve(Conn, Row) ->
 %% identity 解析（同事务）：mapping 行 active 且目标仍是同 Org active
 %% Human member（organization_member active + account_type=0 + user.status=1，
 %% 与 trg_..._member_guard 的 DB 侧写入守卫同语义，运行时复核）。
+%% 共享锁持有到提交，撤销先取锁时等待并重新检查最新行，拒绝旧快照。
 %% 缺失 => {error, <<"identity_not_mapped">>}——调用方必须回滚事务
 %% （池化 exchange/2 已强制；code 停留 issued，TTL 内修复后可重试）。
 -spec resolve_identity(any(), map()) -> {ok, map()} | {error, binary()}.
@@ -531,7 +532,7 @@ resolve_identity(Conn, ConsumedRow) ->
         "  AND u.account_type = 0 AND u.status = 1"
         " WHERE eei.organization_id = $1 AND eei.application_id = $2"
         "   AND eei.user_id = $3 AND eei.status = 'active'"
-        " LIMIT 1"
+        " LIMIT 1 FOR SHARE OF om, u, eei"
     >>,
     case elib_pg:query(Conn, Sql, [OrgId, AppId, UserId]) of
         {ok, [#{<<"external_user_id">> := ExternalUserId} | _]} ->
