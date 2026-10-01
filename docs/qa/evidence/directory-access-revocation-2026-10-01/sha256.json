@@ -1,0 +1,36 @@
+{
+  "repository": "imboyapp",
+  "candidate_sha": "b8f171eee4639f7aeb990c3d90fd9f3ff88621af",
+  "sources": [
+    {
+      "path": "lib/modules/organization/presentation/human_directory_controller.dart",
+      "sha256": "e4ef27ed4a4b790fc5e1de2ece46b0acc54436c41b595eac1cef1184fb73d8ad"
+    },
+    {
+      "path": "test/organization/human_directory_controller_test.dart",
+      "sha256": "c252df5e267cdc950ec8cd15b3a1bd2fd387b946e78b49fcb8f579b895b2dbab"
+    },
+    {
+      "path": "test/organization/human_directory_page_widget_test.dart",
+      "sha256": "1e3d7deeb55b559f41333e1382d55af0436ca4e0eb10df421c839d84a803bafd"
+    },
+    {
+      "path": "test/organization/human_directory_access_revocation_test.dart",
+      "sha256": "2fd8fab9c4201ba642f66edf38941617d10a0e791879a14044754875a424be87"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "analyze.txt",
+      "sha256": "718421158bcba10e1a94b3ed5fa5a26a139d8b03ae465632020a7d58f467a38b"
+    },
+    {
+      "path": "baseline.txt",
+      "sha256": "b5dddd9fabb5988aa1e80258215ec091eef174c73dc1e6cce28443b9d60f4e8c"
+    },
+    {
+      "path": "tests.txt",
+      "sha256": "bf44e6c95515cb4e968e04f4591eb93259fcc21f1a09f678d724ec1f85a49d4f"
+    }
+  ]
+}

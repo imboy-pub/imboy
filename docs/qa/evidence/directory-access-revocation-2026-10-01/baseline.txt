@@ -1,0 +1,145 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: 未登录不请求；登出丢弃目录、搜索及迟到数据
+00:00 +1: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: 准备企业切换时换账号：不得调用旧 commit 或覆盖新身份
+00:00 +2: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: 旧提交等待期间换账号：完成后不得重配新账号目录
+00:00 +3: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: 销毁后请求及切换准备返回：不写状态、不提交指针
+00:00 +4: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: §14.3 request_generation / request_key A 慢 B 快：B 胜出；A 后到被丢弃（成功与失败两条路径）
+00:00 +5: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: §14.3 request_generation / request_key stale 收尾不得关闭最新请求的 loading
+00:00 +6: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: refresh / retry 数据保留 refresh 失败：保留旧数据，不清空、不变成 empty/全屏错误
+00:00 +7: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: refresh / retry 数据保留 refresh 成功：各节原子替换（不清空再填）
+00:00 +8: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: refresh / retry 数据保留 initial 全失败 → 全屏 error；retry（refresh）成功 → ready
+00:00 +9: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: 分页：去重 / 部门成员 cursor 独立 / cursor 400 一次性重试 append 按 EntityId 去重保序
+00:00 +9 -1: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: departments 403 清空旧目录、屏蔽迟到结果、允许重试
+00:00 +9 -2: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: 分页：去重 / 部门成员 cursor 独立 / cursor 400 一次性重试 append 按 EntityId 去重保序 [E]
+  Expected: ['d1', 'd2', 'd3']
+    Actual: MappedListIterable<HumanDirectoryDepartment, String>:['d1', 'd2', 'd3', 'd3']
+     Which: at location [3] is MappedListIterable<HumanDirectoryDepartment, String>:['d1', 'd2', 'd3', 'd3'] which longer than expected
+  
+  package:matcher                                               expect
+  package:flutter_test/src/widget_tester.dart 473:18            expect
+  test/organization/human_directory_controller_test.dart 373:7  main.<fn>.<fn>
+  
+00:00 +9 -2: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: 分页：去重 / 部门成员 cursor 独立 / cursor 400 一次性重试 部门与成员 cursor 完全独立：成员末页时 loadMoreMembers 不发请求
+00:00 +10 -2: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: 分页：去重 / 部门成员 cursor 独立 / cursor 400 一次性重试 cursor 400：清空对应分页并从首页重试一次；再失败展示错误不循环
+00:00 +11 -2: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: 分页：去重 / 部门成员 cursor 独立 / cursor 400 一次性重试 cursor 400 首页重试成功：数据恢复且一次性标记已消耗
+00:00 +12 -2: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: org / path / query 变化重置 openDepartment：path 变化 → generation 递增 + 从首页重建（不复用 cursor）
+00:00 +13 -2: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: org / path / query 变化重置 query 变化：清空三类分页 + 新 generation；>=2 字符才发搜索请求
+00:00 +13 -2: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: departments 403 清空旧目录、屏蔽迟到结果、允许重试 [E]
+  Expected: HumanDirectoryPhase:<HumanDirectoryPhase.error>
+    Actual: HumanDirectoryPhase:<HumanDirectoryPhase.ready>
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test/organization/human_directory_access_revocation_test.dart 32:3  _denied
+  test/organization/human_directory_access_revocation_test.dart 68:9  main.<fn>
+  
+00:00 +13 -3: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: departments 404 清空旧目录、屏蔽迟到结果、允许重试
+00:00 +13 -4: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: departments 404 清空旧目录、屏蔽迟到结果、允许重试 [E]
+  Expected: HumanDirectoryPhase:<HumanDirectoryPhase.error>
+    Actual: HumanDirectoryPhase:<HumanDirectoryPhase.ready>
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test/organization/human_directory_access_revocation_test.dart 32:3  _denied
+  test/organization/human_directory_access_revocation_test.dart 68:9  main.<fn>
+  
+00:00 +13 -4: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: members 403 清空旧目录、屏蔽迟到结果、允许重试
+00:00 +13 -4: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: org / path / query 变化重置 query 变化：清空三类分页 + 新 generation；>=2 字符才发搜索请求 [E]
+  Expected: an object with length of <3>
+    Actual: [
+              Instance of 'HumanDirectorySearchItem',
+              Instance of 'HumanDirectorySearchItem',
+              Instance of 'HumanDirectorySearchItem',
+              Instance of 'HumanDirectorySearchItem'
+            ]
+     Which: has length of <4>
+  
+  package:matcher                                               expect
+  package:flutter_test/src/widget_tester.dart 473:18            expect
+  test/organization/human_directory_controller_test.dart 541:7  main.<fn>.<fn>
+  
+00:00 +13 -5: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: Organization 两阶段切换 prepare 失败：完整 rollback（旧 Org/数据保留 + 可重试错误）
+00:00 +14 -5: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: Organization 两阶段切换 prepare 成功但 shell 加载失败：同样 rollback
+00:00 +15 -5: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: Organization 两阶段切换 commit 失败：rollback 到旧 Org（不 reconfigure、不卡死、可重试）
+00:00 +16 -5: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: Organization 两阶段切换 同一 Org 目标：no-op（不进切换流程）
+00:00 +17 -5: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: didUpdateWidget 语义（configure 重入） orgId 变化 → generation 递增 + 重建；相同身份 no-op
+00:00 +17 -5: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: members 403 清空旧目录、屏蔽迟到结果、允许重试 [E]
+  Expected: HumanDirectoryPhase:<HumanDirectoryPhase.error>
+    Actual: HumanDirectoryPhase:<HumanDirectoryPhase.ready>
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test/organization/human_directory_access_revocation_test.dart 32:3  _denied
+  test/organization/human_directory_access_revocation_test.dart 68:9  main.<fn>
+  
+00:00 +18 -5: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: members 404 清空旧目录、屏蔽迟到结果、允许重试
+00:00 +18 -6: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: /me 捷径 best-effort me 失败不阻塞浏览：phase ready、捷径收起
+00:00 +19 -6: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_controller_test.dart: /me 捷径 best-effort me 成功：我的部门捷径可见
+00:00 +20 -6: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: members 404 清空旧目录、屏蔽迟到结果、允许重试 [E]
+  Expected: HumanDirectoryPhase:<HumanDirectoryPhase.error>
+    Actual: HumanDirectoryPhase:<HumanDirectoryPhase.ready>
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test/organization/human_directory_access_revocation_test.dart 32:3  _denied
+  test/organization/human_directory_access_revocation_test.dart 68:9  main.<fn>
+  
+00:00 +20 -6: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: search 403 清空旧目录、屏蔽迟到结果、允许重试
+00:00 +20 -7: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: search 403 清空旧目录、屏蔽迟到结果、允许重试 [E]
+  Expected: HumanDirectoryPhase:<HumanDirectoryPhase.error>
+    Actual: HumanDirectoryPhase:<HumanDirectoryPhase.ready>
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test/organization/human_directory_access_revocation_test.dart 32:3  _denied
+  test/organization/human_directory_access_revocation_test.dart 68:9  main.<fn>
+  
+00:00 +20 -7: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: search 404 清空旧目录、屏蔽迟到结果、允许重试
+00:00 +20 -8: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: search 404 清空旧目录、屏蔽迟到结果、允许重试 [E]
+  Expected: HumanDirectoryPhase:<HumanDirectoryPhase.error>
+    Actual: HumanDirectoryPhase:<HumanDirectoryPhase.ready>
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test/organization/human_directory_access_revocation_test.dart 32:3  _denied
+  test/organization/human_directory_access_revocation_test.dart 68:9  main.<fn>
+  
+00:00 +20 -8: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: me 403 清空旧目录、屏蔽迟到结果、允许重试
+00:00 +20 -9: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: me 403 清空旧目录、屏蔽迟到结果、允许重试 [E]
+  Expected: HumanDirectoryPhase:<HumanDirectoryPhase.error>
+    Actual: HumanDirectoryPhase:<HumanDirectoryPhase.ready>
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test/organization/human_directory_access_revocation_test.dart 32:3  _denied
+  test/organization/human_directory_access_revocation_test.dart 68:9  main.<fn>
+  
+00:00 +20 -9: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: me 404 清空旧目录、屏蔽迟到结果、允许重试
+00:00 +20 -10: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: me 404 清空旧目录、屏蔽迟到结果、允许重试 [E]
+  Expected: HumanDirectoryPhase:<HumanDirectoryPhase.error>
+    Actual: HumanDirectoryPhase:<HumanDirectoryPhase.ready>
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test/organization/human_directory_access_revocation_test.dart 32:3  _denied
+  test/organization/human_directory_access_revocation_test.dart 68:9  main.<fn>
+  
+00:00 +20 -10: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: 旧企业迟到的403不能清空新企业目录
+00:00 +21 -10: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: 成员追加同页重复ID只保留一次
+00:00 +21 -11: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: 成员追加同页重复ID只保留一次 [E]
+  Expected: ['9001', '9002']
+    Actual: MappedListIterable<HumanDirectoryMember, String>:['9001', '9002', '9002']
+     Which: at location [2] is MappedListIterable<HumanDirectoryMember, String>:['9001', '9002', '9002'] which longer than expected
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test/organization/human_directory_access_revocation_test.dart 115:5  main.<fn>
+  
+00:00 +21 -11: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: departments 403 清空旧目录、屏蔽迟到结果、允许重试
+  /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: departments 404 清空旧目录、屏蔽迟到结果、允许重试
+  /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: me 403 清空旧目录、屏蔽迟到结果、允许重试
+  /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/organization/human_directory_access_revocation_test.dart: me 404 清空旧目录、屏蔽迟到结果、允许重试
+  ... and 7 more
