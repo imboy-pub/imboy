@@ -249,7 +249,7 @@ OA 外部用户标识 → **OA 建立自己的登录会话**。
 
 ## 10. 端点参考与 Postman 集合
 
-- 人类阅读：[endpoints.md](./endpoints.md)（32 个端点，按域分组）。
+- 人类阅读：[endpoints.md](./endpoints.md)（42 个端点，按域分组）。
 - **机器契约**：`../openapi-internal.yaml`（编辑真源）与
   `../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
   schema 逐端点从 handler 实证（`src/api/enterprise_*_handler.erl`），
@@ -257,7 +257,7 @@ OA 外部用户标识 → **OA 建立自己的登录会话**。
   `x-imboy-scope` / `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
   标注。工具导入用 bundle 单文件。
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
-  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 32 个端点、按域分文件夹、
+  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 42 个端点、按域分文件夹、
   示例请求体与 `{{base_url}}` / `{{credential}}` 变量；导入后填好两个变量即可发请求。
   集合只收录当前冻结路由表中**已实现、可调用**的端点；CRUD 覆盖审计中标为
   `待实现` 的路径不会作为假请求提前塞入集合。

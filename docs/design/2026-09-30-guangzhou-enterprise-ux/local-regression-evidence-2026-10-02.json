@@ -1,0 +1,160 @@
+{
+  "source_candidate": "3e743d6c23f52a439360cdac6b6d6b9ec5da1f58",
+  "records": [
+    {
+      "artifact": "/tmp/gz-enterprise-full-native-metadata-r1-terminal.json",
+      "artifact_sha256": "b5493d25297f4494582b9d2859b4eb462f54842a393c362cd8e0fe1eff5691e6",
+      "result": {
+        "status": "PASS_FULL_NATIVE_METADATA_R1",
+        "exit_code": 0,
+        "candidate": "3e743d6c23f52a439360cdac6b6d6b9ec5da1f58",
+        "session": 88474,
+        "run": "/tmp/imboy-seat-http.pLaYDl",
+        "modules_started": 1273,
+        "tests_passed": 10736,
+        "failure_events": [],
+        "source_mismatches": [],
+        "beam_mismatches": [],
+        "missing_markers": [],
+        "metadata_sha256": "a192501380e34e696c8b9472c41549b8e1a2734dcda76a9a259e0d983c1a5113",
+        "source_binding_sha256": "fadde1334556307f5766650c5060bade8fa0ae4d225f749cdb5a8a3a28b73710",
+        "http_log_sha256": "6f13be404735ae0adf8b0a2c11cfd42741aa357bac2ecce6cb253d589b5bee70",
+        "wrapper_log_sha256": "d75a46cad0e5026589e26c6b486da201f83b6551d267952102b252ffda20dae1",
+        "additional_binding": "/tmp/gz-full-native-metadata-r1-additional-binding.json",
+        "observed_at": "2026-10-01T17:25:44.614585+00:00",
+        "scope": "local isolated PG full source regression; excluded isolated suites recorded separately; not device or production acceptance"
+      }
+    },
+    {
+      "artifact": "/tmp/gz-enterprise-full-native-metadata-r2-terminal.json",
+      "artifact_sha256": "b01f6ff9667a70e1971376e6fd0811d191238dce6ca737ce5be725bcb8afbfaa",
+      "result": {
+        "status": "PASS_FULL_NATIVE_METADATA_R2",
+        "exit_code": 0,
+        "candidate": "3e743d6c23f52a439360cdac6b6d6b9ec5da1f58",
+        "session": 4618,
+        "run": "/tmp/imboy-seat-http.Vh7Rri",
+        "tests_passed": 10736,
+        "failure_events": [],
+        "source_mismatches": [],
+        "beam_mismatches": [],
+        "missing_markers": [],
+        "dependency_mismatches_since_midrun_observation": [],
+        "metadata_sha256": "bfa728f33a3001eca66d47c536721c81dca026d57651cea31fa7d737887cfd82",
+        "metadata_diff_from_r1": "applications excludes optional local-only sync; product modules/version match",
+        "strict_identical_environment_pair": false,
+        "source_binding_sha256": "dbb560b547128cebee9414108c5beab53e13705944dff7d9e3f1be8ba7ef1b99",
+        "http_log_sha256": "9d8779950fe69b1a6ec6c20049b4d40386e13ef19e37b6944986fd8ab0edd760",
+        "observed_at": "2026-10-01T17:48:42.071986+00:00",
+        "scope": "isolated PG production source regression; not device/external/production acceptance"
+      }
+    },
+    {
+      "artifact": "/tmp/gz-tsid-frozen-isolated-aggregate.json",
+      "artifact_sha256": "79f2f796a80f7538b0e91beb99a2993e03b9e04f79538918cff9618b166176d6",
+      "result": {
+        "candidate": "3e743d6c23f52a439360cdac6b6d6b9ec5da1f58",
+        "status": "PASS_SCOPED",
+        "total_tests": 99,
+        "results": [
+          {
+            "module": "elib_tsid",
+            "exit_code": 0,
+            "summary": [
+              "  All 67 tests passed."
+            ],
+            "cancelled": false,
+            "log_sha256": "71ffe718ac49db5b19d5266b316495977cff8d526e47492d461840cf8651a835"
+          },
+          {
+            "module": "elib_tsid_guard",
+            "exit_code": 0,
+            "summary": [
+              "  All 26 tests passed."
+            ],
+            "cancelled": false,
+            "log_sha256": "4e2b533b30070cfcce1f800678877716368b1d2c47e9925ca8b03b979f2e2356"
+          },
+          {
+            "module": "elib_tsid_bootstrap_harness_tests",
+            "exit_code": 0,
+            "summary": [
+              "  All 6 tests passed."
+            ],
+            "cancelled": false,
+            "log_sha256": "fe7946d390b442425c0e4ce368abe22b76142abfcaf2e7715a5c4dcad76baaa6"
+          }
+        ],
+        "evidence_directories": [
+          "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-tsid-frozen-isolated-k081o889",
+          "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-tsid-source-layout-lwk9hek0"
+        ],
+        "initial_guard_layout_failure_retained": {
+          "module": "elib_tsid_guard",
+          "exit_code": 1,
+          "summary": [
+            "  Failed: 0.  Skipped: 0.  Passed: 23."
+          ],
+          "cancelled": true,
+          "log_sha256": "4d2de317ffb5794550d9dafb6fba4cbc0730863e32ad96e176a0260fadcd8555"
+        },
+        "remaining_excluded_domains": "agent grant/run/recovery/tool-authorizer PG suites",
+        "full_gate": "RUNNING_NOT_PROVEN",
+        "observed_at": "2026-10-01T16:54:29.232264+00:00"
+      }
+    },
+    {
+      "artifact": "/tmp/gz-agent-excluded-frozen-native-terminal.json",
+      "artifact_sha256": "87b0fb8c40dfe108f7baf22dcfa99dcc2967cec8dc6b976e18df7e7d62ab10f8",
+      "result": {
+        "candidate": "3e743d6c23f52a439360cdac6b6d6b9ec5da1f58",
+        "session": 31964,
+        "run": "/tmp/imboy-seat-http.L0nZiT",
+        "wrapper_log": "/tmp/gz-agent-excluded-frozen-native.log",
+        "observed_at": "2026-10-01T16:56:57.765051+00:00",
+        "status": "PASS_SCOPED",
+        "exit_code": 0,
+        "summary": [
+          "  All 28 tests passed."
+        ],
+        "cancelled": false,
+        "log_sha256": "324689cf7dbc58864be055c8e85955e8412a151ba6950f46705c7bf7a52b4846",
+        "source_binding_sha256": "fadde1334556307f5766650c5060bade8fa0ae4d225f749cdb5a8a3a28b73710"
+      }
+    },
+    {
+      "artifact": "/tmp/gz-attachment-unix-pg-terminal.json",
+      "artifact_sha256": "ab8e5db3a0986a25c82df1d9e1a2f5e2d6237e050112bef99053519b5084f339",
+      "result": {
+        "candidate": "3e743d6c23f52a439360cdac6b6d6b9ec5da1f58",
+        "exit_code": 0,
+        "status": "PASS_SCOPED",
+        "tests_passed": 6,
+        "run": "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-attachment-unix-pg-rhyz30f8",
+        "command": "enterprise_group_attachment_pg_tests:run(unique Unix socket) using frozen source beams, own PG18 datadir, no TCP listener",
+        "source_sha256": "e4d2979c946c4c5ad4c0a0c86043d14384e13ae3777aca929523d0a6b3168c1f",
+        "log_sha256": "5635d66993d677cd1e8f0adb5fe4683866f7ec5c580c99ac85a957562223661e",
+        "oracle": "real SQL group/channel member access + parent enterprise departure + upload/revocation lock ordering; tiny schema, pool/config stubs, no actual object store",
+        "failure_events": [],
+        "observed_at": "2026-10-01T17:44:51.305981+00:00"
+      }
+    }
+  ],
+  "source_change_in_this_commit": false,
+  "readme_counts": {
+    "postman_operations": 42,
+    "openapi_operations": 42,
+    "openapi_paths": 28
+  },
+  "strict_identical_environment_pair": false,
+  "limits": [
+    "R1 includes local-only sync; R2 excludes it. Product modules and version match.",
+    "Isolated suites preserve their original failed setup attempts in temporary artifacts.",
+    "Raw logs remain outside repository; recorded hashes cannot replace missing logs.",
+    "No native Android/iOS enterprise UI or OA Cookie journey proven by these records.",
+    "No real external OA integration or production action performed.",
+    "30-item acceptance reconciliation remains partial."
+  ],
+  "overall_status": "PARTIAL",
+  "production_ready": false
+}
