@@ -1,6 +1,6 @@
 %%% Production middleware, facts, facade and database; synthetic JWT/device key only.
 -module(customer_service_seat_http_checks).
--export([run/1]).
+-export([run/1, headers/1, send/3]).
 -include_lib("eunit/include/eunit.hrl").
 -define(FIX, cs_pg_test_fixture).
 run(H) ->
@@ -46,7 +46,7 @@ journey(H, S) ->
     }),
     ?assertEqual(200, maps:get(status, R)),
     suspended_check(H, S),
-    Sent = send(H, S, <<"synthetic-http-first">>),
+    Sent = customer_service_seat_sse_checks:send_with_stream(H, S),
     ?assertEqual(200, maps:get(status, Sent)),
     ?assertEqual(1, ?FIX:count(Org, messages)),
     ?assertEqual(200, maps:get(status, send(H, S, <<"synthetic-http-first">>))),
@@ -182,18 +182,7 @@ send(H, S, Client) ->
         body => <<"synthetic HTTP seat message">>
     }).
 post(H, S, Path, Body) ->
-    Token = token_ds:encrypt_token(maps:get(actor_user_id, S)),
-    Headers = maps:merge(intbe02_http_support:auth(Token), #{
-        <<"cos">> => <<"synthetic">>,
-        <<"vsn">> => <<"seat-test">>,
-        <<"pkg">> => <<"synthetic.seat">>,
-        <<"did">> => <<"synthetic-device">>,
-        <<"method">> => <<"sha256">>,
-        <<"sign">> => elib_hasher:hmac_sha256(
-            <<"synthetic-device|seat-test|synthetic|synthetic.seat">>,
-            <<"synthetic-seat-device-key">>
-        )
-    }),
+    Headers = headers(S),
     R = intbe02_http_support:http(maps:get(port, H), <<"POST">>, Path, Body, Headers),
     File = filename:join(os:getenv("IMBOY_GATE_RUN_DIR", "/tmp"), "seat-http-responses.jsonl"),
     ok = file:write_file(
@@ -209,3 +198,17 @@ post(H, S, Path, Body) ->
         [append]
     ),
     R.
+
+headers(S) ->
+    Token = token_ds:encrypt_token(maps:get(actor_user_id, S)),
+    maps:merge(intbe02_http_support:auth(Token), #{
+        <<"cos">> => <<"synthetic">>,
+        <<"vsn">> => <<"seat-test">>,
+        <<"pkg">> => <<"synthetic.seat">>,
+        <<"did">> => <<"synthetic-device">>,
+        <<"method">> => <<"sha256">>,
+        <<"sign">> => elib_hasher:hmac_sha256(
+            <<"synthetic-device|seat-test|synthetic|synthetic.seat">>,
+            <<"synthetic-seat-device-key">>
+        )
+    }).

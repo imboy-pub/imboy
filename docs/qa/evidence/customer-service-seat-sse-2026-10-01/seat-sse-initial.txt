@@ -1,0 +1,5 @@
+retry: 2000
+id: 115639103021910016
+event: resync.required
+data: {"reason":"unknown","type":"resync.required","organization_id":"115639102896080899","workspace_id":"115639102896080900","resource_type":"queue","resource_id":null,"event_id":"115639103021910016","occurred_at":"2026-10-01T12:57:01.275+08:00","resource_version":1}
+
