@@ -1,0 +1,22 @@
+[
+  {
+    "path": "compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "http.log",
+    "sha256": "6ed39485892849c30ff9dd125de522d98d4666ef1c2ec75549b75ff0af6410aa"
+  },
+  {
+    "path": "red-check.erl",
+    "sha256": "322a38c2201c05de459336610881ec60f34afcb98e199a44feef6da74d217743"
+  },
+  {
+    "path": "run.json",
+    "sha256": "66a8c9d21e1e01a9821d4b00001f718ed8539bc0d12518003281f9107f3a4a5e"
+  },
+  {
+    "path": "webhook-write-failures.jsonl",
+    "sha256": "c64d9e34dcac08b06a1103cd88886a202a518c7f012c41f0fc8be46d41e05b62"
+  }
+]

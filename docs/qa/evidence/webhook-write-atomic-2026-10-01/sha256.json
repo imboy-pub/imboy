@@ -1,0 +1,42 @@
+[
+  {
+    "path": "compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "credential-lifecycle-http.jsonl",
+    "sha256": "3be43ca8d43ddd1f968229b26195b1a52c964315690aa7637c273edcc6392e34"
+  },
+  {
+    "path": "governance-audit-checks.json",
+    "sha256": "77f45513994be3e344dad633a67db04db0bff901c31e68d60e127495d073a04a"
+  },
+  {
+    "path": "http-regression-compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "http-regression.log",
+    "sha256": "f6f5f352a2568f2c19c619b5ee847f022ff850d89d8b2053a8dc73502f9bbfc4"
+  },
+  {
+    "path": "http.log",
+    "sha256": "9ebebac981a97e29e9e6f78b76ba5da8168707f36d2e009f676359166429df1c"
+  },
+  {
+    "path": "image-id.txt",
+    "sha256": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+  },
+  {
+    "path": "internal-operation-coverage.json",
+    "sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1"
+  },
+  {
+    "path": "run.json",
+    "sha256": "17101a73562bd7dcbe00f0d22c68cec334ad8f2dc30c99684b5fc7d029481a84"
+  },
+  {
+    "path": "webhook-write-failures.jsonl",
+    "sha256": "9f230883e27e8e6c13132f49fe6b90203f2418905b64762ff19e1f7fd37f2c9b"
+  }
+]

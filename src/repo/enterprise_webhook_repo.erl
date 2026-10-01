@@ -157,8 +157,8 @@ upsert_config_tx(Conn, PrincipalUid, Config, Events, Status) ->
             {ok, inserted};
         {ok, [_ | _]} ->
             {ok, updated};
-        {ok, _} ->
-            {ok, updated};
+        {ok, []} ->
+            {error, not_found};
         {error, Reason} ->
             ?ERROR_LOG("enterprise_webhook_repo upsert error ~p~n", [Reason]),
             {error, Reason}
@@ -172,15 +172,19 @@ set_secret_tx(Conn, PrincipalUid, Secret) ->
             E;
         {ok, Enc} ->
             Tb = elib_pg_sql:public_tablename(<<"bot">>),
-            _ =
+            case
                 elib_pg:execute(
                     Conn,
                     <<"UPDATE ", Tb/binary,
                         " SET verify_token_enc = $2, verify_token = '', token_migrated = true,"
                         " updated_at = NOW() WHERE user_id = $1">>,
                     [PrincipalUid, Enc]
-                ),
-            {ok, updated}
+                )
+            of
+                {ok, 1} -> {ok, updated};
+                {ok, 0} -> {error, not_found};
+                {error, Reason} -> {error, Reason}
+            end
     end.
 
 %% @doc 解密取 HMAC secret（投递签名用；池化）。复用 bot_repo 密钥派生。

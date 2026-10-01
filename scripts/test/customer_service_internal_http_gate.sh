@@ -62,7 +62,8 @@ files += ['test/common/meck_helper.erl', 'test/api/qr_login_sse_handler_tests.er
           'test/api/customer_service_widget_expiry_http_checks.erl',
           'test/api/enterprise_oa_expiry_http_checks.erl',
           'test/api/enterprise_admin_governance_pg_checks.erl',
-          'test/api/enterprise_app_credential_lifecycle_http_pg_tests.erl']
+          'test/api/enterprise_app_credential_lifecycle_http_pg_tests.erl',
+          'test/api/enterprise_webhook_write_http_checks.erl']
 files += ['test/lib/organization/organization_invite_race_pg_checks.erl',
           'test/lib/organization/organization_membership_journey_pg_checks.erl',
           'test/features/customer_service/infrastructure/cs_pg_test_fixture.erl',

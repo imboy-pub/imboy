@@ -1,0 +1,4 @@
+{"failure":"drop","operation":"secret","audit_delta":0,"http_status":500,"returned_secret_matches_storage":null,"state_unchanged":true}
+{"failure":"raise","operation":"secret","audit_delta":0,"http_status":500,"returned_secret_matches_storage":null,"state_unchanged":true}
+{"failure":"drop","operation":"config","audit_delta":0,"http_status":500,"returned_secret_matches_storage":null,"state_unchanged":true}
+{"failure":"raise","operation":"config","audit_delta":0,"http_status":500,"returned_secret_matches_storage":null,"state_unchanged":true}

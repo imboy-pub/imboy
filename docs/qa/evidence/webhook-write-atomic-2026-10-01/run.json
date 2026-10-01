@@ -1,0 +1,72 @@
+{
+  "base_sha": "4c867c755227d6dd2ad12b180201cbccd7e97f17",
+  "exit_code": 0,
+  "run_dir": "/tmp/imboy-seat-http.PCLuwz",
+  "sources": [
+    {
+      "path": "src/repo/enterprise_webhook_repo.erl",
+      "sha256": "065f0c986e37b5a975c5542266953c5d2de96eca8e7b009c05a76e23ffc91701"
+    },
+    {
+      "path": "test/api/enterprise_webhook_write_http_checks.erl",
+      "sha256": "6c2617e6c65f30de59f2d9137d69da358eef466f016a7d3884015838aa40aa77"
+    },
+    {
+      "path": "test/api/enterprise_admin_governance_pg_checks.erl",
+      "sha256": "b954c316a6bca9eba14bc7c5968ac3402e617184daf65cc94fa7230d81480e90"
+    },
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "4f0c30cca2982f915c1c0b577d8e2341b7e762b77e5536651c4db1b7519a7122"
+    }
+  ],
+  "http_regression": {
+    "run_dir": "/tmp/imboy-seat-http.HHv8PC",
+    "exit_code": 0,
+    "tests": 28,
+    "covered_operation_ids": [
+      "INT-01",
+      "INT-02",
+      "INT-03",
+      "INT-04",
+      "INT-05",
+      "INT-06",
+      "INT-07",
+      "INT-08",
+      "INT-09",
+      "INT-10",
+      "INT-11",
+      "INT-12",
+      "INT-13",
+      "INT-14",
+      "INT-15",
+      "INT-16",
+      "INT-17",
+      "INT-18",
+      "INT-19",
+      "INT-20",
+      "INT-21",
+      "INT-22",
+      "INT-23",
+      "INT-24",
+      "INT-25",
+      "INT-26",
+      "INT-27",
+      "INT-28",
+      "INT-29",
+      "INT-30",
+      "INT-31",
+      "INT-32",
+      "INT-33",
+      "INT-34",
+      "INT-35",
+      "INT-36",
+      "INT-37",
+      "INT-38",
+      "INT-39",
+      "INT-40",
+      "INT-41",
+      "INT-42"
+    ]
+  }
+}

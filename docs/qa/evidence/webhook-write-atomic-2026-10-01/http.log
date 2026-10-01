@@ -1,0 +1,18 @@
+20:39:17.400 [error] enterprise_webhook_repo upsert error {error,error,<<"P0001">>,
+                                      raise_exception,
+                                      <<"synthetic webhook write failure">>,
+                                      [{file,<<"pl_exec.c">>},
+                                       {line,<<"3923">>},
+                                       {routine,<<"exec_stmt_raise">>},
+                                       {severity,<<"ERROR">>},
+                                       {where,
+                                        <<"PL/pgSQL function gate_skip_webhook_write() line 1 at RAISE">>}]}
+======================== EUnit ========================
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-5-...[0.031 s] ok
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-4-...[0.018 s] ok
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-3-...[0.006 s] ok
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-2-...[0.023 s] ok
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-1-...[0.024 s] ok
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-0-...ok
+=======================================================
+  All 6 tests passed.
