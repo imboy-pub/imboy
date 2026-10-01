@@ -117,7 +117,7 @@ test_high_concurrency_messages() ->
                         % 使用 setup 中明确建立过的环状好友关系，避免把非好友流量混进成功率统计
                         FriendId = next_ring_friend(UserId, UserIds),
                         MsgData = #{
-                            <<"payload">> => <<N/integer, "压力测试消息"/utf8>>,
+                            <<"payload">> => <<(integer_to_binary(N))/binary, "压力测试消息"/utf8>>,
                             <<"msg_type">> => <<"text">>,
                             <<"action">> => <<"send">>,
                             <<"created_at">> => elib_dt:millisecond()
@@ -279,7 +279,7 @@ do_burst_messages() ->
                     %% UTF8 串产生非法序列，jsone_encode escape_string
                     %% badarg——BurstSize≥129 时确定性挂（127 过/73 挂实证）
                     <<"payload">> => iolist_to_binary(
-                        [integer_to_binary(N), "爆发测试" / utf8]
+                        [integer_to_binary(N), <<"爆发测试"/utf8>>]
                     ),
                     <<"msg_type">> => <<"text">>,
                     <<"action">> => <<"send">>,
