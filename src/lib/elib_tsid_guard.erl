@@ -574,17 +574,22 @@ now_rel(#state{} = _State) ->
     erlang:system_time(millisecond) - ?EPOCH_MS.
 
 cursor_horizon(#state{guard_ref = GRef}) ->
-    %% catch 而非直调：elib_tsid 模块被整体卸载（测试轨道 meck purge 竞态）
+    %% try/catch 而非直调：elib_tsid 模块被整体卸载（测试轨道 meck purge 竞态）
     %% 时，这里若裸调会以 undef 击杀 guard——permanent child 进入重启循环，
     %% 每轮 boot_ready 持久化 fence=prev+1s 滚雪球（2026-10-01 全量实证，
     %% 见 init 的模块依赖前置检查注释）。缺 runtime 读数时退回已持久化的
     %% safe_before 作续租基线（而非 0）：do_renew 取 Base=max(now, 本值)，
     %% 若 cursor 曾超前而此处返回 0，NewSafeBefore 会小于既有 fence 撞
     %% non_monotonic_fence → FENCED fail-closed；用 safe_before 保单调。
-    case catch elib_tsid:runtime_handle() of
+    %% 用 try 而非 case catch：`catch` 在 OTP 28+ 已 deprecated（erlfmt/
+    %% 编译告警噪音），语义等价（of 的 _ 兜非匹配值，catch _:_ 兜异常）。
+    try elib_tsid:runtime_handle() of
         {ok, #{cursor := Cursor}} ->
             (atomics:get(Cursor, 1) bsr 11) + 1;
         _ ->
+            atomics:get(GRef, 2)
+    catch
+        _:_ ->
             atomics:get(GRef, 2)
     end.
 
