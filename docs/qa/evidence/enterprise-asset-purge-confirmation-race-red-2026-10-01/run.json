@@ -1,0 +1,21 @@
+{
+  "status": "FAIL",
+  "exit_code": 1,
+  "base_sha": "f23c99122a24fd5bd69c626b9187edf463c62d4d",
+  "run_dir": "/tmp/imboy-seat-http.XwMP2w",
+  "instrumentation": "meck passthrough scheduling barrier only; native PG confirmation and Garage deletion",
+  "sources": [
+    {
+      "path": "test/api/enterprise_asset_garage_pg_checks.erl",
+      "sha256": "7236b12db9efcf8320acdb0d9e178167689249d8ebce4358d1b6f1c399df43b5"
+    },
+    {
+      "path": "src/features/enterprise_business/infrastructure/eb_pg_purge.erl",
+      "sha256": "b2947a91dd3eba0f8d0fb7190dedebb0866c4718023fe21bda2e0a11db51578c"
+    },
+    {
+      "path": "src/features/enterprise_business/infrastructure/eb_asset_store.erl",
+      "sha256": "ae84ddbde9ff4f227cb9ea1bf73fcbd1b97dd576e6bc3c02ba09e365dfc605fd"
+    }
+  ]
+}

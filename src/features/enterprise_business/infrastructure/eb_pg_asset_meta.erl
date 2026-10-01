@@ -126,7 +126,7 @@ insert_asset(OrgId, WorkspaceId, Descriptor) when is_map(Descriptor) ->
                     eb_pg_store_sql:nullify(maps:get(file_name, Descriptor, undefined)),
                     eb_pg_store_sql:nullify(maps:get(retain_until, Descriptor, undefined))
                 ],
-                case eb_pg_exec:insert_returning(?SQL_INSERT_ASSET, Params) of
+                case guarded_insert(OrgId, WorkspaceId, Id, Params) of
                     {ok, _Row} -> fetch_asset(OrgId, WorkspaceId, Id);
                     {error, no_row} -> eb_pg_exec:conflict_or(OrgId, WorkspaceId, WorkspaceId);
                     {error, _} = Err -> Err
@@ -258,4 +258,48 @@ finish_pending_cleanup(Org, Ws, Id) ->
     of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
+    end.
+
+%% A committed deletion intent owns this ID until the old object is gone.
+%% KEY SHARE precedes the queue read, so a waiting insert sees a fresh post-purge snapshot.
+guarded_insert(Org, Ws, Id, Params) ->
+    Result = elib_pg:with_tx(fun(Conn) ->
+        case
+            elib_pg:query(
+                Conn,
+                <<"SELECT id FROM workspace WHERE organization_id=$1 AND id=$2 FOR KEY SHARE">>,
+                [Org, Ws]
+            )
+        of
+            {ok, [_]} -> insert_without_pending_delete(Conn, Org, Ws, Id, Params);
+            {ok, []} -> {error, no_row};
+            {error, Reason} -> throw({rollback, {error, eb_pg_store_sql:normalize_error(Reason)}})
+        end
+    end),
+    case Result of
+        {rollback, Error} -> Error;
+        Other -> Other
+    end.
+
+insert_without_pending_delete(Conn, Org, Ws, Id, Params) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT asset_id FROM enterprise_asset_delete_queue WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3">>,
+            [Org, Ws, Id]
+        )
+    of
+        {ok, []} ->
+            case elib_pg:query(Conn, ?SQL_INSERT_ASSET, Params) of
+                {ok, []} ->
+                    {error, no_row};
+                {ok, Rows} ->
+                    {ok, Rows};
+                {error, Reason} ->
+                    throw({rollback, {error, eb_pg_store_sql:normalize_error(Reason)}})
+            end;
+        {ok, [_]} ->
+            {error, cleanup_pending};
+        {error, Reason} ->
+            throw({rollback, {error, eb_pg_store_sql:normalize_error(Reason)}})
     end.

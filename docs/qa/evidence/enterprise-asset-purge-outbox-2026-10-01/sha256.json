@@ -1,0 +1,18 @@
+[
+  {
+    "path": "compile.log",
+    "sha256": "d5cd2d48d00eda22ef76abdb413a53f509f0b5a2c515c65801e151d3bd8a4363"
+  },
+  {
+    "path": "native-gate.log",
+    "sha256": "1161d97a3db4b46047c1fc5332ddc64ba69445f4062f4ef9c3bc5bfb658c866d"
+  },
+  {
+    "path": "native-pg.log",
+    "sha256": "2aeeb57af89321b38125b06115952edcf5d442c97f14e6fc4ffcf0cbbd546705"
+  },
+  {
+    "path": "run.json",
+    "sha256": "03c0d63ee13a7ff2ebfdaf7605453944de508a5d903cc4b852fec72340f7c73f"
+  }
+]

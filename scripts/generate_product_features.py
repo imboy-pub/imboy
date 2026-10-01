@@ -76,6 +76,7 @@ FEATURE_BACKEND_MODULES = {
         "eb_pg_identity_ext",
         "eb_pg_message_ext",
         "eb_pg_offboarding_ext",
+        "eb_pg_asset_delete_queue",
         "eb_pg_purge",
         "eb_pg_purge_port",
         "eb_pg_store",

@@ -1,0 +1,44 @@
+PASS: real Garage bytes survive server and client restart; anonymous denial, tenant prefix, invalid signature, delete and missing config
+======================== EUnit ========================
+eb_asset_store_tests: a11a_asset_port_is_assembled...[0.003 s] ok
+eb_asset_store_tests: a11b_put_then_stream_round_trips_within_scope...[1.100 s] ok
+eb_asset_store_tests: a11b_cross_org_stream_and_delete_fail...[0.026 s] ok
+eb_asset_store_tests: a11c_bottom_failures_are_propagated...[0.026 s] ok
+eb_asset_store_tests: delete_private_removes_the_object_only...[0.025 s] ok
+eb_asset_store_tests: metadata_lifecycle_is_reachable_through_the_port...[0.024 s] ok
+=======================================================
+  All 6 tests passed.
+PASS: real cleanup workspace lock observed; concurrent confirmation and new hold prevent object deletion; released hold permits cleanup
+PASS: future retention and unmarked legacy tombstones keep their real objects; pending intent blocks rollback; empty-intent down/up succeeds
+======================== EUnit ========================
+eb_retention_pg_tests: a06_injected_clock_drives_candidate_selection...[0.053 s] ok
+eb_retention_pg_tests: a06_missing_or_invalid_clock_fails_closed...[0.029 s] ok
+eb_retention_pg_tests: a06_purge_deletes_children_then_message_and_audits...[0.035 s] ok
+eb_retention_pg_tests: a06_batch_limit_bounds_each_run...[0.059 s] ok
+eb_retention_pg_tests: a06_active_hold_blocks_purge_even_when_due...[0.031 s] ok
+eb_retention_pg_tests: a06_db_guard_rejection_keeps_everything...[0.033 s] ok
+eb_retention_pg_tests: a06_asset_retained_longer_than_message_blocks_purge...[0.031 s] ok
+eb_retention_pg_tests: a06_purge_never_crosses_tenants...[0.060 s] ok
+eb_retention_pg_tests: a06_skip_locked_does_not_block_on_other_sessions...[1.563 s] ok
+eb_retention_pg_tests: a06_released_hold_no_longer_blocks_due_purge_after_m1...[0.054 s] ok
+eb_retention_pg_tests: a06_purge_statements_are_tenant_scoped_and_use_skip_locked...ok
+=======================================================
+  All 11 tests passed.
+======================== EUnit ========================
+eb_purge_orphan_asset_pg_tests: f1_aged_orphan_purged_fresh_and_confirmed_kept...[0.040 s] ok
+eb_purge_orphan_asset_pg_tests: f1_purge_switch_off_refuses_orphan_delete...[0.026 s] ok
+eb_purge_orphan_asset_pg_tests: f1_orphan_retain_until_in_future_is_kept...[0.021 s] ok
+eb_purge_orphan_asset_pg_tests: f1_active_hold_keeps_aged_orphan...[0.025 s] ok
+eb_purge_orphan_asset_pg_tests: f1_bound_pending_asset_not_orphan_purged...[0.035 s] ok
+eb_purge_orphan_asset_pg_tests: f1_invalid_age_fails_closed...[0.020 s] ok
+eb_purge_orphan_asset_pg_tests: f1_env_age_config_is_honored...[0.029 s] ok
+eb_purge_orphan_asset_pg_tests: f1_orphans_never_cross_tenants...[0.045 s] ok
+eb_purge_orphan_asset_pg_tests: f1_mixed_batch_audit_keeps_message_purge_action...[0.036 s] ok
+eb_purge_orphan_asset_pg_tests: f1_orphan_statements_are_tenant_scoped...ok
+=======================================================
+  All 10 tests passed.
+PASS: purge confirmation interleavings; committed queue retries native Garage failure; audit failure leaves metadata and bytes intact
+PASS: default Garage assembly; real PG presign/PUT/confirm/content, ACL, duplicate/concurrent PUT safety, metadata reservation, missing and invalid config
+
+Evidence: /tmp/imboy-seat-http.41jnNR
+Evidence: /tmp/imboy-asset-garage.DWSbM6

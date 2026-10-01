@@ -41,6 +41,7 @@
     confirm_asset/3,
     cleanup_asset/3,
     cleanup_pending_private/5,
+    delete_queued_object/3,
     scope_key/3
 ]).
 
@@ -205,4 +206,10 @@ delete_pending_object(Org, Ws, Id, Key) ->
             {error, not_found} -> eb_pg_asset_meta:finish_pending_cleanup(Org, Ws, Id);
             {error, Reason} -> {error, {object_store, Reason}}
         end
+    end).
+
+%% Internal durable purge task; caller supplies the committed key after metadata is gone.
+delete_queued_object(Org, Ws, Key) ->
+    with_object_store(fun(ObjectStore) ->
+        ObjectStore:delete(Key, eb_pg_asset_meta:key_prefix(Org, Ws))
     end).

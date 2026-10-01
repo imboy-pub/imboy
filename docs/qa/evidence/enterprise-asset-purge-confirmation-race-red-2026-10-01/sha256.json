@@ -1,0 +1,18 @@
+[
+  {
+    "path": "compile.log",
+    "sha256": "d5cd2d48d00eda22ef76abdb413a53f509f0b5a2c515c65801e151d3bd8a4363"
+  },
+  {
+    "path": "http.log",
+    "sha256": "84698fc5b7afb4ebd7dddc9c2781a8fed4fe4b628d538b6f96a9a74cd5e76db2"
+  },
+  {
+    "path": "purge-confirmation-race.json",
+    "sha256": "15e75b1f3d3125b400e289d00f84c2c693f9a7a03a197f4d71e4da0647b89d32"
+  },
+  {
+    "path": "run.json",
+    "sha256": "ddc3df553a79ccfbeef08262a727f867dcde24ce43d0a298491901feb91b700f"
+  }
+]

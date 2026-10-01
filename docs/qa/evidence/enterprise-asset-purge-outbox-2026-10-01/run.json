@@ -1,0 +1,39 @@
+{
+  "status": "LOCAL_SCOPED_PASS",
+  "base_sha": "f23c99122a24fd5bd69c626b9187edf463c62d4d",
+  "native_exit": 0,
+  "native_evidence": "/tmp/imboy-seat-http.41jnNR",
+  "retention_cases": 11,
+  "orphan_cases": 10,
+  "original_asset_contract_cases": 6,
+  "sources": [
+    {
+      "path": "src/features/enterprise_business/infrastructure/eb_pg_purge.erl",
+      "sha256": "b8c5e64d108d4fc24b4394b5babefc1b2cbb3c240b0b14deaa0f7a9f07f45b91"
+    },
+    {
+      "path": "src/features/enterprise_business/infrastructure/eb_pg_asset_delete_queue.erl",
+      "sha256": "e007405dacc93ebb04661ff35448e38a5a7430b1052c7ad964c9cdc8efd9dc1a"
+    },
+    {
+      "path": "src/features/enterprise_business/infrastructure/eb_asset_store.erl",
+      "sha256": "e3c54bb449e8c198f2b220f280e20d11e00c0e3b8e914bf5773af92ee38384f6"
+    },
+    {
+      "path": "test/api/enterprise_asset_garage_pg_checks.erl",
+      "sha256": "fa5373ca6e00c6dd93cd3c8b6cc1e389120072fc50417c5bc15cc403c0f05be6"
+    },
+    {
+      "path": "priv/migrations/00000163_enterprise_asset_delete_queue.up.sql",
+      "sha256": "e7f64e09cff79cd38d7a602a14772ec6c28c16cc731c72bcb6f9a478f9f0ce14"
+    },
+    {
+      "path": "priv/migrations/00000163_enterprise_asset_delete_queue.down.sql",
+      "sha256": "cb9b0a9330926334d74267650c7f875b26f4401cc26660795dfec84178bf8fd5"
+    },
+    {
+      "path": "src/features/enterprise_business/infrastructure/eb_pg_asset_meta.erl",
+      "sha256": "01cd5ada75401d5a3f64b17016fa084fc819c066d8622710ced2af09a2534ab2"
+    }
+  ]
+}

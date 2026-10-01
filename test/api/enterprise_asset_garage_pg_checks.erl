@@ -27,6 +27,7 @@ run() ->
         cleanup_recovery(S, Config),
         cleanup_concurrency(S),
         cleanup_ineligible(S),
+        purge_regressions(),
         ok = eb_ports_tests:ports_contracts_match_declared_callbacks_test(),
         ok = eb_ports_tests:ports_have_explicit_frozen_contracts_test(),
         ok = eb_ports_tests:asset_port_callback_names_cannot_leak_storage_handle_test(),
@@ -328,5 +329,182 @@ migration_roundtrip() ->
             end
          || R <- epgsql:squery(Conn, Up)
         ],
+        ok
+    end).
+
+%% Instrument only the scheduling boundary; every read/write/delete stays native.
+purge_regressions() ->
+    ok = eb_pg_test_fixture:ensure_purge_role(),
+    purge_confirm_before_claim(),
+    purge_confirm_after_commit(),
+    purge_native_message(),
+    purge_failure_recovery(),
+    purge_legacy_regression(),
+    purge_queue_roundtrip(),
+    io:format(
+        "PASS: purge confirmation interleavings; committed queue retries native Garage failure; audit failure leaves metadata and bytes intact~n"
+    ).
+
+purge_confirm_before_claim() ->
+    S = cs_pg_test_fixture:new_scope(),
+    Org = maps:get(org_id, S),
+    Ws = maps:get(workspace_id, S),
+    {Id, Bytes} = expired_pending(Org, Ws),
+    Parent = self(),
+    Worker = elib_pg:with_tx(fun(Conn) ->
+        {ok, [_]} = elib_pg:query(
+            Conn,
+            <<"SELECT id FROM workspace WHERE organization_id=$1 AND id=$2 FOR UPDATE">>,
+            [Org, Ws]
+        ),
+        Pid = spawn(fun() -> Parent ! {self(), purge_native(Org, Ws)} end),
+        ok = await_cleanup_lock(Conn, 100),
+        {ok, #{status := active}} = eb_asset_store:confirm_asset(Org, Ws, Id),
+        Pid
+    end),
+    {ok, #{orphan_assets_deleted := 0}} = await_purge(Worker),
+    {ok, {content_stream, Bytes}} = eb_asset_store:stream_content(Org, Ws, Id).
+
+purge_confirm_after_commit() ->
+    S = cs_pg_test_fixture:new_scope(),
+    Org = maps:get(org_id, S),
+    Ws = maps:get(workspace_id, S),
+    {Id, Bytes} = expired_pending(Org, Ws),
+    Parent = self(),
+    Key = eb_pg_asset_meta:object_key(Org, Ws, Id),
+    ok = meck:new(eb_asset_store, [passthrough, no_link]),
+    try
+        ok = meck:expect(eb_asset_store, delete_queued_object, fun(O, W, K) ->
+            Parent ! {purge_before_object_delete, self()},
+            receive
+                continue_purge -> meck:passthrough([O, W, K])
+            after 10000 -> error(purge_boundary_timeout)
+            end
+        end),
+        Worker = spawn(fun() -> Parent ! {self(), purge_native(Org, Ws)} end),
+        receive
+            {purge_before_object_delete, Worker} -> ok
+        after 10000 -> error(purge_did_not_reach_object_delete)
+        end,
+        ?assertEqual({error, not_found}, eb_asset_store:confirm_asset(Org, Ws, Id)),
+        ?assertEqual(1, queue_count(Org, Ws)),
+        ?assertEqual(
+            {error, cleanup_pending},
+            eb_asset_store:put_private(Org, Ws, #{
+                id => Id, payload => Bytes, object_hash => eb_asset_content:sha256_hex(Bytes)
+            })
+        ),
+        Worker ! continue_purge,
+        {ok, #{orphan_assets_deleted := 1}} = await_purge(Worker),
+        ?assertEqual(
+            {error, not_found},
+            eb_asset_object_garage:get(Key, eb_pg_asset_meta:key_prefix(Org, Ws))
+        ),
+        ?assertEqual(0, queue_count(Org, Ws))
+    after
+        meck:unload(eb_asset_store)
+    end.
+
+purge_failure_recovery() ->
+    S = cs_pg_test_fixture:new_scope(),
+    Org = maps:get(org_id, S),
+    Ws = maps:get(workspace_id, S),
+    {Id, Bytes} = expired_pending(Org, Ws),
+    {ok, Config} = application:get_env(imboy, garage),
+    application:unset_env(imboy, garage),
+    try
+        {ok, #{orphan_assets_deleted := 1, object_delete_failures := [_]}} = purge_native(Org, Ws)
+    after
+        application:set_env(imboy, garage, Config)
+    end,
+    ?assertEqual({error, not_found}, eb_asset_store:fetch_asset(Org, Ws, Id)),
+    ?assertEqual(1, queue_count(Org, Ws)),
+    purge_queue_rollback_guard(),
+    Key = eb_pg_asset_meta:object_key(Org, Ws, Id),
+    {ok, #{bytes := Bytes}} = eb_asset_object_garage:get(Key, eb_pg_asset_meta:key_prefix(Org, Ws)),
+    {ok, #{orphan_assets_deleted := 0, object_delete_failures := []}} = purge_native(Org, Ws),
+    ?assertEqual(0, queue_count(Org, Ws)),
+    ?assertEqual(
+        {error, not_found}, eb_asset_object_garage:get(Key, eb_pg_asset_meta:key_prefix(Org, Ws))
+    ),
+    purge_audit_failure(Org, Ws).
+
+purge_audit_failure(Org, Ws) ->
+    {Id, Bytes} = expired_pending(Org, Ws),
+    ok = meck:new(eb_pg_audit, [passthrough, no_link]),
+    try
+        ok = meck:expect(eb_pg_audit, append_in, fun(_, _, _) ->
+            {error, synthetic_audit_failure}
+        end),
+        ?assertEqual({error, {audit_failed, synthetic_audit_failure}}, purge_native(Org, Ws)),
+        {ok, #{status := pending_confirm}} = eb_asset_store:fetch_asset(Org, Ws, Id),
+        {ok, {content_stream, Bytes}} = eb_asset_store:stream_content(Org, Ws, Id),
+        ?assertEqual(0, queue_count(Org, Ws))
+    after
+        meck:unload(eb_pg_audit)
+    end.
+
+purge_native(Org, Ws) ->
+    eb_pg_purge:purge_batch(Org, Ws, #{
+        now => eb_system_clock:now(),
+        batch_limit => 10,
+        orphan_asset_age_seconds => 3600
+    }).
+
+await_purge(Worker) ->
+    receive
+        {Worker, Result} -> Result
+    after 10000 -> error(purge_completion_timeout)
+    end.
+
+queue_count(Org, Ws) ->
+    {ok, [#{<<"n">> := N}]} = elib_pg:query(
+        <<"SELECT count(*)::integer AS n FROM enterprise_asset_delete_queue WHERE organization_id=$1 AND workspace_id=$2">>,
+        [Org, Ws]
+    ),
+    N.
+
+purge_legacy_regression() ->
+    Previous = eb_pg_test_fixture:select_asset_stub(),
+    try
+        ok = eunit:test(eb_retention_pg_tests:cases({ok, undefined}), [verbose]),
+        ok = eunit:test(eb_purge_orphan_asset_pg_tests:cases({ok, undefined}), [verbose])
+    after
+        eb_pg_test_fixture:restore_asset_store(Previous)
+    end.
+
+purge_native_message() ->
+    S = eb_pg_test_fixture:new_scope(),
+    Org = maps:get(org_id, S),
+    Ws = maps:get(workspace_id, S),
+    Until = eb_system_clock:now() - 120,
+    Msg = eb_retention_pg_tests:insert_message(S, <<"synthetic-native-garage-purge">>, Until),
+    {Id, _} = expired_pending(Org, Ws),
+    ok = cs_pg_test_fixture:exec(
+        <<"UPDATE enterprise_asset SET status='active',conversation_id=$4,message_id=$5,retain_until=to_timestamp($6::bigint) WHERE organization_id=$1 AND workspace_id=$2 AND id=$3">>,
+        [Org, Ws, Id, maps:get(conversation_id, S), Msg, Until]
+    ),
+    {ok, #{purged := [Msg], deleted := 1, object_delete_failures := []}} = purge_native(Org, Ws),
+    ?assertEqual({error, not_found}, eb_asset_store:fetch_asset(Org, Ws, Id)),
+    ?assertEqual(
+        {error, not_found},
+        eb_asset_object_garage:get(
+            eb_pg_asset_meta:object_key(Org, Ws, Id), eb_pg_asset_meta:key_prefix(Org, Ws)
+        )
+    ),
+    ?assertEqual(0, queue_count(Org, Ws)).
+
+purge_queue_rollback_guard() ->
+    {ok, Down} = file:read_file("priv/migrations/00000163_enterprise_asset_delete_queue.down.sql"),
+    [Guard, _] = binary:split(Down, <<"DROP TABLE">>),
+    {error, Error} = elib_pg:query(Guard, []),
+    ?assertEqual(<<"P0001">>, eb_pg_exec:error_of(Error)).
+
+purge_queue_roundtrip() ->
+    {ok, Down} = file:read_file("priv/migrations/00000163_enterprise_asset_delete_queue.down.sql"),
+    {ok, Up} = file:read_file("priv/migrations/00000163_enterprise_asset_delete_queue.up.sql"),
+    ok = elib_pg:with_tx(fun(Conn) ->
+        [?assert(element(1, R) =:= ok) || R <- epgsql:squery(Conn, Down)],
+        [?assert(element(1, R) =:= ok) || R <- epgsql:squery(Conn, Up)],
         ok
     end).
