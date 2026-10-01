@@ -7,7 +7,10 @@
 -define(TARGET, 995011).
 
 run(C) ->
-    ?assertEqual(undefined, whereis(imboy_domain_event)),
+    %% imboy_domain_event 是 imboy_sup 常驻 gen_event 总线（8d09179f T0.1，
+    %% sup 子进程 imboy_sup.erl:261）——旧断言 whereis=undefined 是总线
+    %% 注册前的防泄漏哨兵，随架构演进过时，改为正向存在断言。
+    ?assertMatch(Pid when is_pid(Pid), whereis(imboy_domain_event)),
     ok = intbe02_http_support:sql_exec(
         C,
         <<"INSERT INTO organization(id,name,owner_id,status) VALUES(995902,'Synthetic full membership',995021,'active')">>

@@ -92,6 +92,11 @@ scratch_cas_upgrade_once_test_() ->
         activate_v2(),
         Uid = uid(),
         Legacy = elib_password:generate(<<"legacy-pw">>, hmac_sha512),
+        %% 先清同 id 残留：uid() 基于 unique_integer（每 VM 起点相近、空档
+        %% 集中），共享库历史 run 的 source='eunit' 行会撞 user_pkey
+        %% （2026-10-01 run3 实证 4823 冲突）；本测试不清理插行，残留即
+        %% 累积——防撞前置 + 全量口径下残留行由各 run 自身前置清场兜住。
+        _ = elib_pg:query(<<"DELETE FROM public.\"user\" WHERE id = $1">>, [Uid]),
         {ok, _} = elib_pg:query(
             <<
                 "INSERT INTO public.\"user\" (id, account, nickname, password, "
@@ -138,6 +143,8 @@ verify_user_upgrade_orchestration_test_() ->
         activate_v2(),
         Uid = uid(),
         Legacy = elib_password:generate(<<"orch-pw">>, hmac_sha512),
+        %% 同 scratch_cas：先清同 id 残留防 user_pkey 撞车（见上条注释）
+        _ = elib_pg:query(<<"DELETE FROM public.\"user\" WHERE id = $1">>, [Uid]),
         {ok, _} = elib_pg:query(
             <<
                 "INSERT INTO public.\"user\" (id, account, nickname, password, "

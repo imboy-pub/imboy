@@ -203,7 +203,8 @@ enterprise_internal_pg_test_() ->
         end}}.
 
 %%%===================================================================
-%%% ① 固定 scope 枚举（V2.1 §7：14 值，无 wildcard、无隐含包含）
+%%% ① 固定 scope 枚举（V2.1 §7 基线 16 值 + 448b9551/95115377 内部写授权
+%%%    追加 workspaces:write / channels:write → 恰 18 个）
 %%%===================================================================
 
 -define(V21_SCOPES, [
@@ -222,13 +223,15 @@ enterprise_internal_pg_test_() ->
     <<"webhooks:manage">>,
     <<"sso:exchange">>,
     <<"customer_service:read">>,
-    <<"customer_service:write">>
+    <<"customer_service:write">>,
+    <<"workspaces:write">>,
+    <<"channels:write">>
 ]).
 
 scope_fixed_enum_test() ->
     ?_test(begin
-        %% all() 返回 V2.1 §7 的固定顺序（不做 sort：顺序也是契约），
-        %% 恰好 16 个——多一个/少一个都判失败（CON-02 口径）。
+        %% all() 返回固定顺序（不做 sort：顺序也是契约），恰好 18 个——
+        %% 多一个/少一个都判失败（CON-02 口径）。
         ?assertEqual(?V21_SCOPES, enterprise_internal_scope:all()),
         ?assertEqual(18, length(enterprise_internal_scope:all())),
         %% 显式授予才可用；未授予即拒

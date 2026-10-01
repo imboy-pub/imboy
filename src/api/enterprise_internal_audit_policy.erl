@@ -35,14 +35,14 @@
 -export_type([verdict/0]).
 
 %%%===================================================================
-%%% 冻结政策表（INT-02..17, 19, 20, 21, 22 —— 路由表全部非 GET）
+%%% 冻结政策表（INT-02..17, 19..22, 35..42 —— 路由表全部非 GET）
 %%%===================================================================
 
-%% @doc 逐项审计政策（20 条；顺序无关，测试按 id 比对）。
+%% @doc 逐项审计政策（29 条；顺序无关，测试按 id 比对）。
 -spec policies() -> [map(), ...].
 policies() ->
     [
-        %% ---- REQUIRED_AUDIT（16 条）----
+        %% ---- REQUIRED_AUDIT（基线 16 条）----
         #{
             id => <<"INT-02">>,
             method => <<"PUT">>,
@@ -263,6 +263,79 @@ policies() ->
                     "只读语义：成员 cursor 目录分页查询（POST 仅承载游标入参），"
                     "无状态变更；最小字段投影 + 硬上限由 directory 套件钉死"/utf8
                 >>
+        },
+        %% ---- REQUIRED_AUDIT（448b9551/95115377 内部写扩展追加 8 条）----
+        #{
+            id => <<"INT-35">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/customer-service/seats">>,
+            verdict => required_audit,
+            audit_action => <<"application.seat.created">>,
+            audit_resource_type => <<"customer_service_seat">>,
+            reason => <<"坐席开通是配置面状态变更（并发/停用面随之建立），必须留痕"/utf8>>
+        },
+        #{
+            id => <<"INT-36">>,
+            method => <<"PATCH">>,
+            path => <<"/api/internal/v1/customer-service/seats/{business_identity_id}">>,
+            verdict => required_audit,
+            audit_action => <<"application.seat.updated">>,
+            audit_resource_type => <<"customer_service_seat">>,
+            reason => <<"坐席版本校验/并发/停用调整改变投递面，必须留痕（before/after 入事件）"/utf8>>
+        },
+        #{
+            id => <<"INT-37">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/workspaces">>,
+            verdict => required_audit,
+            audit_action => <<"workspace.create">>,
+            audit_resource_type => <<"workspace">>,
+            reason => <<"应用侧建 workspace 改变资源拓扑，必须留痕（grant/审计/幂等同事务）"/utf8>>
+        },
+        #{
+            id => <<"INT-38">>,
+            method => <<"PATCH">>,
+            path => <<"/api/internal/v1/workspaces/{workspace_id}">>,
+            verdict => required_audit,
+            audit_action => <<"workspace.update">>,
+            audit_resource_type => <<"workspace">>,
+            reason => <<"乐观锁版本更新改变资源状态，必须留痕"/utf8>>
+        },
+        #{
+            id => <<"INT-39">>,
+            method => <<"DELETE">>,
+            path => <<"/api/internal/v1/workspaces/{workspace_id}">>,
+            verdict => required_audit,
+            audit_action => <<"workspace.archive">>,
+            audit_resource_type => <<"workspace">>,
+            reason => <<"软归档是可审计的状态迁移（不做物理删除），必须留痕"/utf8>>
+        },
+        #{
+            id => <<"INT-40">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/channels">>,
+            verdict => required_audit,
+            audit_action => <<"channel.create">>,
+            audit_resource_type => <<"channel">>,
+            reason => <<"应用侧建企业频道改变资源拓扑，必须留痕（grant/审计/幂等同事务）"/utf8>>
+        },
+        #{
+            id => <<"INT-41">>,
+            method => <<"PATCH">>,
+            path => <<"/api/internal/v1/channels/{channel_id}">>,
+            verdict => required_audit,
+            audit_action => <<"channel.update">>,
+            audit_resource_type => <<"channel">>,
+            reason => <<"乐观锁版本更新改变频道状态，必须留痕"/utf8>>
+        },
+        #{
+            id => <<"INT-42">>,
+            method => <<"DELETE">>,
+            path => <<"/api/internal/v1/channels/{channel_id}">>,
+            verdict => required_audit,
+            audit_action => <<"channel.archive">>,
+            audit_resource_type => <<"channel">>,
+            reason => <<"软归档是可审计的状态迁移（不做物理删除），必须留痕"/utf8>>
         }
     ].
 
@@ -278,7 +351,7 @@ verdict(Id) ->
         false -> erlang:error({audit_policy_missing, Id})
     end.
 
-%% @doc REQUIRED 条目的 operation id 集合（16 条）。
+%% @doc REQUIRED 条目的 operation id 集合（25 条：基线 17 + 内部写扩展 8）。
 -spec required_ids() -> [binary()].
 required_ids() ->
     [maps:get(id, P) || P <- policies(), maps:get(verdict, P) =:= required_audit].

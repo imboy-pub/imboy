@@ -713,8 +713,10 @@ int25(C, State) ->
     {ok, Ws1} = enterprise_workspace_logic:locate_active_tx(C, Ctx, ?WS_A1),
     ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-25">>, ?WS_A1)),
     {ok, Detail} = enterprise_workspace_logic:detail_tx(C, Ctx, Ws1),
+    %% version：448b9551/95115377 乐观锁并发写引入的合法投影键（更新需
+    %% If-Match 回带）——冻结清单同步收编。
     ?assertEqual(
-        [<<"created_at">>, <<"name">>, <<"owner_id">>, <<"workspace_id">>],
+        [<<"created_at">>, <<"name">>, <<"owner_id">>, <<"version">>, <<"workspace_id">>],
         lists:sort(maps:keys(Detail))
     ),
     ?assertEqual(?WS_A1, maps:get(<<"workspace_id">>, Detail)),
@@ -965,6 +967,7 @@ int31(C, State) ->
     {ok, Row} = enterprise_channel_logic:locate_tx(C, Ctx, 993401),
     ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-31">>, ?WS_A1)),
     {ok, Detail} = enterprise_channel_logic:detail_tx(C, Ctx, Row),
+    %% version：448b9551 乐观锁并发写引入的合法投影键（冻结清单同步收编）
     ?assertEqual(
         [
             <<"channel_id">>,
@@ -972,6 +975,7 @@ int31(C, State) ->
             <<"description">>,
             <<"name">>,
             <<"subscriber_count">>,
+            <<"version">>,
             <<"workspace_id">>
         ],
         lists:sort(maps:keys(Detail))
@@ -1000,8 +1004,15 @@ projection_frozen(C, State) ->
     {ok, WP} = enterprise_workspace_logic:list_workspaces_tx(C, Ctx, #{}),
     lists:foreach(
         fun(I) ->
+            %% version：乐观锁并发写的合法投影键（同 int25/detail 口径）
             ?assertEqual(
-                [<<"created_at">>, <<"name">>, <<"owner_id">>, <<"workspace_id">>],
+                [
+                    <<"created_at">>,
+                    <<"name">>,
+                    <<"owner_id">>,
+                    <<"version">>,
+                    <<"workspace_id">>
+                ],
                 lists:sort(maps:keys(I))
             )
         end,
@@ -1039,12 +1050,14 @@ projection_frozen(C, State) ->
     {ok, CP} = enterprise_channel_logic:list_channels_tx(C, Ctx, #{workspace_id => ?WS_A1}),
     lists:foreach(
         fun(I) ->
+            %% version：448b9551 乐观锁并发写引入的合法投影键（同 int31 口径）
             ?assertEqual(
                 [
                     <<"channel_id">>,
                     <<"created_at">>,
                     <<"name">>,
                     <<"subscriber_count">>,
+                    <<"version">>,
                     <<"workspace_id">>
                 ],
                 lists:sort(maps:keys(I))

@@ -129,8 +129,11 @@ offline_envelope_preserves_payload_and_e2ee_test() ->
     ?assertEqual(<<>>, maps:get(<<"payload">>, Msg)),
     ?assertEqual(<<"m-offline-1">>, maps:get(<<"id">>, Msg)),
     ?assertEqual(<<"C2C">>, maps:get(<<"type">>, Msg)),
-    ?assertEqual(100, maps:get(<<"from">>, Msg)),
-    ?assertEqual(200, maps:get(<<"to">>, Msg)).
+    %% from/to 经 envelope_id_to_binary 归一化（TSID 64bit ID JSON 字符串化
+    %% 契约：出口一律 binary，防 JS 精度丢失）——fixture 的 int 100/200
+    %% 出来是 <<"100">>/<<"200">>。
+    ?assertEqual(<<"100">>, maps:get(<<"from">>, Msg)),
+    ?assertEqual(<<"200">>, maps:get(<<"to">>, Msg)).
 
 %% msg_c2c 正式行同时含内部 TSID(id) 与客户端业务 ID(msg_id)；PFv3
 %% protected_header.message_id 绑定的是后者，离线信封不能误发内部 TSID。

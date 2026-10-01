@@ -55,7 +55,9 @@ policy_coverage() ->
         length(lists:usort(Required ++ Deviation)),
         overlapping_verdicts
     ),
-    ?assertEqual(17, length(Required)),
+    %% 17 基线 + 8（448b9551/95115377 内部写扩展 INT-35..42，合同
+    %% endpoints.md「版本并发保护及应用审计」）= 25
+    ?assertEqual(25, length(Required)),
     ?assertEqual(4, length(Deviation)),
     %% DEVIATION 冻结集合（豁免不得静默扩散）
     ?assertEqual(
