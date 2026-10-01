@@ -85,6 +85,13 @@
     " WHERE organization_id = $1 AND business_identity_id = $2 FOR UPDATE"
 >>).
 
+-define(SQL_WIDGET_CREDENTIAL_SCOPE, <<
+    " FROM customer_service_widget_installation i"
+    " JOIN customer_service_visit_token t ON t.organization_id=i.organization_id"
+    " AND t.widget_installation_id=i.id"
+    " WHERE i.organization_id=$1 AND i.id=$2 AND t.id=$3 AND t.contact_id=$4"
+>>).
+
 -define(SQL_LOCK_MESSAGE_SEAT, <<
     "SELECT enabled FROM customer_service_seat"
     " WHERE organization_id=$1 AND business_identity_id=$2 FOR SHARE"
@@ -985,6 +992,12 @@ read_state_in(Conn, OrgId, WorkspaceId, SessionId, IdentityId) ->
 %% Seat before session matches claim/transfer order. SHARE permits concurrent
 %% messages but serializes suspension, so an in-flight seat write cannot outlive it.
 append_message_event_in(Conn, OrgId, Event) ->
+    case lock_widget_credential(Conn, OrgId, maps:get(widget_credential, Event, undefined)) of
+        ok -> append_authorized_message_event_in(Conn, OrgId, Event);
+        {error, _} = Err -> Err
+    end.
+
+append_authorized_message_event_in(Conn, OrgId, Event) ->
     Identity = maps:get(business_identity_id, Event, undefined),
     case lock_message_seat(Conn, OrgId, Identity, maps:get(actor_kind, Event)) of
         ok ->
@@ -997,7 +1010,7 @@ append_message_event_in(Conn, OrgId, Event) ->
                     case
                         cs_pg_common:nullify(Identity) =:= maps:get(<<"business_identity_id">>, Row)
                     of
-                        true -> cs_pg_seat:insert_event_in(Conn, OrgId, Event);
+                        true -> insert_authorized_widget_event_in(Conn, OrgId, Event);
                         false -> {error, conflict}
                     end;
                 {ok, []} ->
@@ -1007,6 +1020,56 @@ append_message_event_in(Conn, OrgId, Event) ->
             end;
         {error, _} = Err ->
             Err
+    end.
+
+%% Private verified binding, never public request fields. Locks survive to commit.
+lock_widget_credential(_Conn, _OrgId, undefined) ->
+    ok;
+lock_widget_credential(Conn, OrgId, {Installation, Token, Contact}) ->
+    Sql = <<"SELECT t.id", (?SQL_WIDGET_CREDENTIAL_SCOPE)/binary, " FOR SHARE OF i,t">>,
+    case elib_pg:query(Conn, Sql, [OrgId, Installation, Token, Contact]) of
+        {ok, [_]} -> ok;
+        {ok, []} -> {error, visit_token_invalid};
+        {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}
+    end;
+lock_widget_credential(_Conn, _OrgId, _Invalid) ->
+    {error, visit_token_invalid}.
+
+insert_authorized_widget_event_in(Conn, OrgId, Event) ->
+    case check_widget_credential(Conn, OrgId, maps:get(widget_credential, Event, undefined)) of
+        ok -> cs_pg_seat:insert_event_in(Conn, OrgId, Event);
+        {error, _} = Err -> Err
+    end.
+
+%% Evaluate native timestamps after all blocking row locks, using database time.
+check_widget_credential(_Conn, _OrgId, undefined) ->
+    ok;
+check_widget_credential(Conn, OrgId, {Installation, Token, Contact}) ->
+    Sql = <<
+        "SELECT i.status AS installation_status,"
+        " (t.revoked_at IS NOT NULL AND t.revoked_at <= clock_timestamp()) AS revoked,"
+        " (t.expires_at <= clock_timestamp()) AS expired",
+        (?SQL_WIDGET_CREDENTIAL_SCOPE)/binary
+    >>,
+    case elib_pg:query(Conn, Sql, [OrgId, Installation, Token, Contact]) of
+        {ok, [#{<<"installation_status">> := Status}]} when Status =/= <<"active">> ->
+            {error, installation_revoked};
+        {ok, [#{<<"revoked">> := true}]} ->
+            {error, token_revoked};
+        {ok, [#{<<"expired">> := true}]} ->
+            {error, token_expired};
+        {ok, [
+            #{
+                <<"installation_status">> := <<"active">>,
+                <<"revoked">> := false,
+                <<"expired">> := false
+            }
+        ]} ->
+            ok;
+        {ok, _} ->
+            {error, visit_token_invalid};
+        {error, Reason} ->
+            {error, cs_pg_common:normalize_error(Reason)}
     end.
 
 lock_message_seat(_Conn, _OrgId, Identity, _Kind) when Identity =:= undefined; Identity =:= null ->

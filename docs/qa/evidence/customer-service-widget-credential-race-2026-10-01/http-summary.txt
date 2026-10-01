@@ -1,0 +1,10 @@
+ {file,<<"execMain.c">>},
+                      {line,<<"2072">>},
+                      {routine,<<"ExecConstraints">>},
+                      {schema_name,<<"public">>},
+                      {severity,<<"ERROR">>},
+                      {table_name,<<"channel_subscription">>}]}}}}}]
+[88.671 s] ok
+  [done in 88.674 s]
+=======================================================
+  All 8 tests passed.

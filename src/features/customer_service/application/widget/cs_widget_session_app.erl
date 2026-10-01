@@ -276,7 +276,7 @@ visitor_message_scoped(OrgId, Params, AssetIds) ->
     case visitor_session_scope(OrgId, Params) of
         {error, _} = Err ->
             Err;
-        {ok, #{workspace_id := WorkspaceId, contact_id := ContactId}} ->
+        {ok, #{workspace_id := WorkspaceId, contact_id := ContactId, token := Token}} ->
             Clean0 = maps:with(
                 [
                     store,
@@ -297,7 +297,11 @@ visitor_message_scoped(OrgId, Params, AssetIds) ->
                     _ -> Clean0#{asset_ids => AssetIds}
                 end,
             cs_widget_support:session_append_message(OrgId, Clean#{
-                workspace_id => WorkspaceId, contact_id => ContactId
+                workspace_id => WorkspaceId,
+                contact_id => ContactId,
+                widget_credential => {
+                    maps:get(widget_installation_id, Token), maps:get(id, Token), ContactId
+                }
             })
     end.
 

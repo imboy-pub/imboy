@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuite tests="25" failures="0" errors="2" skipped="0" time="5.989" name="Customer service marker journey">
+  <testcase time="0.019" name="cs_pg_tests:0 a01_seat_fk_rejects_sales_identity_at_db">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.019" name="cs_pg_tests:0 a01_duplicate_seat_pk_conflicts">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="1.056" name="cs_pg_tests:0 a02_concurrent_claim_exactly_one_wins">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="1.038" name="cs_pg_tests:0 a02_concurrent_claims_respect_max_concurrent">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.990" name="cs_pg_tests:0 a02_suspended_seat_rejects_claim_at_db">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.032" name="cs_pg_tests:0 a02_dispatch_claim_picks_real_seat">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.038" name="cs_pg_tests:0 transfer_close_rate_db_semantics">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.030" name="cs_pg_tests:0 rating_out_of_range_rejected_by_db_check">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.081" name="cs_pg_tests:0 a04_rebind_keeps_session_and_messages">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.026" name="cs_pg_tests:0 a05_visit_token_expiry_and_revocation_at_db">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.047" name="cs_pg_tests:0 a03_messages_land_only_in_enterprise_tables">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.025" name="cs_message_lifecycle_pg_checks:0 closed_visitor">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.049" name="cs_message_lifecycle_pg_checks:0 close_during_send">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="1.068" name="cs_message_lifecycle_pg_checks:0 claim_during_send">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="1.085" name="cs_message_lifecycle_pg_checks:0 suspended_seat">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.051" name="cs_message_lifecycle_pg_checks:0 suspension_during_send">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.049" name="cs_message_lifecycle_pg_checks:0 installation_revocation_during_send">
+    <error type="error">
+::in function cs_message_lifecycle_pg_checks:'-widget_race/2-fun-4-'/3 (test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl, line 284)
+in call from cs_message_lifecycle_pg_checks:with_session/1 (test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl, line 132)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{assertEqual,
+    [{module,cs_message_lifecycle_pg_checks},
+     {line,284},
+     {expression,"Result"},
+     {expected,{error,installation_revoked}},
+     {value,
+         {ok,#{message =&gt;
+                   #{id =&gt; 115645459158272000,version =&gt; 1,
+                     organization_id =&gt; 115645459126814723,
+                     workspace_id =&gt; 115645459126814724,
+                     conversation_id =&gt; 115645459126814731,
+                     created_at =&gt; 1790833652,key_version =&gt; 1,
+                     visibility =&gt; visible,actor_user_id =&gt; undefined,
+                     retention_days =&gt; 1095,
+                     client_msg_id =&gt; &lt;&lt;"synthetic-widget-race"&gt;&gt;,
+                     policy_id =&gt; 115645459126814732,sender_type =&gt; contact,
+                     retain_until =&gt; 1885441652,
+                     sender_contact_id =&gt; 115645459126814730,
+                     sender_business_identity_id =&gt; undefined,
+                     body_cipher =&gt;
+                         &lt;&lt;"pUCwfE1XLm3PwsMG+qe4fWHjE+9FaX0cyoO/VgAXKNvPxg/2rWcd7WYiXXVXVZeUwvi5qf1x6Ojrgg=="&gt;&gt;,
+                     aad_hash =&gt;
+                         &lt;&lt;"58452aabcd4dd706b611e2980bf79fa4598a89d71b73789c5c37cdd076b5efc4"&gt;&gt;,
+                     content_hash =&gt;
+                         &lt;&lt;"ca023cec1a2898d208e5c255065341c970b7d18ef3d566a4e77ed73e6210c1f5"&gt;&gt;,
+                     policy_version =&gt; 1,replayed =&gt; false,assets =&gt; []},
+               notification =&gt;
+                   #{organization_id =&gt; 115645459126814723,
+                     workspace_id =&gt; 115645459126814724,
+                     resource_type =&gt; &lt;&lt;"enterprise_message"&gt;&gt;,
+                     conversation_id =&gt; 115645459126814731,
+                     resource_id =&gt; 115645459158272000},
+               message_id =&gt; 115645459158272000,accepted =&gt; true,
+               replayed =&gt; false,audit_id =&gt; 115645459185534976,
+               publisher =&gt;
+                   {error,
+                       {realtime_publisher_missing,enterprise_message}}}}}]}
+    </error>
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.050" name="cs_message_lifecycle_pg_checks:0 widget_token_revocation_during_send">
+    <error type="error">
+::in function cs_message_lifecycle_pg_checks:'-widget_race/2-fun-4-'/3 (test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl, line 284)
+in call from cs_message_lifecycle_pg_checks:with_session/1 (test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl, line 132)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{assertEqual,
+    [{module,cs_message_lifecycle_pg_checks},
+     {line,284},
+     {expression,"Result"},
+     {expected,{error,token_revoked}},
+     {value,
+         {ok,#{message =&gt;
+                   #{id =&gt; 115645459269421056,version =&gt; 1,
+                     organization_id =&gt; 115645459235866627,
+                     workspace_id =&gt; 115645459235866628,
+                     conversation_id =&gt; 115645459235866635,
+                     created_at =&gt; 1790833652,key_version =&gt; 1,
+                     visibility =&gt; visible,actor_user_id =&gt; undefined,
+                     retention_days =&gt; 1095,
+                     client_msg_id =&gt; &lt;&lt;"synthetic-widget-race"&gt;&gt;,
+                     policy_id =&gt; 115645459235866636,sender_type =&gt; contact,
+                     retain_until =&gt; 1885441652,
+                     sender_contact_id =&gt; 115645459235866634,
+                     sender_business_identity_id =&gt; undefined,
+                     body_cipher =&gt;
+                         &lt;&lt;"ozmdd4ngbuYbAQt2RzT+A/gBAjENNuYTyeD9mbxrFdKjoqzVn4yguMow+lF1WG4hFengmSslTrry/A=="&gt;&gt;,
+                     aad_hash =&gt;
+                         &lt;&lt;"9b9baf7d8654724a72f01fd61bea4775c686b7230ee7de33ca38fc6f36935c57"&gt;&gt;,
+                     content_hash =&gt;
+                         &lt;&lt;"9a60cc55af84c0419b48135d6e87a599a7051b7f1a330633d25690efe415131b"&gt;&gt;,
+                     policy_version =&gt; 1,replayed =&gt; false,assets =&gt; []},
+               notification =&gt;
+                   #{organization_id =&gt; 115645459235866627,
+                     workspace_id =&gt; 115645459235866628,
+                     resource_type =&gt; &lt;&lt;"enterprise_message"&gt;&gt;,
+                     conversation_id =&gt; 115645459235866635,
+                     resource_id =&gt; 115645459269421056},
+               message_id =&gt; 115645459269421056,accepted =&gt; true,
+               replayed =&gt; false,audit_id =&gt; 115645459292489728,
+               publisher =&gt;
+                   {error,
+                       {realtime_publisher_missing,enterprise_message}}}}}]}
+    </error>
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.021" name="cs_pg_tests:0 cross_org_session_is_not_found">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.022" name="cs_pg_tests:0 event_table_is_append_only">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.033" name="cs_pg_tests:0 bes01b_provision_seat_pg_tx_audit_idempotent_rollback">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.028" name="cs_pg_tests:0 c1_sessions_page_desc_keyset_and_cross_org">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.019" name="cs_pg_tests:0 c2_shop_keys_page_and_cross_org">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.018" name="cs_pg_tests:0 c3_visit_tokens_page_and_cross_org">
+    <system-out>
+    </system-out>
+  </testcase>
+  <testcase time="0.019" name="cs_pg_tests:0 c4_seats_page_keyset">
+    <system-out>
+    </system-out>
+  </testcase>
+</testsuite>

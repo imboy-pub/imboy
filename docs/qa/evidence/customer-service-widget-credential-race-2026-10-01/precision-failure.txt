@@ -1,0 +1,34 @@
+  cs_message_lifecycle_pg_checks: widget_token_revocation_during_send...*failed*
+in function cs_message_lifecycle_pg_checks:'-widget_race/2-fun-4-'/3 (test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl, line 284)
+in call from cs_message_lifecycle_pg_checks:with_session/1 (test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl, line 132)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{assertEqual,
+    [{module,cs_message_lifecycle_pg_checks},
+     {line,284},
+     {expression,"Result"},
+     {expected,{error,token_revoked}},
+     {value,
+         {ok,#{message =>
+                   #{id => 115645944506353664,version => 1,
+                     organization_id => 115645944470702083,
+                     workspace_id => 115645944470702084,
+                     conversation_id => 115645944470702091,
+                     created_at => 1790833883,key_version => 1,...},
+               notification =>
+                   #{organization_id => 115645944470702083,
+                     workspace_id => 115645944470702084,
+                     resource_type => <<"enterprise_message">>,
+                     conversation_id => 115645944470702091,
+                     resource_id => 115645944506353664},
+               message_id => 115645944506353664,accepted => true,
+               replayed => false,audit_id => 115645944533616640,
+               publisher =>
+                   {error,
+                       {realtime_publisher_missing,enterprise_message}}}}}]}
+  output:<<"">>
+

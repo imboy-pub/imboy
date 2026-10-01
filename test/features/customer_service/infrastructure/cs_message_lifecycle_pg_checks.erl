@@ -6,7 +6,10 @@
     close_during_send/0,
     claim_during_send/0,
     suspended_seat/0,
-    suspension_during_send/0
+    suspension_during_send/0,
+    installation_revocation_during_send/0,
+    widget_token_revocation_during_send/0,
+    widget_token_expiry_during_send/0
 ]).
 -define(FIX, cs_pg_test_fixture).
 
@@ -250,4 +253,149 @@ assert_no_message(S) ->
             [Org],
             -1
         )
+    ).
+
+installation_revocation_during_send() -> widget_race(installation, installation_revoked).
+widget_token_revocation_during_send() -> widget_race(token, token_revoked).
+widget_token_expiry_during_send() -> widget_race(expiry, token_expired).
+
+widget_race(Kind, Expected) ->
+    with_session(fun(S0) ->
+        S = seed_widget(S0, Kind),
+        Parent = self(),
+        Ref = make_ref(),
+        Holder = spawn(fun() -> hold_widget(S, Kind, Parent, Ref) end),
+        try
+            Result = widget_write_after_hold(S, Kind, Holder, Ref),
+            ?assertEqual({error, Expected}, Result),
+            assert_no_message(S),
+            restore_widget(S),
+            {ok, #{accepted := true, replayed := false}} = widget_write(S),
+            ?assertEqual(1, ?FIX:count(maps:get(org_id, S), messages))
+        after
+            Holder ! {Ref, commit},
+            Org = maps:get(org_id, S),
+            ?FIX:exec(
+                <<"DELETE FROM customer_service_visit_token WHERE organization_id=$1 AND widget_installation_id IS NOT NULL">>,
+                [Org]
+            ),
+            ?FIX:exec(
+                <<"DELETE FROM customer_service_widget_installation WHERE organization_id=$1">>, [
+                    Org
+                ]
+            )
+        end
+    end).
+
+widget_write_after_hold(S, Kind, Holder, Ref) ->
+    Parent = self(),
+    Backend =
+        receive
+            {Ref, locked, Pid} -> Pid
+        after 10000 -> error(holder_timeout)
+        end,
+    spawn(fun() -> Parent ! {Ref, sent, widget_write(S)} end),
+    ?assert(wait_for_blocked(Backend, 100)),
+    case Kind of
+        expiry ->
+            timer:sleep(
+                max(0, (maps:get(expires_at, S) - os:system_time(second) + 1) * 1000)
+            );
+        _ ->
+            ok
+    end,
+    Holder ! {Ref, commit},
+    receive
+        {Ref, released, ok} -> ok
+    after 10000 -> error(commit_timeout)
+    end,
+    receive
+        {Ref, sent, R} -> R
+    after 10000 -> error(send_timeout)
+    end.
+
+seed_widget(S, Kind) ->
+    Org = maps:get(org_id, S),
+    I = ?FIX:id(),
+    T = ?FIX:id(),
+    Secret = binary:encode_hex(crypto:strong_rand_bytes(32)),
+    {ok, _} = cs_pg_widget:insert_widget_installation(Org, #{
+        id => I,
+        public_widget_id => integer_to_binary(I),
+        display_name => <<"synthetic-race">>,
+        allowed_origins => [],
+        branding => #{},
+        consent_version => <<"synthetic-v1">>
+    }),
+    Ttl =
+        case Kind of
+            expiry -> 5;
+            _ -> 3600
+        end,
+    Expires = os:system_time(second) + Ttl,
+    {ok, _} = cs_pg_widget:insert_widget_bootstrap_token(Org, #{
+        id => T,
+        contact_id => maps:get(contact_id, S),
+        widget_installation_id => I,
+        token_digest => cs_widget_support:token_digest(#{}, Secret),
+        expires_at => Expires
+    }),
+    S#{installation_id => I, token_id => T, secret => Secret, expires_at => Expires}.
+
+widget_write(S) ->
+    cs_widget_session_app:visitor_message(maps:get(org_id, S), #{
+        installation_id => maps:get(installation_id, S),
+        secret => maps:get(secret, S),
+        default_workspace => fun(_) -> {ok, maps:get(workspace_id, S)} end,
+        session_id => maps:get(session_id, S),
+        at => os:system_time(second),
+        client_msg_id => <<"synthetic-widget-race">>,
+        body => <<"synthetic body">>,
+        key_ref => ?FIX:key_ref(),
+        accepted_at => os:system_time(second),
+        notify => fun(_) -> ok end
+    }).
+
+hold_widget(S, Kind, Parent, Ref) ->
+    Result = elib_pg:with_tx(fun(C) ->
+        Org = maps:get(org_id, S),
+        {ok, [_]} = elib_pg:query(
+            C,
+            <<"SELECT id FROM customer_service_session WHERE organization_id=$1 AND id=$2 FOR UPDATE">>,
+            [Org, maps:get(session_id, S)]
+        ),
+        case Kind of
+            installation ->
+                {ok, 1} = elib_pg:execute(
+                    C,
+                    <<"UPDATE customer_service_widget_installation SET status='revoked',revoked_at=now(),version=version+1 WHERE organization_id=$1 AND id=$2">>,
+                    [Org, maps:get(installation_id, S)]
+                );
+            token ->
+                {ok, 1} = elib_pg:execute(
+                    C,
+                    <<"UPDATE customer_service_visit_token SET revoked_at=now(),version=version+1 WHERE organization_id=$1 AND id=$2">>,
+                    [Org, maps:get(token_id, S)]
+                );
+            expiry ->
+                ok
+        end,
+        {ok, [#{<<"pid">> := Pid}]} = elib_pg:query(C, <<"SELECT pg_backend_pid() AS pid">>, []),
+        Parent ! {Ref, locked, Pid},
+        receive
+            {Ref, commit} -> ok
+        after 10000 -> error(holder_commit_timeout)
+        end
+    end),
+    Parent ! {Ref, released, Result}.
+
+restore_widget(S) ->
+    Org = maps:get(org_id, S),
+    ok = ?FIX:exec(
+        <<"UPDATE customer_service_widget_installation SET status='active',revoked_at=NULL,version=version+1 WHERE organization_id=$1 AND id=$2">>,
+        [Org, maps:get(installation_id, S)]
+    ),
+    ?FIX:exec(
+        <<"UPDATE customer_service_visit_token SET revoked_at=NULL,expires_at=now()+interval '1 hour',version=version+1 WHERE organization_id=$1 AND id=$2">>,
+        [Org, maps:get(token_id, S)]
     ).

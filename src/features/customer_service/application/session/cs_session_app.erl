@@ -602,7 +602,7 @@ message_event_hook(Params, OrgId, WorkspaceId, Session) ->
         {error, _} = Err ->
             Err;
         {ok, Store} ->
-            Base = #{
+            Base0 = #{
                 session_id => maps:get(id, Session),
                 business_identity_id => maps:get(business_identity_id, Session, undefined),
                 actor_user_id => maps:get(actor_user_id, Params, undefined),
@@ -610,6 +610,7 @@ message_event_hook(Params, OrgId, WorkspaceId, Session) ->
                 action => <<"message.appended">>,
                 workspace_id => WorkspaceId
             },
+            Base = maps:merge(Base0, maps:with([widget_credential], Params)),
             {ok, fun(Conn, StoredMessage) ->
                 %% 事件只带资源 ID（payload_limits 合同：零正文/零附件引用细节）。
                 Event = Base#{
@@ -620,6 +621,10 @@ message_event_hook(Params, OrgId, WorkspaceId, Session) ->
                     {error, session_already_closed} = Err -> Err;
                     {error, conflict} = Err -> Err;
                     {error, seat_disabled} = Err -> Err;
+                    {error, installation_revoked} = Err -> Err;
+                    {error, token_revoked} = Err -> Err;
+                    {error, token_expired} = Err -> Err;
+                    {error, visit_token_invalid} = Err -> Err;
                     {error, Reason} -> {error, {audit_append_failed, Reason}}
                 end
             end}
