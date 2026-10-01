@@ -38,6 +38,7 @@ run_fixture() ->
         ?assertEqual(true, maps:get(<<"channel">>, Flags)),
         ?assertEqual(false, maps:get(<<"e2ee">>, Flags)),
         Directory = seed_directory(H),
+        {ok, Invite} = organization_invite_code_app:create(995002, 995102, #{}),
         Dir = os:getenv("IMBOY_GATE_RUN_DIR"),
         ok = file:write_file(
             filename:join(Dir, "mobile-fixture.json"),
@@ -48,11 +49,13 @@ run_fixture() ->
                 sign_key => ?KEY,
                 organization_id => <<"995101">>,
                 directory => Directory,
+                join_code => maps:get(code, Invite),
                 package => <<"pub.imboy.app.gzcustomer">>,
                 synthetic_only => true
             })
         ),
-        await_device_done(Dir, erlang:monotonic_time(millisecond) + 1800000)
+        await_device_done(Dir, erlang:monotonic_time(millisecond) + 1800000),
+        assert_native_leave(H, Dir)
     after
         ?HTTP:teardown_all(H),
         inttest_marker_db:release(H)
@@ -81,6 +84,29 @@ seed_directory(#{conn := C}) ->
         child_department => integer_to_binary(Child),
         member => <<"995012">>
     }.
+
+assert_native_leave(#{conn := C}, Dir) ->
+    case filelib:is_file(filename:join(Dir, "mobile.success")) of
+        false ->
+            ok;
+        true ->
+            Row = ?HTTP:one(
+                C,
+                <<"SELECT (SELECT status FROM organization_member WHERE organization_id=995102 AND user_id=995011) AS departed_status, (SELECT count(*) FROM workspace_member m JOIN workspace w ON w.id=m.workspace_id WHERE w.organization_id=995102 AND m.user_id=995011 AND m.status='active') AS active_workspaces, (SELECT status FROM organization_member WHERE organization_id=995101 AND user_id=995011) AS retained_status">>
+            ),
+            ?assertEqual(<<"removed">>, maps:get(<<"departed_status">>, Row)),
+            ?assertEqual(0, maps:get(<<"active_workspaces">>, Row)),
+            ?assertEqual(<<"active">>, maps:get(<<"retained_status">>, Row)),
+            ok = file:write_file(
+                filename:join(Dir, "native-leave-oracle.json"),
+                jsone:encode(#{
+                    status => <<"PASS">>,
+                    organization_removed => true,
+                    active_workspaces => 0,
+                    original_organization_retained => true
+                })
+            )
+    end.
 
 await_device_done(Dir, Deadline) ->
     case filelib:is_file(filename:join(Dir, "mobile.done")) of
