@@ -280,7 +280,10 @@ workspace_handler_endpoints_test_() ->
             ]},
             {elib_param, [
                 {'page', 1, fun(_) -> {1, 10} end},
-                {'int', 3, fun(limit, _, _) -> {ok, 50} end},
+                {'int', 3, fun
+                    (limit, _, _) -> {ok, 50};
+                    (_, _, Default) -> {ok, Default}
+                end},
                 {'binary', 3, fun(status, _, _) -> {ok, <<"active">>} end},
                 {'post', 1, fun(_) -> #{} end}
             ]},
@@ -296,7 +299,8 @@ workspace_handler_endpoints_test_() ->
             {channel_logic, [
                 %% GZAPP-05：status 过滤参数接入后 handler 走 /3；
                 %% 缺省 active 由 handler 传参，列表语义与 /2 时一致。
-                {'list_workspace_channels', 3, fun(WsId, _, Status) ->
+                {'list_workspace_channels', 3, fun(WsId, Limit, Status) ->
+                    put(t_channels_limit, Limit),
                     put(t_channels_listed, WsId),
                     put(t_channels_status, Status),
                     {ok, []}
@@ -325,6 +329,7 @@ workspace_handler_endpoints_body() ->
         ?assertEqual(200, maps:get(response_status, Req1)),
         ?assertEqual(?WS_ID, erase(t_channels_listed)),
         ?assertEqual(<<"active">>, erase(t_channels_status)),
+        ?assertEqual(50, erase(t_channels_limit)),
 
         %% outsider blocked from workspace channels (403)
         Req2 = workspace_handler:handle_action(channel_list, req0, #{current_uid => ?OUTSIDER}),

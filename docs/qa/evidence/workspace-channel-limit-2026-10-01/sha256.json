@@ -1,0 +1,43 @@
+{
+  "base_sha": "3434bd73e3d3ccf6d1134d069332e683fc664e03",
+  "sources": [
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "d907682c94473b8d863f72768a5b098667408b2ab902ecf736925c48459e06b5"
+    },
+    {
+      "path": "src/api/workspace_handler.erl",
+      "sha256": "a8e1d94b86a7e647f5d75affe8e295d7f4dc201153c36b3b0f9f5ca69c97f7a4"
+    },
+    {
+      "path": "test/api/enterprise_internal_wiring_http_tests.erl",
+      "sha256": "1338f84135cbc475f847b3be109028e49612898cf932a22af842de7ecf892161"
+    },
+    {
+      "path": "test/api/workspace_boundary_tests.erl",
+      "sha256": "7ed6ed901fc8de6238c4d38753399f85e2603f70a0f02890ee1b4c283759eb3c"
+    },
+    {
+      "path": "test/api/workspace_channel_limit_http_checks.erl",
+      "sha256": "5957dbd816bbb05e9e3dcd5609fb928ec0216fe03a04c66fb4c60794408969ba"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "baseline.txt",
+      "sha256": "9b44789517bf76b930c01daec84d0e4100ec60a6089f81d914c99e589b389563"
+    },
+    {
+      "path": "gate.txt",
+      "sha256": "084dc7370340d096986080c7ee7d59a0c12bc88df4212fc8d86721417da27fae"
+    },
+    {
+      "path": "http.txt",
+      "sha256": "045622809974a712e282f11164fce6ba224ddd86c70645416d0a2fa9d11d22e5"
+    },
+    {
+      "path": "unit.txt",
+      "sha256": "1ea14e81f0ed7cd935ad51bcbbc17b42767cc430216f86a205a60e848cae4f58"
+    }
+  ]
+}

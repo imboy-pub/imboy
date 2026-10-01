@@ -225,7 +225,7 @@ channel_list(Req0, State) ->
                 {error, {Code, Msg}} ->
                     elib_response:error(Req0, Msg, Code);
                 {ok, _Role} ->
-                    Limit = elib_param:int(limit, Req0, 100),
+                    {ok, Limit} = elib_param:int(limit, Req0, 100),
                     Limit2 = max(1, min(Limit, 200)),
                     {ok, Status} = elib_param:binary(status, Req0, <<"active">>),
                     case channel_logic:list_workspace_channels(WsId, Limit2, Status) of

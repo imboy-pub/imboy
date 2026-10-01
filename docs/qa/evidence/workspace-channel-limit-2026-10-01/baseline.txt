@@ -1,0 +1,30 @@
+======================== EUnit ========================
+module 'enterprise_internal_wiring_http_tests'
+  enterprise_internal_wiring_http_tests: route_table...[0.009 s] ok
+  enterprise_internal_wiring_http_tests: manifest_v21_entries...ok
+  enterprise_internal_wiring_http_tests: http_wiring...[0.064 s] ok
+  enterprise_internal_wiring_http_tests: boundary_parity...ok
+  enterprise_internal_wiring_http_tests: dispatch_compiles...[0.002 s] ok
+  enterprise_internal_wiring_http_tests: normalize_code...ok
+  enterprise_internal_wiring_http_tests: -conformance_test_/0-fun-0-...*failed*
+in function workspace_channel_limit_http_checks:'-run/1-fun-4-'/2 (test/api/workspace_channel_limit_http_checks.erl, line 26)
+in call from lists:foreach_1/2 (lists.erl, line 2641)
+in call from workspace_channel_limit_http_checks:run/1 (test/api/workspace_channel_limit_http_checks.erl, line 19)
+in call from enterprise_internal_wiring_http_tests:run_conformance/1 (test/api/enterprise_internal_wiring_http_tests.erl, line 385)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+**error:{assertEqual,[{module,workspace_channel_limit_http_checks},
+              {line,26},
+              {expression,"length ( Rows )"},
+              {expected,1},
+              {value,4}]}
+  output:<<"">>
+
+  [done in 4.495 s]
+module 'workspace_creation_pg_tests'
+  workspace_creation_pg_tests: -creation_test_/0-fun-0-...[2.346 s] ok
+  [done in 2.349 s]
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 7.

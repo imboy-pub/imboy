@@ -382,6 +382,7 @@ conformance_test_() ->
 run_conformance(S) ->
     #{conn := C} = S,
     seed_delivery_row(C, S),
+    workspace_channel_limit_http_checks:run(S),
     G = positive_chain(S),
     idempotency_matrix(S, G),
     negative_matrix(S),

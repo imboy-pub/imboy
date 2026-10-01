@@ -47,7 +47,8 @@ files += ['test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wir
           'test/api/enterprise_workspace_write_http_checks.erl',
           'test/ds/channel_creation_tx_pg_checks.erl',
           'test/api/enterprise_channel_write_http_checks.erl',
-          'test/api/enterprise_identity_contract_http_checks.erl']
+          'test/api/enterprise_identity_contract_http_checks.erl',
+          'test/api/workspace_channel_limit_http_checks.erl']
 cmd = ['erlc', '+debug_info', '+nowarn_unused_function', '+{parse_transform,lager_transform}',
        '-o', str(out / 'beams'), '-I', 'include', '-I', 'src']
 for path in paths:
