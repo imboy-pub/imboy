@@ -1,0 +1,282 @@
+src/features/customer_service/infrastructure/cs_org_lifecycle_facts.erl:18:2: Warning: behaviour cs_org_lifecycle_port undefined
+%   18| -behaviour(cs_org_lifecycle_port).
+%     |  ^
+
+src/features/customer_service/infrastructure/cs_tsid.erl:8:2: Warning: behaviour cs_id_port undefined
+%    8| -behaviour(cs_id_port).
+%     |  ^
+
+src/features/customer_service/infrastructure/cs_pg_store.erl:8:2: Warning: behaviour cs_store_port undefined
+%    8| -behaviour(cs_store_port).
+%     |  ^
+
+src/features/enterprise_business/infrastructure/eb_managed_crypto.erl:29:2: Warning: behaviour eb_crypto_port undefined
+%   29| -behaviour(eb_crypto_port).
+%     |  ^
+
+src/features/enterprise_business/infrastructure/eb_pg_tx.erl:19:2: Warning: behaviour eb_tx_port undefined
+%   19| -behaviour(eb_tx_port).
+%     |  ^
+
+src/features/enterprise_business/infrastructure/eb_pg_purge_port.erl:19:2: Warning: behaviour eb_purge_port undefined
+%   19| -behaviour(eb_purge_port).
+%     |  ^
+
+src/features/enterprise_business/infrastructure/eb_tsid.erl:13:2: Warning: behaviour eb_id_port undefined
+%   13| -behaviour(eb_id_port).
+%     |  ^
+
+src/features/enterprise_business/infrastructure/eb_pg_auth_facts.erl:17:2: Warning: behaviour eb_auth_port undefined
+%   17| -behaviour(eb_auth_port).
+%     |  ^
+
+src/features/enterprise_business/infrastructure/eb_member_fact_pg.erl:24:2: Warning: behaviour eb_member_fact_port undefined
+%   24| -behaviour(eb_member_fact_port).
+%     |  ^
+
+src/features/enterprise_business/infrastructure/eb_pg_store.erl:27:2: Warning: behaviour eb_store_port undefined
+%   27| -behaviour(eb_store_port).
+%     |  ^
+
+src/features/enterprise_business/infrastructure/eb_asset_store.erl:33:2: Warning: behaviour eb_asset_port undefined
+%   33| -behaviour(eb_asset_port).
+%     |  ^
+
+src/features/enterprise_business/infrastructure/eb_system_clock.erl:10:2: Warning: behaviour eb_clock_port undefined
+%   10| -behaviour(eb_clock_port).
+%     |  ^
+
+src/features/enterprise_business/infrastructure/eb_pg_audit.erl:19:2: Warning: behaviour eb_audit_port undefined
+%   19| -behaviour(eb_audit_port).
+%     |  ^
+
+src/features/enterprise_business/interfaces/eb_platform_auth_facts.erl:20:2: Warning: behaviour eb_auth_port undefined
+%   20| -behaviour(eb_auth_port).
+%     |  ^
+
+src/features/agent/infrastructure/agent_org_membership_adapter.erl:39:2: Warning: behaviour agent_membership_port undefined
+%   39| -behaviour(agent_membership_port).
+%     |  ^
+
+src/logic/payment_wallet_gateway.erl:3:2: Warning: behaviour payment_gateway undefined
+%    3| -behaviour(payment_gateway).
+%     |  ^
+
+src/logic/payment_alipay_gateway.erl:4:2: Warning: behaviour payment_gateway undefined
+%    4| -behaviour(payment_gateway).
+%     |  ^
+
+src/logic/payment_wechat_gateway.erl:4:2: Warning: behaviour payment_gateway undefined
+%    4| -behaviour(payment_gateway).
+%     |  ^
+
+src/logic/payment_mock_gateway.erl:2:2: Warning: behaviour payment_gateway undefined
+%    2| -behaviour(payment_gateway).
+%     |  ^
+
+src/logic/payment_stripe_gateway.erl:4:2: Warning: behaviour payment_gateway undefined
+%    4| -behaviour(payment_gateway).
+%     |  ^
+
+src/lib/imboy_sms_fake.erl:13:2: Warning: behaviour imboy_sms_provider undefined
+%   13| -behaviour(imboy_sms_provider).
+%     |  ^
+
+src/lib/imboy_llm_openai.erl:8:2: Warning: behaviour imboy_llm undefined
+%    8| -behaviour(imboy_llm).
+%     |  ^
+
+src/lib/imboy_llm_qianfan.erl:8:2: Warning: behaviour imboy_llm undefined
+%    8| -behaviour(imboy_llm).
+%     |  ^
+
+test/common/meck_helper.erl:126:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  126|     _ = catch meck:unload(Module),
+%     |         ^
+
+test/common/meck_helper.erl:129:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  129|     _ = catch code:ensure_loaded(Module),
+%     |         ^
+
+test/api/intbe02_http_support.erl:191:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  191|     catch throttle:setup(api_per_ip, 100000, per_minute),
+%     |     ^
+
+test/api/intbe02_http_support.erl:192:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  192|     catch throttle:setup(api_per_user, 100000, per_minute),
+%     |     ^
+
+test/api/intbe02_http_support.erl:253:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  253|     catch ets:delete(?COVERED_TAB),
+%     |     ^
+
+test/api/intbe02_http_support.erl:550:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  550|     catch pooler:rm_pool(pgsql),
+%     |     ^
+
+test/api/intbe02_http_support.erl:560:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  560|     catch pooler:rm_pool(pgsql),
+%     |     ^
+
+test/api/intbe02_http_support.erl:647:18: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  647|             case catch binary_to_integer(SizeBin, 16) of
+%     |                  ^
+
+test/api/intbe02_http_support.erl:690:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  690|         catch meck:unload(elib_oss)
+%     |         ^
+
+test/api/intbe02_http_support.erl:710:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  710|         catch meck:unload(inet)
+%     |         ^
+
+test/features/customer_service/infrastructure/cs_pg_test_fixture.erl:157:5: Warning: variable 'Seat' is unused
+%  157|     Seat = id(),
+%     |     ^
+
+test/features/customer_service/application/cs_fake_store.erl:130:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  130|     catch ets:delete(?TAB),
+%     |     ^
+
+test/features/customer_service/application/cs_fake_store.erl:159:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  159|     catch ets:delete(?TAB),
+%     |     ^
+
+test/features/customer_service/application/cs_fake_store.erl:1812:13: Warning: variable 'ConvId' is unused
+% 1812|             ConvId = maps:get(conversation_id, Session),
+%     |             ^
+
+test/features/customer_service/application/cs_fake_store.erl:1812:22: Warning: the result of calling map_get/2 is ignored (suppress the warning by assigning the expression to the _ variable)
+% 1812|             ConvId = maps:get(conversation_id, Session),
+%     |                      ^
+
+test/features/customer_service/application/cs_fake_store.erl:1822:52: Warning: variable 'OrgId' is unused
+% 1822|                                 organization_id := OrgId,
+%     |                                                    ^
+
+test/features/customer_service/application/cs_fake_store.erl:1822:52: Warning: variable 'OrgId' shadowed in generate
+% 1822|                                 organization_id := OrgId,
+%     |                                                    ^
+
+test/features/customer_service/application/cs_fake_store.erl:1823:49: Warning: variable 'WorkspaceId' is unused
+% 1823|                                 workspace_id := WorkspaceId,
+%     |                                                 ^
+
+test/features/customer_service/application/cs_fake_store.erl:1823:49: Warning: variable 'WorkspaceId' shadowed in generate
+% 1823|                                 workspace_id := WorkspaceId,
+%     |                                                 ^
+
+test/features/customer_service/application/cs_fake_store.erl:1824:52: Warning: variable 'ConvId' is unused
+% 1824|                                 conversation_id := ConvId
+%     |                                                    ^
+
+test/features/customer_service/application/cs_fake_store.erl:1824:52: Warning: variable 'ConvId' shadowed in generate
+% 1824|                                 conversation_id := ConvId
+%     |                                                    ^
+
+test/features/customer_service/application/cs_fake_store.erl:1848:22: Warning: variable 'WorkspaceId' is unused
+% 1848| read_state_of(OrgId, WorkspaceId, SessionId, IdentityId, Session) ->
+%     |                      ^
+
+test/features/customer_service/application/cs_fake_store.erl:1849:5: Warning: variable 'ConvId' is unused
+% 1849|     ConvId = maps:get(conversation_id, Session),
+%     |     ^
+
+test/features/customer_service/application/cs_fake_store.erl:1849:14: Warning: the result of calling map_get/2 is ignored (suppress the warning by assigning the expression to the _ variable)
+% 1849|     ConvId = maps:get(conversation_id, Session),
+%     |              ^
+
+test/features/customer_service/application/cs_fake_store.erl:1855:32: Warning: variable 'OrgId' is unused
+% 1855|             organization_id := OrgId,
+%     |                                ^
+
+test/features/customer_service/application/cs_fake_store.erl:1855:32: Warning: variable 'OrgId' shadowed in generate
+% 1855|             organization_id := OrgId,
+%     |                                ^
+
+test/features/customer_service/application/cs_fake_store.erl:1856:29: Warning: variable 'WorkspaceId' is unused
+% 1856|             workspace_id := WorkspaceId,
+%     |                             ^
+
+test/features/customer_service/application/cs_fake_store.erl:1856:29: Warning: variable 'WorkspaceId' shadowed in generate
+% 1856|             workspace_id := WorkspaceId,
+%     |                             ^
+
+test/features/customer_service/application/cs_fake_store.erl:1857:32: Warning: variable 'ConvId' is unused
+% 1857|             conversation_id := ConvId,
+%     |                                ^
+
+test/features/customer_service/application/cs_fake_store.erl:1857:32: Warning: variable 'ConvId' shadowed in generate
+% 1857|             conversation_id := ConvId,
+%     |                                ^
+
+test/features/customer_service/application/cs_fake_id.erl:18:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   18|     catch ets:delete(?TAB),
+%     |     ^
+
+test/features/customer_service/application/cs_fake_canonical_tx.erl:40:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   40|     catch ets:delete(?TAB),
+%     |     ^
+
+test/features/enterprise_business/application/message/eb_message_app_tests.erl:146:9: Warning: variable 'Conv' is unused
+%  146|         Conv = maps:get(conversation_id, Scope),
+%     |         ^
+
+test/features/enterprise_business/application/message/eb_message_app_tests.erl:146:16: Warning: the result of calling map_get/2 is ignored (suppress the warning by assigning the expression to the _ variable)
+%  146|         Conv = maps:get(conversation_id, Scope),
+%     |                ^
+
+test/features/enterprise_business/application/message/eb_message_app_tests.erl:951:18: Warning: variable 'Scope' is unused
+%  951| foreign_identity(Scope) ->
+%     |                  ^
+
+test/features/enterprise_business/application/message/eb_message_app_tests.erl:998:26: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  998|                     case catch meck:new(M, [passthrough]) of
+%     |                          ^
+
+test/features/enterprise_business/application/message/eb_message_app_tests.erl:1022:22: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+% 1022|                 case catch meck:history(M) of
+%     |                      ^
+
+test/features/enterprise_business/application/message/eb_message_app_tests.erl:1027:39: Warning: variable 'M' shadowed in generate
+% 1027|                          || {Caller, {M, F, Args}, _Result} <- L, Caller =:= Self
+%     |                                       ^
+
+test/features/enterprise_business/application/message/eb_message_app_tests.erl:1039:19: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+% 1039|         fun(M) -> catch meck:unload(M) end,
+%     |                   ^
+
