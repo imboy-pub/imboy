@@ -384,6 +384,7 @@ run_conformance(S) ->
     seed_delivery_row(C, S),
     workspace_channel_limit_http_checks:run(S),
     G = positive_chain(S),
+    enterprise_oa_expiry_http_checks:run(S),
     idempotency_matrix(S, G),
     negative_matrix(S),
     seat_concurrent_update(S),

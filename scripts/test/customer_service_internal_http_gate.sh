@@ -53,7 +53,8 @@ files += ['test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wir
           'test/api/workspace_channel_limit_http_checks.erl',
           'test/api/customer_service_seat_http_checks.erl',
           'test/api/customer_service_seat_sse_checks.erl',
-          'test/api/customer_service_widget_expiry_http_checks.erl']
+          'test/api/customer_service_widget_expiry_http_checks.erl',
+          'test/api/enterprise_oa_expiry_http_checks.erl']
 files += ['test/lib/organization/organization_invite_race_pg_checks.erl',
           'test/lib/organization/organization_membership_journey_pg_checks.erl',
           'test/features/customer_service/infrastructure/cs_pg_test_fixture.erl',

@@ -83,7 +83,7 @@ issue_tx(Conn, OrgId, AppId, UserId, CodeDigest, RedirectUri, NonceDigest, Expir
 -spec find_by_digest_tx(any(), binary()) -> {ok, map()} | {error, not_found | term()}.
 find_by_digest_tx(Conn, CodeDigest) when is_binary(CodeDigest), CodeDigest =/= <<>> ->
     Sql =
-        <<"SELECT ", ?COLUMNS/binary, ", (expires_at < CURRENT_TIMESTAMP) AS expired", " FROM ",
+        <<"SELECT ", ?COLUMNS/binary, ", (expires_at <= clock_timestamp()) AS expired", " FROM ",
             (tablename())/binary, " WHERE code_digest = $1 LIMIT 1">>,
     case elib_pg:query(Conn, Sql, [CodeDigest]) of
         {ok, [Row | _]} -> {ok, Row};
@@ -92,21 +92,27 @@ find_by_digest_tx(Conn, CodeDigest) when is_binary(CodeDigest), CodeDigest =/= <
     end.
 
 %% @doc 事务内原子消费一次性 code（INT-14：单次消费 CAS）。
-%% 单条 UPDATE 的行锁天然串行化并发 exchange：WHERE consumed_at IS NULL AND
-%% expires_at > CURRENT_TIMESTAMP，首个事务命中 1 行并写入 consumed_at，
-%% 并发第二个事务同 UPDATE 只能命中 0 行（已被写锁排除且重扫不可见）。
+%% 先取得 code 行锁，再以数据库当前时间做 CAS；事务开始时间及等待行锁
+%% 前的时间都不能授权已过期 code。并发首个消费者写入 consumed_at，
+%% 后续消费者命中 0 行并按既有合同拒绝。
 %% 成功返回 {ok, Row}；失败分类：not_found / already_consumed（重放拒绝，
 %% 不是重放响应）/ expired。
 -spec consume_tx(any(), binary()) ->
     {ok, map()} | {error, not_found | already_consumed | expired | term()}.
 consume_tx(Conn, CodeDigest) when is_binary(CodeDigest), CodeDigest =/= <<>> ->
-    Tb = tablename(),
-    Now = elib_dt:now(),
+    Sql = <<"SELECT id FROM ", (tablename())/binary, " WHERE code_digest = $1 FOR UPDATE">>,
+    case elib_pg:query(Conn, Sql, [CodeDigest]) of
+        {ok, [_]} -> consume_locked(Conn, CodeDigest);
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+consume_locked(Conn, CodeDigest) ->
     Sql =
-        <<"UPDATE ", Tb/binary, " SET consumed_at = $1::timestamptz",
-            " WHERE code_digest = $2 AND consumed_at IS NULL",
-            " AND expires_at > CURRENT_TIMESTAMP", " RETURNING ", ?COLUMNS/binary>>,
-    case elib_pg:query(Conn, Sql, [Now, CodeDigest]) of
+        <<"UPDATE ", (tablename())/binary, " SET consumed_at = clock_timestamp()",
+            " WHERE code_digest = $1 AND consumed_at IS NULL",
+            " AND expires_at > clock_timestamp()", " RETURNING ", ?COLUMNS/binary>>,
+    case elib_pg:query(Conn, Sql, [CodeDigest]) of
         {ok, [Row | _]} ->
             {ok, Row};
         {ok, []} ->

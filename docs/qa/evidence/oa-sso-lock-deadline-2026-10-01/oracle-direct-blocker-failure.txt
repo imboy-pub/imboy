@@ -1,0 +1,47 @@
+======================== EUnit ========================
+module 'enterprise_internal_wiring_http_tests'
+  enterprise_internal_wiring_http_tests: route_table...[0.008 s] ok
+  enterprise_internal_wiring_http_tests: manifest_v21_entries...ok
+  enterprise_internal_wiring_http_tests: http_wiring...[0.065 s] ok
+  enterprise_internal_wiring_http_tests: boundary_parity...ok
+  enterprise_internal_wiring_http_tests: dispatch_compiles...[0.002 s] ok
+  enterprise_internal_wiring_http_tests: normalize_code...ok
+  enterprise_internal_wiring_http_tests: -conformance_test_/0-fun-0-...*failed*
+in function enterprise_oa_expiry_http_checks:await_waiters/2 (test/api/enterprise_oa_expiry_http_checks.erl, line 97)
+in call from enterprise_oa_expiry_http_checks:hold_exchange/5 (test/api/enterprise_oa_expiry_http_checks.erl, line 62)
+in call from enterprise_oa_expiry_http_checks:concurrent_once/1 (test/api/enterprise_oa_expiry_http_checks.erl, line 41)
+in call from enterprise_internal_wiring_http_tests:run_conformance/1 (test/api/enterprise_internal_wiring_http_tests.erl, line 387)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+**error:{assert,[{module,enterprise_oa_expiry_http_checks},
+         {line,97},
+         {expression,"wait ( C , << \"SELECT count(*) >= $2 AS ready FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid))\" >> , [ Pid , Count ] , 100 )"},
+         {expected,true},
+         {value,false}]}
+  output:<<"">>
+
+  [done in 15.594 s]
+module 'workspace_creation_pg_tests'
+  workspace_creation_pg_tests: -creation_test_/0-fun-0-...14:50:24.863 [error] [organization_invitation_accept_targeted_failed,995902,995011,
+ {internal,
+     {membership_hook,
+         {internal,
+             {announcements_subscribe,115653371169605632,
+                 {error,error,<<"23514">>,check_violation,
+                     <<"new row for relation \"channel_subscription\" violates check constraint \"synthetic_membership_subscribe_fail\"">>,
+                     [{constraint_name,
+                          <<"synthetic_membership_subscribe_fail">>},
+                      {detail,
+                          <<"Failing row contains (115653371194771456, 115653371169605632, 995011, 2026-10-01 06:50:24.857428+00, null, 0, 0, t, f, f, 1).">>},
+                      {file,<<"execMain.c">>},
+                      {line,<<"2072">>},
+                      {routine,<<"ExecConstraints">>},
+                      {schema_name,<<"public">>},
+                      {severity,<<"ERROR">>},
+                      {table_name,<<"channel_subscription">>}]}}}}}]
+[89.765 s] ok
+  [done in 89.768 s]
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 7.
