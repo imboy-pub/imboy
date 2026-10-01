@@ -212,14 +212,13 @@ rotate_credential_tx(Conn, OrgId, OldCredId) ->
 -spec rotate_credential_tx(any(), integer(), integer(), undefined | binary()) ->
     {ok, map()} | {error, term()}.
 rotate_credential_tx(Conn, OrgId, OldCredId, ExpiresAt) ->
-    case credential_application_id(Conn, OrgId, OldCredId) of
+    case rotation_application(Conn, OrgId, OldCredId) of
         {ok, AppId} ->
             case issue_credential_tx(Conn, OrgId, AppId, ExpiresAt) of
                 {ok, _} = Ok ->
                     case enterprise_application_credential_repo:revoke_tx(Conn, OrgId, OldCredId) of
                         ok -> Ok;
-                        {error, not_active} -> Ok;
-                        {error, Reason} -> {error, Reason}
+                        {error, Reason} -> throw({rollback, Reason})
                     end;
                 {error, Reason} ->
                     {error, Reason}
@@ -534,24 +533,29 @@ urlsafe($+) -> <<"-">>;
 urlsafe($/) -> <<"_">>;
 urlsafe(C) -> <<C>>.
 
--spec credential_application_id(any(), integer(), integer()) ->
-    {ok, integer()} | {error, not_found | term()}.
-credential_application_id(Conn, OrgId, CredId) ->
-    Sql =
-        <<"SELECT application_id FROM enterprise_application_credential",
-            " WHERE organization_id = $1 AND id = $2 LIMIT 1">>,
-    case elib_pg:query(Conn, Sql, [OrgId, CredId]) of
-        {ok, [#{<<"application_id">> := AppId} | _]} ->
-            {ok, AppId};
-        {ok, []} ->
-            {error, not_found};
-        {error, Reason} ->
-            {error, Reason}
+%% 按 Application → Credential 锁序读取当前状态；撤销行不再产生新凭证。
+rotation_application(Conn, OrgId, CredId) ->
+    case enterprise_application_credential_repo:find_tx(Conn, OrgId, CredId) of
+        {ok, Row} ->
+            AppId = maps:get(<<"application_id">>, Row),
+            case enterprise_application_repo:lock_tx(Conn, OrgId, AppId) of
+                {ok, _} ->
+                    case enterprise_application_credential_repo:lock_tx(Conn, OrgId, CredId) of
+                        {ok, #{<<"status">> := <<"active">>, <<"application_id">> := AppId}} ->
+                            {ok, AppId};
+                        {ok, _} ->
+                            {error, not_active};
+                        {error, _} = Err ->
+                            Err
+                    end;
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, _} = Err ->
+            Err
     end.
 
-%% @doc 池化列出 credential **元数据**（Admin 治理面 A-05）。
-%% SELECT 列**永不**含 secret_digest / 明文 —— 与 application_status_tx/3 同源的
-%% redaction 红线：Admin 读面一旦投影摘要就等于把可离线爆破的凭据哈希下发到浏览器。
+%% @doc 池化列出 credential 元数据；不含 secret_digest 或明文。
 -spec list_credentials(integer(), integer()) -> [map()].
 list_credentials(OrgId, AppId) ->
     pool(fun(Conn) -> list_credentials(Conn, OrgId, AppId) end).

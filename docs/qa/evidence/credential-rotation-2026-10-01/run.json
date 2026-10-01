@@ -1,0 +1,33 @@
+{
+  "base_sha": "aaba1227df771cddf39d499362b3349b3dfa9df9",
+  "exit_code": 0,
+  "run_dir": "/tmp/imboy-seat-http.nqPHoJ",
+  "sources": [
+    {
+      "path": "src/logic/enterprise_internal_ops.erl",
+      "sha256": "c379811a3b98343964625251d98cf1e24f5025ac8ef9c5dea0b46219bb285e89"
+    },
+    {
+      "path": "src/repo/enterprise_application_credential_repo.erl",
+      "sha256": "85c5a9ab6991b7db0da06e9d16a39f6300ee996222059a69521c98db9507c0d4"
+    },
+    {
+      "path": "src/logic/enterprise_admin_governance_logic.erl",
+      "sha256": "f6a3fd180e7ee2f47af746023d40e9c3d0562a994081db6918ea15eadf5e5495"
+    },
+    {
+      "path": "test/api/enterprise_admin_governance_pg_checks.erl",
+      "sha256": "e25d3eb8e3bc8bac006d60de5dc3be9c7f1dd22174ea2d0413b7793f32545c62"
+    },
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "f9b82aa77ea76b5421430b3313ab66c35380bfcf817ac1599b79c1b89bed3a7f"
+    }
+  ],
+  "http_regression": {
+    "exit_code": 0,
+    "run_dir": "/tmp/imboy-seat-http.Ia87kV",
+    "tests": 26,
+    "note": "Same product source; native check-only adjustments followed."
+  }
+}

@@ -25,6 +25,7 @@
     touch_last_used_tx/2,
     authority_for_share_tx/4,
     find_tx/3,
+    lock_tx/3,
     expired_tx/2
 ]).
 
@@ -235,6 +236,18 @@ touch_last_used_tx(Conn, Id) ->
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+%% 调用方先锁 Application，再锁 credential，避免轮换并发及逆序死锁。
+-spec lock_tx(any(), integer(), integer()) -> {ok, map()} | {error, term()}.
+lock_tx(Conn, OrgId, Id) ->
+    Sql =
+        <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
+            " WHERE organization_id = $1 AND id = $2 FOR UPDATE">>,
+    case elib_pg:query(Conn, Sql, [OrgId, Id]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
 
 -spec find_tx(any(), integer(), integer()) -> {ok, map()} | {error, not_found | term()}.
 find_tx(Conn, OrgId, Id) ->

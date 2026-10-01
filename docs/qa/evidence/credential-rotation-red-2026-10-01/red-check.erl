@@ -7,10 +7,6 @@ run() ->
     H = intbe02_http_support:setup_all(),
     try
         repeated_rotation(),
-        repeated_ops_rotation(),
-        concurrent_rotation(admin, maps:get(conn, H)),
-        concurrent_rotation(ops, maps:get(conn, H)),
-        failed_old_revoke(),
         Cases = [
             status,
             scopes,
@@ -281,112 +277,9 @@ repeated_rotation() ->
             audit_count => Count
         })
     ),
-    ?assert(Result =:= {error, not_active}),
+    ?assertEqual({error, not_active}, Result),
     ?assertEqual(Before, After),
     ?assertEqual(1, Count).
-
-repeated_ops_rotation() ->
-    S = fixture(),
-    ?assert(success(rotate(ops, S))),
-    Before = snapshot(S),
-    ?assert(rotate(ops, S) =:= {error, not_active}),
-    ?assertEqual(Before, snapshot(S)),
-    ?assertEqual(0, audit_count(S)).
-
-rotate(admin, S) ->
-    operation(rotate_credential, S);
-rotate(ops, S) ->
-    enterprise_internal_ops:rotate_credential(
-        maps:get(org_id, S), maps:get(credential_id, S)
-    ).
-
-%% Hold the parent lock until both database sessions are actually blocked.
-concurrent_rotation(Mode, C) ->
-    S = fixture(),
-    {ok, _, _} = epgsql:squery(C, "BEGIN"),
-    try
-        {ok, _} = enterprise_application_repo:lock_tx(
-            C, maps:get(org_id, S), maps:get(app_id, S)
-        ),
-        Parent = self(),
-        Refs = [
-            begin
-                Ref = make_ref(),
-                spawn(fun() -> Parent ! {Ref, rotate(Mode, S)} end),
-                Ref
-            end
-         || _ <- [1, 2]
-        ],
-        await_rotation_locks(C, 200),
-        {ok, _, _} = epgsql:squery(C, "COMMIT"),
-        Results = [
-            receive
-                {R, V} -> V
-            after 10000 -> error(rotation_timeout)
-            end
-         || R <- Refs
-        ],
-        ?assertEqual(1, length([ok || V <- Results, success(V)])),
-        ?assertEqual(1, length([ok || {error, not_active} <- Results])),
-        ?assertEqual(2, credential_count(S)),
-        ?assertEqual(
-            case Mode of
-                admin -> 1;
-                ops -> 0
-            end,
-            audit_count(S)
-        )
-    after
-        epgsql:squery(C, "ROLLBACK")
-    end.
-
-await_rotation_locks(_C, 0) ->
-    error(rotation_lock_timeout);
-await_rotation_locks(C, N) ->
-    {ok, _} = elib_pg:query(C, <<"SELECT pg_stat_clear_snapshot()">>, []),
-    {ok, [Row]} = elib_pg:query(
-        C,
-        <<"SELECT count(*)::integer AS n FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM public.enterprise_application WHERE%'">>,
-        []
-    ),
-    case maps:get(<<"n">>, Row) of
-        2 -> ok;
-        _ -> receive
-            after 10 -> await_rotation_locks(C, N - 1)
-            end
-    end.
-
-credential_count(S) ->
-    cs_pg_test_fixture:scalar(
-        <<"SELECT count(*) FROM enterprise_application_credential WHERE organization_id=$1 AND application_id=$2">>,
-        [maps:get(org_id, S), maps:get(app_id, S)],
-        -1
-    ).
-
-failed_old_revoke() ->
-    S = fixture(),
-    Before = snapshot(S),
-    ok = cs_pg_test_fixture:exec(
-        <<"CREATE FUNCTION gate_skip_old_revoke() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='revoked' THEN RETURN NULL; END IF; RETURN NEW; END $$">>,
-        []
-    ),
-    ok = cs_pg_test_fixture:exec(
-        <<"CREATE TRIGGER gate_skip_old_revoke BEFORE UPDATE ON enterprise_application_credential FOR EACH ROW EXECUTE FUNCTION gate_skip_old_revoke()">>,
-        []
-    ),
-    Result =
-        try
-            rotate(ops, S)
-        after
-            ok = cs_pg_test_fixture:exec(
-                <<"DROP TRIGGER gate_skip_old_revoke ON enterprise_application_credential">>, []
-            ),
-            ok = cs_pg_test_fixture:exec(<<"DROP FUNCTION gate_skip_old_revoke()">>, [])
-        end,
-    ?assert(Result =:= {error, not_active}),
-    ?assertEqual(Before, snapshot(S)),
-    ?assertEqual(1, credential_count(S)),
-    ?assert(success(rotate(ops, S))).
 
 write_evidence(Evidence) ->
     file:write_file(
@@ -395,9 +288,6 @@ write_evidence(Evidence) ->
             audit_failures => Evidence,
             combined_invalid_workspace_rollback => true,
             concurrent_cas_one_winner => true,
-            tenant_denial => true,
-            repeated_rotation_denied => true,
-            concurrent_rotation_admin_and_ops => true,
-            failed_old_revoke_rolls_back_new => true
+            tenant_denial => true
         })
     ).

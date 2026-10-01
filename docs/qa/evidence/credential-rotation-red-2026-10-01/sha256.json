@@ -1,0 +1,18 @@
+[
+  {
+    "path": "compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "credential-repeat-rotation.json",
+    "sha256": "812a07286cc836bf21ee3be2f5f8dbc72158f0349a8a5d9d6a6e9c6652a9cc0b"
+  },
+  {
+    "path": "red-check.erl",
+    "sha256": "f641f81b80d90ed2ccfd793f6fbf74dc2982fc625aa326c814adbad4de2eaab9"
+  },
+  {
+    "path": "run.json",
+    "sha256": "caae6f9fc34d9337b06bbbdc0add558289cc26cbc8ab7ab5b5c59f5fe856b330"
+  }
+]
