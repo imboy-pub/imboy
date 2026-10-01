@@ -42,6 +42,7 @@ creation(S) ->
     assert_archive(C, Created),
     organization_membership_journey_pg_checks:run(C),
     cs_session_open_pg_checks:run(C),
+    customer_service_seat_http_checks:run(S),
     ReportDir = filename:join(os:getenv("IMBOY_GATE_RUN_DIR", "/tmp"), "cs-journey"),
     ok = filelib:ensure_dir(filename:join(ReportDir, "placeholder")),
     ?assertEqual(

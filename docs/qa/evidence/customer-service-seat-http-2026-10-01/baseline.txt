@@ -1,0 +1,8 @@
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{assertEqual,[{module,customer_service_seat_http_checks},
+              {line,24},
+              {expression,"maps : get ( status , Late )"},
+              {expected,409},
+              {value,200}]}
+  output:<<"">>
+

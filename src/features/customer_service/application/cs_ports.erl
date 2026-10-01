@@ -107,6 +107,7 @@ contracts() ->
             {insert_session, 3},
             {insert_session, 4},
             {fetch_session, 3},
+            {fetch_conversation_session, 3},
             {claim_session, 7},
             {transfer_session, 7},
             {close_session, 7},

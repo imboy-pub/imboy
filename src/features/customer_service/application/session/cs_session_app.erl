@@ -29,6 +29,7 @@
     close/2,
     rate/2,
     append_session_message/2,
+    append_conversation_message/2,
     list_contact_sessions/2,
     list_sessions/2,
     seat_session_page/2,
@@ -1122,3 +1123,23 @@ presence_annotated(OrgId, Seats, Params) ->
         {ok, Presences} -> cs_presence:annotate(Seats, Presences, Now);
         {error, _} -> Seats
     end.
+
+%% Server-derived CS identity uses the same lifecycle/audit path as visitor writes.
+append_conversation_message(OrgId, #{sender_type := <<"business_identity">>} = Params) ->
+    case cs_app_support:store_port(Params) of
+        {ok, Store} ->
+            Ws = maps:get(workspace_id, Params),
+            case Store:fetch_conversation_session(OrgId, Ws, maps:get(conversation_id, Params)) of
+                {ok, Session} ->
+                    append_session_message(OrgId, Params#{
+                        session_id => maps:get(id, Session),
+                        business_identity_id => maps:get(identity_id, Params)
+                    });
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, _} = Err ->
+            Err
+    end;
+append_conversation_message(_, _) ->
+    {error, {invalid_argument, sender_type}}.

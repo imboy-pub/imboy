@@ -16,6 +16,7 @@
     insert_session/4,
     append_message_event_in/3,
     fetch_session/3,
+    fetch_conversation_session/3,
     claim_session/7,
     transfer_session/7,
     close_session/7,
@@ -72,6 +73,11 @@
     "  FROM customer_service_session s"
     "  JOIN workspace w ON w.organization_id = $1 AND w.id = $2"
     " WHERE s.organization_id = $1 AND s.workspace_id = $2 AND s.id = $3"
+>>).
+
+-define(SQL_CONVERSATION_SESSION, <<
+    "SELECT id FROM customer_service_session WHERE organization_id=$1 AND workspace_id=$2"
+    " AND conversation_id=$3 ORDER BY id DESC LIMIT 1"
 >>).
 
 -define(SQL_LOCK_SEAT, <<
@@ -554,6 +560,7 @@ sql_statements() ->
     [
         ?SQL_INSERT_SESSION,
         ?SQL_FETCH_SESSION,
+        ?SQL_CONVERSATION_SESSION,
         ?SQL_LOCK_SEAT,
         ?SQL_LOCK_MESSAGE_SEAT,
         ?SQL_COUNT_ACTIVE,
@@ -1014,3 +1021,9 @@ fetch_session_in(Conn, OrgId, WorkspaceId, SessionId) ->
 %% 原样透传（不包一层 rollback）。
 undo_rollback({rollback, Reason}) -> Reason;
 undo_rollback(Result) -> Result.
+
+fetch_conversation_session(Org, Ws, Conv) ->
+    case cs_pg_common:fetch_one(?SQL_CONVERSATION_SESSION, [Org, Ws, Conv], [id]) of
+        {ok, #{id := Id}} -> fetch_session(Org, Ws, Id);
+        {error, _} = Err -> Err
+    end.

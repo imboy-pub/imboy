@@ -59,6 +59,7 @@
     insert_session/3,
     insert_session/4,
     fetch_session/3,
+    fetch_conversation_session/3,
     claim_session/7,
     transfer_session/7,
     close_session/7,
@@ -1921,3 +1922,17 @@ active_count(OrgId, IdentityId) ->
         maps:get(business_identity_id, S, undefined) =:= IdentityId,
         maps:get(status, S) =:= active
     ]).
+
+fetch_conversation_session(Org, Ws, Conv) ->
+    {sessions, Sessions} = hd(ets:lookup(?TAB, sessions)),
+    Rows = [
+        R
+     || R <- maps:values(Sessions),
+        maps:get(organization_id, R) =:= Org,
+        maps:get(workspace_id, R) =:= Ws,
+        maps:get(conversation_id, R) =:= Conv
+    ],
+    case lists:sort(fun(A, B) -> maps:get(id, A) > maps:get(id, B) end, Rows) of
+        [R | _] -> {ok, R};
+        [] -> {error, not_found}
+    end.

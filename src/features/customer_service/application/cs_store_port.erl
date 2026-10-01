@@ -171,6 +171,8 @@
 
 -callback insert_session(OrgId :: integer(), WorkspaceId :: integer(), Session :: session()) ->
     {ok, session()} | {error, conflict | term()}.
+-callback fetch_conversation_session(integer(), integer(), integer()) ->
+    {ok, session()} | {error, term()}.
 -callback fetch_session(OrgId :: integer(), WorkspaceId :: integer(), SessionId :: integer()) ->
     {ok, session()} | {error, not_found | term()}.
 %% @doc A02 的 DB 裁决点：单事务内锁定 seat 行 → enabled / max_concurrent 复核 →

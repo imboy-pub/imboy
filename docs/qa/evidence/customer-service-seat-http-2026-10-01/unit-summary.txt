@@ -1,0 +1,6 @@
+  cs_closure_tests: facade_delegates_only_to_declared_targets_test...[0.001 s] ok
+  cs_closure_tests: facade_reference_whitelist_is_empty_test...ok
+  cs_closure_tests: session_app_calls_eb_facade_for_messages_test...[0.002 s] ok
+  [done in 0.074 s]
+=======================================================
+  All 45 tests passed.

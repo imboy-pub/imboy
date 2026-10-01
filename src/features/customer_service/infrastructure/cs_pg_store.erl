@@ -36,6 +36,7 @@
     insert_session/3,
     insert_session/4,
     fetch_session/3,
+    fetch_conversation_session/3,
     claim_session/7,
     transfer_session/7,
     close_session/7,
@@ -318,3 +319,6 @@ event_watermark(OrgId, WorkspaceId) -> cs_pg_seat:event_watermark(OrgId, Workspa
 %% admin provisioning（BE-S01b：单事务开通/修复坐席）
 provision_seat(OrgId, WorkspaceId, Provision) ->
     cs_pg_seat:provision_seat(OrgId, WorkspaceId, Provision).
+
+fetch_conversation_session(Org, Ws, Conv) ->
+    cs_pg_session:fetch_conversation_session(Org, Ws, Conv).

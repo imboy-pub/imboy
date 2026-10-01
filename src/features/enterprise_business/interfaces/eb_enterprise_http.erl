@@ -348,8 +348,14 @@ build_params(Entry, Case, Req, Body, Ctx) ->
 %% AuthContext 无 identity（owner 治理面、platform 等）时保持原 Params 不动。
 server_identity_override(Params, Ctx) ->
     case maps:get(caller_identity_id, Ctx, undefined) of
-        undefined -> Params;
-        Bid -> Params#{identity_id => Bid, caller_identity_id => Bid}
+        undefined ->
+            Params;
+        Bid ->
+            Params#{
+                identity_id => Bid,
+                caller_identity_id => Bid,
+                caller_function_key => maps:get(caller_function_key, Ctx, undefined)
+            }
     end.
 
 %% F6（RULING-2026-09-15 §七）：主密钥材料键在任何动作的 HTTP/JSON 面（正文与
@@ -697,6 +703,12 @@ classify({already_verified, _}) ->
     ?ERR_CONFLICT;
 classify({case_conflict, _}) ->
     ?ERR_CONFLICT;
+classify(session_already_closed) ->
+    ?ERR_CONFLICT;
+classify({not_session_seat, _, _}) ->
+    ?ERR_FORBIDDEN;
+classify(seat_disabled) ->
+    ?ERR_FORBIDDEN;
 classify({stale_version, _}) ->
     ?ERR_CONFLICT;
 classify({invalid_transition, _}) ->

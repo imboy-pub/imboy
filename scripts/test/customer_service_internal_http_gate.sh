@@ -48,7 +48,8 @@ files += ['test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wir
           'test/ds/channel_creation_tx_pg_checks.erl',
           'test/api/enterprise_channel_write_http_checks.erl',
           'test/api/enterprise_identity_contract_http_checks.erl',
-          'test/api/workspace_channel_limit_http_checks.erl']
+          'test/api/workspace_channel_limit_http_checks.erl',
+          'test/api/customer_service_seat_http_checks.erl']
 files += ['test/lib/organization/organization_invite_race_pg_checks.erl',
           'test/lib/organization/organization_membership_journey_pg_checks.erl',
           'test/features/customer_service/infrastructure/cs_pg_test_fixture.erl',

@@ -32,6 +32,7 @@
     close/2,
     rate/2,
     append_session_message/2,
+    append_conversation_message/2,
     list_contact_sessions/2,
     list_sessions/2,
     %% shop key / visit token
@@ -1101,3 +1102,13 @@ provision_seat(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, provision_seat}};
 provision_seat(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% Seat enterprise message surface, resolved to its current CS session by application.
+append_conversation_message(
+    OrgId, #{workspace_id := Ws, conversation_id := Conv, identity_id := Bid} = Params
+) when
+    is_integer(OrgId), is_integer(Ws), is_integer(Conv), is_integer(Bid)
+->
+    cs_session_app:append_conversation_message(OrgId, Params);
+append_conversation_message(_, _) ->
+    {error, {invalid_argument, append_conversation_message}}.

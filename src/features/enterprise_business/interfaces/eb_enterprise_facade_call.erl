@@ -16,6 +16,7 @@
 %%% 本模块不做任何参数加工、不做任何结果解释：由 `eb_enterprise_http` 负责形状，
 %%% 由 application 负责语义。
 -module(eb_enterprise_facade_call).
+-include("generated/imboy_product_features.hrl").
 
 -export([call/3, actions/0]).
 
@@ -41,6 +42,8 @@ call(open_conversation, OrgId, Params) ->
     enterprise_business_facade:open_conversation(OrgId, Params);
 call(list_messages, OrgId, Params) ->
     enterprise_business_facade:list_messages(OrgId, Params);
+call(append_message, OrgId, #{caller_function_key := <<"customer_service">>} = Params) ->
+    seat_message(OrgId, Params);
 call(append_message, OrgId, Params) ->
     enterprise_business_facade:append_message(OrgId, Params);
 call(ack_delivery, OrgId, Params) ->
@@ -103,3 +106,10 @@ actions() ->
         offboarding_detail,
         fetch_message
     ].
+
+%% Keep the existing enterprise URL; Seat writes use the shared CS lifecycle.
+-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE).
+seat_message(OrgId, Params) -> customer_service_facade:append_conversation_message(OrgId, Params).
+-else.
+seat_message(_OrgId, _Params) -> {error, customer_service_feature_not_selected}.
+-endif.
