@@ -88,10 +88,8 @@ handle_cast(Msg, State) ->
 
 login_success(Uid, PostVals) ->
     Now = elib_dt:now(),
-    % 记录设备信息
-    PostMap = PostVals,
-    DID = maps:get(<<"did">>, PostMap, <<"">>),
-    _ = user_device_ds:save(Now, Uid, DID, PostMap),
+    %% The passport response path has already persisted the device.
+    DID = maps:get(<<"did">>, PostVals, <<"">>),
     _ = user_ds:update_friends_last_seen_at(Uid, Now),
     % 分别计算c2c c2g s2c 相关消息类型的表里面是否有离线消息（按设备维度）
     _ = message_ds:check_and_notify_offline_msgs(Uid, DID),

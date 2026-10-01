@@ -752,3 +752,20 @@ quick_login_without_did_issues_legacy_token_test_() ->
             ?assertEqual(<<"rtk_legacy">>, maps:get(<<"refreshtoken">>, Data))
         end
     ).
+
+record_login_device_failure_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_ds, [
+                {'save', 4, fun(_Now, 995011, <<"synthetic-device">>, _Post) ->
+                    {error, synthetic_device_write_failure}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, synthetic_device_write_failure},
+                passport_logic:record_login_device(995011, #{<<"did">> => <<"synthetic-device">>})
+            )
+        end
+    ).

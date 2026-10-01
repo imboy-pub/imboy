@@ -193,11 +193,7 @@ login(Req0) ->
         end,
     case LoginResult of
         {ok, Data} ->
-            Uid = maps:get(<<"uid">>, Data),
-            gen_server:cast(user_server, {login_success, Uid, Post2}),
-            Setting = passport_logic:find_user_setting(Uid),
-            Data2 = Data#{<<"setting">> => Setting},
-            elib_response:success(Req0, Data2, "success.");
+            login_success_response(Req0, Data, Post2);
         {{error, conflict}, ConflictInfo} ->
             % 返回设备冲突信息
             elib_response:error(Req0, ConflictInfo, 5100);
@@ -232,15 +228,7 @@ quick_login(Req0) ->
     % ?DEBUG_LOG(["PostVals", PostVals, Post2]),
     case passport_logic:quick_login(Service, Operator, Token, Post2) of
         {ok, Data} ->
-            % ?DEBUG_LOG(["Data", Data]),
-            % 检查消息 用异步队列实现
-            Uid = maps:get(<<"uid">>, Data),
-            % gen_server:call是同步的，gen_server:cast是异步的
-            gen_server:cast(user_server, {login_success, Uid, Post2}),
-            Setting = passport_logic:find_user_setting(Uid),
-            Data2 = Data#{<<"setting">> => Setting},
-            % ?DEBUG_LOG(["Data2", Data2]),
-            elib_response:success(Req0, Data2, "success.");
+            login_success_response(Req0, Data, Post2);
         %% quota_guard 返回三元组（402 用户数达授权上限），必须显式接住：
         %% 只匹配 {error, Msg} 会在配额满时 case_clause 崩溃。
         {error, Msg, Code} ->
@@ -271,11 +259,7 @@ alipay_login(Req0) ->
             Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip, <<"did">> => Did},
             case passport_logic:alipay_login(AuthCode, Post2) of
                 {ok, Data} ->
-                    Uid = maps:get(<<"uid">>, Data),
-                    gen_server:cast(user_server, {login_success, Uid, Post2}),
-                    Setting = passport_logic:find_user_setting(Uid),
-                    Data2 = Data#{<<"setting">> => Setting},
-                    elib_response:success(Req0, Data2, "success.");
+                    login_success_response(Req0, Data, Post2);
                 %% quota_guard 三元组（402 用户数达授权上限）
                 {error, Msg, Code} ->
                     elib_response:error(Req0, Msg, Code);
@@ -440,3 +424,15 @@ find_password(Req0) ->
         Req0,
         passport_logic:find_password(Type, Account, Pwd, Code, Post2)
     ).
+
+%% Device registration is an authentication prerequisite, not an async side effect.
+login_success_response(Req, Data, PostVals) ->
+    Uid = ec_cnv:to_integer(maps:get(<<"uid">>, Data)),
+    case passport_logic:record_login_device(Uid, PostVals) of
+        ok ->
+            gen_server:cast(user_server, {login_success, Uid, PostVals}),
+            Setting = passport_logic:find_user_setting(Uid),
+            elib_response:success(Req, Data#{<<"setting">> => Setting}, "success.");
+        {error, _} ->
+            elib_response:error_with_status(Req, 503, <<"设备登记失败，请重试"/utf8>>, 503)
+    end.

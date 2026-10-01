@@ -103,7 +103,11 @@ find_password_test_() ->
         end
     ).
 
-login_test_() ->
+login_test_() -> login_result_test(ok).
+
+login_device_failure_test_() -> login_result_test({error, synthetic_device_write_failure}).
+
+login_result_test(DeviceResult) ->
     ?WITH_MECKS(
         [
             {elib_param, [
@@ -129,6 +133,10 @@ login_test_() ->
                 {'safe_rsa_decrypt', 2, fun(Pwd, _RsaEncrypt) -> Pwd end}
             ]},
             {passport_logic, [
+                {'record_login_device', 2, fun(12345, PostVals) ->
+                    ?assertEqual(<<"device-1">>, maps:get(<<"did">>, PostVals)),
+                    DeviceResult
+                end},
                 {'do_login', 5, fun(
                     <<"email">>,
                     <<"test@example.com">>,
@@ -143,11 +151,14 @@ login_test_() ->
                 end}
             ]},
             {user_setting_ds, [
-                {'find_by_uid', 1, fun(<<"12345">>) ->
+                {'find_by_uid', 1, fun(12345) ->
                     #{<<"theme">> => <<"light">>, <<"language">> => <<"zh-CN">>}
                 end}
             ]},
             {elib_response, [
+                {'error_with_status', 4, fun(_Req, 503, _Message, 503) ->
+                    cowboy_req_h:new(#{response_status => 503, response_body => #{}})
+                end},
                 {'success', 3, fun(_Req, Data, _Message) ->
                     cowboy_req_h:new(#{
                         response_status => 200,
@@ -161,8 +172,14 @@ login_test_() ->
                 MockReq = cowboy_req_h:new(#{method => <<"POST">>}),
                 {ok, Req, _State} = passport_handler:init(MockReq, #{action => login}),
                 {StatusCode, _, Body} = cowboy_req_h:response(Req),
-                ?assertEqual(200, StatusCode),
-                ?assertMatch(#{<<"setting">> := _}, Body)
+                case DeviceResult of
+                    ok ->
+                        ?assertEqual(200, StatusCode),
+                        ?assertMatch(#{<<"setting">> := _}, Body);
+                    {error, _} ->
+                        ?assertEqual(503, StatusCode),
+                        ?assertNot(maps:is_key(<<"token">>, Body))
+                end
             end)
         end
     ).

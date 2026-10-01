@@ -20,6 +20,7 @@
 -export([alipay_login/2]).
 -export([alipay_authinfo/0]).
 -export([find_user_setting/1]).
+-export([record_login_device/2]).
 -export([email_in_use/1]).
 -export([bind_email/2]).
 -export([mobile_registered/1]).
@@ -1186,3 +1187,12 @@ compat_error_message(Reason) when is_atom(Reason) ->
     atom_to_binary(Reason, utf8);
 compat_error_message(Reason) ->
     ec_cnv:to_binary(Reason).
+
+%% Persist the device whitelist before exposing its bound token to the client.
+-spec record_login_device(integer(), map()) -> ok | {error, term()}.
+record_login_device(Uid, PostVals) ->
+    Did = maps:get(<<"did">>, PostVals, <<>>),
+    case user_device_ds:save(elib_dt:now(), Uid, Did, PostVals) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.

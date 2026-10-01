@@ -242,11 +242,11 @@ handle_cast_signup_success_hibernates_test() ->
     Result = user_server:handle_cast({signup_success, Uid, PostVals}, State),
     ?assertMatch({noreply, [], hibernate}, Result).
 
-handle_cast_login_success_updates_device_and_notifies_test_() ->
+handle_cast_login_success_notifies_without_rewriting_device_test_() ->
     %% login_success 调用链:
     %%   ec_cnv:to_integer/1  (纯函数，无需 mock)
     %%   elib_dt:now/0
-    %%   user_device_ds:save/4
+    %%   device registration is already complete in the passport response path
     %%   user_ds:update_friends_last_seen_at/2
     %%   message_ds:check_and_notify_offline_msgs/1
     ?WITH_MECKS(
@@ -270,7 +270,8 @@ handle_cast_login_success_updates_device_and_notifies_test_() ->
             PostVals = #{<<"did">> => <<"device_1">>},
 
             Result = user_server:handle_cast({login_success, Uid, PostVals}, State),
-            ?assertMatch({noreply, [], hibernate}, Result)
+            ?assertMatch({noreply, [], hibernate}, Result),
+            ?assertNot(meck:called(user_device_ds, save, '_'))
         end
     ).
 
