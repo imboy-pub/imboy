@@ -1,0 +1,37 @@
+{
+  "base_sha": "b9c054c19108555e12e7c51ab08ba0619d96cbac",
+  "exit_code": 0,
+  "run_dir": "/tmp/imboy-seat-http.0sVYyF",
+  "mode": "native_governance_pg",
+  "source_files": [
+    {
+      "path": "src/logic/enterprise_admin_governance_logic.erl",
+      "sha256": "f6a3fd180e7ee2f47af746023d40e9c3d0562a994081db6918ea15eadf5e5495"
+    },
+    {
+      "path": "src/logic/enterprise_internal_ops.erl",
+      "sha256": "7c8f30bddd274976dbdedbc216d4a512c06c132f3d4a02c8b37e36a8e5820366"
+    },
+    {
+      "path": "src/repo/enterprise_application_repo.erl",
+      "sha256": "7f977b4352b4e21c4c0403d8990a64d7b291cc7e0e0c8c5b3c92b64ae8c054c6"
+    },
+    {
+      "path": "src/repo/enterprise_application_credential_repo.erl",
+      "sha256": "d4af211078b1b2e20dfb2bb62d9584548616daec30c84b68f6c0d3159374a7d2"
+    },
+    {
+      "path": "test/api/enterprise_admin_governance_pg_checks.erl",
+      "sha256": "c8dde995282f5b7cbb10fb3ff2c0e8120597ef038c58aeed56cd9260234fe118"
+    },
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "f9b82aa77ea76b5421430b3313ab66c35380bfcf817ac1599b79c1b89bed3a7f"
+    }
+  ],
+  "http_regression": {
+    "run_dir": "/tmp/imboy-seat-http.8mifpG",
+    "exit_code": 0,
+    "scope": "26 existing Internal HTTP checks"
+  }
+}

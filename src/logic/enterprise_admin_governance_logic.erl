@@ -43,8 +43,6 @@
     patch_grant/6
 ]).
 
--include("log.hrl").
-
 %% 审计资源类型：Admin 治理面统一按 application 维度留痕。
 -define(AUDIT_RESOURCE_TYPE, <<"enterprise_application">>).
 -define(ACTOR_ROLE, <<"platform_admin">>).
@@ -175,280 +173,162 @@ list_audit(OrgId, AppId, Page, Size) ->
 %% 写面（CAS + 审计）
 %% ===================================================================
 
-%% @doc A-03 生命周期迁移（CAS + 留痕）。
-%% Actor :: #{adm_user_id := integer(), account := binary()}。
--spec set_status(integer(), integer(), pos_integer(), binary(), map()) ->
-    ok | {error, invalid_status | not_found | version_conflict | term()}.
-set_status(OrgId, AppId, ExpectedVersion, Status, Actor) ->
-    Before = application_diff(OrgId, AppId),
-    case
-        enterprise_internal_ops:set_application_status_cas(OrgId, AppId, ExpectedVersion, Status)
-    of
-        ok ->
-            After = application_diff(OrgId, AppId),
-            ok = append_audit(OrgId, AppId, <<"application_status_changed">>, Before, After, Actor),
-            ok;
-        {error, _} = Err ->
-            Err
-    end.
+%% 所有治理写入与审计共用连接；失败不返回凭证明文、不提交局部变更。
+set_status(OrgId, AppId, Version, Status, Actor) ->
+    audited(OrgId, AppId, Actor, fun(C, App) ->
+        must(
+            enterprise_internal_ops:set_application_status_cas_tx(
+                C, OrgId, AppId, Version, Status
+            )
+        ),
+        After = must(enterprise_application_repo:find_tx(C, OrgId, AppId)),
+        {<<"application_status_changed">>, app_diff(App), app_diff(After), ok}
+    end).
 
-%% @doc A-04 整体替换 allowed_scopes（CAS + 留痕）。成功返回新 scopes。
--spec set_scopes(integer(), integer(), pos_integer(), [binary()], map()) ->
-    {ok, [binary()]}
-    | {error, empty_scopes | invalid_scope | not_found | version_conflict | term()}.
-set_scopes(OrgId, AppId, ExpectedVersion, Scopes, Actor) ->
-    Before = application_diff(OrgId, AppId),
-    case enterprise_internal_ops:update_scopes_cas(OrgId, AppId, ExpectedVersion, Scopes) of
-        ok ->
-            After = application_diff(OrgId, AppId),
-            ok = append_audit(OrgId, AppId, <<"application_scopes_changed">>, Before, After, Actor),
-            {ok, Scopes};
-        {error, _} = Err ->
-            Err
-    end.
+set_scopes(OrgId, AppId, Version, Scopes, Actor) ->
+    audited(OrgId, AppId, Actor, fun(C, App) ->
+        must(enterprise_internal_ops:update_scopes_cas_tx(C, OrgId, AppId, Version, Scopes)),
+        After = must(enterprise_application_repo:find_tx(C, OrgId, AppId)),
+        {<<"application_scopes_changed">>, app_diff(App), app_diff(After), {ok, Scopes}}
+    end).
 
-%% @doc A-06 签发 credential。**唯一**返回明文 secret 的入口之一（另一个是轮换）。
-%% 明文只在返回值里出现一次；库内只有 SHA-256 digest。
--spec issue_credential(integer(), integer(), undefined | binary(), map()) ->
-    {ok, map()} | {error, term()}.
 issue_credential(OrgId, AppId, ExpiresAt, Actor) ->
-    case enterprise_internal_ops:issue_credential(OrgId, AppId, ExpiresAt) of
-        {ok, #{credential_id := CredId, credential := Secret}} ->
-            Meta = credential_meta_by_id(OrgId, AppId, CredId),
-            ok = append_audit(
-                OrgId,
-                AppId,
-                <<"credential_issued">>,
-                #{},
-                #{credential_status => <<"active">>, credential_prefix => prefix_of(Meta)},
-                Actor
-            ),
-            {ok, #{<<"credential">> => Meta, <<"secret">> => Secret}};
-        {error, _} = Err ->
-            Err
-    end.
+    audited(OrgId, AppId, Actor, fun(C, _App) ->
+        Issued = must(enterprise_internal_ops:issue_credential_tx(C, OrgId, AppId, ExpiresAt)),
+        credential_result(C, OrgId, AppId, Issued, <<"credential_issued">>, #{})
+    end).
 
-%% @doc A-07 轮换 credential（唯一返回明文 secret 的另一个入口）。
-%% 先按 (org, app) 校验该 credential 确实属于目标应用，杜绝跨应用轮换。
--spec rotate_credential(integer(), integer(), integer(), map()) ->
-    {ok, map()} | {error, not_found | not_active | term()}.
 rotate_credential(OrgId, AppId, CredId, Actor) ->
-    case credential_belongs_to(OrgId, AppId, CredId) of
-        false ->
-            {error, not_found};
-        true ->
-            case enterprise_internal_ops:rotate_credential(OrgId, CredId) of
-                {ok, #{credential_id := NewCredId, credential := Secret}} ->
-                    Meta = credential_meta_by_id(OrgId, AppId, NewCredId),
-                    ok = append_audit(
-                        OrgId,
-                        AppId,
-                        <<"credential_rotated">>,
-                        #{credential_prefix => old_prefix(OrgId, AppId, CredId)},
-                        #{credential_status => <<"active">>, credential_prefix => prefix_of(Meta)},
-                        Actor
-                    ),
-                    {ok, #{<<"credential">> => Meta, <<"secret">> => Secret}};
-                {error, _} = Err ->
-                    Err
-            end
-    end.
+    audited(OrgId, AppId, Actor, fun(C, _App) ->
+        Old = credential_in(C, OrgId, AppId, CredId),
+        Issued = must(enterprise_internal_ops:rotate_credential_tx(C, OrgId, CredId)),
+        credential_result(
+            C,
+            OrgId,
+            AppId,
+            Issued,
+            <<"credential_rotated">>,
+            #{credential_prefix => prefix_of(Old)}
+        )
+    end).
 
-%% @doc A-08 撤销 credential。
--spec revoke_credential(integer(), integer(), integer(), map()) ->
-    ok | {error, not_found | not_active | term()}.
 revoke_credential(OrgId, AppId, CredId, Actor) ->
-    case credential_belongs_to(OrgId, AppId, CredId) of
-        false ->
-            {error, not_found};
-        true ->
-            case enterprise_internal_ops:revoke_credential(OrgId, CredId) of
-                ok ->
-                    ok = append_audit(
-                        OrgId,
-                        AppId,
-                        <<"credential_revoked">>,
-                        #{credential_prefix => old_prefix(OrgId, AppId, CredId)},
-                        #{credential_status => <<"revoked">>},
-                        Actor
-                    ),
-                    ok;
-                {error, _} = Err ->
-                    Err
-            end
-    end.
+    audited(OrgId, AppId, Actor, fun(C, _App) ->
+        Old = credential_in(C, OrgId, AppId, CredId),
+        must(enterprise_internal_ops:revoke_credential_tx(C, OrgId, CredId)),
+        {<<"credential_revoked">>, #{credential_prefix => prefix_of(Old)},
+            #{credential_status => <<"revoked">>}, ok}
+    end).
 
-%% @doc A-10 签发 Grant。
-%% Input 键：scopes（必填非空）、workspace_scope_kind（none|explicit）、
-%% workspace_ids、expected_version（对 **Application** 版本做 CAS）、
-%% valid_from / valid_to（可选，缺省见 ?DEFAULT_GRANT_VALID_DAYS）。
-%% 幂等键：调用方未给则由本模块按 (org,app,scopes,workspace) 指纹生成——
-%% Grant 的 (org, app, idempotency_key) 唯一约束要求必填，重复签发必须
-%% 报 key_conflict 而不是静默再发一份（静默再发会以并集形式扩大授权面）。
--spec issue_grant(integer(), integer(), map(), pos_integer(), map()) ->
-    {ok, map()} | {error, invalid_scope | empty_scopes | invalid_workspaces | term()}.
-issue_grant(OrgId, AppId, Input, ExpectedVersion, Actor) ->
-    case application_version(OrgId, AppId) of
-        {error, Reason} ->
-            {error, Reason};
-        {ok, ExpectedVersion} ->
-            {ValidFrom, ValidTo} = validity_window(Input),
-            Spec0 = #{
-                scopes => maps:get(scopes, Input, []),
-                workspace_scope_kind => maps:get(workspace_scope_kind, Input, none),
-                workspace_ids => maps:get(workspace_ids, Input, []),
-                valid_from => ValidFrom,
-                expires_at => ValidTo
-            },
-            Spec = Spec0#{
-                idempotency_key => maps:get(idempotency_key, Input, grant_idem(Input, ValidTo))
-            },
-            case enterprise_internal_ops:issue_grant(OrgId, AppId, Spec) of
-                {ok, Grant} ->
-                    ok = append_audit(
-                        OrgId,
-                        AppId,
-                        <<"grant_issued">>,
-                        #{},
-                        grant_diff(Grant),
-                        Actor
-                    ),
-                    {ok, grant_view(Grant)};
-                {error, _} = Err ->
-                    Err
-            end;
-        {ok, _OtherVersion} ->
-            {error, version_conflict}
-    end.
+issue_grant(OrgId, AppId, Input, Version, Actor) ->
+    audited(OrgId, AppId, Actor, fun(C, App) ->
+        case maps:get(<<"version">>, App) of
+            Version -> ok;
+            _ -> throw({rollback, version_conflict})
+        end,
+        {ValidFrom, ValidTo} = validity_window(Input),
+        Spec = #{
+            scopes => maps:get(scopes, Input, []),
+            workspace_scope_kind => maps:get(workspace_scope_kind, Input, none),
+            workspace_ids => maps:get(workspace_ids, Input, []),
+            valid_from => ValidFrom,
+            expires_at => ValidTo,
+            idempotency_key => maps:get(idempotency_key, Input, grant_idem(Input, ValidTo))
+        },
+        Grant = must(enterprise_internal_ops:issue_grant_tx(C, OrgId, AppId, Spec)),
+        {<<"grant_issued">>, #{}, grant_diff(Grant), {ok, grant_view(Grant)}}
+    end).
 
-%% @doc A-11 Grant CAS 增删（scopes / workspaces / 撤销）。
-%% Patch 键：scopes、workspace_scope_kind、workspace_ids、revoke（均为可选，
-%% 但至少要有一个；全空 ⇒ {error, invalid_request}）。
--spec patch_grant(integer(), integer(), integer(), pos_integer(), map(), map()) ->
-    ok | {error, invalid_request | not_found | version_conflict | already_revoked | term()}.
-patch_grant(OrgId, AppId, GrantId, ExpectedVersion, Patch, Actor) ->
-    WantsRevoke = maps:get(revoke, Patch, false) =:= true,
-    HasScopes = maps:is_key(scopes, Patch),
-    HasKind = maps:is_key(workspace_scope_kind, Patch),
-    HasWs = maps:is_key(workspace_ids, Patch),
-    case WantsRevoke orelse HasScopes orelse HasKind orelse HasWs of
-        false ->
-            {error, invalid_request};
-        true ->
-            Before = grant_diff_by_id(OrgId, AppId, GrantId),
-            case {WantsRevoke, HasScopes, HasKind or HasWs} of
-                {true, _, _} ->
-                    do_revoke_grant(OrgId, AppId, GrantId, ExpectedVersion, Before, Actor);
-                {false, true, false} ->
-                    do_grant_scopes(OrgId, AppId, GrantId, ExpectedVersion, Patch, Before, Actor);
-                {false, false, true} ->
-                    do_grant_workspaces(
-                        OrgId, AppId, GrantId, ExpectedVersion, Patch, Before, Actor
-                    );
-                {false, true, true} ->
-                    %% scopes 与 workspace 同时变更：先 scope 后 workspace，
-                    %% 两步各自 CAS（第二步用的是 +1 后的版本）。任一步失败即中止。
-                    case
-                        enterprise_internal_ops:set_grant_scopes(
-                            OrgId, AppId, GrantId, ExpectedVersion, maps:get(scopes, Patch)
-                        )
-                    of
-                        ok ->
-                            do_grant_workspaces(
-                                OrgId,
-                                AppId,
-                                GrantId,
-                                ExpectedVersion + 1,
-                                Patch,
-                                Before,
-                                Actor
-                            );
-                        {error, _} = Err ->
-                            Err
-                    end
-            end
-    end.
+patch_grant(OrgId, AppId, GrantId, Version, Patch, Actor) ->
+    audited(OrgId, AppId, Actor, fun(C, _App) ->
+        Before = must(enterprise_application_grant_repo:find_tx(C, OrgId, AppId, GrantId)),
+        Action = patch_grant_in(C, OrgId, AppId, GrantId, Version, Patch, Actor),
+        After = must(enterprise_application_grant_repo:find_tx(C, OrgId, AppId, GrantId)),
+        {Action, grant_diff(Before), grant_diff(After), ok}
+    end).
 
-%% ===================================================================
-%% 写面内部
-%% ===================================================================
-
-do_revoke_grant(OrgId, AppId, GrantId, ExpectedVersion, Before, Actor) ->
-    AdmUserId = maps:get(adm_user_id, Actor, 0),
-    case
-        tx(fun(Conn) ->
-            case
+patch_grant_in(C, OrgId, AppId, GrantId, Version, Patch, Actor) ->
+    Revoke = maps:get(revoke, Patch, false) =:= true,
+    Scopes = maps:is_key(scopes, Patch),
+    Workspaces = maps:is_key(workspace_scope_kind, Patch) orelse maps:is_key(workspace_ids, Patch),
+    case {Revoke, Scopes, Workspaces} of
+        {true, _, _} ->
+            must(
                 enterprise_application_grant_repo:revoke_admin_tx(
-                    Conn, OrgId, AppId, GrantId, ExpectedVersion, AdmUserId
+                    C, OrgId, AppId, GrantId, Version, maps:get(adm_user_id, Actor, 0)
                 )
-            of
-                ok -> ok;
-                {error, Reason} -> throw({rollback, Reason})
-            end
-        end)
-    of
-        ok ->
-            ok = append_audit(
-                OrgId,
-                AppId,
-                <<"grant_revoked">>,
-                Before,
-                #{status => <<"revoked">>},
-                Actor
             ),
-            ok;
-        {error, Reason} ->
-            {error, Reason}
+            <<"grant_revoked">>;
+        {false, false, false} ->
+            throw({rollback, invalid_request});
+        {false, _, _} ->
+            patch_grant_fields(C, OrgId, AppId, GrantId, Version, Patch, Scopes, Workspaces)
     end.
 
-do_grant_scopes(OrgId, AppId, GrantId, ExpectedVersion, Patch, Before, Actor) ->
-    case
-        enterprise_internal_ops:set_grant_scopes(
-            OrgId, AppId, GrantId, ExpectedVersion, maps:get(scopes, Patch)
-        )
-    of
-        ok ->
-            ok = append_audit(
-                OrgId,
-                AppId,
-                <<"grant_scopes_changed">>,
-                Before,
-                grant_diff_by_id(OrgId, AppId, GrantId),
-                Actor
+patch_grant_fields(C, OrgId, AppId, GrantId, Version, Patch, Scopes, Workspaces) ->
+    case Scopes of
+        true ->
+            must(
+                enterprise_internal_ops:set_grant_scopes_tx(
+                    C, OrgId, AppId, GrantId, Version, maps:get(scopes, Patch)
+                )
+            );
+        false ->
+            ok
+    end,
+    case Workspaces of
+        true ->
+            NextVersion =
+                case Scopes of
+                    true -> Version + 1;
+                    false -> Version
+                end,
+            must(
+                enterprise_internal_ops:set_grant_workspaces_tx(
+                    C,
+                    OrgId,
+                    AppId,
+                    GrantId,
+                    NextVersion,
+                    maps:get(workspace_scope_kind, Patch, undefined),
+                    maps:get(workspace_ids, Patch, undefined)
+                )
             ),
-            ok;
-        {error, _} = Err ->
-            Err
+            <<"grant_workspaces_changed">>;
+        false ->
+            <<"grant_scopes_changed">>
     end.
 
-do_grant_workspaces(OrgId, AppId, GrantId, ExpectedVersion, Patch, Before, Actor) ->
-    Kind = maps:get(workspace_scope_kind, Patch, undefined),
-    Ws = maps:get(workspace_ids, Patch, undefined),
-    case
-        enterprise_internal_ops:set_grant_workspaces(
-            OrgId, AppId, GrantId, ExpectedVersion, Kind, Ws
-        )
-    of
-        ok ->
-            ok = append_audit(
-                OrgId,
-                AppId,
-                <<"grant_workspaces_changed">>,
-                Before,
-                grant_diff_by_id(OrgId, AppId, GrantId),
-                Actor
-            ),
-            ok;
-        {error, _} = Err ->
-            Err
+audited(OrgId, AppId, Actor, Fun) ->
+    tx(fun(C) ->
+        App = must(enterprise_application_repo:lock_tx(C, OrgId, AppId)),
+        {Action, Before, After, Reply} = Fun(C, App),
+        append_audit(C, OrgId, AppId, Action, Before, After, Actor),
+        Reply
+    end).
+
+must(ok) -> ok;
+must({ok, Value}) -> Value;
+must({error, Reason}) -> throw({rollback, Reason}).
+
+credential_in(C, OrgId, AppId, CredId) ->
+    Row = must(enterprise_application_credential_repo:find_tx(C, OrgId, CredId)),
+    case maps:get(<<"application_id">>, Row) of
+        AppId -> credential_meta(Row);
+        _ -> throw({rollback, not_found})
     end.
+
+credential_result(C, OrgId, AppId, Issued, Action, Before) ->
+    Meta = credential_in(C, OrgId, AppId, maps:get(credential_id, Issued)),
+    After = #{credential_status => <<"active">>, credential_prefix => prefix_of(Meta)},
+    Reply = {ok, #{<<"credential">> => Meta, <<"secret">> => maps:get(credential, Issued)}},
+    {Action, Before, After, Reply}.
 
 %% ===================================================================
 %% 审计
 %% ===================================================================
 
--spec append_audit(integer(), integer(), binary(), map(), map(), map()) -> ok.
-append_audit(OrgId, AppId, Action, Before, After, Actor) ->
+append_audit(Conn, OrgId, AppId, Action, Before, After, Actor) ->
     Event = #{
         resource_type => ?AUDIT_RESOURCE_TYPE,
         resource_id => AppId,
@@ -464,15 +344,9 @@ append_audit(OrgId, AppId, Action, Before, After, Actor) ->
             <<"after">> => stringify_diff(After)
         }
     },
-    case tx(fun(Conn) -> enterprise_audit_event_repo:append_tx(Conn, OrgId, Event) end) of
-        {ok, _AuditId} ->
-            ok;
-        {error, Reason} ->
-            %% 审计失败**不**回滚已完成的治理动作（与 adm_organization_handler 同口径：
-            %% 「审计失败不阻断已完成的业务操作」），但必须留下可观测痕迹，
-            %% 否则「审计缺失」会静默变成「审计为空」。
-            ok = ?ERROR_LOG([enterprise_admin_audit_failed, OrgId, AppId, Action, Reason]),
-            ok
+    case enterprise_audit_event_repo:append_tx(Conn, OrgId, Event) of
+        {ok, _AuditId} -> ok;
+        {error, Reason} -> throw({rollback, {audit_failed, Reason}})
     end.
 
 -spec account_of(map()) -> binary().
@@ -610,74 +484,16 @@ audit_entry(Row) ->
 %% 内部：读辅助
 %% ===================================================================
 
--spec application_diff(integer(), integer()) -> map().
-application_diff(OrgId, AppId) ->
-    case application_version_status(OrgId, AppId) of
-        {ok, Diff} -> Diff;
-        {error, _} -> #{}
-    end.
-
--spec application_version(integer(), integer()) -> {ok, integer()} | {error, term()}.
-application_version(OrgId, AppId) ->
-    case application_version_status(OrgId, AppId) of
-        {ok, #{version := V}} -> {ok, V};
-        {error, _} = Err -> Err
-    end.
-
--spec application_version_status(integer(), integer()) -> {ok, map()} | {error, term()}.
-application_version_status(OrgId, AppId) ->
-    tx(fun(Conn) ->
-        case enterprise_application_repo:find_tx(Conn, OrgId, AppId) of
-            {ok, Row} ->
-                {ok, #{
-                    status => maps:get(<<"status">>, Row, <<>>),
-                    scopes => decode_scopes(maps:get(<<"allowed_scopes">>, Row, <<"[]">>)),
-                    version => maps:get(<<"version">>, Row, 1)
-                }};
-            {error, Reason} ->
-                throw({rollback, Reason})
-        end
-    end).
-
--spec credential_belongs_to(integer(), integer(), integer()) -> boolean().
-credential_belongs_to(OrgId, AppId, CredId) ->
-    lists:any(
-        fun(Row) -> maps:get(<<"id">>, Row, -1) =:= CredId end,
-        enterprise_internal_ops:list_credentials(OrgId, AppId)
-    ).
-
--spec credential_meta_by_id(integer(), integer(), integer()) -> map().
-credential_meta_by_id(OrgId, AppId, CredId) ->
-    case
-        [
-            credential_meta(R)
-         || R <- enterprise_internal_ops:list_credentials(OrgId, AppId),
-            maps:get(<<"id">>, R, -1) =:= CredId
-        ]
-    of
-        [Meta | _] ->
-            Meta;
-        [] ->
-            %% 签发/轮换刚提交却读不到（理论上不可能）：宁可给一个 id-only 的
-            %% 壳也不编造 secret / status。
-            #{
-                <<"id">> => id_bin(CredId),
-                <<"credential_prefix">> => <<>>,
-                <<"status">> => <<>>,
-                <<"created_at">> => null,
-                <<"expires_at">> => null,
-                <<"last_used_at">> => null,
-                <<"revoked_at">> => null
-            }
-    end.
+app_diff(Row) ->
+    #{
+        status => maps:get(<<"status">>, Row),
+        scopes => decode_scopes(maps:get(<<"allowed_scopes">>, Row)),
+        version => maps:get(<<"version">>, Row)
+    }.
 
 -spec prefix_of(map()) -> binary().
 prefix_of(Meta) ->
     maps:get(<<"credential_prefix">>, Meta, <<>>).
-
--spec old_prefix(integer(), integer(), integer()) -> binary().
-old_prefix(OrgId, AppId, CredId) ->
-    prefix_of(credential_meta_by_id(OrgId, AppId, CredId)).
 
 -spec grant_diff(map()) -> map().
 grant_diff(Row) ->
@@ -689,30 +505,6 @@ grant_diff(Row) ->
         valid_from => maps:get(<<"valid_from">>, Row, null),
         valid_to => maps:get(<<"expires_at">>, Row, null)
     }.
-
--spec grant_diff_by_id(integer(), integer(), integer()) -> map().
-grant_diff_by_id(OrgId, AppId, GrantId) ->
-    case list_grants(OrgId, AppId) of
-        {ok, Rows} ->
-            %% list_grants 已投影成 binary 键；按 id 回捞再转回 diff 形状。
-            case [R || R <- Rows, maps:get(<<"id">>, R, <<"0">>) =:= id_bin(GrantId)] of
-                [View | _] ->
-                    #{
-                        status => maps:get(<<"status">>, View, <<>>),
-                        scopes => maps:get(<<"scopes">>, View, []),
-                        workspace_scope_kind => maps:get(
-                            <<"workspace_scope_kind">>, View, <<"none">>
-                        ),
-                        workspace_ids => maps:get(<<"workspace_ids">>, View, []),
-                        valid_from => maps:get(<<"valid_from">>, View, null),
-                        valid_to => maps:get(<<"valid_to">>, View, null)
-                    };
-                [] ->
-                    #{}
-            end;
-        {error, _} ->
-            #{}
-    end.
 
 %% ===================================================================
 %% 内部：值归一化 / 事务

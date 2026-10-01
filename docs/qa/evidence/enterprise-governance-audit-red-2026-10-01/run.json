@@ -1,0 +1,20 @@
+{
+  "status": "FAIL",
+  "exit_code": 1,
+  "base_sha": "b9c054c19108555e12e7c51ab08ba0619d96cbac",
+  "run_dir": "/tmp/imboy-seat-http.vjPWCr",
+  "sources": [
+    {
+      "path": "src/logic/enterprise_admin_governance_logic.erl",
+      "sha256": "6c0654a115b224918b864d4925253f5560913fb46e97f8b4eb4d7c65e247688e"
+    },
+    {
+      "path": "test/api/enterprise_admin_governance_pg_checks.erl",
+      "sha256": "32b0ee82b74e617b83ee9efb1730525d490d1e50324590fbd1fc903f05a49d91"
+    },
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "f9b82aa77ea76b5421430b3313ab66c35380bfcf817ac1599b79c1b89bed3a7f"
+    }
+  ]
+}

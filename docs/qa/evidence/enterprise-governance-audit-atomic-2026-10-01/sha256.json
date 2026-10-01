@@ -1,0 +1,30 @@
+[
+  {
+    "path": "compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "governance-audit-checks.json",
+    "sha256": "0702bf2292cdb557381a3fe2c1121d013a8eee152b971872d243d517b88ff51e"
+  },
+  {
+    "path": "http-regression-compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "http-regression.log",
+    "sha256": "c6709efd00ba46ba34fef6add361609ba41b6b9b58fa87e03f9fb14bb66cf2fb"
+  },
+  {
+    "path": "http.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "image-id.txt",
+    "sha256": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+  },
+  {
+    "path": "run.json",
+    "sha256": "748d6c68158fd584de823ebe7a1a6f712572542f47925d764bade9060ffcfbba"
+  }
+]

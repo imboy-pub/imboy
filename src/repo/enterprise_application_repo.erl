@@ -22,6 +22,7 @@
     create_tx/5,
     create_tx/6,
     find_tx/3,
+    lock_tx/3,
     find_by_key_tx/3,
     list_page_tx/5,
     workbench_entries_tx/3,
@@ -152,6 +153,14 @@ find_tx(Conn, OrgId, Id) when is_integer(OrgId), is_integer(Id) ->
     Sql =
         <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
             " WHERE organization_id = $1 AND id = $2 LIMIT 1">>,
+    one_tx(Conn, Sql, [OrgId, Id]).
+
+%% 与鉴权共享 Application 行锁；治理变更和审计在同一事务内完成。
+-spec lock_tx(any(), integer(), integer()) -> {ok, map()} | {error, term()}.
+lock_tx(Conn, OrgId, Id) ->
+    Sql =
+        <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
+            " WHERE organization_id = $1 AND id = $2 FOR UPDATE">>,
     one_tx(Conn, Sql, [OrgId, Id]).
 
 %% @doc 事务内按 (organization_id, application_key) 取行。

@@ -31,7 +31,9 @@
     set_application_status_tx/4,
     set_application_status/3,
     set_application_status_cas/4,
+    set_application_status_cas_tx/5,
     update_scopes_cas/4,
+    update_scopes_cas_tx/5,
     list_credentials/2,
     list_credentials/3,
     issue_credential_tx/5,
@@ -116,13 +118,16 @@ set_application_status(OrgId, AppId, Status) ->
 -spec set_application_status_cas(integer(), integer(), pos_integer(), binary()) ->
     ok | {error, invalid_status | not_found | version_conflict | term()}.
 set_application_status_cas(OrgId, AppId, ExpectedVersion, Status) ->
+    pool(fun(Conn) ->
+        set_application_status_cas_tx(Conn, OrgId, AppId, ExpectedVersion, Status)
+    end).
+
+set_application_status_cas_tx(Conn, OrgId, AppId, ExpectedVersion, Status) ->
     case validate_lifecycle(Status) of
         ok ->
-            pool(fun(Conn) ->
-                enterprise_application_repo:update_status_cas_tx(
-                    Conn, OrgId, AppId, ExpectedVersion, Status
-                )
-            end);
+            enterprise_application_repo:update_status_cas_tx(
+                Conn, OrgId, AppId, ExpectedVersion, Status
+            );
         {error, _} = Err ->
             Err
     end.
@@ -132,16 +137,19 @@ set_application_status_cas(OrgId, AppId, ExpectedVersion, Status) ->
 %% 静默清空等于把授权面清零后无人知晓）；非白名单成员 ⇒ {error, invalid_scope}。
 -spec update_scopes_cas(integer(), integer(), pos_integer(), [binary()]) ->
     ok | {error, empty_scopes | invalid_scope | not_found | version_conflict | term()}.
-update_scopes_cas(_OrgId, _AppId, _ExpectedVersion, []) ->
-    {error, empty_scopes};
 update_scopes_cas(OrgId, AppId, ExpectedVersion, Scopes) ->
+    pool(fun(Conn) ->
+        update_scopes_cas_tx(Conn, OrgId, AppId, ExpectedVersion, Scopes)
+    end).
+
+update_scopes_cas_tx(_Conn, _OrgId, _AppId, _ExpectedVersion, []) ->
+    {error, empty_scopes};
+update_scopes_cas_tx(Conn, OrgId, AppId, ExpectedVersion, Scopes) ->
     case validate_scopes(Scopes) of
         ok ->
-            pool(fun(Conn) ->
-                enterprise_application_repo:update_scopes_cas_tx(
-                    Conn, OrgId, AppId, ExpectedVersion, Scopes
-                )
-            end);
+            enterprise_application_repo:update_scopes_cas_tx(
+                Conn, OrgId, AppId, ExpectedVersion, Scopes
+            );
         {error, _} = Err ->
             Err
     end.

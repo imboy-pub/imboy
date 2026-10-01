@@ -24,6 +24,7 @@
     revoke_tx/3,
     touch_last_used_tx/2,
     authority_for_share_tx/4,
+    find_tx/3,
     expired_tx/2
 ]).
 

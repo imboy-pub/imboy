@@ -1,0 +1,22 @@
+[
+  {
+    "path": "compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "governance-audit-failure.json",
+    "sha256": "457260d05fa8eb095404dc5e09af1b69a775d87f0dd5da9a9b5a3f1bf4a7ce1b"
+  },
+  {
+    "path": "http.log",
+    "sha256": "6294d09647353d5a03bf4cd59d1536bdca995940301e41d701bfb8580ef390d1"
+  },
+  {
+    "path": "red-check.erl",
+    "sha256": "32b0ee82b74e617b83ee9efb1730525d490d1e50324590fbd1fc903f05a49d91"
+  },
+  {
+    "path": "run.json",
+    "sha256": "1cfd26ad908d2f1938530d0f83d037b156f016083a696460fe69ad53d00dcedd"
+  }
+]

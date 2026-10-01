@@ -60,7 +60,8 @@ files += ['test/common/meck_helper.erl', 'test/api/qr_login_sse_handler_tests.er
           'test/features/enterprise_business/application/eb_ports_tests.erl',
           'test/api/customer_service_seat_sse_checks.erl',
           'test/api/customer_service_widget_expiry_http_checks.erl',
-          'test/api/enterprise_oa_expiry_http_checks.erl']
+          'test/api/enterprise_oa_expiry_http_checks.erl',
+          'test/api/enterprise_admin_governance_pg_checks.erl']
 files += ['test/lib/organization/organization_invite_race_pg_checks.erl',
           'test/lib/organization/organization_membership_journey_pg_checks.erl',
           'test/features/customer_service/infrastructure/cs_pg_test_fixture.erl',
@@ -100,8 +101,12 @@ expr = ('application:set_env(lager,handlers,[{lager_console_backend,[{level,erro
 asset_mode = os.environ.get('IMBOY_ASSET_GARAGE_PG_CHECK') == '1'
 if asset_mode:
     expr = expr[:expr.index('case eunit:test')] + 'enterprise_asset_garage_pg_checks:run(), halt(0).'
+governance_mode = os.environ.get('IMBOY_ADMIN_GOVERNANCE_PG_CHECK') == '1'
+assert not (asset_mode and governance_mode), 'choose one PG mode'
+if governance_mode:
+    expr = expr[:expr.index('case eunit:test')] + 'enterprise_admin_governance_pg_checks:run(), halt(0).'
 browser_runner = os.environ.get('IMBOY_CS_BROWSER_RUNNER')
-assert not (asset_mode and browser_runner), 'choose asset PG or browser mode'
+assert not ((asset_mode or governance_mode) and browser_runner), 'choose asset PG or browser mode'
 if browser_runner:
     import socket, time
     runner = pathlib.Path(browser_runner).resolve(strict=True)
@@ -146,7 +151,7 @@ else:
     report = (out / 'http.log').read_text()
     if '[EPGZ04] emit_event_failed crash' in report:
         raise SystemExit('failed-event emission crashed; inspect ' + str(out / 'http.log'))
-    if not asset_mode:
+    if not (asset_mode or governance_mode):
         subprocess.run(['python3', 'scripts/test/check_identity_http_contract.py',
                         str(out / 'identity-responses.json')], check=True)
     print(report)
