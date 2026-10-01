@@ -15,6 +15,7 @@
 %%% 真源，池化路径落 marker 库）；internal 侧经真 HTTP（31-op 冻结面内
 %%% INT-01）。套件不触碰共享库。
 -module(enterprise_app_credential_lifecycle_http_pg_tests).
+-export([run/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -29,8 +30,19 @@
 %% intbe02 种子矩阵的 principal（995 段；套件动态 app 复用同 principal）。
 -define(PRIN, 995014).
 
+%% Reuse an existing disposable HTTP/PG fixture without provisioning another DB.
+run(State) ->
+    eunit:test(cases(State), [verbose]).
+
 app_credential_lifecycle_http_pg_test_() ->
-    {setup, fun ?SUP:setup_all/0, fun ?SUP:teardown_all/1, fun cases/1}.
+    {setup, fun ?SUP:setup_all/0, fun teardown/1, fun cases/1}.
+
+teardown(State) ->
+    try
+        ?SUP:teardown_all(State)
+    after
+        inttest_marker_db:release(State)
+    end.
 
 cases(State) ->
     [
@@ -38,6 +50,7 @@ cases(State) ->
         {timeout, 300, fun() -> grant_revoke_immediately_denies(State) end},
         {timeout, 300, fun() -> secret_shown_once_digest_only(State) end},
         {timeout, 300, fun() -> zero_grant_disabled_expired_fail_closed(State) end},
+        {timeout, 300, fun() -> audit_failure_preserves_http_access(State) end},
         {timeout, 300, fun() -> audit_trail_complete(State) end}
     ].
 
@@ -58,7 +71,7 @@ full_lifecycle_rotate_revoke(State) ->
     CredId = grant_int(maps:get(<<"id">>, Meta1)),
     ok = issue_grant_ok(AppId, <<"intbe05-g-l">>),
     %% internal 调用成功（INT-01 真 HTTP）。
-    ?assertEqual(200, internal_status(State, Full1)),
+    assert_application_info(State, Full1, AppId, CredId),
     %% rotate：旧 secret 立即 401、新 secret 200（rotate 撤旧签新——
     %% 旧 credential 行状态机转 revoked）。
     {ok, #{<<"secret">> := Full2, <<"credential">> := Meta2}} =
@@ -66,7 +79,7 @@ full_lifecycle_rotate_revoke(State) ->
     NewCredId = grant_int(maps:get(<<"id">>, Meta2)),
     ?assertNotEqual(Full1, Full2),
     ?assertEqual(401, internal_status(State, Full1), "rotate 后旧 secret 必须立即失效"),
-    ?assertEqual(200, internal_status(State, Full2)),
+    assert_application_info(State, Full2, AppId, NewCredId),
     ?assertEqual(
         <<"revoked">>,
         one(
@@ -121,7 +134,7 @@ grant_revoke_immediately_denies(State) ->
 %% secret 只展示一次、DB 只存 digest
 %% ===================================================================
 
-secret_shown_once_digest_only(State) ->
+secret_shown_once_digest_only(_State) ->
     {ok, App} = elib_pg:with_conn(fun(C) ->
         enterprise_application_repo:create_tx(
             C, ?ORG, <<"intbe05-oa-secret">>, <<"intbe05 secret oa"/utf8>>, {?PRIN, ?SCOPES}
@@ -131,12 +144,10 @@ secret_shown_once_digest_only(State) ->
     {ok, #{<<"secret">> := Full, <<"credential">> := MetaS}} =
         enterprise_admin_governance_logic:issue_credential(?ORG, AppId, undefined, ?ACTOR),
     CredId = grant_int(maps:get(<<"id">>, MetaS)),
-    %% 展示形态 = prefix.secret 一次性完整凭证（secret 服务端生成式）。
     ?assertMatch(<<"ib_int_", _/binary>>, Full),
     [Prefix, SecretPart] = binary:split(Full, <<".">>),
     ?assertEqual(Prefix, maps:get(<<"credential_prefix">>, MetaS)),
     ?assert(byte_size(SecretPart) >= 32),
-    %% DB 行只有 digest（64 hex），无明文列且 digest ≠ 明文。
     Columns = one(
         <<
             "SELECT string_agg(column_name, ',') FROM information_schema.columns"
@@ -145,11 +156,12 @@ secret_shown_once_digest_only(State) ->
         []
     ),
     ?assert(is_binary(Columns)),
-    ?assert(
-        binary:match(Columns, <<"secret">>) =:= nomatch orelse
-            binary:match(Columns, <<"secret_digest">>) =/= nomatch,
-        {credential_columns, Columns}
-    ),
+    SecretColumns = [
+        C
+     || C <- binary:split(Columns, <<",">>, [global]),
+        binary:match(C, <<"secret">>) =/= nomatch
+    ],
+    ?assertEqual([<<"secret_digest">>], SecretColumns),
     Digest = one(
         <<
             "SELECT secret_digest FROM enterprise_application_credential"
@@ -159,10 +171,8 @@ secret_shown_once_digest_only(State) ->
     ),
     ?assertEqual(64, byte_size(Digest)),
     ?assertNotEqual(SecretPart, Digest),
-    %% digest = secret 段的 SHA-256 hex（存储口径复核）。
     Expected = binary:encode_hex(crypto:hash(sha256, SecretPart), lowercase),
     ?assertEqual(Expected, Digest),
-    %% 读面（admin list）永不回显 secret/digest。
     Creds = enterprise_admin_governance_logic:list_credentials(?ORG, AppId),
     ?assertMatch({ok, _}, Creds),
     {ok, CredRows} = Creds,
@@ -207,11 +217,50 @@ zero_grant_disabled_expired_fail_closed(State) ->
     ok = issue_grant_expired(AppEId, <<"intbe05-g-e">>),
     ?assertEqual(403, internal_status(State, FullE), "expired grant 必须 fail-closed").
 
+%% Failed governance must not silently revoke a still usable credential.
+audit_failure_preserves_http_access(State) ->
+    {ok, App} = elib_pg:with_conn(fun(C) ->
+        enterprise_application_repo:create_tx(
+            C,
+            ?ORG,
+            <<"intbe05-audit-rollback">>,
+            <<"synthetic audit rollback">>,
+            {?PRIN, ?SCOPES}
+        )
+    end),
+    AppId = grant_int(maps:get(<<"id">>, App)),
+    {ok, #{<<"secret">> := Full, <<"credential">> := Meta}} =
+        enterprise_admin_governance_logic:issue_credential(?ORG, AppId, undefined, ?ACTOR),
+    CredId = grant_int(maps:get(<<"id">>, Meta)),
+    ok = issue_grant_ok(AppId, <<"intbe05-audit-rollback-grant">>),
+    assert_application_info(State, Full, AppId, CredId),
+    ok = cs_pg_test_fixture:exec(
+        <<"CREATE FUNCTION gate_drop_lifecycle_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='credential_revoked' THEN RETURN NULL; END IF; RETURN NEW; END $$">>,
+        []
+    ),
+    ok = cs_pg_test_fixture:exec(
+        <<"CREATE TRIGGER gate_drop_lifecycle_audit BEFORE INSERT ON enterprise_audit_event FOR EACH ROW EXECUTE FUNCTION gate_drop_lifecycle_audit()">>,
+        []
+    ),
+    Result =
+        try
+            enterprise_admin_governance_logic:revoke_credential(?ORG, AppId, CredId, ?ACTOR)
+        after
+            ok = cs_pg_test_fixture:exec(
+                <<"DROP TRIGGER gate_drop_lifecycle_audit ON enterprise_audit_event">>, []
+            ),
+            ok = cs_pg_test_fixture:exec(<<"DROP FUNCTION gate_drop_lifecycle_audit()">>, [])
+        end,
+    ?assert(Result =:= {error, {audit_failed, audit_not_inserted}}),
+    assert_application_info(State, Full, AppId, CredId),
+    ok = enterprise_admin_governance_logic:revoke_credential(?ORG, AppId, CredId, ?ACTOR),
+    ?assertEqual(401, internal_status(State, Full)).
+
 %% ===================================================================
 %% 全链审计完整（五类动作各有落行）
 %% ===================================================================
 
-audit_trail_complete(State) ->
+audit_trail_complete(_State) ->
     Counts = one(
         <<
             "SELECT string_agg(action || '=' || n::text, ',') FROM ("
@@ -288,8 +337,20 @@ app_version(AppId) ->
 grant_int(V) when is_integer(V) -> V;
 grant_int(V) when is_binary(V) -> binary_to_integer(V).
 
-%% INT-01 GET /application 的裸状态码（认证失败 401 / 授权不足 403 / 成功 200）。
+%% INT-01 success binds to the actual application/credential, not just HTTP 200.
+assert_application_info(State, FullCredential, AppId, CredId) ->
+    R = internal_response(State, FullCredential),
+    ?assertEqual(200, maps:get(status, R)),
+    Json = jsone:decode(maps:get(body, R)),
+    ?assertEqual(?ORG, maps:get(<<"organization_id">>, Json)),
+    ?assertEqual(AppId, maps:get(<<"application_id">>, Json)),
+    ?assertEqual(CredId, maps:get(<<"credential_id">>, Json)),
+    ?assertEqual(lists:sort(?SCOPES), lists:sort(maps:get(<<"granted_scopes">>, Json))).
+
 internal_status(State, FullCredential) ->
+    maps:get(status, internal_response(State, FullCredential)).
+
+internal_response(State, FullCredential) ->
     R = ?SUP:http(
         maps:get(port, State),
         <<"GET">>,
@@ -297,7 +358,49 @@ internal_status(State, FullCredential) ->
         <<>>,
         ?SUP:auth(FullCredential)
     ),
-    maps:get(status, R).
+    Body = maps:get(body, R),
+    ?assert(binary:match(Body, FullCredential) =:= nomatch),
+    Json = jsone:decode(Body),
+    assert_safe_payload(Json),
+    case os:getenv("IMBOY_GATE_RUN_DIR") of
+        false ->
+            ok;
+        Dir ->
+            Safe = #{
+                status => maps:get(status, R),
+                application_id => maps:get(<<"application_id">>, Json, null),
+                credential_id => maps:get(<<"credential_id">>, Json, null),
+                error => maps:get(<<"error">>, Json, null),
+                safe_payload => true
+            },
+            ok = file:write_file(
+                filename:join(Dir, "credential-lifecycle-http.jsonl"),
+                [jsone:encode(Safe), <<"\n">>],
+                [append]
+            )
+    end,
+    R.
+
+assert_safe_payload(Value) when is_map(Value) ->
+    maps:foreach(
+        fun(Key, Child) ->
+            ?assertNot(
+                lists:member(Key, [
+                    <<"secret">>,
+                    <<"secret_digest">>,
+                    <<"credential_secret">>,
+                    <<"token_digest">>,
+                    <<"private_key">>
+                ])
+            ),
+            assert_safe_payload(Child)
+        end,
+        Value
+    );
+assert_safe_payload(Value) when is_list(Value) ->
+    lists:foreach(fun assert_safe_payload/1, Value);
+assert_safe_payload(_) ->
+    ok.
 
 one(Sql, Params) ->
     case elib_pg:query(Sql, Params) of

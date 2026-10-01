@@ -1,0 +1,9 @@
+======================== EUnit ========================
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-5-...[0.055 s] ok
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-4-...[0.017 s] ok
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-3-...[0.006 s] ok
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-2-...[0.023 s] ok
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-1-...[0.024 s] ok
+enterprise_app_credential_lifecycle_http_pg_tests: -cases/1-fun-0-...ok
+=======================================================
+  All 6 tests passed.

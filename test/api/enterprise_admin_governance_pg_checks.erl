@@ -27,6 +27,7 @@ run() ->
         combined_failure(),
         concurrent_cas(),
         tenant_denial(),
+        ok = enterprise_app_credential_lifecycle_http_pg_tests:run(H),
         write_evidence(Evidence)
     after
         intbe02_http_support:teardown_all(H),

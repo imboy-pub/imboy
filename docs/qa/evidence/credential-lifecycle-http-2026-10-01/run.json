@@ -1,0 +1,28 @@
+{
+  "base_sha": "05e7a58374e1d0231863656ade7599d7f80fd270",
+  "exit_code": 0,
+  "run_dir": "/tmp/imboy-seat-http.ncUZUH",
+  "scope": "6 lifecycle HTTP checks on INT-01 plus existing native governance assertions",
+  "sources": [
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "294a526b9494ad9be20bb36d8e54c7e675c24da346293602053a54a0c562d1a1"
+    },
+    {
+      "path": "test/api/enterprise_admin_governance_pg_checks.erl",
+      "sha256": "97c20b77efc894d37cf01815cdb0c12946bddd1dae87ae98471f3e32e09dfbcc"
+    },
+    {
+      "path": "test/api/enterprise_app_credential_lifecycle_http_pg_tests.erl",
+      "sha256": "405bcc9a0ce223b41baf791390b646134b09ced7562d47284d48920da9f02d2d"
+    },
+    {
+      "path": "src/logic/enterprise_admin_governance_logic.erl",
+      "sha256": "f6a3fd180e7ee2f47af746023d40e9c3d0562a994081db6918ea15eadf5e5495"
+    },
+    {
+      "path": "src/logic/enterprise_internal_ops.erl",
+      "sha256": "c379811a3b98343964625251d98cf1e24f5025ac8ef9c5dea0b46219bb285e89"
+    }
+  ]
+}

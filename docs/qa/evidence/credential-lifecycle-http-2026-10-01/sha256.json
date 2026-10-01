@@ -1,0 +1,30 @@
+[
+  {
+    "path": "compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "credential-lifecycle-http.jsonl",
+    "sha256": "f1730334b1f132fb41cee976d3da83ad27e31fbadeb20cc806ca65725eb3d863"
+  },
+  {
+    "path": "credential-repeat-rotation.json",
+    "sha256": "7e4aa1a8952e44faca4198f15d31cabe499eefe050305ecc9396ab5ab8e90f6c"
+  },
+  {
+    "path": "governance-audit-checks.json",
+    "sha256": "77f45513994be3e344dad633a67db04db0bff901c31e68d60e127495d073a04a"
+  },
+  {
+    "path": "http.log",
+    "sha256": "f2a5361b65929b46330faceb95b37228f84d03e0bbefdac3582a2ff0aa05626e"
+  },
+  {
+    "path": "image-id.txt",
+    "sha256": "17ec8cd43b2605f9ad2b930ce5be100713516a4aa6625a4e818e26714abc2eb0"
+  },
+  {
+    "path": "run.json",
+    "sha256": "fb290160e3813327bb40ad90ce3c741eae632e0d31e71c96ec51e01a2b8c6247"
+  }
+]
