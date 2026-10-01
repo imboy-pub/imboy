@@ -3,8 +3,7 @@
 
 %%%===================================================================
 %%% @doc LLM provider 配置文件契约测试（Bailian 接入）
-%%% 保护对象：发布配置源（config/sys.config 或 sys.config.example）与
-%%% config/sys.local.config 的 llm_providers
+%%% 保护对象：入库发布模板 config/sys.config.example 的 llm_providers
 %%% 必须包含可用的 bailian（阿里云百炼 OpenAI 兼容）provider——
 %%% 这是「AI agent 收不到回复」修复的可测保证：agent 的 provider 字段
 %%% 一旦切到 bailian，注册表 lookup 必须命中这条配置，否则又是静默无回复。
@@ -23,7 +22,7 @@
 -define(EXPECTED_MODEL, <<"qwen3.7-flash">>).
 
 %% ===================================================================
-%% 配置解析辅助：读 sys.config / sys.local.config 的 llm_providers
+%% 配置解析辅助：只读入库发布模板，不依赖私人部署配置
 %% ===================================================================
 
 providers_from(File) ->
@@ -50,7 +49,7 @@ providers_from(File) ->
 
 sys_config_has_bailian_provider_test_() ->
     {timeout, 10, fun() ->
-        Providers = providers_from(shipped_config_path()),
+        Providers = providers_from("config/sys.config.example"),
         Bailian = find_provider(<<"bailian">>, Providers),
         ?assertMatch(#{name := <<"bailian">>, module := imboy_llm_openai}, Bailian),
         ?assertEqual(?EXPECTED_BASE_URL, maps:get(base_url, Bailian)),
@@ -58,15 +57,6 @@ sys_config_has_bailian_provider_test_() ->
         ?assertEqual({env, <<"BAILIAN_API_KEY">>}, maps:get(api_key, Bailian)),
         %% model 必须有 env 覆盖占位，默认值=网关实测确认的 qwen3.7-flash
         ?assertEqual({env, <<"BAILIAN_MODEL">>, ?EXPECTED_MODEL}, maps:get(model, Bailian))
-    end}.
-
-local_config_has_bailian_provider_test_() ->
-    {timeout, 10, fun() ->
-        Providers = providers_from("config/sys.local.config"),
-        Bailian = find_provider(<<"bailian">>, Providers),
-        ?assertMatch(#{name := <<"bailian">>, module := imboy_llm_openai}, Bailian),
-        ?assertEqual(?EXPECTED_BASE_URL, maps:get(base_url, Bailian)),
-        ?assertEqual({env, <<"BAILIAN_API_KEY">>}, maps:get(api_key, Bailian))
     end}.
 
 %% 独立小测：注册表能按契约命中 bailian（mock 配置，直接测 lookup 解析链路）
@@ -106,10 +96,4 @@ find_provider(Name, Providers) ->
     case [P || P <- Providers, is_map(P), maps:get(name, P, undefined) =:= Name] of
         [Found | _] -> Found;
         [] -> erlang:error({provider_not_configured, Name})
-    end.
-
-shipped_config_path() ->
-    case filelib:is_file("config/sys.config") of
-        true -> "config/sys.config";
-        false -> "config/sys.config.example"
     end.
