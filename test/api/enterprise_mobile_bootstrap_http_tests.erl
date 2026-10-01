@@ -1,7 +1,7 @@
 %%% Real init encryption, password transport and device-bound login on marker PG.
 -module(enterprise_mobile_bootstrap_http_tests).
 -include_lib("eunit/include/eunit.hrl").
--export([run/0]).
+-export([run/0, run_fixture/0]).
 -define(HTTP, intbe02_http_support).
 -define(UID, 995011).
 -define(KEY, <<"synthetic-mobile-device-key">>).
@@ -9,6 +9,63 @@
 -define(ACCOUNT, <<"synthetic_enterprise_mobile">>).
 
 bootstrap_test_() -> {timeout, 180, fun run/0}.
+
+%% Test-only native UI fixture; synthetic credentials, disposable marker database.
+run_fixture() ->
+    H = ?HTTP:setup_all(),
+    try
+        configure(H),
+        Port = maps:get(port, H),
+        Origin = iolist_to_binary(["http://127.0.0.1:", integer_to_list(Port)]),
+        application:set_env(
+            imboy,
+            ws_url,
+            iolist_to_binary(["ws://127.0.0.1:", integer_to_list(Port), "/api/v1/ws"])
+        ),
+        application:set_env(imboy, upload_url, Origin),
+        application:set_env(imboy, base_url, Origin),
+        application:set_env(imboy, product_experience, chat),
+        application:set_env(imboy, product_profile, enterprise),
+        application:set_env(imboy, features, #{e2ee => false}),
+        ok = app_version_ds:set_sign_key(
+            <<"android">>, <<"1">>, <<"pub.imboy.app.gzcustomer">>, ?KEY
+        ),
+        assert_init(Port, headers()),
+        assert_login(Port, headers()),
+        Features = request(Port, <<"GET">>, <<"/api/v1/app/features">>, #{}, headers()),
+        ?assertEqual(0, maps:get(<<"code">>, Features)),
+        Flags = maps:get(<<"payload">>, Features),
+        ?assertEqual(true, maps:get(<<"channel">>, Flags)),
+        ?assertEqual(false, maps:get(<<"e2ee">>, Flags)),
+        Dir = os:getenv("IMBOY_GATE_RUN_DIR"),
+        ok = file:write_file(
+            filename:join(Dir, "mobile-fixture.json"),
+            jsone:encode(#{
+                port => Port,
+                account => ?ACCOUNT,
+                password => ?PASSWORD,
+                sign_key => ?KEY,
+                organization_id => <<"995101">>,
+                package => <<"pub.imboy.app.gzcustomer">>,
+                synthetic_only => true
+            })
+        ),
+        await_device_done(Dir, erlang:monotonic_time(millisecond) + 1800000)
+    after
+        ?HTTP:teardown_all(H),
+        inttest_marker_db:release(H)
+    end.
+
+await_device_done(Dir, Deadline) ->
+    case filelib:is_file(filename:join(Dir, "mobile.done")) of
+        true ->
+            ok;
+        false ->
+            ?assert(erlang:monotonic_time(millisecond) < Deadline),
+            receive
+            after 100 -> await_device_done(Dir, Deadline)
+            end
+    end.
 
 run() ->
     H = ?HTTP:setup_all(),
