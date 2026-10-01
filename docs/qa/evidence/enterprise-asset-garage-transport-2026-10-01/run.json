@@ -1,0 +1,30 @@
+{
+  "status": "PARTIAL",
+  "focused_gate_exit": 0,
+  "backend_base": "903b8da1aa78800271d32b05a3de95b28f5d1c5d",
+  "command": "bash scripts/test/enterprise_asset_garage_gate.sh",
+  "garage_image": "dxflrs/garage:v2.3.0",
+  "source_hashes": {
+    "src/features/enterprise_business/infrastructure/eb_asset_object_garage.erl": "9d49b572833260e6af30889c27b7cd36d31d3bc983df5701c4b37d7c28ab84b2",
+    "src/lib/elib_s3_sign.erl": "fc64b562f2bbb65886982bbff5996ae7c2b7b81394855cb0333073ffbd8134fe",
+    "src/lib/elib_oss.erl": "2ad86f2802dcf89aacce0145bef671b7ba08f519525075d613336f7e2443795e",
+    "scripts/test/enterprise_asset_garage_gate.sh": "fd1d2a1477d9374cac4e50c9a608b82d5f38be957e4da81bde9f8817ebc83108"
+  },
+  "verified": [
+    "real signed PUT/GET/DELETE",
+    "bytes survive Garage restart and a fresh Erlang VM",
+    "anonymous object GET returns 403",
+    "cross-scope read/delete rejected",
+    "invalid signature returns 403",
+    "read after delete returns not_found",
+    "missing credentials fail closed"
+  ],
+  "not_proven": [
+    "default enterprise asset adapter wiring",
+    "metadata and attachment lifecycle against Garage",
+    "browser attachment journey",
+    "Garage v2.4.1 qualification",
+    "production readiness"
+  ],
+  "isolation": "disposable container/private bucket/generated synthetic key/random loopback port; container removed by trap; no fixture secrets archived"
+}
