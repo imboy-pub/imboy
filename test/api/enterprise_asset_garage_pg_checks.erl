@@ -28,9 +28,7 @@ run() ->
         cleanup_concurrency(S),
         cleanup_ineligible(S),
         purge_regressions(),
-        ok = eb_ports_tests:ports_contracts_match_declared_callbacks_test(),
-        ok = eb_ports_tests:ports_have_explicit_frozen_contracts_test(),
-        ok = eb_ports_tests:asset_port_callback_names_cannot_leak_storage_handle_test(),
+        run_contract_regressions(),
         application:unset_env(imboy, garage),
         Org = maps:get(org_id, S),
         Ws = maps:get(workspace_id, S),
@@ -508,3 +506,9 @@ purge_queue_roundtrip() ->
         [?assert(element(1, R) =:= ok) || R <- epgsql:squery(Conn, Up)],
         ok
     end).
+
+run_contract_regressions() ->
+    ok = eb_ports_tests:ports_contracts_match_declared_callbacks_test(),
+    ok = eb_ports_tests:ports_have_explicit_frozen_contracts_test(),
+    ok = eb_ports_tests:asset_port_callback_names_cannot_leak_storage_handle_test(),
+    ok = eunit:test(eb_message_app_tests:cases({ok, undefined}), [verbose]).

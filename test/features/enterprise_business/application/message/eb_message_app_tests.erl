@@ -1061,10 +1061,9 @@ source_path(Mod) ->
                 []
         end,
     FromLib =
-        try
-            [code:lib_dir(imboy)]
-        catch
-            _:_ -> []
+        case code:lib_dir(imboy) of
+            LibPath when is_list(LibPath) -> [LibPath];
+            _ -> []
         end,
     Candidates = FromBeam ++ FromLib ++ [element(2, file:get_cwd())],
     case [P || P <- [filename:join(Root, Rel) || Root <- Candidates], filelib:is_file(P)] of

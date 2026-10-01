@@ -239,7 +239,6 @@ transferred_ack(H, Old, Next) ->
         recipient_ref =>
             <<"identity:", (integer_to_binary(maps:get(service_identity_id, Next)))/binary>>
     },
-    Before = ack_canonical_hash(Next, Mid),
     Current = post(H, Next, Path, Body),
     Previous = post(H, Old, Path, Body#{
         recipient_ref =>
@@ -255,36 +254,4 @@ transferred_ack(H, Old, Next) ->
         })
     ),
     ?assertEqual(200, maps:get(status, Current)),
-    ?assertEqual(403, maps:get(status, Previous)),
-    ack_disabled_and_repeated(H, Next, Path, Body, Current),
-    ?assertEqual(Before, ack_canonical_hash(Next, Mid)).
-
-ack_disabled_and_repeated(H, S, Path, Body, First) ->
-    Repeat = post(H, S, Path, Body),
-    ?assertEqual(200, maps:get(status, Repeat)),
-    ?assertEqual(ack_delivery_id(First), ack_delivery_id(Repeat)),
-    Org = maps:get(org_id, S),
-    Params = #{
-        workspace_id => maps:get(workspace_id, S),
-        business_identity_id => maps:get(service_identity_id, S),
-        at => os:system_time(second)
-    },
-    {ok, _} = customer_service_facade:suspend_seat(Org, Params),
-    try
-        ?assertEqual(403, maps:get(status, post(H, S, Path, Body)))
-    after
-        {ok, _} = customer_service_facade:resume_seat(Org, Params)
-    end,
-    ?assertEqual(200, maps:get(status, post(H, S, Path, Body))).
-
-ack_delivery_id(Response) ->
-    #{<<"payload">> := #{<<"delivery">> := #{<<"id">> := Id}}} =
-        jsone:decode(maps:get(body, Response)),
-    Id.
-
-ack_canonical_hash(S, Mid) ->
-    ?FIX:scalar(
-        <<"SELECT md5(row_to_json(m)::text) FROM enterprise_message m WHERE organization_id=$1 AND workspace_id=$2 AND id=$3">>,
-        [maps:get(org_id, S), maps:get(workspace_id, S), Mid],
-        undefined
-    ).
+    ?assertEqual(403, maps:get(status, Previous)).

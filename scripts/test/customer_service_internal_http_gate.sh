@@ -84,6 +84,7 @@ asset_tests = [
     'test/features/enterprise_business/infrastructure/eb_retention_pg_tests.erl',
     'test/features/enterprise_business/infrastructure/eb_purge_orphan_asset_pg_tests.erl',
     'test/features/enterprise_business/application/asset/eb_asset_tests.erl',
+    'test/features/enterprise_business/application/message/eb_message_app_tests.erl',
     'test/features/enterprise_business/interfaces/eb_tenant_handler_tests.erl',
     'test/features/enterprise_business/e2e/eb_e2e_runner.erl']
 with (out / 'compile.log').open('a') as log:

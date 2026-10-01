@@ -22,7 +22,13 @@
 -module(eb_asset_scope).
 -include("generated/imboy_product_features.hrl").
 
--export([authorize/6, authorize_contact/5, member_only/5, active_assignment_for/3]).
+-export([
+    authorize/6,
+    authorize_contact/5,
+    member_only/5,
+    active_assignment_for/3,
+    current_conversation_identity/5
+]).
 
 %% @doc 会话级授权：`(Auth, Store, OrgId, WorkspaceId, ConversationId, ActorUserId)`。
 %%
@@ -149,28 +155,35 @@ active_assignment_for(_IdentityId, _FunctionKey, _Assignments) ->
 
 %% Sales uses the enterprise handler; managed CS uses its current session owner.
 conversation_identity_gate(Store, Org, Ws, Conv, IntakeId, Assignments) ->
+    case current_conversation_identity(Store, Org, Ws, Conv, IntakeId) of
+        {ok, Id} -> identity_gate(Id, Assignments);
+        {error, _} = Err -> Err
+    end.
+
+%% Shared by attachment ACL and delivery ACK; the intake identity stays immutable.
+current_conversation_identity(Store, Org, Ws, Conv, IntakeId) ->
     case Store:fetch_identity(Org, Ws, IntakeId) of
         {ok, #{function_key := <<"customer_service">>}} ->
-            cs_identity_gate(Org, Ws, Conv, IntakeId, Assignments);
+            cs_current_identity(Org, Ws, Conv, IntakeId);
         {ok, #{function_key := <<"sales">>}} ->
-            identity_gate(IntakeId, Assignments);
+            {ok, IntakeId};
         _ ->
             {error, {forbidden, no_assignee}}
     end.
 
 -ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE).
-cs_identity_gate(Org, Ws, Conv, IntakeId, Assignments) ->
+cs_current_identity(Org, Ws, Conv, IntakeId) ->
     case
         customer_service_facade:conversation_assignee(Org, #{
             workspace_id => Ws, conversation_id => Conv
         })
     of
-        {ok, #{business_identity_id := Id}} -> identity_gate(Id, Assignments);
+        {ok, #{business_identity_id := Id}} -> {ok, Id};
         %% An enterprise CS conversation without a managed session keeps its prior ACL.
-        {error, not_found} -> identity_gate(IntakeId, Assignments);
+        {error, not_found} -> {ok, IntakeId};
         {error, _} = Err -> Err
     end.
 -else.
-cs_identity_gate(_Org, _Ws, _Conv, _IntakeId, _Assignments) ->
+cs_current_identity(_Org, _Ws, _Conv, _IntakeId) ->
     {error, {forbidden, customer_service_unavailable}}.
 -endif.

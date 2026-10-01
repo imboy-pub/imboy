@@ -1,0 +1,30 @@
+[
+  {
+    "path": "ack-responses.json",
+    "sha256": "f26783f4ced234310c699a5234bbea3e679947bc5d62ef91e2392ceed3667e7d"
+  },
+  {
+    "path": "asset-message-gate.log",
+    "sha256": "e1a5800d7fc270dab4dac6a0aff8da0012010e5a4a60f6bf5d278193c447b5a2"
+  },
+  {
+    "path": "asset-message-pg.log",
+    "sha256": "9c8d52887ea70a99bd49192ac7c5ad15fd3f619604f5572454f19ddc9ac82369"
+  },
+  {
+    "path": "compile.log",
+    "sha256": "9e79769b1433cfc6171926b229171881da344f460afcd91c8757e901ea509c60"
+  },
+  {
+    "path": "http-gate.log",
+    "sha256": "b7125d04dd6ba3c76b439f3c120b41e34446601f6741b2cf780584cd894d3112"
+  },
+  {
+    "path": "run.json",
+    "sha256": "f1c0985701456ad3e34cdb38c6417608225da1d023f06ce4967f2c7ee15dc269"
+  },
+  {
+    "path": "transferred-ack.json",
+    "sha256": "fe3d694bf10b7471f8ba18f031a203d306e9193e376b7a223250177e5aaaa9ce"
+  }
+]

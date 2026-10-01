@@ -1,0 +1,46 @@
+{
+  "status": "LOCAL_SCOPED_PASS",
+  "base_sha": "ffc9d5a521817126164ef37590f72c6cac1ca1a3",
+  "asset_message_exit": 0,
+  "asset_message_evidence": "/tmp/imboy-seat-http.IP2HNE",
+  "message_cases": 13,
+  "retention_cases": 11,
+  "orphan_cases": 10,
+  "asset_contract_cases": 6,
+  "sources": [
+    {
+      "path": "scripts/test/customer_service_internal_http_gate.sh",
+      "sha256": "cca07edeb7f65bb01ef4b72be4a17f812baf8b30d4417d2055e42095bd4a91e8"
+    },
+    {
+      "path": "src/features/enterprise_business/application/asset/eb_asset_scope.erl",
+      "sha256": "eb58bb80ea488eb0ac5586fbe80729d35bb7f67a0d0f08e82fac233420fe6778"
+    },
+    {
+      "path": "src/features/enterprise_business/application/message/eb_message_app.erl",
+      "sha256": "734ccbd0ace094c09087f21fb05159e43e9c52f99a6b309a85b7de12b29ac94f"
+    },
+    {
+      "path": "test/api/customer_service_seat_http_checks.erl",
+      "sha256": "0aa676a7d83747d30c01e37fbf4a0e434b5af8f1d02012c7349132b9deeeef4a"
+    },
+    {
+      "path": "test/api/enterprise_asset_garage_pg_checks.erl",
+      "sha256": "9567a7b8f2f394034184e73815bca47969b4b01b055950d3bf15bb4028f6a426"
+    },
+    {
+      "path": "test/features/enterprise_business/application/message/eb_message_app_tests.erl",
+      "sha256": "5408fb03d6d1311a28e2f33352a923a739f16ed7685a96f791310eda2a863115"
+    }
+  ],
+  "http_exit": 0,
+  "http_evidence": "/tmp/imboy-seat-http.RR4gek",
+  "http_top_level_checks": 26,
+  "ack_statuses": [
+    200,
+    403,
+    200,
+    403,
+    200
+  ]
+}

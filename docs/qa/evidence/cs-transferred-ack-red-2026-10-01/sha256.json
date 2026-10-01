@@ -1,0 +1,22 @@
+[
+  {
+    "path": "compile.log",
+    "sha256": "d5cd2d48d00eda22ef76abdb413a53f509f0b5a2c515c65801e151d3bd8a4363"
+  },
+  {
+    "path": "http.log",
+    "sha256": "0fb971b693dce9822d83fbb7d6841d418a3a9fda0086b43242adf4e315d9bf4b"
+  },
+  {
+    "path": "red-check.erl",
+    "sha256": "524385473141668e524116c08be13380a194e28e5823d0e04a57e89d5a13ca8e"
+  },
+  {
+    "path": "run.json",
+    "sha256": "55ac0e86786bb87d9933f7b6cb2d1e92206f0461205f9f3b1c40268ea83569d4"
+  },
+  {
+    "path": "transferred-ack.json",
+    "sha256": "d792464274549eab907a54cf3b1b2bd499b6ee417f2727ac99deb8d7c47c20ed"
+  }
+]

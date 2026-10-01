@@ -449,8 +449,8 @@ ack_commit(OrgId, WorkspaceId, MessageId, RecipientRef, AckedAt, Before, Params)
 %%   1. recipient_ref 必须是 `identity:<调用者本人 business_identity_id>`
 %%      （坐席只能 ACK 发给自己的投递；T-2 裁定的前缀合同——`seat:` 前缀
 %%      在形状层已被拒，此处保证 id 归属）；
-%%   2. 消息所属会话的当前经办（enterprise_conversation.business_identity_id，
-%%      同语句 (Org, Ws, Conv) 读取）必须等于调用者本人——非经办坐席 403。
+%%   2. 消息所属会话的当前经办通过共享权限解析读取；托管客服以当前
+%%      session 坐席为准，入口身份不随转接改写。非经办或停用坐席 403。
 ack_seat_gate(OrgId, WorkspaceId, RecipientRef, Canonical, Params) ->
     case maps:get(caller_function_key, Params, undefined) of
         <<"customer_service">> ->
@@ -470,20 +470,25 @@ ack_seat_gate_in(OrgId, WorkspaceId, RecipientRef, Canonical, Params) ->
 
 ack_conversation_assignee(OrgId, WorkspaceId, Canonical, CallerIdentity, Params) ->
     ConversationId = maps:get(conversation_id, Canonical, undefined),
-    case
-        with_store(Params, fun(Store) ->
-            Store:fetch_conversation(OrgId, WorkspaceId, ConversationId)
-        end)
-    of
-        {ok, Conversation} ->
-            case maps:get(business_identity_id, Conversation, undefined) of
-                CallerIdentity -> ok;
-                _Other -> {error, {forbidden, not_assignee}}
-            end;
-        {error, _} ->
-            %% 会话取不到（跨 Ws/不存在）一律按非经办拒绝（避免枚举）。
-            {error, {forbidden, not_assignee}}
-    end.
+    with_store(Params, fun(Store) ->
+        case Store:fetch_conversation(OrgId, WorkspaceId, ConversationId) of
+            {ok, Conversation} ->
+                case
+                    eb_asset_scope:current_conversation_identity(
+                        Store,
+                        OrgId,
+                        WorkspaceId,
+                        ConversationId,
+                        maps:get(business_identity_id, Conversation, undefined)
+                    )
+                of
+                    {ok, CallerIdentity} -> ok;
+                    _ -> {error, {forbidden, not_assignee}}
+                end;
+            {error, _} ->
+                {error, {forbidden, not_assignee}}
+        end
+    end).
 
 %% recipient_ref 的 identity id（形状已由 is_valid_recipient_ref 前置校验；
 %% 解析失败按非本人处理，fail-closed）。

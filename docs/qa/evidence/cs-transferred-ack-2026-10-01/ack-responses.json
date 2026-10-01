@@ -1,0 +1,94 @@
+[
+  {
+    "status": 200,
+    "path": "/api/v1/enterprise/organizations/115689573729961987/conversations/115689573729961995/messages/115689573904025600/ack",
+    "response": {
+      "code": 0,
+      "msg": "success",
+      "payload": {
+        "canonical_unchanged": true,
+        "delivery": {
+          "acked_at": 1790854729,
+          "device_id": null,
+          "id": "115689662559029248",
+          "message_id": "115689573904025600",
+          "organization_id": "115689573729961987",
+          "recipient_ref": "identity:115689573750933504",
+          "status": "delivered",
+          "version": 1,
+          "workspace_id": "115689573729961988"
+        },
+        "message_id": "115689573904025600"
+      },
+      "sv_ts": 1790854729930
+    }
+  },
+  {
+    "status": 403,
+    "path": "/api/v1/enterprise/organizations/115689573729961987/conversations/115689573729961995/messages/115689573904025600/ack",
+    "response": {
+      "code": 403,
+      "msg": "forbidden.not_assignee",
+      "payload": {},
+      "sv_ts": 1790854729936
+    }
+  },
+  {
+    "status": 200,
+    "path": "/api/v1/enterprise/organizations/115689573729961987/conversations/115689573729961995/messages/115689573904025600/ack",
+    "response": {
+      "code": 0,
+      "msg": "success",
+      "payload": {
+        "canonical_unchanged": true,
+        "delivery": {
+          "acked_at": 1790854729,
+          "device_id": null,
+          "id": "115689662559029248",
+          "message_id": "115689573904025600",
+          "organization_id": "115689573729961987",
+          "recipient_ref": "identity:115689573750933504",
+          "status": "delivered",
+          "version": 2,
+          "workspace_id": "115689573729961988"
+        },
+        "message_id": "115689573904025600"
+      },
+      "sv_ts": 1790854729944
+    }
+  },
+  {
+    "status": 403,
+    "path": "/api/v1/enterprise/organizations/115689573729961987/conversations/115689573729961995/messages/115689573904025600/ack",
+    "response": {
+      "code": 403,
+      "msg": "seat_disabled",
+      "payload": {},
+      "sv_ts": 1790854729949
+    }
+  },
+  {
+    "status": 200,
+    "path": "/api/v1/enterprise/organizations/115689573729961987/conversations/115689573729961995/messages/115689573904025600/ack",
+    "response": {
+      "code": 0,
+      "msg": "success",
+      "payload": {
+        "canonical_unchanged": true,
+        "delivery": {
+          "acked_at": 1790854729,
+          "device_id": null,
+          "id": "115689662559029248",
+          "message_id": "115689573904025600",
+          "organization_id": "115689573729961987",
+          "recipient_ref": "identity:115689573750933504",
+          "status": "delivered",
+          "version": 3,
+          "workspace_id": "115689573729961988"
+        },
+        "message_id": "115689573904025600"
+      },
+      "sv_ts": 1790854729960
+    }
+  }
+]
