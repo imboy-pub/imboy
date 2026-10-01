@@ -27,7 +27,9 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun port_declares_zero_write_callbacks/0}
     ];
 cases(_Skipped) ->
-    {skip, "member fact suite requires the scratch database connection"}.
+    %% 裸 {skip,_} 从 instantiator 返回是非法 descriptor（eunit 报
+    %% "bad test descriptor" 并致 halt(2)），列表包裹才是合法跳过形态。
+    [{skip, "member fact suite requires the scratch database connection"}].
 
 %% 逐请求直读：状态变化后同一次会话内立即反映（不缓存）。
 member_status_reads_current_fact() ->

@@ -12,7 +12,8 @@
     eunit_setup_with_db/0,
     eunit_setup_db_or_skip/0,
     ensure_named_server/1,
-    ensure_boot_coordinator/0
+    ensure_boot_coordinator/0,
+    ensure_default_pool/0
 ]).
 
 %%%===================================================================
@@ -116,6 +117,18 @@ eunit_setup() ->
         tsid_bootstrap_scan_fun,
         fun(_Ctx) -> {ok, #{floor_safe_before => 0}} end
     ),
+    %% TSID fence 轨道隔离（2026-10-01 全量 23×capacity_exhausted 根治）：
+    %% durable fence（priv/tsid/node-*）跨 VM 共享——dev server/其他会话 VM
+    %% 固化的超前高水位会被本 VM 继承：boot 允许领先墙钟 ≤60s 放行
+    %% （max_initial_lead_ms 默认 60000），而 generate 的 clock_wait 仅
+    %% 100ms（capacity_wait_timeout_ms 默认 100）→ lead>512ms 一律
+    %% capacity_exhausted；且 do_renew 以超前 cursor 为 Base 续写 fence，
+    %% 超前随文件持久化自持传染（9/30 stale-20260930 处置后当日复发实证）。
+    %% 本 VM 的 DB scan floor 已由上方 seam 置 0，不依赖共享 fence 防撞；
+    %% 改用每 VM 独立临时目录 + fresh bootstrap，cursor 从墙钟起步（共享库
+    %% 历史行时间戳均在过去，无撞号面），fence 的 VM 内 durable 语义保留。
+    application:set_env(imboy, tsid_state_dir, eunit_tsid_state_dir()),
+    application:set_env(imboy, tsid_store_bootstrap, fresh),
     %% 测试环境社区版用户配额拉高：注册/好友全链流程测试会真注册用户，
     %% 本地库测试数据积累极易越过社区版默认 max_users=100 触发 402
     application:set_env(imboy, community_max_users, 1000000),
@@ -424,6 +437,10 @@ app_running(App) ->
 %% runtime 缺失时按 sup publish 同款参数幂等补建（names 用全集，供 ds 层
 %% 按名 generate；guard 已就绪的场合零开销跳过）。
 ensure_tsid_runtime() ->
+    %% 模块自愈（2026-10-01）：elib_tsid 全量中段被观测到整体卸载（meck
+    %% purge 竞态，见 eunit_tsid_module_loaded/0 注释）——丢模块后本函数的
+    %% runtime_handle 直调自身就会 undef，必须先恢复模块。
+    ensure_tsid_module_loaded(),
     case elib_tsid:runtime_handle() of
         {ok, _} ->
             ok;
@@ -434,6 +451,29 @@ ensure_tsid_runtime() ->
                 dc_bits => 3,
                 names => imboy_app:tsid_generator_names()
             })
+    end.
+
+%% elib_tsid 模块自愈：恢复被卸载的模块（ebin 在 code path 上，可重载）。
+%% 背景（2026-10-01 run3/run4 全量实证）：elib_tsid 在模块序 ~82% 处整体
+%% 不可调用（guard/测试进程均 `call to undefined function elib_tsid:*`，
+%% 归因 meck(elib_tsid) 套件的 purge 竞态；当时未实测 code:which 读数），
+%% 其后 guard 在 cursor_horizon/guarded_publish 处 undef → permanent 重启
+%% 循环，每轮 boot_ready 持久化 fence=prev+1s 滚雪球出 20-36s 超前 floor，
+%% 一次 publish 成功即把超前固化进 cursor → 23 个套件 capacity_exhausted
+%% 级联。自愈在每次 do_boot/cleanup 时把模块从 ebin 重新加载，断掉链条
+%% 第 1 环；guard 侧配套 init 前置检查 + cursor_horizon catch 兜底（不动
+%% fence 单调协议）。
+ensure_tsid_module_loaded() ->
+    %% code:which/1 对「beam 在 path 但未加载/已 delete」都返回路径，拿它
+    %% 探测缺失是死分支（undefined 永不出现）——直接无条件 ensure_loaded：
+    %% 已加载零开销；真缺失（beam 不在/损坏）只记日志不崩，由调用点的
+    %% fail-closed 语义接管。
+    case code:ensure_loaded(elib_tsid) of
+        {module, elib_tsid} ->
+            ok;
+        {error, Reason} ->
+            logger:error("[eunit_runner] elib_tsid module reload failed: ~p", [Reason]),
+            ok
     end.
 
 cleanup_start_orphans() ->
@@ -606,6 +646,14 @@ eunit_try_db(AttemptsLeft) ->
             end
     catch
         exit:{noproc, _} ->
+            %% 池注册缺失自愈（2026-10-01 CS 全组 no_pool 级联根治）：
+            %% intbe02/organization_directory 两个 support 的 release_pool/0
+            %% teardown 只 rm_pool(pgsql) 不重建——api 链最后一个套件结束后
+            %% 共享 pgsql 池永久缺失，其后的 features/customer_service 全组
+            %% take_member noproc → suite setup erlang:error → cancelled，
+            %% erlang.mk eunit 以 halt(2) 收场（用户视角即 make eunit 报错）。
+            %% 此处按 pg_conf 重建默认池后重试；重建失败维持原 no_pool 语义。
+            _ = ensure_default_pool(),
             timer:sleep(100),
             case AttemptsLeft of
                 1 -> {error, no_pool};
@@ -634,6 +682,11 @@ eunit_setup_with_db() ->
 
 %% @doc 归还测试数据库连接并清理应用状态
 eunit_cleanup_db(ConnPid) when is_pid(ConnPid) ->
+    %% TSID 模块自愈：undef 崩溃循环可能在本套件运行中途开始（app 常驻、
+    %% 下一次 do_boot 前不再走 boot 序列）——cleanup 时恢复模块，保证
+    %% 下个套件 boot 的 guard start 不再撞 undef（详见
+    %% ensure_tsid_module_loaded/0 注释）。
+    ensure_tsid_module_loaded(),
     Key = {?MODULE, db_conn, ConnPid},
     case persistent_term:get(Key, undefined) of
         {Driver, SetupState} ->
@@ -644,6 +697,10 @@ eunit_cleanup_db(ConnPid) when is_pid(ConnPid) ->
             ok
     end;
 eunit_cleanup_db(_) ->
+    %% 无连接路径（setup 阶段即失败的套件）同样自愈：undef 崩溃循环可能在
+    %% 本套件运行中途开始，任何 cleanup 时机都是恢复窗口（见
+    %% ensure_tsid_module_loaded/0 注释）。
+    ensure_tsid_module_loaded(),
     ok.
 
 %% @doc 启动应用，如果数据库不可用则返回 skip
@@ -738,6 +795,24 @@ enforce_pool_capacity() ->
             ok
     end.
 
+%% @doc 按当前 pg_conf 重建默认共享池（pgsql）。
+%% 供 eunit_try_db 的 noproc 自愈与 api 链 support 的 release_pool/0
+%% teardown 复用；pg_conf 已由 enforce_pool_capacity 钉过容量下限，
+%% 直接透传 pooler:new_pool（name/start_mfa/init_count/max_count 齐备）。
+%% pg_conf 缺位或建池失败返回 error，由调用方决定降级语义。
+ensure_default_pool() ->
+    _ = application:ensure_all_started(pooler),
+    catch pooler:rm_pool(pgsql),
+    case application:get_env(imboy, pg_conf) of
+        {ok, #{start_mfa := _MFA} = Conf} when is_map(Conf) ->
+            case pooler:new_pool(Conf#{name => pgsql}) of
+                {ok, _} -> ok;
+                _ -> error
+            end;
+        _ ->
+            error
+    end.
+
 test_http_port() ->
     case os:getenv("TEST_HTTP_PORT") of
         false ->
@@ -751,6 +826,12 @@ test_http_port() ->
                 _:_ -> 19800
             end
     end.
+
+%% eunit VM 专属 TSID fence 目录（每 VM 独立，见 boot 序列处注释）：
+%% 放系统临时目录，随系统清理，不进仓库；目录名带 VM pid，杜绝并行会话
+%% 与连续两次 make 之间的 fence 复用。
+eunit_tsid_state_dir() ->
+    filename:join("/tmp", "imboy-eunit-tsid-" ++ os:getpid()).
 
 test_sql_driver() ->
     case application:get_env(imboy, sql_driver) of

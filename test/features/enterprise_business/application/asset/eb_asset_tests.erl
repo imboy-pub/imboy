@@ -61,7 +61,9 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun bes01b_visitor_content_binding_negatives/0}
     ];
 cases(_Skipped) ->
-    {skip, "asset suite requires the scratch database connection"}.
+    %% 裸 {skip,_} 从 instantiator 返回是非法 descriptor（eunit 报
+    %% "bad test descriptor" 并致 halt(2)），列表包裹才是合法跳过形态。
+    [{skip, "asset suite requires the scratch database connection"}].
 
 %% ===================================================================
 %% A01..A06（复用集成场景；逐条把子断言明细打在失败信息里）

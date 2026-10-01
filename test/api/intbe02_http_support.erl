@@ -558,6 +558,11 @@ ensure_pool(State) ->
 
 release_pool() ->
     catch pooler:rm_pool(pgsql),
+    %% teardown 不留毒（2026-10-01）：只 rm 不重建会让共享 pgsql 池永久缺失，
+    %% 其后非本链套件 take_member noproc 级联 cancelled（CS 全组 no_pool，
+    %% 全量 run9 实证）。按 pg_conf 恢复默认池，与本 VM boot 语义一致；
+    %% best-effort（失败不炸 teardown——后续套件 try_db 的 noproc 自愈兜底）。
+    _ = eunit_runner:ensure_default_pool(),
     ok.
 
 %%%===================================================================

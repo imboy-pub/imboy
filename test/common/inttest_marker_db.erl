@@ -62,7 +62,7 @@ provision_fresh(Opts) when is_map(Opts) ->
     MaintConn = connect_server(Server, maint_db(Prefix)),
     DbName = marker_db_name(Prefix),
     try
-        ok = create_db(MaintConn, DbName),
+        ok = create_db_retry(MaintConn, DbName),
         ok = ensure_extensions(Server, DbName),
         ok = migrate_result(migrate_fresh_db(Server, DbName)),
         %% A1c：marker 库自身连接同样走重试（原先裸 safe_connect 一次失败即
@@ -114,18 +114,21 @@ provision_shared(Opts) ->
     Srv ! {self(), reuse_acquire, Key, Opts},
     receive
         {reuse_acquired, Srv, {ok, State}} -> State#{reuse_key => Key};
-        {reuse_acquired, Srv, {error, Class, Reason, Stack}} ->
-            erlang:raise(Class, Reason, Stack)
+        {reuse_acquired, Srv, {error, Class, Reason, Stack}} -> erlang:raise(Class, Reason, Stack)
     after 2400000 ->
         erlang:error({marker_db_reuse_acquire_timeout, Key})
     end.
 
 release_shared(Key) ->
     case whereis(?REUSE_SRV) of
-        undefined -> ok;
+        undefined ->
+            ok;
         Srv ->
             Srv ! {self(), reuse_release, Key},
-            receive {reuse_released, Srv, ok} -> ok after 120000 -> ok end
+            receive
+                {reuse_released, Srv, ok} -> ok
+            after 120000 -> ok
+            end
     end.
 
 reuse_key(Opts) ->
@@ -137,9 +140,10 @@ ensure_reuse_server() ->
             Pid = spawn(fun reuse_loop/0),
             try erlang:register(?REUSE_SRV, Pid) of
                 true -> Pid
-            catch _:_ ->
-                exit(Pid, kill),
-                whereis(?REUSE_SRV)
+            catch
+                _:_ ->
+                    exit(Pid, kill),
+                    whereis(?REUSE_SRV)
             end;
         Pid ->
             Pid
@@ -161,10 +165,13 @@ reuse_loop() ->
                                     put({reuse_count, Key}, 1),
                                     erase({reuse_fail, Key}),
                                     From ! {reuse_acquired, self(), {ok, State}}
-                            catch C:R:S ->
-                                put({reuse_fail, Key},
-                                    {os:system_time(millisecond), C, R, S}),
-                                From ! {reuse_acquired, self(), {error, C, R, S}}
+                            catch
+                                C:R:S ->
+                                    put(
+                                        {reuse_fail, Key},
+                                        {os:system_time(millisecond), C, R, S}
+                                    ),
+                                    From ! {reuse_acquired, self(), {error, C, R, S}}
                             end
                     end;
                 State ->
@@ -176,9 +183,10 @@ reuse_loop() ->
                 1 ->
                     try
                         release_fresh(get({reuse_state, Key}))
-                    catch _C:_R:_S ->
-                        %% 释放失败不阻断计数清理；库残留走 WARNING 口径
-                        ok
+                    catch
+                        _C:_R:_S ->
+                            %% 释放失败不阻断计数清理；库残留走 WARNING 口径
+                            ok
                     end,
                     erase({reuse_state, Key}),
                     erase({reuse_count, Key}),
@@ -291,9 +299,13 @@ connect_retry(Server, Db) ->
     SleepMs = env_int("INTTEST_CONNECT_SLEEP_MS", 3000),
     CapMs = env_int("INTTEST_CONNECT_BACKOFF_CAP_MS", 15000),
     case {Attempts, SleepMs, CapMs} of
-        {4, 3000, 15000} -> ok;
-        _ -> io:format("~n[inttest_marker_db] retry budget override: ~p attempts x ~pms (cap ~pms)~n",
-                       [Attempts, SleepMs, CapMs])
+        {4, 3000, 15000} ->
+            ok;
+        _ ->
+            io:format(
+                "~n[inttest_marker_db] retry budget override: ~p attempts x ~pms (cap ~pms)~n",
+                [Attempts, SleepMs, CapMs]
+            )
     end,
     connect_retry(Server, Db, Attempts, SleepMs, CapMs, none, 0).
 
@@ -320,8 +332,10 @@ connect_retry(Server, Db, Attempts, SleepMs, CapMs, _LastReason, Idx) ->
 
 env_int(Name, Default) ->
     case os:getenv(Name) of
-        false -> Default;
-        "" -> Default;
+        false ->
+            Default;
+        "" ->
+            Default;
         Str ->
             case string:to_integer(string:trim(Str)) of
                 {N, []} when N >= 0 -> N;
@@ -389,10 +403,24 @@ flush_sock_exit() ->
         ok
     end.
 
-create_db(Conn, DbName) ->
+%% 共享测试容器上多会话并发建/删库时，CREATE DATABASE 可能瞬态 58P02
+%% duplicate_file（新库 OID 目录与并发事务的文件分配撞车；2026-10-01 run10
+%% 实证，事后核查 base/ 无孤儿目录，属纯瞬态）。与 connect_retry 同一韧性
+%% 口径：小预算退避重试，耗尽后仍原样抛错（fail-closed 不变）。
+create_db_retry(Conn, DbName) ->
+    create_db_retry(Conn, DbName, 3, 1000).
+
+create_db_retry(_Conn, DbName, 0, _SleepMs) ->
+    erlang:error({marker_db_create_failed, DbName, retry_exhausted});
+create_db_retry(Conn, DbName, Attempts, SleepMs) ->
     case epgsql:squery(Conn, <<"CREATE DATABASE ", DbName/binary>>) of
-        {ok, _, _} -> ok;
-        {error, Reason} -> erlang:error({marker_db_create_failed, DbName, Reason})
+        {ok, _, _} ->
+            ok;
+        {error, {error, _, <<"58P02">>, duplicate_file, _}} when Attempts > 1 ->
+            timer:sleep(SleepMs),
+            create_db_retry(Conn, DbName, Attempts - 1, SleepMs);
+        {error, Reason} ->
+            erlang:error({marker_db_create_failed, DbName, Reason})
     end.
 
 ensure_extensions(Server, DbName) ->

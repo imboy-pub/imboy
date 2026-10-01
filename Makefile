@@ -126,10 +126,21 @@ EDOC_OPTS = {doclet, edown_doclet}
 # 注意：t= 单跑路径绝不能套用同一过滤器——否则被排除套件的单跑会变成
 # 空模块列表的静默假绿（eunit:test([]) → ok）。故 ifdef t 分流：
 # 单跑直通原样运行，仅全量轨道（无 t）应用 Excl。
+# 2026-10-01 AG31 隔离库验收组排除：agent_grant/recovery/run/tool_authorizer
+# 四套件设计为专项验收门口径（文件头「运行前置」：AG31_PG_* env 注入的
+# 隔离一次性 PG，非共享库；env 缺失显式 FAIL 禁止 skip 的铁律）——全量
+# 轨道无该环境必然红 4 个（run3/run4 实证），排除后由 AG31 门运行环境
+# 承载（t= 单跑仍可用：导出 env 后 IMBOYENV=local make eunit t=<模块>）。
+# 2026-10-01 补（run10 实证）：仅排除 test 侧 *_tests 名防不住伴随探测路径——
+# agent_grant_pg/agent_run_pg 的 src 生产模块存在时，erlang.mk 的 EUNIT_MODS
+# 会把 test 侧同名 *_tests filter-out（防重复），eunit:test 转而以 src 模块
+# agent_grant_pg 为入口、EUnit 自动伴随执行 agent_grant_pg_tests（AG31 env
+# 检查照样触发 → cancelled）。故须把 src 侧入口名一并排除（两文件均无
+# 自带 test_() 单测，已验证，无旁伤）。
 ifdef t
 EUNIT_TEST_SPEC = (fun() -> lists:append([$1]) end)()
 else
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, elib_tsid_guard, elib_tsid_bootstrap_harness_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, elib_tsid_guard, elib_tsid_bootstrap_harness_tests, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 endif
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属

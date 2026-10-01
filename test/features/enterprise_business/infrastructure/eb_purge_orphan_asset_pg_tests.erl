@@ -68,7 +68,9 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun f1_orphan_statements_are_tenant_scoped/0}
     ];
 cases(_Skipped) ->
-    {skip, "orphan purge suite requires the scratch database connection"}.
+    %% 裸 {skip,_} 从 instantiator 返回是非法 descriptor（eunit 报
+    %% "bad test descriptor" 并致 halt(2)），列表包裹才是合法跳过形态。
+    [{skip, "orphan purge suite requires the scratch database connection"}].
 
 %% ===================================================================
 %% F-1 核心三态：超龄孤儿清、新鲜孤儿留、已 confirm 绑定消息的资产留

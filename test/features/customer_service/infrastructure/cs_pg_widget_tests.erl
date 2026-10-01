@@ -137,35 +137,65 @@ a01_widget_migration_roundtrip_no_residue() ->
         %% app 侧 schema_migrations_history 无 dirty 列、非同 schema，不可混用；
         %% scratch 库由本 run 独占，roundtrip 前置断言已锁定基线在位。
         Config = #{conn => Conn, dir => imboy_migrate:get_scripts_path(), strict => true},
-        %% down 步数**按 priv/migrations 实际在册版本推导**，不写死。
-        %% 历史教训（本条断言两次被 head 前移打红）：
-        %%   CSD-BE-01：迁移 135 入库后 head 不再是 134，写死 down 3 步在
-        %%   head=135 的库上回滚 135/134/133，留 132 在表 → 断言恒红；
-        %%   EPGZ-08 W4：migration 136（enterprise_internal_foundation）入库后
-        %%   head=136，写死 down 4 步回滚的是 136/135/134/133，同样留 132 在表。
-        %% 现按在册版本集合（严格大于 132 的版本数 + 1）推导，head 再前移不红。
-        Steps = down_steps_to(132),
-        ?assert(Steps >= 1),
-        ok = erlang_migrate:down(Config, Steps),
-        %% 回环内的存在性断言与 down/up 走同一独立连接：共享池连接若带
-        %% 残留事务快照，information_schema 会看到 down 前的目录态（假红，
-        %% 全量实测 a01「expected false, value true」而事后 head/dirty 全正常）。
-        %% 断言与期望值不变，仅换观测通道（与本 fun 既有的独立连接口径一致）。
-        ?assertNot(table_exists_on(Conn, <<"customer_service_widget_installation">>)),
-        ?assertNot(table_exists_on(Conn, <<"customer_service_widget_identity_key">>)),
-        ?assertNot(table_exists_on(Conn, <<"customer_service_widget_nonce">>)),
-        ?assertNot(
-            column_exists_on(Conn, <<"customer_service_visit_token">>, <<"widget_installation_id">>)
-        ),
-        ?assertNot(
-            column_exists_on(Conn, <<"customer_service_visit_token">>, <<"anonymous_subject_hmac">>)
-        ),
-        ?assertNot(column_exists_on(Conn, <<"customer_service_visit_token">>, <<"last_seen_at">>)),
-        %% up 1 步 = 重新应用 132（widget 回归）；再跑一次 up 全量
-        %% （补回 133/134，幂等：IF NOT EXISTS 全绿）
-        ok = erlang_migrate:up(Config, 1),
-        ?assert(table_exists_on(Conn, <<"customer_service_widget_installation">>)),
-        ok = erlang_migrate:up(Config)
+        %% churn 全窗口跨会话互斥（2026-10-01 run12 实证）：共享库被多个
+        %% eunit 会话同时进入本套件时，erlang_migrate 的锁只包住单次
+        %% up/down 调用，两个 a01 的 down/断言/up 窗口交错互踩——断言失败
+        %% 方直接 raise 且无恢复，库停在 head-31 毒化共享轨道（双会话踩踏
+        %% 后 version=131 的现场）。此处用 erlang_migrate 同款 lock_id
+        %% （phash2(<<"schema_migrations">>, 1 bsl 30)，依赖默认表名不变）
+        %% 以会话级 advisory lock 包住整个窗口；同会话重复加锁为叠加计数，
+        %% 与 with_lock 的内层加/解锁兼容。并发的 app 启动 migrate 会在锁上
+        %% 阻塞等待，读到的 schema 不再是半态。
+        LockId = erlang:phash2(<<"schema_migrations">>, 1 bsl 30),
+        LockSql = iolist_to_binary(io_lib:format("SELECT pg_advisory_lock(~b)", [LockId])),
+        UnlockSql = iolist_to_binary(io_lib:format("SELECT pg_advisory_unlock(~b)", [LockId])),
+        {ok, _, _} = epgsql:squery(Conn, LockSql),
+        try
+            %% down 步数**按 priv/migrations 实际在册版本推导**，不写死。
+            %% 历史教训（本条断言两次被 head 前移打红）：
+            %%   CSD-BE-01：迁移 135 入库后 head 不再是 134，写死 down 3 步在
+            %%   head=135 的库上回滚 135/134/133，留 132 在表 → 断言恒红；
+            %%   EPGZ-08 W4：migration 136（enterprise_internal_foundation）入库后
+            %%   head=136，写死 down 4 步回滚的是 136/135/134/133，同样留 132 在表。
+            %% 现按在册版本集合（严格大于 132 的版本数 + 1）推导，head 再前移不红。
+            Steps = down_steps_to(132),
+            ?assert(Steps >= 1),
+            %% down 前清场：down 链途经 fail-closed 数据预检表（见
+            %% clear_churn_data_guard_rows/1 注释），孤儿残留行会让 down
+            %% 预检拒绝并置 dirty，毒化共享库拖垮整条全量轨道。
+            ok = clear_churn_data_guard_rows(Conn),
+            ok = churn_step(fun() -> erlang_migrate:down(Config, Steps) end, Config),
+            %% 回环内的存在性断言与 down/up 走同一独立连接：共享池连接若带
+            %% 残留事务快照，information_schema 会看到 down 前的目录态（假红，
+            %% 全量实测 a01「expected false, value true」而事后 head/dirty 全正常）。
+            %% 断言与期望值不变，仅换观测通道（与本 fun 既有的独立连接口径一致）。
+            ?assertNot(table_exists_on(Conn, <<"customer_service_widget_installation">>)),
+            ?assertNot(table_exists_on(Conn, <<"customer_service_widget_identity_key">>)),
+            ?assertNot(table_exists_on(Conn, <<"customer_service_widget_nonce">>)),
+            ?assertNot(
+                column_exists_on(
+                    Conn, <<"customer_service_visit_token">>, <<"widget_installation_id">>
+                )
+            ),
+            ?assertNot(
+                column_exists_on(
+                    Conn, <<"customer_service_visit_token">>, <<"anonymous_subject_hmac">>
+                )
+            ),
+            ?assertNot(
+                column_exists_on(Conn, <<"customer_service_visit_token">>, <<"last_seen_at">>)
+            ),
+            %% up 1 步 = 重新应用 132（widget 回归）；再跑一次 up 全量
+            %% （补回 133/134，幂等：IF NOT EXISTS 全绿）
+            ok = churn_step(fun() -> erlang_migrate:up(Config, 1) end, Config),
+            ?assert(table_exists_on(Conn, <<"customer_service_widget_installation">>)),
+            ok = churn_step(fun() -> erlang_migrate:up(Config) end, Config)
+        after
+            %% 恢复护栏（2026-10-01）：断言或中途异常也把库推回 head 再放锁，
+            %% 不留 131 型毒化版本给共享轨道上的后续套件/并发会话。
+            catch churn_step(fun() -> erlang_migrate:up(Config) end, Config),
+            _ = epgsql:squery(Conn, UnlockSql)
+        end
     end),
     ?assert(column_exists(<<"customer_service_visit_token">>, <<"widget_installation_id">>)).
 
@@ -860,6 +890,50 @@ with_migrate_conn(Fun) ->
         Fun(Conn)
     after
         _ = epgsql:close(Conn)
+    end.
+
+%% churn 步骤兜底：erlang_migrate down/up 失败（如 fail-closed 预检拒绝
+%% 回滚）按契约置 dirty——残留 dirty 毒化共享库，此后所有 app boot 在
+%% migration_dirty 拒启，全量轨道级联失败（2026-10-01 全量实证）。失败时
+%% force 复清当前版本（cs_seat_console_pg_tests a01_down_with_rows_fails_closed
+%% 的恢复口径）并全量 up 回补 head，再上抛原错误：本用例照常红，共享库
+%% 状态不外溢。
+churn_step(Fun, Config) ->
+    case Fun() of
+        ok ->
+            ok;
+        {error, _} = Error ->
+            {ok, Ver, _Dirty} = erlang_migrate:version(Config),
+            ok = erlang_migrate:force(Config, Ver),
+            ok = erlang_migrate:up(Config),
+            erlang:error({churn_step_failed_shared_db_recovered, Error})
+    end.
+
+%% down 链（head..133 → 132）途经的 fail-closed **数据**预检表清场：
+%% 152（moya_invite_code：活凭证码不得静默删）与 153（seat console：
+%% 已分发 public_seat_console_id 不得静默丢）。清场即测试侧的「显式
+%% 确认」——共享库上的孤儿行/套件 cleanup 缺口会把 churn 变成 dirty
+%% 毒药（9/30 与 10/01 两次全量挂链实证，moya_invite_code 孤儿行
+%% group_id=90001 与 9/30 22:15 的 dirty 同源）。结构型预检（159..161
+%% 的 allowed_scopes / version>1）依赖各套件自清理，不在此清；新增
+%% fail-closed 数据预检迁移入库时须在此登记（CSD-BE-01 / EPGZ-08 的
+%% head 前移教训延伸）。
+clear_churn_data_guard_rows(Conn) ->
+    ok = churn_guard_clear(Conn, <<"moya_invite_code">>, <<"TRUNCATE">>),
+    ok = churn_guard_clear(Conn, <<"customer_service_seat_console">>, <<"DELETE FROM">>),
+    ok.
+
+churn_guard_clear(Conn, Table, Action) ->
+    case table_exists_on(Conn, Table) of
+        true ->
+            Sql = <<Action/binary, " ", Table/binary>>,
+            %% TRUNCATE 返回 {ok,[],[]}（无 Count），DELETE 返回 {ok, N}
+            case epgsql:equery(Conn, Sql, []) of
+                {ok, _} -> ok;
+                {ok, _, _} -> ok
+            end;
+        false ->
+            ok
     end.
 
 %% Widget 域清场：先删 visit_token 上的 widget 令牌（RESTRICT 指向
