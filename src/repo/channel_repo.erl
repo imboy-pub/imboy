@@ -29,7 +29,7 @@
 -export([increment_subscribers/2]).
 -export([increment_subscribers/3]).
 -export([list_workspace_channels/2]).
--export([list_workspace_channels/3]).
+-export([list_workspace_channels/3, workspace_channel_page/4]).
 -export([search/3]).
 -export([list_discover/2]).
 % 统计相关
@@ -300,6 +300,16 @@ list_workspace_channels(WorkspaceId, Limit, Status) ->
         "ORDER BY c.created_at DESC, c.id DESC LIMIT $2"
     >>,
     elib_pg:query(Sql, [WorkspaceId, Limit]).
+
+%% Keyset pages use immutable ID order; legacy lists retain created_at ordering.
+workspace_channel_page(WsId, Cursor, Limit, Status) ->
+    Sql = <<
+        "SELECT c.* FROM channel c WHERE c.workspace_id=$1 AND c.scope='workspace' "
+        "AND ($2::bigint=0 OR c.id<$2) "
+        "AND ($3::text='all' OR c.status=CASE WHEN $3='archived' THEN 0 ELSE 1 END) "
+        "ORDER BY c.id DESC LIMIT $4"
+    >>,
+    elib_pg:query(Sql, [WsId, Cursor, Status, Limit]).
 
 %% @doc 更新频道信息
 %% @param ChannelId 频道ID

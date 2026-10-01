@@ -1,0 +1,102 @@
+{
+  "repositories": [
+    {
+      "repository": "backend",
+      "base_sha": "b6867896a71dbc97e7c568741f61e39edbeacd1b",
+      "sources": [
+        {
+          "path": "api/openapi-api.yaml",
+          "sha256": "4eda330f79d0107fe7c195579e50791fcb94ca54a439daa0d76acb2757fb5187"
+        },
+        {
+          "path": "api/openapi.yaml",
+          "sha256": "d357a422c0bbff6ce20032073af19ffd2096c3d77f0decf63220ad306f9083b2"
+        },
+        {
+          "path": "api/paths/api/v1/workspace/channels.yaml",
+          "sha256": "8f5ef062d7ab619ba22702565a8ed30d523ed4fea8f55f3174247186cba3e883"
+        },
+        {
+          "path": "api/paths/api/v1/workspace/groups.yaml",
+          "sha256": "671e5fb9ce989f65361df32a6c79af8101ada6988309c2adec5894b8c18516dd"
+        },
+        {
+          "path": "src/api/workspace_handler.erl",
+          "sha256": "8916a383525bc1a602ffc69f725b77d4af9c0581184adb2d206aeba74b2d8dc5"
+        },
+        {
+          "path": "src/ds/channel_ds.erl",
+          "sha256": "fe32eb6ab950b3046f6a22d621596000e35d5b4012eb1740587c7776321f9c2e"
+        },
+        {
+          "path": "src/logic/channel_logic.erl",
+          "sha256": "a6b3ccdaa66365ac84f61ff982c3350e80fded65f499e76917d533ec14f5fbad"
+        },
+        {
+          "path": "src/repo/channel_repo.erl",
+          "sha256": "f2f3087d3b83d628af2d279c576946f7ab4a8779384a9991755c6802ca8862e3"
+        },
+        {
+          "path": "test/api/workspace_boundary_tests.erl",
+          "sha256": "252b560b89ca2259427d4ba9dfb617f2ce9feef5c9f6a37eea5e2f171c22db23"
+        },
+        {
+          "path": "test/api/workspace_channel_limit_http_checks.erl",
+          "sha256": "260de395f1852564c9e2973ded36dae338793754f27b2b7b8c80157343531cd8"
+        }
+      ]
+    },
+    {
+      "repository": "app",
+      "base_sha": "8bf29cebd6da5376220c3000dab8d3a2d2f93c34",
+      "sources": [
+        {
+          "path": "lib/page/workspace/workspace_channels_page.dart",
+          "sha256": "9f079bc7e23cea1ee2d61c1c1c0aed6e3c9b27e07272c9b59793441142845bfd"
+        },
+        {
+          "path": "lib/store/api/workspace_api.dart",
+          "sha256": "9d1744acdbdc5733bdad0fdda1a25ae094d03b9dd30d135d7bd0b1284d1ab248"
+        },
+        {
+          "path": "test/unit_test/page/workspace_channels_page_test.dart",
+          "sha256": "ced112dd6afd0799af0b16fe64328fbecbae445731072618795a3d4befe0bf93"
+        },
+        {
+          "path": "test/unit_test/store/api/workspace_channels_api_test.dart",
+          "sha256": "e08535bbdcab020a7f28f92a9919deeb32a144c54462c11b3751561b832a7514"
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "path": "analyze.txt",
+      "sha256": "4271eaca9b7fad036b3ffef2e576b672bc7a2fa8ab4554ac75471525f47dcf50"
+    },
+    {
+      "path": "app.txt",
+      "sha256": "5ec3c42bc983bb99352bc9018fe3001894be5998b0a098d95c3695b728e5c5d5"
+    },
+    {
+      "path": "contracts.txt",
+      "sha256": "da73379f3d74b0b0ca2bbef5eb1b1b55d775e541b6eb68b723c37abfb4f6ff07"
+    },
+    {
+      "path": "gate.txt",
+      "sha256": "5ef2477ee62cd8b9ef907e5b2aad8ce65548969c053cc76f203f655b862637c5"
+    },
+    {
+      "path": "http.txt",
+      "sha256": "77fade7cb58f48a9c9d10236f278e029ec910253e6bac5f5d52e9ed72054ce93"
+    },
+    {
+      "path": "openapi.txt",
+      "sha256": "c704fe7b0523b991fa2ae620de455884cb93b86e6b276f703c70f75fcdf1f40d"
+    },
+    {
+      "path": "unit.txt",
+      "sha256": "bce7a4630ced882b7ee2e63c53c1f5217808cdda68ab977b2e48231ef785dc47"
+    }
+  ]
+}

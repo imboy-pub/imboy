@@ -1,0 +1,50 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 完整消费三页，传分页模式、游标和限额，不漏第 201 个频道
+00:00 +1: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 中途请求失败抛出原错误，不返回前页部分频道
+00:00 +2: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 旧服务端没有分页契约显示错误，不能当作空列表
+00:00 +3: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 跨工作区信封显示错误，不能当作空列表
+00:00 +4: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 跨工作区资源显示错误，不能当作空列表
+00:00 +5: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 个人资源显示错误，不能当作空列表
+00:00 +6: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 禁用频道显示错误，不能当作空列表
+00:00 +7: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 重复资源显示错误，不能当作空列表
+00:00 +8: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 倒序错误显示错误，不能当作空列表
+00:00 +9: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 超范围ID显示错误，不能当作空列表
+00:00 +10: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 不前进的游标显示错误，不能当作空列表
+00:00 +11: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 空的非末页显示错误，不能当作空列表
+00:00 +12: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 末页游标非零显示错误，不能当作空列表
+00:00 +13: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 下一页倒退到已显示频道时拒绝整份结果
+00:00 +14: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 归档与全部模式保留筛选条件
+00:00 +15: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_channels_api_test.dart: 重复加载不复用上次取到的频道列表
+00:00 +16: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_channels_page_test.dart: 按名称、ID及自定义ID搜索，清空恢复列表，空结果可刷新
+00:01 +17: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 退出账号后工作区资源立即清空，不发鉴权外请求
+00:01 +18: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_channels_page_test.dart: 刷新失败显示错误与重试，不能静默显示旧列表
+00:01 +19: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_channels_page_test.dart: 刷新失败显示错误与重试，不能静默显示旧列表
+00:01 +20: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +21: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +22: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +23: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +24: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +25: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +26: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +27: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +28: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +29: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +30: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +31: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +32: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +33: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +34: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +35: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +36: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 无 OA：三项导航默认消息，通讯录按需加载
+00:01 +37: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/store/api/workspace_conversations_api_test.dart: scoped preview uses current generation contract and returns text
+00:01 +38: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 授权 OA 出现工作台，但未选应用前不创建 SSO 页面
+00:01 +39: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 授权 OA 出现工作台，但未选应用前不创建 SSO 页面
+00:01 +40: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 授权 OA 出现工作台，但未选应用前不创建 SSO 页面
+00:01 +41: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 授权 OA 出现工作台，但未选应用前不创建 SSO 页面
+00:01 +42: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 授权 OA 出现工作台，但未选应用前不创建 SSO 页面
+00:01 +43: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 授权 OA 出现工作台，但未选应用前不创建 SSO 页面
+00:01 +44: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 企业切换销毁旧工作台，旧响应不能补回旧应用
+00:01 +45: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 频道从消息内进入，不占企业底栏
+00:01 +46: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 企业配置读取失败有重试入口，旧工作台立即撤下
+00:01 +47: /Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart: 桌面复用三项侧栏，不读取不支持的 OA
+00:02 +48: All tests passed!

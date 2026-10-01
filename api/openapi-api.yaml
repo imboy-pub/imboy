@@ -117,6 +117,8 @@ paths:
     $ref: './paths/api/v1/organization/member.yaml'
   /api/v1/workspaces:
     $ref: './paths/api/v1/workspace/workspaces.yaml'
+  /api/v1/workspaces/{workspace_id}/channels:
+    $ref: './paths/api/v1/workspace/channels.yaml'
   /api/v1/workspaces/{workspace_id}/groups:
     $ref: './paths/api/v1/workspace/groups.yaml'
   /brand:

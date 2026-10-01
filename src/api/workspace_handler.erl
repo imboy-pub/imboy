@@ -228,12 +228,43 @@ channel_list(Req0, State) ->
                     {ok, Limit} = elib_param:int(limit, Req0, 100),
                     Limit2 = max(1, min(Limit, 200)),
                     {ok, Status} = elib_param:binary(status, Req0, <<"active">>),
-                    case channel_logic:list_workspace_channels(WsId, Limit2, Status) of
-                        {ok, Channels} ->
-                            elib_response:success(Req0, #{workspace_id => WsId, list => Channels});
-                        {error, Msg2} ->
-                            elib_response:error(Req0, Msg2)
+                    {ok, Paged} = elib_param:binary(paged, Req0, <<"0">>),
+                    case Paged of
+                        <<"1">> ->
+                            workspace_channel_page_response(Req0, WsId, Limit2, Status);
+                        <<"0">> ->
+                            case channel_logic:list_workspace_channels(WsId, Limit2, Status) of
+                                {ok, Channels} ->
+                                    elib_response:success(Req0, #{
+                                        workspace_id => WsId, list => Channels
+                                    });
+                                {error, Msg2} ->
+                                    elib_response:error(Req0, Msg2)
+                            end;
+                        _ ->
+                            elib_response:error(Req0, <<"分页参数无效"/utf8>>, 400)
                     end
+            end
+    end.
+
+workspace_channel_page_response(Req, WsId, Limit, Status) ->
+    {ok, RawCursor} = elib_param:binary(cursor, Req, <<"0">>),
+    Cursor =
+        try
+            binary_to_integer(RawCursor)
+        catch
+            _:_ -> invalid
+        end,
+    case
+        is_integer(Cursor) andalso Cursor >= 0 andalso Cursor =< 9223372036854775807 andalso
+            lists:member(Status, [<<"active">>, <<"archived">>, <<"all">>])
+    of
+        false ->
+            elib_response:error(Req, <<"分页参数无效"/utf8>>, 400);
+        true ->
+            case channel_logic:workspace_channel_page(WsId, Cursor, Limit, Status) of
+                {ok, Page} -> elib_response:success(Req, Page#{workspace_id => WsId});
+                {error, Message} -> elib_response:error(Req, Message)
             end
     end.
 

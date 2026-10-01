@@ -1,0 +1,64 @@
+get:
+  tags: [workspace]
+  summary: 工作区频道目录与完整游标分页
+  description: |
+    Human JWT 与客户端签名认证，要求有效工作区成员。只返回目标工作区 scope=workspace 的频道。
+    未指定 paged 时保持既有创建时间倒序目录响应。paged=1 使用不可变频道 ID 倒序、排他上界分页。
+    第一次 cursor=0；将 next_cursor 传入下一次请求直到 has_more=false，此时 next_cursor=0。
+    翻页期间新增频道不会插回后页，删除上一页末项不会阻断游标。刷新从 cursor=0 重新读取。
+    分页模式拒绝无效状态及负数、非整数、超正 int64 的游标，业务 code=400。
+    所有请求仍检查当前成员权限；归档工作区只读。频道访问与资料授权仍由对应资源接口裁决。
+  operationId: workspaceChannelList
+  parameters:
+    - in: path
+      name: workspace_id
+      description: 目标工作区 ID
+      required: true
+      schema: { type: integer, format: int64, minimum: 1, maximum: 9223372036854775807 }
+    - in: query
+      name: paged
+      description: 1 启用完整游标分页，0 保持旧目录行为
+      schema: { type: integer, enum: [0, 1], default: 0 }
+    - in: query
+      name: cursor
+      description: 分页模式排他 ID 上界，首次为 0；旧目录模式忽略
+      schema: { type: integer, format: int64, minimum: 0, maximum: 9223372036854775807, default: 0 }
+    - in: query
+      name: status
+      description: 有效、已归档或全部频道
+      schema: { type: string, enum: [active, archived, all], default: active }
+    - in: query
+      name: limit
+      description: 服务端收敛到 1–200；默认为 100
+      schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+  responses:
+    '200':
+      description: 成功或业务错误信封；须检查 code，错误信封不含成功列表
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      workspace_id: { type: integer, format: int64 }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, name, scope, workspace_id, status]
+                          properties:
+                            id: { type: integer, format: int64, minimum: 1 }
+                            name: { type: string }
+                            scope: { type: string, enum: [workspace] }
+                            workspace_id: { type: integer, format: int64 }
+                            status: { type: integer, enum: [0, 1] }
+                      has_more: { type: boolean, description: 仅 paged=1 返回 }
+                      next_cursor: { type: integer, format: int64, minimum: 0, description: 仅 paged=1 返回，最后一页为 0 }
+    '401':
+      description: JWT 缺失或无效
+    '405':
+      description: Method Not Allowed

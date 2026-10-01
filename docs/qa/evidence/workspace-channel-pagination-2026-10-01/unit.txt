@@ -1,0 +1,13 @@
+======================== EUnit ========================
+module 'workspace_boundary_tests'
+  workspace_boundary_tests:53: -group_detail_boundary_test_/0-fun-1-...[0.003 s] ok
+  workspace_boundary_tests:109: -group_msg_page_boundary_test_/0-fun-1-...[0.001 s] ok
+  workspace_boundary_tests:167: -group_notice_boundary_test_/0-fun-1-...[0.087 s] ok
+  workspace_boundary_tests:238: -channel_subhandler_guard_test_/0-fun-1-...[0.005 s] ok
+  workspace_boundary_tests:324: -workspace_handler_endpoints_test_/0-fun-1-...[0.002 s] ok
+  workspace_boundary_tests:403: -workspace_invite_code_endpoints_test_/0-fun-1-...[0.026 s] ok
+  workspace_boundary_tests: route_fragment_manifest_contract_test...ok
+  workspace_boundary_tests: group_edit_whitelist_contract_test...[0.001 s] ok
+  [done in 1.339 s]
+=======================================================
+  All 8 tests passed.

@@ -1,0 +1,20 @@
+['python3', 'api/gen_aggregate.py', '--check']
+openapi.yaml: up to date with openapi-api.yaml, openapi-adm.yaml, openapi-internal.yaml
+['python3', 'api/flatten_internal.py', '--check']
+openapi-internal.bundle.yaml: up to date (28 paths / 42 ops, 0 $ref)
+['python3', 'scripts/check_enterprise_release_manifest.py']
+PASS 1) open_v1_surface=0 (src/config/priv/.contract 全谱)  hits=[]
+PASS 2) frozen_table_route_count=42 且前缀 /api/internal/v1/  got=42 offenders=[]
+PASS 3) router_internal_path_count=28  got=28
+PASS 4) frozen_table_paths == router_paths
+PASS 5) internal_handler_modules_exist  missing=[]
+PASS 6) internal_prefix_not_in_open_whitelist  offenders=[]
+PASS 7) auth_middleware_internal_branch_before_v1 + delegate  internal@971 v1@1563 delegate=yes
+PASS 8) manifest_ids == frozen_table_ids (42, 有序)
+PASS 9) boundary_ids == frozen_table_ids (42, 双向)
+PASS 10) dynamic_scope_only_INT09_INT10  got=['INT-09', 'INT-10']
+PASS 11) openapi_contract_internal_paths == frozen_table_paths (28) 且 handler 集一致
+PASS 12) wiring_test_pins(42/28/open=0)  unpinned=[]
+
+RC MANIFEST ASSERT PASS (12/12 项全过)
+['git', 'diff', '--check']

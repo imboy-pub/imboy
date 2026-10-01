@@ -137,7 +137,7 @@
 -export([create_channel/5]).
 -export([update_channel_checked/3]).
 -export([list_workspace_channels/2]).
--export([list_workspace_channels/3]).
+-export([list_workspace_channels/3, workspace_channel_page/4]).
 
 %% ==================== Delegates ====================
 
@@ -397,4 +397,32 @@ list_workspace_channels(WorkspaceId, Limit, Status) ->
     case channel_ds:list_workspace_channels(WorkspaceId, Limit, Status) of
         {ok, Channels} -> {ok, [channel_logic_common:channel_transfer(C) || C <- Channels]};
         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+    end.
+
+%% Descending immutable IDs prevent repeats after newer channels are added.
+workspace_channel_page(WsId, Cursor, Limit, Status) when
+    is_integer(Cursor),
+    Cursor >= 0,
+    Cursor =< 9223372036854775807,
+    is_integer(Limit),
+    Limit >= 1,
+    Limit =< 200,
+    (Status =:= <<"active">> orelse Status =:= <<"archived">> orelse Status =:= <<"all">>)
+->
+    case channel_ds:workspace_channel_page(WsId, Cursor, Limit + 1, Status) of
+        {ok, Rows} ->
+            Page = lists:sublist(Rows, Limit),
+            More = length(Rows) > Limit,
+            Next =
+                case More of
+                    true -> maps:get(<<"id">>, lists:last(Page));
+                    false -> 0
+                end,
+            {ok, #{
+                list => [channel_logic_common:channel_transfer(C) || C <- Page],
+                has_more => More,
+                next_cursor => Next
+            }};
+        {error, _} ->
+            {error, <<"查询失败，请稍后重试"/utf8>>}
     end.

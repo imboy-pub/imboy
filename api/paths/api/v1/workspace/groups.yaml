@@ -61,17 +61,16 @@ get:
                             status: { type: integer, enum: [1] }
                             member_start_seq: { type: integer, format: int64, minimum: 1 }
                             latest_message:
-                              type: object
-                              nullable: true
+                              type: [object, 'null']
                               required: [msg_id, conv_seq, msg_type, payload, server_ts, expire_at]
                               properties:
                                 msg_id: { type: string }
                                 conv_seq: { type: integer, format: int64, minimum: 1 }
                                 msg_type: { type: string }
                                 payload: { type: object }
-                                e2ee: { type: object, nullable: true }
+                                e2ee: { type: [object, 'null'] }
                                 server_ts: { type: string, format: date-time }
-                                expire_at: { type: string, format: date-time, nullable: true }
+                                expire_at: { type: [string, 'null'], format: date-time }
                       has_more:
                         type: boolean
                         description: 仅本人模式返回

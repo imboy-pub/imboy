@@ -284,7 +284,10 @@ workspace_handler_endpoints_test_() ->
                     (limit, _, _) -> {ok, 50};
                     (_, _, Default) -> {ok, Default}
                 end},
-                {'binary', 3, fun(status, _, _) -> {ok, <<"active">>} end},
+                {'binary', 3, fun
+                    (status, _, _) -> {ok, <<"active">>};
+                    (_, _, Default) -> {ok, Default}
+                end},
                 {'post', 1, fun(_) -> #{} end}
             ]},
             {auth_ds, [

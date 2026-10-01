@@ -19,7 +19,7 @@
 -export([list_managed/1]).
 %% T5（双体验 v2.5.2）：工作区频道列表（scope 分区）
 -export([list_workspace_channels/2]).
--export([list_workspace_channels/3]).
+-export([list_workspace_channels/3, workspace_channel_page/4]).
 -export([find_by_custom_id/1]).
 -export([update/2]).
 -export([delete/1]).
@@ -406,6 +406,9 @@ list_workspace_channels(WorkspaceId, Limit) ->
     {ok, list(map())} | {error, any()}.
 list_workspace_channels(WorkspaceId, Limit, Status) ->
     channel_repo:list_workspace_channels(WorkspaceId, Limit, Status).
+
+workspace_channel_page(WsId, Cursor, Limit, Status) ->
+    channel_repo:workspace_channel_page(WsId, Cursor, Limit, Status).
 
 -spec find_by_custom_id(binary()) -> map() | {error, any()}.
 find_by_custom_id(CustomId) -> channel_repo:find_by_custom_id(CustomId).
