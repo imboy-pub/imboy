@@ -214,7 +214,9 @@ admin_archive_writes_audit_columns_test_() ->
         {elib_pg, [
             {'with_tx', 1, tx_fun()},
             %% C05/ORG-05：归档交接需事务内读归属 Org（null=个人域，钩子仍被调）
-            {'query', 3, fun(_Conn, <<"UPDATE workspace SET status = 'archived'", _/binary>>, _) ->
+            {'query', 3, fun(
+                _Conn, <<"UPDATE public.workspace SET status = 'archived'", _/binary>>, _
+            ) ->
                 {ok, [#{<<"organization_id">> => null}]}
             end},
             {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
@@ -270,7 +272,9 @@ admin_archive_is_not_owner_gated_test_() ->
                     {elib_pg, [
                         {'with_tx', 1, tx_fun()},
                         {'query', 3, fun(
-                            _Conn, <<"UPDATE workspace SET status = 'archived'", _/binary>>, _
+                            _Conn,
+                            <<"UPDATE public.workspace SET status = 'archived'", _/binary>>,
+                            _
                         ) ->
                             Self ! archived,
                             {ok, [#{<<"organization_id">> => null}]}
@@ -389,7 +393,9 @@ admin_archive_then_business_write_rejected_980_test_() ->
                         {'with_tx', 1, tx_fun()},
                         %% C05/ORG-05：归档交接需事务内读归属 Org（null=个人域）
                         {'query', 3, fun(
-                            _Conn, <<"UPDATE workspace SET status = 'archived'", _/binary>>, _
+                            _Conn,
+                            <<"UPDATE public.workspace SET status = 'archived'", _/binary>>,
+                            _
                         ) ->
                             Self ! archived,
                             {ok, [#{<<"organization_id">> => null}]}
