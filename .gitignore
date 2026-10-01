@@ -131,3 +131,7 @@ tmp
 # （从 sys.config.example 派生、database=>"sc153_eunit"；untracked by design——
 # 与 sys.local.config 同类，非产品配置）
 /config/sys.sc153.config
+# TSID durable fence 双槽文件（clock.a/b + manifest + tsid.bootstrap）：
+# 本机节点时钟状态（TSID-05/07 部署口径为持久卷挂载点 priv/tsid），按机
+# 各自演化、绝不入库；eunit 轨道已隔离到 /tmp/imboy-eunit-tsid-<pid>。
+/priv/tsid/

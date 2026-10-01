@@ -14,13 +14,24 @@
 %%%       发现了 catalog 没有的   → {error, {unclassified_primary_keys, L}}
 %%%       catalog 声明了但主键非单列 bigint → {error, {catalog_mismatch, D}}
 %%%  4. 自举 floor（bootstrap_floor/1）：每个 catalog 表
-%%%     SELECT <col> FROM <table> ORDER BY <col> DESC LIMIT 1
+%%%     SELECT <col> FROM <table> WHERE <col> <= $cap
+%%%       ORDER BY <col> DESC LIMIT 1
 %%%     （禁止 count(*) / 全表聚合）；
 %%%     floor_safe_before 为相对毫秒域（与 elib_tsid_store 的 safe_before
 %%%     同域，guard 直接与 wall-clock rel-ms 比较）：
 %%%       floor = (max_slot bsr 11) + 1，
 %%%       其中 max_slot = max(各表 max_id → elib_tsid:id_to_slot/1)；
 %%%     所有表为空 → 0（守卫从当前时钟起步，空库开箱即用）。
+%%%
+%%%  5. 远未来魔法大数剔除（2026-09-30 生产事故根治）：cap =
+%%%     (now + ?FUTURE_ID_TOLERANCE_MS) 的 slot 域上界，SQL 端过滤。
+%%%     时间戳领先 now 超过 24h 的 id 不可能是本系统产生的 TSID（合法
+%%%     写入的 logical lead 仅 ~512ms，NTP 时钟回拨也到不了 24h+），
+%%%     只能是历史遗留的魔法大数主键——参与 floor 会把自举基准拉到
+%%%     数十年后的远未来，guard clock_behind fail-closed 拒启且永不
+%%%     恢复。剔除后新 ID 从当前时刻起步，与远未来 id 的撞号窗口
+%%%     > 24h（数据治理期），而真实回拨（≤ 24h）的 id 仍参与 floor、
+%%%     由 guard 既有 clock_behind 兜底，安全语义不放松。
 %%%
 %%% == Implementation notes ==
 %%%
@@ -57,6 +68,12 @@
 -module(elib_tsid_scan).
 
 -export([scan/1, check_schema/2, bootstrap_floor/1]).
+
+-define(EPOCH_MS, 1735689600000).
+-define(MAX_REL_TS, 4398046511103).
+%% 远未来魔法大数判定阈值：时间戳领先 now 超过该幅度的 id 不参与
+%% floor（见模块头第 5 点安全论证）。真实时钟回拨保护上界取 24h。
+-define(FUTURE_ID_TOLERANCE_MS, 86400000).
 
 -export_type([catalog_entry/0, conn_fun/0, schema_fun/0, query_fun/0, schema_map/0]).
 
@@ -95,7 +112,7 @@ scan(Opts) when is_map(Opts) ->
             SchemaFun = maps:get(schema_fun, Opts, fun default_schema_fun/1),
             QueryFun = maps:get(query_fun, Opts, fun default_query_fun/3),
             Result = ConnFun(fun(Conn) ->
-                run_snapshot(Catalog, Conn, SchemaFun, QueryFun)
+                run_snapshot(Catalog, Conn, SchemaFun, QueryFun, now_rel(Opts))
             end),
             normalize_snapshot(Result);
         {error, _} = Error ->
@@ -132,7 +149,7 @@ bootstrap_floor(Opts) when is_map(Opts) ->
             QueryFun = maps:get(query_fun, Opts, fun default_query_fun/3),
             normalize_snapshot(
                 ConnFun(fun(Conn) ->
-                    case bootstrap_floor_in_conn(Catalog, Conn, QueryFun) of
+                    case bootstrap_floor_in_conn(Catalog, Conn, QueryFun, now_rel(Opts)) of
                         {ok, #{floor_safe_before := Floor}} -> {ok, Floor};
                         {error, _} = Error -> Error
                     end
@@ -148,12 +165,12 @@ bootstrap_floor(Opts) when is_map(Opts) ->
 
 %% All three stages observe the same database state because they run
 %% inside a single conn_fun invocation.
-run_snapshot(Catalog, Conn, SchemaFun, QueryFun) ->
+run_snapshot(Catalog, Conn, SchemaFun, QueryFun, NowRel) ->
     case check_schema_in_conn(Catalog, Conn, SchemaFun) of
         ok ->
             case discover_and_compare(Catalog, Conn, SchemaFun) of
                 ok ->
-                    bootstrap_floor_in_conn(Catalog, Conn, QueryFun);
+                    bootstrap_floor_in_conn(Catalog, Conn, QueryFun, NowRel);
                 {error, _} = Error ->
                     Error
             end;
@@ -285,8 +302,8 @@ is_ts_partition_col(Table, Col, Columns) ->
 %%% Internal — bootstrap floor
 %%%===================================================================
 
-bootstrap_floor_in_conn(Catalog, Conn, QueryFun) ->
-    case scan_tables(Catalog, Conn, QueryFun) of
+bootstrap_floor_in_conn(Catalog, Conn, QueryFun, NowRel) ->
+    case scan_tables(Catalog, Conn, QueryFun, NowRel) of
         {error, _} = Error ->
             Error;
         PerTable ->
@@ -304,13 +321,13 @@ bootstrap_floor_in_conn(Catalog, Conn, QueryFun) ->
             {ok, #{floor_safe_before => Floor, per_table => PerTable}}
     end.
 
-scan_tables(Catalog, Conn, QueryFun) ->
-    scan_tables(Catalog, Conn, QueryFun, []).
+scan_tables(Catalog, Conn, QueryFun, NowRel) ->
+    scan_tables(Catalog, Conn, QueryFun, NowRel, []).
 
-scan_tables([], _Conn, _QueryFun, Acc) ->
+scan_tables([], _Conn, _QueryFun, _NowRel, Acc) ->
     lists:reverse(Acc);
-scan_tables([{Table, Column} | Rest], Conn, QueryFun, Acc) ->
-    case table_max_id(Conn, Table, Column, QueryFun) of
+scan_tables([{Table, Column} | Rest], Conn, QueryFun, NowRel, Acc) ->
+    case table_max_id(Conn, Table, Column, QueryFun, NowRel) of
         {error, _} = Error ->
             Error;
         {ok, undefined} ->
@@ -320,7 +337,7 @@ scan_tables([{Table, Column} | Rest], Conn, QueryFun, Acc) ->
                 max_id => undefined,
                 slot => undefined
             },
-            scan_tables(Rest, Conn, QueryFun, [Entry | Acc]);
+            scan_tables(Rest, Conn, QueryFun, NowRel, [Entry | Acc]);
         {ok, MaxId} ->
             case max_id_to_slot(Table, Column, MaxId) of
                 {ok, Slot} ->
@@ -330,7 +347,7 @@ scan_tables([{Table, Column} | Rest], Conn, QueryFun, Acc) ->
                         max_id => MaxId,
                         slot => Slot
                     },
-                    scan_tables(Rest, Conn, QueryFun, [Entry | Acc]);
+                    scan_tables(Rest, Conn, QueryFun, NowRel, [Entry | Acc]);
                 {error, _} = Error ->
                     Error
             end
@@ -338,17 +355,18 @@ scan_tables([{Table, Column} | Rest], Conn, QueryFun, Acc) ->
 
 %% Identifier interpolation safety: see the module doc. Table/Column passed
 %% the ^[a-z][a-z0-9_]*$ whitelist in normalize_catalog/1 before this point;
-%% PostgreSQL identifiers cannot be bound parameters and this statement has
-%% no value inputs at all. Identifiers are double-quoted: catalog contains
-%% reserved-word table names (group / user) whose bare form is a 42601
-%% syntax error; for the whitelisted lowercase names quoting is semantically
-%% identical. ORDER BY ... DESC LIMIT 1 avoids full-table aggregation
-%% (count(*)/max() are forbidden here by contract).
-table_max_id(Conn, Table, Column, QueryFun) ->
+%% PostgreSQL identifiers cannot be bound parameters; the only value input
+%% is the far-future cap, bound as $1. Identifiers are double-quoted:
+%% catalog contains reserved-word table names (group / user) whose bare form
+%% is a 42601 syntax error; for the whitelisted lowercase names quoting is
+%% semantically identical. WHERE ... <= $1 excludes far-future magic
+%% numbers from the max (module doc §5); ORDER BY ... DESC LIMIT 1 avoids
+%% full-table aggregation (count(*)/max() are forbidden here by contract).
+table_max_id(Conn, Table, Column, QueryFun, NowRel) ->
     Sql =
-        <<"SELECT ", (q(Column))/binary, " FROM ", (q(Table))/binary, " ORDER BY ",
-            (q(Column))/binary, " DESC LIMIT 1">>,
-    case QueryFun(Conn, Sql, []) of
+        <<"SELECT ", (q(Column))/binary, " FROM ", (q(Table))/binary, " WHERE ", (q(Column))/binary,
+            " <= $1 ORDER BY ", (q(Column))/binary, " DESC LIMIT 1">>,
+    case QueryFun(Conn, Sql, [future_cap_id(NowRel)]) of
         {ok, []} ->
             {ok, undefined};
         {ok, [Row]} ->
@@ -369,6 +387,18 @@ table_max_id(Conn, Table, Column, QueryFun) ->
 
 q(Name) ->
     <<"\"", Name/binary, "\"">>.
+
+%% 远未来 cap：时间戳域上界 = now + 24h（钳到 42 位域顶），映射为完整
+%% id 域上界（timestamp << 21 | node/seq 满位）。SQL 端 WHERE 过滤后，
+%% 返回的 max 即"剔除魔法大数后的最大合法 id"。
+future_cap_id(NowRel) ->
+    TsCap = min(max(NowRel + ?FUTURE_ID_TOLERANCE_MS, 0), ?MAX_REL_TS),
+    (TsCap bsl 21) bor ((1 bsl 21) - 1).
+
+%% 扫描时钟（可注入 seam，测试固定用）：与 guard/bootstrap 同一纪元口径。
+now_rel(Opts) ->
+    WallF = maps:get(wall_clock_ms, Opts, fun erlang:system_time/1),
+    WallF(millisecond) - ?EPOCH_MS.
 
 %% elib_tsid:id_to_slot/1 raises for ids outside 1..MAX_ID; a historical
 %% max id in that range is impossible for TSID data and is a hard failure.

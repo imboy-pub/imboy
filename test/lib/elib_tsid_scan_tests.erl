@@ -33,16 +33,16 @@ schema_fun(SchemaMap) ->
     fun(_Conn) -> {ok, SchemaMap} end.
 
 %% Mirrors the per-table max SQL the scanner builds. A shape change breaks
-%% the fixture lookup on purpose — that pins "ORDER BY .. DESC LIMIT 1,
-%% no count(*)/max()" and double-quoted identifiers (reserved-word table
-%% names like "group"/"user" are bare-identifier syntax errors) as part
-%% of the contract.
+%% the fixture lookup on purpose — that pins "WHERE .. <= $1 +
+%% ORDER BY .. DESC LIMIT 1, no count(*)/max()" and double-quoted
+%% identifiers (reserved-word table names like "group"/"user" are
+%% bare-identifier syntax errors) as part of the contract.
 max_sql(Table, Column) ->
-    <<"SELECT \"", Column/binary, "\" FROM \"", Table/binary, "\" ORDER BY \"", Column/binary,
-        "\" DESC LIMIT 1">>.
+    <<"SELECT \"", Column/binary, "\" FROM \"", Table/binary, "\" WHERE \"", Column/binary,
+        "\" <= $1 ORDER BY \"", Column/binary, "\" DESC LIMIT 1">>.
 
 query_fun(MaxByIdent) ->
-    fun(_Conn, Sql, []) ->
+    fun(_Conn, Sql, [_Cap]) ->
         Matches =
             [
                 Res
@@ -300,7 +300,7 @@ schema_fun_error_propagation_test() ->
 max_query_error_propagation_test() ->
     Catalog = [{<<"user">>, <<"id">>}],
     Base = opts(Catalog, ok_schema(Catalog), #{}),
-    Opts = Base#{query_fun => fun(_Conn, _Sql, []) -> {error, timeout} end},
+    Opts = Base#{query_fun => fun(_Conn, _Sql, [_Cap]) -> {error, timeout} end},
     ?assertMatch(
         {error, {max_query_failed, {<<"user">>, <<"id">>}, timeout}},
         elib_tsid_scan:scan(Opts)
@@ -414,7 +414,7 @@ default_seams_binary_key_regression_test() ->
                         <<"column_name">> => <<"id">>
                     }
                 ]};
-            (_Conn, <<"SELECT \"id\" FROM \"adm_user\"", _/binary>>, []) ->
+            (_Conn, <<"SELECT \"id\" FROM \"adm_user\"", _/binary>>, [_Cap]) ->
                 {ok, [#{<<"id">> => 12345}]}
         end
     ),
@@ -439,6 +439,79 @@ reserved_keyword_table_quoted_test() ->
         {<<"user">>, <<"id">>} => []
     }),
     ?assertMatch({ok, #{floor_safe_before := 0}}, elib_tsid_scan:scan(Opts)).
+
+%% ===================================================================
+%% 远未来魔法大数剔除（2026-09-30 生产事故根治）
+%% ===================================================================
+
+future_cap_is_now_plus_tolerance_test() ->
+    %% cap = (now + 24h 钳到 42 位域顶) 的完整 id 上界；注入固定时钟钉死
+    %% 传递给 query_fun 的绑定值——生产 30 行 137 年领先的魔法大数靠该
+    %% WHERE 过滤剔除，floor 才能落回合法历史区间。
+    NowMs = 1759180800000,
+    NowRel = NowMs - 1735689600000,
+    Self = self(),
+    QF = fun(_Conn, _Sql, [Cap]) ->
+        Self ! {cap, Cap},
+        {ok, []}
+    end,
+    Catalog = [{<<"user">>, <<"id">>}],
+    Opts = #{
+        catalog => Catalog,
+        conn_fun => fake_conn(),
+        schema_fun => schema_fun(ok_schema(Catalog)),
+        query_fun => QF,
+        wall_clock_ms => fun(millisecond) -> NowMs end
+    },
+    {ok, #{floor_safe_before := 0}} = elib_tsid_scan:scan(Opts),
+    ExpectCap =
+        (min(max(NowRel + 86400000, 0), 4398046511103) bsl 21) bor ((1 bsl 21) - 1),
+    receive
+        {cap, ExpectCap} -> ok
+    after 1000 ->
+        erlang:error(cap_missing_or_mismatch)
+    end.
+
+far_future_id_excluded_from_floor_test() ->
+    %% fixture 模拟 DB 端 WHERE 过滤：库内虽有 137 年领先的魔法大数
+    %% （数值 > cap 被 SQL 剔除），查询只返回 ≤cap 的最大合法 id；
+    %% floor 由合法 id 决定，魔法数不参与。
+    Magic = 9189620641444157625,
+    Legal = 12345,
+    Catalog = [{<<"enterprise_contact">>, <<"id">>}],
+    Opts = opts(Catalog, ok_schema(Catalog), #{
+        {<<"enterprise_contact">>, <<"id">>} => [#{<<"id">> => Legal}]
+    }),
+    true = Magic > Legal,
+    Slot = elib_tsid:id_to_slot(Legal),
+    {ok, #{floor_safe_before := Floor, per_table := PerTable}} =
+        elib_tsid_scan:scan(Opts),
+    ?assertEqual((Slot bsr 11) + 1, Floor),
+    [#{max_id := Legal, slot := Slot}] = PerTable.
+
+future_cap_clamped_to_max_rel_ts_test() ->
+    %% now + 24h 超出 42 位时间域时钳到域顶：cap 永不溢出 63 位 id 域。
+    NowMs = 1735689600000 + 4398046511103 * 1000 - 1000,
+    Self = self(),
+    QF = fun(_Conn, _Sql, [Cap]) ->
+        Self ! {cap, Cap},
+        {ok, []}
+    end,
+    Catalog = [{<<"user">>, <<"id">>}],
+    Opts = #{
+        catalog => Catalog,
+        conn_fun => fake_conn(),
+        schema_fun => schema_fun(ok_schema(Catalog)),
+        query_fun => QF,
+        wall_clock_ms => fun(millisecond) -> NowMs end
+    },
+    {ok, _} = elib_tsid_scan:scan(Opts),
+    ExpectCap = (4398046511103 bsl 21) bor ((1 bsl 21) - 1),
+    receive
+        {cap, ExpectCap} -> ok
+    after 1000 ->
+        erlang:error(clamped_cap_missing_or_mismatch)
+    end.
 
 %% ===================================================================
 %% helpers

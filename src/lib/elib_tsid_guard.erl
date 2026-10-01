@@ -128,7 +128,21 @@ init(Config) ->
             is_integer(Margin) andalso Margin > 0 andalso Margin < Window - Lead,
     case Valid of
         true ->
-            init_with_lock(Config, Root, CombinedNode, Provider);
+            %% 模块依赖前置检查（2026-10-01 全量 23×capacity_exhausted 根治）：
+            %% boot 链在 guarded_publish（elib_tsid）与续租 cursor_horizon
+            %% （elib_tsid:runtime_handle）上都依赖 elib_tsid 模块——该模块
+            %% 缺失（测试轨道 meck purge 竞态可致整体卸载）时启动必然 undef
+            %% 循环，而 boot_ready 在每次 guarded_publish 前已把 fence 持久
+            %% 化推进 window(1s)：63 次 start_error 实测滚出 20-36s 超前
+            %% floor，下一次 publish 成功即把超前固化进 cursor，级联 23 个
+            %% 套件 capacity_exhausted。缺模块 → 直接 fail-fast，不触碰
+            %% fence（单调协议下固化的超前无法回收，只能等墙钟追平）。
+            case ensure_dependent_module() of
+                ok ->
+                    init_with_lock(Config, Root, CombinedNode, Provider);
+                {error, Reason} ->
+                    {stop, {elib_tsid_module_missing, Reason}}
+            end;
         false ->
             {stop,
                 {elib_tsid_invalid_config, #{
@@ -136,6 +150,16 @@ init(Config) ->
                     fence_renew_margin_ms => Margin,
                     max_logical_lead_ms => Lead
                 }}}
+    end.
+
+%% 依赖模块确保可加载。code:which/1 对「beam 在 path 但未加载/已 delete」
+%% 都返回路径、完全找不到才返回 non_existing——不能拿它当缺失探测（undefined
+%% 分支是死代码）；直接无条件 ensure_loaded：已加载零开销、可加载则重载、
+%% 真缺失（ebin 不在 path / beam 损坏）返回 {error, non_existing|badfile}。
+ensure_dependent_module() ->
+    case code:ensure_loaded(elib_tsid) of
+        {module, elib_tsid} -> ok;
+        {error, Reason} -> {error, Reason}
     end.
 
 init_with_lock(Config, Root, CombinedNode, Provider) ->
@@ -549,12 +573,19 @@ schedule_tick(#state{fence_renew_margin_ms = Margin}) ->
 now_rel(#state{} = _State) ->
     erlang:system_time(millisecond) - ?EPOCH_MS.
 
-cursor_horizon(_State) ->
-    case elib_tsid:runtime_handle() of
+cursor_horizon(#state{guard_ref = GRef}) ->
+    %% catch 而非直调：elib_tsid 模块被整体卸载（测试轨道 meck purge 竞态）
+    %% 时，这里若裸调会以 undef 击杀 guard——permanent child 进入重启循环，
+    %% 每轮 boot_ready 持久化 fence=prev+1s 滚雪球（2026-10-01 全量实证，
+    %% 见 init 的模块依赖前置检查注释）。缺 runtime 读数时退回已持久化的
+    %% safe_before 作续租基线（而非 0）：do_renew 取 Base=max(now, 本值)，
+    %% 若 cursor 曾超前而此处返回 0，NewSafeBefore 会小于既有 fence 撞
+    %% non_monotonic_fence → FENCED fail-closed；用 safe_before 保单调。
+    case catch elib_tsid:runtime_handle() of
         {ok, #{cursor := Cursor}} ->
             (atomics:get(Cursor, 1) bsr 11) + 1;
         _ ->
-            0
+            atomics:get(GRef, 2)
     end.
 
 mark_stopping(#state{guard_ref = GRef} = State) ->
