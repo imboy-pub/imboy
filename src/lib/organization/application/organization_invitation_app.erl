@@ -195,6 +195,7 @@ accept(_, _, _, _) ->
     {error, {400, <<"token 与用户标识必须是有效值"/utf8>>}}.
 
 accept_tx(Conn, TargetUid, OrgId, Digest, Hook, RetriesLeft) ->
+    lock_accept_org_tx(Conn, OrgId),
     %% 1) lazy expire sweep（本 Org），使过期分支裁决基于行内真实 status
     case organization_invitation_pg:expire_due_tx(Conn, OrgId) of
         {ok, _} -> ok;
@@ -260,6 +261,7 @@ accept_targeted(_, _, _) ->
     {error, {400, <<"用户标识必须是有效值"/utf8>>}}.
 
 accept_targeted_tx(Conn, TargetUid, OrgId, Hook, RetriesLeft) ->
+    lock_accept_org_tx(Conn, OrgId),
     %% 1) lazy expire sweep（同 accept_tx：过期裁决基于行内真实 status）
     case organization_invitation_pg:expire_due_tx(Conn, OrgId) of
         {ok, _} -> ok;
@@ -356,6 +358,10 @@ revoke_tx(Conn, ActorUid, OrgId, InvitationId) ->
 
 %% reject/revoke 共用：TargetUid=0 表示治理路径（不限 target），target-only 反之。
 decide_tx(Conn, TargetUid, OrgId, InvitationId, Kind) ->
+    case Kind of
+        reject -> lock_accept_org_tx(Conn, OrgId);
+        revoke -> ok
+    end,
     case organization_invitation_pg:expire_due_tx(Conn, OrgId) of
         {ok, _} -> ok;
         {error, Reason0} -> throw({abort_tx, {internal, Reason0}})
@@ -451,6 +457,14 @@ list_org_tx(Conn, ActorUid, OrgId, Status, Limit) ->
 %% ===================================================================
 %% 内部
 %% ===================================================================
+
+%% Keep org -> invitation -> membership lock order, including accepted replays.
+lock_accept_org_tx(Conn, OrgId) ->
+    case organization_invitation_pg:lock_organization_for_share_tx(Conn, OrgId) of
+        {ok, _} -> ok;
+        {error, not_found} -> abort(404, <<"邀请不存在或已失效"/utf8>>);
+        {error, Reason} -> throw({abort_tx, {internal, Reason}})
+    end.
 
 command(Tx) ->
     case elib_pg:with_tx(Tx) of

@@ -1,0 +1,41 @@
+======================== EUnit ========================
+module 'enterprise_internal_wiring_http_tests'
+  enterprise_internal_wiring_http_tests: route_table...[0.009 s] ok
+  enterprise_internal_wiring_http_tests: manifest_v21_entries...[0.001 s] ok
+  enterprise_internal_wiring_http_tests: http_wiring...[0.081 s] ok
+  enterprise_internal_wiring_http_tests: boundary_parity...ok
+  enterprise_internal_wiring_http_tests: dispatch_compiles...[0.003 s] ok
+  enterprise_internal_wiring_http_tests: normalize_code...ok
+  enterprise_internal_wiring_http_tests: -conformance_test_/0-fun-0-...[5.873 s] ok
+  [done in 10.435 s]
+module 'workspace_creation_pg_tests'
+  workspace_creation_pg_tests: -creation_test_/0-fun-0-...*failed*
+in function organization_invite_race_pg_checks:invitation_accept_race/2 (test/lib/organization/organization_invite_race_pg_checks.erl, line 100)
+in call from organization_invite_race_pg_checks:'-run/1-lc$^2/1-2-'/2 (test/lib/organization/organization_invite_race_pg_checks.erl, line 17)
+in call from organization_invite_race_pg_checks:run/1 (test/lib/organization/organization_invite_race_pg_checks.erl, line 17)
+in call from workspace_creation_pg_tests:creation/1 (test/ds/workspace_creation_pg_tests.erl, line 16)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+**error:{assertMatch,[{module,organization_invite_race_pg_checks},
+              {line,100},
+              {comment,{token,{ok,#{status => <<"accepted">>,
+                                    organization_id => 995901,
+                                    target_user_id => 995021,
+                                    invitation_id => 995905,
+                                    expires_at => 1790822782,
+                                    created_at => 1790822782,
+                                    invited_by => 995001,
+                                    responded_at => 1790822782,...}}}},
+              {expression,"Result"},
+              {pattern,"{ error , { _ , _ } }"},
+              {value,{ok,#{status => <<"accepted">>,organization_id => 995901,
+                           target_user_id => 995021,invitation_id => 995905,
+                           expires_at => 1790822782,created_at => 1790822782,
+                           invited_by => 995001,...}}}]}
+  output:<<"">>
+
+  [done in 0.821 s]
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 7.

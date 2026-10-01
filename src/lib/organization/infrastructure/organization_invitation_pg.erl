@@ -11,6 +11,7 @@
 
 -export([
     lock_organization_tx/2,
+    lock_organization_for_share_tx/2,
     member_tx/3,
     target_user_tx/2,
     insert_tx/2,
@@ -34,8 +35,15 @@
 %% @doc 锁组织行（锁序与既有治理写一致：组织行先、成员/邀请行后）。
 -spec lock_organization_tx(any(), integer()) -> {ok, map()} | {error, not_found | term()}.
 lock_organization_tx(Conn, OrgId) ->
+    lock_org_tx(Conn, OrgId, <<" FOR UPDATE">>).
+
+lock_organization_for_share_tx(Conn, OrgId) ->
+    lock_org_tx(Conn, OrgId, <<" FOR SHARE">>).
+
+lock_org_tx(Conn, OrgId, Lock) ->
     Sql =
-        <<"SELECT id, owner_id, status FROM ", (org_table())/binary, " WHERE id = $1 FOR UPDATE">>,
+        <<"SELECT id, owner_id, status FROM ", (org_table())/binary, " WHERE id = $1",
+            Lock/binary>>,
     one_tx(Conn, Sql, [OrgId]).
 
 %% @doc 成员行读取（判定 inviter 治理资格 / target 是否已在 Org 内）。
@@ -91,7 +99,7 @@ insert_tx(Conn, Row) ->
 find_by_digest_tx(Conn, OrgId, TargetUid, Digest) ->
     Sql =
         <<"SELECT ", ?ROW_COLS, " FROM ", (invitation_table())/binary,
-            " WHERE organization_id = $1 AND target_user_id = $2 AND token_digest = $3">>,
+            " WHERE organization_id = $1 AND target_user_id = $2 AND token_digest = $3 FOR UPDATE">>,
     one_tx(Conn, Sql, [OrgId, TargetUid, Digest]).
 
 %% @doc 按 (org, target) 读最新 pending/accepted 行（免口令 accept 路径）：
@@ -106,7 +114,7 @@ find_latest_active_for_target_tx(Conn, OrgId, TargetUid) ->
         <<"SELECT ", ?ROW_COLS, " FROM ", (invitation_table())/binary,
             " WHERE organization_id = $1 AND target_user_id = $2"
             "   AND status IN ('pending', 'accepted')"
-            " ORDER BY id DESC LIMIT 1">>,
+            " ORDER BY id DESC LIMIT 1 FOR UPDATE">>,
     one_tx(Conn, Sql, [OrgId, TargetUid]).
 
 %% @doc 按 (org, id) 读行；TargetUid = 0 时不限 target（治理路径），
@@ -121,7 +129,7 @@ find_tx(Conn, OrgId, InvitationId, TargetUid) ->
         end,
     Sql =
         <<"SELECT ", ?ROW_COLS, " FROM ", (invitation_table())/binary,
-            " WHERE organization_id = $1 AND id = $2", TargetCond/binary>>,
+            " WHERE organization_id = $1 AND id = $2", TargetCond/binary, " FOR UPDATE">>,
     one_tx(Conn, Sql, Params).
 
 %% @doc lazy expire：把本 Org 内已过期的 pending 行置为 expired（幂等，重复执行 0 行）。
@@ -137,7 +145,7 @@ expire_due_tx(Conn, OrgId) ->
         <<"UPDATE ", (invitation_table())/binary,
             " SET status = 'expired', responded_at = CURRENT_TIMESTAMP,"
             "     updated_at = CURRENT_TIMESTAMP"
-            " WHERE status = 'pending' AND expires_at <= CURRENT_TIMESTAMP">>,
+            " WHERE status = 'pending' AND expires_at <= clock_timestamp()">>,
         Scope
     ]),
     Params =
@@ -152,8 +160,7 @@ expire_due_tx(Conn, OrgId) ->
     end.
 
 %% @doc 一次性消费 CAS：仅 pending 行可进入终态，RETURNING 消费后的整行。
-%% accept 前置的过期裁决已由 expire_due_tx 在同事务先完成，本语句不再含时间条件，
-%% 使「并发 accept」退化为纯行锁竞争：恰一个事务 RETURNING 到行。
+%% Accept also checks the actual database clock after row locking and classification.
 -spec consume_pending_tx(any(), integer(), accept | reject | revoke) ->
     {ok, map()} | {error, not_pending | term()}.
 consume_pending_tx(Conn, InvitationId, Kind) ->
@@ -163,11 +170,15 @@ consume_pending_tx(Conn, InvitationId, Kind) ->
             reject -> <<"rejected">>;
             revoke -> <<"revoked">>
         end,
+    Deadline =
+        case Kind of
+            accept -> <<" AND expires_at > clock_timestamp()">>;
+            _ -> <<>>
+        end,
     Sql =
         <<"UPDATE ", (invitation_table())/binary,
             " SET status = $2, responded_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP",
-            " WHERE id = $1 AND status = 'pending'"
-            " RETURNING ", ?ROW_COLS>>,
+            " WHERE id = $1 AND status = 'pending'", Deadline/binary, " RETURNING ", ?ROW_COLS>>,
     case elib_pg:query(Conn, Sql, [InvitationId, Status]) of
         {ok, [Row | _]} -> {ok, Row};
         {ok, []} -> {error, not_pending};

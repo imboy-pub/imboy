@@ -35,6 +35,9 @@ default_store_mocks() ->
     OrgRow = #{<<"id">> => ?ORG_ID, <<"owner_id">> => ?OWNER, <<"status">> => <<"active">>},
     [
         {lock_organization_tx, 2, fun(fake_conn, _OrgId) -> {ok, OrgRow} end},
+        {lock_organization_for_share_tx, 2, fun(Conn, OrgId) ->
+            organization_invitation_pg:lock_organization_tx(Conn, OrgId)
+        end},
         {member_tx, 3, fun(fake_conn, _OrgId, Uid) ->
             case get({t_member, Uid}) of
                 undefined -> {error, not_found};

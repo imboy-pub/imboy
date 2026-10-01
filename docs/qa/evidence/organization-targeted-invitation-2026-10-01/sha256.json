@@ -1,0 +1,15 @@
+{
+  "source_base": "e5494ed3c7af06d960832b7779ec5d670f4ed913",
+  "plan_sha256": "7331846159fc0ab61a1a8be248c52e9a8d81581a3fa7a01c9fb0a49723a98599",
+  "files": {
+    "src/lib/organization/application/organization_invitation_app.erl": "f3f0b59205df92899b76a1e7cfd28fc3f70218ce92ee70be3b5e94bb17d764b7",
+    "src/lib/organization/infrastructure/organization_invitation_pg.erl": "d9d00e96e7de8f4771010a6c5a012f822b1ceb2748087d7e29cd79cdb9053115",
+    "test/lib/organization/organization_invitation_app_tests.erl": "54877412588a0e27a572e871a2616bb9b495d0800be0738753f76ec3ee0f3f2e",
+    "test/lib/organization/organization_invite_race_pg_checks.erl": "9bf9a6be7d795e69c33af63118f051fc07c2510d0201c7515c24b0a16aeb7582"
+  },
+  "evidence": {
+    "baseline.txt": "6c09e60688dc34b38b27a0f86827b153ec03efb9bae8e63dc6df14b36d4b5c91",
+    "unit.txt": "173119e38d962a9a327a320ee39f1fecb04d43ad05a14e1327a3d39909d3f203",
+    "pg-http.txt": "a66eda272022947ef07f8310f6c791fca8598654e747446e812d454b6ce00c77"
+  }
+}
