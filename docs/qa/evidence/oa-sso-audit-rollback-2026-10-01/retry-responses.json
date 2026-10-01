@@ -1,0 +1,1 @@
+[{"status":200,"body":{"application_id":115655198009198592,"consumed_at":"2026-10-01T07:05:04.219Z","external_user_id":"intbe02-ext-alice","organization_id":995101,"user_id":995017}},{"status":404,"body":{"error":{"code":"resource_not_found","message":"resource not found"}}}]

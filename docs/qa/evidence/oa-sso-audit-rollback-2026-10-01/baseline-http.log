@@ -1,0 +1,47 @@
+======================== EUnit ========================
+module 'enterprise_internal_wiring_http_tests'
+  enterprise_internal_wiring_http_tests: route_table...[0.010 s] ok
+  enterprise_internal_wiring_http_tests: manifest_v21_entries...ok
+  enterprise_internal_wiring_http_tests: http_wiring...[0.108 s] ok
+  enterprise_internal_wiring_http_tests: boundary_parity...ok
+  enterprise_internal_wiring_http_tests: dispatch_compiles...[0.002 s] ok
+  enterprise_internal_wiring_http_tests: normalize_code...ok
+  enterprise_internal_wiring_http_tests: -conformance_test_/0-fun-0-...*failed*
+in function enterprise_oa_expiry_http_checks:audit_failure_retry/1 (test/api/enterprise_oa_expiry_http_checks.erl, line 65)
+in call from enterprise_internal_wiring_http_tests:run_conformance/1 (test/api/enterprise_internal_wiring_http_tests.erl, line 387)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{assertEqual,[{module,enterprise_oa_expiry_http_checks},
+              {line,65},
+              {expression,"maps : get ( << \"consumed_at\" >> , Row )"},
+              {expected,null},
+              {value,<<"2026-10-01T15:02:25.914754+08:00">>}]}
+  output:<<"">>
+
+  [done in 10.856 s]
+module 'workspace_creation_pg_tests'
+  workspace_creation_pg_tests: -creation_test_/0-fun-0-...15:02:34.727 [error] [organization_invitation_accept_targeted_failed,995902,995011,
+ {internal,
+     {membership_hook,
+         {internal,
+             {announcements_subscribe,115654901803255808,
+                 {error,error,<<"23514">>,check_violation,
+                     <<"new row for relation \"channel_subscription\" violates check constraint \"synthetic_membership_subscribe_fail\"">>,
+                     [{constraint_name,
+                          <<"synthetic_membership_subscribe_fail">>},
+                      {detail,
+                          <<"Failing row contains (115654901834713088, 115654901803255808, 995011, 2026-10-01 07:02:34.723238+00, null, 0, 0, t, f, f, 1).">>},
+                      {file,<<"execMain.c">>},
+                      {line,<<"2072">>},
+                      {routine,<<"ExecConstraints">>},
+                      {schema_name,<<"public">>},
+                      {severity,<<"ERROR">>},
+                      {table_name,<<"channel_subscription">>}]}}}}}]
+[89.211 s] ok
+  [done in 89.214 s]
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 7.

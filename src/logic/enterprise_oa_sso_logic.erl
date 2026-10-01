@@ -38,8 +38,8 @@
 %   错误形态：stable 二进制码（enterprise_internal_error 信封承载）；
 %   human 面错误形态：{error, {Code :: integer(), Msg :: binary()}}（整数信封）。
 %
-% identity_not_mapped 回滚契约（合同 §5）：CAS 与 identity 解析同事务；
-% 解析失败时调用方必须使事务回滚（code 停留 issued，TTL 内修复后可重试）。
+% 交换失败回滚契约（合同 §5 / REQUIRED_AUDIT）：CAS、identity 与审计同事务；
+% 任一步失败时调用方必须使事务回滚（code 停留 issued，TTL 内修复后可重试）。
 % 池化入口 exchange/2 以 throw({rollback, ...}) 强制回滚；直接使用
 % exchange_tx/3 的调用方（测试）须以 SAVEPOINT 回滚到消费前。
 %
@@ -150,13 +150,12 @@ issue_code_tx(_Conn, _Uid, _Params) ->
 exchange(Ctx, Params) ->
     Fun = fun(Conn) ->
         case exchange_tx(Conn, Ctx, Params) of
-            %% CAS 后 identity 解析失败：强制整体回滚（合同 §5，
-            %% code 不被消费；epgsql:with_transaction 对 throw 先 ROLLBACK）
-            {error, <<"identity_not_mapped">>} ->
+            %% 返回错误值不会自动回滚，包含 REQUIRED_AUDIT 软失败。
+            {error, Code} ->
                 ?WARN_LOG([
-                    enterprise_oa_sso_exchange_identity_rollback, #{}
+                    enterprise_oa_sso_exchange_rollback, #{code => Code}
                 ]),
-                erlang:throw({rollback, <<"identity_not_mapped">>});
+                erlang:throw({rollback, Code});
             Result ->
                 Result
         end
@@ -168,7 +167,7 @@ exchange(Ctx, Params) ->
             Result
     end.
 
-%% @doc INT-14 事务内交换（测试直连用；identity_not_mapped 时调用方须回滚）。
+%% @doc INT-14 事务内交换（测试直连用；任何错误时调用方须回滚）。
 -spec exchange_tx(any(), map(), map()) -> {ok, map()} | {error, binary()}.
 exchange_tx(Conn, Ctx, Params) ->
     OrgId = maps:get(organization_id, Ctx, undefined),

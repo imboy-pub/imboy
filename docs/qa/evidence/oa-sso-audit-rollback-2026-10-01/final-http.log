@@ -1,0 +1,32 @@
+======================== EUnit ========================
+module 'enterprise_internal_wiring_http_tests'
+  enterprise_internal_wiring_http_tests: route_table...[0.011 s] ok
+  enterprise_internal_wiring_http_tests: manifest_v21_entries...ok
+  enterprise_internal_wiring_http_tests: http_wiring...[0.103 s] ok
+  enterprise_internal_wiring_http_tests: boundary_parity...ok
+  enterprise_internal_wiring_http_tests: dispatch_compiles...[0.002 s] ok
+  enterprise_internal_wiring_http_tests: normalize_code...ok
+  enterprise_internal_wiring_http_tests: -conformance_test_/0-fun-0-...[12.615 s] ok
+  [done in 18.721 s]
+module 'workspace_creation_pg_tests'
+  workspace_creation_pg_tests: -creation_test_/0-fun-0-...15:05:19.302 [error] [organization_invitation_accept_targeted_failed,995902,995011,
+ {internal,
+     {membership_hook,
+         {internal,
+             {announcements_subscribe,115655245522274304,
+                 {error,error,<<"23514">>,check_violation,
+                     <<"new row for relation \"channel_subscription\" violates check constraint \"synthetic_membership_subscribe_fail\"">>,
+                     [{constraint_name,
+                          <<"synthetic_membership_subscribe_fail">>},
+                      {detail,
+                          <<"Failing row contains (115655245736183808, 115655245522274304, 995011, 2026-10-01 07:05:18.708517+00, null, 0, 0, t, f, f, 1).">>},
+                      {file,<<"execMain.c">>},
+                      {line,<<"2072">>},
+                      {routine,<<"ExecConstraints">>},
+                      {schema_name,<<"public">>},
+                      {severity,<<"ERROR">>},
+                      {table_name,<<"channel_subscription">>}]}}}}}]
+[92.490 s] ok
+  [done in 92.493 s]
+=======================================================
+  All 8 tests passed.

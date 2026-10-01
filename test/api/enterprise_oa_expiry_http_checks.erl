@@ -18,7 +18,8 @@ run(S) ->
     {ok, [Row]} = enterprise_query(C, Digest),
     ?assertEqual(null, maps:get(<<"consumed_at">>, Row)),
     ?assertEqual(Before, audit_count(C)),
-    concurrent_once(S).
+    concurrent_once(S),
+    audit_failure_retry(S).
 
 issue(S) ->
     Redirect = <<"https://oa.customer.example.com/sso/cb">>,
@@ -45,6 +46,42 @@ concurrent_once(S) ->
     ?assertEqual(<<"resource_not_found">>, error_code(Denied)),
     {ok, [Row]} = enterprise_query(C, Digest),
     ?assertNotEqual(null, maps:get(<<"consumed_at">>, Row)),
+    ?assertEqual(Before + 1, audit_count(C)).
+
+audit_failure_retry(S) ->
+    C = maps:get(conn, S),
+    {Digest, Body} = issue(S),
+    Before = audit_count(C),
+    ok = intbe02_http_support:sql_exec(
+        C,
+        <<"CREATE FUNCTION gate_drop_oa_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='oa.sso.exchanged' THEN RETURN NULL; END IF; RETURN NEW; END $$">>
+    ),
+    ok = intbe02_http_support:sql_exec(
+        C,
+        <<"CREATE TRIGGER gate_drop_oa_audit BEFORE INSERT ON enterprise_audit_event FOR EACH ROW EXECUTE FUNCTION gate_drop_oa_audit()">>
+    ),
+    try
+        Failed = exchange(S, Body),
+        save("oa-audit-failure-response.json", [Failed]),
+        ?assertEqual(500, maps:get(status, Failed)),
+        ?assertEqual(<<"internal_error">>, error_code(Failed)),
+        {ok, [Row]} = enterprise_query(C, Digest),
+        ?assertEqual(null, maps:get(<<"consumed_at">>, Row)),
+        ?assertEqual(Before, audit_count(C))
+    after
+        ok = intbe02_http_support:sql_exec(
+            C,
+            <<"DROP TRIGGER gate_drop_oa_audit ON enterprise_audit_event">>
+        ),
+        ok = intbe02_http_support:sql_exec(C, <<"DROP FUNCTION gate_drop_oa_audit()">>)
+    end,
+    Retry = exchange(S, Body),
+    Replay = exchange(S, Body),
+    save("oa-audit-retry-responses.json", [Retry, Replay]),
+    ?assertEqual(200, maps:get(status, Retry)),
+    ?assertEqual(404, maps:get(status, Replay)),
+    {ok, [Consumed]} = enterprise_query(C, Digest),
+    ?assertNotEqual(null, maps:get(<<"consumed_at">>, Consumed)),
     ?assertEqual(Before + 1, audit_count(C)).
 
 hold_exchange(S, Digest, Body, Count, Expire) ->
