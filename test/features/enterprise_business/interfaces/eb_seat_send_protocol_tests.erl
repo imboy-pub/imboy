@@ -31,6 +31,10 @@ seat_send_protocol_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun cases/1}.
 
 setup() ->
+    Previous = ?FIX:select_asset_stub(),
+    {asset_stub, Previous, setup_db()}.
+
+setup_db() ->
     case eunit_runner:eunit_setup_with_db() of
         {ok, Conn} ->
             case ?FIX:ensure_purge_role() of
@@ -41,14 +45,23 @@ setup() ->
             {error, Reason}
     end.
 
+cleanup({asset_stub, Previous, Result}) ->
+    try
+        cleanup(Result)
+    after
+        ?FIX:restore_asset_store(Previous)
+    end;
 cleanup({ok, Conn}) ->
     eunit_runner:eunit_cleanup_db(Conn);
 cleanup(Other) ->
     Other.
 
+cases({asset_stub, _Previous, Result}) ->
+    cases(Result);
 cases({ok, _Conn}) ->
     [
         {timeout, ?TIMEOUT_S, fun full_chain_presign_put_confirm_send_assets/0},
+        {timeout, ?TIMEOUT_S, fun presign_without_https_base_omits_upload_url/0},
         {timeout, ?TIMEOUT_S, fun append_message_body_and_assets_both_empty_422/0},
         {timeout, ?TIMEOUT_S, fun append_message_invalid_asset_element_400/0},
         {timeout, ?TIMEOUT_S, fun put_rejected_cross_workspace_and_cross_org/0},
@@ -66,6 +79,8 @@ full_chain_presign_put_confirm_send_assets() ->
     Scope = eb_asset_it_lib:new_scope(),
     ok = eb09_facts_probe:grant([<<"asset.write">>, <<"conversation.write">>]),
     ok = set_keyring(Scope),
+    PreviousBase = application:get_env(imboy, base_url),
+    ok = application:set_env(imboy, base_url, <<"https://synthetic-seat.invalid">>),
     try
         Actor = maps:get(actor_user_id, Scope),
         {Org, Ws} = eb_asset_it_lib:tenant(Scope),
@@ -137,10 +152,39 @@ full_chain_presign_put_confirm_send_assets() ->
         ),
         ?assertEqual(Assets, maps:get(<<"assets">>, maps:get(<<"message">>, ReplayView)))
     after
+        restore_base(PreviousBase),
         _ = application:unset_env(imboy, eb_enterprise_keyring),
         ok = eb09_facts_probe:clear(),
         ?FIX:cleanup(Scope)
     end.
+
+presign_without_https_base_omits_upload_url() ->
+    Scope = eb_asset_it_lib:new_scope(),
+    PreviousBase = application:get_env(imboy, base_url),
+    ok = eb09_facts_probe:grant([<<"asset.write">>]),
+    ok = set_keyring(Scope),
+    try
+        Actor = maps:get(actor_user_id, Scope),
+        {Org, Ws} = eb_asset_it_lib:tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        lists:foreach(
+            fun(Base) ->
+                restore_base(Base),
+                Presign = presign_ok(Actor, Org, Ws, Conv, <<"synthetic">>, undefined),
+                assert_upload_url_shape(Presign, Org, Ws, maps:get(<<"upload_ref">>, Presign)),
+                ?assertNot(maps:is_key(<<"url">>, maps:get(<<"upload">>, Presign)))
+            end,
+            [undefined, {ok, <<"http://synthetic-seat.invalid">>}]
+        )
+    after
+        restore_base(PreviousBase),
+        _ = application:unset_env(imboy, eb_enterprise_keyring),
+        ok = eb09_facts_probe:clear(),
+        ?FIX:cleanup(Scope)
+    end.
+
+restore_base({ok, Value}) -> application:set_env(imboy, base_url, Value);
+restore_base(undefined) -> application:unset_env(imboy, base_url).
 
 %% ===================================================================
 %% 2. body 与 asset_ids 皆空：422 invalid_body（确定错误码）
