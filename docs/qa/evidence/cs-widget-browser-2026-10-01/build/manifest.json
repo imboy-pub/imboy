@@ -1,0 +1,64 @@
+{
+  "source_head": "93af6284603d63abe8093ad1796ac58d8a7f2e46",
+  "build_command": "bun run build:widget",
+  "generated_at_utc": "2026-10-01T07:59:03.149Z",
+  "files": [
+    {
+      "path": "assets/cs-seat-CrSBZIO5.js",
+      "sha256": "3ee5777d5052804a9095f4f1bd641ebb47e3d0671fcf0fd93e834e3203a3f888",
+      "bytes": 359651
+    },
+    {
+      "path": "assets/cs-seat-_XZfiGXM.css",
+      "sha256": "2547f6557d7b01beca9cc5b21660f1a83a167a15f1281c5f5acbfe05bbfd7a79",
+      "bytes": 67804
+    },
+    {
+      "path": "assets/cs-widget-BlFrh_u6.js",
+      "sha256": "37f98a385dd078af761bdf9d617f766ee8efaa0175ede86b244b6d67dbb346bd",
+      "bytes": 51028
+    },
+    {
+      "path": "health.txt",
+      "sha256": "d9d5eae1a804b81695621858f447528c7c5d35dfc11200d303fd244ad3e4298b",
+      "bytes": 150
+    },
+    {
+      "path": "loader.js",
+      "sha256": "431e0ef82acac046f1019ca78d401d2d1194e16e9c2df75ddd4cc3820559cf46",
+      "bytes": 9506
+    },
+    {
+      "path": "seat-assets/cs-seat.v1.css",
+      "sha256": "2547f6557d7b01beca9cc5b21660f1a83a167a15f1281c5f5acbfe05bbfd7a79",
+      "bytes": 67804
+    },
+    {
+      "path": "seat-assets/cs-seat.v1.js",
+      "sha256": "3ee5777d5052804a9095f4f1bd641ebb47e3d0671fcf0fd93e834e3203a3f888",
+      "bytes": 359651
+    },
+    {
+      "path": "seat/index.html",
+      "sha256": "80a0038245b63a194c75626c35968a8a0235ec2046fe3a9ca27ffad2d5f7a756",
+      "bytes": 1781
+    },
+    {
+      "path": "widget-assets/cs-widget.v2.js",
+      "sha256": "37f98a385dd078af761bdf9d617f766ee8efaa0175ede86b244b6d67dbb346bd",
+      "bytes": 51028
+    },
+    {
+      "path": "widget/index.html",
+      "sha256": "830ea901df59fab6b6567481b82085cc3aff1cd5b33f0d2cf6ef769971dbb9c1",
+      "bytes": 1302
+    }
+  ],
+  "cache_policy": {
+    "loader": "no-cache",
+    "assets": "public,max-age=31536000,immutable",
+    "widget_assets": "no-cache",
+    "seat_assets": "no-cache, must-revalidate",
+    "html": "no-store"
+  }
+}

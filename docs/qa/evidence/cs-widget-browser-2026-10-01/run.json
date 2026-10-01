@@ -1,0 +1,28 @@
+{
+  "status": "PARTIAL",
+  "browser_command_exit": 0,
+  "internal_regression_exit": 0,
+  "backend_base": "7057bddd4c810d38f7d504d3bd3e4f368f5647cc",
+  "admin_base": "fe54f3144d04fa0d4a6fde588eb4bdb3f48a83a5",
+  "source_hashes": {
+    "backend": {
+      "scripts/test/customer_service_internal_http_gate.sh": "69b2c722caa94ae87e5abd4b29e51ca66335403bd7534b290e1a6dcc108bbe0c",
+      "test/api/customer_service_seat_http_checks.erl": "0dfbd23ba583ee87aa25ae641599f7c318f70965369ad74e5f59f93257b2eaac",
+      "test/api/customer_service_browser_fixture.erl": "cb4ef23ad3437fd64de3cbc04d61ca7fa6068eee79f2fe70449e217400a534d9"
+    },
+    "admin": {
+      "scripts/test/customer-service-browser-journey.mjs": "0a0f2c434423a40af80fad4a1962ee8dd6747dafa77fab2252d61e3d2a3710b5",
+      "tests/e2e/customer-service-real/helpers/static-host.mjs": "a7c10daf80f01920f7c6a4ab7efb8f2fc4ae44d7eaa7461afde90484444a279c"
+    }
+  },
+  "dependency_metadata_sha256": "b253618b44fe589f1e8e61e32f73b3a2c689dd8919cffcfc7a4a842f638f9af8",
+  "coverage": "real built visitor Widget; production routes/middleware; disposable migrated PG; seat A/B actions via synthetic JWT/device HTTP; no object-store substitutes used",
+  "not_proven": [
+    "real seat-console page clicks",
+    "attachments against actual storage",
+    "simultaneous seat browser concurrency",
+    "native devices",
+    "complete CS-01/CS-02/CS-03 and six-goal delivery",
+    "production readiness"
+  ]
+}

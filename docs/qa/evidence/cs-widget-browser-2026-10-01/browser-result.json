@@ -1,0 +1,36 @@
+{
+  "status": "PASS",
+  "oracle": "built Widget + real HTTP + isolated PG; seat controls use API",
+  "responses": [
+    {
+      "path": "/api/v1/cs/organizations/115663077214783491/sessions/queue",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "path": "/api/v1/cs/organizations/115663077214783491/sessions/115663081574762496/claim",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "path": "/api/v1/enterprise/organizations/115663077214783491/conversations/115663081553790976/messages",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "path": "/api/v1/cs/organizations/115663077214783491/sessions/115663081574762496/transfer",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "path": "/api/v1/enterprise/organizations/115663077214783491/conversations/115663081553790976/messages",
+      "status": 200,
+      "code": 0
+    },
+    {
+      "path": "/api/v1/cs/organizations/115663077214783491/sessions/115663081574762496/close",
+      "status": 200,
+      "code": 0
+    }
+  ]
+}

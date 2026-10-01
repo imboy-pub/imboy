@@ -52,6 +52,7 @@ files += ['test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wir
           'test/api/enterprise_identity_contract_http_checks.erl',
           'test/api/workspace_channel_limit_http_checks.erl',
           'test/api/customer_service_seat_http_checks.erl',
+          'test/api/customer_service_browser_fixture.erl',
           'test/api/customer_service_seat_sse_checks.erl',
           'test/api/customer_service_widget_expiry_http_checks.erl',
           'test/api/enterprise_oa_expiry_http_checks.erl']
@@ -80,14 +81,52 @@ expr = ('application:set_env(lager,handlers,[{lager_console_backend,[{level,erro
         '{ok,_} = imboy_cache:start_link([]), '
         'case eunit:test([enterprise_internal_wiring_http_tests,workspace_creation_pg_tests],[verbose]) of '
         'ok -> halt(0); _ -> halt(1) end.')
-with (out / 'http.log').open('w') as log:
-    subprocess.run(['erl', '-noshell', '-pa', *paths, str(out / 'beams'), '-eval', expr],
-                   stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
-report = (out / 'http.log').read_text()
-if '[EPGZ04] emit_event_failed crash' in report:
-    raise SystemExit('failed-event emission crashed; inspect ' + str(out / 'http.log'))
-subprocess.run(['python3', 'scripts/test/check_identity_http_contract.py',
-                str(out / 'identity-responses.json')], check=True)
-print(report)
+browser_runner = os.environ.get('IMBOY_CS_BROWSER_RUNNER')
+if browser_runner:
+    import socket, time
+    runner = pathlib.Path(browser_runner).resolve(strict=True)
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+        host_port = sock.getsockname()[1]
+    os.environ['CSWW_E2E_HOST_ORIGIN'] = f'http://127.0.0.1:{host_port}'
+    os.environ['CSWW_E2E_HOST_PORT'] = str(host_port)
+    browser_expr = expr[:expr.index('case eunit:test')] + 'customer_service_browser_fixture:run(), halt(0).'
+    with (out / 'http.log').open('w') as log:
+        server = subprocess.Popen(['erl', '-noshell', '-pa', *paths, str(out / 'beams'), '-eval', browser_expr],
+                                  stdout=log, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 45
+            while not (out / 'browser-fixture.json').is_file():
+                if server.poll() is not None or time.monotonic() > deadline:
+                    raise RuntimeError('browser fixture startup failed: ' + str(out / 'http.log'))
+                time.sleep(0.1)
+            with (out / 'browser.log').open('w') as browser_log:
+                result = subprocess.run(['node', str(runner)], cwd=runner.parent.parent.parent,
+                                        stdout=browser_log, stderr=subprocess.STDOUT, timeout=150)
+            print((out / 'browser.log').read_text())
+            (out / 'browser.done').touch()
+            assert server.wait(timeout=15) == 0, 'fixture database proof/cleanup failed'
+            if result.returncode:
+                raise RuntimeError('browser journey failed: ' + str(out))
+        finally:
+            (out / 'browser.done').touch()
+            if server.poll() is None:
+                server.terminate()
+                try:
+                    server.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
+    print('Browser evidence: ' + str(out))
+else:
+    with (out / 'http.log').open('w') as log:
+        subprocess.run(['erl', '-noshell', '-pa', *paths, str(out / 'beams'), '-eval', expr],
+                       stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
+    report = (out / 'http.log').read_text()
+    if '[EPGZ04] emit_event_failed crash' in report:
+        raise SystemExit('failed-event emission crashed; inspect ' + str(out / 'http.log'))
+    subprocess.run(['python3', 'scripts/test/check_identity_http_contract.py',
+                    str(out / 'identity-responses.json')], check=True)
+    print(report)
 PY
 printf 'Evidence: %s\n' "$RUN_DIR"

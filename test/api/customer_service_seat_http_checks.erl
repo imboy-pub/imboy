@@ -1,6 +1,6 @@
 %%% Production middleware, facts, facade and database; synthetic JWT/device key only.
 -module(customer_service_seat_http_checks).
--export([run/1, headers/1, send/3]).
+-export([run/1, headers/1, send/3, second_seat/1]).
 -include_lib("eunit/include/eunit.hrl").
 -define(FIX, cs_pg_test_fixture).
 run(H) ->

@@ -1,0 +1,36 @@
+<!doctype html>
+<!--
+  SC-BLD：Web 坐席工作台（Seat Console）静态 runtime 独立入口。
+
+  - 由后端 /seat/:public_seat_console_id frame 面以同源静态资源方式引用；
+  - 独立于 Admin SPA（不依赖 Router / Admin session / /api/adm），仅与
+    同源 Seat 后端合同 `/api/v1/cs/*` 通信（QR 登录门在页面内部）；
+  - `bun run build:widget` 产出独立 artifact（dist-widget/seat/index.html）。
+-->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex,nofollow" />
+    <!--
+      CSP：独立自足，禁止外联（connect-src 'self' 即同源 Seat API；API 域与
+      frame 面同源部署）。比 widget 面更收紧：
+      - default-src 'none'（widget 为 'self'）：未列出的载入类全部禁止；
+      - style-src 无 'unsafe-inline'：坐席渲染树零内联样式（Tailwind 类 +
+        SVG 属性，qrcode.react SVG 变体不写 style 属性）；
+      - img-src 增补 blob:：图片附件内联预览走对象 URL（sessionView
+        AttachmentImage），data: 供零星内嵌图。
+      frame-ancestors 无法经 meta 生效（由部署层响应头控制）。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'"
+    />
+    <title>IMBoy 客服工作台</title>
+    <script type="module" crossorigin src="/assets/cs-seat-CrSBZIO5.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/cs-seat-_XZfiGXM.css">
+  </head>
+  <body>
+    <div id="cs-seat-root"></div>
+  </body>
+</html>
