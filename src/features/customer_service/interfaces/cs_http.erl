@@ -889,7 +889,7 @@ classify({invalid_limit, _}) ->
 classify({invalid_status, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({not_session_seat, _, _}) ->
-    ?ERR_UNPROCESSABLE_ENTITY;
+    ?ERR_FORBIDDEN;
 %% CS-BE-04：ACK 候选游标非负整数取值不成立（形状由动作表 tsid 裁决，
 %% 这里覆盖负值等域值错误——显式登记，无兜底）。
 classify({invalid_message_id, _}) ->

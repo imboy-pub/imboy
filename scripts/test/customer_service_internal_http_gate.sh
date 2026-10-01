@@ -33,9 +33,11 @@ export INTBE02_INTTEST_PG_USER=synthetic
 export INTBE02_INTTEST_PG_PASSWORD=SYNTHETIC-ONLY
 export IMBOY_GATE_RUN_DIR="$RUN_DIR" IMBOY_GATE_DEPS_ROOT="$DEPS_ROOT"
 python3 - <<'PY'
-import os, pathlib, subprocess
+import os, pathlib, subprocess, shutil
 out = pathlib.Path(os.environ['IMBOY_GATE_RUN_DIR'])
 deps = pathlib.Path(os.environ['IMBOY_GATE_DEPS_ROOT'])
+# Freeze metadata before compilation; a shared build can replace ebin meanwhile.
+shutil.copyfile(deps / 'ebin' / 'imboy.app', out / 'beams' / 'imboy.app')
 paths = [str(p) for p in (deps / 'deps').glob('*/ebin')]
 if not paths:
     raise SystemExit('dependencies absent; build dependencies or set IMBOY_DEPS_ROOT')

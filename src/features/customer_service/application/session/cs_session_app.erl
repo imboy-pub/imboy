@@ -358,7 +358,7 @@ transfer_in(OrgId, WorkspaceId, Params) ->
     end.
 
 do_transfer(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Params) ->
-    case fetch_session_for(Params, OrgId, WorkspaceId, SessionId) of
+    case fetch_control_session_for(Params, OrgId, WorkspaceId, SessionId) of
         {error, _} = Err ->
             Err;
         {ok, Session} ->
@@ -426,7 +426,7 @@ close_in(OrgId, WorkspaceId, Params) ->
 
 do_close(OrgId, WorkspaceId, SessionId, ExpectedVersion, At, Params) ->
     Reason = maps:get(reason, Params, undefined),
-    case fetch_session_for(Params, OrgId, WorkspaceId, SessionId) of
+    case fetch_control_session_for(Params, OrgId, WorkspaceId, SessionId) of
         {error, _} = Err ->
             Err;
         {ok, Session} ->
@@ -1143,3 +1143,20 @@ append_conversation_message(OrgId, #{sender_type := <<"business_identity">>} = P
     end;
 append_conversation_message(_, _) ->
     {error, {invalid_argument, sender_type}}.
+
+%% Seat principal must be current handler. Governance callers have no seat identity.
+fetch_control_session_for(Params, Org, Ws, Id) ->
+    case fetch_session_for(Params, Org, Ws, Id) of
+        {ok, Session} = Found ->
+            case maps:is_key(business_identity_id, Params) of
+                false ->
+                    Found;
+                true ->
+                    case sender_shape(Session, Params) of
+                        {ok, business_identity} -> Found;
+                        {error, _} = Err -> Err
+                    end
+            end;
+        {error, _} = Err ->
+            Err
+    end.

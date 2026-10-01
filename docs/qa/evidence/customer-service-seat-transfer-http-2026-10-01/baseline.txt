@@ -1,0 +1,9 @@
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+**error:{assertEqual,[{module,customer_service_seat_http_checks},
+              {line,82},
+              {expression,"maps : get ( status , post ( H , Next , cs_path ( S , Id , << \"close\" >> ) , # { workspace_id => Ws , expected_version => 2 } ) )"},
+              {expected,403},
+              {value,200}]}
+  output:<<"">>
+
+  [done in 4.537 s]

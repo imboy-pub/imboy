@@ -137,7 +137,8 @@ event(Session, Target) ->
         session_id => Session,
         business_identity_id => Target,
         actor_kind => <<"seat">>,
-        action => <<"session.transferred">>
+        action => <<"session.transferred">>,
+        detail => #{<<"from">> => Session}
     }.
 
 unchanged(C) ->

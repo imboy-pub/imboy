@@ -59,13 +59,101 @@ journey(H, S) ->
             -1
         )
     ),
+    Next = transfer_check(H, S, Id),
+    finish(H, Next, Id).
+
+finish(H, S, Id) ->
     Closed = post(H, S, cs_path(S, Id, <<"close">>), #{
-        workspace_id => maps:get(workspace_id, S), expected_version => 2
+        workspace_id => maps:get(workspace_id, S), expected_version => 3
     }),
     ?assertEqual(200, maps:get(status, Closed)),
-    Late = send(H, S, <<"synthetic-http-after-close">>),
-    ?assertEqual(409, maps:get(status, Late)),
-    ?assertEqual(1, ?FIX:count(Org, messages)).
+    ?assertEqual(409, maps:get(status, send(H, S, <<"synthetic-http-after-close">>))),
+    ?assertEqual(2, ?FIX:count(maps:get(org_id, S), messages)).
+
+transfer_check(H, S, Id) ->
+    Next = second_seat(S),
+    Ws = maps:get(workspace_id, S),
+    Bid = maps:get(service_identity_id, Next),
+    ?assertEqual(
+        403,
+        maps:get(
+            status,
+            post(H, Next, cs_path(S, Id, <<"close">>), #{workspace_id => Ws, expected_version => 2})
+        )
+    ),
+    ?assertEqual(
+        403,
+        maps:get(
+            status,
+            post(H, Next, cs_path(S, Id, <<"transfer">>), #{
+                workspace_id => Ws, expected_version => 2, to_identity_id => Bid
+            })
+        )
+    ),
+    R = post(H, S, cs_path(S, Id, <<"transfer">>), #{
+        workspace_id => Ws, expected_version => 2, to_identity_id => Bid
+    }),
+    ?assertEqual(200, maps:get(status, R)),
+    stale_control_check(S, Id),
+    ?assertEqual(403, maps:get(status, send(H, S, <<"synthetic-old-seat">>))),
+    ?assertEqual(
+        403,
+        maps:get(
+            status,
+            post(H, S, cs_path(S, Id, <<"close">>), #{workspace_id => Ws, expected_version => 3})
+        )
+    ),
+    ?assertEqual(200, maps:get(status, send(H, Next, <<"synthetic-new-seat">>))),
+    Next.
+
+%% Even a guessed new version cannot commit an old handler snapshot.
+stale_control_check(S, Id) ->
+    Org = maps:get(org_id, S),
+    Ws = maps:get(workspace_id, S),
+    Old = maps:get(service_identity_id, S),
+    Event = #{
+        workspace_id => Ws,
+        session_id => Id,
+        business_identity_id => Old,
+        actor_user_id => maps:get(actor_user_id, S),
+        actor_kind => <<"seat">>,
+        action => <<"session.transferred">>,
+        detail => #{<<"from">> => Old}
+    },
+    ?assertEqual(
+        {error, conflict},
+        cs_pg_session:transfer_session(Org, Ws, Id, Old, 3, os:system_time(second), Event)
+    ),
+    ?assertEqual(
+        {error, conflict},
+        cs_pg_session:close_session(Org, Ws, Id, undefined, 3, os:system_time(second), Event#{
+            action => <<"session.closed">>
+        })
+    ).
+
+second_seat(S) ->
+    Org = maps:get(org_id, S),
+    Peer = maps:get(peer_user_id, S),
+    Bid = ?FIX:id(),
+    Owner = maps:get(owner_user_id, S),
+    ok = ?FIX:exec(
+        <<"INSERT INTO organization_member(organization_id,user_id,role,status) VALUES($1,$2,'member','active')">>,
+        [Org, Peer]
+    ),
+    ok = ?FIX:exec(
+        <<"INSERT INTO organization_business_identity(id,organization_id,function_key,display_name,status,version,created_by_user_id) VALUES($1,$2,'customer_service','synthetic-second-seat','active',1,$3)">>,
+        [Bid, Org, Owner]
+    ),
+    ok = ?FIX:exec(
+        <<"INSERT INTO organization_business_identity_assignment(id,organization_id,business_identity_id,function_key,user_id,status,assigned_by,version) VALUES($1,$2,$3,'customer_service',$4,'active',$5,1)">>,
+        [?FIX:id(), Org, Bid, Peer, Owner]
+    ),
+    {ok, _} = cs_seat_app:create_seat(Org, #{
+        workspace_id => maps:get(workspace_id, S),
+        business_identity_id => Bid,
+        created_by_user_id => Owner
+    }),
+    S#{actor_user_id => Peer, service_identity_id => Bid}.
 
 suspended_check(H, S) ->
     Params = #{

@@ -109,6 +109,7 @@
     "   SET business_identity_id = $4, version = version + 1, updated_at = to_timestamp($6)"
     " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
     "   AND status = 'active' AND version = $5"
+    "   AND business_identity_id IS NOT DISTINCT FROM $7"
     "   AND EXISTS (SELECT 1 FROM customer_service_seat cs"
     "                WHERE cs.organization_id = $1 AND cs.business_identity_id = $4)"
 >>).
@@ -119,6 +120,7 @@
     "       version = version + 1, updated_at = to_timestamp($6)"
     " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
     "   AND status IN ('queued', 'active') AND version = $5"
+    "   AND business_identity_id IS NOT DISTINCT FROM $7"
 >>).
 
 -define(SQL_RATE_UPDATE, <<
@@ -794,7 +796,16 @@ transfer_session(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, A
     %% CS-DEC-02）；任一步失败全回滚。
     Result = elib_pg:with_tx(fun(Conn) ->
         lock_available_seat(Conn, OrgId, ToIdentityId),
-        Params = [OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At],
+        From = maps:get(<<"from">>, maps:get(detail, Event)),
+        Params = [
+            OrgId,
+            WorkspaceId,
+            SessionId,
+            ToIdentityId,
+            ExpectedVersion,
+            At,
+            cs_pg_common:nullify(From)
+        ],
         case elib_pg:execute(Conn, ?SQL_TRANSFER_UPDATE, Params) of
             {ok, 1} ->
                 write_event_or_rollback(Conn, OrgId, Event),
@@ -821,7 +832,15 @@ transfer_session(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, A
 -spec close_session(integer(), integer(), integer(), term(), integer(), integer(), map()) ->
     {ok, map()} | {error, term()}.
 close_session(OrgId, WorkspaceId, SessionId, Reason, ExpectedVersion, At, Event) ->
-    Params = [OrgId, WorkspaceId, SessionId, cs_pg_common:nullify(Reason), ExpectedVersion, At],
+    Params = [
+        OrgId,
+        WorkspaceId,
+        SessionId,
+        cs_pg_common:nullify(Reason),
+        ExpectedVersion,
+        At,
+        cs_pg_common:nullify(maps:get(business_identity_id, Event, undefined))
+    ],
     cas_in_tx(?SQL_CLOSE_UPDATE, Params, OrgId, WorkspaceId, SessionId, Event).
 
 -spec rate_session(integer(), integer(), integer(), pos_integer(), integer(), integer(), map()) ->
