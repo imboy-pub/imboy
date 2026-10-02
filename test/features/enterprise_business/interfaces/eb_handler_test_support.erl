@@ -88,14 +88,16 @@ listener_name() ->
 %% ===================================================================
 
 %% @doc 从 `imboy_router:get_routes/0` 取该面上指定动作的 `{Pattern, Opts}`。
-%% 找不到即 crash（路由漂移必须立刻可见）。
+%% 默认选择 Human 域；Seat 别名仍保留在 enterprise_routes/1 全量审计中。
+%% 找不到或同域重复即 crash（路由漂移必须立刻可见）。
 -spec route_opt(atom(), atom()) -> {binary(), map()}.
 route_opt(Surface, Action) ->
     Matches = [
         {Path, Opts}
      || {Path, H, Opts} <- enterprise_routes(Surface),
         H =:= handler_for(Surface),
-        maps:get(action, Opts, undefined) =:= Action
+        maps:get(action, Opts, undefined) =:= Action,
+        maps:get(jwt_purpose, Opts, human) =:= human
     ],
     case Matches of
         [Found] -> Found;

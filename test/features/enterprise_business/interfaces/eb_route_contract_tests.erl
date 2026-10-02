@@ -60,6 +60,16 @@ tenant_literal_routes() ->
         {<<P/binary, "/offboarding/cases/:id">>, offboarding_detail, [<<"GET">>]}
     ].
 
+%% Console 只复用四项消息 / 附件动作，治理动作不得扩展到 Seat 域。
+seat_literal_routes() ->
+    P = <<"/api/v1/seat/enterprise/organizations/:org_id">>,
+    [
+        {<<P/binary, "/conversations/:id/messages">>, conversation_messages, [<<"GET">>, <<"POST">>]},
+        {<<P/binary, "/assets/presign">>, presign, [<<"POST">>, <<"PUT">>]},
+        {<<P/binary, "/assets/confirm">>, confirm_asset, [<<"POST">>]},
+        {<<P/binary, "/assets/:id/content">>, asset_content, [<<"GET">>]}
+    ].
+
 platform_literal_routes() ->
     P = <<"/api/adm/enterprise-business/organizations/:org_id">>,
     [
@@ -84,12 +94,32 @@ platform_literal_routes() ->
 a01_route_metadata_matches_frozen_action_table_test() ->
     ?assertEqual([], violations(?S:enterprise_routes(all))).
 
+a01_seat_audit_and_human_selection_test() ->
+    Real = ?S:enterprise_routes(all),
+    Seat = [R || {_P, _H, O} = R <- Real, maps:get(jwt_purpose, O, human) =:= seat],
+    ?assertEqual(4, length(Seat)),
+    [{Path, Handler, Opts} | _] = Seat,
+    {_HumanPath, HumanOpts} = ?S:route_opt(tenant, maps:get(action, Opts)),
+    ?assertEqual(human, maps:get(jwt_purpose, HumanOpts, human)),
+    lists:foreach(
+        fun(BadOpts) ->
+            Mutated = [{Path, Handler, BadOpts} | lists:delete({Path, Handler, Opts}, Real)],
+            ?assertNotEqual([], violations(Mutated))
+        end,
+        [
+            Opts#{required_function => <<"sales">>},
+            Opts#{jwt_purpose => human},
+            Opts#{jwt_methods => [<<"DELETE">>]}
+        ]
+    ).
+
 %% @doc 审计入口：每条企业路由必须（1）在冻结清单里、（2）动作在动作表里、
 %% （3）`auth` 逐键一致、（4）面级不变量齐备且取值正确。
 violations(Routes) ->
     Known = lists:append([
         [{tenant, Path, Action, Methods} || {Path, Action, Methods} <- tenant_literal_routes()],
-        [{platform, Path, Action, Methods} || {Path, Action, Methods} <- platform_literal_routes()]
+        [{platform, Path, Action, Methods} || {Path, Action, Methods} <- platform_literal_routes()],
+        [{tenant, Path, Action, Methods} || {Path, Action, Methods} <- seat_literal_routes()]
     ]),
     %% 双向审计：① 冻结清单里的每条路径都必须**真的注册**（少登记即报）；
     %%           ② 每条注册路由都必须与冻结清单/动作表逐键一致（多登记/漂移即报）。
@@ -119,6 +149,20 @@ find_entry(platform, Action) ->
 find_entry(_Surface, Action) ->
     {error, {unknown_surface, Action}}.
 
+route_violations(Path, Handler, #{jwt_purpose := seat} = Opts, _Known, _EntryResult) ->
+    case lists:keyfind(Path, 1, seat_literal_routes()) of
+        {Path, Action, Methods} ->
+            {_HumanPath, HumanOpts} = ?S:route_opt(tenant, Action),
+            Expected = HumanOpts#{
+                required_function => <<"customer_service">>,
+                jwt_purpose => seat,
+                jwt_methods => Methods
+            },
+            [{seat_handler_mismatch, Path} || Handler =/= eb_tenant_handler] ++
+                [{seat_metadata_mismatch, Path} || Opts =/= Expected];
+        false ->
+            [{seat_path_not_frozen, Path}]
+    end;
 route_violations(Path, Handler, Opts, Known, EntryResult) ->
     Action = maps:get(action, Opts, undefined),
     Surface = maps:get(surface, Opts, undefined),

@@ -1,0 +1,44 @@
+{
+  "status": "PASS_LOCAL_DOMAIN",
+  "candidate_before_commit": "f271c962981a5f9c4f545343f8263c0268f5e48e",
+  "command": "bash /tmp/gz-eb-domain-focused-garage.sh",
+  "exit_code": 0,
+  "passed": 71,
+  "modules": [
+    "eb_route_contract_tests",
+    "eb_seat_send_protocol_tests",
+    "eb_tenant_handler_tests",
+    "seat_console_routes_tests",
+    "eb_offboarding_route_contract_tests",
+    "eb_platform_handler_tests"
+  ],
+  "oracle": "Real handler routes and disposable native PG/Garage; exact frozen Human/platform/Seat paths and Seat metadata; original Human protocol path selected by credential domain. Handler fixtures inject session/facts; production middleware isolation is covered separately.",
+  "source_binding_verified": true,
+  "source_hashes": [
+    {
+      "path": "test/features/enterprise_business/interfaces/eb_handler_test_support.erl",
+      "sha256": "4faadf59c9a9cbb197881cbbd1bedc1f90d5cd2e445ec0719693df2e03ff9cd3"
+    },
+    {
+      "path": "test/features/enterprise_business/interfaces/eb_route_contract_tests.erl",
+      "sha256": "7455741b3666e1c2342652cb77760d2799f34c45adcd0ea4dc60cdcb6cab3a26"
+    },
+    {
+      "path": "src/imboy_router.erl",
+      "sha256": "b69bacec05985f930cc3c0decb46f7b2949bee6446d44c27f15ee08577d9318c"
+    }
+  ],
+  "log_sha256": "2bd3c53ec560d0533860ad1428424fd1b814e76c690fd55de6589f8e8d113207",
+  "old_frozen_full_attempt": {
+    "candidate": "f271c962981a5f9c4f545343f8263c0268f5e48e",
+    "observed_failed_tests": 14,
+    "status": "FAILED_INTERRUPTED",
+    "driver_exit": 0,
+    "accepted_as_pass": false,
+    "reason": "Legacy test helper selected both Human and Seat aliases; legacy frozen route audit lacked four Seat paths. Failed VM stopped. New runner requires explicit final EUnit ok marker and no failure/cancellation markers.",
+    "log_sha256": "a1655cbe269ea2c016600d006c7cb8c7e6ebb4f775cd21637f22c276e66c382d"
+  },
+  "full_current_pair_pass": false,
+  "production_ready": false,
+  "review": "APPROVE"
+}
