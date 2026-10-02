@@ -36,6 +36,7 @@ COMPONENT="${1:-all}"
 
 usage() {
   echo "用法: bash scripts/imboy-deploy.sh <all|api|admin|cs|migrate|rollback> [-v|--verbose] [-l|--local] [--env-file PATH]"
+  echo "      bash scripts/imboy-deploy.sh cs --skip-backend          # 仅发布 CS 面（后端不动）"
 }
 
 case "$COMPONENT" in
@@ -47,10 +48,14 @@ shift || true
 DEPLOY_ARGS=()
 LOCAL_MODE=0
 VERBOSE=0
+CS_SKIP_BACKEND=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--verbose) DEPLOY_ARGS+=(-v); VERBOSE=1; shift ;;
     -l|--local) DEPLOY_ARGS+=(-l); LOCAL_MODE=1; shift ;;
+    --skip-backend)
+      [[ "$COMPONENT" == cs ]] || { echo "--skip-backend 仅适用于 cs 组件" >&2; usage; exit 1; }
+      CS_SKIP_BACKEND=1; shift ;;
     --env-file)
       [[ $# -ge 2 && -n "$2" ]] || { echo "--env-file 缺少路径" >&2; usage; exit 1; }
       ENV_FILE="$2"; shift 2 ;;
@@ -395,6 +400,7 @@ deploy_api() {
     "IMBOY_DEPLOY_DB_NAME=$DB_NAME"
     "IMBOY_DEPLOY_DB_USER=$DB_USER"
     "IMBOY_DEPLOY_EXPAND_MIGRATIONS=${DEPLOY_EXPAND_MIGRATIONS:-}"
+    "IMBOY_DEPLOY_START_AUTO_MIGRATE=${DEPLOY_START_AUTO_MIGRATE:-false}"
     "IMBOY_DEPLOY_SALES_RELEASE=${DEPLOY_SALES_RELEASE:-true}"
     "IMBOY_DEPLOY_E2EE_MODE=${DEPLOY_E2EE_MODE:-}"
     "IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE=${DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}"
@@ -675,13 +681,27 @@ case "$COMPONENT" in
     ;;
   api)
     deploy_api
+    # 后端成功但 admin 前端落后于本地源码时，readiness 的 meta 比对必败；
+    # 自动同步前端后再收尾，保证「重复执行 api 都能成功」。已同步则跳过构建。
+    remote_admin_head="$(ssh_cap "curl -fsS --max-time 10 'https://$ADMIN_DOMAIN/deploy-meta.json' | sed -n 's/.*\"source_head\":\"\([0-9a-f]*\)\".*/\1/p'" 2>/dev/null || true)"
+    if [[ "$remote_admin_head" != "$ADMIN_SOURCE_HEAD" ]]; then
+      log "Admin 前端落后于本地源码（${remote_admin_head:-missing} → $ADMIN_SOURCE_HEAD），自动同步 ..."
+      deploy_admin
+    fi
     deploy_readiness
     ;;
   admin)
     deploy_admin
     ;;
   cs)
-    deploy_cs with-backend
+    if [[ "$CS_SKIP_BACKEND" -eq 1 ]]; then
+      # 显式跳过后端蓝绿（部署工具合同 S7 的 skip-backend 路径）：适用于
+      # 「后端已在跑且无需升级，仅发布 CS 面」的场景。激活前 upstream
+      # 复核仍会拒绝无唯一活动后端的激活。
+      deploy_cs skip-backend
+    else
+      deploy_cs with-backend
+    fi
     ;;
   migrate)
     deploy_migrate

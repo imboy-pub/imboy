@@ -378,22 +378,37 @@ cleanup_new_node_before_cutover() {
 cleanup_inactive_target() {
   local dir dirs
   # 显式捕获失败；进程替换中的 ERR trap 会在子 shell 误启动恢复，主流程却继续。
+  # 枚举本部署体系全部 release 目录（不只当前目标槽）：历史失败部署留下的
+  # heart/beam 残留（跨端口）一并停掉，保证重复部署不被残留进程卡住。
+  # 活动槽（ACTIVE_DIR）豁免；目标端口最后独立校验，未知占用者仍拒绝发布。
+  # 枚举同时统计各目录活进程数（N）：无进程目录跳过停止流程，省去每目录
+  # ~3.7s 的固定 TERM/sleep/KILL 成本，历史目录多时显著缩短部署前置时间。
   dirs="$(ssh_capture "
     for DIR in /usr/local/imboy-*; do
-      [ -d \"\$DIR\" ] || continue
-      if grep -qsE '\\{http_port,[[:space:]]*$APP_PORT\\}' \"\$DIR\"/releases/*/sys.config; then
-        printf '%s\\n' \"\$DIR\"
-      fi
+      [ -d \"\$DIR/releases\" ] || continue
+      ls \"\$DIR\"/releases/*/sys.config >/dev/null 2>&1 || continue
+      N=0
+      for H in \$(pgrep -x heart 2>/dev/null || true); do
+        tr '\\0' '\\n' < \"/proc/\$H/environ\" 2>/dev/null \\
+          | grep -qF \"HEART_COMMAND=\\\"\$DIR\" && N=\$((N + 1))
+      done
+      for P in \$(pgrep -x beam.smp 2>/dev/null || true); do
+        R=\$(tr '\\0' '\\n' < \"/proc/\$P/cmdline\" 2>/dev/null \\
+          | awk 'p { print; exit } /^-root\\\$/ { p=1 }')
+        [ \"\$R\" = \"\$DIR\" ] && N=\$((N + 1))
+      done
+      printf '%s %s\\n' \"\$N\" \"\$DIR\"
     done
     exit 0
-  ")" || fail "无法枚举目标槽 release，拒绝继续发布"
-  while IFS= read -r dir; do
+  ")" || fail "无法枚举 release 残留，拒绝继续发布"
+  while IFS= read -r n dir; do
     [ -n "$dir" ] || continue
     [ "$dir" != "${ACTIVE_DIR:-}" ] || continue
-    safe_release_dir "$dir" || fail "目标端口残留 release 目录不安全: $dir"
-    log "清理目标槽残留进程: $dir (port=$APP_PORT)"
+    safe_release_dir "$dir" || fail "残留 release 目录不安全: $dir"
+    [ "$n" -eq 0 ] && continue
+    log "清理残留进程: $dir (procs=$n)"
     stop_release_processes "$dir" \
-      || fail "目标槽残留进程无法安全停止: $dir"
+      || fail "残留进程无法安全停止: $dir"
   done <<<"$dirs"
   ssh_exec "! ss -tlnH \"sport = :$APP_PORT\" 2>/dev/null | grep -q ." \
     || fail "目标端口 $APP_PORT 仍被未知进程占用，拒绝误杀"
@@ -890,6 +905,12 @@ case "$CURRENT_COLOR" in
     START_AUTO_MIGRATE=true
     ;;
 esac
+# 显式 opt-in：让新节点 boot migration（imboy_app:maybe_migrate/0 在 sup 树之前）
+# 原子应用未登记迁移并写台账。用于 additive 迁移（如 TSID catalog v4 所需的
+# 00000164）必须先于 rebind 全量扫描存在时；切流后的 db migrate 将无事可做。
+if [ "${IMBOY_DEPLOY_START_AUTO_MIGRATE:-false}" = true ]; then
+  START_AUTO_MIGRATE=true
+fi
 
 ok "当前: $CURRENT_COLOR → 目标: $TARGET_COLOR (port=$APP_PORT) / Current: $CURRENT_COLOR → Target: $TARGET_COLOR"
 cleanup_inactive_target
