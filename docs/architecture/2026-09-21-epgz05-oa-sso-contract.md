@@ -81,7 +81,7 @@ OA backend 建立自己的 HttpOnly/Secure/SameSite 会话（IMBoy 不发任何�
 | `nonce` | string | 是 | 客户端 CSPRNG 生成，16..128 字符 `[A-Za-z0-9_-]`；即 ② 中 `state` 参数原值 |
 | `organization_id` | integer | 多企业客户端必须传；旧客户端兼容可省略 | 当前选定企业的正数 int64 ID；服务端只解析该企业内的应用，并重新验证有效成员关系；不匹配时拒绝，不回退其他企业 |
 
-2026-10-01 扩展：明确传入的 `organization_id` 必须为 JSON 正整数，最大为 `9223372036854775807`；null、字符串、浮点及超限值返回 400。省略时保留原先按有效成员关系收敛的兼容路径，多义仍返回 404。本字段不授予企业权限。App 的宿主失效保护已经接入，发送此字段及企业应用配置发现仍待客户端后续接线。
+2026-10-01 扩展：明确传入的 `organization_id` 必须为 JSON 正整数，最大为 `9223372036854775807`；null、字符串、浮点及超限值返回 400。省略时保留原先按有效成员关系收敛的兼容路径，多义仍返回 404。本字段不授予企业权限。2026-10-02 客户端已接线：工作台按当前 `organization_id` 发现企业应用，用户选定应用后才签发；`OaTabPage` 将当前企业 ID 交给 `OaSsoApi.issueCode`，后者以 JSON integer 发送，切账号、企业或应用时清理旧宿主。具体实现见 imboyapp 的 `lib/modules/enterprise_oa/data/oa_sso_api.dart` 与 `presentation/oa_tab_page.dart`。本期客户 OA 不可用，无配置工作台保留官网入口 `https://imboy.pub/`；官网入口验证不等同客户 OA 身份或 Cookie 联调。
 
 ### 3.3 响应字段（成功，现有 human 信封 HTTP 200）
 
