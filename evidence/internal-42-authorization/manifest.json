@@ -1,0 +1,38 @@
+{
+  "status": "PASS_SCOPED_LOCAL",
+  "base_candidate": "4ade902b28a445202d55a418268556b893dfeb91",
+  "production_changed": false,
+  "http_negative_checks": 176,
+  "routes": 42,
+  "business_tables_snapshotted": 18,
+  "real_http_pg": true,
+  "iOS_verified": false,
+  "customer_oa_verified": false,
+  "full_goal_complete": false,
+  "files": [
+    {
+      "path": "source-binding.json",
+      "sha256": "d68bb390ecfd95fdcf4751839b4a69cd5e659e0d89b48a4c17c2625d2079a4d5"
+    },
+    {
+      "path": "gz-internal-auth-conformance.py.txt",
+      "sha256": "7b24734dd4eb0705ea1c9524d817860d3b042c5e00787929d1557bcd847da054"
+    },
+    {
+      "path": "rejections.jsonl",
+      "sha256": "d8f3aa660cfe97cf977b359116fe00e520f0a8f3222506a3e849f442ee70125d"
+    },
+    {
+      "path": "README.md",
+      "sha256": "66b2103d24026584a962a9313defce3458e5f1fdefd1798ba3a637f294d58730"
+    },
+    {
+      "path": "http-result.txt",
+      "sha256": "9e68e6f328306daffa615acc31a128f8c0ecad58245b439a3e08fed3dc69aef8"
+    },
+    {
+      "path": "gz-internal-auth-conformance.sh.txt",
+      "sha256": "afc1ffb6e40c89b093c868679dc851830f65d7721b0927692fd6547ceaa94fdc"
+    }
+  ]
+}

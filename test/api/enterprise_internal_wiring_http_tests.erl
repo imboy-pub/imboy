@@ -387,6 +387,7 @@ run_conformance(S) ->
     enterprise_oa_expiry_http_checks:run(S),
     idempotency_matrix(S, G),
     negative_matrix(S),
+    enterprise_internal_authorization_http_checks:run(S),
     seat_concurrent_update(S),
     seat_negative_matrix(S),
     enterprise_identity_contract_http_checks:run(S),

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Execute only after the coordinator releases the serial macOS/PG gate.
+set -euo pipefail
+REPO="/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport"
+DEPS_ROOT="${IMBOY_DEPS_ROOT:-/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-frozen-native-deps-fe0qq17k}"
+IMAGE="${IMBOY_INTTEST_PG_IMAGE:-imboy/pg18:3.6.1-2}"
+RUN_DIR="$(mktemp -d /tmp/imboy-internal-conformance.XXXXXX)"
+CONTAINER="imboy-internal-conformance-$$"
+CREATED=0
+cleanup() {
+  if [[ "$CREATED" -eq 1 ]]; then docker rm -f -v "$CONTAINER" >/dev/null; fi
+}
+trap cleanup EXIT
+cd "$REPO"
+docker image inspect "$IMAGE" --format '{{.Id}}' > "$RUN_DIR/image-id.txt"
+mkdir -p "$RUN_DIR/empty-init" "$RUN_DIR/imboy/ebin"
+docker run -d --name "$CONTAINER" -e POSTGRES_USER=synthetic \
+  -e POSTGRES_PASSWORD=SYNTHETIC-ONLY -e POSTGRES_DB=postgres \
+  --mount "type=bind,source=$RUN_DIR/empty-init,target=/docker-entrypoint-initdb.d,readonly" \
+  -p 127.0.0.1::5432 "$IMAGE" postgres -c shared_preload_libraries=timescaledb >/dev/null
+CREATED=1
+READY=0
+for _ in {1..30}; do
+  if docker exec "$CONTAINER" pg_isready -U synthetic -d postgres >/dev/null 2>&1; then READY=1; break; fi
+  sleep 1
+done
+if [[ "$READY" -ne 1 ]]; then docker logs "$CONTAINER" > "$RUN_DIR/postgres.log" 2>&1; exit 1; fi
+export INTBE02_INTTEST_PG_HOST=127.0.0.1
+export INTBE02_INTTEST_PG_PORT="$(docker port "$CONTAINER" 5432/tcp | sed 's/.*://')"
+export INTBE02_INTTEST_PG_USER=synthetic
+export INTBE02_INTTEST_PG_PASSWORD=SYNTHETIC-ONLY
+export IMBOYENV=test IMBOY_GATE_RUN_DIR="$RUN_DIR" IMBOY_GATE_DEPS_ROOT="$DEPS_ROOT"
+python3 /tmp/gz-internal-auth-conformance.py
+printf 'Evidence: %s\n' "$RUN_DIR"
