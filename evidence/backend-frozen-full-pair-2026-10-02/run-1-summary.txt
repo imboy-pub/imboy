@@ -1,0 +1,2 @@
+  All 10780 tests passed.
+FROZEN_FULL_RESULT=ok

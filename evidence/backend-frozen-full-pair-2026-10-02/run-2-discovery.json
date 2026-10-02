@@ -1,0 +1,15 @@
+{
+  "modules_count": 1295,
+  "excluded": [
+    "agent_grant_pg",
+    "agent_grant_pg_tests",
+    "agent_recovery_pg_tests",
+    "agent_run_pg",
+    "agent_run_pg_tests",
+    "agent_tool_authorizer_pg_tests",
+    "elib_tsid",
+    "elib_tsid_bootstrap_harness_tests",
+    "elib_tsid_guard"
+  ],
+  "discovery": "src plus noncompanion test modules, native Makefile exclusions"
+}

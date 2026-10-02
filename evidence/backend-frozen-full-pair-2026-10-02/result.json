@@ -1,0 +1,66 @@
+{
+  "owner": "gz-final-3ed5ec3c6bd84793b43db9e59af15599",
+  "status": "PASS_BACKEND_FROZEN_PAIR",
+  "candidate": "a3cb1386964cfbc99439f9c1a2ff7b4791560233",
+  "runs": [
+    {
+      "run": 1,
+      "driver_log": "/tmp/gz-current-final-full-r2-pair-r1.log",
+      "exit": 0,
+      "driver_log_sha256": "260d540865e44a4f1d3ad338ac0feefe984c74bc5cec2e68246e4807fda0ca3a",
+      "status": "PASS_FROZEN_FULL",
+      "run_dir": "/tmp/imboy-seat-http.lWPfLr",
+      "passed": 10780,
+      "source_binding_verified": true,
+      "log_sha256": "8ba7e39048344ad50e4f7295c30cf412c5282af172e5fc98c5d952be4fa93739",
+      "discovery": {
+        "modules_count": 1295,
+        "excluded": [
+          "agent_grant_pg",
+          "agent_grant_pg_tests",
+          "agent_recovery_pg_tests",
+          "agent_run_pg",
+          "agent_run_pg_tests",
+          "agent_tool_authorizer_pg_tests",
+          "elib_tsid",
+          "elib_tsid_bootstrap_harness_tests",
+          "elib_tsid_guard"
+        ],
+        "discovery": "src plus noncompanion test modules, native Makefile exclusions"
+      }
+    },
+    {
+      "run": 2,
+      "driver_log": "/tmp/gz-current-final-full-r2-pair-r2.log",
+      "exit": 0,
+      "driver_log_sha256": "320b2cb399e5c77ac1cc6ab3b0e12c38d13f760c71d2864444f270b74ccebf56",
+      "status": "PASS_FROZEN_FULL",
+      "run_dir": "/tmp/imboy-seat-http.fAQb3u",
+      "passed": 10780,
+      "source_binding_verified": true,
+      "log_sha256": "0922dcd6bbd299a860ef87da6a93c81024e1c729b84ad3ef97188902b7ab88d9",
+      "discovery": {
+        "modules_count": 1295,
+        "excluded": [
+          "agent_grant_pg",
+          "agent_grant_pg_tests",
+          "agent_recovery_pg_tests",
+          "agent_run_pg",
+          "agent_run_pg_tests",
+          "agent_tool_authorizer_pg_tests",
+          "elib_tsid",
+          "elib_tsid_bootstrap_harness_tests",
+          "elib_tsid_guard"
+        ],
+        "discovery": "src plus noncompanion test modules, native Makefile exclusions"
+      }
+    }
+  ],
+  "helper_hashes": {
+    "/tmp/gz-current-final-full-r2-backend.sh": "fbd72b620e35919690ea905d4b29ce3636382cf291b280fe6abdfa1c92336195",
+    "/tmp/gz-current-final-full-r2-garage.sh": "fc279e9388a3fd792ffbf3c271b636a54a4999c0542146109edb8b80da95806b",
+    "/tmp/gz-current-final-full-r2-pair.py": "b427f4b0fa3f3349bbf24e1076a2a00370eff2b3d51284c185dcc1c5a1ec44da"
+  },
+  "required_pass_runs": 2,
+  "whole_goal_complete": false
+}
