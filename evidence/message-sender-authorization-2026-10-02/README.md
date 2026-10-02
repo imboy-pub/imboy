@@ -1,0 +1,7 @@
+# Message sender authorization
+
+Root defect: Application sender accepted any positive principal ID, including a disabled account. Both direct and group share the corrected transaction-time account lookup. A parameterized status=1 query holds FOR SHARE through message commit; service/bot account types remain supported. Missing/disabled accounts return existing invalid_request; query failures return internal_error.
+
+Actual disposable PG/Cowboy RED: expected400/actual200. After fixing, two modes and two destinations exercise 8 actual positive sends, 4 disabled-sender denials and 8 confirmed cross-App/Org attachment denials. Active service account_type1 is covered and restored in try/after. Positive responses are checked against actual from_id, origin, message content and file_id; rejected sends leave six complete business table snapshots unchanged, excluding allowed credential/idempotency bookkeeping. Attachments are confirmed metadata fixtures, not claims about object bytes.
+
+Final EUnit: new HTTP module plus enterprise_msg_asset_webhook_pg_tests and enterprise_full_api_pg_tests; 98 PASS, zero failures/cancellation, exit0. Source and beam hashes were checked after runtime. Production and test independent review APPROVE. The earlier full backend pair is superseded for changed production files; this is a domain gate, not a new global full gate. No external services or production mutation.

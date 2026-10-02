@@ -1,0 +1,3 @@
+enterprise_message_authorization_http_checks: run (module 'enterprise_message_authorization_http_checks')...[7.489 s] ok
+  All 98 tests passed.
+MESSAGE_AUTH_RESULT=ok

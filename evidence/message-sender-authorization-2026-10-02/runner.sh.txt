@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# Disposable PG + real Internal HTTP; synthetic fixtures, no existing databases.
+set -euo pipefail
+umask 077
+REPO="/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport"
+DEPS_ROOT="${IMBOY_DEPS_ROOT:-$REPO}"
+IMAGE="${IMBOY_INTTEST_PG_IMAGE:-imboy/pg18:3.6.1-2}"
+RUN_DIR="$(mktemp -d /tmp/imboy-seat-http.XXXXXX)"
+CONTAINER="imboy-seat-http-$$"
+CREATED=0
+cleanup() {
+  if [[ "$CREATED" -eq 1 ]]; then docker rm -f -v "$CONTAINER" >/dev/null; fi
+}
+trap cleanup EXIT
+cd "$REPO"
+docker image inspect "$IMAGE" --format '{{.Id}}' > "$RUN_DIR/image-id.txt"
+mkdir -p "$RUN_DIR/empty-init" "$RUN_DIR/imboy/ebin"
+# Vendor image init hooks currently fail on template_postgis; the harness itself
+# installs every required extension and runs all actual migrations in a marker DB.
+docker run -d --name "$CONTAINER" -e POSTGRES_USER=synthetic \
+  -e POSTGRES_PASSWORD=SYNTHETIC-ONLY -e POSTGRES_DB=postgres \
+  --mount "type=bind,source=$RUN_DIR/empty-init,target=/docker-entrypoint-initdb.d,readonly" \
+  -p 127.0.0.1::5432 "$IMAGE" postgres -c shared_preload_libraries=timescaledb >/dev/null
+CREATED=1
+READY=0
+for _ in {1..30}; do
+  if docker exec "$CONTAINER" pg_isready -U synthetic -d postgres >/dev/null 2>&1; then READY=1; break; fi
+  sleep 1
+done
+if [[ "$READY" -ne 1 ]]; then docker logs "$CONTAINER" > "$RUN_DIR/postgres.log" 2>&1; exit 1; fi
+export INTBE02_INTTEST_PG_HOST=127.0.0.1
+export INTBE02_INTTEST_PG_PORT="$(docker port "$CONTAINER" 5432/tcp | sed 's/.*://')"
+export INTBE02_INTTEST_PG_USER=synthetic
+export INTBE02_INTTEST_PG_PASSWORD=SYNTHETIC-ONLY
+export IMBOY_GATE_RUN_DIR="$RUN_DIR" IMBOY_GATE_DEPS_ROOT="$DEPS_ROOT"
+printf "%s" "$RUN_DIR" > /tmp/gz-message-auth-fixture-run-path
+python3 - <<'PY'
+import os, pathlib, subprocess, shutil
+out = pathlib.Path(os.environ['IMBOY_GATE_RUN_DIR'])
+deps = pathlib.Path(os.environ['IMBOY_GATE_DEPS_ROOT'])
+os.environ['ERL_CRASH_DUMP'] = str(out / 'erl_crash.dump')
+# Freeze metadata before compilation; a shared build can replace ebin meanwhile.
+shutil.copyfile(deps / 'ebin' / 'imboy.app', out / 'imboy' / 'ebin' / 'imboy.app')
+# Generate module/version metadata from this frozen candidate, not dependency build inventory.
+import json, re
+product_modules = sorted(p.stem for p in pathlib.Path('src').rglob('*.erl'))
+assert all(re.fullmatch('[a-z][a-z0-9_]*', m) for m in product_modules)
+metadata = out / 'imboy' / 'ebin' / 'imboy.app'
+metadata_path = json.dumps(str(metadata))
+version = json.dumps(pathlib.Path('VERSION').read_text().strip())
+metadata_expr = ('{ok,[{application,imboy,Props}]}=file:consult(' + metadata_path + '), '
+    'P1=lists:keystore(modules,1,Props,{modules,[' + ','.join(product_modules) + ']}), '
+    'P2=lists:keystore(vsn,1,P1,{vsn,' + version + '}), '
+    'ok=file:write_file(' + metadata_path + ',unicode:characters_to_binary(io_lib:format("~tp.~n",[{application,imboy,P2}]))), halt().')
+subprocess.run(['erl','-noshell','-eval',metadata_expr],stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True)
+
+shutil.copytree(pathlib.Path('priv'), out / 'imboy' / 'priv', ignore=shutil.ignore_patterns('dev_keys','*.pem','*.key','*.p12'))
+paths = [str(p) for p in (deps / 'deps').glob('*/ebin')]
+if not paths:
+    raise SystemExit('dependencies absent; build dependencies or set IMBOY_DEPS_ROOT')
+# Read application metadata only; compile every product module from current source.
+paths.insert(0, str(deps / 'ebin'))
+files = [str(p) for p in pathlib.Path('src').rglob('*.erl')]
+files += ['test/common/meck_helper.erl', 'test/api/qr_login_sse_handler_tests.erl',
+          'test/api/intbe02_http_support.erl', 'test/api/enterprise_internal_wiring_http_tests.erl',
+          'test/common/inttest_marker_db.erl', 'test/ds/workspace_creation_pg_tests.erl',
+          'test/api/enterprise_workspace_write_http_checks.erl',
+          'test/ds/channel_creation_tx_pg_checks.erl',
+          'test/api/enterprise_channel_write_http_checks.erl',
+          'test/api/enterprise_identity_contract_http_checks.erl',
+          'test/api/workspace_channel_limit_http_checks.erl',
+          'test/api/customer_service_seat_http_checks.erl',
+          'test/api/customer_service_browser_fixture.erl',
+          'test/features/customer_service/interfaces/cs_route_contract_tests.erl',
+          'test/api/enterprise_asset_garage_pg_checks.erl',
+          'test/features/enterprise_business/application/eb_ports_tests.erl',
+          'test/api/customer_service_seat_sse_checks.erl',
+          'test/api/customer_service_widget_expiry_http_checks.erl',
+          'test/api/enterprise_oa_expiry_http_checks.erl',
+          'test/api/enterprise_admin_governance_pg_checks.erl',
+          'test/api/enterprise_app_credential_lifecycle_http_pg_tests.erl',
+          'test/api/enterprise_webhook_write_http_checks.erl']
+files += ['test/lib/organization/organization_invite_race_pg_checks.erl',
+          'test/lib/organization/organization_membership_journey_pg_checks.erl',
+          'test/features/customer_service/infrastructure/cs_pg_test_fixture.erl',
+          'test/features/customer_service/infrastructure/cs_pg_tests.erl',
+          'test/features/customer_service/infrastructure/cs_message_lifecycle_pg_checks.erl',
+          'test/features/customer_service/infrastructure/cs_session_open_pg_checks.erl',
+          'test/features/customer_service/application/cs_widget_app_tests.erl',
+          'test/features/customer_service/application/cs_fake_store.erl',
+          'test/features/customer_service/application/cs_fake_id.erl',
+          'test/features/customer_service/application/cs_fake_canonical_tx.erl',
+          'test/features/enterprise_business/infrastructure/eb_pg_test_fixture.erl']
+files += [str(p) for p in pathlib.Path('test').rglob('*.erl')]
+files = list(dict.fromkeys(files))
+files.remove('test/common/config_ds.erl')
+cmd = ['erlc', '-DTEST=1', '+debug_info', '+nowarn_unused_function', '+{parse_transform,lager_transform}',
+       '-o', str(out / 'imboy' / 'ebin'), '-I', 'include', '-I', 'src']
+for path in paths:
+    cmd += ['-pa', path]
+with (out / 'compile.log').open('w') as log:
+    import json, hashlib
+    cache = pathlib.Path('/tmp/imboy-internal-audit.zRSdsy')
+    binding = json.loads((cache / 'result.json').read_text())
+    approved = {'test/api/enterprise_message_authorization_http_checks.erl', 'src/logic/enterprise_message_logic.erl', 'src/repo/enterprise_message_repo.erl', 'test/logic/enterprise_msg_asset_webhook_pg_tests.erl', 'test/api/enterprise_legacy_group_file_pg_checks.erl', 'test/performance/msg_send_performance_tests.erl', 'test/repo/msg_store_repo_tests.erl'}
+    recovery = json.loads(pathlib.Path('evidence/full-regression-test-recovery/result.json').read_text())
+    for item in recovery['source_files']:
+        assert hashlib.sha256(pathlib.Path(item['path']).read_bytes()).hexdigest() == item['sha256']
+    legacy = json.loads(pathlib.Path('evidence/legacy-file-real-storage-2026-10-02/result.json').read_text())
+    expected = legacy['helper_hashes']['/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-backend/test/api/enterprise_legacy_group_file_pg_checks.erl']
+    assert hashlib.sha256(pathlib.Path('test/api/enterprise_legacy_group_file_pg_checks.erl').read_bytes()).hexdigest() == expected
+    changed = []
+    for name, expected in binding['sources'].items():
+        if name not in files: continue
+        if hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() != expected:
+            assert name in approved, name
+            changed.append(name)
+    for name in files:
+        if name not in binding['sources']:
+            assert name in approved, name
+            changed.append(name)
+    for name, expected in binding['beams'].items():
+        beam = cache / 'imboy/ebin' / name
+        assert hashlib.sha256(beam.read_bytes()).hexdigest() == expected, name
+        shutil.copyfile(beam, out / 'imboy/ebin' / name)
+    subprocess.run(cmd + changed, stdout=log, stderr=subprocess.STDOUT, check=True)
+    (out / 'source-overrides.json').write_text(json.dumps({'approved_changed_sources':changed,'baseline':binding['candidate'],'candidate':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()},indent=2))
+
+# Only test modules expose case lists for reuse in the disposable native PG run.
+asset_tests = [
+    'test/features/enterprise_business/infrastructure/eb_asset_store_tests.erl',
+    'test/features/enterprise_business/infrastructure/eb_retention_pg_tests.erl',
+    'test/features/enterprise_business/infrastructure/eb_purge_orphan_asset_pg_tests.erl',
+    'test/features/enterprise_business/application/asset/eb_asset_tests.erl',
+    'test/features/enterprise_business/application/message/eb_message_app_tests.erl',
+    'test/features/enterprise_business/interfaces/eb_tenant_handler_tests.erl',
+    'test/features/enterprise_business/e2e/eb_e2e_runner.erl']
+with (out / 'compile.log').open('a') as log:
+    subprocess.run(cmd + ['+export_all'] + asset_tests, stdout=log, stderr=subprocess.STDOUT, check=True)
+
+import re, json
+src_modules = {p.stem for p in pathlib.Path('src').rglob('*.erl')}
+test_modules = {p.stem for p in pathlib.Path('test').rglob('*.erl')}
+companions = {m + '_tests' for m in src_modules}
+makefile = pathlib.Path('Makefile').read_text()
+match = re.search(r'Excl = \[([^]]+)\]', makefile)
+assert match, 'native full-suite exclusion list missing'
+excluded = {name.strip() for name in match.group(1).split(',')}
+modules = ['passport_handler_tests', 'passport_logic_tests', 'user_server_tests', 'enterprise_mobile_bootstrap_http_tests']
+(out / 'full-discovery.json').write_text(json.dumps({'modules_count': len(modules), 'excluded': sorted(excluded), 'discovery': 'src plus noncompanion test modules, native Makefile exclusions'}, indent=2))
+(out / 'module-inventory.json').write_text(__import__('json').dumps(modules,indent=2))
+import hashlib
+(out / 'source-binding.json').write_text(json.dumps({'candidate': subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), 'sources': {f:hashlib.sha256(pathlib.Path(f).read_bytes()).hexdigest() for f in files}, 'beams':{str(p.name):hashlib.sha256(p.read_bytes()).hexdigest() for p in (out / 'imboy/ebin').glob('*.beam')}},indent=2))
+config = out / 'synthetic.config'
+config.write_text('[].\n')
+import socket
+with socket.socket() as listener:
+    listener.bind(('127.0.0.1',0))
+    port = listener.getsockname()[1]
+os.environ['TEST_HTTP_PORT'] = str(port)
+os.environ['HTTP_PORT'] = str(port)
+os.environ['IMBOY_TEST_CONFIG'] = str(config)
+os.environ['IMBOY_FULL_TSID_DIR'] = str(out / 'tsid')
+expr = '{ok,{config_ds,[{compile_info,CI}]}}=beam_lib:chunks(code:which(config_ds),[compile_info]), true=lists:suffix("src/ds/config_ds.erl",proplists:get_value(source,CI)), io:format("PRODUCT_CONFIG_MODULE_OK~n"), application:set_env(lager,handlers,[{lager_console_backend,[{level,error}]}]), application:ensure_all_started(lager), application:load(imboy), {ok,NativeModules}=application:get_key(imboy,modules), true=lists:member(eb_asset_object_garage,NativeModules), true=lists:member(eb_pg_asset_delete_queue,NativeModules), io:format("FULL_NATIVE_METADATA_OK~n"), application:set_env(imboy,sql_driver,pgsql), application:set_env(imboy,postgre_aes_key,<<"SYNTHETIC-CONFORMANCE-AES-KEY">>), application:set_env(imboy,pg_conf,#{start_mfa => {epgsql,connect,[#{}]}}), Ctx=inttest_marker_db:provision(#{env_prefix => <<"INTBE02_INTTEST">>,connect_extra=>#{codecs=>[{epgsql_codec_rfc3339_bin,[]}]}}), S=maps:get(server,Ctx), Pg=maps:merge(maps:without([maint_db,connect_extra],S),maps:get(connect_extra,S,#{})), application:set_env(imboy,pg_conf,#{name=>pgsql,init_count=>60,max_count=>80,start_mfa=>{epgsql,connect,[Pg#{database=>maps:get(db,Ctx)}]}}), application:set_env(imboy,super_account,Pg#{database=>maps:get(db,Ctx)}), application:set_env(imboy,scripts_path,filename:join(code:priv_dir(imboy),"migrations")), application:set_env(imboy,http_port_adm,0), application:set_env(imboy,tsid_state_dir,os:getenv("IMBOY_FULL_TSID_DIR")), _=eunit_runner:eunit_setup(), true=lists:keymember(imboy,1,application:which_applications()), io:format("FULL_BOOT_PREFLIGHT_OK~n"), {ok,_,[{CodecValue}]}=elib_pg:with_conn(fun(ProbeConn)->epgsql:equery(ProbeConn,"SELECT $1::timestamptz",[<<"2026-10-01T12:00:00Z">>]) end), true=is_binary(CodecValue), io:format("FULL_NATIVE_CODEC_OK~n"), Result=eunit:test([enterprise_message_authorization_http_checks,enterprise_msg_asset_webhook_pg_tests,enterprise_full_api_pg_tests],[verbose]), io:format("MESSAGE_AUTH_RESULT=~p~n",[Result]), inttest_marker_db:release(Ctx), case Result of ok -> halt(0); _ -> halt(1) end.'.replace('__GZ_FULL_MODULES__', ','.join(modules))
+asset_mode = os.environ.get('IMBOY_ASSET_GARAGE_PG_CHECK') == '1'
+if asset_mode:
+    expr = expr[:expr.index('case eunit:test')] + 'enterprise_asset_garage_pg_checks:run(), halt(0).'
+governance_mode = os.environ.get('IMBOY_ADMIN_GOVERNANCE_PG_CHECK') == '1'
+assert not (asset_mode and governance_mode), 'choose one PG mode'
+if governance_mode:
+    expr = expr[:expr.index('case eunit:test')] + 'enterprise_admin_governance_pg_checks:run(), halt(0).'
+browser_runner = os.environ.get('IMBOY_CS_BROWSER_RUNNER')
+assert not ((asset_mode or governance_mode) and browser_runner), 'choose asset PG or browser mode'
+if browser_runner:
+    import socket, time
+    runner = pathlib.Path(browser_runner).resolve(strict=True)
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+        host_port = sock.getsockname()[1]
+    scheme = 'https' if os.environ.get('IMBOY_CS_BROWSER_ATTACHMENTS') == '1' else 'http'
+    os.environ['CSWW_E2E_HOST_ORIGIN'] = f'{scheme}://127.0.0.1:{host_port}'
+    os.environ['CSWW_E2E_HOST_PORT'] = str(host_port)
+    browser_expr = expr[:expr.index('case eunit:test')] + 'customer_service_browser_fixture:run(), halt(0).'
+    with (out / 'http.log').open('w') as log:
+        server = subprocess.Popen(['erl', '-noshell', '-pa', *paths, str(out / 'imboy' / 'ebin'), '-eval', browser_expr],
+                                  stdout=log, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 45
+            while not (out / 'browser-fixture.json').is_file():
+                if server.poll() is not None or time.monotonic() > deadline:
+                    raise RuntimeError('browser fixture startup failed: ' + str(out / 'http.log'))
+                time.sleep(0.1)
+            with (out / 'browser.log').open('w') as browser_log:
+                result = subprocess.run(['node', str(runner)], cwd=runner.parent.parent.parent,
+                                        stdout=browser_log, stderr=subprocess.STDOUT, timeout=150)
+            print((out / 'browser.log').read_text())
+            (out / 'browser.done').touch()
+            assert server.wait(timeout=15) == 0, 'fixture database proof/cleanup failed'
+            if result.returncode:
+                raise RuntimeError('browser journey failed: ' + str(out))
+        finally:
+            (out / 'browser.done').touch()
+            if server.poll() is None:
+                server.terminate()
+                try:
+                    server.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
+    print('Browser evidence: ' + str(out))
+else:
+    with (out / 'http.log').open('w') as log:
+        subprocess.run(['erl', '-noshell', '-pa', *paths, str(out / 'imboy' / 'ebin'), '-eval', expr],
+                       stdout=log, stderr=subprocess.STDOUT, check=True, timeout=1800)
+    report = (out / 'http.log').read_text()
+    if '[EPGZ04] emit_event_failed crash' in report:
+        raise SystemExit('failed-event emission crashed; inspect ' + str(out / 'http.log'))
+    assert 'MESSAGE_AUTH_RESULT=ok' in report.splitlines()
+    assert '*failed*' not in report and 'One or more tests were cancelled' not in report
+    assert 'FULL_BOOT_PREFLIGHT_OK' in report.splitlines()
+    assert 'FULL_NATIVE_CODEC_OK' in report.splitlines()
+    assert 'PRODUCT_CONFIG_MODULE_OK' in report.splitlines()
+    assert 'FULL_NATIVE_METADATA_OK' in report.splitlines()
+    print('MODULE_ORIGIN=PASS BOOT=PASS CODEC=PASS')
+    print('\n'.join(re.findall(r'^.*(?:All [0-9]+ tests passed|Failed:|Skipped:|Passed:).*$',report,re.M)))
+PY
+printf 'Evidence: %s\n' "$RUN_DIR"

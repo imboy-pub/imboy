@@ -191,8 +191,8 @@ resolve_sender_mode(Conn, Ctx, Input) ->
 
 -spec resolve_sender_scoped(any(), map(), map(), binary(), binary()) ->
     {ok, binary(), integer()} | {error, {binary(), term()}}.
-resolve_sender_scoped(_Conn, Ctx, _Input, <<"application">>, Scope) ->
-    scope_gate(Ctx, Scope, fun() -> application_sender(Ctx) end);
+resolve_sender_scoped(Conn, Ctx, _Input, <<"application">>, Scope) ->
+    scope_gate(Ctx, Scope, fun() -> application_sender(Conn, Ctx) end);
 resolve_sender_scoped(Conn, Ctx, Input, <<"human">>, Scope) ->
     case maps:get(sender_user_id, Input, undefined) of
         SenderExt when is_binary(SenderExt), SenderExt =/= <<>> ->
@@ -218,11 +218,18 @@ scope_gate(Ctx, RequiredScope, Next) ->
 %% application 模式：principal 由 handler 预取放入 Ctx（无绑定时
 %% invalid_request fail-closed——以 Application 名义发消息必须有可展示
 %% 的内部主体；plan-gz §4.3「内部可绑定可信 service-principal user」）。
-application_sender(Ctx) ->
+application_sender(Conn, Ctx) ->
     Principal = maps:get(principal_user_id, Ctx, undefined),
     case is_integer(Principal) andalso Principal > 0 of
         true ->
-            {ok, <<"application">>, Principal};
+            case enterprise_message_repo:find_active_principal_tx(Conn, Principal) of
+                {ok, Principal} ->
+                    {ok, <<"application">>, Principal};
+                {error, not_found} ->
+                    {error, {<<"invalid_request">>, application_principal_inactive}};
+                {error, Reason} ->
+                    {error, {<<"internal_error">>, Reason}}
+            end;
         false ->
             {error, {<<"invalid_request">>, application_principal_required}}
     end.

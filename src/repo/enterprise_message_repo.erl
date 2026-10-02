@@ -20,6 +20,7 @@
 %%%
 
 -export([
+    find_active_principal_tx/2,
     insert_direct_tx/6,
     insert_group_tx/6,
     insert_audit_tx/4,
@@ -33,6 +34,17 @@
 %%%===================================================================
 %%% msg_c2c / msg_c2g 服务端明文行
 %%%===================================================================
+
+%% Lock account state through message commit; service/bot account types remain valid.
+-spec find_active_principal_tx(any(), pos_integer()) ->
+    {ok, pos_integer()} | {error, term()}.
+find_active_principal_tx(Conn, UserId) ->
+    Sql = <<"SELECT id FROM \"user\" WHERE id=$1 AND status=1 FOR SHARE">>,
+    case elib_pg:query(Conn, Sql, [UserId]) of
+        {ok, [#{<<"id">> := Id} | _]} -> {ok, Id};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @doc OA 代发 direct 消息（同 tx）：
 %%   FromId —— human 模式=解析后内部 uid；application 模式=principal user

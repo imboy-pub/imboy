@@ -1,0 +1,40 @@
+{
+  "status": "PASS_LOCAL_MESSAGE_AUTHORIZATION_DOMAIN",
+  "base_candidate": "67f38d2d4ab8611b6dd0ea3eaac2922f05a98198",
+  "uncommitted_tested_paths": [
+    "src/logic/enterprise_message_logic.erl",
+    "src/repo/enterprise_message_repo.erl",
+    "test/api/enterprise_message_authorization_http_checks.erl"
+  ],
+  "source_files": [
+    {
+      "path": "src/logic/enterprise_message_logic.erl",
+      "sha256": "7c38f3967899b9e099daff7c098b7409b4ebb19acc6118852383fd84ad96a70a"
+    },
+    {
+      "path": "src/repo/enterprise_message_repo.erl",
+      "sha256": "00d4c48ea0eb05bfeb8101b8897af9acb02c2a59548e32bfd3eb71d1f5aad375"
+    },
+    {
+      "path": "test/api/enterprise_message_authorization_http_checks.erl",
+      "sha256": "25e7394194f61aa30966d8bf3e8f8e644a34df5075a7fac2e210e0c89ac3ccf2"
+    }
+  ],
+  "source_binding_verified": true,
+  "compiled_beams_verified": true,
+  "passed": 98,
+  "failed": 0,
+  "exit": 0,
+  "fixture_run": "/tmp/imboy-seat-http.KfkCi4",
+  "log_sha256": "d7f14a962e56d973dc2dba1819a5340600f875dd6f66a794d739beb58d9f9e9b",
+  "command": "IMBOY_DEPS_ROOT=<existing frozen dependencies> bash /tmp/gz-message-auth-backend.sh",
+  "http_message_requests": 20,
+  "positive_with_row_oracles": 8,
+  "inactive_sender_rejections": 4,
+  "foreign_attachment_rejections": 8,
+  "service_account_compatible": true,
+  "six_business_tables_unchanged_on_denial": true,
+  "object_bytes_verified": false,
+  "whole_goal_complete": false,
+  "review": "APPROVE"
+}
