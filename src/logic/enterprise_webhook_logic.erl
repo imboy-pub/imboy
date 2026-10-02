@@ -231,7 +231,7 @@ lower_hex(Bin) ->
 
 %% @doc 配置本 Application endpoint + 订阅（upsert）。
 %% Input（atom 键）：
-%%   url      必填 binary（HTTPS；SSRF guard 即时校验——DNS 解析私网/保留段拒）
+%%   url      必填 binary（生产 HTTPS；guard 仅在 local/dev/test 允许 HTTP loopback）
 %%   events   必填 [binary]（⊆ 事件白名单；空列表 = 只停用订阅）
 %%   status   可填 enabled | disabled（缺省 enabled）
 %%   rotate   可填 boolean（true = 轮换 secret，响应返回新明文一次）
@@ -1230,7 +1230,8 @@ application_of(Conn, Ctx, Principal) ->
         Conn, maps:get(organization_id, Ctx), Principal
     ).
 
-valid_url(<<"https://", _/binary>> = Url) ->
+%% 协议、主机与 IP 统一交给 configure_tx 中的 SSRF guard；此处只限制输入大小。
+valid_url(Url) when is_binary(Url) ->
     byte_size(Url) =< 2048;
 valid_url(_) ->
     false.

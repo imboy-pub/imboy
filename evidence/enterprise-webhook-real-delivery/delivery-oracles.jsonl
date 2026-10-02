@@ -1,0 +1,3 @@
+{"status":"success","scenario":"retry","attempts":[{"attempt_no":1,"error_trunc":"","http_status":500,"latency_ms":1,"status_class":"5xx"},{"attempt_no":2,"error_trunc":"","http_status":200,"latency_ms":1,"status_class":"2xx"}],"attempt_count":2,"hmac_verified":true,"receiver_count":2}
+{"status":"dead","scenario":"dead","attempts":[{"attempt_no":1,"error_trunc":"","http_status":410,"latency_ms":0,"status_class":"4xx"}],"attempt_count":1,"hmac_verified":true,"receiver_count":1}
+{"status":"retry","scenario":"timeout","attempts":[{"attempt_no":1,"error_trunc":"{recv,timeout}","http_status":null,"latency_ms":1001,"status_class":"error"}],"attempt_count":1,"hmac_verified":true,"receiver_count":1}

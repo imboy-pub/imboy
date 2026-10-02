@@ -1,0 +1,32 @@
+{
+  "status": "PASS_SCOPED",
+  "base_candidate": "a20705318234513866e7f5ea6f47f241bd49c12e",
+  "sources": {
+    "src/logic/enterprise_webhook_logic.erl": "0347dbbdef2a9f4e4888da413bd60088d57f3bd9ab50d7192f1f2a04280226b3",
+    "test/api/enterprise_webhook_delivery_http_checks.erl": "81e32504c61ee0afbd5726f88f3e5dfac8cfce584db2f3182054fd3bc8609e72",
+    "test/logic/enterprise_webhook_transport_tests.erl": "a65ce7da2510099b967e1effd5b842556de8e9781092e763b602dff40f1eaa30"
+  },
+  "actual_run": "/tmp/imboy-webhook-delivery.47EexY",
+  "real_http_exit": 0,
+  "focused_eunit_passed": 13,
+  "auth_dns_guard_sender_writers_mocked": false,
+  "review": "APPROVE",
+  "coverage": [
+    "production loopback config denied 400 invalid_request and unchanged row",
+    "test profile loopback permitted by existing guard",
+    "actual HMAC body and timestamps",
+    "500 retry 5 seconds then 200",
+    "410 permanent dead with no resend",
+    "real receive timeout audit and retry"
+  ],
+  "customer_oa_verified": false,
+  "public_tls_verified": false,
+  "business_event_trigger_verified": false,
+  "retry_exhaustion_verified": false,
+  "whole_goal_complete": false,
+  "artifacts": {
+    "real-http.txt": "0b1532e4c19282d0b7c6323e0eb73968a744f2778a3bf8616c018d822b91a0ec",
+    "focused-green.txt": "9bc3771bb83606e0b40ae192ee1ff2d94d8d57a5a4dc1f329694b25fa666676c",
+    "delivery-oracles.jsonl": "1072bc7749e727b354d96ce9174d189fc80a4622838f15a474f2c277b977ce30"
+  }
+}
