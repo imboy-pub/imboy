@@ -178,7 +178,12 @@ download_file(FileId, CurrentUid) ->
 delete_file(FileId, CurrentUid) ->
     % 1. 查询文件信息
     case group_file_repo:find_by_id(FileId) of
-        #{<<"id">> := _, <<"group_id">> := Gid, <<"status">> := 1, <<"uploader_id">> := UploaderId} ->
+        #{
+            <<"id">> := StoredFileId,
+            <<"group_id">> := Gid,
+            <<"status">> := 1,
+            <<"uploader_id">> := UploaderId
+        } ->
             % 2. 验证权限（上传者或管理员）
             case authorize_delete(CurrentUid, UploaderId, Gid) of
                 {ok, true} ->
@@ -188,7 +193,7 @@ delete_file(FileId, CurrentUid) ->
                             ok = workspace_guard:abort_on_error(
                                 attachment_ds:ensure_upload_scope_tx(Conn, {group, Gid}, CurrentUid)
                             ),
-                            group_file_repo:soft_delete_tx(Conn, FileId)
+                            group_file_repo:soft_delete_tx(Conn, StoredFileId)
                         end)
                     of
                         {ok, _AffectedRows} ->

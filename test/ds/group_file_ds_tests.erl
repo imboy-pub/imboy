@@ -291,27 +291,33 @@ download_file_not_found_test_() ->
 
 delete_file_as_uploader_test_() ->
     with_scope(fun() ->
-        FileId = 1,
+        FileId = 115787467376035840,
         CurrentUid = 100,
 
         meck:new(group_file_repo, [passthrough]),
         meck:expect(group_file_repo, find_by_id, fun(_) ->
-            #{<<"status">> => 1, <<"id">> => 1, <<"group_id">> => 1, <<"uploader_id">> => 100}
+            #{<<"status">> => 1, <<"id">> => FileId, <<"group_id">> => 1, <<"uploader_id">> => 100}
         end),
-        meck:expect(group_file_repo, soft_delete_tx, fun(_Conn, _) -> {ok, 1} end),
+        meck:expect(group_file_repo, soft_delete_tx, fun(_Conn, Id) ->
+            ?assertEqual(FileId, Id),
+            {ok, 1}
+        end),
         %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
         meck:new(workspace_resolver, [passthrough]),
         meck:expect(workspace_resolver, resolve_workspace, fun(_Target) -> personal end),
         meck:new(elib_pg, [passthrough]),
         meck:expect(elib_pg, with_tx, fun(F) -> F(fake_conn) end),
 
-        Result = group_file_ds:delete_file(FileId, CurrentUid),
+        Results = [
+            group_file_ds:delete_file(Id, CurrentUid)
+         || Id <- [FileId, integer_to_binary(FileId)]
+        ],
 
         meck:unload(elib_pg),
         meck:unload(workspace_resolver),
         meck:unload(group_file_repo),
 
-        ?assertMatch(ok, Result)
+        ?assertEqual([ok, ok], Results)
     end).
 
 delete_file_as_admin_test_() ->
