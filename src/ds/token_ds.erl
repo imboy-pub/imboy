@@ -4,7 +4,7 @@
 % token_ds 是 token domain service 缩写
 %%%
 
--export([encrypt_token/1, encrypt_token/2]).
+-export([encrypt_token/1, encrypt_token/2, encrypt_seat_token/2]).
 -export([encrypt_refreshtoken/1, encrypt_refreshtoken/2]).
 -export([decrypt_token/1]).
 
@@ -42,6 +42,11 @@ encrypt_token(ID) ->
 -spec encrypt_token(integer() | binary(), binary()) -> binary().
 encrypt_token(ID, Did) ->
     do_encrypt_token(ID, Did, ?TOKEN_VALID, <<"tk">>).
+
+%% @doc 坐席控制台专用凭证，不签发无设备绑定的 legacy 形态。
+-spec encrypt_seat_token(pos_integer(), binary()) -> binary().
+encrypt_seat_token(ID, Did) when is_integer(ID), ID > 0, is_binary(Did), Did =/= <<>> ->
+    do_encrypt_token(ID, Did, ?TOKEN_VALID, <<"seat_tk">>).
 
 %% @doc 解析token
 %% 验证并解析JWT token，提取用户ID、过期时间和主题信息。

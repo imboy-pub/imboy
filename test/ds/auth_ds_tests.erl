@@ -247,6 +247,96 @@ verify_token_with_wrong_purpose_test_() ->
         end
     ).
 
+%% 使用真实签发/验签，凭证用途不能用角色或同一 UID 替代。
+seat_token_purpose_isolation_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [{'env', 2, fun(jwt_key, _) -> <<"unit-seat-purpose-key">> end}]},
+            {user_device_ds, [{'is_active', 2, fun(123, <<"seat-device">>) -> true end}]},
+            {auth_session_ds, [
+                {'current_epoch', 1, fun(123) -> {ok, 2} end},
+                {'revoked', 2, fun(123, 2) -> false end}
+            ]}
+        ],
+        fun() ->
+            Seat = token_ds:encrypt_seat_token(123, <<"seat-device">>),
+            Human = token_ds:encrypt_token(123, <<"seat-device">>),
+            Legacy = token_ds:encrypt_token(123),
+            ?assertMatch(
+                {ok, 123, _, <<"seat_tk">>, <<"seat-device">>, 2},
+                token_ds:decrypt_token(Seat)
+            ),
+            ?assertEqual({ok, 123, <<"seat-device">>}, auth_ds:verify_seat_token(Seat)),
+            ?assertEqual({ok, 123, <<"seat-device">>}, auth_ds:verify_token(Human)),
+            ?assertEqual({ok, 123, <<>>}, auth_ds:verify_token(Legacy)),
+            ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_token(Seat)),
+            ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(Human)),
+            ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(Legacy)),
+            Refresh = token_ds:encrypt_refreshtoken(123, <<"seat-device">>),
+            ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(Refresh)),
+            ?assertError(function_clause, token_ds:encrypt_seat_token(123, <<>>))
+        end
+    ).
+
+seat_token_requires_device_epoch_and_expiry_test_() ->
+    ?WITH_MECK(
+        config_ds,
+        [{'env', 2, fun(jwt_key, _) -> <<"unit-seat-purpose-key">> end}],
+        fun() ->
+            lists:foreach(
+                fun({Uid, Did, Ep}) ->
+                    ?assertMatch(
+                        {error, ?ERR_TOKEN_INVALID, _},
+                        auth_ds:verify_seat_token(signed_seat_token(Uid, Did, Ep, 2000000000))
+                    )
+                end,
+                [
+                    {123, <<>>, 2},
+                    {123, <<"seat-device">>, undefined},
+                    {123, <<"seat-device">>, 0},
+                    {123, <<"seat-device">>, <<"2">>},
+                    {0, <<"seat-device">>, 2},
+                    {-1, <<"seat-device">>, 2}
+                ]
+            ),
+            ?assertMatch(
+                {error, ?ERR_TOKEN_EXPIRED_REFRESHABLE, _},
+                auth_ds:verify_seat_token(signed_seat_token(123, <<"seat-device">>, 2, 1))
+            )
+        end
+    ).
+
+seat_token_device_and_epoch_revocation_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [{'env', 2, fun(jwt_key, _) -> <<"unit-seat-purpose-key">> end}]},
+            {user_device_ds, [{'is_active', 2, fun(123, <<"seat-device">>) -> false end}]},
+            {auth_session_ds, [{'revoked', 2, fun(123, 2) -> true end}]}
+        ],
+        fun() ->
+            Seat = signed_seat_token(123, <<"seat-device">>, 2, 2000000000),
+            ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(Seat)),
+            meck:expect(user_device_ds, is_active, fun(123, <<"seat-device">>) -> true end),
+            ?assertMatch({error, ?ERR_TOKEN_INVALID, _}, auth_ds:verify_seat_token(Seat)),
+            meck:expect(auth_session_ds, revoked, fun(123, 2) -> false end),
+            ?assertEqual({ok, 123, <<"seat-device">>}, auth_ds:verify_seat_token(Seat))
+        end
+    ).
+
+signed_seat_token(Uid, Did, Ep, Exp) ->
+    Payload = #{
+        <<"uid">> => Uid,
+        <<"sub">> => <<"seat_tk">>,
+        <<"did">> => Did,
+        <<"exp">> => Exp
+    },
+    WithEpoch =
+        case Ep of
+            undefined -> Payload;
+            _ -> Payload#{<<"ep">> => Ep}
+        end,
+    imboy_jwt:sign(WithEpoch, <<"unit-seat-purpose-key">>).
+
 parse_authorization_header_with_bearer_prefix_test() ->
     ?assertEqual(<<"token123">>, auth_ds:parse_authorization_header(<<"Bearer token123">>)),
     ?assertEqual(<<"raw">>, auth_ds:parse_authorization_header(<<"raw">>)).

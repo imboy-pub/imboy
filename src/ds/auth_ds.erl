@@ -13,7 +13,7 @@
 %% 认证相关导出函数
 -export([verify_sign/2]).
 -export([do_verify_sign/4]).
--export([verify_token/1]).
+-export([verify_token/1, verify_seat_token/1]).
 -export([parse_authorization_header/1]).
 -export([remove_last_forward_slash/1]).
 -export([strip_version_prefix/2]).
@@ -101,33 +101,54 @@ constant_time_equals(_, _) ->
 -spec verify_token(binary()) ->
     {ok, integer(), binary()} | {error, integer(), binary()}.
 verify_token(Authorization) ->
+    verify_token(Authorization, <<"tk">>).
+
+%% @doc 坐席凭证仅接受 seat_tk，且必须绑定有效设备与会话 epoch。
+-spec verify_seat_token(binary()) ->
+    {ok, integer(), binary()} | {error, integer(), binary()}.
+verify_seat_token(Authorization) ->
+    verify_token(Authorization, <<"seat_tk">>).
+
+verify_token(Authorization, Purpose) ->
     Token = parse_authorization_header(Authorization),
     case token_ds:decrypt_token(Token) of
-        %% did 为空的 legacy token：没有设备身份可比对，原样放行。
-        %% 这是"零全端登出"的关键——存量 token 不受设备吊销影响。
-        {ok, Id, _ExpireDAt, <<"tk">>, <<>>, _Ep} when is_integer(Id) ->
+        %% 仅个人域保留存量无设备绑定 token 的兼容行为。
+        {ok, Id, _ExpireDAt, <<"tk">>, <<>>, _Ep} when
+            Purpose =:= <<"tk">>, is_integer(Id)
+        ->
             {ok, Id, <<>>};
-        {ok, Id, _ExpireDAt, <<"tk">>, Did, Ep} when is_integer(Id) ->
-            %% 设备已被移除（user_device 行不在）→ token 立即失效，401 强制重登。
-            case user_device_ds:is_active(Id, Did) of
-                true ->
-                    %% Task 10 / LT-04：会话 epoch 共享校验（改密/禁用/全端登出
-                    %% bump 后立即失效；未知状态 fail-closed）。
-                    case auth_session_ds:revoked(Id, Ep) of
-                        true ->
-                            {error, ?ERR_TOKEN_INVALID, <<"会话已吊销，请重新登录"/utf8>>};
-                        false ->
-                            {ok, Id, Did}
-                    end;
-                false ->
-                    {error, ?ERR_TOKEN_INVALID, <<"设备已被移除，请重新登录"/utf8>>}
-            end;
-        {ok, _Id, _ExpireDAt, <<"rtk">>, _Did, _Ep} ->
+        {ok, Id, _ExpireDAt, <<"tk">>, Did, Ep} when
+            Purpose =:= <<"tk">>, is_integer(Id)
+        ->
+            verify_bound_token(Id, Did, Ep);
+        {ok, Id, _ExpireDAt, <<"seat_tk">>, Did, Ep} when
+            Purpose =:= <<"seat_tk">>,
+            is_integer(Id),
+            Id > 0,
+            Did =/= <<>>,
+            is_integer(Ep),
+            Ep >= 1
+        ->
+            verify_bound_token(Id, Did, Ep);
+        {ok, _Id, _ExpireDAt, <<"rtk">>, _Did, _Ep} when Purpose =:= <<"tk">> ->
             {error, ?ERR_TOKEN_REFRESH_NOT_ALLOWED, <<"TOKEN REFRESH NOT ALLOWED"/utf8>>};
         {ok, _Id, _ExpireDAt, _Sub, _Did, _Ep} ->
             {error, ?ERR_TOKEN_INVALID, <<"TOKEN PURPOSE NOT ALLOWED">>};
         {error, Code, Msg, _Map} ->
             {error, Code, Msg}
+    end.
+
+verify_bound_token(Id, Did, Ep) ->
+    case user_device_ds:is_active(Id, Did) of
+        true ->
+            case auth_session_ds:revoked(Id, Ep) of
+                true ->
+                    {error, ?ERR_TOKEN_INVALID, <<"会话已吊销，请重新登录"/utf8>>};
+                false ->
+                    {ok, Id, Did}
+            end;
+        false ->
+            {error, ?ERR_TOKEN_INVALID, <<"设备已被移除，请重新登录"/utf8>>}
     end.
 
 %% @doc 解析 Authorization 头
