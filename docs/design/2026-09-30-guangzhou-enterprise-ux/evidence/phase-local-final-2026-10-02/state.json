@@ -1,0 +1,18 @@
+{
+  "status": "COMPLETE_PHASE_LOCAL_CANDIDATE",
+  "required_parents": 30,
+  "required_internal_children": 42,
+  "parent_pass": 30,
+  "pending": [],
+  "heads": {
+    "backend": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+    "app": "d868815b8cf715ae3471fcc76c3ec691548a002b",
+    "admin": "9a808bec600acc06dd7e93ed89feafbeaea3ed60"
+  },
+  "plan_sha256": "cdea98af48cbf74e6b60e5da3634c2f7623873cebb6e9585fa48bc36a147097c",
+  "whole_goal_complete": false,
+  "production_verified": false,
+  "phase_local_complete": true,
+  "whole_goal_limit": "Historical full customer/production release goal remains PARTIAL; user-approved phase implementation and local acceptance complete",
+  "independent_review": "APPROVE"
+}

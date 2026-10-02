@@ -1,0 +1,22 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "59587a2c4b0efa9ebb90eb7fbd0d1d426b2cbb57abe366d90f62741efb7fe1c2"
+  },
+  {
+    "path": "domain-green.txt",
+    "sha256": "34dcf758bd16e231e31f869d405ca4eb16ba87ad1b6c01556505741189076d59"
+  },
+  {
+    "path": "result.json",
+    "sha256": "5ec7cba9078c45fcc245971476e991b98eda0d06affb8a7cfb237c9c7b67313c"
+  },
+  {
+    "path": "runner.sh.txt",
+    "sha256": "e3c522224db323e6e69e838a1b1e0dc03b06d1a8bef7afa43fcd64eac29dc5f4"
+  },
+  {
+    "path": "source-binding.json",
+    "sha256": "da289dfa7f1123d51aa9ff94724b33c2bf8fa535318b0b61a5c49897a88dca81"
+  }
+]

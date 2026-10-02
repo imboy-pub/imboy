@@ -1,0 +1,35 @@
+{
+  "status": "PASS_LOCAL_NATIVE_OA_BACK_NAVIGATION",
+  "app_head": "3ea39dfd9bd62c8c05c185e2dac638fad0c558e5",
+  "backend_head": "c6e3a5b10c56d89eb847e926795c54cdafd4bd53",
+  "native_terminal": {
+    "exit": 0,
+    "elapsed_seconds": 168.8,
+    "run": "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-native-oa-sso-ouxbqrex",
+    "status": "PASS_NATIVE_OA_SSO",
+    "native_pass": true,
+    "backend_exit": 0,
+    "source_and_cleanup_unchanged": true,
+    "runner_log_sha256": "a4803111b02d77fdd895996649868f166f50a4b9507b284b652b074fa890ec32",
+    "production_ready": false
+  },
+  "oracle_sha256": {
+    "__digest_map_v1__": [
+      [
+        "7d105d567bcca480361b3ebde41fca52fb0ab6873f5cb08565029b6172920d50",
+        "oa"
+      ],
+      [
+        "c5718fb2de4699da4f1febadcab47d09a3701d4f479f451ac61777445077dccb",
+        "leave"
+      ]
+    ]
+  },
+  "foreign_paths_preserved": 9,
+  "offline_tested_lib_and_test_sources_unchanged": true,
+  "return_to_workbench_gesture_verified": true,
+  "native_webview_removed_after_return": true,
+  "scope": "physical Android gzCustomer isolated package and synthetic OA; not iOS, standard package or customer OA",
+  "production_ready": false,
+  "independent_agent_review_performed": false
+}

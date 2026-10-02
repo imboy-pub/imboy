@@ -1,0 +1,78 @@
+{
+  "status": "PASS_LOCAL_DOMAIN_INTERNAL_AND_SEAT_CONTRACT",
+  "candidate": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+  "reviewer": "seat_predicate_review",
+  "first_full_passed": 10788,
+  "second_frozen_full_pending": true,
+  "evidence": {
+    "CS-03": [
+      {
+        "path": "/tmp/gz-current-customer-service-source-qualification.json",
+        "sha256": "38ce89b01d61c3efe24347e01199c9b98bd622a2f913e096ec22ed01036d6423"
+      },
+      {
+        "path": "/tmp/gz-current-widget-seat-artifact-source-qualification.json",
+        "sha256": "c6a72c82ce9c591cfa2ec3ce8bcb4900896f9288290bf2adc8145ddc4caa6b50"
+      }
+    ],
+    "INT-A01": [
+      {
+        "path": "/tmp/gz-current-083901-first-internal-record-qualification.json",
+        "sha256": "539d260c04e9ccab41fc8de9d0d701cf5897a4fcb4c5272f414a8907f0c851c4"
+      }
+    ],
+    "INT-A02": [
+      {
+        "path": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/evidence/cursor-domain-real-http-2026-10-02/result.json",
+        "sha256": "5ec7cba9078c45fcc245971476e991b98eda0d06affb8a7cfb237c9c7b67313c"
+      }
+    ],
+    "INT-A03": [
+      {
+        "path": "/tmp/gz-current-083901-manifest-qualification.json",
+        "sha256": "c4a5697463efb62055a2cbce1f5209567fd0c1e01aed35cd6b56effa8be70f48"
+      },
+      {
+        "path": "/tmp/gz-current-083901-postman-qualification.json",
+        "sha256": "eb8af5a09dc6cda25491096ffcdef9e74943c2f9c6aa2440a1a72401c33484c9"
+      },
+      {
+        "path": "/tmp/gz-current-083901-first-internal-record-qualification.json",
+        "sha256": "539d260c04e9ccab41fc8de9d0d701cf5897a4fcb4c5272f414a8907f0c851c4"
+      }
+    ],
+    "INT-B01": [
+      {
+        "path": "/tmp/gz-current-083901-first-internal-record-qualification.json",
+        "sha256": "539d260c04e9ccab41fc8de9d0d701cf5897a4fcb4c5272f414a8907f0c851c4"
+      },
+      {
+        "path": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/internal-file-real-garage/manifest.json",
+        "sha256": "b25a08129e64de9cebeac80ce72175ad95da516d244304649165747dd77fa9ce"
+      },
+      {
+        "path": "/tmp/gz-oa02-current-source-qualification.json",
+        "sha256": "bd3343c11828663a65d02f1243668e9a9de050cc0b0d91655d4acb231a0d3e22"
+      }
+    ],
+    "INT-B02": [
+      {
+        "path": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/evidence/message-sender-authorization-2026-10-02/result.json",
+        "sha256": "6227537d6510126d397689a681d1aa798d3ffadc6bfa85f5eccb6d87af661c42"
+      }
+    ],
+    "INT-B03": [
+      {
+        "path": "/tmp/gz-current-083901-webhook-source-qualification.json",
+        "sha256": "e1b2717cf45aaf71ce9adf8b3dedd37fdd98c151ad44b2ea7c6a66faa35eeb56"
+      }
+    ]
+  },
+  "limits": [
+    "176 negatives are Grant matrix, not42 cross-Org matrix",
+    "real Garage fixture supplements HEAD stub in ordinary conformance",
+    "real loopback HMAC delivery supplements DNS substitution",
+    "no public TLS or customer OA claimed",
+    "overall full pair pending"
+  ]
+}

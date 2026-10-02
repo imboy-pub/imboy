@@ -1,0 +1,84 @@
+{
+  "status": "PASS_ADMIN_SOURCE_QUALIFIED_LOCAL",
+  "tested_candidate": "6fd5b53019c0f85b4067d261a91146a747d773dc",
+  "current_candidate": "9a808bec600acc06dd7e93ed89feafbeaea3ed60",
+  "evidence": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-admin/docs/qa/evidence/admin-local-gates-2026-10-02/result.json",
+  "source_inputs": 915,
+  "backend_artifact_inputs": 3,
+  "source_mismatches": [],
+  "artifact_mismatches": [],
+  "commands": [
+    {
+      "command": [
+        "bun",
+        "run",
+        "test"
+      ],
+      "exit_code": 0,
+      "log": "gate-0.txt",
+      "original_log_sha256": "c96ed47ea7edd2a9b26666742212ccf8ca9a37589643c624581df96a75bdee48",
+      "filtered_log_sha256": "43adf63d1c30cebc8b76a3dd312e9b29659130b9d0a9d65456535e8489a1471c"
+    },
+    {
+      "command": [
+        "bun",
+        "run",
+        "lint"
+      ],
+      "exit_code": 0,
+      "log": "gate-1.txt",
+      "original_log_sha256": "050c69da23536758722729aeda55a8d0fb9d557495ef6d33d70873a3b64a71c1",
+      "filtered_log_sha256": "050c69da23536758722729aeda55a8d0fb9d557495ef6d33d70873a3b64a71c1"
+    },
+    {
+      "command": [
+        "bun",
+        "run",
+        "build"
+      ],
+      "exit_code": 0,
+      "log": "gate-2.txt",
+      "original_log_sha256": "1f75236d1ba036fde3fe4e8f4cabe96457adf79d9090769c20f9b696afa2a9fe",
+      "filtered_log_sha256": "b1ef1685d9d0a395a346bec6a7933a169e8fe7e7717ca847a9119f71900cede0"
+    },
+    {
+      "command": [
+        "bun",
+        "run",
+        "build:widget"
+      ],
+      "exit_code": 0,
+      "log": "gate-3.txt",
+      "original_log_sha256": "53ee044d0b90e726ad93cb33332bcde1516c405d5cc759d79f16d59161b4f4fe",
+      "filtered_log_sha256": "a49235e0be1654b19e7038f5c02692dc253a1a7083e736a2610fdf34f1da5f54"
+    },
+    {
+      "command": [
+        "bun",
+        "run",
+        "verify:widget"
+      ],
+      "exit_code": 0,
+      "log": "gate-4.txt",
+      "original_log_sha256": "0219d4ac14b3555be75669bea003e32f604f6d211a855f673d2005a9f5c9121c",
+      "filtered_log_sha256": "a90074cb16573a528ad5d29708019e9932b64751b14df6cf5d63080b89369b7a"
+    },
+    {
+      "command": [
+        "bun",
+        "run",
+        "verify:widget-pairing"
+      ],
+      "exit_code": 0,
+      "log": "gate-5.txt",
+      "original_log_sha256": "9ff910340c30cb8e36cace4008f71436b2a9798a93a05bede70f5bcfde57ccfb",
+      "filtered_log_sha256": "474b11793dc8c4493719cca838bb1acb8e1d9e92ce5e5bb1fbdaebfcc8d3d993"
+    }
+  ],
+  "unit_test_counts": {
+    "pass": 2385,
+    "fail": 0
+  },
+  "browser_e2e_proven": false,
+  "whole_goal_complete": false
+}

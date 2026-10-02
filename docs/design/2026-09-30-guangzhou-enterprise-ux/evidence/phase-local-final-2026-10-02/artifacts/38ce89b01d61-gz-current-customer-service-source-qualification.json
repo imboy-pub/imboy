@@ -1,0 +1,212 @@
+{
+  "status": "PASS_CURRENT_CS01_CS02_AND_AUTH_ARTIFACT_SCOPE",
+  "current_backend": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+  "current_admin": "9a808bec600acc06dd7e93ed89feafbeaea3ed60",
+  "source_qualification": [
+    {
+      "path": "src/api/auth_middleware_api_v1.erl",
+      "current_sha256": "86f1271280ac9ff72fd9a82ae1ff20f57f064405e4ae9f42b4411533ee0e429e",
+      "same_as_actual_browser_run": true
+    },
+    {
+      "path": "src/api/auth_middleware.erl",
+      "current_sha256": "c4ab8390d8081d3567168b12b6050e8c76096d00b1e58945cea690cba192e71e",
+      "same_as_actual_browser_run": true
+    },
+    {
+      "path": "src/api/qr_login_handler.erl",
+      "current_sha256": "4000567696ccb1978f41af17ee10d8a4a92f5a2467279a792d515a19391fcaf7",
+      "same_as_actual_browser_run": true
+    },
+    {
+      "path": "src/ds/auth_ds.erl",
+      "current_sha256": "a66ea60389764c01b502eaabaf80e7f6ac04adf7b9a835c17ef2019179a38a76",
+      "same_as_actual_browser_run": true
+    },
+    {
+      "path": "src/ds/token_ds.erl",
+      "current_sha256": "54bbf2e5bfcbd76c2f68eaf9b084d0eb915bec8547a6ab60a7a1168731f1be37",
+      "same_as_actual_browser_run": true
+    },
+    {
+      "path": "src/imboy_router.erl",
+      "qualification": "only Human group-read route added; seat/auth routes unchanged",
+      "current_sha256": "dcd0a3bb1ed7d8a83a84dcdb0e769467e0a63c6ed45018180096a02f3e035189"
+    },
+    {
+      "path": "src/features/enterprise_business/application/auth/eb_auth_app.erl",
+      "current_sha256": "188fe5acf0dc37d7b918ae7bf38130124c222739d7dead5f57070000e3d54573",
+      "same_as_actual_browser_run": true
+    },
+    {
+      "path": "src/features/enterprise_business/application/auth/eb_auth_principal.erl",
+      "current_sha256": "438f626448bf507e321ae7d5e25557ed4624045df7ec78fb2c1ee61efc1b61a2",
+      "same_as_actual_browser_run": true
+    },
+    {
+      "path": "src/features/enterprise_business/interfaces/eb_enterprise_http.erl",
+      "current_sha256": "cf6e0f4a88ccbf4790e11595d7da57df0956f4f984d6a11ec6da6ef43946e644",
+      "same_as_actual_browser_run": true
+    },
+    {
+      "path": "test/api/customer_service_auth_domains_http_checks.erl",
+      "current_sha256": "e755020714a23a3b72933898a3a077e842881a213d4bc434892d15ac75394880",
+      "same_as_actual_browser_run": true
+    },
+    {
+      "path": "test/api/customer_service_browser_fixture.erl",
+      "current_sha256": "21bcd0cf8a067e7a33e4a4c06e477a1957b094d2c5a1106b3f0e170ef9754181",
+      "same_as_actual_browser_run": true
+    },
+    {
+      "path": "imboyadmin/scripts/test/customer-service-browser-journey.mjs",
+      "current_sha256": "16e4ee6deded37f0b47ddef659297f8ab34fd52abf90f5710888790e0d3b1238",
+      "same_as_actual_browser_run": true
+    }
+  ],
+  "browser_manifest": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/seat-purpose-real-http-browser/manifest.json",
+  "browser_manifest_sha256": "0da916551faf44bc70bff5707ba53aadd4ab2a7b247df4a202b3d072b28d9930",
+  "browser_artifacts_verified": true,
+  "browser_bundles_verified": [
+    {
+      "path": "dist-widget/assets/cs-seat-_XZfiGXM.css",
+      "current_sha256": "2547f6557d7b01beca9cc5b21660f1a83a167a15f1281c5f5acbfe05bbfd7a79",
+      "actual_browser_bundle_same": true
+    },
+    {
+      "path": "dist-widget/assets/cs-seat-_YwnT7Em.js",
+      "current_sha256": "be0aaec26f45a3815671ce75852f2270943488c8ec0dc961fd9f706c1b766e3d",
+      "actual_browser_bundle_same": true
+    },
+    {
+      "path": "dist-widget/assets/cs-widget-Bg_2DNCm.js",
+      "current_sha256": "36cdff7ec71000f8652f5610b009177c4224babf4969c3a18280b31e4b66d6af",
+      "actual_browser_bundle_same": true
+    },
+    {
+      "path": "dist-widget/loader.js",
+      "current_sha256": "330f6c6cb9b2fe3772a35d3b3b48a0b0b2b903bcb1892f69df827074d4ecfac4",
+      "actual_browser_bundle_same": true
+    },
+    {
+      "path": "dist-widget/seat/index.html",
+      "current_sha256": "1ab6b9a17ae4c7d046910ecd55d28956346f7b6396f098018cac053c860e1c66",
+      "actual_browser_bundle_same": true
+    },
+    {
+      "path": "dist-widget/seat-assets/cs-seat.v1.css",
+      "current_sha256": "2547f6557d7b01beca9cc5b21660f1a83a167a15f1281c5f5acbfe05bbfd7a79",
+      "actual_browser_bundle_same": true
+    },
+    {
+      "path": "dist-widget/seat-assets/cs-seat.v1.js",
+      "current_sha256": "be0aaec26f45a3815671ce75852f2270943488c8ec0dc961fd9f706c1b766e3d",
+      "actual_browser_bundle_same": true
+    },
+    {
+      "path": "dist-widget/widget/index.html",
+      "current_sha256": "fdb75eae07bf3f83c9e891f791a8ef866867f1daa3c0a6065fd7b52f21ec67b2",
+      "actual_browser_bundle_same": true
+    },
+    {
+      "path": "dist-widget/widget-assets/cs-widget.v2.js",
+      "current_sha256": "36cdff7ec71000f8652f5610b009177c4224babf4969c3a18280b31e4b66d6af",
+      "actual_browser_bundle_same": true
+    }
+  ],
+  "version_health_manifest_metadata_current_scan": {
+    "status": "PASS_CURRENT_WIDGET_SEAT_ARTIFACT_SCAN",
+    "candidate": "9a808bec600acc06dd7e93ed89feafbeaea3ed60",
+    "exit_code": 0,
+    "command": [
+      "gitleaks",
+      "dir",
+      "<current owned admin>/dist-widget",
+      "--no-banner",
+      "--redact",
+      "--report-format",
+      "json"
+    ],
+    "frozen_artifacts": {
+      "__digest_map_v1__": [
+        [
+          "2547f6557d7b01beca9cc5b21660f1a83a167a15f1281c5f5acbfe05bbfd7a79",
+          "dist-widget/assets/cs-seat-_XZfiGXM.css"
+        ],
+        [
+          "be0aaec26f45a3815671ce75852f2270943488c8ec0dc961fd9f706c1b766e3d",
+          "dist-widget/assets/cs-seat-_YwnT7Em.js"
+        ],
+        [
+          "36cdff7ec71000f8652f5610b009177c4224babf4969c3a18280b31e4b66d6af",
+          "dist-widget/assets/cs-widget-Bg_2DNCm.js"
+        ],
+        [
+          "44d3774ea493af7df57d67e9dad280dcc753836b44996a4ef4dcee44c0176890",
+          "dist-widget/health.txt"
+        ],
+        [
+          "330f6c6cb9b2fe3772a35d3b3b48a0b0b2b903bcb1892f69df827074d4ecfac4",
+          "dist-widget/loader.js"
+        ],
+        [
+          "de2a6be5389e97538915cb2404d0a406524b220d1c2dbf155da6af8b27a2fc55",
+          "dist-widget/manifest.json"
+        ],
+        [
+          "e2a005ad2c950d1c1020d9637d784168efb8b62347c263443d80ed9b06f898b9",
+          "dist-widget/manifest.sha256"
+        ],
+        [
+          "1ab6b9a17ae4c7d046910ecd55d28956346f7b6396f098018cac053c860e1c66",
+          "dist-widget/seat/index.html"
+        ],
+        [
+          "2547f6557d7b01beca9cc5b21660f1a83a167a15f1281c5f5acbfe05bbfd7a79",
+          "dist-widget/seat-assets/cs-seat.v1.css"
+        ],
+        [
+          "be0aaec26f45a3815671ce75852f2270943488c8ec0dc961fd9f706c1b766e3d",
+          "dist-widget/seat-assets/cs-seat.v1.js"
+        ],
+        [
+          "fdb75eae07bf3f83c9e891f791a8ef866867f1daa3c0a6065fd7b52f21ec67b2",
+          "dist-widget/widget/index.html"
+        ],
+        [
+          "36cdff7ec71000f8652f5610b009177c4224babf4969c3a18280b31e4b66d6af",
+          "dist-widget/widget-assets/cs-widget.v2.js"
+        ]
+      ]
+    },
+    "log_sha256": "9d519c5fa699628f062a2ee19aa3f534880a940d8eebeaa6931e1b7885cd0f05",
+    "scan_report_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "artifact_inputs_unchanged": true,
+    "limitations": "High confidence secret patterns; not exhaustive proof or browser journey",
+    "production_ready": false
+  },
+  "real_journey": [
+    "real QR confirm returns seat_tk; QR purpose seat; subscribe success; no polling",
+    "concurrent claim one 200 and one 409",
+    "bidirectional messages and Garage attachment byte equality",
+    "visitor refresh and seat reconnect no duplicate messages",
+    "transfer old seat asset 403 and current seat 200",
+    "disabled seat send/asset 403 and composer disabled",
+    "restored seat fresh QR login and attachment history",
+    "closed session and rating 5 confirmed in PG"
+  ],
+  "four_auth_domains": {
+    "valid_native_credentials": 4,
+    "cross_domain_401": 12,
+    "production_handlers": true,
+    "auth_mock": false,
+    "human_device_bound": true,
+    "seat_device_bound": true,
+    "admin_cookie_issued_for_existing_synthetic_admin": true,
+    "internal_credential_issued_by_real_application_flow": true,
+    "strict_identity_and_error_oracles": true
+  },
+  "CS03_seat_application_write_matrix": "Waiting current full conformance42/176/25 extraction",
+  "full_goal_complete": false,
+  "production_deployed": false
+}

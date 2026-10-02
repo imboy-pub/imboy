@@ -1,0 +1,161 @@
+{
+  "status": "PASS_CURRENT_ORG01_ORG02_ORG03_DOMAIN",
+  "current_candidate": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+  "source_qualified_real_pg_files": {
+    "__digest_map_v1__": [
+      [
+        "d99a32f2a648b5e2993613bcacd4c52770c45de449f727254d6541dff7e694e6",
+        "src/features/customer_service/infrastructure/cs_preflight_facts_pg.erl"
+      ],
+      [
+        "54e0bcde2900ea50204db7e893506650d8806502d78592a184feb72267b7c9dd",
+        "src/features/enterprise_business/application/offboarding/eb_offboarding_app.erl"
+      ],
+      [
+        "84a32755767bf466c19964050c1b847c988a688ef3da946ae64c34dca491c731",
+        "src/logic/organization_member_logic.erl"
+      ],
+      [
+        "6f69a43da7407ea666b4d2b85558f9eba3a11411d610ca7c3d99321ca0172dfb",
+        "src/lib/organization/application/organization_invite_code_app.erl"
+      ],
+      [
+        "f3f0b59205df92899b76a1e7cfd28fc3f70218ce92ee70be3b5e94bb17d764b7",
+        "src/lib/organization/application/organization_invitation_app.erl"
+      ],
+      [
+        "c249089e683aa2a0f7240dcfe7530d57043dae8fbc3d80c4566f7fa5e19e3976",
+        "src/lib/organization/application/organization_owner_transfer.erl"
+      ],
+      [
+        "9bf9a6be7d795e69c33af63118f051fc07c2510d0201c7515c24b0a16aeb7582",
+        "test/lib/organization/organization_invite_race_pg_checks.erl"
+      ],
+      [
+        "9f6435e9e5e648801385a4ab968c793d80ddbbdf97ab2dd02a39aa8398560148",
+        "test/lib/organization/organization_membership_journey_pg_checks.erl"
+      ],
+      [
+        "6ad81ebee82b2d7e0652a6c76934674359229f2bf0c8abcd0d1cbaa866027c63",
+        "test/features/customer_service/infrastructure/cs_preflight_facts_pg_tests.erl"
+      ],
+      [
+        "74c7cda1cf48ded09a2a3aa4daf880694146658c9f1e8712aabf2c7e4180b47e",
+        "test/features/enterprise_business/application/offboarding/eb_offboarding_app_tests.erl"
+      ],
+      [
+        "370de9c56af7ce057d58341e404cd049be6d19f002cda1c5ae18fe2e12b6f76a",
+        "test/lib/organization/organization_department_pg_tests.erl"
+      ]
+    ]
+  },
+  "qualified_manifests": [
+    {
+      "manifest": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/organization-owner-production/manifest.json",
+      "manifest_sha256": "8aba70ed480495c93a43447c0596defd85ba817371101e2a754459b2197b2b1c",
+      "source_same": [
+        "src/logic/organization_owner_activation_logic.erl",
+        "src/logic/organization_logic.erl",
+        "src/logic/organization_member_logic.erl",
+        "src/logic/organization_admin_logic.erl",
+        "src/adm/adm_organization_handler.erl",
+        "src/lib/organization/application/organization_deletion_preflight.erl",
+        "src/lib/organization/application/organization_resource_authority.erl",
+        "src/lib/organization/application/organization_agent_membership_app.erl",
+        "src/lib/organization/application/organization_default_workspace_app.erl",
+        "src/lib/organization/application/organization_invite_code_app.erl",
+        "src/lib/organization/application/organization_agent_facts_app.erl",
+        "src/lib/organization/application/organization_invitation_notify.erl",
+        "src/lib/organization/application/organization_lifecycle.erl",
+        "src/lib/organization/application/organization_workspace_access.erl",
+        "src/lib/organization/application/organization_join_orchestrator.erl",
+        "src/lib/organization/application/organization_directory_app.erl",
+        "src/lib/organization/application/organization_invitation_app.erl",
+        "src/lib/organization/application/organization_owner_transfer.erl",
+        "src/lib/organization/infrastructure/organization_agent_facts_pg.erl",
+        "src/lib/organization/infrastructure/organization_owner_store.erl",
+        "src/lib/organization/infrastructure/organization_directory_pg.erl",
+        "src/lib/organization/infrastructure/organization_preflight_facts_pg.erl",
+        "src/lib/organization/infrastructure/organization_lifecycle_pg.erl",
+        "src/lib/organization/infrastructure/organization_default_workspace_pg.erl",
+        "src/lib/organization/infrastructure/organization_invitation_pg.erl",
+        "src/lib/organization/infrastructure/organization_agent_membership_pg.erl",
+        "src/lib/organization/infrastructure/organization_invite_code_pg.erl",
+        "src/lib/organization/infrastructure/organization_department_pg.erl",
+        "src/lib/organization/domain/organization_default_workspace.erl",
+        "src/lib/organization/domain/organization_invitation.erl",
+        "src/lib/organization/domain/organization_agent_boundary.erl",
+        "src/lib/organization/domain/organization_owner_invariant.erl",
+        "src/lib/organization/domain/organization_department.erl",
+        "src/lib/organization/interfaces/organization_api_handler.erl",
+        "src/lib/organization/interfaces/organization_directory_handler.erl",
+        "src/api/organization_handler.erl",
+        "src/api/organization_member_handler.erl",
+        "src/repo/organization_member_repo.erl",
+        "src/repo/organization_repo.erl"
+      ],
+      "source_drift": [
+        "src/lib/organization/application/organization_department_app.erl"
+      ],
+      "source_drift_qualification": "Department authorization changed independently and qualified by department manifest; transfer call chain unchanged"
+    },
+    {
+      "manifest": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/organization-departure-resources/manifest.json",
+      "manifest_sha256": "5a43f2a53eb5eacfeeeb6b74ecd79ff8b2700812d712857da2e31ea3bd858c34",
+      "source_same": [
+        "src/logic/channel_logic_message.erl",
+        "src/api/channel_handler.erl",
+        "test/api/organization_departure_resource_http_checks.erl",
+        "test/logic/channel_workspace_read_tests.erl",
+        "test/logic/channel_logic_message_tests.erl",
+        "test/logic/channel_logic_tests.erl"
+      ],
+      "source_drift": [],
+      "source_drift_qualification": null
+    },
+    {
+      "manifest": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/department-structure-authorization/manifest.json",
+      "manifest_sha256": "f55453dc955bdaaef6350c880941441c4fe3e2309a44733b085bfdc0aec89b30",
+      "source_same": [
+        "src/lib/organization/application/organization_department_app.erl",
+        "test/lib/organization/organization_department_app_gate_tests.erl",
+        "test/api/organization_department_structure_http_checks.erl"
+      ],
+      "source_drift": [],
+      "source_drift_qualification": null
+    }
+  ],
+  "actual_native_invitation_preview": {
+    "result": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/workspace-native-unread-history-2026-10-02/result.json",
+    "sha256": "c493035972d4efe20006768a0b50083d4f6cefd0a55a2d70f5f9a2a616cc717b",
+    "chain": "first submit -> production OrganizationApi.previewByCode POST -> actual organization projection shown; second submit -> join",
+    "membership_writes_in_preview": false,
+    "zero_write_reason": "reviewed production preview reads/locks invitation and organization only; no membership command"
+  },
+  "acceptance_oracles": {
+    "ORG-01": [
+      "real native successful invitation projection",
+      "real PG lock-delayed expiry/revoke",
+      "concurrent join exactly one active membership",
+      "replay does not duplicate and old accepted invite cannot restore departed membership",
+      "fresh invite opens next generation; failed subscription rolls back entire join"
+    ],
+    "ORG-02": [
+      "owner transfer17 actual probes; real concurrent production commands",
+      "departure14 actual HTTP/PG/Garage denies directory/group/channel/file/old-ticket/OA",
+      "active Seat plus active assignment blocker; assignment removal clears blocker while Seat retained",
+      "real execute transfers active identity assignment to successor and preserves enterprise resources",
+      "finalize409 for active customer_service assignment and DB direct-delete guard, no member/case/audit mutation",
+      "normal finalize removes exactly once; replay idempotent"
+    ],
+    "ORG-03": [
+      "real PG cycle rejection and CAS one winner",
+      "role denial12 HTTP cases preserve DB",
+      "Owner/Admin success, stale409 recover with current version, local delegated role retained"
+    ]
+  },
+  "review": "seat_predicate_review APPROVE source and oracle-qualified domain",
+  "native_seat_handover_ui_verified": false,
+  "whole_goal_complete": false,
+  "production_ready": false
+}

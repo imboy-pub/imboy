@@ -1,0 +1,65 @@
+{
+  "source_base_candidate": "35c0fa2d768f9366759d30fd01c577aa4b20e7de",
+  "sources": [
+    {
+      "path": "src/lib/organization/application/organization_department_app.erl",
+      "sha256": "211d149bcb1bb91a020f52217144af03b06f3e0761e96478f4b81becc39c8576"
+    },
+    {
+      "path": "test/lib/organization/organization_department_app_gate_tests.erl",
+      "sha256": "4b58b339fec523ee56a307bd1e0d60aa7444dcd1862b16feb3eb2bcc23a22c94"
+    },
+    {
+      "path": "test/api/organization_department_structure_http_checks.erl",
+      "sha256": "75d33c8a85544e424895295dd785de54c417e6b439c6c79148d75c8fb9c11fc9"
+    }
+  ],
+  "focused": {
+    "status": "PASS_SCOPED",
+    "exit": 0,
+    "sources": [
+      {
+        "path": "src/lib/organization/application/organization_department_app.erl",
+        "sha256": "211d149bcb1bb91a020f52217144af03b06f3e0761e96478f4b81becc39c8576"
+      },
+      {
+        "path": "test/lib/organization/organization_department_app_gate_tests.erl",
+        "sha256": "4b58b339fec523ee56a307bd1e0d60aa7444dcd1862b16feb3eb2bcc23a22c94"
+      },
+      {
+        "path": "test/api/organization_department_structure_http_checks.erl",
+        "sha256": "75d33c8a85544e424895295dd785de54c417e6b439c6c79148d75c8fb9c11fc9"
+      }
+    ],
+    "log": "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-department-role-final-np812rd4/green.log",
+    "log_sha256": "d0fc44ad151f231d6487ab29580ab799fd50840e340afc47058cde47d2f90d13"
+  },
+  "real_http_pg": {
+    "status": "PASS_SCOPED_FINAL_SOURCE",
+    "session_id": 78170,
+    "exit": 0,
+    "run_dir": "/tmp/imboy-seat-http.G8bSd2",
+    "candidate_before_commit": "8d1e1cb6c6057c90bb89f55f6bcbf25b394e3f9a",
+    "source_binding_verified": true,
+    "log_sha256": "8191fb26f65ac5679351fecd85e7b2d6a175312bd3d0cdeecbbac6aadb674e98",
+    "driver_log_sha256": "13fd6345f5cdbb510c5b102b832306eedd51ba132d75ef60a73034d28c8681d8"
+  },
+  "review": "APPROVE; concurrent revocation window not newly verified",
+  "contract_change": "Supersedes historical active-member structure-write baseline: active Org owner/admin only for create/rename/move/archive. Directory reads and local department membership delegation retain prior scope.",
+  "earlier_real_http_pg": {
+    "status": "PASS_REAL_HTTP_PG",
+    "session_id": 99317,
+    "exit": 0,
+    "run_dir": "/tmp/imboy-seat-http.LM5EWW",
+    "log_sha256": "7d1d5d684b1ba5bb768981a79c2ccbc894e5ef44dd60f28f336676c0afb2914d",
+    "source_binding_verified": true,
+    "deny_role_scenarios": 3,
+    "deny_actions_per_role": 4,
+    "positive_role_scenarios": 2,
+    "cas_stale_rejected": true,
+    "local_department_admin_delegation_preserved": true,
+    "source_candidate_before_commit": "35c0fa2d768f9366759d30fd01c577aa4b20e7de",
+    "whole_goal_complete": false
+  },
+  "test_helpers_function_line_limit_verified": true
+}

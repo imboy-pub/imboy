@@ -1,0 +1,43 @@
+{
+  "status": "CURRENT_INDEPENDENT_ACCEPTANCE_AXES",
+  "candidate_heads": {
+    "backend": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+    "app": "d868815b8cf715ae3471fcc76c3ec691548a002b",
+    "admin": "9a808bec600acc06dd7e93ed89feafbeaea3ed60"
+  },
+  "LOCAL_CANDIDATE": {
+    "status": "PASS_PHASE_LOCAL_CANDIDATE",
+    "backend": "two frozen runs10788 each exit0, no failure/cancellation",
+    "app": "7332 offline PASS with98skip/32realAPIexcluded/3no-suite not claimedPASS; changed macOS native input independentlyPASS",
+    "admin": "six checks PASS2385unit plus qualified real Seat browser"
+  },
+  "DEVICE": {
+    "status": "PASS_MACOS_PHASE_JOURNEYS_SOURCE_QUALIFIED",
+    "platform": "actual native macOS",
+    "journeys": [
+      "Guangzhou four tabs and website entry",
+      "organization join/leave/tree/owner governance",
+      "authorized file upload/preview/delete and audit",
+      "unread history read cursor update",
+      "auth link continuation",
+      "synthetic OA cookie identity switch/exit/origin guard"
+    ],
+    "ios": "DEFERRED_USER_APPROVED_MACOS_SUBSTITUTION"
+  },
+  "EXTERNAL": {
+    "status": "CUSTOMER_OA_NOT_AVAILABLE_DEFERRED",
+    "website_substitute": "https://imboy.pub/",
+    "customer_OA_cookie_identity": "NOT_VERIFIED",
+    "synthetic_OA_is_not_customer_OA": true,
+    "real_outbound_callbacks": "NOT_EXECUTED"
+  },
+  "PRODUCTION": {
+    "status": "NOT_DEPLOYED_NOT_VERIFIED",
+    "push": false,
+    "deploy": false,
+    "production_migration": false,
+    "production_data_used": false,
+    "catalog_v3_to_v4_live_rebind": "NOT_EXECUTED; explicit ACK and writer stop remain operator-controlled"
+  },
+  "scope": "本期macOS与官网替代范围；客户OA/iOS和生产证明分别保留未验证。"
+}

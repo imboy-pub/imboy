@@ -1,0 +1,188 @@
+{
+  "status": "ROOT_FIXES_APPLIED_FOCUSED_RETEST_PASS_FULL_RETEST_RUNNING",
+  "frozen_source_hashes": {
+    "__digest_map_v1__": [
+      [
+        "9d1744acdbdc5733bdad0fdda1a25ae094d03b9dd30d135d7bd0b1284d1ab248",
+        "lib/store/api/workspace_api.dart"
+      ],
+      [
+        "8d89aa655825230aeee2d23e95ee83d4e6aaa81a449668a368c1148dd668d34a",
+        "lib/page/workspace/workspace_data_providers.dart"
+      ],
+      [
+        "74d4f94f7c4874b3803e03f212cb3d21f6eaf3c045743ccaa04cc5974867e65d",
+        "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart"
+      ],
+      [
+        "8d09f1da549712c0d2e1689a732312091cf44d9d6f90d16a954ed21fdaa9f42e",
+        "test/organization/org_manage_closure_test.dart"
+      ],
+      [
+        "405bb3a91785eff3c77b48bb88318d1324b978843efdc7c15e17bce7c2b741ff",
+        "test/organization/organization_manage_page_widget_test.dart"
+      ],
+      [
+        "9bafd5d2e770b62bb1df07facd07e5542d1a60b488e0f15beaadf885196cc34b",
+        "test/organization/organization_tools_page_widget_test.dart"
+      ],
+      [
+        "57bfa1c6e74d5b9d71c64fddb2e4a0336e180bf72138be25413819dd450b542f",
+        "test/unit_test/a11y/icon_only_button_label_test.dart"
+      ],
+      [
+        "88adafccc99b6da9e636672cc14e666be89173d1b645c4fad28025a0715272ff",
+        "lib/service/message.dart"
+      ],
+      [
+        "30635fb9f1ea777bb976168667bdb305f23eeee42f8bf8817d43b7ce5ebee261",
+        "test/unit_test/vodozemac_native_lib.dart"
+      ]
+    ]
+  },
+  "findings": [
+    {
+      "kind": "stale_test_contract",
+      "files": [
+        "test/organization/org_manage_closure_test.dart",
+        "test/organization/organization_manage_page_widget_test.dart"
+      ],
+      "reason": "WorkspaceApi requires explicit workspace_id, scoped row identity, has_more and next_cursor; old fixture pages omit current scope/pagination fields",
+      "next_action": "Update fixtures to current server response; retain scope, order and pagination rejection"
+    },
+    {
+      "kind": "missing_test_identity",
+      "files": [
+        "test/organization/organization_tools_page_widget_test.dart"
+      ],
+      "reason": "workspaceProjectsProvider requires currentUserProvider UID; old fixture host has no current account",
+      "next_action": "Provide synthetic authenticated test identity and assert enterprise filtering remains correct"
+    },
+    {
+      "kind": "product_accessibility",
+      "files": [
+        "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart"
+      ],
+      "reason": "Workbench leading Cupertino icon button lacks a screen-reader label; caught by existing icon-only button gate",
+      "next_action": "Reuse native BackButton with existing selection reset behavior"
+    },
+    {
+      "kind": "product_log_privacy",
+      "files": [
+        "lib/service/message.dart"
+      ],
+      "reason": "Message background failure interpolates the entire exception and passes exception plus stack to the logger; privacy guard fails",
+      "next_action": "Keep fixed context and runtimeType, preserve failure cleanup without raw exception/stack logging"
+    },
+    {
+      "kind": "native_test_dependency",
+      "files": [
+        "test/unit_test/vodozemac_native_lib.dart"
+      ],
+      "reason": "Host vodozemac test library missing in this worktree; seven setup failures are not encryption behavior proof",
+      "next_action": "Locate or build the installed dependency in an isolated temporary directory and rerun with the existing environment override"
+    },
+    {
+      "kind": "workspace_test_contract",
+      "files": [
+        "test/unit_test/page/workspace/workspace_join_page_test.dart",
+        "test/unit_test/page/workspace/workspace_members_page_test.dart"
+      ],
+      "reason": "Join test expects old overview destination; member-page fixtures need current identity and authorization facts checked",
+      "next_action": "Align navigation expectation with finalized message-first UX; investigate member failures before changing assertions"
+    }
+  ],
+  "source_changes_performed": true,
+  "fixes_wait_for": [
+    "backend session 12797 terminal",
+    "App session 16199 terminal"
+  ],
+  "final_counter": "+7221 ~108 -30",
+  "offline_terminal_sha256": "81758ee7202769bc665a9c88f365c4fff7a23b97cd59332d891ca79e54cc0975",
+  "native_setup_failed_files": 10,
+  "workspace_members_root_cause": "workspaceMembersProvider refuses to load while currentUserProvider uid is empty; widget fixture writes StorageService only",
+  "message_failure_bus_review": {
+    "raw_error_message_readers_in_lib": 0,
+    "exception_log_sinks": [
+      "iPrint",
+      "AppLogger.error",
+      "ErrorReportEvent in release"
+    ],
+    "plan": "Remove unused raw error_message event field; retain runtimeType and message/conversation rollback identifiers; logger gets sanitized context only",
+    "consumer_source_binding": {
+      "__digest_map_v1__": [
+        [
+          "88adafccc99b6da9e636672cc14e666be89173d1b645c4fad28025a0715272ff",
+          "lib/service/message.dart"
+        ],
+        [
+          "37e5f69747b6a9c1140d286d45b450514cf2f6327b56df77ce56c96c57392779",
+          "lib/service/event_bus.dart"
+        ],
+        [
+          "5d7c482695f011f64099e6a559385c0244c1f4308d44c34123b485b74e200c78",
+          "lib/page/chat/chat/mixin/chat_event_subscription_manager.dart"
+        ],
+        [
+          "29c169ff29408d49c719e1266f09b4ec25324f07c783b29d3ab1c0f2b8731bb2",
+          "lib/page/conversation/conversation_page.dart"
+        ]
+      ]
+    },
+    "consumer_flow": "Typed message and conversation subscribers do not read error_message; removing raw exception field preserves current identifiers and event dispatch",
+    "cleanup_verification_limit": "Existing delete_message/rollback_conversation action maps have no explicit consumer found; do not claim runtime rollback proven from dispatch alone"
+  },
+  "host_probe": {
+    "exit": 0,
+    "binding": "/tmp/gz-vodozemac-host-binding.json",
+    "terminal": "/tmp/gz-vodozemac-host-probe-terminal.json",
+    "new_dependency": false
+  },
+  "workspace_join_root_cause": {
+    "stale_destination_expectation": "overview must match finalized conversations destination",
+    "second_failure": "unchanged toast test passes alone; failure cascades from prior failed assertion leaving EasyLoading state",
+    "isolated_toast_exit": 0,
+    "evidence": "/tmp/gz-workspace-join-unchanged-isolated-terminal.json",
+    "next_action": "Update message-first navigation expectation; retain unchanged toast assertion and rerun entire file"
+  },
+  "native_dependency_resolution": {
+    "failed_files_restored": 11,
+    "tests_passed": 100,
+    "terminal": "/tmp/gz-vodozemac-host-compatibility-terminal.json",
+    "terminal_sha256": "04b8a40ccdb72f762baf79f5c3e6030356bc3d9aecbdbdae544fc0125333aaa2",
+    "dependency_added": false,
+    "E2EE_UI_enabled": false
+  },
+  "skipped_tests_observed": 108,
+  "fixture_contract_verified": {
+    "page_fields": [
+      "workspace_id",
+      "list",
+      "has_more",
+      "next_cursor"
+    ],
+    "row_fields": [
+      "scope=workspace",
+      "workspace_id matches page",
+      "status active=1 archived=0"
+    ],
+    "group_order": "strictly ascending positive IDs",
+    "channel_order": "strictly descending positive IDs",
+    "final_page": "has_more=false,next_cursor=0",
+    "source_sha256": "9d1744acdbdc5733bdad0fdda1a25ae094d03b9dd30d135d7bd0b1284d1ab248",
+    "validation_will_not_be_weakened": true
+  },
+  "focused_retest": {
+    "initial_terminal": "/tmp/gz-app-offline-root-fixes-focused-terminal.json",
+    "initial_passed": 222,
+    "remaining_failures": 5,
+    "remaining_retest_terminal": "/tmp/gz-app-offline-root-fixes-r2-terminal.json",
+    "remaining_retest_passed": 16,
+    "remaining_retest_failed": 0
+  },
+  "static_analyzer": "/tmp/gz-app-offline-root-fixes-analyze-terminal.json",
+  "full_retest_handle": "/tmp/gz-app-offline-root-fixes-full-handle.json",
+  "independent_agent_review_performed": false,
+  "committed": false,
+  "complete": false
+}

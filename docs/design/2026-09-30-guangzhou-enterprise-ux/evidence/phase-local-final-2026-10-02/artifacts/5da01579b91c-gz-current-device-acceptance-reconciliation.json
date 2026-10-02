@@ -1,0 +1,56 @@
+{
+  "status": "PARTIAL_DEVICE_RECONCILIATION",
+  "observed_at": "2026-10-01T20:52:28.947094+00:00",
+  "candidate_heads": {
+    "backend": "c6e3a5b10c56d89eb847e926795c54cdafd4bd53",
+    "app": "583fc746d64cf54d7ae939ea9bfe9c757547ae96",
+    "admin": "502bd296bdee9b8e6909fcc18894534d336e30e4"
+  },
+  "device_scope": "Physical Android; isolated gzCustomer package; synthetic marker DB and loopback HTTPS OA",
+  "covered": [
+    "personal four tabs",
+    "personal-enterprise switch through product UI",
+    "two-level department tree and colleague detail",
+    "invite-code preview and enterprise join",
+    "self departure with real membership revocation and retained original enterprise",
+    "workbench discovery, human JWT code issue, real internal exchange and native WebView result",
+    "ticket replay rejected and one consumption/audit recorded"
+  ],
+  "evidence": {
+    "path": "/tmp/gz-native-oa-sso-safe-ff.json",
+    "sha256": "0fceb3109579df4d394131761b8770280811e6bdf4e1e0a096526022718dce50",
+    "native_run": "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-native-oa-sso-m34p6ixw",
+    "terminal_sha256": "8e0174ef47e80a168bf9b9eebbc98c0943c03d736d5ef4031f8a36198656591e",
+    "oracles": {
+      "native-oa-oracle.json": {
+        "status": "PASS",
+        "consumed": 1,
+        "audited": 1
+      },
+      "native-leave-oracle.json": {
+        "status": "PASS",
+        "active_workspaces": 0,
+        "organization_removed": true,
+        "original_organization_retained": true
+      }
+    }
+  },
+  "qualification": {
+    "product_sources_unchanged_since_device_run": true,
+    "later_changes": [
+      "integration_test/demo_flow/moments_flow_test.dart",
+      "integration_test/demo_flow/red_packet_flow_test.dart",
+      "integration_test/demo_flow/wallet_transfer_flow_test.dart"
+    ],
+    "independent_agent_review": false
+  },
+  "remaining": [
+    "iOS native journeys",
+    "standard package deployment qualification",
+    "actual customer OA integration",
+    "native enterprise file access and revocation",
+    "native department/member management actions",
+    "large-font/dark-mode/device UX journey"
+  ],
+  "production_ready": false
+}

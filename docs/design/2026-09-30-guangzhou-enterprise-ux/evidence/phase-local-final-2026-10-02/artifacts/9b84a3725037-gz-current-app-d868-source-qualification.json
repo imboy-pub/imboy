@@ -1,0 +1,21 @@
+{
+  "status": "PASS_APP_CURRENT_SCOPED_REQUALIFICATION",
+  "head": "d868815b8cf715ae3471fcc76c3ec691548a002b",
+  "offline_candidate": "1950abb3fb7f046706ada30651ae38fd883f848c",
+  "inputs": 1977,
+  "unchanged_inputs": 1976,
+  "changed_inputs": [
+    "integration_test/enterprise/oa_webview_native_session_test.dart"
+  ],
+  "changed_native_input_final_native_exit": 0,
+  "production_lib_test_dependencies_unchanged": true,
+  "new_script_scope": "only synthetic native runner, not production",
+  "offline_successful": 7332,
+  "offline_skipped": 98,
+  "no_suite_files": 3,
+  "excluded_real_api_files": 32,
+  "skips_are_not_pass": true,
+  "new_native_evidence": "docs/qa/evidence/macos-oa-native-session-2026-10-02/terminal.json",
+  "analysis": "previous full zero issues plus changed Dart targeted zero issues",
+  "limits": "does not claim skipped browser/API tests passed or customer OA/iOS verified"
+}

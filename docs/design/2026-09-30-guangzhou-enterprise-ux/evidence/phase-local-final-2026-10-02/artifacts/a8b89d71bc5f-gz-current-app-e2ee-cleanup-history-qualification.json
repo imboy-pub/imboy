@@ -1,0 +1,81 @@
+{
+  "status": "PASS_APP_PHASE_E2EE_HISTORY_AND_CLEANUP_SCOPE",
+  "candidate": "72e60c114f893e7110472e2a0b48d7bf9e0263d8",
+  "tested_candidate": "1950abb3fb7f046706ada30651ae38fd883f848c",
+  "source_binding_manifest": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/app-current-regression-2026-10-02/source-binding.tsv",
+  "source_binding_sha256": "e1db4688a5b0a0cecb29e48b713139791ee678285542326beb3700c067cccf6a",
+  "actual_suite_records": [
+    {
+      "path": "test/unit_test/app_core/routing/route_feature_guard_test.dart",
+      "successful": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "test/unit_test/page/chat/archive_row_to_offline_shape_test.dart",
+      "successful": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "test/unit_test/page/chat/attachment_upload_scope_test.dart",
+      "successful": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "test/unit_test/page/chat/history_backfill_persist_test.dart",
+      "successful": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "test/unit_test/page/group/file/group_file_page_test.dart",
+      "successful": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "test/unit_test/service/asset_url_resolver_test.dart",
+      "successful": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "test/unit_test/service/e2ee/decrypt_on_read_v3_gap_test.dart",
+      "successful": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "test/unit_test/service/e2ee/encryption_mode_hard_off_test.dart",
+      "successful": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "test/unit_test/service/e2ee/outbound_encryption_fail_closed_test.dart",
+      "successful": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "test/unit_test/service/e2ee_service_test.dart",
+      "successful": 11,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "cleanup_rollback_commit": "478d9f596ad101e76f61e29c7c80bd393dcebe6d",
+  "cleanup_decision": "Deleted navigation declarations and mirrored tests with no production consumer; retained personal pages and old routes",
+  "closed_config_oracle": "Explicit disabled state overrides server capabilities; native Guangzhou journey stores plaintext group message under explicit off config",
+  "encryption_failure_oracle": "Required encryption that returns null is rejected; no retry plaintext downgrade",
+  "history_oracle": "Exact identity/type validation before envelope decoding; old string ciphertext and encrypted envelopes retained; actual SQLite history + real local v2 crypto/v3 mapper paths verified",
+  "limits": [
+    "No assertion about untested live production settings",
+    "No macOS end-to-end historical ciphertext journey claim",
+    "File authorization/binding/migration remain separate backend oracles"
+  ],
+  "review": "native_file_review APPROVE scoped current inputs",
+  "whole_goal_complete": false
+}

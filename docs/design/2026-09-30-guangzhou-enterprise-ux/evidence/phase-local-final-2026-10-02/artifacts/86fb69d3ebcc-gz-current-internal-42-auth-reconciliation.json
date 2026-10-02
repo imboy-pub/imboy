@@ -1,0 +1,21 @@
+{
+  "status": "PASS_CURRENT_PRODUCTION_SOURCE_EQUIVALENT_AUTHORIZATION_MATRIX",
+  "candidate": "a3cb1386964cfbc99439f9c1a2ff7b4791560233",
+  "historical_test_candidate": "4ade902b28a445202d55a418268556b893dfeb91",
+  "production_sources_identical": 875,
+  "production_source_binding_sha256": "d68bb390ecfd95fdcf4751839b4a69cd5e659e0d89b48a4c17c2625d2079a4d5",
+  "manifest_integrity_verified": true,
+  "routes": 42,
+  "application_rejections": 168,
+  "human_rejections": 8,
+  "real_http_pg": true,
+  "authentication_mocked": false,
+  "scenarios": [
+    "expired_grant",
+    "missing_scope",
+    "revoked_grant",
+    "zero_grant"
+  ],
+  "cross_organization_and_positive_journeys_verified_by_this_reconciliation": false,
+  "whole_goal_complete": false
+}

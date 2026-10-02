@@ -1,0 +1,8 @@
+{
+  "status": "APPROVE_APP_NATIVE_ARCHIVE_INTEGRITY",
+  "reviewer": "native_file_review",
+  "reviewed_acceptance_sha256": "b4164b5dbcbadd82ba77d45964a00069d9ea0f1aeae99d6f88baf3303a808a30",
+  "reviewed_verifier_sha256": "3b9edb7866447127cae48484af212ef2f72ebccbaaa609ddf29dcd76624a9f95",
+  "scope": "App/native/Desktop and reversible digest archive; customerOA/iOS/production not verified",
+  "code_findings": 0
+}

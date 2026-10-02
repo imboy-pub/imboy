@@ -1,0 +1,58 @@
+{
+  "status": "PASS_ORGANIZATION_PG_MODULE_SUBSETS_SOURCE_EQUIVALENT",
+  "tested_candidate": "8f25070787cc1dafb054bb97dd797daab4a8ee83",
+  "current_candidate": "a3cb1386964cfbc99439f9c1a2ff7b4791560233",
+  "full_run_status": "FAILED_NOT_PASS",
+  "full_run_failure_unrelated_tests": [
+    "webhook_configure_https_required",
+    "c2g_stage_archived_workspace_does_not_allocate_sequence",
+    "msg_send_performance_tests query fixture timeout"
+  ],
+  "fixture_run": "/tmp/imboy-seat-http.MKkzbL",
+  "production_inputs_count": 875,
+  "production_inputs_unchanged": true,
+  "production_input_map_sha256": "cc4529acf97e08dc94b339676d0461e599293eb2a1b21cdb98577f0896843d6c",
+  "source_binding_sha256": "b211705588dd4fcba4f0273370b66632bb1e76685598af0d8c5bfddc90d2c643",
+  "raw_log_sha256": "5a18b43265017ea5c83d098a38e9c84fb7d79f76cfb636be15174dcf28f812a4",
+  "modules": [
+    {
+      "module": "workspace_creation_pg_tests",
+      "start_line": 32953,
+      "end_line": 32972,
+      "pass_lines": 1,
+      "block_sha256": "424124632603bb07177f13872f867378b4320bb17d2ad6d308470f0211a6b8e3"
+    },
+    {
+      "module": "organization_department_pg_tests",
+      "start_line": 23434,
+      "end_line": 23449,
+      "pass_lines": 13,
+      "block_sha256": "86c705df19a302a08600f6db4a5314a6ae9ec420a5804fe89fb46409368f2ca8"
+    }
+  ],
+  "test_sources": [
+    {
+      "path": "test/ds/workspace_creation_pg_tests.erl",
+      "sha256": "dc6a6c25e80cd6467a096cac3ce77800371f430ac9aab10eff2c48e2fc826399"
+    },
+    {
+      "path": "test/lib/organization/organization_invite_race_pg_checks.erl",
+      "sha256": "9bf9a6be7d795e69c33af63118f051fc07c2510d0201c7515c24b0a16aeb7582"
+    },
+    {
+      "path": "test/lib/organization/organization_membership_journey_pg_checks.erl",
+      "sha256": "9f6435e9e5e648801385a4ab968c793d80ddbbdf97ab2dd02a39aa8398560148"
+    },
+    {
+      "path": "test/lib/organization/organization_department_pg_tests.erl",
+      "sha256": "370de9c56af7ce057d58341e404cd049be6d19f002cda1c5ae18fe2e12b6f76a"
+    }
+  ],
+  "whole_goal_complete": false,
+  "not_proven": [
+    "complete current backend full gate",
+    "final three-repository acceptance",
+    "concurrent role revocation",
+    "production readiness"
+  ]
+}

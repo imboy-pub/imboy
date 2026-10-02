@@ -1,0 +1,442 @@
+[
+  {
+    "archive": "artifacts/2a5981a22205-gz-current-final-083901-pair-terminal.json",
+    "sha256": "88c8093d5b4f807c15eb54ff5561c9a19a567594023964968a5f8c27dc4c32a8",
+    "original": "/tmp/gz-current-final-083901-pair-terminal.json",
+    "original_sha256": "2a5981a2220567ab32ac55b538fdaeef4969bb3ef7d73a1fedfee7606a15b842",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "5ab4a98b9e78ea5ea0bf64b629b40cbc0e3feb1634123a84e000fc90b20787f3"
+  },
+  {
+    "archive": "artifacts/8d05aafd1453-internal-operation-coverage.json",
+    "sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1",
+    "original": "/tmp/imboy-seat-http.DbmsNB/internal-operation-coverage.json",
+    "original_sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "b6f90c64356717efb62af9d4e51d2288b7c87cd681aa61609c82a6b2be65e201"
+  },
+  {
+    "archive": "artifacts/d8f3aa660cfe-internal-auth-negatives.jsonl",
+    "sha256": "d8f3aa660cfe97cf977b359116fe00e520f0a8f3222506a3e849f442ee70125d",
+    "original": "/tmp/imboy-seat-http.DbmsNB/internal-auth-negatives.jsonl",
+    "original_sha256": "d8f3aa660cfe97cf977b359116fe00e520f0a8f3222506a3e849f442ee70125d",
+    "encoding": "exact_bytes"
+  },
+  {
+    "archive": "artifacts/404d9a889aee-internal-audit-matrix.jsonl",
+    "sha256": "404d9a889aee34747ffc9c212c1264fbbb9875ddde2fb7b76993b021296101c5",
+    "original": "/tmp/imboy-seat-http.DbmsNB/internal-audit-matrix.jsonl",
+    "original_sha256": "404d9a889aee34747ffc9c212c1264fbbb9875ddde2fb7b76993b021296101c5",
+    "encoding": "exact_bytes"
+  },
+  {
+    "archive": "artifacts/a1955e3144eb-source-binding.json",
+    "sha256": "deb627133dda92883c9a65cf8beb816631e13f9e64709877edc3689ed798c10c",
+    "original": "/tmp/imboy-seat-http.DbmsNB/source-binding.json",
+    "original_sha256": "a1955e3144eb42f7c04f329146e4dbff2ab6848f294bd5f7aa90f7d58ea849ae",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "004613a05a2c7dc1f9962f83f712c9ead782b391003fee340282fa55df86dc97"
+  },
+  {
+    "archive": "artifacts/309c5a99b32b-full-discovery.json",
+    "sha256": "309c5a99b32bee5220bd086a0c6e783a8a52cb0001596be7c517c25594f10898",
+    "original": "/tmp/imboy-seat-http.DbmsNB/full-discovery.json",
+    "original_sha256": "309c5a99b32bee5220bd086a0c6e783a8a52cb0001596be7c517c25594f10898",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "5a881c7194a5df936e4967953189729fff02e79cf0a2523351e6a7fa817998d5"
+  },
+  {
+    "archive": "artifacts/8d05aafd1453-internal-operation-coverage.json",
+    "sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1",
+    "original": "/tmp/imboy-seat-http.6GgJYt/internal-operation-coverage.json",
+    "original_sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "b6f90c64356717efb62af9d4e51d2288b7c87cd681aa61609c82a6b2be65e201"
+  },
+  {
+    "archive": "artifacts/d8f3aa660cfe-internal-auth-negatives.jsonl",
+    "sha256": "d8f3aa660cfe97cf977b359116fe00e520f0a8f3222506a3e849f442ee70125d",
+    "original": "/tmp/imboy-seat-http.6GgJYt/internal-auth-negatives.jsonl",
+    "original_sha256": "d8f3aa660cfe97cf977b359116fe00e520f0a8f3222506a3e849f442ee70125d",
+    "encoding": "exact_bytes"
+  },
+  {
+    "archive": "artifacts/404d9a889aee-internal-audit-matrix.jsonl",
+    "sha256": "404d9a889aee34747ffc9c212c1264fbbb9875ddde2fb7b76993b021296101c5",
+    "original": "/tmp/imboy-seat-http.6GgJYt/internal-audit-matrix.jsonl",
+    "original_sha256": "404d9a889aee34747ffc9c212c1264fbbb9875ddde2fb7b76993b021296101c5",
+    "encoding": "exact_bytes"
+  },
+  {
+    "archive": "artifacts/a1955e3144eb-source-binding.json",
+    "sha256": "deb627133dda92883c9a65cf8beb816631e13f9e64709877edc3689ed798c10c",
+    "original": "/tmp/imboy-seat-http.6GgJYt/source-binding.json",
+    "original_sha256": "a1955e3144eb42f7c04f329146e4dbff2ab6848f294bd5f7aa90f7d58ea849ae",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "004613a05a2c7dc1f9962f83f712c9ead782b391003fee340282fa55df86dc97"
+  },
+  {
+    "archive": "artifacts/309c5a99b32b-full-discovery.json",
+    "sha256": "309c5a99b32bee5220bd086a0c6e783a8a52cb0001596be7c517c25594f10898",
+    "original": "/tmp/imboy-seat-http.6GgJYt/full-discovery.json",
+    "original_sha256": "309c5a99b32bee5220bd086a0c6e783a8a52cb0001596be7c517c25594f10898",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "5a881c7194a5df936e4967953189729fff02e79cf0a2523351e6a7fa817998d5"
+  },
+  {
+    "archive": "artifacts/d602a816d790-gz-current-final-083901-backend.sh",
+    "sha256": "d602a816d7902231ff1c08c6a72d0479dc36e4ec37622edc3e65d2496cb9a5ba",
+    "original": "/tmp/gz-current-final-083901-backend.sh",
+    "original_sha256": "d602a816d7902231ff1c08c6a72d0479dc36e4ec37622edc3e65d2496cb9a5ba",
+    "encoding": "exact_bytes"
+  },
+  {
+    "archive": "artifacts/2cd6cec1462e-gz-current-final-083901-garage.sh",
+    "sha256": "2cd6cec1462ec9b8bac8e214a0ee06ff0ef603cf88e6f4f0e1513f9a1867b9a0",
+    "original": "/tmp/gz-current-final-083901-garage.sh",
+    "original_sha256": "2cd6cec1462ec9b8bac8e214a0ee06ff0ef603cf88e6f4f0e1513f9a1867b9a0",
+    "encoding": "exact_bytes"
+  },
+  {
+    "archive": "artifacts/2a0a70bfb85b-gz-current-final-083901-pair.py",
+    "sha256": "2a0a70bfb85b409829c6c25b8e9d28e4019ec351b7c564a811d121b4ae70a0c0",
+    "original": "/tmp/gz-current-final-083901-pair.py",
+    "original_sha256": "2a0a70bfb85b409829c6c25b8e9d28e4019ec351b7c564a811d121b4ae70a0c0",
+    "encoding": "exact_bytes"
+  },
+  {
+    "archive": "artifacts/715d06bf0618-gz-current-acceptance-inventory.json",
+    "sha256": "715d06bf061857615a3937078ae02fe0c859600bcfc78f1ca8eb3e360994ae48",
+    "original": "/tmp/gz-current-acceptance-inventory.json",
+    "original_sha256": "715d06bf061857615a3937078ae02fe0c859600bcfc78f1ca8eb3e360994ae48",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "6ed110e7257945aef27fa6f558cf99df4aae3fb9a1e37dbd68224dbb29f79f50"
+  },
+  {
+    "archive": "artifacts/3cf06f8f067b-gz-g0-baseline-failure-index.json",
+    "sha256": "b1c36112681398f8150ec88dd9c5b267da060a790b876cb2e2c6d14e1027e00f",
+    "original": "/tmp/gz-g0-baseline-failure-index.json",
+    "original_sha256": "3cf06f8f067bf939ddfc19a1401ed61c7823e37dce1ee89ed294dc8790f63bab",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "b7fd61c06b6149ade12b1be2678bc7557253524125066f686fe4323274606493"
+  },
+  {
+    "archive": "artifacts/64066a3c9c7d-gz-app-current-offline-failure-triage.json",
+    "sha256": "9005b0635580d55fc37be0521484c982fbf08b8af4886b5999831ac6604c7a1c",
+    "original": "/tmp/gz-app-current-offline-failure-triage.json",
+    "original_sha256": "64066a3c9c7ddffa5d6e921a55dfe6f66ca294ace1f95b6058f6e7485e3d2bbf",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "78ec5f8516b2cb98a2e61abbf76e1f2d2cd99b89d49d7267c60452be54815e70"
+  },
+  {
+    "archive": "artifacts/0da916551faf-manifest.json",
+    "sha256": "0da916551faf44bc70bff5707ba53aadd4ab2a7b247df4a202b3d072b28d9930",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-backend/docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/seat-purpose-real-http-browser/manifest.json",
+    "original_sha256": "0da916551faf44bc70bff5707ba53aadd4ab2a7b247df4a202b3d072b28d9930",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "d4a5b80bc953fc33f81149e185db53e8cf5262f91024beb7ea11772c0eaf2a9e"
+  },
+  {
+    "archive": "artifacts/38ce89b01d61-gz-current-customer-service-source-qualification.json",
+    "sha256": "3449c8ff1a057fbf9d25e7c6e500583d1f46b239b9e691c06771abd9bc1da448",
+    "original": "/tmp/gz-current-customer-service-source-qualification.json",
+    "original_sha256": "38ce89b01d61c3efe24347e01199c9b98bd622a2f913e096ec22ed01036d6423",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "1085383dd64a5c21bca382fc917552f61d9f6712c3f62a00cbaccaecf269d5f8"
+  },
+  {
+    "archive": "artifacts/e5620a914580-gz-current-internal-seat-domain-closure.json",
+    "sha256": "e5620a91458061d32aca3d8e488f1c2239d613ec8f01376f44d5bfee4223ef59",
+    "original": "/tmp/gz-current-internal-seat-domain-closure.json",
+    "original_sha256": "e5620a91458061d32aca3d8e488f1c2239d613ec8f01376f44d5bfee4223ef59",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "8733e8938637743689a0fa69cc6fbd0d7c47b8c7d047a411c5923b8a9fe54f60"
+  },
+  {
+    "archive": "artifacts/47e20987c682-gz-current-org-pg-module-reconciliation.json",
+    "sha256": "47e20987c6824de9312a0e3148b5278e3d39fc27d87ca638a1ff9381fd826889",
+    "original": "/tmp/gz-current-org-pg-module-reconciliation.json",
+    "original_sha256": "47e20987c6824de9312a0e3148b5278e3d39fc27d87ca638a1ff9381fd826889",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "2342be138a20b1ab2de2963f83307aaed605fc8bd045de8fc91ba63cbb0c6717"
+  },
+  {
+    "archive": "artifacts/a1dea3c39d9c-gz-current-organization-acceptance-closure.json",
+    "sha256": "b4489e3295720d8348e1de54240906bb3e80c4ddfd59d7675031e3fda7fc3a75",
+    "original": "/tmp/gz-current-organization-acceptance-closure.json",
+    "original_sha256": "a1dea3c39d9c91b768dd5482ee177d48e5594c760d6765814e82f82a1d7dbff7",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "1abbc97005be6e7da34636ffd05ca520ee3b7970160b8b8aa23f47940b7f249a"
+  },
+  {
+    "archive": "artifacts/5a43f2a53eb5-manifest.json",
+    "sha256": "5a43f2a53eb5eacfeeeb6b74ecd79ff8b2700812d712857da2e31ea3bd858c34",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-backend/docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/organization-departure-resources/manifest.json",
+    "original_sha256": "5a43f2a53eb5eacfeeeb6b74ecd79ff8b2700812d712857da2e31ea3bd858c34",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "f3af645761779f72c6d011bb915bf526bc08b8d4275953aca6ff9b5c3b71a8d7"
+  },
+  {
+    "archive": "artifacts/57cc71ea387c-gz-owner-transfer-leave-widget-terminal.json",
+    "sha256": "57cc71ea387c9fe2363e7af2de5c3c49bdb9823e4c8b3891ef3d413713118986",
+    "original": "/tmp/gz-owner-transfer-leave-widget-terminal.json",
+    "original_sha256": "57cc71ea387c9fe2363e7af2de5c3c49bdb9823e4c8b3891ef3d413713118986",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "17e647a19782c8c7c043a63163cf320459992bc650e2b3edc9a64872c66b4394"
+  },
+  {
+    "archive": "artifacts/8aba70ed4804-manifest.json",
+    "sha256": "8aba70ed480495c93a43447c0596defd85ba817371101e2a754459b2197b2b1c",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-backend/docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/organization-owner-production/manifest.json",
+    "original_sha256": "8aba70ed480495c93a43447c0596defd85ba817371101e2a754459b2197b2b1c",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "84ededc42cc501d5c61ff52b2926c47921ffba582defedd2d17060fbf6cbfa53"
+  },
+  {
+    "archive": "artifacts/f55453dc955b-manifest.json",
+    "sha256": "f55453dc955bdaaef6350c880941441c4fe3e2309a44733b085bfdc0aec89b30",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/department-structure-authorization/manifest.json",
+    "original_sha256": "f55453dc955bdaaef6350c880941441c4fe3e2309a44733b085bfdc0aec89b30",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "c34a6c18876cc4c10654be183893442c3bd3dd5ae833ea5814ed109d6a37b861"
+  },
+  {
+    "archive": "artifacts/0b7e27b927ed-gz-current-file-acceptance-closure.json",
+    "sha256": "f61e2e1f1f021a6fb09f7ac9e324863d9410caab6a38d619a71493e85a3ce087",
+    "original": "/tmp/gz-current-file-acceptance-closure.json",
+    "original_sha256": "0b7e27b927ed75b79cb257728a5d6a90fbaf2ebcbb60dee20b71e5f99aff249e",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "14fff100f7629ddfa8e490528572b76ce4b268017c502f719c83ca7dba11a919"
+  },
+  {
+    "archive": "artifacts/41990f31e30c-result.json",
+    "sha256": "41990f31e30c298daaac64d46e85db0d8d935a4c7559dfcaad0770a1e42c9b53",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/app-current-regression-2026-10-02/result.json",
+    "original_sha256": "41990f31e30c298daaac64d46e85db0d8d935a4c7559dfcaad0770a1e42c9b53",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "a0b63c53ddb277a37095705dc0c8e2b3c7509bb740be09bc21160bed04b82503"
+  },
+  {
+    "archive": "artifacts/b567b549d565-suite-results.json",
+    "sha256": "b567b549d565470192f436e68da384a5a5e9d27ce7f85b5db6fa365c02c8f1d2",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/app-current-regression-2026-10-02/suite-results.json",
+    "original_sha256": "b567b549d565470192f436e68da384a5a5e9d27ce7f85b5db6fa365c02c8f1d2",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "a7cadc15cfdcb25acc1c8f793399c4eea2414640872c8cbc3a0bbf0d152aaeba"
+  },
+  {
+    "archive": "artifacts/c493035972d4-result.json",
+    "sha256": "c493035972d4efe20006768a0b50083d4f6cefd0a55a2d70f5f9a2a616cc717b",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/workspace-native-unread-history-2026-10-02/result.json",
+    "original_sha256": "c493035972d4efe20006768a0b50083d4f6cefd0a55a2d70f5f9a2a616cc717b",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "74a18e0976f45028879c1cecb293f9e8dc68c7725b8b05ac04cc08af0ae78268"
+  },
+  {
+    "archive": "artifacts/c601892310f1-result.json",
+    "sha256": "c601892310f16fdbaa109d03092b2155b8d2cc91ed3194f1e4edb658a82948a4",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/pending-read-queue-2026-10-02/result.json",
+    "original_sha256": "c601892310f16fdbaa109d03092b2155b8d2cc91ed3194f1e4edb658a82948a4",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "253f81efb13b25d616416eee8f415bb4ed1b4cd8143ffd410a683d5e46b23e51"
+  },
+  {
+    "archive": "artifacts/0a61a6fa2eb1-result.json",
+    "sha256": "4563b9fc03cd4b1f2ef1760bce97bac8c4c6e2059c1637f3bcd6a221636c9359",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/workspace-unread-client-2026-10-02/result.json",
+    "original_sha256": "0a61a6fa2eb1cfe6f7069af3f91c449fb41797d6727e47c30849fc3230aa2074",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "43fb1bf4d239c4309c612bc36a0c5b9cdcb3d4dc92235472b61603032c3ca865"
+  },
+  {
+    "archive": "artifacts/d46cff991742-result.json",
+    "sha256": "d46cff9917427d50ef4b5dd80ea1fc303453cda35eded988fc1041b993b66c67",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/organization-macos-ux-2026-10-02/result.json",
+    "original_sha256": "d46cff9917427d50ef4b5dd80ea1fc303453cda35eded988fc1041b993b66c67",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "9a3ed207e36bf09a8a4e5aa69ebb5961e1c4c8d22f8254c36fb009e5fa7e459c"
+  },
+  {
+    "archive": "artifacts/264b884689cd-result.json",
+    "sha256": "264b884689cdf8ab93957a3cc4e5980822252a28935450bf4cb86b37f891b7d9",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/macos-guangzhou-login-continuation-2026-10-02/result.json",
+    "original_sha256": "264b884689cdf8ab93957a3cc4e5980822252a28935450bf4cb86b37f891b7d9",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "7bdabdc8020a475fb8ede6029d67ca115bc49317208126d5578ec2eb38df2750"
+  },
+  {
+    "archive": "artifacts/41c401375451-result.json",
+    "sha256": "41c401375451d9befa9a2cb159b01a50a41e2d40912f9f687994b65ab1573233",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/macos-workbench-official-website-2026-10-02/result.json",
+    "original_sha256": "41c401375451d9befa9a2cb159b01a50a41e2d40912f9f687994b65ab1573233",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "1e0e74850e1cc1305ef5e9b6c1f653e473d360587dfb3d9b279b134655fa9d98"
+  },
+  {
+    "archive": "artifacts/0fceb3109579-gz-native-oa-sso-safe-ff.json",
+    "sha256": "2c575e96cc1889577646adcb61d70e5104cad6f224d058f2e12c1f209efaaa81",
+    "original": "/tmp/gz-native-oa-sso-safe-ff.json",
+    "original_sha256": "0fceb3109579df4d394131761b8770280811e6bdf4e1e0a096526022718dce50",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "1cbdbdcffe217df99460394a7421d231007ecfd4dac3a9a467932f239685b7ff"
+  },
+  {
+    "archive": "artifacts/b72f2ea02f87-gz-native-oa-back-navigation-safe-ff.json",
+    "sha256": "4f50d7ac2e1c4e8111086f412b9b3684463b7ecf3efdbd0eb0ece8e380943b10",
+    "original": "/tmp/gz-native-oa-back-navigation-safe-ff.json",
+    "original_sha256": "b72f2ea02f87567fb59c4a94b3cbdbd88e12eded9c168e333fad5e5bd135ff49",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "9ce508bb7e4b35c66d254b625127945b08d1db110cf8585f5c14d8fe797f1f07"
+  },
+  {
+    "archive": "artifacts/bd3343c11828-gz-oa02-current-source-qualification.json",
+    "sha256": "bd3343c11828663a65d02f1243668e9a9de050cc0b0d91655d4acb231a0d3e22",
+    "original": "/tmp/gz-oa02-current-source-qualification.json",
+    "original_sha256": "bd3343c11828663a65d02f1243668e9a9de050cc0b0d91655d4acb231a0d3e22",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "fa8fc0142ebfc3f51a34c2549bec2bc91ed8a8275d1ef0d38833f346a21bbdb6"
+  },
+  {
+    "archive": "artifacts/e8f8a424054b-terminal.json",
+    "sha256": "f61e445ea6b698187ad0e42600f146d0c48dd639b69c2250175a1f1e851fdb61",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/macos-oa-native-session-2026-10-02/terminal.json",
+    "original_sha256": "e8f8a424054b062c95c61199e13af4b828b858f7312b5a9d4df2b321311068ec",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "6c312c4e43bea4f75724cb2186859e64cec0f762f316fa4ba8d3057322eae18e"
+  },
+  {
+    "archive": "artifacts/b238be7d232b-gz-current-oa-exchange-field-reconciliation.json",
+    "sha256": "b238be7d232b5c871f9fbbb37bf917c11af3079f81250c2e4070cce136bcb62d",
+    "original": "/tmp/gz-current-oa-exchange-field-reconciliation.json",
+    "original_sha256": "b238be7d232b5c871f9fbbb37bf917c11af3079f81250c2e4070cce136bcb62d",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "c49f4cfa9f219ea3eec04f9b3d80afb112746bc8b82e2e4fd4f15ee754690da7"
+  },
+  {
+    "archive": "artifacts/e5db527bff75-2026-09-21-epgz05-oa-sso-contract.md",
+    "sha256": "e5db527bff75c8af47959b8a4babb29e2ea0b668e9d244e88f4f0728f3fa59d9",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/docs/architecture/2026-09-21-epgz05-oa-sso-contract.md",
+    "original_sha256": "e5db527bff75c8af47959b8a4babb29e2ea0b668e9d244e88f4f0728f3fa59d9",
+    "encoding": "exact_bytes"
+  },
+  {
+    "archive": "artifacts/86fb69d3ebcc-gz-current-internal-42-auth-reconciliation.json",
+    "sha256": "86fb69d3ebccaca86169cd3cecdeeba6b879a46ae086ccc779cc8f3e1edb139c",
+    "original": "/tmp/gz-current-internal-42-auth-reconciliation.json",
+    "original_sha256": "86fb69d3ebccaca86169cd3cecdeeba6b879a46ae086ccc779cc8f3e1edb139c",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "7f2b59ddcddd90b2ecff759f6c677b6fe35b3b1c73110d45b4dbdeeeddc19071"
+  },
+  {
+    "archive": "artifacts/2decb4bbf5d8-gz-current-first-full-internal-conformance-reconciliation.json",
+    "sha256": "2decb4bbf5d8f546a12a09700fed868fb9fb139f8b4e2ad6375ebe46280e8c7e",
+    "original": "/tmp/gz-current-first-full-internal-conformance-reconciliation.json",
+    "original_sha256": "2decb4bbf5d8f546a12a09700fed868fb9fb139f8b4e2ad6375ebe46280e8c7e",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "11e68040058cd75760da1f67ae2781693b27699d3324ceed1bee92884a25330b"
+  },
+  {
+    "archive": "artifacts/a05c4df06934-manifest.json",
+    "sha256": "a05c4df069343ac4eda64f7013a0be1a8ed3f98c1b742db6e9292a80990f3abb",
+    "original": "/Users/leeyi/project/imboy.pub/imboy/evidence/cursor-domain-real-http-2026-10-02/manifest.json",
+    "original_sha256": "a05c4df069343ac4eda64f7013a0be1a8ed3f98c1b742db6e9292a80990f3abb",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "08c308f1e09106e18e0c590735ea76a5d87e4ed23fad1be7a4347b1a3d1c96f4"
+  },
+  {
+    "archive": "artifacts/f291597db9b5-gz-current-internal-42-reconciliation-live.json",
+    "sha256": "2ee46ef4a35fdec7653cb1ac8e20bb1a418239c0ecce6947b344edead44e73b5",
+    "original": "/tmp/gz-current-internal-42-reconciliation-live.json",
+    "original_sha256": "f291597db9b5cefa1227b530f246d8bb0e683ddf2fc6016d318c055e7b576c39",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "22533b2ae2456927b35fd721f329220ef3300319cd0ffd5f306a117f1a9b9820"
+  },
+  {
+    "archive": "artifacts/bd2134a11e53-manifest.json",
+    "sha256": "bd2134a11e534bfa41d12b892e12bd94f033b130f854f07ec8ad2bb9afb78aab",
+    "original": "/Users/leeyi/project/imboy.pub/imboy/evidence/internal-required-audit/manifest.json",
+    "original_sha256": "bd2134a11e534bfa41d12b892e12bd94f033b130f854f07ec8ad2bb9afb78aab",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "9f9dd9cb0bdb420748048fcdea4855c0aecd242390c0e703e6e0842a10cee5ef"
+  },
+  {
+    "archive": "artifacts/43216da9a9fa-manifest.json",
+    "sha256": "43216da9a9fa17eeea4ec89a33f7c733ab199d0591e862ec7680c63a9e2ad855",
+    "original": "/Users/leeyi/project/imboy.pub/imboy/evidence/internal-42-authorization/manifest.json",
+    "original_sha256": "43216da9a9fa17eeea4ec89a33f7c733ab199d0591e862ec7680c63a9e2ad855",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "24173ca4ce2d981a763189cc4c29b9ab235d940e7ce4572607b151c9feee4730"
+  },
+  {
+    "archive": "artifacts/223f8c1e71c5-manifest.json",
+    "sha256": "de74df772b5292b9f8b4ecc07032f9f820dd9db0a1abf9a2bb985d942665c447",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/evidence/message-sender-authorization-2026-10-02/manifest.json",
+    "original_sha256": "223f8c1e71c5416d1849da46c148c52b637141f38b94085e82e5eee4fa78f22f",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "1637a9cbc1b8dc8f26ab4cc940f88fbb8253acb45ba7e53bc4cdad5a13945173"
+  },
+  {
+    "archive": "artifacts/6163a0f84897-gz-current-candidate-integration-closure.json",
+    "sha256": "6163a0f848972afab667b1b1c70570b53a0eba0daf069a2c8c7c043044ac5f28",
+    "original": "/tmp/gz-current-candidate-integration-closure.json",
+    "original_sha256": "6163a0f848972afab667b1b1c70570b53a0eba0daf069a2c8c7c043044ac5f28",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "9cb8e5fe51c8f04885c45e79272cbe6a3cb6ed73af18fa12041d35698d10ae4a"
+  },
+  {
+    "archive": "artifacts/9b84a3725037-gz-current-app-d868-source-qualification.json",
+    "sha256": "9b84a37250371bf088db8d8066f1bae2542cdafe99eabc3780fd8a1f0d2c4a75",
+    "original": "/tmp/gz-current-app-d868-source-qualification.json",
+    "original_sha256": "9b84a37250371bf088db8d8066f1bae2542cdafe99eabc3780fd8a1f0d2c4a75",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "253b189998303b106455c7ed7f43c06c188fc8bb2d9379bc35faea5369aa1727"
+  },
+  {
+    "archive": "artifacts/72db11afbfd7-gz-current-admin-source-qualification.json",
+    "sha256": "72db11afbfd71e81c37a5d8afcf4affc692dfa455ed1fde3654980c175a2846b",
+    "original": "/tmp/gz-current-admin-source-qualification.json",
+    "original_sha256": "72db11afbfd71e81c37a5d8afcf4affc692dfa455ed1fde3654980c175a2846b",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "dc2aa10a616766ce92ee586d001496dd8153f28a6514a9b6395695a8f30e19c0"
+  },
+  {
+    "archive": "artifacts/539d260c04e9-gz-current-083901-first-internal-record-qualification.json",
+    "sha256": "ec3b38e216d9b992ba00d5bb448e4aadc2cde9b8266dae29c43bd1fcd46c92c2",
+    "original": "/tmp/gz-current-083901-first-internal-record-qualification.json",
+    "original_sha256": "539d260c04e9ccab41fc8de9d0d701cf5897a4fcb4c5272f414a8907f0c851c4",
+    "encoding": "reversible_digest_map_v1",
+    "original_semantic_sha256": "2d1ba8260d7076761c79ee9e07b02342d5e02138cd4ca571534fb90afd5f86be"
+  },
+  {
+    "archive": "artifacts/a26fd604b3e6-result.json",
+    "sha256": "a26fd604b3e60fd63b40de7587cf7901a7deafaa8b7a750916d81593ce8bfc67",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-admin/docs/qa/evidence/admin-local-gates-2026-10-02/result.json",
+    "original_sha256": "a26fd604b3e60fd63b40de7587cf7901a7deafaa8b7a750916d81593ce8bfc67",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "a600e55e0264fcdc44f2d5aed8b77bc8ec6d245a7b79a5593ebcecdcdda9875e"
+  },
+  {
+    "archive": "artifacts/ba1cedb96eac-result.json",
+    "sha256": "ba1cedb96eace835dfc683f49f65ce70c8a01b6a740cf44e1ab460ed0de02c8f",
+    "original": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-app/docs/qa/evidence/unused-personal-nav-cleanup-2026-10-02/result.json",
+    "original_sha256": "ba1cedb96eace835dfc683f49f65ce70c8a01b6a740cf44e1ab460ed0de02c8f",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "93d164371044028a8b2c8c0dd63f7b874df78986f11a044e79f1504b8e234a48"
+  },
+  {
+    "archive": "artifacts/a8b89d71bc5f-gz-current-app-e2ee-cleanup-history-qualification.json",
+    "sha256": "a8b89d71bc5f97c6a4cd3fa23f4e10f75d035576c445b5a34c5209e9a93e16a0",
+    "original": "/tmp/gz-current-app-e2ee-cleanup-history-qualification.json",
+    "original_sha256": "a8b89d71bc5f97c6a4cd3fa23f4e10f75d035576c445b5a34c5209e9a93e16a0",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "0b30d376c054b7709958d4ca207a09261857b970895dd236a8ef33ee9673ed81"
+  },
+  {
+    "archive": "artifacts/5da01579b91c-gz-current-device-acceptance-reconciliation.json",
+    "sha256": "5da01579b91c74c9d287b8166dc294de72d3bf1d4dc32dddf4ffedf6d3cc11cc",
+    "original": "/tmp/gz-current-device-acceptance-reconciliation.json",
+    "original_sha256": "5da01579b91c74c9d287b8166dc294de72d3bf1d4dc32dddf4ffedf6d3cc11cc",
+    "encoding": "exact_bytes",
+    "original_semantic_sha256": "1e3b55d51cf30abbe980b376a7674f702bf9a9519696f7a07937a895cc3a2838"
+  }
+]

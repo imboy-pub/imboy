@@ -1,0 +1,73 @@
+{
+  "status": "PASS_OA_EXCHANGE_FIELD_CONSISTENCY_SCOPED",
+  "candidate": "8f25070787cc1dafb054bb97dd797daab4a8ee83",
+  "request_fields": [
+    "code",
+    "nonce",
+    "redirect_uri"
+  ],
+  "success_fields": [
+    "application_id",
+    "consumed_at",
+    "external_user_id",
+    "organization_id",
+    "user_id"
+  ],
+  "schema": {
+    "path": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/api/paths/internal/v1/oa-sso/exchange.yaml",
+    "sha256": "e481b60558d5625edc502a0ca0f8d07d1f6c431c3210d4a437891d9691a93ae7"
+  },
+  "postman": {
+    "path": "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-webhook-transport/api/internal/v1/IMBoy-Internal-API-v1.postman_collection.json",
+    "sha256": "0028ccbcf495afba4ae0b4d3076ba00a3e252416417dffbdedb6e8718ab78daa"
+  },
+  "real_http_records": [
+    {
+      "path": "/tmp/imboy-seat-http.MKkzbL/oa-concurrent-responses.json",
+      "sha256": "1cbe21513141d870dbdce6d9fd2f9ef2761b10e5a0fa14f39ad158d668881bca",
+      "records": [
+        {
+          "http_status": 200,
+          "response_keys": [
+            "application_id",
+            "consumed_at",
+            "external_user_id",
+            "organization_id",
+            "user_id"
+          ]
+        },
+        {
+          "http_status": 404,
+          "response_keys": [
+            "error"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "/tmp/imboy-seat-http.MKkzbL/oa-audit-retry-responses.json",
+      "sha256": "1d1166aaf01ed3de39bd7e78bf630a783a7fd4958118d61fa1281dfeeb046ecc",
+      "records": [
+        {
+          "http_status": 200,
+          "response_keys": [
+            "application_id",
+            "consumed_at",
+            "external_user_id",
+            "organization_id",
+            "user_id"
+          ]
+        },
+        {
+          "http_status": 404,
+          "response_keys": [
+            "error"
+          ]
+        }
+      ]
+    }
+  ],
+  "customer_oa_verified": false,
+  "whole_goal_complete": false,
+  "note": "Positive HTTP exchange records are module-scoped evidence from an overall failed full regression; docs wiring recovery remains separate until integration."
+}

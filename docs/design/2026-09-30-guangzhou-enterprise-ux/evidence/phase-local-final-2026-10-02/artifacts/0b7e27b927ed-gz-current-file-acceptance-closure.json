@@ -1,0 +1,62 @@
+{
+  "status": "PASS_LOCAL_SCOPED_FILE_01_02_03",
+  "candidate": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+  "reviewer": "seat_predicate_review",
+  "evidence_sha256": {
+    "__digest_map_v1__": [
+      [
+        "74a2d06232e016ed5ffc9144eb5bc1891a60e0e755fdc78074a30c8f9ed58308",
+        "evidence/human-group-file-audit-2026-10-02/result.json"
+      ],
+      [
+        "aff2d4134777508bb7a07425e082149348f0160090549b381bb8ea5565c4aede",
+        "evidence/human-file-confirmation-binding-audit-2026-10-02/result.json"
+      ],
+      [
+        "8605ce280b2c4d9e283f003da0c452c81c2b1acd719f40a6c66a4bd9f524dd59",
+        "evidence/macos-current-enterprise-file-audit-2026-10-02/result.json"
+      ],
+      [
+        "cdcf375642f4c8e817fa0d7b81768abe71769fe1f782def695da41b126a5f61d",
+        "evidence/group-file-legacy-migration/bindings.json"
+      ],
+      [
+        "61db4f469f11ffc240fe165d7dd589cab4ee2d8f1fc683f02b941c4caba9f8cf",
+        "evidence/legacy-file-real-storage-2026-10-02/manifest.json"
+      ],
+      [
+        "5a43f2a53eb5eacfeeeb6b74ecd79ff8b2700812d712857da2e31ea3bd858c34",
+        "docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/organization-departure-resources/manifest.json"
+      ],
+      [
+        "b793343224b51f913a19e4f5f92901ab10d193460d67c45047bfa358911eca74",
+        "docs/guides/operations/deployment/enterprise-file-migration-recovery.md"
+      ]
+    ]
+  },
+  "oracles": {
+    "FILE-01": [
+      "real PG authorized read and cross-organization/remaining foreign membership denial",
+      "membership revocation denies list/search/download",
+      "real HTTP/PG/Garage departed member old signed ticket403, bytes retained for authorized members"
+    ],
+    "FILE-02": [
+      "real PG upload/delete/first confirm/message_bound atomic audits",
+      "audit failure full rollback",
+      "replay no duplicate audit",
+      "same workspace concurrent confirmation one row one audit; different workspace same path exactly one winner",
+      "real macOS/Garage upload and delete exactly one audit each"
+    ],
+    "FILE-03": [
+      "real empty schema up/down and synthetic legacy exact-match migration",
+      "unknown ownership not guessed, metadata retained, idempotent rerun",
+      "actual Garage38-byte download equality and denied old ticket after revoke/delete",
+      "documented recovery retains new writes"
+    ]
+  },
+  "limits": [
+    "confirmation HEAD stub supplemented by independent real Garage native and legacy journeys",
+    "no production historical object or encrypted old attachment migration claimed",
+    "frozen full backend pair still pending"
+  ]
+}

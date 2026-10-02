@@ -1,0 +1,86 @@
+{
+  "status": "PARTIAL_INTERNAL_API_RECONCILIATION",
+  "candidate": "c6e3a5b10c56d89eb847e926795c54cdafd4bd53",
+  "run": "/tmp/imboy-seat-http.uPnN4N",
+  "observed_success_count": 42,
+  "manifest_openapi_postman_exact_method_path_match": true,
+  "coverage_ids": [
+    "INT-01",
+    "INT-02",
+    "INT-03",
+    "INT-04",
+    "INT-05",
+    "INT-06",
+    "INT-07",
+    "INT-08",
+    "INT-09",
+    "INT-10",
+    "INT-11",
+    "INT-12",
+    "INT-13",
+    "INT-14",
+    "INT-15",
+    "INT-16",
+    "INT-17",
+    "INT-18",
+    "INT-19",
+    "INT-20",
+    "INT-21",
+    "INT-22",
+    "INT-23",
+    "INT-24",
+    "INT-25",
+    "INT-26",
+    "INT-27",
+    "INT-28",
+    "INT-29",
+    "INT-30",
+    "INT-31",
+    "INT-32",
+    "INT-33",
+    "INT-34",
+    "INT-35",
+    "INT-36",
+    "INT-37",
+    "INT-38",
+    "INT-39",
+    "INT-40",
+    "INT-41",
+    "INT-42"
+  ],
+  "coverage_sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1",
+  "document_sha256": {
+    "__digest_map_v1__": [
+      [
+        "f49e5c5dd3b1e89c5c98938e082e69fb31ff8f09a31a45c9ad8972a7926c1f84",
+        "api/openapi-internal.bundle.yaml"
+      ],
+      [
+        "0028ccbcf495afba4ae0b4d3076ba00a3e252416417dffbdedb6e8718ab78daa",
+        "api/internal/v1/IMBoy-Internal-API-v1.postman_collection.json"
+      ],
+      [
+        "e34ef69cc17738efce12ae8c15228ea970ba2f2577d20c3caba2781438d36fdd",
+        "api/internal/v1/manifest.yaml"
+      ]
+    ]
+  },
+  "external_limits": [
+    "object HEAD stub for INT-08",
+    "public DNS fixture; no real outbound webhook delivery"
+  ],
+  "full_run_terminal": true,
+  "not_proven": [
+    "all negative/rollback clauses terminal on frozen full candidate",
+    "real object storage by this HTTP coverage oracle",
+    "actual outbound customer webhook delivery",
+    "production readiness"
+  ],
+  "complete": false,
+  "full_run_exit": 0,
+  "full_run_tests": 10739,
+  "full_run_log_sha256": "855adb08937e97c0c6e35a701d492e8eeec19884fb2c3665a1e08d7014fda9be",
+  "pair_gate_status": "PASS_FROZEN_FULL_PAIR",
+  "success_coverage_emitter_sha256": "ee26a5877003ac5a96259dbc36db6aaef73cfae31c94cd8036b738abbe7ac8cd",
+  "pair_terminal_sha256": "eb2e0fe80964dd59b0c9934a487951f5384ebd8c461ba5fa6920cd96ee9d7e88"
+}

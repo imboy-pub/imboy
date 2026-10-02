@@ -1,0 +1,32 @@
+{
+  "status": "PASS_LOCAL_WIDGET_SCOPED",
+  "app_candidate": "b49eaa53b6f80eeed871c60b88db9a182382ef3a",
+  "command": "flutter test test/organization/organization_members_page_widget_test.dart test/organization/organization_leave_widget_test.dart",
+  "exit_code": 0,
+  "passed": 11,
+  "oracle": "Actual production Flutter pages with synthetic HTTP adapter; owner transfer confirmation, exactly one target POST, exact named rows owner/admin refresh, loss of old owner transfer action; existing self-leave permission/cache behavior.",
+  "source_hashes": [
+    {
+      "path": "test/organization/organization_members_page_widget_test.dart",
+      "sha256": "a6b0e439f2d69e3d453a4a307246b992170af32db151e82fce06bd8813de046e"
+    },
+    {
+      "path": "test/organization/organization_leave_widget_test.dart",
+      "sha256": "098bff388e657028022fbd986376339473ae12489db8805c47f04c5f54f2b755"
+    },
+    {
+      "path": "lib/modules/organization/presentation/organization_members_page.dart",
+      "sha256": "d4ad52e183c3e96d3dafd7e67d972c87433808601f6fb2591870594d3b39b206"
+    }
+  ],
+  "log_sha256": "918b45600b9947f69d0fa908a61bb554b9f1ba718223141ae130c9f065dc3b3f",
+  "focused_analyze": {
+    "exit_code": 0,
+    "issues": 0,
+    "log_sha256": "439073f49465e562f776cf953a04c2e00774a4d7fd6020bcdd2dfa646790997d"
+  },
+  "review": "APPROVE",
+  "real_backend_owner_transfer_verified": false,
+  "device_owner_transfer_verified": false,
+  "whole_goal_complete": false
+}

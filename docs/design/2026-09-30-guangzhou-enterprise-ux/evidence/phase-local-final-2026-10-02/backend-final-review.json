@@ -1,0 +1,17 @@
+{
+  "status": "APPROVE_QA01_QA02_QA03_LOCAL_SCOPED",
+  "reviewer": "seat_predicate_review",
+  "reviewed_acceptance_sha256": "b4164b5dbcbadd82ba77d45964a00069d9ea0f1aeae99d6f88baf3303a808a30",
+  "reviewed_verifier_sha256": "3b9edb7866447127cae48484af212ef2f72ebccbaaa609ddf29dcd76624a9f95",
+  "actual_backend": "two frozen runs10788 exit0 exact42/176/25 source binding valid",
+  "negative_verifier_probes": [
+    "missing run rejected",
+    "wrong candidate rejected",
+    "duplicate positive ID rejected",
+    "invalid sender mode rejected",
+    "duplicate audit ID rejected",
+    "semantic corruption rejected"
+  ],
+  "scope": "phase local candidate readiness; customer OA/iOS deferred; production not proven",
+  "original_evidence_unchanged": true
+}

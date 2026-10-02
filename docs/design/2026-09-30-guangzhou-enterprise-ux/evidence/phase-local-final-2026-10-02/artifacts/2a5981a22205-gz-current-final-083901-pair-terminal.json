@@ -1,0 +1,107 @@
+{
+  "owner": "gz-final-bfb99dc869ec4b0089ea8a6a33b11efb",
+  "coordinator_pid": 21742,
+  "status": "PASS_BACKEND_FROZEN_PAIR",
+  "candidate": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+  "runs": [
+    {
+      "run": 1,
+      "driver_log": "/tmp/gz-current-final-083901-pair-r1.log",
+      "driver_pid": 21770,
+      "exit": 0,
+      "driver_log_sha256": "e58ffae0d146efe1eb9166d6c597c9a91126d2dbdc3b804343036f5f1cee5a91",
+      "status": "PASS_FROZEN_FULL",
+      "run_dir": "/tmp/imboy-seat-http.DbmsNB",
+      "passed": 10788,
+      "source_binding_verified": true,
+      "log_sha256": "75a7a7cd12d640a8b5498937980a2be4b64642c3c682b673928141532606a107",
+      "discovery": {
+        "modules_count": 1300,
+        "excluded": [
+          "agent_grant_pg",
+          "agent_grant_pg_tests",
+          "agent_recovery_pg_tests",
+          "agent_run_pg",
+          "agent_run_pg_tests",
+          "agent_tool_authorizer_pg_tests",
+          "elib_tsid",
+          "elib_tsid_bootstrap_harness_tests",
+          "elib_tsid_guard"
+        ],
+        "discovery": "src plus noncompanion test modules, native Makefile exclusions"
+      }
+    },
+    {
+      "run": 2,
+      "driver_log": "/tmp/gz-current-final-083901-pair-r2.log",
+      "driver_pid": 33930,
+      "exit": 0,
+      "driver_log_sha256": "c84935dc56ab2b1689dd88e6b948e5c11a4ccd8776d1f2e7a6b317326fdf6686",
+      "status": "PASS_FROZEN_FULL",
+      "run_dir": "/tmp/imboy-seat-http.6GgJYt",
+      "passed": 10788,
+      "source_binding_verified": true,
+      "log_sha256": "e99b15b64b9d39cf7f4794f10f95cac387640b5738c7f035e6efb667f7a07ebc",
+      "discovery": {
+        "modules_count": 1300,
+        "excluded": [
+          "agent_grant_pg",
+          "agent_grant_pg_tests",
+          "agent_recovery_pg_tests",
+          "agent_run_pg",
+          "agent_run_pg_tests",
+          "agent_tool_authorizer_pg_tests",
+          "elib_tsid",
+          "elib_tsid_bootstrap_harness_tests",
+          "elib_tsid_guard"
+        ],
+        "discovery": "src plus noncompanion test modules, native Makefile exclusions"
+      }
+    }
+  ],
+  "helper_hashes": {
+    "__digest_map_v1__": [
+      [
+        "d602a816d7902231ff1c08c6a72d0479dc36e4ec37622edc3e65d2496cb9a5ba",
+        "/tmp/gz-current-final-083901-backend.sh"
+      ],
+      [
+        "2cd6cec1462ec9b8bac8e214a0ee06ff0ef603cf88e6f4f0e1513f9a1867b9a0",
+        "/tmp/gz-current-final-083901-garage.sh"
+      ],
+      [
+        "2a0a70bfb85b409829c6c25b8e9d28e4019ec351b7c564a811d121b4ae70a0c0",
+        "/tmp/gz-current-final-083901-pair.py"
+      ]
+    ]
+  },
+  "required_pass_runs": 2,
+  "whole_goal_complete": false,
+  "active_run": {
+    "run": 2,
+    "driver_log": "/tmp/gz-current-final-083901-pair-r2.log",
+    "driver_pid": 33930,
+    "exit": 0,
+    "driver_log_sha256": "c84935dc56ab2b1689dd88e6b948e5c11a4ccd8776d1f2e7a6b317326fdf6686",
+    "status": "PASS_FROZEN_FULL",
+    "run_dir": "/tmp/imboy-seat-http.6GgJYt",
+    "passed": 10788,
+    "source_binding_verified": true,
+    "log_sha256": "e99b15b64b9d39cf7f4794f10f95cac387640b5738c7f035e6efb667f7a07ebc",
+    "discovery": {
+      "modules_count": 1300,
+      "excluded": [
+        "agent_grant_pg",
+        "agent_grant_pg_tests",
+        "agent_recovery_pg_tests",
+        "agent_run_pg",
+        "agent_run_pg_tests",
+        "agent_tool_authorizer_pg_tests",
+        "elib_tsid",
+        "elib_tsid_bootstrap_harness_tests",
+        "elib_tsid_guard"
+      ],
+      "discovery": "src plus noncompanion test modules, native Makefile exclusions"
+    }
+  }
+}

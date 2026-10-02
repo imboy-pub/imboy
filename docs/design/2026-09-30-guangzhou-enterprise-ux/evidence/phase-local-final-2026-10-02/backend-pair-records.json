@@ -1,0 +1,88 @@
+[
+  {
+    "run": 1,
+    "records": [
+      {
+        "archive": "artifacts/8d05aafd1453-internal-operation-coverage.json",
+        "sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1",
+        "original": "/tmp/imboy-seat-http.DbmsNB/internal-operation-coverage.json",
+        "original_sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1",
+        "encoding": "exact_bytes"
+      },
+      {
+        "archive": "artifacts/d8f3aa660cfe-internal-auth-negatives.jsonl",
+        "sha256": "d8f3aa660cfe97cf977b359116fe00e520f0a8f3222506a3e849f442ee70125d",
+        "original": "/tmp/imboy-seat-http.DbmsNB/internal-auth-negatives.jsonl",
+        "original_sha256": "d8f3aa660cfe97cf977b359116fe00e520f0a8f3222506a3e849f442ee70125d",
+        "encoding": "exact_bytes"
+      },
+      {
+        "archive": "artifacts/404d9a889aee-internal-audit-matrix.jsonl",
+        "sha256": "404d9a889aee34747ffc9c212c1264fbbb9875ddde2fb7b76993b021296101c5",
+        "original": "/tmp/imboy-seat-http.DbmsNB/internal-audit-matrix.jsonl",
+        "original_sha256": "404d9a889aee34747ffc9c212c1264fbbb9875ddde2fb7b76993b021296101c5",
+        "encoding": "exact_bytes"
+      },
+      {
+        "archive": "artifacts/a1955e3144eb-source-binding.json",
+        "sha256": "deb627133dda92883c9a65cf8beb816631e13f9e64709877edc3689ed798c10c",
+        "original": "/tmp/imboy-seat-http.DbmsNB/source-binding.json",
+        "original_sha256": "a1955e3144eb42f7c04f329146e4dbff2ab6848f294bd5f7aa90f7d58ea849ae",
+        "encoding": "reversible_digest_map_v1"
+      },
+      {
+        "archive": "artifacts/309c5a99b32b-full-discovery.json",
+        "sha256": "309c5a99b32bee5220bd086a0c6e783a8a52cb0001596be7c517c25594f10898",
+        "original": "/tmp/imboy-seat-http.DbmsNB/full-discovery.json",
+        "original_sha256": "309c5a99b32bee5220bd086a0c6e783a8a52cb0001596be7c517c25594f10898",
+        "encoding": "exact_bytes"
+      }
+    ],
+    "full_http_log_sha256": "75a7a7cd12d640a8b5498937980a2be4b64642c3c682b673928141532606a107",
+    "full_http_log_private_path": "/tmp/imboy-seat-http.DbmsNB/http.log",
+    "oracle_excerpt_sha256": "65dbad9ec0834f532c0652c8b2ee4ce6bf30687c2f4998ac87f5575581bc5ebb"
+  },
+  {
+    "run": 2,
+    "records": [
+      {
+        "archive": "artifacts/8d05aafd1453-internal-operation-coverage.json",
+        "sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1",
+        "original": "/tmp/imboy-seat-http.6GgJYt/internal-operation-coverage.json",
+        "original_sha256": "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1",
+        "encoding": "exact_bytes"
+      },
+      {
+        "archive": "artifacts/d8f3aa660cfe-internal-auth-negatives.jsonl",
+        "sha256": "d8f3aa660cfe97cf977b359116fe00e520f0a8f3222506a3e849f442ee70125d",
+        "original": "/tmp/imboy-seat-http.6GgJYt/internal-auth-negatives.jsonl",
+        "original_sha256": "d8f3aa660cfe97cf977b359116fe00e520f0a8f3222506a3e849f442ee70125d",
+        "encoding": "exact_bytes"
+      },
+      {
+        "archive": "artifacts/404d9a889aee-internal-audit-matrix.jsonl",
+        "sha256": "404d9a889aee34747ffc9c212c1264fbbb9875ddde2fb7b76993b021296101c5",
+        "original": "/tmp/imboy-seat-http.6GgJYt/internal-audit-matrix.jsonl",
+        "original_sha256": "404d9a889aee34747ffc9c212c1264fbbb9875ddde2fb7b76993b021296101c5",
+        "encoding": "exact_bytes"
+      },
+      {
+        "archive": "artifacts/a1955e3144eb-source-binding.json",
+        "sha256": "deb627133dda92883c9a65cf8beb816631e13f9e64709877edc3689ed798c10c",
+        "original": "/tmp/imboy-seat-http.6GgJYt/source-binding.json",
+        "original_sha256": "a1955e3144eb42f7c04f329146e4dbff2ab6848f294bd5f7aa90f7d58ea849ae",
+        "encoding": "reversible_digest_map_v1"
+      },
+      {
+        "archive": "artifacts/309c5a99b32b-full-discovery.json",
+        "sha256": "309c5a99b32bee5220bd086a0c6e783a8a52cb0001596be7c517c25594f10898",
+        "original": "/tmp/imboy-seat-http.6GgJYt/full-discovery.json",
+        "original_sha256": "309c5a99b32bee5220bd086a0c6e783a8a52cb0001596be7c517c25594f10898",
+        "encoding": "exact_bytes"
+      }
+    ],
+    "full_http_log_sha256": "e99b15b64b9d39cf7f4794f10f95cac387640b5738c7f035e6efb667f7a07ebc",
+    "full_http_log_private_path": "/tmp/imboy-seat-http.6GgJYt/http.log",
+    "oracle_excerpt_sha256": "65dbad9ec0834f532c0652c8b2ee4ce6bf30687c2f4998ac87f5575581bc5ebb"
+  }
+]

@@ -1,0 +1,43 @@
+{
+  "status": "PASS_CANDIDATE_INTEGRATION_OWNERSHIP_SCOPED",
+  "candidate_heads": {
+    "backend": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+    "app": "d868815b8cf715ae3471fcc76c3ec691548a002b",
+    "admin": "9a808bec600acc06dd7e93ed89feafbeaea3ed60"
+  },
+  "owned_clean": true,
+  "foreign_work_preserved": {
+    "backend": 12,
+    "app": 9,
+    "admin": 1
+  },
+  "evidence": [
+    {
+      "path": "/tmp/gz-current-final-three-repo-snapshot.json",
+      "sha256": "11f3a2e87361b55cf1975c0d0f5026b9131e78dabcfc2ae2bf33dc8e4a00f22f"
+    },
+    {
+      "path": "/tmp/gz-read-cursor-governance-safe-integration.json",
+      "sha256": "83a1ac048209745b4dcb0e1e811fd5f7cab99aaa254e30a3c68dc65a4dd8a61a"
+    },
+    {
+      "path": "/tmp/gz-app-macos-oa-cookie-safe-fast-forward.json",
+      "sha256": "73d3277872936fb717e9e65f5ab36928a69d49eb97d7b85f5be9f4db44b10718"
+    },
+    {
+      "path": "/tmp/gz-admin-9a808-safe-integration.json",
+      "sha256": "d81e4cb1178c1ef365b37b8a420713a5240e841b5bd33f3875d77265c3dfb77d"
+    },
+    {
+      "path": "/tmp/gz-current-app-d868-source-qualification.json",
+      "sha256": "9b84a37250371bf088db8d8066f1bae2542cdafe99eabc3780fd8a1f0d2c4a75"
+    },
+    {
+      "path": "/tmp/gz-current-admin-source-qualification.json",
+      "sha256": "72db11afbfd71e81c37a5d8afcf4affc692dfa455ed1fde3654980c175a2846b"
+    }
+  ],
+  "final_backend_gate_pending": true,
+  "no_push_deploy_production_migration": true,
+  "scope": "isolated candidate changes integrated locally; foreign main worktree files are preserved and excluded from candidate test claims"
+}

@@ -1,0 +1,64 @@
+{
+  "status": "PASS_CURRENT_FIRST_FULL_INTERNAL_CONFORMANCE",
+  "candidate": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+  "fixture": "/tmp/imboy-seat-http.DbmsNB",
+  "operations": 42,
+  "authentication_negatives": 176,
+  "auth_scenarios": {
+    "zero_grant": 44,
+    "missing_scope": 44,
+    "revoked_grant": 44,
+    "expired_grant": 44
+  },
+  "required_audit_transactions": 25,
+  "artifact_sha256": {
+    "__digest_map_v1__": [
+      [
+        "8d05aafd1453b2ca4dcaf9e1d75a0bc3b3aa46bfb447a94e987043b9abdf23f1",
+        "internal-operation-coverage.json"
+      ],
+      [
+        "d8f3aa660cfe97cf977b359116fe00e520f0a8f3222506a3e849f442ee70125d",
+        "internal-auth-negatives.jsonl"
+      ],
+      [
+        "404d9a889aee34747ffc9c212c1264fbbb9875ddde2fb7b76993b021296101c5",
+        "internal-audit-matrix.jsonl"
+      ]
+    ]
+  },
+  "real_object_storage_limit": [
+    "object HEAD stub for INT-08",
+    "public DNS fixture; no real outbound webhook delivery"
+  ],
+  "whole_full_gate_pass": false,
+  "required_final_pair": 2,
+  "full_run_terminal": true,
+  "first_frozen_full_run": {
+    "run": 1,
+    "driver_log": "/tmp/gz-current-final-083901-pair-r1.log",
+    "driver_pid": 21770,
+    "exit": 0,
+    "driver_log_sha256": "e58ffae0d146efe1eb9166d6c597c9a91126d2dbdc3b804343036f5f1cee5a91",
+    "status": "PASS_FROZEN_FULL",
+    "run_dir": "/tmp/imboy-seat-http.DbmsNB",
+    "passed": 10788,
+    "source_binding_verified": true,
+    "log_sha256": "75a7a7cd12d640a8b5498937980a2be4b64642c3c682b673928141532606a107",
+    "discovery": {
+      "modules_count": 1300,
+      "excluded": [
+        "agent_grant_pg",
+        "agent_grant_pg_tests",
+        "agent_recovery_pg_tests",
+        "agent_run_pg",
+        "agent_run_pg_tests",
+        "agent_tool_authorizer_pg_tests",
+        "elib_tsid",
+        "elib_tsid_bootstrap_harness_tests",
+        "elib_tsid_guard"
+      ],
+      "discovery": "src plus noncompanion test modules, native Makefile exclusions"
+    }
+  }
+}

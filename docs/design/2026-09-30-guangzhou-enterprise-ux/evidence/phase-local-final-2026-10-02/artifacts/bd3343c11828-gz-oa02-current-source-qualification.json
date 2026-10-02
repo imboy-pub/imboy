@@ -1,0 +1,162 @@
+{
+  "status": "PASS_OA02_SERVER_SOURCE_QUALIFIED_LOCAL",
+  "current_candidate": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+  "runs": [
+    {
+      "run_dir": "/tmp/imboy-seat-http.lWPfLr",
+      "tested_candidate": "a3cb1386964cfbc99439f9c1a2ff7b4791560233",
+      "source_binding_sha256": "8c53c6e20208468f613c020c68ee201254093e861680ef4791991e0a16598824",
+      "oa_sources_verified": [
+        "src/logic/enterprise_oa_sso_logic.erl",
+        "src/repo/enterprise_oa_sso_code_repo.erl",
+        "src/repo/enterprise_application_grant_repo.erl",
+        "src/repo/enterprise_application_credential_repo.erl",
+        "src/api/enterprise_oa_sso_exchange_handler.erl",
+        "src/api/enterprise_oa_sso_handler.erl",
+        "test/api/enterprise_oa_expiry_http_checks.erl",
+        "test/enterprise_oa_sso_tests.erl",
+        "src/repo/enterprise_external_identity_repo.erl",
+        "src/api/enterprise_internal_middleware.erl"
+      ],
+      "oracle_response_records": [
+        {
+          "path": "/tmp/imboy-seat-http.lWPfLr/oa-expiry-response.json",
+          "sha256": "e879a2e65aefa5aa694bce8b3f4dca7052eb21dc9d05e040b4b8010936420535",
+          "http_statuses": [
+            404
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.lWPfLr/oa-concurrent-responses.json",
+          "sha256": "7df6159ce9b6d16dece698ba92e0f57a123d64e10b356fa63a21a63a328f0d2b",
+          "http_statuses": [
+            200,
+            404
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.lWPfLr/oa-revoke-mapping-response.json",
+          "sha256": "7f2bdc52d11f407637529f4ef0025576f56b657d44a4775b26173d5ee1b60f4f",
+          "http_statuses": [
+            422
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.lWPfLr/oa-revoke-member-response.json",
+          "sha256": "7f2bdc52d11f407637529f4ef0025576f56b657d44a4775b26173d5ee1b60f4f",
+          "http_statuses": [
+            422
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.lWPfLr/oa-revoke-account-response.json",
+          "sha256": "7f2bdc52d11f407637529f4ef0025576f56b657d44a4775b26173d5ee1b60f4f",
+          "http_statuses": [
+            422
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.lWPfLr/oa-audit-failure-response.json",
+          "sha256": "b467b5a88ea096db5838692c5844eb0893d05a9225dfd844e683cc9f90285198",
+          "http_statuses": [
+            500
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.lWPfLr/oa-audit-retry-responses.json",
+          "sha256": "0621b886f3114903d6b855da538c7008984d8374d1f983393c68b47bad443eaa",
+          "http_statuses": [
+            200,
+            404
+          ]
+        }
+      ],
+      "log_sha256": "8ba7e39048344ad50e4f7295c30cf412c5282af172e5fc98c5d952be4fa93739"
+    },
+    {
+      "run_dir": "/tmp/imboy-seat-http.fAQb3u",
+      "tested_candidate": "a3cb1386964cfbc99439f9c1a2ff7b4791560233",
+      "source_binding_sha256": "8c53c6e20208468f613c020c68ee201254093e861680ef4791991e0a16598824",
+      "oa_sources_verified": [
+        "src/logic/enterprise_oa_sso_logic.erl",
+        "src/repo/enterprise_oa_sso_code_repo.erl",
+        "src/repo/enterprise_application_grant_repo.erl",
+        "src/repo/enterprise_application_credential_repo.erl",
+        "src/api/enterprise_oa_sso_exchange_handler.erl",
+        "src/api/enterprise_oa_sso_handler.erl",
+        "test/api/enterprise_oa_expiry_http_checks.erl",
+        "test/enterprise_oa_sso_tests.erl",
+        "src/repo/enterprise_external_identity_repo.erl",
+        "src/api/enterprise_internal_middleware.erl"
+      ],
+      "oracle_response_records": [
+        {
+          "path": "/tmp/imboy-seat-http.fAQb3u/oa-expiry-response.json",
+          "sha256": "e879a2e65aefa5aa694bce8b3f4dca7052eb21dc9d05e040b4b8010936420535",
+          "http_statuses": [
+            404
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.fAQb3u/oa-concurrent-responses.json",
+          "sha256": "6d8e8df837611a71263f797616ba395b090128b66ff7a094bb485377503de6db",
+          "http_statuses": [
+            200,
+            404
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.fAQb3u/oa-revoke-mapping-response.json",
+          "sha256": "7f2bdc52d11f407637529f4ef0025576f56b657d44a4775b26173d5ee1b60f4f",
+          "http_statuses": [
+            422
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.fAQb3u/oa-revoke-member-response.json",
+          "sha256": "7f2bdc52d11f407637529f4ef0025576f56b657d44a4775b26173d5ee1b60f4f",
+          "http_statuses": [
+            422
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.fAQb3u/oa-revoke-account-response.json",
+          "sha256": "7f2bdc52d11f407637529f4ef0025576f56b657d44a4775b26173d5ee1b60f4f",
+          "http_statuses": [
+            422
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.fAQb3u/oa-audit-failure-response.json",
+          "sha256": "b467b5a88ea096db5838692c5844eb0893d05a9225dfd844e683cc9f90285198",
+          "http_statuses": [
+            500
+          ]
+        },
+        {
+          "path": "/tmp/imboy-seat-http.fAQb3u/oa-audit-retry-responses.json",
+          "sha256": "dfbffc2bf35244edbe48f2384320be2224a6d9e27b0b7d7c05e59ef7d413a224",
+          "http_statuses": [
+            200,
+            404
+          ]
+        }
+      ],
+      "log_sha256": "0922dcd6bbd299a860ef87da6a93c81024e1c729b84ad3ef97188902b7ab88d9"
+    }
+  ],
+  "audit_append_tx_unchanged_review": "seat_predicate_review verified only Human file helper added; OA append_tx/3 unchanged",
+  "checks": [
+    "fixed expires_in60 in exact current tests",
+    "real PG expiration refusal",
+    "real HTTP deadline crossing while blocked on row lock (shortened3s fixture, not60s wall wait)",
+    "real concurrent exchange statuses200/404; consumption and required audit only1",
+    "cross Org/App/redirect/nonce binding rejected by realPG tests",
+    "mapping/member/account revocation after lock wait yields422 and no consumption or audit",
+    "audit failure500 rolls back consumption; retry200 then404"
+  ],
+  "customer_oa_verified": false,
+  "macos_authenticated_oa_cookie_verified": false,
+  "native_android_cookie_proof_separate": true,
+  "whole_goal_complete": false
+}
