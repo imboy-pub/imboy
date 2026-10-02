@@ -40,13 +40,13 @@ DRILL_ROWS=0
 # 无论从哪条路径退出都推一次结果：exit 0 记成功，非 0 记失败。
 # 挂在 EXIT 上而不是散在各个 fail 点 —— 散着写迟早漏掉一条分支。
 report_drill() {
-  local rc=$?
+  local rc="$1"
   if [ "$rc" -eq 0 ]; then
     push_restore_result 1 "$START_TS" "$DRILL_ROWS" || true
   else
     push_restore_result 0 "$START_TS" "$DRILL_ROWS" || true
   fi
-  return $rc
+  return "$rc"
 }
 
 # 临时库名：固定前缀 + 时间戳 + 进程号，保证唯一且可被守卫识别
@@ -94,7 +94,7 @@ cleanup() {
     psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE IF EXISTS \"${SMOKE_DB}\";" >/dev/null 2>&1 || true
   info "已清理临时库 ${SMOKE_DB}"
 }
-trap 'cleanup; report_drill' EXIT
+trap 'rc=$?; cleanup; report_drill "$rc"' EXIT
 
 # ---------- B-21：演练必须走与真实恢复**同一份代码** ----------
 # 此前这里是就地一句 `pg_restore ... < $LATEST`，而真实恢复
@@ -113,14 +113,14 @@ trap 'cleanup; report_drill' EXIT
 #   --target 临时库；restore_pg.sh 自己会 DROP+CREATE，不必先建。
 info "委托 scripts/restore_pg.sh 执行恢复（与真实灾难恢复同一代码路径）"
 RESTORE_LOG="$(mktemp)"
-trap 'rm -f "$RESTORE_LOG"; cleanup; report_drill' EXIT
+trap 'rc=$?; rm -f "$RESTORE_LOG"; cleanup; report_drill "$rc"' EXIT
 
 if FORCE=1 PG_CONTAINER="$PG_CONTAINER" POSTGRES_USER="$POSTGRES_USER" POSTGRES_DB="$POSTGRES_DB" \
      bash "$(dirname "$0")/restore_pg.sh" "$LATEST" --target "$SMOKE_DB" >"$RESTORE_LOG" 2>&1; then
   info "restore_pg.sh 返回成功"
 else
-  warn "restore_pg.sh 返回非零（自定义格式恢复常有可忽略告警），继续做数据断言"
   tail -20 "$RESTORE_LOG" >&2 || true
+  fail "restore_pg.sh 返回非零，恢复演练失败"
 fi
 
 # ---------- 断言 1：表结构恢复出来了 ----------

@@ -93,8 +93,9 @@ docker cp "$BACKUP_FILE" "${PG_CONTAINER}:${CONTAINER_DUMP}" || fail "拷贝备�
 # 普通 pg_restore 无法恢复 chunk 的 dimension slices，会导致父表查询报
 # "chunk ... has no dimension slices" 且 hypertable 数据全部丢失。
 # 必须用 timescaledb_pre_restore()/post_restore() 包裹；该模式下禁止并行(-j)。
-HAS_TSDB="$(docker exec -i "$PG_CONTAINER" pg_restore --list "$CONTAINER_DUMP" 2>/dev/null \
-            | grep -c 'EXTENSION - timescaledb' || true)"
+RESTORE_LIST="$(docker exec -i "$PG_CONTAINER" pg_restore --list "$CONTAINER_DUMP")" \
+  || fail "备份目录无法解析，恢复失败"
+HAS_TSDB="$(printf '%s\n' "$RESTORE_LIST" | grep -c 'EXTENSION - timescaledb' || true)"
 RESTORE_JOBS=(-j 4)
 if [ "${HAS_TSDB:-0}" -gt 0 ]; then
   warn "检测到 timescaledb，启用 pre_restore 模式（串行恢复，禁用 -j）"
@@ -106,21 +107,27 @@ fi
 
 # ---------- 恢复 ----------
 info "恢复中（pg_restore ${RESTORE_JOBS[*]:-串行}）..."
+RESTORE_FAILED=0
 if docker exec -i "$PG_CONTAINER" \
      pg_restore -U "$POSTGRES_USER" -d "$TARGET_DB" --no-owner --no-privileges "${RESTORE_JOBS[@]+"${RESTORE_JOBS[@]}"}" \
      "$CONTAINER_DUMP"; then
   info "pg_restore 完成"
 else
-  warn "pg_restore 返回非零（自定义格式恢复常有可忽略的告警，继续校验）"
+  warn "pg_restore 返回非零，恢复失败；继续退出恢复模式"
+  RESTORE_FAILED=1
 fi
 
 # ---------- timescaledb 退出恢复模式 ----------
 if [ "${HAS_TSDB:-0}" -gt 0 ]; then
-  docker exec -i "$PG_CONTAINER" psql -U "$POSTGRES_USER" -d "$TARGET_DB" \
-    -c "SELECT timescaledb_post_restore();" || warn "timescaledb_post_restore 返回非零"
+  if ! docker exec -i "$PG_CONTAINER" psql -U "$POSTGRES_USER" -d "$TARGET_DB" -v ON_ERROR_STOP=1 \
+    -c "SELECT timescaledb_post_restore();"; then
+    warn "timescaledb_post_restore 失败"
+    RESTORE_FAILED=1
+  fi
 fi
 
 docker exec -i "$PG_CONTAINER" rm -f "$CONTAINER_DUMP" 2>/dev/null || true
+[ "$RESTORE_FAILED" -eq 0 ] || fail "恢复未完成，请调查恢复日志；禁止使用不完整目标库"
 
 # ---------- 恢复后抽样校验 ----------
 info "抽样校验恢复结果（各表行数 Top 10）..."

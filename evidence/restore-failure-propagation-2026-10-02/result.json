@@ -1,0 +1,26 @@
+{
+  "status": "PASS_REAL_PG_TIMESCALE_CLONE",
+  "fixture_dir": "/tmp/gz-restore-real-54dc82d4dedb4faea894ec23585afaf6",
+  "production": false,
+  "source_files": [
+    {
+      "path": "scripts/restore_pg.sh",
+      "sha256": "2bcb9ff2cfc9129086d9803b6b16be4808302212f8c23aff4b3dc7828fb19904"
+    },
+    {
+      "path": "scripts/restore_smoke.sh",
+      "sha256": "99888134775a4c1ff6cebb4a32061cd4c7766857349b6108722e602feee56a81"
+    },
+    {
+      "path": "scripts/test/restore_failure_test.sh",
+      "sha256": "18d380117b11d390f58124046418e9ef370941385e3ad9a80b68fe1c87207c25"
+    }
+  ],
+  "restore_exit": 0,
+  "metadata_and_message_rows_equal": true,
+  "timescale_restoring_off": true,
+  "synthetic_only": true,
+  "object_storage_restore_verified": false,
+  "dump_sha256": "bf1da18382b1ea81c410299cf753bc079e611b2c5a4dcaf21bad13977b4c8a9e",
+  "restored_rows_sha256": "0a79c3ab7106d57d01448368cd4b283e4ac9f5b9e754cb37bbc488d19d8eec14"
+}

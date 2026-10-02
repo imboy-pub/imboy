@@ -1,0 +1,20 @@
+{
+  "status": "FAIL",
+  "fixture_dir": "/tmp/gz-restore-real-a3b15502273d47218087349a0ae24794",
+  "production": false,
+  "source_files": [
+    {
+      "path": "scripts/restore_pg.sh",
+      "sha256": "2bcb9ff2cfc9129086d9803b6b16be4808302212f8c23aff4b3dc7828fb19904"
+    },
+    {
+      "path": "scripts/restore_smoke.sh",
+      "sha256": "99888134775a4c1ff6cebb4a32061cd4c7766857349b6108722e602feee56a81"
+    },
+    {
+      "path": "scripts/test/restore_failure_test.sh",
+      "sha256": "18d380117b11d390f58124046418e9ef370941385e3ad9a80b68fe1c87207c25"
+    }
+  ],
+  "reason": "fixture readiness failed"
+}
