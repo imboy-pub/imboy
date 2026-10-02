@@ -17,7 +17,8 @@
 # 顺序命中；glob 无匹配跳过（nginx 语义）；非 glob 缺失/环/嵌套超 8 层
 # 退出 2。
 # fail-closed 原则：不能可靠解析的结构（未闭合块、EOF 未完结指令、无法
-# 解析的 include、未知 listen 参数、顶层非 server 块）一律退出 2，绝不猜测通过。
+# 解析的 include、未知 listen 参数、顶层非 server/upstream 块）一律退出 2，
+# 绝不猜测通过（顶层 server 与 upstream 块受支持，其余顶层块 fail-closed）。
 # 受检文件若不含任何受管 HTTPS server 定义（空文件、纯注释、只有 HTTP
 # server、没有任何 server 块），视为受管配置缺失（漂移），退出 1；
 # --strict 与 --pre-switch 两种模式同样适用。
@@ -175,7 +176,7 @@ Exit codes (precedence 3 > 2 > 1 > 0):
      non-glob target, include cycle, or nesting deeper than 8;
      unterminated directive at end of file; unbalanced/unclosed
      braces; listen outside a server block; unknown listen parameter;
-     non-server top-level block)
+     non-server/non-upstream top-level block)
   3  --push requested but Pushgateway URL missing or push failed
 
 Metrics (Pushgateway text format, frozen names):
@@ -200,7 +201,11 @@ Known limits (fail-closed, never guessed as pass):
   - A checked file with no managed HTTPS server definition (empty,
     comments-only, HTTP-only server blocks, or no server block) is
     missing managed config and exits 1 as drift.
-  - server blocks must sit at file top level (vhost file convention).
+  - server blocks must sit at file top level (vhost file convention);
+    top-level upstream blocks are also supported (parsed structurally
+    only — their inner `server host:port;` directives are not server
+    blocks, and a listen inside one is still fatal); any other
+    top-level block (http/events/stream/map/geo/unknown) fails closed.
   - Unquoted regex braces inside location patterns can confuse block
     accounting (typically surfacing as an exit 2, not a wrong pass).
   - Include cycle detection compares path strings; different path
@@ -566,7 +571,12 @@ handle_block_open() {
     SRV_DEPTH=$DEPTH
     return 0
   fi
-  if [ "$DEPTH" -eq 0 ]; then
+  # v1.2（缺口 #5）：顶层 upstream 块与 server 同级合法（宝塔 vhost 常态），
+  # 仅做结构化解析（DEPTH 配平）；块内 `server host:port;` 是指令，走
+  # handle_directive 的无匹配忽略路径，不与 server 块混淆；块内 listen 在
+  # SRV_OPEN=0 下仍 fatal。upstream 的 `}` 只减 DEPTH（SRV_OPEN=0 时不触发
+  # evaluate_server）。其余顶层块维持 fail-closed。
+  if [ "$DEPTH" -eq 0 ] && [ "$word" != upstream ]; then
     parse_fatal "$file:$lineno: unexpected top-level block '$word' (only server blocks are supported)"
   fi
   DEPTH=$((DEPTH + 1))

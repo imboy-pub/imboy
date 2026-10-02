@@ -799,6 +799,48 @@ assert_rc 1 "HTTP-only 文件 --metrics → 仍退出 1（受管配置缺失口�
 assert_count 0 "HTTP-only 文件不产出任何 drift 序列" '^imboy_l4_sni_listen_drift\{' "$TMP/out"
 assert_grep "check_success 仍为 1" '^imboy_l4_sni_check_success 1$' "$TMP/out"
 
+echo "== 顶层 upstream 块（合同 v1.2：结构化解析，其余顶层块 fail-closed）=="
+
+cat >"$TMP/u01.conf" <<'NGINX'
+upstream backend_pool {
+    server 127.0.0.1:9800;
+}
+server {
+    listen 127.0.0.1:10443 ssl proxy_protocol;
+    server_name up.example.com;
+}
+NGINX
+run_check "$TMP/u01.conf"
+assert_rc 0 "顶层 upstream 块 + 合法 server（多行风格）→ 通过（v1.2：upstream 与 server 同级合法）"
+
+cat >"$TMP/u02.conf" <<'NGINX'
+upstream backend_pool {
+    server 127.0.0.1:9800;
+    listen 443 ssl;
+}
+NGINX
+run_check "$TMP/u02.conf"
+assert_rc 2 "upstream 块内 listen → 退出 2（nginx 语法不允许，fail-closed 保留）"
+assert_grep "块内 listen 诊断" 'u02\.conf:3: .*outside any server block' "$TMP/err"
+
+cat >"$TMP/u03.conf" <<'NGINX'
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+}
+server {
+    listen 127.0.0.1:10443 ssl proxy_protocol;
+    server_name map.example.com;
+}
+NGINX
+run_check "$TMP/u03.conf"
+assert_rc 2 "顶层 map 块 → 仍退出 2（其余顶层块 fail-closed 不变）"
+assert_grep "map 块诊断文案不变" "unexpected top-level block 'map' \(only server blocks are supported\)" "$TMP/err"
+
+run_check --metrics "$TMP/u01.conf"
+assert_rc 0 "upstream 后随合法 HTTPS server 的 --metrics → 通过"
+assert_count 1 "drift 序列仍仅来自 HTTPS server（upstream 不产出序列）" '^imboy_l4_sni_listen_drift\{' "$TMP/out"
+assert_grep "唯一序列标签为 HTTPS server 的 server_name" 'imboy_l4_sni_listen_drift\{config_file="[^"]*",server="up\.example\.com"\} 0' "$TMP/out"
+
 echo "== 结果：PASS=$PASS FAIL=$FAIL SKIP=$SKIP =="
 if [ "$FAIL" -ne 0 ]; then
   exit 1
