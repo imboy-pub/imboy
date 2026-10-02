@@ -88,5 +88,14 @@ Seat 资产缓存策略为 no-cache 重验证，回滚后已打开的 Seat 页�
 
 * 本地候选验证完成（模板渲染 `nginx -t` 通过、两组离线 harness 全绿、
   dryrun 合成栈 install/restart/rollback 演练通过、配对门与 admin 仓三方一致）。
-* **生产未部署未授权**：本文档与对应模板增量尚未应用到任何生产环境；
-  上线须走既有部署流程并另行授权。
+* **2026-10-02 生产已部署（用户授权联调）**：坐席路由经 `imboy-deploy.sh cs
+  --skip-backend` 走 staged → nginx -t → 原子替换上线（release
+  20261002232124 及此前多版）。直连形态渲染真源有两处与容器模板的刻意
+  差异：(1) listen 为 `127.0.0.1:10443 ssl http2 proxy_protocol`（生产
+  443 由 nginx stream 层 ssl_preread SNI 分流，非容器内 `listen 443`）；
+  (2) 静态面由宿主机 `$CS_ROOT_REAL` 顶级软链直读（非 imboy_widget 容器）。
+  网关级 IP 限流同批上线（cs_widget_per_ip 30r/m burst=10 对齐后端节流；
+  cs_seat_per_ip 120r/m burst=40），zone 定义于本 vhost 文件顶部。
+  渲染真源 = `scripts/lib/cs_deploy.sh:cs_render_vhost`（容器模板
+  `deploy/nginx/templates/cs-widget.conf.template` 与其保持路由族一致，
+  listen/静态面按形态分叉；断言函数 `cs_assert_vhost_render` 防再漂移）。

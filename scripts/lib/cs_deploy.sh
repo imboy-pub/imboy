@@ -208,11 +208,16 @@ cs_remote_record_prev_cmd() {
     "$CS_OLD_SYMLINK" "$CS_ROOT_REAL" "$CS_RELEASE_STAMP"
 }
 
-# 原子 symlink 切换：临时名 + mv -T（$1=新 release 目录 $2=current 链接路径）
+# 原子 symlink 切换：临时名 + mv -T（$1=新 release 目录 $2=current 链接路径）。
+# 同步幂等补建顶级静态软链（seat-assets 等）：直连 vhost 以 root+location 直读
+# 顶级软链（current 切换后相对软链自动指向新 release）；旧 release 缺对应目录
+# 时软链悬空 → 404，与回滚"路由面下线"语义一致，回滚无需处理软链。
+# 枚举式而非远端循环：printf 经远端 shell 双层展开时 $var 极易引号/转义漂移
+# （事故 2026-10-02 曾生成字面 '$l' 文件），路径值已过 allowlist，直接展开。
 cs_remote_swap_symlink_cmd() {
-  local target="$1" link="$2"
-  printf ": imboy-cs-op-swap-symlink\nln -sfn '%s' '%s.cs-new' || exit 16\nmv -T '%s.cs-new' '%s' || exit 17\n" \
-    "$target" "$link" "$link" "$link"
+  local target="$1" link="$2" r="$CS_ROOT_REAL"
+  printf ": imboy-cs-op-swap-symlink\nln -sfn '%s' '%s.cs-new' || exit 16\nmv -T '%s.cs-new' '%s' || exit 17\n[ -e '%s/widget-assets' ] || ln -sfn current/widget-assets '%s/widget-assets' || exit 26\n[ -e '%s/seat-assets' ] || ln -sfn current/seat-assets '%s/seat-assets' || exit 26\n[ -e '%s/assets' ] || ln -sfn current/assets '%s/assets' || exit 26\n[ -e '%s/widget' ] || ln -sfn current/widget '%s/widget' || exit 26\n" \
+    "$target" "$link" "$link" "$link" "$r" "$r" "$r" "$r" "$r" "$r" "$r" "$r"
 }
 
 # 原子 vhost 替换（$1=远端暂存 final 路径 $2=线上 vhost 路径）
@@ -277,6 +282,13 @@ cs_render_vhost() {
 # Managed by imboy-deploy.sh cs (CSD-CLI-01), contract hosted-widget-contract-v1 S7.
 # 本文件由部署工具 staged → nginx -t → 原子替换管理，请勿手工编辑。
 
+# 网关级 IP 限流（P0-3 加固 2026-10-02）：匿名访客面与坐席面分域——
+# widget 面对齐后端 cs_widget 桶（sys.config 30/min per IP）；坐席工作台
+# 面（JWT 后）放宽防办公 NAT 误伤。zone 同名只在本文件定义一次；listen
+# 带 proxy_protocol，\$binary_remote_addr 已是真实客户端 IP。
+limit_req_zone \$binary_remote_addr zone=cs_widget_per_ip:10m rate=30r/m;
+limit_req_zone \$binary_remote_addr zone=cs_seat_per_ip:10m rate=120r/m;
+
 server {
     listen 80;
     server_name $CS_WIDGET_DOMAIN;
@@ -285,8 +297,15 @@ server {
     location / { return 301 https://\$host\$request_uri; }
 }
 
+# 直连生产拓扑：公网 443 由 nginx stream 层 ssl_preread 按 SNI 分流至
+# 127.0.0.1:10443（proxy_protocol，非 turn 域名 default 出口）。本 vhost
+# 必须监听 10443 并携带 proxy_protocol；listen 443 会被 stream 层遮蔽、
+# 流量落入其他 vhost（渲染真源漂移事故 2026-10-02）。
 server {
-    listen 443 ssl http2;
+    # http2 只用指令形态（http2 on）：listen 行携带 http2 参数在 nginx
+    # 1.25.1+ 已废弃（deprecation warning，nginx -t 噪音）。
+    listen 127.0.0.1:10443 ssl proxy_protocol;
+    http2 on;
     server_name $CS_WIDGET_DOMAIN;
 
     ssl_certificate     $CS_CERT_FULLCHAIN;
@@ -305,6 +324,24 @@ server {
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 3600s;
+        limit_req zone=cs_widget_per_ip burst=10 nodelay;
+        proxy_send_timeout 3600s;
+    }
+
+    # Seat 工作台 SSE（SC-OPS-A03，与 Widget SSE 同构）：正则优先于下方
+    # 坐席 API 正则；关缓冲/关缓存，读/写超时 3600s。两个 SSE 正则互不重叠。
+    location ~ ^/api/v1/cs/organizations/[0-9A-Za-z_-]+/seats/me/events\$ {
+        proxy_pass http://127.0.0.1:$port;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding on;
+        proxy_read_timeout 3600s;
+        limit_req zone=cs_seat_per_ip burst=40 nodelay;
         proxy_send_timeout 3600s;
     }
 
@@ -317,6 +354,22 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 300s;
+        limit_req zone=cs_widget_per_ip burst=10 nodelay;
+        proxy_send_timeout 300s;
+    }
+
+    # Seat 控制台动态 frame /seat/:public_seat_console_id → backend
+    # （SC-OPS-A04）。CSP frame-ancestors / XFO 豁免 / no-store 全部由
+    # backend 逐请求下发，网关零注入——与 /w/ 同一边界，超时对齐。
+    location ^~ /seat/ {
+        proxy_pass http://127.0.0.1:$port;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        limit_req zone=cs_seat_per_ip burst=40 nodelay;
         proxy_send_timeout 300s;
     }
 
@@ -329,6 +382,63 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 300s;
+        limit_req zone=cs_widget_per_ip burst=10 nodelay;
+        proxy_send_timeout 300s;
+    }
+
+    # 坐席工作台 API 精确子路径正则（SC-OPS-A02 r3-B1 收敛）：只放行
+    # me/seat-contexts 与 organizations/:org 的 transfer-targets / sessions*
+    # / seats(heartbeat|presence|sessions)。seats/me/events 由上方 SSE 正则
+    # 独占；治理面与访客面一律不匹配 → 落 location / → 404（fail-closed）。
+    location ~ ^/api/v1/cs/(me/seat-contexts|organizations/[0-9A-Za-z_-]+/(transfer-targets|sessions/(queue|[0-9A-Za-z_-]+(/(claim|transfer|close|read-cursor|context))?)|seats/(sessions|me/(heartbeat|presence))))\$ {
+        proxy_pass http://127.0.0.1:$port;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        limit_req zone=cs_seat_per_ip burst=40 nodelay;
+        proxy_send_timeout 300s;
+    }
+
+    # Seat 扫码登录（qr_login 四端点精确前缀，SC-OPS-A02）。
+    location /api/v1/passport/qr_login/ {
+        proxy_pass http://127.0.0.1:$port;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        limit_req zone=cs_seat_per_ip burst=40 nodelay;
+        proxy_send_timeout 300s;
+    }
+    # Seat 会话面（企业消息真源读路径）。^~ 显式跳过正则检查：该前缀下
+    # 的 URI 空间由本块独占（organizations 正则只管辖 organizations/ 路径），
+    # 未来在 server 块新增正则不会静默抢走这组流量。
+    location ^~ /api/v1/enterprise/conversations/ {
+        proxy_pass http://127.0.0.1:$port;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        limit_req zone=cs_seat_per_ip burst=40 nodelay;
+        proxy_send_timeout 300s;
+    }
+    # Seat 企业子路径正则（r3-B1 收敛）：attachments presign/confirm/content
+    # + conversations/:conv/messages 写路径；其余治理面不匹配 → 404。
+    location ~ ^/api/v1/enterprise/organizations/[0-9A-Za-z_-]+/(assets/(presign|confirm|[0-9A-Za-z_-]+/content)|conversations/[0-9A-Za-z_-]+/messages)\$ {
+        proxy_pass http://127.0.0.1:$port;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        limit_req zone=cs_seat_per_ip burst=40 nodelay;
         proxy_send_timeout 300s;
     }
 
@@ -346,6 +456,13 @@ server {
     # 原位更新，必须 no-cache 重验证（immutable 会把热修冻结最长一年）；
     # 对齐 imboyadmin docker/widget/nginx.conf 冻结表。
     location ^~ /widget-assets/ {
+        root $CS_ROOT_REAL;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+    }
+    # Seat 稳定别名资产（SC-OPS-A01/A04）：/seat-assets/cs-seat.v1.{js,css}
+    # 内容随发布原位更新，与 /widget-assets/ 同为 no-cache 重验证（immutable
+    # 会把热修冻结最长一年）。
+    location ^~ /seat-assets/ {
         root $CS_ROOT_REAL;
         add_header Cache-Control "no-cache, must-revalidate" always;
     }
@@ -371,7 +488,13 @@ cs_assert_vhost_render() {
   [[ -s "$f" ]] || return 1
   if grep -q '@[A-Z_]*@' "$f"; then return 1; fi
   grep -q "server_name $CS_WIDGET_DOMAIN;" "$f" || return 1
-  grep -q "listen 443 ssl" "$f" || return 1
+  # L4 拓扑不变量：必须监听 10443 + proxy_protocol（stream SNI 分流出口），
+  # 且不得出现裸 listen 443 指令行（会被 stream 层遮蔽；锚定行首防注释误报）。
+  # http2 只允许指令形态（http2 on），listen 行携带 http2 参数已废弃。
+  grep -q 'listen 127.0.0.1:10443 ssl proxy_protocol;' "$f" || return 1
+  grep -q '^[[:space:]]*http2 on;' "$f" || return 1
+  grep -qE '^[[:space:]]*listen 443' "$f" && return 1
+  grep -qE '^[[:space:]]*listen [^;]*http2' "$f" && return 1
   grep -q "ssl_certificate     $CS_CERT_FULLCHAIN;" "$f" || return 1
   grep -q "proxy_pass http://127.0.0.1:$port;" "$f" || return 1
   grep -q 'proxy_buffering off;' "$f" || return 1
@@ -379,6 +502,14 @@ cs_assert_vhost_render() {
   grep -q 'location \^~ /w/' "$f" || return 1
   grep -q 'location /api/v1/cs/widget/' "$f" || return 1
   grep -q 'max-age=31536000, immutable' "$f" || return 1
+  # 坐席面（SC-OPS）：SSE 正则 / 动态 frame / 静态别名 / qr_login /
+  # 坐席 API 收敛正则 —— 缺任一即渲染漂移，拒绝部署。
+  grep -q 'location ~ \^/api/v1/cs/organizations/\[0-9A-Za-z_-\]+/seats/me/events' "$f" || return 1
+  grep -q 'location \^~ /seat/' "$f" || return 1
+  grep -q 'location \^~ /seat-assets/' "$f" || return 1
+  grep -q 'location /api/v1/passport/qr_login/' "$f" || return 1
+  grep -q 'location \^~ /api/v1/enterprise/conversations/' "$f" || return 1
+  grep -q 'location ~ \^/api/v1/cs/(me/seat-contexts' "$f" || return 1
   return 0
 }
 

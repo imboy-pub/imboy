@@ -1049,14 +1049,16 @@ cs_template_contract_errors() { # $1=template file
   # 非 nginx 指令，不计。
   grep -qE '^[[:space:]]*location .*/api/v1/cs/sessions/[^[:space:]]*/events' "$f" \
     && echo "TPLERR: 出现历史漂移形态 cs/sessions/…/events（路由表无此端点）"
-  # 四组 API 精确放行（含既有 widget 组）
+  # 四组 API 精确放行（含既有 widget 组；r3-B1 收敛后 /api/v1/cs/ 与
+  # /api/v1/enterprise/organizations/ 两组为坐席子路径正则，非整族前缀）
   local loc
-  for loc in 'location /api/v1/cs/widget/ {' 'location /api/v1/cs/ {' \
+  for loc in 'location /api/v1/cs/widget/ {' \
+             'location ~ ^/api/v1/cs/(me/seat-contexts' \
              'location /api/v1/passport/qr_login/ {' \
-             'location /api/v1/enterprise/conversations/ {' \
-             'location /api/v1/enterprise/organizations/ {'; do
+             'location ^~ /api/v1/enterprise/conversations/ {' \
+             'location ~ ^/api/v1/enterprise/organizations/'; do
     blk="$(tpl_block "$f" "$loc")"
-    if [ -z "$blk" ]; then echo "TPLERR: 缺 API 精确前缀 location: $loc"; continue; fi
+    if [ -z "$blk" ]; then echo "TPLERR: 缺 API 精确放行 location: $loc"; continue; fi
     printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_backend:9800;' || echo "TPLERR: $loc 未指向 imboy_backend:9800"
   done
   # 禁止项：全 /api/v1/ 通配（两种书写形态）
@@ -1099,10 +1101,13 @@ if [ -f "$CS_TEMPLATE" ]; then
     && ok "A01 /seat/ 动态 frame 块存在" || bad "A01 /seat/ 块缺失" ""
   grep -qF 'location ^~ /seat-assets/ {' "$CS_TEMPLATE" \
     && ok "A01 /seat-assets/ 静态块存在" || bad "A01 /seat-assets/ 块缺失" ""
-  for loc in '/api/v1/cs/widget/' '/api/v1/cs/' '/api/v1/passport/qr_login/' \
-             '/api/v1/enterprise/conversations/' '/api/v1/enterprise/organizations/'; do
-    grep -qF "location $loc {" "$CS_TEMPLATE" \
-      && ok "A02 API 精确前缀存在: $loc" || bad "A02 API 前缀缺失: $loc" ""
+  for loc in 'location /api/v1/cs/widget/ {' \
+             'location ~ ^/api/v1/cs/(me/seat-contexts' \
+             'location /api/v1/passport/qr_login/ {' \
+             'location ^~ /api/v1/enterprise/conversations/ {' \
+             'location ~ ^/api/v1/enterprise/organizations/'; do
+    grep -qF "$loc" "$CS_TEMPLATE" \
+      && ok "A02 API 精确放行存在: $loc" || bad "A02 API 放行缺失: $loc" ""
   done
   if grep -qE '^[[:space:]]*location /api/v1/ \{' "$CS_TEMPLATE"; then
     bad "A02 全 /api/v1/ 通配出现（禁止项）" ""
@@ -1136,7 +1141,7 @@ if [ -f "$CS_TEMPLATE" ]; then
   tpl_neg "删除 /seat-assets/ 静态块"    '/location \^~ \/seat-assets\/ \{/,/^[[:space:]]*}[[:space:]]*$/d'
   tpl_neg "Seat SSE 关缓冲被移除"        '/proxy_buffering off;/d'
   tpl_neg "qr_login 组被改名（组缺失）"  's/location \/api\/v1\/passport\/qr_login\/ \{/location \/api\/v1\/passport\/qr_loginX \{/'
-  tpl_neg "cs/ 前缀被放大为全通配"       's/location \/api\/v1\/cs\/ \{/location \/api\/v1\/ \{/'
+  tpl_neg "坐席 API 收敛正则被放大为全通配" 's/location ~ \^\/api\/v1\/cs\/\(me\/seat-contexts/location \/api\/v1\/ \{/'
   # seat-assets 被注入缓存头：awk 注入（BSD sed 替换串不支持 \n）
   m_inject="$TMP_ROOT/tpl-mutant-inject.$$"
   awk '{print} /location \^~ \/seat-assets\/ \{/ {print "            add_header Cache-Control \"public, max-age=31536000, immutable\" always;"}' \
