@@ -553,5 +553,93 @@
         "sha256": "4f5b5e5fc1df9d72a68963bc3a7b0b9913ea35a047987ddd8ed8498c3b06a0b7"
       }
     ]
+  },
+  "organization_departure_resources": {
+    "status": "PASS_SCOPED_CURRENT_ORGANIZATION_EXIT_RESOURCES",
+    "backend_parent": "74ef5571c2f01b2ba8e0e9947c0c7e67dee9a2f5",
+    "http_pg_garage_run": "/tmp/imboy-seat-http.Z835Hp",
+    "exit": 0,
+    "focused_eunit_count": 220,
+    "focused_eunit_exit": 0,
+    "source_binding_verified": true,
+    "cached_beams_verified": true,
+    "oracle": "production router/middleware/handlers, real leave transaction, isolated PostgreSQL and actual Garage bytes; no auth or resource-authorization mock in HTTP journey",
+    "checks": [
+      "channel_id_read_revoked",
+      "channel_custom_id_read_revoked",
+      "channel_qrcode_read_revoked",
+      "group_file_list_revoked",
+      "group_file_download_revoked",
+      "issued_file_ticket_revoked",
+      "workspace_revoked",
+      "group_membership_revoked",
+      "channel_subscription_removed",
+      "oa_code_issue_revoked",
+      "issued_oa_code_exchange_revoked",
+      "enterprise_file_preserved",
+      "remaining_member_file_access",
+      "personal_account_preserved"
+    ],
+    "source_hashes": [
+      {
+        "path": "src/logic/channel_logic_message.erl",
+        "sha256": "96adda2cafe543196eeccabe6dc4db24b405ab82372fc31624c3d932b46b1816"
+      },
+      {
+        "path": "src/api/channel_handler.erl",
+        "sha256": "37c71273d71fc7e55452f6a4af760f6f8f8f90db5d9aad8569584bd6838cf4bf"
+      },
+      {
+        "path": "test/api/organization_departure_resource_http_checks.erl",
+        "sha256": "1cd3a8698e2cbb2f09329442133b094000194388c898fed4205a3db4f89ecfb3"
+      },
+      {
+        "path": "test/logic/channel_workspace_read_tests.erl",
+        "sha256": "02e2f64876ea474100b98abd20217111fbd4906ae02d9840137231d2e72f189e"
+      },
+      {
+        "path": "test/logic/channel_logic_message_tests.erl",
+        "sha256": "1de837afe2fa2c65c9e56c493efe5ec09a93c9ca380fc3cd26b94e0eddea015f"
+      },
+      {
+        "path": "test/logic/channel_logic_tests.erl",
+        "sha256": "2e694cb382bf2333982aa60d0374adf86a0ac3723efb2b14e134dd6639212651"
+      }
+    ],
+    "artifacts": [
+      {
+        "path": "old-qr-regression.json",
+        "sha256": "024c07000c1260a04e2e01986466481d465033aaf92eae3bfefe91a6ef7e6a31"
+      },
+      {
+        "path": "result.json",
+        "sha256": "4dc29436376e00d718327f62fae5dc90520af1497020dcf29a3033989e97b938"
+      }
+    ],
+    "logs": [
+      {
+        "path": "/tmp/imboy-seat-http.Z835Hp/source-binding.json",
+        "sha256": "92c37637dcd17725eaaa048447f610cbe275c36bc7887f4cf8c436b33619b3fc"
+      },
+      {
+        "path": "/tmp/imboy-seat-http.Z835Hp/source-overrides.json",
+        "sha256": "ee317ae33c4a2bb278f4a496ac8928c8bb8738e499de2d303e44a95d494a053c"
+      },
+      {
+        "path": "/tmp/gz-departure-resource-final-r2.log",
+        "sha256": "5f7639cd06e867ec772a80fe354204a5798bdef7f757ee683a3fc59eb3046bfa"
+      },
+      {
+        "path": "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-seat-purpose-vwdt203w/focused.log",
+        "sha256": "a20c9aa16fb0c336c7362bbc14f311b318aa384f9779c9e07d98f108f4d701ed"
+      }
+    ],
+    "limitations": [
+      "server-side synthetic OA protocol only; customer OA unavailable",
+      "self-exit journey only; owner transfer/admin removal/concurrent departure and rejoin require their own evidence",
+      "personal account status and enterprise file retention verified; not every personal conversation or other-enterprise journey",
+      "current full EUnit pair and three-repository final acceptance pending"
+    ],
+    "production_ready": false
   }
 }

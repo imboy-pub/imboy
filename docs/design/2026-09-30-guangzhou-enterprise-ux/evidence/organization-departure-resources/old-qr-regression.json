@@ -1,0 +1,10 @@
+{
+  "status": "EXPECTED_FAIL_ON_PRE_FIX_PRODUCTION_SOURCE",
+  "run": "/tmp/imboy-seat-http.xbU1Zv",
+  "backend_parent": "74ef5571c2f01b2ba8e0e9947c0c7e67dee9a2f5",
+  "assertion": "channel QR read after successful organization exit",
+  "expected_envelope_code": 403,
+  "actual_envelope_code": 0,
+  "raw_log_sha256": "a2cb80794676d632b96ded2e9bf847bddaddf7254302e54c5c36805ecc96da38",
+  "note": "Earlier fixture setup failures were diagnostics; only this failure proves the production QR authorization gap."
+}

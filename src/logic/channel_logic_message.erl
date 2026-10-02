@@ -90,8 +90,7 @@ get_channel(ChannelIdBin, Uid) ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel), map_size(Channel) =:= 0 -> {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
-                    Channel2 = add_user_channel_state(Channel, ChannelId, Uid),
-                    {ok, channel_transfer(Channel2)};
+                    channel_view(Channel, ChannelId, Uid);
                 _Unexpected ->
                     {error, <<"频道不存在"/utf8>>}
             end
@@ -114,14 +113,25 @@ get_channel_by_custom_id(CustomId, Uid) ->
                         {error, _} ->
                             {error, <<"频道不存在"/utf8>>};
                         ChannelWithPrice when is_map(ChannelWithPrice) ->
-                            Channel2 = add_user_channel_state(ChannelWithPrice, ChannelId, Uid),
-                            {ok, channel_transfer(Channel2)};
+                            channel_view(ChannelWithPrice, ChannelId, Uid);
                         _Unexpected ->
                             {error, <<"频道不存在"/utf8>>}
                     end
             end;
         _Unexpected ->
             {error, <<"频道不存在"/utf8>>}
+    end.
+
+%% Scope comes from the repository projection; legacy personal projections omit it.
+channel_view(Channel, ChannelId, Uid) ->
+    Access =
+        case maps:get(<<"scope">>, Channel, <<"personal">>) of
+            <<"workspace">> -> workspace_resolver:ensure_channel_member_access(Uid, ChannelId);
+            _ -> ok
+        end,
+    case Access of
+        ok -> {ok, channel_transfer(add_user_channel_state(Channel, ChannelId, Uid))};
+        {error, _} = Error -> Error
     end.
 
 %% @doc 详情接口返回与当前用户有关的频道状态；付费频道的内容权益只认购买订单。
