@@ -3,15 +3,17 @@
 日期：2026-10-01。状态：`PLAN_READY / IMPLEMENTATION_NOT_COMPLETE / RELEASE_NOT_EVALUATED`。
 用户最新目标：基于现有三端实现可投产客服、企业组织架构及加入退出 / 工作区 / 群 / 频道 / 文档归属、OA 协议及全部 Internal API。本期 E2EE 功能关闭；允许删除确实不合理的代码。
 
-UI 依据：[定稿设计](./ux-final-decision.md)，最新用户决定优先于旧文档：个人固定「消息、通讯录、频道、我」四栏。企业有可用 OA 为「消息、通讯录、工作台、我」，否则「消息、通讯录、我」。旧静态预览仅作参考，不视为已更新实现。定稿文件当前为用户未提交内容，本合同只读取、不覆盖。
+UI 依据：[定稿设计](./ux-final-decision.md)，最新用户决定优先于旧文档：个人固定「消息、通讯录、频道、我」四栏。企业固定「消息、通讯录、工作台、我」，无 OA 也不隐藏工作台。个人没有顶部空间下拉，从「我 → 切换企业」进入企业；企业保留切换入口。旧静态预览仅作参考，不视为已更新实现。定稿文件当前为用户未提交内容，本合同只读取、不覆盖。
 
-English summary: Deliver production-ready customer service, enterprise governance and asset ownership, OA integration, and every Internal API. Personal navigation has four destinations: Messages, Contacts, Channels, Me. Reuse existing implementations; preserve historical ciphertext and separate local, device, external, and production evidence.
+**2026-10-02 用户调整**：本期原生验收使用真实 macOS App，替代不可用的 iOS 真机；工作台用固定官网 https://imboy.pub/ 替代不可用的客户 OA 展示入口。该调整只改变本期设备与入口展示验收，不取消 OA 服务端协议、安全边界和后续客户联调要求。
+
+English summary: Deliver production-ready customer service, enterprise governance and asset ownership, OA integration, and every Internal API. Personal navigation has four destinations: Messages, Contacts, Channels, Me. Enterprise navigation always has Messages, Contacts, Workbench, Me. This phase uses the native macOS App and an official website entry; customer OA and iOS remain unverified. Reuse existing implementations; preserve historical ciphertext and separate local, device, external, and production evidence.
 
 ## 范围与原则
 
 - 复用现有客服、组织、附件、目录、身份映射、Grant、SSO、Webhook 与聊天实现。删除优先针对重复入口、失效路由和无调用代码；保存历史数据与仍有调用的兼容读取。
 - Human JWT、Application Credential、Seat JWT、Admin Cookie 分开。布局统一不扩大角色权限，不让应用签发自己的 Grant 或生命周期管理父组织。
-- 「全部 Internal API」以当前注册表 **INT-01..INT-32、26 path** 为完整基线，并对 `endpoints.md` 的待补合同逐项给出实现 / 有依据的范围决定。不能把路由存在当可投产，也不能把未来 CRUD 草案塞进 Postman 当已实现。
+- 「全部 Internal API」以当前注册表 **INT-01..INT-42、28 path** 为完整基线，并对 `endpoints.md` 的待补合同逐项给出实现 / 有依据的范围决定。不能把路由存在当可投产，也不能把未来 CRUD 草案塞进 Postman 当已实现。
 - Enterprise 文档一期提供文件 / 资料归属与授权读取，不新造在线协同编辑器。OA H5 承载办公业务；以 IMBoy → OA SSO 为当前真实协议。
 - E2EE 入口关闭与消息协议关闭分别核验；关闭后的新消息遵循明确配置，存量密文仍可正确读取。不得靠解密失败时静默发送明文来实现关闭功能。
 - Out of scope: push、发布、部署、生产迁移、真实客户数据、真实对外 Webhook / 通知、联系方式设置、客户包名与签名材料；本地可投产候选先做成可审阅结果，外部步骤另按目标取得授权。
@@ -43,14 +45,14 @@ English summary: Deliver production-ready customer service, enterprise governanc
 | 工作区消息 | 本人群授权分页与 preview=1；App 临时摘要列表已合入 | 五项导航收敛、统一切换、频道合并、未读/草稿、本地历史与缓存撤权 |
 | 企业文件 | 群/频道父域门禁、群文件事务绑定、授权下载及待清理上传已合入 | Application/托管资产一致性、旧数据、实际对象存储、签名链接有效期与设备缓存边界 |
 | OA | 当前企业绑定签发、服务端入口发现、App 多应用列表与失效上下文防护已合入 | 同 origin Cookie 身份切换、完整真实 HTTP 交换、对方 OA 与实际设备验证 |
-| Internal | INT-01..32 / 26 path，manifest 本轮 12/12 PASS | 每个端点真实行为证据；必要追加面、旧文档计数修正、OpenAPI/Postman 一致性 |
-| UX | 个人四栏与企业三/四栏决策已确认 | 真实 App/Admin 改版、组织树/关系图、老板治理与可访问性验证 |
+| Internal | INT-01..42 / 28 path，manifest 本轮 12/12 PASS | 每个端点真实行为证据；必要追加面、旧文档计数修正、OpenAPI/Postman 一致性 |
+| UX | 个人四栏与企业四栏决策已确认 | 真实 App/Admin 改版、组织树/关系图、老板治理与可访问性验证 |
 
 复用证据：[消息摘要](../../qa/workspace-message-snapshots-2026-10-01.md)、[本人群分页](../../qa/workspace-member-groups-2026-10-01.md)、[群文件待清理](../../qa/group-file-pending-cleanup-2026-10-01.md)。不据此宣称客服或三端可投产。
 
 ## 必须补齐与保留的 API 范围
 
-- 既有 INT-01..32 一个不漏；新增端点追加 ID，不重排旧 ID、不靠改计数掩盖缺项。
+- 当前 INT-01..42 一个不漏；新增端点追加 ID，不重排旧 ID、不靠改计数掩盖缺项。
 - 工作区新建、修改、软归档，以及企业频道新建、修改、软归档纳入 step-7；不能因只读接口已过而将用户要求缩为只读产品。
 - 客服 Seat 列表/详情和开通/调整/停用纳入 step-2 的应用集成合同；限定已有组织与显式 Grant，复用现有治理用例，不签发 Seat JWT 或 Admin 身份。新建工作区采用组织级显式创建资格，不能要求尚不存在资源的 Grant，也不能让应用自授访问；由平台批准后才进入其授权集合。
 - 企业项目既有 INT-28/29 保留并验证；新增项目写面不属于本期明确需求，记录为延期，不删除仍有调用的读取。组织生命周期及 Credential/Grant 管理仍在 Admin 域。
@@ -61,7 +63,7 @@ English summary: Deliver production-ready customer service, enterprise governanc
 Owned: 运行证据、基线 / 验收矩阵和本合同；不写业务源文件。
 用当前代码建立每个目标旅程和每个 INT 端点的可执行验证清单，区分已实现、可复用、需要补齐、外部条件。记录三个 HEAD、本计划 SHA、工作区差异及实际测试环境；复用现有测试设施。
 
-Acceptance: G0-01 清单覆盖 32 端点、四认证域和广州 UX 全部旅程；G0-02 每个缺口有文件 / 调用链与最小修复位置；G0-03 既有失败有命令、exit、日志、原因，不能写成无基线 PASS。
+Acceptance: G0-01 清单覆盖 42 端点、四认证域和广州 UX 全部旅程；G0-02 每个缺口有文件 / 调用链与最小修复位置；G0-03 既有失败有命令、exit、日志、原因，不能写成无基线 PASS。
 
 ## step-2 — 客服完整候选
 
@@ -87,7 +89,7 @@ Acceptance: FILE-01 本企业获授权成员可读，跨企业 / 未加入工作
 ## step-5 — 简洁企业 UX 与功能关闭
 
 Owned: App `modules/organization/presentation`、`page/bottom_navigation`、`page/workspace_shell`、企业群 / 频道 / 资料呈现、必要的账号展示偏好及专属 tests；Admin 企业聚焦导航。router、i18n、sidebar 变更由集成者接线。
-按最新定稿收敛个人四项「消息、通讯录、频道、我」、企业四 / 三项，统一切换面板、手机部门树 / 宽屏关系图、同事发消息、群 / 公告与资料入口；管理收进「我」，按真实资格隐藏动作。关闭 E2EE 展示并验证关闭配置下的新消息路径，继续兼容历史密文。
+按最新定稿收敛个人四项「消息、通讯录、频道、我」、企业四项，统一切换面板、手机部门树 / 宽屏关系图、同事发消息、群 / 公告与资料入口；管理收进「我」，按真实资格隐藏动作。关闭 E2EE 展示并验证关闭配置下的新消息路径，继续兼容历史密文。
 
 Acceptance: UX-01 一 / 多 / 无工作区、切企业失败 / 默认读取失败均无半切换和跨域残留；UX-02 群范围由服务端资源归属决定，C2C 不伪装企业消息，未读 / 草稿 / 附件不串目标；UX-03 普通成员 / Org 管理员 / WS Owner、直达链接、大字号 / 暗色 / 大小屏通过，广州项目与社交发现关闭不丢个人能力。
 
@@ -96,7 +98,7 @@ Acceptance: UX-01 一 / 多 / 无工作区、切企业失败 / 默认读取失�
 Owned: `enterprise_oa_sso_*` 必要文件 / tests、App `modules/enterprise_oa/` 与最小工作台入口发现、`api/internal/v1` OA 文档。
 复用已经合入的当前企业绑定与入口发现，验证真实签发/交换链并补齐 Cookie 会话隔离。复用已有 SSO，不新造反向登录接口；换配置 / 换企业 / 登出按企业身份清会话。对方资料缺失时使用本地合成 OA 验证接收、state、交换及会话，真实对接保持待验证。
 
-Acceptance: OA-01 Android / iOS 标准包有配置可进、无配置隐藏，当前企业 A/B 与同 origin 身份不串；OA-02 code 60s / 单次并发消费 / 绑定不符 / 映射撤销 / Cookie 退出正确，无 JWT / secret 进入 H5；OA-03 文档、样例、签发 / 交换方向和真实返回字段一致，真实 OA 条件缺失明确 `BLOCKED_EXTERNAL`。
+Acceptance: OA-01 本期 macOS App 验证企业四栏、无 OA 保留工作台与固定官网入口 https://imboy.pub/；客户 OA 和 iOS 不可用，身份 / Cookie 联调保持待验收，不用官网冒充 OA；OA-02 code 60s / 单次并发消费 / 绑定不符 / 映射撤销 / Cookie 退出正确，无 JWT / secret 进入 H5；OA-03 文档、样例、签发 / 交换方向和真实返回字段一致，真实 OA 条件缺失明确 `BLOCKED_EXTERNAL`。
 
 ## step-7 — Internal 身份、群和只读域
 
@@ -122,7 +124,7 @@ Acceptance: INTG-01 冻结三个候选 HEAD 与 diff、各领域 evidence，fore
 ## step-10 — 设备与生产准备审查
 
 Owned: 只读验收报告及合成证据，不直接改源码或外部系统。
-交付目标中的 Android / iOS 真机完成广州员工、老板、退出 / 失权、资料与 OA 旅程；桌面核实组织树、平台治理和 Seat。生产准备核验迁移、存储、回调、流重连、监控与回退。缺设备、OA、存储或生产授权时单独标注，不用截图或 HTTP 200 替代。
+本期用真实 macOS App 完成广州员工、老板、退出 / 失权及企业协作旅程；工作台核实官网入口，客户 OA 与 iOS 另列待验收。桌面核实组织树、平台治理和 Seat。生产准备核验迁移、存储、回调、流重连、监控与回退。缺设备、OA、存储或生产授权时单独标注，不用截图或 HTTP 200 替代。
 
 Acceptance: QA-01 每个验收 ID 绑定冻结 HEAD、命令 / 设备、真实 oracle 和结果；QA-02 `LOCAL_CANDIDATE` / `DEVICE` / `EXTERNAL` / `PRODUCTION` 独立判定；QA-03 可投产结论只在必需条件全部满足时成立，外向动作未执行保持对应待授权状态。
 
