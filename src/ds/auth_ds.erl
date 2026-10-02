@@ -124,6 +124,8 @@ verify_token(Authorization) ->
             end;
         {ok, _Id, _ExpireDAt, <<"rtk">>, _Did, _Ep} ->
             {error, ?ERR_TOKEN_REFRESH_NOT_ALLOWED, <<"TOKEN REFRESH NOT ALLOWED"/utf8>>};
+        {ok, _Id, _ExpireDAt, _Sub, _Did, _Ep} ->
+            {error, ?ERR_TOKEN_INVALID, <<"TOKEN PURPOSE NOT ALLOWED">>};
         {error, Code, Msg, _Map} ->
             {error, Code, Msg}
     end.

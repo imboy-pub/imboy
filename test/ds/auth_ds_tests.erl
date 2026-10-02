@@ -220,6 +220,33 @@ verify_token_with_refresh_token_test_() ->
         end
     ).
 
+verify_token_with_wrong_purpose_test_() ->
+    ?WITH_MECK(
+        config_ds,
+        [{'env', 2, fun(jwt_key, _) -> <<"unit-token-purpose-key">> end}],
+        fun() ->
+            lists:foreach(
+                fun(Sub) ->
+                    Token = imboy_jwt:sign(
+                        #{
+                            <<"uid">> => 123,
+                            <<"exp">> => 2000000000,
+                            <<"sub">> => Sub,
+                            <<"did">> => <<"dev-9">>,
+                            <<"ep">> => 1
+                        },
+                        <<"unit-token-purpose-key">>
+                    ),
+                    ?assertEqual(
+                        {error, ?ERR_TOKEN_INVALID, <<"TOKEN PURPOSE NOT ALLOWED">>},
+                        auth_ds:verify_token(<<"Bearer ", Token/binary>>)
+                    )
+                end,
+                [<<"seat_tk">>, <<"application">>, <<"unknown">>]
+            )
+        end
+    ).
+
 parse_authorization_header_with_bearer_prefix_test() ->
     ?assertEqual(<<"token123">>, auth_ds:parse_authorization_header(<<"Bearer token123">>)),
     ?assertEqual(<<"raw">>, auth_ds:parse_authorization_header(<<"raw">>)).
