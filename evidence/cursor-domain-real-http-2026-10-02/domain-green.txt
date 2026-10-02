@@ -1,0 +1,7 @@
+PRODUCT_CONFIG_MODULE_OK
+FULL_NATIVE_METADATA_OK
+FULL_BOOT_PREFLIGHT_OK
+FULL_NATIVE_CODEC_OK
+enterprise_cursor_domain_http_checks: run (module 'enterprise_cursor_domain_http_checks')...[5.132 s] ok
+  All 39 tests passed.
+CURSOR_DOMAIN_RESULT=ok

@@ -1,0 +1,22 @@
+{
+  "status": "PASS",
+  "tested_base_sha": "94658eaa84e92efa3dce99894ef61404a96c2e94",
+  "test": {
+    "path": "test/api/enterprise_cursor_domain_http_checks.erl",
+    "sha256": "54bdecc349af559cfbf0db4a4fa96e0a821afcc07782f28dcdcd51ef326a2c01"
+  },
+  "tests_passed": 39,
+  "fixture": "/tmp/imboy-seat-http.3hKuYm",
+  "oracle": [
+    "Human real authenticated first page and next page",
+    "Internal real authenticated first page and next page",
+    "Human cursor rejected by Internal HTTP400 invalid_request",
+    "Internal cursor rejected by Human HTTP400 invalid_request",
+    "Second Human valid first page then rejects first Human cursor"
+  ],
+  "review": "independent read-only APPROVE",
+  "scope_limits": [
+    "not exhaustive whole-directory traversal",
+    "synthetic users and isolated PostgreSQL; no customer OA or production access"
+  ]
+}
