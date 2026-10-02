@@ -8,6 +8,9 @@
 -export([tsid_generator_names/0]).
 %% 导出供守护测试直调（e2ee_throttle_scope_config_tests：RT-P3-02 兜底注册）
 -export([init_throttle_rates/0]).
+%% 导出供纯 HTTP 链套件复刻启动语义（enterprise_mobile_bootstrap_http_tests
+%% 等不起 imboy app 的 marker DB 套件需显式准备 RSA env）；幂等，纯 env/文件操作
+-export([ensure_rsa_keys/0]).
 
 % -include("log.hrl").
 -include_lib("public_key/include/public_key.hrl").

@@ -1182,6 +1182,8 @@ wh_configure(C, State) ->
     end).
 
 wh_https_required(C, State) ->
+    %% 6c08eca6 起 scheme 校验移交 SSRF guard：HTTP 非 loopback 由 guard 以
+    %% invalid_scheme 拒（与 wh_ssrf_test_ 的 forbidden_host 同族错误结构）。
     ?assertMatch(
         {error, {<<"invalid_request">>, {ssrf_or_invalid_url, invalid_scheme}}},
         enterprise_webhook_logic:configure_tx(C, ctx_a(State), #{

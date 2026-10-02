@@ -216,7 +216,12 @@ run() ->
     Old = [
         {K, application:get_env(imboy, K)}
      || K <- [
-            api_auth_switch, login_pwd_rsa_encrypt, init_config_legacy_cbc
+            api_auth_switch,
+            login_pwd_rsa_encrypt,
+            init_config_legacy_cbc,
+            login_rsa_pub_key,
+            login_rsa_priv_key,
+            jverification_rsa_priv_key
         ]
     ],
     try
@@ -237,6 +242,10 @@ configure(#{conn := C}) ->
     application:set_env(imboy, api_auth_switch, <<"on">>),
     application:set_env(imboy, login_pwd_rsa_encrypt, <<"on">>),
     application:set_env(imboy, init_config_legacy_cbc, <<"off">>),
+    %% 本链不起 imboy app：RSA 公私钥 env 无人生效（app 启动时由
+    %% ensure_rsa_keys/0 set_env），此处显式准备——纯 env/文件操作，
+    %% 幂等且不依赖 app 运行，dev keypair 落 priv/dev_keys 复用。
+    ok = imboy_app:ensure_rsa_keys(),
     ok = app_version_ds:set_sign_key(
         <<"android">>, <<"1">>, <<"synthetic.enterprise.mobile">>, ?KEY
     ),
@@ -361,7 +370,16 @@ assert_init(Port, Headers) ->
     ),
     Config = jsone:decode(Plain),
     ?assertEqual(<<"1">>, maps:get(<<"login_pwd_rsa_encrypt">>, Config)),
-    ?assertEqual(config_ds:env(login_rsa_pub_key), maps:get(<<"login_rsa_pub_key">>, Config)),
+    %% env 未配置（单跑纯 HTTP 链、app 未启动）时值为 atom undefined，
+    %% jsone 编码 → JSON 字符串 "undefined"；app 启动时 imboy_app 会
+    %% set_env 为 PEM binary，两侧同为 binary 直接相等。按 JSON 编码
+    %% 事实归一后再比对。
+    ExpectedRsaKey =
+        case config_ds:env(login_rsa_pub_key) of
+            undefined -> <<"undefined">>;
+            V when is_binary(V) -> V
+        end,
+    ?assertEqual(ExpectedRsaKey, maps:get(<<"login_rsa_pub_key">>, Config)),
     Bad = request(
         Port,
         <<"GET">>,
