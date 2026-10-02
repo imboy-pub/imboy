@@ -160,3 +160,36 @@ manifest_file_parses_test() ->
     true = lists:member(retain, Actions),
     true = lists:member(anonymize, Actions),
     true = lists:member(exclude, Actions).
+
+%% Read positions disappear with their generation, without deleting another one.
+read_cursor_generation_cascade_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        {error, cascade_verified} = elib_pg:with_tx(fun(Conn) ->
+            {ok, 2} = elib_pg:execute(
+                Conn,
+                <<"INSERT INTO public.group_member_generation (id,group_id,user_id,start_seq) VALUES (-99401001,-99401010,-99401020,1), (-99401002,-99401010,-99401021,1)">>,
+                []
+            ),
+            {ok, 2} = elib_pg:execute(
+                Conn,
+                <<"INSERT INTO public.workspace_group_read_cursor (generation_id,read_seq) VALUES (-99401001,2),(-99401002,3)">>,
+                []
+            ),
+            {ok, 1} = elib_pg:execute(
+                Conn,
+                <<"DELETE FROM public.group_member_generation WHERE id=-99401001">>,
+                []
+            ),
+            {ok, [#{<<"generation_id">> := -99401002, <<"read_seq">> := 3}]} =
+                elib_pg:query(
+                    Conn,
+                    <<"SELECT generation_id,read_seq FROM public.workspace_group_read_cursor WHERE generation_id IN (-99401001,-99401002)">>,
+                    []
+                ),
+            throw({abort_tx, cascade_verified})
+        end),
+        {ok, [#{<<"count">> := 0}]} = elib_pg:query(
+            <<"SELECT count(*) FROM public.workspace_group_read_cursor WHERE generation_id IN (-99401001,-99401002)">>,
+            []
+        )
+    end).

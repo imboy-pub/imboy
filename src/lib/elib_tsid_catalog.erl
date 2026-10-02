@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% @doc TSID 实体 catalog（v3 = 现状口径·全量补全版）
+%%% @doc TSID 实体 catalog（v4 = 群已读游标登记版）
 %%%
 %%% == 治理目标（未来 catalog 递减的唯一准绳） ==
 %%% TSID 只用于「需要跨数据中心 / 跨地域做分布式同步」的实体表主键
@@ -41,6 +41,10 @@
 %%% 入册只为通过「无豁免清单」的反向发现，version 值极小、对 floor
 %%% 无实质影响。
 %%%
+%%% == v4 变更记录（2026-10-02） ==
+%%% 迁移 164 的 workspace_group_read_cursor.generation_id 为成员代际
+%%% ID 的单列 bigint 主键，必须入册；历史 v3 digest 保留并独立重算。
+%%%
 %%% == 数据来源与绑定 ==
 %%% 由静态扫描（call-sites × migrations DDL 顺序模拟：CREATE / DROP /
 %%% ALTER ADD PRIMARY KEY）生成并经人工逐条核对；version() 与 digest()
@@ -55,7 +59,7 @@
 %% 历史版本 digest 锚点 + 已验证迁移邻接表。均为纯函数，不连库。
 -export([known_versions/0, verified_rebind_transitions/0]).
 
--define(CATALOG_VERSION, 3).
+-define(CATALOG_VERSION, 4).
 
 %% v1/v2 历史 digest（32 字节 SHA-256，与 digest() 同一哈希链），溯源取证：
 %% 分别由 git 历史版本 352bee53（v1，104 项）与 8f1a164d（v2，183 项）的
@@ -74,6 +78,13 @@
         16#17, 16#73, 16#88, 16#5D, 16#6D, 16#1C>>
 ).
 
+%% v3 anchor independently compiled from d93d3a34, before registering migration 164.
+-define(V3_DIGEST,
+    <<16#61, 16#24, 16#EA, 16#14, 16#05, 16#21, 16#7D, 16#97, 16#EA, 16#2D, 16#69, 16#9B, 16#A7,
+        16#E9, 16#97, 16#C4, 16#94, 16#DD, 16#35, 16#98, 16#48, 16#11, 16#39, 16#0B, 16#5D, 16#12,
+        16#5A, 16#C1, 16#45, 16#98, 16#61, 16#99>>
+).
+
 -spec version() -> pos_integer().
 version() ->
     ?CATALOG_VERSION.
@@ -81,8 +92,9 @@ version() ->
 %% 每项为一个「需要 TSID 主键的表」：{表名 atom, 列名 atom}。
 %% 绝大多数为 id；主键列名以 migrations DDL 为准（见各特例说明）。
 -spec primary_keys() -> [{Table :: atom(), Column :: atom()}].
-%% v3（现状口径·全量补全）：186 项 = 真实 schema 的全部单列 bigint 主键
-%% 表 182 张 + hypertable 复合主键特例 4 张。除 priv/migrations 外还覆盖
+%% v4：187 项 = 真实 schema 的全部单列 bigint 主键表 183 张
+%% + hypertable 复合主键特例 4 张。已读游标沿用成员代际的主键。
+%% 除 priv/migrations 外还覆盖
 %% 运行时建表（msg_store_staging）与 erlang_migrate 台账表（两个
 %% schema_migrations*，主键列 version）。
 %% 逐表映射 migrations 真实表名并验证主键形态（核对证据：gate-supplement
@@ -287,6 +299,7 @@ primary_keys() ->
         {wallet, id},
         {wallet_transaction, id},
         {workspace, id},
+        {workspace_group_read_cursor, generation_id},
         {workspace_invite, id}
     ].
 
@@ -313,7 +326,7 @@ digest() ->
 %%--------------------------------------------------------------------
 -spec known_versions() -> [{Version :: pos_integer(), Digest :: binary()}].
 known_versions() ->
-    [{1, ?V1_DIGEST}, {2, ?V2_DIGEST}, {?CATALOG_VERSION, digest()}].
+    [{1, ?V1_DIGEST}, {2, ?V2_DIGEST}, {3, ?V3_DIGEST}, {?CATALOG_VERSION, digest()}].
 
 %%--------------------------------------------------------------------
 %% @doc 已验证的 catalog rebind 迁移邻接表（allowlist）。
@@ -322,8 +335,8 @@ known_versions() ->
 %% 降级（高版本 manifest 绑回低版本 digest）与未知 digest 一律不在册，
 %% 重绑路径必须 STOP（BLOCKED_CATALOG_TRANSITION_UNRECOGNIZED），不得
 %% 自动放行。v1→v2（2026-09-30 审计扩容）与 v2→v3（2026-09-30 生产首启
-%% 补全）为已发布历史迁移；未来 v4 发布时在两处同步追加 {3, 4}。
+%% 补全）为已发布历史迁移；v3→v4 为群已读游标扩容，仍需显式 ACK 与全量扫描。
 %%--------------------------------------------------------------------
 -spec verified_rebind_transitions() -> [{FromV :: pos_integer(), ToV :: pos_integer()}].
 verified_rebind_transitions() ->
-    [{1, 2}, {2, 3}].
+    [{1, 2}, {2, 3}, {3, 4}].

@@ -1206,6 +1206,13 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  workspace_group_read_cursor:
+    action: delete
+    owner: groups
+    reason: 群成员代际的已读位置
+    mechanism: cascade on deletion of group_member_generation
+    review: self-evident
+    retention: n/a
   group_member_generation:
     action: delete
     owner: groups

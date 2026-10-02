@@ -1,0 +1,52 @@
+{
+  "status": "PASS_READ_CURSOR_GOVERNANCE_SCOPED",
+  "base_candidate": "d93d3a34182bc6014ae9bbcf6fbc7dc928bd835a",
+  "source_binding": "source-binding.tsv",
+  "source_binding_sha256": "1157495befadca4521a1f3cb0dce51165f38357b2c402193322def96746395d0",
+  "catalog_version": 4,
+  "registered_primary_keys": 187,
+  "historical_v3_digest": "6124ea1405217d97ea2d699ba7e997c494dd35984811390b5d125ac145986199",
+  "real_pg": {
+    "command": "IMBOY_GATE_OWNER=gz-read-cursor-governance-v4-final bash /tmp/gz-read-cursor-governance-garage.sh",
+    "exit_code": 0,
+    "passed": 59,
+    "full_schema_catalog_check": true,
+    "full_schema_data_disposition_coverage": true,
+    "one_generation_delete_removes_only_its_read_cursor": true,
+    "aborted_fixture_transaction_leaves_zero_test_cursors": true,
+    "log_sha256": "1bb921a8b37cd2e4fc15fda0d17917719d494aee8f0020ada240a6344d8ddc7c",
+    "driver_sha256": "6a11652e737c6033a6dc3fdacb42b732358394740cf335c2e860df1304b99385"
+  },
+  "isolated_guard": {
+    "status": "PASS_ISOLATED_GUARD",
+    "exit_code": 0,
+    "passed": 26,
+    "log_sha256": "527a9617c6c8dff873aa51c1a214176d65c8c902f88608e13048c17aa3a11990",
+    "real_database": false,
+    "bootstrap_scan_injected": true,
+    "beam_dir": "/tmp/imboy-seat-http.gBDHKe/imboy/ebin",
+    "sup_source_sha256": "f3f56df5c33746800930401abe5de1989462b364aa101f4bb89cd4d7f8a7c1f8",
+    "first_failure": "/tmp/gz-read-cursor-v4-isolated-guard-result.json",
+    "recovery": "Copied exact current imboy_sup source beside frozen app beams so existing structural assertion can inspect the native dev layout; no source/test edits.",
+    "command": [
+      "erl",
+      "-noshell",
+      "-pa",
+      "<frozen-dependency-ebins>",
+      "/tmp/imboy-seat-http.gBDHKe/imboy/ebin",
+      "-eval",
+      "case eunit:test(elib_tsid_guard_tests,[verbose]) of ok -> halt(0); _ -> halt(1) end."
+    ]
+  },
+  "previous_full_run": {
+    "status": "FAILED_NOT_PASS",
+    "driver_exit": 143,
+    "coordinator_exit": 1,
+    "stop_reason": "Observed missing data-disposition and bigint primary-key catalog registration; stopped before any source change",
+    "log_sha256": "ddf159f7ecdd80cbd17daac5c2e16aeb0e0146e40c93adc5f6c22b07cbcb2058"
+  },
+  "production_rebind_executed": false,
+  "full_goal_complete": false,
+  "review": "APPROVE",
+  "formatter_recovery": "Normal pre-commit required erlfmt; formatted changed files and re-ran exact final sources: 59 real PG/domain plus 26 isolated guard."
+}

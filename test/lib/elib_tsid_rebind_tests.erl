@@ -524,3 +524,36 @@ rebind_manifest_fields_test() ->
         },
         M
     ).
+
+%% The new catalog still requires an explicit adjacent-version ACK.
+v3_to_v4_rebind_test() ->
+    Old = known_digest(3),
+    New = known_digest(4),
+    C = ctx(#{catalog_digest => New, env_fun => env(#{?ENV_ACK => ack(Old, New)})}),
+    M = (v2_manifest(5000))#{catalog_digest => Old},
+    ok = elib_tsid_bootstrap:write_manifest(maps:get(manifest_path, C), M),
+    ?assertMatch(
+        {ok, #{action := rebind_floor, floor_safe_before := 5000}},
+        elib_tsid_bootstrap:decide(C)
+    ),
+    ?assertEqual(
+        {stop, catalog_changed},
+        elib_tsid_bootstrap:decide(C#{env_fun => env(#{})})
+    ),
+    ?assert(
+        lists:member(
+            {workspace_group_read_cursor, generation_id},
+            elib_tsid_catalog:primary_keys()
+        )
+    ).
+
+v2_to_v4_rebind_is_not_adjacent_test() ->
+    C = ctx(#{
+        catalog_digest => known_digest(4),
+        env_fun => env(#{?ENV_ACK => ack(known_digest(2), known_digest(4))})
+    }),
+    ok = elib_tsid_bootstrap:write_manifest(maps:get(manifest_path, C), v2_manifest(5000)),
+    ?assertMatch(
+        {stop, blocked_catalog_transition_unrecognized},
+        elib_tsid_bootstrap:decide(C)
+    ).

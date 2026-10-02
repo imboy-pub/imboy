@@ -11,7 +11,7 @@
 %%% 三组断言：
 %%%  1. v2 审计补全的 79 项 + v3 运行时/台账 3 项（含审计点名 5 表与
 %%%     全部特例主键列名）在册；
-%%%  2. catalog 形态：186 项、无重复、version 3、digest 稳定 32 字节；
+%%%  2. catalog 形态：187 项、无重复、version 4、digest 稳定 32 字节；
 %%%  3. 迁移静态解析 ⊆ catalog：宽松解析 priv/migrations/*.up.sql
 %%%     （顺序模拟 CREATE TABLE / DROP TABLE / ALTER ADD PRIMARY KEY，
 %%%     剥 public. 前缀与引号标识符、去注释与 $$ 块、字符串字面量脱敏），
@@ -142,9 +142,9 @@ audit_v2_added() ->
 
 catalog_shape_test() ->
     Catalog = elib_tsid_catalog:primary_keys(),
-    ?assertEqual(186, length(Catalog)),
+    ?assertEqual(187, length(Catalog)),
     ?assertEqual([], Catalog -- lists:usort(Catalog)),
-    ?assertEqual(3, elib_tsid_catalog:version()),
+    ?assertEqual(4, elib_tsid_catalog:version()),
     D = elib_tsid_catalog:digest(),
     ?assertEqual(32, byte_size(D)),
     ?assertEqual(D, elib_tsid_catalog:digest()).
@@ -153,18 +153,18 @@ catalog_shape_test() ->
 %% 2b. catalog rebind 溯源（known_versions / verified_rebind_transitions）
 %% ===================================================================
 
-%% 形态：三个已发布版本、版本号升序、当前版本条目与 digest() 权威源一致、
-%% 三个 digest 两两互异且均为 32 字节（防常量誊抄错位）。
+%% 形态：四个已登记版本、版本号升序、当前版本条目与 digest() 权威源一致、
+%% 四个 digest 两两互异且均为 32 字节（防常量誊抄错位）。
 known_versions_shape_test() ->
     Known = elib_tsid_catalog:known_versions(),
-    ?assertEqual([1, 2, 3], [V || {V, _} <- Known]),
-    ?assertEqual(elib_tsid_catalog:digest(), proplists:get_value(3, Known)),
+    ?assertEqual([1, 2, 3, 4], [V || {V, _} <- Known]),
+    ?assertEqual(elib_tsid_catalog:digest(), proplists:get_value(4, Known)),
     Digests = [D || {_, D} <- Known],
-    ?assertEqual(3, length(lists:usort(Digests))),
+    ?assertEqual(4, length(lists:usort(Digests))),
     lists:foreach(fun(D) -> ?assertEqual(32, byte_size(D)) end, Digests).
 
 %% v2 常量自证：v3 清单恰为 v2 + 3 项（v3 变更记录），故用当前清单剔除
-%% 这 3 项按同一哈希链（sha256(term_to_binary({2, sorted}))）可重构 v2
+%% 这 3 项及 v4 新增游标按同一哈希链（sha256(term_to_binary({2, sorted}))）可重构 v2
 %% digest——常量誊抄错误在此即刻暴露。
 known_versions_v2_digest_selfverifying_test() ->
     V3Only = [
@@ -172,10 +172,17 @@ known_versions_v2_digest_selfverifying_test() ->
         {schema_migrations, version},
         {schema_migrations_history, version}
     ],
-    V2List = elib_tsid_catalog:primary_keys() -- V3Only,
+    V2List =
+        elib_tsid_catalog:primary_keys() -- [{workspace_group_read_cursor, generation_id} | V3Only],
     ?assertEqual(183, length(V2List)),
     ExpectV2 = crypto:hash(sha256, term_to_binary({2, lists:sort(V2List)})),
     ?assertEqual(ExpectV2, proplists:get_value(2, elib_tsid_catalog:known_versions())).
+
+known_versions_v3_digest_selfverifying_test() ->
+    V3List = elib_tsid_catalog:primary_keys() -- [{workspace_group_read_cursor, generation_id}],
+    ?assertEqual(186, length(V3List)),
+    ExpectV3 = crypto:hash(sha256, term_to_binary({3, lists:sort(V3List)})),
+    ?assertEqual(ExpectV3, proplists:get_value(3, elib_tsid_catalog:known_versions())).
 
 %% v1 常量无法在当前代码内重构自证（v1→v2 为 79 项扩容），钉住与 v2/v3
 %% 互异 + 32 字节形状；其 git 溯源取证（352bee53 独立编译重算）登记于
@@ -186,11 +193,11 @@ known_versions_v1_anchor_test() ->
     ?assertNotEqual(V1, proplists:get_value(2, elib_tsid_catalog:known_versions())),
     ?assertNotEqual(V1, elib_tsid_catalog:digest()).
 
-%% 已验证迁移邻接：恰为已发布的单步 v1→v2 与 v2→v3；全部端点必须在
+%% 已验证迁移邻接：保留历史单步 v1→v2、v2→v3 并追加 v3→v4；全部端点必须在
 %% known_versions 中；不含跨步/降级/自环。
 verified_rebind_transitions_shape_test() ->
     Trans = elib_tsid_catalog:verified_rebind_transitions(),
-    ?assertEqual([{1, 2}, {2, 3}], Trans),
+    ?assertEqual([{1, 2}, {2, 3}, {3, 4}], Trans),
     Known = [V || {V, _} <- elib_tsid_catalog:known_versions()],
     lists:foreach(
         fun({From, To}) ->

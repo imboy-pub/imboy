@@ -256,17 +256,17 @@ manual_floor_bad_env_stops_test() ->
     ?assertMatch({error, {bootstrap_env, _}}, start_trapped(Cfg)).
 
 %% ===================================================================
-%% catalog digest 显式重绑（rebind）集成：manifest 绑真实 v2 digest、
-%% 当前 catalog v3（真实 digest，取自 known_versions/0 溯源锚点），
-%% REBIND_ACK 精确绑定 v2→v3。与 decide 级矩阵
+%% catalog digest 显式重绑（rebind）集成：manifest 绑真实 v3 digest、
+%% 当前 catalog v4（真实 digest，取自 known_versions/0 溯源锚点），
+%% REBIND_ACK 精确绑定 v3→v4。与 decide 级矩阵
 %% （elib_tsid_rebind_tests）互补，此处验证 guard 执行链：persist →
 %% manifest 换绑 → boot_ready → 生成不回退 → 重启 proceed_existing。
 %% ===================================================================
 
-rebind_ack_env(V2Hex, V3Hex) ->
+rebind_ack_env(OldHex, NewHex) ->
     fun
         ("IMBOY_TSID_BOOTSTRAP_REBIND_ACK") ->
-            "I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:" ++ V2Hex ++ ":" ++ V3Hex;
+            "I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:" ++ OldHex ++ ":" ++ NewHex;
         (_) ->
             false
     end.
@@ -301,16 +301,16 @@ catalog_rebind_boots_ready_test() ->
     %% 是否已越过 floor，都严格高于 OldSB 且不低于 scan floor（重绑后
     %% 首个 ID 绝不落在任一已知高水位之下）。
     ScanFloor = OldSB + 1500,
-    write_stale_manifest(Root, hd([D || {2, D} <- elib_tsid_catalog:known_versions()]), OldSB),
+    write_stale_manifest(Root, hd([D || {3, D} <- elib_tsid_catalog:known_versions()]), OldSB),
     ScanF = fun(_Opts) -> {ok, #{floor_safe_before => ScanFloor}} end,
     Cfg = (fast_cfg(Root))#{
         store_bootstrap => existing,
-        bootstrap_env_fun => rebind_ack_env(known_hex(2), known_hex(3)),
+        bootstrap_env_fun => rebind_ack_env(known_hex(3), known_hex(4)),
         bootstrap_scan_fun => ScanF
     },
     {ok, P2} = elib_tsid_guard:start_link(Cfg),
     ok = wait_ready(P2, 50),
-    %% manifest 已原子换绑：新 v3 digest + catalog_rebind 模式。
+    %% manifest 已原子换绑：新 v4 digest + catalog_rebind 模式。
     {ok, M} = elib_tsid_bootstrap:read_manifest(manifest_path(Root)),
     ?assertEqual(catalog_rebind, maps:get(mode, M)),
     ?assertEqual(elib_tsid_catalog:digest(), maps:get(catalog_digest, M)),
@@ -338,12 +338,12 @@ catalog_rebind_wrong_ack_stops_test() ->
     stop_guard(P1),
     {ok, Store0} = elib_tsid_store:open(read_store_cfg(Root)),
     #{safe_before := OldSB} = elib_tsid_store:status(Store0),
-    V2D = hd([D || {2, D} <- elib_tsid_catalog:known_versions()]),
-    write_stale_manifest(Root, V2D, OldSB),
-    %% new 段错绑 v2（不是当前 v3）→ digest mismatch。
+    V3D = hd([D || {3, D} <- elib_tsid_catalog:known_versions()]),
+    write_stale_manifest(Root, V3D, OldSB),
+    %% new 段错绑 v3（不是当前 v4）→ digest mismatch。
     Cfg = (fast_cfg(Root))#{
         store_bootstrap => existing,
-        bootstrap_env_fun => rebind_ack_env(known_hex(2), known_hex(2)),
+        bootstrap_env_fun => rebind_ack_env(known_hex(3), known_hex(3)),
         bootstrap_scan_fun => fun(_) -> {ok, #{floor_safe_before => OldSB}} end
     },
     ?assertMatch(
@@ -351,13 +351,13 @@ catalog_rebind_wrong_ack_stops_test() ->
         start_trapped(Cfg)
     ),
     {ok, M} = elib_tsid_bootstrap:read_manifest(manifest_path(Root)),
-    ?assertEqual(V2D, maps:get(catalog_digest, M)),
+    ?assertEqual(V3D, maps:get(catalog_digest, M)),
     {ok, Store1} = elib_tsid_store:open(read_store_cfg(Root)),
     ?assertEqual(OldSB, maps:get(safe_before, elib_tsid_store:status(Store1))).
 
 %% 无 ACK（默认行为回归钉）：manifest 绑旧 digest + store 有 floor + 无
 %% rebind 意图 → catalog_changed（既有用例 catalog_changed_stops_test 用
-%% 捏造 digest；此处用真实 v2 溯源 digest 复核同一路径）。
+%% 捏造 digest；此处用真实 v3 溯源 digest 复核同一路径）。
 catalog_rebind_no_ack_default_stops_test() ->
     Root = tmp_root(),
     {ok, P1} = elib_tsid_guard:start_link(fast_cfg(Root)),
@@ -365,8 +365,8 @@ catalog_rebind_no_ack_default_stops_test() ->
     stop_guard(P1),
     {ok, Store0} = elib_tsid_store:open(read_store_cfg(Root)),
     #{safe_before := SB} = elib_tsid_store:status(Store0),
-    V2D = hd([D || {2, D} <- elib_tsid_catalog:known_versions()]),
-    write_stale_manifest(Root, V2D, SB),
+    V3D = hd([D || {3, D} <- elib_tsid_catalog:known_versions()]),
+    write_stale_manifest(Root, V3D, SB),
     ?assertMatch(
         {error, catalog_changed},
         start_trapped((fast_cfg(Root))#{store_bootstrap => existing})
