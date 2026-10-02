@@ -1,0 +1,89 @@
+{
+  "assessment": "PARTIAL",
+  "production_ready": false,
+  "heads": {
+    "backend": "c38adf79327a41663668638e170c4afb5ce845cb",
+    "app": "052fd98594ee1d883082021a4f70144342540c8a",
+    "admin": "25460d0497be3010f1d2095a9a768ce6a1a3a0e0"
+  },
+  "scope": "Six requested goals remain active. These are scoped verified results, not full final acceptance.",
+  "seat_application_contract": {
+    "status": "PASS_SCOPED_CURRENT_SEAT_APPLICATION_CONTRACT",
+    "candidate": "c38adf79327a41663668638e170c4afb5ce845cb",
+    "run": "/tmp/imboy-seat-http.MUdBk7",
+    "proof": "real HTTP and PG conformance entry executed and passed; inspected direct call chain",
+    "source_sha256": "ee26a5877003ac5a96259dbc36db6aaef73cfae31c94cd8036b738abbe7ac8cd",
+    "log_sha256": "7a46c82ae40ac22efff790c19cef01ca63265b05126b7a85b5929e14a38add66",
+    "verified": [
+      "INT-33/34 seat list/detail",
+      "INT-35/36 create/update success",
+      "same-key exact replay; conflict; missing/malformed idempotency key",
+      "missing scope and organization boundary refusals",
+      "revoked write Grant refuses committed-key replay",
+      "concurrent version update exactly one 200 and one 409",
+      "audit insert failure rolls back seat version and idempotency record"
+    ],
+    "not_proven": [
+      "all four authentication domains through production middleware",
+      "all browser artifact secret absence",
+      "full CS-03 and final three-repository acceptance"
+    ],
+    "production_ready": false
+  },
+  "evidence_refs": {
+    "backend_full_pair": {
+      "path": "/tmp/gz-download-gateway-full-current-pair-terminal.json",
+      "sha256": "692a17540e67f45e7b877d4b238fd07fd3dc7436a0b60525170a4cfc365d6f4d",
+      "status": "PASS_CURRENT_BACKEND_FULL_PAIR"
+    },
+    "customer_service_journeys": {
+      "path": "/tmp/gz-current-cs-domain-closure.json",
+      "sha256": "6fd9c2631924598900ec40aa892a09be074e76cb7852177d613d795d1c5c65b0",
+      "status": "PASS_CS_01_CS_02_DOMAIN_JOURNEYS"
+    },
+    "seat_application_contract": {
+      "path": "/tmp/gz-current-seat-application-contract-reconciliation.json",
+      "sha256": "bb6c65c0e51896e6fe7f8cd2b49e84d2fd9af5dc4a58ffc92eda3ffb612ddb12",
+      "status": "PASS_SCOPED_CURRENT_SEAT_APPLICATION_CONTRACT"
+    },
+    "internal_operations": {
+      "path": "/tmp/gz-current-internal-42-c38-reconciliation.json",
+      "sha256": "e054c1c7aa3508d4a8a35ffdef515e364e4e691ac402a3c2f655ee51f5be45df",
+      "status": "PARTIAL_CURRENT_INTERNAL_42"
+    },
+    "android_navigation": {
+      "path": "/tmp/gz-final-navigation-native-terminal.json",
+      "sha256": "cf88d2c1a9ef8756637b7b7778cf37c9c9606c6f2f19e99d44d9129036fcb8e8",
+      "status": "PASS_NATIVE_NAVIGATION_GOVERNANCE_LEAVE"
+    }
+  },
+  "backend_fix_candidate": {
+    "status": "PASS_FOCUSED_GROUP_FILE_DS",
+    "exit": 0,
+    "out": "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-file-id-unit-_d754pa9",
+    "source_sha256": {
+      "src/ds/group_file_ds.erl": "1bacd900c55c0cc32b1b17888f39d6bd505af8a9bec86746bc99b7fe1ae9ad10",
+      "test/ds/group_file_ds_tests.erl": "20df7cb6f6b9e5e538d5ca1b23723abf045da81e63cb678dc347fc989f1a3e84"
+    },
+    "cached_unchanged_sources_verified": true,
+    "standard_make_eunit_exit": 2,
+    "standard_make_failure": "dependency GitHub SSL download; tests not executed",
+    "production_ready": false,
+    "candidate": "d6360afb6ab58adf1a7ad833ab3a884f8a1a2026",
+    "final_formatted_sources_pass": true
+  },
+  "backend_fix_full_suite_verified": false,
+  "native_file_latest_terminal": {
+    "status": "FAIL_NATIVE_TREE",
+    "runner_exit_code": 1,
+    "forced_stop": true,
+    "fixture_run": "/tmp/imboy-seat-http.pIMkVE",
+    "source_sha256": "977f9b906e0a5217ff5e7eaebe094478a40d41667c13dd7de523bf800c882067",
+    "source_unchanged": true,
+    "device_log_sha256": "62d170d2a054f4d890cad08e79eacf8449b7ed20543527879c45e1bd8d514124",
+    "native_tree_pass": false,
+    "accessibility_pass": false,
+    "production_ready": false,
+    "standard_package_cleared": false
+  }
+}
