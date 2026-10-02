@@ -72,6 +72,7 @@ handle_action(branding_write, Req, State) -> branding_write(Req, State);
 handle_action(overview, Req, State) -> overview(Req, State);
 handle_action(channel_list, Req, State) -> channel_list(Req, State);
 handle_action(group_list, Req, State) -> group_list(Req, State);
+handle_action(group_read, Req, State) -> group_read(Req, State);
 handle_action(member_list, Req, State) -> member_list(Req, State);
 handle_action(member_invite, Req, State) -> member_invite(Req, State);
 handle_action(invite_code, Req, State) -> invite_code(Req, State);
@@ -305,6 +306,30 @@ workspace_group_response(Req, WsId, _Uid, 0, _Cursor, Limit, 0) ->
     end;
 workspace_group_response(Req, _WsId, _Uid, _MemberOnly, _Cursor, _Limit, _Preview) ->
     elib_response:error(Req, <<"member_only 和 preview 必须为 0 或 1，preview 仅用于本人模式"/utf8>>, 400).
+
+%% @doc Advance the current member's read cursor using actually viewed messages.
+group_read(Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"POST">> ->
+            Uid = auth_ds:current_uid(State),
+            case resolve_workspace_id(Req0) of
+                {error, Req} ->
+                    Req;
+                {ok, WsId} ->
+                    Gid = elib_cnv:safe_to_integer(cowboy_req:binding(group_id, Req0)),
+                    Body = elib_param:post(Req0),
+                    case
+                        group_logic:mark_workspace_read(
+                            WsId, Uid, Gid, maps:get(<<"msg_ids">>, Body, undefined)
+                        )
+                    of
+                        {ok, Row} -> elib_response:success(Req0, Row);
+                        {error, {Code, Message}} -> elib_response:error(Req0, Message, Code)
+                    end
+            end;
+        _ ->
+            cowboy_req:reply(405, #{<<"allow">> => <<"POST">>}, <<>>, Req0)
+    end.
 
 %% @doc 工作区成员列表（active 成员可读；分页 ≤100）
 -spec member_list(cowboy_req:req(), map()) -> cowboy_req:req().

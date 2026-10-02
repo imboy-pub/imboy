@@ -40,6 +40,7 @@
 -export([add/5]).
 -export([edit_checked/3]).
 -export([list_workspace_groups/2, list_member_workspace_groups/4, list_member_workspace_groups/5]).
+-export([mark_workspace_read/4]).
 
 -include("log.hrl").
 -include("group_role.hrl").
@@ -785,3 +786,34 @@ list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) when
     end;
 list_member_workspace_groups(_, _, _, _, _) ->
     {error, <<"分页参数无效"/utf8>>}.
+
+mark_workspace_read(WsId, Uid, Gid, MsgIds) when
+    is_integer(WsId),
+    WsId > 0,
+    WsId =< 9223372036854775807,
+    is_integer(Uid),
+    Uid > 0,
+    is_integer(Gid),
+    Gid > 0,
+    Gid =< 9223372036854775807,
+    is_list(MsgIds),
+    length(MsgIds) > 0,
+    length(MsgIds) =< 200
+->
+    case
+        lists:all(
+            fun(Id) -> is_binary(Id) andalso byte_size(Id) > 0 andalso byte_size(Id) =< 128 end,
+            MsgIds
+        )
+    of
+        false ->
+            {error, {400, <<"invalid_message_ids">>}};
+        true ->
+            case workspace_ds:mark_group_read(WsId, Uid, Gid, lists:usort(MsgIds)) of
+                {ok, [Row]} -> {ok, Row};
+                {ok, []} -> {error, {404, <<"resource_not_found">>}};
+                {error, _} -> {error, {500, <<"internal_error">>}}
+            end
+    end;
+mark_workspace_read(_, _, _, _) ->
+    {error, {400, <<"invalid_message_ids">>}}.

@@ -1,0 +1,61 @@
+{
+  "status": "PASS_BACKEND_SCOPED",
+  "tested_base_candidate": "f716282d9ec6f3101ae1800a3b06c32cbe2ceecf",
+  "runner_exit": 0,
+  "tests_passed": 2,
+  "source_files": [
+    {
+      "path": "src/api/workspace_handler.erl",
+      "sha256": "09d7631c8bd6f20432bf7611eea82d8e49ce2deaa73d329c3ba3cb318f62f732"
+    },
+    {
+      "path": "src/ds/workspace_ds.erl",
+      "sha256": "71f0af3e518fb8a55f86ac38e312d24a98059df37e67bf12307f1e322a7eb344"
+    },
+    {
+      "path": "src/imboy_router.erl",
+      "sha256": "bcbac385a73bf9454887c8141634d684932f297517060d97c280999b7ab4c901"
+    },
+    {
+      "path": "src/logic/group_logic.erl",
+      "sha256": "e6ac48a264ae9a3142b27d9e46f7d8a1b2cf2649f14bc8f3633e3f86f03963f9"
+    },
+    {
+      "path": "src/repo/group_repo.erl",
+      "sha256": "f2223c7f0d98b78bf33e5ff98a3491119746501ce37ed44b66552a507b867133"
+    },
+    {
+      "path": "test/repo/workspace_member_groups_pg_tests.erl",
+      "sha256": "aa3b4f58b92c637a77e7537a0fd6ec10e90b97a3dc1e9a8025a948f76c2cfefb"
+    },
+    {
+      "path": "priv/migrations/00000164_workspace_group_read_cursor.up.sql",
+      "sha256": "bc9ddd597ad2f551347f4f739bdc57c40e808afe26c5b1e81b7de9d101b55cb2"
+    },
+    {
+      "path": "priv/migrations/00000164_workspace_group_read_cursor.down.sql",
+      "sha256": "e1052dc7744c2c269eed77b6b4ae7d487ae2b2ebbb748755f6333addf7add846"
+    },
+    {
+      "path": "test/api/workspace_unread_http_checks.erl",
+      "sha256": "8d6a518b2e2ab1ea7e428e3a8ed3c322bd1c7e6a651d8a486790e81c98b1ec67"
+    }
+  ],
+  "full_source_binding": {
+    "private_path": "/tmp/imboy-seat-http.6fZhLe/source-binding.json",
+    "sha256": "7720263929eb2a256ef516953560d77a79ccd767c21a023ac88b6039e9975878"
+  },
+  "oracle": [
+    "actual HTTP plus PostgreSQL with all production migrations including164",
+    "two authorized workspaces retain separate nonzero unread counts",
+    "ACK true does not clear unread; own/expired/revoked rows excluded",
+    "read of delivered IDs advances only its group; old replay cannot decrease cursor",
+    "unknown/foreign/expired/revoked/mixed IDs do not advance",
+    "new membership generation rejects old IDs",
+    "revoked organization member cannot list or write despite residual WS/group membership",
+    "empty IDs refused with HTTP200 plus envelope400"
+  ],
+  "review": "APPROVE",
+  "app_ui_complete": false,
+  "production_migration_executed": false
+}

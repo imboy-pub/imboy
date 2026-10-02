@@ -855,6 +855,9 @@ get_routes() ->
                 {"/api/v1/workspaces/:workspace_id/groups", workspace_handler, #{
                     action => group_list
                 }},
+                {"/api/v1/workspaces/:workspace_id/groups/:group_id/read", workspace_handler, #{
+                    action => group_read
+                }},
                 {"/api/v1/workspaces/:workspace_id/members", workspace_handler, #{
                     action => member_list
                 }},

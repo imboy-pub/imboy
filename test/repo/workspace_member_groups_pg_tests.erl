@@ -154,23 +154,25 @@ preview_index(C) ->
 
 fixture(C) ->
     sql(C, <<
-        "CREATE TABLE organization(id bigint PRIMARY KEY,status text);"
+        "CREATE TABLE organization(id bigint PRIMARY KEY,status text); CREATE TABLE organization_member(organization_id bigint,user_id bigint,status text); INSERT INTO organization_member VALUES(10,1,'active');"
         "CREATE TABLE workspace(id bigint PRIMARY KEY,organization_id bigint,status text);"
         "CREATE TABLE workspace_member(workspace_id bigint,user_id bigint,status text);"
         "CREATE TABLE group_member(group_id bigint,user_id bigint,status int);"
-        "CREATE TABLE group_member_generation(group_id bigint,user_id bigint,start_seq bigint,end_seq bigint);"
+        "CREATE TABLE group_member_generation(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,group_id bigint,user_id bigint,start_seq bigint,end_seq bigint);"
         "CREATE TABLE \"group\"(id bigint PRIMARY KEY,type int,join_limit int,content_limit int,"
         "owner_uid bigint,creator_uid bigint,member_max int,member_count int,introduction text,"
         "avatar text,title text,status int,scope text,workspace_id bigint,updated_at timestamptz,created_at timestamptz);"
-        "CREATE TABLE msg_c2g(msg_id text,to_id bigint,msg_type text,payload jsonb,e2ee jsonb,server_ts timestamptz,created_at timestamptz,expire_at timestamptz);"
+        "CREATE TABLE msg_c2g(msg_id text,from_id bigint DEFAULT 9,to_id bigint,msg_type text,payload jsonb,e2ee jsonb,server_ts timestamptz,created_at timestamptz,expire_at timestamptz);"
         "CREATE TABLE msg_c2g_timeline(msg_id text,to_uid bigint,to_gid bigint,created_at timestamptz,conv_seq bigint,client_ack boolean);"
         "INSERT INTO organization VALUES(10,'active'); INSERT INTO workspace VALUES(100,10,'active'),(200,NULL,'active');"
         "INSERT INTO workspace_member VALUES(100,1,'active'),(200,1,'active');"
         "INSERT INTO \"group\"(id,status,scope,workspace_id,title) SELECT n,1,'workspace',100,'Group' FROM generate_series(1,205) n;"
         "INSERT INTO \"group\"(id,status,scope,workspace_id) VALUES(300,1,'personal',100),(301,1,'workspace',200),(302,0,'workspace',100),(303,1,'workspace',100);"
         "INSERT INTO group_member SELECT id,1,1 FROM \"group\" WHERE id<>303;"
-        "INSERT INTO group_member_generation SELECT id,1,1,NULL FROM \"group\";"
-    >>).
+        "INSERT INTO group_member_generation(group_id,user_id,start_seq,end_seq) SELECT id,1,1,NULL FROM \"group\";"
+    >>),
+    {ok, CursorUp} = file:read_file("priv/migrations/00000164_workspace_group_read_cursor.up.sql"),
+    sql(C, CursorUp).
 
 sql(C, Query) ->
     Result = epgsql:squery(C, Query),

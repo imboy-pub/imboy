@@ -1,0 +1,2 @@
+DROP INDEX public.idx_c2g_timeline_workspace_unread;
+DROP TABLE public.workspace_group_read_cursor;

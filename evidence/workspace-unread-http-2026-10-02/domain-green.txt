@@ -1,0 +1,7 @@
+PRODUCT_CONFIG_MODULE_OK
+FULL_NATIVE_METADATA_OK
+FULL_BOOT_PREFLIGHT_OK
+FULL_NATIVE_CODEC_OK
+workspace_unread_http_checks: run (module 'workspace_unread_http_checks')...[6.258 s] ok
+  2 tests passed.
+UNREAD_RESULT=ok
