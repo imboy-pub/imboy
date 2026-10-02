@@ -124,7 +124,7 @@ RELEASE=NO_GO
 - **巡检接线与告警**：`deploy/cron/imboy-ops.cron` 每 5 分钟 `--strict --push` 巡检
   行与 `deploy/prometheus/rules/imboy-alerts.yml` 告警组 `imboy.l4_sni` 四条规则
   （`L4SNIListenDrift`/`L4SNICheckFailed` critical，`L4SNIStaleMetrics`/
-  `L4SNIMetricsMissing` warning），promtool 50 规则 + 15 断言（imboy `f5e320cc`）。
+  `L4SNIMetricsMissing` warning），promtool 50 规则 + 22 断言（imboy `f5e320cc`）。
 
 本阶段**未执行**（均为后续 Wave 任务，未启动或未获授权）：服务器采样与候选上传
 （Task 7）、上线巡检与告警管路验证（Task 9）、TLS443 relay 真机证据（Task 10，

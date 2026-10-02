@@ -26,6 +26,9 @@
 #   T13 自动探测选中正确实例（PATH=宝塔）
 #   T14 pidfile 与 master 不符 → 直接 SIGHUP 定向 reload（同一实例兜底）
 #   T15 -V 缺 stream/ssl_preread 模块 → 拒绝
+#   T16 回滚时 systemctl restart haproxy 失败 → 显式诊断（含退出码）+
+#       ROLLBACK_DEGRADED 标记 + 非零收尾，其余恢复步骤不中断
+#   T17 快照 haproxy.active=active 但恢复后 inactive → 快照一致性校验诊断
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -184,6 +187,36 @@ run_installer() {
 }
 
 latest_backup() { ls -1 "$SB/backups" 2>/dev/null | head -1; }
+
+# 用 wrapper 包一层当前沙箱 bin/ 内的 systemctl 副本，注入两个仅回滚期使用的
+# 失败钩子（ctl 状态表模式，与 nginx/haproxy stub 的 knob 一致）；共享 fixture
+# 目录本身不动：
+#   ctl/fail-restart-haproxy   `restart haproxy` 记调用、打沙箱诊断并 exit 5
+#                              （restart 失败必须显式暴露，不允许被吞）
+#   ctl/restart-haproxy-noop   `restart haproxy` 记调用并 exit 0，但不翻转状态表
+#                              （restart"成功"而服务实际 inactive → 触发快照校验）
+wrap_systemctl() {
+  mv "$SB/bin/systemctl" "$SB/bin/systemctl.real"
+  cat >"$SB/bin/systemctl" <<'WRAP'
+#!/usr/bin/env bash
+# Test-only wrapper over the sandbox systemctl copy (staged rollback knobs).
+set -u
+STATE="${L4_SB_STATE:?}"
+if [ "${1:-}" = restart ] && [ "${2:-}" = haproxy ]; then
+  if [ -f "$STATE/ctl/fail-restart-haproxy" ]; then
+    printf 'systemctl %s\n' "$*" >>"$STATE/calls.log"
+    printf 'sandbox wrap: sandbox-staged restart haproxy failure\n' >&2
+    exit 5
+  fi
+  if [ -f "$STATE/ctl/restart-haproxy-noop" ]; then
+    printf 'systemctl %s\n' "$*" >>"$STATE/calls.log"
+    exit 0
+  fi
+fi
+exec "$(dirname "$0")/systemctl.real" "$@"
+WRAP
+  chmod +x "$SB/bin/systemctl"
+}
 
 echo "== T1 --check 只读通过 =="
 new_sandbox t1
@@ -374,6 +407,35 @@ new_sandbox t15
 run_installer --check --config "$CFG"
 assert_rc 1 "$RC" "T15 模块缺失 → 拒绝"
 assert_grep "T15 模块诊断" 'lacks stream module' "$STATE/out.log"
+
+echo "== T16 回滚 haproxy restart 失败 → 诊断不吞、ROLLBACK_DEGRADED、非零收尾 =="
+new_sandbox t16
+run_installer --apply --config "$CFG"
+assert_rc 0 "$RC" "T16 前置 apply 成功"
+wrap_systemctl
+echo 1 >"$CTL/fail-restart-haproxy"
+run_installer --rollback --config "$CFG"
+assert_rc 1 "$RC" "T16 回滚以非零收尾（degraded）"
+assert_grep "T16 restart 失败诊断含命令与退出码" 'ROLLBACK_DEGRADED: systemctl restart haproxy failed \(rc=5\)' "$STATE/out.log"
+assert_ngrep "T16 degraded 不宣告 ROLLBACK_COMPLETE" 'ROLLBACK_COMPLETE' "$STATE/out.log"
+assert_grep "T16 结果清单标记 ROLLBACK_DEGRADED" 'ROLLBACK_DEGRADED: restored .* but haproxy did not return to its snapshot state' "$STATE/out.log"
+assert_eq "T16 其余恢复步骤不中断（Compose 组合恢复）" "$(cat "$CTL/compose-last-up" 2>/dev/null)" "$SB/compose/base.yml $SB/compose/operator-overlay.yml"
+assert_no_file "T16 active-backup 指针仍清除" "$SB/state-lib/active-backup"
+assert_grep_f "T16 vhost 恢复原 443 直连" "listen 443 ssl http2" "$SB/nginx-bt/conf/vhosts/api.conf"
+
+echo "== T17 快照 active 但恢复后 inactive → 快照一致性校验诊断 =="
+new_sandbox t17
+run_installer --apply --config "$CFG"
+assert_rc 0 "$RC" "T17 前置 apply 成功"
+wrap_systemctl
+echo 1 >"$CTL/restart-haproxy-noop"
+{ grep -v '^haproxy=' "$CTL/systemctl-active" || true; printf 'haproxy=inactive\n'; } >"$CTL/systemctl-active.tmp"
+mv "$CTL/systemctl-active.tmp" "$CTL/systemctl-active"
+run_installer --rollback --config "$CFG"
+assert_rc 1 "$RC" "T17 校验失败 → 回滚非零收尾"
+assert_grep "T17 快照一致性校验诊断（active→inactive）" 'ROLLBACK_DEGRADED: systemctl is-active --quiet haproxy \(rc=[0-9]+\): haproxy is not active while the snapshot recorded haproxy.active=active' "$STATE/out.log"
+assert_ngrep "T17 degraded 不宣告 ROLLBACK_COMPLETE" 'ROLLBACK_COMPLETE' "$STATE/out.log"
+assert_eq "T17 其余恢复步骤不中断（Compose 组合恢复）" "$(cat "$CTL/compose-last-up" 2>/dev/null)" "$SB/compose/base.yml $SB/compose/operator-overlay.yml"
 
 echo
 echo "== 结果：PASS=${PASS} FAIL=${FAIL} =="

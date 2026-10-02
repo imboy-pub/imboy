@@ -658,6 +658,7 @@ verify_switch() {
 
 restore_backup() {
   local backup="$1" tag sha mode path rel value base ovl gen_pre enabled active
+  local haproxy_was hrc harc degraded
   local -a combo=()
   [ -d "$backup" ] || die "backup directory not found: $backup"
   [ -f "$backup/manifest.txt" ] || die "backup manifest missing: $backup/manifest.txt"
@@ -698,7 +699,43 @@ restore_backup() {
   run_l4_check --pre-switch $(managed_vhost_paths)
   nginx_reload
   nginx_instance_verify
-  systemctl restart haproxy || true
+  # HAProxy: honor the pre-switch service-state snapshot instead of a blind
+  # restart. A failure here degrades the rollback (explicit diagnostics with
+  # the failing command and exit code + ROLLBACK_DEGRADED + nonzero result)
+  # but never aborts the remaining restore steps.
+  haproxy_was="$(sed -n 's/^haproxy\.active=//p' "$backup/service-state.txt" 2>/dev/null | head -1)"
+  degraded=0
+  case "$haproxy_was" in
+    active)
+      if systemctl restart haproxy; then
+        systemctl is-active --quiet haproxy || {
+          harc=$?
+          printf '[livekit-l4-sni] ERROR: ROLLBACK_DEGRADED: systemctl is-active --quiet haproxy (rc=%d): haproxy is not active while the snapshot recorded haproxy.active=active\n' "$harc" >&2
+          degraded=1
+        }
+      else
+        hrc=$?
+        printf '[livekit-l4-sni] ERROR: ROLLBACK_DEGRADED: systemctl restart haproxy failed (rc=%d); snapshot recorded haproxy.active=active\n' "$hrc" >&2
+        degraded=1
+      fi
+      ;;
+    "")
+      # Early format=2 backups carry no haproxy.active record: keep the old
+      # best-effort restart (diagnosed, never silent) but skip verification.
+      systemctl restart haproxy || {
+        hrc=$?
+        printf '[livekit-l4-sni] ERROR: ROLLBACK_DEGRADED: systemctl restart haproxy failed (rc=%d); snapshot has no haproxy.active record (state verification skipped)\n' "$hrc" >&2
+        degraded=1
+      }
+      ;;
+    *)
+      systemctl stop haproxy || true
+      if systemctl is-active --quiet haproxy; then
+        printf '[livekit-l4-sni] ERROR: ROLLBACK_DEGRADED: haproxy is still active after rollback; snapshot recorded haproxy.active=%s\n' "$haproxy_was" >&2
+        degraded=1
+      fi
+      ;;
+  esac
 
   # Rebuild the recorded Compose combination -- never base-only when the
   # pre-switch stack included overlays.
@@ -730,6 +767,10 @@ restore_backup() {
     systemctl stop "$ETURNAL_SERVICE" || true
   fi
   rm -f "$L4_STATE_DIR/active-backup"
+  if [ "$degraded" = 1 ]; then
+    log "ROLLBACK_DEGRADED: restored $backup but haproxy did not return to its snapshot state; see ERROR diagnostics above and recover haproxy manually (HAProxy package remains installed)"
+    return 1
+  fi
   log "ROLLBACK_COMPLETE: restored $backup; HAProxy package remains installed"
 }
 
