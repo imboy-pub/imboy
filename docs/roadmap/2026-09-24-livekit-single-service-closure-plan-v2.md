@@ -60,6 +60,10 @@ ETURNAL_COTURN_REMOVAL=NOT_EXECUTED
 RELEASE=NO_GO
 ```
 
+> 注记（2026-10-02）：2026-10-01 服务器曾有一轮安装器外手动 SNI 实施（历史采样
+> 陈述，待服务器授权后重新采样绑定，见 1.4 节）；在重新采样完成前，上述
+> 2026-09-24 清单中的生产事实陈述保持原样，不因该手动实施而自动更新。
+
 ### 1.3 当前验证实况
 
 合并候选已完成的本地验证：
@@ -90,6 +94,54 @@ RELEASE=NO_GO
 
 旧 `control/acceptance.tsv` 另含 RESULT、执行期新增 A06、LEGACY_CLIENT 等管理行；旧 TSV、
 `acceptance-matrix.md` 和 `RESULT.json` 存在时间点与候选 SHA 不一致，不能继续并列充当真源。
+
+### 1.4 L4 SNI 加固阶段记录（2026-10-02，LOCAL_HARDENING 产物）
+
+依据 `docs/plans/2026-10-01-l4-sni-hardening-relay-verification-plan-v1.md`（L4 SNI
+运维加固与真实 relay 验证计划）完成的本地候选阶段产物登记。以下为**候选实现提交
+事实**（后端 base `4d9ffba2`，app 仓候选另计），不代表服务器已部署、生产已变更，
+也不改变本计划任何 Acceptance ID 的取值：
+
+- **listen 漂移巡检**：`scripts/check_l4_sni_listen.sh`，fail-closed 检测受管 vhost
+  配置文本（退出码 `0` 健康/`1` 漂移含受管配置缺失/`2` 输入解析错误/`3` 推送失败；
+  `--strict` 默认与 `--pre-switch` 两模式；`L4_SNI_ENV_FILE` 配置发现），107 项
+  行为测试（imboy `76b09f27`、`abec6b5f`）。只检测配置文件文本，不证明运行配置
+  或媒体健康。
+- **指标推送助手严格模式**：`scripts/lib/metrics_push.sh` opt-in `METRICS_PUSH_STRICT=1`
+  （失败/缺 URL 返回非零）与 `METRICS_PUSH_LAST_STATUS` 结果观测，默认语义零改变，
+  38+16 项测试（imboy `71a68cf5`）。
+- **安装器宝塔实例兼容与回滚行为**：`deploy/install-livekit-l4-sni.sh` 增加
+  `resolve_nginx_instance`（`NGINX_BIN` 显式优先→宝塔路径→`PATH`，必须匹配运行
+  master，歧义/自定义 `-g` 即 `BLOCKED_ENV`）、全阶段同二进制同 `-c`/`-p`、reload
+  改为 pidfile 校验 + SIGHUP 兜底、备份 format=2（manifest + 逐文件 sha256 + 服务
+  状态快照，**与旧 format=1 tar 断代不兼容**）、overlay 感知回滚与有效配置哈希
+  校验、重复 apply 保护保留，95 项沙箱测试（imboy `a6ba4595`）。
+- **App RTC 连接级探针**：`integration_test/rtc/rtc_relay_realdevice_test.dart`
+  （连接级证据，evidence_level 标注）与 `rtc_relay_stats_judge.dart` 纯判定器
+  （selected pair 优先、nominated 不单独成立、remote relay 不替代 local、缺字段
+  即 `BLOCKED_EVIDENCE`；无 candidate.port=443 断言），37 项判定测试 + 11 项 p2p
+  回归（imboyapp `b69e0d7c`）。
+- **巡检接线与告警**：`deploy/cron/imboy-ops.cron` 每 5 分钟 `--strict --push` 巡检
+  行与 `deploy/prometheus/rules/imboy-alerts.yml` 告警组 `imboy.l4_sni` 四条规则
+  （`L4SNIListenDrift`/`L4SNICheckFailed` critical，`L4SNIStaleMetrics`/
+  `L4SNIMetricsMissing` warning），promtool 50 规则 + 15 断言（imboy `f5e320cc`）。
+
+本阶段**未执行**（均为后续 Wave 任务，未启动或未获授权）：服务器采样与候选上传
+（Task 7）、上线巡检与告警管路验证（Task 9）、TLS443 relay 真机证据（Task 10，
+探针未在任何真机运行）、双真机设备矩阵（Task 11）。LOCAL_HARDENING 阶段的最终
+状态以该 run 的 acceptance 台账为准，不由本文档宣布；即便其判 PASS，也只说明
+本地合同通过。
+
+历史现场事实：2026-10-01 服务器曾有一轮**安装器外手动 SNI 实施**（证书、vhost、
+eturnal 停用及 livekit.env/overlay 变更；历史采样陈述，采样日期 2026-10-01，待
+服务器授权后重新采样绑定）。处于该手动启用状态时 `--apply` 会被重复 apply 保护
+拒绝，不能通过补跑 apply 幂等接管。
+
+本条目不改变 1.2 节任何状态常量，也不改变本计划任何 Acceptance ID
+（`CL-TEST-01-A01..A06`、`CL-DEVICE-01-A01..A07`、`CL-NET-01-*` 等）的取值；原表
+仍按原合同另行验收，不因本阶段本地完成而自动 PASS。运维候选细节与"待服务器核实"
+清单见 `docs/guides/operations/deployment/livekit-turn-443-l4-sni.md`（候选实现/
+待上线口径）。
 
 ## 2. 目标、边界与授权
 
