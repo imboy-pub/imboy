@@ -1,0 +1,61 @@
+{
+  "status": "PASS_NATIVE_MACOS_ENTERPRISE_FILE_AUDIT",
+  "backend_candidate": "d939172787f24cf175dfa4b03bca65d7e75bb621",
+  "app_candidate": "a67e565561e5bd3cc3fe72e16382d4a056969525",
+  "native_exit_code": 0,
+  "fixture_exit_code": 0,
+  "database_oracles": {
+    "native-leave-oracle.json": {
+      "result": {
+        "status": "PASS",
+        "active_workspaces": 0,
+        "organization_removed": true,
+        "original_organization_retained": true
+      },
+      "sha256": "c5718fb2de4699da4f1febadcab47d09a3701d4f479f451ac61777445077dccb"
+    },
+    "native-content-oracle.json": {
+      "result": {
+        "status": "PASS",
+        "user_id": 995011,
+        "group_id": 995301,
+        "actual_message_rows": 1,
+        "plaintext_rows": 1
+      },
+      "sha256": "85b047103a2891da22ab4c644641344a4b011086db193de39bf1ad2e0a483e69"
+    },
+    "native-governance-oracle.json": {
+      "result": {
+        "status": "PASS",
+        "created_renamed_archived": 1
+      },
+      "sha256": "937b274826a9d02da1ea595135fdc68d72e7d4b54bd6c53d0a8cb687e52babb8"
+    },
+    "native-file-oracle.json": {
+      "result": {
+        "status": "PASS",
+        "file_size": 32,
+        "deleted_audit": 1,
+        "deleted_rows": 1,
+        "synthetic_file_rows": 1,
+        "uploaded_audit": 1
+      },
+      "sha256": "644d31df11e53f76ae3cdc3774b7b66cc52ba9c294fc1e32a6196ca75dbe17a8"
+    }
+  },
+  "device_log_sha256": "ac3192f51adfd8648f13ea8e3669a008d7ebd9e22bac375ea24b65ec9971ad05",
+  "terminal_sha256": "15c7c9759da3e9cd06df88698f8d7f22ed5bc351a14141c770c1a9f273eba393",
+  "review": "APPROVE fixture difference by seat_predicate_review",
+  "real_native_macos": true,
+  "real_disposable_postgres": true,
+  "real_disposable_garage": true,
+  "customer_oa_verified": false,
+  "ios_verified": false,
+  "unread_native_verified": false,
+  "pending_receipt_concurrency_verified": false,
+  "visible_preview_pixels_verified": false,
+  "whole_goal_complete": false,
+  "source_binding_file": "source-binding.tsv",
+  "source_binding_sha256": "807a712bfd0db0e0e102424d02c4451ca8f7e64462d110c4b09d255258a640f7",
+  "source_files_count": 3195
+}
