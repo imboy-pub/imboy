@@ -33,3 +33,12 @@ MAILTO=""
 
 # 每 6 小时检查 TLS 证书到期时间并推指标
 17 */6 * * * root . /etc/imboy/ops.env; cd /opt/imboy && bash scripts/check_tls_expiry.sh >> /var/log/imboy/tls_expiry.log 2>&1
+
+# 每 5 分钟 L4 SNI nginx listen 漂移巡检并推指标（Task 2，只读巡检不 reload）
+# - set -a：ops.env.example 里的 PUSHGATEWAY_URL 等未写 export，仅 `. file`
+#   不会导出给子进程 bash；这里用 set -a 让受保护 env 文件的变量真正生效。
+# - L4_SNI_ENV_FILE 显式写出（等于脚本默认值）便于审计配置发现来源。
+# - 不加 || true：巡检脚本退出码语义保留（0/1=检测结论，2=输入错误，
+#   3=推送失败），失败诊断进日志 + 指标侧由 L4SNI* 告警兜底（见
+#   deploy/prometheus/rules/imboy-alerts.yml 的 imboy.l4_sni 组）。
+*/5 * * * * root set -a; . /etc/imboy/ops.env; set +a; cd /opt/imboy && L4_SNI_ENV_FILE=/etc/imboy/livekit-l4-sni.env bash scripts/check_l4_sni_listen.sh --strict --push >> /var/log/imboy/l4_sni_listen.log 2>&1
