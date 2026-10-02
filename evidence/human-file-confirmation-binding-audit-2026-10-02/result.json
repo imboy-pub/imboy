@@ -1,0 +1,28 @@
+{
+  "status": "PASS_SCOPED",
+  "tested_parent": "43002e4db0a2f5f351b4a4d07daae57cf3c34bb8",
+  "source_files": {
+    "src/ds/attachment_ds.erl": "6c11090a5dd9cec88720d8f9469783d8707cd88c29cf3e29224b16118c76a15c",
+    "src/logic/attach_logic.erl": "41e2694ae03c3d703b20287c0d583357aa221441d71f8c0ade8e2b5d04e5a39f",
+    "src/repo/attachment_repo.erl": "40ad18e30728af6a9975f8dd050b772a2c7826cffa93ffd8a238476f50576ba4",
+    "src/repo/msg_store_repo.erl": "707b18fa5e39e2a4cbd8907744575cf9781bdf5d25565a2cc795015d94304517",
+    "test/logic/attach_logic_tests.erl": "494133bc206cc52d7738d4855923a23f41a3f1f3f80fbf773da3e9f37e86e965",
+    "test/repo/group_file_atomic_pg_tests.erl": "a2d1a75b2c02a839a44c1b9ab0de4278ce9ca0a3c6e4ab3ec69648ff5de1f817",
+    "test/repo/msg_store_repo_tests.erl": "4751523b83873f443702dffd6bb65a59787c17f2b95abb0b2a695cef37855018",
+    "test/api/enterprise_human_file_binding_pg_checks.erl": "b8f7c59ffc37929c8fb9d11fbaa2e38305a21c9eec755ff48c048408ced7ed3b"
+  },
+  "atomic_real_pg_tests_passed": 12,
+  "domain_tests_passed": 154,
+  "atomic_exit": 0,
+  "domain_exit": 0,
+  "review": "APPROVE",
+  "storage": "HEAD/PUT mocks in atomic checks; message binding uses real marker PG and every production migration",
+  "same_workspace_first_confirm_concurrency": "one metadata row, referer_time=2, one audit",
+  "cross_workspace_same_path_concurrency": "both read not_found before insertion; one success, one forbidden, one metadata reference and audit",
+  "binding_failure_oracle": "exact rows of attachment/audit/staging/seq/request-ledger/recipient-snapshot unchanged",
+  "binding_replay_oracle": "exact same six tables unchanged",
+  "private_binding_path": "/tmp/imboy-seat-http.DNKR0K/source-binding.json",
+  "private_binding_sha256": "30745964700751bc18ad44b9fdffc3ac6dcdb575eecdb5983c0fb69ec1be14db",
+  "native_garage_for_this_candidate": false,
+  "whole_goal_complete": false
+}

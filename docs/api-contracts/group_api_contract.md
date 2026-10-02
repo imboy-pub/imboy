@@ -93,3 +93,11 @@ id, title, avatar, owner_uid, creator_uid, type, join_limit, member_count, intro
 成功为 HTTP 200 / envelope code 0，数据含 `read_seq`。输入错误为 envelope 400，目标或消息不在授权范围为 envelope 404，服务错误为 envelope 500；这些沿用现有人类 API 的 HTTP 200 信封。非 POST 为 HTTP 405。
 
 工作区群列表 `member_only=1&preview=1` 返回 `unread_count`，按当前成员 generation 的有效消息计算，排除本人发送、已过期及已撤回消息。客户端不拼接个人空间的本地计数。
+
+## 人类企业文件审计（2026-10-02）
+
+企业群资料上传、删除分别追加 `file.uploaded` / `file.deleted`；资源类型为 `group_file`，ID 为真实文件主键。普通群/频道附件首次确认追加 `file.confirmed`，群消息首次绑定附件追加 `file.message_bound`；资源类型为 `attachment`，ID 为真实附件主键。
+
+审计归属由服务器群/频道→工作区→企业关系确定；人类事件包含实际用户 ID、`actor_role=human`，`origin_application_id=null`。详情仅含工作区、scope、消息及序号引用，不含文件名、URL、正文或凭据。个人资源及无企业工作区不记企业审计。
+
+审计与业务写入同事务，故障全部回滚。已确认路径的上传者、scope、scope_ref 不可更换；确认重放、重复删除及重复绑定不产生新的审计事实。Internal 调用沿用原有应用来源审计。

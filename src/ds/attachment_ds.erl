@@ -10,7 +10,7 @@
 %% ==================== API ====================
 
 -export([tablename/0]).
--export([save/4]).
+-export([save/4, save_confirmed_tx/4]).
 -export([stats/0]).
 -export([page/3]).
 -export([disable/1, enable/1, soft_delete/1]).
@@ -47,6 +47,65 @@ tablename() ->
 -spec save(pid(), binary(), integer(), [map()]) -> ok.
 save(Conn, CreatedAt, Uid, Attach) ->
     attachment_repo:save(Conn, CreatedAt, Uid, Attach).
+
+%% Human group/channel confirmations audit only the first durable metadata row.
+%% Scope qualification is locked by the caller; audit failure aborts that same transaction.
+-spec save_confirmed_tx(pid(), binary(), integer(), [map()]) -> ok.
+save_confirmed_tx(_Conn, _CreatedAt, _Uid, []) ->
+    ok;
+save_confirmed_tx(Conn, CreatedAt, Uid, [Attach | Tail]) ->
+    Path = maps:get(<<"path">>, Attach),
+    {ok, Before} = confirmation_result(attachment_repo:confirmation_row_tx(Conn, Path)),
+    ok = ensure_confirmed_scope(Before, Uid, Attach),
+    ok = attachment_repo:save(Conn, CreatedAt, Uid, [Attach]),
+    case Before of
+        not_found ->
+            {ok, Row} = confirmation_result(attachment_repo:confirmation_row_tx(Conn, Path)),
+            ok = ensure_confirmed_scope(Row, Uid, Attach),
+            Kind =
+                case maps:get(<<"scope">>, Row) of
+                    <<"group">> -> group;
+                    <<"channel">> -> channel
+                end,
+            Ref = elib_cnv:safe_to_integer(maps:get(<<"scope_ref">>, Row)),
+            ok = workspace_guard:abort_on_error(
+                enterprise_audit_event_repo:append_scope_file_tx(
+                    Conn,
+                    {Kind, Ref},
+                    Uid,
+                    #{
+                        resource_type => <<"attachment">>,
+                        resource_id => maps:get(<<"id">>, Row),
+                        action => <<"file.confirmed">>
+                    }
+                )
+            );
+        _ ->
+            ok
+    end,
+    save_confirmed_tx(Conn, CreatedAt, Uid, Tail).
+
+ensure_confirmed_scope(not_found, _Uid, _Attach) ->
+    ok;
+ensure_confirmed_scope(Row, Uid, Attach) ->
+    case
+        {
+            maps:get(<<"creator_user_id">>, Row),
+            maps:get(<<"scope">>, Row),
+            maps:get(<<"scope_ref">>, Row)
+        }
+    of
+        {Uid, Scope, Ref} ->
+            case {maps:get(<<"scope">>, Attach), maps:get(<<"scope_ref">>, Attach)} of
+                {Scope, Ref} -> ok;
+                _ -> throw({abort_tx, forbidden})
+            end;
+        _ ->
+            throw({abort_tx, forbidden})
+    end.
+
+confirmation_result({ok, _} = Result) -> Result;
+confirmation_result({error, Reason}) -> throw({abort_tx, Reason}).
 
 -spec authorize_group_scope(integer(), integer()) -> boolean().
 authorize_group_scope(Gid, Uid) ->

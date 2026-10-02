@@ -1,0 +1,5 @@
+ATOMIC_POSTGRESQL: 12 passed; failed=0; skipped=0
+DOMAIN: 154 passed; failed=0; skipped=0
+HUMAN_FILE_AUDIT_RESULT=ok
+HUMAN_BIND_RESULT=ok
+FULL_GOAL_COMPLETE=false

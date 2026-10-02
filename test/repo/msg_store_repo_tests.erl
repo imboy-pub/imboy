@@ -468,7 +468,8 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"anchor_conv_seq = $4">>)),
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"group_file_id IS NULL">>)),
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"anchor_conv_seq IS NULL">>)),
-                        {ok, 0}
+                        ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING id">>)),
+                        {ok, []}
                 end}
             ]}
         ],
@@ -927,7 +928,7 @@ c2g_stage_5000_recipients_commits_test_() ->
                         {ok, [#{<<"msg_id">> => <<"msg-c2g-limit-ok">>}]};
                     (_, Sql, [<<"msg-c2g-limit-ok">>, 50, 100, 7]) ->
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE public.attachment">>)),
-                        {ok, 5000}
+                        {ok, []}
                 end}
             ]}
         ],

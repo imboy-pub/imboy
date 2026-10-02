@@ -264,11 +264,11 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher, Anc
                     {ok, Target} ->
                         ok = workspace_guard:abort_on_error(
                             attachment_ds:ensure_upload_scope_tx(Conn, Target, Uid)
-                        );
+                        ),
+                        attachment_ds:save_confirmed_tx(Conn, Now, Uid, [Attach]);
                     passthrough ->
-                        ok
-                end,
-                attachment_ds:save(Conn, Now, Uid, [Attach])
+                        attachment_ds:save(Conn, Now, Uid, [Attach])
+                end
             end),
         case SaveResult of
             {error, SaveReason} ->

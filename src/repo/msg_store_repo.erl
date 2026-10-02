@@ -915,11 +915,35 @@ bind_group_attachment_anchors(Conn, MsgId, FromId, Gid, Seq) ->
         <<"UPDATE public.attachment SET anchor_conv_seq = $4, updated_at = now() ",
             "WHERE anchor_msg_id = $1 AND creator_user_id = $2 ",
             "AND scope = 'group' AND scope_ref = $3::text ",
-            "AND group_file_id IS NULL AND anchor_conv_seq IS NULL AND status >= 0">>,
+            "AND group_file_id IS NULL AND anchor_conv_seq IS NULL AND status >= 0 RETURNING id">>,
     case elib_pg:query(Conn, Sql, [MsgId, FromId, Gid, Seq]) of
-        {ok, _} -> ok;
-        {error, Reason} -> throw({rollback, {attachment_anchor_bind_failed, Reason}});
-        Other -> throw({rollback, {unexpected_attachment_anchor_bind, Other}})
+        {ok, Rows} ->
+            lists:foreach(
+                fun(#{<<"id">> := Id}) ->
+                    case
+                        enterprise_audit_event_repo:append_scope_file_tx(
+                            Conn,
+                            {group, Gid},
+                            FromId,
+                            #{
+                                resource_type => <<"attachment">>,
+                                resource_id => Id,
+                                action => <<"file.message_bound">>,
+                                detail => #{<<"msg_id">> => MsgId, <<"conv_seq">> => Seq}
+                            }
+                        )
+                    of
+                        ok -> ok;
+                        {error, AuditReason} -> throw({rollback, AuditReason})
+                    end
+                end,
+                Rows
+            ),
+            ok;
+        {error, Reason} ->
+            throw({rollback, {attachment_anchor_bind_failed, Reason}});
+        Other ->
+            throw({rollback, {unexpected_attachment_anchor_bind, Other}})
     end.
 
 %% @private sequence 行锁已由调用方持有；本查询在同一事务的新 READ COMMITTED

@@ -15,7 +15,12 @@ run(Socket) ->
         schema(C),
         mocks(C),
         eunit:test(
-            [{"file operations recheck current scope", fun() -> verify_scope(C) end}] ++
+            [
+                {"file operations recheck current scope", fun() -> verify_scope(C) end},
+                {"human confirm audits once and rolls back on audit failure", fun() ->
+                    verify_confirm(C, Socket)
+                end}
+            ] ++
                 [
                     {atom_to_list(Mode), fun() -> verify(C, Mode) end}
                  || Mode <- [
@@ -138,6 +143,138 @@ verify_scope(C) ->
     ?assertEqual({ok, []}, group_file_ds:list_files(11, 1, 1, 10)),
     ?assertEqual({error, not_found}, group_file_ds:download_file(101, 1)).
 
+verify_confirm(C, Socket) ->
+    sql(
+        C,
+        <<"DELETE FROM attachment; DELETE FROM enterprise_audit_event; DELETE FROM attach_pending">>
+    ),
+    Key = <<"u1/g11/20261002/confirmation.txt">>,
+    meck:expect(elib_oss, owner_of_key, fun(Key0) when Key0 =:= Key -> {ok, 1} end),
+    meck:expect(elib_oss, head_object, fun(<<"private">>, Key0) when Key0 =:= Key ->
+        {ok, #{size => 3, content_type => <<"text/plain">>}}
+    end),
+    meck:new(group_member_ds, [non_strict, no_link]),
+    meck:expect(group_member_ds, is_member, fun(11, 1) -> true end),
+    Meta = #{<<"anchor_msg_id">> => <<"confirmed-human-message">>},
+    ?assertMatch({ok, _}, attach_logic:confirm(1, Key, <<"group">>, <<"11">>, Meta)),
+    ?assertEqual(
+        1,
+        count(
+            C,
+            <<"enterprise_audit_event WHERE action='file.confirmed' AND resource_type='attachment' AND resource_id IN (SELECT id FROM attachment) AND actor_user_id=1 AND organization_id=10">>
+        )
+    ),
+    ?assertMatch({ok, _}, attach_logic:confirm(1, Key, <<"group">>, <<"11">>, Meta)),
+    ?assertEqual(1, count(C, <<"enterprise_audit_event">>)),
+    ?assertEqual(1, count(C, <<"attachment WHERE referer_time=2">>)),
+    sql(
+        C,
+        <<"DELETE FROM attachment; ALTER TABLE enterprise_audit_event ADD CONSTRAINT reject_confirm CHECK(action<>'file.confirmed') NOT VALID">>
+    ),
+    ?assertMatch(
+        {error, {audit_failed, _}}, attach_logic:confirm(1, Key, <<"group">>, <<"11">>, Meta)
+    ),
+    ?assertEqual(0, count(C, <<"attachment">>)),
+    ?assertEqual(1, count(C, <<"enterprise_audit_event">>)),
+    sql(C, <<"ALTER TABLE enterprise_audit_event DROP CONSTRAINT reject_confirm">>),
+    sql(C, <<"DELETE FROM attachment; DELETE FROM enterprise_audit_event">>),
+    ?assert(
+        lists:all(
+            fun(R) -> element(1, R) =:= ok end,
+            parallel_confirm(Socket, Key, Meta, [<<"11">>, <<"11">>], false)
+        )
+    ),
+    ?assertEqual(1, count(C, <<"attachment WHERE referer_time=2">>)),
+    ?assertEqual(1, count(C, <<"enterprise_audit_event WHERE action='file.confirmed'">>)),
+    verify_cross_scope_confirm(C, Socket, Key, Meta),
+    meck:unload(group_member_ds).
+
+verify_cross_scope_confirm(C, Socket, Key, Meta) ->
+    sql(C, <<
+        "DELETE FROM attachment; DELETE FROM enterprise_audit_event;"
+        "INSERT INTO organization_member VALUES(20,1,'active','member');"
+        "INSERT INTO workspace VALUES(200,20,'active');"
+        "INSERT INTO workspace_member VALUES(200,1,'active');"
+        "INSERT INTO \"group\" VALUES(22,1,'workspace',200);"
+        "INSERT INTO group_member VALUES(22,1,1)"
+    >>),
+    meck:expect(group_member_ds, is_member, fun(_, 1) -> true end),
+    Parent = self(),
+    meck:new(attachment_repo, [passthrough, no_link]),
+    meck:expect(attachment_repo, confirmation_row_tx, fun(Conn, ObjectKey) ->
+        Result = meck:passthrough([Conn, ObjectKey]),
+        case {get(confirm_lookup_seen), Result} of
+            {undefined, {ok, not_found}} ->
+                put(confirm_lookup_seen, true),
+                Parent ! {before_insert, self()},
+                receive
+                    continue -> ok
+                after 5000 -> error(insert_barrier_timeout)
+                end;
+            _ ->
+                ok
+        end,
+        Result
+    end),
+    Results = parallel_confirm(Socket, Key, Meta, [<<"11">>, <<"22">>], true),
+    ?assertEqual(1, length([R || {ok, _} = R <- Results])),
+    ?assertEqual(1, length([R || {error, forbidden} = R <- Results])),
+    ?assertEqual(1, count(C, <<"attachment WHERE referer_time=1">>)),
+    ?assertEqual(1, count(C, <<"enterprise_audit_event WHERE action='file.confirmed'">>)),
+    meck:unload(attachment_repo).
+
+parallel_confirm(Socket, Key, Meta, Refs, Gate) ->
+    Parent = self(),
+    Workers = [
+        spawn_link(fun() ->
+            {ok, Conn} = epgsql:connect(#{
+                host => {local, Socket},
+                port => 0,
+                username => "departure_test",
+                database => "postgres",
+                codecs => [{epgsql_codec_rfc3339_bin, []}]
+            }),
+            put(atomic_file_conn, Conn),
+            Parent ! {ready, self()},
+            receive
+                go -> ok
+            end,
+            Result = attach_logic:confirm(1, Key, <<"group">>, Ref, Meta),
+            epgsql:close(Conn),
+            Parent ! {confirmed, self(), Result}
+        end)
+     || Ref <- Refs
+    ],
+    lists:foreach(
+        fun(Pid) ->
+            receive
+                {ready, Pid} -> Pid ! go
+            after 5000 -> error(worker_ready_timeout)
+            end
+        end,
+        Workers
+    ),
+    case Gate of
+        true ->
+            Waiting = [
+                receive
+                    {before_insert, Pid} -> Pid
+                after 5000 -> error(barrier_timeout)
+                end
+             || _ <- Workers
+            ],
+            lists:foreach(fun(Pid) -> Pid ! continue end, Waiting);
+        false ->
+            ok
+    end,
+    [
+        receive
+            {confirmed, Pid, Result} -> Result
+        after 5000 -> error(confirm_timeout)
+        end
+     || Pid <- Workers
+    ].
+
 schema(C) ->
     sql(C, <<
         "CREATE TABLE organization(id bigint PRIMARY KEY,status text);"
@@ -211,9 +348,14 @@ mocks(C) ->
         (base_url, _) -> <<"https://storage.example.com">>
     end),
     meck:new(pooler, [non_strict, no_link]),
-    meck:expect(pooler, take_member, fun(pgsql) -> C end),
-    meck:expect(pooler, return_member, fun(pgsql, C0) when C0 =:= C -> ok end),
-    meck:expect(pooler, return_member, fun(pgsql, C0, _) when C0 =:= C -> ok end),
+    meck:expect(pooler, take_member, fun(pgsql) ->
+        case get(atomic_file_conn) of
+            undefined -> C;
+            WorkerConn -> WorkerConn
+        end
+    end),
+    meck:expect(pooler, return_member, fun(pgsql, _) -> ok end),
+    meck:expect(pooler, return_member, fun(pgsql, _, _) -> ok end),
     meck:new(group_ds, [non_strict, no_link]),
     meck:expect(group_ds, is_member, fun(_, _) -> true end),
     meck:new(elib_oss, [non_strict, no_link]),
@@ -234,7 +376,7 @@ mocks(C) ->
     meck:expect(elib_tsid, registered, fun() -> [enterprise_audit_event] end),
     meck:expect(elib_tsid, generate, fun
         (group_file) -> 101;
-        (attachment) -> 201;
+        (attachment) -> erlang:unique_integer([positive, monotonic]);
         (enterprise_audit_event) -> erlang:unique_integer([positive, monotonic])
     end).
 

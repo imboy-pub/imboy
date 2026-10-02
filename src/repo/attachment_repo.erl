@@ -15,7 +15,7 @@
 %% @param Uid 用户ID
 %% @param Attach 附件信息列表
 %% @returns ok
--export([save/4]).
+-export([save/4, confirmation_row_tx/2]).
 
 %% @doc 查询附件统计信息（管理后台用）
 -export([stats/0]).
@@ -162,6 +162,21 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     case elib_pg:execute(Conn, FullSql, Params) of
         {ok, _Count} -> save(Conn, CreatedAt, Uid, Tail);
         {error, Reason} -> throw({abort_tx, {attachment_save_failed, Reason}})
+    end.
+
+%% Callers hold the existing workspace qualification lock before first-confirm detection.
+-spec confirmation_row_tx(any(), binary()) -> {ok, map() | not_found} | {error, term()}.
+confirmation_row_tx(Conn, ObjectKey) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT id, scope, scope_ref, creator_user_id FROM public.attachment WHERE path=$1 FOR UPDATE">>,
+            [ObjectKey]
+        )
+    of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {ok, not_found};
+        {error, _} = Error -> Error
     end.
 
 %% ===================================================================

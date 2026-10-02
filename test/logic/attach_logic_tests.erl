@@ -264,7 +264,7 @@ confirm_group_persists_anchor_message_id_test_() ->
             {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
             {attachment_ds, [
                 {'ensure_upload_scope_tx', 3, fun(fake_conn, {group, <<"66">>}, 1) -> ok end},
-                {'save', 4, fun(_, _, _, _) -> ok end},
+                {'save_confirmed_tx', 4, fun(_, _, _, _) -> ok end},
                 {'pending_remove', 1, fun(_) -> ok end},
                 {'find_by_path', 1, fun(_) -> {error, not_found} end}
             ]}
@@ -279,7 +279,9 @@ confirm_group_persists_anchor_message_id_test_() ->
                 {ok, _},
                 attach_logic:confirm(1, Key, <<"group">>, <<"66">>, Meta)
             ),
-            [Attach] = meck:capture(first, attachment_ds, save, ['_', '_', '_', '_'], 4),
+            [Attach] = meck:capture(
+                first, attachment_ds, save_confirmed_tx, ['_', '_', '_', '_'], 4
+            ),
             ?assertEqual(
                 <<"msg-group-attachment-001">>, maps:get(<<"anchor_msg_id">>, Attach)
             )
