@@ -13,7 +13,8 @@
     eunit_setup_db_or_skip/0,
     ensure_named_server/1,
     ensure_boot_coordinator/0,
-    ensure_default_pool/0
+    ensure_default_pool/0,
+    ensure_cache/0
 ]).
 
 %%%===================================================================
@@ -229,6 +230,22 @@ ensure_boot_coordinator() ->
             end;
         _Pid ->
             ok
+    end.
+
+%% @doc 幂等拉起名为 imboy_cache 的 depcache 实例（挂在长驻 boot
+%% coordinator 名下，VM 一次性无需回收）。WH-05（2026-10-02）：纯 HTTP 链
+%% 套件（intbe02 / organization_directory 等 marker DB 型，不启动 imboy
+%% app）里真 config_ds:set/get 会 call imboy_cache——app 未启动时该实例
+%% 缺位，set_sign_key 等配置写入直接 noproc 崩溃（单跑 mobile_bootstrap
+%% 902 / orgdir setup badmatch 实证）。app 已启动时 whereis 命中即 no-op，
+%% 与 app 侧 sup 托管实例互不干扰。
+ensure_cache() ->
+    ok = ensure_boot_coordinator(),
+    Ref = make_ref(),
+    eunit_boot_coordinator ! {ensure_cache, self(), Ref},
+    receive
+        {Ref, ok} -> ok
+    after 10000 -> ok
     end.
 
 boot_coord_loop() ->

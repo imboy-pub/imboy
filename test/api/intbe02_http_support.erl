@@ -190,6 +190,9 @@ setup_all() ->
     {ok, _} = application:ensure_all_started(throttle),
     catch throttle:setup(api_per_ip, 100000, per_minute),
     catch throttle:setup(api_per_user, 100000, per_minute),
+    %% WH-05：本链不起 imboy app，config_ds:set/get 依赖的 imboy_cache
+    %% 实例须显式拉起（详见 eunit_runner:ensure_cache/0 头注）。
+    ok = eunit_runner:ensure_cache(),
     application:set_env(imboy, enterprise_internal_rate_limits, #{
         internal_read => 10000, internal_write => 10000, internal_sso => 10000
     }),
