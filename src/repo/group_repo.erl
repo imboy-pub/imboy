@@ -1,6 +1,6 @@
 -module(group_repo).
 -export([workspace_groups/2, member_workspace_groups/4, member_workspace_groups/5]).
--export([mark_workspace_group_read/5]).
+-export([mark_workspace_group_read/4]).
 %%%
 % group_repo 是 group repository 缩写
 % 群组数据仓库层，提供群组数据的基础数据库操作
@@ -297,34 +297,34 @@ workspace_unread_sql() ->
 
 %% Lock the exact active authorization/generation before writing a read fact.
 %% Only actually delivered, live message IDs may advance it; never a guessed seq.
-mark_workspace_group_read(Conn, WorkspaceId, Uid, GroupId, MsgIds) ->
+mark_workspace_group_read(Conn, Uid, GroupId, MsgIds) ->
     Sql =
         <<"WITH eligible AS MATERIALIZED (SELECT gen.id,gen.start_seq",
             " FROM \"group\" g JOIN workspace w ON w.id=g.workspace_id",
-            " JOIN workspace_member wm ON wm.workspace_id=w.id AND wm.user_id=$2",
-            " JOIN group_member gm ON gm.group_id=g.id AND gm.user_id=$2",
-            " JOIN group_member_generation gen ON gen.group_id=g.id AND gen.user_id=$2",
-            " JOIN \"user\" usr ON usr.id=$2",
-            " WHERE w.id=$1 AND g.id=$3 AND g.scope='workspace' AND g.status=1",
+            " JOIN workspace_member wm ON wm.workspace_id=w.id AND wm.user_id=$1",
+            " JOIN group_member gm ON gm.group_id=g.id AND gm.user_id=$1",
+            " JOIN group_member_generation gen ON gen.group_id=g.id AND gen.user_id=$1",
+            " JOIN \"user\" usr ON usr.id=$1",
+            " WHERE g.id=$2 AND g.scope='workspace' AND g.status=1",
             " AND w.status IN ('active','archived') AND wm.status='active'",
             " AND gm.status=1 AND gen.end_seq IS NULL AND usr.status=1",
             " AND (w.organization_id IS NULL OR EXISTS (SELECT 1 FROM organization o",
             " WHERE o.id=w.organization_id AND o.status='active' FOR SHARE))",
             " AND (w.organization_id IS NULL OR EXISTS (SELECT 1 FROM organization_member om",
-            " WHERE om.organization_id=w.organization_id AND om.user_id=$2 AND om.status='active' FOR SHARE))",
+            " WHERE om.organization_id=w.organization_id AND om.user_id=$1 AND om.status='active' FOR SHARE))",
             " FOR SHARE OF g,w,wm,gm,gen,usr), observed AS (",
             " SELECT e.id,max(tl.conv_seq) AS seq FROM eligible e",
-            " JOIN msg_c2g_timeline tl ON tl.to_uid=$2 AND tl.to_gid=$3",
+            " JOIN msg_c2g_timeline tl ON tl.to_uid=$1 AND tl.to_gid=$2",
             " AND tl.conv_seq>=e.start_seq JOIN msg_c2g m",
             " ON m.msg_id=tl.msg_id AND m.created_at=tl.created_at AND m.to_id=tl.to_gid",
-            " WHERE tl.msg_id=ANY($4::text[]) AND (m.expire_at IS NULL OR m.expire_at>NOW())",
+            " WHERE tl.msg_id=ANY($3::text[]) AND (m.expire_at IS NULL OR m.expire_at>NOW())",
             " AND m.payload->>'action' IS DISTINCT FROM 'message_revoke_ack'",
-            " GROUP BY e.id HAVING count(DISTINCT tl.msg_id)=cardinality($4::text[]))",
+            " GROUP BY e.id HAVING count(DISTINCT tl.msg_id)=cardinality($3::text[]))",
             " INSERT INTO workspace_group_read_cursor (generation_id,read_seq)",
             " SELECT id,seq FROM observed ON CONFLICT (generation_id) DO UPDATE",
             " SET read_seq=GREATEST(workspace_group_read_cursor.read_seq,EXCLUDED.read_seq),",
             " updated_at=NOW() RETURNING read_seq">>,
-    elib_pg:query(Conn, Sql, [WorkspaceId, Uid, GroupId, MsgIds]).
+    elib_pg:query(Conn, Sql, [Uid, GroupId, MsgIds]).
 
 workspace_group_columns() ->
     <<"g.id,g.type,g.join_limit,g.content_limit,g.owner_uid,g.creator_uid,",

@@ -62,7 +62,7 @@ check(#{conn := C} = S) ->
             [<<"unread-two">>, <<"unread-revoked">>]
         ]
     ),
-    ?assertEqual(404, code(read(S, 995201, G2, [<<"unread-other">>]))),
+    ?assertEqual(404, code(read(S, 995201, G2, [<<"unread-one">>]))),
     ?assertEqual(0, code(read(S, 995201, G1, [<<"unread-two">>, <<"unread-two">>]))),
     ?assertEqual(0, unread(S, 995201, G1)),
     ?assertEqual(0, code(read(S, 995201, G1, [<<"unread-one">>]))),
@@ -144,10 +144,9 @@ rows(S, Ws) ->
     ?assertEqual(200, status(R)),
     maps:get(<<"list">>, maps:get(<<"payload">>, jsone:decode(maps:get(body, R)))).
 
-read(S, Ws, Gid, Ids) ->
+read(S, _Ws, Gid, Ids) ->
     Path =
-        <<"/api/v1/workspaces/", (integer_to_binary(Ws))/binary, "/groups/",
-            (integer_to_binary(Gid))/binary, "/read">>,
+        <<"/api/v1/groups/", (integer_to_binary(Gid))/binary, "/read">>,
     ?H:http(
         maps:get(port, S),
         <<"POST">>,

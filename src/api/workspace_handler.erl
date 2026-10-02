@@ -312,20 +312,13 @@ group_read(Req0, State) ->
     case cowboy_req:method(Req0) of
         <<"POST">> ->
             Uid = auth_ds:current_uid(State),
-            case resolve_workspace_id(Req0) of
-                {error, Req} ->
-                    Req;
-                {ok, WsId} ->
-                    Gid = elib_cnv:safe_to_integer(cowboy_req:binding(group_id, Req0)),
-                    Body = elib_param:post(Req0),
-                    case
-                        group_logic:mark_workspace_read(
-                            WsId, Uid, Gid, maps:get(<<"msg_ids">>, Body, undefined)
-                        )
-                    of
-                        {ok, Row} -> elib_response:success(Req0, Row);
-                        {error, {Code, Message}} -> elib_response:error(Req0, Message, Code)
-                    end
+            Gid = elib_cnv:safe_to_integer(cowboy_req:binding(group_id, Req0)),
+            Body = elib_param:post(Req0),
+            case
+                group_logic:mark_workspace_read(Uid, Gid, maps:get(<<"msg_ids">>, Body, undefined))
+            of
+                {ok, Row} -> elib_response:success(Req0, Row);
+                {error, {Code, Message}} -> elib_response:error(Req0, Message, Code)
             end;
         _ ->
             cowboy_req:reply(405, #{<<"allow">> => <<"POST">>}, <<>>, Req0)

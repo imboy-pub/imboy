@@ -1,6 +1,6 @@
 -module(workspace_ds).
 -export([groups/2, member_groups/4, member_groups/5]).
--export([mark_group_read/4]).
+-export([mark_group_read/3]).
 -compile([nowarn_deprecated_catch]).
 %%%
 % workspace_ds 是 workspace domain service 缩写
@@ -736,7 +736,7 @@ member_groups(WorkspaceId, Uid, AfterId, Limit) ->
 member_groups(WorkspaceId, Uid, AfterId, Limit, Preview) ->
     group_repo:member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview).
 
-mark_group_read(WorkspaceId, Uid, GroupId, MsgIds) ->
+mark_group_read(Uid, GroupId, MsgIds) ->
     elib_pg:with_tx(fun(Conn) ->
-        group_repo:mark_workspace_group_read(Conn, WorkspaceId, Uid, GroupId, MsgIds)
+        group_repo:mark_workspace_group_read(Conn, Uid, GroupId, MsgIds)
     end).

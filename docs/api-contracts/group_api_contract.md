@@ -83,3 +83,13 @@ id, title, avatar, owner_uid, creator_uid, type, join_limit, member_count, intro
 3. **敏感字段 `chat_aes_key` 随 `SELECT *` 下发**：任何携带 gid 的登录用户均可读取（`group_handler.erl:81`）。固化为契约时登记该事实；若 E2EE 已迁移 PFv3/Megolm，此列属历史遗留，收敛需另立变更单。
 4. **C 端 detail 无权限校验**：handler 只校验 gid 合法性，不校验请求者是否群成员/群是否存在可见性（群不存在时返回错误“群组不存在”，`:82-83`）。
 5. **status 枚举**：-1 删除（管理端 dissolve 即置 -1，`adm_group_handler.erl:160`）、0 禁用、1 启用；与好友列表的 `status`（online/offline 字符串）完全不同名不同义，勿混用。
+
+## 企业群阅读游标（2026-10-02）
+
+`POST /api/v1/groups/:group_id/read` 使用用户登录态，请求体为 `{"msg_ids":["实际已显示的消息ID"]}`，每批 1–200 个唯一消息 ID。群 ID 为正整数；服务端解析群的实际工作区，不接受客户端指定归属。
+
+仅当前有效用户、企业成员、工作区成员、群成员及开放的成员 generation 可以推进游标。消息必须实际投递给当前用户，属于目标群及当前 generation，且未过期、未撤回；ACK 不代表阅读。重复阅读保持单调，退出再加入不继承旧 generation 的游标。
+
+成功为 HTTP 200 / envelope code 0，数据含 `read_seq`。输入错误为 envelope 400，目标或消息不在授权范围为 envelope 404，服务错误为 envelope 500；这些沿用现有人类 API 的 HTTP 200 信封。非 POST 为 HTTP 405。
+
+工作区群列表 `member_only=1&preview=1` 返回 `unread_count`，按当前成员 generation 的有效消息计算，排除本人发送、已过期及已撤回消息。客户端不拼接个人空间的本地计数。

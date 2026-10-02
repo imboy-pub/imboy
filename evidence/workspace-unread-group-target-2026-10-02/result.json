@@ -1,0 +1,20 @@
+{
+  "status": "PASS_BACKEND_SCOPED",
+  "tested_base_candidate": "5888d6df11492996875d5e5adb2bfbff0a8a8e6b",
+  "runner_exit": 0,
+  "tests_passed": 2,
+  "review": "APPROVE",
+  "source_files": {
+    "src/api/workspace_handler.erl": "a4d97775b50588b1c98f8100f26dac4ec00980add062cacce9ee13f44dc3f381",
+    "src/ds/workspace_ds.erl": "db28542e8f26638513fcc80697f1d9fda6a59d365fdb18e6cc8a66e5e8f38efb",
+    "src/imboy_router.erl": "dcd0a3bb1ed7d8a83a84dcdb0e769467e0a63c6ed45018180096a02f3e035189",
+    "src/logic/group_logic.erl": "bc8df9f256fb120d6cb195e76866423a0c706e00835864d596f4414039b8d59e",
+    "src/repo/group_repo.erl": "3781cd01c7aaf8f752b20edefc4680fd37f232e9b5170746fe551506d130fdfd",
+    "test/api/workspace_unread_http_checks.erl": "85ababf78637dfecd6078c80483fdc13e0a09ba982525176fd210e3dc46a68c4"
+  },
+  "source_binding_private_path": "/tmp/imboy-seat-http.iEWDqo/source-binding.json",
+  "source_binding_sha256": "33c03123afbab86ecc7d5dc845068e0c56725f8b7f6da9a6f1f9be44c68e7ba1",
+  "endpoint": "POST /api/v1/groups/:group_id/read",
+  "production_migration_executed": false,
+  "whole_goal_complete": false
+}
