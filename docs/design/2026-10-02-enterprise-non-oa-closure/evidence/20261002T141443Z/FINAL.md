@@ -17,6 +17,10 @@
 | imboyapp (app) | `a26cc64f`（= b6bb4dc + 本 run 两笔测试提交 a072bcf9/a26cc64f） | 业务源码 = b6bb4dc（N2/N3 原生验收时绑定），仅新增两个验收测试文件 |
 | imboyadmin (admin) | `2b9015b4`（未变） | 相对旧验收候选 9a808bec 仅 ADR 文档 |
 
+> 表中 backend「最终 SHA」= 验收证据冻结点 `1459df71`；本 FINAL.md 文档自身
+> 提交（及其后任何纯文档修订）位于该候选之上，不触碰验收域，故不回改候选值
+> （文档自引用固定点）。
+
 他人 WIP（imboyapp 的 customer_service/enterprise 域、imboy 的 deploy 脚本）全程未回退、未吸收、未替交；
 其中一次误将暂存区他人文件一并提交的事故已用 soft reset 就地纠正（未推送、历史无痕），最终提交以 pathspec 精确圈定。
 
@@ -48,6 +52,9 @@
 - 后端：本地隔离 `imboy_local@127.0.0.1:9800`（imboy_test_v1 @ 4323，Docker imboy_pg18）
 - 合成数据：`n2_seed.sql`（企业 A：8 主部门+95 填充=103 根、三层深、3 成员；企业 B 单部门；空企业 C）；4 个合成账号；全部为本 run 专属
 - 凭据：全部经 --dart-define 注入，未写入任何提交/报告；日志扫描无凭据命中
+- 原始运行日志（n1/n2/n3 各 `*.log`）因仓根 `.gitignore` 的全局 `*.log` 规则
+  仅留存于执行机本地（本目录），未入 git；其 SHA-256 已录于 `n2-sha256.tsv`
+  /`n3-sha256.tsv`，可在本地复核，第三方 clone 无法直接重验哈希——此为留存边界
 
 ## 环境恢复与事故台账（摘要，全文见 recovery.tsv）
 
