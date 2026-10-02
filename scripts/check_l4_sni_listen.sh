@@ -10,8 +10,10 @@
 # 不证明实际运行配置、端口归属或媒体健康。
 #
 # fail-closed 原则：不能可靠解析的结构（include、跨行指令、未闭合块、
-# 只有注释的文件、未知 listen 参数、顶层非 server 块）一律退出 2，
-# 绝不猜测通过。
+# 未知 listen 参数、顶层非 server 块）一律退出 2，绝不猜测通过。
+# 受检文件若不含任何受管 HTTPS server 定义（空文件、纯注释、只有 HTTP
+# server、没有任何 server 块），视为受管配置缺失（漂移），退出 1；
+# --strict 与 --pre-switch 两种模式同样适用。
 #
 # 兼容 bash 3.2（macOS /bin/bash）：不使用关联数组、nameref、空数组
 # 在 set -u 下的裸展开等新特性。
@@ -38,7 +40,7 @@ NSRV_TOTAL=0
 METRICS_PAYLOAD=''
 
 # 单文件解析状态（parse_file 内跨行保持）
-DEPTH=0; NSRV=0; N_DIR=0; HAS_COMMENT=0
+DEPTH=0; NSRV=0; N_DIR=0; HAS_COMMENT=0; FILE_HAS_HTTPS_SRV=0
 SRV_OPEN=0; SRV_LINE=0; SRV_DEPTH=0; SRV_CERT=0; SRV_NAME=''
 S_LLINE=(); S_ADDR=(); S_PORT=(); S_SSL=(); S_PP=()
 
@@ -87,6 +89,13 @@ Modes:
                 well-formed (loopback + proxy_protocol); an ssl
                 listener on any other port is still reported as drift.
 
+  In BOTH modes every checked file must contain at least one managed
+  HTTPS server definition (an ssl listener, a listener on port 443
+  or 10443, or an ssl_certificate directive). A file without one --
+  empty, comments-only, HTTP-only server blocks, or no server block
+  at all -- is missing managed config and is reported as drift
+  (exit 1).
+
 Options:
   --metrics          Print Pushgateway text metrics to stdout (stdout
                      carries ONLY metrics; diagnostics go to stderr).
@@ -117,12 +126,13 @@ Environment:
 
 Exit codes (precedence 3 > 2 > 1 > 0):
   0  healthy (no drift)
-  1  drift/violation found
+  1  drift/violation found; this includes a checked file with no
+     managed HTTPS server definition (empty file, comments-only,
+     HTTP-only server blocks, or no server block at all)
   2  input error: missing/unreadable file, empty list, unknown option,
      missing option value, or unparsable structure (include directive,
      multi-line directive, unbalanced/unclosed braces, listen outside
-     a server block, comments-only file, unknown listen parameter,
-     non-server top-level block)
+     a server block, unknown listen parameter, non-server top-level block)
   3  --push requested but Pushgateway URL missing or push failed
 
 Metrics (Pushgateway text format, frozen names):
@@ -135,8 +145,9 @@ Metrics (Pushgateway text format, frozen names):
 Known limits (fail-closed, never guessed as pass):
   - include directives abort with exit 2; pass included files explicitly.
   - A directive spanning multiple lines aborts with exit 2.
-  - A file containing only comments aborts with exit 2. An empty file
-    or a pure-HTTP file produces no violations instead.
+  - A checked file with no managed HTTPS server definition (empty,
+    comments-only, HTTP-only server blocks, or no server block) is
+    missing managed config and exits 1 as drift.
   - server blocks must sit at file top level (vhost file convention).
   - Unquoted regex braces inside location patterns can confuse block
     accounting (typically surfacing as an exit 2, not a wrong pass).
@@ -392,6 +403,7 @@ evaluate_server() {
     i=$((i + 1))
   done
   if [ "$SRV_CERT" = 1 ]; then is_https=1; fi
+  if [ "$is_https" = 1 ]; then FILE_HAS_HTTPS_SRV=1; fi
   i=0
   while [ "$i" -lt "$n" ]; do
     addr="${S_ADDR[$i]}"
@@ -431,7 +443,7 @@ evaluate_server() {
 
 parse_file() {
   local file="$1" line='' lineno=0
-  DEPTH=0; NSRV=0; N_DIR=0; HAS_COMMENT=0
+  DEPTH=0; NSRV=0; N_DIR=0; HAS_COMMENT=0; FILE_HAS_HTTPS_SRV=0
   SRV_OPEN=0; SRV_LINE=0; SRV_DEPTH=0; SRV_CERT=0; SRV_NAME=''
   S_LLINE=(); S_ADDR=(); S_PORT=(); S_SSL=(); S_PP=()
   if ! { exec 3<"$file"; } 2>/dev/null; then
@@ -452,11 +464,20 @@ parse_file() {
   if [ "$DEPTH" -ne 0 ]; then
     parse_fatal "$file:$lineno: unclosed block at end of file (brace depth $DEPTH)"
   fi
-  if [ "$N_DIR" -eq 0 ] && [ "$NSRV" -eq 0 ]; then
-    if [ "$HAS_COMMENT" -eq 1 ]; then
-      parse_fatal "$file:$lineno: file contains only comments; cannot determine server structure (refusing to guess)"
+  # fail-closed 口径（计划 Task 1：只有 HTTP/注释/空文件不能通过）：
+  # 受检文件必须含至少一个受管 HTTPS server 定义（ssl listener、443/10443
+  # 端口或 ssl_certificate）。缺失即受管配置缺失（漂移），报违规退出 1；
+  # --strict 与 --pre-switch 均适用。
+  if [ "$NSRV" -eq 0 ]; then
+    if [ "$N_DIR" -eq 0 ] && [ "$HAS_COMMENT" -eq 1 ]; then
+      viol "$file:1: no managed HTTPS server block found in managed config (comments-only file)"
+    elif [ "$N_DIR" -eq 0 ]; then
+      viol "$file:1: no managed HTTPS server block found in managed config (empty file)"
+    else
+      viol "$file:1: no managed HTTPS server block found in managed config (no server block)"
     fi
-    err "$file:0: note: file is empty (no directives); nothing to check"
+  elif [ "$FILE_HAS_HTTPS_SRV" -eq 0 ]; then
+    viol "$file:1: no managed HTTPS server block found in managed config (HTTP-only server blocks)"
   fi
   return 0
 }

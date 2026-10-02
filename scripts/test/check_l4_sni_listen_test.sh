@@ -3,7 +3,8 @@
 # check_l4_sni_listen_test.sh — Task 1 行为测试（自包含，离线）
 # ------------------------------------------------------------
 # 覆盖计划 Task 1 的最小反例集：健康 IPv4/IPv6、缺 proxy_protocol、
-# 各类直连 443、空/缺/不可读文件、混合 server、注释、多行/未闭合、
+# 各类直连 443、受管配置缺失（空/纯注释/纯 HTTP 文件，退出 1）、
+# 空/缺/不可读文件、混合 server、注释、多行/未闭合、
 # include、参数缺值/未知选项、--pre-switch、--metrics、--push。
 # 每个反例同时断言退出码与 stderr 诊断内容（不只查非零）。
 # 不触网：推送失败路径用本地不可达地址 http://127.0.0.1:1。
@@ -273,13 +274,6 @@ assert_rc 0 "多文件/多 server 全健康 → 通过"
 run_check "$TMP/c04.conf"
 assert_rc 0 "同 server 混 HTTP(80)+健康 HTTPS(10443) → HTTP listener 不产生违规"
 
-run_check "$TMP/c05.conf"
-assert_rc 0 "纯 HTTP 文件（只有 listen 80）→ 不产生违规"
-
-run_check "$TMP/c06.conf"
-assert_rc 0 "空文件 → 不产生违规"
-assert_grep "空文件给出说明性诊断" 'c06\.conf:0: note: .*empty' "$TMP/err"
-
 run_check "$TMP/c21.conf"
 assert_rc 0 "注释行/行尾注释含 443 → 注释不算有效指令，被忽略"
 
@@ -288,6 +282,20 @@ assert_rc 0 "单行 server 块（parser 稳健性）→ 通过"
 
 run_check "$TMP/c29.conf"
 assert_rc 0 "CRLF 行尾 → 通过（\\r 按空白处理）"
+
+echo "== 受管配置缺失（fail-closed：空/纯注释/纯 HTTP 文件 → 退出 1）=="
+
+run_check "$TMP/c05.conf"
+assert_rc 1 "纯 HTTP 文件（只有 listen 80）→ 受管配置缺失（退出 1）"
+assert_grep "纯 HTTP 缺失诊断" 'c05\.conf:1: no managed HTTPS server block found in managed config \(HTTP-only' "$TMP/err"
+
+run_check "$TMP/c06.conf"
+assert_rc 1 "空文件 → 受管配置缺失（退出 1，不得默默通过）"
+assert_grep "空文件缺失诊断" 'c06\.conf:1: no managed HTTPS server block found in managed config \(empty file\)' "$TMP/err"
+
+run_check "$TMP/c20.conf"
+assert_rc 1 "只有注释的文件 → 受管配置缺失（退出 1，不再当作不可解析）"
+assert_grep "只有注释缺失诊断" 'c20\.conf:1: no managed HTTPS server block found in managed config \(comments-only' "$TMP/err"
 
 echo "== 严格模式：直连 443 反例（退出 1 + file:line 诊断）=="
 
@@ -375,10 +383,6 @@ run_check "$TMP/c19.conf"
 assert_rc 2 "include 指令 → 退出 2（不能可靠解析，不许猜通过）"
 assert_grep "include 诊断" 'c19\.conf:2: .*include directive is not supported' "$TMP/err"
 
-run_check "$TMP/c20.conf"
-assert_rc 2 "只有注释的文件 → 退出 2（不能当作有效通过受检）"
-assert_grep "只有注释诊断" 'c20\.conf:3: .*only comments' "$TMP/err"
-
 run_check "$TMP/c25.conf"
 assert_rc 2 "server 块外 listen → 退出 2"
 assert_grep "块外 listen 诊断" 'c25\.conf:1: .*outside any server block' "$TMP/err"
@@ -430,6 +434,10 @@ assert_grep "pre-switch 解析失败诊断" 'unclosed block' "$TMP/err"
 run_check --pre-switch "$TMP/c14.conf"
 assert_rc 1 "pre-switch：10443 缺 proxy_protocol 仍报漂移"
 assert_grep "pre-switch 10443 规范诊断" 'c14\.conf:2: .*proxy_protocol' "$TMP/err"
+
+run_check --pre-switch "$TMP/c05.conf"
+assert_rc 1 "pre-switch：纯 HTTP 文件同样报受管配置缺失（两模式口径一致）"
+assert_grep "pre-switch 缺失诊断" 'c05\.conf:1: no managed HTTPS server block' "$TMP/err"
 
 echo "== --metrics 输出（接口合同冻结指标名）=="
 
