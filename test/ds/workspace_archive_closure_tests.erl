@@ -1163,8 +1163,12 @@ group_file_upload_closure_test_() ->
                     {'pending_remove', 1, fun(_) -> ok end},
                     {'save', 4, fun(_, _, _, _) -> ok end}
                 ]},
+            PersonalAudit =
+                {enterprise_audit_event_repo, [
+                    {'append_scope_file_tx', 4, fun(_, {group, 777099}, ?UID, _) -> ok end}
+                ]},
             run_with_mocks(
-                personal_mocks() ++ [MemberMock, OssMock, InsertMock, SaveOk],
+                personal_mocks() ++ [MemberMock, OssMock, InsertMock, SaveOk, PersonalAudit],
                 fun() ->
                     ?assertMatch(
                         {ok, _},

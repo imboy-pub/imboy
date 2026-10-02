@@ -1,0 +1,5 @@
+REAL_POSTGRESQL: 11 passed, failed=0, skipped=0
+DOMAIN_EUNIT: 65 passed, failed=0, skipped=0
+STORAGE: mocked
+REVIEW: APPROVE
+WHOLE_GOAL_COMPLETE: false

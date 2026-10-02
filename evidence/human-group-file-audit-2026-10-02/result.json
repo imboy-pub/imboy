@@ -1,0 +1,33 @@
+{
+  "base": "5888d6df11492996875d5e5adb2bfbff0a8a8e6b",
+  "exit": 0,
+  "sources": {
+    "src/repo/enterprise_audit_event_repo.erl": "c1181074b207093647142d02f53c49f5062105565fa8d6b8e988fd38b2a443cd",
+    "src/repo/group_file_repo.erl": "dab2e619fdc41fb960008fa015fa7e86f629b161ab0d91e5edd0cf2ba14c9213",
+    "src/ds/group_file_ds.erl": "c170e1284fbbc534f8fdc4a9d80c52821bb4acdc011747934d62487dbe27ef99",
+    "test/repo/group_file_atomic_pg_tests.erl": "cc0136dec08672e117550319dfddd082dd98fd1842258120b560dfea994029c5",
+    "test/ds/group_file_ds_tests.erl": "ab75910e03b69f9bdad55484ecd6e8d9d153bdabeb68c35a7f9199f6b81d46ab",
+    "test/ds/workspace_archive_closure_tests.erl": "135f0c1d4db65a2dc9263ac3675ddfaee43dc18dcac5c00cfd9f381ec94e66a5",
+    "test/ds/group_file_scope_tests.erl": "902118a0d995e77c1b1797263cd54f9c16e3ed1226988a08a804b9c7b75bda16"
+  },
+  "storage": "mocked; PostgreSQL real",
+  "run": "/tmp/gz-human-file-audit-ungwm8qf",
+  "status": "PASS_SCOPED",
+  "real_pg_tests_passed": 11,
+  "unit_tests_passed": 65,
+  "review": "APPROVE",
+  "tested_parent": "7052558a66bfca2b5339a802a3ed5ad28789fcc1",
+  "garage_verified": false,
+  "confirm_audit_complete": false,
+  "message_binding_audit_complete": false,
+  "whole_goal_complete": false,
+  "current_source_hashes": {
+    "src/ds/group_file_ds.erl": "c170e1284fbbc534f8fdc4a9d80c52821bb4acdc011747934d62487dbe27ef99",
+    "src/repo/enterprise_audit_event_repo.erl": "ad22e94fceb03e65f784a8dbbdb74d8de336b8c90336b9c1fd742ec6dffb479a",
+    "src/repo/group_file_repo.erl": "dab2e619fdc41fb960008fa015fa7e86f629b161ab0d91e5edd0cf2ba14c9213",
+    "test/ds/group_file_ds_tests.erl": "ab75910e03b69f9bdad55484ecd6e8d9d153bdabeb68c35a7f9199f6b81d46ab",
+    "test/ds/workspace_archive_closure_tests.erl": "135f0c1d4db65a2dc9263ac3675ddfaee43dc18dcac5c00cfd9f381ec94e66a5",
+    "test/repo/group_file_atomic_pg_tests.erl": "cc0136dec08672e117550319dfddd082dd98fd1842258120b560dfea994029c5"
+  },
+  "post_test_change": "enterprise audit module header comments only"
+}

@@ -122,6 +122,7 @@ save_uploaded_file(Gid, UploaderId, FileName, FileBinary, FileType, ObjectKey) -
         case group_file_repo:insert_tx(Conn, Data) of
             {ok, GroupFileId} ->
                 ok = write_attachment_tx(Conn, Data, GroupFileId, ObjectKey),
+                ok = audit_file_tx(Conn, Gid, UploaderId, GroupFileId, <<"file.uploaded">>),
                 {ok, FileId};
             {error, Reason} ->
                 throw({abort_tx, Reason})
@@ -193,7 +194,17 @@ delete_file(FileId, CurrentUid) ->
                             ok = workspace_guard:abort_on_error(
                                 attachment_ds:ensure_upload_scope_tx(Conn, {group, Gid}, CurrentUid)
                             ),
-                            group_file_repo:soft_delete_tx(Conn, StoredFileId)
+                            case group_file_repo:soft_delete_tx(Conn, StoredFileId) of
+                                {ok, Count} = Deleted when Count > 0 ->
+                                    ok = audit_file_tx(
+                                        Conn, Gid, CurrentUid, StoredFileId, <<"file.deleted">>
+                                    ),
+                                    Deleted;
+                                {ok, 0} = Unchanged ->
+                                    Unchanged;
+                                {error, Reason0} ->
+                                    throw({abort_tx, Reason0})
+                            end
                         end)
                     of
                         {ok, _AffectedRows} ->
@@ -305,6 +316,16 @@ write_attachment_tx(
         <<"group_file_id">> => GroupFileId
     },
     attachment_ds:save(Conn, elib_dt:now(), UploaderId, [Attach]).
+
+audit_file_tx(Conn, Gid, Uid, FileId, Action) ->
+    workspace_guard:abort_on_error(
+        enterprise_audit_event_repo:append_scope_file_tx(
+            Conn,
+            {group, Gid},
+            Uid,
+            #{resource_type => <<"group_file">>, resource_id => FileId, action => Action}
+        )
+    ).
 
 %% @doc 检查删除权限
 %% @param CurrentUid 当前用户ID

@@ -571,6 +571,8 @@ get_file_categories_empty_test_() ->
 
 with_scope(Test) ->
     fun() ->
+        meck:new(enterprise_audit_event_repo, [passthrough]),
+        meck:expect(enterprise_audit_event_repo, append_scope_file_tx, fun(_, _, _, _) -> ok end),
         meck:new(attachment_ds, [passthrough]),
         meck:expect(attachment_ds, authorize_group_scope, fun(_, _) -> true end),
         meck:expect(attachment_ds, find_path_by_group_file, fun(_, _) ->
@@ -580,6 +582,7 @@ with_scope(Test) ->
         try
             Test()
         after
-            meck:unload(attachment_ds)
+            meck:unload(attachment_ds),
+            meck:unload(enterprise_audit_event_repo)
         end
     end.

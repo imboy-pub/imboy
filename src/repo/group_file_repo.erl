@@ -174,7 +174,7 @@ soft_delete(FileId) ->
 -spec soft_delete_tx(any(), integer()) -> {ok, integer()} | {error, term()}.
 soft_delete_tx(Conn, FileId) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET status = 0 WHERE id = $1">>,
+    Sql = <<"UPDATE ", Tb/binary, " SET status = 0 WHERE id = $1 AND status = 1">>,
     elib_pg:execute(Conn, Sql, [FileId]).
 
 %% @doc 增加文件下载计数

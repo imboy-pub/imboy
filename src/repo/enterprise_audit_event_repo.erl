@@ -1,9 +1,9 @@
 -module(enterprise_audit_event_repo).
 
 %%%
-% enterprise_audit_event_repo 是企业审计事件的**只读**面（表由迁移 00000119
-% 建立，append-only；写入唯一入口是 features/enterprise_business/infrastructure/
-% eb_pg_audit.erl 的 append/append_in）。
+% 企业审计事件的常驻读写入口（迁移 00000119，append-only）。
+% 治理、Internal 与 Human 文件事实均在业务事务中追加；特性切片
+% features/enterprise_business/infrastructure/eb_pg_audit.erl 复用同一列合同。
 %
 % 本模块为 Admin 治理面（FULL-08 / A-14）提供按资源维度的时间倒序分页查询。
 % 只做数据访问，**不做**任何投影到 Admin 响应形状的工作（那是
@@ -13,7 +13,7 @@
 % 看不到别人的审计（IDOR 由 SQL 自身保证，不靠调用方守纪律）。
 %%%
 
--export([tablename/0, list_tx/5, next_id/0, append_tx/3, insert_sql/0]).
+-export([tablename/0, list_tx/5, next_id/0, append_tx/3, insert_sql/0, append_scope_file_tx/4]).
 
 %% Admin 治理面（FULL-08）是 enterprise_audit_event 的**第二个写入者**。
 %%
@@ -129,6 +129,52 @@ append_tx(Conn, OrgId, Event) when is_integer(OrgId), is_map(Event) ->
     end;
 append_tx(_Conn, OrgId, _Event) ->
     {error, {invalid_organization_id, OrgId}}.
+
+%% Human file facts use immutable server ownership; callers hold scope authorization locks.
+%% Personal resources and organization-free workspaces have no enterprise audit tenant.
+-spec append_scope_file_tx(any(), {group | channel, integer()}, integer(), map()) ->
+    ok | {error, term()}.
+append_scope_file_tx(Conn, {Kind, Ref}, Uid, Event) when Kind =:= group; Kind =:= channel ->
+    Table =
+        case Kind of
+            group -> <<"public.\"group\"">>;
+            channel -> <<"public.channel">>
+        end,
+    Sql =
+        <<"SELECT target.scope, target.workspace_id, ws.organization_id FROM ", Table/binary,
+            " target LEFT JOIN public.workspace ws ON ws.id=target.workspace_id ",
+            "WHERE target.id=$1">>,
+    case elib_pg:query(Conn, Sql, [Ref]) of
+        {ok, [
+            #{
+                <<"scope">> := <<"workspace">>,
+                <<"organization_id">> := OrgId,
+                <<"workspace_id">> := WsId
+            }
+        ]} when is_integer(OrgId) ->
+            Detail = maps:get(detail, Event, #{}),
+            Fact = Event#{
+                actor_user_id => Uid,
+                actor_role => <<"human">>,
+                business_identity_id => undefined,
+                detail => Detail#{
+                    <<"workspace_id">> => WsId,
+                    <<"scope_ref">> => Ref,
+                    <<"scope_kind">> => atom_to_binary(Kind, utf8),
+                    <<"origin_application_id">> => null
+                }
+            },
+            case append_tx(Conn, OrgId, Fact) of
+                {ok, _} -> ok;
+                {error, Reason} -> {error, {audit_failed, Reason}}
+            end;
+        {ok, [_]} ->
+            ok;
+        {ok, []} ->
+            {error, forbidden};
+        {error, _} = Error ->
+            Error
+    end.
 
 %% ===================================================================
 %% Internal

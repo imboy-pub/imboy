@@ -25,6 +25,7 @@ run(Socket) ->
                         pending_remove_failure,
                         attachment_failure,
                         file_failure,
+                        audit_failure,
                         revoked_during_upload,
                         revoked_group_during_upload
                     ]
@@ -38,7 +39,7 @@ run(Socket) ->
 
 verify_scope(C) ->
     sql(C, <<
-        "DELETE FROM attachment; DELETE FROM group_file; DELETE FROM attach_pending;"
+        "DELETE FROM attachment; DELETE FROM group_file; DELETE FROM attach_pending; DELETE FROM enterprise_audit_event;"
         "UPDATE organization_member SET status='active';"
         "UPDATE group_member SET status=1;"
     >>),
@@ -51,7 +52,19 @@ verify_scope(C) ->
         {ok, [#{<<"object_key">> := ?KEY}]},
         group_file_ds:list_files(11, 1, 1, 10)
     ),
-    ?assertEqual({ok, <<"https://storage.example.com/signed">>}, group_file_logic:download(101, 1)),
+    ?assertEqual(
+        1,
+        count(
+            C,
+            <<"enterprise_audit_event WHERE action='file.uploaded' AND actor_user_id=1 AND organization_id=10 AND resource_id=101 AND actor_role='human'">>
+        )
+    ),
+    ?assertEqual({error, not_member}, group_file_ds:list_files(11, 2, 1, 10)),
+    ?assertEqual({error, not_member}, group_file_ds:download_file(101, 2)),
+    ?assertMatch(
+        {ok, <<"https://storage.example.com/api/v1/attachment/content?ticket=", _/binary>>},
+        group_file_logic:download(101, 1)
+    ),
     ?assertMatch(
         {ok, [#{<<"object_key">> := ?KEY}]},
         group_file_ds:search_files(11, <<"a">>, 1, 10, 1)
@@ -104,7 +117,24 @@ verify_scope(C) ->
     ?assertMatch({ok, [_]}, group_file_ds:list_files(11, 1, 1, 10)),
     ?assertMatch({error, {980, _}}, group_file_ds:delete_file(101, 1)),
     sql(C, <<"UPDATE workspace SET status='active'">>),
+    sql(
+        C,
+        <<"ALTER TABLE enterprise_audit_event ADD CONSTRAINT reject_delete CHECK(action<>'file.deleted') NOT VALID">>
+    ),
+    ?assertMatch({error, {audit_failed, _}}, group_file_ds:delete_file(101, 1)),
+    ?assertEqual(1, count(C, <<"group_file WHERE status=1">>)),
+    ?assertEqual(1, count(C, <<"enterprise_audit_event">>)),
+    sql(C, <<"ALTER TABLE enterprise_audit_event DROP CONSTRAINT reject_delete">>),
     ?assertEqual(ok, group_file_ds:delete_file(101, 1)),
+    ?assertEqual(
+        1,
+        count(
+            C,
+            <<"enterprise_audit_event WHERE action='file.deleted' AND actor_user_id=1 AND organization_id=10 AND resource_id=101">>
+        )
+    ),
+    ?assertEqual({error, not_found}, group_file_ds:delete_file(101, 1)),
+    ?assertEqual(2, count(C, <<"enterprise_audit_event">>)),
     ?assertEqual({ok, []}, group_file_ds:list_files(11, 1, 1, 10)),
     ?assertEqual({error, not_found}, group_file_ds:download_file(101, 1)).
 
@@ -115,15 +145,18 @@ schema(C) ->
         "CREATE TABLE workspace(id bigint PRIMARY KEY,organization_id bigint,status text);"
         "CREATE TABLE workspace_member(workspace_id bigint,user_id bigint,status text);"
         "CREATE TABLE \"group\"(id bigint PRIMARY KEY,status int,scope text,workspace_id bigint);"
-        "INSERT INTO organization VALUES(10,'active');"
+        "INSERT INTO organization VALUES(10,'active'),(20,'active');"
+        "CREATE TABLE enterprise_audit_event(id bigint PRIMARY KEY,organization_id bigint,resource_type text,resource_id bigint,"
+        "action text,business_identity_id bigint,actor_user_id bigint,actor_role text,detail jsonb,created_at timestamptz DEFAULT now());"
+        "INSERT INTO organization_member VALUES(20,2,'active','member');"
         "INSERT INTO organization_member VALUES(10,1,'active','member');"
         "INSERT INTO workspace VALUES(100,10,'active');"
-        "INSERT INTO workspace_member VALUES(100,1,'active');"
+        "INSERT INTO workspace_member VALUES(100,1,'active'),(100,2,'active');"
         "INSERT INTO \"group\" VALUES(11,1,'workspace',100);"
         "CREATE TABLE group_member(group_id bigint,user_id bigint,status int);"
-        "INSERT INTO group_member VALUES(11,1,1);"
+        "INSERT INTO group_member VALUES(11,1,1),(11,2,1);"
         "CREATE TABLE group_member_generation(group_id bigint,user_id bigint,start_seq bigint,end_seq bigint);"
-        "INSERT INTO group_member_generation VALUES(11,1,1,NULL);"
+        "INSERT INTO group_member_generation VALUES(11,1,1,NULL),(11,2,1,NULL);"
         "CREATE TABLE group_file(id bigint PRIMARY KEY,group_id bigint,file_id text,file_name text,"
         "file_size bigint CHECK(file_size<>4),file_type text,file_category text,file_url text,"
         "file_hash text,uploader_id bigint,download_count int,status int,"
@@ -173,6 +206,10 @@ migration(C, Direction) ->
 mocks(C) ->
     meck:new(config_ds, [non_strict, no_link]),
     meck:expect(config_ds, env, fun(sql_driver) -> pgsql end),
+    meck:expect(config_ds, env, fun
+        (jwt_key, _) -> <<"synthetic-file-ticket-key-32-bytes">>;
+        (base_url, _) -> <<"https://storage.example.com">>
+    end),
     meck:new(pooler, [non_strict, no_link]),
     meck:expect(pooler, take_member, fun(pgsql) -> C end),
     meck:expect(pooler, return_member, fun(pgsql, C0) when C0 =:= C -> ok end),
@@ -194,17 +231,24 @@ mocks(C) ->
     meck:new(workspace_guard, [passthrough, no_link]),
     meck:expect(workspace_guard, write_tx_or_skip, fun(_, _) -> ok end),
     meck:new(elib_tsid, [non_strict, no_link]),
+    meck:expect(elib_tsid, registered, fun() -> [enterprise_audit_event] end),
     meck:expect(elib_tsid, generate, fun
         (group_file) -> 101;
-        (attachment) -> 201
+        (attachment) -> 201;
+        (enterprise_audit_event) -> erlang:unique_integer([positive, monotonic])
     end).
 
 verify(C, Mode) ->
     sql(C, <<
-        "DELETE FROM attachment; DELETE FROM group_file; DELETE FROM attach_pending;"
+        "DELETE FROM attachment; DELETE FROM group_file; DELETE FROM attach_pending; DELETE FROM enterprise_audit_event;"
         "UPDATE organization_member SET status='active'; UPDATE group_member SET status=1"
     >>),
     case Mode of
+        audit_failure ->
+            sql(
+                C,
+                <<"ALTER TABLE enterprise_audit_event ADD CONSTRAINT reject_upload CHECK(action<>'file.uploaded') NOT VALID">>
+            );
         pending_registration_failure ->
             sql(
                 C,
@@ -264,11 +308,17 @@ verify(C, Mode) ->
             ?assertEqual({ok, <<"test-file">>}, Result),
             ?assertEqual(1, count(C, <<"group_file">>)),
             ?assertEqual(1, count(C, <<"attachment">>)),
+            ?assertEqual(1, count(C, <<"enterprise_audit_event">>)),
             {ok, _, [{101, 1, <<"group">>, <<"11">>, ?KEY}]} = epgsql:equery(
                 C,
                 <<"SELECT group_file_id,creator_user_id,scope,scope_ref,path FROM attachment">>,
                 []
             );
+        audit_failure ->
+            ?assertMatch({error, {audit_failed, _}}, Result),
+            assert_empty(C),
+            ?assertEqual(0, count(C, <<"enterprise_audit_event">>)),
+            sql(C, <<"ALTER TABLE enterprise_audit_event DROP CONSTRAINT reject_upload">>);
         attachment_failure ->
             ?assertMatch({error, {attachment_save_failed, _}}, Result),
             assert_empty(C);
