@@ -641,5 +641,14 @@
       "current full EUnit pair and three-repository final acceptance pending"
     ],
     "production_ready": false
+  },
+  "latest_transaction_connection_acquisition": {
+    "path": "evidence/transaction-connection-acquisition/manifest.json",
+    "sha256": "200039896392ebd194c24194e6be5ded12b17e0a1429fe912199d3bf9e95095d",
+    "status": "PASS_SCOPED_FULL_GATE_PENDING"
+  },
+  "latest_backend_full_pair": {
+    "path": "evidence/transaction-connection-acquisition/previous-full-failure.json",
+    "status": "FAILED_NOT_PASS"
   }
 }

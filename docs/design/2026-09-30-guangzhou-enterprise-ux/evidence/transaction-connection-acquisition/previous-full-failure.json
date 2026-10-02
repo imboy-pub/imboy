@@ -1,0 +1,48 @@
+{
+  "status": "FAILED_NOT_PASS",
+  "candidate": "accd8ab204a2d21e1c952569eed1174f10a36c32",
+  "runs": [
+    {
+      "run": 1,
+      "exit": 0,
+      "driver_log": "/tmp/gz-current-full-pair-r1.log",
+      "driver_log_sha256": "347bcfcd80e261af49e932e0312531386e87e58ac7213199cfdc81c2e3870011",
+      "status": "PASS_FROZEN_FULL",
+      "run_dir": "/tmp/imboy-seat-http.JOFQwA",
+      "passed": 10764,
+      "source_binding_verified": true,
+      "log_sha256": "93e4e1a5cb23761d9fcc4eca514903101435c8b6a5581610688de9a5be97050f",
+      "discovery": {
+        "modules_count": 1287,
+        "excluded": [
+          "agent_grant_pg",
+          "agent_grant_pg_tests",
+          "agent_recovery_pg_tests",
+          "agent_run_pg",
+          "agent_run_pg_tests",
+          "agent_tool_authorizer_pg_tests",
+          "elib_tsid",
+          "elib_tsid_bootstrap_harness_tests",
+          "elib_tsid_guard"
+        ],
+        "discovery": "src plus noncompanion test modules, native Makefile exclusions"
+      }
+    },
+    {
+      "run": 2,
+      "exit": 1,
+      "driver_log": "/tmp/gz-current-full-pair-r2.log",
+      "driver_log_sha256": "c14a95a78e8905df43ea472d44618f7843173f79f3c88505a20029e982d69240",
+      "status": "FAIL",
+      "reason": "driver failed or missing run directory"
+    }
+  ],
+  "helper_hashes": {
+    "/tmp/gz-current-frozen-full-backend.sh": "92641ffd2a6d68bcf80cd3648596073f630509b1e1d2705a6051b8016963a733",
+    "/tmp/gz-current-frozen-full-garage.sh": "c19490b300b90f6c8ee66c825168a9946cecbe7ab6a9f0f98c1c8e379eb5a0fc"
+  },
+  "required_pass_runs": 2,
+  "whole_goal_complete": false,
+  "failed_case": "adm_organization_handler_tests:journey_invitation/1 line623: expected200 actual500, no_connection",
+  "early_stop": "Only verified failing run VM terminated; controller exited1. First full run passed, pair did not pass."
+}

@@ -1,0 +1,60 @@
+{
+  "status": "PASS_SCOPED",
+  "exit_code": 0,
+  "baseline_candidate": "2c56a75dfb241bba66dce35cea73cc288cfb0d5a",
+  "working_sources_verified": true,
+  "source_hashes": [
+    {
+      "path": "src/lib/elib_pg.erl",
+      "sha256": "a4d79fb3c5293c2715ecfba084b59726b76afcf6f846507bb6be2002c30e5ee3"
+    },
+    {
+      "path": "test/lib/elib_pg_acquisition_tests.erl",
+      "sha256": "2b180c321a69403b563711434a4deaed804202633d0bfdf34cf8e7abe0f6433a"
+    },
+    {
+      "path": "test/lib/elib_pg_acquisition_pg_checks.erl",
+      "sha256": "af7ace0a59011f792ce777f84689a3d1c4cf300469570ab31854aa7566cbb74a"
+    }
+  ],
+  "real_pg": {
+    "markers": [
+      "PG_ACQUISITION_QUEUED_RELEASE_ONCE=PASS",
+      "PG_ACQUISITION_TIMEOUT_BODY_ZERO=PASS",
+      "PG_ACQUISITION_ROLLBACK_ONCE=PASS",
+      "PG_ACQUISITION_REAL_RESULT=ok",
+      "PG_ACQUISITION_PARENT_RESULT=ok"
+    ],
+    "run_dir": "/tmp/imboy-seat-http.pyOAag",
+    "http_log_sha256": "378ad415f522766694df66b7c9f7af5bf4e9ab94068902a1ad18387cd43d7d92"
+  },
+  "admin_domain": {
+    "session_id": 24444,
+    "status": "PASS_NATIVE_ADMIN_DOMAIN",
+    "driver_log": "/tmp/gz-pg-acquisition-admin-driver.log",
+    "helpers": [
+      {
+        "path": "/tmp/gz-pg-acquisition-admin-backend.sh",
+        "sha256": "e1f8a620966513d8054361ad011d5c1591b49c6b671cceef85019068ef064501"
+      },
+      {
+        "path": "/tmp/gz-pg-acquisition-admin-garage.sh",
+        "sha256": "c25be921d145378270481ddc766c38a90263ed51385e91bc0e60a7d2667ee1a4"
+      }
+    ],
+    "source_edits_forbidden_until_terminal": false,
+    "exit": 0,
+    "passed": 107,
+    "run_dir": "/tmp/imboy-seat-http.qPU9Tm",
+    "http_log_sha256": "f9d97cfcd4e37adef399755607dd4e84fd1fa318b819fa0d6f5618b19f0f46dc"
+  },
+  "baseline_failure": {
+    "status": "EXPECTED_BASELINE_FAILURE",
+    "exit": 1,
+    "out": "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-pg-acquisition-red-vfpde60z"
+  },
+  "root_cause": "Transaction body retries disabled by zero retries/zero delay also caused immediate failure when pool had no idle connections. Bounded native pooler acquisition wait now applies only before transaction execution. Body still never retried.",
+  "review": "APPROVE for production change, mock checks and native PG oracle",
+  "full_gate": "PENDING_AFTER_COMMIT",
+  "whole_goal_complete": false
+}

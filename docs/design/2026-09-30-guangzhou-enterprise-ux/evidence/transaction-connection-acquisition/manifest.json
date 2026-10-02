@@ -1,0 +1,29 @@
+{
+  "status": "PASS_SCOPED",
+  "artifacts": [
+    {
+      "path": "result.json",
+      "sha256": "58b71d56446f92ac17d518117e8252f4bc3ca414dca2fd0c3c64e0be87dc0585"
+    },
+    {
+      "path": "previous-full-failure.json",
+      "sha256": "bf302a1519ec8a16ea201f0b814c3762247bbf628f85227d9fabef61679b4c53"
+    }
+  ],
+  "source_hashes": [
+    {
+      "path": "src/lib/elib_pg.erl",
+      "sha256": "a4d79fb3c5293c2715ecfba084b59726b76afcf6f846507bb6be2002c30e5ee3"
+    },
+    {
+      "path": "test/lib/elib_pg_acquisition_tests.erl",
+      "sha256": "2b180c321a69403b563711434a4deaed804202633d0bfdf34cf8e7abe0f6433a"
+    },
+    {
+      "path": "test/lib/elib_pg_acquisition_pg_checks.erl",
+      "sha256": "af7ace0a59011f792ce777f84689a3d1c4cf300469570ab31854aa7566cbb74a"
+    }
+  ],
+  "full_gate": "PENDING",
+  "production_ready": false
+}

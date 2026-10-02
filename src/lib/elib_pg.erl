@@ -89,7 +89,15 @@ with_conn(Fun, Timeout) ->
 %% Retries: 最大重试次数
 %% Delay  : 初始重试延迟（毫秒）
 with_conn(Driver, Fun, Retries, Delay) ->
-    case pooler:take_member(Driver) of
+    Member =
+        case pooler:take_member(Driver) of
+            error_no_members when Retries =:= 0, Delay =:= 0 ->
+                %% 等待连接不重放事务；池异步扩容时允许现成队列接住请求。
+                pooler:take_member(Driver, ?DEFAULT_TIMEOUT);
+            Acquired ->
+                Acquired
+        end,
+    case Member of
         error_no_members when Retries > 0 ->
             timer:sleep(Delay),
             with_conn(Driver, Fun, Retries - 1, Delay + 1000);
@@ -213,7 +221,7 @@ with_tx(F) ->
 %%
 %% 需要重试的场景由调用方按业务幂等性显式决定（多数已有 reference_no /
 %% 订单 CAS 之类的幂等键），而不是在这一层无差别重放。
-%% 连接获取失败（error_no_members）的重试在 with_conn/4 内部，不受影响。
+%% 连接获取可有界等待；取得连接后的事务体只执行一次。
 -spec with_tx(fun((epgsql:connection() | pid()) -> R), epgsql:transaction_opts()) ->
     R | {rollback, term()} | no_return()
 when
