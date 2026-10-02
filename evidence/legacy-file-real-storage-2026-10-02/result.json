@@ -1,0 +1,37 @@
+{
+  "owner": "gz-legacy-file-a4fc223046f946999f7751d544de600c",
+  "status": "PASS_LEGACY_REAL_STORAGE",
+  "candidate": "a3cb1386964cfbc99439f9c1a2ff7b4791560233",
+  "runs": [
+    {
+      "run": 1,
+      "driver_log": "/tmp/gz-legacy-real-storage-r1.log",
+      "exit": 0,
+      "driver_log_sha256": "15553b682b3bb93db333b9a976e8421f273246ee6512344daf98081302099c6b",
+      "status": "PASS_LEGACY_REAL_STORAGE",
+      "run_dir": "/tmp/imboy-seat-http.Kx2g4F",
+      "source_binding_verified": true,
+      "log_sha256": "65c527d55b7948e2fa9d35d40b08506e7099d9beabda71f3871491985b981367",
+      "oracle": {
+        "status": "PASS",
+        "content_sha256": "e6e35d693c896ad065dfc3d991bff22dbd59722aa12687c91a97fd80b2d2a652",
+        "encrypted_legacy_objects_verified": false,
+        "original_migration_dml": true,
+        "production_verified": false,
+        "real_garage_bytes": 38,
+        "suspended_and_deleted_ticket_denied": true,
+        "synthetic_legacy_only": true,
+        "unknown_metadata_denied": true
+      },
+      "oracle_sha256": "e380b16b3285735cc73ef2dd32a86e021f0e58496401db78f29d39ca384368c4"
+    }
+  ],
+  "helper_hashes": {
+    "/tmp/gz-legacy-real-storage-backend.sh": "68fd053c6af728265e259882be10c904d3caad85c3712b1beed29a2d8d0348d3",
+    "/tmp/gz-legacy-real-storage-garage.sh": "34c336ea00225bc8b1bb537c42d903dbd2adfd3b09a1c3b487da731dbf1457c1",
+    "/tmp/gz-legacy-real-storage.py": "3aacf8d07e14f4e360c6e791dbc151e9893fc6e51ea789c96cb8d08d1ee9f82b",
+    "/Users/leeyi/project/imboy.pub/.Codex/worktrees/gz-enterprise-backend/test/api/enterprise_legacy_group_file_pg_checks.erl": "dfc1541d6cda7fc5ce75cad2bb9254174a2d3fe37248e8fbac9d80bdec72f141"
+  },
+  "required_pass_runs": 1,
+  "whole_goal_complete": false
+}
