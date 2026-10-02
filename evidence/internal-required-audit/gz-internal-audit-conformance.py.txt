@@ -1,0 +1,80 @@
+from pathlib import Path
+import hashlib, json, os, shutil, subprocess
+out = Path(os.environ['IMBOY_GATE_RUN_DIR'])
+deps = Path(os.environ['IMBOY_GATE_DEPS_ROOT'])
+fresh = out / 'imboy' / 'ebin'
+os.environ['ERL_CRASH_DUMP'] = str(out / 'erl_crash.dump')
+paths = sorted(str(p) for p in (deps / 'deps').glob('*/ebin'))
+assert paths, 'frozen dependency beams absent'
+shutil.copyfile(deps / 'ebin' / 'imboy.app', fresh / 'imboy.app')
+shutil.copytree(Path('priv'), out / 'imboy' / 'priv', ignore=shutil.ignore_patterns('dev_keys', '*.pem', '*.key', '*.p12'))
+(out / 'imboy' / 'deps').symlink_to(deps / 'deps', target_is_directory=True)
+files = sorted(str(p) for p in Path('src').rglob('*.erl'))
+files += [str(p) for p in Path('test').rglob('*.erl') if str(p) != 'test/common/config_ds.erl']
+inputs = files + sorted(str(p) for p in Path('include').rglob('*.hrl')) + sorted(str(p) for p in Path('priv/migrations').rglob('*.sql')) + [str(deps/'ebin/imboy.app'), '/tmp/gz-internal-audit-conformance.sh', '/tmp/gz-internal-audit-conformance.py'] + sorted(str(p) for p in (deps/'deps').glob('*/ebin/*') if p.suffix in ('.beam','.app'))
+before = {f: hashlib.sha256(Path(f).read_bytes()).hexdigest() for f in inputs}
+args = ['erlc', '-DTEST=1', '+debug_info', '+{parse_transform,lager_transform}', '-o', str(fresh), '-I', 'include', '-I', 'src']
+for path in paths:
+    args += ['-pa', path]
+reuse = os.environ.get('IMBOY_GATE_REUSE_FROM')
+if reuse:
+    previous = Path(reuse)
+    bindings = json.loads((previous / 'result.json').read_text())['sources']
+    changed_tests = []
+    for f in inputs:
+        if f in ('/tmp/gz-internal-audit-conformance.sh', '/tmp/gz-internal-audit-conformance.py'):
+            continue
+        if bindings.get(f) != before[f]:
+            assert f in files and f.startswith('test/') and f.endswith('.erl'), 'frozen product/dependency changed: ' + f
+            changed_tests.append(f)
+    previous_result = json.loads((previous / 'result.json').read_text())
+    for beam in (previous / 'imboy/ebin').glob('*.beam'):
+        assert hashlib.sha256(beam.read_bytes()).hexdigest() == previous_result['beams'][beam.name]
+        if beam.stem not in {Path(f).stem for f in changed_tests}:
+            shutil.copyfile(beam, fresh / beam.name)
+    with (out / 'compile.log').open('w') as log:
+        log.write('Verified frozen product/dependency beams reused from ' + str(previous) + '\n')
+        if changed_tests:
+            subprocess.run(args + changed_tests, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=600)
+else:
+    with (out / 'compile.log').open('w') as log:
+        subprocess.run(args + files, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=600)
+assert before == {f: hashlib.sha256(Path(f).read_bytes()).hexdigest() for f in inputs}, 'sources changed during compilation'
+config = out / 'synthetic.config'
+config.write_text('[].\n')
+os.environ['IMBOY_TEST_CONFIG'] = str(config)
+expr = ('application:load(imboy), application:set_env(imboy,sql_driver,pgsql), '
+    'PgPort=list_to_integer(os:getenv("INTBE02_INTTEST_PG_PORT")), '
+    'PgOpts=#{host=>"127.0.0.1",port=>PgPort,username=>"synthetic",password=>"SYNTHETIC-ONLY",database=>"postgres",ssl=>false,timeout=>10000,codecs=>[{epgsql_codec_rfc3339_bin,[]}]}, '
+    'application:set_env(imboy,pg_conf,#{name=>pgsql,init_count=>2,max_count=>8,start_mfa=>{epgsql,connect,[PgOpts]}}), '
+    'application:set_env(imboy,postgre_aes_key,<<"SYNTHETIC-WEBHOOK-AES-KEY">>), '
+    'application:set_env(lager,handlers,[{lager_console_backend,[{level,error}]}]), '
+    'application:ensure_all_started(lager), '
+    '{ok,{config_ds,[{compile_info,CI}]}}=beam_lib:chunks(code:which(config_ds),[compile_info]), '
+    'true=lists:suffix("src/ds/config_ds.erl",proplists:get_value(source,CI)), '
+    'io:format("PRODUCT_CONFIG_MODULE_OK~n"), '
+    '{ok,_}=imboy_cache:start_link([]), Result=eunit:test({generator,fun enterprise_internal_wiring_http_tests:conformance_test_/0},[verbose]), io:format("INTERNAL_CONFORMANCE_RESULT=~p~n",[Result]), case Result of ok -> halt(0); _ -> halt(1) end.')
+with (out / 'http.log').open('w') as log:
+    proc = subprocess.run(['erl', '-noshell', '-pz', *paths, '-pa', str(fresh), '-eval', expr],
+        stdout=log, stderr=subprocess.STDOUT, timeout=900)
+report = (out / 'http.log').read_text(errors='replace')
+markers = ['PRODUCT_CONFIG_MODULE_OK', 'INTERNAL_CONFORMANCE_RESULT=ok']
+records = [json.loads(line) for line in (out / 'internal-auth-negatives.jsonl').read_text().splitlines()]
+expected = {(f'INT-{i:02d}', kind, 'application') for i in range(1, 43) for kind in ('zero_grant', 'missing_scope', 'revoked_grant', 'expired_grant')}
+expected |= {(f'INT-{i:02d}', kind, 'human') for i in (9, 10) for kind in ('zero_grant', 'missing_scope', 'revoked_grant', 'expired_grant')}
+actual = {(r['id'], r['scenario'], r['sender_mode']) for r in records}
+passed = proc.returncode == 0 and all(m in report.splitlines() for m in markers) and len(records) == 176 and actual == expected and all(r['status'] == 403 and r['code'] == 'insufficient_scope' for r in records)
+audit_records = [json.loads(line) for line in (out / 'internal-audit-matrix.jsonl').read_text().splitlines()] if (out / 'internal-audit-matrix.jsonl').exists() else []
+audit_ids = {f'INT-{i:02d}' for i in (2,4,5,6,8,9,10,11,12,13,14,15,19,20,21,22,32,35,36,37,38,39,40,41,42)}
+passed = passed and len(audit_records) == 25 and {r['id'] for r in audit_records} == audit_ids and all(r['audit_failure_status'] == 500 and r['rollback'] and r['retry_status'] == 200 and r['replay_no_write'] for r in audit_records)
+unchanged = before == {f: hashlib.sha256(Path(f).read_bytes()).hexdigest() for f in inputs}
+result = {'status': 'PASS_SCOPED' if passed and unchanged else 'FAIL', 'exit_code': proc.returncode,
+    'candidate': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+    'sources': before, 'source_unchanged': unchanged, 'auth_dns_guard_sender_writers_mocked': False,
+    'production_ready': False, 'log_sha256': hashlib.sha256((out / 'http.log').read_bytes()).hexdigest(),
+    'beams': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in fresh.glob('*.beam')}}
+if (out / 'internal-auth-negatives.jsonl').exists():
+    result['oracle_sha256'] = hashlib.sha256((out / 'internal-auth-negatives.jsonl').read_bytes()).hexdigest()
+(out / 'result.json').write_text(json.dumps(result, indent=2))
+print(result['status'], out, flush=True)
+raise SystemExit(0 if passed and unchanged else 1)

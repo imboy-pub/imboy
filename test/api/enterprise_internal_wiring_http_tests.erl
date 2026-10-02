@@ -381,6 +381,7 @@ conformance_test_() ->
 
 run_conformance(S) ->
     #{conn := C} = S,
+    enterprise_internal_audit_http_checks:reset(),
     seed_delivery_row(C, S),
     workspace_channel_limit_http_checks:run(S),
     G = positive_chain(S),
@@ -393,6 +394,7 @@ run_conformance(S) ->
     enterprise_identity_contract_http_checks:run(S),
     enterprise_channel_write_http_checks:run(S),
     enterprise_workspace_write_http_checks:run(S),
+    enterprise_internal_audit_http_checks:assert_complete(),
     assert_coverage(),
     ok.
 
@@ -450,14 +452,17 @@ positive_chain(S) ->
 
     %% ---- INT-01 GET /application（成功；RO 凭证的同端点 200 见 negative_matrix
     %%      的最小 scope 正例，不重复登记覆盖）----
-    R01 = intbe02_http_support:http(Port, <<"GET">>, <<"/api/internal/v1/application">>, <<>>, A),
+    R01 = enterprise_internal_audit_http_checks:http(
+        C, Port, <<"GET">>, <<"/api/internal/v1/application">>, <<>>, A
+    ),
     assert_ok_json(R01),
     cover(<<"INT-01">>),
 
     %% ---- INT-02 PUT identity-mappings（bind ALICE，重放规格入列）----
     Body02 = #{<<"external_user_id">> => <<"intbe02-ext-h4">>, <<"user_id">> => 995017},
     R02 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"PUT">>,
             <<"/api/internal/v1/identity-mappings">>,
@@ -469,7 +474,8 @@ positive_chain(S) ->
 
     %% ---- INT-03 POST resolve：present-only 语义（未知 ext 不出现=跨 Org 不可见）----
     R03 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/identity-mappings/resolve">>,
@@ -487,7 +493,8 @@ positive_chain(S) ->
         <<"members">> => [H1, H2]
     },
     R04 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/groups">>,
@@ -503,7 +510,8 @@ positive_chain(S) ->
     %% ---- INT-05 PUT members（补 H3 入群）----
     Body05 = #{<<"external_user_ids">> => [H3]},
     R05 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"PUT">>,
             GrpMembersPath,
@@ -516,7 +524,8 @@ positive_chain(S) ->
     %% ---- INT-20 PUT members/roles（H3 → 嘉宾 role=2；4=群主不对 OA 开放）----
     Body20 = #{<<"roles">> => [#{<<"external_user_id">> => H3, <<"role">> => 2}]},
     R20 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"PUT">>,
             <<GrpMembersPath/binary, "/roles">>,
@@ -527,14 +536,15 @@ positive_chain(S) ->
     cover(<<"INT-20">>),
 
     %% ---- INT-18 GET 群详情 ----
-    R18 = intbe02_http_support:http(Port, <<"GET">>, GrpPath, <<>>, A),
+    R18 = enterprise_internal_audit_http_checks:http(C, Port, <<"GET">>, GrpPath, <<>>, A),
     #{<<"members">> := _} = assert_ok_json(R18),
     cover(<<"INT-18">>),
 
     %% ---- INT-19 PATCH 群（改名）----
     Body19 = #{<<"title">> => <<"intbe02 renamed group"/utf8>>},
     R19 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"PATCH">>,
             GrpPath,
@@ -545,7 +555,7 @@ positive_chain(S) ->
     cover(<<"INT-19">>),
 
     %% ---- INT-27 GET members（active 成员列表非空）----
-    R27 = intbe02_http_support:http(Port, <<"GET">>, GrpMembersPath, <<>>, A),
+    R27 = enterprise_internal_audit_http_checks:http(C, Port, <<"GET">>, GrpMembersPath, <<>>, A),
     #{<<"items">> := Items27} = assert_page(R27),
     ?assertNotEqual([], Items27),
     lists:foreach(
@@ -556,7 +566,8 @@ positive_chain(S) ->
     %% ---- INT-06 DELETE members（移除 H3）----
     Body06 = #{<<"external_user_ids">> => [H3]},
     R06 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"DELETE">>,
             GrpMembersPath,
@@ -569,7 +580,8 @@ positive_chain(S) ->
     %% ---- INT-07 POST files/presign ----
     Body07 = #{<<"file_name">> => <<"intbe02-report.txt">>, <<"mime_type">> => <<"text/plain">>},
     R07 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/files/presign">>,
@@ -585,7 +597,8 @@ positive_chain(S) ->
     Body08 = #{<<"object_key">> => ObjectKey, <<"file_hash256">> => hash256(<<"x">>)},
     R08 =
         intbe02_http_support:with_oss_head(1024, fun() ->
-            intbe02_http_support:http(
+            enterprise_internal_audit_http_checks:http(
+                C,
                 Port,
                 <<"POST">>,
                 <<"/api/internal/v1/files/confirm">>,
@@ -603,7 +616,8 @@ positive_chain(S) ->
         <<"retention_days">> => 3650
     },
     R22 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/files/governance">>,
@@ -623,7 +637,8 @@ positive_chain(S) ->
         <<"content">> => <<"intbe02 direct hello"/utf8>>
     },
     R09 = with_dns(fun() ->
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/messages/direct">>,
@@ -642,7 +657,8 @@ positive_chain(S) ->
         <<"content">> => <<"intbe02 group hello"/utf8>>
     },
     R10 = with_dns(fun() ->
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<GrpPath/binary, "/messages">>,
@@ -656,7 +672,8 @@ positive_chain(S) ->
     %% ---- INT-11 POST friend-requests（H2 → H1 pending）----
     Body11 = #{<<"sender_user_id">> => H2, <<"target_user_id">> => H1},
     R11 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/friend-requests">>,
@@ -672,7 +689,8 @@ positive_chain(S) ->
         <<"events">> => [<<"message.enterprise.accepted">>, <<"file.confirmed">>]
     },
     R12 = with_dns(fun() ->
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"PUT">>,
             <<"/api/internal/v1/webhook">>,
@@ -684,15 +702,21 @@ positive_chain(S) ->
     cover(<<"INT-12">>),
 
     %% ---- INT-23 GET webhook/deliveries（principal 面；有/无行均 200 页形态）----
-    R23 = intbe02_http_support:http(
-        Port, <<"GET">>, <<"/api/internal/v1/webhook/deliveries">>, <<>>, A
+    R23 = enterprise_internal_audit_http_checks:http(
+        C,
+        Port,
+        <<"GET">>,
+        <<"/api/internal/v1/webhook/deliveries">>,
+        <<>>,
+        A
     ),
     assert_ok_json(R23),
     cover(<<"INT-23">>),
 
     %% ---- INT-13 POST deliveries/{id}/replay（终态行 → 新投递行）----
     R13 = with_dns(fun() ->
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/webhook/deliveries/intbe02-dlv-0001/replay">>,
@@ -705,7 +729,8 @@ positive_chain(S) ->
 
     %% ---- INT-32 POST webhook/test-delivery（端点已配置 → ping 入箱）----
     R32 = with_dns(fun() ->
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/webhook/test-delivery">>,
@@ -729,23 +754,34 @@ positive_chain(S) ->
         }),
     Body14 = #{<<"code">> => SsoCode, <<"redirect_uri">> => Redirect, <<"nonce">> => Nonce},
     R14 =
-        intbe02_http_support:http(
-            Port, <<"POST">>, <<"/api/internal/v1/oa/sso/exchange">>, Body14, SSO
+        enterprise_internal_audit_http_checks:http(
+            C,
+            Port,
+            <<"POST">>,
+            <<"/api/internal/v1/oa/sso/exchange">>,
+            Body14,
+            SSO
         ),
     #{<<"user_id">> := 995017, <<"external_user_id">> := _} = assert_ok_json(R14),
     cover(<<"INT-14">>),
     %% code 单次消费（合同豁免 Idempotency-Key，一次性由 CAS 保证）：重放同
     %% code → 统一不透明 404（不给存在性/生命周期 oracle）
     R14b =
-        intbe02_http_support:http(
-            Port, <<"POST">>, <<"/api/internal/v1/oa/sso/exchange">>, Body14, SSO
+        enterprise_internal_audit_http_checks:http(
+            C,
+            Port,
+            <<"POST">>,
+            <<"/api/internal/v1/oa/sso/exchange">>,
+            Body14,
+            SSO
         ),
     assert_err(R14b, <<"resource_not_found">>),
 
     %% ---- INT-15 DELETE identity-mappings（撤销 INT-02 绑定）----
     Body15 = #{<<"external_user_id">> => <<"intbe02-ext-h4">>},
     R15 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"DELETE">>,
             <<"/api/internal/v1/identity-mappings">>,
@@ -757,7 +793,8 @@ positive_chain(S) ->
 
     %% ---- INT-16 POST identity-mappings/directory（分页页形态）----
     R16 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/identity-mappings/directory">>,
@@ -773,7 +810,8 @@ positive_chain(S) ->
 
     %% ---- INT-17 POST directory/users（workspace 过滤 + 最小字段）----
     R17 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/directory/users">>,
@@ -785,7 +823,9 @@ positive_chain(S) ->
     cover(<<"INT-17">>),
 
     %% ---- INT-24 GET /workspaces（org 全域 Grant → 两个 active WS 全见）----
-    R24 = intbe02_http_support:http(Port, <<"GET">>, <<"/api/internal/v1/workspaces">>, <<>>, A),
+    R24 = enterprise_internal_audit_http_checks:http(
+        C, Port, <<"GET">>, <<"/api/internal/v1/workspaces">>, <<>>, A
+    ),
     #{<<"items">> := Items24} = assert_page(R24),
     WsIds24 = [maps:get(<<"workspace_id">>, M) || M <- Items24],
     ?assert(lists:member(WsA1, WsIds24)),
@@ -794,12 +834,14 @@ positive_chain(S) ->
 
     %% ---- INT-25 GET /workspaces/{id} 详情 ----
     WsPath = <<"/api/internal/v1/workspaces/", (integer_to_binary(WsA1))/binary>>,
-    R25 = intbe02_http_support:http(Port, <<"GET">>, WsPath, <<>>, A),
+    R25 = enterprise_internal_audit_http_checks:http(C, Port, <<"GET">>, WsPath, <<>>, A),
     #{<<"workspace_id">> := WsA1} = assert_ok_json(R25),
     cover(<<"INT-25">>),
 
     %% ---- INT-26 GET /groups（origin=本 App：企业群可见、人类群不可见）----
-    R26 = intbe02_http_support:http(Port, <<"GET">>, <<"/api/internal/v1/groups">>, <<>>, A),
+    R26 = enterprise_internal_audit_http_checks:http(
+        C, Port, <<"GET">>, <<"/api/internal/v1/groups">>, <<>>, A
+    ),
     #{<<"items">> := Items26} = assert_page(R26),
     Gids26 = [maps:get(<<"group_id">>, M) || M <- Items26],
     ?assert(lists:member(Gid, Gids26)),
@@ -808,7 +850,8 @@ positive_chain(S) ->
 
     %% ---- INT-28 GET /projects?workspace_id（W 必填过滤）----
     R28 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"GET">>,
             <<"/api/internal/v1/projects?workspace_id=", (integer_to_binary(WsA1))/binary>>,
@@ -821,13 +864,14 @@ positive_chain(S) ->
 
     %% ---- INT-29 GET /projects/{id} 详情 ----
     PrjPath = <<"/api/internal/v1/projects/", (integer_to_binary(PrjA1))/binary>>,
-    R29 = intbe02_http_support:http(Port, <<"GET">>, PrjPath, <<>>, A),
+    R29 = enterprise_internal_audit_http_checks:http(C, Port, <<"GET">>, PrjPath, <<>>, A),
     #{<<"project_id">> := PrjA1} = assert_ok_json(R29),
     cover(<<"INT-29">>),
 
     %% ---- INT-30 GET /channels?workspace_id（scope=workspace AND status=1）----
     R30 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"GET">>,
             <<"/api/internal/v1/channels?workspace_id=", (integer_to_binary(WsA1))/binary>>,
@@ -840,14 +884,15 @@ positive_chain(S) ->
 
     %% ---- INT-31 GET /channels/{id} 详情 ----
     ChnPath = <<"/api/internal/v1/channels/", (integer_to_binary(ChnA1))/binary>>,
-    R31 = intbe02_http_support:http(Port, <<"GET">>, ChnPath, <<>>, A),
+    R31 = enterprise_internal_audit_http_checks:http(C, Port, <<"GET">>, ChnPath, <<>>, A),
     #{<<"channel_id">> := ChnA1} = assert_ok_json(R31),
     cover(<<"INT-31">>),
 
     %% Seat configuration is org-owned, with workspace selected for auditing only.
     SeatPath = <<"/api/internal/v1/customer-service/seats/995701">>,
     Body35 = #{<<"workspace_id">> => WsA1, <<"business_identity_id">> => 995701},
-    R35 = intbe02_http_support:http(
+    R35 = enterprise_internal_audit_http_checks:http(
+        C,
         Port,
         <<"POST">>,
         <<"/api/internal/v1/customer-service/seats">>,
@@ -856,7 +901,8 @@ positive_chain(S) ->
     ),
     #{<<"business_identity_id">> := 995701, <<"version">> := SeatVersion} = assert_ok_json(R35),
     cover(<<"INT-35">>),
-    R33 = intbe02_http_support:http(
+    R33 = enterprise_internal_audit_http_checks:http(
+        C,
         Port,
         <<"GET">>,
         <<"/api/internal/v1/customer-service/seats">>,
@@ -868,7 +914,7 @@ positive_chain(S) ->
         lists:any(fun(Row) -> maps:get(<<"business_identity_id">>, Row) =:= 995701 end, SeatItems)
     ),
     cover(<<"INT-33">>),
-    R34 = intbe02_http_support:http(Port, <<"GET">>, SeatPath, <<>>, A),
+    R34 = enterprise_internal_audit_http_checks:http(C, Port, <<"GET">>, SeatPath, <<>>, A),
     #{<<"business_identity_id">> := 995701} = assert_ok_json(R34),
     cover(<<"INT-34">>),
     Body36 = #{
@@ -876,7 +922,8 @@ positive_chain(S) ->
         <<"expected_version">> => SeatVersion,
         <<"enabled">> => false
     },
-    R36 = intbe02_http_support:http(
+    R36 = enterprise_internal_audit_http_checks:http(
+        C,
         Port,
         <<"PATCH">>,
         SeatPath,
@@ -889,7 +936,8 @@ positive_chain(S) ->
 
     %% ---- INT-21 DELETE /groups/{id}（归档终态，最后执行）----
     R21 =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"DELETE">>,
             GrpPath,

@@ -1,0 +1,39 @@
+{
+  "status": "PASS_SCOPED_LOCAL",
+  "base_candidate": "b3a7306781e6e002e40d6e3ac5476562f8064b76",
+  "operations": 25,
+  "failure_http": 500,
+  "retry_http": 200,
+  "required_audit_increment": 1,
+  "replay_business_writes": 0,
+  "snapshot": "every public table, credential last_used_at excluded",
+  "real_http_pg": true,
+  "production_code_changed": false,
+  "whole_goal_complete": false,
+  "files": [
+    {
+      "path": "source-binding.json",
+      "sha256": "48e67f56ce54aac32dbe2ac857857777de9794c6665533e800f14241600ae508"
+    },
+    {
+      "path": "gz-internal-audit-conformance.py.txt",
+      "sha256": "41816083650602e86825570d30506596d38a2f76b1b85696ff99b786cb99ccfc"
+    },
+    {
+      "path": "README.md",
+      "sha256": "b92d9c771559d4f57cea6da54e5c2088317e00540a4a049f86237fd74695d93a"
+    },
+    {
+      "path": "http-result.txt",
+      "sha256": "9e68e6f328306daffa615acc31a128f8c0ecad58245b439a3e08fed3dc69aef8"
+    },
+    {
+      "path": "operations.jsonl",
+      "sha256": "404d9a889aee34747ffc9c212c1264fbbb9875ddde2fb7b76993b021296101c5"
+    },
+    {
+      "path": "gz-internal-audit-conformance.sh.txt",
+      "sha256": "982679431c0f8c1a7ee8a168f74b0c2baf7f63e10ac08f68032758d96022ce6d"
+    }
+  ]
+}

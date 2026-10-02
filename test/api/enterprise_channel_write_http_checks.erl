@@ -9,12 +9,12 @@ run(S) ->
         <<"creator_user_id">> => 995012,
         <<"name">> => <<"Internal channel">>
     },
-    R40 = req(S, <<"POST">>, ?BASE, B40, <<"ch-40">>),
+    R40 = audited_req(S, <<"POST">>, ?BASE, B40, <<"ch-40">>),
     #{<<"channel_id">> := W, <<"version">> := 1} = ok_json(R40),
     cover(40),
     Path = path(W),
     B41 = #{<<"expected_version">> => 1, <<"name">> => <<"Updated channel">>},
-    R41 = req(S, <<"PATCH">>, Path, B41, <<"ch-41">>),
+    R41 = audited_req(S, <<"PATCH">>, Path, B41, <<"ch-41">>),
     #{<<"version">> := 2} = ok_json(R41),
     ?assertNotEqual(
         maps:get(<<"updated_at">>, ok_json(R40)), maps:get(<<"updated_at">>, ok_json(R41))
@@ -36,7 +36,7 @@ archive_and_replay(S, W, Path, B40, R40, B41, R41) ->
         [W]
     ),
     B42 = #{<<"expected_version">> => 3},
-    R42 = req(S, <<"DELETE">>, Path, B42, <<"ch-42">>),
+    R42 = audited_req(S, <<"DELETE">>, Path, B42, <<"ch-42">>),
     #{<<"version">> := 4, <<"status">> := 0} = ok_json(R42),
     cover(42),
     lists:foreach(
@@ -197,6 +197,8 @@ revoked_replay(S, Path, Body) ->
     err(req(S, <<"DELETE">>, Path, Body, <<"ch-42">>), <<"insufficient_scope">>).
 
 path(W) -> <<?BASE/binary, "/", (integer_to_binary(W))/binary>>.
+audited_req(S, M, P, B, K) ->
+    enterprise_internal_audit_http_checks:request(S, M, P, B, K).
 req(S, M, P, B, K) -> request(S, cred_a, M, P, B, K).
 request(S, Credential, M, P, B, K) ->
     A = intbe02_http_support:auth(maps:get(Credential, S)),

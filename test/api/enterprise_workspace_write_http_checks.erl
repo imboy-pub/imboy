@@ -5,19 +5,19 @@
 
 run(S) ->
     B37 = #{<<"owner_user_id">> => 995001, <<"name">> => <<"Internal workspace">>},
-    R37 = req(S, <<"POST">>, ?BASE, B37, <<"ws-37">>),
+    R37 = audited_req(S, <<"POST">>, ?BASE, B37, <<"ws-37">>),
     #{<<"workspace_id">> := W, <<"version">> := 1} = ok_json(R37),
     cover(37),
     Path = path(W),
     B38 = #{<<"expected_version">> => 1, <<"name">> => <<"Updated workspace">>},
-    R38 = req(S, <<"PATCH">>, Path, B38, <<"ws-38">>),
+    R38 = audited_req(S, <<"PATCH">>, Path, B38, <<"ws-38">>),
     #{<<"version">> := 2} = ok_json(R38),
     cover(38),
     negatives(S, Path, B37, B38),
     audit_failure(S, Path, W),
     concurrent(S, Path),
     B39 = #{<<"expected_version">> => 3},
-    R39 = req(S, <<"DELETE">>, Path, B39, <<"ws-39">>),
+    R39 = audited_req(S, <<"DELETE">>, Path, B39, <<"ws-39">>),
     #{<<"version">> := 4, <<"status">> := <<"archived">>} = ok_json(R39),
     cover(39),
     lists:foreach(
@@ -169,6 +169,8 @@ revoked_replay(S, Path, Body) ->
     err(req(S, <<"DELETE">>, Path, Body, <<"ws-39">>), <<"insufficient_scope">>).
 
 path(W) -> <<?BASE/binary, "/", (integer_to_binary(W))/binary>>.
+audited_req(S, M, P, B, K) ->
+    enterprise_internal_audit_http_checks:request(S, M, P, B, K).
 req(S, M, P, B, K) -> request(S, cred_a, M, P, B, K).
 request(S, Credential, M, P, B, K) ->
     A = intbe02_http_support:auth(maps:get(Credential, S)),
