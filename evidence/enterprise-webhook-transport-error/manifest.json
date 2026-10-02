@@ -1,0 +1,26 @@
+{
+  "status": "PASS_FOCUSED_TRANSPORT_AND_CURSOR",
+  "base_candidate": "3e6e5b46221e56215a05a02703f38817bb78f606",
+  "tests_passed": 13,
+  "public_entry": "enterprise_webhook_logic:execute_delivery/1",
+  "oracle": [
+    "transport class error",
+    "raw recv timeout cause",
+    "measured latency at least 20ms",
+    "first retry 5 seconds",
+    "one sender call and attempt write"
+  ],
+  "sender_and_writers_mocked": true,
+  "pinned_url_guard_real": true,
+  "real_network_or_postgres_verified": false,
+  "whole_goal_complete": false,
+  "source_sha256": {
+    "src/logic/enterprise_webhook_logic.erl": "a0ed13c531ed40573c10c906f7d9334a02330c6e4fc70b02cf362858afd30ac5",
+    "test/logic/enterprise_webhook_transport_tests.erl": "a65ce7da2510099b967e1effd5b842556de8e9781092e763b602dff40f1eaa30",
+    "test/logic/enterprise_webhook_cursor_tests.erl": "d310ba7bfbf5090fde310f97efbe5d59baa459f297ad3d2d7e46129f8a3481a0"
+  },
+  "artifacts": {
+    "previous-failure.txt": "0829447b3ccf5f40dbb1ddfa66add3cf53dec9087233b86c260c97ec5869be3e",
+    "focused-green.txt": "ca442590b90e0cbb9e3c57dfe1f9a7876626ee63e950c16b7fad1a41c54f945c"
+  }
+}

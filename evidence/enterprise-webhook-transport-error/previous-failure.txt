@@ -1,0 +1,20 @@
+======================== EUnit ========================
+enterprise_webhook_transport_tests: transport_error_preserves_cause_and_latency_test (module 'enterprise_webhook_transport_tests')...*failed*
+in function enterprise_webhook_transport_tests:transport_error_preserves_cause_and_latency_test/0 (test/logic/enterprise_webhook_transport_tests.erl, line 20)
+in call from eunit_test:'-mf_wrapper/2-fun-0-'/2 (eunit_test.erl, line 286)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{assertEqual,[{module,enterprise_webhook_transport_tests},
+              {line,20},
+              {expression,"maps : get ( status_class , A )"},
+              {expected,<<"error">>},
+              {value,<<"internal_error">>}]}
+  output:<<"">>
+
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 0.
+TRANSPORT_AUDIT_PROBE=error

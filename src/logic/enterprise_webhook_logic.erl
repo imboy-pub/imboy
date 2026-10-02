@@ -801,7 +801,11 @@ settle(Delivery, AttemptNo, {ok, Code} = Res, Lat) ->
         _ ->
             retry(Delivery, AttemptNo, Class, Code, Lat, <<>>)
     end,
-    Res.
+    Res;
+settle(Delivery, AttemptNo, {error, Reason}, Lat) ->
+    metric_latency(Lat),
+    retry(Delivery, AttemptNo, <<"error">>, null, Lat, Reason),
+    {error, Reason}.
 
 retry(Delivery, AttemptNo, Class, Code, Lat, Reason) ->
     Did = maps:get(<<"delivery_id">>, Delivery),
