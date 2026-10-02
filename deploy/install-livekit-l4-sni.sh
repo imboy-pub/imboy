@@ -45,8 +45,8 @@ Modes:
   --apply       Install HAProxy, back up config, switch traffic, and verify.
   --rollback    Restore the latest successful backup (or --backup DIR).
 
-Extra env (see livekit-l4-sni.env.example): NGINX_BIN, COMPOSE_OVERLAY_FILES,
-L4_SNI_CHECK_SCRIPT, HAPROXY_CONF.
+Extra env (see livekit-l4-sni.env.example): NGINX_BIN, NGINX_INCLUDE_PATH,
+COMPOSE_OVERLAY_FILES, L4_SNI_CHECK_SCRIPT, HAPROXY_CONF.
 USAGE
 }
 
@@ -99,6 +99,7 @@ load_config() {
   : "${L4_STATE_DIR:=/var/lib/imboy-livekit-l4-sni}"
   : "${L4_BACKUP_ROOT:=/root/imboy-livekit-l4-sni-backups}"
   : "${NGINX_BIN:=}"
+  : "${NGINX_INCLUDE_PATH:=}"
   : "${HAPROXY_CONF:=/etc/haproxy/haproxy.cfg}"
   : "${COMPOSE_OVERLAY_FILES:=}"
   : "${L4_SNI_CHECK_SCRIPT:=$SCRIPT_DIR/../scripts/check_l4_sni_listen.sh}"
@@ -247,8 +248,11 @@ resolve_nginx_instance() {
   printf '%s\n' "$v_output" | grep -q -- '--with-stream_ssl_preread_module' || die "pinned nginx lacks ssl_preread module: $NGINX_BIN"
   conf_default="$(printf '%s\n' "$v_output" | sed -n 's/.*--conf-path=\([^ ]*\).*/\1/p' | head -1)"
   prefix_default="$(printf '%s\n' "$v_output" | sed -n 's/.*--prefix=\([^ ]*\).*/\1/p' | head -1)"
-  [ -n "$conf_default" ] || die "BLOCKED_ENV: cannot parse --conf-path from nginx -V output"
+  # BT panel builds often ship an nginx -V without --conf-path; an explicit -c
+  # on the master command line is authoritative and accepted on its own. Only
+  # a master with neither source blocks the switch.
   NGINX_CONF_PATH="${conf_flag:-$conf_default}"
+  [ -n "$NGINX_CONF_PATH" ] || die "BLOCKED_ENV: cannot determine the pinned nginx config: 'nginx -V' reports no --conf-path (common for BT panel builds; an explicit master -c is accepted and sufficient) and the master command line has no explicit -c"
   NGINX_PREFIX_ARGS=""
   [ -n "$prefix_flag" ] && NGINX_PREFIX_ARGS="-p $prefix_flag"
   NGINX_DEFAULT_PREFIX="$prefix_default"
@@ -372,13 +376,22 @@ nginx_effective_check() {
 # or undecidable -- both block the switch.
 run_l4_check() {
   local rc=0
+  # Optional include search path for the checker (BT panel: relative includes
+  # in managed vhosts). Inserted right after the mode flag; unset = identical
+  # invocation to before.
+  local -a include_args=()
+  [ -n "$NGINX_INCLUDE_PATH" ] && include_args=(--include-path "$NGINX_INCLUDE_PATH")
   [ -n "$L4_SNI_CHECK_SCRIPT" ] || die "internal error: L4_SNI_CHECK_SCRIPT unset"
   if [ ! -f "$L4_SNI_CHECK_SCRIPT" ]; then
     die "BLOCKED_ENV: listen-drift checker not found at $L4_SNI_CHECK_SCRIPT; refusing to proceed without the Task-1 check"
   fi
   [ -x "$L4_SNI_CHECK_SCRIPT" ] || die "listen-drift checker is not executable: $L4_SNI_CHECK_SCRIPT"
-  "$L4_SNI_CHECK_SCRIPT" "$@" || rc=$?
-  [ "$rc" -eq 0 ] || die "listen-drift check failed (mode=${1:-?} rc=$rc): $L4_SNI_CHECK_SCRIPT $*"
+  if [ "$#" -gt 0 ]; then
+    "$L4_SNI_CHECK_SCRIPT" "$1" ${include_args[@]+"${include_args[@]}"} "${@:2}" || rc=$?
+  else
+    "$L4_SNI_CHECK_SCRIPT" ${include_args[@]+"${include_args[@]}"} || rc=$?
+  fi
+  [ "$rc" -eq 0 ] || die "listen-drift check failed (mode=${1:-?} rc=$rc): $L4_SNI_CHECK_SCRIPT $*${NGINX_INCLUDE_PATH:+ --include-path $NGINX_INCLUDE_PATH}"
 }
 
 managed_vhost_paths() {

@@ -29,6 +29,11 @@
 #   T16 回滚时 systemctl restart haproxy 失败 → 显式诊断（含退出码）+
 #       ROLLBACK_DEGRADED 标记 + 非零收尾，其余恢复步骤不中断
 #   T17 快照 haproxy.active=active 但恢复后 inactive → 快照一致性校验诊断
+#   T18 -V 无 --conf-path 但 master 显式 -c → 钉定成功（B2-P4 用例 A：宝塔构建
+#       nginx -V 常缺 --conf-path，显式 -c 已被接受，不再 BLOCKED_ENV）
+#   T19 -V 无 --conf-path 且 master 无 -c → 仍 BLOCKED_ENV（B2-P4 用例 B）
+#   T20/T20b/T20c NGINX_INCLUDE_PATH 非空时以 --include-path 透传给巡检脚本
+#       （pre-switch 与 strict；配置 env 文件与进程环境两种来源），未设置不传
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -179,11 +184,23 @@ write_config() {
 
 run_installer() {
   local rc=0 path_extra="${PATH_EXTRA:-}"
+  # shellcheck disable=SC2086  # RUN_ENV_EXTRA is deliberately split into env assignments
   env PATH="$SB/bin${path_extra:+:$path_extra}:$PATH" \
       L4_SB_STATE="$STATE" \
       L4_SB_HAPROXY_CONF="$SB/haproxy/haproxy.cfg" \
+      ${RUN_ENV_EXTRA:+$RUN_ENV_EXTRA} \
       bash "$INSTALLER" "$@" >"$STATE/out.log" 2>&1 || rc=$?
   RC="$rc"
+}
+
+# 运行时把沙箱副本 nginx-core 的 -V 输出改为不含 --conf-path（模拟宝塔构建：
+# nginx -V 有 --prefix、有 stream 模块、唯独没有 --conf-path）。fixture 目录本身
+# 不动，只改 new_sandbox 复制出来的 $SB/bin/nginx-core 副本（与 wrap_systemctl
+# 的"运行时包装、共享 fixture 不动"模式一致）。
+make_v_no_conf_path() {
+  sed 's| --conf-path=%s/conf/nginx.conf||' "$SB/bin/nginx-core" >"$SB/bin/nginx-core.nocp"
+  mv "$SB/bin/nginx-core.nocp" "$SB/bin/nginx-core"
+  chmod +x "$SB/bin/nginx-core"
 }
 
 latest_backup() { ls -1 "$SB/backups" 2>/dev/null | head -1; }
@@ -436,6 +453,60 @@ assert_rc 1 "$RC" "T17 校验失败 → 回滚非零收尾"
 assert_grep "T17 快照一致性校验诊断（active→inactive）" 'ROLLBACK_DEGRADED: systemctl is-active --quiet haproxy \(rc=[0-9]+\): haproxy is not active while the snapshot recorded haproxy.active=active' "$STATE/out.log"
 assert_ngrep "T17 degraded 不宣告 ROLLBACK_COMPLETE" 'ROLLBACK_COMPLETE' "$STATE/out.log"
 assert_eq "T17 其余恢复步骤不中断（Compose 组合恢复）" "$(cat "$CTL/compose-last-up" 2>/dev/null)" "$SB/compose/base.yml $SB/compose/operator-overlay.yml"
+
+# master 命令行改为带显式 -c（宝塔现场形态：sbin/nginx -c conf/nginx.conf），
+# 其余进程表结构与 new_sandbox 一致。
+rewrite_master_with_explicit_conf() {
+  {
+    echo "$MASTER_PID 1 nginx: master process $SB/nginx-bt/sbin/nginx -c $SB/nginx-bt/conf/nginx.conf"
+    echo "$((MASTER_PID + 1000)) $MASTER_PID nginx: worker process"
+    echo "4102 $MASTER_PID nginx: worker process"
+  } >"$CTL/ps-table"
+}
+
+echo "== T18 -V 无 --conf-path 但 master 显式 -c → 实例钉定成功（B2-P4 用例 A）=="
+new_sandbox t18
+make_v_no_conf_path
+rewrite_master_with_explicit_conf
+run_installer --check --config "$CFG"
+assert_rc 0 "$RC" "T18 --check 通过（preflight 不再 BLOCKED_ENV 于 conf-path）"
+assert_grep "T18 钉定日志使用显式 -c 值（实际生效来源）" "nginx instance pinned: .*conf=$SB/nginx-bt/conf/nginx.conf" "$STATE/out.log"
+assert_grep "T18 CHECK_PASS" 'CHECK_PASS' "$STATE/out.log"
+assert_grep_f "T18 nginx_ctl 使用 -c 值（-t 走 pinned 配置）" "nginx:nginx-bt -c $SB/nginx-bt/conf/nginx.conf -t" "$STATE/calls.log"
+
+echo "== T19 -V 无 --conf-path 且 master 无 -c → 仍 BLOCKED_ENV（B2-P4 用例 B）=="
+new_sandbox t19
+make_v_no_conf_path
+run_installer --check --config "$CFG"
+assert_rc 1 "$RC" "T19 两者皆缺 → 拒绝"
+assert_grep "T19 BLOCKED_ENV 语义" 'BLOCKED_ENV: cannot determine the pinned nginx config' "$STATE/out.log"
+assert_grep "T19 提示宝塔构建常见无 --conf-path、显式 -c 已被接受" 'BT panel builds.*explicit master -c is accepted' "$STATE/out.log"
+assert_eq "T19 钉定失败即止（未执行任何 -t）" "$(grep -c ' -t$' "$STATE/calls.log" 2>/dev/null || true)" "0"
+
+echo "== T20 NGINX_INCLUDE_PATH 透传给巡检脚本（B2-P4 用例 C）=="
+new_sandbox t20
+echo "NGINX_INCLUDE_PATH=$SB/nginx-bt/conf" >>"$CFG"
+run_installer --check --config "$CFG"
+assert_rc 0 "$RC" "T20 --check 成功（配置 env 文件来源）"
+assert_grep_f "T20 pre-switch 调用透传 --include-path（配置 env 文件来源）" "check mode=--pre-switch files=--pre-switch --include-path $SB/nginx-bt/conf" "$STATE/calls.log"
+run_installer --apply --config "$CFG"
+assert_rc 0 "$RC" "T20 apply 成功"
+assert_eq "T20 两次 strict 调用（reload 前后）均透传 --include-path" \
+  "$(grep -c "^check mode=--strict files=--strict --include-path $SB/nginx-bt/conf" "$STATE/calls.log" 2>/dev/null || true)" "2"
+
+echo "== T20b NGINX_INCLUDE_PATH 进程环境来源同样透传 =="
+new_sandbox t20b
+RUN_ENV_EXTRA="NGINX_INCLUDE_PATH=$SB/nginx-bt/conf"
+run_installer --check --config "$CFG"
+RUN_ENV_EXTRA=""
+assert_rc 0 "$RC" "T20b --check 成功（进程环境来源）"
+assert_grep_f "T20b pre-switch 调用透传 --include-path（进程环境来源）" "check mode=--pre-switch files=--pre-switch --include-path $SB/nginx-bt/conf" "$STATE/calls.log"
+
+echo "== T20c 未设置 NGINX_INCLUDE_PATH 时不传 --include-path =="
+new_sandbox t20c
+run_installer --check --config "$CFG"
+assert_rc 0 "$RC" "T20c --check 成功"
+assert_ngrep "T20c 未设置时不向巡检脚本传 --include-path" '[-][-]include-path' "$STATE/calls.log"
 
 echo
 echo "== 结果：PASS=${PASS} FAIL=${FAIL} =="
