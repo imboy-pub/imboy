@@ -1,9 +1,9 @@
 %%% @doc Organization Department 用例层（Core Contract C10/C15；ORG-04）。
 %%%
 %%% 职责：部门 create/update/move/archive/list、部门成员 add/remove、
-%%% 部门管理员 set/remove。所有操作（目录读与写）的授权基线 =
-%%% **同 Org active membership**
-%%% （ORG-04 卡 IMPLEMENTATION 冻结口径）；成员级操作额外放行**该部门**的
+%%% 部门管理员 set/remove。目录读取要求同 Org active membership；
+%%% 部门结构 create/update/move/archive 仅允许本 Org active owner/admin。
+%%% 成员级操作额外放行**该部门**的
 %%% 局部目录管理员（department_admin，department_member.is_admin 标记）。
 %%%
 %%% C15 铁律：department_admin 是**局部目录角色**，不产生任何 Workspace/CS/
@@ -60,10 +60,10 @@
 %% ===================================================================
 
 %% @doc 建部门。Params：name（必填）、parent_id（可空=根）、actor_user_id（必填）。
-%% actor 必须是本 Org 的 active member；父部门必须同 Org 且 active。
+%% actor 必须是本 Org 的 active owner/admin；父部门必须同 Org 且 active。
 -spec create_department(integer(), map()) -> {ok, map()} | {error, term()}.
 create_department(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
-    case require_actor(OrgId, Params) of
+    case require_structure_manager(OrgId, Params) of
         {error, _} = Err ->
             Err;
         {ok, ActorId} ->
@@ -109,7 +109,7 @@ insert(OrgId, ParentId, Name, ActorId) ->
 %% archived 部门禁改（archived 禁新写）。
 -spec update_department(integer(), map()) -> {ok, map()} | {error, term()}.
 update_department(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
-    case require_actor(OrgId, Params) of
+    case require_structure_manager(OrgId, Params) of
         {error, _} = Err ->
             Err;
         {ok, ActorId} ->
@@ -156,7 +156,7 @@ update_gate(OrgId, DeptId, Name, ActorId, Expected) ->
 %% self-parent / 祖先环 / 跨 Org 新父 / archived 新父一律拒绝。
 -spec move_department(integer(), map()) -> {ok, map()} | {error, term()}.
 move_department(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
-    case require_actor(OrgId, Params) of
+    case require_structure_manager(OrgId, Params) of
         {error, _} = Err ->
             Err;
         {ok, ActorId} ->
@@ -200,7 +200,7 @@ move_result(OrgId, DeptId, _Row) ->
 %% 已归档 ⇒ 幂等成功（零写入）。Params：department_id、actor_user_id。
 -spec archive_department(integer(), map()) -> {ok, map()} | {error, term()}.
 archive_department(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
-    case require_actor(OrgId, Params) of
+    case require_structure_manager(OrgId, Params) of
         {error, _} = Err ->
             Err;
         {ok, ActorId} ->
@@ -229,7 +229,7 @@ archive_result(OrgId, DeptId, Row) ->
 %% ===================================================================
 
 %% @doc 列部门。Params：status（可选 all 缺省|active|archived）。
-%% 授权基线与其余操作一致 = 同 Org active member（门先于一切读，含 not_found）。
+%% 目录读取要求同 Org active member（门先于一切读，含 not_found）。
 -spec list_departments(integer(), map()) -> {ok, [map()]} | {error, term()}.
 list_departments(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     case require_actor(OrgId, Params) of
@@ -512,16 +512,29 @@ do_list_members(OrgId, Params) ->
 
 %% actor 必须是本 Org 的 active member（ORG-04 冻结基线）。
 require_actor(OrgId, Params) ->
+    require_actor(OrgId, Params, false).
+
+require_structure_manager(OrgId, Params) ->
+    require_actor(OrgId, Params, true).
+
+require_actor(OrgId, Params, ManagerOnly) ->
     ActorId = maps:get(actor_user_id, Params, undefined),
     case is_pos_int(ActorId) of
         false ->
             {error, {invalid_actor_user_id, ActorId}};
         true ->
             case org_role_of(OrgId, ActorId) of
-                {ok, #{status := active}} -> {ok, ActorId};
-                {ok, #{status := Other}} -> {error, {actor_not_active, ActorId, Other}};
-                {error, not_found} -> {error, {actor_not_member, ActorId}};
-                {error, _} = Err -> Err
+                {ok, #{status := active}} when ManagerOnly =:= false -> {ok, ActorId};
+                {ok, #{role := Role, status := active}} when Role =:= owner; Role =:= admin ->
+                    {ok, ActorId};
+                {ok, #{status := active}} ->
+                    {error, {actor_not_permitted, ActorId}};
+                {ok, #{status := Other}} ->
+                    {error, {actor_not_active, ActorId, Other}};
+                {error, not_found} ->
+                    {error, {actor_not_member, ActorId}};
+                {error, _} = Err ->
+                    Err
             end
     end.
 

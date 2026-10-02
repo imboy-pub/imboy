@@ -1,5 +1,5 @@
 %%% @doc ORG-BACKEND-GAP3：部门读路径授权门。目录三个读入口
-%%% （list/detail/members）与写操作同基线 = 同 Org active member；
+%%% （list/detail/members）要求同 Org active member；结构写另要求 Org owner/admin。
 %%% 非成员/已离场成员一律 {actor_not_member,_} / {actor_not_active,_,_}，
 %%% 且门先于存在性判定（不得借 404 探测租户目录）。
 -module(organization_department_app_gate_tests).
@@ -18,6 +18,37 @@
         end,
         fun(_) -> meck:unload() end, Body}
 ).
+
+structure_requires_org_manager_test_() ->
+    [
+        {
+            lists:flatten(io_lib:format("~p rejects ~p role", [Op, Role])),
+            ?WITH_PG_MOCKS(fun() ->
+                Facts =
+                    case Role of
+                        undefined -> #{status => active};
+                        _ -> #{role => Role, status => active}
+                    end,
+                meck:expect(organization_department_pg, org_role_of, fun(?ORG, ?ACTOR) ->
+                    {ok, Facts}
+                end),
+                Params = #{
+                    actor_user_id => ?ACTOR,
+                    department_id => ?DEPT,
+                    name => <<"dev">>,
+                    parent_id => null,
+                    expected_version => 1
+                },
+                ?assertEqual({error, {actor_not_permitted, ?ACTOR}}, structure_call(Op, Params))
+            end)
+        }
+     || Op <- [create, rename, move, archive], Role <- [member, unknown, undefined]
+    ].
+
+structure_call(create, Params) -> organization_department_app:create_department(?ORG, Params);
+structure_call(rename, Params) -> organization_department_app:update_department(?ORG, Params);
+structure_call(move, Params) -> organization_department_app:move_department(?ORG, Params);
+structure_call(archive, Params) -> organization_department_app:archive_department(?ORG, Params).
 
 %% ------------------------------------------------------------------
 %% list_departments

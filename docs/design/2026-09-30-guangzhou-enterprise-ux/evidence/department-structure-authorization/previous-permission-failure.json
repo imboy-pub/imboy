@@ -1,0 +1,43 @@
+{
+  "application_red": {
+    "status": "EXPECTED_RED",
+    "candidate": "35c0fa2d768f9366759d30fd01c577aa4b20e7de",
+    "exit": 1,
+    "failures": 4,
+    "log": "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/gz-department-role-red-2jla1g68/red.log",
+    "log_sha256": "67d12d1ca7d2d5354e9859e0e9918be76686877723820d523cf8ce059a432db1",
+    "scope": "production application entrypoints, PG behavior mocked; not real HTTP/PG"
+  },
+  "real_http_red": {
+    "status": "EXPECTED_RED_REAL_HTTP",
+    "candidate": "35c0fa2d768f9366759d30fd01c577aa4b20e7de",
+    "session_id": 68538,
+    "exit": 1,
+    "run_dir": "/tmp/imboy-seat-http.W7uMte",
+    "actual_business_codes": [
+      0,
+      0,
+      409,
+      0
+    ],
+    "expected_business_codes": [
+      403,
+      403,
+      403,
+      403
+    ],
+    "source_binding_verified": true,
+    "log_sha256": "051d54c4c74020ae2fc384573b933fc6d55e2a4f38c23f2810b6b4be3dcedaca",
+    "limitations": "fails first ordinary-member scenario; WorkspaceOwner and later positives not reached; application red covers four structural entrypoints"
+  },
+  "full_interruption": {
+    "status": "STOP_REQUESTED_FOR_CONFIRMED_PERMISSION_FIX",
+    "candidate": "35c0fa2d768f9366759d30fd01c577aa4b20e7de",
+    "session_id": 55034,
+    "pid": 24536,
+    "reason": "four structure writes allow ordinary Org member; independent current-source red checks fail all four",
+    "red_evidence": "/tmp/gz-department-structure-role-red.json",
+    "not_a_full_suite_test_failure_claim": true,
+    "whole_goal_complete": false
+  }
+}

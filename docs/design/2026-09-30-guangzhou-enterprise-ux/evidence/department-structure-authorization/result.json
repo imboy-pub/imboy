@@ -1,0 +1,23 @@
+{
+  "status": "PASS_SCOPED",
+  "focused_passed": 58,
+  "real_http_pg": {
+    "exit": 0,
+    "restricted_role_scenarios": [
+      "ordinary_member",
+      "workspace_owner_only",
+      "department_admin_only"
+    ],
+    "structure_denials": 12,
+    "database_unchanged_after_denials": true,
+    "owner_admin_positive": true,
+    "stale_version_409": true,
+    "directory_read_preserved": true,
+    "local_department_member_delegation_preserved": true
+  },
+  "full_backend_gate": "NOT_PASS; previous run intentionally interrupted for this confirmed permission defect",
+  "limitations": [
+    "concurrent role revocation not newly verified",
+    "not full six-goal delivery or production proof"
+  ]
+}

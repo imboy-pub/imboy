@@ -650,5 +650,19 @@
   "latest_backend_full_pair": {
     "path": "evidence/transaction-connection-acquisition/previous-full-failure.json",
     "status": "FAILED_NOT_PASS"
+  },
+  "department_structure_authorization": {
+    "status": "PASS_SCOPED",
+    "evidence": "evidence/department-structure-authorization/manifest.json",
+    "restricted_writes_denied": 12,
+    "focused_passed": 58,
+    "full_gate_not_proven": true
+  },
+  "backend_frozen_full_latest": {
+    "status": "INTERRUPTED_NOT_PASS",
+    "candidate": "35c0fa2d768f9366759d30fd01c577aa4b20e7de",
+    "reason": "confirmed ordinary-member structure-write permissions; stopped owned VM before source changes",
+    "interruption_evidence": "evidence/department-structure-authorization/previous-permission-failure.json",
+    "requires_new_final_candidate_gate": true
   }
 }
