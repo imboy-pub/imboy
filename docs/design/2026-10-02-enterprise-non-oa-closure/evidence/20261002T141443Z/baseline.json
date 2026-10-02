@@ -1,0 +1,67 @@
+{
+  "run_root": "docs/design/2026-10-02-enterprise-non-oa-closure/evidence/20261002T141443Z",
+  "plan": "docs/plans/2026-10-02-enterprise-non-oa-final-acceptance-plan-v1.md",
+  "plan_sha256": "e083be9d911bfec5c76f2b0cfdc87a1c09c9eded7d1172e0f455abf55ddd31f1",
+  "plan_sha256_verified": true,
+  "recorded_at_utc": "2026-10-02T14:14:43Z",
+  "repos": {
+    "imboy": {
+      "head": "bc09f0f69a386b445b1ee53648e726d6fe1e2b37",
+      "plan_investigated_head": "4d9ffba21aa731a6e4a04e6d82635ff6164b0590",
+      "post_plan_drift": "only commit bc09f0f6 'docs(plan): define non-OA enterprise acceptance closure' (3 files under docs/plans/) — documentation-only, allowed",
+      "worktree_clean": true,
+      "legacy_candidate": "083901a60f49b25ed5abf6109af9c577bed1bc3d",
+      "diff_classification": {
+        "docs_evidence": "78 added files under docs/ (legacy evidence dir phase-local-final-2026-10-02, plans x3, guides, audits) — no runtime impact",
+        "business_src": "src/imboy_app.erl: +3 lines, only -export([ensure_rsa_keys/0]) and comment; idempotent env/file helper exported for pure-HTTP marker-DB test suites; no behavior change",
+        "tests": "test/api/enterprise_mobile_bootstrap_http_tests.erl (M), test/api/intbe02_http_support.erl (M), test/api/organization_directory_http_support.erl (M), test/common/config_ds.erl (D), test/common/eunit_runner.erl (M), test/logic/enterprise_msg_asset_webhook_pg_tests.erl (M) — test-env corrections",
+        "ops_scripts_out_of_scope": "scripts/lib/blue_green_deploy.sh (ssh -n + cleanup failure handling), scripts/test/deploy_sequence_test.sh (matching mock) — deploy domain, no call-chain overlap with acceptance domains"
+      }
+    },
+    "imboyapp": {
+      "head": "b6bb4dc578acd2bae07b000c97d954a476c2170d",
+      "matches_plan_investigated_head": true,
+      "worktree_clean": true,
+      "legacy_candidate": "d868815b8cf715ae3471fcc76c3ec691548a002b",
+      "diff_classification": {
+        "business": "lib/modules/organization/presentation/{organization_chart.dart (A), human_directory_controller.dart, human_directory_layout.dart, human_directory_page.dart, organization_detail_page.dart, organization_picker_page.dart}; lib/page/workspace_shell/{enterprise_shell_page.dart, workspace_account_menu.dart}; lib/page/contact/contact/contact_page.dart; lib/page/mine/mine/mine_page.dart; lib/page/workspace/workspace_picker_page.dart; lib/page/chat/p2p_call_screen/{p2p_call_screen_page.dart, p2p_call_screen_provider.dart}",
+        "i18n_sources": "assets/i18n/*/organization.i18n.yaml x10 locales",
+        "generated": "lib/i18n/strings*.g.dart x11 (slang output); pubspec.lock",
+        "config": "pubspec.yaml, android/app/build.gradle.kts, .env.e2e.example (A)",
+        "macos_engineering_preexisting": "macos/Podfile, macos/Podfile.lock, macos/Runner.xcodeproj/project.pbxproj, macos/Runner.xcodeproj/xcshareddata/xcschemes/Standard.xcscheme (A) — committed BEFORE this run as part of chart work; frozen zone for this plan, no further modification allowed",
+        "tests": "test/organization/{organization_chart_widget_test.dart (A), human_directory_page_widget_test.dart, organization_detail_hub_widget_test.dart, organization_picker_page_widget_test.dart}; test/unit_test/page/chat/p2p_call_preview_test.dart; test/unit_test/page/workspace/workspace_picker_page_test.dart; test/unit_test/page/workspace_shell/enterprise_shell_page_test.dart"
+      },
+      "consumer_chains_requiring_verification": [
+        "organization chart layout/pagination/expand/drag/zoom/fit",
+        "human directory revocation + late-response isolation",
+        "personal/enterprise four-tab navigation, member|chart switch, role entries, picker",
+        "P2P call preview incremental regression"
+      ]
+    },
+    "imboyadmin": {
+      "head": "2b9015b4ab62ef39c5df234fdb724b2309b8bd5d",
+      "matches_plan_investigated_head": true,
+      "worktree_clean": true,
+      "legacy_candidate": "9a808bec600acc06dd7e93ed89feafbeaea3ed60",
+      "diff_classification": "docs/adr/2026-09-30-module-deep-import-remediation.md (A) — ADR doc only, business source unchanged, matches plan statement"
+    }
+  },
+  "legacy_evidence": {
+    "dir": "docs/design/2026-09-30-guangzhou-enterprise-ux/evidence/phase-local-final-2026-10-02",
+    "verify_py_exit": 0,
+    "verify_py_output": "PASS_RECORDED_LEDGER_INTEGRITY:30 parents,42 children,2x10788; skip/external/production are separate",
+    "flatten_internal_check_exit": 0,
+    "flatten_internal_output": "openapi-internal.bundle.yaml: up to date (28 paths / 42 ops, 0 $ref)",
+    "ledger_structure": "30 parents: G0-01..03, CS-01..03, ORG-01..03, FILE-01..03, UX-01..03, OA-01..03, INT-A01..03, INT-B01..03, INTG-01..03, QA-01..03; plus 42 internal children INT-01..INT-42",
+    "oa_scoped_ids": ["OA-01", "OA-02", "OA-03", "INT-14 (OA SSO exchange)"]
+  },
+  "environment": {
+    "macos_desktop_device": "available (darwin-arm64, macOS 27.0.1 26A434)",
+    "flutter": "3.47.5 stable / Dart 3.13.4 / DevTools 2.60.0",
+    "physical_devices": "MRD AL00 android-arm Android 9; iPhone 16e iOS 26.6.2 (not required by this plan)",
+    "python3": "3.9.6",
+    "local_postgres": "5432 accepting connections",
+    "garage_local": "docker container garage-local Exited(127) 41h ago; start with `docker start garage-local` when attachment domain needs live verification (endpoint 127.0.0.1:3900 per config/sys.local.config)",
+    "wip_protection": "all three repo worktrees clean; no foreign WIP"
+  }
+}

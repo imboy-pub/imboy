@@ -1,0 +1,38 @@
+{
+ "status": "N4_COMPLETE",
+ "current_card": "N5",
+ "completed_cards": [
+  "N0",
+  "N1",
+  "N2",
+  "N3",
+  "N4"
+ ],
+ "acceptance_ids": {
+  "N0-A01": "PASS_EXECUTED",
+  "N1-A01": "PASS_EXECUTED",
+  "N1-A02": "PASS_EXECUTED",
+  "N1-A03": "PASS_EXECUTED",
+  "N2-A01": "PASS_EXECUTED",
+  "N2-A02": "PASS_EXECUTED",
+  "N2-A03": "PASS_EXECUTED",
+  "N2-A04": "PASS_EXECUTED",
+  "N3-A01": "PASS_EXECUTED",
+  "N3-A02": "PASS_EXECUTED",
+  "N3-A03": "PASS_EXECUTED",
+  "N3-A04": "PASS_EXECUTED",
+  "N4-A01": "PASS_REQUALIFIED",
+  "N4-A02": "PASS_REQUALIFIED+PASS_EXECUTED",
+  "N4-A03": "PASS_REQUALIFIED"
+ },
+ "retry_counts": {},
+ "blockers": [
+  "VISUAL_CAPTURE_UNAVAILABLE(macOS截图取证环境边界,不阻断判定)"
+ ],
+ "candidates": {
+  "backend": "bc09f0f69a386b445b1ee53648e726d6fe1e2b37",
+  "app": "b6bb4dc578acd2bae07b000c97d954a476c2170d",
+  "admin": "2b9015b4ab62ef39c5df234fdb724b2309b8bd5d"
+ },
+ "notes": "N3四ID全PASS_EXECUTED。新增测试文件enterprise_nav_perm_nonoa_macos_test.dart(三段独立进程跑)。member密码为md5命中变体(隔离库合成账号)；N4三ID完成：CS/ORG/FILE/INTG指纹对照复用，UX由N2/N3原生取代，Internal 41/42精确复用(排除INT-14 OA exchange)"
+}

@@ -1,0 +1,8 @@
+old evidence endpoints: 42 (from 42 subs)
+current registry ops: 42
+old==current set: False
+only-in-old: ['DELETE /api/internal/v1/channels/{channel_id}:', 'DELETE /api/internal/v1/groups/{group_id}/members:', 'DELETE /api/internal/v1/groups/{group_id}:', 'DELETE /api/internal/v1/identity-mappings:', 'DELETE /api/internal/v1/workspaces/{workspace_id}:']
+only-in-current: ['DELETE /api/internal/v1/channels/{channel_id}', 'DELETE /api/internal/v1/groups/{group_id}', 'DELETE /api/internal/v1/groups/{group_id}/members', 'DELETE /api/internal/v1/identity-mappings', 'DELETE /api/internal/v1/workspaces/{workspace_id}']
+EXCLUDED (1): {'INT-14': 'POST /api/internal/v1/oa/sso/exchange:'}
+INCLUDED count: 41
+included list written

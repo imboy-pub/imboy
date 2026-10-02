@@ -1,0 +1,429 @@
+{"protocolVersion":"0.1.1","runnerVersion":"1.31.1","pid":54777,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"/Users/leeyi/project/imboy.pub/imboyapp/integration_test/enterprise/organization_chart_nonoa_macos_test.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading /Users/leeyi/project/imboy.pub/imboyapp/integration_test/enterprise/organization_chart_nonoa_macos_test.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":0}
+{"count":1,"time":2,"type":"allSuites"}
+✓ Built build/macos/Build/Products/Debug/IMBoy.app
+
+[{"event":"test.startedProcess","params":{"vmServiceUri":"http://127.0.0.1:64741/NxqQ522QFog=/"}}]
+{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":45057}
+{"group":{"id":2,"suiteID":0,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":null,"column":null,"url":null},"type":"group","time":45058}
+{"test":{"id":3,"name":"N2 图形组织架构真实 macOS 非OA旅程","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":174,"column":5,"url":"package:flutter_test/src/widget_tester.dart","root_line":56,"root_column":3,"root_url":"file:///Users/leeyi/project/imboy.pub/imboyapp/integration_test/enterprise/organization_chart_nonoa_macos_test.dart"},"type":"testStart","time":45058}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":45266}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #0   AppInitializer._setupEnvironment (package:imboy/config/init.dart:331:12)\u001b[0m","type":"print","time":45266}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #1   <asynchronous suspension>\u001b[0m","type":"print","time":45266}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\u001b[0m","type":"print","time":45267}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ 💡 Running in environment: local, Env().apiBaseUrl: http://127.0.0.1:9800, wsUrl: ;\u001b[0m","type":"print","time":45267}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":45269}
+{"testID":3,"messageType":"print","message":"✅ NtpHelper: NTP 同步成功，偏移量: 190 ms","type":"print","time":45300}
+{"testID":3,"messageType":"print","message":"✅ [INIT] deviceId 初始化成功 (长度: 36)","type":"print","time":45305}
+{"testID":3,"messageType":"print","message":"✅ [INIT] AppEventBus 使用静态方法模式","type":"print","time":45317}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":45320}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #0   AppInitializer._initializeServices (package:imboy/config/init.dart:625:14)\u001b[0m","type":"print","time":45320}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #1   AppInitializer.initialize (package:imboy/config/init.dart:213:13)\u001b[0m","type":"print","time":45321}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\u001b[0m","type":"print","time":45321}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ 💡 🔧 Fetching initConfig (apiPublicKey empty: true, cache null: true)\u001b[0m","type":"print","time":45321}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":45321}
+{"testID":3,"messageType":"print","message":"🔧 initConfig: 开始获取配置","type":"print","time":45325}
+{"testID":3,"messageType":"print","message":"网络类型变化: unknown -> wifi","type":"print","time":45346}
+{"testID":3,"messageType":"print","message":"检测到网络变化，准备重连WebSocket: NetworkType.unknown -> NetworkType.wifi","type":"print","time":45346}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/init","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:00:15.000000","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:00:30.000000","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:00:30.000000","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":45351}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":45352}
+{"testID":3,"messageType":"print","message":"","type":"print","time":45352}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":45429}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/init","type":"print","time":45430}
+{"testID":3,"messageType":"print","message":"","type":"print","time":45430}
+{"testID":3,"messageType":"print","message":"🔧 initConfig: 加密内容长度=2136 模式=gcm","type":"print","time":45435}
+{"testID":3,"messageType":"print","message":"🔧 initConfig: 开始解密配置","type":"print","time":45435}
+{"testID":3,"messageType":"print","message":"🔐 [INIT] signKey initialized","type":"print","time":45435}
+{"testID":3,"messageType":"print","message":"🔧 initConfig: 解密完成","type":"print","time":45447}
+{"testID":3,"messageType":"print","message":"🔧 initConfig 诊断: env=local keys=[attach_presign_endpoint, config_version, effective_product_experience, features, login_pwd_rsa_encrypt, login_rsa_pub_key, public_base_url, terminology, upload_key, upload_scene, upload_url, ws_url]","type":"print","time":45447}
+{"testID":3,"messageType":"print","message":"🔧 initConfig 诊断: ws_url=(String, len=29)","type":"print","time":45448}
+{"testID":3,"messageType":"print","message":"✅ initConfig: Saved ws_url to storage","type":"print","time":45448}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":45465}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/app/features","type":"print","time":45466}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":45466}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":45468}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":45468}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":45468}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:00:15.000000","type":"print","time":45468}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:00:30.000000","type":"print","time":45468}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:00:30.000000","type":"print","time":45468}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":45468}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":45468}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":45468}
+{"testID":3,"messageType":"print","message":"","type":"print","time":45468}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":45514}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/app/features","type":"print","time":45514}
+{"testID":3,"messageType":"print","message":"","type":"print","time":45514}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":45517}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/app/manifest","type":"print","time":45517}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":45517}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":45517}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":45517}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":45518}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:00:15.000000","type":"print","time":45518}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:00:30.000000","type":"print","time":45518}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:00:30.000000","type":"print","time":45518}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":45518}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":45518}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":45518}
+{"testID":3,"messageType":"print","message":"","type":"print","time":45518}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":45549}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/app/manifest","type":"print","time":45549}
+{"testID":3,"messageType":"print","message":"","type":"print","time":45549}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":45554}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/app/policy","type":"print","time":45554}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":45554}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":45554}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":45554}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":45554}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:00:15.000000","type":"print","time":45554}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:00:30.000000","type":"print","time":45554}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:00:30.000000","type":"print","time":45554}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":45555}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":45555}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":45555}
+{"testID":3,"messageType":"print","message":"","type":"print","time":45555}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":45562}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/app/policy","type":"print","time":45562}
+{"testID":3,"messageType":"print","message":"","type":"print","time":45562}
+{"testID":3,"messageType":"print","message":"🧹 [QUEUE] 启动定期清理 Timer","type":"print","time":45564}
+{"testID":3,"messageType":"print","message":"🔍 [RETRY_SCAN] 开始扫描失败消息...","type":"print","time":45569}
+{"testID":3,"messageType":"print","message":"✅ [INIT] E2EE健康检查与自愈服务已初始化","type":"print","time":45575}
+{"testID":3,"messageType":"print","message":"[Push] 推送服务初始化...","type":"print","time":45575}
+{"testID":3,"messageType":"print","message":"📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列","type":"print","time":45578}
+{"testID":3,"messageType":"print","message":"[Push] FCM 初始化跳过: [core/not-initialized] Firebase has not been correctly initialized.","type":"print","time":45581}
+{"testID":3,"messageType":"print","message":"","type":"print","time":45581}
+{"testID":3,"messageType":"print","message":"Usually this means you've attempted to use a Firebase service before calling `Firebase.initializeApp`.","type":"print","time":45581}
+{"testID":3,"messageType":"print","message":"","type":"print","time":45581}
+{"testID":3,"messageType":"print","message":"View the documentation for more information: https://firebase.google.com/docs/flutter/setup","type":"print","time":45581}
+{"testID":3,"messageType":"print","message":"    ","type":"print","time":45581}
+{"testID":3,"messageType":"print","message":"[Push] 推送服务初始化完成 (本地通知模式)","type":"print","time":45581}
+{"testID":3,"messageType":"print","message":"AppUpgradeOrchestrator: first launch 1.0.0.17","type":"print","time":45583}
+{"testID":3,"messageType":"print","message":"用户未登录，取消WebSocket重连","type":"print","time":46017}
+{"testID":3,"messageType":"print","message":"unhandled element <filter/>; Picture key: Svg loader","type":"print","time":47639}
+{"testID":3,"messageType":"print","message":"🔧 initConfig: 返回缓存结果","type":"print","time":48542}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/passport/login","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"method: POST","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:00:15.000000","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:00:30.000000","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:00:30.000000","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48692}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":48706}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/app_version/check?vsn=1.0.0.17","type":"print","time":48706}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":48706}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":48706}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":48706}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":48706}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":48706}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":48706}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":48706}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":48706}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":48707}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":48707}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48707}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":48712}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/app_version/check?vsn=1.0.0.17","type":"print","time":48712}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48712}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":48713}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/passport/login","type":"print","time":48713}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48713}
+{"testID":3,"messageType":"print","message":"[passport] login resp ok=false err=errorPassword rsa=0","type":"print","time":48714}
+{"testID":3,"messageType":"print","message":"[passport] md5 登录失败，保留传输加密重试","type":"print","time":48714}
+{"testID":3,"messageType":"print","message":"🔧 initConfig: 返回缓存结果","type":"print","time":48714}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":48715}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/passport/login","type":"print","time":48715}
+{"testID":3,"messageType":"print","message":"method: POST","type":"print","time":48715}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":48716}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":48716}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":48716}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:00:15.000000","type":"print","time":48716}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:00:30.000000","type":"print","time":48716}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:00:30.000000","type":"print","time":48716}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":48716}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":48716}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":48716}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48716}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/app_upgrade/report","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"method: POST","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:00:15.000000","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:00:30.000000","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:00:30.000000","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48719}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":48722}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/app_upgrade/report","type":"print","time":48722}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48722}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":48749}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/passport/login","type":"print","time":48749}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48749}
+{"testID":3,"messageType":"print","message":"[Push] 无推送 token，跳过注册","type":"print","time":48757}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/report_device_key","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"method: POST","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48873}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":48887}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/report_device_key","type":"print","time":48887}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48887}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/olm/identity","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"method: POST","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48942}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":48957}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/olm/identity","type":"print","time":48957}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48957}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/olm/prekeys","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"method: POST","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"","type":"print","time":48967}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":49004}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/olm/prekeys","type":"print","time":49004}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49004}
+{"testID":3,"messageType":"print","message":"[olm] OTK refill: remaining=unknown uploaded=50","type":"print","time":49005}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/olm/fallback_key","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"method: POST","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49008}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":49016}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/olm/fallback_key","type":"print","time":49016}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49016}
+{"testID":3,"messageType":"print","message":"> ws: 状态变化: disconnected -> connecting","type":"print","time":49129}
+{"testID":3,"messageType":"print","message":"> ws: 开始连接 (from: login)","type":"print","time":49130}
+{"testID":3,"messageType":"print","message":"ℹ️ [Env] 使用缓存的 WebSocket URL (env=local)","type":"print","time":49139}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":49144}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/group/page?page=1&size=200&attr=manager","type":"print","time":49144}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":49144}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":49144}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":49144}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":49144}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":49144}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":49145}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":49145}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":49145}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":49145}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":49145}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49145}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":49151}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #0   AppLogger.info (package:imboy/service/app_logger.dart:93:20)\u001b[0m","type":"print","time":49151}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #1   WebSocketService._establishConnection (package:imboy/service/websocket.dart:400:17)\u001b[0m","type":"print","time":49151}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\u001b[0m","type":"print","time":49151}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ 💡 WebSocket framing 模式: v2 (selected protocol: imboy.v2)\u001b[0m","type":"print","time":49151}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":49151}
+{"testID":3,"messageType":"print","message":"> ws: 状态变化: connecting -> connected","type":"print","time":49151}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":49153}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #0   AppInitializer.triggerGroupMembershipSelfHeal (package:imboy/config/init.dart:695:14)\u001b[0m","type":"print","time":49153}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #1   MessageService.initNetworkMonitoring.<anonymous closure> (package:imboy/service/message.dart:262:28)\u001b[0m","type":"print","time":49153}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\u001b[0m","type":"print","time":49153}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ 💡 Group membership self-heal already running, source=ws_connected\u001b[0m","type":"print","time":49154}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":49154}
+{"testID":3,"messageType":"print","message":"ℹ️ [Env] 使用缓存的 WebSocket URL (env=local)","type":"print","time":49154}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":49154}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #0   AppLogger.info (package:imboy/service/app_logger.dart:93:20)\u001b[0m","type":"print","time":49154}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #1   WebSocketService._establishConnection (package:imboy/service/websocket.dart:447:17)\u001b[0m","type":"print","time":49154}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\u001b[0m","type":"print","time":49154}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ 💡 WebSocket 连接成功: ws://127.0.0.1:9800/api/v1/ws\u001b[0m","type":"print","time":49154}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":49154}
+{"testID":3,"messageType":"print","message":"🔄 [RETRY_QUEUE] 触发消息重试: source=WebSocketConnected, reason=WebSocket 连接恢复","type":"print","time":49154}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49158}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":49172}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/group/page?page=1&size=200&attr=manager","type":"print","time":49172}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49172}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":49172}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50","type":"print","time":49172}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49172}
+{"testID":3,"messageType":"print","message":"ℹ️ [E2EE_HEALTH] 暂无密钥变更通知 since=0","type":"print","time":49172}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/group/page?page=1&size=200&attr=join","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49174}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":49180}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/group/page?page=1&size=200&attr=join","type":"print","time":49181}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49181}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/group/page?page=1&size=200&attr=owner","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49182}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":49186}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/group/page?page=1&size=200&attr=owner","type":"print","time":49186}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49186}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":49187}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #0   AppInitializer._runGroupMembershipSelfHeal (package:imboy/config/init.dart:768:14)\u001b[0m","type":"print","time":49187}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #1   <asynchronous suspension>\u001b[0m","type":"print","time":49187}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\u001b[0m","type":"print","time":49187}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ 💡 Group membership self-heal done: groupRows=0, ownerRows=0, joinRows=0, managerRows=0, before(owner/join/manager)=(0/0/0), after(owner/join/manager)=(0/0/0), delta(owner/join/manager)=(0/0/0), errors=0, source=login\u001b[0m","type":"print","time":49187}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":49187}
+{"testID":3,"messageType":"print","message":"📊 [REMIND] countReminders items=0 newFroms={}","type":"print","time":49477}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":49483}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/conversation/mine","type":"print","time":49483}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":49483}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":49483}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":49483}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":49483}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":49484}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":49484}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":49484}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":49484}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":49484}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":49484}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49484}
+{"testID":3,"messageType":"print","message":"*** Request ***","type":"print","time":49485}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/backup/info","type":"print","time":49485}
+{"testID":3,"messageType":"print","message":"method: GET","type":"print","time":49485}
+{"testID":3,"messageType":"print","message":"responseType: ResponseType.json","type":"print","time":49485}
+{"testID":3,"messageType":"print","message":"followRedirects: true","type":"print","time":49485}
+{"testID":3,"messageType":"print","message":"persistentConnection: true","type":"print","time":49485}
+{"testID":3,"messageType":"print","message":"connectTimeout: 0:01:00.000000","type":"print","time":49485}
+{"testID":3,"messageType":"print","message":"sendTimeout: 0:01:00.000000","type":"print","time":49485}
+{"testID":3,"messageType":"print","message":"receiveTimeout: 0:01:00.000000","type":"print","time":49485}
+{"testID":3,"messageType":"print","message":"transformTimeout: null","type":"print","time":49485}
+{"testID":3,"messageType":"print","message":"receiveDataWhenStatusError: true","type":"print","time":49486}
+{"testID":3,"messageType":"print","message":"extra: {}","type":"print","time":49486}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49486}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":49496}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/e2ee/backup/info","type":"print","time":49496}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49496}
+{"testID":3,"messageType":"print","message":"*** Response ***","type":"print","time":49497}
+{"testID":3,"messageType":"print","message":"uri: http://127.0.0.1:9800/api/v1/conversation/mine","type":"print","time":49498}
+{"testID":3,"messageType":"print","message":"","type":"print","time":49498}
+{"testID":3,"messageType":"print","message":"> on ConversationRepo/all 0 items","type":"print","time":49498}
+{"testID":3,"messageType":"print","message":"ConversationNotifier: authoritative sync finished, items=0","type":"print","time":49499}
+{"testID":3,"messageType":"print","message":"┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────","type":"print","time":49500}
+{"testID":3,"messageType":"print","message":"│ #0   AppLogger.debug (package:imboy/service/app_logger.dart:86:20)","type":"print","time":49500}
+{"testID":3,"messageType":"print","message":"│ #1   EventBusTracker.trackEvent (package:imboy/service/event_bus.dart:134:15)","type":"print","time":49500}
+{"testID":3,"messageType":"print","message":"├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄","type":"print","time":49500}
+{"testID":3,"messageType":"print","message":"│ 🐛 📡 [EVENT_BUS] Fire: ConversationAuthoritySyncEvent | props: prop0, prop1, prop2, prop3, prop4","type":"print","time":49500}
+{"testID":3,"messageType":"print","message":"└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────","type":"print","time":49500}
+{"testID":3,"messageType":"print","message":"> on ConversationRepo/all 0 items","type":"print","time":49501}
+{"testID":3,"messageType":"print","message":"══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════","type":"print","time":50054}
+{"testID":3,"messageType":"print","message":"The following MissingPluginException was thrown running a test:","type":"print","time":50054}
+{"testID":3,"messageType":"print","message":"MissingPluginException(No implementation found for method captureScreenshot on channel","type":"print","time":50054}
+{"testID":3,"messageType":"print","message":"plugins.flutter.io/integration_test)","type":"print","time":50054}
+{"testID":3,"messageType":"print","message":"","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"When the exception was thrown, this was the stack:","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"#0      MethodChannel._invokeMethod (package:flutter/src/services/platform_channel.dart:364:7)","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"<asynchronous suspension>","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"#1      _IOCallbackManager.takeScreenshot (package:integration_test/src/_callback_io.dart:91:33)","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"<asynchronous suspension>","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"#2      IntegrationTestWidgetsFlutterBinding.takeScreenshot (package:integration_test/integration_test.dart:190:39)","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"<asynchronous suspension>","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"#3      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/integration_test/enterprise/organization_chart_nonoa_macos_test.dart:113:5)","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"<asynchronous suspension>","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"<asynchronous suspension>","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"<asynchronous suspension>","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"<asynchronous suspension>","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"(elided one frame from package:stack_trace)","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"The test description was:","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"  N2 图形组织架构真实 macOS 非OA旅程","type":"print","time":50055}
+{"testID":3,"messageType":"print","message":"════════════════════════════════════════════════════════════════════════════════════════════════════","type":"print","time":50055}
+{"testID":3,"error":"Test failed. See exception logs above.\nThe test description was: N2 图形组织架构真实 macOS 非OA旅程","stackTrace":"","isFailure":false,"type":"error","time":50056}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":50074}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #0   AppInitializer.dispose (package:imboy/config/init.dart:900:12)\u001b[0m","type":"print","time":50074}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #1   main.<anonymous closure>.<anonymous closure>.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/integration_test/enterprise/organization_chart_nonoa_macos_test.dart:68:30)\u001b[0m","type":"print","time":50074}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\u001b[0m","type":"print","time":50074}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ 💡 Disposing AppInitializer resources...\u001b[0m","type":"print","time":50074}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":50074}
+{"testID":3,"messageType":"print","message":"> ws: 手动关闭连接","type":"print","time":50074}
+{"testID":3,"messageType":"print","message":"> ws: 状态变化: connected -> disconnected","type":"print","time":50074}
+{"testID":3,"messageType":"print","message":"🔧 initConfig: 缓存已清理","type":"print","time":50078}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":50078}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #0   AppInitializer.dispose (package:imboy/config/init.dart:940:12)\u001b[0m","type":"print","time":50078}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ #1   <asynchronous suspension>\u001b[0m","type":"print","time":50078}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\u001b[0m","type":"print","time":50078}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m│ 💡 AppInitializer dispose completed\u001b[0m","type":"print","time":50078}
+{"testID":3,"messageType":"print","message":"\u001b[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\u001b[0m","type":"print","time":50078}
+{"testID":3,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":50090}
+{"test":{"id":4,"name":"(tearDownAll)","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":50,"column":5,"url":"package:integration_test/integration_test.dart"},"type":"testStart","time":50090}
+{"testID":4,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":50093}
+{"success":false,"type":"done","time":50100}
