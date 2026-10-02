@@ -69,6 +69,7 @@ case "$cmd" in
     exit 0
     ;;
   *"for DIR in "*"/usr/local/imboy-"*)
+    [ "${MOCK_FAIL_AT:-}" != "enumerate_target" ] || exit 2
     if [ "${MOCK_FIND_RELEASE_FAIL:-0}" = 1 ] && [[ "$cmd" = *"ls -dt"* ]]; then
       exit 1
     fi
@@ -767,5 +768,17 @@ else
 fi
 
 echo
+if run_deploy enumerate_target blue; then
+  bad "目标槽枚举失败必须终止发布" ""
+else
+  assert_absent "目标槽枚举失败不启动新节点" DAEMON
+  assert_absent "目标槽枚举失败不切流" SWITCH
+  assert_absent "目标槽枚举失败不执行迁移" MIGRATE
+  if grep -q '无法枚举目标槽 release' "$TMP_ROOT/output.log"; then
+    ok "目标槽枚举失败返回明确错误"
+  else
+    bad "目标槽枚举失败返回明确错误" "$(cat "$TMP_ROOT/output.log")"
+  fi
+fi
 echo "总计: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

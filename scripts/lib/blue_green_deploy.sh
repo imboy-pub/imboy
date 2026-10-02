@@ -299,16 +299,16 @@ ok "SSH 连接就绪 / SSH connection ready"
 # Run remote command; discard output in silent, pass through in verbose
 ssh_exec() {
   if [ "$SILENT" -eq 1 ]; then
-    ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1" >/dev/null 2>&1
+    ssh -n "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1" >/dev/null 2>&1
   else
-    ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1"
+    ssh -n "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1"
   fi
 }
 
 # 捕获远端 stdout（不走 ssh_exec，避免静默模式将输出丢入 /dev/null）
 # Capture remote stdout — bypass ssh_exec to avoid silent-mode discard
 ssh_capture() {
-  ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1" | tr -d '\r'
+  ssh -n "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1" | tr -d '\r'
 }
 
 ssh_upload() {
@@ -376,7 +376,17 @@ cleanup_new_node_before_cutover() {
 }
 
 cleanup_inactive_target() {
-  local dir
+  local dir dirs
+  # 显式捕获失败；进程替换中的 ERR trap 会在子 shell 误启动恢复，主流程却继续。
+  dirs="$(ssh_capture "
+    for DIR in /usr/local/imboy-*; do
+      [ -d \"\$DIR\" ] || continue
+      if grep -qsE '\\{http_port,[[:space:]]*$APP_PORT\\}' \"\$DIR\"/releases/*/sys.config; then
+        printf '%s\\n' \"\$DIR\"
+      fi
+    done
+    exit 0
+  ")" || fail "无法枚举目标槽 release，拒绝继续发布"
   while IFS= read -r dir; do
     [ -n "$dir" ] || continue
     [ "$dir" != "${ACTIVE_DIR:-}" ] || continue
@@ -384,13 +394,7 @@ cleanup_inactive_target() {
     log "清理目标槽残留进程: $dir (port=$APP_PORT)"
     stop_release_processes "$dir" \
       || fail "目标槽残留进程无法安全停止: $dir"
-  done < <(ssh_capture "
-    for DIR in /usr/local/imboy-*; do
-      [ -d \"\$DIR\" ] || continue
-      grep -qsE '\\{http_port,[[:space:]]*$APP_PORT\\}' \"\$DIR\"/releases/*/sys.config \
-        && printf '%s\\n' \"\$DIR\"
-    done
-  ")
+  done <<<"$dirs"
   ssh_exec "! ss -tlnH \"sport = :$APP_PORT\" 2>/dev/null | grep -q ." \
     || fail "目标端口 $APP_PORT 仍被未知进程占用，拒绝误杀"
 }
