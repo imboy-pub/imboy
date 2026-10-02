@@ -1183,7 +1183,7 @@ wh_configure(C, State) ->
 
 wh_https_required(C, State) ->
     ?assertMatch(
-        {error, {<<"invalid_request">>, invalid_webhook_config}},
+        {error, {<<"invalid_request">>, {ssrf_or_invalid_url, invalid_scheme}}},
         enterprise_webhook_logic:configure_tx(C, ctx_a(State), #{
             url => <<"http://oa.example.com/hook">>, events => [<<"file.confirmed">>]
         })

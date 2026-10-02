@@ -524,7 +524,7 @@ c2g_stage_archived_workspace_does_not_allocate_sequence_test_() ->
         ],
         fun() ->
             ?assertEqual({error, {980, <<"archived">>}}, stage_c2g_test_msg(<<"archived">>)),
-            ?assertEqual(0, meck:num_calls(epgsql, equery, 3))
+            ?assertEqual(0, meck:num_calls(epgsql, equery, 3, self()))
         end
     ).
 

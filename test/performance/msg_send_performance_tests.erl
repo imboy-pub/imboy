@@ -25,7 +25,8 @@ msg_performance_test_() ->
         {"单聊消息发送性能", fun test_c2c_send_performance/0},
         {"群聊消息发送性能", fun test_c2g_send_performance/0},
         {"批量消息发送性能", fun test_batch_send_performance/0},
-        {"消息查询性能", fun test_query_performance/0},
+        %% 50 条消息的落库轮询最多 sleep 50s；性能断言仍为每次平均 <= 200ms。
+        {"消息查询性能", {timeout, 90, fun test_query_performance/0}},
         {"并发发送性能", fun test_concurrent_send_performance/0}
     ]}.
 

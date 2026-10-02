@@ -1,0 +1,32 @@
+{
+  "status": "PASS_AFFECTED_BACKEND_MODULES",
+  "candidate": "8f25070787cc1dafb054bb97dd797daab4a8ee83",
+  "modules": [
+    "enterprise_msg_asset_webhook_pg_tests",
+    "msg_store_repo_tests",
+    "msg_send_performance_tests"
+  ],
+  "whole_goal_complete": false,
+  "owner": "gz-failure-focused-e9d9c7c89dc743168288b0dbb4abb048",
+  "exit_code": 0,
+  "fixture_run": "/tmp/imboy-seat-http.d5BmYC",
+  "passed_count": 117,
+  "source_unchanged": true,
+  "log_sha256": "17491fdab76e42ea080ebf5ac93c275c0219d27845da436ff6674e8914b4e835",
+  "report_sha256": "a564617dab2997d188fc200b37bd2d620d5eefd3f1b90dfa33292004d26e34de",
+  "source_files": [
+    {
+      "path": "test/logic/enterprise_msg_asset_webhook_pg_tests.erl",
+      "sha256": "1ea6c2ae714a824e0e3d8b4839964a25be27ed9fcb9319e1d6727dd1e21d1975"
+    },
+    {
+      "path": "test/repo/msg_store_repo_tests.erl",
+      "sha256": "e0127e1d20ba262fa5a31b218fc842723f3bebb7a8b5c6c20f799951da081e47"
+    },
+    {
+      "path": "test/performance/msg_send_performance_tests.erl",
+      "sha256": "6b3811b21b8f675520d08be92e7fbf90989138d09fe685cbaf9ecac412d4fd60"
+    }
+  ],
+  "tested_patch_sha256": "e82764f1ab7bcdc1ead3e287bb1992384880d5b65fe2d0b871386cd0ebe8eb23"
+}
