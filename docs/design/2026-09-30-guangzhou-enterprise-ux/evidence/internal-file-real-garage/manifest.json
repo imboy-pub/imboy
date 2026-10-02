@@ -1,0 +1,56 @@
+{
+  "status": "PASS_SCOPED_FINAL_SOURCE",
+  "source_base_candidate": "8d1e1cb6c6057c90bb89f55f6bcbf25b394e3f9a",
+  "runtime": {
+    "status": "PASS_SCOPED_FINAL_SOURCE",
+    "session_id": 78170,
+    "exit": 0,
+    "run_dir": "/tmp/imboy-seat-http.7yAQE9",
+    "candidate_before_commit": "8d1e1cb6c6057c90bb89f55f6bcbf25b394e3f9a",
+    "source_binding_verified": true,
+    "log_sha256": "cea1df5c5fc857bba487cdce23ddd1a81e77323ed5c55d0edb232da70405cd39",
+    "driver_log_sha256": "2c1bf64c6bd246e48e11a9b22283cb72299c2504a598185769c7145b5e3e0409"
+  },
+  "sources": [
+    {
+      "path": "test/api/enterprise_internal_file_garage_checks.erl",
+      "sha256": "ebe088e490e570c437f5aa24efc5f88fa57dd62f1f24586229c3025384468d9d"
+    },
+    {
+      "path": "src/logic/enterprise_asset_logic.erl",
+      "sha256": "4ccbb13a1452f8bf975c5a7463f8584a3e056b47467db0416fd5c546b8f1c6ad"
+    },
+    {
+      "path": "src/repo/enterprise_asset_repo.erl",
+      "sha256": "770f9457c11a5a40fa06b698aa72604cd7c888791ca4b45607c74979562f72fc"
+    },
+    {
+      "path": "src/api/enterprise_asset_handler.erl",
+      "sha256": "757ee89929180c65d69038508d37f812e9f4604fff255d287dc7ceade2a7afdd"
+    },
+    {
+      "path": "src/lib/elib_oss.erl",
+      "sha256": "2ad86f2802dcf89aacce0145bef671b7ba08f519525075d613336f7e2443795e"
+    },
+    {
+      "path": "src/api/enterprise_internal_idempotency.erl",
+      "sha256": "50930af7571d0f9a9ee33e899f35f4b0fb029c93534a1d4f24e544d0486236e7"
+    },
+    {
+      "path": "src/api/enterprise_internal_boundary.erl",
+      "sha256": "ad04ed68ab26ae4414e67f260a89ae35618df61a7fc3a3bf236442e0c0fabbe5"
+    },
+    {
+      "path": "test/api/intbe02_http_support.erl",
+      "sha256": "0a4bccd8248e0ab9ed0037023c85ab843facbf8b7a6cae30c700916a1d9ecdba"
+    }
+  ],
+  "command": "disposable PG plus Garage; boot production app and run enterprise_internal_file_garage_checks:run/0; require five PASS markers and INTERNAL_FILE_REAL_GARAGE_RESULT=ok",
+  "runtime_log_secret_scan_exit": 0,
+  "review": "APPROVE after precise error.code, real foreign object and pending, and function-size/variable-scope fixes",
+  "failed_preexecution_attempts": [
+    "missing frozen dependency root",
+    "unregistered new helper in frozen-cache allowlist",
+    "unbound App during helper split; fixed before final successful compile/run"
+  ]
+}

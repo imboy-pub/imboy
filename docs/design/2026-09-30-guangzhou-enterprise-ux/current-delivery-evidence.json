@@ -664,5 +664,13 @@
     "reason": "confirmed ordinary-member structure-write permissions; stopped owned VM before source changes",
     "interruption_evidence": "evidence/department-structure-authorization/previous-permission-failure.json",
     "requires_new_final_candidate_gate": true
+  },
+  "internal_file_real_garage": {
+    "status": "PASS_SCOPED_FINAL_SOURCE",
+    "evidence": "evidence/internal-file-real-garage/manifest.json",
+    "checks": 5,
+    "exit": 0,
+    "no_object_head_mock": true,
+    "full_goal_complete": false
   }
 }

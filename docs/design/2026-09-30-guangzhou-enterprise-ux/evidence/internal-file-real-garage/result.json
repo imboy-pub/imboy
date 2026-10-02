@@ -1,0 +1,19 @@
+{
+  "status": "PASS_SCOPED",
+  "exit": 0,
+  "source_binding_verified": true,
+  "checks": [
+    "Internal credential and production HTTP presign, actual Garage PUT and HEAD",
+    "missing object refuses confirm, no attachment or audit, pending retained",
+    "existing foreign-Org object and pending rejected; missing file scope rejected",
+    "server actual size/MIME persisted; enterprise org/app ownership and clear cipher preserved",
+    "same idempotency key returns same file; one attachment and one file.confirmed audit"
+  ],
+  "test_source_compiled_and_rerun_after_format_and_split": true,
+  "limitations": [
+    "no customer OA access",
+    "not all Internal operations or production readiness",
+    "server SHA256 content verification not claimed",
+    "mandatory audit-failure rollback not newly probed here"
+  ]
+}
