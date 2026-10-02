@@ -1,0 +1,20 @@
+module 'qr_login_handler_tests'
+  qr_login_handler_tests:29: -create_stores_session_and_returns_tokens_test_/0-fun-6-...*failed*
+  qr_login_handler_tests:68: -create_seat_purpose_stored_in_session_test_/0-fun-2-...*failed*
+  qr_login_handler_tests:81: -create_rejects_invalid_identity_or_purpose_before_cache_write_test_/0-fun-5-...*failed*
+  qr_login_handler_tests:118: -status_returns_confirmed_with_login_token_test_/0-fun-3-...[0.002 s] ok
+  qr_login_handler_tests:154: -status_does_not_delete_session_when_not_confirmed_test_/0-fun-3-...ok
+  qr_login_handler_tests:192: -scan_updates_status_to_scanned_test_/0-fun-2-...[0.003 s] ok
+  qr_login_handler_tests:230: -scan_returns_empty_device_fields_when_session_lacks_them_test_/0-fun-2-...ok
+  qr_login_handler_tests:315: -confirm_purpose_test/1-fun-2-...[0.008 s] ok
+  qr_login_handler_tests:315: -confirm_purpose_test/1-fun-2-...*failed*
+  qr_login_handler_tests:357: -cancel_updates_status_to_cancelled_test_/0-fun-2-...ok
+  qr_login_handler_tests:385: -scan_returns_expired_when_session_outdated_test_/0-fun-2-...ok
+  qr_login_handler_tests:416: -confirm_returns_already_used_for_duplicate_confirm_test_/0-fun-2-...ok
+  qr_login_handler_tests:447: -confirm_returns_forbidden_for_cross_user_test_/0-fun-2-...ok
+  qr_login_handler_tests:463: -scan_returns_invalid_qr_token_for_illegal_token_test_/0-fun-2-...ok
+  qr_login_handler_tests:509: -scan_broadcasts_scanned_event_on_success_test_/0-fun-4-...ok
+  qr_login_handler_tests:550: -scan_does_not_broadcast_when_expired_test_/0-fun-2-...ok
+  qr_login_handler_tests:598: -confirm_broadcasts_confirmed_event_with_token_on_success_test_/0-fun-6-...ok
+  qr_login_handler_tests:643: -confirm_does_not_broadcast_when_forbidden_test_/0-fun-2-...ok
+  Failed: 4.  Skipped: 0.  Passed: 14.

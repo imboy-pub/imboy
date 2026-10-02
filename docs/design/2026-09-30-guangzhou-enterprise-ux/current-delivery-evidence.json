@@ -242,5 +242,12 @@
     "evidence": "evidence/workbench-website-macos.json",
     "ios_validation": "NOT_EXECUTED",
     "customer_oa_sso": "NOT_VERIFIED"
+  },
+  "seat_token_qr_purpose": {
+    "status": "PASS_AUTH_PRIMITIVES_AND_QR_FOCUSED",
+    "evidence": "evidence/seat-token-qr-purpose/manifest.json",
+    "production_routes_isolated": false,
+    "console_client_migrated": false,
+    "full_backend_gate": false
   }
 }

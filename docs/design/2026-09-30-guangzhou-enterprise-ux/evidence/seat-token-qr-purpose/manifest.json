@@ -1,0 +1,66 @@
+{
+  "status": "PASS_AUTH_PRIMITIVES_AND_QR_FOCUSED",
+  "code_candidate": "b6c341aad11b86adc9b215c86b40691927e51bd6",
+  "auth_primitive_commit": "b7ff1447",
+  "modules": [
+    "auth_ds_tests",
+    "token_ds_tests",
+    "qr_login_handler_tests",
+    "qr_login_sse_handler_tests"
+  ],
+  "exit_code": 0,
+  "passed": 72,
+  "skipped": 0,
+  "source_hashes": [
+    {
+      "path": "src/ds/auth_ds.erl",
+      "sha256": "1d075f38dd09501a0e0c85bab787595416690d83f731d6be2fb66b0583e3e370"
+    },
+    {
+      "path": "src/ds/token_ds.erl",
+      "sha256": "54bbf2e5bfcbd76c2f68eaf9b084d0eb915bec8547a6ab60a7a1168731f1be37"
+    },
+    {
+      "path": "test/ds/auth_ds_tests.erl",
+      "sha256": "a07c298c2a8bc73943f6454b76927b54c97e927c7db456672c3d138e6cc0b425"
+    },
+    {
+      "path": "test/ds/token_ds_tests.erl",
+      "sha256": "63d9def88242297af96cee9c770bf22aa51c70e383294a3cb446b3452c325919"
+    },
+    {
+      "path": "src/api/qr_login_handler.erl",
+      "sha256": "4000567696ccb1978f41af17ee10d8a4a92f5a2467279a792d515a19391fcaf7"
+    },
+    {
+      "path": "test/api/qr_login_handler_tests.erl",
+      "sha256": "384862724836468727b5109ca9bba951ac29dbd755dc7ff312224443af15bf43"
+    },
+    {
+      "path": "test/api/qr_login_sse_handler_tests.erl",
+      "sha256": "92f106fa7f37a85199c0351523a22edb654461afef425e5168bf4c043bf64e18"
+    }
+  ],
+  "method": "compile current changed modules and selected tests into separate directory; explicitly load them over source-and-beam-hash-verified c38 cache; run EUnit in separate VM",
+  "cached_source_binding_verified": true,
+  "cached_application_beams_verified": true,
+  "old_qr_regression": {
+    "exit_code": 1,
+    "failed": 4,
+    "passed": 14,
+    "skipped": 0
+  },
+  "review": "APPROVE",
+  "artifacts": {
+    "focused-eunit.txt": "b982335bba9b2593b006a352f8e1c8da9be6b00b50d330f2d4a3bfee23675252",
+    "old-qr-regression.txt": "3e08110054b8a5264c823612d5f1371ccb61e2b61015b7e661542a386634b043"
+  },
+  "qr_default_purpose": "human",
+  "seat_session_purpose": "seat",
+  "confirmation_purpose_source": "server session, request override ignored",
+  "console_client_migrated": false,
+  "production_routes_isolated": false,
+  "full_backend_gate": false,
+  "whole_goal_complete": false,
+  "log_sanitization": "only module/test names, test status and final counts; raw values removed"
+}

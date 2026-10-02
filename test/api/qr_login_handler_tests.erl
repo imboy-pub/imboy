@@ -21,6 +21,7 @@ create_stores_session_and_returns_tokens_test_() ->
                         ({qr_login, SessionToken}, SessionData, 60) ->
                             ?assertEqual(SessionToken, maps:get(<<"session_token">>, SessionData)),
                             ?assertEqual(<<"waiting">>, maps:get(<<"status">>, SessionData)),
+                            ?assertEqual(<<"human">>, maps:get(<<"purpose">>, SessionData)),
                             ?assertMatch(<<_/binary>>, maps:get(<<"qr_token">>, SessionData)),
                             ok
                     end}
@@ -48,6 +49,50 @@ create_stores_session_and_returns_tokens_test_() ->
             %% 截屏二维码即可反解 session_token 并窃取 login_token。现在必须不可反解。
             ?assertEqual(nomatch, binary:match(QRTok, SessTok)),
             ?assertEqual(nomatch, binary:match(base64:decode(QRTok), base64:decode(SessTok)))
+        end
+    ).
+
+create_seat_purpose_stored_in_session_test_() ->
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                {imboy_cache, [
+                    {'set', 3, fun
+                        ({qr_login_qr, _}, _, 60) ->
+                            ok;
+                        ({qr_login, _}, Session, 60) ->
+                            ?assertEqual(<<"seat">>, maps:get(<<"purpose">>, Session)),
+                            ok
+                    end}
+                ]}
+            ],
+        fun() ->
+            Body = jsone:encode(#{<<"device_id">> => <<"seat-device">>, <<"purpose">> => <<"seat">>}),
+            {stop, Req1, _} = qr_login_handler:handle_request(req(<<"POST">>, Body, []), #{
+                action => create
+            }),
+            ?assertMatch({success, _}, response_result(Req1))
+        end
+    ).
+
+create_rejects_invalid_identity_or_purpose_before_cache_write_test_() ->
+    ?WITH_MECKS(
+        common_mocks() ++
+            [{imboy_cache, [{'set', 3, fun(_, _, _) -> error(unexpected_cache_write) end}]}],
+        fun() ->
+            lists:foreach(
+                fun({Did, Purpose}) ->
+                    Body = jsone:encode(#{
+                        <<"device_id">> => Did, <<"purpose">> => Purpose
+                    }),
+                    {stop, Req1, _} = qr_login_handler:handle_request(req(<<"POST">>, Body, []), #{
+                        action => create
+                    }),
+                    ?assertMatch({error, _, ?ERR_BAD_REQUEST}, response_result(Req1))
+                end,
+                [{<<"seat-device">>, P} || P <- [<<"admin">>, <<>>, null, 1]] ++
+                    [{D, <<"seat">>} || D <- [<<>>, null, 1]]
+            )
         end
     ).
 
@@ -200,6 +245,12 @@ scan_returns_empty_device_fields_when_session_lacks_them_test_() ->
     ).
 
 confirm_marks_session_confirmed_and_records_device_test_() ->
+    confirm_purpose_test(<<"human">>).
+
+confirm_uses_cached_seat_purpose_ignoring_request_override_test_() ->
+    confirm_purpose_test(<<"seat">>).
+
+confirm_purpose_test(Purpose) ->
     SessionToken = <<"session-confirm-1">>,
     QRToken = make_qr_token(SessionToken),
     ?WITH_MECKS(
@@ -210,14 +261,21 @@ confirm_marks_session_confirmed_and_records_device_test_() ->
                         qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
                             KeyToken =:= SessionToken
                         ->
-                            {ok, #{
-                                <<"status">> => <<"scanned">>,
-                                <<"scanned_by">> => 1001,
-                                <<"expires_at">> => future_ms(),
-                                <<"device_id">> => <<"web-device-1">>,
-                                <<"device_name">> => <<"Safari">>,
-                                <<"platform">> => <<"web">>
-                            }}
+                            {ok,
+                                maps:merge(
+                                    case Purpose of
+                                        <<"seat">> -> #{<<"purpose">> => Purpose};
+                                        _ -> #{}
+                                    end,
+                                    #{
+                                        <<"status">> => <<"scanned">>,
+                                        <<"scanned_by">> => 1001,
+                                        <<"expires_at">> => future_ms(),
+                                        <<"device_id">> => <<"web-device-1">>,
+                                        <<"device_name">> => <<"Safari">>,
+                                        <<"platform">> => <<"web">>
+                                    }
+                                )}
                         end)},
                     {'set', 3, fun({qr_login, KeyToken}, SessionData, 60) when
                         KeyToken =:= SessionToken
@@ -232,12 +290,19 @@ confirm_marks_session_confirmed_and_records_device_test_() ->
                 {token_ds, [
                     %% E2EE-013：签发的 token 必须绑定 create 时上报的 device_id，
                     %% 且 user_device 行必须已经落库（否则设备级校验会 401）
-                    {'encrypt_token', 2, fun(1001, <<"web-device-1">>) ->
-                        true = meck:called(
-                            user_device_repo, save, ['_', 1001, <<"web-device-1">>, '_']
-                        ),
-                        <<"login-token-1001">>
-                    end}
+                    {
+                        case Purpose of
+                            <<"seat">> -> encrypt_seat_token;
+                            _ -> encrypt_token
+                        end,
+                        2,
+                        fun(1001, <<"web-device-1">>) ->
+                            true = meck:called(
+                                user_device_repo, save, ['_', 1001, <<"web-device-1">>, '_']
+                            ),
+                            <<"login-token-1001">>
+                        end
+                    }
                 ]},
                 {user_device_repo, [
                     {'save', 4, fun(_Now, 1001, <<"web-device-1">>, PostVals) ->
@@ -249,7 +314,17 @@ confirm_marks_session_confirmed_and_records_device_test_() ->
                 ]}
             ],
         fun() ->
-            Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
+            Body = jsone:encode(
+                #{
+                    <<"qr_token">> => QRToken,
+                    <<"purpose">> =>
+                        case Purpose of
+                            <<"seat">> -> <<"human">>;
+                            _ -> <<"seat">>
+                        end
+                },
+                [native_utf8]
+            ),
             Req0 = req(<<"POST">>, Body, []),
             State = #{action => confirm, current_uid => 1001},
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),

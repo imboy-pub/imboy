@@ -1,0 +1,77 @@
+module 'auth_ds_tests'
+  auth_ds_tests:36: -verify_sign_with_valid_sign_test_/0-fun-2-...[0.021 s] ok
+  auth_ds_tests:75: -verify_sign_with_invalid_sign_test_/0-fun-2-...ok
+  auth_ds_tests:109: -verify_sign_with_missing_sign_header_test_/0-fun-2-...[0.001 s] ok
+  auth_ds_tests:119: -do_verify_sign_with_sha256_test_/0-fun-2-...ok
+  auth_ds_tests: do_verify_sign_with_invalid_input_test...ok
+  auth_ds_tests: do_verify_sign_malformed_sign_never_throws_test...[0.001 s] ok
+  auth_ds_tests: do_verify_sign_correct_length_and_valid_sign_test...ok
+  auth_ds_tests:199: -verify_token_with_valid_token_test_/0-fun-2-...ok
+  auth_ds_tests:209: -verify_token_with_refresh_token_test_/0-fun-2-...ok
+  auth_ds_tests:225: -verify_token_with_wrong_purpose_test_/0-fun-3-...[0.055 s] ok
+  auth_ds_tests:260: -seat_token_purpose_isolation_test_/0-fun-10-...ok
+  auth_ds_tests:283: -seat_token_requires_device_epoch_and_expiry_test_/0-fun-4-...ok
+  auth_ds_tests:315: -seat_token_device_and_epoch_revocation_test_/0-fun-6-...ok
+  auth_ds_tests: parse_authorization_header_with_bearer_prefix_test...ok
+  auth_ds_tests: remove_last_forward_slash_test...ok
+  auth_ds_tests: strip_version_prefix_test...ok
+  auth_ds_tests: current_uid_default_test...ok
+  auth_ds_tests: current_did_default_test...ok
+  auth_ds_tests:364: -do_authorization_without_token_test_/0-fun-2-...ok
+  auth_ds_tests:398: -do_authorization_expired_token_maps_http_401_test_/0-fun-2-...[0.001 s] ok
+  auth_ds_tests:424: -do_authorization_invalid_token_maps_http_401_test_/0-fun-2-...ok
+  auth_ds_tests:450: -do_authorization_refresh_token_keeps_business_error_test_/0-fun-2-...ok
+module 'token_ds_tests'
+  token_ds_tests:18: -encrypt_token_returns_binary_test_/0-fun-3-...ok
+  token_ds_tests:27: -encrypt_token_non_empty_test_/0-fun-3-...ok
+  token_ds_tests:36: -encrypt_token_different_for_different_uids_test_/0-fun-4-...ok
+  token_ds_tests:52: -encrypt_refreshtoken_returns_binary_test_/0-fun-5-...ok
+  token_ds_tests:63: -encrypt_refreshtoken_non_empty_test_/0-fun-6-...ok
+  token_ds_tests:75: -encrypt_refreshtoken_different_from_token_test_/0-fun-4-...ok
+  token_ds_tests:91: -encrypt_token_zero_uid_test_/0-fun-3-...ok
+  token_ds_tests:101: -encrypt_token_negative_uid_test_/0-fun-4-...ok
+  token_ds_tests:117: -encrypt_token_binds_did_roundtrip_test_/0-fun-2-...[0.011 s] ok
+  token_ds_tests:129: -legacy_token_has_empty_did_test_/0-fun-2-...ok
+  token_ds_tests:140: -encrypt_refreshtoken_binds_did_test_/0-fun-2-...ok
+  token_ds_tests:157: -expired_token_returns_705_test_/0-fun-2-...ok
+  token_ds_tests:172: -garbage_token_returns_706_test_/0-fun-2-...ok
+  token_ds_tests:181: -wrong_key_token_returns_706_test_/0-fun-2-...ok
+module 'qr_login_handler_tests'
+  qr_login_handler_tests:29: -create_stores_session_and_returns_tokens_test_/0-fun-6-...[0.003 s] ok
+  qr_login_handler_tests:68: -create_seat_purpose_stored_in_session_test_/0-fun-2-...[0.001 s] ok
+  qr_login_handler_tests:81: -create_rejects_invalid_identity_or_purpose_before_cache_write_test_/0-fun-5-...ok
+  qr_login_handler_tests:118: -status_returns_confirmed_with_login_token_test_/0-fun-3-...[0.002 s] ok
+  qr_login_handler_tests:154: -status_does_not_delete_session_when_not_confirmed_test_/0-fun-3-...[0.001 s] ok
+  qr_login_handler_tests:192: -scan_updates_status_to_scanned_test_/0-fun-2-...[0.004 s] ok
+  qr_login_handler_tests:230: -scan_returns_empty_device_fields_when_session_lacks_them_test_/0-fun-2-...ok
+  qr_login_handler_tests:315: -confirm_purpose_test/1-fun-2-...[0.003 s] ok
+  qr_login_handler_tests:315: -confirm_purpose_test/1-fun-2-...ok
+  qr_login_handler_tests:357: -cancel_updates_status_to_cancelled_test_/0-fun-2-...ok
+  qr_login_handler_tests:385: -scan_returns_expired_when_session_outdated_test_/0-fun-2-...ok
+  qr_login_handler_tests:416: -confirm_returns_already_used_for_duplicate_confirm_test_/0-fun-2-...ok
+  qr_login_handler_tests:447: -confirm_returns_forbidden_for_cross_user_test_/0-fun-2-...ok
+  qr_login_handler_tests:463: -scan_returns_invalid_qr_token_for_illegal_token_test_/0-fun-2-...ok
+  qr_login_handler_tests:509: -scan_broadcasts_scanned_event_on_success_test_/0-fun-4-...ok
+  qr_login_handler_tests:550: -scan_does_not_broadcast_when_expired_test_/0-fun-2-...[0.001 s] ok
+  qr_login_handler_tests:598: -confirm_broadcasts_confirmed_event_with_token_on_success_test_/0-fun-6-...ok
+  qr_login_handler_tests:643: -confirm_does_not_broadcast_when_forbidden_test_/0-fun-2-...ok
+module 'qr_login_sse_handler_tests'
+  qr_login_sse_handler_tests:52: -init_with_valid_session_token_returns_cowboy_loop_test_/0-fun-4-...ok
+  qr_login_sse_handler_tests:74: -init_calls_stream_reply_with_sse_headers_test_/0-fun-5-...ok
+  qr_login_sse_handler_tests:101: -init_calls_subscribe_with_session_token_and_self_test_/0-fun-5-...[0.001 s] ok
+  qr_login_sse_handler_tests:128: -init_without_session_token_returns_400_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:146: -init_with_empty_session_token_returns_400_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:162: -info_scanned_event_streams_chunk_and_keeps_loop_test_/0-fun-7-...ok
+  qr_login_sse_handler_tests:181: -info_confirmed_event_streams_chunk_and_stops_test_/0-fun-4-...ok
+  qr_login_sse_handler_tests:195: -info_expired_event_streams_chunk_and_stops_test_/0-fun-2-...ok
+  qr_login_sse_handler_tests:205: -info_cancelled_event_streams_chunk_and_keeps_loop_test_/0-fun-2-...ok
+  qr_login_sse_handler_tests:214: -info_waiting_event_streams_chunk_and_keeps_loop_test_/0-fun-2-...ok
+  qr_login_sse_handler_tests:223: -info_non_map_message_keeps_loop_silently_test_/0-fun-4-...ok
+  qr_login_sse_handler_tests:245: -terminate_unsubscribes_when_session_token_present_test_/0-fun-3-...[0.001 s] ok
+  qr_login_sse_handler_tests:269: -init_starts_heartbeat_timer_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:285: -info_heartbeat_emits_sse_comment_chunk_test_/0-fun-4-...ok
+  qr_login_sse_handler_tests:305: -info_heartbeat_keeps_loop_test_/0-fun-2-...ok
+  qr_login_sse_handler_tests:320: -info_heartbeat_reschedules_timer_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:338: -terminate_cancels_heartbeat_timer_test_/0-fun-3-...ok
+  qr_login_sse_handler_tests:356: -terminate_does_not_call_unsubscribe_when_state_lacks_token_test_/0-fun-4-...ok
+  All 72 tests passed.

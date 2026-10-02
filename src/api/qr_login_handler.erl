@@ -73,18 +73,22 @@ handle_request(Req0, State) ->
 
 %% @doc 创建登录二维码
 %% POST /api/v1/passport/qr_login/create
-%% Body: {"device_id": "xxx", "device_name": "Web Browser", "platform": "web"}
+%% Body: {"device_id": "xxx", "device_name": "Web Browser", "platform": "web", "purpose": "human"|"seat"}
 handle_create(Req) ->
     {ok, Body, _} = cowboy_req:read_body(Req),
     Data = jsone:decode(Body),
     DeviceId = maps:get(<<"device_id">>, Data, <<>>),
     DeviceName = maps:get(<<"device_name">>, Data, <<"Web Browser">>),
     Platform = maps:get(<<"platform">>, Data, <<"web">>),
+    Purpose = maps:get(<<"purpose">>, Data, <<"human">>),
 
-    case DeviceId of
-        <<>> ->
+    case
+        is_binary(DeviceId) andalso DeviceId =/= <<>> andalso
+            (Purpose =:= <<"human">> orelse Purpose =:= <<"seat">>)
+    of
+        false ->
             elib_response:error(Req, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
+        true ->
             % 生成唯一的会话 Token
             SessionToken = generate_session_token(),
             % 生成 QR 码数据（包含 session_token）
@@ -97,6 +101,7 @@ handle_create(Req) ->
                 <<"device_id">> => DeviceId,
                 <<"device_name">> => DeviceName,
                 <<"platform">> => Platform,
+                <<"purpose">> => Purpose,
                 <<"status">> => <<"waiting">>,
                 <<"created_at">> => erlang:system_time(millisecond),
                 <<"expires_at">> => erlang:system_time(millisecond) + 60000
@@ -336,7 +341,11 @@ handle_confirm(Req, State) ->
                                                         Uid, DeviceId, DeviceName, Platform
                                                     ),
                                                     LoginToken = generate_login_token(
-                                                        Uid, DeviceId
+                                                        Uid,
+                                                        DeviceId,
+                                                        maps:get(
+                                                            <<"purpose">>, Session, <<"human">>
+                                                        )
                                                     ),
                                                     UpdatedSession = Session#{
                                                         <<"status">> => <<"confirmed">>,
@@ -438,10 +447,11 @@ parse_qr_token(QRToken) ->
     end.
 
 %% @doc 生成登录 Token（E2EE-013：绑定被登录设备的 DID）
--spec generate_login_token(integer(), binary()) -> binary().
-generate_login_token(Uid, Did) ->
-    % 调用 token_ds 生成 JWT Token
-    token_ds:encrypt_token(Uid, Did).
+-spec generate_login_token(integer(), binary(), binary()) -> binary().
+generate_login_token(Uid, Did, <<"human">>) ->
+    token_ds:encrypt_token(Uid, Did);
+generate_login_token(Uid, Did, <<"seat">>) ->
+    token_ds:encrypt_seat_token(Uid, Did).
 
 %% @doc 缓存会话
 -spec cache_session(binary(), map()) -> ok.
