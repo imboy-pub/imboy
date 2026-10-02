@@ -1,0 +1,3 @@
+Backend focused EUnit: 166 passed, 0 failed.
+Suites: auth_ds_tests, token_ds_tests, qr_login_handler_tests, qr_login_sse_handler_tests, auth_middleware_api_v1_tests, cs_route_contract_tests, seat_console_routes_tests, eb_auth_seat_gate_tests, eb_auth_tests.
+Raw log digest and source bindings recorded in manifest.json; runtime log content intentionally excluded.

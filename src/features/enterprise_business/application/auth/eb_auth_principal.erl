@@ -52,7 +52,7 @@
 
 %% 租户面前缀（无尾斜杠；`/api/v1/enterprise` 与 `/api/v1/enterprise/...` 都算）。
 %% V1 仅 `function_key=sales|customer_service`，故租户面只有企业通用面与客服面。
--define(TENANT_PREFIXES, [<<"/api/v1/enterprise">>, <<"/api/v1/cs">>]).
+-define(TENANT_PREFIXES, [<<"/api/v1/enterprise">>, <<"/api/v1/cs">>, <<"/api/v1/seat">>]).
 
 %% 平台运营面前缀（EB-D09：imboyadmin 只走 `/api/adm`）。
 -define(PLATFORM_PREFIXES, [<<"/adm">>, <<"/api/adm">>]).
@@ -244,14 +244,18 @@ requirement(Principal, Surface, Metadata) ->
                 {error, _} = Err ->
                     Err;
                 {ok, Governance} ->
-                    {ok, #{
+                    Base = #{
                         surface => Surface,
                         principal => Principal,
                         required_function => RequiredFunction,
                         required_permission => RequiredPermission,
                         required_governance => Governance,
                         require_contact => Principal =:= cs_visit
-                    }}
+                    },
+                    case maps:get(jwt_purpose, Metadata, human) of
+                        seat -> {ok, Base#{require_seat => true}};
+                        _ -> {ok, Base}
+                    end
             end
     end.
 

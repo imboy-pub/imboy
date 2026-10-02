@@ -98,6 +98,8 @@ route_opt(Surface, Action) ->
         {b(Path), Opts}
      || {Path, H, Opts} <- cs_routes(all),
         lists:member(H, HandlerFilter),
+        %% 既有测试/监听器默认使用 Human App 面；Console 由专用合同测试选择。
+        maps:get(jwt_purpose, Opts, human) =:= human,
         maps:get(action, Opts, undefined) =:= Action
     ],
     case Matches of

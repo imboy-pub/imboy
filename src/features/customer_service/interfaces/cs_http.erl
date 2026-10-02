@@ -151,6 +151,8 @@ is_credential_surface_path(_Path) ->
 %% 同一合同，形状层面统一免签）。开发期 api_auth_switch=off 掩盖了这
 %% 一缺口；生产该开关是启动强制 on（imboy_app:ensure_api_auth_switch_on）。
 -spec is_web_seat_surface_path(binary()) -> boolean().
+is_web_seat_surface_path(<<"/api/v1/seat/", Suffix/binary>>) ->
+    is_web_seat_surface_path(<<"/api/v1/", Suffix/binary>>);
 is_web_seat_surface_path(Path) when is_binary(Path) ->
     case segments(Path) of
         %% BE-S01a：坐席上下文清单（工作台登录后第一跳）。

@@ -239,7 +239,14 @@ do_authorization(undefined, Req, _Env) ->
     ),
     {stop, Req1};
 do_authorization(Authorization, Req, Env) ->
-    case verify_token(Authorization) of
+    RouteOpts = maps:get(handler_opts, Env, #{}),
+    Verification =
+        case maps:get(jwt_purpose, RouteOpts, human) of
+            human -> verify_token(Authorization);
+            seat -> verify_seat_token(Authorization);
+            _ -> {error, ?ERR_TOKEN_INVALID, <<"TOKEN PURPOSE NOT ALLOWED">>}
+        end,
+    case Verification of
         {ok, UserId, Did} ->
             #{handler_opts := HandlerOpts} = Env,
             % E2EE-013：把 token 绑定的设备 DID 注入认证上下文，

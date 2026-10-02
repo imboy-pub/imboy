@@ -162,7 +162,8 @@ member_permission(Requirement, Request, Facts, Member, Assignment) ->
                 seat_enabled_gate(
                     OrgId,
                     maps:get(function_key, Assignment, undefined),
-                    maps:get(business_identity_id, Assignment, undefined)
+                    maps:get(business_identity_id, Assignment, undefined),
+                    maps:get(require_seat, Requirement, false)
                 )
             of
                 {error, _} = Err2 ->
@@ -205,7 +206,7 @@ member_permission(Requirement, Request, Facts, Member, Assignment) ->
 %%
 %% 读取经 `customer_service_facade:fetch_seat/2`（铁律 5：单元间只经 facade；
 %% 只读）。查询带目标 `OrgId`（租户作用域显式，铁律 6）。
-seat_enabled_gate(OrgId, <<"customer_service">>, IdentityId) when
+seat_enabled_gate(OrgId, <<"customer_service">>, IdentityId, RequireSeat) when
     is_integer(OrgId), is_integer(IdentityId)
 ->
     case customer_service_facade:fetch_seat(OrgId, #{business_identity_id => IdentityId}) of
@@ -214,14 +215,16 @@ seat_enabled_gate(OrgId, <<"customer_service">>, IdentityId) when
                 true -> ok;
                 false -> {error, seat_disabled}
             end;
+        {error, not_found} when RequireSeat ->
+            {error, {seat_not_found, IdentityId}};
         {error, not_found} ->
             ok;
         {error, _Reason} = Err ->
             Err
     end;
-seat_enabled_gate(_OrgId, <<"customer_service">>, _MalformedIdentity) ->
+seat_enabled_gate(_OrgId, <<"customer_service">>, _MalformedIdentity, _RequireSeat) ->
     {error, identity_assignment_missing};
-seat_enabled_gate(_OrgId, _NonSeatDomainFunction, _IdentityId) ->
+seat_enabled_gate(_OrgId, _NonSeatDomainFunction, _IdentityId, _RequireSeat) ->
     ok.
 
 %% ===================================================================

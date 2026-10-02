@@ -249,5 +249,135 @@
     "production_routes_isolated": false,
     "console_client_migrated": false,
     "full_backend_gate": false
+  },
+  "seat_console_purpose_routes": {
+    "status": "PASS_SCOPED",
+    "backend_tests": 166,
+    "admin_tests": 209,
+    "admin_candidate": "ef2887eaf930142d037791fad5680841b3cfe4c9",
+    "backend_parent": "11fc985c0dbdcf2f33cdc733663f8ac39b65962d",
+    "source_hashes": [
+      {
+        "path": "src/ds/auth_ds.erl",
+        "sha256": "a66ea60389764c01b502eaabaf80e7f6ac04adf7b9a835c17ef2019179a38a76"
+      },
+      {
+        "path": "src/ds/token_ds.erl",
+        "sha256": "54bbf2e5bfcbd76c2f68eaf9b084d0eb915bec8547a6ab60a7a1168731f1be37"
+      },
+      {
+        "path": "test/ds/auth_ds_tests.erl",
+        "sha256": "a07c298c2a8bc73943f6454b76927b54c97e927c7db456672c3d138e6cc0b425"
+      },
+      {
+        "path": "test/ds/token_ds_tests.erl",
+        "sha256": "63d9def88242297af96cee9c770bf22aa51c70e383294a3cb446b3452c325919"
+      },
+      {
+        "path": "src/api/qr_login_handler.erl",
+        "sha256": "4000567696ccb1978f41af17ee10d8a4a92f5a2467279a792d515a19391fcaf7"
+      },
+      {
+        "path": "test/api/qr_login_handler_tests.erl",
+        "sha256": "384862724836468727b5109ca9bba951ac29dbd755dc7ff312224443af15bf43"
+      },
+      {
+        "path": "test/api/qr_login_sse_handler_tests.erl",
+        "sha256": "92f106fa7f37a85199c0351523a22edb654461afef425e5168bf4c043bf64e18"
+      },
+      {
+        "path": "src/imboy_router.erl",
+        "sha256": "b69bacec05985f930cc3c0decb46f7b2949bee6446d44c27f15ee08577d9318c"
+      },
+      {
+        "path": "src/api/auth_middleware_api_v1.erl",
+        "sha256": "86f1271280ac9ff72fd9a82ae1ff20f57f064405e4ae9f42b4411533ee0e429e"
+      },
+      {
+        "path": "src/features/enterprise_business/application/auth/eb_auth_principal.erl",
+        "sha256": "438f626448bf507e321ae7d5e25557ed4624045df7ec78fb2c1ee61efc1b61a2"
+      },
+      {
+        "path": "src/features/customer_service/interfaces/cs_http.erl",
+        "sha256": "18f9b3c5bc2d1a48d18219459653d5a4f74ae1b1c962292093b5c8db5f5e87e8"
+      },
+      {
+        "path": "src/features/enterprise_business/interfaces/eb_enterprise_http.erl",
+        "sha256": "cf6e0f4a88ccbf4790e11595d7da57df0956f4f984d6a11ec6da6ef43946e644"
+      },
+      {
+        "path": "test/features/customer_service/interfaces/cs_route_contract_tests.erl",
+        "sha256": "ec934640d684c98754288c56ba5d24c8ea023a71a5bf43883f62a6773f9f32f8"
+      },
+      {
+        "path": "test/api/auth_middleware_api_v1_tests.erl",
+        "sha256": "84e9ee15c058e8d21a534fa675ea535bac82cf4fba5e8877494e9bfbc1496559"
+      },
+      {
+        "path": "test/api/seat_console_routes_tests.erl",
+        "sha256": "afb99a55d18ff080366a9217d5ec64f0ef5c32cceed3203408d84f10a882a03a"
+      },
+      {
+        "path": "test/features/customer_service/interfaces/cs_test_support.erl",
+        "sha256": "f9cc940950cd86acc485fb03a0189b6ed3686b9d79e6b11c58de6ceb91543511"
+      },
+      {
+        "path": "src/features/enterprise_business/application/auth/eb_auth_app.erl",
+        "sha256": "188fe5acf0dc37d7b918ae7bf38130124c222739d7dead5f57070000e3d54573"
+      },
+      {
+        "path": "test/features/enterprise_business/application/auth/eb_auth_seat_gate_tests.erl",
+        "sha256": "d537e2877727cf205447e28735bb17f838ed8d8c1f0859f72c4e349717cfe90e"
+      },
+      {
+        "path": "test/features/enterprise_business/application/auth/eb_auth_tests.erl",
+        "sha256": "11c7ef6c0c22c7d3ffe092e4e6a0eec842c6b842f409621820fcae1eb9696863"
+      }
+    ],
+    "backend_log_sha256": "90c65a7fa85769c98695d2afecffc3338f23222428055319a4be29428b4151c2",
+    "source_binding_verified": true,
+    "cached_beams_verified": true,
+    "production_business_handler_executed": false,
+    "full_four_domain_gate": false,
+    "production_ready": false,
+    "checks": [
+      "real Cowboy production middleware rejects Human on Seat and Seat on Human before probe handler",
+      "anonymous 401; unsupported method 405 with Allow GET",
+      "19 frozen aliases; customer_service identity and enabled Seat required",
+      "Seat upload URL relative; Human absolute URL retained",
+      "upload_ref credential target same origin and exact Seat presign path; denied targets make no fetch",
+      "Admin typecheck/build; Widget build/verify; explicit backend asset pairing"
+    ],
+    "limitations": [
+      "real HTTP gate replaces business handler; no PG business journey in this test",
+      "cached dependency artifacts used for focused backend tests",
+      "full current three-repository acceptance pending"
+    ],
+    "admin_logs": [
+      {
+        "path": "gz-seat-console-admin-domain-pass.log",
+        "sha256": "795a341f3a22f2155ff74c4e5c859432b7f2fc946dfef3f5d7a36af4263f552d"
+      },
+      {
+        "path": "gz-seat-console-admin-typecheck.log",
+        "sha256": "9b2b770f3351789b5fd00fa72323f6eb7ea6de3fa3d75b7678bcbee1c8f6d5f6"
+      },
+      {
+        "path": "gz-seat-console-admin-build.log",
+        "sha256": "c5e732bd8337448641d0a363e2e861678f1753b6a7049298001679547a9329bc"
+      },
+      {
+        "path": "gz-seat-console-widget-build.log",
+        "sha256": "37265cae39c5631e42e3f973cc51326a2ca41315dd19a899f68a66f22a84e46a"
+      },
+      {
+        "path": "gz-seat-console-widget-verify.log",
+        "sha256": "ee6027293828c4227717b7ba761eb13feaaea66ecf1d4c89e813119f8f34c2db"
+      },
+      {
+        "path": "gz-seat-console-widget-pairing.log",
+        "sha256": "eac9a8ba068da594b72ff2951014ba4b22358666ab156cb77dd2c69eb5913c71"
+      }
+    ]
   }
 }

@@ -17,6 +17,29 @@
 -spec execute(cowboy_req:req(), map()) ->
     {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 execute(Req, Env) ->
+    RouteOpts = maps:get(handler_opts, Env, #{}),
+    case maps:get(jwt_methods, RouteOpts, undefined) of
+        Methods when is_list(Methods) ->
+            case lists:member(cowboy_req:method(Req), Methods) of
+                true ->
+                    execute_authorized(Req, Env);
+                false ->
+                    Req405 = cowboy_req:set_resp_header(
+                        <<"allow">>,
+                        iolist_to_binary(lists:join(<<", ">>, Methods)),
+                        Req
+                    ),
+                    {stop,
+                        elib_response:error_with_status(
+                            Req405, 405, <<"Method Not Allowed">>, ?ERR_BAD_REQUEST
+                        )}
+            end;
+        _ ->
+            execute_authorized(Req, Env)
+    end.
+
+execute_authorized(Req, Env) ->
+    IsSeatConsoleRoute = maps:get(jwt_purpose, maps:get(handler_opts, Env, #{}), human) =:= seat,
     Path = auth_ds:remove_last_forward_slash(cowboy_req:path(Req)),
 
     OpenLi = imboy_router:open(),
@@ -59,12 +82,12 @@ execute(Req, Env) ->
     %% condition 照常 do_authorization）。路径形状由
     %% cs_http:is_web_seat_surface_path/1 冻结声明（cs_route_contract_tests
     %% 双向核对）。与 IsCsCredentialPath 同款函数级 -ifdef 保护（见定义处）。
-    IsWebSeatPath = is_web_seat_path(Path),
+    IsWebSeatPath = IsSeatConsoleRoute orelse is_web_seat_path(Path),
     InOpenLi =
-        (not IsEnterpriseTenantPath) andalso
+        (not IsSeatConsoleRoute) andalso (not IsEnterpriseTenantPath) andalso
             (IsPaymentCallback orelse IsChannelWebhook orelse IsMcpPath orelse
                 lists:member(Path, OpenLi)),
-    InOptionLi = lists:member(Path, OptionLi),
+    InOptionLi = (not IsSeatConsoleRoute) andalso lists:member(Path, OptionLi),
     Switch = ec_cnv:to_binary(config_ds:env(api_auth_switch, <<"on">>)),
     %% ws/init/refreshtoken/passport 是 JWT-open 但仍需设备签名校验的端点
     %% （open() 命中会让 InOpenLi=true，若不在此显式拦截会被直接放行，

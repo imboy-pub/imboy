@@ -135,7 +135,8 @@ metadata(State, Req) ->
         surface,
         required_function,
         required_permission,
-        required_governance
+        required_governance,
+        jwt_purpose
     ],
     Present = [{K, maps:get(K, State, undefined)} || K <- Keys, maps:is_key(K, State)],
     case proplists:get_value(auth_context, Present) of
@@ -531,12 +532,22 @@ seat_put_target(Req, WorkspaceId, View) ->
                         {<<"workspace_id">>, integer_to_binary(WorkspaceId)},
                         {<<"upload_ref">>, Ref}
                     ]),
+                    Prefix =
+                        case cowboy_req:path(Req) of
+                            <<"/api/v1/seat/", _/binary>> ->
+                                <<"/api/v1/seat/enterprise/organizations/">>;
+                            _ ->
+                                <<"/api/v1/enterprise/organizations/">>
+                        end,
                     Path = iolist_to_binary([
-                        <<"/api/v1/enterprise/organizations/">>,
+                        Prefix,
                         integer_to_binary(OrgId),
                         <<"/assets/presign">>
                     ]),
-                    <<(api_base_url())/binary, Path/binary, $?, Query/binary>>;
+                    case Path of
+                        <<"/api/v1/seat/", _/binary>> -> <<Path/binary, $?, Query/binary>>;
+                        _ -> <<(api_base_url())/binary, Path/binary, $?, Query/binary>>
+                    end;
                 _Other ->
                     undefined
             end;
@@ -708,6 +719,8 @@ classify(session_already_closed) ->
 classify({not_session_seat, _, _}) ->
     ?ERR_FORBIDDEN;
 classify(seat_disabled) ->
+    ?ERR_FORBIDDEN;
+classify({seat_not_found, _}) ->
     ?ERR_FORBIDDEN;
 classify({stale_version, _}) ->
     ?ERR_CONFLICT;

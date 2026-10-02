@@ -45,6 +45,10 @@
 %% 冻结的路由清单（path → 动作/方法/五类 principal）；与 router 字面登记互为审计面
 %% ===================================================================
 
+%% Human 合同独立保留；新增 Console 的逐路由合同在 seat_console_routes_tests 冻结。
+human_cs_routes() ->
+    [R || {_, _, Opts} = R <- ?S:cs_routes(all), maps:get(jwt_purpose, Opts, human) =:= human].
+
 tenant_literal_routes() ->
     O = <<"/api/v1/cs/organizations/:org_id">>,
     [
@@ -227,7 +231,7 @@ widget_literal_routes() ->
 %% ===================================================================
 
 a01_route_metadata_matches_frozen_action_table_test() ->
-    ?assertEqual([], violations(?S:cs_routes(all))).
+    ?assertEqual([], violations(human_cs_routes())).
 
 violations(Routes) ->
     Known = lists:append([
@@ -410,7 +414,7 @@ literal_for(platform) ->
 %% A01 非真空：auth_context 改错 / feature 拿掉 / 装配键拿掉 / 少登记一条，
 %% 审计必须逐条报红。
 a01_audit_is_not_vacuous_test() ->
-    Real = ?S:cs_routes(all),
+    Real = human_cs_routes(),
     %% 38 = 租户 20（T-2 org 作用域化：queue/claim/transfer/close/detail/
     %% seats-sessions 迁径 + seat-contexts/transfer-targets/seats-me-events 新增；
     %% 访客三路与 A0 enterprise messages 路保持）+ widget 9（BE-W01 frame）+
@@ -502,7 +506,7 @@ a01_runtime_feature_gate_wired_test() ->
                 end,
             ?assertEqual(customer_service, imboy_feature:route_feature(Surface, Handler, x))
         end,
-        ?S:cs_routes(all)
+        human_cs_routes()
     ).
 
 %% ===================================================================

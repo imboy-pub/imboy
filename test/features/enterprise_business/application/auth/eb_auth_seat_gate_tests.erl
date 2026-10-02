@@ -269,3 +269,42 @@ owner_admin_route_is_not_affected_by_seat_gate_test_() ->
             eb_auth_app:authorize(Route, request(Facts))
         )
     end).
+
+%% Console 凭证用途之外，仍需客服 assignment 与实际 enabled Seat。
+console_member_route() ->
+    (member_route(<<"customer_service">>, <<"asset.read">>))#{
+        path => <<"/api/v1/seat/enterprise/organizations/1/assets/2/content">>,
+        jwt_purpose => seat
+    }.
+
+console_missing_seat_is_denied_test_() ->
+    ?WITH_MECKS(seat_mock({error, not_found}), fun() ->
+        ?assertEqual(
+            {error, {seat_not_found, ?IDENTITY_CS}},
+            eb_auth_app:authorize(console_member_route(), request(cs_member_facts(#{})))
+        )
+    end).
+
+console_enabled_seat_is_allowed_test_() ->
+    ?WITH_MECKS(seat_mock({ok, #{enabled => true}}), fun() ->
+        ?assertMatch(
+            {ok, #{function_key := <<"customer_service">>}},
+            eb_auth_app:authorize(console_member_route(), request(cs_member_facts(#{})))
+        )
+    end).
+
+console_suspended_seat_is_denied_test_() ->
+    ?WITH_MECKS(seat_mock({ok, #{enabled => false}}), fun() ->
+        ?assertEqual(
+            {error, seat_disabled},
+            eb_auth_app:authorize(console_member_route(), request(cs_member_facts(#{})))
+        )
+    end).
+
+console_sales_only_is_denied_before_seat_lookup_test_() ->
+    ?WITH_MECKS(seat_never_mock(), fun() ->
+        ?assertMatch(
+            {error, _},
+            eb_auth_app:authorize(console_member_route(), request(sales_member_facts()))
+        )
+    end).

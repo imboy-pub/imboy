@@ -2055,6 +2055,61 @@ enterprise_application_governance_routes() ->
 
 -spec customer_service_tenant_routes() -> list().
 customer_service_tenant_routes() ->
+    HumanRoutes = customer_service_human_routes(),
+    Sources = HumanRoutes ++ enterprise_tenant_routes(),
+    HumanRoutes ++ lists:flatmap(fun seat_console_route/1, Sources).
+
+%% 控制台仅登记已有业务动作，不复制治理、访客或门店凭证面。
+seat_console_route({"/api/v1/" ++ Suffix, Handler, #{action := Action} = Opts}) ->
+    case seat_console_methods(Handler, Action) of
+        [] ->
+            [];
+        Methods ->
+            ConsoleOpts =
+                case Handler of
+                    eb_tenant_handler -> Opts#{required_function => <<"customer_service">>};
+                    _ -> Opts
+                end,
+            [
+                {"/api/v1/seat/" ++ Suffix, Handler, ConsoleOpts#{
+                    jwt_purpose => seat, jwt_methods => Methods
+                }}
+            ]
+    end;
+seat_console_route(_) ->
+    [].
+
+seat_console_methods(cs_tenant_handler, Action) ->
+    case Action of
+        seat_contexts -> [<<"GET">>];
+        session_queue -> [<<"GET">>];
+        session_claim -> [<<"POST">>];
+        session_transfer -> [<<"POST">>];
+        session_close -> [<<"POST">>];
+        conversation_messages -> [<<"GET">>];
+        session_detail -> [<<"GET">>];
+        session_customer_context -> [<<"GET">>];
+        session_read_cursor -> [<<"GET">>, <<"POST">>];
+        seat_presence_heartbeat -> [<<"POST">>];
+        seat_presence_status -> [<<"GET">>, <<"PUT">>];
+        seat_presence_list -> [<<"GET">>];
+        seat_session_list -> [<<"GET">>];
+        transfer_targets -> [<<"GET">>];
+        seat_events -> [<<"GET">>];
+        _ -> []
+    end;
+seat_console_methods(eb_tenant_handler, Action) ->
+    case Action of
+        conversation_messages -> [<<"GET">>, <<"POST">>];
+        presign -> [<<"POST">>, <<"PUT">>];
+        confirm_asset -> [<<"POST">>];
+        asset_content -> [<<"GET">>];
+        _ -> []
+    end;
+seat_console_methods(_, _) ->
+    [].
+
+customer_service_human_routes() ->
     [
         %% —— BE-S01a（T-2 裁定）：坐席上下文清单。主体自身作用域（无 Org 键），
         %% 一次返回当前用户全部可用 Organization[]/Workspace[]/active
