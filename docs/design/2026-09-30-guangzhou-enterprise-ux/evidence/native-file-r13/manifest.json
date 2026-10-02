@@ -1,0 +1,24 @@
+{
+  "status": "PASS_SCOPED_REAL_ANDROID_NATIVE_FILE_JOURNEY",
+  "backend_head": "1b8927d7159fe62d23fe0373c304fa4fff58c10e",
+  "app_head": "51314afd3641f2c5c938c06f1219a3a94a52b9c5",
+  "files_sha256": {
+    "gz-native-group-file-r13-device-terminal.json": "0e5c546388e8c53878d8b094c7f117ea7b3a8b5d652214a2612b91099165a112",
+    "gz-native-group-file-r13-fixture-terminal.json": "bfdedf06596faa2042b0fedd9653ec1023d2e96ed56dc40b607985bc8438c1d5",
+    "gz-native-group-file-r13-visibility-oracle.json": "6aefccdc522a6975ace6e7d9d25ae7981586962a9c8a1da27d87c98ad033263a",
+    "gz-native-group-file-r13-capture.json": "9bd8e1813d7cab8457bec7ae2ec4ecc683f45e78b436e098d1380b179b64f914",
+    "gz-native-group-file-r13-independent-review.json": "fad1f1601df623cfbd60d7a64119db3defdb008f84310b9e0601ba9b063621e1",
+    "gz-native-group-file-r13-visible.png": "103ae57dfaa234c04b9417408277567956219806da614e891d8b42da41f2f8d3",
+    "native-file-oracle.json": "1ae05aa1a0b2f53c5381dcb9740ff7a05703ed8c4fd6ebd7f9461775e2fa6acb",
+    "native-leave-oracle.json": "c5718fb2de4699da4f1febadcab47d09a3701d4f479f451ac61777445077dccb"
+  },
+  "visual_body_review": "Independent same-run pixel inspection; not OCR or accessibility",
+  "accessibility_verified": false,
+  "production_ready": false,
+  "not_proven": [
+    "iOS files",
+    "real customer OA",
+    "all resource departure cases",
+    "final three repository frozen gate"
+  ]
+}

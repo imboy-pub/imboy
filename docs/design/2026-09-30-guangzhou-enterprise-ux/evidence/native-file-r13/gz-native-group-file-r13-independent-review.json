@@ -1,0 +1,14 @@
+{
+  "screenshot_sha256": "103ae57dfaa234c04b9417408277567956219806da614e891d8b42da41f2f8d3",
+  "source_sha256": "af6ae3722461e1a6889d207d62b12a71f11f41b0365502e8df61f26b4d5812dd",
+  "fixture_run": "/tmp/imboy-seat-http.0sKf5z",
+  "filename_verified": true,
+  "body_verified": true,
+  "body_pixel_bounds": [
+    14,
+    214,
+    518,
+    248
+  ],
+  "review_method": "Independent current-run image inspection by root and native_file_review; no OCR or accessibility claim"
+}

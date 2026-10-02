@@ -85,5 +85,147 @@
     "accessibility_pass": false,
     "production_ready": false,
     "standard_package_cleared": false
+  },
+  "customer_service_artifact_checks": {
+    "status": "PASS_SCOPED_WIDGET_SEAT_ARTIFACT_CHECKS",
+    "admin_candidate": "25460d0497be3010f1d2095a9a768ce6a1a3a0e0",
+    "checks": {
+      "widget_verify_exit": 0,
+      "gitleaks_exit": 0,
+      "pairing_explicit_backend_exit": 0
+    },
+    "backend_candidate": "8bb8149e78d757647db60c3b5e715fd92ade20e3",
+    "artifact_sha256": {
+      "dist-widget/manifest.sha256": "64d68015c44acf1e31b7c03f957259cd7b289a025aeb638fad57a30aa4744a3b",
+      "dist-widget/health.txt": "724a29f490c34dcab519d9647524b568252c05ae4d3c18f39dd9a6a33b27a0db",
+      "dist-widget/manifest.json": "e2b731a00660205667cbfc44566234b9810c9572209ebc3f8a4cc930754b0755",
+      "dist-widget/loader.js": "330f6c6cb9b2fe3772a35d3b3b48a0b0b2b903bcb1892f69df827074d4ecfac4",
+      "dist-widget/widget-assets/cs-widget.v2.js": "36cdff7ec71000f8652f5610b009177c4224babf4969c3a18280b31e4b66d6af",
+      "dist-widget/widget/index.html": "fdb75eae07bf3f83c9e891f791a8ef866867f1daa3c0a6065fd7b52f21ec67b2",
+      "dist-widget/seat-assets/cs-seat.v1.js": "e57ada5d1940c65685613a7b7eae4d1f335b07310b74a62d1de650361567d6ef",
+      "dist-widget/seat-assets/cs-seat.v1.css": "2547f6557d7b01beca9cc5b21660f1a83a167a15f1281c5f5acbfe05bbfd7a79",
+      "dist-widget/assets/cs-seat-_XZfiGXM.css": "2547f6557d7b01beca9cc5b21660f1a83a167a15f1281c5f5acbfe05bbfd7a79",
+      "dist-widget/assets/cs-seat-BRUJeVdv.js": "e57ada5d1940c65685613a7b7eae4d1f335b07310b74a62d1de650361567d6ef",
+      "dist-widget/assets/cs-widget-Bg_2DNCm.js": "36cdff7ec71000f8652f5610b009177c4224babf4969c3a18280b31e4b66d6af",
+      "dist-widget/seat/index.html": "4882229396e2e18fe2c1b90846f32c686f4503a5dbf7e7698504823deb0b18eb"
+    },
+    "limitations": [
+      "High-confidence secret patterns and gitleaks only; no claim of exhaustive credential absence",
+      "Four production authentication domains still not fully closed",
+      "Initial pairing default path failed closed with exit 3, rerun explicit owned backend path"
+    ],
+    "production_ready": false,
+    "log_sha256": {
+      "gz-current-seat-artifact-verify.log": "8583ad931b9685528cdffc4f498dc82fc71cd589075bf5922ff1687990a5c567",
+      "gz-current-seat-artifact-gitleaks.log": "bc488b343f2779a330f3ef2f553c066d052f11ed15e08a03dd700f0888161bcd",
+      "gz-current-seat-artifact-pairing-explicit.log": "0820cff75dc4045417f5e91fc9f46dda4e3d3b120b50fa3ad9d96a8585275573"
+    }
+  },
+  "native_file_scoped_delete": {
+    "status": "PASS_SCOPED_REAL_ANDROID_GROUP_FILE_DELETE",
+    "backend": "8bb8149e78d757647db60c3b5e715fd92ade20e3",
+    "app_source_sha256": "c8b9a73509b43a6c1179d43d0396c4f8841231bad2063be8036c14ca484af9b5",
+    "fixture_run": "/tmp/imboy-seat-http.w0X6b7",
+    "device_log_sha256": "31a275a623c1867af5a6bf66b0f970083a150a40ce5f21e6832167670bd97d47",
+    "proof": "Production service.deleteFile awaited and asserted true at line246-248; subsequent failure is tap at251. Backend current changed DS compiled; no prior int8 error.",
+    "not_proven": [
+      "visible file body",
+      "stale-row reauthorization after deletion",
+      "full native test pass"
+    ],
+    "whole_native_status": "FAIL_NATIVE_TREE",
+    "production_ready": false
+  },
+  "native_file_full_pass": false,
+  "organization_membership_baseline": {
+    "status": "PASS_SCOPED_ORG_INVITATION_MEMBERSHIP_BASELINE",
+    "tested_backend": "c38adf79327a41663668638e170c4afb5ce845cb",
+    "current_backend": "8bb8149e78d757647db60c3b5e715fd92ade20e3",
+    "source_hashes_unchanged": {
+      "test/ds/workspace_creation_pg_tests.erl": "dc6a6c25e80cd6467a096cac3ce77800371f430ac9aab10eff2c48e2fc826399",
+      "test/lib/organization/organization_invite_race_pg_checks.erl": "9bf9a6be7d795e69c33af63118f051fc07c2510d0201c7515c24b0a16aeb7582",
+      "test/lib/organization/organization_membership_journey_pg_checks.erl": "9f6435e9e5e648801385a4ab968c793d80ddbbdf97ab2dd02a39aa8398560148"
+    },
+    "log_sha256": "7a46c82ae40ac22efff790c19cef01ca63265b05126b7a85b5929e14a38add66",
+    "verified": [
+      "revoke/expiry while blocked on organization lock across scoped/global/preview entries",
+      "token/targeted invitation acceptance races",
+      "concurrent invitations and join",
+      "joining activates org/workspace/group/channel memberships once",
+      "subscription write failure rolls back joined membership",
+      "repeat accepted invitation does not recreate departed membership",
+      "departed member cannot read workspace or organization directory",
+      "fresh invitation rejoin creates new group generation"
+    ],
+    "not_proven": [
+      "current final three-repository gate",
+      "full owner transfer and file/OA departure revocation clauses"
+    ],
+    "production_ready": false
+  },
+  "native_file_r8_app_scope": {
+    "status": "PASS_SCOPED_NATIVE_FILE_UPLOAD_DELETE_REAUTH_AND_APP_NAVIGATION",
+    "backend": "8bb8149e78d757647db60c3b5e715fd92ade20e3",
+    "app_test_sha256": "c627792f40301531119a512d5ace2e84061fabcc451bbbb25fef6399bf3f5329",
+    "log_sha256": "e11e9cc2344aa2d6b769ab2028d20fc0c846ba28215d00a508eecc5ceb558fe4",
+    "app_exit": 0,
+    "whole_native_pass": false,
+    "visible_body_pass": false,
+    "visual_diagnostic": "Blank body in isolated WebView screenshot",
+    "screenshot_sha256": "8742ff36ba9c7d5813fe8a813ce3313e79041ca4b499c9a4d5c75db62bd3f463",
+    "scope": [
+      "actual production file upload",
+      "workbench group file navigation",
+      "HTTP exact bytes and MIME",
+      "actual file delete",
+      "stale row open refuses and no WebView",
+      "app UI personal switch and enterprise join/leave"
+    ],
+    "limitations": [
+      "file visible body unproven",
+      "fixture postjourney DB oracle gated off because overall native qualification failed"
+    ],
+    "production_ready": false
+  },
+  "latest_native_file_attempt": {
+    "status": "R9_TERMINAL_VISIBLE_BODY_FAIL",
+    "production_ready": false,
+    "diagnostic_next": "Numeric WebView error/status reload; overridden delegate is diagnostic only",
+    "evidence": [
+      {
+        "path": "/tmp/gz-native-group-file-r9-device-terminal.json",
+        "sha256": "85e866d7271450148ab8837d4ab4db649429a6193fb6eb4ffadc0389d0ebcf61"
+      },
+      {
+        "path": "/tmp/gz-native-group-file-r9-accessibility-oracle.json",
+        "sha256": "4ed2ae47ff69ea78f153e8d6b60cbea2df0f7acb6fc8d310bb175f759c92123c"
+      }
+    ]
+  },
+  "seat_human_purpose_isolation_gap": {
+    "status": "CONFIRMED_SOURCE_GAP_SEAT_HUMAN_PURPOSE_ISOLATION",
+    "evidence": "/tmp/gz-seat-human-purpose-gap-reconciliation.json",
+    "sha256": "30b39ba917e17759a3e700348b59e1c768457d0860cc092e85a70d246b0a0d58",
+    "full_cs03_complete": false
+  },
+  "webview_hybrid_trial": {
+    "status": "PASS_SCOPED_NATIVE_VISIBLE_FILE_PIXELS",
+    "native_verified": false,
+    "evidence": "/tmp/gz-webview-hybrid-focused-terminal.json",
+    "sha256": "1b6a117070246833c40387bc48fbb4d6220bdb5f772ca3c00e9b71bc105a5585",
+    "live_handle": "/tmp/gz-native-group-file-r11-handle.json",
+    "native_visual_body_verified": true,
+    "accessibility_text_verified": false,
+    "full_native_gate_complete": false,
+    "native_pixel_evidence": "/tmp/gz-native-group-file-r11-visible-pixel-evidence.json",
+    "pixel_evidence_sha256": "2a34887aed6855a6fdd72d60eb64ff2897cf6165b1b11a0e3b12dd8934bc65c4"
+  },
+  "native_file_r13": {
+    "status": "PASS_SCOPED_REAL_ANDROID_NATIVE_FILE_JOURNEY",
+    "manifest": "evidence/native-file-r13/manifest.json",
+    "manifest_sha256": "41bed7db26074e0cb05cd564affbffef6ee1e90bac3550c27d07a93874b675c6",
+    "app_head": "51314afd3641f2c5c938c06f1219a3a94a52b9c5",
+    "accessibility_verified": false,
+    "full_goal_complete": false
   }
 }
