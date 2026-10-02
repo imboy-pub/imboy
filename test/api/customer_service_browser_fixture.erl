@@ -15,6 +15,7 @@ run() ->
             <<"UPDATE organization_business_identity_assignment SET business_identity_id=$3,function_key='customer_service' WHERE organization_id=$1 AND user_id=$2">>,
             [Org, maps:get(actor_user_id, S), maps:get(service_identity_id, S)]
         ),
+        ok = customer_service_auth_domains_http_checks:run(H, S),
         Installation = ?FIX:id(),
         Origin = list_to_binary(os:getenv("CSWW_E2E_HOST_ORIGIN")),
         {ok, _} = cs_pg_widget:insert_widget_installation(Org, #{

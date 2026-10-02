@@ -379,5 +379,179 @@
         "sha256": "eac9a8ba068da594b72ff2951014ba4b22358666ab156cb77dd2c69eb5913c71"
       }
     ]
+  },
+  "seat_purpose_real_http_browser": {
+    "status": "PASS_SCOPED_REAL_SEAT_JOURNEY_AND_FOUR_AUTH_ENTRYPOINTS",
+    "backend_production_candidate": "5049a79e2cd48b16e738aec8c7e862fe620f7f64",
+    "admin_production_candidate": "ef2887eaf930142d037791fad5680841b3cfe4c9",
+    "admin_test_candidate": "5f2c5ef62c02d5177b0f0f753fdaee7fbe794d3f",
+    "browser_run": "/tmp/imboy-seat-http.q8UQkm",
+    "strict_matrix_run": "/tmp/imboy-seat-http.ZlWtnC",
+    "browser_exit": 0,
+    "strict_matrix_exit": 0,
+    "artifact_secret_scan_exit": 0,
+    "production_sources_match_current": true,
+    "cached_beams_verified": true,
+    "production_source_tree_sha256": "53bee2c7ffd2d0b8183644a3a01977e75adcf3d6f20862db19e41641b898e14b",
+    "source_hashes": [
+      {
+        "path": "src/api/auth_middleware_api_v1.erl",
+        "sha256": "86f1271280ac9ff72fd9a82ae1ff20f57f064405e4ae9f42b4411533ee0e429e"
+      },
+      {
+        "path": "src/api/auth_middleware.erl",
+        "sha256": "c4ab8390d8081d3567168b12b6050e8c76096d00b1e58945cea690cba192e71e"
+      },
+      {
+        "path": "src/api/qr_login_handler.erl",
+        "sha256": "4000567696ccb1978f41af17ee10d8a4a92f5a2467279a792d515a19391fcaf7"
+      },
+      {
+        "path": "src/ds/auth_ds.erl",
+        "sha256": "a66ea60389764c01b502eaabaf80e7f6ac04adf7b9a835c17ef2019179a38a76"
+      },
+      {
+        "path": "src/ds/token_ds.erl",
+        "sha256": "54bbf2e5bfcbd76c2f68eaf9b084d0eb915bec8547a6ab60a7a1168731f1be37"
+      },
+      {
+        "path": "src/imboy_router.erl",
+        "sha256": "b69bacec05985f930cc3c0decb46f7b2949bee6446d44c27f15ee08577d9318c"
+      },
+      {
+        "path": "src/features/enterprise_business/application/auth/eb_auth_app.erl",
+        "sha256": "188fe5acf0dc37d7b918ae7bf38130124c222739d7dead5f57070000e3d54573"
+      },
+      {
+        "path": "src/features/enterprise_business/application/auth/eb_auth_principal.erl",
+        "sha256": "438f626448bf507e321ae7d5e25557ed4624045df7ec78fb2c1ee61efc1b61a2"
+      },
+      {
+        "path": "src/features/enterprise_business/interfaces/eb_enterprise_http.erl",
+        "sha256": "cf6e0f4a88ccbf4790e11595d7da57df0956f4f984d6a11ec6da6ef43946e644"
+      },
+      {
+        "path": "test/api/customer_service_auth_domains_http_checks.erl",
+        "sha256": "e755020714a23a3b72933898a3a077e842881a213d4bc434892d15ac75394880"
+      },
+      {
+        "path": "test/api/customer_service_browser_fixture.erl",
+        "sha256": "21bcd0cf8a067e7a33e4a4c06e477a1957b094d2c5a1106b3f0e170ef9754181"
+      },
+      {
+        "path": "imboyadmin/scripts/test/customer-service-browser-journey.mjs",
+        "sha256": "16e4ee6deded37f0b47ddef659297f8ab34fd52abf90f5710888790e0d3b1238"
+      }
+    ],
+    "artifacts": [
+      {
+        "path": "auth-domain-matrix.json",
+        "sha256": "0603f3113055d3fbd3ea74d4f1817e465b9ec7338843aa6a9f169271cd3f5f5a"
+      },
+      {
+        "path": "browser-db-proof.json",
+        "sha256": "f52128c8ced14cd2aa59c00df0aa79bef5df250d934197706fbc4f8289019306"
+      },
+      {
+        "path": "browser-responses.json",
+        "sha256": "e8f780f91dad3e55b3156109c25bba3e4849cf9dd2bb8c4ffdcbbbaa6a50be3c"
+      },
+      {
+        "path": "browser-result.json",
+        "sha256": "5e216d673eed3d546a53c09d0ee1c2bc137ac994e8c8941b411cc79bd485a891"
+      }
+    ],
+    "built_files": [
+      {
+        "path": "dist-widget/assets/cs-seat-_XZfiGXM.css",
+        "sha256": "2547f6557d7b01beca9cc5b21660f1a83a167a15f1281c5f5acbfe05bbfd7a79"
+      },
+      {
+        "path": "dist-widget/assets/cs-seat-_YwnT7Em.js",
+        "sha256": "be0aaec26f45a3815671ce75852f2270943488c8ec0dc961fd9f706c1b766e3d"
+      },
+      {
+        "path": "dist-widget/assets/cs-widget-Bg_2DNCm.js",
+        "sha256": "36cdff7ec71000f8652f5610b009177c4224babf4969c3a18280b31e4b66d6af"
+      },
+      {
+        "path": "dist-widget/health.txt",
+        "sha256": "e8d48e399608ade5b7e8b62a26bf0868fa3137bebf70460ff9db0dbb9112b9d8"
+      },
+      {
+        "path": "dist-widget/loader.js",
+        "sha256": "330f6c6cb9b2fe3772a35d3b3b48a0b0b2b903bcb1892f69df827074d4ecfac4"
+      },
+      {
+        "path": "dist-widget/manifest.json",
+        "sha256": "bf6d463499a60cb89bd7ae41a77bc8160ac7fb83e49f380a2465ea76400b5080"
+      },
+      {
+        "path": "dist-widget/manifest.sha256",
+        "sha256": "68bf5c5e5bc6c776a0b5f15f0f2bf862f0023aee591dd84d196ca19761d31e07"
+      },
+      {
+        "path": "dist-widget/seat/index.html",
+        "sha256": "1ab6b9a17ae4c7d046910ecd55d28956346f7b6396f098018cac053c860e1c66"
+      },
+      {
+        "path": "dist-widget/seat-assets/cs-seat.v1.css",
+        "sha256": "2547f6557d7b01beca9cc5b21660f1a83a167a15f1281c5f5acbfe05bbfd7a79"
+      },
+      {
+        "path": "dist-widget/seat-assets/cs-seat.v1.js",
+        "sha256": "be0aaec26f45a3815671ce75852f2270943488c8ec0dc961fd9f706c1b766e3d"
+      },
+      {
+        "path": "dist-widget/widget/index.html",
+        "sha256": "fdb75eae07bf3f83c9e891f791a8ef866867f1daa3c0a6065fd7b52f21ec67b2"
+      },
+      {
+        "path": "dist-widget/widget-assets/cs-widget.v2.js",
+        "sha256": "36cdff7ec71000f8652f5610b009177c4224babf4969c3a18280b31e4b66d6af"
+      }
+    ],
+    "authentication_matrix": {
+      "valid_native_credentials": 4,
+      "cross_domain_401": 12,
+      "production_handlers": true,
+      "auth_mock": false,
+      "human_device_bound": true,
+      "seat_device_bound": true,
+      "admin_cookie_issued_for_existing_synthetic_admin": true,
+      "internal_credential_issued_by_real_application_flow": true,
+      "strict_identity_and_error_oracles": true
+    },
+    "journey": [
+      "real QR confirm returns seat_tk; QR purpose seat; subscribe success; no polling",
+      "concurrent claim one 200 and one 409",
+      "bidirectional messages and Garage attachment byte equality",
+      "visitor refresh and seat reconnect no duplicate messages",
+      "transfer old seat asset 403 and current seat 200",
+      "disabled seat send/asset 403 and composer disabled",
+      "restored seat fresh QR login and attachment history",
+      "closed session and rating 5 confirmed in PG"
+    ],
+    "limitations": [
+      "four read entrypoints prove authentication domain rejection; not all authorization cases on every route",
+      "artifact scanner is high confidence patterns, not exhaustive proof of credential absence",
+      "focused compiled overrides reuse hash-verified cached dependencies; current full EUnit pair pending",
+      "no production deployment; customer OA and iOS unavailable"
+    ],
+    "production_ready": false,
+    "logs": [
+      {
+        "path": "/tmp/gz-seat-purpose-browser-matrix-r3-launch.log",
+        "sha256": "2885b6e046c5bc28680c198541a6528bbbe95195d6dc5f5eb47c345e9fe6cafe"
+      },
+      {
+        "path": "/tmp/gz-seat-auth-matrix-strict-launch.log",
+        "sha256": "75fea2e6da5bd040c43086c9212fb858ac49e098ff063defd9717542a82549c4"
+      },
+      {
+        "path": "/tmp/gz-seat-purpose-artifact-gitleaks.log",
+        "sha256": "4f5b5e5fc1df9d72a68963bc3a7b0b9913ea35a047987ddd8ed8498c3b06a0b7"
+      }
+    ]
   }
 }
