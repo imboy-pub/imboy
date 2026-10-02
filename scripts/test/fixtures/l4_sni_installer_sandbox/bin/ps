@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Fake ps for the sandbox. Table $L4_SB_STATE/ctl/ps-table: "pid ppid args...".
+# Supports `-eo pid=,args=` (prints pid + args) and `-o ppid= -p PID`.
+set -u
+STATE="${L4_SB_STATE:?}"
+TBL="$STATE/ctl/ps-table"
+case " $* " in
+  *" -o ppid= "*)
+    pid=""; prev=""
+    for a in "$@"; do
+      [ "$prev" = "-p" ] && pid="$a"
+      prev="$a"
+    done
+    [ -n "$pid" ] || exit 1
+    awk -v p="$pid" '$1 == p { print $2; exit }' "$TBL" 2>/dev/null
+    exit 0 ;;
+  *" -eo "*)
+    awk '{ printf "%s", $1; for (i = 3; i <= NF; i++) printf " %s", $i; printf "\n" }' "$TBL" 2>/dev/null
+    exit 0 ;;
+  *) exit 0 ;;
+esac

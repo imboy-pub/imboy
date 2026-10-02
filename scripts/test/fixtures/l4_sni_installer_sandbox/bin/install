@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Fake GNU install for the sandbox: `install [-D] -m MODE SRC DST` (always
+# creates the destination's parent directory; -D accepted for compatibility).
+set -u
+dodir=0; mode=""; pos=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -D) dodir=1; shift ;;
+    -m) mode="$2"; shift 2 ;;
+    -*) shift ;;
+    *) pos+=("$1"); shift ;;
+  esac
+done
+src="${pos[0]}"; dst="${pos[1]}"
+[ -n "$src" ] && [ -n "$dst" ] || { printf 'sandbox install: need SRC DST (%s)\n' "$*" >&2; exit 1; }
+mkdir -p "$(dirname "$dst")"
+cp "$src" "$dst" || exit 1
+[ -n "$mode" ] && chmod "$mode" "$dst"
+exit 0

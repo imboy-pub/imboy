@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Fake haproxy for the sandbox: `haproxy -c -f CFG` validates; forced rc from
+# $L4_SB_STATE/ctl/haproxy-rc.
+set -u
+STATE="${L4_SB_STATE:?}"
+rc="$(cat "$STATE/ctl/haproxy-rc" 2>/dev/null || true)"; rc="${rc:-0}"
+if [ "$1" = "-c" ] && [ "$2" = "-f" ] && [ -n "$3" ]; then
+  printf 'Configuration file %s is valid\n' "$3"
+  exit "$rc"
+fi
+printf 'sandbox haproxy: unexpected args: %s\n' "$*" >&2
+exit 1

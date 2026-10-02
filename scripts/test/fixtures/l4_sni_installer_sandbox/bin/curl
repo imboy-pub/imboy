@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Fake curl for the L4 SNI installer sandbox.
+# - Plain health checks: $L4_SB_STATE/ctl/curl-ok-urls lines "URL BODY";
+#   a hit prints BODY and exits 0; anything else exits 7.
+# - HTTPS contracts (--resolve D:P:IP plus -w '%{http_code}'):
+#   $L4_SB_STATE/ctl/curl-codes lines "domain code" (default 000).
+set -u
+STATE="${L4_SB_STATE:?}"
+wcode=""; resolve_dom=""; url=""
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "--resolve" ]; then resolve_dom="${a%%:*}"; fi
+  case "$a" in
+    -w) wcode=1 ;;
+    http://*|https://*) url="$a" ;;
+  esac
+  prev="$a"
+done
+if [ "$wcode" = 1 ] && [ -n "$resolve_dom" ]; then
+  code="$(awk -v d="$resolve_dom" '$1 == d { print $2; exit }' "$STATE/ctl/curl-codes" 2>/dev/null)"
+  printf '%s\n' "${code:-000}"
+  exit 0
+fi
+if [ -f "$STATE/ctl/curl-ok-urls" ]; then
+  line="$(awk -v u="$url" '$1 == u { print; exit }' "$STATE/ctl/curl-ok-urls")"
+  if [ -n "$line" ]; then
+    printf '%s\n' "${line#* }"
+    exit 0
+  fi
+fi
+printf 'sandbox curl: no stub mapping for %s\n' "$url" >&2
+exit 7

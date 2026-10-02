@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Fake GNU find for the sandbox: only the load_config permission probe
+# `find FILE -prune -perm /022 -print -quit` reaches this stub. It echoes the
+# file (making load_config reject the config) when
+# $L4_SB_STATE/ctl/find-reports-group-write exists.
+set -u
+STATE="${L4_SB_STATE:?}"
+case "$*" in
+  *"-perm /022"*)
+    [ -f "$STATE/ctl/find-reports-group-write" ] && echo "$1"
+    exit 0 ;;
+  *) exec /usr/bin/find "$@" ;;
+esac

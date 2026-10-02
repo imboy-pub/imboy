@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Fake id: the installer under test always sees uid 0 in the sandbox.
+[ "$1" = "-u" ] && echo 0
+exit 0

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Sandbox "distro" nginx instance wrapper -> bin/nginx-core (tag=nginx-distro).
+# Layout: <sandbox>/nginx-distro/sbin/nginx -> <sandbox>/bin/nginx-core
+SB="$(cd "$(dirname "$0")/../.." && pwd)"
+export L4_SB_NGINX_TAG=nginx-distro
+export L4_SB_NGINX_HOME="$SB/nginx-distro"
+exec "$SB/bin/nginx-core" "$@"
