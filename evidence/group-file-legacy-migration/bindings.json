@@ -1,0 +1,27 @@
+{
+  "status": "PASS_SCOPED_MIGRATION_108_SYNTHETIC",
+  "base_head": "0ee7c944260fb0f1816ee32d57ced2bcce35230d",
+  "command": "bash scripts/test/run_group_file_legacy_migration.sh",
+  "exit_code": 0,
+  "image_id": "sha256:fbe5570489c5b0cbd296581b61cd188daad15793381185df45295236a1234b4d",
+  "sources": [
+    {
+      "path": "scripts/test/group_file_legacy_migration.sql",
+      "sha256": "9377cfcffd0aa19a0479152e328a12505e994d53992d5545590a30e6bc6afe1a"
+    },
+    {
+      "path": "scripts/test/run_group_file_legacy_migration.sh",
+      "sha256": "ae993f5423db878487af52109b8bdacaa398e9e24bef2b30e17f4189eba257da"
+    },
+    {
+      "path": "priv/migrations/00000108_group_attachment_anchor.up.sql",
+      "sha256": "cc432ee57a7c4b9203d002206aacfdc944608db29cc77f6480aeff5dbd4b2a6f"
+    },
+    {
+      "path": "priv/migrations/00000108_group_attachment_anchor.down.sql",
+      "sha256": "921a54cc63de2381e5d918ac2de3e8d192c510cce2d2def9938b5d343a6c8e4b"
+    }
+  ],
+  "result_sha256": "c254c5494557268cef88cad58e774fee7aecb48007629292e17faaf341c5b559",
+  "complete_file_03": false
+}
