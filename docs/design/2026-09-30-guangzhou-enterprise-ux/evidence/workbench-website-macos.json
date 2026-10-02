@@ -1,0 +1,37 @@
+{
+  "status": "PASS_SCOPED",
+  "app_candidate": "a29b6988de3c51e467603c10a5ba81c417055dbe",
+  "widget_tests": {
+    "exit_code": 0,
+    "passed": 3,
+    "scope": [
+      "empty OA retains resources and website",
+      "click wiring external URL",
+      "browser failure feedback",
+      "valid OA supersedes fallback"
+    ],
+    "log_sha256": "5d02f5fbf125eb9728018aeb712d62b5c5445ea39ce123950284f7f01daa5117"
+  },
+  "macos_native": {
+    "exit_code": 0,
+    "passed": 1,
+    "scope": "production workbench renders entries; direct real SafeLauncher returns true",
+    "log_sha256": "fd1e716c0b6b51a02aa2528f94874a84810a97619f3db7ff115329eb2fed9073",
+    "foreground_warning": "Failed to foreground app; open returned 1",
+    "visual_screenshot_verified": false,
+    "full_click_journey_verified": false
+  },
+  "focused_analyze": {
+    "exit_code": 0,
+    "issues": 0
+  },
+  "source_hashes": {
+    "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart": "40dd7ceedda8402ea22212469ba67156caee6c758221129eb3684e56828f7d46",
+    "test/enterprise_oa/enterprise_workbench_page_test.dart": "b2211067d8c7ced785f6c4da7b5822a63edb02f786592ae1d3b6f355e5f96b80",
+    "integration_test/enterprise/workbench_website_macos_test.dart": "34c3fcdbe1eb8e658604d1df1f1a1f5581c2c0d462ac76674a24083834b1d143"
+  },
+  "review": "APPROVE",
+  "ios": "NOT_EXECUTED",
+  "customer_oa_sso": "NOT_VERIFIED",
+  "whole_goal_complete": false
+}

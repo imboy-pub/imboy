@@ -227,5 +227,20 @@
     "app_head": "51314afd3641f2c5c938c06f1219a3a94a52b9c5",
     "accessibility_verified": false,
     "full_goal_complete": false
+  },
+  "external_readiness": {
+    "user_latest_confirmation": "iOS and customer OA unavailable",
+    "desktop_validation_platform": "macOS",
+    "fallback_website": "https://imboy.pub/",
+    "fallback_display": "only when no enabled valid OA entry",
+    "ios_validation": "NOT_EXECUTED",
+    "customer_oa_sso_validation": "NOT_VERIFIED"
+  },
+  "workbench_website_macos": {
+    "status": "PASS_SCOPED",
+    "app_candidate": "a29b6988de3c51e467603c10a5ba81c417055dbe",
+    "evidence": "evidence/workbench-website-macos.json",
+    "ios_validation": "NOT_EXECUTED",
+    "customer_oa_sso": "NOT_VERIFIED"
   }
 }
