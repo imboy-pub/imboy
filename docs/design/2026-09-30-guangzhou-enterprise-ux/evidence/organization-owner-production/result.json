@@ -1,0 +1,41 @@
+{
+  "status": "PASS_SCOPED",
+  "runtime_candidate": "accd8ab204a2d21e1c952569eed1174f10a36c32",
+  "exit_code": 0,
+  "probes": [
+    "PROBE P01 transfer command success + projection PASS",
+    "PROBE P02 demoted initiator rejected 403 PASS",
+    "PROBE P03 self transfer rejected 400 PASS",
+    "PROBE P04 removed target rejected 409 PASS",
+    "PROBE P05 agent target rejected 409 PASS",
+    "PROBE P06 missing org rejected 404 PASS",
+    "PROBE P07 transfer then previous owner leave; new owner protected and personal account retained PASS",
+    "PROBE A01 transfer sequence commits PASS",
+    "PROBE A02 double active owner rejected by unique index PASS",
+    "PROBE A03 zero owner commit rejected by member invariant PASS",
+    "PROBE A04 agent owner commit rejected by member invariant PASS",
+    "PROBE A05 projection drift commit rejected by org invariant PASS",
+    "PROBE A06 demote without transfer rejected by deferred guard PASS",
+    "PROBE A07 delete owner user rejected by RESTRICT (org survives) PASS",
+    "PROBE A08 post-transfer delete of old owner keeps org PASS",
+    "PROBE C01-L two production PG backends observed in lock wait PASS",
+    "PROBE C01 concurrent production transfer: exactly one winner PASS"
+  ],
+  "passed": 17,
+  "test_harness_sha256": "8c08c031389b67341cf2cfac3250342a584bc7926cee951b367ceeba6127d94f",
+  "http_log_sha256": "e3ee9b4baf939b234a19a9def30b09e485ddf30e8436c66e24721a2850affba9",
+  "run_dir": "/tmp/imboy-seat-http.0BJgDb",
+  "oracle": [
+    "two actual production transfer transactions simultaneously blocked in PG",
+    "exactly one success and one stale-owner 403",
+    "owner projection equals sole active owner member",
+    "previous owner may leave after transfer, new owner may not, personal account retained"
+  ],
+  "cleanup": "marker drop warned about live parent app pool; disposable container removed by runner trap",
+  "not_verified": [
+    "HTTP authentication for these owner commands",
+    "native owner transfer journey",
+    "complete final acceptance"
+  ],
+  "whole_goal_complete": false
+}

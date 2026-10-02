@@ -1,0 +1,174 @@
+{
+  "status": "PASS_SCOPED",
+  "runtime_candidate": "accd8ab204a2d21e1c952569eed1174f10a36c32",
+  "artifacts": [
+    {
+      "path": "result.json",
+      "sha256": "a6af76a27104117fd093f3393ec33ae3c34b4540b9eb96cc073cd7c305ab27d4"
+    }
+  ],
+  "source_hashes": [
+    {
+      "path": "src/logic/organization_owner_activation_logic.erl",
+      "sha256": "d333cc79995c2d3fdda3e2f27a149fca73e7ca7124ec8dd7f173d2d2aca38011"
+    },
+    {
+      "path": "src/logic/organization_logic.erl",
+      "sha256": "471b8b7191d89c2db4cd37241a0124a86a139205befa8306c7dedcfe4f533557"
+    },
+    {
+      "path": "src/logic/organization_member_logic.erl",
+      "sha256": "84a32755767bf466c19964050c1b847c988a688ef3da946ae64c34dca491c731"
+    },
+    {
+      "path": "src/logic/organization_admin_logic.erl",
+      "sha256": "0f203df7a5e9eeef6c885cb9b1bebca3051f66e2ed5046792f24c23ace9554f1"
+    },
+    {
+      "path": "src/adm/adm_organization_handler.erl",
+      "sha256": "073d6cd46cc74193045bccfa3f98d42bc85108a7a4f745928ec8da96f59d175c"
+    },
+    {
+      "path": "src/lib/organization/application/organization_deletion_preflight.erl",
+      "sha256": "dd455cc6cb93dc0755b76ed294e5def38a7efa170879356019faf1d24bb9d80d"
+    },
+    {
+      "path": "src/lib/organization/application/organization_resource_authority.erl",
+      "sha256": "bdc15111cdc95d9b3579fcecead421235d5b81023caf50a0b199ff76deddd905"
+    },
+    {
+      "path": "src/lib/organization/application/organization_agent_membership_app.erl",
+      "sha256": "9674fea98200b13f3c30637cbf3b789dcff05eebc8cdcc6063363936c54c2fba"
+    },
+    {
+      "path": "src/lib/organization/application/organization_default_workspace_app.erl",
+      "sha256": "e8e58f27d134ea5f7faf9901205a453f313eeea004284a98e946800cdcc58276"
+    },
+    {
+      "path": "src/lib/organization/application/organization_invite_code_app.erl",
+      "sha256": "6f69a43da7407ea666b4d2b85558f9eba3a11411d610ca7c3d99321ca0172dfb"
+    },
+    {
+      "path": "src/lib/organization/application/organization_agent_facts_app.erl",
+      "sha256": "2ade139bf74034c4f99797bfa1bd9d619d92646965c1158fad916e57110478be"
+    },
+    {
+      "path": "src/lib/organization/application/organization_invitation_notify.erl",
+      "sha256": "6cc50c408933f6aef680a95b30223faf3015498b5c4c7813a3e1f061bed8e5b9"
+    },
+    {
+      "path": "src/lib/organization/application/organization_lifecycle.erl",
+      "sha256": "4d33f77a4d9e0ac5ac20156ae23af9ee341cd14e99c989e9df44673123f8d45b"
+    },
+    {
+      "path": "src/lib/organization/application/organization_workspace_access.erl",
+      "sha256": "dbc68206331dbc15d92f2019cef43f7acf50eb6ce179b502010a01da528b4165"
+    },
+    {
+      "path": "src/lib/organization/application/organization_department_app.erl",
+      "sha256": "f1706ff9ef78263af71bbb1269fca149ec7fe7d76ee5b124de02496a850903c4"
+    },
+    {
+      "path": "src/lib/organization/application/organization_join_orchestrator.erl",
+      "sha256": "b0fd6ae5befc5fa88103c9a7db73d06c6d84fde260a207c015c428d05d3e92a5"
+    },
+    {
+      "path": "src/lib/organization/application/organization_directory_app.erl",
+      "sha256": "e92a7bbe2735f0edd6dcf0bcbd70d36599aea185bb1c717e4f2c90c6e9dda7a4"
+    },
+    {
+      "path": "src/lib/organization/application/organization_invitation_app.erl",
+      "sha256": "f3f0b59205df92899b76a1e7cfd28fc3f70218ce92ee70be3b5e94bb17d764b7"
+    },
+    {
+      "path": "src/lib/organization/application/organization_owner_transfer.erl",
+      "sha256": "c249089e683aa2a0f7240dcfe7530d57043dae8fbc3d80c4566f7fa5e19e3976"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_agent_facts_pg.erl",
+      "sha256": "921d5c35f4ef77780535ffa2cc104d7f48a8a5b3eb04aa03fe44e4dbf7a6ad4a"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_owner_store.erl",
+      "sha256": "8a94bf73bcfd678c07d54cfb62f51c3092a9c8504d796515d05cb61786935ea4"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_directory_pg.erl",
+      "sha256": "1c1d3e46c21924138b85e166c66f4c53d6056dcf6c07c34debdc3f9a8ddb7af9"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_preflight_facts_pg.erl",
+      "sha256": "8bddfdd6c3db5c5bdf13b9e8cfd17b2bf2507b1390d95e1fc5c5d772fc14481b"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_lifecycle_pg.erl",
+      "sha256": "f60495de9c35afcc6e339e03a74151b81444e5b21875ae48b7bf8437262018c9"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_default_workspace_pg.erl",
+      "sha256": "03a6113b4a3e775c9a392ebad8a24a62a3fb2cc91ee40e48f2966a2f3bfffa73"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_invitation_pg.erl",
+      "sha256": "d9d00e96e7de8f4771010a6c5a012f822b1ceb2748087d7e29cd79cdb9053115"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_agent_membership_pg.erl",
+      "sha256": "e42848afbd18fb25f10d24fd60eaac7f8ba11ef6de3bff0bcb6004dfeec8061b"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_invite_code_pg.erl",
+      "sha256": "b50c5561f4553522faa194a68548d295211813b6bb547d8f3817f24abf0be773"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_department_pg.erl",
+      "sha256": "c2c6856cb71946343f5019733773083933a79cbc41e21e759ac1bf2b37e061bb"
+    },
+    {
+      "path": "src/lib/organization/domain/organization_default_workspace.erl",
+      "sha256": "3ee86ffe1c7054b1e0bb651143d0fed11c9b84acf28bdbbeecf6bb067d7c7532"
+    },
+    {
+      "path": "src/lib/organization/domain/organization_invitation.erl",
+      "sha256": "d759f18429c02f4c10677ed752f41d3e3fc0aad1f771cad3dc0105ff14a705e1"
+    },
+    {
+      "path": "src/lib/organization/domain/organization_agent_boundary.erl",
+      "sha256": "79a1bc9acff252d13ea4becd195f37bcccd67e74139c78d57ce9de0053019bc1"
+    },
+    {
+      "path": "src/lib/organization/domain/organization_owner_invariant.erl",
+      "sha256": "a2ed8cb519b649698b39fc8e073a4206214f8e925035c06474aaf6f4d9f4c827"
+    },
+    {
+      "path": "src/lib/organization/domain/organization_department.erl",
+      "sha256": "604a0f7ef92d9dab917c82a91aa2d9978499e6a78150e8f1c2d1fa2f3a935edc"
+    },
+    {
+      "path": "src/lib/organization/interfaces/organization_api_handler.erl",
+      "sha256": "38dacee5d121b7c22655749a052e597bc8b0ea33f447035ee4ab3995b33ba43b"
+    },
+    {
+      "path": "src/lib/organization/interfaces/organization_directory_handler.erl",
+      "sha256": "8eaf624f24abb3a4dae48ca7a99d368ec88ab5e86bab29c92015e2426c8f5d0b"
+    },
+    {
+      "path": "src/api/organization_handler.erl",
+      "sha256": "a7e33e2b5612770f7bc9d3cb0be46d71ba98b2f403feb581cc9b79cc6a6315fe"
+    },
+    {
+      "path": "src/api/organization_member_handler.erl",
+      "sha256": "f45bb1a775c29c154331a6701c702f2d071f76b6bf87803ee27696ecb42a22e5"
+    },
+    {
+      "path": "src/repo/organization_member_repo.erl",
+      "sha256": "6a220a424787d7472e1635cda243786211ed6aab290854ce46d9dae15f144328"
+    },
+    {
+      "path": "src/repo/organization_repo.erl",
+      "sha256": "830eddf1a9406dc80a8f6779fe53a72e25eb51800bfe6bddc24f9ffeff03450c"
+    }
+  ],
+  "test_harness_sha256": "8c08c031389b67341cf2cfac3250342a584bc7926cee951b367ceeba6127d94f",
+  "whole_goal_complete": false
+}

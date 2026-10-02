@@ -51,7 +51,7 @@ app_probes(Conn, Counters) ->
     {ok, _} = application:ensure_all_started(pooler),
     %% with_tx 的连接池名来自 config_ds:env(sql_driver)（application:env imboy）
     ok = application:set_env(imboy, sql_driver, pgsql),
-    {ok, _} = pooler:new_pool(maps:merge(#{name => pgsql, init_count => 1, max_count => 4,
+    {ok, _} = pooler:new_pool(maps:merge(#{name => pgsql, init_count => 2, max_count => 4,
                                            queue_max => 20},
                                           #{start_mfa => {epgsql, connect, [conn_opts()]}})),
     ok = fixture_base(Conn),
@@ -99,6 +99,17 @@ app_probes(Conn, Counters) ->
         {error, {404, _}} -> pass(Counters, "P06 missing org rejected 404");
         Other6 -> fail(Counters, "P06 missing org rejected 404", Other6)
     end,
+    ok = fixture_org(Conn, 800000030, 800000030, [{member, 800000029}]),
+    {error, {409, _}} = organization_member_logic:leave(800000030, 800000030),
+    {ok, #{owner_id := 800000029}} = organization_member_logic:transfer_owner(
+        800000030, 800000030, 800000029),
+    {ok, #{status := <<"removed">>}} = organization_member_logic:leave(800000030, 800000030),
+    800000029 = owner_of(Conn, 800000030),
+    {error, {409, _}} = organization_member_logic:leave(800000029, 800000030),
+    {ok, _, [{<<"removed">>}]} = q(Conn,
+        <<"SELECT status FROM organization_member WHERE organization_id=800000030 AND user_id=800000030">>),
+    {ok, _, [{1}]} = q(Conn, <<"SELECT status FROM \"user\" WHERE id=800000030">>),
+    pass(Counters, "P07 transfer then previous owner leave; new owner protected and personal account retained"),
     ok.
 
 %%--------------------------------------------------------------------
@@ -223,38 +234,49 @@ concurrency_probe(Conn, Conn2, Counters) ->
     ok = fixture_base(Conn),
     ok = fixture_org(Conn, 800000031, 800000031,
                      [{admin, 800000032}, {member, 800000033}]),
+    {ok, _, [{Blocker}]} = q(Conn2, <<"SELECT pg_backend_pid()">>),
+    {ok, _, _} = epgsql:squery(Conn2, "BEGIN"),
+    {ok, _, [_]} = q(Conn2, <<"SELECT id FROM organization WHERE id=800000031 FOR UPDATE">>),
     Parent = self(),
-    W1 = spawn(fun() -> Parent ! {td, self(), transfer_sequence(Conn, 800000031, 800000031, 800000032)} end),
-    W2 = spawn(fun() -> Parent ! {td, self(), transfer_sequence(Conn2, 800000031, 800000031, 800000033)} end),
+    W1 = spawn(fun() -> Parent ! {td, self(), organization_owner_transfer:transfer(800000031, 800000031, 800000032)} end),
+    W2 = spawn(fun() -> Parent ! {td, self(), organization_owner_transfer:transfer(800000031, 800000031, 800000033)} end),
+    try
+        wait_for_transfer_locks(Conn, Blocker, 100),
+        pass(Counters, "C01-L two production PG backends observed in lock wait"),
+        {ok, _, _} = epgsql:squery(Conn2, "COMMIT")
+    after
+        _ = epgsql:squery(Conn2, "ROLLBACK")
+    end,
     R1 = receive {td, W1, X1} -> X1 after 15000 -> timeout end,
     R2 = receive {td, W2, X2} -> X2 after 15000 -> timeout end,
-    OkCount = length([ok || R <- [R1, R2], R =:= {ok, committed}]),
-    case {OkCount, owner_of(Conn, 800000031), owner_member(Conn, 800000031)} of
-        {1, 800000032, 800000032} ->
-            pass(Counters, "C01 concurrent transfer: exactly one success sequence");
+    Winners = [Uid || {ok, #{owner_id := Uid}} <- [R1, R2]],
+    Rejected = [R || R = {error, {403, _}} <- [R1, R2]],
+    case {Winners, length(Rejected)} of
+        {[Winner], 1} when Winner =:= 800000032; Winner =:= 800000033 ->
+            Winner = owner_of(Conn, 800000031),
+            Winner = owner_member(Conn, 800000031),
+            pass(Counters, "C01 concurrent production transfer: exactly one winner");
         OtherC ->
-            fail(Counters, "C01 concurrent transfer", {R1, R2, OtherC})
+            fail(Counters, "C01 concurrent production transfer", {R1, R2, OtherC})
     end.
 
-%% transfer command 的 DB 语句序列（含锁内 owner_id 快照校验 = expected-version）
-transfer_sequence(Conn, OrgId, ActorUid, TargetUid) ->
-    IdB = integer_to_binary(OrgId),
-    tx(Conn, fun(C) ->
-        {ok, _, [{DbOwner}]} = q(C,
-            [<<"SELECT owner_id FROM organization WHERE id=">>, IdB, <<" FOR UPDATE">>]),
-        DbOwner = ActorUid,  % 锁内快照校验；不匹配即异常回滚
-        {ok, _} = x(C, [<<"UPDATE organization_member SET role='admin',updated_at=CURRENT_TIMESTAMP"
-                          " WHERE organization_id=">>, IdB,
-                         <<" AND user_id=">>, integer_to_binary(ActorUid),
-                         <<" AND role='owner' AND status='active'">>]),
-        {ok, _} = x(C, [<<"UPDATE organization_member SET role='owner',updated_at=CURRENT_TIMESTAMP"
-                          " WHERE organization_id=">>, IdB,
-                         <<" AND user_id=">>, integer_to_binary(TargetUid),
-                         <<" AND status='active' AND role IN ('admin','member')">>]),
-        {ok, _} = x(C, [<<"UPDATE organization SET owner_id=">>, integer_to_binary(TargetUid),
-                         <<",updated_at=CURRENT_TIMESTAMP WHERE id=">>, IdB]),
-        commit
-    end).
+%% 复用邀请竞态检查的 PG 锁等待 oracle；也包含同一行队列中的间接阻塞。
+wait_for_transfer_locks(_Conn, _Blocker, 0) ->
+    erlang:error(two_production_transfers_did_not_overlap);
+wait_for_transfer_locks(Conn, Blocker, Attempts) ->
+    Sql = <<"WITH RECURSIVE blocked(pid) AS ("
+            "SELECT pid FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)) "
+            "UNION SELECT a.pid FROM pg_stat_activity a JOIN blocked b "
+            "ON b.pid=ANY(pg_blocking_pids(a.pid))) "
+            "SELECT count(DISTINCT a.pid) FROM pg_stat_activity a JOIN blocked b ON a.pid=b.pid "
+            "WHERE a.datname=current_database() AND a.wait_event_type='Lock'">>,
+    case epgsql:equery(Conn, Sql, [Blocker]) of
+        {ok, _, [{2}]} -> ok;
+        {ok, _, [{_}]} ->
+            timer:sleep(50),
+            wait_for_transfer_locks(Conn, Blocker, Attempts - 1);
+        Other -> erlang:error({lock_wait_probe_failed, Other})
+    end.
 
 %%--------------------------------------------------------------------
 %% fixture / sql helpers
