@@ -5091,5 +5091,14 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "direct_submission_policy_session": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/direct-submission-policy-session-20261004.json",
+    "app_head": "30cd34069f1fe2dc3ead2231cb16528fc716e64a",
+    "executed": 242,
+    "focused_executed": 2,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }
