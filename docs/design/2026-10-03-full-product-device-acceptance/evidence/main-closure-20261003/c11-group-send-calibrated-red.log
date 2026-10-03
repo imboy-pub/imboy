@@ -1,0 +1,38 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart
+00:00 +0: registered C2G requires its matching server ACK
+00:00 +0 -1: registered C2G requires its matching server ACK [E]
+  C11 delivery unconfirmed
+  dart:async                                                                      _Completer.completeError
+  integration_test/e2ee_release/harness/registered_backend_transport.dart 278:22  RegisteredBackendTransport._finish
+  integration_test/e2ee_release/harness/registered_backend_transport.dart 143:7   RegisteredBackendTransport._sendBound.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                                      new Timer
+  integration_test/e2ee_release/harness/registered_backend_transport.dart 141:21  RegisteredBackendTransport._sendBound
+  integration_test/e2ee_release/harness/registered_backend_transport.dart 117:12  RegisteredBackendTransport.sendGroup
+  integration_test/e2ee_release/harness/backend_transport.dart 261:21             RealBackendTransport.sendGroup
+  test/unit_test/service/e2ee_registered_group_transport_test.dart 34:71          main.send
+  test/unit_test/service/e2ee_registered_group_transport_test.dart 49:20          main.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                                      _CustomZone.registerUnaryCallback
+  test/unit_test/service/e2ee_registered_group_transport_test.dart 48:5           main.<fn>
+  
+00:00 +0 -1: C2C ACK cannot confirm C2G even with matching message ID
+00:00 +0 -2: C2C ACK cannot confirm C2G even with matching message ID [E]
+  Expected: throws <Instance of 'UnconfirmedDelivery'>
+    Actual: <Instance of 'Future<DeliveryReceipt>'>
+     Which: emitted DeliveryReceipt:<DeliveryReceipt.accepted>
+  
+  package:matcher                                                         expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                       expectLater
+  test/unit_test/service/e2ee_registered_group_transport_test.dart 62:20  main.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                              _CustomZone.registerUnaryCallback
+  test/unit_test/service/e2ee_registered_group_transport_test.dart 61:5   main.<fn>
+  
+00:00 +0 -2: no server ACK remains unconfirmed after local write
+00:00 +1 -2: unknown group fails before writing a group frame
+00:00 +2 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: C2C ACK cannot confirm C2G even with matching message ID
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: registered C2G requires its matching server ACK

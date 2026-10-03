@@ -4098,5 +4098,14 @@
     "exit_code": 0,
     "product_pass": false,
     "network_connection": "NOT_CONNECTED"
+  },
+  "c11_group_send_ack_wiring": {
+    "receipt": "c11-group-send.json",
+    "receipt_sha256": "8a1c2d1d80a9d037d50d5e5061c63b50919c367e264a662f4a6259832eff0eba",
+    "app_head": "8a59b999ddcd9555701a25ed851f58ea29929ec6",
+    "executed": 18,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

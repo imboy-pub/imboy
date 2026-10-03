@@ -1,0 +1,20 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: registered C2G requires its matching server ACK
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: C2C ACK cannot confirm C2G even with matching message ID
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: C2C ACK cannot confirm C2G even with matching message ID
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: synthetic protected identities fail before channel write
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: disconnect during token resolution prevents later connection
+00:00 +18: All tests passed!

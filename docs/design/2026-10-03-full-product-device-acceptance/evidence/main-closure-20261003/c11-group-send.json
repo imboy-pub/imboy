@@ -1,0 +1,49 @@
+{
+  "id": "C11-C2G-OUTBOUND-ACK-WIRING",
+  "app_head": "8a59b999ddcd9555701a25ed851f58ea29929ec6",
+  "scope": "REGISTERED_SEND_COMPONENT_WITH_FAKE_SOCKET",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "executed": 18,
+  "failed": 0,
+  "exit_code": 0,
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "logs": [
+    {
+      "phase": "GREEN",
+      "path": "c11-group-send.log",
+      "sha256": "b841a7857598728b81c36bdb948b713b5bea1bd6e253016f3715f4bfce3e1942"
+    },
+    {
+      "phase": "CALIBRATED_RED",
+      "path": "c11-group-send-calibrated-red.log",
+      "sha256": "4879ee3a16e565e19ff8dd0a6e1b04ffd8cd3f293ae415514803d9b5ccdeec38"
+    }
+  ],
+  "oracles": [
+    "Explicit wrapper sendGroup invokes registered group binding",
+    "C2G_SERVER_ACK confirms matching group request",
+    "Same-ID C2C ACK cannot confirm C2G",
+    "No ACK remains unconfirmed",
+    "Unknown group rejected before message write"
+  ],
+  "negative_calibration": {
+    "mutation": "C2G pending ACK direction replaced with C2C",
+    "executed": 4,
+    "failed": 2,
+    "exit_code": 1,
+    "source_restored_byte_for_byte": true
+  },
+  "remaining": [
+    "C2G incoming message/consumer ACK composition",
+    "current membership/epoch/rotation/room-key authorization operations",
+    "authorized real four-account device journeys"
+  ],
+  "limits": [
+    "Server ACK is not recipient delivery/decryption/display",
+    "Initial fixture membership does not prove live server access",
+    "No AC-23 or full-product acceptance PASS"
+  ]
+}
