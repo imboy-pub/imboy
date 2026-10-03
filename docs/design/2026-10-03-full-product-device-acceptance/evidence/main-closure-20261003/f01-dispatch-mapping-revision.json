@@ -1,0 +1,29 @@
+{
+  "id": "PREPARATION-F01-DISPATCH-MAPPING-REVISION",
+  "scope": "VERSION_MAPPING_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "backend_head": "845179e1df5b148eb66abfe744ae9802aa01f393",
+  "version": "1.2",
+  "cards": 55,
+  "required_ids": 61,
+  "all_cards_status": "PLANNED",
+  "current_bindings": {
+    "acceptance_set": {
+      "path": "2026-10-03-full-product-android-macos-integration-acceptance-v1-acceptance-set.json",
+      "sha256": "458f3b25eb45c0ab90a880d9ddd78c7399b75421d88d01d463afb70bb389430f"
+    },
+    "dispatch_cards": {
+      "path": "2026-10-03-full-product-android-macos-integration-acceptance-v1-dispatch-cards.json",
+      "sha256": "8523a3d4e664184f1253efad925bc8c925a173d685920ffffa918c1ee3480488"
+    }
+  },
+  "previous_dispatch_sha256": "7361dcbf584f6a0095ec6b98d683f208ce6a082c2ab6385a30a8774a5d800046",
+  "previous_acceptance_set_sha256": "86bd6362dcf08e494d64de816eee4cd29d845b78c353363790fe7cc2d11a26b0",
+  "errors": [],
+  "review": "RUNNER_CODE_REVIEW_APPROVE",
+  "historical_evidence": "f01-dispatch-acceptance-coverage.json remains original failed version 1.1",
+  "requires_frozen_input_rebind": true,
+  "proof_limit": "Mapping coverage restored; none of the 61 product or 36 upstream requirements become qualified. Old snapshots and prior receipts remain historical, not current-main proof.",
+  "next_action": "Use v1.2 descriptors for next frozen input; bind every required case to its dispatch card, then verify authentic execution and business oracles."
+}
