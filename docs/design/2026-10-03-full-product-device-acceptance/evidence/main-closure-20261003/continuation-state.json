@@ -750,5 +750,32 @@
       "fingerprint authenticity and candidate/runtime binding",
       "final verifier and real platform gates"
     ]
+  },
+  "attempt_journal_integrity_gate": {
+    "app_candidate": "56c0e5b919e39208d02a88c1a8a88ea0691a3f31",
+    "command": "python3 -m unittest discover -s test/tooling/auto_test",
+    "executed": 286,
+    "exit": 0,
+    "review": "APPROVED_PINNED_INDEX_RETENTION_ONLY",
+    "evidence_path": "attempt-journal-suite.log",
+    "evidence_sha256": "276d12ec55c28d50806a0d0e0a06dc8bf75977a2a33bfbb9def3af1144607004",
+    "negative_oracles": [
+      "drop failed attempt and retain only green",
+      "reorder or duplicate attempt IDs",
+      "unknown attempt",
+      "rewrite failure exit to0",
+      "change value type",
+      "NaN/Infinity/deep metadata/invalidUnicode"
+    ],
+    "product_pass": false,
+    "cli_connection": "NOT_IMPLEMENTED",
+    "independent_execution_index": "NOT_ESTABLISHED_FOR_REAL_JOURNEYS",
+    "remaining": [
+      "pin independent execution-time journal index",
+      "connect registered CLI and frozen input",
+      "prove raw execution and business oracles",
+      "enforce retry policy and exact candidate/runtime source",
+      "complete actual platform and final gates"
+    ]
   }
 }
