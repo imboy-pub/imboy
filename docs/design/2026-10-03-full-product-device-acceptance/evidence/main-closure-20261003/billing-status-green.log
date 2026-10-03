@@ -1,34 +1,42 @@
-======================== EUnit ========================
-module 'billing_logic_tests'
-  billing_logic_tests: validate_plan_test...[0.001 s] ok
-  billing_logic_tests: period_ms_test...ok
-  billing_logic_tests: resolve_period_test...[0.001 s] ok
-  billing_logic_tests: pad2_test...ok
-  billing_logic_tests: encode_jsonb_test...[0.002 s] ok
-  billing_logic_tests: decode_jsonb_test...ok
-  billing_logic_tests: ts_ms_to_sql_test...ok
-  billing_logic_tests: t1_owner_allowed...[0.002 s] ok
-  billing_logic_tests: t2_other_user_denied...[0.002 s] ok
-  billing_logic_tests: t3_ownerless_legacy_denied...[0.002 s] ok
-  billing_logic_tests: t4_missing_subscription_denied...[0.002 s] ok
-  billing_logic_tests: t5_invalid_sub_id_denied...[0.002 s] ok
-  billing_logic_tests: t6_invalid_uid_denied...[0.002 s] ok
-  billing_logic_tests: t7_invoice_owner_allowed...[0.004 s] ok
-  billing_logic_tests: t8_invoice_other_user_denied...[0.004 s] ok
-  billing_logic_tests: t9_invoice_missing_denied...[0.002 s] ok
-  billing_logic_tests: t10_denial_message_does_not_leak_existence...[0.004 s] ok
-  billing_logic_tests: t11_pay_gateway_extra_passthrough...[0.002 s] ok
-  billing_logic_tests: t12_pay_gateway_no_extra_compat...[0.002 s] ok
-  billing_logic_tests: t13_pay_envelope_aligned_with_recharge...[0.002 s] ok
-  billing_logic_tests: t14_gateway_failure_log_privacy...[0.003 s] ok
-  billing_logic_tests: t15_mark_paid_failure_log_privacy...[0.004 s] ok
-  billing_logic_tests: t16_unknown_invoice_status_rejected...[0.016 s] ok
-  billing_logic_tests: t17_overdue_invoice_can_pay...[0.004 s] ok
-  billing_logic_tests: cancel_failure_privacy_test...[0.021 s] ok
-  billing_logic_tests: renew_failure_privacy_test...[0.026 s] ok
-  billing_logic_tests: usage_failure_privacy_test...[0.034 s] ok
-  billing_logic_tests: invoice_generation_failure_privacy_test...[0.048 s] ok
-  billing_logic_tests: plan_subscription_failure_privacy_test...[0.036 s] ok
-  [done in 0.717 s]
-=======================================================
-  All 29 tests passed.
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadSubscription 无订阅响应清除此前的当前套餐
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadSubscription 旧订阅响应不得覆盖较新的订阅
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadSubscription 销毁后订阅响应完成不写入状态
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingState BP-S1 默认值与 copyWith 不可变
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadPlans 较旧请求晚到不得覆盖较新请求的套餐列表
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-8 订阅异常结束加载并恢复按钮
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   _PlanListPageState._doSubscribe (package:imboy/page/billing/plan_list_page.dart:86:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [billing] subscription failed: _Exception[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-5 请求异常后结束加载，重试可恢复空态
+[BillingNotifier] plan load failed: _Exception
+00:00 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-8 第三方 cancelled → false 且不轮询
+00:00 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-9 第三方 notConfigured（后端未下发 pay_params）→ false、不轮询
+00:00 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-10 完成后 paying 复位；进行中重入直接 false
+00:00 +31: All tests passed!

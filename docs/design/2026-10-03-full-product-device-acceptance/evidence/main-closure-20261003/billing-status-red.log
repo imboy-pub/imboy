@@ -1,56 +1,46 @@
-======================== EUnit ========================
-module 'billing_logic_tests'
-  billing_logic_tests: validate_plan_test...[0.001 s] ok
-  billing_logic_tests: period_ms_test...ok
-  billing_logic_tests: resolve_period_test...[0.001 s] ok
-  billing_logic_tests: pad2_test...ok
-  billing_logic_tests: encode_jsonb_test...[0.001 s] ok
-  billing_logic_tests: decode_jsonb_test...ok
-  billing_logic_tests: ts_ms_to_sql_test...ok
-  billing_logic_tests: t1_owner_allowed...[0.002 s] ok
-  billing_logic_tests: t2_other_user_denied...[0.002 s] ok
-  billing_logic_tests: t3_ownerless_legacy_denied...[0.002 s] ok
-  billing_logic_tests: t4_missing_subscription_denied...[0.001 s] ok
-  billing_logic_tests: t5_invalid_sub_id_denied...[0.002 s] ok
-  billing_logic_tests: t6_invalid_uid_denied...[0.002 s] ok
-  billing_logic_tests: t7_invoice_owner_allowed...[0.003 s] ok
-  billing_logic_tests: t8_invoice_other_user_denied...[0.004 s] ok
-  billing_logic_tests: t9_invoice_missing_denied...[0.002 s] ok
-  billing_logic_tests: t10_denial_message_does_not_leak_existence...[0.004 s] ok
-  billing_logic_tests: t11_pay_gateway_extra_passthrough...[0.002 s] ok
-  billing_logic_tests: t12_pay_gateway_no_extra_compat...[0.002 s] ok
-  billing_logic_tests: t13_pay_envelope_aligned_with_recharge...[0.002 s] ok
-  billing_logic_tests: t14_gateway_failure_log_privacy...[0.003 s] ok
-  billing_logic_tests: t15_mark_paid_failure_log_privacy...[0.004 s] ok
-  billing_logic_tests: t16_unknown_invoice_status_rejected...*failed*
-in function billing_logic_tests:'-t16_unknown_invoice_status_rejected/0-fun-3-'/1 (test/logic/billing_logic_tests.erl, line 509)
-in call from lists:foreach_1/2 (lists.erl, line 2641)
-in call from billing_logic_tests:t16_unknown_invoice_status_rejected/0 (test/logic/billing_logic_tests.erl, line 503)
-in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
-in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
-in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
-in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
-in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
-**error:{assertMatch,[{module,billing_logic_tests},
-              {line,509},
-              {expression,"billing_logic : pay_invoice ( ? INV_NO , << \"mock\" >> )"},
-              {pattern,"{ error , _ }"},
-              {value,{ok,#{<<"amount">> => 39000,
-                           <<"invoice_no">> =>
-                               <<"BILL1771481621000_ABCD1234">>,
-                           <<"order_no">> => <<"BILL1771481621000_ABCD1234">>,
-                           <<"pay_params">> => #{},
-                           <<"payment_method">> => <<"mock">>,
-                           <<"payment_no">> => <<"GW-20260820-0001">>,
-                           <<"status">> => 1}}}]}
-  output:<<"">>
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart
+00:00 +0: BillingNotifier.loadSubscription 无订阅响应清除此前的当前套餐
+00:00 +1: BillingNotifier.loadSubscription 旧订阅响应不得覆盖较新的订阅
+00:00 +2: BillingNotifier.loadSubscription 销毁后订阅响应完成不写入状态
+00:00 +3: BillingState BP-S1 默认值与 copyWith 不可变
+00:00 +4: BillingNotifier.loadPlans 较旧请求晚到不得覆盖较新请求的套餐列表
+00:00 +5: BillingNotifier.loadPlans 容器销毁后请求完成不得更新已销毁状态
+00:00 +6: BillingNotifier.loadPlans BP-1a 成功 → plans 填充、isLoading 复位、error 为空
+00:00 +7: BillingNotifier.loadPlans BP-1b 失败 → error 非空（页面渲染错误态）
+00:00 +8: BillingNotifier.subscribePlan 账单查询失败不得视为已付清或订阅成功
+00:00 +9: BillingNotifier.subscribePlan 空账单列表不得视为已付清或订阅成功
+00:00 +10: BillingNotifier.subscribePlan 逾期账单不得视为已付清或订阅成功
+00:00 +10 -1: BillingNotifier.subscribePlan 逾期账单不得视为已付清或订阅成功 [E]
+  Expected: empty
+    Actual: [(String, String):(INV-1, mock)]
+  
+  package:matcher                                               expect
+  package:flutter_test/src/widget_tester.dart 473:18            expect
+  test/unit_test/page/billing/billing_provider_test.dart 341:9  main.<fn>.<fn>
+  
+00:00 +10 -1: BillingNotifier.subscribePlan 未知账单状态不得视为已付清或订阅成功
+00:00 +10 -2: BillingNotifier.subscribePlan 未知账单状态不得视为已付清或订阅成功 [E]
+  Expected: empty
+    Actual: [(String, String):(INV-1, mock)]
+  
+  package:matcher                                               expect
+  package:flutter_test/src/widget_tester.dart 473:18            expect
+  test/unit_test/page/billing/billing_provider_test.dart 341:9  main.<fn>.<fn>
+  
+00:00 +10 -2: BillingNotifier.subscribePlan 未付账单缺账单号不得视为已付清或订阅成功
+00:00 +11 -2: BillingNotifier.subscribePlan 已付账单缺账单号不得视为已付清或订阅成功
+00:00 +12 -2: BillingNotifier.subscribePlan 有效待付后出现缺账单号不得视为已付清或订阅成功
+00:00 +13 -2: BillingNotifier.subscribePlan BP-2 subscribe 失败 → false，后续步骤不执行
+00:00 +14 -2: BillingNotifier.subscribePlan BP-3 generate 失败 → false，不取账单号不支付
+00:00 +15 -2: BillingNotifier.subscribePlan BP-4 全成功（mock 即时入账，轮询首轮命中）→ true，payInvoice 收到 mock，刷新订阅
+00:00 +16 -2: BillingNotifier.subscribePlan BP-5 无待支付账单 → 视为成功，不调 payInvoice
+00:00 +17 -2: BillingNotifier.subscribePlan BP-6 第三方 success → 唤起后轮询入账 → true
+00:00 +18 -2: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +19 -2: BillingNotifier.subscribePlan BP-8 第三方 cancelled → false 且不轮询
+00:00 +20 -2: BillingNotifier.subscribePlan BP-9 第三方 notConfigured（后端未下发 pay_params）→ false、不轮询
+00:00 +21 -2: BillingNotifier.subscribePlan BP-10 完成后 paying 复位；进行中重入直接 false
+00:00 +22 -2: Some tests failed.
 
-  billing_logic_tests: t17_overdue_invoice_can_pay...[0.004 s] ok
-  billing_logic_tests: cancel_failure_privacy_test...[0.022 s] ok
-  billing_logic_tests: renew_failure_privacy_test...[0.027 s] ok
-  billing_logic_tests: usage_failure_privacy_test...[0.035 s] ok
-  billing_logic_tests: invoice_generation_failure_privacy_test...[0.042 s] ok
-  billing_logic_tests: plan_subscription_failure_privacy_test...[0.031 s] ok
-  [done in 0.694 s]
-=======================================================
-  Failed: 1.  Skipped: 0.  Passed: 28.
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan 未知账单状态不得视为已付清或订阅成功
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan 逾期账单不得视为已付清或订阅成功

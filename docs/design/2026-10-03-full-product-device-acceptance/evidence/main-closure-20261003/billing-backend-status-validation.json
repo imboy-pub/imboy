@@ -10,7 +10,7 @@
   "review": "APPROVED_CODE_REVIEW",
   "artifacts": [
     {
-      "path": "billing-status-red.log",
+      "path": "backend-billing-status-red.log",
       "sha256": "60c33dd1704a508fb00a6eb1af022e2dbdc7b0eb39ae3c4346de3fb5aebd8a33"
     },
     {
@@ -18,7 +18,7 @@
       "sha256": "d2e6dd96d4a85cda74b11996d1cdaaad0b1317fd61f5ab805b75086f99f0a1a3"
     },
     {
-      "path": "billing-status-green.log",
+      "path": "backend-billing-status-green.log",
       "sha256": "f6d3ad8a9ddcc9301214ad89a7e7cd732a0816760f8ca7bdca7216ecdbc9f47f"
     },
     {
@@ -35,5 +35,8 @@
   "original_acceptance_ids_upgraded": [],
   "limits": [
     "Actual pay_invoice logic with synthetic DS/gateway mocks; no real payment/database/device concurrency proof"
+  ],
+  "attempt_notes": [
+    "Generic log filenames collided with historical App status logs; historical bytes restored and backend logs renamed before final handoff"
   ]
 }
