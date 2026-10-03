@@ -1,0 +1,1772 @@
+{
+  "scope": "DIRECT_TOP_LEVEL_ARTIFACT_REFERENCES_ONLY",
+  "checked": [
+    {
+      "receipt": "billing-backend-log-privacy.json",
+      "path": "billing-backend-log-red.log"
+    },
+    {
+      "receipt": "billing-backend-log-privacy.json",
+      "path": "billing-backend-log-green.log"
+    },
+    {
+      "receipt": "billing-backend-log-privacy.json",
+      "path": "billing-backend-log-compile-focused.log"
+    },
+    {
+      "receipt": "billing-backend-log-privacy.json",
+      "path": "billing-backend-log-retest.log"
+    },
+    {
+      "receipt": "billing-backend-log-privacy.json",
+      "path": "billing-backend-log-build.log"
+    },
+    {
+      "receipt": "billing-backend-log-privacy.json",
+      "path": "billing-backend-log-final-compile.log"
+    },
+    {
+      "receipt": "billing-backend-log-privacy.json",
+      "path": "billing-backend-log-final.log"
+    },
+    {
+      "receipt": "billing-backend-status-validation.json",
+      "path": "backend-billing-status-red.log"
+    },
+    {
+      "receipt": "billing-backend-status-validation.json",
+      "path": "billing-status-missing-red.log"
+    },
+    {
+      "receipt": "billing-backend-status-validation.json",
+      "path": "backend-billing-status-green.log"
+    },
+    {
+      "receipt": "billing-backend-status-validation.json",
+      "path": "billing-status-final-compile.log"
+    },
+    {
+      "receipt": "billing-backend-status-validation.json",
+      "path": "billing-status-build.log"
+    },
+    {
+      "receipt": "billing-cancel-log-privacy.json",
+      "path": "billing-cancel-red.log"
+    },
+    {
+      "receipt": "billing-cancel-log-privacy.json",
+      "path": "billing-cancel-red-corrected.log"
+    },
+    {
+      "receipt": "billing-cancel-log-privacy.json",
+      "path": "billing-cancel-green.log"
+    },
+    {
+      "receipt": "billing-cancel-log-privacy.json",
+      "path": "billing-cancel-final-compile.log"
+    },
+    {
+      "receipt": "billing-cancel-log-privacy.json",
+      "path": "billing-cancel-build.log"
+    },
+    {
+      "receipt": "billing-disposal-boundaries.json",
+      "path": "billing-disposal-boundaries-log.log"
+    },
+    {
+      "receipt": "billing-disposal-boundaries.json",
+      "path": "billing-disposal-boundaries-analysis.log"
+    },
+    {
+      "receipt": "billing-disposal-boundaries.json",
+      "path": "billing-disposal-boundaries-calibration.log"
+    },
+    {
+      "receipt": "billing-disposal-boundaries.json",
+      "path": "billing-disposal-boundaries-overlap.log"
+    },
+    {
+      "receipt": "billing-disposal-boundaries.json",
+      "path": "billing-disposal-boundaries-restored.log"
+    },
+    {
+      "receipt": "billing-disposal.json",
+      "path": "billing-disposal-red.log"
+    },
+    {
+      "receipt": "billing-disposal.json",
+      "path": "billing-disposal-green.log"
+    },
+    {
+      "receipt": "billing-disposal.json",
+      "path": "billing-disposal-analysis.log"
+    },
+    {
+      "receipt": "billing-invoice-invalid.json",
+      "path": "billing-invoice-invalid-red.log"
+    },
+    {
+      "receipt": "billing-invoice-invalid.json",
+      "path": "billing-invoice-invalid-green.log"
+    },
+    {
+      "receipt": "billing-invoice-invalid.json",
+      "path": "billing-invoice-invalid-analysis.log"
+    },
+    {
+      "receipt": "billing-invoice-log-privacy.json",
+      "path": "billing-invoice-red.log"
+    },
+    {
+      "receipt": "billing-invoice-log-privacy.json",
+      "path": "billing-invoice-green.log"
+    },
+    {
+      "receipt": "billing-invoice-log-privacy.json",
+      "path": "billing-invoice-final-compile.log"
+    },
+    {
+      "receipt": "billing-invoice-log-privacy.json",
+      "path": "billing-invoice-build.log"
+    },
+    {
+      "receipt": "billing-invoice-query-failure.json",
+      "path": "billing-invoice-query-red.log"
+    },
+    {
+      "receipt": "billing-invoice-query-failure.json",
+      "path": "billing-invoice-query-green.log"
+    },
+    {
+      "receipt": "billing-invoice-query-failure.json",
+      "path": "billing-invoice-query-analysis.log"
+    },
+    {
+      "receipt": "billing-launcher-disposal.json",
+      "path": "billing-launcher-disposal-log.log"
+    },
+    {
+      "receipt": "billing-launcher-disposal.json",
+      "path": "billing-launcher-disposal-analysis.log"
+    },
+    {
+      "receipt": "billing-launcher-disposal.json",
+      "path": "billing-launcher-disposal-calibration.log"
+    },
+    {
+      "receipt": "billing-launcher-disposal.json",
+      "path": "billing-launcher-disposal-restored.log"
+    },
+    {
+      "receipt": "billing-plan-log-privacy.json",
+      "path": "billing-plan-red.log"
+    },
+    {
+      "receipt": "billing-plan-log-privacy.json",
+      "path": "billing-plan-green.log"
+    },
+    {
+      "receipt": "billing-plan-log-privacy.json",
+      "path": "billing-plan-final-compile.log"
+    },
+    {
+      "receipt": "billing-plan-log-privacy.json",
+      "path": "billing-plan-build.log"
+    },
+    {
+      "receipt": "billing-renew-log-privacy.json",
+      "path": "billing-renew-red.log"
+    },
+    {
+      "receipt": "billing-renew-log-privacy.json",
+      "path": "billing-renew-green.log"
+    },
+    {
+      "receipt": "billing-renew-log-privacy.json",
+      "path": "billing-renew-final-compile.log"
+    },
+    {
+      "receipt": "billing-renew-log-privacy.json",
+      "path": "billing-renew-build.log"
+    },
+    {
+      "receipt": "billing-status-validation.json",
+      "path": "billing-status-red.log"
+    },
+    {
+      "receipt": "billing-status-validation.json",
+      "path": "billing-status-green.log"
+    },
+    {
+      "receipt": "billing-status-validation.json",
+      "path": "billing-status-analysis.log"
+    },
+    {
+      "receipt": "billing-usage-log-privacy.json",
+      "path": "billing-usage-red.log"
+    },
+    {
+      "receipt": "billing-usage-log-privacy.json",
+      "path": "billing-usage-green.log"
+    },
+    {
+      "receipt": "billing-usage-log-privacy.json",
+      "path": "billing-usage-final-compile.log"
+    },
+    {
+      "receipt": "billing-usage-log-privacy.json",
+      "path": "billing-usage-build.log"
+    },
+    {
+      "receipt": "current-acceptance-tooling-20261004.json",
+      "path": "current-acceptance-tooling-20261004.log"
+    },
+    {
+      "receipt": "current-acceptance-tooling-20261004.json",
+      "path": "current-inventory-20261004.log"
+    },
+    {
+      "receipt": "current-backend-domain-20261004.json",
+      "path": "current-backend-domain-20261004.log"
+    },
+    {
+      "receipt": "current-backend-domain-20261004.json",
+      "path": "current-backend-domain-fresh-20261004.log"
+    },
+    {
+      "receipt": "current-backend-domain-20261004.json",
+      "path": "current-backend-domain-fresh-compile.log"
+    },
+    {
+      "receipt": "current-billing-local-bundle.json",
+      "path": "current-billing-local-bundle.log"
+    },
+    {
+      "receipt": "current-local-regression-e1edaa3e.json",
+      "path": "current-e2ee-offline-bundle.log"
+    },
+    {
+      "receipt": "current-local-regression-e1edaa3e.json",
+      "path": "current-app-acceptance-tools.log"
+    },
+    {
+      "receipt": "e2ee-bootstrap-privacy.json",
+      "path": "e2ee-bootstrap-privacy-red.log"
+    },
+    {
+      "receipt": "e2ee-bootstrap-privacy.json",
+      "path": "e2ee-bootstrap-privacy-green.log"
+    },
+    {
+      "receipt": "e2ee-bootstrap-privacy.json",
+      "path": "e2ee-bootstrap-privacy-analysis.log"
+    },
+    {
+      "receipt": "e2ee-client-metric-reason.json",
+      "path": "e2ee-client-metric-reason-red.log"
+    },
+    {
+      "receipt": "e2ee-client-metric-reason.json",
+      "path": "e2ee-client-metric-reason-green.log"
+    },
+    {
+      "receipt": "e2ee-client-metric-reason.json",
+      "path": "e2ee-client-metric-reason-final.log"
+    },
+    {
+      "receipt": "e2ee-client-metric-reason.json",
+      "path": "e2ee-client-metric-reason-analysis.log"
+    },
+    {
+      "receipt": "e2ee-counter-type-fix.json",
+      "path": "e2ee-counter-type-red.log"
+    },
+    {
+      "receipt": "e2ee-counter-type-fix.json",
+      "path": "e2ee-counter-type-green.log"
+    },
+    {
+      "receipt": "e2ee-counter-type-fix.json",
+      "path": "e2ee-counter-type-exposition.txt"
+    },
+    {
+      "receipt": "e2ee-counter-type-fix.json",
+      "path": "e2ee-counter-type-promtool.log"
+    },
+    {
+      "receipt": "e2ee-counter-type-fix.json",
+      "path": "e2ee-counter-type-parser.log"
+    },
+    {
+      "receipt": "e2ee-counter-type-fix.json",
+      "path": "e2ee-counter-type-compile.log"
+    },
+    {
+      "receipt": "e2ee-counter-type-gap.json",
+      "path": "e2ee-counter-type-probe.log"
+    },
+    {
+      "receipt": "e2ee-current-domain-regression.json",
+      "path": "e2ee-current-domain-regression.log"
+    },
+    {
+      "receipt": "e2ee-current-main-regression.json",
+      "path": "e2ee-current-vectors.log"
+    },
+    {
+      "receipt": "e2ee-current-main-regression.json",
+      "path": "e2ee-current-version.log"
+    },
+    {
+      "receipt": "e2ee-current-main-regression.json",
+      "path": "e2ee-current-domain.log"
+    },
+    {
+      "receipt": "e2ee-current-observability.json",
+      "path": "e2ee-current-metrics-chain.log"
+    },
+    {
+      "receipt": "e2ee-current-observability.json",
+      "path": "e2ee-current-alert-rule-tests.log"
+    },
+    {
+      "receipt": "e2ee-current-observability.json",
+      "path": "e2ee-current-alert-rule-calibration-red.log"
+    },
+    {
+      "receipt": "e2ee-current-observability.json",
+      "path": "e2ee-current-alert-rule-check.log"
+    },
+    {
+      "receipt": "e2ee-device-info-privacy.json",
+      "path": "e2ee-device-info-red.log"
+    },
+    {
+      "receipt": "e2ee-device-info-privacy.json",
+      "path": "e2ee-device-info-green.log"
+    },
+    {
+      "receipt": "e2ee-device-info-privacy.json",
+      "path": "e2ee-device-info-analysis.log"
+    },
+    {
+      "receipt": "e2ee-failure-metric-exposition.json",
+      "path": "e2ee-failure-metric-chain.log"
+    },
+    {
+      "receipt": "e2ee-failure-metric-exposition.json",
+      "path": "e2ee-failure-metric-calibration-red.log"
+    },
+    {
+      "receipt": "e2ee-group-gate-log-redaction.json",
+      "path": "e2ee-group-gate-log-red.log"
+    },
+    {
+      "receipt": "e2ee-group-gate-log-redaction.json",
+      "path": "e2ee-group-gate-log-green.log"
+    },
+    {
+      "receipt": "e2ee-group-gate-log-redaction.json",
+      "path": "e2ee-group-gate-log-focused-red.log"
+    },
+    {
+      "receipt": "e2ee-group-gate-log-redaction.json",
+      "path": "e2ee-group-gate-log-focused-green.log"
+    },
+    {
+      "receipt": "e2ee-group-gate-log-redaction.json",
+      "path": "e2ee-group-gate-log-compile.log"
+    },
+    {
+      "receipt": "e2ee-group-log-redaction.json",
+      "path": "e2ee-group-log-behavior-red.log"
+    },
+    {
+      "receipt": "e2ee-group-log-redaction.json",
+      "path": "e2ee-group-log-final-green.log"
+    },
+    {
+      "receipt": "e2ee-group-log-redaction.json",
+      "path": "e2ee-group-log-compile.log"
+    },
+    {
+      "receipt": "e2ee-key-log-redaction.json",
+      "path": "e2ee-key-log-red.log"
+    },
+    {
+      "receipt": "e2ee-key-log-redaction.json",
+      "path": "e2ee-key-log-green.log"
+    },
+    {
+      "receipt": "e2ee-key-log-redaction.json",
+      "path": "e2ee-key-log-compile.log"
+    },
+    {
+      "receipt": "e2ee-mapper-log-privacy.json",
+      "path": "e2ee-mapper-log-red.log"
+    },
+    {
+      "receipt": "e2ee-mapper-log-privacy.json",
+      "path": "e2ee-mapper-log-green.log"
+    },
+    {
+      "receipt": "e2ee-mapper-log-privacy.json",
+      "path": "e2ee-mapper-log-analysis.log"
+    },
+    {
+      "receipt": "e2ee-mapper-runtime-privacy.json",
+      "path": "e2ee-mapper-runtime-log.log"
+    },
+    {
+      "receipt": "e2ee-mapper-runtime-privacy.json",
+      "path": "e2ee-mapper-runtime-analysis.log"
+    },
+    {
+      "receipt": "e2ee-mapper-runtime-privacy.json",
+      "path": "e2ee-mapper-runtime-calibration.log"
+    },
+    {
+      "receipt": "e2ee-mapper-runtime-privacy.json",
+      "path": "e2ee-mapper-runtime-restored.log"
+    },
+    {
+      "receipt": "e2ee-metric-help.json",
+      "path": "e2ee-metric-help-tests.log"
+    },
+    {
+      "receipt": "e2ee-metric-help.json",
+      "path": "e2ee-metric-help-exposition.txt"
+    },
+    {
+      "receipt": "e2ee-metric-help.json",
+      "path": "e2ee-metric-help-strict.log"
+    },
+    {
+      "receipt": "e2ee-metric-help.json",
+      "path": "e2ee-metric-help-compile.log"
+    },
+    {
+      "receipt": "e2ee-olm-entry-log-redaction.json",
+      "path": "e2ee-olm-entry-log-red.log"
+    },
+    {
+      "receipt": "e2ee-olm-entry-log-redaction.json",
+      "path": "e2ee-olm-entry-log-green.log"
+    },
+    {
+      "receipt": "e2ee-olm-entry-log-redaction.json",
+      "path": "e2ee-olm-entry-log-compile.log"
+    },
+    {
+      "receipt": "e2ee-olm-log-redaction.json",
+      "path": "e2ee-olm-log-red.log"
+    },
+    {
+      "receipt": "e2ee-olm-log-redaction.json",
+      "path": "e2ee-olm-log-green.log"
+    },
+    {
+      "receipt": "e2ee-olm-log-redaction.json",
+      "path": "e2ee-olm-log-compile.log"
+    },
+    {
+      "receipt": "e2ee-olm-write-log-redaction.json",
+      "path": "e2ee-olm-write-log-red.log"
+    },
+    {
+      "receipt": "e2ee-olm-write-log-redaction.json",
+      "path": "e2ee-olm-write-log-green.log"
+    },
+    {
+      "receipt": "e2ee-olm-write-log-redaction.json",
+      "path": "e2ee-olm-write-log-compile.log"
+    },
+    {
+      "receipt": "e2ee-private-runbook.json",
+      "path": "e2ee-private-runbook-rule-check.log"
+    },
+    {
+      "receipt": "e2ee-private-runbook.json",
+      "path": "e2ee-private-runbook-rule-tests.log"
+    },
+    {
+      "receipt": "e2ee-real-bootstrap.json",
+      "path": "e2ee-real-bootstrap-log.log"
+    },
+    {
+      "receipt": "e2ee-real-bootstrap.json",
+      "path": "e2ee-real-bootstrap-analysis.log"
+    },
+    {
+      "receipt": "e2ee-real-bootstrap.json",
+      "path": "e2ee-real-bootstrap-calibration.log"
+    },
+    {
+      "receipt": "e2ee-real-bootstrap.json",
+      "path": "e2ee-real-bootstrap-restored.log"
+    },
+    {
+      "receipt": "e2ee-recovery-log-redaction.json",
+      "path": "e2ee-recovery-log-behavior-red.log"
+    },
+    {
+      "receipt": "e2ee-recovery-log-redaction.json",
+      "path": "e2ee-recovery-log-green.log"
+    },
+    {
+      "receipt": "e2ee-recovery-log-redaction.json",
+      "path": "e2ee-recovery-log-compile.log"
+    },
+    {
+      "receipt": "e2ee-rotation-metric-exposition.json",
+      "path": "e2ee-rotation-metric-chain.log"
+    },
+    {
+      "receipt": "e2ee-rotation-metric-exposition.json",
+      "path": "e2ee-rotation-metric-calibration-red.log"
+    },
+    {
+      "receipt": "e2ee-rotation-metric-exposition.json",
+      "path": "e2ee-rotation-current-otk-export.log"
+    },
+    {
+      "receipt": "e2ee-runtime-metric-privacy.json",
+      "path": "e2ee-runtime-metric-log.log"
+    },
+    {
+      "receipt": "e2ee-runtime-metric-privacy.json",
+      "path": "e2ee-runtime-metric-analysis.log"
+    },
+    {
+      "receipt": "e2ee-runtime-metric-privacy.json",
+      "path": "e2ee-runtime-metric-calibration.log"
+    },
+    {
+      "receipt": "e2ee-runtime-metric-privacy.json",
+      "path": "e2ee-runtime-metric-restored.log"
+    },
+    {
+      "receipt": "e2ee-trust-log-redaction.json",
+      "path": "e2ee-trust-log-red.log"
+    },
+    {
+      "receipt": "e2ee-trust-log-redaction.json",
+      "path": "e2ee-trust-log-green.log"
+    },
+    {
+      "receipt": "e2ee-trust-log-redaction.json",
+      "path": "e2ee-trust-log-compile.log"
+    },
+    {
+      "receipt": "f00-billing-declared-oracles.json",
+      "path": "f00-declared-oracles-red.log"
+    },
+    {
+      "receipt": "f00-billing-declared-oracles.json",
+      "path": "f00-declared-oracles-green.log"
+    },
+    {
+      "receipt": "f00-billing-declared-oracles.json",
+      "path": "f00-declared-oracles-placeholder-red.log"
+    },
+    {
+      "receipt": "f00-billing-declared-oracles.json",
+      "path": "f00-declared-oracles-reviewed-green.log"
+    },
+    {
+      "receipt": "f00-function-declaration-validation.json",
+      "path": "f00-function-declaration-validation.red.log"
+    },
+    {
+      "receipt": "f00-function-declaration-validation.json",
+      "path": "f00-function-declaration-validation.green.log"
+    },
+    {
+      "receipt": "f00-function-declaration-validation.json",
+      "path": "f00-function-declaration-validation.all.log"
+    },
+    {
+      "receipt": "f00-oracle-unbound.json",
+      "path": "f00-oracle-unbound-red.log"
+    },
+    {
+      "receipt": "f00-oracle-unbound.json",
+      "path": "f00-oracle-unbound-green.log"
+    },
+    {
+      "receipt": "f00-resource-obligations.json",
+      "path": "f00-resource-default-red.log"
+    },
+    {
+      "receipt": "f00-resource-obligations.json",
+      "path": "f00-resource-default-green.log"
+    },
+    {
+      "receipt": "f00-route-catalog-repair.json",
+      "path": "f00-route-catalog-repair.red.log"
+    },
+    {
+      "receipt": "f00-route-catalog-repair.json",
+      "path": "f00-route-catalog-repair.green.log"
+    },
+    {
+      "receipt": "f00-route-catalog-repair.json",
+      "path": "f00-route-catalog-repair.all.log"
+    },
+    {
+      "receipt": "f00-route-drift-rejection.json",
+      "path": "f00-route-drift-rejection.red.log"
+    },
+    {
+      "receipt": "f00-route-drift-rejection.json",
+      "path": "f00-route-drift-rejection.green.log"
+    },
+    {
+      "receipt": "f00-route-drift-rejection.json",
+      "path": "f00-route-drift-rejection.all.log"
+    },
+    {
+      "receipt": "f00-unmapped-impact-rejection.json",
+      "path": "f00-unmapped-impact-rejection.red.log"
+    },
+    {
+      "receipt": "f00-unmapped-impact-rejection.json",
+      "path": "f00-unmapped-impact-rejection.green.log"
+    },
+    {
+      "receipt": "f00-unmapped-impact-rejection.json",
+      "path": "f00-unmapped-impact-rejection.all.log"
+    },
+    {
+      "receipt": "f01-current-app-complete-78d71bbe.json",
+      "path": "f01-current-app-complete-78d71bbe.unit.log"
+    },
+    {
+      "receipt": "f01-current-app-complete-78d71bbe.json",
+      "path": "f01-current-app-complete-78d71bbe.analyze.log"
+    },
+    {
+      "receipt": "f01-current-app-complete-78d71bbe.json",
+      "path": "f01-current-app-complete-78d71bbe.inventory.log"
+    },
+    {
+      "receipt": "f14-cancel-attempt-device.json",
+      "path": "f14-attempt-device-red.log"
+    },
+    {
+      "receipt": "f14-cancel-attempt-device.json",
+      "path": "f14-attempt-device-green.log"
+    },
+    {
+      "receipt": "f14-cancel-case-link.json",
+      "path": "f14-case-link-red.log"
+    },
+    {
+      "receipt": "f14-cancel-case-link.json",
+      "path": "f14-case-link-green.log"
+    },
+    {
+      "receipt": "f14-cancel-snapshot-artifacts.json",
+      "path": "f14-snapshot-artifact-red.log"
+    },
+    {
+      "receipt": "f14-cancel-snapshot-artifacts.json",
+      "path": "f14-snapshot-artifact-green.log"
+    },
+    {
+      "receipt": "f14-cancel-snapshot-composition.json",
+      "path": "f14-snapshot-composition-red.log"
+    },
+    {
+      "receipt": "f14-cancel-snapshot-composition.json",
+      "path": "f14-snapshot-composition-green.log"
+    },
+    {
+      "receipt": "f14-cancel-snapshot-state.json",
+      "path": "f14-snapshot-null-red.log"
+    },
+    {
+      "receipt": "f14-cancel-snapshot-state.json",
+      "path": "f14-snapshot-null-green.log"
+    },
+    {
+      "receipt": "f14-cancel-snapshot-state.json",
+      "path": "f14-snapshot-final-all.log"
+    },
+    {
+      "receipt": "f14-complete-composition.json",
+      "path": "f14-complete-composition.log"
+    },
+    {
+      "receipt": "f14-device-entry-preparation.json",
+      "path": "f14-device-entry-preparation.initial.log"
+    },
+    {
+      "receipt": "f14-device-entry-preparation.json",
+      "path": "f14-device-entry-preparation.intermediate.log"
+    },
+    {
+      "receipt": "f14-device-entry-preparation.json",
+      "path": "f14-device-entry-preparation.complete.log"
+    },
+    {
+      "receipt": "f14-device-entry-preparation.json",
+      "path": "f14-device-entry-preparation.analyze.log"
+    },
+    {
+      "receipt": "f14-device-preflight-host.json",
+      "path": "f14-device-preflight-host.log"
+    },
+    {
+      "receipt": "f14-device-preflight-host.json",
+      "path": "f14-device-preflight-host.red.log"
+    },
+    {
+      "receipt": "f14-obligation-set.json",
+      "path": "f14-obligation-set-red.log"
+    },
+    {
+      "receipt": "f14-obligation-set.json",
+      "path": "f14-obligation-set-final-green.log"
+    },
+    {
+      "receipt": "full-metrics-handler-format.json",
+      "path": "full-metrics-handler-strict-red.log"
+    },
+    {
+      "receipt": "full-metrics-handler-format.json",
+      "path": "full-metrics-handler-exposition-red.txt"
+    },
+    {
+      "receipt": "full-metrics-handler-format.json",
+      "path": "full-metrics-handler-regression.log"
+    },
+    {
+      "receipt": "full-metrics-handler-format.json",
+      "path": "full-metrics-handler-probe-green.log"
+    },
+    {
+      "receipt": "full-metrics-handler-format.json",
+      "path": "full-metrics-handler-exposition.txt"
+    },
+    {
+      "receipt": "full-metrics-handler-format.json",
+      "path": "full-metrics-handler-strict-green.log"
+    },
+    {
+      "receipt": "full-metrics-handler-format.json",
+      "path": "full-metrics-handler-rule-check.log"
+    },
+    {
+      "receipt": "full-metrics-handler-format.json",
+      "path": "full-metrics-handler-alert-tests.log"
+    },
+    {
+      "receipt": "full-metrics-handler-format.json",
+      "path": "full-metrics-handler-compile.log"
+    },
+    {
+      "receipt": "isolated-pg-input-shape.json",
+      "path": "pg-inputs-green.log"
+    },
+    {
+      "receipt": "metric-gauge-name-fix.json",
+      "path": "metric-gauge-name-red.log"
+    },
+    {
+      "receipt": "metric-gauge-name-fix.json",
+      "path": "metric-gauge-name-green.log"
+    },
+    {
+      "receipt": "metric-gauge-name-fix.json",
+      "path": "metric-gauge-name-rule-check.log"
+    },
+    {
+      "receipt": "metric-gauge-name-fix.json",
+      "path": "metric-gauge-name-alert-tests.log"
+    },
+    {
+      "receipt": "metric-gauge-name-fix.json",
+      "path": "metric-gauge-name-exposition.txt"
+    },
+    {
+      "receipt": "metric-gauge-name-fix.json",
+      "path": "metric-gauge-name-strict.log"
+    },
+    {
+      "receipt": "metric-gauge-name-fix.json",
+      "path": "metric-gauge-name-compile.log"
+    },
+    {
+      "receipt": "payment-app-logger-runtime.json",
+      "path": "payment-app-logger-runtime.log"
+    },
+    {
+      "receipt": "payment-app-logger-runtime.json",
+      "path": "payment-app-logger-runtime-analysis.log"
+    },
+    {
+      "receipt": "payment-app-logger-runtime.json",
+      "path": "payment-app-logger-calibration.log"
+    },
+    {
+      "receipt": "payment-app-logger-runtime.json",
+      "path": "payment-app-logger-restored.log"
+    },
+    {
+      "receipt": "payment-sdk-privacy.json",
+      "path": "payment-sdk-privacy-red.log"
+    },
+    {
+      "receipt": "payment-sdk-privacy.json",
+      "path": "payment-sdk-privacy-green.log"
+    },
+    {
+      "receipt": "payment-sdk-privacy.json",
+      "path": "payment-sdk-privacy-analysis.log"
+    },
+    {
+      "receipt": "wechat-sdk-runtime.json",
+      "path": "wechat-sdk-runtime-configured.log"
+    },
+    {
+      "receipt": "wechat-sdk-runtime.json",
+      "path": "wechat-sdk-runtime-default.log"
+    },
+    {
+      "receipt": "wechat-sdk-runtime.json",
+      "path": "wechat-sdk-runtime-analysis.log"
+    },
+    {
+      "receipt": "wechat-sdk-runtime.json",
+      "path": "wechat-sdk-runtime-calibration.log"
+    },
+    {
+      "receipt": "wechat-sdk-runtime.json",
+      "path": "wechat-sdk-runtime-restored.log"
+    }
+  ],
+  "issues": [],
+  "product_pass": false,
+  "backend_head": "866e9e9f917b1c25704e13b74ab374669e674145",
+  "receipt_hashes": [
+    {
+      "path": "admin-current-static-build.json",
+      "sha256": "863dd138c69445e48c19e259c8121ddf377f066de0fce236df7866cd273d941d"
+    },
+    {
+      "path": "admin-frontend-input-census.json",
+      "sha256": "23e42693138dc693a1c340f20a2132115080e3a0823d78a5352e46c1637552e2"
+    },
+    {
+      "path": "admin-full-customer-service-host.json",
+      "sha256": "14550e032409543d51978d506f78c031f5505d0680d7e407ebca7f98b0a7487f"
+    },
+    {
+      "path": "admin-governance-host-regression.json",
+      "sha256": "03c28e5411f400d86812dc5329893f11382b078cbe4264e2dbd52b63eb616d9f"
+    },
+    {
+      "path": "app-full-unit-current-main.json",
+      "sha256": "2b64cad44cab6a112247c252e02e7398719d0a14bd3ba2eed4ba527290067add"
+    },
+    {
+      "path": "billing-backend-log-privacy.json",
+      "sha256": "63e27d0575ed95c3689093dde8e35be2816f32a7ff426cc84a68199290ea21c6"
+    },
+    {
+      "path": "billing-backend-status-validation.json",
+      "sha256": "59616db40e975870cd526ba8222e9890f099704536f6a2d5dbfcd91534893ab0"
+    },
+    {
+      "path": "billing-cancel-log-privacy.json",
+      "sha256": "a73c062a49d0786548d0cbf5d4e26537c3bd3cea24a31b936dc78d3c9e274f88"
+    },
+    {
+      "path": "billing-disposal-boundaries.json",
+      "sha256": "f49183285b2ba6bf4f38df6c4329c9432f128881a88dedeca7e81d071af7b057"
+    },
+    {
+      "path": "billing-disposal.json",
+      "sha256": "a8059efa6c97fb9cee2eae31b8930a72a6e748681a685cb659d929b561977a6c"
+    },
+    {
+      "path": "billing-invoice-invalid.json",
+      "sha256": "c7cf0c14cc8e07324cd727dd658057b6e15d3bf21182feeb3b591a2e77b627be"
+    },
+    {
+      "path": "billing-invoice-log-privacy.json",
+      "sha256": "257bd46a9e644cb0223d30878a96f241cce08f6a629b2d37ea337b661c6b79aa"
+    },
+    {
+      "path": "billing-invoice-query-failure.json",
+      "sha256": "ab7168312b0cc317b2e08983d4bd14972a99d74ab25ef2b3d1e7725372b92761"
+    },
+    {
+      "path": "billing-launcher-disposal.json",
+      "sha256": "7e2410ebba0b7db6383c4e88b4cd80f200b408bad73947538da338fe53dad43d"
+    },
+    {
+      "path": "billing-plan-log-privacy.json",
+      "sha256": "6cce9d4495dd1e8f8182467ef8d2ece522e2ddf627bddc07ebd13111bdd37362"
+    },
+    {
+      "path": "billing-renew-log-privacy.json",
+      "sha256": "a780ec403c9d3cd9d82da620c1db0f4dd343084060c5dc0e012af305020c1064"
+    },
+    {
+      "path": "billing-status-validation.json",
+      "sha256": "1efeb0c491cbe95ca9c1393ce7580f0b8712b024ec57dce9213df2b9256ea91b"
+    },
+    {
+      "path": "billing-usage-log-privacy.json",
+      "sha256": "7ffaa8ebe1d04dd87486b16fa343cf2bff03f2b1096aa0a4056fed5014987d5b"
+    },
+    {
+      "path": "c08-production-consumers-regression.json",
+      "sha256": "d355a09fde2b432f644e4cd0dfba5331c93daac5e6c1a75b8e812f25488395ec"
+    },
+    {
+      "path": "c08-production-wiring-host.json",
+      "sha256": "e7d27ee94d7d601fc0121603b4a29e9e6790692e93bad1208bde2154027b97ff"
+    },
+    {
+      "path": "c08-refresh-retention.json",
+      "sha256": "f4a07910e1c76df68286d0776bd05b2ea3413462c7f24389c025bf27ff9db9b5"
+    },
+    {
+      "path": "c11-ack-persistence-fixed.json",
+      "sha256": "8973f13650dba7d3ebf38fc19c18ddc0e016b3d5ace45234f2f39d34d07bba6d"
+    },
+    {
+      "path": "c11-binding-ack-host.json",
+      "sha256": "e4ab42f9c6595aec753bd6e8e3f72d0ff9da25003a3054a14883675fd63c8b79"
+    },
+    {
+      "path": "c11-c2c-authenticated-entry.json",
+      "sha256": "b8cb6f07a2344b7993f8e6ee82e749fb3d297c10553baa53ce126dcb897e1c51"
+    },
+    {
+      "path": "c11-composed-components-host.json",
+      "sha256": "1bfa261a9d16521fff40c5ff500d383e27f8578a0204775b6ea88e9777e35e1a"
+    },
+    {
+      "path": "c11-connection-components-host.json",
+      "sha256": "ae9173dc036595cafb596ca05c17f9456ba6c0970b943f1e3de38f2604ae5431"
+    },
+    {
+      "path": "c11-current-transport-reconciliation.json",
+      "sha256": "6ddbcdabd5dd3d49f710e529c0b31ae76897e3cd106887e5eef01e55626caafb"
+    },
+    {
+      "path": "c11-explicit-receipt-host.json",
+      "sha256": "bd783875ff54d1af1beeafb9340a13ff8e8afcfc9f2e8b1e5ccac536334446ea"
+    },
+    {
+      "path": "c11-four-account-receipts.json",
+      "sha256": "6d47d1bde6ec9d6476e4453f04f09c3aa13b4838f2ae6425afb3b9b4c2e74e6f"
+    },
+    {
+      "path": "c11-full-components-fanout.json",
+      "sha256": "6a1f4a850742eed6af2f05e8c0706bef32f06bcbae53e0c08b5e9b062e0b4fe9"
+    },
+    {
+      "path": "c11-group-binding.json",
+      "sha256": "2b648bbae2c682e9e7dccb24a730d92fc4dcf242998014ee4003bee2ae089c39"
+    },
+    {
+      "path": "c11-group-consumer-ack.json",
+      "sha256": "abe2b9e93eae43abd31e82c25c49e747aa59bf3e568c72746ba335c984fdc589"
+    },
+    {
+      "path": "c11-group-members.json",
+      "sha256": "25433325e6007908a95df1cd9e062874d2e26130ac74e8e4b3f67dcf12356067"
+    },
+    {
+      "path": "c11-group-receipt-codec.json",
+      "sha256": "4050d5a32aa761c64773fe5c11fdba189a72c093948971103c7578cdb92095fc"
+    },
+    {
+      "path": "c11-group-receipt-recovery.json",
+      "sha256": "5fab868f84deacbf5f2484aa9b36448f6da7bc4fffa8ebb8b2742622c8511cde"
+    },
+    {
+      "path": "c11-group-receive.json",
+      "sha256": "9e483c1df88d24f8e8f5ead8e3c9e472ac96bc96bfdc1db7e966c553269baace"
+    },
+    {
+      "path": "c11-group-send.json",
+      "sha256": "8a1c2d1d80a9d037d50d5e5061c63b50919c367e264a662f4a6259832eff0eba"
+    },
+    {
+      "path": "c11-inbound-rejection.json",
+      "sha256": "96c347533928a2f759a23b9845db4de732988d2b81da24fa0577345b4a5ac1d6"
+    },
+    {
+      "path": "c11-live-own-device-delivery.json",
+      "sha256": "933efe89a2b14b9563dd94bea933f560225b4ceaa423ee6b51bc91fc2f9e8c9c"
+    },
+    {
+      "path": "c11-multidevice-binding.json",
+      "sha256": "37c9c3ff64221971927a2097229848fb8b87220f6c815ba5444e1b4a47924155"
+    },
+    {
+      "path": "c11-multidevice-source-trace.json",
+      "sha256": "f0d9b5cf2d48ee8d65251d7225034a7ec25c6e4388387269fca3b0ecd6378b30"
+    },
+    {
+      "path": "c11-outbound-float.json",
+      "sha256": "4793a0bc1bb25a784c207deaf51dc0b5a60a993fe60af5c3007324aff3435fa8"
+    },
+    {
+      "path": "c11-own-device-recovery-path.json",
+      "sha256": "f95fce44bd75de8a91f36ee23f56b41e1ec0ea084342e41def9095dc5f9af8e5"
+    },
+    {
+      "path": "c11-own-device-transport-host.json",
+      "sha256": "fadf3fe146e59f28c222e0ff0a36d910c67086740001744eafa72d728834de67"
+    },
+    {
+      "path": "c11-production-format-host.json",
+      "sha256": "a753f7d104cc279718cfc550d07f7fa95847bbe10a9fcb80eed173d3c502ecf8"
+    },
+    {
+      "path": "c11-real-transport-source-contract.json",
+      "sha256": "bc0d43014a2f3f8d00220954039f2f45a261cb8a7929935658039aeb8e144d91"
+    },
+    {
+      "path": "c11-receipt-persistence-boundary.json",
+      "sha256": "a231b381905c0f7ffb9e85cf485c12dcef464140547f16e43519df21d2d6cf52"
+    },
+    {
+      "path": "c11-registered-fixture-host.json",
+      "sha256": "5b49a0cac35d95059717181d0e25327ad99445f704c8511c268bbe6a2cdd8e46"
+    },
+    {
+      "path": "c11-string-ids.json",
+      "sha256": "22ca06232aa1b0b2e84908eab33b5ceacb946e1fb1bff15529dc9a1ecbb97bf9"
+    },
+    {
+      "path": "c11-wire-binding-host.json",
+      "sha256": "e7b067d694f6980d4af6de56c17654f1dd3eddd2ce5d38608fe23a2f046e0d4f"
+    },
+    {
+      "path": "c11-wire-codec-host.json",
+      "sha256": "d93ae7825d3eae90f1e3c4534f9f2566c6dd87912e68937811bd4dd74415b5e2"
+    },
+    {
+      "path": "candidate-ancestry-snapshot.json",
+      "sha256": "6e6cb4d682bb1df24fa3827e43125b2956ffdb9f2db2b4f32cbdaf7c55769e99"
+    },
+    {
+      "path": "case-event-cli-match.frozen.json",
+      "sha256": "1a0fd5522009a5a17a22d787fd70b3b53675215a9e37430ffa500b3df036b7c9"
+    },
+    {
+      "path": "case-event-cli-match.result.json",
+      "sha256": "512fc7c19d71fb74f4f143bc8fb0410d21d20eaef0e9b537e54ba2fd9ee2b9f4"
+    },
+    {
+      "path": "case-event-cli-wrong_identity.frozen.json",
+      "sha256": "384cef03b6e3be6a200f341bea8c821ff9f16d966fa7967b278a74ea44392891"
+    },
+    {
+      "path": "case-event-cli-wrong_identity.result.json",
+      "sha256": "8213aabfadc156db285798e7363e4201e29af7e79898dae01026313091843e78"
+    },
+    {
+      "path": "commands.json",
+      "sha256": "be9ece2674b5d41444a19931775987d31794cec6aa3041219641bf081c2c920e"
+    },
+    {
+      "path": "continuation-state.json",
+      "sha256": "1b78871b0313a729cacadb5d8cb66de3d9339f7a845736f8fbdb144e6e30c4ce"
+    },
+    {
+      "path": "coverage-composition-drop_input_mapping.report.json",
+      "sha256": "90dd5dd70b4ff04eea19a97fd7d1d8498b25746c24331f59e47eaef675d8ea06"
+    },
+    {
+      "path": "coverage-composition-drop_input_mapping.result.json",
+      "sha256": "d11639967be27f53982dc81b569694ba4bdd2d9da4d3673e81258f41e9fc5659"
+    },
+    {
+      "path": "coverage-composition-synthetic.frozen.json",
+      "sha256": "09930b3e9aaf43535f302560c2045d873e566b594cdb6eb5c41f705e79120248"
+    },
+    {
+      "path": "coverage-composition-valid.report.json",
+      "sha256": "b7747ee1432d69ec5e6385b87ca3efaca1afb2ea477bf4b36ef70ce153447d4d"
+    },
+    {
+      "path": "coverage-composition-valid.result.json",
+      "sha256": "b37cec3aaaaef464b9445d82e05c4eab3a3dc683ddf9d4cbb35e0c2bd7c24421"
+    },
+    {
+      "path": "coverage-source-audit.json",
+      "sha256": "d1cb6c09efc41ea717a7419bf990be80c4d5e2012529a52ce3133c4e9d209fd1"
+    },
+    {
+      "path": "cs-governance-local-closure.json",
+      "sha256": "046a7b318184889742aa294e3124bb4396254eda4502fb2ec5b3a3de9bdcfc15"
+    },
+    {
+      "path": "cs-governance-semantic-map.json",
+      "sha256": "f2cd93c7a388722ee83eb101f29bc0404ad10eb94b0d0851de48cda206a6e5e7"
+    },
+    {
+      "path": "current-97-requirement-audit.json",
+      "sha256": "3dc71fe83abf61a1b1822372b1ba72962aa8ea11ec9a91c58e92905e241df673"
+    },
+    {
+      "path": "current-acceptance-tooling-20261004.json",
+      "sha256": "7b1d2f1ff933faa676561b7125f0a4780cea10976407b01ee858be41c513a585"
+    },
+    {
+      "path": "current-backend-domain-20261004.json",
+      "sha256": "649ffd6859b6478e9d9f1986fe600e8d0ed7edfbb35207525f40775e669c4aa8"
+    },
+    {
+      "path": "current-billing-local-bundle.json",
+      "sha256": "d4e48972d2ad0b532cbe223d3f51873f5b0d5a40658a5e353c0489dda9f0de47"
+    },
+    {
+      "path": "current-integration-and-oracle-preparation.json",
+      "sha256": "32affde13205fe013f63631bf78ffd7d568b0d56e47fcb1402f4b16091c52b4c"
+    },
+    {
+      "path": "current-local-regression-e1edaa3e.json",
+      "sha256": "46742d92abbc3a1035a2bea687a851084cd3b0688d58593ec46562327d694e8e"
+    },
+    {
+      "path": "current-static-input-census.json",
+      "sha256": "63c7906cc5cbbc67b6b67cf42e6cc2b8c1f8e27e993e1898e05afc102517b661"
+    },
+    {
+      "path": "current-upstream-ledger-rejection.json",
+      "sha256": "ea9e4d85babd771844fa812ba91df842522c45a910c40fbbf2f00ea9529da3c7"
+    },
+    {
+      "path": "dispatch-backlog.json",
+      "sha256": "da3cba1eb7985f85641f119db4b1260536fe1056ecbfd5a01493fd38b5551d79"
+    },
+    {
+      "path": "e2ee-bootstrap-privacy.json",
+      "sha256": "420338e2cbd6f9ce38d9a0e7a5eaca516a24a99bf8ba84bf53f7abeb30e7baf7"
+    },
+    {
+      "path": "e2ee-client-metric-reason.json",
+      "sha256": "3a3a3a1ce6acc81d83f308fcf6c1bbd06fcd7d2d2d728546f6c043b830c54bf2"
+    },
+    {
+      "path": "e2ee-counter-type-fix.json",
+      "sha256": "681d45ae1bfaf21b5301e698e3b7eaa4695d1350477f98bb8b56ddbb28128872"
+    },
+    {
+      "path": "e2ee-counter-type-gap.json",
+      "sha256": "9a65da3e7c33100f6e7da564abaf0dd3a78574fae81f3f07e7216ae99543bffb"
+    },
+    {
+      "path": "e2ee-current-domain-regression.json",
+      "sha256": "9f9b157827ffb5a4ae325b48002b139463491e1c9911681b9ce6386309967731"
+    },
+    {
+      "path": "e2ee-current-main-regression.json",
+      "sha256": "699d1bf35c76c49ce54c7d69767c359788f7232dfebc4a186dc474853ec82868"
+    },
+    {
+      "path": "e2ee-current-observability.json",
+      "sha256": "e549e6974a60926ad5dbf8c0403e438a03acbc958001b41cd60c97bd21f8a1ac"
+    },
+    {
+      "path": "e2ee-device-info-privacy.json",
+      "sha256": "5bbb3e469c76cc2f305532fdc743a55e559c6f7b38730075f3a385c7cabae633"
+    },
+    {
+      "path": "e2ee-failure-metric-exposition.json",
+      "sha256": "172a83488971892b093fd71246eeae8962c567c56ffe6e2a79189874fe8719e1"
+    },
+    {
+      "path": "e2ee-group-gate-log-redaction.json",
+      "sha256": "0590dc8c7c5499aa110e50b1d0c4ccd32dfd78ed4b5b83056d86f4eb648f850b"
+    },
+    {
+      "path": "e2ee-group-log-redaction.json",
+      "sha256": "8b70b5982e7a6984e7bf9a20f5f79dc0a8f55327b0c15a91174cee5e33b3271e"
+    },
+    {
+      "path": "e2ee-key-log-redaction.json",
+      "sha256": "2c91eee138ab1798119f40a2412600810806cc826f06d94be09e4b46d0552832"
+    },
+    {
+      "path": "e2ee-mapper-log-privacy.json",
+      "sha256": "2463454f8159cddb38ef8403accd15ac42f48f378081d0ffee8bd6cc844101ae"
+    },
+    {
+      "path": "e2ee-mapper-runtime-privacy.json",
+      "sha256": "4995ce9fd100ba0d51c96fa7a46a128c8b2b47b2cd89c9fa58266a7245251f37"
+    },
+    {
+      "path": "e2ee-metric-help.json",
+      "sha256": "207fbeca643571229ebe12d4612b6e7a4127132786ddb6744a3b770a48623cef"
+    },
+    {
+      "path": "e2ee-olm-entry-log-redaction.json",
+      "sha256": "2488b419218bb35217f43d0d1fe065c3c8069b7bec6cfe1c57a5039b24643fea"
+    },
+    {
+      "path": "e2ee-olm-log-redaction.json",
+      "sha256": "093f9b1e8279f9095aa3c9fac8f1e10d5acdaa1acbcfbe61584703c50d4a5162"
+    },
+    {
+      "path": "e2ee-olm-write-log-redaction.json",
+      "sha256": "5cf81bdef84d93816b35298d3b0309f325d443135e4f7c9f149227b9aa2b8e82"
+    },
+    {
+      "path": "e2ee-private-runbook.json",
+      "sha256": "a3f6016e5921d2f9edacec1597ead7b74db332943c1396da45857d0323c38c90"
+    },
+    {
+      "path": "e2ee-real-bootstrap.json",
+      "sha256": "2e2ca76f4c5ac04c842022c8f3d049b59059558b8565caeac32994e54ccb0219"
+    },
+    {
+      "path": "e2ee-recovery-log-redaction.json",
+      "sha256": "4c446186eb92d4016128046b6ddf3a99ad500bd4dec3106b39ac9912c830ce84"
+    },
+    {
+      "path": "e2ee-rotation-metric-exposition.json",
+      "sha256": "2f8bd6b9c89e70f180de9a2146b28315b98c8e3018ffeacb4007df75a28e889e"
+    },
+    {
+      "path": "e2ee-runtime-metric-privacy.json",
+      "sha256": "109fbde4acdcb6206e1f41625790020c24abcd8d3066f2b0d1d13322e201f7c6"
+    },
+    {
+      "path": "e2ee-trust-log-redaction.json",
+      "sha256": "fef28b502fa35df573c7e21dbce1007c30a7e7427affb53c833655d7955ba050"
+    },
+    {
+      "path": "e2ee-upstream-current-main-requalification.json",
+      "sha256": "9d940ef333d24e5716d67dffea788d6bb63ff31cdfed1791b744fb54fb6bd449"
+    },
+    {
+      "path": "execution-composition-missing_runs.frozen.json",
+      "sha256": "d7ddd500c309bf0cc0b86cc39c1c594d05ba8f109d381e2a55be2bc0818498af"
+    },
+    {
+      "path": "execution-composition-missing_runs.result.json",
+      "sha256": "37a76404aadf77e53c2bab8032ae952ef5b33bddb0ab8c2bbda3c1cd0801e2c8"
+    },
+    {
+      "path": "execution-composition-synthetic.report.json",
+      "sha256": "d0f08f89e9e1405e76bee73a107f1870327d7840532d4a69d34499d3339acb75"
+    },
+    {
+      "path": "execution-composition-valid.frozen.json",
+      "sha256": "49263593b045c94088e0475a9320d6609c618a73f25618084dca099a5d8b4f34"
+    },
+    {
+      "path": "execution-composition-valid.result.json",
+      "sha256": "b37cec3aaaaef464b9445d82e05c4eab3a3dc683ddf9d4cbb35e0c2bd7c24421"
+    },
+    {
+      "path": "execution-link-synthetic.report.json",
+      "sha256": "9f13660a63bce011dd8e9d213bcdd05cdccfe158872647d6d232e4bdebf9bc43"
+    },
+    {
+      "path": "execution-link-unknown_attempt.frozen.json",
+      "sha256": "3627e02f73f01ff7ffa3773a0466839bfa2899e0094dfc829156963ec09a5492"
+    },
+    {
+      "path": "execution-link-unknown_attempt.result.json",
+      "sha256": "a05573a5d419ec5c9dc493dde913c7b3f2654a3abc340fdbe57deb811eee17a4"
+    },
+    {
+      "path": "execution-link-valid.frozen.json",
+      "sha256": "604f922d6931d4c26f3086baa35556ce530edc94d1bcfa6c2d9ebde5020b208b"
+    },
+    {
+      "path": "execution-link-valid.result.json",
+      "sha256": "b37cec3aaaaef464b9445d82e05c4eab3a3dc683ddf9d4cbb35e0c2bd7c24421"
+    },
+    {
+      "path": "f00-backup-24-feature-case-design.json",
+      "sha256": "a42b0652338254e4c3b6085e7374d62a72fbc1bb8cb282ea18510d58876fdeb3"
+    },
+    {
+      "path": "f00-backup-current-host-map.json",
+      "sha256": "063f67bef1652351fff2836b87320bcbe2dfe4f10933edf44755b5065aa2f940"
+    },
+    {
+      "path": "f00-backup-three-host-cases.json",
+      "sha256": "705d915a4ec692dfdb688628289dea89e58e7d664e6f0dfcbaae36a3329e0061"
+    },
+    {
+      "path": "f00-billing-declared-oracles.json",
+      "sha256": "27925d6e977d5194aaebe27bab43c489ade4ee240cff12115865c59b134fccbc"
+    },
+    {
+      "path": "f00-billing-function-bindings.json",
+      "sha256": "ef5c007a4c2d649e8ba3f9df790f2a3756993de6466dea197d0a2fd510856323"
+    },
+    {
+      "path": "f00-billing-plan-case-design.json",
+      "sha256": "eb18eda2ddbca1e30153196f23fee249d801aa7c01dc01eae2bfa7b1a75eb3b4"
+    },
+    {
+      "path": "f00-function-declaration-validation.json",
+      "sha256": "5ba8ee112a23ce90dc5dddfb728327c80aa6aba54a7807cc00ee1a330c842b47"
+    },
+    {
+      "path": "f00-legacy-feature-column-reconciliation.json",
+      "sha256": "c11017ab2ef863e4568b373bdc9f0bb42d72d73dd45a6d8be10c5a77f92b153b"
+    },
+    {
+      "path": "f00-nonlegacy-five-page-host.json",
+      "sha256": "0b734343bd6ccd54dac0fc3f34bc204403853fc76675790f8045159115ac0ca6"
+    },
+    {
+      "path": "f00-nonlegacy-page-reconciliation.json",
+      "sha256": "f0fae45c27535170a2066bfe92a8994572d3fc7043945a0e59a0631773bca1ec"
+    },
+    {
+      "path": "f00-oracle-unbound.json",
+      "sha256": "56ab3038ddf1f4fd8b00221372fa7a099c49a2cdc4aa5160a7e9092e50c1ee42"
+    },
+    {
+      "path": "f00-resource-obligations.json",
+      "sha256": "e408ded32977760afef2d8d99100abdf887c39907016bf5fe7124ff772c20289"
+    },
+    {
+      "path": "f00-route-catalog-repair.json",
+      "sha256": "63dd25fcaccc279e935a145dc8575d688d9d8277c8907d6aabd2022baa2a8cd5"
+    },
+    {
+      "path": "f00-route-drift-rejection.json",
+      "sha256": "24fa8f1dbf9079be29ee402028b085bbcf8255f8bb73936139ab1c8872ea49aa"
+    },
+    {
+      "path": "f00-unmapped-impact-rejection.json",
+      "sha256": "0def0c89bb8fd635315f1d81a49741012f5ee441193d7047e4214804ed2a001f"
+    },
+    {
+      "path": "f01-case-dispatch-links.json",
+      "sha256": "272909b32c596316408a6b27c57cefab8b1ac904ab92188404e1d931501e91dc"
+    },
+    {
+      "path": "f01-clean-candidate-tooling.json",
+      "sha256": "1e6b79c2a968c85c1fcd264ba63e7662c448bcc3a6ebf04bdcacacd9a978c55c"
+    },
+    {
+      "path": "f01-complete-tooling-regression.json",
+      "sha256": "b7bbcb8f08c1f21ed3ceebe845cf6916121227047192546c5a57a8d7fc0cd0bd"
+    },
+    {
+      "path": "f01-cross-device-record-correlation.json",
+      "sha256": "19fa87dcbb18f28aa0e75c8c337188ebdf73a29bf35e582576368db669b77d6c"
+    },
+    {
+      "path": "f01-current-app-complete-78d71bbe.json",
+      "sha256": "bc073ab09ce70e4dac67bb14f3a5e661df757a762c42cad26f928623cee04aac"
+    },
+    {
+      "path": "f01-current-complete-tooling.json",
+      "sha256": "42057c1ccfe61282299ebcd2d18c4429d36f6feff99d406de747d0bb8561fe07"
+    },
+    {
+      "path": "f01-defect-closure-records.json",
+      "sha256": "921149097fea0d4c3066b6caa008e5f69dee17c997d3cd39320d4730d557fab4"
+    },
+    {
+      "path": "f01-defect-invalid-candidates.json",
+      "sha256": "af4e1e6dc3023ed137df3ecf8045915b2caa4230b2cc4f209095cc13c93252dd"
+    },
+    {
+      "path": "f01-dispatch-acceptance-coverage.json",
+      "sha256": "9a88f5882e8f8baf8d9d8d4d61b9db063b06d78f3cdffc40169091a72d6c9651"
+    },
+    {
+      "path": "f01-dispatch-mapping-revision.json",
+      "sha256": "fa8914f60f917fc0bd1c9fd56278f23bb9d53d9c8c825d916e01d4b43de6a9e3"
+    },
+    {
+      "path": "f01-journey-attempt-links.json",
+      "sha256": "6551c65f9441c88106924bc621925c6149e2e9b66cd4ae83a02c5cdf05e3422c"
+    },
+    {
+      "path": "f01-journey-device-bindings.json",
+      "sha256": "bdca15c78ba2f9a41bec646d14103017360648b2b06e5d0385b391498f34ccc1"
+    },
+    {
+      "path": "f01-journey-set-execution-composition.json",
+      "sha256": "676143d6e3d29e7cf41a65f79e5cc4066bc7e881c6cd8c03f168ff6348fd86e9"
+    },
+    {
+      "path": "f01-live-freeze-readiness.json",
+      "sha256": "17317cdc62567920e583a2095c5d5c5197797b801b90e005d0e630b0f84ecdaf"
+    },
+    {
+      "path": "f01-placeholder-identity.json",
+      "sha256": "6f3533ae811e03f67873a10be24c7f637d257a0b5d2c53fc43a6c454df693548"
+    },
+    {
+      "path": "f01-version-acceptance-set.json",
+      "sha256": "e07eb789a50c878f320b32eb4601250ee1bd1e4145d689a8fd8bf7320291d7d8"
+    },
+    {
+      "path": "f01-version-document-links.json",
+      "sha256": "f145f88024094aba90c7a207f2461d470975acd7e5df495263bdc6966e1f6e04"
+    },
+    {
+      "path": "f01-version-inputs.json",
+      "sha256": "b1daf1a316b1538ef4bacbe3694614ebdaef3fac4fa6b65cebd3f14e3dc27ca4"
+    },
+    {
+      "path": "f08-backup-disposal-fixed.json",
+      "sha256": "cea0ed5fa59b6533b69edc6d3e3077ef7c537c60107b459d7f1097cea537044f"
+    },
+    {
+      "path": "f08-backup-disposal-red.json",
+      "sha256": "d30d4b8c5d07b464c79ee2959b98e86208b8600bde11556b795dae82eb5922b4"
+    },
+    {
+      "path": "f08-backup-operation-reentry-fixed.json",
+      "sha256": "59905fbc51d4bd2c798ac9f45e20fd44d5715661bef763eab5b6eefd3ff0498c"
+    },
+    {
+      "path": "f08-backup-operation-reentry-red.json",
+      "sha256": "de078d13df5ccff0f603e4b66a8bc4dec4386ea569336f978707115b0b3f04a8"
+    },
+    {
+      "path": "f08-backup-retry-late-success.json",
+      "sha256": "746e8e3eba4b8b1d6dfc150119c7c45752bc62dbbc6e77f9877a15122cca55c9"
+    },
+    {
+      "path": "f08-clipboard-stale-read-fixed.json",
+      "sha256": "f5ebe02241f3b151451e57560996a36ae96cc79d28bc188bbd74bb1e7d833472"
+    },
+    {
+      "path": "f08-clipboard-stale-read-red.json",
+      "sha256": "6176b5eeca0f47b21368e6281d1b0c7f5b2acdc1d45c5cddbc9a7afd6d6965ac"
+    },
+    {
+      "path": "f08-cloud-late-keys.json",
+      "sha256": "bc7c7a8312a3089b6a6c80f8257a3bd34f7626ad126b9a162d927a7591a09614"
+    },
+    {
+      "path": "f08-cloud-password-error.json",
+      "sha256": "7affb84b01c172d17aa6bf12054e133e9d7e1895a8d8eebc4edf13f004b0f2f0"
+    },
+    {
+      "path": "f08-cloud-prompt-reentry.json",
+      "sha256": "f20581283360d0f45a4d49c1d92f1b07ca4547b80b7390fa73c49c0c965c3449"
+    },
+    {
+      "path": "f08-empty-password-regression.json",
+      "sha256": "542c46fbbe96227ba521dd2370e4fa015cbb4624be57a32613ced04858f917a3"
+    },
+    {
+      "path": "f08-import-late-keys.json",
+      "sha256": "2d8d4956a3ebf3784988ea689e9a942855a79a6b4f1e305f7b829e89bdc43436"
+    },
+    {
+      "path": "f08-import-reentry.json",
+      "sha256": "63ff4d467895a676f6edfc2ab7461632c16444292c56fc466f7d0be2c08c02d9"
+    },
+    {
+      "path": "f08-import-selection-race.json",
+      "sha256": "94fb5750f3460f13a55ad5ca6cd656d146d3d5a16a811b383d25f13d55a2119c"
+    },
+    {
+      "path": "f08-import-verification-disposal.json",
+      "sha256": "18fa6e93543f50f494924d44b76e7f5116fdb39e93fc3543521151e94ac897c0"
+    },
+    {
+      "path": "f08-picker-disposal.json",
+      "sha256": "5b3797fedfb01faf8563139901e915f3e101d62f763934b20d2a6fc38dba9151"
+    },
+    {
+      "path": "f08-picker-order.json",
+      "sha256": "732f77756bb698b5b9c33e3d9d9d7019ad6a2c275aafa5cc0e4385e15d7652f7"
+    },
+    {
+      "path": "f08-prompt-local-mutex.json",
+      "sha256": "11ffc31226e8f6ac9dfd61f926f7024c1c0de52c7f0506916351863484669013"
+    },
+    {
+      "path": "f08-restore-cross-mutex.json",
+      "sha256": "44759d9f26277b31c35eb3dc1f8b73cba6df389e8fcc4e83f9e20fa7850b387f"
+    },
+    {
+      "path": "f14-billing-empty-retry-fixed.json",
+      "sha256": "91244f6b46804874afcb7a9e4d28c81f64af4c48bcab9885d6df24a4fb83a30c"
+    },
+    {
+      "path": "f14-billing-exception-recovery.json",
+      "sha256": "5488d8a3204e1ea7bbf1101cd1ddbff4d6c357c6d4c19c16561fdd3034fc9f65"
+    },
+    {
+      "path": "f14-billing-plan-race-disposal.json",
+      "sha256": "c5d709604f17dc497ec4e8fa898f279518a7264a5efd65f84f9a0ded573e4a51"
+    },
+    {
+      "path": "f14-billing-subscription-race-clear.json",
+      "sha256": "8484ce2e96f0b5a0e839596a591f4b7871ff6a461c8ad2597ad2579752bda847"
+    },
+    {
+      "path": "f14-cancel-attempt-device.json",
+      "sha256": "cddea245433307c9a4d775726fe8bdb6df2a8a1eb241adf3c61d106991b37845"
+    },
+    {
+      "path": "f14-cancel-case-link.json",
+      "sha256": "4a35aa600e67d9eb61d43393d976be70cfab41b6e358a8422dcfb4ef3d7f4f16"
+    },
+    {
+      "path": "f14-cancel-snapshot-artifacts.json",
+      "sha256": "f646caa66326daefa815c7cd6bffbfd9c446f933a81db3ca7adf785ba3fa930c"
+    },
+    {
+      "path": "f14-cancel-snapshot-composition.json",
+      "sha256": "f04a60cefe99f57f68f19f28b9edcba3d903daa71dc24547bbc2af8e48a9d1d6"
+    },
+    {
+      "path": "f14-cancel-snapshot-state.json",
+      "sha256": "19ad18041d674ef0b573efc41d89e3a4b746fd9fcf5ae1bc377d24782f499979"
+    },
+    {
+      "path": "f14-cancellation-oracle-contract.json",
+      "sha256": "569dcf4afad3a5de7dd4c0e8efcc623640de3dd76cf78872e32b378733f270fd"
+    },
+    {
+      "path": "f14-complete-composition.json",
+      "sha256": "26ec74ffb23aec41d29788dfacee65e5abdfe1760f4f30f89531298851fffa15"
+    },
+    {
+      "path": "f14-current-billing-host.json",
+      "sha256": "6bd3ecc1566e45e42ce6b835d6066126c8dae0e8e0df4628ae9aa0e0ce49e8ef"
+    },
+    {
+      "path": "f14-device-entry-preparation.json",
+      "sha256": "0a00ee0f24b5cb81549e62c5eb4b8d2ce357d884344f4bd478f0106fcda27da2"
+    },
+    {
+      "path": "f14-device-entry-readiness.json",
+      "sha256": "4fb28746b9d3aeb2c536a096763b6433d3c99e95c7131437611375553bf790b1"
+    },
+    {
+      "path": "f14-device-preflight-host.json",
+      "sha256": "69c1b8fbee000469637b32904bf75328cbae6d2c452653e4c86e51ca1c12a947"
+    },
+    {
+      "path": "f14-obligation-set.json",
+      "sha256": "07c78aec985037b14c719b04d779df574c015309e75fd184dd0b463752a236aa"
+    },
+    {
+      "path": "f14-paying-ui.json",
+      "sha256": "78e501df3210c32b9896816bc4b5f132cd503871748d74dd7896381af5665556"
+    },
+    {
+      "path": "f14-payment-cancel.json",
+      "sha256": "d4406743689fb8fb4a0189a8a7878d0f8c23ec6fdfc23162f01f210b10b6a9d0"
+    },
+    {
+      "path": "f14-payment-profile-visibility.json",
+      "sha256": "abd3fbccfe01e2d5e28426570b9ce4cf17f7744d55515132e28bcf18beadf82d"
+    },
+    {
+      "path": "f14-remaining-four-case-design.json",
+      "sha256": "3925468f46cdf1c087e55b12670daabbe0f206d7b996d93a5db5e62db5b9ab23"
+    },
+    {
+      "path": "f14-snapshot-sql-preparation.json",
+      "sha256": "67bad3a3f2fe134e2c8e5db4d263520b074b9749313fcd965c81d086f41178a2"
+    },
+    {
+      "path": "f14-subscribe-exception.json",
+      "sha256": "966f7fe49ba42111622582388248be766d313a64b096ffd13808b2de94600c03"
+    },
+    {
+      "path": "f16-init-error-widget-recovery.json",
+      "sha256": "c540dd05f5043b2bbc1e39fc262214c111d56858d8ed24721a3543bb89d59f61"
+    },
+    {
+      "path": "full-metrics-handler-format.json",
+      "sha256": "2cf8ceb93e3cdf42c16953404a9e7a4eadc6e7690752d6625a17f5fd5b91582b"
+    },
+    {
+      "path": "inventory-readiness-audit.json",
+      "sha256": "2d70bf85538bd8fdb1040e3276c62177698ee8f7222d3f99587750d581ea6d45"
+    },
+    {
+      "path": "inventory-source-delta.json",
+      "sha256": "50586d571e48febe7158d2a3a8bbc5203fa3adf405bcf258f397e03fc3187a13"
+    },
+    {
+      "path": "isolated-pg-image-binding.json",
+      "sha256": "62e6d7beca6bae778c4b785199019ab402b1319d28ffc54bc0ce72cf6c7ee69b"
+    },
+    {
+      "path": "isolated-pg-input-shape.json",
+      "sha256": "8221df1bd478951a444b1d1483147976d2511adb25c7d772e6f6da6902c96e30"
+    },
+    {
+      "path": "isolated-pg-template-validation.json",
+      "sha256": "61bb2a210694d0271fdb1ec1faba735d95da7745f14b6f8751c8d3fb085e90fe"
+    },
+    {
+      "path": "metric-gauge-name-fix.json",
+      "sha256": "c157ddd004fee7d82c719fadb357365a7871770c70c7b0088ef7961619f9b98e"
+    },
+    {
+      "path": "payment-app-logger-runtime.json",
+      "sha256": "3381d01be7bc83d152c183efeaff2115d90143cc3ec8103af5b91fcf952a089d"
+    },
+    {
+      "path": "payment-sdk-privacy.json",
+      "sha256": "086a0a650b2a97723007f191c134fa871d9bb9a28d8da8b25f5cefb770438983"
+    },
+    {
+      "path": "preflight-fixture-frozen.json",
+      "sha256": "6455d394f6c39cddef3b9d0d84a5ac71453795eb637395b3fff394a051ddb93e"
+    },
+    {
+      "path": "preflight-fixture-report.json",
+      "sha256": "6ae0ae54ddc9d6e69785d4038ce84c41282a4dc5941e9dacef0a886bf496de39"
+    },
+    {
+      "path": "preflight-fixture-result.json",
+      "sha256": "9a30db80be8e7301e3f4b7aa7361b0062234c391d3e1f8f3561ce83cf179255a"
+    },
+    {
+      "path": "preflight-journal-frozen.json",
+      "sha256": "3860dfb1f2e058500e953ad676d19ebcdc2014a92901f580b1920f39bec4242c"
+    },
+    {
+      "path": "preflight-journal-report-drop_failure.json",
+      "sha256": "74b424fb5b4f9cdb4efbd973ad1496b01a09854b19fe64fe9e05a7a64cf70724"
+    },
+    {
+      "path": "preflight-journal-report-rewrite_failure.json",
+      "sha256": "2c74b496305420ee2e13874ae4fd5f858d19b74a7f5c9da38f0d6a83d24fc239"
+    },
+    {
+      "path": "preflight-journal-report-valid.json",
+      "sha256": "b89c0af04b564555ea16aff1cf94cb815398586f1ba97e15f1c5dbc7abb92ba9"
+    },
+    {
+      "path": "preflight-journal-result-drop_failure.json",
+      "sha256": "489ba96d4a6b935f2eb17a2b869f10190c129a02e723118c0398694d0f259863"
+    },
+    {
+      "path": "preflight-journal-result-rewrite_failure.json",
+      "sha256": "05d262469134cc01ccef7f9bc3bf32031a65cdb6576943989b18b3248af75f34"
+    },
+    {
+      "path": "preflight-journal-result-valid.json",
+      "sha256": "ea9e0e8168d33b3505ff98a7ce7fec3736d3954cab7e8a90c3d2db6d3020c0ac"
+    },
+    {
+      "path": "preflight-v2-fixture-frozen.json",
+      "sha256": "75a785d55e3664f453dfb8dc4ae480af92a09d2b2588dc8c83d3bc4f9bcc0002"
+    },
+    {
+      "path": "preflight-v2-report-changed_build.json",
+      "sha256": "9b4464517778aad6f8fcb095346bb35e98ae31c9413ff552daf7d4f6965600c5"
+    },
+    {
+      "path": "preflight-v2-report-missing_device.json",
+      "sha256": "4ce381885531697f817f3ee789b7a4f995360ed520e7c22fb08b9eef461e53cc"
+    },
+    {
+      "path": "preflight-v2-report-valid_structure.json",
+      "sha256": "556676dec1203b245f53cc6b3750dea79a60ee17d7ed5ab20b7a7258eb3e265e"
+    },
+    {
+      "path": "preflight-v2-result-changed_build.json",
+      "sha256": "5bdf6088f900940d38cbc6d74883658f9aa41c3a058d409ef6b4fed7bce9eb62"
+    },
+    {
+      "path": "preflight-v2-result-config-tamper.json",
+      "sha256": "0aeb264a8631a4b591d9fea7ae1946f361ad8f95625b81b6d7ef48d5fc7b2807"
+    },
+    {
+      "path": "preflight-v2-result-missing_device.json",
+      "sha256": "38aa38436d205d5a3b28d26db6f984ad9e3be011d143ae5f6c1d562f1e1f1a7e"
+    },
+    {
+      "path": "preflight-v2-result-valid_structure.json",
+      "sha256": "bc1b05ca79f600fc5e55111585507e7e8e11ead4edbc5de79e35a6843cca6775"
+    },
+    {
+      "path": "preflight-v2-synthetic-build.json",
+      "sha256": "cfca390f803a128578789846378ff2724948bc9637169f8e5c2750211bedf822"
+    },
+    {
+      "path": "preflight-v2-synthetic-config.json",
+      "sha256": "c66796be85e2b8fdda577c4f2fac3babbf1ae8fe4527ce8513e755fca99f6a0c"
+    },
+    {
+      "path": "preflight-v2-synthetic-device.json",
+      "sha256": "109467a70ff64ad1693ef6853206dc0c1afa1be78b04b3f7670d44714a6f6b95"
+    },
+    {
+      "path": "preflight-v2-synthetic-fixture.json",
+      "sha256": "1dba415dcc60bdfe815bcd20f05bd5fb3001c83458f704b80a3069670822c686"
+    },
+    {
+      "path": "preflight-v2-synthetic-source.json",
+      "sha256": "2d9c94a8bcacc45c05f4619b36a3625680cb4ed5e0e8dde5b8058ab7e11b07b9"
+    },
+    {
+      "path": "recovery-synthetic-complete-result.json",
+      "sha256": "2a36731acb4edfd109b16bccf144911e050f9808cec56068f88321bf62b498d5"
+    },
+    {
+      "path": "recovery-synthetic-incomplete-result.json",
+      "sha256": "09211496ef5a40c14d820342927ecfa58cecd53ca79c49248bee6d000e3e2673"
+    },
+    {
+      "path": "shard-manifest-cli.json",
+      "sha256": "2865a59359691f838a8565640e4226069b36435121f9d74e8eefb5dca9572456"
+    },
+    {
+      "path": "tsid-current-isolated-suites.json",
+      "sha256": "32d5deadd2f3f86f5efdb56972f7886cb0633aa02ed52f218070a23cff847cbf"
+    },
+    {
+      "path": "upstream-admin-binding.json",
+      "sha256": "636dacfed4fff18dc45805e04ce54d45c8181f8c5a3133b1c2918e0923be3d90"
+    },
+    {
+      "path": "upstream-card-binding.json",
+      "sha256": "5c694a254d2a515273501c6d32dfb1c8a364af8455c4afb5589da1f22d36c211"
+    },
+    {
+      "path": "upstream-command-binding.json",
+      "sha256": "cd0e76dfe7031d8a0a119008e47042df53cb77771d9ccd7db13b0a9e8e04184d"
+    },
+    {
+      "path": "upstream-execution-composition.json",
+      "sha256": "9f231a79401b5247d94f804abe66bb4c2c5779cfa48aaa5d69ab89bd31a7454f"
+    },
+    {
+      "path": "upstream-ledger-gate.json",
+      "sha256": "3f1e78ecfc6a6abbc08de9f2f21cd87723ff1942d132959e7b536eb33c5f44e2"
+    },
+    {
+      "path": "user-ux-record-gate.json",
+      "sha256": "7eb8877b7f0dd2f68fb587ae0b028e8a10c5e2d94aca86024faff1ee620d889a"
+    },
+    {
+      "path": "wechat-sdk-runtime.json",
+      "sha256": "935ac027aae447b76fe0eba56c3c802c9598ec1f8b0c0045d82c8051f296034d"
+    }
+  ],
+  "checked_reference_count": 211,
+  "limits": [
+    "Checks only artifacts list entries with path and sha256 in root JSON receipts",
+    "Does not validate nested/custom references, test oracle quality, original 97 requirements or current-head qualification"
+  ],
+  "next_action": "Evidence references are intact in this scope; continue original coverage/device/backend/profile closure"
+}

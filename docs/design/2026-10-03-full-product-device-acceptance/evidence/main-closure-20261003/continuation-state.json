@@ -4683,5 +4683,12 @@
     "backend_head": "8cf541f0d95267d558e679943e90c51a1d36635f",
     "tests": 29,
     "product_pass": false
+  },
+  "current_direct_evidence_reference_audit": {
+    "receipt": "current-evidence-reference-audit-20261004.json",
+    "checked_references": 211,
+    "issues": 0,
+    "scope": "DIRECT_TOP_LEVEL_ARTIFACT_REFERENCES_ONLY",
+    "product_pass": false
   }
 }
