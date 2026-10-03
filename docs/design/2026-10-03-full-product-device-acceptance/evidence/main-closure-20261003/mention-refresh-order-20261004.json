@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_MENTION_REFRESH_RESPONSE_ORDER",
+  "app_head": "125a589e1548e814396ba3fd368d6b79d9b00729",
+  "executed": 11,
+  "new_cases": 2,
+  "logs": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/mention-refresh-red-valid-20261004.log",
+      "sha256": "8f218f3cfa1091fda51e120809e6c5974fce95df53a99810ab7625e4e0f4432a",
+      "exit_code": 1
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/mention-refresh-green-20261004.log",
+      "sha256": "5ff265919e5d767597e3d4288819cadac0fd0567805d0e1a81f9a5e18a00c119",
+      "exit_code": 0
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/mention-refresh-static-20261004.log",
+      "sha256": "7c831abfd0916ada582d7f01d515ceb1fbcb168df624b9427f762679884b3861",
+      "exit_code": 0
+    }
+  ],
+  "sources": [
+    {
+      "path": "lib/page/mention/mention_list_page.dart",
+      "sha256": "54d0c3d3f9a4f5862febf4a5ce67e4388061b76a22f900d5d99d6ba90a6e3905"
+    },
+    {
+      "path": "test/unit_test/page/mention/mention_refresh_order_test.dart",
+      "sha256": "7de756ae2ac68768ad2cb69a17101612fc39ec7bc2d3b45519e72d6f1c50ec52"
+    }
+  ],
+  "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/page/mention",
+    "--reporter",
+    "expanded"
+  ],
+  "red_oracles": [
+    "Old pagination appended stale item after newest refresh: expected1child actual2.",
+    "Old refresh replaced newest content after newer refresh completed."
+  ],
+  "green_oracle": "Actual page/event/scroll verifies newest content before old response released, then one item/no stale content/exact3calls.",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "related_function_ids": [
+    "fn:mention:mention_list_page:004",
+    "fn:mention:mention_list_page:005",
+    "fn:mention:mention_list_page:011"
+  ],
+  "limitations": [
+    "Synthetic service response; no real backend/device.",
+    "No account/group change, thrown exception, or disposal qualification.",
+    "Refresh failure pagination metadata preserved by source; not dynamically covered in these two new cases.",
+    "Initial pumpAndSettle timeout with pending pagination excluded from valid RED."
+  ],
+  "reviews": [
+    "c11_flutter_review APPROVE",
+    "runner_code_review APPROVE"
+  ]
+}

@@ -5347,5 +5347,13 @@
     "executed": 9,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "mention_refresh_response_order": {
+    "receipt": "mention-refresh-order-20261004.json",
+    "app_head": "125a589e1548e814396ba3fd368d6b79d9b00729",
+    "executed": 11,
+    "new_cases": 2,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }
