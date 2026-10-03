@@ -2353,5 +2353,33 @@
       "plan/profile/defect/UX/upstream final gates",
       "97-ID frozen final qualification"
     ]
+  },
+  "f01_journey_attempt_links": {
+    "id": "PREPARATION-F01-JOURNEY-ATTEMPT-LINKS",
+    "scope": "FROZEN_RECORD_CORRELATION_ONLY",
+    "product_pass": false,
+    "network_executed": false,
+    "app_head": "e2556b5d074e33288384fcf4dfe0c31c08648835",
+    "executed": 105,
+    "exit": 0,
+    "log": {
+      "path": "f01-journey-attempt-links.log",
+      "sha256": "439cd02b2ba459621b75d8caa1e6c73bee9cbf83ad38a53fd0f6b56cfc04a256"
+    },
+    "reviews": [
+      "PYTHON_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "requirements": [
+      "Every stage declares a frozen four-dimensional case key",
+      "Case belongs to journey and exactly one raw run",
+      "Raw record attempt and event descriptor match frozen run",
+      "Receiver uses opposite platform; reopen uses identical receiver case"
+    ],
+    "proof_limit": "Synthetic local tests only; persistence is linked to its driving test, not proven by Flutter events. Producer authenticity and business facts remain unqualified.",
+    "remaining": [
+      "qualified real-device and storage capture adapters",
+      "full final verifier and 97-ID qualification"
+    ]
   }
 }
