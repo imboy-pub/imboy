@@ -5182,5 +5182,15 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "current_main_e2ee_requalification_20261004": {
+    "receipt": "e2ee-main-requalification-20261004.json",
+    "app_head": "cf36624eca804ffff0f57e4f7f0f2afd0f3ce0cf",
+    "domain_host": 986,
+    "vectors": 245,
+    "version_gate": 45,
+    "exit_code": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

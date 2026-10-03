@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_E2EE_REGRESSION",
+  "heads": {
+    "imboy": "f0778d340791d92430104628b1052cb8252fa13f",
+    "imboyapp": "cf36624eca804ffff0f57e4f7f0f2afd0f3ce0cf",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "plan_hashes": {
+    "docs/design/2026-10-03-e2ee-production-excellence/plan.md": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+    "docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1.md": "aeb4dc3da1d0c51ebecaf6a1edfad07558e3dbcaca6615e9c1b2e011b84832aa"
+  },
+  "checks": [
+    {
+      "command": "flutter test test/unit_test/service/e2ee --reporter expanded",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "exit_code": 0,
+      "passed": 986,
+      "log": "current-main-e2ee-regression-20261004.log",
+      "sha256": "1ccde255f935134a62a147071ee168bfe9be24bfe386a0571300b510512315aa"
+    },
+    {
+      "command": "python3 verify_python.py",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-e2ee-production-excellence/fixtures",
+      "exit_code": 0,
+      "passed": 245,
+      "log": "current-main-e2ee-vectors-20261004.log",
+      "sha256": "7ea1a6d8a0f46179e5b76a6c7f5a635363ebb0fc993fa4fa3d905a2637f5a6b2"
+    },
+    {
+      "command": "bash scripts/test/e2ee_version_gate_test.sh",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboy",
+      "exit_code": 0,
+      "passed": 45,
+      "log": "current-main-e2ee-version-20261004.log",
+      "sha256": "a339ed6472968196ab0aea73f43712281d3cd5ed5d7f2186f3855f985ad9941c"
+    }
+  ],
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "limitations": [
+    "Host and synthetic fixtures only; no Android/macOS device or production execution.",
+    "This is a domain regression, not the complete 97 requirement acceptance gate.",
+    "Backend full EUnit and pending security/product decisions remain outside this evidence."
+  ]
+}

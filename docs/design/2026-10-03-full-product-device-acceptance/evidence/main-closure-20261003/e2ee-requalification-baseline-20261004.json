@@ -1,0 +1,16 @@
+{
+  "heads": {
+    "imboy": "f0778d340791d92430104628b1052cb8252fa13f",
+    "imboyapp": "cf36624eca804ffff0f57e4f7f0f2afd0f3ce0cf",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "worktrees": {
+    "imboy": "worktree /Users/leeyi/project/imboy.pub/imboy\nHEAD f0778d340791d92430104628b1052cb8252fa13f\nbranch refs/heads/main\n\n",
+    "imboyapp": "worktree /Users/leeyi/project/imboy.pub/imboyapp\nHEAD cf36624eca804ffff0f57e4f7f0f2afd0f3ce0cf\nbranch refs/heads/main\n\n",
+    "imboyadmin": "worktree /Users/leeyi/project/imboy.pub/imboyadmin\nHEAD c9e73adcf3151d2214461d12e0998651ec811dd6\nbranch refs/heads/main\n\n"
+  },
+  "plan_hashes": {
+    "docs/design/2026-10-03-e2ee-production-excellence/plan.md": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+    "docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1.md": "aeb4dc3da1d0c51ebecaf6a1edfad07558e3dbcaca6615e9c1b2e011b84832aa"
+  }
+}
