@@ -1,0 +1,45 @@
+{
+  "status": "PARTIAL",
+  "source_sha": {
+    "imboy": "9d888c494edcea8136b95cc34125fd3631fff21d",
+    "imboyapp": "fe354efb5efb3524e44456987df18156d48190ea",
+    "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+  },
+  "acceptance_ids": {
+    "N0-A01": "PARTIAL",
+    "N1-A01": "PARTIAL",
+    "N1-A02": "PARTIAL",
+    "N1-A03": "PARTIAL",
+    "N2-A01": "PARTIAL",
+    "N2-A02": "PARTIAL",
+    "N2-A03": "PARTIAL",
+    "N2-A04": "PARTIAL",
+    "N3-A01": "PARTIAL",
+    "N3-A02": "PARTIAL",
+    "N3-A03": "PARTIAL",
+    "N3-A04": "PARTIAL",
+    "N4-A01": "PARTIAL",
+    "N4-A02": "PARTIAL",
+    "N4-A03": "PARTIAL",
+    "N5-A01": "PARTIAL"
+  },
+  "pending": [
+    "N0-A01",
+    "N1-A01",
+    "N1-A02",
+    "N1-A03",
+    "N2-A01",
+    "N2-A02",
+    "N2-A03",
+    "N2-A04",
+    "N3-A01",
+    "N3-A02",
+    "N3-A03",
+    "N3-A04",
+    "N4-A01",
+    "N4-A02",
+    "N4-A03",
+    "N5-A01"
+  ],
+  "supersedes": "20261002T141443Z completion claim; historical logs preserved"
+}

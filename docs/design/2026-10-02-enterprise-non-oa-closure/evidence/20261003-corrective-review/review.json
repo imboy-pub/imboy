@@ -1,0 +1,16 @@
+{
+  "source_sha": {
+    "imboy": "9d888c494edcea8136b95cc34125fd3631fff21d",
+    "imboyapp": "fe354efb5efb3524e44456987df18156d48190ea",
+    "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+  },
+  "historical_run": "20261002T141443Z",
+  "historical_final_sha256": "850ed6123e0cd09456c8085a5dba9675a82fd9623f1e2870073e4a4aab6e45f5",
+  "local_regression": {
+    "exit_code": 0,
+    "oracle": "95 tests passed",
+    "log_path": "/tmp/non-oa-repair-n1.log",
+    "sha256": "2126b282f753c74ac23e44ac5677dd7513c23ab27fd2f90331ea3c02f9132b0b"
+  },
+  "meaning": "Corrective audit only. Native acceptance, source requalification and final independent review remain incomplete."
+}

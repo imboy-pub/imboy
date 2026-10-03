@@ -1,0 +1,18 @@
+[
+  {
+    "path": "FINAL.md",
+    "sha256": "a7cf1179a179b67138faeed6cc1f9579a1618c629d515679ee4ab55d01868c68"
+  },
+  {
+    "path": "acceptance.tsv",
+    "sha256": "39859bd1ff23a24e0734697cb6da6164b1cd64a627459ddf6b4bc5679cc1521e"
+  },
+  {
+    "path": "review.json",
+    "sha256": "5c9e8f27f41df8cbe2bceeec1ce195b9f39c08dad4086b0bc4ab320fb5a90fd8"
+  },
+  {
+    "path": "state.json",
+    "sha256": "505e0d0c3d5d4f5bc0b5294ee75fb9485b3c66c157361caacf96472120c16496"
+  }
+]
