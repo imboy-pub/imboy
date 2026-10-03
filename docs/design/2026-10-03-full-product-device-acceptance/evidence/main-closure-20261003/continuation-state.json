@@ -4617,5 +4617,14 @@
     "configured_tests": 1,
     "default_suite_tests": 25,
     "product_pass": false
+  },
+  "current_billing_local_bundle": {
+    "receipt": "current-billing-local-bundle.json",
+    "app_head": "434e11a3bba2873e3e7240f8ce635285e21d3d04",
+    "tests": 84,
+    "inventory_gate_exit": 64,
+    "missing_targets": 1761,
+    "placeholder_oracles": 229,
+    "product_pass": false
   }
 }

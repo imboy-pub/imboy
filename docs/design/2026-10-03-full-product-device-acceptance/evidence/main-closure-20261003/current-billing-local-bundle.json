@@ -1,0 +1,45 @@
+{
+  "scope": "CURRENT_APP_CANDIDATE_LOCAL_BILLING_COMPOSITION",
+  "heads": {
+    "imboy": "fddd84cb12154c64b27baec65a920829b94f97a2",
+    "imboyapp": "434e11a3bba2873e3e7240f8ce635285e21d3d04",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "app_head_unchanged_during_execution": true,
+  "command": [
+    "flutter",
+    "test",
+    "test/unit_test/page/billing",
+    "test/unit_test/service/payment_launcher_test.dart",
+    "test/unit_test/service/billing_device_preflight_test.dart",
+    "test/unit_test/service/e2ee/logging_privacy_guard_test.dart",
+    "--reporter",
+    "expanded"
+  ],
+  "passed": 84,
+  "exit_code": 0,
+  "artifacts": [
+    {
+      "path": "current-billing-local-bundle.log",
+      "sha256": "11e0d882bbe09bf154fceaa91d67619c104095d0bc3f4968018c8169add3e150"
+    }
+  ],
+  "inventory_acceptance_gate": {
+    "command": [
+      "python3",
+      "scripts/auto_test_lib/inventory.py",
+      "--acceptance-check"
+    ],
+    "cwd": "imboyapp",
+    "exit_code": 64,
+    "missing_target_mappings": 1761,
+    "placeholder_oracles": 229
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Host synthetic dependencies, no actual payment/account/database/device execution",
+    "Default Wechat configuration only tests rejection gate; configured error path remains separately bound to wechat-sdk-runtime.json",
+    "All 97 original acceptance requirements remain subject to frozen business/device/production qualification"
+  ]
+}
