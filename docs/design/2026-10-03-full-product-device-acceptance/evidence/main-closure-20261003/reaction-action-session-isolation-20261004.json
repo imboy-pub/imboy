@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_MESSAGE_REACTION_SESSION",
+  "app_head": "e34af0a61894e0414c94be829d97fcc2c5456651",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "fix": "Capture UID/generation and reject stale reaction continuation after lookup, update, reload and row conversion.",
+  "checks": [
+    {
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/service/message_reaction_session_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "exit_code": 0,
+      "passed": 4,
+      "oracle": "Actual dispatcher and MessageRepo; lookup stale zero updates/events; update stale one already-started update and zero events; unchanged sessions retain emoji/user payload and notify.",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "log": "reaction-session-final-focused-cleanup-20261004.log"
+    },
+    {
+      "command": "Message/WebSocket/retry/outbox domain selection",
+      "exit_code": 0,
+      "passed": 276,
+      "qualification_note": "Run before final test-only tearDownAll cleanup; production source unchanged; final focused/static rerun after cleanup.",
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/service/websocket_heartbeat_test.dart",
+        "test/unit_test/service/websocket_message_queue_enhanced_test.dart",
+        "test/unit_test/service/websocket_provider_test.dart",
+        "test/unit_test/service/websocket_queue_persistence_test.dart",
+        "test/unit_test/service/websocket_reconnect_strategy_test.dart",
+        "test/unit_test/service/websocket_reinit_test.dart",
+        "test/unit_test/service/websocket_send_session_test.dart",
+        "test/unit_test/service/websocket_server_ack_test.dart",
+        "test/unit_test/service/websocket_v2_e2e_test.dart",
+        "test/unit_test/service/websocket_v2_test.dart",
+        "test/unit_test/service/e2ee/policy_gate_retry_test.dart",
+        "test/unit_test/service/e2ee/retry_downgrade_guard_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_test.dart",
+        "test/unit_test/service/e2ee/retry_session_generation_test.dart",
+        "test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart",
+        "test/unit_test/service/message_retry_state_test.dart",
+        "test/unit_test/service/message_retry_terminal_state_test.dart",
+        "test/unit_test/service/ack_manager_enhanced_test.dart",
+        "test/unit_test/service/../page/chat/message_revoke_policy_test.dart",
+        "test/unit_test/service/chat_network_session_test.dart",
+        "test/unit_test/service/../page/conversation/conversation_status_session_test.dart",
+        "test/unit_test/service/message_status_event_session_test.dart",
+        "test/unit_test/service/message_retry_remove_session_test.dart",
+        "test/unit_test/service/message_retry_queue_test.dart",
+        "test/unit_test/service/message_reaction_session_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "log": "reaction-session-domain-20261004.log"
+    },
+    {
+      "command": "dart analyze lib test/unit_test --fatal-infos",
+      "exit_code": 0,
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "log": "reaction-session-final-static-20261004.log"
+    },
+    {
+      "command": "python3 scripts/auto_test.py catalog --check",
+      "exit_code": 0,
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "log": "reaction-session-catalog-check-20261004.log"
+    }
+  ],
+  "red": {
+    "log": "reaction-session-red-authoritative-20261004.log",
+    "passed": 1,
+    "failed": 1,
+    "exit_code": 1,
+    "oracle": "Old source returns true for stale lookup."
+  },
+  "excluded_attempts": [
+    "red: missing required fixture status; compile failure",
+    "red-valid: expected RED but incomplete fake DB rawUpdate caused FTS diagnostics"
+  ],
+  "logs": [
+    {
+      "path": "reaction-session-red-20261004.log",
+      "sha256": "d6295b48ffd889008a26ac2a3b58149afab448345ae0ce31c5bca92b402a146d",
+      "role": "intermediate_not_final"
+    },
+    {
+      "path": "reaction-session-red-valid-20261004.log",
+      "sha256": "a771933a562610cfe8de2afd97de10c85c37c9abfeb082238fcacee05d9da872",
+      "role": "intermediate_not_final"
+    },
+    {
+      "path": "reaction-session-red-authoritative-20261004.log",
+      "sha256": "f2449b4d97263f38706d3b588f81ca466b108d0ee28e7ca3257a472714f4e5ec",
+      "role": "authoritative"
+    },
+    {
+      "path": "reaction-session-green-20261004.log",
+      "sha256": "451cfb7f85d2256345d27fa46d5f15789416d091b993bd6f538ef726d06df509",
+      "role": "intermediate_not_final"
+    },
+    {
+      "path": "reaction-session-final-focused-20261004.log",
+      "sha256": "3afd11b34b0bde85c4d990d26408623094f0df3ce0b4999803d082d7ef60eec9",
+      "role": "intermediate_not_final"
+    },
+    {
+      "path": "reaction-session-domain-20261004.log",
+      "sha256": "5b6d25d46b11b93321ca6573cba7df372e6c8a8368ee2616bda93826a5d754ff",
+      "role": "authoritative"
+    },
+    {
+      "path": "reaction-session-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678",
+      "role": "intermediate_not_final"
+    },
+    {
+      "path": "reaction-session-final-focused-cleanup-20261004.log",
+      "sha256": "8037c3f99c6566f9c7fa4bc75b8252abb33f7d1fab4b048292efc3aa8dac6472",
+      "role": "authoritative"
+    },
+    {
+      "path": "reaction-session-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678",
+      "role": "authoritative"
+    },
+    {
+      "path": "reaction-session-catalog-20261004.log",
+      "sha256": "01ddbb76d35ff72c55f0e8cd26ba31a0808791bff9023486ea3a372c1d94cff1",
+      "role": "intermediate_not_final"
+    },
+    {
+      "path": "reaction-session-catalog-check-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115",
+      "role": "authoritative"
+    }
+  ],
+  "limitations": [
+    "Synthetic DB and secure storage; no real device, backend or production.",
+    "Already-started writes are not rolled back.",
+    "Unawaited FTS task started inside repo.update is not session-qualified.",
+    "Reload/map wait guards source reviewed only.",
+    "Existing nested reaction-map sharing remains a separate incomplete invariant."
+  ],
+  "reviews": [
+    "runner_code_review APPROVE",
+    "c11_flutter_review APPROVE after fixture cleanup"
+  ]
+}

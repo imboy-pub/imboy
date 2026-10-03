@@ -1,0 +1,25 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_reaction_session_test.dart
+00:00 +0: reaction lookup session changed=false
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🔄 处理action消息: action=message_reaction, msgId=synthetic-action, type=C2C
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +1: reaction lookup session changed=true
+🔄 处理action消息: action=message_reaction, msgId=synthetic-action, type=C2C
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +1 -1: reaction lookup session changed=true [E]
+  Expected: <false>
+    Actual: <true>
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test/unit_test/service/message_reaction_session_test.dart 108:9  main.<fn>
+  
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_reaction_session_test.dart: reaction lookup session changed=true

@@ -5192,5 +5192,13 @@
     "exit_code": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "reaction_action_session_isolation": {
+    "receipt": "reaction-action-session-isolation-20261004.json",
+    "app_head": "e34af0a61894e0414c94be829d97fcc2c5456651",
+    "domain_host": 276,
+    "focused": 4,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

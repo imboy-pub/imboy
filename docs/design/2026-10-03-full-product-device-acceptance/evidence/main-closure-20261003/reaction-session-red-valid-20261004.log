@@ -1,0 +1,51 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_reaction_session_test.dart
+00:00 +0: reaction lookup session changed=false
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🔄 处理action消息: action=message_reaction, msgId=synthetic-action, type=C2C
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: NoSuchMethodError: Class '_ReactionDatabase' has no instance method 'rawUpdate' with matching arguments.[0m
+[38;5;196m│ ⛔ Receiver: Instance of '_ReactionDatabase'[0m
+[38;5;196m│ ⛔ Tried calling: rawUpdate("DELETE FROM msg_c2c_fts WHERE id = ?", Instance(length:1) of '_GrowableList')[0m
+[38;5;196m│ ⛔ Found: rawUpdate(String, [List<Object?>?]) => Future<int>[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2C 索引写入失败: NoSuchMethodError: Class '_ReactionDatabase' has no instance method 'rawUpdate' with matching arguments.
+Receiver: Instance of '_ReactionDatabase'
+Tried calling: rawUpdate("DELETE FROM msg_c2c_fts WHERE id = ?", Instance(length:1) of '_GrowableList')
+Found: rawUpdate(String, [List<Object?>?]) => Future<int>
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +1: reaction lookup session changed=true
+🔄 处理action消息: action=message_reaction, msgId=synthetic-action, type=C2C
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: NoSuchMethodError: Class '_ReactionDatabase' has no instance method 'rawUpdate' with matching arguments.[0m
+[38;5;196m│ ⛔ Receiver: Instance of '_ReactionDatabase'[0m
+[38;5;196m│ ⛔ Tried calling: rawUpdate("DELETE FROM msg_c2c_fts WHERE id = ?", Instance(length:1) of '_GrowableList')[0m
+[38;5;196m│ ⛔ Found: rawUpdate(String, [List<Object?>?]) => Future<int>[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2C 索引写入失败: NoSuchMethodError: Class '_ReactionDatabase' has no instance method 'rawUpdate' with matching arguments.
+Receiver: Instance of '_ReactionDatabase'
+Tried calling: rawUpdate("DELETE FROM msg_c2c_fts WHERE id = ?", Instance(length:1) of '_GrowableList')
+Found: rawUpdate(String, [List<Object?>?]) => Future<int>
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +1 -1: reaction lookup session changed=true [E]
+  Expected: <false>
+    Actual: <true>
+  
+  package:matcher                                                  expect
+  package:flutter_test/src/widget_tester.dart 473:18               expect
+  test/unit_test/service/message_reaction_session_test.dart 106:9  main.<fn>
+  
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_reaction_session_test.dart: reaction lookup session changed=true
