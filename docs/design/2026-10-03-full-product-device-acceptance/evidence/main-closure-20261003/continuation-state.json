@@ -3845,5 +3845,50 @@
       "First commit hook formatted only guard line wrapping and rejected; staged formatting, retry hooks passed. No behavior change."
     ],
     "proof_limit": "New tests terminate injected importer with ArgumentError before key application. No actual decryption, restore/storage/backend/device qualification; local/cloud mutual exclusion remains separate. No parent ID upgraded."
+  },
+  "f08_import_late_key_application": {
+    "id": "PREPARATION-F08-IMPORT-LATE-KEY-APPLICATION",
+    "scope": "HOST_DISPOSED_PAGE_KEY_WRITE_INTENT_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "323c02b422bec9a242f3dbb1a8bf651a5706227c",
+    "executed": 3,
+    "exit": 0,
+    "analyze_exit": 0,
+    "reviews": [
+      "FLUTTER_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "attempts": {
+      "red": {
+        "passed": 2,
+        "failed": 1,
+        "exit": 1,
+        "log": {
+          "path": "f08-import-late-keys-red.log",
+          "sha256": "6bbd43a88db8e6fdd5ba521b9416b04717db76d095b02df10206145ad5e65836"
+        }
+      },
+      "fixed": {
+        "passed": 3,
+        "failed": 0,
+        "exit": 0,
+        "log": {
+          "path": "f08-import-late-keys-fixed.log",
+          "sha256": "2b8f3e5461bf640ffa59c7b1b5142c0be7c7861234be63ccba7c86cf7e75a890"
+        }
+      }
+    },
+    "change": "Check mounted after local decryption before applying restored keys.",
+    "oracle": "Pending importer started; dispose; complete synthetic success; secure-storage write intents are zero. RED observed exactly one write intent and channel substitute immediately threw to halt subsequent restore.",
+    "proof_limit": "Does not cancel decryption or already-started key application. Platform secure storage is a substitute; no actual writes, backend, device or cryptographic restoration qualification. No parent acceptance upgraded."
   }
 }
