@@ -1,0 +1,30 @@
+{
+  "scope": "LOCAL_BILLING_PROVIDER_DISPOSAL_CONTINUATION_FIX",
+  "app_head": "b0fa62732ae177fe5897752bd0c1b26cfe9c5691",
+  "tests": 32,
+  "exit_code": 0,
+  "red_exit_code": 1,
+  "analysis_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "billing-disposal-red.log",
+      "sha256": "34cbc643152e8d15281fcd9022176adc5d9d645925a8d839fb0d0cbd04789d19"
+    },
+    {
+      "path": "billing-disposal-green.log",
+      "sha256": "2a8770c3af7b3ec8a575165f0c52b6bfd08e0598278d145a23c677aaf9741d3a"
+    },
+    {
+      "path": "billing-disposal-analysis.log",
+      "sha256": "e6dafd5e579608273541d3670edc1dd619d357dd318da4bb48670c04292c2d4a"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Runtime regression covers disposal while subscribe request is pending; other await boundaries reviewed in source",
+    "Already issued network requests or launched native payments are not cancelled or rolled back",
+    "No real account/device/backend execution or original full-product acceptance upgrade"
+  ]
+}

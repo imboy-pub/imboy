@@ -4580,5 +4580,11 @@
     "app_head": "266bcc165ba27a6385eb64e0f9d4846a6eab0d26",
     "tests": 31,
     "product_pass": false
+  },
+  "f14_billing_disposal_continuation": {
+    "receipt": "billing-disposal.json",
+    "app_head": "b0fa62732ae177fe5897752bd0c1b26cfe9c5691",
+    "tests": 32,
+    "product_pass": false
   }
 }
