@@ -301,8 +301,8 @@ cancel(SubId) ->
     of
         {ok, _} ->
             ok;
-        {error, Reason} ->
-            ?ERROR_LOG([<<"billing cancel failed">>, SubId, Reason]),
+        {error, _Reason} ->
+            ?ERROR_LOG([billing_cancel_error]),
             {error, <<"取消订阅失败，请稍后重试"/utf8>>}
     end.
 

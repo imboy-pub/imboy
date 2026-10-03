@@ -285,3 +285,29 @@ t15_mark_paid_failure_log_privacy() ->
         )
     ),
     ?assertEqual(1, meck:num_calls(elib_log, internal_log, 4)).
+
+cancel_failure_privacy_test() ->
+    meck:new(elib_log, [passthrough, non_strict]),
+    meck:new(billing_subscription_ds, [passthrough, non_strict]),
+    try
+        meck:expect(elib_log, internal_log, fun(_, _, _, _) -> ok end),
+        meck:expect(billing_subscription_ds, update, fun(?SUB_ID, Fields) ->
+            ?assertEqual(#{<<"status">> => 3, <<"auto_renew">> => false}, Fields),
+            {error, {database_error, <<"synthetic-private-cancel-key">>}}
+        end),
+        ?assertEqual(
+            {error, <<"取消订阅失败，请稍后重试"/utf8>>},
+            billing_logic:cancel(?SUB_ID)
+        ),
+        ?assert(
+            meck:called(
+                elib_log,
+                internal_log,
+                [error, [billing_cancel_error], billing_logic, '_']
+            )
+        ),
+        ?assertEqual(1, meck:num_calls(elib_log, internal_log, 4))
+    after
+        meck:unload(billing_subscription_ds),
+        meck:unload(elib_log)
+    end.
