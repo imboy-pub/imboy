@@ -2299,5 +2299,59 @@
       "final verifier integration with defects UX and upstream handoff",
       "97-ID frozen final qualification"
     ]
+  },
+  "f01_journey_set_execution_composition": {
+    "id": "PREPARATION-F01-JOURNEY-SET-EXECUTION-COMPOSITION",
+    "scope": "EXECUTION_RECORD_CORRELATION_ONLY",
+    "product_pass": false,
+    "network_executed": false,
+    "app_head": "abb03684fa64a8a85f8c2336d02d28009de1ef15",
+    "argv": [
+      "python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "test/tooling/auto_test",
+      "-p",
+      "test_acceptance*.py",
+      "-v"
+    ],
+    "executed": 102,
+    "failed": 0,
+    "exit": 0,
+    "logs": [
+      {
+        "path": "f01-journey-set-composition.log",
+        "sha256": "bcbadcffc9bd9a88addecc53c48917e7d3c44c6ab3f7ec63fd8c89271b69e829",
+        "executed": 99,
+        "exit": 0
+      },
+      {
+        "path": "f01-journey-set-reviewed.log",
+        "sha256": "714da98336e6bde709c05285254aec185017e63b2b1e8aa86e49702993ea18ad",
+        "executed": 102,
+        "exit": 0
+      }
+    ],
+    "review": [
+      "ACCEPTANCE_PYTHON_REVIEW_APPROVE",
+      "RUNNER_CODE_REVIEW_APPROVE"
+    ],
+    "registered_entry": "python3 scripts/auto_test.py acceptance-execution-preflight --evidence-root ROOT --frozen-input frozen.json --frozen-sha256 HASH --acceptance-report report.json --report-sha256 HASH",
+    "entry_status": "IMPLEMENTED_PREPARATION_ONLY_NOT_FINAL",
+    "requirements": [
+      "required case explicitly declares cross_device_journey_ids; [] is explicit noncross declaration",
+      "frozen cross_device_journeys exact matches referenced IDs with Android and macOS members",
+      "report cross_device_records exact set; four pinned stages per journey",
+      "expected run/fixture/three candidate HEADs bind main frozen inputs"
+    ],
+    "proof_limit": "Synthetic fixture and command integration; does not establish domain coverage completeness, authentic runtime capture or real business oracles. Final verifier remains unfinished.",
+    "remaining": [
+      "case-to-raw-run/attempt provenance for every stage",
+      "qualified device and storage observation adapters",
+      "plan/profile/defect/UX/upstream final gates",
+      "97-ID frozen final qualification"
+    ]
   }
 }
