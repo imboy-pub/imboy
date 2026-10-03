@@ -1,0 +1,43 @@
+{
+  "scope": "LOCAL_OLM_REPORT_CLAIM_LOG_PRIVACY_ONLY",
+  "backend_head": "f389904f9786ecf09c22f18879a243422fc28caa",
+  "behavior_red": {
+    "failed": 3,
+    "passed": 4,
+    "exit_code": 1
+  },
+  "green": {
+    "passed": 50,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-olm-entry-log-red.log",
+      "sha256": "85050cab090dba8f19108cbc6098e1eeb7155187a4494dc27328b1c640bafd4c"
+    },
+    {
+      "path": "e2ee-olm-entry-log-green.log",
+      "sha256": "aab0718bf84812612aa6ca3776991576850af927ce59982a4554cc1470981a81"
+    },
+    {
+      "path": "e2ee-olm-entry-log-compile.log",
+      "sha256": "dd104fa41c1dee79e42a0796eb488079e61f3ef86f29a78abab64631c92d7e45"
+    }
+  ],
+  "source_hashes": {
+    "src/logic/olm_identity_logic.erl": "b3dd911fa0be963003027222d436d7990248653bc36cae4e8ff80e6812e4b7ca",
+    "test/logic/olm_identity_log_privacy_tests.erl": "9603399b25531517f3423f5dba9c7d344be5cb30e36d76bed8f537718a5dc668"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "limits": [
+    "Report and both claim entrypoint lookup failure logs retain event and severity without identities or arbitrary reason",
+    "Authorization and API results unchanged; persistence mocked",
+    "No full AC26 or production SLO qualification"
+  ]
+}

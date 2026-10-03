@@ -1,0 +1,57 @@
+======================== EUnit ========================
+module 'olm_identity_log_privacy_tests'
+  olm_identity_log_privacy_tests:29: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-8-...*failed*
+in function olm_identity_log_privacy_tests:check_failure_log/4 (test/logic/olm_identity_log_privacy_tests.erl, line 46)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,olm_identity_log_privacy_tests},
+              {line,46},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ error , Event , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  olm_identity_log_privacy_tests:29: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-8-...*failed*
+in function olm_identity_log_privacy_tests:check_failure_log/4 (test/logic/olm_identity_log_privacy_tests.erl, line 46)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,olm_identity_log_privacy_tests},
+              {line,46},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ error , Event , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  olm_identity_log_privacy_tests:29: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-8-...*failed*
+in function olm_identity_log_privacy_tests:check_failure_log/4 (test/logic/olm_identity_log_privacy_tests.erl, line 46)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,olm_identity_log_privacy_tests},
+              {line,46},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ error , Event , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  olm_identity_log_privacy_tests:29: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-8-...[0.017 s] ok
+  olm_identity_log_privacy_tests:29: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-8-...[0.018 s] ok
+  olm_identity_log_privacy_tests:29: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-8-...[0.017 s] ok
+  olm_identity_log_privacy_tests:29: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-8-...[0.018 s] ok
+  [done in 0.225 s]
+=======================================================
+  Failed: 3.  Skipped: 0.  Passed: 4.
