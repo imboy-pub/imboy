@@ -1,0 +1,213 @@
+erlang.mk:26: Please upgrade to GNU Make 4 or later: https://erlang.mk/guide/installation.html
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ GEN    test-build
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ GEN    eunit
+=CRASH REPORT==== 3-Oct-2026::18:33:10.026227 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.79.0>
+    registered_name: []
+    exception exit: blocked_legacy_writer
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.78.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.78.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 987
+    stack_size: 29
+    reductions: 5042
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:10.051244 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.84.0>
+    registered_name: []
+    exception exit: store_lost
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.83.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.83.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 1598
+    stack_size: 29
+    reductions: 4631
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:10.056653 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.87.0>
+    registered_name: []
+    exception exit: {bootstrap_scan,killed}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.86.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.86.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 1598
+    stack_size: 29
+    reductions: 6282
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:10.078757 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.94.0>
+    registered_name: []
+    exception exit: {bootstrap_scan,
+                        {schema_drift,
+                            #{missing => [some_table],wrong_type => []}}}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.93.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.93.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 1598
+    stack_size: 29
+    reductions: 6282
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:10.079103 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.96.0>
+    registered_name: []
+    exception exit: {bootstrap_scan,{unclassified_primary_keys,[x]}}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.95.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.95.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 1598
+    stack_size: 29
+    reductions: 4640
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:10.088353 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.100.0>
+    registered_name: []
+    exception exit: {bootstrap_env,floor_unix_ms_missing}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.99.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.99.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 2586
+    stack_size: 29
+    reductions: 6559
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:10.091385 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.102.0>
+    registered_name: []
+    exception exit: {bootstrap_env,{bad_floor_unix_ms,"12.5"}}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.101.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.101.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 2586
+    stack_size: 29
+    reductions: 6562
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:10.093419 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.104.0>
+    registered_name: []
+    exception exit: {bootstrap_env,{bad_floor_unix_ms,"abc"}}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.103.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.103.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 2586
+    stack_size: 29
+    reductions: 6560
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:10.095368 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.106.0>
+    registered_name: []
+    exception exit: {bootstrap_env,{bad_floor_unix_ms,"-5"}}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.105.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.105.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 2586
+    stack_size: 29
+    reductions: 6560
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:10.098011 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.108.0>
+    registered_name: []
+    exception exit: {bootstrap_env,
+                        {floor_unix_ms_out_of_range,"1735689599999"}}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.107.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.107.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 2586
+    stack_size: 29
+    reductions: 6574
+  neighbours:
+
+  All 6 tests passed.

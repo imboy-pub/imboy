@@ -1,0 +1,77 @@
+{
+  "candidate_backend": "78c6f0a934e2ecaa6d88f7a7f63247e22f10128f",
+  "checks": [
+    {
+      "id": "PREPARATION-TSID-ELIB_TSID_TESTS",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboy",
+      "argv": [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=elib_tsid_tests"
+      ],
+      "candidate_backend": "78c6f0a934e2ecaa6d88f7a7f63247e22f10128f",
+      "exit": 0,
+      "executed": 66,
+      "failed": 0,
+      "output": "tsid-current-isolated-core.log",
+      "output_sha256": "9bc3e9cf0026307f78a010a5a927640c96130105d0d9b68246a0ae42951bdcf5",
+      "test_source": "test/lib/elib_tsid_tests.erl",
+      "test_source_sha256": "5256d065bf87d1b36ad6ea6b90712b4703619135e703764d0cf29c291195f13b",
+      "scope": "ISOLATED_LOCAL_TSID_SUITE_ONLY",
+      "product_pass": false
+    },
+    {
+      "id": "PREPARATION-TSID-ELIB_TSID_GUARD_TESTS",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboy",
+      "argv": [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=elib_tsid_guard_tests"
+      ],
+      "candidate_backend": "78c6f0a934e2ecaa6d88f7a7f63247e22f10128f",
+      "exit": 0,
+      "executed": 26,
+      "failed": 0,
+      "output": "tsid-current-isolated-guard.log",
+      "output_sha256": "48abf44a76bee63ab5fa3c252ffbee0bfd88ce5e43ccb43d66b62cf5bf596a7d",
+      "test_source": "test/lib/elib_tsid_guard_tests.erl",
+      "test_source_sha256": "175185cfe3457760004deb8219ce9ab2e24d8106b66e27d92030447b1141201d",
+      "scope": "ISOLATED_LOCAL_TSID_SUITE_ONLY",
+      "product_pass": false
+    },
+    {
+      "id": "PREPARATION-TSID-ELIB_TSID_BOOTSTRAP_HARNESS_TESTS",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboy",
+      "argv": [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=elib_tsid_bootstrap_harness_tests"
+      ],
+      "candidate_backend": "78c6f0a934e2ecaa6d88f7a7f63247e22f10128f",
+      "exit": 0,
+      "executed": 6,
+      "failed": 0,
+      "output": "tsid-current-isolated-bootstrap.log",
+      "output_sha256": "962a692d044acd93f78ad48e7f088e38ae8e25366bd189ac7631d4bc2371ba71",
+      "test_source": "test/lib/elib_tsid_bootstrap_harness_tests.erl",
+      "test_source_sha256": "44692929ad2effb334cbb64eb7ab6d9d351279761a48a15745068cb25e51f6af",
+      "scope": "ISOLATED_LOCAL_TSID_SUITE_ONLY",
+      "product_pass": false
+    }
+  ],
+  "executed_total": 98,
+  "full_eunit_qualified": false,
+  "real_database": false,
+  "production": false,
+  "product_pass": false,
+  "remaining": "full isolated database EUnit two consecutive success runs; AG31 isolated PG and all actual product gates"
+}

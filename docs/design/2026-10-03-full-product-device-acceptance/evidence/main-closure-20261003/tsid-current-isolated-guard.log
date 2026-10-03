@@ -1,0 +1,268 @@
+erlang.mk:26: Please upgrade to GNU Make 4 or later: https://erlang.mk/guide/installation.html
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ GEN    test-build
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ GEN    eunit
+=CRASH REPORT==== 3-Oct-2026::18:33:00.910368 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.88.0>
+    registered_name: []
+    exception exit: {bootstrap_scan,simulated_scan_failure}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.87.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.87.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 1598
+    stack_size: 29
+    reductions: 6610
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:00.955898 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.92.0>
+    registered_name: []
+    exception exit: blocked_legacy_writer
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.91.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.91.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 1598
+    stack_size: 29
+    reductions: 4965
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:01.020824 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.98.0>
+    registered_name: []
+    exception exit: {bootstrap_crash,
+                     #{reason => {pooler_down,no_member},
+                       stack =>
+                        [{elib_tsid_guard_tests,
+                          '-scan_crash_typed_stop_test/0-fun-0-',1,
+                          [{file,"test/lib/elib_tsid_guard_tests.erl"},
+                           {line,181}]},
+                         {elib_tsid_bootstrap,fresh_auto_scan,3,
+                          [{file,"src/lib/elib_tsid_bootstrap.erl"},
+                           {line,420}]},
+                         {elib_tsid_guard,bootstrap_decide,2,
+                          [{file,"src/lib/elib_tsid_guard.erl"},{line,333}]},
+                         {elib_tsid_guard,bootstrap_gate,4,
+                          [{file,"src/lib/elib_tsid_guard.erl"},{line,257}]},
+                         {elib_tsid_guard,acquire_lock,5,
+                          [{file,"src/lib/elib_tsid_guard.erl"},{line,196}]},
+                         {gen_server,init_it,2,
+                          [{file,"gen_server.erl"},{line,2276}]},
+                         {gen_server,init_it,6,
+                          [{file,"gen_server.erl"},{line,2236}]},
+                         {proc_lib,init_p_do_apply,3,
+                          [{file,"proc_lib.erl"},{line,333}]}],
+                       class => error}}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.97.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.97.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 2586
+    stack_size: 29
+    reductions: 6630
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:01.031714 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.102.0>
+    registered_name: []
+    exception exit: store_lost
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.101.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.101.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 1598
+    stack_size: 29
+    reductions: 4956
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:01.043935 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.106.0>
+    registered_name: []
+    exception exit: catalog_changed
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.105.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.105.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 1598
+    stack_size: 29
+    reductions: 4977
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:01.062444 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.111.0>
+    registered_name: []
+    exception exit: {bootstrap_env,{bad_floor_unix_ms,"not-an-integer"}}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.110.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.110.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 2586
+    stack_size: 29
+    reductions: 6602
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:02.740356 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.119.0>
+    registered_name: []
+    exception exit: {bootstrap_env,
+                        {rebind_ack_digest_mismatch,
+                            #{ack_new_digest =>
+                                  <<97,36,234,20,5,33,125,151,234,45,105,155,
+                                    167,233,151,196,148,221,53,152,72,17,57,11,
+                                    93,18,90,193,69,152,97,153>>,
+                              ack_old_digest =>
+                                  <<97,36,234,20,5,33,125,151,234,45,105,155,
+                                    167,233,151,196,148,221,53,152,72,17,57,11,
+                                    93,18,90,193,69,152,97,153>>,
+                              current_digest =>
+                                  <<57,9,211,130,47,104,119,93,73,101,10,195,9,
+                                    209,161,48,78,219,156,110,96,118,33,116,51,
+                                    168,31,194,56,217,16,15>>,
+                              manifest_digest =>
+                                  <<97,36,234,20,5,33,125,151,234,45,105,
+                                    155,167,233,151,196,148,221,53,152,72,
+                                    17,57,11,93,18,90,193,69,152,97,153>>}}}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.118.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.118.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 1598
+    stack_size: 29
+    reductions: 5259
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:02.754755 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.123.0>
+    registered_name: []
+    exception exit: catalog_changed
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.122.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.122.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 2586
+    stack_size: 29
+    reductions: 4921
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:02.988602 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.129.0>
+    registered_name: []
+    exception exit: {lock_unavailable,lock_taken}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.128.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.128.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 987
+    stack_size: 29
+    reductions: 1016
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:02.992642 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.132.0>
+    registered_name: []
+    exception exit: {lock_provider_unavailable,no_such_provider}
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.131.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.131.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 233
+    stack_size: 29
+    reductions: 57
+  neighbours:
+
+=CRASH REPORT==== 3-Oct-2026::18:33:03.091832 ===
+  crasher:
+    initial call: elib_tsid_guard:init/1
+    pid: <0.146.0>
+    registered_name: []
+    exception exit: symlink_rejected
+      in function  gen_server:init_it/6 (gen_server.erl:2257)
+    ancestors: [<0.145.0>]
+    message_queue_len: 0
+    messages: []
+    links: [<0.145.0>]
+    dictionary: []
+    trap_exit: true
+    status: running
+    heap_size: 987
+    stack_size: 29
+    reductions: 984
+  neighbours:
+
+  All 26 tests passed.

@@ -1456,5 +1456,20 @@
     "required_cases_frozen": false,
     "product_pass": false,
     "remaining": "profile/roles, genuine visitor/backend/browser/concurrency, Android/macOS counterparts and full parent service journeys"
+  },
+  "current_tsid_isolated_suites": {
+    "candidate_backend": "78c6f0a934e2ecaa6d88f7a7f63247e22f10128f",
+    "receipt": "tsid-current-isolated-suites.json",
+    "receipt_sha256": "32d5deadd2f3f86f5efdb56972f7886cb0633aa02ed52f218070a23cff847cbf",
+    "executed_total": 98,
+    "suite_counts": [
+      66,
+      26,
+      6
+    ],
+    "all_exits": 0,
+    "scope": "ISOLATED_LOCAL_TSID_ONLY",
+    "product_pass": false,
+    "full_eunit_qualified": false
   }
 }
