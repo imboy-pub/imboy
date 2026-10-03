@@ -1,0 +1,9 @@
+# Local UI only. External receivers require user-confirmed recipient/channel.
+route:
+  receiver: local-only
+  group_by: [alertname, instance]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: local-only

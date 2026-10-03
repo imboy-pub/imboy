@@ -1,0 +1,37 @@
+# Standalone deferred monitoring; no backend, database or Uptrace dependency.
+# Disabled unless --profile l4-sni-monitoring is explicitly supplied.
+name: imboy-l4-sni-monitoring
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.0@sha256:378f4e03703557d1c6419e6caccf922f96e6d88a530f7431d66a4c4f4b1000fe
+    profiles: [l4-sni-monitoring]
+    restart: unless-stopped
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=7d]
+    volumes:
+      - ./l4-sni-monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${L4_MONITORING_RULES_DIR:-./l4-sni-monitoring/generated}:/etc/prometheus/rules:ro
+      - l4_prometheus:/prometheus
+    ports: [127.0.0.1:19090:9090]
+    mem_limit: 512m
+  pushgateway:
+    image: prom/pushgateway:v1.9.0@sha256:98a458415f8f5afcfd45622d289a0aa67063563bec0f90d598ebc76783571936
+    profiles: [l4-sni-monitoring]
+    restart: unless-stopped
+    command: [--persistence.file=/data/pushgateway.store, --persistence.interval=5m]
+    volumes: [l4_pushgateway:/data]
+    ports: [127.0.0.1:19091:9091]
+    mem_limit: 128m
+  alertmanager:
+    image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
+    profiles: [l4-sni-monitoring]
+    restart: unless-stopped
+    command: [--config.file=/etc/alertmanager/alertmanager.yml, --storage.path=/alertmanager]
+    volumes:
+      - ${L4_ALERT_CONFIG:-./l4-sni-monitoring/alertmanager.yml}:/etc/alertmanager/alertmanager.yml:ro
+      - l4_alertmanager:/alertmanager
+    ports: [127.0.0.1:19093:9093]
+    mem_limit: 96m
+volumes:
+  l4_prometheus:
+  l4_pushgateway:
+  l4_alertmanager:

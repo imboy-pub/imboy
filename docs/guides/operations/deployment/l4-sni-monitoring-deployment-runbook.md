@@ -5,6 +5,44 @@
 > 服务器上既有的 /opt/uptrace 与本任务无关，不会被触碰）。本文档把完整配置与步骤
 > 整理入库，资源允许或换机时按需执行。
 >
+> 2026-10-03 后续授权口径：本轮仅完成配置开关、步骤与本地校验，
+> 不启动、不对接 Prometheus/Uptrace 等服务。巡检 cron 历史上线记录与
+> 告警管路实际验收分别登记，后者仍为暂缓。
+
+## 配置开关入口 / Deferred activation switch
+
+独立候选为 `deploy/docker-compose.l4-sni-monitoring.yml`，仅包含
+Prometheus、Pushgateway 和 Alertmanager；复用仓内已固定的镜像 digest。
+不需要 Erlang、数据库、Grafana、Uptrace 或 exporter。端口仅绑定
+loopback 的 19090/19091/19093，内存上限合计 736 MiB。
+
+```bash
+# 本地配置校验；不拉取镜像、不启动容器、不联络第三方
+bash deploy/l4-sni-monitoring/control.sh --check
+# 默认 false；--start 在关闭时以 exit 2 拒绝
+L4_MONITORING_ENABLED=false bash deploy/l4-sni-monitoring/control.sh --start
+```
+
+规则从 `imboy-alerts.yml` 的 `imboy.l4_sni` group 生成到被忽略的
+`deploy/l4-sni-monitoring/generated/`；只校验本任务四条规则，避免未部署的
+后端/数据库抓取产生噪声。默认 Alertmanager 只在本地界面记录告警。
+任何外部接收渠道需用户确认后通过受保护的 `L4_ALERT_CONFIG` 文件传入；
+默认配置不能证明通知送达。
+
+未来取得具体生产安装授权、确认资源和接收渠道后，执行：
+
+```bash
+L4_MONITORING_ENABLED=true bash deploy/l4-sni-monitoring/control.sh --start
+# 验证三个 loopback 端口、targets/rules、Pushgateway /metrics。
+# 巡检推送地址改为 http://127.0.0.1:19091，并保留原 cron 其他任务。
+# 实际 cron 至少运行一轮，再核验新鲜度与已确认的通知路径。
+```
+
+`--start` 不改 cron，不重载 nginx/HAProxy，不配置外部联系方式。启用后
+仍须独立验收 scrape、指标、告警及通知。回退使用
+`bash deploy/l4-sni-monitoring/control.sh --stop`，保留数据卷，恢复本次变更前
+的 cron/ops.env；不得使用 `down -v` 清除证据。
+>
 > 来源候选：后端 `e8aee7c4`（Wave B，巡检脚本 v3，已在真实宝塔现场只读验证通过）；
 > 候选包 SHA-256 `731b927434898a4d935855204339e85ca181f4a5359c0ee5f6712998f617e185`，
 > 位于服务器 `/root/l4sni-candidates/20261002T131801Z-l4-sni-hardening-v3/`。
@@ -105,6 +143,10 @@ tail -50 /var/log/imboy/l4_sni_listen.log | grep -E "CHECK_|imboy.pub.conf:"
 ```
 
 ## 3. 方案 A：完整监控栈（资源允许时执行）
+
+以下为原通用部署参考，使用 9090/9091/9093；与上文独立开关栈
+（19090/19091/19093）互斥选择，不得混用抓取地址和巡检推送地址。
+独立开关栈生成的规则说明已同步改为 19091，规则判定表达式不变。
 
 **复用仓库既有资产，不新造**：`deploy/docker-compose.observability.yml`（pushgateway/
 node_exporter/postgres_exporter，digest 钉定）、`deploy/prometheus/prometheus.yml`
