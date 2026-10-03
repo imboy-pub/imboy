@@ -40,6 +40,22 @@ L4_MONITORING_ENABLED=false bash "$CONTROL" --stop
 grep -q -- '--profile l4-sni-monitoring stop' "$CALL_LOG"
 ! grep -q 'down\|--volumes\|-v$' "$CALL_LOG"
 test "$(grep -c 'up -d' "$CALL_LOG")" = 1
+cat > "$TMP/bin/docker" <<'EOF'
+#!/usr/bin/env bash
+exit 125
+EOF
+cat > "$TMP/bin/docker-compose" <<'EOF'
+#!/usr/bin/env bash
+printf 'legacy %s\n' "$*" >> "$CALL_LOG"
+EOF
+chmod +x "$TMP/bin/docker-compose"
+L4_MONITORING_ENABLED=false bash "$CONTROL" --check > /dev/null
+grep -q 'legacy .*config --quiet' "$CALL_LOG"
+if L4_COMPOSE_BIN="$TMP/missing" bash "$CONTROL" --check > /dev/null 2>&1; then
+  echo 'FAIL: explicit invalid Compose binary accepted' >&2; exit 1
+else
+  test "$?" = 2
+fi
 if L4_MONITORING_ENABLED=invalid bash "$CONTROL" --start > /dev/null 2>&1; then
   echo 'FAIL: invalid switch accepted' >&2; exit 1
 else

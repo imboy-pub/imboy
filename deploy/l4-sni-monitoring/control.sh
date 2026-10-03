@@ -8,7 +8,17 @@ ENABLED="${L4_MONITORING_ENABLED:-false}"
 case "$ENABLED" in true|false) ;; *) echo 'L4_MONITORING_ENABLED must be true or false' >&2; exit 2;; esac
 RULE_DIR="${L4_MONITORING_RULES_DIR:-$ROOT/l4-sni-monitoring/generated}"
 export L4_MONITORING_RULES_DIR="$RULE_DIR"
-COMPOSE=(docker compose -f "$ROOT/docker-compose.l4-sni-monitoring.yml")
+if [ -n "${L4_COMPOSE_BIN:-}" ]; then
+  [ -x "$L4_COMPOSE_BIN" ] || { echo 'L4_COMPOSE_BIN is not executable' >&2; exit 2; }
+  COMPOSE=("$L4_COMPOSE_BIN")
+elif docker compose version >/dev/null 2>&1; then
+  COMPOSE=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE=(docker-compose)
+else
+  echo 'BLOCKED_ENV: Docker Compose v2 required' >&2; exit 127
+fi
+COMPOSE+=(-f "$ROOT/docker-compose.l4-sni-monitoring.yml")
 if [ "$ACTION" = --stop ]; then
   "${COMPOSE[@]}" --profile l4-sni-monitoring stop
   exit
