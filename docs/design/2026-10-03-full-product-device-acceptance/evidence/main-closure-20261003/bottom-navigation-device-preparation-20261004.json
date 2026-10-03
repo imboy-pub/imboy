@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "scope": "STATIC_UNBOUND_DEVICE_TARGET_PREPARATION",
+  "app_head": "9b03d28ee6c3899d97b0cfb605d53df11bcf5c9f",
+  "source_hashes": [
+    {
+      "path": "integration_test/full_acceptance/navigation/bottom_navigation_device_test.dart",
+      "sha256": "ae35734cf1e0f5796242bb7b558720e4c733d9712ba9245536a5e5d0472560da"
+    },
+    {
+      "path": "test/auto_test/specs/bottom-navigation-device-preparation.json",
+      "sha256": "febbb2e45f288673d12b4d4352b7b6bcf91545f17c14886d79e1455b1ed927e7"
+    },
+    {
+      "path": "test/auto_test/catalog.json",
+      "sha256": "40f9f10885b2c0f3898f567055a79e6ab9755056a1344fb89880f8bc4131dfa5"
+    },
+    {
+      "path": "test/auto_test/functional_inventory.json",
+      "sha256": "32ef000eb3e93f0d4f4f3a078569b6dfeac549baecc1790235f141c3fcc9feea"
+    }
+  ],
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "checks": [
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "dart",
+        "analyze",
+        "integration_test/full_acceptance/navigation/bottom_navigation_device_test.dart"
+      ],
+      "exit_code": 0,
+      "log": "bottom-navigation-device-final-static-20261004.log"
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "scripts/auto_test.py",
+        "catalog",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "bottom-navigation-device-final-catalog-check-20261004.log"
+    },
+    {
+      "scope": "CURRENT_INVENTORY_NO_FALSE_BINDING",
+      "functions": 12,
+      "unbound": 12
+    }
+  ],
+  "logs": [
+    {
+      "path": "bottom-navigation-device-static-20261004.log",
+      "sha256": "88f46a9b8cb6cedc36bfbb4cb970fdefd676571042ca3ebfb62c7a94592760a2",
+      "final_evidence": false
+    },
+    {
+      "path": "bottom-navigation-device-catalog-20261004.log",
+      "sha256": "e0500850b14152429e8003f53886cdad48fbb4be5be6277fc43fd58e60fb5b18",
+      "final_evidence": false
+    },
+    {
+      "path": "bottom-navigation-device-catalog-check-20261004.log",
+      "sha256": "64af6d0bc1ac9676f1d03d7e73dc9b7da04fb6c1b1a09565e83b144e269d9307",
+      "final_evidence": false
+    },
+    {
+      "path": "bottom-navigation-device-final-static-20261004.log",
+      "sha256": "88f46a9b8cb6cedc36bfbb4cb970fdefd676571042ca3ebfb62c7a94592760a2",
+      "final_evidence": true
+    },
+    {
+      "path": "bottom-navigation-device-final-catalog-20261004.log",
+      "sha256": "e0500850b14152429e8003f53886cdad48fbb4be5be6277fc43fd58e60fb5b18",
+      "final_evidence": true
+    },
+    {
+      "path": "bottom-navigation-device-final-catalog-check-20261004.log",
+      "sha256": "64af6d0bc1ac9676f1d03d7e73dc9b7da04fb6c1b1a09565e83b144e269d9307",
+      "final_evidence": true
+    }
+  ],
+  "safe_to_execute": false,
+  "target_preparation": "Actual local app, expected account, compiled channel capability, actual narrow chat shell, effective feature registry, visible tab keys and real PageView controller. One profile per invocation; no device launched.",
+  "required_composition": [
+    "android/enabled",
+    "android/disabled",
+    "macos/enabled",
+    "macos/disabled"
+  ],
+  "composition_gate_status": "NOT_IMPLEMENTED",
+  "mapping_status": "ALL_12_ORIGINAL_FUNCTIONS_UNBOUND",
+  "review_closure": [
+    "Removed full function006 binding because no executable four-receipt gate exists.",
+    "Split long test callback into helpers; static check passed."
+  ],
+  "limitations": [
+    "Static analysis does not prove runtime behavior.",
+    "No device, account, backend, app bootstrap or external action executed.",
+    "Runner flag/hash shape is not resource authorization.",
+    "Four-record exact profile/platform composition must be implemented before complete function binding."
+  ],
+  "reviews": [
+    "runner_code_review APPROVE after unbinding",
+    "c11_flutter_review APPROVE after helper extraction"
+  ]
+}

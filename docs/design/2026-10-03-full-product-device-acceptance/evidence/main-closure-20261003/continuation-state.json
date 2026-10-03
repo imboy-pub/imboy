@@ -5232,5 +5232,15 @@
     "scope": "F00_CURRENT_BOTTOM_NAVIGATION_EXACT_CASE_DESIGN",
     "product_pass": false,
     "device_target_status": "NOT_IMPLEMENTED"
+  },
+  "bottom_navigation_device_preparation": {
+    "receipt": "bottom-navigation-device-preparation-20261004.json",
+    "app_head": "9b03d28ee6c3899d97b0cfb605d53df11bcf5c9f",
+    "static_exit_code": 0,
+    "catalog_exit_code": 0,
+    "device_execution": false,
+    "product_pass": false,
+    "composition_gate_status": "NOT_IMPLEMENTED",
+    "original_functions_unbound": 12
   }
 }
