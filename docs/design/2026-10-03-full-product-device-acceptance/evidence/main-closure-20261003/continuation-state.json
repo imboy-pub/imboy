@@ -101,7 +101,6 @@
     "D-04 PQ profile decision"
   ],
   "next_offline_tasks": [
-    "run C11 harness through explicit host-only unit entrypoint; never integration_test auto device selection",
     "implement F01 final acceptance verifier with real artifact and candidate checks",
     "close F00 coverage owner mappings and unresolved ambiguity/page gaps",
     "prepare isolated PG18 scratch stack without using shared 4323",
@@ -118,7 +117,8 @@
   "c11_harness_attempt": {
     "command": "flutter test integration_test/e2ee_release/harness_smoke_test.dart --reporter expanded",
     "status": "STOPPED_BEFORE_TEST_EXECUTION",
-    "reason": "Integration-test auto-selection started an Android build. Stopped own Flutter process tree pending explicit device authorization. No tests ran; cannot count as PASS."
+    "reason": "Integration-test auto-selection started an Android build. Stopped own Flutter process tree pending explicit device authorization. No tests ran; cannot count as PASS.",
+    "superseding_host_entrypoint": "test/unit_test/service/e2ee_release_harness_host_test.dart"
   },
   "coverage_parsing": {
     "ambiguous_seed_count": 22,
@@ -239,5 +239,79 @@
     "evidence_sha256": "2c1f8e8f8395e200d9ee5aab2ae9251875f7e12a3ce9af5a00e9bfd8896ea2e0",
     "final_verifier": "NOT_IMPLEMENTED",
     "remaining": "Runtime bindings, complete coverage mapping, raw case/business oracles, attempt history, upstream/UX and all real journeys remain required"
+  },
+  "current_main_flutter_requalification": {
+    "candidate_app_head": "b4b25938f475e3994f3a59f1687c77b0620ad747",
+    "checks": [
+      {
+        "name": "c11-host",
+        "command": "flutter test test/unit_test/service/e2ee_release_harness_host_test.dart --reporter expanded",
+        "candidate_app_head": "b4b25938f475e3994f3a59f1687c77b0620ad747",
+        "executed": 9,
+        "failed": 0,
+        "exit": 0,
+        "evidence_path": "c11-host-current-suite.log",
+        "sha256": "264d13ecbc502b52c45d00efe3fc3b0c10f02ffabbaeb90c65f81be6eca2fc28",
+        "scope": "LOCAL_PREPARATION_ONLY"
+      },
+      {
+        "name": "fail-open-api",
+        "command": "flutter test test/unit_test/store/api/fail_open_contract_test.dart --reporter expanded",
+        "candidate_app_head": "b4b25938f475e3994f3a59f1687c77b0620ad747",
+        "executed": 40,
+        "failed": 0,
+        "exit": 0,
+        "evidence_path": "fail-open-api-current-suite.log",
+        "sha256": "1c107a9d415498c05a1d516351511f4e071e6f72a8f21978e8df3c1beb86fc35",
+        "scope": "LOCAL_PREPARATION_ONLY"
+      },
+      {
+        "name": "collect-recovery",
+        "command": "flutter test test/unit_test/page/mine/user_collect/user_collect_page_load_failed_test.dart --reporter expanded",
+        "candidate_app_head": "b4b25938f475e3994f3a59f1687c77b0620ad747",
+        "executed": 4,
+        "failed": 0,
+        "exit": 0,
+        "evidence_path": "collect-recovery-current-suite.log",
+        "sha256": "5a4d54bdbfe88f33036b22fd2832f2eec0baa99156e38ee226189eeda18237ca",
+        "scope": "LOCAL_PREPARATION_ONLY"
+      },
+      {
+        "name": "env-freshness",
+        "command": "flutter test test/unit_test/config/env_freshness_test.dart --reporter expanded",
+        "candidate_app_head": "b4b25938f475e3994f3a59f1687c77b0620ad747",
+        "executed": 3,
+        "failed": 0,
+        "exit": 0,
+        "evidence_path": "env-freshness-current-suite.log",
+        "sha256": "ea4fbc754bfebaed6eac045e4155241b49f830ce14fcbce16029d2e5eb7617f5",
+        "scope": "LOCAL_PREPARATION_ONLY"
+      },
+      {
+        "name": "fail-open-api",
+        "phase": "RED_BEFORE_FIX",
+        "exit": 1,
+        "evidence_path": "fail-open-api-red-attempt.log",
+        "sha256": "33676d821a36a5d314d301e48a3d3427eef2ac3c7f0abefb148a0e32f75b6368",
+        "required_to_retain": true
+      },
+      {
+        "name": "collect-recovery",
+        "phase": "RED_BEFORE_FIX",
+        "exit": 1,
+        "evidence_path": "collect-recovery-red-attempt.log",
+        "sha256": "8dd7eb7e4cbe1ab87fd9181d700f4525d5a99b0cb71203e72fd2f12b9ae9aee3",
+        "required_to_retain": true
+      }
+    ],
+    "fixed_old_full_suite_failures": 11,
+    "environment_freshness_on_current_main": "3_CHECKS_PASS",
+    "remaining_old_failures": [
+      "six real-backend auth/init/error cases await isolated backend resource authorization"
+    ],
+    "full_suite_not_rerun": true,
+    "product_pass": false,
+    "independent_review": "APPROVED_HOST_ENTRY_AND_TWO_MEMORY_FIXTURES",
+    "device_or_backend_journeys": "NOT_EXECUTED"
   }
 }

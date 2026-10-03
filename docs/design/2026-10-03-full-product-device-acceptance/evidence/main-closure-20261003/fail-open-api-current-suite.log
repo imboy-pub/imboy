@@ -1,0 +1,834 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/fail_open_contract_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: 黑名单 DenylistApi.page 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/friend/denylist/page?page=1&size=10
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/friend/denylist/page?page=1&size=10
+
+handleResponse_response /api/v1/friend/denylist/page : true ; 
+00:00 +1: 群日程 getSchedules 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/group_schedule/list?group_id=1&page=1&size=20
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/group_schedule/list?group_id=1&page=1&size=20
+
+00:00 +2: 群日程 getMySchedules 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/group_schedule/my_list?page=1&size=20
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/group_schedule/my_list?page=1&size=20
+
+00:00 +3: 群日程 getSchedule 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/group_schedule/detail?group_id=1&schedule_id=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/group_schedule/detail?group_id=1&schedule_id=1
+
+00:00 +4: 群分类 getCategories 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/group/category/list
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/group/category/list
+
+handleResponse_response /api/v1/group/category/list : true ; 
+00:00 +5: 群任务 getTasks 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/group/task/list?group_id=1&page=1&size=20
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/group/task/list?group_id=1&page=1&size=20
+
+00:00 +6: 群任务 getTask 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/group/task/detail?group_id=1&task_id=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/group/task/detail?group_id=1&task_id=1
+
+00:00 +7: 群任务 getMyTasks 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/group/task/my?page=1&size=20
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/group/task/my?page=1&size=20
+
+00:00 +8: 群任务 getPendingReview 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/group/task/pending?task_id=1&page=1&size=20
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/group/task/pending?task_id=1&page=1&size=20
+
+00:00 +9: 登录设备 page 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/user_device/page?page=1&size=10
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/user_device/page?page=1&size=10
+
+00:00 +10: 登录设备 getActiveSessions 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/user_device/sessions
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/user_device/sessions
+
+00:00 +11: 意见反馈 page 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/feedback/page?page=1&size=10
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/feedback/page?page=1&size=10
+
+00:00 +12: 意见反馈 pageReply 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/feedback/page_reply?feedback_id=1&page=1&size=10
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/feedback/page_reply?feedback_id=1&page=1&size=10
+
+00:00 +13: service 层不得二次吞掉 GroupScheduleService.getSchedule 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/group_schedule/detail?group_id=1&schedule_id=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/group_schedule/detail?group_id=1&schedule_id=1
+
+handleResponse_response /api/v1/group_schedule/detail : true ; 
+GroupScheduleService: 获取日程详情失败 - 错误
+00:00 +14: service 层不得二次吞掉 GroupTaskService.getTask 请求失败时抛出，不返回空兜底
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/group/task/detail?group_id=1&task_id=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/group/task/detail?group_id=1&task_id=1
+
+handleResponse_response /api/v1/group/task/detail : true ; 
+GroupTaskService: 获取任务详情失败 - 错误
+00:00 +15: null 即失败（不抛异常的那一派） MentionApi.getMentions 请求失败时返回 null，不返回空集合
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/mention/list
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/mention/list
+
+handleResponse_response /api/v1/mention/list : true ; 
+00:00 +16: null 即失败（不抛异常的那一派） MentionService.getMentions 请求失败时返回 null，不返回空集合
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/mention/list
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/mention/list
+
+handleResponse_response /api/v1/mention/list : true ; 
+00:00 +17: null 即失败（不抛异常的那一派） AgentApi.agentList 请求失败时返回 null，不返回空集合
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/agent/list?page=1&size=10&kwd=
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/agent/list?page=1&size=10&kwd=
+
+handleResponse_response /api/v1/agent/list : true ; 
+> on AgentApi/agentList resp: {}
+00:00 +18: E2EE 查询 fail-closed 传输失败（恒返 503）：五个查询方法全部抛错
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+
+handleResponse_response /api/v1/e2ee/user_keys : true ; 
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+
+handleResponse_response /api/v1/e2ee/group_member_keys : true ; 
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+
+handleResponse_response /api/v1/e2ee/compliance_key : true ; 
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/key/status
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/key/status
+
+handleResponse_response /api/v1/e2ee/key/status : true ; 
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+
+handleResponse_response /api/v1/e2ee/notifications/pull : true ; 
+00:00 +19: E2EE 查询 fail-closed 业务失败（HTTP 200 + code != 0）：五个查询方法全部抛错
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/key/status
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/key/status
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+
+00:00 +20: E2EE 查询 fail-closed userKeys 畸形成功：缺 devices 抛 FormatException
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+
+00:00 +21: E2EE 查询 fail-closed userKeys 畸形成功：devices 非 List 抛 FormatException
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+
+00:00 +22: E2EE 查询 fail-closed userKeys 畸形成功：devices 元素非 Map 抛 FormatException
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+
+00:00 +23: E2EE 查询 fail-closed userKeys 畸形成功：payload 非 Map（如 String）抛 FormatException
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+
+[HttpTransformer] payload type drift: expected Map, got String uri=/api/v1/e2ee/user_keys
+00:00 +24: E2EE 查询 fail-closed groupMemberKeys 畸形成功：缺 members 抛 FormatException
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+
+00:00 +25: E2EE 查询 fail-closed groupMemberKeys 畸形成功：members 非 List 抛 FormatException
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+
+00:00 +26: E2EE 查询 fail-closed groupMemberKeys 畸形成功：payload 非 Map 抛 FormatException
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+
+[HttpTransformer] payload type drift: expected Map, got String uri=/api/v1/e2ee/group_member_keys
+00:00 +27: E2EE 查询 fail-closed getComplianceKey 畸形成功：payload 非 Map 非 null 抛错
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+
+[HttpTransformer] payload type drift: expected Map, got String uri=/api/v1/e2ee/compliance_key
+00:00 +28: E2EE 查询 fail-closed keyStatus 畸形成功：payload 非 Map 非 null 抛错
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/key/status
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/key/status
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/e2ee/key/status
+00:00 +29: E2EE 查询 fail-closed pullNotifications 畸形成功：Map 缺 notifications/list 抛错
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+
+00:00 +30: E2EE 查询 fail-closed pullNotifications 畸形成功：payload 非 Map 非 List 抛错
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+
+[HttpTransformer] payload type drift: expected Map, got int uri=/api/v1/e2ee/notifications/pull
+00:00 +31: E2EE 查询 fail-closed 合法空语义：devices=[] 返回 []，不是失败
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/user_keys?uid=1
+
+00:00 +32: E2EE 查询 fail-closed 合法空语义：members=[] 返回 []
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_member_keys?gid=1
+
+00:00 +33: E2EE 查询 fail-closed 合法空语义：notifications=[] 返回 []
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+
+00:00 +34: E2EE 查询 fail-closed 合法空语义：getComplianceKey ok 且 payload 为 null 返回 null
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+
+00:00 +35: E2EE 查询 fail-closed 合法空语义：keyStatus ok 且 payload 为 null 返回 null
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/key/status
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/key/status
+
+00:00 +36: E2EE 查询 fail-closed pullNotifications 顶层 List 形状仍兼容
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/notifications/pull?since=0&limit=50
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/e2ee/notifications/pull
+00:00 +37: E2EE 查询 fail-closed reportDeviceKey 业务失败仍返回 ok:false（契约不变，不抛错）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/report_device_key
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/report_device_key
+
+00:00 +38: E2EE 查询 fail-closed reportDeviceKey 恒返 503 也返回 ok:false（契约不变）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/report_device_key
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/report_device_key
+
+handleResponse_response /api/v1/e2ee/report_device_key : true ; 
+00:00 +39: E2EE 查询 fail-closed reportDeviceKey 成功返回 other_device_count（契约不变）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/report_device_key
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/report_device_key
+
+00:00 +40: (tearDownAll)
+00:00 +40: All tests passed!

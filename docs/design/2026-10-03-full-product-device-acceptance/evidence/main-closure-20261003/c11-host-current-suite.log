@@ -1,0 +1,13 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: fixture contract：命名规范与 canary 合同
+00:00 +1: AC22-S01 冒烟：最小双端 C2C 真实加解密往返 + 服务端密文 oracle
+00:00 +2: AC22-S02 冒烟：B→A 反向回复（双向 ratchet 往返）
+00:00 +3: AC22-M01 冒烟：replay 注入 -> 去重且 UI 不重复推进
+00:00 +4: AC22-M03 冒烟：篡改/洪泛注入 -> fail-closed 失败占位
+00:00 +5: AC22-M04 冒烟：身份目录替换 -> 握手 fail-closed，无法建立可信会话
+00:00 +6: AC22-S04 冒烟：离线存储 + 重连补投（内存替身离线能力）
+00:00 +7: 真实后端层 stub：未授权实现必须显式拒绝（REQUIRES_AUTHORIZED_BACKEND）
+00:00 +8: 旅程目录完整性与 attack-matrix.md 场景一一对齐
+00:00 +9: (tearDownAll)
+00:00 +9: All tests passed!
