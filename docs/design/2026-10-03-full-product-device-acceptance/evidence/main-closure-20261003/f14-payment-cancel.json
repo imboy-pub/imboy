@@ -1,0 +1,29 @@
+{
+  "id": "F14-PAYMENT-METHOD-CANCEL-HOST",
+  "app_head": "240fc891b5cfe36314474bea92effabe54d19392",
+  "scope": "LOCAL_HOST_WIDGET_FAKE_BILLING_API",
+  "executed": 6,
+  "failed": 0,
+  "exit_code": 0,
+  "analysis": "No issues found",
+  "review": "DUAL_APPROVED",
+  "design_case_id": "F14-PLAN-LIST-008",
+  "generated_ids": [
+    "fn:billing:plan_list_page:004",
+    "fn:billing:plan_list_page:006"
+  ],
+  "oracles": [
+    "Open payment sheet through actual subscribe button",
+    "Cancel closes sheet and permits reopen twice",
+    "Zero subscribe and invoice creation calls"
+  ],
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "log": "f14-payment-cancel.log",
+  "log_sha256": "1909b5f468a5664f4613076ff1ed068d8e0b02c02b7098f9567f215468e7e812",
+  "limits": [
+    "No actual backend, native payment or device execution",
+    "No original acceptance ID upgraded"
+  ]
+}

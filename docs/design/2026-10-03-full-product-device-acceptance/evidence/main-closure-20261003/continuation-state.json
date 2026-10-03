@@ -4255,5 +4255,12 @@
     "additional_source_features": 5,
     "mapping_status": "SOURCE_RECONCILED_NOT_FROZEN",
     "product_pass": false
+  },
+  "f14_payment_method_cancel": {
+    "receipt": "f14-payment-cancel.json",
+    "receipt_sha256": "d4406743689fb8fb4a0189a8a7878d0f8c23ec6fdfc23162f01f210b10b6a9d0",
+    "app_head": "240fc891b5cfe36314474bea92effabe54d19392",
+    "executed": 6,
+    "product_pass": false
   }
 }
