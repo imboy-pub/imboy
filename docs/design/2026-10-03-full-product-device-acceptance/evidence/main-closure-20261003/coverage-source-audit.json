@@ -1,0 +1,15 @@
+{
+  "scope": "F00 PREPARATION source existence only, not coverage or behavior PASS",
+  "rows": 1846,
+  "existing_source_hints": 1846,
+  "confidence_counts": {
+    "HIGH": 801,
+    "MEDIUM": 714,
+    "LOW_DOMAIN_FALLBACK": 331
+  },
+  "parse_status_counts": {
+    "PARSED": 1824,
+    "AMBIGUOUS_PIPE_REVIEW_REQUIRED": 22
+  },
+  "remaining": "Owner confirmation, semantic mapping, all missing page cases, concrete oracles and case/platform/profile freeze are not completed."
+}

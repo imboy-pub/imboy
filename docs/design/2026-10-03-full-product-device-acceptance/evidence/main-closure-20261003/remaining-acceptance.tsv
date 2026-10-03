@@ -1,0 +1,98 @@
+plan	id	card	historical_status	current_main_status	reason
+e2ee	AC-00	C00	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-01	C00	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-02	C00	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-03	C01	PARTIAL	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-04	C01	PARTIAL	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-05	C02	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-06	C02	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-07	C03	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-08	C03	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-09	C04	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-10	C04	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-11	C05	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-12	C05	PARTIAL	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-13	C06	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-14	C06	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-15	C07	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-16	C07	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-17	C08	PARTIAL	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-18	C08	PARTIAL	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-19	C09	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-20	C09	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-21	C10	BLOCKED_DECISION	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-22	C11	BLOCKED_USER_AUTH	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-23	C11	BLOCKED_USER_AUTH	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-24	C12	PARTIAL	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-25	C12	PASS	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-26	C12	PARTIAL	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-27	C13	BLOCKED_USER_AUTH	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-28	C13	BLOCKED_USER_AUTH	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-29	C14	PENDING_FINAL	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-30	C15	BLOCKED_DECISION	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-31	C15	BLOCKED_DECISION	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-32	C16	BLOCKED_DECISION	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-33	C16	BLOCKED_DECISION	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-34	C17	PARTIAL	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+e2ee	AC-35	C17	PARTIAL	PENDING_REQUALIFICATION	Original evidence belongs to the previous candidate; full original oracle remains required.
+full-product	F00-A01	F00	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F00-A02	F00	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F00-A03	F00	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F01-A01	F01	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F01-A02	F01	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F01-A03	F01	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F02-A01	F02	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F02-A02	F02	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F02-A03	F02	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F03-A01	F03	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F03-A02	F03	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F03-A03	F03	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F03-A04	F03	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F04-A01	F04	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F04-A02	F04	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F04-A03	F04	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F04-A04	F04	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F05-A01	F05	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F05-A02	F05	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F05-A03	F05	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F06-A01	F06	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F06-A02	F06	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F06-A03	F06	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F06-A04	F06	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F07-A01	F07	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F07-A02	F07	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F07-A03	F07	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F07-A04	F07	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F08-A01	F08	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F08-A02	F08	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F08-A03	F08	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F09-A01	F09	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F09-A02	F09	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F09-A03	F09	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F10-A01	F10	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F10-A02	F10	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F10-A03	F10	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F11-A01	F11	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F11-A02	F11	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F11-A03	F11	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F11-A04	F11	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F12-A01	F12	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F12-A02	F12	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F12-A03	F12	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F12-A04	F12	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F13-A01	F13	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F13-A02	F13	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F13-A03	F13	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F13-A04	F13	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F14-A01	F14	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F14-A02	F14	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F14-A03	F14	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F15-A01	F15	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F15-A02	F15	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F15-A03	F15	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F16-A01	F16	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F16-A02	F16	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F16-A03	F16	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F17-A01	F17	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F17-A02	F17	PLANNED	PLANNED	No final case/platform evidence exists yet.
+full-product	F17-A03	F17	PLANNED	PLANNED	No final case/platform evidence exists yet.

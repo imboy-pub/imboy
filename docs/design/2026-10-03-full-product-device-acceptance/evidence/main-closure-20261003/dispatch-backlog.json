@@ -1,0 +1,3331 @@
+{
+  "scope": "all original 55 full-product dispatch cards, including preparation and final gates",
+  "cards": [
+    {
+      "id": "F02-S01",
+      "parent": "F02",
+      "title": "身份生命周期",
+      "status": "PLANNED",
+      "owner_role": "F02 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/contact_management_flow_api_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "首次权限、注册登录、忘记密码、重登；错误凭据拒绝且不污染已登录身份",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F02-S01/",
+        "RUN_ROOT/cards/F02-S01/"
+      ],
+      "acceptance_ids": [
+        "F02-A01",
+        "F02-A02",
+        "F02-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F02-S02",
+      "parent": "F02",
+      "title": "好友关系",
+      "status": "PLANNED",
+      "owner_role": "F02 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/contact_management_flow_api_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "申请接受拒绝撤回、备注标签、删除拉黑；双方关系与访问限制一致",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F02-S02/",
+        "RUN_ROOT/cards/F02-S02/"
+      ],
+      "acceptance_ids": [
+        "F02-A01",
+        "F02-A02",
+        "F02-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F03-S01",
+      "parent": "F03",
+      "title": "发送与媒体",
+      "status": "PLANNED",
+      "owner_role": "F03 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/dual_account_message_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "两方向文本/长文/表情/图片/视频/语音/文件/位置；message_id关联UI与持久化",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F03-S01/",
+        "RUN_ROOT/cards/F03-S01/"
+      ],
+      "acceptance_ids": [
+        "F03-A01",
+        "F03-A02",
+        "F03-A03",
+        "F03-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F03-S02",
+      "parent": "F03",
+      "title": "消息操作",
+      "status": "PLANNED",
+      "owner_role": "F03 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/dual_account_message_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "引用转发复制收藏删除撤回搜索；操作后双方权限与内容符合策略",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F03-S02/",
+        "RUN_ROOT/cards/F03-S02/"
+      ],
+      "acceptance_ids": [
+        "F03-A01",
+        "F03-A02",
+        "F03-A03",
+        "F03-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F03-S03",
+      "parent": "F03",
+      "title": "会话与恢复",
+      "status": "PLANNED",
+      "owner_role": "F03 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/dual_account_message_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "未读置顶免打扰草稿分页、离线重连重启；无重复消息且历史可读",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F03-S03/",
+        "RUN_ROOT/cards/F03-S03/"
+      ],
+      "acceptance_ids": [
+        "F03-A01",
+        "F03-A02",
+        "F03-A03",
+        "F03-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F03-S04",
+      "parent": "F03",
+      "title": "通知与深链",
+      "status": "PLANNED",
+      "owner_role": "F03 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/dual_account_message_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "前后台/杀进程通知、权限拒绝、点击定位；不泄露E2EE内容且不串号",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F03-S04/",
+        "RUN_ROOT/cards/F03-S04/"
+      ],
+      "acceptance_ids": [
+        "F03-A01",
+        "F03-A02",
+        "F03-A03",
+        "F03-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F04-S01",
+      "parent": "F04",
+      "title": "建群与准入",
+      "status": "PLANNED",
+      "owner_role": "F04 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/group_creation_management_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "普通公开私密群、邀请申请二维码；非成员越权失败",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F04-S01/",
+        "RUN_ROOT/cards/F04-S01/"
+      ],
+      "acceptance_ids": [
+        "F04-A01",
+        "F04-A02",
+        "F04-A03",
+        "F04-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F04-S02",
+      "parent": "F04",
+      "title": "角色与治理",
+      "status": "PLANNED",
+      "owner_role": "F04 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/group_creation_management_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "名称头像公告禁言管理员转让举报；逐角色正反权限一致",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F04-S02/",
+        "RUN_ROOT/cards/F04-S02/"
+      ],
+      "acceptance_ids": [
+        "F04-A01",
+        "F04-A02",
+        "F04-A03",
+        "F04-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F04-S03",
+      "parent": "F04",
+      "title": "成员退出与解散",
+      "status": "PLANNED",
+      "owner_role": "F04 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/group_creation_management_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "加踢退出重入解散；新旧成员消息访问及历史授权正确",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F04-S03/",
+        "RUN_ROOT/cards/F04-S03/"
+      ],
+      "acceptance_ids": [
+        "F04-A01",
+        "F04-A02",
+        "F04-A03",
+        "F04-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F04-S04",
+      "parent": "F04",
+      "title": "群消息",
+      "status": "PLANNED",
+      "owner_role": "F04 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/group_creation_management_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "双向消息全类型与操作、离线历史；群外身份不可读取",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F04-S04/",
+        "RUN_ROOT/cards/F04-S04/"
+      ],
+      "acceptance_ids": [
+        "F04-A01",
+        "F04-A02",
+        "F04-A03",
+        "F04-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F05-S01",
+      "parent": "F05",
+      "title": "群文件相册",
+      "status": "PLANNED",
+      "owner_role": "F05 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/group_collaboration_local_api_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "上传下载预览删除；跨成员可见、撤权拒绝、归属不串群",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F05-S01/",
+        "RUN_ROOT/cards/F05-S01/"
+      ],
+      "acceptance_ids": [
+        "F05-A01",
+        "F05-A02",
+        "F05-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F05-S02",
+      "parent": "F05",
+      "title": "群任务",
+      "status": "PLANNED",
+      "owner_role": "F05 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/group_collaboration_local_api_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "创建分配修改状态与详情；授权成员状态同步、非法角色失败",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F05-S02/",
+        "RUN_ROOT/cards/F05-S02/"
+      ],
+      "acceptance_ids": [
+        "F05-A01",
+        "F05-A02",
+        "F05-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F05-S03",
+      "parent": "F05",
+      "title": "群投票",
+      "status": "PLANNED",
+      "owner_role": "F05 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/group_collaboration_local_api_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "创建参与重复提交截止结果；计票唯一且过期拒绝",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F05-S03/",
+        "RUN_ROOT/cards/F05-S03/"
+      ],
+      "acceptance_ids": [
+        "F05-A01",
+        "F05-A02",
+        "F05-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F05-S04",
+      "parent": "F05",
+      "title": "群日程分类",
+      "status": "PLANNED",
+      "owner_role": "F05 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/group_collaboration_local_api_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "日程编辑参与提醒取消、分类标签全部入口；重进持久化",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F05-S04/",
+        "RUN_ROOT/cards/F05-S04/"
+      ],
+      "acceptance_ids": [
+        "F05-A01",
+        "F05-A02",
+        "F05-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F06-S01",
+      "parent": "F06",
+      "title": "发布与媒体",
+      "status": "PLANNED",
+      "owner_role": "F06 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/moments_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "文图视频发布失败重试、编辑能力或明确不支持、删除分页；服务端内容与UI一致",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F06-S01/",
+        "RUN_ROOT/cards/F06-S01/"
+      ],
+      "acceptance_ids": [
+        "F06-A01",
+        "F06-A02",
+        "F06-A03",
+        "F06-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F06-S02",
+      "parent": "F06",
+      "title": "互动与隐私",
+      "status": "PLANNED",
+      "owner_role": "F06 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/moments_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "赞取消、评论回复删除、@、通知、屏蔽可见范围；非授权第三人实际请求失败",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F06-S02/",
+        "RUN_ROOT/cards/F06-S02/"
+      ],
+      "acceptance_ids": [
+        "F06-A01",
+        "F06-A02",
+        "F06-A03",
+        "F06-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F07-S01",
+      "parent": "F07",
+      "title": "频道创建发现",
+      "status": "PLANNED",
+      "owner_role": "F07 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/channel_creator_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "公开私密付费、资料修改、发现筛选搜索；展示和准入策略一致",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F07-S01/",
+        "RUN_ROOT/cards/F07-S01/"
+      ],
+      "acceptance_ids": [
+        "F07-A01",
+        "F07-A02",
+        "F07-A03",
+        "F07-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F07-S02",
+      "parent": "F07",
+      "title": "订阅与治理",
+      "status": "PLANNED",
+      "owner_role": "F07 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/channel_creator_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "订阅退订邀请审批管理员；撤权后刷新与读取被拒绝",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F07-S02/",
+        "RUN_ROOT/cards/F07-S02/"
+      ],
+      "acceptance_ids": [
+        "F07-A01",
+        "F07-A02",
+        "F07-A03",
+        "F07-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F07-S03",
+      "parent": "F07",
+      "title": "内容与评论",
+      "status": "PLANNED",
+      "owner_role": "F07 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/channel_creator_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "发布全部支持类型、详情评论治理；双端传播、删除及分页一致",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F07-S03/",
+        "RUN_ROOT/cards/F07-S03/"
+      ],
+      "acceptance_ids": [
+        "F07-A01",
+        "F07-A02",
+        "F07-A03",
+        "F07-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F08-S01",
+      "parent": "F08",
+      "title": "个人资料二维码",
+      "status": "PLANNED",
+      "owner_role": "F08 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/mine/mine_subpages_smoke_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "头像昵称性别地区、二维码；重登回读一致且无跨账号残留",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F08-S01/",
+        "RUN_ROOT/cards/F08-S01/"
+      ],
+      "acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F08-S02",
+      "parent": "F08",
+      "title": "收藏与黑名单",
+      "status": "PLANNED",
+      "owner_role": "F08 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/mine/mine_subpages_smoke_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "收藏详情分类删除、黑名单移除；源内容撤权后不能绕过访问",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F08-S02/",
+        "RUN_ROOT/cards/F08-S02/"
+      ],
+      "acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F08-S03",
+      "parent": "F08",
+      "title": "设置与显示",
+      "status": "PLANNED",
+      "owner_role": "F08 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/mine/mine_subpages_smoke_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "语言主题字号缓存存储、关于升级；重启保持选择且清理不破坏密钥",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F08-S03/",
+        "RUN_ROOT/cards/F08-S03/"
+      ],
+      "acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F08-S04",
+      "parent": "F08",
+      "title": "安全与设备",
+      "status": "PLANNED",
+      "owner_role": "F08 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/mine/mine_subpages_smoke_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "密码绑定设备踢出、备份恢复入口；错误恢复不覆盖现有状态、撤权会话拒绝",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F08-S04/",
+        "RUN_ROOT/cards/F08-S04/"
+      ],
+      "acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F08-S05",
+      "parent": "F08",
+      "title": "反馈与注销",
+      "status": "PLANNED",
+      "owner_role": "F08 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/mine/mine_subpages_smoke_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "反馈详情、注销合成账号；确认取消不删数据、确认后权限和本地数据清除",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F08-S05/",
+        "RUN_ROOT/cards/F08-S05/"
+      ],
+      "acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F09-S01",
+      "parent": "F09",
+      "title": "组织生命周期",
+      "status": "PLANNED",
+      "owner_role": "F09 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/enterprise/organization_chart_nonoa_macos_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "创建邀请申请审批拒绝撤回退出解散；角色移交与末位owner限制",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F09-S01/",
+        "RUN_ROOT/cards/F09-S01/"
+      ],
+      "acceptance_ids": [
+        "F09-A01",
+        "F09-A02",
+        "F09-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F09-S02",
+      "parent": "F09",
+      "title": "成员部门",
+      "status": "PLANNED",
+      "owner_role": "F09 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/enterprise/organization_chart_nonoa_macos_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "部门成员增删改分页搜索停用恢复；跨组织非法写入失败",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F09-S02/",
+        "RUN_ROOT/cards/F09-S02/"
+      ],
+      "acceptance_ids": [
+        "F09-A01",
+        "F09-A02",
+        "F09-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F09-S03",
+      "parent": "F09",
+      "title": "图形组织架构",
+      "status": "PLANNED",
+      "owner_role": "F09 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/enterprise/organization_chart_nonoa_macos_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "成员切换、缩放拖动fit、103根深树节点连线；403清图、晚到响应不串组织",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F09-S03/",
+        "RUN_ROOT/cards/F09-S03/"
+      ],
+      "acceptance_ids": [
+        "F09-A01",
+        "F09-A02",
+        "F09-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F10-S01",
+      "parent": "F10",
+      "title": "工作区切换",
+      "status": "PLANNED",
+      "owner_role": "F10 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/workspace/workspace_acceptance_batch155_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "默认与新建加入退出、成员品牌；个人/企业切换、空工作台始终可见",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F10-S01/",
+        "RUN_ROOT/cards/F10-S01/"
+      ],
+      "acceptance_ids": [
+        "F10-A01",
+        "F10-A02",
+        "F10-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F10-S02",
+      "parent": "F10",
+      "title": "项目协作",
+      "status": "PLANNED",
+      "owner_role": "F10 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/workspace/workspace_acceptance_batch155_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "项目成员频道任务里程碑洞察所有子页；权限与状态跨端一致",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F10-S02/",
+        "RUN_ROOT/cards/F10-S02/"
+      ],
+      "acceptance_ids": [
+        "F10-A01",
+        "F10-A02",
+        "F10-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F11-S01",
+      "parent": "F11",
+      "title": "企业群频道",
+      "status": "PLANNED",
+      "owner_role": "F11 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/group_organization_local_api_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "企业准入、群与频道归属、退企撤权；orgB第三身份不可读取orgA",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F11-S01/",
+        "RUN_ROOT/cards/F11-S01/"
+      ],
+      "acceptance_ids": [
+        "F11-A01",
+        "F11-A02",
+        "F11-A03",
+        "F11-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F11-S02",
+      "parent": "F11",
+      "title": "企业资料",
+      "status": "PLANNED",
+      "owner_role": "F11 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/demo_flow/group_organization_local_api_flow_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "文档上传移动下载删除、历史附件；对象归属与新授权校验一致",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F11-S02/",
+        "RUN_ROOT/cards/F11-S02/"
+      ],
+      "acceptance_ids": [
+        "F11-A01",
+        "F11-A02",
+        "F11-A03",
+        "F11-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F12-S01",
+      "parent": "F12",
+      "title": "坐席入口队列",
+      "status": "PLANNED",
+      "owner_role": "F12 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/enterprise/enterprise_cs_e2e_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "角色入口上线下线、两坐席并发接单；仅一个持久化胜者",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F12-S01/",
+        "RUN_ROOT/cards/F12-S01/"
+      ],
+      "acceptance_ids": [
+        "F12-A01",
+        "F12-A02",
+        "F12-A03",
+        "F12-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F12-S02",
+      "parent": "F12",
+      "title": "服务会话",
+      "status": "PLANNED",
+      "owner_role": "F12 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/enterprise/enterprise_cs_e2e_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "真实Widget访客到坐席、附件转接结束历史；访客/坐席/主管权限正确",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F12-S02/",
+        "RUN_ROOT/cards/F12-S02/"
+      ],
+      "acceptance_ids": [
+        "F12-A01",
+        "F12-A02",
+        "F12-A03",
+        "F12-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F12-S03",
+      "parent": "F12",
+      "title": "后台业务治理",
+      "status": "PLANNED",
+      "owner_role": "F12 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/enterprise/enterprise_cs_e2e_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "组织部门成员群频道资料管理、筛选分页审计；App消费治理结果正确",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F12-S03/",
+        "RUN_ROOT/cards/F12-S03/"
+      ],
+      "acceptance_ids": [
+        "F12-A01",
+        "F12-A02",
+        "F12-A03",
+        "F12-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F13-S01",
+      "parent": "F13",
+      "title": "双人通话",
+      "status": "PLANNED",
+      "owner_role": "F13 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/rtc/rtc_relay_realdevice_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "呼叫接听拒绝取消忙线挂断权限切换；真实双向声音画面、重连",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F13-S01/",
+        "RUN_ROOT/cards/F13-S01/"
+      ],
+      "acceptance_ids": [
+        "F13-A01",
+        "F13-A02",
+        "F13-A03",
+        "F13-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F13-S02",
+      "parent": "F13",
+      "title": "群通话直播",
+      "status": "PLANNED",
+      "owner_role": "F13 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/rtc/rtc_relay_realdevice_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "多参与者入离房主持权限、直播全入口；人数媒体一致，端点不足BLOCKED",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F13-S02/",
+        "RUN_ROOT/cards/F13-S02/"
+      ],
+      "acceptance_ids": [
+        "F13-A01",
+        "F13-A02",
+        "F13-A03",
+        "F13-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F13-S03",
+      "parent": "F13",
+      "title": "中继异常",
+      "status": "PLANNED",
+      "owner_role": "F13 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/rtc/rtc_relay_realdevice_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "relay-only双向媒体、断网恢复/权限拒绝；同session TURN与RTP及客户端日志关联",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F13-S03/",
+        "RUN_ROOT/cards/F13-S03/"
+      ],
+      "acceptance_ids": [
+        "F13-A01",
+        "F13-A02",
+        "F13-A03",
+        "F13-A04"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": true,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F14-S01",
+      "parent": "F14",
+      "title": "搜索扫码导航",
+      "status": "PLANNED",
+      "owner_role": "F14 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/search/ms_core_acceptance_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "全局消息网页搜索、扫码分流登录；目标与身份正确、非法链接拒绝",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F14-S01/",
+        "RUN_ROOT/cards/F14-S01/"
+      ],
+      "acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F14-S02",
+      "parent": "F14",
+      "title": "资金与付费",
+      "status": "PLANNED",
+      "owner_role": "F14 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/search/ms_core_acceptance_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "钱包红包转账本地订单付费频道；重复请求不重扣、订单与订阅一致，不触真实资金",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F14-S02/",
+        "RUN_ROOT/cards/F14-S02/"
+      ],
+      "acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F14-S03",
+      "parent": "F14",
+      "title": "AI位置剩余入口",
+      "status": "PLANNED",
+      "owner_role": "F14 domain worker (assign exact identity before READY)",
+      "reusable_target": {
+        "repo": "imboyapp",
+        "path": "integration_test/search/ms_core_acceptance_test.dart",
+        "qualification": "EXISTS_NOT_QUALIFIED_FOR_FINAL"
+      },
+      "behavior_and_oracle": "AI/bot定位附近外链及全部剩余页面；策略拒绝/服务失败可恢复、无隐式明文降级",
+      "owned_new_paths": [
+        "imboyapp/integration_test/full_acceptance/F14-S03/",
+        "RUN_ROOT/cards/F14-S03/"
+      ],
+      "acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "phase_dependencies": {
+        "design": [
+          "INPUT_SNAPSHOT"
+        ],
+        "L0": [
+          "DOMAIN_MAPPING",
+          "OWNED_TARGET_READY",
+          "PATH_LEASE"
+        ],
+        "L1": [
+          "DOMAIN_MAPPING",
+          "BACKEND_READY",
+          "FIXTURE_READY",
+          "RESOURCE_LEASE",
+          "RUNNER_QUALIFIED"
+        ],
+        "android": [
+          "L1",
+          "ANDROID_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "macos": [
+          "L1",
+          "MACOS_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "cross_device": [
+          "L1",
+          "PAIR_READY",
+          "RUNNER_QUALIFIED"
+        ],
+        "final": [
+          "FROZEN_CANDIDATE",
+          "PROFILE_UPSTREAM_HANDOFF",
+          "FINAL_COMMAND_REGISTRY"
+        ]
+      },
+      "max_behavior_cases_before_split": 25,
+      "template": "execution-contract.md sections 3,5,6",
+      "required_outputs": [
+        "case-map.tsv",
+        "target-list.json",
+        "fixture-contract.json",
+        "attempts.jsonl",
+        "artifact-manifest.json",
+        "defects.tsv"
+      ],
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "cross_device_required_by_parent": false,
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F00-S01",
+      "parent": "F00",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F00-S01",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F00-S02",
+      "parent": "F00",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F00-S02",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F01-S01",
+      "parent": "F01",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F01-S01",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F01-S02",
+      "parent": "F01",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F01-S02",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F01-S03",
+      "parent": "F01",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F01-S03",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F01-S04",
+      "parent": "F01",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F01-S04",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F01-S05",
+      "parent": "F01",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F01-S05",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F01-S06",
+      "parent": "F01",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F01-S06",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F15-S01",
+      "parent": "F15",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F15-S01",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F15-S02",
+      "parent": "F15",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F15-S02",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F16-S01",
+      "parent": "F16",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F16-S01",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F16-S02",
+      "parent": "F16",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F16-S02",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F17-S01",
+      "parent": "F17",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F17-S01",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F17-S02",
+      "parent": "F17",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F17-S02",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    },
+    {
+      "id": "F17-S03",
+      "parent": "F17",
+      "status": "PLANNED",
+      "specification": "execution-contract.md section 4 row F17-S03",
+      "kind": "infrastructure_or_gate",
+      "design_depends_on": [
+        "F00-S01"
+      ],
+      "continuation_scheduler": "PLANNED",
+      "continuation_test_status": "PLANNED",
+      "assigned_agent": "Codex /root",
+      "note": "Original required outputs, dependencies and acceptance IDs preserved; assignment is not acceptance."
+    }
+  ],
+  "capability_producers": {
+    "INPUT_SNAPSHOT": "F00-S01",
+    "DOMAIN_MAPPING": "F00-S02 (per domain)",
+    "RUNNER_QUALIFIED": "F01-S01",
+    "BACKEND_READY": "F01-S02",
+    "FIXTURE_READY": "F01-S02",
+    "ANDROID_READY": "F01-S03",
+    "MACOS_READY": "F01-S04",
+    "PAIR_READY": "F01-S05",
+    "FROZEN_CANDIDATE": "F17-S01",
+    "PROFILE_UPSTREAM_HANDOFF": "upstream Coordinator + integration owner; execution-contract section 1",
+    "FINAL_COMMAND_REGISTRY": "F01-S01 + F01-S06",
+    "PATH_LEASE": "shared resource Coordinator",
+    "RESOURCE_LEASE": "shared resource Coordinator",
+    "OWNED_TARGET_READY": "domain owner review",
+    "L1": "same subcard L1 passed on the selected candidate"
+  }
+}
