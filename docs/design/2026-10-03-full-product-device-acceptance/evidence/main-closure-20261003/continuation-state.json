@@ -831,5 +831,48 @@
       "upstream/device/UX final gates"
     ],
     "note": "These synthetic fixtures retain failure and success but do not prove repaired business execution. Backend evidence commit requires fresh candidate qualification."
+  },
+  "device_shard_attempt_durability_closure": {
+    "app_candidate": "4c8f91206f42fedde7e300eb1684c69568909326",
+    "command": "python3 -m unittest discover -s test/tooling/auto_test",
+    "executed": 293,
+    "exit": 0,
+    "review": "APPROVED_AFTER_TIMEOUT_BUSINESS_FAILURE_PRESERVATION",
+    "scope": "RUNNER_HOST_TESTS_NO_DEVICES",
+    "product_pass": false,
+    "logs": [
+      {
+        "path": "shard-journal-before-review.log",
+        "sha256": "129d1bc985d37229706712051b1d8784a4db23335d6e1b789517d54fa87e519d",
+        "phase": "PRE_REVIEW_MISSING_TIMEOUT_BUSINESS_NEGATIVE"
+      },
+      {
+        "path": "shard-journal-business-timeout-reviewed.log",
+        "sha256": "643206ed23e2f458b45551fd175b2a3251eb645687484573c0c9639f9775445c",
+        "phase": "BUSINESS_TIMEOUT_FAILURE_PRESERVED"
+      },
+      {
+        "path": "shard-journal-final-suite.log",
+        "sha256": "1b3b6f8939780fa6a928747b42fe9e3a77b252fe1dadf41eafc7cc17484cabde",
+        "phase": "REVIEWED_REFACTORED_293_PASS"
+      }
+    ],
+    "implemented": [
+      "exclusive target directory keyed by JSON run_id/target tuple digest",
+      "start journal flushed and fsynced before subprocess",
+      "partial timeout output and exit124 retained",
+      "attempt journal flushed and fsynced after each outcome",
+      "no basename collision or same-target evidence overwrite",
+      "observed business assertion failure remains FAIL and is not retried even without done",
+      "infra limited to3 attempts"
+    ],
+    "remaining": [
+      "independent execution index and manifest binding",
+      "resume reconciliation for started but unfinished attempts",
+      "authentic frozen fingerprints observed before and after execution",
+      "genuine Android/macOS journeys",
+      "full final verifier and business coverage"
+    ],
+    "note": "Tests mock process launch. Two timeout business negative branches use real machine-event parser. No real device was accessed."
   }
 }
