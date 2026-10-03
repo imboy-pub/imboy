@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_ORGANIZATION_SESSION_BOUNDARY",
+  "app_head": "0e38dfd7d4c5f3caf9f9d68fd11760e69185ef89",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "results": {
+    "final_exit": 0,
+    "final_passed": 282,
+    "analyze_exit": 0,
+    "analyze_issues": 0,
+    "specs": 27,
+    "catalog_targets": 153,
+    "inventory_pages": 188,
+    "inventory_functions": 1982
+  },
+  "oracles": [
+    "Repository notification UID change disposes old subtree; anonymous state does not construct business page.",
+    "Synthetic scope override same UID with new generation disposes old subtree.",
+    "Actual loginAfter generation advances; mocked secure write throws before UID commit/notification; pending mocked HTTP result rejected as 409 and no second page."
+  ],
+  "attempt_notes": [
+    "Boundary mutation calibration: three failing tests.",
+    "Null or malformed mock credentials caused invalid fixture attempts; excluded from qualifying results.",
+    "Valid future-exp synthetic JWT avoids refresh/logout; write mock still prevents actual login commit.",
+    "409 is the existing HTTP generation rejection; not independent RED evidence for newly added allMine guards."
+  ],
+  "limitations": [
+    "No real device, login, server signature verification, database or push qualification.",
+    "Generation-before-notify window may retain old UI; no automatic immediate teardown is proven.",
+    "Same-UID generation test overrides provider rather than exercising real login notification.",
+    "Home create/open-directory actions and already-started writes are outside this closure.",
+    "All original 36+61 requirements remain unclosed."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-session-boundary-red-20261004.log",
+      "sha256": "fd8a8e5e49374b50cb234fcf6456c881f4dc5f72fe990cba00b88f590f3ae9c1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-session-boundary-green-20261004.log",
+      "sha256": "c7012806c0a2f9449747b0bab5d49081d1d851b2593594f6080702d2ba23eef1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-api-session-early-generation-green-20261004.log",
+      "sha256": "550871256903ecc3b8b6f4a022101e272c4a4faa73a94f93b751e71988b7a49f"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-api-session-fixture-fixed-20261004.log",
+      "sha256": "13157219738b28edcad56433c548ec1d27172199420d58599f64bc19939e719d"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-api-session-fixture-jwt-fixed-20261004.log",
+      "sha256": "fb0125742b97821ffaa21e41d5c3456bfbe0a8f6a2abac68525d0d464310c47e"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-session-final-green-20261004.log",
+      "sha256": "bd5b1cb7d5bca7fcf03da86f995c931946e1c32895172a301aa7054c05689727"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-session-final-analyze-20261004.log",
+      "sha256": "ddf0da4e9d3da9b7fd0536301c08c1ee0922675683bb9096dbff07f844b9142d"
+    }
+  ]
+}

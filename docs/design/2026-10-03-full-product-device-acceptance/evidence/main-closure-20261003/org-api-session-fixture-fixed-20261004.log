@@ -1,0 +1,79 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_api_session_generation_test.dart
+00:00 +0: 会话代次提前变化但UID未更新时丢弃旧1页组织结果
+00:00 +0 -1: 会话代次提前变化但UID未更新时丢弃旧1页组织结果 [E]
+  OrganizationApiException(400): 错误
+  package:imboy/modules/organization/infrastructure/organization_api.dart 704:7   OrganizationApi._ensureOk
+  package:imboy/modules/organization/infrastructure/organization_api.dart 728:17  OrganizationApi._page
+  package:imboy/modules/organization/infrastructure/organization_api.dart 69:12   OrganizationApi.mine
+  ===== asynchronous gap ===========================
+  dart:async                                                                      _CustomZone.registerBinaryCallback
+  package:imboy/modules/organization/infrastructure/organization_api.dart 83:22   OrganizationApi.allMine
+  test/organization/organization_api_session_generation_test.dart 90:40           main.<fn>
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+  DioException [bad response]: This exception was thrown because the response has a status code of 400 and RequestOptions.validateStatus was configured to throw for this status code.
+  The status code of 400 has the following meaning: "Client error - the request contains bad syntax or cannot be fulfilled"
+  Read more about status codes at https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
+  In order to resolve this exception you typically have either to verify and fix your request code or you have to fix the server code.
+  
+  dart:async                                                                     _Completer.completeError
+  package:imboy/component/http/http_client.dart 297:31                           HttpClient._refreshTokenWithMutex
+  ===== asynchronous gap ===========================
+  dart:async                                                                     _CustomZone.registerBinaryCallback
+  package:imboy/component/http/http_client.dart 285:19                           HttpClient._refreshTokenWithMutex
+  package:imboy/component/http/http_client.dart 266:18                           HttpClient._setDefaultConfig
+  ===== asynchronous gap ===========================
+  dart:async                                                                     _CustomZone.registerUnaryCallback
+  package:imboy/component/http/http_client.dart 255:17                           HttpClient._setDefaultConfig
+  package:imboy/component/http/http_client.dart 413:13                           HttpClient._executeWithNetworkCheck
+  package:imboy/component/http/http_client.dart 366:12                           HttpClient.get
+  package:imboy/modules/organization/infrastructure/organization_api.dart 65:24  OrganizationApi.mine
+  package:imboy/modules/organization/infrastructure/organization_api.dart 83:28  OrganizationApi.allMine
+  test/organization/organization_api_session_generation_test.dart 90:40          main.<fn>
+  
+  TimeoutException after 0:00:02.000000: Future not completed
+  dart:async  _startMicrotaskLoop
+  
+00:02 +0 -1: 会话代次提前变化但UID未更新时丢弃旧2页组织结果
+00:02 +0 -2: 会话代次提前变化但UID未更新时丢弃旧2页组织结果 [E]
+  OrganizationApiException(400): 错误
+  package:imboy/modules/organization/infrastructure/organization_api.dart 704:7   OrganizationApi._ensureOk
+  package:imboy/modules/organization/infrastructure/organization_api.dart 728:17  OrganizationApi._page
+  package:imboy/modules/organization/infrastructure/organization_api.dart 69:12   OrganizationApi.mine
+  ===== asynchronous gap ===========================
+  dart:async                                                                      _CustomZone.registerBinaryCallback
+  package:imboy/modules/organization/infrastructure/organization_api.dart 83:22   OrganizationApi.allMine
+  test/organization/organization_api_session_generation_test.dart 90:40           main.<fn>
+  
+  DioException [bad response]: This exception was thrown because the response has a status code of 400 and RequestOptions.validateStatus was configured to throw for this status code.
+  The status code of 400 has the following meaning: "Client error - the request contains bad syntax or cannot be fulfilled"
+  Read more about status codes at https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
+  In order to resolve this exception you typically have either to verify and fix your request code or you have to fix the server code.
+  
+  dart:async                                                                     _Completer.completeError
+  package:imboy/component/http/http_client.dart 297:31                           HttpClient._refreshTokenWithMutex
+  ===== asynchronous gap ===========================
+  dart:async                                                                     _CustomZone.registerBinaryCallback
+  package:imboy/component/http/http_client.dart 285:19                           HttpClient._refreshTokenWithMutex
+  package:imboy/component/http/http_client.dart 266:18                           HttpClient._setDefaultConfig
+  ===== asynchronous gap ===========================
+  dart:async                                                                     _CustomZone.registerUnaryCallback
+  package:imboy/component/http/http_client.dart 255:17                           HttpClient._setDefaultConfig
+  package:imboy/component/http/http_client.dart 413:13                           HttpClient._executeWithNetworkCheck
+  package:imboy/component/http/http_client.dart 366:12                           HttpClient.get
+  package:imboy/modules/organization/infrastructure/organization_api.dart 65:24  OrganizationApi.mine
+  package:imboy/modules/organization/infrastructure/organization_api.dart 83:28  OrganizationApi.allMine
+  test/organization/organization_api_session_generation_test.dart 90:40          main.<fn>
+  
+  TimeoutException after 0:00:02.000000: Future not completed
+  dart:async  _startMicrotaskLoop
+  
+00:04 +0 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_api_session_generation_test.dart: 会话代次提前变化但UID未更新时丢弃旧1页组织结果
+  /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_api_session_generation_test.dart: 会话代次提前变化但UID未更新时丢弃旧2页组织结果

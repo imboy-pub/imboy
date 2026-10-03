@@ -4839,5 +4839,11 @@
     "receipt": "organization-join-late-response-isolation-20261004.json",
     "app_head": "9546743dc1affc925e965f83f908d6e6655001fc",
     "product_pass": false
+  },
+  "organization_session_boundary": {
+    "receipt": "organization-session-boundary-20261004.json",
+    "app_head": "0e38dfd7d4c5f3caf9f9d68fd11760e69185ef89",
+    "tests": 282,
+    "product_pass": false
   }
 }
