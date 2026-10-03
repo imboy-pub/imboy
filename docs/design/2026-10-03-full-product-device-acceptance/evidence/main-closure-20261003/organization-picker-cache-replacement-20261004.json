@@ -1,0 +1,29 @@
+{
+  "scope": "LOCAL_PICKER_COMPLETE_MEMBERSHIP_CACHE_REPLACEMENT",
+  "app_head": "16f2b6bd1f7b4a8359eca869bedec96ed9531010",
+  "tests": 16,
+  "exit_code": 0,
+  "red_failed": 1,
+  "analyze_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "artifacts": [
+    {
+      "path": "org-picker-cache-red-20261004.log",
+      "sha256": "9658e73eea614eec41860ef678f2f9f6421349afd62d0e465494fc2919be4036"
+    },
+    {
+      "path": "org-picker-cache-green-20261004.log",
+      "sha256": "8ca36ff47813a33d72447b76c3e675b68aefaa4b7420f62b553d91cdc835ccfa"
+    },
+    {
+      "path": "org-picker-cache-analyze-20261004.log",
+      "sha256": "f5a0b5dbb5579d971129e1eab9c90d5fa8171d0a188bfccd3db0443ac699f551"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Synthetic Dio/widget tests only; no real server/device",
+    "Picker still lacks refresh generation protection; partial detail caches retain merge semantics"
+  ]
+}

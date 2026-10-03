@@ -4726,5 +4726,11 @@
     "app_head": "38229ae771a1ba8f3bde22bd07ab50a150471a18",
     "tests": 12,
     "product_pass": false
+  },
+  "organization_picker_complete_cache_replacement": {
+    "receipt": "organization-picker-cache-replacement-20261004.json",
+    "app_head": "16f2b6bd1f7b4a8359eca869bedec96ed9531010",
+    "tests": 16,
+    "product_pass": false
   }
 }
