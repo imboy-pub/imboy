@@ -1,0 +1,625 @@
+{
+  "id": "PREPARATION-F00-NONLEGACY-PAGE-RECONCILIATION",
+  "scope": "CURRENT_SOURCE_PAGE_INVENTORY_ONLY",
+  "app_head": "9f654a008038c591d290bad44d4e115556c74e85",
+  "product_pass": false,
+  "pages": 24,
+  "records": [
+    {
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "source_sha256": "4992cb12e0cb36d653e81a98c8f805141dbec1c72eea12bbebf64d1f7225d50c",
+      "public_classes": [
+        "CsGovernanceErrorUi",
+        "CsGovernancePage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/customer_service/public.dart",
+          "line": 16,
+          "source_sha256": "d05337b85a65ee25ec1870fdf48039fba634dde4125ea964da6793cd26d7dbbf"
+        },
+        {
+          "path": "lib/modules/customer_service/presentation/cs_workspace_routes.dart",
+          "line": 19,
+          "source_sha256": "2aebf372c236e6b692d634c498f7f1f57fd08d43cc3c99ca8863c162d799800b"
+        }
+      ],
+      "proposed_cards": [
+        "F12-S03"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/modules/enterprise_app/presentation/enterprise_directory_page.dart",
+      "source_sha256": "bae30a93d463b2af1ffcc060f610fe08c1a11f32f1c339bff28880fa11092256",
+      "public_classes": [
+        "EnterpriseDirectoryPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/enterprise_app/public.dart",
+          "line": 19,
+          "source_sha256": "c9ec1d1e51ae8c6db8719e67166fe2f3910cad3f066febd00b852417dcc7c273"
+        }
+      ],
+      "proposed_cards": [
+        "F09-S02",
+        "F15-S02"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false,
+      "semantic_note": "Bounded member directory search/cursor/workspace authorization; not document storage."
+    },
+    {
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "source_sha256": "a9cf81230d799b2aae3fe233d4c8b62f38d7d0e3ab087556cd9cf794d2f43f11",
+      "public_classes": [
+        "EnterpriseGroupPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/enterprise_app/public.dart",
+          "line": 21,
+          "source_sha256": "c9ec1d1e51ae8c6db8719e67166fe2f3910cad3f066febd00b852417dcc7c273"
+        }
+      ],
+      "proposed_cards": [
+        "F11-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart",
+      "source_sha256": "40dd7ceedda8402ea22212469ba67156caee6c758221129eb3684e56828f7d46",
+      "public_classes": [
+        "EnterpriseWorkbenchPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/enterprise_oa/public.dart",
+          "line": 19,
+          "source_sha256": "4a0cea19fcf6e7fce1f798cd0ce46329a950d56db35ea6b0a668b206502dd64d"
+        }
+      ],
+      "proposed_cards": [
+        "F10-S01",
+        "F15-S02"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false,
+      "semantic_note": "Local workbench and SSO/webview protocol boundaries only; external customer OA integration needs separate authorization and remains unexecuted."
+    },
+    {
+      "page": "lib/modules/enterprise_oa/presentation/oa_tab_page.dart",
+      "source_sha256": "5100be591064b1a7ea0bf32a6f10c813653a520413c2c194490064d35fdf7c41",
+      "public_classes": [
+        "ApiOaSsoIssueLauncher",
+        "OaWebViewSlotProps",
+        "OaTabPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/enterprise_oa/public.dart",
+          "line": 17,
+          "source_sha256": "4a0cea19fcf6e7fce1f798cd0ce46329a950d56db35ea6b0a668b206502dd64d"
+        },
+        {
+          "path": "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart",
+          "line": 7,
+          "source_sha256": "40dd7ceedda8402ea22212469ba67156caee6c758221129eb3684e56828f7d46"
+        }
+      ],
+      "proposed_cards": [
+        "F10-S01",
+        "F15-S02"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false,
+      "semantic_note": "Local workbench and SSO/webview protocol boundaries only; external customer OA integration needs separate authorization and remains unexecuted."
+    },
+    {
+      "page": "lib/modules/organization/presentation/human_directory_page.dart",
+      "source_sha256": "7762235ebdba660f498cf1de0be35d45c0fa37353a99442b137b03e69e239384",
+      "public_classes": [
+        "HumanDirectoryBrowserPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/organization/public.dart",
+          "line": 19,
+          "source_sha256": "a2e01002346cb0c93909ba9e4652dda6cf92a56a41c73b5af419d12d9526ffc1"
+        },
+        {
+          "path": "lib/modules/organization/presentation/organization_routes.dart",
+          "line": 28,
+          "source_sha256": "b2e01fc2450931136645cc84cbb7036be2dcfda42b2094185f7f5f2af08c043b"
+        }
+      ],
+      "proposed_cards": [
+        "F09-S02"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/org_invite_qr_page.dart",
+      "source_sha256": "ff931193698ec430a03a1241e303ca7beae30f58f132c59008f2c3575e972b2e",
+      "public_classes": [
+        "OrgInviteQrPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/organization/presentation/org_join_scanner_page.dart",
+          "line": 26,
+          "source_sha256": "806955be34fceca205cb97e34a443c9e8c9bd84f74943392ffcbc795e3296705"
+        },
+        {
+          "path": "lib/modules/organization/presentation/organization_manage_page.dart",
+          "line": 40,
+          "source_sha256": "3f36c8d930f31a92970193933138a148346511bd40daccdf3b18424b53fef49b"
+        }
+      ],
+      "proposed_cards": [
+        "F09-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/org_join_scanner_page.dart",
+      "source_sha256": "806955be34fceca205cb97e34a443c9e8c9bd84f74943392ffcbc795e3296705",
+      "public_classes": [
+        "OrgJoinScannerPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/organization/presentation/organization_picker_page.dart",
+          "line": 40,
+          "source_sha256": "820221b5c06a0b6fc08033f5eab02c46bba95dada6947b1c28b2987aa4b5560c"
+        }
+      ],
+      "proposed_cards": [
+        "F09-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "source_sha256": "2c2fd0f9723b2248949ae93b6190d4f8b25dceb95ca1ddd54dc7d13fbd7a2626",
+      "public_classes": [
+        "OrgWorkspaceMembersPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/organization/presentation/organization_routes.dart",
+          "line": 38,
+          "source_sha256": "b2e01fc2450931136645cc84cbb7036be2dcfda42b2094185f7f5f2af08c043b"
+        }
+      ],
+      "proposed_cards": [
+        "F10-S01",
+        "F09-S02"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "source_sha256": "3f36c8d930f31a92970193933138a148346511bd40daccdf3b18424b53fef49b",
+      "public_classes": [
+        "OrganizationManagePage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/organization/presentation/organization_routes.dart",
+          "line": 33,
+          "source_sha256": "b2e01fc2450931136645cc84cbb7036be2dcfda42b2094185f7f5f2af08c043b"
+        }
+      ],
+      "proposed_cards": [
+        "F09-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_member_detail_page.dart",
+      "source_sha256": "09cbff1634264547091bf7161da0376a2b604e5a699e1a4a17d621454785cf76",
+      "public_classes": [
+        "OrganizationMemberDetailPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/organization/public.dart",
+          "line": 15,
+          "source_sha256": "a2e01002346cb0c93909ba9e4652dda6cf92a56a41c73b5af419d12d9526ffc1"
+        },
+        {
+          "path": "lib/modules/organization/presentation/organization_routes.dart",
+          "line": 34,
+          "source_sha256": "b2e01fc2450931136645cc84cbb7036be2dcfda42b2094185f7f5f2af08c043b"
+        }
+      ],
+      "proposed_cards": [
+        "F09-S02"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "source_sha256": "820221b5c06a0b6fc08033f5eab02c46bba95dada6947b1c28b2987aa4b5560c",
+      "public_classes": [
+        "OrganizationPickerPage",
+        "OrgJoinDialogResult"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/organization/presentation/organization_routes.dart",
+          "line": 36,
+          "source_sha256": "b2e01fc2450931136645cc84cbb7036be2dcfda42b2094185f7f5f2af08c043b"
+        }
+      ],
+      "proposed_cards": [
+        "F09-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "source_sha256": "dc5a635fb3e4cfc330e716411998f9ada96e2fd4f9db73bdb9d8d1643b4c1da1",
+      "public_classes": [
+        "OrganizationToolsPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/organization/presentation/organization_routes.dart",
+          "line": 37,
+          "source_sha256": "b2e01fc2450931136645cc84cbb7036be2dcfda42b2094185f7f5f2af08c043b"
+        }
+      ],
+      "proposed_cards": [
+        "F09-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/billing/plan_list_page.dart",
+      "source_sha256": "2f8f18bc417cddd6846c769e4885a11ba0dff6775a061866804bbad1290e8c02",
+      "public_classes": [
+        "PlanListPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/config/router/barrel/pages_barrel.dart",
+          "line": 104,
+          "source_sha256": "6664f428662756a67f4815d31b75de843d2b887903099ab76ac31fbc61bf6361"
+        }
+      ],
+      "proposed_cards": [
+        "F14-S02"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/chat_shell/chat_shell_page.dart",
+      "source_sha256": "2086296f2d7799caf9cff6ce053c3f4ab71a9916b0b2179a6666d6a74e2aafa2",
+      "public_classes": [
+        "ChatShellPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/page/chat_shell/chat_shell.dart",
+          "line": 28,
+          "source_sha256": "5fb052dd5f4bfa87b1afd874f7927170323f7bea5faa77d9f7cbf4c6f2d34714"
+        },
+        {
+          "path": "lib/page/chat_shell/chat_shell_bootstrap.dart",
+          "line": 28,
+          "source_sha256": "fe3a11fbade9fe3a1ddddc87b944f46ea93ebb4a031504760dace0b11bcc2f59"
+        }
+      ],
+      "proposed_cards": [
+        "F16-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/error/init_error_page.dart",
+      "source_sha256": "5acf337e17d1073082bce75b7bd68609ebb10709c8c280974ea28d6d2735cb89",
+      "public_classes": [
+        "InitErrorPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/run.dart",
+          "line": 19,
+          "source_sha256": "9d8853b2d5c65ed9784cdf8d24ff8910ab289bba95de16abc02c62c1644980cd"
+        },
+        {
+          "path": "lib/main.dart",
+          "line": 10,
+          "source_sha256": "75f719d36b41779f7ea7ceeca0527b483e1210d6871ddccada0826f051bcc280"
+        }
+      ],
+      "proposed_cards": [
+        "F16-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/group/group_discovery/group_discovery_page.dart",
+      "source_sha256": "28846f7c59fdfdd6fc2c76f6886af84a341ddcebdf58a47cce85666c14b1b59a",
+      "public_classes": [
+        "GroupDiscoveryPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/group_collab/public.dart",
+          "line": 22,
+          "source_sha256": "0111e81619cbd77529334d3641160406a055b6a5023259daa8f3ebf27cd79cb4"
+        }
+      ],
+      "proposed_cards": [
+        "F04-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/mine/appeal/appeal_page.dart",
+      "source_sha256": "e3fe31f2eb8843463ef22c344a0b73318b9a125723cbfa205feda081a8b12e14",
+      "public_classes": [
+        "AppealPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/config/router/barrel/pages_barrel.dart",
+          "line": 73,
+          "source_sha256": "6664f428662756a67f4815d31b75de843d2b887903099ab76ac31fbc61bf6361"
+        }
+      ],
+      "proposed_cards": [
+        "F08-S05"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/settings/compliance_key_page.dart",
+      "source_sha256": "0ddb45be97232c200a56e99b966bb336d27caf50b1fb1ebbd0fa347566b132c3",
+      "public_classes": [
+        "ComplianceKeyPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/modules/security_privacy/public.dart",
+          "line": 7,
+          "source_sha256": "4d3bbb0b2b83dcd87d4e67f5c5864c04eea4f9661f8c5c62ae3da0094ee285c6"
+        }
+      ],
+      "proposed_cards": [
+        "F08-S04"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/settings/e2ee_backup_setup_page.dart",
+      "source_sha256": "dd97497635742e5c9a3a1410b564422909b03e9a2f716e8357e2d8e0075fe0b8",
+      "public_classes": [
+        "E2EEBackupSetupPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/page/conversation/conversation_page.dart",
+          "line": 38,
+          "source_sha256": "29c169ff29408d49c719e1266f09b4ec25324f07c783b29d3ab1c0f2b8731bb2"
+        }
+      ],
+      "proposed_cards": [
+        "F08-S04"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/settings/safety_number_page.dart",
+      "source_sha256": "acf49bd69529b476da89ba9201e924a1b75674d61139a204a316de41115aa5cb",
+      "public_classes": [
+        "SafetyNumberPage",
+        "SafetyNumberFormat"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/page/contact/contact_setting/contact_setting_page.dart",
+          "line": 21,
+          "source_sha256": "f500addb8ae7ff9fd49edfd21546ccf78ecb91f8b973c5e3471d6ea24c959846"
+        },
+        {
+          "path": "lib/page/chat/chat_setting/chat_setting_page.dart",
+          "line": 14,
+          "source_sha256": "b20f0d493c9142e968eeec7399a0a01bf9d74ce09b714eea5ba4de2c84e9b60f"
+        },
+        {
+          "path": "lib/page/group/group_member/group_member_detail_page.dart",
+          "line": 10,
+          "source_sha256": "4d88f9950f214d5f5a953069f81416b45da9e267c9cc5ad60d33240d83c4087e"
+        }
+      ],
+      "proposed_cards": [
+        "F08-S04"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/workspace/workspace_conversations_page.dart",
+      "source_sha256": "0c0bae384a22a183a9f1d1cecf0c7e4c5603952d959cba540b0d1d95ffb371cf",
+      "public_classes": [
+        "WorkspaceConversationsPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/page/workspace_shell/enterprise_shell_page.dart",
+          "line": 15,
+          "source_sha256": "930a8b74d49a9cffc5262907d8a11151f55430cc623e03c8f8dc19908b0832f3"
+        },
+        {
+          "path": "lib/page/workspace_shell/workspace_shell_page.dart",
+          "line": 25,
+          "source_sha256": "b1bab46f6d29ccd2ed006cdc77c4f28c17ca3d5fc7a243fde589c72952389ec3"
+        }
+      ],
+      "proposed_cards": [
+        "F10-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/workspace_shell/enterprise_shell_page.dart",
+      "source_sha256": "930a8b74d49a9cffc5262907d8a11151f55430cc623e03c8f8dc19908b0832f3",
+      "public_classes": [
+        "EnterpriseShellPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/page/workspace_shell/workspace_shell_page.dart",
+          "line": 38,
+          "source_sha256": "b1bab46f6d29ccd2ed006cdc77c4f28c17ca3d5fc7a243fde589c72952389ec3"
+        }
+      ],
+      "proposed_cards": [
+        "F10-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    },
+    {
+      "page": "lib/page/workspace_shell/workspace_shell_page.dart",
+      "source_sha256": "b1bab46f6d29ccd2ed006cdc77c4f28c17ca3d5fc7a243fde589c72952389ec3",
+      "public_classes": [
+        "WorkspaceShellPage"
+      ],
+      "import_export_references": [
+        {
+          "path": "lib/page/workspace_shell/workspace_shell_bootstrap.dart",
+          "line": 20,
+          "source_sha256": "af498d7cc77116520055c4056fe11bc5d6ac9090a63ac18a39f7d346b2596df7"
+        }
+      ],
+      "proposed_cards": [
+        "F10-S01"
+      ],
+      "mapping_status": "PROPOSED_OWNER_AND_SEMANTIC_REVIEW_REQUIRED",
+      "reachability": "NOT_PROVEN_BY_IMPORT",
+      "android": "MAPPING_REQUIRED",
+      "macos": "MAPPING_REQUIRED",
+      "business_oracle": "REQUIRED_NOT_DEFINED",
+      "product_pass": false
+    }
+  ],
+  "proof_limit": "These are absent from legacy source hints, not missing source files. Imports/classes do not prove routability, full domain behavior or device execution. Proposed cards require semantic owner confirmation; original denominator 97 remains unchanged.",
+  "review": "RUNNER_CODE_REVIEW_APPROVE"
+}
