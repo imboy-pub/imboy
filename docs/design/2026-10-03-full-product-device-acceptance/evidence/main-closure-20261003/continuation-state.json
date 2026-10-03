@@ -3275,5 +3275,19 @@
       "qualified": false
     },
     "proof_limit": "Full 36-ID E2EE record gate; not limited-profile acceptance. Valid synthetic records do not prove authentic business/security oracles, independent review or device execution. No parent qualification upgraded; final verifier remains incomplete."
+  },
+  "f00_backup_24_feature_case_design": {
+    "id": "PREPARATION-F00-BACKUP-24-FEATURE-CASE-DESIGN",
+    "scope": "SOURCE_BOUND_CASE_DESIGN_ONLY",
+    "product_pass": false,
+    "app_head": "667f44c138fe4904a13d2495c4fd5bda09017105",
+    "seed_sha256": "6997c766e80dc15c0f32165dce840def834abecf1574913ab0bf3d84da64ba0b",
+    "input_features": 24,
+    "required_platform_obligations_designed": 48,
+    "frozen_required_cases": 0,
+    "host_reference_features": 9,
+    "proof_limit": "No execution, fixture, runtime profile, owner-independent review of test adequacy or final coverage approval. Seed statuses and canonical required set unchanged. File picker/share/safe storage/server journeys and cryptographic restore require actual device/backend evidence.",
+    "artifact": "f00-backup-24-feature-case-design.json",
+    "resource_boundary": "No device/backend/credential activation is authorized by this design. Share completion must use an isolated local receiver; no third-party delivery. Never replace real secure storage with a mock and count device qualification."
   }
 }

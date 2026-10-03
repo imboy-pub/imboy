@@ -1,0 +1,731 @@
+{
+  "id": "PREPARATION-F00-BACKUP-24-FEATURE-CASE-DESIGN",
+  "scope": "SOURCE_BOUND_CASE_DESIGN_ONLY",
+  "product_pass": false,
+  "app_head": "667f44c138fe4904a13d2495c4fd5bda09017105",
+  "seed_sha256": "6997c766e80dc15c0f32165dce840def834abecf1574913ab0bf3d84da64ba0b",
+  "input_features": 24,
+  "required_platform_obligations_designed": 48,
+  "frozen_required_cases": 0,
+  "host_reference_features": 9,
+  "source_hashes": {
+    "lib/page/settings/e2ee_backup_export_page.dart": "12b796eea8e4f13f3e36a7321d655c3acd9730df251b9f904f51974996e016b6",
+    "test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart": "28d68057dc75228c1626b29930a4d14935e881590797c7bf98a33d4fd12dd32f",
+    "test/auto_test/settings/e2ee_backup_export_page.md": "16b19554c71f6867ef86196c4e12f2b2954f893650bea0042481b4c9870e4d7b",
+    "lib/page/settings/e2ee_backup_import_page.dart": "07fc609a3852f0757df9eba11492509899064047373401518d20a9da076a0dc4",
+    "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart": "e192c06c727c39a67fbbf070d7aee01a22ca0f104c9bb7d26d334f95c72140f8",
+    "test/auto_test/settings/e2ee_backup_import_page.md": "1f104dd3f302febb81107dfb601bd91dbe7104f0f7608e21174c56f310f583ce"
+  },
+  "features": [
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:001",
+      "feature": "输入密码实时刷新强度指示条",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:8",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-001",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "依次输入空、弱、强密码并清空",
+      "oracle": "强度条及强度文案随每次输入更新；清空后回到初始态",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:002",
+      "feature": "密码未填时导出按钮置灰禁用",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:9",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-002",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "保持密码为空，填写确认密码并尝试导出",
+      "oracle": "导出按钮保持禁用；没有备份文件或上传请求",
+      "host_reference": {
+        "target": "test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart",
+        "test_name": "初始两框为空时导出按钮 disabled",
+        "proof": "partial host oracle only"
+      },
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:003",
+      "feature": "两次密码不一致时提示错误",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:10",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-003",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "输入两份不同密码后点击导出",
+      "oracle": "显示密码不一致；未生成文件且未上传",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:004",
+      "feature": "点击生成恢复密钥填充两个输入框",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:11",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-004",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "生成恢复密钥并确认使用",
+      "oracle": "两个输入框内容一致且为有效恢复密钥；手动更改确认值后仍检测不一致",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:005",
+      "feature": "恢复密钥弹窗展示并可复制到剪贴板",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:12",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-005",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "生成恢复密钥并点击复制",
+      "oracle": "复制内容等于本次生成密钥；60秒清理仅清除仍匹配的内容，不覆盖后来复制的其他内容",
+      "host_reference": {
+        "target": "test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart",
+        "test_name": "复制后 60 秒剪贴板被覆写（内容仍是该密钥时）",
+        "proof": "partial host oracle only"
+      },
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:006",
+      "feature": "填写备份备注写入备份文件",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:13",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-006",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "填写含中文备注，生成并解密合成备份",
+      "oracle": "解密后的备注等于输入；篡改备注边界认证失败，不能混入密文",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:007",
+      "feature": "点击生成备份导出加密文件",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:14",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-007",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "以正确密码导出合成身份密钥",
+      "oracle": "真实文件可用相同密码认证解密且密钥与合成源一致；错误密码失败",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:008",
+      "feature": "导出成功弹窗展示保管注意事项",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:15",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-008",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "完成文件生成并查看成功弹窗",
+      "oracle": "成功提示只在文件保存成功后出现；保管风险文案完整，失败不出现成功提示",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:009",
+      "feature": "导出后展示文件名与分享入口",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:16",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-009",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "成功生成后检查文件名与分享入口",
+      "oracle": "显示实际生成文件名，分享入口引用该文件；未生成时入口不提供有效文件",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:010",
+      "feature": "点击分享调起系统分享面板",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:17",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-010",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "点击分享，分别完成与取消系统面板",
+      "oracle": "系统面板接收到本次文件；取消可返回且不改变本地密钥；日志不泄露密码/私钥",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:011",
+      "feature": "点击云端备份上传并提示版本号",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:18",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-011",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "上传合成备份，随后独立下载并解密",
+      "oracle": "显示服务端实际版本；下载密文与上传对象一致且可认证解密；失败不显示成功",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_export_page:012",
+      "feature": "本地无密钥数据时提示导出失败",
+      "source_ref": "lib/page/settings/e2ee_backup_export_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_export_page.md:19",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-EXPORT-012",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "在无本地密钥的合成账号上导出",
+      "oracle": "显示无密钥错误；没有导出有效文件或上传请求",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:001",
+      "feature": "点击选择区调起文件选择器",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:8",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-001",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "点击文件选择区并选择/取消",
+      "oracle": "Android与macOS原生选择器分别出现；取消保留原状态，选择结果仅来自用户选中文件",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:002",
+      "feature": "选中文件后校验并展示备份元信息",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:9",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-002",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "选择合法备份文件",
+      "oracle": "元信息与文件头一致，密码输入可用；这里只证明文件结构校验，不证明解密成功",
+      "host_reference": {
+        "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+        "test_name": "L9 选中合法文件后展示备份元信息卡并启用密码框",
+        "proof": "partial host oracle only"
+      },
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:003",
+      "feature": "文件格式非法时提示校验失败",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:10",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-003",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "分别选择错误魔数、截断、超限文件",
+      "oracle": "显示校验失败，不显示有效元信息，不启用导入",
+      "host_reference": {
+        "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+        "test_name": "L10 文件格式非法时提示校验失败且不展示元信息卡",
+        "proof": "partial host oracle only"
+      },
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:004",
+      "feature": "未选合法文件时密码框保持禁用",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:11",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-004",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "不选择文件或选非法文件后检查密码框",
+      "oracle": "密码输入保持禁用；不能触发导入或写入安全存储",
+      "host_reference": {
+        "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+        "test_name": "L11 未选文件时密码框禁用、导入按钮禁用",
+        "proof": "partial host oracle only"
+      },
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:005",
+      "feature": "密码为空时导入按钮置灰禁用",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:12",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-005",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "选合法文件但保持密码为空",
+      "oracle": "导入按钮禁用，不触发解密或密钥写入",
+      "host_reference": {
+        "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+        "test_name": "L9 选中合法文件但密码为空时导入按钮保持禁用",
+        "proof": "partial host oracle only"
+      },
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:006",
+      "feature": "顶部警告卡片提示覆盖密钥风险",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:13",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-006",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "进入页面并检查警告卡",
+      "oracle": "显示覆盖密钥风险与可信来源说明；窄屏/大字号下内容可读",
+      "host_reference": {
+        "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+        "test_name": "L13 警告卡片始终展示覆盖密钥风险提示",
+        "proof": "partial host oracle only"
+      },
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:007",
+      "feature": "存在云端备份时展示云端恢复卡片",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:14",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-007",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "分别探测有备份、无备份及探测失败",
+      "oracle": "有备份显示恢复入口；无备份隐藏入口；失败不能证明服务端没有备份且不能导入旧缓存",
+      "host_reference": {
+        "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+        "test_name": "L14 云端存在备份时展示恢复入口",
+        "proof": "partial host oracle only"
+      },
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:008",
+      "feature": "输入密码导入并恢复私钥到安全存储",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:15",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-008",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "正确口令导入合成备份并重新启动应用",
+      "oracle": "实际安全存储中的密钥与源一致，重启可解密合成消息；服务端设备公钥与恢复身份一致，记录部分失败",
+      "host_reference": {
+        "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+        "test_name": "P0-1 导入成功后以恢复的公钥回写服务端设备登记",
+        "proof": "partial host oracle only"
+      },
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:009",
+      "feature": "导入成功弹窗展示脱敏设备与密钥标识",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:16",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-009",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "完成导入后查看成功弹窗和日志",
+      "oracle": "显示脱敏设备/密钥标识，界面和日志不出现完整私钥或密码；写入或设备登记失败不伪装为完整成功",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:010",
+      "feature": "云端恢复弹出口令确认框可取消",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:17",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-010",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "打开云端口令确认框，输入后取消",
+      "oracle": "取消后不发恢复请求，不变更密钥、恢复水位或群会话",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:011",
+      "feature": "云端口令错误时提示口令不正确",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:18",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-011",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "用错误口令恢复云端合成备份",
+      "oracle": "显示口令/认证失败；本地密钥、群会话和恢复水位均不变",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    },
+    {
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:012",
+      "feature": "恢复后回填群聊会话密钥",
+      "source_ref": "lib/page/settings/e2ee_backup_import_page.dart",
+      "legacy_ref": "test/auto_test/settings/e2ee_backup_import_page.md:19",
+      "design_owner": "coordinator",
+      "dispatch_card_ids": [
+        "F08-S04"
+      ],
+      "parent_acceptance_ids": [
+        "F08-A01",
+        "F08-A02",
+        "F08-A03"
+      ],
+      "case_id": "F08-BACKUP-IMPORT-012",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "role_variant": "disposable_account_owner",
+      "profile_binding": "resolve actual runtime E2EE profile before freezing; no default decision inferred",
+      "action": "恢复含合成群会话的备份并尝试历史消息解密",
+      "oracle": "允许范围内真实解密成功；无授权或范围外失败；用户拒绝历史授权时不得回填，恢复后重启仍遵守范围",
+      "host_reference": null,
+      "device_target_status": "IMPLEMENTATION_REQUIRED",
+      "device_status": "NOT_EXECUTED",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_AND_FIXTURE"
+    }
+  ],
+  "proof_limit": "No execution, fixture, runtime profile, owner-independent review of test adequacy or final coverage approval. Seed statuses and canonical required set unchanged. File picker/share/safe storage/server journeys and cryptographic restore require actual device/backend evidence.",
+  "resource_boundary": "No device/backend/credential activation is authorized by this design. Share completion must use an isolated local receiver; no third-party delivery. Never replace real secure storage with a mock and count device qualification."
+}
