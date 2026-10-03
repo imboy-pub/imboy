@@ -1,0 +1,32 @@
+src/api/metrics_handler.erl:3:2: Warning: behaviour cowboy_rest undefined
+%    3| -behavior(cowboy_rest).
+%     |  ^
+
+test/logic/e2ee_logic_tests.erl:127:1: Warning: function run_with_mocks/2 is unused
+%  127| run_with_mocks(MockConfigs, TestFun) ->
+%     | ^
+
+test/logic/billing_logic_tests.erl:91:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   91|     catch meck:unload(billing_invoice_ds),
+%     |     ^
+
+test/logic/billing_logic_tests.erl:92:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   92|     catch meck:unload(billing_subscription_ds),
+%     |     ^
+
+test/logic/billing_logic_tests.erl:217:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  217|     catch meck:unload(payment_gateway),
+%     |     ^
+
+test/logic/billing_logic_tests.erl:218:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  218|     catch meck:unload(billing_invoice_ds),
+%     |     ^
+

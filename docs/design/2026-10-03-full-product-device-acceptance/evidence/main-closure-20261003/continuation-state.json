@@ -4670,5 +4670,12 @@
     "tooling_exit": 0,
     "inventory_exit": 64,
     "product_pass": false
+  },
+  "current_backend_domain_regression": {
+    "receipt": "current-backend-domain-20261004.json",
+    "backend_head": "8a0a185092889ff2518cc454faa691458914ca64",
+    "tests": 163,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

@@ -1,0 +1,337 @@
+======================== EUnit ========================
+module 'e2ee_logic_tests'
+  e2ee_logic_tests:34: -device_key_log_case/4-fun-4-...[0.004 s] ok
+  e2ee_logic_tests:34: -device_key_log_case/4-fun-4-...ok
+  e2ee_logic_tests:34: -device_key_log_case/4-fun-4-...ok
+  e2ee_logic_tests:34: -device_key_log_case/4-fun-4-...ok
+  e2ee_logic_tests:60: -key_query_error_logs_do_not_expose_raw_reason_test_/0-fun-6-...[0.001 s] ok
+  e2ee_logic_tests:93: -group_failure_log_case/3-fun-6-...[0.001 s] ok
+  e2ee_logic_tests:93: -group_failure_log_case/3-fun-6-...ok
+  e2ee_logic_tests:93: -group_failure_log_case/3-fun-6-...ok
+  e2ee_logic_tests:154: -user_keys_same_user_success_test_/0-fun-2-...ok
+  e2ee_logic_tests:187: -user_keys_friend_success_test_/0-fun-2-...ok
+  e2ee_logic_tests:216: -user_keys_non_friend_still_returns_public_keys_test_/0-fun-2-...ok
+  e2ee_logic_tests:245: -user_keys_in_denylist_still_returns_public_keys_test_/0-fun-2-...ok
+  e2ee_logic_tests:274: -user_keys_database_error_returns_500_test_/0-fun-2-...[0.008 s] ok
+  e2ee_logic_tests:292: -user_keys_with_multiple_devices_test_/0-fun-3-...ok
+  e2ee_logic_tests:337: -group_member_keys_member_success_test_/0-fun-3-...ok
+  e2ee_logic_tests:371: -group_member_keys_non_member_forbidden_test_/0-fun-2-...ok
+  e2ee_logic_tests:389: -group_member_keys_database_error_returns_500_test_/0-fun-2-...ok
+  e2ee_logic_tests:403: -group_member_keys_authorized_without_keys_returns_empty_test_/0-fun-2-...ok
+  e2ee_logic_tests:419: -group_member_keys_limit_boundary_test_/0-fun-2-...[0.001 s] ok
+  e2ee_logic_tests:435: -group_member_keys_limit_plus_one_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:451: -group_member_keys_member_limit_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:467: -group_history_grant_returns_authoritative_range_test_/0-fun-2-...ok
+  e2ee_logic_tests:490: -group_history_grant_denied_test_/0-fun-2-...ok
+  e2ee_logic_tests:502: -group_history_grant_invalid_boundary_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:518: -group_history_grant_open_end_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:544: -group_by_uid_single_device_test_/0-fun-4-...ok
+  e2ee_logic_tests:565: -group_by_uid_multiple_devices_same_user_test_/0-fun-3-...ok
+  e2ee_logic_tests:593: -group_by_uid_multiple_users_test_/0-fun-3-...ok
+  e2ee_logic_tests:607: -group_by_uid_removes_user_id_field_test_/0-fun-2-...ok
+  e2ee_logic_tests:620: -user_keys_with_no_devices_test_/0-fun-2-...ok
+  e2ee_logic_tests:643: -group_member_keys_sorts_by_uid_test_/0-fun-3-...ok
+  e2ee_logic_tests:691: -pull_key_notifications_clamps_limit_test_/0-fun-4-...ok
+  [done in 1.365 s]
+module 'e2ee_trust_logic_tests'
+  e2ee_trust_logic_tests:84: -trust_database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-1-...[0.069 s] ok
+  e2ee_trust_logic_tests:84: -trust_database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-1-...[0.063 s] ok
+  e2ee_trust_logic_tests: appendonly_repo_has_no_mutation_api_test...[0.001 s] ok
+  e2ee_trust_logic_tests: valid_event_writes_and_broadcasts_test...[0.054 s] ok
+  e2ee_trust_logic_tests: revoked_event_broadcasts_to_target_test...[0.055 s] ok
+  e2ee_trust_logic_tests: bad_signature_rejects_test...[0.055 s] ok
+  e2ee_trust_logic_tests: newline_in_field_rejected_test...ok
+  e2ee_trust_logic_tests: actor_device_not_registered_test...[0.054 s] ok
+  e2ee_trust_logic_tests: revoked_actor_rejected_test...[0.062 s] ok
+  e2ee_trust_logic_tests: device_generation_mismatch_rejected_test...[0.055 s] ok
+  e2ee_trust_logic_tests: fresh_past_boundary_accept_test...[0.056 s] ok
+  e2ee_trust_logic_tests: fresh_past_boundary_reject_test...[0.054 s] ok
+  e2ee_trust_logic_tests: fresh_future_boundary_reject_test...[0.053 s] ok
+  e2ee_trust_logic_tests: expired_event_reject_test...[0.053 s] ok
+  e2ee_trust_logic_tests: duplicate_event_id_idempotent_test...[0.054 s] ok
+  e2ee_trust_logic_tests: identity_version_rollback_rejected_test...[0.054 s] ok
+  e2ee_trust_logic_tests: event_id_conflict_rejected_test...[0.054 s] ok
+  e2ee_trust_logic_tests: illegal_transition_rejected_before_verify_test...[0.053 s] ok
+  e2ee_trust_logic_tests: same_state_transition_rejected_test...[0.054 s] ok
+  e2ee_trust_logic_tests: invalid_method_rejected_test...ok
+  e2ee_trust_logic_tests: empty_event_id_rejected_test...ok
+  e2ee_trust_logic_tests: empty_device_field_rejected_test...ok
+  e2ee_trust_logic_tests: non_integer_issued_at_rejected_test...ok
+  e2ee_trust_logic_tests: canonical_payload_deterministic_test...ok
+  [done in 1.025 s]
+module 'e2ee_recovery_logic_tests'
+  e2ee_recovery_logic_tests: recommend_method_empty_test...[0.001 s] ok
+  e2ee_recovery_logic_tests: recommend_method_selects_best_test...ok
+  e2ee_recovery_logic_tests: recommend_method_selects_social_test...ok
+  e2ee_recovery_logic_tests: start_auto_recovery_local_backup_now_unsupported_test...ok
+  e2ee_recovery_logic_tests: start_auto_recovery_unsupported_test...ok
+  e2ee_recovery_logic_tests:74: -recovery_options_include_server_backup_test_/0-fun-7-...ok
+  e2ee_recovery_logic_tests:95: -recovery_options_no_backup_test_/0-fun-3-...ok
+  e2ee_recovery_logic_tests:108: -start_server_backup_recovery_test_/0-fun-3-...[0.001 s] ok
+  e2ee_recovery_logic_tests:123: -start_server_backup_recovery_no_backup_test_/0-fun-2-...ok
+  e2ee_recovery_logic_tests:142: -start_server_backup_recovery_db_error_increments_metric_test_/0-fun-3-...ok
+  e2ee_recovery_logic_tests:165: -recovery_database_errors_do_not_log_identity_or_raw_reason_test_/0-fun-6-...ok
+  [done in 0.111 s]
+module 'olm_identity_logic_tests'
+  olm_identity_logic_tests: report_identity_rejects_empty_keys_test...[0.008 s] ok
+  olm_identity_logic_tests: report_identity_rejects_bad_args_test...ok
+  olm_identity_logic_tests: report_identity_ok_test...[0.267 s] ok
+  olm_identity_logic_tests: report_one_time_keys_rejects_empty_test...ok
+  olm_identity_logic_tests: report_one_time_keys_rejects_invalid_format_test...ok
+  olm_identity_logic_tests: report_one_time_keys_ok_test...[0.008 s] ok
+  olm_identity_logic_tests: claim_keys_prefers_one_time_test...[0.032 s] ok
+  olm_identity_logic_tests: claim_keys_falls_back_when_otk_exhausted_test...[0.031 s] ok
+  olm_identity_logic_tests: claim_keys_returns_no_prekey_available_test...[0.030 s] ok
+  olm_identity_logic_tests: claim_keys_unknown_device_test...[0.030 s] ok
+  olm_identity_logic_tests: get_identity_ok_test...[0.010 s] ok
+  olm_identity_logic_tests: get_identity_not_found_test...[0.011 s] ok
+  olm_identity_logic_tests: list_devices_ok_test...[0.009 s] ok
+  olm_identity_logic_tests: list_devices_empty_ok_test...[0.008 s] ok
+  olm_identity_logic_tests: list_devices_rejects_bad_uid_test...ok
+  olm_identity_logic_tests: list_devices_maps_ds_error_test...[0.008 s] ok
+  olm_identity_logic_tests: batch_claim_all_ok_test...[0.030 s] ok
+  olm_identity_logic_tests: batch_claim_partial_failure_test...[0.029 s] ok
+  olm_identity_logic_tests: batch_claim_dedups_device_ids_test...[0.030 s] ok
+  olm_identity_logic_tests: batch_claim_rejects_empty_test...ok
+  olm_identity_logic_tests: batch_claim_rejects_too_many_test...ok
+  olm_identity_logic_tests: batch_claim_rejects_bad_args_test...ok
+  olm_identity_logic_tests: contract_list_devices_shape_test...[0.007 s] ok
+  olm_identity_logic_tests: contract_batch_claim_shape_test...[0.031 s] ok
+  olm_identity_logic_tests: report_identity_rejects_root_key_swap_without_old_key_proof_test...[0.033 s] ok
+  olm_identity_logic_tests: report_identity_root_key_rotation_with_old_key_signature_test...[0.070 s] ok
+  olm_identity_logic_tests: report_identity_subkey_rotation_bumps_version_and_emits_event_test...[0.076 s] ok
+  olm_identity_logic_tests: report_identity_idempotent_rereport_no_bump_no_event_test...[0.033 s] ok
+  olm_identity_logic_tests: report_identity_revived_device_rejected_test...[0.030 s] ok
+  olm_identity_logic_tests: report_identity_find_identity_error_fails_closed_test...[0.029 s] ok
+  olm_identity_logic_tests: report_identity_rotation_event_failure_does_not_block_test...[0.088 s] ok
+  olm_identity_logic_tests: rotation_signature_survives_peer_verification_test...[0.072 s] ok
+  olm_identity_logic_tests: rotation_rejects_self_signature_without_transition_proof_test...[0.030 s] ok
+  olm_identity_logic_tests: rotation_rejects_transition_signature_without_self_signature_test...[0.029 s] ok
+  olm_identity_logic_tests: legacy_six_arity_rotation_requires_transition_proof_test...[0.031 s] ok
+  olm_identity_logic_tests: rotation_transition_signature_binds_context_test...[0.030 s] ok
+  olm_identity_logic_tests: claim_keys_rejects_revoked_target_device_test...[0.029 s] ok
+  olm_identity_logic_tests: claim_keys_with_request_id_rejects_revoked_target_device_test...[0.031 s] ok
+  olm_identity_logic_tests: claim_keys_self_claim_revoked_device_rejected_test...[0.008 s] ok
+  olm_identity_logic_tests: cleanup_rejects_zero_retention_test...[0.008 s] ok
+  olm_identity_logic_tests: cleanup_rejects_negative_retention_test...[0.007 s] ok
+  olm_identity_logic_tests: cleanup_converts_days_to_seconds_and_passes_through_test...[0.007 s] ok
+  olm_identity_logic_tests: cleanup_maps_ds_error_test...[0.007 s] ok
+  [done in 1.356 s]
+module 'olm_identity_log_privacy_tests'
+  olm_identity_log_privacy_tests:72: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-11-...[0.017 s] ok
+  olm_identity_log_privacy_tests:72: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-11-...[0.017 s] ok
+  olm_identity_log_privacy_tests:72: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-11-...[0.017 s] ok
+  olm_identity_log_privacy_tests:72: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-11-...[0.017 s] ok
+  olm_identity_log_privacy_tests:72: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-11-...[0.018 s] ok
+  olm_identity_log_privacy_tests:72: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-11-...[0.018 s] ok
+  olm_identity_log_privacy_tests:72: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-11-...[0.018 s] ok
+  olm_identity_log_privacy_tests:72: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-11-...[0.019 s] ok
+  olm_identity_log_privacy_tests:72: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-11-...[0.018 s] ok
+  olm_identity_log_privacy_tests:72: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-11-...[0.018 s] ok
+  olm_identity_log_privacy_tests:99: -identity_write_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-1-...[0.109 s] ok
+  olm_identity_log_privacy_tests:99: -identity_write_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-1-...[0.100 s] ok
+  olm_identity_log_privacy_tests:99: -identity_write_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-1-...[0.100 s] ok
+  [done in 0.526 s]
+module 'metrics_handler_tests'
+  metrics_handler_tests:23: -init_returns_metrics_payload_test_/0-fun-5-...=WARNING REPORT==== 4-Oct-2026::01:32:34.405600 ===
+    error: [{gen_server,call,2,[{file,"gen_server.erl"},{line,1221}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,106}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_returns_metrics_payload_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,25}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+            {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+            {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]}]
+    event: metrics_pool_stats_failed
+=WARNING REPORT==== 4-Oct-2026::01:32:34.407372 ===
+    error: [{ets,lookup,
+                [syn_table_names,{syn_registry_by_name,imboy}],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {syn_backbone,get_table_name,2,
+                [{file,"src/syn_backbone.erl"},{line,76}]},
+            {syn_registry,count,1,[{file,"src/syn_registry.erl"},{line,192}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,119}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_returns_metrics_payload_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,25}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_syn_count_failed
+=WARNING REPORT==== 4-Oct-2026::01:32:34.408963 ===
+    error: [{ets,lookup_element,
+                [ranch_server,{listener_sup,imboy_listener},2],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {ranch_server,get_listener_sup,1,
+                [{file,"src/ranch_server.erl"},{line,122}]},
+            {ranch,info,1,[{file,"src/ranch.erl"},{line,464}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,128}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_returns_metrics_payload_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,25}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_ranch_info_failed
+[0.009 s] ok
+  metrics_handler_tests:50: -init_returns_error_when_metric_fetch_fails_test_/0-fun-3-...ok
+  metrics_handler_tests:89: -init_json_payload_has_no_tuple_keys_test_/0-fun-11-...=WARNING REPORT==== 4-Oct-2026::01:32:34.619655 ===
+    error: [{gen_server,call,2,[{file,"gen_server.erl"},{line,1221}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,106}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_json_payload_has_no_tuple_keys_test_/0-fun-11-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,91}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+            {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+            {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]}]
+    event: metrics_pool_stats_failed
+=WARNING REPORT==== 4-Oct-2026::01:32:34.619739 ===
+    error: [{ets,lookup,
+                [syn_table_names,{syn_registry_by_name,imboy}],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {syn_backbone,get_table_name,2,
+                [{file,"src/syn_backbone.erl"},{line,76}]},
+            {syn_registry,count,1,[{file,"src/syn_registry.erl"},{line,192}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,119}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_json_payload_has_no_tuple_keys_test_/0-fun-11-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,91}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_syn_count_failed
+=WARNING REPORT==== 4-Oct-2026::01:32:34.619794 ===
+    error: [{ets,lookup_element,
+                [ranch_server,{listener_sup,imboy_listener},2],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {ranch_server,get_listener_sup,1,
+                [{file,"src/ranch_server.erl"},{line,122}]},
+            {ranch,info,1,[{file,"src/ranch.erl"},{line,464}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,128}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_json_payload_has_no_tuple_keys_test_/0-fun-11-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,91}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_ranch_info_failed
+[0.001 s] ok
+  metrics_handler_tests: histogram_exports_cumulative_buckets_test...ok
+  metrics_handler_tests: histogram_legacy_shape_is_not_exported_test...ok
+  [done in 0.329 s]
+module 'metrics_counter_type_tests'
+  metrics_counter_type_tests:18: -http_text_path_preserves_system_gauges_test_/0-fun-7-...=WARNING REPORT==== 4-Oct-2026::01:32:34.720436 ===
+    error: [{gen_server,call,2,[{file,"gen_server.erl"},{line,1221}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,106}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,56}]},
+            {metrics_counter_type_tests,
+                '-http_text_path_preserves_system_gauges_test_/0-fun-7-',0,
+                [{file,"test/api/metrics_counter_type_tests.erl"},{line,20}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+            {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+            {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]}]
+    event: metrics_pool_stats_failed
+=WARNING REPORT==== 4-Oct-2026::01:32:34.720512 ===
+    error: [{ets,lookup,
+                [syn_table_names,{syn_registry_by_name,imboy}],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {syn_backbone,get_table_name,2,
+                [{file,"src/syn_backbone.erl"},{line,76}]},
+            {syn_registry,count,1,[{file,"src/syn_registry.erl"},{line,192}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,119}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,56}]},
+            {metrics_counter_type_tests,
+                '-http_text_path_preserves_system_gauges_test_/0-fun-7-',0,
+                [{file,"test/api/metrics_counter_type_tests.erl"},{line,20}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_syn_count_failed
+=WARNING REPORT==== 4-Oct-2026::01:32:34.720558 ===
+    error: [{ets,lookup_element,
+                [ranch_server,{listener_sup,imboy_listener},2],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {ranch_server,get_listener_sup,1,
+                [{file,"src/ranch_server.erl"},{line,122}]},
+            {ranch,info,1,[{file,"src/ranch.erl"},{line,464}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,128}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,56}]},
+            {metrics_counter_type_tests,
+                '-http_text_path_preserves_system_gauges_test_/0-fun-7-',0,
+                [{file,"test/api/metrics_counter_type_tests.erl"},{line,20}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_ranch_info_failed
+[0.001 s] ok
+  metrics_counter_type_tests: counter_families_have_one_type_declaration_test...ok
+  metrics_counter_type_tests: system_gauges_keep_their_type_even_with_total_suffix_test...ok
+  [done in 0.097 s]
+module 'e2ee_failure_metric_exposition_tests'
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.011 s] ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...ok
+  [done in 0.027 s]
+module 'billing_logic_tests'
+  billing_logic_tests: validate_plan_test...ok
+  billing_logic_tests: period_ms_test...ok
+  billing_logic_tests: resolve_period_test...ok
+  billing_logic_tests: pad2_test...ok
+  billing_logic_tests: encode_jsonb_test...[0.001 s] ok
+  billing_logic_tests: decode_jsonb_test...ok
+  billing_logic_tests: ts_ms_to_sql_test...ok
+  billing_logic_tests: t1_owner_allowed...[0.003 s] ok
+  billing_logic_tests: t2_other_user_denied...[0.002 s] ok
+  billing_logic_tests: t3_ownerless_legacy_denied...[0.002 s] ok
+  billing_logic_tests: t4_missing_subscription_denied...[0.002 s] ok
+  billing_logic_tests: t5_invalid_sub_id_denied...[0.002 s] ok
+  billing_logic_tests: t6_invalid_uid_denied...[0.002 s] ok
+  billing_logic_tests: t7_invoice_owner_allowed...[0.004 s] ok
+  billing_logic_tests: t8_invoice_other_user_denied...[0.004 s] ok
+  billing_logic_tests: t9_invoice_missing_denied...[0.002 s] ok
+  billing_logic_tests: t10_denial_message_does_not_leak_existence...[0.003 s] ok
+  billing_logic_tests: t11_pay_gateway_extra_passthrough...[0.002 s] ok
+  billing_logic_tests: t12_pay_gateway_no_extra_compat...[0.001 s] ok
+  billing_logic_tests: t13_pay_envelope_aligned_with_recharge...[0.002 s] ok
+  billing_logic_tests: t14_gateway_failure_log_privacy...[0.002 s] ok
+  billing_logic_tests: t15_mark_paid_failure_log_privacy...[0.004 s] ok
+  billing_logic_tests: cancel_failure_privacy_test...[0.020 s] ok
+  billing_logic_tests: renew_failure_privacy_test...[0.029 s] ok
+  billing_logic_tests: usage_failure_privacy_test...[0.041 s] ok
+  billing_logic_tests: invoice_generation_failure_privacy_test...[0.038 s] ok
+  billing_logic_tests: plan_subscription_failure_privacy_test...[0.033 s] ok
+  [done in 0.545 s]
+=======================================================
+  All 163 tests passed.

@@ -1,0 +1,40 @@
+{
+  "scope": "CURRENT_MAIN_SELECTED_BACKEND_DOMAIN_REGRESSION",
+  "backend_head": "8a0a185092889ff2518cc454faa691458914ca64",
+  "tests": 163,
+  "exit_code": 0,
+  "source_recompiled_before_authoritative_run": true,
+  "modules": [
+    "e2ee_logic_tests",
+    "e2ee_trust_logic_tests",
+    "e2ee_recovery_logic_tests",
+    "olm_identity_logic_tests",
+    "olm_identity_log_privacy_tests",
+    "metrics_handler_tests",
+    "metrics_counter_type_tests",
+    "e2ee_failure_metric_exposition_tests",
+    "billing_logic_tests"
+  ],
+  "artifacts": [
+    {
+      "path": "current-backend-domain-20261004.log",
+      "sha256": "50489878e89f4fb7f08d955f65dd845de7397a9c0f36674fc8db3adf8bfa1b09"
+    },
+    {
+      "path": "current-backend-domain-fresh-20261004.log",
+      "sha256": "978be1ca9fe4227b1e29323e0a72e7b30406a79f00d4e46c5d6161ab80bb1d99"
+    },
+    {
+      "path": "current-backend-domain-fresh-compile.log",
+      "sha256": "6b08e731bd47d92e939d6853457097ae22a58bde7c269979e344d4068757fcfc"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "attempt_notes": [
+    "Initial temp-beam run retained; only freshly compiled second run qualifies current selected sources"
+  ],
+  "limits": [
+    "Selected mocked local EUnit only; not full backend L3, PG, real payment or Android/macOS device acceptance"
+  ]
+}
