@@ -4496,5 +4496,12 @@
     "json_compatible": true,
     "deployed": false,
     "product_pass": false
+  },
+  "full_metrics_handler_format": {
+    "receipt": "full-metrics-handler-format.json",
+    "backend_head": "d7ef8619a172d8755ae1d081c983e6acdece6d0a",
+    "controlled_handler_strict_format": "PASS",
+    "live_metrics_strict_format": "NOT_PROVEN",
+    "product_pass": false
   }
 }

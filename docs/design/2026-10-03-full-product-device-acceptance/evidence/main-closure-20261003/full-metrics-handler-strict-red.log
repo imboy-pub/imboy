@@ -1,0 +1,3 @@
+e2ee_test_latency_seconds no help text
+erlang_vm_port_count non-histogram and non-summary metrics should not have "_count" suffix
+erlang_vm_process_count non-histogram and non-summary metrics should not have "_count" suffix

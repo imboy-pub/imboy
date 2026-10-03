@@ -1,0 +1,81 @@
+{
+  "scope": "CONTROLLED_FULL_METRICS_HANDLER_EXPOSITION_ONLY",
+  "backend_head": "d7ef8619a172d8755ae1d081c983e6acdece6d0a",
+  "strict_before_exit_code": 3,
+  "strict_after_exit_code": 0,
+  "handler_probe_exit_code": 0,
+  "tests": {
+    "passed": 13,
+    "exit_code": 0
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "rule_check": {
+    "rules": 56,
+    "status": "SUCCESS"
+  },
+  "alert_tests": {
+    "assertions": 17,
+    "status": "SUCCESS"
+  },
+  "dashboard_json_parse_exit_code": 0,
+  "real_owned_metric_process": true,
+  "mocked_cowboy_response": true,
+  "http_listener_started": false,
+  "json_legacy_keys_preserved": true,
+  "artifacts": [
+    {
+      "path": "full-metrics-handler-strict-red.log",
+      "sha256": "41f7e5fea8dc30efbed98c22b84709dc626966d2948797bd284950c1f604ed88"
+    },
+    {
+      "path": "full-metrics-handler-exposition-red.txt",
+      "sha256": "0483ab374812f45750ea237df5454e47dcd1880c816b32ee378ec37035beaabc"
+    },
+    {
+      "path": "full-metrics-handler-regression.log",
+      "sha256": "6578257bee3a54c3c1571a0d0798f6e294b3f33d2ab4e31ed4bef380bc30afd7"
+    },
+    {
+      "path": "full-metrics-handler-probe-green.log",
+      "sha256": "601c209db9bcbf56c0fce8b53d6aed6c13ea83fcf349f48143f7c2ec7cf92bab"
+    },
+    {
+      "path": "full-metrics-handler-exposition.txt",
+      "sha256": "5bf6811cfef6ba63ab49c1fff09acaad61a5022b6673dd1e925292a4c68d20fc"
+    },
+    {
+      "path": "full-metrics-handler-strict-green.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "full-metrics-handler-rule-check.log",
+      "sha256": "3ddb6040ffc4618f360470cef0d108c0e8e1e5a3bcd398995dd5c00a48ab2bfe"
+    },
+    {
+      "path": "full-metrics-handler-alert-tests.log",
+      "sha256": "8289a4919870ab5b28f5e90a86b4af3cdbd8c244516c02fca90d6e3f289a6711"
+    },
+    {
+      "path": "full-metrics-handler-compile.log",
+      "sha256": "4a43eb81824cfe317f48bc9a302ac273452187463ba15620c21c289cbbd5f9fe"
+    }
+  ],
+  "source_hashes": {
+    "src/api/metrics_handler.erl": "c3ab6e52b05987cd9601d3a4c47413ff870064e744a550c6eadff45f8bdcfa43",
+    "test/api/metrics_counter_type_tests.erl": "ad5c34ec5d8a7d59cda7385fbf7f404740eb0f811efb51633302217d835c183a",
+    "test/api/metrics_handler_tests.erl": "f29e14b8f4542431b4793ec9fdac5623b43de39a990f23f661cc9d4190c776ac",
+    "deploy/prometheus/rules/imboy-alerts.yml": "12a6c676d0a8d4eb44d2c5ca831e284735ba00e64e4be43345871edd4a1b70c8",
+    "deploy/grafana/dashboards/imboy-overview.json": "d00dc1eb2e8ec7983b97135c14292eb6a521bcbc02d29c1477f17bc6f01575b8",
+    "deploy/grafana/README.md": "db14ad6da4f1ba242537abbed1a319e46e2e4d6b80cc170be962650a40e4dc13"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "deployed": false,
+  "limits": [
+    "Complete handler path with selected synthetic counter/label/histogram inputs and local runtime system gauges",
+    "No shared application config, real database, device, notifications or service startup",
+    "Live metric families and external query consumers still require authorized rollout and verification",
+    "No real HTTP scrape or production SLO qualification"
+  ]
+}

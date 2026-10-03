@@ -1,0 +1,60 @@
+# HELP e2ee_backup_op_failed_total Cumulative application events since process start or counter reset.
+# TYPE e2ee_backup_op_failed_total counter
+# HELP e2ee_recovery_failed_total Cumulative application events since process start or counter reset.
+# TYPE e2ee_recovery_failed_total counter
+# HELP erlang_vm_memory_bytes Current system state.
+# TYPE erlang_vm_memory_bytes gauge
+# HELP erlang_vm_ports Current system state.
+# TYPE erlang_vm_ports gauge
+# HELP erlang_vm_processes Current system state.
+# TYPE erlang_vm_processes gauge
+# HELP imboy_license_expires_at Current system state.
+# TYPE imboy_license_expires_at gauge
+# HELP imboy_license_nodes_current Current system state.
+# TYPE imboy_license_nodes_current gauge
+# HELP imboy_license_nodes_max Current system state.
+# TYPE imboy_license_nodes_max gauge
+# HELP imboy_license_users_current Current system state.
+# TYPE imboy_license_users_current gauge
+# HELP imboy_license_users_max Current system state.
+# TYPE imboy_license_users_max gauge
+# HELP imboy_license_valid Current system state.
+# TYPE imboy_license_valid gauge
+# HELP imboy_online_users Current system state.
+# TYPE imboy_online_users gauge
+# HELP imboy_ws_connections_current Current system state.
+# TYPE imboy_ws_connections_current gauge
+# HELP process_uptime_seconds Current system state.
+# TYPE process_uptime_seconds gauge
+e2ee_recovery_failed_total 1
+erlang_vm_ports 1
+erlang_vm_processes 46
+imboy_online_users 0
+imboy_ws_connections_current 0
+process_uptime_seconds 0
+imboy_license_expires_at 0
+imboy_license_nodes_current 1
+imboy_license_nodes_max 1
+imboy_license_users_current 0
+imboy_license_users_max 100
+imboy_license_valid 0
+e2ee_backup_op_failed_total{op="get"} 1
+erlang_vm_memory_bytes{kind="ets"} 661680
+erlang_vm_memory_bytes{kind="processes"} 14828200
+erlang_vm_memory_bytes{kind="total"} 53755063
+# HELP e2ee_test_latency_seconds Distribution of recorded application observations.
+# TYPE e2ee_test_latency_seconds histogram
+e2ee_test_latency_seconds_bucket{le="0.005"} 0
+e2ee_test_latency_seconds_bucket{le="0.01"} 0
+e2ee_test_latency_seconds_bucket{le="0.025"} 0
+e2ee_test_latency_seconds_bucket{le="0.05"} 0
+e2ee_test_latency_seconds_bucket{le="0.1"} 1
+e2ee_test_latency_seconds_bucket{le="0.25"} 1
+e2ee_test_latency_seconds_bucket{le="0.5"} 1
+e2ee_test_latency_seconds_bucket{le="1"} 1
+e2ee_test_latency_seconds_bucket{le="2.5"} 1
+e2ee_test_latency_seconds_bucket{le="5"} 1
+e2ee_test_latency_seconds_bucket{le="10"} 1
+e2ee_test_latency_seconds_bucket{le="+Inf"} 1
+e2ee_test_latency_seconds_sum 0.10
+e2ee_test_latency_seconds_count 1
