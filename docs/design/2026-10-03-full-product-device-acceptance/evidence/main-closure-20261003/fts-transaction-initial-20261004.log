@@ -1,0 +1,108 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_transaction_test.dart
+00:00 +0: FTS transaction C2C rollback=false writes=1
+message_repo/update msg_c2c ;
+00:00 +1: FTS transaction C2C rollback=false writes=2
+message_repo/update msg_c2c ;
+message_repo/update msg_c2c ;
+00:00 +1 -1: FTS transaction C2C rollback=false writes=2 [E]
+  Expected: an object with length of <1>
+    Actual: [
+              {
+                'id': 'synthetic-transaction',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'newword1'
+              },
+              {
+                'id': 'synthetic-transaction',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'newword1'
+              }
+            ]
+     Which: has length of <2>
+  
+  package:matcher                                                          expect
+  package:flutter_test/src/widget_tester.dart 473:18                       expect
+  test/unit_test/store/repository/message_fts_transaction_test.dart 76:13  main.<fn>
+  
+00:00 +1 -1: FTS transaction C2C rollback=true writes=1
+message_repo/update msg_c2c ;
+00:00 +2 -1: FTS transaction C2C rollback=true writes=2
+message_repo/update msg_c2c ;
+message_repo/update msg_c2c ;
+00:00 +2 -2: FTS transaction C2C rollback=true writes=2 [E]
+  Expected: an object with length of <1>
+    Actual: [
+              {
+                'id': 'synthetic-transaction',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'oldword'
+              },
+              {
+                'id': 'synthetic-transaction',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'oldword'
+              }
+            ]
+     Which: has length of <2>
+  
+  package:matcher                                                          expect
+  package:flutter_test/src/widget_tester.dart 473:18                       expect
+  test/unit_test/store/repository/message_fts_transaction_test.dart 76:13  main.<fn>
+  
+00:00 +2 -2: FTS transaction C2G rollback=false writes=1
+message_repo/update msg_c2g ;
+00:00 +3 -2: FTS transaction C2G rollback=false writes=2
+message_repo/update msg_c2g ;
+message_repo/update msg_c2g ;
+00:00 +3 -3: FTS transaction C2G rollback=false writes=2 [E]
+  Expected: an object with length of <1>
+    Actual: [
+              {
+                'id': 'synthetic-transaction',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'newword1'
+              },
+              {
+                'id': 'synthetic-transaction',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'newword1'
+              }
+            ]
+     Which: has length of <2>
+  
+  package:matcher                                                          expect
+  package:flutter_test/src/widget_tester.dart 473:18                       expect
+  test/unit_test/store/repository/message_fts_transaction_test.dart 76:13  main.<fn>
+  
+00:00 +3 -3: FTS transaction C2G rollback=true writes=1
+message_repo/update msg_c2g ;
+00:00 +4 -3: FTS transaction C2G rollback=true writes=2
+message_repo/update msg_c2g ;
+message_repo/update msg_c2g ;
+00:00 +4 -4: FTS transaction C2G rollback=true writes=2 [E]
+  Expected: an object with length of <1>
+    Actual: [
+              {
+                'id': 'synthetic-transaction',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'oldword'
+              },
+              {
+                'id': 'synthetic-transaction',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'oldword'
+              }
+            ]
+     Which: has length of <2>
+  
+  package:matcher                                                          expect
+  package:flutter_test/src/widget_tester.dart 473:18                       expect
+  test/unit_test/store/repository/message_fts_transaction_test.dart 76:13  main.<fn>
+  
+00:00 +4 -4: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_transaction_test.dart: FTS transaction C2C rollback=false writes=2
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_transaction_test.dart: FTS transaction C2C rollback=true writes=2
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_transaction_test.dart: FTS transaction C2G rollback=false writes=2
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_transaction_test.dart: FTS transaction C2G rollback=true writes=2

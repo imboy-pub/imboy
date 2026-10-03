@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_IN_MEMORY_FTS5_TRANSACTION_AND_CONCURRENT_REINDEX",
+  "app_head": "557422d096d4f83d2558562c90f9aae9b3ddcf47",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "checks": [
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/store/repository/message_fts_transaction_test.dart",
+        "test/unit_test/store/repository/message_fts_update_order_test.dart",
+        "test/unit_test/store/repository/message_fts_session_test.dart",
+        "test/unit_test/store/repository/message_fts_repo_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "exit_code": 0,
+      "passed": 45,
+      "log": "fts-transaction-final-focused-clean-20261004.log",
+      "oracle": "8 actual SQLite/FTS5 transaction commit/rollback one/two-update cases and 2 six-instance concurrent same-ID cases. Exact one row, latest committed/old rollback text, real MATCH queries. All transaction and background futures awaited."
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/service/websocket_heartbeat_test.dart",
+        "test/unit_test/service/websocket_message_queue_enhanced_test.dart",
+        "test/unit_test/service/websocket_provider_test.dart",
+        "test/unit_test/service/websocket_queue_persistence_test.dart",
+        "test/unit_test/service/websocket_reconnect_strategy_test.dart",
+        "test/unit_test/service/websocket_reinit_test.dart",
+        "test/unit_test/service/websocket_send_session_test.dart",
+        "test/unit_test/service/websocket_server_ack_test.dart",
+        "test/unit_test/service/websocket_v2_e2e_test.dart",
+        "test/unit_test/service/websocket_v2_test.dart",
+        "test/unit_test/service/e2ee/policy_gate_retry_test.dart",
+        "test/unit_test/service/e2ee/retry_downgrade_guard_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_test.dart",
+        "test/unit_test/service/e2ee/retry_session_generation_test.dart",
+        "test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart",
+        "test/unit_test/service/message_retry_state_test.dart",
+        "test/unit_test/service/message_retry_terminal_state_test.dart",
+        "test/unit_test/service/ack_manager_enhanced_test.dart",
+        "test/unit_test/service/../page/chat/message_revoke_policy_test.dart",
+        "test/unit_test/service/chat_network_session_test.dart",
+        "test/unit_test/service/../page/conversation/conversation_status_session_test.dart",
+        "test/unit_test/service/message_status_event_session_test.dart",
+        "test/unit_test/service/message_retry_remove_session_test.dart",
+        "test/unit_test/service/message_retry_queue_test.dart",
+        "test/unit_test/service/message_reaction_session_test.dart",
+        "test/unit_test/service/sqlite_uid_isolation_test.dart",
+        "test/unit_test/service/../store/repository/message_fts_session_test.dart",
+        "test/unit_test/service/../store/repository/message_fts_repo_test.dart",
+        "test/unit_test/service/../store/repository/message_fts_update_order_test.dart",
+        "test/unit_test/service/../store/repository/message_fts_transaction_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "exit_code": 0,
+      "passed": 326,
+      "log": "fts-transaction-domain-20261004.log",
+      "note": "After domain only test conditional braces changed; final focused/static rerun."
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "dart",
+        "analyze",
+        "lib",
+        "test/unit_test",
+        "--fatal-infos"
+      ],
+      "exit_code": 0,
+      "log": "fts-transaction-final-static-20261004.log"
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "scripts/auto_test.py",
+        "catalog",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "fts-transaction-catalog-check-20261004.log"
+    }
+  ],
+  "red": {
+    "log": "fts-transaction-initial-20261004.log",
+    "exit_code": 1,
+    "passed": 4,
+    "failed": 4,
+    "oracle": "Two updates in C2C/C2G commit and rollback produce two rows before serialization."
+  },
+  "logs": [
+    {
+      "path": "fts-transaction-initial-20261004.log",
+      "sha256": "c2686c63b050a06225b6ff2f166b85fe62d0784b119c220f6ebf273395ac3c45",
+      "final_evidence": true
+    },
+    {
+      "path": "fts-transaction-green-20261004.log",
+      "sha256": "efe15554ea230447f1eeded5221acad64d6f3b4fe5a05105c403d995027a119f",
+      "final_evidence": false
+    },
+    {
+      "path": "fts-transaction-final-focused-20261004.log",
+      "sha256": "0a2fccf99bc9f7f53f7e330eaa10af7b83aed45d6bc282c3f31df0f6a3f2e176",
+      "final_evidence": false
+    },
+    {
+      "path": "fts-transaction-domain-20261004.log",
+      "sha256": "eb52e8f9d764a82b0244d2f155fb8fe69a39626db9a4f1007589800d905493c8",
+      "final_evidence": true
+    },
+    {
+      "path": "fts-transaction-static-20261004.log",
+      "sha256": "a15da033f5d47c9777123b7f8727d3107bd515ee26f8343c0e812da797cb908c",
+      "final_evidence": false
+    },
+    {
+      "path": "fts-transaction-final-focused-clean-20261004.log",
+      "sha256": "b48e50109085f3cc6efc05d8b850de307e5af214de984eb87b1aa59c31234431",
+      "final_evidence": true
+    },
+    {
+      "path": "fts-transaction-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678",
+      "final_evidence": true
+    },
+    {
+      "path": "fts-transaction-catalog-20261004.log",
+      "sha256": "01ddbb76d35ff72c55f0e8cd26ba31a0808791bff9023486ea3a372c1d94cff1",
+      "final_evidence": false
+    },
+    {
+      "path": "fts-transaction-catalog-check-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115",
+      "final_evidence": true
+    }
+  ],
+  "intermediate_excluded": [
+    "Initial static found two missing test branch braces; repaired and rerun."
+  ],
+  "limitations": [
+    "Process-local serialization does not make DELETE/INSERT a database transaction or guarantee crash atomicity.",
+    "Already-started SQL is not rolled back on session change.",
+    "Covered transaction and six-instance schedules do not prove all concurrent payload updates preserve latest-value ordering.",
+    "No scale/SLO qualification, device, backend, production or original required acceptance completion."
+  ],
+  "reviews": [
+    "runner_code_review APPROVE",
+    "c11_flutter_review APPROVE"
+  ]
+}

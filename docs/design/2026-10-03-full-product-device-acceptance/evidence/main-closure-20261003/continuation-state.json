@@ -5216,5 +5216,13 @@
     "focused": 35,
     "exit_code": 0,
     "product_pass": false
+  },
+  "fts_transaction_concurrent_reindex": {
+    "receipt": "fts-transaction-concurrent-reindex-20261004.json",
+    "app_head": "557422d096d4f83d2558562c90f9aae9b3ddcf47",
+    "domain_host": 326,
+    "focused": 45,
+    "exit_code": 0,
+    "product_pass": false
   }
 }
