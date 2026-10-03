@@ -1,0 +1,13 @@
+test_boolean_is_not_launch_generation (test_acceptance_journeys.JourneyRecordsTest) ... ok
+test_each_binding_mismatch_rejected (test_acceptance_journeys.JourneyRecordsTest) ... ok
+test_missing_persistence_rejected (test_acceptance_journeys.JourneyRecordsTest) ... ok
+test_mock_capture_rejected (test_acceptance_journeys.JourneyRecordsTest) ... ok
+test_observation_cannot_be_summary_pass (test_acceptance_journeys.JourneyRecordsTest) ... ok
+test_receiver_device_cannot_be_sender (test_acceptance_journeys.JourneyRecordsTest) ... ok
+test_reopen_requires_new_launch (test_acceptance_journeys.JourneyRecordsTest) ... ok
+test_synthetic_structure_never_issues_product_pass (test_acceptance_journeys.JourneyRecordsTest) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.013s
+
+OK

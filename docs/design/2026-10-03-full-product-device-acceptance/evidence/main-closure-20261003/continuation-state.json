@@ -2227,5 +2227,77 @@
     "log_sha256": "35aa1c74d710a865333109ea13e2b6fe9d7692e10f354e071a83cc8bf7f010db",
     "behavior": "Production sender-device stamping overrides untrusted DID; production C2C logic uses authenticated UID instead of forged from; sender-other-device delivery hook receives exact bound UID/DID with logical peer unchanged.",
     "proof_limit": "Mocked connection context and delivery boundary; plaintext baseline route; not real token auth, PFv3 decryption, persistent DB or device proof."
+  },
+  "f01_cross_device_record_correlation": {
+    "id": "PREPARATION-F01-CROSS-DEVICE-RECORD-CORRELATION",
+    "scope": "RAW_RECORD_STRUCTURE_AND_CORRELATION_ONLY",
+    "product_pass": false,
+    "network_executed": false,
+    "app_head": "4fb2bd8bb2341f69e80877bb49545edbdf2510e0",
+    "checks": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "test/tooling/auto_test",
+          "-p",
+          "test_acceptance_journeys.py",
+          "-v"
+        ],
+        "executed": 13,
+        "exit": 0
+      },
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "test/tooling/auto_test",
+          "-p",
+          "test_acceptance*.py"
+        ],
+        "executed": 94,
+        "exit": 0
+      }
+    ],
+    "logs": [
+      {
+        "path": "f01-cross-device-records.log",
+        "sha256": "9db183fc43a4a5b71ba123ac0a87c7926cc5b7081be19063bb5836c394fbb485",
+        "executed": 8,
+        "exit": 0,
+        "phase": "INITIAL_WITH_EXTERNAL_PYTHONPATH"
+      },
+      {
+        "path": "f01-cross-device-records-reviewed.log",
+        "sha256": "2f339c4dfeccf9f3db7276e1a19071ba4dd517d9131a49c58fd3cb42fee51e34",
+        "executed": 13,
+        "exit": 0,
+        "phase": "REVIEWED_STANDALONE"
+      },
+      {
+        "path": "f01-all-acceptance-regression-reviewed.log",
+        "sha256": "30ce9691e42897f4b3b07265321bf97288d234a375729e7c59b968a4043effae",
+        "executed": 94,
+        "exit": 0,
+        "phase": "REGRESSION"
+      }
+    ],
+    "review": [
+      "ACCEPTANCE_PYTHON_REVIEW_APPROVE",
+      "RUNNER_CODE_REVIEW_APPROVE"
+    ],
+    "proof_limit": "Synthetic verifier fixtures; four pinned record stages and identity consistency only, not producer authenticity, real UI/DB observation or business oracle. Final CLI integration remains incomplete.",
+    "remaining": [
+      "capture adapter provenance and live observation extraction",
+      "required case/journey exact mapping and business oracle evaluation",
+      "final verifier integration with defects UX and upstream handoff",
+      "97-ID frozen final qualification"
+    ]
   }
 }
