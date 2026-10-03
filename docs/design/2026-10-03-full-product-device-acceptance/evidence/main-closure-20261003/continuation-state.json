@@ -5312,5 +5312,15 @@
     "runtime_execution": false,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "e2ee_current_offline_fresh_runtime": {
+    "receipt": "e2ee-offline-fresh-runtime-20261004.json",
+    "backend_head": "fc0f1d760a26b495b79fe0989586d17878e8b06a",
+    "modules": 41,
+    "executed": 508,
+    "exit_code": 0,
+    "resource_required_modules_pending": 4,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }
