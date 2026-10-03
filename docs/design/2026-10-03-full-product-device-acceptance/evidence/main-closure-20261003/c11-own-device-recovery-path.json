@@ -1,0 +1,58 @@
+{
+  "scope": "LOCAL_MOCKED_ARCHIVE_HISTORY_ROUTING",
+  "product_pass": false,
+  "network_executed": false,
+  "database_executed": false,
+  "backend_head": "a41b8f0bcc266a4970633eaaa234c96ec52347a5",
+  "checks": [
+    {
+      "argv": [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=messaging_own_device_history_tests"
+      ],
+      "exit": 0,
+      "executed": 1,
+      "log": "c11-own-device-history.log",
+      "sha256": "f2634df405e8906576d3662f26558695fc32a099439a3a286b8ea4b2621021d9"
+    },
+    {
+      "argv": [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=messaging_envelope_filter_tests"
+      ],
+      "exit": 0,
+      "executed": 15,
+      "log": "c11-backend-envelope-filter.log",
+      "sha256": "8540c444374b776b8e7a3f089f2c76b1116ab0be8b9be2cf0b4bb68af438af72"
+    },
+    {
+      "argv": [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=messaging_logic_tests"
+      ],
+      "exit": 0,
+      "executed": 13,
+      "log": "c11-messaging-logic.log",
+      "sha256": "4a6403c706b5912aac191cb7b373e58e7bd677adbc25de414c17c7b895365241"
+    }
+  ],
+  "review": "RUNNER_CODE_REVIEW_APPROVE",
+  "finding": "C2C archive history can deliver sender-own rows while preserving logical destination; offline inbox queries only to_id; normal realtime send targets recipient account. Own-device live delivery still unproven.",
+  "next_required": [
+    "wire registered transport to logical destination independently of physical receiving device",
+    "validate archive persistence and client history/decrypt against isolated real backend",
+    "implement/verify sender other-device live synchronization without altering logical recipient or ACK ownership"
+  ]
+}
