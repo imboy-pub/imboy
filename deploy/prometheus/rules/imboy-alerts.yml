@@ -198,7 +198,7 @@ groups:
     rules:
 
       - alert: ImBoyErlangProcessCountHigh
-        expr: erlang_vm_process_count{job="imboy_backend"} > 200000
+        expr: erlang_vm_processes{job="imboy_backend"} > 200000
         for: 5m
         labels:
           severity: warning

@@ -30,7 +30,7 @@ deploy/prometheus/
 | 消息投递延迟 p50/p95/p99 | `histogram_quantile(..., imboy_msg_deliver_duration_seconds_bucket)` | 后端业务 histogram |
 | 消息发送速率 | `rate(imboy_msg_sent_total[1m])` | 按 C2C/C2G/C2S 分类 |
 | Erlang VM 内存 | `erlang_vm_memory_bytes` | prometheus_erlang_collector |
-| Erlang 进程/端口计数 | `erlang_vm_process_count` / `erlang_vm_port_count` | 同上 |
+| Erlang 进程/端口计数 | `erlang_vm_processes` / `erlang_vm_ports` | 同上 |
 | PG 事务速率 | `pg_stat_database_xact_commit/rollback` | postgres_exporter |
 
 ## 启用方式（推荐：扩展 docker-compose.prod.yml）

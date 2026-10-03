@@ -94,6 +94,8 @@ init_json_payload_has_no_tuple_keys_test_() ->
             ?assert(maps:is_key(imboy_ws_connections_total, Counters)),
             ?assert(maps:is_key(<<"erlang_vm_memory_bytes_total_total">>, Counters)),
             ?assertNot(maps:is_key(imboy_ws_connections_current, Counters)),
+            ?assert(maps:is_key(erlang_vm_process_count, Counters)),
+            ?assert(maps:is_key(erlang_vm_port_count, Counters)),
             %% 无任何 tuple key —— 这是 jsone 能序列化的前提
             ?assertNot(
                 maps:fold(

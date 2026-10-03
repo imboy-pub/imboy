@@ -110,8 +110,8 @@
       "id": 8,
       "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
-        { "expr": "erlang_vm_process_count{job=\"imboy_backend\"}", "legendFormat": "processes", "refId": "A" },
-        { "expr": "erlang_vm_port_count{job=\"imboy_backend\"}", "legendFormat": "ports", "refId": "B" }
+        { "expr": "erlang_vm_processes{job=\"imboy_backend\"}", "legendFormat": "processes", "refId": "A" },
+        { "expr": "erlang_vm_ports{job=\"imboy_backend\"}", "legendFormat": "ports", "refId": "B" }
       ],
       "title": "Erlang 进程 / 端口计数",
       "type": "timeseries"

@@ -22,7 +22,9 @@ http_text_path_preserves_system_gauges_test_() ->
             Lines = binary:split(maps:get(body, Req), <<"\n">>, [global]),
             ?assertEqual(1, count(<<"# TYPE e2ee_recovery_failed_total counter">>, Lines)),
             ?assertEqual(1, count(<<"# TYPE imboy_ws_connections_current gauge">>, Lines)),
-            ?assertEqual(1, count(<<"# TYPE erlang_vm_memory_bytes gauge">>, Lines))
+            ?assertEqual(1, count(<<"# TYPE erlang_vm_memory_bytes gauge">>, Lines)),
+            ?assertEqual(1, count(<<"# TYPE erlang_vm_processes gauge">>, Lines)),
+            ?assertEqual(1, count(<<"# TYPE erlang_vm_ports gauge">>, Lines))
         end
     ).
 

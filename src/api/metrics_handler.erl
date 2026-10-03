@@ -272,6 +272,8 @@ prometheus_metric_name(Name) ->
     case metric_name(Name) of
         <<"imboy_ws_connections_total">> -> <<"imboy_ws_connections_current">>;
         <<"erlang_vm_memory_bytes_total">> -> <<"erlang_vm_memory_bytes">>;
+        <<"erlang_vm_process_count">> -> <<"erlang_vm_processes">>;
+        <<"erlang_vm_port_count">> -> <<"erlang_vm_ports">>;
         Other -> Other
     end.
 
@@ -295,6 +297,9 @@ format_histogram(NameBin, #{counts := Counts, sum := Sum, count := Count}) ->
         Bounds
     ),
     [
+        <<"# HELP ">>,
+        NameBin,
+        <<" Distribution of recorded application observations.\n">>,
         <<"# TYPE ">>,
         NameBin,
         <<" histogram\n">>,
@@ -313,7 +318,14 @@ format_histogram(NameBin, #{counts := Counts, sum := Sum, count := Count}) ->
 format_histogram(NameBin, _Other) ->
     %% 兼容旧形态（升级瞬间 ETS 里可能还留着老结构）：不导出残缺序列，
     %% 宁可这一轮没数据，也不要导出会让分位数算错的半截桶。
-    [<<"# TYPE ">>, NameBin, <<" histogram\n">>].
+    [
+        <<"# HELP ">>,
+        NameBin,
+        <<" Distribution of recorded application observations.\n">>,
+        <<"# TYPE ">>,
+        NameBin,
+        <<" histogram\n">>
+    ].
 
 -spec bucket_line(binary(), binary(), non_neg_integer()) -> iodata().
 bucket_line(NameBin, Le, Cumulative) ->
