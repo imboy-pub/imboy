@@ -1,0 +1,13 @@
+..........F..
+======================================================================
+FAIL: test_catalogued_page_without_targets_fails (test_catalog.TestImpact)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_catalog.py", line 111, in test_catalogued_page_without_targets_fails
+    discovery.impact_targets(
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.758s
+
+FAILED (failures=1)

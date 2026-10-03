@@ -1,0 +1,693 @@
+{
+  "scope": "STATIC_TARGET_COVERAGE_ONLY",
+  "app_head": "35876ede023288039937983420a303b2e8f8fbfb",
+  "red_exit_code": 1,
+  "catalog_tests": 13,
+  "complete_tooling_tests": 419,
+  "exit_code": 0,
+  "failed": 0,
+  "review": "TWO_INDEPENDENT_REVIEWS_APPROVED",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "artifacts": [
+    {
+      "path": "f00-unmapped-impact-rejection.red.log",
+      "sha256": "fa46ed9fc11c5d310b42e11510bfb8bfabe96237aed8b9e14bfbb09257483caa"
+    },
+    {
+      "path": "f00-unmapped-impact-rejection.green.log",
+      "sha256": "8d66180a0eed3ef31aedc47eed5f26bbe732e1dce36c4f8846231659990ec49a"
+    },
+    {
+      "path": "f00-unmapped-impact-rejection.all.log",
+      "sha256": "965c9c70c5e987ae6f38ddebdfee88e71ee80e523d4c735d3e91f40f93e4cdef"
+    }
+  ],
+  "page_count": 188,
+  "unmapped_count": 163,
+  "unmapped_pages": [
+    {
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/customer_service/presentation/cs_session_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/customer_service/presentation/cs_workspace_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/enterprise/presentation/enterprise_conversation_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/enterprise/presentation/enterprise_home_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/enterprise_app/presentation/enterprise_directory_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/modules/enterprise_oa/presentation/oa_tab_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/human_directory_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/org_invite_qr_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/org_join_scanner_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_departments_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_home_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_invitations_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_member_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_members_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/billing/plan_list_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/bottom_navigation/bottom_navigation_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/channel/channel_admin_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/channel/channel_article_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/channel/channel_comment_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/channel/channel_compose_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/channel/channel_discover_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/channel/channel_invitation_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/channel/channel_order_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/channel/channel_order_list_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/channel/channel_subscriber_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/chat/chat_setting/chat_setting_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/chat/p2p_call_screen/p2p_call_screen_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/chat/rtc_room/rtc_room_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/chat/send_to/send_to_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/chat_shell/chat_shell_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/contact/assistant_plaza/assistant_plaza_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/contact/contact_setting/contact_setting_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/contact/contact_setting_tag/contact_setting_tag_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/contact/people_info_more/people_info_more_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/contact/people_info_more/people_info_same_group_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/contact/people_nearby/people_nearby_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/contact/recently_registered_user/recently_registered_user_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/error/init_error_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/group/album/group_album_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/album/group_album_photo_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/album/group_album_photo_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/announcement/group_announcement_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/category/group_category_detail_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/group/category/group_category_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/face_to_face/face_to_face_confirm_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/face_to_face/face_to_face_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/file/group_file_audio_preview_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/group/file/group_file_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/group_detail/add_member_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/group_detail/change_info_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/group/group_detail/remove_member_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/group_discovery/group_discovery_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/group_member/group_member_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/group_member/group_member_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/group_select/group_select_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/launch_chat/launch_chat_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/tag/group_tag_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/task/group_task_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/task/group_task_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/vote/group_vote_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/group/vote/group_vote_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/live_room/live_room_list/live_room_list_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/live_room/publisher/publisher_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/live_room/subscriber/subscriber_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mention/mention_list_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/account_security/account_security_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/account_security/bind_email_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/mine/account_security/bind_mobile_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/mine/appeal/appeal_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/change_password/set_password_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/dark_model/dark_model_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/denylist/denylist_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/feedback/feedback_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/feedback/feedback_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/font_size/font_size_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/language/language_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/logout_account/logout_account_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/select_region/select_region_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/setting/setting_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/storage_space/storage_space_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/user_collect/user_collect_detail_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/mine/user_collect/user_collect_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/mine/user_device/change_name_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/mine/user_device/user_device_detail_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/mine/user_device/user_device_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/moment/moment_create_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/moment/moment_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/moment/moment_feed_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/moment/moment_friend_picker/moment_at_picker_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/moment/moment_friend_picker/moment_friend_picker_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/moment/moment_notify/moment_notify_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/passport/forgot_password_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/passport/forgot_password_pin_code_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/passport/manage_account_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/passport/web_login_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/personal_info/personal_info/personal_info_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/personal_info/profile/profile_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/personal_info/profile/widgets/privacy_settings_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/personal_info/set_gender/set_gender_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/personal_info/set_nickname/set_nickname_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/personal_info/set_region/set_region_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/personal_info/update/update_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/personal_info/widget/more_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/qrcode/channel_qrcode_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/qrcode/group_qrcode_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/qrcode/qrcode_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/qrcode/user_qrcode_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/scanner/qr_login_confirm_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/scanner/scanner_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/scanner/scanner_result_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/search/message_search_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/search/search_chat_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/search/web_search_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/settings/compliance_key_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/settings/e2ee_backup_export_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/settings/e2ee_backup_setup_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/settings/e2ee_key_recovery_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/settings/safety_number_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/single/markdown_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/single/network_failure_guidance_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/single/terms_of_service_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/single/upgrade_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/single/video_viewer_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/splash/splash_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/user_tag/contact_tag_detail/contact_tag_detail_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/user_tag/contact_tag_detail/select_tag_friend_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/user_tag/contact_tag_list/contact_tag_list_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/user_tag/user_tag_relation/tag_relation_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/user_tag/user_tag_save/user_tag_save_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/wallet/red_packet_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/wallet/red_packet_send_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/wallet/withdraw_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/web_shell/web_shell_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/welcome/welcome_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/project/home/project_create_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/project/home/project_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/project/tasks/task_form_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/project/w2/project_channels_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/project/w2/project_insights_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/project/w2/project_members_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/project/w2/project_milestones_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/workspace_branding_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/workspace_channel_detail_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/workspace_channels_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/workspace/workspace_conversations_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/workspace/workspace_create_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/workspace_groups_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/workspace/workspace_invite_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/workspace_join_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/workspace_members_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/workspace_overview_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/workspace/workspace_picker_page.dart",
+      "route_registered": true
+    },
+    {
+      "page": "lib/page/workspace/workspace_projects_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/workspace_shell/enterprise_shell_page.dart",
+      "route_registered": false
+    },
+    {
+      "page": "lib/page/workspace_shell/workspace_shell_page.dart",
+      "route_registered": false
+    }
+  ],
+  "limits": [
+    "Mapped targets do not prove business or platform coverage",
+    "Static registration does not prove navigation",
+    "No original acceptance ID upgraded"
+  ],
+  "remaining": [
+    "Write concrete required case/platform mappings for unmapped current pages",
+    "Execute authorized frozen candidate business journeys",
+    "Independent final qualification"
+  ]
+}
