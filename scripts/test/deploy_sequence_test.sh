@@ -69,7 +69,15 @@ case "$cmd" in
     exit 0
     ;;
   *"for DIR in "*"/usr/local/imboy-"*)
-    [ "${MOCK_FAIL_AT:-}" != "enumerate_target" ] || exit 2
+    # 本分支同时覆盖两种远端枚举（blue_green_deploy.sh），按形态分流旋钮：
+    #   - 清理步 release 残留枚举：`for DIR in /usr/local/imboy-*`（直写形态，
+    #     部署先跑；MOCK_FAIL_AT=enumerate_target 只让它失败，fail 即终止发布）
+    #   - find_release_for_port 目标槽枚举：`for DIR in $(ls -dt /usr/local/imboy-*)`
+    #     （失败由 MOCK_FIND_RELEASE_FAIL 单独控制，legacy 断点续发用例依赖）
+    # 两者互不误伤：enumerate_target 不再连带打断目标槽枚举供桩。
+    if [[ "$cmd" != *"ls -dt"* ]]; then
+      [ "${MOCK_FAIL_AT:-}" != "enumerate_target" ] || exit 2
+    fi
     if [ "${MOCK_FIND_RELEASE_FAIL:-0}" = 1 ] && [[ "$cmd" = *"ls -dt"* ]]; then
       exit 1
     fi
@@ -769,15 +777,17 @@ fi
 
 echo
 if run_deploy enumerate_target blue; then
-  bad "目标槽枚举失败必须终止发布" ""
+  bad "release 残留枚举失败必须终止发布" ""
 else
-  assert_absent "目标槽枚举失败不启动新节点" DAEMON
-  assert_absent "目标槽枚举失败不切流" SWITCH
-  assert_absent "目标槽枚举失败不执行迁移" MIGRATE
-  if grep -q '无法枚举目标槽 release' "$TMP_ROOT/output.log"; then
-    ok "目标槽枚举失败返回明确错误"
+  assert_absent "release 残留枚举失败不启动新节点" DAEMON
+  assert_absent "release 残留枚举失败不切流" SWITCH
+  assert_absent "release 残留枚举失败不执行迁移" MIGRATE
+  # 枚举失败必须给出明确错误文案（脚本 fail 的现状契约：
+  # blue_green_deploy.sh 清理步「无法枚举 release 残留，拒绝继续发布」）
+  if grep -q '无法枚举 release 残留，拒绝继续发布' "$TMP_ROOT/output.log"; then
+    ok "release 残留枚举失败返回明确错误"
   else
-    bad "目标槽枚举失败返回明确错误" "$(cat "$TMP_ROOT/output.log")"
+    bad "release 残留枚举失败返回明确错误" "$(cat "$TMP_ROOT/output.log")"
   fi
 fi
 echo "总计: PASS=$PASS FAIL=$FAIL"
