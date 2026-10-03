@@ -5173,5 +5173,14 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "queued_retry_remove_session_isolation": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/queued-retry-remove-session-isolation-20261004.json",
+    "app_head": "cf36624eca804ffff0f57e4f7f0f2afd0f3ce0cf",
+    "executed": 272,
+    "focused_executed": 3,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

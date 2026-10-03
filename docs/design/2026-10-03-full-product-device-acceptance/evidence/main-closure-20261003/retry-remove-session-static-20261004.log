@@ -1,0 +1,7 @@
+Analyzing lib, unit_test...
+
+   info - lib/service/message_retry.dart:151:11 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - test/unit_test/service/message_retry_remove_session_test.dart:1:8 - The import of 'dart:async' is unnecessary because all of the used elements are also provided by the import of 'package:flutter_test/flutter_test.dart'. Try removing the import directive. - unnecessary_import
+   info - test/unit_test/service/message_retry_remove_session_test.dart:107:11 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+
+3 issues found.

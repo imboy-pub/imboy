@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_ACTUAL_RETRY_REMOVE_EVENT_AND_OUTBOX_GETTER_SESSION_BOUNDARY",
+  "app_head": "cf36624eca804ffff0f57e4f7f0f2afd0f3ce0cf",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_LOCAL_SCOPE",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 1,
+    "red_failed": 2,
+    "domain_exit": 0,
+    "domain_passed": 272,
+    "focused_exit": 0,
+    "focused_passed": 3,
+    "static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Actual bus and MessageRetry consume a current removal event: retry entry removed and one outbox confirmation rawUpdate starts.",
+    "Create old removal event, actual loginAfter changes generation, clear/re-enqueue same ID in new generation, then deliver old event: exact new MessageRetryInfo object survives and no confirmation starts.",
+    "After valid current removal, actual cached Database.isOpen getter triggers real generation change before async getter returns. Outbox confirmation starts zero writes; removal already completed before switch is not rolled back."
+  ],
+  "implementation_verified_by_review": [
+    "Remove event captures ownerUid/generation at construction by default; all6production sources pass original captured UID/generation explicitly.",
+    "Consumer checks event session and queued entry generation; outbox confirmation checks before/after DB getter.",
+    "Outbox exception logs type only; anonymous matching compatibility retained."
+  ],
+  "attempt_notes": [
+    "Domain272 passed before source/test brace, redundant-import and comment-only cleanup. Final focused3/static/catalog pass after cleanup. Initial static3infos retained.",
+    "Old one const-constructor test changed to runtime constructor; assertions unchanged."
+  ],
+  "limitations": [
+    "Database synthetic and no live backend/device. Actual bus/retry subscriber is real; no original97-ID qualification.",
+    "Incoming ACK/source provenance before handlers, other revoke/edit/error side effects and anonymous product semantics not qualified.",
+    "Pending generation mismatch guard and exceptional log redaction source-reviewed only. Already-started outbox writes cannot be cancelled/rolled back."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-remove-session-catalog-20261004.log",
+      "sha256": "01ddbb76d35ff72c55f0e8cd26ba31a0808791bff9023486ea3a372c1d94cff1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-remove-session-catalog-check-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-remove-session-domain-20261004.log",
+      "sha256": "1b2a432e0ebe1def16a9fb7b75893e52f5a0fa599d3d785d5c9688e4d4e1ed32"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-remove-session-final-catalog-20261004.log",
+      "sha256": "01ddbb76d35ff72c55f0e8cd26ba31a0808791bff9023486ea3a372c1d94cff1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-remove-session-final-catalog-check-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-remove-session-final-focused-20261004.log",
+      "sha256": "0c5a678b68af1ac324917766709cb6503216739f2cac2d93078f9f8fd8c028d4"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-remove-session-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-remove-session-focused-20261004.log",
+      "sha256": "0c5a678b68af1ac324917766709cb6503216739f2cac2d93078f9f8fd8c028d4"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-remove-session-red-20261004.log",
+      "sha256": "e198c218c6ae5fbca2faa1e9c04b205ce0e2978bb42375193cace9265ec3fb90"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-remove-session-static-20261004.log",
+      "sha256": "002a3f92d415c1a80e9dfc67f45c3db34ad6fed2a2e9526af221d2b239c38c83"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_retry_remove_session_test.dart
+00:00 +0: retry remove session phase=current
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: synthetic-shared-id, type=C2C
+消息从重试队列移除: synthetic-shared-id
+🗑️ [RETRY_QUEUE] 从重试队列移除: messageId=synthetic-shared-id, reason=synthetic-ack
+00:00 +1: retry remove session phase=before_delivery
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: synthetic-shared-id, type=C2C
+消息加入重试队列: synthetic-shared-id, type=C2C
+00:00 +2: retry remove session phase=outbox_getter
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: synthetic-shared-id, type=C2C
+消息从重试队列移除: synthetic-shared-id
+🗑️ [RETRY_QUEUE] 从重试队列移除: messageId=synthetic-shared-id, reason=synthetic-ack
+00:00 +3: All tests passed!
