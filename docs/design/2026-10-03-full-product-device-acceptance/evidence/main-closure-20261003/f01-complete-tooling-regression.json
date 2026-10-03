@@ -1,0 +1,34 @@
+{
+  "id": "PREPARATION-F01-COMPLETE-TOOLING-REGRESSION",
+  "scope": "LOCAL_PYTHON_TOOLING_REGRESSION_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "device_execution": false,
+  "app_head": "9f654a008038c591d290bad44d4e115556c74e85",
+  "argv": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "test/tooling/auto_test",
+    "-p",
+    "test_*.py",
+    "-v"
+  ],
+  "executed": 386,
+  "elapsed_seconds": 13.469,
+  "exit": 0,
+  "log": {
+    "path": "f01-complete-tooling-regression.log",
+    "sha256": "3aa76d9f0b94988f31745369d8670a34f6004c029f1d718e125d843b4159cde2"
+  },
+  "coverage": "Complete auto_test tooling discovery including new 135 acceptance cases and existing runner, recovery, artifact and command negative fixtures. Mock screenshot and blocked shard messages are test fixtures.",
+  "proof_limit": "No backend full EUnit, Flutter full suite, hardware or product business journeys; cannot establish F17 or any of the 97 requirement qualifications.",
+  "remaining": [
+    "complete authoritative required-case and source mapping",
+    "qualified device/storage business capture adapters",
+    "upstream handoff and user UX review",
+    "final verifier and frozen product gates"
+  ]
+}

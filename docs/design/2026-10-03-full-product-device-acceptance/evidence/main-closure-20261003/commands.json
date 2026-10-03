@@ -1040,6 +1040,29 @@
       "executed": 125,
       "evidence": "f01-version-inputs.json",
       "product_pass": false
+    },
+    {
+      "id": "PREPARATION-F01-COMPLETE-TOOLING-REGRESSION",
+      "scope": "LOCAL_PYTHON_TOOLING_REGRESSION_ONLY",
+      "app_head": "9f654a008038c591d290bad44d4e115556c74e85",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "test/tooling/auto_test",
+        "-p",
+        "test_*.py",
+        "-v"
+      ],
+      "executed": 386,
+      "exit": 0,
+      "log": {
+        "path": "f01-complete-tooling-regression.log",
+        "sha256": "3aa76d9f0b94988f31745369d8670a34f6004c029f1d718e125d843b4159cde2"
+      },
+      "product_pass": false
     }
   ],
   "final_verifier": "NOT_IMPLEMENTED"
