@@ -1,0 +1,23 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS lookup session changed=false
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS lookup session changed=true
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS delete session changed=false
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS delete session changed=true
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent text 消息提取 payload.text
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent quote 消息提取 payload.quote_text
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent location 消息拼接 title + address
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent location 仅 title
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent image 消息返回空
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent video 消息返回空
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent voice 消息返回空
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent file 消息返回空
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent null msgType 返回空
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent 空 text 返回空
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent text 内容去除前后空白
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: FtsSearchResult 构造正确
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo 索引幂等（in-memory FTS5） 重复索引同 id 不产生双行，重索引后命中新文本
+00:00 +17: All tests passed!

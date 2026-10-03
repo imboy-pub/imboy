@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_FTS_SESSION_WITH_EXISTING_IN_MEMORY_FTS5",
+  "app_head": "02fd81eb68b052a3eaf437372c381b55b6fefb41",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "checks": [
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/store/repository/message_fts_session_test.dart",
+        "test/unit_test/store/repository/message_fts_repo_test.dart",
+        "test/unit_test/service/sqlite_uid_isolation_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "log": "fts-session-final-focused-clean-20261004.log",
+      "passed": 30,
+      "exit_code": 0,
+      "oracle": "12 C2C/C2G lookup/delete/locked-retry normal/stale cases, 13 existing FTS tests including actual in-memory FTS5, 5 SQLite UID tests. Reindex tasks explicitly awaited."
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/service/websocket_heartbeat_test.dart",
+        "test/unit_test/service/websocket_message_queue_enhanced_test.dart",
+        "test/unit_test/service/websocket_provider_test.dart",
+        "test/unit_test/service/websocket_queue_persistence_test.dart",
+        "test/unit_test/service/websocket_reconnect_strategy_test.dart",
+        "test/unit_test/service/websocket_reinit_test.dart",
+        "test/unit_test/service/websocket_send_session_test.dart",
+        "test/unit_test/service/websocket_server_ack_test.dart",
+        "test/unit_test/service/websocket_v2_e2e_test.dart",
+        "test/unit_test/service/websocket_v2_test.dart",
+        "test/unit_test/service/e2ee/policy_gate_retry_test.dart",
+        "test/unit_test/service/e2ee/retry_downgrade_guard_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_test.dart",
+        "test/unit_test/service/e2ee/retry_session_generation_test.dart",
+        "test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart",
+        "test/unit_test/service/message_retry_state_test.dart",
+        "test/unit_test/service/message_retry_terminal_state_test.dart",
+        "test/unit_test/service/ack_manager_enhanced_test.dart",
+        "test/unit_test/service/../page/chat/message_revoke_policy_test.dart",
+        "test/unit_test/service/chat_network_session_test.dart",
+        "test/unit_test/service/../page/conversation/conversation_status_session_test.dart",
+        "test/unit_test/service/message_status_event_session_test.dart",
+        "test/unit_test/service/message_retry_remove_session_test.dart",
+        "test/unit_test/service/message_retry_queue_test.dart",
+        "test/unit_test/service/message_reaction_session_test.dart",
+        "test/unit_test/service/sqlite_uid_isolation_test.dart",
+        "test/unit_test/service/../store/repository/message_fts_session_test.dart",
+        "test/unit_test/service/../store/repository/message_fts_repo_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "log": "fts-session-domain-20261004.log",
+      "passed": 306,
+      "exit_code": 0,
+      "note": "After domain run only unused test import removed; final focused/static rerun."
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "dart",
+        "analyze",
+        "lib",
+        "test/unit_test",
+        "--fatal-infos"
+      ],
+      "log": "fts-session-final-static-20261004.log",
+      "exit_code": 0
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "scripts/auto_test.py",
+        "catalog",
+        "--check"
+      ],
+      "log": "fts-session-catalog-check-20261004.log",
+      "exit_code": 0
+    }
+  ],
+  "red": {
+    "log": "fts-session-red-20261004.log",
+    "passed": 2,
+    "failed": 2,
+    "exit_code": 1,
+    "oracle": "Before guards stale lookup continues both SQL; stale DELETE continues INSERT."
+  },
+  "logs": [
+    {
+      "path": "fts-session-red-20261004.log",
+      "sha256": "8460fc44e33f62576d9f69e30387aa6455a0166066bb1683cedc2be49be3cb36",
+      "final_evidence": true
+    },
+    {
+      "path": "fts-session-green-20261004.log",
+      "sha256": "9ca8e52ae36dda0ff86c33dea932301b974673c604f1d9475839ab413f962338",
+      "final_evidence": false
+    },
+    {
+      "path": "fts-session-final-focused-20261004.log",
+      "sha256": "45003ea38545f02c548d22a3ae2ea0c0a0203579f7d20df5c2f767ce974d72e9",
+      "final_evidence": false
+    },
+    {
+      "path": "fts-session-domain-20261004.log",
+      "sha256": "7fda2fb76e8e729024b801dfd4fd309aa3b21da6dcb82cf4bf86d5701486c783",
+      "final_evidence": true
+    },
+    {
+      "path": "fts-session-static-20261004.log",
+      "sha256": "7229bb5917cb03fe6900c9843c9c971f7bcd4d0cead24a5be8fd907a64103dd0",
+      "final_evidence": false
+    },
+    {
+      "path": "fts-session-final-focused-clean-20261004.log",
+      "sha256": "9762693ce6cb682b54a68c33377e1a8250dad1caa40650655cfc38a968620007",
+      "final_evidence": true
+    },
+    {
+      "path": "fts-session-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678",
+      "final_evidence": true
+    },
+    {
+      "path": "fts-session-catalog-20261004.log",
+      "sha256": "01ddbb76d35ff72c55f0e8cd26ba31a0808791bff9023486ea3a372c1d94cff1",
+      "final_evidence": false
+    },
+    {
+      "path": "fts-session-catalog-check-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115",
+      "final_evidence": true
+    }
+  ],
+  "intermediate_excluded": [
+    "Initial green precedes explicit reindex completion barrier; not final qualification.",
+    "Initial static exit2 unused test import, fixed and rerun."
+  ],
+  "limitations": [
+    "Already-started message update or DELETE is not rolled back.",
+    "Lock-wait and DB getter generation changes are source-reviewed, not directly fault-injected.",
+    "FTS source provenance before helper entry and payload update/index ordering remain unqualified.",
+    "No real device, backend, production, or original acceptance ID completion."
+  ],
+  "reviews": [
+    "runner_code_review APPROVE",
+    "c11_flutter_review APPROVE; completion barrier issue closed"
+  ]
+}

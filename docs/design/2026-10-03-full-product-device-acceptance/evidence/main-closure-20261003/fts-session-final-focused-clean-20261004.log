@@ -1,0 +1,47 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=false
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=true
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C delete session changed=false
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C delete session changed=true
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo 索引幂等（in-memory FTS5） 重复索引同 id 不产生双行，重索引后命中新文本
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=true
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G lookup session changed=false
+message_repo/update msg_c2g ;
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G lookup session changed=true
+message_repo/update msg_c2g ;
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G delete session changed=false
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G delete session changed=true
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=false
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=false
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/sqlite_uid_isolation_test.dart: uid 漂移时关闭旧账号句柄，不复用
+Database path: currentEnv=dev, uid=uidB, dbName=dev_uidB.db
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=false
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=false
+00:00 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/sqlite_uid_isolation_test.dart: waitUntilReady：db 持续不可用时按 timeout 返回 false
+00:00 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/sqlite_uid_isolation_test.dart: waitUntilReady：db 持续不可用时按 timeout 返回 false
+00:00 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/sqlite_uid_isolation_test.dart: 登出时只删除指定 uid 的数据库及 sidecar 文件
+🗑️ Deleted local database file: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/dev_logout-delete-test-uid.db
+🗑️ Deleted local database file: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/dev_logout-delete-test-uid.db-wal
+🗑️ Deleted local database file: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/dev_logout-delete-test-uid.db-shm
+🗑️ Deleted local database file: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/dev_logout-delete-test-uid.db-journal
+00:00 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/sqlite_uid_isolation_test.dart: (tearDownAll)
+00:00 +30: All tests passed!

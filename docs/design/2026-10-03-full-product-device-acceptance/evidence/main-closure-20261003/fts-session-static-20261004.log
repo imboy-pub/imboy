@@ -1,0 +1,5 @@
+Analyzing lib, unit_test...
+
+warning - test/unit_test/store/repository/message_fts_session_test.dart:7:8 - Unused import: 'package:imboy/service/message_type_constants.dart'. Try removing the import directive. - unused_import
+
+1 issue found.

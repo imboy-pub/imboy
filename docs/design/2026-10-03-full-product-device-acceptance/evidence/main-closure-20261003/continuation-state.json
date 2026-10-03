@@ -5200,5 +5200,13 @@
     "focused": 4,
     "exit_code": 0,
     "product_pass": false
+  },
+  "fts_background_session_isolation": {
+    "receipt": "fts-background-session-isolation-20261004.json",
+    "app_head": "02fd81eb68b052a3eaf437372c381b55b6fefb41",
+    "domain_host": 306,
+    "focused": 30,
+    "exit_code": 0,
+    "product_pass": false
   }
 }
