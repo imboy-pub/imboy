@@ -1,0 +1,40 @@
+{
+  "scope": "LOCAL_BACKEND_CANCEL_FAILURE_LOG_PRIVACY",
+  "backend_head": "0df267b826367731c4910cca945357baa5648ce9",
+  "tests": 23,
+  "exit_code": 0,
+  "production_compile_exit_code": 0,
+  "review": "APPROVED_CODE_REVIEW",
+  "artifacts": [
+    {
+      "path": "billing-cancel-red.log",
+      "sha256": "5e11c18bfdd45fd0acf1da06a13aea45ef2e8d98d1ceab23e47e09ef34df399c"
+    },
+    {
+      "path": "billing-cancel-red-corrected.log",
+      "sha256": "1894b7de2e9cfd135e9f28b89ea1561a316816856b5b7bde160edc3981b3a516"
+    },
+    {
+      "path": "billing-cancel-green.log",
+      "sha256": "336dbc11c7e32ff6576a9f0c2ef6beb10f813c9db961a7600ee13258b8ce1d48"
+    },
+    {
+      "path": "billing-cancel-final-compile.log",
+      "sha256": "09015a480c9461f3129ac2edcadadecb7d9f0aca7301217d64e4c2969e1b653d"
+    },
+    {
+      "path": "billing-cancel-build.log",
+      "sha256": "756aa0695b64dbfaa5200076bb0f2480160c7ed2dbb0d368214a60d4f518b13a"
+    }
+  ],
+  "attempt_notes": [
+    "Initial test used incorrect cancellation status 2; corrected to existing status 3 before authoritative RED",
+    "Corrected RED: 1 privacy assertion failed, 22 passed; GREEN: 23 passed"
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Synthetic mocked DS/log with real cancel logic; no database or devices",
+    "Remaining other billing failure logs not qualified"
+  ]
+}

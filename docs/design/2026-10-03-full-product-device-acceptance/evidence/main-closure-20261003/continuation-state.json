@@ -4632,5 +4632,11 @@
     "backend_head": "f689bf2a31830da4eb0825c73882f3be4cdf32d4",
     "tests": 22,
     "product_pass": false
+  },
+  "f14_backend_cancel_log_privacy": {
+    "receipt": "billing-cancel-log-privacy.json",
+    "backend_head": "0df267b826367731c4910cca945357baa5648ce9",
+    "tests": 23,
+    "product_pass": false
   }
 }
