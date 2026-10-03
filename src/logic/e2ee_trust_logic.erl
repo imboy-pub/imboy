@@ -141,8 +141,8 @@ verify_and_record(N) ->
                 true ->
                     verify_sig_then_write(N, ActorEd25519B64)
             end;
-        {error, Reason} ->
-            _ = ?ERROR_LOG({trust_actor_identity_error, ActorUid, ActorDeviceId, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(trust_actor_identity_error),
             {error, <<"internal_error">>}
     end.
 
@@ -172,8 +172,8 @@ write_and_broadcast(N) ->
         {error, Reason} when is_binary(Reason) ->
             %% identity_version_rollback / event_id_conflict：语义拒绝，不泄漏细节
             {error, Reason};
-        {error, Reason} ->
-            _ = ?ERROR_LOG({trust_audit_insert_error, maps:get(actor_uid, N), Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(trust_audit_insert_error),
             {error, <<"internal_error">>}
     end.
 

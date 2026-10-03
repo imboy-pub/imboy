@@ -79,6 +79,48 @@ setup_ok(PubB64) ->
 record(F) ->
     e2ee_trust_logic:record_trust_event(100, F).
 
+trust_database_failure_logs_do_not_expose_identity_or_reason_test_() ->
+    [
+        ?_test(trust_database_failure_log_case(Stage, Event))
+     || {Stage, Event} <- [
+            {identity, trust_actor_identity_error},
+            {audit, trust_audit_insert_error}
+        ]
+    ].
+
+trust_database_failure_log_case(Stage, Event) ->
+    ?WITH_MECKS(fun() ->
+        ok = meck:new(elib_log, [passthrough, no_link]),
+        try
+            meck:expect(elib_log, internal_log, 4, fun(_, _, _, _) -> ok end),
+            {Pub, F} = sign(100, base_fields()),
+            setup_ok(Pub),
+            Canary = #{uid => 100, secret => <<"synthetic-trust-key-canary">>},
+            case Stage of
+                identity ->
+                    meck:expect(
+                        olm_identity_ds,
+                        find_identity,
+                        2,
+                        fun(_, _) -> {error, Canary} end
+                    );
+                audit ->
+                    meck:expect(
+                        trust_audit_ds,
+                        insert_event,
+                        1,
+                        fun(_) -> {error, Canary} end
+                    )
+            end,
+            ?assertEqual({error, <<"internal_error">>}, record(F)),
+            ?assertEqual(1, meck:num_calls(elib_log, internal_log, [error, Event, '_', '_'])),
+            ?assertEqual(1, meck:num_calls(elib_log, internal_log, 4)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        after
+            meck:unload(elib_log)
+        end
+    end).
+
 %% ===================================================================
 %% T-06-11 append-only：repo 无 update/delete API
 %% ===================================================================
