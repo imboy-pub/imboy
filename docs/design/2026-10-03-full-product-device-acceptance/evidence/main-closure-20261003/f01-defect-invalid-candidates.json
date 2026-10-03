@@ -1,0 +1,38 @@
+{
+  "id": "PREPARATION-F01-DEFECT-INVALID-CANDIDATES",
+  "scope": "FROZEN_DEFECT_RECORD_CORRELATION_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "app_head": "beae1cac4e0474e7174870d4723bd8c3bb8a70ee",
+  "executed": 118,
+  "exit": 0,
+  "log": {
+    "path": "f01-defect-invalid-candidates.log",
+    "sha256": "e3b201458c97c6bd928cb0c2f767b51374abf66c028b5d9131cf599a8ce68c8e"
+  },
+  "reviews": [
+    "PYTHON_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "red_observation": {
+    "before_head": "b64bfa06",
+    "new_test_methods": 2,
+    "failed_subtests": 7,
+    "cases": [
+      "null",
+      "empty",
+      "zero SHA",
+      "noncommit text",
+      "integer",
+      "boolean",
+      "unknown repository"
+    ],
+    "raw_log_saved": false
+  },
+  "requirements": [
+    "Matching invalid frozen and closure candidate values cannot pass",
+    "Candidate must be nonzero lowercase 40-hex commit identifier",
+    "Closure repository limited to the three product repositories"
+  ],
+  "proof_limit": "Local synthetic record verification; commit existence/ancestry is checked separately by mandatory candidate gate. No product or defect-fix qualification."
+}
