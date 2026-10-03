@@ -1444,5 +1444,17 @@
     "scope": "ADMIN_CUSTOMER_SERVICE_HOST_MOCK_REGRESSION_ONLY",
     "product_pass": false,
     "remaining": "complete per-behavior profile/role mapping; real backend/browser/visitor/concurrency and dual-device evidence"
+  },
+  "f12_service_session_mapping": {
+    "app_candidate": "8e130862dc7eed18ef530472ca61047f1aeadbc5",
+    "scope": "WEB_SEAT_SESSION_SUBSET_PRELIMINARY",
+    "mapped_host_cases": 5,
+    "unique_control_inputs": 3,
+    "map_sha256": "c818f1ec019957688d4ac843ee3481621ea7e716926d8259e19c18007a2793fc",
+    "path": "imboyapp/integration_test/full_acceptance/F12-S02/case-map.tsv",
+    "status": "WAITING",
+    "required_cases_frozen": false,
+    "product_pass": false,
+    "remaining": "profile/roles, genuine visitor/backend/browser/concurrency, Android/macOS counterparts and full parent service journeys"
   }
 }
