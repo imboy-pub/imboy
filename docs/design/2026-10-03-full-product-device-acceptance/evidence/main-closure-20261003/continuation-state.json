@@ -173,5 +173,25 @@
     "new_functions_pending_mapping": 107,
     "changed_functions_pending_reconciliation": 19,
     "business_execution": "NOT_EXECUTED"
+  },
+  "frozen_case_collection_gate": {
+    "candidate_app_head": "6eb2befa",
+    "command": "python3 -m unittest discover -s test/tooling/auto_test",
+    "executed": 242,
+    "failed": 0,
+    "exit": 0,
+    "evidence_path": "acceptance-contract-suite.log",
+    "evidence_sha256": "a95ef33406773989155667718b2c7dc97e6a4d317919b673e550a9eaef928d8b",
+    "independent_review": "APPROVED_LOCAL_SCOPE_ONLY",
+    "fixture_tests": 7,
+    "product_pass": false,
+    "remaining": [
+      "caller must load independently hash-verified frozen baseline",
+      "candidate and plan/config/build/fixture/device bindings",
+      "exact raw case events and real business oracles",
+      "attempt journal completeness",
+      "CLI registration in commands.json",
+      "F01-S06 calibration and complete bad-sample suite"
+    ]
   }
 }
