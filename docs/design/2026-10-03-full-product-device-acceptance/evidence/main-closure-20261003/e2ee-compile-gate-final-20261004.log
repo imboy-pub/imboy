@@ -1,0 +1,9 @@
+CHECK mode=first rc=2 runtime_started=no
+PASS first
+CHECK mode=second rc=2 runtime_started=no
+PASS second
+CHECK mode=runtime rc=2 runtime_started=yes
+PASS runtime
+CHECK mode=success rc=0 runtime_started=yes
+PASS success
+RESULT PASS=4 FAIL=0 (offline recipe control flow only)

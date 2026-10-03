@@ -5292,5 +5292,12 @@
     "exit_code": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "e2ee_verify_compilation_fail_closed": {
+    "receipt": "e2ee-compile-failure-gate-20261004.json",
+    "backend_head": "8b4f9174dfb6f998e5626458b4349400988bc040",
+    "checks_passed": 4,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

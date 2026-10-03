@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_OFFLINE_MAKE_RECIPE_FAILURE_PROPAGATION",
+  "backend_head": "8b4f9174dfb6f998e5626458b4349400988bc040",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "checks_passed": 4,
+  "argv": [
+    "bash",
+    "scripts/test/e2ee_verify_compile_gate_test.sh"
+  ],
+  "cwd": "/Users/leeyi/project/imboy.pub/imboy",
+  "logs": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-compile-gate-red-valid-20261004.log",
+      "sha256": "fcefd89b7c1285ecbe31b33e37190f70e465c2c1151dc78e2406b2125278a70b",
+      "exit_code": 1
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-compile-gate-final-20261004.log",
+      "sha256": "584baacfd5cee1af4b6cb284c5d686a8ceadf716c0948036c051ea9a5463cbd0",
+      "exit_code": 0
+    }
+  ],
+  "sources": [
+    {
+      "path": "Makefile",
+      "sha256": "dd6d159edd6c526ef02ec165b1dd0600e1db08c67f9cd2556fd9d56a6d60649a"
+    },
+    {
+      "path": "scripts/test/e2ee_verify_compile_gate_test.sh",
+      "sha256": "aba7e10edd26339ee1137b9e3871cad1ccaa35e805fcaa2f2b51b50d9b3c2c4a"
+    }
+  ],
+  "red_oracle": "Second erlc failure returned make rc=0 and started runtime despite stale beam present. Valid regression returned exit1.",
+  "green_oracle": "Both compilation failures stop before runtime; runtime failure propagates; success reaches runtime.",
+  "limitations": [
+    "Compiler/runtime are stubs; no authentic compilation/EUnit/PG qualification.",
+    "Full eunit-local defaults to shared PG via local configuration. Isolation resource authorization remains pending.",
+    "Initial BSD sed fixture error and initial implicit-set-e test were excluded; assertions use explicit exit1."
+  ],
+  "review": "runner_code_review APPROVE"
+}

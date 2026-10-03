@@ -1,0 +1,3 @@
+CHECK mode=first rc=2 runtime_started=no
+PASS first
+CHECK mode=second rc=0 runtime_started=yes
