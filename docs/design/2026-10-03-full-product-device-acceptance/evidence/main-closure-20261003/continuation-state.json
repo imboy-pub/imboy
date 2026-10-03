@@ -4478,5 +4478,16 @@
     "e2ee_subset_strict_format": "PASS",
     "full_endpoint_strict_format": "NOT_PROVEN",
     "product_pass": false
+  },
+  "current_local_regression_e1edaa3e": {
+    "receipt": "current-local-regression-e1edaa3e.json",
+    "heads": {
+      "imboy": "e1edaa3e6f6976252b9a99a9157a46ab52a0ec58",
+      "imboyapp": "ea20c1b4b16059e7896ff665cd0f72a2f51b5abb",
+      "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+    },
+    "backend_tests": 136,
+    "app_tool_tests": 447,
+    "product_pass": false
   }
 }

@@ -1,0 +1,53 @@
+{
+  "scope": "CURRENT_FROZEN_LOCAL_E2EE_AND_ACCEPTANCE_TOOLING_ONLY",
+  "heads": {
+    "imboy": "e1edaa3e6f6976252b9a99a9157a46ab52a0ec58",
+    "imboyapp": "ea20c1b4b16059e7896ff665cd0f72a2f51b5abb",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "heads_unchanged_during_execution": true,
+  "backend": {
+    "tests": 136,
+    "exit_code": 0,
+    "modules": [
+      "e2ee_logic_tests",
+      "e2ee_trust_logic_tests",
+      "e2ee_recovery_logic_tests",
+      "olm_identity_logic_tests",
+      "olm_identity_log_privacy_tests",
+      "metrics_handler_tests",
+      "metrics_counter_type_tests",
+      "e2ee_failure_metric_exposition_tests"
+    ],
+    "command": "erl isolated temporary beams and deps, eunit:test listed eight modules; no application/database configuration loaded"
+  },
+  "app": {
+    "tests": 447,
+    "exit_code": 0,
+    "command": "python3 -m unittest discover -s test/tooling/auto_test -p 'test_*.py'"
+  },
+  "plan_hashes": {
+    "docs/design/2026-10-03-e2ee-production-excellence/plan.md": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+    "docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1.md": "aeb4dc3da1d0c51ebecaf6a1edfad07558e3dbcaca6615e9c1b2e011b84832aa"
+  },
+  "artifacts": [
+    {
+      "path": "current-e2ee-offline-bundle.log",
+      "sha256": "a2b4ecd75dcffc0689aa565cb0b72be315b3211bf9e4a0f81312eaa0f06664e4"
+    },
+    {
+      "path": "current-app-acceptance-tools.log",
+      "sha256": "adc84ddc4bf0775e72460bcf12f1bd2264401393a25d496f9aa69399196d3d8f"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "database_execution": false,
+  "device_execution": false,
+  "limits": [
+    "Backend bundle is selected local EUnit, not required full EUnit L3 twice or real PG",
+    "App tools test acceptance machinery, not Android/macOS product journeys",
+    "Historic full App six failures and 236 skips are not closed by this tool run",
+    "No current 97-ID final qualification or production SLO proof"
+  ]
+}
