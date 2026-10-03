@@ -1,0 +1,35 @@
+{
+  "id": "C11-CURRENT-TRANSPORT-RECONCILIATION",
+  "scope": "CURRENT_SOURCE_AND_LOCAL_HOST_COMPONENTS_ONLY",
+  "app_head": "744a547799b04198d918aa46dd21d970d3947147",
+  "code_tested_app_head": "876cd2ba1dc870e1d81eeb3af81c8f16f567ad52",
+  "documentation_only_followup": "744a547799b04198d918aa46dd21d970d3947147",
+  "source_hashes": {
+    "integration_test/e2ee_release/harness/backend_transport.dart": "e3e6381e3f0d9be08b6bab82265c0bd35b5fe462005e3c27ff4208e996446595",
+    "integration_test/e2ee_release/harness/registered_backend_transport.dart": "2daf986962490dc2c5f5447ac629d00759d8166c07fec2a42e3d3519e3cf7c3a",
+    "integration_test/e2ee_release/harness/release_socket_session.dart": "665bed7ea170fb62d9071d2ffff962750f89197c88a03fdf3f743bd640ad31b3",
+    "integration_test/e2ee_release/harness/server_ack_tracker.dart": "15089c8656395f6ddb410ae07b0f90cd7cbbb2024319b9d5684cddfcb8c2db74",
+    "integration_test/e2ee_release/README.md": "8fe9135955af265ef7baf8a2062f0d30e08fd3962a96c6dd56e13a759232d35c"
+  },
+  "executed": 33,
+  "failed": 0,
+  "exit_code": 0,
+  "log": "c11-current-transport-components.log",
+  "log_sha256": "57315b9b0cdcc91d5305be196bbdec2419eb56caa073a738e8c3b09b5e8a68c5",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "implemented_components": [
+    "registered C2C composition",
+    "explicit IO socket implementation",
+    "generation-aware server ACK correlation",
+    "explicit consumer receipt confirmation"
+  ],
+  "remaining": [
+    "authorized real fixture and IO connection execution",
+    "real Android/macOS decrypt/display oracles",
+    "C2G group operations and member capability journeys",
+    "complete attack/trace evidence and final frozen requalification"
+  ],
+  "historical_contract": "c11-real-transport-source-contract.md is retained as original source-bound design; its NOT_IMPLEMENTED wording describes that earlier snapshot, not the current C2C components."
+}

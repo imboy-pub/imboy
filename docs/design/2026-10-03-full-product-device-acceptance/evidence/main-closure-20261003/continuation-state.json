@@ -4050,5 +4050,15 @@
     "exit_code": 0,
     "product_pass": false,
     "temporary_worktrees_removed": 3
+  },
+  "c11_current_transport_reconciliation": {
+    "receipt": "c11-current-transport-reconciliation.json",
+    "receipt_sha256": "6ddbcdabd5dd3d49f710e529c0b31ae76897e3cd106887e5eef01e55626caafb",
+    "app_head": "744a547799b04198d918aa46dd21d970d3947147",
+    "executed": 33,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false,
+    "real_transport_status": "COMPONENTS_IMPLEMENTED_REAL_JOURNEYS_NOT_EXECUTED"
   }
 }

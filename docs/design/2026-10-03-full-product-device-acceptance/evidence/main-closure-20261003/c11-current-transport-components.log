@@ -1,0 +1,35 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: configured real interface requires matching server ACK
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: wrong pong never confirms and timeout closes channel
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: wrong pong never confirms and timeout closes channel
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: wrong pong never confirms and timeout closes channel
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: wrong pong never confirms and timeout closes channel
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: wrong pong never confirms and timeout closes channel
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: wrong pong never confirms and timeout closes channel
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: synthetic protected identities fail before channel write
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: disconnect during token resolution prevents later connection
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: C2C ACK only completes exact matching request once
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: C2G ACK only completes exact matching request once
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept different ID
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept different reply
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept missing reply
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept numeric ID
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept wrong direction
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept client confirmation
+00:00 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept business error
+00:00 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: other devices and stale connections cannot complete pending send
+00:00 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: deadline and late ACK remain unconfirmed
+00:00 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: expiry is exact and does not imply rejection or offline recipient
+00:00 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: disconnect drains only its generation and device
+00:00 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: rejects malformed registrations and negative clock
+00:00 +33: All tests passed!
