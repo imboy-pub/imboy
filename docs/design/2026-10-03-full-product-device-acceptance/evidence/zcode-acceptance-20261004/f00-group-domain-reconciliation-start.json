@@ -1,0 +1,46 @@
+{
+  "id": "F00-GROUP-DOMAIN-RECONCILIATION-START",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T07:46:27+08:00",
+  "scope_boundary": "本轮独占核查 lib/page/group/** 个人群+公共群+群应用功能；企业群/Workspace/organization 归 F10/F11 domain worker（dispatch-cards F10-S01/S02、F11-S01/S02），本轮只标记移交清单，不重复实现、不抢写共享路径",
+  "totals": {
+    "group_functions": 296,
+    "missing_targets": 271,
+    "personal_scope_this_run": 271,
+    "enterprise_handover": 0
+  },
+  "pages": {
+    "lib/page/group/group_detail/group_detail_page.dart": 17,
+    "lib/page/group/album/group_album_photo_page.dart": 12,
+    "lib/page/group/announcement/group_announcement_page.dart": 12,
+    "lib/page/group/file/group_file_page.dart": 12,
+    "lib/page/group/group_member/group_member_page.dart": 12,
+    "lib/page/group/schedule/group_schedule_detail_page.dart": 12,
+    "lib/page/group/task/group_task_detail_page.dart": 12,
+    "lib/page/group/task/group_task_page.dart": 12,
+    "lib/page/group/vote/group_vote_detail_page.dart": 12,
+    "lib/page/group/launch_chat/launch_chat_page.dart": 12,
+    "lib/page/group/group_detail/add_member_page.dart": 11,
+    "lib/page/group/face_to_face/face_to_face_page.dart": 11,
+    "lib/page/group/album/group_album_photo_detail_page.dart": 11,
+    "lib/page/group/group_member/group_member_detail_page.dart": 11,
+    "lib/page/group/vote/group_vote_page.dart": 11,
+    "lib/page/group/group_detail/change_info_page.dart": 10,
+    "lib/page/group/face_to_face/face_to_face_confirm_page.dart": 10,
+    "lib/page/group/album/group_album_page.dart": 10,
+    "lib/page/group/category/group_category_detail_page.dart": 10,
+    "lib/page/group/category/group_category_page.dart": 10,
+    "lib/page/group/tag/group_tag_page.dart": 10,
+    "lib/page/group/group_detail/remove_member_page.dart": 10,
+    "lib/page/group/file/group_file_audio_preview_page.dart": 9,
+    "lib/page/group/group_select/group_select_page.dart": 9,
+    "lib/page/group/group_discovery/group_discovery_page.dart": 3
+  },
+  "enterprise_handover_ids": [],
+  "existing_journey_targets_bound": [
+    "integration_test/group/group_collaboration_readonly_test.dart",
+    "integration_test/group/group_management_readonly_test.dart"
+  ],
+  "next": "逐项判定下轮执行；与 contact 实现文件零交集（contact 只写 contact_setting 流程测试与 spec）",
+  "product_pass": false
+}

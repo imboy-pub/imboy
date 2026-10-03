@@ -1,0 +1,88 @@
+{
+  "id": "F01-CAPTURE-GATE-EVIDENCE-CLOSURE",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T07:45:29+08:00",
+  "candidate_binding": {
+    "app_head": "0a4a8a30dbf276571b52df7980512104ab71b756",
+    "commits": [
+      "fbe59138 run gate",
+      "0a4a8a30 capture gate"
+    ]
+  },
+  "scope_statement": "『无未资格化设备通道』仅限已审查的 auto_test.py run 与 capture 两条执行链；不外推整个工具集（其他脚本/手工 flutter 调用不在本门内）",
+  "pre_spawn_rejection_matrix": [
+    {
+      "input": "Android 真机",
+      "verdict": "PASS→执行",
+      "before_spawn": "n/a",
+      "test": "test_android_real_device_passes + qualified-positive spawn 断言"
+    },
+    {
+      "input": "macOS (darwin)",
+      "verdict": "PASS→执行",
+      "before_spawn": "n/a",
+      "test": "test_macos_desktop_passes / test_macos_execute_passes_gate_before_spawn"
+    },
+    {
+      "input": "未知设备 ID",
+      "verdict": "REJECT DEVICE_NOT_FOUND",
+      "before_spawn": "guarded subprocess 未被调用",
+      "test": "ExecuteGateBeforeSpawnTest / CaptureGateTest"
+    },
+    {
+      "input": "iOS 设备",
+      "verdict": "REJECT IOS_DEVICE_NOT_IN_PLATFORM_SET",
+      "before_spawn": true,
+      "test": "test_ios_execute_rejects_before_spawn; capture e2e RC=2"
+    },
+    {
+      "input": "Chrome/web",
+      "verdict": "REJECT UNSUPPORTED_TARGET_PLATFORM:web-javascript",
+      "before_spawn": true,
+      "test": "test_chrome_rejected"
+    },
+    {
+      "input": "Android 模拟器",
+      "verdict": "REJECT ANDROID_EMULATOR_FORBIDDEN",
+      "before_spawn": true,
+      "test": "test_android_emulator_rejected / capture emulator reject"
+    },
+    {
+      "input": "声明平台与真实不符",
+      "verdict": "REJECT --platform 与 targetPlatform 不一致（capture）",
+      "before_spawn": true,
+      "test": "test_capture_platform_mismatch_rejected_before_spawn"
+    },
+    {
+      "input": "emulator 标志缺失",
+      "verdict": "REJECT ANDROID_EMULATOR_FLAG_UNKNOWN (fail-closed)",
+      "before_spawn": true,
+      "test": "test_android_with_missing_emulator_flag_rejected_fail_closed"
+    }
+  ],
+  "behavior_tests": {
+    "file": "scripts/auto_test_lib/auto_test_platform_gate_test.py",
+    "cases": 26,
+    "result": "OK 26/26",
+    "run_cmd": "python3 -m unittest scripts.auto_test_lib.auto_test_platform_gate_test -v"
+  },
+  "e2e_logs": [
+    {
+      "log": "gate-ios.log",
+      "sha256": "f6b3b09429d08efb674c5ce09b3f3c74099a31a42396ceb6f340cc008f933615"
+    },
+    {
+      "log": "gate-unknown.log",
+      "sha256": "166ae886e57792e0bfc5f27cb68740d8cc0c1d8946887e41bcf0bb8ec4fd8bd2"
+    },
+    {
+      "log": "gate-macos-dryrun.log",
+      "sha256": "6afa4a0dd8f3482bb10f4c0b28da7e63f986d12711c6ba2a825c3b60b2d555b4"
+    },
+    {
+      "log": "capture-gate-ios-negative.log",
+      "sha256": "cccfea124dd757fc52dcb91b43d5057c5e90b3f2f8571771712e469b99a11bd1"
+    }
+  ],
+  "product_pass": false
+}

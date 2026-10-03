@@ -1,0 +1,30 @@
+{
+  "id": "F00-PLATFORM-SENSITIVE-CAPABILITY-REVIEW",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T07:45:29+08:00",
+  "principle": "不把 Patrol 当默认前置；先核查现有能力",
+  "items": [
+    {
+      "fn": "fn:contact:confirm_new_friend_page:009 提交前收起键盘",
+      "existing_capability": "收起键盘是代码行为（FocusScope.unfocus / FocusManager），widget 测试可用 Focus 断言验证『提交时焦点已释放』，无需原生键盘",
+      "verdict": "COVERABLE_WITH_EXISTING_WIDGET_TESTS — 从 PLATFORM_SENSITIVE 降级为 widget 级；仅『真实系统键盘动画』不可测且非验收面"
+    },
+    {
+      "fn": "fn:contact:people_nearby_page:003 申请并校验定位权限",
+      "existing_capability": "geolocator 类插件的权限状态可通过 TestDefaultBinaryMessenger mock method-channel 返回 denied/whileInUse/Granted，widget 测试可覆盖『权限拒绝→空态引导』分支；真机权限弹窗的真实弹出属 OS 层",
+      "verdict": "SPLIT: mock 分支可用现有 widget/integration 覆盖；真实系统权限弹窗需真机人工步骤（可复现 manual step 列入真机批次），不足以构成引入 Patrol 的理由"
+    },
+    {
+      "fn": "fn:contact:people_nearby_page:001 冷启动优先取系统缓存位置",
+      "existing_capability": "缓存读取是 Dart 层逻辑（mock channel 返回缓存值即可验证优先级）；OS 缓存本身非产品验收面",
+      "verdict": "COVERABLE_WITH_EXISTING_TESTS"
+    },
+    {
+      "fn": "fn:contact:people_nearby_page:002 定位链路分段埋点与超时收敛",
+      "existing_capability": "纯 Dart 逻辑（埋点事件+超时参数），单测可覆盖",
+      "verdict": "COVERABLE_WITH_EXISTING_TESTS"
+    }
+  ],
+  "conclusion": "4 项中 3 项可由现有 widget/单测覆盖（降级重分类），1 项拆分：mock 分支现有能力可测，真实 OS 权限弹窗列为真机人工步骤。Patrol 接入暂无必要性证据；若未来权限弹窗自动化成为高频回归面再提接入范围评审",
+  "product_pass": false
+}

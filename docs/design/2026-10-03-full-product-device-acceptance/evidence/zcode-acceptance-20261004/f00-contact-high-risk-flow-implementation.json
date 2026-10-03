@@ -1,0 +1,88 @@
+{
+  "id": "F00-CONTACT-HIGH-RISK-FLOW-IMPLEMENTATION",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T07:45:29+08:00",
+  "app_head": "0a4a8a30dbf276571b52df7980512104ab71b756",
+  "strategy": "按业务流程归并（非 72 独立测试）：一段流程多断言覆盖多个功能行；优先删除/黑名单破坏性闭环",
+  "implemented": {
+    "file": "imboyapp/test/unit_test/page/contact/contact_setting_destructive_flow_test.dart",
+    "cases": [
+      {
+        "case": "流程A-1 删除联系人：红字入口→二次确认含备注回显→取消不删除",
+        "covers": [
+          "fn:contact:people_info_more_page:001",
+          "fn:contact:people_info_more_page:004"
+        ],
+        "assertions": [
+          "DefaultTextStyle 穿透色 == iosRed",
+          "确认框出现",
+          "tipDeleteContact(param: 备注老王)",
+          "取消后 spy.deleteCalls==0"
+        ]
+      },
+      {
+        "case": "流程A-2 删除：确认后调用删除，服务端失败不离开页面",
+        "covers": [
+          "fn:contact:people_info_more_page:005"
+        ],
+        "assertions": [
+          "deleteCalls==1",
+          "deleteContact=false 时不跳转首页（先API后本地保护语义）"
+        ]
+      },
+      {
+        "case": "流程B-1 黑名单（未拉黑）：加入确认文案+取消不切换+图标非红",
+        "covers": [
+          "fn:contact:people_info_more_page:006",
+          "fn:contact:people_info_more_page:010"
+        ],
+        "assertions": [
+          "switch 初值 false",
+          "addedToDenylistTips 确认框",
+          "取消后 value 仍 false 且 toggleCalls==0",
+          "图标色非 red"
+        ]
+      },
+      {
+        "case": "流程B-2 黑名单（已拉黑）：移出确认文案+图标红",
+        "covers": [
+          "fn:contact:people_info_more_page:007",
+          "fn:contact:people_info_more_page:010"
+        ],
+        "assertions": [
+          "switch 初值 true",
+          "图标色 == iosRed",
+          "confirmRemoveFromDenylist 确认框",
+          "取消不切换"
+        ]
+      },
+      {
+        "case": "流程C 举报：四种理由 actionSheet（不提交）",
+        "covers": [
+          "fn:contact:people_info_more_page:008"
+        ],
+        "assertions": [
+          "spam/harassment/inappropriate/other 四项 findsOneWidget",
+          "不点提交不触发 ReportApi"
+        ]
+      }
+    ]
+  },
+  "verification": {
+    "flutter test contact_setting_destructive_flow_test.dart": "RC=0 All tests passed (5/5)",
+    "dart analyze test/unit_test/page/contact/ lib/page/contact/": "No issues",
+    "flutter test test/unit_test/page/contact/ (回归)": "RC=0, 64 pass"
+  },
+  "page_attribution_correction": "fn people_info_more_page:001-010 的真实 UI 位于 lib/page/contact/contact_setting/contact_setting_page.dart（inventory 台账页面归属偏差；原始台账行保持不改，只在本 receipt 记录）",
+  "binding_decision": {
+    "attempted": "spec sources 加入 contact_setting_page 后，生成器把该页 10 项功能机械绑到 friend_management_test（同页面推导）",
+    "rejected": "friend_management 旅程（列表/进详情）不覆盖这些动作——正是禁止的按页面批量挂靠；inventory 回滚至 1763 缺目标基线",
+    "final": "spec CONTACT-FRIEND-MANAGE-001 仅登记 unit_targets（widget 流程断言证据）；integration target 绑定待旅程真正扩展覆盖后再生"
+  },
+  "not_done": [
+    "fn009 举报提交（需真实后端）",
+    "fn002/003（备注标签页流程，后续批次）",
+    "设备格全部 NOT_EXECUTED"
+  ],
+  "product_pass": false
+}
