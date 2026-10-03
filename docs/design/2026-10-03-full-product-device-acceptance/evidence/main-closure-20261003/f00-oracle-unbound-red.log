@@ -1,0 +1,13 @@
+F.....................
+======================================================================
+FAIL: test_declared_oracle_with_unmatched_target_is_rejected (test_inventory.FunctionTargetDeclarationTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_inventory.py", line 66, in test_declared_oracle_with_unmatched_target_is_rejected
+    inventory.constrain_function_targets([function], [spec])
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 22 tests in 1.389s
+
+FAILED (failures=1)

@@ -1,0 +1,23 @@
+{
+  "scope": "STATIC_ORACLE_BINDING_GATE_ONLY",
+  "app_head": "a5958389e4281adbbe9f2ac4dfc416abe53e18ea",
+  "tooling_tests": 446,
+  "exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "f00-oracle-unbound-red.log",
+      "sha256": "65032bbee653f41ea440f256a6e5b0c6d97daee3b4f693d8946652c8070e2060"
+    },
+    {
+      "path": "f00-oracle-unbound-green.log",
+      "sha256": "3ca088802491085ea053e17f9a07c56d83175f7a92fff2f61c78ed7be5bd5c6a"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "real_backend_execution": false,
+  "inventory_content_changed": false,
+  "behavior": "Reject any declared target/function oracle not actually applied to an inventory record"
+}
