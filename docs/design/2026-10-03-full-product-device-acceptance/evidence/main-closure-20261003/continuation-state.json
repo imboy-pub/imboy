@@ -2759,5 +2759,48 @@
     "app_head": "9f654a008038c591d290bad44d4e115556c74e85",
     "status": "SOURCE_INVENTORIED_OWNER_AND_CASE_ORACLE_MAPPING_PENDING",
     "next_action": "Confirm proposed domain owners, trace runtime entry and define each page action/state case with concrete real-device/backend oracle; preserve required set."
+  },
+  "f16_init_error_widget_recovery": {
+    "id": "PREPARATION-F16-INIT-ERROR-WIDGET-RECOVERY",
+    "scope": "HOST_WIDGET_BEHAVIOR_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "network_executed": false,
+    "app_head": "50b4210df8c73dce7d587057a3d04044487a5d62",
+    "page": "lib/page/error/init_error_page.dart",
+    "page_sha256": "5acf337e17d1073082bce75b7bd68609ebb10709c8c280974ea28d6d2735cb89",
+    "target": "test/unit_test/page/error/init_error_page_test.dart",
+    "target_sha256": "fe2b936f7a032bc7ea0bb725e1f5e8a80bcb5a61061b1deccf4b88152f630ac8",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/page/error/init_error_page_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "executed": 5,
+    "exit": 0,
+    "log": {
+      "path": "f16-init-error-widget-recovery.log",
+      "sha256": "b93f6259b55d9e749eabb408bee049c5cd23fca5ae952f0364a1b892f5035a95"
+    },
+    "analyze_exit": 0,
+    "reviews": [
+      "FLUTTER_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "behavior_oracles": [
+      "Error title/detail and retry control rendered",
+      "Pending retry disables control",
+      "Thrown retry restores control and next retry executes",
+      "Two taps before rebuild invoke callback once",
+      "Completion after disposal produces no framework exception"
+    ],
+    "remaining": [
+      "Bootstrap actual initialization failure and success transition",
+      "Android/macOS real-device recovery and visual state",
+      "Full frozen F16 required page/state collection"
+    ],
+    "proof_limit": "Real widget implementation with synthetic callback errors; no app initialization services, real database or device verified. No F16 parent PASS."
   }
 }

@@ -1,0 +1,8 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/error/init_error_page_test.dart
+00:00 +0: 渲染标题、错误详情与重试按钮
+00:00 +1: 点击重试触发回调并进入重试中状态
+00:00 +2: 重试失败后恢复可点击并允许第二次成功重试
+[InitErrorPage] retry threw: Bad state: retry failure
+00:00 +3: 同一帧快速连续点击只启动一次重试
+00:00 +4: 页面卸载后重试完成不更新已销毁状态
+00:00 +5: All tests passed!
