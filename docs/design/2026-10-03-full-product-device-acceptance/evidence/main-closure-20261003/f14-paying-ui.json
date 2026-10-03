@@ -1,0 +1,27 @@
+{
+  "id": "F14-PAYING-UI-FAILURE-RECOVERY",
+  "app_head": "87573e2299db5574cf6511462a188c742c80ccfd",
+  "scope": "LOCAL_HOST_WIDGET_AND_PRODUCTION_NOTIFIER_WITH_FAKE_API",
+  "executed": 7,
+  "failed": 0,
+  "exit_code": 0,
+  "analysis": "No issues found",
+  "review": "DUAL_APPROVED",
+  "design_case_id": "F14-PLAN-LIST-010",
+  "generated_id": "fn:billing:plan_list_page:006",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "log": "f14-paying-ui.log",
+  "log_sha256": "8aec122d4a9ca33b6ab4e2055f399b0cf5e020cac6f47ff2c17f3de55bc6ac56",
+  "oracles": [
+    "Actual UI subscribe/payment selection invokes fake API once",
+    "Pending production notifier disables subscription button",
+    "Null subscription result restores enabled button without invoice creation"
+  ],
+  "limits": [
+    "No actual backend or payment launched",
+    "Does not prove successful payment, cached-callback reentry or full duplicate-request protection",
+    "No original acceptance ID upgraded"
+  ]
+}

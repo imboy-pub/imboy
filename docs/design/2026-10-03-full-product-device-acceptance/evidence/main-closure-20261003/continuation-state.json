@@ -4262,5 +4262,12 @@
     "app_head": "240fc891b5cfe36314474bea92effabe54d19392",
     "executed": 6,
     "product_pass": false
+  },
+  "f14_paying_ui_recovery": {
+    "receipt": "f14-paying-ui.json",
+    "receipt_sha256": "78e501df3210c32b9896816bc4b5f132cd503871748d74dd7896381af5665556",
+    "app_head": "87573e2299db5574cf6511462a188c742c80ccfd",
+    "executed": 7,
+    "product_pass": false
   }
 }

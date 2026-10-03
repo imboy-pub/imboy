@@ -1,0 +1,10 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart
+00:00 +0: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +1: PL-6 取消支付方式选择不订阅、不创建账单且可重新打开
+00:00 +2: PL-1 套餐列表为空 → 渲染空态文案
+00:00 +3: PL-2 多套餐渲染：价格分→元（100 → ¥1.00）、周期与配额中文
+00:00 +4: PL-3 加载失败 → 错误态 + 重试按钮，重试触发重新加载
+00:00 +5: PL-4 失败后重试返回空列表应清除旧错误并显示空态
+00:00 +6: PL-5 请求异常后结束加载，重试可恢复空态
+[BillingNotifier] plan load failed: _Exception
+00:00 +7: All tests passed!
