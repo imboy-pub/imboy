@@ -2020,5 +2020,106 @@
       "test text/v2/protobuf success duplicate and storage failure",
       "verify true storage and device journeys"
     ]
+  },
+  "c11_ack_persistence_failure_fix": {
+    "id": "PREPARATION-ACK-PERSISTENCE-FAILURE-PROPAGATION",
+    "scope": "LOCAL_MOCKED_STORAGE_AND_PROTOCOL_FAILURES",
+    "product_pass": false,
+    "network_executed": false,
+    "database_executed": false,
+    "backend_head": "246298dc52de3fa89ea608c6a34193209d94a2ac",
+    "executed": 107,
+    "failed": 0,
+    "logs": [
+      {
+        "path": "c11-ack-failure-red.log",
+        "sha256": "1cb211efc0ebb93d9e931a861223bd66253965dadd99bf321ac4c58b66b954a7",
+        "exit": 2,
+        "passed": 45,
+        "phase": "EXPECTED_RED_STORAGE_FAILURE"
+      },
+      {
+        "path": "c11-ack-persistence-new.log",
+        "sha256": "d6827e60adb3b04cc616f2f4c64c6b30e26761d7b5bf68f7f2bbf2fa278fd2aa",
+        "exit": 2,
+        "passed": 8,
+        "phase": "FAILED_V2_TEST_FIXTURE_PROTOCOL"
+      },
+      {
+        "path": "c11-ack-persistence-reviewed.log",
+        "sha256": "e3fefe761da99dcc1a776cc464a477a7d3de6525bd2dee6c93c250bb8759db27",
+        "exit": 0,
+        "passed": 10,
+        "phase": "NEW_FAILURE_PROPAGATION"
+      },
+      {
+        "path": "c11-ack-regression-websocket_handler_tests.log",
+        "sha256": "f691b8022d6cc5cc8fec635bfa6ed6bbc4dc1c381bd376ad603b5a3622620b0a",
+        "exit": 0,
+        "passed": 38,
+        "phase": "REGRESSION"
+      },
+      {
+        "path": "c11-ack-regression-messaging_logic_tests.log",
+        "sha256": "4a6403c706b5912aac191cb7b373e58e7bd677adbc25de414c17c7b895365241",
+        "exit": 0,
+        "passed": 13,
+        "phase": "REGRESSION"
+      },
+      {
+        "path": "c11-ack-regression-msg_operation_ds_tests.log",
+        "sha256": "41d4a2e9e1d482257e4a0691247649d356ba3c47ff732d73d167444a3781250c",
+        "exit": 0,
+        "passed": 46,
+        "phase": "REGRESSION"
+      }
+    ],
+    "review": "RUNNER_CODE_REVIEW_APPROVE",
+    "commands": [
+      [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=client_ack_persistence_tests"
+      ],
+      [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=websocket_handler_tests"
+      ],
+      [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=messaging_logic_tests"
+      ],
+      [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=msg_operation_ds_tests"
+      ]
+    ],
+    "behavior": [
+      "per-device C2C/S2C storage failure distinct from duplicate ACK",
+      "WS text/v2/protobuf failures and exceptions retain message correlation and retry",
+      "no successful delivery metric on persistence failure",
+      "REST batch receipt failure propagates instead of processed success"
+    ],
+    "remaining": [
+      "real database fault and retry recovery journey",
+      "sender other-device live synchronization",
+      "real dual-device decrypt/display",
+      "97-ID frozen final qualification"
+    ]
   }
 }

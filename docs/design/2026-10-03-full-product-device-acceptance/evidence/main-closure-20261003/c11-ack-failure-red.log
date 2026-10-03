@@ -1,0 +1,39 @@
+erlang.mk:26: Please upgrade to GNU Make 4 or later: https://erlang.mk/guide/installation.html
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ GEN    test-build
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ ERLC   msg_operation_ds_tests.erl
+ GEN    eunit
+msg_operation_ds_tests:644: -ack_c2c_msg_mark_failure_skips_cleanup_test_/0-fun-3-...*failed*
+in function msg_operation_ds_tests:'-ack_c2c_msg_mark_failure_skips_cleanup_test_/0-fun-3-'/0 (test/ds/msg_operation_ds_tests.erl, line 650)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,msg_operation_ds_tests},
+              {line,650},
+              {expression,"msg_operation_ds : ack_c2c_msg ( << \"msg123\" >> , 100 , << \"did-a\" >> )"},
+              {expected,{error,<<"ack_persistence_failed">>}},
+              {value,{ok,0}}]}
+  output:<<"">>
+
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 45.
+make: *** [eunit] Error 2

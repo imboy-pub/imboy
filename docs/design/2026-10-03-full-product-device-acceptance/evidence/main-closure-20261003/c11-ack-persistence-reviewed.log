@@ -1,0 +1,24 @@
+erlang.mk:26: Please upgrade to GNU Make 4 or later: https://erlang.mk/guide/installation.html
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ DEPEND imboy.d
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ ERLC   messaging_logic.erl msg_ack_logic.erl
+ APP    imboy
+ GEN    test-build
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ ERLC   client_ack_persistence_tests.erl
+ GEN    eunit
+  All 10 tests passed.

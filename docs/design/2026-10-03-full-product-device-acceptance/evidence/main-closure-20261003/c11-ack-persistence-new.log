@@ -1,0 +1,47 @@
+erlang.mk:26: Please upgrade to GNU Make 4 or later: https://erlang.mk/guide/installation.html
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ GEN    test-build
+Makefile:247: warning: overriding commands for target `beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old commands for target `beam-cache-restore-app'
+Makefile:249: warning: overriding commands for target `beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old commands for target `beam-cache-restore-test'
+ ERLC   client_ack_persistence_tests.erl
+ GEN    eunit
+client_ack_persistence_tests:29: -ws_case/2-fun-6-...*failed*
+in function client_ack_persistence_tests:'-ws_case/2-fun-6-'/1 (test/api/client_ack_persistence_tests.erl, line 44)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{badmatch,{error,bad_magic}}
+  output:<<"">>
+
+client_ack_persistence_tests:29: -ws_case/2-fun-6-...*failed*
+in function client_ack_persistence_tests:'-ws_case/2-fun-6-'/1 (test/api/client_ack_persistence_tests.erl, line 44)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{badmatch,{error,bad_magic}}
+  output:<<"">>
+
+=======================================================
+  Failed: 2.  Skipped: 0.  Passed: 8.
+make: *** [eunit] Error 2
