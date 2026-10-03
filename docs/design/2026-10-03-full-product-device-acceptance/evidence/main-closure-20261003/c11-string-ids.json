@@ -1,0 +1,45 @@
+{
+  "id": "C11-PRODUCTION-DOWNLINK-STRING-IDS",
+  "scope": "SOURCE_BOUND_PROTOCOL_ADAPTATION_AND_HOST_FAKE_SOCKET_TESTS",
+  "app_head": "d5e4e0312f159fd07bcff61677b045723477acf6",
+  "backend_oracle_source": {
+    "path": "src/ds/message_ds.erl",
+    "sha256": "c06539832f0cb35183a225a6e9d3b64c7ad666e53eaab848dfe95ea84f006972",
+    "function": "assemble_msg/8",
+    "semantics": "Downlink account IDs are strings; host receive fixture uses exact IDs above 2^53."
+  },
+  "red": {
+    "passed": 13,
+    "failed": 1,
+    "exit_code": 1,
+    "oracle": "Valid production-style string IDs rejected: expected inbox length1, actual0"
+  },
+  "green": {
+    "passed": 28,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "review_recovery": "Flutter reviewer blocked initial nonstring fallback; fixed explicit required positive int/canonical String checks and added null/bool/double/missing-field negative tests; final re-review approved.",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "analysis": "No issues found",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "logs": [
+    {
+      "phase": "RED",
+      "path": "c11-string-ids-red.log",
+      "sha256": "45d7e3d1ece111be8992827b013d87bb73ae0526f9930d1d657ee88f42ecbe51"
+    },
+    {
+      "phase": "GREEN_REVIEWED",
+      "path": "c11-string-ids-fixed.log",
+      "sha256": "db476b6f2136127e0df5b9527f73712a25bfefffada982dc6112a173d4299bb0"
+    }
+  ],
+  "limits": [
+    "No actual server/OS device executed",
+    "Does not close AC-22/23 or C2G",
+    "String timestamp formats and other downlink representation variants need independent source reconciliation; this change handles ID semantics only"
+  ]
+}

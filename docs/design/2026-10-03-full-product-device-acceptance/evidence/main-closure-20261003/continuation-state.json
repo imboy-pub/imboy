@@ -4069,5 +4069,15 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "c11_production_downlink_string_ids": {
+    "receipt": "c11-string-ids.json",
+    "receipt_sha256": "22ca06232aa1b0b2e84908eab33b5ceacb946e1fb1bff15529dc9a1ecbb97bf9",
+    "app_head": "d5e4e0312f159fd07bcff61677b045723477acf6",
+    "executed": 28,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false,
+    "review": "APPROVED_AFTER_ID_TYPE_REPAIR"
   }
 }

@@ -1,0 +1,28 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart
+00:00 +0: configured real interface requires matching server ACK
+00:00 +1: local send without server ACK stays unconfirmed
+00:00 +2: disconnect completes pending delivery as unconfirmed
+00:00 +3: inbound sender-did mismatch closes connection without queuing
+00:00 +4: inbound sender-account mismatch closes connection without queuing
+00:00 +5: inbound missing-device mismatch closes connection without queuing
+00:00 +6: production string IDs are received and can be acknowledged
+00:00 +6 -1: production string IDs are received and can be acknowledged [E]
+  Expected: an object with length of <1>
+    Actual: []
+     Which: has length of <0>
+  
+  package:matcher                                                           expect
+  package:flutter_test/src/widget_tester.dart 473:18                        expect
+  test/unit_test/service/e2ee_registered_backend_transport_test.dart 108:5  main.<fn>
+  
+00:00 +6 -1: actual received ciphertext queues once per drain
+00:00 +7 -1: receipt error cannot become success
+00:00 +8 -1: receipt disconnect cannot become success
+00:00 +9 -1: cannot acknowledge a locally generated outgoing frame
+00:00 +10 -1: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +11 -1: synthetic protected identities fail before channel write
+00:00 +12 -1: disconnect during token resolution prevents later connection
+00:00 +13 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: production string IDs are received and can be acknowledged

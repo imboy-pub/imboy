@@ -1,0 +1,30 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: configured real interface requires matching server ACK
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: configured real interface requires matching server ACK
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: configured real interface requires matching server ACK
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: configured real interface requires matching server ACK
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: accepts actual outbound router header with protocol stub
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: disconnect completes pending delivery as unconfirmed
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: inbound sender-did mismatch closes connection without queuing
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: inbound sender-account mismatch closes connection without queuing
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: inbound missing-device mismatch closes connection without queuing
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: production string IDs are received and can be acknowledged
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: actual received ciphertext queues once per drain
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt error cannot become success
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt disconnect cannot become success
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: cannot acknowledge a locally generated outgoing frame
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: synthetic protected identities fail before channel write
+00:00 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: disconnect during token resolution prevents later connection
+00:00 +28: All tests passed!
