@@ -1,0 +1,29 @@
+{
+  "scope": "SOURCE_TRACE_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "heads": {
+    "imboy": "35bb959d4dcc414f44c982ffaaad78ff22ad5ce7",
+    "imboyapp": "a74b3681ebaab9572e65886db96768d8881568d7"
+  },
+  "sources": {
+    "/Users/leeyi/project/imboy.pub/imboy/src/logic/msg_c2c_logic.erl": "4998a877a1110b8e63ecf63043da836dc64599405095ef0b06cf02ba6e773a70",
+    "/Users/leeyi/project/imboy.pub/imboy/src/lib/imboy_message_helper.erl": "00bb46df22487acf297d2768083806b45489788930776fa17cf7e33185216abc",
+    "/Users/leeyi/project/imboy.pub/imboy/src/ds/message_ds.erl": "c06539832f0cb35183a225a6e9d3b64c7ad666e53eaab848dfe95ea84f006972",
+    "/Users/leeyi/project/imboy.pub/imboyapp/lib/page/chat/chat/services/chat_network_service.dart": "2bbdac800804a751dfeeb508db819a6cf578c99c6487b5ebc4a125bbcc5080f6",
+    "/Users/leeyi/project/imboy.pub/imboyapp/integration_test/e2ee_release/harness/registered_wire_binding.dart": "e8199876eaa92d9b2d9109362c9650ba808da5f7e10e72e3e05d8761f734fcd5"
+  },
+  "finding": "Client builds own-device ciphertext copies; inspected normal C2C realtime call chain dispatches only to ToId. Sender-device echo remains unproven, not declared absent globally.",
+  "trace": [
+    "chat_network_service.dart constructs peer and other self-device targets",
+    "msg_c2c_logic.erl ordinary realtime delivery calls encode_and_send(ToId,...)",
+    "imboy_message_helper.erl passes ToUid unchanged to message_ds:send_next",
+    "message_ds.erl send_next_loop looks up imboy_syn:list_by_uid(ToUid)"
+  ],
+  "next_required": [
+    "trace independent sender sync and offline recovery paths",
+    "add behavior oracle capturing recipient and sender-other-device delivery before declaring closure",
+    "implement missing production delivery if no independent route exists",
+    "extend registered binding for production full device envelope map with explicit skipped-device policy"
+  ]
+}
