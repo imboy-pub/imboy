@@ -241,8 +241,7 @@ parse_args() {
     case "$1" in
       --strict|--pre-switch)
         if [ "$MODE_SET" -eq 1 ] && [ "$1" != "--$MODE" ]; then
-          err "$PROG:0: choose exactly one mode (--strict or --pre-switch)"
-          exit 2
+          parse_fatal "$PROG:0: choose exactly one mode (--strict or --pre-switch)"
         fi
         MODE="${1#--}"
         MODE_SET=1
@@ -251,8 +250,7 @@ parse_args() {
       --push) WANT_PUSH=1 ;;
       --pushgateway-url)
         if [ $# -lt 2 ]; then
-          err "$PROG:0: --pushgateway-url requires a URL"
-          exit 2
+          parse_fatal "$PROG:0: --pushgateway-url requires a URL"
         fi
         PUSH_URL="$2"
         shift
@@ -267,8 +265,7 @@ parse_args() {
         ;;
       -h|--help) usage; exit 0 ;;
       --*|-*)
-        err "$PROG:0: unknown option: $1"
-        exit 2
+        parse_fatal "$PROG:0: unknown option: $1"
         ;;
       *) CONFIGS+=("$1") ;;
     esac
@@ -577,7 +574,7 @@ handle_block_open() {
   # SRV_OPEN=0 下仍 fatal。upstream 的 `}` 只减 DEPTH（SRV_OPEN=0 时不触发
   # evaluate_server）。其余顶层块维持 fail-closed。
   if [ "$DEPTH" -eq 0 ] && [ "$word" != upstream ]; then
-    parse_fatal "$file:$lineno: unexpected top-level block '$word' (only server blocks are supported)"
+    parse_fatal "$file:$lineno: unexpected top-level block '$word' (only server and upstream blocks are supported)"
   fi
   DEPTH=$((DEPTH + 1))
   return 0

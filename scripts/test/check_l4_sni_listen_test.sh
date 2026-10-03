@@ -834,12 +834,27 @@ server {
 NGINX
 run_check "$TMP/u03.conf"
 assert_rc 2 "顶层 map 块 → 仍退出 2（其余顶层块 fail-closed 不变）"
-assert_grep "map 块诊断文案不变" "unexpected top-level block 'map' \(only server blocks are supported\)" "$TMP/err"
+assert_grep "map 块诊断文案（v1.2 后含 upstream 提示）" "unexpected top-level block 'map' \(only server and upstream blocks are supported\)" "$TMP/err"
 
 run_check --metrics "$TMP/u01.conf"
 assert_rc 0 "upstream 后随合法 HTTPS server 的 --metrics → 通过"
 assert_count 1 "drift 序列仍仅来自 HTTPS server（upstream 不产出序列）" '^imboy_l4_sni_listen_drift\{' "$TMP/out"
 assert_grep "唯一序列标签为 HTTPS server 的 server_name" 'imboy_l4_sni_listen_drift\{config_file="[^"]*",server="up\.example\.com"\} 0' "$TMP/out"
+
+echo "== usage 类参数错误的统一收尾（NOTE-4：经 finalize，--push 可见） =="
+
+run_check --definitely-unknown
+assert_rc 2 "未知选项（无 --push）→ 退出 2"
+assert_grep "未知选项诊断" 'unknown option: --definitely-unknown' "$TMP/err"
+assert_grep "usage 错误也走 finalize 收尾（stdout 有 CHECK_INPUT_ERROR）" '^CHECK_INPUT_ERROR: mode=strict files=0' "$TMP/out"
+
+run_check --strict --pre-switch
+assert_rc 2 "模式互斥 → 退出 2"
+assert_grep "模式互斥诊断" 'choose exactly one mode' "$TMP/err"
+
+run_check --push --definitely-unknown
+assert_rc 3 "未知选项 + --push 且无 URL → 推送失败优先（3>2 既有优先级）"
+assert_grep "推送缺失诊断与 usage 诊断同时在场" 'no Pushgateway URL is configured' "$TMP/err"
 
 echo "== 结果：PASS=$PASS FAIL=$FAIL SKIP=$SKIP =="
 if [ "$FAIL" -ne 0 ]; then
