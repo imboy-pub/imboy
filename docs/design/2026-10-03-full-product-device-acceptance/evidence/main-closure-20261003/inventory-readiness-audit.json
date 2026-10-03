@@ -1,0 +1,19 @@
+{
+  "scope": "STATIC_READINESS_ONLY_NOT_IMPLEMENTATION_OR_PRODUCT_VERDICT",
+  "candidate_app_head": "aa11ed0d7366f04b796324939ae73b2462328dd7",
+  "inventory_sha256": "b6446681e626ead9e6130aba059ba3f4f91fb2ba26ab6543f98d3d9dd6b1aacf",
+  "functions_total": 1979,
+  "functions_with_readiness_gaps": 1763,
+  "placeholder_oracles": 231,
+  "missing_target_mappings": 1763,
+  "gap_manifest": "inventory-readiness-gaps.tsv",
+  "original_required_sets_unchanged": true,
+  "executable_business_oracles": "NOT_PROVEN",
+  "cli_command": [
+    "python3",
+    "scripts/auto_test_lib/inventory.py",
+    "--acceptance-check"
+  ],
+  "cli_exit": 64,
+  "product_pass": false
+}
