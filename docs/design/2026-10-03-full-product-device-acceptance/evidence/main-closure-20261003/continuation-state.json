@@ -4396,5 +4396,16 @@
     "app_head": "ea20c1b4b16059e7896ff665cd0f72a2f51b5abb",
     "tooling_tests": 447,
     "product_pass": false
+  },
+  "e2ee_group_failure_log_privacy": {
+    "receipt": "e2ee-group-log-redaction.json",
+    "backend_head": "b587f313433e2aa100b48d1459984719a88a7afb",
+    "tests": 38,
+    "product_pass": false
+  },
+  "e2ee_recovery_log_privacy": {
+    "receipt": "e2ee-recovery-log-redaction.json",
+    "tests": 11,
+    "product_pass": false
   }
 }

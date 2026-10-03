@@ -1,0 +1,42 @@
+{
+  "scope": "LOCAL_GROUP_FAILURE_LOG_PRIVACY_ONLY",
+  "backend_head": "b587f313433e2aa100b48d1459984719a88a7afb",
+  "behavior_red": {
+    "failed": 3,
+    "passed": 24,
+    "exit_code": 1
+  },
+  "green": {
+    "passed": 38,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-group-log-behavior-red.log",
+      "sha256": "87e2333d12e68c6d7e74393d96026d15f8e34a8df0a27a0b8ab7b8e4a7d89895"
+    },
+    {
+      "path": "e2ee-group-log-final-green.log",
+      "sha256": "9d64599b82c52861610e2e62b640aeb219fb2a24d00546bb6a88dd4687d7834a"
+    },
+    {
+      "path": "e2ee-group-log-compile.log",
+      "sha256": "6915229f2924b08105af90277bfe6aaa95e0a9a8ac44985b90d4a8b5e223d0b5"
+    }
+  ],
+  "source_hashes": {
+    "src/logic/e2ee_logic.erl": "cde0c69adb2cc87644d87586e7e7c95420f0fb04bbe1401d848159b2d227e82a",
+    "test/logic/e2ee_logic_tests.erl": "5a02d2019fe59828bf5638a3f2ab88ccae963264faaa48ce36338b06bfaf5425"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "limits": [
+    "Four group failure log sites remove uid/gid and arbitrary database/grant result; event and severity retained",
+    "No complete AC26 or SLO qualification"
+  ]
+}
