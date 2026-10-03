@@ -1,0 +1,40 @@
+{
+  "id": "PREPARATION-F08-BACKUP-RETRY-LATE-SUCCESS",
+  "scope": "HOST_WIDGET_AND_MOCK_UPLOAD_ONLY",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "app_head": "017fbb1fefc004fe9c60851b366752b38c9e27fc",
+  "target": "test/unit_test/page/settings/e2ee_backup_setup_page_widget_test.dart",
+  "target_sha256": "ccc9d4a3bde16cfc14afd5b675e8317a359d8e9a59ceec36e7613715a5821558",
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/page/settings/e2ee_backup_setup_page_widget_test.dart",
+    "--reporter",
+    "expanded"
+  ],
+  "executed": 7,
+  "exit": 0,
+  "analyze_exit": 0,
+  "reviews": [
+    "FLUTTER_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "log": {
+    "path": "f08-backup-retry-late-success.log",
+    "sha256": "67ddcf858ed88e6b2e7003c272c7403bd3ff31838bfa920a40c5b3a5a45b4b6d"
+  },
+  "behavior_oracles": [
+    "Failed attempt leaves completion false and cached passphrase empty",
+    "Real second widget submission uses different password and succeeds",
+    "Timed-out upload later returns success but cannot set cache/completion/show success/leave page"
+  ],
+  "initial_test_edit_failure": {
+    "type": "Compile error from misplaced assertion block",
+    "corrected": true,
+    "product_failure": false,
+    "raw_log_saved": false
+  },
+  "proof_limit": "Injected uploader and secure-storage substitute. Actual server upload cancellation, keychain, cryptographic backup restore and Android/macOS journeys remain unverified."
+}
