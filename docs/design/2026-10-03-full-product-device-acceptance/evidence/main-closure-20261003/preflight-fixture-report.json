@@ -1,0 +1,40 @@
+{
+  "is_verifier_fixture": true,
+  "NEVER_COUNTS_AS_PRODUCT_PASS": true,
+  "required_cases": [
+    {
+      "case_id": "VERIFIER-FIXTURE-ONLY",
+      "platform": "android",
+      "profile": "synthetic",
+      "role_variant": "sender",
+      "parent_acceptance_ids": [
+        "SYNTHETIC-A01"
+      ],
+      "seed_ids": [
+        "SYNTHETIC-SEED"
+      ],
+      "oracle": "structural fixture, no business execution",
+      "applicability": "REQUIRED"
+    }
+  ],
+  "candidates": {
+    "imboy": {
+      "head": "e7548acbe3abd4755bc016081fcfca8afa4b1575",
+      "required_ancestors": [
+        "e7548acbe3abd4755bc016081fcfca8afa4b1575"
+      ]
+    },
+    "imboyapp": {
+      "head": "1b7e3229399c8b4db9049467f029aff322d0eef3",
+      "required_ancestors": [
+        "1b7e3229399c8b4db9049467f029aff322d0eef3"
+      ]
+    },
+    "imboyadmin": {
+      "head": "997971a882928d67e70d6261629d5c69d2703539",
+      "required_ancestors": [
+        "997971a882928d67e70d6261629d5c69d2703539"
+      ]
+    }
+  }
+}
