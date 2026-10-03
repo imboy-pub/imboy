@@ -4011,5 +4011,15 @@
     "exit_code": 0,
     "product_pass": false,
     "review": "APPROVED_LOCAL_SCOPE_ONLY"
+  },
+  "f08_cloud_prompt_local_import_mutex": {
+    "receipt": "f08-prompt-local-mutex.json",
+    "receipt_sha256": "11ffc31226e8f6ac9dfd61f926f7024c1c0de52c7f0506916351863484669013",
+    "app_head": "876cd2ba1dc870e1d81eeb3af81c8f16f567ad52",
+    "executed": 9,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false,
+    "review": "APPROVED_LOCAL_SCOPE_ONLY"
   }
 }

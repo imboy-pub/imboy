@@ -1,0 +1,44 @@
+{
+  "id": "F08-CLOUD-PROMPT-LOCAL-IMPORT-MUTEX",
+  "scope": "LOCAL_HOST_WIDGET_REGRESSION_ONLY",
+  "app_head": "876cd2ba1dc870e1d81eeb3af81c8f16f567ad52",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "red": {
+    "passed": 8,
+    "failed": 1,
+    "exit_code": 1,
+    "oracle": "Actual cached local import callback starts one decrypt while cloud confirmation is open; expected zero, actual one."
+  },
+  "green": {
+    "passed": 9,
+    "failed": 0,
+    "exit_code": 0,
+    "oracle": "Zero local decrypts while prompt open; cancel restores usable import button and exactly one subsequent decrypt; no cloud decrypt."
+  },
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "attempt_note": "Initial setup failed because busy button text was replaced by loading content. Invalid finder removed; calibrated negative assertion uses actual decrypt invocation count. Failed setup log preserved.",
+  "logs": [
+    {
+      "phase": "SETUP_FAILED",
+      "path": "f08-prompt-local-mutex-preparation.log",
+      "sha256": "53d7a2eed3bba5d1636084fd03b9ea066a93d8742a49a71d01fbc4c2b6c4c719"
+    },
+    {
+      "phase": "RED",
+      "path": "f08-prompt-local-mutex-red.log",
+      "sha256": "d451e90d3e8285472943046c4bad0c48b4470a7f596bf888da84cb7cb15fd1d9"
+    },
+    {
+      "phase": "GREEN",
+      "path": "f08-prompt-local-mutex-fixed.log",
+      "sha256": "8ce532f16f33e615f013562d288ca17dc7dd53c90347a70e4786824553d1d686"
+    }
+  ],
+  "limits": [
+    "No device/native storage/real backend/whole product qualification.",
+    "Original 36 and 61 required acceptance items remain unchanged."
+  ]
+}

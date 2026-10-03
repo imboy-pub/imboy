@@ -1,0 +1,41 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart
+00:00 +0: 云端确认期间阻止缓存的本地导入回调，取消后可导入
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: No element
+
+When the exception was thrown, this was the stack:
+#0      Iterable.single (dart:core/iterable.dart:694:25)
+#1      WidgetController.widget (package:flutter_test/src/controller.dart:828:30)
+#2      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:94:40)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  云端确认期间阻止缓存的本地导入回调，取消后可导入
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: 云端确认期间阻止缓存的本地导入回调，取消后可导入 [E]
+  Test failed. See exception logs above.
+  The test description was: 云端确认期间阻止缓存的本地导入回调，取消后可导入
+  
+00:00 +0 -1: 同一帧重复云端恢复只打开一个确认框
+00:01 +1 -1: 取消云端恢复确认后可以重新打开
+00:01 +2 -1: 云端解密等待期间关闭页面不开始写入恢复密钥
+00:01 +3 -1: 本地恢复等待期间不能弹出云端恢复确认框
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:01 +4 -1: 云端恢复等待期间不能启动本地恢复
+00:01 +5 -1: 解密等待期间关闭页面不开始写入恢复密钥
+00:01 +6 -1: 同一帧重复导入只启动一次解密
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:01 +7 -1: 导入失败后仍可再次发起导入
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:02 +8 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 云端确认期间阻止缓存的本地导入回调，取消后可导入
