@@ -347,3 +347,47 @@ renew_failure_privacy_test() ->
     after
         lists:foreach(fun meck:unload/1, lists:reverse(Modules))
     end.
+
+usage_failure_privacy_test() ->
+    Modules = [elib_log, billing_subscription_ds, billing_plan_ds, billing_usage_ds],
+    lists:foreach(fun(M) -> meck:new(M, [passthrough, non_strict]) end, Modules),
+    try
+        Metric = <<"synthetic-private-metric">>,
+        Period = <<"2026-10">>,
+        meck:expect(elib_log, internal_log, fun(_, _, _, _) -> ok end),
+        meck:expect(billing_subscription_ds, find_by_id, fun(?SUB_ID) ->
+            #{<<"plan_id">> => 7}
+        end),
+        meck:expect(billing_plan_ds, find_by_id, fun(7) ->
+            #{<<"quota_config">> => #{Metric => 10}}
+        end),
+        meck:expect(billing_usage_ds, get_used, fun(?SUB_ID, M, P) ->
+            ?assertEqual(Metric, M),
+            ?assertEqual(Period, P),
+            2
+        end),
+        meck:expect(billing_usage_ds, incr, fun(?SUB_ID, M, P, 3) ->
+            ?assertEqual(Metric, M),
+            ?assertEqual(Period, P),
+            {error, {database_error, <<"synthetic-private-usage-key">>}}
+        end),
+        ?assertEqual(
+            {error, <<"用量上报失败，请稍后重试"/utf8>>},
+            billing_logic:report_usage(?SUB_ID, Metric, 3, Period)
+        ),
+        ?assert(
+            meck:called(
+                elib_log,
+                internal_log,
+                [error, [billing_usage_report_error], billing_logic, '_']
+            )
+        ),
+        ?assertEqual(1, meck:num_calls(elib_log, internal_log, 4)),
+        ?assertEqual(
+            {error, quota_exceeded},
+            billing_logic:report_usage(?SUB_ID, Metric, 9, Period)
+        ),
+        ?assertEqual(1, meck:num_calls(billing_usage_ds, incr, 4))
+    after
+        lists:foreach(fun meck:unload/1, lists:reverse(Modules))
+    end.

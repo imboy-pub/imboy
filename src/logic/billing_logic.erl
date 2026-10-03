@@ -343,8 +343,8 @@ report_usage(SubId, Metric, Delta, Period0) when is_integer(Delta), Delta >= 0 -
             case billing_usage_ds:incr(SubId, Metric, Period, Delta) of
                 {ok, Used} ->
                     {ok, Used};
-                {error, Reason} ->
-                    ?ERROR_LOG([<<"billing report_usage failed">>, SubId, Metric, Reason]),
+                {error, _Reason} ->
+                    ?ERROR_LOG([billing_usage_report_error]),
                     {error, <<"用量上报失败，请稍后重试"/utf8>>}
             end
     end;
