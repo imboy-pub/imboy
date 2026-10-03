@@ -1,0 +1,525 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=4 (owner) → 解散群聊
+网络类型变化: unknown -> none
+Database path: currentEnv=dev, uid=90001, dbName=dev_90001.db
+memberAvatars count: 0
+Creating new database
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 场景1：撤销与发送/分发并发 → 下一条消息 rotate 且旧设备出局 stale 后发送必须 rotate，被踢设备不在新 room key，旧 inbound 解不开新密文
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9201&session_id=Fhsz5IJEanFGjdKAub87POyizcyF205ZEsMAGTPHOBA
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9201&session_id=Fhsz5IJEanFGjdKAub87POyizcyF205ZEsMAGTPHOBA
+
+[group_session] history grant unavailable scope=9201 error=BadRequestException
+[group_session] rotate scope=9201 session=Fhsz5IJEanFGjdKAub87POyizcyF205ZEsMAGTPHOBA devices=3
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 场景1：撤销与发送/分发并发 → 下一条消息 rotate 且旧设备出局 stale 后发送必须 rotate，被踢设备不在新 room key，旧 inbound 解不开新密文
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9201&session_id=eA%2FJuXF6VeJ5FO3w5jI8YIfZWKgMIk5m9ai5AiJoZlc
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9201&session_id=eA%2FJuXF6VeJ5FO3w5jI8YIfZWKgMIk5m9ai5AiJoZlc
+
+[group_session] history grant unavailable scope=9201 error=BadRequestException
+[group_session] rotate scope=9201 session=eA/JuXF6VeJ5FO3w5jI8YIfZWKgMIk5m9ai5AiJoZlc devices=2
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 场景2：漏 S2C → 策略兜底后下一次发送前强制校验并 rotate 漏收 leave 时不误 rotate（缓存内），markGroupStale 兜底后强刷快照 rotate
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9202&session_id=3rEk2%2BzVFfS4hdQ9u0khL0FMfNad5y6oTemDywnAYsQ
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9202&session_id=3rEk2%2BzVFfS4hdQ9u0khL0FMfNad5y6oTemDywnAYsQ
+
+[group_session] history grant unavailable scope=9202 error=BadRequestException
+[group_session] rotate scope=9202 session=3rEk2+zVFfS4hdQ9u0khL0FMfNad5y6oTemDywnAYsQ devices=3
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9202&session_id=Jbc1SBIUbn34zPMUJGbx9qrZOWpg3P4uY0jI1qbNz6g
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9202&session_id=Jbc1SBIUbn34zPMUJGbx9qrZOWpg3P4uY0jI1qbNz6g
+
+[group_session] history grant unavailable scope=9202 error=BadRequestException
+[group_session] rotate scope=9202 session=Jbc1SBIUbn34zPMUJGbx9qrZOWpg3P4uY0jI1qbNz6g devices=2
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 场景3：离线旧会话 → 本地旧 room key 不得解密轮换后消息 无新 key fail-closed + 旧 inbound 被拒 + 恢复授权区间不放行撤销后消息
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9203&session_id=CDqtVj2DhZDIuIjq%2BQoFQgd4Bm%2Bbw5NHzZ3NzJBmQik
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9203&session_id=CDqtVj2DhZDIuIjq%2BQoFQgd4Bm%2Bbw5NHzZ3NzJBmQik
+
+[group_session] history grant unavailable scope=9203 error=BadRequestException
+[group_session] rotate scope=9203 session=CDqtVj2DhZDIuIjq+QoFQgd4Bm+bw5NHzZ3NzJBmQik devices=3
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+memberAvatars count: 0
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 场景3：离线旧会话 → 本地旧 room key 不得解密轮换后消息 无新 key fail-closed + 旧 inbound 被拒 + 恢复授权区间不放行撤销后消息
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9203&session_id=XVgmWxh8s%2FTJRSQUt%2BCauLeOrPzwDbs0zUbijSPs5w4
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9203&session_id=XVgmWxh8s%2FTJRSQUt%2BCauLeOrPzwDbs0zUbijSPs5w4
+
+[group_session] history grant unavailable scope=9203 error=BadRequestException
+[group_session] rotate scope=9203 session=XVgmWxh8s/TJRSQUt+CauLeOrPzwDbs0zUbijSPs5w4 devices=2
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 场景4：重连后旧 recipient → 误投 room key 必须过权威 grant 验证 grant denied 时拒存 room key，被踢设备重连后仍无法解密
+[group_session] history grant unavailable scope=9204 error=StateError
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService.handleRoomKeyMessage (package:imboy/service/group_session_service.dart:523:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] 权威 grant 验证失败，拒存群 room key scope=9204 session=p+fQvJROAo2GKcJLF3lgtkqpxFr/xFUjuUA8XiGGxPI[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 场景4：重连后旧 recipient → 误投 room key 必须过权威 grant 验证 合法成员 grant 通过时 room key 正常落地（对照组，不误伤）
+[group_session] 收到 room key scope=9205 session=Wkwk6E1z9Ha9PM1U15ljHOUzof69hkyUambL/yEtyWg
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 C2G 固定套件门（C07 enforcePeerSupportsRequired scope:c2g） 任一设备无 Olm 身份（旧端仅 RSA）→ 拒发 + 计数，不降级
+[group_session][AC-17] C2G 套件门拒发：设备不支持 Megolm 套件 gid=9207 did=legacy_did uid=1002
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 C2G 固定套件门（C07 enforcePeerSupportsRequired scope:c2g） 服务端能力列表查询失败（空表语义）→ 全部设备视为不支持 → 拒发
+[group_session][AC-17] C2G 套件门拒发：设备不支持 Megolm 套件 gid=9208 did=did_a uid=1001
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 C2G 固定套件门（C07 enforcePeerSupportsRequired scope:c2g） 设备归属未知（didToUid 无映射）→ fail-closed 拒发，不猜测
+[group_session][AC-17] C2G 套件门拒发：设备归属未知 gid=9209 did=orphan_did（能力未知 = 不支持，不猜测）
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-17 C2G 固定套件门（C07 enforcePeerSupportsRequired scope:c2g） 发送链集成：群成员设备不支持 Megolm → encryptGroupMessage 显式失败
+[group_session][AC-17] C2G 套件门拒发：设备不支持 Megolm 套件 gid=9211 did=legacy_did uid=uid_legacy_did
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/group_revocation_semantics_test.dart: AC-18 伪造负例：room key / grant 篡改全部拒绝 伪造 session_id（payload 声明与密钥实际 session 不一致）→ 丢弃
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService.handleRoomKeyMessage (package:imboy/service/group_session_service.dart:507:19)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] session_id 不匹配，丢弃 scope=9212[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=3 (admin) → 退出群聊（admin 也不能解散）
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=1 (member) → 退出群聊
+memberAvatars count: 0
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵1: 危险按钮文案 — role 决定 解散/退出 role=0 (未知/未加载) → 安全默认退出群聊
+memberAvatars count: 0
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 owner → 对话框含 确定要解散本群吗？+ 删记录提示
+memberAvatars count: 0
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member → 对话框含 确定要退出本群吗？
+memberAvatars count: 0
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/megolm_history_grant_test.dart: room key 只保存后端返回的权威 grant
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 取消 → 对话框关闭，停留页面
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 取消 → 对话框关闭，停留页面
+memberAvatars count: 0
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 取消 → 对话框关闭，停留页面
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 取消 → 对话框关闭，停留页面
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 取消 → 对话框关闭，停留页面
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 取消 → 对话框关闭，停留页面
+00:01 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: (setUpAll)
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2c, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2c 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+00:01 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 取消 → 对话框关闭，停留页面
+00:01 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: (setUpAll)
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2s, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2s 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:01 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/megolm_history_grant_test.dart: 可信 conv_seq 贯穿解密链并覆盖 e2ee 元数据中的伪造范围
+00:01 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 实际发送入口：群已开 E2EE 时不受全局 plaintext 绕过
+[group_session] 群 90210 E2EE 已开启
+00:01 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/megolm_history_grant_test.dart: 可信 conv_seq 贯穿解密链并覆盖 e2ee 元数据中的伪造范围
+00:01 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 确认 → 无网失败 → 失败 toast + 弹窗关闭
+memberAvatars count: 0
+00:01 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 对照组：群未开 E2EE + 全局 plaintext → 明文行必须照常重投
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+消息加入重试队列: gg0000000000000ct01, type=C2G
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct01] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2G 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct01] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2g ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2g ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+重试发送消息: gg0000000000000ct01, 第1次重试
+消息重试已提交，等待确认: gg0000000000000ct01
+✅ [MessageTypeNormalizer] 有效类型: text
+00:01 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 确认 → 无网失败 → 失败 toast + 弹窗关闭
+00:01 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 对照组：群未开 E2EE + 全局 plaintext → 明文行必须照常重投
+*** Request ***
+00:01 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 确认 → 无网失败 → 失败 toast + 弹窗关闭
+00:01 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 对照组：群未开 E2EE + 全局 plaintext → 明文行必须照常重投
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+00:01 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 确认 → 无网失败 → 失败 toast + 弹窗关闭
+00:01 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 对照组：群未开 E2EE + 全局 plaintext → 明文行必须照常重投
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+
+00:01 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 确认 → 无网失败 → 失败 toast + 弹窗关闭
+00:01 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 群已开 E2EE + 全局 plaintext + 明文行 → 不得出网
+[group_session] 群 90210 E2EE 已开启
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+消息加入重试队列: gg0000000000000ct02, type=C2G
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct02] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2G 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct02] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2g ; where: id = ? AND status = ?
+🚫 [RETRY] 未加密消息不得重发，已拦下: gg0000000000000ct02
+message_repo/update msg_c2g ;
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+✅ [MessageTypeNormalizer] 有效类型: text
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+
+❌ [RETRY] 达到最大重试次数，标记消息失败: gg0000000000000ct02
+00:01 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 确认 → 无网失败 → 失败 toast + 弹窗关闭
+00:01 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 手动重试：群已开 E2EE + 明文行 → 不得出网
+[group_session] 群 90210 E2EE 已开启
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct04] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2G 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct04] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+🚫 [MANUAL_RETRY] 未加密消息不得重发，已拦下: gg0000000000000ct04
+00:01 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 确认 → 无网失败 → 失败 toast + 弹窗关闭
+00:01 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 正向可用性：群已开 E2EE + 已加密行 → 必须照常重投
+[group_session] 群 90210 E2EE 已开启
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+消息加入重试队列: gg0000000000000ct03, type=C2G
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct03] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2G 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct03] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2g ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2g ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+重试发送消息: gg0000000000000ct03, 第1次重试
+消息重试已提交，等待确认: gg0000000000000ct03
+✅ [MessageTypeNormalizer] 有效类型: text
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+
+00:01 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 member 确认 → 无网失败 → 失败 toast + 弹窗关闭
+00:01 +35: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: (tearDownAll)
+00:01 +35: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 owner 确认 → dissolve 失败 → 失败 toast
+memberAvatars count: 0
+00:01 +36: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 owner 确认 → dissolve 失败 → 失败 toast
+00:01 +37: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 owner 确认 → dissolve 失败 → 失败 toast
+00:01 +38: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 owner 确认 → dissolve 失败 → 失败 toast
+00:01 +39: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵2: 退出/解散确认对话 owner 确认 → dissolve 失败 → 失败 toast
+00:01 +40: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/threat_model_guard_test.dart: registry_routing_completeness (T2) all() 恰含三套件，不含 MLS 占位
+00:01 +41: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认对话：warning 标题 + confirmDeleteChatRecord 内容
+memberAvatars count: 0
+00:01 +42: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认对话：warning 标题 + confirmDeleteChatRecord 内容
+00:01 +43: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认对话：warning 标题 + confirmDeleteChatRecord 内容
+00:01 +44: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认对话：warning 标题 + confirmDeleteChatRecord 内容
+00:01 +45: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认对话：warning 标题 + confirmDeleteChatRecord 内容
+00:01 +46: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认对话：warning 标题 + confirmDeleteChatRecord 内容
+00:01 +47: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认对话：warning 标题 + confirmDeleteChatRecord 内容
+00:01 +48: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认对话：warning 标题 + confirmDeleteChatRecord 内容
+00:01 +49: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/threat_model_guard_test.dart: e2ee_safety_number (T2,T8) 对称性：A→B == B→A
+00:01 +49: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 取消 → 关闭无动作
+memberAvatars count: 0
+00:01 +50: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 取消 → 关闭无动作
+00:01 +51: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 取消 → 关闭无动作
+00:01 +52: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/threat_model_guard_test.dart: message_replay_rejected (T7) 首次处理返回 true，重放返回 false（ratchet 不推进）
+00:01 +53: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认 → 无成功反馈（本地无会话 → cid=0 走失败分支）
+memberAvatars count: 0
+00:01 +54: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认 → 无成功反馈（本地无会话 → cid=0 走失败分支）
+00:01 +55: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认 → 无成功反馈（本地无会话 → cid=0 走失败分支）
+00:01 +56: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认 → 无成功反馈（本地无会话 → cid=0 走失败分支）
+00:01 +57: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认 → 无成功反馈（本地无会话 → cid=0 走失败分支）
+00:01 +58: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认 → 无成功反馈（本地无会话 → cid=0 走失败分支）
+00:01 +59: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认 → 无成功反馈（本地无会话 → cid=0 走失败分支）
+00:01 +60: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认 → 无成功反馈（本地无会话 → cid=0 走失败分支）
+00:01 +61: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认 → 无成功反馈（本地无会话 → cid=0 走失败分支）
+00:01 +62: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵3: 清空聊天记录 确认 → 无成功反馈（本地无会话 → cid=0 走失败分支）
+00:01 +63: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵4: E2EE 开关权限 role=1 非 owner → tile 显示但开关禁用（成员只读）
+memberAvatars count: 0
+00:01 +64: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵4: E2EE 开关权限 owner 未开启 → 开关启用；tap → 确认对话；取消 → 不变更
+memberAvatars count: 0
+00:01 +65: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵4: E2EE 开关权限 owner 确认开启 → 无网失败 → 不弹成功 toast（静默失败）
+memberAvatars count: 0
+00:01 +66: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵5: 消息免打扰 groupId 非数字(gid<=0) → 开关禁用
+memberAvatars count: 0
+00:01 +67: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵5: 消息免打扰 groupId 非数字(gid<=0) → 开关禁用
+00:01 +68: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵5: 消息免打扰 groupId 非数字(gid<=0) → 开关禁用
+00:02 +69: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵5: 消息免打扰 合法 gid → 开关启用；tap → KV 落库 group_notice_disabled:1001
+memberAvatars count: 0
+memberAvatars count: 0
+00:02 +70: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵6: 群昵称/群备注 trailing 投影 myGroupAlias 空 → 显示当前用户昵称
+memberAvatars count: 0
+00:02 +71: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵6: 群昵称/群备注 trailing 投影 myGroupAlias 非空 → 显示群昵称
+memberAvatars count: 0
+00:02 +72: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵6: 群昵称/群备注 trailing 投影 groupRemark 非空 → 显示备注（覆盖群名）
+memberAvatars count: 0
+00:02 +73: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵7: 投诉 actionSheet 4 个投诉原因选项 + 取消
+memberAvatars count: 0
+00:02 +74: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵7: 投诉 actionSheet 选择 spam → 无网失败 → complaintFailed toast
+memberAvatars count: 0
+00:02 +75: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） buildRoomKeyPayload v3：设备条目 Olm-only（无 RSA ek）+ meta_version=3
+00:02 +75: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵8: 成员区投影 memberCount>20 → 查看全部群成员入口出现
+memberAvatars count: 0
+00:02 +76: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） buildRoomKeyPayload v3：设备条目 Olm-only（无 RSA ek）+ meta_version=3
+00:02 +76: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵8: 成员区投影 memberCount<=20 → 查看全部入口不出现
+memberAvatars count: 0
+00:02 +77: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） buildRoomKeyPayload v3：设备条目 Olm-only（无 RSA ek）+ meta_version=3
+00:02 +77: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart: 矩阵8: 成员区投影 群信息卡片渲染注入群名
+memberAvatars count: 0
+00:02 +78: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） buildRoomKeyPayload v3：设备条目 Olm-only（无 RSA ek）+ meta_version=3
+00:02 +79: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） wrapSessionKey → unwrapSessionKey 逐字节往返（RSA 原语，供合规/历史 decrypt-only）
+00:02 +80: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） pickMyKeyEntry 对不在分发列表的设备返回 null
+00:02 +81: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） encryptGroupMessage 真实发送编排：剔除本机并给远端设备包裹 room key
+[group_session] rotate scope=g_encrypt_orchestration session=Z1QmtOlzXoxTPOfZ7m4NQs8WwPLnp7P7nk9aggUQkyw devices=2
+00:02 +82: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） failed membership refresh retains stale marker for next send
+00:02 +83: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） ensureOutboundSession：建会话不加密不计数，encrypt 复用同一会话
+[group_session] rotate scope=g_ensure_session session=047kLOT4vgIxUL44uC7KVClHtww8NwHlN/hYUEVATn8 devices=2
+00:02 +84: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +85: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +86: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +87: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +88: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +89: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +90: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +91: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +92: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +93: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +94: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +95: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +96: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +97: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +98: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +99: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +100: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +101: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +102: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:02 +103: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） handleRoomKeyMessage 存 inbound 可解密，但不翻转 e2ee 旗标
+[group_session] 收到 room key scope=9101 session=4r6b45HsHDS/SWFQmcDDPeJHamvuiE+kljSl2FXR+1g
+00:02 +104: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: C2C 单聊 Megolm（发送路径全量新方案） buildRoomKeyPayload 无 gid → C2C 形态（scope=c2c）+ extraKeys 追加
+00:02 +105: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: C2C 单聊 Megolm（发送路径全量新方案） C2C room key → handleRoomKeyMessage → decryptC2CMessage 全链路往返
+[group_session] 收到 room key scope=c2c session=tUz8cYWRJoAMv/RyiAJCwmdz0PTi3BYujrFclAvHy24
+00:03 +106: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: C2C 单聊 Megolm（发送路径全量新方案） 域混淆：type/to 与 payload.gid 不一致的群 room key 被丢弃
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService.handleRoomKeyMessage (package:imboy/service/group_session_service.dart:463:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] 群 room key 域不匹配，丢弃 gid=g_victim_B[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:03 +107: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: C2C 单聊 Megolm（发送路径全量新方案） 通道混淆：scope=c2c 的 room key 从 C2G 通道到达被丢弃
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService.handleRoomKeyMessage (package:imboy/service/group_session_service.dart:469:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] c2c room key 非 C2C 通道，丢弃[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:03 +108: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） T-13-01/05/07 attachOlmWraps：双包 + 无 Olm 回退 + 合规保持 RSA
+00:03 +109: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） attachOlmWraps：senderDeviceId 为空 → 全部仅 RSA（无法填 sid）
+00:03 +110: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） 严格模式：发送设备自身跳过 self-to-self Olm 包裹
+00:03 +111: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） T-13-03 接收侧优先 Olm：olm 有效 → 用 Olm，不走 RSA
+00:03 +112: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） E2EE-011 v3：删除 olm 子对象 → 拒绝，不回退 RSA（保留 ek 也不 RSA）
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService._unwrapEntry (package:imboy/service/group_session_service.dart:616:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] v3 room key 缺 olm 子对象，拒绝（不回退 RSA）[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:03 +113: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） E2EE-011 v3：olm 缺 sid → 拒绝，不尝试 Olm、不回退 RSA
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService._unwrapEntry (package:imboy/service/group_session_service.dart:610:19)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] v3 room key olm 字段不全，拒绝[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:04 +114: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） E2EE-011 v3：olm 伪造 sid（Olm 认证失败）→ 拒绝，不回退 RSA
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService._unwrapEntry (package:imboy/service/group_session_service.dart:590:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] room key Olm 认证失败，拒绝该条目[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:04 +115: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） E2EE-011 v3：Olm 会话不可用（普通异常）→ 拒绝，不回退 RSA
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService._unwrapEntry (package:imboy/service/group_session_service.dart:596:23)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] v3 room key Olm 解包失败，拒绝（不回退 RSA） errType=_Exception[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:04 +116: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） E2EE-011 legacy decrypt-only：明确 legacy 版本 olm 缺 sid → RSA 读历史
+00:04 +117: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） Olm 认证失败 → 拒绝，不降级 RSA（防 downgrade）
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService._unwrapEntry (package:imboy/service/group_session_service.dart:590:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] room key Olm 认证失败，拒绝该条目[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:05 +118: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Compliance E2EE Fail-Closed (HOTFIX-02) compliance_e2ee 模式：合规公钥获取失败/缺失 → fail-closed 强退并抛 E2eeSecurityException
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+
+[ComplianceKey] 获取失败: BadRequestException
+00:05 +119: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Strict Olm-Wrap Fail-Closed (HOTFIX-03) strictE2ee 模式：senderDeviceId 为空 → 抛 E2eeSecurityException(sender_device_id_missing)
+00:05 +120: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Strict Olm-Wrap Fail-Closed (HOTFIX-03) strictE2ee 模式：olmWrap 异常 → 抛 E2eeSecurityException(olm_wrap_failed)
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService.attachOlmWraps (package:imboy/service/group_session_service.dart:972:19)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] olmWrap 异常，该 did 仅 RSA: did1 errType=_Exception[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:05 +121: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Strict Olm-Wrap Fail-Closed (HOTFIX-03) strictE2ee 模式：olmWrap 返回 null → 抛 E2eeSecurityException(olm_wrap_failed)
+00:05 +122: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: (tearDownAll)
+00:05 +122: All tests passed!

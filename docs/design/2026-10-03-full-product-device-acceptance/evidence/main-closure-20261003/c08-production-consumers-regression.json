@@ -1,0 +1,79 @@
+{
+  "id": "C08-PRODUCTION-CONSUMER-REGRESSION",
+  "scope": "LOCAL_HOST_AFFECTED_GROUP_SERVICE_CONSUMERS",
+  "app_head": "ba1e23a80e9d682d24b8ea0f3cc5b76028d4383a",
+  "selection": "All current test/unit_test files referencing GroupSessionService directly, recomputed with rg",
+  "targets": [
+    "test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart",
+    "test/unit_test/service/e2ee/group_revocation_semantics_test.dart",
+    "test/unit_test/service/e2ee/megolm_history_grant_test.dart",
+    "test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart",
+    "test/unit_test/service/e2ee/threat_model_guard_test.dart",
+    "test/unit_test/service/e2ee/vodozemac_init_shared_test.dart",
+    "test/unit_test/service/group_session_service_test.dart",
+    "test/unit_test/service/message_s2c_test.dart"
+  ],
+  "source_fingerprints": [
+    {
+      "path": "lib/service/group_session_service.dart",
+      "sha256": "8c0c7f5b6d14877fc331b018ec5a859a3e89bf9003daeb991ae30dfa5edfa54b"
+    },
+    {
+      "path": "test/unit_test/page/group/group_detail/group_detail_behavior_matrix_test.dart",
+      "sha256": "23d29ee854834d1f54ba0b4b61fd8e15e175dde6f4e56435c6951463635d295a"
+    },
+    {
+      "path": "test/unit_test/service/e2ee/group_revocation_semantics_test.dart",
+      "sha256": "aba549d3914b0918588b914ee5cffa1f93331f06185d1b5d6416e811d8e23eee"
+    },
+    {
+      "path": "test/unit_test/service/e2ee/megolm_history_grant_test.dart",
+      "sha256": "9e6b6c8fa16f0cae1eaff3fadd1da116362d2b01728ee849460082b0c13d1edf"
+    },
+    {
+      "path": "test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart",
+      "sha256": "0101d564b1892fad6198248471bf42a435d67274ac0c8bea2d0b02b6d28ba460"
+    },
+    {
+      "path": "test/unit_test/service/e2ee/threat_model_guard_test.dart",
+      "sha256": "2ae468a9a714da5c438e3b4e94c911dd5bc78ddad3a983ba40fcfc41f6513dad"
+    },
+    {
+      "path": "test/unit_test/service/e2ee/vodozemac_init_shared_test.dart",
+      "sha256": "33c4277a2e4100e18b395cab9d9be7f6867d660a8feb83ae81cccedc40994b3c"
+    },
+    {
+      "path": "test/unit_test/service/group_session_service_test.dart",
+      "sha256": "ee1498c962f5d3e9a5305ffb4d29b0abeee53ccbeabbe58fb1d7f42a88a372c1"
+    },
+    {
+      "path": "test/unit_test/service/message_s2c_test.dart",
+      "sha256": "e7811060816a24138a21bc174b7ff471365bccb607103d82f813471a2029f3b2"
+    }
+  ],
+  "executed": 122,
+  "skipped": 0,
+  "failed": 0,
+  "exit_code": 0,
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "log": "c08-production-consumers-regression.log",
+  "log_sha256": "b41eb9e357648bea86fb1b38cde29c596ff140dcf19ff00aaf92626f962e0c14",
+  "coverage": [
+    "Group detail behavior matrix",
+    "Member revocation semantics",
+    "Megolm history grants",
+    "C2G retry plaintext guard",
+    "Threat model guard",
+    "Shared vodozemac initialization",
+    "Group session encryption and room-key handling",
+    "S2C membership notification handling"
+  ],
+  "limits": [
+    "Dependency selection identifies direct named consumers only, not full product coverage",
+    "Host tests use local native crypto and injected/mocked dependencies",
+    "No actual backend membership, epoch, room-key recipient or device-display qualification",
+    "No original acceptance ID upgraded"
+  ]
+}
