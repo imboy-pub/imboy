@@ -4592,5 +4592,11 @@
     "app_head": "4acf380f336b2b59bff8c61ffce02f88ad05a086",
     "tests": 36,
     "product_pass": false
+  },
+  "f14_billing_launcher_disposal": {
+    "receipt": "billing-launcher-disposal.json",
+    "app_head": "7f528c531ef6386a809d607ad59b5f7ff8505fda",
+    "tests": 40,
+    "product_pass": false
   }
 }

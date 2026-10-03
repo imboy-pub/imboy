@@ -1,0 +1,34 @@
+{
+  "scope": "LOCAL_BILLING_SYNTHETIC_LAUNCHER_CALLBACK_DISPOSAL",
+  "app_head": "7f528c531ef6386a809d607ad59b5f7ff8505fda",
+  "tests": 40,
+  "exit_code": 0,
+  "analysis_exit_code": 0,
+  "removed_state_guard_calibration_exit_code": 1,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "billing-launcher-disposal-log.log",
+      "sha256": "73824c9bdcc18ba852c976d8566afa6a737c140287edb23a345f4a8014b828f9"
+    },
+    {
+      "path": "billing-launcher-disposal-analysis.log",
+      "sha256": "c9bc73281028d49c1ea38e9b16e30922862286e5daa12af737caacc6bf5c50a0"
+    },
+    {
+      "path": "billing-launcher-disposal-calibration.log",
+      "sha256": "8aba4aa803b567566a83ae274d180b52e6f91903c32e3d111ac0842e8d259389"
+    },
+    {
+      "path": "billing-launcher-disposal-restored.log",
+      "sha256": "28bf47e0f03017e428dec6ba70ce3df3667fb1311f52301a252c8dfb29c03cd7"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Synthetic launcher tests cover all four callback result values",
+    "No real native SDK, third-party provider, account or device execution",
+    "Already issued API pay call remains issued; no cancellation/rollback claim"
+  ]
+}
