@@ -1,0 +1,74 @@
+{
+  "scope": "IMPLEMENTED_DEVICE_PREPARATION_NOT_EXECUTED",
+  "app_head": "4381ad59d0823cae46832dc63bf87f55ba92f721",
+  "target": "integration_test/full_acceptance/billing/plan_list_device_test.dart",
+  "target_sha256": "1fcea14715599bb1bfc2bb81d9a857d1c2f2a2999d2932fc5bbe2a8b1c8551dd",
+  "enabled": false,
+  "risk_mode": "external-impact",
+  "executed_host_tooling": 420,
+  "host_failed": 0,
+  "host_exit_code": 0,
+  "analyze_issues": 0,
+  "independent_review": "FLUTTER_PYTHON_GENERIC_APPROVED",
+  "device_execution": false,
+  "real_backend_execution": false,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "artifacts": [
+    {
+      "path": "f14-device-entry-preparation.initial.log",
+      "sha256": "33be265cf2dda450e5d2d4d626608b812564ee18c5cbc675eee9609f8d182cee"
+    },
+    {
+      "path": "f14-device-entry-preparation.intermediate.log",
+      "sha256": "e212d166065f213feaab290e818c20858542378405dc8debe8c828707e1a93ef"
+    },
+    {
+      "path": "f14-device-entry-preparation.complete.log",
+      "sha256": "8af487bd4271bfc80ae8f2d196e813c927095b479b91cd0be78cebe983aa84a1"
+    },
+    {
+      "path": "f14-device-entry-preparation.analyze.log",
+      "sha256": "3d0f7b4425a02b6df8e901d9fd3b362c18b69284793e0a275c95d8b9043b477e"
+    }
+  ],
+  "recovery": [
+    {
+      "host_exit": 1,
+      "failures": 4,
+      "cause": "New target registration invalidated prior catalog/inventory/spec count expectations"
+    },
+    {
+      "host_exit": 1,
+      "failures": 1,
+      "cause": "Second historical count oracle still pinned to 25"
+    },
+    {
+      "review": "BLOCKED_BEFORE_COMMIT",
+      "cause": "Page-wide mapping attributed payment and retry to cancel target",
+      "repair": "Explicit function_ids only 004/006; others null; generated-case regression added"
+    }
+  ],
+  "prepared_behavior": [
+    "Require explicit structural descriptors and runner attestation before app.main",
+    "Require local app profile and preloaded synthetic UID",
+    "Navigate actual billing route; verify named plan data and visible exact price",
+    "Open named plan sheet, cancel, verify sheet absent and paying false"
+  ],
+  "remaining": [
+    "Independently approve device/account leases and runtime side effects before activation",
+    "Verify provided hashes, build/candidates/fixture/platform against authoritative artifacts",
+    "Disable external push/services and verify complete network boundary",
+    "Obtain backend zero-write oracle for cancellation",
+    "Execute each original Android/macOS case with journal and artifact bindings",
+    "Complete all 97 original requirements and final independent verdict"
+  ],
+  "limits": [
+    "Runner flag and hash syntax never grant permission",
+    "App initialization can sync/register; target is deliberately disabled external-impact",
+    "No actual runtime or device process was started",
+    "Static mapping only includes cancel and subscribe-sheet callbacks; payment/retry remain unmapped",
+    "Legacy inventory resource hints are not runtime approval",
+    "Host test success is not a frozen product gate"
+  ]
+}

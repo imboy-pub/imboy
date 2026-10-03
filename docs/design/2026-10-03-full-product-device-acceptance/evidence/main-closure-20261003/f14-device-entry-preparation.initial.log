@@ -1,0 +1,67 @@
+...............................................................................................................................................................................................................F.F...shard blocked: TARGET_MANIFEST_INVALID
+.shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+...shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+................................................................F...........ERROR: ACCEPTANCE_CHECK_CANNOT_WRITE_LEDGERS
+..............................................F...............................................................................
+======================================================================
+FAIL: test_billing_route_component_matches_source_filename (test_catalog.TestCatalogGeneration)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_catalog.py", line 31, in test_billing_route_component_matches_source_filename
+    self.assertFalse(page["mapped_targets"])
+AssertionError: ['integration_test/full_acceptance/billing/plan_list_device_test.dart'] is not false
+
+======================================================================
+FAIL: test_catalogued_page_without_targets_fails (test_catalog.TestImpact)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_catalog.py", line 111, in test_catalogued_page_without_targets_fails
+    discovery.impact_targets(
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_disk_file_matches_check (test_inventory.InventoryGenerationTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_inventory.py", line 74, in test_disk_file_matches_check
+    self.assertEqual(inventory.check_inventory(self.root), [])
+AssertionError: Lists differ: ['functional_inventory.json 与再生结果不一致（stale）'] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+'functional_inventory.json 与再生结果不一致（stale）'
+
+- ['functional_inventory.json 与再生结果不一致（stale）']
++ []
+
+======================================================================
+FAIL: test_all_specs_migrate_without_unmapped_or_widening (test_requirements.Atf303SpecMigration)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_requirements.py", line 184, in test_all_specs_migrate_without_unmapped_or_widening
+    self.assertEqual(
+AssertionError: 26 != 25 : Step 1 sampled 25 specs; drift must be re-baselined before Step 4 acceptance (found 26)
+
+----------------------------------------------------------------------
+Ran 419 tests in 14.821s
+
+FAILED (failures=4)
+[AI_SCREENSHOT] first checkpoint
+AI_SCREENSHOT_SAVED: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/tmprc6gyzgc/01_first_checkpoint.png
+some log line
+[AI_SCREENSHOT] second checkpoint
+AI_SCREENSHOT_SAVED: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/tmprc6gyzgc/02_second_checkpoint.png
+截图数: 2

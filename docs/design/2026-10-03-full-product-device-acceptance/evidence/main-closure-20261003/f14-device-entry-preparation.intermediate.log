@@ -1,0 +1,36 @@
+.....................................................................................................................................................................................................................shard blocked: TARGET_MANIFEST_INVALID
+.shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+...shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+shard blocked: TARGET_MANIFEST_INVALID
+............................................................................ERROR: ACCEPTANCE_CHECK_CANNOT_WRITE_LEDGERS
+..............................................F...............................................................................
+======================================================================
+FAIL: test_all_specs_migrate_without_unmapped_or_widening (test_requirements.Atf303SpecMigration)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_requirements.py", line 258, in test_all_specs_migrate_without_unmapped_or_widening
+    self.assertEqual(reloaded["spec_count"], 25)
+AssertionError: 26 != 25
+
+----------------------------------------------------------------------
+Ran 419 tests in 16.626s
+
+FAILED (failures=1)
+[AI_SCREENSHOT] first checkpoint
+AI_SCREENSHOT_SAVED: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/tmpjp20l57n/01_first_checkpoint.png
+some log line
+[AI_SCREENSHOT] second checkpoint
+AI_SCREENSHOT_SAVED: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/tmpjp20l57n/02_second_checkpoint.png
+截图数: 2
