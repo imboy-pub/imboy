@@ -4638,5 +4638,11 @@
     "backend_head": "0df267b826367731c4910cca945357baa5648ce9",
     "tests": 23,
     "product_pass": false
+  },
+  "f14_backend_renew_log_privacy": {
+    "receipt": "billing-renew-log-privacy.json",
+    "backend_head": "522d9cc52b7824c42392639ccc979f0d3ffa6771",
+    "tests": 24,
+    "product_pass": false
   }
 }

@@ -1,0 +1,34 @@
+{
+  "scope": "LOCAL_BACKEND_RENEW_FAILURE_LOG_PRIVACY",
+  "backend_head": "522d9cc52b7824c42392639ccc979f0d3ffa6771",
+  "tests": 24,
+  "exit_code": 0,
+  "red_failed": 1,
+  "red_passed": 23,
+  "production_compile_exit_code": 0,
+  "review": "APPROVED_CODE_REVIEW",
+  "artifacts": [
+    {
+      "path": "billing-renew-red.log",
+      "sha256": "598420e1bd10ba9b206285824ee07184d817d730d5249df92386367657d35b81"
+    },
+    {
+      "path": "billing-renew-green.log",
+      "sha256": "cd4fc7a50da2fd842b92caf534fe72747b8a5821b0b06b30bba4e54d50537b15"
+    },
+    {
+      "path": "billing-renew-final-compile.log",
+      "sha256": "09015a480c9461f3129ac2edcadadecb7d9f0aca7301217d64e4c2969e1b653d"
+    },
+    {
+      "path": "billing-renew-build.log",
+      "sha256": "756aa0695b64dbfaa5200076bb0f2480160c7ed2dbb0d368214a60d4f518b13a"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Real renew logic with synthetic mocked DS/log; no database/device execution",
+    "Remaining other billing failure logs unqualified"
+  ]
+}
