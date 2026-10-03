@@ -3553,5 +3553,33 @@
     },
     "change": "Mandatory frozen upstream command registry in execution and upstream preflights, exact ID set and command/exit/count/config/evidence path/hash bindings.",
     "proof_limit": "Allows a shared command to cover multiple IDs, but only proves recorded consistency. Authentic process execution, command oracle adequacy, independent review, real backend/device journeys and final qualification still required. No parent acceptance upgraded."
+  },
+  "upstream_declared_admin_candidate": {
+    "id": "PREPARATION-F01-UPSTREAM-ADMIN-CANDIDATE",
+    "scope": "DECLARED_THIRD_REPO_BINDING_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "c7bf02596f2a6ecff8eff1e4aaa661341645d7ec",
+    "executed": 415,
+    "exit": 0,
+    "reviews": [
+      "PYTHON_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "argv": [
+      "python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "test/tooling/auto_test"
+    ],
+    "log": {
+      "path": "upstream-admin-binding-suite.log",
+      "sha256": "f460ca19112736f1ab55e6cb5cb62f15af7bb6f42627d6a115ccad88f9ff40d4"
+    },
+    "change": "Declared PASS other_repo_sha must match valid nonzero frozen imboyadmin HEAD; explicit dash remains undeclared.",
+    "proof_limit": "Does not prove omitting Admin is appropriate for any oracle. Declaration and version binding only; authentic execution/adequate business oracle, real device/backend journeys and final qualification remain pending. No parent acceptance upgraded."
   }
 }
