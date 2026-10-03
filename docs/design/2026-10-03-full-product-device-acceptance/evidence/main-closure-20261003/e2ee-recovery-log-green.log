@@ -1,0 +1,16 @@
+======================== EUnit ========================
+module 'e2ee_recovery_logic_tests'
+  e2ee_recovery_logic_tests: recommend_method_empty_test...ok
+  e2ee_recovery_logic_tests: recommend_method_selects_best_test...ok
+  e2ee_recovery_logic_tests: recommend_method_selects_social_test...ok
+  e2ee_recovery_logic_tests: start_auto_recovery_local_backup_now_unsupported_test...ok
+  e2ee_recovery_logic_tests: start_auto_recovery_unsupported_test...ok
+  e2ee_recovery_logic_tests:74: -recovery_options_include_server_backup_test_/0-fun-7-...ok
+  e2ee_recovery_logic_tests:95: -recovery_options_no_backup_test_/0-fun-3-...[0.001 s] ok
+  e2ee_recovery_logic_tests:108: -start_server_backup_recovery_test_/0-fun-3-...ok
+  e2ee_recovery_logic_tests:123: -start_server_backup_recovery_no_backup_test_/0-fun-2-...ok
+  e2ee_recovery_logic_tests:142: -start_server_backup_recovery_db_error_increments_metric_test_/0-fun-3-...[0.005 s] ok
+  e2ee_recovery_logic_tests:165: -recovery_database_errors_do_not_log_identity_or_raw_reason_test_/0-fun-6-...[0.001 s] ok
+  [done in 0.200 s]
+=======================================================
+  All 11 tests passed.

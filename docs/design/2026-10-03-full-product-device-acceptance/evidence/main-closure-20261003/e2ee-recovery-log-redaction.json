@@ -1,0 +1,40 @@
+{
+  "scope": "LOCAL_RECOVERY_LOG_PRIVACY_ONLY",
+  "backend_head": "51220979166e059be4b735e8899157bf90cdecb9",
+  "behavior_red": {
+    "failed": 1,
+    "passed": 10
+  },
+  "green": {
+    "passed": 11,
+    "exit_code": 0
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-recovery-log-behavior-red.log",
+      "sha256": "51f03846c0757ea5de9d9221ca56977e54758365d357aa8ee997d6945249ddca"
+    },
+    {
+      "path": "e2ee-recovery-log-green.log",
+      "sha256": "61acdb8a42401f16cb1d9302a89bd7afcaa5938aa26891de2eb81dd1698f2df9"
+    },
+    {
+      "path": "e2ee-recovery-log-compile.log",
+      "sha256": "085beefa9adfef61e617145535e18a218176bcf1bf748afcc0e0731b3c582ded"
+    }
+  ],
+  "source_hashes": {
+    "src/logic/e2ee_recovery_logic.erl": "0a34dc907dedda98eaf463b302495840c87a59f3997d4c57c08843a487e6f2b7",
+    "test/logic/e2ee_recovery_logic_tests.erl": "0d32743a5d286521bb5b22f327ed5e53420dcbba580b5347aa5d9320dba902bc"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "real_backend_execution": false,
+  "limits": [
+    "Fixed database failure logs omit uid and arbitrary database reason; return values and failure counter remain unchanged",
+    "This local regression does not establish full AC26 observability or frozen production SLO acceptance"
+  ]
+}

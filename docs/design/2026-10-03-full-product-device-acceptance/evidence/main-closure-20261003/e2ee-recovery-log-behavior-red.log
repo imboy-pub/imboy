@@ -1,0 +1,31 @@
+======================== EUnit ========================
+module 'e2ee_recovery_logic_tests'
+  e2ee_recovery_logic_tests: recommend_method_empty_test...ok
+  e2ee_recovery_logic_tests: recommend_method_selects_best_test...ok
+  e2ee_recovery_logic_tests: recommend_method_selects_social_test...ok
+  e2ee_recovery_logic_tests: start_auto_recovery_local_backup_now_unsupported_test...ok
+  e2ee_recovery_logic_tests: start_auto_recovery_unsupported_test...ok
+  e2ee_recovery_logic_tests:74: -recovery_options_include_server_backup_test_/0-fun-7-...ok
+  e2ee_recovery_logic_tests:95: -recovery_options_no_backup_test_/0-fun-3-...ok
+  e2ee_recovery_logic_tests:108: -start_server_backup_recovery_test_/0-fun-3-...ok
+  e2ee_recovery_logic_tests:123: -start_server_backup_recovery_no_backup_test_/0-fun-2-...ok
+  e2ee_recovery_logic_tests:142: -start_server_backup_recovery_db_error_increments_metric_test_/0-fun-3-...[0.004 s] ok
+  e2ee_recovery_logic_tests:165: -recovery_database_errors_do_not_log_identity_or_raw_reason_test_/0-fun-6-...*failed*
+in function e2ee_recovery_logic_tests:'-recovery_database_errors_do_not_log_identity_or_raw_reason_test_/0-fun-6-'/0 (test/logic/e2ee_recovery_logic_tests.erl, line 171)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,e2ee_recovery_logic_tests},
+              {line,171},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ error , { check_server_backup_available , database_failure } , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  [done in 0.170 s]
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 10.
