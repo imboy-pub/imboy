@@ -17,7 +17,7 @@
 %% @param MsgId 消息ID
 %% @param CurrentUid 当前用户ID
 %% @param DID 设备ID
--spec client_ack(binary(), binary(), integer(), binary()) -> ok.
+-spec client_ack(binary(), binary(), integer(), binary()) -> ok | {error, binary()}.
 client_ack(Type, MsgId, CurrentUid, DID) ->
     ok = ?DEBUG_LOG({unified_ack, Type, MsgId, CurrentUid, DID}),
 
@@ -34,23 +34,18 @@ client_ack(Type, MsgId, CurrentUid, DID) ->
             _ -> ok = ?ERROR_LOG({unknown_msg_type_for_ack, Type})
         end,
 
-    %% 消息投递确认计数
-    %% 【MSG-P2-1】{ok, 0} = 重复 ACK（送达标记已存在），不自增防指标虚高；
-    %% legacy/c2g/c2s 路径返回 ok，维持原计数行为
+    %% Duplicate {ok,0} and storage failure must not increment delivery metrics.
+    %% ACK must never unstage: msg_store_worker owns durable staging cleanup.
     case AckResult of
+        {error, Reason} ->
+            {error, Reason};
         {ok, 0} ->
             ok;
         _ ->
             elib_metric:increment(msg_delivered_total),
-            record_deliver_duration(MsgId)
-    end,
-
-    %% 【P0-2】staging 生命周期完全交给 msg_store_worker：仅当 worker do_write
-    %% 成功后才 unstage（见 msg_store_worker.erl:167）。此处不得提前 unstage——
-    %% 否则接收方 ACK 快于 worker 落库时会把 staging 行提前清除，claim_pending 的
-    %% processed_at IS NULL 跳过该行 → 消息永不落正式表（C2G 尤重：首个在线成员
-    %% ACK 快过 worker 则整条群消息不落 msg_c2g，其余离线成员全丢）。
-    ok.
+            record_deliver_duration(MsgId),
+            ok
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions

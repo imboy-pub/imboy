@@ -647,7 +647,10 @@ ack_c2c_msg_mark_failure_skips_cleanup_test_() ->
             {'delete_delivered_batch', 4, fun(_K, _M, _U, _A) -> ok end}
         ],
         fun() ->
-            ?assertEqual({ok, 0}, msg_operation_ds:ack_c2c_msg(<<"msg123">>, 100, <<"did-a">>)),
+            ?assertEqual(
+                {error, <<"ack_persistence_failed">>},
+                msg_operation_ds:ack_c2c_msg(<<"msg123">>, 100, <<"did-a">>)
+            ),
             ?assertEqual(0, meck:num_calls(msg_delivery_repo, delete_delivered_batch, 4))
         end
     ).

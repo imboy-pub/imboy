@@ -379,11 +379,9 @@ process_message(Msg) when is_map(Msg) ->
 -spec process_offline_ack(integer(), binary(), list(), binary()) ->
     {ok, integer()} | {error, binary()}.
 process_offline_ack(Uid, <<"c2c">>, MsgIds, DID) when is_binary(DID), DID =/= <<>> ->
-    _ = msg_operation_ds:ack_c2c_batch(MsgIds, Uid, DID),
-    {ok, length(MsgIds)};
+    offline_ack_result(msg_operation_ds:ack_c2c_batch(MsgIds, Uid, DID), MsgIds);
 process_offline_ack(Uid, <<"s2c">>, MsgIds, DID) when is_binary(DID), DID =/= <<>> ->
-    _ = msg_operation_ds:ack_s2c_batch(MsgIds, Uid, DID),
-    {ok, length(MsgIds)};
+    offline_ack_result(msg_operation_ds:ack_s2c_batch(MsgIds, Uid, DID), MsgIds);
 process_offline_ack(Uid, Type, MsgIds, _DID) ->
     case Type of
         <<"c2c">> ->
@@ -398,6 +396,9 @@ process_offline_ack(Uid, Type, MsgIds, _DID) ->
         _ ->
             {error, <<"unsupported_message_type">>}
     end.
+
+offline_ack_result({error, Reason}, _MsgIds) -> {error, Reason};
+offline_ack_result(_Success, MsgIds) -> {ok, length(MsgIds)}.
 
 %% ===================================================================
 %% E2EE per-device fan-out 信封过滤（发生率压降路径2）

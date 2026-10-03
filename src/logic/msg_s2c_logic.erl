@@ -238,7 +238,7 @@ s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload) ->
     end.
 
 %% 客户端确认S2C投递消息
--spec s2c_client_ack(binary(), integer(), binary()) -> ok.
+-spec s2c_client_ack(binary(), integer(), binary()) -> ok | {error, binary()}.
 s2c_client_ack(MsgId, CurrentUid, DID) ->
     msg_ack_logic:client_ack(<<"s2c">>, MsgId, CurrentUid, DID).
 

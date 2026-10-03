@@ -434,7 +434,7 @@ stage_and_send_c2c(
     end.
 
 %% 客户端确认C2C投递消息
--spec c2c_client_ack(binary(), integer(), binary()) -> ok.
+-spec c2c_client_ack(binary(), integer(), binary()) -> ok | {error, binary()}.
 c2c_client_ack(MsgId, CurrentUid, DID) ->
     msg_ack_logic:client_ack(<<"c2c">>, MsgId, CurrentUid, DID).
 

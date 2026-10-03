@@ -418,16 +418,7 @@ handle_client_ack(Tail, State) ->
             case validate_ack_params(Type, MsgId, DID, State) of
                 ok ->
                     ok = ?DEBUG_LOG({client_ack_received, Type, MsgId, DID}),
-                    maybe_cancel_delivery(Type, CurrentUid, DID, MsgId),
-                    AckConfirmMsg = #{
-                        <<"id">> => MsgId,
-                        <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
-                        <<"in_reply_to">> => MsgId,
-                        <<"action">> => <<"CLIENT_ACK_CONFIRM">>,
-                        <<"server_ts">> => elib_dt:millisecond()
-                    },
-                    process_ack_type(Type, MsgId, CurrentUid, DID),
-                    {reply, reply_frame(AckConfirmMsg, State), State, hibernate};
+                    complete_client_ack(Type, MsgId, CurrentUid, DID, State);
                 {error, Reason} ->
                     ok = ?WARN_LOG({client_ack_invalid_params, Reason, Type, MsgId, DID}),
                     %% #1: 回显 MsgId，使客户端能把 ACK_ERROR 关联回原消息，
@@ -490,16 +481,7 @@ handle_protobuf_client_ack(Data, _RawMsg, State) ->
         case validate_ack_params(Type, MsgId, DID, State) of
             ok ->
                 ok = ?DEBUG_LOG({protobuf_client_ack_received, Type, MsgId, DID}),
-                maybe_cancel_delivery(Type, CurrentUid, DID, MsgId),
-                AckConfirmMsg = #{
-                    <<"id">> => MsgId,
-                    <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
-                    <<"in_reply_to">> => MsgId,
-                    <<"action">> => <<"CLIENT_ACK_CONFIRM">>,
-                    <<"server_ts">> => elib_dt:millisecond()
-                },
-                process_ack_type(Type, MsgId, CurrentUid, DID),
-                {reply, reply_frame(AckConfirmMsg, State), State, hibernate};
+                complete_client_ack(Type, MsgId, CurrentUid, DID, State);
             {error, Reason} ->
                 ok = ?WARN_LOG({protobuf_client_ack_invalid, Reason, MsgId}),
                 %% #1: 回显 MsgId，使客户端能把 ACK_ERROR 关联回原消息
@@ -989,8 +971,33 @@ to_id_binary(V) when is_integer(V), V > 0 -> integer_to_binary(V);
 to_id_binary(V) when is_binary(V), byte_size(V) > 0 -> V;
 to_id_binary(_) -> <<>>.
 
+%% Persistence must succeed before stopping delivery retries or confirming ACK.
+complete_client_ack(Type, MsgId, CurrentUid, DID, State) ->
+    Result =
+        try
+            process_ack_type(Type, MsgId, CurrentUid, DID)
+        catch
+            _:_ -> {error, <<"ack_persistence_failed">>}
+        end,
+    {ReplyType, Extra} =
+        case Result of
+            ok ->
+                maybe_cancel_delivery(Type, CurrentUid, DID, MsgId),
+                {<<"CLIENT_ACK_CONFIRM">>, #{}};
+            _ ->
+                {<<"CLIENT_ACK_ERROR">>, #{<<"reason">> => <<"ack_persistence_failed">>}}
+        end,
+    Msg = Extra#{
+        <<"id">> => MsgId,
+        <<"type">> => ReplyType,
+        <<"action">> => ReplyType,
+        <<"in_reply_to">> => MsgId,
+        <<"server_ts">> => elib_dt:millisecond()
+    },
+    {reply, reply_frame(Msg, State), State, hibernate}.
+
 %% @doc 处理 ACK 消息类型
--spec process_ack_type(binary(), binary(), integer(), binary()) -> ok.
+-spec process_ack_type(binary(), binary(), integer(), binary()) -> ok | {error, binary()}.
 process_ack_type(<<"C2C">>, MsgId, CurrentUid, DID) ->
     ok = ?DEBUG_LOG({client_ack_processing_c2c, MsgId}),
     msg_c2c_logic:c2c_client_ack(MsgId, CurrentUid, DID);
