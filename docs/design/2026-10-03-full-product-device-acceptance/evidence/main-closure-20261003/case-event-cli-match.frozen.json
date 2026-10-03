@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "required_cases": [
+    {
+      "case_id": "SYNTHETIC-CASE",
+      "platform": "android",
+      "profile": "SYNTHETIC",
+      "role_variant": "SYNTHETIC",
+      "parent_acceptance_ids": [
+        "F01-A03"
+      ],
+      "seed_ids": [
+        "SYNTHETIC"
+      ],
+      "oracle": "VERIFIER_CALIBRATION_ONLY",
+      "applicability": "REQUIRED"
+    }
+  ],
+  "case_event_bindings": [
+    {
+      "case_id": "SYNTHETIC-CASE",
+      "platform": "android",
+      "profile": "SYNTHETIC",
+      "role_variant": "SYNTHETIC",
+      "test_name": "SYNTHETIC required case"
+    }
+  ],
+  "event_artifact": {
+    "path": "case-event-cli-match.events.jsonl",
+    "sha256": "eaf7a3105d1d9f8350f38b969c6386fd66ff849ff8b895e79499de21c44de800"
+  }
+}

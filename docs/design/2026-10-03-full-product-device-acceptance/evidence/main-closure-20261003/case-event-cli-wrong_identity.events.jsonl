@@ -1,0 +1,4 @@
+{"type": "start"}
+{"type": "testStart", "test": {"id": 1, "name": "SYNTHETIC other case"}}
+{"type": "testDone", "testID": 1, "result": "success"}
+{"type": "done", "success": true}

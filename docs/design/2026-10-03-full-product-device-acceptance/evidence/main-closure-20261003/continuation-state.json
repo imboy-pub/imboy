@@ -1061,5 +1061,60 @@
       "genuine execution/config/device provenance",
       "business facts and final required gates"
     ]
+  },
+  "raw_case_identity_cli_gate": {
+    "app_candidate": "6397fa25e2eebdf65a6d6028415d8e3fa6626887",
+    "executed": 312,
+    "exit": 0,
+    "review": "APPROVED_CLI_PINNED_IDENTITY_ONLY",
+    "scope": "SYNTHETIC_RAW_CASE_IDENTITY_ONLY",
+    "product_pass": false,
+    "command_registry": "commands.json",
+    "calibrations": [
+      {
+        "id": "PREPARATION-F01-CASE-EVENT-MATCH",
+        "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+        "argv": [
+          "python3",
+          "scripts/auto_test.py",
+          "acceptance-case-events",
+          "--evidence-root",
+          "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003",
+          "--frozen-input",
+          "case-event-cli-match.frozen.json",
+          "--frozen-sha256",
+          "1a0fd5522009a5a17a22d787fd70b3b53675215a9e37430ffa500b3df036b7c9"
+        ],
+        "candidate_app": "6397fa25e2eebdf65a6d6028415d8e3fa6626887",
+        "exit": 0,
+        "output": "case-event-cli-match.result.json",
+        "output_sha256": "512fc7c19d71fb74f4f143bc8fb0410d21d20eaef0e9b537e54ba2fd9ee2b9f4",
+        "scope": "SYNTHETIC_RAW_CASE_IDENTITY_ONLY",
+        "product_pass": false
+      },
+      {
+        "id": "PREPARATION-F01-CASE-EVENT-WRONG_IDENTITY",
+        "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+        "argv": [
+          "python3",
+          "scripts/auto_test.py",
+          "acceptance-case-events",
+          "--evidence-root",
+          "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003",
+          "--frozen-input",
+          "case-event-cli-wrong_identity.frozen.json",
+          "--frozen-sha256",
+          "384cef03b6e3be6a200f341bea8c821ff9f16d966fa7967b278a74ea44392891"
+        ],
+        "candidate_app": "6397fa25e2eebdf65a6d6028415d8e3fa6626887",
+        "exit": 2,
+        "output": "case-event-cli-wrong_identity.result.json",
+        "output_sha256": "8213aabfadc156db285798e7363e4201e29af7e79898dae01026313091843e78",
+        "scope": "SYNTHETIC_RAW_CASE_IDENTITY_ONLY",
+        "product_pass": false
+      }
+    ],
+    "final_verifier": "NOT_IMPLEMENTED",
+    "remaining": "complete case/source/runtime coverage, genuine execution and business facts, required final gates"
   }
 }
