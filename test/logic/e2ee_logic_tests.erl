@@ -2,6 +2,45 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+group_failure_logs_do_not_expose_identity_or_raw_result_test_() ->
+    Canary = #{uid => 123, gid => 42, secret => <<"synthetic-key-canary">>},
+    Cases = [
+        {{ok, lists:duplicate(4097, #{})}, e2ee_group_member_keys_limit_exceeded},
+        {{error, fanout_limit_exceeded}, e2ee_group_member_count_limit_exceeded},
+        {{error, Canary}, e2ee_group_member_snapshot_db_error}
+    ],
+    [group_failure_log_case(Result, Event, Canary) || {Result, Event} <- Cases].
+
+group_failure_log_case(Result, Event, Canary) ->
+    ?WITH_MECKS(
+        [
+            {group_ds, [
+                {member_public_keys_authoritative, 3, fun(_, _, _) -> Result end},
+                {authorize_group_history, 3, fun(_, _, _) -> {error, Canary} end}
+            ]},
+            {elib_log, [{internal_log, 4, fun(_, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            ?assertMatch({error, _, _}, e2ee_logic:group_member_keys(123, 42)),
+            ?assertEqual(
+                {error, <<"internal_error">>, 500},
+                e2ee_logic:group_history_grant(123, 42, <<"synthetic-session">>)
+            ),
+            ?assertEqual(
+                1, meck:num_calls(elib_log, internal_log, ['_', {Event, failure}, '_', '_'])
+            ),
+            ?assertEqual(
+                1,
+                meck:num_calls(
+                    elib_log,
+                    internal_log,
+                    ['_', {e2ee_group_history_grant_invalid_result, failure}, '_', '_']
+                )
+            ),
+            ?assertEqual(2, meck:num_calls(elib_log, internal_log, 4))
+        end
+    ).
+
 %%%===================================================================
 %%% @doc
 %%% e2ee_logic 模块的 EUnit 测试

@@ -28,15 +28,15 @@ group_member_keys(CurrentUid, Gid) when is_integer(CurrentUid), is_integer(Gid) 
         {ok, Rows} when length(Rows) =< ?MAX_GROUP_KEY_ENTRIES ->
             group_member_keys_payload(Gid, Rows);
         {ok, _Rows} ->
-            _ = ?WARN_LOG({e2ee_group_member_keys_limit_exceeded, Gid, CurrentUid}),
+            _ = ?WARN_LOG({e2ee_group_member_keys_limit_exceeded, failure}),
             {error, <<"group_key_fanout_limit_exceeded">>, 409};
         {error, fanout_limit_exceeded} ->
-            _ = ?WARN_LOG({e2ee_group_member_count_limit_exceeded, Gid, CurrentUid}),
+            _ = ?WARN_LOG({e2ee_group_member_count_limit_exceeded, failure}),
             {error, <<"group_key_fanout_limit_exceeded">>, 409};
         {error, forbidden} ->
             {error, <<"forbidden">>, 403};
-        {error, Reason} ->
-            _ = ?ERROR_LOG({e2ee_group_member_snapshot_db_error, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG({e2ee_group_member_snapshot_db_error, failure}),
             {error, <<"internal_error">>, 500}
     end.
 
@@ -71,8 +71,8 @@ group_history_grant(CurrentUid, Gid, SessionId) when
             }};
         {error, denied} ->
             {error, <<"forbidden">>, 403};
-        Other ->
-            _ = ?ERROR_LOG({e2ee_group_history_grant_invalid_result, Gid, CurrentUid, Other}),
+        _Other ->
+            _ = ?ERROR_LOG({e2ee_group_history_grant_invalid_result, failure}),
             {error, <<"internal_error">>, 500}
     end.
 
