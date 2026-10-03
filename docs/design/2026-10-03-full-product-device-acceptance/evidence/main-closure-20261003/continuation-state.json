@@ -4738,5 +4738,11 @@
     "app_head": "88d16d2155114f7b9500eb0a05f82774a7567843",
     "tests": 17,
     "product_pass": false
+  },
+  "current_organization_domain_regression": {
+    "receipt": "current-organization-domain-regression-20261004.json",
+    "app_head": "099faadd3353883d909632c43f1b8e415f6dc711",
+    "tests": 258,
+    "product_pass": false
   }
 }

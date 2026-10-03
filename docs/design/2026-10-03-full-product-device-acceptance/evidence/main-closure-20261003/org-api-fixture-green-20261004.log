@@ -1,0 +1,645 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_api_contract_test.dart
+00:00 +0: 组织本体 mine：GET 分页 + 信封解析（TSID 无损转 string）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=2&size=10
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=2&size=10
+
+00:00 +1: 组织本体 create：POST 名称
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+
+00:00 +2: 组织本体 archive / restore：POST 子路径
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/archive
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/archive
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/restore
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/restore
+
+00:00 +3: C11：邀请只走 v2 面，legacy direct-add 不存在 createInvitation：POST /invitations 且带 user_id；一次性 token 透传
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations
+
+00:00 +4: C11：邀请只走 v2 面，legacy direct-add 不存在 acceptInvitation：POST /accept 且带 token
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations/accept
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations/accept
+
+00:00 +5: C11：邀请只走 v2 面，legacy direct-add 不存在 acceptInvitation：免口令（缺省 token）→ 空 body（P0 定向邀请直达）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations/accept
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations/accept
+
+00:00 +6: C11：邀请只走 v2 面，legacy direct-add 不存在 reject / revoke：invitation_id 子路径 POST
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations/910000020/reject
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations/910000020/reject
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations/910000020/revoke
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations/910000020/revoke
+
+00:00 +7: C11：邀请只走 v2 面，legacy direct-add 不存在 myInvitations / orgInvitations：GET 列表（status/limit 透传）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=5&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=5&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations?limit=20
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/invitations?limit=20
+
+00:00 +8: 成员治理（403 权限态是普通成员的预期结果） members：GET 分页
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members?page=1&size=10
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members?page=1&size=10
+
+00:00 +9: 成员治理（403 权限态是普通成员的预期结果） changeRole：PUT role；removeMember：DELETE
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1002/role
+method: PUT
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1002/role
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1002
+method: DELETE
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1002
+
+00:00 +10: 成员治理（403 权限态是普通成员的预期结果） transferOwner：POST transfer_owner 且带 user_id
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/transfer_owner
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/transfer_owner
+
+00:00 +11: 成员治理（403 权限态是普通成员的预期结果） ENT-APP-04 suspend：POST 子路径 + 响应解析为 suspended 成员行
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1002/suspend
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1002/suspend
+
+00:00 +12: 成员治理（403 权限态是普通成员的预期结果） ENT-APP-04 restore：POST 子路径 + 响应解析为 active 成员行
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1002/restore
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1002/restore
+
+00:00 +13: 成员治理（403 权限态是普通成员的预期结果） ENT-APP-04 offboard：POST 子路径 + 响应解析为 removed 终态行
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1002/offboard
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1002/offboard
+
+00:00 +14: 成员治理（403 权限态是普通成员的预期结果） ENT-APP-04 主 Owner suspend 被拒：409 → isConflict（EB-D07）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1001/suspend
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members/1001/suspend
+
+handleResponse_response /api/v1/organizations/7266418340025468930/members/1001/suspend : false {"code":409,"msg":"主 Owner 不能被暂停，请先转移 Owner"}; 
+00:00 +15: 成员治理（403 权限态是普通成员的预期结果） 普通成员拉列表 403 → isForbidden
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members?page=1&size=10
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/members?page=1&size=10
+
+handleResponse_response /api/v1/organizations/7266418340025468930/members : false {"code":403,"msg":"无权访问"}; 
+00:00 +16: 部门（ORG-04） departments：GET 列表（status 可选）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments?status=active
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments?status=active
+
+00:00 +17: 部门（ORG-04） createDepartment：POST；moveDepartment：键名 parent_id（null=根）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/move
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/move
+
+00:00 +18: 部门（ORG-04） departmentDetail：扁平 dept 行 + members
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5
+
+00:00 +19: 部门（ORG-04） ENT-APP-05 removeDepartmentMember：DELETE item 路由
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/members/1002
+method: DELETE
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/members/1002
+
+00:00 +20: 部门（ORG-04） ENT-APP-05 setDepartmentAdmin：PUT admin 路由（true/false 同端点）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/members/1002/admin
+method: PUT
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/members/1002/admin
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/members/1002/admin
+method: PUT
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/members/1002/admin
+
+00:00 +21: 部门（ORG-04） ENT-APP-05 rename/move 携带 expected_version（CAS 接通）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5
+method: PATCH
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/move
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/move
+
+00:00 +22: 部门（ORG-04） ENT-APP-05 移到自身/子孙：409 cycle → isConflict（错误态透传）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/move
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/move
+
+handleResponse_response /api/v1/organizations/7266418340025468930/departments/5/move : false {"code":409,"msg":"部门层级禁止成环"}; 
+00:00 +23: 部门（ORG-04） ENT-APP-05 旧 version CAS 不符：409 conflict → isConflict（刷新重试）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5
+method: PATCH
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5
+
+handleResponse_response /api/v1/organizations/7266418340025468930/departments/5 : false {"code":409,"msg":"部门已被并发修改，请刷新版本后重试"}; 
+00:00 +24: 部门（ORG-04） ENT-APP-05 非授权者治理成员：403 actor_not_permitted → isForbidden
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/members/1002
+method: DELETE
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/members/1002
+
+handleResponse_response /api/v1/organizations/7266418340025468930/departments/5/members/1002 : false {"code":403,"msg":"无权执行该部门操作"}; 
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/members/1002/admin
+method: PUT
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/departments/5/members/1002/admin
+
+handleResponse_response /api/v1/organizations/7266418340025468930/departments/5/members/1002/admin : false {"code":403,"msg":"无权执行该部门操作"}; 
+00:00 +25: C05 默认 Workspace 指针 + C17 预检 defaultWorkspace：null 出站 → isSet false
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/default-workspace
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/default-workspace
+
+00:00 +26: C05 默认 Workspace 指针 + C17 预检 setDefaultWorkspace / clearDefaultWorkspace
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/default-workspace
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/default-workspace
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/default-workspace
+method: DELETE
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/7266418340025468930/default-workspace
+
+00:00 +27: C05 默认 Workspace 指针 + C17 预检 deletionPreflight：payload 解析；503 = 事实不可用即拒
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/deletion-preflight
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/deletion-preflight
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/deletion-preflight
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/deletion-preflight
+
+handleResponse_response /api/v1/organizations/deletion-preflight : false {"code":503,"msg":"DEPENDENCY_FACTS_UNAVAILABLE"}; 
+00:00 +28: All tests passed!

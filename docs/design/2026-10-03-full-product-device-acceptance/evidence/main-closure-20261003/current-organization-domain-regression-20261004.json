@@ -1,0 +1,56 @@
+{
+  "scope": "CURRENT_LOCAL_ORGANIZATION_DOMAIN_REGRESSION",
+  "app_head": "099faadd3353883d909632c43f1b8e415f6dc711",
+  "executed_source_parent": "88d16d2155114f7b9500eb0a05f82774a7567843 plus exact two fixture files now committed",
+  "command": "flutter test test/organization --reporter expanded",
+  "tests": 258,
+  "exit_code": 0,
+  "analyze_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "artifacts": [
+    {
+      "path": "current-organization-domain-20261004.log",
+      "sha256": "bc8a9b6c059a5dc1adb02ea9f8b437b28e437ada208cfeaa0c8d000eca2b3741"
+    },
+    {
+      "path": "current-organization-domain-final-20261004.log",
+      "sha256": "524ba7b864c9ab192cbe693f3b2f2196235ed567e2b4d402ccc4ddbda3352677"
+    },
+    {
+      "path": "current-organization-domain-fixed-20261004.log",
+      "sha256": "9208deb42a8d9570e0ffc2f163b8cca933223c5c4c6c0ab5fbc84d3312842116"
+    },
+    {
+      "path": "org-api-fixture-green-20261004.log",
+      "sha256": "ef1d45791f4421bbbe349599368f5b25bc41ffaac04efddde45369d42b0a259c"
+    },
+    {
+      "path": "org-api-fixture-two-analyze-20261004.log",
+      "sha256": "cf3970e49e2516eb2d13c20b6d79cfcd787092da63672cff47e8db8c8509c98f"
+    }
+  ],
+  "attempts": [
+    {
+      "pass": 246,
+      "fail": 12,
+      "exit": 1,
+      "cause": "organization API secure storage fixture absent"
+    },
+    {
+      "pass": 256,
+      "fail": 2,
+      "exit": 1,
+      "cause": "human directory API secure storage fixture absent"
+    },
+    {
+      "pass": 258,
+      "fail": 0,
+      "exit": 0
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Host widget/unit/mocked API tests, not Android/macOS device, real auth, PG or native secure storage qualification"
+  ]
+}
