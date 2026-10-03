@@ -1,0 +1,19 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart
+00:00 +0: requires session-validating pong before send
+00:00 +1: legacy negotiated protocol uses text heartbeat
+00:00 +2: wrong pong never confirms and timeout closes channel
+00:00 +3: early authentication error fails without leaking server payload
+00:00 +3 -1: early authentication error fails without leaking server payload [E]
+  Expected: true
+    Actual: <false>
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test/unit_test/service/e2ee_release_socket_session_test.dart 112:7  main.<fn>
+  
+00:00 +3 -1: close after validation invalidates session
+00:00 +4 -1: superseded connector is closed and cannot replace newer connection
+00:00 +5 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: early authentication error fails without leaking server payload

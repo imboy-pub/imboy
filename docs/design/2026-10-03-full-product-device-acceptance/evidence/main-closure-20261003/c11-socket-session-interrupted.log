@@ -1,0 +1,14 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart
+00:00 +0: requires session-validating pong before send
+00:00 +1: legacy negotiated protocol uses text heartbeat
+00:00 +2: wrong pong never confirms and timeout closes channel
+00:00 +3: early authentication error fails without leaking server payload
+00:00 +4: close after validation invalidates session
+00:00 +5: superseded connector is closed and cannot replace newer connection
+00:16 +5 -1: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart [E]
+  Bad state: Cannot close sink while adding stream.
+  package:stream_channel/src/guarantee_channel.dart 180:7      _GuaranteeSink.close
+  package:flutter_tools/src/test/flutter_platform.dart 765:43  FlutterPlatform._startTest
+  
+One or more uncaught errors occurred shutting down:
+  Bad state: Cannot add event while adding stream.

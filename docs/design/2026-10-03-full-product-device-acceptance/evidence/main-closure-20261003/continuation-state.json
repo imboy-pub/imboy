@@ -1594,5 +1594,53 @@
       "compressed/encrypted transport transformations rejected",
       "nested business maps are not deeply immutable"
     ]
+  },
+  "c11_connection_lifecycle_offline": {
+    "scope": "C11_CONNECTION_LIFECYCLE_OFFLINE_FAKE_SOCKET_ONLY",
+    "product_pass": false,
+    "network_executed": false,
+    "candidate_app": "eb35c34fe7f6147e23b25864197e6d4303942073",
+    "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/service/e2ee_release_socket_session_test.dart",
+      "test/unit_test/service/e2ee_release_wire_codec_test.dart",
+      "test/unit_test/service/e2ee_server_ack_tracker_test.dart",
+      "test/unit_test/service/e2ee_registered_fixture_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "executed": 51,
+    "failed": 0,
+    "exit": 0,
+    "review": "APPROVED_AFTER_OLD_PENDING_CONNECTOR_CLEANUP_RACE_FIX",
+    "analysis": "No issues found",
+    "logs": [
+      {
+        "path": "c11-connection-components-host.log",
+        "sha256": "933c6a70670e9a594eb03098a1421ba97e55899b6f22ec9bba259a2beda98459",
+        "phase": "REVIEWED_51_PASS",
+        "exit": 0
+      },
+      {
+        "path": "c11-socket-session-red-cleanup.log",
+        "sha256": "28b93b2566d3d7277fbef99e4f7e2bfd086bf0530716cb95a0225b90647ab751",
+        "phase": "RED_AUTH_ERROR_CLEANUP_NOT_COMPLETE",
+        "exit": 1
+      },
+      {
+        "path": "c11-socket-session-interrupted.log",
+        "sha256": "73c51b897b7e01a3be48ed1427ab99b118ef40b972c3a9f1c3007e0fc80d7fdb",
+        "phase": "INTERRUPTED_FAKE_UNLISTENED_CLOSE_NO_PASS",
+        "exit": null
+      }
+    ],
+    "remaining": [
+      "compose registered fixture/socket/ACK into real release transport",
+      "trusted isolated endpoint and actual seed/auth bindings",
+      "real backend/device encrypted journeys and five-surface oracle"
+    ],
+    "proof_limit": "Heartbeat oracle here is fake; real auth and session validity are not proven. IoReleaseSocket code exists but was never connected."
   }
 }
