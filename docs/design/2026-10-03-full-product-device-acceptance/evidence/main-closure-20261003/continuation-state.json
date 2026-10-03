@@ -4247,5 +4247,13 @@
     "platform_obligations_designed": 20,
     "executed_host": 32,
     "product_pass": false
+  },
+  "f00_billing_function_bindings": {
+    "receipt": "f00-billing-function-bindings.json",
+    "receipt_sha256": "ef5c007a4c2d649e8ba3f9df790f2a3756993de6466dea197d0a2fd510856323",
+    "mapped_generated_ids": 6,
+    "additional_source_features": 5,
+    "mapping_status": "SOURCE_RECONCILED_NOT_FROZEN",
+    "product_pass": false
   }
 }
