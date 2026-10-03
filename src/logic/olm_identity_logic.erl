@@ -296,8 +296,8 @@ rotate_identity(
                 {error, _} = Err ->
                     Err
             end;
-        {error, Reason} ->
-            _ = ?ERROR_LOG({olm_identity_bump_error, UserId, DeviceId, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(olm_identity_bump_error),
             {error, <<"internal_error">>}
     end.
 
@@ -311,8 +311,8 @@ do_upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, Devic
     of
         {ok, _} ->
             ok;
-        {error, Reason} ->
-            _ = ?ERROR_LOG({olm_report_identity_error, UserId, DeviceId, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(olm_report_identity_error),
             {error, <<"internal_error">>}
     end.
 
@@ -356,8 +356,8 @@ emit_rotation_event(UserId, DeviceId, Ed25519B64, SignatureB64, NewVer, DeviceGe
     case trust_audit_ds:insert_event(Event) of
         {ok, _} ->
             ok;
-        {error, Reason} ->
-            _ = ?ERROR_LOG({olm_rotation_event_failed, UserId, DeviceId, NewVer, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(olm_rotation_event_failed),
             _ = elib_metric:increment(olm_rotation_event_failed_total),
             ok
     end.
@@ -392,8 +392,8 @@ report_one_time_keys(UserId, DeviceId, Keys, MaxKeys) when
                     of
                         {ok, N} ->
                             {ok, N};
-                        {error, Reason} ->
-                            _ = ?ERROR_LOG({olm_report_otk_error, UserId, DeviceId, Reason}),
+                        {error, _Reason} ->
+                            _ = ?ERROR_LOG(olm_report_otk_error),
                             {error, <<"internal_error">>}
                     end
             end
@@ -418,8 +418,8 @@ report_fallback_key(UserId, DeviceId, KeyId, KeyB64) when
             case olm_identity_ds:upsert_fallback_key(UserId, DeviceId, KeyId, KeyB64) of
                 {ok, _} ->
                     ok;
-                {error, Reason} ->
-                    _ = ?ERROR_LOG({olm_report_fallback_error, UserId, DeviceId, Reason}),
+                {error, _Reason} ->
+                    _ = ?ERROR_LOG(olm_report_fallback_error),
                     {error, <<"internal_error">>}
             end;
         false ->
@@ -482,8 +482,8 @@ verify_then_report_fallback(UserId, DeviceId, KeyId, KeyB64, Signature) ->
                 false ->
                     {error, <<"invalid_signature">>}
             end;
-        {error, Reason} ->
-            _ = ?ERROR_LOG({olm_fallback_identity_error, UserId, DeviceId, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(olm_fallback_identity_error),
             {error, <<"internal_error">>}
     end.
 
