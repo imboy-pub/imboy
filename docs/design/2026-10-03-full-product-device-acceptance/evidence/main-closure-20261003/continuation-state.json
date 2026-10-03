@@ -4824,5 +4824,10 @@
       "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
     },
     "product_pass": false
+  },
+  "organization_picker_join_result_epoch": {
+    "receipt": "organization-picker-join-result-epoch-20261004.json",
+    "app_head": "52590c9a4a1a296ef3175c12c99534bf0d3e64b0",
+    "product_pass": false
   }
 }

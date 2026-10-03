@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_EXPLICIT_ACCOUNT_JOIN_DIALOG_RESULT_ISOLATION",
+  "app_head": "52590c9a4a1a296ef3175c12c99534bf0d3e64b0",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "results": {
+    "red_exit": 1,
+    "red_failed": 2,
+    "green_exit": 0,
+    "passed": 24,
+    "analyze_issues": 0,
+    "catalog_targets": 153,
+    "inventory_functions": 1982
+  },
+  "changes": [
+    "Capture account and epoch before opening the join dialog.",
+    "Discard stale results before cache seeding or list refresh.",
+    "Recheck after refresh before starting automatic organization switch."
+  ],
+  "oracles": [
+    "For A-B and A-B-A, popping a synthetic old dialog result does not trigger extra mocked mine requests or retain its organization in current-account cache."
+  ],
+  "limitations": [
+    "Tests return a synthetic dialog result through actual Navigator; they do not execute dialog internal preview/join business requests.",
+    "Already-started join writes are not cancelled by these result checks.",
+    "The new tests exercise the first stale-result check; post-refresh check is code-reviewed rather than separately calibrated.",
+    "No real account, device, database or production qualification."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-join-epoch-red-20261004.log",
+      "sha256": "afbc98985f8bf2791b898b27faf04c31cd77659f45f747062becbbecf582b8a4"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-join-epoch-green-20261004.log",
+      "sha256": "07794151ac76ebed16a63e070152cac9e63cfcc61a27ae1f13630f6613475978"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-join-epoch-analyze-20261004.log",
+      "sha256": "75d88d928710084dd118c54a196c880dba7b2c299153a7585018505ee8c2567c"
+    }
+  ]
+}
