@@ -1,0 +1,35 @@
+{
+  "scope": "LOCAL_E2EE_ALERT_RUNBOOK_PRIVACY_ALIGNMENT_ONLY",
+  "backend_head": "f5e23397076aebae58b4e877fecdb49c02233619",
+  "review": "APPROVED",
+  "promtool_rule_check": {
+    "rules": 56,
+    "status": "SUCCESS"
+  },
+  "promtool_synthetic_tests": {
+    "assertions": 17,
+    "status": "SUCCESS"
+  },
+  "artifacts": [
+    {
+      "path": "e2ee-private-runbook-rule-check.log",
+      "sha256": "3ddb6040ffc4618f360470cef0d108c0e8e1e5a3bcd398995dd5c00a48ab2bfe"
+    },
+    {
+      "path": "e2ee-private-runbook-rule-tests.log",
+      "sha256": "8289a4919870ab5b28f5e90a86b4af3cdbd8c244516c02fca90d6e3f289a6711"
+    }
+  ],
+  "source_hashes": {
+    "deploy/prometheus/rules/imboy-alerts.yml": "6756d39c7fa5d2b5ac88dbdd72bd99518dcc432bf61617e462376f75a316e99c"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "database_execution": false,
+  "notification_sent": false,
+  "limits": [
+    "Annotations only; thresholds and hold periods unchanged",
+    "Signed audit records cannot be reconstructed from redacted logs; gap remains until trusted recovery evidence and approved contract",
+    "No production monitoring, resource authorization or operational rollout proof"
+  ]
+}
