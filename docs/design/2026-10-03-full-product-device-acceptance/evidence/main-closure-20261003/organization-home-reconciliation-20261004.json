@@ -1,0 +1,26 @@
+{
+  "scope": "F00_ORGANIZATION_HOME_SOURCE_HISTORY_RECONCILIATION",
+  "app_head": "9f3a025108cb3a752dbf4d4880a8a6ae22b157b3",
+  "historical_generation_commit": "5c54f71d",
+  "preserved_ids": 4,
+  "new_required_ids": 3,
+  "inventory_functions": 1982,
+  "inventory_check_exit": 0,
+  "acceptance_check_exit": 64,
+  "missing_target_mappings": 1764,
+  "placeholder_oracles": 232,
+  "review": "APPROVE",
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "artifacts": [
+    {
+      "path": "org-home-reconciled-inventory-20261004.log",
+      "sha256": "2335a9e8246d1e37e470e29d3aa1994113171ae07b0c18ba404e53e6fd7c8d09"
+    }
+  ],
+  "supersedes": "organization-home-case-design-20261004.json legacy ambiguity now resolved by historical source; six business designs still not executable",
+  "limits": [
+    "All seven entries remain required with no device target and placeholder oracle; no device/API journey executed",
+    "Frozen historical manifests and workqueue remain historical snapshots, not current inputs"
+  ]
+}

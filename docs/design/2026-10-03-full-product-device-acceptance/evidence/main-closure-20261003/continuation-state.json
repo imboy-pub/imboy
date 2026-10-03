@@ -4701,5 +4701,12 @@
     "cases_designed": 6,
     "legacy_mapping": "AMBIGUOUS_UNRESOLVED",
     "product_pass": false
+  },
+  "f00_organization_home_reconciliation": {
+    "receipt": "organization-home-reconciliation-20261004.json",
+    "app_head": "9f3a025108cb3a752dbf4d4880a8a6ae22b157b3",
+    "legacy_mapping": "RESOLVED_FROM_HISTORICAL_SOURCE",
+    "new_required_ids": 3,
+    "product_pass": false
   }
 }
