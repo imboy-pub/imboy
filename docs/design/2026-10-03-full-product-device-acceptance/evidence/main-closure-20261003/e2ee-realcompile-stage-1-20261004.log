@@ -1,0 +1,236 @@
+test/api/e2ee_otk_metric_exposition_tests.erl:46:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   46|     _ = (catch meck:unload(olm_identity_ds)),
+%     |          ^
+
+test/api/e2ee_otk_metric_exposition_tests.erl:47:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   47|     _ = (catch meck:unload(friend_ds)),
+%     |          ^
+
+test/api/e2ee_otk_metric_exposition_tests.erl:63:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   63|     _ = (catch meck:unload(olm_identity_ds)),
+%     |          ^
+
+test/api/e2ee_otk_metric_exposition_tests.erl:64:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   64|     _ = (catch meck:unload(friend_ds)),
+%     |          ^
+
+test/ds/e2ee_offline_sender_did_tests.erl:60:14: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   60|         _ = (catch meck:unload(msg_c2c_repo))
+%     |              ^
+
+test/ds/e2ee_offline_sender_did_tests.erl:76:14: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   76|         _ = (catch meck:unload(msg_c2c_repo))
+%     |              ^
+
+test/ds/e2ee_offline_sender_did_tests.erl:162:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  162|     _ = (catch meck:unload(elib_pg)),
+%     |          ^
+
+test/ds/e2ee_offline_sender_did_tests.erl:163:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  163|     _ = (catch meck:unload(elib_pg_sql)),
+%     |          ^
+
+test/ds/e2ee_offline_sender_did_tests.erl:164:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  164|     _ = (catch meck:unload(elib_tsid)),
+%     |          ^
+
+test/ds/e2ee_offline_sender_did_tests.erl:273:14: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  273|         _ = (catch meck:unload(elib_pg))
+%     |              ^
+
+test/ds/e2ee_offline_sender_did_tests.erl:298:14: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  298|         _ = (catch meck:unload(elib_pg))
+%     |              ^
+
+test/lib/elib_cipher_e2ee_v2_tests.erl:159:9: Warning: variable 'SenderPublicKey' is unused
+%  159|         SenderPublicKey = derive_public_key(SenderKey),
+%     |         ^
+
+test/lib/olm_otk_cleanup_worker_tests.erl:10:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   10|     _ = catch meck:unload([olm_identity_logic]),
+%     |         ^
+
+test/lib/olm_otk_cleanup_worker_tests.erl:24:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   24|     _ = catch meck:unload([olm_identity_logic]),
+%     |         ^
+
+test/lib/olm_otk_cleanup_worker_tests.erl:38:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   38|     _ = catch meck:unload([olm_identity_logic]),
+%     |         ^
+
+test/logic/e2ee_batch_claim_idempotency_tests.erl:107:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  107|     _ = (catch meck:unload(olm_identity_ds)),
+%     |          ^
+
+test/logic/e2ee_batch_claim_idempotency_tests.erl:109:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  109|     _ = (catch meck:unload(friend_ds)),
+%     |          ^
+
+test/logic/e2ee_error_privacy_tests.erl:51:6: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   51|     ?WITH_MECKS([user_device_ds, elib_dt], fun() ->
+%     |      ^
+
+test/logic/e2ee_error_privacy_tests.erl:69:6: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   69|     ?WITH_MECKS([user_device_ds, elib_dt], fun() ->
+%     |      ^
+
+test/logic/e2ee_error_privacy_tests.erl:89:6: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   89|     ?WITH_MECKS([elib_pg, elib_dt, friend_ds, elib_cnv], fun() ->
+%     |      ^
+
+test/logic/e2ee_error_privacy_tests.erl:112:6: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  112|     ?WITH_MECKS([e2ee_backup_ds], fun() ->
+%     |      ^
+
+test/logic/e2ee_error_privacy_tests.erl:132:6: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  132|     ?WITH_MECKS([user_device_ds, elib_dt, e2ee_backup_ds], fun() ->
+%     |      ^
+
+test/logic/e2ee_fallback_signature_tests.erl:89:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   89|     _ = (catch meck:unload(elib_metric)),
+%     |          ^
+
+test/logic/e2ee_fallback_signature_tests.erl:90:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   90|     _ = (catch meck:unload(olm_identity_ds)),
+%     |          ^
+
+test/logic/e2ee_logic_tests.erl:127:1: Warning: function run_with_mocks/2 is unused
+%  127| run_with_mocks(MockConfigs, TestFun) ->
+%     | ^
+
+test/logic/e2ee_otk_claim_idempotency_tests.erl:111:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  111|     _ = (catch meck:unload(olm_identity_ds)),
+%     |          ^
+
+test/logic/e2ee_otk_claim_idempotency_tests.erl:113:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  113|     _ = (catch meck:unload(friend_ds)),
+%     |          ^
+
+test/logic/e2ee_otk_exhaustion_metric_tests.erl:82:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   82|     _ = (catch meck:unload(elib_metric)),
+%     |          ^
+
+test/logic/e2ee_otk_exhaustion_metric_tests.erl:83:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   83|     _ = (catch meck:unload(olm_identity_ds)),
+%     |          ^
+
+test/logic/e2ee_otk_exhaustion_metric_tests.erl:84:10: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   84|     _ = (catch meck:unload(friend_ds)),
+%     |          ^
+
+test/repo/olm_identity_repo_tests.erl:23:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   23|     _ = catch meck:unload([elib_pg, elib_tsid]),
+%     |         ^
+
+test/repo/olm_identity_repo_tests.erl:55:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   55|     _ = catch meck:unload([elib_pg]),
+%     |         ^
+
+test/repo/olm_identity_repo_tests.erl:68:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   68|     _ = catch meck:unload([elib_pg]),
+%     |         ^
+
+test/repo/olm_identity_repo_tests.erl:89:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   89|     _ = catch meck:unload([elib_pg, elib_tsid]),
+%     |         ^
+
+test/repo/olm_identity_repo_tests.erl:107:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  107|     _ = catch meck:unload([elib_pg]),
+%     |         ^
+
+test/repo/olm_identity_repo_tests.erl:121:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  121|     _ = catch meck:unload([elib_pg, elib_tsid]),
+%     |         ^
+
+test/repo/olm_identity_repo_tests.erl:147:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  147|     _ = catch meck:unload([elib_pg]),
+%     |         ^
+
+test/repo/olm_identity_repo_tests.erl:163:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  163|     _ = catch meck:unload([elib_pg]),
+%     |         ^
+
+test/repo/olm_identity_repo_tests.erl:187:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  187|     _ = catch meck:unload([elib_pg]),
+%     |         ^
+
+test/repo/olm_identity_repo_tests.erl:218:9: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  218|     _ = catch meck:unload([elib_pg]),
+%     |         ^
+

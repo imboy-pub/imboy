@@ -1,0 +1,658 @@
+{
+  "schema_version": 1,
+  "scope": "ISOLATED_REAL_ERLANG_COMPILATION_ONLY",
+  "backend_head": "e8b27ade4715b9432901ccb347e861ff4203b337",
+  "compiler": "erlc",
+  "output_dir": "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/imboy-e2ee-realcompile-h3ny4nqe",
+  "test_source_count": 45,
+  "compiled_beams": 46,
+  "checks": [
+    {
+      "argv": [
+        "erlc",
+        "-o",
+        "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/imboy-e2ee-realcompile-h3ny4nqe",
+        "-pa",
+        "ebin",
+        "-pa",
+        "deps/acceptor_pool/ebin",
+        "-pa",
+        "deps/bbmustache/ebin",
+        "-pa",
+        "deps/cf/ebin",
+        "-pa",
+        "deps/chatterbox/ebin",
+        "-pa",
+        "deps/cowboy/ebin",
+        "-pa",
+        "deps/cowlib/ebin",
+        "-pa",
+        "deps/ctx/ebin",
+        "-pa",
+        "deps/depcache/ebin",
+        "-pa",
+        "deps/ecron/ebin",
+        "-pa",
+        "deps/epgsql/ebin",
+        "-pa",
+        "deps/erlang_migrate/ebin",
+        "-pa",
+        "deps/erlang_pay/ebin",
+        "-pa",
+        "deps/erlware_commons/ebin",
+        "-pa",
+        "deps/erlydtl/ebin",
+        "-pa",
+        "deps/fs/ebin",
+        "-pa",
+        "deps/gen_smtp/ebin",
+        "-pa",
+        "deps/goldrush/ebin",
+        "-pa",
+        "deps/gpb/ebin",
+        "-pa",
+        "deps/gproc/ebin",
+        "-pa",
+        "deps/grpcbox/ebin",
+        "-pa",
+        "deps/gun/ebin",
+        "-pa",
+        "deps/hex_core/ebin",
+        "-pa",
+        "deps/hpack/ebin",
+        "-pa",
+        "deps/jose/ebin",
+        "-pa",
+        "deps/jsone/ebin",
+        "-pa",
+        "deps/lager/ebin",
+        "-pa",
+        "deps/meck/ebin",
+        "-pa",
+        "deps/observer_cli/ebin",
+        "-pa",
+        "deps/opentelemetry/ebin",
+        "-pa",
+        "deps/opentelemetry_api/ebin",
+        "-pa",
+        "deps/opentelemetry_exporter/ebin",
+        "-pa",
+        "deps/pooler/ebin",
+        "-pa",
+        "deps/ranch/ebin",
+        "-pa",
+        "deps/recon/ebin",
+        "-pa",
+        "deps/redbug/ebin",
+        "-pa",
+        "deps/relx/ebin",
+        "-pa",
+        "deps/simple_captcha/ebin",
+        "-pa",
+        "deps/ssl_verify_fun/ebin",
+        "-pa",
+        "deps/syn/ebin",
+        "-pa",
+        "deps/sync/ebin",
+        "-pa",
+        "deps/telemetry/ebin",
+        "-pa",
+        "deps/throttle/ebin",
+        "-pa",
+        "deps/tls_certificate_check/ebin",
+        "-pa",
+        "deps/uid/ebin",
+        "-I",
+        "include",
+        "-DTEST",
+        "src/repo/msg_store_repo.erl"
+      ],
+      "exit_code": 0,
+      "log": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-realcompile-stage-0-20261004.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "warning_count": 0
+    },
+    {
+      "argv": [
+        "erlc",
+        "-o",
+        "/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/imboy-e2ee-realcompile-h3ny4nqe",
+        "-pa",
+        "ebin",
+        "-pa",
+        "deps/acceptor_pool/ebin",
+        "-pa",
+        "deps/bbmustache/ebin",
+        "-pa",
+        "deps/cf/ebin",
+        "-pa",
+        "deps/chatterbox/ebin",
+        "-pa",
+        "deps/cowboy/ebin",
+        "-pa",
+        "deps/cowlib/ebin",
+        "-pa",
+        "deps/ctx/ebin",
+        "-pa",
+        "deps/depcache/ebin",
+        "-pa",
+        "deps/ecron/ebin",
+        "-pa",
+        "deps/epgsql/ebin",
+        "-pa",
+        "deps/erlang_migrate/ebin",
+        "-pa",
+        "deps/erlang_pay/ebin",
+        "-pa",
+        "deps/erlware_commons/ebin",
+        "-pa",
+        "deps/erlydtl/ebin",
+        "-pa",
+        "deps/fs/ebin",
+        "-pa",
+        "deps/gen_smtp/ebin",
+        "-pa",
+        "deps/goldrush/ebin",
+        "-pa",
+        "deps/gpb/ebin",
+        "-pa",
+        "deps/gproc/ebin",
+        "-pa",
+        "deps/grpcbox/ebin",
+        "-pa",
+        "deps/gun/ebin",
+        "-pa",
+        "deps/hex_core/ebin",
+        "-pa",
+        "deps/hpack/ebin",
+        "-pa",
+        "deps/jose/ebin",
+        "-pa",
+        "deps/jsone/ebin",
+        "-pa",
+        "deps/lager/ebin",
+        "-pa",
+        "deps/meck/ebin",
+        "-pa",
+        "deps/observer_cli/ebin",
+        "-pa",
+        "deps/opentelemetry/ebin",
+        "-pa",
+        "deps/opentelemetry_api/ebin",
+        "-pa",
+        "deps/opentelemetry_exporter/ebin",
+        "-pa",
+        "deps/pooler/ebin",
+        "-pa",
+        "deps/ranch/ebin",
+        "-pa",
+        "deps/recon/ebin",
+        "-pa",
+        "deps/redbug/ebin",
+        "-pa",
+        "deps/relx/ebin",
+        "-pa",
+        "deps/simple_captcha/ebin",
+        "-pa",
+        "deps/ssl_verify_fun/ebin",
+        "-pa",
+        "deps/syn/ebin",
+        "-pa",
+        "deps/sync/ebin",
+        "-pa",
+        "deps/telemetry/ebin",
+        "-pa",
+        "deps/throttle/ebin",
+        "-pa",
+        "deps/tls_certificate_check/ebin",
+        "-pa",
+        "deps/uid/ebin",
+        "-I",
+        "include",
+        "test/api/e2ee_claimant_scope_drift_tests.erl",
+        "test/api/e2ee_failure_metric_exposition_tests.erl",
+        "test/api/e2ee_handler_capability_tests.erl",
+        "test/api/e2ee_handler_device_binding_tests.erl",
+        "test/api/e2ee_handler_tests.erl",
+        "test/api/e2ee_metrics_ip_gate_tests.erl",
+        "test/api/e2ee_otk_count_tests.erl",
+        "test/api/e2ee_otk_metric_exposition_tests.erl",
+        "test/api/e2ee_otk_target_throttle_tests.erl",
+        "test/api/e2ee_throttle_scope_config_tests.erl",
+        "test/api/olm_handler_claim_throttle_tests.erl",
+        "test/api/olm_handler_tests.erl",
+        "test/ds/device_revocation_tests.erl",
+        "test/ds/e2ee_c2g_passthrough_contract_tests.erl",
+        "test/ds/e2ee_offline_sender_did_tests.erl",
+        "test/ds/e2ee_sender_device_envelope_tests.erl",
+        "test/ds/e2ee_v3_passthrough_contract_tests.erl",
+        "test/ds/message_ds_tests.erl",
+        "test/e2ee_safety_contract_tests.erl",
+        "test/integration/e2ee_c2g_message_pipeline_integration_tests.erl",
+        "test/integration/e2ee_message_pipeline_integration_tests.erl",
+        "test/integration/e2ee_otk_claim_idempotency_integration_tests.erl",
+        "test/lib/e2ee_error_code_tests.erl",
+        "test/lib/e2ee_kt_merkle_tests.erl",
+        "test/lib/e2ee_presign_mime_binding_tests.erl",
+        "test/lib/elib_cipher_e2ee_v2_tests.erl",
+        "test/lib/imboy_codec_tests.erl",
+        "test/lib/olm_otk_cleanup_worker_tests.erl",
+        "test/logic/e2ee_backup_logic_tests.erl",
+        "test/logic/e2ee_batch_claim_idempotency_tests.erl",
+        "test/logic/e2ee_error_privacy_tests.erl",
+        "test/logic/e2ee_fallback_signature_tests.erl",
+        "test/logic/e2ee_logic_tests.erl",
+        "test/logic/e2ee_otk_claim_idempotency_tests.erl",
+        "test/logic/e2ee_otk_exhaustion_metric_tests.erl",
+        "test/logic/e2ee_recovery_logic_tests.erl",
+        "test/logic/e2ee_trust_logic_tests.erl",
+        "test/logic/group_e2ee_logic_tests.erl",
+        "test/logic/olm_identity_log_privacy_tests.erl",
+        "test/logic/olm_identity_logic_tests.erl",
+        "test/logic/olm_otk_lifecycle_tests.erl",
+        "test/logic/push_notification_logic_tests.erl",
+        "test/repo/e2ee_backup_repo_tests.erl",
+        "test/repo/msg_store_jsonb_roundtrip_tests.erl",
+        "test/repo/olm_identity_repo_tests.erl"
+      ],
+      "exit_code": 0,
+      "log": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-realcompile-stage-1-20261004.log",
+      "sha256": "d0d1adfe0341dfa5cba3abdffb4f6d5deb28b31375f82f649fda1bb4d9ff4af3",
+      "warning_count": 40
+    }
+  ],
+  "sources": [
+    {
+      "path": "test/api/e2ee_claimant_scope_drift_tests.erl",
+      "sha256": "08d1f023e4e02536b739033a0eaff0be8c0c65522007dd71a83341d7556d229c"
+    },
+    {
+      "path": "test/api/e2ee_failure_metric_exposition_tests.erl",
+      "sha256": "f9bc7867484079b0a4efbfefe7039459c5a6d37169ae1eaf39e8fadce76482cc"
+    },
+    {
+      "path": "test/api/e2ee_handler_capability_tests.erl",
+      "sha256": "c4043b5a6e0ff10551d91a33f9314b244ead6a55bd9e5e36469b1d7720495901"
+    },
+    {
+      "path": "test/api/e2ee_handler_device_binding_tests.erl",
+      "sha256": "d4a71b6859f7a9d3ff3bd3e19ae08fba757154984e57b3d5c466f7b29de93117"
+    },
+    {
+      "path": "test/api/e2ee_handler_tests.erl",
+      "sha256": "ab7ee1a13f0496df195b12c6a35bc55766672d5afb21be7e1cdd442d97902a2f"
+    },
+    {
+      "path": "test/api/e2ee_metrics_ip_gate_tests.erl",
+      "sha256": "0d25c2c3dc5514eb0bac7e2e64b0947de542beb0ede4a26d1e768b3d493a5a7a"
+    },
+    {
+      "path": "test/api/e2ee_otk_count_tests.erl",
+      "sha256": "1b1779f1b70be915276f6384b040b26b72a6f138e2743f45aa8103b7371d05ac"
+    },
+    {
+      "path": "test/api/e2ee_otk_metric_exposition_tests.erl",
+      "sha256": "cec409025ad7c2cf028d3cf8a423bdfd07ba37be99749e81bb24cf952d8ed5f7"
+    },
+    {
+      "path": "test/api/e2ee_otk_target_throttle_tests.erl",
+      "sha256": "99cb9491591f96f46dd6f3e70a30ed4adc65802e7bd938d4951908e5ff24f5d7"
+    },
+    {
+      "path": "test/api/e2ee_throttle_scope_config_tests.erl",
+      "sha256": "c102c120f6d262696459c2992fa9531ffce789eae8e87a1e30da71eee073ab46"
+    },
+    {
+      "path": "test/api/olm_handler_claim_throttle_tests.erl",
+      "sha256": "ddcf2ec574c3761ecaee3663738008c8340c147cd727d6cec887813d3e0c2440"
+    },
+    {
+      "path": "test/api/olm_handler_tests.erl",
+      "sha256": "6ce504d073e0032d117c023232aadd6b4bad83c67dc7c356b638aad2486a001e"
+    },
+    {
+      "path": "test/ds/device_revocation_tests.erl",
+      "sha256": "67c87da9a027fcc21d967e0d88be3bf5857749ff4363a44dcf2ed21445727ef8"
+    },
+    {
+      "path": "test/ds/e2ee_c2g_passthrough_contract_tests.erl",
+      "sha256": "32570d965d7f7906e855ff4278bf31221969b30832925ad8e1e37dc42ee51567"
+    },
+    {
+      "path": "test/ds/e2ee_offline_sender_did_tests.erl",
+      "sha256": "9413cfbd09891c5244f41ecdb44424b74e31175702cd7016cea1505928969585"
+    },
+    {
+      "path": "test/ds/e2ee_sender_device_envelope_tests.erl",
+      "sha256": "ae6ec36b0967d48c1486fe4622f3cb5ee9562755ae695f93ab3cc28051e66387"
+    },
+    {
+      "path": "test/ds/e2ee_v3_passthrough_contract_tests.erl",
+      "sha256": "a0bbaf4f7c1dae84a88b83cd9fd1e0b247e0a1a95ddf58334d463831c5ee505c"
+    },
+    {
+      "path": "test/ds/message_ds_tests.erl",
+      "sha256": "9a287a96bc9954d74774ba007fee5f18c279f905dc67ac4ea6f4dc0a27576151"
+    },
+    {
+      "path": "test/e2ee_safety_contract_tests.erl",
+      "sha256": "6028777ab96ba95b2d69c96c5002399c7111c6780da0ef21260eae3fd8225fc8"
+    },
+    {
+      "path": "test/integration/e2ee_c2g_message_pipeline_integration_tests.erl",
+      "sha256": "f45c73aaa4927afd71984a631aae0f14095547e7a92b70d000b559a390d37fa0"
+    },
+    {
+      "path": "test/integration/e2ee_message_pipeline_integration_tests.erl",
+      "sha256": "5333658bf02121086dc3bfd4e70774c61f886fb4553a756119ca4756d51723a2"
+    },
+    {
+      "path": "test/integration/e2ee_otk_claim_idempotency_integration_tests.erl",
+      "sha256": "c5b2d3cc0bf9e0753334f090b9c2da1ff56d499c9eba3bc12f4db033b834932c"
+    },
+    {
+      "path": "test/lib/e2ee_error_code_tests.erl",
+      "sha256": "c2a9d5ba1e421f3f2bb702b8759f852106e9ccb7f13893135f3b1d177b21276e"
+    },
+    {
+      "path": "test/lib/e2ee_kt_merkle_tests.erl",
+      "sha256": "9fb96830a945fb3eb17573f5445da2ea9c7c20bf32b2ede1c035cf8bf985086a"
+    },
+    {
+      "path": "test/lib/e2ee_presign_mime_binding_tests.erl",
+      "sha256": "2d48ad186d2814250d13a691938752868f34a6d33f4df552d21b7f8c50c688c2"
+    },
+    {
+      "path": "test/lib/elib_cipher_e2ee_v2_tests.erl",
+      "sha256": "87e1b78976f765aca5dd438d27ba4bd34c1df83febb62b1897f0670642c98663"
+    },
+    {
+      "path": "test/lib/imboy_codec_tests.erl",
+      "sha256": "5b551de4bee21594a8d149424bea66f0d2555f55ce5e13026e2c309dc9a5003b"
+    },
+    {
+      "path": "test/lib/olm_otk_cleanup_worker_tests.erl",
+      "sha256": "b57521f084bbebb5a4b70a83b22819a03c8af0303dd5f4cad14fc331032cf1dc"
+    },
+    {
+      "path": "test/logic/e2ee_backup_logic_tests.erl",
+      "sha256": "f5bd391690c5e678b5a5ff03b4c8d03b877e3d477ed3010411d7a9a79596afd9"
+    },
+    {
+      "path": "test/logic/e2ee_batch_claim_idempotency_tests.erl",
+      "sha256": "43fd24d8550647d9f676a3d485421d7dd5c33fef419f6e0e8583310694bf14f8"
+    },
+    {
+      "path": "test/logic/e2ee_error_privacy_tests.erl",
+      "sha256": "a87fceba48d1aa93d0e36767b2806ff0451a8b3b32255d18420264e4c95aa938"
+    },
+    {
+      "path": "test/logic/e2ee_fallback_signature_tests.erl",
+      "sha256": "d17bb3c0d88f72726762b696c9c8b8f0332f1f901d4a31e7a3fbe0806ea2075d"
+    },
+    {
+      "path": "test/logic/e2ee_logic_tests.erl",
+      "sha256": "b0f391bed04b9b3137a1801531a56d31ab399783a37a114c2d4e9553f0fd5647"
+    },
+    {
+      "path": "test/logic/e2ee_otk_claim_idempotency_tests.erl",
+      "sha256": "7bc63e60e64517b79cb3384f99dd1b4208cc4530c7d6e120f380164bcf69ad19"
+    },
+    {
+      "path": "test/logic/e2ee_otk_exhaustion_metric_tests.erl",
+      "sha256": "375cfbf99b62475e163526bebc174f6c35f4643d92eb5c6947b57a6355f58fa9"
+    },
+    {
+      "path": "test/logic/e2ee_recovery_logic_tests.erl",
+      "sha256": "0d32743a5d286521bb5b22f327ed5e53420dcbba580b5347aa5d9320dba902bc"
+    },
+    {
+      "path": "test/logic/e2ee_trust_logic_tests.erl",
+      "sha256": "2bd69d02f3e1a266e5430c71932d7403311fe354b4132ea42f0d53dca23d742f"
+    },
+    {
+      "path": "test/logic/group_e2ee_logic_tests.erl",
+      "sha256": "93f6be8124e733ee18d44df8643759c36ea8e43871194df970518f44ce8fd47c"
+    },
+    {
+      "path": "test/logic/olm_identity_log_privacy_tests.erl",
+      "sha256": "de219dd4ae2bf30ac529c9c83f782c4b8cc66732b2ea79e6901a787345888b35"
+    },
+    {
+      "path": "test/logic/olm_identity_logic_tests.erl",
+      "sha256": "475f57b41399279007c1ce08c4d416e7940c969401003aca8df8a0dcc07c2bca"
+    },
+    {
+      "path": "test/logic/olm_otk_lifecycle_tests.erl",
+      "sha256": "00b4a7c969dcf6123dd7c488860605476a0ea3f0aa3673e2e6d5912d491216e3"
+    },
+    {
+      "path": "test/logic/push_notification_logic_tests.erl",
+      "sha256": "4a3205d7eeadb8a524dff6f301c0e98e6a17cfcb9140f8f386e9713a1fd126e1"
+    },
+    {
+      "path": "test/repo/e2ee_backup_repo_tests.erl",
+      "sha256": "36017523d9bc96748b316cd0361bceea55022b3d35b1a725e43d94c8eb3d6b6f"
+    },
+    {
+      "path": "test/repo/msg_store_jsonb_roundtrip_tests.erl",
+      "sha256": "56f422b5b2227d89a11c60e6e73cad0efc0194af53645a5a4a3b22816c8eca35"
+    },
+    {
+      "path": "test/repo/olm_identity_repo_tests.erl",
+      "sha256": "342a190545b8326eb6b973912b726a27b4d07436ca5183296e3e3bf1f423d234"
+    },
+    {
+      "path": "src/repo/msg_store_repo.erl",
+      "sha256": "707b18fa5e39e2a4cbd8907744575cf9781bdf5d25565a2cc795015d94304517"
+    },
+    {
+      "path": "include/eunit_setup.hrl",
+      "sha256": "1923c312aeb37938bb759f26a6c5026c2cab72f050b56ed2dad6e1731910c8d6"
+    },
+    {
+      "path": "Makefile",
+      "sha256": "dd6d159edd6c526ef02ec165b1dd0600e1db08c67f9cd2556fd9d56a6d60649a"
+    }
+  ],
+  "beam_manifest": [
+    {
+      "name": "device_revocation_tests.beam",
+      "sha256": "827310401b733c840be4bfd93023958d1eb9f377187fbf43f5e6f4e5d95961d1"
+    },
+    {
+      "name": "e2ee_backup_logic_tests.beam",
+      "sha256": "9547450dd9b8f449e2992423804dd65fd61edcaa596d445bc495cd25b087992f"
+    },
+    {
+      "name": "e2ee_backup_repo_tests.beam",
+      "sha256": "9d767648c5923b79eade95e72fcb114f96994e318579552be36c473a05e0d63b"
+    },
+    {
+      "name": "e2ee_batch_claim_idempotency_tests.beam",
+      "sha256": "3db8473bc567d08accc9233d8486aafd6ff7dd04a33de2d12b754d5399eea93f"
+    },
+    {
+      "name": "e2ee_c2g_message_pipeline_integration_tests.beam",
+      "sha256": "a98dff2aa2f010bfe68ba8bff94e2c788abe3cb7c2dd3da1f04da20a7ce759c3"
+    },
+    {
+      "name": "e2ee_c2g_passthrough_contract_tests.beam",
+      "sha256": "58addd2bd1eb23f1802ccb7cb87e3d543a13a622a596a88690089c3f74747f09"
+    },
+    {
+      "name": "e2ee_claimant_scope_drift_tests.beam",
+      "sha256": "15867cd65026ac80447649b97e498605ede9afde0914ace90eca5782b87d804b"
+    },
+    {
+      "name": "e2ee_error_code_tests.beam",
+      "sha256": "9eb71c3357c7acc0e750a703bdd7e0bd3e76e2dcf726fdca26409ada15e4ab41"
+    },
+    {
+      "name": "e2ee_error_privacy_tests.beam",
+      "sha256": "3232a315499109f7e8afcfbe3ae019519e25b3da77ba31fd29ca9e7327444acb"
+    },
+    {
+      "name": "e2ee_failure_metric_exposition_tests.beam",
+      "sha256": "9c3496b2033637deb8911dcf746319227d6230776ecee2602b1e718530e618c9"
+    },
+    {
+      "name": "e2ee_fallback_signature_tests.beam",
+      "sha256": "4485da72531eb811186ce8ef4f8b597c3d815c22f1ac9a4192520d331f9c2f33"
+    },
+    {
+      "name": "e2ee_handler_capability_tests.beam",
+      "sha256": "0becf912aa39b4cbe6fbf392d1ad944a5fe1bf8797ac56daf1ac8f2df8cc89d4"
+    },
+    {
+      "name": "e2ee_handler_device_binding_tests.beam",
+      "sha256": "73e531073a05f387a49534dae52b7e7a7e691410839e013245d6de16f1ac839c"
+    },
+    {
+      "name": "e2ee_handler_tests.beam",
+      "sha256": "d916e6d6aa9b7979a8e5d121afe7f0804344283a46a66870b923776d1d65b1e1"
+    },
+    {
+      "name": "e2ee_kt_merkle_tests.beam",
+      "sha256": "716dad369df078b89c8c7e57a16d54bd6cb46d4dd23202df0d7e6683451f193d"
+    },
+    {
+      "name": "e2ee_logic_tests.beam",
+      "sha256": "5c5a4bacd178392beb59d0fcce194a0375ab8dfc6603ab8d86fac9a3690b2cff"
+    },
+    {
+      "name": "e2ee_message_pipeline_integration_tests.beam",
+      "sha256": "9214fa67d4a8efe5fc245d9fb1081f91e539aa96976c46fcbf1b76c0db268db2"
+    },
+    {
+      "name": "e2ee_metrics_ip_gate_tests.beam",
+      "sha256": "809ccc756c54ce843cd685b9ccfd4bcbfbdfccc244bd382f296218991633e41b"
+    },
+    {
+      "name": "e2ee_offline_sender_did_tests.beam",
+      "sha256": "3b6d5078050c06985e81973693c37b3532b9edda38f9f753a4078438dc19e326"
+    },
+    {
+      "name": "e2ee_otk_claim_idempotency_integration_tests.beam",
+      "sha256": "6d59704bcea691d66f8062dc4113d2efc81ad50b01f7df959a82047b215f47de"
+    },
+    {
+      "name": "e2ee_otk_claim_idempotency_tests.beam",
+      "sha256": "b34cb1bf8395b065c2679af5b6aae109a22c32d8d65a00a6def85a97fd9c3250"
+    },
+    {
+      "name": "e2ee_otk_count_tests.beam",
+      "sha256": "e32074a2954b7c04aaa2bd029d1f14964f833a82268700290829f2bbc64d8b84"
+    },
+    {
+      "name": "e2ee_otk_exhaustion_metric_tests.beam",
+      "sha256": "7b1eff4d36c3f3b87c4172986245b095df64ef30d8a5ef793e0402712ce7f0ca"
+    },
+    {
+      "name": "e2ee_otk_metric_exposition_tests.beam",
+      "sha256": "cbd7179ca1eebdcb7a1480bb72bce3fbd82d9d89803ffd2672d243ab2bb4e14e"
+    },
+    {
+      "name": "e2ee_otk_target_throttle_tests.beam",
+      "sha256": "e311fce3d322194b2463eccad230033e53ba05bb6357905a3b569fc3e92be0da"
+    },
+    {
+      "name": "e2ee_presign_mime_binding_tests.beam",
+      "sha256": "dbafce8467bba65dde560af0f1378032bb55b5c38f34de2d5b7ee085b1d02294"
+    },
+    {
+      "name": "e2ee_recovery_logic_tests.beam",
+      "sha256": "e15c911cb41f375787880f2a7c43cdb41cf0786c7826137124d1b25a9cc30caf"
+    },
+    {
+      "name": "e2ee_safety_contract_tests.beam",
+      "sha256": "078d2a38e1f8057d7bd41e61a80e2c6fddab8d3f172ecca827aaeb711955983b"
+    },
+    {
+      "name": "e2ee_sender_device_envelope_tests.beam",
+      "sha256": "0aa74ca7519518c852d2afeb6483fa599b05cd3842bf4e07a4ec451d0981878a"
+    },
+    {
+      "name": "e2ee_throttle_scope_config_tests.beam",
+      "sha256": "fb44b113c5c06afd0d052469fd357632ae2649a58d83aa45d51e75d34bd964eb"
+    },
+    {
+      "name": "e2ee_trust_logic_tests.beam",
+      "sha256": "0b3c8b6bcecf97bfcd30a9622692f7d0646857410d92d145c0ddf31aec2c0b56"
+    },
+    {
+      "name": "e2ee_v3_passthrough_contract_tests.beam",
+      "sha256": "2dae6792c20751208f748ac901e3a287b8268abf987924d663bc3300c49efe1f"
+    },
+    {
+      "name": "elib_cipher_e2ee_v2_tests.beam",
+      "sha256": "04b0e9cd750c799f054b1338bde7e1b56a7da07af502831c7d73218c70883991"
+    },
+    {
+      "name": "group_e2ee_logic_tests.beam",
+      "sha256": "ba630c471ed0f7309974e2c4e3cd6ad9335f1bd7c80eb1e0958983e50f310979"
+    },
+    {
+      "name": "imboy_codec_tests.beam",
+      "sha256": "4df1bc5f3954adfbe3118316b7adf500986e11dca49eaa6fd7fbd982c4a353d9"
+    },
+    {
+      "name": "message_ds_tests.beam",
+      "sha256": "0cae47339ad191aa00893c422727c54a00ec0dc9be921d055341423f71295c61"
+    },
+    {
+      "name": "msg_store_jsonb_roundtrip_tests.beam",
+      "sha256": "4baab5e833bb1902f626b7e92f046909fd72cd138cff04f695da2faadb0b4fcc"
+    },
+    {
+      "name": "msg_store_repo.beam",
+      "sha256": "a49deb6df173f52c6c1ff451c8b86997f68b1ddc362930fdd9f5e32828a8a48e"
+    },
+    {
+      "name": "olm_handler_claim_throttle_tests.beam",
+      "sha256": "7831a8c0c45ac51a82cca2338a7bd406c5dfe11282038b6dd4bb23b0f3acf558"
+    },
+    {
+      "name": "olm_handler_tests.beam",
+      "sha256": "76bd24a0bf327e5ba51592c40744e7ef1d59db72cb3a7d209268605c1b3dfc4b"
+    },
+    {
+      "name": "olm_identity_log_privacy_tests.beam",
+      "sha256": "58920b8b58fd6103bbb05d203fcb48a918b31cd9b1282fce1e1ff36350ebe3b8"
+    },
+    {
+      "name": "olm_identity_logic_tests.beam",
+      "sha256": "2d23bf2b7863fa7651adfbdbb52a07b460d064d5fba382100b1e6c7b864d3339"
+    },
+    {
+      "name": "olm_identity_repo_tests.beam",
+      "sha256": "4603c2e30be79a41a2e0f0aabf594f65a6254f2969f73fd9f494357352712bb2"
+    },
+    {
+      "name": "olm_otk_cleanup_worker_tests.beam",
+      "sha256": "8bba5f1be92e3b0332f5806979ac7ca6997b84dd5e4bc01522e980baa61e47e5"
+    },
+    {
+      "name": "olm_otk_lifecycle_tests.beam",
+      "sha256": "287f59f96d9b840feb452932e8e055ed1ab11c7c298e9e1bcd26390406189d29"
+    },
+    {
+      "name": "push_notification_logic_tests.beam",
+      "sha256": "3fd35db552f5ca59e9b95bf9b9d3305f0babd64d709b46360735403524a01bcd"
+    }
+  ],
+  "archive": {
+    "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-realcompile-beams-20261004.tar.gz",
+    "sha256": "e34559f968f82a1d64721c53d49ce6553f87dda7f17d8624c488ee7efbe566b1"
+  },
+  "product_pass": false,
+  "device_execution": false,
+  "runtime_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "limitations": [
+    "Real compilation only, no EUnit runtime.",
+    "Uses existing dependency and production beam code paths, not a clean full build.",
+    "Compiler warnings retained, not claimed warning-free.",
+    "Some compiled integration tests and group_e2ee_logic_tests require PG; resource authorization remains pending."
+  ]
+}

@@ -5299,5 +5299,18 @@
     "checks_passed": 4,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "e2ee_current_real_compilation": {
+    "receipt": "e2ee-realcompile-20261004.json",
+    "backend_head": "e8b27ade4715b9432901ccb347e861ff4203b337",
+    "test_source_count": 45,
+    "compiled_beams": 46,
+    "exit_codes": [
+      0,
+      0
+    ],
+    "runtime_execution": false,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }
