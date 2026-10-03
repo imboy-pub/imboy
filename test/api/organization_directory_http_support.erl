@@ -84,6 +84,14 @@ setup_all() ->
      || K <-
             [jwt_key, enterprise_internal_cursor_signing_key, api_auth_switch]
     ],
+    State = inttest_marker_db:provision(#{
+        env_prefix => <<"INTBE04_INTTEST">>,
+        connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
+    }),
+    %% 认证 env 注入必须在 provision **之后**：inttest_marker_db 内部
+    %% application:load(imboy) 会把 -config（sys.config）注入的 env 重新合并，
+    %% 覆盖 load 之前 set_env 的运行时值——api_auth_switch 会回到 sys.config
+    %% 的 <<"off">>，auth_middleware_api_v1 的签名门随之被跳过（902 负例恒败）。
     application:set_env(imboy, api_auth_switch, <<"on">>),
     %% Human JWT 测试密钥（token_ds 签发 / auth_ds 校验同 env 自洽）。
     application:set_env(imboy, jwt_key, <<"orgdir_http_test_jwt_key_0123456789">>),
@@ -91,10 +99,6 @@ setup_all() ->
     application:set_env(
         imboy, enterprise_internal_cursor_signing_key, <<"orgdir_cursor_key_0123456789abcdef">>
     ),
-    State = inttest_marker_db:provision(#{
-        env_prefix => <<"INTBE04_INTTEST">>,
-        connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }),
     ensure_pool(State),
     ok = app_version_ds:set_sign_key(
         <<"synthetic">>, <<"orgdir-test">>, <<"synthetic.orgdir">>, ?DEVICE_KEY
