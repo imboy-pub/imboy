@@ -5261,5 +5261,13 @@
     "exit_code": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "friend_reminder_async_boundaries": {
+    "receipt": "friend-reminder-async-boundaries-20261004.json",
+    "app_head": "f94de682cbc1c3c05060f33d13aab88c077c2511",
+    "executed": 24,
+    "new_cases": 3,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

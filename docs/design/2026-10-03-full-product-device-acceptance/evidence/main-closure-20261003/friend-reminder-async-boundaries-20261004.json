@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_REMINDER_ASYNC_BOUNDARIES",
+  "app_head": "f94de682cbc1c3c05060f33d13aab88c077c2511",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "executed": 24,
+  "new_cases": 3,
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/page/bottom_navigation",
+    "--reporter",
+    "expanded"
+  ],
+  "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+  "exit_code": 0,
+  "logs": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/friend-remind-boundaries-final-20261004.log",
+      "sha256": "b67b2f306b25b1b7ecfb15274aac672693e5523516d04e7a8293b1d8643d5a76",
+      "exit_code": 0
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/friend-remind-boundaries-static-20261004.log",
+      "sha256": "2678c9a7076d536f2bb01c26f92fe35f3146b931f56fca4d534138f802c43b93",
+      "exit_code": 0
+    }
+  ],
+  "source": {
+    "path": "test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart",
+    "sha256": "1dea9908b95b590f03abb049c503cd808ed5029e75c7f81694841492621fbd1d"
+  },
+  "oracles": [
+    "Newer query returns first, old result cannot overwrite or notify.",
+    "Actual loginAfter increases generation while synthetic secure-write failure keeps UID unchanged; old result rejected.",
+    "Actual container disposal before query release produces no old notification."
+  ],
+  "limits": [
+    "No real device/backend execution.",
+    "Same-UID session change rejection does not prove previously stored reminders clear on session-only changes."
+  ],
+  "reviews": [
+    "runner_code_review APPROVE",
+    "c11_flutter_review reviewed; cleanup and length suggestions addressed"
+  ]
+}

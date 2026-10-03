@@ -1,0 +1,26 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: 个人标签离开首页后保留，账号变化或退出时重置
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: 返回个人页复用当前标签，显式路由仍可覆盖且越界归一
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: BottomNavigationPage construction contract widget is const-constructible (no required args)
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: BottomNavigationPage construction contract default key is null
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: BottomNavigationPage construction contract accepts custom key
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: bottomNavigationProvider default state default index = 0 (消息 Tab)
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: bottomNavigationProvider default state NotifierProvider exposes Notifier with state setter
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: newFriendRemindProvider default state default state is empty Set
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: newFriendRemindProvider default state Set 默认 length=0 → bottom bar badge 不显示
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: newFriendRemindProvider default state notifier 类型为 NewFriendRemindNotifier
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: provider 跨容器状态隔离 两个独立 container 的 bottomNavigationProvider 互不影响
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: provider 跨容器状态隔离 两个独立 container 的 newFriendRemindProvider 各持有独立 Set
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: resolveInitialIndex 路由参数解析 缺失 index 参数 → 0
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: resolveInitialIndex 路由参数解析 index=2 → 2（频道 tab）
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: resolveInitialIndex 路由参数解析 index=99 越界 → 归一化到最后一个 tab
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: resolveInitialIndex 路由参数解析 index=-1 负值越界 → 0
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: resolveInitialIndex 路由参数解析 index=abc 非数字 → 0
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: normalizeIndex 顶层契约 合法值原样返回
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: normalizeIndex 顶层契约 上下越界各归一到边界
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders account changed=false
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders account changed=true
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders reject old result at concurrent
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders reject old result at session
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders reject old result at dispose
+00:00 +24: All tests passed!
