@@ -1,0 +1,26 @@
+{
+  "scope": "EXPLICIT_CANCEL_CASE_OBLIGATION_MEMBERSHIP_ONLY",
+  "app_head": "ea20c1b4b16059e7896ff665cd0f72a2f51b5abb",
+  "tooling_tests": 447,
+  "exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "f14-obligation-set-red.log",
+      "sha256": "a4640ccaf7c79ac46e928d32988f8e48242eb60f53e8746d236bb9e310844589"
+    },
+    {
+      "path": "f14-obligation-set-final-green.log",
+      "sha256": "2787d6525d6d25826f552f461893c654175f4ea6872fbed015cb89654423040e"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "real_backend_execution": false,
+  "zero_write_proven": false,
+  "limits": [
+    "Exact snapshot obligations required only for explicitly declared generated cancel seed cases",
+    "Other paths discovery completeness and independent write audit remain required"
+  ]
+}

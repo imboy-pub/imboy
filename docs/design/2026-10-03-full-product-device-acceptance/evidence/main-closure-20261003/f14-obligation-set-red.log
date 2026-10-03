@@ -1,0 +1,13 @@
+..F.................
+======================================================================
+FAIL: test_cancel_case_cannot_omit_snapshot_obligation (test_billing_cancel_snapshots.BillingCancelSnapshots)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_billing_cancel_snapshots.py", line 65, in test_cancel_case_cannot_omit_snapshot_obligation
+    self.assertIn('BILLING_CANCEL_CASE_OBLIGATION_SET_MISMATCH',
+AssertionError: 'BILLING_CANCEL_CASE_OBLIGATION_SET_MISMATCH' not found in []
+
+----------------------------------------------------------------------
+Ran 20 tests in 0.006s
+
+FAILED (failures=1)
