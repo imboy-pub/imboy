@@ -1,0 +1,216 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-7 订阅等待期间按钮禁用，失败后恢复可用
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-8 订阅异常结束加载并恢复按钮
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   _PlanListPageState._doSubscribe (package:imboy/page/billing/plan_list_page.dart:86:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [billing] subscription failed: _Exception[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: fetchPlans GET plan/list 解析套餐列表（价格单位分）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/billing/plan/list
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/billing/plan/list
+
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: fetchPlans 失败（非 0 业务码）返回 null（静默，页面渲染错误态）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/billing/plan/list
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/billing/plan/list
+
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: subscribe POST subscribe 发送整型 plan_id 并返回 subscription_id
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/billing/subscribe
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/billing/subscribe
+
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-5 请求异常后结束加载，重试可恢复空态
+[BillingNotifier] plan load failed: _Exception
+00:01 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:01 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: subscribe 失败（套餐不存在）返回 null
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/billing/subscribe
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/billing/subscribe
+
+00:01 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:01 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: payInvoice POST invoice/pay 发送 invoice_no + payment_method
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/billing/invoice/pay
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/billing/invoice/pay
+
+00:01 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:01 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: payInvoice 失败（账单已支付）返回 null
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/billing/invoice/pay
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/billing/invoice/pay
+
+00:01 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:01 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: fetchSubscription GET subscription?tenant_id=0 解析当前订阅
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/billing/subscription?tenant_id=0
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/billing/subscription?tenant_id=0
+
+00:01 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:01 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: fetchSubscription 无订阅（空对象 payload）返回 null 而非空模型
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/billing/subscription?tenant_id=0
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/billing/subscription?tenant_id=0
+
+00:01 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:01 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: invoice generate + list（编排内部步骤） POST invoice/generate 发送 subscription_id，幂等视为成功
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/billing/invoice/generate
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/billing/invoice/generate
+
+00:01 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:01 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: invoice generate + list（编排内部步骤） GET invoice/list?subscription_id= 解析账单（倒序）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/billing/invoice/list?subscription_id=9001
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/billing/invoice/list?subscription_id=9001
+
+00:01 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: invoice generate + list（编排内部步骤） GET invoice/list?subscription_id= 解析账单（倒序）
+00:01 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: invoice generate + list（编排内部步骤） GET invoice/list?subscription_id= 解析账单（倒序）
+00:01 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/api/billing_api_contract_test.dart: invoice generate + list（编排内部步骤） GET invoice/list?subscription_id= 解析账单（倒序）
+00:01 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-10 完成后 paying 复位；进行中重入直接 false
+00:01 +35: All tests passed!

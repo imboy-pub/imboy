@@ -1,0 +1,32 @@
+{
+  "id": "F14-SUBSCRIPTION-EXCEPTION-CLEANUP",
+  "app_head": "b3675f5951c80fb6aa2fa880a6cd5a50ade28915",
+  "scope": "LOCAL_HOST_PRODUCTION_PAGE_AND_NOTIFIER_WITH_FAKE_API",
+  "executed": 35,
+  "failed": 0,
+  "exit_code": 0,
+  "red_executed": 1,
+  "red_failed": 1,
+  "red_exit_code": 1,
+  "analysis": "No issues found",
+  "review": "DUAL_APPROVED_FINAL_VERSION",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "oracles": [
+    "Subscription Exception does not escape UI",
+    "Finally awaits loading dismissal before showing failure feedback",
+    "Null and exception outcomes remove loading text and show failure",
+    "Subscription button recovers; no invoice request after failed subscribe"
+  ],
+  "recovery": "Enhanced feedback assertions initially failed on overlay dismissal race; await dismissal and advance separate frames, then rerun all three billing suites successfully.",
+  "limits": [
+    "No actual backend or payment execution",
+    "Exception may follow an uncertain backend write; UI failure is not proof of no server subscription",
+    "No automatic external retry or original acceptance ID upgrade"
+  ],
+  "red_log": "f14-subscribe-exception-red.log",
+  "red_log_sha256": "eaf46af43aa02394500a65b11c351ca1eced5156852adfca407ad4d08be3a03b",
+  "log": "f14-subscribe-exception-fixed.log",
+  "log_sha256": "64ce37e91b9422026c42b512a65d8e8255a276f2fea1b14da3fafacfd9944a91"
+}

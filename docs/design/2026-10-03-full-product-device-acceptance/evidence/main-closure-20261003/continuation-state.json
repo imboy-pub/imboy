@@ -4269,5 +4269,12 @@
     "app_head": "87573e2299db5574cf6511462a188c742c80ccfd",
     "executed": 7,
     "product_pass": false
+  },
+  "f14_subscription_exception_cleanup": {
+    "receipt": "f14-subscribe-exception.json",
+    "receipt_sha256": "966f7fe49ba42111622582388248be766d313a64b096ffd13808b2de94600c03",
+    "app_head": "b3675f5951c80fb6aa2fa880a6cd5a50ade28915",
+    "executed": 35,
+    "product_pass": false
   }
 }

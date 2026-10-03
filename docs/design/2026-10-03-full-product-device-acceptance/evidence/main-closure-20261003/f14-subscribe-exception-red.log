@@ -1,0 +1,58 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart
+00:00 +0: PL-8 订阅异常结束加载并恢复按钮
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following _Exception was thrown running a test:
+Exception: synthetic subscription failure
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart:124:17)
+#6      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart:104:7)
+#7      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:29)
+#9      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:189:25)
+#10     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:19)
+#12     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1942:5)
+#15     TestWidgetsFlutterBinding._runTest (package:flutter_test/src/binding.dart:1927:10)
+#16     AutomatedTestWidgetsFlutterBinding.runTest.<anonymous closure> (package:flutter_test/src/binding.dart:2490:24)
+#17     FakeAsync.run.<anonymous closure>.<anonymous closure> (package:fake_async/fake_async.dart:182:47)
+#22     withClock (package:clock/src/default.dart:52:10)
+#23     FakeAsync.run.<anonymous closure> (package:fake_async/fake_async.dart:182:15)
+#28     FakeAsync.run (package:fake_async/fake_async.dart:181:52)
+#29     AutomatedTestWidgetsFlutterBinding.runTest (package:flutter_test/src/binding.dart:2487:15)
+#30     testWidgets.<anonymous closure> (package:flutter_test/src/widget_tester.dart:184:24)
+#31     Declarer.test.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/declarer.dart:253:25)
+#33     Declarer.test.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/declarer.dart:252:15)
+#38     Declarer.test.<anonymous closure> (package:test_api/src/backend/declarer.dart:250:17)
+#39     Invoker._waitForOutstandingCallbacks.<anonymous closure> (package:test_api/src/backend/invoker.dart:318:17)
+#44     Invoker._waitForOutstandingCallbacks (package:test_api/src/backend/invoker.dart:314:5)
+#45     Invoker._onRun.<anonymous closure>.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/invoker.dart:457:21)
+#47     Invoker._onRun.<anonymous closure>.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/invoker.dart:455:15)
+#52     Invoker._onRun.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/invoker.dart:445:11)
+#53     Invoker._guardIfGuarded (package:test_api/src/backend/invoker.dart:500:15)
+#54     Invoker._onRun.<anonymous closure> (package:test_api/src/backend/invoker.dart:444:9)
+#61     Invoker._onRun (package:test_api/src/backend/invoker.dart:442:11)
+#62     LiveTestController.run (package:test_api/src/backend/live_test_controller.dart:161:11)
+#63     RemoteListener._runLiveTest.<anonymous closure> (package:test_api/src/backend/remote_listener.dart:320:16)
+#68     RemoteListener._runLiveTest (package:test_api/src/backend/remote_listener.dart:319:5)
+#69     RemoteListener._serializeTest.<anonymous closure> (package:test_api/src/backend/remote_listener.dart:261:7)
+#87     _GuaranteeSink.add (package:stream_channel/src/guarantee_channel.dart:125:12)
+#88     new _MultiChannel.<anonymous closure> (package:stream_channel/src/multi_channel.dart:159:31)
+#90     CastStreamSubscription._onData (dart:_internal/async_cast.dart:95:11)
+#116    new _WebSocketImpl._fromSocket.<anonymous closure> (dart:_http/websocket_impl.dart:1530:27)
+#122    _WebSocketProtocolTransformer._messageFrameEnd (dart:_http/websocket_impl.dart:525:23)
+#123    _WebSocketProtocolTransformer.add (dart:_http/websocket_impl.dart:409:46)
+#131    _Socket._onData (dart:io-patch/socket_patch.dart:2906:41)
+#138    new _RawSocket.<anonymous closure> (dart:io-patch/socket_patch.dart:2344:31)
+#139    _NativeSocket.issueReadEvent.issue (dart:io-patch/socket_patch.dart:1679:14)
+(elided 103 frames from dart:async and package:stack_trace)
+
+The test description was:
+  PL-8 订阅异常结束加载并恢复按钮
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: PL-8 订阅异常结束加载并恢复按钮 [E]
+  Test failed. See exception logs above.
+  The test description was: PL-8 订阅异常结束加载并恢复按钮
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-8 订阅异常结束加载并恢复按钮
