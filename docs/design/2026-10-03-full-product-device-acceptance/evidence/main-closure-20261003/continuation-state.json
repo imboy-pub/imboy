@@ -5073,5 +5073,14 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "binary_revoke_send_result": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/binary-revoke-send-result-20261004.json",
+    "app_head": "54872839d67f5b5345949b583ab0cdaf0c4293ff",
+    "executed": 238,
+    "focused_executed": 5,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

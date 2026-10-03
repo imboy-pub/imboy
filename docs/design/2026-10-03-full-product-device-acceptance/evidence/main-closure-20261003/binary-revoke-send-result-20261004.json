@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_BINARY_REVOKE_SINK_RESULT",
+  "app_head": "54872839d67f5b5345949b583ab0cdaf0c4293ff",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "results": {
+    "behavior_red_exit": 1,
+    "behavior_red_passed": 0,
+    "behavior_red_failed": 2,
+    "final_domain_exit": 0,
+    "final_domain_passed": 238,
+    "focused_exit": 0,
+    "focused_passed": 5,
+    "focused_unexpected_database_plugin_errors": 0,
+    "full_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Disconnected binary recall returns false with no sink attempt.",
+    "Connected sink throwing on recall returns false; fake sink records one attempt before throw, not one accepted frame.",
+    "Connected accepting sink returns true; prior generation-change v1/v2 negative cases continue returning false without events/frames."
+  ],
+  "implementation_verified_by_review": [
+    "Binary recall propagates sendDirect boolean and only logs successful submission if accepted.",
+    "Messaging facade/service adapters forward the boolean; three UI callers choose failure branch for false. UI rendering was not dynamically verified here."
+  ],
+  "limitations": [
+    "Synthetic lookup and fake socket only; no device/backend revoke confirmation or original97-ID upgrade.",
+    "True means local sink acceptance, not server success; existing UI success wording/server confirmation flow remain unqualified.",
+    "v1 normal accepted submission/retry, actual SQLite account switching and other action-producer boundaries remain pending.",
+    "Broad domain includes existing synthetic missing-table/plugin diagnostic logs; focused five-case log has none."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-send-result-red-20261004.log",
+      "sha256": "efd30bda54fda7690d62b0c7f4877b55af1c04313c93db6e7f7224cf957a1596"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-send-result-final-domain-20261004.log",
+      "sha256": "9e1009b041bf0c0cfab36fd19f504300e2237eeccd3c410446f8189593ffb1b6"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-send-result-final-focused-20261004.log",
+      "sha256": "00acb1be8cadc0d4663274c38d00a920c18a8fd99dd9691c7d461d139fa8ed77"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-send-result-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-send-result-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    }
+  ]
+}
