@@ -96,11 +96,32 @@ do_report_identity1(Req0, CurrentUid, DeviceId, PostVals) ->
     Ed25519Key = maps:get(<<"ed25519_key">>, PostVals, <<>>),
     Curve25519Key = maps:get(<<"curve25519_key">>, PostVals, <<>>),
     Signature = maps:get(<<"signature">>, PostVals, <<>>),
-    case
-        olm_identity_logic:report_identity(
-            CurrentUid, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
-        )
-    of
+    %% C01-wire（run-20261003-094804）：换根双签名 HTTP 接线。POST body 带
+    %% 非空 transition_signature（旧 ed25519 对 rotation canonical 的过渡
+    %% 签名，wire 契约见 olm_identity_logic:report_identity/7 头注释）时调
+    %% /7 启用双签名换根；缺失/空串时保持 /6 兼容入口——同根/首注册行为
+    %% 与旧客户端完全不变，换根走 /6 由 logic 层显式拒绝
+    %% key_rotation_requires_old_key_proof（错误语义透传）。归一化沿用
+    %% fallback signature 同款 to_bin（接受 binary/list 形态）。
+    TransitionSignature = to_bin(maps:get(<<"transition_signature">>, PostVals, <<>>)),
+    Result =
+        case TransitionSignature of
+            <<>> ->
+                olm_identity_logic:report_identity(
+                    CurrentUid, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                );
+            _NonEmpty ->
+                olm_identity_logic:report_identity(
+                    CurrentUid,
+                    DeviceId,
+                    Ed25519Key,
+                    Curve25519Key,
+                    Signature,
+                    TransitionSignature,
+                    DeviceType
+                )
+        end,
+    case Result of
         ok ->
             elib_response:success(Req0, #{<<"success">> => true});
         {error, Msg} ->
