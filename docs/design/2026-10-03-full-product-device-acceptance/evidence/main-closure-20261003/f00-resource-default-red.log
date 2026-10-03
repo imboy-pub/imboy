@@ -1,0 +1,20 @@
+.........F.........
+======================================================================
+FAIL: test_static_inventory_does_not_grant_shared_fixture_or_drop_platform (test_inventory.InventoryGenerationTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_inventory.py", line 91, in test_static_inventory_does_not_grant_shared_fixture_or_drop_platform
+    self.assertEqual(row['requirements'],
+AssertionError: Lists differ: ['device.android'] != ['device.android', 'device.macos']
+
+Second list contains 1 additional elements.
+First extra element 1:
+'device.macos'
+
+- ['device.android']
++ ['device.android', 'device.macos']
+
+----------------------------------------------------------------------
+Ran 19 tests in 1.435s
+
+FAILED (failures=1)

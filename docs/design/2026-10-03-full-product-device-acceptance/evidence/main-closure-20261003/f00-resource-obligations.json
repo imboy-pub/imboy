@@ -1,0 +1,32 @@
+{
+  "scope": "STATIC_RESOURCE_OBLIGATION_CORRECTION_ONLY",
+  "app_head": "e406c303dce2421cd45ff8a794658bb2c9c18e9e",
+  "tooling_tests": 443,
+  "exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "f00-resource-default-red.log",
+      "sha256": "f94ff7182ec04be4bb97b237e0c74775eb379ac334104125b0d5b3e2fa7fc6b3"
+    },
+    {
+      "path": "f00-resource-default-green.log",
+      "sha256": "ee10ca9b046bca64dbcba99c757e22525fd5b18d0a0f4af082dbf47b744d26f0"
+    }
+  ],
+  "inventory_sha256": "2db166f7da3b20d90d871d7c515dc1101a037b5e05ad4ea6da12ae06a66ccb4a",
+  "functions": 1979,
+  "pages": 188,
+  "metadata_changes": [
+    "requirements now include both Android and macOS",
+    "fixture now pending:authorized-isolated"
+  ],
+  "unchanged": [
+    "All function IDs, targets, oracles, dispositions and page entries"
+  ],
+  "product_pass": false,
+  "resource_authorized": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "real_backend_execution": false
+}

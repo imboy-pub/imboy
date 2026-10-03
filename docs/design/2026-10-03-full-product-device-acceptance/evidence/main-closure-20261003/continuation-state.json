@@ -4355,5 +4355,12 @@
     "domain_host": 966,
     "exit_code": 0,
     "product_pass": false
+  },
+  "f00_resource_obligations": {
+    "receipt": "f00-resource-obligations.json",
+    "app_head": "e406c303dce2421cd45ff8a794658bb2c9c18e9e",
+    "tooling_tests": 443,
+    "product_pass": false,
+    "resource_authorized": false
   }
 }
