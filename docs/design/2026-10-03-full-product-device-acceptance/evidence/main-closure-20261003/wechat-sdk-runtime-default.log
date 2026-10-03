@@ -1,0 +1,33 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart
+00:00 +0: 支付宝 SDK 异常日志不输出错误原文或签名参数
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   PaymentLauncher.launchAlipay (package:imboy/service/payment_launcher.dart:84:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [PaymentLauncher] alipay launch failed: StateError[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +1: 微信配置门及 SDK 异常日志不得输出签名参数
+00:00 +2: parseAlipayResult 9000 maps to success
+00:00 +3: parseAlipayResult 6001 maps to cancelled
+00:00 +4: parseAlipayResult other status maps to failed
+00:00 +5: parseAlipayResult missing status maps to failed
+00:00 +6: parseAlipayResult numeric status is coerced and matched
+00:00 +7: parseWechatResult errCode 0 maps to success
+00:00 +8: parseWechatResult errCode -2 maps to cancelled
+00:00 +9: parseWechatResult errCode -1 maps to failed
+00:00 +10: parseWechatResult null errCode (no callback) maps to failed
+00:00 +11: parseWechatParams full params produce fields
+00:00 +12: parseWechatParams falls back to config appId when backend omits it
+00:00 +13: parseWechatParams missing partnerid degrades to null
+00:00 +14: parseWechatParams missing prepay_id degrades to null
+00:00 +15: parseWechatParams missing sign degrades to null
+00:00 +16: parseWechatParams missing/zero timestamp degrades to null
+00:00 +17: parseWechatParams empty appId both sides degrades to null
+00:00 +18: parseWechatParams default package applied when omitted
+00:00 +19: parseWechatParams string timestamp is coerced
+00:00 +20: parseWechatParams accepts alternate key prepayid/nonce_str
+00:00 +21: launch dispatch / degradation unknown method degrades to notConfigured
+00:00 +22: launch dispatch / degradation wallet method (should not reach launcher) degrades
+00:00 +23: launch dispatch / degradation alipay without configuration degrades to notConfigured
+00:00 +24: launch dispatch / degradation wechat without appId config degrades to notConfigured
+00:00 +25: All tests passed!

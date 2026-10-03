@@ -4610,5 +4610,12 @@
     "app_head": "6d389fd72f82922155a5bc4da6c419b4de26dc19",
     "tests": 24,
     "product_pass": false
+  },
+  "f14_wechat_sdk_runtime": {
+    "receipt": "wechat-sdk-runtime.json",
+    "app_head": "434e11a3bba2873e3e7240f8ce635285e21d3d04",
+    "configured_tests": 1,
+    "default_suite_tests": 25,
+    "product_pass": false
   }
 }

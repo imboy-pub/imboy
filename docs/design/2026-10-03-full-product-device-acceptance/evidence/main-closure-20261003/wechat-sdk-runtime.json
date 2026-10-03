@@ -1,0 +1,50 @@
+{
+  "scope": "HOST_CONFIGURED_WECHAT_EXCEPTION_LOG_PRIVACY",
+  "app_head": "434e11a3bba2873e3e7240f8ce635285e21d3d04",
+  "configured_test_command": [
+    "flutter",
+    "test",
+    "test/unit_test/service/payment_launcher_test.dart",
+    "--dart-define=WECHAT_APP_ID=synthetic-app-id",
+    "--plain-name",
+    "微信配置门及 SDK 异常日志",
+    "--reporter",
+    "expanded"
+  ],
+  "configured_tests": 1,
+  "configured_exit_code": 0,
+  "default_suite_tests": 25,
+  "default_exit_code": 0,
+  "analysis_exit_code": 0,
+  "raw_exception_argument_calibration_exit_code": 1,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "wechat-sdk-runtime-configured.log",
+      "sha256": "39cda80fc3ddcff20b9c2185a21d1ae671d837c58aade7b0fc90cdd2e610be53"
+    },
+    {
+      "path": "wechat-sdk-runtime-default.log",
+      "sha256": "7ffc9c11e7f86fa314db08991bac548b77173827f619215e35fdd560739d6797"
+    },
+    {
+      "path": "wechat-sdk-runtime-analysis.log",
+      "sha256": "aa25728d35f7e834237bcade7ffe276197cb30fdab698b9eae2fe9d15875f49f"
+    },
+    {
+      "path": "wechat-sdk-runtime-calibration.log",
+      "sha256": "f2e85195c712494ce4a76639936a89ee87cdae5a9deb49d36780758a813fbd3e"
+    },
+    {
+      "path": "wechat-sdk-runtime-restored.log",
+      "sha256": "39cda80fc3ddcff20b9c2185a21d1ae671d837c58aade7b0fc90cdd2e610be53"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Explicit synthetic app ID with fake gateway; no native Wechat SDK or provider connection",
+    "Default unconfigured run only proves configuration gate; configured run proves both Logger/debugPrint paths",
+    "No production error-event transport, device/backend/accounting qualification"
+  ]
+}
