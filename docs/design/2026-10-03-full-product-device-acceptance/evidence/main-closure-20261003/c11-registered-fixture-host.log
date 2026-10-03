@@ -1,0 +1,18 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart
+00:00 +0: keeps exact large IDs and snapshots immutable maps
+00:00 +1: rejects wrong run and incomplete binding
+00:00 +2: rejects unknown alias
+00:00 +3: rejects wrong owner
+00:00 +4: rejects platform mismatch
+00:00 +5: rejects simulated platform
+00:00 +6: rejects empty DID
+00:00 +7: rejects DID whitespace
+00:00 +8: rejects token value
+00:00 +9: rejects overflow ID
+00:00 +10: rejects leading zero ID
+00:00 +11: rejects alias as ID
+00:00 +12: rejects conflicting account
+00:00 +13: rejects duplicate DID
+00:00 +14: rejects reused account ID
+00:00 +15: rejects duplicate device and missing or unknown group
+00:00 +16: All tests passed!

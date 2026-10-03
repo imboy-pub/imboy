@@ -1505,5 +1505,31 @@
     "product_pass": false,
     "real_transport": "NOT_IMPLEMENTED",
     "next": "implement registered fixture binding model and offline negative tests before network adapter"
+  },
+  "c11_registered_fixture_structure": {
+    "scope": "REGISTERED_FIXTURE_STRUCTURE_ONLY",
+    "product_pass": false,
+    "candidate_app": "77dc6b3f46e165e5dfad2038b9e2ca0302e31781",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/service/e2ee_registered_fixture_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+    "executed": 16,
+    "failed": 0,
+    "exit": 0,
+    "log": "c11-registered-fixture-host.log",
+    "sha256": "da2ccd88ceae3e4b043159c3cb9e81a32fa0905670fdcbf68b5dfa47095ebe50",
+    "analysis": "No issues found",
+    "review": "APPROVED_BY_C11_FLUTTER_REVIEW",
+    "remaining": [
+      "real seed registration and token/account/DID authenticity",
+      "isolated endpoints and authorization",
+      "connect model into real backend adapter",
+      "real device and business oracles"
+    ]
   }
 }
