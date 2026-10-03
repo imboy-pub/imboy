@@ -4677,5 +4677,11 @@
     "tests": 163,
     "exit_code": 0,
     "product_pass": false
+  },
+  "f14_backend_payment_status_validation": {
+    "receipt": "billing-backend-status-validation.json",
+    "backend_head": "8cf541f0d95267d558e679943e90c51a1d36635f",
+    "tests": 29,
+    "product_pass": false
   }
 }

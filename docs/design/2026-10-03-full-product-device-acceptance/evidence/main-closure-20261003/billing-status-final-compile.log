@@ -1,0 +1,24 @@
+test/logic/billing_logic_tests.erl:91:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   91|     catch meck:unload(billing_invoice_ds),
+%     |     ^
+
+test/logic/billing_logic_tests.erl:92:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%   92|     catch meck:unload(billing_subscription_ds),
+%     |     ^
+
+test/logic/billing_logic_tests.erl:219:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  219|     catch meck:unload(payment_gateway),
+%     |     ^
+
+test/logic/billing_logic_tests.erl:220:5: Warning: 'catch ...' is deprecated; please use 'try ... catch ... end' instead.
+Compile directive 'nowarn_deprecated_catch' can be used to suppress
+warnings in selected modules.
+%  220|     catch meck:unload(billing_invoice_ds),
+%     |     ^
+

@@ -1,0 +1,39 @@
+{
+  "scope": "LOCAL_BACKEND_PAYMENT_STATUS_FAIL_CLOSED",
+  "backend_head": "8cf541f0d95267d558e679943e90c51a1d36635f",
+  "tests": 29,
+  "exit_code": 0,
+  "red_failed": 1,
+  "red_passed": 28,
+  "missing_status_red_failed": 1,
+  "production_compile_exit_code": 0,
+  "review": "APPROVED_CODE_REVIEW",
+  "artifacts": [
+    {
+      "path": "billing-status-red.log",
+      "sha256": "60c33dd1704a508fb00a6eb1af022e2dbdc7b0eb39ae3c4346de3fb5aebd8a33"
+    },
+    {
+      "path": "billing-status-missing-red.log",
+      "sha256": "d2e6dd96d4a85cda74b11996d1cdaaad0b1317fd61f5ab805b75086f99f0a1a3"
+    },
+    {
+      "path": "billing-status-green.log",
+      "sha256": "f6d3ad8a9ddcc9301214ad89a7e7cd732a0816760f8ca7bdca7216ecdbc9f47f"
+    },
+    {
+      "path": "billing-status-final-compile.log",
+      "sha256": "28d92a67697e4e1f9dc903abfd654d5ba4f22f22be8ce3448ca1fdd59b8b5b9f"
+    },
+    {
+      "path": "billing-status-build.log",
+      "sha256": "756aa0695b64dbfaa5200076bb0f2480160c7ed2dbb0d368214a60d4f518b13a"
+    }
+  ],
+  "business_behavior": "Only integer 0 unpaid and 2 overdue reach gateway; paid 1 rejected unchanged; unknown/malformed/missing states rejected with zero gateway/mark_paid calls",
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Actual pay_invoice logic with synthetic DS/gateway mocks; no real payment/database/device concurrency proof"
+  ]
+}
