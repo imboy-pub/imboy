@@ -1,0 +1,72 @@
+{
+  "id": "C08-CURRENT-PRODUCTION-WIRING-RECONCILIATION",
+  "scope": "READ_ONLY_SOURCE_TRACE_AND_HOST_UNIT_REGRESSION",
+  "app_head": "074112cac4cdab478ba9bc17ba865710c5e6df1f",
+  "backend_head": "f355ae816b3739955824e12c3a7599b5b1ebae36",
+  "source_sha256": [
+    {
+      "path": "../imboyapp/lib/service/group_session_service.dart",
+      "sha256": "539cedb6bfe4ca4b1772eff5648ddb0111ec513c9a1e31be62f766f9f235003c"
+    },
+    {
+      "path": "../imboyapp/lib/service/message_s2c.dart",
+      "sha256": "acd83223026a5c432bb7b118152042dc1178939f67926f4e64fcb161278d91d1"
+    },
+    {
+      "path": "../imboyapp/lib/service/e2ee_service.dart",
+      "sha256": "aaee87cce887ea368320dcd34033b7941b423573214d0aac61c757d8e82cace4"
+    },
+    {
+      "path": "../imboyapp/lib/store/api/e2ee_api.dart",
+      "sha256": "def2e61ea314450b5c5a0ea917279aa8583b8dd2f969c52244fa5699f63311af"
+    },
+    {
+      "path": "src/logic/e2ee_logic.erl",
+      "sha256": "0bf3ed8a90aae72665b9a94981673f4b6bbe72c6833f1fd73f0cf2933993984d"
+    },
+    {
+      "path": "src/ds/group_ds.erl",
+      "sha256": "db4f3a50baf6210dd8729b6a8b0a739432d6d5d8fcafcb8c6d25b57280a4201e"
+    },
+    {
+      "path": "src/imboy_router.erl",
+      "sha256": "dcd0a3bb1ed7d8a83a84dcdb0e769467e0a63c6ed45018180096a02f3e035189"
+    }
+  ],
+  "executed": 35,
+  "failed": 0,
+  "exit_code": 0,
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "log": "c08-production-wiring-host.log",
+  "log_sha256": "e9067902582722223b267377d685a8451f34aee22ebf0cd6530fd1699f192574",
+  "command": [
+    "flutter",
+    "test",
+    "test/unit_test/service/group_session_service_test.dart",
+    "test/unit_test/api/e2ee_group_history_grant_test.dart",
+    "test/unit_test/service/e2ee/megolm_history_grant_test.dart",
+    "--reporter",
+    "expanded"
+  ],
+  "source_trace": [
+    "message_s2c.dart calls markGroupStale for membership events",
+    "GroupSessionService resolves recipient snapshot inside per-scope send lock",
+    "Recipient DID changes trigger suite policy check and session rotation",
+    "E2EEService uses authenticated groupMemberKeys API; forced refresh failure clears old cache and throws",
+    "groupHistoryGrant API supplies generation/start/end interval from authoritative backend authorization"
+  ],
+  "remaining": [
+    "Exercise actual join/kick/rejoin APIs and cross-device notifications",
+    "Correlate current membership and generation with actual room-key recipient sets",
+    "Four-account independent decrypt/display and negative-history oracles",
+    "Run required journey sets on frozen authorized device/backend candidate"
+  ],
+  "limits": [
+    "Host tests use injected dependencies and mocked storage; backend is not running",
+    "Source trace proves call sites only, not real runtime correctness",
+    "Harness initial fixture membership cannot substitute production membership authorization",
+    "No original acceptance ID upgraded"
+  ]
+}

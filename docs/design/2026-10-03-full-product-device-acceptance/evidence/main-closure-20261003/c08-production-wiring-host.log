@@ -1,0 +1,108 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/api/e2ee_group_history_grant_test.dart: E2EEGroupHistoryGrant 解析服务端权威范围并绑定请求 gid
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/api/e2ee_group_history_grant_test.dart: E2EEGroupHistoryGrant gid 不一致、非正范围和倒置 end_seq 均拒绝
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: (setUpAll)
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） buildRoomKeyPayload v3：设备条目 Olm-only（无 RSA ek）+ meta_version=3
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） wrapSessionKey → unwrapSessionKey 逐字节往返（RSA 原语，供合规/历史 decrypt-only）
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） wrapSessionKey → unwrapSessionKey 逐字节往返（RSA 原语，供合规/历史 decrypt-only）
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） wrapSessionKey → unwrapSessionKey 逐字节往返（RSA 原语，供合规/历史 decrypt-only）
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） wrapSessionKey → unwrapSessionKey 逐字节往返（RSA 原语，供合规/历史 decrypt-only）
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） wrapSessionKey → unwrapSessionKey 逐字节往返（RSA 原语，供合规/历史 decrypt-only）
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） wrapSessionKey → unwrapSessionKey 逐字节往返（RSA 原语，供合规/历史 decrypt-only）
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） wrapSessionKey → unwrapSessionKey 逐字节往返（RSA 原语，供合规/历史 decrypt-only）
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） wrapSessionKey → unwrapSessionKey 逐字节往返（RSA 原语，供合规/历史 decrypt-only）
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） wrapSessionKey → unwrapSessionKey 逐字节往返（RSA 原语，供合规/历史 decrypt-only）
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: room key 包裹/解包（纯 Dart，不依赖原生库） pickMyKeyEntry 对不在分发列表的设备返回 null
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） encryptGroupMessage 真实发送编排：剔除本机并给远端设备包裹 room key
+[group_session] rotate scope=g_encrypt_orchestration session=Vm2Il0Bp0dIHNVsod1I0In9BnhHO6/RyVFg1eLnJvQ0 devices=2
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） ensureOutboundSession：建会话不加密不计数，encrypt 复用同一会话
+[group_session] rotate scope=g_ensure_session session=B5M7deoKCGIH203FBwzSYT6vwmMsSls20TdWJIBlf8c devices=2
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） 建群会话 → 导出 → 包裹 → 解包 → import → 加解密往返
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） handleRoomKeyMessage 存 inbound 可解密，但不翻转 e2ee 旗标
+[group_session] 收到 room key scope=9101 session=CtXJ9KcYTFDsIwNHyjUs57TBcd4Lsqb4VcSwAX4anUU
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: C2C 单聊 Megolm（发送路径全量新方案） buildRoomKeyPayload 无 gid → C2C 形态（scope=c2c）+ extraKeys 追加
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: C2C 单聊 Megolm（发送路径全量新方案） C2C room key → handleRoomKeyMessage → decryptC2CMessage 全链路往返
+[group_session] 收到 room key scope=c2c session=0310L9MAgyL44K2mAQ0cf9U0D2v9Yc5OHUCL3+ag9UE
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: C2C 单聊 Megolm（发送路径全量新方案） 域混淆：type/to 与 payload.gid 不一致的群 room key 被丢弃
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService.handleRoomKeyMessage (package:imboy/service/group_session_service.dart:444:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] 群 room key 域不匹配，丢弃 gid=g_victim_B[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:01 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: C2C 单聊 Megolm（发送路径全量新方案） 通道混淆：scope=c2c 的 room key 从 C2G 通道到达被丢弃
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService.handleRoomKeyMessage (package:imboy/service/group_session_service.dart:450:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] c2c room key 非 C2C 通道，丢弃[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:01 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） T-13-01/05/07 attachOlmWraps：双包 + 无 Olm 回退 + 合规保持 RSA
+00:01 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） attachOlmWraps：senderDeviceId 为空 → 全部仅 RSA（无法填 sid）
+00:01 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） 严格模式：发送设备自身跳过 self-to-self Olm 包裹
+00:01 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） T-13-03 接收侧优先 Olm：olm 有效 → 用 Olm，不走 RSA
+00:01 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） E2EE-011 v3：删除 olm 子对象 → 拒绝，不回退 RSA（保留 ek 也不 RSA）
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService._unwrapEntry (package:imboy/service/group_session_service.dart:597:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] v3 room key 缺 olm 子对象，拒绝（不回退 RSA）[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:01 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） E2EE-011 v3：olm 缺 sid → 拒绝，不尝试 Olm、不回退 RSA
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService._unwrapEntry (package:imboy/service/group_session_service.dart:591:19)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] v3 room key olm 字段不全，拒绝[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:01 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） E2EE-011 v3：olm 伪造 sid（Olm 认证失败）→ 拒绝，不回退 RSA
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService._unwrapEntry (package:imboy/service/group_session_service.dart:571:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] room key Olm 认证失败，拒绝该条目[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:01 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） E2EE-011 v3：Olm 会话不可用（普通异常）→ 拒绝，不回退 RSA
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService._unwrapEntry (package:imboy/service/group_session_service.dart:577:23)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] v3 room key Olm 解包失败，拒绝（不回退 RSA） errType=_Exception[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:01 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） E2EE-011 legacy decrypt-only：明确 legacy 版本 olm 缺 sid → RSA 读历史
+00:02 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: ADR13 room-key-over-Olm 双包（fake 注入 wiring） Olm 认证失败 → 拒绝，不降级 RSA（防 downgrade）
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService._unwrapEntry (package:imboy/service/group_session_service.dart:571:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] room key Olm 认证失败，拒绝该条目[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:02 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Compliance E2EE Fail-Closed (HOTFIX-02) compliance_e2ee 模式：合规公钥获取失败/缺失 → fail-closed 强退并抛 E2eeSecurityException
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/compliance_key
+
+[ComplianceKey] 获取失败: BadRequestException
+00:02 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Strict Olm-Wrap Fail-Closed (HOTFIX-03) strictE2ee 模式：senderDeviceId 为空 → 抛 E2eeSecurityException(sender_device_id_missing)
+00:02 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Strict Olm-Wrap Fail-Closed (HOTFIX-03) strictE2ee 模式：olmWrap 异常 → 抛 E2eeSecurityException(olm_wrap_failed)
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   GroupSessionService.attachOlmWraps (package:imboy/service/group_session_service.dart:953:19)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [group_session] olmWrap 异常，该 did 仅 RSA: did1 errType=_Exception[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:02 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Strict Olm-Wrap Fail-Closed (HOTFIX-03) strictE2ee 模式：olmWrap 返回 null → 抛 E2eeSecurityException(olm_wrap_failed)
+00:02 +35: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: (tearDownAll)
+00:02 +35: All tests passed!

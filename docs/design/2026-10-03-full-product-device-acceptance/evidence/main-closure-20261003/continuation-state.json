@@ -4161,5 +4161,14 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "c08_production_wiring_reconciliation": {
+    "receipt": "c08-production-wiring-host.json",
+    "receipt_sha256": "e7d27ee94d7d601fc0121603b4a29e9e6790692e93bad1208bde2154027b97ff",
+    "app_head": "074112cac4cdab478ba9bc17ba865710c5e6df1f",
+    "executed": 35,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }
