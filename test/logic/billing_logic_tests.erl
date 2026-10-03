@@ -391,3 +391,42 @@ usage_failure_privacy_test() ->
     after
         lists:foreach(fun meck:unload/1, lists:reverse(Modules))
     end.
+
+invoice_generation_failure_privacy_test() ->
+    Modules = [elib_log, billing_subscription_ds, billing_plan_ds, billing_invoice_ds],
+    lists:foreach(fun(M) -> meck:new(M, [passthrough, non_strict]) end, Modules),
+    try
+        meck:expect(elib_log, internal_log, fun(_, _, _, _) -> ok end),
+        meck:expect(billing_subscription_ds, find_by_id, fun(?SUB_ID) ->
+            #{
+                <<"plan_id">> => 7,
+                <<"current_period_start">> => 1771481621000,
+                <<"current_period_end">> => 1774073621000
+            }
+        end),
+        meck:expect(billing_plan_ds, find_by_id, fun(7) -> #{<<"price">> => 39000} end),
+        meck:expect(billing_invoice_ds, create, fun(Data) ->
+            ?assertEqual(?SUB_ID, maps:get(subscription_id, Data)),
+            ?assertEqual(39000, maps:get(amount, Data)),
+            ?assertEqual(1771481621000, maps:get(period_start, Data)),
+            ?assertEqual(1774073621000, maps:get(period_end, Data)),
+            {error, {database_error, <<"synthetic-private-invoice-key">>}}
+        end),
+        ?assertEqual(
+            {error, <<"账单生成失败，请稍后重试"/utf8>>},
+            billing_logic:generate_invoice(?SUB_ID)
+        ),
+        ?assert(
+            meck:called(
+                elib_log,
+                internal_log,
+                [error, [billing_invoice_generation_error], billing_logic, '_']
+            )
+        ),
+        ?assertEqual(1, meck:num_calls(elib_log, internal_log, 4)),
+        meck:expect(billing_invoice_ds, create, fun(_) -> {error, duplicate} end),
+        ?assertEqual({ok, already_generated}, billing_logic:generate_invoice(?SUB_ID)),
+        ?assertEqual(1, meck:num_calls(elib_log, internal_log, 4))
+    after
+        lists:foreach(fun meck:unload/1, lists:reverse(Modules))
+    end.

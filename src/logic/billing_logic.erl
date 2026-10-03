@@ -466,8 +466,8 @@ do_generate_invoice(SubId, Sub, Plan) ->
             {ok, Id};
         {error, duplicate} ->
             {ok, already_generated};
-        {error, Reason} ->
-            ?ERROR_LOG([<<"billing generate_invoice failed">>, SubId, Reason]),
+        {error, _Reason} ->
+            ?ERROR_LOG([billing_invoice_generation_error]),
             {error, <<"账单生成失败，请稍后重试"/utf8>>}
     end.
 
