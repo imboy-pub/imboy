@@ -1,0 +1,26 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart
+00:00 +0: read receipt session boundary (setUpAll)
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:00 +0: read receipt session boundary database completion changed=false
+📥 [processMessage] type=MSG_READ, msgId=synthetic-read-receipt, from=200, to=100
+📥 [READ_RECEIPT] 收到已读回执: msgId=synthetic-read-receipt
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +1: read receipt session boundary database completion changed=true
+📥 [processMessage] type=MSG_READ, msgId=synthetic-read-receipt, from=200, to=100
+📥 [READ_RECEIPT] 收到已读回执: msgId=synthetic-read-receipt
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+⚠️ [READ_RECEIPT] 未找到消息: msgId=synthetic-read-receipt
+00:00 +1 -1: read receipt session boundary database completion changed=true [E]
+  Expected: <0>
+    Actual: <1>
+  
+  package:matcher                                               expect
+  package:flutter_test/src/widget_tester.dart 473:18            expect
+  test/unit_test/service/chat_network_session_test.dart 207:11  main.<fn>.<fn>
+  
+00:00 +1 -1: read receipt session boundary (tearDownAll)
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart: read receipt session boundary database completion changed=true

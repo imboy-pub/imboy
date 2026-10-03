@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_LEGACY_MSG_READ_NOTIFICATION_SUBMISSION_SESSION_BOUNDARY",
+  "app_head": "d3c0d836f029e5c5aaa39b8897183ebcae04521d",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_LOCAL_SCOPE",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 1,
+    "red_failed": 1,
+    "domain_exit": 0,
+    "domain_passed": 254,
+    "focused_exit": 0,
+    "focused_passed": 14,
+    "static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Actual MessageService.processMessage(MSG_READ) waits on production repository update; normal completion emits exactly one MessageStatusUpdateRequestedEvent with original ID, seen status and notifyUI=true.",
+    "While update waits, actual loginAfter changes real generation then synthetic token write rejects. Released update emits zero state update requests; RED emitted one."
+  ],
+  "attempt_notes": [
+    "Initial static check reported unnecessary import; removed only duplicate import and reran focused14/static/catalog. Domain254 was run before that import-only cleanup."
+  ],
+  "limitations": [
+    "Service subscriptions are cancelled to observe receipt event without starting UI consumer. Does not qualify actual UI rendering or queued consumer isolation.",
+    "Modern message_read action path not tested or changed.",
+    "Already-started update remains one and cannot be rolled back.",
+    "No true SQLite/device/backend/server or original97-ID upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-receipt-session-catalog-20261004.log",
+      "sha256": "01ddbb76d35ff72c55f0e8cd26ba31a0808791bff9023486ea3a372c1d94cff1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-receipt-session-catalog-check-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-receipt-session-domain-20261004.log",
+      "sha256": "d7dc7c8997e3fed721ad4da9c018bd0b291ebf465c2bb2ece7445255180fdd61"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-receipt-session-focused-20261004.log",
+      "sha256": "1a08e947f77ddab6c8df7c69889fdc17a8a3370f9603b50c261aebe3e50cd853"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-receipt-session-qualified-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-receipt-session-qualified-focused-20261004.log",
+      "sha256": "1a08e947f77ddab6c8df7c69889fdc17a8a3370f9603b50c261aebe3e50cd853"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-receipt-session-qualified-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-receipt-session-red-20261004.log",
+      "sha256": "3714b207684428618e890005e4fae9e130df4de21f81f98bfe82f8c6a323a0d6"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-receipt-session-static-20261004.log",
+      "sha256": "c12cf92e3afc2818aa5d172d585bd3bc9f09266544562341c4710c162aae66c0"
+    }
+  ]
+}

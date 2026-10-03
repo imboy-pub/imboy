@@ -5136,5 +5136,14 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "legacy_read_receipt_session_isolation": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/legacy-read-receipt-session-isolation-20261004.json",
+    "app_head": "d3c0d836f029e5c5aaa39b8897183ebcae04521d",
+    "executed": 254,
+    "focused_executed": 14,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }
