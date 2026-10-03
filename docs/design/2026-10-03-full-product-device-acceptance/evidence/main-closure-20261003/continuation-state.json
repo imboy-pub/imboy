@@ -1431,5 +1431,18 @@
     "scope": "LOCAL_STATIC_AND_BUILD_ONLY",
     "product_pass": false,
     "remaining": "qualify effective profile/runtime config, real browser/backend/dual-platform journeys and final case bindings"
+  },
+  "admin_full_cs_host_regression": {
+    "candidate_admin": "997971a882928d67e70d6261629d5c69d2703539",
+    "receipt": "admin-full-customer-service-host.json",
+    "receipt_sha256": "14550e032409543d51978d506f78c031f5505d0680d7e407ebca7f98b0a7487f",
+    "executed": 321,
+    "failed": 0,
+    "assertions": 1599,
+    "target_count": 27,
+    "exit": 0,
+    "scope": "ADMIN_CUSTOMER_SERVICE_HOST_MOCK_REGRESSION_ONLY",
+    "product_pass": false,
+    "remaining": "complete per-behavior profile/role mapping; real backend/browser/visitor/concurrency and dual-device evidence"
   }
 }

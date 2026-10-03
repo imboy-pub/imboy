@@ -1,0 +1,1420 @@
+{
+  "scope": "ADMIN_CUSTOMER_SERVICE_HOST_MOCK_REGRESSION_ONLY",
+  "candidate_admin": "997971a882928d67e70d6261629d5c69d2703539",
+  "cwd": "/Users/leeyi/project/imboy.pub/imboyadmin",
+  "argv": [
+    "bun",
+    "test",
+    "--isolate",
+    "src/modules/customer_service"
+  ],
+  "exit": 0,
+  "executed": 321,
+  "failed": 0,
+  "assertions": 1599,
+  "target_count": 27,
+  "observed_tests": [
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "seat console API 路径与方法（A06） > list 带显式租户 query；create body 仅三个白名单键"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "seat console API 路径与方法（A06） > update 走 PUT /seat-consoles/:id（id 只在路径）；revoke 走 POST /:id/revoke"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "seat console API 路径与方法（A06） > update 提供 expectedVersion 时随请求携带 expected_version（F-6 乐观并发控制）；缺省不携带（LWW 兼容）"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "seat console API 路径与方法（A06） > 客户端 fail-closed：缺 organization_id / workspace_id 直接抛错且不发请求"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "seat console API 路径与方法（A06） > 响应包装容忍 {seat_console} 与裸对象（投影兜底校验）"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "seat console 投影熔断与类型纪律（A06） > 列表行命中敏感键整体丢弃；白名单字段保留、非法 origin 过滤"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "seat console 投影熔断与类型纪律（A06） > 缺 id / public_seat_console_id 返回 null（fail-closed）；version 非数字落 0"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "seat console 投影熔断与类型纪律（A06） > toSeatConsoleList 容忍 {seat_consoles}/{list}/裸数组；熔断行被剔除"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "seat console 投影熔断与类型纪律（A06） > TSID 保持 string（无 Number() 精度回转）"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "iframe 嵌入代码冻结形状（A03/A04） > buildSeatEmbedCode 输出与冻结片段逐字相等"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "iframe 嵌入代码冻结形状（A03/A04） > 片段含 title/sandbox/referrerpolicy/稳定尺寸；绝无 loader/secret/租户上下文"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "iframe 嵌入代码冻结形状（A03/A04） > 非法 public_seat_console_id 抛错（fail-closed，防注入）"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "iframe 嵌入代码冻结形状（A03/A04） > widgetConfig origin 非法时拒绝生成（单一 origin 真源的 fail-closed 分支）"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "公开标识与 origin 解析（A03/A06） > isValidPublicSeatConsoleId：TSID 十进制 1..26 位"
+    },
+    {
+      "target": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "name": "公开标识与 origin 解析（A03/A06） > parseAllowedOriginsInput 复用 widget 同一实现：拒通配/路径/非 http(s)，去重"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSeats.test.ts",
+      "name": "getPlatformSeats > 跨企业视图：不带 organization_id，携带 after_id/limit"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSeats.test.ts",
+      "name": "getPlatformSeats > org 过滤视图：organization_id 以 string 直传（19 位大数不丢精度）"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSeats.test.ts",
+      "name": "getPlatformSeats > limit 钳制到 1..200；非法 after_id 不下发"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetSecretScan.test.ts",
+      "name": "CSW-01-A04：Widget 源码无 shop secret / 签名 secret / 长期凭证 > src/widget/**（运行时源码，不含测试夹具）与 widget/index.html 全部通过扫描"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetSecretScan.test.ts",
+      "name": "CSW-01-A04：Widget 源码无 shop secret / 签名 secret / 长期凭证 > dist-widget/** 产物（存在时）全部通过 SECRET 形状扫描"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetSecretScan.test.ts",
+      "name": "CSC-00-A04 必红负例：data-shop-key 进 script 必被判红 > 扫描器对反例 fixture 判红（shop_key 进入 HTML 必红）"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetSecretScan.test.ts",
+      "name": "CSC-00-A04 必红负例：data-shop-key 进 script 必被判红 > 正确接入代码（只有 public widget_id）不判红"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioning.test.ts",
+      "name": "POST /customer-service/organizations/:org_id/provisioning（EADM-05 冻结合同） > 路径精确落平台面；body 只含白名单键；max_concurrent 为数值且 1..20；无 business_identity_id"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioning.test.ts",
+      "name": "POST /customer-service/organizations/:org_id/provisioning（EADM-05 冻结合同） > 幂等命中（已存在）：identity_created=false 透传"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioning.test.ts",
+      "name": "POST /customer-service/organizations/:org_id/provisioning（EADM-05 冻结合同） > 响应缺 business_identity 事实 → 抛错（fail-closed，不伪成功）"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioning.test.ts",
+      "name": "POST /customer-service/organizations/:org_id/provisioning（EADM-05 冻结合同） > 空/非法入参 → 直接抛错且不发请求"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioning.test.ts",
+      "name": "POST /customer-service/organizations/:org_id/provisioning（EADM-05 冻结合同） > max_concurrent 越域（0 / 21）或非数值 → 直接抛错且不发请求"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "toCsProvisioningResult（EADM-05 真实后端字段投影） > 解析真实形状：business_identity_id / identity_created / seat.{enabled,max_concurrent}"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "toCsProvisioningResult（EADM-05 真实后端字段投影） > 幂等命中（已存在）：identity_created=false 透传"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "toCsProvisioningResult（EADM-05 真实后端字段投影） > 缺 organization/workspace/business_identity 事实 → null（fail-closed）"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "toCsProvisioningResult（EADM-05 真实后端字段投影） > business_identity_id 以 number 传输 → 投影拒绝（TSID-string 纪律）"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "toCsProvisioningResult（EADM-05 真实后端字段投影） > 顶层命中敏感键 → 整体拒绝"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "toCsProvisioningAuditEntry（审计五键白名单） > 缺 action/actor/target 返回 null"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "toCsProvisioningAuditEntry（审计五键白名单） > 列表解析过滤非法条目"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "buildProvisionSnippet（A05） > 生成只含 public widget id 的 snippet；origin 只出现在 loader src"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "buildProvisionSnippet（A05） > 负例：snippet 不含租户参数与任何 secret（锁死）"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "buildProvisionSnippet（A05） > public_widget_id 形状非法 → 拒绝生成"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "buildProvisionSnippet（A05） > A04 口径：通配 / 路径 / 非 http(s) origin 全部拒绝"
+    },
+    {
+      "target": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "name": "buildProvisionSnippet（A05） > origin 规范化：端口精确保留，默认端口归一"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service api paths (A01) > 平台面 6 条路径全部落在 /customer-service/organizations 下且无 /api/v1"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service api paths (A01) > workspace_id 是必填参数：GET 走查询串，POST 走正文"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service api paths (A01) > transfer/close 的 expected_version 走 number，to_identity_id 保持 string TSID"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service api paths (A01) > 非法入参 fail-closed：缺 scope / 空 ID / 非法 version 直接抛错且零网络调用"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service TSID handling (A03) > seat 的 *_id 保持 string 且逐位一致"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service TSID handling (A03) > 19 位 TSID 不会被 Number 化丢精度"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service TSID handling (A03) > 缺 business_identity_id 的行返回 null（fail-closed，不渲染半行）"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service TSID handling (A03) > session 的 id/contact/conversation 为 string，rating/version 为 number，空 close_reason 归一 null"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service action failure classification (A04) > 409 stale_version/conflict → 可重试"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service action failure classification (A04) > offboarding_required（冻结契约标签）→ 不可重试并给出离岗指引"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service action failure classification (A04) > 403 seat_disabled / permission_missing 与 404/422 均不可重试"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service action failure classification (A04) > 非 ApiError 形状 → unknown（可重试）"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service action failure classification (A04) > 客户端分页：默认 size=10，空页安全"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service action failure classification (A04) > 会话状态标签覆盖契约三种状态"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service sensitive key guard (A05) > 熔断模式命中 cipher/hmac/hash/secret/token/object_key/storage"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service sensitive key guard (A05) > 即便调用方把敏感键写进白名单，pickSafeFields 也必须丢弃"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "customer_service sensitive key guard (A05) > 会话/坐席投影函数产出的视图不含任何敏感字段"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "platform seat list page > 行投影保留白名单字段并含企业名/显示名/默认工作区"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "platform seat list page > 缺 organization_id / business_identity_id 的行被丢弃（fail-closed）"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "platform seat list page > 显式 next_after_id 优先；缺失且满页时回退页尾 business_identity_id"
+    },
+    {
+      "target": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "name": "platform seat list page > TSID 全程 string，64-bit 大数不丢精度（A03）"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetInstallations.test.ts",
+      "name": "installation API 路径（A06） > list/create/revoke 全部落在 /customer-service/widget-installations 下且带租户条件"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetInstallations.test.ts",
+      "name": "installation API 路径（A06） > update 走 PUT /widget-installations/:id，id 只在路径；正文白名单且绝无 secret"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetInstallations.test.ts",
+      "name": "installation 投影熔断（A04/A06） > 列表行命中敏感键整体丢弃；白名单字段保留"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetInstallations.test.ts",
+      "name": "installation 投影熔断（A04/A06） > toWidgetInstallationList 容忍数组与 {installations} 两种形状"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetInstallations.test.ts",
+      "name": "installation 投影熔断（A04/A06） > created_at 按 epoch 秒 number 惯例规范化为 string；null 落 null（W4-7 回归）"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetInstallations.test.ts",
+      "name": "接入代码只含公开标识（负例锁死） > embed code 只包含 loader 地址和公开 widget id"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetInstallations.test.ts",
+      "name": "接入代码只含公开标识（负例锁死） > 非法 public_widget_id / origin 拒绝生成（防注入）"
+    },
+    {
+      "target": "src/modules/customer_service/api/widgetInstallations.test.ts",
+      "name": "接入代码只含公开标识（负例锁死） > allowed_origins 解析：拒通配/路径/非 http(s)，去重"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "platform cs session list api paths (A01) > GET 落在 /customer-service/organizations/:org/sessions 且不带 /api/v1"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "platform cs session list api paths (A01) > workspace_id 必填；after_id 游标与 limit、status 全部正确拼接进查询串"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "platform cs session list api paths (A01) > 缺 scope / 空 workspace_id fail-closed：直接抛错且零网络调用"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "cs session list query builders > parseCsSessionStatusFilter：白名单外一律归 all（不把非法值发给后端）"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "cs session list query builders > buildCsSessionListQuery：all 不下发 status，游标为空不下发 after_id"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "cs session list query builders > buildCsSessionListQuery：limit 钳制到 1..200（客户端防呆，服务端越界仍 422）"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "cs session summary projection (A03/A05) > id/organization/workspace/contact 均为 string 且逐位一致（19 位不丢精度）"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "cs session summary projection (A03/A05) > visit_token_id / close_reason / 任何 digest·secret·cipher 绝不进入产出视图"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "cs session summary projection (A03/A05) > 缺 id 的行 fail-closed 返回 null；非数组 sessions 归一空列表"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "cs session summary projection (A03/A05) > next_after_id 优先取响应值；缺失时回退页尾 id；不足一页返回 null"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "cs list failure mapping and status labels > 401/403/404/422 分别映射为 unauthenticated/permission_missing/not_found/validation"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "cs list failure mapping and status labels > 每个失败分类都有非空用户文案"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSessions.test.ts",
+      "name": "cs list failure mapping and status labels > 状态标签覆盖 C1 三种白名单状态"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsStatsPanel.test.tsx",
+      "name": "CsStatsPanel — CS-GOV-03B > 数值与 fixture API 逐项相等（含窗口回显与时区可见）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsStatsPanel.test.tsx",
+      "name": "CsStatsPanel — CS-GOV-03B > 无样本均值为 null 时诚实显示「无样本」（不伪装成 0）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsStatsPanel.test.tsx",
+      "name": "CsStatsPanel — CS-GOV-03B > 空事实（全零）显示空态且文案解释窗口语义"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsStatsPanel.test.tsx",
+      "name": "CsStatsPanel — CS-GOV-03B > 加载失败显示错误态与重试入口"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsStatsPanel.test.tsx",
+      "name": "CsStatsPanel — CS-GOV-03B > 无 customer_service:read 权限显示无权空态且不发请求"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsStatsPanel.test.tsx",
+      "name": "CsStatsPanel — CS-GOV-03B > 未选定企业显示引导空态且不发请求（统计端点是 org 作用域）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsStatsPanel.test.tsx",
+      "name": "CsStatsPanel — CS-GOV-03B > date 与时区输入变化后按新参数重新请求"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A01/A07/A09：块位于范围选择器与网站接入表之间；文案逐字；widget 表回归不变"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A01：工作区切换 → seat 查询以新 workspace_id 重新发起（query key 换绑）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：未选工作区 → 引导空态，且不发起 seat 请求"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：缺 read 权限 → 无权访问，且不发起 seat 请求"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：加载中 → loading 态可见"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：列表为空 → 空态 + 创建接入（write 门控）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：查询失败 → error 态可重试"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A03/A04：active 视图展示公开标识；复制 iframe 代码后片段与冻结形状逐字相等"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A03：非法 public_seat_console_id → fail-closed 拒绝出码（错误可见、复制禁用）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A05：保存 → PUT /seat-consoles/:id（id 只在路径、body 三键）；片段与公开标识不变"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A05：停用接入 → 确认弹窗文案逐字（不谎称中断会话）→ POST /:id/revoke"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > 409：同工作区已有生效接入 → 可见冲突提示"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CustomerServiceHomePage.i18n.test.tsx",
+      "name": "CustomerServiceHomePage 文案经 t() 输出（ENT-UX-01） > 页面标题/描述/主按钮渲染文本与键表严格一致"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CustomerServiceHomePage.i18n.test.tsx",
+      "name": "CustomerServiceHomePage 文案经 t() 输出（ENT-UX-01） > 表头逐格严格相等，行内状态/动作/兜底文案经键表"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "name": "CsProvisioningWizardPage（unit 层替身） > A01+A03：选择器主流程完成自举，POST 落平台面，审计五键可见，全程无裸 TSID 输入"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "name": "CsProvisioningWizardPage（unit 层替身） > A03：max_concurrent 选择器发送数值（1..20），非字符串"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "name": "CsProvisioningWizardPage（unit 层替身） > A03：成员选择器过滤非 active 成员（archived 不出现）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "name": "CsProvisioningWizardPage（unit 层替身） > A05：复制按钮把 snippet 写入剪贴板（无 secret）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "name": "CsProvisioningWizardPage（unit 层替身） > A02：只有 read 权限时为只读姿态——提示条可见，开通按钮禁用且无 POST"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "name": "CsProvisioningWizardPage（unit 层替身） > A02：无 read 权限 → 整页 fail-closed，不渲染任何向导步骤"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "name": "CsProvisioningWizardPage（unit 层替身） > A04：非法 origin（通配/路径）逐个拒绝并阻断创建"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "name": "CsProvisioningWizardPage（unit 层替身） > A06：组织加载失败呈现错误态并可重试"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "name": "CsProvisioningWizardPage（unit 层替身） > A06：空组织呈现空态引导"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "name": "CsProvisioningWizardPage（unit 层替身） > A06：组织加载中呈现 loading 态"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "端点与游标合同（A05） > URL 落在 seats/me/events；Bearer 头；credentials omit；retention 头上报"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "端点与游标合同（A05） > initialAfterId 仅在无游标首连时作 after_id；有游标重连改用 Last-Event-ID 头"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "端点与游标合同（A05） > TSID 形状非法的 scope 拒绝开流"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "resync / 去重（A02/A05 权威刷新收敛） > resync.required → 清游标+重置去重器+onResync；合成帧水位不作游标"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "resync / 去重（A02/A05 权威刷新收敛） > 重复 event_id 只触发一次刷新，但游标推进到最新"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "resync / 去重（A02/A05 权威刷新收敛） > resync 后同一 event_id 允许再次出现（去重器已清空）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "resync / 去重（A02/A05 权威刷新收敛） > 垃圾帧（信封非法）不推进游标、不触发刷新"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "A04 fail-closed（401/403 停流） > 401 → onEnded(unauthorized) 且不重连"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "A04 fail-closed（401/403 停流） > 403（disabled seat / 无 assignment / 缺 permission）→ onEnded(forbidden) 不重连"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "A04 fail-closed（401/403 停流） > 无 token 时不开流直接 unauthorized（fail-closed）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "name": "A04 fail-closed（401/403 停流） > 网络错误 → 退避重连（非 401/403 不终局）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "A02 QR 确认主链（SSE 优先） > create → subscribe → scanned → confirmed(JWT)"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "A02 QR 确认主链（SSE 优先） > confirmed 帧带非 JWT token → fail-closed 结束会话"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "A02 QR 确认主链（SSE 优先） > SSE expired 帧 → onEnded(expired) 回登录"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "A02 轮询 fallback 与终结清理 > SSE 连接失败 → 轮询 status → confirmed 拿 token"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "A02 轮询 fallback 与终结清理 > 轮询 5202 cancelled → onEnded(cancelled)"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "A02 轮询 fallback 与终结清理 > 轮询 404（会话不存在或已过期）→ onEnded(expired)"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "A02 轮询 fallback 与终结清理 > 轮询 401 → onEnded(unauthorized)"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "A02 轮询 fallback 与终结清理 > cancel() → 本地立即回登录 + 尽力而为 cancel 请求（body 含 qr_token）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "A03 查询串凭证纪律 > 轮询默认间隔是 2 秒（计划卡 fallback 节奏）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "A03 查询串凭证纪律 > session_token 不进 create body / 不进 cancel 查询串"
+    },
+    {
+      "target": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "name": "toQrStatusFrame 形状收敛 > waiting/scanned 无 token；token 非 JWT 形状 → null token（fail-closed）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatContexts.test.ts",
+      "name": "toSeatContexts（A05 TSID string 投影） > 标准 payload → 全 TSID string 强类型投影"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatContexts.test.ts",
+      "name": "toSeatContexts（A05 TSID string 投影） > 线缆 JSON integer 形状（精度保护后已是 string）同样可投影"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatContexts.test.ts",
+      "name": "toSeatContexts（A05 TSID string 投影） > 未知 capability 键 fail-closed 丢弃，不放大权限"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatContexts.test.ts",
+      "name": "toSeatContexts（A05 TSID string 投影） > DF-7：seatless 组织行（business_identity_id=null, seat_enabled=false）与正常行混合 → 解析不抛，active 选路只含启用行"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatContexts.test.ts",
+      "name": "toSeatContexts（A05 TSID string 投影） > 缺字段/形状非法 → 整体 invalid_response（不部分采纳）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatContexts.test.ts",
+      "name": "A04 fail-closed（disabled seat / 无 assignment / 非成员） > seat_enabled=false → capabilities 空集且被 selectActiveSeatContexts 剔除"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatContexts.test.ts",
+      "name": "A04 fail-closed（disabled seat / 无 assignment / 非成员） > workspaces 空（无 assignment）→ 被剔除"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatContexts.test.ts",
+      "name": "A04 fail-closed（disabled seat / 无 assignment / 非成员） > 非成员（组织行根本不出现在 contexts）→ 空选路"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatContexts.test.ts",
+      "name": "A04 fail-closed（disabled seat / 无 assignment / 非成员） > enabled + 有 workspace → 保留"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "SeatTokenVault（A03 token 仅内存） > 只接受 JWT 三段式形状"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "SeatTokenVault（A03 token 仅内存） > setToken 形状非法时拒绝写入"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "SeatTokenVault（A03 token 仅内存） > clear 后 token 不可恢复"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "SeatTokenVault（A03 token 仅内存） > A03 负例：token 不落 localStorage/sessionStorage"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "SeatTokenVault（A03 token 仅内存） > store state 不携带 token 本体（防 devtools/序列化暴露）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "establishSeatSession / clearSession（A02 会话生命周期） > confirmed → authenticated；终结原因清空"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "establishSeatSession / clearSession（A02 会话生命周期） > token 形状非法 → 不建立会话（fail-closed）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "establishSeatSession / clearSession（A02 会话生命周期） > expired/cancelled/unauthorized 终结 → anonymous 且 vault 清空"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "SeatAuthGuard > 无 token 时 requireToken 抛 unauthorized（fail-closed 不发请求）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "SeatAuthGuard > established 后放行；域复核与 client 门一致"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "name": "SeatAuthGuard > 401 → 清会话回登录；403 默认不清（由调用面降级）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/tsid.test.ts",
+      "name": "toEntityId（TSID string 收敛） > 接受十进制字符串与安全正整数，统一输出 string"
+    },
+    {
+      "target": "src/modules/customer_service/seat/tsid.test.ts",
+      "name": "toEntityId（TSID string 收敛） > 拒绝负数/零/非整数/浮点/空串/非数字形状（fail-closed）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/tsid.test.ts",
+      "name": "toEntityId（TSID string 收敛） > 接受超 MAX_SAFE_INTEGER 的整数字符串（TSID 常态）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/tsid.test.ts",
+      "name": "parseSeatJson（TSID 精度保护解析） > 结构区大整数字面量转 string，不丢精度"
+    },
+    {
+      "target": "src/modules/customer_service/seat/tsid.test.ts",
+      "name": "parseSeatJson（TSID 精度保护解析） > 字符串值内部的数字不受影响"
+    },
+    {
+      "target": "src/modules/customer_service/seat/tsid.test.ts",
+      "name": "classifySeatError（错误分类） > 标准码位逐一落位"
+    },
+    {
+      "target": "src/modules/customer_service/seat/tsid.test.ts",
+      "name": "classifySeatError（错误分类） > QR 专属码：5201/5203 expired、5202 cancelled、5204 not_scanned"
+    },
+    {
+      "target": "src/modules/customer_service/seat/tsid.test.ts",
+      "name": "classifySeatError（错误分类） > code 优先于 HTTP 状态（imboy 信封 HTTP 200 + 业务码）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/tsid.test.ts",
+      "name": "classifySeatError（错误分类） > 未知码位：>=500 按 server、其余正数按 validation、null 按 server 兜底"
+    },
+    {
+      "target": "src/modules/customer_service/seat/tsid.test.ts",
+      "name": "classifySeatError（错误分类） > SeatApiError 可用 instanceof / 守卫识别"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A01 域隔离（路径门） > 拒绝 /api/adm 与任意域外路径，且不发请求"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A01 域隔离（路径门） > 拒绝绝对 URL / 协议相对路径"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A01 域隔离（路径门） > Seat 域路径（cs + qr_login + enterprise 合同面）全部放行"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A01 域隔离（路径门） > 请求不带 Cookie（credentials: omit）且 Bearer 只进 Authorization 头"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A03 token 卫生（查询串 allowlist 与脱敏） > session_token 仅允许 status/subscribe 合同路径"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A03 token 卫生（查询串 allowlist 与脱敏） > 其他路径携带 token 类查询键 → 抛错不发请求"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A03 token 卫生（查询串 allowlist 与脱敏） > redactSeatUrl 脱敏 token 值但保留键名"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A03 token 卫生（查询串 allowlist 与脱敏） > JWT 永不进 URL：request 的 URL 不含 Bearer token"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A05 信封与 TSID 解析 > code=0 返回 payload；结构区大整数转 string 不丢精度"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A05 信封与 TSID 解析 > 业务码非 0 → 分类错误（HTTP 200 + code 403 → forbidden）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A05 信封与 TSID 解析 > HTTP 非 200 且 body 非对象 → 按 HTTP 状态分类"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A05 信封与 TSID 解析 > fetch 抛错 → network 分类"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A05 信封与 TSID 解析 > payload 缺失 / 非 JSON 信封 → invalid_response（fail-closed）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "A05 信封与 TSID 解析 > POST 请求体经 JSON 序列化且 Content-Type 正确"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "CS-WEB-01 requestBlob（附件 content 端点；二进制非信封） > 成功 → Blob；Bearer 只进 Authorization 头；credentials omit；URL 不含 token"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "CS-WEB-01 requestBlob（附件 content 端点；二进制非信封） > HTTP 200 JSON 错误信封不得保存成附件"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "CS-WEB-01 requestBlob（附件 content 端点；二进制非信封） > 401/403/404 → 对应分类（HTTP 状态即权威；message 不带 URL）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "CS-WEB-01 requestBlob（附件 content 端点；二进制非信封） > 网络失败 / blob 读取失败 → network 分类"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "CS-WEB-01 requestBlob（附件 content 端点；二进制非信封） > 域外路径（/api/adm）拒绝且不发请求"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "CS-WEB-02 putUploadObject（裸 PUT 上传通道；presign 下发目标） > 成功：PUT + blob body + octet-stream；无 Authorization；credentials omit"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "CS-WEB-02 putUploadObject（裸 PUT 上传通道；presign 下发目标） > http(s) 绝对 URL 放行（presign 可下发跨源对象存储目标）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "CS-WEB-02 putUploadObject（裸 PUT 上传通道；presign 下发目标） > 非 2xx → 按 HTTP/信封分类（500 server / 403 forbidden）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "CS-WEB-02 putUploadObject（裸 PUT 上传通道；presign 下发目标） > 协议门：javascript:/data:/协议相对目标 → 发请求前拒绝（validation）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "CS-WEB-02 putUploadObject（裸 PUT 上传通道；presign 下发目标） > 网络失败 → network 分类"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "REVIEW-2 凭据卫生锁定（全通道系统断言） > 通道1 JSON API（request）：credentials omit；Bearer 只进 Authorization 头；URL 与 body 均不含 JWT"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "REVIEW-2 凭据卫生锁定（全通道系统断言） > 通道2 资产 content 读回（requestBlob）：credentials omit；Bearer 只进 Authorization 头；URL 不含 JWT"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "REVIEW-2 凭据卫生锁定（全通道系统断言） > 通道3 裸 PUT 上传（putUploadObject）：两种形态均 credentials omit；upload_ref 形态 Bearer 进头、URL/body 不含 JWT；对象存储形态无 Authorization"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "REVIEW-2 凭据卫生锁定（全通道系统断言） > 通道4 SSE fetch 流（SeatEventStream，实现位于 seatSseClient.ts）：credentials omit；Bearer 只进 Authorization 头；URL 不含 JWT 且 GET 无 body"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "REVIEW-2 凭据卫生锁定（全通道系统断言） > token 类查询键家族在 Seat 域非 allowlist 路径全部发请求前被拒（与实现 TOKEN_LIKE_QUERY_KEYS 同步）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "REVIEW-2 凭据卫生锁定（全通道系统断言） > redactSeatUrl 家族：全部 token 类键值替换为 ***，值不出现在输出"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "Console 凭证出口约束 > 完整 Human API 路径不属于 Console 域"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "name": "Console 凭证出口约束 > 带 upload_ref 的域外/非上传目标在发送前拒绝，Seat JWT 不外发"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseProtocol.test.ts",
+      "name": "parseSeatSseEnvelope（A05 信封 fail-closed） > 标准信封解析成功，TSID 全 string"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseProtocol.test.ts",
+      "name": "parseSeatSseEnvelope（A05 信封 fail-closed） > resource_id 允许 null"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseProtocol.test.ts",
+      "name": "parseSeatSseEnvelope（A05 信封 fail-closed） > 六种 type + 六种 resource_type + 五种 reason 逐一可解析"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseProtocol.test.ts",
+      "name": "parseSeatSseEnvelope（A05 信封 fail-closed） > 任何字段缺失/越界/类型不符 → null（不猜测、不部分采纳）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseProtocol.test.ts",
+      "name": "SeatSseEventIdDeduper（at-least-once 去重） > 重复 id 报重复；reset 后允许重现"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseProtocol.test.ts",
+      "name": "SeatSseEventIdDeduper（at-least-once 去重） > 容量有界：FIFO 淘汰最旧 id"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseProtocol.test.ts",
+      "name": "SSE 分帧解析（retry / heartbeat / 跨 chunk） > 解析 id/event/data/retry，忽略注释心跳行"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseProtocol.test.ts",
+      "name": "SSE 分帧解析（retry / heartbeat / 跨 chunk） > 多行 data 合并（"
+    },
+    {
+      "target": "src/modules/customer_service/seat/seatSseProtocol.test.ts",
+      "name": "SSE 分帧解析（retry / heartbeat / 跨 chunk） > parser 跨 chunk 组装（任意切分不丢帧）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "seat_session_view 投影 > 白名单投影：TSID 全 string、计数与掩码名保留、存储侧键不出现"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "seat_session_view 投影 > 形状非法 fail-closed：缺 id / 非法 status / version 非正整数 → null"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "seat_session_view 投影 > detail 投影补充访客最小资料（掩码名优先，无 PII 字段）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "seat_session_view 投影 > detail 形状非法 → throw（不部分采纳）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "会话页投影（服务端计数合同） > sessions/total/total_by_status/next_after_id 全部来自服务端"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "会话页投影（服务端计数合同） > 计数缺失或形状非法 → throw（禁本地推断）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "消息投影（含 ACK 与附件） > 裸数组载荷（eb list_messages_after 合同）逐行投影；read_at 是 ACK 事实"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "消息投影（含 ACK 与附件） > CS-WEB-01 键名对齐：size_bytes/file_name 被消费；错位旧键 size 不再被读"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "消息投影（含 ACK 与附件） > 兼容 {messages} 旧形载荷"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "消息投影（含 ACK 与附件） > 非数组载荷内的垃圾行被丢弃，不猜测"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "消息投影（含 ACK 与附件） > §3.7 阶段映射：白名单外/协议态一律 pending_confirm（未就绪）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "transfer-targets 投影 > {targets, next_after_id}：identity/display_name/available"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-03 队列 triage 投影（last_message 键名对齐 + waiting_seconds） > last_message 键名对齐（CSX-01 修正）：preview/created_at/sender_type 被消费"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-03 队列 triage 投影（last_message 键名对齐 + waiting_seconds） > 旧错位键 at 不再被读（fail-closed）：只发 at 的行 createdAt 为 null"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-03 队列 triage 投影（last_message 键名对齐 + waiting_seconds） > waiting_seconds：queued 行消费服务端权威值；缺键（active/closed）→ null；形状非法 → null"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-03 队列 triage 投影（last_message 键名对齐 + waiting_seconds） > queued_at/claimed_at/closed_at 是 epoch 秒（PG bigint wire）：整数被消费，ISO 字符串不猜"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-03 队列 triage 投影（last_message 键名对齐 + waiting_seconds） > preview 占位语义：null（附件-only/空/撤回/keyring 未装配）原样透传，不猜测不编造"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "路径构造（Seat 域 + A03 附件代理不变量） > 合同路径族全部落在 /api/v1/cs 或 /api/v1/enterprise 域"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "路径构造（Seat 域 + A03 附件代理不变量） > CS-WEB-01：附件内容路径 = 真实 enterprise content 端点（模板一致，无虚构 cs 段）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "路径构造（Seat 域 + A03 附件代理不变量） > 路径编码：TSID 特殊字符输入不产生注入面（防御性）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-02 presign 投影与上传路径 > toSeatPresignResult：完整形状投影（upload.url 消费，token/object key 丢弃）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-02 presign 投影与上传路径 > upload.url 缺失（部署未开放对象 PUT）→ uploadUrl=null（fail-closed 由编排终止）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-02 presign 投影与上传路径 > 形状非法 fail-closed：非对象 / asset_id 非法 / upload_ref 缺失 → throw"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-02 presign 投影与上传路径 > TSID 精度：大整数字面量 asset_id 经 parseSeatJson 收敛为 string"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-02 presign 投影与上传路径 > 上传路径构造：presign/confirm 落真实 enterprise 动作端点（无虚构路由）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-04 客户上下文投影（CS-BE-03 白名单双层防线） > 白名单投影：已知键收敛为 camelCase；白名单外键一律丢弃"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-04 客户上下文投影（CS-BE-03 白名单双层防线） > fail-closed：payload 非对象 / session_id 非法即 throw（不猜形状）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-04 客户上下文投影（CS-BE-03 白名单双层防线） > 空历史/空备注收敛为空数组（面板 empty 态的数据源）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "name": "CS-WEB-04 客户上下文投影（CS-BE-03 白名单双层防线） > 路径构造：5 段 context 路径落 Seat 域（CS-BE-03 真实路由）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "name": "SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 结束会话（seat-close-submit） > active 会话点关闭：POST close 合同逐键（expected_version=权威版本 + workspace_id，无 reason 键）→ 已结束 + active 列表消失 + closed 列表在场 + 写入口收回"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "name": "SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 结束会话（seat-close-submit） > close 撞 409（状态已被他人变更）：payload 合同不变 → seat-close-conflict 播报 + 失败方权威刷新 + 不伪成功"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "name": "SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 转接（seat-transfer-submit） > 选中坐席乙转接：POST transfer payload 逐键（to_identity_id/expected_version/workspace_id）→ 无冲突播报 + 按钮复位 + 成功方权威刷新；未选目标禁发"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "name": "SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 转接（seat-transfer-submit） > transfer 撞 409：payload 合同不变 → seat-transfer-conflict 播报 + 权威刷新 + 会话归属未变（不伪成功）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "name": "SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 登出（seat-logout） > active 会话（关闭/转接/回复入口在场）点退出：vault 同步清空 + store 复位（endReason=logout）→ 工作台整体收回回 QR 登录门；登出纯前端，零服务端写调用"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "列表合同（queue / active / closed） > 队列 GET：路径与查询串（after_id/limit/workspace_id）+ 页投影"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "列表合同（queue / active / closed） > active/closed 两视图：status 必填进查询串"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "列表合同（queue / active / closed） > TSID 大整数精度保护：响应文本里的超安全整数到达时已是 string"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CAS 写合同（claim / transfer / close） > claim：POST {workspace_id, expected_version}；请求体逐键（DF-9）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CAS 写合同（claim / transfer / close） > A01：两坐席并发 claim 同版本，恰一成功、另一方 409 conflict"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CAS 写合同（claim / transfer / close） > transfer：{to_identity_id, expected_version, workspace_id} 逐键（DF-9）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CAS 写合同（claim / transfer / close） > close：{expected_version, workspace_id, reason?}；缺 reason 不带键（DF-9）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CAS 写合同（claim / transfer / close） > detail：GET query 必带 workspace_id（DF-9：缺失真实后端 422）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "消息合同（历史 + 幂等发送） > 历史：GET enterprise conversations 路径族 + 必带 workspace_id/organization_id（DF-9R）+ 裸数组载荷"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "消息合同（历史 + 幂等发送） > 发送：POST 企业真源写路径（/organizations/:org 段 + 全键 body + {message} 载荷，DF-9）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "消息合同（历史 + 幂等发送） > transfer-targets：{targets, next_after_id} 投影"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "域隔离不回退（A01） > enterprise 前缀增补后，/api/adm 与域外路径仍被拒且不发请求"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-02 附件合同（presign / 裸 PUT / confirm / asset_ids 发送） > presign：POST assets/presign + 冻结字段逐键（file_name 空串不落线）+ 响应投影"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-02 附件合同（presign / 裸 PUT / confirm / asset_ids 发送） > confirm：POST assets/confirm + {upload_ref, workspace_id} 请求体"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-02 附件合同（presign / 裸 PUT / confirm / asset_ids 发送） > 发送 asset_ids：空正文省略 body 键 + asset_ids 数组；纯文本不出现 asset_ids"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-02 附件合同（presign / 裸 PUT / confirm / asset_ids 发送） > 上传编排顺序钉死（TEST-00）：presign → 裸 PUT → confirm（不可乱序/跳步；hash 先于 presign）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-02 附件合同（presign / 裸 PUT / confirm / asset_ids 发送） > upload.url 缺失（部署未开放对象 PUT）→ fail-closed：PUT/confirm 均不发生"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-02 附件合同（presign / 裸 PUT / confirm / asset_ids 发送） > confirm 409（重复 confirm）→ conflict 分类（不伪成功）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-02 附件合同（presign / 裸 PUT / confirm / asset_ids 发送） > SHA-256 形状：blobSha256Hex 64 位小写 hex + isValidSha256Hex 白名单"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-04 客户上下文合同（CS-BE-03 端点） > fetchCustomerContext：GET context 路径 + 信封解包 + 投影；signal 透传"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-04 客户上下文合同（CS-BE-03 端点） > fetchCustomerContext：403 → forbidden 分类（转接后原 Seat 失去读权语义）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-04 客户上下文合同（CS-BE-03 端点） > fetchCustomerContext：载荷形状非法 → TypeError（投影层 fail-closed，不猜形状）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "name": "CS-WEB-04 客户上下文合同（CS-BE-03 端点） > fetchCustomerContext：信封载荷缺失 → invalid_response（传输层分类不变）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/presencePage.test.tsx",
+      "name": "CS-WEB-05 presence 状态条 > 展示服务端派生状态（online）；降级 500 → 状态不可用（不显示 online）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/presencePage.test.tsx",
+      "name": "CS-WEB-05 presence 状态条 > 手动 away → 恢复自动（PUT 往返 + 状态切换即时反映）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/presencePage.test.tsx",
+      "name": "CS-WEB-05 presence 状态条 > 心跳可见性门控：页面隐藏时不发心跳（诚实在线）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/presencePage.test.tsx",
+      "name": "CS-WEB-05 presence 状态条 > busy 状态展示容量派生（服务端事实，本地不造）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/presencePage.test.tsx",
+      "name": "CS-WEB-05 未读 badge（CS-BE-04 read-state） > 选中会话后未读数 >0 渲染 badge（aria-label 未读 N 条）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/scopeSwitcher.test.tsx",
+      "name": "seat org/ws 切换器（SeatWorkspacePage header，F12） > 正常渲染：org 选项来自 seat-contexts 全部组织；ws 选项随当前组织；默认选中第一个组织第一个工作区"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/scopeSwitcher.test.tsx",
+      "name": "seat org/ws 切换器（SeatWorkspacePage header，F12） > 切换 org：ws 列表刷新为新组织工作区（回落第一个）、选中会话清空、权威读取与 SSE 流切到新组织"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/scopeSwitcher.test.tsx",
+      "name": "seat org/ws 切换器（SeatWorkspacePage header，F12） > 切换 ws：会话列表按新 workspace 重载（queue 带 workspace_id）、组织不变、SSE 流随 scope 重建"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/presenceContract.test.ts",
+      "name": "CS-WEB-05 presence contract > toSeatPresence：合法投影（status/心跳/手动/容量）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/presenceContract.test.ts",
+      "name": "CS-WEB-05 presence contract > toSeatPresence：manual away 保真；从未上报 last_heartbeat_at=null"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/presenceContract.test.ts",
+      "name": "CS-WEB-05 presence contract > toSeatPresence：未知 status / 非法容量 fail-closed throw"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/presenceContract.test.ts",
+      "name": "CS-WEB-05 presence contract > toSeatReadState：合法投影与缺字段 throw"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/presenceContract.test.ts",
+      "name": "CS-WEB-05 presence contract > 路径构造：heartbeat / my-presence（org 编码）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 关闭/转接写入口（组件级） > 关闭链：seat-close-submit 以权威 detail.version 上抛 onClose（真实页面不传 reason）；closed 后写入口收回 + 评分只读区"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 关闭/转接写入口（组件级） > 关闭 pending：按钮禁用 + 文案「关闭中…」（防重复提交），不误显冲突"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 关闭/转接写入口（组件级） > 关闭 409 冲突：role=alert 提示「已刷新，请重试」；复位后提示消失（不残留）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 关闭/转接写入口（组件级） > 转接链：未选目标禁用；选可用坐席后以 (toIdentityId, version) 上抛 onTransfer；忙碌坐席禁选"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 关闭/转接写入口（组件级） > 转接 pending/conflict：转接中… 禁用不重复上抛；conflict role=alert 提示重试"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 关闭/转接写入口（组件级） > 无可转接坐席：可解释空态「暂无可转接坐席」，不渲染 select/submit（不伪造入口）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 关闭/转接写入口（组件级） > A04 写入口收回：canWrite=false + writeClosedReason → seat-write-revoked 可解释 + 两个 submit 隐藏"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 关闭/转接写入口（组件级） > 详情骨架四态：loading / placeholder / forbidden / 详情错误重试（retry 上抛 onRetryDetail）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 写动作全链（× 假后端：wire 形状 + 成功/失败收敛） > 转接 wire：POST transfer {to_identity_id, expected_version, workspace_id} + Seat Bearer"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 写动作全链（× 假后端：wire 形状 + 成功/失败收敛） > 关闭 wire + 成功收敛：POST close {expected_version, workspace_id}（无 reason 键）→ 已结束 + 评分只读 + 写入口收回"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "name": "SeatDetailPanel 写动作全链（× 假后端：wire 形状 + 成功/失败收敛） > 关闭 500 失败：不谎报成功（状态停留进行中、无评分区、按钮恢复可重试），恰好一次 close POST"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 登录门（QR 合同 + device_id 持久化） > 匿名 → QR 登录门；create 请求体携带持久化 device_id（SEAT-01 缺口⑤）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 登录门（QR 合同 + device_id 持久化） > endReason → 登录门可解释文案（expired/cancelled/401）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > 工作台骨架：org/ws 切换器 + 服务端计数 Tab + queued 列表 + claim 入口"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > A03/CS-WEB-01：附件经 Seat Bearer fetch 预览（blob: URL）；无裸 href/object key/JWT/虚构路由"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > CS-WEB-01：Blob URL 生命周期——消息刷新不重取，卸载即 revoke（无泄漏）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > CS-WEB-01：下载走 a[download]（blob URL + file_name）；404 → 可解释错误，恢复后重试成功"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > A01：claim 撞 409 → 冲突播报 + 列表自动权威刷新收敛"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > A01 成功侧：claim 成功 → 列表/详情失效刷新，会话进入 active"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > A02：SSE message.appended 去重——重复信封只触发一次权威刷新；resync → 全量刷新"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > A02：消息区 role=log + aria-live（无重复渲染：权威数据同 id 只渲染一次）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > A04：seat.changed revoked → 写入口立即收回（claim 禁用 + composer 收回）且状态可解释"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > DF-12：撤权播报不随复核换页被卸载——拒绝态下 live-region 常驻且文案保持"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > A06 loading / empty / error+retry / permission denied / offline 五态"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > 发送失败 → 重试复用同一 client_msg_id（幂等合同），成功后清空"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > 连续两次发送产生互不相同的 client_msg_id（唯一性不变量；兜底不再是常量）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 工作台（A01/A02/A03/A04/A05/A06） > A05：tablist/tab 语义 + 会话列表键盘可达（原生 button 焦点路径）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-03 队列 triage（preview/等待时长/筛选/selection/详情抽屉） > 排队行渲染服务端 preview 摘要与等待时长（服务端权威，无客户端时钟计算）+ 未读占位 slot 不伪造数字"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-03 队列 triage（preview/等待时长/筛选/selection/详情抽屉） > preview null 占位（附件-only/空/撤回）：诚实「暂无摘要」，不编造附件文案；负 waiting 防御为 0"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-03 队列 triage（preview/等待时长/筛选/selection/详情抽屉） > 搜索过滤已加载行（掩码名/摘要）：无匹配给筛选空态；Tab 计数保持服务端值"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-03 队列 triage（preview/等待时长/筛选/selection/详情抽屉） > 筛选/切换视图不丢 selection（aria-current 保持）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-03 队列 triage（preview/等待时长/筛选/selection/详情抽屉） > 768-1279 详情抽屉：触发按钮打开 role=dialog 的详情面板；关闭后回收"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-02 单文件发送（presign → 裸 PUT → confirm → asset_ids） > 正文+文件：顺序钉死 presign → PUT → confirm → 发送 asset_ids；成功后清空 composer 与附件"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-02 单文件发送（presign → 裸 PUT → confirm → asset_ids） > 空正文+文件：合法附件消息（wire 无 body 键，asset_ids 单元素）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-02 单文件发送（presign → 裸 PUT → confirm → asset_ids） > 正文与附件同时空 → 发送禁用（前端校验；不发请求）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-02 单文件发送（presign → 裸 PUT → confirm → asset_ids） > PUT 失败 → 保留正文/文件选择/重试；重试同 client_msg_id（幂等，逻辑消息不重复创建）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-02 单文件发送（presign → 裸 PUT → confirm → asset_ids） > 发送失败 → 重试不重复 presign/PUT/confirm（已 confirm 的 assetId 复用）+ 同 client_msg_id"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-02 单文件发送（presign → 裸 PUT → confirm → asset_ids） > presign 422 → 服务端语义透传（role=alert 文本含 msg）；失败后可换文件重试"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-02 单文件发送（presign → 裸 PUT → confirm → asset_ids） > 移除附件可解释（aria-label 含文件名）；移除后空正文 → 发送禁用"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-04 客户上下文面板（CS-BE-03 消费 + 四态 + 陈旧防护） > 渲染投影：掩码资料/来源/首末联系/历史会话/备注，白名单外字段不出现"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-04 客户上下文面板（CS-BE-03 消费 + 四态 + 陈旧防护） > 四态：loading / error+重试 / permission(403) / empty 各自独立（逐子用例独立挂载）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-04 客户上下文面板（CS-BE-03 消费 + 四态 + 陈旧防护） > 切换会话不显示上一客户陈旧数据；晚到的旧响应被拒（不覆盖新会话）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-04 客户上下文面板（CS-BE-03 消费 + 四态 + 陈旧防护） > 切换会话后旧客户数据被新投影替换（正向时序；旧掩码名不再出现）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage CS-WEB-04 客户上下文面板（CS-BE-03 消费 + 四态 + 陈旧防护） > 窄屏 Drawer：触发按钮打开 role=dialog 的同一上下文投影；关闭回收"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 退出登录（seat-logout：REVIEW-4 F2 零测试锁定） > 点 seat-logout → 内存 vault 同步清空 + store 复位（endReason=logout）→ 回 QR 登录门给可解释文案"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "name": "SeatWorkspacePage 退出登录（seat-logout：REVIEW-4 F2 零测试锁定） > 登出后写入口不可再操作：工作台 DOM 整体收回（单页状态机，无路由跳转）+ 登录门立即重建 QR 会话"
+    }
+  ],
+  "target_bindings": [
+    {
+      "path": "src/modules/customer_service/api/platformSeats.test.ts",
+      "sha256": "c0a6a73bf74ba353d168072091eaa25b572565cee09222de5747628d7a79849e"
+    },
+    {
+      "path": "src/modules/customer_service/api/platformSessions.test.ts",
+      "sha256": "7afbeb0989402b4984ec9f8fd0ae0c388965146212e2a3fa4b42a0bb06baf23e"
+    },
+    {
+      "path": "src/modules/customer_service/api/provisioning.test.ts",
+      "sha256": "2ae9f56d655a89c8f269409bcc5b748c71354d4de773321666f150f0e641970d"
+    },
+    {
+      "path": "src/modules/customer_service/api/provisioningPure.test.ts",
+      "sha256": "bf99cc1f5a0bbc8bc8de2b3ac3d90ee7087295d41dba39c84c39dcf98be65aea"
+    },
+    {
+      "path": "src/modules/customer_service/api/pureFunctions.test.ts",
+      "sha256": "ef4cc26bae02978ba2a6acfa1ac5a7c950eb12de8b6cffe15e2fca419bbc433f"
+    },
+    {
+      "path": "src/modules/customer_service/api/seatConsoles.test.ts",
+      "sha256": "3d042c85a0702145509ad5c0e412e1e0400130d416d78a0f9d260b839be4a0ec"
+    },
+    {
+      "path": "src/modules/customer_service/api/widgetInstallations.test.ts",
+      "sha256": "1a50c0f29a8a1121e0b62be2c022d87470e9cda3ca8d41a9eb2d5e3452f3903e"
+    },
+    {
+      "path": "src/modules/customer_service/api/widgetSecretScan.test.ts",
+      "sha256": "00c3341e0314f3a92adca4d7b4c5b6e9b7a423622da0266d218faeee61b33b4a"
+    },
+    {
+      "path": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "sha256": "9ed682466db96b88580f7ea6ba192a496d288f78cdc2d7d046ca2f256800adb7"
+    },
+    {
+      "path": "src/modules/customer_service/pages/CsStatsPanel.test.tsx",
+      "sha256": "a650492ddccfd761ed57dee3852f51f0589ce23d36cabc8874c97764b2ad4b87"
+    },
+    {
+      "path": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "sha256": "d7376a6387847bee11b2540af9ed53b0e546e43913f89b5d8900b747049f7353"
+    },
+    {
+      "path": "src/modules/customer_service/pages/CustomerServiceHomePage.i18n.test.tsx",
+      "sha256": "efd42f712390ece6c7708cc284c2a486f6000a77a5119505e5b212bafe65da47"
+    },
+    {
+      "path": "src/modules/customer_service/seat/qrLoginSession.test.ts",
+      "sha256": "6e00d8096385545aa7d253938fe9e58604cf2b34710885b1715a4ba80935cd59"
+    },
+    {
+      "path": "src/modules/customer_service/seat/seatApiClient.test.ts",
+      "sha256": "623082ee4be184e95587ea511fdc3d889aab72110393b3cd32c4b48a0027be33"
+    },
+    {
+      "path": "src/modules/customer_service/seat/seatAuthStore.test.ts",
+      "sha256": "4c138662b9ce4ab4e40110baf292f96f0dda407829492bbe613e7782380887cf"
+    },
+    {
+      "path": "src/modules/customer_service/seat/seatContexts.test.ts",
+      "sha256": "a31384e75dc5f56557ee533ed3320ba2abac055d9d0ad172647d867b2e4a2d60"
+    },
+    {
+      "path": "src/modules/customer_service/seat/seatSseClient.test.ts",
+      "sha256": "16e14e4529637381ac2eecbd43d0fc26235182d0e9b7b6ab33baf5a5ba702c1c"
+    },
+    {
+      "path": "src/modules/customer_service/seat/seatSseProtocol.test.ts",
+      "sha256": "fc2d8d00800fca5e354e2e2b382292fd49f85798c48df1dbec2c53e6e455a782"
+    },
+    {
+      "path": "src/modules/customer_service/seat/tsid.test.ts",
+      "sha256": "3b68881b2def2a68530f73f1973a59c0c40bdf9f6a315d786c96f5ac0e650c13"
+    },
+    {
+      "path": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "sha256": "12c275dc63a1081b8774eeedb64304e6f2e6310419a124d9a77594e43ce697d5"
+    },
+    {
+      "path": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.test.tsx",
+      "sha256": "7fcc93f3f000fe62156863152f7d71e74c06f3f01c57a997b6d00b59c76ec8d9"
+    },
+    {
+      "path": "src/modules/customer_service/seat/workbench/contract.test.ts",
+      "sha256": "f8617f0c5b98f5c6ed42ac987f26488927dad2d7ecaaad9df4797fd058fbb03d"
+    },
+    {
+      "path": "src/modules/customer_service/seat/workbench/detailPanel.test.tsx",
+      "sha256": "688358bfd57634c6f869b26d841df7483900303192a01bc7804ba3be9e2b4729"
+    },
+    {
+      "path": "src/modules/customer_service/seat/workbench/presenceContract.test.ts",
+      "sha256": "9095a9f3f530bdf2fe7762fdc3b4eaded83d81d784053a86a00ae79752dda5e2"
+    },
+    {
+      "path": "src/modules/customer_service/seat/workbench/presencePage.test.tsx",
+      "sha256": "53de6aab7c395178af3605b884fa8409c5cddc16bd7b34f4a7e1eb6cd3d1835b"
+    },
+    {
+      "path": "src/modules/customer_service/seat/workbench/scopeSwitcher.test.tsx",
+      "sha256": "cb8c56ac38606d8affbf94d237c983814aed93bbbce7260b26cafba78efd526f"
+    },
+    {
+      "path": "src/modules/customer_service/seat/workbench/workbenchApi.test.ts",
+      "sha256": "61306bb3add707611e353fa02e43dfe798877e794c52bb1d4307bd1bb07367b2"
+    }
+  ],
+  "source_hashes_reverified": 382,
+  "log": "admin-full-customer-service-host.log",
+  "log_sha256": "e1f04e25b5b9564103418c7c933c72862b80d66989b65fcceb6f220c7ea76299",
+  "real_backend": false,
+  "real_browser": false,
+  "cross_device": false,
+  "final_required_case_credit": 0,
+  "product_pass": false
+}

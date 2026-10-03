@@ -600,6 +600,22 @@
       "output_sha256": "ad4fcda9a8d36ed0ad142555419e09284ab77ab97ea90650c8d77be12c97e582",
       "scope": "LOCAL_STATIC_AND_BUILD_ONLY",
       "product_pass": false
+    },
+    {
+      "id": "PREPARATION-F12-ADMIN-FULL-CS-HOST",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyadmin",
+      "argv": [
+        "bun",
+        "test",
+        "--isolate",
+        "src/modules/customer_service"
+      ],
+      "candidate_admin": "997971a882928d67e70d6261629d5c69d2703539",
+      "exit": 0,
+      "output": "admin-full-customer-service-host.log",
+      "output_sha256": "e1f04e25b5b9564103418c7c933c72862b80d66989b65fcceb6f220c7ea76299",
+      "scope": "ADMIN_CUSTOMER_SERVICE_HOST_MOCK_REGRESSION_ONLY",
+      "product_pass": false
     }
   ],
   "final_verifier": "NOT_IMPLEMENTED"
