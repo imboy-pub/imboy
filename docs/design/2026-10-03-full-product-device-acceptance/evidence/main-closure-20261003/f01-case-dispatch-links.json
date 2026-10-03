@@ -1,0 +1,24 @@
+{
+  "id": "PREPARATION-F01-CASE-DISPATCH-LINKS",
+  "scope": "FROZEN_CASE_DISPATCH_DECLARATIONS_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "app_head": "9f654a008038c591d290bad44d4e115556c74e85",
+  "executed": 135,
+  "exit": 0,
+  "log": {
+    "path": "f01-case-dispatch-links.log",
+    "sha256": "587ba6ec87c48308c95fa8fed8341f2dae0e38940670a62f7e7590f9e59649e3"
+  },
+  "reviews": [
+    "PYTHON_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "requirements": [
+    "Every frozen case has explicit nonempty unique dispatch_card_ids",
+    "All assignments reference known cards and share the case parent requirements",
+    "Assigned cards cover every parent ID of the case",
+    "Every card has assigned required cases for all of its own parent IDs"
+  ],
+  "proof_limit": "Synthetic declaration coverage only. Does not prove owner assignment, complete domain case design, business oracle implementation or real execution. All 97 original requirements remain subject to actual qualification."
+}
