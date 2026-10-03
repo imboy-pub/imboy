@@ -33,6 +33,7 @@
 #       nginx -V 常缺 --conf-path，显式 -c 已被接受，不再 BLOCKED_ENV）
 #   T19 -V 无 --conf-path 且 master 无 -c → 仍 BLOCKED_ENV（B2-P4 用例 B）
 #   T20/T20b/T20c NGINX_INCLUDE_PATH 非空时以 --include-path 透传给巡检脚本
+#   T21 备份缺 service-state.txt 快照 → 备份格式不完整拒绝恢复（显式诊断）
 #       （pre-switch 与 strict；配置 env 文件与进程环境两种来源），未设置不传
 set -Eeuo pipefail
 
@@ -507,6 +508,18 @@ new_sandbox t20c
 run_installer --check --config "$CFG"
 assert_rc 0 "$RC" "T20c --check 成功"
 assert_ngrep "T20c 未设置时不向巡检脚本传 --include-path" '[-][-]include-path' "$STATE/calls.log"
+
+echo "== T21 备份缺 service-state 快照 → 格式不完整拒绝恢复（NOTE-R2a） =="
+new_sandbox t21
+run_installer --apply --config "$CFG"
+assert_rc 0 "$RC" "T21 前置 apply 成功"
+BK="$SB/backups/$(latest_backup)"
+rm "$BK/service-state.txt"
+run_installer --rollback --config "$CFG" --backup "$BK"
+assert_rc 1 "$RC" "T21 快照缺失 → 拒绝恢复"
+assert_grep "T21 格式不完整诊断（缺哪个文件/为何拒绝/拒绝恢复）" 'backup format incomplete: .*service-state\.txt is missing \(a format=2 backup must carry the service-state snapshot\); refusing to restore this directory' "$STATE/out.log"
+assert_eq "T21 拒绝后未新增 Compose 重建（仅 apply 阶段一次）" "$(grep -ac 'docker compose up' "$STATE/calls.log" 2>/dev/null || true)" "1"
+assert_file "T21 拒绝后 active-backup 指针保留（恢复未执行收尾清理）" "$SB/state-lib/active-backup"
 
 echo
 echo "== 结果：PASS=${PASS} FAIL=${FAIL} =="
