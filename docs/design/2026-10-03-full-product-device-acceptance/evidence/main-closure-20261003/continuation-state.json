@@ -3289,5 +3289,66 @@
     "proof_limit": "No execution, fixture, runtime profile, owner-independent review of test adequacy or final coverage approval. Seed statuses and canonical required set unchanged. File picker/share/safe storage/server journeys and cryptographic restore require actual device/backend evidence.",
     "artifact": "f00-backup-24-feature-case-design.json",
     "resource_boundary": "No device/backend/credential activation is authorized by this design. Share completion must use an isolated local receiver; no third-party delivery. Never replace real secure storage with a mock and count device qualification."
+  },
+  "f00_backup_three_host_cases": {
+    "id": "PREPARATION-F00-BACKUP-THREE-HOST-CASES",
+    "scope": "LOCAL_HOST_WIDGET_INTERACTIONS_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "5edc2ffc777279bc3b1c2669bf787786c99ebebb",
+    "target": "test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart",
+    "target_sha256": "17f4c4efdcb48c2017c27e9d9bf86ddf9caa822d24e229c39bef8db6137f954b",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "executed": 7,
+    "exit": 0,
+    "analyze_exit": 0,
+    "reviews": [
+      "FLUTTER_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "log": {
+      "path": "f00-backup-three-host-cases.log",
+      "sha256": "84ce8007571db877c4127a63b191e2cd3655d88263225257d5fd79369b3e3226"
+    },
+    "seed_oracles": [
+      {
+        "seed_id": "LEGACY:settings:e2ee_backup_export_page:001",
+        "test_name": "密码强度随弱/强输入及清空更新"
+      },
+      {
+        "seed_id": "LEGACY:settings:e2ee_backup_export_page:003",
+        "test_name": "密码不一致时提示错误且不读取安全存储密钥"
+      },
+      {
+        "seed_id": "LEGACY:settings:e2ee_backup_export_page:004",
+        "test_name": "生成恢复密钥将弹窗密钥填入两个密码框"
+      }
+    ],
+    "interrupted_test_preparation_attempts": [
+      {
+        "session_id": 78682,
+        "status": "STOPPED_BY_OWNER",
+        "reason": "FakeAsync await of toast dismissal stalled at test cleanup",
+        "passed_before_stop": 2,
+        "complete_suite_pass": false,
+        "raw_log_saved": false
+      },
+      {
+        "session_id": 65347,
+        "status": "STOPPED_BY_OWNER",
+        "reason": "Cleanup pump without advancing animation time still stalled",
+        "passed_before_stop": 2,
+        "complete_suite_pass": false,
+        "raw_log_saved": false
+      }
+    ],
+    "proof_limit": "Only actual widget interaction with a secure-storage channel substitute. No generated-file/actual safe-storage/cloud or cryptographic restore evidence. Three partial host references added, not frozen required cases or parent PASS."
   }
 }
