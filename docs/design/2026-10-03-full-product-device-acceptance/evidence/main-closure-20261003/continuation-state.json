@@ -5340,5 +5340,12 @@
     ],
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "mention_pagination_retry": {
+    "receipt": "mention-pagination-retry-20261004.json",
+    "app_head": "9ced4d81a0fc71ce6bbee36e626ef6ac707f514e",
+    "executed": 9,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_MENTION_PAGINATION_RETRY",
+  "app_head": "9ced4d81a0fc71ce6bbee36e626ef6ac707f514e",
+  "executed": 9,
+  "new_cases": 1,
+  "logs": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/mention-pagination-red-20261004.log",
+      "sha256": "961601d07dc854383e4410706f0aea83916052a5b619d1d9c221cabee04b561f",
+      "exit_code": 1
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/mention-pagination-green-20261004.log",
+      "sha256": "0184696b4a93d453a37da7ac06861ac76547b57278008158b4582e8dfd434ac9",
+      "exit_code": 0
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/mention-pagination-static-20261004.log",
+      "sha256": "a6f7c5f0001178ec07ce8de484c4907333d22c0d3a16a942bbc9a3f00916435a",
+      "exit_code": 0
+    }
+  ],
+  "sources": [
+    {
+      "path": "lib/page/mention/mention_list_page.dart",
+      "sha256": "39b2a5ac410bcbd30be8de42ebe5940274fc607f88c5a7a16bca9d80ec9fd16f"
+    },
+    {
+      "path": "test/unit_test/page/mention/mention_pagination_retry_test.dart",
+      "sha256": "30cd048ca81ec7fd7eda9fcc87d51f34b018fb8c6819d16e8c6b0d2313978ac3"
+    }
+  ],
+  "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/page/mention",
+    "--reporter",
+    "expanded"
+  ],
+  "red_oracle": "Actual mounted page requested [1,2,3] after page2 null; expected [1,2,2].",
+  "green_oracle": "Actual controller scroll retries page2, renders page2 final item, and stops requesting after short final page.",
+  "related_function_ids": [
+    "fn:mention:mention_list_page:005"
+  ],
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "limitations": [
+    "Service response is synthetic; no backend/device execution.",
+    "Thrown exceptions and refresh/account concurrent queries remain outside this test.",
+    "Original function remains unbound to authentic platform execution."
+  ],
+  "reviews": [
+    "c11_flutter_review APPROVE",
+    "runner_code_review APPROVE"
+  ]
+}
