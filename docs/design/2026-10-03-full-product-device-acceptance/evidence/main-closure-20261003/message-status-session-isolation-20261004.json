@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_STATUS_UPDATE_RETURN_READ_AND_NOTIFICATION_SESSION_ISOLATION",
+  "app_head": "3a4dd7c4866341f9d9ee46033e4ab808ec8689c0",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_WITH_ANONYMOUS_GUARD",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 1,
+    "red_failed": 1,
+    "qualified_domain_exit": 0,
+    "qualified_domain_passed": 248,
+    "qualified_focused_exit": 0,
+    "qualified_focused_passed": 8,
+    "qualified_static_exit": 0,
+    "qualified_catalog_exit": 0
+  },
+  "oracles": [
+    "Actual production updateMessageStatus waits on injected database update; current session completes actual row lookup/plaintext conversion and emits one List<Message> notification.",
+    "Actual loginAfter increments session generation then synthetic secure-token write rejects; released already-started update produces zero subsequent queries and zero notifications.",
+    "Anonymous UID starts zero database updates."
+  ],
+  "limitations": [
+    "Already-started database writes are not cancelled or rolled back; internal updateStatusInAnyTable cross-table awaits are not qualified.",
+    "Post-find/post-mapping guards are source-reviewed only, not dynamically paused.",
+    "No real SQLite/device/backend/server ACK or original97-ID upgrade."
+  ],
+  "attempt_notes": [
+    "Initial fixture compile failed due int/bool types; next fixture used uninitialized current user and failed mapping; both excluded.",
+    "Intermediate missing contact fixture autoFetched localhost user/show. It is excluded from qualification; authoritative RED/final use synthetic ContactModel row and no HTTP fallback.",
+    "Intermediate static check rejected two raw generic warnings; qualified explicit dynamic types pass."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-catalog-20261004.log",
+      "sha256": "01ddbb76d35ff72c55f0e8cd26ba31a0808791bff9023486ea3a372c1d94cff1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-catalog-check-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-domain-20261004.log",
+      "sha256": "c55b0faf29ae7cbf2e6955a5a30f86344c2841fbe6ccd80077ded23aa622756e"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-focused-20261004.log",
+      "sha256": "c886cec32b219c10c8b9afe828097cd36129b42564e49e1d60340a555deb4b10"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-intermediate-fixture-20261004.log",
+      "sha256": "12e1a0cda9f427c7598ee64951fa1a1933bef505dd4537c4c3e4a0987108e18d"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-invalid-fixture-20261004.log",
+      "sha256": "3397768b370fb2ef55225c085cf776f28b55fde1e626d5ece6d1cc18cdb4710f"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-network-fixture-excluded-20261004.log",
+      "sha256": "1762b03fe55267a04cb9be2161923e5626f6b2f96d0420727339c3f39d8ec116"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-qualified-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-qualified-domain-20261004.log",
+      "sha256": "193ec21eef618c38ba3fc1b03f1999abd3fd3075c8d1475ae0fffe9ab6f314b5"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-qualified-focused-20261004.log",
+      "sha256": "7787c1acfdef14cc32be82df68e1a1afd3cf6b1380452d358ebf64b9b05e5032"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-qualified-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-red-20261004.log",
+      "sha256": "d9865a6e5e56047c6465f55542a217bc88f292832f3740591671a69f8f1c9362"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-session-static-20261004.log",
+      "sha256": "68abc13d5c1366ee0df73e8a4ee7a291e680871566b566e29aa2713b7e06eb9e"
+    }
+  ]
+}

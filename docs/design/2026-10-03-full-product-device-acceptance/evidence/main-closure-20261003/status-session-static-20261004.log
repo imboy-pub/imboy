@@ -1,0 +1,6 @@
+Analyzing lib, unit_test...
+
+warning - test/unit_test/service/chat_network_session_test.dart:160:23 - The generic type 'DataWrapperEvent<dynamic>' should have explicit type arguments but doesn't. Use explicit type arguments for 'DataWrapperEvent<dynamic>'. - strict_raw_type
+warning - test/unit_test/service/chat_network_session_test.dart:161:43 - The generic type 'DataWrapperEvent<dynamic>' should have explicit type arguments but doesn't. Use explicit type arguments for 'DataWrapperEvent<dynamic>'. - strict_raw_type
+
+2 issues found.

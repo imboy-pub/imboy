@@ -1,0 +1,26 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart
+test/unit_test/service/chat_network_session_test.dart:116:17: Error: The argument type 'String' can't be assigned to the parameter type 'int'.
+        fromId: '100',
+                ^
+test/unit_test/service/chat_network_session_test.dart:117:15: Error: The argument type 'String' can't be assigned to the parameter type 'int'.
+        toId: '200',
+              ^
+test/unit_test/service/chat_network_session_test.dart:119:19: Error: The argument type 'bool' can't be assigned to the parameter type 'int'.
+        isAuthor: true,
+                  ^
+00:00 +0 -1: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart: test/unit_test/service/chat_network_session_test.dart:116:17: Error: The argument type 'String' can't be assigned to the parameter type 'int'.
+          fromId: '100',
+                  ^
+  test/unit_test/service/chat_network_session_test.dart:117:15: Error: The argument type 'String' can't be assigned to the parameter type 'int'.
+          toId: '200',
+                ^
+  test/unit_test/service/chat_network_session_test.dart:119:19: Error: The argument type 'bool' can't be assigned to the parameter type 'int'.
+          isAuthor: true,
+                    ^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart
