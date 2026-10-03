@@ -69,6 +69,8 @@ check_metric(Name, Call, Expected) ->
     Metrics = elib_metric:get_all_metrics(),
     ?assertEqual(Before + 1, maps:get(Name, maps:get(counters, Metrics))),
     Text = iolist_to_binary(metrics_handler:format_prometheus(Metrics)),
+    TypeLine = iolist_to_binary(["# TYPE ", atom_to_binary(Name), " counter"]),
+    ?assert(lists:member(TypeLine, binary:split(Text, <<"\n">>, [global]))),
     ExpectedLine = iolist_to_binary([atom_to_binary(Name), " ", integer_to_binary(Before + 1)]),
     ?assert(lists:member(ExpectedLine, binary:split(Text, <<"\n">>, [global]))),
     ?assertEqual(nomatch, binary:match(Text, <<"synthetic-device">>)),

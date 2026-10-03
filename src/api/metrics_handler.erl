@@ -46,7 +46,8 @@ serve_metrics(Req0, State0) ->
                             #{},
                             Counters
                         ),
-                        elib_response:success(Req0, Metrics#{counters := FlatCounters}, "success.");
+                        JsonMetrics = maps:remove(metric_gauges, Metrics#{counters := FlatCounters}),
+                        elib_response:success(Req0, JsonMetrics, "success.");
                     {error, Reason} ->
                         elib_response:error(Req0, format_error(Reason))
                 end;
@@ -86,7 +87,7 @@ fetch_metrics() ->
         SystemMetrics = collect_system_metrics(),
         Counters = maps:get(counters, AppMetrics, #{}),
         MergedCounters = maps:merge(Counters, SystemMetrics),
-        {ok, AppMetrics#{counters => MergedCounters}}
+        {ok, AppMetrics#{counters => MergedCounters, metric_gauges => SystemMetrics}}
     catch
         Class:Reason ->
             {error, {Class, Reason}}
@@ -201,7 +202,9 @@ format_prometheus(Metrics) ->
     Counters = maps:get(counters, Metrics, #{}),
     Histograms = maps:get(histograms, Metrics, #{}),
 
-    %% 按 metric name 分组带标签的计数器，用于合并 TYPE 声明
+    %% Application counters and system gauges share the JSON-compatible sample map.
+    %% Keep one TYPE per family, including families with multiple label sets.
+    Types = format_counter_types(Counters, maps:get(metric_gauges, Metrics, #{})),
     CounterLines = maps:fold(
         fun
             ({Name, Labels}, Value, Acc) when is_map(Labels) ->
@@ -221,9 +224,6 @@ format_prometheus(Metrics) ->
                 NameBin = metric_name(Name),
                 [
                     Acc,
-                    <<"# TYPE ">>,
-                    NameBin,
-                    <<" gauge\n">>,
                     NameBin,
                     <<" ">>,
                     integer_to_binary(Value),
@@ -240,7 +240,25 @@ format_prometheus(Metrics) ->
         Histograms
     ),
 
-    iolist_to_binary([CounterLines, HistLines]).
+    iolist_to_binary([Types, CounterLines, HistLines]).
+
+format_counter_types(Counters, Gauges) ->
+    Families = lists:usort([metric_family_name(Key) || Key <- maps:keys(Counters)]),
+    GaugeFamilies = maps:from_list([{metric_family_name(Key), true} || Key <- maps:keys(Gauges)]),
+    [
+        [
+            <<"# TYPE ">>,
+            Name,
+            case maps:is_key(Name, GaugeFamilies) of
+                true -> <<" gauge\n">>;
+                false -> <<" counter\n">>
+            end
+        ]
+     || Name <- Families
+    ].
+
+metric_family_name({Name, Labels}) when is_map(Labels) -> metric_name(Name);
+metric_family_name(Name) -> metric_name(Name).
 
 %% @doc 导出 Prometheus histogram：`_bucket{le="..."}` 累积序列 + `_sum` + `_count`。
 %%
