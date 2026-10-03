@@ -4206,5 +4206,12 @@
     "app_head": "1a9e9260b4ee98a2e4dbf75393535090f981eecd",
     "executed": 19,
     "product_pass": false
+  },
+  "f08_cloud_password_error": {
+    "receipt": "f08-cloud-password-error.json",
+    "receipt_sha256": "7affb84b01c172d17aa6bf12054e133e9d7e1895a8d8eebc4edf13f004b0f2f0",
+    "app_head": "0abcd2dccde14b0edba1cf9ee773b6e736353ea4",
+    "executed": 10,
+    "product_pass": false
   }
 }
