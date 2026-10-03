@@ -1,0 +1,28 @@
+{
+  "id": "PREPARATION-F01-MANDATORY-UPSTREAM-COMPOSITION",
+  "scope": "EXECUTION_RECORD_GATE_ONLY",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "app_head": "9360e81bbfd37a07517e96e531555a944693deee",
+  "executed": 405,
+  "exit": 0,
+  "argv": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "test/tooling/auto_test"
+  ],
+  "reviews": [
+    "PYTHON_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "log": {
+    "path": "upstream-execution-composition-suite.log",
+    "sha256": "7bd666b3caf331ba399f51ff2d54d528c0ffae8ff0bc82866b61ce2749b8d04d"
+  },
+  "change": "Execution preflight now mandates full36-ID upstream E2EE ledger validation. Missing/replaced/tampered ledger rejected.",
+  "proof_limit": "Synthetic suite proves composition and rejection, not authentic oracle/review/user approval or final product qualification. Full final verifier and real device/backend acceptance remain incomplete."
+}
