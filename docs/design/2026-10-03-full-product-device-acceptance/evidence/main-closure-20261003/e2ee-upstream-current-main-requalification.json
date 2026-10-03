@@ -1,0 +1,423 @@
+{
+  "id": "E2EE-UPSTREAM-CURRENT-MAIN-REQUALIFICATION",
+  "audited_at": "2026-10-03T12:42:49.828439+00:00",
+  "scope": "READ_ONLY_HISTORICAL_HANDOFF_BINDING_AUDIT",
+  "product_pass": false,
+  "production_qualified": "NO_GO",
+  "current_heads": {
+    "imboy": "36e4f65960d4c09524c2cdfba30e13f172f85a9e",
+    "imboyapp": "6e17f03b8d73f42ec6c9d4c67260eea11c43eb8f",
+    "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+  },
+  "e2ee_plan_sha256": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+  "sources": {
+    "acceptance.tsv": {
+      "workspace_relative_path": ".Codex/evidence/e2ee-excellence/run-20261003-094804/acceptance.tsv",
+      "sha256": "779f6bd112c68bfb254236b73444e4380adcab91a6db61b5825915a84fb44134"
+    },
+    "candidate.json": {
+      "workspace_relative_path": ".Codex/evidence/e2ee-excellence/run-20261003-094804/candidate.json",
+      "sha256": "5698d36be60a935907bfec24a6ff4fed9b84c51fd971faabbc991d349956465d"
+    },
+    "verdict.json": {
+      "workspace_relative_path": ".Codex/evidence/e2ee-excellence/run-20261003-094804/verdict.json",
+      "sha256": "a011ef361a527d0ad701ec5ff130e45eeaa8f9b5de621e9e5a66490a065f0a44"
+    }
+  },
+  "required_count": 36,
+  "historical_counts": {
+    "PASS": 17,
+    "PARTIAL": 9,
+    "BLOCKED_DECISION": 5,
+    "BLOCKED_USER_AUTH": 4,
+    "PENDING_FINAL": 1
+  },
+  "qualified_on_current_main": 0,
+  "historical_pass_missing_evidence_hash": 17,
+  "requirements": [
+    {
+      "id": "AC-00",
+      "card": "C00",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_EXIT_NOT_ZERO_OR_MISSING",
+        "PASS_BEHAVIOR_COUNT_INVALID",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-01",
+      "card": "C00",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_EXIT_NOT_ZERO_OR_MISSING",
+        "PASS_BEHAVIOR_COUNT_INVALID",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-02",
+      "card": "C00",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_EXIT_NOT_ZERO_OR_MISSING",
+        "PASS_BEHAVIOR_COUNT_INVALID",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-03",
+      "card": "C01",
+      "historical_status": "PARTIAL",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-04",
+      "card": "C01",
+      "historical_status": "PARTIAL",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-05",
+      "card": "C02",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-06",
+      "card": "C02",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-07",
+      "card": "C03",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-08",
+      "card": "C03",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-09",
+      "card": "C04",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-10",
+      "card": "C04",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-11",
+      "card": "C05",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-12",
+      "card": "C05",
+      "historical_status": "PARTIAL",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-13",
+      "card": "C06",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-14",
+      "card": "C06",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-15",
+      "card": "C07",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-16",
+      "card": "C07",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-17",
+      "card": "C08",
+      "historical_status": "PARTIAL",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-18",
+      "card": "C08",
+      "historical_status": "PARTIAL",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-19",
+      "card": "C09",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-20",
+      "card": "C09",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-21",
+      "card": "C10",
+      "historical_status": "BLOCKED_DECISION",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-22",
+      "card": "C11",
+      "historical_status": "BLOCKED_USER_AUTH",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-23",
+      "card": "C11",
+      "historical_status": "BLOCKED_USER_AUTH",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-24",
+      "card": "C12",
+      "historical_status": "PARTIAL",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-25",
+      "card": "C12",
+      "historical_status": "PASS",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "PASS_CONFIG_HASH_INVALID",
+        "PASS_EVIDENCE_HASH_MISSING_OR_INVALID"
+      ]
+    },
+    {
+      "id": "AC-26",
+      "card": "C12",
+      "historical_status": "PARTIAL",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-27",
+      "card": "C13",
+      "historical_status": "BLOCKED_USER_AUTH",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-28",
+      "card": "C13",
+      "historical_status": "BLOCKED_USER_AUTH",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-29",
+      "card": "C14",
+      "historical_status": "PENDING_FINAL",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-30",
+      "card": "C15",
+      "historical_status": "BLOCKED_DECISION",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-31",
+      "card": "C15",
+      "historical_status": "BLOCKED_DECISION",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-32",
+      "card": "C16",
+      "historical_status": "BLOCKED_DECISION",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-33",
+      "card": "C16",
+      "historical_status": "BLOCKED_DECISION",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-34",
+      "card": "C17",
+      "historical_status": "PARTIAL",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    },
+    {
+      "id": "AC-35",
+      "card": "C17",
+      "historical_status": "PARTIAL",
+      "current_status": "PENDING_REQUALIFICATION",
+      "reasons": [
+        "CANDIDATE_SHA_DRIFT",
+        "HISTORICAL_REQUIREMENT_NOT_PASS"
+      ]
+    }
+  ],
+  "proof_limit": "Audit does not execute business or cryptographic tests, authenticate historical review, or close decision/device/backend gates. No historical file changed; no status upgraded."
+}

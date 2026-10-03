@@ -3118,5 +3118,44 @@
       "raw_log_saved": false
     },
     "proof_limit": "Checks USER/APPROVED declarations, frozen obligations, candidate/version bindings and original artifact hashes. Does not authenticate user approval provenance or completeness of UX scope. No real UX approval has been obtained; independent verification and final qualification remain required."
+  },
+  "e2ee_upstream_current_main_requalification": {
+    "id": "E2EE-UPSTREAM-CURRENT-MAIN-REQUALIFICATION",
+    "audited_at": "2026-10-03T12:42:49.828439+00:00",
+    "scope": "READ_ONLY_HISTORICAL_HANDOFF_BINDING_AUDIT",
+    "product_pass": false,
+    "production_qualified": "NO_GO",
+    "current_heads": {
+      "imboy": "36e4f65960d4c09524c2cdfba30e13f172f85a9e",
+      "imboyapp": "6e17f03b8d73f42ec6c9d4c67260eea11c43eb8f",
+      "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+    },
+    "e2ee_plan_sha256": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+    "sources": {
+      "acceptance.tsv": {
+        "workspace_relative_path": ".Codex/evidence/e2ee-excellence/run-20261003-094804/acceptance.tsv",
+        "sha256": "779f6bd112c68bfb254236b73444e4380adcab91a6db61b5825915a84fb44134"
+      },
+      "candidate.json": {
+        "workspace_relative_path": ".Codex/evidence/e2ee-excellence/run-20261003-094804/candidate.json",
+        "sha256": "5698d36be60a935907bfec24a6ff4fed9b84c51fd971faabbc991d349956465d"
+      },
+      "verdict.json": {
+        "workspace_relative_path": ".Codex/evidence/e2ee-excellence/run-20261003-094804/verdict.json",
+        "sha256": "a011ef361a527d0ad701ec5ff130e45eeaa8f9b5de621e9e5a66490a065f0a44"
+      }
+    },
+    "required_count": 36,
+    "historical_counts": {
+      "PASS": 17,
+      "PARTIAL": 9,
+      "BLOCKED_DECISION": 5,
+      "BLOCKED_USER_AUTH": 4,
+      "PENDING_FINAL": 1
+    },
+    "qualified_on_current_main": 0,
+    "historical_pass_missing_evidence_hash": 17,
+    "proof_limit": "Audit does not execute business or cryptographic tests, authenticate historical review, or close decision/device/backend gates. No historical file changed; no status upgraded.",
+    "artifact": "e2ee-upstream-current-main-requalification.json"
   }
 }
