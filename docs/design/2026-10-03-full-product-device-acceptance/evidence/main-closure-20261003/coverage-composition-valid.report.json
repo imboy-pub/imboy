@@ -1,0 +1,205 @@
+{
+  "required_cases": [
+    {
+      "case_id": "synthetic-v2-1",
+      "platform": "android",
+      "profile": "synthetic",
+      "role_variant": "synthetic",
+      "parent_acceptance_ids": [
+        "F03-A01"
+      ],
+      "seed_ids": [
+        "synthetic-v2-seed"
+      ],
+      "oracle": "verifier structure fixture only",
+      "applicability": "REQUIRED"
+    }
+  ],
+  "candidates": {
+    "imboy": {
+      "head": "7e295fe43fbd6cab8bbdc0dde202fa064b38eaa9",
+      "required_ancestors": [
+        "1c4b29650d58d313e4b2bb449d1cd7352363308a"
+      ]
+    },
+    "imboyapp": {
+      "head": "f02bf1e38ed21e7b840b526057ce361489cff196",
+      "required_ancestors": [
+        "1e0d3694fa21ca0f91b9fd1c7b05b512e1617959"
+      ]
+    },
+    "imboyadmin": {
+      "head": "997971a882928d67e70d6261629d5c69d2703539",
+      "required_ancestors": [
+        "997971a882928d67e70d6261629d5c69d2703539"
+      ]
+    }
+  },
+  "runtime_bindings": [
+    {
+      "binding_id": "synthetic-source",
+      "kind": "source",
+      "artifact": {
+        "path": "preflight-v2-synthetic-source.json",
+        "sha256": "2d9c94a8bcacc45c05f4619b36a3625680cb4ed5e0e8dde5b8058ab7e11b07b9"
+      }
+    },
+    {
+      "binding_id": "synthetic-config",
+      "kind": "config",
+      "artifact": {
+        "path": "preflight-v2-synthetic-config.json",
+        "sha256": "c66796be85e2b8fdda577c4f2fac3babbf1ae8fe4527ce8513e755fca99f6a0c"
+      }
+    },
+    {
+      "binding_id": "synthetic-build",
+      "kind": "build",
+      "artifact": {
+        "path": "preflight-v2-synthetic-build.json",
+        "sha256": "cfca390f803a128578789846378ff2724948bc9637169f8e5c2750211bedf822"
+      }
+    },
+    {
+      "binding_id": "synthetic-fixture",
+      "kind": "fixture",
+      "artifact": {
+        "path": "preflight-v2-synthetic-fixture.json",
+        "sha256": "1dba415dcc60bdfe815bcd20f05bd5fb3001c83458f704b80a3069670822c686"
+      }
+    },
+    {
+      "binding_id": "synthetic-device",
+      "kind": "device",
+      "artifact": {
+        "path": "preflight-v2-synthetic-device.json",
+        "sha256": "109467a70ff64ad1693ef6853206dc0c1afa1be78b04b3f7670d44714a6f6b95"
+      }
+    }
+  ],
+  "attempts": [
+    {
+      "attempt_id": "synthetic-red",
+      "exit": 1,
+      "is_verifier_fixture": true
+    },
+    {
+      "attempt_id": "synthetic-green",
+      "exit": 0,
+      "is_verifier_fixture": true,
+      "events": "execution-composition-synthetic.events.jsonl",
+      "events_sha256": "231f2638b5d23cf66fe3448546e66d750037577a2f5b3399dc754ee6aa6ed99b",
+      "exit_code": 0,
+      "parsed": {
+        "test_status": "PASS",
+        "executed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    }
+  ],
+  "coverage_mappings": [
+    {
+      "input_kind": "seed",
+      "input_id": "SYNTHETIC-seed",
+      "owner": "/root",
+      "source_refs": [
+        "SYNTHETIC.dart:1"
+      ],
+      "disposition": "CASE_MAPPED",
+      "case_keys": [
+        [
+          "synthetic-v2-1",
+          "android",
+          "synthetic",
+          "synthetic"
+        ]
+      ]
+    },
+    {
+      "input_kind": "generated",
+      "input_id": "SYNTHETIC-generated",
+      "owner": "/root",
+      "source_refs": [
+        "SYNTHETIC.dart:1"
+      ],
+      "disposition": "CASE_MAPPED",
+      "case_keys": [
+        [
+          "synthetic-v2-1",
+          "android",
+          "synthetic",
+          "synthetic"
+        ]
+      ]
+    },
+    {
+      "input_kind": "page",
+      "input_id": "SYNTHETIC-page",
+      "owner": "/root",
+      "source_refs": [
+        "SYNTHETIC.dart:1"
+      ],
+      "disposition": "CASE_MAPPED",
+      "case_keys": [
+        [
+          "synthetic-v2-1",
+          "android",
+          "synthetic",
+          "synthetic"
+        ]
+      ]
+    },
+    {
+      "input_kind": "api",
+      "input_id": "SYNTHETIC-api",
+      "owner": "/root",
+      "source_refs": [
+        "SYNTHETIC.dart:1"
+      ],
+      "disposition": "CASE_MAPPED",
+      "case_keys": [
+        [
+          "synthetic-v2-1",
+          "android",
+          "synthetic",
+          "synthetic"
+        ]
+      ]
+    },
+    {
+      "input_kind": "ws",
+      "input_id": "SYNTHETIC-ws",
+      "owner": "/root",
+      "source_refs": [
+        "SYNTHETIC.dart:1"
+      ],
+      "disposition": "CASE_MAPPED",
+      "case_keys": [
+        [
+          "synthetic-v2-1",
+          "android",
+          "synthetic",
+          "synthetic"
+        ]
+      ]
+    },
+    {
+      "input_kind": "admin",
+      "input_id": "SYNTHETIC-admin",
+      "owner": "/root",
+      "source_refs": [
+        "SYNTHETIC.dart:1"
+      ],
+      "disposition": "CASE_MAPPED",
+      "case_keys": [
+        [
+          "synthetic-v2-1",
+          "android",
+          "synthetic",
+          "synthetic"
+        ]
+      ]
+    }
+  ]
+}
