@@ -4346,5 +4346,14 @@
     "resource_authorized": false,
     "backend_ready": false,
     "product_pass": false
+  },
+  "current_main_e2ee_local_regression": {
+    "receipt": "e2ee-current-main-regression.json",
+    "app_head": "71cec44a8fef0272c42b2e6ac4f7d32e85b45cec",
+    "vectors": 245,
+    "version_gate": 45,
+    "domain_host": 966,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

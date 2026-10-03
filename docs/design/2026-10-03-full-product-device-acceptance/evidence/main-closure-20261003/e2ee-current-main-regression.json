@@ -1,0 +1,74 @@
+{
+  "scope": "CURRENT_MAIN_LOCAL_E2EE_REGRESSION_ONLY",
+  "heads": {
+    "imboy": "8cedc527e143129eced645333e18dfa75aaa8059",
+    "imboyapp": "71cec44a8fef0272c42b2e6ac4f7d32e85b45cec",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "checks": [
+    {
+      "repo": "imboy",
+      "command": [
+        "python3",
+        "verify_python.py"
+      ],
+      "cwd": "docs/design/2026-10-03-e2ee-production-excellence/fixtures",
+      "executed": 245,
+      "failed": 0,
+      "exit_code": 0
+    },
+    {
+      "repo": "imboy",
+      "command": [
+        "bash",
+        "scripts/test/e2ee_version_gate_test.sh"
+      ],
+      "executed": 45,
+      "failed": 0,
+      "exit_code": 0
+    },
+    {
+      "repo": "imboyapp",
+      "command": [
+        "flutter",
+        "test",
+        "test/unit_test/service/e2ee/",
+        "--reporter",
+        "expanded"
+      ],
+      "executed": 966,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "elapsed": "01:36"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "e2ee-current-vectors.log",
+      "sha256": "7ea1a6d8a0f46179e5b76a6c7f5a635363ebb0fc993fa4fa3d905a2637f5a6b2",
+      "bytes": 91
+    },
+    {
+      "path": "e2ee-current-version.log",
+      "sha256": "a339ed6472968196ab0aea73f43712281d3cd5ed5d7f2186f3855f985ad9941c",
+      "bytes": 2112
+    },
+    {
+      "path": "e2ee-current-domain.log",
+      "sha256": "8e8d1719f94cb5026522b400fa5603aa27e922f20174dcad30711396a096415a",
+      "bytes": 301433
+    }
+  ],
+  "product_pass": false,
+  "production_qualified": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "real_backend_execution": false,
+  "limits": [
+    "These three local domains do not cover all 36 E2EE requirements or 61 full-product requirements",
+    "No real-device/MITM/independent witness/MLS/PQ/production qualification",
+    "Full App host gate still has six API failures and 236 unresolved skips"
+  ],
+  "review": "APPROVED_LOCAL_REGRESSION_ONLY"
+}
