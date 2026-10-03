@@ -1,0 +1,74 @@
+{
+  "scope": "LOCAL_METRIC_COUNTER_GAUGE_TYPE_FIX_ONLY",
+  "backend_head": "31840d7e7e981d113996d595a3dac7f1821eab52",
+  "behavior_red": {
+    "failed": 7,
+    "passed": 0,
+    "exit_code": 1
+  },
+  "green": {
+    "passed": 13,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "promtool_parser": {
+    "command": "promtool check metrics --lint=none --extended",
+    "exit_code": 0
+  },
+  "strict_promtool_lint": {
+    "exit_code": 3,
+    "status": "NOT_PASS",
+    "remaining": [
+      "Missing HELP text",
+      "Existing imboy_ws_connections_total is a gauge with a total suffix"
+    ]
+  },
+  "invalid_parser_invocation": {
+    "command": "promtool check metrics --lint=none",
+    "exit_code": 1,
+    "reason": "Tool requires extended or linting enabled; not a parser verdict"
+  },
+  "artifacts": [
+    {
+      "path": "e2ee-counter-type-red.log",
+      "sha256": "6fbad29d3bcd697f46f836747275771f70580265a3cf21330d574c3a615914c1"
+    },
+    {
+      "path": "e2ee-counter-type-green.log",
+      "sha256": "7a2220c6d710a0acfed8c6791e9a5935021015d81a039a894968601736bf95a4"
+    },
+    {
+      "path": "e2ee-counter-type-exposition.txt",
+      "sha256": "4e9214c44aa562fd2e6e3bed0129f3b4d001fbf40f7316a4a4dad3ef23f40bd6"
+    },
+    {
+      "path": "e2ee-counter-type-promtool.log",
+      "sha256": "dc760d43dbd76443440a3f21ae6809bcc07d1c675f10241dc50473b7dfe8dcdc"
+    },
+    {
+      "path": "e2ee-counter-type-parser.log",
+      "sha256": "dbd0cd03eb311f917e8cf4b8cabf3d22f8fd8f283b098004b831e08da6181c27"
+    },
+    {
+      "path": "e2ee-counter-type-compile.log",
+      "sha256": "4a43eb81824cfe317f48bc9a302ac273452187463ba15620c21c289cbbd5f9fe"
+    }
+  ],
+  "source_hashes": {
+    "src/api/metrics_handler.erl": "fe53879f5b98705c7963d9de6a444cc927f63f8fca2c6f33782be4a932b6cc35",
+    "test/api/metrics_counter_type_tests.erl": "b0820fd8f25d043ab76f169c322589417f569ba2ba8291bcc5949555465b09f0",
+    "test/api/metrics_handler_tests.erl": "f5f40d7c6e0523781d5e768b7aa66e42a72d87ba55252424ceb667c8c35ecfc4",
+    "test/api/e2ee_failure_metric_exposition_tests.erl": "f9bc7867484079b0a4efbfefe7039459c5a6d37169ae1eaf39e8fadce76482cc"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "limits": [
+    "System family metadata retained only internally; JSON shape preserved",
+    "Local mock HTTP handler tests do not start a real listener",
+    "No full AC26 or production SLO qualification"
+  ]
+}

@@ -1,0 +1,7 @@
+# TYPE e2ee_backup_op_failed_total counter
+# TYPE imboy_ws_connections_total gauge
+# TYPE olm_otk_exhausted_total counter
+olm_otk_exhausted_total 1
+imboy_ws_connections_total 2
+e2ee_backup_op_failed_total{op="get"} 2
+e2ee_backup_op_failed_total{op="put"} 3

@@ -1,0 +1,119 @@
+======================== EUnit ========================
+module 'metrics_counter_type_tests'
+  metrics_counter_type_tests: counter_families_have_one_type_declaration_test...*failed*
+in function metrics_counter_type_tests:counter_families_have_one_type_declaration_test/0 (test/api/metrics_counter_type_tests.erl, line 11)
+in call from eunit_test:'-mf_wrapper/2-fun-0-'/2 (eunit_test.erl, line 286)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{assertEqual,[{module,metrics_counter_type_tests},
+              {line,11},
+              {expression,"count ( << \"# TYPE e2ee_recovery_failed_total counter\" >> , Lines )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  metrics_counter_type_tests: system_gauges_keep_their_type_even_with_total_suffix_test...*failed*
+in function metrics_counter_type_tests:system_gauges_keep_their_type_even_with_total_suffix_test/0 (test/api/metrics_counter_type_tests.erl, line 24)
+in call from eunit_test:'-mf_wrapper/2-fun-0-'/2 (eunit_test.erl, line 286)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{assertEqual,[{module,metrics_counter_type_tests},
+              {line,24},
+              {expression,"count ( << \"# TYPE erlang_vm_memory_bytes_total gauge\" >> , Lines )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  [done in 0.007 s]
+module 'e2ee_failure_metric_exposition_tests'
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...*failed*
+in function e2ee_failure_metric_exposition_tests:check_metric/3 (test/api/e2ee_failure_metric_exposition_tests.erl, line 73)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assert,[{module,e2ee_failure_metric_exposition_tests},
+         {line,73},
+         {expression,"lists : member ( TypeLine , binary : split ( Text , << \"\\n\" >> , [ global ] ) )"},
+         {expected,true},
+         {value,false}]}
+  output:<<"">>
+
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...*failed*
+in function e2ee_failure_metric_exposition_tests:check_metric/3 (test/api/e2ee_failure_metric_exposition_tests.erl, line 73)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assert,[{module,e2ee_failure_metric_exposition_tests},
+         {line,73},
+         {expression,"lists : member ( TypeLine , binary : split ( Text , << \"\\n\" >> , [ global ] ) )"},
+         {expected,true},
+         {value,false}]}
+  output:<<"">>
+
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...*failed*
+in function e2ee_failure_metric_exposition_tests:check_metric/3 (test/api/e2ee_failure_metric_exposition_tests.erl, line 73)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assert,[{module,e2ee_failure_metric_exposition_tests},
+         {line,73},
+         {expression,"lists : member ( TypeLine , binary : split ( Text , << \"\\n\" >> , [ global ] ) )"},
+         {expected,true},
+         {value,false}]}
+  output:<<"">>
+
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...*failed*
+in function e2ee_failure_metric_exposition_tests:check_metric/3 (test/api/e2ee_failure_metric_exposition_tests.erl, line 73)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assert,[{module,e2ee_failure_metric_exposition_tests},
+         {line,73},
+         {expression,"lists : member ( TypeLine , binary : split ( Text , << \"\\n\" >> , [ global ] ) )"},
+         {expected,true},
+         {value,false}]}
+  output:<<"">>
+
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...*failed*
+in function e2ee_failure_metric_exposition_tests:check_metric/3 (test/api/e2ee_failure_metric_exposition_tests.erl, line 73)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assert,[{module,e2ee_failure_metric_exposition_tests},
+         {line,73},
+         {expression,"lists : member ( TypeLine , binary : split ( Text , << \"\\n\" >> , [ global ] ) )"},
+         {expected,true},
+         {value,false}]}
+  output:<<"">>
+
+  [done in 0.034 s]
+=======================================================
+  Failed: 7.  Skipped: 0.  Passed: 0.

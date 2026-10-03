@@ -1,0 +1,4 @@
+e2ee_backup_op_failed_total no help text
+imboy_ws_connections_total no help text
+imboy_ws_connections_total non-counter metrics should not have "_total" suffix
+olm_otk_exhausted_total no help text

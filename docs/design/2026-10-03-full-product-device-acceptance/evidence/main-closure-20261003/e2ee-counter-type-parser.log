@@ -1,0 +1,5 @@
+Metric                         Cardinality    Percentage    
+e2ee_backup_op_failed_total    2              50.00%        
+imboy_ws_connections_total     1              25.00%        
+olm_otk_exhausted_total        1              25.00%        
+Total                          4              100%          

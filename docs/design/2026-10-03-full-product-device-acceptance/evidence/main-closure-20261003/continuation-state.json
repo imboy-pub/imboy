@@ -4469,7 +4469,8 @@
   },
   "e2ee_counter_type_gap": {
     "receipt": "e2ee-counter-type-gap.json",
-    "status": "OPEN_LOCAL_IMPLEMENTATION_GAP",
+    "fix_receipt": "e2ee-counter-type-fix.json",
+    "status": "TYPE_FIXED_LOCAL_STRICT_LINT_REMAINS",
     "product_pass": false
   }
 }

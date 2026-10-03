@@ -1,0 +1,175 @@
+======================== EUnit ========================
+module 'metrics_counter_type_tests'
+  metrics_counter_type_tests:18: -http_text_path_preserves_system_gauges_test_/0-fun-5-...=WARNING REPORT==== 4-Oct-2026::00:33:11.674823 ===
+    error: [{gen_server,call,2,[{file,"gen_server.erl"},{line,1221}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,106}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,56}]},
+            {metrics_counter_type_tests,
+                '-http_text_path_preserves_system_gauges_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_counter_type_tests.erl"},{line,20}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+            {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+            {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]}]
+    event: metrics_pool_stats_failed
+=WARNING REPORT==== 4-Oct-2026::00:33:11.692552 ===
+    error: [{ets,lookup,
+                [syn_table_names,{syn_registry_by_name,imboy}],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {syn_backbone,get_table_name,2,
+                [{file,"src/syn_backbone.erl"},{line,76}]},
+            {syn_registry,count,1,[{file,"src/syn_registry.erl"},{line,192}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,119}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,56}]},
+            {metrics_counter_type_tests,
+                '-http_text_path_preserves_system_gauges_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_counter_type_tests.erl"},{line,20}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_syn_count_failed
+=WARNING REPORT==== 4-Oct-2026::00:33:11.694252 ===
+    error: [{ets,lookup_element,
+                [ranch_server,{listener_sup,imboy_listener},2],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {ranch_server,get_listener_sup,1,
+                [{file,"src/ranch_server.erl"},{line,122}]},
+            {ranch,info,1,[{file,"src/ranch.erl"},{line,464}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,128}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,56}]},
+            {metrics_counter_type_tests,
+                '-http_text_path_preserves_system_gauges_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_counter_type_tests.erl"},{line,20}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_ranch_info_failed
+[0.026 s] ok
+  metrics_counter_type_tests: counter_families_have_one_type_declaration_test...ok
+  metrics_counter_type_tests: system_gauges_keep_their_type_even_with_total_suffix_test...ok
+  [done in 0.231 s]
+module 'metrics_handler_tests'
+  metrics_handler_tests:23: -init_returns_metrics_payload_test_/0-fun-5-...=WARNING REPORT==== 4-Oct-2026::00:33:11.818381 ===
+    error: [{gen_server,call,2,[{file,"gen_server.erl"},{line,1221}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,106}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_returns_metrics_payload_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,25}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+            {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+            {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]}]
+    event: metrics_pool_stats_failed
+=WARNING REPORT==== 4-Oct-2026::00:33:11.818441 ===
+    error: [{ets,lookup,
+                [syn_table_names,{syn_registry_by_name,imboy}],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {syn_backbone,get_table_name,2,
+                [{file,"src/syn_backbone.erl"},{line,76}]},
+            {syn_registry,count,1,[{file,"src/syn_registry.erl"},{line,192}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,119}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_returns_metrics_payload_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,25}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_syn_count_failed
+=WARNING REPORT==== 4-Oct-2026::00:33:11.818478 ===
+    error: [{ets,lookup_element,
+                [ranch_server,{listener_sup,imboy_listener},2],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {ranch_server,get_listener_sup,1,
+                [{file,"src/ranch_server.erl"},{line,122}]},
+            {ranch,info,1,[{file,"src/ranch.erl"},{line,464}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,128}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_returns_metrics_payload_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,25}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_ranch_info_failed
+ok
+  metrics_handler_tests:50: -init_returns_error_when_metric_fetch_fails_test_/0-fun-3-...ok
+  metrics_handler_tests:89: -init_json_payload_has_no_tuple_keys_test_/0-fun-6-...=WARNING REPORT==== 4-Oct-2026::00:33:12.028108 ===
+    error: [{gen_server,call,2,[{file,"gen_server.erl"},{line,1221}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,106}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_json_payload_has_no_tuple_keys_test_/0-fun-6-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,91}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+            {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+            {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]}]
+    event: metrics_pool_stats_failed
+=WARNING REPORT==== 4-Oct-2026::00:33:12.028171 ===
+    error: [{ets,lookup,
+                [syn_table_names,{syn_registry_by_name,imboy}],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {syn_backbone,get_table_name,2,
+                [{file,"src/syn_backbone.erl"},{line,76}]},
+            {syn_registry,count,1,[{file,"src/syn_registry.erl"},{line,192}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,119}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_json_payload_has_no_tuple_keys_test_/0-fun-6-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,91}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_syn_count_failed
+=WARNING REPORT==== 4-Oct-2026::00:33:12.028244 ===
+    error: [{ets,lookup_element,
+                [ranch_server,{listener_sup,imboy_listener},2],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {ranch_server,get_listener_sup,1,
+                [{file,"src/ranch_server.erl"},{line,122}]},
+            {ranch,info,1,[{file,"src/ranch.erl"},{line,464}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,128}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,32}]},
+            {metrics_handler_tests,
+                '-init_json_payload_has_no_tuple_keys_test_/0-fun-6-',0,
+                [{file,"test/api/metrics_handler_tests.erl"},{line,91}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_ranch_info_failed
+ok
+  metrics_handler_tests: histogram_exports_cumulative_buckets_test...ok
+  metrics_handler_tests: histogram_legacy_shape_is_not_exported_test...ok
+  [done in 0.333 s]
+module 'e2ee_failure_metric_exposition_tests'
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.012 s] ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.002 s] ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.007 s] ok
+  [done in 0.036 s]
+=======================================================
+  All 13 tests passed.
