@@ -4662,5 +4662,13 @@
     "backend_head": "c507c1f189dca887d766b8df99251a530f1f2748",
     "tests": 27,
     "product_pass": false
+  },
+  "current_acceptance_tooling_requalification": {
+    "receipt": "current-acceptance-tooling-20261004.json",
+    "app_head": "434e11a3bba2873e3e7240f8ce635285e21d3d04",
+    "tests": 447,
+    "tooling_exit": 0,
+    "inventory_exit": 64,
+    "product_pass": false
   }
 }
