@@ -1,0 +1,29 @@
+{
+  "id": "PREPARATION-F01-JOURNEY-DEVICE-BINDINGS",
+  "scope": "FROZEN_DEVICE_RECORD_CORRELATION_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "app_head": "ce30353178e73e66ce5f14a086fa31d9cf525af3",
+  "executed": 108,
+  "exit": 0,
+  "log": {
+    "path": "f01-journey-device-bindings.log",
+    "sha256": "82b46cc980fd9e801fdd308d331a001dedb2c971995579c9de62e6b8252ae36c"
+  },
+  "reviews": [
+    "PYTHON_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "requirements": [
+    "Driving run references one unique frozen device binding",
+    "Device snapshot must be pinned JSON loaded through safe artifact reader",
+    "Snapshot device/platform/run/fixture matches journey and case",
+    "Missing duplicate wrong-kind wrong-device stale-runtime and tampered snapshots rejected"
+  ],
+  "proof_limit": "Synthetic local tests establish frozen record linkage only. No actual device inspection, backend execution, storage query or business behavior proved.",
+  "remaining": [
+    "qualified device and storage capture producers",
+    "complete final verifier",
+    "97-ID frozen qualification"
+  ]
+}
