@@ -1,0 +1,32 @@
+{
+  "scope": "C11_ACK_CORRELATION_AND_FIXTURE_STRUCTURE_ONLY",
+  "product_pass": false,
+  "candidate_app": "6ba9da798010499e66602d9c3cf3e32f843e7fe6",
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/service/e2ee_server_ack_tracker_test.dart",
+    "test/unit_test/service/e2ee_registered_fixture_test.dart",
+    "--reporter",
+    "expanded"
+  ],
+  "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+  "executed": 30,
+  "failed": 0,
+  "exit": 0,
+  "log": "c11-binding-ack-host.log",
+  "sha256": "2d0b1fa5688daa2ce36f9a6ef25a82e618c32522237d9122197eed48036fb836",
+  "review": "APPROVED_BY_C11_FLUTTER_REVIEW",
+  "analysis": "No issues found",
+  "protocol_sources": {
+    "src/domain/message_policy.erl": "ed9665a80c28c379f9cedec4e12f8c092dfb1b29f3c69527e8c2a40f8312d1c8",
+    "src/logic/msg_c2g_logic.erl": "e9842eac060bd2f551025a3fd54c2279e1b56f00d4ce7aed8bc569675d61ea87"
+  },
+  "remaining": [
+    "authenticated network and framing adapter",
+    "generation and monotonic clock ownership",
+    "genuine seed and credential identity",
+    "recipient decrypt and UI oracle",
+    "authorized real-device execution"
+  ]
+}
