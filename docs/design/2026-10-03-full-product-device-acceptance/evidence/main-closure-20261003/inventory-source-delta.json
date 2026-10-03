@@ -1,0 +1,664 @@
+{
+  "scope": "SOURCE_COVERAGE_DELTA_ONLY_NOT_BUSINESS_PASS",
+  "baseline_app_head": "8a477ccd",
+  "candidate_app_head": "a8be8cb03f31933c539ac300a7f4a3eefdf10eca",
+  "baseline_inventory_sha256": "34f1d92d4d2c376c14d378f7e6d56a1951e4ea49ac5db05478a5494b257f47ae",
+  "current_inventory_sha256": "b6446681e626ead9e6130aba059ba3f4f91fb2ba26ab6543f98d3d9dd6b1aacf",
+  "old_pages": 173,
+  "new_pages": 188,
+  "old_functions": 1872,
+  "new_functions": 1979,
+  "added_pages": [
+    "lib/modules/customer_service/presentation/cs_governance_page.dart",
+    "lib/modules/enterprise_app/presentation/enterprise_directory_page.dart",
+    "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+    "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart",
+    "lib/modules/enterprise_oa/presentation/oa_tab_page.dart",
+    "lib/modules/organization/presentation/human_directory_page.dart",
+    "lib/modules/organization/presentation/org_invite_qr_page.dart",
+    "lib/modules/organization/presentation/org_join_scanner_page.dart",
+    "lib/modules/organization/presentation/org_workspace_members_page.dart",
+    "lib/modules/organization/presentation/organization_manage_page.dart",
+    "lib/modules/organization/presentation/organization_member_detail_page.dart",
+    "lib/modules/organization/presentation/organization_picker_page.dart",
+    "lib/modules/organization/presentation/organization_tools_page.dart",
+    "lib/page/workspace/workspace_conversations_page.dart",
+    "lib/page/workspace_shell/enterprise_shell_page.dart"
+  ],
+  "added_functions": [
+    {
+      "function_id": "fn:customer_service:cs_governance_page:001",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:002",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:003",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:004",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:005",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:006",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:007",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:008",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:009",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:010",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:011",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:012",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:013",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:014",
+      "page": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_directory_page:001",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_directory_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_directory_page:002",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_directory_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_group_page:001",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_group_page:002",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_group_page:003",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_group_page:004",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_group_page:005",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_group_page:006",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_group_page:007",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_group_page:008",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_app:enterprise_group_page:009",
+      "page": "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_oa:enterprise_workbench_page:001",
+      "page": "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_oa:enterprise_workbench_page:002",
+      "page": "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_oa:enterprise_workbench_page:003",
+      "page": "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:enterprise_oa:oa_tab_page:001",
+      "page": "lib/modules/enterprise_oa/presentation/oa_tab_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:human_directory_page:001",
+      "page": "lib/modules/organization/presentation/human_directory_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:human_directory_page:002",
+      "page": "lib/modules/organization/presentation/human_directory_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:human_directory_page:003",
+      "page": "lib/modules/organization/presentation/human_directory_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:human_directory_page:004",
+      "page": "lib/modules/organization/presentation/human_directory_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:human_directory_page:005",
+      "page": "lib/modules/organization/presentation/human_directory_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:human_directory_page:006",
+      "page": "lib/modules/organization/presentation/human_directory_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:human_directory_page:007",
+      "page": "lib/modules/organization/presentation/human_directory_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:human_directory_page:008",
+      "page": "lib/modules/organization/presentation/human_directory_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_invite_qr_page:001",
+      "page": "lib/modules/organization/presentation/org_invite_qr_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_invite_qr_page:002",
+      "page": "lib/modules/organization/presentation/org_invite_qr_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_invite_qr_page:003",
+      "page": "lib/modules/organization/presentation/org_invite_qr_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_invite_qr_page:004",
+      "page": "lib/modules/organization/presentation/org_invite_qr_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_invite_qr_page:005",
+      "page": "lib/modules/organization/presentation/org_invite_qr_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_invite_qr_page:006",
+      "page": "lib/modules/organization/presentation/org_invite_qr_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_invite_qr_page:007",
+      "page": "lib/modules/organization/presentation/org_invite_qr_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_invite_qr_page:008",
+      "page": "lib/modules/organization/presentation/org_invite_qr_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_join_scanner_page:001",
+      "page": "lib/modules/organization/presentation/org_join_scanner_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_workspace_members_page:001",
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_workspace_members_page:002",
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_workspace_members_page:003",
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_workspace_members_page:004",
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_workspace_members_page:005",
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_workspace_members_page:006",
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_workspace_members_page:007",
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_workspace_members_page:008",
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_workspace_members_page:009",
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:org_workspace_members_page:010",
+      "page": "lib/modules/organization/presentation/org_workspace_members_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:020",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:001",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:002",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:003",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:004",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:005",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:006",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:007",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:008",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:009",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:010",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:011",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:012",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:013",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:014",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_manage_page:015",
+      "page": "lib/modules/organization/presentation/organization_manage_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_member_detail_page:001",
+      "page": "lib/modules/organization/presentation/organization_member_detail_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_member_detail_page:002",
+      "page": "lib/modules/organization/presentation/organization_member_detail_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_member_detail_page:003",
+      "page": "lib/modules/organization/presentation/organization_member_detail_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_member_detail_page:004",
+      "page": "lib/modules/organization/presentation/organization_member_detail_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:001",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:002",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:003",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:004",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:005",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:006",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:007",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:008",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:009",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:010",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:011",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:012",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_picker_page:013",
+      "page": "lib/modules/organization/presentation/organization_picker_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:001",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:002",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:003",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:004",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:005",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:006",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:007",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:008",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:009",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:010",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:organization:organization_tools_page:011",
+      "page": "lib/modules/organization/presentation/organization_tools_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_setup_page:008",
+      "page": "lib/page/settings/e2ee_backup_setup_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_setup_page:009",
+      "page": "lib/page/settings/e2ee_backup_setup_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:workspace:workspace_conversations_page:001",
+      "page": "lib/page/workspace/workspace_conversations_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:workspace:workspace_conversations_page:002",
+      "page": "lib/page/workspace/workspace_conversations_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:workspace_shell:enterprise_shell_page:001",
+      "page": "lib/page/workspace_shell/enterprise_shell_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:workspace_shell:enterprise_shell_page:002",
+      "page": "lib/page/workspace_shell/enterprise_shell_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    },
+    {
+      "function_id": "fn:workspace_shell:enterprise_shell_page:003",
+      "page": "lib/page/workspace_shell/enterprise_shell_page.dart",
+      "mapping_status": "PENDING_OWNER_AND_REQUIRED_CASE"
+    }
+  ],
+  "removed_functions": [],
+  "changed_functions": [
+    {
+      "function_id": "fn:organization:organization_detail_page:001",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:002",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:003",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:004",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:005",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:006",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:007",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:008",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:009",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:010",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:011",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:012",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:013",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:014",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:015",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:016",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:017",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:018",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    },
+    {
+      "function_id": "fn:organization:organization_detail_page:019",
+      "page": "lib/modules/organization/presentation/organization_detail_page.dart",
+      "status": "PENDING_BEHAVIOR_RECONCILIATION"
+    }
+  ],
+  "frozen_required_sets_unchanged": true
+}

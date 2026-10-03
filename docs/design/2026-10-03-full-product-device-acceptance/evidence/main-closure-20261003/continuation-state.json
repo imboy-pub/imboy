@@ -102,7 +102,6 @@
   ],
   "next_offline_tasks": [
     "run C11 harness through explicit host-only unit entrypoint; never integration_test auto device selection",
-    "repair current-source domain mapping and stale functional inventory with independent review",
     "implement F01 final acceptance verifier with real artifact and candidate checks",
     "close F00 coverage owner mappings and unresolved ambiguity/page gaps",
     "prepare isolated PG18 scratch stack without using shared 4323",
@@ -155,15 +154,24 @@
   },
   "framework_full_suite": {
     "command": "python3 -m unittest discover -s test/tooling/auto_test",
-    "executed": 233,
-    "failed": 14,
-    "exit": 1,
-    "remaining_findings": [
-      "project feature missing from capability mapping",
-      "domain tests assume 13 features but source has 14",
-      "inventory source now has 188 pages but test expects 173",
-      "functional_inventory.json is stale"
-    ],
-    "status": "FAIL"
+    "candidate_app_head": "a8be8cb03f31933c539ac300a7f4a3eefdf10eca",
+    "executed": 235,
+    "failed": 0,
+    "exit": 0,
+    "status": "LOCAL_TOOLING_PASS",
+    "previous_attempt": {
+      "executed": 233,
+      "failed": 14,
+      "exit": 1
+    },
+    "independent_review": "APPROVED_LOCAL_SCOPE_ONLY"
+  },
+  "inventory_reconciliation": {
+    "delta_artifact": "inventory-source-delta.json",
+    "pages": 188,
+    "functions": 1979,
+    "new_functions_pending_mapping": 107,
+    "changed_functions_pending_reconciliation": 19,
+    "business_execution": "NOT_EXECUTED"
   }
 }
