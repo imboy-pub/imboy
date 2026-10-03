@@ -4815,5 +4815,14 @@
     "receipt": "organization-picker-personal-epoch-20261004.json",
     "app_head": "40b0debbc2397b4a4cfeb618d7472c653aeed0a5",
     "product_pass": false
+  },
+  "current_source_static_gates": {
+    "receipt": "current-source-static-gates-20261004.json",
+    "heads": {
+      "imboy": "531ff798689228cbe5aaf3d68054d0b05d9c22ac",
+      "imboyapp": "40b0debbc2397b4a4cfeb618d7472c653aeed0a5",
+      "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+    },
+    "product_pass": false
   }
 }

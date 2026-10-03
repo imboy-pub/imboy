@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "scope": "CURRENT_MAIN_LOCAL_STATIC_AND_INCREMENTAL_COMPILE_GATES",
+  "heads": {
+    "imboy": "531ff798689228cbe5aaf3d68054d0b05d9c22ac",
+    "imboyapp": "40b0debbc2397b4a4cfeb618d7472c653aeed0a5",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "checks": [
+    {
+      "command": "dart analyze lib test/unit_test --fatal-infos",
+      "repo": "imboyapp",
+      "exit": 0,
+      "issues": 0
+    },
+    {
+      "command": "make compile",
+      "repo": "imboy",
+      "exit": 0,
+      "build_mode": "incremental; not a clean rebuild"
+    },
+    {
+      "command": "python3 scripts/auto_test.py validate --strict",
+      "repo": "imboyapp",
+      "exit": 0,
+      "specifications": 27
+    },
+    {
+      "command": "python3 scripts/auto_test.py catalog --check",
+      "repo": "imboyapp",
+      "exit": 0,
+      "targets": 153,
+      "pages": 188
+    },
+    {
+      "command": "python3 scripts/auto_test_lib/inventory.py --check",
+      "repo": "imboyapp",
+      "exit": 0,
+      "functions": 1982
+    }
+  ],
+  "plan_hashes": {
+    "docs/design/2026-10-03-e2ee-production-excellence/plan.md": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+    "docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1.md": "aeb4dc3da1d0c51ebecaf6a1edfad07558e3dbcaca6615e9c1b2e011b84832aa",
+    "docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1-execution-contract.md": "1dcb770aae46c77142442c521d7becc490f5329b679e8e1c8868a7d40125eaf3"
+  },
+  "plan_hashes_match": true,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/current-app-static-analysis-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/current-backend-compile-20261004.log",
+      "sha256": "81cc838c4430c96d52cc9193f4c8c1ba0b1beac17bd5555c7a6f77027f779e89"
+    }
+  ],
+  "limitations": [
+    "Static checks and specification consistency do not execute business journeys.",
+    "Incremental compile uses existing build artifacts; not a frozen clean-build or full EUnit gate.",
+    "No real device, database, backend integration, production or profile decision closure."
+  ]
+}
