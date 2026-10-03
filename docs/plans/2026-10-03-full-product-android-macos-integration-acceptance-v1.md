@@ -1,4 +1,4 @@
-# IMBoy 全产品 Android / macOS 集成验收计划 V1
+# IMBoy 全产品 Android / macOS 集成验收计划 V1.1
 
 > **For Claude / GLM / Codex:** 按任务卡分步执行；参考 executing-plans 工作流。本文是规划合同，不表示测试已经执行。
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Erlang/OTP、PostgreSQL、Garage、Flutter integration_test、ADB、macOS App、React/Bun、真实后端 Playwright、现有 auto_test.py。
 
-日期：2026-10-03，Asia/Shanghai。状态：`PLAN_READY_SCOPE_ASSUMPTIONS_PENDING`。本轮仅制作计划，没有启动设备、创建测试账号或运行产品写入。
+日期：2026-10-03，Asia/Shanghai。状态：`PLAN_READY_EXECUTION_NOT_STARTED`。本轮仅制作计划，没有启动设备、创建测试账号或运行产品写入。
 
 ## 1. 需求解释及验收边界
 
@@ -18,7 +18,7 @@
 
 Android 真机与 macOS App 是必需平台；不使用 Android/iOS 模拟器。后台浏览器是第三个验证界面，不能替代两个 App 平台。无 iOS 验收承诺。
 
-默认承接已有约定：客户 OA 协议/SSO 联调、当前关闭的 E2EE 正向加密旅程不进入本轮必过集合。**该选择待用户回复确认**，F00 才冻结；用户如纳入任一项，须扩充对应独立任务和资源，不能在旧集合里写通过。工作台始终可见、禁用功能入口行为、历史密钥清理造成的登录退出影响仍属于基础验收。
+客户 OA 协议/SSO 外部联调继续排除；IMBoy 内部 API 的本地协议、权限、错误与工作台行为仍必须验证。**E2EE 不再一概排除**：用户已明确 E2EE excellence 计划正在执行，本计划纳入其对账号、单聊、群聊、附件、企业边界的产品集成影响。密码协议实现与安全专项仍由上游计划负责，不重复开发。具体交接、候选与平台限制见配套执行合同第 1 节。Android/macOS 集成通过不代表上游 iOS 或全部安全能力通过。
 
 资金域：本地合成余额、红包、转账、订单和付费频道的状态及权限必须测试；真实扣款/提现/第三方支付回调正式联调另列 `BLOCKED_EXTERNAL`。联系人绑定、注册验证码、邮件/短信使用本地合成身份与隔离接收器；外向动作不因本计划自动获得授权。
 
@@ -73,7 +73,7 @@ Android 真机与 macOS App 是必需平台；不使用 Android/iOS 模拟器。
 4. 初始至少：合成人类A/B/C、好友关系两方向；企业A/B与空企业C；各自default及其他workspace；owner/admin/member/outsider/revoked；普通群/企业群；普通频道/企业频道；坐席/主管/访客。身份通过稳定 UID 与角色 API确认，不以名称或邮箱证明。
 5. 群至少3成员；成员/部门/文件/消息/频道数据超过当前limit两页以上；组织图至少103根部门、3层深；空数据、长名称、特殊字符、超大TSID、重复请求、授权过期分别有夹具。
 6. UI流必须由真实 UI发起业务操作；API/SQL可以准备关系、观察结果和清理夹具，但不得在“发送消息”之前直接插入消息来假装用户发送成功。
-7. A/B双端账号在跨端测试中固定，其他角色通过同一设备有序换号或隔离后台/API上下文参加。两台端点够验证基本双端链路，但多人RTC并发、同平台两台硬件、多厂商推送不能声称已覆盖；追加端点缺失的格子必须 `BLOCKED_ENV`。
+7. A/B双端账号在跨端测试中固定，其他角色通过同一设备有序换号或隔离后台/API上下文参加。两台端点够验证基本双端链路，但多人RTC并发、同平台两台硬件、多厂商推送不能声称已覆盖；追加端点缺失的格子必须 `test_status=BLOCKED, reason=BLOCKED_ENV`。
 8. 需要短信/支付/AI/地图/推送服务时，先列适配层本地测试与真实提供商验证的分界。Android前台本地通知成功不能代替杀进程后的系统推送；APNs不在本轮平台内。
 
 ## 5. 可并行策略与所有权
@@ -84,17 +84,17 @@ Android 真机与 macOS App 是必需平台；不使用 Android/iOS 模拟器。
 
 | 波次 | 并行工作 | 必须串行的部分 |
 |---|---|---|
-| W0 | F00范围对齐与资源调查 | F00冻结required集合/输入 |
+| W0 | F00分域范围对齐与资源调查 | 冻结输入全集；各域分批冻结映射，最后闭合总集合 |
 | W1 | F01环境/runner、各领域测试设计与旧target审查 | 公共fixture、catalog/schema及路由映射由F01独占 |
 | W2 | F02–F15各自L0/L1、测试开发与不同namespace后台/API验证 | 同库全局feature/授权策略变更须租约；不足隔离能力则排队 |
-| W3 | 一个Android单端卡+一个macOS单端卡+一个Admin域卡 | Flutter共同checkout存在startup lock，改用独立只读候选worktree和build目录；不能任意改系统Flutter全局缓存 |
+| W3 | 一个Android单端卡+一个macOS单端卡+一个Admin域卡 | 独立候选worktree/build仍共享Flutter SDK锁；按配套合同串行预热，实际探测后开放并发 |
 | W4 | F03/F04/F06/F07/F11/F12/F13跨端旅程逐卡排队 | 每个旅程占用两个端点；其他worker继续独立L0/L1或后台 |
 | W5 | F16视觉/全页收敛、F15契约残缺补验 | 用户视觉评审结果不能由worker自签 |
 | W6 | F17唯一全量终审与最终候选回归 | 不再修改候选；发现bug回到责任卡并重冻结 |
 
-建议3–4名执行者：协调/环境1人；消息群域1人；社交频道个人域1人；企业后台/API域1人。F13可由消息执行者承担。不要给每个worker派全量EUnit、全App和全后台；全量只由F17跑一次最终门。
+仅在上游 E2EE 资源表确认余量后，本计划建议最多3–4名执行者（不得直接叠加到上游10名上限）：协调/环境1人；消息群域1人；社交频道个人域1人；企业后台/API域1人。F13可由消息执行者承担。不要给每个worker派全量EUnit、全App和全后台；全量只由F17跑一次最终门。
 
-每卡独占 `imboyapp/integration_test/full_acceptance/fNN_*/`、对应专属测试规格/台账patch和 `RUN_ROOT/FNN/`。这些是**待创建路径**。业务源码默认只读；缺陷先形成路径级修复卡并向协调者取得该文件独占租约，不是重复询问用户是否允许本地修复。共享router、tokens、i18n、API client、fixture、runner/catalog只由协调者或其指定唯一owner改动。
+每张小卡独占 `imboyapp/integration_test/full_acceptance/<小卡ID>/`、对应专属测试规格/台账patch和 `RUN_ROOT/cards/<小卡ID>/`。这些是**待创建路径**。业务源码默认只读；缺陷先形成路径级修复卡并向协调者取得该文件独占租约，不是重复询问用户是否允许本地修复。共享router、tokens、i18n、API client、fixture、runner/catalog只由协调者或其指定唯一owner改动。
 
 ## 6. 任务卡与逐项验收
 
@@ -107,12 +107,12 @@ Android 真机与 macOS App 是必需平台；不使用 Android/iOS 模拟器。
 - 核对1846旧功能行、22歧义行、1872生成项、实际页面候选及后台所有路由/API/WS；以函数/入口/角色与当前实现为依据补漏和合并重复。
 - 自动生成占位oracle的项逐一补成用户动作→界面状态→后端事实→恢复步骤；关闭/删除/平台不支持项须有来源定位、配置指纹及理由。
 - 将F04+F05和F03+F13等共同分组拆成**唯一主owner**，允许secondary卡关联，不能重复计数。
-- 确认OA/E2EE边界；将本地资金功能与外部资金动作分开；生成平台required集合。本文不把“未回复”当成扩大范围授权。
+- 落实第1节OA/E2EE边界与上游交接；将本地资金功能与外部资金动作分开；生成平台required集合。本文不把“未回复”当成扩大范围授权。
 - Acceptance `F00-A01`：所有输入功能有去向，新增可达功能被登记；`F00-A02`：每个required功能有Android/macOS的具体case或经批准的NOT_APPLICABLE；`F00-A03`：旧PASS全部清零，placeholder=0、unmapped=0、歧义行=0。
 
 ### F01 — 隔离环境、夹具、runner与证据（Owner：协调/基础设施）
 
-前置：F00；独占App scripts/auto_test_lib必要改动、catalog/规格schema/公共fixture；后端测试启动/夹具脚本必要改动，不改部署生产入口。
+前置：F00输入快照；runner资格检查与环境只读调查可立即开始，不等待全域映射或真机；独占App scripts/auto_test_lib必要改动、catalog/规格schema/公共fixture；后端测试启动/夹具脚本必要改动，不改部署生产入口。
 
 - 复用 `scripts/auto_test.py` 的effective config、machine events、requirements、state/report；先对现有代码作资格检查。
 - **当前 `auto_test_device_shard.py` 是无凭证、无dart-define注入的离线shard**，不能直接承载带账号的全产品在线旅程。统一通过effective_target_config扩充现有runner，不写第二套“全量框架”。不把offline fixture指纹复用给在线测试。
@@ -122,7 +122,7 @@ Android 真机与 macOS App 是必需平台；不使用 Android/iOS 模拟器。
 
 ### F02–F14 — 业务任务卡（Owner：各领域执行者）
 
-前置：F00+A01/A02/A03、F01+A01/A02/A03；每卡执行第3节完整功能集合及覆盖表分配的所有行。
+前置按阶段区分：设计只依赖输入快照；L0依赖本域映射和本域target；L1另依赖隔离后端/夹具；Android或macOS单端L2仅依赖自身设备能力；跨端L2需要双端与屏障。所有阶段需有效路径/资源租约。上游交接只阻塞依赖它的候选运行，不阻塞设计。最终证据须满足配套合同的冻结交接。每卡执行第3节全部功能及配套小卡；不能用宏观卡替代逐功能格子。
 
 - 复用现有精确入口：F02 `integration_test/demo_flow/account_flow_test.dart`、`dual_account_message_flow_test.dart`及passport目录（不存在或含生产写入时在manifest标明并迁移）；F03 chat/conversation及demo_flow单聊；F04/F05 demo_flow/group_*；F06 moment及朋友圈demo；F07 channel_creator_flow与channel现有目录；F08 mine/settings/personal_info；F09 enterprise图与导航权限、organization；F10 workspace；F11 group_organization_local_api_flow与enterprise；F12 customer_service及Admin real suites；F13 chat/p2p/rtc；F14其余目录。**文件是否存在、是否真正UI、是否绑定当前后端由F00核验，名称不是可执行保证。**
 - 每卡 `FNN-A01`：当前领域L0/L1+真实后端行为、具体oracle及所有功能映射通过；`FNN-A02`：required Android格子全部PASS；`FNN-A03`：required macOS格子全部PASS。多个功能可以共用一段旅程，但证据必须能定位各动作。
@@ -132,7 +132,7 @@ Android 真机与 macOS App 是必需平台；不使用 Android/iOS 模拟器。
 
 ### F15 — API/WS与后台跨域权限全集（Owner：Backend/Admin域）
 
-前置：F00/F01；App源码只读；独占域专属Backend行为tests和Admin real tests，公共fixture由F01协调。
+前置：本域映射+后端/夹具能力；不依赖App设备；App源码只读；独占域专属Backend行为tests和Admin real tests，公共fixture由F01协调。
 
 - 枚举API v1、Admin、Internal v1和WS动作，记录消费者/权限/正向/负向/幂等/分页/恢复与启用profile；不能只验证OpenAPI文件存在或bundle是最新。
 - App功能对应API必须与设备旅程绑定；其他API使用真实请求+PG事实/审计作为oracle。平台超管/组织管理员/普通成员/跨组织/过期撤销会话分别验证。
@@ -141,18 +141,18 @@ Android 真机与 macOS App 是必需平台；不使用 Android/iOS 模拟器。
 
 ### F16 — 所有页面与体验矩阵（Owner：设备协调/UX）
 
-前置：F00/F01；各页功能可先做，跨业务视觉终审待F02–F14终态。
+前置：本页映射+对应平台能力；各页功能可先做，跨业务视觉终审待F02–F14终态。
 
 - 覆盖页/子页/弹层/深链与返回；对每页基础状态检查，风险页追加暗色/最大字号/长名称/错误/空列表/窄屏等。UI截图记录实际窗口和设备字号；测试setSurfaceSize不等于macOS真实窗口操作。
 - 验证企业通讯录「成员｜组织架构」位置、pan两个轴、缩放比例、fit根节点可见、103节点完整授权及连线、展开与成员路径、断网恢复与撤权时旧图清除。
 - `F16-A01`：全部required页面Android导航及状态；`F16-A02`：macOS导航及状态；`F16-A03`：人工UX意见逐项记录。无人评审时记录`PENDING_USER_VISUAL_REVIEW`，机器测试不能给用户代签。
 
-### F17 — 唯一最终候选全量门（Owner：独立终审）
+### F17 — 唯一最终候选全量门（集成人、门执行者、只读终审三职分离）
 
-前置：所有required卡/平台格子PASS，或存在阻塞时仍执行always-run最终报告；只读，不替worker改ledger。
+前置：预验覆盖闭合后，集成人冻结候选，门执行者运行最终检查；独立终审始终只读，不合并、不冻结、不替worker改ledger。有阻塞仍生成always-run报告，不能跳过报告。
 
-- 合并本地已审查修复，冻结三仓最终SHA、依赖/feature/runtime/runner/fixture/build；业务修复后只对受影响域重跑L0/L1，最终候选重跑全部required L2，不跨SHA借用真机结果。
-- 协调者跑一次全局单元/静态/build门。Backend VM全局TSID套件与专项PG套件按Makefile现有隔离规则执行并逐项记录，不误把被排除套件看成已通过。全量EUnit要求冻结候选上两次连续exit0；专属VM单跑每个被排除required套件。多worker不得重复全量。
+- 集成人合并本地已审查修复，冻结三仓最终SHA、依赖/feature/runtime/runner/fixture/build；业务修复后只对受影响域重跑L0/L1，最终候选重跑全部required L2，不跨SHA借用真机结果。
+- 唯一门执行者跑一次全局单元/静态/build门；与上游C14按配套合同安排，禁止争抢同一环境。Backend VM全局TSID套件与专项PG套件按Makefile现有隔离规则执行并逐项记录，不误把被排除套件看成已通过。全量EUnit要求冻结候选上两次连续exit0；专属VM单跑每个被排除required套件。多worker不得重复全量。
 - 终审重新计算 required case/platform/Acceptance-ID exact set；检查每格SHA、命令、exit、executed>0、skipped=0、实际oracle、artifact hash、build/device/backend关联及清理残留，不能信任worker自签APPROVE。
 - `F17-A01`：最终全局门；`F17-A02`：完整设备与跨端required集合证据；`F17-A03`：独立结论、限制及恢复记录完整。
 
@@ -181,9 +181,9 @@ bun run test
 设备单target命令模板：**F01核实该target读取哪些key后填入仓外config；此处placeholder不直接执行。**
 
 ```bash
-flutter test --no-pub --machine integration_test/full_acceptance/f03_messaging/c2c_test.dart \
+flutter test --no-pub --machine integration_test/full_acceptance/F03-S01/c2c_test.dart \
   -d "$ANDROID_DEVICE" --dart-define-from-file="$PRIVATE_TARGET_CONFIG"
-flutter test --no-pub --machine integration_test/full_acceptance/f09_organization/organization_test.dart \
+flutter test --no-pub --machine integration_test/full_acceptance/F09-S03/organization_test.dart \
   -d macos --dart-define-from-file="$PRIVATE_TARGET_CONFIG"
 ```
 
@@ -201,7 +201,7 @@ RUN_ROOT=`imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/<
 
 ## 8. 状态、恢复与停止规则
 
-- 单格：`PLANNED / RUNNING / PASS / FAIL / FLAKY / BLOCKED_ENV / BLOCKED_EXTERNAL / GAP_IMPLEMENTATION / NOT_APPLICABLE`。NOT_APPLICABLE需平台/范围理由、来源和批准记录，不算PASS也不能替required缺项。
+- 严格分层：调度 `WAITING/READY/RUNNING/DONE/INTERRUPTED`；测试 `PLANNED/PASS/PASS_WITH_SKIPS/BLOCKED/FAIL/FLAKY`；汇总 `PASS/PARTIAL/BLOCKED`。UNKNOWN仅计划占位。`BLOCKED_ENV/BLOCKED_EXTERNAL/GAP_IMPLEMENTATION/BLOCKED_UPSTREAM`是reason，不是test_status；NOT_APPLICABLE属于适用性字段，必须有来源及范围批准，不算PASS且不能替required缺项。详细退出码和映射见执行合同。
 - FAIL不自动重试换绿；先保留原失败、定位root cause、修复、review，再新attempt复验。只有已分类基础设施故障可在同SHA/config/fixture上最多重试2次；仍失败转FLAKY/BLOCKED，不能丢旧日志。
 - 断开设备/中断线程：保存current case与lease、last successful checkpoint；恢复先reconcile进程、设备、config/候选和fixture状态。发送/建群/付款等结果不确定时按业务ID核对，禁止直接重复外部写入。
 - 默认单UI动作等待30秒，网络状态60秒，单旅程15分钟，复杂RTC/恢复30分钟；超时记录失败并安全释放自己的资源。不得用固定sleep代替状态oracle。
@@ -215,14 +215,20 @@ RUN_ROOT=`imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/<
 
 `FULL_PRODUCT_LOCAL_DEVICE_ACCEPTANCE_PASS`仅在required功能/平台集合及F00–F17 required IDs全部通过、无未解决P0/P1、无unmapped/placeholder/required skip、候选不漂移时成立。存在排除项必须写明产品profile和排除边界；仅某profile通过叫`PROFILE_LOCAL_DEVICE_ACCEPTANCE_PASS`。视觉待用户确认时保留独立待评审状态，不谎称用户满意。
 
-工期为资源估算，非承诺：F00/F01约1–2工作日；领域用例补齐与L0/L1约2–4工作日并行；两端真实旅程/全页走查约2–4工作日（单Android+单macOS是主要串行瓶颈）；终审约0.5–1日。3–4名执行者首轮约5–10工作日，较大产品缺陷另计；F00完成后按实测target耗时、未映射数量和required格子重新估算。不能用“1846项旧PASS”估算一天内全量完成。
+撤回未经实测的“5–10工作日”估算。F01先做分层校准样本，记录用例设计、测试补齐、构建、单端/跨端占用和修复复验耗时，再按执行合同第7节给出P50/P80区间。1846条历史种子、11个enabled target和未映射行数都不能直接折算完成率。等待上游稳定候选和设备租约的时间单列，不能计为本计划开发耗时。
 
 提效顺序：先核心单聊/群消息+组织边界P0，尽早暴露阻断；再并行子功能；后台/API与设备排队同时推进；同target去重、统一fixture、只跑域回归，最后一次全局门。P0早期通过表示可继续测试，不表示全部功能已验收。
 
 ## 10. 执行交接契约
 
-执行者先完成F00，向协调者提交明确required集合与资源表，再开始F01。不得从旧README挑绿项、静默跳过缺环境的项目或自行增加第三方访问授权。
+执行者先冻结输入快照并登记跨计划资源，F00分域映射与F01资格检查并行；本域映射完成即可开展该域L0/L1，未闭合总集合不能最终验收。不得从旧README挑绿项、静默跳过缺环境的项目或自行增加第三方访问授权。
 
 每卡完成提交：独占路径变更、候选SHA、Acceptance逐ID状态、command/exit/oracle/artifact绑定、失败与恢复历史、未解决问题。卡结束时回收自己的租约；协作者不覆盖彼此WIP。独立终审只有读取权，结果不满足就明确PARTIAL/BLOCKED，并指回缺失case。
 
 目前交付的是计划、旧功能覆盖种子和输入manifest，全部为PLANNED；不包含真机PASS、执行时间承诺或生产可用结论。
+
+## 11. V1.1 配套权威执行合同
+
+本次修订针对并发E2EE、任务粒度、资源互斥、状态兼容、终审职责和估时缺陷。新增 **[执行合同与小任务卡](2026-10-03-full-product-android-macos-integration-acceptance-v1-execution-contract.md)**，与本文、coverage-seed、input-manifest、acceptance-set、dispatch-cards共同构成一个版本。本文定义产品范围，配套合同定义调度和验收细则；冲突必须阻塞并修订版本，不能任选宽松条款。
+
+61个宏观Acceptance IDs保持不变；小卡完成不能自动使父ID通过。1846个历史种子保留原始指纹；执行期按分域映射生成唯一主owner和完整case/platform/profile集合，不把规划时尚未做的源代码逐项核对伪称已完成。

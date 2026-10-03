@@ -63,8 +63,18 @@
     "F17-A02",
     "F17-A03"
   ],
-  "plan_sha256": "37fd6e1f7ab7d4b252f189b4d4f4f68c521ecc700e2440f767fa65b59440f134",
+  "plan_sha256": "aeb4dc3da1d0c51ebecaf6a1edfad07558e3dbcaca6615e9c1b2e011b84832aa",
   "seed_sha256": "54f2c6dd03500eff27c711e9287881b19720f2b0e6f3629428f167eb91a3d29e",
   "input_manifest_sha256": "3c6ce200a553c323c401209e7bbb205c0c4efc87e8bd6f720099e739746adc7b",
-  "case_platform_set": "F00 must freeze from current-source reconciliation; macro IDs do not replace per-function cases"
+  "case_platform_set": "F00 freezes exact case/platform/profile/role keys by domain; FINAL gate requires global closure; 61 macro IDs never replace cases",
+  "version": "1.1",
+  "execution_contract_sha256": "1dcb770aae46c77142442c521d7becc490f5329b679e8e1c8868a7d40125eaf3",
+  "dispatch_cards_sha256": "7361dcbf584f6a0095ec6b98d683f208ce6a082c2ab6385a30a8774a5d800046",
+  "upstream": {
+    "path": "docs/design/2026-10-03-e2ee-production-excellence/plan.md",
+    "sha256": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+    "execution": "IN_PROGRESS_USER_CONFIRMED",
+    "verified_stage": "UNKNOWN",
+    "handoff": "REQUIRED_NOT_RECEIVED"
+  }
 }
