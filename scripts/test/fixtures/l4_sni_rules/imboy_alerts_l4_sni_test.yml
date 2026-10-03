@@ -181,8 +181,9 @@ tests:
         exp_alerts: []
 
   # ── 6. instance_gone：双实例其一消失（全局 absent 会掩盖）──
-  # 127.0.0.1 的序列 9m 后消失，10.0.0.8 持续在推；12m 时仍在 5m 回看窗内
-  # 不触发，20m 时按 instance 维度对 127.0.0.1 触发，10.0.0.8 不触发。
+  # 127.0.0.1 的序列 9m 后消失，10.0.0.8 持续在推；12m 时 offset 15m 早于序列
+  # 起点（无可比历史，unless 子句为空）不触发；20m 时 offset 15m 落在 127.0.0.1
+  # 仍存在的时刻，按 instance 维度对其触发，10.0.0.8 仍在推不触发。
   - interval: 1m
     input_series:
       - series: 'imboy_l4_sni_check_success{job="imboy_l4_sni_check",instance="127.0.0.1"}'

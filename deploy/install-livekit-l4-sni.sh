@@ -683,6 +683,14 @@ restore_backup() {
     [ "$(sha256sum "$backup/files/$rel" | awk '{print $1}')" = "$sha" ] \
       || die "backup per-file checksum mismatch for $path (stored copy is corrupted)"
   done <"$backup/manifest.txt"
+  # Format completeness: format=2 backups always carry the service-state
+  # snapshot (backup_configs writes it unconditionally). A missing file means
+  # the backup directory is incomplete or externally corrupted: refuse up
+  # front with an explicit diagnostic instead of dying mid-restore on a bare
+  # sed failure under pipefail (NOTE-R2a). The cross-instance check below can
+  # now assume the file exists.
+  [ -f "$backup/service-state.txt" ] \
+    || die "backup format incomplete: $backup/service-state.txt is missing (a format=2 backup must carry the service-state snapshot); refusing to restore this directory"
   # Instance consistency: refuse cross-instance restore.
   if [ -f "$backup/service-state.txt" ]; then
     value="$(sed -n 's/^nginx\.bin=//p' "$backup/service-state.txt" | head -1)"

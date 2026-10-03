@@ -40,6 +40,7 @@ cat > "$FIXTURE/.env" <<'ENV'
 API_DOMAIN=api.test.invalid
 ADMIN_DOMAIN=admin.test.invalid
 CS_WIDGET_DOMAIN=cs.test.invalid
+IMBOY_BASE_URL=https://cs.test.invalid
 RTC_DOMAIN=rtc.test.invalid
 TURN_DOMAIN=turn.test.invalid
 CERTBOT_EMAIL=ops@test.invalid
@@ -75,6 +76,8 @@ ENV
 # RSA 密钥文件（preflight 把容器路径翻译回 ${DATA_DIR}/backend_priv 再查存在性）
 KEYS_DIR="$FIXTURE/data/backend_priv/keys"
 mkdir -p "$KEYS_DIR"
+# TSID 状态目录（preflight: IMBOY_TSID_STORE_BOOTSTRAP=existing 缺省要求存在且可写）
+mkdir -p "$FIXTURE/data/backend_tsid"
 printf 'fake-pem\n' > "$KEYS_DIR/login_rsa_priv.pem"
 printf 'fake-pem\n' > "$KEYS_DIR/login_rsa_pub.pem"
 
