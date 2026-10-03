@@ -1021,8 +1021,9 @@ cs_template_contract_errors() { # $1=template file
   fi
   # Seat SSE：关缓冲/关缓存 + 3600s；正则须与 imboy_router 真实端点合同
   # （REVIEW-2 P1 机制闭环：此前静态合同只锁 harness 渲染产物，模板正则指向
-  # 不存在的 /api/v1/cs/sessions/:id/events 时无任何断言拦截）。
-  blk="$(tpl_block "$f" 'location ~ ^/api/v1/cs/organizations/')"
+  # 不存在的 /api/v1/cs/sessions/:id/events 时无任何断言拦截）。(seat/)? 双
+  # 形态兼容后端 seat_console_route 镜像注册（前端 SeatEventStream 发镜像形态）。
+  blk="$(tpl_block "$f" 'location ~ ^/api/v1/(seat/)?cs/organizations/')"
   [ -n "$blk" ] || echo "TPLERR: 缺 Seat SSE 正则 location"
   if [ -n "$blk" ]; then
     printf '%s\n' "$blk" | grep -qF 'proxy_buffering off;'          || echo "TPLERR: Seat SSE 缺 proxy_buffering off"
@@ -1041,6 +1042,8 @@ cs_template_contract_errors() { # $1=template file
   if [ -n "$ROUTE_SEAT_SSE" ] && [ -n "$blk" ]; then
     want_skel="$(printf '%s\n' "$ROUTE_SEAT_SSE" | sed -E 's/:[A-Za-z_][A-Za-z0-9_]*/[0-9A-Za-z_-]+/g')"
     got_pat="$(printf '%s\n' "$blk" | head -1 | sed -E 's/.*location[[:space:]]+~[[:space:]]+\^//; s/\$[[:space:]]*\{.*//' | tr -d '\\')"
+    # (seat/)? 双形态段不参与骨架对照（human 形态骨架的镜像扩展，非参数槽差异）
+    got_pat="$(printf '%s' "$got_pat" | sed -E 's/\(seat\/\)\?//')"
     [ "$got_pat" = "$want_skel" ] || echo "TPLERR: Seat SSE 正则与路由表漂移 (want=$want_skel got=$got_pat)"
   fi
   # 历史漂移形态负向禁止（P1 原 bug 形态）：location 行出现
@@ -1049,14 +1052,16 @@ cs_template_contract_errors() { # $1=template file
   # 非 nginx 指令，不计。
   grep -qE '^[[:space:]]*location .*/api/v1/cs/sessions/[^[:space:]]*/events' "$f" \
     && echo "TPLERR: 出现历史漂移形态 cs/sessions/…/events（路由表无此端点）"
-  # 四组 API 精确放行（含既有 widget 组；r3-B1 收敛后 /api/v1/cs/ 与
-  # /api/v1/enterprise/organizations/ 两组为坐席子路径正则，非整族前缀）
+  # 五组 API 精确放行（含既有 widget 组；r3-B1 收敛后 /api/v1/cs/ 与
+  # /api/v1/enterprise/organizations/ 两组为坐席子路径正则（(seat/)? 双形态），
+  # 非整族前缀；/api/v1/seat/enterprise/conversations/ 为坐席控制台镜像 ^~ 前缀）
   local loc
   for loc in 'location /api/v1/cs/widget/ {' \
-             'location ~ ^/api/v1/cs/(me/seat-contexts' \
+             'location ~ ^/api/v1/(seat/)?cs/(me/seat-contexts' \
              'location /api/v1/passport/qr_login/ {' \
              'location ^~ /api/v1/enterprise/conversations/ {' \
-             'location ~ ^/api/v1/enterprise/organizations/'; do
+             'location ^~ /api/v1/seat/enterprise/conversations/ {' \
+             'location ~ ^/api/v1/(seat/)?enterprise/organizations/'; do
     blk="$(tpl_block "$f" "$loc")"
     if [ -z "$blk" ]; then echo "TPLERR: 缺 API 精确放行 location: $loc"; continue; fi
     printf '%s\n' "$blk" | grep -qF 'proxy_pass http://imboy_backend:9800;' || echo "TPLERR: $loc 未指向 imboy_backend:9800"
@@ -1083,8 +1088,9 @@ cs_template_contract_errors() { # $1=template file
   grep -q  'add_header X-Frame-Options' "$f"                && echo "TPLERR: 网关注入 XFO（禁止）"
   grep -q  'add_header Content-Security-Policy' "$f"        && echo "TPLERR: 网关注入 CSP（禁止）"
   grep -q  'add_header Cache-Control' "$f"                  && echo "TPLERR: 网关注入 Cache-Control（缓存头归容器）"
-  # upstream 计数：backend 9 处（2 SSE + /w/ + /seat/ + 5 组 API）；widget 5 处
-  [ "$(grep -cF 'proxy_pass http://imboy_backend:9800;' "$f")" = "9" ] || echo "TPLERR: backend upstream 数量漂移"
+  # upstream 计数：backend 10 处（2 SSE + /w/ + /seat/ + 5 组 API + seat
+  # 镜像 conversations 前缀）；widget 5 处
+  [ "$(grep -cF 'proxy_pass http://imboy_backend:9800;' "$f")" = "10" ] || echo "TPLERR: backend upstream 数量漂移"
   [ "$(grep -cF 'proxy_pass http://imboy_widget:8080;' "$f")" = "5" ]  || echo "TPLERR: widget upstream 数量漂移"
 }
 
@@ -1102,10 +1108,11 @@ if [ -f "$CS_TEMPLATE" ]; then
   grep -qF 'location ^~ /seat-assets/ {' "$CS_TEMPLATE" \
     && ok "A01 /seat-assets/ 静态块存在" || bad "A01 /seat-assets/ 块缺失" ""
   for loc in 'location /api/v1/cs/widget/ {' \
-             'location ~ ^/api/v1/cs/(me/seat-contexts' \
+             'location ~ ^/api/v1/(seat/)?cs/(me/seat-contexts' \
              'location /api/v1/passport/qr_login/ {' \
              'location ^~ /api/v1/enterprise/conversations/ {' \
-             'location ~ ^/api/v1/enterprise/organizations/'; do
+             'location ^~ /api/v1/seat/enterprise/conversations/ {' \
+             'location ~ ^/api/v1/(seat/)?enterprise/organizations/'; do
     grep -qF "$loc" "$CS_TEMPLATE" \
       && ok "A02 API 精确放行存在: $loc" || bad "A02 API 放行缺失: $loc" ""
   done
@@ -1122,6 +1129,8 @@ if [ -f "$CS_TEMPLATE" ]; then
   ROUTE_SEAT_SSE="$(grep -oE '"/api/v1/cs/organizations/:org_id/seats/me/events"' src/imboy_router.erl 2>/dev/null | head -1 | tr -d '"')"
   TPL_SEAT_SSE_PAT="$(grep -E '^[[:space:]]*location ~ \^.*seats/me/events' "$CS_TEMPLATE" 2>/dev/null | head -1 \
     | sed -E 's/.*location[[:space:]]+~[[:space:]]+\^//; s/\$[[:space:]]*\{.*//' | tr -d '\\')"
+  # (seat/)? 双形态段不参与骨架对照（human 形态骨架的镜像扩展，非参数槽差异）
+  TPL_SEAT_SSE_PAT="$(printf '%s' "$TPL_SEAT_SSE_PAT" | sed -E 's/\(seat\/\)\?//')"
   ROUTE_SEAT_SSE_SKEL="$(printf '%s' "$ROUTE_SEAT_SSE" | sed -E 's/:[A-Za-z_][A-Za-z0-9_]*/[0-9A-Za-z_-]+/g')"
   if [ -n "$ROUTE_SEAT_SSE" ] && [ "$TPL_SEAT_SSE_PAT" = "$ROUTE_SEAT_SSE_SKEL" ]; then
     ok "A03 模板↔路由表对照: seat SSE 正则骨架 = 真实端点：$ROUTE_SEAT_SSE_SKEL"
@@ -1141,7 +1150,7 @@ if [ -f "$CS_TEMPLATE" ]; then
   tpl_neg "删除 /seat-assets/ 静态块"    '/location \^~ \/seat-assets\/ \{/,/^[[:space:]]*}[[:space:]]*$/d'
   tpl_neg "Seat SSE 关缓冲被移除"        '/proxy_buffering off;/d'
   tpl_neg "qr_login 组被改名（组缺失）"  's/location \/api\/v1\/passport\/qr_login\/ \{/location \/api\/v1\/passport\/qr_loginX \{/'
-  tpl_neg "坐席 API 收敛正则被放大为全通配" 's/location ~ \^\/api\/v1\/cs\/\(me\/seat-contexts/location \/api\/v1\/ \{/'
+  tpl_neg "坐席 API 收敛正则被放大为全通配" 's/location ~ \^\/api\/v1\/\(seat\/\)\?cs\/\(me\/seat-contexts/location \/api\/v1\/ \{/'
   # seat-assets 被注入缓存头：awk 注入（BSD sed 替换串不支持 \n）
   m_inject="$TMP_ROOT/tpl-mutant-inject.$$"
   awk '{print} /location \^~ \/seat-assets\/ \{/ {print "            add_header Cache-Control \"public, max-age=31536000, immutable\" always;"}' \

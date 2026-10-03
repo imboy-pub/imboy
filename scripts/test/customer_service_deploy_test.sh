@@ -547,12 +547,13 @@ suite_a01() {
   # CSD-CLI-01R（SEC-2，对齐 DEP-01R）：proxy 面 Host 头统一 $http_host
   # （保留端口，非默认端口网关部署同源判定不失配）——渲染产物禁
   # `proxy_set_header Host $host` 残留；80→443 的 301 跳转行豁免。
-  # 计数=9：Widget SSE + Seat SSE + /w/ + /seat/ + widget API + 坐席 API
-  # 收敛正则 + qr_login + enterprise conversations + organizations 正则。
+  # 计数=10：Widget SSE + Seat SSE + /w/ + /seat/ + widget API + 坐席 API
+  # 收敛正则 + qr_login + enterprise conversations（human + /seat/ 镜像双块）
+  # + organizations 正则（双形态）。
   ck_not_contains "vhost proxy_set_header Host 禁 \$host 残留（301 跳转行豁免）" \
     "$FROOT/$CS_CONF_REL" 'proxy_set_header Host $host'
-  ck_eq "vhost proxy 面九处 Host 头均为 \$http_host" \
-    "$(grep -cF 'proxy_set_header Host $http_host' "$FROOT/$CS_CONF_REL" 2>/dev/null)" "9"
+  ck_eq "vhost proxy 面十处 Host 头均为 \$http_host" \
+    "$(grep -cF 'proxy_set_header Host $http_host' "$FROOT/$CS_CONF_REL" 2>/dev/null)" "10"
 
   # I5：时间戳备份 + 恢复记录；无半配置
   BAKF="$(ls "$FROOT/$CS_CONF_REL".cs-bak-* 2>/dev/null | head -1)"

@@ -330,7 +330,11 @@ server {
 
     # Seat 工作台 SSE（SC-OPS-A03，与 Widget SSE 同构）：正则优先于下方
     # 坐席 API 正则；关缓冲/关缓存，读/写超时 3600s。两个 SSE 正则互不重叠。
-    location ~ ^/api/v1/cs/organizations/[0-9A-Za-z_-]+/seats/me/events\$ {
+    # 形态兼容：后端 seat_console_route 对坐席面双注册 human（/api/v1/cs/…）
+    # 与控制台镜像（/api/v1/seat/cs/…）两组路由，SeatEventStream 发的是镜像
+    # 形态——正则漏掉任一形态都会让 SSE 落 location / → 404，坐席端失去
+    # 实时推送退化到偶发轮询（2026-10-03 消息延迟根因）。
+    location ~ ^/api/v1/(seat/)?cs/organizations/[0-9A-Za-z_-]+/seats/me/events\$ {
         proxy_pass http://127.0.0.1:$port;
         proxy_http_version 1.1;
         proxy_set_header Host \$http_host;
@@ -388,9 +392,10 @@ server {
 
     # 坐席工作台 API 精确子路径正则（SC-OPS-A02 r3-B1 收敛）：只放行
     # me/seat-contexts 与 organizations/:org 的 transfer-targets / sessions*
-    # / seats(heartbeat|presence|sessions)。seats/me/events 由上方 SSE 正则
-    # 独占；治理面与访客面一律不匹配 → 落 location / → 404（fail-closed）。
-    location ~ ^/api/v1/cs/(me/seat-contexts|organizations/[0-9A-Za-z_-]+/(transfer-targets|sessions/(queue|[0-9A-Za-z_-]+(/(claim|transfer|close|read-cursor|context))?)|seats/(sessions|me/(heartbeat|presence))))\$ {
+    # / seats(heartbeat|presence|sessions)，human 与 /seat/ 镜像双形态兼容
+    # （理由同上方 SSE 块）。seats/me/events 由上方 SSE 正则独占；治理面与
+    # 访客面一律不匹配 → 落 location / → 404（fail-closed）。
+    location ~ ^/api/v1/(seat/)?cs/(me/seat-contexts|organizations/[0-9A-Za-z_-]+/(transfer-targets|sessions/(queue|[0-9A-Za-z_-]+(/(claim|transfer|close|read-cursor|context))?)|seats/(sessions|me/(heartbeat|presence))))\$ {
         proxy_pass http://127.0.0.1:$port;
         proxy_http_version 1.1;
         proxy_set_header Host \$http_host;
@@ -416,7 +421,8 @@ server {
     }
     # Seat 会话面（企业消息真源读路径）。^~ 显式跳过正则检查：该前缀下
     # 的 URI 空间由本块独占（organizations 正则只管辖 organizations/ 路径），
-    # 未来在 server 块新增正则不会静默抢走这组流量。
+    # 未来在 server 块新增正则不会静默抢走这组流量。坐席控制台镜像形态
+    # /api/v1/seat/enterprise/conversations/（seatApiClient 前缀族）同规则并列放行。
     location ^~ /api/v1/enterprise/conversations/ {
         proxy_pass http://127.0.0.1:$port;
         proxy_http_version 1.1;
@@ -428,9 +434,21 @@ server {
         limit_req zone=cs_seat_per_ip burst=40 nodelay;
         proxy_send_timeout 300s;
     }
+    location ^~ /api/v1/seat/enterprise/conversations/ {
+        proxy_pass http://127.0.0.1:$port;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        limit_req zone=cs_seat_per_ip burst=40 nodelay;
+        proxy_send_timeout 300s;
+    }
     # Seat 企业子路径正则（r3-B1 收敛）：attachments presign/confirm/content
-    # + conversations/:conv/messages 写路径；其余治理面不匹配 → 404。
-    location ~ ^/api/v1/enterprise/organizations/[0-9A-Za-z_-]+/(assets/(presign|confirm|[0-9A-Za-z_-]+/content)|conversations/[0-9A-Za-z_-]+/messages)\$ {
+    # + conversations/:conv/messages 写路径；human 与 /seat/ 镜像双形态兼容
+    # （理由同上方 SSE 块）。其余治理面不匹配 → 404。
+    location ~ ^/api/v1/(seat/)?enterprise/organizations/[0-9A-Za-z_-]+/(assets/(presign|confirm|[0-9A-Za-z_-]+/content)|conversations/[0-9A-Za-z_-]+/messages)\$ {
         proxy_pass http://127.0.0.1:$port;
         proxy_http_version 1.1;
         proxy_set_header Host \$http_host;
@@ -503,13 +521,17 @@ cs_assert_vhost_render() {
   grep -q 'location /api/v1/cs/widget/' "$f" || return 1
   grep -q 'max-age=31536000, immutable' "$f" || return 1
   # 坐席面（SC-OPS）：SSE 正则 / 动态 frame / 静态别名 / qr_login /
-  # 坐席 API 收敛正则 —— 缺任一即渲染漂移，拒绝部署。
-  grep -q 'location ~ \^/api/v1/cs/organizations/\[0-9A-Za-z_-\]+/seats/me/events' "$f" || return 1
+  # 坐席 API 收敛正则 —— 缺任一即渲染漂移，拒绝部署。SSE 与坐席 API 正则
+  # 必须携带 (seat/)? 双形态兼容段（前端 SeatEventStream/seatApiClient 发
+  # /api/v1/seat/cs/… 镜像形态；漏放行 = SSE 404 = 坐席端无实时推送）。
+  grep -q 'location ~ \^/api/v1/(seat/)?cs/organizations/\[0-9A-Za-z_-\]+/seats/me/events' "$f" || return 1
   grep -q 'location \^~ /seat/' "$f" || return 1
   grep -q 'location \^~ /seat-assets/' "$f" || return 1
   grep -q 'location /api/v1/passport/qr_login/' "$f" || return 1
   grep -q 'location \^~ /api/v1/enterprise/conversations/' "$f" || return 1
-  grep -q 'location ~ \^/api/v1/cs/(me/seat-contexts' "$f" || return 1
+  grep -q 'location \^~ /api/v1/seat/enterprise/conversations/' "$f" || return 1
+  grep -q 'location ~ \^/api/v1/(seat/)?cs/(me/seat-contexts' "$f" || return 1
+  grep -q 'location ~ \^/api/v1/(seat/)?enterprise/organizations/' "$f" || return 1
   return 0
 }
 
