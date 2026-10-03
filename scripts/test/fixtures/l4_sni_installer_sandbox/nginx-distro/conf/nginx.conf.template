@@ -1,0 +1,7 @@
+worker_processes 1;
+error_log __HOME__/logs/error.log;
+pid __HOME__/run/nginx.pid;
+events { worker_connections 128; }
+http {
+    include conf/vhosts/*.conf;
+}

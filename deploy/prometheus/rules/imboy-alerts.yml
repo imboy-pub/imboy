@@ -17,6 +17,7 @@
 #  14. License 有效性/到期/配额 / License validity, expiry & quota (W3-A04)
 #  15. 在线用户陡降 / Online user drop (W3-A04)
 #  16. 红包过期 job 心跳与失败 / Red packet expiry job heartbeat & errors (W3-A04)
+#  17. L4 SNI listen 漂移巡检 / L4 SNI listen-drift patrol (Task 2)
 #
 # 接入告警渠道 / Alert routing:
 #   在 Prometheus alertmanager.yml 中配置 receiver（钉钉 / Slack / PagerDuty 等）
@@ -1038,3 +1039,116 @@ groups:
             1. 查异常：grep red_packet_expire /var/log/imboy/*.log | tail -50
             2. 修复原因后补跑：_rel/imboy/bin/imboy eval 'red_packet_logic:run_expire_refund().'
             3. 抽查若干过期红包确认余额已退回
+
+  # ============================================================
+  # 17. L4 SNI listen 漂移巡检 / L4 SNI listen-drift patrol (Task 2)
+  # 指标来源：宿主机 cron 每 5 分钟跑 scripts/check_l4_sni_listen.sh
+  # --strict --push（deploy/cron/imboy-ops.cron），经 Pushgateway
+  # job=imboy_l4_sni_check 推入；prometheus.yml 以 honor_labels 抓取
+  # pushgateway，job 标签得以保留。巡检只校验配置文本的 listen 合同，
+  # 不证明运行配置、端口归属或媒体健康。
+  #
+  # 失败可见性语义链（推送失败不会假绿）：
+  #   - 检测出漂移/输入错误且推送成功 → drift>0 / check_success=0 直接告警
+  #     （脚本 exit 1/2 路径仍会推送指标，exit 2 时 drift 序列被整体替换消失）；
+  #   - 推送本身失败（脚本 exit 3：URL 缺失/网络不通）→ 指标停留在
+  #     Pushgateway 旧值不刷新 → L4SNIStaleMetrics 兜底（Pushgateway 无 TTL，
+  #     旧 drift=0 永不自动消失，只有时间戳能暴露巡检已死）；
+  #   - Pushgateway 数据被清（重启清空/分组删除）→ 指标序列消失 →
+  #     L4SNIMetricsMissing（仅在 Pushgateway 抓取存活时判定，抓取本身
+  #     挂掉由部署侧 scrape/up 验证负责，不属本组职责）。
+  # ============================================================
+  - name: imboy.l4_sni
+    interval: 30s
+    rules:
+
+      # listen 漂移：直连 443 / 非 loopback:10443 / 缺独立 proxy_protocol
+      # for=10m：容忍一轮 cron（5min）+ 抓取周期抖动，两轮巡检仍漂移才告警。
+      - alert: L4SNIListenDrift
+        expr: imboy_l4_sni_listen_drift > 0
+        for: 10m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "L4 SNI nginx listen 配置漂移 / L4 SNI listen drift detected"
+          description: >
+            {{ $labels.config_file }} 的 server {{ $labels.server }} 出现 listen 漂移
+            （直连 443、非 loopback:10443 或缺独立 proxy_protocol token），
+            已持续 10 分钟以上。受管 vhost 可能被面板或自动 reload 重写。
+          runbook: >
+            1. 查巡检日志：tail -100 /var/log/imboy/l4_sni_listen.log（诊断含 file:line）
+            2. 核对受管 vhost 是否被宝塔面板/自动 reload 重写
+            3. 人工 reload 前必须先跑：cd /opt/imboy && bash scripts/check_l4_sni_listen.sh
+
+      # 巡检作业本身失败（输入/解析错误，脚本 exit 2 且推送成功路径）：
+      # env 文件缺失、vhost 不可读、include/跨行指令等 fail-closed 场景。
+      # 配置发现链路断裂等于巡检失明，不能静默——此时 drift 序列通常已被
+      # 整体替换消失，本告警是唯一可见信号。
+      - alert: L4SNICheckFailed
+        expr: imboy_l4_sni_check_success == 0
+        for: 10m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "L4 SNI 巡检执行失败 / L4 SNI patrol check failed"
+          description: >
+            巡检以输入/解析错误收尾（check_success=0，对应脚本 exit 2：发现 env
+            缺失、文件不可读、include/跨行指令等 fail-closed 结构），且失败状态
+            已持续 10 分钟以上。
+          runbook: >
+            1. 查巡检日志：tail -100 /var/log/imboy/l4_sni_listen.log
+            2. 核对 /etc/imboy/livekit-l4-sni.env 的 NGINX_VHOST_DIR 与 HTTPS_VHOST_FILES
+            3. 手动复现：cd /opt/imboy && bash scripts/check_l4_sni_listen.sh --strict --push
+
+      # 新鲜度兜底：cron 停跑、PUSHGATEWAY_URL 失效、推送持续失败（exit 3）
+      # 都表现为时间戳停更——Pushgateway 里的旧 drift=0 不消失，唯独时间戳会老。
+      # 阈值 900s（冻结合同）= 3 轮巡检未推；for=5m 再滤单次抓取抖动。
+      - alert: L4SNIStaleMetrics
+        expr: time() - imboy_l4_sni_last_check_timestamp_seconds > 900
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "L4 SNI 巡检指标过期 / L4 SNI patrol metrics stale"
+          description: >
+            imboy_l4_sni_last_check_timestamp_seconds 已 {{ $value | humanizeDuration }}
+            未刷新（阈值 900s，正常每 5 分钟一推）。cron 停跑或推送持续失败
+            （脚本 exit 3）都会停在这里，这是「推送失败不能假绿」的兜底告警。
+          runbook: >
+            1. 确认巡检行：grep l4_sni /etc/cron.d/imboy-ops
+            2. 手动跑一次看退出码：cd /opt/imboy && bash scripts/check_l4_sni_listen.sh --strict --push
+            3. 核对 /etc/imboy/ops.env 的 PUSHGATEWAY_URL 与 pushgateway（127.0.0.1:9091）存活
+
+      # 指标缺失：只在 Pushgateway 抓取存活（up=1）时判定「job 从未推过/
+      # 指标被整体删除」；全局 absent_over_time 会掩盖单台主机失联，故另含
+      # 按 instance 维度的 offset 检测子句（15 分钟前存在、现在消失）。
+      - alert: L4SNIMetricsMissing
+        expr: |
+          (
+            absent_over_time(imboy_l4_sni_check_success[15m]) == 1
+            and
+            max(up{job=~".*pushgateway.*"}) == 1
+          )
+          or
+          (
+            count by (instance) (imboy_l4_sni_check_success offset 15m)
+            unless on(instance)
+            imboy_l4_sni_check_success
+          )
+        for: 0m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "L4 SNI 巡检指标缺失 / L4 SNI patrol metrics missing"
+          description: >
+            Pushgateway 抓取正常（up=1）但 imboy_l4_sni_check 的 check_success
+            序列缺失：该 job 从未成功推送（cron/env 配置缺失），或指标被整体
+            删除（pushgateway 重启清空、单 instance 分组序列消失）。
+          runbook: >
+            1. 看推送侧现状：curl -s http://127.0.0.1:9091/metrics | grep imboy_l4_sni
+            2. 确认 /etc/cron.d/imboy-ops 巡检行与 /etc/imboy/ops.env 的 PUSHGATEWAY_URL
+            3. pushgateway 重启会清空数据，等下一轮 cron（≤5 分钟）补推后自愈

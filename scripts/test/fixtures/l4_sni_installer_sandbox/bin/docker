@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Fake docker / docker compose for the L4 SNI installer sandbox.
+# State under $L4_SB_STATE/ctl:
+#   docker-status      value for inspect -f '{{.State.Status}}' (default running)
+#   docker-gateways    value for inspect -f NetworkSettings (default 172.29.0.1)
+#   docker-logs        content for `docker logs` (default has TURN markers)
+#   compose-up-rc / compose-config-rc  forced exit codes (default 0)
+# Side effects: `compose ... config` prints a deterministic per-file sha summary
+# (so backup/pre and restore/post snapshots compare equal); `compose ... up`
+# records the exact -f combination in ctl/compose-last-up and registers/removes
+# the docker-proxy listeners (15443/tcp, 3478/50201/50500/udp) depending on
+# whether the combination contains the generated overlay.
+set -u
+STATE="${L4_SB_STATE:?}"
+LOG="$STATE/calls.log"
+ctl() { local v=""; [ -f "$STATE/ctl/$1" ] && v="$(cat "$STATE/ctl/$1")"; printf '%s' "$v"; return 0; }
+log() { printf 'docker %s\n' "$*" >>"$LOG"; }
+sha() {
+  python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1" 2>/dev/null \
+    || printf 'missing'
+}
+
+case "${1:-}" in
+  inspect)
+    shift
+    fmt=""; container=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -f) fmt="$2"; shift 2 ;;
+        *) container="$1"; shift ;;
+      esac
+    done
+    log "inspect $container -f $fmt"
+    case "$fmt" in
+      *State.Status*) v="$(ctl docker-status)"; printf '%s\n' "${v:-running}" ;;
+      *NetworkSettings*) v="$(ctl docker-gateways)"; printf '%s\n' "${v:-172.29.0.1}" ;;
+      *) printf '{}\n' ;;
+    esac
+    exit 0 ;;
+  logs)
+    log "$*"
+    if [ -f "$STATE/ctl/docker-logs" ]; then
+      cat "$STATE/ctl/docker-logs"
+    else
+      printf 'INF Starting TURN server\nINF config {"turn.proxyProtocol": true}\n'
+    fi
+    exit 0 ;;
+  compose)
+    shift
+    envf=""; subcmd=""; files=""; quiet=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --env-file) envf="$2"; shift 2 ;;
+        -f) files="$files $2"; shift 2 ;;
+        config) subcmd="config"; shift ;;
+        up) subcmd="up"; shift ;;
+        version) subcmd="version"; shift ;;
+        --quiet) quiet=1; shift ;;
+        *) shift ;;
+      esac
+    done
+    files="${files# }"
+    case "$subcmd" in
+      version)
+        log "compose version"
+        printf 'Docker Compose version v2.27.0-sandbox\n'
+        exit 0 ;;
+      config)
+        log "compose config env=$envf files=$files quiet=$quiet"
+        rc="$(ctl compose-config-rc)"; [ -n "$rc" ] || rc=0
+        [ "$quiet" = 1 ] && exit "$rc"
+        for f in $files; do printf 'compose-file %s sha=%s\n' "$f" "$(sha "$f")"; done
+        printf 'compose-env %s sha=%s\n' "$envf" "$(sha "$envf")"
+        exit "$rc" ;;
+      up)
+        log "compose up env=$envf files=$files"
+        printf '%s\n' "$files" >"$STATE/ctl/compose-last-up"
+        L="$STATE/ctl/ss-listeners"; [ -f "$L" ] || : >"$L"
+        if printf '%s\n' "$files" | grep -q 'livekit-turn-l4-sni.generated.yml'; then
+          { cat "$L"
+            printf 't 15443 4401 docker-proxy\nu 3478 4401 docker-proxy\nu 50201 4401 docker-proxy\nu 50500 4401 docker-proxy\n'
+          } >"$L.tmp"
+        else
+          { grep -v -e '^t 15443 ' -e '^u 3478 ' -e '^u 50201 ' -e '^u 50500 ' "$L" || true; } >"$L.tmp"
+        fi
+        mv "$L.tmp" "$L"
+        rc="$(ctl compose-up-rc)"; [ -n "$rc" ] || rc=0
+        exit "$rc" ;;
+      *)
+        log "compose UNSUPPORTED $subcmd"
+        exit 1 ;;
+    esac ;;
+  *)
+    printf 'sandbox docker: unsupported: %s\n' "$*" >&2
+    exit 1 ;;
+esac

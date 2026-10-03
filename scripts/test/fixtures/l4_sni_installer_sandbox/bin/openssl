@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Fake openssl for the L4 SNI installer sandbox. TURN domain comes from
+# $L4_SB_STATE/ctl/turn-domain; ctl/openssl-rc forces a nonzero exit.
+# x509 -pubkey and pkey -pubout deliberately print the SAME public-key
+# placeholder so validate_certificate's pairing check passes.
+set -u
+STATE="${L4_SB_STATE:?}"
+domain="$(cat "$STATE/ctl/turn-domain" 2>/dev/null || true)"
+rc="$(cat "$STATE/ctl/openssl-rc" 2>/dev/null || true)"; rc="${rc:-0}"
+case "${1:-}" in
+  x509)
+    case " $* " in
+      *" -pubkey"*) printf 'sandbox-pub\n' ;;
+      *) printf 'subject=CN = %s\nX509v3 Subject Alternative Name:\n    DNS:%s, DNS:*.example.com\n' "$domain" "$domain" ;;
+    esac ;;
+  pkey)
+    case " $* " in
+      *" -pubout"*) printf 'sandbox-pub\n' ;;
+    esac ;;
+  s_client)
+    printf 'CONNECTION ESTABLISHED\nProtocol: TLSv1.3\nVerification: OK\n' ;;
+esac
+exit "$rc"

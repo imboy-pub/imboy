@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Task-1 listen-drift checker stub for the sandbox, built on the frozen
+# interface contract: check_l4_sni_listen.sh [--strict|--pre-switch] [config_file...]
+# exit 0 = healthy; nonzero = violation / undecidable. Diagnostics on stderr in
+# "file:line: message" shape. Exit codes come from
+# $L4_SB_STATE/ctl/check-strict-rc / ctl/check-pre-switch-rc (default 0).
+set -u
+STATE="${L4_SB_STATE:?}"
+mode="${1:---strict}"
+printf 'check mode=%s files=%s\n' "$mode" "$*" >>"$STATE/calls.log"
+printf '%s %s\n' "$mode" "$*" >>"$STATE/check-calls.log"
+rcfile=""
+case "$mode" in
+  --strict) rcfile="$STATE/ctl/check-strict-rc" ;;
+  --pre-switch) rcfile="$STATE/ctl/check-pre-switch-rc" ;;
+esac
+rc=0
+[ -n "$rcfile" ] && [ -f "$rcfile" ] && rc="$(cat "$rcfile")"
+if [ "$rc" != 0 ]; then
+  printf 'vhost.conf:3: sandbox-staged %s violation\n' "$mode" >&2
+fi
+exit "$rc"

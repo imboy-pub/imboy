@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Fake ss for the L4 SNI installer sandbox. Reads
+# $L4_SB_STATE/ctl/ss-listeners (lines "proto port pid owner") and answers
+# `-H -lntp|-lnup 'sport = :PORT'` with a real-ss-shaped line.
+set -u
+STATE="${L4_SB_STATE:?}"
+proto=""; port=""
+for a in "$@"; do
+  case "$a" in
+    -lnt*|-lnt|-t) proto=t ;;
+    -lnu*|-lnu|-u) proto=u ;;
+    sport*=*:*) port="${a##*:}" ;;
+  esac
+done
+[ -n "$proto" ] || proto=t
+[ -n "$port" ] || exit 0
+awk -v p="$port" -v pr="$proto" \
+  '$1 == pr && $2 == p { printf "LISTEN 0 128 0.0.0.0:%s users:((\"%s\",pid=%s,fd=6))\n", $2, $4, $3 }' \
+  "$STATE/ctl/ss-listeners" 2>/dev/null
+exit 0

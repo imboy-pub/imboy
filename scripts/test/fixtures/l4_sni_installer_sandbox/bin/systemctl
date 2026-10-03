@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Fake systemctl for the L4 SNI installer sandbox.
+# State under $L4_SB_STATE/ctl:
+#   systemctl-active         lines "svc=active|inactive"  (is-active; stop/start/restart mutate)
+#   systemctl-enabled        lines "svc=enabled|disabled" (is-enabled; enable/disable mutate)
+#   systemctl-mainpid-nginx  value answered for `show -p MainPID --value nginx` (default 0)
+#   haproxy-pid              pid reported for :15442 when haproxy.cfg binds it
+# Side effect: `restart haproxy` registers/removes the :15442 listener in
+# ctl/ss-listeners based on $L4_SB_HAPROXY_CONF containing "bind 127.0.0.1:15442".
+set -u
+STATE="${L4_SB_STATE:?}"
+LOG="$STATE/calls.log"
+ACTIVE="$STATE/ctl/systemctl-active"
+ENABLED="$STATE/ctl/systemctl-enabled"
+LISTEN="$STATE/ctl/ss-listeners"
+log() { printf 'systemctl %s\n' "$*" >>"$LOG"; }
+getval() { [ -f "$1" ] && grep "^$2=" "$1" | tail -1 | cut -d= -f2; return 0; }
+setval() {
+  local tmp="$1.tmp"
+  { [ -f "$1" ] && grep -v "^$2=" "$1"; printf '%s=%s\n' "$2" "$3"; } >"$tmp"
+  mv "$tmp" "$1"
+}
+sync_haproxy_listener() {
+  [ -f "$LISTEN" ] || : >"$LISTEN"
+  local pid=4301
+  [ -f "$STATE/ctl/haproxy-pid" ] && pid="$(cat "$STATE/ctl/haproxy-pid")"
+  if [ -n "${L4_SB_HAPROXY_CONF:-}" ] && [ -f "$L4_SB_HAPROXY_CONF" ] \
+     && grep -q 'bind 127.0.0.1:15442' "$L4_SB_HAPROXY_CONF"; then
+    { grep -v '^t 15442 ' "$LISTEN" || true; printf 't 15442 %s haproxy\n' "$pid"; } >"$LISTEN.tmp"
+  else
+    { grep -v '^t 15442 ' "$LISTEN" || true; } >"$LISTEN.tmp"
+  fi
+  mv "$LISTEN.tmp" "$LISTEN"
+}
+
+log "$@"
+case "$1" in
+  show)
+    if [ -f "$STATE/ctl/systemctl-mainpid-nginx" ]; then
+      cat "$STATE/ctl/systemctl-mainpid-nginx"
+    else
+      echo 0
+    fi
+    exit 0 ;;
+  is-active)
+    svc=""; quiet=0; shift
+    for a in "$@"; do case "$a" in --quiet) quiet=1 ;; *) svc="$a" ;; esac; done
+    val="$(getval "$ACTIVE" "$svc")"
+    [ "$quiet" = 1 ] || printf '%s\n' "${val:-inactive}"
+    [ "$val" = active ] && exit 0
+    exit 3 ;;
+  is-enabled)
+    svc="$2"
+    val="$(getval "$ENABLED" "$svc")"
+    printf '%s\n' "${val:-disabled}"
+    [ "$val" = enabled ] && exit 0
+    exit 1 ;;
+  stop)    setval "$ACTIVE" "$2" inactive; exit 0 ;;
+  start)   setval "$ACTIVE" "$2" active; exit 0 ;;
+  disable) setval "$ENABLED" "$2" disabled; exit 0 ;;
+  enable)  setval "$ENABLED" "$2" enabled; exit 0 ;;
+  restart)
+    setval "$ACTIVE" "$2" active
+    [ "$2" = haproxy ] && sync_haproxy_listener
+    exit 0 ;;
+  reload)  exit 0 ;;
+  *)       printf 'sandbox systemctl: unsupported: %s\n' "$*" >&2; exit 1 ;;
+esac

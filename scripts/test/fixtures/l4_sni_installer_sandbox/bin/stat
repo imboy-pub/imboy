@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Fake GNU-style stat for the sandbox: only `stat -c %u FILE` (always root 0)
+# and `stat -c %a FILE` (real octal mode) are needed by the installer.
+fmt="${2:-}"; path="${3:-}"
+case "$fmt" in
+  %a) python3 -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode)[-3:])' "$path" ;;
+  *) echo 0 ;;
+esac
+exit 0

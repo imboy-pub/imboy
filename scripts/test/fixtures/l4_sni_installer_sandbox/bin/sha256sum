@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Fake GNU sha256sum (single/multi file mode) for the sandbox; portable across
+# macOS/BSD hosts that only ship `shasum`.
+python3 - "$@" <<'PY'
+import hashlib
+import sys
+
+if not sys.argv[1:]:
+    print("sandbox sha256sum: missing operand", file=sys.stderr)
+    sys.exit(1)
+for path in sys.argv[1:]:
+    try:
+        with open(path, "rb") as handle:
+            digest = hashlib.sha256(handle.read()).hexdigest()
+        print(f"{digest}  {path}")
+    except OSError:
+        print(f"sha256sum: {path}: No such file or directory", file=sys.stderr)
+        sys.exit(1)
+PY

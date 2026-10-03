@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Sandbox "BT panel" nginx instance wrapper -> bin/nginx-core (tag=nginx-bt).
+# Layout: <sandbox>/nginx-bt/sbin/nginx -> <sandbox>/bin/nginx-core
+SB="$(cd "$(dirname "$0")/../.." && pwd)"
+export L4_SB_NGINX_TAG=nginx-bt
+export L4_SB_NGINX_HOME="$SB/nginx-bt"
+exec "$SB/bin/nginx-core" "$@"

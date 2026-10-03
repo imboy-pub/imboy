@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# Fake nginx for the L4 SNI installer sandbox (scripts/test fixtures).
+# Identity is injected by the per-instance wrapper (nginx-bt / nginx-distro):
+#   L4_SB_NGINX_TAG   instance tag used in the shared call log
+#   L4_SB_NGINX_HOME  instance prefix (default conf: $HOME/conf/nginx.conf)
+# Behavior knobs under $L4_SB_STATE/ctl:
+#   nginx-fail-t-on=N       the Nth `-t`/`-T` invocation exits 1 (one-shot)
+#   nginx-fail-reload-on=N  the Nth `-s reload` invocation exits 1 (one-shot)
+#   nginx-V-no-modules      -V omits the stream/ssl_preread modules
+#   nginx-worker-pid        worker PID registered for :10443 after reload
+# Side effect: a successful `-s reload` registers a `t 10443 <worker> nginx`
+# listener line in ctl/ss-listeners (post-switch world).
+set -u
+STATE="${L4_SB_STATE:?L4_SB_STATE must point at the sandbox state dir}"
+HOME_DIR="${L4_SB_NGINX_HOME:?L4_SB_NGINX_HOME must be set by the wrapper}"
+TAG="${L4_SB_NGINX_TAG:?L4_SB_NGINX_TAG must be set by the wrapper}"
+LOG="$STATE/calls.log"
+
+ctl() { [ -f "$STATE/ctl/$1" ] && cat "$STATE/ctl/$1"; return 0; }
+nlog() { printf 'nginx:%s %s\n' "$TAG" "$*" >>"$LOG"; }
+fail_on() { # fail_on <log-suffix-regex> <ctl-name>: true when this call is the staged Nth
+  # (nlog has already appended the current call, so the count includes it)
+  local want count
+  want="$(ctl "$2")"; want="${want:-0}"
+  case "$want" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$want" -gt 0 ] || return 1
+  count="$(grep -c "^nginx:$TAG .*$1" "$LOG" 2>/dev/null || true)"
+  count="${count:-0}"
+  [ "$count" -eq "$want" ]
+}
+dump_conf() { # nginx -T style dump with "# configuration file <path>:" headers
+  local f="$1" pat inc
+  printf '# configuration file %s:\n' "$f"
+  cat "$f" 2>/dev/null || true
+  sed -n 's/^[[:space:]]*include[[:space:]][[:space:]]*\([^;]*\);.*/\1/p' "$f" 2>/dev/null \
+    | while IFS= read -r pat; do
+        [ -n "$pat" ] || continue
+        case "$pat" in /*) ;; *) pat="$HOME_DIR/$pat" ;; esac
+        # shellcheck disable=SC2086
+        for inc in $pat; do
+          [ -f "$inc" ] && dump_conf "$inc"
+        done
+      done
+  return 0
+}
+
+conf=""
+op=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -c) conf="$2"; shift 2 ;;
+    -p) shift 2 ;;
+    -t|-T|-V) op="$1"; shift ;;
+    -s) op="-s $2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -n "$conf" ] || conf="$HOME_DIR/conf/nginx.conf"
+
+case "$op" in
+  -V)
+    nlog "-V"
+    mods='--with-stream --with-stream_ssl_preread_module --with-http_realip_module'
+    [ -f "$STATE/ctl/nginx-V-no-modules" ] && mods=''
+    printf 'nginx version: nginx/1.26.0 (sandbox fake)\nbuilt by bash\nconfigure arguments: --prefix=%s --conf-path=%s/conf/nginx.conf %s\n' \
+      "$HOME_DIR" "$HOME_DIR" "$mods" >&2
+    exit 0
+    ;;
+  -t)
+    nlog "-c $conf -t"
+    if fail_on ' -t$' nginx-fail-t-on; then
+      printf 'nginx: [emerg] sandbox-staged parse failure in %s\n' "$conf" >&2
+      exit 1
+    fi
+    printf 'syntax is ok\nnginx: configuration file %s test is successful\n' "$conf" >&2
+    exit 0
+    ;;
+  -T)
+    nlog "-c $conf -T"
+    if fail_on ' -t$' nginx-fail-t-on; then
+      printf 'nginx: [emerg] sandbox-staged parse failure in %s\n' "$conf" >&2
+      exit 1
+    fi
+    dump_conf "$conf"
+    exit 0
+    ;;
+  "-s reload")
+    nlog "-c $conf -s reload"
+    if fail_on ' -s reload$' nginx-fail-reload-on; then
+      printf 'nginx: [alert] sandbox-staged reload failure\n' >&2
+      exit 1
+    fi
+    wid="$(ctl nginx-worker-pid)"; wid="${wid:-4101}"
+    L="$STATE/ctl/ss-listeners"; [ -f "$L" ] || : >"$L"
+    { grep -v '^t 10443 ' "$L" || true; printf 't 10443 %s nginx\n' "$wid"; } >"$L.tmp"
+    mv "$L.tmp" "$L"
+    exit 0
+    ;;
+  *)
+    nlog "UNSUPPORTED $*"
+    exit 2
+    ;;
+esac

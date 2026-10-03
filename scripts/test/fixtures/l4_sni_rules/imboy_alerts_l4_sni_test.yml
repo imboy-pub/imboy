@@ -1,0 +1,213 @@
+# ============================================================
+# imboy.l4_sni 告警组规则测试 fixture（Task 2 / A5）
+# ------------------------------------------------------------
+# 由 scripts/test/l4_sni_alert_rules_test.sh 执行：
+#   promtool test rules scripts/test/fixtures/l4_sni_rules/imboy_alerts_l4_sni_test.yml
+#
+# rule_files 相对路径按本文件所在目录解析（promtool 实测行为），
+# 故指向 ../../../../deploy/prometheus/rules/imboy-alerts.yml。
+#
+# 场景覆盖（≥5 组，断言 alert 名与 firing 状态）：
+#   1. healthy           — 四条告警全不触发（含 up 正常、时间戳持续刷新）
+#   2. drift             — drift=1 持续 → L4SNIListenDrift（10m for 内 pending、
+#                          12m firing；健康 server 不产生告警实例）
+#   3. check_failed      — check_success=0 持续且时间戳新鲜 → L4SNICheckFailed
+#                          （exit 2 语义：drift 序列已被替换消失、不算过期）
+#   4. stale             — 时间戳冻结 → L4SNIStaleMetrics（16m pending、21m firing）
+#   5. never_pushed      — Pushgateway up=1 但 job 指标从未出现 → L4SNIMetricsMissing
+#   6. instance_gone     — 双实例其一消失（全局 absent 掩盖的场景）→
+#                          L4SNIMetricsMissing 按 instance 维度触发
+#
+# 时间基准：evaluation_interval=1m，time() 在 eval_time T 处 = 60*T 秒。
+# series values 记法：'0+0x40' = 41 个点（0..40m，每分钟一个，恒 0）。
+# ============================================================
+
+rule_files:
+  - ../../../../deploy/prometheus/rules/imboy-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── 1. healthy：健康稳态，四条告警均不触发 ──────────────────
+  - interval: 1m
+    input_series:
+      - series: 'imboy_l4_sni_listen_drift{config_file="/etc/nginx/vhost.d/livekit-a.conf",server="a.example.com",job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '0+0x40'
+      - series: 'imboy_l4_sni_listen_drift{config_file="/etc/nginx/vhost.d/livekit-b.conf",server="b.example.com",job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '0+0x40'
+      - series: 'imboy_l4_sni_check_success{job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '1+0x40'
+      - series: 'imboy_l4_sni_last_check_timestamp_seconds{job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '60+60x40'
+      - series: 'up{job="pushgateway",instance="imboy_pushgateway:9091",tier="infra"}'
+        values: '1+0x40'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: L4SNIListenDrift
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: L4SNICheckFailed
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: L4SNIStaleMetrics
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: L4SNIMetricsMissing
+        exp_alerts: []
+
+  # ── 2. drift：单个 server 漂移持续 → L4SNIListenDrift ──────
+  # for=10m：5m 仍 pending，12m firing；a.conf 健康不得产生告警实例。
+  - interval: 1m
+    input_series:
+      - series: 'imboy_l4_sni_listen_drift{config_file="/etc/nginx/vhost.d/livekit-a.conf",server="a.example.com",job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '0+0x40'
+      - series: 'imboy_l4_sni_listen_drift{config_file="/etc/nginx/vhost.d/livekit-b.conf",server="b.example.com",job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '1+0x40'
+      - series: 'imboy_l4_sni_check_success{job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '1+0x40'
+      - series: 'imboy_l4_sni_last_check_timestamp_seconds{job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '60+60x40'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: L4SNIListenDrift
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: L4SNIListenDrift
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              team: ops
+              config_file: /etc/nginx/vhost.d/livekit-b.conf
+              server: b.example.com
+              job: imboy_l4_sni_check
+              instance: 127.0.0.1
+            exp_annotations:
+              summary: "L4 SNI nginx listen 配置漂移 / L4 SNI listen drift detected"
+              description: "/etc/nginx/vhost.d/livekit-b.conf 的 server b.example.com 出现 listen 漂移 （直连 443、非 loopback:10443 或缺独立 proxy_protocol token）， 已持续 10 分钟以上。受管 vhost 可能被面板或自动 reload 重写。\n"
+              runbook: "1. 查巡检日志：tail -100 /var/log/imboy/l4_sni_listen.log（诊断含 file:line） 2. 核对受管 vhost 是否被宝塔面板/自动 reload 重写 3. 人工 reload 前必须先跑：cd /opt/imboy && bash scripts/check_l4_sni_listen.sh\n"
+      - eval_time: 12m
+        alertname: L4SNICheckFailed
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: L4SNIStaleMetrics
+        exp_alerts: []
+
+  # ── 3. check_failed：check_success=0 持续（exit 2 且推送成功）──
+  # 此时真实推送会整体替换 job 分组，drift 序列消失；时间戳仍每轮刷新
+  # （失败≠过期），只有 CheckFailed 触发。
+  - interval: 1m
+    input_series:
+      - series: 'imboy_l4_sni_check_success{job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '0+0x40'
+      - series: 'imboy_l4_sni_last_check_timestamp_seconds{job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '60+60x40'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: L4SNICheckFailed
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: L4SNICheckFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              team: ops
+              job: imboy_l4_sni_check
+              instance: 127.0.0.1
+            exp_annotations:
+              summary: "L4 SNI 巡检执行失败 / L4 SNI patrol check failed"
+              description: "巡检以输入/解析错误收尾（check_success=0，对应脚本 exit 2：发现 env 缺失、文件不可读、include/跨行指令等 fail-closed 结构），且失败状态 已持续 10 分钟以上。\n"
+              runbook: "1. 查巡检日志：tail -100 /var/log/imboy/l4_sni_listen.log 2. 核对 /etc/imboy/livekit-l4-sni.env 的 NGINX_VHOST_DIR 与 HTTPS_VHOST_FILES 3. 手动复现：cd /opt/imboy && bash scripts/check_l4_sni_listen.sh --strict --push\n"
+      - eval_time: 12m
+        alertname: L4SNIListenDrift
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: L4SNIStaleMetrics
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: L4SNIMetricsMissing
+        exp_alerts: []
+
+  # ── 4. stale：时间戳冻结在 0 → 16m（960s>900s）pending，21m firing ──
+  - interval: 1m
+    input_series:
+      - series: 'imboy_l4_sni_check_success{job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '1+0x40'
+      - series: 'imboy_l4_sni_last_check_timestamp_seconds{job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '0x40'
+      - series: 'up{job="pushgateway",instance="imboy_pushgateway:9091",tier="infra"}'
+        values: '1+0x40'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: L4SNIStaleMetrics
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: L4SNIStaleMetrics
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: ops
+              job: imboy_l4_sni_check
+              instance: 127.0.0.1
+            exp_annotations:
+              summary: "L4 SNI 巡检指标过期 / L4 SNI patrol metrics stale"
+              description: "imboy_l4_sni_last_check_timestamp_seconds 已 21m 0s 未刷新（阈值 900s，正常每 5 分钟一推）。cron 停跑或推送持续失败 （脚本 exit 3）都会停在这里，这是「推送失败不能假绿」的兜底告警。\n"
+              runbook: "1. 确认巡检行：grep l4_sni /etc/cron.d/imboy-ops 2. 手动跑一次看退出码：cd /opt/imboy && bash scripts/check_l4_sni_listen.sh --strict --push 3. 核对 /etc/imboy/ops.env 的 PUSHGATEWAY_URL 与 pushgateway（127.0.0.1:9091）存活\n"
+      - eval_time: 21m
+        alertname: L4SNIMetricsMissing
+        exp_alerts: []
+
+  # ── 5. never_pushed：Pushgateway up=1 但 job 指标从未出现 ──
+  # 全局 absent_over_time[15m] 子句触发；StaleMetrics 无序列可比不触发。
+  - interval: 1m
+    input_series:
+      - series: 'up{job="pushgateway",instance="imboy_pushgateway:9091",tier="infra"}'
+        values: '1+0x40'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: L4SNIMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: ops
+            exp_annotations:
+              summary: "L4 SNI 巡检指标缺失 / L4 SNI patrol metrics missing"
+              description: "Pushgateway 抓取正常（up=1）但 imboy_l4_sni_check 的 check_success 序列缺失：该 job 从未成功推送（cron/env 配置缺失），或指标被整体 删除（pushgateway 重启清空、单 instance 分组序列消失）。\n"
+              runbook: "1. 看推送侧现状：curl -s http://127.0.0.1:9091/metrics | grep imboy_l4_sni 2. 确认 /etc/cron.d/imboy-ops 巡检行与 /etc/imboy/ops.env 的 PUSHGATEWAY_URL 3. pushgateway 重启会清空数据，等下一轮 cron（≤5 分钟）补推后自愈\n"
+      - eval_time: 16m
+        alertname: L4SNIStaleMetrics
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: L4SNICheckFailed
+        exp_alerts: []
+
+  # ── 6. instance_gone：双实例其一消失（全局 absent 会掩盖）──
+  # 127.0.0.1 的序列 9m 后消失，10.0.0.8 持续在推；12m 时仍在 5m 回看窗内
+  # 不触发，20m 时按 instance 维度对 127.0.0.1 触发，10.0.0.8 不触发。
+  - interval: 1m
+    input_series:
+      - series: 'imboy_l4_sni_check_success{job="imboy_l4_sni_check",instance="127.0.0.1"}'
+        values: '1+0x9'
+      - series: 'imboy_l4_sni_check_success{job="imboy_l4_sni_check",instance="10.0.0.8"}'
+        values: '1+0x40'
+      - series: 'imboy_l4_sni_last_check_timestamp_seconds{job="imboy_l4_sni_check",instance="10.0.0.8"}'
+        values: '60+60x40'
+      - series: 'up{job="pushgateway",instance="imboy_pushgateway:9091",tier="infra"}'
+        values: '1+0x40'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: L4SNIMetricsMissing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: L4SNIMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: ops
+              instance: 127.0.0.1
+            exp_annotations:
+              summary: "L4 SNI 巡检指标缺失 / L4 SNI patrol metrics missing"
+              description: "Pushgateway 抓取正常（up=1）但 imboy_l4_sni_check 的 check_success 序列缺失：该 job 从未成功推送（cron/env 配置缺失），或指标被整体 删除（pushgateway 重启清空、单 instance 分组序列消失）。\n"
+              runbook: "1. 看推送侧现状：curl -s http://127.0.0.1:9091/metrics | grep imboy_l4_sni 2. 确认 /etc/cron.d/imboy-ops 巡检行与 /etc/imboy/ops.env 的 PUSHGATEWAY_URL 3. pushgateway 重启会清空数据，等下一轮 cron（≤5 分钟）补推后自愈\n"
+      - eval_time: 20m
+        alertname: L4SNIStaleMetrics
+        exp_alerts: []
