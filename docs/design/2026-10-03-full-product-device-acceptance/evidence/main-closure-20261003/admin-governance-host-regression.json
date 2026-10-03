@@ -1,0 +1,168 @@
+{
+  "scope": "ADMIN_LOCAL_MOCK_REGRESSION_ONLY",
+  "candidate_admin": "997971a882928d67e70d6261629d5c69d2703539",
+  "cwd": "/Users/leeyi/project/imboy.pub/imboyadmin",
+  "argv": [
+    "bun",
+    "test",
+    "--isolate",
+    "src/modules/customer_service/api/platformSeats.test.ts",
+    "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+    "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+    "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx"
+  ],
+  "exit": 0,
+  "executed": 30,
+  "failed": 0,
+  "assertions": 188,
+  "observed_tests": [
+    {
+      "target": "src/modules/customer_service/api/platformSeats.test.ts",
+      "observed_test_name": "getPlatformSeats > 跨企业视图：不带 organization_id，携带 after_id/limit"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSeats.test.ts",
+      "observed_test_name": "getPlatformSeats > org 过滤视图：organization_id 以 string 直传（19 位大数不丢精度）"
+    },
+    {
+      "target": "src/modules/customer_service/api/platformSeats.test.ts",
+      "observed_test_name": "getPlatformSeats > limit 钳制到 1..200；非法 after_id 不下发"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A01/A07/A09：块位于范围选择器与网站接入表之间；文案逐字；widget 表回归不变"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A01：工作区切换 → seat 查询以新 workspace_id 重新发起（query key 换绑）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：未选工作区 → 引导空态，且不发起 seat 请求"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：缺 read 权限 → 无权访问，且不发起 seat 请求"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：加载中 → loading 态可见"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：列表为空 → 空态 + 创建接入（write 门控）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：查询失败 → error 态可重试"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A03/A04：active 视图展示公开标识；复制 iframe 代码后片段与冻结形状逐字相等"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A03：非法 public_seat_console_id → fail-closed 拒绝出码（错误可见、复制禁用）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A05：保存 → PUT /seat-consoles/:id（id 只在路径、body 三键）；片段与公开标识不变"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A05：停用接入 → 确认弹窗文案逐字（不谎称中断会话）→ POST /:id/revoke"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "observed_test_name": "CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > 409：同工作区已有生效接入 → 可见冲突提示"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "observed_test_name": "CsProvisioningWizardPage（unit 层替身） > A01+A03：选择器主流程完成自举，POST 落平台面，审计五键可见，全程无裸 TSID 输入"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "observed_test_name": "CsProvisioningWizardPage（unit 层替身） > A03：max_concurrent 选择器发送数值（1..20），非字符串"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "observed_test_name": "CsProvisioningWizardPage（unit 层替身） > A03：成员选择器过滤非 active 成员（archived 不出现）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "observed_test_name": "CsProvisioningWizardPage（unit 层替身） > A05：复制按钮把 snippet 写入剪贴板（无 secret）"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "observed_test_name": "CsProvisioningWizardPage（unit 层替身） > A02：只有 read 权限时为只读姿态——提示条可见，开通按钮禁用且无 POST"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "observed_test_name": "CsProvisioningWizardPage（unit 层替身） > A02：无 read 权限 → 整页 fail-closed，不渲染任何向导步骤"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "observed_test_name": "CsProvisioningWizardPage（unit 层替身） > A04：非法 origin（通配/路径）逐个拒绝并阻断创建"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "observed_test_name": "CsProvisioningWizardPage（unit 层替身） > A06：组织加载失败呈现错误态并可重试"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "observed_test_name": "CsProvisioningWizardPage（unit 层替身） > A06：空组织呈现空态引导"
+    },
+    {
+      "target": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "observed_test_name": "CsProvisioningWizardPage（unit 层替身） > A06：组织加载中呈现 loading 态"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "observed_test_name": "SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 结束会话（seat-close-submit） > active 会话点关闭：POST close 合同逐键（expected_version=权威版本 + workspace_id，无 reason 键）→ 已结束 + active 列表消失 + closed 列表在场 + 写入口收回"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "observed_test_name": "SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 结束会话（seat-close-submit） > close 撞 409（状态已被他人变更）：payload 合同不变 → seat-close-conflict 播报 + 失败方权威刷新 + 不伪成功"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "observed_test_name": "SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 转接（seat-transfer-submit） > 选中坐席乙转接：POST transfer payload 逐键（to_identity_id/expected_version/workspace_id）→ 无冲突播报 + 按钮复位 + 成功方权威刷新；未选目标禁发"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "observed_test_name": "SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 转接（seat-transfer-submit） > transfer 撞 409：payload 合同不变 → seat-transfer-conflict 播报 + 权威刷新 + 会话归属未变（不伪成功）"
+    },
+    {
+      "target": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "observed_test_name": "SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 登出（seat-logout） > active 会话（关闭/转接/回复入口在场）点退出：vault 同步清空 + store 复位（endReason=logout）→ 工作台整体收回回 QR 登录门；登出纯前端，零服务端写调用"
+    }
+  ],
+  "test_bindings": [
+    {
+      "path": "src/modules/customer_service/api/platformSeats.test.ts",
+      "sha256": "c0a6a73bf74ba353d168072091eaa25b572565cee09222de5747628d7a79849e"
+    },
+    {
+      "path": "src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx",
+      "sha256": "9ed682466db96b88580f7ea6ba192a496d288f78cdc2d7d046ca2f256800adb7"
+    },
+    {
+      "path": "src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx",
+      "sha256": "d7376a6387847bee11b2540af9ed53b0e546e43913f89b5d8900b747049f7353"
+    },
+    {
+      "path": "src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx",
+      "sha256": "12c275dc63a1081b8774eeedb64304e6f2e6310419a124d9a77594e43ce697d5"
+    }
+  ],
+  "source_manifest_ref": "admin-frontend-input-census.json",
+  "source_manifest_artifact_sha256": "23e42693138dc693a1c340f20a2132115080e3a0823d78a5352e46c1637552e2",
+  "source_hashes_reverified": 382,
+  "log": "admin-governance-host-regression.log",
+  "log_sha256": "f39afbf50fd418b02a8e6704d52ecf1fe55105cd9819af8e1ef0c853757e1de6",
+  "real_backend": false,
+  "real_browser": false,
+  "android_macos_journey": false,
+  "product_pass": false,
+  "final_required_case_credit": 0
+}

@@ -1,0 +1,44 @@
+bun test v1.3.14 (0d9b296a)
+
+src/modules/customer_service/api/platformSeats.test.ts:
+(pass) getPlatformSeats > 跨企业视图：不带 organization_id，携带 after_id/limit [1.06ms]
+(pass) getPlatformSeats > org 过滤视图：organization_id 以 string 直传（19 位大数不丢精度） [0.09ms]
+(pass) getPlatformSeats > limit 钳制到 1..200；非法 after_id 不下发 [0.04ms]
+
+src/modules/customer_service/pages/CsWidgetInstallationsPage.test.tsx:
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A01/A07/A09：块位于范围选择器与网站接入表之间；文案逐字；widget 表回归不变 [168.92ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A01：工作区切换 → seat 查询以新 workspace_id 重新发起（query key 换绑） [382.48ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：未选工作区 → 引导空态，且不发起 seat 请求 [15.26ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：缺 read 权限 → 无权访问，且不发起 seat 请求 [15.20ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：加载中 → loading 态可见 [23.55ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：列表为空 → 空态 + 创建接入（write 门控） [42.59ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A02：查询失败 → error 态可重试 [78.55ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A03/A04：active 视图展示公开标识；复制 iframe 代码后片段与冻结形状逐字相等 [165.00ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A03：非法 public_seat_console_id → fail-closed 拒绝出码（错误可见、复制禁用） [43.11ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A05：保存 → PUT /seat-consoles/:id（id 只在路径、body 三键）；片段与公开标识不变 [386.28ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > A05：停用接入 → 确认弹窗文案逐字（不谎称中断会话）→ POST /:id/revoke [484.50ms]
+(pass) CsWidgetInstallationsPage — SC-FE 客服工作台接入块 > 409：同工作区已有生效接入 → 可见冲突提示 [337.71ms]
+
+src/modules/customer_service/pages/CsProvisioningWizardPage.test.tsx:
+(pass) CsProvisioningWizardPage（unit 层替身） > A01+A03：选择器主流程完成自举，POST 落平台面，审计五键可见，全程无裸 TSID 输入 [232.67ms]
+(pass) CsProvisioningWizardPage（unit 层替身） > A03：max_concurrent 选择器发送数值（1..20），非字符串 [36.46ms]
+(pass) CsProvisioningWizardPage（unit 层替身） > A03：成员选择器过滤非 active 成员（archived 不出现） [27.62ms]
+(pass) CsProvisioningWizardPage（unit 层替身） > A05：复制按钮把 snippet 写入剪贴板（无 secret） [186.69ms]
+(pass) CsProvisioningWizardPage（unit 层替身） > A02：只有 read 权限时为只读姿态——提示条可见，开通按钮禁用且无 POST [26.83ms]
+(pass) CsProvisioningWizardPage（unit 层替身） > A02：无 read 权限 → 整页 fail-closed，不渲染任何向导步骤 [4.54ms]
+(pass) CsProvisioningWizardPage（unit 层替身） > A04：非法 origin（通配/路径）逐个拒绝并阻断创建 [205.00ms]
+(pass) CsProvisioningWizardPage（unit 层替身） > A06：组织加载失败呈现错误态并可重试 [14.86ms]
+(pass) CsProvisioningWizardPage（unit 层替身） > A06：空组织呈现空态引导 [10.71ms]
+(pass) CsProvisioningWizardPage（unit 层替身） > A06：组织加载中呈现 loading 态 [5.43ms]
+
+src/modules/customer_service/seat/workbench/SeatWorkspacePage.session-actions.test.tsx:
+(pass) SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 结束会话（seat-close-submit） > active 会话点关闭：POST close 合同逐键（expected_version=权威版本 + workspace_id，无 reason 键）→ 已结束 + active 列表消失 + closed 列表在场 + 写入口收回 [108.53ms]
+(pass) SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 结束会话（seat-close-submit） > close 撞 409（状态已被他人变更）：payload 合同不变 → seat-close-conflict 播报 + 失败方权威刷新 + 不伪成功 [58.61ms]
+(pass) SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 转接（seat-transfer-submit） > 选中坐席乙转接：POST transfer payload 逐键（to_identity_id/expected_version/workspace_id）→ 无冲突播报 + 按钮复位 + 成功方权威刷新；未选目标禁发 [89.88ms]
+(pass) SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 转接（seat-transfer-submit） > transfer 撞 409：payload 合同不变 → seat-transfer-conflict 播报 + 权威刷新 + 会话归属未变（不伪成功） [73.64ms]
+(pass) SeatWorkspacePage 三会话入口（REVIEW-4 F2/B-7：结束会话/转接/登出） > 登出（seat-logout） > active 会话（关闭/转接/回复入口在场）点退出：vault 同步清空 + store 复位（endReason=logout）→ 工作台整体收回回 QR 登录门；登出纯前端，零服务端写调用 [54.90ms]
+
+ 30 pass
+ 0 fail
+ 188 expect() calls
+Ran 30 tests across 4 files. [4.28s]
