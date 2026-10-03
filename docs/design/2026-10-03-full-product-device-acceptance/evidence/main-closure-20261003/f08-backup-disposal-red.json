@@ -1,0 +1,16 @@
+{
+  "scope": "HOST_WIDGET_SECURE_STORAGE_CHANNEL_SUBSTITUTE_ONLY",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "app_head": "d1ade5e277e15fd9f2d690c5e1d4f259f876c578",
+  "test_edit_owned_uncommitted": true,
+  "passed": 16,
+  "failed": 2,
+  "exit": 1,
+  "log": {
+    "path": "f08-backup-disposal-red.log",
+    "sha256": "7102c0b54c46e8800032297fa1c71d1cc4cc8189dc3240a41bbd5bacd29dcf83"
+  },
+  "proof_limit": "Page disposal during pending private-key read stops subsequent reads; does not cancel native work already started or uploaded backup. Synthetic private value and null public substitute avoid actual services."
+}

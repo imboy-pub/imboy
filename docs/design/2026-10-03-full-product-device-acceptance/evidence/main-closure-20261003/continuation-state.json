@@ -3429,5 +3429,44 @@
       "export-upload"
     ],
     "proof_limit": "Cached actual widget callbacks and a secure-storage channel substitute returning null keys. No actual backup file, encryption, upload, backend or device qualification. No required acceptance ID upgraded."
+  },
+  "f08_backup_disposal_fix": {
+    "red": {
+      "scope": "HOST_WIDGET_SECURE_STORAGE_CHANNEL_SUBSTITUTE_ONLY",
+      "product_pass": false,
+      "device_execution": false,
+      "real_backend_execution": false,
+      "app_head": "d1ade5e277e15fd9f2d690c5e1d4f259f876c578",
+      "test_edit_owned_uncommitted": true,
+      "passed": 16,
+      "failed": 2,
+      "exit": 1,
+      "log": {
+        "path": "f08-backup-disposal-red.log",
+        "sha256": "7102c0b54c46e8800032297fa1c71d1cc4cc8189dc3240a41bbd5bacd29dcf83"
+      },
+      "proof_limit": "Page disposal during pending private-key read stops subsequent reads; does not cancel native work already started or uploaded backup. Synthetic private value and null public substitute avoid actual services."
+    },
+    "fixed": {
+      "scope": "HOST_WIDGET_SECURE_STORAGE_CHANNEL_SUBSTITUTE_ONLY",
+      "product_pass": false,
+      "device_execution": false,
+      "real_backend_execution": false,
+      "app_head": "89edfddda80421a76599c76a6ed7ed9b628fb95f",
+      "test_edit_owned_uncommitted": false,
+      "passed": 18,
+      "failed": 0,
+      "exit": 0,
+      "log": {
+        "path": "f08-backup-disposal-fixed.log",
+        "sha256": "b0b2fe1c5c0f13ede87045ecf13e16de2d1a78b7b3e4649ed4b48ef9f116f7ec"
+      },
+      "proof_limit": "Page disposal during pending private-key read stops subsequent reads; does not cancel native work already started or uploaded backup. Synthetic private value and null public substitute avoid actual services.",
+      "analyze_exit": 0,
+      "reviews": [
+        "FLUTTER_REVIEW_APPROVE",
+        "CODE_REVIEW_APPROVE"
+      ]
+    }
   }
 }
