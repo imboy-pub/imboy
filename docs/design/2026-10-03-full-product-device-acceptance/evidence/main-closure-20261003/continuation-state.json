@@ -4810,5 +4810,10 @@
     "app_head": "0e8e4dc215189527db202ae9fda5d2c9e4bc5d04",
     "product_pass": false,
     "remaining": "In-flight commit/rollback atomicity and real identity lifecycle qualification"
+  },
+  "organization_picker_personal_epoch": {
+    "receipt": "organization-picker-personal-epoch-20261004.json",
+    "app_head": "40b0debbc2397b4a4cfeb618d7472c653aeed0a5",
+    "product_pass": false
   }
 }

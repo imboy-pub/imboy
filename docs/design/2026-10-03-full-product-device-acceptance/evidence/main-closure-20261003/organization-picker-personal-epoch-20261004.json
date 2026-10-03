@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_EXPLICIT_ACCOUNT_PERSONAL_MODE_CALLBACK_ISOLATION",
+  "app_head": "40b0debbc2397b4a4cfeb618d7472c653aeed0a5",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "results": {
+    "initial_red_exit": 1,
+    "initial_red_failed": 2,
+    "independent_file_calibration_exit": 1,
+    "calibration_failed": 2,
+    "final_test_exit": 0,
+    "final_passed": 22,
+    "analyze_issues": 0,
+    "catalog_targets": 153
+  },
+  "changes": [
+    "Personal mode callbacks capture account and account epoch.",
+    "After account A-B-A, old success does not navigate and old failure does not render an error.",
+    "Original pending operation holds the switch gate until finally releases it."
+  ],
+  "attempt_notes": [
+    "Initial RED used the existing picker test file. Moved new tests into a separate 167-line file and restored existing picker test bytes.",
+    "Temporarily restored only the original personal-mode method; both independent-file tests failed. Restored exact current source and final suite passed."
+  ],
+  "limitations": [
+    "Deferred synthetic provider confirms post-await UI/navigation behavior, not actual preference persistence.",
+    "Already-started mode writes are not cancelled or rolled back.",
+    "No real login, device, backend, database or production qualification."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-personal-epoch-red-20261004.log",
+      "sha256": "68320d2945d9f1f0ec64931a7598aef4cc213dff7f5b88f452a24ee35f1c234c"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-personal-epoch-green-20261004.log",
+      "sha256": "d9c5b765de7e3ad5cc8fb1595cd7ea1d016d294b9c92ee2751d85111d73833ae"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-personal-epoch-final-20261004.log",
+      "sha256": "000c96d5df1ca8a10e0bffb84b261341055d432c59b112827c741b78dfd0cec8"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-personal-epoch-analyze-20261004.log",
+      "sha256": "0a3a3be7b7b45a74303c758e465fb71cd1c2ca3d07d1015a19ff9d1e0575824c"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-personal-epoch-calibration-20261004.log",
+      "sha256": "3f4e18df99914d4f9b435850ed6aab986aee88b2e4c56fc96c3a997929e7f684"
+    }
+  ]
+}
