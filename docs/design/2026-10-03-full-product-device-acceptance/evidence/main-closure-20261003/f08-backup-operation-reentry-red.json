@@ -1,0 +1,15 @@
+{
+  "scope": "HOST_WIDGET_CACHED_CALLBACK_RED_REPRODUCTION",
+  "product_pass": false,
+  "exit": 1,
+  "passed": 12,
+  "failed": 4,
+  "app_head_before_fix": "d3ef7526adcc6c603ce9fe07c900af94e3c18a5a",
+  "test_edit_owned_uncommitted": true,
+  "target_sha256": "c602226c9b9766bae1dbf718a100923b0db1b3323c0ad521c9723c82a3570393",
+  "log": {
+    "path": "f08-backup-operation-reentry-red.log",
+    "sha256": "540004baa334afaba8a0c84674dc3a17a03951bca9876aa076a5295ff604889d"
+  },
+  "reason": "Both cached callbacks start key reads before rebuild disables UI; duplicate and mixed export/upload all observed 2 instead of 1"
+}
