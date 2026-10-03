@@ -4555,5 +4555,12 @@
     "app_head": "ef712be8aee51fdafd35be3fa461f7a68eaaa123",
     "tests": 11,
     "product_pass": false
+  },
+  "f14_remaining_four_case_design": {
+    "receipt": "f14-remaining-four-case-design.json",
+    "app_head": "ef712be8aee51fdafd35be3fa461f7a68eaaa123",
+    "cases_designed": 4,
+    "execution_status": "NOT_EXECUTED",
+    "product_pass": false
   }
 }

@@ -1,0 +1,74 @@
+{
+  "scope": "CURRENT_SOURCE_BILLING_REMAINING_CASE_DESIGN_ONLY",
+  "app_head": "ef712be8aee51fdafd35be3fa461f7a68eaaa123",
+  "source_hashes": {
+    "lib/page/billing/plan_list_page.dart": "eee10c1ecdd92ae85572ba6299847fb1be57bd7b5634e2506ea90d0b39551de3",
+    "test/auto_test/specs/billing-device-preparation.json": "06c7a01d0ec54b8e1c8cec8378fa1836fe2a4e992fa33af4db54dfdd4c4bcc96",
+    "test/auto_test/functional_inventory.json": "ac7184fab6c4db4a9edd937311806ae30a07863a22208291a4c680a83fabe7d1"
+  },
+  "cases": [
+    {
+      "function_id": "fn:billing:plan_list_page:001",
+      "current_inventory_action": "触发第 1 处 button 交互入口",
+      "proposed_concrete_action": "选择开发环境模拟支付",
+      "business_oracle": "仅 local 且允许 mock 配置时入口可见；production 配置入口不存在；授权隔离合成订阅后订单、账单、订阅状态与数据库审计一致，幂等重试不得重复计费",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "required_resources": "isolated synthetic billing-write authorization; runtime payment profile",
+      "status": "DESIGNED_NOT_EXECUTABLE",
+      "target": null,
+      "qualified_pass": false
+    },
+    {
+      "function_id": "fn:billing:plan_list_page:002",
+      "current_inventory_action": "触发第 2 处 button 交互入口",
+      "proposed_concrete_action": "选择支付宝支付",
+      "business_oracle": "未配置时显示尚未开放提示且无错误成功状态；已配置正式跳转与回调、取消、失败须另行第三方授权；隔离审计确认未授权路径未发出支付请求",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "required_resources": "isolated fixture; explicit external provider authorization for configured branch",
+      "status": "DESIGNED_NOT_EXECUTABLE",
+      "target": null,
+      "qualified_pass": false
+    },
+    {
+      "function_id": "fn:billing:plan_list_page:003",
+      "current_inventory_action": "触发第 3 处 button 交互入口",
+      "proposed_concrete_action": "选择微信支付",
+      "business_oracle": "未配置时显示尚未开放提示且无错误成功状态；已配置正式跳转与回调、取消、失败须另行第三方授权；隔离审计确认未授权路径未发出支付请求",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "required_resources": "isolated fixture; explicit external provider authorization for configured branch",
+      "status": "DESIGNED_NOT_EXECUTABLE",
+      "target": null,
+      "qualified_pass": false
+    },
+    {
+      "function_id": "fn:billing:plan_list_page:005",
+      "current_inventory_action": "触发第 5 处 button 交互入口",
+      "proposed_concrete_action": "套餐加载失败后点击重试",
+      "business_oracle": "同候选同合成账号下，隔离后端先返回可审计失败，页面显示加载失败和重试；恢复套餐接口后点击重试，记录真实第二次请求并展示精确套餐名称和整数分价格；不能仅依赖假provider",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "required_resources": "authorized isolated backend; scoped deterministic failure fixture",
+      "status": "DESIGNED_NOT_EXECUTABLE",
+      "target": null,
+      "qualified_pass": false
+    }
+  ],
+  "existing_mapped_functions": [
+    "fn:billing:plan_list_page:004",
+    "fn:billing:plan_list_page:006"
+  ],
+  "remaining_inventory_gaps_unchanged": true,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": []
+}
