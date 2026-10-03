@@ -1,0 +1,44 @@
+{
+  "id": "F01-CLEAN-CANDIDATE-TOOLING-REGRESSION",
+  "scope": "LOCAL_TOOLING_ONLY",
+  "candidate_heads": {
+    "imboy": "4172e2ab4505e2cc9dc89c2724c06152f64132a1",
+    "imboyapp": "876cd2ba1dc870e1d81eeb3af81c8f16f567ad52",
+    "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+  },
+  "candidate_gate": {
+    "errors": [],
+    "scope": "CURRENT_HEAD_TRACKED_CLEANLINESS_ONLY",
+    "product_pass": false
+  },
+  "command": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "test/tooling/auto_test"
+  ],
+  "executed": 415,
+  "failed": 0,
+  "exit_code": 0,
+  "log": "f01-clean-candidate-tooling-suite.log",
+  "log_sha256": "8c8881adc477ee582c5fa253d2f3a875b1b3481e4d0b0b5e6af1d0186f634d1e",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "temporary_worktrees_removed": 3,
+  "branches_created": 0,
+  "cleanup_verified": true,
+  "remaining_worktrees": {
+    "imboy": "worktree /Users/leeyi/project/imboy.pub/imboy\nHEAD 4172e2ab4505e2cc9dc89c2724c06152f64132a1\nbranch refs/heads/main\n\n",
+    "imboyapp": "worktree /Users/leeyi/project/imboy.pub/imboyapp\nHEAD 876cd2ba1dc870e1d81eeb3af81c8f16f567ad52\nbranch refs/heads/main\n\n",
+    "imboyadmin": "worktree /Users/leeyi/project/imboy.pub/imboyadmin\nHEAD 997971a882928d67e70d6261629d5c69d2703539\nbranch refs/heads/main\n\n"
+  },
+  "proof_limits": [
+    "Only current HEAD and tracked cleanliness checked; all worker ancestor obligations not proven by self-ancestor input.",
+    "Untracked source/runtime/build and actual business oracles require separate gates.",
+    "Evidence/state commit advances backend main; this remains local tooling receipt, not final frozen acceptance.",
+    "Original shared App WIP preserved; no device/native dependency build executed."
+  ]
+}

@@ -4036,5 +4036,19 @@
     "acceptance_sets_exact": true,
     "product_pass": false,
     "next": "ISOLATED_CLEAN_CANDIDATE_REQUIRED"
+  },
+  "clean_candidate_tooling_regression": {
+    "receipt": "f01-clean-candidate-tooling.json",
+    "receipt_sha256": "1e6b79c2a968c85c1fcd264ba63e7662c448bcc3a6ebf04bdcacacd9a978c55c",
+    "candidate_heads": {
+      "imboy": "4172e2ab4505e2cc9dc89c2724c06152f64132a1",
+      "imboyapp": "876cd2ba1dc870e1d81eeb3af81c8f16f567ad52",
+      "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+    },
+    "executed": 415,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false,
+    "temporary_worktrees_removed": 3
   }
 }
