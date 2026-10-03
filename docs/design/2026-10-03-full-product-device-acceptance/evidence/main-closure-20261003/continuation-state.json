@@ -4419,5 +4419,11 @@
     "backend_head": "672d9be7ef10e8630a3a0760f2da965acee77210",
     "tests": 67,
     "product_pass": false
+  },
+  "e2ee_olm_query_log_privacy": {
+    "receipt": "e2ee-olm-log-redaction.json",
+    "backend_head": "0e42b76d1bd6734a1b022bda2c704a754e004821",
+    "tests": 47,
+    "product_pass": false
   }
 }

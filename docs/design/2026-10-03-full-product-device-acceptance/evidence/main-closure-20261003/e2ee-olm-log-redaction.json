@@ -1,0 +1,43 @@
+{
+  "scope": "LOCAL_OLM_QUERY_LOG_PRIVACY_ONLY",
+  "backend_head": "0e42b76d1bd6734a1b022bda2c704a754e004821",
+  "behavior_red": {
+    "failed": 4,
+    "passed": 0,
+    "exit_code": 1
+  },
+  "green": {
+    "passed": 47,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-olm-log-red.log",
+      "sha256": "be6e9a0e7242ed41a5cb852310c9e193695afa54dd4b798a8a0fd9f4e7fcdb78"
+    },
+    {
+      "path": "e2ee-olm-log-green.log",
+      "sha256": "d45f7378f96907aee0c9271abff1e8eaa689d5a2d0384ced3ce41c7b476d468e"
+    },
+    {
+      "path": "e2ee-olm-log-compile.log",
+      "sha256": "dd104fa41c1dee79e42a0796eb488079e61f3ef86f29a78abab64631c92d7e45"
+    }
+  ],
+  "source_hashes": {
+    "src/logic/olm_identity_logic.erl": "16c8f13dffbf3709b83d947361a2485427464bd0d82e780146fd3903d7abee00",
+    "test/logic/olm_identity_log_privacy_tests.erl": "98569be4ed0f3a238100d6bec3078ed23edf88ad060d2c4788733082dc726deb"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "limits": [
+    "Four identity/device/OTK/consumed-OTK failure log sites retain event and severity without identifiers or arbitrary reason",
+    "Cleanup persistence mocked; no real deletion, database or device operation",
+    "No full AC26 or production SLO qualification"
+  ]
+}

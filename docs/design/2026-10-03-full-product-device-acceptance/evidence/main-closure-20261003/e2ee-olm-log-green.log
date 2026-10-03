@@ -1,0 +1,54 @@
+======================== EUnit ========================
+module 'olm_identity_log_privacy_tests'
+  olm_identity_log_privacy_tests:19: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-5-...[0.131 s] ok
+  olm_identity_log_privacy_tests:19: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-5-...[0.023 s] ok
+  olm_identity_log_privacy_tests:19: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-5-...[0.020 s] ok
+  olm_identity_log_privacy_tests:19: -database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-5-...[0.019 s] ok
+  [done in 0.205 s]
+module 'olm_identity_logic_tests'
+  olm_identity_logic_tests: report_identity_rejects_empty_keys_test...[0.009 s] ok
+  olm_identity_logic_tests: report_identity_rejects_bad_args_test...ok
+  olm_identity_logic_tests: report_identity_ok_test...[0.292 s] ok
+  olm_identity_logic_tests: report_one_time_keys_rejects_empty_test...ok
+  olm_identity_logic_tests: report_one_time_keys_rejects_invalid_format_test...ok
+  olm_identity_logic_tests: report_one_time_keys_ok_test...[0.009 s] ok
+  olm_identity_logic_tests: claim_keys_prefers_one_time_test...[0.029 s] ok
+  olm_identity_logic_tests: claim_keys_falls_back_when_otk_exhausted_test...[0.038 s] ok
+  olm_identity_logic_tests: claim_keys_returns_no_prekey_available_test...[0.034 s] ok
+  olm_identity_logic_tests: claim_keys_unknown_device_test...[0.033 s] ok
+  olm_identity_logic_tests: get_identity_ok_test...[0.008 s] ok
+  olm_identity_logic_tests: get_identity_not_found_test...[0.007 s] ok
+  olm_identity_logic_tests: list_devices_ok_test...[0.008 s] ok
+  olm_identity_logic_tests: list_devices_empty_ok_test...[0.007 s] ok
+  olm_identity_logic_tests: list_devices_rejects_bad_uid_test...ok
+  olm_identity_logic_tests: list_devices_maps_ds_error_test...[0.017 s] ok
+  olm_identity_logic_tests: batch_claim_all_ok_test...[0.030 s] ok
+  olm_identity_logic_tests: batch_claim_partial_failure_test...[0.029 s] ok
+  olm_identity_logic_tests: batch_claim_dedups_device_ids_test...[0.030 s] ok
+  olm_identity_logic_tests: batch_claim_rejects_empty_test...ok
+  olm_identity_logic_tests: batch_claim_rejects_too_many_test...ok
+  olm_identity_logic_tests: batch_claim_rejects_bad_args_test...ok
+  olm_identity_logic_tests: contract_list_devices_shape_test...[0.007 s] ok
+  olm_identity_logic_tests: contract_batch_claim_shape_test...[0.029 s] ok
+  olm_identity_logic_tests: report_identity_rejects_root_key_swap_without_old_key_proof_test...[0.028 s] ok
+  olm_identity_logic_tests: report_identity_root_key_rotation_with_old_key_signature_test...[0.070 s] ok
+  olm_identity_logic_tests: report_identity_subkey_rotation_bumps_version_and_emits_event_test...[0.071 s] ok
+  olm_identity_logic_tests: report_identity_idempotent_rereport_no_bump_no_event_test...[0.029 s] ok
+  olm_identity_logic_tests: report_identity_revived_device_rejected_test...[0.032 s] ok
+  olm_identity_logic_tests: report_identity_find_identity_error_fails_closed_test...[0.029 s] ok
+  olm_identity_logic_tests: report_identity_rotation_event_failure_does_not_block_test...[0.087 s] ok
+  olm_identity_logic_tests: rotation_signature_survives_peer_verification_test...[0.073 s] ok
+  olm_identity_logic_tests: rotation_rejects_self_signature_without_transition_proof_test...[0.031 s] ok
+  olm_identity_logic_tests: rotation_rejects_transition_signature_without_self_signature_test...[0.035 s] ok
+  olm_identity_logic_tests: legacy_six_arity_rotation_requires_transition_proof_test...[0.030 s] ok
+  olm_identity_logic_tests: rotation_transition_signature_binds_context_test...[0.029 s] ok
+  olm_identity_logic_tests: claim_keys_rejects_revoked_target_device_test...[0.029 s] ok
+  olm_identity_logic_tests: claim_keys_with_request_id_rejects_revoked_target_device_test...[0.029 s] ok
+  olm_identity_logic_tests: claim_keys_self_claim_revoked_device_rejected_test...[0.007 s] ok
+  olm_identity_logic_tests: cleanup_rejects_zero_retention_test...[0.007 s] ok
+  olm_identity_logic_tests: cleanup_rejects_negative_retention_test...[0.008 s] ok
+  olm_identity_logic_tests: cleanup_converts_days_to_seconds_and_passes_through_test...[0.007 s] ok
+  olm_identity_logic_tests: cleanup_maps_ds_error_test...[0.008 s] ok
+  [done in 1.385 s]
+=======================================================
+  All 47 tests passed.
