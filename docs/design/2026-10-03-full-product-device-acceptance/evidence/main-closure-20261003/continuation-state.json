@@ -1419,5 +1419,17 @@
     "scope": "ADMIN_LOCAL_MOCK_REGRESSION_ONLY",
     "product_pass": false,
     "remaining": "F12 exact semantic case/profile/role mapping and genuine backend/browser/dual-device journeys"
+  },
+  "admin_current_static_build_gate": {
+    "candidate_admin": "997971a882928d67e70d6261629d5c69d2703539",
+    "receipt": "admin-current-static-build.json",
+    "receipt_sha256": "863dd138c69445e48c19e259c8121ddf377f066de0fce236df7866cd273d941d",
+    "typecheck_exit": 0,
+    "lint_exit": 0,
+    "build_exit": 0,
+    "build_artifact_count": 85,
+    "scope": "LOCAL_STATIC_AND_BUILD_ONLY",
+    "product_pass": false,
+    "remaining": "qualify effective profile/runtime config, real browser/backend/dual-platform journeys and final case bindings"
   }
 }
