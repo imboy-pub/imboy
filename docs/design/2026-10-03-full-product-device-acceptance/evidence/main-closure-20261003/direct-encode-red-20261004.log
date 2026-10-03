@@ -1,0 +1,25 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart
+00:00 +0: direct encoding completion session changed=false
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+ChatNetworkService.sendMessage: msgId=synthetic-direct-encoding, type=C2C, action=
+消息加入重试队列: synthetic-direct-encoding, type=C2C
+ChatNetworkService.sendMessage已提交: synthetic-direct-encoding
+00:00 +1: direct encoding completion session changed=true
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+ChatNetworkService.sendMessage: msgId=synthetic-direct-encoding, type=C2C, action=
+消息加入重试队列: synthetic-direct-encoding, type=C2C
+ChatNetworkService.sendMessage已提交: synthetic-direct-encoding
+00:00 +1 -1: direct encoding completion session changed=true [E]
+  Expected: <false>
+    Actual: <true>
+  
+  package:matcher                                              expect
+  package:flutter_test/src/widget_tester.dart 473:18           expect
+  test/unit_test/service/chat_network_session_test.dart 195:9  main.<fn>
+  
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart: direct encoding completion session changed=true
