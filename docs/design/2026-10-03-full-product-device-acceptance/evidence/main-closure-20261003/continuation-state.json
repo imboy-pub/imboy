@@ -5127,5 +5127,14 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "cross_table_status_session_isolation": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/cross-table-status-session-isolation-20261004.json",
+    "app_head": "422fc79a55559e09108f1d4a69b981e734f05941",
+    "executed": 252,
+    "focused_executed": 12,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }
