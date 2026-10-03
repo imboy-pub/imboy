@@ -4829,5 +4829,10 @@
     "receipt": "organization-picker-join-result-epoch-20261004.json",
     "app_head": "52590c9a4a1a296ef3175c12c99534bf0d3e64b0",
     "product_pass": false
+  },
+  "organization_join_dialog_request_epoch": {
+    "receipt": "organization-join-request-account-epoch-20261004.json",
+    "app_head": "3ad042f14e6bf600228713ff7e47f75e23c5b392",
+    "product_pass": false
   }
 }

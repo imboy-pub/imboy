@@ -1,0 +1,5 @@
+Analyzing organization_picker_page.dart, organization_picker_join_account_test.dart...
+
+   info - lib/modules/organization/presentation/organization_picker_page.dart:542:20 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+
+1 issue found.

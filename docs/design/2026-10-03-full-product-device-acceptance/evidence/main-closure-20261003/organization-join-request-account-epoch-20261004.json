@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_EXPLICIT_ACCOUNT_JOIN_DIALOG_REQUEST_GUARDS",
+  "app_head": "3ad042f14e6bf600228713ff7e47f75e23c5b392",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "results": {
+    "red_exit": 1,
+    "red_failed": 4,
+    "final_exit": 0,
+    "passed": 28,
+    "final_analyze_issues": 0,
+    "catalog_targets": 153,
+    "inventory_functions": 1982
+  },
+  "changes": [
+    "Dialog validity callback binds parent mounted/account/epoch plus dialog mounted.",
+    "Preview, join and scanner entry/results refuse stale accounts; success/error callbacks also guarded."
+  ],
+  "oracles": [
+    "Four actual input/submit widget cases: preview and confirmed join after A-B and A-B-A do not invoke mocked endpoints."
+  ],
+  "attempt_notes": [
+    "Initial analyzer reported one context-across-await info; expanded equivalent mounted/account predicate before navigation and final analyzer is clean."
+  ],
+  "limitations": [
+    "Scanner return and late in-flight response guards are code-reviewed, not dynamically covered by the four new cases.",
+    "Requests already started before account change cannot be undone by these checks.",
+    "Stale modal is not automatically closed; cancellation remains available and further submission has no effect.",
+    "No real authentication switch, device, database or production qualification."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-request-epoch-red-20261004.log",
+      "sha256": "1318726394f16c37c162acaefaef57ebbe7ed7cd17d5084adbdb27a56e0af377"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-request-epoch-green-20261004.log",
+      "sha256": "efb0842700d60a2fa4a875f533a143b4eba9eb4f2c3bcd14cf5b1b606cb1ab3a"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-request-epoch-final-20261004.log",
+      "sha256": "e2483da4e5b837032608fb5b69627148c8d9a809f092c62a2afdd971ba3cb733"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-request-epoch-analyze-20261004.log",
+      "sha256": "25073027c02a39d4dcdd8c16b09ebbdd47cbd3865ebb9177058affee6ae80025"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-request-epoch-analyze-final-20261004.log",
+      "sha256": "75d88d928710084dd118c54a196c880dba7b2c299153a7585018505ee8c2567c"
+    }
+  ]
+}
