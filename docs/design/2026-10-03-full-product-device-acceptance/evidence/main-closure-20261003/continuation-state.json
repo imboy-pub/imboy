@@ -4276,5 +4276,15 @@
     "app_head": "b3675f5951c80fb6aa2fa880a6cd5a50ade28915",
     "executed": 35,
     "product_pass": false
+  },
+  "f14_payment_profile_visibility": {
+    "receipt": "f14-payment-profile-visibility.json",
+    "receipt_sha256": "abd3fbccfe01e2d5e28426570b9ce4cf17f7744d55515132e28bcf18beadf82d",
+    "app_head": "03cfecb32b8de5ac382e69ac4e88d0f45e208117",
+    "profiles": [
+      "pro",
+      "local"
+    ],
+    "product_pass": false
   }
 }

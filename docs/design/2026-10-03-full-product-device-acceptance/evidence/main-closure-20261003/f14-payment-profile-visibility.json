@@ -1,0 +1,39 @@
+{
+  "id": "F14-MOCK-PAYMENT-PROFILE-VISIBILITY",
+  "app_head": "03cfecb32b8de5ac382e69ac4e88d0f45e208117",
+  "scope": "LOCAL_HOST_TWO_COMPILE_PROFILES_UI_ONLY",
+  "design_case_id": "F14-PLAN-LIST-009",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "analysis": "No issues found",
+  "review": "DUAL_APPROVED",
+  "runs": [
+    {
+      "app_env": "pro",
+      "expected_mock_payment": false,
+      "executed": 1,
+      "exit_code": 0,
+      "log": "f14-payment-profile-pro.log",
+      "log_sha256": "e7ab848e2318a3a1de739dedb4d448b408fe7a0016d887b096a53919121ce12a"
+    },
+    {
+      "app_env": "local",
+      "expected_mock_payment": true,
+      "executed": 1,
+      "exit_code": 0,
+      "log": "f14-payment-profile-local.log",
+      "log_sha256": "e7ab848e2318a3a1de739dedb4d448b408fe7a0016d887b096a53919121ce12a"
+    }
+  ],
+  "oracles": [
+    "Independent EXPECT_MOCK_PAYMENT define provides expected UI value",
+    "Pro compile profile hides mock action; local shows it",
+    "Alipay/WeChat actions remain visible; cancellation creates zero API requests"
+  ],
+  "limits": [
+    "Does not establish server-side mock payment rejection or actual payment behavior",
+    "Only pro and local tested; no claims for other environment spellings",
+    "No original acceptance ID upgraded"
+  ]
+}
