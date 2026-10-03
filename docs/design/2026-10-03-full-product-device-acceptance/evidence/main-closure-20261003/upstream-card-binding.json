@@ -1,0 +1,29 @@
+{
+  "id": "PREPARATION-F01-UPSTREAM-CARD-OWNERSHIP",
+  "scope": "LEDGER_DECLARATION_BINDING_ONLY",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "app_head": "32d4220e529272f7116c3c9bf9f8a1c0fc3a3520",
+  "executed": 406,
+  "exit": 0,
+  "reviews": [
+    "PYTHON_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "argv": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "test/tooling/auto_test"
+  ],
+  "log": {
+    "path": "upstream-card-binding-suite.log",
+    "sha256": "8fede07bfbc712df298dfc3e7185e2394d613463f1f329f2ca27459b63b39635"
+  },
+  "plan_mapping_probe": "36-ID to C00-C17 mapping exactly matches current plan authoritative table",
+  "plan_sha256": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+  "proof_limit": "Checks declared requirement/card ownership only; does not prove authentic command execution, business/security oracles, device journeys or final acceptance. No required ID upgraded."
+}
