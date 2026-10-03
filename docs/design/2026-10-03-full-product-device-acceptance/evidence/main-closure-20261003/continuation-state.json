@@ -5056,5 +5056,13 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "pending_ack_session_generation": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/pending-ack-session-generation-20261004.json",
+    "app_head": "88c7da0f31127eded535f823fcfc5d7bcd4e5879",
+    "executed": 219,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

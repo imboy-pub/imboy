@@ -1,0 +1,45 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+00:00 +0: pending ACK retry framing=FramingMode.none stale=false
+🧹 [QUEUE] 启动定期清理 Timer
+✅ [ACK_MANAGER] AckManager initialized
+📤 [ACK_MANAGER] 发送ACK: msgId=1001, type=C2C, retryCount=0
+✅ [ACK_MANAGER] ACK发送成功: msgId=1001, retryCount=0
+> ws: 消息已发送 (1001) [UNKNOWN] [36 bytes]
+🔄 [ACK_MANAGER] ACK重试 1/4: msgId=1001
+✅ [ACK_MANAGER] ACK发送成功: msgId=1001, retryCount=1
+> ws: 消息已发送 (1001) [UNKNOWN] [36 bytes]
+🗑️ [ACK_MANAGER] 已取消所有 Timer
+unhandled error during finalization of test:
+/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+TestDeviceException(Shell subprocess terminated by ^C (SIGINT, -2).)
+#0      FlutterTesterTestDevice.finished (package:flutter_tools/src/test/flutter_tester_device.dart:256:5)
+<asynchronous suspension>
+#1      FlutterTesterTestDevice.kill (package:flutter_tools/src/test/flutter_tester_device.dart:238:5)
+<asynchronous suspension>
+#2      FlutterPlatform._startTest.<anonymous closure> (package:flutter_tools/src/test/flutter_platform.dart:689:9)
+<asynchronous suspension>
+#3      FlutterPlatform._startTest.finalize (package:flutter_tools/src/test/flutter_platform.dart:591:11)
+<asynchronous suspension>
+#4      asyncGuard.<anonymous closure> (package:flutter_tools/src/base/async_guard.dart:108:24)
+<asynchronous suspension>
+
+unhandled error during finalization of test:
+/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+PathNotFoundException: Deletion failed, path = '/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/flutter_tools.Bw3LNF/flutter_test_listener.Dl5MP7' (OS Error: No such file or directory, errno = 2)
+#0      _Directory._deleteSync (dart:io/directory_impl.dart:216:7)
+#1      FileSystemEntity.deleteSync (dart:io/file_system_entity.dart:425:7)
+#2      ForwardingFileSystemEntity.deleteSync (package:file/src/forwarding/forwarding_file_system_entity.dart:70:16)
+#3      ErrorHandlingDirectory.deleteSync.<anonymous closure> (package:flutter_tools/src/base/error_handling_io.dart:717:22)
+#4      _runSync (package:flutter_tools/src/base/error_handling_io.dart:1118:16)
+#5      ErrorHandlingDirectory.deleteSync (package:flutter_tools/src/base/error_handling_io.dart:716:12)
+#6      FlutterPlatform._createListenerDart.<anonymous closure> (package:flutter_tools/src/test/flutter_platform.dart:786:15)
+#7      FlutterPlatform._startTest.finalize (package:flutter_tools/src/test/flutter_platform.dart:591:26)
+<asynchronous suspension>
+#8      asyncGuard.<anonymous closure> (package:flutter_tools/src/base/async_guard.dart:108:24)
+<asynchronous suspension>
+
+00:29 +0: pending ACK retry framing=FramingMode.none stale=false - did not complete [E]
+00:29 +0: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart: pending ACK retry framing=FramingMode.none stale=false (did not complete)

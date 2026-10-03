@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_PENDING_ACK_SESSION_GENERATION",
+  "app_head": "88c7da0f31127eded535f823fcfc5d7bcd4e5879",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_WITH_REAL_TIMER_NORMAL_STALE_AND_SAME_ID_REPLACEMENT",
+  "results": {
+    "behavior_red_exit": 1,
+    "behavior_red_passed": 2,
+    "behavior_red_failed": 2,
+    "final_domain_exit": 0,
+    "final_domain_passed": 219,
+    "full_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "PendingACK timer in v1 actual event consumption and v2 binary direct sink: normal generation retries once; generation change sends no additional frame and removes stale pending record.",
+    "Same-session repeated sameID ACK retains original3s timer; replacement in new generation resets initial interval, crosses old5s timer deadline without extra frame.",
+    "Generation change is real loginAfter increment with mocked secure write throwing before account/DB/network login completion."
+  ],
+  "implementation_verified_by_review": [
+    "PendingACK captures generation; sendInternal, schedule and timer reject stale/clearing; v1 event carries original generation; timer object identity prevents stale callbacks from touching replacement timers."
+  ],
+  "attempt_notes": [
+    "red log is compilation failure due incorrect fixture enum/import and is not behavior RED.",
+    "red2 widget fake-clock fixture stopped own live process after first case stalled; no completion result claimed. Replaced with ordinary async tests and real3s timers.",
+    "red3 is authoritative behavior RED2PASS2FAIL; final qualified logs include sameID regression."
+  ],
+  "limitations": [
+    "Local mocked secure storage and fake connected sink only; no real account/device/server ACK journey or original97-ID upgrade.",
+    "Identity binding here is session generation; UID-only mutation without generation increment and other message producer asynchronous boundaries remain unqualified.",
+    "Timer tests use real elapsed time and scheduling margin; clearing and stale timer-identity paths additionally source-reviewed, not all independently fault-injected."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ack-session-red-20261004.log",
+      "sha256": "2609281a36740d04d35be00c56d7487731a069dd109d146f60b299c432475b9a"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ack-session-red2-20261004.log",
+      "sha256": "af3a5fb1bafc2bc6ce5732382a693c9ab2f8a4bc48fe91232928824fb8069d47"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ack-session-red3-20261004.log",
+      "sha256": "6fc68466ba46899d49715eb208325eee5edf5c154fa86e0aa854d2d97cfebab3"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ack-session-final-domain-20261004.log",
+      "sha256": "4febe59c5734d76af523f539f3340275da12d04c6fa076245e155b958180c312"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ack-session-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ack-session-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ack-session-qualified-domain-20261004.log",
+      "sha256": "6020758399f600b506101cb63065c05da08ad10f1a997a314b54a2c861364d89"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ack-session-qualified-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ack-session-qualified-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    }
+  ]
+}

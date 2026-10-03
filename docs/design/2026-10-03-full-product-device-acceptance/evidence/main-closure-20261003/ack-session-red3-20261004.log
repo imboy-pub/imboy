@@ -1,0 +1,68 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+00:00 +0: pending ACK retry framing=FramingMode.none stale=false
+🧹 [QUEUE] 启动定期清理 Timer
+✅ [ACK_MANAGER] AckManager initialized
+📤 [ACK_MANAGER] 发送ACK: msgId=1001, type=C2C, retryCount=0
+✅ [ACK_MANAGER] ACK发送成功: msgId=1001, retryCount=0
+> ws: 消息已发送 (1001) [UNKNOWN] [36 bytes]
+🔄 [ACK_MANAGER] ACK重试 1/4: msgId=1001
+✅ [ACK_MANAGER] ACK发送成功: msgId=1001, retryCount=1
+> ws: 消息已发送 (1001) [UNKNOWN] [36 bytes]
+🗑️ [ACK_MANAGER] 已取消所有 Timer
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:03 +1: pending ACK retry framing=FramingMode.none stale=true
+✅ [ACK_MANAGER] AckManager initialized
+📤 [ACK_MANAGER] 发送ACK: msgId=1001, type=C2C, retryCount=0
+✅ [ACK_MANAGER] ACK发送成功: msgId=1001, retryCount=0
+> ws: 消息已发送 (1001) [UNKNOWN] [36 bytes]
+🔄 [ACK_MANAGER] ACK重试 1/4: msgId=1001
+✅ [ACK_MANAGER] ACK发送成功: msgId=1001, retryCount=1
+> ws: 消息已发送 (1001) [UNKNOWN] [36 bytes]
+🗑️ [ACK_MANAGER] 已取消所有 Timer
+00:06 +1 -1: pending ACK retry framing=FramingMode.none stale=true [E]
+  Expected: an object with length of <1>
+    Actual: ['CLIENT_ACK,C2C,1001,synthetic-device', 'CLIENT_ACK,C2C,1001,synthetic-device']
+     Which: has length of <2>
+  
+  package:matcher                                                 expect
+  package:flutter_test/src/widget_tester.dart 473:18              expect
+  test/unit_test/service/websocket_send_session_test.dart 132:11  main.<fn>
+  
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:06 +1 -1: pending ACK retry framing=FramingMode.v2 stale=false
+✅ [ACK_MANAGER] AckManager initialized
+📤 [ACK_MANAGER] 发送ACK: msgId=1001, type=C2C, retryCount=0
+✅ [ACK_MANAGER] v2 二进制 ACK 发送成功: msgId=1001, retryCount=0
+🔄 [ACK_MANAGER] ACK重试 1/4: msgId=1001
+✅ [ACK_MANAGER] v2 二进制 ACK 发送成功: msgId=1001, retryCount=1
+🗑️ [ACK_MANAGER] 已取消所有 Timer
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:09 +2 -1: pending ACK retry framing=FramingMode.v2 stale=true
+✅ [ACK_MANAGER] AckManager initialized
+📤 [ACK_MANAGER] 发送ACK: msgId=1001, type=C2C, retryCount=0
+✅ [ACK_MANAGER] v2 二进制 ACK 发送成功: msgId=1001, retryCount=0
+🔄 [ACK_MANAGER] ACK重试 1/4: msgId=1001
+✅ [ACK_MANAGER] v2 二进制 ACK 发送成功: msgId=1001, retryCount=1
+🗑️ [ACK_MANAGER] 已取消所有 Timer
+00:12 +2 -2: pending ACK retry framing=FramingMode.v2 stale=true [E]
+  Expected: an object with length of <1>
+    Actual: [
+              [73, 66, 2, 0, 3, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 3, 233],
+              [73, 66, 2, 0, 3, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 3, 233]
+            ]
+     Which: has length of <2>
+  
+  package:matcher                                                 expect
+  package:flutter_test/src/widget_tester.dart 473:18              expect
+  test/unit_test/service/websocket_send_session_test.dart 132:11  main.<fn>
+  
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:12 +2 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart: pending ACK retry framing=FramingMode.none stale=true
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart: pending ACK retry framing=FramingMode.v2 stale=true
