@@ -7,14 +7,14 @@
     "F12-A03",
     "F12-A04"
   ],
-  "app_candidate": "6d4e8a8809a02f99968d3bd93e8f24acf36ed07a",
+  "app_candidate": "b633066f021ee3527d3ced57f12a457755224c4f",
   "source": {
     "path": "lib/modules/customer_service/presentation/cs_governance_page.dart",
     "sha256": "4992cb12e0cb36d653e81a98c8f805141dbec1c72eea12bbebf64d1f7225d50c"
   },
   "test_source": {
     "path": "test/customer_service/cs_governance_page_widget_test.dart",
-    "sha256": "a947943fee18529ab66c47f8a6c03cf32187c9c6525c63af1d322132a1e991b2"
+    "sha256": "ae9ef15b6a5e94463a1b398ca5447495136d10883cfd5d4363f22c56006cb667"
   },
   "inventory_source_sha256": "b6446681e626ead9e6130aba059ba3f4f91fb2ba26ab6543f98d3d9dd6b1aacf",
   "entries": [
@@ -93,18 +93,18 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "刷新期间禁止使用旧游标加载更多",
-        "line": 675
+        "line": 694
       },
-      "observable_assertions": "刷新时ListTile禁用且onTap为空；点击分页后原行和新行各1；末页入口消失；seats请求2次；首次无after_id、第二次携带第一页返回游标",
+      "observable_assertions": "刷新时ListTile禁用且onTap为空；点击分页后原行和新行各1；末页入口消失；失败重试后seats请求3次；首次无after_id、第二次携带第一页返回游标；500分页失败明确提示，原行保留且新行缺席，重试仍使用原游标",
       "local_coverage": "PARTIAL",
-      "remaining_behavior": "分页错误恢复、请求在途重复点击以及真实后端分页未验",
+      "remaining_behavior": "请求在途重复点击与旧分页响应晚到，以及真实后端和双端分页未验",
       "android": "NOT_EXECUTED",
       "macos": "NOT_EXECUTED",
       "real_backend": "NOT_EXECUTED",
       "required": true,
       "additional_host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
-        "name": "加载更多成功：追加新行保留原行且末页移除入口",
+        "name": "分页失败后重试：保留原行和游标，成功追加并移除末页入口",
         "line": 631
       }
     },
@@ -115,18 +115,18 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "刷新期间禁止使用旧游标加载更多",
-        "line": 675
+        "line": 694
       },
-      "observable_assertions": "刷新后仅2次seats请求并呈现新行；点击分页后原行和新行各1；末页入口消失；seats请求2次；首次无after_id、第二次携带第一页返回游标",
+      "observable_assertions": "刷新后仅2次seats请求并呈现新行；点击分页后原行和新行各1；末页入口消失；失败重试后seats请求3次；首次无after_id、第二次携带第一页返回游标；500分页失败明确提示，原行保留且新行缺席，重试仍使用原游标",
       "local_coverage": "PARTIAL",
-      "remaining_behavior": "分页错误恢复、请求在途重复点击以及真实后端分页未验",
+      "remaining_behavior": "请求在途重复点击与旧分页响应晚到，以及真实后端和双端分页未验",
       "android": "NOT_EXECUTED",
       "macos": "NOT_EXECUTED",
       "real_backend": "NOT_EXECUTED",
       "required": true,
       "additional_host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
-        "name": "加载更多成功：追加新行保留原行且末页移除入口",
+        "name": "分页失败后重试：保留原行和游标，成功追加并移除末页入口",
         "line": 631
       }
     },

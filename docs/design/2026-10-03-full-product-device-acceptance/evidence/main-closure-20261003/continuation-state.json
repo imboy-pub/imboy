@@ -422,7 +422,7 @@
   },
   "customer_service_semantic_mapping": {
     "artifact": "cs-governance-semantic-map.json",
-    "app_candidate": "6d4e8a8809a02f99968d3bd93e8f24acf36ed07a",
+    "app_candidate": "b633066f021ee3527d3ced57f12a457755224c4f",
     "local_regression_tests": 32,
     "test_exit": 0,
     "analysis_exit": 0,
@@ -441,13 +441,23 @@
         "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
       }
     ],
-    "logs": [
+    "historical_pagination_success_logs": [
       {
         "path": "cs-governance-pagination-success-suite.log",
         "sha256": "8da546852ed227712be18ee846d099317055e51c1a2826aa2de73757e3d9c279"
       },
       {
         "path": "cs-governance-pagination-success-analyze.log",
+        "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
+      }
+    ],
+    "logs": [
+      {
+        "path": "cs-governance-pagination-recovery-suite.log",
+        "sha256": "c00872d7e3f075aec682eb8b58819102eedf53321ff75527e0198b0313dcf097"
+      },
+      {
+        "path": "cs-governance-pagination-recovery-analyze.log",
         "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
       }
     ]
@@ -473,6 +483,31 @@
     "remaining": [
       "Pagination failure recovery",
       "In-flight duplicate tap protection",
+      "Real backend and Android/macOS journeys"
+    ]
+  },
+  "customer_service_pagination_recovery_gate": {
+    "app_candidate": "b633066f021ee3527d3ced57f12a457755224c4f",
+    "scope": "LOCAL_HOST_ASSERTIONS_ONLY",
+    "tests_passed": 32,
+    "command": "flutter test test/customer_service/cs_governance_page_widget_test.dart test/customer_service/cs_governance_api_contract_test.dart --reporter expanded",
+    "exit": 0,
+    "analysis_exit": 0,
+    "review": "APPROVED_LOCAL_PAGINATION_ERROR_AND_RETRY_ASSERTIONS",
+    "logs": [
+      {
+        "path": "cs-governance-pagination-recovery-suite.log",
+        "sha256": "c00872d7e3f075aec682eb8b58819102eedf53321ff75527e0198b0313dcf097"
+      },
+      {
+        "path": "cs-governance-pagination-recovery-analyze.log",
+        "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
+      }
+    ],
+    "product_pass": false,
+    "remaining": [
+      "In-flight duplicate taps",
+      "Stale pagination response after organization switch",
       "Real backend and Android/macOS journeys"
     ]
   }

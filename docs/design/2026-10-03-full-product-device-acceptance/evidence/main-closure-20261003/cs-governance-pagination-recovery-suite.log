@@ -1,0 +1,1098 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat-limit 视图与调整（CS-BE-06） seatLimitView：GET 路径精确、无 query；解析 n|unlimited + used
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat-limit 视图与调整（CS-BE-06） seatLimitView：seat_limit="unlimited" → isUnlimited 且 isAtCapacity=false
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat-limit 视图与调整（CS-BE-06） setSeatLimit(n)：PUT body 携带 seat_limit；回显新视图（额度变化）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: PUT
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat-limit 视图与调整（CS-BE-06） setSeatLimit(null)：body 缺省键 = 清除 → unlimited 契约
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: PUT
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat-limit 视图与调整（CS-BE-06） 403 governance_insufficient：isForbidden 诚实分型（member 负例）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+handleResponse_response /api/v1/cs/organizations/7266418340025468901/seat-limit : false {"code":403,"msg":"governance_insufficient","payload":{}}; 
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat-limit 视图与调整（CS-BE-06） seat_limit_exceeded：tag 分型不依赖 HTTP 码（可解释冲突）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/resume
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/resume
+
+handleResponse_response /api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/resume : false {"code":500,"msg":"seat_limit_exceeded","payload":{}}; 
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat-limit 视图与调整（CS-BE-06） invalid_seat_limit：422 取值不成立分型
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: PUT
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+handleResponse_response /api/v1/cs/organizations/7266418340025468901/seat-limit : false {"code":422,"msg":"invalid_seat_limit","payload":{}}; 
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat 列表与启停治理 seatsPage：GET 路径 + after_id/limit query；行投影解析
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats?after_id=7266418340025468930&limit=50
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats?after_id=7266418340025468930&limit=50
+
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat 列表与启停治理 seatsPage：next_after_id null → hasMore=false（分页终点）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat 列表与启停治理 suspendSeat：POST 路径 + reason body
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/suspend
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/suspend
+
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat 列表与启停治理 resumeSeat：POST 路径 + 空 body
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468912/resume
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468912/resume
+
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat 列表与启停治理 suspendSeat 403（cross_org）：isForbidden 负例
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/suspend
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/suspend
+
+handleResponse_response /api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/suspend : false {"code":403,"msg":"cross_org","payload":{}}; 
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: seat 列表与启停治理 seat_disabled 403：tag 透传（诚实展示面）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/resume
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/resume
+
+handleResponse_response /api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/resume : false {"code":403,"msg":"seat_disabled","payload":{}}; 
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: TSID lossless organization_id int wire 形态兼容且转 String 保真（19 位）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_api_contract_test.dart: TSID lossless seat 行 identity TSID 逐字保真（string wire 主形态）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: unlimited：显示「不限」且无上限徽标
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:01 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 权限负例：403 governance_insufficient 诚实权限终态（无重试）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+handleResponse_response /api/v1/cs/organizations/7266418340025468901/seat-limit : false {"code":403,"msg":"governance_insufficient","payload":{}}; 
+00:01 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 一般错误：500 wire tag 透传 + 点击重试恢复
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+handleResponse_response /api/v1/cs/organizations/7266418340025468901/seat-limit : false {"code":500,"msg":"facts_unavailable","payload":{}}; 
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:02 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 清除额度输入并保存：PUT 缺省上限并回显不限
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: PUT
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+00:02 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 取消额度调整：关闭对话框且不发写请求
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:02 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 取消停用坐席：关闭对话框且不发写请求
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:02 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 空坐席：空态文案（不报错）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:03 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 额度变化：调整 2 → PUT body + 新额度回显 + 达上限徽标
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: PUT
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+00:04 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 非法输入（0）：本地拒绝，不发 PUT
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:04 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 超额冲突：resume 失败 seat_limit_exceeded → 可解释 SnackBar
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/resume
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/resume
+
+handleResponse_response /api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/resume : false {"code":500,"msg":"seat_limit_exceeded","payload":{}}; 
+00:05 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 停用坐席：确认 → POST suspend + 成功反馈 + 刷新
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/suspend
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats/7266418340025468902/suspend
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:06 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 切换组织后旧额度响应晚到不能覆盖新组织事实
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seats
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+00:06 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 旧组织额度写入晚到不能覆盖切换后的组织
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: PUT
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seats
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+00:07 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 分页失败后重试：保留原行和游标，成功追加并移除末页入口
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats?after_id=7266418340025468902
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats?after_id=7266418340025468902
+
+handleResponse_response /api/v1/cs/organizations/7266418340025468901/seats : false {"code":500,"msg":"pagination_unavailable","payload":{}}; 
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats?after_id=7266418340025468902
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats?after_id=7266418340025468902
+
+00:07 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 刷新期间禁止使用旧游标加载更多
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+00:08 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/customer_service/cs_governance_page_widget_test.dart: 切换 Organization：orgId 变化失效重建（新路径重拉 + 旧数据消失）
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468901/seats
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seat-limit
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seat-limit
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seats
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/cs/organizations/7266418340025468999/seats
+
+00:09 +32: All tests passed!
