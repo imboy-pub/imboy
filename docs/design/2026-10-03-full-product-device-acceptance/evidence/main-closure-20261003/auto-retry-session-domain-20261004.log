@@ -1,0 +1,417 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 首次失败拒发，重拉成功后 strict 部署返回 EncryptRequired
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 明文部署：重拉成功后 C2C 才允许明文（拉取成功前一律拒发）
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: (setUpAll)
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2c, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2c 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+00:01 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:01 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 实际发送入口：群已开 E2EE 时不受全局 plaintext 绕过
+[group_session] 群 90210 E2EE 已开启
+00:01 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:01 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: (setUpAll)
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2s, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2s 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:01 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 对照组：群未开 E2EE + 全局 plaintext → 明文行必须照常重投
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+消息加入重试队列: gg0000000000000ct01, type=C2G
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct01] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2G 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct01] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2g ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2g ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+重试发送消息: gg0000000000000ct01, 第1次重试
+消息重试已提交，等待确认: gg0000000000000ct01
+✅ [MessageTypeNormalizer] 有效类型: text
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+
+00:01 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:01 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 群已开 E2EE + 全局 plaintext + 明文行 → 不得出网
+[group_session] 群 90210 E2EE 已开启
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+消息加入重试队列: gg0000000000000ct02, type=C2G
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct02] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2G 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct02] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2g ; where: id = ? AND status = ?
+🚫 [RETRY] 未加密消息不得重发，已拦下: gg0000000000000ct02
+message_repo/update msg_c2g ;
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+✅ [MessageTypeNormalizer] 有效类型: text
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+
+❌ [RETRY] 达到最大重试次数，标记消息失败: gg0000000000000ct02
+00:01 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:01 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 手动重试：群已开 E2EE + 明文行 → 不得出网
+[group_session] 群 90210 E2EE 已开启
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct04] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2G 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct04] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+🚫 [MANUAL_RETRY] 未加密消息不得重发，已拦下: gg0000000000000ct04
+00:01 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:01 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: 重发明文闸门 · C2G 群级 E2EE 分支 正向可用性：群已开 E2EE + 已加密行 → 必须照常重投
+[group_session] 群 90210 E2EE 已开启
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+消息加入重试队列: gg0000000000000ct03, type=C2G
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct03] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2G 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2g_fts WHERE id = ?) sql 'DELETE FROM msg_c2g_fts WHERE id = ?' args [gg0000000000000ct03] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2g ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2g ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+重试发送消息: gg0000000000000ct03, 第1次重试
+消息重试已提交，等待确认: gg0000000000000ct03
+✅ [MessageTypeNormalizer] 有效类型: text
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/user/show?id=1001
+
+00:01 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 拉取失败后重试成功 → 可以发送 被拒的发送尝试会触发按需重拉（不必等下一次冷启动）
+00:01 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 持续拉取失败 → 仍然拒发且错误明确 连续 5 次失败后 C2C/C2G 依旧抛 policy_not_initialized
+00:01 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 持续拉取失败 → 仍然拒发且错误明确 持续失败也不阻断非聊天类型（action/系统消息）
+00:01 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: policy 持续拉取失败 → 仍然拒发且错误明确 HTTP 拉取失败不会把已生效的 strict 策略降级为明文
+00:01 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: 并发去重 同时发起的多次 refresh 只打一次 policy 端点
+00:01 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart: (setUpAll)
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2g, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2g 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2s, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2s 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:01 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart: 重发路径明文闸门（真 SQLite + 真事件总线） 对照组：部署本就明文 → 明文行必须照常重投
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: gd0000000000000pt01, type=C2C
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt01] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2C 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt01] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+重试发送消息: gd0000000000000pt01, 第1次重试
+消息重试已提交，等待确认: gd0000000000000pt01
+✅ [MessageTypeNormalizer] 有效类型: text
+00:01 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart: 重发路径明文闸门（真 SQLite + 真事件总线） 部署要求加密 + 明文行 → 不得出网
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: gd0000000000000pt02, type=C2C
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt02] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2C 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt02] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+🚫 [RETRY] 未加密消息不得重发，已拦下: gd0000000000000pt02
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+✅ [MessageTypeNormalizer] 有效类型: text
+❌ [RETRY] 达到最大重试次数，标记消息失败: gd0000000000000pt02
+00:01 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart: 重发路径明文闸门（真 SQLite + 真事件总线） 正向可用性：部署要求加密 + 已加密行 → 必须照常重投
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: gd0000000000000pt03, type=C2C
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt03] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2C 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt03] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+重试发送消息: gd0000000000000pt03, 第1次重试
+消息重试已提交，等待确认: gd0000000000000pt03
+✅ [MessageTypeNormalizer] 有效类型: text
+00:01 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart: 重发路径明文闸门（真 SQLite + 真事件总线） 对照组：允许重投的行，状态必须被 CAS 翻成 sending
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: gd0000000000000pt05, type=C2C
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt05] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2C 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt05] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+重试发送消息: gd0000000000000pt05, 第1次重试
+消息重试已提交，等待确认: gd0000000000000pt05
+✅ [MessageTypeNormalizer] 有效类型: text
+00:01 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart: 重发路径明文闸门（真 SQLite + 真事件总线） 被拦下时不得改动 DB 状态（闸门必须排在 CAS 之前）
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: gd0000000000000pt06, type=C2C
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt06] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2C 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt06] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+🚫 [RETRY] 未加密消息不得重发，已拦下: gd0000000000000pt06
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+✅ [MessageTypeNormalizer] 有效类型: text
+❌ [RETRY] 达到最大重试次数，标记消息失败: gd0000000000000pt06
+00:01 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart: 重发路径明文闸门（真 SQLite + 真事件总线） 策略未就绪（未知）+ 明文行 → 不得出网（未知即拦）
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: gd0000000000000pt04, type=C2C
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.execute.<anonymous closure> (package:imboy/service/sqlite.dart:831:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Execute error: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt04] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FTS] C2C 索引写入失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2c_fts, SQL logic error (code 1)
+  Causing statement: DELETE FROM msg_c2c_fts WHERE id = ?) sql 'DELETE FROM msg_c2c_fts WHERE id = ?' args [gd0000000000000pt04] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+🚫 [RETRY] 未加密消息不得重发，已拦下: gd0000000000000pt04
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+✅ [MessageTypeNormalizer] 有效类型: text
+❌ [RETRY] 达到最大重试次数，标记消息失败: gd0000000000000pt04
+00:01 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart: (tearDownAll)
+00:01 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart: shouldBlockPlaintextRetry 该加密却无 e2ee 元数据 → 拦下（耗尽/限流的明文降级出口）
+00:01 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart: shouldBlockPlaintextRetry e2ee 为空 map 同样视为明文 → 拦下
+00:01 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart: shouldBlockPlaintextRetry 正向可用性：已加密的行必须照常重发
+00:01 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart: shouldBlockPlaintextRetry 正向可用性：本就不需要加密的行必须照常重发
+00:01 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart: shouldBlockPlaintextRetry 对照组：不需加密且已加密的行 —— 两个维度互不干扰
+00:01 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart: shouldBlockPlaintextRetry：content key 维度（E2EE-061） ⚠️ 即便策略说「不需加密」，带 content key 的明文行也必须拦下
+00:01 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart: shouldBlockPlaintextRetry：content key 维度（E2EE-061） 正向可用性：带 content key 但已加密的行照常重发
+00:01 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart: shouldBlockPlaintextRetry：content key 维度（E2EE-061） 默认 false：旧调用形状行为不变
+00:01 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: (setUpAll)
+00:01 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: retry stage=manual-normal
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: retry-synthetic, type=C2C
+手动重试已提交，等待确认: retry-synthetic
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+⚠️ toTypeMessage: E2EE 解密失败，error=MissingPluginException
+📊 [E2EE_METRICS] decrypt failure: decrypt_failed total=1
+00:01 +35: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: retry stage=manual-stale
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:01 +36: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: retry stage=auto-normal
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: retry-synthetic, type=C2C
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+重试发送消息: retry-synthetic, 第1次重试
+消息重试已提交，等待确认: retry-synthetic
+⚠️ toTypeMessage: E2EE 解密失败，error=MissingPluginException
+00:01 +37: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: retry stage=auto-queued
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: retry-synthetic, type=C2C
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+00:01 +38: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: retry stage=auto-inflight
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: retry-synthetic, type=C2C
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+00:01 +39: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: retry stage=auto-clear
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: retry-synthetic, type=C2C
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+00:01 +40: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: (tearDownAll)
+00:02 +40: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: (setUpAll)
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2g, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2g 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2s, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2s 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:02 +40: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: 重发复用已提交信封：e2ee 与落库逐字节一致（不重新加密）
+消息加入重试队列: msg-resend-1, type=C2C
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+重试发送消息: msg-resend-1, 第1次重试
+消息重试已提交，等待确认: msg-resend-1
+⚠️ toTypeMessage: v3 解密失败，reason=no_device_envelope
+📊 [E2EE_METRICS] decrypt failure: no_device_envelope total=1
+00:02 +41: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: ACK 移除事件汇聚时确认 outbox（pending → sent）
+00:02 +41: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: (setUpAll)
+🗑️ [RETRY_QUEUE] 从重试队列移除: messageId=msg-resend-1, reason=SERVER_ACK
+00:02 +42: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: outbox 表缺失时移除事件照样生效（卫生动作不阻断 ACK）
+消息加入重试队列: msg-ghost, type=C2C
+00:02 +42: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: (setUpAll)
+消息从重试队列移除: msg-ghost
+🗑️ [RETRY_QUEUE] 从重试队列移除: messageId=msg-ghost, reason=SERVER_ACK
+⚠️ [RETRY] outbox 确认失败（不影响 ACK）: msg-ghost, SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: crypto_outbox, SQL logic error (code 1)
+  Causing statement: UPDATE crypto_outbox SET status = 'sent', sent_at = ? WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: crypto_outbox, SQL logic error (code 1)
+  Causing statement: UPDATE crypto_outbox SET status = 'sent', sent_at = ? WHERE id = ?) sql 'UPDATE crypto_outbox SET status = 'sent', sent_at = ? WHERE id = ?' args [1791055747584, msg-ghost] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+00:02 +43: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: (tearDownAll)
+00:02 +43: All tests passed!

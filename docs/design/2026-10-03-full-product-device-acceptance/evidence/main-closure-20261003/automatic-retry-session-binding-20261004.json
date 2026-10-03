@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_AUTOMATIC_RETRY_SESSION_BINDING",
+  "app_head": "bf42551456af93f1230d50a784f21b1b15b136c6",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_LOCAL_SCOPE",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 3,
+    "red_failed": 3,
+    "focused_exit": 0,
+    "focused_passed": 6,
+    "domain_exit": 0,
+    "domain_passed": 43,
+    "domain_files": 7,
+    "full_static_exit": 0,
+    "catalog_check_exit": 0
+  },
+  "oracles": [
+    "Queue entry captures session generation. Queued and in-flight real retry calls reject after actual loginAfter generation bump with synthetic token write failure before UID commit.",
+    "Clear queue during real database-await no longer throws ConcurrentModification and emits no stale send event.",
+    "Manual and automatic normal controls each emit one event; no unexpected transport adapter calls."
+  ],
+  "implementation": [
+    "Queue object identity and current generation checked before/after dispatch preparation awaits.",
+    "Snapshot queue iteration; removals only act on the same queue object.",
+    "Pending/error state preparation checks ownership before new operations."
+  ],
+  "limitations": [
+    "Dynamic in-flight qualification uses immediate first-read continuation; independent policy/CAS barriers not exercised.",
+    "Startup scan can still span session changes; asynchronous event consumer and post-dispatch UI remain pending.",
+    "UID-only mutation without generation, old sender ownership and already-started DB writes not qualified.",
+    "No original 36+61 acceptance upgrade or real device journey."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/auto-retry-session-domain-20261004.log",
+      "sha256": "0f80529d103dc5cac6fbc296af88a23a95b6bce8d5484cded0a677e84140c838"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/auto-retry-session-green-20261004.log",
+      "sha256": "72335d7077dd9c75712a8f4bff949036f6a5c1587487c46b643a0514569149fa"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/auto-retry-session-red-20261004.log",
+      "sha256": "f299b586c6be6eccbeceac04b64fc9164526193fdc7e749472dae06d6949a8dd"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/auto-retry-session-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    }
+  ]
+}

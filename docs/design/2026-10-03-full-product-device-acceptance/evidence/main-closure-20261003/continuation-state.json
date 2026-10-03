@@ -4915,5 +4915,23 @@
       "final_static_exit": 0,
       "catalog_check_exit": 0
     }
+  },
+  "automatic_retry_session_binding": {
+    "receipt": "automatic-retry-session-binding-20261004.json",
+    "app_head": "bf42551456af93f1230d50a784f21b1b15b136c6",
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": [],
+    "local_results": {
+      "red_exit": 1,
+      "red_passed": 3,
+      "red_failed": 3,
+      "focused_exit": 0,
+      "focused_passed": 6,
+      "domain_exit": 0,
+      "domain_passed": 43,
+      "domain_files": 7,
+      "full_static_exit": 0,
+      "catalog_check_exit": 0
+    }
   }
 }
