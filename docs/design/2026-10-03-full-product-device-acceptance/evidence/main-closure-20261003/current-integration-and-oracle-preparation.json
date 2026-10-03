@@ -1,0 +1,35 @@
+{
+  "scope": "READ_ONLY_INTEGRATION_SNAPSHOT_NOT_FINAL_QUALIFICATION",
+  "repositories": {
+    "imboy": {
+      "head": "a4f28efe4311cb9fdd79a64bfd2f79fa03a14c8f",
+      "branch": "main",
+      "worktrees": "worktree /Users/leeyi/project/imboy.pub/imboy\nHEAD a4f28efe4311cb9fdd79a64bfd2f79fa03a14c8f\nbranch refs/heads/main",
+      "remaining_related_branches": "",
+      "historical_e2ee_candidate_is_ancestor": true,
+      "working_tree_status": "?? docs/business/imboy-open-source-productization-strategy-v1.md\n?? docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/f14-cancellation-oracle-contract.json\n?? docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/f14-cancellation-oracle-contract.md"
+    },
+    "imboyapp": {
+      "head": "78d71bbe189dd4c06aefa6a14accb55efe7e2596",
+      "branch": "main",
+      "worktrees": "worktree /Users/leeyi/project/imboy.pub/imboyapp\nHEAD 78d71bbe189dd4c06aefa6a14accb55efe7e2596\nbranch refs/heads/main",
+      "remaining_related_branches": "",
+      "historical_e2ee_candidate_is_ancestor": true,
+      "working_tree_status": ""
+    },
+    "imboyadmin": {
+      "head": "c9e73adcf3151d2214461d12e0998651ec811dd6",
+      "branch": "main",
+      "worktrees": "worktree /Users/leeyi/project/imboy.pub/imboyadmin\nHEAD c9e73adcf3151d2214461d12e0998651ec811dd6\nbranch refs/heads/main",
+      "remaining_related_branches": "",
+      "historical_e2ee_candidate_is_ancestor": null,
+      "working_tree_status": ""
+    }
+  },
+  "product_pass": false,
+  "limits": [
+    "Only inspected e2ee/* and full-product/* branch patterns; historical cleanup receipt remains separate",
+    "Dirty shared App tree is not a frozen qualification candidate",
+    "No push/deployment/device/database operations"
+  ]
+}

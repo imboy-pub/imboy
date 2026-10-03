@@ -1,0 +1,38 @@
+{
+  "scope": "READ_ONLY_SOURCE_DERIVED_ORACLE_CONTRACT",
+  "backend_head": "a4f28efe4311cb9fdd79a64bfd2f79fa03a14c8f",
+  "sources": [
+    {
+      "path": "src/repo/billing_subscription_repo.erl",
+      "sha256": "f4e8ca56f2e7a7cfc08087d5cf373de36d325787b58038515b679b9ab71e00fb"
+    },
+    {
+      "path": "src/repo/billing_invoice_repo.erl",
+      "sha256": "6212336af9b0e2552fc029151b3b33153fb55dd8609c128bf77883f59e52eb65"
+    },
+    {
+      "path": "src/api/billing_handler.erl",
+      "sha256": "1ce7716846dd188fbf1d65a4f428562c4829416eefc0ca8f2aaf1767a996fb18"
+    },
+    {
+      "path": "src/logic/billing_logic.erl",
+      "sha256": "f340cfb8c3d214cd2cfd8b020ba4d63f2f3c8a999050add4396c4808cc840955"
+    },
+    {
+      "path": "src/imboy_router.erl",
+      "sha256": "dcd0a3bb1ed7d8a83a84dcdb0e769467e0a63c6ed45018180096a02f3e035189"
+    }
+  ],
+  "contract": {
+    "path": "f14-cancellation-oracle-contract.md",
+    "sha256": "e15bd14ac36e877856d30e029a2d5e26241f65e84db96bddafa0377ee7e9f98f"
+  },
+  "product_pass": false,
+  "device_execution": false,
+  "database_execution": false,
+  "remaining": [
+    "Approved independent collectors and calibration",
+    "Authorized actual Android/macOS action window",
+    "Frozen raw oracle evidence and original acceptance qualification"
+  ]
+}
