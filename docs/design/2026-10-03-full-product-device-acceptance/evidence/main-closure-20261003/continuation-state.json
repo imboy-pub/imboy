@@ -4750,5 +4750,11 @@
     "app_head": "967f0f5bbca507ea7211f1bd8582a7a9fc7c4390",
     "tests": 8,
     "product_pass": false
+  },
+  "organization_directory_device_preparation": {
+    "receipt": "organization-directory-device-preparation-20261004.json",
+    "app_head": "4567805fd40837f5bd6cd579106d2a42c86d62fd",
+    "safe_to_execute": false,
+    "product_pass": false
   }
 }

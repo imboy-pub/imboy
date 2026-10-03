@@ -1,0 +1,23 @@
+{
+  "scope": "SOURCE_ONLY_DEVICE_PREPARATION_NOT_EXECUTED",
+  "app_head": "4567805fd40837f5bd6cd579106d2a42c86d62fd",
+  "target": "integration_test/full_acceptance/organization/organization_home_device_test.dart",
+  "target_sha256": "ce4449c065545d261868b089299e3e019f475de3b4d7a29b0b1ef507b7524058",
+  "analyze_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "device_execution": false,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "safe_to_execute": false,
+  "execution_block_reason": "Independent explicit device/isolated backend/synthetic account authorization and exact lease required before any app bootstrap. App startup may sync/register external state; structural guard and bool are not permission. Disable external services.",
+  "artifacts": [
+    {
+      "path": "org-home-device-preparation-analyze-final-20261004.log",
+      "sha256": "dfd4613619cff1fb5627f9fce5b386d755cac1a92968784ec18262f966dd8eae"
+    }
+  ],
+  "limits": [
+    "Checks actual route to exact orgId only, not directory business data, zero writes or actual device provenance",
+    "No function target/oracle mapping or coverage status upgraded yet; catalog registration and independently bound fixture remain required"
+  ]
+}
