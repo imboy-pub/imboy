@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "status": "PLANNED",
   "max_behavior_cases_per_batch": 25,
   "base_card_count": 55,
@@ -2952,7 +2952,17 @@
       "status": "PLANNED",
       "specification": "execution-contract.md section 4 row F00-S01",
       "kind": "infrastructure_or_gate",
-      "design_depends_on": []
+      "design_depends_on": [],
+      "acceptance_ids": [
+        "F00-A01",
+        "F00-A03"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "冻结输入、上游指纹及旧结果重置依据；不代替分域映射闭合",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F00-S02",
@@ -2962,7 +2972,18 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F00-A01",
+        "F00-A02",
+        "F00-A03"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "全部输入去向、逐平台case及歧义/placeholder关闭",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F01-S01",
@@ -2972,7 +2993,16 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F01-A03"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "runner正负例资格和假绿拒绝",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F01-S02",
@@ -2982,7 +3012,16 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F01-A02"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "隔离后端seed/reset幂等与namespace清理",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F01-S03",
@@ -2992,7 +3031,16 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F01-A01"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "Android真实设备和有效端点子格",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F01-S04",
@@ -3002,7 +3050,16 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F01-A01"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "macOS真实设备和有效端点子格；与S03共同成立",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F01-S05",
@@ -3012,7 +3069,16 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F01-A03"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "双端就绪屏障、取消与恢复；与S01/S06共同成立",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F01-S06",
@@ -3022,7 +3088,16 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F01-A03"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "反假绿verifier、证据和校准；与S01/S05共同成立",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F15-S01",
@@ -3032,7 +3107,16 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F15-A01"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "精确API/WS操作集合与scope分类",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F15-S02",
@@ -3042,7 +3126,17 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F15-A02",
+        "F15-A03"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "真实协议/RBAC/授权负例；Admin及App业务消费复用F12证据，不能自签替代",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F16-S01",
@@ -3052,7 +3146,17 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F16-A01",
+        "F16-A02"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "Android/macOS全部required页面导航与状态分别验收",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F16-S02",
@@ -3062,7 +3166,16 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F16-A03"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "用户逐项人工UX评审；无评审保持阻塞",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F17-S01",
@@ -3072,7 +3185,17 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F17-A01",
+        "F17-A02"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "冻结最终候选及全局/设备required输入；只提供后续门的前置",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F17-S02",
@@ -3082,7 +3205,17 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F17-A01",
+        "F17-A02"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "最终全局门与完整双端/跨端重验",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     },
     {
       "id": "F17-S03",
@@ -3092,7 +3225,16 @@
       "kind": "infrastructure_or_gate",
       "design_depends_on": [
         "F00-S01"
-      ]
+      ],
+      "acceptance_ids": [
+        "F17-A03"
+      ],
+      "acceptance_mapping_basis": {
+        "product_plan": "sections 6/F00,F01,F15,F16,F17",
+        "execution_contract": "section 4 and explicit F01 parent aggregation",
+        "rationale": "非实现作者只读独立裁决、限制和恢复记录",
+        "qualification": "MAPPING_ONLY_NOT_EXECUTION_OR_PARENT_PASS"
+      }
     }
   ],
   "capability_producers": {
@@ -3111,5 +3253,11 @@
     "RESOURCE_LEASE": "shared resource Coordinator",
     "OWNED_TARGET_READY": "domain owner review",
     "L1": "same subcard L1 passed on the selected candidate"
+  },
+  "mapping_revision": {
+    "previous_version": "1.1",
+    "previous_sha256": "7361dcbf584f6a0095ec6b98d683f208ce6a082c2ab6385a30a8774a5d800046",
+    "reason": "Explicit coordinator-card Acceptance-ID mappings; preserves 55 cards, 61 required IDs and all PLANNED states",
+    "requires_frozen_input_rebind": true
   }
 }
