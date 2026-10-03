@@ -4199,5 +4199,12 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "f08_password_clearing": {
+    "receipt": "f08-empty-password-regression.json",
+    "receipt_sha256": "542c46fbbe96227ba521dd2370e4fa015cbb4624be57a32613ced04858f917a3",
+    "app_head": "1a9e9260b4ee98a2e4dbf75393535090f981eecd",
+    "executed": 19,
+    "product_pass": false
   }
 }
