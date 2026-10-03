@@ -1,0 +1,1030 @@
+{
+  "status": "PLANNED_NOT_EXECUTED",
+  "sampled_heads": {
+    "imboy": "33277f7f64fa0cc1524e2ec7e80c898b8d2d0933",
+    "imboyapp": "826e123803f8e962ae53c9dda25d96fe91329e0e",
+    "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+  },
+  "legacy_docs": [
+    {
+      "path": "test/auto_test/bottom_navigation/bottom_navigation_page.md",
+      "sha256": "2e325ebc181004ebea5a453d4cfa4c9582c46d0e3e21e33d3b07b89aecd1bdd9",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/channel/channel_admin_page.md",
+      "sha256": "14e37c6b045d547fa29f1baaac7d7587b32ac1fe2cddbb48359becd121d3ae34",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/channel/channel_article_page.md",
+      "sha256": "86740a4eac8974422093e697f79f1fe0f1377154aa3b5b0194871b65e91c36ff",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/channel/channel_comment_page.md",
+      "sha256": "317b090fbf57f183b4ccaee721837d3b052c81579f77facbfd15309ed35086a7",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/channel/channel_compose_page.md",
+      "sha256": "745f5628819e42a6147d46edd9e5d33cfa0e4d086933eaf96bda6d300f86b333",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/channel/channel_create_page.md",
+      "sha256": "1382bcd20ef75af84cb2d3987cf4af94db697833fc0a4189fe7435ec7eb74057",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/channel/channel_detail_page.md",
+      "sha256": "a02ef7f52f5311ec6f4e336ec8ac66351026738b6a2b62e56164028b4474d3fb",
+      "rows": 13
+    },
+    {
+      "path": "test/auto_test/channel/channel_discover_page.md",
+      "sha256": "6b5d8fba201dabc12540289b9d22a697e368a15deb1f5b8558aff6ec2e2a5c9e",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/channel/channel_edit_page.md",
+      "sha256": "a955a8602cfb3ceb760e90370d12046ca36b57394fce3305110437f4eef67a26",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/channel/channel_invitation_page.md",
+      "sha256": "685ca87b2d4af7e499318a7a4bb8af783f5fae8e3c416c07cbb300fb95498d93",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/channel/channel_list_page.md",
+      "sha256": "9571a2341f8114be72873c390ffd8c46dd6cf25c40fad31d3b39cef6f241b39d",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/channel/channel_order_detail_page.md",
+      "sha256": "77abb8283e13e45f10e5b77986d716ed749c8606a2dbad14fbe2e922478181aa",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/channel/channel_order_list_page.md",
+      "sha256": "3812ef1b01e3acceba20f942ddc68f5993f1a36892dd0225530938a702f7e830",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/channel/channel_subscriber_page.md",
+      "sha256": "d8397c5ed2009c9789290170306aec24f4368e47cace67b85a3161c4c2104eeb",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/chat/chat_page.md",
+      "sha256": "c14e2e3a7a5fe4d5f2219ee82360151bf3f85de23a355d0d983d6e5cb1b3f8db",
+      "rows": 21
+    },
+    {
+      "path": "test/auto_test/chat/chat_setting_page.md",
+      "sha256": "9314d64800f8d2dcf9b97cff8f34de51c8054c740bb9c3f0699affb8de9b3059",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/chat/p2p_call_screen_page.md",
+      "sha256": "69477c26f0316b47e2b70e575b8f0799976ed9dd493c23552957d980402fb0b6",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/chat/quick_reply_manage_page.md",
+      "sha256": "ac085078f9fd4242541d6d41f82cf5c6a33139673a66b603fe83fe8134018faf",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/chat/rtc_room_page.md",
+      "sha256": "8935b9b50bab79e36de740357f90b90ee8fce79aaa096ffdcad067375c2baff0",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/chat/send_to_page.md",
+      "sha256": "056746cb960f25bb36ba07e4aac69cc146dec22217b20a2916ea100e0d6aacd8",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/contact/add_friend_page.md",
+      "sha256": "aaf44bda5f860907da8ed303d32a0a4f662b74ef820b912c40e086d739d60f66",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/contact/apply_friend_page.md",
+      "sha256": "a5349b279063a09adc945bcb113b4e72559fa6e77b9bc5c99264414e8510f2cd",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/contact/assistant_plaza_page.md",
+      "sha256": "0acf3bf7a385f0625a624a8cb274df718480bd4cede7b962f9a24f9e7c857d2a",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/contact/confirm_new_friend_page.md",
+      "sha256": "03d4fb850f795868bd5f5ce788c411cf5584713f32fe6a117761bc1254586392",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/contact/contact_page.md",
+      "sha256": "1a5c102ee305ab01aa585be2310c40a931e27ac5898655074af785235cf6a6fd",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/contact/contact_setting_page.md",
+      "sha256": "15e17674ad54b096ee532cb89946ba10edd79481f74237089db0953510e9f5be",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/contact/contact_setting_tag_page.md",
+      "sha256": "cef3b50f9054915baada7937350c3dabbc5bfd041c3a0aa61195e0afddd911e3",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/contact/new_friend_page.md",
+      "sha256": "f4528377fd754d01613a842b8472634079f555ca1cbeb1b34171970f64deb86c",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/contact/people_info_more_page.md",
+      "sha256": "ceb8434a5c80891d82d26a9839f494e987753cb6e233b46e919a84ea7a4b1aea",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/contact/people_info_page.md",
+      "sha256": "c9d0d921619e9d686960401136d3428dfbc8f8f4fa902d2792bbc4d2bf70aa26",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/contact/people_info_same_group_page.md",
+      "sha256": "a71215f494b0e8d887b044a053e5cf5c7539ebaf6c2a12e62533ef22f01a668c",
+      "rows": 8
+    },
+    {
+      "path": "test/auto_test/contact/people_nearby_page.md",
+      "sha256": "58385ebfd122438ca372339c8e78053929df37ef255672d60b765ae2101a6040",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/contact/recently_registered_user_page.md",
+      "sha256": "5e205204b39af085ec398179a5884bc1bf68d14ee0ad0ec10e5cb25281f48034",
+      "rows": 8
+    },
+    {
+      "path": "test/auto_test/conversation/conversation_page.md",
+      "sha256": "e5adadf219e07cab42f54a44da9137a0b5b00f10e28d57efc608b150246e7620",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/customer_service/cs_session_page.md",
+      "sha256": "447d630f0c6b874d9f30b1803cfbe9ba390a93797bfc01228b03162ceb1db5ea",
+      "rows": 17
+    },
+    {
+      "path": "test/auto_test/customer_service/cs_workspace_page.md",
+      "sha256": "fee1a08046f183589a5781192c571f2549b5a405831cab6708a2ba7c1962caf3",
+      "rows": 1
+    },
+    {
+      "path": "test/auto_test/enterprise/enterprise_conversation_page.md",
+      "sha256": "b3becdfc4477a86b4a9b982fca1436d1cdb048803070e37d3069a37649212123",
+      "rows": 5
+    },
+    {
+      "path": "test/auto_test/enterprise/enterprise_home_page.md",
+      "sha256": "87ead4ecb688dbe78f1b92ab4022e83111b8c852627fddc0a930becf6ce07d12",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/group/add_member_page.md",
+      "sha256": "864abeba4fc5288eaeb04499a8b61d35cdd9c4e9884effb0452300c497308135",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/group/change_info_page.md",
+      "sha256": "65cefc594c2ff94ec0f3feb630c212207eaa764e737241a5509e8667fe39fb72",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/group/face_to_face_confirm_page.md",
+      "sha256": "f15e79d7c4cb6e5172427937727786d15c80daf3a2c6a7bd98c9e624656c7fbf",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/group/face_to_face_page.md",
+      "sha256": "aa391ba678bf89e37224703176c249653eb3b51de9f48c2e58e4b496dad02b1f",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/group/group_album_page.md",
+      "sha256": "b83104fd6defe2b8a70f3b626c296087fc168dc432f9de5dd2c5aa79eeec646a",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/group/group_album_photo_detail_page.md",
+      "sha256": "7fa6e29d6ac3278c147f16976fabf63db8a146e9e5e3203d4e9c406383fe571b",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/group/group_album_photo_page.md",
+      "sha256": "e0458211821091cce0d01c82213c7063cde3dd1096bcbc44cda2f601adc7ae58",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/group/group_announcement_page.md",
+      "sha256": "646bcdd459cec5b1ed0f690b4e3795dc5bc57a305bd81396e2ac114cc25de4ea",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/group/group_category_detail_page.md",
+      "sha256": "356c14bd776522441cedf3211681965171d1e67d3165c444d28bf9fccfcf9426",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/group/group_category_page.md",
+      "sha256": "f7cab130a955ee89e3a0322da5ff93848ef69f64e3268cf3798aecbba955d196",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/group/group_detail_page.md",
+      "sha256": "ba2a3c122e2b01aa08302801e28343a4dc08f035186839e8b6dd82876df286ea",
+      "rows": 17
+    },
+    {
+      "path": "test/auto_test/group/group_file_audio_preview_page.md",
+      "sha256": "0e1ba614c4787161264aa9e82d08b4103c8a3f28c6ab22b2fe8b4175b9e9add0",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/group/group_file_page.md",
+      "sha256": "c84db77c53c6deb9bebab6ae5e2b48716ebc7cf780c6017a9594f56087135758",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/group/group_list_page.md",
+      "sha256": "2dfc97284502b55767573f6deab19cfdd68bf8d5fff12ee395fa8a30212c1976",
+      "rows": 14
+    },
+    {
+      "path": "test/auto_test/group/group_member_detail_page.md",
+      "sha256": "5b990c22aa87537909b6f6eb5ebfb213c968195208407be21431606e444c4e48",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/group/group_member_page.md",
+      "sha256": "df113cc613811ccf75017a878c05d2a389d8f42f61359b7fdffc61243731e44f",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/group/group_schedule_detail_page.md",
+      "sha256": "e65b13745244c6f791a689cd0207707bc39463e5df73cdb8bdec519d2b73b0f3",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/group/group_schedule_page.md",
+      "sha256": "b4d3cc606fd8b6cb19e9a59a9c230cb07e137ecab8a69c9f7a7102a56144669a",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/group/group_select_page.md",
+      "sha256": "809516d2f7c7374ac8672704ae08c4f421a618fdb411208ed224addd1b97d1cd",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/group/group_tag_page.md",
+      "sha256": "205c7e2397aee66ef4100b7ce1804056ee157258d6cc03596c25be15d4b297b9",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/group/group_task_detail_page.md",
+      "sha256": "48143e9867014cdabd19add4a41469eff9cf147e08ede0d060bb90e2d3eb5d62",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/group/group_task_page.md",
+      "sha256": "c22c38f7ef598143ef867e5ceb3fb942a152f2b50a813c20d4a597c00029d9d5",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/group/group_vote_detail_page.md",
+      "sha256": "3ffcf81ad71f2858a06920c14e71501df27bc9eeb43c9edcdd6600465a57e1f0",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/group/group_vote_page.md",
+      "sha256": "fb1aaba14e3afd35ea022ff0dbfd516c4527af29346076566547a5f7b00957e6",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/group/launch_chat_page.md",
+      "sha256": "0419a13cfac75d2e6caf8fdd49c11e08a14396f55e84d5a5fa580a4e355a5e75",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/group/remove_member_page.md",
+      "sha256": "e990fea00d88e501b1d817f2f0cb5012fe98793c4ddfbd4ab6619164a75f284e",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/live_room/live_room_list_page.md",
+      "sha256": "d72cf07f15897f6d1e294a90b17123a2ae231a7eaa872be98d6843d9d50b7efd",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/live_room/publisher_page.md",
+      "sha256": "0046d0215c4b7ba679a1f39392dc60e165eb2fc4c01b552cdc1e5fe4d12b36a4",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/live_room/subscriber_page.md",
+      "sha256": "86982549cca3fa69c490b16af5411eae74af92b7c530d7b96bd6f4a262247718",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/mention/mention_list_page.md",
+      "sha256": "e2e919a73c45c7c23c66d9cce780a57e3e8e421829a7fc8ba07c5c20354e8eb1",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/mine/account_security_page.md",
+      "sha256": "aa93f308783b715d0925e37e2878e92a6794eb3b6954313db357125f3e41b6c3",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/mine/bind_email_page.md",
+      "sha256": "6d1c0d41bd2c42cdbbd519f0eaa4d3a73453fc206b5643e42e3e0cf53348288e",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/mine/bind_mobile_page.md",
+      "sha256": "0c5176a74d5653bcd096b0433deed62b45549f61faf336b11c3b4d1251b5905a",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/mine/change_name_page.md",
+      "sha256": "a95972acfb5d167a157427c58280a83fce447ec27ee896048368213009c329b8",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/mine/change_password_page.md",
+      "sha256": "2b2fc1eeff3e77794a53ff88343a72040fe6cfd899f852e957cbb5773c3f38c5",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/mine/dark_model_page.md",
+      "sha256": "cbbe6580728a3818b4a41063cd90c8947c8d1ed742c9a4ede2582298003f5e73",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/mine/denylist_page.md",
+      "sha256": "2ab2d42a9b891ac8f20298c565072f9ce058a0da292874ceeba7f920c12f81f5",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/mine/feedback_detail_page.md",
+      "sha256": "0a0378547c67a78a65a6b28b955e60aa2d89ef206f7760b48e879cf0e107b4c7",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/mine/feedback_page.md",
+      "sha256": "f2be95069b99f177b7f470ec14a6a093d3ed264b24c833abfcd6aada181d253b",
+      "rows": 13
+    },
+    {
+      "path": "test/auto_test/mine/font_size_page.md",
+      "sha256": "cd63153fbbb8477dcedf59033eecb19193e9f4d1a6abfaaff227342c2043f21c",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/mine/language_page.md",
+      "sha256": "ec7b975872c6b1be392d501bc81213906d2b70a71d386f1797c12f6610ed76d8",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/mine/logout_account_page.md",
+      "sha256": "a48e6c7e05abb557e9fa60e40b2a182871fd4085bb863b237634dced4dbc56db",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/mine/mine_page.md",
+      "sha256": "fc14ceeb9a58b5c41cd252d22134db3f8e5592d511297bc9d9bc2f3c79bc4e50",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/mine/select_region_page.md",
+      "sha256": "09cd5cb1018891398ce7849e648bd9dc75166e099a993e4b4e4fd18d05553cb7",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/mine/set_password_page.md",
+      "sha256": "3a724682dda4ad46370afa7a46a1056ca51cee598507a8c86954f90a5c30cfe3",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/mine/setting_page.md",
+      "sha256": "b6efef533be82c42b4dc5b0b45b308a926fdb977039657fe660df9b05bc498f1",
+      "rows": 17
+    },
+    {
+      "path": "test/auto_test/mine/storage_space_page.md",
+      "sha256": "707a86e1eff617cd359bddc4261ccd6ef4fdef51d0666819bc3792735bedde27",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/mine/user_collect_detail_page.md",
+      "sha256": "3acb521f905ff1f32d152621675f1e153671840222e1e3f557a4476140d356b1",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/mine/user_collect_page.md",
+      "sha256": "7170d1c677ec25fb4f0e0851e9877b3757b171ab755fefcab1e11892cdd51179",
+      "rows": 17
+    },
+    {
+      "path": "test/auto_test/mine/user_device_detail_page.md",
+      "sha256": "54f6ac0fb1934cb7b4faf7671dae8c83fb6ca34ff112481185db6954645bbafc",
+      "rows": 14
+    },
+    {
+      "path": "test/auto_test/mine/user_device_page.md",
+      "sha256": "221958499adc9e5d6f9ad76a1e2c0697ea3dd9e77205f39f209a5b0b142d7734",
+      "rows": 14
+    },
+    {
+      "path": "test/auto_test/moment/moment_at_picker_page.md",
+      "sha256": "9b002c5dc08263f9824cdf4c44353fa1c3a40a663b081ed44246ab13a7eac138",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/moment/moment_create_page.md",
+      "sha256": "c6947575592528d510882e591cd863445f3930a4cd7fa6f1058a97b797f8162e",
+      "rows": 14
+    },
+    {
+      "path": "test/auto_test/moment/moment_detail_page.md",
+      "sha256": "e95936484d8a1227df43eb97c3ee0b9c60edbfc6f505bb3775b48c19072a0248",
+      "rows": 13
+    },
+    {
+      "path": "test/auto_test/moment/moment_feed_page.md",
+      "sha256": "cc85abd0bd1b8731152ccc1063624f9f970bb11cf87cdaadebaa97d05c44da1d",
+      "rows": 13
+    },
+    {
+      "path": "test/auto_test/moment/moment_friend_picker_page.md",
+      "sha256": "183534043feaa2562fd908cf47add5f0e79aa95095a97ef4bda09508ee0fc573",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/moment/moment_notify_page.md",
+      "sha256": "f03b5d5aeafd85414ae490a77fb9e8f9931a002d17b33eae9582238d014c11bd",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/organization/organization_departments_page.md",
+      "sha256": "b1eb780254ed4cf1dbfffbd52b8cc8eacfc679cf58abccb6f3a70c5dc8f77f7a",
+      "rows": 19
+    },
+    {
+      "path": "test/auto_test/organization/organization_detail_page.md",
+      "sha256": "6a2be8e625d9efe62f9267e06b51dc2a3b83ab7ac3ec8b0b84cb70b223469ed6",
+      "rows": 20
+    },
+    {
+      "path": "test/auto_test/organization/organization_home_page.md",
+      "sha256": "dcb72c7f777685c1b57d49e81db03b48d2cf00e235b891f5b8bd5af77762685d",
+      "rows": 4
+    },
+    {
+      "path": "test/auto_test/organization/organization_invitations_page.md",
+      "sha256": "0f7ea453ec9374273962f1b0ce6d2c18bb946b963a79e229bf844e6fc0265617",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/organization/organization_members_page.md",
+      "sha256": "673d41d9491cfde2b954192572f9454b5cc6eafe7be54494b46207e20060655c",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/passport/forgot_password_page.md",
+      "sha256": "0c1ccd136d9bfa22f9f78690979d735dfeb88cea1e2e9d8d6895ac5d189d04e4",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/passport/forgot_password_pin_code_page.md",
+      "sha256": "3c685f06fbc8d0e513a9f51eb0e41a43aef5e52200e3bcc081466c3175f81f21",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/passport/login_page.md",
+      "sha256": "bf3ae25ae9a88189f566e6bf0405b8671d0b9bc1815ad9ff292420497411ee69",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/passport/manage_account_page.md",
+      "sha256": "cceb9978a082fb988fb078bbadfff24a64392a5776e7103c2acf497ea713aba0",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/passport/signup_continue_page.md",
+      "sha256": "963e9267aeed564c1e69907b5b5b2ed8f826c7d5491fb72a6d59bd9944f0f77a",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/passport/signup_page.md",
+      "sha256": "f68bfc3eb626062bed59b3902192549431cbf7cca19e8d92fa5e856e227a3376",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/passport/web_login_page.md",
+      "sha256": "dedd82bfa3c1183b6b03d248361428616615ee57594cf8308a6a188b0fca8458",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/personal_info/more_page.md",
+      "sha256": "49eb3cc13663f46d8508d6292904de3635e92a81be668b6f200c7c161138539f",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/personal_info/personal_info_page.md",
+      "sha256": "16be0ae8897a237f9a65b5094c2bdcb852274c7bc09b0fd3711116481b4c267c",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/personal_info/privacy_settings_page.md",
+      "sha256": "aabea23887e1fa434f5a24d28752d6460550643e072b20f87affc05acb0c3f35",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/personal_info/profile_page.md",
+      "sha256": "96e28c73f599fb57153ba71ba9d4737934c83a295463a6217bec335cdabde244",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/personal_info/set_gender_page.md",
+      "sha256": "e17c91c6a1c00000130e982d1db4a72002b6f46da0eadc969ee5c434e784681b",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/personal_info/set_nickname_page.md",
+      "sha256": "aef4b5ca06b0cdaa4bfcbfd18940d5e4381be25a9b90ccbe6536ea7549aa81b8",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/personal_info/set_region_page.md",
+      "sha256": "a49c2ed697986592559f5cfb51fba1d34387f2f8f04dea1205fa96c9658971f6",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/personal_info/update_page.md",
+      "sha256": "bac5bf0e94f1fb2dec7599d458fceadea047ecb023102bbe87433ccf69459b51",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/qrcode/channel_qrcode_page.md",
+      "sha256": "a94476edc88068ea274fb5a54870cb09e915092a2dedd87e4395a0de417770bf",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/qrcode/group_qrcode_page.md",
+      "sha256": "1b5ff65ed562007a5022cf2ca4d177de7cd1b2f9a03a88514df0de5035e03c6a",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/qrcode/qrcode_page.md",
+      "sha256": "1776e12aa306de28a65ba0dbe486f9087ff6b5bb626ad41b20c3692a767dd552",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/qrcode/user_qrcode_page.md",
+      "sha256": "f7d0f4fda91de1fa2f8e375d1f5e606e242d173c1737cefb2435f7f6cddd0d0b",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/scanner/qr_login_confirm_page.md",
+      "sha256": "601568101dd0532188dae00c67b325db69b87a9bfc581959467169046b73cb4d",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/scanner/scanner_page.md",
+      "sha256": "75b79a563a4d0ec19de8413cf94709445e7bfa4b95408c809a0d27dc75bb20da",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/scanner/scanner_result_page.md",
+      "sha256": "a3861161578a47f74f3206cb4cc33a43d1507fdb987a1e32f95aaab9887ad3c2",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/search/message_search_page.md",
+      "sha256": "1e0269b9c75522f593de45e7577be0f416a176a60d6d565b4f33a5dc8c728af3",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/search/search_chat_page.md",
+      "sha256": "fa5f349a617dbdefc6a517e83a6d976788b243ba00e904fc2b4b78b13776ff4c",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/search/web_search_page.md",
+      "sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/settings/e2ee_backup_export_page.md",
+      "sha256": "16b19554c71f6867ef86196c4e12f2b2954f893650bea0042481b4c9870e4d7b",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/settings/e2ee_backup_import_page.md",
+      "sha256": "1f104dd3f302febb81107dfb601bd91dbe7104f0f7608e21174c56f310f583ce",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/settings/e2ee_key_recovery_page.md",
+      "sha256": "7105a03cb5c0425819a65819810878e21f5907abd6a1e675978d304f6856af14",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/single/markdown_page.md",
+      "sha256": "3c4954d4c1e8dc60bdf6f77432b6c6dc89dec953d8580a81501ab887616e48e9",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/single/network_failure_guidance_page.md",
+      "sha256": "ecd102d7b15dc66f36b98b85a09c9815306fe4bb836cce5652f34fbb8c38a150",
+      "rows": 8
+    },
+    {
+      "path": "test/auto_test/single/terms_of_service_page.md",
+      "sha256": "34e2ada013d42f761465b11f91c44251ec3d9b7821364bc3fd670723253e4e63",
+      "rows": 8
+    },
+    {
+      "path": "test/auto_test/single/upgrade_page.md",
+      "sha256": "9be5a0c8e95059eb1861b41ce811df2cda8d53298db9785f05fffe89ab43be32",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/single/video_viewer_page.md",
+      "sha256": "2bbcbfd886d30ee232be895163568038da770c219da21afcc72197babde5940f",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/splash/splash_page.md",
+      "sha256": "ca386e729aa18895c2e41585668c83318dde9c6dbcbc2daf9d77b1535eceb4e7",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/user_tag/contact_tag_detail_page.md",
+      "sha256": "44bf691e094ceaf8bb3ca7450709a2d66306517b2156eff1d8c6f63116319132",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/user_tag/contact_tag_list_page.md",
+      "sha256": "8f02ea21bc3c7eef45254a20827466c88d6e9997b35a71f4f4508d232d3f8417",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/user_tag/select_tag_friend_page.md",
+      "sha256": "11100862b6ed00f1f1037b726480ab485d25be0f5a452f23e6cfed1ddefa212f",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/user_tag/tag_relation_page.md",
+      "sha256": "f51cda3874bb51d8ec8c9de3f6d642fb8c37f81f3537ba4bc98cacdb9433b7ae",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/user_tag/user_tag_save_page.md",
+      "sha256": "ea13e6216a52e89bd3cc60fea5e66e2b39a0757c0666ce2172a976ab9fad5b58",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/wallet/red_packet_detail_page.md",
+      "sha256": "d5f9d10b4e8a51638477dd1ba18c9aeb89b3e36622dada600af4b8abab1ca2e9",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/wallet/red_packet_send_page.md",
+      "sha256": "b2ee8d64ca46252583de9ad998566b05041d0d3343db2a08d380bccb62e302b9",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/wallet/transfer_send_page.md",
+      "sha256": "56d8c5ed88cb791c18f7b3f46fe5ed153614481124e7fa64359e1c3fce7cc330",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/wallet/wallet_page.md",
+      "sha256": "079db7af4aa08aa9c471a17074e0bf0ed1a6ecbe61beb0bf8a6ab397cc94bd13",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/wallet/withdraw_page.md",
+      "sha256": "903a42d3b04c137ead404873c3a3b254f88380d3e4cb1b8a8b9d5aff5e53ab6e",
+      "rows": 13
+    },
+    {
+      "path": "test/auto_test/web_shell/web_shell_page.md",
+      "sha256": "5174ba0436615a8be3b7422bdc2aabb54c4baa6ea921ad562a816474044ad4ee",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/welcome/welcome_page.md",
+      "sha256": "7120c40da23bae066700c416f33b3493060fa0f2ac742ee6b135b9835b1515fd",
+      "rows": 12
+    },
+    {
+      "path": "test/auto_test/workspace/project_channels_page.md",
+      "sha256": "6cd45ddf8451403975011dedf1a8fd92370ceb5cf061ef36caaf727b08af4c79",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/workspace/project_create_page.md",
+      "sha256": "81c8bfcb4a1b0f2821cf6d8da4c71f90802cabeae8f7e925ced72858cab17c62",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/workspace/project_detail_page.md",
+      "sha256": "71f78735845428349e947bf6c99751afe38fd5b7916536068eead20018fd4b06",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/workspace/project_insights_page.md",
+      "sha256": "328f0fbcb6dd7b850e7531fc248a5675b7cafb3123bcef1360a1a2e0a6e53640",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/workspace/project_members_page.md",
+      "sha256": "5e71b9ff99dd526fcd6704367148ecd7a17284a57e9b4e3c72c1d4df80fb9efe",
+      "rows": 13
+    },
+    {
+      "path": "test/auto_test/workspace/project_milestones_page.md",
+      "sha256": "88bce4ed144d1e58c4eb4f7164e81b033c0989488cf79e32b8fd92deb9b57aa5",
+      "rows": 13
+    },
+    {
+      "path": "test/auto_test/workspace/task_form_page.md",
+      "sha256": "ba1f3ca84e8f96f8b7c1ec744419bc72e6f94b441785a001af838bae60a204c4",
+      "rows": 13
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_branding_page.md",
+      "sha256": "6d21e3733c9decc8ec56c533ebb8ec2686b59dc3f38f7afb9917d2c6577c6dd9",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_channel_detail_page.md",
+      "sha256": "58b7f6ac7006de31b428a0d4c9711b159573b945fea6f5e86d66bc7eaa358af9",
+      "rows": 9
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_channels_page.md",
+      "sha256": "3153aed96daa6c54722f9fbb3484e41a53c0b3e300a30daaf4ec688c196081f9",
+      "rows": 8
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_create_page.md",
+      "sha256": "a1eb0e3022b02bb844983b0923d7be63aee3bd7e89f1da62b092fdb562273127",
+      "rows": 10
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_groups_page.md",
+      "sha256": "cae255be04729f4c150c3776958372000cca25b045141ae32a67316f5f6ad37f",
+      "rows": 8
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_invite_page.md",
+      "sha256": "9e883b80cb10c31043c417015e77832c11da5ff20ba8c507d5c62bcdae774cf9",
+      "rows": 17
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_join_page.md",
+      "sha256": "fe8a7ddfb9e5059055d8abc30966ebc64ddabc6a8b456af4f3847e372dc8b612",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_members_page.md",
+      "sha256": "ae5cd3f536ea74c178cee0d0dd202de020454deca39c12131f75c8a01877031e",
+      "rows": 13
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_overview_page.md",
+      "sha256": "ba8591e58c2780c799b3c7ec36b0735795bf3a47149b552b44ebba5d83ae7d16",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_picker_page.md",
+      "sha256": "324e903603d8558475e879fc58c668a53e38e742d1055fbc3d54a7078ea022cb",
+      "rows": 11
+    },
+    {
+      "path": "test/auto_test/workspace/workspace_projects_page.md",
+      "sha256": "d79b7d50fdd6b7bc953ca2a0bcb69f55e5adc2e68833a7a7645a289fbc7da52a",
+      "rows": 10
+    }
+  ],
+  "legacy_feature_rows": 1846,
+  "legacy_missing_source_hints": 0,
+  "inputs_sha256": {
+    "test/auto_test/catalog.json": "46e847d93579f166fc3867b7539108134bed8e487e446e78ad9140b521e14631",
+    "test/auto_test/functional_inventory.json": "34f1d92d4d2c376c14d378f7e6d56a1951e4ea49ac5db05478a5494b257f47ae",
+    "test/auto_test/domain_coverage.json": "b811d184f3eac0f94ac4365e8acba0b52c3e3ccd23a2af2cc1abbec9222cea0d",
+    "test/auto_test/README.md": "efb8593f4267b067090268f2e92ad62a2da10fab28d828fa33913d342d8591ec"
+  },
+  "actual_page_file_candidates": [
+    "lib/modules/customer_service/presentation/cs_governance_page.dart",
+    "lib/modules/customer_service/presentation/cs_session_page.dart",
+    "lib/modules/customer_service/presentation/cs_workspace_page.dart",
+    "lib/modules/enterprise/presentation/enterprise_conversation_page.dart",
+    "lib/modules/enterprise/presentation/enterprise_home_page.dart",
+    "lib/modules/enterprise_app/presentation/enterprise_directory_page.dart",
+    "lib/modules/enterprise_app/presentation/enterprise_group_page.dart",
+    "lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart",
+    "lib/modules/enterprise_oa/presentation/oa_tab_page.dart",
+    "lib/modules/organization/presentation/human_directory_page.dart",
+    "lib/modules/organization/presentation/org_invite_qr_page.dart",
+    "lib/modules/organization/presentation/org_join_scanner_page.dart",
+    "lib/modules/organization/presentation/org_workspace_members_page.dart",
+    "lib/modules/organization/presentation/organization_departments_page.dart",
+    "lib/modules/organization/presentation/organization_detail_page.dart",
+    "lib/modules/organization/presentation/organization_home_page.dart",
+    "lib/modules/organization/presentation/organization_invitations_page.dart",
+    "lib/modules/organization/presentation/organization_manage_page.dart",
+    "lib/modules/organization/presentation/organization_member_detail_page.dart",
+    "lib/modules/organization/presentation/organization_members_page.dart",
+    "lib/modules/organization/presentation/organization_picker_page.dart",
+    "lib/modules/organization/presentation/organization_tools_page.dart",
+    "lib/page/billing/plan_list_page.dart",
+    "lib/page/bottom_navigation/bottom_navigation_page.dart",
+    "lib/page/channel/channel_admin_page.dart",
+    "lib/page/channel/channel_article_page.dart",
+    "lib/page/channel/channel_comment_page.dart",
+    "lib/page/channel/channel_compose_page.dart",
+    "lib/page/channel/channel_create_page.dart",
+    "lib/page/channel/channel_detail_page.dart",
+    "lib/page/channel/channel_discover_page.dart",
+    "lib/page/channel/channel_edit_page.dart",
+    "lib/page/channel/channel_invitation_page.dart",
+    "lib/page/channel/channel_list_page.dart",
+    "lib/page/channel/channel_order_detail_page.dart",
+    "lib/page/channel/channel_order_list_page.dart",
+    "lib/page/channel/channel_subscriber_page.dart",
+    "lib/page/chat/chat/chat_page.dart",
+    "lib/page/chat/chat_setting/chat_setting_page.dart",
+    "lib/page/chat/p2p_call_screen/p2p_call_screen_page.dart",
+    "lib/page/chat/rtc_room/rtc_room_page.dart",
+    "lib/page/chat/send_to/send_to_page.dart",
+    "lib/page/chat/widget/quick_reply_manage_page.dart",
+    "lib/page/chat_shell/chat_shell_page.dart",
+    "lib/page/contact/apply_friend/apply_friend_page.dart",
+    "lib/page/contact/assistant_plaza/assistant_plaza_page.dart",
+    "lib/page/contact/confirm_new_friend/confirm_new_friend_page.dart",
+    "lib/page/contact/contact/contact_page.dart",
+    "lib/page/contact/contact_setting/contact_setting_page.dart",
+    "lib/page/contact/contact_setting_tag/contact_setting_tag_page.dart",
+    "lib/page/contact/new_friend/add_friend_page.dart",
+    "lib/page/contact/new_friend/new_friend_page.dart",
+    "lib/page/contact/people_info/people_info_page.dart",
+    "lib/page/contact/people_info_more/people_info_more_page.dart",
+    "lib/page/contact/people_info_more/people_info_same_group_page.dart",
+    "lib/page/contact/people_nearby/people_nearby_page.dart",
+    "lib/page/contact/recently_registered_user/recently_registered_user_page.dart",
+    "lib/page/conversation/conversation_page.dart",
+    "lib/page/error/init_error_page.dart",
+    "lib/page/group/album/group_album_page.dart",
+    "lib/page/group/album/group_album_photo_detail_page.dart",
+    "lib/page/group/album/group_album_photo_page.dart",
+    "lib/page/group/announcement/group_announcement_page.dart",
+    "lib/page/group/category/group_category_detail_page.dart",
+    "lib/page/group/category/group_category_page.dart",
+    "lib/page/group/face_to_face/face_to_face_confirm_page.dart",
+    "lib/page/group/face_to_face/face_to_face_page.dart",
+    "lib/page/group/file/group_file_audio_preview_page.dart",
+    "lib/page/group/file/group_file_page.dart",
+    "lib/page/group/group_detail/add_member_page.dart",
+    "lib/page/group/group_detail/change_info_page.dart",
+    "lib/page/group/group_detail/group_detail_page.dart",
+    "lib/page/group/group_detail/remove_member_page.dart",
+    "lib/page/group/group_discovery/group_discovery_page.dart",
+    "lib/page/group/group_list/group_list_page.dart",
+    "lib/page/group/group_member/group_member_detail_page.dart",
+    "lib/page/group/group_member/group_member_page.dart",
+    "lib/page/group/group_select/group_select_page.dart",
+    "lib/page/group/launch_chat/launch_chat_page.dart",
+    "lib/page/group/schedule/group_schedule_detail_page.dart",
+    "lib/page/group/schedule/group_schedule_page.dart",
+    "lib/page/group/tag/group_tag_page.dart",
+    "lib/page/group/task/group_task_detail_page.dart",
+    "lib/page/group/task/group_task_page.dart",
+    "lib/page/group/vote/group_vote_detail_page.dart",
+    "lib/page/group/vote/group_vote_page.dart",
+    "lib/page/live_room/live_room_list/live_room_list_page.dart",
+    "lib/page/live_room/publisher/publisher_page.dart",
+    "lib/page/live_room/subscriber/subscriber_page.dart",
+    "lib/page/mention/mention_list_page.dart",
+    "lib/page/mine/account_security/account_security_page.dart",
+    "lib/page/mine/account_security/bind_email_page.dart",
+    "lib/page/mine/account_security/bind_mobile_page.dart",
+    "lib/page/mine/appeal/appeal_page.dart",
+    "lib/page/mine/change_password/change_password_page.dart",
+    "lib/page/mine/change_password/set_password_page.dart",
+    "lib/page/mine/dark_model/dark_model_page.dart",
+    "lib/page/mine/denylist/denylist_page.dart",
+    "lib/page/mine/feedback/feedback_detail_page.dart",
+    "lib/page/mine/feedback/feedback_page.dart",
+    "lib/page/mine/font_size/font_size_page.dart",
+    "lib/page/mine/language/language_page.dart",
+    "lib/page/mine/logout_account/logout_account_page.dart",
+    "lib/page/mine/mine/mine_page.dart",
+    "lib/page/mine/select_region/select_region_page.dart",
+    "lib/page/mine/setting/setting_page.dart",
+    "lib/page/mine/storage_space/storage_space_page.dart",
+    "lib/page/mine/user_collect/user_collect_detail_page.dart",
+    "lib/page/mine/user_collect/user_collect_page.dart",
+    "lib/page/mine/user_device/change_name_page.dart",
+    "lib/page/mine/user_device/user_device_detail_page.dart",
+    "lib/page/mine/user_device/user_device_page.dart",
+    "lib/page/moment/moment_create_page.dart",
+    "lib/page/moment/moment_detail_page.dart",
+    "lib/page/moment/moment_feed_page.dart",
+    "lib/page/moment/moment_friend_picker/moment_at_picker_page.dart",
+    "lib/page/moment/moment_friend_picker/moment_friend_picker_page.dart",
+    "lib/page/moment/moment_notify/moment_notify_page.dart",
+    "lib/page/passport/forgot_password_page.dart",
+    "lib/page/passport/forgot_password_pin_code_page.dart",
+    "lib/page/passport/login_page.dart",
+    "lib/page/passport/manage_account_page.dart",
+    "lib/page/passport/signup_continue_page.dart",
+    "lib/page/passport/signup_page.dart",
+    "lib/page/passport/web_login_page.dart",
+    "lib/page/personal_info/personal_info/personal_info_page.dart",
+    "lib/page/personal_info/profile/profile_page.dart",
+    "lib/page/personal_info/profile/widgets/privacy_settings_page.dart",
+    "lib/page/personal_info/set_gender/set_gender_page.dart",
+    "lib/page/personal_info/set_nickname/set_nickname_page.dart",
+    "lib/page/personal_info/set_region/set_region_page.dart",
+    "lib/page/personal_info/update/update_page.dart",
+    "lib/page/personal_info/widget/more_page.dart",
+    "lib/page/qrcode/channel_qrcode_page.dart",
+    "lib/page/qrcode/group_qrcode_page.dart",
+    "lib/page/qrcode/qrcode_page.dart",
+    "lib/page/qrcode/user_qrcode_page.dart",
+    "lib/page/scanner/qr_login_confirm_page.dart",
+    "lib/page/scanner/scanner_page.dart",
+    "lib/page/scanner/scanner_result_page.dart",
+    "lib/page/search/message_search_page.dart",
+    "lib/page/search/search_chat_page.dart",
+    "lib/page/search/web_search_page.dart",
+    "lib/page/settings/compliance_key_page.dart",
+    "lib/page/settings/e2ee_backup_export_page.dart",
+    "lib/page/settings/e2ee_backup_import_page.dart",
+    "lib/page/settings/e2ee_backup_setup_page.dart",
+    "lib/page/settings/e2ee_key_recovery_page.dart",
+    "lib/page/settings/safety_number_page.dart",
+    "lib/page/single/markdown_page.dart",
+    "lib/page/single/network_failure_guidance_page.dart",
+    "lib/page/single/terms_of_service_page.dart",
+    "lib/page/single/upgrade_page.dart",
+    "lib/page/single/video_viewer_page.dart",
+    "lib/page/splash/splash_page.dart",
+    "lib/page/user_tag/contact_tag_detail/contact_tag_detail_page.dart",
+    "lib/page/user_tag/contact_tag_detail/select_tag_friend_page.dart",
+    "lib/page/user_tag/contact_tag_list/contact_tag_list_page.dart",
+    "lib/page/user_tag/user_tag_relation/tag_relation_page.dart",
+    "lib/page/user_tag/user_tag_save/user_tag_save_page.dart",
+    "lib/page/wallet/red_packet_detail_page.dart",
+    "lib/page/wallet/red_packet_send_page.dart",
+    "lib/page/wallet/transfer_send_page.dart",
+    "lib/page/wallet/wallet_page.dart",
+    "lib/page/wallet/withdraw_page.dart",
+    "lib/page/web_shell/web_shell_page.dart",
+    "lib/page/welcome/welcome_page.dart",
+    "lib/page/workspace/project/home/project_create_page.dart",
+    "lib/page/workspace/project/home/project_detail_page.dart",
+    "lib/page/workspace/project/tasks/task_form_page.dart",
+    "lib/page/workspace/project/w2/project_channels_page.dart",
+    "lib/page/workspace/project/w2/project_insights_page.dart",
+    "lib/page/workspace/project/w2/project_members_page.dart",
+    "lib/page/workspace/project/w2/project_milestones_page.dart",
+    "lib/page/workspace/workspace_branding_page.dart",
+    "lib/page/workspace/workspace_channel_detail_page.dart",
+    "lib/page/workspace/workspace_channels_page.dart",
+    "lib/page/workspace/workspace_conversations_page.dart",
+    "lib/page/workspace/workspace_create_page.dart",
+    "lib/page/workspace/workspace_groups_page.dart",
+    "lib/page/workspace/workspace_invite_page.dart",
+    "lib/page/workspace/workspace_join_page.dart",
+    "lib/page/workspace/workspace_members_page.dart",
+    "lib/page/workspace/workspace_overview_page.dart",
+    "lib/page/workspace/workspace_picker_page.dart",
+    "lib/page/workspace/workspace_projects_page.dart",
+    "lib/page/workspace_shell/enterprise_shell_page.dart",
+    "lib/page/workspace_shell/workspace_shell_page.dart"
+  ],
+  "note": "Legacy feature seeds are not current-source coverage or acceptance. F00 must reconcile route/module/actions and replace placeholder oracles.",
+  "ambiguous_legacy_rows": 22
+}
