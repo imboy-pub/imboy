@@ -1,0 +1,25 @@
+{
+  "scope": "REGISTERED_FANOUT_STRUCTURE_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "app_head": "7c5d71fc208446dee494e65f07aebc1fce234eb8",
+  "executed": 24,
+  "failed": 0,
+  "exit": 0,
+  "analysis": "No issues found",
+  "review": [
+    "C11_FLUTTER_REVIEW_APPROVE",
+    "RUNNER_CODE_REVIEW_APPROVE"
+  ],
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/service/e2ee_registered_fanout_binding_test.dart",
+    "test/unit_test/service/e2ee_registered_wire_binding_test.dart",
+    "test/unit_test/service/e2ee_registered_backend_transport_test.dart",
+    "--reporter",
+    "expanded"
+  ],
+  "log_sha256": "a7256750376a4c14a83bc7f489ed7c64fbe60002e06352f1dd9e4d78f9835f27",
+  "proof_limit": "Host structure validation; no real registry completeness, own-device echo, crypto decrypt, network or devices. Nonempty skipped_devices fails full qualification; partial/recovery journeys remain required."
+}
