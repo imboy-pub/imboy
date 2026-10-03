@@ -1,0 +1,36 @@
+{
+  "id": "PREPARATION-F14-BILLING-EMPTY-RETRY-FIX",
+  "scope": "LOCAL_BILLING_WIDGET_PROVIDER_REGRESSION",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "app_head": "da436e85c9282cf202bbd85938ce4f26ef6e7a5d",
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/page/billing/plan_list_page_test.dart",
+    "test/unit_test/page/billing/billing_provider_test.dart",
+    "--reporter",
+    "expanded"
+  ],
+  "executed": 16,
+  "exit": 0,
+  "analyze_exit": 0,
+  "reviews": [
+    "FLUTTER_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "log": {
+    "path": "f14-billing-empty-retry-fixed.log",
+    "sha256": "fa6bc3fe0c0e99749f322702b96fc8a90cb0bcd79122300ebade7561f9221100"
+  },
+  "red_observation": {
+    "executed": 4,
+    "passed": 3,
+    "failed": 1,
+    "cause": "Failed load followed by successful empty response retained old error and failed expected empty-state assertion",
+    "raw_log_saved": false
+  },
+  "fix": "BillingState explicit clearError with default preservation; loadPlans clears stale error before retry",
+  "proof_limit": "Actual widget/notifier behavior with fake API. No subscription/payment provider, real backend or Android/macOS business qualification."
+}

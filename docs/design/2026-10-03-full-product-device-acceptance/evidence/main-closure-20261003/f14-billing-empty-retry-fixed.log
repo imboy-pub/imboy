@@ -1,0 +1,18 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-1 套餐列表为空 → 渲染空态文案
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-1 套餐列表为空 → 渲染空态文案
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-1 套餐列表为空 → 渲染空态文案
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-1 套餐列表为空 → 渲染空态文案
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-1 套餐列表为空 → 渲染空态文案
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-1 套餐列表为空 → 渲染空态文案
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-1 套餐列表为空 → 渲染空态文案
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-1 套餐列表为空 → 渲染空态文案
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-1 套餐列表为空 → 渲染空态文案
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:01 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-8 第三方 cancelled → false 且不轮询
+00:01 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-9 第三方 notConfigured（后端未下发 pay_params）→ false、不轮询
+00:01 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-10 完成后 paying 复位；进行中重入直接 false
+00:01 +16: All tests passed!
