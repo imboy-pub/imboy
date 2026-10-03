@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_EXPLICIT_ACCOUNT_EPOCH_SWITCH_CANCELLATION",
+  "app_head": "0e8e4dc215189527db202ae9fda5d2c9e4bc5d04",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "results": {
+    "red_exit": 1,
+    "red_failed": 1,
+    "red_oracle": "Old A detail after A-B-A incorrectly triggered workspace mine (1 instead of 0).",
+    "final_test_exit": 0,
+    "final_passed": 20,
+    "final_analyze_issues": 0,
+    "catalog_targets": 153,
+    "inventory_functions": 1982
+  },
+  "changes": [
+    "Account epoch changes invalidate old explicit-account switch flows even after returning to the same account string.",
+    "Checks propagate through prepare, commit, rollback and default workspace callback.",
+    "Switch gate stays closed until its original Future settles; finally releases it for retry."
+  ],
+  "limitations": [
+    "New dynamic tests cover pending detail stage for A-B and A-B-A only.",
+    "Do not prove atomicity of in-flight persistence/provider operations; already-started writes cannot be recalled by post-await checks.",
+    "Single-direction test checks A pointer unchanged but does not directly assert B pointer.",
+    "Default null accountKey global identity lifecycle and personal/join workflows still require independent qualification.",
+    "No real credentials, device, database or production acceptance."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-switch-epoch-red-20261004.log",
+      "sha256": "9d5d834bdcc811873e3f7a83926fdf4192b5aefad26a60ced38caf9bd64868eb"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-switch-epoch-green-20261004.log",
+      "sha256": "34c6d522781abe8796a623ab67affb086c3c4caf8ccccfb17d1c30345ffca900"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-switch-epoch-final-20261004.log",
+      "sha256": "b88d07427c809f66fa99630ba95f68733cea9828a464cadd412e5bc33b215613"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-switch-epoch-analyze-20261004.log",
+      "sha256": "b741ff20469e1ae7a50032ffe05b7fe226b75472174d1b03c7c1ae5adb27c0b5"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-switch-epoch-analyze-final-20261004.log",
+      "sha256": "b741ff20469e1ae7a50032ffe05b7fe226b75472174d1b03c7c1ae5adb27c0b5"
+    }
+  ]
+}

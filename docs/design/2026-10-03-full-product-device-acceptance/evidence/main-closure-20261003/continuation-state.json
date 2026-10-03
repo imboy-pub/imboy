@@ -4804,5 +4804,11 @@
     "app_head": "6a04e1193181801048ace25c63506e350811f328",
     "product_pass": false,
     "remaining": "Switch epoch and cross-account in-flight cleanup"
+  },
+  "organization_picker_switch_epoch": {
+    "receipt": "organization-picker-switch-epoch-20261004.json",
+    "app_head": "0e8e4dc215189527db202ae9fda5d2c9e4bc5d04",
+    "product_pass": false,
+    "remaining": "In-flight commit/rollback atomicity and real identity lifecycle qualification"
   }
 }
