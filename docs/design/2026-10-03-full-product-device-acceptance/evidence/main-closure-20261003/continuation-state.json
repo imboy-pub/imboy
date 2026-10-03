@@ -4714,5 +4714,11 @@
     "app_head": "53682f8c8b4655f89faca8a7b0c52081559abe0e",
     "tests": 4,
     "product_pass": false
+  },
+  "organization_badge_race": {
+    "receipt": "organization-invitation-badge-race-20261004.json",
+    "app_head": "6b2868797a48b43a07c07745137110e8e252f329",
+    "tests": 5,
+    "product_pass": false
   }
 }

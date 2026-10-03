@@ -1,0 +1,49 @@
+{
+  "scope": "LOCAL_ORGANIZATION_BADGE_RESPONSE_RACE",
+  "app_head": "6b2868797a48b43a07c07745137110e8e252f329",
+  "tests": 5,
+  "exit_code": 0,
+  "analyze_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "artifacts": [
+    {
+      "path": "org-badge-race-red-20261004.log",
+      "sha256": "b3724ff259f4a4a8ea5af5e96213b0a648749c7737e83ab7f75d93ebd4cb7d09"
+    },
+    {
+      "path": "org-badge-race-green-20261004.log",
+      "sha256": "000bcb6ae043fd33c68f8a03a2030436580d0fe807daa4248cd50d5a33062eb1"
+    },
+    {
+      "path": "org-badge-race-calibration-20261004.log",
+      "sha256": "d371e60e9b364d8d4ded03547812ee8e52bba76e743d8b0d46c59a6bd6de33c6"
+    },
+    {
+      "path": "org-badge-race-final-20261004.log",
+      "sha256": "d371e60e9b364d8d4ded03547812ee8e52bba76e743d8b0d46c59a6bd6de33c6"
+    },
+    {
+      "path": "org-badge-race-valid-calibration-20261004.log",
+      "sha256": "b1821a775e57b4d93be264a92889a60004e8156bc6faf5f5d191bad57f508df8"
+    },
+    {
+      "path": "org-badge-race-valid-green-20261004.log",
+      "sha256": "e7436779006f30237029e63be7a19d8355f55ee14bb6ec546ece984973ca1188"
+    },
+    {
+      "path": "org-badge-race-valid-analyze-20261004.log",
+      "sha256": "f62afd7de73e50e335566b443e3f2a428f4e095797d1c2cebf8d72cbb3462206"
+    }
+  ],
+  "authoritative_red": "org-badge-race-valid-calibration-20261004.log",
+  "authoritative_green": "org-badge-race-valid-green-20261004.log",
+  "attempt_notes": [
+    "Initial list payload malformed; initial RED/GREEN/calibration/final failures not valid race evidence",
+    "Corrected both responses to map list; disabled guard calibration exit1; restored guard GREEN5PASS"
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Synthetic Dio/widget only; no real API/device; old successful response tested, old exception branch reviewed only"
+  ]
+}
