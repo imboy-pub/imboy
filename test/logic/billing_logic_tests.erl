@@ -192,10 +192,14 @@ pay_invoice_test_() ->
     {foreach, fun pay_setup/0, fun pay_cleanup/1, [
         fun t11_pay_gateway_extra_passthrough/0,
         fun t12_pay_gateway_no_extra_compat/0,
-        fun t13_pay_envelope_aligned_with_recharge/0
+        fun t13_pay_envelope_aligned_with_recharge/0,
+        fun t14_gateway_failure_log_privacy/0,
+        fun t15_mark_paid_failure_log_privacy/0
     ]}.
 
 pay_setup() ->
+    meck:new(elib_log, [passthrough, non_strict]),
+    meck:expect(elib_log, internal_log, fun(_, _, _, _) -> ok end),
     meck:new(billing_invoice_ds, [passthrough, non_strict]),
     meck:new(payment_gateway, [passthrough, non_strict]),
     meck:expect(billing_invoice_ds, find_by_invoice_no, fun(?INV_NO) ->
@@ -205,6 +209,11 @@ pay_setup() ->
     ok.
 
 pay_cleanup(_) ->
+    try
+        meck:unload(elib_log)
+    catch
+        _:_ -> ok
+    end,
     catch meck:unload(payment_gateway),
     catch meck:unload(billing_invoice_ds),
     ok.
@@ -241,3 +250,38 @@ t13_pay_envelope_aligned_with_recharge() ->
     ?assertEqual(1, maps:get(<<"status">>, Result)),
     %% 保留 invoice_no 字段，兼容旧客户端按账单号取值
     ?assertEqual(?INV_NO, maps:get(<<"invoice_no">>, Result)).
+
+t14_gateway_failure_log_privacy() ->
+    meck:expect(payment_gateway, pay, fun(_, _, _) ->
+        {error, {gateway_error, <<"synthetic-private-payment-key">>}}
+    end),
+    ?assertEqual(
+        {error, <<"支付失败，请稍后重试"/utf8>>},
+        billing_logic:pay_invoice(?INV_NO, <<"alipay">>)
+    ),
+    ?assert(
+        meck:called(
+            elib_log,
+            internal_log,
+            [error, [billing_gateway_payment_error], billing_logic, '_']
+        )
+    ),
+    ?assertEqual(1, meck:num_calls(elib_log, internal_log, 4)).
+
+t15_mark_paid_failure_log_privacy() ->
+    meck:expect(payment_gateway, pay, fun(_, _, _) -> {ok, ?PAY_NO} end),
+    meck:expect(billing_invoice_ds, mark_paid, fun(_, _) ->
+        {error, {database_error, <<"synthetic-private-payment-key">>}}
+    end),
+    ?assertEqual(
+        {error, <<"支付状态更新失败，请稍后重试"/utf8>>},
+        billing_logic:pay_invoice(?INV_NO, <<"wallet">>)
+    ),
+    ?assert(
+        meck:called(
+            elib_log,
+            internal_log,
+            [error, [billing_mark_paid_error], billing_logic, '_']
+        )
+    ),
+    ?assertEqual(1, meck:num_calls(elib_log, internal_log, 4)).

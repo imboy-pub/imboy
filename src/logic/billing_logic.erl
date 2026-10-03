@@ -506,14 +506,14 @@ do_pay_invoice(Inv, InvoiceNo, Method) ->
                         <<"status">> => 1,
                         <<"already_paid">> => true
                     }};
-                {error, Reason} ->
-                    ?ERROR_LOG([<<"billing mark_paid failed">>, InvoiceNo, Reason]),
+                {error, _Reason} ->
+                    ?ERROR_LOG([billing_mark_paid_error]),
                     {error, <<"支付状态更新失败，请稍后重试"/utf8>>}
             end;
         {error, Msg} when is_binary(Msg) ->
             {error, Msg};
-        {error, Reason} ->
-            ?ERROR_LOG([<<"billing pay_invoice gateway failed">>, InvoiceNo, Reason]),
+        {error, _Reason} ->
+            ?ERROR_LOG([billing_gateway_payment_error]),
             {error, <<"支付失败，请稍后重试"/utf8>>}
     end.
 
