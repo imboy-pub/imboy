@@ -259,8 +259,8 @@ group_e2ee_gate(Gid, MsgType, Action, E2EE, Payload) ->
                     end;
                 {ok, _} ->
                     ok;
-                {error, Reason} ->
-                    _ = ?ERROR_LOG([group_e2ee_gate_query_failed, Gid, Reason]),
+                {error, _Reason} ->
+                    _ = ?ERROR_LOG(group_e2ee_gate_query_failed),
                     %% fail-closed 拒发同样计数：查询故障被误读为"群开着 E2EE"时靠它暴露
                     _ = elib_metric:increment(group_e2ee_check_failed_total),
                     {error, <<"group_e2ee_check_failed">>}

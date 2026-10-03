@@ -141,10 +141,15 @@ gate_fails_closed_on_query_error_test_() ->
     ?WITH_MECKS(
         [
             {group_ds, [
-                {'e2ee_mode', 1, fun(42) -> {error, pg_down} end}
+                {'e2ee_mode', 1, fun(42) ->
+                    {error, #{gid => 42, secret => <<"synthetic-group-key-canary">>}}
+                end}
             ]},
             {elib_metric, [
                 {'increment', 1, fun(_) -> ok end}
+            ]},
+            {elib_log, [
+                {internal_log, 4, fun(_, _, _, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -157,6 +162,17 @@ gate_fails_closed_on_query_error_test_() ->
             ?assertEqual(
                 1,
                 meck:num_calls(elib_metric, increment, [group_e2ee_check_failed_total])
+            ),
+            ?assertEqual(
+                1,
+                meck:num_calls(
+                    elib_log,
+                    internal_log,
+                    [error, group_e2ee_gate_query_failed, '_', '_']
+                )
+            ),
+            ?assertEqual(
+                1, meck:num_calls(elib_log, internal_log, 4)
             )
         end
     ).
