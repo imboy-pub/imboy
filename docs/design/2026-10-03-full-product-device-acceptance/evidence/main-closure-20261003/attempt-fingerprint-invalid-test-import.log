@@ -1,0 +1,13 @@
+..........E............
+======================================================================
+ERROR: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 123, in test_unbound_or_malformed_attempts_cannot_be_pass
+    for key in ATTEMPT_FINGERPRINT_KEYS:
+NameError: name 'ATTEMPT_FINGERPRINT_KEYS' is not defined
+
+----------------------------------------------------------------------
+Ran 23 tests in 0.001s
+
+FAILED (errors=1)

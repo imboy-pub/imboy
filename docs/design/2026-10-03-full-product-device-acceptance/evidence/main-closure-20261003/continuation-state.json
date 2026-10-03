@@ -707,5 +707,48 @@
     "real_runtime_observations": "NOT_EXECUTED",
     "final_verifier": "NOT_IMPLEMENTED",
     "note": "Historical schema1 fixtures retained; now rejected. Backend evidence commit changes HEAD and requires future candidate requalification."
+  },
+  "attempt_fingerprint_classifier_closure": {
+    "app_candidate": "42317d0d02a58f0f7f28642e004d8d51bfebed1d",
+    "command": "python3 -m unittest discover -s test/tooling/auto_test",
+    "executed": 280,
+    "exit": 0,
+    "negative_subcases": 33,
+    "before_fix": {
+      "executed": 23,
+      "failures": 26,
+      "errors": 7,
+      "exit": 1
+    },
+    "review": "APPROVED_COMPLETE_FINGERPRINT_FAIL_CLOSED",
+    "scope": "RETRY_FINGERPRINT_SCHEMA_ONLY",
+    "product_pass": false,
+    "logs": [
+      {
+        "path": "attempt-fingerprint-invalid-test-import.log",
+        "sha256": "9462018d1070d00fe23e3d5b49070717ff2a8e830b50d68c5e6ac9bda5a1ce3a",
+        "phase": "INVALID_TEST_SETUP",
+        "exit": 1
+      },
+      {
+        "path": "attempt-fingerprint-valid-red.log",
+        "sha256": "3246e70a3be0547368489354b766e3cf34c71f2c0281c6947fc036b750955ba5",
+        "phase": "VALIDATED_CLASSIFIER_FAILURE",
+        "exit": 1
+      },
+      {
+        "path": "attempt-fingerprint-green.log",
+        "sha256": "49f3120e63748cfdba548c02c72f5eeecabe40d127b2985ccaecf5d3d3bc8ba0",
+        "phase": "REVIEWED_LOCAL_TOOLING_PASS",
+        "exit": 0
+      }
+    ],
+    "remaining": [
+      "independently pinned full attempt journal",
+      "prove all failed attempts retained",
+      "real execution raw-case and business oracles",
+      "fingerprint authenticity and candidate/runtime binding",
+      "final verifier and real platform gates"
+    ]
   }
 }

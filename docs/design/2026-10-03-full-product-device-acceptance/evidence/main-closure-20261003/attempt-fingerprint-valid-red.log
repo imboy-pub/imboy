@@ -1,0 +1,365 @@
+......................
+======================================================================
+ERROR: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 130, in test_unbound_or_malformed_attempts_cannot_be_pass
+    verdict = classify_attempts([item])
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_lib/result.py", line 167, in classify_attempts
+    fingerprints = [_attempt_fingerprint(attempt) for attempt in attempt_list]
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_lib/result.py", line 167, in <listcomp>
+    fingerprints = [_attempt_fingerprint(attempt) for attempt in attempt_list]
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_lib/result.py", line 124, in _attempt_fingerprint
+    fingerprint = attempt.get("fingerprint")
+AttributeError: 'bool' object has no attribute 'get'
+
+======================================================================
+ERROR: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': [], 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 130, in test_unbound_or_malformed_attempts_cannot_be_pass
+    verdict = classify_attempts([item])
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_lib/result.py", line 168, in classify_attempts
+    if len(set(fingerprints)) != 1:
+TypeError: unhashable type: 'list'
+
+======================================================================
+ERROR: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': [], 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 130, in test_unbound_or_malformed_attempts_cannot_be_pass
+    verdict = classify_attempts([item])
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_lib/result.py", line 168, in classify_attempts
+    if len(set(fingerprints)) != 1:
+TypeError: unhashable type: 'list'
+
+======================================================================
+ERROR: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': [], 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 130, in test_unbound_or_malformed_attempts_cannot_be_pass
+    verdict = classify_attempts([item])
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_lib/result.py", line 168, in classify_attempts
+    if len(set(fingerprints)) != 1:
+TypeError: unhashable type: 'list'
+
+======================================================================
+ERROR: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': [], 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 130, in test_unbound_or_malformed_attempts_cannot_be_pass
+    verdict = classify_attempts([item])
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_lib/result.py", line 168, in classify_attempts
+    if len(set(fingerprints)) != 1:
+TypeError: unhashable type: 'list'
+
+======================================================================
+ERROR: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': [], 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 130, in test_unbound_or_malformed_attempts_cannot_be_pass
+    verdict = classify_attempts([item])
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_lib/result.py", line 168, in classify_attempts
+    if len(set(fingerprints)) != 1:
+TypeError: unhashable type: 'list'
+
+======================================================================
+ERROR: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': []}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 130, in test_unbound_or_malformed_attempts_cannot_be_pass
+    verdict = classify_attempts([item])
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_lib/result.py", line 168, in classify_attempts
+    if len(set(fingerprints)) != 1:
+TypeError: unhashable type: 'list'
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': None, 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': '', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': '  ', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 123, 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': None, 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': '', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': '  ', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 123, 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': None, 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': '', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': '  ', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 123, 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': None, 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': '', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': '  ', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 123, 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': None, 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': '', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': '  ', 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 123, 'device_fingerprint': 'ffffffffffffffff'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': None}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': ''}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': '  '}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+======================================================================
+FAIL: test_unbound_or_malformed_attempts_cannot_be_pass (test_result.ClassifyAttemptsTest) (item={'parsed': {'test_status': 'PASS', 'executed': 2, 'skipped': 0, 'failed': 0, 'oracle_count': 2, 'reason_code': 'NONE', 'failure_class': 'unknown', 'first_failure': {'test_id': None, 'name': None, 'message': None, 'is_failure': None}, 'malformed_lines': 0, 'done_event_seen': True, 'process_exit_code': 0}, 'fingerprint': {'app_head': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'backend_head': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'target_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 'config_sha256': 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', 'fixture_fingerprint': 'eeeeeeeeeeeeeeee', 'device_fingerprint': 123}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_result.py", line 131, in test_unbound_or_malformed_attempts_cannot_be_pass
+    self.assertEqual(verdict['test_status'], 'BLOCKED')
+AssertionError: 'PASS' != 'BLOCKED'
+- PASS
++ BLOCKED
+
+
+----------------------------------------------------------------------
+Ran 23 tests in 0.002s
+
+FAILED (failures=26, errors=7)
