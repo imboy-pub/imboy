@@ -1,0 +1,24 @@
+{
+  "scope": "SOURCE_ONLY_DIRECTORY_MEMBER_UI_PREPARATION",
+  "app_head": "e2d41e2e8a49023ca82defa25c191aaca51a884e",
+  "analyze_exit": 0,
+  "spec_validate_exit": 0,
+  "catalog_check_exit": 0,
+  "inventory_check_exit": 0,
+  "safe_to_execute": false,
+  "device_execution": false,
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "artifacts": [
+    {
+      "path": "org-directory-member-preparation-analyze-20261004.log",
+      "sha256": "dfd4613619cff1fb5627f9fce5b386d755cac1a92968784ec18262f966dd8eae"
+    }
+  ],
+  "behavior": "Guard member ID/name before app startup; wait for actual keyed member row then assert exact display name inside row",
+  "limits": [
+    "Fixture must place owned synthetic member in initial root page; independent real backend membership oracle, authorization, zero-write and device provenance still absent",
+    "No additional function mappings or reduction in coverage gaps"
+  ]
+}

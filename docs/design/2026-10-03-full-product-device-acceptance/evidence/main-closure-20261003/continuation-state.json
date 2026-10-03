@@ -4763,5 +4763,11 @@
     "missing_targets": 1763,
     "placeholder_oracles": 231,
     "product_pass": false
+  },
+  "organization_directory_member_preparation": {
+    "receipt": "organization-directory-member-preparation-20261004.json",
+    "app_head": "e2d41e2e8a49023ca82defa25c191aaca51a884e",
+    "safe_to_execute": false,
+    "product_pass": false
   }
 }
