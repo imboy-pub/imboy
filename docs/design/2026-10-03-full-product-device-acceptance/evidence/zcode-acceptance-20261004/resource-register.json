@@ -1,0 +1,123 @@
+{
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T06:41:17+08:00",
+  "principle": "Discovery is NOT authorization. All AUTHORIZED entries must cite an explicit approval record.",
+  "resources": [
+    {
+      "resource": "android_device",
+      "observed": "1 real device connected via adb (MRD-AL00)",
+      "auth_status": "NOT_AUTHORIZED",
+      "lease": null,
+      "note": "Device presence detected read-only per next-wave-resource-review; install/login/journey requires explicit user authorization + unique lease; serial not stored per policy."
+    },
+    {
+      "resource": "macos_app_instance",
+      "observed": "not probed this run yet",
+      "auth_status": "NOT_AUTHORIZED",
+      "lease": null
+    },
+    {
+      "resource": "isolated_pg_docker",
+      "observed": "local image imboy/pg18:3.6.1-2 (fbe5570489c5) present; ports 25432/19800/19706/9801 free",
+      "auth_status": "NOT_AUTHORIZED",
+      "note": "Candidate per next-wave-resource-review §min-scope; requires explicit approval of scope+ports before container start."
+    },
+    {
+      "resource": "shared_dev_pg_4323",
+      "observed": "container imboy_pg18 running (shared dev DB)",
+      "auth_status": "FORBIDDEN",
+      "lease": null,
+      "note": "Shared development database — never used by this run."
+    },
+    {
+      "resource": "synthetic_accounts",
+      "observed": "-",
+      "auth_status": "NOT_AUTHORIZED",
+      "note": "Created only after isolated backend scope approved."
+    },
+    {
+      "resource": "mitm_canary_negative",
+      "observed": "-",
+      "auth_status": "NOT_AUTHORIZED",
+      "note": "Separate scope; isolated accounts + proxy only."
+    },
+    {
+      "resource": "flutter_build_dirs",
+      "observed": "-",
+      "auth_status": "LOCAL_BUILD_ALLOWED",
+      "note": "Local compile/test within own worktree per handoff contract §2; no device install."
+    },
+    {
+      "resource": "git_local_commits",
+      "observed": "-",
+      "auth_status": "AUTHORIZED",
+      "note": "Identity leeyi <leeyisoft@qq.com>; local commits only; NO push/deploy/production migration/real payment/third-party contact."
+    }
+  ],
+  "pending_decisions": [
+    {
+      "id": "D-02/D-05",
+      "topic": "identity transparency profile + witness ownership/cost",
+      "blocks": [
+        "AC-19",
+        "AC-20",
+        "AC-21"
+      ]
+    },
+    {
+      "id": "D-03",
+      "topic": "MLS enable & migration",
+      "blocks": [
+        "AC-30",
+        "AC-31"
+      ]
+    },
+    {
+      "id": "D-04",
+      "topic": "PQ protocol/platform policy",
+      "blocks": [
+        "AC-32",
+        "AC-33"
+      ]
+    },
+    {
+      "id": "D-06",
+      "topic": "backup/recovery scope expansion & destructive actions (conditional)",
+      "blocks": [
+        "AC-07/AC-08 extensions only"
+      ]
+    },
+    {
+      "id": "D-07",
+      "topic": "frozen SLO approval",
+      "blocks": [
+        "AC-26"
+      ]
+    },
+    {
+      "id": "RES-PG",
+      "topic": "isolated PG18 + ports + synthetic credentials scope",
+      "blocks": [
+        "F01-S02",
+        "real-PG suites",
+        "backend journeys"
+      ]
+    },
+    {
+      "id": "RES-DEV",
+      "topic": "Android real device + macOS instance + synthetic accounts + journeys",
+      "blocks": [
+        "device L2 grids",
+        "AC-22/23/27/28",
+        "six calibration journeys device legs"
+      ]
+    },
+    {
+      "id": "RES-MITM",
+      "topic": "MITM/canary negative scope",
+      "blocks": [
+        "AC-28 server-side canary search scope"
+      ]
+    }
+  ]
+}

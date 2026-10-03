@@ -1,0 +1,94 @@
+{
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T06:40:51+08:00",
+  "coordinator": "ZCODE",
+  "handoff_contract": {
+    "path": "imboy/docs/plans/2026-10-04-zcode-two-plan-acceptance-handoff.md",
+    "sha256": "44e1c54b20eb87a51cfaef30aa4634976a75d0c4c670e8d2418b3473916ecdc8"
+  },
+  "plans": {
+    "e2ee": {
+      "path": "imboy/docs/design/2026-10-03-e2ee-production-excellence/plan.md",
+      "sha256": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+      "required_ids": 36,
+      "id_range": "AC-00..AC-35"
+    },
+    "full_product": {
+      "path": "imboy/docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1.md",
+      "sha256": "aeb4dc3da1d0c51ebecaf6a1edfad07558e3dbcaca6615e9c1b2e011b84832aa",
+      "required_ids": 61
+    },
+    "execution_contract": {
+      "path": "imboy/docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1-execution-contract.md",
+      "sha256": "1dcb770aae46c77142442c521d7becc490f5329b679e8e1c8868a7d40125eaf3"
+    }
+  },
+  "supporting_inputs": {
+    "acceptance_set_sha256": "506a0f93b28b88a8ef3ccd1e25f96634df9f4d807b081efd6ae1f72eee5f1521",
+    "dispatch_cards_sha256": "8523a3d4e664184f1253efad925bc8c925a173d685920ffffa918c1ee3480488",
+    "input_manifest_sha256": "3c6ce200a553c323c401209e7bbb205c0c4efc87e8bd6f720099e739746adc7b",
+    "coverage_seed_sha256": "6997c766e80dc15c0f32165dce840def834abecf1574913ab0bf3d84da64ba0b",
+    "next_wave_resource_review": "imboy/docs/design/2026-10-03-full-product-device-acceptance/next-wave-resource-review.md",
+    "previous_run_state": "evidence/main-closure-20261003/continuation-state.json",
+    "previous_remaining_acceptance": "evidence/main-closure-20261003/remaining-acceptance.tsv"
+  },
+  "repos": {
+    "imboy": {
+      "head": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+      "branch": "main",
+      "status": [
+        "?? docs/business/imboy-open-source-productization-strategy-v1.md"
+      ],
+      "worktrees": 1,
+      "frozen_ref": "a2d947534f3e266282601bb6d5fed856ce548c86",
+      "frozen_ref_is_ancestor": true,
+      "drift_commits": "4"
+    },
+    "imboyapp": {
+      "head": "a3f1e3d0bd2d3090c07aa36a7e3366593773ca7d",
+      "branch": "main",
+      "status": [],
+      "worktrees": 1,
+      "frozen_ref": "a3f1e3d0bd2d3090c07aa36a7e3366593773ca7d",
+      "frozen_ref_is_ancestor": true,
+      "drift_commits": "0"
+    },
+    "imboyadmin": {
+      "head": "c9e73adcf3151d2214461d12e0998651ec811dd6",
+      "branch": "main",
+      "status": [],
+      "worktrees": 1,
+      "frozen_ref": "c9e73adcf3151d2214461d12e0998651ec811dd6",
+      "frozen_ref_is_ancestor": true,
+      "drift_commits": "0"
+    }
+  },
+  "previous_run_summary": {
+    "run_id": "main-closure-20261003",
+    "overall_status": "ACTIVE_NOT_COMPLETE",
+    "phase": "MAIN_INTEGRATED_EVIDENCE_INTEGRITY_REPAIRED_FULL_GATE_PENDING",
+    "gate_status": {
+      "E2EE_LOCAL_CANDIDATE": "NOT_REQUALIFIED_ON_NEW_MAIN",
+      "E2EE_PRODUCTION_QUALIFIED": "NO_GO",
+      "TOP_TIER_PROFILE": "NO_GO",
+      "FULL_PRODUCT_LOCAL_DEVICE_ACCEPTANCE": "NOT_PROVEN",
+      "PRODUCTION_DEPLOYED": "NOT_EXECUTED"
+    },
+    "rule": "No historical PASS inherited; all 97 IDs re-verified from zero on current main."
+  },
+  "known_foreign_wip_protected": [
+    "imboy/docs/business/imboy-open-source-productization-strategy-v1.md",
+    "imboy/docs/design/2026-10-04-enterprise-workspace-acceptance/ (appeared during this run; not created by zcode-acceptance-20261004; untouched)",
+    "imboy/test/api/tmp_sign_probe_test.erl (appeared during this run; foreign WIP; untouched; NOTE: would be picked up by a full make eunit run — full EUnit gate must re-check its presence/disposition at freeze time)"
+  ],
+  "live_processes_at_start": {
+    "beam": "none",
+    "flutter": "none",
+    "dart": "none",
+    "docker": [
+      "imboy_pg18 (shared dev DB on 4323 — DO NOT TOUCH this run)"
+    ],
+    "candidate_ports_25432_19800_19706_9801": "all free"
+  },
+  "foreign_wip_note": "Detected mid-run via git status; per handoff contract we do not stage/modify/remove unrelated WIP."
+}

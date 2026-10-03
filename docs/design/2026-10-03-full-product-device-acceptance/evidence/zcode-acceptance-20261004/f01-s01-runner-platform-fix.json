@@ -1,0 +1,17 @@
+{
+  "id": "F01-S01-RUNNER-PLATFORM-QUALIFICATION",
+  "run_id": "zcode-acceptance-20261004",
+  "app_head": "831d5e21ee3c8de6793e0efae2baab8be6da821c",
+  "created_at": "2026-10-04T06:58:44+08:00",
+  "defect": "auto_test.py run() hardcoded platform='android' for effective_target_config; macOS online runs fingerprinted as android; capture --platform choices lacked macos",
+  "contract_ref": "full-product execution contract F01-S01: 特别修正/验证 auto_test.py 在线 run 硬编码 android 问题",
+  "fix_commit": "831d5e21ee3c8de6793e0efae2baab8be6da821c",
+  "verification": {
+    "syntax ast.parse": "OK",
+    "platform_for_device assertions": "macos/darwin/darwin-* -> macos; android & ios serials -> android; all pass",
+    "dry-run -d macos": "blocked/planned semantics unchanged; RC=0",
+    "validate --strict": "RC=0 (28 specs)"
+  },
+  "product_pass": false,
+  "note": "Runner qualification only; no device execution performed or claimed."
+}

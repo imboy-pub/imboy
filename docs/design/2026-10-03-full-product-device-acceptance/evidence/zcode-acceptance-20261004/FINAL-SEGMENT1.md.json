@@ -1,0 +1,69 @@
+{
+  "run_id": "zcode-acceptance-20261004",
+  "generated_at": "2026-10-04T06:59:35+08:00",
+  "always_run": true,
+  "phase_reached": "W0_COMPLETE_W1_PARTIAL_W2_BLOCKED_RESOURCE",
+  "candidates": {
+    "imboy": "0be001e33444db8fec78961d4916e71056f48d78",
+    "imboyapp": "831d5e21ee3c8de6793e0efae2baab8be6da821c",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6",
+    "imboyapp_note": "HEAD=831d5e21 includes both run commits; base was a3f1e3d0"
+  },
+  "commits_this_run": [
+    {
+      "repo": "imboyapp",
+      "sha": "d17bb020",
+      "subject": "test(auto_test): rebind e2ee backup-import page to real acceptance test",
+      "scope": "F00 12-item misbinding fix via generation chain"
+    },
+    {
+      "repo": "imboyapp",
+      "sha": "831d5e21",
+      "subject": "fix(auto_test): infer run platform from device instead of hardcoding android",
+      "scope": "F01-S01 runner platform qualification"
+    }
+  ],
+  "local_gates_green": {
+    "imboy make compile": "RC=0",
+    "imboy flatten_internal --check": "RC=0 (28/42)",
+    "imboy e2ee_version_gate_test.sh": "RC=0 (45 PASS: 28 path + 10 behavior + 7)",
+    "imboy e2ee fixtures verify_python.py": "RC=0 (245 checks, 0 fails)",
+    "imboyadmin typecheck": "RC=0",
+    "imboyadmin bun test --isolate": "RC=0 (2386 pass / 0 fail / 222 files)",
+    "imboyapp dart analyze lib test/unit_test --fatal-infos": "RC=0 (0 issues)",
+    "imboyapp flutter test test/unit_test/service/e2ee/": "RC=0 (986 pass)",
+    "imboyapp backup-domain regression (restore+boundary+import widget)": "RC=0 all passed",
+    "imboyapp auto_test validate --strict": "RC=0 (28 specs)",
+    "imboyapp auto_test catalog --check": "RC=0 (154 targets/188 pages)",
+    "imboyapp inventory --check": "RC=0 (188 pages/1982 functions)"
+  },
+  "expected_open_failures_retained": {
+    "imboyapp inventory --acceptance-check": "RC=64 — 1763 ACCEPTANCE_TARGET_MISSING + 231 ACCEPTANCE_ORACLE_PLACEHOLDER remain open; gate NOT loosened"
+  },
+  "misbinding_repair": "F00 12× fn:settings:e2ee_backup_import_page:001-012 rebound from navigation smoke to real acceptance test through spec→catalog→inventory generation chain (commit d17bb020); fn001 HOST_PARTIAL, fn012 GAP retained honestly",
+  "scope_verdicts": {
+    "LOCAL_REGRESSION": "PARTIAL (static+unit green on current main; backend full EUnit twice + excluded suites pending isolated PG)",
+    "ANDROID_DEVICE": "BLOCKED_USER_AUTH (device detected, not authorized)",
+    "MACOS_DEVICE": "BLOCKED_USER_AUTH (flutter device present; app instance not started)",
+    "CROSS_DEVICE_JOURNEYS": "BLOCKED_USER_AUTH",
+    "ADMIN_REAL_BACKEND": "BLOCKED_RESOURCE (isolated backend not authorized)",
+    "UX_USER_REVIEW": "BLOCKED (no device journeys yet)",
+    "EXTERNAL_INTEGRATIONS": "BLOCKED_EXTERNAL (no third-party contact authorized)",
+    "E2EE_LOCAL_CANDIDATE": "PARTIAL (App domain requalified 986/986 + vectors 245/245 + version gate 45/45 on current main; backend domain + frozen double-run pending)",
+    "E2EE_PRODUCTION_QUALIFIED": "NO_GO",
+    "TOP_TIER_PROFILE": "NO_GO",
+    "PRODUCTION_DEPLOYED": "NOT_EXECUTED"
+  },
+  "97_id_status": "36 e2ee + 61 full-product all PENDING (see acceptance.tsv); zero historical PASS inherited; no parent ID advanced on partial local evidence",
+  "pending_authorizations": [
+    "RES-PG isolated PG18 scope+ports",
+    "RES-DEV android+macos+synthetic accounts+journeys",
+    "RES-MITM canary scope",
+    "D-02/D-05",
+    "D-03",
+    "D-04",
+    "D-06(conditional)",
+    "D-07"
+  ],
+  "estimate": "UNKNOWN — P50/P80 only after six calibration journeys per contract; no week numbers fabricated"
+}

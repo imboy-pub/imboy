@@ -1,0 +1,142 @@
+{
+  "id": "F00-BACKUP-IMPORT-BINDING-FIX",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T06:45:37+08:00",
+  "app_head_before": "a3f1e3d0bd2d3090c07aa36a7e3366593773ca7d",
+  "defect": "spec runner.target 错绑 integration_test/mine/mine_subpages_smoke_test.dart（仅导航冒烟：打开页面+文本断言+截图，无导入动作）",
+  "fix": "spec e2ee-backup-import.json runner.target 改为 integration_test/settings/e2ee_backup_import_acceptance_test.dart；catalog.json 与 functional_inventory.json 经生成器再生（非手改生成物）；12 项 fn test_target 随链路更新",
+  "generation_chain": [
+    "test/auto_test/specs/e2ee-backup-import.json (source)",
+    "scripts/auto_test.py catalog -> test/auto_test/catalog.json",
+    "scripts/auto_test_lib/inventory.py -> test/auto_test/functional_inventory.json"
+  ],
+  "verification": {
+    "python3 scripts/auto_test.py validate --strict": "RC=0 (28 specs)",
+    "python3 scripts/auto_test.py catalog --check": "RC=0 (154 targets/188 pages)",
+    "python3 scripts/auto_test_lib/inventory.py --check": "RC=0 (188 pages/1982 functions)",
+    "python3 scripts/auto_test_lib/inventory.py --acceptance-check": "RC=64 EXPECTED-FAIL retained (1763 missing targets + 231 placeholder oracles remain open; NOT gated green)"
+  },
+  "rule_compliance": "导航冒烟不再计为导入覆盖；001 标 HOST_PARTIAL；012 保持 GAP 不 PASS；平台格子全部 NOT_EXECUTED（设备未授权）",
+  "records": [
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:001",
+      "action": "点击选择区调起文件选择器",
+      "layer_status": "HOST_PARTIAL",
+      "binding_note": "L2 注入 initialFilePath 路径可测；原生文件选择器对话框由 OS 渲染，集成测试不可直接驱动点击调起，真机人工步骤保留",
+      "targets": [
+        "integration_test/settings/e2ee_backup_import_acceptance_test.dart"
+      ],
+      "platform_grids": "android+macos 真机（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:002",
+      "action": "选中文件后校验并展示备份元信息",
+      "layer_status": "L0_PLUS_L2",
+      "binding_note": "widget L9 元信息卡+密码启用；acceptance 注入合法文件后密码框可用作前置",
+      "targets": [
+        "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+        "integration_test/settings/e2ee_backup_import_acceptance_test.dart"
+      ],
+      "platform_grids": "android+macos 真机（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:003",
+      "action": "文件格式非法时提示校验失败",
+      "layer_status": "L0",
+      "binding_note": "widget L10 非法文件错误提示+元信息不展示",
+      "targets": [
+        "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart"
+      ],
+      "platform_grids": "android+macos 真机（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:004",
+      "action": "未选合法文件时密码框保持禁用",
+      "layer_status": "L0",
+      "binding_note": "widget L11 未选文件双禁用",
+      "targets": [
+        "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart"
+      ],
+      "platform_grids": "android+macos 真机（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:005",
+      "action": "密码为空时导入按钮置灰禁用",
+      "layer_status": "L0",
+      "binding_note": "widget L9 空密码保持导入禁用",
+      "targets": [
+        "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart"
+      ],
+      "platform_grids": "android+macos 真机（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:006",
+      "action": "顶部警告卡片提示覆盖密钥风险",
+      "layer_status": "L0",
+      "binding_note": "widget L13 警告卡片始终展示",
+      "targets": [
+        "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart"
+      ],
+      "platform_grids": "android+macos 真机（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:007",
+      "action": "存在云端备份时展示云端恢复卡片",
+      "layer_status": "L0_PLUS_L2",
+      "binding_note": "widget L14 云端备份恢复入口/无备份静默；acceptance 云卡出现为前置",
+      "targets": [
+        "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+        "integration_test/settings/e2ee_backup_import_acceptance_test.dart"
+      ],
+      "platform_grids": "android+macos 真机（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:008",
+      "action": "输入密码导入并恢复私钥到安全存储",
+      "layer_status": "L2_REAL_ACTION",
+      "binding_note": "acceptance AT-EI-FILE 真导出→注入→密码→导入成功",
+      "targets": [
+        "integration_test/settings/e2ee_backup_import_acceptance_test.dart"
+      ],
+      "platform_grids": "android+macos 真机+本地隔离后端（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:009",
+      "action": "导入成功弹窗展示脱敏设备与密钥标识",
+      "layer_status": "L2_REAL_ACTION",
+      "binding_note": "acceptance AT-EI-DLG 弹窗含 Device ID/Key ID 脱敏",
+      "targets": [
+        "integration_test/settings/e2ee_backup_import_acceptance_test.dart"
+      ],
+      "platform_grids": "android+macos 真机+本地隔离后端（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:010",
+      "action": "云端恢复弹出口令确认框可取消",
+      "layer_status": "L2_REAL_ACTION",
+      "binding_note": "acceptance AT-EI-CANC 取消后口令框关闭不恢复",
+      "targets": [
+        "integration_test/settings/e2ee_backup_import_acceptance_test.dart"
+      ],
+      "platform_grids": "android+macos 真机+本地隔离后端（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:011",
+      "action": "云端口令错误时提示口令不正确",
+      "layer_status": "L2_REAL_ACTION",
+      "binding_note": "acceptance AT-EI-WRONG 错误口令→口令错误或备份损坏",
+      "targets": [
+        "integration_test/settings/e2ee_backup_import_acceptance_test.dart"
+      ],
+      "platform_grids": "android+macos 真机+本地隔离后端（未授权，NOT_EXECUTED）"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:012",
+      "action": "恢复后回填群聊会话密钥",
+      "layer_status": "GAP_IMPLEMENTATION",
+      "binding_note": "acceptance 测试头注释明确：该行需群历史 fixture，维持阻塞，不得记 PASS；修复依赖群历史授权场景",
+      "targets": [],
+      "platform_grids": "BLOCKED_UPSTREAM(群历史 fixture)+设备未授权"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "id": "F15-S01-ROUTE-WS-ENUMERATION",
+  "run_id": "zcode-acceptance-20261004",
+  "backend_sha": "0be001e33444db8fec78961d4916e71056f48d78",
+  "created_at": "2026-10-04T06:59:35+08:00",
+  "scope": "STATIC_LOCAL_ENUMERATION_ONLY — operation-level positive/negative/permission verification requires isolated real backend (BLOCKED_RESOURCE)",
+  "source": "src/imboy_router.erl (route patterns extracted)",
+  "counts": {
+    "total_route_entries": 865,
+    "api_v1_unique": 510,
+    "api_adm_unique": 312,
+    "api_internal_unique": 28,
+    "internal_bundle_paths_match": true,
+    "websocket": [
+      "/api/v1/ws -> websocket_handler"
+    ],
+    "infra": [
+      "/healthz",
+      "/livez",
+      "/readyz",
+      "/metrics",
+      "/help",
+      "/brand",
+      "/privacy-policy",
+      "/account-deletion",
+      "/.well-known/agent.json",
+      "/static/[...]",
+      "/static/admin"
+    ]
+  },
+  "verification": {
+    "python3 api/flatten_internal.py --check": "RC=0 (28 paths / 42 ops, up to date)"
+  },
+  "product_pass": false,
+  "next": "Per-route operation matrix (consumer/permission/positive/negative/idempotency/pagination) awaits isolated backend authorization (RES-PG)."
+}
