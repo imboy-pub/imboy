@@ -150,5 +150,84 @@ claim_fallback_key_exhausted_test() ->
         meck:expect(elib_pg, query, 2, fun(_Sql, _Params) -> {ok, []} end),
         ?assertEqual({error, exhausted}, olm_identity_repo:claim_fallback_key(100, <<"dev-A">>))
     after
-        meck:unload([elib_pg])
+        meck:unload(elib_pg)
+    end.
+
+%% ===================================================================
+%% C01（E2EE 计划 run-20261003-094804）：撤销联合门——枚举查询必须
+%% 只返回 user_device 中仍有活跃行（status=1）的设备身份。
+%% cleanup_olm_material 失败残留的 olm_identity 行不得经此接口外泄。
+%% ===================================================================
+
+list_identity_by_uids_filters_revoked_devices_test() ->
+    _ = catch meck:unload([elib_pg]),
+    ok = meck:new(elib_pg, [no_link]),
+    try
+        meck:expect(elib_pg, query, 2, fun(Sql, _Params) ->
+            SqlStr = binary_to_list(iolist_to_binary(Sql)),
+            erlang:put(c01_list_uids_sql, {
+                string:str(SqlStr, "JOIN") > 0,
+                string:str(SqlStr, "user_device") > 0,
+                string:str(SqlStr, "status = 1") > 0
+            }),
+            {ok, []}
+        end),
+        {ok, []} = olm_identity_repo:list_identity_by_uids([100, 200]),
+        ?assertEqual({true, true, true}, erlang:get(c01_list_uids_sql))
+    after
+        meck:unload(elib_pg)
+    end.
+
+%% ===================================================================
+%% C01：吊销对账——sweep_orphan_olm_material/0 只删「user_device 无活跃行」
+%% 的残留（NOT EXISTS 白名单），三张 olm 表全覆盖，累计返回删除行数。
+%% ===================================================================
+
+sweep_orphan_olm_material_deletes_only_non_active_test() ->
+    _ = catch meck:unload([elib_pg]),
+    ok = meck:new(elib_pg, [no_link]),
+    try
+        SqlCapture = atomics:new(1, [{signed, true}]),
+        Counters = atomics:new(3, [{signed, true}]),
+        meck:expect(elib_pg, execute, 2, fun(Sql, _Params) ->
+            SqlStr = binary_to_list(iolist_to_binary(Sql)),
+            HasDelete = string:str(SqlStr, "DELETE FROM") > 0,
+            HasNotExists = string:str(SqlStr, "NOT EXISTS") > 0,
+            HasUd = string:str(SqlStr, "user_device") > 0,
+            HasActive = string:str(SqlStr, "status = 1") > 0,
+            atomics:add(
+                SqlCapture,
+                1,
+                case HasDelete andalso HasNotExists andalso HasUd andalso HasActive of
+                    true -> 0;
+                    false -> 1
+                end
+            ),
+            %% 依次每表删 2/1/0 行
+            N = atomics:add_get(Counters, 1, 1),
+            {ok, lists:nth(N, [2, 1, 0])}
+        end),
+        ?assertEqual({ok, 3}, olm_identity_repo:sweep_orphan_olm_material()),
+        ?assertEqual(0, atomics:get(SqlCapture, 1))
+    after
+        meck:unload(elib_pg)
+    end.
+
+%% 对账任一语句失败即短路返回 {error,_}（可见失败优于静默半清）
+sweep_orphan_olm_material_short_circuits_on_error_test() ->
+    _ = catch meck:unload([elib_pg]),
+    ok = meck:new(elib_pg, [no_link]),
+    try
+        Calls = atomics:new(1, [{signed, true}]),
+        meck:expect(elib_pg, execute, 2, fun(_Sql, _Params) ->
+            N = atomics:add_get(Calls, 1, 1),
+            case N of
+                1 -> {ok, 2};
+                _ -> {error, db_down}
+            end
+        end),
+        ?assertEqual({error, db_down}, olm_identity_repo:sweep_orphan_olm_material()),
+        ?assertEqual(2, atomics:get(Calls, 1))
+    after
+        meck:unload(elib_pg)
     end.

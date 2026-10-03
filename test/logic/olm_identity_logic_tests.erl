@@ -35,7 +35,9 @@ report_identity_rejects_bad_args_test() ->
 
 report_identity_ok_test() ->
     %% 使用有效 base64（P1-2 添加了 verify_ed25519 需 decode_base64 成功）
+    %% C01 起首次注册路径需查旧身份判分流（not_found → PoP 即授权）
     ?WITH_MECKS([olm_identity_ds, crypto], fun() ->
+        meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) -> {ok, not_found} end),
         meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) -> {ok, 1} end),
         meck:expect(crypto, verify, 5, fun(eddsa, none, _, _, _) -> true end),
         ?assertEqual(
@@ -319,6 +321,278 @@ contract_batch_claim_shape_test() ->
         ?assertEqual(
             [<<"identity">>, <<"key_base64">>, <<"key_id">>, <<"type">>],
             lists:sort(maps:keys(Entry))
+        )
+    end).
+
+%% ===================================================================
+%% C01（E2EE 计划 run-20261003-094804）：同 DID 换钥治理 + 撤销联合门
+%%
+%% 换钥威胁：E2EE-013 PoP 用「本次上传的新 ed25519 公钥」验「本次上传的签名」，
+%% 只证明持有新私钥——盗 token 者自生成密钥对即可通过 PoP 并静默覆盖设备
+%% 身份根键（ON CONFLICT DO UPDATE），对端 TOFU 无版本变化可感知。
+%% 修复契约：
+%%   - 根键（ed25519）替换：signature 必须由「已注册旧 ed25519 私钥」签署
+%%     （旧钥过渡证明），否则拒绝 key_rotation_requires_old_key_proof；
+%%   - 子键（curve25519）轮换：同根 PoP 即授权（根钥签了新子键）；
+%%   - 任何有变化的身份写：user_device.identity_version 单调 +1，并写
+%%     trust_audit 事件（method=identity_rotated, 版本/代数快照）；
+%%   - 撤销设备（user_device 无活跃行）的身份写入 → device_revoked；
+%%   - claim_keys：目标设备不活跃 → device_revoked（cleanup 失败残留材料领不走）。
+%% ===================================================================
+
+-define(C01_UID, 100).
+-define(C01_DID, <<"dev-A">>).
+
+%% 真实 Ed25519 密钥对（pub 为 base64，与 wire 契约一致；不 mock crypto）
+ed25519_keypair() ->
+    Seed = crypto:strong_rand_bytes(32),
+    {Pub, Priv} = crypto:generate_key(eddsa, ed25519, Seed),
+    {base64:encode(Pub), Priv}.
+
+%% 用私钥对 curve25519 公钥的 base64 字符串签名（= report_identity 的 PoP 载荷）
+sign_curve(Priv, CurveB64) ->
+    base64:encode(crypto:sign(eddsa, none, CurveB64, [Priv, ed25519])).
+
+old_identity_mock(OldEdB64, OldCurveB64) ->
+    meck:expect(olm_identity_ds, find_identity, 2, fun(?C01_UID, ?C01_DID) ->
+        {ok, #{
+            <<"device_id">> => ?C01_DID,
+            <<"ed25519_key">> => OldEdB64,
+            <<"curve25519_key">> => OldCurveB64
+        }}
+    end).
+
+%% RED-1：盗 token 者用全新密钥对自签换根 → 必须被拒，不得静默覆盖
+report_identity_rejects_root_key_swap_without_old_key_proof_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds], fun() ->
+        {OldEdB64, _OldPriv} = ed25519_keypair(),
+        {NewEdB64, NewPriv} = ed25519_keypair(),
+        NewCurveB64 = base64:encode(<<"c01-curve-new">>),
+        AttackerSig = sign_curve(NewPriv, NewCurveB64),
+        old_identity_mock(OldEdB64, base64:encode(<<"c01-curve-old">>)),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) ->
+            {ok, 1}
+        end),
+        ?assertEqual(
+            {error, <<"key_rotation_requires_old_key_proof">>},
+            olm_identity_logic:report_identity(
+                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, AttackerSig, <<"ios">>
+            )
+        ),
+        %% 拒绝路径不得触碰存储
+        ?assertEqual(0, meck:num_calls(olm_identity_ds, upsert_identity, '_'))
+    end).
+
+%% RED-2：持旧私钥者换根（旧钥签新 curve）→ 接受 + 版本事件
+report_identity_root_key_rotation_with_old_key_signature_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds, elib_tsid], fun() ->
+        meck:expect(elib_tsid, generate, 1, fun(trust_audit) -> 990001 end),
+        {OldEdB64, OldPriv} = ed25519_keypair(),
+        {NewEdB64, _NewPriv} = ed25519_keypair(),
+        NewCurveB64 = base64:encode(<<"c01-curve-new">>),
+        TransitionSig = sign_curve(OldPriv, NewCurveB64),
+        old_identity_mock(OldEdB64, base64:encode(<<"c01-curve-old">>)),
+        meck:expect(user_device_ds, bump_identity_version, 2, fun(?C01_UID, ?C01_DID) ->
+            {ok, 2, 1}
+        end),
+        meck:expect(
+            olm_identity_ds,
+            upsert_identity,
+            6,
+            fun(?C01_UID, ?C01_DID, Ed, Cv, _Sig, _Dt) when
+                Ed =:= NewEdB64, Cv =:= NewCurveB64
+            ->
+                {ok, 1}
+            end
+        ),
+        meck:expect(trust_audit_ds, insert_event, 1, fun(Event) ->
+            erlang:put(c01_captured_event, Event),
+            {ok, inserted}
+        end),
+        ?assertEqual(
+            ok,
+            olm_identity_logic:report_identity(
+                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, TransitionSig, <<"ios">>
+            )
+        ),
+        Event = erlang:get(c01_captured_event),
+        ?assertEqual(<<"identity_rotated">>, maps:get(method, Event)),
+        ?assertEqual(?C01_UID, maps:get(actor_uid, Event)),
+        ?assertEqual(?C01_UID, maps:get(target_uid, Event)),
+        ?assertEqual(?C01_DID, maps:get(target_device_id, Event)),
+        ?assertEqual(2, maps:get(target_identity_version, Event)),
+        ?assertEqual(1, maps:get(actor_device_generation, Event)),
+        ?assert(is_binary(maps:get(event_id, Event))),
+        ?assert(is_integer(maps:get(issued_at, Event)))
+    end).
+
+%% RED-3：子键轮换（同根换 curve）→ PoP 即授权 + bump + 版本事件
+report_identity_subkey_rotation_bumps_version_and_emits_event_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds, elib_tsid], fun() ->
+        meck:expect(elib_tsid, generate, 1, fun(trust_audit) -> 990002 end),
+        {EdB64, Priv} = ed25519_keypair(),
+        OldCurveB64 = base64:encode(<<"c01-curve-old">>),
+        NewCurveB64 = base64:encode(<<"c01-curve-new">>),
+        Sig = sign_curve(Priv, NewCurveB64),
+        old_identity_mock(EdB64, OldCurveB64),
+        BumpCalls = atomics:new(1, [{signed, true}]),
+        meck:expect(user_device_ds, bump_identity_version, 2, fun(?C01_UID, ?C01_DID) ->
+            atomics:add(BumpCalls, 1, 1),
+            {ok, 5, 2}
+        end),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) ->
+            {ok, 1}
+        end),
+        meck:expect(trust_audit_ds, insert_event, 1, fun(_Event) -> {ok, inserted} end),
+        ?assertEqual(
+            ok,
+            olm_identity_logic:report_identity(
+                ?C01_UID, ?C01_DID, EdB64, NewCurveB64, Sig, <<"ios">>
+            )
+        ),
+        ?assertEqual(1, atomics:get(BumpCalls, 1)),
+        ?assertEqual(1, meck:num_calls(trust_audit_ds, insert_event, '_'))
+    end).
+
+%% 幂等重报（键完全一致）：不 bump、不写事件（版本历史只记真实变化）
+report_identity_idempotent_rereport_no_bump_no_event_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds], fun() ->
+        {EdB64, Priv} = ed25519_keypair(),
+        CurveB64 = base64:encode(<<"c01-curve-same">>),
+        Sig = sign_curve(Priv, CurveB64),
+        old_identity_mock(EdB64, CurveB64),
+        meck:expect(user_device_ds, bump_identity_version, 2, fun(_, _) ->
+            erlang:error(bump_must_not_be_called_on_idempotent_rereport)
+        end),
+        meck:expect(trust_audit_ds, insert_event, 1, fun(_) ->
+            erlang:error(event_must_not_be_written_on_idempotent_rereport)
+        end),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) ->
+            {ok, 1}
+        end),
+        ?assertEqual(
+            ok,
+            olm_identity_logic:report_identity(?C01_UID, ?C01_DID, EdB64, CurveB64, Sig, <<"ios">>)
+        )
+    end).
+
+%% RED-4：撤销复活——残留 olm 行 + user_device 无活跃行（bump 0 行）→ 拒绝。
+%% 用同根子键轮换路径驱动（PoP 可通过），才能到达 bump 的撤销门。
+report_identity_revived_device_rejected_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds], fun() ->
+        {EdB64, Priv} = ed25519_keypair(),
+        NewCurveB64 = base64:encode(<<"c01-curve-new">>),
+        Sig = sign_curve(Priv, NewCurveB64),
+        old_identity_mock(EdB64, base64:encode(<<"c01-curve-old">>)),
+        meck:expect(user_device_ds, bump_identity_version, 2, fun(?C01_UID, ?C01_DID) ->
+            {ok, 0}
+        end),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) ->
+            {ok, 1}
+        end),
+        ?assertEqual(
+            {error, <<"device_revoked">>},
+            olm_identity_logic:report_identity(
+                ?C01_UID, ?C01_DID, EdB64, NewCurveB64, Sig, <<"ios">>
+            )
+        ),
+        ?assertEqual(0, meck:num_calls(olm_identity_ds, upsert_identity, '_'))
+    end).
+
+%% RED-5：find_identity 查询失败 → fail-closed，不得放行写（防「查不到旧身份即绕过」）
+report_identity_find_identity_error_fails_closed_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds], fun() ->
+        {EdB64, Priv} = ed25519_keypair(),
+        CurveB64 = base64:encode(<<"c01-curve">>),
+        Sig = sign_curve(Priv, CurveB64),
+        meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) -> {error, db_down} end),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) ->
+            {ok, 1}
+        end),
+        ?assertEqual(
+            {error, <<"internal_error">>},
+            olm_identity_logic:report_identity(?C01_UID, ?C01_DID, EdB64, CurveB64, Sig, <<"ios">>)
+        ),
+        ?assertEqual(0, meck:num_calls(olm_identity_ds, upsert_identity, '_'))
+    end).
+
+%% 版本事件写入失败不阻断换钥（换钥本身已验证授权），但必须有指标痕迹
+report_identity_rotation_event_failure_does_not_block_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds, elib_metric, elib_tsid], fun() ->
+        meck:expect(elib_tsid, generate, 1, fun(trust_audit) -> 990003 end),
+        {OldEdB64, OldPriv} = ed25519_keypair(),
+        {NewEdB64, _} = ed25519_keypair(),
+        NewCurveB64 = base64:encode(<<"c01-curve-new">>),
+        TransitionSig = sign_curve(OldPriv, NewCurveB64),
+        old_identity_mock(OldEdB64, base64:encode(<<"c01-curve-old">>)),
+        meck:expect(user_device_ds, bump_identity_version, 2, fun(_, _) -> {ok, 2, 1} end),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) -> {ok, 1} end),
+        meck:expect(trust_audit_ds, insert_event, 1, fun(_) -> {error, audit_db_down} end),
+        meck:expect(elib_metric, increment, 1, fun(_) -> ok end),
+        ?assertEqual(
+            ok,
+            olm_identity_logic:report_identity(
+                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, TransitionSig, <<"ios">>
+            )
+        ),
+        ?assertEqual(1, meck:num_calls(trust_audit_ds, insert_event, '_')),
+        ?assertEqual(1, meck:num_calls(elib_metric, increment, '_'))
+    end).
+
+%% RED-6：claim_keys——目标设备已撤销（ds 层联合门拒绝）→ 拒绝且不消费 OTK、
+%% 不落入 fallback 兜底（撤销设备的 fallback 同样被 ds 层拦截）
+claim_keys_rejects_revoked_target_device_test() ->
+    ?WITH_MECKS([olm_identity_ds, friend_ds], fun() ->
+        meck:expect(friend_ds, is_friend, 2, fun(_, _) -> true end),
+        meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) ->
+            {ok, #{<<"device_id">> => <<"dev-B">>, <<"ed25519_key">> => <<"e">>}}
+        end),
+        meck:expect(olm_identity_ds, claim_one_time_key, 3, fun(_, _, _) ->
+            {error, device_revoked}
+        end),
+        meck:expect(olm_identity_ds, claim_fallback_key, 2, fun(_, _) ->
+            erlang:error(fallback_must_not_be_tried_for_revoked_device)
+        end),
+        ?assertEqual(
+            {error, <<"device_revoked">>},
+            olm_identity_logic:claim_keys(100, 200, <<"dev-B">>)
+        )
+    end).
+
+%% RED-7：claim_keys/4（幂等租约路径）同样冒泡撤销拒绝
+claim_keys_with_request_id_rejects_revoked_target_device_test() ->
+    ?WITH_MECKS([olm_identity_ds, friend_ds], fun() ->
+        meck:expect(friend_ds, is_friend, 2, fun(_, _) -> true end),
+        meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) ->
+            {ok, #{<<"device_id">> => <<"dev-B">>, <<"ed25519_key">> => <<"e">>}}
+        end),
+        meck:expect(olm_identity_ds, claim_one_time_key, 4, fun(_, _, _, _) ->
+            {error, device_revoked}
+        end),
+        meck:expect(olm_identity_ds, claim_fallback_key, 2, fun(_, _) ->
+            erlang:error(fallback_must_not_be_tried_for_revoked_device)
+        end),
+        ?assertEqual(
+            {error, <<"device_revoked">>},
+            olm_identity_logic:claim_keys(100, 200, <<"dev-B">>, <<"req-1">>)
+        )
+    end).
+
+%% 撤销门同样覆盖 self-claim（多设备同步自己领自己的已撤销设备）
+claim_keys_self_claim_revoked_device_rejected_test() ->
+    ?WITH_MECKS([olm_identity_ds], fun() ->
+        meck:expect(olm_identity_ds, find_identity, 2, fun(200, <<"dev-B">>) ->
+            {ok, #{<<"device_id">> => <<"dev-B">>, <<"ed25519_key">> => <<"e">>}}
+        end),
+        meck:expect(olm_identity_ds, claim_one_time_key, 3, fun(_, _, _) ->
+            {error, device_revoked}
+        end),
+        meck:expect(olm_identity_ds, claim_fallback_key, 2, fun(_, _) ->
+            erlang:error(fallback_must_not_be_tried_for_revoked_device)
+        end),
+        ?assertEqual(
+            {error, <<"device_revoked">>},
+            olm_identity_logic:claim_keys(200, 200, <<"dev-B">>)
         )
     end).
 

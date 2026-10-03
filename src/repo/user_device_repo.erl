@@ -10,6 +10,7 @@
 -export([device_name/2]).
 -export([delete/2]).
 -export([is_active/2]).
+-export([bump_identity_version/2]).
 -export([update_by_did/4]).
 -export([
     count_by_uid/1,
@@ -153,6 +154,43 @@ delete(Uid, DID) ->
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE status = 1 AND user_id = $1 AND device_id = $2">>,
     _ = elib_pg:execute(Sql, [Uid, DID]),
     ok.
+
+%% @doc 设备身份轮换门 + 版本事件（C01，E2EE 计划 run-20261003-094804）。
+%%
+%% 一条 UPDATE 原子完成两件事：
+%%   1. **撤销联合门**：WHERE status=1 限定——user_device 无活跃行（已被撤销/
+%%      硬删）时 0 行命中，调用方据此拒绝身份写入（device_revoked），
+%%      与 claim_keys 的 is_active 门、list 枚举的 INNER JOIN 一起闭合
+%%      「cleanup 失败残留 olm 行」的复活路径；
+%%   2. **版本事件**：identity_version = identity_version + 1（migration 00000047
+%%      「密码学身份轮换单调版本(+1, 不回退)」的写侧实现——此前该列只读不写，
+%%      同 DID 换钥是 ON CONFLICT 静默覆盖，对端 TOFU 无从感知）。
+%%      RETURNING 带出 (新版本, 设备代数) 供 trust_audit 事件快照
+%%      （复用 trust_audit_repo 的 target_identity_version 防回退语义）。
+%%
+%% 返回：{ok, NewVersion, DeviceGeneration} | {ok, 0}（设备无活跃行）| {error, _}。
+%% 注意 NewVersion/DeviceGeneration 均为 NOT NULL DEFAULT 1，命中行必为正整数。
+-spec bump_identity_version(integer(), binary()) ->
+    {ok, pos_integer(), pos_integer()} | {ok, 0} | {error, term()}.
+bump_identity_version(Uid, DID) when is_integer(Uid), is_binary(DID) ->
+    Tb = tablename(),
+    Sql = <<
+        "UPDATE ",
+        Tb/binary,
+        " SET identity_version = identity_version + 1",
+        " WHERE status = 1 AND user_id = $1 AND device_id = $2",
+        " RETURNING identity_version, device_generation"
+    >>,
+    case elib_pg:query(Sql, [Uid, DID]) of
+        {ok, [#{<<"identity_version">> := Ver, <<"device_generation">> := Gen}]} ->
+            {ok, Ver, Gen};
+        {ok, []} ->
+            {ok, 0};
+        {error, Reason} ->
+            {error, Reason};
+        Other ->
+            {error, Other}
+    end.
 
 % user_device_repo:save(1, 1, <<"3f039a2b4724a5b7">>, [{<<"ip">>, <<"127.0.0.1">>}]).
 -spec save(binary() | integer(), integer(), binary(), map()) -> {ok, term()} | {error, term()}.
