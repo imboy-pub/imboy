@@ -5372,5 +5372,12 @@
     "new_cases": 26,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "next_wave_resource_review": {
+    "receipt": "next-wave-resource-review-20261004.json",
+    "document": "docs/design/2026-10-03-full-product-device-acceptance/next-wave-resource-review.md",
+    "resource_authorized": false,
+    "estimate_status": "UNKNOWN_PENDING_SIX_JOURNEY_CALIBRATION",
+    "product_pass": false
   }
 }

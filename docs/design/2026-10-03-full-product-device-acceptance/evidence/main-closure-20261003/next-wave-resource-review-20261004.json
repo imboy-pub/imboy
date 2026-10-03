@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "scope": "READONLY_RESOURCE_DISCOVERY_AND_REVIEWABLE_NEXT_WAVE",
+  "heads": {
+    "imboy": "a2d947534f3e266282601bb6d5fed856ce548c86",
+    "imboyapp": "a3f1e3d0bd2d3090c07aa36a7e3366593773ca7d",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "document": "docs/design/2026-10-03-full-product-device-acceptance/next-wave-resource-review.md",
+  "document_sha256": "5467de356fb2c09d27b860a55c3706deb86fc46063b6f952b3596cfc5700778a",
+  "observed": {
+    "local_pg_image_id": "sha256:fbe5570489c5b0cbd296581b61cd188daad15793381185df45295236a1234b4d",
+    "os_arch": "linux/arm64",
+    "repo_digests": [],
+    "android_attached_count": 1,
+    "proposed_ports_no_listener": [
+      25432,
+      19800,
+      19706
+    ]
+  },
+  "resource_authorized": false,
+  "containers_started": false,
+  "device_execution": false,
+  "database_connection": false,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "estimate_status": "UNKNOWN_PENDING_SIX_JOURNEY_CALIBRATION",
+  "commands": [
+    "docker image ls --format repository/tag/id",
+    "docker image inspect selected image identity/os/arch/RepoDigests",
+    "adb devices -l",
+    "lsof loopback candidate TCP listener probes"
+  ],
+  "limits": [
+    "Point-in-time discovery; resource ownership and ports need recheck.",
+    "Real Android serial not stored.",
+    "No PG version/extension or macOS test capability qualification."
+  ]
+}
