@@ -5040,5 +5040,13 @@
       "full_static_exit": 0,
       "catalog_exit": 0
     }
+  },
+  "websocket_queue_restore_capacity": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/websocket-queue-restore-capacity-20261004.json",
+    "app_head": "b057cd462df69ff8ed43bb3d27e84435ee97065c",
+    "executed": 183,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

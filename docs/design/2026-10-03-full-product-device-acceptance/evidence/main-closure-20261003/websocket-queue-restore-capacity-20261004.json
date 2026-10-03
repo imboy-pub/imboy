@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_RESTORE_CAPACITY_PREFLIGHT",
+  "app_head": "b057cd462df69ff8ed43bb3d27e84435ee97065c",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_AFTER_ACTIVE_CONFLICT_BLOCKER_FIX",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 4,
+    "red_failed": 2,
+    "final_domain_exit": 0,
+    "final_domain_passed": 183,
+    "full_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "201 historical records and merged active/disk overflow fail before restore mutation or normalized disk write.",
+    "Recovery blocks ordinary queue writes and dequeue until complete restore persistence succeeds; oversized active conflict cannot be sent.",
+    "Successful retry quarantines distinct payloads; exactly200 records restore idempotently."
+  ],
+  "attempt_notes": [
+    "First preflight review missed active conflict send after overflow; independent Flutter review found HIGH, fixed before commit."
+  ],
+  "limitations": [
+    "Synthetic local preferences only; no device/server journey or original97-ID upgrade.",
+    "Concurrent init, already started sends, malformed input resource bounds and send-failure capacity compensation remain unqualified.",
+    "Oversized disk remains preserved and requires explicit resolution before successful retry."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-restore-capacity-red-20261004.log",
+      "sha256": "ae1490c3cbcb715c389683b80a02a56c3c6df10404879a7a4a2d26dfe88db836"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-restore-capacity-final-domain-20261004.log",
+      "sha256": "4c3d94514bbd80015767e99529dd7874462d6a505446b46624a392239d490e45"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-restore-capacity-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-restore-capacity-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    }
+  ]
+}

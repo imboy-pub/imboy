@@ -1,0 +1,213 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_queue_persistence_test.dart
+00:00 +0: later snapshot waits for earlier pending write
+🧹 [QUEUE] 启动定期清理 Timer
+🧹 [QUEUE] 清空队列
+📥 [QUEUE] 入队: first, priority=0, 总数=1
+📥 [QUEUE] 入队: second, priority=0, 总数=2
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +1: failed write is reported; later successful snapshot recovers
+🧹 [QUEUE] 清空队列
+📥 [QUEUE] 入队: failed, priority=0, 总数=1
+⚠️ [QUEUE] 持久化被拒绝
+📥 [QUEUE] 入队: recovered, priority=0, 总数=2
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +2: thrown persistence error is reported and does not poison later writes
+🧹 [QUEUE] 清空队列
+📥 [QUEUE] 入队: throwing, priority=0, 总数=1
+⚠️ [QUEUE] 持久化失败: StateError
+📥 [QUEUE] 入队: after-throw, priority=0, 总数=2
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +3: oversized restore preserves disk and does not mutate memory
+🧹 [QUEUE] 清空队列
+00:00 +3 -1: oversized restore preserves disk and does not mutate memory [E]
+  Expected: throws <Instance of 'StateError'>
+    Actual: <Instance of 'Future<PersistentMessageQueue>'>
+     Which: emitted <Instance of 'PersistentMessageQueue'>
+  
+  package:matcher                                                     expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                   expectLater
+  test/unit_test/service/websocket_queue_persistence_test.dart 99:11  main.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                          _CustomZone.registerUnaryCallback
+  test/unit_test/service/websocket_queue_persistence_test.dart 96:19  main.<fn>
+  
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +3 -1: merged restore capacity check preserves active memory and disk
+🧹 [QUEUE] 清空队列
+📥 [QUEUE] 入队: active-0, priority=0, 总数=1
+📥 [QUEUE] 入队: active-1, priority=0, 总数=2
+📥 [QUEUE] 入队: active-2, priority=0, 总数=3
+📥 [QUEUE] 入队: active-3, priority=0, 总数=4
+📥 [QUEUE] 入队: active-4, priority=0, 总数=5
+📥 [QUEUE] 入队: active-5, priority=0, 总数=6
+📥 [QUEUE] 入队: active-6, priority=0, 总数=7
+📥 [QUEUE] 入队: active-7, priority=0, 总数=8
+📥 [QUEUE] 入队: active-8, priority=0, 总数=9
+📥 [QUEUE] 入队: active-9, priority=0, 总数=10
+📥 [QUEUE] 入队: active-10, priority=0, 总数=11
+📥 [QUEUE] 入队: active-11, priority=0, 总数=12
+📥 [QUEUE] 入队: active-12, priority=0, 总数=13
+📥 [QUEUE] 入队: active-13, priority=0, 总数=14
+📥 [QUEUE] 入队: active-14, priority=0, 总数=15
+📥 [QUEUE] 入队: active-15, priority=0, 总数=16
+📥 [QUEUE] 入队: active-16, priority=0, 总数=17
+📥 [QUEUE] 入队: active-17, priority=0, 总数=18
+📥 [QUEUE] 入队: active-18, priority=0, 总数=19
+📥 [QUEUE] 入队: active-19, priority=0, 总数=20
+📥 [QUEUE] 入队: active-20, priority=0, 总数=21
+📥 [QUEUE] 入队: active-21, priority=0, 总数=22
+📥 [QUEUE] 入队: active-22, priority=0, 总数=23
+📥 [QUEUE] 入队: active-23, priority=0, 总数=24
+📥 [QUEUE] 入队: active-24, priority=0, 总数=25
+📥 [QUEUE] 入队: active-25, priority=0, 总数=26
+📥 [QUEUE] 入队: active-26, priority=0, 总数=27
+📥 [QUEUE] 入队: active-27, priority=0, 总数=28
+📥 [QUEUE] 入队: active-28, priority=0, 总数=29
+📥 [QUEUE] 入队: active-29, priority=0, 总数=30
+📥 [QUEUE] 入队: active-30, priority=0, 总数=31
+📥 [QUEUE] 入队: active-31, priority=0, 总数=32
+📥 [QUEUE] 入队: active-32, priority=0, 总数=33
+📥 [QUEUE] 入队: active-33, priority=0, 总数=34
+📥 [QUEUE] 入队: active-34, priority=0, 总数=35
+📥 [QUEUE] 入队: active-35, priority=0, 总数=36
+📥 [QUEUE] 入队: active-36, priority=0, 总数=37
+📥 [QUEUE] 入队: active-37, priority=0, 总数=38
+📥 [QUEUE] 入队: active-38, priority=0, 总数=39
+📥 [QUEUE] 入队: active-39, priority=0, 总数=40
+📥 [QUEUE] 入队: active-40, priority=0, 总数=41
+📥 [QUEUE] 入队: active-41, priority=0, 总数=42
+📥 [QUEUE] 入队: active-42, priority=0, 总数=43
+📥 [QUEUE] 入队: active-43, priority=0, 总数=44
+📥 [QUEUE] 入队: active-44, priority=0, 总数=45
+📥 [QUEUE] 入队: active-45, priority=0, 总数=46
+📥 [QUEUE] 入队: active-46, priority=0, 总数=47
+📥 [QUEUE] 入队: active-47, priority=0, 总数=48
+📥 [QUEUE] 入队: active-48, priority=0, 总数=49
+📥 [QUEUE] 入队: active-49, priority=0, 总数=50
+📥 [QUEUE] 入队: active-50, priority=0, 总数=51
+📥 [QUEUE] 入队: active-51, priority=0, 总数=52
+📥 [QUEUE] 入队: active-52, priority=0, 总数=53
+📥 [QUEUE] 入队: active-53, priority=0, 总数=54
+📥 [QUEUE] 入队: active-54, priority=0, 总数=55
+📥 [QUEUE] 入队: active-55, priority=0, 总数=56
+📥 [QUEUE] 入队: active-56, priority=0, 总数=57
+📥 [QUEUE] 入队: active-57, priority=0, 总数=58
+📥 [QUEUE] 入队: active-58, priority=0, 总数=59
+📥 [QUEUE] 入队: active-59, priority=0, 总数=60
+📥 [QUEUE] 入队: active-60, priority=0, 总数=61
+📥 [QUEUE] 入队: active-61, priority=0, 总数=62
+📥 [QUEUE] 入队: active-62, priority=0, 总数=63
+📥 [QUEUE] 入队: active-63, priority=0, 总数=64
+📥 [QUEUE] 入队: active-64, priority=0, 总数=65
+📥 [QUEUE] 入队: active-65, priority=0, 总数=66
+📥 [QUEUE] 入队: active-66, priority=0, 总数=67
+📥 [QUEUE] 入队: active-67, priority=0, 总数=68
+📥 [QUEUE] 入队: active-68, priority=0, 总数=69
+📥 [QUEUE] 入队: active-69, priority=0, 总数=70
+📥 [QUEUE] 入队: active-70, priority=0, 总数=71
+📥 [QUEUE] 入队: active-71, priority=0, 总数=72
+📥 [QUEUE] 入队: active-72, priority=0, 总数=73
+📥 [QUEUE] 入队: active-73, priority=0, 总数=74
+📥 [QUEUE] 入队: active-74, priority=0, 总数=75
+📥 [QUEUE] 入队: active-75, priority=0, 总数=76
+📥 [QUEUE] 入队: active-76, priority=0, 总数=77
+📥 [QUEUE] 入队: active-77, priority=0, 总数=78
+📥 [QUEUE] 入队: active-78, priority=0, 总数=79
+📥 [QUEUE] 入队: active-79, priority=0, 总数=80
+📥 [QUEUE] 入队: active-80, priority=0, 总数=81
+📥 [QUEUE] 入队: active-81, priority=0, 总数=82
+📥 [QUEUE] 入队: active-82, priority=0, 总数=83
+📥 [QUEUE] 入队: active-83, priority=0, 总数=84
+📥 [QUEUE] 入队: active-84, priority=0, 总数=85
+📥 [QUEUE] 入队: active-85, priority=0, 总数=86
+📥 [QUEUE] 入队: active-86, priority=0, 总数=87
+📥 [QUEUE] 入队: active-87, priority=0, 总数=88
+📥 [QUEUE] 入队: active-88, priority=0, 总数=89
+📥 [QUEUE] 入队: active-89, priority=0, 总数=90
+📥 [QUEUE] 入队: active-90, priority=0, 总数=91
+📥 [QUEUE] 入队: active-91, priority=0, 总数=92
+📥 [QUEUE] 入队: active-92, priority=0, 总数=93
+📥 [QUEUE] 入队: active-93, priority=0, 总数=94
+📥 [QUEUE] 入队: active-94, priority=0, 总数=95
+📥 [QUEUE] 入队: active-95, priority=0, 总数=96
+📥 [QUEUE] 入队: active-96, priority=0, 总数=97
+📥 [QUEUE] 入队: active-97, priority=0, 总数=98
+📥 [QUEUE] 入队: active-98, priority=0, 总数=99
+📥 [QUEUE] 入队: active-99, priority=0, 总数=100
+📥 [QUEUE] 入队: active-100, priority=0, 总数=101
+📥 [QUEUE] 入队: active-101, priority=0, 总数=102
+📥 [QUEUE] 入队: active-102, priority=0, 总数=103
+📥 [QUEUE] 入队: active-103, priority=0, 总数=104
+📥 [QUEUE] 入队: active-104, priority=0, 总数=105
+📥 [QUEUE] 入队: active-105, priority=0, 总数=106
+📥 [QUEUE] 入队: active-106, priority=0, 总数=107
+📥 [QUEUE] 入队: active-107, priority=0, 总数=108
+📥 [QUEUE] 入队: active-108, priority=0, 总数=109
+📥 [QUEUE] 入队: active-109, priority=0, 总数=110
+📥 [QUEUE] 入队: active-110, priority=0, 总数=111
+📥 [QUEUE] 入队: active-111, priority=0, 总数=112
+📥 [QUEUE] 入队: active-112, priority=0, 总数=113
+📥 [QUEUE] 入队: active-113, priority=0, 总数=114
+📥 [QUEUE] 入队: active-114, priority=0, 总数=115
+📥 [QUEUE] 入队: active-115, priority=0, 总数=116
+📥 [QUEUE] 入队: active-116, priority=0, 总数=117
+📥 [QUEUE] 入队: active-117, priority=0, 总数=118
+📥 [QUEUE] 入队: active-118, priority=0, 总数=119
+📥 [QUEUE] 入队: active-119, priority=0, 总数=120
+📥 [QUEUE] 入队: active-120, priority=0, 总数=121
+📥 [QUEUE] 入队: active-121, priority=0, 总数=122
+📥 [QUEUE] 入队: active-122, priority=0, 总数=123
+📥 [QUEUE] 入队: active-123, priority=0, 总数=124
+📥 [QUEUE] 入队: active-124, priority=0, 总数=125
+📥 [QUEUE] 入队: active-125, priority=0, 总数=126
+📥 [QUEUE] 入队: active-126, priority=0, 总数=127
+📥 [QUEUE] 入队: active-127, priority=0, 总数=128
+📥 [QUEUE] 入队: active-128, priority=0, 总数=129
+📥 [QUEUE] 入队: active-129, priority=0, 总数=130
+📥 [QUEUE] 入队: active-130, priority=0, 总数=131
+📥 [QUEUE] 入队: active-131, priority=0, 总数=132
+📥 [QUEUE] 入队: active-132, priority=0, 总数=133
+📥 [QUEUE] 入队: active-133, priority=0, 总数=134
+📥 [QUEUE] 入队: active-134, priority=0, 总数=135
+📥 [QUEUE] 入队: active-135, priority=0, 总数=136
+📥 [QUEUE] 入队: active-136, priority=0, 总数=137
+📥 [QUEUE] 入队: active-137, priority=0, 总数=138
+📥 [QUEUE] 入队: active-138, priority=0, 总数=139
+📥 [QUEUE] 入队: active-139, priority=0, 总数=140
+📥 [QUEUE] 入队: active-140, priority=0, 总数=141
+📥 [QUEUE] 入队: active-141, priority=0, 总数=142
+📥 [QUEUE] 入队: active-142, priority=0, 总数=143
+📥 [QUEUE] 入队: active-143, priority=0, 总数=144
+📥 [QUEUE] 入队: active-144, priority=0, 总数=145
+📥 [QUEUE] 入队: active-145, priority=0, 总数=146
+📥 [QUEUE] 入队: active-146, priority=0, 总数=147
+📥 [QUEUE] 入队: active-147, priority=0, 总数=148
+📥 [QUEUE] 入队: active-148, priority=0, 总数=149
+📥 [QUEUE] 入队: active-149, priority=0, 总数=150
+00:00 +3 -2: merged restore capacity check preserves active memory and disk [E]
+  Expected: throws <Instance of 'StateError'>
+    Actual: <Instance of 'Future<PersistentMessageQueue>'>
+     Which: emitted <Instance of 'PersistentMessageQueue'>
+  
+  package:matcher                                                      expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                    expectLater
+  test/unit_test/service/websocket_queue_persistence_test.dart 118:13  main.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                           _CustomZone.registerUnaryCallback
+  test/unit_test/service/websocket_queue_persistence_test.dart 114:7   main.<fn>
+  
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +3 -2: exact capacity restore stays idempotent
+🧹 [QUEUE] 清空队列
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +4 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_queue_persistence_test.dart: merged restore capacity check preserves active memory and disk
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_queue_persistence_test.dart: oversized restore preserves disk and does not mutate memory
