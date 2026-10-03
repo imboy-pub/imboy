@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_ORGANIZATION_CREATE_ACCOUNT_EPOCH",
+  "app_head": "b2e794cbd3055bd481c0855d919c6d9adfa19b38",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "results": {
+    "initial_red_failed": 2,
+    "calibration_exit": 1,
+    "calibration_failed": 4,
+    "calibration_passed": 1,
+    "organization_domain_exit": 0,
+    "organization_domain_passed": 287,
+    "final_focused_exit": 0,
+    "final_focused_passed": 5,
+    "final_analyze_exit": 0,
+    "final_analyze_issues": 0
+  },
+  "oracles": [
+    "Account changes A-B or A-B-A while input dialog open prevent old POST after confirmation.",
+    "Already-started create late success/error after A-B-A does not refresh list or show snackbar.",
+    "Current account create performs exactly one POST and refreshes list with submission snackbar.",
+    "Actual async button callback completion precedes rendered terminal assertions."
+  ],
+  "attempt_notes": [
+    "Old HEAD temporary calibration reached four failed defect assertions and one passing normal case; restored exact source bytes.",
+    "287-domain pass preceded lint-only explicit mounted and typed empty-list corrections; final five focused tests and analysis rerun after those edits.",
+    "Initial analysis had one warning and two infos, retained; final analysis has no issues."
+  ],
+  "limitations": [
+    "No real authentication, device, server or database execution.",
+    "Does not undo a creation already accepted server-side.",
+    "Directory, invitations and detail navigation remain outside this create-only closure.",
+    "No original 36+61 acceptance PASS upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-create-red-20261004.log",
+      "sha256": "0a699446248e5fa10a922bb9194847e0a22ba973a074e6b04e126d55b6e2463d"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-create-calibration-20261004.log",
+      "sha256": "1485c6d612f09d0518f8e2282c00d0ee832838dc4416a30cab82f452c4be3cf4"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-create-domain-green-20261004.log",
+      "sha256": "a52b29eb06a723765818f55279167addb9a72d3df8e2feca95454c126774999f"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-create-analyze-20261004.log",
+      "sha256": "f269d3479507bd6ca3cbea32a8ac0d4507755ec2132563b29ab2597716a7109a"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-create-final-analyze-20261004.log",
+      "sha256": "ddf0da4e9d3da9b7fd0536301c08c1ee0922675683bb9096dbff07f844b9142d"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-create-restored-green-20261004.log",
+      "sha256": "a9729584c0ade1d77bc7a56bf89181aa00b326a1df7c0f41498bea899214be01"
+    }
+  ]
+}

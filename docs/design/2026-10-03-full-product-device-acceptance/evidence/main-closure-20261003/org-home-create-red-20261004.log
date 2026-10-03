@@ -1,0 +1,312 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_create_account_test.dart
+00:00 +0: 创建名称确认前账号变化不得发起旧创建
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <0>
+  Actual: <1>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_create_account_test.dart:97:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_create_account_test.dart line 97
+The test description was:
+  创建名称确认前账号变化不得发起旧创建
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: 创建名称确认前账号变化不得发起旧创建 [E]
+  Test failed. See exception logs above.
+  The test description was: 创建名称确认前账号变化不得发起旧创建
+  
+00:00 +0 -1: 创建名称确认前账号变化并返回不得发起旧创建
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <0>
+  Actual: <1>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_create_account_test.dart:97:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_create_account_test.dart line 97
+The test description was:
+  创建名称确认前账号变化并返回不得发起旧创建
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -2: 创建名称确认前账号变化并返回不得发起旧创建 [E]
+  Test failed. See exception logs above.
+  The test description was: 创建名称确认前账号变化并返回不得发起旧创建
+  
+00:00 +0 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_create_account_test.dart: 创建名称确认前账号变化不得发起旧创建
+  /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_create_account_test.dart: 创建名称确认前账号变化并返回不得发起旧创建

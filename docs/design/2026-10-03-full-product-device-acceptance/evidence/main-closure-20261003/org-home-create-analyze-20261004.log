@@ -1,0 +1,7 @@
+Analyzing organization, organization...
+
+warning - test/organization/organization_home_create_account_test.dart:33:15 - The type argument(s) of 'List' can't be inferred. Use explicit type argument(s) for 'List'. - inference_failure_on_collection_literal
+   info - lib/modules/organization/presentation/organization_home_page.dart:144:33 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/modules/organization/presentation/organization_home_page.dart:151:33 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+
+3 issues found.

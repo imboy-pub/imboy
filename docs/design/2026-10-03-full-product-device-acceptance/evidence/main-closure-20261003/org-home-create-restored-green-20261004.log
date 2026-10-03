@@ -1,0 +1,471 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_create_account_test.dart
+00:00 +0: 创建名称确认前账号变化不得发起旧创建
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+00:00 +1: 创建名称确认前账号变化并返回不得发起旧创建
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+00:00 +2: 已发创建的迟到成功不得刷新或提示新会话
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+
+00:00 +3: 已发创建的迟到失败不得刷新或提示新会话
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+
+00:00 +4: 当前会话创建仍刷新组织列表并显示提交提示
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+00:00 +5: All tests passed!
