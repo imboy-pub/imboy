@@ -1,0 +1,13 @@
+# HELP e2ee_backup_op_failed_total Cumulative application events since process start or counter reset.
+# TYPE e2ee_backup_op_failed_total counter
+# HELP erlang_vm_memory_bytes Current system state.
+# TYPE erlang_vm_memory_bytes gauge
+# HELP imboy_ws_connections_current Current system state.
+# TYPE imboy_ws_connections_current gauge
+# HELP olm_otk_exhausted_total Cumulative application events since process start or counter reset.
+# TYPE olm_otk_exhausted_total counter
+olm_otk_exhausted_total 1
+imboy_ws_connections_current 2
+e2ee_backup_op_failed_total{op="get"} 2
+e2ee_backup_op_failed_total{op="put"} 3
+erlang_vm_memory_bytes{kind="total"} 100

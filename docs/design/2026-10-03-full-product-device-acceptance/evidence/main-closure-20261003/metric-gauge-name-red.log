@@ -1,0 +1,89 @@
+======================== EUnit ========================
+module 'metrics_counter_type_tests'
+  metrics_counter_type_tests:18: -http_text_path_preserves_system_gauges_test_/0-fun-5-...=WARNING REPORT==== 4-Oct-2026::00:38:25.872347 ===
+    error: [{gen_server,call,2,[{file,"gen_server.erl"},{line,1221}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,106}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,56}]},
+            {metrics_counter_type_tests,
+                '-http_text_path_preserves_system_gauges_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_counter_type_tests.erl"},{line,20}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+            {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+            {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]}]
+    event: metrics_pool_stats_failed
+=WARNING REPORT==== 4-Oct-2026::00:38:25.886380 ===
+    error: [{ets,lookup,
+                [syn_table_names,{syn_registry_by_name,imboy}],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {syn_backbone,get_table_name,2,
+                [{file,"src/syn_backbone.erl"},{line,76}]},
+            {syn_registry,count,1,[{file,"src/syn_registry.erl"},{line,192}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,119}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,56}]},
+            {metrics_counter_type_tests,
+                '-http_text_path_preserves_system_gauges_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_counter_type_tests.erl"},{line,20}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_syn_count_failed
+=WARNING REPORT==== 4-Oct-2026::00:38:25.887727 ===
+    error: [{ets,lookup_element,
+                [ranch_server,{listener_sup,imboy_listener},2],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {ranch_server,get_listener_sup,1,
+                [{file,"src/ranch_server.erl"},{line,122}]},
+            {ranch,info,1,[{file,"src/ranch.erl"},{line,464}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,128}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,87}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,56}]},
+            {metrics_counter_type_tests,
+                '-http_text_path_preserves_system_gauges_test_/0-fun-5-',0,
+                [{file,"test/api/metrics_counter_type_tests.erl"},{line,20}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_ranch_info_failed
+*failed*
+in function metrics_counter_type_tests:'-http_text_path_preserves_system_gauges_test_/0-fun-5-'/0 (test/api/metrics_counter_type_tests.erl, line 24)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,metrics_counter_type_tests},
+              {line,24},
+              {expression,"count ( << \"# TYPE imboy_ws_connections_current gauge\" >> , Lines )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  metrics_counter_type_tests: counter_families_have_one_type_declaration_test...ok
+  metrics_counter_type_tests: system_gauges_keep_their_type_even_with_total_suffix_test...*failed*
+in function metrics_counter_type_tests:system_gauges_keep_their_type_even_with_total_suffix_test/0 (test/api/metrics_counter_type_tests.erl, line 52)
+in call from eunit_test:'-mf_wrapper/2-fun-0-'/2 (eunit_test.erl, line 286)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{assertEqual,[{module,metrics_counter_type_tests},
+              {line,52},
+              {expression,"count ( << \"# TYPE imboy_ws_connections_current gauge\" >> , Lines )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  [done in 0.195 s]
+=======================================================
+  Failed: 2.  Skipped: 0.  Passed: 1.

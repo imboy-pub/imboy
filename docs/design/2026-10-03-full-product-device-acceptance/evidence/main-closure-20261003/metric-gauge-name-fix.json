@@ -1,0 +1,79 @@
+{
+  "scope": "LOCAL_SYSTEM_GAUGE_PROMETHEUS_NAME_FIX_ONLY",
+  "backend_head": "5ad9d07af4929d15c266d8dc46bc3e3a319ea79b",
+  "behavior_red": {
+    "failed": 2,
+    "passed": 1,
+    "exit_code": 1
+  },
+  "green": {
+    "passed": 13,
+    "exit_code": 0
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "strict_promtool": {
+    "exit_code": 0,
+    "scope": "Mixed E2EE counters and two system gauge families"
+  },
+  "rule_check": {
+    "rules": 56,
+    "status": "SUCCESS"
+  },
+  "alert_tests": {
+    "assertions": 17,
+    "status": "SUCCESS"
+  },
+  "dashboard_json_parse_exit_code": 0,
+  "json_legacy_keys_preserved": true,
+  "prometheus_names": {
+    "imboy_ws_connections_total": "imboy_ws_connections_current",
+    "erlang_vm_memory_bytes_total": "erlang_vm_memory_bytes"
+  },
+  "artifacts": [
+    {
+      "path": "metric-gauge-name-red.log",
+      "sha256": "a3973f650861d76168287a99563555b4b4aa0e564ff7897150fff9a625d93dd8"
+    },
+    {
+      "path": "metric-gauge-name-green.log",
+      "sha256": "3e18b661d187d45165ac069529b362a0efc930ebbad1c442d6fc8afd619981c7"
+    },
+    {
+      "path": "metric-gauge-name-rule-check.log",
+      "sha256": "3ddb6040ffc4618f360470cef0d108c0e8e1e5a3bcd398995dd5c00a48ab2bfe"
+    },
+    {
+      "path": "metric-gauge-name-alert-tests.log",
+      "sha256": "8289a4919870ab5b28f5e90a86b4af3cdbd8c244516c02fca90d6e3f289a6711"
+    },
+    {
+      "path": "metric-gauge-name-exposition.txt",
+      "sha256": "9c7546be7a2e7d13f0e92379cf4ed4c09cf7f37b693a1c13f912682fb272165d"
+    },
+    {
+      "path": "metric-gauge-name-strict.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "metric-gauge-name-compile.log",
+      "sha256": "4a43eb81824cfe317f48bc9a302ac273452187463ba15620c21c289cbbd5f9fe"
+    }
+  ],
+  "source_hashes": {
+    "src/api/metrics_handler.erl": "9b1a7ae6cb6521cb221a02287b0534102208a6b2c9d7a165d1b3871ef95c1424",
+    "test/api/metrics_counter_type_tests.erl": "e07cd0ac658d6848511f75659b59792ceb21d1fd5f125261000490efd87d23de",
+    "test/api/metrics_handler_tests.erl": "2137f76ebfd4c2a11e926fec1084f880c8d9f2a41c8759a6f6542cbc4b7206dc",
+    "deploy/prometheus/rules/imboy-alerts.yml": "5f359522157efbbfb5ea6d6f82be1a6da42cb63b204a926cf21c846494196a10",
+    "deploy/grafana/dashboards/imboy-overview.json": "d7311f11831746d33da325a7115e1d707ddc8a95c3f54b839f235b3b922ffab1",
+    "deploy/grafana/README.md": "2660ea3a021cc15f22864d9ae81e6f6bf6f23abd7ce566ac8e419de6418a51c9"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "deployed": false,
+  "limits": [
+    "Backend/alert/dashboard source changes require coordinated authorized monitoring rollout",
+    "External Prometheus consumers of old names must be updated; legacy series are not emitted",
+    "Synthetic mixed exposition check does not prove every runtime metric family or live scrape"
+  ]
+}

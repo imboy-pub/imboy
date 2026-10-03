@@ -4489,5 +4489,12 @@
     "backend_tests": 136,
     "app_tool_tests": 447,
     "product_pass": false
+  },
+  "metric_gauge_name_fix": {
+    "receipt": "metric-gauge-name-fix.json",
+    "backend_head": "5ad9d07af4929d15c266d8dc46bc3e3a319ea79b",
+    "json_compatible": true,
+    "deployed": false,
+    "product_pass": false
   }
 }
