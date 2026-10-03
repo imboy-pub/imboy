@@ -1,0 +1,28 @@
+{
+  "id": "PREPARATION-F01-UPSTREAM-COMMAND-RECORD-LINKS",
+  "scope": "FROZEN_RECORD_CONSISTENCY_ONLY",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "app_head": "13066cc2ab39b2e6c2cb113a411ebe705a27ccd4",
+  "executed": 413,
+  "exit": 0,
+  "reviews": [
+    "PYTHON_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "argv": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "test/tooling/auto_test"
+  ],
+  "log": {
+    "path": "upstream-command-binding-suite.log",
+    "sha256": "5abd4097182a559d744d644ad774b0ed24252073afaef22e7af189e0446422e8"
+  },
+  "change": "Mandatory frozen upstream command registry in execution and upstream preflights, exact ID set and command/exit/count/config/evidence path/hash bindings.",
+  "proof_limit": "Allows a shared command to cover multiple IDs, but only proves recorded consistency. Authentic process execution, command oracle adequacy, independent review, real backend/device journeys and final qualification still required. No parent acceptance upgraded."
+}
