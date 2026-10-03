@@ -1,0 +1,29 @@
+{
+  "scope": "LOCAL_FROZEN_CASE_LINK_CALIBRATION_ONLY",
+  "app_head": "ce7a6140227ea93dec14d5f087d0c6a3e9363254",
+  "tooling_tests": 441,
+  "focused_tests": 18,
+  "exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "f14-case-link-red.log",
+      "sha256": "a4020b069183ffd0260fc9b25f8ead3378b23a8ea2f8771f70098ab56f027836"
+    },
+    {
+      "path": "f14-case-link-green.log",
+      "sha256": "0f7c63e0b7288f56170929397e5309088998314a1896d978ad407bdccefc4ae4"
+    }
+  ],
+  "product_pass": false,
+  "zero_write_proven": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_access": false,
+  "protocol": "Each frozen billing snapshot obligation now requires id/context/case_key; unique attempt must contain identical full frozen case including oracle",
+  "limits": [
+    "Does not authenticate capture provenance or collection completeness",
+    "Independent real device, request and database audit required"
+  ],
+  "red_reason": "New helper absent and intentional mandatory-schema transition; not an existing business defect"
+}

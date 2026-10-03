@@ -1,0 +1,21 @@
+...........F....E.
+======================================================================
+ERROR: test_unrelated_attempt_cannot_supply_case_oracle (test_billing_cancel_snapshots.BillingCancelSnapshots)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_billing_cancel_snapshots.py", line 45, in test_unrelated_attempt_cannot_supply_case_oracle
+    billing_cancel_snapshots._case_link_errors(frozen, context, key))
+AttributeError: module 'auto_test_lib.billing_cancel_snapshots' has no attribute '_case_link_errors'
+
+======================================================================
+FAIL: test_obligations_reject_runtime_drift (test_billing_cancel_snapshots.BillingCancelSnapshots)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_billing_cancel_snapshots.py", line 89, in test_obligations_reject_runtime_drift
+    self.assertIn('BILLING_FROZEN_RUNTIME_MISMATCH',
+AssertionError: 'BILLING_FROZEN_RUNTIME_MISMATCH' not found in ['BILLING_FROZEN_OBLIGATIONS_INVALID']
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.003s
+
+FAILED (failures=1, errors=1)
