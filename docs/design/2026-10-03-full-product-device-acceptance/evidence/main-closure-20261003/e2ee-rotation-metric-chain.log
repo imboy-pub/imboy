@@ -1,0 +1,10 @@
+======================== EUnit ========================
+module 'e2ee_failure_metric_exposition_tests'
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.001 s] ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.008 s] ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.001 s] ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.006 s] ok
+  [done in 0.031 s]
+=======================================================
+  All 5 tests passed.

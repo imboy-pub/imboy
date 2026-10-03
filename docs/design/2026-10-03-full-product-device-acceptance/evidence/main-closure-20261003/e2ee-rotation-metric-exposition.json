@@ -1,0 +1,57 @@
+{
+  "scope": "LOCAL_SIX_FAILURE_COUNTER_PRODUCTION_ENTRYPOINT_TO_EXPORTER_ONLY",
+  "tested_backend_head": "114b499bfcdd4f0cc540f8bbcd42acc805c3e9e2",
+  "test_commit": "126749b5f157a177e0c9e0da4fea9797521412cf",
+  "failure_metric_tests": {
+    "passed": 5,
+    "exit_code": 0
+  },
+  "otk_export_tests": {
+    "passed": 3,
+    "exit_code": 0,
+    "separate_isolated_vm": true
+  },
+  "calibration_red": {
+    "passed": 3,
+    "failed": 2,
+    "exit_code": 1,
+    "temporary_change": "Removed two rotation counter increments from temporary compiled Olm source",
+    "production_source_modified": false
+  },
+  "real_metric_process": true,
+  "persistence_mocked": true,
+  "real_synthetic_crypto": true,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-rotation-metric-chain.log",
+      "sha256": "c6d617938ad3399d52fc6a5cce289bc4233b05bf624cc8ff67f99d95406b830f"
+    },
+    {
+      "path": "e2ee-rotation-metric-calibration-red.log",
+      "sha256": "9cf5ab5447fa8f43dc55599b3f173ab3f13dd3e377637fb0162feaafafab6a7f"
+    },
+    {
+      "path": "e2ee-rotation-current-otk-export.log",
+      "sha256": "7c42ecc739ee24e30817b3f4b629eafb161f74ac085305f740726238e4e1795f"
+    }
+  ],
+  "source_hashes": {
+    "test/api/e2ee_failure_metric_exposition_tests.erl": "1a4cf2f6b48765d4c5dee3369a82169796bdcc2bc7f78c32a1b2aca4a99863b4",
+    "test/api/e2ee_otk_metric_exposition_tests.erl": "cec409025ad7c2cf028d3cf8a423bdfd07ba37be99749e81bb24cf952d8ed5f7",
+    "src/logic/e2ee_recovery_logic.erl": "0a34dc907dedda98eaf463b302495840c87a59f3997d4c57c08843a487e6f2b7",
+    "src/logic/msg_c2g_logic.erl": "169157555bd96df5ba28bca6b5d415c2377c6027fe8698563451eb25d3e8f0ec",
+    "src/logic/olm_identity_logic.erl": "a578b91d5de8732df019fb938234c7047023218fe972d8427a68f19950598a61",
+    "src/api/metrics_handler.erl": "693086d75c75f4bc90df75da1215a8a4abd8d61a2fd8bf6582a6e89d1243abd5",
+    "src/lib/elib_metric.erl": "662b3c01ee9514f4733e363dcb206769422090c3a17c7587b2974e131217be7b"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "limits": [
+    "Five exact failure counter exporter paths plus separate OTK production claim exporter path",
+    "Missing old-root proof rejects; real synthetic same-root PoP reaches mocked audit failure",
+    "Local exporter is not HTTP scrape, live Prometheus alert delivery or production SLO proof"
+  ]
+}

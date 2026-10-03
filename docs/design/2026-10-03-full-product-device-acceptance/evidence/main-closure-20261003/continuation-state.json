@@ -4455,5 +4455,11 @@
     "receipt": "e2ee-failure-metric-exposition.json",
     "tests": 3,
     "product_pass": false
+  },
+  "e2ee_rotation_metric_exposition": {
+    "receipt": "e2ee-rotation-metric-exposition.json",
+    "failure_metric_tests": 5,
+    "otk_export_tests": 3,
+    "product_pass": false
   }
 }

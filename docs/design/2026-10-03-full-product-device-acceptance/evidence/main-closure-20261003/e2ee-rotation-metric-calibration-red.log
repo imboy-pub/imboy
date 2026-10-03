@@ -1,0 +1,36 @@
+======================== EUnit ========================
+module 'e2ee_failure_metric_exposition_tests'
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.001 s] ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.007 s] ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...[0.001 s] ok
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...*failed*
+in function erlang:map_get/2
+  called as map_get(olm_identity_rotation_rejected_total,#{olm_identity_pop_rejected_total => 1,group_e2ee_check_failed_total => 1,
+  e2ee_recovery_failed_total => 1})
+in call from e2ee_failure_metric_exposition_tests:check_metric/3 (test/api/e2ee_failure_metric_exposition_tests.erl, line 70)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{badkey,olm_identity_rotation_rejected_total}
+  output:<<"">>
+
+  e2ee_failure_metric_exposition_tests:7: -failure_metrics_reach_exporter_test_/0-fun-4-...*failed*
+in function erlang:map_get/2
+  called as map_get(olm_rotation_event_failed_total,#{olm_identity_pop_rejected_total => 1,group_e2ee_check_failed_total => 1,
+  e2ee_recovery_failed_total => 1})
+in call from e2ee_failure_metric_exposition_tests:check_metric/3 (test/api/e2ee_failure_metric_exposition_tests.erl, line 70)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+**error:{badkey,olm_rotation_event_failed_total}
+  output:<<"">>
+
+  [done in 0.032 s]
+=======================================================
+  Failed: 2.  Skipped: 0.  Passed: 3.
