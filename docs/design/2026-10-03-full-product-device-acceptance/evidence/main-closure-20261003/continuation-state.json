@@ -616,5 +616,49 @@
       }
     ],
     "product_pass": false
+  },
+  "runtime_artifact_binding_gate": {
+    "scope": "STRUCTURAL_AND_FILE_INTEGRITY_ONLY",
+    "app_candidate": "b8393b77bf8fb4438fb548bc8821b07cd2e9e98e",
+    "executed": 276,
+    "exit": 0,
+    "command": "python3 -m unittest discover -s test/tooling/auto_test",
+    "review": "APPROVED_AFTER_DEEP_METADATA_EXCEPTION_REPAIR",
+    "binding_kinds": [
+      "source",
+      "config",
+      "build",
+      "fixture",
+      "device"
+    ],
+    "required_checks": [
+      "trusted independently frozen required ID set",
+      "all binding kinds present",
+      "exact complete row equality",
+      "actual no-follow regular-file hashes",
+      "reject omitted unknown duplicate or modified records",
+      "deep metadata returns fixed error code"
+    ],
+    "logs": [
+      {
+        "path": "runtime-bindings-before-review-suite.log",
+        "sha256": "5319b0897807af21192b20f48f3998b54d23ad68173b21331a0f1576ee085d94",
+        "phase": "PRE_REVIEW_275_PASS"
+      },
+      {
+        "path": "runtime-bindings-reviewed-suite.log",
+        "sha256": "85b47b869ef8ecd7b8e967cf346c897b42c7453efd5d74a3a84ad3f73d3f9653",
+        "phase": "REVIEWED_276_PASS"
+      }
+    ],
+    "product_pass": false,
+    "cli_connection": "NOT_IMPLEMENTED",
+    "real_runtime_binding": "NOT_EXECUTED",
+    "remaining": [
+      "Connect full frozen index and registered CLI",
+      "Authenticate actual runtime/config/build/device observations",
+      "Prove complete source and role/profile coverage",
+      "Finish business oracle, attempts, upstream and UX gates"
+    ]
   }
 }
