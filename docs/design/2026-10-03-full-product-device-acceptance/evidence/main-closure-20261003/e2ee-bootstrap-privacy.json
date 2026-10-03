@@ -1,0 +1,31 @@
+{
+  "scope": "LOCAL_BOOTSTRAP_FAILURE_LOG_PRIVACY_ONLY",
+  "app_head": "dd07e727c292a23e042701d5577edfc72dee6d4d",
+  "tests": 10,
+  "exit_code": 0,
+  "red_exit_code": 1,
+  "analysis_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "e2ee-bootstrap-privacy-red.log",
+      "sha256": "fb96b09a7a0aa60628cc9b2a632735553752b971f6e5fff6f875e85504e9717c"
+    },
+    {
+      "path": "e2ee-bootstrap-privacy-green.log",
+      "sha256": "2ae799088976a68f4e16d21dcaec79895f951e046d8ec6362bbf75722a34b8c2"
+    },
+    {
+      "path": "e2ee-bootstrap-privacy-analysis.log",
+      "sha256": "a9f5fb790384236a594fb4ab2903476abae400edd713f8dd1baf5cef090801f2"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Trust invalidation asynchronous failure log tested at runtime",
+    "Protocol initialize failure log covered only by source guard",
+    "Existing BUG72 probe test directly initializes probe, not ensureReady production wiring",
+    "No device/backend execution or SLO qualification"
+  ]
+}

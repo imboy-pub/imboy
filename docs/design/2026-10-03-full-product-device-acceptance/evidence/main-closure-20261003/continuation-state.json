@@ -4527,5 +4527,11 @@
     "app_head": "f519a7916c23364e09be3b0c5f1896e737c122f6",
     "tests": 6,
     "product_pass": false
+  },
+  "e2ee_bootstrap_log_privacy": {
+    "receipt": "e2ee-bootstrap-privacy.json",
+    "app_head": "dd07e727c292a23e042701d5577edfc72dee6d4d",
+    "tests": 10,
+    "product_pass": false
   }
 }
