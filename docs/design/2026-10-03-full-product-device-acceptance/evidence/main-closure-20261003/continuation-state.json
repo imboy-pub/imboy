@@ -422,13 +422,13 @@
   },
   "customer_service_semantic_mapping": {
     "artifact": "cs-governance-semantic-map.json",
-    "app_candidate": "640cf96633a5991d098859d90cd4e182096a561d",
-    "local_regression_tests": 34,
+    "app_candidate": "1dcdcaef2c124c1e06040c1160635592fa1a766b",
+    "local_regression_tests": 35,
     "test_exit": 0,
     "analysis_exit": 0,
     "review": "APPROVED_LOCAL_TEST_SCOPE",
     "mapped_source_controls": 14,
-    "partially_asserted_controls": 3,
+    "partially_asserted_controls": 0,
     "device_and_backend_journeys": "NOT_EXECUTED",
     "product_pass": false,
     "historical_31_test_logs": [
@@ -461,7 +461,7 @@
         "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
       }
     ],
-    "logs": [
+    "historical_34_test_logs": [
       {
         "path": "cs-pagination-race-completion-green.log",
         "sha256": "8c9288af77e67f260dd2297d61f4218770fe7340b9ef9e3662e5072b80b8e8f1",
@@ -474,7 +474,23 @@
         "phase": "STATIC_ANALYSIS_PASS",
         "exit": 0
       }
-    ]
+    ],
+    "logs": [
+      {
+        "path": "cs-governance-control-assertions-suite.log",
+        "sha256": "5898faeadd03f0b816d31ecbe2ee86af9109d87a8f83f8ff558a67ca4defc953"
+      },
+      {
+        "path": "cs-governance-control-assertions-analyze.log",
+        "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
+      },
+      {
+        "path": "cs-governance-control-catalog-check.log",
+        "sha256": "f7259c9fbf8bcd1760d28f0e032f4df29524910e4a8210b1e2d41a5258ec6803"
+      }
+    ],
+    "final_case_map_registered": false,
+    "inventory_static_readiness_unchanged": true
   },
   "customer_service_pagination_local_gate": {
     "app_candidate": "6d4e8a8809a02f99968d3bd93e8f24acf36ed07a",
@@ -575,5 +591,30 @@
     "baseline_red_oracle": "Expected no identityB in current orgB; old implementation appended stale orgA identityB after actual handler completion",
     "product_pass": false,
     "device_and_backend_journeys": "NOT_EXECUTED"
+  },
+  "customer_service_control_assertions_gate": {
+    "app_candidate": "1dcdcaef2c124c1e06040c1160635592fa1a766b",
+    "command": "flutter test test/customer_service/cs_governance_page_widget_test.dart test/customer_service/cs_governance_api_contract_test.dart test/customer_service/cs_governance_pagination_race_test.dart --reporter expanded",
+    "executed": 35,
+    "exit": 0,
+    "analysis_exit": 0,
+    "catalog_exit": 0,
+    "review": "APPROVED_LOCAL_SCOPE_AND_RESUME_FACTS",
+    "scope": "LOCAL_HOST_ASSERTIONS_ONLY",
+    "logs": [
+      {
+        "path": "cs-governance-control-assertions-suite.log",
+        "sha256": "5898faeadd03f0b816d31ecbe2ee86af9109d87a8f83f8ff558a67ca4defc953"
+      },
+      {
+        "path": "cs-governance-control-assertions-analyze.log",
+        "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
+      },
+      {
+        "path": "cs-governance-control-catalog-check.log",
+        "sha256": "f7259c9fbf8bcd1760d28f0e032f4df29524910e4a8210b1e2d41a5258ec6803"
+      }
+    ],
+    "product_pass": false
   }
 }
