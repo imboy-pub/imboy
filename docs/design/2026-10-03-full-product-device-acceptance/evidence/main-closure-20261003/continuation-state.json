@@ -4539,5 +4539,15 @@
     "app_head": "4f5cc38b6980f66391041c27002ad0d0d4b4468e",
     "tests": 9,
     "product_pass": false
+  },
+  "current_e2ee_service_domain_regression": {
+    "receipt": "e2ee-current-domain-regression.json",
+    "heads": {
+      "imboy": "757e68e1f80d36f2dcd366cae57bfafe19f49f3b",
+      "imboyapp": "4f5cc38b6980f66391041c27002ad0d0d4b4468e",
+      "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+    },
+    "tests": 969,
+    "product_pass": false
   }
 }

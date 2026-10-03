@@ -1,0 +1,47 @@
+{
+  "scope": "CURRENT_FROZEN_HOST_E2EE_SERVICE_DIRECTORY_REGRESSION",
+  "heads": {
+    "imboy": "757e68e1f80d36f2dcd366cae57bfafe19f49f3b",
+    "imboyapp": "4f5cc38b6980f66391041c27002ad0d0d4b4468e",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "heads_unchanged_during_execution": true,
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/service/e2ee",
+    "--reporter",
+    "expanded"
+  ],
+  "cwd": "imboyapp",
+  "tests_passed": 969,
+  "exit_code": 0,
+  "reported_duration_seconds": 96,
+  "plan_hashes": {
+    "docs/design/2026-10-03-e2ee-production-excellence/plan.md": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+    "docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1.md": "aeb4dc3da1d0c51ebecaf6a1edfad07558e3dbcaca6615e9c1b2e011b84832aa"
+  },
+  "artifacts": [
+    {
+      "path": "e2ee-current-domain-regression.log",
+      "sha256": "a6608d2597cc3c34ea7390240868a71bea40c69d9d93e04b84c1ae2cac0faacd"
+    }
+  ],
+  "worktrees": {
+    "imboy": "worktree /Users/leeyi/project/imboy.pub/imboy\nHEAD 757e68e1f80d36f2dcd366cae57bfafe19f49f3b\nbranch refs/heads/main\n\n",
+    "imboyapp": "worktree /Users/leeyi/project/imboy.pub/imboyapp\nHEAD 4f5cc38b6980f66391041c27002ad0d0d4b4468e\nbranch refs/heads/main\n\n",
+    "imboyadmin": "worktree /Users/leeyi/project/imboy.pub/imboyadmin\nHEAD c9e73adcf3151d2214461d12e0998651ec811dd6\nbranch refs/heads/main\n\n"
+  },
+  "remaining_related_branches": {
+    "imboy": "",
+    "imboyapp": "",
+    "imboyadmin": ""
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Host directory suite includes synthetic protocols, mocks and in-memory storage; no new device/backend execution",
+    "Not full App unit gate or backend full EUnit L3",
+    "Does not qualify all 97 acceptance IDs, production SLO, MLS or PQ profile"
+  ]
+}
