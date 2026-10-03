@@ -1,0 +1,13 @@
+.......F...
+======================================================================
+FAIL: test_billing_route_component_matches_source_filename (test_catalog.TestCatalogGeneration)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_catalog.py", line 30, in test_billing_route_component_matches_source_filename
+    self.assertTrue(page["route_registered"])
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.553s
+
+FAILED (failures=1)

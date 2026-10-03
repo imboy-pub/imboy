@@ -1,0 +1,39 @@
+{
+  "id": "F00-ROUTE-CATALOG-REPAIR",
+  "scope": "STATIC_REGISTRATION_AND_HOST_TOOLING_ONLY",
+  "app_head": "acf289b8ff7c7f6f4f098838d40a54edfef46bd9",
+  "red_exit_code": 1,
+  "catalog_tests": 11,
+  "complete_tooling_tests": 417,
+  "failed": 0,
+  "exit_code": 0,
+  "review": "TWO_INDEPENDENT_REVIEWS_APPROVED",
+  "root_cause": "Snake-case filename compared directly with PascalCase route class",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "artifacts": [
+    {
+      "path": "f00-route-catalog-repair.red.log",
+      "sha256": "e4975b9fe8fb513e8984bf5df22018d6d2063cd2f6ebe01e283d998fad31de53"
+    },
+    {
+      "path": "f00-route-catalog-repair.green.log",
+      "sha256": "f79029dd169bc9d1af610a7b906704a3eb401f43ae17e15ab4dd040387909d80"
+    },
+    {
+      "path": "f00-route-catalog-repair.all.log",
+      "sha256": "7eedad43f677d9ab8c3ea624f99eb391f2e4d29284cb061c2d96d1a47b06038d"
+    }
+  ],
+  "remaining": [
+    "Required page case/platform mappings",
+    "Verified resource authorization and frozen candidate gate",
+    "Actual Android/macOS and backend business journeys"
+  ],
+  "limits": [
+    "Conservative static route scan is not import-graph reachability or navigation proof",
+    "No original acceptance ID upgraded",
+    "Other tracked WIP preserved; host results are not clean frozen candidate qualification"
+  ]
+}
