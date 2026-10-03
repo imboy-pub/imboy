@@ -1,0 +1,27 @@
+{
+  "scope": "SYNTHETIC_NONEMPTY_COMPOSITION_CALIBRATION",
+  "app_head": "71cec44a8fef0272c42b2e6ac4f7d32e85b45cec",
+  "tooling_tests": 442,
+  "focused_tests": 19,
+  "exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "f14-complete-composition.log",
+      "sha256": "1ee5aaa1080607adcd5141ec2686bb1fdb76bb6e2b9cef6aab72d9b579b43391"
+    }
+  ],
+  "product_pass": false,
+  "zero_write_proven": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_access": false,
+  "coverage": [
+    "Nonempty obligation executes full case/attempt/device/hash/state path",
+    "Wrong attempt/device/case rejected",
+    "Actual invoice amount change rejected with same row counts"
+  ],
+  "limits": [
+    "Synthetic calibration only, no real backend/device qualification"
+  ]
+}

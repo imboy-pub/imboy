@@ -4319,5 +4319,11 @@
     "app_head": "ce7a6140227ea93dec14d5f087d0c6a3e9363254",
     "tooling_tests": 441,
     "product_pass": false
+  },
+  "f14_complete_composition": {
+    "receipt": "f14-complete-composition.json",
+    "app_head": "71cec44a8fef0272c42b2e6ac4f7d32e85b45cec",
+    "tooling_tests": 442,
+    "product_pass": false
   }
 }
