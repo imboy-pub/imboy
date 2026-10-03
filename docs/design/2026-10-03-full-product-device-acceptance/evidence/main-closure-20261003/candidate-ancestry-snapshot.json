@@ -1,0 +1,28 @@
+{
+  "scope": "LIVE_LOCAL_ANCESTRY_ONLY",
+  "product_pass": false,
+  "frozen_for_this_probe": {
+    "imboy": {
+      "head": "f6db2b51645c7346104d4f8945791add74048b21",
+      "required_ancestors": [
+        "fb4a906206f2b6a3eb33fa5c7cdaffc5a55e0a08"
+      ]
+    },
+    "imboyapp": {
+      "head": "94bbea052da345fba3596d1011865e561ce0f24b",
+      "required_ancestors": [
+        "abd7a76543880ba72bf0b835ebefbb179eb21f65",
+        "d7687e99b127ea5c1bee331bf69af0ff68cd5b9e"
+      ]
+    },
+    "imboyadmin": {
+      "head": "997971a882928d67e70d6261629d5c69d2703539",
+      "required_ancestors": [
+        "997971a882928d67e70d6261629d5c69d2703539"
+      ]
+    }
+  },
+  "errors": [],
+  "caller_index": "explicit candidate ancestry list from integration checkpoint; not final frozen contract",
+  "dirty_build_config_device_gates": "NOT_PROVEN"
+}

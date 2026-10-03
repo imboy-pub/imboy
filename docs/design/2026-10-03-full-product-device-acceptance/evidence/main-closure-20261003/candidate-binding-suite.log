@@ -1,0 +1,11 @@
+................................................................................................................................................................................................................................................................
+----------------------------------------------------------------------
+Ran 256 tests in 10.931s
+
+OK
+[AI_SCREENSHOT] first checkpoint
+AI_SCREENSHOT_SAVED: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/tmpkb9ynd_1/01_first_checkpoint.png
+some log line
+[AI_SCREENSHOT] second checkpoint
+AI_SCREENSHOT_SAVED: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/tmpkb9ynd_1/02_second_checkpoint.png
+截图数: 2

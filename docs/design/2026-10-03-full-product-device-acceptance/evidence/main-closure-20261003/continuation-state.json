@@ -205,5 +205,24 @@
     "review": "APPROVED_LOCAL_SCOPE_ONLY",
     "product_pass": false,
     "remaining": "Connect trusted frozen index, live candidate ancestry, source/config/build/fixture/device bindings and full business gates; CLI still pending"
+  },
+  "candidate_ancestry_gate": {
+    "candidate_app_head": "94bbea052da345fba3596d1011865e561ce0f24b",
+    "executed": 256,
+    "failed": 0,
+    "exit": 0,
+    "independent_review": "APPROVED_LOCAL_SCOPE_ONLY",
+    "actual_three_repo_ancestry_probe": "NO_ERRORS",
+    "snapshot": "candidate-ancestry-snapshot.json",
+    "evidence_path": "candidate-binding-suite.log",
+    "evidence_sha256": "4e2ad068cca07aa0bc6c6b1b5631ec0cde6b6c3ee2f8b6e2ba66632b1e33726a",
+    "product_pass": false,
+    "remaining": [
+      "trusted full frozen input index and exact commands registration",
+      "tracked/untracked source cleanliness gates",
+      "runtime config/build/fixture/device bindings",
+      "business oracles and attempts journal",
+      "real dual-device acceptance and decisions"
+    ]
   }
 }
