@@ -5007,5 +5007,20 @@
       "full_static_exit": 0,
       "catalog_exit": 0
     }
+  },
+  "websocket_queue_enqueue_capacity": {
+    "receipt": "websocket-queue-enqueue-capacity-20261004.json",
+    "app_head": "ae104ed114ca6bf4a22bd583159138cf4c955834",
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": [],
+    "local_results": {
+      "red_exit": 1,
+      "red_passed": 18,
+      "red_failed": 3,
+      "final_domain_exit": 0,
+      "final_domain_passed": 176,
+      "full_static_exit": 0,
+      "catalog_exit": 0
+    }
   }
 }

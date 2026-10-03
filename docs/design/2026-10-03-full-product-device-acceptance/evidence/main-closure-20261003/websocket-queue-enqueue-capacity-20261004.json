@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_OFFLINE_ENQUEUE_CAPACITY_AND_EVICTION_DEDUP",
+  "app_head": "ae104ed114ca6bf4a22bd583159138cf4c955834",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_LOCAL_SCOPE",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 18,
+    "red_failed": 3,
+    "final_domain_exit": 0,
+    "final_domain_passed": 176,
+    "full_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Actual queue refuses same/lower-priority overflow above200 without displacing higher-priority entries.",
+    "Higher-priority enqueue evicts existing lower-priority entry; evicted ID can reenter after space becomes available.",
+    "Eviction removes dedup key only when no surviving entry shares it."
+  ],
+  "limitations": [
+    "Restoring preexisting oversized queues, concurrent persistence and send-failure requeue capacity remain pending.",
+    "No real device/backend transport or original97-ID upgrade; queue capacity rejection does not prove durable end-to-end delivery."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-queue-capacity-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-queue-capacity-domain-20261004.log",
+      "sha256": "1cd5c30dbdd5196ace8dbe418d3fd1b1d695e26088acf61b3397bfe2b89ce2c5"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-queue-capacity-red-20261004.log",
+      "sha256": "eda3b4d0ca3a87e2c74e913b9465a6bffc8a97390828ee08a6c38132af8f2657"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-queue-capacity-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    }
+  ]
+}
