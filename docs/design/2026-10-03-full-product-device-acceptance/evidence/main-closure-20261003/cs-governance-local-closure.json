@@ -1,0 +1,83 @@
+{
+  "scope": "LOCAL_PREPARATION_ONLY",
+  "product_pass": false,
+  "app_head": "8ffa8c4104b9155387824c38e55295d17302b989",
+  "fix_commit": "c9d70843",
+  "style_commit": "8ffa8c41",
+  "baseline_source_sha256": "510b09202812802282e772885a076ad3f1b20546240d21711d0a5bcc747c97a1",
+  "source_hashes": [
+    {
+      "path": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+      "sha256": "4992cb12e0cb36d653e81a98c8f805141dbec1c72eea12bbebf64d1f7225d50c"
+    },
+    {
+      "path": "test/customer_service/cs_governance_page_widget_test.dart",
+      "sha256": "9743379c77ba1ca7928e36d6b83ed488e20be8f082bc2a2df847699b1e9e13da"
+    },
+    {
+      "path": "test/customer_service/cs_governance_api_contract_test.dart",
+      "sha256": "0ffe1c6c4a4b858e198662181e16fa13aa8c13defcb8ab790c76099c54451565"
+    }
+  ],
+  "defects_fixed": [
+    "stale organization read overwrites current quota",
+    "stale organization mutation overwrites current quota",
+    "refresh allows pagination with stale cursor"
+  ],
+  "test_command": "flutter test test/customer_service/cs_governance_page_widget_test.dart test/customer_service/cs_governance_api_contract_test.dart --reporter expanded",
+  "tests_passed": 28,
+  "test_fixture": "In-memory router; no actual backend, devices, production accounts or external writes",
+  "analysis_command": "dart analyze lib/modules/customer_service/presentation/cs_governance_page.dart test/customer_service/cs_governance_page_widget_test.dart",
+  "analysis_exit": 0,
+  "review": "Flutter reviewer approved scope/read-generation fences and pagination fix; final braces-only formatting approved",
+  "attempts": [
+    {
+      "evidence_path": "cs-governance-invalid-barrier-attempt.log",
+      "sha256": "414a724a2404710cb0466a1ebf6d9898e5add4d3c6be10326eed30e0d6662ed0",
+      "phase": "INVALID_TEST_SETUP",
+      "exit": 1
+    },
+    {
+      "evidence_path": "cs-governance-incomplete-barrier-attempt.log",
+      "sha256": "0d66f55047c1ea577ceeb19fc4a68f68444ba1346e4633b4c244c8b1e1e18bd1",
+      "phase": "INVALID_TEST_SETUP",
+      "exit": 1
+    },
+    {
+      "evidence_path": "cs-governance-read-race-red.log",
+      "sha256": "72e7432bacd053e1148ad0c2876d0769db84c0a633b63d59b9015b612c502a86",
+      "phase": "VALIDATED_BASELINE_FAILURE",
+      "exit": 1
+    },
+    {
+      "evidence_path": "cs-governance-write-race-red.log",
+      "sha256": "b9d7a95df76de7c2f604458061f2a1b7d4bca03983320b334714358975852027",
+      "phase": "VALIDATED_BASELINE_FAILURE",
+      "exit": 1
+    },
+    {
+      "evidence_path": "cs-governance-refresh-pagination-red.log",
+      "sha256": "8ce659aeac95a0a51f15095cc96d53988873b73ea522c4509b6ac37085495850",
+      "phase": "VALIDATED_BASELINE_FAILURE",
+      "exit": 1
+    },
+    {
+      "evidence_path": "cs-governance-reviewed-green.log",
+      "sha256": "6a6818b9ea9fb31d18ce8e2b2facf8fd67b5cac67d4eb8ec4f3891bcd3c200a5",
+      "phase": "LOCAL_REGRESSION_PASS",
+      "exit": 0
+    },
+    {
+      "evidence_path": "cs-governance-current-analyze.log",
+      "sha256": "83c7fe446af71224c9869787cd71fb3506a4e0a68a74b2c782776a217ea754b3",
+      "phase": "CURRENT_STATIC_ANALYSIS_PASS",
+      "exit": 0
+    }
+  ],
+  "remaining": [
+    "F12 required platform/profile/role mapping",
+    "Real backend and Android/macOS business journeys",
+    "Frozen candidate final requalification"
+  ],
+  "historical_parent_acceptance_status_unchanged": true
+}
