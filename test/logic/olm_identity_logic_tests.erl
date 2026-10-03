@@ -353,6 +353,21 @@ ed25519_keypair() ->
 sign_curve(Priv, CurveB64) ->
     base64:encode(crypto:sign(eddsa, none, CurveB64, [Priv, ed25519])).
 
+%% fix-round1：换根过渡签名载荷（与 olm_identity_logic:rotation_canonical/4
+%% 逐字节一致——canonical 是客户端也要构造的 wire 契约，测试自带复刻锁语义，
+%% 不调生产函数）。字段序 curve25519_key < device_id < ed25519_key < user_id 字典序。
+rotation_canonical_bytes(Uid, Did, EdB64, CurveB64) ->
+    <<"curve25519_key=", CurveB64/binary, "\n", "device_id=", Did/binary, "\ned25519_key=",
+        EdB64/binary, "\nuser_id=", (integer_to_binary(Uid))/binary>>.
+
+%% 旧钥私钥对换根 canonical 载荷签名（过渡 PoP = 授权证据）
+sign_rotation(Priv, Uid, Did, EdB64, CurveB64) ->
+    base64:encode(
+        crypto:sign(
+            eddsa, none, rotation_canonical_bytes(Uid, Did, EdB64, CurveB64), [Priv, ed25519]
+        )
+    ).
+
 old_identity_mock(OldEdB64, OldCurveB64) ->
     meck:expect(olm_identity_ds, find_identity, 2, fun(?C01_UID, ?C01_DID) ->
         {ok, #{
@@ -383,14 +398,16 @@ report_identity_rejects_root_key_swap_without_old_key_proof_test() ->
         ?assertEqual(0, meck:num_calls(olm_identity_ds, upsert_identity, '_'))
     end).
 
-%% RED-2：持旧私钥者换根（旧钥签新 curve）→ 接受 + 版本事件
+%% RED-2（fix-round1 起双签名形态）：持旧私钥者换根（旧钥过渡签名授权 +
+%% 新钥自签落列）→ 接受 + 版本事件（actor_signature = 过渡签名授权证据）
 report_identity_root_key_rotation_with_old_key_signature_test() ->
     ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds, elib_tsid], fun() ->
         meck:expect(elib_tsid, generate, 1, fun(trust_audit) -> 990001 end),
         {OldEdB64, OldPriv} = ed25519_keypair(),
-        {NewEdB64, _NewPriv} = ed25519_keypair(),
+        {NewEdB64, NewPriv} = ed25519_keypair(),
         NewCurveB64 = base64:encode(<<"c01-curve-new">>),
-        TransitionSig = sign_curve(OldPriv, NewCurveB64),
+        SelfSig = sign_curve(NewPriv, NewCurveB64),
+        TransitionSig = sign_rotation(OldPriv, ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64),
         old_identity_mock(OldEdB64, base64:encode(<<"c01-curve-old">>)),
         meck:expect(user_device_ds, bump_identity_version, 2, fun(?C01_UID, ?C01_DID) ->
             {ok, 2, 1}
@@ -399,8 +416,8 @@ report_identity_root_key_rotation_with_old_key_signature_test() ->
             olm_identity_ds,
             upsert_identity,
             6,
-            fun(?C01_UID, ?C01_DID, Ed, Cv, _Sig, _Dt) when
-                Ed =:= NewEdB64, Cv =:= NewCurveB64
+            fun(?C01_UID, ?C01_DID, Ed, Cv, Sig, _Dt) when
+                Ed =:= NewEdB64, Cv =:= NewCurveB64, Sig =:= SelfSig
             ->
                 {ok, 1}
             end
@@ -412,7 +429,7 @@ report_identity_root_key_rotation_with_old_key_signature_test() ->
         ?assertEqual(
             ok,
             olm_identity_logic:report_identity(
-                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, TransitionSig, <<"ios">>
+                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, SelfSig, TransitionSig, <<"ios">>
             )
         ),
         Event = erlang:get(c01_captured_event),
@@ -420,6 +437,9 @@ report_identity_root_key_rotation_with_old_key_signature_test() ->
         ?assertEqual(?C01_UID, maps:get(actor_uid, Event)),
         ?assertEqual(?C01_UID, maps:get(target_uid, Event)),
         ?assertEqual(?C01_DID, maps:get(target_device_id, Event)),
+        %% 事件快照：新根公钥 + 授权证据签名（旧钥过渡签名，不落 signature 列）
+        ?assertEqual(NewEdB64, maps:get(target_ed25519, Event)),
+        ?assertEqual(TransitionSig, maps:get(actor_signature, Event)),
         ?assertEqual(2, maps:get(target_identity_version, Event)),
         ?assertEqual(1, maps:get(actor_device_generation, Event)),
         ?assert(is_binary(maps:get(event_id, Event))),
@@ -517,13 +537,15 @@ report_identity_find_identity_error_fails_closed_test() ->
     end).
 
 %% 版本事件写入失败不阻断换钥（换钥本身已验证授权），但必须有指标痕迹
+%%（fix-round1 起走 /7 双签名形态）
 report_identity_rotation_event_failure_does_not_block_test() ->
     ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds, elib_metric, elib_tsid], fun() ->
         meck:expect(elib_tsid, generate, 1, fun(trust_audit) -> 990003 end),
         {OldEdB64, OldPriv} = ed25519_keypair(),
-        {NewEdB64, _} = ed25519_keypair(),
+        {NewEdB64, NewPriv} = ed25519_keypair(),
         NewCurveB64 = base64:encode(<<"c01-curve-new">>),
-        TransitionSig = sign_curve(OldPriv, NewCurveB64),
+        SelfSig = sign_curve(NewPriv, NewCurveB64),
+        TransitionSig = sign_rotation(OldPriv, ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64),
         old_identity_mock(OldEdB64, base64:encode(<<"c01-curve-old">>)),
         meck:expect(user_device_ds, bump_identity_version, 2, fun(_, _) -> {ok, 2, 1} end),
         meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) -> {ok, 1} end),
@@ -532,11 +554,169 @@ report_identity_rotation_event_failure_does_not_block_test() ->
         ?assertEqual(
             ok,
             olm_identity_logic:report_identity(
-                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, TransitionSig, <<"ios">>
+                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, SelfSig, TransitionSig, <<"ios">>
             )
         ),
         ?assertEqual(1, meck:num_calls(trust_audit_ds, insert_event, '_')),
         ?assertEqual(1, meck:num_calls(elib_metric, increment, '_'))
+    end).
+
+%% ===================================================================
+%% fix-round1（W1-review C01-M1）：换根 signature 列跨端验签语义断联
+%%
+%% 客户端生产路径（imboyapp olm_session_service.dart:720 出站 claim /
+%% :971 入站 getIdentity）都委托 identity_verifier.dart:27-54：
+%%   verify(identity['ed25519_key'], identity['signature'],
+%%          message = identity['curve25519_key'] 的 base64 字符串字节)
+%% 即 signature 列必须由「ed25519_key 列当前公钥对应的私钥」对
+%% 「curve25519_key 列的 base64 文本」签署——服务端 verify_ed25519/3
+%% 与之逐字节同构。换根后 ed25519_key 列是新钥，若 signature 列仍存
+%% 旧钥过渡签名，对端两处验签必然失败 → 换根设备被全部对端
+%% OlmAuthenticationException fail-closed 断联。
+%% ===================================================================
+
+%% RED-M1（fix-round1）：换根成功落库的 signature 必须能被「新 ed25519」验证对
+%% 「新 curve25519」——精确模拟客户端验签语义。
+%% RED 形态（修复前，见 fix-round1-red-proof.txt）：以当时唯一入口 /6 + 旧钥
+%% 过渡签名充当 signature 完成换根 → 落库 signature 为旧钥所签 →
+%% assertEqual(SelfSig, StoredSig) 失败（Failed:1/Passed:38）= M1 断联暴露。
+%% GREEN 形态（本版）：/7 双签名（Signature=新钥自签 + TransitionSignature=
+%% 旧钥过渡签名）→ 落库 signature 即新钥自签，客户端语义验签通过。
+rotation_signature_survives_peer_verification_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds, elib_tsid], fun() ->
+        meck:expect(elib_tsid, generate, 1, fun(trust_audit) -> 990004 end),
+        {OldEdB64, OldPriv} = ed25519_keypair(),
+        {NewEdB64, NewPriv} = ed25519_keypair(),
+        NewCurveB64 = base64:encode(<<"c01-curve-new">>),
+        OldCurveB64 = base64:encode(<<"c01-curve-old">>),
+        %% 双签名：新钥自签（signature 列语义）+ 旧钥过渡签名（授权证据）
+        SelfSig = sign_curve(NewPriv, NewCurveB64),
+        TransitionSig = sign_rotation(OldPriv, ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64),
+        old_identity_mock(OldEdB64, OldCurveB64),
+        meck:expect(user_device_ds, bump_identity_version, 2, fun(_, _) -> {ok, 2, 1} end),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, Sig, _) ->
+            erlang:put(c01_fix1_stored_sig, Sig),
+            {ok, 1}
+        end),
+        meck:expect(trust_audit_ds, insert_event, 1, fun(_) -> {ok, inserted} end),
+        ?assertEqual(
+            ok,
+            olm_identity_logic:report_identity(
+                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, SelfSig, TransitionSig, <<"ios">>
+            )
+        ),
+        StoredSig = erlang:get(c01_fix1_stored_sig),
+        %% 落库 signature 必须就是新钥自签（列语义 = X3DH/TOFU 自签）
+        ?assertEqual(SelfSig, StoredSig),
+        %% 模拟客户端 olm_session_service:720 验签：新 ed 验 sig 对新 curve 文本
+        PeerVerifies = verify_like_client(NewEdB64, NewCurveB64, StoredSig),
+        ?assert(PeerVerifies),
+        %% 反证：旧钥验同一签名必须失败（确证 StoredSig 不是旧钥所签）
+        ?assertNot(verify_like_client(OldEdB64, NewCurveB64, StoredSig))
+    end).
+
+%% 客户端验签语义复刻（identity_verifier.dart:45-48）：
+%% Ed25519PublicKey(ed25519_key).verify(message: curve25519_key, signature)
+%% —— 消息是 curve25519_key 的 base64 文本字节、公钥/签名 base64 解码。
+verify_like_client(EdB64, CurveB64, SigB64) ->
+    try
+        crypto:verify(
+            eddsa,
+            none,
+            CurveB64,
+            base64:decode(SigB64),
+            [base64:decode(EdB64), ed25519]
+        )
+    catch
+        _:_ -> false
+    end.
+
+%% fix-round1 负例 1：只带新钥自签、无旧钥过渡签名（= 盗 token 者自签新钥对，
+%% W1-review RED-1 场景在新契约下的显式形态）→ 拒绝，不触碰存储。
+rotation_rejects_self_signature_without_transition_proof_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds], fun() ->
+        {OldEdB64, _OldPriv} = ed25519_keypair(),
+        {NewEdB64, NewPriv} = ed25519_keypair(),
+        NewCurveB64 = base64:encode(<<"c01-curve-new">>),
+        SelfSig = sign_curve(NewPriv, NewCurveB64),
+        old_identity_mock(OldEdB64, base64:encode(<<"c01-curve-old">>)),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) -> {ok, 1} end),
+        ?assertEqual(
+            {error, <<"key_rotation_requires_old_key_proof">>},
+            olm_identity_logic:report_identity(
+                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, SelfSig, <<>>, <<"ios">>
+            )
+        ),
+        ?assertEqual(0, meck:num_calls(olm_identity_ds, upsert_identity, '_')),
+        ?assertEqual(0, meck:num_calls(user_device_ds, bump_identity_version, '_'))
+    end).
+
+%% fix-round1 负例 2：只带旧钥过渡签名、signature 非新钥自签（M1 断联根因
+%% 形态：旧钥签名的值进 signature 列）→ 拒绝 invalid_signature，不触碰存储
+%% ——列语义（对端可验证的自签）损坏必须拒绝，即便授权证据有效。
+rotation_rejects_transition_signature_without_self_signature_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds], fun() ->
+        {OldEdB64, OldPriv} = ed25519_keypair(),
+        {NewEdB64, _NewPriv} = ed25519_keypair(),
+        NewCurveB64 = base64:encode(<<"c01-curve-new">>),
+        %% signature 字段放的是旧钥对新 curve 的签名（修复前的唯一 accepted 形态）
+        OldKeySig = sign_curve(OldPriv, NewCurveB64),
+        TransitionSig = sign_rotation(OldPriv, ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64),
+        old_identity_mock(OldEdB64, base64:encode(<<"c01-curve-old">>)),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) -> {ok, 1} end),
+        ?assertEqual(
+            {error, <<"invalid_signature">>},
+            olm_identity_logic:report_identity(
+                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, OldKeySig, TransitionSig, <<"ios">>
+            )
+        ),
+        ?assertEqual(0, meck:num_calls(olm_identity_ds, upsert_identity, '_')),
+        ?assertEqual(0, meck:num_calls(user_device_ds, bump_identity_version, '_'))
+    end).
+
+%% fix-round1 负例 3：wire 兼容入口 /6 换根（无过渡签名可传）→ 显式拒绝
+%% key_rotation_requires_old_key_proof，而非 M1 的静默写坏 signature 列。
+%% handler 接线新 wire 字段改调 /7 前（olm_handler.erl 归 C06 owned），
+%% 旧入口必须 fail-closed 可见。
+legacy_six_arity_rotation_requires_transition_proof_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds], fun() ->
+        {OldEdB64, OldPriv} = ed25519_keypair(),
+        {NewEdB64, _NewPriv} = ed25519_keypair(),
+        NewCurveB64 = base64:encode(<<"c01-curve-new">>),
+        %% 修复前这条请求会成功并把旧钥签名写进 signature 列（断联源头）
+        OldKeySig = sign_curve(OldPriv, NewCurveB64),
+        old_identity_mock(OldEdB64, base64:encode(<<"c01-curve-old">>)),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) -> {ok, 1} end),
+        ?assertEqual(
+            {error, <<"key_rotation_requires_old_key_proof">>},
+            olm_identity_logic:report_identity(
+                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, OldKeySig, <<"ios">>
+            )
+        ),
+        ?assertEqual(0, meck:num_calls(olm_identity_ds, upsert_identity, '_'))
+    end).
+
+%% fix-round1 负例 4：过渡签名绑定上下文——为其它设备（did 不同）签署的过渡
+%% 签名不得授权本设备的换根（canonical 绑定 uid/did/新 ed/新 curve，防重放）。
+rotation_transition_signature_binds_context_test() ->
+    ?WITH_MECKS([olm_identity_ds, user_device_ds, trust_audit_ds], fun() ->
+        {OldEdB64, OldPriv} = ed25519_keypair(),
+        {NewEdB64, NewPriv} = ed25519_keypair(),
+        NewCurveB64 = base64:encode(<<"c01-curve-new">>),
+        SelfSig = sign_curve(NewPriv, NewCurveB64),
+        %% 持旧钥者为「另一台设备 dev-Z」签的过渡签名
+        CrossDeviceSig = sign_rotation(
+            OldPriv, ?C01_UID, <<"dev-Z">>, NewEdB64, NewCurveB64
+        ),
+        old_identity_mock(OldEdB64, base64:encode(<<"c01-curve-old">>)),
+        meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) -> {ok, 1} end),
+        ?assertEqual(
+            {error, <<"key_rotation_requires_old_key_proof">>},
+            olm_identity_logic:report_identity(
+                ?C01_UID, ?C01_DID, NewEdB64, NewCurveB64, SelfSig, CrossDeviceSig, <<"ios">>
+            )
+        ),
+        ?assertEqual(0, meck:num_calls(olm_identity_ds, upsert_identity, '_'))
     end).
 
 %% RED-6：claim_keys——目标设备已撤销（ds 层联合门拒绝）→ 拒绝且不消费 OTK、
