@@ -4775,5 +4775,10 @@
     "backend_head": "d5d8c0ea9fa1e07e6b31d99376fdc2ddb35e33ab",
     "safe_to_execute": false,
     "product_pass": false
+  },
+  "organization_directory_fixture_oracle_alignment": {
+    "receipt": "organization-directory-fixture-oracle-alignment-20261004.json",
+    "safe_to_execute": false,
+    "product_pass": false
   }
 }

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "scope": "OFFLINE_SOURCE_ALIGNMENT_ONLY",
+  "database_execution": false,
+  "sql_runtime_validated": false,
+  "safe_to_execute": false,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "backend_parent_head": "f8d922af455b856c00a5302829d409463639f5e0",
+  "app_head": "e2d41e2e8a49023ca82defa25c191aaca51a884e",
+  "changes": [
+    "Require root_page_limit exactly 50, matching current device first-page request with omitted limit and backend default 50.",
+    "Bind nonempty member_name to fixture context and compare actual nickname/account fallback as a boolean without emitting the name."
+  ],
+  "source_bindings": [
+    {
+      "repo": "imboy",
+      "path": "scripts/organization_directory_fixture_oracle.sql",
+      "sha256": "f9bd6d11de4cee5419a9d7ad7c5e20674b625a81ed702dd7c849aabeb57501d4"
+    },
+    {
+      "repo": "imboy",
+      "path": "src/lib/organization/application/organization_directory_app.erl",
+      "sha256": "e92a7bbe2735f0edd6dcf0bcbd70d36599aea185bb1c717e4f2c90c6e9dda7a4"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "lib/modules/organization/presentation/human_directory_controller.dart",
+      "sha256": "0d8d79cc5b8afa94e2fc62222bf21dcaabd1e7d87d4075e80f772c8f5b8df938"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "lib/modules/organization/infrastructure/organization_api.dart",
+      "sha256": "629068a769d4a15b5c7126a01482491d6719ef98c2c4b58d59990248f21e0794"
+    }
+  ],
+  "validation": {
+    "diff_check": "PASS",
+    "review": "APPROVED_STATIC_CODE_REVIEW",
+    "database": "NOT_EXECUTED"
+  },
+  "limitations": [
+    "No PostgreSQL execution or real device run.",
+    "Rebind source hashes if device query or backend default/projection changes.",
+    "Requires independent current resource authorization, lease, fixture ownership and identity evidence."
+  ]
+}

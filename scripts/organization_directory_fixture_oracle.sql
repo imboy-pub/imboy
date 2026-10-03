@@ -1,6 +1,7 @@
 -- Preparation only. Run exclusively on an explicitly authorized isolated
 -- synthetic fixture database after independent resource/lease verification.
 -- No real-user data or contacts may be emitted. This query returns booleans only.
+-- Current device root request omits limit: backend default is exactly 50.
 \set ON_ERROR_STOP on
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL statement_timeout = '15s';
@@ -11,20 +12,24 @@ SELECT 1 / CASE WHEN
     AND jsonb_typeof(:'context_json'::jsonb -> 'member_id') = 'string'
     AND jsonb_typeof(:'context_json'::jsonb -> 'root_page_limit') = 'string'
     AND jsonb_typeof(:'context_json'::jsonb -> 'fixture_id') = 'string'
+    AND jsonb_typeof(:'context_json'::jsonb -> 'member_name') = 'string'
     AND :'expected_uid' ~ '^[1-9][0-9]{0,18}$'
     AND :'organization_id' ~ '^[1-9][0-9]{0,18}$'
     AND :'member_id' ~ '^[1-9][0-9]{0,18}$'
     AND :'root_page_limit' ~ '^[1-9][0-9]{0,2}$'
-    AND :'root_page_limit'::integer BETWEEN 1 AND 100
+    AND :'root_page_limit' = '50'
     AND :'context_json'::jsonb ->> 'expected_uid' = :'expected_uid'
     AND :'context_json'::jsonb ->> 'organization_id' = :'organization_id'
     AND :'context_json'::jsonb ->> 'member_id' = :'member_id'
     AND :'context_json'::jsonb ->> 'root_page_limit' = :'root_page_limit'
     AND length(:'context_json'::jsonb ->> 'fixture_id') > 0
+    AND length(btrim(:'member_name')) > 0
+    AND :'context_json'::jsonb ->> 'member_name' = :'member_name'
     THEN 1 ELSE 0 END AS valid
 \gset org_fixture_guard_
 WITH roots AS (
-    SELECT om.user_id
+    SELECT om.user_id,
+        CASE WHEN u.nickname = '' THEN u.account ELSE u.nickname END AS display_name
     FROM public.organization_member om
     JOIN public."user" u ON u.id = om.user_id
     WHERE om.organization_id = :'organization_id'::bigint
@@ -48,6 +53,9 @@ SELECT jsonb_build_object(
         WHERE organization_id = :'organization_id'::bigint
           AND user_id = :'expected_uid'::bigint AND status = 'active'),
     'fixture_member_on_root_first_page', EXISTS (
-        SELECT 1 FROM roots WHERE user_id = :'member_id'::bigint)
+        SELECT 1 FROM roots WHERE user_id = :'member_id'::bigint),
+    'fixture_member_display_name_matches', EXISTS (
+        SELECT 1 FROM roots WHERE user_id = :'member_id'::bigint
+          AND display_name = :'member_name')
 );
 COMMIT;
