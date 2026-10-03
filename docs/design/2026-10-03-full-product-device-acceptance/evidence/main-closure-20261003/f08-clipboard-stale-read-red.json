@@ -1,0 +1,15 @@
+{
+  "scope": "SYNTHETIC_HOST_WIDGET_RED_REPRODUCTION",
+  "product_pass": false,
+  "exit": 1,
+  "passed": 10,
+  "failed": 1,
+  "app_head_before_fix": "5edc2ffc777279bc3b1c2669bf787786c99ebebb",
+  "owned_test_edit_uncommitted": true,
+  "test_sha256": "f2026607ec74022062ea32196b18b483dfa5d9b4784f16c9f212e97015b8de3c",
+  "log": {
+    "path": "f08-clipboard-stale-read-red.log",
+    "sha256": "5bc791a24b9edb9378170d444e5249e673dc5b24055cb951d850fa7e01617ad6"
+  },
+  "reason": "Delayed old clipboard read clears newly copied recovery key"
+}

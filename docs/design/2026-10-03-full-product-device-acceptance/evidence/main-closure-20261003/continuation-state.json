@@ -3350,5 +3350,46 @@
       }
     ],
     "proof_limit": "Only actual widget interaction with a secure-storage channel substitute. No generated-file/actual safe-storage/cloud or cryptographic restore evidence. Three partial host references added, not frozen required cases or parent PASS."
+  },
+  "f08_clipboard_stale_read_fix": {
+    "id": "PREPARATION-F08-CLIPBOARD-STALE-READ-FIX",
+    "scope": "HOST_WIDGET_PLATFORM_CHANNEL_SUBSTITUTE_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "d3ef7526adcc6c603ce9fe07c900af94e3c18a5a",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "executed": 12,
+    "exit": 0,
+    "analyze_exit": 0,
+    "reviews": [
+      "FLUTTER_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "log": {
+      "path": "f08-clipboard-stale-read-fixed.log",
+      "sha256": "37fdefbb8a648cb2169d56b42971e3ed7a36796539e2c8398e343476a51730a8"
+    },
+    "red_record": {
+      "path": "f08-clipboard-stale-read-red.json",
+      "sha256": "6176b5eeca0f47b21368e6281d1b0c7f5b2acdc1d45c5cddbc9a7afd6d6965ac"
+    },
+    "seed_ids": [
+      "LEGACY:settings:e2ee_backup_export_page:005"
+    ],
+    "fix": "Export-page instances share copy generation. Older timers check generation before and after async getData, so delayed old reads cannot clear a subsequently copied recovery key.",
+    "oracles": [
+      "Unrelated later clipboard text survives expiry",
+      "New generation survives old timer and is cleared by its own timer",
+      "Clipboard cleanup survives page disposal without UI write",
+      "Delayed old read cannot erase newer export-page key, including after page recreation"
+    ],
+    "proof_limit": "Uses synthetic recovery keys and a platform-channel substitute. Does not establish OS atomic get/set, external app races, other components copying keys, real-device clipboard safety or backup qualification."
   }
 }
