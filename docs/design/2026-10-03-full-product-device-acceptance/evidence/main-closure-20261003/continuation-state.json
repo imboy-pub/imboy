@@ -874,5 +874,31 @@
       "full final verifier and business coverage"
     ],
     "note": "Tests mock process launch. Two timeout business negative branches use real machine-event parser. No real device was accessed."
+  },
+  "shard_before_after_fingerprint_gate": {
+    "app_candidate": "ef55cf4bbb790f43188bf520c32fa8430c6671f1",
+    "executed": 294,
+    "exit": 0,
+    "command": "python3 -m unittest discover -s test/tooling/auto_test",
+    "review": "APPROVED_DRIFT_BLOCKING_AND_LOG_HASH",
+    "scope": "HOST_RUNNER_TESTS_ONLY",
+    "evidence_path": "shard-fingerprint-before-after-suite.log",
+    "evidence_sha256": "8af5a7a1232b8186056997295ee3749ed4c413d6aa71f140cef16026393c623c",
+    "product_pass": false,
+    "implemented": [
+      "persist initial fingerprint before subprocess",
+      "persist final fingerprint and drift flag",
+      "non-business-failure drift becomes BLOCKED without retry",
+      "business FAIL remains FAIL",
+      "record actual event-file SHA256"
+    ],
+    "remaining": [
+      "detect transient source changes that revert between samples",
+      "complete source snapshot coverage",
+      "authentic runtime config/device/fixture binding",
+      "resume reconciliation and independent index",
+      "real dual-device journeys and final business gates"
+    ],
+    "no_real_device_access": true
   }
 }
