@@ -618,8 +618,12 @@
             {three_second_once, 1, 3000},
             {per_hour_once, 1, per_hour},
             {per_minute_once, 1, per_minute},
-            % 每用户每分钟 API 调用上限
-            {api_per_user, 120, per_minute},
+            % 每用户每分钟 API 调用上限（活跃 IM 客户端列表/历史/离线分页
+            % 一轮就是十几个请求，120 偏紧致业务页频繁 429，2026-10 放宽）
+            {api_per_user, 300, per_minute},
+            % 每用户每秒 API 突发上限：与分钟桶串联，挡住固定分钟窗口
+            % 边界处的请求突刺（中间件 throttle_middleware 双桶检查）
+            {api_per_user_burst, 30, per_second},
             % 每 IP 每分钟 API 调用上限
             {api_per_ip, 60, per_minute},
             % Widget 接入面：每 IP 每分钟请求上限（bootstrap/消息/SSE 共享；

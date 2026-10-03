@@ -185,11 +185,13 @@ setup_all() ->
     %% 读 env 初始化桶）；成功路径会穿过 throttle_middleware 的 api_per_ip。
     application:set_env(throttle, rates, [
         {api_per_user, 100000, per_minute},
+        {api_per_user_burst, 100000, per_second},
         {api_per_ip, 100000, per_minute}
     ]),
     {ok, _} = application:ensure_all_started(throttle),
     catch throttle:setup(api_per_ip, 100000, per_minute),
     catch throttle:setup(api_per_user, 100000, per_minute),
+    catch throttle:setup(api_per_user_burst, 100000, per_second),
     %% WH-05：本链不起 imboy app，config_ds:set/get 依赖的 imboy_cache
     %% 实例须显式拉起（详见 eunit_runner:ensure_cache/0 头注）。
     ok = eunit_runner:ensure_cache(),

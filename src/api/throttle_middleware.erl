@@ -115,24 +115,54 @@ do_throttle(Req, Env) ->
                     {ok, Req, Env}
             end;
         Uid ->
-            %% 已认证请求，基于 UID 限流
+            %% 已认证请求，基于 UID 限流：双桶串联——
+            %% 秒级突发桶先挡固定窗口边界突刺，分钟桶控制总量；
+            %% 任一超限即 429。单桶 120/min 对活跃 IM 客户端过紧
+            %% （列表/历史/离线分页一轮就是十几个请求），2026-10 放宽。
             Key = integer_to_binary(Uid),
-            case throttle:check(api_per_user, Key) of
-                {ok, _Remaining, _RetryAfter} ->
+            case
+                check_uid_scopes(
+                    [{api_per_user_burst, Key}, {api_per_user, Key}],
+                    cowboy_req:path(Req)
+                )
+            of
+                ok ->
                     {ok, Req, Env};
-                {limit_exceeded, _, _} ->
+                {limit_exceeded, Scope} ->
                     ?WARN_LOG([
-                        rate_limited, #{key_type => uid, key => Uid, path => cowboy_req:path(Req)}
+                        rate_limited,
+                        #{
+                            key_type => uid,
+                            key => Key,
+                            scope => Scope,
+                            uid => Uid,
+                            path => cowboy_req:path(Req)
+                        }
                     ]),
-                    reply_429(Req);
-                rate_not_set ->
-                    %% 速率规则未初始化，放行并告警（fail-open）
-                    ?WARN_LOG([
-                        throttle_rate_not_set,
-                        #{scope => api_per_user, uid => Uid, path => cowboy_req:path(Req)}
-                    ]),
-                    {ok, Req, Env}
+                    reply_429(Req)
             end
+    end.
+
+%% @doc 依次检查多只桶；全部通过返回 ok，任一超限返回 {limit_exceeded, Scope}。
+%% 某桶规则未初始化时 fail-open（跳过该桶继续检查剩余桶）并告警。
+%% @private
+-spec check_uid_scopes([{atom(), binary()}], binary()) ->
+    ok | {limit_exceeded, atom()}.
+check_uid_scopes([], _Path) ->
+    ok;
+check_uid_scopes([{Scope, Key} | Rest], Path) ->
+    case throttle:check(Scope, Key) of
+        {ok, _Remaining, _RetryAfter} ->
+            check_uid_scopes(Rest, Path);
+        {limit_exceeded, _, _} ->
+            {limit_exceeded, Scope};
+        rate_not_set ->
+            %% 速率规则未初始化，放行并告警（fail-open）
+            ?WARN_LOG([
+                throttle_rate_not_set,
+                #{scope => Scope, uid => Key, path => Path}
+            ]),
+            check_uid_scopes(Rest, Path)
     end.
 
 %% @doc 从 Env 中获取当前用户 ID

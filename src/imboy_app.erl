@@ -411,7 +411,7 @@ ensure_listener_started({error, Reason}, StartMode) ->
 %% 此处显式 setup 两个关键规则作为保障。
 %% 上限优先读取 {throttle, [{rates, [{Key, N, per_minute}, ...]}]} 应用配置，
 %% 读不到时回落到硬编码默认值——本地/e2e 环境可通过 sys.local.config 放宽限流，
-%% 否则管理后台一轮自动化测试（每页十余个请求）很容易打满 120/min 被踢回登录页。
+%% 否则管理后台一轮自动化测试（每页十余个请求）很容易打满限流被踢回登录页。
 -spec init_throttle_rates() -> ok.
 init_throttle_rates() ->
     Rates =
@@ -426,7 +426,15 @@ init_throttle_rates() ->
         end
     end,
     %% 每用户每分钟 API 调用上限（与 sys.config 保持一致）
-    ok = throttle:setup(api_per_user, RateFor(api_per_user, 120), per_minute),
+    ok = throttle:setup(api_per_user, RateFor(api_per_user, 300), per_minute),
+    %% 每用户每秒 API 突发上限（与 sys.config 保持一致）：与分钟桶串联，
+    %% 挡住固定分钟窗口边界处的请求突刺（throttle 分钟桶是整点清零的固定窗口）
+    BurstN =
+        case lists:keyfind(api_per_user_burst, 1, Rates) of
+            {api_per_user_burst, N, per_second} when is_integer(N), N > 0 -> N;
+            _ -> 30
+        end,
+    ok = throttle:setup(api_per_user_burst, BurstN, per_second),
     %% 每 IP 每分钟 API 调用上限（与 sys.config 保持一致）
     ok = throttle:setup(api_per_ip, RateFor(api_per_ip, 60), per_minute),
     %% GAP-09: passport 路径专用限流（登录/注册，宽松于通用 IP 限流，严于完全豁免）

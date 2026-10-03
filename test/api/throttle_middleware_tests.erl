@@ -78,7 +78,8 @@ whitelist_static_test_() ->
         end
     ).
 
-%% @doc 正常请求通过（已认证用户，基于 UID 限流）
+%% @doc 正常请求通过（已认证用户，基于 UID 限流；2026-10 起为
+%% api_per_user_burst + api_per_user 双桶串联检查）
 normal_uid_request_pass_test_() ->
     ?WITH_MECKS(
         [
@@ -86,7 +87,12 @@ normal_uid_request_pass_test_() ->
                 {'path', 1, fun(_Req) -> <<"/api/v1/user/info">> end}
             ]},
             {throttle, [
-                {'check', 2, fun(api_per_user, _Key) -> {ok, 119, 60000} end}
+                {'check', 2, fun(Scope, _Key) ->
+                    case Scope of
+                        api_per_user_burst -> {ok, 29, 1000};
+                        api_per_user -> {ok, 299, 60000}
+                    end
+                end}
             ]}
         ],
         fun() ->
@@ -119,7 +125,7 @@ normal_ip_request_pass_test_() ->
         end
     ).
 
-%% @doc 超限返回 429（已认证用户）
+%% @doc 超限返回 429（已认证用户，分钟桶超限）
 uid_rate_limit_exceeded_test_() ->
     ?WITH_MECKS(
         [
@@ -128,7 +134,12 @@ uid_rate_limit_exceeded_test_() ->
                 {'reply', 4, fun(429, _Headers, _Body, Req) -> Req end}
             ]},
             {throttle, [
-                {'check', 2, fun(api_per_user, _Key) -> {limit_exceeded, 0, 5000} end}
+                {'check', 2, fun(Scope, _Key) ->
+                    case Scope of
+                        api_per_user_burst -> {ok, 29, 1000};
+                        api_per_user -> {limit_exceeded, 0, 5000}
+                    end
+                end}
             ]}
         ],
         fun() ->
@@ -136,6 +147,39 @@ uid_rate_limit_exceeded_test_() ->
             Env = #{handler_opts => #{current_uid => 12345}},
             Result = throttle_middleware:execute(Req, Env),
             ?assertMatch({stop, _}, Result)
+        end
+    ).
+
+%% @doc 秒级突发桶超限也返回 429，且不再检查分钟桶（双桶串联，短路返回）
+uid_burst_rate_limit_exceeded_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'path', 1, fun(_Req) -> <<"/api/v1/user/info">> end},
+                {'reply', 4, fun(429, _Headers, _Body, Req) -> Req end}
+            ]},
+            {throttle, [
+                {'check', 2, fun(Scope, _Key) ->
+                    case Scope of
+                        api_per_user_burst ->
+                            {limit_exceeded, 0, 900};
+                        api_per_user ->
+                            self() ! minute_bucket_must_not_be_checked,
+                            {ok, 299, 60000}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = fake_req,
+            Env = #{handler_opts => #{current_uid => 12345}},
+            Result = throttle_middleware:execute(Req, Env),
+            ?assertMatch({stop, _}, Result),
+            receive
+                minute_bucket_must_not_be_checked -> ?assert(false)
+            after 0 ->
+                ok
+            end
         end
     ).
 
@@ -171,8 +215,9 @@ uid_vs_ip_selection_uid_test_() ->
             ]},
             {throttle, [
                 {'check', 2, fun(Scope, _Key) ->
-                    %% 确保使用的是 api_per_user scope
+                    %% 确保已认证请求走 UID 双桶而非 api_per_ip
                     case Scope of
+                        api_per_user_burst -> {ok, 29, 1000};
                         api_per_user -> {ok, 100, 60000};
                         api_per_ip -> {limit_exceeded, 0, 5000}
                     end
