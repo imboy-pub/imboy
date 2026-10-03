@@ -5048,5 +5048,13 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "websocket_send_failure_capacity": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/websocket-send-failure-capacity-20261004.json",
+    "app_head": "8764e71519e46a837ebc939e8ec034d24514341f",
+    "executed": 186,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

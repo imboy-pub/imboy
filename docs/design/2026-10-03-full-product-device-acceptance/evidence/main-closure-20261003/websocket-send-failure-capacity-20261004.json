@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_OFFLINE_SINK_FAILURE_CAPACITY_COMPENSATION",
+  "app_head": "8764e71519e46a837ebc939e8ec034d24514341f",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_AFTER_INFLIGHT_EVICTION_AND_ENCODING_CLEANUP_FIX",
+  "results": {
+    "initial_red_exit": 1,
+    "priority_red_exit": 1,
+    "red_failed_each": 1,
+    "final_domain_exit": 0,
+    "final_domain_passed": 186,
+    "full_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Production flush reserves original object until synchronous sink accepts; failed sink while competing same/higher priority entries fill200 leaves original payload/owner/generation intact.",
+    "Failed original can be selected again; successful retry removes it while199 foreign entries remain; priority reentrant update cannot cause duplicate send."
+  ],
+  "attempt_notes": [
+    "Initial peek-only design passed same-priority regression but both reviewers found higher-priority eviction and priority replacement gap; higher-priority RED retained, identity reservation added.",
+    "Encoding moved into reservation finally before final qualification."
+  ],
+  "limitations": [
+    "Mock sink acceptance does not prove server ACK, durable delivery, device/backend journey or crash recovery.",
+    "Explicit clear/session invalidation can intentionally remove queue; existing offline retention/expiry policies remain.",
+    "Concurrent initialization and producers before event creation remain unqualified; no original97-ID upgrade.",
+    "No separate expiry or encoding-failure fault-injection test; those guards were source-reviewed only."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-red-20261004.log",
+      "sha256": "0f525bd785ea4c122430f14459c65aaa94542050e4761419be84a33c0d394735"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-priority-red-20261004.log",
+      "sha256": "08962b278ec2dea46296743742021b8404b9489a048c59a4c24e6ba1faf38b1b"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-final-domain-20261004.log",
+      "sha256": "23cde1f1b9276ba8eba0e3010f8d4571328754910036a346b6d4bb11143c8789"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-final2-domain-20261004.log",
+      "sha256": "c60882d84d2a86eb61a2136799dbf77ef35fe464746d9b56fb353055cb07c458"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-final2-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-final2-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-qualified-domain-20261004.log",
+      "sha256": "a3fb0170b01ddd104f036ae25c9f3223383eb5a1cac9853f76435c216bb6f1d5"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-qualified-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-compensation-qualified-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    }
+  ],
+  "implementation_verified_by_review": [
+    "Reservation prevents priority replacement, eviction and expiry of in-flight object and is released after encoding/send failures."
+  ]
+}
