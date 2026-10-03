@@ -944,5 +944,28 @@
       "business and platform final gates"
     ],
     "real_device_access": false
+  },
+  "empty_device_shard_gate": {
+    "app_candidate": "4f1cf9ef674d9ca8bcc19fe95ef3106edbf01406",
+    "executed": 302,
+    "exit": 0,
+    "review": "APPROVED_NO_CRITICAL_HIGH",
+    "scope": "HOST_INPUT_VALIDATION_ONLY",
+    "product_pass": false,
+    "no_real_device_access": true,
+    "negative_cases": 7,
+    "implemented": "Reject empty/non-list/invalid-member/duplicate targets before launching or writing output",
+    "logs": [
+      {
+        "path": "empty-shard-red.log",
+        "sha256": "6de8e3dc636be7ea2bfcce4635c282f1cadea5f83965ea7baf4ec38dae72547c",
+        "phase": "BEFORE_FIX_NEGATIVE_FAILED"
+      },
+      {
+        "path": "empty-shard-green.log",
+        "sha256": "b283f4d6f6d1b29329c933fb53b2f32a1ab0614bdfb33441ae67fb120ae1ba62",
+        "phase": "REVIEWED_302_PASS"
+      }
+    ]
   }
 }

@@ -1,0 +1,19 @@
+..................................................................................................shard blocked: TARGET_LIST_INVALID
+shard blocked: TARGET_LIST_INVALID
+shard blocked: TARGET_LIST_INVALID
+shard blocked: TARGET_LIST_INVALID
+shard blocked: TARGET_LIST_INVALID
+shard blocked: TARGET_LIST_INVALID
+shard blocked: TARGET_LIST_INVALID
+..............................................................................ERROR: ACCEPTANCE_CHECK_CANNOT_WRITE_LEDGERS
+..............................................................................................................................
+----------------------------------------------------------------------
+Ran 302 tests in 10.811s
+
+OK
+[AI_SCREENSHOT] first checkpoint
+AI_SCREENSHOT_SAVED: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/tmpwdo_p4ev/01_first_checkpoint.png
+some log line
+[AI_SCREENSHOT] second checkpoint
+AI_SCREENSHOT_SAVED: /var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/tmpwdo_p4ev/02_second_checkpoint.png
+截图数: 2

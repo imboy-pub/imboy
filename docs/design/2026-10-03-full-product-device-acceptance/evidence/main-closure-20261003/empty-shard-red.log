@@ -1,0 +1,167 @@
+.[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] t attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] e attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] s attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] t attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] / attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] a attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] . attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] d attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] a attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] r attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430616704'>] t attempts=0 <MagicMock name='run_target().__getitem__()' id='4430504720'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4430873216'>] None attempts=0 <MagicMock name='run_target().__getitem__()' id='4430844736'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4431030064'>]  attempts=0 <MagicMock name='run_target().__getitem__()' id='4430998064'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4431182672'>]    attempts=0 <MagicMock name='run_target().__getitem__()' id='4431158288'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4431339232'>] test/a.dart attempts=0 <MagicMock name='run_target().__getitem__()' id='4431311680'>s
+[<MagicMock name='run_target().__getitem__().get()' id='4431339232'>] test/a.dart attempts=0 <MagicMock name='run_target().__getitem__()' id='4431311680'>s
+....
+======================================================================
+ERROR: test_invalid_target_lists_never_launch_or_write_results (test_device_shard_journal.ShardJournalTests) (targets=[])
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_device_shard_journal.py", line 36, in test_invalid_target_lists_never_launch_or_write_results
+    self.assertEqual(shard.main(), 2)
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_device_shard.py", line 146, in main
+    (out_dir / 'results.json').write_text(json.dumps({
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1275, in write_text
+    with self.open(mode='w', encoding=encoding, errors=errors) as f:
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1242, in open
+    return io.open(self, mode, buffering, encoding, errors, newline,
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1110, in _opener
+    return self._accessor.open(self, flags, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/tmpkjtw2pbw/output/results.json'
+
+======================================================================
+ERROR: test_invalid_target_lists_never_launch_or_write_results (test_device_shard_journal.ShardJournalTests) (targets=None)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_device_shard_journal.py", line 36, in test_invalid_target_lists_never_launch_or_write_results
+    self.assertEqual(shard.main(), 2)
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_device_shard.py", line 142, in main
+    for target in targets:
+TypeError: 'NoneType' object is not iterable
+
+======================================================================
+ERROR: test_invalid_target_lists_never_launch_or_write_results (test_device_shard_journal.ShardJournalTests) (targets='test/a.dart')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_device_shard_journal.py", line 36, in test_invalid_target_lists_never_launch_or_write_results
+    self.assertEqual(shard.main(), 2)
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_device_shard.py", line 146, in main
+    (out_dir / 'results.json').write_text(json.dumps({
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.py", line 234, in dumps
+    return cls(
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 201, in encode
+    chunks = list(chunks)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 431, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 325, in _iterencode_list
+    yield from chunks
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 438, in _iterencode
+    o = _default(o)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 179, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type MagicMock is not JSON serializable
+
+======================================================================
+ERROR: test_invalid_target_lists_never_launch_or_write_results (test_device_shard_journal.ShardJournalTests) (targets=[None])
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_device_shard_journal.py", line 36, in test_invalid_target_lists_never_launch_or_write_results
+    self.assertEqual(shard.main(), 2)
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_device_shard.py", line 146, in main
+    (out_dir / 'results.json').write_text(json.dumps({
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.py", line 234, in dumps
+    return cls(
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 201, in encode
+    chunks = list(chunks)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 431, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 325, in _iterencode_list
+    yield from chunks
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 438, in _iterencode
+    o = _default(o)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 179, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type MagicMock is not JSON serializable
+
+======================================================================
+ERROR: test_invalid_target_lists_never_launch_or_write_results (test_device_shard_journal.ShardJournalTests) (targets=[''])
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_device_shard_journal.py", line 36, in test_invalid_target_lists_never_launch_or_write_results
+    self.assertEqual(shard.main(), 2)
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_device_shard.py", line 146, in main
+    (out_dir / 'results.json').write_text(json.dumps({
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.py", line 234, in dumps
+    return cls(
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 201, in encode
+    chunks = list(chunks)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 431, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 325, in _iterencode_list
+    yield from chunks
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 438, in _iterencode
+    o = _default(o)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 179, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type MagicMock is not JSON serializable
+
+======================================================================
+ERROR: test_invalid_target_lists_never_launch_or_write_results (test_device_shard_journal.ShardJournalTests) (targets=['  '])
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_device_shard_journal.py", line 36, in test_invalid_target_lists_never_launch_or_write_results
+    self.assertEqual(shard.main(), 2)
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_device_shard.py", line 146, in main
+    (out_dir / 'results.json').write_text(json.dumps({
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.py", line 234, in dumps
+    return cls(
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 201, in encode
+    chunks = list(chunks)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 431, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 325, in _iterencode_list
+    yield from chunks
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 438, in _iterencode
+    o = _default(o)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 179, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type MagicMock is not JSON serializable
+
+======================================================================
+ERROR: test_invalid_target_lists_never_launch_or_write_results (test_device_shard_journal.ShardJournalTests) (targets=['test/a.dart', 'test/a.dart'])
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_device_shard_journal.py", line 36, in test_invalid_target_lists_never_launch_or_write_results
+    self.assertEqual(shard.main(), 2)
+  File "/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_device_shard.py", line 146, in main
+    (out_dir / 'results.json').write_text(json.dumps({
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.py", line 234, in dumps
+    return cls(
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 201, in encode
+    chunks = list(chunks)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 431, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 325, in _iterencode_list
+    yield from chunks
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 438, in _iterencode
+    o = _default(o)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/encoder.py", line 179, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type MagicMock is not JSON serializable
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.021s
+
+FAILED (errors=7)
