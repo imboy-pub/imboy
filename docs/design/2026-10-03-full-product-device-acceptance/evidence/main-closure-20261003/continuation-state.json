@@ -1471,5 +1471,29 @@
     "scope": "ISOLATED_LOCAL_TSID_ONLY",
     "product_pass": false,
     "full_eunit_qualified": false
+  },
+  "candidate_tracked_source_cleanliness_gate": {
+    "app_candidate": "f0c4bb4b7040e775bfb34c2a5ca1e0525be7f834",
+    "full_tooling_tests": 332,
+    "standalone_real_git_tests": 10,
+    "exit": 0,
+    "review": "APPROVED_GIT_TRACKED_STATE_ONLY",
+    "scope": "GIT_TRACKED_INDEX_WORKTREE_STATE_ONLY",
+    "product_pass": false,
+    "logs": [
+      {
+        "path": "candidate-dirty-full-suite.log",
+        "sha256": "ddd79cf284fe60095b6bc8d598bc71335263cd5ab9e0d1e109d4d0c3a2fc99f8"
+      },
+      {
+        "path": "candidate-dirty-standalone.log",
+        "sha256": "a634e5a5956164e02a90e8b04c02c36b4216149ad590416abe484c61dc3ecdd0"
+      }
+    ],
+    "implemented": [
+      "reject tracked worktree or staged changes to frozen HEAD",
+      "reject assume-unchanged and skip-worktree flags"
+    ],
+    "remaining": "complete actual source bytes including attribute conversions/untracked/ignored inputs; real runtime/business/platform/final qualification"
   }
 }
