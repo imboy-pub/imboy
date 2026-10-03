@@ -1,0 +1,46 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/bottom_navigation恢复一次且保留query/fragment
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: 个人标签离开首页后保留，账号变化或退出时重置
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 企业直达链接登录后经/web_shell恢复一次且保留query/fragment
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart: resolveInitialIndex 路由参数解析 index=99 越界 → 归一化到最后一个 tab
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 登录后恢复的关闭项目仍被功能守卫拒绝且无循环
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 登录后恢复的关闭项目仍被功能守卫拒绝且无循环
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 登录后恢复的关闭项目仍被功能守卫拒绝且无循环
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 登录后恢复的关闭项目仍被功能守卫拒绝且无循环
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 登录后恢复的关闭项目仍被功能守卫拒绝且无循环
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 公共登录页和默认首页不会成为待恢复目标
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 不保存外部或协议相对目标https://invalid.example/organization/10
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 不保存外部或协议相对目标//invalid.example/organization/10
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 待恢复地址仅属于其路由实例
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人标签直达query在登录后保留
+00:00 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=2 经 /bottom_navigation 一次恢复并归一
+00:00 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=99 经 /bottom_navigation 一次恢复并归一
+00:00 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=-1 经 /bottom_navigation 一次恢复并归一
+00:00 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=invalid 经 /bottom_navigation 一次恢复并归一
+00:00 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=2 经 /web_shell 一次恢复并归一
+00:00 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=99 经 /web_shell 一次恢复并归一
+00:00 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=-1 经 /web_shell 一次恢复并归一
+00:00 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=invalid 经 /web_shell 一次恢复并归一
+00:00 +35: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=2 经 /chat_shell 一次恢复并归一
+00:00 +36: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=99 经 /chat_shell 一次恢复并归一
+00:00 +37: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=-1 经 /chat_shell 一次恢复并归一
+00:00 +38: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/config/router/app_router_login_continuation_test.dart: 个人深链 index=invalid 经 /chat_shell 一次恢复并归一
+00:00 +39: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders account changed=false
+00:00 +40: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders account changed=true
+00:00 +41: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders reject old result at concurrent
+00:00 +42: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders reject old result at session
+00:00 +43: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders reject old result at dispose
+00:00 +44: All tests passed!

@@ -5269,5 +5269,13 @@
     "new_cases": 3,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "bottom_navigation_login_continuation_matrix": {
+    "receipt": "bottom-navigation-login-matrix-20261004.json",
+    "app_head": "42b0f6c23a0677c93be4ff4af7537ed3838bacb1",
+    "executed": 44,
+    "new_cases": 12,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_AUTH_GUARD_AND_INDEX_PARSER_COMPOSITION",
+  "app_head": "42b0f6c23a0677c93be4ff4af7537ed3838bacb1",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "executed": 44,
+  "new_cases": 12,
+  "logs": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/bottom-navigation-login-matrix-20261004.log",
+      "sha256": "4b3e582c96c71c6ba5a1af37f3cb4254a3b36bca4695514b26ea2f7930982aee",
+      "exit_code": 0
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/bottom-navigation-login-matrix-static-20261004.log",
+      "sha256": "3defcc6ac109c9991b8e4d0ad2926d1b1cbe1f25127a913e80fdac21385387fc",
+      "exit_code": 0
+    }
+  ],
+  "sources": [
+    {
+      "path": "lib/config/router/app_router.dart",
+      "sha256": "99d7bd20e8ecfc7596cf1bca9dd3158fb3c9107c8c44203db9a5a98f85fdf4ff"
+    },
+    {
+      "path": "lib/page/bottom_navigation/bottom_navigation_page.dart",
+      "sha256": "28b8d0a94ca4bee7ff41e842fb5e4b61252f615897b213fad001c8ca8c69d950"
+    },
+    {
+      "path": "test/unit_test/config/router/app_router_login_continuation_test.dart",
+      "sha256": "507600ba873cae0874ccf63043f5ea34b32cc9d29a0cad9feb397d129759de73"
+    },
+    {
+      "path": "test/unit_test/page/bottom_navigation/bottom_navigation_page_test.dart",
+      "sha256": "faa5fca0064581bbc52dc4281f3fe6dfa7b8ea24ac346f6549f82e34fdc9b9ff"
+    }
+  ],
+  "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/config/router/app_router_login_continuation_test.dart",
+    "test/unit_test/page/bottom_navigation",
+    "--reporter",
+    "expanded"
+  ],
+  "oracles": [
+    "Actual production topRedirect preserves query and fragment through three login landings.",
+    "Pending target consumed once.",
+    "Restored URI parsed by production resolveInitialIndex for 3/4 tabs with independent expected values."
+  ],
+  "limits": [
+    "Direct topRedirect callback; not mounted production routing journey.",
+    "No operating-system link delivery, cold-start, Splash or real tab rendering qualified."
+  ],
+  "reviews": [
+    "c11_flutter_review APPROVE",
+    "runner_code_review APPROVE"
+  ]
+}
