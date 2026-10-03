@@ -4021,5 +4021,20 @@
     "exit_code": 0,
     "product_pass": false,
     "review": "APPROVED_LOCAL_SCOPE_ONLY"
+  },
+  "live_freeze_readiness": {
+    "receipt": "f01-live-freeze-readiness.json",
+    "receipt_sha256": "17317cdc62567920e583a2095c5d5c5197797b801b90e005d0e630b0f84ecdaf",
+    "observed_heads": {
+      "imboy": "199dbe03675d03e756bdcdd5ef1aab74e8c48b6c",
+      "imboyapp": "876cd2ba1dc870e1d81eeb3af81c8f16f567ad52",
+      "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+    },
+    "candidate_gate_errors": [
+      "CANDIDATE_TRACKED_SOURCE_DIRTY:imboyapp"
+    ],
+    "acceptance_sets_exact": true,
+    "product_pass": false,
+    "next": "ISOLATED_CLEAN_CANDIDATE_REQUIRED"
   }
 }

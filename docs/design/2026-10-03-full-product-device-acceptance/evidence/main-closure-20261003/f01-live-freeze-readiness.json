@@ -1,0 +1,44 @@
+{
+  "id": "F01-LIVE-FREEZE-READINESS",
+  "observed_at": "2026-10-03T13:49:53.452900+00:00",
+  "scope": "READ_ONLY_LIVE_GIT_AND_ACCEPTANCE_SET_AUDIT",
+  "heads": {
+    "imboy": "199dbe03675d03e756bdcdd5ef1aab74e8c48b6c",
+    "imboyapp": "876cd2ba1dc870e1d81eeb3af81c8f16f567ad52",
+    "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+  },
+  "product_pass": false,
+  "final_verifier": false,
+  "candidate_gate_errors": [
+    "CANDIDATE_TRACKED_SOURCE_DIRTY:imboyapp"
+  ],
+  "set_comparison": {
+    "e2ee": {
+      "required": 36,
+      "ledger": 36,
+      "missing": [],
+      "unknown": []
+    },
+    "full-product": {
+      "required": 61,
+      "ledger": 61,
+      "missing": [],
+      "unknown": []
+    }
+  },
+  "preserved_app_wip": [
+    " M README.md",
+    " M ios/Podfile.lock",
+    " M macos/Podfile.lock"
+  ],
+  "sources": {
+    "e2ee_plan_sha256": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+    "full_acceptance_set_sha256": "506a0f93b28b88a8ef3ccd1e25f96634df9f4d807b081efd6ae1f72eee5f1521"
+  },
+  "proof_limits": [
+    "required_ancestors here equal current HEAD only, not proof of all historical worker commit ancestry",
+    "No tests, devices or business oracles executed; no acceptance ID upgraded",
+    "Backend evidence commit will advance HEAD; this is a timestamped observation, not frozen final evidence"
+  ],
+  "next_required_action": "Freeze a clean isolated source snapshot without absorbing foreign WIP, then run full original acceptance gates."
+}
