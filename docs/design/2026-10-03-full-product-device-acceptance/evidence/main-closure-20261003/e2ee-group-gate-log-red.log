@@ -1,0 +1,45 @@
+======================== EUnit ========================
+module 'group_e2ee_logic_tests'
+  group_e2ee_logic_tests:21: -set_e2ee_mode_rejects_disable_test_/0-fun-3-...[0.001 s] ok
+  group_e2ee_logic_tests:36: -set_e2ee_mode_owner_only_test_/0-fun-2-...[0.011 s] ok
+  group_e2ee_logic_tests:64: -set_e2ee_mode_owner_enables_and_broadcasts_test_/0-fun-4-...[0.002 s] ok
+  group_e2ee_logic_tests:86: -gate_rejects_plaintext_when_required_test_/0-fun-4-...[0.001 s] ok
+  group_e2ee_logic_tests:114: -gate_allows_encrypted_when_required_test_/0-fun-2-...ok
+  group_e2ee_logic_tests:131: -gate_allows_plaintext_when_off_test_/0-fun-2-...ok
+  group_e2ee_logic_tests:154: -gate_fails_closed_on_query_error_test_/0-fun-5-...*failed*
+in function group_e2ee_logic_tests:'-gate_fails_closed_on_query_error_test_/0-fun-5-'/0 (test/logic/group_e2ee_logic_tests.erl, line 168)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,group_e2ee_logic_tests},
+              {line,168},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ error , group_e2ee_gate_query_failed , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  group_e2ee_logic_tests:183: -gate_skips_non_content_actions_test_/0-fun-3-...ok
+  undefined
+  *** context setup failed ***
+**in function eunit_runner:ensure_config_loaded/0 (src/lib/eunit_runner.erl, line 80)
+in call from eunit_runner:eunit_setup/0 (src/lib/eunit_runner.erl, line 148)
+in call from eunit_runner:eunit_setup_with_db/0 (src/lib/eunit_runner.erl, line 250)
+in call from group_e2ee_logic_tests:'-c08_grant_expansion_and_generation_replay_test_/0-fun-13-'/0 (test/logic/group_e2ee_logic_tests.erl, line 287)
+**error:{missing_config,pg_conf,
+                [37197,32622,25991,20214,20013,26410,25214,21040,32,112,103,
+                 95,99,111,110,102|...]}
+
+
+group_e2ee_logic_tests:400: -c08_authorize_sql_guards_test_/0-fun-2-...[0.002 s] ok
+group_e2ee_logic_tests:424: -c08_authorize_malformed_rows_denied_test_/0-fun-3-...ok
+group_e2ee_logic_tests:424: -c08_authorize_malformed_rows_denied_test_/0-fun-3-...ok
+group_e2ee_logic_tests:424: -c08_authorize_malformed_rows_denied_test_/0-fun-3-...ok
+group_e2ee_logic_tests:424: -c08_authorize_malformed_rows_denied_test_/0-fun-3-...ok
+[done in 0.675 s]
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 12.
+One or more tests were cancelled.

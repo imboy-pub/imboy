@@ -1,0 +1,19 @@
+======================== EUnit ========================
+group_e2ee_logic_tests:154: -gate_fails_closed_on_query_error_test_/0-fun-5-...*failed*
+in function group_e2ee_logic_tests:'-gate_fails_closed_on_query_error_test_/0-fun-5-'/0 (test/logic/group_e2ee_logic_tests.erl, line 172)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,group_e2ee_logic_tests},
+              {line,172},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ error , group_e2ee_gate_query_failed , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+=======================================================
+  Failed: 1.  Skipped: 0.  Passed: 0.

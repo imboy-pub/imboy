@@ -1,0 +1,64 @@
+{
+  "scope": "LOCAL_GROUP_E2EE_GATE_LOG_PRIVACY_ONLY",
+  "backend_head": "137e4da8bbc7343e4c18ab02763647db956ed1b3",
+  "focused_red": {
+    "failed": 1,
+    "exit_code": 1
+  },
+  "focused_green": {
+    "passed": 5,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "full_module_before": {
+    "passed": 12,
+    "failed": 1,
+    "exit_code": 1,
+    "cancelled": true
+  },
+  "full_module_after": {
+    "passed": 13,
+    "failed": 0,
+    "exit_code": 1,
+    "cancelled": true
+  },
+  "full_module_blocker": "Existing real PG fixture setup lacks pg_conf; full module is NOT_PASS",
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-group-gate-log-red.log",
+      "sha256": "af1531452a7e10d1091318f6b02602d76bc9f948dd31be863885ecd1d1da4911"
+    },
+    {
+      "path": "e2ee-group-gate-log-green.log",
+      "sha256": "29e8666fbf672fe6cd8701ee8c40d1201fef4b4c5902b1fbcb2d34364bd91213"
+    },
+    {
+      "path": "e2ee-group-gate-log-focused-red.log",
+      "sha256": "9469fb467a7b6fc7a2c2d04e5c1ec75889be6cea32456db6d38c0755c7ca7b1f"
+    },
+    {
+      "path": "e2ee-group-gate-log-focused-green.log",
+      "sha256": "615a24cdc5a3b1a7fbb7ee94f812926db913641c57d21e3c5b2f84cd61fc0aa8"
+    },
+    {
+      "path": "e2ee-group-gate-log-compile.log",
+      "sha256": "02e2096ba15920f84ccd24b74312683df35b469f9e77671afff3b2e15c196b8e"
+    }
+  ],
+  "source_hashes": {
+    "src/logic/msg_c2g_logic.erl": "169157555bd96df5ba28bca6b5d415c2377c6027fe8698563451eb25d3e8f0ec",
+    "test/logic/group_e2ee_logic_tests.erl": "93f6be8124e733ee18d44df8643759c36ea8e43871194df970518f44ce8fd47c"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "limits": [
+    "Failure logs omit group identity and arbitrary reason; fail-closed return and counter preserved",
+    "Five focused gate generators are independent of real PG fixture",
+    "Cancelled full module attempts retained without claiming PASS",
+    "No full AC26 or production SLO qualification"
+  ]
+}
