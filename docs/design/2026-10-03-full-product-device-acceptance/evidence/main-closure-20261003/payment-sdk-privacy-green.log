@@ -1,0 +1,34 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: 支付宝 SDK 异常日志不输出错误原文或签名参数
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   PaymentLauncher.launchAlipay (package:imboy/service/payment_launcher.dart:84:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [PaymentLauncher] alipay launch failed: StateError[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseAlipayResult 9000 maps to success
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseAlipayResult 6001 maps to cancelled
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseAlipayResult other status maps to failed
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseAlipayResult missing status maps to failed
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseAlipayResult numeric status is coerced and matched
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatResult errCode 0 maps to success
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatResult errCode -2 maps to cancelled
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatResult errCode -1 maps to failed
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatResult null errCode (no callback) maps to failed
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatParams full params produce fields
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatParams falls back to config appId when backend omits it
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatParams missing partnerid degrades to null
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatParams missing prepay_id degrades to null
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatParams missing sign degrades to null
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatParams missing/zero timestamp degrades to null
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatParams empty appId both sides degrades to null
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatParams default package applied when omitted
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatParams string timestamp is coerced
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: parseWechatParams accepts alternate key prepayid/nonce_str
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: launch dispatch / degradation unknown method degrades to notConfigured
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: launch dispatch / degradation wallet method (should not reach launcher) degrades
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: launch dispatch / degradation alipay without configuration degrades to notConfigured
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: launch dispatch / degradation wechat without appId config degrades to notConfigured
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: E2EE 服务异常日志保留稳定标识（异常 runtimeType）用于诊断
+00:00 +26: All tests passed!

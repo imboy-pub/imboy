@@ -4598,5 +4598,11 @@
     "app_head": "7f528c531ef6386a809d607ad59b5f7ff8505fda",
     "tests": 40,
     "product_pass": false
+  },
+  "f14_payment_sdk_privacy": {
+    "receipt": "payment-sdk-privacy.json",
+    "app_head": "99afa239c532163f27d2ea05530554b8ee1237e0",
+    "tests": 26,
+    "product_pass": false
   }
 }

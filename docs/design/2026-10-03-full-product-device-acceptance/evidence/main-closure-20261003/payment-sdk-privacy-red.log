@@ -1,0 +1,289 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: 支付宝 SDK 异常日志不输出错误原文或签名参数
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ StateError: Bad state: synthetic-private-payment-signature[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ #0   _FakeGateway.aliPay (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart:26:30)[0m
+[38;5;196m│ #1   PaymentLauncher.launchAlipay (package:imboy/service/payment_launcher.dart:75:37)[0m
+[38;5;196m│ #2   main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart:65:54)[0m
+[38;5;196m│ #3   Declarer.test.<anonymous closure>.<anonymous closure> (package:test_api/src/backend/declarer.dart:253:25)[0m
+[38;5;196m│ #4   <asynchronous suspension>[0m
+[38;5;196m│ #5   Declarer.test.<anonymous closure> (package:test_api/src/backend/declarer.dart:250:11)[0m
+[38;5;196m│ #6   <asynchronous suspension>[0m
+[38;5;196m│ #7   Invoker._waitForOutstandingCallbacks.<anonymous closure> (package:test_api/src/backend/invoker.dart:318:9)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [PaymentLauncher] alipay launch failed[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +0 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: 支付宝 SDK 异常日志不输出错误原文或签名参数 [E]
+  Expected: contains '[PaymentLauncher] alipay error: StateError'
+    Actual: [
+              '[PaymentLauncher] alipay error: Bad state: synthetic-private-payment-signature'
+            ]
+     Which: does not contain '[PaymentLauncher] alipay error: StateError'
+  
+  package:matcher                                         expect
+  package:flutter_test/src/widget_tester.dart 473:18      expect
+  test/unit_test/service/payment_launcher_test.dart 72:5  main.<fn>
+  
+00:00 +0 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +1 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +2 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +3 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +4 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +5 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +6 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +7 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +8 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +9 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +10 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +11 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +12 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +13 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +14 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +15 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +16 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +17 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +18 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +19 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +20 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +21 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +21 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: launch dispatch / degradation alipay without configuration degrades to notConfigured
+00:00 +22 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: launch dispatch / degradation wechat without appId config degrades to notConfigured
+00:00 +23 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象 [E]
+  Expected: not contains 'error: $e'
+    Actual: 'import \'package:flutter/foundation.dart\';\n'
+              '\n'
+              'import \'package:imboy/config/payment_config.dart\';\n'
+              'import \'package:imboy/service/app_logger.dart\';\n'
+              'import \'package:imboy/service/payment_gateway.dart\';\n'
+              '\n'
+              '/// 第三方支付收银台唤起结果。\n'
+              'enum PaymentLaunchResult {\n'
+              '  /// 用户付款成功（前端仍须轮询订单状态确认入账）。\n'
+              '  success,\n'
+              '\n'
+              '  /// 用户主动取消支付。\n'
+              '  cancelled,\n'
+              '\n'
+              '  /// 支付失败（含 SDK 报错、未安装客户端、回调失败码）。\n'
+              '  failed,\n'
+              '\n'
+              '  /// 支付方式未配置或下单参数不完整，应提示"即将开通"。\n'
+              '  notConfigured,\n'
+              '}\n'
+              '\n'
+              '/// 支付宝原生回调状态码（resultStatus）。\n'
+              'abstract final class AlipayResultStatus {\n'
+              '  static const String success = \'9000\';\n'
+              '  static const String cancelled = \'6001\';\n'
+              '}\n'
+              '\n'
+              '/// 微信支付回调 errCode。\n'
+              'abstract final class WechatErrCode {\n'
+              '  static const int success = 0;\n'
+              '  static const int cancelled = -2;\n'
+              '}\n'
+              '\n'
+              '/// 第三方支付收银台唤起器。\n'
+              '///\n'
+              '/// 闭环：后端统一下单返回 `pay_params` → 本类按 method 分发并唤起对应原生 SDK →\n'
+              '/// 用户付款 → 返回 [PaymentLaunchResult]。调用方据结果决定是否继续轮询订单状态\n'
+              '/// （`success`/`failed` 继续轮询，`cancelled` 中止，`notConfigured` 提示）。\n'
+              '///\n'
+              '/// SDK 调用通过可注入的 [PaymentSdkGateway] 隔离，便于单测。\n'
+              'class PaymentLauncher {\n'
+              '  PaymentLauncher({PaymentSdkGateway? gateway})\n'
+              '    : _gateway = gateway ?? RealPaymentSdkGateway();\n'
+              '\n'
+              '  final PaymentSdkGateway _gateway;\n'
+              '\n'
+              '  /// 按支付方式分发唤起。[payParams] 为后端信封中的 `pay_params`。\n'
+              '  Future<PaymentLaunchResult> launch(\n'
+              '    String method,\n'
+              '    Map<dynamic, dynamic>? payParams,\n'
+              '  ) {\n'
+              '    final params = payParams ?? const <dynamic, dynamic>{};\n'
+              '    switch (method) {\n'
+              '      case \'alipay\':\n'
+              '        return launchAlipay(params);\n'
+              '      case \'wechat\':\n'
+              '        return launchWechat(params);\n'
+              '      default:\n'
+              '        // wallet 等无需唤起 SDK 的方式不应走到这里；未知方式视为未配置。\n'
+              '        return Future.value(PaymentLaunchResult.notConfigured);\n'
+              '    }\n'
+              '  }\n'
+              '\n'
+              '  /// 唤起支付宝收银台。\n'
+              '  Future<PaymentLaunchResult> launchAlipay(\n'
+              '    Map<dynamic, dynamic> payParams,\n'
+              '  ) async {\n'
+              '    if (!PaymentConfig.isAlipayConfigured) {\n'
+              '      return PaymentLaunchResult.notConfigured;\n'
+              '    }\n'
+              '    final orderStr = _stringOf(payParams[\'order_str\']);\n'
+              '    if (orderStr.isEmpty) return PaymentLaunchResult.notConfigured;\n'
+              '\n'
+              '    try {\n'
+              '      final result = await _gateway.aliPay(\n'
+              '        orderStr,\n'
+              '        universalLink: _nullIfEmpty(PaymentConfig.alipayUniversalLink),\n'
+              '      );\n'
+              '      return parseAlipayResult(result);\n'
+              '    } on Object catch (e, s) {\n'
+              '      if (kDebugMode) debugPrint(\'[PaymentLauncher] alipay error: $e\');\n'
+              '      AppLogger.error(\'[PaymentLauncher] alipay launch failed\', e, s);\n'
+              '      return PaymentLaunchResult.failed;\n'
+              '    }\n'
+              '  }\n'
+              '\n'
+              '  /// 唤起微信收银台。\n'
+              '  ///\n'
+              '  /// 微信下单需 6 项二次签名参数（partnerId/prepayId/packageValue/nonceStr/\n'
+              '  /// timeStamp/sign）。任一缺失视为后端二次签名未就绪 → 降级 notConfigured。\n'
+              '  Future<PaymentLaunchResult> launchWechat(\n'
+              '    Map<dynamic, dynamic> payParams,\n'
+              '  ) async {\n'
+              '    if (!PaymentConfig.isWechatConfigured) {\n'
+              '      return PaymentLaunchResult.notConfigured;\n'
+              '    }\n'
+              '    final fields = parseWechatParams(payParams, PaymentConfig.wechatAppId);\n'
+              '    if (fields == null) return PaymentLaunchResult.notConfigured;\n'
+              '\n'
+              '    try {\n'
+              '      final registered = await _gateway.ensureWechatRegistered(\n'
+              '        appId: PaymentConfig.wechatAppId,\n'
+              '        universalLink: _nullIfEmpty(PaymentConfig.wechatUniversalLink),\n'
+              '      );\n'
+              '      if (!registered) return PaymentLaunchResult.notConfigured;\n'
+              '\n'
+              '      final errCode = await _gateway.wechatPay(\n'
+              '        appId: fields.appId,\n'
+              '        partnerId: fields.partnerId,\n'
+              '        prepayId: fields.prepayId,\n'
+              '        packageValue: fields.packageValue,\n'
+              '        nonceStr: fields.nonceStr,\n'
+              '        timestamp: fields.timestamp,\n'
+              '        sign: fields.sign,\n'
+              '        signType: fields.signType,\n'
+              '      );\n'
+              '      return parseWechatResult(errCode);\n'
+              '    } on Object catch (e, s) {\n'
+              '      if (kDebugMode) debugPrint(\'[PaymentLauncher] wechat error: $e\');\n'
+              '      AppLogger.error(\'[PaymentLauncher] wechat launch failed\', e, s);\n'
+              '      return PaymentLaunchResult.failed;\n'
+              '    }\n'
+              '  }\n'
+              '\n'
+              '  // ── 纯逻辑（可单测，不触碰 SDK）───────────────────────────────────────\n'
+              '\n'
+              '  /// 解析支付宝回调 Map 的 `resultStatus`。\n'
+              '  static PaymentLaunchResult parseAlipayResult(Map<dynamic, dynamic> result) {\n'
+              '    final status = _stringOf(result[\'resultStatus\']);\n'
+              '    return switch (status) {\n'
+              '      AlipayResultStatus.success => PaymentLaunchResult.success,\n'
+              '      AlipayResultStatus.cancelled => PaymentLaunchResult.cancelled,\n'
+              '      _ => PaymentLaunchResult.failed,\n'
+              '    };\n'
+              '  }\n'
+              '\n'
+              '  /// 解析微信回调 errCode。\n'
+              '  static PaymentLaunchResult parseWechatResult(int? errCode) {\n'
+              '    return switch (errCode) {\n'
+              '      WechatErrCode.success => PaymentLaunchResult.success,\n'
+              '      WechatErrCode.cancelled => PaymentLaunchResult.cancelled,\n'
+              '      _ => PaymentLaunchResult.failed,\n'
+              '    };\n'
+              '  }\n'
+              '\n'
+              '  /// 校验并提取微信下单参数；缺任一必要字段返回 `null`（→ notConfigured 降级）。\n'
+              '  ///\n'
+              '  /// appId 优先用后端下发，缺失时回落到编译期配置 [configAppId]。\n'
+              '  static WechatPayFields? parseWechatParams(\n'
+              '    Map<dynamic, dynamic> payParams,\n'
+              '    String configAppId,\n'
+              '  ) {\n'
+              '    final appId = _firstNonEmpty(_stringOf(payParams[\'appid\']), configAppId);\n'
+              '    final partnerId = _stringOf(payParams[\'partnerid\']);\n'
+              '    final prepayId = _stringOf(payParams[\'prepay_id\'] ?? payParams[\'prepayid\']);\n'
+              '    final packageValue = _firstNonEmpty(\n'
+              '      _stringOf(payParams[\'package\']),\n'
+              '      \'Sign=WXPay\',\n'
+              '    );\n'
+              '    final nonceStr = _stringOf(payParams[\'noncestr\'] ?? payParams[\'nonce_str\']);\n'
+              '    final sign = _stringOf(payParams[\'sign\']);\n'
+              '    final timestamp = _intOf(\n'
+              '      payParams[\'timestamp\'] ??\n'
+              '          payParams[\'timeStamp\'] ??\n'
+              '          payParams[\'time_stamp\'],\n'
+              '    );\n'
+              '\n'
+              '    if (appId.isEmpty ||\n'
+              '        partnerId.isEmpty ||\n'
+              '        prepayId.isEmpty ||\n'
+              '        nonceStr.isEmpty ||\n'
+              '        sign.isEmpty ||\n'
+              '        timestamp <= 0) {\n'
+              '      return null;\n'
+              '    }\n'
+              '    return WechatPayFields(\n'
+              '      appId: appId,\n'
+              '      partnerId: partnerId,\n'
+              '      prepayId: prepayId,\n'
+              '      packageValue: packageValue,\n'
+              '      nonceStr: nonceStr,\n'
+              '      timestamp: timestamp,\n'
+              '      sign: sign,\n'
+              '      signType: _nullIfEmpty(_stringOf(payParams[\'signtype\'])),\n'
+              '    );\n'
+              '  }\n'
+              '\n'
+              '  static String _stringOf(Object? v) => v?.toString() ?? \'\';\n'
+              '\n'
+              '  static String? _nullIfEmpty(String v) => v.isEmpty ? null : v;\n'
+              '\n'
+              '  static String _firstNonEmpty(String a, String b) => a.isNotEmpty ? a : b;\n'
+              '\n'
+              '  static int _intOf(Object? v) {\n'
+              '    if (v is int) return v;\n'
+              '    if (v is num) return v.toInt();\n'
+              '    return int.tryParse(v?.toString() ?? \'\') ?? 0;\n'
+              '  }\n'
+              '}\n'
+              '\n'
+              '/// 微信下单二次签名字段集合。\n'
+              '@immutable\n'
+              'class WechatPayFields {\n'
+              '  const WechatPayFields({\n'
+              '    required this.appId,\n'
+              '    required this.partnerId,\n'
+              '    required this.prepayId,\n'
+              '    required this.packageValue,\n'
+              '    required this.nonceStr,\n'
+              '    required this.timestamp,\n'
+              '    required this.sign,\n'
+              '    this.signType,\n'
+              '  });\n'
+              '\n'
+              '  final String appId;\n'
+              '  final String partnerId;\n'
+              '  final String prepayId;\n'
+              '  final String packageValue;\n'
+              '  final String nonceStr;\n'
+              '  final int timestamp;\n'
+              '  final String sign;\n'
+              '  final String? signType;\n'
+              '}\n'
+              ''
+  lib/service/payment_launcher.dart 重新引入了敏感日志: error: $e
+  
+  package:matcher                                                   expect
+  package:flutter_test/src/widget_tester.dart 473:18                expect
+  test/unit_test/service/e2ee/logging_privacy_guard_test.dart 94:9  main.<fn>
+  
+00:00 +23 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: E2EE 服务异常日志保留稳定标识（异常 runtimeType）用于诊断
+00:00 +24 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/payment_launcher_test.dart: 支付宝 SDK 异常日志不输出错误原文或签名参数

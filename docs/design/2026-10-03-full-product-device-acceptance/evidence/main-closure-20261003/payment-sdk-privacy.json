@@ -1,0 +1,30 @@
+{
+  "scope": "LOCAL_PAYMENT_SDK_EXCEPTION_LOG_PRIVACY",
+  "app_head": "99afa239c532163f27d2ea05530554b8ee1237e0",
+  "tests": 26,
+  "exit_code": 0,
+  "red_exit_code": 1,
+  "analysis_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "payment-sdk-privacy-red.log",
+      "sha256": "138817ea373c89e38a6de737c8a517206d9ad8757b419afac5db28d78186e323"
+    },
+    {
+      "path": "payment-sdk-privacy-green.log",
+      "sha256": "f80c50915d76b64a093c97b00df5fd30040cd70020afe30c91a14a42c5591589"
+    },
+    {
+      "path": "payment-sdk-privacy-analysis.log",
+      "sha256": "69d031f2f4b3b910d9ef3984cd89d73efbb5e78829abfd5f1ee09bd61ea2148a"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Real launchAlipay entry with synthetic SDK exception and configuration, no native SDK or external payment",
+    "Runtime capture verifies debugPrint path; AppLogger invocation and Wechat branch source-reviewed only",
+    "No actual device/backend/accounting or full-product acceptance qualification"
+  ]
+}
