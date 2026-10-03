@@ -1,0 +1,108 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart
+00:00 +0: 本地恢复等待期间不能弹出云端恢复确认框
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: false
+  Actual: <true>
+
+When the exception was thrown, this was the stack:
+#4      _assertLocalBlocksCloud (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:140:3)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart line 140
+The test description was:
+  本地恢复等待期间不能弹出云端恢复确认框
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: 本地恢复等待期间不能弹出云端恢复确认框 [E]
+  Test failed. See exception logs above.
+  The test description was: 本地恢复等待期间不能弹出云端恢复确认框
+  
+00:00 +0 -1: 云端恢复等待期间不能启动本地恢复
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+Guarded function conflict.
+You must use "await" with all Future-returning test APIs.
+The guarded method "tapAt" from class WidgetController was called from
+file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart
+on line 155.
+Then, the "expect" function was called from
+file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart
+on line 20.
+The first method (WidgetController.tapAt) had not yet finished executing at the time that the second
+function (expect) was called. Since both are guarded, and the second was not a nested call inside
+the first, the first must complete its execution before the second can be called. Typically, this is
+achieved by putting an "await" statement in front of the call to the first.
+If you are confident that all test APIs are being called using "await", and this expect() call is
+not being called at the top level but is itself being called from some sort of callback registered
+before the tapAt method was called, then consider using expectSync() instead.
+
+When the first method (WidgetController.tapAt) was called, this was the stack:
+#0      TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:72:42)
+#1      WidgetController.tapAt (package:flutter_test/src/controller.dart:1147:27)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1079:12)
+#3      _assertCloudBlocksLocal (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:155:16)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+When the exception was thrown, this was the stack:
+#0      TestAsyncUtils.guardSync (package:flutter_test/src/test_async_utils.dart:312:5)
+#1      expect (package:flutter_test/src/widget_tester.dart:472:18)
+#2      _ImportProbe.call (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:20:5)
+#3      _page.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:46:25)
+#4      _E2EEBackupImportPageState._handleCloudRestore (package:imboy/page/settings/e2ee_backup_import_page.dart:842:46)
+#5      _E2EEBackupImportPageState._promptCloudRestore (package:imboy/page/settings/e2ee_backup_import_page.dart:834:11)
+<asynchronous suspension>
+
+The test description was:
+  云端恢复等待期间不能启动本地恢复
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -2: 云端恢复等待期间不能启动本地恢复 [E]
+  Test failed. See exception logs above.
+  The test description was: 云端恢复等待期间不能启动本地恢复
+  
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test (but after the test had completed):
+Expected: <1>
+  Actual: <0>
+
+When the exception was thrown, this was the stack:
+#0      fail (package:matcher/src/expect/expect.dart:187:31)
+#1      _expect (package:matcher/src/expect/expect.dart:182:3)
+#2      expect (package:matcher/src/expect/expect.dart:65:3)
+#3      expect (package:flutter_test/src/widget_tester.dart:473:18)
+#4      _assertCloudBlocksLocal (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:163:3)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  Test failed. See exception logs above.
+  The test description was: 云端恢复等待期间不能启动本地恢复
+  
+00:01 +0 -2: 解密等待期间关闭页面不开始写入恢复密钥
+00:01 +1 -2: 同一帧重复导入只启动一次解密
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:01 +2 -2: 导入失败后仍可再次发起导入
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:01 +3 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 云端恢复等待期间不能启动本地恢复
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 本地恢复等待期间不能弹出云端恢复确认框

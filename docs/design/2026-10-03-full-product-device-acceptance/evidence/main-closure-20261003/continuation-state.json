@@ -3890,5 +3890,66 @@
     "change": "Check mounted after local decryption before applying restored keys.",
     "oracle": "Pending importer started; dispose; complete synthetic success; secure-storage write intents are zero. RED observed exactly one write intent and channel substitute immediately threw to halt subsequent restore.",
     "proof_limit": "Does not cancel decryption or already-started key application. Platform secure storage is a substitute; no actual writes, backend, device or cryptographic restoration qualification. No parent acceptance upgraded."
+  },
+  "f08_local_cloud_restore_mutex": {
+    "id": "PREPARATION-F08-LOCAL-CLOUD-RESTORE-MUTEX",
+    "scope": "HOST_RESTORE_ENTRY_SUBSTITUTE_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "d974b4c353e0324d8388d4d3dae4dfdadc5abdec",
+    "executed": 5,
+    "exit": 0,
+    "analyze_exit": 0,
+    "reviews": [
+      "FLUTTER_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "attempts": {
+      "preparation-failed": {
+        "passed": 3,
+        "failed": 2,
+        "exit": 1,
+        "log": {
+          "path": "f08-restore-cross-preparation-failed.log",
+          "sha256": "e97118cb5d98495f261954ab0fc532334911053093a531e4a696d520ee908e73"
+        }
+      },
+      "calibrated-red": {
+        "passed": 3,
+        "failed": 2,
+        "exit": 1,
+        "log": {
+          "path": "f08-restore-cross-calibrated-red.log",
+          "sha256": "ad54d7a53c5e6e349397570d66ed618594b4ef9246366d8445749ce24e215cea"
+        }
+      },
+      "fixed": {
+        "passed": 5,
+        "failed": 0,
+        "exit": 0,
+        "log": {
+          "path": "f08-restore-cross-fixed.log",
+          "sha256": "c71958953e06f03daec87bba14b1b4452bd5af88c3366342bc1675fdc991b993"
+        }
+      }
+    },
+    "change": "Local/cloud handlers, cloud prompt and UI enforce mutual busy states. Optional cloud restorer defaults to original service.",
+    "oracles": [
+      "Pending local import rejects cached cloud prompt callback",
+      "Pending cloud restore rejects cached local import callback"
+    ],
+    "preparation_notes": [
+      "Initial cloud test assertion callback conflicted with guarded tap; use expectSync then calibrated both defects.",
+      "First commit hook could not resolve Flutter packages and failed analysis. Without source changes subsequent analysis and retry hooks passed; no dependency files staged."
+    ],
+    "proof_limit": "Controlled importer/restorer results terminate with ArgumentError before applying keys; no actual decrypt/cloud/backend/device qualification. Cloud result-after-dispose lifecycle remains pending independently. No required parent upgraded."
   }
 }
