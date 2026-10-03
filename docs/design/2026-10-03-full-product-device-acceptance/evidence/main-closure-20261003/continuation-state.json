@@ -1874,5 +1874,43 @@
       "97-ID frozen final qualification"
     ],
     "proof_limit": "Header/format compatibility only; no real cryptographic protocol, key registration, outbox persistence, network or device proof."
+  },
+  "c11_full_fanout_components": {
+    "id": "PREPARATION-C11-FULL-FANOUT-COMPONENTS",
+    "scope": "HOST_COMPONENT_STRUCTURE_ONLY",
+    "product_pass": false,
+    "network_executed": false,
+    "candidate_app_head": "8e3612e6832152801028d915032300748f147acd",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/service/e2ee_registered_fanout_binding_test.dart",
+      "test/unit_test/service/e2ee_registered_backend_transport_test.dart",
+      "test/unit_test/service/e2ee_release_socket_session_test.dart",
+      "test/unit_test/service/e2ee_release_wire_codec_test.dart",
+      "test/unit_test/service/e2ee_server_ack_tracker_test.dart",
+      "test/unit_test/service/e2ee_registered_wire_binding_test.dart",
+      "test/unit_test/service/e2ee_registered_fixture_test.dart",
+      "test/unit_test/service/e2ee_release_harness_host_test.dart",
+      "test/unit_test/service/e2ee/e2ee_outbound_router_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "executed": 92,
+    "failed": 0,
+    "exit": 0,
+    "analysis": "No issues found",
+    "review": [
+      "C11_FLUTTER_REVIEW_APPROVE",
+      "RUNNER_CODE_REVIEW_APPROVE"
+    ],
+    "log": "c11-full-components-fanout.log",
+    "log_sha256": "af6021f7af95a2747783cd535712f852d057dd226234418413f9691827e14e87",
+    "remaining": [
+      "production sender other-device delivery and offline recovery",
+      "real registered crypto decrypt/display",
+      "authorized runtime and real devices",
+      "97-ID frozen final qualification"
+    ]
   }
 }
