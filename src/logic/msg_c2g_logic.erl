@@ -249,13 +249,20 @@ group_e2ee_gate(Gid, MsgType, Action, E2EE, Payload) ->
             case group_ds:e2ee_mode(Gid) of
                 {ok, 1} ->
                     case imboy_policy:encrypted_message_body(MsgType, E2EE, Payload) of
-                        true -> ok;
-                        false -> {error, <<"encrypted_message_required">>}
+                        true ->
+                            ok;
+                        false ->
+                            %% C12-followup（AC-26）：rollout 期旧客户端撞墙的关键信号，
+                            %% 拒收不能只有错误码没有计数（告警 ImBoyGroupE2eePlaintextRejected）
+                            _ = elib_metric:increment(group_e2ee_plaintext_rejected_total),
+                            {error, <<"encrypted_message_required">>}
                     end;
                 {ok, _} ->
                     ok;
                 {error, Reason} ->
                     _ = ?ERROR_LOG([group_e2ee_gate_query_failed, Gid, Reason]),
+                    %% fail-closed 拒发同样计数：查询故障被误读为"群开着 E2EE"时靠它暴露
+                    _ = elib_metric:increment(group_e2ee_check_failed_total),
                     {error, <<"group_e2ee_check_failed">>}
             end
     end.

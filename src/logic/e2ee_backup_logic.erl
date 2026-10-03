@@ -59,6 +59,8 @@ get_backup(Uid) ->
         {error, not_found} ->
             {error, <<"backup_not_found">>, 404};
         {error, _Reason} ->
+            %% C12-followup（AC-26）：服务端故障（5xx 等价）不再静默
+            _ = elib_metric:increment(e2ee_backup_op_failed_total, 1, #{op => get}),
             {error, <<"backup_query_failed">>, 500}
     end.
 
@@ -77,6 +79,7 @@ info(Uid) ->
         {error, not_found} ->
             {ok, #{<<"has_backup">> => false}};
         {error, _Reason} ->
+            _ = elib_metric:increment(e2ee_backup_op_failed_total, 1, #{op => info}),
             {error, <<"backup_query_failed">>, 500}
     end.
 
@@ -87,6 +90,7 @@ delete_backup(Uid) ->
         {ok, Count} ->
             {ok, #{<<"deleted">> => Count}};
         {error, _Reason} ->
+            _ = elib_metric:increment(e2ee_backup_op_failed_total, 1, #{op => delete}),
             {error, <<"backup_delete_failed">>, 500}
     end.
 
@@ -156,6 +160,8 @@ expected_version(Uid) ->
         {error, not_found} ->
             {ok, 1};
         {error, _Reason} ->
+            %% put 路径的版本查询失败（5xx 等价）计入 op=put
+            _ = elib_metric:increment(e2ee_backup_op_failed_total, 1, #{op => put}),
             {error, <<"backup_query_failed">>, 500}
     end.
 
@@ -176,8 +182,11 @@ do_save(Uid, Version, Params, Payload) ->
         {error, Reason} ->
             case is_unique_violation(Reason) of
                 %% 并发 put 撞版本：UNIQUE(uid, backup_version) 兜底
-                true -> {error, <<"version_conflict">>, 409};
-                false -> {error, <<"backup_save_failed">>, 500}
+                true ->
+                    {error, <<"version_conflict">>, 409};
+                false ->
+                    _ = elib_metric:increment(e2ee_backup_op_failed_total, 1, #{op => put}),
+                    {error, <<"backup_save_failed">>, 500}
             end
     end.
 

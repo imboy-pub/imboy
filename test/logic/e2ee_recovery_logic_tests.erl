@@ -128,3 +128,26 @@ start_server_backup_recovery_no_backup_test_() ->
             )
         end
     ).
+
+%% C12-followup（AC-26）：恢复 DB 失败不能只有日志没有计数（e2ee_recovery_failed_total）
+start_server_backup_recovery_db_error_increments_metric_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_backup_ds, [
+                {'latest', 1, fun(10001) -> {error, db_down} end}
+            ]},
+            {elib_metric, [
+                {'increment', 1, fun(_) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"internal_error">>},
+                e2ee_recovery_logic:start_auto_recovery(10001, <<"dev-1">>, <<"server_backup">>)
+            ),
+            ?assertEqual(
+                1,
+                meck:num_calls(elib_metric, increment, [e2ee_recovery_failed_total])
+            )
+        end
+    ).

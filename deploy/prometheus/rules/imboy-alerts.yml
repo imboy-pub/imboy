@@ -754,6 +754,13 @@ groups:
   #     客户端补传密钥即自愈，>5 次/10min 持续才说明补传管道断裂
   #   - 安全事件（claim_unauthorized / identity_pop_rejected / fallback_unsigned）：
   #     攻击面信号，低阈值高敏感
+  # C12-followup（AC-26）新增来源：
+  #   - src/logic/msg_c2g_logic.erl group_e2ee_gate/5：
+  #     group_e2ee_plaintext_rejected_total（required-E2EE 群拒收明文，
+  #     rollout 期旧客户端撞墙信号）/ group_e2ee_check_failed_total（fail-closed 拒发）
+  #   - src/logic/e2ee_recovery_logic.erl：e2ee_recovery_failed_total（恢复 DB 失败）
+  #   - src/logic/e2ee_backup_logic.erl：e2ee_backup_op_failed_total{op=put|get|info|delete}
+  #     （备份服务端故障，5xx 等价物；客户端 4xx 与 version_conflict 409 不计）
   # ============================================================
   - name: imboy.e2ee
     interval: 30s
@@ -858,6 +865,129 @@ groups:
             1. 定位走 fallback 的设备/账号：grep fallback_unsigned /var/log/imboy/*.log
             2. 确认是旧协议版本残留还是主动降级尝试
             3. 计划收紧 fallback 策略前先确认存量客户端占比
+
+      # ── C12-followup（AC-26）补齐：以下计数器此前有计数无告警 ──
+
+      # 身份根轮换被拒：双签名验签失败/单向上限/撤销设备重放被拦。
+      # 阈值依据：合法客户端走 report_identity 正常轮换不会触发该分支；
+      # 被拒=身份根保护机制在报事件（攻击尝试或客户端密钥损坏），>0 持续 5min 即 critical。
+      - alert: ImBoyOlmIdentityRotationRejected
+        expr: sum(increase(olm_identity_rotation_rejected_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "E2EE 身份根轮换被拒 / E2EE identity rotation rejected"
+          description: >
+            近 5 分钟身份根轮换被拒 {{ $value }} 次。轮换被拒说明换根请求未通过
+            双签名验证（伪造尝试、撤销设备重放或客户端密钥损坏），fail-closed 生效中。
+            Rejected identity rotations: forgery attempt, revoked-device replay,
+            or corrupted client keys; fail-closed is holding.
+          runbook: >
+            1. 查被拒详情：grep rotation_rejected /var/log/imboy/*.log，提取 uid/device_id
+            2. 核对涉事设备是否刚被撤销（正常重放 vs 攻击）
+            3. 与 ImBoyOlmClaimUnauthorized 同现时按攻击处置
+
+      # 轮换事件落库失败：换钥本身成功但 trust_audit 事件写失败（审计链断裂）。
+      # 阈值依据：审计事件 append-only 是信任链证据，丢失即不可追溯；换钥低频，
+      # 任何一次失败都值得人工补录，>0 持续 5min critical。
+      - alert: ImBoyOlmRotationEventFailed
+        expr: sum(increase(olm_rotation_event_failed_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "E2EE 轮换审计事件写入失败 / E2EE rotation audit event write failed"
+          description: >
+            近 5 分钟轮换事件落库失败 {{ $value }} 次。换钥已完成但 trust_audit
+            未记录，审计链出现缺口（不阻断换钥，但事件不可追溯）。
+            Rotation succeeded but audit trail has gaps.
+          runbook: >
+            1. 查 trust_audit 表写入报错：grep rotation_event_failed /var/log/imboy/*.log
+            2. 核对 DB 连接/约束（trust_audit_repo insert_event）
+            3. 按日志中的事件字段人工补录审计记录
+
+      # required-E2EE 群拒收明文：rollout 期旧客户端在加密群发明文被拒的"撞墙"信号。
+      # 阈值依据：这不是故障而是版本门在生效——warning 级别用于观察存量旧客户端规模，
+      # 指导升级催办节奏；门放开后（全量加密客户端）应归零。
+      - alert: ImBoyGroupE2eePlaintextRejected
+        expr: sum(increase(group_e2ee_plaintext_rejected_total[10m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "required-E2EE 群拒收明文消息（旧客户端撞墙）/ Plaintext rejected by required-E2EE groups"
+          description: >
+            近 10 分钟加密群拒收明文消息 {{ $value }} 次。版本门在正常生效：
+            旧客户端（不支持群 E2EE）在 e2ee_mode=1 的群发消息被 fail-closed 拒收。
+            持续增长说明存量旧客户端规模可观，需催办升级。
+            The E2EE gate is working; aging clients are being rejected.
+          runbook: >
+            1. 按客户端版本聚合被拒请求，确认旧版本存量规模
+            2. 评估推送升级提醒（管理后台版本门/公告）
+            3. 若单用户高频被拒：定向排查其客户端是否故障
+
+      # required-E2EE 群配置查询失败：fail-closed 拒发（不是客户端问题，是服务端问题）。
+      # 阈值依据：该分支只在 group_ds:e2ee_mode 查询出错时触达（DB 故障），
+      # 正常流量为 0；>0 持续 2min 说明群配置读取链路故障，大量群消息被误拒。
+      - alert: ImBoyGroupE2eeCheckFailed
+        expr: sum(increase(group_e2ee_check_failed_total[10m])) > 0
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "required-E2EE 群配置查询失败（fail-closed 拒发中）/ E2EE group config query failing"
+          description: >
+            近 10 分钟群 E2EE 配置查询失败 {{ $value }} 次。查询失败触发 fail-closed
+            拒发——用户视角是"消息发不出"，需与 DB 告警对照定位。
+            Group config queries failing; fail-closed is rejecting sends.
+          runbook: >
+            1. 对照 PostgreSQL 告警/慢查询（group 表读取）
+            2. 查 group_e2ee_gate_query_failed 日志确认错误类型
+            3. 与 ImBoyGroupE2eePlaintextRejected 区分：那条是版本门正常生效
+
+      # E2EE 恢复失败：start_server_backup_recovery 查询 DB 出错（非"无备份"）。
+      # 阈值依据：恢复是用户主动低频操作，DB 失败即该用户恢复流程中断；
+      # >0 持续 5min 说明备份表读取故障，warning（单用户重试可自愈，持续则升级）。
+      - alert: ImBoyE2eeRecoveryFailed
+        expr: sum(increase(e2ee_recovery_failed_total[10m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "E2EE 恢复流程查询失败 / E2EE recovery flow query failed"
+          description: >
+            近 10 分钟恢复启动时备份查询失败 {{ $value }} 次（非"无备份"的正常路径）。
+            受影响用户无法进入恢复流程，服务端返回 internal_error。
+            Backup lookups failing during recovery start.
+          runbook: >
+            1. 查 start_server_backup_recovery_db_error 日志
+            2. 与 ImBoyE2eeBackupOpFailed 同现时优先排查备份表读取链路
+
+      # E2EE 备份操作服务端失败：put/get/info/delete 的 5xx 等价物（带 op 标签）。
+      # 阈值依据：备份成功是用户密钥可恢复的前提，服务端故障=用户重装后可能
+      # 无法恢复密钥；客户端 4xx 与 version_conflict 409 不计入。>0 持续 5min warning。
+      - alert: ImBoyE2eeBackupOpFailed
+        expr: sum(increase(e2ee_backup_op_failed_total[10m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "E2EE 密钥备份操作服务端失败 / E2EE backup operation failing"
+          description: >
+            近 10 分钟备份服务端操作失败 {{ $value }} 次（按 op 标签区分
+            put/get/info/delete）。备份不可用时用户重装设备将无法恢复 E2EE 密钥。
+            Backup operations failing server-side (see op label).
+          runbook: >
+            1. 按 op 标签定位失败操作：/metrics 里 e2ee_backup_op_failed_total{op=...}
+            2. 查 e2ee_backup 表读写报错（grep backup_save_failed / backup_query_failed）
+            3. DB 层恢复后抽查一个账号验证 put→get 链路
 
   # ============================================================
   # 14. License 有效性/到期/配额 / License Validity, Expiry & Quota
