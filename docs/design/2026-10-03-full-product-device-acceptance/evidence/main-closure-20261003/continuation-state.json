@@ -1256,5 +1256,36 @@
     ],
     "final_verifier": "NOT_IMPLEMENTED",
     "remaining": "independent full execution index authenticity, candidate runtime provenance, coverage/business/platform/UX qualification"
+  },
+  "frozen_input_coverage_structure_gate": {
+    "app_candidate": "466c45ad132900fb4e1023a2f1e802a0a8fc1bc5",
+    "executed": 328,
+    "exit": 0,
+    "review": "APPROVED_AFTER_FAILED_APPROVAL_HASH_BYPASS_REPAIR",
+    "scope": "FROZEN_COVERAGE_STRUCTURE_ONLY",
+    "product_pass": false,
+    "logs": [
+      {
+        "path": "input-coverage-before-review.log",
+        "sha256": "62125dc5a07005c9759b2d53182c9cf969779f515eac9cda19eec22b700e479d",
+        "phase": "PRE_REVIEW_326"
+      },
+      {
+        "path": "input-coverage-reviewed.log",
+        "sha256": "76742e1d570d61bd5a1d0b805005530b65fe175be93e79159185fb4ef4ab0a02",
+        "phase": "REVIEWED_328_WITH_FAILED_HASH_NEGATIVE"
+      }
+    ],
+    "negative_cases": [
+      "missing duplicate unknown input",
+      "unmapped unknown duplicate malformed case keys",
+      "owner oracle source placeholders",
+      "unapproved or rewritten deletion",
+      "failed hash surrogate approval bypass",
+      "merge without retained case",
+      "approved deletion cannot drop frozen required-case coverage"
+    ],
+    "cli_connection": "NOT_IMPLEMENTED",
+    "remaining": "independently complete source index, semantic mapping/profile/roles, CLI composition and all real business/platform gates"
   }
 }
