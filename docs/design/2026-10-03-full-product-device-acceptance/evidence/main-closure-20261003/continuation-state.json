@@ -4325,5 +4325,11 @@
     "app_head": "71cec44a8fef0272c42b2e6ac4f7d32e85b45cec",
     "tooling_tests": 442,
     "product_pass": false
+  },
+  "f14_snapshot_sql_preparation": {
+    "receipt": "f14-snapshot-sql-preparation.json",
+    "postgres_runtime_validation": "NOT_VERIFIED",
+    "product_pass": false,
+    "database_access": false
   }
 }

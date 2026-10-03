@@ -1,0 +1,46 @@
+{
+  "scope": "READ_ONLY_SQL_TEMPLATE_PREPARATION",
+  "sources": [
+    {
+      "path": "scripts/billing_cancel_snapshot.sql",
+      "sha256": "6e1baaebd4f88a91d1c82b783b9c89c0339e565e75ebde3547f95979950c42bd"
+    },
+    {
+      "path": "src/repo/billing_subscription_repo.erl",
+      "sha256": "f4e8ca56f2e7a7cfc08087d5cf373de36d325787b58038515b679b9ab71e00fb"
+    },
+    {
+      "path": "src/repo/billing_invoice_repo.erl",
+      "sha256": "6212336af9b0e2552fc029151b3b33153fb55dd8609c128bf77883f59e52eb65"
+    },
+    {
+      "path": "priv/migrations/00000011_billing.up.sql",
+      "sha256": "e8b710afdb268be685cd82567058dbc7e4a35ff40afb5280aa0040254435f9f1"
+    },
+    {
+      "path": "priv/migrations/00000050_billing_owner_uid.up.sql",
+      "sha256": "6f19687fe26b627fb135deb4addd9ab4b93fb875c526a42c38cbdac7332540fe"
+    }
+  ],
+  "sql_execution": "NOT_EXECUTED",
+  "postgres_runtime_validation": "NOT_VERIFIED",
+  "database_access": false,
+  "device_execution": false,
+  "product_pass": false,
+  "zero_write_proven": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Independent authorized connection/parameter/context verification required",
+    "Empty output does not verify account or instance correctness",
+    "Before/after content cannot exclude transient writes; independent audits required"
+  ],
+  "review_recovery": "Initial HIGH: unbound context versus actual query scope. Added fail-closed SQL scope guard before table reads; runtime calibration remains unverified.",
+  "pending_runtime_cases": [
+    "Matched context/selection outputs exact full snapshot",
+    "Mismatched owner exits nonzero before snapshot output",
+    "Mismatched tenant exits nonzero before snapshot output",
+    "Missing variables and numeric JSON IDs rejected",
+    "NULL timestamps/USDT currency/all subscription statuses retained"
+  ],
+  "review": "APPROVED_STATIC_ONLY_AFTER_SCOPE_GUARD_REPAIR"
+}

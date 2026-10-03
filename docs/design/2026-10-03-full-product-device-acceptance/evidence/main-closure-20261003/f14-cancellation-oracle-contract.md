@@ -26,6 +26,22 @@
 
 ## 快照必须核对的内容
 
+仓内准备模板为 `scripts/billing_cancel_snapshot.sql`。它使用独立只读、repeatable-read
+事务采集同一时刻的完整订阅和关联账单，不按状态过滤，不分页。ID 转为精确十进制
+字符串，金额仍为整数分，时间按 UTC 微秒 ISO 文本输出，数据库 NULL 保留为 JSON null。
+模板尚未连接数据库执行或完成 PostgreSQL 运行校准；代码审查不能替代该校准。
+
+执行者必须独立核验连接属于获准隔离实例，并显式提供 `expected_uid`、`tenant_id`
+和 `context_json`，禁止默认值。两个选择参数必须与冻结 context 的 owner_uid、tenant_id
+完全一致；context 的 run/attempt/fixture/device/platform/backend_sha 必须来自已核验的
+冻结输入。模板在任何表读取前校验 owner_uid/tenant_id 为 JSON 字符串、参数为规范
+十进制且两者完全相同；不一致触发 SQL 错误并由 ON_ERROR_STOP 非零退出。此保护
+仍待隔离 PostgreSQL 校准，至少包含 owner 参数不一致和 tenant 参数不一致反例。
+SQL 只采集，不认证其他声明；空集合也不是账号或数据库正确的证据。
+使用 psql 的 `-X -qAt -v ON_ERROR_STOP=1` 模式，并检查进程成功退出后再固定 JSON 文件
+及摘要。失败或输出不完整不得登记为有效快照。before/after 必须分别运行，不能复制文件。
+连接秘密只由获准本地环境提供，不写入命令描述、日志或仓库。
+
 订阅集按 id 稳定排序，逐字段比较上述所有订阅字段；账单集按 id 稳定排序，逐字段比较 `billing_invoice_repo` 当前 COLUMNS 全集。金额保留整数分，64-bit ID 使用精确十进制表示，不经过浮点数转换。记录 SQL 模板摘要和绑定参数摘要；不保存连接密码、token 或真实个人数据。
 
 before/after 的完整内容应相同。记录数、金额总和或哈希单项相同都不能单独判定零写入。只读 API 返回空对象也不能替代底层完整集：归属拒绝或分页可能掩盖实际变更。
