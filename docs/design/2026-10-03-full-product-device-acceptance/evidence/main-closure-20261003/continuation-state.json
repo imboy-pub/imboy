@@ -4834,5 +4834,10 @@
     "receipt": "organization-join-request-account-epoch-20261004.json",
     "app_head": "3ad042f14e6bf600228713ff7e47f75e23c5b392",
     "product_pass": false
+  },
+  "organization_join_late_response_ui_isolation": {
+    "receipt": "organization-join-late-response-isolation-20261004.json",
+    "app_head": "9546743dc1affc925e965f83f908d6e6655001fc",
+    "product_pass": false
   }
 }

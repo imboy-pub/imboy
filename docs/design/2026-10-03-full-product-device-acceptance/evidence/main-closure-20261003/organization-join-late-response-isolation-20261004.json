@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_LATE_JOIN_RESPONSE_UI_ISOLATION",
+  "app_head": "9546743dc1affc925e965f83f908d6e6655001fc",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW_AFTER_COMPLETION_AND_RENDER_BARRIERS",
+  "results": {
+    "authoritative_calibration_exit": 1,
+    "authoritative_calibration_failed": 4,
+    "authoritative_calibration_passed": 0,
+    "final_exit": 0,
+    "final_passed": 32,
+    "analyze_issues": 0
+  },
+  "oracles": [
+    "Actual widget async submit callback completion, then rendered frames and current dialog route assertion.",
+    "Deferred preview/join request already invoked before A-B-A; late success/failure does not advance, dismiss or error the dialog."
+  ],
+  "attempt_notes": [
+    "Initial 10-pass result had no callback completion barrier and is not authoritative.",
+    "Added completion barrier; first calibration found 3 failures and 1 false pass during join-pop animation; incomplete calibration retained.",
+    "Added post-completion rendered frames and current-route assertion. Final calibration detects all four changed behaviors in terminal UI assertions.",
+    "Production guard mutation was temporary and exact source bytes restored before final 32-pass run."
+  ],
+  "limitations": [
+    "Synthetic adapter and explicit accountKey changes only; no real authentication or database.",
+    "Does not revoke or undo a join write already accepted by the server.",
+    "Scanner lifecycle remains code-reviewed rather than dynamically qualified.",
+    "Original 36+61 acceptance requirements remain unclosed."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-late-response-green-20261004.log",
+      "sha256": "f3c2036fb77489da6fdf815614303bf4bf3e3be408ab36342d9bec8bb7981ba9"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-late-response-barrier-green-20261004.log",
+      "sha256": "adddf8cb7c14e3072dbd3903e09e3a6f6ff13277d7abe9d7f8f3401914edbd2e"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-late-response-calibration-20261004.log",
+      "sha256": "0d9efc0de9ca0561854c12e163f23ee9d53d860bae0fc90bc1780b95de2387d2"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-late-response-calibration-final-20261004.log",
+      "sha256": "82e2e70895400d70664727c57b353398ea8f0e2728cbeb531717e9c767d4ad9f"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-late-response-final-20261004.log",
+      "sha256": "1d09e7f35c030f735107e9d447e9604dfeceea8e1ff1366de3ba7a478f884168"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-late-response-analyze-20261004.log",
+      "sha256": "c5a729520ad60f608f22a20de976183ce5cc09a132a09a52447708509fb216c6"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-late-response-analyze-final-20261004.log",
+      "sha256": "c5a729520ad60f608f22a20de976183ce5cc09a132a09a52447708509fb216c6"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-join-late-response-analyze-clean-20261004.log",
+      "sha256": "c5a729520ad60f608f22a20de976183ce5cc09a132a09a52447708509fb216c6"
+    }
+  ]
+}
