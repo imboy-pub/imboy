@@ -1,0 +1,28 @@
+{
+  "scope": "LOCAL_ARTIFACT_SNAPSHOT_PREPARATION_ONLY",
+  "app_head": "d5a16f823b7797456f1fc1f6bef538daf5cb3eab",
+  "tooling_tests": 436,
+  "focused_tests": 13,
+  "exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "f14-snapshot-artifact-red.log",
+      "sha256": "42cf0035389b3a2e07bab53c63a6abcece2c05b786c64873766fa96000919747"
+    },
+    {
+      "path": "f14-snapshot-artifact-green.log",
+      "sha256": "aeff88ecbdcab37c14ab73e4b166a87d1c8200c8172f4bacabb1405db8dcd66a"
+    }
+  ],
+  "product_pass": false,
+  "zero_write_proven": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_access": false,
+  "limits": [
+    "Caller supplies independently pinned path/hash descriptors",
+    "Distinct paths do not authenticate independent collection, timing or completeness",
+    "Not yet composed into final product acceptance; request/database audit still missing"
+  ]
+}
