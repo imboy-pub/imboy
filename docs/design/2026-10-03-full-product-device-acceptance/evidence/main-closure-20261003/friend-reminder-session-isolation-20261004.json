@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_ACCOUNT_REMINDER_ISOLATION",
+  "app_head": "46acb8bc13ee95f9668f0237a9e6ed1b735be3fc",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "executed": 21,
+  "red": {
+    "passed": 1,
+    "failed": 1,
+    "oracle": "old account lookup released after account provider rebuild pollutes reminders"
+  },
+  "commands": [
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/page/bottom_navigation",
+        "--reporter",
+        "expanded"
+      ],
+      "exit_code": 0
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "dart",
+        "analyze",
+        "lib/page/bottom_navigation/bottom_navigation_provider.dart",
+        "test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "logs": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/friend-remind-red-valid-20261004.log",
+      "sha256": "06b6554d32600071f7f2379ff7fa4ad25fd6c0707d8992624d2b631da51625a9",
+      "exit_code": 1
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/friend-remind-final-20261004.log",
+      "sha256": "7a21682c81271d25e69f725d6b60a7edd9ba22ae04de3793f3adad4bd5b0e420",
+      "exit_code": 0
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/friend-remind-static-20261004.log",
+      "sha256": "55c1151b35b977d1834ca9eb46f47e017cd3d11ebaed3cbef41f2c8710152a43",
+      "exit_code": 0
+    }
+  ],
+  "sources": [
+    {
+      "path": "lib/page/bottom_navigation/bottom_navigation_provider.dart",
+      "sha256": "604793c63255ff1607695ed965789fd5477aa7ec8a4c5c63c82e3755a1129127"
+    },
+    {
+      "path": "test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart",
+      "sha256": "de72a34c21f20292629b42b89cd5212ca11602191cdc0c2493f469aaa16dcef3"
+    }
+  ],
+  "reviews": [
+    "c11_flutter_review: APPROVE",
+    "runner_code_review: APPROVE"
+  ],
+  "boundaries": [
+    "Synthetic account notification and database; no real login or device execution.",
+    "Session-generation, clearing and overlapping request checks exist but were not dynamically exercised.",
+    "Initial invalid column-name fixture excluded; authoritative RED uses NewFriendRepo.from."
+  ]
+}

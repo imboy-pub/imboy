@@ -1,0 +1,18 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart
+00:00 +0: friend reminders account changed=false
+📊 [REMIND] countReminders items=3 newFroms={200}
+00:00 +1: friend reminders account changed=true
+📊 [REMIND] countReminders items=3 newFroms={200}
+00:00 +1 -1: friend reminders account changed=true [E]
+  Expected: Set:[]
+    Actual: Set:['200']
+     Which: larger than expected
+  
+  package:matcher                                                                 expect
+  package:flutter_test/src/widget_tester.dart 473:18                              expect
+  test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart 67:7  main.<fn>
+  
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/bottom_navigation/new_friend_remind_session_test.dart: friend reminders account changed=true

@@ -5253,5 +5253,13 @@
     "product_pass": false,
     "gate_status": "IMPLEMENTED_NOT_QUALIFIED",
     "original_functions_unbound": 12
+  },
+  "friend_reminder_session_isolation": {
+    "receipt": "friend-reminder-session-isolation-20261004.json",
+    "app_head": "46acb8bc13ee95f9668f0237a9e6ed1b735be3fc",
+    "executed": 21,
+    "exit_code": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }
