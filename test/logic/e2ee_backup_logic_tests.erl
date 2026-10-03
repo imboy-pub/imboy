@@ -317,3 +317,57 @@ zerotrust_no_server_side_crypto_test_() ->
             ?assertEqual(0, meck:num_calls(elib_cipher, encrypt_private_key, 2))
         end
     ).
+
+%% ===================================================================
+%% C12-followup（AC-26）：服务端故障（5xx 等价）分支必须递增计数器，
+%% 不能只有错误码没有计数。客户端 4xx 与 version_conflict 409 不计。
+%% ===================================================================
+
+get_backup_db_error_increments_metric_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_backup_ds, [
+                {'latest', 1, fun(9999) -> {error, db_down} end}
+            ]},
+            {elib_metric, [
+                {'increment', 3, fun(_, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"backup_query_failed">>, 500},
+                e2ee_backup_logic:get_backup(9999)
+            ),
+            ?assertEqual(
+                1,
+                meck:num_calls(elib_metric, increment, [
+                    e2ee_backup_op_failed_total, 1, #{op => get}
+                ])
+            )
+        end
+    ).
+
+put_save_error_increments_metric_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_backup_ds, [
+                {'latest', 1, fun(9999) -> {error, not_found} end},
+                {'save', 1, fun(_) -> {error, insert_failed} end}
+            ]},
+            {elib_metric, [
+                {'increment', 3, fun(_, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"backup_save_failed">>, 500},
+                e2ee_backup_logic:put_backup(9999, valid_params())
+            ),
+            ?assertEqual(
+                1,
+                meck:num_calls(elib_metric, increment, [
+                    e2ee_backup_op_failed_total, 1, #{op => put}
+                ])
+            )
+        end
+    ).

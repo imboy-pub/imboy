@@ -79,6 +79,9 @@ gate_rejects_plaintext_when_required_test_() ->
         [
             {group_ds, [
                 {'e2ee_mode', 1, fun(42) -> {ok, 1} end}
+            ]},
+            {elib_metric, [
+                {'increment', 1, fun(_) -> ok end}
             ]}
         ],
         fun() ->
@@ -92,6 +95,12 @@ gate_rejects_plaintext_when_required_test_() ->
                 msg_c2g_logic:group_e2ee_gate(
                     42, <<"text">>, <<"message_edit">>, null, <<"{\"plain\":1}">>
                 )
+            ),
+            %% C12-followup（AC-26）：每次拒收必须递增计数器——
+            %% rollout 期旧客户端撞墙的关键可观测信号，拒收不能静默
+            ?assertEqual(
+                2,
+                meck:num_calls(elib_metric, increment, [group_e2ee_plaintext_rejected_total])
             )
         end
     ).
@@ -133,12 +142,21 @@ gate_fails_closed_on_query_error_test_() ->
         [
             {group_ds, [
                 {'e2ee_mode', 1, fun(42) -> {error, pg_down} end}
+            ]},
+            {elib_metric, [
+                {'increment', 1, fun(_) -> ok end}
             ]}
         ],
         fun() ->
             ?assertEqual(
                 {error, <<"group_e2ee_check_failed">>},
                 msg_c2g_logic:group_e2ee_gate(42, <<"text">>, <<>>, null, <<"{\"plain\":1}">>)
+            ),
+            %% C12-followup（AC-26）：fail-closed 拒发同样要计数——
+            %% 否则 DB 故障被误读为"群开着 E2EE 在正常拦明文"
+            ?assertEqual(
+                1,
+                meck:num_calls(elib_metric, increment, [group_e2ee_check_failed_total])
             )
         end
     ).
