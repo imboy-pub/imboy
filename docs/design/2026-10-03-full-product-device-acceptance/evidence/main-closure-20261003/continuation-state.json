@@ -1982,7 +1982,7 @@
     "analysis": "No issues found",
     "review": {
       "flutter": "APPROVE",
-      "generic": "PENDING_RUNNING"
+      "generic": "APPROVE"
     },
     "log": "c11-own-device-full-components.log",
     "log_sha256": "25ec27c699bca6840eaee73440ab0bee502e285fe112457990133f970fbf3abb",
@@ -1991,6 +1991,34 @@
       "real server sender-device echo and receipt ownership",
       "archive/decrypt and real device journeys",
       "97-ID final qualification"
+    ]
+  },
+  "c11_receipt_persistence_boundary": {
+    "scope": "EXISTING_LOCAL_MOCK_FAULT_BEHAVIOR",
+    "product_pass": false,
+    "backend_head": "7817f6583fb529c9b1f32fb026c03d80252e2594",
+    "argv": [
+      "env",
+      "-u",
+      "IMBOYENV",
+      "make",
+      "eunit",
+      "t=msg_operation_ds_tests"
+    ],
+    "exit": 0,
+    "executed": 46,
+    "log_sha256": "41d4a2e9e1d482257e4a0691247649d356ba3c47ff732d73d167444a3781250c",
+    "finding": "ack_per_device converts mark_acked_batch error to {ok,0}; existing test explicitly asserts this; websocket handler can still emit CLIENT_ACK_CONFIRM. Confirmation does not prove durable receipt.",
+    "sources": [
+      "src/ds/msg_operation_ds.erl:ack_per_device/5",
+      "test/ds/msg_operation_ds_tests.erl:ack_c2c_msg_mark_failure_skips_cleanup_test_/0",
+      "src/api/websocket_handler.erl:handle_client_ack/2 and handle_protobuf_client_ack/3"
+    ],
+    "next_required": [
+      "propagate persistence failure distinctly from duplicate ACK",
+      "emit error and preserve retry state on failure",
+      "test text/v2/protobuf success duplicate and storage failure",
+      "verify true storage and device journeys"
     ]
   }
 }

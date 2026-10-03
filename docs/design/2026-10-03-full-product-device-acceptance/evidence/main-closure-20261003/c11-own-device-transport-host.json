@@ -9,7 +9,7 @@
   "analysis": "No issues found",
   "review": {
     "flutter": "APPROVE",
-    "generic": "PENDING_RUNNING"
+    "generic": "APPROVE"
   },
   "log": "c11-own-device-full-components.log",
   "log_sha256": "25ec27c699bca6840eaee73440ab0bee502e285fe112457990133f970fbf3abb",
