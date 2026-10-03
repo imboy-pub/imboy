@@ -38,7 +38,26 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
                 {'maybe_push_for_c2c', 4, fun(_, _, _, _) -> ok end}
             ]},
             {message_ds, [
-                {'assemble_msg', 8, fun(_, _, _, _, MsgId, _, _, _) -> #{<<"id">> => MsgId} end}
+                {'assemble_msg', 8, fun(Type, From, To, Payload, MsgId, MsgType, Action, Meta) ->
+                    #{
+                        <<"id">> => MsgId,
+                        <<"type">> => Type,
+                        <<"from">> => From,
+                        <<"to">> => To,
+                        <<"payload">> => Payload,
+                        <<"msg_type">> => MsgType,
+                        <<"action">> => Action,
+                        <<"e2ee">> => Meta
+                    }
+                end}
+            ]},
+            {msg_c2c_delivery_ds, [
+                {'send_other_devices', 4, fun(123, <<"server-device">>, <<"msg_c2c_ok_001">>, Msg) ->
+                    ?assertEqual(123, maps:get(<<"from">>, Msg)),
+                    ?assertEqual(<<"456">>, maps:get(<<"to">>, Msg)),
+                    ?assertEqual(<<"server-device">>, maps:get(<<"sender_did">>, Msg)),
+                    ok
+                end}
             ]},
             {imboy_message_helper, [
                 {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
@@ -49,6 +68,8 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
             CurrentUid = 123,
             Data = #{
                 <<"to">> => <<"456">>,
+                <<"from">> => <<"spoofed-account">>,
+                <<"sender_did">> => <<"spoofed-device">>,
                 <<"payload">> => #{<<"content">> => <<"hello">>},
                 <<"created_at">> => 1708768700000,
                 <<"msg_type">> => <<"text">>,
@@ -56,7 +77,12 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
                 <<"e2ee">> => null
             },
 
-            ok = msg_c2c_logic:c2c(MsgId, CurrentUid, Data),
+            %% Use production connection stamping before the business entry.
+            Stamped = message_ds:stamp_sender_device(
+                Data,
+                #{did => <<"server-device">>, dtype => <<"android">>}
+            ),
+            ok = msg_c2c_logic:c2c(MsgId, CurrentUid, Stamped),
 
             Reply =
                 receive
@@ -70,7 +96,8 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
             ?assertEqual(<<"C2C_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
-            ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4))
+            ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4)),
+            ?assertEqual(1, meck:num_calls(msg_c2c_delivery_ds, send_other_devices, 4))
         end
     ).
 
