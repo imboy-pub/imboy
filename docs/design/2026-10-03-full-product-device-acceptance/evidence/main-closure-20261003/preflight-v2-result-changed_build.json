@@ -1,0 +1,13 @@
+{
+  "errors": [
+    "FROZEN_RUNTIME_BINDING_CHANGED"
+  ],
+  "product_pass": false,
+  "remaining_gates": [
+    "complete source set and authentic runtime/config/build/fixture/device observations",
+    "plan/dispatch/seed/page/API coverage closure",
+    "raw case events, real business oracles and complete attempts journal",
+    "upstream qualification, independent final review and user UX approval"
+  ],
+  "scope": "PREPARATION_INPUTS_ONLY"
+}

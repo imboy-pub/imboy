@@ -1,0 +1,6 @@
+{
+  "is_verifier_fixture": true,
+  "kind": "device",
+  "runtime_observation": "NOT_EXECUTED",
+  "never_counts_as_product_pass": true
+}

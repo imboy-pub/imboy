@@ -660,5 +660,52 @@
       "Prove complete source and role/profile coverage",
       "Finish business oracle, attempts, upstream and UX gates"
     ]
+  },
+  "runtime_binding_cli_gate": {
+    "app_candidate": "f9eedb516f3be75c5d1de33f06fe48eefd00874a",
+    "tooling_tests": 279,
+    "exit": 0,
+    "schema_version_required": 2,
+    "review": "APPROVED_MANDATORY_COMPOSITION",
+    "command_registry": "commands.json",
+    "calibrations": [
+      {
+        "id": "PREPARATION-F01-V2-VALID_STRUCTURE",
+        "exit": 0,
+        "errors": []
+      },
+      {
+        "id": "PREPARATION-F01-V2-MISSING_DEVICE",
+        "exit": 2,
+        "errors": [
+          "RUNTIME_BINDING_MISSING"
+        ]
+      },
+      {
+        "id": "PREPARATION-F01-V2-CHANGED_BUILD",
+        "exit": 2,
+        "errors": [
+          "FROZEN_RUNTIME_BINDING_CHANGED"
+        ]
+      },
+      {
+        "id": "PREPARATION-F01-V2-CONFIG_TAMPER",
+        "exit": 2,
+        "errors": [
+          "ARTIFACT_HASH_MISMATCH:1"
+        ]
+      }
+    ],
+    "candidate_heads_at_execution": {
+      "imboy": "b42ceafa13f82565b6c99bf2a9026a0eae79d4a1",
+      "imboyapp": "f9eedb516f3be75c5d1de33f06fe48eefd00874a",
+      "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+    },
+    "evidence_path": "runtime-binding-preflight-suite.log",
+    "evidence_sha256": "8b629fdd3ac879f813c647c8503163ae7696d007870c986cf22937e4a5b99c96",
+    "product_pass": false,
+    "real_runtime_observations": "NOT_EXECUTED",
+    "final_verifier": "NOT_IMPLEMENTED",
+    "note": "Historical schema1 fixtures retained; now rejected. Backend evidence commit changes HEAD and requires future candidate requalification."
   }
 }

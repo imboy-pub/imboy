@@ -31,6 +31,147 @@
       "evidence_phase": "PREPARATION",
       "product_pass": false,
       "output": "preflight-fixture-result.json"
+    },
+    {
+      "id": "PREPARATION-F01-V2-VALID_STRUCTURE",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "scripts/auto_test.py",
+        "acceptance-preflight",
+        "--evidence-root",
+        "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003",
+        "--frozen-input",
+        "preflight-v2-fixture-frozen.json",
+        "--frozen-sha256",
+        "75a785d55e3664f453dfb8dc4ae480af92a09d2b2588dc8c83d3bc4f9bcc0002",
+        "--acceptance-report",
+        "preflight-v2-report-valid_structure.json",
+        "--report-sha256",
+        "556676dec1203b245f53cc6b3750dea79a60ee17d7ed5ab20b7a7258eb3e265e"
+      ],
+      "timeout_seconds": 30,
+      "candidate_heads": {
+        "imboy": "b42ceafa13f82565b6c99bf2a9026a0eae79d4a1",
+        "imboyapp": "f9eedb516f3be75c5d1de33f06fe48eefd00874a",
+        "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+      },
+      "exit": 0,
+      "expected_exit": 0,
+      "scope": "SYNTHETIC_PREPARATION_CALIBRATION",
+      "product_pass": false,
+      "output": "preflight-v2-result-valid_structure.json",
+      "output_sha256": "bc1b05ca79f600fc5e55111585507e7e8e11ead4edbc5de79e35a6843cca6775",
+      "errors": []
+    },
+    {
+      "id": "PREPARATION-F01-V2-MISSING_DEVICE",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "scripts/auto_test.py",
+        "acceptance-preflight",
+        "--evidence-root",
+        "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003",
+        "--frozen-input",
+        "preflight-v2-fixture-frozen.json",
+        "--frozen-sha256",
+        "75a785d55e3664f453dfb8dc4ae480af92a09d2b2588dc8c83d3bc4f9bcc0002",
+        "--acceptance-report",
+        "preflight-v2-report-missing_device.json",
+        "--report-sha256",
+        "4ce381885531697f817f3ee789b7a4f995360ed520e7c22fb08b9eef461e53cc"
+      ],
+      "timeout_seconds": 30,
+      "candidate_heads": {
+        "imboy": "b42ceafa13f82565b6c99bf2a9026a0eae79d4a1",
+        "imboyapp": "f9eedb516f3be75c5d1de33f06fe48eefd00874a",
+        "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+      },
+      "exit": 2,
+      "expected_exit": 2,
+      "scope": "SYNTHETIC_PREPARATION_CALIBRATION",
+      "product_pass": false,
+      "output": "preflight-v2-result-missing_device.json",
+      "output_sha256": "38aa38436d205d5a3b28d26db6f984ad9e3be011d143ae5f6c1d562f1e1f1a7e",
+      "errors": [
+        "RUNTIME_BINDING_MISSING"
+      ]
+    },
+    {
+      "id": "PREPARATION-F01-V2-CHANGED_BUILD",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "scripts/auto_test.py",
+        "acceptance-preflight",
+        "--evidence-root",
+        "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003",
+        "--frozen-input",
+        "preflight-v2-fixture-frozen.json",
+        "--frozen-sha256",
+        "75a785d55e3664f453dfb8dc4ae480af92a09d2b2588dc8c83d3bc4f9bcc0002",
+        "--acceptance-report",
+        "preflight-v2-report-changed_build.json",
+        "--report-sha256",
+        "9b4464517778aad6f8fcb095346bb35e98ae31c9413ff552daf7d4f6965600c5"
+      ],
+      "timeout_seconds": 30,
+      "candidate_heads": {
+        "imboy": "b42ceafa13f82565b6c99bf2a9026a0eae79d4a1",
+        "imboyapp": "f9eedb516f3be75c5d1de33f06fe48eefd00874a",
+        "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+      },
+      "exit": 2,
+      "expected_exit": 2,
+      "scope": "SYNTHETIC_PREPARATION_CALIBRATION",
+      "product_pass": false,
+      "output": "preflight-v2-result-changed_build.json",
+      "output_sha256": "5bdf6088f900940d38cbc6d74883658f9aa41c3a058d409ef6b4fed7bce9eb62",
+      "errors": [
+        "FROZEN_RUNTIME_BINDING_CHANGED"
+      ]
+    },
+    {
+      "id": "PREPARATION-F01-V2-CONFIG_TAMPER",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "scripts/auto_test.py",
+        "acceptance-preflight",
+        "--evidence-root",
+        "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003",
+        "--frozen-input",
+        "preflight-v2-fixture-frozen.json",
+        "--frozen-sha256",
+        "75a785d55e3664f453dfb8dc4ae480af92a09d2b2588dc8c83d3bc4f9bcc0002",
+        "--acceptance-report",
+        "preflight-v2-report-valid_structure.json",
+        "--report-sha256",
+        "556676dec1203b245f53cc6b3750dea79a60ee17d7ed5ab20b7a7258eb3e265e"
+      ],
+      "timeout_seconds": 30,
+      "candidate_heads": {
+        "imboy": "b42ceafa13f82565b6c99bf2a9026a0eae79d4a1",
+        "imboyapp": "f9eedb516f3be75c5d1de33f06fe48eefd00874a",
+        "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+      },
+      "exit": 2,
+      "expected_exit": 2,
+      "scope": "SYNTHETIC_PREPARATION_CALIBRATION",
+      "product_pass": false,
+      "output": "preflight-v2-result-config-tamper.json",
+      "output_sha256": "0aeb264a8631a4b591d9fea7ae1946f361ad8f95625b81b6d7ef48d5fc7b2807",
+      "errors": [
+        "ARTIFACT_HASH_MISMATCH:1"
+      ],
+      "synthetic_mutation": {
+        "path": "preflight-v2-synthetic-config.json",
+        "original_sha256": "c66796be85e2b8fdda577c4f2fac3babbf1ae8fe4527ce8513e755fca99f6a0c",
+        "tampered_sha256": "691dcc48d09dc76cd0b825a4c5576a214ed6cf7128315287481f587044ab2c5e",
+        "restored_original_bytes": true,
+        "contents": "{\"synthetic_tamper\":true}\n"
+      }
     }
   ],
   "final_verifier": "NOT_IMPLEMENTED"
