@@ -1,0 +1,50 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: 文件校验失败前关闭页面不更新界面
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 云端确认期间阻止缓存的本地导入回调，取消后可导入
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 云端确认期间阻止缓存的本地导入回调，取消后可导入
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L9 选中合法文件后展示备份元信息卡并启用密码框
+00:01 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L9 选中合法文件后展示备份元信息卡并启用密码框
+00:01 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart: 密码强度随弱/强输入及清空更新
+00:01 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart: 密码强度随弱/强输入及清空更新
+00:01 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L9 选中合法文件但密码为空时导入按钮保持禁用
+00:01 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L9 选中合法文件但密码为空时导入按钮保持禁用
+00:01 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 本地恢复等待期间不能弹出云端恢复确认框
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:01 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L9 选中合法文件但密码为空时导入按钮保持禁用
+00:01 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L9 选中合法文件但密码为空时导入按钮保持禁用
+00:01 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 云端恢复等待期间不能启动本地恢复
+00:01 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L10 文件格式非法时提示校验失败且不展示元信息卡
+[E2EEBackupImport] 校验备份文件失败: Invalid argument(s): 文件格式无效：文件过小
+00:01 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart: 密码不一致时提示错误且不读取安全存储密钥
+00:01 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L10 文件格式非法时提示校验失败且不展示元信息卡
+00:01 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L10 文件格式非法时提示校验失败且不展示元信息卡
+00:01 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 同一帧重复导入只启动一次解密
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:02 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L10 文件格式非法时提示校验失败且不展示元信息卡
+00:02 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L10 文件格式非法时提示校验失败且不展示元信息卡
+00:02 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 导入失败后仍可再次发起导入
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:02 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L10 文件格式非法时提示校验失败且不展示元信息卡
+00:02 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L10 文件格式非法时提示校验失败且不展示元信息卡
+00:02 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L10 文件格式非法时提示校验失败且不展示元信息卡
+00:02 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart: 迟到的旧剪贴板读取不能清空新复制的恢复密钥（同一页面）
+00:02 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L11 未选文件时密码框禁用、导入按钮禁用
+00:02 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L11 未选文件时密码框禁用、导入按钮禁用
+00:02 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L11 未选文件时密码框禁用、导入按钮禁用
+00:02 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L11 未选文件时密码框禁用、导入按钮禁用
+00:02 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L11 未选文件时密码框禁用、导入按钮禁用
+00:02 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L11 未选文件时密码框禁用、导入按钮禁用
+00:02 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_export_page_widget_test.dart: 导出等待密钥时关闭页面停止后续读取
+00:02 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L14 云端备份探测失败时按无备份静默处理（无恢复卡）
+[E2EEBackupImport] 云端备份探测失败: errType=_Exception
+00:02 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L14 云端备份探测失败时按无备份静默处理（无恢复卡）
+00:02 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L14 云端备份探测失败时按无备份静默处理（无恢复卡）
+00:03 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L14 云端备份探测失败时按无备份静默处理（无恢复卡）
+00:03 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L14 云端备份探测失败时按无备份静默处理（无恢复卡）
+00:03 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L14 云端备份探测失败时按无备份静默处理（无恢复卡）
+00:03 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L14 云端存在备份时展示恢复入口
+00:04 +35: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L13 警告卡片始终展示覆盖密钥风险提示
+00:04 +36: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 P0-1 导入成功后以恢复的公钥回写服务端设备登记
+00:31 +37: All tests passed!

@@ -1,0 +1,156 @@
+{
+  "id": "F00-BACKUP-IMPORT-HOST-REFERENCE-RECONCILIATION",
+  "app_head": "ba1e23a80e9d682d24b8ea0f3cc5b76028d4383a",
+  "scope": "SOURCE_REVIEWED_HOST_REFERENCE_MAPPING_NOT_DEVICE_COVERAGE",
+  "executed": 37,
+  "failed": 0,
+  "skipped": 0,
+  "exit_code": 0,
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "log": "f00-backup-current-host-map.log",
+  "log_sha256": "014aa583f59270fd4af8c7613d0fbfd05925439236746c6ed2b8204de7a63ba7",
+  "new_host_reference_features": 7,
+  "records": [
+    {
+      "case_id": "F08-BACKUP-IMPORT-002",
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:002",
+      "feature": "选中文件后校验并展示备份元信息",
+      "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "target_sha256": "8ff370e91a41f6e6ce16f88e521be06099a62396ea04b2a538efe5e3900bdefa",
+      "test_name": "L9 选中合法文件后展示备份元信息卡并启用密码框",
+      "verified_host_oracle": "Metadata fields and valid-file indicator visible; password enabled",
+      "scope": "HOST_PARTIAL_REFERENCE_ONLY",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "remaining_oracle": "元信息与文件头一致，密码输入可用；这里只证明文件结构校验，不证明解密成功",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_FIXTURE_AND_DEVICE_TARGET",
+      "product_pass": false
+    },
+    {
+      "case_id": "F08-BACKUP-IMPORT-003",
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:003",
+      "feature": "文件格式非法时提示校验失败",
+      "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "target_sha256": "8ff370e91a41f6e6ce16f88e521be06099a62396ea04b2a538efe5e3900bdefa",
+      "test_name": "L10 文件格式非法时提示校验失败且不展示元信息卡",
+      "verified_host_oracle": "Invalid-file error visible; metadata absent and password disabled",
+      "scope": "HOST_PARTIAL_REFERENCE_ONLY",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "remaining_oracle": "显示校验失败，不显示有效元信息，不启用导入",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_FIXTURE_AND_DEVICE_TARGET",
+      "product_pass": false
+    },
+    {
+      "case_id": "F08-BACKUP-IMPORT-004",
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:004",
+      "feature": "未选合法文件时密码框保持禁用",
+      "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "target_sha256": "8ff370e91a41f6e6ce16f88e521be06099a62396ea04b2a538efe5e3900bdefa",
+      "test_name": "L11 未选文件时密码框禁用、导入按钮禁用",
+      "verified_host_oracle": "Password and import button disabled without file",
+      "scope": "HOST_PARTIAL_REFERENCE_ONLY",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "remaining_oracle": "密码输入保持禁用；不能触发导入或写入安全存储",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_FIXTURE_AND_DEVICE_TARGET",
+      "product_pass": false
+    },
+    {
+      "case_id": "F08-BACKUP-IMPORT-005",
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:005",
+      "feature": "密码为空时导入按钮置灰禁用",
+      "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "target_sha256": "8ff370e91a41f6e6ce16f88e521be06099a62396ea04b2a538efe5e3900bdefa",
+      "test_name": "L9 选中合法文件但密码为空时导入按钮保持禁用",
+      "verified_host_oracle": "Valid file with empty password keeps import disabled",
+      "scope": "HOST_PARTIAL_REFERENCE_ONLY",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "remaining_oracle": "导入按钮禁用，不触发解密或密钥写入",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_FIXTURE_AND_DEVICE_TARGET",
+      "product_pass": false
+    },
+    {
+      "case_id": "F08-BACKUP-IMPORT-006",
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:006",
+      "feature": "顶部警告卡片提示覆盖密钥风险",
+      "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "target_sha256": "8ff370e91a41f6e6ce16f88e521be06099a62396ea04b2a538efe5e3900bdefa",
+      "test_name": "L13 警告卡片始终展示覆盖密钥风险提示",
+      "verified_host_oracle": "Backup guide, replace-key warning and trusted-source text present",
+      "scope": "HOST_PARTIAL_REFERENCE_ONLY",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "remaining_oracle": "显示覆盖密钥风险与可信来源说明；窄屏/大字号下内容可读",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_FIXTURE_AND_DEVICE_TARGET",
+      "product_pass": false
+    },
+    {
+      "case_id": "F08-BACKUP-IMPORT-007",
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:007",
+      "feature": "存在云端备份时展示云端恢复卡片",
+      "target": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "target_sha256": "8ff370e91a41f6e6ce16f88e521be06099a62396ea04b2a538efe5e3900bdefa",
+      "test_name": "L14 云端存在备份时展示恢复入口",
+      "verified_host_oracle": "Injected cloud probe called once and restore entry visible",
+      "scope": "HOST_PARTIAL_REFERENCE_ONLY",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "remaining_oracle": "有备份显示恢复入口；无备份隐藏入口；失败不能证明服务端没有备份且不能导入旧缓存",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_FIXTURE_AND_DEVICE_TARGET",
+      "product_pass": false
+    },
+    {
+      "case_id": "F08-BACKUP-IMPORT-010",
+      "seed_id": "LEGACY:settings:e2ee_backup_import_page:010",
+      "feature": "云端恢复弹出口令确认框可取消",
+      "target": "test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart",
+      "target_sha256": "1d4ae07ea55876604788274b324a6e92efe8a309ec8fa6f8c407144b48747172",
+      "test_name": "取消云端恢复确认后可以重新打开",
+      "verified_host_oracle": "Two actual cancel/reopen cycles, no cloud restore pending",
+      "scope": "HOST_PARTIAL_REFERENCE_ONLY",
+      "platforms_required": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "remaining_oracle": "取消后不发恢复请求，不变更密钥、恢复水位或群会话",
+      "freeze_status": "WAITING_RUNTIME_PROFILE_FIXTURE_AND_DEVICE_TARGET",
+      "product_pass": false
+    }
+  ],
+  "limits": [
+    "Seven host references supplement original 24-feature design without replacing its required oracles",
+    "Host fixture injection does not prove native picker, real cloud API or real secure storage",
+    "Canonical seed statuses and all 61 acceptance IDs unchanged",
+    "No complete platform case mapping or frozen coverage claimed"
+  ]
+}

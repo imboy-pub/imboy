@@ -4189,5 +4189,15 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "f00_backup_import_host_references": {
+    "receipt": "f00-backup-current-host-map.json",
+    "receipt_sha256": "063f67bef1652351fff2836b87320bcbe2dfe4f10933edf44755b5065aa2f940",
+    "app_head": "ba1e23a80e9d682d24b8ea0f3cc5b76028d4383a",
+    "new_host_reference_features": 7,
+    "executed": 37,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }
