@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_C2G_OUTBOUND_SESSION_SNAPSHOT",
+  "app_head": "c069ad78dd8e6582bf3052e822861d468ced78af",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_AFTER_CLEANUP_FIX",
+  "results": {
+    "safe_calibration_exit": 1,
+    "safe_calibration_failed": 2,
+    "safe_calibration_normal_passed": 1,
+    "final_focused_exit": 0,
+    "final_focused_passed": 3,
+    "domain_exit": 0,
+    "domain_passed": 977,
+    "final_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Production encryptPayload and native Megolm; old session rejected after deferred recipient lookup and after completed native encryption.",
+    "Actual loginAfter advances generation but synthetic token-write failure prevents login commit; normal control yields encrypted PFv3 envelope.",
+    "Unexpected transport adapter counts zero calls in final isolated cases."
+  ],
+  "attempt_notes": [
+    "Early missing history-grant/token isolation invoked default request and logout paths. These attempts are INVALID, retained, and not behavioral acceptance evidence.",
+    "First RED and later focused/calibration import compilation errors are INVALID.",
+    "Authoritative RED is safe-calibration-fixed: old source gives two stale-session failures and normal pass; final source restored before GREEN.",
+    "977 domain run preceded test cleanup-order and braces-only changes; source snapshot retained. Final focused3, full static and catalog ran after final changes.",
+    "Initial static and after-cleanup-static each reported one braces info and failed; corrected final static passed."
+  ],
+  "limitations": [
+    "No real account/device switch or original 97-ID acceptance upgrade.",
+    "Already-started key distribution, ratchet or database writes cannot be rolled back by parent guards.",
+    "C2G persistOutbox=false unchanged; retry/recovery and atomic persistence qualification remain pending."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-after-cleanup-green-20261004.log",
+      "sha256": "bec94de706d9c98ec3b5f2edb64ba243270fbecdcdc0972a6b84742b18960657"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-after-cleanup-static-20261004.log",
+      "sha256": "dfc36c0367220fd6ac378f925c3dad5d3c33aeb2b35b541bc1552d7095ede6d2"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-final-cleanup-focused-20261004.log",
+      "sha256": "a382c52952537b0635fe9add34bbe393b2bebe0e6f55302ebb3aaaeefe28724b"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-final-cleanup-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-final-e2ee-domain-20261004.log",
+      "sha256": "6a44183fce09a16e7e5fa7f8e7ed5fb0286db9cb1ae21ce88a9a4bcaaaa812d1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-final-focused-20261004.log",
+      "sha256": "e4716a813e5f360324ef4f2029bab061acc65aad76eeb993585b830744c72637"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-final-focused-fixed-20261004.log",
+      "sha256": "88b89f6f0c30a4aeb527a8ce31e48794db60144594d8c109a47db14ffaf05654"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-final-static-20261004.log",
+      "sha256": "dfc36c0367220fd6ac378f925c3dad5d3c33aeb2b35b541bc1552d7095ede6d2"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-green-20261004.log",
+      "sha256": "860aaffc707db1200372327e05d85a42468e99d06f955cc5b99c6e5d2e6af597"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-oracle-fixed-red-20261004.log",
+      "sha256": "9e0f37494aafdaaf5324bb42d8a27e31fb170eb0f1e2b41713d2324025400c12"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-red-20261004.log",
+      "sha256": "dcb9be4244bc72708857cd2a25e1754676f9f529b0faa5dbc2477f2a1db17481"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-safe-calibration-20261004.log",
+      "sha256": "e4716a813e5f360324ef4f2029bab061acc65aad76eeb993585b830744c72637"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-safe-calibration-fixed-20261004.log",
+      "sha256": "ae66ece03b5c67b9ed1aa4d3b94723562737158ceaead2d186cb45449dfc5ae4"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-safe-green-20261004.log",
+      "sha256": "74dc31847ab2a8f43c1ec59a249e9055e64094a29b95843e2a81fbe1e10e542f"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-session-valid-red-20261004.log",
+      "sha256": "eeefa0645f2c0a61f3f46b7bd72278d9b18f261ed4e92664096291e2cbcc1bd4"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/c2g-outbound-test-before-cleanup-20261004.txt",
+      "sha256": "9287fa48767cabe5b631af6057ca7481fa9a58734507f41562e54a6351cabb23"
+    }
+  ]
+}

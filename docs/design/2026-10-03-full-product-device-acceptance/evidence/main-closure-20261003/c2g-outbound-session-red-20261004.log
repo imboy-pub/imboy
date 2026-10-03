@@ -1,0 +1,14 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart
+test/unit_test/service/e2ee/c2g_outbound_session_test.dart:78:57: Error: The argument type 'bool' can't be assigned to the parameter type 'int'.
+    await GroupSessionService.to.setGroupE2EEMode(_gid, true);
+                                                        ^
+00:00 +0 -1: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart: test/unit_test/service/e2ee/c2g_outbound_session_test.dart:78:57: Error: The argument type 'bool' can't be assigned to the parameter type 'int'.
+      await GroupSessionService.to.setGroupE2EEMode(_gid, true);
+                                                          ^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart

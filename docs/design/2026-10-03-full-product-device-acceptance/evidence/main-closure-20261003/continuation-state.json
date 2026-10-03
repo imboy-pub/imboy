@@ -4880,5 +4880,22 @@
     "receipt": "c2c-outbound-session-snapshot-20261004.json",
     "app_head": "e0e9a0a88d3c362bff9d2fecd10629c96fcb2a83",
     "product_pass": false
+  },
+  "c2g_outbound_session_snapshot": {
+    "receipt": "c2g-outbound-session-snapshot-20261004.json",
+    "app_head": "c069ad78dd8e6582bf3052e822861d468ced78af",
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": [],
+    "local_results": {
+      "safe_calibration_exit": 1,
+      "safe_calibration_failed": 2,
+      "safe_calibration_normal_passed": 1,
+      "final_focused_exit": 0,
+      "final_focused_passed": 3,
+      "domain_exit": 0,
+      "domain_passed": 977,
+      "final_static_exit": 0,
+      "catalog_exit": 0
+    }
   }
 }

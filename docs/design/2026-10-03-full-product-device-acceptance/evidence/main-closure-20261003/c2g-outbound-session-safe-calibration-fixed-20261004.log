@@ -1,0 +1,74 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: C2G normal normal encrypts
+[group_session] 群 9900 E2EE 已开启
+[group_session] history grant unavailable scope=9900 error=StateError
+[group_session] rotate scope=9900 session=QSTr8dRtNgIBSpuLhH64IPrrJUkOF1TTTkQtMQGMzxw devices=2
+00:00 +1: C2G recipients rejects old session
+[group_session] 群 9900 E2EE 已开启
+[group_session] history grant unavailable scope=9900 error=StateError
+[group_session] rotate scope=9900 session=5Re53j3pnlk9nxYzudJbmEIakN1sICQV+6A0LN2YqK0 devices=2
+00:00 +1 -1: C2G recipients rejects old session [E]
+  Expected: throws <Instance of 'E2eeSecurityException'> with `code`: contains 'outbound_session_changed'
+    Actual: <Instance of 'Future<Map<String, dynamic>?>'>
+     Which: emitted {
+                      'e2ee': {
+                        'meta_version': 3,
+                        'protected_header': 'r2F2A2VzY29wZWVncm91cGZhY3Rpb25nbWVzc2FnZWhwcm90b2NvbGZtZWdvbG1qbWVzc2FnZV9pZHBjMmctc2Vzc2lvbi10cnVlanNlbmRlcl9kaWRmc2VuZGVyanNlbmRlcl91aWRjMTAwa2Rlc3RpbmF0aW9uZDk5MDBrc2Vzc2lvbl9yZWZ4KzVSZTUzajNwbmxrOW54WXp1ZEpibUVJYWtOMXNJQ1FWKzZBMExOMllxSzBsbWVzc2FnZV90eXBlZHRleHRtY3JlYXRlZF9hdF9tcxsAAAGhAzJ_Rm9jb252ZXJzYXRpb25faWRkOTkwMHBjb250ZW50X2VuY29kaW5nZGNib3JwZXBvY2hfb3JfY291bnRlcgBwcHJvdG9jb2xfdmVyc2lvbgE=',
+                        'header_hash': 'UzbGpe3T9JCR_Y8upfV68KOA6ozeIsyWw8DL98OuzA0=',
+                        'ciphertext': 'QXdnQUVvQUVQV3BJUWs2a0N5ZW5DK0dwY29SNDg1Yi9BVjU5aTdvbGRqL0hmenpVYitWU1ZZWlFRN3l4TlVCNU9Rdko4YlpCb0x2NTBVd3BQNWN2WFpaUmx1Q0t2MGlmSmFRWTFFZ0VIbnpjTDdjZVlMem15ZUx2TVBHS0U3MVR5dmZHY0UvdmkvcEtCK3ZNWWxBVUo0NkVFSTdYOFhLMlFmNUc2dmQwdUp2Z1lCc3RvMzNuNnhFNW1NeTlja1BJVmVkb01KSDk2VGZ0Qk5XcXlPWDFKTDM4T3FpS2pZVG5SK1ZHd0p3QmZlMmNtWG1zL0lnTFVtL20wQVU2OCswNm92bGhCUFNWSDhJdUxnaG9YYmc2NjFLM1RmbjdyM0JoRkt0VzNYSmt3QUFpOXpoK3hpK0JyYkY0QWluWUpyQTVRakYwN1FTVVh3TmVuRmNUSWtLVzlWNXlmNmhkeGNJYzZ1SzJiZmcvLzR0UUg2OGM0Z3Q2Qjc2cC9Maks5REJSSjIrL2ZUVENVMyswYkdzeXNIUldKQ1BUTUpUb0x5aGRHaXBIZXZPck5ibEdvVHRvQThHZlVLVFA3Vjk5N2NERjVmUHpkcERZWmNhNGlsekhYZ2ZpaWh1eXJxRjNZbFZ4MWJOQzZhUEQ3Z0Fmc2pNMnBGNjMrNko2alhEOFBiek1Ra0puamg0YmdFVXNrc2N6ZFJNNEc0ZnlJb29mTlpVQ0FxUVpPenB4R3pmK2gxRFVTVy93RUhyV0lGMHZaVXFURWErWE9ESTUwMUhqSkx5NGYxNldzd1lrOE40Wlp2T1BnMG40dDR4cmlJblRJM2JCU3VnS0F0NkhpUy9zdjBXaVZxVnlFR0l0ZGg4QUdJa3N4OWYzRTZNcXJjcU1oVDN0dU4wKyt5RVJwSFRnTlpuSnp6dmpqVGxPcHRPbXlCQ2xiVUtMb3lOeU9URG1ZQ0p5SDY2eHBndDVXdEcvZlBaUjhjcllZZHRrVEl6enJrdDVGTFlRVXJFei9ZU2xSWnNhcG1vN0Z6b0luQWxJb1pTZjlBNA==',
+                        'protocol_metadata': {
+                          'protocol': 'megolm',
+                          'version': 1,
+                          'e2ee_suite': 'MEGOLM.V1',
+                          'session_id': '5Re53j3pnlk9nxYzudJbmEIakN1sICQV+6A0LN2YqK0',
+                          'gid': '9900'
+                        }
+                      },
+                      'payload': ''
+                    }
+  
+  package:matcher                                                    expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                  expectLater
+  test/unit_test/service/e2ee/c2g_outbound_session_test.dart 202:28  main.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                         _CustomZone.registerUnaryCallback
+  test/unit_test/service/e2ee/c2g_outbound_session_test.dart 185:9   main.<fn>
+  
+00:00 +1 -1: C2G encrypted rejects old session
+[group_session] 群 9900 E2EE 已开启
+[group_session] history grant unavailable scope=9900 error=StateError
+[group_session] rotate scope=9900 session=r2JVV/zNjuEFGhcc+9eyfwHdIWYkJjOveQlS8yXCBmw devices=2
+00:00 +1 -2: C2G encrypted rejects old session [E]
+  Expected: throws <Instance of 'E2eeSecurityException'> with `code`: contains 'outbound_session_changed'
+    Actual: <Instance of 'Future<Map<String, dynamic>?>'>
+     Which: emitted {
+                      'e2ee': {
+                        'meta_version': 3,
+                        'protected_header': 'r2F2A2VzY29wZWVncm91cGZhY3Rpb25nbWVzc2FnZWhwcm90b2NvbGZtZWdvbG1qbWVzc2FnZV9pZHBjMmctc2Vzc2lvbi10cnVlanNlbmRlcl9kaWRmc2VuZGVyanNlbmRlcl91aWRjMTAwa2Rlc3RpbmF0aW9uZDk5MDBrc2Vzc2lvbl9yZWZ4K3IySlZWL3pOanVFRkdoY2MrOWV5ZndIZElXWWtKak92ZVFsUzh5WENCbXdsbWVzc2FnZV90eXBlZHRleHRtY3JlYXRlZF9hdF9tcxsAAAGhAzJ_Y29jb252ZXJzYXRpb25faWRkOTkwMHBjb250ZW50X2VuY29kaW5nZGNib3JwZXBvY2hfb3JfY291bnRlcgBwcHJvdG9jb2xfdmVyc2lvbgE=',
+                        'header_hash': 'MwhtbcZnHDoiJ17PpZH711bQZBGosgx5NBBQzB_Oigc=',
+                        'ciphertext': 'QXdnQUVvQUVUWjJyTnhkdEpvVGFHZkRsdDhYcy8yZVV5ZjlYQlI2ZHFmazduc09QaStTV1MwREJqTTBLQkVxUzRzazlJaDVueERSVnM1ZUdHcGh2SS9Tc2pRQUFvYTUrWFVIQ3lLbzZyYVlNUTRROTc3ZFVFZlVydlI5aW5ncEo1cEh0Q1pSLzk1RnRKZjFKSk1qS1JFSVpPQWJqTVNvNnRxeThmTjRIOHptYURxaGhWcHJoVmFMMi96TXJ2LzloRE1GWWh5c2diV1hobythbnJMMStoUVQra0NWaloyODl2cEpYdzlVYXc4ZitxNER6Mk1aZkVUVVBkei96VEJEZVNyR3BwY0pmeTNDN0ZMT3FCRUhEaEl0c0NFYzdtV2p3N1d5TlNoc1RENDV5Nk8wc0t2ZFhNbEVxRUFZNXVyVWVXenJWU3dXNWtBVHYxamlFRXlvMmo4aFNhL2lZUUwzTjVuQjViR0wyRXc5dVdYVDVWcVhJZkg2cElUL2Vnb0NBSkx1VG4xUjAxYnhFMkRPbVhvSExkSDViU1Vpd09YY2FEc0hEdm9LZ0Y4a2pNb2x5WDdScS8zdGdKVzFJZklQdnYrZ0ZEV1Q2Mi9SeDdGVnNCWTRmQ3VWTE5JTThqYXFPQkJ3dUpVMHBIbzV1LzAzdGp6K1Ywa2ZRUnBUTXhGKy84STg4aE5HZXpuQmoyaTRjOE5pbFh3VXhMOVZ2cDNpOFhxazR2VndqZmczdldta0tSd3hQdkRCTVZLVlZLZGh4YVdmOEMxR3JGTmxpL0tISHJDOVh1cFRJWnNvdnlYbDJHbzBYanVMODI4UlhnVzhvT1hHWVJpMjBOWFdGNGtFeDY1VEt1SUhGTnV5OU9LS1ZLc2I4c1d0V3BGY0x3SklkVGRjNVEzMTBmWHhwOVJtVTd5dnpacVdBcG1RYnpKUlZRWHlmZi9Yc2d2VnBDRzQvbWVHdFlnZ2RKWENqZTk4YitZbXlKb0dmcGE4RTN6VUdVckVmUnczbU50VHVvRnN6QStBaVZ2UlFPWk9rdDdMZmpBbw==',
+                        'protocol_metadata': {
+                          'protocol': 'megolm',
+                          'version': 1,
+                          'e2ee_suite': 'MEGOLM.V1',
+                          'session_id': 'r2JVV/zNjuEFGhcc+9eyfwHdIWYkJjOveQlS8yXCBmw',
+                          'gid': '9900'
+                        }
+                      },
+                      'payload': ''
+                    }
+  
+  package:matcher                                                    expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                  expectLater
+  test/unit_test/service/e2ee/c2g_outbound_session_test.dart 202:28  main.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                         _CustomZone.registerUnaryCallback
+  test/unit_test/service/e2ee/c2g_outbound_session_test.dart 185:9   main.<fn>
+  
+00:00 +1 -2: (tearDownAll)
+00:00 +1 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart: C2G encrypted rejects old session
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart: C2G recipients rejects old session

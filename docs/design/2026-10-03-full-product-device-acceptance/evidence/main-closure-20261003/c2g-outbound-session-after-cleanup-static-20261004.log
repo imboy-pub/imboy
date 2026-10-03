@@ -1,0 +1,5 @@
+Analyzing lib, unit_test...
+
+   info - test/unit_test/service/e2ee/c2g_outbound_session_test.dart:109:15 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+
+1 issue found.

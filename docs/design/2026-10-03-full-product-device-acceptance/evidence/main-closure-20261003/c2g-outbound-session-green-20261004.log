@@ -1,0 +1,50 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: C2G deferred recipient query normal encrypts
+[group_session] 群 9900 E2EE 已开启
+> quitLogin: Starting logout process
+> quitLogin: User is logged in
+> quitLogin: Removing storage data
+> quitLogin: Purging E2EE secret inventory
+E2EE: 缓存已清理
+[olm] all state cleared
+> quitLogin: E2EE secrets purged
+> quitLogin: Clearing secure tokens
+> quitLogin: Secure tokens cleared successfully
+> quitLogin: Closing WebSocket
+🧹 [QUEUE] 启动定期清理 Timer
+> ws: 手动关闭连接
+> quitLogin: Closing database
+> quitLogin: Removing database for uid=100
+[group_session] history grant unavailable scope=9900 error=BadRequestException
+[group_session] rotate scope=9900 session=/icNiSSrmfnhLhHvXZSNg9/2w0y8yzkjTu4aD3I2748 devices=2
+00:01 +0 -1: C2G deferred recipient query normal encrypts [E]
+  E2eeSecurityException: outbound_session_changed
+  package:imboy/page/chat/chat/services/chat_network_service.dart 778:7  ChatNetworkService._requireOutboundSession
+  package:imboy/page/chat/chat/services/chat_network_service.dart 730:5  ChatNetworkService.encryptPayload
+  
+00:01 +0 -1: C2G deferred recipient query rejects old session
+[group_session] 群 9900 E2EE 已开启
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9900&session_id=Wv4AhNaeUZkIkpzEL97ci9gEHef2ePFE284FkqkNDRw
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9900&session_id=Wv4AhNaeUZkIkpzEL97ci9gEHef2ePFE284FkqkNDRw
+
+[group_session] history grant unavailable scope=9900 error=BadRequestException
+[group_session] rotate scope=9900 session=Wv4AhNaeUZkIkpzEL97ci9gEHef2ePFE284FkqkNDRw devices=2
+00:01 +1 -1: (tearDownAll)
+00:01 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart: C2G deferred recipient query normal encrypts

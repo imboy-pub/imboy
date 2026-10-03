@@ -1,0 +1,16 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: C2G normal normal encrypts
+[group_session] 群 9900 E2EE 已开启
+[group_session] history grant unavailable scope=9900 error=StateError
+[group_session] rotate scope=9900 session=R1yMat/GUCbZVlmkqsOMLQMB6GQb2YHThLVZ0iILk6o devices=2
+00:00 +1: C2G recipients rejects old session
+[group_session] 群 9900 E2EE 已开启
+[group_session] history grant unavailable scope=9900 error=StateError
+[group_session] rotate scope=9900 session=VRb5WsnbKvt3VxxxkkcNDtUMCboTRUuuD4V/RNG+i2M devices=2
+00:00 +2: C2G encrypted rejects old session
+[group_session] 群 9900 E2EE 已开启
+[group_session] history grant unavailable scope=9900 error=StateError
+[group_session] rotate scope=9900 session=A1dDObzqDxP2lpmcLikTimfwZMYk5uGVvci32l8M4fg devices=2
+00:00 +3: (tearDownAll)
+00:00 +3: All tests passed!

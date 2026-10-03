@@ -1,0 +1,72 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: C2G deferred recipient query normal encrypts
+[group_session] 群 9900 E2EE 已开启
+> quitLogin: Starting logout process
+> quitLogin: User is logged in
+> quitLogin: Removing storage data
+> quitLogin: Purging E2EE secret inventory
+E2EE: 缓存已清理
+[olm] all state cleared
+> quitLogin: E2EE secrets purged
+> quitLogin: Clearing secure tokens
+> quitLogin: Secure tokens cleared successfully
+> quitLogin: Closing WebSocket
+🧹 [QUEUE] 启动定期清理 Timer
+> ws: 手动关闭连接
+> quitLogin: Closing database
+> quitLogin: Removing database for uid=100
+[group_session] history grant unavailable scope=9900 error=BadRequestException
+[group_session] rotate scope=9900 session=nqrn4JzP+IAPWm80GUezNP8fngWCFRHfQy4CtQIE7RM devices=2
+00:01 +1: C2G deferred recipient query rejects old session
+[group_session] 群 9900 E2EE 已开启
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9900&session_id=ARZ6fUn1Qil3O%2FxeCdqCL2V%2FMWdiABn3kRD9V6vUFWk
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9900&session_id=ARZ6fUn1Qil3O%2FxeCdqCL2V%2FMWdiABn3kRD9V6vUFWk
+
+[group_session] history grant unavailable scope=9900 error=BadRequestException
+[group_session] rotate scope=9900 session=ARZ6fUn1Qil3O/xeCdqCL2V/MWdiABn3kRD9V6vUFWk devices=2
+00:01 +1 -1: C2G deferred recipient query rejects old session [E]
+  Expected: throws <Instance of 'E2eeSecurityException'> with `code`: contains 'outbound_session_changed'
+    Actual: <Instance of 'Future<Map<String, dynamic>?>'>
+     Which: emitted {
+                      'e2ee': {
+                        'meta_version': 3,
+                        'protected_header': 'r2F2A2VzY29wZWVncm91cGZhY3Rpb25nbWVzc2FnZWhwcm90b2NvbGZtZWdvbG1qbWVzc2FnZV9pZHBjMmctc2Vzc2lvbi10cnVlanNlbmRlcl9kaWRmc2VuZGVyanNlbmRlcl91aWRjMTAwa2Rlc3RpbmF0aW9uZDk5MDBrc2Vzc2lvbl9yZWZ4K0FSWjZmVW4xUWlsM08veGVDZHFDTDJWL01XZGlBQm4za1JEOVY2dlVGV2tsbWVzc2FnZV90eXBlZHRleHRtY3JlYXRlZF9hdF9tcxsAAAGhAy9rqW9jb252ZXJzYXRpb25faWRkOTkwMHBjb250ZW50X2VuY29kaW5nZGNib3JwZXBvY2hfb3JfY291bnRlcgBwcHJvdG9jb2xfdmVyc2lvbgE=',
+                        'header_hash': 'bKcj-Q0SBpBglIo_G3ucEVxqmbWXZluv5J2jfXpXK4o=',
+                        'ciphertext': 'QXdnQUVvQUVFdnQ2Mjh1Skw4TDRpUHJWejluTVFTcHpRUmVQMWorbGtVVlRJMCtjTWErUVdIa3V2MG91RWxrWG5haXR3VFdVUEcxUlUxbkcyd2YrZExzOCtCUTdSc0lsNm9MMCtIVUxyRFdoTEJzaWptQjM0clA3RGZMS3BSTDZIRGQ5U1lrYUoyMVBwK1lQNzZxdU9ScUVHNGZ0dHJDSFhnRUdNSWVlSlR6NjZLRGlnNllZemk3eVA1ZTJQdGozMXd5SnJJMTNGcUYwLzgwcnpERnB6TUQ3MUovb21FdEpBZWtVVFU0Z2pPY2tNUGtFZWQzRy9NelpOOEoxMkVxR3dDdHZaM3dkR2NnbDBuUHg3TExyZVpEOHU0SjE1SFkxTlhTY3J6UTJVM0FUbXgvbjk1VTZwTC9TV0pqM2lVLzd4eHBmSy8wK2UvZUk3cEVxdnBobjNpZHdFYWtNQkljRDVIUEszOTM5UmtybDNqNkJVTHFVclZZZmdlRzVLYWxKb1FvLzBOZEI3WTdmSUhjT2VYT3pDM0t4T05yV3NWWTFmRE05QU9DTE9OWXY3YXBoc094M0F2Ym9MZXN3RXBMeWcwNWovS1VDaXgxdnVLV2Y0TjZoRWFPdllNOVFlbTZrNmRQZHJlYW1JUExxbjU1T0k5VHRqMXd0MytwU1dnbEc3RXoxSkZDak5OS2dSQTlySTNZUzRyRjE1Z2dUWXF5M2FkWlhRV0VjODh3N3hYMXJHNVdQQmh5amo3a3o2bGhPWVkrbjR2WFkyVXNDdE84TndVWCtsclB6TUNWWWFPUnV3MGI0bTh4SFE3aXM5WDVEV0FWbVJ5VE15TDY2V05rSEtZNko4VVdNY1BOV2lTaDdiRWhmS1ljT0FidTNLSHF2TFgvZ0Q0bU9VWVVDL1dsVnN0eHZRcjhvZTgxK1R3eGEwenF5aEtLcGpPR0t1VkptYkFLYWwxWWRSaHhBS1ppK1hzdHNwSGpKWG5wUENJK1dsZXBuYkFZTVh3MjVrQndGSHVkWFE5TnZVNUJQVmR4bHh3MA==',
+                        'protocol_metadata': {
+                          'protocol': 'megolm',
+                          'version': 1,
+                          'e2ee_suite': 'MEGOLM.V1',
+                          'session_id': 'ARZ6fUn1Qil3O/xeCdqCL2V/MWdiABn3kRD9V6vUFWk',
+                          'gid': '9900'
+                        }
+                      },
+                      'payload': ''
+                    }
+  
+  package:matcher                                                    expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                  expectLater
+  test/unit_test/service/e2ee/c2g_outbound_session_test.dart 137:28  main.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                         _CustomZone.registerUnaryCallback
+  test/unit_test/service/e2ee/c2g_outbound_session_test.dart 123:9   main.<fn>
+  
+00:01 +1 -1: (tearDownAll)
+00:01 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart: C2G deferred recipient query rejects old session

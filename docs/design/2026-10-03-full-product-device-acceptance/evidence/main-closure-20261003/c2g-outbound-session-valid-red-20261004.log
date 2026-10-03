@@ -1,0 +1,82 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: C2G deferred recipient query normal encrypts
+[group_session] 群 9900 E2EE 已开启
+> quitLogin: Starting logout process
+> quitLogin: User is logged in
+> quitLogin: Removing storage data
+> quitLogin: Purging E2EE secret inventory
+E2EE: 缓存已清理
+[olm] all state cleared
+> quitLogin: E2EE secrets purged
+> quitLogin: Clearing secure tokens
+> quitLogin: Secure tokens cleared successfully
+> quitLogin: Closing WebSocket
+🧹 [QUEUE] 启动定期清理 Timer
+> ws: 手动关闭连接
+> quitLogin: Closing database
+> quitLogin: Removing database for uid=100
+[group_session] history grant unavailable scope=9900 error=BadRequestException
+[group_session] rotate scope=9900 session=63PgF5wcM0YRvLWXqkGNExMVzffFBw/y0j039GcLa58 devices=2
+00:01 +0 -1: C2G deferred recipient query normal encrypts [E]
+  Expected: 'megolm'
+    Actual: <null>
+     Which: not an <Instance of 'String'>
+  
+  package:matcher                                                    expect
+  package:flutter_test/src/widget_tester.dart 473:18                 expect
+  test/unit_test/service/e2ee/c2g_outbound_session_test.dart 153:11  main.<fn>
+  
+00:01 +0 -1: C2G deferred recipient query rejects old session
+[group_session] 群 9900 E2EE 已开启
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9900&session_id=I0GAZAr8H6asflb8tIiSfUhcMeaDeSA9UmOC4PVMNUw
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/group_history_grant?gid=9900&session_id=I0GAZAr8H6asflb8tIiSfUhcMeaDeSA9UmOC4PVMNUw
+
+[group_session] history grant unavailable scope=9900 error=BadRequestException
+[group_session] rotate scope=9900 session=I0GAZAr8H6asflb8tIiSfUhcMeaDeSA9UmOC4PVMNUw devices=2
+00:01 +0 -2: C2G deferred recipient query rejects old session [E]
+  Expected: throws <Instance of 'E2eeSecurityException'> with `code`: contains 'outbound_session_changed'
+    Actual: <Instance of 'Future<Map<String, dynamic>?>'>
+     Which: emitted {
+                      'e2ee': {
+                        'meta_version': 3,
+                        'protected_header': 'r2F2A2VzY29wZWVncm91cGZhY3Rpb25nbWVzc2FnZWhwcm90b2NvbGZtZWdvbG1qbWVzc2FnZV9pZHBjMmctc2Vzc2lvbi10cnVlanNlbmRlcl9kaWRmc2VuZGVyanNlbmRlcl91aWRjMTAwa2Rlc3RpbmF0aW9uZDk5MDBrc2Vzc2lvbl9yZWZ4K0kwR0FaQXI4SDZhc2ZsYjh0SWlTZlVoY01lYURlU0E5VW1PQzRQVk1OVXdsbWVzc2FnZV90eXBlZHRleHRtY3JlYXRlZF9hdF9tcxsAAAGhAy7fCG9jb252ZXJzYXRpb25faWRkOTkwMHBjb250ZW50X2VuY29kaW5nZGNib3JwZXBvY2hfb3JfY291bnRlcgBwcHJvdG9jb2xfdmVyc2lvbgE=',
+                        'header_hash': '1FDYaq6JbBC-hHxwB3WMox3ryvkN367-LAFSoZSgQJE=',
+                        'ciphertext': 'QXdnQUVvQUU3ZzhKMVZWSm40QVB4ckpqd1BPU1IrcHJVM2tCNlduK3JsamVJY0V5MXRBRnBSWnROeHJ5QlhLdlBBSmNqVGc0NGlDVTQyT3Q1QlF2a2xtWmdmMW9vRHRHekp4QnF2a0FyeTNXdUZMdDJNQS9McWFuYUI4MkxGYTFoU1VoRlYxd3dOS2VRSHJkWWo3REY3dEMvMjJkWExocmlzMXVWa0NJWG1YZjNudWw5NVNCT0MzWGhlSWltYmwxUVdsQUk2YmZvU080TWtnWENzVEd0UG9RVUxoQWVORGorb3gxeHdpL3pCaVNhdWV5ZWNmLy9DeExtaWRJemJ3a2l6MmZMK1BmN3gwYjRlSGpkeloyVGlCOGZEYmpjMURSemFFTnNjMEwxVEkvOEFSRUxDekQ3Ti9OWWszK3NmeEZVcnA1WE1mbjZCekswSlNIM3l1UHJjZnN6YzFuZDZOdEVaWTRLYU55OUx1UVVSd25tUU9wcmt5bVVoN3hkajNTQlN4WWwwNWwrZnBORFZsUVNnSmRWV25yRXNmSmw4bzN6T0hPRFhuWW5NWkxzVVRXQjk2bkJ4TnpvdThvVHVHYVZQNWo2NERoWmRVY3UyckFkU1N2NFc0LzJnM2F6K0JsVW4xNmpBMUsyUHF1dmpWMTZMZTZEZk1lV2VYMnhHR05Dd3hDRUxWbWMzNjZjWVpUVWFJM011ODd6anNITDdreElmTXkvSHBlMkc2UW1LTndta0JxaDN5TTBYdzRxS0ZleUpLa29WWXZrcTQ0dlkwdXNubmdzd0VPV2gzWUxhRWEwc0xia0xjQTlOOHpDRWZoSEF6ZEt5MW9MMjVXVEF2OUNDc284YzNHaWhQM3ZZenBab0YzV1JQRmlhVUFja1Y4L1lpQk9JS0Z6anhFWDBsYjZBZVJhSE5QcTk5UGVXTXl5S24xbGxRTk42a2o2WGFKWjNqeWwyOTJNSVduZ2xMZlU0TWZhTjd6Ynk1R0EybnFkNXNoWVJ4UUJBVVhIZFJXcC9lMHNuNThQcnJ4N211UlNnRQ==',
+                        'protocol_metadata': {
+                          'protocol': 'megolm',
+                          'version': 1,
+                          'e2ee_suite': 'MEGOLM.V1',
+                          'session_id': 'I0GAZAr8H6asflb8tIiSfUhcMeaDeSA9UmOC4PVMNUw',
+                          'gid': '9900'
+                        }
+                      },
+                      'payload': ''
+                    }
+  
+  package:matcher                                                    expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                  expectLater
+  test/unit_test/service/e2ee/c2g_outbound_session_test.dart 137:28  main.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                         _CustomZone.registerUnaryCallback
+  test/unit_test/service/e2ee/c2g_outbound_session_test.dart 123:9   main.<fn>
+  
+00:01 +0 -2: (tearDownAll)
+00:01 +0 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart: C2G deferred recipient query normal encrypts
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2g_outbound_session_test.dart: C2G deferred recipient query rejects old session
