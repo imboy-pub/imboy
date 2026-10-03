@@ -419,5 +419,27 @@
       "Frozen candidate final requalification"
     ],
     "historical_parent_acceptance_status_unchanged": true
+  },
+  "customer_service_semantic_mapping": {
+    "artifact": "cs-governance-semantic-map.json",
+    "app_candidate": "be78cb9ae22ab6c4f3785e161f5070eb8faa10a4",
+    "local_regression_tests": 31,
+    "test_exit": 0,
+    "analysis_exit": 0,
+    "review": "APPROVED_LOCAL_TEST_SCOPE",
+    "mapped_source_controls": 14,
+    "partially_asserted_controls": 5,
+    "device_and_backend_journeys": "NOT_EXECUTED",
+    "product_pass": false,
+    "logs": [
+      {
+        "path": "cs-governance-semantic-coverage-suite.log",
+        "sha256": "e90e2291397b4547839d5390b0ec2b5a43260e6d8992256949d999c495c3aeb9"
+      },
+      {
+        "path": "cs-governance-semantic-analyze.log",
+        "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
+      }
+    ]
   }
 }

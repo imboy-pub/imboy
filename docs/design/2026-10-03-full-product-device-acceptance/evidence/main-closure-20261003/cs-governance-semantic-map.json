@@ -1,0 +1,264 @@
+{
+  "scope": "SEMANTIC_MAPPING_WORKSHEET_NOT_FINAL_CASE_MAP",
+  "dispatch_card": "F12-S03",
+  "parent_acceptance_ids": [
+    "F12-A01",
+    "F12-A02",
+    "F12-A03",
+    "F12-A04"
+  ],
+  "app_candidate": "be78cb9ae22ab6c4f3785e161f5070eb8faa10a4",
+  "source": {
+    "path": "lib/modules/customer_service/presentation/cs_governance_page.dart",
+    "sha256": "4992cb12e0cb36d653e81a98c8f805141dbec1c72eea12bbebf64d1f7225d50c"
+  },
+  "test_source": {
+    "path": "test/customer_service/cs_governance_page_widget_test.dart",
+    "sha256": "7de5703f533846f601ab0ced9b150b52c648ef6f283a597b4ca9e871795639cc"
+  },
+  "inventory_source_sha256": "b6446681e626ead9e6130aba059ba3f4f91fb2ba26ab6543f98d3d9dd6b1aacf",
+  "entries": [
+    {
+      "function_id": "fn:customer_service:cs_governance_page:001",
+      "source_line": 216,
+      "action": "治理范围说明",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示",
+        "line": 142
+      },
+      "observable_assertions": "scope-note key 存在",
+      "local_coverage": "PARTIAL",
+      "remaining_behavior": "说明文案内容尚未逐字断言",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:002",
+      "source_line": 227,
+      "action": "错误态",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "权限负例：403 governance_insufficient 诚实权限终态（无重试）",
+        "line": 204
+      },
+      "observable_assertions": "无治理权限提示；无重试；无额度事实",
+      "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
+      "remaining_behavior": "真实后端权限裁决未验",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:003",
+      "source_line": 243,
+      "action": "点击重试恢复",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "一般错误：500 wire tag 透传 + 点击重试恢复",
+        "line": 237
+      },
+      "observable_assertions": "500错误出现后点击重试；额度3/5恢复；错误消失；额度GET共2次",
+      "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
+      "remaining_behavior": "真实断网及恢复未验",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:004",
+      "source_line": 268,
+      "action": "空坐席列表",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "空坐席：空态文案（不报错）",
+        "line": 347
+      },
+      "observable_assertions": "暂无坐席席位文案",
+      "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
+      "remaining_behavior": "真实后端空数据未验",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:005",
+      "source_line": 275,
+      "action": "分页入口状态",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "刷新期间禁止使用旧游标加载更多",
+        "line": 629
+      },
+      "observable_assertions": "刷新时ListTile禁用且onTap为空",
+      "local_coverage": "PARTIAL",
+      "remaining_behavior": "分页成功追加、末页消失、分页错误与恢复未验",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:006",
+      "source_line": 286,
+      "action": "加载更多动作",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "刷新期间禁止使用旧游标加载更多",
+        "line": 629
+      },
+      "observable_assertions": "刷新后仅2次seats请求并呈现新行",
+      "local_coverage": "PARTIAL",
+      "remaining_behavior": "尚无实际点击分页成功及重复点击负例",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:007",
+      "source_line": 294,
+      "action": "坐席行展示",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示",
+        "line": 142
+      },
+      "observable_assertions": "19位identity逐字展示；额度正确",
+      "local_coverage": "PARTIAL",
+      "remaining_behavior": "enabled badge及并发容量文案未直接断言",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:008",
+      "source_line": 315,
+      "action": "停用/恢复入口",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "停用坐席：确认 → POST suspend + 成功反馈 + 刷新",
+        "line": 485
+      },
+      "observable_assertions": "点击停用、确认、发POST及操作反馈；另有resume超额失败用例",
+      "local_coverage": "PARTIAL",
+      "remaining_behavior": "resume成功回读和UI变化未验",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:009",
+      "source_line": 367,
+      "action": "取消停用",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "取消停用坐席：关闭对话框且不发写请求",
+        "line": 297
+      },
+      "observable_assertions": "关闭对话框；无PUT/POST；原额度和原坐席保留",
+      "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
+      "remaining_behavior": "真实后端无写入需独立查询",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:010",
+      "source_line": 372,
+      "action": "确认停用",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "停用坐席：确认 → POST suspend + 成功反馈 + 刷新",
+        "line": 485
+      },
+      "observable_assertions": "确认后命中suspend端点及成功反馈",
+      "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
+      "remaining_behavior": "真实后端席位状态持久化未验",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:011",
+      "source_line": 456,
+      "action": "打开额度调整",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "额度变化：调整 2 → PUT body + 新额度回显 + 达上限徽标",
+        "line": 365
+      },
+      "observable_assertions": "打开对话框输入2，提交后2/2事实和达上限徽标",
+      "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
+      "remaining_behavior": "真实后端额度持久化未验",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:012",
+      "source_line": 513,
+      "action": "清除额度输入",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "清除额度输入并保存：PUT 缺省上限并回显不限",
+        "line": 263
+      },
+      "observable_assertions": "输入controller为空；唯一PUT body为空Map；回显不限",
+      "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
+      "remaining_behavior": "真实后端清除语义及重进未验",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:013",
+      "source_line": 519,
+      "action": "取消额度调整",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "取消额度调整：关闭对话框且不发写请求",
+        "line": 297
+      },
+      "observable_assertions": "关闭对话框；无PUT/POST；原额度和坐席保留",
+      "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
+      "remaining_behavior": "真实后端无写入需独立查询",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    },
+    {
+      "function_id": "fn:customer_service:cs_governance_page:014",
+      "source_line": 524,
+      "action": "保存额度",
+      "host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "额度变化：调整 2 → PUT body + 新额度回显 + 达上限徽标",
+        "line": 365
+      },
+      "observable_assertions": "PUT seat_limit=2；新额度2/2及更新反馈；非法0另有不发PUT负例",
+      "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
+      "remaining_behavior": "真实后端RBAC和持久化未验",
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "real_backend": "NOT_EXECUTED",
+      "required": true
+    }
+  ],
+  "platform_denominator_unchanged": true,
+  "inventory_not_rewritten": true,
+  "product_pass": false,
+  "roles_and_profiles": "Must be derived from original frozen contract; host fixtures do not prove production RBAC"
+}
