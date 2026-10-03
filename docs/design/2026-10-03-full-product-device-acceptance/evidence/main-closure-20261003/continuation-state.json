@@ -4116,5 +4116,14 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "c11_group_receive_composition": {
+    "receipt": "c11-group-receive.json",
+    "receipt_sha256": "9e483c1df88d24f8e8f5ead8e3c9e472ac96bc96bfdc1db7e966c553269baace",
+    "app_head": "3c2ceada437e2ff33dbc3ddd644ae21647b08550",
+    "executed": 33,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

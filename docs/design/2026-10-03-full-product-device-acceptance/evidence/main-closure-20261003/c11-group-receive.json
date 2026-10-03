@@ -1,0 +1,34 @@
+{
+  "id": "C11-C2G-REGISTERED-INBOUND-COMPOSITION",
+  "app_head": "3c2ceada437e2ff33dbc3ddd644ae21647b08550",
+  "scope": "LOCAL_HOST_COMPONENTS_WITH_FAKE_SOCKET",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "executed": 33,
+  "failed": 0,
+  "exit_code": 0,
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "log": "c11-group-receive.log",
+  "log_sha256": "741e68bff7dfb4e1157afd4ae0675cf38138a0a97b8377435728b12e95ed8164",
+  "implemented": [
+    "Independent RegisteredGroupFrame and group inbox/drain interface",
+    "Exact downlink ID, sender DID and initial receiver/sender member binding",
+    "RFC3339 explicit-zone/calendar/millisecond comparison when created_at supplied",
+    "Deep immutable original ciphertext/raw-time snapshot",
+    "No automatic consumer ACK"
+  ],
+  "recovery": "Initial import placed before library directive corrected; analysis braces/type inference repaired. First commit hook reformatted source, owned source restaged; retry passed hooks.",
+  "remaining": [
+    "C2G consumer ACK and confirmation composition",
+    "live membership, epoch rotation, room-key authorization",
+    "actual four-account devices decrypt/display/attack journeys"
+  ],
+  "limits": [
+    "Optional created_at may be absent per existing wire paths; timestamp binding checked only when supplied",
+    "Initial fixture membership only; no live group authorization proof",
+    "Structural header validation is not authenticated decryption or key ownership",
+    "No AC-23 or full-product acceptance upgrade"
+  ]
+}
