@@ -1,0 +1,29 @@
+{
+  "id": "PREPARATION-F01-VERSION-INPUTS",
+  "scope": "PINNED_VERSION_INPUT_BYTES_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "app_head": "b3247123e28057b8856feaba7b65819f25030c08",
+  "executed": 125,
+  "exit": 0,
+  "log": {
+    "path": "f01-version-inputs.log",
+    "sha256": "a0cdc88d9ed6152faceacca7b63814f6a1ce095153cfb7d3b7fad627a46d42ff"
+  },
+  "reviews": [
+    "PYTHON_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "requirements": [
+    "Mandatory exact seven-component version input role set",
+    "Report cannot replace independently frozen path and hash descriptors",
+    "Actual bytes safely verified; duplicate content/path refused"
+  ],
+  "proof_limit": "Synthetic tests establish pinned artifact integrity only. Does not establish latest approved version, live-source drift, semantic agreement with required cases or complete acceptance scope.",
+  "remaining": [
+    "authoritative version approval and live source reconciliation",
+    "version document semantic acceptance-set binding",
+    "upstream handoff and user UX review",
+    "real business oracles and final 97-ID qualification"
+  ]
+}
