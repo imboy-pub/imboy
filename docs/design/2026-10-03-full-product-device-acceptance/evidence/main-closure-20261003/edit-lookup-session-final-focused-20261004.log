@@ -1,0 +1,18 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+00:00 +0: edit lookup session changed=false
+🧹 [QUEUE] 启动定期清理 Timer
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+🔄 发送编辑消息请求 (v2.0): msgId=db0mae1iaa2cq4og5ns0, action=message_edit, original_msg_id=1001
+ChatNetworkService.sendMessage: msgId=db0mae1iaa2cq4og5ns0, type=C2C, action=message_edit
+消息加入重试队列: db0mae1iaa2cq4og5ns0, type=C2C
+ChatNetworkService.sendMessage已提交: db0mae1iaa2cq4og5ns0
+> ws: 消息已发送 (db0mae1iaa2cq4og5ns0) [C2C/text/PLAIN] [182 bytes]
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +1: edit lookup session changed=true
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +2: All tests passed!

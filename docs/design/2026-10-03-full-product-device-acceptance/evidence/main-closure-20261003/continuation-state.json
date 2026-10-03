@@ -5082,5 +5082,14 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "edit_lookup_session_snapshot": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/edit-lookup-session-snapshot-20261004.json",
+    "app_head": "47c61f7a5af8e606e12b636d6066d6825c5954cc",
+    "executed": 240,
+    "focused_executed": 2,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

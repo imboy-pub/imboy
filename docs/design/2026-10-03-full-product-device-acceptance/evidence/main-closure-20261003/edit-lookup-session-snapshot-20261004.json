@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_EDIT_LOOKUP_SESSION_SNAPSHOT",
+  "app_head": "47c61f7a5af8e606e12b636d6066d6825c5954cc",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "results": {
+    "behavior_red_exit": 1,
+    "behavior_red_passed": 1,
+    "behavior_red_failed": 1,
+    "final_domain_exit": 0,
+    "final_domain_passed": 240,
+    "focused_exit": 0,
+    "focused_passed": 2,
+    "focused_unexpected_database_plugin_errors": 0,
+    "full_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Actual sendEditMessage pauses synthetic lookup; unchanged generation uses production ChatNetworkService plaintext policy path, actual event consumer and fake sink; event body contains expected from100/to200 and edited content.",
+    "Real generation changes during lookup; sendEditMessage returns false, sends no event and no frame.",
+    "Shared testing lookup hook renamed for revoke/edit; existing revoke regression remains green; focused fixture restores policy, loader, database substitute and subscription."
+  ],
+  "implementation_verified_by_review": [
+    "Edit entry freezes UID/generation and rejects changed/clearing session before lookup and after await; default loader remains production MessageService repo.find."
+  ],
+  "limitations": [
+    "Only lookup wait window qualified. Subsequent ChatNetworkService policy/crypto awaits remain pending; no claim of complete edit session isolation.",
+    "Synthetic lookup and explicit local plaintext test policy; no actual SQLite switching, encrypted edit journey, device or server edit confirmation.",
+    "Broad domain includes existing synthetic missing-table/plugin diagnostic logs; focused two-case log has none.",
+    "No original97-ID upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/edit-lookup-session-red-20261004.log",
+      "sha256": "65fc50c15c15515488bc783995e4be70de08ed8e8cd385ff13fdeb9c4ac25f61"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/edit-lookup-session-final-domain-20261004.log",
+      "sha256": "c5f61ee028fa1abdcc779088cb3e17eb2b584d59458afc243b4886deedb1f41c"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/edit-lookup-session-final-focused-20261004.log",
+      "sha256": "cf102c17792518a04cd64719d9137f15404122a2b2097254865a1d7a954214f6"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/edit-lookup-session-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/edit-lookup-session-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    }
+  ]
+}
