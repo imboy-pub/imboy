@@ -4213,5 +4213,16 @@
     "app_head": "0abcd2dccde14b0edba1cf9ee773b6e736353ea4",
     "executed": 10,
     "product_pass": false
+  },
+  "current_upstream_ledger_rejection": {
+    "receipt": "current-upstream-ledger-rejection.json",
+    "receipt_sha256": "ea9e4d85babd771844fa812ba91df842522c45a910c40fbbf2f00ea9529da3c7",
+    "validation_status": "REJECTED",
+    "heads": {
+      "imboy": "5d7ea9c0fd97d14b1eb3e535478d88f6fcb9fdf8",
+      "imboyapp": "0abcd2dccde14b0edba1cf9ee773b6e736353ea4",
+      "imboyadmin": "db995a9a9b14b8e7ff5d8ab241427db21dcf83a8"
+    },
+    "product_pass": false
   }
 }
