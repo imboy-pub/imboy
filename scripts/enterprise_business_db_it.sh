@@ -1075,7 +1075,7 @@ if [ -f ebin/eb_pg_purge.beam ] && [ -f ebin/eb_pg_store.beam ]; then
     io:format("~p:~p:~p:~p", [length(BadScope), length(SkipLocked), length(SkipAndLimit), length(Ss)]),
     halt(0).' 2>/dev/null)"
   check_equal "EB-03 purge 冻结语句：双租户键全覆盖 + 唯一候选查询带 SKIP LOCKED/LIMIT（badScope:skipLocked:skipAndLimit:total）" \
-    "0:1:1:6" "${FROZEN_PURGE}"
+    "0:2:1:7" "${FROZEN_PURGE}"
 
   FROZEN_STORE="$(erl -noinput -boot no_dot_erlang -pa imboy/ebin -pa ebin -eval '
     Ss = eb_pg_store:sql_statements(),
@@ -1085,7 +1085,7 @@ if [ -f ebin/eb_pg_purge.beam ] && [ -f ebin/eb_pg_store.beam ]; then
                 orelse binary:match(S, <<"$1">>) =:= nomatch
                 orelse binary:match(S, <<"$2">>) =:= nomatch],
     io:format("~p:~p", [length(Bad), length(Ss)]), halt(0).' 2>/dev/null)"
-  check_equal "EB-03 store 每条冻结语句都同语句带双租户键与 \$1/\$2（bad:total）" "0:26" "${FROZEN_STORE}"
+  check_equal "EB-03 store 每条冻结语句都同语句带双租户键与 \$1/\$2（bad:total）" "0:30" "${FROZEN_STORE}"
 else
   bad "EB-03 已编译基础设施模块（ebin/eb_pg_purge.beam / ebin/eb_pg_store.beam）" \
     "缺少 ebin/*.beam——EB-03 的门顺序为 make compile → eunit → db_it → arch-check"
