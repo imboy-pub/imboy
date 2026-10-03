@@ -1,0 +1,30 @@
+{
+  "scope": "LOCAL_ORGANIZATION_CACHE_REPLACEMENT_SCOPE_BOUNDARIES",
+  "app_head": "967f0f5bbca507ea7211f1bd8582a7a9fc7c4390",
+  "tests": 8,
+  "exit_code": 0,
+  "calibration_exit": 1,
+  "analyze_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "production_source_restored": true,
+  "artifacts": [
+    {
+      "path": "org-cache-retention-calibration-20261004.log",
+      "sha256": "9ddb487cdc6a1bcd8ed16d0ed754a73f7c7b0a5cfdb04a1e6245f430c87b678e"
+    },
+    {
+      "path": "org-cache-retention-green-20261004.log",
+      "sha256": "bed73416b96cf38ca718ca351ec6309f4950b6349a09c5123acfbbc6ba95d9bf"
+    },
+    {
+      "path": "org-cache-retention-analyze-20261004.log",
+      "sha256": "fd3fc7f8d7671624607f60a9624c344cc53f4f694eae94668306ffb4c1fad99b"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Actual in-memory cache tests with synthetic data; no device/DB/real membership qualification",
+    "Calibration disables both associated-cache filters; first removal assertion fails, not independent calibration for each assertion"
+  ]
+}

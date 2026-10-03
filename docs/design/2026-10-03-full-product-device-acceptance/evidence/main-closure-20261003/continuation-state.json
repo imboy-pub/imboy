@@ -4744,5 +4744,11 @@
     "app_head": "099faadd3353883d909632c43f1b8e415f6dc711",
     "tests": 258,
     "product_pass": false
+  },
+  "organization_cache_replacement_scope_boundaries": {
+    "receipt": "organization-cache-scope-boundaries-20261004.json",
+    "app_head": "967f0f5bbca507ea7211f1bd8582a7a9fc7c4390",
+    "tests": 8,
+    "product_pass": false
   }
 }

@@ -1,0 +1,10 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_cache_scope_test.dart
+00:00 +0: 全量成员组织替换只清除被移除组织的关联缓存，不影响其他账号
+00:00 +1: account scope 隔离 账号 A / B 互不可见
+00:00 +2: account scope 隔离 disposeAccount(A) 不影响 B；空 accountKey 直接拒绝（fail-closed）
+00:00 +3: organization scope 隔离 成员缓存按 orgId 分桶，互不串桶
+00:00 +4: 缓存不是 membership 真源 服务端刷新覆盖脏缓存（stale owner → fresh member）
+00:00 +5: 缓存不是 membership 真源 invalidateOrg 后查询返回空 = 强制服务端刷新语义
+00:00 +6: Organization 与 Workspace membership 独立（负例） 默认 Workspace 未设置（null）不产生任何成员资格事实
+00:00 +7: Organization 与 Workspace membership 独立（负例） 缓存没有任何 workspace 键空间（DeptMember/OrgMember 之外无类型出口）
+00:00 +8: All tests passed!
