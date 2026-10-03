@@ -1,0 +1,58 @@
+{
+  "id": "PREPARATION-C11-EXPLICIT-RECEIPT-ACK",
+  "scope": "C11_CLIENT_RECEIPT_OFFLINE_FAKE_SOCKET_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "candidate_heads": {
+    "imboy": "37876d5d447851d53c7bbe8ab65e969b332faeee",
+    "imboyapp": "cc13a07135c5dbaa7c525e9b49e5e7d9ec090d1c",
+    "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+  },
+  "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/service/e2ee_registered_backend_transport_test.dart",
+    "test/unit_test/service/e2ee_release_socket_session_test.dart",
+    "test/unit_test/service/e2ee_release_wire_codec_test.dart",
+    "test/unit_test/service/e2ee_server_ack_tracker_test.dart",
+    "test/unit_test/service/e2ee_registered_wire_binding_test.dart",
+    "test/unit_test/service/e2ee_registered_fixture_test.dart",
+    "test/unit_test/service/e2ee_release_harness_host_test.dart",
+    "--reporter",
+    "expanded"
+  ],
+  "executed": 80,
+  "failed": 0,
+  "exit": 0,
+  "logs": [
+    {
+      "path": "c11-receipt-components-before-review.log",
+      "sha256": "ec42646f76206bdc075fdaecb219b3ec6b3085fa7567d25a783408442b373e19",
+      "phase": "PRE_REVIEW_WITH_RECEIPT_RETRY_GAP",
+      "exit": 0,
+      "executed": 80
+    },
+    {
+      "path": "c11-receipt-components-reviewed.log",
+      "sha256": "d407b54212c7210b6a3da958755984d795e4436ff126c5bef299e2cf6a69a818",
+      "phase": "REVIEWED_WITH_RECEIPT_RETRY_ISOLATION",
+      "exit": 0,
+      "executed": 80
+    }
+  ],
+  "review": [
+    "C11_FLUTTER_REVIEW_APPROVE_AFTER_RETRY_FIX",
+    "RUNNER_CODE_REVIEW_APPROVE_AFTER_HIGH_RETRY_FIX"
+  ],
+  "prior_review": "BLOCK_HIGH_LATE_CONFIRM_CAN_MATCH_SAME_GENERATION_RETRY",
+  "recovery": "retain prior log; forbid completed receipt key reuse in same connection generation; test ERROR/timeout late confirm and new-generation success; rerun 80 tests and two reviewers",
+  "analysis": "No issues found",
+  "remaining": [
+    "authorized isolated runtime endpoint and fixture/token authenticity",
+    "production encryption/decrypt/display journey integration",
+    "multi-device/group/attachment/offline/attack journeys",
+    "97 IDs frozen final evidence qualification"
+  ],
+  "proof_limit": "Receipt confirmation only; explicit call is not cryptographic decrypt or UI proof. Fake sockets only."
+}
