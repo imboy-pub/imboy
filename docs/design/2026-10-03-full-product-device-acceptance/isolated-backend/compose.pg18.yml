@@ -1,0 +1,31 @@
+# Preparation only. Do not launch before the resource authorization gate.
+services:
+  postgres:
+    image: imboy/pg18:3.6.1-2
+    pull_policy: never
+    environment:
+      POSTGRES_USER: imboy_acceptance
+      POSTGRES_DB: imboy_acceptance
+      POSTGRES_PASSWORD: ${ACCEPTANCE_PG_PASSWORD:?provide an isolated synthetic password}
+      PGDATA: /var/lib/postgresql/18/docker
+    ports:
+      - target: 5432
+        published: ${ACCEPTANCE_PG_PORT:?provide an approved non-shared port}
+        host_ip: 127.0.0.1
+        protocol: tcp
+    tmpfs:
+      - /var/lib/postgresql
+    networks:
+      - acceptance
+    labels:
+      pub.imboy.acceptance.scope: full-product-20261003
+      pub.imboy.acceptance.run: ${ACCEPTANCE_RUN_ID:?provide the approved run identity}
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U imboy_acceptance -d imboy_acceptance"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: "no"
+networks:
+  acceptance:
+    internal: true

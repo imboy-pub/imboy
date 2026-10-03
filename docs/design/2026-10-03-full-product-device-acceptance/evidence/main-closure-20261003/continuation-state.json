@@ -1010,5 +1010,23 @@
     "product_pass": false,
     "required_cases_frozen": false,
     "remaining": "F00 NEW/legacy disposition, profiles/roles, backend and dual-platform business facts, broader F12 parent journeys"
+  },
+  "isolated_backend_resource_preparation": {
+    "template": "docs/design/2026-10-03-full-product-device-acceptance/isolated-backend/compose.pg18.yml",
+    "review": "APPROVED_PREPARATION_ONLY",
+    "offline_positive_exit": 0,
+    "missing_input_negatives": 3,
+    "receipt": "isolated-pg-template-validation.json",
+    "receipt_sha256": "61bb2a210694d0271fdb1ec1faba735d95da7745f14b6f8751c8d3fb085e90fe",
+    "containers_started": false,
+    "backend_ready": false,
+    "product_pass": false,
+    "remaining": [
+      "explicit isolated backend resource authorization",
+      "unique project/ports owner lease and image digest/extension qualification",
+      "isolated backend config and safe third-party settings",
+      "synthetic fixtures and namespace reset checks",
+      "full frozen candidate EUnit twice plus excluded suites"
+    ]
   }
 }

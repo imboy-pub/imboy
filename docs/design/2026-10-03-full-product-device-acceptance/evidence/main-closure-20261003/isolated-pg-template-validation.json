@@ -1,0 +1,43 @@
+{
+  "scope": "OFFLINE_COMPOSE_CONFIGURATION_ONLY",
+  "candidate_backend": "a5e4d72327ef9f3b2c0eb602b5d185689f1ce4a8",
+  "template_sha256": "efa48c55dfd34392d094dad87e1a807bf82d401753322f877b1b8dc880510bb8",
+  "command": [
+    "docker",
+    "compose",
+    "-p",
+    "imboy-acceptance-config-only",
+    "-f",
+    "docs/design/2026-10-03-full-product-device-acceptance/isolated-backend/compose.pg18.yml",
+    "config",
+    "--format",
+    "json"
+  ],
+  "positive_exit": 0,
+  "checks": [
+    "loopback only",
+    "dedicated internal network",
+    "no volume bindings",
+    "no automatic image pull",
+    "no restart policy",
+    "all required resource variables fail closed"
+  ],
+  "negative_results": [
+    {
+      "missing_variable": "ACCEPTANCE_PG_PASSWORD",
+      "exit": 1
+    },
+    {
+      "missing_variable": "ACCEPTANCE_PG_PORT",
+      "exit": 1
+    },
+    {
+      "missing_variable": "ACCEPTANCE_RUN_ID",
+      "exit": 1
+    }
+  ],
+  "containers_started": false,
+  "database_connections": false,
+  "backend_ready": false,
+  "product_pass": false
+}
