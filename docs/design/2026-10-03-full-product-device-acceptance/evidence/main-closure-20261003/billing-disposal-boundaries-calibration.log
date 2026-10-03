@@ -1,0 +1,60 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart
+00:00 +0: BillingNotifier.subscribePlan generate 等待期间销毁不得继续请求或返回成功
+00:04 +0 -1: BillingNotifier.subscribePlan generate 等待期间销毁不得继续请求或返回成功 [E]
+  Cannot use the Ref of NotifierProvider<BillingNotifier, BillingState>#e9617 after it has been disposed. This typically happens if:
+  - A provider rebuilt, but the previous "build" was still pending and is still performing operations.
+    You should therefore either use `ref.onDispose` to cancel pending work, or
+    check `ref.mounted` after async gaps or anything that could invalidate the provider.
+  - You tried to use Ref inside `onDispose` or other life-cycles.
+    This is not supported, as the provider is already being disposed.
+  
+  package:riverpod/src/core/ref.dart 240:7                        Ref._throwIfInvalidUsage
+  package:riverpod/src/core/provider/notifier_provider.dart 83:9  AnyNotifier.state
+  package:imboy/page/billing/billing_provider.dart 178:15         BillingNotifier.subscribePlan
+  
+00:04 +0 -1: BillingNotifier.subscribePlan list 等待期间销毁不得继续请求或返回成功
+00:04 +0 -2: BillingNotifier.subscribePlan list 等待期间销毁不得继续请求或返回成功 [E]
+  Cannot use the Ref of NotifierProvider<BillingNotifier, BillingState>#e9617 after it has been disposed. This typically happens if:
+  - A provider rebuilt, but the previous "build" was still pending and is still performing operations.
+    You should therefore either use `ref.onDispose` to cancel pending work, or
+    check `ref.mounted` after async gaps or anything that could invalidate the provider.
+  - You tried to use Ref inside `onDispose` or other life-cycles.
+    This is not supported, as the provider is already being disposed.
+  
+  package:riverpod/src/core/ref.dart 240:7                        Ref._throwIfInvalidUsage
+  package:riverpod/src/core/provider/notifier_provider.dart 83:9  AnyNotifier.state
+  package:imboy/page/billing/billing_provider.dart 178:15         BillingNotifier.subscribePlan
+  
+00:04 +0 -2: BillingNotifier.subscribePlan pay 等待期间销毁不得继续请求或返回成功
+00:08 +0 -3: BillingNotifier.subscribePlan pay 等待期间销毁不得继续请求或返回成功 [E]
+  Cannot use the Ref of NotifierProvider<BillingNotifier, BillingState>#e9617 after it has been disposed. This typically happens if:
+  - A provider rebuilt, but the previous "build" was still pending and is still performing operations.
+    You should therefore either use `ref.onDispose` to cancel pending work, or
+    check `ref.mounted` after async gaps or anything that could invalidate the provider.
+  - You tried to use Ref inside `onDispose` or other life-cycles.
+    This is not supported, as the provider is already being disposed.
+  
+  package:riverpod/src/core/ref.dart 240:7                        Ref._throwIfInvalidUsage
+  package:riverpod/src/core/provider/notifier_provider.dart 83:9  AnyNotifier.state
+  package:imboy/page/billing/billing_provider.dart 178:15         BillingNotifier.subscribePlan
+  
+00:08 +0 -3: BillingNotifier.subscribePlan poll 等待期间销毁不得继续请求或返回成功
+00:08 +0 -4: BillingNotifier.subscribePlan poll 等待期间销毁不得继续请求或返回成功 [E]
+  Cannot use the Ref of NotifierProvider<BillingNotifier, BillingState>#e9617 after it has been disposed. This typically happens if:
+  - A provider rebuilt, but the previous "build" was still pending and is still performing operations.
+    You should therefore either use `ref.onDispose` to cancel pending work, or
+    check `ref.mounted` after async gaps or anything that could invalidate the provider.
+  - You tried to use Ref inside `onDispose` or other life-cycles.
+    This is not supported, as the provider is already being disposed.
+  
+  package:riverpod/src/core/ref.dart 240:7                        Ref._throwIfInvalidUsage
+  package:riverpod/src/core/provider/notifier_provider.dart 83:9  AnyNotifier.state
+  package:imboy/page/billing/billing_provider.dart 178:15         BillingNotifier.subscribePlan
+  
+00:08 +0 -4: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan generate 等待期间销毁不得继续请求或返回成功
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan list 等待期间销毁不得继续请求或返回成功
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan pay 等待期间销毁不得继续请求或返回成功
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan poll 等待期间销毁不得继续请求或返回成功

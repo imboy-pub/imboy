@@ -4586,5 +4586,11 @@
     "app_head": "b0fa62732ae177fe5897752bd0c1b26cfe9c5691",
     "tests": 32,
     "product_pass": false
+  },
+  "f14_billing_disposal_boundaries": {
+    "receipt": "billing-disposal-boundaries.json",
+    "app_head": "4acf380f336b2b59bff8c61ffce02f88ad05a086",
+    "tests": 36,
+    "product_pass": false
   }
 }

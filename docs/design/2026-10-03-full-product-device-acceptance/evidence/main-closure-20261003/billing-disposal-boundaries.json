@@ -1,0 +1,39 @@
+{
+  "scope": "LOCAL_BILLING_DISPOSAL_FOUR_ASYNC_BOUNDARIES",
+  "app_head": "4acf380f336b2b59bff8c61ffce02f88ad05a086",
+  "tests": 36,
+  "exit_code": 0,
+  "analysis_exit_code": 0,
+  "pre_fix_source_calibration_exit_code": 1,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "billing-disposal-boundaries-log.log",
+      "sha256": "f6d401962c13f3047e420dbc408db4d4f435b0cc5e733a15bee2b4c8e4a82eec"
+    },
+    {
+      "path": "billing-disposal-boundaries-analysis.log",
+      "sha256": "c9bc73281028d49c1ea38e9b16e30922862286e5daa12af737caacc6bf5c50a0"
+    },
+    {
+      "path": "billing-disposal-boundaries-calibration.log",
+      "sha256": "88157146f4fb52f3a0ca539a1cbbb4fb7157ef704deb30f5866b4117e450fc63"
+    },
+    {
+      "path": "billing-disposal-boundaries-overlap.log",
+      "sha256": "c70daac974fe08cae50c43fdb7270785153efff78db3191491107631f1fd6c46"
+    },
+    {
+      "path": "billing-disposal-boundaries-restored.log",
+      "sha256": "5ae2fb39e45f0fb76871f070f5ca4f650e2ea2cf4be24600ac4361a80770d350"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "overlap_attempt": "Initial restored run overlapped calibration process and is not authoritative; final restored log executed after both handles terminal.",
+  "limits": [
+    "Runtime synthetic API boundaries: generate, invoice query, payment request, paid polling",
+    "Already issued requests are not cancelled; no rollback or real payment guarantee",
+    "Native launcher, account switching, device/backend execution remain unqualified"
+  ]
+}
