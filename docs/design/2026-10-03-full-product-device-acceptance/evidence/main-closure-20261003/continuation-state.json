@@ -4875,5 +4875,10 @@
     "receipt": "self-device-directory-session-isolation-20261004.json",
     "app_head": "d0b5a72a6b63655f861bc30b1a484258e9890cf9",
     "product_pass": false
+  },
+  "c2c_outbound_session_snapshot": {
+    "receipt": "c2c-outbound-session-snapshot-20261004.json",
+    "app_head": "e0e9a0a88d3c362bff9d2fecd10629c96fcb2a83",
+    "product_pass": false
   }
 }

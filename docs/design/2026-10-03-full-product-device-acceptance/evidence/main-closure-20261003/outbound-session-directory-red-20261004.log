@@ -1,0 +1,14 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart
+test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart:444:17: Error: 'E2eeDecryptException' isn't a type.
+            isA<E2eeDecryptException>().having(
+                ^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -1: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart: test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart:444:17: Error: 'E2eeDecryptException' isn't a type.
+              isA<E2eeDecryptException>().having(
+                  ^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart

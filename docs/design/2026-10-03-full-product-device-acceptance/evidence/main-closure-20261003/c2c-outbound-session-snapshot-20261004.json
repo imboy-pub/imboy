@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_C2C_OUTBOUND_SESSION_SNAPSHOT",
+  "app_head": "e0e9a0a88d3c362bff9d2fecd10629c96fcb2a83",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW_AFTER_PUBLIC_RETURN_CHECK",
+  "results": {
+    "valid_red_exit": 1,
+    "valid_red_failed": 2,
+    "valid_red_passed": 5,
+    "intermediate_focused_exit": 0,
+    "intermediate_focused_passed": 16,
+    "final_e2ee_domain_exit": 0,
+    "final_e2ee_domain_passed": 974,
+    "final_full_static_exit": 0,
+    "final_full_static_issues": 0
+  },
+  "oracles": [
+    "Real vodozemac sessions and production encryptPayload; deferred synthetic peer/self directory queries.",
+    "Actual loginAfter advances session generation; synthetic secure token write raises before UID commit or login DB/WS/push actions.",
+    "Old pending send rejects outbound_session_changed and leaves no final outbox entry after directory resumes.",
+    "Normal fanout and recipient decrypt positives remain covered in final E2EE domain."
+  ],
+  "attempt_notes": [
+    "First test attempt lacked exception type import and failed compilation; excluded from behavioral RED.",
+    "Valid RED then completed five normal passes and two stale-send failures (old code returned envelope).",
+    "Independent review found missing public await continuation check after private return. Added check before handing envelope to caller.",
+    "Intermediate complete-domain attempt was precisely terminated (PID897) after review finding; no All tests passed marker, not qualifying despite shell terminal exit0.",
+    "Final974 domain and full static run after public return correction."
+  ],
+  "limitations": [
+    "Generation-before-UID-commit window is synthetic; no completed real account switch or device login.",
+    "UID-only switch without generation change is not separately dynamically qualified.",
+    "Already-started ratchet/DB operations cannot be rolled back by these guards; session change during persistence may leave old outbox rows.",
+    "C2G complete asynchronous chain and retry/recovery isolation require separate qualification.",
+    "No original 36+61 full acceptance PASS upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/outbound-session-directory-red-20261004.log",
+      "sha256": "e559b8629b94b081b7b1bebe12d5eb3f9f2960f3530e25360a189b3a5eeb27ff"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/outbound-session-directory-valid-red-20261004.log",
+      "sha256": "55638e4b99ba55ce14640eb8fe87b9f778d1fab36df34de0f686c50ee1c0a6e1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/outbound-session-directory-green-20261004.log",
+      "sha256": "2bc60b6063cd2b4def8c702fae8b2b7bfa5a3c472432bce4b79cf6fa38d5d554"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/outbound-session-directory-e2ee-domain-20261004.log",
+      "sha256": "c64ca9b4fb6e04d8181bb3bb489ebc95a1701fcdadc208b06b9c2c8a58113f8f"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/outbound-session-directory-full-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/outbound-session-directory-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/outbound-session-directory-final-e2ee-domain-20261004.log",
+      "sha256": "0649173f882854685d89ba5c67d7f6ed2ddb9468adb61558f47f9f2702cc8bcd"
+    }
+  ]
+}
