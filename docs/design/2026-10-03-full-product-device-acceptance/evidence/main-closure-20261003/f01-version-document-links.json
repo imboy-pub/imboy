@@ -1,0 +1,30 @@
+{
+  "id": "PREPARATION-F01-VERSION-DOCUMENT-LINKS",
+  "scope": "PINNED_VERSION_REFERENCE_CORRELATION_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "app_head": "c960c115a3aeadb0c3c654ef03af047710a953d3",
+  "executed": 131,
+  "exit": 0,
+  "log": {
+    "path": "f01-version-document-links.log",
+    "sha256": "2611fc137ccf27b30c980a61dba06c3a2a3c3b88229f6148606713a3d8ab0acd"
+  },
+  "reviews": [
+    "PYTHON_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "actual_document_probe": {
+    "current_component_errors": [],
+    "old_dispatch_1_1_binding_errors": [
+      "VERSION_DOCUMENT_COMPONENT_MISMATCH:dispatch_cards"
+    ],
+    "acceptance_set_version": "1.2"
+  },
+  "requirements": [
+    "Five acceptance-set component hashes match frozen descriptors",
+    "Upstream E2EE plan hash matches frozen descriptor",
+    "Old/new version mixture rejected even if each descriptor is well formed"
+  ],
+  "proof_limit": "Current file reference consistency only; authoritative source approval, live-source policy, semantic requirements and product execution remain independent gates."
+}
