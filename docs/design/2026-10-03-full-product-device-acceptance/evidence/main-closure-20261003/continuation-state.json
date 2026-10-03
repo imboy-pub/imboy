@@ -2969,5 +2969,44 @@
     },
     "fix": "Catch only fetchPlans call, record exception type, then use explicit failure state to end loading and allow retry",
     "proof_limit": "Actual widget/notifier with fake request error; no real network, payment backend or device qualification."
+  },
+  "f14_billing_plan_race_disposal": {
+    "id": "PREPARATION-F14-BILLING-PLAN-RACE-DISPOSAL",
+    "scope": "LOCAL_BILLING_WIDGET_PROVIDER_REGRESSION",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "29a4271e7b39c550dd17bd305caf4534c331b9fb",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/page/billing/plan_list_page_test.dart",
+      "test/unit_test/page/billing/billing_provider_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "executed": 19,
+    "exit": 0,
+    "analyze_exit": 0,
+    "reviews": [
+      "FLUTTER_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "log": {
+      "path": "f14-billing-plan-race-disposal.log",
+      "sha256": "761d1874bc4e962904e86d1d1b894de197aa71a98292f77cf2f9d48d5388cef1"
+    },
+    "red_observation": {
+      "executed": 14,
+      "passed": 12,
+      "failed": 2,
+      "causes": [
+        "Old request replaced newer list",
+        "Disposed provider updated state and threw"
+      ],
+      "raw_log_saved": false
+    },
+    "fix": "Request generations invalidate older loads and rebuild-era requests; ref.mounted prevents post-disposal writes",
+    "proof_limit": "Controlled fake-request ordering and actual notifier state; no real server, payment, account/tenant authorization or Android/macOS qualification."
   }
 }
