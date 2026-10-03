@@ -1,0 +1,31 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_failure_metrics_test.dart
+00:00 +0: E2EEDecryptFailureMetrics.normalizeReason null 与空串归 unknown
+00:00 +1: E2EEDecryptFailureMetrics.normalizeReason 已知 reason 保留分类
+00:00 +2: 不可信原因只持久化固定分类
+📊 [E2EE_METRICS] decrypt failure: unknown total=1
+📊 [E2EE_METRICS] decrypt failure: unknown total=2
+00:00 +3: 带动态值的边界错误归有限分类
+00:00 +4: 历史不可信分类合并且下一次写入清除旧键
+📊 [E2EE_METRICS] decrypt failure: decrypt_error total=2
+00:00 +5: E2EEDecryptFailureMetrics 累计计数 按 reason 分桶累计且持久化
+📊 [E2EE_METRICS] decrypt failure: decrypt_error total=1
+📊 [E2EE_METRICS] decrypt failure: decrypt_error total=2
+📊 [E2EE_METRICS] decrypt failure: no_device_envelope total=1
+00:00 +6: E2EEDecryptFailureMetrics 累计计数 null / 空 reason 计入 unknown 桶
+📊 [E2EE_METRICS] decrypt failure: unknown total=1
+📊 [E2EE_METRICS] decrypt failure: unknown total=2
+00:00 +7: E2EEDecryptFailureMetrics 累计计数 dedupKey 同 key 本次启动只计一次，不同 key 各计一次
+📊 [E2EE_METRICS] decrypt failure: decrypt_failed total=1
+📊 [E2EE_METRICS] decrypt failure: decrypt_failed total=2
+📊 [E2EE_METRICS] decrypt failure: decrypt_failed total=3
+00:00 +8: E2EEDecryptFailureMetrics 累计计数 resetForTest 清零计数与去重表
+📊 [E2EE_METRICS] decrypt failure: decrypt_error total=1
+📊 [E2EE_METRICS] decrypt failure: decrypt_error total=1
+00:00 +9: E2EEHealthCheckService.failedPayloadReason JSON 串占位行提取 reason
+00:00 +10: E2EEHealthCheckService.failedPayloadReason Map 占位行提取 reason
+00:00 +11: E2EEHealthCheckService.failedPayloadReason 占位但缺 reason 归 unknown
+00:00 +12: E2EEHealthCheckService.failedPayloadReason 非占位行（明文/无标记）返回 null
+00:00 +13: E2EEHealthCheckService.failedPayloadReason 坏 JSON 返回 null
+00:00 +14: E2EEFailureInventory 不可解 / 可恢复分类 按 reason 性质拆分存量
+00:00 +15: E2EEFailureInventory 不可解 / 可恢复分类 空盘点零值
+00:00 +16: All tests passed!

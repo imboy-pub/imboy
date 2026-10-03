@@ -4503,5 +4503,11 @@
     "controlled_handler_strict_format": "PASS",
     "live_metrics_strict_format": "NOT_PROVEN",
     "product_pass": false
+  },
+  "e2ee_client_metric_reason": {
+    "receipt": "e2ee-client-metric-reason.json",
+    "app_head": "0c55617660f6a6c509390f76bca090e960dad316",
+    "tests": 19,
+    "product_pass": false
   }
 }

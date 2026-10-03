@@ -1,0 +1,40 @@
+{
+  "scope": "LOCAL_CLIENT_METRIC_PRIVACY_ONLY",
+  "app_head": "0c55617660f6a6c509390f76bca090e960dad316",
+  "red_exit_code": 1,
+  "red_failed": 3,
+  "final_tests": 19,
+  "final_exit_code": 0,
+  "analysis_exit_code": 0,
+  "review": "APPROVED_BY_CODE_AND_FLUTTER_REVIEW",
+  "artifacts": [
+    {
+      "path": "e2ee-client-metric-reason-red.log",
+      "sha256": "d05340d444a298c122a1cde82790b5cf61a6d8501aa49fd97d0ef4c36fe26468"
+    },
+    {
+      "path": "e2ee-client-metric-reason-green.log",
+      "sha256": "df1a853c03ac49f35ced5c09734f2a5a374445e9660ff68a0546cc8f2353ade6"
+    },
+    {
+      "path": "e2ee-client-metric-reason-final.log",
+      "sha256": "a416ae2520880b7bdea3ee06edca3af749c93a0b80bf0b67e248cab9dc498743"
+    },
+    {
+      "path": "e2ee-client-metric-reason-analysis.log",
+      "sha256": "af73f9f9395c74935885e6380d651bb2a47f99e16249edb5d14d3a37e8a9073b"
+    }
+  ],
+  "source_hashes": {
+    "lib/service/e2ee/decrypt_failure_reason.dart": "af32a352772661dfa398db1da6b4f83a891602f2e1e6ed36c9563bb70c86c2c6",
+    "lib/service/e2ee_service.dart": "be8e913dde55cbba7ff0aadc4463cb915d3ee10139447ef8b8e28c6b42365657",
+    "test/unit_test/service/e2ee_failure_metrics_test.dart": "85ad1440c6c3189500f28fbf5c2d961f0ce3a211f041cc7d2b23704780bc2cfb"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "No actual device or backend execution",
+    "AC-26 load, frozen SLO and complete client logging privacy remain unproven",
+    "Historical raw keys are cleared on next successful metric write; snapshot never exposes those keys"
+  ]
+}
