@@ -1,0 +1,62 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart
+00:00 +0: 旧选择器结果不能覆盖较新选择
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "current.enc": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      _assertLatestPickerWins (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart:108:3)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart line 108
+The test description was:
+  旧选择器结果不能覆盖较新选择
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: 旧选择器结果不能覆盖较新选择 [E]
+  Test failed. See exception logs above.
+  The test description was: 旧选择器结果不能覆盖较新选择
+  
+00:00 +0 -1: 旧选择器错误不能覆盖较新选择
+[E2EEBackupImport] 选择备份文件失败: Exception: stale picker failure
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: false
+  Actual: <true>
+
+When the exception was thrown, this was the stack:
+#4      _assertLatestPickerWins (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart:107:3)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart line 107
+The test description was:
+  旧选择器错误不能覆盖较新选择
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -2: 旧选择器错误不能覆盖较新选择 [E]
+  Test failed. See exception logs above.
+  The test description was: 旧选择器错误不能覆盖较新选择
+  
+00:00 +0 -2: 关闭恢复页后忽略选择器结果
+00:01 +1 -2: 关闭恢复页后忽略选择器错误
+00:01 +2 -2: 旧文件校验成功不能覆盖新选择
+00:01 +3 -2: 旧文件校验失败不能覆盖新选择
+00:01 +4 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart: 旧选择器结果不能覆盖较新选择
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart: 旧选择器错误不能覆盖较新选择

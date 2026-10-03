@@ -1,0 +1,49 @@
+{
+  "id": "PREPARATION-F08-PICKER-ORDER",
+  "scope": "HOST_PICKER_GENERATION_SUBSTITUTE_ONLY",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "app_head": "5b51182c7f050f755711a855b3725f24459a2c29",
+  "executed": 6,
+  "exit": 0,
+  "analyze_exit": 0,
+  "reviews": [
+    "FLUTTER_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart",
+    "--reporter",
+    "expanded"
+  ],
+  "attempts": {
+    "red": {
+      "passed": 4,
+      "failed": 2,
+      "exit": 1,
+      "log": {
+        "path": "f08-picker-order-red.log",
+        "sha256": "9207c320639d53b5cd986de2223af49018acb4ca585a4ea26ef555e99b956229"
+      }
+    },
+    "fixed": {
+      "passed": 6,
+      "failed": 0,
+      "exit": 0,
+      "log": {
+        "path": "f08-picker-order-fixed.log",
+        "sha256": "f702fb2e2554ebc59b441a8cfa1622998ec500f961213b65a14ad9b073ac5b97"
+      }
+    }
+  },
+  "change": "Synchronously increment picker generation, reject old result/error after picker and temp cleanup awaits.",
+  "oracles": [
+    "Two requests started through real UI, newer selection visibly confirmed before releasing older request",
+    "Old result cannot replace current file or trigger extra verification",
+    "Old picker exception cannot display stale toast"
+  ],
+  "proof_limit": "Controlled platform picker and synthetic verifier results. Does not certify native concurrent dialogs, URL-versus-picker arbitration or actual restore/device/backend journeys. No parent acceptance upgraded."
+}
