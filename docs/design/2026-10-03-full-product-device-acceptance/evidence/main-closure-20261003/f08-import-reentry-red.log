@@ -1,0 +1,35 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart
+00:00 +0: 同一帧重复导入只启动一次解密
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <1>
+  Actual: <2>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:84:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart line 84
+The test description was:
+  同一帧重复导入只启动一次解密
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: 同一帧重复导入只启动一次解密 [E]
+  Test failed. See exception logs above.
+  The test description was: 同一帧重复导入只启动一次解密
+  
+00:00 +0 -1: 导入失败后仍可再次发起导入
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 同一帧重复导入只启动一次解密

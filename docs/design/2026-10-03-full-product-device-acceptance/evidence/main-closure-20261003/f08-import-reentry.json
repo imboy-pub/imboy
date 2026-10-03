@@ -1,0 +1,54 @@
+{
+  "id": "PREPARATION-F08-IMPORT-REENTRY",
+  "scope": "HOST_LOCAL_IMPORT_ENTRY_SUBSTITUTE_ONLY",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "app_head": "41506af8bbd082c952b2cf291afa9c47887e735f",
+  "unique_tests": 12,
+  "exit": 0,
+  "analyze_exit": 0,
+  "reviews": [
+    "FLUTTER_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "attempts": {
+    "red": {
+      "passed": 1,
+      "failed": 1,
+      "exit": 1,
+      "log": {
+        "path": "f08-import-reentry-red.log",
+        "sha256": "7a0535d7445248657b1ca96005b277c1d7a5f44183ad1b416d4a066d5854e112"
+      }
+    },
+    "combined-fixed": {
+      "passed": 12,
+      "failed": 0,
+      "exit": 0,
+      "log": {
+        "path": "f08-import-reentry-combined-fixed.log",
+        "sha256": "c71010a63653f9a7b828623a6e0dcd1e7d33bc0369da88bccc4e170fc40a16ab"
+      }
+    },
+    "final-target": {
+      "passed": 2,
+      "failed": 0,
+      "exit": 0,
+      "log": {
+        "path": "f08-import-reentry-final-target.log",
+        "sha256": "eeb94cb3f2954cedf7ead6560ac77b5b84c182030c91d36ab0b49b3a407d57a7"
+      }
+    }
+  },
+  "change": "Import entry synchronously rejects disposed, busy or unverified-file callbacks; injectable importer defaults to original file service.",
+  "oracles": [
+    "Same-frame cached actual button callbacks start exactly one importer",
+    "Failure clears busy and permits a subsequent import"
+  ],
+  "preparation_notes": [
+    "Initial analysis reported missing test if braces; repaired, then final target2 PASS and analysis zero.",
+    "First commit hook formatted only guard line wrapping and rejected; staged formatting, retry hooks passed. No behavior change."
+  ],
+  "proof_limit": "New tests terminate injected importer with ArgumentError before key application. No actual decryption, restore/storage/backend/device qualification; local/cloud mutual exclusion remains separate. No parent ID upgraded."
+}
