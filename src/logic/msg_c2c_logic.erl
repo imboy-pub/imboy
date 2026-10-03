@@ -420,6 +420,9 @@ stage_and_send_c2c(
                             % C2C v3 消息都判 context_mismatch_sender_did。
                             Msg = message_ds:with_sender_device(Msg0, Data),
                             imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
+                            msg_c2c_delivery_ds:send_other_devices(
+                                CurrentUid, SenderDid, MsgId, Msg
+                            ),
                             % 离线推送（异步，不阻塞消息投递）
                             push_notification_logic:maybe_push_for_c2c(
                                 CurrentUid, ToId, MsgType, Payload
