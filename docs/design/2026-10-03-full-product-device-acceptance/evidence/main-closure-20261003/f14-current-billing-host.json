@@ -1,0 +1,57 @@
+{
+  "scope": "CURRENT_APP_BILLING_L0_HOST_REGRESSION_ONLY",
+  "app_head": "e406c303dce2421cd45ff8a794658bb2c9c18e9e",
+  "command": [
+    "flutter",
+    "test",
+    "test/unit_test/page/billing/",
+    "--reporter",
+    "expanded"
+  ],
+  "executed": 25,
+  "failed": 0,
+  "skipped": 0,
+  "exit_code": 0,
+  "artifact": {
+    "path": "f14-current-billing-host.log",
+    "sha256": "6bcab8eab0ede764e638be8ea2a5b10ba632998d23ecde2f64eb392ad5951386"
+  },
+  "sources": [
+    {
+      "path": "lib/page/billing/plan_list_page.dart",
+      "sha256": "eee10c1ecdd92ae85572ba6299847fb1be57bd7b5634e2506ea90d0b39551de3"
+    },
+    {
+      "path": "lib/page/billing/billing_provider.dart",
+      "sha256": "53a36fd177ae3c2af5a69ae8a5eb2ba9038441ee0a699b919b48004e7533bea8"
+    },
+    {
+      "path": "test/unit_test/page/billing/plan_list_page_test.dart",
+      "sha256": "ec014fd35c24fec9ad56d708f91d12374df33ad47570429bac331a390f423ec2"
+    },
+    {
+      "path": "test/unit_test/page/billing/billing_provider_test.dart",
+      "sha256": "f99310829181f1a45dc09aee5e1df3c938b5ba64b79f5f99442cba46bd8da715"
+    }
+  ],
+  "retry_binding": {
+    "input_id": "fn:billing:plan_list_page:005",
+    "test_source": "test/unit_test/page/billing/plan_list_page_test.dart",
+    "host_oracles": [
+      "PL-3 visible error/retry, tap retry => visible standard plan and API calls=2",
+      "PL-4 error then retry empty => visible empty-state, old error absent, API calls=2",
+      "PL-5 thrown request then retry => no leaked exception, empty-state, old error absent, API calls=2"
+    ]
+  },
+  "fake_api": true,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Host widget/provider fake API regressions do not close Android/macOS or real backend journeys",
+    "Inventory target gaps/placeholder oracles remain unchanged",
+    "No redundant implementation/test was added; existing oracle coverage verified at current App head"
+  ],
+  "review": "APPROVED_HOST_SCOPE_ONLY"
+}

@@ -4369,5 +4369,12 @@
     "required": 97,
     "qualified_pass": 0,
     "product_pass": false
+  },
+  "f14_current_billing_host": {
+    "receipt": "f14-current-billing-host.json",
+    "app_head": "e406c303dce2421cd45ff8a794658bb2c9c18e9e",
+    "executed": 25,
+    "exit_code": 0,
+    "product_pass": false
   }
 }
