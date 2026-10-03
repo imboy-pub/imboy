@@ -1,0 +1,26 @@
+{
+  "id": "F01-REQUIRED-IDENTITY-PLACEHOLDER-REJECTION",
+  "app_head": "4de37a4ef587f2815b141e36bc03898d6c346ff3",
+  "scope": "LOCAL_ACCEPTANCE_TOOLING_ONLY",
+  "executed": 165,
+  "failed": 0,
+  "exit_code": 0,
+  "red_failed_subcases": 5,
+  "red_exit_code": 1,
+  "review": "PYTHON_AND_GENERIC_APPROVED",
+  "product_pass": false,
+  "final_verifier": false,
+  "oracles": [
+    "Required case_id/platform/profile/role_variant cannot be TODO",
+    "Every required seed ID must be meaningful",
+    "Changing mappings to the same placeholder does not bypass rejection"
+  ],
+  "limits": [
+    "Structure gate only; not authentic runtime/business evidence",
+    "No original acceptance ID upgraded"
+  ],
+  "red_log": "f01-placeholder-identity-red.log",
+  "red_log_sha256": "dbe0feba6157b82b8ff42524750cbf8cd92d0d6b1fd4b25c7f1eafc6f7e8dc50",
+  "log": "f01-placeholder-identity-fixed.log",
+  "log_sha256": "a21447b38850566b2b05f6587456253d64089cd1822cf7b136897fd1ebcd1aad"
+}

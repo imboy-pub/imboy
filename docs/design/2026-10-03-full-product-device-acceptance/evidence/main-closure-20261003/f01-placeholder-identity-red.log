@@ -1,0 +1,45 @@
+.........
+======================================================================
+FAIL: test_required_case_identity_placeholders_are_rejected (test_acceptance_coverage.CoverageTests) (field='case_id')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_acceptance_coverage.py", line 40, in test_required_case_identity_placeholders_are_rejected
+    self.assertIn('COVERAGE_REQUIRED_CASES_INVALID_OR_PLACEHOLDER',
+AssertionError: 'COVERAGE_REQUIRED_CASES_INVALID_OR_PLACEHOLDER' not found in []
+
+======================================================================
+FAIL: test_required_case_identity_placeholders_are_rejected (test_acceptance_coverage.CoverageTests) (field='platform')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_acceptance_coverage.py", line 40, in test_required_case_identity_placeholders_are_rejected
+    self.assertIn('COVERAGE_REQUIRED_CASES_INVALID_OR_PLACEHOLDER',
+AssertionError: 'COVERAGE_REQUIRED_CASES_INVALID_OR_PLACEHOLDER' not found in []
+
+======================================================================
+FAIL: test_required_case_identity_placeholders_are_rejected (test_acceptance_coverage.CoverageTests) (field='profile')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_acceptance_coverage.py", line 40, in test_required_case_identity_placeholders_are_rejected
+    self.assertIn('COVERAGE_REQUIRED_CASES_INVALID_OR_PLACEHOLDER',
+AssertionError: 'COVERAGE_REQUIRED_CASES_INVALID_OR_PLACEHOLDER' not found in []
+
+======================================================================
+FAIL: test_required_case_identity_placeholders_are_rejected (test_acceptance_coverage.CoverageTests) (field='role_variant')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_acceptance_coverage.py", line 40, in test_required_case_identity_placeholders_are_rejected
+    self.assertIn('COVERAGE_REQUIRED_CASES_INVALID_OR_PLACEHOLDER',
+AssertionError: 'COVERAGE_REQUIRED_CASES_INVALID_OR_PLACEHOLDER' not found in []
+
+======================================================================
+FAIL: test_required_case_identity_placeholders_are_rejected (test_acceptance_coverage.CoverageTests) (field='seed_ids')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_acceptance_coverage.py", line 40, in test_required_case_identity_placeholders_are_rejected
+    self.assertIn('COVERAGE_REQUIRED_CASES_INVALID_OR_PLACEHOLDER',
+AssertionError: 'COVERAGE_REQUIRED_CASES_INVALID_OR_PLACEHOLDER' not found in []
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.002s
+
+FAILED (failures=5)

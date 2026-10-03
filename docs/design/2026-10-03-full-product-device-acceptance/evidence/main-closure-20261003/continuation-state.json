@@ -4224,5 +4224,12 @@
       "imboyadmin": "db995a9a9b14b8e7ff5d8ab241427db21dcf83a8"
     },
     "product_pass": false
+  },
+  "f01_required_identity_placeholder_rejection": {
+    "receipt": "f01-placeholder-identity.json",
+    "receipt_sha256": "6f3533ae811e03f67873a10be24c7f637d257a0b5d2c53fc43a6c454df693548",
+    "app_head": "4de37a4ef587f2815b141e36bc03898d6c346ff3",
+    "executed": 165,
+    "product_pass": false
   }
 }
