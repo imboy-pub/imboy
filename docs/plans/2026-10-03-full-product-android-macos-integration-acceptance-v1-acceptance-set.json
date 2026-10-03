@@ -64,10 +64,10 @@
     "F17-A03"
   ],
   "plan_sha256": "aeb4dc3da1d0c51ebecaf6a1edfad07558e3dbcaca6615e9c1b2e011b84832aa",
-  "seed_sha256": "54f2c6dd03500eff27c711e9287881b19720f2b0e6f3629428f167eb91a3d29e",
+  "seed_sha256": "6997c766e80dc15c0f32165dce840def834abecf1574913ab0bf3d84da64ba0b",
   "input_manifest_sha256": "3c6ce200a553c323c401209e7bbb205c0c4efc87e8bd6f720099e739746adc7b",
   "case_platform_set": "F00 freezes exact case/platform/profile/role keys by domain; FINAL gate requires global closure; 61 macro IDs never replace cases",
-  "version": "1.2",
+  "version": "1.3",
   "execution_contract_sha256": "1dcb770aae46c77142442c521d7becc490f5329b679e8e1c8868a7d40125eaf3",
   "dispatch_cards_sha256": "8523a3d4e664184f1253efad925bc8c925a173d685920ffffa918c1ee3480488",
   "upstream": {
@@ -82,5 +82,14 @@
     "previous_sha256": "86bd6362dcf08e494d64de816eee4cd29d845b78c353363790fe7cc2d11a26b0",
     "scope": "Dispatch coordinator-card mappings only; acceptance_ids unchanged",
     "requires_frozen_input_rebind": true
+  },
+  "source_parse_revision": {
+    "previous_version": "1.2",
+    "previous_acceptance_set_sha256": "458f3b25eb45c0ab90a880d9ddd78c7399b75421d88d01d463afb70bb389430f",
+    "previous_seed_sha256": "54f2c6dd03500eff27c711e9287881b19720f2b0e6f3629428f167eb91a3d29e",
+    "rows_feature_source_confirmed": 22,
+    "feature_texts_unchanged": true,
+    "requires_frozen_input_rebind": true,
+    "qualification": "Source feature column only; all platform mapping/scope/oracles remain unqualified"
   }
 }

@@ -1,0 +1,241 @@
+{
+  "id": "PREPARATION-F00-LEGACY-FEATURE-COLUMN-RECONCILIATION",
+  "scope": "SOURCE_PARSE_ONLY",
+  "product_pass": false,
+  "seed_rows": 1846,
+  "reviewed_rows": [
+    {
+      "seed_id": "LEGACY:group:group_file_audio_preview_page:009",
+      "legacy_doc": "test/auto_test/group/group_file_audio_preview_page.md",
+      "legacy_line": "16",
+      "source_sha256": "0e1ba614c4787161264aa9e82d08b4103c8a3f28c6ab22b2fe8b4175b9e9add0",
+      "feature_sha256": "d93d399ed4442602d55fb246a48a3681af9452b7c8cde8ed5850e35f7a9ce4fd",
+      "extra_delimiter_location": "PIPE_IN_NOTE_AFTER_FEATURE",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:group:launch_chat_page:010",
+      "legacy_doc": "test/auto_test/group/launch_chat_page.md",
+      "legacy_line": "17",
+      "source_sha256": "0419a13cfac75d2e6caf8fdd49c11e08a14396f55e84d5a5fa580a4e355a5e75",
+      "feature_sha256": "bb68840c6f7c96771dbaa2c35063b575364a0d91d45765c7d96f668a083d1086",
+      "extra_delimiter_location": "PIPE_IN_NOTE_AFTER_FEATURE",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:message_search_page:007",
+      "legacy_doc": "test/auto_test/search/message_search_page.md",
+      "legacy_line": "14",
+      "source_sha256": "1e0269b9c75522f593de45e7577be0f416a176a60d6d565b4f33a5dc8c728af3",
+      "feature_sha256": "f24b8b3329ba1674a6c8bf28628d58ac11d7b94a344b0c9fd62936d6c3c75af5",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:message_search_page:008",
+      "legacy_doc": "test/auto_test/search/message_search_page.md",
+      "legacy_line": "15",
+      "source_sha256": "1e0269b9c75522f593de45e7577be0f416a176a60d6d565b4f33a5dc8c728af3",
+      "feature_sha256": "77bb9c2ca5db25bc5f0f7474309c0697bf2e3ba1bbfc68d511334934a33995b4",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:message_search_page:010",
+      "legacy_doc": "test/auto_test/search/message_search_page.md",
+      "legacy_line": "17",
+      "source_sha256": "1e0269b9c75522f593de45e7577be0f416a176a60d6d565b4f33a5dc8c728af3",
+      "feature_sha256": "31948797ebb10a75dad7e8285eb06618b4945e10274ec93fd49b4e85ac3a0c8d",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:message_search_page:011",
+      "legacy_doc": "test/auto_test/search/message_search_page.md",
+      "legacy_line": "18",
+      "source_sha256": "1e0269b9c75522f593de45e7577be0f416a176a60d6d565b4f33a5dc8c728af3",
+      "feature_sha256": "394975a7cba160f8debe086c4d31d09255d5610bee8feeb76dec95cc5a2a1246",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:message_search_page:012",
+      "legacy_doc": "test/auto_test/search/message_search_page.md",
+      "legacy_line": "19",
+      "source_sha256": "1e0269b9c75522f593de45e7577be0f416a176a60d6d565b4f33a5dc8c728af3",
+      "feature_sha256": "14ff2a65de2485e974a3ef653dd0a3cce2021391d3e860be6bd691ff3491d2f5",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:search_chat_page:006",
+      "legacy_doc": "test/auto_test/search/search_chat_page.md",
+      "legacy_line": "13",
+      "source_sha256": "fa5f349a617dbdefc6a517e83a6d976788b243ba00e904fc2b4b78b13776ff4c",
+      "feature_sha256": "37878291d06fa54d367a7f238bb75992520dc3cbade852383d53488be3e02097",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:search_chat_page:007",
+      "legacy_doc": "test/auto_test/search/search_chat_page.md",
+      "legacy_line": "14",
+      "source_sha256": "fa5f349a617dbdefc6a517e83a6d976788b243ba00e904fc2b4b78b13776ff4c",
+      "feature_sha256": "89d4ec1f5434a7a65ae05e4aaecec370b38ed85fccba63d99a9e524bbe3c77a3",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:search_chat_page:008",
+      "legacy_doc": "test/auto_test/search/search_chat_page.md",
+      "legacy_line": "15",
+      "source_sha256": "fa5f349a617dbdefc6a517e83a6d976788b243ba00e904fc2b4b78b13776ff4c",
+      "feature_sha256": "6364e03b6a6b2f9808eb577f74c2f48dbc5f5d5f34217d705891863e9eae97b7",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:search_chat_page:009",
+      "legacy_doc": "test/auto_test/search/search_chat_page.md",
+      "legacy_line": "16",
+      "source_sha256": "fa5f349a617dbdefc6a517e83a6d976788b243ba00e904fc2b4b78b13776ff4c",
+      "feature_sha256": "394975a7cba160f8debe086c4d31d09255d5610bee8feeb76dec95cc5a2a1246",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:search_chat_page:010",
+      "legacy_doc": "test/auto_test/search/search_chat_page.md",
+      "legacy_line": "17",
+      "source_sha256": "fa5f349a617dbdefc6a517e83a6d976788b243ba00e904fc2b4b78b13776ff4c",
+      "feature_sha256": "5fca05da301f79d7eb14a15e01b8cc11ce5151d7bc733f9928631259a2f43167",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:web_search_page:002",
+      "legacy_doc": "test/auto_test/search/web_search_page.md",
+      "legacy_line": "9",
+      "source_sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "feature_sha256": "53b3bb3417bba99fe818567e4af6685554b98b5ef77d5b7f9e25a0404786450c",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:web_search_page:003",
+      "legacy_doc": "test/auto_test/search/web_search_page.md",
+      "legacy_line": "10",
+      "source_sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "feature_sha256": "242e16325eaca16c0d1ebc7c073a7a2c051fb4995949f8f03548d27899191aea",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:web_search_page:004",
+      "legacy_doc": "test/auto_test/search/web_search_page.md",
+      "legacy_line": "11",
+      "source_sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "feature_sha256": "adbdc63406f66cf4645cb89c73728921ebc23526f36c258459b1cee2681aecf9",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:web_search_page:005",
+      "legacy_doc": "test/auto_test/search/web_search_page.md",
+      "legacy_line": "12",
+      "source_sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "feature_sha256": "8ff3e20a7babc5ddccb3fc55b55eaff9e08754724d747c8200090ee749937349",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:web_search_page:006",
+      "legacy_doc": "test/auto_test/search/web_search_page.md",
+      "legacy_line": "13",
+      "source_sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "feature_sha256": "5cedac2e6c8bfa9fe0a1dc187d35b35e579fe620973b034f1ad27b18f72edcd0",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:web_search_page:007",
+      "legacy_doc": "test/auto_test/search/web_search_page.md",
+      "legacy_line": "14",
+      "source_sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "feature_sha256": "242481029df79a341aaa8e3873cfe0444d9dcc85dc991e26acb6c029481d5421",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:web_search_page:008",
+      "legacy_doc": "test/auto_test/search/web_search_page.md",
+      "legacy_line": "15",
+      "source_sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "feature_sha256": "42fd2cfaa90f6df4671bb8ecd1434da92b1cfea71f7f77c08954bd276db304dc",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:web_search_page:010",
+      "legacy_doc": "test/auto_test/search/web_search_page.md",
+      "legacy_line": "17",
+      "source_sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "feature_sha256": "e8039b6260f936464c87f6b71d6d4885254599de8fe75ec1e563174596dce190",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:web_search_page:011",
+      "legacy_doc": "test/auto_test/search/web_search_page.md",
+      "legacy_line": "18",
+      "source_sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "feature_sha256": "0a96dbd115a08a64897733814d8fdc265805393038fe3f68a1538d056d773557",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    },
+    {
+      "seed_id": "LEGACY:search:web_search_page:012",
+      "legacy_doc": "test/auto_test/search/web_search_page.md",
+      "legacy_line": "19",
+      "source_sha256": "f5b88258ed5417f6bc6379a12fb04addfff5c0654d701c9f699effb82314bb77",
+      "feature_sha256": "7165645fd614a929b7eb95229d56a82961f4ce6a870b5df092d5d2e11d17d31e",
+      "extra_delimiter_location": "EXTRA_TRAILING_EMPTY_COLUMN",
+      "feature_changed": false,
+      "product_pass": false
+    }
+  ],
+  "previous_seed_sha256": "54f2c6dd03500eff27c711e9287881b19720f2b0e6f3629428f167eb91a3d29e",
+  "current_seed_sha256": "6997c766e80dc15c0f32165dce840def834abecf1574913ab0bf3d84da64ba0b",
+  "remaining": "All Android/macOS mapping, business scope, real oracles and execution remain required. Original manifest records historical 22 malformed raw rows; it is not rewritten as current qualification.",
+  "review": "RUNNER_CODE_REVIEW_APPROVE",
+  "verification": {
+    "all_1846_rows_identical_except_22_parse_statuses": true,
+    "current_version_reference_errors": [],
+    "dispatch_coverage_errors": [],
+    "acceptance_id_errors": [],
+    "required_product_ids": 61,
+    "qualification": "SOURCE_PARSE_ONLY_NOT_F00_PASS"
+  },
+  "current_acceptance_set_sha256": "506a0f93b28b88a8ef3ccd1e25f96634df9f4d807b081efd6ae1f72eee5f1521"
+}

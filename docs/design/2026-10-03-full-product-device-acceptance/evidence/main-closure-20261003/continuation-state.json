@@ -2739,5 +2739,15 @@
       "upstream handoff and user UX review",
       "final verifier and frozen product gates"
     ]
+  },
+  "f00_legacy_feature_column_reconciliation": {
+    "evidence": "f00-legacy-feature-column-reconciliation.json",
+    "reviewed_rows": 22,
+    "total_rows": 1846,
+    "product_pass": false,
+    "current_seed_sha256": "6997c766e80dc15c0f32165dce840def834abecf1574913ab0bf3d84da64ba0b",
+    "current_acceptance_set_sha256": "506a0f93b28b88a8ef3ccd1e25f96634df9f4d807b081efd6ae1f72eee5f1521",
+    "requires_frozen_input_rebind": true,
+    "scope": "Feature column source parse only; platform mapping, business scope/oracles still required"
   }
 }
