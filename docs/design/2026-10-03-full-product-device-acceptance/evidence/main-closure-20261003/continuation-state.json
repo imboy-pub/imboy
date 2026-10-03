@@ -4968,5 +4968,29 @@
       "full_static_exit": 0,
       "catalog_check_exit": 0
     }
+  },
+  "websocket_offline_session_quarantine": {
+    "receipt": "websocket-offline-session-quarantine-20261004.json",
+    "app_head": "4a475cbbe7b4fa967f9b7d2db6cf9d77d5ff592a",
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": [],
+    "local_results": {
+      "ownership_red_exit": 1,
+      "ownership_red_failed": 3,
+      "ownership_red_passed": 3,
+      "dedup_red_exit": 1,
+      "dedup_red_failed": 1,
+      "dedup_red_passed": 10,
+      "restore_conflict_red_exit": 1,
+      "restore_conflict_red_failed": 2,
+      "restore_conflict_red_passed": 12,
+      "durable_quarantine_red_exit": 1,
+      "durable_quarantine_red_failed": 1,
+      "durable_quarantine_red_passed": 14,
+      "final_domain_exit": 0,
+      "final_domain_passed": 170,
+      "final_full_static_exit": 0,
+      "final_catalog_exit": 0
+    }
   }
 }

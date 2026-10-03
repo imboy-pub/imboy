@@ -1,0 +1,56 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+00:00 +0: send event consumption session changed=false
+🧹 [QUEUE] 启动定期清理 Timer
+> ws: 消息已发送 (synthetic-event) [C2C/unknown/PLAIN] [60 bytes]
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +1: send event consumption session changed=true
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +2: offline queue normal
+📥 [QUEUE] 入队: offline-normal, priority=0, 总数=1
+📤 [QUEUE] 出队: offline-normal, priority=0
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +3: offline queue other-owner
+📥 [QUEUE] 入队: offline-other-owner, priority=0, 总数=1
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +4: offline queue old-generation
+📥 [QUEUE] 入队: offline-old-generation, priority=0, 总数=1
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +5: offline queue unowned
+📥 [QUEUE] 入队: offline-unowned, priority=0, 总数=1
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +6: offline persistence restore-normal
+📤 [QUEUE] 出队: restore-normal, priority=0
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +7: offline persistence restore-other
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +8: offline persistence restore-legacy
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +9: flush stops after first frame changes session generation
+📥 [QUEUE] 入队: first, priority=0, 总数=1
+📥 [QUEUE] 入队: second, priority=0, 总数=2
+📤 [QUEUE] 出队: first, priority=0
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +10: retained stale ID does not block fresh session enqueue
+📥 [QUEUE] 入队: same-id, priority=0, 总数=1
+📥 [QUEUE] 入队: same-id, priority=0, 总数=2
+⚠️ [QUEUE] 消息已存在: same-id
+📤 [QUEUE] 出队: same-id, priority=0
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +11: priority updates require unambiguous account/session scope
+📥 [QUEUE] 入队: priority-id, priority=0, 总数=1
+📥 [QUEUE] 入队: priority-id, priority=0, 总数=2
+🔄 [QUEUE] 更新优先级: priority-id, 0 -> 2
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +12: All tests passed!

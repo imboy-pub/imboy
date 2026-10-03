@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_OFFLINE_QUEUE_OWNERSHIP_AND_DURABLE_CONFLICT_QUARANTINE",
+  "app_head": "4a475cbbe7b4fa967f9b7d2db6cf9d77d5ff592a",
+  "superseded_initial_app_commit": "7774806932ae464d9f1d5c6d20dc392fe35bea29",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_AFTER_BOTH_RESTORE_HIGH_FIXES",
+  "results": {
+    "ownership_red_exit": 1,
+    "ownership_red_failed": 3,
+    "ownership_red_passed": 3,
+    "dedup_red_exit": 1,
+    "dedup_red_failed": 1,
+    "dedup_red_passed": 10,
+    "restore_conflict_red_exit": 1,
+    "restore_conflict_red_failed": 2,
+    "restore_conflict_red_passed": 12,
+    "durable_quarantine_red_exit": 1,
+    "durable_quarantine_red_failed": 1,
+    "durable_quarantine_red_passed": 14,
+    "final_domain_exit": 0,
+    "final_domain_passed": 170,
+    "final_full_static_exit": 0,
+    "final_catalog_exit": 0
+  },
+  "oracles": [
+    "Actual connected fake sink replay only sends matching owner/current runtime generation. Foreign/unowned/stale rows are retained.",
+    "Real SharedPreferences restore: matching owner sends once, foreign/legacy rows remain blocked.",
+    "First fake frame triggers actual loginAfter generation bump with controlled token-write failure; later frames remain queued.",
+    "Scoped owner/generation/id dedup admits fresh same-ID retry without deleting stale row; ambiguous priority update refuses, explicit scope only updates target.",
+    "Restore identical owner/id/data only once; conflicting data persisted with quarantined=true and never automatically selected.",
+    "Actual expiry removes one conflict row, persistence retains survivor flag, reload still sends zero frames."
+  ],
+  "attempt_notes": [
+    "Initial 77748069 commit not qualified: final reviewer found restore duplicate and then non-durable quarantine HIGH; follow-up4a475cbb fixes both.",
+    "Intermediate domains165/166/167/169 were local iterations, not final completion. Multiple static attempts reported one missing-braces info, retained; final static clean.",
+    "All final170 domain/static/catalog commands ran after durable quarantine source changes; commit hooks made no formatting changes."
+  ],
+  "limitations": [
+    "No event-bus subscription or actual server/device transport oracle.",
+    "UID metadata is local routing isolation, not cryptographic authorization or payload authenticity.",
+    "Restored matching-owner entries bind current runtime generation; no preservation of historical login generation across process restarts.",
+    "Repeated init, concurrent persistence-write failures, capacity recovery and full producer/direct-send session isolation require separate qualification.",
+    "Foreign/unknown/quarantined entries remain subject to existing expiry/capacity policy; no automatic conflict resolution or original97-ID upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-dedup-red-20261004.log",
+      "sha256": "5d9676b69c9c9b3546e2b8ca4df3e1fb880b49823ac9c34a2d30e31f36c707d9"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-durable-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-durable-final-domain-20261004.log",
+      "sha256": "ba1f9bdd3d3bc45043da242280f5a14d51aaf5ffee27449f663821c7225b9063"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-durable-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-durable-quarantine-red-20261004.log",
+      "sha256": "5004ec9bf06af43ed8de2d6ddc118bbb086707c96951c73c21d900cd2ab03f2f"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-restoration-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-restoration-final-domain-20261004.log",
+      "sha256": "d5e64994df01ba98a369c24907d692ba265e42ef0b40a8cadea65a8e2ca0fa06"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-restoration-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-restore-conflict-red-20261004.log",
+      "sha256": "86822db64fc060733702548d0d67c17ea69f314b4d7f7aa7d23f991e2b544545"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-domain-20261004.log",
+      "sha256": "e9747c50d4171cc87a5f97a0a35a3f9bb732f543a900d2b730f079bb19c441cc"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-final-domain-20261004.log",
+      "sha256": "8a6b8fbbd9e1b9df3161acd50d166727e7e3b46ab3e6318e46bbfa401efd8ddc"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-final-focused-20261004.log",
+      "sha256": "a5c4eb3287b21635aea007d0e5c74d50fdaf81a1fab74ecdf80c2aa189be192a"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-final-green-20261004.log",
+      "sha256": "58bf3a60f039d7f50fd23fdea340b3f81bfa76b541a5fa091fe7e33dc7a5bc6d"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-final-static-20261004.log",
+      "sha256": "72b0babff26a1552c221ae67485fac033e293354a20501416ffdbaee15d0e2d1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-green-20261004.log",
+      "sha256": "73591f299c9ffdfe599de8506d39cc1eb934c1d76ec994f32486b490a5cade87"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-qualified-domain-20261004.log",
+      "sha256": "0c14304bdd674f2da735e24331aa6de82c469c181247ba3839a808eb01805cde"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-qualified-static-20261004.log",
+      "sha256": "72b0babff26a1552c221ae67485fac033e293354a20501416ffdbaee15d0e2d1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-red-20261004.log",
+      "sha256": "f4e0d031fcdbde75ca287bea5e5abd0610406e736ee3b8d22a9dac95caa1fb9d"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-static-20261004.log",
+      "sha256": "75a349a28e3e5d1a36a83f6392182c6b90031514ef4b1669dce66b8ccde2fe54"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-verified-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-verified-focused-20261004.log",
+      "sha256": "6a452c17325fadf3ce1efb389640128e4065cd7f1e2d9a09f4aa9dc708e34bc9"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-offline-session-verified-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    }
+  ]
+}
