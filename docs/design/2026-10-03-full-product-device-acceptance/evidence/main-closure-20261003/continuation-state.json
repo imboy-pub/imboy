@@ -4644,5 +4644,11 @@
     "backend_head": "522d9cc52b7824c42392639ccc979f0d3ffa6771",
     "tests": 24,
     "product_pass": false
+  },
+  "f14_backend_usage_log_privacy": {
+    "receipt": "billing-usage-log-privacy.json",
+    "backend_head": "2d06a75de5384f81be4807a9e28f0516d32ee779",
+    "tests": 25,
+    "product_pass": false
   }
 }

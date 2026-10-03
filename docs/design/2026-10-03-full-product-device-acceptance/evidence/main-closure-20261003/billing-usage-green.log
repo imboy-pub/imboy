@@ -1,0 +1,30 @@
+======================== EUnit ========================
+module 'billing_logic_tests'
+  billing_logic_tests: validate_plan_test...ok
+  billing_logic_tests: period_ms_test...ok
+  billing_logic_tests: resolve_period_test...[0.001 s] ok
+  billing_logic_tests: pad2_test...ok
+  billing_logic_tests: encode_jsonb_test...[0.002 s] ok
+  billing_logic_tests: decode_jsonb_test...ok
+  billing_logic_tests: ts_ms_to_sql_test...ok
+  billing_logic_tests: t1_owner_allowed...[0.002 s] ok
+  billing_logic_tests: t2_other_user_denied...[0.002 s] ok
+  billing_logic_tests: t3_ownerless_legacy_denied...[0.002 s] ok
+  billing_logic_tests: t4_missing_subscription_denied...[0.002 s] ok
+  billing_logic_tests: t5_invalid_sub_id_denied...[0.002 s] ok
+  billing_logic_tests: t6_invalid_uid_denied...[0.002 s] ok
+  billing_logic_tests: t7_invoice_owner_allowed...[0.004 s] ok
+  billing_logic_tests: t8_invoice_other_user_denied...[0.003 s] ok
+  billing_logic_tests: t9_invoice_missing_denied...[0.002 s] ok
+  billing_logic_tests: t10_denial_message_does_not_leak_existence...[0.004 s] ok
+  billing_logic_tests: t11_pay_gateway_extra_passthrough...[0.002 s] ok
+  billing_logic_tests: t12_pay_gateway_no_extra_compat...[0.002 s] ok
+  billing_logic_tests: t13_pay_envelope_aligned_with_recharge...[0.002 s] ok
+  billing_logic_tests: t14_gateway_failure_log_privacy...[0.003 s] ok
+  billing_logic_tests: t15_mark_paid_failure_log_privacy...[0.004 s] ok
+  billing_logic_tests: cancel_failure_privacy_test...[0.021 s] ok
+  billing_logic_tests: renew_failure_privacy_test...[0.028 s] ok
+  billing_logic_tests: usage_failure_privacy_test...[0.034 s] ok
+  [done in 0.545 s]
+=======================================================
+  All 25 tests passed.
