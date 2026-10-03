@@ -4568,5 +4568,11 @@
     "app_head": "ef94a3d923193b9a7971a07f653f5a66e046667b",
     "tests": 26,
     "product_pass": false
+  },
+  "f14_invalid_invoice_evidence": {
+    "receipt": "billing-invoice-invalid.json",
+    "app_head": "b701579d93ca228e1b3d5f4a7f3734e4196bb014",
+    "tests": 30,
+    "product_pass": false
   }
 }

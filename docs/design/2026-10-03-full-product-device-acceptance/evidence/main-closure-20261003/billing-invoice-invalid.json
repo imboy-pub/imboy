@@ -1,0 +1,31 @@
+{
+  "scope": "LOCAL_BILLING_EMPTY_OR_MALFORMED_INVOICE_FAILURE_FIX",
+  "app_head": "b701579d93ca228e1b3d5f4a7f3734e4196bb014",
+  "tests": 30,
+  "exit_code": 0,
+  "red_exit_code": 1,
+  "red_failed_cases": 2,
+  "analysis_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "billing-invoice-invalid-red.log",
+      "sha256": "a04475c96e800dc281cd910fb2369dc44008d915cd2ccc9bed5b58219ee854c6"
+    },
+    {
+      "path": "billing-invoice-invalid-green.log",
+      "sha256": "99be6050732c135cb866059095d1af3ff7ba0615293709a210829425736de1b7"
+    },
+    {
+      "path": "billing-invoice-invalid-analysis.log",
+      "sha256": "e6dafd5e579608273541d3670edc1dd619d357dd318da4bb48670c04292c2d4a"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Real BillingNotifier with fake API, no device/database/payment execution",
+    "Empty, missing invoice number and mixed invalid list reject success; valid all-paid branch retained",
+    "No cross-subscription invoice ownership or actual accounting qualification"
+  ]
+}
