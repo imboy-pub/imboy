@@ -418,14 +418,16 @@ pay_invoice(InvoiceNo, Method) ->
         true ->
             {error, <<"账单不存在"/utf8>>};
         false ->
-            Status = maps:get(<<"status">>, Inv, 0),
+            Status = maps:get(<<"status">>, Inv, undefined),
             case Status of
                 ?INV_UNPAID ->
                     do_pay_invoice(Inv, InvoiceNo, Method);
                 1 ->
                     {error, <<"账单已支付"/utf8>>};
+                2 ->
+                    do_pay_invoice(Inv, InvoiceNo, Method);
                 _ ->
-                    do_pay_invoice(Inv, InvoiceNo, Method)
+                    {error, <<"账单状态不允许支付"/utf8>>}
             end
     end.
 

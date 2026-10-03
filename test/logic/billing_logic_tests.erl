@@ -194,7 +194,9 @@ pay_invoice_test_() ->
         fun t12_pay_gateway_no_extra_compat/0,
         fun t13_pay_envelope_aligned_with_recharge/0,
         fun t14_gateway_failure_log_privacy/0,
-        fun t15_mark_paid_failure_log_privacy/0
+        fun t15_mark_paid_failure_log_privacy/0,
+        fun t16_unknown_invoice_status_rejected/0,
+        fun t17_overdue_invoice_can_pay/0
     ]}.
 
 pay_setup() ->
@@ -495,3 +497,33 @@ assert_billing_event(Event, Count) ->
         )
     ),
     ?assertEqual(Count, meck:num_calls(elib_log, internal_log, 4)).
+
+t16_unknown_invoice_status_rejected() ->
+    lists:foreach(
+        fun(Status) ->
+            meck:expect(billing_invoice_ds, find_by_invoice_no, fun(?INV_NO) ->
+                #{
+                    <<"invoice_no">> => ?INV_NO,
+                    <<"amount">> => 39000,
+                    <<"status">> => Status
+                }
+            end),
+            meck:expect(payment_gateway, pay, fun(_, _, _) -> {ok, ?PAY_NO} end),
+            ?assertMatch({error, _}, billing_logic:pay_invoice(?INV_NO, <<"mock">>))
+        end,
+        [-1, 99, null, <<"0">>]
+    ),
+    meck:expect(billing_invoice_ds, find_by_invoice_no, fun(?INV_NO) ->
+        #{<<"invoice_no">> => ?INV_NO, <<"amount">> => 39000}
+    end),
+    ?assertMatch({error, _}, billing_logic:pay_invoice(?INV_NO, <<"mock">>)),
+    ?assertEqual(0, meck:num_calls(payment_gateway, pay, 3)),
+    ?assertEqual(0, meck:num_calls(billing_invoice_ds, mark_paid, 2)).
+
+t17_overdue_invoice_can_pay() ->
+    meck:expect(billing_invoice_ds, find_by_invoice_no, fun(?INV_NO) ->
+        #{<<"invoice_no">> => ?INV_NO, <<"amount">> => 39000, <<"status">> => 2}
+    end),
+    meck:expect(payment_gateway, pay, fun(_, _, _) -> {ok, ?PAY_NO} end),
+    ?assertMatch({ok, _}, billing_logic:pay_invoice(?INV_NO, <<"mock">>)),
+    ?assertEqual(1, meck:num_calls(payment_gateway, pay, 3)).
