@@ -307,3 +307,18 @@ Pushgateway 自身宕机（`up=0`）由部署侧 scrape 存活验证负责，不
    恢复演练待服务器授权后安排（见第七章）。
 7. **手动模式现场状态未绑定**：2026-10-01 手动 SNI 实施后的实际 nginx/LiveKit/
    eturnal 状态为历史采样陈述，待授权后重新采样绑定（见文首状态注记）。
+
+### 2026-10-03 后续进展 / Subsequent progress
+
+上列是早期候选时点记录。本轮已只读复采实际 nginx 实例、Compose 来源、
+镜像、证书与 cron；8 个文件、13 个 server 巡检健康，现役脚本 hash 与
+main 相同。cron 与日志轮转已有历史上线记录；preflight fixture 已修复，
+48 项全过，安装器沙箱当前 129 项全过。当前来源与恢复候选见
+[手动恢复合同](l4-sni-manual-recovery.md)，不能把该候选当成恢复已演练。
+
+用户指定 Android MRD AL00 + macOS App。macOS 正式入口缺参负例已实际
+运行并以 exit 1 拒绝；这不构成 TLS relay 或媒体 PASS。真实连接与媒体
+仍待合成账号、资源租约、测试地址和网络条件确认。
+监控按用户决定仅完成默认关闭的配置开关与步骤，不启动、不对接；
+入口见 [监控 runbook](l4-sni-monitoring-deployment-runbook.md)。
+原 CL-TEST/CL-DEVICE 状态不变，RELEASE=NO_GO。

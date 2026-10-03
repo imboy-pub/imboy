@@ -143,6 +143,15 @@ eturnal 停用及 livekit.env/overlay 变更；历史采样陈述，采样日期
 清单见 `docs/guides/operations/deployment/livekit-turn-443-l4-sni.md`（候选实现/
 待上线口径）。
 
+**2026-10-03 后续记录**：上述为 Wave A 时点。后续服务器只读复采确认巡检
+cron 正常，现役巡检脚本与 main hash 一致；实际 LiveKit 使用单文件 Compose
+与 standalone `docker-compose`，手动恢复候选已按此来源整理。监控按用户
+决定只完成默认关闭的开关及步骤，不启动、不对接。设备组合确认为 Android
+MRD AL00 + macOS App；macOS 严格入口缺参负例退出 1，不算 relay/媒体证据。
+真实连接、双向媒体与完整矩阵仍待合成账号和资源条件。当前证据 run 为
+`.Codex/runs/20261003-l4-sni-main-completion/`；本补记不改变原 Acceptance ID
+或原合同状态，RELEASE=NO_GO。
+
 ## 2. 目标、边界与授权
 
 ### 2.1 唯一目标
