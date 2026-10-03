@@ -1,0 +1,10 @@
+{
+  "scope": "STATIC_CASE_DESIGN_INTEGRITY_ONLY",
+  "case_map": "bottom-navigation-current-case-map-20261004.json",
+  "sha256": "7542e5d1f403afd62b293b7e385d7b20590cc895be76bb36d41e1e229903d5b5",
+  "exact_functions": 12,
+  "platform_cells": 24,
+  "source_hashes_verified": 10,
+  "exit_code": 0,
+  "product_pass": false
+}

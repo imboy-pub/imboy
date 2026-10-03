@@ -5224,5 +5224,13 @@
     "focused": 45,
     "exit_code": 0,
     "product_pass": false
+  },
+  "f00_bottom_navigation_current_mapping": {
+    "receipt": "bottom-navigation-current-case-map-20261004.json",
+    "app_head": "557422d096d4f83d2558562c90f9aae9b3ddcf47",
+    "functions": 12,
+    "scope": "F00_CURRENT_BOTTOM_NAVIGATION_EXACT_CASE_DESIGN",
+    "product_pass": false,
+    "device_target_status": "NOT_IMPLEMENTED"
   }
 }

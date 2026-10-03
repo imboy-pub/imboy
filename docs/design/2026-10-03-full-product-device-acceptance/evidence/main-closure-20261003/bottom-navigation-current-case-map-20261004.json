@@ -1,0 +1,288 @@
+{
+  "schema_version": 1,
+  "scope": "F00_CURRENT_BOTTOM_NAVIGATION_EXACT_CASE_DESIGN",
+  "app_head": "557422d096d4f83d2558562c90f9aae9b3ddcf47",
+  "source_hashes": [
+    {
+      "path": "lib/page/bottom_navigation/bottom_navigation_page.dart",
+      "sha256": "c6651dd16d361b47973d17b79a3980b4ef788d9037c36b76ff86ce4c1c854737"
+    },
+    {
+      "path": "lib/page/bottom_navigation/bottom_navigation_provider.dart",
+      "sha256": "81f1e1e5f3334bde5efa0dc6c80483e6e7d0cc0374d387264302b2978c4aba5b"
+    },
+    {
+      "path": "lib/config/router/app_router.dart",
+      "sha256": "99d7bd20e8ecfc7596cf1bca9dd3158fb3c9107c8c44203db9a5a98f85fdf4ff"
+    },
+    {
+      "path": "lib/page/chat_shell/chat_shell_bootstrap.dart",
+      "sha256": "fe3a11fbade9fe3a1ddddc87b944f46ea93ebb4a031504760dace0b11bcc2f59"
+    },
+    {
+      "path": "lib/page/chat_shell/chat_shell_page.dart",
+      "sha256": "2086296f2d7799caf9cff6ce053c3f4ab71a9916b0b2179a6666d6a74e2aafa2"
+    },
+    {
+      "path": "lib/page/chat_shell/chat_shell_breakpoint.dart",
+      "sha256": "3e72f4ac8b4549c4f06ce7ad9f95ed902cc0b7de57163bb5217eab5c399d5fda"
+    },
+    {
+      "path": "lib/theme/default/app_breakpoints.dart",
+      "sha256": "effdfac69f4aefcb7ec15a0bca7f208708835f2c94683180531ad77cf04a441e"
+    },
+    {
+      "path": "lib/service/websocket_status_provider.dart",
+      "sha256": "fd6ba910876570754dd262623aa56fa3a74b511cef3b3cab69d4d60906ce8138"
+    },
+    {
+      "path": "test/auto_test/bottom_navigation/bottom_navigation_page.md",
+      "sha256": "2e325ebc181004ebea5a453d4cfa4c9582c46d0e3e21e33d3b07b89aecd1bdd9"
+    },
+    {
+      "path": "test/auto_test/functional_inventory.json",
+      "sha256": "32ef000eb3e93f0d4f4f3a078569b6dfeac549baecc1790235f141c3fcc9feea"
+    }
+  ],
+  "cases": [
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:001",
+      "legacy_action": "点击底部标签切换对应主页面",
+      "source_control": "tab_conversations/tab_contacts/tab_channel/tab_mine; NavigationRail destinations",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F02",
+        "F03",
+        "F07",
+        "F08"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "在 chat profile、实际宽度<900 的已认证壳内逐项点击。校验选中标签与当前可见 PageView 页面一致；频道只在编译组件存在且开关启用时参与排序；页面存在于树内不能代替可见性。",
+      "fixture_and_entry": "从正常登录进入当前 /bottom_navigation 路由，记录有效 experience、宽度、渠道开关和可见标签。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:002",
+      "legacy_action": "消息标签展示未读消息数角标",
+      "source_control": "conversationProvider.chatMsgRemindCounter -> _buildNavigationIcon",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F03"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "独立造数并确认账号所属未读状态，刷新实际会话后，消息角标分别验证0无徽章、1对应值、100显示99+；查看后根据已读事实递减。不能仅注入计数provider作为设备结果。",
+      "fixture_and_entry": "仅使用获授权隔离账号/会话与真实未读消息，独立SQL或受控API确认未读事实。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:003",
+      "legacy_action": "联系人标签展示新好友提醒角标",
+      "source_control": "newFriendRemindProvider -> _buildNavigationIcon",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F02",
+        "F15"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "提醒按当前UID、to、status=0筛选并按from去重；同一发送者多条仍计1，非当前账号和已处理项不计；确认可见徽章与独立去重集合大小一致。",
+      "fixture_and_entry": "隔离new_friend夹具含重复发送者、已处理与跨账号负例；账号切换后复验。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:004",
+      "legacy_action": "频道标签汇总订阅未读数角标",
+      "source_control": "compiledChannelUnreadCount(ref) -> tab_channel",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F07"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "启用且已编译频道时，独立确认订阅的未读总数，与频道徽章0/1/99+及读后变化对应；未订阅或跨账号频道不计。",
+      "fixture_and_entry": "获授权的隔离订阅、频道消息与权限夹具；记录有效频道profile。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:005",
+      "legacy_action": "我的标签展示长连接三态指示点",
+      "source_control": "webSocketStatusProvider -> tab_mine status BadgeWidget",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F01",
+        "F03"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "真实已连接、连接中、断开状态分别对应绿色、橙色、红色token（含暗色变体）；用同会话WS连接日志/事件与屏幕关联，截图或手工注入事件不能证明真实连接。",
+      "fixture_and_entry": "仅在已授权隔离WS端点控制断开与重连，记录session和有效endpoint；不影响共享服务。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:006",
+      "legacy_action": "频道开关关闭时隐藏频道标签",
+      "source_control": "_isTabEnabled(channel_tab) && compiledChannelListPage()!=null",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F07"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "冻结编译profile及运行时channel=false，频道标签/内容均不可达，其他标签仍可操作且选择索引归一化；channel=true且组件存在时恢复频道。",
+      "fixture_and_entry": "分别使用允许的隔离profile；缺组件与功能禁用分开记录，不能以缺编译组件证明开关效果。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:007",
+      "legacy_action": "路由参数指定进入时的初始标签",
+      "source_control": "GoRouterState.uri.queryParameters -> resolveInitialIndex",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F02"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "进入当前生产注册路由时保存实际URI：index=2在有效三/四标签列表内选中对应标签；缺参数使用provider fallback，非法字符串回到0。分别记录内部导航及真实深链经认证/Splash重定向后的URI；纯函数PASS不证明深链可达。",
+      "fixture_and_entry": "chat profile、width<900；内部导航与系统深链分别执行，重定向丢query必须记失败/阻塞，不静默排除。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:008",
+      "legacy_action": "越界标签下标归一化到合法范围",
+      "source_control": "normalizeIndex; build rawBottomBarIndex reconciliation",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F07"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "对固定tabCount3/4验证负值归0、大值归最后一项；设备在频道关闭/恢复后，当前选中项与PageView同步归一化且无越界异常；不得只测函数替代设备状态变化。",
+      "fixture_and_entry": "记录实际标签列表及运行时开关变化，控制初始路由index。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:009",
+      "legacy_action": "平板宽度改用侧边导航栏布局",
+      "source_control": "AppBreakpoints.mobile/wide -> NavigationRail vs GlassBottomNavigationBar",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F16"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "chat体验下实际宽度599显示底栏，600和899显示NavigationRail且无底栏；900由ChatShell选择桌面壳，不能声称仍在本页。每个布局验证各标签可见且点击切换页面。",
+      "fixture_and_entry": "真机/桌面窗口授权租约；记录实际逻辑宽度和恢复前后值，不擅自改变外部设备配置。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:010",
+      "legacy_action": "按系统返回键不退出应用",
+      "source_control": "PopScope(canPop:false)",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F02",
+        "F16"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "Android系统返回动作后仍保持同一已认证应用/壳与当前标签，不能只用页面内返回替代；macOS无Android返回键，需记录实际窗口/路由返回动作和平台适用性，交协调者按合同冻结。",
+      "fixture_and_entry": "Android真机系统返回资源授权；macOS平台动作尚需确认，不删除原required格子。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:011",
+      "legacy_action": "换设备后首屏弹一次密钥恢复引导",
+      "source_control": "_maybeShowE2EERecoveryGuide; kE2eeNewDeviceGuidePendingKey",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F08",
+        "E2EE-C13"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "授权换设备路径生成pending标记后，首次首页展示恢复引导；同会话重建首页不再展示，标记消费为false；取消引导不宣称密钥恢复成功，后续恢复另由E2EE旅程验证。",
+      "fixture_and_entry": "真实合成账号换设备夹具及本地标记审计；仅测试环境可注入，不触及用户密钥。"
+    },
+    {
+      "function_id": "fn:bottom_navigation:bottom_navigation_page:012",
+      "legacy_action": "切换语言后标签文案同步刷新",
+      "source_control": "LocaleSettings.getLocaleStream -> setState; context.t navigation labels",
+      "owner": "F14 navigation remaining-directory mapping",
+      "dependencies": [
+        "F08",
+        "F16"
+      ],
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "required": true,
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTED",
+      "business_oracle": "保持当前账号/标签，切换两种已支持语言；消息、组织目录、频道（若启用）和我的标签按实际翻译刷新，选中页面与未读状态保持；移除组件后语言事件无dispose异常。",
+      "fixture_and_entry": "获授权设备的本地语言设置与恢复步骤，冻结语言代码及有效feature profile。"
+    }
+  ],
+  "entry_constraints": [
+    "/bottom_navigation -> ChatShellBootstrap; workspace profile selects WorkspaceShell, not this page.",
+    "chat profile width<900 selects BottomNavigationPage; width>=900 selects WebShellBootstrap.",
+    "inventory route_registered=false is not proof of unreachability; wrapper route exists, runtime reachability unqualified."
+  ],
+  "unresolved": [
+    "No executable exact-function device target registered for these twelve IDs.",
+    "macOS system-back equivalence must be frozen without deleting original requirement.",
+    "Deep link query preservation must be observed through actual redirects."
+  ],
+  "authorization": "Device/backend/synthetic-account leases still pending; no device or external action executed.",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "inventory_gap_counts_changed": false
+}
