@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_RECOVERY_SCAN_SESSION_AND_QUEUE_EPOCH",
+  "app_head": "1ab08bb7e0a635f322970a857c1be2da6f304dea",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_LOCAL_SCOPE",
+  "results": {
+    "valid_red_exit": 1,
+    "valid_red_passed": 7,
+    "valid_red_failed": 2,
+    "focused_exit": 0,
+    "focused_passed": 9,
+    "domain_exit": 0,
+    "domain_files": 9,
+    "domain_passed": 61,
+    "full_static_exit": 0,
+    "catalog_check_exit": 0
+  },
+  "oracles": [
+    "Real recovery scan of in-memory sending row. Actual loginAfter generation increment with synthetic token-write failure before UID commit invalidates scan.",
+    "Clear queue while scan awaits query invalidates old scan; it cannot repopulate queue.",
+    "Normal recovery registers queued entry; stale and cleared scans do not. Unexpected transport adapter count stays zero."
+  ],
+  "attempt_notes": [
+    "First red log mistakenly ran only original six cases because new list insertion missed; NOT qualifying. Corrected valid-red ran9:7PASS2FAIL."
+  ],
+  "limitations": [
+    "Dispose and multi-page later continuation not independently dynamically tested; shared epoch guards reviewed in source.",
+    "Already-started DB operations cannot be rolled back; UI and asynchronous WebSocket event consumer remain pending.",
+    "No completed device account-switch or original97-ID acceptance upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-scan-session-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-scan-session-domain-20261004.log",
+      "sha256": "42bf471a322511304279d184cefc652f541db6305d9f77ecff146902c10238f4"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-scan-session-green-20261004.log",
+      "sha256": "287e7a56bf76b2cec2099863f523ff673578aac1d0db8f5f1d941e5b0c16dd89"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-scan-session-red-20261004.log",
+      "sha256": "72335d7077dd9c75712a8f4bff949036f6a5c1587487c46b643a0514569149fa"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-scan-session-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-scan-session-valid-red-20261004.log",
+      "sha256": "16edf511a089410d626ff913f2f2224d5f813fb99889657393544bee34e41330"
+    }
+  ]
+}

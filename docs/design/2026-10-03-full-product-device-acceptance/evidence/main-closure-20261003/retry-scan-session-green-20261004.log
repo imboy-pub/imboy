@@ -1,0 +1,61 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: retry stage=manual-normal
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: retry-synthetic, type=C2C
+手动重试已提交，等待确认: retry-synthetic
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+⚠️ toTypeMessage: E2EE 解密失败，error=MissingPluginException
+📊 [E2EE_METRICS] decrypt failure: decrypt_failed total=1
+00:00 +1: retry stage=manual-stale
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:00 +2: retry stage=auto-normal
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: retry-synthetic, type=C2C
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+重试发送消息: retry-synthetic, 第1次重试
+消息重试已提交，等待确认: retry-synthetic
+⚠️ toTypeMessage: E2EE 解密失败，error=MissingPluginException
+00:00 +3: retry stage=auto-queued
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: retry-synthetic, type=C2C
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+00:00 +4: retry stage=auto-inflight
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: retry-synthetic, type=C2C
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+00:00 +5: retry stage=auto-clear
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+消息加入重试队列: retry-synthetic, type=C2C
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+00:00 +6: retry stage=scan-normal
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+消息加入重试队列: retry-synthetic, type=C2C
+✅ [RETRY_SCAN] 添加失败消息到重试队列: msgId=retry-synthetic, status=10, table=c2c
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+📊 [RETRY_SCAN] 扫描完成: 发现 1 条失败消息，添加 1 条到重试队列
+🚀 [RETRY_SCAN] 网络已连接，立即重试失败消息...
+00:00 +7: retry stage=scan-stale
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+00:00 +8: retry stage=scan-clear
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+00:00 +9: (tearDownAll)
+00:00 +9: All tests passed!

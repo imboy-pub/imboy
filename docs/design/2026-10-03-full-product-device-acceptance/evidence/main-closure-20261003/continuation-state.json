@@ -4933,5 +4933,23 @@
       "full_static_exit": 0,
       "catalog_check_exit": 0
     }
+  },
+  "recovery_scan_session_epoch": {
+    "receipt": "recovery-scan-session-epoch-20261004.json",
+    "app_head": "1ab08bb7e0a635f322970a857c1be2da6f304dea",
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": [],
+    "local_results": {
+      "valid_red_exit": 1,
+      "valid_red_passed": 7,
+      "valid_red_failed": 2,
+      "focused_exit": 0,
+      "focused_passed": 9,
+      "domain_exit": 0,
+      "domain_files": 9,
+      "domain_passed": 61,
+      "full_static_exit": 0,
+      "catalog_check_exit": 0
+    }
   }
 }
