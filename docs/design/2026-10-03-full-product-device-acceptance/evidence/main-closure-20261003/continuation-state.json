@@ -422,13 +422,13 @@
   },
   "customer_service_semantic_mapping": {
     "artifact": "cs-governance-semantic-map.json",
-    "app_candidate": "b633066f021ee3527d3ced57f12a457755224c4f",
-    "local_regression_tests": 32,
+    "app_candidate": "640cf96633a5991d098859d90cd4e182096a561d",
+    "local_regression_tests": 34,
     "test_exit": 0,
     "analysis_exit": 0,
     "review": "APPROVED_LOCAL_TEST_SCOPE",
     "mapped_source_controls": 14,
-    "partially_asserted_controls": 5,
+    "partially_asserted_controls": 3,
     "device_and_backend_journeys": "NOT_EXECUTED",
     "product_pass": false,
     "historical_31_test_logs": [
@@ -451,7 +451,7 @@
         "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
       }
     ],
-    "logs": [
+    "historical_pagination_recovery_logs": [
       {
         "path": "cs-governance-pagination-recovery-suite.log",
         "sha256": "c00872d7e3f075aec682eb8b58819102eedf53321ff75527e0198b0313dcf097"
@@ -459,6 +459,20 @@
       {
         "path": "cs-governance-pagination-recovery-analyze.log",
         "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
+      }
+    ],
+    "logs": [
+      {
+        "path": "cs-pagination-race-completion-green.log",
+        "sha256": "8c9288af77e67f260dd2297d61f4218770fe7340b9ef9e3662e5072b80b8e8f1",
+        "phase": "REVIEWED_LOCAL_REGRESSION_PASS",
+        "exit": 0
+      },
+      {
+        "path": "cs-pagination-race-analyze.log",
+        "sha256": "2fb8fff5d10fb08bc072e281119616a11d0f55cec85b979d607f33c06384eeb9",
+        "phase": "STATIC_ANALYSIS_PASS",
+        "exit": 0
       }
     ]
   },
@@ -510,5 +524,56 @@
       "Stale pagination response after organization switch",
       "Real backend and Android/macOS journeys"
     ]
+  },
+  "customer_service_pagination_race_gate": {
+    "scope": "LOCAL_HOST_ASSERTIONS_ONLY",
+    "app_candidate": "640cf96633a5991d098859d90cd4e182096a561d",
+    "command": "flutter test test/customer_service/cs_governance_page_widget_test.dart test/customer_service/cs_governance_api_contract_test.dart test/customer_service/cs_governance_pagination_race_test.dart --reporter expanded",
+    "executed": 34,
+    "exit": 0,
+    "analysis_exit": 0,
+    "review": "APPROVED_AFTER_COMPLETION_BARRIER_REPAIR",
+    "attempts": [
+      {
+        "path": "cs-pagination-race-before-completion-review.log",
+        "sha256": "1f7b8ecaa1b715043e5b7f510028415c9f39b6bbf5357ffab4388f67069132ac",
+        "phase": "PRE_REVIEW_INCOMPLETE_ORACLE",
+        "exit": 0
+      },
+      {
+        "path": "cs-pagination-race-invalid-variable.log",
+        "sha256": "a5f76a8ea9fd586296209dac37197b71b1cee53561396cd86b60fc5736f61eb8",
+        "phase": "TEST_COMPILATION_FAILURE",
+        "exit": 1
+      },
+      {
+        "path": "cs-pagination-race-clock-timeout.log",
+        "sha256": "c3b7d759e098e08ebc3c779343159bdb2a5d12886577a9ba45fc82b8a8b3e420",
+        "phase": "TEST_CLOCK_SYNCHRONIZATION_FAILURE",
+        "exit": 1
+      },
+      {
+        "path": "cs-pagination-race-completion-green.log",
+        "sha256": "8c9288af77e67f260dd2297d61f4218770fe7340b9ef9e3662e5072b80b8e8f1",
+        "phase": "REVIEWED_LOCAL_REGRESSION_PASS",
+        "exit": 0
+      },
+      {
+        "path": "cs-pagination-race-analyze.log",
+        "sha256": "2fb8fff5d10fb08bc072e281119616a11d0f55cec85b979d607f33c06384eeb9",
+        "phase": "STATIC_ANALYSIS_PASS",
+        "exit": 0
+      },
+      {
+        "path": "cs-pagination-race-baseline-red.log",
+        "sha256": "3f1d975395c9600fb560818f458b7647e7e5c87999b3078aec9e64e51a7cb23d",
+        "phase": "VALIDATED_BASELINE_BUSINESS_FAILURE",
+        "exit": 1
+      }
+    ],
+    "baseline_source_sha256": "510b09202812802282e772885a076ad3f1b20546240d21711d0a5bcc747c97a1",
+    "baseline_red_oracle": "Expected no identityB in current orgB; old implementation appended stale orgA identityB after actual handler completion",
+    "product_pass": false,
+    "device_and_backend_journeys": "NOT_EXECUTED"
   }
 }
