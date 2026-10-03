@@ -2410,5 +2410,34 @@
       "complete final verifier",
       "97-ID frozen qualification"
     ]
+  },
+  "f01_defect_closure_records": {
+    "id": "PREPARATION-F01-DEFECT-CLOSURE-RECORDS",
+    "scope": "FROZEN_DEFECT_RECORD_CORRELATION_ONLY",
+    "product_pass": false,
+    "network_executed": false,
+    "app_head": "b64bfa0620521af18c1e33dc35d243366ae60772",
+    "executed": 116,
+    "exit": 0,
+    "log": {
+      "path": "f01-defect-closure-records.log",
+      "sha256": "71ae493bf0d533eaa4bf62352dd37b0a35a927feb6365d3a9695040c59f3cf2b"
+    },
+    "reviews": [
+      "PYTHON_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "requirements": [
+      "Mandatory explicit frozen and recorded defect inventories with exact IDs and unchanged severity",
+      "P0/P1 OPEN prevents clean execution record gate",
+      "Every CLOSED defect covers exact frozen nonempty unique four-dimensional retest set",
+      "Each hashed closure links current candidate and frozen case/run/attempt/event artifact"
+    ],
+    "proof_limit": "Synthetic record tests do not prove discovery completeness, reproduction, fix correctness, genuine business oracles or device execution. Nonempty execution and successful raw events are checked by other mandatory composition gates.",
+    "remaining": [
+      "qualified genuine defect reproduction and repair observations",
+      "user UX review and upstream qualification",
+      "complete final verifier and 97-ID qualification"
+    ]
   }
 }

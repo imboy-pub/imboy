@@ -1002,6 +1002,25 @@
         "plan/profile/defect/UX/upstream final gates",
         "97-ID frozen final qualification"
       ]
+    },
+    {
+      "id": "PREPARATION-F01-DEFECT-CLOSURE-RECORDS",
+      "cwd": "imboyapp",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "test/tooling/auto_test",
+        "-p",
+        "test_acceptance*.py",
+        "-v"
+      ],
+      "exit": 0,
+      "executed": 116,
+      "evidence": "f01-defect-closure-records.json",
+      "product_pass": false
     }
   ],
   "final_verifier": "NOT_IMPLEMENTED"
