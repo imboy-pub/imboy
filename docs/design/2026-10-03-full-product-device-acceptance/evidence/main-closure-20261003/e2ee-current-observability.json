@@ -1,0 +1,68 @@
+{
+  "scope": "LOCAL_OTK_METRIC_CHAIN_AND_SYNTHETIC_E2EE_ALERT_EVALUATION_ONLY",
+  "backend_head": "10adcd5104a7c612ccc62c705f2474996e9b472d",
+  "metric_chain": {
+    "tests": 11,
+    "exit_code": 0,
+    "real_metric_server": true,
+    "persistence_mocked": true,
+    "http_server_started": false
+  },
+  "promtool_rule_check": {
+    "rules": 56,
+    "exit_code": 0
+  },
+  "promtool_synthetic_evaluation": {
+    "assertions": 17,
+    "alerts": 6,
+    "exit_code": 0,
+    "checks": [
+      "Zero failures never fire",
+      "Sustained failures fire by 7m",
+      "Five alerts with hold periods do not fire at 1m"
+    ]
+  },
+  "calibration": {
+    "temporary_mutation": "OTK alert threshold changed from 5 to 5000",
+    "exit_code": 1,
+    "positive_oracle_rejected_broken_rule": true,
+    "production_rules_modified": false
+  },
+  "artifacts": [
+    {
+      "path": "e2ee-current-metrics-chain.log",
+      "sha256": "4a8235c1ca4611fdaa09569fad4ed3fe21e230e01fd3b5f2ecac06eae25ce58e"
+    },
+    {
+      "path": "e2ee-current-alert-rule-tests.log",
+      "sha256": "8289a4919870ab5b28f5e90a86b4af3cdbd8c244516c02fca90d6e3f289a6711"
+    },
+    {
+      "path": "e2ee-current-alert-rule-calibration-red.log",
+      "sha256": "0d58b42b37d67d862dd5ca6f5c2ddb5b327f341500872f216bfaeb95963faa85"
+    },
+    {
+      "path": "e2ee-current-alert-rule-check.log",
+      "sha256": "3ddb6040ffc4618f360470cef0d108c0e8e1e5a3bcd398995dd5c00a48ab2bfe"
+    }
+  ],
+  "source_hashes": {
+    "deploy/prometheus/rules/imboy-alerts.yml": "4172d4baf24092b6000ad2e9b2665352ddb6e2cd81f279502e1a44178f99b418",
+    "scripts/test/fixtures/e2ee_alert_rules_test.yml": "78fe2928a5350dce628d067e69ed99c1cc1367620cb996d41dc4658e2dce7824",
+    "src/api/metrics_handler.erl": "693086d75c75f4bc90df75da1215a8a4abd8d61a2fd8bf6582a6e89d1243abd5",
+    "src/lib/elib_metric.erl": "662b3c01ee9514f4733e363dcb206769422090c3a17c7587b2974e131217be7b",
+    "src/logic/olm_identity_logic.erl": "a578b91d5de8732df019fb938234c7047023218fe972d8427a68f19950598a61"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "notification_sent": false,
+  "limits": [
+    "Actual exporter chain is demonstrated for OTK only, not all six counters",
+    "Synthetic series do not demonstrate live scrape, alert delivery, load or SLO",
+    "IP-gate tests mock request handling and do not start an HTTP server"
+  ],
+  "fixture_commit": "104a356ea68405eee3b05a09bbb0dcb6fdd90792",
+  "review": "APPROVED"
+}

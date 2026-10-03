@@ -4444,5 +4444,11 @@
     "backend_head": "6fe774c1c411658c8bc0a4e4cf1a8e02d2736ed9",
     "tests": 56,
     "product_pass": false
+  },
+  "e2ee_current_observability": {
+    "receipt": "e2ee-current-observability.json",
+    "metric_chain_tests": 11,
+    "alert_assertions": 17,
+    "product_pass": false
   }
 }

@@ -1,0 +1,71 @@
+======================== EUnit ========================
+module 'e2ee_otk_exhaustion_metric_tests'
+  e2ee_otk_exhaustion_metric_tests: -healthy_claim_emits_no_exhaustion_metric_test_/0-fun-2- (OTK 可领时不得计耗尽指标)...ok
+  e2ee_otk_exhaustion_metric_tests: -exhausted_claim_emits_metric_test_/0-fun-2- (OTK 耗尽回退 fallback 必须被计数)...ok
+  e2ee_otk_exhaustion_metric_tests: -exhausted_claim_with_request_id_emits_metric_test_/0-fun-2- (幂等路径耗尽同样必须被计数)...ok
+  e2ee_otk_exhaustion_metric_tests: -no_prekey_emits_unavailable_metric_test_/0-fun-3- (fallback 也缺失必须单独计数)...ok
+  e2ee_otk_exhaustion_metric_tests: -metric_carries_no_uid_test_/0-fun-2- (耗尽指标不得携带 uid（基数 + 择时信号泄漏）)...[0.013 s] ok
+  [done in 0.323 s]
+module 'e2ee_otk_metric_exposition_tests'
+  e2ee_otk_metric_exposition_tests: formatter_emits_given_counter (对照组：导出器把拿到的计数原样导出)...[0.002 s] ok
+  e2ee_otk_metric_exposition_tests: unknown_counter_absent (对照组：未被计数的指标不得出现在导出里)...ok
+  e2ee_otk_metric_exposition_tests: exhaustion_metric_exposed (生产耗尽路径的计数确实出现在 Prometheus 导出里)...ok
+  [done in 0.011 s]
+module 'e2ee_metrics_ip_gate_tests'
+  e2ee_metrics_ip_gate_tests: internal_ip_classification_test...ok
+  e2ee_metrics_ip_gate_tests:66: -external_peer_gets_403_and_no_metrics_test_/0-fun-2-...ok
+  e2ee_metrics_ip_gate_tests:97: -internal_peer_is_served_test_/0-fun-3-...=WARNING REPORT==== 4-Oct-2026::00:23:39.004092 ===
+    error: [{gen_server,call,2,[{file,"gen_server.erl"},{line,1221}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,105}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,86}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,55}]},
+            {e2ee_metrics_ip_gate_tests,
+                '-internal_peer_is_served_test_/0-fun-3-',0,
+                [{file,"test/api/e2ee_metrics_ip_gate_tests.erl"},{line,99}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]},
+            {eunit_proc,run_test,1,[{file,"eunit_proc.erl"},{line,558}]},
+            {eunit_proc,with_timeout,3,[{file,"eunit_proc.erl"},{line,382}]}]
+    event: metrics_pool_stats_failed
+=WARNING REPORT==== 4-Oct-2026::00:23:39.005855 ===
+    error: [{ets,lookup,
+                [syn_table_names,{syn_registry_by_name,imboy}],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {syn_backbone,get_table_name,2,
+                [{file,"src/syn_backbone.erl"},{line,76}]},
+            {syn_registry,count,1,[{file,"src/syn_registry.erl"},{line,192}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,118}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,86}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,55}]},
+            {e2ee_metrics_ip_gate_tests,
+                '-internal_peer_is_served_test_/0-fun-3-',0,
+                [{file,"test/api/e2ee_metrics_ip_gate_tests.erl"},{line,99}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_syn_count_failed
+=WARNING REPORT==== 4-Oct-2026::00:23:39.007527 ===
+    error: [{ets,lookup_element,
+                [ranch_server,{listener_sup,imboy_listener},2],
+                [{error_info,#{cause => id,module => erl_stdlib_errors}}]},
+            {ranch_server,get_listener_sup,1,
+                [{file,"src/ranch_server.erl"},{line,122}]},
+            {ranch,info,1,[{file,"src/ranch.erl"},{line,464}]},
+            {metrics_handler,collect_system_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,127}]},
+            {metrics_handler,fetch_metrics,0,
+                [{file,"src/api/metrics_handler.erl"},{line,86}]},
+            {metrics_handler,serve_metrics,2,
+                [{file,"src/api/metrics_handler.erl"},{line,55}]},
+            {e2ee_metrics_ip_gate_tests,
+                '-internal_peer_is_served_test_/0-fun-3-',0,
+                [{file,"test/api/e2ee_metrics_ip_gate_tests.erl"},{line,99}]},
+            {eunit_test,run_testfun,1,[{file,"eunit_test.erl"},{line,83}]}]
+    event: metrics_ranch_info_failed
+[0.010 s] ok
+  [done in 0.198 s]
+=======================================================
+  All 11 tests passed.

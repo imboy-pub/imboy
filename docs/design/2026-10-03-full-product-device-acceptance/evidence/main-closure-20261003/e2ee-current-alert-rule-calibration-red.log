@@ -1,0 +1,6 @@
+  FAILED:
+    expr: "sum(ALERTS{alertname=\"ImBoyOlmOtkExhausted\",alertstate=\"firing\"})", time: 7m,
+        exp: {} 1E+00
+        got: nil
+
+
