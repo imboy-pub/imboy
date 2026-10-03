@@ -121,8 +121,8 @@ report_identity(
                         OldCurve,
                         TransitionSignature
                     );
-                {error, Reason} ->
-                    _ = ?ERROR_LOG({olm_report_identity_lookup_error, UserId, DeviceId, Reason}),
+                {error, _Reason} ->
+                    _ = ?ERROR_LOG(olm_report_identity_lookup_error),
                     {error, <<"internal_error">>}
             end;
         false ->
@@ -591,8 +591,8 @@ claim_keys(CurrentUid, TargetUid, DeviceId) when
                     {error, <<"device_not_registered">>};
                 {ok, Identity} ->
                     claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity);
-                {error, Reason} ->
-                    _ = ?ERROR_LOG({olm_claim_identity_error, TargetUid, DeviceId, Reason}),
+                {error, _Reason} ->
+                    _ = ?ERROR_LOG(olm_claim_identity_error),
                     {error, <<"internal_error">>}
             end;
         {error, _} = Err ->
@@ -615,8 +615,8 @@ claim_keys(CurrentUid, TargetUid, DeviceId, RequestId) when
                     {error, <<"device_not_registered">>};
                 {ok, Identity} ->
                     claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId);
-                {error, Reason} ->
-                    _ = ?ERROR_LOG({olm_claim_identity_error, TargetUid, DeviceId, Reason}),
+                {error, _Reason} ->
+                    _ = ?ERROR_LOG(olm_claim_identity_error),
                     {error, <<"internal_error">>}
             end;
         {error, _} = Err ->

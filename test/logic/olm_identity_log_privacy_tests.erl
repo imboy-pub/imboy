@@ -4,6 +4,28 @@
 database_failure_logs_do_not_expose_identity_or_reason_test_() ->
     Cases = [
         {find_identity, 2,
+            fun() -> olm_identity_logic:claim_keys(100, 100, <<"synthetic-device">>) end,
+            olm_claim_identity_error},
+        {find_identity, 2,
+            fun() ->
+                olm_identity_logic:claim_keys(
+                    100, 100, <<"synthetic-device">>, <<"synthetic-request">>
+                )
+            end,
+            olm_claim_identity_error},
+        {find_identity, 2,
+            fun() ->
+                olm_identity_logic:report_identity(
+                    100,
+                    <<"synthetic-device">>,
+                    <<"synthetic-ed">>,
+                    <<"synthetic-curve">>,
+                    <<"synthetic-signature">>,
+                    <<"android">>
+                )
+            end,
+            olm_report_identity_lookup_error},
+        {find_identity, 2,
             fun() -> olm_identity_logic:get_identity(100, <<"synthetic-device">>) end,
             olm_get_identity_error},
         {list_devices_with_identity, 1, fun() -> olm_identity_logic:list_devices(100) end,
