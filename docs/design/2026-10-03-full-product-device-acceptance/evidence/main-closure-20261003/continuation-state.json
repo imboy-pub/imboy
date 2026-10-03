@@ -193,5 +193,17 @@
       "CLI registration in commands.json",
       "F01-S06 calibration and complete bad-sample suite"
     ]
+  },
+  "frozen_input_loading_gate": {
+    "candidate_app_head": "22d7116d",
+    "executed": 248,
+    "failed": 0,
+    "exit": 0,
+    "command": "python3 -m unittest discover -s test/tooling/auto_test",
+    "evidence_path": "frozen-inputs-suite.log",
+    "evidence_sha256": "0b41c4d5656a3fe9c15650a4a830c9b9e3aa198729fba7eb3d18454977c72346",
+    "review": "APPROVED_LOCAL_SCOPE_ONLY",
+    "product_pass": false,
+    "remaining": "Connect trusted frozen index, live candidate ancestry, source/config/build/fixture/device bindings and full business gates; CLI still pending"
   }
 }
