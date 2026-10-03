@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_ORGANIZATION_NAVIGATION_SESSION",
+  "app_head": "1ec8f642fabe1d321b86e141a2f99bd03aaf10b0",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "results": {
+    "valid_initial_red_exit": 1,
+    "valid_initial_red_failed": 3,
+    "valid_initial_red_passed": 3,
+    "calibration_exit": 1,
+    "calibration_failed": 4,
+    "calibration_passed": 4,
+    "focused_passed": 8,
+    "organization_domain_exit": 0,
+    "organization_domain_passed": 295,
+    "analyze_exit": 0,
+    "analyze_issues": 0
+  },
+  "oracles": [
+    "Actual loginAfter increments generation, mock secure write fails before UID commit and notifications; old home does not navigate directory/invitations/detail.",
+    "Current-session positive cases navigate actual GoRouter destinations and assert destination route URI.",
+    "Invitation return after explicit A-B-A does not issue another badge request; current account return does. Actual callback Future completion and rendered frames precede assertions."
+  ],
+  "attempt_notes": [
+    "First attempt used incorrect push route-information oracle and hung on FakeAsync queue; terminated specific live process; excluded.",
+    "Second attempt corrected route oracle but queue remained blocked; terminated specific live process; excluded.",
+    "Initializing repository serialized queue outside widget FakeAsync yields terminal secure-write failure; valid RED three failures/three passes.",
+    "Temporary old HEAD calibration found four failures/four passes, source restored exactly.",
+    "Final domain changed invitation payload to valid empty-list Map; all 295 passed. Calibration tests count refresh calls, not nonempty badge rendering."
+  ],
+  "limitations": [
+    "Synthetic explicit accountKey, actual UID remains empty; no successful login or real device.",
+    "No real server/database/WebSocket/push execution.",
+    "Does not undo already-started external writes.",
+    "No original 36+61 acceptance PASS upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-navigation-red-20261004.log",
+      "sha256": "51a035ebc82fadebc1889641f428a150e50666e1648dbfdefbc712726e0e101e"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-navigation-valid-red-20261004.log",
+      "sha256": "3a788c26eca28be028ef44d94f31fc3c8b22f34778690101db4e68dd1d9c419b"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-navigation-queue-fixed-red-20261004.log",
+      "sha256": "4818430669e3a8d4b7209b1d8cf72fa986040024f34ec925d7ac5f629d2b6db1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-navigation-final-green-20261004.log",
+      "sha256": "298ed87c63b088efcd2cb0a07707579ff3acb537c7498cbe09bbb4363ee8cca0"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-navigation-calibration-20261004.log",
+      "sha256": "b7d0cbfad8783046686fc0eb6fe1f095e7204f475cbc48f673199e3b71b6d5bd"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-navigation-domain-green-20261004.log",
+      "sha256": "a32e4f9d7ee52fe20d8016fb44cd5341a0e82a4fe1c5c08b2e75484b3c2988c8"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-navigation-analyze-20261004.log",
+      "sha256": "ddf0da4e9d3da9b7fd0536301c08c1ee0922675683bb9096dbff07f844b9142d"
+    }
+  ]
+}

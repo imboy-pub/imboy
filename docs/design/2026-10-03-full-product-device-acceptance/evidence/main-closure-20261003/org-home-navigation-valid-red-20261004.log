@@ -1,0 +1,101 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_navigation_session_test.dart
+00:00 +0: directory 当前会话正常导航
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+00:00 +1: directory 失效会话禁止导航
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: true
+  Actual: <false>
+Mocked login failure must finish
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_navigation_session_test.dart:138:13)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_navigation_session_test.dart line 138
+The test description was:
+  directory 失效会话禁止导航
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +1 -1: directory 失效会话禁止导航 [E]
+  Test failed. See exception logs above.
+  The test description was: directory 失效会话禁止导航
+  
+00:30 +1 -2: loading /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_navigation_session_test.dart [E]
+  Bad state: Cannot close sink while adding stream.
+  package:stream_channel/src/guarantee_channel.dart 180:7      _GuaranteeSink.close
+  package:flutter_tools/src/test/flutter_platform.dart 765:43  FlutterPlatform._startTest
+  
+One or more uncaught errors occurred shutting down:
+  Bad state: Cannot add event while adding stream.

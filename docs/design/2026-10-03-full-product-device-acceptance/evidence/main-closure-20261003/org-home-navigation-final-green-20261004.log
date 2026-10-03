@@ -1,0 +1,357 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/organization/organization_home_navigation_session_test.dart
+00:00 +0: directory 当前会话正常导航
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+00:00 +1: directory 失效会话禁止导航
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+00:00 +2: invitations 当前会话正常导航
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+00:00 +3: invitations 失效会话禁止导航
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+00:00 +4: detail 当前会话正常导航
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+00:00 +5: detail 失效会话禁止导航
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+00:00 +6: 邀请页返回当前账号刷新角标
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+00:00 +7: 邀请页返回跨账号代次不刷新角标
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/mine?page=1&size=100
+
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:9800/api/v1/organizations/invitations/mine?limit=20&status=pending
+
+[HttpTransformer] payload type drift: expected Map, got List<dynamic> uri=/api/v1/organizations/invitations/mine
+00:00 +8: All tests passed!

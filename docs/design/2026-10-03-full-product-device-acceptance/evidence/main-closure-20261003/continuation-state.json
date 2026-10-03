@@ -4850,5 +4850,10 @@
     "receipt": "organization-home-create-account-epoch-20261004.json",
     "app_head": "b2e794cbd3055bd481c0855d919c6d9adfa19b38",
     "product_pass": false
+  },
+  "organization_home_navigation_session": {
+    "receipt": "organization-home-navigation-session-20261004.json",
+    "app_head": "1ec8f642fabe1d321b86e141a2f99bd03aaf10b0",
+    "product_pass": false
   }
 }
