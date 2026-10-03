@@ -5277,5 +5277,20 @@
     "new_cases": 12,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "current_main_e2ee_tooling_integrated_regression": {
+    "receipt": "e2ee-current-integrated-main-20261004.json",
+    "heads": {
+      "imboy": "884714abe0789bef8620f4b73149ef13e25f65f6",
+      "imboyapp": "42b0f6c23a0677c93be4ff4af7537ed3838bacb1",
+      "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+    },
+    "e2ee_host": 986,
+    "vectors": 245,
+    "version_gate": 45,
+    "acceptance_tooling": 165,
+    "exit_code": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

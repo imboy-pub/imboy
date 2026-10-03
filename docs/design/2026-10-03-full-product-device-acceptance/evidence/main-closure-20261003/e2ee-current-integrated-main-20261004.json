@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_CURRENT_MAIN_E2EE_AND_TOOLING_REGRESSION",
+  "heads": {
+    "imboy": "884714abe0789bef8620f4b73149ef13e25f65f6",
+    "imboyapp": "42b0f6c23a0677c93be4ff4af7537ed3838bacb1",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "heads_after": {
+    "imboy": "884714abe0789bef8620f4b73149ef13e25f65f6",
+    "imboyapp": "42b0f6c23a0677c93be4ff4af7537ed3838bacb1",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "plan_hashes": {
+    "docs/design/2026-10-03-e2ee-production-excellence/plan.md": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+    "docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1.md": "aeb4dc3da1d0c51ebecaf6a1edfad07558e3dbcaca6615e9c1b2e011b84832aa",
+    "docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1-execution-contract.md": "1dcb770aae46c77142442c521d7becc490f5329b679e8e1c8868a7d40125eaf3"
+  },
+  "checks": [
+    {
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/service/e2ee",
+        "--reporter",
+        "expanded"
+      ],
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "exit_code": 0,
+      "passed": 986,
+      "log": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-integrated-main-20261004.log",
+      "sha256": "95ad4fe4efe5c960e47ae8fea1524a064018203a9f06286eef5e24ad26dcebfa"
+    },
+    {
+      "argv": [
+        "python3",
+        "verify_python.py"
+      ],
+      "cwd": "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-e2ee-production-excellence/fixtures",
+      "exit_code": 0,
+      "passed": 245,
+      "log": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-integrated-vectors-20261004.log",
+      "sha256": "7ea1a6d8a0f46179e5b76a6c7f5a635363ebb0fc993fa4fa3d905a2637f5a6b2"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/test/e2ee_version_gate_test.sh"
+      ],
+      "cwd": "/Users/leeyi/project/imboy.pub/imboy",
+      "exit_code": 0,
+      "passed": 45,
+      "log": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-integrated-version-20261004.log",
+      "sha256": "a339ed6472968196ab0aea73f43712281d3cd5ed5d7f2186f3855f985ad9941c"
+    },
+    {
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "test/tooling/auto_test",
+        "-p",
+        "test_acceptance*.py"
+      ],
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "exit_code": 0,
+      "passed": 165,
+      "log": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-integrated-tooling-20261004.log",
+      "sha256": "c7cd5256ebc1972bd78acedd5c5b0ca987040ed2f9f38e801ef1dceb8ee00184"
+    }
+  ],
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "limitations": [
+    "Host synthetic regression only, not complete 97 requirement gate.",
+    "Full backend EUnit, real devices, PG resource qualification and security profile decisions remain unfulfilled.",
+    "Backend evidence-only commit follows tested snapshot; no application source changed during checks."
+  ]
+}

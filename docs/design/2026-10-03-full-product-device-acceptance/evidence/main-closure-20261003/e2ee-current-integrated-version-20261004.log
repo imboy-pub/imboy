@@ -1,0 +1,50 @@
+== 1. 接线断言（wiring） ==
+  PASS 中间件在 execute_authorized 中调用版本门
+  PASS 版本门位于 verify_sign 之后（先验签名真实头，再裁决版本）
+  PASS 门判定复用 app_version_logic:e2ee_gate/2（与升级提示同一 min_vsn 真源）
+  PASS 阻断响应使用明确错误码 ERR_E2EE_APP_VERSION_TOO_LOW
+  PASS 错误码 5070 已在 error_code.hrl 注册
+  PASS 错误码 5070 已有用户可读消息映射
+
+== 2+3. 路径判定与行为断言（escript：is_e2ee_api_path + e2ee_gate/2） ==
+  PASS /api/v1/e2ee/user_keys
+  PASS /api/v1/e2ee/group_member_keys
+  PASS /api/v1/e2ee/group_history_grant
+  PASS /api/v1/e2ee/report_device_key
+  PASS /api/v1/e2ee/key/status
+  PASS /api/v1/e2ee/notifications/pull
+  PASS /api/v1/e2ee/recovery/start
+  PASS /api/v1/e2ee/compliance_key
+  PASS /api/v1/e2ee/backup/put
+  PASS /api/v1/e2ee/backup/get
+  PASS /api/v1/e2ee/backup/info
+  PASS /api/v1/e2ee/backup/delete
+  PASS /api/v1/e2ee/olm/identity
+  PASS /api/v1/e2ee/olm/prekeys
+  PASS /api/v1/e2ee/olm/fallback_key
+  PASS /api/v1/e2ee/olm/get_identity
+  PASS /api/v1/e2ee/olm/claim
+  PASS /api/v1/e2ee/olm/prekey_count
+  PASS /api/v1/e2ee/devices
+  PASS /api/v1/e2ee/devices/batch_claim
+  PASS /api/v1/e2ee/trust/record
+  PASS /api/v1/group/set_e2ee_mode
+  PASS /api/v1/ws
+  PASS /api/v1/init
+  PASS /api/v1/app_version/check
+  PASS /api/v1/msg/send
+  PASS /api/v1/group/create
+  PASS /api/v1/passport/login
+  PASS N1 低版本 0.9.0 被拒（block）
+  PASS N2 缺 vsn 头被拒（undefined → 0.0.0）
+  PASS N3 空 vsn 头被拒（<<>> → 0.0.0）
+  PASS N4 policy 1.2.0 / version 级 1.4.0 → 按 1.4.0 拒 1.3.0
+  PASS P1 等于最低版本 1.2.0 放行（边界 >=）
+  PASS P2 高于门 1.3.0 放行
+  PASS P3 未配置版本记录全开（rollout 前零行为变化）
+  PASS P4 有记录但门为 0.0.0 全开
+  PASS P5 cos 缺失放行（verify_sign 已保证真实头）
+  PASS P6 多段版本 1.10.0 > 1.2.0 放行（语义化比较）
+  PASS escript 汇总：路径 28/28（22 拦截 + 6 放行）+ 行为 10/10（4 负例 + 6 正例）
+
+总计: PASS=45 FAIL=0
