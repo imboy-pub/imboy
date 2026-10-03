@@ -1,0 +1,6 @@
+Analyzing organization_home_page.dart, organization_home_page_widget_test.dart...
+
+   info - lib/modules/organization/presentation/organization_home_page.dart:175:9 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/modules/organization/presentation/organization_home_page.dart:183:9 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+
+2 issues found.
