@@ -4756,5 +4756,12 @@
     "app_head": "4567805fd40837f5bd6cd579106d2a42c86d62fd",
     "safe_to_execute": false,
     "product_pass": false
+  },
+  "organization_directory_exact_mapping": {
+    "receipt": "organization-directory-exact-mapping-20261004.json",
+    "app_head": "ebd1127cc09a448c1df626435b96dda6a0964e9c",
+    "missing_targets": 1763,
+    "placeholder_oracles": 231,
+    "product_pass": false
   }
 }

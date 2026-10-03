@@ -1,0 +1,32 @@
+{
+  "scope": "F00_STATIC_EXACT_DIRECTORY_FUNCTION_PREPARATION",
+  "app_head": "ebd1127cc09a448c1df626435b96dda6a0964e9c",
+  "function_id": "fn:organization:organization_home_page:005",
+  "target": "integration_test/full_acceptance/organization/organization_home_device_test.dart",
+  "safe_to_execute": false,
+  "device_execution": false,
+  "checks": {
+    "specs_validated": 27,
+    "catalog_targets": 153,
+    "catalog_pages": 188,
+    "inventory_functions": 1982,
+    "catalog_check_exit": 0,
+    "inventory_check_exit": 0,
+    "acceptance_check_exit": 64
+  },
+  "missing_target_mappings": 1763,
+  "placeholder_oracles": 231,
+  "review": "APPROVED_CODE_REVIEW_STATIC_SCOPE",
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "artifacts": [
+    {
+      "path": "org-home-directory-registration-20261004.log",
+      "sha256": "745b45df04c207f7ed8628e00347d0ba59ecbbfd8a3682cfa6d69fbd1e2b77ef"
+    }
+  ],
+  "limits": [
+    "Static exact route preparation only; no full directory branching/data/device/zero-write qualification",
+    "Remaining six home entries unmapped; disabled execution and resource authorization prerequisites preserved"
+  ]
+}
