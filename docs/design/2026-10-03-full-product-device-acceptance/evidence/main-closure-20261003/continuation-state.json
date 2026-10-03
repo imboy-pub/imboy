@@ -3634,5 +3634,64 @@
     },
     "test_preparation_correction": "Initial single-pump attempt did not finish IO and is not acceptance evidence. Fixed-delay suite also lacked per-run completion proof and review was BLOCKED. Final tests await real file verification then release controlled page Future after disposal, pump completion. Removing owned mounted guards temporarily gives deterministic 2 failures; source restored in finally.",
     "proof_limit": "Actual file-header validation only, controlled callback scheduling; not backup cryptographic restore, secure storage/device/backend qualification. Existing successful import test remains host substitute scope. No required ID upgraded."
+  },
+  "f08_import_selection_race": {
+    "id": "PREPARATION-F08-IMPORT-SELECTION-RACE",
+    "scope": "HOST_PICKER_AND_VERIFIER_SUBSTITUTES_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "4c87fd8762d76d0790ca3781b7d888b43719e7ef",
+    "executed": 12,
+    "exit": 0,
+    "analyze_exit": 0,
+    "reviews": [
+      "FLUTTER_REVIEW_APPROVE_AFTER_PRECONDITION_FIX",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart",
+      "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "attempts": {
+      "precondition-failed": {
+        "passed": 10,
+        "failed": 2,
+        "exit": 1,
+        "log": {
+          "path": "f08-import-selection-precondition-failed.log",
+          "sha256": "d76759c6b9918d5445641e9d206e83b67b948e55c6477017d1918410757817cd"
+        }
+      },
+      "calibrated-red": {
+        "passed": 0,
+        "failed": 2,
+        "exit": 1,
+        "log": {
+          "path": "f08-import-selection-calibrated-red.log",
+          "sha256": "0e6a22c60b7f90417400f05691f9e4da5886b9ce91340c7b6b56e3548ada2a66"
+        }
+      },
+      "fixed": {
+        "passed": 12,
+        "failed": 0,
+        "exit": 0,
+        "log": {
+          "path": "f08-import-selection-fixed.log",
+          "sha256": "03c64bbb411aefe1aa84d4a9a8e6d43d64eef19cb265c78deb37dea97e3d9e17"
+        }
+      }
+    },
+    "change": "Capture current File and verification generation; discard stale success and failure metadata.",
+    "preparation_corrections": [
+      "Initial PlatformFile instantiation failed compilation; replaced with explicit test implementation.",
+      "First RED and first fixed suite failed before competing old callback due missing rebuild pump; not race evidence.",
+      "Final mutant removes only file/generation checks and fails after new metadata is visibly confirmed, at final preservation assertion. Finally restored production."
+    ],
+    "proof_limit": "New cases use synthetic picker and controlled verifier callbacks; real header/host restore cases remain bounded existing suite. Does not prove native picker, actual backup decrypt/secure storage/backend/device journeys. No parent requirement upgraded."
   }
 }

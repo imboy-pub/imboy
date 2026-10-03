@@ -1,0 +1,70 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart: 旧文件校验成功不能覆盖新选择
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "new-version": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      _assertLatestFileWins (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart:82:3)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart line 82
+The test description was:
+  旧文件校验成功不能覆盖新选择
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: 文件校验失败前关闭页面不更新界面
+00:00 +0 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart: 旧文件校验成功不能覆盖新选择 [E]
+  Test failed. See exception logs above.
+  The test description was: 旧文件校验成功不能覆盖新选择
+  
+00:00 +1 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart: 旧文件校验失败不能覆盖新选择
+00:00 +2 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart: 旧文件校验失败不能覆盖新选择
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "new-version": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      _assertLatestFileWins (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart:82:3)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart line 82
+The test description was:
+  旧文件校验失败不能覆盖新选择
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +2 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L9 选中合法文件后展示备份元信息卡并启用密码框
+00:00 +2 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart: 旧文件校验失败不能覆盖新选择 [E]
+  Test failed. See exception logs above.
+  The test description was: 旧文件校验失败不能覆盖新选择
+  
+00:01 +3 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L9 选中合法文件但密码为空时导入按钮保持禁用
+00:01 +4 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L10 文件格式非法时提示校验失败且不展示元信息卡
+[E2EEBackupImport] 校验备份文件失败: Invalid argument(s): 文件格式无效：文件过小
+00:02 +5 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L11 未选文件时密码框禁用、导入按钮禁用
+00:03 +6 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L14 云端备份探测失败时按无备份静默处理（无恢复卡）
+[E2EEBackupImport] 云端备份探测失败: errType=_Exception
+00:03 +7 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L14 云端存在备份时展示恢复入口
+00:04 +8 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 L13 警告卡片始终展示覆盖密钥风险提示
+00:04 +9 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart: E2EEBackupImportPage 文件校验 P0-1 导入成功后以恢复的公钥回写服务端设备登记
+00:32 +10 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart: 旧文件校验失败不能覆盖新选择
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_selection_race_test.dart: 旧文件校验成功不能覆盖新选择
