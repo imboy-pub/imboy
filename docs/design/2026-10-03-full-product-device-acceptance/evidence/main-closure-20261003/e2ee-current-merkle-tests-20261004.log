@@ -1,0 +1,29 @@
+======================== EUnit ========================
+module 'e2ee_kt_merkle_tests'
+  e2ee_kt_merkle_tests: empty_tree_is_sha256_of_empty_test...[0.019 s] ok
+  e2ee_kt_merkle_tests: single_leaf_root_equals_leaf_hash_test...ok
+  e2ee_kt_merkle_tests: e1_canonical_length_test...ok
+  e2ee_kt_merkle_tests: golden_leaf_hashes_test...ok
+  e2ee_kt_merkle_tests: golden_tree_roots_test...ok
+  e2ee_kt_merkle_tests: golden_tree_head_signing_input_test...ok
+  e2ee_kt_merkle_tests: canonical_event_bytes_matches_golden_test...ok
+  e2ee_kt_merkle_tests: canonical_event_bytes_no_trailing_newline_test...ok
+  e2ee_kt_merkle_tests: canonical_rejects_newline_in_value_test...ok
+  e2ee_kt_merkle_tests: canonical_rejects_newline_or_eq_in_key_test...ok
+  e2ee_kt_merkle_tests: canonical_injectivity_test...ok
+  e2ee_kt_merkle_tests: canonical_rejects_empty_and_non_map_test...ok
+  e2ee_kt_merkle_tests: leaf_and_node_are_domain_separated_test...ok
+  e2ee_kt_merkle_tests: head_prefix_differs_from_leaf_test...ok
+  e2ee_kt_merkle_tests: inclusion_exhaustive_accepts_test...[0.002 s] ok
+  e2ee_kt_merkle_tests: inclusion_exhaustive_rejects_test...[0.003 s] ok
+  e2ee_kt_merkle_tests: inclusion_rejects_each_tampered_path_element_test...ok
+  e2ee_kt_merkle_tests: inclusion_rejects_malformed_args_test...ok
+  e2ee_kt_merkle_tests: consistency_exhaustive_accepts_test...[0.002 s] ok
+  e2ee_kt_merkle_tests: consistency_rejects_forked_history_test...ok
+  e2ee_kt_merkle_tests: consistency_rejects_each_tampered_path_element_test...ok
+  e2ee_kt_merkle_tests: consistency_same_size_requires_empty_path_and_equal_roots_test...ok
+  e2ee_kt_merkle_tests: consistency_rejects_empty_path_when_growing_test...ok
+  e2ee_kt_merkle_tests: consistency_rejects_malformed_args_test...ok
+  [done in 0.098 s]
+=======================================================
+  All 24 tests passed.

@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "scope": "CURRENT_MAIN_IDENTITY_TRANSPARENCY_CRYPTO_LOCAL_REQUALIFICATION",
+  "heads": {
+    "imboy": "0cb9bc8230a12d5e9b5876ef5d7eb8ecca167389",
+    "imboyapp": "1ec8f642fabe1d321b86e141a2f99bd03aaf10b0",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "sources": {
+    "src/lib/e2ee_kt_merkle.erl": "493efc43d80da0e34bc561fb2b2b9b4a699c703df399791918f407242d32a00d",
+    "test/lib/e2ee_kt_merkle_tests.erl": "9fb96830a945fb3eb17573f5445da2ea9c7c20bf32b2ede1c035cf8bf985086a",
+    "docs/design/2026-10-03-e2ee-production-excellence/identity-transparency-profile.md": "edb8e45ef3799c5d883b7b70cf05060c04edc8f327e828cc7ca8017cb9b6e969",
+    "docs/design/2026-10-03-e2ee-production-excellence/plan.md": "e9c8b33ddbe2b019818f82f1564f88baf99f1ca5f75d27934cba547ea5d86ce6",
+    "../.Codex/evidence/e2ee-excellence/run-20261003-094804/commands.json": "a3fb76210cf149ac637a6731783eab8ea05f247bcb708a2fd95c2a77010c19ec"
+  },
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "related_acceptance_ids": [
+    "AC-19",
+    "AC-20"
+  ],
+  "commands": [
+    {
+      "argv": [
+        "make",
+        "compile"
+      ],
+      "exit": 0,
+      "seconds": 1.598,
+      "artifact": "e2ee-current-vector-compile-20261004.log"
+    },
+    {
+      "argv": [
+        "escript",
+        "docs/design/2026-10-03-e2ee-production-excellence/fixtures/generate.escript"
+      ],
+      "exit": 0,
+      "seconds": 0.316,
+      "artifact": "e2ee-current-vectors-20261004.json"
+    },
+    {
+      "argv": [
+        "python3",
+        "docs/design/2026-10-03-e2ee-production-excellence/fixtures/verify_python.py",
+        "/tmp/e2ee-current-vectors-20261004.json"
+      ],
+      "exit": 0,
+      "seconds": 0.23,
+      "artifact": "e2ee-current-vector-python-20261004.log"
+    },
+    {
+      "argv": [
+        "cmp",
+        "docs/design/2026-10-03-e2ee-production-excellence/fixtures/vectors.json",
+        "/tmp/e2ee-current-vectors-20261004.json"
+      ],
+      "exit": 0,
+      "seconds": 0.003,
+      "artifact": "e2ee-current-vector-equality-20261004.log"
+    }
+  ],
+  "results": {
+    "python_checks": 245,
+    "python_fails": 0,
+    "generated_vectors_byte_identical": true,
+    "merkle_tests": 24,
+    "merkle_exit": 0,
+    "openssl_signature_checks": 9,
+    "openssl_fails": 0,
+    "openssl_exit": 0,
+    "full_app_static_exit": 0,
+    "full_app_static_issues": 0
+  },
+  "oracles": [
+    "Current compiled production Merkle code regeneration matches committed deterministic vectors byte for byte.",
+    "Independent pure Python canonical/hash/proof/Ed25519 checks: 245 checks with zero failures.",
+    "OpenSSL S1/S2/S3: valid original signatures accepted, mutation with original signature rejected, valid re-signed mutation accepted (signature alone does not detect malicious signer).",
+    "Pure Merkle EUnit 24 positive/negative tests pass; no application startup or DB."
+  ],
+  "attempt_notes": [
+    "OpenSSL first oracle expected 12 checks although only S1/S2/S3 have tree heads: count9/fails0 but process1. Retained invalid count attempt; corrected explicit scenario set and exact count9, rerun exit0."
+  ],
+  "limitations": [
+    "Synthetic vector tests do not prove production key-trust callers or deployed witness operation.",
+    "AC-20 witness/profile operational evidence remains absent; do not upgrade AC-19/20 final PASS.",
+    "Merkle focused direct EUnit is supporting evidence; it does not replace registered full L3 EUnit gates.",
+    "Full App static analysis is not full host or device runtime acceptance."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-vector-compile-20261004.log",
+      "sha256": "81cc838c4430c96d52cc9193f4c8c1ba0b1beac17bd5555c7a6f77027f779e89"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-vectors-20261004.json",
+      "sha256": "38aab21494ad790c969b0197ffa2c3e7a36b78438d6c44fbe362482b861c70b6"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-vector-python-20261004.log",
+      "sha256": "7ea1a6d8a0f46179e5b76a6c7f5a635363ebb0fc993fa4fa3d905a2637f5a6b2"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-vector-equality-20261004.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-merkle-tests-20261004.log",
+      "sha256": "e90d20953e42de9cfe3a0b671468bf8a5ccc117adb9a49bc78761b97df87f2c5"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-openssl-probe-20261004.py",
+      "sha256": "ede5b24da61f1a9043a640d366b81b689e0e1d7e171e0129c4af588c62fece74"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-openssl-checks-20261004.json",
+      "sha256": "5a9bc85ed89342083c67edec48450ad719d0beefe3b7f81410df78e73be3486c"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-openssl-initial-count-20261004.json",
+      "sha256": "5a9bc85ed89342083c67edec48450ad719d0beefe3b7f81410df78e73be3486c"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-app-full-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    }
+  ],
+  "review": "APPROVED_CODE_AND_PYTHON_REVIEW"
+}

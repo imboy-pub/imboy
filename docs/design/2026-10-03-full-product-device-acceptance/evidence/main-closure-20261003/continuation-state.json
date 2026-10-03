@@ -4855,5 +4855,14 @@
     "receipt": "organization-home-navigation-session-20261004.json",
     "app_head": "1ec8f642fabe1d321b86e141a2f99bd03aaf10b0",
     "product_pass": false
+  },
+  "current_main_identity_transparency_crypto": {
+    "receipt": "current-main-identity-transparency-crypto-20261004.json",
+    "heads": {
+      "imboy": "0cb9bc8230a12d5e9b5876ef5d7eb8ecca167389",
+      "imboyapp": "1ec8f642fabe1d321b86e141a2f99bd03aaf10b0",
+      "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+    },
+    "product_pass": false
   }
 }

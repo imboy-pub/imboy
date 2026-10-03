@@ -1,0 +1,87 @@
+{
+  "checks": [
+    {
+      "scenario": "S1",
+      "case": "original",
+      "exit": 0,
+      "expected_exit": 0,
+      "pass": true,
+      "stdout": "Signature Verified Successfully",
+      "stderr": ""
+    },
+    {
+      "scenario": "S1",
+      "case": "tampered-original-signature",
+      "exit": 1,
+      "expected_exit": 1,
+      "pass": true,
+      "stdout": "Signature Verification Failure",
+      "stderr": "80BF1EEC01000000:error:030000EA:digital envelope routines:EVP_DigestVerify:provider signature failure:crypto/evp/m_sigver.c:785:ED25519 digest_verify:"
+    },
+    {
+      "scenario": "S1",
+      "case": "tampered-resigned",
+      "exit": 0,
+      "expected_exit": 0,
+      "pass": true,
+      "stdout": "Signature Verified Successfully",
+      "stderr": ""
+    },
+    {
+      "scenario": "S2",
+      "case": "original",
+      "exit": 0,
+      "expected_exit": 0,
+      "pass": true,
+      "stdout": "Signature Verified Successfully",
+      "stderr": ""
+    },
+    {
+      "scenario": "S2",
+      "case": "tampered-original-signature",
+      "exit": 1,
+      "expected_exit": 1,
+      "pass": true,
+      "stdout": "Signature Verification Failure",
+      "stderr": "80BF1EEC01000000:error:030000EA:digital envelope routines:EVP_DigestVerify:provider signature failure:crypto/evp/m_sigver.c:785:ED25519 digest_verify:"
+    },
+    {
+      "scenario": "S2",
+      "case": "tampered-resigned",
+      "exit": 0,
+      "expected_exit": 0,
+      "pass": true,
+      "stdout": "Signature Verified Successfully",
+      "stderr": ""
+    },
+    {
+      "scenario": "S3",
+      "case": "original",
+      "exit": 0,
+      "expected_exit": 0,
+      "pass": true,
+      "stdout": "Signature Verified Successfully",
+      "stderr": ""
+    },
+    {
+      "scenario": "S3",
+      "case": "tampered-original-signature",
+      "exit": 1,
+      "expected_exit": 1,
+      "pass": true,
+      "stdout": "Signature Verification Failure",
+      "stderr": "80BF1EEC01000000:error:030000EA:digital envelope routines:EVP_DigestVerify:provider signature failure:crypto/evp/m_sigver.c:785:ED25519 digest_verify:"
+    },
+    {
+      "scenario": "S3",
+      "case": "tampered-resigned",
+      "exit": 0,
+      "expected_exit": 0,
+      "pass": true,
+      "stdout": "Signature Verified Successfully",
+      "stderr": ""
+    }
+  ],
+  "count": 9,
+  "fails": 0
+}

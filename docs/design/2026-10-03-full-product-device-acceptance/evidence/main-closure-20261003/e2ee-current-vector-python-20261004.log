@@ -1,0 +1,2 @@
+checks=245 fails=0
+RESULT: PASS (Erlang 实算 == Python 规范重算 == vector 记录值)
