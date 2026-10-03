@@ -1,0 +1,16 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: Megolm 全链路（需要 spike 动态库，缺失自动 skip） failed membership refresh retains stale marker for next send
+00:00 +0 -1: Megolm 全链路（需要 spike 动态库，缺失自动 skip） failed membership refresh retains stale marker for next send [E]
+  Expected: true
+    Actual: <false>
+  
+  package:matcher                                               expect
+  package:flutter_test/src/widget_tester.dart 473:18            expect
+  test/unit_test/service/group_session_service_test.dart 250:7  main.<fn>.<fn>
+  
+00:00 +0 -1: (tearDownAll)
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/group_session_service_test.dart: Megolm 全链路（需要 spike 动态库，缺失自动 skip） failed membership refresh retains stale marker for next send

@@ -4170,5 +4170,14 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "c08_failed_recipient_refresh_retention": {
+    "receipt": "c08-refresh-retention.json",
+    "receipt_sha256": "f4a07910e1c76df68286d0776bd05b2ea3413462c7f24389c025bf27ff9db9b5",
+    "app_head": "ba1e23a80e9d682d24b8ea0f3cc5b76028d4383a",
+    "executed": 36,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

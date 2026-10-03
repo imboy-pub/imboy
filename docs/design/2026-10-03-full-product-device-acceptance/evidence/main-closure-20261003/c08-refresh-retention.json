@@ -1,0 +1,33 @@
+{
+  "id": "C08-FAILED-RECIPIENT-REFRESH-RETENTION",
+  "app_head": "ba1e23a80e9d682d24b8ea0f3cc5b76028d4383a",
+  "scope": "LOCAL_HOST_PRODUCTION_SERVICE_REGRESSION",
+  "executed": 36,
+  "failed": 0,
+  "skipped": 0,
+  "exit_code": 0,
+  "red_executed": 1,
+  "red_failed": 1,
+  "red_exit_code": 1,
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "oracles": [
+    "Empty refreshed recipient set rejects session creation",
+    "Failed forced refresh retains membership-change marker",
+    "Retry bypasses injected old-member cache and invokes authoritative loader again",
+    "Retry failure retains marker for further attempts"
+  ],
+  "recovery": "Enhanced test initially lacked refreshes variable and failed to load; corrected variable and reran all three suites. Only final run counted green.",
+  "limits": [
+    "Injected member loader and mocked storage; no real API execution",
+    "No true membership changes or four-account/device decrypt qualification",
+    "No original acceptance ID upgraded"
+  ],
+  "red_log": "c08-refresh-retention-red.log",
+  "red_log_sha256": "04e31659191ece39d491426eaac1fc2939ae2415276194fdd42a325436fe2ab6",
+  "log": "c08-refresh-retention-fixed.log",
+  "log_sha256": "ea474a4af33eb70b7c93333dd87e9780968339347468fd12e528bcbf63466899"
+}
