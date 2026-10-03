@@ -1,0 +1,47 @@
+{
+  "scope": "LOCAL_PROOF_RECOVERY_GROUP_FAILURE_METRIC_EXPORT_ONLY",
+  "tested_backend_head": "a67e65043aaa39c62b7bca80dcab21ab6851f5c5",
+  "test_commit": "59f155137538196507e49dde2360b1b3c49cd3b0",
+  "green": {
+    "passed": 3,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "calibration_red": {
+    "passed": 2,
+    "failed": 1,
+    "exit_code": 1,
+    "temporary_change": "Removed recovery failure increment in temporary compiled source only",
+    "production_source_modified": false
+  },
+  "real_metric_process": true,
+  "persistence_mocked": true,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-failure-metric-chain.log",
+      "sha256": "d384bcea2828e98e53c914132763f1417057ef040486e09e954537fb7a406a6f"
+    },
+    {
+      "path": "e2ee-failure-metric-calibration-red.log",
+      "sha256": "a784bec2341492f895fcccebf6c87283772e60cf3e38c3cdc945910128813f79"
+    }
+  ],
+  "source_hashes": {
+    "test/api/e2ee_failure_metric_exposition_tests.erl": "7b09be34d516b89dd5bf6b3cb279c90eb26353725eec4f69260ced400c81b4da",
+    "src/logic/e2ee_recovery_logic.erl": "0a34dc907dedda98eaf463b302495840c87a59f3997d4c57c08843a487e6f2b7",
+    "src/logic/msg_c2g_logic.erl": "169157555bd96df5ba28bca6b5d415c2377c6027fe8698563451eb25d3e8f0ec",
+    "src/logic/olm_identity_logic.erl": "a578b91d5de8732df019fb938234c7047023218fe972d8427a68f19950598a61",
+    "src/api/metrics_handler.erl": "693086d75c75f4bc90df75da1215a8a4abd8d61a2fd8bf6582a6e89d1243abd5",
+    "src/lib/elib_metric.erl": "662b3c01ee9514f4733e363dcb206769422090c3a17c7587b2974e131217be7b"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "limits": [
+    "Exact counter +1 and complete exporter line for PoP rejection, recovery database failure and group gate database failure",
+    "Metric process owned and stopped by isolated VM test; no shared reset",
+    "No live HTTP scrape, notification delivery, rotation export proof or production SLO qualification"
+  ]
+}

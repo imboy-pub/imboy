@@ -4450,5 +4450,10 @@
     "metric_chain_tests": 11,
     "alert_assertions": 17,
     "product_pass": false
+  },
+  "e2ee_failure_metric_exposition": {
+    "receipt": "e2ee-failure-metric-exposition.json",
+    "tests": 3,
+    "product_pass": false
   }
 }
