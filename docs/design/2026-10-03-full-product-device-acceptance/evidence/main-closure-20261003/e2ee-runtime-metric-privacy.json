@@ -1,0 +1,36 @@
+{
+  "scope": "HOST_RUNTIME_DECRYPT_FAILURE_METRIC_LOG_ONLY",
+  "app_head": "21e7d473806b03ce225e36aae469586a25520065",
+  "tests": 18,
+  "exit_code": 0,
+  "analysis_exit_code": 0,
+  "unsafe_reason_calibration_exit_code": 1,
+  "restored_suite_exit_code": 0,
+  "captured_metric_logs": 5,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "e2ee-runtime-metric-log.log",
+      "sha256": "743bae56c06b76fdb362a31716860dc68d6f22646cae27767f7f89358107d0d1"
+    },
+    {
+      "path": "e2ee-runtime-metric-analysis.log",
+      "sha256": "d674735b17084ed1c3ac5af63e177961ed31645fb7d99f736ba64f6dacae0a79"
+    },
+    {
+      "path": "e2ee-runtime-metric-calibration.log",
+      "sha256": "e6a823f3b41596f6beaeb5c7762beabd798b0d1fc8fb0d019f0e1e4f9877a8f3"
+    },
+    {
+      "path": "e2ee-runtime-metric-restored.log",
+      "sha256": "743bae56c06b76fdb362a31716860dc68d6f22646cae27767f7f89358107d0d1"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Captures actual countAwait/iPrint/debugPrint in host test with synthetic SharedPreferences",
+    "No device/native/all-client-log privacy proof",
+    "No real backend or frozen SLO qualification"
+  ]
+}

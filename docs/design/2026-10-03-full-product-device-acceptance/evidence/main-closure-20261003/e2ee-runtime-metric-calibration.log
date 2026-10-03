@@ -1,0 +1,18 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_failure_metrics_test.dart
+00:00 +0: 真实指标日志不输出原因、历史键或去重标识中的秘密
+00:00 +0 -1: 真实指标日志不输出原因、历史键或去重标识中的秘密 [E]
+  Expected: not contains 'synthetic-private-user-key'
+    Actual: '📊 [E2EE_METRICS] decrypt failure: synthetic-private-user-key total=3\n'
+              '📊 [E2EE_METRICS] decrypt failure: bounds_synthetic-private-user-key total=1\n'
+              '📊 [E2EE_METRICS] decrypt failure: envelope_synthetic-private-user-key total=1\n'
+              '📊 [E2EE_METRICS] decrypt failure: unknown total=1\n'
+              '📊 [E2EE_METRICS] decrypt failure: decrypt_error total=1'
+  
+  package:matcher                                             expect
+  package:flutter_test/src/widget_tester.dart 473:18          expect
+  test/unit_test/service/e2ee_failure_metrics_test.dart 71:5  main.<fn>
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_failure_metrics_test.dart: 真实指标日志不输出原因、历史键或去重标识中的秘密

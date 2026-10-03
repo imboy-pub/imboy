@@ -4515,5 +4515,11 @@
     "app_head": "e85ec53e0d5714cf0b1919b1c42b3f421f9471e0",
     "tests": 50,
     "product_pass": false
+  },
+  "e2ee_runtime_metric_privacy": {
+    "receipt": "e2ee-runtime-metric-privacy.json",
+    "app_head": "21e7d473806b03ce225e36aae469586a25520065",
+    "tests": 18,
+    "product_pass": false
   }
 }
