@@ -1,0 +1,17 @@
+usage: auto_test.py acceptance-navigation-profiles [-h] --evidence-root
+                                                   EVIDENCE_ROOT
+                                                   --frozen-input FROZEN_INPUT
+                                                   --frozen-sha256
+                                                   FROZEN_SHA256
+                                                   --acceptance-report
+                                                   ACCEPTANCE_REPORT
+                                                   --report-sha256
+                                                   REPORT_SHA256
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --evidence-root EVIDENCE_ROOT
+  --frozen-input FROZEN_INPUT
+  --frozen-sha256 FROZEN_SHA256
+  --acceptance-report ACCEPTANCE_REPORT
+  --report-sha256 REPORT_SHA256

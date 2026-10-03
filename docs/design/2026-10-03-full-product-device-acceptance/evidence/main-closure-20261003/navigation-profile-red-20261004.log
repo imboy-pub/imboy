@@ -1,0 +1,19 @@
+E
+======================================================================
+ERROR: test_navigation_profile_composition (unittest.loader._FailedTest)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_navigation_profile_composition
+Traceback (most recent call last):
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/loader.py", line 436, in _find_test_path
+    module = self._get_module_from_name(name)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/loader.py", line 377, in _get_module_from_name
+    __import__(name)
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_navigation_profile_composition.py", line 12, in <module>
+    from auto_test_lib import acceptance_navigation_profiles as gate
+ImportError: cannot import name 'acceptance_navigation_profiles' from 'auto_test_lib' (/Users/leeyi/project/imboy.pub/imboyapp/scripts/auto_test_lib/__init__.py)
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)

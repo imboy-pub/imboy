@@ -5242,5 +5242,16 @@
     "product_pass": false,
     "composition_gate_status": "NOT_IMPLEMENTED",
     "original_functions_unbound": 12
+  },
+  "bottom_navigation_profile_composition": {
+    "receipt": "navigation-profile-composition-20261004.json",
+    "app_head": "71982a2a72c1df1bb8732adb33687c15e130470a",
+    "focused": 12,
+    "acceptance_domain": 165,
+    "exit_code": 0,
+    "device_execution": false,
+    "product_pass": false,
+    "gate_status": "IMPLEMENTED_NOT_QUALIFIED",
+    "original_functions_unbound": 12
   }
 }

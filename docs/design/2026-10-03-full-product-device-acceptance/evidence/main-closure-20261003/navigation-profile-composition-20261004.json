@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_PROFILE_COMPOSITION_TOOLING",
+  "app_head": "71982a2a72c1df1bb8732adb33687c15e130470a",
+  "source_hashes": [
+    {
+      "path": "scripts/auto_test_lib/acceptance_navigation_profiles.py",
+      "sha256": "e6c1dd18649c9e13a345fe6dd203547bb71c4f4e6fa11806f9dc645c072fedca"
+    },
+    {
+      "path": "scripts/auto_test.py",
+      "sha256": "ab2b11d2b9a68606794a27362a3de82095e0dadb1f77f324ba9f7bfe1ebaae5b"
+    },
+    {
+      "path": "test/tooling/auto_test/test_navigation_profile_composition.py",
+      "sha256": "5a6e1e6753cff199faa2b1308ac853da4a8273a0694089e8f58a93726cb3ae67"
+    },
+    {
+      "path": "test/auto_test/case_maps/bottom_navigation_channel_profiles.json",
+      "sha256": "fbe10c66340c31c49b2e861e0404f79b2f9e757f9ff39519ed3cf7022d415007"
+    },
+    {
+      "path": "integration_test/full_acceptance/navigation/bottom_navigation_device_test.dart",
+      "sha256": "636188f33628d32ed9dc54ab31cfb76feb8fb7ab3f5dcf4e3feb7ebe7b043357"
+    },
+    {
+      "path": "test/auto_test/specs/bottom-navigation-device-preparation.json",
+      "sha256": "1df0b0fce7e2d1ab079235a32c0c44e4d9efe328c217e95699116b9938734a22"
+    }
+  ],
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "checks": [
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "test/tooling/auto_test",
+        "-p",
+        "test_navigation_profile_composition.py"
+      ],
+      "exit_code": 0,
+      "passed": 12,
+      "log": "navigation-profile-final-focused-20261004.log",
+      "oracle": "Exact matrix, missing/duplicate/unknown/parent/role/raw name/binding/hash rejection; mandatory full-gate delegation and downstream errors preserved. Real unmocked CLI rejects complete matrix without execution evidence with exit2."
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "test/tooling/auto_test",
+        "-p",
+        "test_acceptance*.py"
+      ],
+      "exit_code": 0,
+      "passed": 165,
+      "log": "navigation-profile-acceptance-domain-20261004.log"
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "dart",
+        "analyze",
+        "integration_test/full_acceptance/navigation/bottom_navigation_device_test.dart"
+      ],
+      "exit_code": 0,
+      "log": "navigation-profile-dart-static-20261004.log"
+    },
+    {
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "scripts/auto_test.py",
+        "catalog",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "navigation-profile-catalog-check-20261004.log"
+    }
+  ],
+  "logs": [
+    {
+      "path": "navigation-profile-red-20261004.log",
+      "sha256": "37edc67124aa58f66fdc8dfe44da054c5ec30cafb10533ed86c699ba51a9aa8e",
+      "final_evidence": false
+    },
+    {
+      "path": "navigation-profile-green-20261004.log",
+      "sha256": "b3422b145032ac3a56ce40c0e8bbe6f04030fe26a1ce1f5388afec7a5b7cbee0",
+      "final_evidence": false
+    },
+    {
+      "path": "navigation-profile-final-focused-20261004.log",
+      "sha256": "837668fcd1b852b06a8f5151dabbdda5b9aead3d8b417da56395ec5bcb507c21",
+      "final_evidence": true
+    },
+    {
+      "path": "navigation-profile-acceptance-domain-20261004.log",
+      "sha256": "e905090dd63c9a3e08199a10f89b32c184518793d966bf2cc72d3bde6a13b878",
+      "final_evidence": true
+    },
+    {
+      "path": "navigation-profile-dart-static-20261004.log",
+      "sha256": "88f46a9b8cb6cedc36bfbb4cb970fdefd676571042ca3ebfb62c7a94592760a2",
+      "final_evidence": true
+    },
+    {
+      "path": "navigation-profile-cli-help-20261004.log",
+      "sha256": "a8bb0fad329b941922ce013f476c1c970a8666f116d01c04e190c37e7368d1d9",
+      "final_evidence": true
+    },
+    {
+      "path": "navigation-profile-catalog-20261004.log",
+      "sha256": "e0500850b14152429e8003f53886cdad48fbb4be5be6277fc43fd58e60fb5b18",
+      "final_evidence": true
+    },
+    {
+      "path": "navigation-profile-catalog-check-20261004.log",
+      "sha256": "64af6d0bc1ac9676f1d03d7e73dc9b7da04fb6c1b1a09565e83b144e269d9307",
+      "final_evidence": true
+    }
+  ],
+  "red_classification": "New feature TDD import failure before module existed; not a reproduced product defect.",
+  "required_cells": [
+    "android/enabled",
+    "android/disabled",
+    "macos/enabled",
+    "macos/disabled"
+  ],
+  "gate_status": "IMPLEMENTED_NOT_QUALIFIED",
+  "mapping_status": "ALL_12_FUNCTIONS_REMAIN_UNBOUND",
+  "limitations": [
+    "Positive full-gate unit delegation uses mocks; it proves wiring only, not candidate/runtime authenticity.",
+    "Real CLI negative runs use synthetic incomplete files, not device records.",
+    "No actual four-cell records, device/app bootstrap, backend or production execution.",
+    "Case template appends to complete original freeze; cannot replace original required set."
+  ],
+  "reviews": [
+    "acceptance_python_review APPROVE",
+    "runner_code_review APPROVE",
+    "c11_flutter_review APPROVE Dart naming change"
+  ]
+}
