@@ -1,0 +1,32 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -1: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart

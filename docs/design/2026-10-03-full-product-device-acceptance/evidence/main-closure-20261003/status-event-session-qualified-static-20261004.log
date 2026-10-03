@@ -1,0 +1,6 @@
+Analyzing lib, unit_test...
+
+   info - test/unit_test/service/message_status_event_session_test.dart:8:8 - The import of 'package:imboy/service/event_bus.dart' is unnecessary because all of the used elements are also provided by the import of 'package:imboy/service/events/events.dart'. Try removing the import directive. - unnecessary_import
+   info - test/unit_test/service/message_status_event_session_test.dart:74:7 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+
+2 issues found.

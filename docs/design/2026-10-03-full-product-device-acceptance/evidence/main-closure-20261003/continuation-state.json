@@ -5164,5 +5164,14 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "queued_status_event_session_isolation": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/queued-status-event-session-isolation-20261004.json",
+    "app_head": "2a515601de5c3981c32613bed968b78bd9e4160a",
+    "executed": 266,
+    "focused_executed": 3,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

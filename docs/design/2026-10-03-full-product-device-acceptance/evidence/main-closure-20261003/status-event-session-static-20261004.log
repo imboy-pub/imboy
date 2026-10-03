@@ -1,0 +1,10 @@
+Analyzing lib, unit_test...
+
+  error - lib/service/message_actions.dart:1276:13 - The named parameter 'ownerUid' is required, but there's no corresponding argument. Try adding the required argument. - missing_required_argument
+  error - lib/service/message_actions.dart:1276:13 - The named parameter 'sessionGeneration' is required, but there's no corresponding argument. Try adding the required argument. - missing_required_argument
+  error - lib/service/message_actions.dart:1347:13 - The named parameter 'ownerUid' is required, but there's no corresponding argument. Try adding the required argument. - missing_required_argument
+  error - lib/service/message_actions.dart:1347:13 - The named parameter 'sessionGeneration' is required, but there's no corresponding argument. Try adding the required argument. - missing_required_argument
+   info - test/unit_test/service/message_status_event_session_test.dart:8:8 - The import of 'package:imboy/service/event_bus.dart' is unnecessary because all of the used elements are also provided by the import of 'package:imboy/service/events/events.dart'. Try removing the import directive. - unnecessary_import
+   info - test/unit_test/service/message_status_event_session_test.dart:74:7 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+
+6 issues found.

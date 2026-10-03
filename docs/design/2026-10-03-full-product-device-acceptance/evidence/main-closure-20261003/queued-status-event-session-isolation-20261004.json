@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_ACTUAL_STATUS_EVENT_BUS_CONSUMER_SESSION_BOUNDARY",
+  "app_head": "2a515601de5c3981c32613bed968b78bd9e4160a",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_AFTER_ALL_PRODUCER_BINDINGS",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 1,
+    "red_failed": 2,
+    "domain_exit": 0,
+    "domain_passed": 266,
+    "focused_exit": 0,
+    "focused_passed": 3,
+    "static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Actual AppEventBus subscription invokes production MessageService status handler. Current event completes one update, counted conversation notifier and one seen-status message notification.",
+    "Event created before real loginAfter generation change and delivered afterward starts zero DB writes/query/notifier/notification.",
+    "Current event pauses first DB write; real generation change then release produces zero subsequent queries/notifier/notification while already-started write remains one."
+  ],
+  "implementation_verified_by_review": [
+    "Status event required ownerUid/sessionGeneration and props include bindings. All3production constructors bind original identity: legacy MSG_READ, NOT_A_FRIEND and DENYLIST.",
+    "Consumer checks event UID/generation before updating and after update/find/mapping awaits."
+  ],
+  "attempt_notes": [
+    "Authoritative RED preceded required API fields; represents old unbound event behavior. Final fixtures supply mandatory original bindings.",
+    "Initial implementation missed2producer constructors: compile domain/focusedFAIL/staticexit3 retained and excluded; both bound before qualified domain266.",
+    "Qualified static reported2testimport/braces infos; cleanup only test import/braces followed by final-focused3/static0/catalog0. Domain266 predates only that nonbehavioral cleanup."
+  ],
+  "limitations": [
+    "Database/conversation notifier synthetic; actual bus and MessageService consumer are real. No real UI widget/device/SQLite/backend/server qualification.",
+    "Producer incoming source provenance before handler entry, other AppError/retry-removal event side effects and find/map paused windows not qualified.",
+    "Already-started write cannot be cancelled or rolled back. No original97-ID upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-catalog-20261004.log",
+      "sha256": "01ddbb76d35ff72c55f0e8cd26ba31a0808791bff9023486ea3a372c1d94cff1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-catalog-check-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-domain-20261004.log",
+      "sha256": "87b0a53c0d32265c8075692123fe91f393a40408ad5d3e8b56fee038dc90407e"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-final-focused-20261004.log",
+      "sha256": "f9ed52dca2b3753c46e095e19a9bf31682068c97bd65cfe84cebee16ba8b59e8"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-focused-20261004.log",
+      "sha256": "d8a2254174a662325ad67c1a2ef09e3955d28f27b746c0d6c7204de22f96632a"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-qualified-catalog-20261004.log",
+      "sha256": "01ddbb76d35ff72c55f0e8cd26ba31a0808791bff9023486ea3a372c1d94cff1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-qualified-catalog-check-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-qualified-domain-20261004.log",
+      "sha256": "00a4c8a5b65b14f54e350098aa22d13d79d6e195df72f12cd57199c44f649908"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-qualified-focused-20261004.log",
+      "sha256": "f9ed52dca2b3753c46e095e19a9bf31682068c97bd65cfe84cebee16ba8b59e8"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-qualified-static-20261004.log",
+      "sha256": "27551fac636801f1308d3b9eebcd4189ac738df3bea34cc5047609aec11a6666"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-red-20261004.log",
+      "sha256": "ac3973520f2b6c9f67c3ebcc507ed3c2fcc5a38f6b9dbc19553d1097969cda94"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/status-event-session-static-20261004.log",
+      "sha256": "3c45b2bceee3fd38c2325bcacf382eeeec6aedcb9c10505fffc347b2daca5661"
+    }
+  ]
+}

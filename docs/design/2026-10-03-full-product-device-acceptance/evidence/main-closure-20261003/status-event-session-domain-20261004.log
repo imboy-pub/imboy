@@ -1,0 +1,1116 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -1: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -2: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_message_queue_enhanced_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_message_queue_enhanced_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_message_queue_enhanced_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -2: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -3: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_provider_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_provider_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_provider_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -3: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -4: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_queue_persistence_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_queue_persistence_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_queue_persistence_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -4: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -5: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_reconnect_strategy_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_reconnect_strategy_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_reconnect_strategy_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -5: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -6: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_reinit_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_reinit_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_reinit_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -6: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -7: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -7: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -8: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_server_ack_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_server_ack_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_server_ack_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -8: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -9: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_v2_e2e_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_v2_e2e_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_v2_e2e_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -9: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -10: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_v2_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_v2_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_v2_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -10: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -11: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/policy_gate_retry_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -11: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -12: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_downgrade_guard_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_downgrade_guard_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_downgrade_guard_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -12: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -13: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -13: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -14: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -14: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -15: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_plaintext_guard_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -15: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -16: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -16: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -17: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -17: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -18: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_retry_state_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_retry_state_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_retry_state_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -18: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -19: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_retry_terminal_state_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_retry_terminal_state_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_retry_terminal_state_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -19: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -20: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/ack_manager_enhanced_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/ack_manager_enhanced_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/ack_manager_enhanced_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -20: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -21: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/chat/message_revoke_policy_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/chat/message_revoke_policy_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/chat/message_revoke_policy_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -21: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -22: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -22: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -23: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/conversation/conversation_status_session_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/conversation/conversation_status_session_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/conversation/conversation_status_session_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -23: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_heartbeat_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+  package:flutter_tools/src/base/common.dart 34:3  throwToolExit
+  package:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>
+  dart:async/zone_root.dart 48:47                  _rootRunUnary
+  dart:async/zone.dart 816:35                      _CustomZone.runUnary
+  dart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback
+  dart:async/future_impl.dart 977:13               Future._propagateToListeners
+  dart:async/future_impl.dart 862:9                Future._propagateToListeners
+  dart:async/future_impl.dart 720:5                Future._completeWithValue
+  dart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>
+  dart:async/zone_root.dart 35:13                  _rootRun
+  dart:async/zone.dart 810:35                      _CustomZone.run
+  dart:async/zone.dart 702:7                       _CustomZone.runGuarded
+  dart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>
+  dart:async/schedule_microtask.dart 40:35         _microtaskLoop
+  dart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop
+  dart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback
+  dart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage
+  
+lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+            MessageStatusUpdateRequestedEvent(
+                                             ^
+lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+  const MessageStatusUpdateRequestedEvent({
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -24: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart: lib/service/message_actions.dart:1276:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  lib/service/message_actions.dart:1347:46: Error: Required named parameter 'ownerUid' must be provided.
+              MessageStatusUpdateRequestedEvent(
+                                               ^
+  lib/service/events/message_operation_events.dart:170:9: Context: Found this candidate, but the arguments don't match.
+    const MessageStatusUpdateRequestedEvent({
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -24: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/chat/message_revoke_policy_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/chat/message_revoke_policy_test.dart
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/conversation/conversation_status_session_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/conversation/conversation_status_session_test.dart
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/ack_manager_enhanced_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/ack_manager_enhanced_test.dart
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart
+  ... and 20 more

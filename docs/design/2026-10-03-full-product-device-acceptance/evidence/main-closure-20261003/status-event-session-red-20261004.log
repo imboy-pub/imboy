@@ -1,0 +1,43 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart
+00:00 +0: (setUpAll)
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:00 +0: status event session phase=current
+00:00 +0: (setUpAll)
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+> message_core: 更新消息状态 synthetic-status-event 为 21
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +1: status event session phase=before_delivery
+00:00 +1: (setUpAll)
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+> message_core: 更新消息状态 synthetic-status-event 为 21
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +1 -1: status event session phase=before_delivery [E]
+  Expected: <0>
+    Actual: <1>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test/unit_test/service/message_status_event_session_test.dart 166:9  main.<fn>
+  
+00:00 +1 -1: status event session phase=database_wait
+00:00 +1 -1: (setUpAll)
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +1 -2: status event session phase=database_wait [E]
+  Expected: <0>
+    Actual: <1>
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test/unit_test/service/message_status_event_session_test.dart 168:9  main.<fn>
+  
+00:00 +1 -2: (tearDownAll)
+00:00 +1 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart: status event session phase=before_delivery
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart: status event session phase=database_wait

@@ -1,0 +1,17 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/message_status_event_session_test.dart
+00:00 +0: (setUpAll)
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:00 +0: status event session phase=current
+00:00 +0: (setUpAll)
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+> message_core: 更新消息状态 synthetic-status-event 为 21
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +1: status event session phase=before_delivery
+00:00 +2: status event session phase=database_wait
+00:00 +2: (setUpAll)
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +3: (tearDownAll)
+00:00 +3: All tests passed!
