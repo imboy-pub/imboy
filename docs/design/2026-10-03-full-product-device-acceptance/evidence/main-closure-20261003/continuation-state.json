@@ -4562,5 +4562,11 @@
     "cases_designed": 4,
     "execution_status": "NOT_EXECUTED",
     "product_pass": false
+  },
+  "f14_invoice_query_failure": {
+    "receipt": "billing-invoice-query-failure.json",
+    "app_head": "ef94a3d923193b9a7971a07f653f5a66e046667b",
+    "tests": 26,
+    "product_pass": false
   }
 }

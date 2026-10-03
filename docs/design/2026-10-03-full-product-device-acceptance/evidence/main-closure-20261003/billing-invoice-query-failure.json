@@ -1,0 +1,30 @@
+{
+  "scope": "LOCAL_BILLING_INVOICE_QUERY_FAILURE_FIX",
+  "app_head": "ef94a3d923193b9a7971a07f653f5a66e046667b",
+  "tests": 26,
+  "exit_code": 0,
+  "red_exit_code": 1,
+  "analysis_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "billing-invoice-query-red.log",
+      "sha256": "993acc525256ef9324e1927c10c1fdadab0eaa59a801e869245612517efacb5b"
+    },
+    {
+      "path": "billing-invoice-query-green.log",
+      "sha256": "6c20b6b0ab5994b53fbfae17095f2a8fd2241116b632e586b2f3dc8b9a8eeaac"
+    },
+    {
+      "path": "billing-invoice-query-analysis.log",
+      "sha256": "e6dafd5e579608273541d3670edc1dd619d357dd318da4bb48670c04292c2d4a"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Actual BillingNotifier with fake BillingApi; query failure no longer reports success",
+    "No real account, database, provider, payment or device execution",
+    "Successful query with no unpaid invoice retains prior success semantics; empty/malformed result semantics not qualified"
+  ]
+}
