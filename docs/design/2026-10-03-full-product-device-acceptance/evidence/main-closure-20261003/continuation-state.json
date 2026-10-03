@@ -2,7 +2,7 @@
   "run_id": "main-closure-20261003",
   "objective": "合并并删除两个计划相关worktree和分支，继续完成两个计划全部任务",
   "overall_status": "ACTIVE_NOT_COMPLETE",
-  "phase": "MAIN_INTEGRATED_LOCAL_VERIFICATION",
+  "phase": "MAIN_INTEGRATED_EVIDENCE_INTEGRITY_REPAIRED_FULL_GATE_PENDING",
   "baseline_heads": {
     "imboy": "12729af78fbcaab95b7b07d5cb2139ebce38da36",
     "imboyapp": "c5d44adbceb014747c5da853430964165976f304",
@@ -82,16 +82,18 @@
       "repo": "imboy",
       "exit": 0,
       "byte_identical": true
+    },
+    {
+      "command": "flutter test test/unit_test/service/e2ee_backup_restore_test.dart test/unit_test/service/e2ee_local_backup_boundary_test.dart --reporter expanded",
+      "repo": "imboyapp",
+      "exit": 0,
+      "executed": 40,
+      "failed": 0,
+      "log": "/tmp/imboy-main-backup-tests.log",
+      "evidence_scope": "LOCAL_PREPARATION_ONLY"
     }
   ],
-  "active_process": {
-    "session_id": 63847,
-    "command": "flutter test test/unit_test/service/e2ee_backup_restore_test.dart test/unit_test/service/e2ee_local_backup_boundary_test.dart --reporter expanded",
-    "repo": "imboyapp",
-    "log": "/tmp/imboy-main-backup-tests.log",
-    "status": "RUNNING_LAST_OBSERVED",
-    "not_a_final_acceptance_run": true
-  },
+  "active_process": null,
   "blocked_inputs": [
     "explicit Android/macOS and synthetic-account/MITM resource authorization",
     "D-02/D-05 identity transparency profile decision",
@@ -99,7 +101,8 @@
     "D-04 PQ profile decision"
   ],
   "next_offline_tasks": [
-    "run C11 harness self-test on host after current Flutter test exits",
+    "run C11 harness through explicit host-only unit entrypoint; never integration_test auto device selection",
+    "repair current-source domain mapping and stale functional inventory with independent review",
     "implement F01 final acceptance verifier with real artifact and candidate checks",
     "close F00 coverage owner mappings and unresolved ambiguity/page gaps",
     "prepare isolated PG18 scratch stack without using shared 4323",
@@ -129,5 +132,38 @@
     "full_product": 61,
     "dispatch_cards": 55,
     "legacy_seeds": 1846
+  },
+  "evidence_integrity_closure": {
+    "app_candidate": "8a477ccd",
+    "commits": [
+      "d0d4e996",
+      "8a477ccd"
+    ],
+    "acceptance_tests": 22,
+    "machine_events_tests": 19,
+    "evidence_schema_tests": 21,
+    "independent_reviewers": 2,
+    "review_status": "LOCAL_SCOPE_APPROVED",
+    "product_pass": false,
+    "remaining_gates": [
+      "exact plan acceptance sets",
+      "full candidate bindings",
+      "business oracles",
+      "attempt history",
+      "real Android/macOS/backend journeys"
+    ]
+  },
+  "framework_full_suite": {
+    "command": "python3 -m unittest discover -s test/tooling/auto_test",
+    "executed": 233,
+    "failed": 14,
+    "exit": 1,
+    "remaining_findings": [
+      "project feature missing from capability mapping",
+      "domain tests assume 13 features but source has 14",
+      "inventory source now has 188 pages but test expects 173",
+      "functional_inventory.json is stale"
+    ],
+    "status": "FAIL"
   }
 }
