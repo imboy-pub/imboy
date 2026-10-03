@@ -4549,5 +4549,11 @@
     },
     "tests": 969,
     "product_pass": false
+  },
+  "e2ee_device_info_privacy": {
+    "receipt": "e2ee-device-info-privacy.json",
+    "app_head": "ef712be8aee51fdafd35be3fa461f7a68eaaa123",
+    "tests": 11,
+    "product_pass": false
   }
 }

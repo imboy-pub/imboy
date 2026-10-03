@@ -1,0 +1,30 @@
+{
+  "scope": "LOCAL_DEVICE_IDENTITY_LOG_REMOVAL_ONLY",
+  "app_head": "ef712be8aee51fdafd35be3fa461f7a68eaaa123",
+  "tests": 11,
+  "exit_code": 0,
+  "red_exit_code": 1,
+  "analysis_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "e2ee-device-info-red.log",
+      "sha256": "4a813703f1734a84535b26f1521840272a42305988a2fe9ac47ae57acbedc21b"
+    },
+    {
+      "path": "e2ee-device-info-green.log",
+      "sha256": "d3ba8349866285b3ce9993c29640551964482bc7fabdfb07fe638efbe5894e59"
+    },
+    {
+      "path": "e2ee-device-info-analysis.log",
+      "sha256": "2480dcf671bb1cbfb237f20e0b3cbfe525285c86da724a37c18c03df5feadffe"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Removed Web device ID and Android full deviceInfo diagnostic logging, return values unchanged",
+    "Old-fragment source guard and synthetic host bootstrap regression; no Android/Web runtime proof",
+    "No device/backend journey or frozen SLO qualification"
+  ]
+}

@@ -1,0 +1,13 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: 消息链路日志不得记录原始帧、明文 payload 或完整会话对象
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/logging_privacy_guard_test.dart: E2EE 服务异常日志保留稳定标识（异常 runtimeType）用于诊断
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart: 后台信任失效失败不输出异常原文且不打断事件流
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart: ensureReady 调用注册套件并隔离失败日志
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart: 初始化探针的字段记录 直接调用探针记录 userId / deviceId
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart: E2eeBootstrap.ensureRegistered 注册 olm/megolm/rsa-oaep 三套件，不含 mls（ADR 02 §8 占位）
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart: E2eeBootstrap.ensureRegistered 幂等：重复 ensureRegistered 不抛（不重复注册）
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart: E2eeBootstrap.ensureRegistered 3 种 v1 legacy 字符串各路由到正确协议实现
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart: E2eeBootstrap.ensureRegistered v2 三元组路由（双写消息优先按 protocol）
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart: E2eeBootstrap.ensureRegistered 未知套件抛 FormatException（不静默 fallback，ADR 02 §4.3）
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart: E2eeBootstrap.ensureRegistered RsaLegacyProtocol.encrypt 抛 UnsupportedError（ADR 02 §5.2 防降级）
+00:00 +11: All tests passed!
