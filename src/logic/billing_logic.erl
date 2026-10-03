@@ -283,8 +283,8 @@ renew(SubId) ->
                     case billing_subscription_ds:renew(SubId, NewStartMs, NewEndMs) of
                         {ok, _} ->
                             {ok, NewEndMs};
-                        {error, Reason} ->
-                            ?ERROR_LOG([<<"billing renew failed">>, SubId, Reason]),
+                        {error, _Reason} ->
+                            ?ERROR_LOG([billing_renew_error]),
                             {error, <<"续费失败，请稍后重试"/utf8>>}
                     end
             end

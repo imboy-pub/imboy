@@ -311,3 +311,39 @@ cancel_failure_privacy_test() ->
         meck:unload(billing_subscription_ds),
         meck:unload(elib_log)
     end.
+
+renew_failure_privacy_test() ->
+    Modules = [elib_log, billing_subscription_ds, billing_plan_ds],
+    lists:foreach(fun(M) -> meck:new(M, [passthrough, non_strict]) end, Modules),
+    try
+        meck:expect(elib_log, internal_log, fun(_, _, _, _) -> ok end),
+        meck:expect(billing_subscription_ds, find_by_id, fun(?SUB_ID) ->
+            #{
+                <<"status">> => 1,
+                <<"plan_id">> => 7,
+                <<"current_period_end">> => 4102444800000
+            }
+        end),
+        meck:expect(billing_plan_ds, find_by_id, fun(7) ->
+            #{<<"billing_period">> => <<"month">>}
+        end),
+        meck:expect(billing_subscription_ds, renew, fun(?SUB_ID, Start, End) ->
+            ?assertEqual(4102444800000, Start),
+            ?assertEqual(Start + 30 * 86400000, End),
+            {error, {database_error, <<"synthetic-private-renew-key">>}}
+        end),
+        ?assertEqual(
+            {error, <<"续费失败，请稍后重试"/utf8>>},
+            billing_logic:renew(?SUB_ID)
+        ),
+        ?assert(
+            meck:called(
+                elib_log,
+                internal_log,
+                [error, [billing_renew_error], billing_logic, '_']
+            )
+        ),
+        ?assertEqual(1, meck:num_calls(elib_log, internal_log, 4))
+    after
+        lists:foreach(fun meck:unload/1, lists:reverse(Modules))
+    end.
