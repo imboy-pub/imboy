@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_REPEATED_OFFLINE_QUEUE_RECONCILIATION",
+  "app_head": "cce5180ff1cffc0ba57b73ac3a99fc767c6319e8",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_LOCAL_SCOPE",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 15,
+    "red_failed": 3,
+    "final_domain_exit": 0,
+    "final_domain_passed": 173,
+    "full_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Repeated real SharedPreferences queue initialization does not duplicate normal entries or quarantined content.",
+    "Persisted conflict propagates to an existing active same-owner/id entry; actual connected fake sink writes zero frames.",
+    "Non-conflicting existing entries retain runtime generation rather than being rebound."
+  ],
+  "limitations": [
+    "Sequential repeated init and local conflict merge only; concurrent persistence failures and capacity handling remain pending.",
+    "No actual device/backend transport, producer/direct-send full isolation or original97-ID upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-queue-init-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-queue-init-domain-20261004.log",
+      "sha256": "0656007b98de0ab817074f75a6b8f52de81a58ac16f8b32672fd9d871c4916a4"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-queue-init-red-20261004.log",
+      "sha256": "cba9e94acd71667599d58797655e538d298f2aca0fc6b5ac8c7b26c728288d89"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-queue-init-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    }
+  ]
+}
