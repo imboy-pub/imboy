@@ -1,0 +1,455 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart
+00:00 +0: mention time seconds-int now
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: 'now'
+  Actual: '1/22'
+   Which: is different.
+          Expected: now
+            Actual: 1/22
+                    ^
+           Differ at offset 0
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:82:9)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  mention time seconds-int now
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: mention time seconds-int now [E]
+  Test failed. See exception logs above.
+  The test description was: mention time seconds-int now
+  
+00:00 +0 -1: mention time seconds-int minutes
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: '5m'
+  Actual: '1/22'
+   Which: is different.
+          Expected: 5m
+            Actual: 1/22
+                    ^
+           Differ at offset 0
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:82:9)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  mention time seconds-int minutes
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -2: mention time seconds-int minutes [E]
+  Test failed. See exception logs above.
+  The test description was: mention time seconds-int minutes
+  
+00:00 +0 -2: mention time seconds-int hours
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: '2h'
+  Actual: '1/22'
+   Which: is different.
+          Expected: 2h
+            Actual: 1/22
+                    ^
+           Differ at offset 0
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:82:9)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  mention time seconds-int hours
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -3: mention time seconds-int hours [E]
+  Test failed. See exception logs above.
+  The test description was: mention time seconds-int hours
+  
+00:00 +0 -3: mention time seconds-int days
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: '2d'
+  Actual: '1/22'
+   Which: is different.
+          Expected: 2d
+            Actual: 1/22
+                    ^
+           Differ at offset 0
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:82:9)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  mention time seconds-int days
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -4: mention time seconds-int days [E]
+  Test failed. See exception logs above.
+  The test description was: mention time seconds-int days
+  
+00:00 +0 -4: mention time seconds-int date
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: '9/26'
+  Actual: '1/22'
+   Which: is different.
+          Expected: 9/26
+            Actual: 1/22
+                    ^
+           Differ at offset 0
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:82:9)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  mention time seconds-int date
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -5: mention time seconds-int date [E]
+  Test failed. See exception logs above.
+  The test description was: mention time seconds-int date
+  
+00:00 +0 -5: mention time seconds-string now
+00:00 +1 -5: mention time seconds-string minutes
+00:00 +2 -5: mention time seconds-string hours
+00:00 +3 -5: mention time seconds-string days
+00:00 +4 -5: mention time seconds-string date
+00:00 +5 -5: mention time millis-int now
+00:00 +6 -5: mention time millis-int minutes
+00:00 +7 -5: mention time millis-int hours
+00:00 +8 -5: mention time millis-int days
+00:00 +9 -5: mention time millis-int date
+00:00 +10 -5: mention time millis-string now
+00:00 +11 -5: mention time millis-string minutes
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: '5m'
+  Actual: 'now'
+   Which: is different.
+          Expected: 5m
+            Actual: now
+                    ^
+           Differ at offset 0
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:82:9)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  mention time millis-string minutes
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +11 -6: mention time millis-string minutes [E]
+  Test failed. See exception logs above.
+  The test description was: mention time millis-string minutes
+  
+00:00 +11 -6: mention time millis-string hours
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: '2h'
+  Actual: 'now'
+   Which: is different.
+          Expected: 2h
+            Actual: now
+                    ^
+           Differ at offset 0
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:82:9)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  mention time millis-string hours
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +11 -7: mention time millis-string hours [E]
+  Test failed. See exception logs above.
+  The test description was: mention time millis-string hours
+  
+00:00 +11 -7: mention time millis-string days
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: '2d'
+  Actual: 'now'
+   Which: is different.
+          Expected: 2d
+            Actual: now
+                    ^
+           Differ at offset 0
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:82:9)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  mention time millis-string days
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +11 -8: mention time millis-string days [E]
+  Test failed. See exception logs above.
+  The test description was: mention time millis-string days
+  
+00:00 +11 -8: mention time millis-string date
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: '9/26'
+  Actual: 'now'
+   Which: is different.
+          Expected: 9/26
+            Actual: now
+                    ^
+           Differ at offset 0
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:82:9)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  mention time millis-string date
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +11 -9: mention time millis-string date [E]
+  Test failed. See exception logs above.
+  The test description was: mention time millis-string date
+  
+00:00 +11 -9: invalid mention time null is blank and does not crash
+00:00 +12 -9: invalid mention time malformed is blank and does not crash
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: null
+  Actual: FormatException:<FormatException: Invalid radix-10 number (at character 1)
+          malformed
+          ^
+          >
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:49:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:94:7)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 49
+The test description was:
+  invalid mention time malformed is blank and does not crash
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +12 -10: invalid mention time malformed is blank and does not crash [E]
+  Test failed. See exception logs above.
+  The test description was: invalid mention time malformed is blank and does not crash
+  
+00:00 +12 -10: invalid mention time -1 is blank and does not crash
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ''
+  Actual: '1/1'
+   Which: is different. Both strings start the same, but the actual value also has the following
+trailing characters: 1/1
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:94:7)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  invalid mention time -1 is blank and does not crash
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +12 -11: invalid mention time -1 is blank and does not crash [E]
+  Test failed. See exception logs above.
+  The test description was: invalid mention time -1 is blank and does not crash
+  
+00:01 +12 -11: invalid mention time 0 is blank and does not crash
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ''
+  Actual: '1/1'
+   Which: is different. Both strings start the same, but the actual value also has the following
+trailing characters: 1/1
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:51:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:94:7)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 51
+The test description was:
+  invalid mention time 0 is blank and does not crash
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +12 -12: invalid mention time 0 is blank and does not crash [E]
+  Test failed. See exception logs above.
+  The test description was: invalid mention time 0 is blank and does not crash
+  
+00:01 +12 -12: invalid mention time 1.5 is blank and does not crash
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: null
+  Actual: FormatException:<FormatException: Invalid radix-10 number (at character 1)
+          1.5
+          ^
+          >
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:49:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:94:7)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 49
+The test description was:
+  invalid mention time 1.5 is blank and does not crash
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +12 -13: invalid mention time 1.5 is blank and does not crash [E]
+  Test failed. See exception logs above.
+  The test description was: invalid mention time 1.5 is blank and does not crash
+  
+00:01 +12 -13: invalid mention time 999999999999999999 is blank and does not crash
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: null
+  Actual: RangeError:<RangeError (millisecondsSinceEpoch): Invalid value: Not in inclusive range
+-8640000000000000..8640000000000000: 999999999999999999>
+
+When the exception was thrown, this was the stack:
+#4      _expectTime (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:49:3)
+<asynchronous suspension>
+#5      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart:94:7)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart line 49
+The test description was:
+  invalid mention time 999999999999999999 is blank and does not crash
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +12 -14: invalid mention time 999999999999999999 is blank and does not crash [E]
+  Test failed. See exception logs above.
+  The test description was: invalid mention time 999999999999999999 is blank and does not crash
+  
+00:01 +12 -14: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart: invalid mention time -1 is blank and does not crash
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart: invalid mention time 0 is blank and does not crash
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart: invalid mention time 1.5 is blank and does not crash
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/mention/mention_time_units_test.dart: invalid mention time 999999999999999999 is blank and does not crash
+  ... and 10 more

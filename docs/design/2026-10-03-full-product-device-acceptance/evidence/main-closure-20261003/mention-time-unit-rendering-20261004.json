@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_MENTION_TIME_UNIT_RENDERING",
+  "app_head": "a3f1e3d0bd2d3090c07aa36a7e3366593773ca7d",
+  "executed": 37,
+  "new_cases": 26,
+  "red": {
+    "passed": 12,
+    "failed": 14
+  },
+  "logs": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/mention-time-red-20261004.log",
+      "sha256": "1087f8536d3daad25b7e84a4d20238c7dffab97b706aed5e538f3f9adaceeea6",
+      "exit_code": 1
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/mention-time-green-20261004.log",
+      "sha256": "a24acf293e0cac4fd9a3d312ab3d0d4fef71bc098fe3850da0bc4a3ccd457194",
+      "exit_code": 0
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/mention-time-static-20261004.log",
+      "sha256": "e964fc109cb6904760e299b3af50a30879fbbf9c669f658c34e2b2809ac6233e",
+      "exit_code": 0
+    }
+  ],
+  "sources": [
+    {
+      "repo": "imboyapp",
+      "path": "lib/page/mention/mention_list_page.dart",
+      "sha256": "b8128ee6e7b5fa116eec503251cb24c483566bf6efd321e7125114cae7db58f5"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "test/unit_test/page/mention/mention_time_units_test.dart",
+      "sha256": "84251bbf165a2c62301356a88b807817fba2dba94556830c343ec81d92fc1466"
+    },
+    {
+      "repo": "imboy",
+      "path": "src/api/mention_handler.erl",
+      "sha256": "f6aa7ef355ee8dd29669d354242d52148c37d55eb7ea7a71cd36e0a183235204"
+    }
+  ],
+  "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/page/mention",
+    "--reporter",
+    "expanded"
+  ],
+  "oracles": [
+    "Actual trailing Text for modern epoch seconds/milliseconds int/string across now/minutes/hours/days/date.",
+    "Null, malformed, non-positive, fractional and out-of-range timestamps render blank without exception."
+  ],
+  "related_function_ids": [
+    "fn:mention:mention_list_page:012"
+  ],
+  "resolves_local_source_gap_in": "mention-current-case-map-20261004.json",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "limitations": [
+    "Synthetic response, no real backend/device timestamp journey.",
+    "Threshold >10^12 follows current backend heuristic; pre-2001 millisecond values are ambiguous and not qualified.",
+    "Future timestamp rendering unchanged and not validated.",
+    "Original platform execution target remains unbound."
+  ],
+  "reviews": [
+    "c11_flutter_review APPROVE",
+    "runner_code_review APPROVE"
+  ]
+}

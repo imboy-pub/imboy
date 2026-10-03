@@ -5364,5 +5364,13 @@
     "required_platform_cells": 24,
     "device_execution": false,
     "product_pass": false
+  },
+  "mention_time_unit_rendering": {
+    "receipt": "mention-time-unit-rendering-20261004.json",
+    "app_head": "a3f1e3d0bd2d3090c07aa36a7e3366593773ca7d",
+    "executed": 37,
+    "new_cases": 26,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }
