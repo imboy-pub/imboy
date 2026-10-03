@@ -966,6 +966,37 @@
         "sha256": "b283f4d6f6d1b29329c933fb53b2f32a1ab0614bdfb33441ae67fb120ae1ba62",
         "phase": "REVIEWED_302_PASS"
       }
+    ],
+    "superseded_invalid_input_exit": 64
+  },
+  "shard_manifest_input_gate": {
+    "app_candidate": "190abeef6f84a3aa2ffa018830198e4cf59f25ad",
+    "executed": 304,
+    "exit": 0,
+    "review": "APPROVED_AFTER_FIFO_REPAIR",
+    "scope": "HOST_MANIFEST_INPUT_ONLY",
+    "product_pass": false,
+    "no_real_device_access": true,
+    "implemented": [
+      "schema errors exit64 per execution contract",
+      "strict bounded JSON and unique nonempty targets",
+      "canonical relative existing regular Dart files",
+      "no symlink/traversal/FIFO input",
+      "validate whole target manifest before subprocess/output"
+    ],
+    "logs": [
+      {
+        "path": "shard-manifest-before-review.log",
+        "sha256": "32dab46a6a81434be089e8a7cb713d186ec1a2d733a8b3368cf760bb38a6d0c9"
+      },
+      {
+        "path": "shard-manifest-reviewed.log",
+        "sha256": "6f9117a164933f1e823be32457b0262ff601a79ea0475ae84da510c3957bb3ca"
+      },
+      {
+        "path": "shard-manifest-cli.json",
+        "sha256": "2865a59359691f838a8565640e4226069b36435121f9d74e8eefb5dca9572456"
+      }
     ]
   }
 }
