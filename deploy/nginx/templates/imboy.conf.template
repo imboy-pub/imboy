@@ -108,6 +108,24 @@ server {
         add_header X-Accel-Buffering no;
     }
 
+    # SSE 长连接：客服坐席工作台事件流（BE-S01b）。(seat/)? 双形态兼容后端
+    # seat_console_route 镜像注册（SeatEventStream 发 /api/v1/seat/cs/… 形态）。
+    # 必须先于通用反代块命中——通用块默认开缓冲，会把事件帧攒到分钟级
+    # （2026-10-03 cs 域同款根因，修复 9b8ae04e；本块为 API 域同款防线）。
+    location ~ ^/api/v1/(seat/)?cs/organizations/[^/]+/seats/me/events$ {
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding on;
+        proxy_read_timeout 3600s;
+        add_header X-Accel-Buffering no;
+    }
+
     # LiveKit SFU WebSocket 信令（媒体走 UDP/TCP 直连宿主，不经 nginx）
     # LiveKit SFU WebSocket signaling (media goes direct via UDP/TCP, not through nginx)
     location /livekit/ {
