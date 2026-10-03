@@ -1,0 +1,133 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart
+00:00 +0: 同一帧重复云端恢复只打开一个确认框
+
+Warning: A call to tap() with finder "Found 1 widget with type "CupertinoDialogAction" that are ancestors of widget with text "取消" (ignoring all but last): [
+  CupertinoDialogAction(dependencies: [InheritedCupertinoTheme, MediaQuery], state: _CupertinoDialogActionState#61173),
+]" derived an Offset (Offset(332.4, 373.7)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderMouseRegion#d9d62
+The hit test result at that offset is: HitTestResult(HitTestEntry<HitTestTarget>#b1aae(TextSpan(inherit: false, color: Color(alpha: 1.0000, red: 0.4039, green: 0.3137, blue: 0.6431, colorSpace: ColorSpace.sRGB), family: CupertinoSystemText, size: 16.8, weight: 400, baseline: alphabetic, "取消")), RenderParagraph#1516c@Offset(16.8, 8.5), RenderSemanticsAnnotations#bdfa9@Offset(16.8, 8.5), RenderConstrainedBox#b63db@Offset(16.8, 8.5), RenderFittedBox#eef3c@Offset(16.8, 8.5), RenderPositionedBox#5c121@Offset(59.4, 14.5), RenderPadding#bc043@Offset(67.4, 22.5), RenderConstrainedBox#beb3a@Offset(67.4, 22.5), RenderMetaData#25f7e@Offset(67.4, 22.5), RenderMouseRegion#28b37@Offset(67.4, 22.5), RenderPadding#5e2f6@Offset(67.4, 22.5), RenderDecoratedBox#fcb51@Offset(67.4, 22.5), RenderMergeSemantics#f86f3@Offset(67.4, 22.5), RenderMetaData#04e3c@Offset(67.4, 22.5), _RenderAlertDialogActionsLayout#ed507@Offset(67.4, 22.5), _RenderSingleChildViewport#64884@Offset(67.4, 22.5), RenderIgnorePointer#2d39c@Offset(67.4, 22.5), RenderSemanticsAnnotations#d5b82@Offset(67.4, 22.5), RenderPointerListener#5b423@Offset(67.4, 22.5), RenderSemanticsGestureHandler#c88b0@Offset(67.4, 22.5), RenderPointerListener#00b99@Offset(67.4, 22.5), _RenderScrollSemantics#36705@Offset(67.4, 22.5), RenderClipRect#40203@Offset(67.4, 22.5), RenderRepaintBoundary#d4319@Offset(67.4, 22.5), RenderCustomPaint#2ec49@Offset(67.4, 22.5), RenderMouseRegion#5db0e@Offset(67.4, 22.5), RenderPointerListener#57668@Offset(67.4, 22.5), RenderSemanticsGestureHandler#0b133@Offset(67.4, 22.5), RenderPointerListener#fe6cd@Offset(67.4, 22.5), RenderRepaintBoundary#754df@Offset(67.4, 22.5), RenderStack#3ff99@Offset(67.4, 22.5), RenderFlex#edb00@Offset(67.4, 22.8), _RenderPriorityColumn#3e73b@Offset(67.4, 169.8), _RenderLayoutBuilder#49296@Offset(67.4, 169.8), RenderSemanticsAnnotations#96c22@Offset(67.4, 169.8), RenderBackdropFilter#c6805@Offset(67.4, 169.8), RenderClipRSuperellipse#6d0e2@Offset(67.4, 169.8), RenderPointerListener#8f358@Offset(67.4, 169.8), RenderConstrainedBox#12732@Offset(67.4, 169.8), RenderPadding#34e78@Offset(67.4, 189.8), RenderPositionedBox#659a0@Offset(292.4, 349.7), RenderPadding#9365f@Offset(332.4, 373.7), _RenderLayoutBuilder#ae462@Offset(332.4, 373.7), RenderPadding#e318a@Offset(332.4, 373.7), RenderSemanticsAnnotations#0d694@Offset(332.4, 373.7), RenderRepaintBoundary#c01bf@Offset(332.4, 373.7), RenderIgnorePointer#4e78a@Offset(332.4, 373.7), RenderAnimatedOpacity#4d175@Offset(332.4, 373.7), RenderRepaintBoundary#35ea4@Offset(332.4, 373.7), RenderSemanticsAnnotations#b687a@Offset(332.4, 373.7), RenderOffstage#8c8f0@Offset(332.4, 373.7), RenderSemanticsAnnotations#0b5c3@Offset(332.4, 373.7), _RenderTheater#bdd8f@Offset(332.4, 373.7), RenderAbsorbPointer#f13a4@Offset(332.4, 373.7), RenderPointerListener#49a65@Offset(332.4, 373.7), RenderSemanticsAnnotations#d443c@Offset(332.4, 373.7), _RenderInkFeatures#2f854@Offset(332.4, 373.7), RenderCustomPaint#ca08e@Offset(332.4, 373.7), RenderClipPath#27f87@Offset(332.4, 373.7), RenderStack#26db7@Offset(332.4, 373.7), RenderCustomPaint#6f7af@Offset(332.4, 373.7), RenderSemanticsAnnotations#10877@Offset(332.4, 373.7), RenderSemanticsAnnotations#94fae@Offset(332.4, 373.7), RenderSemanticsAnnotations#76c82@Offset(332.4, 373.7), RenderTapRegionSurface#20dd2@Offset(332.4, 373.7), RenderSemanticsAnnotations#318aa@Offset(332.4, 373.7), RenderSemanticsAnnotations#f57a7@Offset(332.4, 373.7), HitTestEntry<HitTestTarget>#535fb(_ReusableRenderView#66e00), HitTestEntry<HitTestTarget>#14c17(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _cancelCloudPrompts (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:258:18)
+<asynchronous suspension>
+#4      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:97:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#7      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to tap() with finder "Found 1 widget with type "CupertinoDialogAction" that are ancestors of widget with text "取消" (ignoring all but last): [
+  CupertinoDialogAction(dependencies: [InheritedCupertinoTheme, MediaQuery], state: _CupertinoDialogActionState#e3a40),
+]" derived an Offset (Offset(332.4, 373.7)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderMouseRegion#28b37
+The hit test result at that offset is: HitTestResult(RenderParagraph#316d7@Offset(216.4, 2.7), RenderFlex#9bf36@Offset(296.4, 2.7), RenderPadding#751b9@Offset(296.4, 2.7), RenderFlex#5fab8@Offset(296.4, 38.7), RenderPadding#4370e@Offset(312.4, 54.7), RenderSemanticsAnnotations#95737@Offset(312.4, 54.7), _RenderInkFeatures#c5b92@Offset(312.4, 54.7), RenderCustomPaint#f8a8f@Offset(312.4, 54.7), RenderPhysicalShape#517cd@Offset(312.4, 54.7), RenderPadding#aaf33@Offset(316.4, 58.7), RenderSemanticsAnnotations#9556e@Offset(316.4, 58.7), RenderFlex#c4035@Offset(316.4, 793.7), RenderPadding#a3b6b@Offset(332.4, 809.7), RenderFlex#269dd@Offset(332.4, 809.7), _RenderSingleChildViewport#6ef69@Offset(332.4, 329.7), RenderIgnorePointer#b58ba@Offset(332.4, 329.7), RenderSemanticsAnnotations#5ee42@Offset(332.4, 329.7), RenderPointerListener#bfdeb@Offset(332.4, 329.7), RenderSemanticsGestureHandler#fbfbe@Offset(332.4, 329.7), RenderPointerListener#a973b@Offset(332.4, 329.7), _RenderScrollSemantics#eb7ab@Offset(332.4, 329.7), RenderClipRect#1082b@Offset(332.4, 329.7), RenderCustomMultiChildLayoutBox#a8075@Offset(332.4, 373.7), _RenderInkFeatures#eb98b@Offset(332.4, 373.7), RenderPhysicalModel#7450b@Offset(332.4, 373.7), RenderSemanticsAnnotations#d24e0@Offset(332.4, 373.7), RenderRepaintBoundary#53bee@Offset(332.4, 373.7), RenderIgnorePointer#fef9c@Offset(332.4, 373.7), RenderAnimatedOpacity#5223c@Offset(332.4, 373.7), RenderAnimatedOpacity#99a22@Offset(332.4, 373.7), _RenderColoredBox#41f37@Offset(332.4, 373.7), RenderAnimatedOpacity#eb209@Offset(332.4, 373.7), RenderIgnorePointer#09033@Offset(332.4, 373.7), RenderAnimatedOpacity#6fa34@Offset(332.4, 373.7), RenderRepaintBoundary#f64c1@Offset(332.4, 373.7), RenderSemanticsAnnotations#4c01a@Offset(332.4, 373.7), RenderOffstage#23bf1@Offset(332.4, 373.7), RenderSemanticsAnnotations#c2684@Offset(332.4, 373.7), _RenderTheater#bdd8f@Offset(332.4, 373.7), RenderAbsorbPointer#f13a4@Offset(332.4, 373.7), RenderPointerListener#49a65@Offset(332.4, 373.7), RenderSemanticsAnnotations#d443c@Offset(332.4, 373.7), _RenderInkFeatures#2f854@Offset(332.4, 373.7), RenderCustomPaint#ca08e@Offset(332.4, 373.7), RenderClipPath#27f87@Offset(332.4, 373.7), RenderStack#26db7@Offset(332.4, 373.7), RenderCustomPaint#6f7af@Offset(332.4, 373.7), RenderSemanticsAnnotations#10877@Offset(332.4, 373.7), RenderSemanticsAnnotations#94fae@Offset(332.4, 373.7), RenderSemanticsAnnotations#76c82@Offset(332.4, 373.7), RenderTapRegionSurface#20dd2@Offset(332.4, 373.7), RenderSemanticsAnnotations#318aa@Offset(332.4, 373.7), RenderSemanticsAnnotations#f57a7@Offset(332.4, 373.7), HitTestEntry<HitTestTarget>#77dcd(_ReusableRenderView#66e00), HitTestEntry<HitTestTarget>#853d8(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _cancelCloudPrompts (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:258:18)
+<asynchronous suspension>
+#4      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:97:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#7      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <1>
+  Actual: <2>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:98:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart line 98
+The test description was:
+  同一帧重复云端恢复只打开一个确认框
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:00 +0 -1: 同一帧重复云端恢复只打开一个确认框 [E]
+  Test failed. See exception logs above.
+  The test description was: 同一帧重复云端恢复只打开一个确认框
+  
+00:00 +0 -1: 取消云端恢复确认后可以重新打开
+
+Warning: A call to tap() with finder "Found 1 widget with type "CupertinoDialogAction" that are ancestors of widget with text "取消" (ignoring all but last): [
+  CupertinoDialogAction(dependencies: [InheritedCupertinoTheme, MediaQuery], state: _CupertinoDialogActionState#bce02),
+]" derived an Offset (Offset(332.4, 373.7)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderMouseRegion#caa8d
+The hit test result at that offset is: HitTestResult(RenderParagraph#4c99f@Offset(216.4, 2.7), RenderFlex#157ce@Offset(296.4, 2.7), RenderPadding#1c0e2@Offset(296.4, 2.7), RenderFlex#1314e@Offset(296.4, 38.7), RenderPadding#a239a@Offset(312.4, 54.7), RenderSemanticsAnnotations#29374@Offset(312.4, 54.7), _RenderInkFeatures#391f8@Offset(312.4, 54.7), RenderCustomPaint#a693d@Offset(312.4, 54.7), RenderPhysicalShape#5db57@Offset(312.4, 54.7), RenderPadding#74cd2@Offset(316.4, 58.7), RenderSemanticsAnnotations#1dfa4@Offset(316.4, 58.7), RenderFlex#f05bc@Offset(316.4, 793.7), RenderPadding#4be46@Offset(332.4, 809.7), RenderFlex#9e725@Offset(332.4, 809.7), _RenderSingleChildViewport#3bc66@Offset(332.4, 329.7), RenderIgnorePointer#6b71b@Offset(332.4, 329.7), RenderSemanticsAnnotations#662a1@Offset(332.4, 329.7), RenderPointerListener#58a6c@Offset(332.4, 329.7), RenderSemanticsGestureHandler#1e7f0@Offset(332.4, 329.7), RenderPointerListener#a5388@Offset(332.4, 329.7), _RenderScrollSemantics#e0545@Offset(332.4, 329.7), RenderClipRect#a3a30@Offset(332.4, 329.7), RenderCustomMultiChildLayoutBox#dbf44@Offset(332.4, 373.7), _RenderInkFeatures#acbf5@Offset(332.4, 373.7), RenderPhysicalModel#cb694@Offset(332.4, 373.7), RenderSemanticsAnnotations#0bb7c@Offset(332.4, 373.7), RenderRepaintBoundary#cea14@Offset(332.4, 373.7), RenderIgnorePointer#b42c0@Offset(332.4, 373.7), RenderAnimatedOpacity#1f538@Offset(332.4, 373.7), RenderAnimatedOpacity#ca7f3@Offset(332.4, 373.7), _RenderColoredBox#c7532@Offset(332.4, 373.7), RenderAnimatedOpacity#9a5fd@Offset(332.4, 373.7), RenderIgnorePointer#a36a2@Offset(332.4, 373.7), RenderAnimatedOpacity#2274f@Offset(332.4, 373.7), RenderRepaintBoundary#41f45@Offset(332.4, 373.7), RenderSemanticsAnnotations#80a4c@Offset(332.4, 373.7), RenderOffstage#89b53@Offset(332.4, 373.7), RenderSemanticsAnnotations#2570e@Offset(332.4, 373.7), _RenderTheater#b7b40@Offset(332.4, 373.7), RenderAbsorbPointer#b6e2f@Offset(332.4, 373.7), RenderPointerListener#2ba72@Offset(332.4, 373.7), RenderSemanticsAnnotations#c4528@Offset(332.4, 373.7), _RenderInkFeatures#4fc45@Offset(332.4, 373.7), RenderCustomPaint#14d4d@Offset(332.4, 373.7), RenderClipPath#fa1d3@Offset(332.4, 373.7), RenderStack#0e19c@Offset(332.4, 373.7), RenderCustomPaint#3d355@Offset(332.4, 373.7), RenderSemanticsAnnotations#81040@Offset(332.4, 373.7), RenderSemanticsAnnotations#e5f80@Offset(332.4, 373.7), RenderSemanticsAnnotations#6798e@Offset(332.4, 373.7), RenderTapRegionSurface#83251@Offset(332.4, 373.7), RenderSemanticsAnnotations#981fc@Offset(332.4, 373.7), RenderSemanticsAnnotations#b1758@Offset(332.4, 373.7), HitTestEntry<HitTestTarget>#b0b08(_ReusableRenderView#66e00), HitTestEntry<HitTestTarget>#7b7d6(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _cancelCloudPrompts (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:258:18)
+<asynchronous suspension>
+#4      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:110:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#7      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+
+Warning: A call to tap() with finder "Found 1 widget with type "CupertinoDialogAction" that are ancestors of widget with text "取消" (ignoring all but last): [
+  CupertinoDialogAction(dependencies: [InheritedCupertinoTheme, MediaQuery], state: _CupertinoDialogActionState#f0162),
+]" derived an Offset (Offset(332.4, 373.7)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderMouseRegion#4f85a
+The hit test result at that offset is: HitTestResult(RenderParagraph#4c99f@Offset(216.4, 2.7), RenderFlex#157ce@Offset(296.4, 2.7), RenderPadding#1c0e2@Offset(296.4, 2.7), RenderFlex#1314e@Offset(296.4, 38.7), RenderPadding#a239a@Offset(312.4, 54.7), RenderSemanticsAnnotations#29374@Offset(312.4, 54.7), _RenderInkFeatures#391f8@Offset(312.4, 54.7), RenderCustomPaint#a693d@Offset(312.4, 54.7), RenderPhysicalShape#5db57@Offset(312.4, 54.7), RenderPadding#74cd2@Offset(316.4, 58.7), RenderSemanticsAnnotations#1dfa4@Offset(316.4, 58.7), RenderFlex#f05bc@Offset(316.4, 793.7), RenderPadding#4be46@Offset(332.4, 809.7), RenderFlex#9e725@Offset(332.4, 809.7), _RenderSingleChildViewport#3bc66@Offset(332.4, 329.7), RenderIgnorePointer#6b71b@Offset(332.4, 329.7), RenderSemanticsAnnotations#662a1@Offset(332.4, 329.7), RenderPointerListener#58a6c@Offset(332.4, 329.7), RenderSemanticsGestureHandler#1e7f0@Offset(332.4, 329.7), RenderPointerListener#a5388@Offset(332.4, 329.7), _RenderScrollSemantics#e0545@Offset(332.4, 329.7), RenderClipRect#a3a30@Offset(332.4, 329.7), RenderCustomMultiChildLayoutBox#dbf44@Offset(332.4, 373.7), _RenderInkFeatures#acbf5@Offset(332.4, 373.7), RenderPhysicalModel#cb694@Offset(332.4, 373.7), RenderSemanticsAnnotations#0bb7c@Offset(332.4, 373.7), RenderRepaintBoundary#cea14@Offset(332.4, 373.7), RenderIgnorePointer#b42c0@Offset(332.4, 373.7), RenderAnimatedOpacity#1f538@Offset(332.4, 373.7), RenderAnimatedOpacity#ca7f3@Offset(332.4, 373.7), _RenderColoredBox#c7532@Offset(332.4, 373.7), RenderAnimatedOpacity#9a5fd@Offset(332.4, 373.7), RenderIgnorePointer#a36a2@Offset(332.4, 373.7), RenderAnimatedOpacity#2274f@Offset(332.4, 373.7), RenderRepaintBoundary#41f45@Offset(332.4, 373.7), RenderSemanticsAnnotations#80a4c@Offset(332.4, 373.7), RenderOffstage#89b53@Offset(332.4, 373.7), RenderSemanticsAnnotations#2570e@Offset(332.4, 373.7), _RenderTheater#b7b40@Offset(332.4, 373.7), RenderAbsorbPointer#b6e2f@Offset(332.4, 373.7), RenderPointerListener#2ba72@Offset(332.4, 373.7), RenderSemanticsAnnotations#c4528@Offset(332.4, 373.7), _RenderInkFeatures#4fc45@Offset(332.4, 373.7), RenderCustomPaint#14d4d@Offset(332.4, 373.7), RenderClipPath#fa1d3@Offset(332.4, 373.7), RenderStack#0e19c@Offset(332.4, 373.7), RenderCustomPaint#3d355@Offset(332.4, 373.7), RenderSemanticsAnnotations#81040@Offset(332.4, 373.7), RenderSemanticsAnnotations#e5f80@Offset(332.4, 373.7), RenderSemanticsAnnotations#6798e@Offset(332.4, 373.7), RenderTapRegionSurface#83251@Offset(332.4, 373.7), RenderSemanticsAnnotations#981fc@Offset(332.4, 373.7), RenderSemanticsAnnotations#b1758@Offset(332.4, 373.7), HitTestEntry<HitTestTarget>#517ae(_ReusableRenderView#66e00), HitTestEntry<HitTestTarget>#90bd6(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      _cancelCloudPrompts (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:258:18)
+<asynchronous suspension>
+#4      main.<anonymous closure> (file:///Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart:110:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#7      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+00:01 +1 -1: 云端解密等待期间关闭页面不开始写入恢复密钥
+00:01 +2 -1: 本地恢复等待期间不能弹出云端恢复确认框
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:01 +3 -1: 云端恢复等待期间不能启动本地恢复
+00:01 +4 -1: 解密等待期间关闭页面不开始写入恢复密钥
+00:01 +5 -1: 同一帧重复导入只启动一次解密
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:01 +6 -1: 导入失败后仍可再次发起导入
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+[E2EEBackupImport] 导入备份失败: errType=ArgumentError
+00:01 +7 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart: 同一帧重复云端恢复只打开一个确认框

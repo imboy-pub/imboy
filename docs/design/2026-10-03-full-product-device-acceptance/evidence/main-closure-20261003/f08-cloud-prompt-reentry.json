@@ -1,0 +1,44 @@
+{
+  "id": "F08-CLOUD-PROMPT-REENTRY",
+  "scope": "LOCAL_HOST_WIDGET_REGRESSION_ONLY",
+  "app_head": "feefb4d3d343dc610768fe44b2b3da2831e0d339",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "red": {
+    "passed": 7,
+    "failed": 1,
+    "exit_code": 1,
+    "oracle": "Two calls to the same actual cloud button callback create two dialogs; expected one, actual two."
+  },
+  "green": {
+    "passed": 8,
+    "failed": 0,
+    "exit_code": 0,
+    "oracle": "Exactly one dialog including offstage routes; cancellation allows reopening; no cloud decrypt started."
+  },
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "attempt_note": "Initial red cleanup emitted outgoing-route tap warning. hitTestable cleanup attempt failed with No element and is retained. Final actual cancel tap waits for route exit using pumpAndSettle; final suite passes.",
+  "logs": [
+    {
+      "phase": "RED",
+      "path": "f08-cloud-prompt-red.log",
+      "sha256": "d70b1c91fdeae6eadd594c0d8a997c248c3330c4da7a8d3a70475c8833d4ca8f"
+    },
+    {
+      "phase": "CLEANUP_ATTEMPT_FAILED",
+      "path": "f08-cloud-prompt-cleanup-failed.log",
+      "sha256": "6bb4fe4ec9b55c74393f39cb7d354bd57107cb974f57d741fe4d7a529ba006c9"
+    },
+    {
+      "phase": "GREEN",
+      "path": "f08-cloud-prompt-fixed.log",
+      "sha256": "46de164277d8aea56e8b79e78c7791fac3f6aa035013286afdd6139c9300b74b"
+    }
+  ],
+  "limitations": [
+    "Host widget substitutes only; no device, native storage, real backend or full-product acceptance claim.",
+    "Does not close the 36 E2EE or 61 full-product acceptance IDs."
+  ]
+}

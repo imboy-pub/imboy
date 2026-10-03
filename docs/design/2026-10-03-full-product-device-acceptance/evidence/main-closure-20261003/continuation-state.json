@@ -4001,5 +4001,15 @@
       "imboy/docs/business/imboy-open-source-productization-strategy-v1.md"
     ],
     "proof_limit": "No actual decryption, cloud/network, secure storage or device qualification. Does not cancel already-started decryption or key application. No parent acceptance upgraded."
+  },
+  "f08_cloud_prompt_reentry": {
+    "receipt": "f08-cloud-prompt-reentry.json",
+    "receipt_sha256": "f20581283360d0f45a4d49c1d92f1b07ca4547b80b7390fa73c49c0c965c3449",
+    "app_head": "feefb4d3d343dc610768fe44b2b3da2831e0d339",
+    "executed": 8,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false,
+    "review": "APPROVED_LOCAL_SCOPE_ONLY"
   }
 }
