@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_SERIALIZED_OFFLINE_QUEUE_PERSISTENCE",
+  "app_head": "8bcf49741345aab3ea29169cde6be6a89c4d7388",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_AFTER_EXCEPTION_AND_FIXTURE_BARRIER_REVIEW",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 0,
+    "red_failed": 2,
+    "intermediate_domain_exit": 1,
+    "intermediate_domain_passed": 177,
+    "intermediate_domain_failed": 1,
+    "final_domain_exit": 0,
+    "final_domain_passed": 179,
+    "full_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Completer blocks first real preference write; second snapshot cannot start until release, final preference rows contain both messages.",
+    "False and thrown writer failures are reported by flushPersistence; later complete successful snapshot recovers and includes pending messages.",
+    "Init waits for pending writes before restore; snapshots capture preference handle and writer at enqueue time."
+  ],
+  "attempt_notes": [
+    "Intermediate177PASS1FAIL retained. Recovery test manually rewrote preferences before pending clear completed; fixture now explicitly waits for flushPersistence before manual restore writes. Original survivor/quarantine oracle unchanged."
+  ],
+  "limitations": [
+    "Enqueue return remains in-memory acceptance; production per-message callers do not all await flushPersistence, so no durable delivery or crash-proof ACK claim.",
+    "No real storage fault/device/server transport journey; mocked preference writer and owned synthetic records only.",
+    "Oversized historical restore and send-failure capacity compensation remain pending; no original97-ID upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-persistence-domain-20261004.log",
+      "sha256": "b8dc0803474619a9593ae59bc5d9e742f72b8b1f6be47d0ad17edfbb7b57fc19"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-persistence-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-persistence-final-domain-20261004.log",
+      "sha256": "fed3bf7274b46587f44b5845d848b0e0f62d1db64cf80d8696a66edbee6fbb3a"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-persistence-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-persistence-red-20261004.log",
+      "sha256": "6775e33a9646560893e519adccd64c1f01a27f4b9fa33328ba2d832acfa1f7de"
+    }
+  ]
+}

@@ -5022,5 +5022,23 @@
       "full_static_exit": 0,
       "catalog_exit": 0
     }
+  },
+  "websocket_queue_serialized_persistence": {
+    "receipt": "websocket-queue-serialized-persistence-20261004.json",
+    "app_head": "8bcf49741345aab3ea29169cde6be6a89c4d7388",
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": [],
+    "local_results": {
+      "red_exit": 1,
+      "red_passed": 0,
+      "red_failed": 2,
+      "intermediate_domain_exit": 1,
+      "intermediate_domain_passed": 177,
+      "intermediate_domain_failed": 1,
+      "final_domain_exit": 0,
+      "final_domain_passed": 179,
+      "full_static_exit": 0,
+      "catalog_exit": 0
+    }
   }
 }

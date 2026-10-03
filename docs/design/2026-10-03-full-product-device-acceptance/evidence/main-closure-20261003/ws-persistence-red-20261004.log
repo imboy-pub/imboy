@@ -1,0 +1,35 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_queue_persistence_test.dart
+00:00 +0: later snapshot waits for earlier pending write
+🧹 [QUEUE] 启动定期清理 Timer
+🧹 [QUEUE] 清空队列
+📥 [QUEUE] 入队: first, priority=0, 总数=1
+📥 [QUEUE] 入队: second, priority=0, 总数=2
+00:00 +0 -1: later snapshot waits for earlier pending write [E]
+  Expected: <1>
+    Actual: <2>
+  
+  package:matcher                                                    expect
+  package:flutter_test/src/widget_tester.dart 473:18                 expect
+  test/unit_test/service/websocket_queue_persistence_test.dart 41:7  main.<fn>
+  
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +0 -1: failed write is reported; later successful snapshot recovers
+🧹 [QUEUE] 清空队列
+📥 [QUEUE] 入队: failed, priority=0, 总数=1
+00:00 +0 -2: failed write is reported; later successful snapshot recovers [E]
+  Expected: throws <Instance of 'StateError'>
+    Actual: <Instance of 'Future<void>'>
+     Which: emitted <null>
+  
+  package:matcher                                                     expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                   expectLater
+  test/unit_test/service/websocket_queue_persistence_test.dart 61:13  main.<fn>
+  
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +0 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_queue_persistence_test.dart: failed write is reported; later successful snapshot recovers
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_queue_persistence_test.dart: later snapshot waits for earlier pending write
