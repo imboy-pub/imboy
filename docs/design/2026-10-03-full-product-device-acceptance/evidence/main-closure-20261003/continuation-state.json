@@ -4125,5 +4125,14 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "c11_group_receipt_codec": {
+    "receipt": "c11-group-receipt-codec.json",
+    "receipt_sha256": "4050d5a32aa761c64773fe5c11fdba189a72c093948971103c7578cdb92095fc",
+    "app_head": "88145d69d76750ec8068fd08e87c9e4b116bd411",
+    "executed": 47,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

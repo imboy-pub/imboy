@@ -1,0 +1,49 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: C2G consumer receipts retain direction in text and framed modes
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: consumer receipt directions reject unknown values and injection
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: round trip imboy.v2 uses production framing
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: round trip imboy-json uses production framing
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: round trip text uses production framing
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: round trip sip uses production framing
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: round trip null uses production framing
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: JSON ACK fallback retains correlation inside v2
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: decodes production protobuf business payload inside v2
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: heartbeat sequence remains a control payload
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: rejects truncation trailing bytes and wrong version
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: rejects unsupported transformations and protocol
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: rejects empty protobuf, malformed JSON and invalid bytes
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: legacy heartbeat and bounded payload
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: legacy receipt uses string IDs and rejects delimiter injection
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: old pending connector failure cannot cancel new pending connector
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: late connector after timeout is closed
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: unsupported protocol closes socket
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: requires session-validating pong before send
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: legacy negotiated protocol uses text heartbeat
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: wrong pong never confirms and timeout closes channel
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: early authentication error fails without leaking server payload
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: close after validation invalidates session
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: superseded connector is closed and cannot replace newer connection
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: configured real interface requires matching server ACK
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: disconnect completes pending delivery as unconfirmed
+00:00 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: inbound sender-did mismatch closes connection without queuing
+00:00 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: inbound sender-account mismatch closes connection without queuing
+00:00 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: inbound missing-device mismatch closes connection without queuing
+00:00 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: production string IDs are received and can be acknowledged
+00:00 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: actual received ciphertext queues once per drain
+00:00 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt error cannot become success
+00:00 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt disconnect cannot become success
+00:00 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: cannot acknowledge a locally generated outgoing frame
+00:00 +35: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +36: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +37: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +38: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +39: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +40: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +41: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +42: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: C2C ACK cannot confirm C2G even with matching message ID
+00:00 +43: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: C2C ACK cannot confirm C2G even with matching message ID
+00:00 +44: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: C2C ACK cannot confirm C2G even with matching message ID
+00:01 +45: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: no server ACK remains unconfirmed after local write
+00:01 +46: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: unknown group fails before writing a group frame
+00:01 +47: All tests passed!

@@ -1,0 +1,47 @@
+{
+  "id": "C11-C2G-CONSUMER-RECEIPT-CODEC",
+  "app_head": "88145d69d76750ec8068fd08e87c9e4b116bd411",
+  "scope": "LOCAL_HOST_CODEC_SESSION_TRANSPORT_COMPONENTS",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "executed": 47,
+  "failed": 0,
+  "exit_code": 0,
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "logs": [
+    {
+      "phase": "GREEN",
+      "path": "c11-group-receipt-codec.log",
+      "sha256": "6553fab90a3a89c3ca1bcc133fb7239ed8a23f1f3f2a0f54c5a085e3d3e87f40"
+    },
+    {
+      "phase": "CALIBRATED_RED",
+      "path": "c11-group-receipt-codec-calibrated-red.log",
+      "sha256": "5d5036207e1ca8c6de46c09d791f3e2991a7c08e7281ff24a84c8065a72d68a0"
+    }
+  ],
+  "oracles": [
+    "Explicit C2G direction in text/v2 MSG_C2S consumer ACK bytes",
+    "Unknown and injected directions rejected",
+    "Existing C2C default preserved"
+  ],
+  "negative_calibration": {
+    "mutation": "Force C2C in encoded C2G receipt",
+    "executed": 1,
+    "failed": 1,
+    "exit_code": 1,
+    "source_restored_byte_for_byte": true
+  },
+  "remaining": [
+    "Wire received group frames to consumer receipt tracking and server confirmation",
+    "Prove real authenticated backend behavior and current group access",
+    "Four-account real-device decrypt/display and attack journeys"
+  ],
+  "limits": [
+    "Encoding alone is not group consumer confirmation",
+    "Fake socket only; no real device or backend qualified",
+    "No original acceptance ID upgraded"
+  ]
+}
