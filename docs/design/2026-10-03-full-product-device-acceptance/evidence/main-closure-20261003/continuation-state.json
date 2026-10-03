@@ -3047,5 +3047,42 @@
       "Disposed provider does not write completed response"
     ],
     "proof_limit": "API null conflates request failure and absent subscription. Clearing an old snapshot does not establish server subscription cancellation or entitlement. Fake API only; no payment/backend/device qualification."
+  },
+  "current_main_full_unit_suite": {
+    "scope": "LOCAL_HOST_UNIT_SUITE_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "aff678c1bdc6bb7bde36a4b6d9278e49372168db",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test",
+      "--reporter",
+      "expanded"
+    ],
+    "started_at": "2026-10-03T12:25:28.046538+00:00",
+    "status": "FAIL",
+    "log": "app-full-unit-current-main.log",
+    "process_pid": 83836,
+    "exit_code": 1,
+    "completed_at": "2026-10-03T12:36:29.251444+00:00",
+    "log_sha256": "6bf51cc184ece30fb7d712c3fb7caa533b10d2b033ab65dfa09942377200a53d",
+    "passed": 7059,
+    "skipped": 236,
+    "failed": 6,
+    "failure_category": "BLOCKED_ENV_SIGNING_CONFIG",
+    "failing_cases": [
+      "认证流程 1.2 错误凭证登录 — 返回非 0 code",
+      "认证流程 1.4 未认证访问受保护接口 — 返回非 0 code",
+      "App 初始化配置 2.1 init_config 无需认证可达，返回 code=0",
+      "App 初始化配置 2.2 版本检查响应包含 updatable 字段",
+      "App 初始化配置 2.3 极高版本号不触发更新",
+      "错误处理 4.1 无效路径 — 返回非 0 code"
+    ],
+    "failure_reason": "All six fail before HTTP/business assertions: missing IMBOY_SOLIDIFIED_KEY or target-specific configuration.",
+    "proof_limit": "Host unit suite with fake dependencies and skipped real API cases. No device/backend/production qualification. Previous failed attempts retained. No required acceptance ID upgraded.",
+    "suite_reported_duration_seconds": 656,
+    "wall_duration_seconds": 661.204906
   }
 }
