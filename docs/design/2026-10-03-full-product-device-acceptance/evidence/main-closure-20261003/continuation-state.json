@@ -4656,5 +4656,11 @@
     "backend_head": "d47719408006385630d2a608d11f5fdc390947c3",
     "tests": 26,
     "product_pass": false
+  },
+  "f14_backend_plan_subscription_log_privacy": {
+    "receipt": "billing-plan-log-privacy.json",
+    "backend_head": "c507c1f189dca887d766b8df99251a530f1f2748",
+    "tests": 27,
+    "product_pass": false
   }
 }

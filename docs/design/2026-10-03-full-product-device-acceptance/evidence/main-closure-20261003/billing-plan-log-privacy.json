@@ -1,0 +1,36 @@
+{
+  "scope": "LOCAL_BACKEND_PLAN_SUBSCRIPTION_LOG_PRIVACY",
+  "backend_head": "c507c1f189dca887d766b8df99251a530f1f2748",
+  "tests": 27,
+  "exit_code": 0,
+  "red_failed": 1,
+  "red_passed": 26,
+  "red_calibration": "First create_plan log assertion only; remaining two paths exercised in GREEN, not separately calibrated",
+  "production_compile_exit_code": 0,
+  "review": "APPROVED_CODE_REVIEW",
+  "artifacts": [
+    {
+      "path": "billing-plan-red.log",
+      "sha256": "23bf5b4ec26a484f73ac5947f8e8f3001d3a29ad3cfc482b7e0b9d75ba6d4c3d"
+    },
+    {
+      "path": "billing-plan-green.log",
+      "sha256": "c69b84c314af340bdb80da87da0c82a83d5e44276d8999f8f50d6fe0658ec9f8"
+    },
+    {
+      "path": "billing-plan-final-compile.log",
+      "sha256": "09015a480c9461f3129ac2edcadadecb7d9f0aca7301217d64e4c2969e1b653d"
+    },
+    {
+      "path": "billing-plan-build.log",
+      "sha256": "756aa0695b64dbfaa5200076bb0f2480160c7ed2dbb0d368214a60d4f518b13a"
+    }
+  ],
+  "all_billing_logic_error_sites_fixed_events": 9,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Actual create_plan/update_plan/subscribe logic with synthetic mocked DS/log; no real database/device execution",
+    "Fixed nine explicit billing_logic ERROR_LOG sites does not qualify application-wide logging, public error response privacy or production gates"
+  ]
+}
