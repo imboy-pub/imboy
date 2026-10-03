@@ -4769,5 +4769,11 @@
     "app_head": "e2d41e2e8a49023ca82defa25c191aaca51a884e",
     "safe_to_execute": false,
     "product_pass": false
+  },
+  "organization_directory_fixture_oracle_preparation": {
+    "receipt": "organization-directory-fixture-oracle-preparation-20261004.json",
+    "backend_head": "d5d8c0ea9fa1e07e6b31d99376fdc2ddb35e33ab",
+    "safe_to_execute": false,
+    "product_pass": false
   }
 }

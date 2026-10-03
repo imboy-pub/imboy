@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "status": "SOURCE_SQL_PREPARATION_NOT_EXECUTED",
+  "backend_head": "d5d8c0ea9fa1e07e6b31d99376fdc2ddb35e33ab",
+  "database_execution": false,
+  "sql_runtime_validated": false,
+  "review": "APPROVED_STATIC_CODE_REVIEW",
+  "safe_to_execute": false,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "checks_prepared": [
+    "organization_active",
+    "viewer_active_member",
+    "fixture_member_on_root_first_page"
+  ],
+  "source_bindings": [
+    {
+      "path": "scripts/organization_directory_fixture_oracle.sql",
+      "sha256": "3fe526dd9949029a695a7ca82cc1c31b6086092645e14fc7c9dfff2185ce2dcf"
+    },
+    {
+      "path": "src/lib/organization/infrastructure/organization_directory_pg.erl",
+      "sha256": "1c1d3e46c21924138b85e166c66f4c53d6056dcf6c07c34debdc3f9a8ddb7af9"
+    },
+    {
+      "path": "src/lib/organization/application/organization_directory_app.erl",
+      "sha256": "e92a7bbe2735f0edd6dcf0bcbd70d36599aea185bb1c717e4f2c90c6e9dda7a4"
+    }
+  ],
+  "limitations": [
+    "No database connection or query execution occurred.",
+    "SQL parser unavailable; database runtime validation remains pending.",
+    "Requires current authorization and an independent isolated synthetic database lease.",
+    "Actual device query must bind first cursor 0 and the same page limit.",
+    "Shape checks do not establish fixture ownership or user authorization.",
+    "Outputs booleans only; prepared for a synthetic fixture database using the public schema."
+  ]
+}
