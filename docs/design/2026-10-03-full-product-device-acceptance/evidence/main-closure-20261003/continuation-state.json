@@ -4239,5 +4239,13 @@
     "executed": 416,
     "exit_code": 0,
     "product_pass": false
+  },
+  "f00_billing_plan_case_design": {
+    "receipt": "f00-billing-plan-case-design.json",
+    "receipt_sha256": "eb18eda2ddbca1e30153196f23fee249d801aa7c01dc01eae2bfa7b1a75eb3b4",
+    "features_designed": 10,
+    "platform_obligations_designed": 20,
+    "executed_host": 32,
+    "product_pass": false
   }
 }

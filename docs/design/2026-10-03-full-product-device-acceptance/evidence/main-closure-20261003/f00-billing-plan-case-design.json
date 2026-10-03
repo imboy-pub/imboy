@@ -1,0 +1,282 @@
+{
+  "id": "F00-BILLING-PLAN-LIST-CASE-DESIGN",
+  "scope": "CURRENT_SOURCE_CASE_DESIGN_WITH_HOST_REFERENCE",
+  "app_head": "4de37a4ef587f2815b141e36bc03898d6c346ff3",
+  "features_designed": 10,
+  "platform_obligations_designed": 20,
+  "executed_host": 32,
+  "host_exit_code": 0,
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "route": "/billing/plans",
+  "reachability": "ROUTE_DEFINITION_ONLY_NOT_ACTUAL_NAVIGATION",
+  "source_fingerprints": [
+    {
+      "path": "lib/page/billing/plan_list_page.dart",
+      "sha256": "2f8f18bc417cddd6846c769e4885a11ba0dff6775a061866804bbad1290e8c02"
+    },
+    {
+      "path": "lib/page/billing/billing_provider.dart",
+      "sha256": "53a36fd177ae3c2af5a69ae8a5eb2ba9038441ee0a699b919b48004e7533bea8"
+    },
+    {
+      "path": "lib/config/router/routes/mine_routes.dart",
+      "sha256": "e761140487756efa78aba04b76851589783b33bf61a79c7de11f0feb0f8a968e"
+    },
+    {
+      "path": "test/unit_test/page/billing/plan_list_page_test.dart",
+      "sha256": "5186b5efe5e0f76e23fb90664d3e47fe823e9a441e19ec88bb0b7132e7376ca6"
+    },
+    {
+      "path": "test/unit_test/page/billing/billing_provider_test.dart",
+      "sha256": "f99310829181f1a45dc09aee5e1df3c938b5ba64b79f5f99442cba46bd8da715"
+    },
+    {
+      "path": "test/unit_test/store/api/billing_api_contract_test.dart",
+      "sha256": "418a4143a27787c2b98f7fd43b83ce5109a034af3174c5fb7a3e19c246ae8a11"
+    }
+  ],
+  "log": "f00-billing-plan-host.log",
+  "log_sha256": "3cb9c59084339bdcefcb7754897e5462c7e7b1149922943297aa2331b4438a26",
+  "records": [
+    {
+      "case_id": "F14-PLAN-LIST-001",
+      "source_ref": "lib/page/billing/plan_list_page.dart",
+      "design_owner": "coordinator",
+      "dispatch_owner": "F14",
+      "parent_acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "feature": "loading",
+      "action": "Open /billing/plans with synthetic account",
+      "oracle": "Both plans and subscription load; loading completes",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "device_target": "IMPLEMENTATION_REQUIRED",
+      "mapping_status": "DESIGNED_NOT_FROZEN",
+      "product_pass": false
+    },
+    {
+      "case_id": "F14-PLAN-LIST-002",
+      "source_ref": "lib/page/billing/plan_list_page.dart",
+      "design_owner": "coordinator",
+      "dispatch_owner": "F14",
+      "parent_acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "feature": "empty",
+      "action": "Return valid empty plan list",
+      "oracle": "Empty state visible; no purchasable cards",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "device_target": "IMPLEMENTATION_REQUIRED",
+      "mapping_status": "DESIGNED_NOT_FROZEN",
+      "product_pass": false
+    },
+    {
+      "case_id": "F14-PLAN-LIST-003",
+      "source_ref": "lib/page/billing/plan_list_page.dart",
+      "design_owner": "coordinator",
+      "dispatch_owner": "F14",
+      "parent_acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "feature": "retry",
+      "action": "Fail then retry to empty list",
+      "oracle": "New request clears previous error and renders empty state",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "device_target": "IMPLEMENTATION_REQUIRED",
+      "mapping_status": "DESIGNED_NOT_FROZEN",
+      "product_pass": false
+    },
+    {
+      "case_id": "F14-PLAN-LIST-004",
+      "source_ref": "lib/page/billing/plan_list_page.dart",
+      "design_owner": "coordinator",
+      "dispatch_owner": "F14",
+      "parent_acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "feature": "exception",
+      "action": "Throw on list request, then retry",
+      "oracle": "Loading ends; retry can recover",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "device_target": "IMPLEMENTATION_REQUIRED",
+      "mapping_status": "DESIGNED_NOT_FROZEN",
+      "product_pass": false
+    },
+    {
+      "case_id": "F14-PLAN-LIST-005",
+      "source_ref": "lib/page/billing/plan_list_page.dart",
+      "design_owner": "coordinator",
+      "dispatch_owner": "F14",
+      "parent_acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "feature": "render",
+      "action": "Supply monthly/yearly plans with quotas and descriptions",
+      "oracle": "Exact minor-unit conversion, period, quota and unlimited values",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "device_target": "IMPLEMENTATION_REQUIRED",
+      "mapping_status": "DESIGNED_NOT_FROZEN",
+      "product_pass": false
+    },
+    {
+      "case_id": "F14-PLAN-LIST-006",
+      "source_ref": "lib/page/billing/plan_list_page.dart",
+      "design_owner": "coordinator",
+      "dispatch_owner": "F14",
+      "parent_acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "feature": "current",
+      "action": "Supply an existing subscription",
+      "oracle": "Current-plan badge matches backend planId",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "device_target": "IMPLEMENTATION_REQUIRED",
+      "mapping_status": "DESIGNED_NOT_FROZEN",
+      "product_pass": false
+    },
+    {
+      "case_id": "F14-PLAN-LIST-007",
+      "source_ref": "lib/page/billing/plan_list_page.dart",
+      "design_owner": "coordinator",
+      "dispatch_owner": "F14",
+      "parent_acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "feature": "refresh",
+      "action": "Pull to refresh updated plans and subscription",
+      "oracle": "Both resources reload and new values render",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "device_target": "IMPLEMENTATION_REQUIRED",
+      "mapping_status": "DESIGNED_NOT_FROZEN",
+      "product_pass": false
+    },
+    {
+      "case_id": "F14-PLAN-LIST-008",
+      "source_ref": "lib/page/billing/plan_list_page.dart",
+      "design_owner": "coordinator",
+      "dispatch_owner": "F14",
+      "parent_acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "feature": "cancel",
+      "action": "Open payment method sheet then cancel",
+      "oracle": "No invoice or payment request created",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "device_target": "IMPLEMENTATION_REQUIRED",
+      "mapping_status": "DESIGNED_NOT_FROZEN",
+      "product_pass": false
+    },
+    {
+      "case_id": "F14-PLAN-LIST-009",
+      "source_ref": "lib/page/billing/plan_list_page.dart",
+      "design_owner": "coordinator",
+      "dispatch_owner": "F14",
+      "parent_acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "feature": "profile",
+      "action": "Use mock-payment enabled and disabled configurations",
+      "oracle": "Mock option follows actual configuration; no real funds activated",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "device_target": "IMPLEMENTATION_REQUIRED",
+      "mapping_status": "DESIGNED_NOT_FROZEN",
+      "product_pass": false
+    },
+    {
+      "case_id": "F14-PLAN-LIST-010",
+      "source_ref": "lib/page/billing/plan_list_page.dart",
+      "design_owner": "coordinator",
+      "dispatch_owner": "F14",
+      "parent_acceptance_ids": [
+        "F14-A01",
+        "F14-A02",
+        "F14-A03"
+      ],
+      "feature": "submission",
+      "action": "Delay isolated payment stub; return success/cancel/unconfigured/failure",
+      "oracle": "Paying disables action; no duplicate submit; polling, feedback and subscription match outcome",
+      "required_platforms": [
+        "android",
+        "macos"
+      ],
+      "android": "NOT_EXECUTED",
+      "macos": "NOT_EXECUTED",
+      "device_target": "IMPLEMENTATION_REQUIRED",
+      "mapping_status": "DESIGNED_NOT_FROZEN",
+      "product_pass": false
+    }
+  ],
+  "limits": [
+    "Source-derived design IDs do not replace canonical generated function or seed identities",
+    "Must bind actual function IDs and freeze platform/profile/role sets",
+    "Host API/payment injection is not actual device/backend behavior",
+    "External payment requires separate authorization",
+    "No original acceptance ID upgraded"
+  ],
+  "recovery": "First receipt-writing attempt failed source encoding before producing files; retried using ASCII artifact text."
+}
