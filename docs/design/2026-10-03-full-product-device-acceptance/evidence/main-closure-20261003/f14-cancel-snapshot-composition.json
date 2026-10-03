@@ -1,0 +1,29 @@
+{
+  "scope": "LOCAL_EXECUTION_INPUT_COMPOSITION_ONLY",
+  "app_head": "498f9b4052b5124c5cd7aa2f2f10a68d1464651d",
+  "tooling_tests": 438,
+  "exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "f14-snapshot-composition-red.log",
+      "sha256": "67e0818085049f4805f1e2996b5cc45cadfd7de4ab6a915e3f8bcdf37eef0437"
+    },
+    {
+      "path": "f14-snapshot-composition-green.log",
+      "sha256": "e4a11d3e12deca053a8f041663a356212882128759ae5f445d4e540305536d5d"
+    }
+  ],
+  "product_pass": false,
+  "zero_write_proven": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_access": false,
+  "composition": "acceptance_execution.audit_execution_inputs requires explicit frozen billing_cancel_snapshots list and exact report records map",
+  "limits": [
+    "Explicit empty obligations do not prove coverage discovery completeness",
+    "Context fields do not authenticate attempt/device capture provenance",
+    "Independent request/database audits and real device execution remain required"
+  ],
+  "red_reason": "Existing composition fixture omitted new mandatory declaration; schema omission correctly rejected before fixture update"
+}

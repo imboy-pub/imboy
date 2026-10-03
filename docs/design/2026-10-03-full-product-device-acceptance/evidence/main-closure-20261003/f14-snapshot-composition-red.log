@@ -1,0 +1,20 @@
+........F....................
+======================================================================
+FAIL: test_execution_composition_requires_raw_run_index (test_acceptance_preflight.PreflightTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_acceptance_preflight.py", line 273, in test_execution_composition_requires_raw_run_index
+    self.assertEqual(result['errors'], [])
+AssertionError: Lists differ: ['BILLING_FROZEN_OBLIGATIONS_INVALID'] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+'BILLING_FROZEN_OBLIGATIONS_INVALID'
+
+- ['BILLING_FROZEN_OBLIGATIONS_INVALID']
++ []
+
+----------------------------------------------------------------------
+Ran 29 tests in 0.259s
+
+FAILED (failures=1)

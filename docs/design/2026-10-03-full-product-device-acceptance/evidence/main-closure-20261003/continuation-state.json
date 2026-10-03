@@ -4300,5 +4300,12 @@
     "tooling_tests": 434,
     "product_pass": false,
     "zero_write_proven": false
+  },
+  "f14_cancel_snapshot_composition": {
+    "receipt": "f14-cancel-snapshot-composition.json",
+    "app_head": "498f9b4052b5124c5cd7aa2f2f10a68d1464651d",
+    "tooling_tests": 438,
+    "product_pass": false,
+    "zero_write_proven": false
   }
 }
