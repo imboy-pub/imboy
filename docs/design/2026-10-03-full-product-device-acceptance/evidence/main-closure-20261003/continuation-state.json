@@ -4466,5 +4466,10 @@
     "receipt": "e2ee-private-runbook.json",
     "backend_head": "f5e23397076aebae58b4e877fecdb49c02233619",
     "product_pass": false
+  },
+  "e2ee_counter_type_gap": {
+    "receipt": "e2ee-counter-type-gap.json",
+    "status": "OPEN_LOCAL_IMPLEMENTATION_GAP",
+    "product_pass": false
   }
 }

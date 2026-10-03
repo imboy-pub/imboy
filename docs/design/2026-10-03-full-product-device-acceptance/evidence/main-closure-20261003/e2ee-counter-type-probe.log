@@ -1,0 +1,15 @@
+# TYPE olm_otk_exhausted_total gauge
+olm_otk_exhausted_total 1
+# TYPE olm_identity_pop_rejected_total gauge
+olm_identity_pop_rejected_total 1
+# TYPE olm_identity_rotation_rejected_total gauge
+olm_identity_rotation_rejected_total 1
+# TYPE olm_rotation_event_failed_total gauge
+olm_rotation_event_failed_total 1
+# TYPE group_e2ee_check_failed_total gauge
+group_e2ee_check_failed_total 1
+# TYPE e2ee_recovery_failed_total gauge
+e2ee_recovery_failed_total 1
+# TYPE db_pool_free gauge
+db_pool_free 2
+e2ee_backup_op_failed_total{op="get"} 1

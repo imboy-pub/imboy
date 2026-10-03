@@ -1,0 +1,41 @@
+{
+  "scope": "CURRENT_EXPORTER_COUNTER_TYPE_GAP_NOT_ACCEPTANCE_PASS",
+  "backend_head": "52f18ef8c044b8362f8db7cfd616c0f1e848f623",
+  "probe_exit_code": 0,
+  "probe_input": "Synthetic map passed directly to current production format_prometheus/1, no metric or HTTP server",
+  "observations": {
+    "six_unlabeled_e2ee_failure_counters": "TYPE gauge",
+    "labeled_backup_failure_counter": "No TYPE declaration",
+    "db_pool_free": "TYPE gauge as required"
+  },
+  "source_facts": [
+    "elib_metric increments are positive counters but get_all_metrics exports no explicit type metadata",
+    "metrics_handler fetch_metrics merges application counters and system gauges into counters",
+    "format_prometheus declares every unlabeled counter as gauge and omits TYPE for labeled samples"
+  ],
+  "next_required": [
+    "Preserve system gauge semantics",
+    "Carry explicit application counter type information rather than globally retyping merged metrics",
+    "Deduplicate metric family TYPE declarations across labeled samples",
+    "Verify counter metadata, exporter lines, system gauge preservation and promtool metrics parsing"
+  ],
+  "artifacts": [
+    {
+      "path": "e2ee-counter-type-probe.log",
+      "sha256": "a5306ac4088ab850fe806d3df5249e693ff94aee357eaa5c2c4a2fab169504ab"
+    }
+  ],
+  "source_hashes": {
+    "src/api/metrics_handler.erl": "693086d75c75f4bc90df75da1215a8a4abd8d61a2fd8bf6582a6e89d1243abd5",
+    "src/lib/elib_metric.erl": "662b3c01ee9514f4733e363dcb206769422090c3a17c7587b2974e131217be7b"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "production_modified": false,
+  "database_execution": false,
+  "device_execution": false,
+  "limits": [
+    "Exposition values and local alert tests remain valid for their recorded scopes",
+    "This gap does not by itself prove a runtime alert failed; live scrape and production SLO remain unverified"
+  ]
+}
