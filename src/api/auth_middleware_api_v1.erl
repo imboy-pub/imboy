@@ -3,6 +3,9 @@
 -behaviour(cowboy_middleware).
 
 -export([execute/2]).
+%% C12 / AC-25：导出纯路径谓词供离线合同测试
+%% （scripts/test/e2ee_version_gate_test.sh）直接调用；无副作用。
+-export([is_e2ee_api_path/1]).
 
 -include("log.hrl").
 -include("error_code.hrl").
@@ -121,23 +124,31 @@ execute_authorized(Req, Env) ->
         end,
     case Res1 of
         {ok, Req, Env} ->
-            Authorization = cowboy_req:header(<<"authorization">>, Req),
-            %% CS credential 面：无 Authorization 头也放行（凭证在专用头），
-            %% handler 侧 fail-closed；带 JWT 的误用请求会在 cs_auth 处
-            %% credential_missing（principal 只认专用头，不混淆）。
-            %% CSB-02R：CS credential 面改走 option 语义——无 Authorization 的
-            %% 访客/门店请求照旧直通（凭证在专用头）；**带** Authorization 的
-            %% 请求照常过 JWT 门并注入会话键（current_uid），支撑同路径
-            %% method+auth_context 分流（GET /sessions/queue 的坐席主体）。
-            %% 主体混淆仍由 cs_auth 按 route metadata/case_auth 裁决：JWT 在场
-            %% 不采信为 visit/shop_key，反之亦然。
-            auth_ds:condition(
-                InOptionLi orelse IsCsCredentialPath,
-                InOpenLi andalso not IsCsCredentialPath,
-                Authorization,
-                Req,
-                Env
-            );
+            %% C12 / AC-25：E2EE REST 面硬版本门（verify_sign 之后、JWT 之前——
+            %% 签名门保证 vsn/cos 头真实，版本门再按头裁决）。低于生效最低版本
+            %% 的旧端在此被拒绝，不进入任何 E2EE 业务逻辑（handler 不再可达）。
+            case e2ee_version_gate(Path, Req) of
+                ok ->
+                    Authorization = cowboy_req:header(<<"authorization">>, Req),
+                    %% CS credential 面：无 Authorization 头也放行（凭证在专用头），
+                    %% handler 侧 fail-closed；带 JWT 的误用请求会在 cs_auth 处
+                    %% credential_missing（principal 只认专用头，不混淆）。
+                    %% CSB-02R：CS credential 面改走 option 语义——无 Authorization 的
+                    %% 访客/门店请求照旧直通（凭证在专用头）；**带** Authorization 的
+                    %% 请求照常过 JWT 门并注入会话键（current_uid），支撑同路径
+                    %% method+auth_context 分流（GET /sessions/queue 的坐席主体）。
+                    %% 主体混淆仍由 cs_auth 按 route metadata/case_auth 裁决：JWT 在场
+                    %% 不采信为 visit/shop_key，反之亦然。
+                    auth_ds:condition(
+                        InOptionLi orelse IsCsCredentialPath,
+                        InOpenLi andalso not IsCsCredentialPath,
+                        Authorization,
+                        Req,
+                        Env
+                    );
+                {stop, ReqGated} ->
+                    {stop, ReqGated}
+            end;
         Res2 ->
             Res2
     end.
@@ -150,6 +161,57 @@ is_single_segment_route(Path, Prefix) ->
         _ ->
             false
     end.
+
+%% ===================================================================
+%% C12 / AC-25：E2EE REST 面硬版本门
+%% -------------------------------------------------------------------
+%% 覆盖 /api/v1/e2ee/* 全部端点（user_keys / group_member_keys /
+%% group_history_grant / report_device_key / key/status /
+%% notifications/pull / recovery/start / compliance_key / backup/* /
+%% olm/* / devices* / trust/record）与 /api/v1/group/set_e2ee_mode。
+%% 门未配置（app_version 无该平台记录或 min_vsn=0.0.0）时恒 allow，
+%% 现网行为零变化；rollout 顺序（客户端先发布→后端配置 min_vsn→开
+%% required E2EE）见 docs/design/2026-10-03-e2ee-production-excellence/
+%% runbook。判定真源复用 app_version_logic:e2ee_gate/2（与升级提示
+%% check/3 同一套 min_vsn），阻断响应错误码 ?ERR_E2EE_APP_VERSION_TOO_LOW。
+%% ===================================================================
+-spec e2ee_version_gate(binary(), cowboy_req:req()) ->
+    ok | {stop, cowboy_req:req()}.
+e2ee_version_gate(Path, Req) ->
+    case is_e2ee_api_path(Path) of
+        false ->
+            ok;
+        true ->
+            try
+                Vsn = cowboy_req:header(<<"vsn">>, Req, undefined),
+                Cos = cowboy_req:header(<<"cos">>, Req, <<>>),
+                case app_version_logic:e2ee_gate(Vsn, Cos) of
+                    allow ->
+                        ok;
+                    {block, MinVsn} ->
+                        Msg = iolist_to_binary([
+                            <<"客户端版本过低，E2EE 功能要求版本 >= "/utf8>>,
+                            MinVsn,
+                            <<"，请升级客户端"/utf8>>
+                        ]),
+                        {stop, elib_response:error(Req, Msg, ?ERR_E2EE_APP_VERSION_TOO_LOW)}
+                end
+            catch
+                _:_ ->
+                    %% 判定链故障（如 DB 不可用）不阻塞 E2EE 业务：本门是协议
+                    %% rollout 门而非安全边界，fail-open 与 WS 升级提醒
+                    %% maybe_send_upgrade_notice 的容错语义一致。
+                    ok
+            end
+    end.
+
+-spec is_e2ee_api_path(binary()) -> boolean().
+is_e2ee_api_path(<<"/api/v1/e2ee/", _/binary>>) ->
+    true;
+is_e2ee_api_path(<<"/api/v1/group/set_e2ee_mode">>) ->
+    true;
+is_e2ee_api_path(_Path) ->
+    false.
 
 %% ===================================================================
 %% F-EB10-1：企业租户面判定的特性裁剪保护
