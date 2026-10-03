@@ -1,0 +1,20 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart
+test/unit_test/service/e2ee_registered_wire_binding_test.dart:86:63: Error: Required named parameter 'protocolMetadata' must be provided.
+          'registered-b': ProtectedFrameV3.encodeOuterEnvelope(
+                                                              ^
+lib/service/e2ee/protected_frame_v3.dart:524:31: Context: Found this candidate, but the arguments don't match.
+  static Map<String, dynamic> encodeOuterEnvelope({
+                              ^^^^^^^^^^^^^^^^^^^
+00:00 +0 -1: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: test/unit_test/service/e2ee_registered_wire_binding_test.dart:86:63: Error: Required named parameter 'protocolMetadata' must be provided.
+            'registered-b': ProtectedFrameV3.encodeOuterEnvelope(
+                                                                ^
+  lib/service/e2ee/protected_frame_v3.dart:524:31: Context: Found this candidate, but the arguments don't match.
+    static Map<String, dynamic> encodeOuterEnvelope({
+                                ^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart

@@ -1642,5 +1642,49 @@
       "real backend/device encrypted journeys and five-surface oracle"
     ],
     "proof_limit": "Heartbeat oracle here is fake; real auth and session validity are not proven. IoReleaseSocket code exists but was never connected."
+  },
+  "c11_registered_protected_context": {
+    "scope": "REGISTERED_C2C_CONTEXT_STRUCTURE_ONLY",
+    "product_pass": false,
+    "candidate_app": "350c4b392e97d5916ca63904555bc2a4a8488844",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/service/e2ee_registered_wire_binding_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+    "executed": 9,
+    "failed": 0,
+    "exit": 0,
+    "review": "APPROVED_BY_C11_FLUTTER_REVIEW",
+    "analysis": "No issues found",
+    "logs": [
+      {
+        "path": "c11-wire-binding-red-compile.log",
+        "sha256": "6c1319cc7b7f3cfb39b7697ad4420a3284fdfa4de203d2f8d3f9ee4bc7d42873",
+        "phase": "COMPILE_FAILED_MISSING_TEST_METADATA",
+        "exit": 1
+      },
+      {
+        "path": "c11-wire-binding-host.log",
+        "sha256": "8b9fa5f32ceb5f9cadc116c34cc77b8abb395b33f9200ec03f6cd23b1020b7cf",
+        "phase": "REVIEWED_OFFLINE_CONTEXT_CHECK",
+        "exit": 0
+      }
+    ],
+    "finding": "Synthetic smoke PFv3 headers bind aliases; they cannot be rewritten to registered IDs after encryption. Real journeys must encrypt with registered identities.",
+    "remaining": [
+      "compose binding/socket/ACK into real transport",
+      "registered-identity production encryption and key directory journey",
+      "multi-device and group wire handling",
+      "genuine authorized backend/device oracles"
+    ],
+    "limitations": [
+      "single-device C2C only",
+      "header hashes do not authenticate ciphertext or keys",
+      "no network executed"
+    ]
   }
 }

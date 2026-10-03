@@ -1,0 +1,11 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart
+00:00 +0: binds exact registered IDs without rewriting protected header
+00:00 +1: rejects synthetic sender uid instead of rewriting cryptographic context
+00:00 +2: rejects synthetic sender DID instead of rewriting cryptographic context
+00:00 +3: rejects synthetic destination instead of rewriting cryptographic context
+00:00 +4: rejects wrong conversation instead of rewriting cryptographic context
+00:00 +5: rejects wrong protected ID instead of rewriting cryptographic context
+00:00 +6: rejects conflicting outer fields
+00:00 +7: rejects plaintext in the supposedly encrypted payload
+00:00 +8: rejects bad hash unknown device and wrong message type
+00:00 +9: All tests passed!
