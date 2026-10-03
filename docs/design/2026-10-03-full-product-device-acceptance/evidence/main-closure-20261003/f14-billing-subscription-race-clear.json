@@ -1,0 +1,39 @@
+{
+  "id": "PREPARATION-F14-BILLING-SUBSCRIPTION-RACE-CLEAR",
+  "scope": "LOCAL_BILLING_WIDGET_PROVIDER_REGRESSION",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "app_head": "aff678c1bdc6bb7bde36a4b6d9278e49372168db",
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/page/billing/billing_provider_test.dart",
+    "test/unit_test/page/billing/plan_list_page_test.dart",
+    "--reporter",
+    "expanded"
+  ],
+  "executed": 22,
+  "exit": 0,
+  "analyze_exit": 0,
+  "reviews": [
+    "FLUTTER_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "log": {
+    "path": "f14-billing-subscription-race-clear.log",
+    "sha256": "ee42e9d7f4d49feef7a72d565e8b7db68361a39c8fb9286ee4406f6650e62739"
+  },
+  "red_observation": {
+    "executed": 17,
+    "passed": 14,
+    "failed": 3,
+    "raw_log_saved": false
+  },
+  "behavior_oracles": [
+    "Null result clears previous subscription snapshot",
+    "Old response cannot replace newer subscription",
+    "Disposed provider does not write completed response"
+  ],
+  "proof_limit": "API null conflates request failure and absent subscription. Clearing an old snapshot does not establish server subscription cancellation or entitlement. Fake API only; no payment/backend/device qualification."
+}

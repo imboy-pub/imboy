@@ -1,0 +1,26 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadSubscription 无订阅响应清除此前的当前套餐
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadSubscription 旧订阅响应不得覆盖较新的订阅
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadSubscription 销毁后订阅响应完成不写入状态
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingState BP-S1 默认值与 copyWith 不可变
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadPlans 较旧请求晚到不得覆盖较新请求的套餐列表
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadPlans 容器销毁后请求完成不得更新已销毁状态
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadPlans BP-1a 成功 → plans 填充、isLoading 复位、error 为空
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.loadPlans BP-1b 失败 → error 非空（页面渲染错误态）
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-2 subscribe 失败 → false，后续步骤不执行
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-3 generate 失败 → false，不取账单号不支付
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-4 全成功（mock 即时入账，轮询首轮命中）→ true，payInvoice 收到 mock，刷新订阅
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-5 无待支付账单 → 视为成功，不调 payInvoice
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-6 第三方 success → 唤起后轮询入账 → true
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/plan_list_page_test.dart: PL-5 请求异常后结束加载，重试可恢复空态
+[BillingNotifier] plan load failed: _Exception
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-7 第三方第二拍才入账 → 轮询重试命中 → true
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-8 第三方 cancelled → false 且不轮询
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-9 第三方 notConfigured（后端未下发 pay_params）→ false、不轮询
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/billing/billing_provider_test.dart: BillingNotifier.subscribePlan BP-10 完成后 paying 复位；进行中重入直接 false
+00:00 +22: All tests passed!
