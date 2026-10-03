@@ -5100,5 +5100,14 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "stored_submission_session_snapshot": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-submission-session-snapshot-20261004.json",
+    "app_head": "cc909dfdea3875d6daed1d6d1009eb4da1232f03",
+    "executed": 245,
+    "focused_executed": 5,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_STORED_MESSAGE_POLICY_WAIT_AND_STALE_ENCODING_ERROR",
+  "app_head": "cc909dfdea3875d6daed1d6d1009eb4da1232f03",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_AFTER_CATCH_GUARD_FIX",
+  "results": {
+    "policy_red_exit": 1,
+    "policy_red_passed": 1,
+    "policy_red_failed": 1,
+    "catch_red_exit": 1,
+    "catch_red_passed": 0,
+    "catch_red_failed": 1,
+    "catch_red_database_update_attempts": 3,
+    "qualified_database_update_attempts": 0,
+    "final_domain_exit": 0,
+    "final_domain_passed": 245,
+    "focused_exit": 0,
+    "focused_passed": 5,
+    "focused_unexpected_database_plugin_errors": 0,
+    "full_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Production sendWsMsg pauses actual group secure flag read; normal session actual event consumer/fake sink/retry map receives one message; generation change produces false and zero event/frame/retry.",
+    "sendWithRetry rejects explicitly expired generation; actual JSON encoding callback increments real session generation and throws, subsequent stale catch starts zero database updates (RED attempted all3 message tables).",
+    "Prior direct-submission normal/stale group policy cases remain green in focused5."
+  ],
+  "implementation_verified_by_review": [
+    "sendWsMsg freezes UID/generation and checks successful policy/encryption/metadata awaits, pre-submission and stale error paths.",
+    "sendWithRetry accepts optional original generation, checks encoded result and exception before starting status update, publishes bound event."
+  ],
+  "attempt_notes": [
+    "Intermediate final244PASS did not include catch guard; new catch RED0PASS1FAIL proved3 attempted status updates and fixed before qualified245PASS."
+  ],
+  "limitations": [
+    "Encryption and metadata wait guards source-reviewed only; dynamic tests cover group-policy wait and encoding exception, not full encrypted edit/message journey.",
+    "Already-started DB writes and updateMessageStatus internal await/UI side effects are not rollback/isolation-qualified.",
+    "Direct sendMessage stale error/toast paths, other producers and real SQLite/device/server journeys remain pending; no original97-ID upgrade.",
+    "Broad domain includes existing synthetic missing-table/plugin diagnostic logs; focused five-case log has none."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-message-session-red-20261004.log",
+      "sha256": "f1c230691720898c45d00978a860f211bd510a376a9f78887b7fb6bd79d3bd11"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-message-session-catch-red-20261004.log",
+      "sha256": "b115abc450b3c419047a5bfd27ff94d734cc9d91a3e02ce0380c7451370b78bc"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-message-session-final-domain-20261004.log",
+      "sha256": "81da04053b06759693065e9b74f262860629f7f650ffb6c86f5c7afc9cb3586d"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-message-session-final-focused-20261004.log",
+      "sha256": "de11d6219fde37789a21dbbf74f044e15aa46fee4323341312c22864a8ddbb66"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-message-session-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-message-session-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-message-session-qualified-domain-20261004.log",
+      "sha256": "b83a0c9554bf0c26d4ec501f79a6f7b85516d2550761f6a46e2919173e6099fc"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-message-session-qualified-focused-20261004.log",
+      "sha256": "3a49d7951c33745ef351658894d3eecc3aa31bd2699a1c5c6404246e68164d3f"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-message-session-qualified-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/stored-message-session-qualified-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    }
+  ]
+}
