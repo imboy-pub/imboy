@@ -160,7 +160,7 @@ groups:
       # Total memory > 6GB for 5min → WARNING (75% of 8GB container limit)
       - alert: ImBoyErlangMemoryHigh
         expr: >
-          erlang_vm_memory_bytes_total{job="imboy_backend", kind="total"}
+          erlang_vm_memory_bytes{job="imboy_backend", kind="total"}
           > 6 * 1024 * 1024 * 1024
         for: 5m
         labels:
@@ -175,7 +175,7 @@ groups:
       # 总内存 > 7.5GB 持续 2min → CRITICAL（接近 OOM kill）
       - alert: ImBoyErlangMemoryCritical
         expr: >
-          erlang_vm_memory_bytes_total{job="imboy_backend", kind="total"}
+          erlang_vm_memory_bytes{job="imboy_backend", kind="total"}
           > 7.5 * 1024 * 1024 * 1024
         for: 2m
         labels:
@@ -286,11 +286,11 @@ groups:
       # WS connections dropped > 50% vs 10 min ago → WARNING (possible mass disconnect)
       - alert: ImBoyWSConnectionsDrop
         expr: >
-          imboy_ws_connections_total > 10
+          imboy_ws_connections_current > 10
           and
           (
-            imboy_ws_connections_total
-            / imboy_ws_connections_total offset 10m
+            imboy_ws_connections_current
+            / imboy_ws_connections_current offset 10m
           ) < 0.5
         for: 2m
         labels:

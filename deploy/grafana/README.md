@@ -24,12 +24,12 @@ deploy/prometheus/
 | Panel | PromQL | 来源 |
 |---|---|---|
 | Backend Up | `up{job="imboy_backend"}` | Prometheus 自检 |
-| WebSocket 在线连接 | `imboy_ws_connections_total` | 后端业务计数器 |
+| WebSocket 在线连接 | `imboy_ws_connections_current` | 后端业务计数器 |
 | Backend Uptime | `process_uptime_seconds` | prometheus_process_collector |
 | HTTP 请求速率 | `rate(imboy_http_requests_total[1m])` | 后端 cowboy middleware |
 | 消息投递延迟 p50/p95/p99 | `histogram_quantile(..., imboy_msg_deliver_duration_seconds_bucket)` | 后端业务 histogram |
 | 消息发送速率 | `rate(imboy_msg_sent_total[1m])` | 按 C2C/C2G/C2S 分类 |
-| Erlang VM 内存 | `erlang_vm_memory_bytes_total` | prometheus_erlang_collector |
+| Erlang VM 内存 | `erlang_vm_memory_bytes` | prometheus_erlang_collector |
 | Erlang 进程/端口计数 | `erlang_vm_process_count` / `erlang_vm_port_count` | 同上 |
 | PG 事务速率 | `pg_stat_database_xact_commit/rollback` | postgres_exporter |
 
@@ -94,3 +94,5 @@ IMBoy 后端需暴露 `/metrics` 端点（Prometheus 文本格式）。当前实
 - Erlang 进程数 > 预期基线 2 倍
 
 告警规则文件参见 1.0.0 GA 里程碑（S3 扩展项）。
+
+Prometheus gauge names use `imboy_ws_connections_current` and `erlang_vm_memory_bytes`; the metrics JSON response retains its legacy keys. Apply backend, alert rules and this dashboard together when an authorized monitoring rollout is performed. Old Prometheus gauge series are not emitted after this change.

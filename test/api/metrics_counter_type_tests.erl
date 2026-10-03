@@ -21,8 +21,8 @@ http_text_path_preserves_system_gauges_test_() ->
             ?assertEqual(200, maps:get(status, Req)),
             Lines = binary:split(maps:get(body, Req), <<"\n">>, [global]),
             ?assertEqual(1, count(<<"# TYPE e2ee_recovery_failed_total counter">>, Lines)),
-            ?assertEqual(1, count(<<"# TYPE imboy_ws_connections_total gauge">>, Lines)),
-            ?assertEqual(1, count(<<"# TYPE erlang_vm_memory_bytes_total gauge">>, Lines))
+            ?assertEqual(1, count(<<"# TYPE imboy_ws_connections_current gauge">>, Lines)),
+            ?assertEqual(1, count(<<"# TYPE erlang_vm_memory_bytes gauge">>, Lines))
         end
     ).
 
@@ -49,8 +49,8 @@ system_gauges_keep_their_type_even_with_total_suffix_test() ->
     },
     Gauges = maps:remove(olm_otk_exhausted_total, Counters),
     Lines = lines(#{counters => Counters, metric_gauges => Gauges}),
-    ?assertEqual(1, count(<<"# TYPE imboy_ws_connections_total gauge">>, Lines)),
-    ?assertEqual(1, count(<<"# TYPE erlang_vm_memory_bytes_total gauge">>, Lines)),
+    ?assertEqual(1, count(<<"# TYPE imboy_ws_connections_current gauge">>, Lines)),
+    ?assertEqual(1, count(<<"# TYPE erlang_vm_memory_bytes gauge">>, Lines)),
     ?assertEqual(1, count(<<"# TYPE olm_otk_exhausted_total counter">>, Lines)).
 
 lines(Metrics) ->

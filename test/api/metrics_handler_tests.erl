@@ -91,6 +91,9 @@ init_json_payload_has_no_tuple_keys_test_() ->
             {ok, RespReq, _State} = metrics_handler:init(#{}, #{}),
             ?assertNot(maps:is_key(metric_gauges, maps:get(payload, RespReq))),
             Counters = maps:get(counters, maps:get(payload, RespReq)),
+            ?assert(maps:is_key(imboy_ws_connections_total, Counters)),
+            ?assert(maps:is_key(<<"erlang_vm_memory_bytes_total_total">>, Counters)),
+            ?assertNot(maps:is_key(imboy_ws_connections_current, Counters)),
             %% 无任何 tuple key —— 这是 jsone 能序列化的前提
             ?assertNot(
                 maps:fold(

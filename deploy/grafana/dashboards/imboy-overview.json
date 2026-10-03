@@ -38,7 +38,7 @@
       "id": 2,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "pluginVersion": "10.0.0",
-      "targets": [{ "expr": "imboy_ws_connections_total", "refId": "A" }],
+      "targets": [{ "expr": "imboy_ws_connections_current", "refId": "A" }],
       "title": "WebSocket 在线连接",
       "type": "stat"
     },
@@ -98,7 +98,7 @@
       "id": 7,
       "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
-        { "expr": "erlang_vm_memory_bytes_total{job=\"imboy_backend\"}", "legendFormat": "{{kind}}", "refId": "A" }
+        { "expr": "erlang_vm_memory_bytes{job=\"imboy_backend\"}", "legendFormat": "{{kind}}", "refId": "A" }
       ],
       "title": "Erlang VM 内存分布",
       "type": "timeseries"

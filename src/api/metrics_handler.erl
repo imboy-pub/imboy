@@ -209,7 +209,7 @@ format_prometheus(Metrics) ->
         fun
             ({Name, Labels}, Value, Acc) when is_map(Labels) ->
                 %% 带标签的计数器: {Name, #{plugin => channel}} => metric_name{plugin="channel"}
-                NameBin = metric_name(Name),
+                NameBin = prometheus_metric_name(Name),
                 LabelsBin = format_labels_map(Labels),
                 [
                     Acc,
@@ -221,7 +221,7 @@ format_prometheus(Metrics) ->
                     <<"\n">>
                 ];
             (Name, Value, Acc) ->
-                NameBin = metric_name(Name),
+                NameBin = prometheus_metric_name(Name),
                 [
                     Acc,
                     NameBin,
@@ -264,8 +264,16 @@ format_counter_types(Counters, Gauges) ->
      || Name <- Families
     ].
 
-metric_family_name({Name, Labels}) when is_map(Labels) -> metric_name(Name);
-metric_family_name(Name) -> metric_name(Name).
+metric_family_name({Name, Labels}) when is_map(Labels) -> prometheus_metric_name(Name);
+metric_family_name(Name) -> prometheus_metric_name(Name).
+
+%% Preserve legacy JSON keys while giving system gauges valid Prometheus names.
+prometheus_metric_name(Name) ->
+    case metric_name(Name) of
+        <<"imboy_ws_connections_total">> -> <<"imboy_ws_connections_current">>;
+        <<"erlang_vm_memory_bytes_total">> -> <<"erlang_vm_memory_bytes">>;
+        Other -> Other
+    end.
 
 %% @doc 导出 Prometheus histogram：`_bucket{le="..."}` 累积序列 + `_sum` + `_count`。
 %%
