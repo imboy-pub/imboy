@@ -1,0 +1,4 @@
+{"type": "start"}
+{"type": "testStart", "test": {"id": 0, "name": "SYNTHETIC composition 0"}}
+{"type": "testDone", "testID": 0, "result": "success"}
+{"type": "done", "success": true}

@@ -1116,5 +1116,75 @@
     ],
     "final_verifier": "NOT_IMPLEMENTED",
     "remaining": "complete case/source/runtime coverage, genuine execution and business facts, required final gates"
+  },
+  "execution_record_composition_gate": {
+    "app_candidate": "6dc2123a38d035d74ae2742f7323193274f34251",
+    "executed": 316,
+    "exit": 0,
+    "review": "APPROVED_WITH_RAW_LOG_CONTENT_DEDUPLICATION",
+    "scope": "EXECUTION_RECORD_INPUTS_ONLY",
+    "product_pass": false,
+    "calibrations": [
+      {
+        "id": "PREPARATION-F01-EXECUTION-COMPOSITION-VALID",
+        "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+        "argv": [
+          "python3",
+          "scripts/auto_test.py",
+          "acceptance-execution-preflight",
+          "--evidence-root",
+          "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003",
+          "--frozen-input",
+          "execution-composition-valid.frozen.json",
+          "--frozen-sha256",
+          "49263593b045c94088e0475a9320d6609c618a73f25618084dca099a5d8b4f34",
+          "--acceptance-report",
+          "execution-composition-synthetic.report.json",
+          "--report-sha256",
+          "d0f08f89e9e1405e76bee73a107f1870327d7840532d4a69d34499d3339acb75"
+        ],
+        "candidate_heads": {
+          "imboy": "007701d02cce43fee5176bd2d0b00703053422af",
+          "imboyapp": "6dc2123a38d035d74ae2742f7323193274f34251",
+          "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+        },
+        "exit": 0,
+        "output": "execution-composition-valid.result.json",
+        "output_sha256": "b37cec3aaaaef464b9445d82e05c4eab3a3dc683ddf9d4cbb35e0c2bd7c24421",
+        "scope": "SYNTHETIC_EXECUTION_RECORD_INPUTS_ONLY",
+        "product_pass": false
+      },
+      {
+        "id": "PREPARATION-F01-EXECUTION-COMPOSITION-MISSING_RUNS",
+        "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+        "argv": [
+          "python3",
+          "scripts/auto_test.py",
+          "acceptance-execution-preflight",
+          "--evidence-root",
+          "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003",
+          "--frozen-input",
+          "execution-composition-missing_runs.frozen.json",
+          "--frozen-sha256",
+          "d7ddd500c309bf0cc0b86cc39c1c594d05ba8f109d381e2a55be2bc0818498af",
+          "--acceptance-report",
+          "execution-composition-synthetic.report.json",
+          "--report-sha256",
+          "d0f08f89e9e1405e76bee73a107f1870327d7840532d4a69d34499d3339acb75"
+        ],
+        "candidate_heads": {
+          "imboy": "007701d02cce43fee5176bd2d0b00703053422af",
+          "imboyapp": "6dc2123a38d035d74ae2742f7323193274f34251",
+          "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+        },
+        "exit": 2,
+        "output": "execution-composition-missing_runs.result.json",
+        "output_sha256": "37a76404aadf77e53c2bab8032ae952ef5b33bddb0ab8c2bbda3c1cd0801e2c8",
+        "scope": "SYNTHETIC_EXECUTION_RECORD_INPUTS_ONLY",
+        "product_pass": false
+      }
+    ],
+    "final_verifier": "NOT_IMPLEMENTED",
+    "remaining": "authenticate log-attempt same execution linkage, complete coverage/runtime/business/platform/UX gates"
   }
 }
