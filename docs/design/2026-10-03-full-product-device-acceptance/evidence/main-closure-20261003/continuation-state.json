@@ -1970,5 +1970,27 @@
       "validate archive persistence and client history/decrypt against isolated real backend",
       "implement/verify sender other-device live synchronization without altering logical recipient or ACK ownership"
     ]
+  },
+  "c11_own_device_transport": {
+    "scope": "FAKE_SOCKET_LOGICAL_PEER_PHYSICAL_RECEIVER",
+    "product_pass": false,
+    "network_executed": false,
+    "app_head": "459776f3386f0d43536df8d5624979481dfef3ab",
+    "executed": 94,
+    "failed": 0,
+    "exit": 0,
+    "analysis": "No issues found",
+    "review": {
+      "flutter": "APPROVE",
+      "generic": "PENDING_RUNNING"
+    },
+    "log": "c11-own-device-full-components.log",
+    "log_sha256": "25ec27c699bca6840eaee73440ab0bee502e285fe112457990133f970fbf3abb",
+    "behavior": "Sender other-device alias queues ciphertext while logical to remains peer account; current sender and unknown physical receivers rejected. No automatic receipt.",
+    "remaining": [
+      "real server sender-device echo and receipt ownership",
+      "archive/decrypt and real device journeys",
+      "97-ID final qualification"
+    ]
   }
 }
