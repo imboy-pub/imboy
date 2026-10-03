@@ -1,0 +1,141 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart
+00:00 +0: FTS update order C2C success
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +0 -1: FTS update order C2C success [E]
+  Expected: 'newword'
+    Actual: 'oldword'
+     Which: is different.
+            Expected: newword
+              Actual: oldword
+                      ^
+             Differ at offset 0
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 149:13  main.<fn>
+  
+00:00 +0 -1: FTS update order C2C missing
+message_repo/update msg_c2c ;
+00:00 +0 -2: FTS update order C2C missing [E]
+  Expected: empty
+    Actual: [
+              {
+                'id': 'synthetic-order',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'oldword'
+              }
+            ]
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 165:13  main.<fn>
+  
+00:00 +0 -2: FTS update order C2C failure
+message_repo/update msg_c2c ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.update.<anonymous closure> (package:imboy/service/sqlite.dart:763:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Update error: table=msg_c2c, error=Bad state: synthetic-update-failure[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +0 -3: FTS update order C2C failure [E]
+  Expected: empty
+    Actual: [
+              {
+                'id': 'synthetic-order',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'oldword'
+              }
+            ]
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 165:13  main.<fn>
+  
+00:00 +0 -3: FTS update order C2C stale
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +0 -4: FTS update order C2C stale [E]
+  Expected: {'text': 'newword'}
+    Actual: '{"text":"newword"}'
+     Which: expected a map
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 170:11  main.<fn>
+  
+00:00 +0 -4: FTS update order C2G success
+message_repo/update msg_c2g ;
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +0 -5: FTS update order C2G success [E]
+  Expected: 'newword'
+    Actual: 'oldword'
+     Which: is different.
+            Expected: newword
+              Actual: oldword
+                      ^
+             Differ at offset 0
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 149:13  main.<fn>
+  
+00:00 +0 -5: FTS update order C2G missing
+message_repo/update msg_c2g ;
+00:00 +0 -6: FTS update order C2G missing [E]
+  Expected: empty
+    Actual: [
+              {
+                'id': 'synthetic-order',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'oldword'
+              }
+            ]
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 165:13  main.<fn>
+  
+00:00 +0 -6: FTS update order C2G failure
+message_repo/update msg_c2g ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.update.<anonymous closure> (package:imboy/service/sqlite.dart:763:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Update error: table=msg_c2g, error=Bad state: synthetic-update-failure[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +0 -7: FTS update order C2G failure [E]
+  Expected: empty
+    Actual: [
+              {
+                'id': 'synthetic-order',
+                'conversation_uk3': 'synthetic',
+                'text_content': 'oldword'
+              }
+            ]
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 165:13  main.<fn>
+  
+00:00 +0 -7: FTS update order C2G stale
+message_repo/update msg_c2g ;
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +0 -8: FTS update order C2G stale [E]
+  Expected: {'text': 'newword'}
+    Actual: '{"text":"newword"}'
+     Which: expected a map
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 170:11  main.<fn>
+  
+00:00 +0 -8: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C failure
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C missing
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C stale
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C success
+  ... and 4 more

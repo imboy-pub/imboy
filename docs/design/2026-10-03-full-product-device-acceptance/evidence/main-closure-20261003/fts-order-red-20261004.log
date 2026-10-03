@@ -1,0 +1,225 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart
+00:00 +0: FTS update order C2C success
+message_repo/update msg_c2c ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:898:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2c, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?' args [synthetic-order] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   MessageRepo._reindexFtsAfterPayloadUpdate (package:imboy/store/repository/message_repo_sqlite.dart:1496:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [message_repo_sqlite] FTS reindex after update failed: errType=SqfliteFfiException[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +0 -1: FTS update order C2C success [E]
+  Expected: {'text': 'newword'}
+    Actual: '{"text":"newword"}'
+     Which: expected a map
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 146:11  main.<fn>
+  
+00:00 +0 -1: FTS update order C2C missing
+message_repo/update msg_c2c ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:898:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2c, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?' args [synthetic-order] {details: {database: {path: :memory:, id: 2, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   MessageRepo._reindexFtsAfterPayloadUpdate (package:imboy/store/repository/message_repo_sqlite.dart:1496:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [message_repo_sqlite] FTS reindex after update failed: errType=SqfliteFfiException[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +0 -2: FTS update order C2C missing [E]
+  Expected: {'text': 'newword'}
+    Actual: '{"text":"newword"}'
+     Which: expected a map
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 146:11  main.<fn>
+  
+00:00 +0 -2: FTS update order C2C failure
+message_repo/update msg_c2c ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:898:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2c, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?' args [synthetic-order] {details: {database: {path: :memory:, id: 3, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   MessageRepo._reindexFtsAfterPayloadUpdate (package:imboy/store/repository/message_repo_sqlite.dart:1496:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [message_repo_sqlite] FTS reindex after update failed: errType=SqfliteFfiException[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.update.<anonymous closure> (package:imboy/service/sqlite.dart:763:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Update error: table=msg_c2c, error=Bad state: synthetic-update-failure[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +0 -3: FTS update order C2C failure [E]
+  Expected: {'text': 'newword'}
+    Actual: '{"text":"newword"}'
+     Which: expected a map
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 146:11  main.<fn>
+  
+00:00 +0 -3: FTS update order C2C stale
+message_repo/update msg_c2c ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:898:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2c, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee, sender_did FROM msg_c2c WHERE id = ?' args [synthetic-order] {details: {database: {path: :memory:, id: 4, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   MessageRepo._reindexFtsAfterPayloadUpdate (package:imboy/store/repository/message_repo_sqlite.dart:1496:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [message_repo_sqlite] FTS reindex after update failed: errType=SqfliteFfiException[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +0 -4: FTS update order C2C stale [E]
+  Expected: {'text': 'newword'}
+    Actual: '{"text":"newword"}'
+     Which: expected a map
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 146:11  main.<fn>
+  
+00:00 +0 -4: FTS update order C2G success
+message_repo/update msg_c2g ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:898:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2g, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?' args [synthetic-order] {details: {database: {path: :memory:, id: 5, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   MessageRepo._reindexFtsAfterPayloadUpdate (package:imboy/store/repository/message_repo_sqlite.dart:1496:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [message_repo_sqlite] FTS reindex after update failed: errType=SqfliteFfiException[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +0 -5: FTS update order C2G success [E]
+  Expected: {'text': 'newword'}
+    Actual: '{"text":"newword"}'
+     Which: expected a map
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 146:11  main.<fn>
+  
+00:00 +0 -5: FTS update order C2G missing
+message_repo/update msg_c2g ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:898:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2g, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?' args [synthetic-order] {details: {database: {path: :memory:, id: 6, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   MessageRepo._reindexFtsAfterPayloadUpdate (package:imboy/store/repository/message_repo_sqlite.dart:1496:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [message_repo_sqlite] FTS reindex after update failed: errType=SqfliteFfiException[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +0 -6: FTS update order C2G missing [E]
+  Expected: {'text': 'newword'}
+    Actual: '{"text":"newword"}'
+     Which: expected a map
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 146:11  main.<fn>
+  
+00:00 +0 -6: FTS update order C2G failure
+message_repo/update msg_c2g ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:898:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2g, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?' args [synthetic-order] {details: {database: {path: :memory:, id: 7, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   MessageRepo._reindexFtsAfterPayloadUpdate (package:imboy/store/repository/message_repo_sqlite.dart:1496:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [message_repo_sqlite] FTS reindex after update failed: errType=SqfliteFfiException[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.update.<anonymous closure> (package:imboy/service/sqlite.dart:763:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Update error: table=msg_c2g, error=Bad state: synthetic-update-failure[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +0 -7: FTS update order C2G failure [E]
+  Expected: {'text': 'newword'}
+    Actual: '{"text":"newword"}'
+     Which: expected a map
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 146:11  main.<fn>
+  
+00:00 +0 -7: FTS update order C2G stale
+message_repo/update msg_c2g ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:898:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2g, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such column: e2ee, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement (at position 130): SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE id = ?' args [synthetic-order] {details: {database: {path: :memory:, id: 8, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   MessageRepo._reindexFtsAfterPayloadUpdate (package:imboy/store/repository/message_repo_sqlite.dart:1496:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ [message_repo_sqlite] FTS reindex after update failed: errType=SqfliteFfiException[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +0 -8: FTS update order C2G stale [E]
+  Expected: {'text': 'newword'}
+    Actual: '{"text":"newword"}'
+     Which: expected a map
+  
+  package:matcher                                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18                         expect
+  test/unit_test/store/repository/message_fts_update_order_test.dart 146:11  main.<fn>
+  
+00:00 +0 -8: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C failure
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C missing
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C stale
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C success
+  ... and 4 more

@@ -1,0 +1,82 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C success
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C missing
+message_repo/update msg_c2c ;
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C failure
+message_repo/update msg_c2c ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.update.<anonymous closure> (package:imboy/service/sqlite.dart:763:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Update error: table=msg_c2c, error=Bad state: synthetic-update-failure[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C stale
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=false
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2C mutated_input
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=false
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2G success
+message_repo/update msg_c2g ;
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=false
+message_repo/update msg_c2c ;
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=false
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2G missing
+message_repo/update msg_c2g ;
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=false
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=false
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2G failure
+message_repo/update msg_c2g ;
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.update.<anonymous closure> (package:imboy/service/sqlite.dart:763:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ Update error: table=msg_c2g, error=Bad state: synthetic-update-failure[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=false
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2G stale
+message_repo/update msg_c2g ;
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2G stale
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=true
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=true
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_update_order_test.dart: FTS update order C2G mutated_input
+message_repo/update msg_c2g ;
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C lookup session changed=true
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C delete session changed=false
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C delete session changed=true
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=false
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2C retry session changed=true
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G lookup session changed=false
+message_repo/update msg_c2g ;
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G lookup session changed=true
+message_repo/update msg_c2g ;
+清除缓存: msg_c2g, 移除了 0 个缓存条目
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G delete session changed=false
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G delete session changed=true
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=false
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=false
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=false
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=false
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=false
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=false
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_repo_test.dart: MessageFtsRepo.extractTextContent video 消息返回空
+00:00 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=true
+00:00 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=true
+00:00 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=true
+00:00 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=true
+00:00 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=true
+00:00 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=true
+00:00 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=true
+00:00 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/store/repository/message_fts_session_test.dart: FTS C2G retry session changed=true
+00:00 +35: All tests passed!
