@@ -4695,5 +4695,11 @@
     "receipt": "coverage-gap-workqueue-20261004.json",
     "next_priority": "organization",
     "product_pass": false
+  },
+  "f00_organization_home_semantic_design": {
+    "receipt": "organization-home-case-design-20261004.json",
+    "cases_designed": 6,
+    "legacy_mapping": "AMBIGUOUS_UNRESOLVED",
+    "product_pass": false
   }
 }

@@ -1,0 +1,106 @@
+{
+  "scope": "F00_ORGANIZATION_HOME_CURRENT_CONTROL_DESIGN",
+  "app_head": "434e11a3bba2873e3e7240f8ce635285e21d3d04",
+  "source_hashes": [
+    {
+      "path": "lib/modules/organization/presentation/organization_home_page.dart",
+      "sha256": "fd90213ef87f3296a25f14b0d9095a6f0e2ad19b56e5735116cc99ec5835f365"
+    },
+    {
+      "path": "test/auto_test/organization/organization_home_page.md",
+      "sha256": "dcb72c7f777685c1b57d49e81db03b48d2cf00e235b891f5b8bd5af77762685d"
+    },
+    {
+      "path": "test/auto_test/functional_inventory.json",
+      "sha256": "ac7184fab6c4db4a9edd937311806ae30a07863a22208291a4c680a83fabe7d1"
+    },
+    {
+      "path": "test/organization/organization_home_page_widget_test.dart",
+      "sha256": "577f21a9157af01e733380921f934e45bd0f90d0e2ba2322fa5d4f359cc915fc"
+    }
+  ],
+  "legacy_function_ids": [
+    "fn:organization:organization_home_page:001",
+    "fn:organization:organization_home_page:002",
+    "fn:organization:organization_home_page:003",
+    "fn:organization:organization_home_page:004"
+  ],
+  "legacy_mapping_status": "AMBIGUOUS_UNRESOLVED: anonymous rows include ListTile and onTap duplication; cannot infer one-to-one correspondence from ordinal alone",
+  "cases": [
+    {
+      "case_key": "directory",
+      "source_control": "organization-home-directory-entry",
+      "business_oracle": "Use current organization if present in freshly loaded mine list, else first non-archived, else first archived; exact org-id route and encoded name; empty list must not navigate",
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTABLE"
+    },
+    {
+      "case_key": "invitations",
+      "source_control": "myInvitations IconButton",
+      "business_oracle": "Navigate to /organization/0/invitations?mode=mine using actual registered prefix; on return requery pending invitations and badge reflects count, cap label99+; failed badge fetch clears badge without list failure",
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTABLE"
+    },
+    {
+      "case_key": "create",
+      "source_control": "_createOrg",
+      "business_oracle": "Cancelling prompt issues zero create request; confirmed name creates only owned synthetic organization; refresh mine list and show pending-review message; backend ownership/name/status independently verified",
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTABLE"
+    },
+    {
+      "case_key": "detail",
+      "source_control": "organization ListTile onTap",
+      "business_oracle": "Select exact synthetic organization id; route detail for that id and backend role governs visible mutation entries, archived label retained",
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTABLE"
+    },
+    {
+      "case_key": "refresh",
+      "source_control": "RefreshIndicator onRefresh",
+      "business_oracle": "Mutate owned fixture independently, swipe refresh; freshly returned allMine list replaces prior values and cache scoped to exact account; suspended/removed membership absent by server oracle",
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTABLE"
+    },
+    {
+      "case_key": "retry",
+      "source_control": "OrgStateView onRetry",
+      "business_oracle": "Inject controlled isolated mine failure; error visible; recover endpoint then retry; fresh list replaces error and loading clears, no uncontrolled writes",
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "device_target": null,
+      "status": "DESIGNED_NOT_EXECUTABLE"
+    }
+  ],
+  "required_resources": [
+    "Explicit isolated backend/real device/owned synthetic fixture authorization and exact lease",
+    "Fault injection limited to owned runtime; independent zero-write audits for read/cancel journeys",
+    "Disable external notifications before any create journey"
+  ],
+  "next_action": "Reconcile legacy anonymous rows with historical source and frozen-input contract, then implement current exact-control device target; do not bulk bind page target to all functions",
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "gap_counts_changed": false
+}
