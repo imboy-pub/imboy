@@ -1,0 +1,44 @@
+{
+  "scope": "LOCAL_OLM_WRITE_ROTATION_LOG_PRIVACY_ONLY",
+  "backend_head": "6fe774c1c411658c8bc0a4e4cf1a8e02d2736ed9",
+  "behavior_red": {
+    "failed": 6,
+    "passed": 7,
+    "exit_code": 1
+  },
+  "green": {
+    "passed": 56,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-olm-write-log-red.log",
+      "sha256": "96249102df90480b17ad92531bf42ab19f872ed0924b8ad361e048edf3f974b4"
+    },
+    {
+      "path": "e2ee-olm-write-log-green.log",
+      "sha256": "d89e75d8a551b310a0e8d62c0442ba33e121132d774e93f635858f1cf683591c"
+    },
+    {
+      "path": "e2ee-olm-write-log-compile.log",
+      "sha256": "dd104fa41c1dee79e42a0796eb488079e61f3ef86f29a78abab64631c92d7e45"
+    }
+  ],
+  "source_hashes": {
+    "src/logic/olm_identity_logic.erl": "a578b91d5de8732df019fb938234c7047023218fe972d8427a68f19950598a61",
+    "test/logic/olm_identity_log_privacy_tests.erl": "de219dd4ae2bf30ac529c9c83f782c4b8cc66732b2ea79e6901a787345888b35"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "limits": [
+    "Six identity write, version bump, rotation audit, OTK and fallback failure logs retain event and severity without identities or arbitrary reason",
+    "Real synthetic PoP signatures; persistence/metric/tsid/log mocked, no real cleanup or notification",
+    "Audit failure keeps original ok result and failed counter; not a complete rotation success oracle",
+    "No full AC26 or production SLO qualification"
+  ]
+}

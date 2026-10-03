@@ -4438,5 +4438,11 @@
     "focused_tests": 5,
     "full_module_status": "NOT_PASS_CANCELLED_PG_FIXTURE",
     "product_pass": false
+  },
+  "e2ee_olm_write_log_privacy": {
+    "receipt": "e2ee-olm-write-log-redaction.json",
+    "backend_head": "6fe774c1c411658c8bc0a4e4cf1a8e02d2736ed9",
+    "tests": 56,
+    "product_pass": false
   }
 }
