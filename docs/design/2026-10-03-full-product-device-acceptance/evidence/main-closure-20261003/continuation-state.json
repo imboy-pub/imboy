@@ -3951,5 +3951,55 @@
       "First commit hook could not resolve Flutter packages and failed analysis. Without source changes subsequent analysis and retry hooks passed; no dependency files staged."
     ],
     "proof_limit": "Controlled importer/restorer results terminate with ArgumentError before applying keys; no actual decrypt/cloud/backend/device qualification. Cloud result-after-dispose lifecycle remains pending independently. No required parent upgraded."
+  },
+  "f08_cloud_late_key_application": {
+    "id": "PREPARATION-F08-CLOUD-LATE-KEY-APPLICATION",
+    "scope": "HOST_CLOUD_RESULT_LIFECYCLE_SUBSTITUTE_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "d28a2d8b4f85a92f5af7bbe1211939ead85884f4",
+    "executed": 6,
+    "exit": 0,
+    "analyze_exit": 0,
+    "reviews": [
+      "FLUTTER_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/page/settings/e2ee_backup_import_reentry_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "attempts": {
+      "red": {
+        "passed": 5,
+        "failed": 1,
+        "exit": 1,
+        "log": {
+          "path": "f08-cloud-late-keys-red.log",
+          "sha256": "44074aa537fda41c36d93f2dd0f9ce2d52abc8c28ac327fb80ff2dd1adc0d2ca"
+        }
+      },
+      "fixed": {
+        "passed": 6,
+        "failed": 0,
+        "exit": 0,
+        "log": {
+          "path": "f08-cloud-late-keys-fixed.log",
+          "sha256": "19390b2f63ccb64e9ce3a4d3a9553e30f7280d96a87af2a12615e3000974e174"
+        }
+      }
+    },
+    "change": "Check mounted after cloud decrypt return before applying restored keys, matching local path.",
+    "oracle": "Actual cloud confirmation UI starts controlled request, page disposed, synthetic success released; zero secure-storage write intent. RED observed one write attempt and substitute throws immediately to stop later work.",
+    "unrelated_wip_preserved": [
+      "imboyapp/README.md",
+      "imboyapp/ios/Podfile.lock",
+      "imboy/docs/business/imboy-open-source-productization-strategy-v1.md"
+    ],
+    "proof_limit": "No actual decryption, cloud/network, secure storage or device qualification. Does not cancel already-started decryption or key application. No parent acceptance upgraded."
   }
 }
