@@ -4626,5 +4626,11 @@
     "missing_targets": 1761,
     "placeholder_oracles": 229,
     "product_pass": false
+  },
+  "f14_backend_payment_log_privacy": {
+    "receipt": "billing-backend-log-privacy.json",
+    "backend_head": "f689bf2a31830da4eb0825c73882f3be4cdf32d4",
+    "tests": 22,
+    "product_pass": false
   }
 }

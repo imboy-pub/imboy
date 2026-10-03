@@ -1,0 +1,76 @@
+======================== EUnit ========================
+module 'billing_logic_tests'
+  billing_logic_tests: validate_plan_test...*failed*
+in function billing_logic:validate_plan/4
+  called as validate_plan(<<"pro">>,<<228,184,147,228,184,154,231,137,136>>,39000,<<"month">>)
+in call from billing_logic_tests:validate_plan_test/0 (test/logic/billing_logic_tests.erl, line 14)
+in call from billing_logic_tests:validate_plan_test/0
+**error:undef
+  output:<<"">>
+
+  billing_logic_tests: period_ms_test...*failed*
+in function billing_logic:period_ms/1
+  called as period_ms(<<"month">>)
+in call from billing_logic_tests:period_ms_test/0 (test/logic/billing_logic_tests.erl, line 23)
+in call from billing_logic_tests:period_ms_test/0
+**error:undef
+  output:<<"">>
+
+  billing_logic_tests: resolve_period_test...*failed*
+in function billing_logic:resolve_period/1
+  called as resolve_period(<<"2026-06">>)
+in call from billing_logic_tests:resolve_period_test/0 (test/logic/billing_logic_tests.erl, line 30)
+in call from billing_logic_tests:resolve_period_test/0
+**error:undef
+  output:<<"">>
+
+  billing_logic_tests: pad2_test...*failed*
+in function billing_logic:pad2/1
+  called as pad2(5)
+in call from billing_logic_tests:pad2_test/0 (test/logic/billing_logic_tests.erl, line 37)
+in call from billing_logic_tests:pad2_test/0
+**error:undef
+  output:<<"">>
+
+  billing_logic_tests: encode_jsonb_test...*failed*
+in function billing_logic:encode_jsonb/1
+  called as encode_jsonb(#{})
+in call from billing_logic_tests:encode_jsonb_test/0 (test/logic/billing_logic_tests.erl, line 43)
+in call from billing_logic_tests:encode_jsonb_test/0
+**error:undef
+  output:<<"">>
+
+  billing_logic_tests: decode_jsonb_test...*failed*
+in function billing_logic:decode_jsonb/1
+  called as decode_jsonb(<<"{\"a\":1}">>)
+in call from billing_logic_tests:decode_jsonb_test/0 (test/logic/billing_logic_tests.erl, line 51)
+in call from billing_logic_tests:decode_jsonb_test/0
+**error:undef
+  output:<<"">>
+
+  billing_logic_tests: ts_ms_to_sql_test...*failed*
+in function billing_logic:ts_ms_to_sql/1
+  called as ts_ms_to_sql(1771481621000)
+in call from billing_logic_tests:ts_ms_to_sql_test/0 (test/logic/billing_logic_tests.erl, line 61)
+in call from billing_logic_tests:ts_ms_to_sql_test/0
+**error:undef
+  output:<<"">>
+
+  billing_logic_tests: t1_owner_allowed...[0.002 s] ok
+  billing_logic_tests: t2_other_user_denied...[0.002 s] ok
+  billing_logic_tests: t3_ownerless_legacy_denied...[0.002 s] ok
+  billing_logic_tests: t4_missing_subscription_denied...[0.002 s] ok
+  billing_logic_tests: t5_invalid_sub_id_denied...[0.002 s] ok
+  billing_logic_tests: t6_invalid_uid_denied...[0.002 s] ok
+  billing_logic_tests: t7_invoice_owner_allowed...[0.004 s] ok
+  billing_logic_tests: t8_invoice_other_user_denied...[0.005 s] ok
+  billing_logic_tests: t9_invoice_missing_denied...[0.002 s] ok
+  billing_logic_tests: t10_denial_message_does_not_leak_existence...[0.004 s] ok
+  billing_logic_tests: t11_pay_gateway_extra_passthrough...[0.002 s] ok
+  billing_logic_tests: t12_pay_gateway_no_extra_compat...[0.002 s] ok
+  billing_logic_tests: t13_pay_envelope_aligned_with_recharge...[0.003 s] ok
+  billing_logic_tests: t14_gateway_failure_log_privacy...[0.003 s] ok
+  billing_logic_tests: t15_mark_paid_failure_log_privacy...[0.004 s] ok
+  [done in 0.527 s]
+=======================================================
+  Failed: 7.  Skipped: 0.  Passed: 15.

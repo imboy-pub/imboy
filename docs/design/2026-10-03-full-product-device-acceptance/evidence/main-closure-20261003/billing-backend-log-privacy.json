@@ -1,0 +1,50 @@
+{
+  "scope": "LOCAL_BACKEND_BILLING_FAILURE_LOG_PRIVACY",
+  "backend_head": "f689bf2a31830da4eb0825c73882f3be4cdf32d4",
+  "tests": 22,
+  "exit_code": 0,
+  "red_failed": 2,
+  "red_passed": 20,
+  "production_compile_exit_code": 0,
+  "review": "APPROVED_CODE_REVIEW",
+  "artifacts": [
+    {
+      "path": "billing-backend-log-red.log",
+      "sha256": "88717e767c01b364f2f526e7119aa05208b230ac5cc57a66b10f00b4f6c0404f"
+    },
+    {
+      "path": "billing-backend-log-green.log",
+      "sha256": "14a329e777b90be34e3813ea9327b16394daa47479b25d620e0a0831319bcb33"
+    },
+    {
+      "path": "billing-backend-log-compile-focused.log",
+      "sha256": "f45125a6cee044646eeb3c04491199652d7b1ea807b563a5a7ec8cc16a0e519a"
+    },
+    {
+      "path": "billing-backend-log-retest.log",
+      "sha256": "5bc05f4982efc1341a5f700eba450bb001de2ce442f17238782651009ed6248a"
+    },
+    {
+      "path": "billing-backend-log-build.log",
+      "sha256": "756aa0695b64dbfaa5200076bb0f2480160c7ed2dbb0d368214a60d4f518b13a"
+    },
+    {
+      "path": "billing-backend-log-final-compile.log",
+      "sha256": "09015a480c9461f3129ac2edcadadecb7d9f0aca7301217d64e4c2969e1b653d"
+    },
+    {
+      "path": "billing-backend-log-final.log",
+      "sha256": "60d89db06740fa71a84e0aca3954b0f215fe69e955339e7290c21e84d8eafeac"
+    }
+  ],
+  "attempt_notes": [
+    "Initial retest missing -DTEST produced 7 undef failures, corrected 22 PASS",
+    "Commit format hook rejected new formatting; erlfmt applied and 22 tests retested before commit"
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Real pay_invoice logic with synthetic mocked DS/gateway/log, no real database/provider/device",
+    "Binary business error response preserved; remaining billing logs unqualified"
+  ]
+}
