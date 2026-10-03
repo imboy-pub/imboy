@@ -1,0 +1,10 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+00:00 +0: send event consumption session changed=false
+🧹 [QUEUE] 启动定期清理 Timer
+> ws: 消息已发送 (synthetic-event) [C2C/unknown/PLAIN] [60 bytes]
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +1: send event consumption session changed=true
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +2: All tests passed!

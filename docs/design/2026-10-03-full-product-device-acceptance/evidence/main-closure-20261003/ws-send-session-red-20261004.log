@@ -1,0 +1,22 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+00:00 +0: send event consumption session changed=false
+🧹 [QUEUE] 启动定期清理 Timer
+> ws: 消息已发送 (synthetic-event) [C2C/unknown/PLAIN] [60 bytes]
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +1: send event consumption session changed=true
+> ws: 消息已发送 (synthetic-event) [C2C/unknown/PLAIN] [60 bytes]
+00:00 +1 -1: send event consumption session changed=true [E]
+  Expected: empty
+    Actual: ['{"type":"C2C","from":"100","to":"200","payload":"synthetic"}']
+  
+  package:matcher                                                expect
+  package:flutter_test/src/widget_tester.dart 473:18             expect
+  test/unit_test/service/websocket_send_session_test.dart 122:7  main.<fn>
+  
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart: send event consumption session changed=true

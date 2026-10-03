@@ -4951,5 +4951,22 @@
       "full_static_exit": 0,
       "catalog_check_exit": 0
     }
+  },
+  "websocket_send_event_session": {
+    "receipt": "websocket-send-event-session-20261004.json",
+    "app_head": "e775476a6a0ced14a089a4061b9e762857f2a59b",
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": [],
+    "local_results": {
+      "red_exit": 1,
+      "red_passed": 1,
+      "red_failed": 1,
+      "focused_exit": 0,
+      "focused_passed": 2,
+      "domain_exit": 0,
+      "domain_passed": 157,
+      "full_static_exit": 0,
+      "catalog_check_exit": 0
+    }
   }
 }

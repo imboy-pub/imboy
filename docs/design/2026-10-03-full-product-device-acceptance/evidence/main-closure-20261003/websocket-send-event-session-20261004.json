@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_WEBSOCKET_SEND_EVENT_SESSION_CONSUMPTION",
+  "app_head": "e775476a6a0ced14a089a4061b9e762857f2a59b",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_LOCAL_SCOPE",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 1,
+    "red_failed": 1,
+    "focused_exit": 0,
+    "focused_passed": 2,
+    "domain_exit": 0,
+    "domain_passed": 157,
+    "full_static_exit": 0,
+    "catalog_check_exit": 0
+  },
+  "oracles": [
+    "Real event constructor freezes generation. Actual loginAfter bumps generation with controlled secure-token-write failure before UID commit.",
+    "Actual consumer invoked through test hook on connected fake channel; old consumer writes one stale frame, final consumer writes none. Normal event writes exactly one frame.",
+    "No WebSocket init or connection performed; fake sink captures local payload only."
+  ],
+  "implementation": [
+    "Event equality includes frozen sessionGeneration; no const constructor call sites found before change.",
+    "Retry events explicitly carry original operation/queue generation.",
+    "Consumer rejects stale generation and clearing state before sendMessage; connected sink branch runs synchronously before first await."
+  ],
+  "limitations": [
+    "Event-bus subscription wiring not dynamically exercised by consumer hook test.",
+    "Producer async before event creation, offline queue replay, direct send and asynchronous failure compensation remain pending.",
+    "No real device account switch, network transport or original97-ID acceptance upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-session-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-session-domain-20261004.log",
+      "sha256": "b1b6df2e071157c1bec28a1a35a3baae9db9c44587848700c9d07efa80b2a55d"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-session-green-20261004.log",
+      "sha256": "404aabc22e374994f8d09ff4f5acb8fbb789619062310ac0b5d50438495b6ef5"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-session-red-20261004.log",
+      "sha256": "8d4619ba8ffb007e5a952dde19c5b4b13b05b9ca03b6093470ad97928d4a15ec"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/ws-send-session-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    }
+  ]
+}
