@@ -1028,5 +1028,38 @@
       "synthetic fixtures and namespace reset checks",
       "full frozen candidate EUnit twice plus excluded suites"
     ]
+  },
+  "exact_raw_case_identity_gate": {
+    "app_candidate": "8a072b1265afd01b396ee89d566ad11dc401f81f",
+    "full_tooling_tests": 311,
+    "reviewed_standalone_tests": 7,
+    "exit": 0,
+    "review": "APPROVED_AFTER_STANDALONE_IMPORT_FIX",
+    "scope": "FROZEN_CASE_IDENTITY_AND_LOG_HASH_ONLY",
+    "product_pass": false,
+    "logs": [
+      {
+        "path": "exact-case-events-full-suite.log",
+        "sha256": "21aca2480801f40ca85e68bbbeee6bc2126b19bb051432f49767150bdbb287ac",
+        "phase": "FULL_311_BEFORE_STANDALONE_IMPORT_FIX"
+      },
+      {
+        "path": "exact-case-events-standalone.log",
+        "sha256": "0d6653413f55f7cf64dbfab59b6b29c640ade8e63585414ab2a44a0892a5ed0a",
+        "phase": "REVIEWED_7_STANDALONE"
+      }
+    ],
+    "implemented": [
+      "exact frozen four-dimensional keys to unique Flutter test names",
+      "same-count wrong-identity negative",
+      "missing unknown duplicate hidden skipped negatives",
+      "actual nofollow artifact hash and complete raw protocol"
+    ],
+    "remaining": [
+      "mandatory registered CLI integration",
+      "trusted per-target frozen bindings and complete coverage",
+      "genuine execution/config/device provenance",
+      "business facts and final required gates"
+    ]
   }
 }
