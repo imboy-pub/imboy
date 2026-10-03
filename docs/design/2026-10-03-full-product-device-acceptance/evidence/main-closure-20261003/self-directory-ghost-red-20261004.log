@@ -1,0 +1,170 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: AC-16: self 其他设备进入 fan-out，密文独立且与 peer 设备互不相同
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[E2EE][AC-15] ghost devices detected: peer=100 ghost={a-1} fanout={a-2}
+00:00 +0 -1: AC-16: self 其他设备进入 fan-out，密文独立且与 peer 设备互不相同 [E]
+  Expected: empty
+    Actual: [
+              E2eeDeviceSetAnomalyEvent:E2eeDeviceSetAnomalyEvent(peerUid: 100, kind: DeviceSetAnomalyKind.ghostDevice, ghost={a-1}, missing={}, new={})
+            ]
+  Current sender is intentionally excluded from ciphertext targets
+  
+  package:matcher                                                    expect
+  package:flutter_test/src/widget_tester.dart 473:18                 expect
+  test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart 213:5  main.<fn>
+  
+00:00 +0 -1: AC-16: peer 与 self 各目标信封各自可解出同一 payload
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 2, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +1 -1: AC-16: 缺钥设备（瞬态 claim 失败）明确跳过，不阻塞其他设备
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 3, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[E2EE][AC-15] ghost devices detected: peer=200 ghost={a-2} fanout={b-1,b-offline}
+[E2EE][AC-15] ghost devices detected: peer=100 ghost={b-1,b-offline} fanout={a-2}
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   HttpRetryInterceptor.onError (package:imboy/component/http/http_retry_interceptor.dart:74:21)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ HTTP request failed, retrying... (1/2) after 1000ms url: http://127.0.0.1:9800/api/v1/e2ee/olm/claim[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   createRetryInterceptor.<anonymous closure> (package:imboy/component/http/http_retry_interceptor.dart:250:19)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ HTTP 重试中... (1/2)[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {retry_count: 1}
+
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   HttpRetryInterceptor.onError (package:imboy/component/http/http_retry_interceptor.dart:74:21)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ HTTP request failed, retrying... (2/2) after 2000ms url: http://127.0.0.1:9800/api/v1/e2ee/olm/claim[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   createRetryInterceptor.<anonymous closure> (package:imboy/component/http/http_retry_interceptor.dart:250:19)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ HTTP 重试中... (2/2)[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {retry_count: 2}
+
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   HttpRetryInterceptor.onError (package:imboy/component/http/http_retry_interceptor.dart:104:19)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ HTTP request failed after 2 retries: url: http://127.0.0.1:9800/api/v1/e2ee/olm/claim[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** DioException ***:
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+DioException [connection error]: The connection errored: connection refused (test) This indicates an error which most likely cannot be solved by the library.
+
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   HttpRetryInterceptor.onError (package:imboy/component/http/http_retry_interceptor.dart:100:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ HTTP retry failed: DioException [connection error]: The connection errored: connection refused (test) This indicates an error which most likely cannot be solved by the library.[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** DioException ***:
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+DioException [connection error]: The connection errored: connection refused (test) This indicates an error which most likely cannot be solved by the library.
+
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   HttpRetryInterceptor.onError (package:imboy/component/http/http_retry_interceptor.dart:100:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ HTTP retry failed: DioException [connection error]: The connection errored: connection refused (test) This indicates an error which most likely cannot be solved by the library.[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** DioException ***:
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+DioException [connection error]: The connection errored: connection refused (test) This indicates an error which most likely cannot be solved by the library.
+
+[E2EE][AC-16] device skipped (transient): did=b-offline errType=_Exception（下次发送自动补投）
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 3, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[E2EE][AC-15] ghost devices detected: peer=200 ghost={a-2} fanout={b-1,b-offline}
+[E2EE][AC-15] ghost devices detected: peer=100 ghost={b-1,b-offline} fanout={a-2}
+00:03 +2 -1: cached self session absent from active Olm directory rejects before outbox (current=false)
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 4, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:03 +3 -1: cached self session absent from active Olm directory rejects before outbox (current=true)
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 5, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:03 +4 -1: (tearDownAll)
+00:03 +4 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart: AC-16: self 其他设备进入 fan-out，密文独立且与 peer 设备互不相同

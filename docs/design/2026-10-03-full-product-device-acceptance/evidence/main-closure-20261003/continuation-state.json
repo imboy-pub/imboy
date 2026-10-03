@@ -4870,5 +4870,10 @@
     "app_head": "1ec8f642fabe1d321b86e141a2f99bd03aaf10b0",
     "product_pass": false,
     "next": "QUALIFY_SELF_CACHED_SESSION_DIRECTORY_CONSISTENCY"
+  },
+  "self_device_directory_session_isolation": {
+    "receipt": "self-device-directory-session-isolation-20261004.json",
+    "app_head": "d0b5a72a6b63655f861bc30b1a484258e9890cf9",
+    "product_pass": false
   }
 }

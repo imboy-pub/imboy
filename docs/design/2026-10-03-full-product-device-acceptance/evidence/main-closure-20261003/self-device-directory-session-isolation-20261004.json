@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_PRODUCTION_C2C_SELF_CACHED_SESSION_DIRECTORY_CHECK",
+  "app_head": "d0b5a72a6b63655f861bc30b1a484258e9890cf9",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW_AFTER_GHOST_CORRECTION",
+  "results": {
+    "initial_red_exit": 1,
+    "initial_red_failed": 2,
+    "initial_red_passed": 3,
+    "ghost_regression_red_exit": 1,
+    "ghost_regression_failed": 1,
+    "ghost_regression_passed": 4,
+    "final_e2ee_domain_exit": 0,
+    "final_e2ee_domain_passed": 972,
+    "final_full_static_exit": 0,
+    "final_full_static_issues": 0
+  },
+  "oracles": [
+    "Real vodozemac cached peer/self sessions, real production ChatNetworkService.encryptPayload, in-memory SQLite and synthetic directory.",
+    "Missing self DID from active Olm directory (empty or current-only) refuses before ciphertext delivery and leaves no final outbox.",
+    "Normal directory includes current sender plus other device; independent ciphertext decrypts and no anomaly event for excluded current sender.",
+    "Ghost exclusion cannot bypass capability validation for a target."
+  ],
+  "attempt_notes": [
+    "First partial fix passed971 domain tests but incorrectly reported current device as ghost; independent review found regression.",
+    "Added current+other directory event assertion exposed ghost regression (1 fail4pass).",
+    "Excluded current device only from anomaly difference; capability checks unchanged. Added negative exclusion-bypass test.",
+    "Final972 domain run and full lib/test/unit_test static check occurred after all corrections. Earlier13-focused log predates added exclusion-bypass test; not the final full gate."
+  ],
+  "limitations": [
+    "No real directory/server/device acceptance.",
+    "Does not prove race-free revocation after directory lookup.",
+    "Does not prove malicious-server omission or complete authoritative device-set reconciliation.",
+    "Retry of immutable old envelopes, full plan L3 and device original requirements remain separately unclosed."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/self-directory-red-20261004.log",
+      "sha256": "2f364a0a6acda0922ca6de7a29f9fcc2a58fc504ea0de9aabdcc5a4dfe8d3fb4"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/self-directory-green-20261004.log",
+      "sha256": "911b5f9fa75d56062e750096c9a636b96db0f477719ec20d2801077a46b1af36"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/self-directory-e2ee-domain-20261004.log",
+      "sha256": "a1791725fbc63230b8a534f73cd0d53c2a80cfedd0e64ca594d58bc490977151"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/self-directory-ghost-red-20261004.log",
+      "sha256": "eca387415ffe1b9e60e1fdac5d0ec9d86626ac4d6bc408affd5367c9d8747021"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/self-directory-final-green-20261004.log",
+      "sha256": "132c77aebee94fd82dee788e026e058f0531fa2acaf019d361ae20f15fe680e7"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/self-directory-final-analyze-20261004.log",
+      "sha256": "ea8a3a82178cbbfe672363e3832e7110f9679051cbe73175717882ce70c6c792"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/self-directory-final-full-analyze-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/self-directory-final-e2ee-domain-20261004.log",
+      "sha256": "130737c69c4fdeb593ebd8366b1824bafabecfefb6efd4255b78b0bd55c175f2"
+    }
+  ]
+}

@@ -1,0 +1,251 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: AC-16: self 其他设备进入 fan-out，密文独立且与 peer 设备互不相同
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +1: AC-16: peer 与 self 各目标信封各自可解出同一 payload
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 2, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:00 +2: AC-16: 缺钥设备（瞬态 claim 失败）明确跳过，不阻塞其他设备
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 3, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[E2EE][AC-15] ghost devices detected: peer=200 ghost={a-2} fanout={b-1,b-offline}
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   HttpRetryInterceptor.onError (package:imboy/component/http/http_retry_interceptor.dart:74:21)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ HTTP request failed, retrying... (1/2) after 1000ms url: http://127.0.0.1:9800/api/v1/e2ee/olm/claim[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   createRetryInterceptor.<anonymous closure> (package:imboy/component/http/http_retry_interceptor.dart:250:19)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ HTTP 重试中... (1/2)[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {retry_count: 1}
+
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   HttpRetryInterceptor.onError (package:imboy/component/http/http_retry_interceptor.dart:74:21)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ HTTP request failed, retrying... (2/2) after 2000ms url: http://127.0.0.1:9800/api/v1/e2ee/olm/claim[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   createRetryInterceptor.<anonymous closure> (package:imboy/component/http/http_retry_interceptor.dart:250:19)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ HTTP 重试中... (2/2)[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** Request ***
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {retry_count: 2}
+
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   HttpRetryInterceptor.onError (package:imboy/component/http/http_retry_interceptor.dart:104:19)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ HTTP request failed after 2 retries: url: http://127.0.0.1:9800/api/v1/e2ee/olm/claim[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** DioException ***:
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+DioException [connection error]: The connection errored: connection refused (test) This indicates an error which most likely cannot be solved by the library.
+
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   HttpRetryInterceptor.onError (package:imboy/component/http/http_retry_interceptor.dart:100:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ HTTP retry failed: DioException [connection error]: The connection errored: connection refused (test) This indicates an error which most likely cannot be solved by the library.[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** DioException ***:
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+DioException [connection error]: The connection errored: connection refused (test) This indicates an error which most likely cannot be solved by the library.
+
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   HttpRetryInterceptor.onError (package:imboy/component/http/http_retry_interceptor.dart:100:21)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ HTTP retry failed: DioException [connection error]: The connection errored: connection refused (test) This indicates an error which most likely cannot be solved by the library.[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** DioException ***:
+uri: http://127.0.0.1:9800/api/v1/e2ee/olm/claim
+DioException [connection error]: The connection errored: connection refused (test) This indicates an error which most likely cannot be solved by the library.
+
+[E2EE][AC-16] device skipped (transient): did=b-offline errType=_Exception（下次发送自动补投）
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 3, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[E2EE][AC-15] ghost devices detected: peer=200 ghost={a-2} fanout={b-1,b-offline}
+00:03 +3: cached self session absent from active Olm directory rejects before outbox (current=false)
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 4, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:03 +3 -1: cached self session absent from active Olm directory rejects before outbox (current=false) [E]
+  Expected: throws <Instance of 'FixedSuiteIncompatibleException'>
+    Actual: <Instance of 'Future<Map<String, dynamic>?>'>
+     Which: emitted {
+                      'e2ee': {
+                        'meta_version': 3,
+                        'protocol': 'olm',
+                        'version': 1,
+                        'fan_out': 'per_device',
+                        'devices': {
+                          'b-1': {
+                            'protected_header': 'r2F2A2VzY29wZWNjMmNmYWN0aW9uZ21lc3NhZ2VocHJvdG9jb2xjb2xtam1lc3NhZ2VfaWR4G3NlbGYtZGlyZWN0b3J5LXJlamVjdC1mYWxzZWpzZW5kZXJfZGlkY2EtMWpzZW5kZXJfdWlkYzEwMGtkZXN0aW5hdGlvbmMyMDBrc2Vzc2lvbl9yZWZ4K2N3NW83VkU2V3lJUmZkS2Y5Z1lIdjFyODE1bHZLMzJFbjMxNElrZG1LTHdsbWVzc2FnZV90eXBlZHRleHRtY3JlYXRlZF9hdF9tcxsAAAGhAyIPnW9jb252ZXJzYXRpb25faWRnMTAwOjIwMHBjb250ZW50X2VuY29kaW5nZGNib3JwZXBvY2hfb3JfY291bnRlcgBwcHJvdG9jb2xfdmVyc2lvbgE=',
+                            'header_hash': '4Cp53_ScHJSQm47jAhCxlCid_IOhdSRD-bNZ1gjuVdQ=',
+                            'ciphertext': 'QXdvZ2c4MDNwWDlwOVBlNmxPMXpjOGN6eDFPb1MvOWVFVWRJYXFsY1BvbThuRDBTSUJ0ckFrMWRmNm5YN2ZFV21KVTFLUlZDMnpMaUxYemZvL29nWFJ2WjFzWldHaUFRMnZDdW1pbU1yWU5NamJMVFpheHlqT3BHbk9nL1VZcEVBOC9RTVJnNkd5TEFCQU1LSUxMK0xWenQyT00zbzZzclE4L3o1MC9ERmx3SXNjRjVNNnVNd3UzNGhPTktFQUVpa0FTSWtEK0dlc3MxVUxaM3FKQy9FQUYrWERBUHZkekkwUmRjZkt3KysvdE9EcHR5WGJVdEZGbUdLZHRYNnpmWGs2UVNyc2JqT2hZa1B4TXZjVTN0c0JycXZWMjNURm0xNjJJS2M2ZjA4TGp6UzFKc3VJaFZYYXRkOEk1emtBdktPWjZaZy9BQWhQSHpZbFp2L1hFZkFwa3ZDOFFzRUY2eDBMaGdDaVdmSUNiSXFhbHN0N3hnWFEvQmpXTGtZWjd6K2lsdDJwY0ZCUC93ZjhIM0xCNWpHdzh3Q2Z1dHlnRDhXYzdPV0VBVldqcjg0U3RNMXplaHVTdGlZU0tPcGxXK0JXdXJ4TWFvK0JTRE1JbnlzdmlrUEsrN2NJMjlwVjV1OVN1TmZ4TitBNVdFcXF2RFBxcm9KUWR5T3Y3NlV5ZXhvRFYyVVg1Y0hlUFJocXlnWXViNTBJcWg2R3hYVWFWL3dzQ0YxQmkycElVeWhXUmc0TDdGaXc4dkYzRDk1b0hjckVSL21iMDlja1daOHZSTndiMmlrS1FFb0tGQWh3UGhZR1ppRlZBT1B5eER1YUZUVkV3WnlmQWVaWVVwaWdEZUYraEd0U25RTlVpRDIwZUZVWWZGRTk2Y2RCdFkzMXc3Y3ZuZWxqMXZCSnpJWW4xQ1lLZ24yd1RlcWpWb0hOMXM2NmFoRFdaUzlFWnVob2pidDd0c2d3T0QzTk93eTFqZUhnSWxTYWFjQ3J3UjVkeWMvS0V5VEpiNWk4T0VDNDJPZy9GVzZqemtNWlM2N0VlUWs4MVBFS3Y0UkpBcklaVmdwU2tjRnhkaTNLN2RxcXJCaTlLTTE5OGE5V2dXQTM2dU1oUG1oWllaVytTUXhzcjkza1poU3dHWUdraU1nV3pqNGR5U0lubUtGTHVHRkxmQ3d6M2Ewa1FubzZrUHhyTGNrTFVGRTNBNVV1QTc4QQ==',
+                            'protocol_metadata': {
+                              'protocol': 'olm',
+                              'version': 1,
+                              'e2ee_suite': 'OLM.V1',
+                              'peer_uid': '100',
+                              'peer_device_id': 'a-1',
+                              'message_type': 0,
+                              'session_id': 'cw5o7VE6WyIRfdKf9gYHv1r815lvK32En314IkdmKLw'
+                            }
+                          },
+                          'a-2': {
+                            'protected_header': 'r2F2A2VzY29wZWNjMmNmYWN0aW9uZ21lc3NhZ2VocHJvdG9jb2xjb2xtam1lc3NhZ2VfaWR4G3NlbGYtZGlyZWN0b3J5LXJlamVjdC1mYWxzZWpzZW5kZXJfZGlkY2EtMWpzZW5kZXJfdWlkYzEwMGtkZXN0aW5hdGlvbmMyMDBrc2Vzc2lvbl9yZWZ4K2FBTTRIbUZHOXl1Y2JQdjVxQ0VFMmZFN3VRS0lCYUFPZXRXQmJDWFFQOEFsbWVzc2FnZV90eXBlZHRleHRtY3JlYXRlZF9hdF9tcxsAAAGhAyIPnW9jb252ZXJzYXRpb25faWRnMTAwOjIwMHBjb250ZW50X2VuY29kaW5nZGNib3JwZXBvY2hfb3JfY291bnRlcgBwcHJvdG9jb2xfdmVyc2lvbgE=',
+                            'header_hash': '1pTGRcSobCC33RYeULYm1__1fa5i48K59GVbdo6FsS8=',
+                            'ciphertext': 'QXdvZ2FPQ0p5MlFiNFNaeXZOZUFmUzFYcVFCVytaeEF5dVpNRWxvelVIZllOUmdTSUttSTkyQzR0SUxxZ3p3Nk01NjEwWnJxa1pPcU8rUFlIR28vc0tadDBoMDJHaUFRMnZDdW1pbU1yWU5NamJMVFpheHlqT3BHbk9nL1VZcEVBOC9RTVJnNkd5TEFCQU1LSUZwOXd5YlNmTlo1YmE0T2RweCtoSVQyckxTa1YxT1pYMHFEMVhMb3ozTnBFQUVpa0FUMnpUWVlET1BLUmdlVGZSOTluWnhwLzdxTjRlODA5MEg2bG5YMlZNZWRTTWZzbnQ1aHp3alRRdm82RnhzcmtySDc0aldnaUdsKyt1SDI4a2RSSU9Ka0ZjdEZHVjNhc0VvV0NJS1luc3VFY2lGMi93Tk9IK04yN0hISGZPdU1FWEwrRmFXRkhnM2RUazEvS3FaNE1SSlpES0ZVTEZBclRvTUV0SDV0L3dabzY1NXQrRnBSTUkzWHhQbjZ5cUM3M21oUTVHRC84cnorblNrLzZlOWRFRHVIeXdaS21peG03NTJEMWVWTDVHeEpXNW5lUExiZURNamcyQkJFTnBxV1BqM3hqVkFHdksxeVMyQnRVZWw4UW1DZ25FL21tajhucFQ2WUJ0dG43U1dQRGhaL2hkOWZmNDc2SFhyNzJkcEZwaXZ4bEFTcnFhSlRqNTZPcU5OUU9JcjRKcjVpVVVnc1kyVi9oRlNLcmVBN2hydjhuMXZ3VUNhVGEyTzJ0UWp1aWdrczc0YzhteFlNN0hLV210d1ZuRDRSZ3pVYS8zVXltUkgzU2FsWFpMeTF6YW81M1lrS1R3S1MvZkdveTNSZDJCdW1QRTdVRDdLcnFtTHJqRW9IRkl4ZnBqQ0wxQnRmQnhObXVYSkxXck1JN3JmQm9zK2NvVjYwTy81azkzdTdmSG9INGo5R3AxYzlYeEd1bXhVZlV1RGhLQlFEcFdjVTJuMUJPcHM0UDVxeFB2QjI4NVpOTkpNbW90SWJtQkg1UGxnSjFNblVBc0VCTUdNNk5PS2pKOFJabDhENG5kbFhuS3ZHY1pQNmhyYUpVb0dNTnhOVzc0Y1RZbFl2bnVNYUdGN25qN3pPS1BkTlZEQjg5VXVqeGhLRVZobjFCbnVLaFNZNS8xUlBQZFU1V1B3bjBvVmo2M3FObXN5T240b0V6WEtkc1I1SDZSaXpQdw==',
+                            'protocol_metadata': {
+                              'protocol': 'olm',
+                              'version': 1,
+                              'e2ee_suite': 'OLM.V1',
+                              'peer_uid': '100',
+                              'peer_device_id': 'a-1',
+                              'message_type': 0,
+                              'session_id': 'aAM4HmFG9yucbPv5qCEE2fE7uQKIBaAOetWBbCXQP8A'
+                            }
+                          }
+                        }
+                      },
+                      'payload': ''
+                    }
+  
+  package:matcher                                                     expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                   expectLater
+  test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart 355:15  main.<fn>
+  
+00:03 +3 -1: cached self session absent from active Olm directory rejects before outbox (current=true)
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=contact, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: contact, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?) sql 'SELECT peer_id, nickname, avatar, account, status, remark, tag, region, sign, source, gender, is_friend, is_from, category_id, account_type, last_seen_at, updated_at FROM contact WHERE user_id = ? and peer_id = ?' args [100, 200] {details: {database: {path: :memory:, id: 5, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+00:03 +3 -2: cached self session absent from active Olm directory rejects before outbox (current=true) [E]
+  Expected: throws <Instance of 'FixedSuiteIncompatibleException'>
+    Actual: <Instance of 'Future<Map<String, dynamic>?>'>
+     Which: emitted {
+                      'e2ee': {
+                        'meta_version': 3,
+                        'protocol': 'olm',
+                        'version': 1,
+                        'fan_out': 'per_device',
+                        'devices': {
+                          'b-1': {
+                            'protected_header': 'r2F2A2VzY29wZWNjMmNmYWN0aW9uZ21lc3NhZ2VocHJvdG9jb2xjb2xtam1lc3NhZ2VfaWR4GnNlbGYtZGlyZWN0b3J5LXJlamVjdC10cnVlanNlbmRlcl9kaWRjYS0xanNlbmRlcl91aWRjMTAwa2Rlc3RpbmF0aW9uYzIwMGtzZXNzaW9uX3JlZngrTU5RUEF6ZFlRMUMzT1pOeFB2TUl1WlJvNUgzSFdYY3BmZXpQc0p3TCt5Y2xtZXNzYWdlX3R5cGVkdGV4dG1jcmVhdGVkX2F0X21zGwAAAaEDIg_Nb2NvbnZlcnNhdGlvbl9pZGcxMDA6MjAwcGNvbnRlbnRfZW5jb2RpbmdkY2JvcnBlcG9jaF9vcl9jb3VudGVyAHBwcm90b2NvbF92ZXJzaW9uAQ==',
+                            'header_hash': 'i8cNAwHT7mFbwrGTIJo16TBiDmOzw-FjoBRVSLVDw0E=',
+                            'ciphertext': 'QXdvZ3ZubTFtVVdNQkdmRFJoNHMyaTNDUUJWZ3BuZmxKY2t6S0N4LzRKdXJ4ejBTSUtHNGxwT1JuZFRndkxRYUpPZDQ4dXZ6UnZUU0dPaUxCcmljZWxhWWhDMFpHaUJOZGpWbEVVY3huZGpCc2pDL01FR1VTT2hmdjhGbWhmVEduTHRoMWhXS0t5TEFCQU1LSUsxR0VIVE1WMFEydVNKcHNDd2luSmpqa09jdVlscEo0RmJXVk9JcWFkNFlFQUVpa0FURDhJdjNrbGRpdWJtTTBvM3JhQW9sMlVHR1VQZWZjdVZKWFkvS094Wk5QclhmT3NwSSs4UlVlYjNFT1FPM1FrSmVrejVpNDlKZDhkZUhLc1R6ZmdjRXBqekZ4MVdFWnBFa1hxU3lPMUZaOFNsZFQwK1pEL0REWnNGTWRpVGU2clB3SHZrTmpEQks1blEwRlRWcFYrT2x3M3NGbmxYYTdvaWtISllJLzU5Tk5hQlJ5UHd2aGdlcFc2UTJKZTZ5UnQ3cW1xWTQ0ZnphK1NSeldBTHdaTzROYmFNcjFQK1JqVlpSMEsvdEg2emlxSDQvbGpvR2RpNFZ5ZmtmSjRqb3VFNXpicm02bWlVcE4rbTBraUNPZ3dSeHZpc3NiQVRaeVQyem53aGVTTTZvWjdaY1NsZERIVmNmbUNsLzJuVERyTG5senN1eTFwckpkSmtXeTVxVTF2UnJERlFpcm54bDJhMEhDMGEyb3JJZWVLQSsvUzA3Q1BENHAxUmYzZW51TjJpOVA2NmdXYzRRcjUzQm9oa3puLzIrZU0zVHhnaUdSeEFWVHVsSzl4WnVEY2F4czJFeFJiKzlialVoNEF4UkdNQjdtNFR6S0phOTlkNS9HNUFZZXovSUFTcERDNlkrZUpHRkptTW9TY0RrSFUwaVd0aUU5dldXYUIvTHlSbVFIanpOeXdIeXkzZ1FjOFFYUUF3bHFxWVkzSEtCR2RRYXdZalVhcXdiaDVrdDg5VDJhVFZHemlTR0ZKV05YYkp6RnlzN2d5UnR2SHkvWTdrWTdNbEhXbWwvekJLdkZ5TmFpR1AxQmFPVVdyQnNEeVJOZnN3KzZBUVVUT1kxUHNMRGZONXExbS95QW1uTXFTTnovUHhKMXo4UXlPVUkyUHkrOXYvajhRaTNoOTVHa2plMVNaMEFzSFVUMzVUSUVPVXhsZm03QzYvUjZQQkNvZw==',
+                            'protocol_metadata': {
+                              'protocol': 'olm',
+                              'version': 1,
+                              'e2ee_suite': 'OLM.V1',
+                              'peer_uid': '100',
+                              'peer_device_id': 'a-1',
+                              'message_type': 0,
+                              'session_id': 'MNQPAzdYQ1C3OZNxPvMIuZRo5H3HWXcpfezPsJwL+yc'
+                            }
+                          },
+                          'a-2': {
+                            'protected_header': 'r2F2A2VzY29wZWNjMmNmYWN0aW9uZ21lc3NhZ2VocHJvdG9jb2xjb2xtam1lc3NhZ2VfaWR4GnNlbGYtZGlyZWN0b3J5LXJlamVjdC10cnVlanNlbmRlcl9kaWRjYS0xanNlbmRlcl91aWRjMTAwa2Rlc3RpbmF0aW9uYzIwMGtzZXNzaW9uX3JlZngrN0J1Yk9LQjQ1VkRxNXk0ZWRldE1vOHpraFVWUjhpQlJhOVhBRWRENTVRY2xtZXNzYWdlX3R5cGVkdGV4dG1jcmVhdGVkX2F0X21zGwAAAaEDIg_Nb2NvbnZlcnNhdGlvbl9pZGcxMDA6MjAwcGNvbnRlbnRfZW5jb2RpbmdkY2JvcnBlcG9jaF9vcl9jb3VudGVyAHBwcm90b2NvbF92ZXJzaW9uAQ==',
+                            'header_hash': 'hGBf0lj2j3SG2WnU6DWz3s2JK7yk9ZasvS6P4N01z5U=',
+                            'ciphertext': 'QXdvZ2tCOGtXVXFBT1J3K3VEM1pHaXRneXliT210N2hsY2VaSGlVQVR0U2tDRDhTSU50a1FLcDJFMG13WmVMMlovRVY2Qk1uL04vRzMvdFJZUzJiZUlTSDlpWkhHaUJOZGpWbEVVY3huZGpCc2pDL01FR1VTT2hmdjhGbWhmVEduTHRoMWhXS0t5TEFCQU1LSUJrVDZaUFB6UkRBeHJHVEVCN0Q0R2lFTjBBOHo1VGt3VDdoQ3JKaHVMUVZFQUVpa0FUN3kyMVROZ0h2YUpEMXR2dFhRMVYvT3QxUFUzSW1taFJwODNuTjN2bmljY2NQd3BXSVdIcFRnSmlxcThrc3A5elFSQVR3R3BLdVh4dmZsV1BGUUtIWWh4YmpLR3hCMHpVRmE1RDd2bjZTOE5VWnZ1TWpLUW1hRWJvWThNa2JleDVSbm9UUFl1NC9sczljMkh0VzlqOEpsTmorV0VoK2t5d1FiVk1YSXBRVFZkVFNPRS92WmxBM3VETWFVa1MyQ3o4bmtmYVFrVitGNmo0S0FnNXpvV29BamU2TEYxMUcrcXRVc3kzQ2NsaFFTVlErMmtReDlrY3dpUHRtUVRjTzJXSXJQY1hBUXYxM1ZaYzlidlJZNGNhWGVzdUM5WUVzaFVEOUlvaDZxQlhVNXFhOEcrd2lHZnBSa2VLckRqaCtzRUVvVGZ1YTFLUURVQnpUS1Nrb3JndE5OYU1LcE9ZVTh0Nm13eGF5WVhWV04yOUp1ZW9SMlpBbGJZZkFacVQ4S1RHZzFnaTZ3eFFQMVdyeUNqcUJ3OGtPcUlQOTNkekZPQkhxSEtYWmxDWmVzcTRvOHRJdE9jRVRKeExCR0o3eDBPbXBONlMzdytjYURJR21Vc2xSQW1ZNzRhb2wxakhzZk9GOWhaNEd5VVZKaEpXb01VdVIyM05iQi83dTZpNWZYNWtZYXZhcVNZeWhmelhHSWxmckc4M0tuMTFtazhXbzh4VE9ITlVKeE10ZmUzc1libXRURXdaTm1OWTZDd3pOaUhhNitVaGEzeUlYeVdJMUNYSWtVMzZiczFyeWFaUEFOd2o3UzhSNUc2ZVV5VUhUNDZFbElkMEhQYmxmUFJhTUdZNGthL2s3dTFyVXQ4RU5qWWhaNnoxMTM0Q1U0c3l2MkZoUTZyT0NEVkdwbmEvcVAvTlVMbGpmSE01M2RybXpHQWxqa0VIOVVPNTFmdw==',
+                            'protocol_metadata': {
+                              'protocol': 'olm',
+                              'version': 1,
+                              'e2ee_suite': 'OLM.V1',
+                              'peer_uid': '100',
+                              'peer_device_id': 'a-1',
+                              'message_type': 0,
+                              'session_id': '7BubOKB45VDq5y4edetMo8zkhUVR8iBRa9XAEdD55Qc'
+                            }
+                          }
+                        }
+                      },
+                      'payload': ''
+                    }
+  
+  package:matcher                                                     expectLater
+  package:flutter_test/src/widget_tester.dart 507:8                   expectLater
+  test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart 355:15  main.<fn>
+  
+00:03 +3 -2: (tearDownAll)
+00:03 +3 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart: cached self session absent from active Olm directory rejects before outbox (current=false)
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/c2c_own_device_fanout_test.dart: cached self session absent from active Olm directory rejects before outbox (current=true)
