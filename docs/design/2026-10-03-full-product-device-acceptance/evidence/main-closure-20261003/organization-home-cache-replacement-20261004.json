@@ -1,0 +1,31 @@
+{
+  "scope": "LOCAL_HOME_COMPLETE_MEMBERSHIP_CACHE_REPLACEMENT",
+  "app_head": "38229ae771a1ba8f3bde22bd07ab50a150471a18",
+  "tests": 12,
+  "exit_code": 0,
+  "red_failed": 1,
+  "red_passed": 4,
+  "analyze_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "artifacts": [
+    {
+      "path": "org-home-cache-red-20261004.log",
+      "sha256": "00ae065b49318577b0455a3d86b5bfbb82c552e9b115e9aea32fba628f10aae7"
+    },
+    {
+      "path": "org-home-cache-green-20261004.log",
+      "sha256": "570f0ab1455f58db828a8d9478b48034e67588520b4ba20d7eec5a6040f8b984"
+    },
+    {
+      "path": "org-home-cache-analyze-20261004.log",
+      "sha256": "052ce49c1d55616769481e1fd134e436798740452f68e00b4f9b7437768928fc"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Synthetic real widget API path with Dio adapter, no actual server/device",
+    "Org removal dynamically verified; member/department filtering and retained-entry branches reviewed only",
+    "Picker still uses prior incremental cache merge and lacks home refresh-generation protection"
+  ]
+}
