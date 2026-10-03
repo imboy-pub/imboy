@@ -1495,5 +1495,15 @@
       "reject assume-unchanged and skip-worktree flags"
     ],
     "remaining": "complete actual source bytes including attribute conversions/untracked/ignored inputs; real runtime/business/platform/final qualification"
+  },
+  "c11_real_transport_source_reconciliation": {
+    "receipt": "c11-real-transport-source-contract.json",
+    "receipt_sha256": "bc0d43014a2f3f8d00220954039f2f45a261cb8a7929935658039aeb8e144d91",
+    "contract": "c11-real-transport-source-contract.md",
+    "contract_sha256": "bf9f65a7ff9af77ff4e95298a32a0c537291c3560045f0a2459c022d3427d54b",
+    "scope": "SOURCE_BACKED_IMPLEMENTATION_CONTRACT_ONLY",
+    "product_pass": false,
+    "real_transport": "NOT_IMPLEMENTED",
+    "next": "implement registered fixture binding model and offline negative tests before network adapter"
   }
 }

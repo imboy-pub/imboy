@@ -1,0 +1,51 @@
+{
+  "scope": "READ_ONLY_SOURCE_PROTOCOL_RECONCILIATION",
+  "product_pass": false,
+  "network_executed": false,
+  "candidate_heads": {
+    "imboy": "5e6b2a410116766bc17129259ba77b3394dae102",
+    "imboyapp": "f0c4bb4b7040e775bfb34c2a5ca1e0525be7f834",
+    "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+  },
+  "sources": [
+    {
+      "path": "imboy/src/api/websocket_handler.erl",
+      "sha256": "a5378d0163b69de49902b1ac1977bfb484c80e6164028f45ee41632e00150035"
+    },
+    {
+      "path": "imboy/src/ds/message_ds.erl",
+      "sha256": "c06539832f0cb35183a225a6e9d3b64c7ad666e53eaab848dfe95ea84f006972"
+    },
+    {
+      "path": "imboy/src/logic/msg_c2c_logic.erl",
+      "sha256": "4998a877a1110b8e63ecf63043da836dc64599405095ef0b06cf02ba6e773a70"
+    },
+    {
+      "path": "imboy/src/logic/message_router_logic.erl",
+      "sha256": "477eb4e478358e4d291f813e5f86ee00413e68f0cd5c222d154a4da605eea23d"
+    },
+    {
+      "path": "imboyapp/lib/service/websocket.dart",
+      "sha256": "9f23d23ab36d888c27ece956e59e4dc4f6b8efa4ffe1072c2f39d7ea3793d2ad"
+    },
+    {
+      "path": "imboyapp/lib/component/http/http_client.dart",
+      "sha256": "d38ae06d8c71bd2ead578adb125cad3fb517d7ccbcf7c0b5e47bcf621e5087ef"
+    },
+    {
+      "path": "imboyapp/integration_test/e2ee_release/fixture_contract.dart",
+      "sha256": "13d141e5ed5d250d9d4c725a3c0752fd0c9adb54c579f0f3f450f71a369e69cd"
+    },
+    {
+      "path": "imboyapp/integration_test/e2ee_release/harness/backend_transport.dart",
+      "sha256": "c41a4c1d63f3214db6b2b6718975cee79500c799f127c62881f7b9d69d68764e"
+    }
+  ],
+  "implementation_gaps": [
+    "synthetic alias to registered account/device binding",
+    "server acknowledgement correlation",
+    "recipient authenticated decrypt oracle",
+    "real transport implementation",
+    "authorized runtime and device evidence"
+  ]
+}
