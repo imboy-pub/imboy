@@ -1381,5 +1381,31 @@
       "reconcile 1979 current functions with original 1872 generated denominator without shrinking",
       "semantic case mapping and source dispositions for every input"
     ]
+  },
+  "admin_frontend_input_census": {
+    "artifact": "admin-frontend-input-census.json",
+    "sha256": "23e42693138dc693a1c340f20a2132115080e3a0823d78a5352e46c1637552e2",
+    "candidate_admin": "997971a882928d67e70d6261629d5c69d2703539",
+    "files_scanned": 382,
+    "counts": {
+      "JSX_ROUTE": 100,
+      "CONTROL_CANDIDATE": 1462,
+      "NAVIGATION_PROPERTY_CANDIDATE": 188,
+      "PAGE_FILE_CANDIDATE": 101,
+      "JSX_NAVIGATION_CANDIDATE": 36
+    },
+    "input_count": 1887,
+    "parse_diagnostics": 0,
+    "source_hashes_reverified": 382,
+    "scope": "ADMIN_FRONTEND_AST_INPUT_CANDIDATES_ONLY",
+    "source_index_complete": false,
+    "product_pass": false,
+    "remaining": [
+      "independently review extraction completeness and feature composition",
+      "resolve dynamic navigation and role/permission/profile applicability",
+      "deduplicate controls into semantic cases without losing boundaries",
+      "link frontend actions to backend routes and real business oracles",
+      "real browser and backend journey evidence"
+    ]
   }
 }
