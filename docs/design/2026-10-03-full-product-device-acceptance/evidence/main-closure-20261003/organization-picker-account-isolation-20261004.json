@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_EXPLICIT_ACCOUNT_PICKER_LIST_ISOLATION",
+  "app_head": "6a04e1193181801048ace25c63506e350811f328",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW_LIMITED_TO_LIST_REFRESH",
+  "results": {
+    "red_exit": 1,
+    "red_failed": 1,
+    "final_test_exit": 0,
+    "final_passed": 18,
+    "final_analyze_issues": 0,
+    "catalog_targets": 153,
+    "inventory_functions": 1982
+  },
+  "changes": [
+    "Explicit accountKey changes clear stale list/error and trigger a fresh list request.",
+    "All list response updates bind mounted, captured account and refresh generation."
+  ],
+  "review_recovery": [
+    "Initial draft reset the switching gate; reviewers identified account A-B-A allowing overlapping switch commits. Removed gate reset before final test and commit."
+  ],
+  "remaining": [
+    "Complete switch epoch and in-flight switch cleanup across account changes remain unqualified.",
+    "Default null accountKey and real global login lifecycle automatic reload remains unqualified.",
+    "No real credentials, device, database or production execution."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-account-red-20261004.log",
+      "sha256": "02413d4628ba4abb2f644b09b73913ad60a895672490ccc33b5646ea2c2d33f9"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-account-green-20261004.log",
+      "sha256": "7cea2ce97696080f408fbd9a66fe24452afa961346c1325e8f3276f8393a81eb"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-account-final-20261004.log",
+      "sha256": "7cea2ce97696080f408fbd9a66fe24452afa961346c1325e8f3276f8393a81eb"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-account-analyze-20261004.log",
+      "sha256": "b741ff20469e1ae7a50032ffe05b7fe226b75472174d1b03c7c1ae5adb27c0b5"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-picker-account-analyze-final-20261004.log",
+      "sha256": "b741ff20469e1ae7a50032ffe05b7fe226b75472174d1b03c7c1ae5adb27c0b5"
+    }
+  ]
+}

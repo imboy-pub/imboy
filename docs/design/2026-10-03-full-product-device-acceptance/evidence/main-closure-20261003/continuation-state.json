@@ -4798,5 +4798,11 @@
     "receipt": "organization-home-account-isolation-20261004.json",
     "app_head": "4e8d3908ffb6931d1c07c7bcbbd0e623b2ba2f9d",
     "product_pass": false
+  },
+  "organization_picker_explicit_account_isolation": {
+    "receipt": "organization-picker-account-isolation-20261004.json",
+    "app_head": "6a04e1193181801048ace25c63506e350811f328",
+    "product_pass": false,
+    "remaining": "Switch epoch and cross-account in-flight cleanup"
   }
 }
