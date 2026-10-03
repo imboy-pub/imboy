@@ -1,0 +1,84 @@
+{
+  "id": "PREPARATION-F01-DISPATCH-ACCEPTANCE-COVERAGE",
+  "scope": "PINNED_DISPATCH_ID_MEMBERSHIP_ONLY",
+  "product_pass": false,
+  "network_executed": false,
+  "app_head": "a2714b786d3df01c07d0d91ae7f4a162258a2317",
+  "executed": 130,
+  "exit": 0,
+  "log": {
+    "path": "f01-dispatch-acceptance-coverage.log",
+    "sha256": "9c789c7447b34c01d6dc0e100bc270f1fdbd134fec17101d4756b55ca3595a01"
+  },
+  "reviews": [
+    "PYTHON_REVIEW_APPROVE",
+    "CODE_REVIEW_APPROVE"
+  ],
+  "actual_document_probe": {
+    "source": "2026-10-03-full-product-android-macos-integration-acceptance-v1-dispatch-cards.json",
+    "sha256": "7361dcbf584f6a0095ec6b98d683f208ce6a082c2ab6385a30a8774a5d800046",
+    "cards": 55,
+    "covered_acceptance_ids": 46,
+    "required_ids": 61,
+    "missing_card_mappings": [
+      "F00-S01",
+      "F00-S02",
+      "F01-S01",
+      "F01-S02",
+      "F01-S03",
+      "F01-S04",
+      "F01-S05",
+      "F01-S06",
+      "F15-S01",
+      "F15-S02",
+      "F16-S01",
+      "F16-S02",
+      "F17-S01",
+      "F17-S02",
+      "F17-S03"
+    ],
+    "unmapped_acceptance_ids": [
+      "F00-A01",
+      "F00-A02",
+      "F00-A03",
+      "F01-A01",
+      "F01-A02",
+      "F01-A03",
+      "F15-A01",
+      "F15-A02",
+      "F15-A03",
+      "F16-A01",
+      "F16-A02",
+      "F16-A03",
+      "F17-A01",
+      "F17-A02",
+      "F17-A03"
+    ],
+    "errors": [
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_CARD_ACCEPTANCE_SET_INVALID",
+      "DISPATCH_ACCEPTANCE_COVERAGE_MISMATCH"
+    ],
+    "qualified": false
+  },
+  "requirements": [
+    "Every frozen card declares explicit nonempty unique Acceptance-ID mapping",
+    "Card IDs unique and mapping union exactly covers frozen required IDs",
+    "No inference from card names or parent domains"
+  ],
+  "proof_limit": "Tool tests pass; actual dispatch document fails mapping gate. No scope approval or product execution is inferred.",
+  "next_action": "Resolve each coordinator card mapping against actual plan requirements, preserve all 61 IDs, version and rebind affected immutable inputs; then re-audit."
+}
