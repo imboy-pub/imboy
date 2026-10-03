@@ -4286,5 +4286,11 @@
       "local"
     ],
     "product_pass": false
+  },
+  "f14_device_entry_readiness": {
+    "receipt": "f14-device-entry-readiness.json",
+    "receipt_sha256": "4fb28746b9d3aeb2c536a096763b6433d3c99e95c7131437611375553bf790b1",
+    "billing_device_targets": 0,
+    "product_pass": false
   }
 }

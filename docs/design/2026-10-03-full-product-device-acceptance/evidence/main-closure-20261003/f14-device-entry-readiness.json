@@ -1,0 +1,77 @@
+{
+  "id": "F14-DEVICE-ENTRY-READINESS-AUDIT",
+  "scope": "READ_ONLY_SOURCE_AND_CATALOG_AUDIT",
+  "app_head": "03cfecb32b8de5ac382e69ac4e88d0f45e208117",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "observed_catalog_page": {
+    "page": "lib/page/billing/plan_list_page.dart",
+    "mapped_targets": [],
+    "dependency_targets": [],
+    "route_registered": false,
+    "in_spec_sources": false,
+    "excluded": false,
+    "exclusion_code": null,
+    "details": ""
+  },
+  "actual_route": "/billing/plans",
+  "billing_device_targets": [],
+  "catalog_route_drift": "Catalog route_registered false while current mine_routes defines page route; source presence alone not UI navigation proof",
+  "source_fingerprints": [
+    {
+      "path": "test/auto_test/catalog.json",
+      "sha256": "1935b919297d2c4c409f6fed3ec4a46ba65e5a214d37b8f2d57bf4ac83f30497"
+    },
+    {
+      "path": "lib/config/router/routes/mine_routes.dart",
+      "sha256": "e761140487756efa78aba04b76851589783b33bf61a79c7de11f0feb0f8a968e"
+    },
+    {
+      "path": "integration_test/wallet/wallet_acceptance_batch156_test.dart",
+      "sha256": "6247ce18fc00739cc1bbc510fbfe0be1a85c246c8bc14ebbcb0ccef8d2353466"
+    },
+    {
+      "path": "lib/page/billing/plan_list_page.dart",
+      "sha256": "eee10c1ecdd92ae85572ba6299847fb1be57bd7b5634e2506ea90d0b39551de3"
+    }
+  ],
+  "legacy_wallet_entry_reuse": "REJECTED_AS_CURRENT_PLAN_RECIPE",
+  "rejection_reasons": [
+    "Default hard-coded synthetic account and expected UID",
+    "Historical shared PG/port assumptions forbidden by this plan",
+    "Payment fixture writes and prior authorization flags cannot grant current resource access"
+  ],
+  "next_device_entry_contract": {
+    "candidate_target": "integration_test/billing/plan_list_acceptance_test.dart",
+    "target_status": "NOT_IMPLEMENTED",
+    "required_inputs": [
+      "Explicit authorized device serial/platform lease",
+      "Frozen candidates and actual isolated runtime/config fingerprints",
+      "Authorized synthetic account and explicit expected UID without defaults",
+      "Isolated seeded plans and subscription state with expected read-only values",
+      "No real payment methods or DB fixture writes during read-only cases"
+    ],
+    "pre_start": "Refuse before app/backend activation when any lease, identity or runtime binding is absent",
+    "first_read_only_cases": [
+      "Actual route navigation and plan/subscription readback",
+      "Exact amounts/period/quota/badge against isolated fixture",
+      "Actual payment sheet cancel; zero subscription/invoice writes verified by backend oracle"
+    ],
+    "separate_mutating_cases": "New scoped authorization/fixture lease and idempotent backend result reconciliation before submit/retry; never automatic replay of uncertain writes",
+    "evidence": [
+      "Android and macOS actual case events and process exit",
+      "Per-case business oracle and raw artifact hash",
+      "Same frozen candidate/runtime/fixture linkage"
+    ],
+    "no_substitutions": [
+      "Host tests cannot be catalog device targets",
+      "Static route definition cannot prove navigation",
+      "Historical fixed resources cannot be used"
+    ]
+  },
+  "limits": [
+    "Defines next entry requirements only, not implemented device tests",
+    "Canonical catalog and acceptance statuses unchanged"
+  ]
+}
