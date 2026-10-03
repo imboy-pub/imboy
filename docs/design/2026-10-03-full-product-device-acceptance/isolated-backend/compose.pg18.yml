@@ -1,7 +1,7 @@
 # Preparation only. Do not launch before the resource authorization gate.
 services:
   postgres:
-    image: imboy/pg18:3.6.1-2
+    image: ${ACCEPTANCE_PG_IMAGE_ID:?provide the independently verified local sha256 image ID}
     pull_policy: never
     environment:
       POSTGRES_USER: imboy_acceptance

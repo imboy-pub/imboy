@@ -1,0 +1,36 @@
+{
+  "scope": "OFFLINE_TEMPLATE_AND_LOCAL_IMAGE_METADATA_ONLY",
+  "image_id": "sha256:fbe5570489c5b0cbd296581b61cd188daad15793381185df45295236a1234b4d",
+  "repo_digests": [],
+  "architecture": "arm64",
+  "os": "linux",
+  "template_sha256": "63fa082339c5b4e09d2087fa20fa54b0edc72c7a8be24bb88e8895c3774fb35a",
+  "checks": [
+    {
+      "missing": null,
+      "exit_code": 0
+    },
+    {
+      "missing": "ACCEPTANCE_PG_IMAGE_ID",
+      "exit_code": 1
+    },
+    {
+      "missing": "ACCEPTANCE_PG_PORT",
+      "exit_code": 1
+    },
+    {
+      "missing": "ACCEPTANCE_PG_PASSWORD",
+      "exit_code": 1
+    },
+    {
+      "missing": "ACCEPTANCE_RUN_ID",
+      "exit_code": 1
+    }
+  ],
+  "containers_started": false,
+  "network_pull": false,
+  "backend_ready": false,
+  "extensions_verified": false,
+  "product_pass": false,
+  "review": "APPROVED_PREPARATION_ONLY"
+}

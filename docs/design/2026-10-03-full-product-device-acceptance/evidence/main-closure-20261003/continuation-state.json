@@ -4331,5 +4331,13 @@
     "postgres_runtime_validation": "NOT_VERIFIED",
     "product_pass": false,
     "database_access": false
+  },
+  "isolated_pg_image_binding": {
+    "receipt": "isolated-pg-image-binding.json",
+    "local_image_present": true,
+    "registry_digest_verified": false,
+    "containers_started": false,
+    "backend_ready": false,
+    "product_pass": false
   }
 }
