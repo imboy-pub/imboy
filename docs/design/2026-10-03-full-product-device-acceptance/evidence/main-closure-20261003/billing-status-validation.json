@@ -1,0 +1,30 @@
+{
+  "scope": "LOCAL_BILLING_UNDEFINED_STATUS_PAYMENT_REJECTION",
+  "app_head": "266bcc165ba27a6385eb64e0f9d4846a6eab0d26",
+  "tests": 31,
+  "exit_code": 0,
+  "analysis_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "billing-status-red.log",
+      "sha256": "73772813034a6b81308e4009db639fb90d1d15da54b5e490ffc23bfc4770e87f"
+    },
+    {
+      "path": "billing-status-green.log",
+      "sha256": "1de1db4ae0fbe0b624d30146c2d191f759cfd30b8e1f9fe3adb7db03295d5576"
+    },
+    {
+      "path": "billing-status-analysis.log",
+      "sha256": "e6dafd5e579608273541d3670edc1dd619d357dd318da4bb48670c04292c2d4a"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "red_history_note": "Initial red log includes abandoned overdue-rejection test; overdue remains payable per backend billing_logic:415-430. Only undefined status rejection is final requirement.",
+  "limits": [
+    "Fake API host regression, no actual device/backend/payment execution",
+    "Cross-subscription ownership unavailable in client model, not qualified",
+    "Original overdue repayment behavior preserved"
+  ]
+}
