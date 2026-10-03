@@ -4079,5 +4079,14 @@
     "exit_code": 0,
     "product_pass": false,
     "review": "APPROVED_AFTER_ID_TYPE_REPAIR"
+  },
+  "c11_initial_group_members": {
+    "receipt": "c11-group-members.json",
+    "receipt_sha256": "25433325e6007908a95df1cd9e062874d2e26130ac74e8e4b3f67dcf12356067",
+    "app_head": "3736799811f125606479a1fdfaea5768fffb2248",
+    "executed": 46,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

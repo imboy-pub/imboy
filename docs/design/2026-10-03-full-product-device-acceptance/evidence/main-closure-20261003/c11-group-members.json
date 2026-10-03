@@ -1,0 +1,47 @@
+{
+  "id": "C11-INITIAL-GROUP-MEMBERSHIP-BINDING",
+  "app_head": "3736799811f125606479a1fdfaea5768fffb2248",
+  "scope": "OFFLINE_REGISTERED_FIXTURE_AND_HOST_COMPONENT_REGRESSION",
+  "red": {
+    "passed": 16,
+    "failed": 1,
+    "exit_code": 1,
+    "oracle": "Invalid group member collection accepted without expected FormatException"
+  },
+  "green": {
+    "passed": 46,
+    "failed": 0,
+    "exit_code": 0,
+    "domains": [
+      "registered fixture",
+      "registered C2C transport",
+      "registered wire binding"
+    ]
+  },
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "logs": [
+    {
+      "phase": "RED",
+      "path": "c11-group-members-red.log",
+      "sha256": "2deca11c67764c69c068dcc86d450779711427e824ee0cd92e79804341b0098c"
+    },
+    {
+      "phase": "GREEN",
+      "path": "c11-group-members-fixed.log",
+      "sha256": "faf08fd2597af3b9c19fca9d8617f553ec90d6ab2c73f39a4d75c89a3e9046d6"
+    }
+  ],
+  "oracles": [
+    "reject empty duplicate or unknown account members",
+    "copy caller member lists into immutable Map and Sets"
+  ],
+  "limits": [
+    "Initial fixture snapshot only; no current server membership or group authorization proven",
+    "No C2G send/join/kick/rejoin/epoch behavior or AC-23 qualification",
+    "No acceptance ID upgraded"
+  ]
+}

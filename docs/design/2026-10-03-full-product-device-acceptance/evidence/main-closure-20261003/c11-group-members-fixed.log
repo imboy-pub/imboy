@@ -1,0 +1,48 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: snapshots initial group members in deeply immutable collections
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects empty duplicate or unregistered group members
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: keeps exact large IDs and snapshots immutable maps
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects wrong run and incomplete binding
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects unknown alias
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects wrong owner
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects platform mismatch
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects simulated platform
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects empty DID
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects DID whitespace
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects token value
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects overflow ID
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects leading zero ID
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects alias as ID
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects conflicting account
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects duplicate DID
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects reused account ID
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects duplicate device and missing or unknown group
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: configured real interface requires matching server ACK
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: disconnect completes pending delivery as unconfirmed
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: inbound sender-did mismatch closes connection without queuing
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: inbound sender-account mismatch closes connection without queuing
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: inbound missing-device mismatch closes connection without queuing
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: received canonical IDs preserve raw body and outgoing ID contract
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: received canonical IDs preserve raw body and outgoing ID contract
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: received canonical IDs preserve raw body and outgoing ID contract
+00:00 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: received canonical IDs preserve raw body and outgoing ID contract
+00:00 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt disconnect cannot become success
+00:00 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: received IDs require explicit integral identities
+00:00 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: received IDs require explicit integral identities
+00:00 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +35: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +36: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +37: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +38: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +39: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +40: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +41: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +42: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +43: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +44: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: synthetic protected identities fail before channel write
+00:00 +45: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: disconnect during token resolution prevents later connection
+00:00 +46: All tests passed!
