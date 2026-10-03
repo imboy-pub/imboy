@@ -4864,5 +4864,11 @@
       "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
     },
     "product_pass": false
+  },
+  "current_capability_outbox_wiring_audit": {
+    "receipt": "current-capability-outbox-wiring-audit-20261004.json",
+    "app_head": "1ec8f642fabe1d321b86e141a2f99bd03aaf10b0",
+    "product_pass": false,
+    "next": "QUALIFY_SELF_CACHED_SESSION_DIRECTORY_CONSISTENCY"
   }
 }

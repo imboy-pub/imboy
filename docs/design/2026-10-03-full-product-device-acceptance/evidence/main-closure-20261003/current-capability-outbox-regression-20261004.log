@@ -1,0 +1,146 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: negotiateOneDevice（ADR 04 §4） cap_negotiate_highest_common: 双方 {olm,megolm} → olm
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: negotiateOneDevice（ADR 04 §4） cap_negotiate_fallback_chain: 我{olm,megolm} 对端{megolm,rsa-oaep} → megolm
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: negotiateOneDevice（ADR 04 §4） cap_negotiate_sender_limited（有交集）: 我{rsa-oaep} 对端{megolm,rsa-oaep} → rsa-oaep
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: negotiateOneDevice（ADR 04 §4） cap_negotiate_no_common: 我{olm,megolm} 对端{rsa-oaep} → null（不降级）
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: negotiateOneDevice（ADR 04 §4） 安全级别由 securityRank 决定，不受 protocols 列表顺序影响（防重排）
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: negotiateOneDevice（ADR 04 §4） cap_sig_tampered_rejected: 签名校验失败抛 CapVerificationFailed
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: negotiatePeer 多设备 fan-out（ADR 04 §4.3/§5） cap_multi_device_mixed_fanout: 3 设备分别 olm/megolm/rsa-oaep → 各自套件
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: negotiatePeer 多设备 fan-out（ADR 04 §4.3/§5） 签名失败的设备标记 unsupported，不中断其他设备
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: negotiatePeer 多设备 fan-out（ADR 04 §4.3/§5） 无交集设备标记 noCommonSuite（不降级明文）
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: DeviceManifest Capability Negotiation (E2EE-021) (setUpAll)
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: DeviceManifest Capability Negotiation (E2EE-021) negotiateWithManifest chooses highest mutual suite on valid manifest
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: DeviceManifest Capability Negotiation (E2EE-021) negotiateWithManifest returns null (noCommonSuite) when no intersection exists
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: DeviceManifest Capability Negotiation (E2EE-021) negotiateWithManifest throws CapVerificationFailed on tampered manifest capabilities
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: DeviceManifest Capability Negotiation (E2EE-021) negotiateWithManifest rejects expired manifest (replay) even though signature is valid
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: DeviceManifest Capability Negotiation (E2EE-021) negotiateWithManifest rejects manifest with missing expiresAtMs (fail-closed)
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: DeviceManifest Capability Negotiation (E2EE-021) negotiateWithManifest default nowMs (wall clock) also rejects expired manifest
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: DeviceManifest Capability Negotiation (E2EE-021) negotiatePeerWithManifests marks expired device unsupported without interrupting others
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: DeviceManifest Capability Negotiation (E2EE-021) negotiatePeerWithManifests negotiates mixed results and filters out tampered device
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_negotiator_test.dart: DeviceManifest Capability Negotiation (E2EE-021) (tearDownAll)
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest (setUpAll)
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest toJson sorts capabilities lexicographically and toJson/fromJson works
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest canonicalBytes generates deterministic CBOR representation
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest signDevice and verifyDeviceSignature works with actual Ed25519 keys
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest verifyAccountSignature works with actual Master Account key
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering manifest_version fails verification
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering uid fails verification
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering device_id fails verification
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering device_generation fails verification
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering identity_version fails verification
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering ed25519 key fails verification
+00:00 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering curve25519 key fails verification
+00:00 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering capabilities fails verification
+00:00 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering created_at_ms fails verification
+00:00 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering expires_at_ms fails verification
+00:00 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Systematic Tampering (Negative Cases) tampering previous_manifest_hash fails verification
+00:00 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Field Stripping from Wire JSON (C02 negative cases) stripping ed25519 from wire JSON fails verification
+00:00 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Field Stripping from Wire JSON (C02 negative cases) stripping capabilities from wire JSON fails verification
+00:00 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Field Stripping from Wire JSON (C02 negative cases) stripping uid from wire JSON fails verification
+00:00 +35: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Field Stripping from Wire JSON (C02 negative cases) stripping device_id from wire JSON fails verification
+00:00 +36: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Forged Signature (C02 negative cases) device_signature forged by a different device key fails verification
+00:00 +37: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Forged Signature (C02 negative cases) garbage (non-signature) device_signature fails verification
+00:00 +38: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Expiry Validation (C02 replay protection) isExpiredAt: now >= expiresAtMs 视为过期（含边界与缺失=0）
+00:00 +39: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Expiry Validation (C02 replay protection) expiresAtMs 缺失（fromJson 默认 0）→ isExpiredAt 恒为 true（fail-closed）
+00:00 +40: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Expiry Validation (C02 replay protection) ensureNotExpired: 未过期 → 通过（不抛）
+00:00 +41: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Expiry Validation (C02 replay protection) ensureNotExpired: 已过期（签名可能仍有效）→ 抛 ManifestValidityException
+00:00 +42: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Expiry Validation (C02 replay protection) ensureNotExpired: expiresAtMs=0（缺失）→ 抛（不静默放行）
+00:00 +43: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Manifest Hash & Chain Link (C02 replay protection) manifestHash 确定性：同内容一致，内容变化即变化
+00:00 +44: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Manifest Hash & Chain Link (C02 replay protection) ensureChainLinked：合法后继（previousManifestHash == 当前哈希）→ 通过
+00:00 +45: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Manifest Hash & Chain Link (C02 replay protection) ensureChainLinked：同一 manifest 重投（幂等）→ 通过
+00:00 +46: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Manifest Hash & Chain Link (C02 replay protection) ensureChainLinked：旧 manifest 重放 → 抛 ManifestValidityException
+00:00 +47: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Manifest Hash & Chain Link (C02 replay protection) ensureChainLinked：previousManifestHash 为 null（genesis 冒充后继）→ 抛
+00:00 +48: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Manifest Hash & Chain Link (C02 replay protection) ensureChainLinked：断链（previousManifestHash 指向伪造值）→ 抛
+00:00 +49: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest Key Validation Rules validateKeys rejects invalid key lengths
+00:00 +50: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/device_manifest_test.dart: DeviceManifest (tearDownAll)
+00:00 +50: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: (setUpAll)
+00:00 +50: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard HWM 存储 首次记录 + 加载往返
+00:00 +51: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard HWM 存储 未知对端返回 null
+00:00 +52: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard HWM 存储 不同设备独立 HWM
+00:00 +53: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard 降级检测 首次协商：无 HWM → 记录并通过（不抛）
+00:00 +54: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard 降级检测 等级不变 → 正常通过
+00:00 +55: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard 降级检测 等级升级 → 正常通过 + HWM 更新
+00:00 +56: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard 降级检测 等级降级 → 抛 CapabilityDowngradeException（fail-closed）
+00:00 +57: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard 降级检测 降级异常携带完整上下文
+00:00 +58: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard 降级检测 用户确认降级后：HWM 覆写，后续正常
+00:00 +59: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） c2c → olm；c2g → megolm（与发送链固定选择一致）
+00:00 +60: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） required 套件与注册的 ProtocolSuite 同源（不硬编码漂移）
+00:00 +61: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） rsa-oaep 永不作为任何 scope 的 required（decrypt-only）
+00:00 +62: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） 未知 scope → ArgumentError（fail-closed，不猜测套件）
+00:00 +63: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） 旧端只支持 rsa-oaep + c2c → FixedSuiteIncompatibleException（显式拒绝）
+00:00 +64: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） 旧端只支持 rsa-oaep + c2g → FixedSuiteIncompatibleException
+00:00 +65: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） 对端能力缺失（空集）→ 同样显式拒绝（不静默继续）
+00:00 +66: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） 对端支持 required 套件 → 通过（无异常）
+00:00 +67: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） 异常携带完整上下文（scope/requiredSuite/peerProtocols）
+00:00 +68: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） 与 HWM 联动：固定套件协商结果不触发 enforceNoDowngrade 降级
+00:00 +69: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） megolm → rsa-oaep 回退被 HWM 守护拒绝（回退套件负例）
+00:00 +70: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: FixedSuitePolicy 固定套件策略（C02 决策固化） 固定套件产物全部位于 securityRank 内（与协商排序同源）
+00:00 +71: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard 边界 未知协议名 → 视为最低等级（fail-closed 保守）
+00:00 +72: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: CapabilityGuard 边界 crypto_capability_hwm 表存在
+00:00 +73: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/capability_guard_test.dart: (tearDownAll)
+00:01 +73: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_fail_closed_test.dart: (setUpAll)
+00:01 +73: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_fail_closed_test.dart: E2EE-027 outbox fail-closed CryptoStore 不可用时不得返回可发送信封
+00:01 +74: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_fail_closed_test.dart: E2EE-027 outbox fail-closed outbox 写入报错不得被静默吞掉
+00:01 +75: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_fail_closed_test.dart: E2EE-027 outbox fail-closed 成功路径：返回前 outbox 已落 pending，且 payload 与信封逐字节一致
+00:01 +76: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_fail_closed_test.dart: E2EE-027 outbox fail-closed outbox 持久化内容不得包含消息明文
+00:01 +77: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_fail_closed_test.dart: (tearDownAll)
+00:01 +77: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: (setUpAll)
+00:01 +77: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Outbox Integration with encryptV3: encryptV3 atomically persists outbox entry with complete v3 envelope
+00:01 +78: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Outbox Integration with encryptV3: fan-out 统一提交完整 devices map，不覆盖前一个设备的 outbox
+00:01 +79: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Outbox Integration with encryptV3: 编辑路由元数据与密文一起进入 outbox
+00:01 +80: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Outbox Integration with encryptV3: confirmOutbox marks entry as sent after successful delivery
+00:01 +81: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Outbox Integration with encryptV3: pendingOutbox returns all unsent entries for crash recovery
+00:01 +82: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Outbox Integration with encryptV3: outbox purge cleans confirmed entries
+00:01 +83: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Crash Safety — No Key Reuse During Retry: retry from outbox reuses SAME ciphertext — no re-encrypt call
+00:01 +84: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Crash Safety — No Key Reuse During Retry: concurrent send of same message — only one outbox entry, no double encrypt
+00:01 +85: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Inbox dedupe atomicity: dedupeAndPersistSession blocks double ratchet advance on replay
+00:01 +86: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Inbox dedupe atomicity: dedupeAndPersistSession atomic — crash between dedupe insert and session persist rolls back both
+00:01 +87: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: E2EE-027 Inbox dedupe atomicity: isDuplicate confirms dedupe state is durable after commit
+00:01 +88: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_crash_recovery_test.dart: (tearDownAll)
+00:01 +88: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: (setUpAll)
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2g, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2g 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2s, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2s 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:01 +88: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: 重发复用已提交信封：e2ee 与落库逐字节一致（不重新加密）
+消息加入重试队列: msg-resend-1, type=C2C
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status IN (?, ?, ?)
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+重试发送消息: msg-resend-1, 第1次重试
+消息重试已提交，等待确认: msg-resend-1
+⚠️ toTypeMessage: v3 解密失败，reason=no_device_envelope
+📊 [E2EE_METRICS] decrypt failure: no_device_envelope total=1
+00:01 +89: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: ACK 移除事件汇聚时确认 outbox（pending → sent）
+00:01 +89: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: (setUpAll)
+🗑️ [RETRY_QUEUE] 从重试队列移除: messageId=msg-resend-1, reason=SERVER_ACK
+00:01 +90: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: outbox 表缺失时移除事件照样生效（卫生动作不阻断 ACK）
+消息加入重试队列: msg-ghost, type=C2C
+00:01 +90: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: (setUpAll)
+消息从重试队列移除: msg-ghost
+🗑️ [RETRY_QUEUE] 从重试队列移除: messageId=msg-ghost, reason=SERVER_ACK
+⚠️ [RETRY] outbox 确认失败（不影响 ACK）: msg-ghost, SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: crypto_outbox, SQL logic error (code 1)
+  Causing statement: UPDATE crypto_outbox SET status = 'sent', sent_at = ? WHERE id = ?}) DatabaseException(SqliteException(1): while preparing statement, no such table: crypto_outbox, SQL logic error (code 1)
+  Causing statement: UPDATE crypto_outbox SET status = 'sent', sent_at = ? WHERE id = ?) sql 'UPDATE crypto_outbox SET status = 'sent', sent_at = ? WHERE id = ?' args [1791053753584, msg-ghost] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+00:01 +91: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart: (tearDownAll)
+00:01 +91: All tests passed!

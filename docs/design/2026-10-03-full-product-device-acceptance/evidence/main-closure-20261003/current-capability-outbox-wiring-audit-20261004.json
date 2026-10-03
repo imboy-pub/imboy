@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "scope": "CURRENT_MAIN_CAPABILITY_AND_OUTBOX_PRODUCTION_CALLER_AUDIT",
+  "app_head": "1ec8f642fabe1d321b86e141a2f99bd03aaf10b0",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "related_acceptance_ids": [
+    "AC-05",
+    "AC-06",
+    "AC-15",
+    "AC-16"
+  ],
+  "sources": {
+    "lib/service/e2ee/capability_guard.dart": "430ed7cb43d80baee51a894a230ca705665e63e221a06616d1eea28c213a66db",
+    "lib/service/e2ee/capability_negotiator.dart": "ba4164fdf681c545fdcdb7a494d490fd834cff03dcec05ff9615af4a7aa9b848",
+    "lib/service/e2ee/identity_verifier.dart": "2d575ed95856d5d17581dd7dcc964b4d5ccbff8198073403ca111dc258afa354",
+    "lib/service/e2ee_service.dart": "be8e913dde55cbba7ff0aadc4463cb915d3ee10139447ef8b8e28c6b42365657",
+    "lib/service/group_session_service.dart": "8c0c7f5b6d14877fc331b018ec5a859a3e89bf9003daeb991ae30dfa5edfa54b",
+    "lib/service/olm_session_service.dart": "a20f98409d531b8bf6038d585b32c128c7a4f876155097ab3e66cf8f85fd1421",
+    "lib/service/message_retry.dart": "551ec19f1d80fa0ed7db9f4f2bf262ba3d7b2b7ee3814eb8cd0285d03e1f9191",
+    "lib/page/chat/chat/services/chat_network_service.dart": "2bbdac800804a751dfeeb508db819a6cf578c99c6487b5ebc4a125bbcc5080f6",
+    "test/unit_test/service/e2ee/capability_negotiator_test.dart": "7c057ea38424da5c200a7aed7a1b1832103c5e7e3bb61dd7350818919fbb7948",
+    "test/unit_test/service/e2ee/device_manifest_test.dart": "067e05726d1cd8e1aa40b86ca1a33bc5698ff730999f6095bccc1a4a6b884a40",
+    "test/unit_test/service/e2ee/capability_guard_test.dart": "e4c7ad68baaebe8d54e573521b112529583735825404950313a9b7785e79a8cf",
+    "test/unit_test/service/e2ee/outbox_fail_closed_test.dart": "239c885c11576c5d4fe4df3d724be89d616b2e3a9f4f3c700d6951e8e13f3bd3",
+    "test/unit_test/service/e2ee/outbox_crash_recovery_test.dart": "cb91645ba83a6136710ebefef1a7cf6d3a44906464a2c12cfb138513809a098b",
+    "test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart": "2fc13f08be767ed55ea42a7921d37ec9a5b6adc285ace6b08cead1cccef62bbf",
+    "test/unit_test/service/e2ee/c2c_fanout_suite_policy_wiring_test.dart": "6fe3da872099a366f05ff0813bedde12ba29a7f2de558a13ce79f494917a89c0",
+    "test/unit_test/service/e2ee/retry_downgrade_guard_test.dart": "6a4753ade4b3219f44715cb939c102922de5b201b104c87c7dc86b28b469a4fd",
+    "test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart": "03521d6bc67859bac47308b29bcdc4628c701bfc2bfd8b313bfa2d160b7f656c",
+    "test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart": "0101d564b1892fad6198248471bf42a435d67274ac0c8bea2d0b02b6d28ba460"
+  },
+  "runs": [
+    {
+      "scope": "module_and_outbox",
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/service/e2ee/capability_negotiator_test.dart",
+        "test/unit_test/service/e2ee/device_manifest_test.dart",
+        "test/unit_test/service/e2ee/capability_guard_test.dart",
+        "test/unit_test/service/e2ee/outbox_fail_closed_test.dart",
+        "test/unit_test/service/e2ee/outbox_crash_recovery_test.dart",
+        "test/unit_test/service/e2ee/outbox_read_side_wiring_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "exit": 0,
+      "passed": 91
+    },
+    {
+      "scope": "production_send_retry_wiring",
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/service/e2ee/c2c_fanout_suite_policy_wiring_test.dart",
+        "test/unit_test/service/e2ee/retry_downgrade_guard_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_integration_test.dart",
+        "test/unit_test/service/e2ee/retry_plaintext_guard_c2g_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "exit": 0,
+      "passed": 27
+    }
+  ],
+  "production_trace": {
+    "c2c_fixed_suite": "chat_network_service.dart:794 -> e2ee_service.dart:1352",
+    "c2g_fixed_suite": "group_session_service.dart:301 -> :892",
+    "automatic_retry": "message_retry.dart:527 -> :470 -> :497 -> :45",
+    "manual_retry": "message_retry.dart:649 uses the same fixed suite gate",
+    "restart_retry": "message_retry.dart:216 -> :270 -> automatic retry",
+    "ack_outbox": "message_retry.dart:145/:157 -> confirmOutbox"
+  },
+  "verified_boundaries": [
+    "CapabilityGuard HWM enforceNoDowngrade and confirmDowngrade have no production send/retry callers.",
+    "Signed manifest helper validation has no production send caller; legacy Olm identity signature verification is a separate protection.",
+    "Self devices use ensureSessionId and fixed Olm encryption; absence of repeated FixedSuitePolicy call does not prove a downgrade vulnerability.",
+    "Self cached session/current capability or revocation consistency and device-set omission remain unproven; require production encryptPayload synthetic oracle."
+  ],
+  "next_required_oracles": [
+    "Cached self Olm session versus current device-directory removal: assert actual production encryptPayload/outbox behavior.",
+    "Authoritative complete device set comparison for missing or malformed self key rows."
+  ],
+  "limitations": [
+    "Host in-memory SQLite and fake transport, no real accounts, device or backend.",
+    "91 module/outbox and27 send/retry results are separate runs, not complete product journey.",
+    "Module HWM/manifest green is not production wiring proof.",
+    "D02/D05 production identity transparency work remains decision-gated."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/current-capability-outbox-regression-20261004.log",
+      "sha256": "04f8344ec2c501eddab907a1d53edb077ee1f2ac6acf6d1207fa4fcf67b3e07b"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/current-send-retry-wiring-regression-20261004.log",
+      "sha256": "bbbc6cbc76610595749c88fd25257ccbffcbc9e3a4ac105fc0df32abc908458a"
+    }
+  ],
+  "review": "APPROVED_INDEPENDENT_CODE_REVIEW"
+}
