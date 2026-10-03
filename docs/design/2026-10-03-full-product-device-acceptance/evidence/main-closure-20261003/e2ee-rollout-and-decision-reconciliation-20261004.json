@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "scope": "OFFLINE_ROLLOUT_CONTROL_FLOW_AND_PENDING_DECISION_RECONCILIATION",
+  "backend_head": "a0f4bbf6f22031cc2ba837d991eee84f55506ef9",
+  "cwd": "/Users/leeyi/project/imboy.pub/imboy",
+  "checks": [
+    {
+      "argv": [
+        "bash",
+        "scripts/test/deploy_sequence_test.sh"
+      ],
+      "exit_code": 0,
+      "passed": 72,
+      "log": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-deploy-sequence-20261004.log",
+      "sha256": "a45155f209f4f30b4916e2f2b715037ebefe2bfb24b0374d847a97b39b1f808d"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/test/migrate_gate_test.sh"
+      ],
+      "exit_code": 0,
+      "passed": 15,
+      "log": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/e2ee-current-migrate-gate-20261004.log",
+      "sha256": "0727adbff0cac11c512e5c17c2b47e6bf1c8d294fa5ed8e62d0e85182a1c0b16"
+    }
+  ],
+  "sources": [
+    {
+      "path": "scripts/test/deploy_sequence_test.sh",
+      "sha256": "e2b4c5174563afd3bc67e486069daa7352a37bb861261aa9bfbc0062a7a9130a"
+    },
+    {
+      "path": "scripts/test/migrate_gate_test.sh",
+      "sha256": "e9969b11413d725ba6cc212ba7e3ca29005fd454926b1c6cf75991c69cebea8f"
+    },
+    {
+      "path": "scripts/lib/blue_green_deploy.sh",
+      "sha256": "80c42e640c68e3dd37891815a2908f63f740dbf60308ad88c2eee0d814c48c11"
+    },
+    {
+      "path": "scripts/imboy-deploy.sh",
+      "sha256": "b8740c0635ed0bdf054a041d8e4332d67c407a638b2dee48eb4f26091c65bc66"
+    },
+    {
+      "path": "scripts/lib/check_prod_config.sh",
+      "sha256": "b0bb9f7bc8776fde4cb90c7cc33fdbf13a66136eee117a2c397b6fbb4b15997d"
+    }
+  ],
+  "historical_decision_register": {
+    "path": "/Users/leeyi/project/imboy.pub/.Codex/evidence/e2ee-excellence/run-20261003-094804/decision-register.json",
+    "sha256": "e023dbe3b6c6538f81d33daa58f104f963ae39e3f54b23f46fc88a0a1eadb116",
+    "run_id": "run-20261003-094804"
+  },
+  "pending_decisions": [
+    {
+      "id": "D-02",
+      "topic": "账号信任根/交叉签名/Key Transparency profile",
+      "status": "PENDING_REVIEW",
+      "owner_card": "C09",
+      "value": null,
+      "notes": "C09 产出 identity-transparency-profile.md + golden vectors, 经独立 reviewer 评审后形成决策卡提交用户批准; 批准前 C10 不动生产接线",
+      "gate": "C10 生产接线被 BLOCKED_DECISION 直到 D-02 批准; C09 本地纯函数/golden vector 工作不受阻"
+    },
+    {
+      "id": "D-03",
+      "topic": "MLS 默认启用策略与迁移",
+      "status": "PENDING",
+      "owner_card": "C15",
+      "gate": "C15 生产接线与默认协议变更被 BLOCKED_DECISION; prototype 不受阻"
+    },
+    {
+      "id": "D-04",
+      "topic": "PQXDH/混合抗量子默认启用与平台矩阵",
+      "status": "PENDING",
+      "owner_card": "C16",
+      "gate": "同 D-03 模式"
+    },
+    {
+      "id": "D-05",
+      "topic": "见证节点(witness)归属、运营与成本",
+      "status": "PENDING",
+      "owner_card": "C09/C10",
+      "gate": "不建外部 witness 服务; fixture/gossip 模型可本地做; 只有 server-signed tree 不满足 AC-20"
+    },
+    {
+      "id": "D-06",
+      "topic": "备份保留范围/历史共享/可信账号根恢复/AI 信任锚/强制升级影响/历史明文迁移或密钥销毁",
+      "status": "PENDING",
+      "owner_card": "C03/C06/C12",
+      "notes": "C03 账号信任根恢复方案依赖 C09 合同; C03 可先完成既有范围(legacy RSA+Megolm inbound)的 fail-closed 语义与幂等恢复, 不扩大备份包含面",
+      "gate": "扩大备份包含面(如 Olm account)需用户批准; 现有范围工作不受阻"
+    },
+    {
+      "id": "D-07",
+      "topic": "AC-26 冻结 SLO(发送/恢复成功率、P95/P99、群规模、key fanout、资源预算)",
+      "status": "PENDING_REVIEW",
+      "owner_card": "C12",
+      "notes": "C00 提议初值 → 评审冻结后不得事后放宽",
+      "proposed_initial": "发送/恢复成功率 ≥99.9%(合成负载); 群发 P95 ≤800ms/P99 ≤2s(不含对象存储); 群规模 ≤4096 active member(与现有 4096 fail-closed 上限一致); key fanout 每消息 per-device 信封 ≤4096; 资源预算: 单消息 staging 事务 <50ms, scratch PG 无锁等待超时"
+    }
+  ],
+  "decision_scope_notes": [
+    "Historical pending statuses are carried forward; no new approval is inferred.",
+    "D-06 gates expansions and destructive changes; existing accepted backup/history scope remains unchanged.",
+    "D-07 proposed_initial is unapproved, not a frozen performance threshold."
+  ],
+  "product_pass": false,
+  "device_execution": false,
+  "production_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "limitations": [
+    "SSH and rollout targets are local stubs; no real deployment or migration.",
+    "No SLO load measurement or decision approval.",
+    "Pending true PG18 isolated stack, device/accounts/MITM resources unchanged."
+  ]
+}

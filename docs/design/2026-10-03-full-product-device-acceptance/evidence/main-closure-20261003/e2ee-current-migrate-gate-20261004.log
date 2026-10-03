@@ -1,0 +1,18 @@
+== 独立 migrate Gate（全离线 mock） ==
+  PASS .env.deploy.example 可加载完整 expand 清单
+  PASS --env-file 使用指定客户配置
+  PASS api -v -l 自动同步版本并透传本地模式与显式节点名
+  PASS api -l 本地工作树有改动时告警并继续
+  PASS 非本地发布的 CHANGELOG 门禁早于 SSH
+  PASS -l 本地发布缺少 CHANGELOG 目标版本时警告并继续
+  PASS 销售版插件公钥门禁早于 SSH
+  PASS 恶意 DEPLOY_NODE_NAME 未触发 SSH
+  PASS 迁移 RPC 使用 Gate 从活动监听进程发现的节点名
+  PASS 恶意 NGINX_CONF 未触发 SSH
+  PASS 恶意 ADMIN_REMOTE_DIR 未触发 SSH
+  PASS 恶意 SERVER_USER 未触发 SSH
+  PASS 恶意 PRODADM_CONF 未触发 SSH
+  PASS 监听/drain Gate 失败后未执行迁移
+  PASS 不安全节点名未进入远端迁移命令
+
+总计: PASS=15 FAIL=0

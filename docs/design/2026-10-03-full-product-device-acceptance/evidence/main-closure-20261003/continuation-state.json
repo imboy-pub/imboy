@@ -98,7 +98,9 @@
     "explicit Android/macOS and synthetic-account/MITM resource authorization",
     "D-02/D-05 identity transparency profile decision",
     "D-03 MLS profile decision",
-    "D-04 PQ profile decision"
+    "D-04 PQ profile decision",
+    "D-06 approval before expanding backup/recovery scope or destructive key/history actions",
+    "D-07 frozen SLO approval before AC-26 performance qualification"
   ],
   "next_offline_tasks": [
     "implement F01 final acceptance verifier with real artifact and candidate checks",
@@ -5320,6 +5322,22 @@
     "executed": 508,
     "exit_code": 0,
     "resource_required_modules_pending": 4,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
+  },
+  "current_rollout_and_decision_reconciliation": {
+    "receipt": "e2ee-rollout-and-decision-reconciliation-20261004.json",
+    "backend_head": "a0f4bbf6f22031cc2ba837d991eee84f55506ef9",
+    "deploy_sequence_passed": 72,
+    "migrate_gate_passed": 15,
+    "pending_decision_ids": [
+      "D-02",
+      "D-03",
+      "D-04",
+      "D-05",
+      "D-06",
+      "D-07"
+    ],
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
   }

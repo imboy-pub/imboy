@@ -1,0 +1,75 @@
+== 蓝绿部署控制流（全离线 mock） ==
+  PASS 成功路径事件顺序为 expand → daemon → switch → stop → migrate
+  PASS 销售版默认以 required E2EE 启动
+  PASS 销售版新节点显式加载 release 内可信插件公钥
+  PASS legacy upstream 停机后使用 .env 恢复点断点续发
+  PASS legacy 端口迁移先停旧 writer，再以 .env TSID 参数启动蓝槽并切流
+  PASS legacy 候选健康失败时回收候选并自动恢复旧节点
+  PASS 相同版本和节点已健康时重复部署幂等成功
+  PASS 相同版本 release 仍以 source HEAD 区分候选
+  PASS 远端 Git HEAD 不匹配时在构建和切流前失败
+  PASS 上次失败的非活动 release 自动清理后可重试
+  PASS 非销售版仍默认以 disabled E2EE 启动
+  PASS 销售版显式降级 E2EE 会在连接服务器前失败
+  PASS 首次启用 C2G boundary 先停旧节点，由 boot migration 登记后才写 cutover marker
+  PASS 迁移已登记但 cutover 未完成时仍走维护恢复，并在完整迁移后写 marker
+  PASS migration 108 dirty 时不停旧节点
+  PASS migration 108 dirty 时不启动新节点
+  PASS migration 108 dirty 时不执行迁移
+  PASS migration 108 dirty 时不切流
+  PASS migration 108 dirty 时不写 cutover marker
+  PASS migration 108 dirty 提示明确要求人工受控恢复
+  PASS expand 清单未设置时不停旧节点
+  PASS expand 清单未设置时不启动新节点
+  PASS expand 清单未设置时不切流
+  PASS expand 清单未设置时不执行迁移
+  PASS expand 清单未设置时返回明确配置错误
+  PASS expand 清单为空时不停旧节点
+  PASS expand 清单为空时不启动新节点
+  PASS expand 清单为空时不切流
+  PASS expand 清单为空时不执行迁移
+  PASS expand 清单为空时返回明确配置错误
+  PASS 必需 migration 探测失败时不停旧节点
+  PASS 必需 migration 探测失败时不启动新节点
+  PASS 必需 migration 探测失败时不切流
+  PASS 必需 migration 探测失败时不执行迁移
+  PASS 必需 migration 探测失败时返回明确错误
+  PASS expand 失败后不启动新节点
+  PASS expand 失败后不切流
+  PASS migration 112 schema 残缺时不切流
+  PASS migration 112 schema 残缺时不写 cutover marker
+  PASS migration 112 schema 残缺时在切流前返回明确错误
+  PASS 已有 marker 的常规发布最终 schema 漂移时不切流
+  PASS 最终结构漂移时短路 backlog，并在切流前拒绝发布
+  PASS health 失败后不切流
+  PASS health 失败后不迁移
+  PASS health 失败后自动回收候选节点
+  PASS boundary bootstrap 切流前失败会自动恢复旧节点并检查健康
+  PASS 旧节点优雅停止失败后精确回收进程并继续迁移
+  PASS legacy 9802 优雅停止超时后精确回收并继续发布
+  PASS 旧端口仍开放时不迁移
+  PASS 端口状态查询失败时不迁移
+  PASS 运行色探测失败时不启动新节点
+  PASS 运行色探测失败时不迁移
+  PASS migrate 失败被真实执行并向上传播
+  PASS --no-migrate 不停止旧节点
+  PASS --no-migrate 不执行迁移
+  PASS 首次安装缺少预置 upstream 时在构建、启动和迁移前 fail-closed
+  PASS 首次安装拒绝 --no-migrate 后不启动节点
+  PASS 首次安装拒绝 --no-migrate 后不迁移
+  PASS 双端口停机但 Nginx 指向 green 时先恢复原节点再继续蓝绿发布
+  PASS 原节点恢复不健康时不启动目标节点
+  PASS 原节点恢复不健康时不执行迁移
+  PASS 原节点恢复不健康时不切流
+  PASS 停机预恢复不会耗尽后续切流前失败的自动恢复机会
+  PASS 两色同时存活时按 Nginx 当前 green 精确回滚到 blue
+  PASS 未知 upstream 未修改 Nginx
+  PASS 不健康回滚目标未修改 Nginx
+  PASS upstream 替换未生效不会谎报回滚成功
+  PASS Nginx reload 失败会恢复备份配置
+
+  PASS release 残留枚举失败不启动新节点
+  PASS release 残留枚举失败不切流
+  PASS release 残留枚举失败不执行迁移
+  PASS release 残留枚举失败返回明确错误
+总计: PASS=72 FAIL=0
