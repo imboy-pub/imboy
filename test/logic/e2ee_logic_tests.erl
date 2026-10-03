@@ -2,6 +2,77 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+device_key_rotation_logs_do_not_expose_identity_or_error_test_() ->
+    Canary = #{uid => 123, secret => <<"synthetic-key-canary">>},
+    Cases = [
+        {{error, Canary}, {ok, 1}, e2ee_report_device_key_error, {error, <<"internal_error">>}},
+        {
+            {ok, 0},
+            {error, Canary},
+            e2ee_report_device_key_create_error,
+            {error, <<"internal_error">>}
+        },
+        {{ok, 0}, {ok, 1}, e2ee_report_device_key_created, {ok, 0}},
+        {{ok, 1}, {ok, 1}, e2ee_report_device_key_updated, {ok, 0}}
+    ],
+    [
+        device_key_log_case(Update, Save, Event, Expected)
+     || {Update, Save, Event, Expected} <- Cases
+    ].
+
+device_key_log_case(Update, Save, Event, Expected) ->
+    ?WITH_MECKS(
+        [
+            {user_device_ds, [
+                {update_public_key, 5, fun(_, _, _, _, _) -> Update end},
+                {save, 4, fun(_, _, _, _) -> Save end},
+                {count_other_device_keys, 2, fun(_, _) -> 0 end}
+            ]},
+            {friend_ds, [{list_by_uid, 1, fun(_) -> [] end}]},
+            {msg_s2c_ds, [{send, 7, fun(_, _, _, _, _, _, _) -> ok end}]},
+            {elib_log, [{internal_log, 4, fun(_, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                Expected,
+                e2ee_logic:report_device_key(
+                    123,
+                    <<"synthetic-device">>,
+                    <<"android">>,
+                    undefined,
+                    <<"synthetic-public-key">>,
+                    <<"synthetic-key-id">>
+                )
+            ),
+            ?assertEqual(1, meck:num_calls(elib_log, internal_log, ['_', Event, '_', '_'])),
+            ?assertEqual(1, meck:num_calls(elib_log, internal_log, 4))
+        end
+    ).
+
+key_query_error_logs_do_not_expose_raw_reason_test_() ->
+    Canary = #{uid => 123, secret => <<"synthetic-key-canary">>},
+    ?WITH_MECKS(
+        [
+            {user_device_ds, [{list_public_keys, 1, fun(_) -> {error, Canary} end}]},
+            {friend_ds, [{list_by_uid, 1, fun(_) -> [456] end}]},
+            {elib_pg, [{query, 2, fun(_, _) -> {error, Canary} end}]},
+            {elib_log, [{internal_log, 4, fun(_, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            ?assertEqual({error, <<"internal_error">>, 500}, e2ee_logic:user_keys(123, 456)),
+            ?assertEqual(
+                {error, <<"internal_error">>}, e2ee_logic:pull_key_notifications(123, 0, 10)
+            ),
+            lists:foreach(
+                fun(Event) ->
+                    ?assertEqual(1, meck:num_calls(elib_log, internal_log, ['_', Event, '_', '_']))
+                end,
+                [e2ee_user_keys_db_error, pull_key_notifications_db_error]
+            ),
+            ?assertEqual(2, meck:num_calls(elib_log, internal_log, 4))
+        end
+    ).
+
 group_failure_logs_do_not_expose_identity_or_raw_result_test_() ->
     Canary = #{uid => 123, gid => 42, secret => <<"synthetic-key-canary">>},
     Cases = [

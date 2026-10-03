@@ -111,18 +111,18 @@ report_device_key(Uid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) when 
                 },
                 case user_device_ds:save(Now, Uid, DeviceId, PostVals) of
                     {ok, _} ->
-                        _ = ?INFO_LOG([e2ee_report_device_key_created, Uid, DeviceId, DeviceType]),
+                        _ = ?INFO_LOG(e2ee_report_device_key_created),
                         ok;
-                    {error, Reason} ->
-                        _ = ?ERROR_LOG({e2ee_report_device_key_create_error, Reason}),
+                    {error, _Reason} ->
+                        _ = ?ERROR_LOG(e2ee_report_device_key_create_error),
                         {error, <<"internal_error">>}
                 end;
             {ok, _Count} ->
                 % 设备已存在，更新公钥
-                _ = ?INFO_LOG([e2ee_report_device_key_updated, Uid, DeviceId, DeviceType]),
+                _ = ?INFO_LOG(e2ee_report_device_key_updated),
                 ok;
-            {error, Reason} ->
-                _ = ?ERROR_LOG({e2ee_report_device_key_error, Reason}),
+            {error, _Reason} ->
+                _ = ?ERROR_LOG(e2ee_report_device_key_error),
                 {error, <<"internal_error">>}
         end,
 
@@ -171,8 +171,8 @@ user_keys_payload(TargetUid) ->
                 <<"user_id">> => TargetUid,
                 <<"devices">> => Devices
             }};
-        {error, Reason} ->
-            _ = ?ERROR_LOG({e2ee_user_keys_db_error, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(e2ee_user_keys_db_error),
             {error, <<"internal_error">>, 500}
     end.
 
@@ -267,7 +267,7 @@ pull_key_changes_from_db(FriendUids, SinceTs, Limit) ->
                 Rows
             ),
             {ok, Notifications};
-        {error, Reason} ->
-            _ = ?ERROR_LOG({pull_key_notifications_db_error, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(pull_key_notifications_db_error),
             {error, <<"internal_error">>}
     end.
