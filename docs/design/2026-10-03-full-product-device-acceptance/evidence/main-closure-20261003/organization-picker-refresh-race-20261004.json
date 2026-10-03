@@ -1,0 +1,30 @@
+{
+  "scope": "LOCAL_PICKER_REFRESH_RESPONSE_RACE",
+  "app_head": "88d16d2155114f7b9500eb0a05f82774a7567843",
+  "tests": 17,
+  "exit_code": 0,
+  "red_failed": 1,
+  "analyze_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "artifacts": [
+    {
+      "path": "org-picker-race-red-20261004.log",
+      "sha256": "44fb4bb666f6881a6e7ff69797cf028050b8f199bc4676330be4c0b42ad5b99d"
+    },
+    {
+      "path": "org-picker-race-green-20261004.log",
+      "sha256": "14aa0fbfb3d70159db24b4af7eb8d1cbc82f11481af81323d0c417ba3171498d"
+    },
+    {
+      "path": "org-picker-race-analyze-20261004.log",
+      "sha256": "84e3f7c9ac4a13f8e2dd76d34e5352bffc17ae4d85ada0e2dd145885e048f702"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Actual refresh widget/API path with synthetic Dio adapter, no server/device",
+    "Late success dynamically tested; late error/loading branches reviewed only",
+    "No qualification of cross-page simultaneous cache writes or account-change lifecycle"
+  ]
+}

@@ -4732,5 +4732,11 @@
     "app_head": "16f2b6bd1f7b4a8359eca869bedec96ed9531010",
     "tests": 16,
     "product_pass": false
+  },
+  "organization_picker_refresh_race": {
+    "receipt": "organization-picker-refresh-race-20261004.json",
+    "app_head": "88d16d2155114f7b9500eb0a05f82774a7567843",
+    "tests": 17,
+    "product_pass": false
   }
 }
