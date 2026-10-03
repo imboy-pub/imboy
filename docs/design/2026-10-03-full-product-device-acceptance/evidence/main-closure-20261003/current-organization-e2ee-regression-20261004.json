@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "scope": "CURRENT_MAIN_LOCAL_FLUTTER_DOMAIN_REGRESSION",
+  "heads": {
+    "imboy": "da4653cdd8fbcd1b143156ac892da48efcd8eec3",
+    "imboyapp": "05528a662c117db459881770c44dbaf7c6171991",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "command": "flutter test test/organization test/unit_test/service/e2ee --reporter expanded",
+  "exit": 0,
+  "passed": 1230,
+  "failed": 0,
+  "duration_seconds": 111,
+  "candidate_app_clean_before_execution": true,
+  "device_execution": false,
+  "production_execution": false,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/current-organization-e2ee-20261004.log",
+      "sha256": "57eb4e11f5dfa2a4923625ba8abdd31d82f2b295c32cf6b82a60eaa2a1866db6"
+    }
+  ],
+  "limitations": [
+    "Host domain tests include injected adapters and synthetic facts.",
+    "No real Olm session, Android/macOS integration journey, independent database oracle or production traffic proof.",
+    "Does not establish full-product coverage or close the original 36+61 requirements."
+  ],
+  "integration_recheck": {
+    "worktrees_per_repo": 1,
+    "all_on_main": true,
+    "related_e2ee_full_product_branches_remaining": 0,
+    "foreign_backend_business_document_preserved": true
+  }
+}

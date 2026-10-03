@@ -4786,5 +4786,12 @@
     "app_head": "05528a662c117db459881770c44dbaf7c6171991",
     "tests": 7,
     "product_pass": false
+  },
+  "current_organization_e2ee_combined_regression": {
+    "receipt": "current-organization-e2ee-regression-20261004.json",
+    "app_head": "05528a662c117db459881770c44dbaf7c6171991",
+    "passed": 1230,
+    "exit": 0,
+    "product_pass": false
   }
 }
