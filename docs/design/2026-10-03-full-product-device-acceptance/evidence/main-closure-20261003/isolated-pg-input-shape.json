@@ -1,0 +1,24 @@
+{
+  "scope": "OFFLINE_PG_INPUT_SHAPE_ONLY",
+  "tests": 6,
+  "exit_code": 0,
+  "cli_checks": {
+    "missing_inputs": 64,
+    "synthetic_positive": 0
+  },
+  "review": "APPROVED_AFTER_PUBLIC_TYPE_ANNOTATIONS",
+  "artifacts": [
+    {
+      "path": "pg-inputs-green.log",
+      "sha256": "dcd2147edfda2291b456dfb6d9f3021f0fed07760d5a1c8869fc5446f30e28fe"
+    }
+  ],
+  "source_sha256": "e35790782d62570c0c5d23a8f6feb29c3a5fa6996164ff922ebb904b945128d0",
+  "resource_authorized": false,
+  "backend_ready": false,
+  "product_pass": false,
+  "containers_started": false,
+  "limits": [
+    "Input shape does not prove authorized resources, actual image identity, free port, unique project or password provenance/entropy"
+  ]
+}

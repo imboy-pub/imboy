@@ -11,6 +11,13 @@
 镜像 ID。模板保持 pull_policy=never；不为缺失镜像自动访问外部 registry。扩展和实际
 PostgreSQL 启动行为只能由获准运行校准，镜像存在不表示 BACKEND_READY。
 
+使用模板前先运行 `python3 scripts/validate_acceptance_pg_inputs.py`，从已批准的本地
+环境读取上述参数及 `ACCEPTANCE_COMPOSE_PROJECT`。project 必须是
+`imboy-acceptance-<ACCEPTANCE_RUN_ID>`；端口须为规范十进制非特权端口，另排除默认
+5432；新合成密码至少 24 字符。失败退出 64，成功退出 0。成功只表示输入形状有效，
+不证明密码来源/熵、端口空闲、project 唯一、镜像存在或资源授权。独立执行者仍须
+核验这些事实，再将同一组已核验输入传入 Compose；该工具不会启动或清理资源。
+
 模板只使用本地已有镜像，内部专用网络、loopback端口和临时PG数据，无共享volume、host数据库挂载、external network或重启策略。tmpfs停止后数据丢失：停止前须先保存脱敏断言、失败历史及hash，不能把此模板当作备份恢复持久性测试的存储。
 
 授权后仍须配置独立App HTTP/Admin端口、生成隔离sys.config，重指向此数据库，并关闭第三方推送/支付/短信/对象写入。模板不包含后端配置或fixture初始化；不能只启动PG便标BACKEND_READY。

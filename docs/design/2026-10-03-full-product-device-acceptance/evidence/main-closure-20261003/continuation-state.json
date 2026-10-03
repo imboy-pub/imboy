@@ -4339,5 +4339,12 @@
     "containers_started": false,
     "backend_ready": false,
     "product_pass": false
+  },
+  "isolated_pg_input_shape": {
+    "receipt": "isolated-pg-input-shape.json",
+    "tests": 6,
+    "resource_authorized": false,
+    "backend_ready": false,
+    "product_pass": false
   }
 }
