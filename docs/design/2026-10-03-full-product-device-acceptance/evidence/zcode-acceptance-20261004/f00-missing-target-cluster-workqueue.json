@@ -1,0 +1,204 @@
+{
+  "id": "F00-MISSING-TARGET-CLUSTER-WORKQUEUE",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T07:20:10+08:00",
+  "app_head": "fbe59138e25cfec37808baea157d7413ba1d1e08",
+  "method": "批量核查底稿：把 1763 个无目标功能按页面域聚类，标出与已有 18 个旅程 target 的重叠域；逐域核查按此优先级推进，不批量挂靠冒烟换绿",
+  "totals": {
+    "functions": 1982,
+    "missing_targets": 1763,
+    "placeholder_oracles": 231,
+    "bound": 219,
+    "distinct_bound_targets": 18
+  },
+  "clusters": [
+    {
+      "domain": "group",
+      "missing_targets": 271,
+      "placeholder_among_them": 3,
+      "already_bound_elsewhere": 25
+    },
+    {
+      "domain": "mine",
+      "missing_targets": 242,
+      "placeholder_among_them": 4,
+      "already_bound_elsewhere": 12
+    },
+    {
+      "domain": "workspace",
+      "missing_targets": 201,
+      "placeholder_among_them": 2,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "modules:organization",
+      "missing_targets": 136,
+      "placeholder_among_them": 136,
+      "already_bound_elsewhere": 1
+    },
+    {
+      "domain": "channel",
+      "missing_targets": 111,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 35
+    },
+    {
+      "domain": "personal_info",
+      "missing_targets": 88,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "contact",
+      "missing_targets": 86,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 40
+    },
+    {
+      "domain": "moment",
+      "missing_targets": 74,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "passport",
+      "missing_targets": 58,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 24
+    },
+    {
+      "domain": "user_tag",
+      "missing_targets": 58,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "single",
+      "missing_targets": 48,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "chat",
+      "missing_targets": 44,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 32
+    },
+    {
+      "domain": "qrcode",
+      "missing_targets": 42,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "settings",
+      "missing_targets": 37,
+      "placeholder_among_them": 13,
+      "already_bound_elsewhere": 12
+    },
+    {
+      "domain": "wallet",
+      "missing_targets": 37,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 24
+    },
+    {
+      "domain": "search",
+      "missing_targets": 35,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "live_room",
+      "missing_targets": 33,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "modules:customer_service",
+      "missing_targets": 32,
+      "placeholder_among_them": 32,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "scanner",
+      "missing_targets": 30,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "modules:enterprise",
+      "missing_targets": 16,
+      "placeholder_among_them": 16,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "bottom_navigation",
+      "missing_targets": 12,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "mention",
+      "missing_targets": 12,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "splash",
+      "missing_targets": 12,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "welcome",
+      "missing_targets": 12,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "modules:enterprise_app",
+      "missing_targets": 11,
+      "placeholder_among_them": 11,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "web_shell",
+      "missing_targets": 11,
+      "placeholder_among_them": 0,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "billing",
+      "missing_targets": 4,
+      "placeholder_among_them": 4,
+      "already_bound_elsewhere": 2
+    },
+    {
+      "domain": "modules:enterprise_oa",
+      "missing_targets": 4,
+      "placeholder_among_them": 4,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "workspace_shell",
+      "missing_targets": 4,
+      "placeholder_among_them": 4,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "chat_shell",
+      "missing_targets": 1,
+      "placeholder_among_them": 1,
+      "already_bound_elsewhere": 0
+    },
+    {
+      "domain": "error",
+      "missing_targets": 1,
+      "placeholder_among_them": 1,
+      "already_bound_elsewhere": 0
+    }
+  ],
+  "ready_domains_note": "domains with already_bound_elsewhere>0 have an existing journey target that can be extended with per-function cases (chat, contact, group, channel, auth, wallet, smoke); pure-static domains need new per-action targets",
+  "product_pass": false
+}

@@ -1,0 +1,63 @@
+{
+  "id": "F01-RUNNER-PLATFORM-QUALIFICATION-SEG2",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T07:21:18+08:00",
+  "app_head": "fbe59138e25cfec37808baea157d7413ba1d1e08",
+  "fix_commit": "fbe59138e25cfec37808baea157d7413ba1d1e08",
+  "review": {
+    "verdict": "PASS",
+    "reviewer": "independent subagent (general-purpose, read-only)",
+    "applied_suggestions": [
+      "emulator flag missing → fail-closed ANDROID_EMULATOR_FLAG_UNKNOWN",
+      "+3 tests (missing flag / missing targetPlatform / macos positive gate)"
+    ],
+    "registered_followup": "capture subcommand not gated yet (pre-existing channel, separate defect, not this gate's bypass)"
+  },
+  "behavior_tests": {
+    "file": "imboyapp/scripts/auto_test_lib/auto_test_platform_gate_test.py",
+    "cases": 22,
+    "result": "OK 22/22",
+    "coverage": [
+      "android real",
+      "macos",
+      "unknown",
+      "ios",
+      "chrome",
+      "emulator",
+      "unexpected platform",
+      "id-platform mismatch",
+      "empty id",
+      "missing emulator flag",
+      "missing targetPlatform",
+      "discovery fail",
+      "malformed output",
+      "dry-run no discovery",
+      "rejection precedes spawn (guarded subprocess.run)",
+      "positive first-spawn is flutter test -d <dev> (android+macos)"
+    ]
+  },
+  "end_to_end_negatives": [
+    {
+      "cmd": "python3 scripts/auto_test.py run --phase p0 --device <ios-udid-redacted> --execute",
+      "exit": 2,
+      "error": "IOS_DEVICE_NOT_IN_PLATFORM_SET",
+      "log": "gate-ios.log",
+      "log_sha256": "f6b3b09429d08efb674c5ce09b3f3c74099a31a42396ceb6f340cc008f933615"
+    },
+    {
+      "cmd": "python3 scripts/auto_test.py run --phase p0 --device TOTALLY-UNKNOWN --execute",
+      "exit": 2,
+      "error": "DEVICE_NOT_FOUND",
+      "log": "gate-unknown.log",
+      "log_sha256": "166ae886e57792e0bfc5f27cb68740d8cc0c1d8946887e41bcf0bb8ec4fd8bd2"
+    }
+  ],
+  "dry_run_separation": {
+    "cmd": "run --device macos --dry-run",
+    "exit": 2,
+    "exit_reason": "pre-existing semantics: high-risk BLOCKED specs force overall=2; dry-run did NOT call device discovery (asserted in tests); RC previously misread as 0 through a pipe — corrected here",
+    "log": "gate-macos-dryrun.log",
+    "log_sha256": "6afa4a0dd8f3482bb10f4c0b28da7e63f986d12711c6ba2a825c3b60b2d555b4"
+  },
+  "product_pass": false
+}

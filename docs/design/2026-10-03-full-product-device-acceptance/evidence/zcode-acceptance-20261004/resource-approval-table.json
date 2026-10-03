@@ -1,0 +1,140 @@
+{
+  "id": "RES-APPROVAL-TABLE-SEGMENT2",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T07:20:46+08:00",
+  "backend_head": "aa9ee80f7a9ff02857341bbf245d625ec424ce47",
+  "note": "可直接批准的分列资源表。每格批准=用户对该格范围/端口/动作明确确认；批准一格解锁一格，不互相捆绑。本表不新增任何授权。",
+  "blocks": [
+    {
+      "id": "RES-PG-QUAL",
+      "title": "隔离 PG18 资格核验",
+      "scope": "本机 Docker、既有镜像 imboy/pg18:3.6.1-2（sha256:fbe557…34b4d, linux/arm64，不 pull）、独立 compose project 标签 zc-acc-20261004、loopback 端口 25432、tmpfs 数据、随机合成凭证；验证 server_version 与 pg_jieba/postgis/timescaledb/pgcrypto",
+      "actions": "启动/停止该容器、读写该 tmpfs 实例",
+      "unlocks": [
+        "F01-S02 前半",
+        "四个真 PG E2EE 套件资格判断"
+      ],
+      "excludes": [
+        "共享 4323",
+        "其他容器",
+        "volume 持久化"
+      ]
+    },
+    {
+      "id": "RES-PG-BACKEND",
+      "title": "隔离后端启动与迁移/夹具",
+      "scope": "以隔离 PG 为唯一数据库的本机后端实例（HTTP 19800/WS 同端口）、最小权限迁移执行与回滚演练、合成 seed/reset 幂等夹具、namespace zc-acc-20261004/*",
+      "actions": "编译产物启动本地节点、执行 priv/migrations 到隔离库、写入合成身份/群/频道数据、停止节点",
+      "unlocks": [
+        "F01-S02",
+        "F15 正负路径",
+        "E2EE 后端域套件",
+        "全量 EUnit 两轮",
+        "Admin 真实后台旅程",
+        "后台旅程"
+      ],
+      "excludes": [
+        "生产迁移",
+        "真实短信/支付/推送/Garage 外联（对象存储用本地伪 S3 或禁用）"
+      ]
+    },
+    {
+      "id": "RES-DEV-INSTALL",
+      "title": "Android 真机安装与 macOS App 实例",
+      "scope": "已连接 Android 真机（序列号执行时由用户当面提供并登记租约，不写仓库）安装 debug 构造 App；macOS 桌面 flutter build+run 实例；adb reverse 到隔离端口",
+      "actions": "adb install/launch/uninstall(仅本 run 应用)、flutter build 与 -d 运行、设备截图",
+      "unlocks": [
+        "F01-S03/S04",
+        "设备 L2 格子",
+        "六条校准旅程",
+        "F16 导航矩阵"
+      ],
+      "excludes": [
+        "修改设备系统设置",
+        "读取真人数据",
+        "推送真通道"
+      ]
+    },
+    {
+      "id": "RES-SYNTH-ACC",
+      "title": "合成账号与关系夹具",
+      "scope": "隔离后端上创建合成人类 A/B/C、企业 A/B/C、群≥3成员、频道、坐席/访客；UID 由 API 确认并登记",
+      "actions": "通过隔离后端 API 注册/建关系/清理本 run namespace",
+      "unlocks": [
+        "跨端旅程",
+        "F02–F14 角色格"
+      ],
+      "excludes": [
+        "真实手机号/邮箱验证码通道",
+        "真实联系人"
+      ]
+    },
+    {
+      "id": "RES-CLEANUP",
+      "title": "本 run 资源回收",
+      "scope": "仅 owner=zc-acc-20261004 标签的容器/namespace/设备 App/端口进程；回收前保存脱敏断言与失败历史",
+      "actions": "停止并删除本 run 容器、删除本 run namespace 数据、卸载本 run 安装的 App",
+      "excludes": [
+        "共享 imboy_pg18(4323)",
+        "其他 run/会话资源",
+        "全局 prune"
+      ]
+    },
+    {
+      "id": "RES-MITM",
+      "title": "MITM/canary 负例取证",
+      "scope": "隔离账号 A/B 的本地代理（loopback）截获范围 + 服务端 canary 检索范围（隔离库/日志/对象/队列）；不读真人密钥消息",
+      "actions": "运行本地代理、检索隔离后端存储",
+      "unlocks": [
+        "AC-28 服务端面取证",
+        "真机负例 AC-27 部分"
+      ],
+      "excludes": [
+        "生产环境任何检索",
+        "第三方服务"
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-02/D-05",
+      "topic": "账号信任根/Key Transparency profile + 见证归属成本",
+      "blocks": [
+        "AC-19",
+        "AC-20",
+        "AC-21"
+      ]
+    },
+    {
+      "id": "D-03",
+      "topic": "MLS 启用与迁移",
+      "blocks": [
+        "AC-30",
+        "AC-31"
+      ]
+    },
+    {
+      "id": "D-04",
+      "topic": "PQ 协议/平台策略",
+      "blocks": [
+        "AC-32",
+        "AC-33"
+      ]
+    },
+    {
+      "id": "D-06",
+      "topic": "备份/恢复扩围与破坏性动作（仅条件性）",
+      "blocks": [
+        "AC-07/08 扩展项"
+      ]
+    },
+    {
+      "id": "D-07",
+      "topic": "SLO 冻结（AC-26 门槛）",
+      "blocks": [
+        "AC-26"
+      ]
+    }
+  ],
+  "explicit_exclusions": "本表不含 push/部署/生产迁移/真实支付/第三方通知；提示词不新增授权。"
+}

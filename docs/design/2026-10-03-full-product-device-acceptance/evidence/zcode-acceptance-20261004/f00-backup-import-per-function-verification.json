@@ -1,0 +1,117 @@
+{
+  "id": "F00-BACKUP-IMPORT-PER-FUNCTION-VERIFICATION",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T07:19:44+08:00",
+  "app_head": "fbe59138e25cfec37808baea157d7413ba1d1e08",
+  "method": "逐项阅读 widget/acceptance 测试源码的具体动作与 expect 断言（非同页面绑定推断）；同页面 target 不算覆盖",
+  "correction_vs_prior_receipt": "fn008 升级：widget P0-1 提供本地真实解密导入+公钥回写断言（强于此前记录）；fn001 明确本轮无自动断言、历史目击不继承",
+  "summary": {
+    "L0_PASS_LOCAL": 6,
+    "L0_REAL_DECRYPT_LOCAL": 1,
+    "L2_NOT_EXECUTED_ONLY": 3,
+    "PARTIAL_NOT_EXECUTED": 1,
+    "GAP": 1,
+    "device_or_backend_executed": 0,
+    "PASS_claimed_on_device": 0
+  },
+  "records": [
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:001",
+      "action": "点击选择区调起文件选择器",
+      "verdict": "PARTIAL_NOT_EXECUTED",
+      "evidence": "widget 测试头注释：documentsui 文件选择器无法从外部注入 .enc，仅历史真机人工目击（L8）",
+      "assertions": "本轮无自动断言；历史目击不继承（remaining-acceptance 全量 PENDING 规则）",
+      "binding": "integration_test/settings/e2ee_backup_import_acceptance_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:002",
+      "action": "选中文件后校验并展示备份元信息",
+      "verdict": "L0_PASS_LOCAL (widget L9:116-136)",
+      "evidence": "注入合法 .enc；断言元信息标题/版本/算法/大小/校验通过 5 项 findsOneWidget + 密码框 enabled",
+      "binding": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:003",
+      "action": "文件格式非法时提示校验失败",
+      "verdict": "L0_PASS_LOCAL (widget L10:151-173)",
+      "evidence": "注入伪 .enc；断言 SnackBar 校验失败 findsOneWidget + 无元信息卡 + 密码框 disabled",
+      "binding": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:004",
+      "action": "未选合法文件时密码框保持禁用",
+      "verdict": "L0_PASS_LOCAL (widget L11:175-188)",
+      "evidence": "无文件启动；断言密码框 disabled + 导入按钮 onPressed isNull",
+      "binding": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:005",
+      "action": "密码为空时导入按钮置灰禁用",
+      "verdict": "L0_PASS_LOCAL (widget L9-variant:138-149)",
+      "evidence": "合法文件+空密码；断言导入按钮 onPressed isNull",
+      "binding": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:006",
+      "action": "顶部警告卡片提示覆盖密钥风险",
+      "verdict": "L0_PASS_LOCAL (widget L13:212-219)",
+      "evidence": "断言 guide/replaceKey/trustedSource 三条文案各 findsOneWidget",
+      "binding": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:007",
+      "action": "存在云端备份时展示云端恢复卡片",
+      "verdict": "L0_PASS_LOCAL (widget L14×2:190-210)",
+      "evidence": "有备份→恢复入口 findsOneWidget；探测失败→静默 findsNothing；probe 恰好 1 次（双负例）",
+      "binding": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:008",
+      "action": "输入密码导入并恢复私钥到安全存储",
+      "verdict": "L0_REAL_DECRYPT_LOCAL + L2_NOT_EXECUTED",
+      "evidence": "widget P0-1:221-318 用生产 packBackupBytes（真实 AES-GCM+PBKDF2 310k）加密→输入密码→tap 导入→轮询成功弹窗→断言 deviceKeyReporter 收到恢复公钥；acceptance AT-EI-FILE 全链（真导出→注入→云上）待设备",
+      "binding": "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart,integration_test/settings/e2ee_backup_import_acceptance_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:009",
+      "action": "导入成功弹窗展示脱敏设备与密钥标识",
+      "verdict": "L2_NOT_EXECUTED",
+      "evidence": "widget P0-1 仅断言弹窗标题；脱敏 Device ID:/Key ID: 文本断言只在 acceptance AT-EI-DLG（需设备+后端）",
+      "binding": "integration_test/settings/e2ee_backup_import_acceptance_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:010",
+      "action": "云端恢复弹出口令确认框可取消",
+      "verdict": "L2_NOT_EXECUTED",
+      "evidence": "acceptance AT-EI-CANC：取消后口令框关闭且不恢复（需设备+本地后端）",
+      "binding": "integration_test/settings/e2ee_backup_import_acceptance_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:011",
+      "action": "云端口令错误时提示口令不正确",
+      "verdict": "L2_NOT_EXECUTED",
+      "evidence": "acceptance AT-EI-WRONG：错误口令→口令错误或备份损坏（需设备+本地后端）",
+      "binding": "integration_test/settings/e2ee_backup_import_acceptance_test.dart",
+      "platform_grid": "NOT_EXECUTED(android+macos)"
+    },
+    {
+      "function_id": "fn:settings:e2ee_backup_import_page:012",
+      "action": "恢复后回填群聊会话密钥",
+      "verdict": "GAP_IMPLEMENTATION",
+      "evidence": "acceptance 头注释明确：需群历史 fixture，维持阻塞；无任何测试断言此行为",
+      "binding": "none",
+      "platform_grid": "BLOCKED_UPSTREAM+NOT_EXECUTED"
+    }
+  ],
+  "rule": "任何格子不因本地 L0 提前记设备 PASS；L2 全部 NOT_EXECUTED 待 RES-DEV"
+}
