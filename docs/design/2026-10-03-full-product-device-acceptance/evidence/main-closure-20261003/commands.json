@@ -682,6 +682,69 @@
       "test_source_sha256": "44692929ad2effb334cbb64eb7ab6d9d351279761a48a15745068cb25e51f6af",
       "scope": "ISOLATED_LOCAL_TSID_SUITE_ONLY",
       "product_pass": false
+    },
+    {
+      "id": "PREPARATION-C11-REGISTERED-TRANSPORT-COMPOSITION",
+      "scope": "C11_SINGLE_DEVICE_C2C_COMPOSITION_OFFLINE_ONLY",
+      "product_pass": false,
+      "network_executed": false,
+      "candidate_heads": {
+        "imboy": "dfbd41f342e10642aa83c07e1cd85b4f21310eb1",
+        "imboyapp": "5d8b1945eed65362657ec2039a6155756868b21d",
+        "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+      },
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/service/e2ee_registered_backend_transport_test.dart",
+        "test/unit_test/service/e2ee_release_socket_session_test.dart",
+        "test/unit_test/service/e2ee_release_wire_codec_test.dart",
+        "test/unit_test/service/e2ee_server_ack_tracker_test.dart",
+        "test/unit_test/service/e2ee_registered_wire_binding_test.dart",
+        "test/unit_test/service/e2ee_registered_fixture_test.dart",
+        "test/unit_test/service/e2ee_release_harness_host_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "executed": 75,
+      "failed": 0,
+      "exit": 0,
+      "logs": [
+        {
+          "path": "c11-composed-components-host.log",
+          "sha256": "07c621cc73b03c54a9f0bdb693bdd383698e44a9899d3d826d79f72e93825bac",
+          "phase": "REVIEWED_75_HOST_PASS",
+          "exit": 0
+        },
+        {
+          "path": "c11-composition-interrupted.log",
+          "sha256": "870557472974be2fbecddd6ed77607a18895d59179c5a3e420c56f9d04dcb816",
+          "phase": "INTERRUPTED_SELF_AWAITING_CONNECTION_CLEANUP_NO_PASS",
+          "exit": null
+        }
+      ],
+      "review": [
+        "C11_FLUTTER_REVIEW_APPROVE",
+        "RUNNER_CODE_REVIEW_APPROVE"
+      ],
+      "analysis": "No issues found",
+      "real_transport_state": "REGISTERED_SINGLE_DEVICE_C2C_IMPLEMENTED_NOT_RUNTIME_QUALIFIED",
+      "remaining": [
+        "actual authorized isolated endpoint and credential/seed provenance",
+        "production encrypt before transport using registered IDs",
+        "multi-device/group/attachment/offline/attack journeys",
+        "true device decrypt/display and server storage oracles",
+        "97 acceptance requirements frozen requalification"
+      ],
+      "limitations": [
+        "fake connector proves composition only",
+        "default RealBackendTransport refuses execution",
+        "accepted means server ACK not recipient delivery",
+        "no production or device execution"
+      ],
+      "output": "c11-composed-components-host.log",
+      "output_sha256": "07c621cc73b03c54a9f0bdb693bdd383698e44a9899d3d826d79f72e93825bac"
     }
   ],
   "final_verifier": "NOT_IMPLEMENTED"
