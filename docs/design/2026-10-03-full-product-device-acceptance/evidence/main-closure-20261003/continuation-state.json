@@ -4780,5 +4780,11 @@
     "receipt": "organization-directory-fixture-oracle-alignment-20261004.json",
     "safe_to_execute": false,
     "product_pass": false
+  },
+  "organization_home_stale_failure_regression": {
+    "receipt": "organization-home-stale-failure-regression-20261004.json",
+    "app_head": "05528a662c117db459881770c44dbaf7c6171991",
+    "tests": 7,
+    "product_pass": false
   }
 }

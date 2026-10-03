@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_WIDGET_STALE_FAILURE_REGRESSION",
+  "app_head": "05528a662c117db459881770c44dbaf7c6171991",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_REVIEW",
+  "results": {
+    "final_widget_tests": 7,
+    "failed": 0,
+    "test_exit": 0,
+    "dart_analyze_exit": 0,
+    "calibration_exit": 1,
+    "calibration_expected_failed_cases": 2
+  },
+  "calibration": "Temporarily disabled generation comparisons in home list and invitation guards; both new stale-failure scenarios failed. Restored exact production source bytes before final passing run. Initial selective calibration setup assertion failed before any file write or test execution; then used a verified whole-guard mutation.",
+  "limitations": [
+    "Dio may convert StateError; does not establish independent coverage of every concrete catch branch.",
+    "Does not qualify loading behavior while the new request remains pending.",
+    "Uses an injected adapter and synthetic account state; no actual network, account, database or device execution."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-stale-failures-20261004.log",
+      "sha256": "68b536c0cf8e6fa4f09ab93904b8b7f92eb03e80c42d362f9d686bf3dcd873f6"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-stale-failures-calibration-20261004.log",
+      "sha256": "541253b5e1efe7bc649557db7609c5c299aa2bf4f324bc23599da61b83b83ba9"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-stale-failures-final-20261004.log",
+      "sha256": "68b536c0cf8e6fa4f09ab93904b8b7f92eb03e80c42d362f9d686bf3dcd873f6"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/org-home-stale-failures-analyze-20261004.log",
+      "sha256": "7f9f6b9edf08cc77f926c3d05c26e02d7d21c9de1624c7ba620188b10c6ddb0f"
+    }
+  ]
+}
