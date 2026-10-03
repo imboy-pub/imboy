@@ -1,0 +1,23 @@
+{
+  "scope": "LOCAL_C2C_BUSINESS_ENTRY_WITH_MOCKED_DELIVERY",
+  "product_pass": false,
+  "network_executed": false,
+  "database_executed": false,
+  "backend_head": "9571ebb20a2dee063665df53bdc2e76a7d797010",
+  "argv": [
+    "env",
+    "-u",
+    "IMBOYENV",
+    "make",
+    "eunit",
+    "t=msg_c2c_logic_tests"
+  ],
+  "exit": 0,
+  "executed": 37,
+  "failed": 0,
+  "review": "RUNNER_CODE_REVIEW_APPROVE",
+  "log": "c11-c2c-authenticated-entry.log",
+  "log_sha256": "35aa1c74d710a865333109ea13e2b6fe9d7692e10f354e071a83cc8bf7f010db",
+  "behavior": "Production sender-device stamping overrides untrusted DID; production C2C logic uses authenticated UID instead of forged from; sender-other-device delivery hook receives exact bound UID/DID with logical peer unchanged.",
+  "proof_limit": "Mocked connection context and delivery boundary; plaintext baseline route; not real token auth, PFv3 decryption, persistent DB or device proof."
+}
