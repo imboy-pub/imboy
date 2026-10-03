@@ -1,0 +1,44 @@
+{
+  "scope": "LOCAL_DEVICE_KEY_LOG_PRIVACY_ONLY",
+  "backend_head": "9b8e79b20da7b399d9792d60fdf3af2f79a26ffe",
+  "behavior_red": {
+    "failed": 5,
+    "passed": 27,
+    "exit_code": 1
+  },
+  "green": {
+    "passed": 43,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-key-log-red.log",
+      "sha256": "4197ba98d2f44a42e2ed0a6fcd12947e550fbc5f21a833a0f358d9bd491ed78f"
+    },
+    {
+      "path": "e2ee-key-log-green.log",
+      "sha256": "b978793bd8aa1218fef9a296025ff09f5a71aeca7ead9a64474e6f93d2d4c067"
+    },
+    {
+      "path": "e2ee-key-log-compile.log",
+      "sha256": "6915229f2924b08105af90277bfe6aaa95e0a9a8ac44985b90d4a8b5e223d0b5"
+    }
+  ],
+  "source_hashes": {
+    "src/logic/e2ee_logic.erl": "1b06586b02ab15f003385a489ea727c177fe88af948c6157362b4088bddf855c",
+    "test/logic/e2ee_logic_tests.erl": "b0f391bed04b9b3137a1801531a56d31ab399783a37a114c2d4e9553f0fd5647"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "third_party_notification": false,
+  "limits": [
+    "Six device key log sites retain fixed events and severity without identifiers or arbitrary database reason",
+    "Actual notification payload and API results unchanged; test notification sends are mocked",
+    "No full AC26, production SLO or device qualification"
+  ]
+}

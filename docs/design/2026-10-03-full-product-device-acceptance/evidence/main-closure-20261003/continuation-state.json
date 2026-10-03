@@ -4407,5 +4407,11 @@
     "receipt": "e2ee-recovery-log-redaction.json",
     "tests": 11,
     "product_pass": false
+  },
+  "e2ee_device_key_log_privacy": {
+    "receipt": "e2ee-key-log-redaction.json",
+    "backend_head": "9b8e79b20da7b399d9792d60fdf3af2f79a26ffe",
+    "tests": 43,
+    "product_pass": false
   }
 }

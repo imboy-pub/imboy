@@ -1,0 +1,112 @@
+======================== EUnit ========================
+module 'e2ee_logic_tests'
+  e2ee_logic_tests:27: -device_key_log_case/4-fun-4-...*failed*
+in function e2ee_logic_tests:'-device_key_log_case/4-fun-4-'/2 (test/logic/e2ee_logic_tests.erl, line 32)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,e2ee_logic_tests},
+              {line,32},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ '_' , Event , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  e2ee_logic_tests:27: -device_key_log_case/4-fun-4-...*failed*
+in function e2ee_logic_tests:'-device_key_log_case/4-fun-4-'/2 (test/logic/e2ee_logic_tests.erl, line 32)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,e2ee_logic_tests},
+              {line,32},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ '_' , Event , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  e2ee_logic_tests:27: -device_key_log_case/4-fun-4-...*failed*
+in function e2ee_logic_tests:'-device_key_log_case/4-fun-4-'/2 (test/logic/e2ee_logic_tests.erl, line 32)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,e2ee_logic_tests},
+              {line,32},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ '_' , Event , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  e2ee_logic_tests:27: -device_key_log_case/4-fun-4-...*failed*
+in function e2ee_logic_tests:'-device_key_log_case/4-fun-4-'/2 (test/logic/e2ee_logic_tests.erl, line 32)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,e2ee_logic_tests},
+              {line,32},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ '_' , Event , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  e2ee_logic_tests:45: -key_query_error_logs_do_not_expose_raw_reason_test_/0-fun-6-...*failed*
+in function e2ee_logic_tests:'-key_query_error_logs_do_not_expose_raw_reason_test_/0-fun-3-'/1 (test/logic/e2ee_logic_tests.erl, line 50)
+in call from lists:foreach_1/2 (lists.erl, line 2641)
+in call from e2ee_logic_tests:'-key_query_error_logs_do_not_expose_raw_reason_test_/0-fun-6-'/0 (test/logic/e2ee_logic_tests.erl, line 49)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+**error:{assertEqual,[{module,e2ee_logic_tests},
+              {line,50},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ '_' , Event , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  e2ee_logic_tests:73: -group_failure_log_case/3-fun-6-...ok
+  e2ee_logic_tests:73: -group_failure_log_case/3-fun-6-...ok
+  e2ee_logic_tests:73: -group_failure_log_case/3-fun-6-...ok
+  e2ee_logic_tests:134: -user_keys_same_user_success_test_/0-fun-2-...ok
+  e2ee_logic_tests:167: -user_keys_friend_success_test_/0-fun-2-...ok
+  e2ee_logic_tests:196: -user_keys_non_friend_still_returns_public_keys_test_/0-fun-2-...ok
+  e2ee_logic_tests:225: -user_keys_in_denylist_still_returns_public_keys_test_/0-fun-2-...ok
+  e2ee_logic_tests:254: -user_keys_database_error_returns_500_test_/0-fun-2-...[0.005 s] ok
+  e2ee_logic_tests:272: -user_keys_with_multiple_devices_test_/0-fun-3-...ok
+  e2ee_logic_tests:317: -group_member_keys_member_success_test_/0-fun-3-...ok
+  e2ee_logic_tests:351: -group_member_keys_non_member_forbidden_test_/0-fun-2-...ok
+  e2ee_logic_tests:369: -group_member_keys_database_error_returns_500_test_/0-fun-2-...[0.001 s] ok
+  e2ee_logic_tests:383: -group_member_keys_authorized_without_keys_returns_empty_test_/0-fun-2-...ok
+  e2ee_logic_tests:399: -group_member_keys_limit_boundary_test_/0-fun-2-...[0.001 s] ok
+  e2ee_logic_tests:415: -group_member_keys_limit_plus_one_fails_closed_test_/0-fun-2-...[0.001 s] ok
+  e2ee_logic_tests:431: -group_member_keys_member_limit_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:447: -group_history_grant_returns_authoritative_range_test_/0-fun-2-...ok
+  e2ee_logic_tests:470: -group_history_grant_denied_test_/0-fun-2-...ok
+  e2ee_logic_tests:482: -group_history_grant_invalid_boundary_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:498: -group_history_grant_open_end_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:524: -group_by_uid_single_device_test_/0-fun-4-...ok
+  e2ee_logic_tests:545: -group_by_uid_multiple_devices_same_user_test_/0-fun-3-...ok
+  e2ee_logic_tests:573: -group_by_uid_multiple_users_test_/0-fun-3-...ok
+  e2ee_logic_tests:587: -group_by_uid_removes_user_id_field_test_/0-fun-2-...ok
+  e2ee_logic_tests:600: -user_keys_with_no_devices_test_/0-fun-2-...ok
+  e2ee_logic_tests:623: -group_member_keys_sorts_by_uid_test_/0-fun-3-...ok
+  e2ee_logic_tests:671: -pull_key_notifications_clamps_limit_test_/0-fun-4-...ok
+  [done in 1.260 s]
+=======================================================
+  Failed: 5.  Skipped: 0.  Passed: 27.

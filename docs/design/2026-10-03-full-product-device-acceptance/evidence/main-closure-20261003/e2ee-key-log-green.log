@@ -1,0 +1,50 @@
+======================== EUnit ========================
+module 'e2ee_logic_tests'
+  e2ee_logic_tests:34: -device_key_log_case/4-fun-4-...[0.003 s] ok
+  e2ee_logic_tests:34: -device_key_log_case/4-fun-4-...ok
+  e2ee_logic_tests:34: -device_key_log_case/4-fun-4-...ok
+  e2ee_logic_tests:34: -device_key_log_case/4-fun-4-...ok
+  e2ee_logic_tests:60: -key_query_error_logs_do_not_expose_raw_reason_test_/0-fun-6-...[0.001 s] ok
+  e2ee_logic_tests:93: -group_failure_log_case/3-fun-6-...ok
+  e2ee_logic_tests:93: -group_failure_log_case/3-fun-6-...ok
+  e2ee_logic_tests:93: -group_failure_log_case/3-fun-6-...ok
+  e2ee_logic_tests:154: -user_keys_same_user_success_test_/0-fun-2-...ok
+  e2ee_logic_tests:187: -user_keys_friend_success_test_/0-fun-2-...ok
+  e2ee_logic_tests:216: -user_keys_non_friend_still_returns_public_keys_test_/0-fun-2-...ok
+  e2ee_logic_tests:245: -user_keys_in_denylist_still_returns_public_keys_test_/0-fun-2-...ok
+  e2ee_logic_tests:274: -user_keys_database_error_returns_500_test_/0-fun-2-...[0.006 s] ok
+  e2ee_logic_tests:292: -user_keys_with_multiple_devices_test_/0-fun-3-...ok
+  e2ee_logic_tests:337: -group_member_keys_member_success_test_/0-fun-3-...ok
+  e2ee_logic_tests:371: -group_member_keys_non_member_forbidden_test_/0-fun-2-...ok
+  e2ee_logic_tests:389: -group_member_keys_database_error_returns_500_test_/0-fun-2-...ok
+  e2ee_logic_tests:403: -group_member_keys_authorized_without_keys_returns_empty_test_/0-fun-2-...ok
+  e2ee_logic_tests:419: -group_member_keys_limit_boundary_test_/0-fun-2-...[0.001 s] ok
+  e2ee_logic_tests:435: -group_member_keys_limit_plus_one_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:451: -group_member_keys_member_limit_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:467: -group_history_grant_returns_authoritative_range_test_/0-fun-2-...ok
+  e2ee_logic_tests:490: -group_history_grant_denied_test_/0-fun-2-...ok
+  e2ee_logic_tests:502: -group_history_grant_invalid_boundary_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:518: -group_history_grant_open_end_fails_closed_test_/0-fun-2-...ok
+  e2ee_logic_tests:544: -group_by_uid_single_device_test_/0-fun-4-...ok
+  e2ee_logic_tests:565: -group_by_uid_multiple_devices_same_user_test_/0-fun-3-...ok
+  e2ee_logic_tests:593: -group_by_uid_multiple_users_test_/0-fun-3-...ok
+  e2ee_logic_tests:607: -group_by_uid_removes_user_id_field_test_/0-fun-2-...ok
+  e2ee_logic_tests:620: -user_keys_with_no_devices_test_/0-fun-2-...ok
+  e2ee_logic_tests:643: -group_member_keys_sorts_by_uid_test_/0-fun-3-...ok
+  e2ee_logic_tests:691: -pull_key_notifications_clamps_limit_test_/0-fun-4-...ok
+  [done in 1.329 s]
+module 'e2ee_recovery_logic_tests'
+  e2ee_recovery_logic_tests: recommend_method_empty_test...ok
+  e2ee_recovery_logic_tests: recommend_method_selects_best_test...ok
+  e2ee_recovery_logic_tests: recommend_method_selects_social_test...ok
+  e2ee_recovery_logic_tests: start_auto_recovery_local_backup_now_unsupported_test...ok
+  e2ee_recovery_logic_tests: start_auto_recovery_unsupported_test...ok
+  e2ee_recovery_logic_tests:74: -recovery_options_include_server_backup_test_/0-fun-7-...ok
+  e2ee_recovery_logic_tests:95: -recovery_options_no_backup_test_/0-fun-3-...ok
+  e2ee_recovery_logic_tests:108: -start_server_backup_recovery_test_/0-fun-3-...ok
+  e2ee_recovery_logic_tests:123: -start_server_backup_recovery_no_backup_test_/0-fun-2-...ok
+  e2ee_recovery_logic_tests:142: -start_server_backup_recovery_db_error_increments_metric_test_/0-fun-3-...ok
+  e2ee_recovery_logic_tests:165: -recovery_database_errors_do_not_log_identity_or_raw_reason_test_/0-fun-6-...ok
+  [done in 0.118 s]
+=======================================================
+  All 43 tests passed.
