@@ -2802,5 +2802,60 @@
       "Full frozen F16 required page/state collection"
     ],
     "proof_limit": "Real widget implementation with synthetic callback errors; no app initialization services, real database or device verified. No F16 parent PASS."
+  },
+  "f00_nonlegacy_five_page_host": {
+    "id": "PREPARATION-F00-NONLEGACY-FIVE-PAGE-HOST",
+    "scope": "LOCAL_WIDGET_AND_FAKE_DEPENDENCIES_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "50b4210df8c73dce7d587057a3d04044487a5d62",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/page/error/init_error_page_test.dart",
+      "test/unit_test/page/settings/safety_number_page_widget_test.dart",
+      "test/unit_test/page/settings/e2ee_backup_setup_page_widget_test.dart",
+      "test/unit_test/page/billing/plan_list_page_test.dart",
+      "test/unit_test/page/workspace/workspace_conversations_page_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "executed": 20,
+    "exit": 0,
+    "log": {
+      "path": "f00-nonlegacy-five-page-host.log",
+      "sha256": "fce2648c90a60b8a59d7b5daa911319f323a4c420f9c411c0a828ced6ff6b825"
+    },
+    "targets": [
+      {
+        "path": "test/unit_test/page/error/init_error_page_test.dart",
+        "sha256": "fe2b936f7a032bc7ea0bb725e1f5e8a80bcb5a61061b1deccf4b88152f630ac8"
+      },
+      {
+        "path": "test/unit_test/page/settings/safety_number_page_widget_test.dart",
+        "sha256": "0006266554c7c9abc407188576235a36da15607b038b071fe85dfc010fd57ae1"
+      },
+      {
+        "path": "test/unit_test/page/settings/e2ee_backup_setup_page_widget_test.dart",
+        "sha256": "2a788e942c09ca2718d91172e6e9263650d2d922ed8dcfe493c9d9de8f8b4672"
+      },
+      {
+        "path": "test/unit_test/page/billing/plan_list_page_test.dart",
+        "sha256": "fa171470118d159502c1ae2ce9470c868fb94a2a535f939c43dbf02cc59b93ff"
+      },
+      {
+        "path": "test/unit_test/page/workspace/workspace_conversations_page_test.dart",
+        "sha256": "072afaea6fb9819e52d465a8b5a5af718159dfac7507ce5f6047e5ca3bbd12bd"
+      }
+    ],
+    "limits": {
+      "safety_number": "Layout/error fallback only; not successful identity or fingerprint comparison",
+      "backup_setup": "Injected upload and mocked secure storage; no server backup or real keychain proof",
+      "billing": "Fake API empty/error/list/current-plan rendering; no real subscription/payment proof",
+      "workspace_conversations": "Fake API/provider state/account isolation; no backend permissions or device journey",
+      "init_error": "Callback retry behavior only, not bootstrap initialization services"
+    },
+    "remaining": "Each required Android/macOS/profile/role case and genuine backend/business oracle remains required; no F00/F08/F10/F14/F16 parent qualification."
   }
 }
