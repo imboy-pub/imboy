@@ -2121,5 +2121,88 @@
       "real dual-device decrypt/display",
       "97-ID frozen final qualification"
     ]
+  },
+  "c11_live_own_device_delivery": {
+    "scope": "LOCAL_PRODUCTION_ROUTING_WITH_MOCKED_ONLINE_REGISTRY",
+    "product_pass": false,
+    "network_executed": false,
+    "database_executed": false,
+    "backend_head": "b4a9580ad035f75b08f7964a638f9c7d61845090",
+    "executed": 49,
+    "failed": 0,
+    "logs": [
+      {
+        "path": "c11-live-own-device-delivery.log",
+        "sha256": "797d49baa6ad66e0e630cc70646d34c50c4e56182d37877566ed3d6c0a1710bf",
+        "exit": 0,
+        "executed": 5,
+        "phase": "INITIAL"
+      },
+      {
+        "path": "c11-live-own-device-delivery-reviewed.log",
+        "sha256": "9dc51c7b1539798052f231fd1805b51cfbce63e0ecb603baa8b25e341883c24b",
+        "exit": 0,
+        "executed": 7,
+        "phase": "REVIEWED"
+      },
+      {
+        "path": "c11-live-own-device-c2c-regression.log",
+        "sha256": "ce507a6dde970601cec9c70228e8415e11dd9da72a1aba2679de3b063a6dfc87",
+        "exit": 0,
+        "executed": 37,
+        "phase": "REGRESSION"
+      },
+      {
+        "path": "c11-live-own-device-retry-regression.log",
+        "sha256": "294002d78b992e17058cc8de18726f9e42d4d3022166a320e53d543ca8fc175b",
+        "exit": 0,
+        "executed": 5,
+        "phase": "REGRESSION"
+      }
+    ],
+    "commands": [
+      [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=msg_c2c_delivery_ds_tests"
+      ],
+      [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=msg_c2c_logic_tests"
+      ],
+      [
+        "env",
+        "-u",
+        "IMBOYENV",
+        "make",
+        "eunit",
+        "t=message_ds_ack_retry_tests"
+      ]
+    ],
+    "review": "RUNNER_CODE_REVIEW_APPROVE_WITH_ADDITIONAL_DISPATCH_TEST",
+    "source_sha256": {
+      "src/ds/msg_c2c_delivery_ds.erl": "63a3747b6edbca85f66d71a6298eaa765f320460707bc392337439d16943ad5d",
+      "src/logic/msg_c2c_logic.erl": "ddf16893f9f11869897cabfe2b0af3cfafda2b47989540f9be75f923e2a73fd5",
+      "test/ds/msg_c2c_delivery_ds_tests.erl": "011d84e2c4e798b1b1e2053c298d068e8129ebc10b58dd49c022f2e52ebe1a4e"
+    },
+    "behavior": [
+      "C2C v3 fanout only; sender identity matches authenticated UID/DID",
+      "online sender-owned DID intersection with ciphertext copies; original excluded; dedup",
+      "nonempty whitelist delivery using actual production retry dispatcher",
+      "logical to and ciphertext unchanged; no empty whitelist broadcast"
+    ],
+    "remaining": [
+      "real online device delivery/decrypt/receipt",
+      "offline own-device archive persistence/recovery",
+      "device directory changes and connection-failure journeys",
+      "97-ID frozen final qualification"
+    ]
   }
 }
