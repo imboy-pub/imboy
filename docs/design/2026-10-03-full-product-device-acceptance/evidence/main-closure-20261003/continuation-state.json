@@ -4134,5 +4134,14 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "c11_group_consumer_ack": {
+    "receipt": "c11-group-consumer-ack.json",
+    "receipt_sha256": "abe2b9e93eae43abd31e82c25c49e747aa59bf3e568c72746ba335c984fdc589",
+    "app_head": "c47b1694aeb42ac2610c7e956985c54ede77ae2e",
+    "executed": 28,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

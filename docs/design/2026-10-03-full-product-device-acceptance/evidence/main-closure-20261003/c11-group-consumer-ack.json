@@ -1,0 +1,34 @@
+{
+  "id": "C11-C2G-CONSUMER-ACK-COMPOSITION",
+  "app_head": "c47b1694aeb42ac2610c7e956985c54ede77ae2e",
+  "scope": "LOCAL_HOST_REGISTERED_TRANSPORT_WITH_FAKE_SOCKET",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "executed": 28,
+  "failed": 0,
+  "exit_code": 0,
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "log": "c11-group-consumer-ack.log",
+  "log_sha256": "fa588534a918fcc02e1b92882eb83820f44b2c5ba3f54d141750037f0a17ba52",
+  "oracles": [
+    "Identity registry admits only actual received group objects",
+    "Recheck fixture group context before receipt",
+    "C2G consumer receipt has exact production-format bytes",
+    "Matching server confirmation completes receipt",
+    "Error timeout and disconnect remain unconfirmed",
+    "Local bound but unreceived frame cannot be acknowledged"
+  ],
+  "recovery": "Editing helper twice matched pre-format text and raised ValueError; inspected current source, completed only missing test insertion, reran tests and analysis. No failed behavioral run promoted.",
+  "remaining": [
+    "reconnect and duplicate-frame receipt negative journeys",
+    "current membership/epoch/room-key authorization",
+    "real four-account device decrypt/display/attack qualification"
+  ],
+  "limits": [
+    "Consumer receipt proves server confirmation only, not independent decrypt/display",
+    "Initial fixture member check is not live group authorization",
+    "No device/backend execution or original acceptance ID upgrade"
+  ]
+}
