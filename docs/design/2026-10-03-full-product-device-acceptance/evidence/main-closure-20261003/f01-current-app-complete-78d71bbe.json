@@ -1,0 +1,90 @@
+{
+  "scope": "CURRENT_CLEAN_APP_HOST_GATE_AND_COVERAGE_READINESS",
+  "app_head_before": "78d71bbe189dd4c06aefa6a14accb55efe7e2596",
+  "app_head_after": "78d71bbe189dd4c06aefa6a14accb55efe7e2596",
+  "app_worktree_clean_after": true,
+  "full_app_gate": "FAIL",
+  "unit_command": [
+    "flutter",
+    "test",
+    "test/unit_test",
+    "--reporter",
+    "expanded"
+  ],
+  "unit_exit_code": 1,
+  "elapsed_log": "11:52",
+  "passed": 7163,
+  "skipped": 236,
+  "failed": 6,
+  "failed_tests": [
+    "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/api/auth_api_test.dart: 认证流程 1.2 错误凭证登录 — 返回非 0 code [E]",
+    "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/api/auth_api_test.dart: 认证流程 1.4 未认证访问受保护接口 — 返回非 0 code [E]",
+    "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/api/auth_api_test.dart: App 初始化配置 2.1 init_config 无需认证可达，返回 code=0 [E]",
+    "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/api/auth_api_test.dart: App 初始化配置 2.2 版本检查响应包含 updatable 字段 [E]",
+    "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/api/auth_api_test.dart: App 初始化配置 2.3 极高版本号不触发更新 [E]",
+    "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/api/auth_api_test.dart: 错误处理 4.1 无效路径 — 返回非 0 code [E]"
+  ],
+  "failure_reason": "Six API contracts fail in signing-key loading before the request; authorized isolated backend/key binding not supplied",
+  "analyze_command": [
+    "dart",
+    "analyze",
+    "lib",
+    "test/unit_test",
+    "--fatal-infos"
+  ],
+  "analyze_exit_code": 0,
+  "analyze_issues": 0,
+  "inventory_command": [
+    "python3",
+    "scripts/auto_test_lib/inventory.py",
+    "--acceptance-check"
+  ],
+  "inventory_exit_code": 64,
+  "inventory_gaps": {
+    "ACCEPTANCE_ORACLE_PLACEHOLDER": 231,
+    "ACCEPTANCE_TARGET_MISSING": 1761
+  },
+  "artifacts": [
+    {
+      "path": "f01-current-app-complete-78d71bbe.unit.log",
+      "sha256": "50bf37bf5fed5d58d692072f7b88bdcaa5934e1308bcc71d1d06a5c42d36221c",
+      "bytes": 6004485
+    },
+    {
+      "path": "f01-current-app-complete-78d71bbe.analyze.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678",
+      "bytes": 45
+    },
+    {
+      "path": "f01-current-app-complete-78d71bbe.inventory.log",
+      "sha256": "4844ead41fa2af5368f6c6354ac4a93f8085dd370c0a5bad6b29af3ba8e22511",
+      "bytes": 75607
+    }
+  ],
+  "failure_source_hashes": [
+    {
+      "path": "test/unit_test/api/api_test_client.dart",
+      "sha256": "5f718db3c1cde63d94d0df58f41587b830182321837a7a2a845e44717910a271"
+    },
+    {
+      "path": "test/unit_test/api/auth_api_test.dart",
+      "sha256": "1bbfb1f83595c0f1fa45ff0128139b0ab9d7317f15e29f4e9c2235f54c2eba12"
+    }
+  ],
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_qualification": "NOT_PROVEN",
+  "original_acceptance_ids_upgraded": [],
+  "remaining": [
+    "Use authorized isolated backend and matched signing configuration for API contract retest",
+    "Classify all 236 skips against original required cases; required skips cannot pass",
+    "Close 1761 missing target hints and 231 placeholder oracles with concrete per-function/platform evidence",
+    "Complete backend frozen L3 and actual Android/macOS journeys plus independent final qualification"
+  ],
+  "limits": [
+    "Expanded host log is not original case-ID machine-event qualification",
+    "No default signing key was injected or target address replaced",
+    "Host progress counts are not accepted original requirements",
+    "Static cleanliness does not prove config/fixture/device/runtime authorization"
+  ]
+}
