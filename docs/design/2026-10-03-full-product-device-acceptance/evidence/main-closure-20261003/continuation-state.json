@@ -4521,5 +4521,11 @@
     "app_head": "21e7d473806b03ce225e36aae469586a25520065",
     "tests": 18,
     "product_pass": false
+  },
+  "e2ee_mapper_runtime_privacy": {
+    "receipt": "e2ee-mapper-runtime-privacy.json",
+    "app_head": "f519a7916c23364e09be3b0c5f1896e737c122f6",
+    "tests": 6,
+    "product_pass": false
   }
 }

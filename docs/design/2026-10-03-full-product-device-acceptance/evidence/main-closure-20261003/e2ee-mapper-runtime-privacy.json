@@ -1,0 +1,35 @@
+{
+  "scope": "HOST_REAL_MAPPER_MALFORMED_V3_REJECTION_LOG_ONLY",
+  "app_head": "f519a7916c23364e09be3b0c5f1896e737c122f6",
+  "tests": 6,
+  "exit_code": 0,
+  "analysis_exit_code": 0,
+  "unsafe_log_calibration_exit_code": 1,
+  "restored_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "e2ee-mapper-runtime-log.log",
+      "sha256": "c52547f93d36a884ac7470a4be93acb37af85d368defd0bcc6f06af9983cae5d"
+    },
+    {
+      "path": "e2ee-mapper-runtime-analysis.log",
+      "sha256": "61da4cad3b3a583d110fba4e22a78d739a3c9e9d426c2fe0acc536eccaf2e296"
+    },
+    {
+      "path": "e2ee-mapper-runtime-calibration.log",
+      "sha256": "3305c53bd737f48a3afe8cd3217986ddebfdac1389873c6728623e07efd42edc"
+    },
+    {
+      "path": "e2ee-mapper-runtime-restored.log",
+      "sha256": "c52547f93d36a884ac7470a4be93acb37af85d368defd0bcc6f06af9983cae5d"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Synthetic protocol fixture and in-memory sqlite; not real Olm crypto or device/backend journey",
+    "Original reason remains in business metadata; no metadata persistence privacy claim",
+    "Only malformed selected envelope rejection path log and placeholder tested"
+  ]
+}

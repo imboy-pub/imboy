@@ -1,0 +1,55 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/decrypt_on_read_v3_gap_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: decrypt-on-read 路径的 v3 缺口（实证） toTypeMessage 所用的 decryptE2EEMessage 无法解出 v3 明文
+00:00 +1: decrypt-on-read 路径的 v3 缺口（实证） 对照组：同一行数据经 decryptInboundV3 必须可读
+*** sqflite warning ***
+
+You are changing sqflite default factory.
+Be aware of the potential side effects. Any library using sqflite
+will have this factory as the default for all operations.
+
+*** sqflite warning ***
+
+00:00 +2: 读时拒绝畸形信封且日志不暴露消息标识与原始原因
+*** sqflite warning ***
+
+You are changing sqflite default factory.
+Be aware of the potential side effects. Any library using sqflite
+will have this factory as the default for all operations.
+
+*** sqflite warning ***
+
+📊 [E2EE_METRICS] decrypt failure: envelope_invalid total=1
+00:00 +3: decrypt-on-read v3 正向可用性（生产入口 toTypeMessage） v3 离线行经 toTypeMessage 能读出明文
+*** sqflite warning ***
+
+You are changing sqflite default factory.
+Be aware of the potential side effects. Any library using sqflite
+will have this factory as the default for all operations.
+
+*** sqflite warning ***
+
+✅ toTypeMessage: v3 解密成功
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +4: decrypt-on-read v3 正向可用性（生产入口 toTypeMessage） 缺 sender_did 的旧行必须 fail-closed 且不得暴露密文
+*** sqflite warning ***
+
+You are changing sqflite default factory.
+Be aware of the potential side effects. Any library using sqflite
+will have this factory as the default for all operations.
+
+*** sqflite warning ***
+
+⚠️ toTypeMessage: v3 解密失败，reason=context_mismatch_sender_did
+📊 [E2EE_METRICS] decrypt failure: context_mismatch_sender_did total=1
+00:00 +5: decrypt-on-read 路径接线状态（结构级） toTypeMessage 必须先经 decryptInboundV3 分流，再回落 v1/v2
+*** sqflite warning ***
+
+You are changing sqflite default factory.
+Be aware of the potential side effects. Any library using sqflite
+will have this factory as the default for all operations.
+
+*** sqflite warning ***
+
+00:00 +6: (tearDownAll)
+00:00 +6: All tests passed!

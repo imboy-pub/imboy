@@ -1,0 +1,20 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/decrypt_on_read_v3_gap_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: 读时拒绝畸形信封且日志不暴露消息标识与原始原因
+00:00 +0 -1: 读时拒绝畸形信封且日志不暴露消息标识与原始原因 [E]
+  Expected: contains '⚠️ toTypeMessage: v3 解密失败，reason=envelope_invalid'
+    Actual: [
+              '⚠️ toTypeMessage: v3 解密失败，id=synthetic-private-message-id, reason=envelope_invalid'
+            ]
+     Which: does not contain '⚠️ toTypeMessage: v3 解密失败，reason=envelope_invalid'
+  
+  package:matcher                                                     expect
+  package:flutter_test/src/widget_tester.dart 473:18                  expect
+  test/unit_test/service/e2ee/decrypt_on_read_v3_gap_test.dart 286:5  main.<fn>
+  
+📊 [E2EE_METRICS] decrypt failure: envelope_invalid total=1
+00:00 +0 -1: (tearDownAll)
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/decrypt_on_read_v3_gap_test.dart: 读时拒绝畸形信封且日志不暴露消息标识与原始原因
