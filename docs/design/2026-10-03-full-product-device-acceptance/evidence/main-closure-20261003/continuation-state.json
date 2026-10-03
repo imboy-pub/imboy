@@ -4604,5 +4604,11 @@
     "app_head": "99afa239c532163f27d2ea05530554b8ee1237e0",
     "tests": 26,
     "product_pass": false
+  },
+  "f14_payment_app_logger_runtime": {
+    "receipt": "payment-app-logger-runtime.json",
+    "app_head": "6d389fd72f82922155a5bc4da6c419b4de26dc19",
+    "tests": 24,
+    "product_pass": false
   }
 }

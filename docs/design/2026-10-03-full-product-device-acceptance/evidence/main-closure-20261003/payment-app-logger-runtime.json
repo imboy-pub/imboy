@@ -1,0 +1,34 @@
+{
+  "scope": "LOCAL_ALIPAY_DEBUG_AND_APPLOGGER_RUNTIME_PRIVACY",
+  "app_head": "6d389fd72f82922155a5bc4da6c419b4de26dc19",
+  "tests": 24,
+  "exit_code": 0,
+  "analysis_exit_code": 0,
+  "raw_exception_argument_calibration_exit_code": 1,
+  "review": "APPROVED_CODE_AND_FLUTTER",
+  "artifacts": [
+    {
+      "path": "payment-app-logger-runtime.log",
+      "sha256": "0bc4679e5a30690bf02a87916d35321ea5969c860057d5684bf827a39cbc9b0c"
+    },
+    {
+      "path": "payment-app-logger-runtime-analysis.log",
+      "sha256": "aa25728d35f7e834237bcade7ffe276197cb30fdab698b9eae2fe9d15875f49f"
+    },
+    {
+      "path": "payment-app-logger-calibration.log",
+      "sha256": "ce0077356fa7eb11500bcaf205aac44e7c7633bf345cc66c7dadfde2dda67ba7"
+    },
+    {
+      "path": "payment-app-logger-restored.log",
+      "sha256": "0bc4679e5a30690bf02a87916d35321ea5969c860057d5684bf827a39cbc9b0c"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Captures actual Logger output and debugPrint for synthetic Alipay SDK failure",
+    "Wechat runtime path, production error event transport and real native SDK not qualified",
+    "No actual device/backend/payment or full-product acceptance qualification"
+  ]
+}
