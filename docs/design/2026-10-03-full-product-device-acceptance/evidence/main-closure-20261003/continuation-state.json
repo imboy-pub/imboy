@@ -2506,5 +2506,37 @@
       "upstream handoff and user UX review",
       "real business oracles and final 97-ID qualification"
     ]
+  },
+  "f01_version_acceptance_set": {
+    "id": "PREPARATION-F01-VERSION-ACCEPTANCE-SET",
+    "scope": "PINNED_PRODUCT_ID_SET_CORRELATION_ONLY",
+    "product_pass": false,
+    "network_executed": false,
+    "app_head": "fd902b1785097c21da39bcac7d8522b1b8d80587",
+    "executed": 128,
+    "exit": 0,
+    "log": {
+      "path": "f01-version-acceptance-set.log",
+      "sha256": "433429b56d16c9ca555dd20380f98d5cc9eb6b2b76798e3de30a8899c48f2fb8"
+    },
+    "reviews": [
+      "PYTHON_REVIEW_APPROVE",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "actual_document_probe": {
+      "source": "2026-10-03-full-product-android-macos-integration-acceptance-v1-acceptance-set.json",
+      "sha256": "86bd6362dcf08e494d64de816eee4cd29d845b78c353363790fe7cc2d11a26b0",
+      "ids": 61,
+      "positive_errors": [],
+      "drop_one_errors": [
+        "VERSION_ACCEPTANCE_SET_MISMATCH"
+      ]
+    },
+    "requirements": [
+      "Runtime product IDs must exactly match independently pinned acceptance_set JSON",
+      "Both collections require nonempty unique strings",
+      "Missing extra duplicate malformed IDs cannot pass"
+    ],
+    "proof_limit": "ID membership integrity only; does not prove current scope approval, business behavior or upstream E2EE qualification. Original 61 product plus 36 upstream IDs remain unqualified."
   }
 }
