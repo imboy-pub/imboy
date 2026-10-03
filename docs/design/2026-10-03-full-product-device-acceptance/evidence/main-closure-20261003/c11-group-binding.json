@@ -1,0 +1,43 @@
+{
+  "id": "C11-OFFLINE-C2G-ENVELOPE-BINDING",
+  "app_head": "883a76396a20f2514a5d6456075d9f2b2a98da7c",
+  "scope": "OFFLINE_ADAPTER_COMPONENT_ONLY",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "executed": 6,
+  "failed": 0,
+  "exit_code": 0,
+  "analysis": "No issues found",
+  "review": "APPROVED_AFTER_REQUIRED_CIPHERTEXT_CHECK_REPAIR",
+  "logs": [
+    {
+      "phase": "SETUP_FAILED",
+      "path": "c11-group-binding-setup-failed.log",
+      "sha256": "37a66ccdd34f2e072929965affc1ff4588e5ff910c9e2253640e46e279eb7e4c"
+    },
+    {
+      "phase": "GREEN_REVIEWED",
+      "path": "c11-group-binding.log",
+      "sha256": "7dfed84cc6547b25bbad6741ce0ae1e91776a7ab1178831489cb2b5088a84988"
+    }
+  ],
+  "oracles": [
+    "group alias/member/sender DID binding",
+    "PFv3 group scope, registered gid, Megolm1 and session identity",
+    "outer context equality",
+    "reject C2C fanout and UTF8 messageid over40bytes",
+    "reject missing/empty/nonstring ciphertext",
+    "deep copy original envelope"
+  ],
+  "recovery": "Review found ciphertext requirement missing; added explicit type/nonempty guard and all negative values. Test setup initially attempted const metadata mutation; replaced metadata map and retained failure log.",
+  "remaining": [
+    "connect independent group send/receive/ACK APIs",
+    "authorized current membership and epoch/rotation/room-key operations",
+    "real four-account group journeys and device/decryption/display oracles"
+  ],
+  "limits": [
+    "Initial membership and structure only; does not authenticate ciphertext/keys or current group access",
+    "No real network, group authorization, protocol correctness or AC-23 PASS claim"
+  ]
+}

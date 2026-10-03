@@ -1,0 +1,16 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_binding_test.dart
+00:00 +0: binds group IDs and snapshots original encrypted envelope
+00:00 +1: rejects unregistered group and device aliases
+00:00 +2: rejects cross-group protected context and outer context mismatch
+00:00 +3: rejects mismatched sender session and empty ciphertext
+00:00 +3 -1: rejects mismatched sender session and empty ciphertext [E]
+  Unsupported operation: Cannot modify unmodifiable map
+  dart:_compact_hash                                                    _UnmodifiableMapMixin.[]=
+  test/unit_test/service/e2ee_registered_group_binding_test.dart 80:46  main.<fn>
+  
+00:00 +3 -1: rejects registered sender outside initial group membership
+00:00 +4 -1: rejects C2C fanout and UTF8 message ID overflow
+00:00 +5 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_binding_test.dart: rejects mismatched sender session and empty ciphertext

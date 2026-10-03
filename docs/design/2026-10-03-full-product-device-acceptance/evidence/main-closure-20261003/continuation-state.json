@@ -4088,5 +4088,15 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "c11_offline_group_binding": {
+    "receipt": "c11-group-binding.json",
+    "receipt_sha256": "2b648bbae2c682e9e7dccb24a730d92fc4dcf242998014ee4003bee2ae089c39",
+    "app_head": "883a76396a20f2514a5d6456075d9f2b2a98da7c",
+    "executed": 6,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false,
+    "network_connection": "NOT_CONNECTED"
   }
 }
