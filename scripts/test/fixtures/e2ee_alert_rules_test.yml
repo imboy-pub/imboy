@@ -1,0 +1,100 @@
+# Synthetic alert evaluation only; no server, scrape or notification is executed.
+rule_files:
+  - ../../../deploy/prometheus/rules/imboy-alerts.yml
+evaluation_interval: 30s
+tests:
+  - name: zero_failures
+    interval: 30s
+    input_series:
+      - series: olm_otk_exhausted_total
+        values: "0+0x30"
+      - series: olm_identity_pop_rejected_total
+        values: "0+0x30"
+      - series: olm_identity_rotation_rejected_total
+        values: "0+0x30"
+      - series: olm_rotation_event_failed_total
+        values: "0+0x30"
+      - series: group_e2ee_check_failed_total
+        values: "0+0x30"
+      - series: e2ee_recovery_failed_total
+        values: "0+0x30"
+    promql_expr_test:
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmOtkExhausted",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples: []
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmIdentityPopRejected",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples: []
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmIdentityRotationRejected",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples: []
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmRotationEventFailed",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples: []
+      - expr: 'sum(ALERTS{alertname="ImBoyGroupE2eeCheckFailed",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples: []
+      - expr: 'sum(ALERTS{alertname="ImBoyE2eeRecoveryFailed",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples: []
+  - name: sustained_failures
+    interval: 30s
+    input_series:
+      - series: olm_otk_exhausted_total
+        values: "0+10x30"
+      - series: olm_identity_pop_rejected_total
+        values: "0+10x30"
+      - series: olm_identity_rotation_rejected_total
+        values: "0+10x30"
+      - series: olm_rotation_event_failed_total
+        values: "0+10x30"
+      - series: group_e2ee_check_failed_total
+        values: "0+10x30"
+      - series: e2ee_recovery_failed_total
+        values: "0+10x30"
+    promql_expr_test:
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmOtkExhausted",alertstate="firing"})'
+        eval_time: 1m
+        exp_samples: []
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmOtkExhausted",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmIdentityPopRejected",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmIdentityRotationRejected",alertstate="firing"})'
+        eval_time: 1m
+        exp_samples: []
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmIdentityRotationRejected",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmRotationEventFailed",alertstate="firing"})'
+        eval_time: 1m
+        exp_samples: []
+      - expr: 'sum(ALERTS{alertname="ImBoyOlmRotationEventFailed",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: 'sum(ALERTS{alertname="ImBoyGroupE2eeCheckFailed",alertstate="firing"})'
+        eval_time: 1m
+        exp_samples: []
+      - expr: 'sum(ALERTS{alertname="ImBoyGroupE2eeCheckFailed",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: 'sum(ALERTS{alertname="ImBoyE2eeRecoveryFailed",alertstate="firing"})'
+        eval_time: 1m
+        exp_samples: []
+      - expr: 'sum(ALERTS{alertname="ImBoyE2eeRecoveryFailed",alertstate="firing"})'
+        eval_time: 7m
+        exp_samples:
+          - labels: "{}"
+            value: 1
