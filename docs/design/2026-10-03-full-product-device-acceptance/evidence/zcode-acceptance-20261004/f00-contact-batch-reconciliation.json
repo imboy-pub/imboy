@@ -1,0 +1,767 @@
+{
+  "id": "F00-CONTACT-DOMAIN-BATCH-RECONCILIATION",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T07:26:31+08:00",
+  "method": "首域批量核查样例：6 个既有旅程的用例名与 expect 数逐一提取为能力清单，86 项缺目标功能逐项对齐判定；旅程经过但无独立断言一律不算覆盖（PARTIAL）",
+  "journey_capability_list": {
+    "integration_test/contact/add_friend_request_test.dart": {
+      "cases": [
+        [
+          "搜索用户并打开用户详情（不发送好友请求）",
+          2
+        ]
+      ],
+      "covers": "add_friend 搜索→详情；明确不发送请求"
+    },
+    "integration_test/contact/confirm_new_friend_test.dart": {
+      "cases": [
+        [
+          "进入新朋友列表并跳转确认好友申请页进行验证和提交",
+          9
+        ]
+      ],
+      "covers": "新朋友列表→确认页→验证消息→提交"
+    },
+    "integration_test/contact/friend_management_test.dart": {
+      "cases": [
+        [
+          "联系人列表可访问",
+          1
+        ],
+        [
+          "点击好友进入详情页",
+          1
+        ]
+      ],
+      "covers": "联系人列表渲染→详情页跳转"
+    },
+    "integration_test/contact/new_friend_acceptance_test.dart": {
+      "cases": [
+        [
+          "AT-NF 新朋友页 4 行",
+          7
+        ]
+      ],
+      "covers": "新朋友页 4 行功能（申请列表域）"
+    },
+    "integration_test/contact/contact_report_acceptance_test.dart": {
+      "cases": [
+        [
+          "AT-RP 资料设置页投诉 2 行",
+          8
+        ]
+      ],
+      "covers": "举报理由面板+提交两行"
+    },
+    "integration_test/contact/assistant_plaza_ai_chat_test.dart": {
+      "cases": [
+        [
+          "AI 广场对话：广场列表 → 发消息 → agent 明文回复",
+          4
+        ]
+      ],
+      "covers": "广场列表→发消息→agent 回复全链"
+    }
+  },
+  "summary": {
+    "COVERED_BY_EXISTING_JOURNEY": 6,
+    "PARTIAL_JOURNEY_REFERENCE": 4,
+    "TARGET_MISSING_WIDGET_LEVEL": 48,
+    "TARGET_MISSING_NEW_CASE_REQUIRED": 24,
+    "TARGET_MISSING_PLATFORM_SENSITIVE": 4
+  },
+  "total": 86,
+  "rule": "判定不修改 functional_inventory.test_target；真 target 实现并通过后才能改。设备格全部 NOT_EXECUTED（RES-DEV 未批准）",
+  "records": [
+    {
+      "function_id": "fn:contact:assistant_plaza_page:001",
+      "action": "助手收到消息后返回回复",
+      "verdict": "COVERED_BY_EXISTING_JOURNEY",
+      "evidence_ref": "assistant_plaza_ai_chat_test.dart:67 'AI 广场对话：广场列表→发消息→agent 明文回复' (4 expects)",
+      "required_target_class": "none-existing",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:assistant_plaza_page:002",
+      "action": "加载助手列表并渲染卡片",
+      "verdict": "PARTIAL_JOURNEY_REFERENCE",
+      "evidence_ref": "assistant_plaza_ai_chat_test.dart:67 'AI 广场对话：广场列表→发消息→agent 明文回复' (4 expects) 仅全链经过，无列表渲染独立断言",
+      "required_target_class": "extend-existing-journey",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:assistant_plaza_page:003",
+      "action": "点击「发消息」进入助手会话",
+      "verdict": "PARTIAL_JOURNEY_REFERENCE",
+      "evidence_ref": "assistant_plaza_ai_chat_test.dart:67 'AI 广场对话：广场列表→发消息→agent 明文回复' (4 expects)",
+      "required_target_class": "extend-existing-journey",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:assistant_plaza_page:004",
+      "action": "顶部展示 AI 透明声明卡",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:assistant_plaza_page:006",
+      "action": "搜索无结果展示对应空态文案",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:assistant_plaza_page:009",
+      "action": "加载失败展示错误态与重试",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:assistant_plaza_page:010",
+      "action": "助手昵称旁展示 AI 身份徽章",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:assistant_plaza_page:005",
+      "action": "搜索助手并做 300ms 防抖",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言（防抖/分页/刷新时序）",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:assistant_plaza_page:007",
+      "action": "滚动触底加载下一页助手",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言（防抖/分页/刷新时序）",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:assistant_plaza_page:008",
+      "action": "下拉刷新重新拉取助手列表",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言（防抖/分页/刷新时序）",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:confirm_new_friend_page:001",
+      "action": "点击「完成」提交确认加好友",
+      "verdict": "COVERED_BY_EXISTING_JOURNEY",
+      "evidence_ref": "confirm_new_friend_test.dart:26 '进入新朋友列表并跳转确认好友申请页进行验证和提交' (9 expects)",
+      "required_target_class": "none-existing",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:confirm_new_friend_page:002",
+      "action": "展示对方发来的验证消息",
+      "verdict": "PARTIAL_JOURNEY_REFERENCE",
+      "evidence_ref": "confirm_new_friend_test.dart:26 '进入新朋友列表并跳转确认好友申请页进行验证和提交' (9 expects)",
+      "required_target_class": "extend-existing-journey",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:confirm_new_friend_page:003",
+      "action": "备注输入框默认填充对方昵称",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:confirm_new_friend_page:004",
+      "action": "修改备注并限制 80 字上限",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:confirm_new_friend_page:005",
+      "action": "进入标签页选择标签并回填",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:confirm_new_friend_page:006",
+      "action": "未选标签时显示「添加标签」占位",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:confirm_new_friend_page:007",
+      "action": "提交中按钮禁用并显示转圈",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:confirm_new_friend_page:008",
+      "action": "提交失败后按钮恢复可点击",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:confirm_new_friend_page:009",
+      "action": "提交前收起键盘避免遮挡",
+      "verdict": "TARGET_MISSING_PLATFORM_SENSITIVE",
+      "evidence_ref": "键盘为原生行为；Patrol 未接入",
+      "required_target_class": "defer-to-patrol-native",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:001",
+      "action": "加载好友列表并按 A-Z 分组渲染",
+      "verdict": "PARTIAL_JOURNEY_REFERENCE",
+      "evidence_ref": "friend_management_test.dart:25/49 '联系人列表可访问'+'点击好友进入详情页' 列表可达但无分组断言",
+      "required_target_class": "extend-existing-journey",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:002",
+      "action": "搜索框按昵称本地过滤联系人",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:003",
+      "action": "索引栏标签随过滤结果同步派生",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:004",
+      "action": "拖动索引栏定位到对应字母分组",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:006",
+      "action": "长按联系人直接进入会话",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:008",
+      "action": "点击朋友圈/附近的人/助手广场入口",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:009",
+      "action": "点击群聊与标签两个菜单入口",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:010",
+      "action": "顶栏标签与添加朋友按钮跳转",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:011",
+      "action": "新朋友未读红点与在线状态展示",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:012",
+      "action": "骨架/无联系人/搜索无结果三态",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:005",
+      "action": "点击联系人进入个人资料页",
+      "verdict": "COVERED_BY_EXISTING_JOURNEY",
+      "evidence_ref": "friend_management_test.dart:25/49 '联系人列表可访问'+'点击好友进入详情页'",
+      "required_target_class": "none-existing",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_page:007",
+      "action": "点击「新的朋友」进入申请列表",
+      "verdict": "COVERED_BY_EXISTING_JOURNEY",
+      "evidence_ref": "new_friend_acceptance_test.dart:90 'AT-NF 新朋友页 4 行' (7 expects)",
+      "required_target_class": "none-existing",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_more_page:001",
+      "action": "「删除联系人」使用破坏色红字",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_more_page:002",
+      "action": "「推荐给朋友」提示功能开发中",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言（含在研标记来源核对）",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_more_page:003",
+      "action": "进入「设置备注和标签」页面",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_more_page:004",
+      "action": "删除联系人弹出二次确认框",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_more_page:005",
+      "action": "确认删除后返回首页并提示成功",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言（破坏性流程需隔离夹具）",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_more_page:006",
+      "action": "打开开关加入黑名单并确认",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_more_page:007",
+      "action": "关闭开关移出黑名单并同步本地",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_more_page:008",
+      "action": "举报用户弹出四种理由选择面板",
+      "verdict": "COVERED_BY_EXISTING_JOURNEY",
+      "evidence_ref": "contact_report_acceptance_test.dart:79 'AT-RP 资料设置页投诉 2 行' (8 expects)",
+      "required_target_class": "none-existing",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_more_page:009",
+      "action": "提交举报并提示成功或失败",
+      "verdict": "COVERED_BY_EXISTING_JOURNEY",
+      "evidence_ref": "contact_report_acceptance_test.dart:79 'AT-RP 资料设置页投诉 2 行' (8 expects)",
+      "required_target_class": "none-existing",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_more_page:010",
+      "action": "黑名单状态联动图标颜色变化",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_page:001",
+      "action": "进入页面回显已有备注与标签",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_page:002",
+      "action": "备注输入框进入即自动聚焦",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_page:003",
+      "action": "修改备注后完成按钮由灰变蓝",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_page:004",
+      "action": "未修改时完成按钮保持禁用",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_page:005",
+      "action": "提交备注成功后提示并返回",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_page:006",
+      "action": "点击标签行进入标签关系页",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_page:007",
+      "action": "选完标签返回后渲染标签 Chip",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_page:008",
+      "action": "无标签时右侧显示「添加标签」",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_page:009",
+      "action": "备注输入限制 40 字上限",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_same_group_page:001",
+      "action": "共同群聊请求超时的失败反馈",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_same_group_page:005",
+      "action": "点击共同群组卡片进入群列表",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_same_group_page:008",
+      "action": "请求抛异常时展示错误态与重试",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_same_group_page:002",
+      "action": "展示共同群聊数量与徽章",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_same_group_page:003",
+      "action": "展示对方个性签名卡片",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_same_group_page:004",
+      "action": "展示好友来源信息卡片",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_same_group_page:006",
+      "action": "无共同群时卡片不可点击",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_same_group_page:007",
+      "action": "无任何信息时展示空状态",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_info_same_group_page:009",
+      "action": "暗色模式下卡片描边与背景",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_setting_tag_page:001",
+      "action": "展示群名称并做空名兜底",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_setting_tag_page:002",
+      "action": "渲染共同群组列表",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_setting_tag_page:004",
+      "action": "无群头像时合成智能群头像",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_setting_tag_page:005",
+      "action": "底部展示共同群总数",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_setting_tag_page:006",
+      "action": "群列表为空时展示无数据态",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_setting_tag_page:007",
+      "action": "数据量少时列表仍可滚动",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_setting_tag_page:008",
+      "action": "切换语言后标题文案刷新",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:contact_setting_tag_page:003",
+      "action": "点击群条目进入群聊会话",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:001",
+      "action": "冷启动优先取系统缓存位置",
+      "verdict": "TARGET_MISSING_PLATFORM_SENSITIVE",
+      "evidence_ref": "系统定位/权限弹窗；Patrol 未接入",
+      "required_target_class": "defer-to-patrol-native",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:002",
+      "action": "定位链路分段埋点与超时收敛",
+      "verdict": "TARGET_MISSING_PLATFORM_SENSITIVE",
+      "evidence_ref": "系统定位/权限弹窗；Patrol 未接入",
+      "required_target_class": "defer-to-patrol-native",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:003",
+      "action": "申请并校验定位权限",
+      "verdict": "TARGET_MISSING_PLATFORM_SENSITIVE",
+      "evidence_ref": "系统定位/权限弹窗；Patrol 未接入",
+      "required_target_class": "defer-to-patrol-native",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:004",
+      "action": "渲染附近的人列表与距离单位",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言（需定位 mock 夹具）",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:005",
+      "action": "点击指南针旋转并刷新列表",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:006",
+      "action": "下拉刷新重新拉取附近的人",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:007",
+      "action": "开启可见性弹出说明确认框",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:008",
+      "action": "关闭可见性并提示位置已隐藏",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:011",
+      "action": "可见性行展示附近人数徽章",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:009",
+      "action": "点击列表项进入对方资料页",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:people_nearby_page:010",
+      "action": "空态指南针可点击重新搜索",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:recently_registered_user_page:001",
+      "action": "加载并渲染最近注册用户列表",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:recently_registered_user_page:002",
+      "action": "点击用户进入个人资料详情",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-integration-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:recently_registered_user_page:005",
+      "action": "昵称为空时回退展示账号",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:recently_registered_user_page:006",
+      "action": "地区为空时显示未知地区",
+      "verdict": "TARGET_MISSING_NEW_CASE_REQUIRED",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:recently_registered_user_page:003",
+      "action": "顶部展示可被搜索说明卡片",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:recently_registered_user_page:004",
+      "action": "右侧展示注册日期徽章",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:recently_registered_user_page:007",
+      "action": "首次加载展示居中转圈态",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    },
+    {
+      "function_id": "fn:contact:recently_registered_user_page:008",
+      "action": "列表为空时展示无数据视图",
+      "verdict": "TARGET_MISSING_WIDGET_LEVEL",
+      "evidence_ref": "无现有断言",
+      "required_target_class": "new-widget-case",
+      "platforms": "android+macos"
+    }
+  ],
+  "product_pass": false,
+  "next": "按 verdict 分配：COVERED(4) 待设备复验入账；PARTIAL(6) 扩展现有旅程断言；WIDGET(41)/INTEGRATION(26)/PLATFORM(5) 列入 contact 域 target 队列"
+}

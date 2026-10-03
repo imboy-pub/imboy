@@ -1,0 +1,87 @@
+function_id	action	verdict	evidence_ref	required_target_class	platforms
+fn:contact:assistant_plaza_page:001	助手收到消息后返回回复	COVERED_BY_EXISTING_JOURNEY	assistant_plaza_ai_chat_test.dart:67 'AI 广场对话：广场列表→发消息→agent 明文回复' (4 expects)	none-existing	android+macos
+fn:contact:assistant_plaza_page:002	加载助手列表并渲染卡片	PARTIAL_JOURNEY_REFERENCE	assistant_plaza_ai_chat_test.dart:67 'AI 广场对话：广场列表→发消息→agent 明文回复' (4 expects) 仅全链经过，无列表渲染独立断言	extend-existing-journey	android+macos
+fn:contact:assistant_plaza_page:003	点击「发消息」进入助手会话	PARTIAL_JOURNEY_REFERENCE	assistant_plaza_ai_chat_test.dart:67 'AI 广场对话：广场列表→发消息→agent 明文回复' (4 expects)	extend-existing-journey	android+macos
+fn:contact:assistant_plaza_page:004	顶部展示 AI 透明声明卡	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:assistant_plaza_page:006	搜索无结果展示对应空态文案	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:assistant_plaza_page:009	加载失败展示错误态与重试	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:assistant_plaza_page:010	助手昵称旁展示 AI 身份徽章	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:assistant_plaza_page:005	搜索助手并做 300ms 防抖	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言（防抖/分页/刷新时序）	new-integration-case	android+macos
+fn:contact:assistant_plaza_page:007	滚动触底加载下一页助手	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言（防抖/分页/刷新时序）	new-integration-case	android+macos
+fn:contact:assistant_plaza_page:008	下拉刷新重新拉取助手列表	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言（防抖/分页/刷新时序）	new-integration-case	android+macos
+fn:contact:confirm_new_friend_page:001	点击「完成」提交确认加好友	COVERED_BY_EXISTING_JOURNEY	confirm_new_friend_test.dart:26 '进入新朋友列表并跳转确认好友申请页进行验证和提交' (9 expects)	none-existing	android+macos
+fn:contact:confirm_new_friend_page:002	展示对方发来的验证消息	PARTIAL_JOURNEY_REFERENCE	confirm_new_friend_test.dart:26 '进入新朋友列表并跳转确认好友申请页进行验证和提交' (9 expects)	extend-existing-journey	android+macos
+fn:contact:confirm_new_friend_page:003	备注输入框默认填充对方昵称	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:confirm_new_friend_page:004	修改备注并限制 80 字上限	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:confirm_new_friend_page:005	进入标签页选择标签并回填	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:confirm_new_friend_page:006	未选标签时显示「添加标签」占位	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:confirm_new_friend_page:007	提交中按钮禁用并显示转圈	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:confirm_new_friend_page:008	提交失败后按钮恢复可点击	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:confirm_new_friend_page:009	提交前收起键盘避免遮挡	TARGET_MISSING_PLATFORM_SENSITIVE	键盘为原生行为；Patrol 未接入	defer-to-patrol-native	android+macos
+fn:contact:contact_page:001	加载好友列表并按 A-Z 分组渲染	PARTIAL_JOURNEY_REFERENCE	friend_management_test.dart:25/49 '联系人列表可访问'+'点击好友进入详情页' 列表可达但无分组断言	extend-existing-journey	android+macos
+fn:contact:contact_page:002	搜索框按昵称本地过滤联系人	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:contact_page:003	索引栏标签随过滤结果同步派生	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_page:004	拖动索引栏定位到对应字母分组	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:contact_page:006	长按联系人直接进入会话	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:contact_page:008	点击朋友圈/附近的人/助手广场入口	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:contact_page:009	点击群聊与标签两个菜单入口	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:contact_page:010	顶栏标签与添加朋友按钮跳转	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:contact_page:011	新朋友未读红点与在线状态展示	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_page:012	骨架/无联系人/搜索无结果三态	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_page:005	点击联系人进入个人资料页	COVERED_BY_EXISTING_JOURNEY	friend_management_test.dart:25/49 '联系人列表可访问'+'点击好友进入详情页'	none-existing	android+macos
+fn:contact:contact_page:007	点击「新的朋友」进入申请列表	COVERED_BY_EXISTING_JOURNEY	new_friend_acceptance_test.dart:90 'AT-NF 新朋友页 4 行' (7 expects)	none-existing	android+macos
+fn:contact:people_info_more_page:001	「删除联系人」使用破坏色红字	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_more_page:002	「推荐给朋友」提示功能开发中	TARGET_MISSING_WIDGET_LEVEL	无现有断言（含在研标记来源核对）	new-widget-case	android+macos
+fn:contact:people_info_more_page:003	进入「设置备注和标签」页面	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:people_info_more_page:004	删除联系人弹出二次确认框	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_more_page:005	确认删除后返回首页并提示成功	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言（破坏性流程需隔离夹具）	new-integration-case	android+macos
+fn:contact:people_info_more_page:006	打开开关加入黑名单并确认	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:people_info_more_page:007	关闭开关移出黑名单并同步本地	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:people_info_more_page:008	举报用户弹出四种理由选择面板	COVERED_BY_EXISTING_JOURNEY	contact_report_acceptance_test.dart:79 'AT-RP 资料设置页投诉 2 行' (8 expects)	none-existing	android+macos
+fn:contact:people_info_more_page:009	提交举报并提示成功或失败	COVERED_BY_EXISTING_JOURNEY	contact_report_acceptance_test.dart:79 'AT-RP 资料设置页投诉 2 行' (8 expects)	none-existing	android+macos
+fn:contact:people_info_more_page:010	黑名单状态联动图标颜色变化	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_page:001	进入页面回显已有备注与标签	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_page:002	备注输入框进入即自动聚焦	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_page:003	修改备注后完成按钮由灰变蓝	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_page:004	未修改时完成按钮保持禁用	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_page:005	提交备注成功后提示并返回	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_page:006	点击标签行进入标签关系页	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_page:007	选完标签返回后渲染标签 Chip	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_page:008	无标签时右侧显示「添加标签」	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_page:009	备注输入限制 40 字上限	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_same_group_page:001	共同群聊请求超时的失败反馈	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:people_info_same_group_page:005	点击共同群组卡片进入群列表	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:people_info_same_group_page:008	请求抛异常时展示错误态与重试	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:people_info_same_group_page:002	展示共同群聊数量与徽章	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_same_group_page:003	展示对方个性签名卡片	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_same_group_page:004	展示好友来源信息卡片	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_same_group_page:006	无共同群时卡片不可点击	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_same_group_page:007	无任何信息时展示空状态	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_info_same_group_page:009	暗色模式下卡片描边与背景	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_setting_tag_page:001	展示群名称并做空名兜底	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_setting_tag_page:002	渲染共同群组列表	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_setting_tag_page:004	无群头像时合成智能群头像	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_setting_tag_page:005	底部展示共同群总数	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_setting_tag_page:006	群列表为空时展示无数据态	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_setting_tag_page:007	数据量少时列表仍可滚动	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_setting_tag_page:008	切换语言后标题文案刷新	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:contact_setting_tag_page:003	点击群条目进入群聊会话	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:people_nearby_page:001	冷启动优先取系统缓存位置	TARGET_MISSING_PLATFORM_SENSITIVE	系统定位/权限弹窗；Patrol 未接入	defer-to-patrol-native	android+macos
+fn:contact:people_nearby_page:002	定位链路分段埋点与超时收敛	TARGET_MISSING_PLATFORM_SENSITIVE	系统定位/权限弹窗；Patrol 未接入	defer-to-patrol-native	android+macos
+fn:contact:people_nearby_page:003	申请并校验定位权限	TARGET_MISSING_PLATFORM_SENSITIVE	系统定位/权限弹窗；Patrol 未接入	defer-to-patrol-native	android+macos
+fn:contact:people_nearby_page:004	渲染附近的人列表与距离单位	TARGET_MISSING_WIDGET_LEVEL	无现有断言（需定位 mock 夹具）	new-widget-case	android+macos
+fn:contact:people_nearby_page:005	点击指南针旋转并刷新列表	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:people_nearby_page:006	下拉刷新重新拉取附近的人	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:people_nearby_page:007	开启可见性弹出说明确认框	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_nearby_page:008	关闭可见性并提示位置已隐藏	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_nearby_page:011	可见性行展示附近人数徽章	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:people_nearby_page:009	点击列表项进入对方资料页	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:people_nearby_page:010	空态指南针可点击重新搜索	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:recently_registered_user_page:001	加载并渲染最近注册用户列表	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:recently_registered_user_page:002	点击用户进入个人资料详情	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-integration-case	android+macos
+fn:contact:recently_registered_user_page:005	昵称为空时回退展示账号	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-widget-case	android+macos
+fn:contact:recently_registered_user_page:006	地区为空时显示未知地区	TARGET_MISSING_NEW_CASE_REQUIRED	无现有断言	new-widget-case	android+macos
+fn:contact:recently_registered_user_page:003	顶部展示可被搜索说明卡片	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:recently_registered_user_page:004	右侧展示注册日期徽章	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:recently_registered_user_page:007	首次加载展示居中转圈态	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
+fn:contact:recently_registered_user_page:008	列表为空时展示无数据视图	TARGET_MISSING_WIDGET_LEVEL	无现有断言	new-widget-case	android+macos
