@@ -4152,5 +4152,14 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "c11_four_account_receipt_isolation": {
+    "receipt": "c11-four-account-receipts.json",
+    "receipt_sha256": "6d47d1bde6ec9d6476e4453f04f09c3aa13b4838f2ae6425afb3b9b4c2e74e6f",
+    "app_head": "074112cac4cdab478ba9bc17ba865710c5e6df1f",
+    "executed": 34,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

@@ -1,0 +1,28 @@
+{
+  "id": "C11-FOUR-ACCOUNT-RECEIPT-ISOLATION",
+  "scope": "LOCAL_HOST_FAKE_SOCKET_COMPONENT_REGRESSION",
+  "app_head": "074112cac4cdab478ba9bc17ba865710c5e6df1f",
+  "executed": 34,
+  "failed": 0,
+  "exit_code": 0,
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "log": "c11-four-account-receipts.log",
+  "log_sha256": "02ce8ef7f66403b9c2c68c67af3a0a31accbe78f56adc8810e274e594a10891d",
+  "oracles": [
+    "Four separately bound accounts and initial group membership",
+    "B/C/D each receive group frame on independent socket",
+    "Confirmation of B alone leaves C and D pending",
+    "C and D each complete only after their own confirmation"
+  ],
+  "recovery": "Initial test loading failed because local confirmation helper was declared after new test; moved helper before use, split fixture helper, reran both suites successfully. Initial loading failure is not a behavioral negative calibration.",
+  "limits": [
+    "No real four-account journey executed",
+    "No actual decrypt/display or membership changes",
+    "Initial membership snapshot is not live backend authorization",
+    "No original acceptance ID upgraded"
+  ]
+}
