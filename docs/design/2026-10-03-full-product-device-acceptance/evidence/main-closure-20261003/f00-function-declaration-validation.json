@@ -1,0 +1,43 @@
+{
+  "scope": "STATIC_FUNCTION_MAPPING_VALIDATION_ONLY",
+  "app_head": "78d71bbe189dd4c06aefa6a14accb55efe7e2596",
+  "red_exit_code": 1,
+  "inventory_tests": 18,
+  "complete_tooling_tests": 423,
+  "exit_code": 0,
+  "failed": 0,
+  "review": "TWO_INDEPENDENT_REVIEWS_APPROVED",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "artifacts": [
+    {
+      "path": "f00-function-declaration-validation.red.log",
+      "sha256": "98632dc7c6601a4ec86222e1532f79e00e4dc291c0923d21820b968a1ac733e2"
+    },
+    {
+      "path": "f00-function-declaration-validation.green.log",
+      "sha256": "ebca005849abf451c7a797709813e771fe0378e8b4a21bdc5ee700024e9f610b"
+    },
+    {
+      "path": "f00-function-declaration-validation.all.log",
+      "sha256": "e7a319f0138e9314899c5aa2b1e51e9b0b6f5f4c903994eb8d81d9de2607d5db"
+    }
+  ],
+  "rejected_declarations": [
+    "Unknown function ID",
+    "Duplicate or empty function IDs",
+    "Function from undeclared source page",
+    "Multiple explicit declarations for same target"
+  ],
+  "limits": [
+    "Existing undeclared legacy mappings remain historical static hints",
+    "Known ID and source matching does not prove callback semantics after source changes",
+    "No original acceptance ID upgraded"
+  ],
+  "remaining": [
+    "Bind declared functions to frozen current source and actual business oracles",
+    "Complete all required page/case/platform mappings",
+    "Authorized real Android/macOS/backend journeys and full final qualification"
+  ]
+}

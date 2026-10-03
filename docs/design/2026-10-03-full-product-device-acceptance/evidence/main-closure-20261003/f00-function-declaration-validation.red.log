@@ -1,0 +1,29 @@
+FFF...............
+======================================================================
+FAIL: test_duplicate_function_declaration_is_rejected (test_inventory.FunctionTargetDeclarationTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_inventory.py", line 82, in test_duplicate_function_declaration_is_rejected
+    inventory.constrain_function_targets(functions, [spec])
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_foreign_page_declaration_is_rejected (test_inventory.FunctionTargetDeclarationTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_inventory.py", line 73, in test_foreign_page_declaration_is_rejected
+    inventory.constrain_function_targets(functions, [spec])
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_unknown_function_declaration_is_rejected (test_inventory.FunctionTargetDeclarationTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_inventory.py", line 65, in test_unknown_function_declaration_is_rejected
+    inventory.constrain_function_targets(functions, [spec])
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 18 tests in 1.081s
+
+FAILED (failures=3)
