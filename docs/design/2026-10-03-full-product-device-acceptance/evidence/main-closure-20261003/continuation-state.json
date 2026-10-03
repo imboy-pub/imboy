@@ -5145,5 +5145,14 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "modern_read_action_session_isolation": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/modern-read-action-session-isolation-20261004.json",
+    "app_head": "e9879040a29697fb38a4bdc7b63cf3c788a8e003",
+    "executed": 258,
+    "focused_executed": 18,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

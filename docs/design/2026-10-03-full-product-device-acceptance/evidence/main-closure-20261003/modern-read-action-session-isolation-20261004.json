@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_MODERN_READ_ACTION_DB_COMPLETION_SESSION_BOUNDARY",
+  "app_head": "e9879040a29697fb38a4bdc7b63cf3c788a8e003",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_AFTER_FIXTURE_LIFETIME_REPAIR",
+  "results": {
+    "red_exit": 1,
+    "red_passed": 2,
+    "red_failed": 2,
+    "domain_exit": 0,
+    "domain_passed": 258,
+    "focused_exit": 0,
+    "focused_passed": 18,
+    "static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Actual MessageActions dispatcher handles message_read/message_read_ack through production MessageService.updateStatus and controlled database wait. Current session returns true, invokes counted conversation notifier once, queries/converts row and emits one seen-status message.",
+    "Actual loginAfter increments generation during first update wait; both actions return false and start no conversation notifier/query/event after wait, retaining only already-started one write."
+  ],
+  "implementation_verified_by_review": [
+    "Shared status updater checks session before write and after write/notifier/find awaits.",
+    "Shared read helper checks each target/update/mapping and event submission."
+  ],
+  "attempt_notes": [
+    "First fixture accidentally returned message rows to startup retry scan; excluded invalid scan fixture log retained, authoritative RED2PASS2FAIL follows empty scan rows.",
+    "Initial passing domain/focused were followed by fixture lifecycle repair; intermediate qualified domain/focused FAIL from reused autoDisposed notifier retained and excluded.",
+    "Final container and provider listener persist until file tearDownAll, listener closes before container disposal. Final logs are authoritative."
+  ],
+  "limitations": [
+    "Conversation notifier is a counted replacement; actual conversation provider/SQLite rendering not qualified.",
+    "Multiple-ID batch and notifier/find/map paused windows source-reviewed only; dynamic tests pause first DB update.",
+    "Queued UI consumer, server/client transport ACK and real device journeys remain unqualified.",
+    "Already-started writes/notifier side effects cannot be cancelled or rolled back. No original97-ID upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-catalog-20261004.log",
+      "sha256": "01ddbb76d35ff72c55f0e8cd26ba31a0808791bff9023486ea3a372c1d94cff1"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-catalog-check-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-domain-20261004.log",
+      "sha256": "9430ef0c7746ded941c7f9b00b507de23c7ffd09d8e0373f1c4bcb5e8f2221fc"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-final-domain-20261004.log",
+      "sha256": "4af95378a8a6661930f4448e5f9fec70ac882acbf462bb754ab62cf087fe87f3"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-final-focused-20261004.log",
+      "sha256": "c4ce87922d423bc078513849fb5b6d38440849e62e46ffcf51045ebaa00dbd2f"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-focused-20261004.log",
+      "sha256": "44ec3703e5a0e920f2fbfd8d8f546344d40661640c222e782ad4d65b7096e409"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-invalid-scan-fixture-20261004.log",
+      "sha256": "9606165d6c07d064d1a2621cdcb796ce2aa3bde3a22096252b4179dc5cbfd985"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-qualified-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-qualified-domain-20261004.log",
+      "sha256": "51436a86dfde50668bbcff781b1cfa820c673018d7f28fc5dc1e3dd0692c33a8"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-qualified-focused-20261004.log",
+      "sha256": "fdcb120e4ccb3e93bc1d7c1fb99285f0b98615296f462d1a40b69497d039797a"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-qualified-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-red-20261004.log",
+      "sha256": "5568f9f74d9443462b167000281185171a89172ea9e0f47cc0961d5a9a8bfe39"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/read-action-session-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    }
+  ]
+}

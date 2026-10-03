@@ -1,0 +1,93 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/chat_network_session_test.dart
+00:00 +0: read action=message_read database session changed=false
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🔄 处理action消息: action=message_read, msgId=synthetic-read-action, type=C2C
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+> message_core: 更新消息状态 synthetic-status 为 21
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +1: read action=message_read database session changed=true
+🔄 处理action消息: action=message_read, msgId=synthetic-read-action, type=C2C
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+❌ [_handleReadAction] 处理已读消息失败: StateError
+❌ [handleActionMessage] 处理action消息异常: action=message_read, error=StateError
+00:00 +2: read action=message_read_ack database session changed=false
+🔄 处理action消息: action=message_read_ack, msgId=synthetic-read-action, type=C2C
+📖 [_handleReadAckAction] 处理已读确认: msgId=synthetic-read-action, msgIds=[synthetic-status]
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+> message_core: 更新消息状态 synthetic-status 为 21
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +3: read action=message_read_ack database session changed=true
+🔄 处理action消息: action=message_read_ack, msgId=synthetic-read-action, type=C2C
+📖 [_handleReadAckAction] 处理已读确认: msgId=synthetic-read-action, msgIds=[synthetic-status]
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+❌ [_handleReadAckAction] 处理已读确认失败: StateError
+❌ [handleActionMessage] 处理action消息异常: action=message_read_ack, error=StateError
+00:00 +4: read receipt session boundary (setUpAll)
+00:00 +4: read receipt session boundary database completion changed=false
+📥 [processMessage] type=MSG_READ, msgId=synthetic-read-receipt, from=200, to=100
+📥 [READ_RECEIPT] 收到已读回执: msgId=synthetic-read-receipt
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +5: read receipt session boundary database completion changed=true
+📥 [processMessage] type=MSG_READ, msgId=synthetic-read-receipt, from=200, to=100
+📥 [READ_RECEIPT] 收到已读回执: msgId=synthetic-read-receipt
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +6: read receipt session boundary (tearDownAll)
+00:00 +6: direct encoding completion session changed=false
+ChatNetworkService.sendMessage: msgId=synthetic-direct-encoding, type=C2C, action=
+消息加入重试队列: synthetic-direct-encoding, type=C2C
+ChatNetworkService.sendMessage已提交: synthetic-direct-encoding
+00:00 +7: direct encoding completion session changed=true
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+ChatNetworkService.sendMessage: msgId=synthetic-direct-encoding, type=C2C, action=
+00:00 +8: anonymous status update starts no database write
+00:00 +9: status update completion firstResult=0 session changed=false
+00:00 +10: status update completion firstResult=0 session changed=true
+00:00 +11: status update completion firstResult=1 session changed=false
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+✅ [MessageTypeNormalizer] 有效类型: text
+00:00 +12: status update completion firstResult=1 session changed=true
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +13: retry rejects expired generation and stale encode failure
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+📤 [sendWithRetry] 开始发送: msgId=synthetic-encoding, type=C2C, msgType=null
+00:00 +14: group policy wait entry=direct session changed=false
+🧹 [QUEUE] 启动定期清理 Timer
+ChatNetworkService.sendMessage: msgId=synthetic-policy-wait, type=C2G, action=
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+消息加入重试队列: synthetic-policy-wait, type=C2G
+ChatNetworkService.sendMessage已提交: synthetic-policy-wait
+> ws: 消息已发送 (synthetic-policy-wait) [C2G/text/PLAIN] [136 bytes]
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +15: group policy wait entry=direct session changed=true
+ChatNetworkService.sendMessage: msgId=synthetic-policy-wait, type=C2G, action=
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +16: group policy wait entry=stored session changed=false
+📤 [sendWsMsg] 开始: msgId=synthetic-policy-wait, status=10
+📤 [发送 v2.0] msgId: synthetic-policy-wait, msg_type: text, action: , e2ee: false
+📤 [sendWithRetry] 开始发送: msgId=synthetic-policy-wait, type=C2G, msgType=text
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+消息加入重试队列: synthetic-policy-wait, type=C2G
+✅ [sendWithRetry] 消息已提交到重试队列: msgId=synthetic-policy-wait
+> ws: 消息已发送 (synthetic-policy-wait) [C2G/text/PLAIN] [202 bytes]
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +17: group policy wait entry=stored session changed=true
+📤 [sendWsMsg] 开始: msgId=synthetic-policy-wait, status=10
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +18: All tests passed!
