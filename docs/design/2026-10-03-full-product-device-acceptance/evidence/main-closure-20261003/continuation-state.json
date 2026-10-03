@@ -998,5 +998,17 @@
         "sha256": "2865a59359691f838a8565640e4226069b36435121f9d74e8eefb5dca9572456"
       }
     ]
+  },
+  "f12_governance_preliminary_case_map": {
+    "status": "WAITING",
+    "app_candidate": "3754205d236c8a1db6b5880c3db02f439033c41b",
+    "source_inputs": 14,
+    "proposed_unique_cases": 10,
+    "artifact_manifest_sha256": "1b9279515d5640b84af9e7517b2e6f332e1e81c60efd03b864ef8156fc5c3465",
+    "map_path": "imboyapp/integration_test/full_acceptance/F12-S03/case-map.tsv",
+    "scope": "GOVERNANCE_SUBSET_PRELIMINARY_ONLY",
+    "product_pass": false,
+    "required_cases_frozen": false,
+    "remaining": "F00 NEW/legacy disposition, profiles/roles, backend and dual-platform business facts, broader F12 parent journeys"
   }
 }
