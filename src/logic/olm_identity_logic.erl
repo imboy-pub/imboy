@@ -544,8 +544,8 @@ get_identity(UserId, DeviceId) when is_integer(UserId), is_binary(DeviceId) ->
             {error, <<"not_found">>};
         {ok, Row} ->
             {ok, Row};
-        {error, Reason} ->
-            _ = ?ERROR_LOG({olm_get_identity_error, UserId, DeviceId, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(olm_get_identity_error),
             {error, <<"internal_error">>}
     end;
 get_identity(_, _) ->
@@ -564,8 +564,8 @@ list_devices(TargetUid) when is_integer(TargetUid), TargetUid > 0 ->
     case olm_identity_ds:list_devices_with_identity(TargetUid) of
         {ok, Devices} when is_list(Devices) ->
             {ok, #{<<"user_id">> => TargetUid, <<"devices">> => Devices}};
-        {error, Reason} ->
-            _ = ?ERROR_LOG({olm_list_devices_error, TargetUid, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(olm_list_devices_error),
             {error, <<"internal_error">>}
     end;
 list_devices(_) ->
@@ -807,8 +807,8 @@ count_one_time_keys(UserId, DeviceId) when
     case olm_identity_ds:count_one_time_keys(UserId, DeviceId) of
         {ok, N} when is_integer(N) ->
             {ok, N};
-        {error, Reason} ->
-            _ = ?ERROR_LOG({olm_count_otk_error, UserId, DeviceId, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(olm_count_otk_error),
             {error, <<"internal_error">>}
     end;
 count_one_time_keys(_, _) ->
@@ -831,8 +831,8 @@ cleanup_consumed_one_time_keys(RetentionDays) when
     case olm_identity_ds:cleanup_consumed_one_time_keys(RetentionSeconds) of
         {ok, N} ->
             {ok, N};
-        {error, Reason} ->
-            _ = ?ERROR_LOG({olm_cleanup_otk_error, RetentionDays, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG(olm_cleanup_otk_error),
             {error, <<"internal_error">>}
     end;
 cleanup_consumed_one_time_keys(_) ->
