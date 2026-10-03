@@ -4060,5 +4060,14 @@
     "exit_code": 0,
     "product_pass": false,
     "real_transport_status": "COMPONENTS_IMPLEMENTED_REAL_JOURNEYS_NOT_EXECUTED"
+  },
+  "c11_inbound_rejection": {
+    "receipt": "c11-inbound-rejection.json",
+    "receipt_sha256": "96c347533928a2f759a23b9845db4de732988d2b81da24fa0577345b4a5ac1d6",
+    "app_head": "00335ed37956ab5409844e9559951dbc0fd7d01c",
+    "executed": 13,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

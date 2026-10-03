@@ -1,0 +1,51 @@
+{
+  "id": "C11-INBOUND-REJECTION",
+  "app_head": "00335ed37956ab5409844e9559951dbc0fd7d01c",
+  "scope": "COMPOSED_HOST_TRANSPORT_WITH_FAKE_SOCKET",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "executed": 13,
+  "failed": 0,
+  "exit_code": 0,
+  "analysis": "No issues found before final close assertion; final format-only hook adjustment",
+  "review": "APPROVED_LOCAL_TEST_SCOPE",
+  "oracles": [
+    "Unknown sender DID rejected",
+    "Wrong sender account rejected",
+    "Missing device envelope rejected",
+    "No inbox enqueue, fake socket closed, no consumer ACK"
+  ],
+  "negative_calibration": {
+    "change": "Temporarily remove inbound RegisteredWireBinding.prepareC2c validation",
+    "executed": 1,
+    "failed": 1,
+    "exit_code": 1,
+    "expected": "empty inbox",
+    "actual": "one WireFrame queued",
+    "production_source_restored_byte_for_byte": true
+  },
+  "logs": [
+    {
+      "phase": "GREEN_INITIAL",
+      "path": "c11-inbound-rejection.log",
+      "sha256": "f3eef20543eef2665bf314995bc2b7969380b45ca23efa943ced3f4cff75ee0b"
+    },
+    {
+      "phase": "CALIBRATED_RED",
+      "path": "c11-inbound-rejection-calibrated-red.log",
+      "sha256": "aea1040b62b0a3632008aa1b4a49b250ef2897a628a5bb03013e9ef70a6a8ec7"
+    },
+    {
+      "phase": "GREEN_RESTORED",
+      "path": "c11-inbound-rejection-restored.log",
+      "sha256": "f3eef20543eef2665bf314995bc2b7969380b45ca23efa943ced3f4cff75ee0b"
+    }
+  ],
+  "commit_recovery": "First hook reformatted test; exact test file restaged and all hooks passed.",
+  "limits": [
+    "No real network/native device test",
+    "No acceptance ID upgraded",
+    "Sender identity is fixture binding validation, not independently proven key ownership"
+  ]
+}

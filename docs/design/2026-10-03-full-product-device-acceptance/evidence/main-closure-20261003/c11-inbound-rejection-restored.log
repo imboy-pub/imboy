@@ -1,0 +1,15 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart
+00:00 +0: configured real interface requires matching server ACK
+00:00 +1: local send without server ACK stays unconfirmed
+00:00 +2: disconnect completes pending delivery as unconfirmed
+00:00 +3: inbound sender-did mismatch closes connection without queuing
+00:00 +4: inbound sender-account mismatch closes connection without queuing
+00:00 +5: inbound missing-device mismatch closes connection without queuing
+00:00 +6: actual received ciphertext queues once per drain
+00:00 +7: receipt error cannot become success
+00:00 +8: receipt disconnect cannot become success
+00:00 +9: cannot acknowledge a locally generated outgoing frame
+00:00 +10: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +11: synthetic protected identities fail before channel write
+00:00 +12: disconnect during token resolution prevents later connection
+00:00 +13: All tests passed!
