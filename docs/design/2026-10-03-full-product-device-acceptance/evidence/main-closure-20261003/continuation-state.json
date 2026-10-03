@@ -4107,5 +4107,14 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "c11_outbound_numeric_types": {
+    "receipt": "c11-outbound-float.json",
+    "receipt_sha256": "4793a0bc1bb25a784c207deaf51dc0b5a60a993fe60af5c3007324aff3435fa8",
+    "app_head": "1f3e8df340cd0ddb48b22a732f6770c98f328023",
+    "executed": 40,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

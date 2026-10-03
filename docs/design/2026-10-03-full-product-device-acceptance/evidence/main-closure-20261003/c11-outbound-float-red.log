@@ -1,0 +1,83 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: outgoing numeric context rejects equal floating point values
+00:00 +0 -1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_binding_test.dart: outgoing group numeric context rejects floating point values
+00:00 +0 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: outgoing numeric context rejects equal floating point values [E]
+  Expected: throws <Instance of 'FormatException'>
+    Actual: <Closure: () => Map<String, dynamic>>
+     Which: returned {
+                       'id': 'xid',
+                       'type': 'C2C',
+                       'payload': '',
+                       'e2ee': {
+                         'meta_version': 3,
+                         'fan_out': 'per_device',
+                         'devices': {
+                           'registered-b': {
+                             'protected_header': 'r2F2A2VzY29wZWNjMmNmYWN0aW9uZ21lc3NhZ2VocHJvdG9jb2xjb2xtam1lc3NhZ2VfaWRjeGlkanNlbmRlcl9kaWRscmVnaXN0ZXJlZC1hanNlbmRlcl91aWRwOTAwNzE5OTI1NDc0MDk5M2tkZXN0aW5hdGlvbnA5MDA3MTk5MjU0NzQwOTk0a3Nlc3Npb25fcmVmZ3Nlc3Npb25sbWVzc2FnZV90eXBlZHRleHRtY3JlYXRlZF9hdF9tcxh7b2NvbnZlcnNhdGlvbl9pZHghOTAwNzE5OTI1NDc0MDk5Mzo5MDA3MTk5MjU0NzQwOTk0cGNvbnRlbnRfZW5jb2RpbmdkY2JvcnBlcG9jaF9vcl9jb3VudGVyAXBwcm90b2NvbF92ZXJzaW9uAw==',
+                             'header_hash': 'uQwqIC_UombLMU0hqcjmvNxxDyZqu7lFhK6AdCk_5KI=',
+                             'ciphertext': 'AQID',
+                             'protocol_metadata': {'olm_message_type': 1, 'session_id': 'session'}
+                           }
+                         }
+                       },
+                       'from': 9007199254740993,
+                       'to': 9007199254740994,
+                       'msg_type': 'text',
+                       'action': '',
+                       'created_at': 123
+                     }
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test/unit_test/service/e2ee_registered_wire_binding_test.dart 135:7  main.<fn>
+  
+00:00 +0 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: received canonical IDs preserve raw body and outgoing ID contract
+00:00 +0 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_binding_test.dart: outgoing group numeric context rejects floating point values [E]
+  Expected: throws <Instance of 'FormatException'>
+    Actual: <Closure: () => Map<String, dynamic>>
+     Which: returned {
+                       'id': 'gid',
+                       'type': 'C2G',
+                       'payload': '',
+                       'e2ee': {
+                         'meta_version': 3,
+                         'protected_header': 'r2F2A2VzY29wZWVncm91cGZhY3Rpb25nbWVzc2FnZWhwcm90b2NvbGZtZWdvbG1qbWVzc2FnZV9pZGNnaWRqc2VuZGVyX2RpZGJhMWpzZW5kZXJfdWlkcDkwMDcxOTkyNTQ3NDA5OTNrZGVzdGluYXRpb25zOTIyMzM3MjAzNjg1NDc3NTgwN2tzZXNzaW9uX3JlZmdzZXNzaW9ubG1lc3NhZ2VfdHlwZWR0ZXh0bWNyZWF0ZWRfYXRfbXMYe29jb252ZXJzYXRpb25faWRzOTIyMzM3MjAzNjg1NDc3NTgwN3Bjb250ZW50X2VuY29kaW5nZGNib3JwZXBvY2hfb3JfY291bnRlcgFwcHJvdG9jb2xfdmVyc2lvbgE=',
+                         'header_hash': '-g3QdF5zJIUEnjkhoMVC7TxFCZniVkvnpmHYXpRSQcw=',
+                         'ciphertext': 'AQID',
+                         'protocol_metadata': {'session_id': 'session'}
+                       },
+                       'from': 9007199254740993,
+                       'to': 9223372036854775807,
+                       'msg_type': 'text',
+                       'action': '',
+                       'created_at': 123
+                     }
+  
+  package:matcher                                                      expect
+  package:flutter_test/src/widget_tester.dart 473:18                   expect
+  test/unit_test/service/e2ee_registered_group_binding_test.dart 63:7  main.<fn>
+  
+00:00 +1 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_binding_test.dart: binds group IDs and snapshots original encrypted envelope
+00:00 +2 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: received IDs require explicit integral identities
+00:00 +3 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: received IDs require explicit integral identities
+00:00 +4 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_binding_test.dart: rejects cross-group protected context and outer context mismatch
+00:00 +5 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: received IDs reject aliases, rounding and noncanonical integers
+00:00 +6 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_binding_test.dart: rejects mismatched sender session and empty ciphertext
+00:00 +7 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: accepts actual outbound router header with protocol stub
+00:00 +8 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: accepts actual outbound router header with protocol stub
+00:00 +9 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_binding_test.dart: rejects C2C fanout and UTF8 message ID overflow
+00:00 +10 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: binds exact registered IDs without rewriting protected header
+00:00 +11 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects synthetic sender uid instead of rewriting cryptographic context
+00:00 +12 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects synthetic sender DID instead of rewriting cryptographic context
+00:00 +13 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects synthetic destination instead of rewriting cryptographic context
+00:00 +14 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects wrong conversation instead of rewriting cryptographic context
+00:00 +15 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects wrong protected ID instead of rewriting cryptographic context
+00:00 +16 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects conflicting outer fields
+00:00 +17 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects plaintext in the supposedly encrypted payload
+00:00 +18 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects legacy smoke destination and broken protocol session binding
+00:00 +19 -2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects bad hash unknown device and wrong message type
+00:00 +20 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_binding_test.dart: outgoing group numeric context rejects floating point values
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: outgoing numeric context rejects equal floating point values

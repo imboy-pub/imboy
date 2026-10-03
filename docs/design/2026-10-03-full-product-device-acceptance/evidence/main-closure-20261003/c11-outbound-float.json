@@ -1,0 +1,38 @@
+{
+  "id": "C11-OUTBOUND-NUMERIC-TYPE-REJECTION",
+  "app_head": "1f3e8df340cd0ddb48b22a732f6770c98f328023",
+  "scope": "LOCAL_REGISTERED_BINDINGS_AND_FAKE_SOCKET_TRANSPORT",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "red": {
+    "passed": 20,
+    "failed": 2,
+    "exit_code": 1,
+    "oracle": "Actual doubles numerically equal to integer contexts passed C2C/group preparation"
+  },
+  "green": {
+    "passed": 40,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "logs": [
+    {
+      "phase": "RED",
+      "path": "c11-outbound-float-red.log",
+      "sha256": "c283209d71f810e0d0dbfaf4300e3de30f954934a8deb4f5dd8de2e8848da108"
+    },
+    {
+      "phase": "GREEN",
+      "path": "c11-outbound-float-fixed.log",
+      "sha256": "b7343c0c41934c59cad1c1b45ca98ea8f65cdce6e119b462d8611dd37dfc9d13"
+    }
+  ],
+  "change": "Numeric outer fields now require int as well as exact value equality; inbound canonical string normalization remains separate.",
+  "limits": [
+    "No real backend/device/cryptographic qualification",
+    "No original acceptance ID upgraded"
+  ]
+}
