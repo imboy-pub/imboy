@@ -1,0 +1,9 @@
+{
+  "completed": 0,
+  "errors": [],
+  "product_pass": false,
+  "scope": "JOURNAL_COMPLETENESS_ONLY",
+  "started": 1,
+  "state": "INCOMPLETE",
+  "unfinished": 1
+}

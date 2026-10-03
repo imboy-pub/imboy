@@ -900,5 +900,49 @@
       "real dual-device journeys and final business gates"
     ],
     "no_real_device_access": true
+  },
+  "shard_readonly_recovery_gate": {
+    "app_candidate": "78a7d67c62116d8513ff0f668fae08fb0e30f732",
+    "executed": 301,
+    "exit": 0,
+    "command": "python3 -m unittest discover -s test/tooling/auto_test",
+    "review": "APPROVED_AFTER_JSON_TYPE_COMPARISON_REPAIR",
+    "logs": [
+      {
+        "path": "shard-recovery-before-review.log",
+        "sha256": "efaee1447d68e77518532f44bb88a775841481f2f386947ff7bce84e33d70495"
+      },
+      {
+        "path": "shard-recovery-reviewed-suite.log",
+        "sha256": "bc78ccecfeb716e8f28a6ba2dd27a94a545aac926a4134bcff01eea69ea50980"
+      }
+    ],
+    "calibrations": [
+      {
+        "id": "PREPARATION-F01-RECOVERY-INCOMPLETE",
+        "exit": 2
+      },
+      {
+        "id": "PREPARATION-F01-RECOVERY-COMPLETE",
+        "exit": 0
+      }
+    ],
+    "command_registry": "commands.json",
+    "product_pass": false,
+    "scope": "JOURNAL_COMPLETENESS_ONLY",
+    "implemented": [
+      "detect started-but-unfinished attempts without replay",
+      "reject unknown/reordered/duplicate IDs and mismatched fingerprints",
+      "recompute same-target regular-file event hash",
+      "no-follow journal reads with bounded strict JSON",
+      "CLI never modifies evidence files"
+    ],
+    "remaining": [
+      "connect independent pinned execution index",
+      "reconcile actual authorized interrupted jobs and process handles",
+      "authenticate full candidate/runtime bindings",
+      "business and platform final gates"
+    ],
+    "real_device_access": false
   }
 }

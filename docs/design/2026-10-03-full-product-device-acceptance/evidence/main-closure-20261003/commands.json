@@ -272,6 +272,54 @@
       ],
       "scope": "SYNTHETIC_STRUCTURE_ONLY",
       "product_pass": false
+    },
+    {
+      "id": "PREPARATION-F01-RECOVERY-INCOMPLETE",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "-m",
+        "auto_test_lib.shard_recovery",
+        "--evidence-root",
+        "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003",
+        "--target-directory",
+        "recovery-synthetic-incomplete"
+      ],
+      "env": {
+        "PYTHONPATH": "/Users/leeyi/project/imboy.pub/imboyapp/scripts"
+      },
+      "timeout_seconds": 30,
+      "app_candidate": "78a7d67c62116d8513ff0f668fae08fb0e30f732",
+      "exit": 2,
+      "output": "recovery-synthetic-incomplete-result.json",
+      "output_sha256": "09211496ef5a40c14d820342927ecfa58cecd53ca79c49248bee6d000e3e2673",
+      "scope": "SYNTHETIC_JOURNAL_COMPLETENESS_ONLY",
+      "product_pass": false,
+      "fixture_bytes_unchanged": true
+    },
+    {
+      "id": "PREPARATION-F01-RECOVERY-COMPLETE",
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "python3",
+        "-m",
+        "auto_test_lib.shard_recovery",
+        "--evidence-root",
+        "/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003",
+        "--target-directory",
+        "recovery-synthetic-complete"
+      ],
+      "env": {
+        "PYTHONPATH": "/Users/leeyi/project/imboy.pub/imboyapp/scripts"
+      },
+      "timeout_seconds": 30,
+      "app_candidate": "78a7d67c62116d8513ff0f668fae08fb0e30f732",
+      "exit": 0,
+      "output": "recovery-synthetic-complete-result.json",
+      "output_sha256": "2a36731acb4edfd109b16bccf144911e050f9808cec56068f88321bf62b498d5",
+      "scope": "SYNTHETIC_JOURNAL_COMPLETENESS_ONLY",
+      "product_pass": false,
+      "fixture_bytes_unchanged": true
     }
   ],
   "final_verifier": "NOT_IMPLEMENTED"
