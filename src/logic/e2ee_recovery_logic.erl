@@ -127,8 +127,8 @@ check_server_backup_available(Uid) ->
             }};
         {error, not_found} ->
             {ok, false, #{}};
-        {error, Reason} ->
-            ok = ?ERROR_LOG([check_server_backup_available, Reason]),
+        {error, _Reason} ->
+            ok = ?ERROR_LOG({check_server_backup_available, database_failure}),
             {ok, false, #{}}
     end.
 
@@ -145,8 +145,8 @@ start_server_backup_recovery(Uid, _DeviceId) ->
             }};
         {error, not_found} ->
             {error, {<<"无云端备份"/utf8>>, ?ERR_NOT_FOUND}};
-        {error, Reason} ->
-            _ = ?ERROR_LOG({start_server_backup_recovery_db_error, Uid, Reason}),
+        {error, _Reason} ->
+            _ = ?ERROR_LOG({start_server_backup_recovery_db_error, database_failure}),
             %% C12-followup（AC-26）：恢复失败不能只有日志没有计数（e2ee_recovery_failed_total）
             _ = elib_metric:increment(e2ee_recovery_failed_total),
             {error, <<"internal_error">>}

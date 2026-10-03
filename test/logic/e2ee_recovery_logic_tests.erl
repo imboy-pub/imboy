@@ -151,3 +151,40 @@ start_server_backup_recovery_db_error_increments_metric_test_() ->
             )
         end
     ).
+
+recovery_database_errors_do_not_log_identity_or_raw_reason_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_backup_ds, [
+                {'latest', 1, fun(_) ->
+                    {error, {db_down, #{uid => 10001, secret => <<"synthetic-canary">>}}}
+                end}
+            ]},
+            {elib_metric, [{'increment', 1, fun(_) -> ok end}]},
+            {elib_log, [{'internal_log', 4, fun(_, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            ?assertEqual([], e2ee_recovery_logic:get_recovery_options(10001)),
+            ?assertEqual(
+                {error, <<"internal_error">>},
+                e2ee_recovery_logic:start_auto_recovery(10001, <<"dev-1">>, <<"server_backup">>)
+            ),
+            ?assertEqual(
+                1,
+                meck:num_calls(
+                    elib_log,
+                    internal_log,
+                    [error, {check_server_backup_available, database_failure}, '_', '_']
+                )
+            ),
+            ?assertEqual(
+                1,
+                meck:num_calls(
+                    elib_log,
+                    internal_log,
+                    [error, {start_server_backup_recovery_db_error, database_failure}, '_', '_']
+                )
+            ),
+            ?assertEqual(2, meck:num_calls(elib_log, internal_log, '_'))
+        end
+    ).
