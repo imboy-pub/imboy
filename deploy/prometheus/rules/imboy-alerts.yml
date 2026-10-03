@@ -784,9 +784,9 @@ groups:
             Sustained OTK exhaustion means the key refill pipeline is broken;
             affected users cannot establish new E2EE sessions.
           runbook: >
-            1. 查受影响用户分布：grep otk_exhausted /var/log/imboy/*.log | tail -50
+            1. 按实例和时间窗核对 olm_otk_exhausted_total；该计数不包含用户或设备标识
             2. 确认客户端版本是否刚发过版（refill 逻辑变更）
-            3. 抽一个受影响账号验证 /api olm/upload 接口是否正常
+            3. 获得测试资源授权后，用合成账号验证 OTK 补传和领取；勿使用真实用户密钥
 
       # 预共享密钥不可用：对端从未上传 prekey 或已失效，会话无法建立。
       # 阈值依据：与 OTK 耗尽同型——新注册用户未上传首批密钥会偶发，
@@ -907,7 +907,8 @@ groups:
           runbook: >
             1. 查 trust_audit 表写入报错：grep rotation_event_failed /var/log/imboy/*.log
             2. 核对 DB 连接/约束（trust_audit_repo insert_event）
-            3. 按日志中的事件字段人工补录审计记录
+            3. 日志只保留固定失败事件，不能据此重建签名审计记录；登记审计缺口
+            4. 保留已有可信签名证据，按获批准的恢复合同核对幂等重放；不得伪造或直接补写事件
 
       # required-E2EE 群拒收明文：rollout 期旧客户端在加密群发明文被拒的"撞墙"信号。
       # 阈值依据：这不是故障而是版本门在生效——warning 级别用于观察存量旧客户端规模，
@@ -947,7 +948,7 @@ groups:
             Group config queries failing; fail-closed is rejecting sends.
           runbook: >
             1. 对照 PostgreSQL 告警/慢查询（group 表读取）
-            2. 查 group_e2ee_gate_query_failed 日志确认错误类型
+            2. 查 group_e2ee_gate_query_failed 固定事件确认故障时间窗；日志不含群标识或原始数据库错误
             3. 与 ImBoyGroupE2eePlaintextRejected 区分：那条是版本门正常生效
 
       # E2EE 恢复失败：start_server_backup_recovery 查询 DB 出错（非"无备份"）。
