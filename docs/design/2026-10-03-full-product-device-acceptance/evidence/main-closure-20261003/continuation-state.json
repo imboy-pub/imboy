@@ -3581,5 +3581,58 @@
     },
     "change": "Declared PASS other_repo_sha must match valid nonzero frozen imboyadmin HEAD; explicit dash remains undeclared.",
     "proof_limit": "Does not prove omitting Admin is appropriate for any oracle. Declaration and version binding only; authentic execution/adequate business oracle, real device/backend journeys and final qualification remain pending. No parent acceptance upgraded."
+  },
+  "f08_import_verification_disposal": {
+    "id": "PREPARATION-F08-IMPORT-VERIFICATION-DISPOSAL",
+    "scope": "HOST_FILE_VERIFICATION_LIFECYCLE_ONLY",
+    "product_pass": false,
+    "device_execution": false,
+    "real_backend_execution": false,
+    "app_head": "86f51c9c4f9b3f1da8ba20594398afbb01ecd961",
+    "argv": [
+      "flutter",
+      "test",
+      "test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart",
+      "--reporter",
+      "expanded"
+    ],
+    "executed": 10,
+    "exit": 0,
+    "analyze_exit": 0,
+    "reviews": [
+      "FLUTTER_REVIEW_APPROVE_AFTER_COMPLETION_BARRIER",
+      "CODE_REVIEW_APPROVE"
+    ],
+    "attempts": {
+      "original-red": {
+        "passed": 0,
+        "failed": 2,
+        "exit": 1,
+        "log": {
+          "path": "f08-import-verification-disposal-original-red.log",
+          "sha256": "896fb922d3539a9395a552f6b274227f3887a134c29bf31f6594ab9b07e883a1"
+        }
+      },
+      "barrier-red": {
+        "passed": 0,
+        "failed": 2,
+        "exit": 1,
+        "log": {
+          "path": "f08-import-verification-disposal-barrier-red.log",
+          "sha256": "020b8408297c3739d66a1fd17f05cf79ee4410cb6af8b9f56fc4f69816127c8e"
+        }
+      },
+      "fixed": {
+        "passed": 10,
+        "failed": 0,
+        "exit": 0,
+        "log": {
+          "path": "f08-import-verification-disposal-fixed.log",
+          "sha256": "165399cd177cdb65c04948d8d89d78fe8c192ac859b79076cfc181957806b00b"
+        }
+      }
+    },
+    "test_preparation_correction": "Initial single-pump attempt did not finish IO and is not acceptance evidence. Fixed-delay suite also lacked per-run completion proof and review was BLOCKED. Final tests await real file verification then release controlled page Future after disposal, pump completion. Removing owned mounted guards temporarily gives deterministic 2 failures; source restored in finally.",
+    "proof_limit": "Actual file-header validation only, controlled callback scheduling; not backup cryptographic restore, secure storage/device/backend qualification. Existing successful import test remains host substitute scope. No required ID upgraded."
   }
 }
