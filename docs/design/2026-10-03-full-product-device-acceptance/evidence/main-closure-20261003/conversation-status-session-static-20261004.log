@@ -1,0 +1,7 @@
+Analyzing lib, unit_test...
+
+   info - lib/page/conversation/conversation_provider.dart:900:7 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/page/conversation/conversation_provider.dart:940:7 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - test/unit_test/page/conversation/conversation_status_session_test.dart:134:13 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+
+3 issues found.

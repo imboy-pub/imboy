@@ -5154,5 +5154,15 @@
     "exit": 0,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "conversation_status_session_isolation": {
+    "receipt": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/conversation-status-session-isolation-20261004.json",
+    "app_head": "71236a4c5b9d344f5d258aea5fcc37cd1c51e50c",
+    "executed": 263,
+    "focused_executed": 5,
+    "conversation_widget_executed": 14,
+    "exit": 0,
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": []
   }
 }

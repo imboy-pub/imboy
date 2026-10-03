@@ -1,0 +1,28 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/conversation/conversation_status_session_test.dart
+00:00 +0: conversation status phase=database changed=false
+updateConversationByMsgId: 更新会话 C2C_100_200 的 lastMsgStatus 为 21
+00:00 +1: conversation status phase=database changed=true
+updateConversationByMsgId: 更新会话 C2C_100_200 的 lastMsgStatus 为 21
+00:00 +1 -1: conversation status phase=database changed=true [E]
+  Expected: <0>
+    Actual: <1>
+  
+  package:matcher                                                                expect
+  package:flutter_test/src/widget_tester.dart 473:18                             expect
+  test/unit_test/page/conversation/conversation_status_session_test.dart 124:13  main.<fn>
+  
+00:00 +1 -1: conversation status phase=batch_timer changed=false
+00:00 +2 -1: conversation status phase=batch_timer changed=true
+00:00 +2 -2: conversation status phase=batch_timer changed=true [E]
+  Expected: <0>
+    Actual: <1>
+  
+  package:matcher                                                                expect
+  package:flutter_test/src/widget_tester.dart 473:18                             expect
+  test/unit_test/page/conversation/conversation_status_session_test.dart 132:11  main.<fn>
+  
+00:00 +2 -2: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/conversation/conversation_status_session_test.dart: conversation status phase=batch_timer changed=true
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/conversation/conversation_status_session_test.dart: conversation status phase=database changed=true

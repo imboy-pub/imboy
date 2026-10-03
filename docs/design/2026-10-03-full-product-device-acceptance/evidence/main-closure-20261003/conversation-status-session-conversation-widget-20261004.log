@@ -1,0 +1,33 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 空状态 / Empty state 会话列表为空时显示无数据视图 / shows empty view when no conversations
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/conversation/conversation_authority_sync_event_test.dart: Conversation authority sync event fires success event for empty authoritative list
+> on ConversationRepo/all 0 items
+ConversationNotifier: authoritative sync finished, items=0
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   AppLogger.debug (package:imboy/service/app_logger.dart:87:20)
+│ #1   EventBusTracker.trackEvent (package:imboy/service/event_bus.dart:134:15)
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 📡 [EVENT_BUS] Fire: ConversationAuthoritySyncEvent | props: prop0, prop1, prop2, prop3, prop4
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 空状态 / Empty state 会话列表为空时显示无数据视图 / shows empty view when no conversations
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/page/conversation/conversation_authority_sync_event_test.dart: Conversation authority sync event fires failed event when authoritative api throws
+ConversationNotifier: authoritative sync failed: StateError
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   AppLogger.debug (package:imboy/service/app_logger.dart:87:20)
+│ #1   EventBusTracker.trackEvent (package:imboy/service/event_bus.dart:134:15)
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 📡 [EVENT_BUS] Fire: ConversationAuthoritySyncEvent | props: prop0, prop1, prop2, prop3, prop4
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 空状态 / Empty state 会话列表为空时显示无数据视图 / shows empty view when no conversations
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 空状态 / Empty state 会话为空时搜索框仍然渲染 / search bar renders even when list is empty
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 加载状态 / Loading state isLoading=true 时不显示会话内容 / hides content while loading
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 列表渲染 / List rendering 有会话数据时渲染所有会话标题 / renders all conversation titles
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 列表渲染 / List rendering 消息预览文本（subtitle）显示在列表项中 / subtitle text appears in items
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 未读角标 / Unread badge 有未读消息时角标数字可见 / badge count visible when unread > 0
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 未读角标 / Unread badge 无未读时角标数字不出现 / no badge when all conversations are read
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 置顶排序 / Pinned conversation order 置顶会话排在普通会话前面 / pinned conversation appears before others
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 滑动操作面板 / Slidable actions 右滑会话项出现操作面板 / swipe reveals action pane
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 搜索过滤 / Search filtering 输入 query 仅显示匹配标题或预览的会话；清空恢复
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 搜索过滤 / Search filtering 无匹配结果显示"无搜索结果"，不显示加载失败
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/widget/conversation_list_test.dart: ConversationPage —— 下拉刷新 / Pull to refresh 下拉刷新调用 syncAuthoritativeConversationList 至少一次
+00:01 +14: All tests passed!
