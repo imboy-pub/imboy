@@ -1,0 +1,34 @@
+{
+  "scope": "LOCAL_DECRYPT_MAPPER_LOG_PRIVACY_ONLY",
+  "app_head": "e85ec53e0d5714cf0b1919b1c42b3f421f9471e0",
+  "red_exit_code": 1,
+  "regression_tests": 50,
+  "regression_exit_code": 0,
+  "analysis_exit_code": 0,
+  "review": "APPROVED_BY_CODE_AND_FLUTTER_REVIEW",
+  "artifacts": [
+    {
+      "path": "e2ee-mapper-log-red.log",
+      "sha256": "d2719963b4e99cbddc7186a2d31f8ae9393cdcc06daf77598d90e2f4149c8bdb"
+    },
+    {
+      "path": "e2ee-mapper-log-green.log",
+      "sha256": "a22ad27cc9f6e5dd707ef2df7b2a72b1eb0910c1ba175fc0540ba19f99b25d8f"
+    },
+    {
+      "path": "e2ee-mapper-log-analysis.log",
+      "sha256": "d8d31a639246e5332a0ac35d7f8b2dff8ce49db14fe4d04f4693e8af8bd9427c"
+    }
+  ],
+  "source_hashes": {
+    "lib/modules/messaging/infrastructure/message_model_mapper.dart": "5c89d67f60244cc1c93c0e7a7a88af542998ce4c28262ea03f928198134793b1",
+    "test/unit_test/service/e2ee/logging_privacy_guard_test.dart": "389ccfe80b02416c6acbfaf2accff760541141b71d1c30278206fdff72da6f62"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Source-fragment guard is not complete runtime privacy proof",
+    "No real device/backend execution or frozen SLO load test",
+    "Message placeholders and metadata unchanged"
+  ]
+}

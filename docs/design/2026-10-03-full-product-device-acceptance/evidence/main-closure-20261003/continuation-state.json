@@ -4509,5 +4509,11 @@
     "app_head": "0c55617660f6a6c509390f76bca090e960dad316",
     "tests": 19,
     "product_pass": false
+  },
+  "e2ee_mapper_log_privacy": {
+    "receipt": "e2ee-mapper-log-privacy.json",
+    "app_head": "e85ec53e0d5714cf0b1919b1c42b3f421f9471e0",
+    "tests": 50,
+    "product_pass": false
   }
 }
