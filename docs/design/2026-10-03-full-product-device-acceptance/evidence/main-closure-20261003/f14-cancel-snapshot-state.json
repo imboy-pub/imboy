@@ -1,0 +1,62 @@
+{
+  "scope": "LOCAL_SNAPSHOT_COMPARISON_PREPARATION_ONLY",
+  "app_head": "036aa0e124db6af0e49f5dc0fb7c0a733fcdc6fc",
+  "focused_tests": 11,
+  "tooling_tests": 434,
+  "exit_code": 0,
+  "review": "TWO_REVIEWERS_APPROVED",
+  "artifacts": [
+    {
+      "path": "f14-snapshot-null-red.log",
+      "sha256": "728801dc38ee4bc4f868904222ae81e4eda8e22744c638715e6b803f2ab2d7af"
+    },
+    {
+      "path": "f14-snapshot-null-green.log",
+      "sha256": "34a82a30511a2175a5286cff0751874e9220ce5fb08cab87b09cc04e220f6b31"
+    },
+    {
+      "path": "f14-snapshot-final-all.log",
+      "sha256": "dfebf6fc765776dc946009985ad4cb55b707e8ba02da428c5d95ad096006d7c2"
+    }
+  ],
+  "sources": [
+    {
+      "repo": "imboyapp",
+      "path": "scripts/auto_test_lib/billing_cancel_snapshots.py",
+      "sha256": "2d921d970226b2c4d815350d36f8d6be3ec3703e3fbc8170851efabcbba3e417"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "test/tooling/auto_test/test_billing_cancel_snapshots.py",
+      "sha256": "51063c15dbad88e46c8fda016ea5454bc44829e00ef72f311cb8221d35e6ef15"
+    },
+    {
+      "repo": "imboy",
+      "path": "priv/migrations/00000011_billing.up.sql",
+      "sha256": "e8b710afdb268be685cd82567058dbc7e4a35ff40afb5280aa0040254435f9f1"
+    },
+    {
+      "repo": "imboy",
+      "path": "priv/migrations/00000050_billing_owner_uid.up.sql",
+      "sha256": "6f19687fe26b627fb135deb4addd9ab4b93fb875c526a42c38cbdac7332540fe"
+    }
+  ],
+  "product_pass": false,
+  "zero_write_proven": false,
+  "device_execution": false,
+  "database_access": false,
+  "original_acceptance_ids_upgraded": [],
+  "protocol": {
+    "ids": "Canonical decimal strings; no floating-point IDs",
+    "timestamps": "UTC ISO timestamps; schema-nullable columns preserve null",
+    "amount": "Integer minor units",
+    "rows": "Exact complete subscription/invoice columns indexed by ID; owner/tenant and invoice associations validated"
+  },
+  "limits": [
+    "Caller must independently authenticate complete collection and pinned context",
+    "Equal before/after snapshots do not exclude transient writes or changes in other tables",
+    "Independent complete request and database write audit remains mandatory",
+    "Latest full App host regression remains failed at 78d71bbe and is not transferred to this candidate"
+  ],
+  "recovery": "Schema-nullability behavioral RED retained, followed by passing 11-case GREEN and 434-case full tooling suite"
+}

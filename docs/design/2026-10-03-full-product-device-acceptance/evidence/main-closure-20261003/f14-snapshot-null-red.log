@@ -1,0 +1,28 @@
+.....FF....
+======================================================================
+FAIL: test_null_to_timestamp_is_a_state_change (test_billing_cancel_snapshots.BillingCancelSnapshots)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_billing_cancel_snapshots.py", line 103, in test_null_to_timestamp_is_a_state_change
+    self.assertIn('BILLING_STATE_CHANGED',
+AssertionError: 'BILLING_STATE_CHANGED' not found in ['BILLING_ROW_VALUE_INVALID']
+
+======================================================================
+FAIL: test_nullable_database_columns_preserve_unchanged_state (test_billing_cancel_snapshots.BillingCancelSnapshots)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_billing_cancel_snapshots.py", line 95, in test_nullable_database_columns_preserve_unchanged_state
+    self.assertEqual(audit_billing_cancel_snapshots(
+AssertionError: Lists differ: ['BILLING_ROW_VALUE_INVALID'] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+'BILLING_ROW_VALUE_INVALID'
+
+- ['BILLING_ROW_VALUE_INVALID']
++ []
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.001s
+
+FAILED (failures=2)

@@ -4292,5 +4292,13 @@
     "receipt_sha256": "4fb28746b9d3aeb2c536a096763b6433d3c99e95c7131437611375553bf790b1",
     "billing_device_targets": 0,
     "product_pass": false
+  },
+  "f14_cancel_snapshot_state": {
+    "receipt": "f14-cancel-snapshot-state.json",
+    "app_head": "036aa0e124db6af0e49f5dc0fb7c0a733fcdc6fc",
+    "focused_tests": 11,
+    "tooling_tests": 434,
+    "product_pass": false,
+    "zero_write_proven": false
   }
 }
