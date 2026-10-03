@@ -430,3 +430,68 @@ invoice_generation_failure_privacy_test() ->
     after
         lists:foreach(fun meck:unload/1, lists:reverse(Modules))
     end.
+
+plan_subscription_failure_privacy_test() ->
+    Modules = [elib_log, billing_plan_ds, billing_subscription_ds],
+    lists:foreach(fun(M) -> meck:new(M, [passthrough, non_strict]) end, Modules),
+    try
+        meck:expect(elib_log, internal_log, fun(_, _, _, _) -> ok end),
+        Failure = {error, {database_error, <<"synthetic-private-plan-key">>}},
+        Params = #{
+            <<"code">> => <<"pro">>,
+            <<"name">> => <<"Pro">>,
+            <<"price">> => 39000,
+            <<"quota_config">> => #{<<"message">> => 10}
+        },
+        meck:expect(billing_plan_ds, create, fun(Data) ->
+            ?assertEqual(39000, maps:get(<<"price">>, Data)),
+            ?assertEqual(
+                #{<<"message">> => 10},
+                jsone:decode(maps:get(<<"quota_config">>, Data))
+            ),
+            Failure
+        end),
+        ?assertEqual(
+            {error, <<"创建套餐失败，请稍后重试"/utf8>>},
+            billing_logic:create_plan(Params)
+        ),
+        assert_billing_event(billing_plan_creation_error, 1),
+        meck:expect(billing_plan_ds, update, fun(7, Data) ->
+            ?assertEqual(
+                #{<<"message">> => 10},
+                jsone:decode(maps:get(<<"quota_config">>, Data))
+            ),
+            Failure
+        end),
+        ?assertEqual(
+            {error, <<"更新套餐失败，请稍后重试"/utf8>>},
+            billing_logic:update_plan(7, Params)
+        ),
+        assert_billing_event(billing_plan_update_error, 2),
+        meck:expect(billing_plan_ds, find_by_id, fun(7) ->
+            #{<<"billing_period">> => <<"month">>}
+        end),
+        meck:expect(billing_subscription_ds, create, fun(Data) ->
+            ?assertEqual(3001, maps:get(<<"tenant_id">>, Data)),
+            ?assertEqual(?OWNER, maps:get(<<"owner_uid">>, Data)),
+            ?assertEqual(1, maps:get(<<"status">>, Data)),
+            Failure
+        end),
+        ?assertEqual(
+            {error, <<"创建订阅失败，请稍后重试"/utf8>>},
+            billing_logic:subscribe(3001, 7, #{owner_uid => ?OWNER})
+        ),
+        assert_billing_event(billing_subscription_creation_error, 3)
+    after
+        lists:foreach(fun meck:unload/1, lists:reverse(Modules))
+    end.
+
+assert_billing_event(Event, Count) ->
+    ?assert(
+        meck:called(
+            elib_log,
+            internal_log,
+            [error, [Event], billing_logic, '_']
+        )
+    ),
+    ?assertEqual(Count, meck:num_calls(elib_log, internal_log, 4)).

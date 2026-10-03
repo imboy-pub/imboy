@@ -112,8 +112,8 @@ create_plan(Params) ->
                     {ok, Id};
                 {error, duplicate} ->
                     {error, <<"套餐编码已存在"/utf8>>};
-                {error, Reason} ->
-                    ?ERROR_LOG([<<"billing create_plan failed">>, Reason]),
+                {error, _Reason} ->
+                    ?ERROR_LOG([billing_plan_creation_error]),
                     {error, <<"创建套餐失败，请稍后重试"/utf8>>}
             end
     end.
@@ -132,8 +132,8 @@ update_plan(PlanId, Params0) ->
     case billing_plan_ds:update(PlanId, Params) of
         {ok, Count} ->
             {ok, Count};
-        {error, Reason} ->
-            ?ERROR_LOG([<<"billing update_plan failed">>, PlanId, Reason]),
+        {error, _Reason} ->
+            ?ERROR_LOG([billing_plan_update_error]),
             {error, <<"更新套餐失败，请稍后重试"/utf8>>}
     end.
 
@@ -202,8 +202,8 @@ subscribe(TenantId, PlanId, Opts) ->
                     {ok, Id};
                 {error, duplicate} ->
                     {error, <<"该租户已有生效订阅"/utf8>>};
-                {error, Reason} ->
-                    ?ERROR_LOG([<<"billing subscribe failed">>, TenantId, Reason]),
+                {error, _Reason} ->
+                    ?ERROR_LOG([billing_subscription_creation_error]),
                     {error, <<"创建订阅失败，请稍后重试"/utf8>>}
             end
     end.
