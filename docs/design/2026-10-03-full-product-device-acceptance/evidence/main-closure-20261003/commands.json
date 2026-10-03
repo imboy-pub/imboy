@@ -805,6 +805,77 @@
       "proof_limit": "Receipt confirmation only; explicit call is not cryptographic decrypt or UI proof. Fake sockets only.",
       "output": "c11-receipt-components-reviewed.log",
       "output_sha256": "d407b54212c7210b6a3da958755984d795e4436ff126c5bef299e2cf6a69a818"
+    },
+    {
+      "id": "PREPARATION-C11-PRODUCTION-PFV3-CONTEXT",
+      "scope": "PRODUCTION_HEADER_FORMAT_COMPATIBILITY_WITH_PROTOCOL_STUB",
+      "product_pass": false,
+      "network_executed": false,
+      "candidate_heads": {
+        "imboy": "5bc9629bce3fcb3c69f7cd34d389e61b6101739b",
+        "imboyapp": "a74b3681ebaab9572e65886db96768d8881568d7",
+        "imboyadmin": "997971a882928d67e70d6261629d5c69d2703539"
+      },
+      "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "argv": [
+        "flutter",
+        "test",
+        "test/unit_test/service/e2ee_registered_backend_transport_test.dart",
+        "test/unit_test/service/e2ee_release_socket_session_test.dart",
+        "test/unit_test/service/e2ee_release_wire_codec_test.dart",
+        "test/unit_test/service/e2ee_server_ack_tracker_test.dart",
+        "test/unit_test/service/e2ee_registered_wire_binding_test.dart",
+        "test/unit_test/service/e2ee_registered_fixture_test.dart",
+        "test/unit_test/service/e2ee_release_harness_host_test.dart",
+        "test/unit_test/service/e2ee/e2ee_outbound_router_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "executed": 85,
+      "failed": 0,
+      "exit": 0,
+      "analysis": "No issues found",
+      "logs": [
+        {
+          "path": "c11-production-context-red-test-fixture.log",
+          "sha256": "40d1edb6ccb7fc884696bf64afb39bb402092389ad3bfeaab6e7750ed8883d48",
+          "phase": "FAILED_NEGATIVE_TEST_MUTATED_CONST_METADATA",
+          "exit": 1
+        },
+        {
+          "path": "c11-production-format-reviewed.log",
+          "sha256": "4fe719d34ceff7a736494e503b471d1b47673e4cb8b20c702d568f3226ad4ee3",
+          "phase": "REVIEWED_PRODUCTION_FORMAT_AND_85_HOST_REGRESSION",
+          "exit": 0
+        }
+      ],
+      "source_fingerprints": {
+        "lib/page/chat/chat/services/chat_network_service.dart": "2bbdac800804a751dfeeb508db819a6cf578c99c6487b5ebc4a125bbcc5080f6",
+        "lib/service/e2ee/e2ee_outbound_router.dart": "816e5d858973ca70980d2d265e1595cd28de4ea4c90d50ec7cc7fbc2c0414b27",
+        "lib/service/e2ee_service.dart": "aaee87cce887ea368320dcd34033b7941b423573214d0aac61c757d8e82cace4",
+        "integration_test/e2ee_release/harness/registered_wire_binding.dart": "e8199876eaa92d9b2d9109362c9650ba808da5f7e10e72e3e05d8761f734fcd5"
+      },
+      "review": [
+        "C11_FLUTTER_REVIEW_SOURCE_BACKED_APPROVE",
+        "RUNNER_CODE_REVIEW_SOURCE_BACKED_APPROVE"
+      ],
+      "corrected_prior_assumptions": [
+        "destination is recipient account ID, not DID",
+        "conversation_id is lexicographically sorted account pair",
+        "fanout sub-envelope removes meta_version; promote for verification",
+        "protected action message maps to empty ordinary wire action",
+        "protocol_metadata.session_id must equal protected session_ref"
+      ],
+      "oracle": "actual E2eeOutboundRouter.encryptV3 with explicit protocol stub and persistOutbox=false",
+      "remaining": [
+        "complete current production multi-device fanout including own-device echo",
+        "group/attachment/real key directory lifecycle",
+        "authorized runtime and dual-device encrypted journeys",
+        "97-ID frozen final qualification"
+      ],
+      "proof_limit": "Header/format compatibility only; no real cryptographic protocol, key registration, outbox persistence, network or device proof.",
+      "output": "c11-production-format-reviewed.log",
+      "output_sha256": "4fe719d34ceff7a736494e503b471d1b47673e4cb8b20c702d568f3226ad4ee3"
     }
   ],
   "final_verifier": "NOT_IMPLEMENTED"

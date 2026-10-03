@@ -1,0 +1,89 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart
+00:00 +0: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: configured real interface requires matching server ACK
+00:00 +1: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: local send without server ACK stays unconfirmed
+00:00 +2: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: old pending connector failure cannot cancel new pending connector
+00:00 +3: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: old pending connector failure cannot cancel new pending connector
+00:00 +4: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: old pending connector failure cannot cancel new pending connector
+00:00 +5: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: old pending connector failure cannot cancel new pending connector
+00:00 +6: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt disconnect cannot become success
+00:00 +7: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: late connector after timeout is closed
+00:00 +8: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_socket_session_test.dart: late connector after timeout is closed
+00:00 +9: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +10: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +11: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +12: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +13: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +14: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +15: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +16: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: receipt timeout and wrong confirmation remain unconfirmed
+00:00 +17: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: synthetic protected identities fail before channel write
+00:00 +18: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_backend_transport_test.dart: disconnect during token resolution prevents later connection
+00:00 +19: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: round trip imboy.v2 uses production framing
+00:00 +20: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: round trip imboy-json uses production framing
+00:00 +21: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: round trip text uses production framing
+00:00 +22: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: round trip sip uses production framing
+00:00 +23: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: round trip null uses production framing
+00:00 +24: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: JSON ACK fallback retains correlation inside v2
+00:00 +25: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: decodes production protobuf business payload inside v2
+00:00 +26: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: heartbeat sequence remains a control payload
+00:00 +27: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: rejects truncation trailing bytes and wrong version
+00:00 +28: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: rejects unsupported transformations and protocol
+00:00 +29: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: rejects empty protobuf, malformed JSON and invalid bytes
+00:00 +30: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: legacy heartbeat and bounded payload
+00:00 +31: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_wire_codec_test.dart: legacy receipt uses string IDs and rejects delimiter injection
+00:00 +32: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: C2C ACK only completes exact matching request once
+00:00 +33: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: C2G ACK only completes exact matching request once
+00:00 +34: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept different ID
+00:00 +35: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept different reply
+00:00 +36: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept missing reply
+00:00 +37: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept numeric ID
+00:00 +38: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept wrong direction
+00:00 +39: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept client confirmation
+00:00 +40: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: does not accept business error
+00:00 +41: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: other devices and stale connections cannot complete pending send
+00:00 +42: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: deadline and late ACK remain unconfirmed
+00:00 +43: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: expiry is exact and does not imply rejection or offline recipient
+00:00 +44: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: disconnect drains only its generation and device
+00:00 +45: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_server_ack_tracker_test.dart: rejects malformed registrations and negative clock
+00:01 +46: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: accepts actual outbound router header with protocol stub
+00:01 +47: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: binds exact registered IDs without rewriting protected header
+00:01 +48: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects synthetic sender uid instead of rewriting cryptographic context
+00:01 +49: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects synthetic sender DID instead of rewriting cryptographic context
+00:01 +50: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects synthetic destination instead of rewriting cryptographic context
+00:01 +51: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects wrong conversation instead of rewriting cryptographic context
+00:01 +52: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects wrong protected ID instead of rewriting cryptographic context
+00:01 +53: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects conflicting outer fields
+00:01 +54: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects plaintext in the supposedly encrypted payload
+00:01 +55: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects legacy smoke destination and broken protocol session binding
+00:01 +56: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_wire_binding_test.dart: rejects bad hash unknown device and wrong message type
+00:01 +57: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: keeps exact large IDs and snapshots immutable maps
+00:01 +58: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects wrong run and incomplete binding
+00:01 +59: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects unknown alias
+00:01 +60: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects wrong owner
+00:01 +61: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects platform mismatch
+00:01 +62: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects simulated platform
+00:01 +63: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects empty DID
+00:01 +64: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects DID whitespace
+00:01 +65: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects token value
+00:01 +66: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects overflow ID
+00:01 +67: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects leading zero ID
+00:01 +68: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects alias as ID
+00:01 +69: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects conflicting account
+00:01 +70: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects duplicate DID
+00:01 +71: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects reused account ID
+00:01 +72: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_fixture_test.dart: rejects duplicate device and missing or unknown group
+00:02 +73: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: (setUpAll)
+00:02 +73: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: fixture contract：命名规范与 canary 合同
+00:02 +74: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: AC22-S01 冒烟：最小双端 C2C 真实加解密往返 + 服务端密文 oracle
+00:02 +75: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: AC22-S02 冒烟：B→A 反向回复（双向 ratchet 往返）
+00:02 +76: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: AC22-M01 冒烟：replay 注入 -> 去重且 UI 不重复推进
+00:02 +77: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_outbound_router_test.dart: E2eeOutboundRouter 根据已选套件通过 Registry 调用协议 encrypt
+00:02 +78: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: AC22-M03 冒烟：篡改/洪泛注入 -> fail-closed 失败占位
+00:02 +79: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_outbound_router_test.dart: E2eeOutboundRouter 生成 ADR 05 双写信封并保留协议私有字段
+00:02 +80: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: AC22-M04 冒烟：身份目录替换 -> 握手 fail-closed，无法建立可信会话
+00:02 +81: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_outbound_router_test.dart: E2eeOutboundRouter 已选套件与 Registry 实现的三元组不一致时拒绝加密
+00:02 +82: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: AC22-S04 冒烟：离线存储 + 重连补投（内存替身离线能力）
+00:02 +83: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: 真实后端层 stub：未授权实现必须显式拒绝（REQUIRES_AUTHORIZED_BACKEND）
+00:02 +84: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: 旅程目录完整性与 attack-matrix.md 场景一一对齐
+00:02 +85: /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_release_harness_host_test.dart: (tearDownAll)
+00:02 +85: All tests passed!
