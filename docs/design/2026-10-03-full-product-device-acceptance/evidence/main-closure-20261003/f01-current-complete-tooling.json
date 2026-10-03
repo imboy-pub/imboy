@@ -1,0 +1,30 @@
+{
+  "id": "F01-CURRENT-COMPLETE-TOOLING-REGRESSION",
+  "scope": "LOCAL_HOST_ACCEPTANCE_TOOLING_ONLY",
+  "app_head": "4de37a4ef587f2815b141e36bc03898d6c346ff3",
+  "argv": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "test/tooling/auto_test"
+  ],
+  "executed": 416,
+  "failed": 0,
+  "exit_code": 0,
+  "elapsed_seconds": 15.007,
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "final_verifier": false,
+  "log": "f01-current-complete-tooling.log",
+  "log_sha256": "d9e4ee280ed097de07afb4e3e68cb37ad0bb6422641cd8c0590658bfe774e97c",
+  "reason": "Public coverage gate changed; broaden regression to all tooling consumers",
+  "limits": [
+    "Host tool tests include synthetic fixtures and expected negative-gate outputs",
+    "Shared App tree contains preserved unrelated tracked WIP; not a frozen clean candidate gate",
+    "Current full product required cases and source mappings remain incomplete",
+    "No original acceptance ID upgraded"
+  ]
+}
