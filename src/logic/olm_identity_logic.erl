@@ -10,6 +10,7 @@
 -include("log.hrl").
 
 -export([report_identity/6]).
+-export([report_identity/7]).
 -export([report_one_time_keys/4]).
 -export([report_fallback_key/4]).
 -export([report_fallback_key/5]).
@@ -46,25 +47,55 @@
 %%
 %%   1. 无现存身份（not_found）→ 首次注册：PoP 即授权，直接写入。
 %%   2. 现存身份同根（ed25519 相同）→ PoP（= 根钥签新子键）即授权；
-%%      子键（curve25519）有变化时走 rotate_identity/6 产生版本事件；
+%%      子键（curve25519）有变化时走 rotate_identity/7 产生版本事件；
 %%      完全一致为幂等重报，不产生版本事件。
-%%   3. 现存身份换根（ed25519 不同）→ 必须携带**旧钥过渡签名**：signature
-%%      须由已注册旧 ed25519 私钥对本 curve25519_key 签署（持旧钥者授权换根），
-%%      否则拒绝 key_rotation_requires_old_key_proof。盗 token 者无旧私钥，
-%%      换根被拒；真重装（旧私钥丢失）用户同样被拒——重装恢复请先在设备管理
-%%      移除旧设备记录（user_device_logic:delete 触发吊销级联清掉 olm 行），
-%%      协议级 signed key transition 属后续升级（见 C01 报告）。
+%%   3. 现存身份换根（ed25519 不同）→ fix-round1（W1-review C01-M1）起要求
+%%      **双签名**，缺一不可：
+%%        a) Signature（存 olm_identity.signature 列）必须由**本次上传的新
+%%           ed25519 私钥**对本次 curve25519_key 的 base64 文本签署——与客户端
+%%           生产路径 imboyapp olm_session_service.dart:720/:971 →
+%%           identity_verifier.dart:27-54 的验签语义逐字节一致
+%%           （用 ed25519_key 验 signature、消息 = curve25519_key 文本）。
+%%           换根后列内若仍是旧钥签名，对端两处验签必然失败 → 换根设备被
+%%           全部对端 fail-closed 断联（M1）。
+%%        b) TransitionSignature（服务端一次性 PoP，验证后**不落 signature 列**）
+%%           必须由**已注册旧 ed25519 私钥**对 rotation_canonical/4 载荷（绑定
+%%           uid/did/新 ed/新 curve）签署——持旧钥者授权换根；盗 token 者无旧
+%%           私钥，自签新钥对（a 成立、b 缺失）同样被拒
+%%           （key_rotation_requires_old_key_proof）。真重装（旧私钥丢失）用户
+%%           同样被拒——重装恢复请先在设备管理移除旧设备记录
+%%           （user_device_logic:delete 触发吊销级联清掉 olm 行），协议级
+%%           signed key transition 属后续升级（见 C01 报告）。
+%%      过渡签名经验证后作为授权证据进 trust_audit.identity_rotated 事件的
+%%      actor_signature（同根路径的 actor_signature = 根钥 PoP 签名，不变）。
 %%   4. find_identity 查询失败 → fail-closed：无法确认旧身份状态时拒绝写入
 %%      （防「查不到旧身份即绕过分流」）。
 %%
-%% 版本事件（rotate_identity/6）：user_device.identity_version 单调 +1
+%% /6 是 /7 的兼容入口（TransitionSignature = <<>>）：同根/首次注册行为完全
+%% 不变；换根在 /6 下**显式拒绝** key_rotation_requires_old_key_proof（wire
+%% 旧入口 fail-closed 可见，而非 M1 的静默断联）。handler 接线新 wire 字段
+%% （olm_handler.erl 归 C06 owned，本卡不碰）后改调 /7 即启用双签名换根。
+%%
+%% 版本事件（rotate_identity/7）：user_device.identity_version 单调 +1
 %% （migration 00000047 写侧实现，撤销设备 0 行命中 → device_revoked，兼作
 %% 撤销复活门），并写 trust_audit 事件 method=identity_rotated（版本/代数快照，
 %% 复用 trust_audit_repo 的防回退 advisory 锁与 event_id 幂等）。
 -spec report_identity(integer(), binary(), binary(), binary(), binary(), binary()) ->
     ok | {error, binary()}.
-report_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) when
-    is_integer(UserId), is_binary(DeviceId)
+report_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+    %% /6 = /7 的无过渡签名入口（见 /7 文档）：换根显式拒绝，同根/首次不变。
+    report_identity(
+        UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, <<>>, DeviceType
+    ).
+
+-spec report_identity(
+    integer(), binary(), binary(), binary(), binary(), binary(), binary()
+) ->
+    ok | {error, binary()}.
+report_identity(
+    UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, TransitionSignature, DeviceType
+) when
+    is_integer(UserId), is_binary(DeviceId), is_binary(TransitionSignature)
 ->
     case
         byte_size(Ed25519Key) > 0 andalso
@@ -87,7 +118,8 @@ report_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceTy
                         Signature,
                         DeviceType,
                         OldEd,
-                        OldCurve
+                        OldCurve,
+                        TransitionSignature
                     );
                 {error, Reason} ->
                     _ = ?ERROR_LOG({olm_report_identity_lookup_error, UserId, DeviceId, Reason}),
@@ -96,7 +128,7 @@ report_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceTy
         false ->
             {error, <<"invalid_identity_keys">>}
     end;
-report_identity(_, _, _, _, _, _) ->
+report_identity(_, _, _, _, _, _, _) ->
     {error, <<"bad_request">>}.
 
 %% @private PoP（本次上传的 ed25519 验签）通过后直接 upsert——
@@ -112,13 +144,21 @@ pop_then_upsert(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceTy
             {error, <<"invalid_signature">>}
     end.
 
-%% @private 按现存身份分流（见 report_identity/6 文档）。
+%% @private 按现存身份分流（见 report_identity/7 文档）。
 -spec dispatch_existing_identity(
-    integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary()
+    integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()
 ) ->
     ok | {error, binary()}.
 dispatch_existing_identity(
-    UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType, OldEd, OldCurve
+    UserId,
+    DeviceId,
+    Ed25519Key,
+    Curve25519Key,
+    Signature,
+    DeviceType,
+    OldEd,
+    OldCurve,
+    TransitionSignature
 ) ->
     case OldEd =:= Ed25519Key of
         true ->
@@ -132,9 +172,15 @@ dispatch_existing_identity(
                                 UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
                             );
                         false ->
-                            %% 子键轮换（根不变）
+                            %% 子键轮换（根不变）：事件 actor_signature = 根钥 PoP 签名
                             rotate_identity(
-                                UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                                UserId,
+                                DeviceId,
+                                Ed25519Key,
+                                Curve25519Key,
+                                Signature,
+                                DeviceType,
+                                Signature
                             )
                     end;
                 false ->
@@ -142,23 +188,95 @@ dispatch_existing_identity(
                     {error, <<"invalid_signature">>}
             end;
         false ->
-            %% 换根：必须旧 ed25519 私钥对本 curve25519_key 的过渡签名
-            case verify_ed25519(OldEd, Curve25519Key, Signature) of
-                true ->
-                    rotate_identity(
-                        UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
-                    );
-                false ->
-                    _ = elib_metric:increment(olm_identity_rotation_rejected_total),
-                    {error, <<"key_rotation_requires_old_key_proof">>}
-            end
+            %% 换根：双签名（fix-round1，W1-review C01-M1）——
+            %% 旧钥过渡签名（授权证据）+ 新钥自签（signature 列语义）
+            rotation_with_double_proof(
+                UserId,
+                DeviceId,
+                Ed25519Key,
+                Curve25519Key,
+                Signature,
+                DeviceType,
+                OldEd,
+                TransitionSignature
+            )
     end.
 
-%% @private 有变化的身份写入：先过撤销联合门 + 版本 bump（原子单条 UPDATE，
-%% WHERE status=1），成功后 upsert，最后追加 trust_audit 版本事件。
--spec rotate_identity(integer(), binary(), binary(), binary(), binary(), binary()) ->
+%% @private 换根双签名验证（fix-round1，W1-review C01-M1）。
+%%
+%% 两道门缺一不可，先授权后列语义：
+%%   1. 旧钥过渡 PoP：TransitionSignature 非空，且由已注册旧 ed25519 私钥对
+%%      rotation_canonical/4（绑定 uid/did/新 ed/新 curve）签署。缺失/无效 →
+%%      key_rotation_requires_old_key_proof——只带新自签（token 盗用者可自签）
+%%      不足以授权换根。
+%%   2. 新钥自签：Signature 由新 ed25519 对新 curve base64 文本签署（与客户端
+%%      olm_session_service.dart:720 验签语义逐字节一致）。无效 →
+%%      invalid_signature——只带旧钥过渡而无新自签等于把旧钥签名写进
+%%      signature 列（M1 断联根因），列语义损坏必须拒绝。
+%% 双验通过后 Signature（新自签）落 signature 列，TransitionSignature（旧钥
+%% 授权证据）进 trust_audit.actor_signature，不落列。
+-spec rotation_with_double_proof(
+    integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary()
+) ->
     ok | {error, binary()}.
-rotate_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+rotation_with_double_proof(
+    UserId,
+    DeviceId,
+    Ed25519Key,
+    Curve25519Key,
+    Signature,
+    DeviceType,
+    OldEd,
+    TransitionSignature
+) ->
+    Canonical = rotation_canonical(UserId, DeviceId, Ed25519Key, Curve25519Key),
+    TransitionProven =
+        byte_size(TransitionSignature) > 0 andalso
+            no_ctrl_chars([DeviceId, Ed25519Key, Curve25519Key]) andalso
+            verify_ed25519(OldEd, Canonical, TransitionSignature),
+    case TransitionProven of
+        true ->
+            case verify_ed25519(Ed25519Key, Curve25519Key, Signature) of
+                true ->
+                    rotate_identity(
+                        UserId,
+                        DeviceId,
+                        Ed25519Key,
+                        Curve25519Key,
+                        Signature,
+                        DeviceType,
+                        TransitionSignature
+                    );
+                false ->
+                    _ = elib_metric:increment(olm_identity_pop_rejected_total),
+                    {error, <<"invalid_signature">>}
+            end;
+        false ->
+            _ = elib_metric:increment(olm_identity_rotation_rejected_total),
+            {error, <<"key_rotation_requires_old_key_proof">>}
+    end.
+
+%% @private 换根过渡签名的 canonical 载荷：旧钥对新根上下文的授权绑定。
+%%  `key=value\n`、ASCII 字典序、末字段无尾随换行——与 fallback_canonical/1、
+%%  `e2ee_trust_logic:canonical_payload/1` 同一方案（项目既有、双语言对齐）。
+%%  绑定 uid/did/新 ed/新 curve：过渡签名不可重放到其它设备/用户/密钥
+%%  （W1-review C01-M1 衍生项：过渡签名须绑定新旧钥与上下文）。
+%%  字段序 curve25519_key < device_id < ed25519_key < user_id 已是字典序。
+-spec rotation_canonical(integer(), binary(), binary(), binary()) -> binary().
+rotation_canonical(UserId, DeviceId, Ed25519Key, Curve25519Key) ->
+    <<"curve25519_key=", Curve25519Key/binary, "\n", "device_id=", DeviceId/binary,
+        "\ned25519_key=", Ed25519Key/binary, "\nuser_id=", (integer_to_binary(UserId))/binary>>.
+
+%% @private 有变化的身份写入：先过撤销联合门 + 版本 bump（原子单条 UPDATE，
+%% WHERE status=1），成功后 upsert（Signature = signature 列语义的新自签），
+%% 最后以 EventActorSignature 作为授权证据追加 trust_audit 版本事件。
+-spec rotate_identity(
+    integer(), binary(), binary(), binary(), binary(), binary(), binary()
+) ->
+    ok | {error, binary()}.
+rotate_identity(
+    UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType, EventActorSignature
+) ->
     case user_device_ds:bump_identity_version(UserId, DeviceId) of
         {ok, 0} ->
             %% user_device 无活跃行：撤销/硬删设备（含 cleanup 失败残留 olm 行的
@@ -172,7 +290,7 @@ rotate_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceTy
             of
                 ok ->
                     _ = emit_rotation_event(
-                        UserId, DeviceId, Ed25519Key, Signature, NewVer, DeviceGen
+                        UserId, DeviceId, Ed25519Key, EventActorSignature, NewVer, DeviceGen
                     ),
                     ok;
                 {error, _} = Err ->
@@ -202,9 +320,13 @@ do_upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, Devic
 %%
 %% 事件复用 trust_audit_repo:insert_event 的基础设施：per-target advisory 锁
 %% 串行化、target_identity_version 快照防回退、event_id 幂等。actor 是设备
-%% 本人（self-rotation），actor_signature 即本次上传的身份认证级签名——
-%% 同根路径为新根对 curve 的签名（PoP），换根路径为旧根对 curve 的过渡签名，
-%% 两者都密码学绑定到授权本次换钥的私钥。
+%% 本人（self-rotation），actor_signature 是**授权本次换钥的密码学证据**
+%% （fix-round1 起双路径语义）：同根子键轮换 = 根钥对新 curve 的 PoP 签名；
+%% 换根 = 旧钥对 rotation_canonical（绑定 uid/did/新 ed/新 curve）的过渡签名。
+%% 换根路径的 signature 列值（新钥自签）不进事件——事件承载授权证据，
+%% 列承载对端可验证的 X3DH/TOFU 自签，两者职责分离（W1-review C01-M1）。
+%% target_ed25519 快照 = 换钥后的新根公钥；旧根可由同一 target 的上一条
+%% identity_rotated 事件（append-only 流）回溯，无需冗余列。
 %%
 %% from_state/to_state 置 <<"unverified">>：服务端不追踪信任现值（trust_audit
 %% 是事件流非现值表），换钥的语义就是「对端 TOFU 信任重置」；该事件不走
