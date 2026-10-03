@@ -1,0 +1,14 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart
+00:00 +0: ensureReady 调用注册套件并隔离失败日志
+00:00 +0 -1: ensureReady 调用注册套件并隔离失败日志 [E]
+  Expected: <1>
+    Actual: <0>
+  
+  package:matcher                                            expect
+  package:flutter_test/src/widget_tester.dart 473:18         expect
+  test/unit_test/service/e2ee/e2ee_bootstrap_test.dart 90:7  main.<fn>
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/e2ee_bootstrap_test.dart: ensureReady 调用注册套件并隔离失败日志

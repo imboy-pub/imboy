@@ -4533,5 +4533,11 @@
     "app_head": "dd07e727c292a23e042701d5577edfc72dee6d4d",
     "tests": 10,
     "product_pass": false
+  },
+  "e2ee_real_bootstrap": {
+    "receipt": "e2ee-real-bootstrap.json",
+    "app_head": "4f5cc38b6980f66391041c27002ad0d0d4b4468e",
+    "tests": 9,
+    "product_pass": false
   }
 }

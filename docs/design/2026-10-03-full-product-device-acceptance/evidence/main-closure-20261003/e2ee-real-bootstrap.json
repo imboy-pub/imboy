@@ -1,0 +1,35 @@
+{
+  "scope": "HOST_PRODUCTION_BOOTSTRAP_DISPATCH_AND_FAILURE_LOG_ONLY",
+  "app_head": "4f5cc38b6980f66391041c27002ad0d0d4b4468e",
+  "tests": 9,
+  "exit_code": 0,
+  "analysis_exit_code": 0,
+  "removed_initialize_calibration_exit_code": 1,
+  "restored_exit_code": 0,
+  "review": "APPROVED_CODE_AND_FLUTTER_AFTER_SOURCE_RESTORATION",
+  "artifacts": [
+    {
+      "path": "e2ee-real-bootstrap-log.log",
+      "sha256": "e405afbe0cd2ad3924e1868f4b5979024c2cf589f129646825b567022826a310"
+    },
+    {
+      "path": "e2ee-real-bootstrap-analysis.log",
+      "sha256": "002e7bdd14fccfd97fed58d0a6dbe7c01d8c41cb0806e8712d904a87178625ec"
+    },
+    {
+      "path": "e2ee-real-bootstrap-calibration.log",
+      "sha256": "cdfdd944d16f0425fc0e8e7e6656dd94375e1f146b394cc7d4a6d419437f27a4"
+    },
+    {
+      "path": "e2ee-real-bootstrap-restored.log",
+      "sha256": "e405afbe0cd2ad3924e1868f4b5979024c2cf589f129646825b567022826a310"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Actual ensureReady entry with synthetic registered protocol probes and mocked device info",
+    "No real protocol crypto initialization or device/backend journey",
+    "No original acceptance or frozen SLO upgrade"
+  ]
+}
