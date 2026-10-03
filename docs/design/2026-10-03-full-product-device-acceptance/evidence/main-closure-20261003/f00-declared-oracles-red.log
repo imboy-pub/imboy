@@ -1,0 +1,16 @@
+..F.................
+======================================================================
+FAIL: test_oracle_declaration_is_scoped_without_execution_claim (test_inventory.FunctionTargetDeclarationTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_inventory.py", line 68, in test_oracle_declaration_is_scoped_without_execution_claim
+    self.assertEqual(result[0]['expected_oracle'], spec['function_oracles']['fn:page:001'])
+AssertionError: 'expect(<控件可观察状态>)' != 'cancel removes visible payment sheet'
+- expect(<控件可观察状态>)
++ cancel removes visible payment sheet
+
+
+----------------------------------------------------------------------
+Ran 20 tests in 1.288s
+
+FAILED (failures=1)

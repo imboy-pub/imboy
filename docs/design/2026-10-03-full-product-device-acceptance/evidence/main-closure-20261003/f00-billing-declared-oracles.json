@@ -1,0 +1,43 @@
+{
+  "scope": "STATIC_DECLARED_ORACLES_NOT_EXECUTED",
+  "app_head": "20f4888d405ccfc751be16f489a1e4adf2175548",
+  "tooling_tests": 445,
+  "exit_code": 0,
+  "review": "TWO_REVIEWERS_APPROVED_AFTER_PLACEHOLDER_REJECTION_REPAIR",
+  "artifacts": [
+    {
+      "path": "f00-declared-oracles-red.log",
+      "sha256": "adfc5d6143031c4af52f2befea493d6f5562f647f091f0b8f2f0400821b67aa9"
+    },
+    {
+      "path": "f00-declared-oracles-green.log",
+      "sha256": "6015e6ead02d2349a2d7fe9786bb1957623d684e9713df6cba00be926fd78a16"
+    },
+    {
+      "path": "f00-declared-oracles-placeholder-red.log",
+      "sha256": "dedeade73183e7caf2e2ab261ed04dfac3442b31a498c8e50c295b1cf44ce3bf"
+    },
+    {
+      "path": "f00-declared-oracles-reviewed-green.log",
+      "sha256": "c9b2566005130f9c36779c877a87ada8a88cbfe172097f7850254369ba28e7a7"
+    }
+  ],
+  "changed_ids": [
+    "fn:billing:plan_list_page:004",
+    "fn:billing:plan_list_page:006"
+  ],
+  "functions": 1979,
+  "pages": 188,
+  "missing_targets": 1761,
+  "placeholder_oracles": 229,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "real_backend_execution": false,
+  "execution_enabled": false,
+  "recovery": "Initial 444-pass suite lacked sentinel protection; genuine TODO/TBD/PENDING RED retained; repaired full suite 445-pass",
+  "limits": [
+    "Declaration is not execution; independent write audit remains required",
+    "All other functions/resources/targets/statuses unchanged"
+  ]
+}

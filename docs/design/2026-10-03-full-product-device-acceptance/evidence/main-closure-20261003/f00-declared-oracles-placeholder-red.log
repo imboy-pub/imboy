@@ -1,0 +1,13 @@
+...F.................
+======================================================================
+FAIL: test_placeholder_oracle_declaration_cannot_clear_readiness_gap (test_inventory.FunctionTargetDeclarationTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_inventory.py", line 67, in test_placeholder_oracle_declaration_cannot_clear_readiness_gap
+    inventory.constrain_function_targets([function], [spec])
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 21 tests in 1.190s
+
+FAILED (failures=1)

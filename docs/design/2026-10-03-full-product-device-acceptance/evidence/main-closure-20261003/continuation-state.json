@@ -4376,5 +4376,13 @@
     "executed": 25,
     "exit_code": 0,
     "product_pass": false
+  },
+  "f00_billing_declared_oracles": {
+    "receipt": "f00-billing-declared-oracles.json",
+    "app_head": "20f4888d405ccfc751be16f489a1e4adf2175548",
+    "tooling_tests": 445,
+    "missing_targets": 1761,
+    "placeholder_oracles": 229,
+    "product_pass": false
   }
 }
