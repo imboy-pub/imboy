@@ -1,0 +1,5 @@
+Analyzing 2 items...                                            
+
+warning • The type argument(s) of 'List' can't be inferred. Use explicit type argument(s) for 'List' • test/organization/organization_home_page_widget_test.dart:67:34 • inference_failure_on_collection_literal
+
+1 issue found. (ran in 2.7s)

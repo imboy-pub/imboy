@@ -1,0 +1,35 @@
+{
+  "scope": "LOCAL_ORGANIZATION_HOME_REFRESH_RACE",
+  "app_head": "53682f8c8b4655f89faca8a7b0c52081559abe0e",
+  "tests": 4,
+  "exit_code": 0,
+  "red_failed": 1,
+  "red_passed": 3,
+  "analyze_exit_code": 0,
+  "review": "APPROVED_FLUTTER_AND_CODE_REVIEW",
+  "artifacts": [
+    {
+      "path": "org-home-refresh-red-20261004.log",
+      "sha256": "1fda2f98fa882791a39595ba820ef93fb7eacbc27c44b425ba17dc40042d38eb"
+    },
+    {
+      "path": "org-home-refresh-green-20261004.log",
+      "sha256": "32f168e7f016928178efd8899803390fc458442330e26ea86368f7aee962a0ea"
+    },
+    {
+      "path": "org-home-refresh-analyze-20261004.log",
+      "sha256": "6b206ea943145882c4d9f7cc9540805d8d1e01380fcf1f3a6c6b9f4008e77e2f"
+    },
+    {
+      "path": "org-home-refresh-analyze-final-20261004.log",
+      "sha256": "e43ff786866e4c1b763737d3b140a63185409641a1bdaa9c55189f7e4b5d2399"
+    }
+  ],
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "Actual widget refresh callback and API path with synthetic Dio adapter; no real device/DB/backend",
+    "Already in-flight invitation badge requests retain independent race gap",
+    "Initial analyzer type warning corrected; final analyzer zero issues"
+  ]
+}
