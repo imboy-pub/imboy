@@ -1,0 +1,725 @@
+{
+  "scope": "CURRENT_REQUIRED_ID_RECONCILIATION_NOT_FINAL_VERIFIER",
+  "heads": {
+    "imboy": "616a3475b786f045bafdb944a13b8a5c13a01827",
+    "imboyapp": "e406c303dce2421cd45ff8a794658bb2c9c18e9e",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "requirements_total": 97,
+  "qualified_pass_count": 0,
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "e2ee": {
+    "required": 36,
+    "historical_status_counts": {
+      "PASS": 17,
+      "PARTIAL": 9,
+      "BLOCKED_DECISION": 5,
+      "BLOCKED_USER_AUTH": 4,
+      "PENDING_FINAL": 1
+    },
+    "source_ledger": {
+      "path": ".Codex/evidence/e2ee-excellence/run-20261003-094804/acceptance.tsv",
+      "sha256": "779f6bd112c68bfb254236b73444e4380adcab91a6db61b5825915a84fb44134"
+    },
+    "requirements": [
+      {
+        "id": "AC-00",
+        "card": "C00",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-00",
+          "UPSTREAM_PASS_EXECUTION_INVALID:AC-00",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-00",
+          "ARTIFACT_HASH_INVALID:0"
+        ]
+      },
+      {
+        "id": "AC-01",
+        "card": "C00",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-01",
+          "UPSTREAM_PASS_EXECUTION_INVALID:AC-01",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-01",
+          "UPSTREAM_PASS_PROVENANCE_MISSING:AC-01",
+          "ARTIFACT_HASH_INVALID:0"
+        ]
+      },
+      {
+        "id": "AC-02",
+        "card": "C00",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-02",
+          "UPSTREAM_PASS_EXECUTION_INVALID:AC-02",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-02",
+          "UPSTREAM_PASS_PROVENANCE_MISSING:AC-02",
+          "ARTIFACT_HASH_INVALID:0"
+        ]
+      },
+      {
+        "id": "AC-03",
+        "card": "C01",
+        "historical_status": "PARTIAL",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-03"
+        ]
+      },
+      {
+        "id": "AC-04",
+        "card": "C01",
+        "historical_status": "PARTIAL",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-04"
+        ]
+      },
+      {
+        "id": "AC-05",
+        "card": "C02",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-05",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-05",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-06",
+        "card": "C02",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-06",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-06",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-07",
+        "card": "C03",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-07",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-07",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-08",
+        "card": "C03",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-08",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-08",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-09",
+        "card": "C04",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-09",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-09",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-10",
+        "card": "C04",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-10",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-10",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-11",
+        "card": "C05",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-11",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-11",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-12",
+        "card": "C05",
+        "historical_status": "PARTIAL",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-12"
+        ]
+      },
+      {
+        "id": "AC-13",
+        "card": "C06",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-13",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-13",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-14",
+        "card": "C06",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-14",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-14",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-15",
+        "card": "C07",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-15",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-15",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-16",
+        "card": "C07",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-16",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-16",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-17",
+        "card": "C08",
+        "historical_status": "PARTIAL",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-17"
+        ]
+      },
+      {
+        "id": "AC-18",
+        "card": "C08",
+        "historical_status": "PARTIAL",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-18"
+        ]
+      },
+      {
+        "id": "AC-19",
+        "card": "C09",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-19",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-19",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-20",
+        "card": "C09",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-20",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-20",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-21",
+        "card": "C10",
+        "historical_status": "BLOCKED_DECISION",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-21"
+        ]
+      },
+      {
+        "id": "AC-22",
+        "card": "C11",
+        "historical_status": "BLOCKED_USER_AUTH",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-22"
+        ]
+      },
+      {
+        "id": "AC-23",
+        "card": "C11",
+        "historical_status": "BLOCKED_USER_AUTH",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-23"
+        ]
+      },
+      {
+        "id": "AC-24",
+        "card": "C12",
+        "historical_status": "PARTIAL",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-24"
+        ]
+      },
+      {
+        "id": "AC-25",
+        "card": "C12",
+        "historical_status": "PASS",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_PASS_BINDING_MISMATCH:AC-25",
+          "UPSTREAM_PASS_CONFIG_INVALID:AC-25",
+          "ARTIFACT_PATH_REJECTED:0"
+        ]
+      },
+      {
+        "id": "AC-26",
+        "card": "C12",
+        "historical_status": "PARTIAL",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-26"
+        ]
+      },
+      {
+        "id": "AC-27",
+        "card": "C13",
+        "historical_status": "BLOCKED_USER_AUTH",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-27"
+        ]
+      },
+      {
+        "id": "AC-28",
+        "card": "C13",
+        "historical_status": "BLOCKED_USER_AUTH",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-28"
+        ]
+      },
+      {
+        "id": "AC-29",
+        "card": "C14",
+        "historical_status": "PENDING_FINAL",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-29"
+        ]
+      },
+      {
+        "id": "AC-30",
+        "card": "C15",
+        "historical_status": "BLOCKED_DECISION",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-30"
+        ]
+      },
+      {
+        "id": "AC-31",
+        "card": "C15",
+        "historical_status": "BLOCKED_DECISION",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-31"
+        ]
+      },
+      {
+        "id": "AC-32",
+        "card": "C16",
+        "historical_status": "BLOCKED_DECISION",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-32"
+        ]
+      },
+      {
+        "id": "AC-33",
+        "card": "C16",
+        "historical_status": "BLOCKED_DECISION",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-33"
+        ]
+      },
+      {
+        "id": "AC-34",
+        "card": "C17",
+        "historical_status": "PARTIAL",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-34"
+        ]
+      },
+      {
+        "id": "AC-35",
+        "card": "C17",
+        "historical_status": "PARTIAL",
+        "current_qualification": "NOT_PROVEN",
+        "rejection_reasons": [
+          "UPSTREAM_REQUIRED_NOT_PASS:AC-35"
+        ]
+      }
+    ]
+  },
+  "full_product": {
+    "required": 61,
+    "source_acceptance_set": {
+      "path": "docs/plans/2026-10-03-full-product-android-macos-integration-acceptance-v1-acceptance-set.json",
+      "sha256": "506a0f93b28b88a8ef3ccd1e25f96634df9f4d807b081efd6ae1f72eee5f1521"
+    },
+    "requirements": [
+      {
+        "id": "F00-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F00-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F00-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F01-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F01-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F01-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F02-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F02-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F02-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F03-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F03-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F03-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F03-A04",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F04-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F04-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F04-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F04-A04",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F05-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F05-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F05-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F06-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F06-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F06-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F06-A04",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F07-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F07-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F07-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F07-A04",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F08-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F08-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F08-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F09-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F09-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F09-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F10-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F10-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F10-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F11-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F11-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F11-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F11-A04",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F12-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F12-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F12-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F12-A04",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F13-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F13-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F13-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F13-A04",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F14-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F14-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F14-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F15-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F15-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F15-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F16-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F16-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F16-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F17-A01",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F17-A02",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      },
+      {
+        "id": "F17-A03",
+        "current_qualification": "NOT_PROVEN",
+        "reason": "No current frozen per-case/per-platform complete business qualification supplied; source set remains PLANNED"
+      }
+    ],
+    "inventory": {
+      "functions": 1979,
+      "pages": 188,
+      "missing_targets": 1761,
+      "generated_placeholder_oracles": 231
+    }
+  },
+  "limitations": [
+    "Recorded binding audit does not authenticate commands/business oracles or independent capture",
+    "No historical PASS transfers across candidate HEAD changes",
+    "0 qualified entries means no accepted proof; does not mean all implementations failed",
+    "Historical full App gate 7163 pass/236 skips/6 failure remains retained, not re-run on current HEAD"
+  ],
+  "next_required": [
+    "Explicit isolated PG authorization then SQL positive/negative runtime calibration",
+    "F00 concrete coverage/oracle completion and exact case/platform/profile/role freeze",
+    "Authorized real Android/macOS/backend journeys",
+    "D02/D05 identity transparency, D03 MLS, D04 PQ decisions",
+    "Frozen backend L3 twice and independent final acceptance"
+  ],
+  "review": "INDEPENDENTLY_RECOMPUTED_APPROVE"
+}

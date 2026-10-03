@@ -4362,5 +4362,12 @@
     "tooling_tests": 443,
     "product_pass": false,
     "resource_authorized": false
+  },
+  "current_required_97_audit": {
+    "receipt": "current-97-requirement-audit.json",
+    "receipt_sha256": "3dc71fe83abf61a1b1822372b1ba72962aa8ea11ec9a91c58e92905e241df673",
+    "required": 97,
+    "qualified_pass": 0,
+    "product_pass": false
   }
 }
