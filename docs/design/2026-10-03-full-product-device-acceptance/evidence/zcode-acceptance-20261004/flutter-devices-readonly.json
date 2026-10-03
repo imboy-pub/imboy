@@ -1,7 +1,7 @@
 [
   {
     "name": "MRD AL00",
-    "id": "XWE6R19916004085",
+    "id": "REDACTED-13e983ee",
     "isSupported": true,
     "targetPlatform": "android-arm",
     "emulator": false,
@@ -13,11 +13,12 @@
       "flutterExit": true,
       "hardwareRendering": false,
       "startPaused": true
-    }
+    },
+    "id_redacted": "REDACTED-13e983ee"
   },
   {
     "name": "iPhone 16e",
-    "id": "00008140-000E30561E32801C",
+    "id": "REDACTED-371a90e6",
     "isSupported": true,
     "targetPlatform": "ios",
     "emulator": false,
@@ -29,11 +30,12 @@
       "flutterExit": true,
       "hardwareRendering": false,
       "startPaused": false
-    }
+    },
+    "id_redacted": "REDACTED-371a90e6"
   },
   {
     "name": "macOS",
-    "id": "macos",
+    "id": "REDACTED-a0c0485e",
     "isSupported": true,
     "targetPlatform": "darwin",
     "emulator": false,
@@ -45,11 +47,12 @@
       "flutterExit": true,
       "hardwareRendering": false,
       "startPaused": true
-    }
+    },
+    "id_redacted": "REDACTED-a0c0485e"
   },
   {
     "name": "Chrome",
-    "id": "chrome",
+    "id": "REDACTED-9390ef32",
     "isSupported": true,
     "targetPlatform": "web-javascript",
     "emulator": false,
@@ -61,6 +64,7 @@
       "flutterExit": false,
       "hardwareRendering": false,
       "startPaused": true
-    }
+    },
+    "id_redacted": "REDACTED-9390ef32"
   }
 ]

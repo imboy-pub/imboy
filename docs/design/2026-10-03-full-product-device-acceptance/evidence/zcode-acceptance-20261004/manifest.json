@@ -1,0 +1,229 @@
+{
+  "id": "SEGMENT1-EVIDENCE-MANIFEST",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T07:08:56+08:00",
+  "note": "Logs were previously excluded by root .gitignore *.log; added with git add -f following main-closure-20261003 precedent (840 tracked logs). Sanitization scan: 10/10 logs clean (patterns: device serials, UDIDs, TEST_PASSWORD values, admin888, Bearer tokens, 24+ char tokens). flutter-devices-readonly.json redacted in a follow-up commit because original contained real Android serial + iOS UDID.",
+  "redaction": {
+    "scan_patterns": [
+      "XWE6R19916004085",
+      "00008140-000E30561E32801C",
+      "TEST_PASSWORD=...",
+      "admin888",
+      "Bearer …",
+      "token>=24chars"
+    ],
+    "log_hits": 0,
+    "device_json_hits": 2,
+    "device_json_action": "id → REDACTED-sha256[:8]; targetPlatform/emulator preserved for platform-qualification reuse"
+  },
+  "entries": [
+    {
+      "log": "w1-inventory-acceptance-check.log",
+      "command": "python3 scripts/auto_test_lib/inventory.py --acceptance-check",
+      "cwd": "imboyapp",
+      "shas": {
+        "imboy": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+        "imboyapp": "a3f1e3d0bd2d3090c07aa36a7e3366593773ca7d (worktree clean; pre-binding-fix)",
+        "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+      },
+      "config_fingerprint": "n/a (offline inventory check)",
+      "exit": 64,
+      "expected": "EXPECTED-FAIL retained",
+      "assertions": {
+        "ACCEPTANCE_TARGET_MISSING": 1763,
+        "ACCEPTANCE_ORACLE_PLACEHOLDER": 231
+      },
+      "assertion_source": "grep -c on log; scope per handoff contract §1 (1982 functions: 219 bound/18 targets)",
+      "log_sha256": "745b45df04c207f7ed8628e00347d0ba59ecbbfd8a3682cfa6d69fbd1e2b77ef",
+      "log_path": "imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/w1-inventory-acceptance-check.log",
+      "repo_head_caveat": "shas recorded are the repo HEADs at execution time as reconstructed from commit timeline; logs carry no embedded HEAD — recorded from session transcript"
+    },
+    {
+      "log": "imboy-compile-current-main.log",
+      "command": "make compile",
+      "cwd": "imboy",
+      "shas": {
+        "imboy": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+        "imboyapp": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b",
+        "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+      },
+      "config_fingerprint": "IMBOYENV unset (compile only)",
+      "exit": 0,
+      "assertions": {
+        "type": "compile success; no test count applicable"
+      },
+      "assertion_source": "erlang compile output",
+      "log_sha256": "ade0b152a3eb471a798b8953ebd364a5a00c7c264ee961189c800949675cf182",
+      "log_path": "imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/imboy-compile-current-main.log",
+      "repo_head_caveat": "shas recorded are the repo HEADs at execution time as reconstructed from commit timeline; logs carry no embedded HEAD — recorded from session transcript"
+    },
+    {
+      "log": "admin-typecheck-current-main.log",
+      "command": "bun run typecheck",
+      "cwd": "imboyadmin",
+      "shas": {
+        "imboy": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+        "imboyapp": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b",
+        "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+      },
+      "config_fingerprint": "tsconfig.app.json",
+      "exit": 0,
+      "assertions": {
+        "type": "tsc --noEmit zero errors"
+      },
+      "assertion_source": "log",
+      "log_sha256": "9b2b770f3351789b5fd00fa72323f6eb7ea6de3fa3d75b7678bcbee1c8f6d5f6",
+      "log_path": "imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/admin-typecheck-current-main.log",
+      "repo_head_caveat": "shas recorded are the repo HEADs at execution time as reconstructed from commit timeline; logs carry no embedded HEAD — recorded from session transcript"
+    },
+    {
+      "log": "admin-test-current-main.log",
+      "command": "bun run test (= bun test --isolate)",
+      "cwd": "imboyadmin",
+      "shas": {
+        "imboy": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+        "imboyapp": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b",
+        "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+      },
+      "config_fingerprint": "bunfig + --isolate CLI flag",
+      "exit": 0,
+      "assertions": {
+        "pass": 2386,
+        "fail": 0,
+        "expect_calls": 8144,
+        "files": 222
+      },
+      "assertion_source": "log summary line",
+      "log_sha256": "52060566fa5aa3611cff44b50034416268f7aaea7bce9fa0f42cdbb407026d0d",
+      "log_path": "imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/admin-test-current-main.log",
+      "repo_head_caveat": "shas recorded are the repo HEADs at execution time as reconstructed from commit timeline; logs carry no embedded HEAD — recorded from session transcript"
+    },
+    {
+      "log": "app-analyze-current-main.log",
+      "command": "dart analyze lib test/unit_test --fatal-infos",
+      "cwd": "imboyapp",
+      "shas": {
+        "imboy": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+        "imboyapp": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b",
+        "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+      },
+      "config_fingerprint": "analysis_options.yaml (repo default)",
+      "exit": 0,
+      "assertions": {
+        "issues": 0
+      },
+      "assertion_source": "log",
+      "log_sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678",
+      "log_path": "imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/app-analyze-current-main.log",
+      "repo_head_caveat": "shas recorded are the repo HEADs at execution time as reconstructed from commit timeline; logs carry no embedded HEAD — recorded from session transcript"
+    },
+    {
+      "log": "app-e2ee-domain-current-main.log",
+      "command": "flutter test test/unit_test/service/e2ee/ --reporter compact",
+      "cwd": "imboyapp",
+      "shas": {
+        "imboy": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+        "imboyapp": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b",
+        "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+      },
+      "config_fingerprint": "no dart-define (unit domain)",
+      "exit": 0,
+      "assertions": {
+        "passed": 986,
+        "failed": 0
+      },
+      "assertion_source": "log 'All tests passed! +986'",
+      "log_sha256": "13649457befdf89ef9782f4b6abc5479d2a830e022256255ff750f93083eb3fa",
+      "log_path": "imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/app-e2ee-domain-current-main.log",
+      "repo_head_caveat": "shas recorded are the repo HEADs at execution time as reconstructed from commit timeline; logs carry no embedded HEAD — recorded from session transcript"
+    },
+    {
+      "log": "app-backup-domain-regression.log",
+      "command": "flutter test test/unit_test/service/e2ee_backup_restore_test.dart test/unit_test/service/e2ee_local_backup_boundary_test.dart test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart --reporter compact",
+      "cwd": "imboyapp",
+      "shas": {
+        "imboy": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+        "imboyapp": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b",
+        "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+      },
+      "config_fingerprint": "no dart-define (unit domain)",
+      "exit": 0,
+      "assertions": {
+        "passed": 50,
+        "failed": 0
+      },
+      "assertion_source": "log 'All tests passed!'",
+      "log_sha256": "b78b7996603eeb481ace2a44138a87deeebb9ffc9da32a91bd3501ce9e6c4f65",
+      "log_path": "imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/app-backup-domain-regression.log",
+      "repo_head_caveat": "shas recorded are the repo HEADs at execution time as reconstructed from commit timeline; logs carry no embedded HEAD — recorded from session transcript"
+    },
+    {
+      "log": "imboy-flatten-internal-check.log",
+      "command": "python3 api/flatten_internal.py --check",
+      "cwd": "imboy",
+      "shas": {
+        "imboy": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+        "imboyapp": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b",
+        "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+      },
+      "config_fingerprint": "api/openapi-internal.bundle.yaml",
+      "exit": 0,
+      "assertions": {
+        "paths": 28,
+        "ops": 42,
+        "state": "up to date"
+      },
+      "assertion_source": "log",
+      "log_sha256": "b7a0169528c66c72a585a9f9a2d233e44e3466aa88465d2cd3c5610fa7abb11c",
+      "log_path": "imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/imboy-flatten-internal-check.log",
+      "repo_head_caveat": "shas recorded are the repo HEADs at execution time as reconstructed from commit timeline; logs carry no embedded HEAD — recorded from session transcript"
+    },
+    {
+      "log": "e2ee-version-gate.log",
+      "command": "bash scripts/test/e2ee_version_gate_test.sh",
+      "cwd": "imboy",
+      "shas": {
+        "imboy": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+        "imboyapp": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b",
+        "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+      },
+      "config_fingerprint": "n/a",
+      "exit": 0,
+      "assertions": {
+        "PASS": 45,
+        "FAIL": 0,
+        "detail": "paths 28/28 (22 block+6 allow) + behavior 10/10 (4 neg+6 pos)"
+      },
+      "assertion_source": "log summary",
+      "log_sha256": "a339ed6472968196ab0aea73f43712281d3cd5ed5d7f2186f3855f985ad9941c",
+      "log_path": "imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/e2ee-version-gate.log",
+      "repo_head_caveat": "shas recorded are the repo HEADs at execution time as reconstructed from commit timeline; logs carry no embedded HEAD — recorded from session transcript"
+    },
+    {
+      "log": "e2ee-verify-python.log",
+      "command": "python3 verify_python.py (cwd=docs/design/2026-10-03-e2ee-production-excellence/fixtures)",
+      "cwd": "imboy",
+      "shas": {
+        "imboy": "ce31761fbcc8a0d678ba9f73ecf8c070365ae400",
+        "imboyapp": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b",
+        "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+      },
+      "config_fingerprint": "fixtures/vectors.json (committed)",
+      "exit": 0,
+      "assertions": {
+        "checks": 245,
+        "fails": 0,
+        "verdict": "Erlang 实算 == Python 规范重算 == vector 记录值"
+      },
+      "assertion_source": "log",
+      "log_sha256": "7ea1a6d8a0f46179e5b76a6c7f5a635363ebb0fc993fa4fa3d905a2637f5a6b2",
+      "log_path": "imboy/docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/e2ee-verify-python.log",
+      "repo_head_caveat": "shas recorded are the repo HEADs at execution time as reconstructed from commit timeline; logs carry no embedded HEAD — recorded from session transcript"
+    }
+  ],
+  "independent_verification": {
+    "verifier": "verify-manifest (recompute sha + grep assertions)",
+    "result": "PASS (10/10 sha match, assertion cross-check OK)",
+    "verified_at": "2026-10-04T07:08:56+08:00"
+  }
+}
