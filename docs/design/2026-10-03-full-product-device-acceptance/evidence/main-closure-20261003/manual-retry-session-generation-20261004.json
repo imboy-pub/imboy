@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_MANUAL_RETRY_SESSION_GENERATION",
+  "app_head": "2ea8d6309147b3c725d5de8a020ce6ba45040ef6",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_AFTER_MINIMAL_FIXTURE_CLEANUP",
+  "results": {
+    "final_calibration_exit": 1,
+    "calibration_failed": 1,
+    "calibration_normal_passed": 1,
+    "restored_focused_exit": 0,
+    "focused_passed": 2,
+    "final_retry_domain_exit": 0,
+    "final_retry_domain_files": 7,
+    "final_retry_domain_passed": 39,
+    "final_static_exit": 0,
+    "catalog_check_exit": 0
+  },
+  "oracles": [
+    "Real retryMessage starts its database read; real loginAfter synchronously increments generation while synthetic secure-token write fails before UID commit.",
+    "Old source returns true on stale retry, final source returns false and no send event; normal synthetic committed ciphertext retry emits exactly one event.",
+    "Unexpected transport adapter count remains zero."
+  ],
+  "attempt_notes": [
+    "First attempt duplicate transport class failed compilation: INVALID.",
+    "Initial RED had missing c2g/c2s fixture tables; later complete minimal fixture calibration supersedes it.",
+    "Initial static detected two unused copied native fixture declarations; removed all unrelated native/group initialization; final static clean.",
+    "Final calibration uses exact old tracked source temporarily, restores final source in finally, then focused GREEN runs."
+  ],
+  "limitations": [
+    "Only first database-read generation-change window dynamically qualified; post-policy/status guards reviewed in source.",
+    "Auto queue owner/session binding, startup scan, ACK handling and asynchronous WebSocket event consumer remain pending.",
+    "Already-started database writes and post-dispatch UI operations cannot be undone; no real-device account switch evidence.",
+    "Sender ownership and UID-only mutation without generation not independently qualified; no original97-ID upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-session-generation-final-calibration-20261004.log",
+      "sha256": "6931cad902a9f972422e397bd1c2848b532bd08720196673ed1afa4dfcd8f6c3"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-session-generation-final-domain-20261004.log",
+      "sha256": "124b75d747b8b7cf4a7db717d320c58428fe0955aeba139d0a39baae46404511"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-session-generation-final-green-20261004.log",
+      "sha256": "0c167c19d8f024ab101bbc338865346217e1e6329e3b7b32b6264791a82f1068"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-session-generation-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-session-generation-green-20261004.log",
+      "sha256": "f57405f3c8da118abef0c993403f0cdbdf72f08da96e1cd4c95cdea0ccf4aab5"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-session-generation-minimal-green-20261004.log",
+      "sha256": "ea1c916eeaeceed01390d64c36b13344565175d31e369077344d86501c22dfad"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-session-generation-red-20261004.log",
+      "sha256": "c98855c9597063fe59791bfada7e842c0d27a3d47ebd63d3ceaa29f379bfc3d8"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-session-generation-restored-green-20261004.log",
+      "sha256": "0c167c19d8f024ab101bbc338865346217e1e6329e3b7b32b6264791a82f1068"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-session-generation-static-20261004.log",
+      "sha256": "f3cec2608b895933e9c901214cbd65e838ecaeb45225add45f6ecdd845a973a9"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/retry-session-generation-valid-red-20261004.log",
+      "sha256": "89b539f181268dc3a7c0a264422b89c1d123ed4aa1d988814a54cfc06f5c4dcf"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: manual retry session changed=false
+[group_session] 群 9900 E2EE 已开启
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2g, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2g 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2s, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2s 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 1, readOnly: false, singleInstance: false}}}
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: retry-synthetic, type=C2C
+手动重试已提交，等待确认: retry-synthetic
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+⚠️ toTypeMessage: E2EE 解密失败，error=StateError
+📊 [E2EE_METRICS] decrypt failure: decrypt_failed total=1
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +1: manual retry session changed=true
+[group_session] 群 9900 E2EE 已开启
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2g, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 2, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2g 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2g, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2g WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 2, readOnly: false, singleInstance: false}}}
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2s, error=SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)[0m
+[38;5;196m│ ⛔   Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 2, readOnly: false, singleInstance: false}}}[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2s 失败: SqfliteFfiException(sqlite_error: 1, , SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100}) DatabaseException(SqliteException(1): while preparing statement, no such table: msg_c2s, SQL logic error (code 1)
+  Causing statement: SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100) sql 'SELECT auto_id, id, type, from_id, to_id, payload, created_at, is_author, status, conversation_uk3, topic_id, msg_type, "action", e2ee FROM msg_c2s WHERE status IN (?,?) AND is_author=? ORDER BY created_at DESC, auto_id DESC LIMIT 100' args [10, 12, 1] {details: {database: {path: :memory:, id: 2, readOnly: false, singleInstance: false}}}
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: retry-synthetic, type=C2C
+手动重试已提交，等待确认: retry-synthetic
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+⚠️ toTypeMessage: E2EE 解密失败，error=StateError
+00:00 +1 -1: manual retry session changed=true [E]
+  Expected: <false>
+    Actual: <true>
+  
+  package:matcher                                                       expect
+  package:flutter_test/src/widget_tester.dart 473:18                    expect
+  test/unit_test/service/e2ee/retry_session_generation_test.dart 243:9  main.<fn>
+  
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +1 -1: (tearDownAll)
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: manual retry session changed=true

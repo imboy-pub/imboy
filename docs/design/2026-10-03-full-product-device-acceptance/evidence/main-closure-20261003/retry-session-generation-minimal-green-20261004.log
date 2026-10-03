@@ -1,0 +1,20 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: manual retry session changed=false
+[group_session] 群 9900 E2EE 已开启
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+message_repo/update msg_c2c ;
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+消息加入重试队列: retry-synthetic, type=C2C
+手动重试已提交，等待确认: retry-synthetic
+message_repo/updateWithConditions msg_c2c ; where: id = ? AND status = ?
+⚠️ toTypeMessage: E2EE 解密失败，error=StateError
+📊 [E2EE_METRICS] decrypt failure: decrypt_failed total=1
+清除缓存: msg_c2c, 移除了 0 个缓存条目
+00:00 +1: manual retry session changed=true
+[group_session] 群 9900 E2EE 已开启
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:00 +2: (tearDownAll)
+00:00 +2: All tests passed!

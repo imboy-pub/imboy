@@ -4897,5 +4897,23 @@
       "final_static_exit": 0,
       "catalog_exit": 0
     }
+  },
+  "manual_retry_session_generation": {
+    "receipt": "manual-retry-session-generation-20261004.json",
+    "app_head": "2ea8d6309147b3c725d5de8a020ce6ba45040ef6",
+    "product_pass": false,
+    "original_acceptance_ids_upgraded": [],
+    "local_results": {
+      "final_calibration_exit": 1,
+      "calibration_failed": 1,
+      "calibration_normal_passed": 1,
+      "restored_focused_exit": 0,
+      "focused_passed": 2,
+      "final_retry_domain_exit": 0,
+      "final_retry_domain_files": 7,
+      "final_retry_domain_passed": 39,
+      "final_static_exit": 0,
+      "catalog_check_exit": 0
+    }
   }
 }

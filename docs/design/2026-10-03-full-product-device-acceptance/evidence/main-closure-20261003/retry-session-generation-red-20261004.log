@@ -1,0 +1,20 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart
+test/unit_test/service/e2ee/retry_session_generation_test.dart:65:7: Error: '_UnexpectedTransport' is already declared in this scope.
+class _UnexpectedTransport implements HttpClientAdapter {
+      ^^^^^^^^^^^^^^^^^^^^
+test/unit_test/service/e2ee/retry_session_generation_test.dart:49:7: Context: Previous declaration of '_UnexpectedTransport'.
+class _UnexpectedTransport implements HttpClientAdapter {
+      ^^^^^^^^^^^^^^^^^^^^
+00:00 +0 -1: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: test/unit_test/service/e2ee/retry_session_generation_test.dart:65:7: Error: '_UnexpectedTransport' is already declared in this scope.
+  class _UnexpectedTransport implements HttpClientAdapter {
+        ^^^^^^^^^^^^^^^^^^^^
+  test/unit_test/service/e2ee/retry_session_generation_test.dart:49:7: Context: Previous declaration of '_UnexpectedTransport'.
+  class _UnexpectedTransport implements HttpClientAdapter {
+        ^^^^^^^^^^^^^^^^^^^^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee/retry_session_generation_test.dart
