@@ -20,6 +20,7 @@
 -export([upsert_fallback_key/4]).
 -export([claim_fallback_key/2]).
 -export([delete_by_device/2]).
+-export([sweep_orphan_olm_material/0]).
 
 %% ===================================================================
 %% 表名
@@ -75,13 +76,25 @@ find_identity(UserId, DeviceId) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 批量查询多个用户的身份键（X3DH 用，客户端拉对端所有设备身份）
+%% @doc 批量查询多个用户的身份键（X3DH 用，客户端拉对端所有设备身份）。
+%%  C01（run-20261003-094804）撤销联合门：JOIN user_device 限定 status=1——
+%%  user_device 是设备白名单权威，无活跃行的设备即已撤销；cleanup_olm_material
+%%  失败残留在本表的行不得经此接口外泄（与 list_devices_with_identity 的
+%%  INNER JOIN 口径对齐）。此前该查询裸读 olm_identity，无设备活跃性过滤。
 -spec list_identity_by_uids([integer()]) -> {ok, [map()]} | {error, term()}.
 list_identity_by_uids(Uids) when is_list(Uids) ->
     Tb = tablename_identity(),
-    Sql =
-        <<"SELECT user_id, device_id, ed25519_key, curve25519_key, signature", " FROM ", Tb/binary,
-            " WHERE user_id = ANY($1)">>,
+    UdTb = elib_pg_sql:public_tablename(<<"user_device">>),
+    Sql = <<
+        "SELECT oi.user_id, oi.device_id, oi.ed25519_key, oi.curve25519_key, oi.signature",
+        " FROM ",
+        Tb/binary,
+        " oi",
+        " JOIN ",
+        UdTb/binary,
+        " ud ON ud.user_id = oi.user_id AND ud.device_id = oi.device_id",
+        " WHERE oi.user_id = ANY($1) AND ud.status = 1"
+    >>,
     elib_pg:query(Sql, [Uids]).
 
 %% @doc 列出对端某用户全部活跃设备（含 olm 身份键 + 派生列），ADR 03 §8.1 统一设备列表 API。
@@ -395,6 +408,47 @@ delete_by_device(UserId, DeviceId) when is_integer(UserId), is_binary(DeviceId) 
                 %% （后者用于 RETURNING）。两者都算成功，别让将来加 RETURNING 的人
                 %% 掉进"成功被判成 error"的坑。
                 case elib_pg:execute(Sql, [UserId, DeviceId]) of
+                    {ok, Cnt} when is_integer(Cnt) -> {ok, Acc + Cnt};
+                    {ok, Cnt, _Rows} when is_integer(Cnt) -> {ok, Acc + Cnt};
+                    {error, Reason} -> {error, Reason};
+                    Other -> {error, Other}
+                end
+        end,
+        {ok, 0},
+        Tbs
+    ).
+
+%% @doc 吊销对账：清扫「olm 材料仍在、user_device 已无活跃行」的孤儿残留（C01）。
+%%
+%% delete/2 的 cleanup_olm_material 失败路径不回滚（撤销主行已删，token 已吊销，
+%% 中止更糟），残留材料靠本函数对账清除：以 user_device（status=1）为白名单
+%% 权威，反向 DELETE 三张 olm 表中不属于任何活跃设备的行。幂等，供定时/运维
+%% 任务重放（user_device_ds:reconcile_olm_material/0 是它的 ds 入口）。
+%%
+%% 撤销联合门兜底：在清扫之前，残留行的 claim 已被 olm_identity_logic:claim_keys
+%% 的 is_active 门拒绝、枚举已被各 list 查询的 JOIN status=1 拒绝——本函数负责
+%% 最终的数据一致性而非安全性。
+-spec sweep_orphan_olm_material() -> {ok, non_neg_integer()} | {error, term()}.
+sweep_orphan_olm_material() ->
+    UdTb = elib_pg_sql:public_tablename(<<"user_device">>),
+    Tbs = [tablename_identity(), tablename_one_time_key(), tablename_fallback_key()],
+    lists:foldl(
+        fun
+            (_Tb, {error, _} = Err) ->
+                Err;
+            (Tb, {ok, Acc}) ->
+                Sql = <<
+                    "DELETE FROM ",
+                    Tb/binary,
+                    " t",
+                    " WHERE NOT EXISTS (",
+                    "   SELECT 1 FROM ",
+                    UdTb/binary,
+                    " ud",
+                    "   WHERE ud.user_id = t.user_id AND ud.device_id = t.device_id",
+                    "     AND ud.status = 1)"
+                >>,
+                case elib_pg:execute(Sql, []) of
                     {ok, Cnt} when is_integer(Cnt) -> {ok, Acc + Cnt};
                     {ok, Cnt, _Rows} when is_integer(Cnt) -> {ok, Acc + Cnt};
                     {error, Reason} -> {error, Reason};

@@ -450,3 +450,217 @@ delete_survives_olm_cleanup_crash_test_() ->
             ?assertEqual(ok, user_device_ds:delete(?UID, ?DID))
         end
     ).
+
+%% C01：清理失败除 ERROR 日志外必须有指标痕迹（对账告警的数据来源）
+delete_cleanup_failure_emits_metric_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_repo, [{'delete', 2, fun(?UID, ?DID) -> ok end}]},
+            {olm_identity_repo, [
+                {'delete_by_device', 2, fun(?UID, ?DID) -> {error, db_down} end}
+            ]},
+            {elib_metric, [{'increment', 1, fun(_) -> ok end}]}
+        ],
+        fun() ->
+            ?assertEqual(ok, user_device_ds:delete(?UID, ?DID)),
+            ?assertEqual(
+                1,
+                meck:num_calls(elib_metric, increment, [device_olm_cleanup_failed_total])
+            )
+        end
+    ).
+
+%% C01：清理崩溃同样计数（与 {error,_} 路径同权重告警）
+delete_cleanup_crash_emits_metric_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_repo, [{'delete', 2, fun(?UID, ?DID) -> ok end}]},
+            {olm_identity_repo, [
+                {'delete_by_device', 2, fun(?UID, ?DID) -> erlang:error(boom) end}
+            ]},
+            {elib_metric, [{'increment', 1, fun(_) -> ok end}]}
+        ],
+        fun() ->
+            ?assertEqual(ok, user_device_ds:delete(?UID, ?DID)),
+            ?assertEqual(
+                1,
+                meck:num_calls(elib_metric, increment, [device_olm_cleanup_failed_total])
+            )
+        end
+    ).
+
+%% ===================================================================
+%% C01（run-20261003-094804）：吊销对账路径 —— cleanup 失败不回滚撤销，
+%% 残留材料由 reconcile_olm_material/0 以 user_device 白名单权威反向清扫。
+%% ===================================================================
+
+reconcile_calls_repo_sweep_test_() ->
+    ?WITH_MECKS(
+        [
+            {olm_identity_repo, [
+                {'sweep_orphan_olm_material', 0, fun() -> {ok, 5} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({ok, 5}, user_device_ds:reconcile_olm_material()),
+            ?assertEqual(
+                1,
+                meck:num_calls(olm_identity_repo, sweep_orphan_olm_material, 0)
+            )
+        end
+    ).
+
+reconcile_swallows_repo_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {olm_identity_repo, [
+                {'sweep_orphan_olm_material', 0, fun() -> {error, db_down} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({error, db_down}, user_device_ds:reconcile_olm_material())
+        end
+    ).
+
+reconcile_survives_repo_crash_test_() ->
+    ?WITH_MECKS(
+        [
+            {olm_identity_repo, [
+                {'sweep_orphan_olm_material', 0, fun() -> erlang:error(boom) end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({error, {error, boom}}, user_device_ds:reconcile_olm_material())
+        end
+    ).
+
+%% ===================================================================
+%% C01：user_device_repo:bump_identity_version/2 —— 撤销复活门 + 版本事件
+%% ===================================================================
+
+bump_identity_version_sql_contract_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'query', 2, fun(Sql, Params) ->
+                SqlStr = binary_to_list(iolist_to_binary(Sql)),
+                HasBump = string:str(SqlStr, "identity_version = identity_version + 1") > 0,
+                HasActive = string:str(SqlStr, "status = 1") > 0,
+                HasReturning =
+                    string:str(SqlStr, "RETURNING identity_version, device_generation") > 0,
+                ?assertEqual(true, HasBump andalso HasActive andalso HasReturning),
+                ?assertEqual([?UID, ?DID], Params),
+                {ok, [#{<<"identity_version">> => 4, <<"device_generation">> => 2}]}
+            end}
+        ],
+        fun() ->
+            ?assertEqual({ok, 4, 2}, user_device_repo:bump_identity_version(?UID, ?DID))
+        end
+    ).
+
+%% 撤销/无活跃行：RETURNING 0 行 → {ok, 0}（logic 层据此拒绝身份写入）
+bump_identity_version_no_active_row_returns_zero_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+        ],
+        fun() ->
+            ?assertEqual({ok, 0}, user_device_repo:bump_identity_version(?UID, ?DID))
+        end
+    ).
+
+bump_identity_version_maps_db_error_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'query', 2, fun(_Sql, _Params) -> {error, timeout} end}
+        ],
+        fun() ->
+            ?assertEqual({error, timeout}, user_device_repo:bump_identity_version(?UID, ?DID))
+        end
+    ).
+
+%% ds 层 G3 透传：bump_identity_version 薄传到 repo
+bump_identity_version_ds_passes_through_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_repo, [
+                {'bump_identity_version', 2, fun(?UID, ?DID) -> {ok, 3, 1} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({ok, 3, 1}, user_device_ds:bump_identity_version(?UID, ?DID))
+        end
+    ).
+
+%% ===================================================================
+%% C01：claim 撤销联合门（olm_identity_ds 层）——OTK/fallback 领取前
+%% 确认目标设备在 user_device 白名单仍活跃。覆盖 cleanup_olm_material
+%% 失败残留路径：撤销后 olm 三表残留行领不走。
+%% ===================================================================
+
+ds_claim_otk_rejects_revoked_device_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_ds, [{'is_active', 2, fun(?UID, ?DID) -> false end}]},
+            {olm_identity_repo, [
+                {'claim_one_time_key', 3, fun(_, _, _) ->
+                    erlang:error(repo_must_not_be_reached_for_revoked_device)
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, device_revoked},
+                olm_identity_ds:claim_one_time_key(?UID, ?DID, 999)
+            )
+        end
+    ).
+
+%% 同门覆盖幂等租约路径（/4）
+ds_claim_otk_with_request_id_rejects_revoked_device_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_ds, [{'is_active', 2, fun(?UID, ?DID) -> false end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, device_revoked},
+                olm_identity_ds:claim_one_time_key(?UID, ?DID, 999, <<"req-1">>)
+            )
+        end
+    ).
+
+%% 同门覆盖 fallback 兜底领取
+ds_claim_fallback_rejects_revoked_device_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_ds, [{'is_active', 2, fun(?UID, ?DID) -> false end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, device_revoked},
+                olm_identity_ds:claim_fallback_key(?UID, ?DID)
+            )
+        end
+    ).
+
+%% 活跃设备不受门影响：正常透传到 repo（repo 被 mock，捕获调用形状）
+ds_claim_otk_active_device_passes_through_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_ds, [{'is_active', 2, fun(?UID, ?DID) -> true end}]},
+            {olm_identity_repo, [
+                {'claim_one_time_key', 3, fun(?UID, ?DID, 999) ->
+                    {ok, #{<<"key_id">> => <<"k">>, <<"key_base64">> => <<"v">>}}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, #{<<"key_id">> => <<"k">>, <<"key_base64">> => <<"v">>}},
+                olm_identity_ds:claim_one_time_key(?UID, ?DID, 999)
+            )
+        end
+    ).

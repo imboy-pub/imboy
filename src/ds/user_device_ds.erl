@@ -15,6 +15,8 @@
 -export([device_name/2]).
 -export([delete/2]).
 -export([is_active/2]).
+-export([bump_identity_version/2]).
+-export([reconcile_olm_material/0]).
 -export([update_by_did/4]).
 -export([count_by_uid/1, page/3]).
 -export([list_public_keys/1]).
@@ -126,6 +128,9 @@ delete(Uid, DID) ->
 %% 清理失败**不回滚、不阻断**：设备行已删 = token 已吊销，这是安全关键部分且已完成。
 %% 此时中止只会让调用方以为吊销失败而重试，反而更糟。但必须 ERROR 级别记下来——
 %% 残留的 Olm 材料会持续造成不可解密的密文，是需要人工介入的状态，不能静默。
+%% C01（run-20261003-094804）起，失败同时计数 device_olm_cleanup_failed_total，
+%% 并由 reconcile_olm_material/0 提供对账路径（claim/list 侧另有联合门兜底，
+%% 残留材料领不走、枚举不出——见 olm_identity_logic claim_keys 与 repo 枚举 SQL）。
 -spec cleanup_olm_material(integer(), binary()) -> ok.
 cleanup_olm_material(Uid, DID) ->
     try olm_identity_repo:delete_by_device(Uid, DID) of
@@ -135,13 +140,46 @@ cleanup_olm_material(Uid, DID) ->
             ok = ?INFO_LOG({device_olm_material_purged, Uid, DID, Cnt}),
             ok;
         {error, Reason} ->
+            _ = elib_metric:increment(device_olm_cleanup_failed_total),
             ok = ?ERROR_LOG({device_olm_cleanup_failed, Uid, DID, Reason}),
             ok
     catch
         Class:CatchReason ->
+            _ = elib_metric:increment(device_olm_cleanup_failed_total),
             ok = ?ERROR_LOG({device_olm_cleanup_crashed, Uid, DID, Class, CatchReason}),
             ok
     end.
+
+%% @doc 吊销对账：清除「olm 材料仍在、user_device 已无活跃行」的孤儿残留（C01）。
+%%
+%% cleanup_olm_material 失败（DB 抖动/进程崩溃）时撤销主行已删、材料残留。
+%% 本函数以 user_device 为白名单权威，反向清扫三张 olm 表中不属于任何活跃
+%% 设备的行，返回清除总行数。供运维/定时任务重放（worker 挂接需求见 C01 报告）；
+%% 幂等——重复执行只是 0 行删除。
+-spec reconcile_olm_material() -> {ok, non_neg_integer()} | {error, term()}.
+reconcile_olm_material() ->
+    try olm_identity_repo:sweep_orphan_olm_material() of
+        {ok, 0} ->
+            {ok, 0};
+        {ok, Cnt} ->
+            ok = ?INFO_LOG({device_olm_material_reconciled, Cnt}),
+            {ok, Cnt};
+        {error, Reason} ->
+            ok = ?ERROR_LOG({device_olm_reconcile_failed, Reason}),
+            {error, Reason}
+    catch
+        Class:Reason ->
+            ok = ?ERROR_LOG({device_olm_reconcile_crashed, Class, Reason}),
+            {error, {Class, Reason}}
+    end.
+
+%% @doc 设备身份轮换门 + 版本 bump 的 G3 thin wrapper（C01）。
+%% 语义见 user_device_repo:bump_identity_version/2：撤销设备 0 行命中，
+%% 由 logic 层据此拒绝身份写入。
+-spec bump_identity_version(integer(), binary()) ->
+    {ok, pos_integer(), pos_integer()} | {ok, 0} | {error, term()}.
+bump_identity_version(Uid, DID) ->
+    user_device_repo:bump_identity_version(Uid, DID).
 
 %% @doc 设备是否仍活跃（未被移除）——token 吊销的唯一判据
 %% 正结果缓存 60s（删除设备时 user_device_logic:delete/2 主动 flush 并跨节点

@@ -28,6 +28,8 @@
 -define(MAX_BATCH_CLAIM_DEVICES, 20).
 %% 天→秒换算：cleanup 保留期配置层用 days，Repo 层用 seconds，本层换算
 -define(SECONDS_PER_DAY, 86400).
+%% 换钥版本事件的 freshness 窗口（ms）：服务端即时事件，窗口仅防 event 重放
+-define(ROTATION_EVENT_TTL_MS, 300000).
 
 %% ===================================================================
 %% 上报身份键
@@ -36,6 +38,29 @@
 %% @doc 上报设备 Olm 身份键（ed25519 + curve25519 + 签名）
 %% 所有字段非空校验；签名由客户端用 Ed25519 私钥对 curve25519_key 生成，
 %% 其他端可验签以防服务端篡改。
+%%
+%% C01（E2EE 计划 run-20261003-094804）换钥治理——E2EE-013 PoP 用「本次上传的
+%% 新 ed25519 公钥」验「本次上传的签名」，只证明持有新私钥；盗 token 者自生成
+%% 密钥对即可通过 PoP 并静默覆盖设备身份根键（ON CONFLICT DO UPDATE），对端
+%% TOFU 无从感知。本层在写前按「现存身份」分流：
+%%
+%%   1. 无现存身份（not_found）→ 首次注册：PoP 即授权，直接写入。
+%%   2. 现存身份同根（ed25519 相同）→ PoP（= 根钥签新子键）即授权；
+%%      子键（curve25519）有变化时走 rotate_identity/6 产生版本事件；
+%%      完全一致为幂等重报，不产生版本事件。
+%%   3. 现存身份换根（ed25519 不同）→ 必须携带**旧钥过渡签名**：signature
+%%      须由已注册旧 ed25519 私钥对本 curve25519_key 签署（持旧钥者授权换根），
+%%      否则拒绝 key_rotation_requires_old_key_proof。盗 token 者无旧私钥，
+%%      换根被拒；真重装（旧私钥丢失）用户同样被拒——重装恢复请先在设备管理
+%%      移除旧设备记录（user_device_logic:delete 触发吊销级联清掉 olm 行），
+%%      协议级 signed key transition 属后续升级（见 C01 报告）。
+%%   4. find_identity 查询失败 → fail-closed：无法确认旧身份状态时拒绝写入
+%%      （防「查不到旧身份即绕过分流」）。
+%%
+%% 版本事件（rotate_identity/6）：user_device.identity_version 单调 +1
+%% （migration 00000047 写侧实现，撤销设备 0 行命中 → device_revoked，兼作
+%% 撤销复活门），并写 trust_audit 事件 method=identity_rotated（版本/代数快照，
+%% 复用 trust_audit_repo 的防回退 advisory 锁与 event_id 幂等）。
 -spec report_identity(integer(), binary(), binary(), binary(), binary(), binary()) ->
     ok | {error, binary()}.
 report_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) when
@@ -47,31 +72,173 @@ report_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceTy
             byte_size(Signature) > 0
     of
         true ->
-            %% E2EE-013 PoP：用 Ed25519 公钥验签（客户端用 Ed25519 私钥对
-            %% curve25519 公钥的 base64 字符串签名），确保上传者确实持有
-            %% 对应的 Ed25519 私钥，防止仅盗 token 的攻击者替换身份键。
-            case verify_ed25519(Ed25519Key, Curve25519Key, Signature) of
-                true ->
-                    case
-                        olm_identity_ds:upsert_identity(
-                            UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
-                        )
-                    of
-                        {ok, _} ->
-                            ok;
-                        {error, Reason} ->
-                            _ = ?ERROR_LOG({olm_report_identity_error, UserId, DeviceId, Reason}),
-                            {error, <<"internal_error">>}
-                    end;
-                false ->
-                    _ = elib_metric:increment(olm_identity_pop_rejected_total),
-                    {error, <<"invalid_signature">>}
+            case olm_identity_ds:find_identity(UserId, DeviceId) of
+                {ok, not_found} ->
+                    %% 首次注册：PoP（新钥自签）即授权
+                    pop_then_upsert(
+                        UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                    );
+                {ok, #{<<"ed25519_key">> := OldEd, <<"curve25519_key">> := OldCurve}} ->
+                    dispatch_existing_identity(
+                        UserId,
+                        DeviceId,
+                        Ed25519Key,
+                        Curve25519Key,
+                        Signature,
+                        DeviceType,
+                        OldEd,
+                        OldCurve
+                    );
+                {error, Reason} ->
+                    _ = ?ERROR_LOG({olm_report_identity_lookup_error, UserId, DeviceId, Reason}),
+                    {error, <<"internal_error">>}
             end;
         false ->
             {error, <<"invalid_identity_keys">>}
     end;
 report_identity(_, _, _, _, _, _) ->
     {error, <<"bad_request">>}.
+
+%% @private PoP（本次上传的 ed25519 验签）通过后直接 upsert——
+%% 覆盖「首次注册」与「幂等重报」两条无需版本事件的路径。
+-spec pop_then_upsert(integer(), binary(), binary(), binary(), binary(), binary()) ->
+    ok | {error, binary()}.
+pop_then_upsert(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+    case verify_ed25519(Ed25519Key, Curve25519Key, Signature) of
+        true ->
+            do_upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType);
+        false ->
+            _ = elib_metric:increment(olm_identity_pop_rejected_total),
+            {error, <<"invalid_signature">>}
+    end.
+
+%% @private 按现存身份分流（见 report_identity/6 文档）。
+-spec dispatch_existing_identity(
+    integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary()
+) ->
+    ok | {error, binary()}.
+dispatch_existing_identity(
+    UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType, OldEd, OldCurve
+) ->
+    case OldEd =:= Ed25519Key of
+        true ->
+            %% 同根：PoP（根钥对新子键签名）即授权
+            case verify_ed25519(Ed25519Key, Curve25519Key, Signature) of
+                true ->
+                    case OldCurve =:= Curve25519Key of
+                        true ->
+                            %% 幂等重报：键完全一致，无版本事件
+                            do_upsert_identity(
+                                UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                            );
+                        false ->
+                            %% 子键轮换（根不变）
+                            rotate_identity(
+                                UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                            )
+                    end;
+                false ->
+                    _ = elib_metric:increment(olm_identity_pop_rejected_total),
+                    {error, <<"invalid_signature">>}
+            end;
+        false ->
+            %% 换根：必须旧 ed25519 私钥对本 curve25519_key 的过渡签名
+            case verify_ed25519(OldEd, Curve25519Key, Signature) of
+                true ->
+                    rotate_identity(
+                        UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                    );
+                false ->
+                    _ = elib_metric:increment(olm_identity_rotation_rejected_total),
+                    {error, <<"key_rotation_requires_old_key_proof">>}
+            end
+    end.
+
+%% @private 有变化的身份写入：先过撤销联合门 + 版本 bump（原子单条 UPDATE，
+%% WHERE status=1），成功后 upsert，最后追加 trust_audit 版本事件。
+-spec rotate_identity(integer(), binary(), binary(), binary(), binary(), binary()) ->
+    ok | {error, binary()}.
+rotate_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+    case user_device_ds:bump_identity_version(UserId, DeviceId) of
+        {ok, 0} ->
+            %% user_device 无活跃行：撤销/硬删设备（含 cleanup 失败残留 olm 行的
+            %% 复活路径）——身份写入必须拒绝
+            {error, <<"device_revoked">>};
+        {ok, NewVer, DeviceGen} ->
+            case
+                do_upsert_identity(
+                    UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                )
+            of
+                ok ->
+                    _ = emit_rotation_event(
+                        UserId, DeviceId, Ed25519Key, Signature, NewVer, DeviceGen
+                    ),
+                    ok;
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, Reason} ->
+            _ = ?ERROR_LOG({olm_identity_bump_error, UserId, DeviceId, Reason}),
+            {error, <<"internal_error">>}
+    end.
+
+-spec do_upsert_identity(integer(), binary(), binary(), binary(), binary(), binary()) ->
+    ok | {error, binary()}.
+do_upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType) ->
+    case
+        olm_identity_ds:upsert_identity(
+            UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+        )
+    of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            _ = ?ERROR_LOG({olm_report_identity_error, UserId, DeviceId, Reason}),
+            {error, <<"internal_error">>}
+    end.
+
+%% @private 追加换钥版本事件到 trust_audit（append-only）。
+%%
+%% 事件复用 trust_audit_repo:insert_event 的基础设施：per-target advisory 锁
+%% 串行化、target_identity_version 快照防回退、event_id 幂等。actor 是设备
+%% 本人（self-rotation），actor_signature 即本次上传的身份认证级签名——
+%% 同根路径为新根对 curve 的签名（PoP），换根路径为旧根对 curve 的过渡签名，
+%% 两者都密码学绑定到授权本次换钥的私钥。
+%%
+%% from_state/to_state 置 <<"unverified">>：服务端不追踪信任现值（trust_audit
+%% 是事件流非现值表），换钥的语义就是「对端 TOFU 信任重置」；该事件不走
+%% e2ee_trust_logic 的状态机校验（那是客户端信任决策路径），版本历史由
+%% method=identity_rotated + target_identity_version 快照承载。
+%% 事件写入失败不阻断换钥（换钥授权已验证、数据已落库），仅 ERROR 日志 +
+%% 指标计数供对账告警。
+-spec emit_rotation_event(integer(), binary(), binary(), binary(), pos_integer(), pos_integer()) ->
+    ok.
+emit_rotation_event(UserId, DeviceId, Ed25519B64, SignatureB64, NewVer, DeviceGen) ->
+    NowMs = os:system_time(millisecond),
+    Event = #{
+        actor_uid => UserId,
+        target_uid => UserId,
+        target_device_id => DeviceId,
+        target_ed25519 => Ed25519B64,
+        from_state => <<"unverified">>,
+        to_state => <<"unverified">>,
+        method => <<"identity_rotated">>,
+        actor_signature => SignatureB64,
+        event_id => integer_to_binary(elib_tsid:generate(trust_audit)),
+        issued_at => NowMs,
+        expires_at => NowMs + ?ROTATION_EVENT_TTL_MS,
+        actor_device_generation => DeviceGen,
+        target_identity_version => NewVer
+    },
+    case trust_audit_ds:insert_event(Event) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            _ = ?ERROR_LOG({olm_rotation_event_failed, UserId, DeviceId, NewVer, Reason}),
+            _ = elib_metric:increment(olm_rotation_event_failed_total),
+            ok
+    end.
 
 %% ===================================================================
 %% 上报 one-time keys（批量）
@@ -336,6 +503,12 @@ claim_keys(CurrentUid, TargetUid, DeviceId, RequestId) when
 claim_keys(_, _, _, _) ->
     {error, <<"bad_request">>}.
 
+%% 撤销联合门说明（C01，run-20261003-094804）：目标设备的活跃性检查在
+%% olm_identity_ds 的 claim 入口（ensure_device_active），不在本层——claim 的
+%% ds 层是被 mock 的边界，门放 ds 层可被任何调用方（含 handler 直调场景）
+%% 统一覆盖；本层只把 ds 返回的 {error, device_revoked} 原样冒泡，不落入
+%% fallback 兜底（撤销设备的 fallback 同样在 ds 层被拦）。
+
 -spec claim_with_identity(integer(), integer(), binary(), map()) ->
     {ok, map()} | {error, binary()}.
 claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity) ->
@@ -349,6 +522,9 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity) ->
                 <<"key_base64">> => maps:get(<<"key_base64">>, OtkRow),
                 <<"identity">> => Identity
             }};
+        {error, device_revoked} ->
+            %% 撤销设备：OTK 与 fallback 一并拒绝，转为 wire 契约的 binary 冒泡
+            {error, <<"device_revoked">>};
         {error, exhausted} ->
             %% OTK 耗尽 → fallback 兜底。
             %% 这一刻就是前向保密降级的瞬间：该对端此后的新会话都复用同一条
@@ -362,6 +538,8 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity) ->
                         <<"key_base64">> => maps:get(<<"key_base64">>, FbRow),
                         <<"identity">> => Identity
                     }};
+                {error, device_revoked} ->
+                    {error, <<"device_revoked">>};
                 {error, exhausted} ->
                     %% 连 fallback 都没有：比「池空」更严重，单独计数以便告警分级。
                     _ = elib_metric:increment(olm_prekey_unavailable_total),
@@ -382,6 +560,9 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId) ->
                 <<"key_base64">> => maps:get(<<"key_base64">>, OtkRow),
                 <<"identity">> => Identity
             }};
+        {error, device_revoked} ->
+            %% 撤销设备：OTK 与 fallback 一并拒绝，转为 wire 契约的 binary 冒泡
+            {error, <<"device_revoked">>};
         {error, exhausted} ->
             %% OTK 耗尽 → fallback 兜底（非破坏性，重复领取同一条是协议允许的）。
             %% 幂等路径与 claim_with_identity/4 是两个函数子句，埋点必须各插一次；
@@ -395,6 +576,8 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId) ->
                         <<"key_base64">> => maps:get(<<"key_base64">>, FbRow),
                         <<"identity">> => Identity
                     }};
+                {error, device_revoked} ->
+                    {error, <<"device_revoked">>};
                 {error, exhausted} ->
                     %% 连 fallback 都没有：比「池空」更严重，单独计数以便告警分级。
                     _ = elib_metric:increment(olm_prekey_unavailable_total),
