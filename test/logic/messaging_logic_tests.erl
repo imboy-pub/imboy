@@ -55,6 +55,70 @@ offline_returns_expected_shape_test_() ->
         end
     ).
 
+%% D4 契约修复：next_last_msg_at 必须回毫秒整数（客户端把它原样回传为
+%% *_last_msg_at 请求参数）。历史实现直接回传行内 created_at 的 RFC3339
+%% 字符串，客户端解析恒失败、游标恒 0，每轮退化为全量拉取。
+offline_next_cursor_millisecond_contract_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'to_rfc3339', 2, fun(_Ts, _Unit) -> <<"1970-01-01T00:00:00Z">> end},
+                {'rfc3339_to', 2, fun
+                    (<<"2026-06-01T12:00:00.500+08:00">>, millisecond) ->
+                        1780296000500;
+                    (_, _) ->
+                        {error, empty_input}
+                end}
+            ]},
+            {msg_c2c_repo, [
+                {'tablename', 0, fun() -> <<"public.msg_c2c">> end}
+            ]},
+            {msg_c2g_timeline_repo, [
+                {'tablename', 0, fun() -> <<"public.msg_c2g_timeline">> end}
+            ]},
+            {msg_s2c_repo, [
+                {'tablename', 0, fun() -> <<"public.msg_s2c">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) -> {ok, [#{<<"count">> => 0}]} end}
+            ]},
+            {msg_c2c_ds, [
+                {'read_msg_for_device', 4, fun(_Uid, _DID, _Limit, _LastMsgAt) ->
+                    [
+                        #{
+                            <<"msg_id">> => <<"c2c-1">>,
+                            <<"created_at">> => <<"2026-06-01T11:00:00.000+08:00">>
+                        },
+                        #{
+                            <<"msg_id">> => <<"c2c-2">>,
+                            %% 末行时间即下一轮游标
+                            <<"created_at">> => <<"2026-06-01T12:00:00.500+08:00">>
+                        }
+                    ]
+                end},
+                {'count_unread_since', 3, fun(_Uid, _LastMsgAt, _DID) -> 2 end}
+            ]},
+            {msg_c2g_ds, [
+                {'read_msg', 3, fun(_Uid, _Limit, _LastMsgAt) -> [] end}
+            ]},
+            {msg_s2c_ds, [
+                {'read_msg_for_device', 4, fun(_Uid, _DID, _Limit, _LastMsgAt) -> [] end},
+                {'count_since', 3, fun(_Uid, _LastMsgAt, _DID) -> 0 end}
+            ]}
+        ],
+        fun() ->
+            Payload = messaging_logic:offline(12345, 1000, 1000, 2000, 3000, <<>>),
+            C2c = maps:get(<<"c2c">>, Payload),
+            ?assert(is_integer(maps:get(<<"next_last_msg_at">>, C2c))),
+            ?assertEqual(1780296000500, maps:get(<<"next_last_msg_at">>, C2c)),
+            %% 空列表：游标不回退，回传入参毫秒值
+            S2c = maps:get(<<"s2c">>, Payload),
+            ?assertEqual(3000, maps:get(<<"next_last_msg_at">>, S2c)),
+            C2g = maps:get(<<"c2g">>, Payload),
+            ?assertEqual(2000, maps:get(<<"next_last_msg_at">>, C2g))
+        end
+    ).
+
 encode_history_msg_decodes_jsonb_columns_test() ->
     E2EEJson = <<"{\"protocol\":\"olm\",\"version\":3}">>,
     Row = #{

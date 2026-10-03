@@ -59,7 +59,7 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
             #{
                 <<"has_more">> => length(ProcessedC2CMsgs) < CountC2CMsg,
                 <<"next_last_msg_at">> =>
-                    calculate_next_last_msg_at(ProcessedC2CMsgs, C2CLastMsgAt),
+                    calculate_next_last_msg_at(ProcessedC2CMsgs, C2CLastMsgAtInt),
                 <<"total">> => CountC2CMsg,
                 <<"list">> => ProcessedC2CMsgs
             },
@@ -67,7 +67,7 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
             #{
                 <<"has_more">> => length(ProcessedC2GMsgs) < CountC2GMsg,
                 <<"next_last_msg_at">> =>
-                    calculate_next_last_msg_at(ProcessedC2GMsgs, C2GLastMsgAt),
+                    calculate_next_last_msg_at(ProcessedC2GMsgs, C2GLastMsgAtInt),
                 <<"total">> => CountC2GMsg,
                 <<"list">> => ProcessedC2GMsgs
             },
@@ -75,7 +75,7 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
             #{
                 <<"has_more">> => length(ProcessedS2CMsgs) < CountS2CMsg,
                 <<"next_last_msg_at">> =>
-                    calculate_next_last_msg_at(ProcessedS2CMsgs, S2CLastMsgAt),
+                    calculate_next_last_msg_at(ProcessedS2CMsgs, S2CLastMsgAtInt),
                 <<"total">> => CountS2CMsg,
                 <<"list">> => ProcessedS2CMsgs
             }
@@ -329,12 +329,31 @@ reaction_list(MsgId, MsgType) ->
             {error, Reason, ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
--spec calculate_next_last_msg_at([map()], binary() | integer()) -> binary() | integer().
-calculate_next_last_msg_at([], LastMsgAt) ->
-    LastMsgAt;
-calculate_next_last_msg_at(Msgs, _LastMsgAt) when length(Msgs) > 0 ->
+%% @doc 计算下一轮离线拉取游标：毫秒整数
+%% D4 契约修复：客户端把返回值直接作为下次请求的 *_last_msg_at 回传，
+%% 必须与请求参数同单位（毫秒整数）。历史实现直接回传行内 created_at
+%% （RFC3339 字符串，timestamptz 经 epgsql_codec_rfc3339_bin 解码所得），
+%% 与 rest-api-v1-catalog 声明的 (ms) 契约不符——客户端 int 解析恒失败、
+%% 游标恒 0，每次都退化为全量拉取。
+%% 列表为空或末行时间不可解析时回传入参游标（游标只进不退）。
+-spec calculate_next_last_msg_at([map()], non_neg_integer()) -> non_neg_integer().
+calculate_next_last_msg_at([], LastMsgAtInt) ->
+    LastMsgAtInt;
+calculate_next_last_msg_at(Msgs, LastMsgAtInt) when length(Msgs) > 0 ->
     LastMsg = lists:last(Msgs),
-    get_created_at(LastMsg).
+    case get_created_at(LastMsg) of
+        Ms when is_integer(Ms), Ms > 0 ->
+            Ms;
+        CreatedAtBin when is_binary(CreatedAtBin) ->
+            case elib_dt:rfc3339_to(CreatedAtBin, millisecond) of
+                Ms when is_integer(Ms) ->
+                    Ms;
+                _ ->
+                    LastMsgAtInt
+            end;
+        _ ->
+            LastMsgAtInt
+    end.
 
 -spec get_created_at(map()) -> binary() | integer().
 get_created_at(Msg) when is_map(Msg) ->

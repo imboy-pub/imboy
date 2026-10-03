@@ -103,7 +103,7 @@
 
 | 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload |
 |---|---|---|---|---|---|---|
-| GET | /api/v1/msg/offline | JWT | msg_handler#offline | 拉取离线消息 / Fetch offline | Query: `limit`(默认1000),`c2c_last_msg_at`,`c2g_last_msg_at`,`s2c_last_msg_at`(ms) | `{c2c:{has_more,next_last_msg_at,total,list},c2g:{...},s2c:{...}}` |
+| GET | /api/v1/msg/offline | JWT | msg_handler#offline | 拉取离线消息 / Fetch offline | Query: `limit`(默认1000),`did`,`c2c_last_msg_at`,`c2g_last_msg_at`,`s2c_last_msg_at`(ms) | `{c2c:{has_more,next_last_msg_at(ms),total,list},c2g:{...},s2c:{...}}`；`next_last_msg_at` 为毫秒整数（2026-10 契约修复，此前误回 RFC3339 字符串），客户端原样回传实现增量拉取 |
 | POST | /api/v1/msg/offline_ack | JWT | msg_handler#offline_ack | 确认离线消息 / Ack offline | Body: `type`(c2c/c2g/s2c),`msg_ids`(list) | `{type,processed_count,msg_ids_count}` |
 | GET | /api/v1/msg/read_stats | JWT | msg_handler#read_stats | 群消息已读统计 / Read stats | Query: `msg_id`* | `{read_count,total_count}` |
 | POST | /api/v1/msg/pin | JWT | msg_handler#pin | 置顶/取消置顶消息 / Pin message | Body: `msg_id`*,`pinned`(bool)* | `{msg_id,pinned}` |
