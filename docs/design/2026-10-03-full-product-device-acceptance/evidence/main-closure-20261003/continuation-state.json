@@ -4413,5 +4413,11 @@
     "backend_head": "9b8e79b20da7b399d9792d60fdf3af2f79a26ffe",
     "tests": 43,
     "product_pass": false
+  },
+  "e2ee_trust_log_privacy": {
+    "receipt": "e2ee-trust-log-redaction.json",
+    "backend_head": "672d9be7ef10e8630a3a0760f2da965acee77210",
+    "tests": 67,
+    "product_pass": false
   }
 }

@@ -1,0 +1,59 @@
+======================== EUnit ========================
+module 'e2ee_trust_logic_tests'
+  e2ee_trust_logic_tests:83: -trust_database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-1-...*failed*
+in function e2ee_trust_logic_tests:trust_database_failure_log_case/2 (test/logic/e2ee_trust_logic_tests.erl, line 105)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,e2ee_trust_logic_tests},
+              {line,105},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ error , Event , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  e2ee_trust_logic_tests:83: -trust_database_failure_logs_do_not_expose_identity_or_reason_test_/0-fun-1-...*failed*
+in function e2ee_trust_logic_tests:trust_database_failure_log_case/2 (test/logic/e2ee_trust_logic_tests.erl, line 105)
+in call from eunit_test:run_testfun/1 (eunit_test.erl, line 83)
+in call from eunit_proc:run_test/1 (eunit_proc.erl, line 558)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 382)
+in call from eunit_proc:handle_test/2 (eunit_proc.erl, line 541)
+in call from eunit_proc:tests_inorder/3 (eunit_proc.erl, line 483)
+in call from eunit_proc:with_timeout/3 (eunit_proc.erl, line 372)
+in call from eunit_proc:run_group/2 (eunit_proc.erl, line 597)
+**error:{assertEqual,[{module,e2ee_trust_logic_tests},
+              {line,105},
+              {expression,"meck : num_calls ( elib_log , internal_log , [ error , Event , '_' , '_' ] )"},
+              {expected,1},
+              {value,0}]}
+  output:<<"">>
+
+  e2ee_trust_logic_tests: appendonly_repo_has_no_mutation_api_test...[0.002 s] ok
+  e2ee_trust_logic_tests: valid_event_writes_and_broadcasts_test...[0.054 s] ok
+  e2ee_trust_logic_tests: revoked_event_broadcasts_to_target_test...[0.053 s] ok
+  e2ee_trust_logic_tests: bad_signature_rejects_test...[0.054 s] ok
+  e2ee_trust_logic_tests: newline_in_field_rejected_test...ok
+  e2ee_trust_logic_tests: actor_device_not_registered_test...[0.054 s] ok
+  e2ee_trust_logic_tests: revoked_actor_rejected_test...[0.053 s] ok
+  e2ee_trust_logic_tests: device_generation_mismatch_rejected_test...[0.055 s] ok
+  e2ee_trust_logic_tests: fresh_past_boundary_accept_test...[0.054 s] ok
+  e2ee_trust_logic_tests: fresh_past_boundary_reject_test...[0.054 s] ok
+  e2ee_trust_logic_tests: fresh_future_boundary_reject_test...[0.053 s] ok
+  e2ee_trust_logic_tests: expired_event_reject_test...[0.064 s] ok
+  e2ee_trust_logic_tests: duplicate_event_id_idempotent_test...[0.054 s] ok
+  e2ee_trust_logic_tests: identity_version_rollback_rejected_test...[0.056 s] ok
+  e2ee_trust_logic_tests: event_id_conflict_rejected_test...[0.064 s] ok
+  e2ee_trust_logic_tests: illegal_transition_rejected_before_verify_test...[0.055 s] ok
+  e2ee_trust_logic_tests: same_state_transition_rejected_test...[0.054 s] ok
+  e2ee_trust_logic_tests: invalid_method_rejected_test...ok
+  e2ee_trust_logic_tests: empty_event_id_rejected_test...ok
+  e2ee_trust_logic_tests: empty_device_field_rejected_test...ok
+  e2ee_trust_logic_tests: non_integer_issued_at_rejected_test...ok
+  e2ee_trust_logic_tests: canonical_payload_deterministic_test...ok
+  [done in 1.129 s]
+=======================================================
+  Failed: 2.  Skipped: 0.  Passed: 22.

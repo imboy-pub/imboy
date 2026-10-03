@@ -1,0 +1,44 @@
+{
+  "scope": "LOCAL_TRUST_DATABASE_LOG_PRIVACY_ONLY",
+  "backend_head": "672d9be7ef10e8630a3a0760f2da965acee77210",
+  "behavior_red": {
+    "failed": 2,
+    "passed": 22,
+    "exit_code": 1
+  },
+  "green": {
+    "passed": 67,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-trust-log-red.log",
+      "sha256": "5148d2912b390a3e9efddfcde0f9fa5d703ca295400f52b0cfcca151ef8db8d7"
+    },
+    {
+      "path": "e2ee-trust-log-green.log",
+      "sha256": "c54be23a68fdece0de28359d3705ae540d37c66067ca699313fcbf2696186715"
+    },
+    {
+      "path": "e2ee-trust-log-compile.log",
+      "sha256": "1b50ac23dda35c7374287ec03e5364d9c45daff2cf146c7535825de92ded69c6"
+    }
+  ],
+  "source_hashes": {
+    "src/logic/e2ee_trust_logic.erl": "45fb9acb31f7db53780c6fbc4b8a286b5a6c7b253d5fcc87bb0f7520b1f1ddde",
+    "test/logic/e2ee_trust_logic_tests.erl": "2bd69d02f3e1a266e5430c71932d7403311fe354b4132ea42f0d53dca23d742f"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_execution": false,
+  "third_party_notification": false,
+  "limits": [
+    "Identity lookup and audit insert failure logs retain event and severity without identities or arbitrary reason",
+    "Real synthetic signatures with mocked persistence and send; no live resource activated",
+    "No full AC26 or production SLO qualification"
+  ]
+}
