@@ -4650,5 +4650,11 @@
     "backend_head": "2d06a75de5384f81be4807a9e28f0516d32ee779",
     "tests": 25,
     "product_pass": false
+  },
+  "f14_backend_invoice_log_privacy": {
+    "receipt": "billing-invoice-log-privacy.json",
+    "backend_head": "d47719408006385630d2a608d11f5fdc390947c3",
+    "tests": 26,
+    "product_pass": false
   }
 }
