@@ -1,0 +1,19 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/billing_device_preflight_test.dart
+00:00 +0: explicit synthetic descriptors structurally validate
+00:00 +1: missing device_id refuses preparation
+00:00 +2: missing platform refuses preparation
+00:00 +3: missing lease_id refuses preparation
+00:00 +4: missing fixture_id refuses preparation
+00:00 +5: missing expected_uid refuses preparation
+00:00 +6: missing authorization_sha256 refuses preparation
+00:00 +7: missing runtime_sha256 refuses preparation
+00:00 +8: missing fixture_sha256 refuses preparation
+00:00 +9: missing head_imboy refuses preparation
+00:00 +10: missing head_imboyapp refuses preparation
+00:00 +11: missing head_imboyadmin refuses preparation
+00:00 +12: missing api_url refuses preparation
+00:00 +13: missing ws_url refuses preparation
+00:00 +14: unknown platform and noncanonical UID refuse preparation
+00:00 +15: zero hashes cannot serve as approval or candidate bindings
+00:00 +16: non-isolated ambiguous and credentialed URLs refuse preparation
+00:00 +17: All tests passed!

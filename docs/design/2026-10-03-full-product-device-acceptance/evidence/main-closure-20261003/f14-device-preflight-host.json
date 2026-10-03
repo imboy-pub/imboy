@@ -1,0 +1,37 @@
+{
+  "id": "F14-DEVICE-INPUT-STRUCTURE",
+  "scope": "STRUCTURAL_HELPER_ONLY_NOT_AUTHORIZATION_NOT_LAUNCHER",
+  "app_head": "2904824f6139a4b5608c716843077e5fbf66f821",
+  "executed": 17,
+  "failed": 0,
+  "exit_code": 0,
+  "analyze_issues": 0,
+  "review": "TWO_INDEPENDENT_REVIEWS_APPROVED",
+  "red": {
+    "exit_code": 1,
+    "reason": "Oversized numeric port escapes Uri property parsing before repair"
+  },
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "artifacts": [
+    {
+      "path": "f14-device-preflight-host.log",
+      "sha256": "58aee836ee5597bcb28deb1fbf180e8db8fdac959737366f68688c8966571c85"
+    },
+    {
+      "path": "f14-device-preflight-host.red.log",
+      "sha256": "25685db9d239a78ed041574e3e8e1a7495c7cea178d6c1e65d5ed6ce8c3d4b12"
+    }
+  ],
+  "remaining": [
+    "Wire verified approval and resource lease to actual device bootstrap",
+    "Verify actual hashes, candidates, fixture and runtime against trusted artifacts",
+    "Execute original required Android/macOS/backend business cases"
+  ],
+  "limits": [
+    "Descriptor shape alone grants no permission",
+    "Helper not wired into App activation",
+    "No original acceptance ID upgraded"
+  ]
+}
