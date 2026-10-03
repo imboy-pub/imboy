@@ -1,0 +1,37 @@
+{
+  "scope": "STATIC_CATALOG_CONSISTENCY_ONLY",
+  "app_head": "ea5d322e95307641b1c75556df4574f1a9ba5692",
+  "red_exit_code": 1,
+  "catalog_tests": 12,
+  "complete_tooling_tests": 418,
+  "exit_code": 0,
+  "failed": 0,
+  "review": "TWO_INDEPENDENT_REVIEWS_APPROVED",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "artifacts": [
+    {
+      "path": "f00-route-drift-rejection.red.log",
+      "sha256": "4e3a0a3bbb8ca0d507f180f68a5d26dcf18cb2201034d541d55f1b5373dc5c6e"
+    },
+    {
+      "path": "f00-route-drift-rejection.green.log",
+      "sha256": "2fa6f4c50f6dc92c4ae3740637ddc5de9d7914728ab50037f9f0ccfe4e83f122"
+    },
+    {
+      "path": "f00-route-drift-rejection.all.log",
+      "sha256": "6b54d9818959660ca8276b177bc455072100ef94dc781d9d0f18c2dc1260dd8c"
+    }
+  ],
+  "limits": [
+    "Static route registration is not actual navigation or business coverage",
+    "No original acceptance ID upgraded",
+    "Shared foreign WIP preserved; not frozen candidate qualification"
+  ],
+  "remaining": [
+    "Complete required functional/platform mappings",
+    "Actual authorized device/backend journeys",
+    "Independent final verification of all 97 original requirements"
+  ]
+}

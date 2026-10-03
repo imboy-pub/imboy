@@ -1,0 +1,13 @@
+...F........
+======================================================================
+FAIL: test_route_registration_drift_detected (test_catalog.TestCatalogDiff)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_catalog.py", line 91, in test_route_registration_drift_detected
+    self.assertTrue(any("route_registered" in issue for issue in issues))
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.591s
+
+FAILED (failures=1)
