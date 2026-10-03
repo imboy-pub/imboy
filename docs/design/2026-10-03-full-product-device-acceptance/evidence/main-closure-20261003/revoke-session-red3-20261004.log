@@ -1,0 +1,77 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+00:00 +0: revoke lookup session changed=false
+🧹 [QUEUE] 启动定期清理 Timer
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2c, error=NoSuchMethodError: Class '_EmptyRetryDatabase' has no instance method 'query' with matching arguments.[0m
+[38;5;196m│ ⛔ Receiver: Instance of '_EmptyRetryDatabase'[0m
+[38;5;196m│ ⛔ Tried calling: query("msg_c2c", distinct: null, columns: _ImmutableList len:15, where: "status IN (?,?) AND is_author=?", whereArgs: Instance(length:3) of '_GrowableList', groupBy: null, having: null, orderBy: "created_at DESC, auto_id DESC", limit: 100, offset: null)[0m
+[38;5;196m│ ⛔ Found: query(String, {bool? distinct, List<String>? columns, String? where, List<Object?>? whereArgs, String? groupBy, String? having, String? orderBy, int? limit, int? offset}) => Future<List<Map<String, Object?>>>[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2c 失败: NoSuchMethodError: Class '_EmptyRetryDatabase' has no instance method 'query' with matching arguments.
+Receiver: Instance of '_EmptyRetryDatabase'
+Tried calling: query("msg_c2c", distinct: null, columns: _ImmutableList len:15, where: "status IN (?,?) AND is_author=?", whereArgs: Instance(length:3) of '_GrowableList', groupBy: null, having: null, orderBy: "created_at DESC, auto_id DESC", limit: 100, offset: null)
+Found: query(String, {bool? distinct, List<String>? columns, String? where, List<Object?>? whereArgs, String? groupBy, String? having, String? orderBy, int? limit, int? offset}) => Future<List<Map<String, Object?>>>
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2g, error=NoSuchMethodError: Class '_EmptyRetryDatabase' has no instance method 'query' with matching arguments.[0m
+[38;5;196m│ ⛔ Receiver: Instance of '_EmptyRetryDatabase'[0m
+[38;5;196m│ ⛔ Tried calling: query("msg_c2g", distinct: null, columns: _ImmutableList len:14, where: "status IN (?,?) AND is_author=?", whereArgs: Instance(length:3) of '_GrowableList', groupBy: null, having: null, orderBy: "created_at DESC, auto_id DESC", limit: 100, offset: null)[0m
+[38;5;196m│ ⛔ Found: query(String, {bool? distinct, List<String>? columns, String? where, List<Object?>? whereArgs, String? groupBy, String? having, String? orderBy, int? limit, int? offset}) => Future<List<Map<String, Object?>>>[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2g 失败: NoSuchMethodError: Class '_EmptyRetryDatabase' has no instance method 'query' with matching arguments.
+Receiver: Instance of '_EmptyRetryDatabase'
+Tried calling: query("msg_c2g", distinct: null, columns: _ImmutableList len:14, where: "status IN (?,?) AND is_author=?", whereArgs: Instance(length:3) of '_GrowableList', groupBy: null, having: null, orderBy: "created_at DESC, auto_id DESC", limit: 100, offset: null)
+Found: query(String, {bool? distinct, List<String>? columns, String? where, List<Object?>? whereArgs, String? groupBy, String? having, String? orderBy, int? limit, int? offset}) => Future<List<Map<String, Object?>>>
+🔄 发送 v2 二进制撤回请求: msgId=1001
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2s, error=NoSuchMethodError: Class '_EmptyRetryDatabase' has no instance method 'query' with matching arguments.[0m
+[38;5;196m│ ⛔ Receiver: Instance of '_EmptyRetryDatabase'[0m
+[38;5;196m│ ⛔ Tried calling: query("msg_c2s", distinct: null, columns: _ImmutableList len:14, where: "status IN (?,?) AND is_author=?", whereArgs: Instance(length:3) of '_GrowableList', groupBy: null, having: null, orderBy: "created_at DESC, auto_id DESC", limit: 100, offset: null)[0m
+[38;5;196m│ ⛔ Found: query(String, {bool? distinct, List<String>? columns, String? where, List<Object?>? whereArgs, String? groupBy, String? having, String? orderBy, int? limit, int? offset}) => Future<List<Map<String, Object?>>>[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2s 失败: NoSuchMethodError: Class '_EmptyRetryDatabase' has no instance method 'query' with matching arguments.
+Receiver: Instance of '_EmptyRetryDatabase'
+Tried calling: query("msg_c2s", distinct: null, columns: _ImmutableList len:14, where: "status IN (?,?) AND is_author=?", whereArgs: Instance(length:3) of '_GrowableList', groupBy: null, having: null, orderBy: "created_at DESC, auto_id DESC", limit: 100, offset: null)
+Found: query(String, {bool? distinct, List<String>? columns, String? where, List<Object?>? whereArgs, String? groupBy, String? having, String? orderBy, int? limit, int? offset}) => Future<List<Map<String, Object?>>>
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +1: revoke lookup session changed=true
+🔄 发送 v2 二进制撤回请求: msgId=1001
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+00:00 +1 -1: revoke lookup session changed=true [E]
+  Expected: <false>
+    Actual: <true>
+  
+  package:matcher                                                expect
+  package:flutter_test/src/widget_tester.dart 473:18             expect
+  test/unit_test/service/websocket_send_session_test.dart 169:9  main.<fn>
+  
+[38;5;196m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;196m│ #0   AppLogger.error (package:imboy/service/app_logger.dart:115:18)[0m
+[38;5;196m│ #1   SqliteService.query (package:imboy/service/sqlite.dart:894:17)[0m
+[38;5;196m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;196m│ ⛔ SQL query error: table=msg_c2c, error=NoSuchMethodError: Class '_EmptyRetryDatabase' has no instance method 'query' with matching arguments.[0m
+[38;5;196m│ ⛔ Receiver: Instance of '_EmptyRetryDatabase'[0m
+[38;5;196m│ ⛔ Tried calling: query("msg_c2c", distinct: null, columns: _ImmutableList len:15, where: "status IN (?,?) AND is_author=?", whereArgs: Instance(length:3) of '_GrowableList', groupBy: null, having: null, orderBy: "created_at DESC, auto_id DESC", limit: 100, offset: null)[0m
+[38;5;196m│ ⛔ Found: query(String, {bool? distinct, List<String>? columns, String? where, List<Object?>? whereArgs, String? groupBy, String? having, String? orderBy, int? limit, int? offset}) => Future<List<Map<String, Object?>>>[0m
+[38;5;196m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+⚠️ [RETRY_SCAN] 扫描表 c2c 失败: NoSuchMethodError: Class '_EmptyRetryDatabase' has no instance method 'query' with matching arguments.
+Receiver: Instance of '_EmptyRetryDatabase'
+Tried calling: query("msg_c2c", distinct: null, columns: _ImmutableList len:15, where: "status IN (?,?) AND is_author=?", whereArgs: Instance(length:3) of '_GrowableList', groupBy: null, having: null, orderBy: "created_at DESC, auto_id DESC", limit: 100, offset: null)
+Found: query(String, {bool? distinct, List<String>? columns, String? where, List<Object?>? whereArgs, String? groupBy, String? having, String? orderBy, int? limit, int? offset}) => Future<List<Map<String, Object?>>>
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart: revoke lookup session changed=true

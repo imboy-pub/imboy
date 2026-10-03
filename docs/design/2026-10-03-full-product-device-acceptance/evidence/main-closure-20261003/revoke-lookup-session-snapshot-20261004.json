@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_SYNTHETIC_REVOKE_LOOKUP_SESSION_SNAPSHOT",
+  "app_head": "9a0283003782cedc8c5f4990b2b01798461973fc",
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "review": "APPROVED_CODE_AND_FLUTTER_WITH_ACTUAL_EVENT_OBSERVER",
+  "results": {
+    "behavior_red_exit": 1,
+    "behavior_red_passed": 1,
+    "behavior_red_failed": 1,
+    "final_domain_exit": 0,
+    "final_domain_passed": 236,
+    "focused_exit": 0,
+    "focused_passed": 3,
+    "focused_unexpected_database_plugin_errors": 0,
+    "full_static_exit": 0,
+    "catalog_exit": 0
+  },
+  "oracles": [
+    "Actual sendRevokeMessage awaits controlled synthetic lookup; unchanged session emits one binary recall frame and returns true.",
+    "Real session generation changes during suspended lookup; v2 and v1 paths return false, captured sending events stay empty and actual connected sink records no frame.",
+    "Synthetic empty Database contains retry startup scan; focused3-case fixture has no SQL/plugin exceptions."
+  ],
+  "implementation_verified_by_review": [
+    "UID/generation frozen before lookup and checked after await; clearing state rejected; v1 event explicitly carries original generation."
+  ],
+  "attempt_notes": [
+    "red/red2 compilation fixture errors excluded from behavior evidence.",
+    "red3 exposed stale binary send but empty retry database lacked query implementation; repaired query and waited for initial scan cleanup; red4 is authoritative behavior RED.",
+    "qualified initially lacked v1 event consumer; qualified2 rechecked unchanged sources after edit precondition failure; qualified3 added direct event observation and focused log proves no fixture database/plugin errors.",
+    "Broad domain includes existing synthetic cases with missing-table/plugin diagnostic logs; no production or real business PASS is inferred from those logs."
+  ],
+  "limitations": [
+    "Lookup is synthetic via visibleForTesting loader, not real SQLite account-switch journey; default production path still uses existing MessageService repo.find.",
+    "v1 normal accepted send/retry and actual backend revoke are unqualified; sendDirect false-return contract remains pending.",
+    "UID-only change without generation increment, later DB mutations elsewhere and other action producers remain unqualified; no original97-ID upgrade."
+  ],
+  "artifacts": [
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-red-20261004.log",
+      "sha256": "5fab023890c640a1b196d42f3fac6723e77bc2e9e9273d3a903856f5d15f379d"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-red2-20261004.log",
+      "sha256": "86ce5613178bcb589ddf21675ba1a7f65ce2666a6bda9f1db1f3a2902a61ecb4"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-red3-20261004.log",
+      "sha256": "efdd6726a580ef771ac3c5dc7b0e0cf0327cb383d1ffa397e727fc84beb4ce71"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-red4-20261004.log",
+      "sha256": "7f43bd2672051120e93be173fda88cb211673fc7684df7ae4efb5d0078e9027c"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-focused-20261004.log",
+      "sha256": "6dccce50859fe679e6657224bb6abaebbc7b8c879ecb5099a290a82a79354ce5"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-final-domain-20261004.log",
+      "sha256": "39b3c9877d46c97099edc0853050c22f8aaae15726c0ea7fbebbd11b36ff78cc"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-final-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-final-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-qualified-domain-20261004.log",
+      "sha256": "057acc6290522d098c035be352b4778fd93d6a7bf090f35ea2a1a84d63f44846"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-qualified-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-qualified-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-qualified2-domain-20261004.log",
+      "sha256": "f07c0187479228f4051beb1c3062091300b73459247ecaef9cdc984a67af0379"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-qualified2-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-qualified2-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-qualified3-domain-20261004.log",
+      "sha256": "9f8ac6e29707ac7a270b79dbb28277fd16cd16baa69483d5d53de6dc58e95bb7"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-qualified3-static-20261004.log",
+      "sha256": "d37440462ab7a5bdfbd94b8c43e680ab848ba059d981e132852572e4b2efd678"
+    },
+    {
+      "path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/main-closure-20261003/revoke-session-qualified3-catalog-20261004.log",
+      "sha256": "1cee8565e83b97d2cef9a27e30e3e40ef699ba46ab803f300d3a4841cf32a115"
+    }
+  ]
+}

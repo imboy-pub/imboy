@@ -1,0 +1,20 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+test/unit_test/service/websocket_send_session_test.dart:138:23: Error: Required named parameter 'conversationUk3' must be provided.
+          MessageModel(
+                      ^
+lib/store/model/message_model.dart:235:3: Context: Found this candidate, but the arguments don't match.
+  MessageModel(
+  ^^^^^^^^^^^^
+00:00 +0 -1: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart":
+  Compilation failed for testPath=/Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart: test/unit_test/service/websocket_send_session_test.dart:138:23: Error: Required named parameter 'conversationUk3' must be provided.
+            MessageModel(
+                        ^
+  lib/store/model/message_model.dart:235:3: Context: Found this candidate, but the arguments don't match.
+    MessageModel(
+    ^^^^^^^^^^^^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart

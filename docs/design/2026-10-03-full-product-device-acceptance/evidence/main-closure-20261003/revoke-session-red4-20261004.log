@@ -1,0 +1,26 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart
+00:00 +0: revoke lookup session changed=false
+🧹 [QUEUE] 启动定期清理 Timer
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+🔄 发送 v2 二进制撤回请求: msgId=1001
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +1: revoke lookup session changed=true
+🔄 发送 v2 二进制撤回请求: msgId=1001
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+00:00 +1 -1: revoke lookup session changed=true [E]
+  Expected: <false>
+    Actual: <true>
+  
+  package:matcher                                                expect
+  package:flutter_test/src/widget_tester.dart 473:18             expect
+  test/unit_test/service/websocket_send_session_test.dart 183:9  main.<fn>
+  
+🛑 [QUEUE] 停止定期清理 Timer
+🧹 [QUEUE] 清空队列
+00:00 +1 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/websocket_send_session_test.dart: revoke lookup session changed=true
