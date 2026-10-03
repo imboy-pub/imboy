@@ -1,0 +1,21 @@
+.E.....E.........
+======================================================================
+ERROR: test_attempt_device_snapshot_must_match_context (test_billing_cancel_snapshots.BillingCancelSnapshots)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_billing_cancel_snapshots.py", line 53, in test_attempt_device_snapshot_must_match_context
+    audit = billing_cancel_snapshots._attempt_device_errors
+AttributeError: module 'auto_test_lib.billing_cancel_snapshots' has no attribute '_attempt_device_errors'
+
+======================================================================
+ERROR: test_missing_attempt_cannot_supply_snapshots (test_billing_cancel_snapshots.BillingCancelSnapshots)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/leeyi/project/imboy.pub/imboyapp/test/tooling/auto_test/test_billing_cancel_snapshots.py", line 38, in test_missing_attempt_cannot_supply_snapshots
+    billing_cancel_snapshots._attempt_device_errors(
+AttributeError: module 'auto_test_lib.billing_cancel_snapshots' has no attribute '_attempt_device_errors'
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.003s
+
+FAILED (errors=2)

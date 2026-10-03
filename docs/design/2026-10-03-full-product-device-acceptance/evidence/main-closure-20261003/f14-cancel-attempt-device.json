@@ -1,0 +1,28 @@
+{
+  "scope": "LOCAL_RECORD_LINK_CALIBRATION_ONLY",
+  "app_head": "9032e4027aae4a327e2031b14558d166d7d90aa4",
+  "tooling_tests": 440,
+  "focused_tests": 17,
+  "exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "f14-attempt-device-red.log",
+      "sha256": "338a6f6f5c4091dfec0966baff9c583773bbb835e2174653ea2fe7e7ea4f4c06"
+    },
+    {
+      "path": "f14-attempt-device-green.log",
+      "sha256": "0b971161f511ebcbd6b1a28f3bc5c1d0ad053fd1227409f5411ffb22cded4c44"
+    }
+  ],
+  "product_pass": false,
+  "zero_write_proven": false,
+  "original_acceptance_ids_upgraded": [],
+  "device_execution": false,
+  "database_access": false,
+  "limits": [
+    "Pinned record correlation does not authenticate producer or real device",
+    "Independent collection completeness/timing/request/database audits required"
+  ],
+  "red_reason": "New helper initially absent; import/attribute failure is construction evidence, not a pre-existing behavioral defect"
+}
