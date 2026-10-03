@@ -1357,5 +1357,29 @@
     ],
     "final_verifier": "NOT_IMPLEMENTED",
     "remaining": "source-index completeness and mapping semantics, genuine runtime/business/platform evidence, independent final review/UX"
+  },
+  "current_static_input_census": {
+    "artifact": "current-static-input-census.json",
+    "sha256": "63c7906cc5cbbc67b6b67cf42e6cc2b8c1f8e27e993e1898e05afc102517b661",
+    "counts": {
+      "seed": 1846,
+      "generated": 1979,
+      "page": 188,
+      "api": 534,
+      "ws": 1,
+      "admin": 256
+    },
+    "input_count": 4804,
+    "scope": "CURRENT_STATIC_INPUT_CENSUS_NOT_APPROVED_FROZEN_BASELINE",
+    "router_baseline_bytes_identical": true,
+    "source_index_complete": false,
+    "product_pass": false,
+    "remaining": [
+      "route inventory extraction independently requalify even if source bytes equal",
+      "profile compiled/dynamic routes runtime qualification",
+      "Admin frontend navigation/action inventory beyond backend AdmRoutes",
+      "reconcile 1979 current functions with original 1872 generated denominator without shrinking",
+      "semantic case mapping and source dispositions for every input"
+    ]
   }
 }
