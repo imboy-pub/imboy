@@ -4690,5 +4690,10 @@
     "issues": 0,
     "scope": "DIRECT_TOP_LEVEL_ARTIFACT_REFERENCES_ONLY",
     "product_pass": false
+  },
+  "f00_current_coverage_gap_workqueue": {
+    "receipt": "coverage-gap-workqueue-20261004.json",
+    "next_priority": "organization",
+    "product_pass": false
   }
 }
