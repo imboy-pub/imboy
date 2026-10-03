@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "scope": "F00_CURRENT_MENTION_EXACT_CASE_DESIGN",
+  "heads": {
+    "imboy": "6c95be298fe228b6cbea132d14be46f139834f6a",
+    "imboyapp": "125a589e1548e814396ba3fd368d6b79d9b00729",
+    "imboyadmin": "c9e73adcf3151d2214461d12e0998651ec811dd6"
+  },
+  "product_pass": false,
+  "device_execution": false,
+  "original_acceptance_ids_upgraded": [],
+  "fixture_contract": {
+    "authorization": "PENDING_EXPLICIT_RESOURCE_LEASE",
+    "accounts": "isolated synthetic A/B, group G1/G2; no real user data",
+    "baseline": "A/G1 22 rows with distinct ordered times and stable unique IDs, mixed read states; B/G1 and A/G2 negative rows",
+    "oracle": "Independent owner-scoped DB/API read before/after; preserve record/attempt/platform/profile/UID bindings",
+    "api_method": "POST; historical ledger GET observations are not current API proof",
+    "fault_injection": "Authorized isolated endpoint/proxy only, no shared backend or global device network changes"
+  },
+  "cases": [
+    {
+      "function_id": "fn:mention:mention_list_page:001",
+      "legacy_action": "首屏加载 @我 的提及列表",
+      "source_control": "initState -> _loadMentions + _loadUnreadCount",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "已认证账号A进入/mention及/mention?groupId=G1；独立核对msg_mention按mentioned_uid与可选group_id筛选、created_at降序、首屏page1 size20。可见nickname/group/message身份与服务器记录一致，B和G2负例不得混入。subtitle content不是当前服务端返回合同，不以空subtitle替代内容定位。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:002",
+      "legacy_action": "加载失败展示错误态与重试",
+      "source_control": "NoDataView(onTop: _loadMentions(refresh:true))",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "授权隔离网络故障使list API失败且首屏无旧列表，展示加载失败与重试，不能显示成功空态；恢复后点击实际重试控件，list请求page1并显示与独立夹具一致的记录。已有列表刷新失败保留旧数据另核对。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:003",
+      "legacy_action": "无提及时展示空态文案",
+      "source_control": "NoDataView(text: t.mention.noMention)",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "真实list成功items=[]且unread=0，展示暂无@提及，无失败图标或重试入口；不得用失败null充当空夹具。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:004",
+      "legacy_action": "下拉刷新重新拉取列表",
+      "source_control": "RefreshIndicator.onRefresh",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "后端为A追加新提及后真实下拉刷新，捕获POST list page1 size20及group_id，刷新列表替换旧列表并反映最新排序；挂起旧分页/旧刷新后释放不得改变新结果，真实双平台重验。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:005",
+      "legacy_action": "滚动触底加载下一页",
+      "source_control": "ScrollController._onScroll -> _loadMoreMentions",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "准备22条时间不同的A/G1记录，触底前20条，后请求page2并出现余2条；末页不继续请求。隔离page2失败后再次触底必须重试page2，不跳page3；独立总ID集合恰22，无丢失/重复。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:006",
+      "legacy_action": "未读条目显示红点标识",
+      "source_control": "_buildMentionItem is_read -> unread Positioned red dot",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "在同一实际可见列表中放is_read=0和1记录，逐条验证红点仅在未读项、已读无红点且字体符合状态；代码分支或点击请求日志不能代替实际可见红点。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:007",
+      "legacy_action": "点「全部已读」清空未读数",
+      "source_control": "GlassAppBar rightDMActions -> _markAllAsRead",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "未读>0时实际全部已读控件存在，点击后独立查询A/G1未读清零、控件消失；非A/G1记录保持原状态。全局无groupId只影响A全部群。API失败不得把未读事实记为清零。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:008",
+      "legacy_action": "点击条目标记该提及已读",
+      "source_control": "ImBoyListTile.onTap -> _openMention -> _markAsRead",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "点击A所属未读条目，POST mark_read的mention_id匹配该行，独立数据库is_read转true且其他记录未变；返回列表刷新后该条红点消失。已读点击不重复mark_read；跨账号ID服务端拒绝，不能将仅路由跳转当作已读成功。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:009",
+      "legacy_action": "点击跳转群聊并定位消息",
+      "source_control": "_openMention -> context.push /chat/group?type=C2G&msg_id",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "点击具有有效group_id/msg_id的提及，真实路由为/chat/G1?type=C2G&msg_id=编码后的ID；真实群聊打开且目标消息实际定位/高亮、内容匹配，不以URI或群页截图替代定位。gid/message_id兼容字段另记录适用性。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:010",
+      "legacy_action": "跳转信息缺失时提示无法定位",
+      "source_control": "_resolveGroupId/_resolveMessageId -> navInfoMissing toast",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "授权畸形响应夹具覆盖group_id=0且gid缺失、空msg_id/message_id；点击后保持提及页并显示无法定位提示，无/chat/0跳转。若未读项先标记成功，独立记录这一当前顺序；不能隐去副作用。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:011",
+      "legacy_action": "收到新提及事件后自动刷新",
+      "source_control": "AppEventBus NewMentionEvent -> _loadMentions(refresh:true)",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "由另一获授权合成账号在G1发送真实提及消息，真实WS -> MessageService -> NewMentionEvent驱动页面无手工刷新显示新条目且全部已读控件/未读事实一致；不得直接注入AppEventBus或调用processMessage冒充设备端到端。"
+    },
+    {
+      "function_id": "fn:mention:mention_list_page:012",
+      "legacy_action": "条目时间按相对格式展示",
+      "source_control": "_formatTime -> t.common.time*Short",
+      "owner": "F14 remaining-directory domain; F03/F04 dependencies for message and group journeys",
+      "required": true,
+      "platforms": [
+        "android",
+        "macos"
+      ],
+      "status": "DESIGNED_NOT_EXECUTED",
+      "device_target": null,
+      "business_oracle": "用独立后端时间夹具覆盖刚刚、分钟、小时、1..7天、>7天边界并记录设备时间/时区与允许误差；后端created_at为整数秒，端侧须转换为毫秒后解析，显示与独立时间事实一致，实际显示对应相对格式或月/日。字符串时间回退格式仅协议允许时另测，不能伪造设备时钟。"
+    }
+  ],
+  "source_hashes": [
+    {
+      "repo": "imboyapp",
+      "path": "lib/page/mention/mention_list_page.dart",
+      "sha256": "54d0c3d3f9a4f5862febf4a5ce67e4388061b76a22f900d5d99d6ba90a6e3905"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "lib/service/mention_service.dart",
+      "sha256": "34c2153e9c7fc4bb203070b33ce2af86f8cd1047eb7427d79531acc7092497f6"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "lib/store/api/mention_api.dart",
+      "sha256": "54e8419d6003bde79e39b590eded5734a192abe9ffbe08fe299f9fb9e1b80aac"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "lib/config/router/app_router.dart",
+      "sha256": "99d7bd20e8ecfc7596cf1bca9dd3158fb3c9107c8c44203db9a5a98f85fdf4ff"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "lib/service/message.dart",
+      "sha256": "dd45313352bd89a37c2bf429aa41301bf1bc32a8dc784e0641fd4eebb3a76aa3"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "lib/config/const.dart",
+      "sha256": "042fc2a7ca957980cfb41e823ee33d6cf8fead85d3b1247aaa55257482b9df3e"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "test/auto_test/mention/mention_list_page.md",
+      "sha256": "e2e919a73c45c7c23c66d9cce780a57e3e8e421829a7fc8ba07c5c20354e8eb1"
+    },
+    {
+      "repo": "imboyapp",
+      "path": "test/auto_test/functional_inventory.json",
+      "sha256": "32ef000eb3e93f0d4f4f3a078569b6dfeac549baecc1790235f141c3fcc9feea"
+    },
+    {
+      "repo": "imboy",
+      "path": "src/api/mention_handler.erl",
+      "sha256": "f6aa7ef355ee8dd29669d354242d52148c37d55eb7ea7a71cd36e0a183235204"
+    },
+    {
+      "repo": "imboy",
+      "path": "src/repo/mention_repo.erl",
+      "sha256": "9a23f9eca3765e2027030c92586522df3d79898e227f3c3382faba22ecf5931f"
+    }
+  ],
+  "limitations": [
+    "Original inventory function IDs/dispositions/targets are untouched; all12 remain unbound.",
+    "Legacy pass text does not qualify current candidate or both platforms.",
+    "content subtitle is absent from current backend projection; product decision remains outside this design.",
+    "This does not prove account/session isolation, device execution or business completion."
+  ],
+  "confirmed_source_gaps": [
+    {
+      "function_id": "fn:mention:mention_list_page:012",
+      "backend": "mention_handler:normalize_created_at returns epoch seconds for integer values",
+      "app": "MentionListPage._formatTime passes integer directly to DateTime.fromMillisecondsSinceEpoch",
+      "status": "SOURCE_UNIT_MISMATCH_NOT_RUNTIME_VERIFIED",
+      "required_next": "Add actual-page current epoch seconds negative test and repair conversion before device requalification."
+    }
+  ]
+}

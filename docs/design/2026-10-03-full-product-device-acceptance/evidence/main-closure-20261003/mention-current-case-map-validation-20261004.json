@@ -1,0 +1,11 @@
+{
+  "scope": "STATIC_DESIGN_SET_VALIDATION_ONLY",
+  "case_map_sha256": "96e56d3e1e6bf1573dafec9ae7ac983b8b64a96aac436627f463abfc8fe4586f",
+  "inventory_sha256": "32ef000eb3e93f0d4f4f3a078569b6dfeac549baecc1790235f141c3fcc9feea",
+  "required_ids_exact": true,
+  "cases": 12,
+  "required_platform_cells": 24,
+  "unbound_targets": 12,
+  "product_pass": false,
+  "source_gaps_not_passed": 1
+}

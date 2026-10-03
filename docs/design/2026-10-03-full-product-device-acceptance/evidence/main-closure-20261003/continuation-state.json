@@ -5355,5 +5355,14 @@
     "new_cases": 2,
     "product_pass": false,
     "original_acceptance_ids_upgraded": []
+  },
+  "f00_mention_current_mapping": {
+    "receipt": "mention-current-case-map-20261004.json",
+    "validation": "mention-current-case-map-validation-20261004.json",
+    "app_head": "125a589e1548e814396ba3fd368d6b79d9b00729",
+    "required_functions": 12,
+    "required_platform_cells": 24,
+    "device_execution": false,
+    "product_pass": false
   }
 }
