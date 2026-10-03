@@ -1,0 +1,31 @@
+{
+  "scope": "C11_PRODUCTION_PROTOCOL_CODECS_OFFLINE_ONLY",
+  "product_pass": false,
+  "candidate_app": "95090798fe7c14325891ad0f69a5164d80853c6f",
+  "argv": [
+    "flutter",
+    "test",
+    "test/unit_test/service/e2ee_release_wire_codec_test.dart",
+    "--reporter",
+    "expanded"
+  ],
+  "cwd": "/Users/leeyi/project/imboy.pub/imboyapp",
+  "executed": 12,
+  "failed": 0,
+  "exit": 0,
+  "log": "c11-wire-codec-host.log",
+  "sha256": "f7bc11a328afd62fd2b2e74d9605a0b3a335dd14385885ff52dc036c4103a839",
+  "review": "APPROVED_BY_C11_FLUTTER_REVIEW",
+  "analysis": "No issues found",
+  "remaining": [
+    "network connection/authentication/lifecycle adapter",
+    "registered seed identity and credential ownership",
+    "real send receive ACK decrypt UI oracles",
+    "authorized devices and isolated backend"
+  ],
+  "limitations": [
+    "imboy-protobuf unframed protocol not supported or advertised",
+    "compressed/encrypted transport transformations rejected",
+    "nested business maps are not deeply immutable"
+  ]
+}
