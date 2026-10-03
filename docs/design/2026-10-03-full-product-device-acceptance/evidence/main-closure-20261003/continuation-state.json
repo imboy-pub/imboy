@@ -422,8 +422,8 @@
   },
   "customer_service_semantic_mapping": {
     "artifact": "cs-governance-semantic-map.json",
-    "app_candidate": "be78cb9ae22ab6c4f3785e161f5070eb8faa10a4",
-    "local_regression_tests": 31,
+    "app_candidate": "6d4e8a8809a02f99968d3bd93e8f24acf36ed07a",
+    "local_regression_tests": 32,
     "test_exit": 0,
     "analysis_exit": 0,
     "review": "APPROVED_LOCAL_TEST_SCOPE",
@@ -431,7 +431,7 @@
     "partially_asserted_controls": 5,
     "device_and_backend_journeys": "NOT_EXECUTED",
     "product_pass": false,
-    "logs": [
+    "historical_31_test_logs": [
       {
         "path": "cs-governance-semantic-coverage-suite.log",
         "sha256": "e90e2291397b4547839d5390b0ec2b5a43260e6d8992256949d999c495c3aeb9"
@@ -440,6 +440,40 @@
         "path": "cs-governance-semantic-analyze.log",
         "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
       }
+    ],
+    "logs": [
+      {
+        "path": "cs-governance-pagination-success-suite.log",
+        "sha256": "8da546852ed227712be18ee846d099317055e51c1a2826aa2de73757e3d9c279"
+      },
+      {
+        "path": "cs-governance-pagination-success-analyze.log",
+        "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
+      }
+    ]
+  },
+  "customer_service_pagination_local_gate": {
+    "app_candidate": "6d4e8a8809a02f99968d3bd93e8f24acf36ed07a",
+    "command": "flutter test test/customer_service/cs_governance_page_widget_test.dart test/customer_service/cs_governance_api_contract_test.dart --reporter expanded",
+    "tests_passed": 32,
+    "exit": 0,
+    "analysis_exit": 0,
+    "review": "APPROVED_UI_APPEND_AND_CURSOR_ASSERTIONS",
+    "logs": [
+      {
+        "path": "cs-governance-pagination-success-suite.log",
+        "sha256": "8da546852ed227712be18ee846d099317055e51c1a2826aa2de73757e3d9c279"
+      },
+      {
+        "path": "cs-governance-pagination-success-analyze.log",
+        "sha256": "c080fad096a4270073e7550dae78303fc0d35a9bfca4b476d521d56e1e16a149"
+      }
+    ],
+    "product_pass": false,
+    "remaining": [
+      "Pagination failure recovery",
+      "In-flight duplicate tap protection",
+      "Real backend and Android/macOS journeys"
     ]
   }
 }

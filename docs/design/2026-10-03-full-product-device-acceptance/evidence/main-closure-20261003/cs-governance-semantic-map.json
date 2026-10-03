@@ -7,14 +7,14 @@
     "F12-A03",
     "F12-A04"
   ],
-  "app_candidate": "be78cb9ae22ab6c4f3785e161f5070eb8faa10a4",
+  "app_candidate": "6d4e8a8809a02f99968d3bd93e8f24acf36ed07a",
   "source": {
     "path": "lib/modules/customer_service/presentation/cs_governance_page.dart",
     "sha256": "4992cb12e0cb36d653e81a98c8f805141dbec1c72eea12bbebf64d1f7225d50c"
   },
   "test_source": {
     "path": "test/customer_service/cs_governance_page_widget_test.dart",
-    "sha256": "7de5703f533846f601ab0ced9b150b52c648ef6f283a597b4ca9e871795639cc"
+    "sha256": "a947943fee18529ab66c47f8a6c03cf32187c9c6525c63af1d322132a1e991b2"
   },
   "inventory_source_sha256": "b6446681e626ead9e6130aba059ba3f4f91fb2ba26ab6543f98d3d9dd6b1aacf",
   "entries": [
@@ -25,7 +25,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示",
-        "line": 142
+        "line": 144
       },
       "observable_assertions": "scope-note key 存在",
       "local_coverage": "PARTIAL",
@@ -42,7 +42,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "权限负例：403 governance_insufficient 诚实权限终态（无重试）",
-        "line": 204
+        "line": 206
       },
       "observable_assertions": "无治理权限提示；无重试；无额度事实",
       "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
@@ -59,7 +59,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "一般错误：500 wire tag 透传 + 点击重试恢复",
-        "line": 237
+        "line": 239
       },
       "observable_assertions": "500错误出现后点击重试；额度3/5恢复；错误消失；额度GET共2次",
       "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
@@ -76,7 +76,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "空坐席：空态文案（不报错）",
-        "line": 347
+        "line": 349
       },
       "observable_assertions": "暂无坐席席位文案",
       "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
@@ -93,15 +93,20 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "刷新期间禁止使用旧游标加载更多",
-        "line": 629
+        "line": 675
       },
-      "observable_assertions": "刷新时ListTile禁用且onTap为空",
+      "observable_assertions": "刷新时ListTile禁用且onTap为空；点击分页后原行和新行各1；末页入口消失；seats请求2次；首次无after_id、第二次携带第一页返回游标",
       "local_coverage": "PARTIAL",
-      "remaining_behavior": "分页成功追加、末页消失、分页错误与恢复未验",
+      "remaining_behavior": "分页错误恢复、请求在途重复点击以及真实后端分页未验",
       "android": "NOT_EXECUTED",
       "macos": "NOT_EXECUTED",
       "real_backend": "NOT_EXECUTED",
-      "required": true
+      "required": true,
+      "additional_host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "加载更多成功：追加新行保留原行且末页移除入口",
+        "line": 631
+      }
     },
     {
       "function_id": "fn:customer_service:cs_governance_page:006",
@@ -110,15 +115,20 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "刷新期间禁止使用旧游标加载更多",
-        "line": 629
+        "line": 675
       },
-      "observable_assertions": "刷新后仅2次seats请求并呈现新行",
+      "observable_assertions": "刷新后仅2次seats请求并呈现新行；点击分页后原行和新行各1；末页入口消失；seats请求2次；首次无after_id、第二次携带第一页返回游标",
       "local_coverage": "PARTIAL",
-      "remaining_behavior": "尚无实际点击分页成功及重复点击负例",
+      "remaining_behavior": "分页错误恢复、请求在途重复点击以及真实后端分页未验",
       "android": "NOT_EXECUTED",
       "macos": "NOT_EXECUTED",
       "real_backend": "NOT_EXECUTED",
-      "required": true
+      "required": true,
+      "additional_host_test": {
+        "path": "test/customer_service/cs_governance_page_widget_test.dart",
+        "name": "加载更多成功：追加新行保留原行且末页移除入口",
+        "line": 631
+      }
     },
     {
       "function_id": "fn:customer_service:cs_governance_page:007",
@@ -127,7 +137,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "ready：额度事实 + 坐席行 + TSID 19 位 lossless 展示",
-        "line": 142
+        "line": 144
       },
       "observable_assertions": "19位identity逐字展示；额度正确",
       "local_coverage": "PARTIAL",
@@ -144,7 +154,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "停用坐席：确认 → POST suspend + 成功反馈 + 刷新",
-        "line": 485
+        "line": 487
       },
       "observable_assertions": "点击停用、确认、发POST及操作反馈；另有resume超额失败用例",
       "local_coverage": "PARTIAL",
@@ -161,7 +171,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "取消停用坐席：关闭对话框且不发写请求",
-        "line": 297
+        "line": 299
       },
       "observable_assertions": "关闭对话框；无PUT/POST；原额度和原坐席保留",
       "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
@@ -178,7 +188,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "停用坐席：确认 → POST suspend + 成功反馈 + 刷新",
-        "line": 485
+        "line": 487
       },
       "observable_assertions": "确认后命中suspend端点及成功反馈",
       "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
@@ -195,7 +205,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "额度变化：调整 2 → PUT body + 新额度回显 + 达上限徽标",
-        "line": 365
+        "line": 367
       },
       "observable_assertions": "打开对话框输入2，提交后2/2事实和达上限徽标",
       "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
@@ -212,7 +222,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "清除额度输入并保存：PUT 缺省上限并回显不限",
-        "line": 263
+        "line": 265
       },
       "observable_assertions": "输入controller为空；唯一PUT body为空Map；回显不限",
       "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
@@ -229,7 +239,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "取消额度调整：关闭对话框且不发写请求",
-        "line": 297
+        "line": 299
       },
       "observable_assertions": "关闭对话框；无PUT/POST；原额度和坐席保留",
       "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
@@ -246,7 +256,7 @@
       "host_test": {
         "path": "test/customer_service/cs_governance_page_widget_test.dart",
         "name": "额度变化：调整 2 → PUT body + 新额度回显 + 达上限徽标",
-        "line": 365
+        "line": 367
       },
       "observable_assertions": "PUT seat_limit=2；新额度2/2及更新反馈；非法0另有不发PUT负例",
       "local_coverage": "LOCAL_ASSERTIONS_PRESENT",
