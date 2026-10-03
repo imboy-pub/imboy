@@ -4472,5 +4472,11 @@
     "fix_receipt": "e2ee-counter-type-fix.json",
     "status": "TYPE_FIXED_LOCAL_STRICT_LINT_REMAINS",
     "product_pass": false
+  },
+  "e2ee_metric_help": {
+    "receipt": "e2ee-metric-help.json",
+    "e2ee_subset_strict_format": "PASS",
+    "full_endpoint_strict_format": "NOT_PROVEN",
+    "product_pass": false
   }
 }

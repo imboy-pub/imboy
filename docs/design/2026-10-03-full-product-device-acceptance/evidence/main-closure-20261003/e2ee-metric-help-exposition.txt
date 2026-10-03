@@ -1,0 +1,22 @@
+# HELP e2ee_backup_op_failed_total Cumulative application events since process start or counter reset.
+# TYPE e2ee_backup_op_failed_total counter
+# HELP e2ee_recovery_failed_total Cumulative application events since process start or counter reset.
+# TYPE e2ee_recovery_failed_total counter
+# HELP group_e2ee_check_failed_total Cumulative application events since process start or counter reset.
+# TYPE group_e2ee_check_failed_total counter
+# HELP olm_identity_pop_rejected_total Cumulative application events since process start or counter reset.
+# TYPE olm_identity_pop_rejected_total counter
+# HELP olm_identity_rotation_rejected_total Cumulative application events since process start or counter reset.
+# TYPE olm_identity_rotation_rejected_total counter
+# HELP olm_otk_exhausted_total Cumulative application events since process start or counter reset.
+# TYPE olm_otk_exhausted_total counter
+# HELP olm_rotation_event_failed_total Cumulative application events since process start or counter reset.
+# TYPE olm_rotation_event_failed_total counter
+olm_otk_exhausted_total 1
+olm_identity_pop_rejected_total 1
+olm_identity_rotation_rejected_total 1
+olm_rotation_event_failed_total 1
+group_e2ee_check_failed_total 1
+e2ee_recovery_failed_total 1
+e2ee_backup_op_failed_total{op="get"} 2
+e2ee_backup_op_failed_total{op="put"} 3

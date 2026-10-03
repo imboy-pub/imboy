@@ -1,0 +1,43 @@
+{
+  "scope": "LOCAL_E2EE_FAILURE_METRIC_STRICT_FORMAT_ONLY",
+  "backend_head": "2b186e89486d22cbaff892a8a93140cda81ae662",
+  "tests": {
+    "passed": 13,
+    "exit_code": 0
+  },
+  "strict_promtool": {
+    "command": "promtool check metrics",
+    "exit_code": 0,
+    "scope": "Synthetic six E2EE failure families and backup failure family with two label sets"
+  },
+  "compile_exit_code": 0,
+  "review": "APPROVED",
+  "artifacts": [
+    {
+      "path": "e2ee-metric-help-tests.log",
+      "sha256": "c9d570bb688292c88dcc4edefb72a20aa92a9b6ea99db8b1000e5d1221c28c74"
+    },
+    {
+      "path": "e2ee-metric-help-exposition.txt",
+      "sha256": "d122504682a2ba9796f97a65980369f132509c231c26073b7d4a01a1dc276c0c"
+    },
+    {
+      "path": "e2ee-metric-help-strict.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "e2ee-metric-help-compile.log",
+      "sha256": "4a43eb81824cfe317f48bc9a302ac273452187463ba15620c21c289cbbd5f9fe"
+    }
+  ],
+  "source_hashes": {
+    "src/api/metrics_handler.erl": "3df288397d0d016790010fcafc5107f3edc9167c7038f453182e4a49b3d039ab"
+  },
+  "product_pass": false,
+  "original_acceptance_ids_upgraded": [],
+  "limits": [
+    "HELP now generated for each counter/gauge family once",
+    "Existing system gauge names with total suffix remain and full endpoint strict lint is NOT_PROVEN",
+    "No live HTTP scrape, notifications, database, devices or production SLO execution"
+  ]
+}
