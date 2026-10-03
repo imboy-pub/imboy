@@ -426,13 +426,13 @@ init_throttle_rates() ->
         end
     end,
     %% 每用户每分钟 API 调用上限（与 sys.config 保持一致）
-    ok = throttle:setup(api_per_user, RateFor(api_per_user, 300), per_minute),
+    ok = throttle:setup(api_per_user, RateFor(api_per_user, 3000), per_minute),
     %% 每用户每秒 API 突发上限（与 sys.config 保持一致）：与分钟桶串联，
     %% 挡住固定分钟窗口边界处的请求突刺（throttle 分钟桶是整点清零的固定窗口）
     BurstN =
         case lists:keyfind(api_per_user_burst, 1, Rates) of
             {api_per_user_burst, N, per_second} when is_integer(N), N > 0 -> N;
-            _ -> 30
+            _ -> 300
         end,
     ok = throttle:setup(api_per_user_burst, BurstN, per_second),
     %% 每 IP 每分钟 API 调用上限（与 sys.config 保持一致）
