@@ -247,6 +247,13 @@ format_counter_types(Counters, Gauges) ->
     GaugeFamilies = maps:from_list([{metric_family_name(Key), true} || Key <- maps:keys(Gauges)]),
     [
         [
+            <<"# HELP ">>,
+            Name,
+            <<" ">>,
+            case maps:is_key(Name, GaugeFamilies) of
+                true -> <<"Current system state.\n">>;
+                false -> <<"Cumulative application events since process start or counter reset.\n">>
+            end,
             <<"# TYPE ">>,
             Name,
             case maps:is_key(Name, GaugeFamilies) of
