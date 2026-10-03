@@ -211,17 +211,19 @@ frame_http_tests(_) ->
                 ?assertEqual(<<"credential_in_query_string">>, ?S:msg(Resp))
             end)
         end},
-        {"A05 invalid binding shape is 400 (space / oversize)", fun() ->
-            with_seat_listener(fun(Port) ->
-                Bad1 = ?S:request(Port, <<"GET">>, <<"/seat/bad%20id">>, <<>>, #{}),
-                ?assertEqual(400, ?S:status(Bad1)),
-                ?assertEqual(<<"invalid_public_seat_console_id">>, ?S:msg(Bad1)),
-                Bad2 = ?S:request(
-                    Port, <<"GET">>, seat_url(binary:copy(<<"a">>, 129)), <<>>, #{}
-                ),
-                ?assertEqual(400, ?S:status(Bad2))
-            end)
-        end}
+        {"A05 invalid binding shape is 404 seat_console_unavailable (space / oversize, SC-BE-A05 四态统一)",
+            fun() ->
+                with_seat_listener(fun(Port) ->
+                    Bad1 = ?S:request(Port, <<"GET">>, <<"/seat/bad%20id">>, <<>>, #{}),
+                    ?assertEqual(404, ?S:status(Bad1)),
+                    ?assertEqual(<<"seat_console_unavailable">>, ?S:msg(Bad1)),
+                    Bad2 = ?S:request(
+                        Port, <<"GET">>, seat_url(binary:copy(<<"a">>, 129)), <<>>, #{}
+                    ),
+                    ?assertEqual(404, ?S:status(Bad2)),
+                    ?assertEqual(<<"seat_console_unavailable">>, ?S:msg(Bad2))
+                end)
+            end}
     ].
 
 %% ===================================================================
