@@ -1,0 +1,18 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart
+00:00 +0: same object coalesces ACK but distinct same-ID frames do not
+00:00 +0 -1: same object coalesces ACK but distinct same-ID frames do not [E]
+  Expected: throws <Instance of 'StateError'>
+    Actual: <Closure: () => Future<void>>
+     Which: returned a Future that emitted <null>
+  
+  package:matcher                                                          expect
+  package:flutter_test/src/widget_tester.dart 473:18                       expect
+  test/unit_test/service/e2ee_registered_group_transport_test.dart 138:7   main.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                               _CustomZone.registerUnaryCallback
+  test/unit_test/service/e2ee_registered_group_transport_test.dart 129:21  main.<fn>
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/test/unit_test/service/e2ee_registered_group_transport_test.dart: same object coalesces ACK but distinct same-ID frames do not

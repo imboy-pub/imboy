@@ -4143,5 +4143,14 @@
     "failed": 0,
     "exit_code": 0,
     "product_pass": false
+  },
+  "c11_group_receipt_recovery": {
+    "receipt": "c11-group-receipt-recovery.json",
+    "receipt_sha256": "5fab868f84deacbf5f2484aa9b36448f6da7bc4fffa8ebb8b2742622c8511cde",
+    "app_head": "d071baf43cc4616a895eddd73a8a0e2b990a1e43",
+    "executed": 33,
+    "failed": 0,
+    "exit_code": 0,
+    "product_pass": false
   }
 }

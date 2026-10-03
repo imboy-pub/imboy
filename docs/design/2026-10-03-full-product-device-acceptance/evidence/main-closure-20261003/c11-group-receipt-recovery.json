@@ -1,0 +1,36 @@
+{
+  "id": "C11-GROUP-RECEIPT-RECOVERY",
+  "app_head": "d071baf43cc4616a895eddd73a8a0e2b990a1e43",
+  "scope": "LOCAL_HOST_FAKE_SOCKET_COMPONENT_REGRESSION",
+  "executed": 33,
+  "failed": 0,
+  "exit_code": 0,
+  "analysis": "No issues found",
+  "review": "APPROVED_BY_FLUTTER_AND_GENERIC_REVIEWERS",
+  "product_pass": false,
+  "device_execution": false,
+  "real_backend_execution": false,
+  "oracles": [
+    "Same received object coalesces its pending receipt",
+    "Distinct received objects with the same message ID cannot share confirmation",
+    "Timed-out receipt cannot retry in the same connection generation",
+    "New connection generation permits retry of the retained received object",
+    "Wrong confirmation id, in_reply_to or action remains unconfirmed"
+  ],
+  "negative_calibration": {
+    "removed_guard": "pending receipt object identity check",
+    "failed": 1,
+    "exit_code": 1,
+    "production_source_restored_byte_exact": true
+  },
+  "limits": [
+    "Fake socket only; no actual backend or device execution",
+    "No live membership, epoch or room-key authorization proof",
+    "No four-account decrypt, display or attack qualification",
+    "No original acceptance ID upgraded"
+  ],
+  "log": "c11-group-receipt-recovery.log",
+  "log_sha256": "d205180dc814ad0080ddd22ec1e43f80717a70d0d67a3e53dabcb66dd85385cc",
+  "calibrated_red_log": "c11-group-receipt-recovery-calibrated-red.log",
+  "calibrated_red_log_sha256": "87fa9c8137c478fd0d13e8f670c965d45af1f9557b565e73e3bc0564b03fb996"
+}
