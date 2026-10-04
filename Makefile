@@ -137,10 +137,21 @@ EDOC_OPTS = {doclet, edown_doclet}
 # agent_grant_pg 为入口、EUnit 自动伴随执行 agent_grant_pg_tests（AG31 env
 # 检查照样触发 → cancelled）。故须把 src 侧入口名一并排除（两文件均无
 # 自带 test_() 单测，已验证，无旁伤）。
+# 2026-10-04 SC153 验收 run 实证：cs_pg_widget / cs_seat_console_pg_tests
+# 两套件按设计对共享 eunit 库跑 erlang_migrate down/up 往返（20+ 步 DDL），
+# 与全量轨道 4 路并发的其他套件互踩——churn 窗口内并发套件读到半态 schema
+# （42P01/42703 级联 30+）、并发 app boot 在 maybe_migrate 处中止后呈
+# TSID not_initialized 误导形态（eunit_runner do_boot 头注同款教训），
+# 两套件自身在交错窗口也互踩失败。单跑均绿（cs_pg_widget 14/14、
+# cs_seat_console_pg_tests 11/11，SC153 run cards/SC-GATE/logs/reverify-20261004/）
+# ——Excl 排除出全量 VM，覆盖由专项单跑承载（t= 单跑直通不受过滤器影响）。
+# cs_pg_widget 有同名 src 模块 → 按 F-12 惯例写 src 名（eunit 以 {module,
+# cs_pg_widget} 入口自动伴随 *_tests）；cs_seat_console_pg_tests 无同名
+# src 模块 → 直接写测试模块名。
 ifdef t
 EUNIT_TEST_SPEC = (fun() -> lists:append([$1]) end)()
 else
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, elib_tsid_guard, elib_tsid_bootstrap_harness_tests, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, elib_tsid_guard, elib_tsid_bootstrap_harness_tests, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 endif
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属
