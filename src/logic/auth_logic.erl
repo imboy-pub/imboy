@@ -1,4 +1,5 @@
 -module(auth_logic).
+-moduledoc "身份认证域稳定边界 —— API 适配层应经此模块而非直连 auth 数据内部。".
 %% Stable identity auth domain boundary.
 %% API adapters should call this module instead of reaching auth data internals directly.
 

@@ -1,5 +1,6 @@
 -module(ai_agent_policy).
 
+-moduledoc "AI agent 角色有效策略 —— 发布角色优先，未绑定或不可用时回退 legacy。".
 %% 角色有效策略：发布角色优先，未绑定或角色不可用时保留 legacy fallback。
 
 -export([effective/1, allows/2]).

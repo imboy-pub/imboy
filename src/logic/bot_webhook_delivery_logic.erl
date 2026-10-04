@@ -1,5 +1,6 @@
 -module(bot_webhook_delivery_logic).
 
+-moduledoc "Bot webhook 投递死信重放业务逻辑（WH-01，管理员侧）。".
 %%%
 %%% WH-01：死信重放 logic（管理员）。
 %%%

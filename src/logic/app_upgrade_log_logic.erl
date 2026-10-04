@@ -1,5 +1,6 @@
 -module(app_upgrade_log_logic).
 
+-moduledoc "客户端升级日志业务逻辑层 / Client upgrade-log business logic layer。".
 %%%
 %% app_upgrade_log_logic — 客户端升级日志业务逻辑层
 %% Client upgrade-log business logic layer.

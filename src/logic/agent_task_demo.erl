@@ -1,5 +1,6 @@
 -module(agent_task_demo).
 
+-moduledoc "Agent 任务生命周期 PoC 演示驱动（Phase 4 T4.2）。".
 %%%
 % Agent 任务生命周期 **PoC 演示驱动** / demo driver（Phase 4 T4.2）。
 %

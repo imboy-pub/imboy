@@ -1,4 +1,5 @@
 -module(adm_setup_logic).
+-moduledoc "管理后台首启初始化向导（P0-5）/ Admin first-boot setup wizard。".
 %%%
 %%% adm_setup_logic — 管理后台首启初始化向导（P0-5）
 %%%

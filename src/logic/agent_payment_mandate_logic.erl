@@ -1,5 +1,6 @@
 -module(agent_payment_mandate_logic).
 
+-moduledoc "Agent 受控支付授权业务逻辑 —— mandate 创建/撤销入口，消费链见 agent_payment_logic。".
 %%%
 % Agent 受控支付授权业务逻辑 / Agent payment mandate authorization logic
 % （Phase 4 T4.3 收尾：补上 mandate 的**创建/撤销入口**，消费链见 agent_payment_logic）。

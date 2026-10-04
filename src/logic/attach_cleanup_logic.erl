@@ -1,4 +1,5 @@
 -module(attach_cleanup_logic).
+-moduledoc "附件孤儿清理业务逻辑（供 ecron 定时任务调用）。".
 %%%
 % 附件孤儿清理业务逻辑（供 ecron 定时任务调用）
 %

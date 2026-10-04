@@ -1,5 +1,6 @@
 -module(agent_task_observer).
 
+-moduledoc "IM 作为 agent 任务协作的可观测前端 —— 群内任务卡片与审批事件产出。".
 %%%
 % IM 作为 A2A/agent 任务协作的可观测前端 / IM as observable frontend for agent-task
 % collaboration。

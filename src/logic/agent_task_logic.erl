@@ -1,5 +1,6 @@
 -module(agent_task_logic).
 
+-moduledoc "Agent Task 业务编排（DATA-01）—— FSM-00 九状态矩阵迁移知识与持久化编排。".
 %%%
 % Agent Task 业务编排（DATA-01）：FSM-00 九状态矩阵的迁移知识 + 持久化编排。
 %

@@ -1,5 +1,6 @@
 -module(ai_agent_logic).
 
+-moduledoc "AI 助手发现业务逻辑 / AI assistant discovery logic。".
 %%%
 % AI 助手发现业务逻辑 / AI assistant discovery logic
 %

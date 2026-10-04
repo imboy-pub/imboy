@@ -1,5 +1,6 @@
 -module(ai_agent_kb_logic).
 
+-moduledoc "AI 知识库配置业务逻辑（P0-3 A3-1）。".
 %%%
 %%% AI 知识库配置 / AI knowledge-base config（P0-3 A3-1）
 %%%

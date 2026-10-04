@@ -1,5 +1,6 @@
 -module(billing_meter).
 
+-moduledoc "用量软计量埋点（金钱相邻，消息热路径 fire-and-forget）。".
 %%%===================================================================
 %%% @doc billing_meter — 用量软计量埋点（金钱相邻，消息热路径 fire-and-forget）
 %%%

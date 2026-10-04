@@ -1,4 +1,5 @@
 -module(channel_logic_common).
+-moduledoc "频道 logic 公共函数 —— 事务内角色读取（R3-5）、编辑时间窗、归档写守卫（T7）等。".
 -dialyzer({nowarn_function, [ensure_channel_content_access/2]}).
 -compile([nowarn_deprecated_catch]).
 

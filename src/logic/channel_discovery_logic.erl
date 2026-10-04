@@ -1,4 +1,5 @@
 -module(channel_discovery_logic).
+-moduledoc "频道发现业务逻辑 —— 搜索、发现、分类浏览、热门频道。".
 %%%
 % channel_discovery_logic 是频道发现业务逻辑模块
 % 处理频道搜索、发现、分类浏览、热门频道等业务逻辑

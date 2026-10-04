@@ -1,5 +1,6 @@
 -module(ai_agent_prompt).
 
+-moduledoc "Agent LLM 消息构建公共骨架 / Shared prompt-building seam（P0-3 A3-3）。".
 %%%
 %%% Agent LLM 消息构建公共骨架 / Shared prompt-building seam（P0-3 A3-3）
 %%%
