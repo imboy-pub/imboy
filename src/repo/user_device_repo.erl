@@ -215,7 +215,7 @@ update_by_did(Uid, DID, Set, SetArgs) ->
         <<"UPDATE ", Tb/binary, " SET ", Set/binary, " WHERE status = 1 AND user_id = $",
             SetArgsLen2/binary, " AND device_id = $", SetArgsLen3/binary>>,
     SetArgs2 = SetArgs ++ [Uid, DID],
-    elib_pg:execute(Sql, SetArgs2).
+    elib_pg:execute_count(Sql, SetArgs2).
 
 %% ===================================================================
 %% Internal Function Definitions

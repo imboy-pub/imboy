@@ -124,7 +124,7 @@ find_by_request_id(OrgId, OwnerUid, RequestId, Conn) ->
 update_by_id(WsId, Data) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"id = $1">>, [WsId]),
-    elib_pg:query(Sql, Params).
+    elib_pg:execute_count(Sql, Params).
 
 %% @doc 事务内转移主 Owner（workspace.owner_id，计费锚点只读锚的治理面）
 -spec update_owner_tx(any(), integer(), integer()) -> ok | {error, term()}.

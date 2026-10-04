@@ -93,7 +93,7 @@ update_fields_tx(Conn, TaskId, Data) ->
     %% elib_pg_sql:update/4 签名：WHERE 子句与参数显式分开（T14 Demo B 发现
     %% update/3 不存在——单测 mock 掩盖、端到端暴露的调用点）
     {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"id = $1">>, [TaskId]),
-    elib_pg:execute(Conn, Sql, Params).
+    elib_pg:execute_count(Conn, Sql, Params).
 
 %% @doc 事务内幂等查询：同 project + 同 creator + 同 title 的既有任务
 %% （create 语义幂等：重复请求返回既有任务，不产生重复行）

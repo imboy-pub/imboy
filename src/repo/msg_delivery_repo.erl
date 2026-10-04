@@ -45,7 +45,7 @@ mark_acked_batch(Kind, MsgIds, ToUid, ToDid) ->
     Sql =
         <<"INSERT INTO ", Tb/binary, " (msg_kind, msg_id, to_uid, to_did) VALUES ", Rows/binary,
             " ON CONFLICT DO NOTHING">>,
-    elib_pg:execute(Sql, [Kind, ToUid, ToDid | MsgIds]).
+    elib_pg:execute_count(Sql, [Kind, ToUid, ToDid | MsgIds]).
 
 %% @doc 若消息已被该用户全部活跃设备确认，则删除主行并清除标记
 %% 活跃设备 = user_device 中 status=1 且 last_active_at 在 ActiveDays 天内的设备。

@@ -217,10 +217,7 @@ moderation_policy
 moment_ds
 moment_handler
 moment_logic
-moment_post_acl_repo
 moment_post_repo
-moment_report_repo
-moment_timeline_repo
 moya_acl
 moya_ai_draft_logic
 moya_assignment_handler
@@ -248,7 +245,6 @@ msg_c2g_repo
 msg_c2g_timeline_repo
 msg_c2s_logic
 msg_c2s_repo
-msg_delivery_repo
 msg_handler
 msg_rate_logic
 msg_s2c_ds
@@ -284,7 +280,6 @@ project_milestone_repo
 project_repo
 project_task_ds
 project_task_handler
-project_task_repo
 push_provider_jpush_http
 push_token_repo
 qianfan_api
@@ -295,7 +290,6 @@ report_handler
 report_logic
 report_ticket_ds
 report_ticket_repo
-review_queue_repo
 rtc_room_logic
 sensitive_word_repo
 sso_config_ds
@@ -309,7 +303,6 @@ user_denylist_repo
 user_device_ds
 user_device_handler
 user_device_logic
-user_device_repo
 user_export_logic
 user_handler
 user_log_repo
@@ -318,7 +311,6 @@ user_server
 user_tag_ds
 user_tag_relation_ds
 user_tag_relation_logic
-user_tag_relation_repo
 verification_code_ds
 verification_code_repo
 wallet_handler
@@ -332,4 +324,3 @@ workspace_guard
 workspace_handler
 workspace_invite_repo
 workspace_logic
-workspace_repo

@@ -70,7 +70,7 @@ moderate(Id, Status, Reason, ReviewerId) ->
         <<"UPDATE ", Tb/binary,
             " SET review_status = $1, reviewer_id = $2, reason = $3, reviewed_at = NOW()"
             " WHERE id = $4 AND review_status = 'pending'">>,
-    elib_pg:execute(Sql, [Status, ReviewerId, Reason, Id]).
+    elib_pg:execute_count(Sql, [Status, ReviewerId, Reason, Id]).
 
 %% ===================================================================
 %% Internal helpers

@@ -43,7 +43,7 @@ list_uids_by_post(PostId, AclType) ->
 delete_by_post(Conn, PostId) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE post_id = $1">>,
-    elib_pg:execute(Conn, Sql, [PostId]).
+    elib_pg:execute_count(Conn, Sql, [PostId]).
 
 -spec normalize_uids([term()]) -> [integer()].
 normalize_uids(Uids) ->

@@ -62,7 +62,7 @@ delete(Scene, Uid, ObjectId) ->
 delete_by_tag_id(TagId) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE tag_id = $1">>,
-    elib_pg:execute(Sql, [TagId]).
+    elib_pg:execute_count(Sql, [TagId]).
 
 -spec remove_user_tag_relation(any(), binary(), term(), integer(), binary()) -> ok.
 remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
