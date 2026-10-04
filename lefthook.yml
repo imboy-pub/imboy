@@ -6,7 +6,9 @@ pre-commit:
   parallel: true
   commands:
     erlfmt:
-      glob: "{src,apps,test}/**/*.{erl,hrl}"
+      # 注意 lefthook 的 ** 不匹配零层目录（与 arch-check 同因，2026-10-04 实证：
+      # src/imboy_app.erl 一级直置文件的提交曾静默跳过本门禁），故根级文件单列
+      glob: "{src/*.erl,src/**/*.erl,src/*.hrl,src/**/*.hrl,apps/**/*.erl,apps/**/*.hrl,test/*.erl,test/**/*.erl,test/*.hrl,test/**/*.hrl}"
       run: erlfmt --check {staged_files}
       stage_fixed: false
     gitleaks:
