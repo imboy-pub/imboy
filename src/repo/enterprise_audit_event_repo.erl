@@ -191,11 +191,13 @@ jsonb(Bin) when is_binary(Bin) -> Bin;
 jsonb(_Other) -> <<"{}">>.
 
 %% RETURNING id 的行形态在不同 codec 下可能是 #{<<"id">> := Id} 或 {Id}。
--spec first_id(term()) -> integer() | undefined.
+%% 非法形态归 0 而非 undefined：唯一调用方 {ok, first_id(Row)} 承诺
+%% {ok, integer()}，RETURNING id 恒为整数（2026-10-04 类型收口）。
+-spec first_id(term()) -> integer().
 first_id(#{<<"id">> := Id}) when is_integer(Id) -> Id;
 first_id({Id}) when is_integer(Id) -> Id;
 first_id(Id) when is_integer(Id) -> Id;
-first_id(_) -> undefined.
+first_id(_) -> 0.
 
 -spec clamp_page(term()) -> pos_integer().
 clamp_page(P) when is_integer(P), P >= 1, P =< ?MAX_PAGE -> P;

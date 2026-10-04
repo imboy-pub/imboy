@@ -82,7 +82,8 @@ recent_comments_by_posts([], _PerPostLimit) ->
     {ok, []};
 recent_comments_by_posts(PostIds, PerPostLimit) when
     is_list(PostIds),
-    PostIds =/= [],
+    %% PostIds =/= [] 已由第一子句 ([] -> {ok,[]}) 保证：冗余比较会被
+    %% Gradualizer 判为不相容类型（第二子句 PostIds 已精化为非空表）
     is_integer(PerPostLimit),
     PerPostLimit > 0
 ->

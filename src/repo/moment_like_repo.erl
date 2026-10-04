@@ -103,7 +103,7 @@ recent_likers_by_posts([], _PerPostLimit) ->
     {ok, []};
 recent_likers_by_posts(PostIds, PerPostLimit) when
     is_list(PostIds),
-    PostIds =/= [],
+    %% PostIds =/= [] 已由第一子句保证（冗余比较触发不相容类型报错）
     is_integer(PerPostLimit),
     PerPostLimit > 0
 ->

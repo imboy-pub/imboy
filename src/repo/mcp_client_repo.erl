@@ -83,7 +83,10 @@ ensure(OwnerUid, Name) ->
                     %% 若刚好被并发抢先插入，冲突跳过→重查取权威 client_id
                     case find_by_owner(OwnerUid) of
                         {ok, #{<<"client_id">> := Cid}} -> {ok, Cid};
-                        Other -> Other
+                        %% 查询列恒含 client_id，{ok, _} 缺键不可达；显式枚举
+                        %% 而非 catch-all（全型不收窄会破坏 {ok, integer()} 承诺）
+                        {ok, _} -> {error, notfound};
+                        {error, Reason} -> {error, Reason}
                     end;
                 {error, Reason} ->
                     ?ERROR_LOG("mcp_client_repo:ensure owner=~p error ~p~n", [OwnerUid, Reason]),

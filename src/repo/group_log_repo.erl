@@ -52,7 +52,7 @@ batch_add(Conn, DataList) when is_list(DataList), length(DataList) > 0 ->
     Sql =
         <<"INSERT INTO ", Tb/binary, " (id, type, option_uid, group_id, body, created_at) VALUES ",
             ValuesClause/binary>>,
-    elib_pg:execute(Conn, Sql, AllParams);
+    elib_pg:execute_count(Conn, Sql, AllParams);
 batch_add(_Conn, []) ->
     {ok, 0}.
 

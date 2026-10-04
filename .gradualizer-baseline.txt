@@ -78,7 +78,6 @@ channel_logic_notify
 channel_logic_order
 channel_logic_stats
 channel_message_repo
-channel_subscription_repo
 channel_webhook_ds
 channel_webhook_handler
 channel_webhook_logic
@@ -117,7 +116,6 @@ enterprise_application_grant_repo
 enterprise_asset_handler
 enterprise_asset_repo
 enterprise_asset_retention_logic
-enterprise_audit_event_repo
 enterprise_channel_logic
 enterprise_channel_write_logic
 enterprise_cs_seat_logic
@@ -157,7 +155,6 @@ group_category_ds
 group_category_repo
 group_file_repo
 group_handler
-group_log_repo
 group_member_ds
 group_member_logic
 group_notice_ds
@@ -208,7 +205,6 @@ live_room_ds
 live_room_repo
 log_redact
 login_attempt_ds
-mcp_client_repo
 mcp_governance_logic
 mcp_handler
 mention_handler
@@ -218,10 +214,8 @@ messaging_logic
 metrics_handler
 moderation_appeal_logic
 moderation_policy
-moment_comment_repo
 moment_ds
 moment_handler
-moment_like_repo
 moment_logic
 moment_post_acl_repo
 moment_post_repo

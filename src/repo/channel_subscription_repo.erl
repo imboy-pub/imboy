@@ -189,7 +189,7 @@ clear_unread_tx(Conn, ChannelId, Uid) ->
     Sql =
         <<"UPDATE ", Tb/binary, " SET unread_count = 0, last_read_at = $1",
             " WHERE channel_id = $2 AND user_id = $3 AND status = 1">>,
-    elib_pg:execute(Conn, Sql, [elib_dt:now(), ChannelId, Uid]).
+    elib_pg:execute_count(Conn, Sql, [elib_dt:now(), ChannelId, Uid]).
 
 %% @doc 获取用户在所有频道的未读总数
 -spec count_unread(integer()) -> non_neg_integer().
