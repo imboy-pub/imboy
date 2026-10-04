@@ -109,7 +109,10 @@ classify(401, _RespBody) ->
     {jpush_error, unauthorized};
 classify(429, _RespBody) ->
     {jpush_error, rate_limited};
-classify(Status, RespBody) when is_integer(Status) ->
+%% 不加 is_integer(Status) 守卫：对已声明 integer() 的参数做冗余守卫细化
+%% 触发 pick_value(none()) 崩溃（配方 b'，2026-10-04）；字面子句先行，
+%% 其余整数状态照常落入解析分支。
+classify(Status, RespBody) ->
     case parse_error_code(RespBody) of
         ?JPUSH_CODE_INVALID_TOKEN -> {jpush_error, invalid_token};
         ?JPUSH_CODE_UNAUTHORIZED -> {jpush_error, unauthorized};
@@ -142,7 +145,9 @@ to_binary(undefined) -> <<>>;
 to_binary(Value) -> elib_cnv:safe_to_binary(Value).
 
 is_non_empty(<<>>) -> false;
-is_non_empty(Bin) when is_binary(Bin) -> true;
+%% 模式细化替代 is_binary 守卫：冗余守卫细化触发 pick_value(none()) 崩溃
+%% （配方 b'，2026-10-04）；非二进制入参仍落 _ -> false，语义不变。
+is_non_empty(<<_/binary>>) -> true;
 is_non_empty(_) -> false.
 
 %% @doc Basic base64(AppKey:MasterSecret) 鉴权头
@@ -180,7 +185,7 @@ build_payload(Token, Title, Body, Data) ->
     ).
 
 %% @doc 提取响应 body 的 error.code；非 JSON/无 error.code 返回 undefined
-parse_error_code(RespBody) when is_binary(RespBody) ->
+parse_error_code(RespBody) ->
     try
         case jsone:try_decode(RespBody) of
             {ok, #{<<"error">> := #{<<"code">> := Code}}, _Rest} when is_integer(Code) ->
@@ -190,6 +195,7 @@ parse_error_code(RespBody) when is_binary(RespBody) ->
         end
     catch
         _:_ -> undefined
-    end;
-parse_error_code(_) ->
-    undefined.
+    end.
+%% 原 catch-all `parse_error_code(_) -> undefined` 已删：守卫删除后首子句
+%% 接住全部输入，jsone:try_decode + try/catch 对垃圾输入同样归 undefined，
+%% 死子句不可达（Gradualizer 报 unreachable，2026-10-04）。

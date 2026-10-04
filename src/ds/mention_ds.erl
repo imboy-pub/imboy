@@ -30,7 +30,9 @@
 %% @param FromUid 发送者ID
 %% @return ok | {error, Reason}
 -spec save_mentions(binary(), integer(), list(binary()), integer()) -> ok | {error, term()}.
-save_mentions(MsgId, Gid, Mentions, FromUid) when is_list(Mentions) ->
+%% 不加 is_list(Mentions) 守卫：对已声明 list(binary()) 的参数做冗余守卫细化
+%% 触发 Gradualizer pick_value(none()) 崩溃（崩溃家族配方 b'，2026-10-04）。
+save_mentions(MsgId, Gid, Mentions, FromUid) ->
     case lists:member(<<"all">>, Mentions) of
         true ->
             % @所有人，获取群组所有成员

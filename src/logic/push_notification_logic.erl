@@ -57,7 +57,9 @@ notify_offline_user(Uid, Title, Body) ->
 %% @doc 离线推送 + 固定常量路由数据（如 notify_type；客户端点击路由用）。
 %% Data 禁止动态内容（消息正文/发送者身份等），与常量文案隐私红线同口径。
 -spec notify_offline_user(integer(), binary(), binary(), #{binary() => binary()}) -> ok.
-notify_offline_user(Uid, Title, Body, Data) when is_map(Data) ->
+%% 不加 is_map(Data) 守卫：对已声明 #{binary() => binary()} 的参数做冗余
+%% 守卫细化触发 Gradualizer pick_value(none()) 崩溃（配方 b'，2026-10-04）。
+notify_offline_user(Uid, Title, Body, Data) ->
     case imboy_syn:count_user(Uid) of
         0 ->
             %% 用户完全离线，发送推送
@@ -103,7 +105,9 @@ notify_offline_users(Uids, Title, Body) ->
 
 %% @doc 组织邀请创建成功后的离线触达入口（异步 fire-and-forget，在线不推）。
 -spec notify_org_invitation(integer()) -> ok.
-notify_org_invitation(TargetUid) when is_integer(TargetUid), TargetUid > 0 ->
+%% 保留 TargetUid > 0 实质细化；仅删冗余 is_integer（对已声明 integer()
+%% 的参数重复断言会触发 pick_value(none()) 崩溃，配方 b'，2026-10-04）。
+notify_org_invitation(TargetUid) when TargetUid > 0 ->
     elib_async:async(fun() ->
         notify_offline_user(TargetUid, ?ORG_INVITE_TITLE, ?ORG_INVITE_BODY, ?ORG_INVITE_DATA)
     end),
