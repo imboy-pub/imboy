@@ -1,4 +1,5 @@
 -module(user_deletion_executor).
+-moduledoc "账号删除执行器（Implementation Plan Task D-03）。".
 %%%===================================================================
 %%% @doc 账号删除执行器（Implementation Plan Task D-03）
 %%%

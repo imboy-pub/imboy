@@ -1,4 +1,5 @@
 -module(imboy_router_registry).
+-moduledoc "插件路由动态注册表 / Plugin route dynamic registry。".
 -behaviour(gen_server).
 
 %%%-------------------------------------------------------------------

@@ -1,5 +1,6 @@
 -module(imboy_plugin_path).
 
+-moduledoc "插件路径解析（FROZEN roadmap-only）—— v2 动态加载暂停投入。".
 %% @status FROZEN (roadmap-only, 2026-06)：v2 动态加载子系统暂停投入。
 %% 当前生产走配置驱动模块化单体路线（见 product-profile-and-plugin-registry-design.md §3.1）。
 %% 修改前请确认是否真要重启动态平台方向。冻结≠移除。

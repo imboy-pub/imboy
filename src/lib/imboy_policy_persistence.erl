@@ -1,4 +1,5 @@
 -module(imboy_policy_persistence).
+-moduledoc "产品策略持久化层（提取自 imboy_policy §4 Save/persist）。".
 -compile([nowarn_deprecated_catch]).
 -dialyzer({nowarn_function, [normalize_capability_map/1, normalize_capabilities/2]}).
 %% @doc 产品策略持久化层（从 imboy_policy.erl §4 Save/persist 提取）

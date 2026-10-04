@@ -1,5 +1,6 @@
 -module(imboy_plugin_registry).
 
+-moduledoc "插件注册表兼容封装（deprecated）—— 新调用方应改用 manifests/0 与 manifest/1。".
 -export([
     all/0,
     get/1,

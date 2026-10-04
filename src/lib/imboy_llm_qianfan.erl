@@ -1,5 +1,6 @@
 -module(imboy_llm_qianfan).
 
+-moduledoc "imboy_llm behaviour 的百度千帆适配器 —— 委托 qianfan_api:create_chat/3 转 OpenAI 兼容 Messages。".
 %%% @doc imboy_llm behaviour 的百度千帆适配器
 %%% 委托现有 qianfan_api:create_chat/3，把 OpenAI 兼容 Messages
 %%% 映射为 (Content, History)：末条消息 content → Content，其余 → History。

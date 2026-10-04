@@ -1,5 +1,6 @@
 -module(llm_stream).
 
+-moduledoc "LLM 流式增量节流直推（ephemeral stream_delta 帧）。".
 %%% @doc LLM 流式增量的节流直推（ephemeral stream_delta 帧）
 %%%
 %%% 中间 token 累积到字节阈值才 imboy_syn:publish 一帧，不落库/不 ACK/不重试；

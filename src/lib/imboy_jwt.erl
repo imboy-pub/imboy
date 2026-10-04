@@ -1,5 +1,6 @@
 -module(imboy_jwt).
 
+-moduledoc "imboy JWT 签发/验签（纯 jose 方案，取代 jwerl shim）。".
 %%%
 % imboy JWT 签发/验签（纯 jose 方案，取代 jwerl shim）
 % Pure-jose HS256 JWT sign/verify for imboy.

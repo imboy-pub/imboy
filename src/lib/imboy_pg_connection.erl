@@ -1,5 +1,6 @@
 -module(imboy_pg_connection).
 
+-moduledoc "PostgreSQL 连接建立封装 —— epgsql:connect 后统一设置 statement_timeout。".
 -export([connect/1]).
 
 -define(DEFAULT_STATEMENT_TIMEOUT_MS, 15000).

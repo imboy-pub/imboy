@@ -1,4 +1,5 @@
 -module(imboy_policy_view).
+-moduledoc "策略预览视图层（提取自 imboy_policy §preview）—— 数据访问委托持久化层。".
 %% @doc 策略预览视图层（从 imboy_policy.erl §preview 提取）
 
 -export([preview_view/1, preview_saved_view/1, preview_effective_view/1]).

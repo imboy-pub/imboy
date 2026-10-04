@@ -1,4 +1,5 @@
 -module(olm_otk_cleanup_worker).
+-moduledoc "Olm one-time key 已消费审计行清理定时 worker。".
 -behaviour(gen_server).
 %%%===================================================================
 %%% @doc Olm one-time key 已消费审计行清理定时 worker。

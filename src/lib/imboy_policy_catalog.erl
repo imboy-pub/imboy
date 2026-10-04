@@ -1,5 +1,6 @@
 -module(imboy_policy_catalog).
 
+-moduledoc "产品策略静态目录/元数据（提取自 imboy_policy §5）—— 纯数据函数，无副作用。".
 %% @doc Static catalog/metadata extracted from imboy_policy.erl §5.
 %% Pure data functions; no side effects.
 

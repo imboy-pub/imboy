@@ -1,4 +1,5 @@
 -module(imboy_plugin_lifecycle).
+-moduledoc "插件生命周期管理（FROZEN roadmap-only）—— v2 动态加载暂停投入，生产走配置驱动模块化单体。".
 -compile([nowarn_deprecated_catch]).
 
 %% @status FROZEN (roadmap-only, 2026-06)：v2 动态加载子系统暂停投入。

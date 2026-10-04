@@ -1,4 +1,5 @@
 -module(imboy_ws_action_registry).
+-moduledoc "WS action 动态注册表（数据驱动路由）。".
 -behaviour(gen_server).
 
 %%%-------------------------------------------------------------------

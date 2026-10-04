@@ -16,6 +16,7 @@
 
 -module(imboy_policy).
 
+-moduledoc "产品策略管理模块（核心层）/ product policy core。".
 -include("generated/imboy_product_features.hrl").
 
 -export([

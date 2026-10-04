@@ -1,4 +1,5 @@
 -module(license_notice_worker).
+-moduledoc "License 到期提醒定时 worker。".
 -behaviour(gen_server).
 %%%===================================================================
 %%% @doc License 到期提醒定时 worker。

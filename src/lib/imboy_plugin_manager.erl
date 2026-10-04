@@ -1,4 +1,5 @@
 -module(imboy_plugin_manager).
+-moduledoc "插件管理器（FROZEN roadmap-only）—— v2 动态加载暂停投入。".
 -compile([nowarn_deprecated_catch]).
 
 %% @status FROZEN (roadmap-only, 2026-06)：v2 动态加载子系统暂停投入。

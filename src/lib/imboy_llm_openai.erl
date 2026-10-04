@@ -1,5 +1,6 @@
 -module(imboy_llm_openai).
 
+-moduledoc "imboy_llm behaviour 的 OpenAI 兼容适配器 —— 覆盖 DeepSeek/Qwen/vLLM/Ollama 等 Chat Completions 兼容服务。".
 %%% @doc imboy_llm behaviour 的 OpenAI 兼容适配器
 %%% 覆盖所有 OpenAI Chat Completions 兼容服务：DeepSeek/Qwen/vLLM/Ollama 等。
 %%% base_url/api_key/model 由 Opts 传入（见 imboy_llm_registry 的 llm_providers 配置）。
