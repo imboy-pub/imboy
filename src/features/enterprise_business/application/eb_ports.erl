@@ -16,6 +16,7 @@
 %%% 三个端口，并在 `contracts/0` 把 R0-1/R0-3/R0-4 判定的「真实依赖面」并入契约面。
 -module(eb_ports).
 
+-moduledoc "Enterprise Business 扩展点（Port）注册表与装配常量。".
 -export([
     all/0,
     store/0,

@@ -8,6 +8,7 @@
 %%% 资格」可被逐字复现（plan §2.1 #17）。
 -module(eb_clock_port).
 
+-moduledoc "扩展点：注入时钟（EB-02 冻结契约）。".
 -export_type([unix_seconds/0]).
 
 -type unix_seconds() :: integer().

@@ -24,6 +24,7 @@
 %%% **同一事务**的每一条语句上都带这两个键。
 -module(eb_tx_port).
 
+-moduledoc "扩展点：用例级事务 —— 原子消息接受与会话审计。".
 -export_type([accepted_message/0, audit_id/0, params/0]).
 
 -type params() :: map().

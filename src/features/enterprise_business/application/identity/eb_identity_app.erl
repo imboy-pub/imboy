@@ -36,6 +36,7 @@
 %%%     未注入时才回落到只读事实 Port。
 -module(eb_identity_app).
 
+-moduledoc "企业业务身份与经办关系的应用层用例（EB-05）。".
 -export([
     create_identity/2,
     list_identities/2,

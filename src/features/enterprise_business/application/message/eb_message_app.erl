@@ -44,6 +44,7 @@
 %%% 不改 `seen` / `status` / `version`，也不触发任何 ACK 或归档链。
 -module(eb_message_app).
 
+-moduledoc "企业消息应用层用例 —— 接受消息、投递 ACK 与只读历史。".
 -export([
     append_message/2,
     ack_delivery/2,

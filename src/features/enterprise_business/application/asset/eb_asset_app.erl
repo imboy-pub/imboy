@@ -48,6 +48,7 @@
 %%%     作用域（Org/Workspace）与「状态 + 超时 + hold」三条判定不可绕过。
 -module(eb_asset_app).
 
+-moduledoc "企业附件闭环用例层（EB-07）—— facade 的唯一委派目标。".
 -export([
     request_presign/2,
     put_object/2,

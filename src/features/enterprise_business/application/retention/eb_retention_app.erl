@@ -37,6 +37,7 @@
 %%% 清理经唯一 purge 用例端口。**不调用**个人 CLIENT_ACK / msg_archive 清理链。
 -module(eb_retention_app).
 
+-moduledoc "企业保留策略、Hold 与 bounded purge 的应用层用例。".
 -export([
     open_retention_policy/2,
     latest_retention_policy/2,

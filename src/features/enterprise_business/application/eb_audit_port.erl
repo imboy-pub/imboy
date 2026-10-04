@@ -12,6 +12,7 @@
 %%%     application 纳入同一事务上下文，而不是事后异步补写。
 -module(eb_audit_port).
 
+-moduledoc "扩展点：append-only 审计写入（EB-02 冻结契约）。".
 -export_type([event/0, audit_id/0]).
 
 -type audit_id() :: integer().

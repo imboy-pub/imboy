@@ -34,6 +34,7 @@
 %%%     失败都返回明确错误，绝不静默继续（见各函数注释里的顺序理由）。
 -module(eb_offboarding_app).
 
+-moduledoc "离职冻结、交接与完成证明的用例层（plan v4.1 EB-08）。".
 -export([
     suspend_member/2,
     open_offboarding/2,

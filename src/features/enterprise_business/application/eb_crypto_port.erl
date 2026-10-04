@@ -11,6 +11,7 @@
 %%% 不得回退到明文或默认密钥。
 -module(eb_crypto_port).
 
+-moduledoc "扩展点：企业托管加密（EB-02 冻结契约）。".
 -export_type([aad/0, key_ref/0, sealed/0]).
 
 %% AAD 必须逐字携带这四个作用域字段（OrgId / WorkspaceId / ConversationId / MessageId）。

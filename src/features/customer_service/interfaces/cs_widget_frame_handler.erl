@@ -23,6 +23,7 @@
 %%% RUN_ROOT/artifacts/backend/be-w01-router-wiring-manifest.md 统一应用。
 -module(cs_widget_frame_handler).
 
+-moduledoc "Widget 动态 frame HTML 端点（BE-W01 A05，contracts frame_policy）。".
 -export([init/2, handle/2]).
 
 %% 帧文档构造纯函数（导出供套件零 socket 断言）。

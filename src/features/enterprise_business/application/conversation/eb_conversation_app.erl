@@ -49,6 +49,7 @@
 %%% 供测试与装配。
 -module(eb_conversation_app).
 
+-moduledoc "企业会话应用层用例 —— 建立会话与经办交接。".
 -export([
     open_conversation/2,
     handover_identity/2

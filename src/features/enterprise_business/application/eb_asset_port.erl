@@ -16,6 +16,7 @@
 %%%   铁律 6：前两个业务参数是 `organization_id` 与 `workspace_id`。
 -module(eb_asset_port).
 
+-moduledoc "扩展点：企业私有对象读写与鉴权代理取流（EB-02 冻结契约）。".
 -export_type([descriptor/0, content_stream/0, asset_id/0, storage_ref/0]).
 
 -type asset_id() :: integer().

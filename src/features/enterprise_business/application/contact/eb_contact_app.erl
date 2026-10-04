@@ -36,6 +36,7 @@
 %%%   * 客户列表分页是**键集**（`after_id` 严格 `id > 游标`），不用 OFFSET。
 -module(eb_contact_app).
 
+-moduledoc "企业客户与客户资料/备注的应用层用例（EB-05）。".
 -export([
     create_contact/2,
     get_contact/2,

@@ -11,6 +11,7 @@
 %%% 行数为 1 时返回 `ok`，否则返回 `{error, conflict}`。
 -module(eb_store_port).
 
+-moduledoc "扩展点：企业业务持久化读写（EB-02 冻结契约）。".
 -export_type([
     identity/0,
     conversation/0,

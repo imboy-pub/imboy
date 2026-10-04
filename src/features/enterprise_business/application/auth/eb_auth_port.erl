@@ -22,6 +22,7 @@
 %%% 本卡只冻结契约，使「授权只读且逐请求」成为可静态判定的事实。
 -module(eb_auth_port).
 
+-moduledoc "企业授权事实扩展点（Port）—— 只读契约。".
 -export_type([port_module/0, facts/0, assignment/0]).
 
 -type port_module() :: module().

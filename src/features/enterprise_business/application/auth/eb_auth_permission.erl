@@ -24,6 +24,7 @@
 %%% 的判定，不持有、不持久化任何角色或权限数据。
 -module(eb_auth_permission).
 
+-moduledoc "function_key / permission / governance role 的概念分离与判定。".
 -export([
     function_keys/0,
     governance_roles/0,

@@ -35,6 +35,7 @@
 %%% 经扩展点加载的事实。
 -module(eb_auth_app).
 
+-moduledoc "企业授权用例 —— 每请求同时校验 active member + identity assignment + 独立 permission，按 principal 类别分流。".
 -export([
     authorize/2,
     authorize_via_port/3,

@@ -10,6 +10,7 @@
 %%% JSON 传输按 EntityId 规则转 string），扩展点只冻结「生成并返回」这一动作。
 -module(eb_id_port).
 
+-moduledoc "扩展点：注入 ID 生成（EB-02 冻结契约）。".
 -export_type([kind/0, id/0]).
 
 -type kind() :: atom().

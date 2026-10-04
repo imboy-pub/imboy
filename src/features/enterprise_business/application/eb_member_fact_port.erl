@@ -24,6 +24,7 @@
 %%% `eb_auth_app` 判定；把本扩展点的返回值当授权结论使用属于越权。
 -module(eb_member_fact_port).
 
+-moduledoc "扩展点：最小只读事实 —— 成员状态与默认 Workspace 解析。".
 -export_type([member_status/0, user_id/0, workspace_id/0]).
 
 %% 与 `organization_member.ck_organization_member_status` 逐字对齐（active | suspended | removed）。
