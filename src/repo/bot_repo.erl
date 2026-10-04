@@ -398,7 +398,9 @@ find_by_api_token(ApiToken) when is_binary(ApiToken), ApiToken =/= <<>> ->
     {ok, non_neg_integer()} | {error, term()}.
 set_api_token_credential(BotUserId, ApiToken) when is_binary(ApiToken), ApiToken =/= <<>> ->
     Tb = tablename(),
-    elib_pg:execute(
+    %% 计数契约走 execute_count：execute 宽化的 {ok, [tuple()]} 臂破坏
+    %% {ok, non_neg_integer()} 承诺（2026-10-04）。
+    elib_pg:execute_count(
         <<"UPDATE ", Tb/binary,
             " SET api_token_digest = $2, api_token_prefix = $3,"
             " api_token = '', updated_at = NOW() WHERE user_id = $1">>,
@@ -421,7 +423,10 @@ derive_aead_key(_) -> {error, no_key}.
 %% @doc verify_token 可认证加密存储（AEAD）。主密钥缺失 → fail-closed。
 -spec set_verify_token_enc(integer(), binary()) ->
     {ok, non_neg_integer()} | {error, no_key | term()}.
-set_verify_token_enc(BotUserId, VerifyToken) when is_binary(VerifyToken) ->
+%% 不加 is_binary(VerifyToken) 守卫：对已声明 binary() 的参数做冗余守卫细化
+%% 触发 Gradualizer pick_value(none()) 崩溃（崩溃家族配方 b'，2026-10-04）；
+%% 非二进制入参由 AEAD 加密路径报错，调用方测试均传 binary，语义等价。
+set_verify_token_enc(BotUserId, VerifyToken) ->
     case encrypt_verify_token(VerifyToken) of
         {error, _} = E ->
             E;
