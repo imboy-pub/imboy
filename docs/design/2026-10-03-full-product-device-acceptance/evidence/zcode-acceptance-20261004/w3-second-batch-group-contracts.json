@@ -1,0 +1,29 @@
+{
+  "receipt": "w3-second-batch-group-contracts",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "scope": "W3 second batch: invite-acceptance chain closure (FIND-GROUP-02 corrected), notice add param contract (FIND-GROUP-03 solved), attr=member inconsistency (FIND-GROUP-05 new)",
+  "invite_chain": {
+    "closure": [
+      "A creates group (form, member_uids omitted)",
+      "A invites B via POST /api/v1/group_member/join with JSON body {gid, member_uids:[B]} -> code=0, member_list echoes B profile",
+      "member/page count=2 (A+B)",
+      "negative: non-member C inviting -> code=1 '你不是群成员' (guard works)",
+      "dissolve cleanup code=0"
+    ],
+    "contract_finding": "member_uids only deserializes to a list from JSON body (App dio path). form-urlencoded single value or [..] string -> is_list(binary)==false -> 'member_uids 必须是list' or silent [] in group/add. FIND-GROUP-02 corrected: add's form member_uids never worked; the real membership write path is group_member/join with JSON body."
+  },
+  "notice_contract": {
+    "root_cause_of_400": "expired_at is mandatory and must parse as rfc3339 (elib_dt:rfc3339_to failure -> ERR_INVALID_FORMAT/400); status must be 0..2",
+    "verified_request": "form {gid,title,body,status=1,expired_at='2026-12-31T23:59:59+08:00'} -> code=0 notice_id=116177433870469120",
+    "page_readback": "list len 1, body echoed (title field name differs in page payload - minor, noted)",
+    "throttle": "notice add throttles harder than 3s-once (429 observed on same-second retries); keep >=1min spacing in probes"
+  },
+  "new_findings": [
+    {
+      "id": "FIND-GROUP-05",
+      "summary": "B (materialized member via join, count=2 in group_member) still sees empty group/page attr=member list — attr=member query semantics inconsistent with membership table; needs contract review before member-side journeys rely on it"
+    }
+  ],
+  "boundary": "isolated tmpfs PG + synthetic A/B/C only; parallel session WIP files untouched"
+}
