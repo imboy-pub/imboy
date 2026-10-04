@@ -36,6 +36,29 @@
 
 HEAD 未动（`ab306ddf`）。工作树仅 7 个 `.g.dart` 生成物再生成漂移（7+/7-，build_runner 良性产物），不构成实质漂移。
 
+## 补充（同日第二轮观测）：e2ee 域产品修复入库，证据基线进一步失配
+
+细读 14 提交中三笔与本验收线直接相关：
+
+1. **`03ce8e44` fix(e2ee): register trust_audit TSID generator（产品代码修复）**
+   `imboy_app.erl tsid_generator_names()` 补注册 `trust_audit`——此前真节点上首次
+   E2EE 信任审计事件（olm_identity_logic 写 event 行）必
+   `elib_tsid_generator_not_registered` 崩溃；`elib_tsid_registration_guard_tests`
+   已把该不变量钉进门禁。该修复晚于本线全部已录 e2ee 证据（W2/W3 时点），
+   属"证据采集时代码未含此修复"的基线失配项。
+2. **`84e4db78` L3 全量轨道套件清单变更**
+   `cs_pg_widget`、`cs_seat_console_pg_tests` 两套件经 SC153 验收 run 实证与
+   全量 4 路并发互踩（20+ 步 DDL 迁移往返），Excl 排除出全量 VM，覆盖改由
+   专项单跑承载（单跑均绿，证据在另一线 SC-GATE run cards）。RES-L3-RERUN
+   的"全量 exit=0"以执行时点 Makefile 清单为准，与本线早期全量轨道口径不同，
+   终审时须引用本注记说明差异来源。
+3. **`b32c6bec`** e2ee_failure_metric_exposition_tests 让 app metric 进程（测试侧，
+   无产品影响）。
+
+影响判定：不改变任何现行判定（97 行 PENDING 不变量未动、DEC-1…DEC-4 仍
+PENDING_USER），但进一步坐实 RES-L3-RERUN 不可省略——若省略，W4 翻转的
+PASS 将建立在不含 trust_audit 修复与清单变更的旧基线上。
+
 ## 对 RES-L3-RERUN 的执行约束（写入流程，非新决策）
 
 1. 执行前记录当时 `git rev-parse HEAD` + `git status --porcelain` 快照入本目录；
