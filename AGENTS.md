@@ -1,4 +1,4 @@
-> [imboy.pub 根目录](../CLAUDE.md) > **imboy（Erlang/OTP 后端）**
+> [imboy.pub 根目录](../AGENTS.md) > **imboy（Erlang/OTP 后端）**
 
 # Imboy - AI 上下文文档 / AI Context Document
 
