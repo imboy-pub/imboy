@@ -33,6 +33,7 @@
 | launch_chat_page | 12 | 4 行（:005/006/009/011） | widget 套件 4 用例（ce797c02） |
 | group_select_page | 8 | 3 行（:001 空态分支/:002/:004） | widget 套件 2 用例（d05578b9） |
 | group_vote_page | 12 | 3 行（:002 前半/:003/:005） | widget 套件 3 用例（f313fbe7） |
+| contact 域（f00-contact TSV 86 行） | 86 | **漂移核对 19 行**（W2 套件/纯函数单测/assistant_plaza provider 单测早于判定）+ **新闭 8 行**（tag 页 :002/:006/:007、people_info_more :002/:003、assistant_plaza :004/:006/:010） | contact 三套件 20 用例（7c7e0ae7→ab306ddf）+ f00-contact-batch-calibration.json |
 | group_task / task_detail / schedule_detail / file / album_photo / album_photo_detail / vote_detail | 各 11-12 | 0（FIND-GROUP-07 阻塞） | — |
 | 其余（group_tag/category/notice 等） | — | 未启动批量 | — |
 
@@ -49,12 +50,14 @@
 6. `f00-launch-chat-widget-calibration.json`（4 行）
 7. `f00-group-widget-calibration-batch3.json`（11 行：add_member:011 + remove_member 10 行）
 8. `f00-group-widget-calibration-batch4.json`（vote 3 行 + FIND-GROUP-07 受阻定性）
+9. `f00-contact-batch-calibration.json`（contact 域：漂移核对 19 行 + 新闭 8 行 + harness 规则）
 
 **判定/对账 TSV**：f00-group-batch-reconciliation.{tsv,json}、f00-contact-batch-reconciliation.{tsv,json}、f00-group-domain-reconciliation-start.json。
 **关键 receipt**：moment-acl-first-closure.json（FIND-MOMENT-01 修复+6/6 矩阵）、group-integration-first-batch.json、w3-second-batch-group-contracts.json、moment-acl-device-journey-v1.json（run6 全绿）、find-group-04-carrier-parameterization.json、f2f-suite-gf1-gf11-device-results.json。
 
-**测试套件（imboyapp）**：
+**测试套件（imboyapp，10 套件 70+ 用例）**：
 - widget：`test/unit_test/page/group/{add_member,group_select,launch_chat}_widget_flow_test.dart`、`group_detail/remove_member_widget_flow_test.dart`、`vote/group_vote_widget_flow_test.dart`（合计 31 用例，dart analyze 全清）
+- contact：`test/unit_test/page/contact/{confirm_new_friend,contact_setting_tag}_widget_flow_test.dart`、`contact_setting_destructive_flow_test.dart`、`assistant_plaza/assistant_plaza_widget_flow_test.dart`、`contact_page_search_test.dart`、`assistant_plaza/assistant_plaza_provider_test.dart`
 - 集成（真机）：`integration_test/moment/moment_visibility_device_test.dart`、`integration_test/group/face_to_face_acceptance_test.dart`（单场景 --plain-name 跑法）
 
 ## 5. 阻断与待决清单
