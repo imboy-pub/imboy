@@ -316,19 +316,33 @@ update_status(Id, Status) when Status =:= -1; Status =:= 0; Status =:= 1 ->
     end.
 
 -spec bind_moment_scope_ref([binary()], integer() | binary()) -> ok | {error, term()}.
-bind_moment_scope_ref([], _MomentId) ->
-    ok;
-bind_moment_scope_ref(ObjectKeys, MomentId) when is_list(ObjectKeys) ->
-    Tb = tablename(),
-    %% 显式参数编号；scope_ref 为 text 列，MomentId 转 binary。
-    %% 只回填 scope='moment' 且 scope_ref IS NULL 的行（刚上传待绑定的媒体），
-    %% object_key 含 uid 前缀天然 user-namespaced，按 path 精确匹配安全。
-    Sql =
-        <<"UPDATE ", Tb/binary, " SET scope_ref = $1, updated_at = $2 ",
-            "WHERE scope = 'moment' AND scope_ref IS NULL AND path = ANY($3)">>,
-    case elib_pg:query(Sql, [ec_cnv:to_binary(MomentId), elib_dt:now(), ObjectKeys]) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
+%% 不加 is_list 守卫：is_list 细化 [binary()] 参数与联合类型参数
+%% （MomentId: integer() | binary()）组合会触发 Gradualizer
+%% check_arg_exhaustiveness 的 pick_value(none()) 崩溃（崩溃家族新配方 b'，
+%% 2026-10-04，先试子句合并无效）。非列表入参走 SQL 参数绑定报 {error, _}，
+%% 唯一业务调用方 moment_logic 本就 `_ =` 吞掉返回值，语义等价。
+bind_moment_scope_ref(ObjectKeys, MomentId) ->
+    case ObjectKeys of
+        [] ->
+            ok;
+        _ ->
+            Tb = tablename(),
+            %% 显式参数编号；scope_ref 为 text 列，MomentId 转 binary。
+            %% 只回填 scope='moment' 且 scope_ref IS NULL 的行（刚上传待绑定的媒体），
+            %% object_key 含 uid 前缀天然 user-namespaced，按 path 精确匹配安全。
+            Sql =
+                <<"UPDATE ", Tb/binary, " SET scope_ref = $1, updated_at = $2 ",
+                    "WHERE scope = 'moment' AND scope_ref IS NULL AND path = ANY($3)">>,
+            case
+                elib_pg:query(Sql, [
+                    ec_cnv:to_binary(MomentId),
+                    elib_dt:now(),
+                    ObjectKeys
+                ])
+            of
+                {ok, _} -> ok;
+                {error, Reason} -> {error, Reason}
+            end
     end.
 
 -spec orphan_stats(map()) -> {ok, map()} | {error, term()}.
