@@ -45,9 +45,11 @@ tablename_fallback_key() ->
 %% @doc 上报/更新设备 Olm 身份键（ed25519 + curve25519 + 签名）
 -spec upsert_identity(integer(), binary(), binary(), binary(), binary(), binary()) ->
     {ok, term()} | {error, term()}.
-upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, _DeviceType) when
-    is_integer(UserId)
-->
+%% 不加 is_integer(UserId) 守卫：对已声明 integer() 的参数做冗余守卫细化
+%% 会触发 Gradualizer check_arg_exhaustiveness 的 pick_value(none()) 崩溃
+%% （崩溃家族配方 b'，与 attachment_repo bind_moment_scope_ref 同构，
+%% 2026-10-04）；非整数入参由 SQL 参数绑定报 {error, _}，语义等价。
+upsert_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, _DeviceType) ->
     Tb = tablename_identity(),
     Id = elib_tsid:generate(olm_identity),
     Sql = <<
@@ -131,7 +133,10 @@ list_devices_with_identity(UserId) when is_integer(UserId) ->
 %%  claimed 审计行一并删除——重装后客户端 key_id 从头编号，残留行会撞唯一约束）。
 -spec upsert_one_time_keys(integer(), binary(), [{binary(), binary()}], pos_integer()) ->
     {ok, non_neg_integer()} | {error, term()}.
-upsert_one_time_keys(UserId, DeviceId, Keys, _MaxKeys) when is_list(Keys) ->
+%% 不加 is_list(Keys) 守卫：同 upsert_identity，冗余守卫细化触发
+%% Gradualizer pick_value(none()) 崩溃（配方 b'）；非列表入参由
+%% 列表推导 badarg，语义等价（仅影响非法入参的错误类别）。
+upsert_one_time_keys(UserId, DeviceId, Keys, _MaxKeys) ->
     Tb = tablename_one_time_key(),
     %% 全量替换必须删净该设备全部旧行（含 claimed）：设备重装后客户端
     %% key_id 会从头编号，残留的 claimed 行与新 key_id 撞唯一约束
@@ -339,10 +344,9 @@ cleanup_consumed_one_time_keys(RetentionSeconds) when is_integer(RetentionSecond
     Sql =
         <<"DELETE FROM ", Tb/binary, " WHERE status = 'claimed'",
             "   AND consumed_at < CURRENT_TIMESTAMP - ($1 || ' seconds')::interval">>,
-    case elib_pg:execute(Sql, [integer_to_binary(RetentionSeconds)]) of
-        {ok, N} -> {ok, N};
-        {error, Reason} -> {error, Reason}
-    end.
+    %% 计数契约走 execute_count：execute 宽化出的 {ok, [tuple()]} 臂
+    %% 会让 {ok, N} 的 N 变联合类型，破坏 {ok, non_neg_integer()} 承诺。
+    elib_pg:execute_count(Sql, [integer_to_binary(RetentionSeconds)]).
 
 %% ===================================================================
 %% Fallback Key（OTK 耗尽兜底，每设备覆盖式 1 条，不删除）
