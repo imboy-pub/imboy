@@ -24,6 +24,7 @@
 %%% 输入约定逐字对齐。
 -module(eb_pg_store).
 
+-moduledoc "企业业务持久化的 PostgreSQL store（eb_store_port 真实现）。".
 -behaviour(eb_store_port).
 
 -include_lib("epgsql/include/epgsql.hrl").

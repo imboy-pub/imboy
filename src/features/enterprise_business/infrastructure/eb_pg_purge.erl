@@ -3,6 +3,7 @@
 %%% Object deletion runs only after commit and retries from durable keys.
 -module(eb_pg_purge).
 
+-moduledoc "bounded retention purge 仓储 —— 元数据、持久化对象 intent 与审计同事务提交；Workspace 锁串行化新 hold。".
 -include_lib("epgsql/include/epgsql.hrl").
 
 -export([purge_batch/3, sql_statements/0]).

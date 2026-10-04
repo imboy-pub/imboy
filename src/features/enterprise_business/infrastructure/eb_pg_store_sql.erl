@@ -12,6 +12,7 @@
 %%% 是 `$1`/`$2`（OrgId/WorkspaceId）。
 -module(eb_pg_store_sql).
 
+-moduledoc "企业业务持久化的冻结 SQL 与行归一化（EB-03R F1 拆分产物）。".
 -export([
     sql/1,
     statements/0,

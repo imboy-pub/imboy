@@ -16,6 +16,7 @@
 %%% 白名单外**没有任何** `exec/1`、`query/2`、`transaction/1`（A04 的导出面门）。
 -module(eb_pg_tx).
 
+-moduledoc "eb_tx_port 实现（EB-03R T1/T2）—— 用例级事务薄信封。".
 -behaviour(eb_tx_port).
 
 -export([accept_message/3, append_conversation_audit/3]).

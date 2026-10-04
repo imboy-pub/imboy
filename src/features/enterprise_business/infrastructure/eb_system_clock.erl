@@ -7,6 +7,7 @@
 %%% 在固定时钟下可逐字复现。
 -module(eb_system_clock).
 
+-moduledoc "注入时钟的生产实现（eb_clock_port 真实现）。".
 -behaviour(eb_clock_port).
 
 -export([now/0]).

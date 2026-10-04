@@ -1,5 +1,6 @@
 -module(eb_preflight_facts_pg).
 
+-moduledoc "Enterprise Business 域 DeletionPreflightFacts provider（ORG-08 / C17，PG 实现）。".
 %% Enterprise Business 域 DeletionPreflightFacts provider（ORG-08 / C17 / 计划 §1.6）。
 %%
 %% 只读：User deletion preflight 的 EB 域实时事实源。不做 handover/offboarding

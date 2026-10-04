@@ -31,6 +31,7 @@
 %%% **本模块不做**：不读库、不写 SQL、不做业务判定、不拼 SQL、不缓存事实。
 -module(eb_tenant_handler).
 
+-moduledoc "企业租户面薄 Handler（EB-09，plan §5.1）。".
 -export([init/2, handle/3]).
 
 %% cowboy 普通 handler：State = route Opts（含 route metadata + 中间件会话键）。

@@ -27,6 +27,7 @@
 %%% 必须是「删 0 行」而不是「删到别人的行」。
 -module(eb_purge_port).
 
+-moduledoc "扩展点：bounded purge（用例级 Port）。".
 -export_type([purge_result/0]).
 
 -type purge_result() :: #{

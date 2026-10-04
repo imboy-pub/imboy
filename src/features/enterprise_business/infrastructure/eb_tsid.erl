@@ -10,6 +10,7 @@
 %%% 避免在节点未就绪时产出可与其它节点冲突的 ID。
 -module(eb_tsid).
 
+-moduledoc "注入 ID 的生产实现（eb_id_port 真实现）。".
 -behaviour(eb_id_port).
 
 -export([new_id/1]).

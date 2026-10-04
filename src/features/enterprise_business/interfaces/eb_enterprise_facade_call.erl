@@ -16,6 +16,7 @@
 %%% 本模块不做任何参数加工、不做任何结果解释：由 `eb_enterprise_http` 负责形状，
 %%% 由 application 负责语义。
 -module(eb_enterprise_facade_call).
+-moduledoc "动作 → facade 的唯一调用点表（EB-09）。".
 -include("generated/imboy_product_features.hrl").
 
 -export([call/3, actions/0]).
