@@ -1,5 +1,6 @@
 -module(app_manifest_handler).
 
+-moduledoc "应用 manifest 端点 —— GET 下发 manifest（build→ETag→200 缓存模式），导出 build_manifest/0 供 agent-card 复用。".
 -behavior(cowboy_rest).
 
 -export([init/2]).

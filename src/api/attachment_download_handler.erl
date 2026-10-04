@@ -1,4 +1,5 @@
 -module(attachment_download_handler).
+-moduledoc "附件下载代理端点 —— GET/HEAD 经授权 ticket 取 Garage S3 签名 URL 并流式转发。".
 -export([init/2]).
 
 init(Req, State) ->

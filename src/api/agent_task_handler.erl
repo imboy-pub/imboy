@@ -1,5 +1,6 @@
 -module(agent_task_handler).
 
+-moduledoc "Agent 任务群内审批端点 / Agent task in-group approval —— POST /api/v1/agent_task/{approve,reject}，ApproverUid 恒取 JWT 会话，仲裁在 agent_task_observer。".
 %%%
 % Agent 任务群内审批端点 / Agent task in-group approval endpoint（Phase 4 T4.2）。
 % 群内可点击审批卡片(imboyapp)的后端落点：POST /api/v1/agent_task/{approve,reject}。

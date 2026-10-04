@@ -1,5 +1,6 @@
 -module(agent_mandate_handler).
 
+-moduledoc "Agent 受控支付授权 API / Agent payment mandate API —— owner 授权 agent 代付（额度/有效期）与撤销，JWT 认证。".
 %%%
 % Agent 受控支付授权 API / Agent payment mandate API（Phase 4 T4.3 收尾）
 %

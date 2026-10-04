@@ -1,5 +1,6 @@
 -module(billing_handler).
 
+-moduledoc "SaaS 计费 API 处理器 / SaaS billing API handler —— 套餐列表、订阅/续费/取消、用量配额与账单查询支付。".
 %%%
 % SaaS 计费 API 处理器 / SaaS billing API handler
 %

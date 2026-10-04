@@ -1,5 +1,6 @@
 -module(app_version_handler).
 
+-moduledoc "app_version 控制器 / controller —— 客户端版本检查与升级分发。".
 %%%
 % app_version 控制器模块
 % app_version controller module
@@ -68,4 +69,3 @@ check(<<"GET">>, Req0, _State) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

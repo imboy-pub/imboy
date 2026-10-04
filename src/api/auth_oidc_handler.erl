@@ -8,6 +8,7 @@
 %%% @end
 %%%-------------------------------------------------------------------
 -module(auth_oidc_handler).
+-moduledoc "OIDC 登录流处理器（企业 SSO）—— authorize / callback / exchange 三端点，浏览器重定向走 imboy_router 白名单。".
 -behavior(cowboy_rest).
 
 -export([init/2]).

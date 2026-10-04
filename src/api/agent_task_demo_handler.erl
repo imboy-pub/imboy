@@ -1,5 +1,6 @@
 -module(agent_task_demo_handler).
 
+-moduledoc "Agent 任务生命周期 PoC 演示端点 —— 触发一段演示任务，让可观测前端在无真实 agent 驱动时也有数据可渲染。".
 %%%
 % Agent 任务生命周期 **PoC 演示端点** / demo endpoint（Phase 4 T4.2）。
 % POST /api/v1/agent_task/demo：触发一段演示任务生命周期，让可观测前端（群内任务

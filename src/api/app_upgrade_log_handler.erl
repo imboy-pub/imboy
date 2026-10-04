@@ -1,5 +1,6 @@
 -module(app_upgrade_log_handler).
 
+-moduledoc "客户端升级事件上报 API / Client upgrade event reporting API。".
 %%%
 % app_upgrade_log 控制器模块
 % 客户端升级事件上报 API

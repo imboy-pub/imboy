@@ -1,5 +1,6 @@
 -module(appeal_handler).
 
+-moduledoc "用户侧申诉 API（薄适配层）—— create / my / actions 三端点，经 imboy_feature:enabled(appeal) 门控。".
 %% R-04：用户侧申诉 API（薄适配层）。
 %%   POST /api/v1/appeal/create   {action_id, reason}
 %%   GET  /api/v1/appeal/my

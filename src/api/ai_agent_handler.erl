@@ -1,5 +1,6 @@
 -module(ai_agent_handler).
 
+-moduledoc "AI 助手发现控制器 / AI assistant discovery controller —— 分页列出可发起 C2S 会话的助手及公开发现端点。".
 %%%
 % AI 助手发现控制器 / AI assistant discovery controller
 %

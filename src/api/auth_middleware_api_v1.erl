@@ -1,5 +1,6 @@
 -module(auth_middleware_api_v1).
 
+-moduledoc "API v1 认证中间件的纯路径谓词导出层 —— 供离线合同测试直接调用，无副作用。".
 -behaviour(cowboy_middleware).
 
 -export([execute/2]).

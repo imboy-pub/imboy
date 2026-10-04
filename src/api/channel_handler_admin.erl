@@ -1,4 +1,5 @@
 -module(channel_handler_admin).
+-moduledoc "频道管理端点 / Channel admin API —— 管理员角色、移除成员、邀请生命周期等动作分发。".
 -compile([nowarn_deprecated_catch]).
 -behavior(cowboy_rest).
 -export([init/2, handle_action/3]).

@@ -1,4 +1,5 @@
 -module(channel_discovery_handler).
+-moduledoc "频道发现 API 处理器 / Channel discovery API —— 搜索、发现、分类浏览、热门频道。".
 %%%
 % channel_discovery_handler 是频道发现 API 处理器
 % 处理频道搜索、发现、分类浏览、热门频道等 HTTP REST API 请求

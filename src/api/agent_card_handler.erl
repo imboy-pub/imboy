@@ -1,5 +1,6 @@
 -module(agent_card_handler).
 
+-moduledoc "Agent 能力发现端点 / Agent capability discovery —— GET /api/v1/agent-card 下发身份、MCP 端点与插件 manifest 声明的 tools 目录，供外部 AI 发现本实例能力。".
 %%%
 % Phase 4 T4.1：Agent 能力发现端点 / Agent capability discovery
 %

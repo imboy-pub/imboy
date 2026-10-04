@@ -1,5 +1,6 @@
 -module(auth_middleware).
 
+-moduledoc "Cowboy 认证中间件执行入口 / Cowboy auth middleware execution。".
 -behaviour(cowboy_middleware).
 
 -export([execute/2]).

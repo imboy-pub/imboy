@@ -1,5 +1,6 @@
 -module(app_feature_handler).
 
+-moduledoc "客户端能力配置端点 —— GET features / policy / ice_servers 下发功能开关、策略与 ICE 服务器配置。".
 -behavior(cowboy_rest).
 
 -export([init/2]).
