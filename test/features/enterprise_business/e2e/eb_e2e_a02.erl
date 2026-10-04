@@ -234,7 +234,7 @@ run(Ctx) ->
     AckBody = string:lowercase(binary_to_list(eb_e2e_lib:body(Ack))),
     Forbidden = [
         W
-     || W <- [<<"delete">>, <<"archive">>, <<"purge">>, <<"remove">>, <<"destroy">>, <<"销毁">>],
+     || W <- [<<"delete">>, <<"archive">>, <<"purge">>, <<"remove">>, <<"destroy">>, ~B'销毁'],
         string:find(AckBody, binary_to_list(W)) =/= nomatch
     ],
     eb_e2e_lib:assert(

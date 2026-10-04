@@ -504,7 +504,7 @@ init_list_content_access_with_valid_ticket_test_() ->
                 ) ->
                     ?assertEqual(true, maps:get(<<"content_accessed">>, Detail)),
                     ?assertEqual(501, maps:get(<<"ticket_id">>, Detail)),
-                    ?assertEqual(<<"处理举报">>, maps:get(<<"reason">>, Detail)),
+                    ?assertEqual(~B'处理举报', maps:get(<<"reason">>, Detail)),
                     ?assertEqual(<<"full">>, maps:get(<<"effective_mode">>, Detail)),
                     ok
                 end}
@@ -517,7 +517,7 @@ init_list_content_access_with_valid_ticket_test_() ->
                 end},
                 {'binary', 3, fun
                     (reason, _Req, _Def) ->
-                        {ok, <<"处理举报">>};
+                        {ok, ~B'处理举报'};
                     (_, _Req, Def) ->
                         {ok, Def}
                 end}
@@ -580,7 +580,7 @@ init_list_content_denied_without_content_permission_test_() ->
                 end},
                 {'binary', 3, fun
                     (reason, _Req, _Def) ->
-                        {ok, <<"处理举报">>};
+                        {ok, ~B'处理举报'};
                     (_, _Req, Def) ->
                         {ok, Def}
                 end}
@@ -678,7 +678,7 @@ init_list_content_ticket_not_found_test_() ->
                 end},
                 {'binary', 3, fun
                     (reason, _Req, _Def) ->
-                        {ok, <<"处理举报">>};
+                        {ok, ~B'处理举报'};
                     (_, _Req, Def) ->
                         {ok, Def}
                 end}

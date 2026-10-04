@@ -41,22 +41,23 @@ fn echo_gate(args: { message: String }) → String =
 
 gates_test_() ->
     {foreach, fun setup/0, fun teardown/1, [
-        {<<"G07 跨 scope negative：org B 资源 → cross_org deny + hird 零接触">>, fun g07_cross_scope/0},
-        {<<"G08 context isolation：双实例并发 handler 结果零串线">>, fun g08_context/0},
-        {<<"G09 permission fail-closed：catalog 不可用 → deny + dispatch 0">>,
-            fun g09_permission_failclosed/0},
-        {<<"G10 HITL fail-closed：无批准/陈旧批准/digest 错全阻断">>, fun g10_hitl/0},
-        {<<"G11 crash recovery：handler crash 面收敛 + 接管链可用">>, fun g11_crash/0},
-        {<<"G12 cancel recovery：cancel 后 run_tool → run_not_running">>, fun g12_cancel/0},
-        {<<"G13 timeout 映射：超时 → {dispatch_timeout,Ms}，不吞错">>, fun g13_timeout/0},
-        {<<"G15 duplicate 不重派：同幂等键 → duplicate_effect，dispatch 恰一">>, fun g15_duplicate/0},
-        {<<"G16 deterministic replay：同输入两次 audit hash 一致">>, fun g16_replay/0},
-        {<<"G17 重放零外呼：外呼计数恒 0 + hash 复现">>, fun g17_no_external/0},
-        {<<"G18 readonly Tool E2E：全链 allow + sanitized + audit run scope">>,
-            fun g18_readonly_e2e/0},
-        {<<"G19 approval-required E2E：E07→批准→recheck→allow 全链">>, fun g19_approval_e2e/0},
-        {<<"G20 进程/注册残留归零（并发放大后）">>, fun g20_residue/0},
-        {<<"G03' bridge boot_lifecycle 封装：宿主自扮 boot 全序列+audit 行产出">>, fun g03_bridge_lifecycle/0}
+        {~B'G07 跨 scope negative：org B 资源 → cross_org deny + hird 零接触', fun g07_cross_scope/0},
+        {~B'G08 context isolation：双实例并发 handler 结果零串线', fun g08_context/0},
+        {
+            ~B'G09 permission fail-closed：catalog 不可用 → deny + dispatch 0',
+            fun g09_permission_failclosed/0
+        },
+        {~B'G10 HITL fail-closed：无批准/陈旧批准/digest 错全阻断', fun g10_hitl/0},
+        {~B'G11 crash recovery：handler crash 面收敛 + 接管链可用', fun g11_crash/0},
+        {~B'G12 cancel recovery：cancel 后 run_tool → run_not_running', fun g12_cancel/0},
+        {~B'G13 timeout 映射：超时 → {dispatch_timeout,Ms}，不吞错', fun g13_timeout/0},
+        {~B'G15 duplicate 不重派：同幂等键 → duplicate_effect，dispatch 恰一', fun g15_duplicate/0},
+        {~B'G16 deterministic replay：同输入两次 audit hash 一致', fun g16_replay/0},
+        {~B'G17 重放零外呼：外呼计数恒 0 + hash 复现', fun g17_no_external/0},
+        {~B'G18 readonly Tool E2E：全链 allow + sanitized + audit run scope', fun g18_readonly_e2e/0},
+        {~B'G19 approval-required E2E：E07→批准→recheck→allow 全链', fun g19_approval_e2e/0},
+        {~B'G20 进程/注册残留归零（并发放大后）', fun g20_residue/0},
+        {~B"G03' bridge boot_lifecycle 封装：宿主自扮 boot 全序列+audit 行产出", fun g03_bridge_lifecycle/0}
     ]}.
 
 %% ===================================================================

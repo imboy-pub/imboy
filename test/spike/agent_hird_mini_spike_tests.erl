@@ -186,13 +186,15 @@ fn main() → () ! {Install, Supervise, Send<WatcherMsg>, Await<WatcherStatus>} 
 
 agent_hird_mini_spike_test_() ->
     {foreach, fun force_clean/0, fun(_) -> force_clean() end, [
-        {<<"G01/G02 hird 工具链可用且产物可被宿主加载">>, fun case_toolchain_ready/0},
-        {<<"G03/G05 纯函数双实例串行生命周期：结果不串线、audit 各自独立、无残留">>, fun case_pure_sequential_isolated/0},
-        {<<"G03 并发双实例（词法 handler map）：结果互不污染">>, fun case_pure_concurrent_no_crosstalk/0},
-        {<<"G04 supervisor 树启停干净、重复 start/stop 无 registration conflict">>,
-            fun case_sup_tree_repeat_start_stop/0},
-        {<<"G04/G05 声明名隔离双实例（supervisor 树）串行各自独立">>, fun case_sup_two_instances/0},
-        {<<"G03/G06 宿主 mock 注入通道（registry/with_handlers）与恢复语义">>, fun case_host_mock_injection/0}
+        {~B'G01/G02 hird 工具链可用且产物可被宿主加载', fun case_toolchain_ready/0},
+        {~B'G03/G05 纯函数双实例串行生命周期：结果不串线、audit 各自独立、无残留', fun case_pure_sequential_isolated/0},
+        {~B'G03 并发双实例（词法 handler map）：结果互不污染', fun case_pure_concurrent_no_crosstalk/0},
+        {
+            ~B'G04 supervisor 树启停干净、重复 start/stop 无 registration conflict',
+            fun case_sup_tree_repeat_start_stop/0
+        },
+        {~B'G04/G05 声明名隔离双实例（supervisor 树）串行各自独立', fun case_sup_two_instances/0},
+        {~B'G03/G06 宿主 mock 注入通道（registry/with_handlers）与恢复语义', fun case_host_mock_injection/0}
     ]}.
 
 %%%-------------------------------------------------------------------

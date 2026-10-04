@@ -129,8 +129,8 @@ member_workspaces_allows_ordinary_member_test_() ->
                 {'member_workspaces', 2, fun(?ORG_ID, [?OWNER]) ->
                     {ok, #{
                         ?OWNER => [
-                            #{<<"id">> => 9001, <<"name">> => <<"总部工作区">>},
-                            #{<<"id">> => 9002, <<"name">> => <<"广州项目组">>}
+                            #{<<"id">> => 9001, <<"name">> => ~B'总部工作区'},
+                            #{<<"id">> => 9002, <<"name">> => ~B'广州项目组'}
                         ]
                     }}
                 end}

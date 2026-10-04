@@ -268,11 +268,11 @@ new_identity_ok_test() ->
     {ok, Identity} = eb_identity:new_identity(#{
         organization_id => 1,
         function_key => <<"sales">>,
-        display_name => <<"华东销售 03">>
+        display_name => ~B'华东销售 03'
     }),
     ?assertEqual(1, maps:get(organization_id, Identity)),
     ?assertEqual(<<"sales">>, maps:get(function_key, Identity)),
-    ?assertEqual(<<"华东销售 03">>, maps:get(display_name, Identity)),
+    ?assertEqual(~B'华东销售 03', maps:get(display_name, Identity)),
     ?assertEqual(active, maps:get(status, Identity)),
     ?assertEqual(1, maps:get(version, Identity)).
 
@@ -280,9 +280,9 @@ new_identity_trims_display_name_test() ->
     {ok, Identity} = eb_identity:new_identity(#{
         organization_id => 1,
         function_key => <<"customer_service">>,
-        display_name => <<"  售后坐席 07  ">>
+        display_name => ~B'  售后坐席 07  '
     }),
-    ?assertEqual(<<"售后坐席 07">>, maps:get(display_name, Identity)).
+    ?assertEqual(~B'售后坐席 07', maps:get(display_name, Identity)).
 
 new_identity_unknown_function_key_test() ->
     ?assertEqual(

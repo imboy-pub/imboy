@@ -280,7 +280,7 @@ handle_push_non_map_body_test_() ->
 
 handle_push_reply_text_test_() ->
     ?WITH_MECKS(
-        [cfg(?TOKEN, ?AES_KEY_TEXT, ?APPID, <<"收到啦">>)],
+        [cfg(?TOKEN, ?AES_KEY_TEXT, ?APPID, ~B'收到啦')],
         fun() ->
             {ok, Raw} = moya_wechat_msg_logic:handle_push(encrypted_query(), event_body()),
             Reply = jsone:decode(Raw),
@@ -288,7 +288,7 @@ handle_push_reply_text_test_() ->
             ?assertEqual(<<"oABCDEFGHIJKLMNOP">>, maps:get(<<"ToUserName">>, Reply)),
             ?assertEqual(?APPID, maps:get(<<"FromUserName">>, Reply)),
             ?assertEqual(<<"text">>, maps:get(<<"MsgType">>, Reply)),
-            ?assertEqual(<<"收到啦">>, maps:get(<<"Content">>, Reply)),
+            ?assertEqual(~B'收到啦', maps:get(<<"Content">>, Reply)),
             ?assert(is_integer(maps:get(<<"CreateTime">>, Reply)))
         end
     ).
@@ -303,7 +303,7 @@ handle_push_reply_skipped_for_event_test_() ->
     ),
     Sig = elib_wechat_msg:signature(?TOKEN, ?TIMESTAMP, ?NONCE, Enc),
     ?WITH_MECKS(
-        [cfg(?TOKEN, ?AES_KEY_TEXT, ?APPID, <<"收到啦">>)],
+        [cfg(?TOKEN, ?AES_KEY_TEXT, ?APPID, ~B'收到啦')],
         fun() ->
             ?assertEqual(
                 {ok, <<>>},
