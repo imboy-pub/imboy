@@ -147,9 +147,10 @@ frame_document(PublicId) when is_binary(PublicId) ->
         "\" defer></script>"
         "</body>"
         "</html>"
-    >>;
-frame_document(_PublicId) ->
-    <<>>.
+    >>.
+%% 原 catch-all `frame_document(_PublicId) -> <<>>` 已删：首子句
+%% is_binary 守卫已覆盖 spec 的全部 binary 入参，兜底子句不可达
+%% （Gradualizer 报 unreachable，阻塞 pre-push 门，2026-10-05）。
 
 %% HTML 属性转义（与 cs_widget_frame_handler:html_attr/1 同口径；该函数未导出，
 %% 本面按同一四元集独立实现）。
