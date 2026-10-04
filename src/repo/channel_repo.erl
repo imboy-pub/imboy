@@ -327,7 +327,7 @@ update_tx(Conn, ChannelId, Data) ->
     Tb = tablename(),
     UpdateData = maps:without([<<"id">>], Data),
     {Sql, Params} = elib_pg_sql:update(Tb, UpdateData, <<"id = $1">>, [ChannelId]),
-    elib_pg:execute(Conn, Sql, Params).
+    elib_pg:execute_count(Conn, Sql, Params).
 
 %% @doc 删除频道（软删除）
 %% @param ChannelId 频道ID
@@ -342,7 +342,7 @@ delete(ChannelId) ->
 delete_tx(Conn, ChannelId) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:update(Tb, #{status => -1}, <<"id = $1">>, [ChannelId]),
-    elib_pg:execute(Conn, Sql, Params).
+    elib_pg:execute_count(Conn, Sql, Params).
 
 %% @doc 事务内归档频道（GZAPP-02/G4：复用 status 软删列语义——
 %% 归档= status 1→0（禁用），与删除（→-1）区分、可经 restore_tx 恢复；
@@ -352,7 +352,7 @@ archive_tx(Conn, ChannelId, Now) ->
     Sql =
         <<"UPDATE ", (tablename())/binary,
             " SET status = 0, updated_at = $1 WHERE id = $2 AND status = 1">>,
-    elib_pg:execute(Conn, Sql, [Now, ChannelId]).
+    elib_pg:execute_count(Conn, Sql, [Now, ChannelId]).
 
 %% @doc 事务内恢复频道（GZAPP-02/G4：status 0→1；WHERE 限定 status=0——
 %% 已删除（-1）的频道不可恢复，0 行更新 = 非归档态（active/已删除））。
@@ -361,7 +361,7 @@ restore_tx(Conn, ChannelId, Now) ->
     Sql =
         <<"UPDATE ", (tablename())/binary,
             " SET status = 1, updated_at = $1 WHERE id = $2 AND status = 0">>,
-    elib_pg:execute(Conn, Sql, [Now, ChannelId]).
+    elib_pg:execute_count(Conn, Sql, [Now, ChannelId]).
 
 %% @doc 增减订阅者数量
 %% @param ChannelId 频道ID
@@ -381,7 +381,7 @@ increment_subscribers(ChannelId, Delta) ->
             " $1, "
             "updated_at = CURRENT_TIMESTAMP "
             "WHERE id = $2 AND status = 1">>,
-    elib_pg:execute(Sql, [DeltaAbs, ChannelId]).
+    elib_pg:execute_count(Sql, [DeltaAbs, ChannelId]).
 
 -spec increment_subscribers(any(), integer(), integer()) ->
     {ok, non_neg_integer()} | {error, any()}.
@@ -398,7 +398,7 @@ increment_subscribers(Conn, ChannelId, Delta) ->
             " $1, "
             "updated_at = CURRENT_TIMESTAMP "
             "WHERE id = $2 AND status = 1">>,
-    elib_pg:execute(Conn, Sql, [DeltaAbs, ChannelId]).
+    elib_pg:execute_count(Conn, Sql, [DeltaAbs, ChannelId]).
 
 %% @doc 搜索频道
 %% @param Keyword 搜索关键词
@@ -518,9 +518,12 @@ insert_reaction_tx(Conn, ChannelId, MessageId, UserId, ReactionType, CreatedAt) 
 %% @doc 批量查询用户对一组消息已添加的反应（避免 N+1）
 %% 返回行形如 #{<<"message_id">> => Mid, <<"reaction_type">> => <<"like">>}
 -spec list_user_reactions(integer(), [integer()]) -> {ok, [map()]} | {error, term()}.
+%% 不加 is_list(MessageIds) 守卫：对已声明 [integer()] 的参数做冗余守卫细化
+%% 触发 Gradualizer pick_value(none()) 崩溃（崩溃家族配方 b'，2026-10-04）；
+%% [] 短路子句保留（子句分裂无毒）。非列表入参由 ANY($2) 绑定报 {error, _}。
 list_user_reactions(_UserId, []) ->
     {ok, []};
-list_user_reactions(UserId, MessageIds) when is_list(MessageIds) ->
+list_user_reactions(UserId, MessageIds) ->
     Sql = <<
         "SELECT message_id, reaction_type FROM channel_reaction "
         "WHERE user_id = $1 AND message_id = ANY($2)"
@@ -535,7 +538,7 @@ delete_reaction(ChannelId, MessageId, UserId, ReactionType) ->
         "DELETE FROM channel_reaction "
         "WHERE channel_id = $1 AND message_id = $2 AND user_id = $3 AND reaction_type = $4"
     >>,
-    elib_pg:execute(Sql, [ChannelId, MessageId, UserId, ReactionType]).
+    elib_pg:execute_count(Sql, [ChannelId, MessageId, UserId, ReactionType]).
 
 %% @doc 事务内删除消息反应（归档写守卫同事务）
 -spec delete_reaction_tx(any(), integer(), integer(), integer(), binary()) ->
@@ -545,7 +548,7 @@ delete_reaction_tx(Conn, ChannelId, MessageId, UserId, ReactionType) ->
         "DELETE FROM channel_reaction "
         "WHERE channel_id = $1 AND message_id = $2 AND user_id = $3 AND reaction_type = $4"
     >>,
-    elib_pg:execute(Conn, Sql, [ChannelId, MessageId, UserId, ReactionType]).
+    elib_pg:execute_count(Conn, Sql, [ChannelId, MessageId, UserId, ReactionType]).
 
 %% @doc 获取频道每日统计数据
 -spec get_daily_stats(integer(), integer()) -> {ok, list(map())} | {error, term()}.
