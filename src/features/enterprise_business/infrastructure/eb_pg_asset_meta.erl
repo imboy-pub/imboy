@@ -12,6 +12,7 @@
 %%%     不区分「不存在」与「不属于你」（避免枚举）。
 %%%   * 状态跃迁用 CAS 形状的 `WHERE status = ...`：并发两次 confirm 只有一个成功。
 -module(eb_pg_asset_meta).
+-moduledoc "asset metadata 生命周期仓储（EB-03R P12）—— pending_confirm → active → deleted。".
 -export([key_prefix/2]).
 
 -export([

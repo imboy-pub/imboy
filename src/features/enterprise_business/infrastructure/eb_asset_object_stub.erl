@@ -13,6 +13,7 @@
 %%% eunit 的多进程断言下行为稳定；`reset/0` 供套件清场。
 -module(eb_asset_object_stub).
 
+-moduledoc "本地替身对象存储 adapter（进程内，无网络、无真实凭据）。".
 -export([put/3, get/2, delete/2, reset/0, key_prefix/2]).
 
 -define(NS, {?MODULE, object}).

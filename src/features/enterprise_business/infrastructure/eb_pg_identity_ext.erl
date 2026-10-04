@@ -11,6 +11,7 @@
 %%% `uq_obia_active_user_function`），0 行写入一律翻译成 `{error, conflict}`。
 -module(eb_pg_identity_ext).
 
+-moduledoc "identity / assignment / conversation 正向持久化能力（EB-03R P1/P2/P5/P8）。".
 -export([
     insert_assignment/3,
     list_identities/2,

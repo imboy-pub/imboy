@@ -1,5 +1,6 @@
 %%% Durable purge intents: capture keys before metadata deletion, never perform I/O in its transaction.
 -module(eb_pg_asset_delete_queue).
+-moduledoc "持久化 purge intent 队列 —— 元数据删除前捕获 key，事务内绝不做 I/O。".
 -export([enqueue_in/5, drain/3]).
 
 enqueue_in(Conn, Org, Ws, MessageIds, AssetIds) ->

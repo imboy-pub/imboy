@@ -16,6 +16,7 @@
 %%% 实现层因此只允许 INSERT。
 -module(eb_pg_audit).
 
+-moduledoc "append-only 审计写入的 PG 实现（eb_audit_port 真实现）。".
 -behaviour(eb_audit_port).
 
 -include_lib("epgsql/include/epgsql.hrl").

@@ -12,6 +12,7 @@
 %%%     timestamptz → Unix 秒、NULL → `undefined`）。
 -module(eb_pg_exec).
 
+-moduledoc "企业业务持久化共享执行辅助（EB-03R 新增能力的公共底座）。".
 -export([
     tenant_error/2,
     with_tenant/3,

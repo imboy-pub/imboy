@@ -1,4 +1,5 @@
 -module(eb_retention_purge_worker).
+-moduledoc "企业留存 bounded purge 定时 worker（R4-②）—— 补全 F-1 孤儿资产清理调度入口。".
 -behaviour(gen_server).
 %%%===================================================================
 %%% @doc 企业留存 bounded purge 定时 worker（R4-②：round 3 登记项②的修复，

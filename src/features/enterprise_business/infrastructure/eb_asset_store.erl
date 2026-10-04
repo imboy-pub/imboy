@@ -30,6 +30,7 @@
 %%% 实际验收须区分替身合同、真实存储与完整附件旅程。
 -module(eb_asset_store).
 
+-moduledoc "eb_asset_port 的唯一装配实现（EB-03R P13 + P12）。".
 -behaviour(eb_asset_port).
 
 -export([

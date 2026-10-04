@@ -18,6 +18,7 @@
 %%% `'synthetic?'/1`（行为完全一致）以便与合同文本逐字对照。
 -module(eb_consent).
 
+-moduledoc "企业会话 consent（告知/同意）门禁的领域纯函数。".
 -export([
     gate/2,
     classify/1,

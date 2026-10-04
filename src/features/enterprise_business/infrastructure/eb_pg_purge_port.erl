@@ -16,6 +16,7 @@
 %%% 因此 application 层拿到的能力**恰好**是「删一批到期行」，而不是「一个事务」。
 -module(eb_pg_purge_port).
 
+-moduledoc "eb_purge_port 实现（EB-03R T3）—— bounded purge 的窄信封。".
 -behaviour(eb_purge_port).
 
 -export([purge_batch/4]).

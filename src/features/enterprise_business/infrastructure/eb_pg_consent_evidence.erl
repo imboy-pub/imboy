@@ -18,6 +18,7 @@
 %%% 「V1 本地状态机可接受的合成证据」，**不构成**真实同意 / 真实告知 / 任何生产合规结论。
 -module(eb_pg_consent_evidence).
 
+-moduledoc "同意证据类别的唯一写入路径（EB-03R M2，consent_evidence_kind）。".
 -export([record_synthetic_consent/3, fetch_consent_evidence_kind/3, sql_statements/0]).
 
 %% 精确一条语句：只写字面量 'synthetic'，且要求该会话确有 consent（consent_at 非空）。

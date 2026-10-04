@@ -10,6 +10,7 @@
 %%% 备注正文是**密文**（`body_cipher` + `body_key_version`），本模块不接触明文。
 -module(eb_pg_contact_ext).
 
+-moduledoc "contact 侧正向持久化能力（EB-03R P3/P4/P7）。".
 -export([
     insert_note/3,
     insert_contact_assignment/3,

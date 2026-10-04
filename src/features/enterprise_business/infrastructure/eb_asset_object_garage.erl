@@ -1,6 +1,7 @@
 %%% Private enterprise objects use the existing Garage bucket and SigV4 signer.
 %%% URLs and credentials stay inside this adapter; business callers receive bytes only.
 -module(eb_asset_object_garage).
+-moduledoc "企业私有对象的 Garage adapter —— 复用现有 bucket 与 SigV4 签名，URL/凭据不出适配器。".
 -export([put/3, get/2, delete/2]).
 
 put(Key, Bytes, Meta) when is_binary(Key), is_binary(Bytes), byte_size(Bytes) > 0 ->

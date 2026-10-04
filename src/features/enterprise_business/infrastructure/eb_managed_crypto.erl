@@ -26,6 +26,7 @@
 %%% 与 AES-GCM（`elib_cipher:aes_gcm_*`），算法全部是标准原语。
 -module(eb_managed_crypto).
 
+-moduledoc "企业托管加密实现（eb_crypto_port 真实现）。".
 -behaviour(eb_crypto_port).
 
 -export([

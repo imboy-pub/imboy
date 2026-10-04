@@ -15,6 +15,7 @@
 %%%   * `limit` 必须是绑定参数（`$5`）且有上界。
 -module(eb_pg_message_ext).
 
+-moduledoc "企业消息只读历史仓储（EB-03R P9，键集分页）。".
 -export([
     list_messages_after/3,
     default_limit/0,

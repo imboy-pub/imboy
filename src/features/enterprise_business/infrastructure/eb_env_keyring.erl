@@ -20,6 +20,7 @@
 %%% 本模块零日志：密钥材料不进日志、不进错误项（错误只含原因原子与版本号）。
 -module(eb_env_keyring).
 
+-moduledoc "服务端环境注入的版本化企业密钥环（F6，RULING-2026-09-15 §七）。".
 -export([
     key_ref/0,
     resolve_key_ref/1,

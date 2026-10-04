@@ -18,6 +18,7 @@
 %%% 本模块只执行、不自行发明状态机。
 -module(eb_pg_offboarding_ext).
 
+-moduledoc "离职交接（offboarding）case / item / CAS 持久化能力（EB-03R P11）。".
 -export([
     insert_case/3,
     fetch_case/3,

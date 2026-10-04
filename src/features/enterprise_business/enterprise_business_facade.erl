@@ -20,6 +20,7 @@
 %%% `test/features/enterprise_business/application/eb_ports_tests.erl`）。
 -module(enterprise_business_facade).
 
+-moduledoc "Enterprise Business Feature 公开 API（铁律 3：公开 API 只能进 Application）。".
 -export([
     %% identity / assignment
     create_identity/2,

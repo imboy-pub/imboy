@@ -20,6 +20,7 @@
 %%% fail-closed 拒启，不猜优先级。
 -module(eb_keyring_file).
 
+-moduledoc "企业密钥环的 _FILE 装载（BE-W01 A02，启动期一次性）。".
 -export([
     load_env_file/0,
     decode_json/1

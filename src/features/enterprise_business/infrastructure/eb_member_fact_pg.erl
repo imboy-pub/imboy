@@ -21,6 +21,7 @@
 %%% +「Workspace active」，三者缺一即 fail-closed。
 -module(eb_member_fact_pg).
 
+-moduledoc "最小只读事实的 PG 实现（EB-03R P10）—— 成员状态 / 默认 Workspace。".
 -behaviour(eb_member_fact_port).
 
 -export([member_status/2, default_workspace/2, sql_statements/0]).
