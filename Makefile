@@ -674,7 +674,8 @@ GRADUALIZE_BUDGET ?= 0
 # 避免 patch 上游；其报错另受 gradualizer 未解析 barrel_mcp.hrl 的伪影影响
 GRADUALIZE_EXCLUDE := src/imboy_pb.erl src/lib/elib_str.erl \
                       src/mcp/barrel_mcp_protocol.erl src/mcp/barrel_mcp_registry.erl \
-                      src/mcp/barrel_mcp_session.erl src/mcp/barrel_mcp_tasks.erl
+                      src/mcp/barrel_mcp_session.erl src/mcp/barrel_mcp_tasks.erl \
+                      src/mcp/barrel_mcp_schema.erl src/mcp/barrel_mcp_uri_template.erl
 GRADUALIZER_OPTS ?= -pa ebin $(addprefix -pa ,$(wildcard deps/*/ebin)) \
                     -I $(CURDIR)/include --no_color --fmt_location brief
 # OTP 29 把 match_alias_pats 警告升级为错误，上游未适配，构建时压制
@@ -702,7 +703,7 @@ gradualize-layer: ## 分层门禁（单发模式，用于转绿层）: make grad
 
 .PHONY: gradualize-audit
 gradualize-audit: ## 全仓逐模块审计（预算制，基线期）: make gradualize-audit
-	@mkdir -p .gradualizer/logs; fail=0; total=0; \
+	@mkdir -p .gradualizer/logs; rm -f .gradualizer/logs/*.log; fail=0; total=0; \
 	for f in $(filter-out $(GRADUALIZE_EXCLUDE),$(wildcard src/*.erl src/*/*.erl)); do \
 		case "$$f" in *_tests.erl) continue;; esac; \
 		total=$$((total+1)); \
