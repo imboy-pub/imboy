@@ -131,7 +131,10 @@ mark_paid(OrderNo, GatewayPaymentNo) ->
 
 %% @doc 更新订单状态（用于取消/退款/过期等流转）
 -spec update_status(binary(), integer()) -> ok | {error, not_found | term()}.
-update_status(OrderNo, Status) when is_integer(Status) ->
+%% 不加 is_integer(Status) 守卫：对已声明 integer() 的参数做冗余守卫细化
+%% 触发 Gradualizer pick_value(none()) 崩溃（崩溃家族配方 b'，2026-10-04）；
+%% 非整数入参由 SQL 参数绑定报 {error, _}，语义等价。
+update_status(OrderNo, Status) ->
     Tb = tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET status = $1, updated_at = NOW() WHERE order_no = $2">>,
     case elib_pg:execute(Sql, [Status, OrderNo]) of
