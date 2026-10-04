@@ -1,5 +1,6 @@
 -module(enterprise_internal_rate).
 
+-moduledoc "internal API 专用限流（EPGZ-02）—— 对应 manifest rate_buckets / plan-gz §4.1 INV-9。".
 %%%
 % enterprise_internal_rate 是 internal API 专用限流（EPGZ-02，
 % manifest rate_buckets / plan-gz §4.1 INV-9）。

@@ -1,5 +1,6 @@
 -module(enterprise_internal_audit_policy).
 
+-moduledoc "/api/internal/v1/* 写操作（mutation）的逐项审计政策冻结表（INT-BE-03 / INT-API-02B）。".
 %%%
 % enterprise_internal_audit_policy 是 /api/internal/v1/* 写操作（mutation）
 % 的**逐项审计政策冻结表**（INT-BE-03 / 验收 INT-API-02B）。

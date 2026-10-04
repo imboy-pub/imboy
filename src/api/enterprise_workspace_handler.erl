@@ -1,5 +1,6 @@
 -module(enterprise_workspace_handler).
 
+-moduledoc "V2.1 Internal 资源只读面 INT-24/25 的 HTTP 壳 —— Cowboy 路由由 A0 接线，不进 imboy_router。".
 %%%
 % enterprise_workspace_handler 是 V2.1 Internal 资源只读面 INT-24/25 的
 % HTTP 壳（plan §6.1 冻结名 planned -> 落地； Cowboy 路由由 A0 接线，本

@@ -1,4 +1,5 @@
 -module(feature_gate_middleware).
+-moduledoc "Cowboy feature-gate 中间件 —— 按 handler_opts 的 required_feature 经 imboy_feature 门控请求。".
 -behaviour(cowboy_middleware).
 
 -export([execute/2]).

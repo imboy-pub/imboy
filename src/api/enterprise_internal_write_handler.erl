@@ -1,4 +1,5 @@
 -module(enterprise_internal_write_handler).
+-moduledoc "internal 写操作统一编排（write/5）—— idempotency-key 幂等 + 审计 + 委托 logic 写入。".
 -export([write/5]).
 
 write(Req, Ctx, Operation, IdentityId, Logic) ->

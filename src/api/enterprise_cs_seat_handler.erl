@@ -1,4 +1,5 @@
 -module(enterprise_cs_seat_handler).
+-moduledoc "企业客服坐席端点 —— 坐席列表与单坐席查询（GET）、坐席增改（POST/PATCH）。".
 -export([init/2]).
 
 init(Req, #{enterprise_internal := Ctx, action := Action} = State) ->

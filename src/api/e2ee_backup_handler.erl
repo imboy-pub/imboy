@@ -1,5 +1,6 @@
 -module(e2ee_backup_handler).
 
+-moduledoc "E2EE 加密密钥备份边界的薄 HTTP 适配层（4S 模式）—— 服务端只存客户端加密后的密文包，本模块零密码学。".
 %% Thin HTTP adapter for the E2EE encrypted key backup boundary (4S 模式).
 %% 服务端只存客户端加密后的密文包，本模块零密码学。
 

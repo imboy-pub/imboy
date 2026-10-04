@@ -1,4 +1,5 @@
 -module(e2ee_handler).
+-moduledoc "security_privacy e2ee 边界的薄 HTTP 适配层 —— 密钥状态、恢复、合规等端点，参数解析后调 logic。".
 -dialyzer({nowarn_function, [do_key_status/2]}).
 
 %% Thin HTTP adapter for the security_privacy e2ee boundary.

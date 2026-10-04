@@ -1,5 +1,6 @@
 -module(enterprise_internal_error).
 
+-moduledoc "/api/internal/v1/* 统一错误信封（EPGZ-02）—— 对应 manifest stable_error_codes。".
 %%%
 % enterprise_internal_error 是 /api/internal/v1/* 统一错误信封（EPGZ-02，
 % plan-gz §6 / manifest stable_error_codes）。

@@ -1,5 +1,6 @@
 -module(enterprise_internal_scope).
 
+-moduledoc "internal API 固定 scope 枚举与授权判定（EPGZ-02 / INV-4）。".
 %%%
 % enterprise_internal_scope 是 internal API 固定 scope 枚举与授权判定
 % （EPGZ-02，plan-gz §4.2 / manifest INV-4；V2.1 原 14 值，坐席接口追加 2 值）。

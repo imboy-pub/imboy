@@ -1,5 +1,6 @@
 -module(enterprise_project_handler).
 
+-moduledoc "V2.1 Internal 资源只读面 INT-28/29 的 HTTP 壳 —— Cowboy 路由由 A0 接线，不进 imboy_router。".
 %%%
 % enterprise_project_handler 是 V2.1 Internal 资源只读面 INT-28/29 的
 % HTTP 壳（plan §6.1 冻结名 planned -> 落地；Cowboy 路由由 A0 接线，本

@@ -1,5 +1,6 @@
 -module(enterprise_oa_sso_exchange_handler).
 
+-moduledoc "OA 一次性 SSO code 交换端点壳（EPGZ-05 INT-14）。".
 %%%
 % INT-14 OA 一次性 SSO code 交换端点壳（EPGZ-05，合同 §4）。
 %

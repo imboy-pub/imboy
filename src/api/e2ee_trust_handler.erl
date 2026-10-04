@@ -1,4 +1,5 @@
 -module(e2ee_trust_handler).
+-moduledoc "设备信任决策事件 HTTP 适配层（ADR 06 §8）—— capability gate + 参数解析 + 调 logic 的 thin adapter。".
 %%%
 %% e2ee_trust_handler — 设备信任决策事件 HTTP 适配层（ADR 06 §8）。
 %%

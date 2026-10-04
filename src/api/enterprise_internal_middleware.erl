@@ -1,5 +1,6 @@
 -module(enterprise_internal_middleware).
 
+-moduledoc "/api/internal/v1/* 的 Cowboy 中间件壳（EPGZ-02）—— 决策逻辑在 enterprise_internal_auth:decide/4。".
 %%%
 % enterprise_internal_middleware 是 /api/internal/v1/* 的 Cowboy 中间件壳
 % （EPGZ-02）。决策逻辑全部在 enterprise_internal_auth:decide/4（可注入

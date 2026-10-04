@@ -1,5 +1,6 @@
 -module(enterprise_friend_request_handler).
 
+-moduledoc "企业好友申请（只发起）端点壳（EPGZ-08 W4 INT-11）。".
 %%%
 % EPGZ-08 W4 INT-11 好友申请（只发起）端点壳（handler 壳需求见 A3 EPGZ-03
 % 冻结合同「给 A0 W4 的 handler 壳需求清单」，本模块严格照此编排）。

@@ -1,5 +1,6 @@
 -module(enterprise_oa_sso_handler).
 
+-moduledoc "OA 一次性 SSO code 签发端点壳（EPGZ-05 HUMAN-SSO-01）。".
 %%%
 % HUMAN-SSO-01 OA 一次性 SSO code 签发端点壳（EPGZ-05，合同 §3）。
 %

@@ -1,5 +1,6 @@
 -module(friend_category_handler).
 
+-moduledoc "好友分组 API 处理器 / Friend category API handler。".
 -behavior(cowboy_rest).
 
 -export([init/2]).

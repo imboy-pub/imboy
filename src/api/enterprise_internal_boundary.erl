@@ -1,5 +1,6 @@
 -module(enterprise_internal_boundary).
 
+-moduledoc "internal 面资源边界接线表（FULL-02）—— 授权求值委托 enterprise_application_grant_logic。".
 %%%
 % enterprise_internal_boundary 是 internal 面的**资源边界接线表**
 % （FULL-02）。FULL-01 交付了授权求值面
