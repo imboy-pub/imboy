@@ -1,4 +1,5 @@
 -module(billing_usage_ds).
+-moduledoc "用量数据服务层 / SaaS usage data service。".
 %%%
 % billing_usage_ds — 用量数据服务层 / SaaS usage data service
 %

@@ -1,4 +1,5 @@
 -module(channel_message_ds).
+-moduledoc "频道消息数据服务（G3）—— logic 层不应直调 channel_message_repo。".
 %%%
 % channel_message_ds — G3 架构治理：channel_logic_message 不应直调 channel_message_repo
 % G3: thin DS wrapper for channel messages

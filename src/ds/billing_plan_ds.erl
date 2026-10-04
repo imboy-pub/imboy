@@ -1,4 +1,5 @@
 -module(billing_plan_ds).
+-moduledoc "套餐数据服务层 / SaaS plan data service layer。".
 %%%
 % billing_plan_ds — 套餐数据服务层 / SaaS plan data service layer
 %

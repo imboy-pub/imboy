@@ -1,5 +1,6 @@
 -module(agent_payment_compensation_ds).
 
+-moduledoc "Agent 支付补偿 outbox 数据服务层。".
 %% Agent 支付补偿 outbox 的数据服务层。
 
 -export([mark_settled/2]).

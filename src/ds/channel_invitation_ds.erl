@@ -1,4 +1,5 @@
 -module(channel_invitation_ds).
+-moduledoc "频道邀请数据服务（G3）—— logic 层不应直调 channel_invitation_repo。".
 %%%
 % channel_invitation_ds — G3 架构治理：channel_logic_invitation 不应直调 channel_invitation_repo
 % G3: thin DS wrapper for channel invitations

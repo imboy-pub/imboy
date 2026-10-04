@@ -1,4 +1,5 @@
 -module(billing_subscription_ds).
+-moduledoc "订阅数据服务层 / SaaS subscription data service。".
 %%%
 % billing_subscription_ds — 订阅数据服务层 / SaaS subscription data service
 %

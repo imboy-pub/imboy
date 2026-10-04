@@ -1,4 +1,5 @@
 -module(billing_invoice_ds).
+-moduledoc "账单数据服务层 / SaaS invoice data service。".
 %%%
 % billing_invoice_ds — 账单数据服务层 / SaaS invoice data service
 %

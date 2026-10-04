@@ -1,5 +1,6 @@
 -module(bot_ds).
 
+-moduledoc "Bot 数据服务 / Bot data service。".
 %%%
 % Bot 数据服务 / Bot data service
 %

@@ -1,4 +1,5 @@
 -module(app_version_policy_ds).
+-moduledoc "客户端版本策略领域服务（G3 架构治理）。".
 %%%
 % app_version_policy_ds — G3 架构治理
 % G3: thin DS wrapper for app version policy

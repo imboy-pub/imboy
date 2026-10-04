@@ -1,4 +1,5 @@
 -module(adm_operation_log_ds).
+-moduledoc "管理员操作审计日志数据服务层 / admin operation audit log data service。".
 -compile([nowarn_deprecated_catch]).
 %%%
 % adm_operation_log_ds 管理员操作审计日志数据服务层

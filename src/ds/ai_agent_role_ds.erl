@@ -1,5 +1,6 @@
 -module(ai_agent_role_ds).
 
+-moduledoc "AI Agent 角色领域服务 —— 配置校验、策略规范化与运行时继承结果。".
 %% AI Agent 角色领域服务：校验配置、规范化策略，并提供运行时继承结果。
 
 -export([

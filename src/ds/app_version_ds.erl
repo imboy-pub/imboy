@@ -1,4 +1,5 @@
 -module(app_version_ds).
+-moduledoc "app_version 领域服务模块 / domain service。".
 %%%
 % app_version 领域服务模块
 % app_version domain service 缩写

@@ -1,4 +1,5 @@
 -module(channel_admin_ds).
+-moduledoc "频道管理员数据服务（G3）—— logic 层不应直调 channel_admin_repo。".
 %%%
 % channel_admin_ds — G3 架构治理：channel_logic_message/common 不应直调 channel_admin_repo
 % G3: thin DS wrapper for channel admins

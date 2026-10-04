@@ -1,4 +1,5 @@
 -module(app_upgrade_log_ds).
+-moduledoc "客户端升级日志数据服务层 / client upgrade-log data service。".
 %%%
 %% app_upgrade_log_ds — 客户端升级日志数据服务层
 %% Client upgrade-log data service layer (thin pass-through to repo).

@@ -1,4 +1,5 @@
 -module(attachment_ds).
+-moduledoc "附件数据服务层 / attachment data service。".
 %%%
 % attachment_ds 是附件数据服务层
 % 封装附件的数据操作

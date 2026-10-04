@@ -1,5 +1,6 @@
 -module(agent_payment_mandate_ds).
 
+-moduledoc "Agent 受控支付授权数据服务 / Agent payment mandate data service。".
 %%%
 % Agent 受控支付授权数据服务 / Agent payment mandate data service
 % 薄封装 agent_payment_mandate_repo，供 agent_payment_logic 编排三道闸门。

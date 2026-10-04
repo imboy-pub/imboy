@@ -1,4 +1,5 @@
 -module(channel_comment_ds).
+-moduledoc "频道评论数据源层 / channel comment data service。".
 %%%
 % channel_comment_ds — 频道评论数据源层
 % 镜像 channel_message_ds 模式，封装 repo 并提供查询编排。

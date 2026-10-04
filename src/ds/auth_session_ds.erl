@@ -1,5 +1,6 @@
 -module(auth_session_ds).
 
+-moduledoc "持久化会话吊销（session epoch）共享语义（Task 10 / LT-04）。".
 %%%
 %%% Task 10 / LT-04：持久化会话吊销（session epoch）共享语义。
 %%%

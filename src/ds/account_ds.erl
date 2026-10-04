@@ -1,5 +1,6 @@
 -module(account_ds).
 
+-moduledoc "账号/配置领域服务模块 / account config domain service。".
 %%%
 % config 领域服务模块
 % config domain service 缩写

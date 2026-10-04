@@ -1,5 +1,6 @@
 -module(agent_task_ds).
 
+-moduledoc "Agent Task 领域服务（DATA-01）—— 授权判据与事务组合。".
 %%%
 % Agent Task 领域服务（DATA-01）：授权判据 + 事务组合。
 % 授权以服务端权威数据为准（group_ds 现查成员列表），绝不信任事件/请求携带的
