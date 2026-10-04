@@ -1,5 +1,6 @@
 -module(enterprise_message_origin_repo).
 
+-moduledoc "企业托管消息的真实 Application origin 仓储层。".
 %%%
 % enterprise_message_origin_repo 是企业托管消息的**真实 Application origin**
 % 账本仓储（FULL-02 / plan-full §3.1「存储必须同时保留真实 Application origin

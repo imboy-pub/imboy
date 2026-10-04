@@ -1,4 +1,5 @@
 -module(moya_learner_bind_repo).
+-moduledoc "墨芽学员账号绑定数据仓库（Step 16）。".
 %%%
 % 墨芽学员账号绑定数据仓库（Step 16：管理侧最小动作，无自助 UI）
 % Learner account binding repository

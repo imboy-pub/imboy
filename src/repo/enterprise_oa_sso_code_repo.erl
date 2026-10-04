@@ -1,5 +1,6 @@
 -module(enterprise_oa_sso_code_repo).
 
+-moduledoc "OA 一次性 SSO code 仓储层（迁移 00000136）。".
 %%%
 % enterprise_oa_sso_code_repo 是 OA 一次性 SSO code 仓储层（迁移 00000136，
 % EPGZ-01 / plan-gz §7.2）。code 只存 SHA-256 digest（全局唯一即消费定位键），

@@ -1,4 +1,5 @@
 -module(feedback_repo).
+-moduledoc "feedback 存储库模块 / repository。".
 %%%
 % feedback 相关操作都放到该模块，存储库模块
 % feedback related operations are put in this module, repository module

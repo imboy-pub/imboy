@@ -1,5 +1,6 @@
 -module(enterprise_group_repo).
 
+-moduledoc "Workspace 企业群 tx 仓储层（EPGZ-03 INT-04/05/06）。".
 %%%
 % enterprise_group_repo 是 EPGZ-03（INT-04/05/06）Workspace 企业群的 tx 仓储层。
 %

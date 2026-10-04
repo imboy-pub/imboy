@@ -1,5 +1,6 @@
 -module(enterprise_internal_idempotency_repo).
 
+-moduledoc "internal API 幂等记录仓储层。".
 %%%
 % enterprise_internal_idempotency_repo 是 internal API 幂等记录仓储层（迁移
 % 00000136 建、00000144 V2.1 扩展：response_body text 快照 + completion 一致性

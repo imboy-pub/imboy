@@ -1,5 +1,6 @@
 -module(moderation_appeal_repo).
 
+-moduledoc "申诉行仓储（R-04）—— 申诉事实全在本表，翻案执行语义在 moderation_action_logic。".
 %% R-04：申诉行仓储。申诉自身事实（pending/accepted/rejected）全在本表；
 %% 翻案的执行语义在 moderation_action_logic:reverse（本表只落终审记录）。
 

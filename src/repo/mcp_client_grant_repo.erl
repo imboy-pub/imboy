@@ -1,5 +1,6 @@
 -module(mcp_client_grant_repo).
 
+-moduledoc "MCP 客户端按 tool 授权仓库 / per-tool grant repository。".
 %%%
 % MCP 客户端按 tool 授权仓库 / MCP per-tool grant repository
 % 表 mcp_client_grant：UNIQUE(client_id, tool_name)，enforce=true 时授权判定读它。

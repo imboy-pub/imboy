@@ -1,5 +1,6 @@
 -module(enterprise_message_repo).
 
+-moduledoc "OA 代发消息仓储（EPGZ-04 INT-09/10）—— 企业托管非 E2EE 真源与审计。".
 %%%
 % EPGZ-04 INT-09/10 OA 代发消息仓储（企业托管非 E2EE 真源 + 审计）。
 %

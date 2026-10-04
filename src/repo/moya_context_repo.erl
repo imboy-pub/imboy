@@ -1,4 +1,5 @@
 -module(moya_context_repo).
+-moduledoc "墨芽教学上下文与 ACL 数据仓库模块。".
 %%%
 % 墨芽教学上下文与 ACL 数据仓库模块
 % Teaching context & ACL repository

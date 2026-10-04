@@ -1,4 +1,5 @@
 -module(group_member_repo).
+-moduledoc "群组成员仓储层 / group member repository。".
 %%%
 % group_member_repo 是 group_member repository 缩写
 % 群组成员数据仓库层，提供群组成员信息的基础数据库操作

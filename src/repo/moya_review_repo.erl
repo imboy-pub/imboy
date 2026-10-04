@@ -1,4 +1,5 @@
 -module(moya_review_repo).
+-moduledoc "墨芽老师回评数据仓库（Step 9）。".
 %%%
 % 墨芽老师回评数据仓库（Step 9）
 % Teacher review repository

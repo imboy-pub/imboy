@@ -1,4 +1,5 @@
 -module(fts_user_repo).
+-moduledoc "用户全文搜索存储库模块 / repository。".
 %%%
 % fts 相关操作都放到该模块，存储库模块
 % fts related operations are put in this module, repository module

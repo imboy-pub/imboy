@@ -1,5 +1,6 @@
 -module(moderation_action_repo).
 
+-moduledoc "处置动作审计行仓储（R-02）—— 动作事实全在本表，对举报单零结构回写。".
 %% R-02：处置动作审计行仓储。动作自身事实（executed/failed/reversed/
 %% expired）全在本表；对 report_ticket 零结构回写（case=举报单行）。
 

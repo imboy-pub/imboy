@@ -1,5 +1,6 @@
 -module(mcp_audit_repo).
 
+-moduledoc "MCP 治理审计仓库 / MCP governance audit repository。".
 %%%
 % MCP 治理审计仓库 / MCP governance audit repository
 % 表 mcp_audit_log：记 client tool_call 行为 + 管理员 approve/reject/revoke 动作。

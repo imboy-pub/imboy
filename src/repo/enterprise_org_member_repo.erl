@@ -1,5 +1,6 @@
 -module(enterprise_org_member_repo).
 
+-moduledoc "EPGZ-03（INT-02）绑定前置甄别仓储。".
 %%%
 % enterprise_org_member_repo 是 EPGZ-03（INT-02）绑定前置甄别仓储：
 % 在 bind 之前一次性读出目标 user 在本 Org 的成员行 + 账号事实

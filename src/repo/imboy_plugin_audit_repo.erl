@@ -1,5 +1,6 @@
 -module(imboy_plugin_audit_repo).
 
+-moduledoc "插件审计日志数据访问层 / plugin audit log repository。".
 %%%
 % 插件审计日志数据访问层
 % Plugin audit log data access layer

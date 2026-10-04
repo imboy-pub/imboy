@@ -1,5 +1,6 @@
 -module(enterprise_webhook_repo).
 
+-moduledoc "企业 Webhook 仓储（EPGZ-04 INT-12/13）—— endpoint 配置与 outbox。".
 %%%
 % EPGZ-04 INT-12/13 企业 Webhook 仓储（Application endpoint 配置 + outbox）。
 %

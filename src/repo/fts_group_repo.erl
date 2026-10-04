@@ -1,4 +1,5 @@
 -module(fts_group_repo).
+-moduledoc "群组全文搜索存储库模块 / repository。".
 %%%
 % fts_group_repo 是群组全文搜索存储库模块
 % 封装群组全文搜索的 PostgreSQL 查询

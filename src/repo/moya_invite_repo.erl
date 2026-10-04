@@ -1,4 +1,5 @@
 -module(moya_invite_repo).
+-moduledoc "墨芽班级邀请码数据仓库（W3：老师邀请码 → 家长加入班级）。".
 %%%
 % 墨芽班级邀请码数据仓库（W3：老师邀请码 → 家长加入班级）
 % Class invite code repository
