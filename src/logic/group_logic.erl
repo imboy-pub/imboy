@@ -111,7 +111,8 @@ face2face(Uid, Code, Lng, Lat) ->
 %% @param Gid 群组ID
 %% @param Uid 用户ID
 %% @return {ok, binary()}
--spec face2face_save(binary(), integer(), integer()) -> {ok, binary()} | {error, binary() | atom()}.
+-spec face2face_save(binary(), integer(), integer()) ->
+    {ok, binary()} | {error, binary() | atom()} | {rollback, term()}.
 face2face_save(Code, Gid, Uid) ->
     group_ds:face2face_save(Code, Gid, Uid).
 
@@ -521,7 +522,8 @@ edit(Uid, Gid, Data) ->
 %% @param Gid 群组ID
 %% @param Mode 目标模式（仅接受 1）
 -spec set_e2ee_mode(integer(), integer(), integer()) ->
-    ok | {error, binary() | {integer(), binary()}}.
+    ok | {error, any()}.
+%% T7 结构化错误码 {Code, Msg} 经 set_e2ee_mode 原样透传（见实现内注释）。
 set_e2ee_mode(_Uid, _Gid, Mode) when Mode =/= 1 ->
     {error, <<"e2ee_mode 仅支持单向开启（0→1）"/utf8>>};
 set_e2ee_mode(Uid, Gid, 1) ->
@@ -536,7 +538,7 @@ set_e2ee_mode(Uid, Gid, 1) ->
     end.
 
 %% @private 群级 E2EE 开启主体（全局硬闸已在 set_e2ee_mode/3 前置拦截）。
--spec do_set_e2ee_mode(integer(), integer()) -> ok | {error, binary()}.
+-spec do_set_e2ee_mode(integer(), integer()) -> ok | {error, any()}.
 do_set_e2ee_mode(Uid, Gid) ->
     Member = group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"role">>),
     Role = maps:get(<<"role">>, Member, 0),
@@ -729,7 +731,7 @@ add(Count, Uid, Type, MemberUids, {<<"personal">>, _WorkspaceId}) ->
     add(Count, Uid, Type, MemberUids).
 
 -spec workspace_add_tx(integer(), integer(), [integer()], integer()) ->
-    {ok, integer()} | {error, binary()}.
+    {ok, integer()} | {error, binary() | pos_integer() | {pos_integer(), binary()}}.
 workspace_add_tx(Uid, Type, MemberUids4, WorkspaceId) ->
     Now = elib_dt:now(),
     case

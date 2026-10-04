@@ -207,7 +207,8 @@ return_connection(Driver, Conn) ->
 %%--------------------------------------------------------------------
 
 %% @doc 事务封装
--spec with_tx(fun((epgsql:connection() | pid()) -> R)) -> R | {rollback, term()} when R :: term().
+-spec with_tx(fun((epgsql:connection() | pid()) -> R)) ->
+    R | {error, term()} | {rollback, term()} when R :: term().
 with_tx(F) ->
     with_tx(F, [{reraise, true}]).
 
@@ -223,7 +224,7 @@ with_tx(F) ->
 %% 订单 CAS 之类的幂等键），而不是在这一层无差别重放。
 %% 连接获取可有界等待；取得连接后的事务体只执行一次。
 -spec with_tx(fun((epgsql:connection() | pid()) -> R), epgsql:transaction_opts()) ->
-    R | {rollback, term()} | no_return()
+    R | {error, term()} | {rollback, term()} | no_return()
 when
     R :: term().
 with_tx(F, Opts0) ->
@@ -234,7 +235,7 @@ with_tx(F, Opts0) ->
 %% ===================================================================
 -spec with_tx(
     fun((epgsql:connection() | pid()) -> R), list(), non_neg_integer(), non_neg_integer()
-) -> R when R :: term().
+) -> R | {error, term()} | {rollback, term()} when R :: term().
 with_tx(F, Opts0, RetriesLeft, Delay) ->
     Driver = config_ds:env(sql_driver),
     with_conn(
