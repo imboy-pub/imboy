@@ -1,0 +1,25 @@
+{
+  "artifact": "f00 add_member_page widget-flow calibration notes (GAMMA: evidence registration, NOT grid flips)",
+  "date": "2026-10-04",
+  "rule": "Companion-file calibration only; acceptance.tsv rows stay PENDING. Widget-level evidence (flutter_test + sqflite_ffi seed db), complements but does not replace device-level gates.",
+  "source": {
+    "code": "imboyapp 4bc0603b test(group): add-member page widget flows - 5 cases over ffi seed db",
+    "file": "imboyapp test/unit_test/page/group/add_member_widget_flow_test.dart",
+    "run": "flutter test ... 00:00 +5: All tests passed!",
+    "harness_notes": [
+      "seed in setUpAll (plain async zone) - testWidgets FakeAsync cannot await real IO",
+      "databaseFactoryFfiNoIsolate: default ffi factory runs SQL on an isolate whose reply is real IO and never lands inside FakeAsync (page spun forever); no-isolate factory completes via microtasks",
+      "login state must precede SqliteService.setDbForTest: setDbForTest records _openUid from currentUid; seeding while logged-out makes later uid-mismatch checks fall through to the real user-path db (empty)"
+    ]
+  },
+  "mappings": [
+    {"fn_id": "fn:group:add_member_page:001", "action": "从本地库加载可选联系人列表", "note": "WIDGET PASS 流程A: contacts seeded in ffi db render via findFriend (is_friend=1, current uid); findFriend=2 seed-check"},
+    {"fn_id": "fn:group:add_member_page:004", "action": "点联系人切换勾选状态", "note": "WIDGET PASS 流程B: tap toggles 已选 badge + count, second tap untoggles"},
+    {"fn_id": "fn:group:add_member_page:005", "action": "已是群成员的行禁选并标注", "note": "WIDGET PASS 流程A(标注「已是成员」)+流程C(成员行 onTap null, tap 不产生已选)"},
+    {"fn_id": "fn:group:add_member_page:006", "action": "顶部展示已选人数提示条", "note": "WIDGET PASS 流程B with implementation note: current build shows count as '(1)' appended to the 完成 button and the row badge (已选 (1)), not a separate top strip; assertion findsExactly(2). Semantics (count visible while selecting) verified"},
+    {"fn_id": "fn:group:add_member_page:008", "action": "未选中时完成按钮置灰禁用", "note": "WIDGET PASS 流程D: onPressed null when selects empty; non-null after selection; submit routed through joinGroup (Spy intercepted, groupId 7001)"},
+    {"fn_id": "fn:group:add_member_page:010", "action": "无联系人时展示暂无数据空态", "note": "WIDGET PASS 流程E: tables cleared -> NoDataView(t.common.noData); server-sync fallback path not asserted here (contactProvider spied)"}
+  ],
+  "unmapped_neighbors": "add_member_page:002/003/009/011 and :007 (platform-sensitive) remain as per f00-group-batch-reconciliation verdicts; not covered by this harness.",
+  "acceptance_tsv_impact": "NONE"
+}
