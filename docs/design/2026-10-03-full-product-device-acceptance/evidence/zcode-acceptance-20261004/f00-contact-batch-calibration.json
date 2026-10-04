@@ -28,9 +28,46 @@
     ]
   },
   "newly_closed_this_round": [
-    {"fn_id": "fn:contact:people_info_page:002", "action": "备注输入框进入即自动聚焦", "note": "WIDGET PASS 流程F: autofocus declared + focusNode.hasFocus true after entry"},
-    {"fn_id": "fn:contact:people_info_page:006", "action": "点击标签行进入标签关系页", "note": "WIDGET PASS 流程G: tap Key(contact_tag_row) pushes TagRelationPage (userTagRelationProvider spied, statistics stubbed empty - local construction)"},
-    {"fn_id": "fn:contact:people_info_page:007", "action": "选完标签返回后渲染标签 Chip", "note": "WIDGET PASS (render half) 流程H: peerTag '家人,同事' renders two Wrap chips; the pop-backfill half (TagRelationPage save -> then setState) needs the relation page save chain - documented, not asserted"}
+    {
+      "fn_id": "fn:contact:people_info_page:002",
+      "action": "备注输入框进入即自动聚焦",
+      "note": "WIDGET PASS 流程F: autofocus declared + focusNode.hasFocus true after entry"
+    },
+    {
+      "fn_id": "fn:contact:people_info_page:006",
+      "action": "点击标签行进入标签关系页",
+      "note": "WIDGET PASS 流程G: tap Key(contact_tag_row) pushes TagRelationPage (userTagRelationProvider spied, statistics stubbed empty - local construction)"
+    },
+    {
+      "fn_id": "fn:contact:people_info_page:007",
+      "action": "选完标签返回后渲染标签 Chip",
+      "note": "WIDGET PASS (render half) 流程H: peerTag '家人,同事' renders two Wrap chips; the pop-backfill half (TagRelationPage save -> then setState) needs the relation page save chain - documented, not asserted"
+    },
+    {
+      "fn_id": "fn:contact:people_info_more_page:002",
+      "action": "「推荐给朋友」提示功能开发中",
+      "note": "WIDGET PASS 流程C (destructive suite, imboyapp 29a76de0): tap recommend tile -> featureInDevelopment toast shown"
+    },
+    {
+      "fn_id": "fn:contact:people_info_more_page:003",
+      "action": "进入「设置备注和标签」页面",
+      "note": "WIDGET PASS 流程D (29a76de0): tap tile -> ContactSettingTagPage pushed (tag provider spied)"
+    },
+    {
+      "fn_id": "fn:contact:people_info_more_page:001",
+      "action": "「删除联系人」使用破坏色红字",
+      "note": "ALREADY COVERED by destructive suite 流程A-1 (pre-dates TSV verdicts) - drift reconciliation"
+    },
+    {
+      "fn_id": "fn:contact:people_info_more_page:004",
+      "action": "删除联系人弹出二次确认框",
+      "note": "ALREADY COVERED by destructive suite 流程A-1 (confirm dialog with remark echo, cancel path) - drift reconciliation"
+    },
+    {
+      "fn_id": "fn:contact:people_info_more_page:010",
+      "action": "黑名单状态联动图标颜色变化",
+      "note": "ALREADY COVERED by destructive suite 流程B (icon red/gray tracked to switch state) - drift reconciliation"
+    }
   ],
   "remaining_blocked_or_deferred": {
     "assistant_plaza_page :004/006/009/010 + :005/007/008": "service-backed list (same FIND-GROUP-07 family: api singletons not injectable); :009 load-failure branch constructible only with injectable api",
