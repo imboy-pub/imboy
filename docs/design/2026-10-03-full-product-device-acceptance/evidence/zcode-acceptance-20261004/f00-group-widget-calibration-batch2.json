@@ -1,0 +1,21 @@
+{
+  "artifact": "f00 group widget calibration batch2 (GAMMA: evidence registration, NOT grid flips)",
+  "date": "2026-10-04",
+  "rule": "Companion-file calibration only; acceptance.tsv rows stay PENDING. Widget-level evidence (flutter_test), complements but does not replace device-level gates.",
+  "source": {
+    "code": "imboyapp d05578b9 test(group): batch2 widget flows - add-member loading/entry-filter/close, group-select resolvedTitle",
+    "files": [
+      "imboyapp test/unit_test/page/group/add_member_widget_flow_test.dart (8 cases)",
+      "imboyapp test/unit_test/page/group/group_select_widget_flow_test.dart (2 cases)"
+    ],
+    "run": "10/10 All tests passed; dart analyze clean"
+  },
+  "mappings": [
+    {"fn_id": "fn:group:add_member_page:002", "action": "首帧后加载并正常结束转圈", "note": "WIDGET PASS 流程F (终态断言): no CupertinoActivityIndicator residue after load completes and list rendered. 首帧转圈时序窗在 no-isolate FakeAsync 下不可捕捉（查询经 microtask 落定）；转圈先于查询由 setLoading(true) 结构保证，真机时序窗由 f2f GF 场景的 AppLoading 观察佐证"},
+    {"fn_id": "fn:group:add_member_page:003", "action": "联系人列表剔除功能入口占位", "note": "WIDGET PASS 流程G: list renders only seeded real friends (成员甲/好友乙); 朋友圈 / AI-entry placeholders absent - findFriend reads contact table (is_friend=1) so in-memory entry placeholders cannot leak in"},
+    {"fn_id": "fn:group:add_member_page:009", "action": "点左上角关闭退出选人页", "note": "WIDGET PASS 流程H: tap byTooltip(取消/xmark) pops back to host page, AddMemberPage off the tree"},
+    {"fn_id": "fn:group:group_select_page:004", "action": "向下游传不兜底的 resolvedTitle", "note": "WIDGET PASS 流程B: GoRouter capture page records extra peerTitle='项目群' for a titled group (log [capture] extra={... peerTitle: 项目群 ...}); 流程A covers the untitled branch"},
+    {"fn_id": "fn:group:group_select_page:002", "action": "无名群走 displayTitle 兜底渲染", "note": "WIDGET PASS 流程A: untitled group row renders t.main.unnamed (未命名) while the push extra carries resolvedTitle '' - displayTitle for rows, resolvedTitle for downstream, both asserted"}
+  ],
+  "acceptance_tsv_impact": "NONE"
+}
