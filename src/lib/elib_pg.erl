@@ -208,7 +208,9 @@ return_connection(Driver, Conn) ->
 
 %% @doc 事务封装
 -spec with_tx(fun((epgsql:connection() | pid()) -> R)) ->
-    R | {error, term()} | {rollback, term()} when R :: term().
+    R | {error, term()} | {rollback, term()}
+when
+    R :: term().
 with_tx(F) ->
     with_tx(F, [{reraise, true}]).
 
@@ -234,7 +236,10 @@ with_tx(F, Opts0) ->
 %% 事务封装
 %% ===================================================================
 -spec with_tx(
-    fun((epgsql:connection() | pid()) -> R), list(), non_neg_integer(), non_neg_integer()
+    fun((epgsql:connection() | pid()) -> R),
+    epgsql:transaction_opts(),
+    non_neg_integer(),
+    non_neg_integer()
 ) -> R | {error, term()} | {rollback, term()} when R :: term().
 with_tx(F, Opts0, RetriesLeft, Delay) ->
     Driver = config_ds:env(sql_driver),
@@ -252,7 +257,10 @@ with_tx(F, Opts0, RetriesLeft, Delay) ->
 %% 执行无返回行的 SQL（INSERT / UPDATE / DELETE）
 %%--------------------------------------------------------------------
 -spec execute(iodata(), [term()]) ->
-    {ok, non_neg_integer()} | {ok, non_neg_integer(), [tuple()]} | {error, term()}.
+    {ok, non_neg_integer()}
+    | {ok, non_neg_integer(), [tuple()]}
+    | {ok, [tuple()]}
+    | {error, term()}.
 execute(Sql, Params) ->
     with_conn(
         fun(C) ->
@@ -262,7 +270,10 @@ execute(Sql, Params) ->
     ).
 
 -spec execute(epgsql:connection(), iodata(), [term()]) ->
-    {ok, non_neg_integer()} | {ok, non_neg_integer(), [tuple()]} | {error, term()}.
+    {ok, non_neg_integer()}
+    | {ok, non_neg_integer(), [tuple()]}
+    | {ok, [tuple()]}
+    | {error, term()}.
 execute(Conn, Sql, Params) ->
     ?DEBUG_LOG("sql: ~s", [Sql]),
     %% 关键改动：消除 badmatch 异常传播。任何驱动异常/异常形态都收敛为 {error, Reason}。
@@ -312,6 +323,10 @@ query(C, Sql, Params) ->
             {ok, rows_to_maps(Cols, Rows)};
         {ok, _Count, Cols, Rows} ->
             {ok, rows_to_maps(Cols, Rows)};
+        {ok, _Count} ->
+            %% 非 SELECT 语句经 query 执行属调用方误用：equery 返回影响行数。
+            %% 按公开契约 {ok, [map()]} 收敛为空结果集，不向调用方泄漏计数形态。
+            {ok, []};
         Error ->
             Error
     end.
@@ -416,7 +431,13 @@ pluck_value(Table, Field, Where, Opts, Default) ->
 -spec insert(binary(), map()) ->
     {ok, term()} | {error, term()}.
 insert(Table, Map) ->
-    insert(Table, Map, <<>>).
+    %% RETURNING 为空 ⇒ execute 恒返 {ok, Count} | {error, Reason}；
+    %% 桥接 insert/3 的宽结果形态，维持本函数二元组公开契约。
+    case insert(Table, Map, <<>>) of
+        {ok, Result} -> {ok, Result};
+        {ok, Count, _Rows} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
 
 -spec insert(binary(), map(), binary()) ->
     {ok, term()} | {ok, term(), term()} | {error, term()}.
@@ -451,7 +472,13 @@ insert(Conn, Table, Map, RETURNING) ->
     {ok, term()} | {error, term()}.
 update(Table, Map, WhereSql, WhereParams) ->
     {Sql, Params} = elib_pg_sql:update(Table, Map, WhereSql, WhereParams),
-    execute(Sql, Params).
+    %% WhereSql 系拼接片段，若被混入 RETURNING 会得到 {ok, Count, Rows}；
+    %% 本函数契约是影响行数，按 {ok, Count} 收敛，不向调用方泄漏行形态。
+    case execute(Sql, Params) of
+        {ok, Count} -> {ok, Count};
+        {ok, Count, _Rows} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -483,13 +510,24 @@ update(Table, Map, WhereSql, WhereParams) ->
     {ok, term()} | {error, term()}.
 update(Conn, Table, Map, WhereSql, WhereParams) ->
     {Sql, Params} = elib_pg_sql:update(Table, Map, WhereSql, WhereParams),
-    execute(Conn, Sql, Params).
+    %% 同 update/4：RETURNING 混入时按影响行数契约收敛。
+    case execute(Conn, Sql, Params) of
+        {ok, Count} -> {ok, Count};
+        {ok, Count, _Rows} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
 
 -spec insert_batch(binary(), [atom()], [[term()]]) ->
     {ok, term()} | {error, term()}.
 insert_batch(Table, Cols, Rows) ->
     {Sql, Params} = elib_pg_sql:insert_batch(Table, Cols, Rows),
-    execute(Sql, Params).
+    %% 纯 INSERT（无 RETURNING）⇒ {ok, Count} | {error, Reason}；
+    %% 桥接 execute 宽结果形态，维持本函数二元组公开契约。
+    case execute(Sql, Params) of
+        {ok, Count} -> {ok, Count};
+        {ok, Count, _Rows} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
 
 -spec select(binary(), iodata()) ->
     {ok, [map()]} | {error, term()}.
@@ -510,9 +548,10 @@ page(Table, WhereMap, Page, Size) ->
 -spec page(binary(), binary(), map(), iodata(), pos_integer(), pos_integer()) ->
     {ok, [map()]} | {error, term()}.
 page(Table, Column, WhereMap, OrderBy, Page, Size) when Page > 0, Size > 0 ->
-    Limit = Size,
-    Offset = (Page - 1) * Size,
-    {Sql, Params} = elib_pg_sql:page(Table, Column, WhereMap, OrderBy, Limit, Offset),
+    %% Offset 必须内联：渐进类型器对 let 绑定变量丢失算术细化（non_neg→integer），
+    %% 传给 elib_pg_sql:page（要求 non_neg_integer()）会误报。
+    {Sql, Params} =
+        elib_pg_sql:page(Table, Column, WhereMap, OrderBy, Size, (Page - 1) * Size),
     query(Sql, Params).
 
 -spec page_safe(
