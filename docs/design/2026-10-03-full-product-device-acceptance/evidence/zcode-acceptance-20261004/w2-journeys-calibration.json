@@ -52,17 +52,45 @@
       "result": "SKIP",
       "wall_clock": "2m43s to skip",
       "evidence": "'[DIAG] boot 未达稳定态' - the batch174 test's own boot-stability gate not reached (uid logged in); no moment-visibility (ACL) integration carrier exists",
-      "gap": "moment ACL/visibility journey needs a new carrier (moment_post_acl flows); boot-stability gate reason recorded"
+      "gap": "moment ACL/visibility journey needs a new carrier (moment_post_acl flows); boot-stability gate reason recorded",
+      "gap_closure": "CLOSED 2026-10-04: dedicated carrier shipped (imboyapp integration_test/moment/moment_visibility_device_test.dart, commit 4d08d51e) and passed on real device (run6, receipt moment-acl-device-journey-v1.json): login -> feed -> publish -> visibility entry -> post -> feed echo, all green in 1m01s."
     }
   ],
   "calibration_summary": {
-    "pass_with_timing": [["J1", "2m13s"], ["J3", "53s"], ["J4", "57s"]],
-    "blocked_or_skipped": [["J2", "formal grid inputs"], ["J5", "strict E2EE policy"], ["J6", "boot gate + missing ACL carrier"]],
+    "pass_with_timing": [
+      [
+        "J1",
+        "2m13s"
+      ],
+      [
+        "J3",
+        "53s"
+      ],
+      [
+        "J4",
+        "57s"
+      ]
+    ],
+    "blocked_or_skipped": [
+      [
+        "J2",
+        "formal grid inputs"
+      ],
+      [
+        "J5",
+        "strict E2EE policy"
+      ],
+      [
+        "J6",
+        "boot gate + missing ACL carrier"
+      ]
+    ],
     "infra_fixed_during_calibration": [
       "FIND-W2-01 fail-closed probe gate (commit 4750057d)",
       "E2EE backup setup wizard dismiss helper (imboyapp commit after 4750057d)",
       "auto-login needs account-tab credentials: TEST_PHONE must be the account number (e.g. 50008), not bare mobile; +86 shape only exists on phone-tab paths (FIND-DEV-02 consistency)"
-    ]
+    ],
+    "timing_observation_note": "PASS-with-timing samples n=3 (J1 133s, J3 53s, J4 57s): median 57s, range 53s-133s. P50/P80 estimates are NOT statistically meaningful at n=3; formal grid runs should accumulate >=10 timed samples per journey before percentile claims. fail-fast/skip wall clocks (J2 1m53s, J5 52s, J6 2m43s) are not PASS-timing samples."
   },
   "p50_p80_basis": "Only J1 provides a full-journey duration so far (2m13s). Read-only journeys ~1m. Per-journey P50/P80 still pending the remaining writable carriers; recalibrate when J2 inputs, J5 strict policy, J6 ACL carrier land.",
   "ledger_note": "No 97-ID acceptance state changed by this calibration; all grid IDs remain PENDING until their formal gates."
