@@ -1,0 +1,36 @@
+{
+  "artifact": "f00 group widget calibration batch3 - add_member:011 + remove_member_page suite (GAMMA: evidence registration, NOT grid flips)",
+  "date": "2026-10-04",
+  "rule": "Companion-file calibration only; acceptance.tsv rows stay PENDING. Widget-level evidence (flutter_test + ffi no-isolate seed db + GoRouter test shell), complements but does not replace device-level gates.",
+  "source": {
+    "code": "imboyapp a95f0e4b test(group): add-member submit case, remove-member widget suite (7 cases)",
+    "files": [
+      "imboyapp test/unit_test/page/group/add_member_widget_flow_test.dart (9 cases, 流程I added)",
+      "imboyapp test/unit_test/page/group/group_detail/remove_member_widget_flow_test.dart (7 cases)"
+    ],
+    "run": "9/9 + 7/7 All tests passed; dart analyze clean",
+    "harness_notes": [
+      "member rows (user present in group_member) are untappable by design (onTap null) - submit cases must seed non-member friends",
+      "page lists load once in initState postFrameCallback: seeding rows after push does not backfill state",
+      "pop transition needs ~500ms of pump before findsNothing assertions (MaterialPageRoute 300ms)",
+      "GoRouter test shell must mount builder: AppLoading.init() or submit paths throw 'EasyLoading is not initialized'",
+      "test-order coupling: empty-state case clears group_member; later cases must re-seed"
+    ]
+  },
+  "mappings_add_member": [
+    {"fn_id": "fn:group:add_member_page:011", "action": "提交添加选中成员入群", "note": "WIDGET PASS 流程I: select two non-member friends (好友乙 8002 + seeded 好友丙 8003) -> submit -> Spy joinGroup intercepted with groupId='7001' and member ids {8002,8003}; member row 8001 correctly untappable (onTap null); on success resetData + pop back to host"}
+  ],
+  "mappings_remove_member": [
+    {"fn_id": "fn:group:remove_member_page:001", "action": "从群详情进入本页可正常打开", "note": "WIDGET PASS 流程A: page mounts under GoRouter shell, title t.common.removeMember rendered"},
+    {"fn_id": "fn:group:remove_member_page:002", "action": "加载群成员列表并排除自己", "note": "WIDGET PASS 流程A: seeded 8001 visible; self (990001) and isJoin=0 (8004) both excluded by setGroupMemberList filter"},
+    {"fn_id": "fn:group:remove_member_page:003", "action": "点成员行切换勾选状态", "note": "WIDGET PASS 流程B: tap toggles selection, count tip (1) appears"},
+    {"fn_id": "fn:group:remove_member_page:004", "action": "完成按钮随选中数高亮变化", "note": "WIDGET PASS 流程B: onPressed null->callable and (n) tips track selection"},
+    {"fn_id": "fn:group:remove_member_page:005", "action": "未选中时点完成不触发请求", "note": "WIDGET PASS 流程B: onPressed null when selects empty; Spy removeCalls stays 0"},
+    {"fn_id": "fn:group:remove_member_page:006", "action": "点信息图标查看成员资料", "note": "WIDGET PASS 流程E: tap byTooltip(viewProfile) routes to /people_info/8001 (capture page asserts id)"},
+    {"fn_id": "fn:group:remove_member_page:007", "action": "点取消返回群详情页", "note": "WIDGET PASS 流程D: cancel pops back to group-detail shell page"},
+    {"fn_id": "fn:group:remove_member_page:008", "action": "成员为空时展示暂无数据空态", "note": "WIDGET PASS 流程F: cleared group_member -> NoDataView(暂无数据)"},
+    {"fn_id": "fn:group:remove_member_page:009", "action": "移除失败时弹出错误提示", "note": "WIDGET PASS 流程G (partial): removeMembers=false -> page NOT popped (stays on RemoveMemberPage); error toast copy itself not asserted (EasyLoading overlay timing under FakeAsync), documented"},
+    {"fn_id": "fn:group:remove_member_page:010", "action": "提交移除成员并回传结果", "note": "WIDGET PASS 流程C: submit routes through removeMembers (Spy), success pops with context.pop(selects); router.push Future captures the returned list (1 member)"}
+  ],
+  "acceptance_tsv_impact": "NONE"
+}
