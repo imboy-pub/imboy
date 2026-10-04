@@ -1,0 +1,37 @@
+{
+  "artifact": "FIND-GROUP-04 f2f carrier account parameterization (face_to_face_acceptance_test.dart)",
+  "date": "2026-10-04",
+  "status": "PASS (AT-GF1 positive-path on real device, isolated backend)",
+  "defect": {
+    "id": "FIND-GROUP-04",
+    "symptom": "test file hardcoded carrier accounts of an OLD backend batch as dart-define defaultValue: main 51730, peer 51798/uid 111279969973569536, empty-state 51799/uid 111279920011020288, plus weak default password admin888c. On the isolated acceptance backend (19800/imboy_acceptance@25432) none of these rows exist and account numbers are server-generated (cannot be re-specified), so the test was unrunnable there.",
+    "fix": "all 8 carrier params now required defines without defaults (TEST_PHONE/TEST_PASSWORD/TEST_EXPECTED_UID, TEST_PEER_ACCOUNT/PASSWORD/UID, TEST_EMPTY_ACCOUNT/EMPTY_UID); _requireCarrierParams() fail-closed gate in _boot() lists missing params and skips before app.main(); header run-recipe rewritten with placeholders; TestPg already had TEST_PG_* channel (no change needed)."
+  },
+  "extra_blockers_found_and_solved_this_round": [
+    {
+      "finding": "E2EE backup setup wizard blocks main-shell detection after login (same as moment journey)",
+      "fix": "dismissE2eeBackupSetupPage() wired into _boot() stable-state loop (idempotent)"
+    },
+    {
+      "finding": "FIND-GROUP-06 (new): on Android real device with location runtime permission NOT granted, face2face silently hangs: keypad taps register (4 metallic sounds) but notifier.faceToFace() never reaches its first iPrint - Geolocator.requestPermission() shows the NATIVE permission dialog which widget-test cannot tap, so getLocation() awaits forever; 15s confirm-page assertion fails with zero face2face HTTP traffic. macOS flutter_tester was immune (missing plugin throws fast -> 0.0,0.0 fallback).",
+      "fix": "adb shell pm grant pub.imboy.app ACCESS_FINE_LOCATION + ACCESS_COARSE_LOCATION before test run (test-env mitigation, no product change). Product-side hardening option (future): wrap getCurrentPosition with an explicit dart-side timeout in faceToFace path."
+    }
+  ],
+  "carrier_accounts_provisioned_on_isolated_backend": [
+    {"role": "main (UI group creator)", "alias": "D", "account_no": "50028", "mobile_synthetic": "13800000011", "uid": 116209438819616768, "password": "<synthetic-same-as-ABCBatch>"},
+    {"role": "peer (HTTP type=account join)", "alias": "E", "account_no": "50022", "mobile_synthetic": "13800000012", "uid": 116209439033526272, "password": "<synthetic-same-as-ABCBatch>"},
+    {"role": "empty-state (zero friend/group)", "alias": "F", "account_no": "50020", "mobile_synthetic": "13800000013", "uid": 116209439241144320, "password": "<synthetic-same-as-ABCBatch>"}
+  ],
+  "registration_manifest": "getcode(sms,signup) -> verification_code read via psql in container (PGPASSWORD from container env inline) -> signup{type=mobile, rsa_encrypt=0, sys_version=acceptance-test} -> code=0; all three signup_code=0",
+  "runs": [
+    {"n": 1, "log": "j-f2f-carrier-atgf1-run1.log", "result": "fail-closed gate verified: all 8 params missing -> skipped with explicit list (Android device)"},
+    {"n": 2, "log": "j-f2f-carrier-atgf1-run2.log", "result": "login ok (rsa retry channel), wizard dismissed, but AT-GF1 failed: 4 keypad sounds yet zero face2face traffic -> diagnosed FIND-GROUP-06 (location permission hang)"},
+    {"n": 3, "log": "j-f2f-carrier-atgf1-run3.log", "result": "PASS: [面对面建群] 开始请求 hasLocation=true (real coords 113.899404/22.596804); GET face2face?code=1357 -> gid=116214787815507968 memberCount=1; confirm page reached; DB assert group_random_code row present; 00:54 +1 ~2 All tests passed (~2 = GF10/GF11 matched by plain-name prefix, skipped: empty-state account needs system_onboarding cleanup)"}
+  ],
+  "left_open": [
+    "AT-GF2..GF8 full chain on new carriers (invite/peer-join/save paths)",
+    "GF9-GF11 empty-state scenarios need system_onboarding cleanup for account F (50020)",
+    "macOS runner blocked by provisioning profile (pub.imboy.app) - environment issue, macos/* is a no-touch zone"
+  ],
+  "calibration_note": "parameterization itself is harness work; business PASS recorded here covers AT-GF1 only. No AC grid cell flips from this receipt alone."
+}
