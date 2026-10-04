@@ -1,4 +1,5 @@
 -module(msg_c2c_delivery_ds).
+-moduledoc "C2C 消息投递数据服务 —— SenderUid/SenderDid 必须来自认证连接态，受保护密文字节不可变。".
 -export([send_other_devices/4]).
 
 %% SenderUid and SenderDid must come from authenticated connection state.

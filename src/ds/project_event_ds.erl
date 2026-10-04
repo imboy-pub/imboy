@@ -1,4 +1,5 @@
 -module(project_event_ds).
+-moduledoc "项目事件领域服务 / project event domain service。".
 -compile([nowarn_deprecated_catch]).
 %%%
 % project_event_ds 是 project_event domain service 缩写

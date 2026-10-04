@@ -1,4 +1,5 @@
 -module(user_dnd_rule_ds).
+-moduledoc "免打扰规则领域服务 / user DND rule domain service。".
 %%%
 % user_dnd_rule_ds 是 user_dnd_rule domain service 缩写
 % 用户免打扰(DND)规则领域服务，封装缓存与时段判断逻辑

@@ -1,4 +1,5 @@
 -module(push_token_ds).
+-moduledoc "推送令牌数据服务（G3）—— push_notification_logic 不应直调 push_token_repo。".
 %%%
 % push_token_ds — G3 架构治理：push_notification_logic 不应直调 push_token_repo
 % G3: thin DS wrapper for push tokens

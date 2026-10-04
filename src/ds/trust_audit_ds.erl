@@ -1,4 +1,5 @@
 -module(trust_audit_ds).
+-moduledoc "设备信任事件数据服务层（thin pass-through to repo，G3 治理）。".
 %%%
 %% trust_audit_ds — 设备信任事件数据服务层（thin pass-through to repo，G3 治理）。
 %% 与 olm_identity_ds 同模式：handler/logic 不直调 repo。

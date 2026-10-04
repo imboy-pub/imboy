@@ -1,4 +1,5 @@
 -module(user_log_ds).
+-moduledoc "用户日志数据服务层 / user log data service。".
 %%%
 % user_log_ds 是用户日志数据服务层
 % 封装用户日志的数据操作

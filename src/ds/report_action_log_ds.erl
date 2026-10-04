@@ -1,4 +1,5 @@
 -module(report_action_log_ds).
+-moduledoc "举报处置日志数据服务（G3）—— report_logic 不应直调 report_action_log_repo。".
 %%%
 % report_action_log_ds — G3 架构治理：report_logic 不应直调 report_action_log_repo
 % G3: thin DS wrapper for report action logs

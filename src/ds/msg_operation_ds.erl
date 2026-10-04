@@ -1,4 +1,5 @@
 -module(msg_operation_ds).
+-moduledoc "消息操作数据服务层 / message operation data service。".
 %%%
 % msg_operation_ds 是消息操作数据服务层
 % 统一封装消息的删除、撤回、编辑、确认等操作

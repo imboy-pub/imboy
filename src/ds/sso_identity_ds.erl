@@ -1,5 +1,6 @@
 -module(sso_identity_ds).
 
+-moduledoc "SSO 身份映射数据服务（薄封装 sso_identity_repo）。".
 %%%
 % SSO 身份映射数据服务模块（薄封装 sso_identity_repo）
 % SSO identity mapping data service (thin wrapper over sso_identity_repo)

@@ -1,5 +1,6 @@
 -module(token_ds).
 
+-moduledoc "token 领域服务 / token domain service。".
 %%%
 % token_ds 是 token domain service 缩写
 %%%

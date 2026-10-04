@@ -1,4 +1,5 @@
 -module(msg_read_ds).
+-moduledoc "消息已读数据服务（G3）—— msg_c2c_logic 不应直调 msg_read_repo。".
 %%%
 % msg_read_ds — G3 架构治理：msg_c2c_logic 不应直调 msg_read_repo
 % G3: thin DS wrapper for message read receipts

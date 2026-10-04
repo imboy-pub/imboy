@@ -1,4 +1,5 @@
 -module(project_member_ds).
+-moduledoc "项目成员领域服务 / project member domain service。".
 -compile([nowarn_deprecated_catch]).
 %%%
 % project_member_ds 是 project_member domain service 缩写

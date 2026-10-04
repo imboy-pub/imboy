@@ -1,4 +1,5 @@
 -module(payment_transaction_ds).
+-moduledoc "统一支付流水数据服务层 / Payment transaction data service。".
 %%%
 % payment_transaction_ds — 统一支付流水数据服务层 / Payment transaction data service
 %

@@ -1,4 +1,5 @@
 -module(recharge_order_ds).
+-moduledoc "充值订单数据服务层 / Recharge order data service layer。".
 %%%
 % recharge_order_ds — 充值订单数据服务层 / Recharge order data service layer
 %

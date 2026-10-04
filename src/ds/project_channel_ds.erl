@@ -1,4 +1,5 @@
 -module(project_channel_ds).
+-moduledoc "项目↔频道关联领域服务 / project channel domain service。".
 -compile([nowarn_deprecated_catch]).
 %%%
 % project_channel_ds 是 project_channel domain service 缩写

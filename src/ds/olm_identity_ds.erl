@@ -1,4 +1,5 @@
 -module(olm_identity_ds).
+-moduledoc "Olm 设备密钥数据服务层（thin pass-through to repo）。".
 %%%
 %% olm_identity_ds — Olm 设备密钥数据服务层（thin pass-through to repo）。
 %% 与 compliance_key_ds 同模式：仅做 G3 治理（handler 不直调 repo）。

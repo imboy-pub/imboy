@@ -1,4 +1,5 @@
 -module(user_collect_ds).
+-moduledoc "用户收藏数据服务层 / user collect data service。".
 %%%
 % user_collect_ds 是用户收藏数据服务层
 % 封装用户收藏的数据操作

@@ -1,5 +1,6 @@
 -module(user_setting_ds).
 
+-moduledoc "用户设置领域服务 / user setting domain service。".
 %%%
 % user_setting_ds 是 user_setting domain service 缩写
 %%%

@@ -1,4 +1,5 @@
 -module(msg_archive_ds).
+-moduledoc "永久消息存储数据服务层 / permanent message archive data service。".
 %%%-------------------------------------------------------------------
 %%% @doc  永久消息存储数据服务层
 %%%

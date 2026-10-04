@@ -1,5 +1,6 @@
 -module(wallet_ds).
 
+-moduledoc "钱包数据服务层 / Wallet data service layer。".
 %%%
 % wallet_ds — 钱包数据服务层 / Wallet data service layer
 %
