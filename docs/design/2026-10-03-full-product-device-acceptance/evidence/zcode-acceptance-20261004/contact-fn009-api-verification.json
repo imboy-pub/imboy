@@ -1,0 +1,28 @@
+{
+  "receipt": "contact-fn009-api-verification",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "scope": "fn009 举报提交 — API contract level on isolated backend (device UI-layer journey still pending writable relationship fixture on device account)",
+  "prerequisite": "res-pg-backend-executed + res-synth-acc (account A token, B as target, A<->B friends)",
+  "verifications": [
+    {
+      "case": "create user report",
+      "request": "POST /api/v1/report/create {target_type=user, target_id=116151603672909824, reason=spam}",
+      "response": "{\"code\":0,\"msg\":\"success\",\"payload\":{\"report_id\":116164681642805248,\"target_type\":\"user\"}}",
+      "assertions": ["code=0", "report_id is TSID", "target_type echoed"]
+    },
+    {
+      "case": "duplicate report dedupe",
+      "request": "same payload again",
+      "response": "{\"code\":1,\"msg\":\"您已举报过该对象\"}",
+      "assertions": [
+        "code=1 with server-readable dedupe message",
+        "message text matches ReportApi.friendlyError passthrough contract (client shows server msg verbatim)"
+      ]
+    }
+  ],
+  "notes": [
+    "Bridged contact batch reconciliation row for fn009: API contract verified; widget layer (contact_setting_page _submitReport) already covered by ded0c762 destructive-flow tests; device-grid entry stays NOT_EXECUTED until writable relationship fixture exists on the device account (J2/J4 gap class).",
+    "report_id 116164681642805248 lives only in isolated tmpfs PG; no third-party impact."
+  ]
+}

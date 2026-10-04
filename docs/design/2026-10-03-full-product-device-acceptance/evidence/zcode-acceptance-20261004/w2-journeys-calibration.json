@@ -1,0 +1,69 @@
+{
+  "receipt": "w2-journeys-calibration",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "purpose": "W2 calibration for six journeys: feasibility + wall-clock baseline for P50/P80 estimates. NOT acceptance-grid PASS: 97-ID ledger states unchanged (grid entries require formal ACCEPTANCE_* bindings / frozen candidates).",
+  "channel": "integration_test on real device (MRD AL00, EMUI 9), isolated backend http://127.0.0.1:19800",
+  "credentials": "auto-login via TEST_PHONE=50008 (account tab, type=account) + TEST_PASSWORD; E2EE backup setup wizard dismissed via new idempotent helper",
+  "journeys": [
+    {
+      "id": "J1-mine-settings",
+      "test": "integration_test/mine/mine_subpages_smoke_test.dart",
+      "result": "PASS",
+      "wall_clock": "2m13s (test window; plus ~90s build+install)",
+      "evidence": "11 subpages entered+rendered (storage/devices/account_security/language/dark/font/change_password/feedback/e2ee_key_recovery/e2ee_backup_export/e2ee_backup_import), destructive page asserts render only",
+      "log": "/tmp/j-mine3.log"
+    },
+    {
+      "id": "J2-organization-chart",
+      "test": "integration_test/full_acceptance/organization/organization_home_device_test.dart",
+      "result": "BLOCKED_INPUT",
+      "wall_clock": "1m53s to fail-fast",
+      "evidence": "formal grid contract requires 9+ ACCEPTANCE_* bindings (device_id, lease_id, fixture_id, auth/runtime/fixture sha256, three-repo heads, runner verified); test correctly failed closed on missing inputs",
+      "gap": "needs formal grid resource inputs, not fabricatable in calibration"
+    },
+    {
+      "id": "J3-channel-discover",
+      "test": "integration_test/channel/channel_discover_readonly_test.dart",
+      "result": "PASS",
+      "wall_clock": "53s",
+      "evidence": "channel tab opens, empty-state rendered ('当前账号暂无公开推荐频道'); E2EE backup wizard dismiss helper fired",
+      "gap": "channel CRUD write journey needs an existing/created channel (channel_e2e skips without subscription); no standalone create-channel integration test found"
+    },
+    {
+      "id": "J4-group-creation-entry",
+      "test": "integration_test/group/group_creation_readonly_test.dart",
+      "result": "PASS",
+      "wall_clock": "57s",
+      "evidence": "发起群聊/选择群聊/面对面建群 all mount, readonly (no group created)",
+      "gap": "group permission-revoke journey needs a real group + members (member add requires friend relations for the device account); no writable group-revoke integration carrier yet"
+    },
+    {
+      "id": "J5-c2c-cross-device",
+      "test": "integration_test/chat/c2c_e2ee_send_render_test.dart",
+      "result": "SKIP (correct semantics)",
+      "wall_clock": "52s to skip",
+      "evidence": "'当前部署非 strict E2EE（current=EncryptionMode.plaintext）' - isolated backend serves transport gcm but not strict E2EE policy; test only validates strict semantics",
+      "gap": "depends on E2EE excellence plan strict deployment (ties to D-02/D-05 BLOCKED_DECISION and AC-19..21)"
+    },
+    {
+      "id": "J6-moment-visibility",
+      "test": "integration_test/moment/moment_feed_video_playback_batch174_test.dart (closest existing carrier)",
+      "result": "SKIP",
+      "wall_clock": "2m43s to skip",
+      "evidence": "'[DIAG] boot 未达稳定态' - the batch174 test's own boot-stability gate not reached (uid logged in); no moment-visibility (ACL) integration carrier exists",
+      "gap": "moment ACL/visibility journey needs a new carrier (moment_post_acl flows); boot-stability gate reason recorded"
+    }
+  ],
+  "calibration_summary": {
+    "pass_with_timing": [["J1", "2m13s"], ["J3", "53s"], ["J4", "57s"]],
+    "blocked_or_skipped": [["J2", "formal grid inputs"], ["J5", "strict E2EE policy"], ["J6", "boot gate + missing ACL carrier"]],
+    "infra_fixed_during_calibration": [
+      "FIND-W2-01 fail-closed probe gate (commit 4750057d)",
+      "E2EE backup setup wizard dismiss helper (imboyapp commit after 4750057d)",
+      "auto-login needs account-tab credentials: TEST_PHONE must be the account number (e.g. 50008), not bare mobile; +86 shape only exists on phone-tab paths (FIND-DEV-02 consistency)"
+    ]
+  },
+  "p50_p80_basis": "Only J1 provides a full-journey duration so far (2m13s). Read-only journeys ~1m. Per-journey P50/P80 still pending the remaining writable carriers; recalibrate when J2 inputs, J5 strict policy, J6 ACL carrier land.",
+  "ledger_note": "No 97-ID acceptance state changed by this calibration; all grid IDs remain PENDING until their formal gates."
+}
