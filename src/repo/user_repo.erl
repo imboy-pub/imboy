@@ -159,7 +159,7 @@ find_by_account(Account, Column) ->
 %% @doc 根据用户ID查找用户基本信息（使用默认列）
 %% @param Uid 用户ID
 %% @return map() 用户信息，未找到时返回空map
--spec find_by_id(pos_integer()) -> map().
+-spec find_by_id(integer()) -> map().
 find_by_id(Uid) ->
     Column = <<"id,account,avatar,sign">>,
     find_by_id(Uid, Column).
@@ -168,7 +168,7 @@ find_by_id(Uid) ->
 %% @param Uid 用户ID
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
 %% @return map() 用户信息，未找到时返回空map
--spec find_by_id(pos_integer(), binary()) -> map().
+-spec find_by_id(integer(), binary()) -> map().
 find_by_id(Uid, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
@@ -179,7 +179,7 @@ find_by_id(Uid, Column) ->
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
 %% @return {ok, Rows} 查询成功返回map列表 | {error, Reason} 查询失败
 %% @throws function_clause 当 Uids 为空列表时
--spec list_by_ids(list(pos_integer() | binary()), binary()) -> {ok, list(map())} | {error, term()}.
+-spec list_by_ids(list(integer() | binary()), binary()) -> {ok, list(map())} | {error, term()}.
 list_by_ids(Uids, Column) when length(Uids) > 0 ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => {in, Uids}}, #{}),
@@ -190,7 +190,7 @@ list_by_ids(Uids, Column) when length(Uids) > 0 ->
 %% @param Timestamp 要更新的时间戳（timestamptz格式）
 %% @return ok
 %% @details 该函数会更新用户作为from_user_id和to_user_id的所有好友关系记录
--spec update_friends_last_seen_at(pos_integer(), binary()) -> ok.
+-spec update_friends_last_seen_at(integer(), binary()) -> ok.
 update_friends_last_seen_at(Uid, Timestamp) ->
     % 更新我是from_user_id的记录
     _ = update_last_seen_at(<<"from_user_id">>, Uid, Timestamp),
@@ -202,7 +202,7 @@ update_friends_last_seen_at(Uid, Timestamp) ->
 %% @param Uid 用户ID
 %% @return true | false
 %% @details 只查询 id 字段，避免加载不必要的字段
--spec may_exist(pos_integer()) -> boolean().
+-spec may_exist(integer()) -> boolean().
 may_exist(Uid) when is_integer(Uid), Uid > 0 ->
     Tb = tablename(),
     Sql = <<"SELECT id FROM ", Tb/binary, " WHERE id = $1 AND status >= 0 LIMIT 1">>,
@@ -253,7 +253,7 @@ save(Data) ->
 %% @param Data 包含要更新字段的map
 %% @return {ok, Count} 更新成功 | {error, Reason} 更新失败
 %% @example user_repo:update(1, #{role_name => <<"修改后的角色名称"/utf8>>}).
--spec update(pos_integer(), map()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec update(integer(), map()) -> {ok, non_neg_integer()} | {error, term()}.
 update(Id, Data) ->
     Tb = tablename(),
     elib_pg:update(Tb, Data, <<"id = $1">>, [Id]).

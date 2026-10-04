@@ -59,7 +59,7 @@
 %% 否则返回用户账号。
 %% @param Uid 用户ID（整数）
 %% @returns 用户显示名称（昵称优先，否则返回账号）
--spec title(pos_integer() | binary()) -> binary().
+-spec title(integer() | binary()) -> binary().
 title(Uid) when is_binary(Uid) ->
     title(ec_cnv:to_integer(Uid));
 title(Uid) when is_integer(Uid) ->
@@ -83,7 +83,7 @@ title(Uid) when is_integer(Uid) ->
 %% @param Uid 用户ID（整数）
 %% @param Mode 模式参数，当前只支持2
 %% @returns {显示名称, 昵称}的元组
--spec title(pos_integer() | binary(), 2) -> {binary(), binary()}.
+-spec title(integer() | binary(), 2) -> {binary(), binary()}.
 title(Uid, 2) when is_binary(Uid) ->
     title(ec_cnv:to_integer(Uid), 2);
 title(Uid, 2) when is_integer(Uid) ->
@@ -129,7 +129,7 @@ list_by_ids(Ids, Column) ->
     user_repo:list_by_ids(Ids, Column).
 
 %% @doc 插入新用户
--spec insert(map(), binary()) -> {ok, any()} | {error, any()}.
+-spec insert(map(), binary()) -> {ok, term()} | {ok, term(), term()} | {error, term()}.
 insert(Data, Returning) ->
     Tb = user_repo:tablename(),
     elib_pg:insert(Tb, Data, Returning).
@@ -148,11 +148,10 @@ update(Uid, Data) ->
 %% @param Field 字段名
 %% @param Val 字段值
 %% @return {ok, integer()} | {error, any()}
+%% 两子句守卫分体会触发 pinned Gradualizer 的 check_arg_exhaustiveness
+%% pick_value 崩溃（exit 127，崩溃家族之一），合并为单子句析取守卫（行为等价）
 -spec update_field(integer(), binary(), binary() | integer()) -> {ok, integer()} | {error, any()}.
-update_field(Uid, Field, Val) when is_binary(Val) ->
-    Tb = user_repo:tablename(),
-    elib_pg:update(Tb, #{Field => Val}, <<"id = $1">>, [Uid]);
-update_field(Uid, Field, Val) when is_integer(Val) ->
+update_field(Uid, Field, Val) when is_binary(Val); is_integer(Val) ->
     Tb = user_repo:tablename(),
     elib_pg:update(Tb, #{Field => Val}, <<"id = $1">>, [Uid]).
 
@@ -179,7 +178,7 @@ update_friends_last_seen_at(Uid, Timestamp) ->
 %% 注意：此操作是破坏性的，通常只在用户注销账户时使用。
 %% @param Uid 用户ID
 %% @return ok
--spec delete_all_related_data(integer()) -> ok | {rollback, term()}.
+-spec delete_all_related_data(integer()) -> ok | {error, term()} | {rollback, term()}.
 delete_all_related_data(Uid) ->
     % 使用事务删除所有相关数据
     elib_pg:with_tx(fun(Conn) ->
@@ -380,10 +379,8 @@ mark_logout_apply_in_tx(Conn, Uid) ->
             " SET status = 2"
             " WHERE id = $1 AND status IN (1, 2)"
             " RETURNING id">>,
-    %% execute/3 对 RETURNING 稳定返回计数（dialyzer 规格内）
-    case elib_pg:execute(Conn, Sql, [Uid]) of
+    case elib_pg:execute_count(Conn, Sql, [Uid]) of
         {ok, Count} -> {ok, Count};
-        {ok, Count, _Tuples} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -396,10 +393,8 @@ unmark_logout_apply_in_tx(Conn, Uid) ->
             " SET status = 1"
             " WHERE id = $1 AND status = 2"
             " RETURNING id">>,
-    %% execute/3 对 RETURNING 稳定返回计数（dialyzer 规格内）
-    case elib_pg:execute(Conn, Sql, [Uid]) of
+    case elib_pg:execute_count(Conn, Sql, [Uid]) of
         {ok, Count} -> {ok, Count};
-        {ok, Count, _Tuples} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -564,7 +559,8 @@ find_expired_logout_users(RetentionDays, BatchSize) ->
 %% @doc 驳回注销申请：仅当 status=2 时将用户状态恢复为 1
 %% 2026-09-05（D-01）：升级为事务，同步注销请求记录（cancelled）；
 %% 记录侧 0 行视为存量旗标用户（迁移前 status=2 无记录行），不阻断。
--spec reject_logout_apply(integer()) -> {ok, [map()]} | {ok, []} | {error, any()}.
+-spec reject_logout_apply(integer()) ->
+    {ok, [map()]} | {ok, []} | {error, any()} | {rollback, term()}.
 reject_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
     Tb = user_repo:tablename(),
     %% user 表无 updated_at 列（只有 created_at），不能写该字段
@@ -589,7 +585,8 @@ reject_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
 %% @doc 审批通过注销申请：仅当 status=2 时将用户状态设为 -1（已注销）
 %% 2026-09-05（D-01）：升级为事务，同步注销请求记录（approved）；
 %% 记录侧 0 行视为存量旗标用户，不阻断。
--spec approve_logout_apply(integer()) -> {ok, [map()]} | {ok, []} | {error, any()}.
+-spec approve_logout_apply(integer()) ->
+    {ok, [map()]} | {ok, []} | {error, any()} | {rollback, term()}.
 approve_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
     Tb = user_repo:tablename(),
     Sql =
