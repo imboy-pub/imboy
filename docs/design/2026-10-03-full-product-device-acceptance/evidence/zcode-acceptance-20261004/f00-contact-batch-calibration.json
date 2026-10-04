@@ -80,6 +80,21 @@
       "fn_id": "fn:contact:people_info_more_page:001/004/010 (reconciled)",
       "action": "漂移核对补充登记",
       "note": "see already_covered list"
+    },
+    {
+      "fn_id": "fn:contact:assistant_plaza_page:004",
+      "action": "顶部展示 AI 透明声明卡",
+      "note": "WIDGET PASS 流程A (assistant_plaza_widget_flow_test.dart): transparencyBanner text + shield icon unconditionally rendered"
+    },
+    {
+      "fn_id": "fn:contact:assistant_plaza_page:006",
+      "action": "搜索无结果展示对应空态文案",
+      "note": "WIDGET PASS 流程B: kwd non-empty + empty list -> searchEmpty copy (and NOT the global emptyTitle)"
+    },
+    {
+      "fn_id": "fn:contact:assistant_plaza_page:010",
+      "action": "助手昵称旁展示 AI 身份徽章",
+      "note": "WIDGET PASS 流程C: two fake agent cards render nicknames + BotBadge x2 (findsNWidgets)"
     }
   ],
   "remaining_blocked_or_deferred": {
@@ -91,5 +106,9 @@
     "people_nearby_page :004-:011": "location mock fixture required",
     "recently_registered_user_page 8 rows": "server-backed list (FIND-GROUP-07 family)"
   },
-  "acceptance_tsv_impact": "NONE"
+  "acceptance_tsv_impact": "NONE",
+  "harness_notes_new": [
+    "ThemeManager needs ThemeManager.instance.setProviderContainer(container) in widget tests; overrides must live in the SAME ProviderContainer passed to UncontrolledProviderScope",
+    "Spy notifiers must override initData/refresh/loadMore/updateKwd (real initData copyWith(isLoading:true) then hangs on real API inside FakeAsync)"
+  ]
 }
