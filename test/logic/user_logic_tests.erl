@@ -610,8 +610,8 @@ cancel_logout_restores_status_to_active_test_() ->
                         throw:{rollback, Rsn} -> {rollback, Rsn}
                     end
                 end},
-                %% cancel_request_tx 的 UPDATE 走 execute/3，返回受影响行数
-                {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+                %% cancel_request_tx 的 UPDATE 走 execute_count/3，返回受影响行数
+                {'execute_count', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
             ]},
             {user_ds, [
                 {'unmark_logout_apply_in_tx', 2, fun(_Conn, _Uid) -> {ok, 1} end}
@@ -636,7 +636,7 @@ cancel_logout_with_error_returns_error_test_() ->
                         throw:{rollback, Rsn} -> {rollback, Rsn}
                     end
                 end},
-                {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
             ]},
             {user_ds, [
                 {'unmark_logout_apply_in_tx', 2, fun(_Conn, _Uid) ->

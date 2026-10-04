@@ -88,12 +88,12 @@ list_all_test() ->
 
 revoke_ok_test() ->
     ?WITH_MECKS([elib_pg], fun() ->
-        meck:expect(elib_pg, execute, fun(_Sql, [1, <<"key-001">>]) -> {ok, 1} end),
+        meck:expect(elib_pg, execute_count, fun(_Sql, [1, <<"key-001">>]) -> {ok, 1} end),
         ?assertEqual({ok, 1}, compliance_key_repo:revoke(<<"key-001">>, 1))
     end).
 
 revoke_not_found_test() ->
     ?WITH_MECKS([elib_pg], fun() ->
-        meck:expect(elib_pg, execute, fun(_Sql, _) -> {ok, 0} end),
+        meck:expect(elib_pg, execute_count, fun(_Sql, _) -> {ok, 0} end),
         ?assertEqual({ok, 0}, compliance_key_repo:revoke(<<"nonexist">>, 1))
     end).

@@ -40,7 +40,7 @@ save_read_with_valid_data_succeeds_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, []} end}
+                {'execute_count', 2, fun(_Sql, _Params) -> {ok, []} end}
             ]}
         ],
         fun() ->
@@ -61,7 +61,7 @@ save_read_dedups_by_three_columns_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {elib_pg, [
-                {'execute', 2, fun(Sql, Params) ->
+                {'execute_count', 2, fun(Sql, Params) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assertMatch({_, _}, binary:match(SqlBin, <<"WHERE NOT EXISTS">>)),
                     ?assertMatch(
@@ -93,7 +93,7 @@ save_read_is_idempotent_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, []} end}
+                {'execute_count', 2, fun(_Sql, _Params) -> {ok, []} end}
             ]}
         ],
         fun() ->
@@ -164,7 +164,7 @@ delete_read_records_deletes_records_test_() ->
         [
             ?MOCK_ENV,
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 2} end}
+                {'execute_count', 2, fun(_Sql, _Params) -> {ok, 2} end}
             ]}
         ],
         fun() ->

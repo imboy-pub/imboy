@@ -110,7 +110,7 @@ base_mocks() ->
                         {ok, [#{<<"status">> => ws_status()}]}
                 end
             end},
-            {'execute', 3, fun(_C, _S, _P) -> {ok, 1} end}
+            {'execute_count', 3, fun(_C, _S, _P) -> {ok, 1} end}
         ]}
     ].
 
@@ -397,7 +397,7 @@ remove_member_conflict_test_() ->
                         end
                     end},
                     {'query', 3, fun(_C, _S, _P) -> {ok, []} end},
-                    {'execute', 3, fun(_C, _S, _P) -> {ok, 1} end}
+                    {'execute_count', 3, fun(_C, _S, _P) -> {ok, 1} end}
                 ]}
             ],
             fun() ->
