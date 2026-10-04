@@ -59,6 +59,12 @@ HEAD 未动（`ab306ddf`）。工作树仅 7 个 `.g.dart` 生成物再生成漂
 PENDING_USER），但进一步坐实 RES-L3-RERUN 不可省略——若省略，W4 翻转的
 PASS 将建立在不含 trust_audit 修复与清单变更的旧基线上。
 
+失配承重面复核（同日第三轮）：检索本线历史证据含 `trust_audit` 字样仅
+`main-closure-20261003/` 两份日志，命中均为编译清单模块名
+（trust_audit_ds/repo），**无运行时信任审计写入路径**——已录证据未实际
+踩中该缺陷；失配风险落在 DEC-1 落定后 D-02 信任根门的待执行证据上
+（届时在含修复的时点 HEAD 上采集，天然覆盖，无需补救动作）。
+
 ## 对 RES-L3-RERUN 的执行约束（写入流程，非新决策）
 
 1. 执行前记录当时 `git rev-parse HEAD` + `git status --porcelain` 快照入本目录；
