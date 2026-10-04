@@ -80,9 +80,22 @@ face2face(Uid, Code, Lng, Lat) ->
     case nearby_gid(LngFloat, LatFloat, <<"50">>, <<"m">>, <<"1">>, Code) of
         {ok, []} ->
             % 创建新的面对面建群
-            elib_pg:with_tx(fun(Conn) ->
+            TxRes = elib_pg:with_tx(fun(Conn) ->
                 group_ds:face2face_create(Conn, Uid, Code, LngFloat, LatFloat)
-            end);
+            end),
+            %% with_tx 可能返回 {rollback,_}；ds 层错误可能为 atom。
+            %% 统一归一到本函数的 {error, binary()} 契约，防止向调用方泄漏。
+            case TxRes of
+                {ok, Gid} ->
+                    {ok, Gid};
+                {error, Reason} when is_binary(Reason) ->
+                    {error, Reason};
+                {error, Reason} ->
+                    {error, atom_to_binary(Reason, utf8)};
+                {rollback, RollbackReason} ->
+                    ?ERROR_LOG([face2face_create_rollback, Uid, Code, RollbackReason]),
+                    {error, <<"面对面建群事务回滚"/utf8>>}
+            end;
         {ok, [#{<<"group_id">> := Gid}]} ->
             JoinMode = <<"face2face_join">>,
             case group_member_logic:join_group(JoinMode, Uid, Gid, #{}) of
@@ -98,7 +111,7 @@ face2face(Uid, Code, Lng, Lat) ->
 %% @param Gid 群组ID
 %% @param Uid 用户ID
 %% @return {ok, binary()}
--spec face2face_save(binary(), integer(), integer()) -> {ok, binary()}.
+-spec face2face_save(binary(), integer(), integer()) -> {ok, binary()} | {error, binary() | atom()}.
 face2face_save(Code, Gid, Uid) ->
     group_ds:face2face_save(Code, Gid, Uid).
 
@@ -161,7 +174,7 @@ dissolve(Uid, Gid, OwnerUid, G) ->
 transfer(CurrentUid, Gid, NewOwnerUid) ->
     case group_ds:find_by_id(Gid, <<"*">>) of
         {error, _Reason} ->
-            {error, "群组不存在"};
+            {error, <<"群组不存在"/utf8>>};
         G ->
             OwnerUid = maps:get(<<"owner_uid">>, G, 0),
             case do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, G) of
@@ -188,7 +201,7 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
             case group_member_ds:find_by_gid_and_uid(Gid, NewOwnerUid, <<"id">>) of
                 #{<<"id">> := _} ->
                     % 使用事务更新群主和双方角色
-                    elib_pg:with_tx(fun(Conn) ->
+                    TxRes = elib_pg:with_tx(fun(Conn) ->
                         %% T7 归档写守卫（P0 收口）：转让与守卫同事务
                         %% （{group, Gid} 行锁；personal 群直通）
                         ok = workspace_guard:abort_on_error(
@@ -232,12 +245,25 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
                             {error, Reason} ->
                                 {error, Reason}
                         end
-                    end);
+                    end),
+                    %% with_tx 可能返回 {rollback,_}；ds 层错误可能为 atom。
+                    %% 统一归一到 {error, binary()} 契约，防止向调用方泄漏。
+                    case TxRes of
+                        ok ->
+                            ok;
+                        {error, Reason} when is_binary(Reason) ->
+                            {error, Reason};
+                        {error, Reason} ->
+                            {error, atom_to_binary(Reason, utf8)};
+                        {rollback, RollbackReason} ->
+                            ?ERROR_LOG([group_transfer_rollback, Gid, RollbackReason]),
+                            {error, <<"群转让事务回滚"/utf8>>}
+                    end;
                 _ ->
-                    {error, "新群主必须是群成员"}
+                    {error, <<"新群主必须是群成员"/utf8>>}
             end;
         _ ->
-            {error, "只有群主可以转让群组"}
+            {error, <<"只有群主可以转让群组"/utf8>>}
     end.
 
 %% @doc 查询附近的群组
@@ -274,7 +300,7 @@ nearby_gid(Lng, Lat, Radius, Unit, Limit, Code) ->
 transfer(CurrentUid, Gid, NewOwnerUid, KeepAsAdmin) when is_boolean(KeepAsAdmin) ->
     case group_ds:find_by_id(Gid, <<"*">>) of
         {error, _Reason} ->
-            {error, "群组不存在"};
+            {error, <<"群组不存在"/utf8>>};
         G ->
             OwnerUid = maps:get(<<"owner_uid">>, G, 0),
             case do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, G) of
@@ -303,7 +329,7 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
             case group_member_ds:find_by_gid_and_uid(Gid, NewOwnerUid, <<"id, role">>) of
                 #{<<"id">> := _} ->
                     % 使用事务更新群主和双方角色
-                    elib_pg:with_tx(fun(Conn) ->
+                    TxRes = elib_pg:with_tx(fun(Conn) ->
                         %% T7 归档写守卫（P0 收口）：转让与守卫同事务
                         ok = workspace_guard:abort_on_error(
                             workspace_guard:ensure_writable_tx(Conn, {group, Gid})
@@ -356,12 +382,25 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
                             {error, Reason} ->
                                 {error, Reason}
                         end
-                    end);
+                    end),
+                    %% with_tx 可能返回 {rollback,_}；ds 层错误可能为 atom。
+                    %% 统一归一到 {error, binary()} 契约，防止向调用方泄漏。
+                    case TxRes of
+                        ok ->
+                            ok;
+                        {error, Reason} when is_binary(Reason) ->
+                            {error, Reason};
+                        {error, Reason} ->
+                            {error, atom_to_binary(Reason, utf8)};
+                        {rollback, RollbackReason} ->
+                            ?ERROR_LOG([group_transfer_rollback, Gid, RollbackReason]),
+                            {error, <<"群转让事务回滚"/utf8>>}
+                    end;
                 _ ->
-                    {error, "新群主必须是群成员"}
+                    {error, <<"新群主必须是群成员"/utf8>>}
             end;
         _ ->
-            {error, "只有群主可以转让群组"}
+            {error, <<"只有群主可以转让群组"/utf8>>}
     end.
 
 %% @doc 查询群组详情
