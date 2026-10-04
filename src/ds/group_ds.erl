@@ -370,7 +370,7 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
 %% scope=workspace 时 WorkspaceId 必填（DB XOR CHECK chk_group_scope_xor 兜底）；
 %% 调用方（group_logic:add/5）须先完成 Workspace Owner/Member 角色校验。
 %% scope/workspace_id 创建后不可变（§1.4.2 规则 9）。
--spec create_scoped_group(pid(), integer(), binary(), integer(), integer(), binary(), integer()) ->
+-spec create_scoped_group(pid(), integer(), integer(), binary(), integer(), binary(), integer()) ->
     integer().
 create_scoped_group(Conn, Gid, Uid, Now, Type, Scope, WorkspaceId) ->
     GMap = #{

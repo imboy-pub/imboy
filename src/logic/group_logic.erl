@@ -520,7 +520,8 @@ edit(Uid, Gid, Data) ->
 %% @param Uid 操作用户ID
 %% @param Gid 群组ID
 %% @param Mode 目标模式（仅接受 1）
--spec set_e2ee_mode(integer(), integer(), integer()) -> ok | {error, binary()}.
+-spec set_e2ee_mode(integer(), integer(), integer()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 set_e2ee_mode(_Uid, _Gid, Mode) when Mode =/= 1 ->
     {error, <<"e2ee_mode 仅支持单向开启（0→1）"/utf8>>};
 set_e2ee_mode(Uid, Gid, 1) ->
@@ -558,7 +559,7 @@ do_set_e2ee_mode(Uid, Gid) ->
                         save
                     ),
                     ok;
-                {error, {Code, Msg}} when is_integer(Code) ->
+                {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
                     %% T7 收口：归档守卫（980）等稳定错误码原样透传
                     {error, {Code, Msg}};
                 {error, Reason} ->
@@ -806,10 +807,12 @@ list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) when
         {ok, Rows} ->
             Page = lists:sublist(Rows, Limit),
             HasMore = length(Rows) > Limit,
+            %% 模式匹配取末行：HasMore=true 时 Page 必非空，
+            %% 但不依赖该推论（Limit=0 等退化入参下 lists:last 会崩）
             Next =
-                case HasMore of
-                    true -> maps:get(<<"id">>, lists:last(Page));
-                    false -> 0
+                case lists:reverse(Page) of
+                    [LastRow | _] -> maps:get(<<"id">>, LastRow);
+                    _ -> 0
                 end,
             {ok, #{
                 list => [
