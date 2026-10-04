@@ -1,4 +1,5 @@
 -module(attachment_download_ticket).
+-moduledoc "附件下载票据 —— 下载能力使用 purpose-derived key，绝不复用 Human 访问令牌。".
 -export([issue/3, verify/2]).
 
 %% Download capabilities use a purpose-derived key, never a Human access token.

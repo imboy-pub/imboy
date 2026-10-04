@@ -1,4 +1,5 @@
 -module(elib_response).
+-moduledoc "API 响应 JSON 数据构造模块 / API response builder。".
 %%%
 % API响应JSON数据构造模块
 %%%

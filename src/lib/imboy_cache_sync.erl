@@ -1,6 +1,7 @@
 %% @doc 分布式缓存同步服务器
 %% 负责处理节点间的缓存同步消息
 -module(imboy_cache_sync).
+-moduledoc "分布式缓存同步服务器 —— 处理节点间缓存同步消息。".
 -behaviour(gen_server).
 
 -include("cache.hrl").

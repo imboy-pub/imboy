@@ -1,4 +1,5 @@
 -module(imboy_dtl).
+-moduledoc "模板引擎辅助模块 —— 模板渲染与参数构建。".
 -eqwalizer(enable).
 
 %%% @doc 模板引擎辅助模块

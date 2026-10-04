@@ -1,5 +1,6 @@
 -module(bot_webhook_delivery_sender).
 
+-moduledoc "Bot 出站投递 sender（WH-01）—— pinned IP 防 DNS rebinding，TLS SNI/Host 用原域名。".
 %%%
 % WH-01 出站投递 sender：连接 pinned IP（防 DNS rebinding），TLS SNI/Host 用原域名，
 % 证书 verify_peer + 系统 CA 池（OTP public_key:cacerts_get/0）；

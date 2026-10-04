@@ -1,4 +1,5 @@
 -module(agent_payment_compensation_worker).
+-moduledoc "Agent 支付预留补偿 worker —— 只处理持久化 outbox，进程内不保存恢复状态。".
 -behaviour(gen_server).
 
 %% Agent 支付预留补偿 worker。

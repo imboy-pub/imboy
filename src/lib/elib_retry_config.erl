@@ -1,4 +1,5 @@
 -module(elib_retry_config).
+-moduledoc "服务端投递重试间隔配置模块（按消息类型）。".
 %%%
 % elib_retry_config 是【服务端投递重试】间隔配置模块（按消息类型）
 % 提供统一的重试间隔管理，支持通过宏定义默认值

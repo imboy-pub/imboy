@@ -1,4 +1,5 @@
 -module(billing_invoice_worker).
+-moduledoc "SaaS 账单生成定时 worker（金钱相邻）。".
 -behaviour(gen_server).
 %%%===================================================================
 %%% @doc SaaS 账单生成定时 worker（金钱相邻）。

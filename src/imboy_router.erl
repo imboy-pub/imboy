@@ -1,5 +1,6 @@
 -module(imboy_router).
 
+-moduledoc "imboy 路由表 —— 编译期 feature 门（未选中的 feature 其专属路由子句被预处理剔除），供测试与 admin introspection。".
 -export([get_routes/0]).
 -export([open/0]).
 -export([option/0]).

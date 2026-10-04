@@ -1,5 +1,6 @@
 -module(group_member_transfer).
 
+-moduledoc "群成员转移参数清洗（P1-7b 恒等式 transfer，防御深度由 SQL 层显式列保证）。".
 -export([member_list/1]).
 
 %% P1-7b 注：本模块当前为恒等式 transfer（仅做 ID 字段整数校验，不移除字段）。

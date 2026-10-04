@@ -1,4 +1,5 @@
 -module(elib_id).
+-moduledoc "ID 工具模块 —— 唯一标识符生成与 TSID 字段序列化。".
 -eqwalizer(enable).
 
 %%% @doc ID 工具模块

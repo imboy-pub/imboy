@@ -24,6 +24,7 @@
 %%% stale 文件，且 NFS 语义不可靠）——见计划 §2.4 EXT-05。
 -module(elib_tsid_lock).
 
+-moduledoc "TSID CombinedNode lifetime lock（TSID-06）。".
 -export([acquire/3, release/1, provider_available/1]).
 
 -type provider() :: flock | registry.

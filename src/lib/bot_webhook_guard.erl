@@ -1,5 +1,6 @@
 -module(bot_webhook_guard).
 
+-moduledoc "出站 Webhook SSRF 防护与 IP Pinning（WH-01，PDT-01 webhook 契约 §2.5）。".
 %%%
 % 出站 Webhook SSRF 防护与 IP Pinning（WH-01，PDT-01 webhook 契约 §2.5）。
 %

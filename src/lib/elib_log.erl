@@ -1,4 +1,5 @@
 -module(elib_log).
+-moduledoc "日志工具模块（实际处理函数导出但仅供内部使用）。".
 -export([
     debug/1, debug/2,
     info/1, info/2,

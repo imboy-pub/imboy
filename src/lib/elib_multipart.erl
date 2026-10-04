@@ -1,4 +1,5 @@
 -module(elib_multipart).
+-moduledoc "流式 multipart/form-data 收集器（POST /api/v1/attachment/upload 用）。".
 %%%
 % 流式 multipart/form-data 收集器（POST /api/v1/attachment/upload 用）
 %

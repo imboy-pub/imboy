@@ -1,4 +1,5 @@
 -module(credential_retention_worker).
+-moduledoc "过期凭证行保留清理定时 worker（T-02，sessions_tokens 注册表类）。".
 -behaviour(gen_server).
 %%%===================================================================
 %%% @doc 过期凭证行保留清理定时 worker（T-02，注册表类 sessions_tokens）。

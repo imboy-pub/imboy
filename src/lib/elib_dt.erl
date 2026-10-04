@@ -1,4 +1,5 @@
 -module(elib_dt).
+-moduledoc "datetime 工具箱 / datetime utility toolbox。".
 -eqwalizer(enable).
 -dialyzer({nowarn_function, [add/2, minus/2, rfc3339_to/1, rfc3339_to/2]}).
 %%%

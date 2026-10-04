@@ -1,4 +1,5 @@
 -module(epgsql_codec_rfc3339_bin).
+-moduledoc "epgsql RFC3339 时间戳编解码器（behaviour epgsql_codec）。".
 -dialyzer({nowarn_function, [encode/3]}).
 % -behaviour(epgsql_codec).
 -export([init/2, names/0, encode/3, decode/3]).
