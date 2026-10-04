@@ -31,8 +31,7 @@ replace_for_post(Conn, PostId, AllowUids0, DenyUids0) ->
 -spec list_uids_by_post(integer(), integer()) -> [integer()].
 list_uids_by_post(PostId, AclType) ->
     Tb = tablename(),
-    Sql = <<"SELECT uid FROM ", Tb/binary,
-            " WHERE post_id = $1 AND acl_type = $2">>,
+    Sql = <<"SELECT uid FROM ", Tb/binary, " WHERE post_id = $1 AND acl_type = $2">>,
     case elib_pg:query(Sql, [PostId, AclType]) of
         {ok, Rows} ->
             [Uid || #{<<"uid">> := Uid} <- Rows, is_integer(Uid), Uid > 0];
@@ -56,10 +55,17 @@ insert_acl_batch(_Conn, _PostId, [], _AclType) ->
 insert_acl_batch(Conn, PostId, Uids, AclType) ->
     Tb = tablename(),
     Now = elib_dt:now(),
-    Rows = [[PostId, Uid, AclType, Now] || Uid <- Uids],
+    %% id 为应用侧 TSID（moment_post_acl 在 elib_tsid_guard names 内）：
+    %% 本表 DDL 的 id 无默认值，INSERT 缺 id 会直接违反 not-null ——
+    %% 曾导致任何带 allow_uids/deny_uids 的发帖整事务失败（部分可见/
+    %% 不给谁看链路不可用），与 moment_post_repo:add 的同款生成方式对齐。
+    Rows = [
+        [elib_tsid:generate(moment_post_acl), PostId, Uid, AclType, Now]
+     || Uid <- Uids
+    ],
     {Sql0, Params} = elib_pg_sql:insert_batch(
         Tb,
-        [post_id, uid, acl_type, created_at],
+        [id, post_id, uid, acl_type, created_at],
         Rows
     ),
     Sql = [Sql0, <<" ON CONFLICT (post_id, uid, acl_type) DO NOTHING">>],
