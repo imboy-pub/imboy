@@ -1,0 +1,31 @@
+{
+  "id": "F00-GROUP-BATCH-RECONCILIATION",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "scope": "271 group-domain functions lacking test_target (per f00-group-domain-reconciliation-start.json); personal-scope only, enterprise keyword scan result recorded below",
+  "totals": {
+    "group_functions": 296,
+    "missing_targets": 271,
+    "judged": 271
+  },
+  "verdicts": {
+    "TARGET_MISSING_WIDGET_LEVEL": 91,
+    "TARGET_MISSING_PLATFORM_SENSITIVE": 18,
+    "TARGET_MISSING_NEW_CASE_REQUIRED": 70,
+    "COVERED_BY_EXISTING_JOURNEY": 67,
+    "PARTIAL_JOURNEY_REFERENCE": 25
+  },
+  "required_target_class": {
+    "new-widget-case": 91,
+    "defer-to-patrol-native": 18,
+    "new-integration-case": 70,
+    "none-existing": 67,
+    "extend-existing-journey": 25
+  },
+  "method": "rule-based pass reusing contact-batch verdict vocabulary; page->existing-journey map covers launch_chat/face_to_face/select/member/member_detail/detail/announcement; write-closure, platform-sensitive, widget-level keyword classes otherwise",
+  "boundary_note": "lib/page/group/** only; parallel enterprise session owns group_ds.erl/group_logic.erl WIP - untouched",
+  "artifacts": [
+    "f00-group-batch-reconciliation.tsv"
+  ],
+  "honesty_note": "rule-based first-pass triage for backlog shaping; rows re-triageable on human review - none are grid PASS"
+}

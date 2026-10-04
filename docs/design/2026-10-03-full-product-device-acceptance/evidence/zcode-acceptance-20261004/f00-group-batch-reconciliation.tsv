@@ -1,0 +1,272 @@
+function_id	action	verdict	evidence_ref	required_target_class	platforms
+fn:group:add_member_page:001	从本地库加载可选联系人列表	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on add_member_page.dart	new-widget-case	android+macos
+fn:group:add_member_page:002	首帧后加载并正常结束转圈	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on add_member_page.dart	new-widget-case	android+macos
+fn:group:add_member_page:003	联系人列表剔除功能入口占位	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on add_member_page.dart	new-widget-case	android+macos
+fn:group:add_member_page:004	点联系人切换勾选状态	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on add_member_page.dart	new-widget-case	android+macos
+fn:group:add_member_page:005	已是群成员的行禁选并标注	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on add_member_page.dart	new-widget-case	android+macos
+fn:group:add_member_page:006	顶部展示已选人数提示条	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on add_member_page.dart	new-widget-case	android+macos
+fn:group:add_member_page:007	A-Z 索引栏拖动定位联系人	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:add_member_page:008	未选中时完成按钮置灰禁用	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:add_member_page:009	点左上角关闭退出选人页	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:add_member_page:010	无联系人时展示暂无数据空态	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on add_member_page.dart	new-widget-case	android+macos
+fn:group:add_member_page:011	提交添加选中成员入群	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:change_info_page:001	进页回填群名并自动聚焦输入	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on change_info_page.dart	new-widget-case	android+macos
+fn:group:change_info_page:002	输入群名实时同步到状态	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on change_info_page.dart	new-widget-case	android+macos
+fn:group:change_info_page:003	点清除图标一键清空输入	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:change_info_page:004	完成按钮随内容变更切换高亮	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:change_info_page:005	展示群头像合成九宫格图	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on change_info_page.dart	new-widget-case	android+macos
+fn:group:change_info_page:006	展示副标题输入引导文案	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on change_info_page.dart	new-widget-case	android+macos
+fn:group:change_info_page:007	点返回不保存直接退出页面	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:change_info_page:008	群名输入超 80 字被截断	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on change_info_page.dart	new-widget-case	android+macos
+fn:group:change_info_page:009	空群名时占位显示「未命名」	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on change_info_page.dart	new-widget-case	android+macos
+fn:group:change_info_page:010	保存群名成功提示并回传	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:face_to_face_confirm_page:001	进群后标题空串兜底为未命名	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test	none-existing	android+macos
+fn:group:face_to_face_confirm_page:002	展示四位暗号数字与锁标签	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test	none-existing	android+macos
+fn:group:face_to_face_confirm_page:003	提交中按钮禁用并显示转圈	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:face_to_face_confirm_page:004	呼吸绿点动画持续闪烁	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test	none-existing	android+macos
+fn:group:face_to_face_confirm_page:005	点返回退出建群确认页	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:face_to_face_confirm_page:006	建群失败弹出错误提示	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test	none-existing	android+macos
+fn:group:face_to_face_confirm_page:007	实时显示即将进群的人数	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test	none-existing	android+macos
+fn:group:face_to_face_confirm_page:008	收到入群事件实时追加头像	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test	none-existing	android+macos
+fn:group:face_to_face_confirm_page:009	断网恢复后补拉服务端成员	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:face_to_face_confirm_page:010	点进入该群提交建群并跳转	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:face_to_face_page:001	数字键盘输入四位暗号并回显	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test	none-existing	android+macos
+fn:group:face_to_face_page:002	删除键回退已输入的单位数字	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test + group_creation_readonly_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:face_to_face_page:003	输入三秒后自动清空重来	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test + group_creation_readonly_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:face_to_face_page:004	异常路径加载遮罩必被关闭	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test	none-existing	android+macos
+fn:group:face_to_face_page:005	展示面对面建群提示卡片	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test	none-existing	android+macos
+fn:group:face_to_face_page:006	输入框激活态边框高亮切换	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test	none-existing	android+macos
+fn:group:face_to_face_page:007	点返回退出面对面建群页	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test + group_creation_readonly_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:face_to_face_page:008	匹配失败展示红色错误文案	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test	none-existing	android+macos
+fn:group:face_to_face_page:009	小屏下输入框尺寸自适应缩小	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test	none-existing	android+macos
+fn:group:face_to_face_page:010	输满四位自动发起建群匹配	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test + group_creation_readonly_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:face_to_face_page:011	匹配成功跳转建群确认页	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test	none-existing	android+macos
+fn:group:group_album_page:001	加载并渲染群相册列表项	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_album_page:002	顶栏弹窗新建相册并提交	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_album_page:003	相册名为空时取消创建	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_album_page:004	下拉刷新重新拉取相册列表	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_album_page:005	弹窗重命名相册并同步列表	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_album_page:006	选图上传照片进指定相册	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_album_page:007	删除相册并二次确认拦截	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_album_page:008	按创建者与管理员角色隐藏删除	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_album_page:009	副标题展示照片数与创建时间	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_album_page:010	上传中禁用按钮并显示进度条	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_album_photo_detail_page:001	加载图片详情并渲染可缩放大图	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_detail_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_detail_page:002	上一张下一张切换与序号计数	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_detail_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_detail_page:003	调用外部应用打开原图	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_detail_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_detail_page:004	将当前图片设为相册封面	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_album_photo_detail_page:005	删除图片并回传父页刷新	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_album_photo_detail_page:006	格式化展示图片创建时间	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_album_photo_detail_page:007	展示图片宽高分辨率信息行	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_detail_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_detail_page:008	文件大小按单位换算显示	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_detail_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_detail_page:009	展示点赞数评论数与我的点赞	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_album_photo_detail_page:010	详情为空时给出重试入口	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_detail_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_detail_page:011	URL缺失或非法时的错误提示	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_detail_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_page:001	九宫格加载并渲染照片缩略图	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_page:002	滚动触底分页加载更多照片	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_page:003	下拉刷新重载首页照片	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_page:004	长按照片进入多选模式	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_page:005	多选模式下切换单张选中态	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_page:006	全选与取消全选来回切换	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_album_photo_page:007	批量删除所选照片并汇报结果	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_album_photo_page:008	退出多选恢复常规标题栏	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_album_photo_page:009	单张照片删除按钮与确认弹窗	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_album_photo_page:010	点击照片跳详情并回传刷新	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_page:011	区分空态失败态与ID缺失提示	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_album_photo_page.dart	new-widget-case	android+macos
+fn:group:group_album_photo_page:012	按上传者与管理员角色控制删除	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_announcement_page:001	加载并渲染群公告卡片列表	COVERED_BY_EXISTING_JOURNEY	launch_chat_announcement_test	none-existing	android+macos
+fn:group:group_announcement_page:002	弹窗填写内容并发布公告	PARTIAL_JOURNEY_REFERENCE	launch_chat_announcement_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_announcement_page:003	滚轮选择公告过期日期	COVERED_BY_EXISTING_JOURNEY	launch_chat_announcement_test	none-existing	android+macos
+fn:group:group_announcement_page:004	内容为空时阻止提交发布	PARTIAL_JOURNEY_REFERENCE	launch_chat_announcement_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_announcement_page:005	删除公告并二次确认拦截	PARTIAL_JOURNEY_REFERENCE	launch_chat_announcement_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_announcement_page:006	按管理角色控制发布删除入口	PARTIAL_JOURNEY_REFERENCE	launch_chat_announcement_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_announcement_page:007	下拉刷新重新拉取公告	COVERED_BY_EXISTING_JOURNEY	launch_chat_announcement_test	none-existing	android+macos
+fn:group:group_announcement_page:008	触底自动加载下一页公告	COVERED_BY_EXISTING_JOURNEY	launch_chat_announcement_test	none-existing	android+macos
+fn:group:group_announcement_page:009	无公告时展示空态占位图	COVERED_BY_EXISTING_JOURNEY	launch_chat_announcement_test	none-existing	android+macos
+fn:group:group_announcement_page:010	加载失败弹提示并清除错误态	COVERED_BY_EXISTING_JOURNEY	launch_chat_announcement_test	none-existing	android+macos
+fn:group:group_announcement_page:011	展示公告过期时间标签	COVERED_BY_EXISTING_JOURNEY	launch_chat_announcement_test	none-existing	android+macos
+fn:group:group_announcement_page:012	群ID为空时自动退出页面	PARTIAL_JOURNEY_REFERENCE	launch_chat_announcement_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_category_detail_page:001	重命名分组并同步父页列表	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_category_detail_page:002	名称未变更时跳过重命名请求	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_category_detail_page:003	删除分组并二次确认拦截	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_category_detail_page:004	删除成功后回传刷新并退出	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_category_detail_page:005	右上角弹出更多操作动作面板	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_category_detail_page.dart	new-widget-case	android+macos
+fn:group:group_category_detail_page:006	未分类桶隐藏重命名删除入口	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_category_detail_page:007	列表项直接触发重命名与删除	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_category_detail_page:008	渲染分组用途说明提示卡片	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_category_detail_page.dart	new-widget-case	android+macos
+fn:group:group_category_detail_page:009	重命名与删除失败的错误提示	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_category_detail_page:010	标题栏实时反映当前分组名	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_category_detail_page.dart	new-widget-case	android+macos
+fn:group:group_category_page:001	加载并渲染群分组列表	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_category_page.dart	new-widget-case	android+macos
+fn:group:group_category_page:002	弹窗新建分组并提交	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_category_page:003	分组名为空时不发起创建	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_category_page:004	下拉刷新重新拉取分组	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_category_page.dart	new-widget-case	android+macos
+fn:group:group_category_page:005	点击分组进入分组详情页	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_category_page.dart	new-widget-case	android+macos
+fn:group:group_category_page:006	详情页回传结果后刷新列表	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_category_page.dart	new-widget-case	android+macos
+fn:group:group_category_page:007	副标题展示分组内群数量	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_category_page.dart	new-widget-case	android+macos
+fn:group:group_category_page:008	无分组时展示空态占位	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_category_page.dart	new-widget-case	android+macos
+fn:group:group_category_page:009	加载失败展示重试入口	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_category_page.dart	new-widget-case	android+macos
+fn:group:group_category_page:010	创建失败弹出错误提示	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_detail_page:001	点「＋」进入添加成员页	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:002	点「－」进入移除成员页（管理员）	PARTIAL_JOURNEY_REFERENCE	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_detail_page:003	群成员数按服务端权威值显示	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:004	点成员头像按身份分流跳转	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:005	群应用九宫格九个入口跳转	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:006	点群信息卡片进入改群名页	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:007	编辑我的群昵称并落库	PARTIAL_JOURNEY_REFERENCE	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_detail_page:008	编辑群备注并落库	PARTIAL_JOURNEY_REFERENCE	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_detail_page:009	切换消息免打扰开关	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:010	展示查看全部成员入口	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:011	群主开启群级 E2EE 加密	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:012	危险操作区清空记录与退群解散	PARTIAL_JOURNEY_REFERENCE	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_detail_page:013	群详情头部群头像：有自定义群图显示群图，无群图按成员头像拼图（group_info_card SmartGroupAvatar）	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:014	非好友成员头像出现在拼图中（驱动表 group_member，contact 仅补头像）	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:015	拼图排列按 user_id 恒定：重进页面/成员换头像均不漂移	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:016	群主头像不缺席（is_join=0 行不被过滤，or user_id=自己兜底）	COVERED_BY_EXISTING_JOURNEY	group_detail_readonly_test + group_manage_pages_test + group_management_readonly_test + group_management_longpress_readonly_test	none-existing	android+macos
+fn:group:group_detail_page:017	成员退群后本页拼图即时更新（GroupMemberUpdateEvent 失效缓存）	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_detail_page.dart	new-widget-case	android+macos
+fn:group:group_discovery_page:001	触发第 1 处 text_field 交互入口	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_discovery_page.dart	new-widget-case	android+macos
+fn:group:group_discovery_page:002	触发第 2 处 button 交互入口	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_discovery_page.dart	new-widget-case	android+macos
+fn:group:group_discovery_page:003	触发第 3 处 button 交互入口	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_discovery_page.dart	new-widget-case	android+macos
+fn:group:group_file_audio_preview_page:001	加载音频源并展示准备中状态	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_file_audio_preview_page:002	点击按钮播放与暂停切换	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_file_audio_preview_page:003	拖动进度条跳转播放位置	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_file_audio_preview_page:004	实时更新播放位置与总时长	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_file_audio_preview_page:005	音频加载失败展示错误文案	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_file_audio_preview_page:006	标题栏展示音频文件名	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_file_audio_preview_page:007	退出页面时释放播放器资源	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_file_audio_preview_page:008	时长按分秒格式化显示	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_file_audio_preview_page.dart	new-widget-case	android+macos
+fn:group:group_file_audio_preview_page:009	准备中或失败时禁用播放操作	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_file_page:001	并发加载文件列表与分类统计	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_file_page.dart	new-widget-case	android+macos
+fn:group:group_file_page:002	选择本地文件上传到群文件	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_file_page:003	输入关键词搜索群文件	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_file_page.dart	new-widget-case	android+macos
+fn:group:group_file_page:004	清空关键词恢复完整列表	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_file_page:005	切换分类筛选条过滤文件	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_file_page.dart	new-widget-case	android+macos
+fn:group:group_file_page:006	下拉刷新同步列表与统计	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_file_page.dart	new-widget-case	android+macos
+fn:group:group_file_page:007	图片文件底部弹层缩放预览	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_file_page.dart	new-widget-case	android+macos
+fn:group:group_file_page:008	音视频文件跳转媒体预览页	TARGET_MISSING_PLATFORM_SENSITIVE	media/native capability; Patrol/native driver evaluation required	defer-to-patrol-native	android+macos
+fn:group:group_file_page:009	文档与PDF走内嵌网页预览	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_file_page.dart	new-widget-case	android+macos
+fn:group:group_file_page:010	其他类型回退外部应用打开	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_file_page.dart	new-widget-case	android+macos
+fn:group:group_file_page:011	删除文件确认并按角色控可见	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_file_page:012	区分空态搜索空与加载失败态	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_file_page.dart	new-widget-case	android+macos
+fn:group:group_member_detail_page:001	展示成员头像昵称与签名卡片	COVERED_BY_EXISTING_JOURNEY	member_detail_actions_test	none-existing	android+macos
+fn:group:group_member_detail_page:002	展示禁言状态与剩余时间行	COVERED_BY_EXISTING_JOURNEY	member_detail_actions_test	none-existing	android+macos
+fn:group:group_member_detail_page:003	点禁言弹出时长选择底部弹层	COVERED_BY_EXISTING_JOURNEY	member_detail_actions_test	none-existing	android+macos
+fn:group:group_member_detail_page:004	点更多操作弹出管理操作表	COVERED_BY_EXISTING_JOURNEY	member_detail_actions_test	none-existing	android+macos
+fn:group:group_member_detail_page:005	普通成员看不到管理操作区	COVERED_BY_EXISTING_JOURNEY	member_detail_actions_test	none-existing	android+macos
+fn:group:group_member_detail_page:006	返回时回传变更标记刷新列表	PARTIAL_JOURNEY_REFERENCE	member_detail_actions_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_member_detail_page:007	成员不存在时展示暂无数据	COVERED_BY_EXISTING_JOURNEY	member_detail_actions_test	none-existing	android+macos
+fn:group:group_member_detail_page:008	选择时长提交禁言该成员	PARTIAL_JOURNEY_REFERENCE	member_detail_actions_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_member_detail_page:009	二次确认后解除成员禁言	COVERED_BY_EXISTING_JOURNEY	member_detail_actions_test	none-existing	android+macos
+fn:group:group_member_detail_page:010	群主设置或取消成员管理员	PARTIAL_JOURNEY_REFERENCE	member_detail_actions_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_member_detail_page:011	管理员确认后移出该成员	COVERED_BY_EXISTING_JOURNEY	member_detail_actions_test	none-existing	android+macos
+fn:group:group_member_page:001	首屏加载本地与服务端成员列表	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:002	下拉刷新重载第一页成员	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:003	上拉加载更多分页成员	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:004	分页失败回滚页码避免漏页	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:005	搜索框按昵称群昵称过滤	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:006	角色筛选「全部」展示所有成员	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:007	角色筛选群主管理员成员三档	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:008	群主与管理员角色徽章渲染	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:009	禁言剩余时间徽章展示	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:010	禁言解禁事件实时更新列表	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:011	点成员进详情并回传刷新	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_member_page:012	筛选无结果区分两类空态	COVERED_BY_EXISTING_JOURNEY	group_member_acceptance_test + gm_pagination_failover_test	none-existing	android+macos
+fn:group:group_schedule_detail_page:001	加载日程详情并渲染标题信息	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_schedule_detail_page.dart	new-widget-case	android+macos
+fn:group:group_schedule_detail_page:002	按起止时间推导四种状态标签	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_schedule_detail_page.dart	new-widget-case	android+macos
+fn:group:group_schedule_detail_page:003	参与人列表显示群内昵称别名	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_schedule_detail_page.dart	new-widget-case	android+macos
+fn:group:group_schedule_detail_page:004	点击确认参加日程并刷新	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_schedule_detail_page.dart	new-widget-case	android+macos
+fn:group:group_schedule_detail_page:005	点击拒绝参加日程并刷新	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_schedule_detail_page:006	取消整场日程并刷新详情	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_schedule_detail_page:007	已结束或已取消隐藏操作按钮	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_schedule_detail_page:008	提交中禁用按钮防重复点击	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_schedule_detail_page:009	下拉刷新重新拉取日程详情	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_schedule_detail_page.dart	new-widget-case	android+macos
+fn:group:group_schedule_detail_page:010	格式化展示开始与结束时间	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_schedule_detail_page.dart	new-widget-case	android+macos
+fn:group:group_schedule_detail_page:011	可选展示地点与描述信息行	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_schedule_detail_page.dart	new-widget-case	android+macos
+fn:group:group_schedule_detail_page:012	详情为空或出错时重试入口	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_schedule_detail_page.dart	new-widget-case	android+macos
+fn:group:group_select_page:001	加载可选群会话列表	COVERED_BY_EXISTING_JOURNEY	group_creation_readonly_test	none-existing	android+macos
+fn:group:group_select_page:002	无名群走 displayTitle 兜底渲染	COVERED_BY_EXISTING_JOURNEY	group_creation_readonly_test	none-existing	android+macos
+fn:group:group_select_page:003	点群条目跳转对应群聊天页	COVERED_BY_EXISTING_JOURNEY	group_creation_readonly_test	none-existing	android+macos
+fn:group:group_select_page:004	向下游传不兜底的 resolvedTitle	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_select_page.dart	new-widget-case	android+macos
+fn:group:group_select_page:005	加载中展示居中转圈指示器	COVERED_BY_EXISTING_JOURNEY	group_creation_readonly_test	none-existing	android+macos
+fn:group:group_select_page:006	展示群头像合成九宫格图	COVERED_BY_EXISTING_JOURNEY	group_creation_readonly_test	none-existing	android+macos
+fn:group:group_select_page:007	长列表滚动与分隔线渲染	COVERED_BY_EXISTING_JOURNEY	group_creation_readonly_test	none-existing	android+macos
+fn:group:group_select_page:008	点返回退回发起聊天页	PARTIAL_JOURNEY_REFERENCE	group_creation_readonly_test (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:group_select_page:009	无群会话时展示暂无数据空态	COVERED_BY_EXISTING_JOURNEY	group_creation_readonly_test	none-existing	android+macos
+fn:group:group_tag_page:001	加载并渲染群标签列表	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_tag_page.dart	new-widget-case	android+macos
+fn:group:group_tag_page:002	弹窗输入名称新增群标签	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_tag_page:003	标签名为空时不发起新增	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_tag_page:004	删除标签并二次确认拦截	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_tag_page:005	删除成功后自动刷新列表	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_tag_page:006	新增与删除失败的错误提示	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_tag_page:007	下拉刷新重新拉取标签	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_tag_page.dart	new-widget-case	android+macos
+fn:group:group_tag_page:008	解析服务端颜色渲染标签圆点	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_tag_page.dart	new-widget-case	android+macos
+fn:group:group_tag_page:009	无标签时展示空态占位	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_tag_page.dart	new-widget-case	android+macos
+fn:group:group_tag_page:010	加载失败展示重试入口	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_tag_page.dart	new-widget-case	android+macos
+fn:group:group_task_detail_page:001	加载任务详情并渲染标题信息	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_detail_page.dart	new-widget-case	android+macos
+fn:group:group_task_detail_page:002	按status枚举展示完成状态标签	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_task_detail_page:003	未截止时展示提交作业按钮	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_task_detail_page:004	提交按钮使用动作语义文案	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_task_detail_page:005	详情页隐藏内部任务ID	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_detail_page.dart	new-widget-case	android+macos
+fn:group:group_task_detail_page:006	实际提交作业并刷新详情	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_task_detail_page:007	展示待批改作业数量统计	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_detail_page.dart	new-widget-case	android+macos
+fn:group:group_task_detail_page:008	格式化截止时间与无截止文案	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_detail_page.dart	new-widget-case	android+macos
+fn:group:group_task_detail_page:009	可选展示任务描述信息行	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_detail_page.dart	new-widget-case	android+macos
+fn:group:group_task_detail_page:010	下拉刷新重新拉取任务详情	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_detail_page.dart	new-widget-case	android+macos
+fn:group:group_task_detail_page:011	提交中禁用按钮并显示转圈	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_task_detail_page:012	详情为空或出错时重试入口	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_detail_page.dart	new-widget-case	android+macos
+fn:group:group_task_page:001	加载并渲染群作业任务列表	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_page.dart	new-widget-case	android+macos
+fn:group:group_task_page:002	弹窗填写标题描述创建任务	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_task_page:003	标题为空时阻止弹窗关闭	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_page.dart	new-widget-case	android+macos
+fn:group:group_task_page:004	全部待完成已截止分段筛选	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_task_page:005	从聊天面板直达自动弹创建表单	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_task_page:006	列表项勾选直接提交作业	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_task_page:007	下拉刷新重新拉取任务列表	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_page.dart	new-widget-case	android+macos
+fn:group:group_task_page:008	点击任务进详情并回传刷新	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_page.dart	new-widget-case	android+macos
+fn:group:group_task_page:009	截止倒计时文案与超期配色	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_page.dart	new-widget-case	android+macos
+fn:group:group_task_page:010	已截止任务标题划线并置灰	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_page.dart	new-widget-case	android+macos
+fn:group:group_task_page:011	区分空态与失败态并给重试	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_page.dart	new-widget-case	android+macos
+fn:group:group_task_page:012	任务ID缺失时提示不跳转	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_task_page.dart	new-widget-case	android+macos
+fn:group:group_vote_detail_page:001	加载投票详情与我的已投选项	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_detail_page:002	单选模式点选项互斥切换	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_vote_detail_page.dart	new-widget-case	android+macos
+fn:group:group_vote_detail_page:003	多选模式点选项累加取消	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_detail_page:004	提交投票并刷新统计结果	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_detail_page:005	已投票时按钮改为更新投票	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_detail_page:006	撤销我的投票并刷新	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_detail_page:007	发起人或管理员结束投票	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_detail_page:008	已结束时禁用选项与操作区	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_vote_detail_page.dart	new-widget-case	android+macos
+fn:group:group_vote_detail_page:009	渲染票数百分比与进度条	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_vote_detail_page.dart	new-widget-case	android+macos
+fn:group:group_vote_detail_page:010	未选中选项时禁用提交按钮	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_detail_page:011	下拉刷新重新拉取投票详情	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_detail_page:012	区分加载失败与投票不存在态	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_page:001	加载并渲染群投票列表	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_page:002	弹窗填写标题选项创建投票	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_page:003	选项不足两条时拦截并提示	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_vote_page.dart	new-widget-case	android+macos
+fn:group:group_vote_page:004	创建失败弹出网络错误提示	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_page:005	从聊天面板直达自动弹创建表单	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_page:006	下拉刷新重新拉取投票列表	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_page:007	点击投票进详情并回传刷新	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:group_vote_page:008	展示进行中与已结束状态徽标	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_vote_page.dart	new-widget-case	android+macos
+fn:group:group_vote_page:009	参与人数缺失时兜底取总票数	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_vote_page.dart	new-widget-case	android+macos
+fn:group:group_vote_page:010	区分空态与加载失败重试入口	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on group_vote_page.dart	new-widget-case	android+macos
+fn:group:group_vote_page:011	投票ID缺失时提示不跳转	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:launch_chat_page:001	加载好友列表本地空则请服务端	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces)	none-existing	android+macos
+fn:group:launch_chat_page:002	A-Z 索引栏动态生成并定位	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces)	none-existing	android+macos
+fn:group:launch_chat_page:003	点联系人切换勾选并给出反馈	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces)	none-existing	android+macos
+fn:group:launch_chat_page:004	顶部横滑展示已选成员头像	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces)	none-existing	android+macos
+fn:group:launch_chat_page:005	点预览头像移除该已选成员	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces) (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:launch_chat_page:006	未选人时完成按钮真正禁用	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces) (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:launch_chat_page:007	快捷入口跳转选择群聊页	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces)	none-existing	android+macos
+fn:group:launch_chat_page:008	快捷入口跳转面对面建群页	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces)	none-existing	android+macos
+fn:group:launch_chat_page:009	点取消退出选择联系人页	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces) (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:launch_chat_page:010	无好友时展示暂无数据空态	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces)	none-existing	android+macos
+fn:group:launch_chat_page:011	提交建群并防重复点击	PARTIAL_JOURNEY_REFERENCE	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces) (entry covered; write closure needs isolated backend + fixtures)	extend-existing-journey	android+macos
+fn:group:launch_chat_page:012	建群成功弹出双入口引导层	COVERED_BY_EXISTING_JOURNEY	face_to_face_acceptance_test + group_creation_readonly_test (three entry surfaces)	none-existing	android+macos
+fn:group:remove_member_page:001	从群详情进入本页可正常打开	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on remove_member_page.dart	new-widget-case	android+macos
+fn:group:remove_member_page:002	加载群成员列表并排除自己	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on remove_member_page.dart	new-widget-case	android+macos
+fn:group:remove_member_page:003	点成员行切换勾选状态	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on remove_member_page.dart	new-widget-case	android+macos
+fn:group:remove_member_page:004	完成按钮随选中数高亮变化	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:remove_member_page:005	未选中时点完成不触发请求	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:remove_member_page:006	点信息图标查看成员资料	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on remove_member_page.dart	new-widget-case	android+macos
+fn:group:remove_member_page:007	点取消返回群详情页	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:remove_member_page:008	成员为空时展示暂无数据空态	TARGET_MISSING_WIDGET_LEVEL	page-level widget flow on remove_member_page.dart	new-widget-case	android+macos
+fn:group:remove_member_page:009	移除失败时弹出错误提示	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
+fn:group:remove_member_page:010	提交移除成员并回传结果	TARGET_MISSING_NEW_CASE_REQUIRED	write closure requires isolated backend 19800 + synthetic fixtures	new-integration-case	android+macos
