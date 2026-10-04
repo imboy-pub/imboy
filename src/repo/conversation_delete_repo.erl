@@ -38,13 +38,13 @@ mark_deleted(Uid, ConversationId, Type) ->
     Now = elib_dt:now(),
     GenId = elib_tsid:generate(conversation_delete),
     % 使用 INSERT ... ON CONFLICT DO NOTHING 实现幂等性
-    Sql = <<"INSERT INTO ", Tb/binary,
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
             " (id, user_id, conversation_id, conversation_type, deleted_at, created_at) ",
             "VALUES ($1, $2, $3, $4, $5, $6) ",
-            "ON CONFLICT (user_id, conversation_id, conversation_type) ",
-            "DO NOTHING">>,
+            "ON CONFLICT (user_id, conversation_id, conversation_type) ", "DO NOTHING">>,
     Params = [GenId, Uid, ConversationId, Type, Now, Now],
-    case elib_pg:execute(Sql, Params) of
+    case elib_pg:execute_count(Sql, Params) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
@@ -56,7 +56,8 @@ mark_deleted(Uid, ConversationId, Type) ->
 %% @return true 已删除 | false 未删除
 -spec is_deleted(integer(), integer(), binary()) -> boolean().
 is_deleted(Uid, ConversationId, Type) ->
-    Sql = <<"SELECT count(*) as count FROM ", (tablename())/binary,
+    Sql =
+        <<"SELECT count(*) as count FROM ", (tablename())/binary,
             " WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,
     case elib_pg:query(Sql, [Uid, ConversationId, Type]) of
         {ok, [#{<<"count">> := Count}]} when Count > 0 ->
@@ -70,10 +71,9 @@ is_deleted(Uid, ConversationId, Type) ->
 %% @return {ok, List} 查询成功返回已删除列表 | {error, Reason} 查询失败
 -spec list(integer()) -> {ok, list(map())} | {error, term()}.
 list(Uid) ->
-    Sql = <<"SELECT conversation_id, conversation_type, deleted_at ",
-            "FROM ", (tablename())/binary,
-            " WHERE user_id = $1 ",
-            "ORDER BY deleted_at DESC">>,
+    Sql =
+        <<"SELECT conversation_id, conversation_type, deleted_at ", "FROM ", (tablename())/binary,
+            " WHERE user_id = $1 ", "ORDER BY deleted_at DESC">>,
     case elib_pg:query(Sql, [Uid]) of
         {ok, Rows} when is_list(Rows) ->
             {ok, Rows};

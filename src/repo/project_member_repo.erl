@@ -123,7 +123,7 @@ remove_tx(Conn, ProjectId, Uid) ->
     Sql =
         <<"UPDATE ", Tb/binary, " SET status = 'removed', updated_at = $1",
             " WHERE project_id = $2 AND user_id = $3 AND status = 'active'">>,
-    case elib_pg:execute(Conn, Sql, [Now, ProjectId, Uid]) of
+    case elib_pg:execute_count(Conn, Sql, [Now, ProjectId, Uid]) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.

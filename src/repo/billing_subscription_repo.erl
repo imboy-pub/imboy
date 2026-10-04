@@ -119,7 +119,7 @@ renew(Id, PeriodStart, PeriodEnd) ->
             " current_period_start = to_timestamp($2::bigint/1000),",
             " current_period_end = to_timestamp($3::bigint/1000),", " updated_at = NOW()",
             " WHERE id = $4">>,
-    case elib_pg:execute(Sql, [?STATUS_ACTIVE, PeriodStart, PeriodEnd, Id]) of
+    case elib_pg:execute_count(Sql, [?STATUS_ACTIVE, PeriodStart, PeriodEnd, Id]) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.

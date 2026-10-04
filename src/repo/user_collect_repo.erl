@@ -19,13 +19,11 @@
 %% API
 %% ===================================================================
 
-
 %% @doc 获取用户收藏表的表名
 %% @return 返回用户收藏表的完整表名
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"user_collect">>).
-
 
 %% @doc 统计用户指定类型的收藏数量
 %% @param Uid 用户ID
@@ -35,7 +33,9 @@ tablename() ->
 -spec count_by_uid_kind_id(integer(), binary()) -> non_neg_integer().
 count_by_uid_kind_id(Uid, KindId) ->
     % 使用安全的参数化查询，避免SQL注入
-    Sql = <<"SELECT count(*) as count FROM ", (tablename())/binary, " WHERE user_id = $1 AND status = 1 AND kind_id = $2">>,
+    Sql =
+        <<"SELECT count(*) as count FROM ", (tablename())/binary,
+            " WHERE user_id = $1 AND status = 1 AND kind_id = $2">>,
     case elib_pg:query(Sql, [Uid, KindId]) of
         {ok, [#{<<"count">> := Count}]} ->
             Count;
@@ -53,11 +53,10 @@ delete(Uid, KindId) ->
     Tb = tablename(),
     Where = <<" WHERE user_id = $1 AND kind_id = $2">>,
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
-    case elib_pg:execute(Sql, [Uid, KindId]) of
+    case elib_pg:execute_count(Sql, [Uid, KindId]) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
-
 
 %% @doc 更新用户收藏
 %% @param Uid 用户ID
@@ -80,4 +79,3 @@ update(Uid, KindId, Data) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

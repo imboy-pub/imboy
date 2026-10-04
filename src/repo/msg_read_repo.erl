@@ -88,7 +88,7 @@ get_read_status(MsgId, FromUid) ->
 delete_read_records(MsgId, ToUid) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE msg_id = $1 AND to_uid = $2">>,
-    case elib_pg:execute(Sql, [MsgId, ToUid]) of
+    case elib_pg:execute_count(Sql, [MsgId, ToUid]) of
         {ok, Count} -> {ok, Count};
         {ok, Count, _} -> {ok, Count};
         {error, Reason} -> {error, Reason}

@@ -102,7 +102,6 @@ elib_metric
 elib_oss
 elib_param
 elib_password
-elib_pg
 elib_pg_sql
 elib_req
 elib_retry
@@ -180,7 +179,6 @@ group_task_handler
 group_task_logic
 group_task_repo
 group_vote_repo
-imboy_app
 imboy_cache
 imboy_cluster
 imboy_codec

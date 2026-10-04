@@ -301,6 +301,31 @@ execute(Conn, Sql, Params) ->
 % 有 RETURNING 子句：返回 {ok, 1, Result} （三元组），其中 Result 可能是 {Id} 或 [{Id}]
 
 %%--------------------------------------------------------------------
+%% @doc execute 的计数契约形态：UPDATE / DELETE 等无 RETURNING 语句专用。
+%% 宽结果形态按影响行数契约收敛（行集/三元组对本契约不可达，防御性归零/取计数），
+%% 调用方只需处理 {ok, Count} | {error, Reason}。
+%%--------------------------------------------------------------------
+-spec execute_count(iodata(), [term()]) ->
+    {ok, non_neg_integer()} | {error, term()}.
+execute_count(Sql, Params) ->
+    with_conn(
+        fun(C) ->
+            execute_count(C, Sql, Params)
+        end,
+        ?DEFAULT_TIMEOUT
+    ).
+
+-spec execute_count(epgsql:connection(), iodata(), [term()]) ->
+    {ok, non_neg_integer()} | {error, term()}.
+execute_count(Conn, Sql, Params) ->
+    case execute(Conn, Sql, Params) of
+        {ok, Count} when is_integer(Count) -> {ok, Count};
+        {ok, Count, _Rows} -> {ok, Count};
+        {ok, _Rows} -> {ok, 0};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%%--------------------------------------------------------------------
 %% @doc
 %% 查询多行，返回 map 列表
 %%--------------------------------------------------------------------

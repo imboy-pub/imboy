@@ -46,7 +46,7 @@ pin(Uid, ConversationId, Type) ->
     Id = elib_tsid:generate(conversation_pin),
     Data2 = Data#{<<"id">> => Id},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    case elib_pg:execute(Sql, Params) of
+    case elib_pg:execute_count(Sql, Params) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
@@ -73,7 +73,8 @@ unpin(Uid, ConversationId, Type) ->
 %% @return true 已置顶 | false 未置顶
 -spec is_pinned(integer(), integer(), binary()) -> boolean().
 is_pinned(Uid, ConversationId, Type) ->
-    Sql = <<"SELECT count(*) as count FROM ", (tablename())/binary,
+    Sql =
+        <<"SELECT count(*) as count FROM ", (tablename())/binary,
             " WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,
     case elib_pg:query(Sql, [Uid, ConversationId, Type]) of
         {ok, [#{<<"count">> := Count}]} when Count > 0 ->
@@ -87,10 +88,9 @@ is_pinned(Uid, ConversationId, Type) ->
 %% @return {ok, List} 查询成功返回置顶列表 | {error, Reason} 查询失败
 -spec list(integer()) -> {ok, list(map())} | {error, term()}.
 list(Uid) ->
-    Sql = <<"SELECT conversation_id, conversation_type, pinned_at ",
-            "FROM ", (tablename())/binary,
-            " WHERE user_id = $1 ",
-            "ORDER BY pinned_at DESC">>,
+    Sql =
+        <<"SELECT conversation_id, conversation_type, pinned_at ", "FROM ", (tablename())/binary,
+            " WHERE user_id = $1 ", "ORDER BY pinned_at DESC">>,
     case elib_pg:query(Sql, [Uid]) of
         {ok, Rows} when is_list(Rows) ->
             {ok, Rows};

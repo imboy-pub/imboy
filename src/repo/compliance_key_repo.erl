@@ -89,7 +89,7 @@ revoke(KeyId, RevokedBy) ->
         <<"UPDATE ", Tb/binary,
             " SET status = 0, revoked_at = CURRENT_TIMESTAMP, revoked_by = $1, updated_at = CURRENT_TIMESTAMP"
             " WHERE key_id = $2 AND status = 1">>,
-    case elib_pg:execute(Sql, [RevokedBy, KeyId]) of
+    case elib_pg:execute_count(Sql, [RevokedBy, KeyId]) of
         {ok, AffectedRows} -> {ok, AffectedRows};
         {error, Reason} -> {error, Reason}
     end.
