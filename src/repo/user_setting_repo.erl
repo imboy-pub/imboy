@@ -31,7 +31,7 @@ tablename() ->
 -spec find_by_uid(binary() | integer()) -> {ok, list()} | {error, term()}.
 find_by_uid(Uid) when is_binary(Uid) ->
     find_by_uid(ec_cnv:to_integer(Uid));
-find_by_uid(Uid) when is_integer(Uid) ->
+find_by_uid(Uid) ->
     Tb = tablename(),
     Sql = <<
         "/* SELECT.*FROM.*user_setting WHERE.*user_id */ "
@@ -55,7 +55,7 @@ find_by_uid(Uid) when is_integer(Uid) ->
 -spec get(binary() | integer(), binary()) -> {ok, binary()} | {error, term()}.
 get(Uid, Key) when is_binary(Uid) ->
     get(ec_cnv:to_integer(Uid), Key);
-get(Uid, Key) when is_integer(Uid) ->
+get(Uid, Key) ->
     Tb = tablename(),
     Sql = <<
         "/* SELECT.*FROM.*user_setting WHERE.*user_id.*AND.*setting_key */ "
@@ -68,7 +68,8 @@ get(Uid, Key) when is_integer(Uid) ->
     case elib_pg:query(Sql, [Uid, Key]) of
         {ok, [#{<<"setting_value">> := Value} | _]} ->
             {ok, Value};
-        {ok, []} ->
+        {ok, _Rows} ->
+            %% 空结果或缺 setting_value 键的异常行统一按未找到处理
             {error, not_found};
         Error ->
             Error
@@ -82,7 +83,7 @@ get(Uid, Key) when is_integer(Uid) ->
 -spec save(binary() | integer(), binary(), term()) -> ok.
 save(Uid, Key, Value) when is_binary(Uid) ->
     save(ec_cnv:to_integer(Uid), Key, Value);
-save(Uid, Key, Value) when is_integer(Uid) ->
+save(Uid, Key, Value) ->
     Tb = tablename(),
     Now = elib_dt:now(),
     Sql = <<
@@ -108,7 +109,7 @@ save(Uid, Key, Value) when is_integer(Uid) ->
 -spec find_by_uid(binary() | integer(), binary()) -> map().
 find_by_uid(Uid, Column) when is_binary(Uid) ->
     find_by_uid(ec_cnv:to_integer(Uid), Column);
-find_by_uid(Uid, Column) when is_integer(Uid) ->
+find_by_uid(Uid, Column) ->
     Tb = tablename(),
     Where = <<" WHERE user_id = $1">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
@@ -126,7 +127,7 @@ find_by_uid(Uid, Column) when is_integer(Uid) ->
 -spec update(binary() | integer(), map()) -> ok.
 update(Uid, Setting) when is_binary(Uid) ->
     update(ec_cnv:to_integer(Uid), Setting);
-update(Uid, Setting) when is_integer(Uid) ->
+update(Uid, Setting) ->
     Data = #{
         % 用户ID
         <<"user_id">> => Uid,
@@ -167,7 +168,8 @@ normalize_setting_rows(Rows) ->
 execute_compat(Sql, Params) ->
     case whereis(pooler) of
         undefined ->
-            elib_pg:execute(mock_conn, Sql, Params);
+            %% 池未起（测试/构建环境）：快速失败，避免 with_conn 走真实连接超时
+            {error, pool_not_started};
         _ ->
             elib_pg:execute(Sql, Params)
     end.
