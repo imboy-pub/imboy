@@ -82,31 +82,41 @@ insert_event(#{
         ActorGen,
         TargetVer
     ],
-    elib_pg:with_tx(fun(Conn) ->
-        %% 1. per-target 事务级 advisory 锁（同一 target device 的写入串行化）
-        _ = elib_pg:query(
-            Conn, <<"SELECT pg_advisory_xact_lock(hashtext($1))">>, [LockKey]
-        ),
-        %% 2. 锁内读历史最大版本，锁内决定是否回退
-        case elib_pg:query(Conn, MaxSql, [TargetUid, TargetDeviceId]) of
-            {ok, [#{<<"v">> := MaxVer} | _]} when TargetVer < MaxVer ->
-                {error, <<"identity_version_rollback">>};
-            {ok, _} ->
-                insert_locked(
-                    Conn,
-                    InsertSql,
-                    Params,
-                    OwnerSql,
-                    EventId,
-                    ActorUid,
-                    TargetUid,
-                    TargetDeviceId,
-                    ToState
-                );
-            {error, Reason} ->
-                {error, Reason}
-        end
-    end).
+    %% with_tx 的 spec 含 {rollback, term()} 臂（供钱路径 throw({rollback,_}) 用）；
+    %% 本事务不抛该信号，运行时不可达，但类型上必须收编才能兑现 insert_event 承诺。
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            %% 1. per-target 事务级 advisory 锁（同一 target device 的写入串行化）
+            _ = elib_pg:query(
+                Conn, <<"SELECT pg_advisory_xact_lock(hashtext($1))">>, [LockKey]
+            ),
+            %% 2. 锁内读历史最大版本，锁内决定是否回退
+            case elib_pg:query(Conn, MaxSql, [TargetUid, TargetDeviceId]) of
+                {ok, [#{<<"v">> := MaxVer} | _]} when TargetVer < MaxVer ->
+                    {error, <<"identity_version_rollback">>};
+                {ok, _} ->
+                    insert_locked(
+                        Conn,
+                        InsertSql,
+                        Params,
+                        OwnerSql,
+                        EventId,
+                        ActorUid,
+                        TargetUid,
+                        TargetDeviceId,
+                        ToState
+                    );
+                {error, Reason} ->
+                    {error, Reason}
+            end
+        end)
+    of
+        %% 三臂显式枚举：with_tx spec 的 {rollback,_} 臂在本事务不可达（本 fun
+        %% 不抛该信号），收编为 {error,_}；catch-all 变量不收窄会携带全型。
+        {rollback, Reason} -> {error, Reason};
+        {error, Reason} -> {error, Reason};
+        {ok, Status} -> {ok, Status}
+    end.
 
 %% 锁内幂等插入 + 冲突归属核对（见 insert_event 文档）。
 insert_locked(
@@ -151,7 +161,10 @@ insert_locked(
 %% @doc actor 设备的 status 与 device_generation（跨表读 user_device，供 trust 校验）。
 %%  E2EE-014：撤销 actor 与旧设备重放拒绝依据。无记录返回 {ok, not_found}。
 -spec actor_device_state(integer(), binary()) -> {ok, map() | not_found} | {error, term()}.
-actor_device_state(ActorUid, ActorDeviceId) when is_integer(ActorUid) ->
+%% 不加 is_integer(ActorUid)/is_integer(TargetUid) 守卫：对已声明 integer()
+%% 的参数做冗余守卫细化触发 Gradualizer pick_value(none()) 崩溃
+%% （崩溃家族配方 b'，2026-10-04）；非整数入参由 SQL 参数绑定报 {error, _}。
+actor_device_state(ActorUid, ActorDeviceId) ->
     Ud = elib_pg_sql:public_tablename(<<"user_device">>),
     Sql = <<
         "SELECT status, device_generation FROM ",
@@ -166,7 +179,7 @@ actor_device_state(ActorUid, ActorDeviceId) when is_integer(ActorUid) ->
 
 %% @doc 查询某目标设备的信任事件历史（按时间升序，供审计回放）。
 -spec list_by_target(integer(), binary()) -> {ok, [map()]} | {error, term()}.
-list_by_target(TargetUid, TargetDeviceId) when is_integer(TargetUid) ->
+list_by_target(TargetUid, TargetDeviceId) ->
     Tb = tablename(),
     Sql = <<
         "SELECT actor_uid, target_uid, target_device_id, from_state, to_state,",
