@@ -1,0 +1,42 @@
+{
+  "receipt": "res-pg-port-binding-fix",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "scope": "isolated acceptance PG (compose.pg18.yml) port publishing on Docker Desktop / Engine 29",
+  "symptom": {
+    "container_state": "Up (healthy) with correct HostConfig.PortBindings {\"5432/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"25432\"}]}",
+    "observed": "NetworkSettings.Ports == {\"5432/tcp\":[]}; `docker port` empty; host psql -> Connection refused; stop/start did NOT restore binding"
+  },
+  "diagnosis": [
+    "host port 25432 free (lsof -iTCP:25432 -sTCP:LISTEN rc=1); docker engine 29.8.1 healthy",
+    "full `docker compose down && up -d` recreate: same empty Ports on fresh container => not stale-state",
+    "control probe A: `docker run -p 127.0.0.1:25499:80 nginx:alpine` on DEFAULT bridge -> docker port OK, curl 200 => Docker Desktop port forwarding globally functional",
+    "control probe B: nginx on a `--internal` network with -p 127.0.0.1:25498:80 -> NetworkSettings.Ports {\"80/tcp\":[]}, docker port empty => reproduced",
+    "root cause: Docker Engine 29 silently drops port publishing for containers whose ONLY network is internal:true"
+  ],
+  "fixes": [
+    {
+      "file": "imboy/docs/design/2026-10-03-full-product-device-acceptance/isolated-backend/compose.pg18.yml",
+      "change": "networks.acceptance: internal:true -> driver:bridge with explanatory comment",
+      "isolation_note": "isolation substance retained: tmpfs ephemeral PGDATA, pull_policy never, published port bound to 127.0.0.1 only, dedicated synthetic credentials, dedicated project-scoped network (not the default bridge)"
+    },
+    {
+      "file": "imboy/docs/design/2026-10-03-full-product-device-acceptance/isolated-backend/compose.pg18.init-wrapper.override.yml",
+      "change": "after initdb, append pg_hba.conf rule `host all all 172.16.0.0/12 scram-sha-256` (image pg_hba only allowed local/127.0.0.1/::1; host connections arrive from docker bridge gateway 172.20.0.1)",
+      "isolation_note": "scram-sha-256 still enforced; only private docker ranges accepted"
+    }
+  ],
+  "verification": {
+    "docker_port": "5432/tcp -> 127.0.0.1:25432",
+    "health": "healthy ~10s after recreate; TimescaleDB background launcher connected in logs",
+    "host_psql": {
+      "command": "PGPASSWORD=<synthetic, not stored> psql -h 127.0.0.1 -p 25432 -U imboy_acceptance -d imboy_acceptance",
+      "server_version": "18.1 (Debian 18.1-1.pgdg13+2)",
+      "extensions": "address_standardizer=3.6.1, fuzzystrmatch=1.2, pg_jieba=1.1.1, pg_stat_statements=1.12, pg_trgm=1.6, pgcrypto=1.4, pgrouting=4.0.0, plpgsql=1.0, postgis=3.6.1, postgis_tiger_geocoder=3.6.1, postgis_topology=3.6.1, roaringbitmap=1.1, timescaledb=2.23.1, vector=0.8.1"
+    }
+  },
+  "notes": [
+    "8 prior failed attempts (init/bootstrap recovery history) are recorded in res-pg-qual-executed.json; this file covers ONLY the port-publishing root cause found after those attempts succeeded inside the container.",
+    "deviation from original isolation declaration (internal network) recorded above with rationale; no third-party impact, data ephemeral."
+  ]
+}

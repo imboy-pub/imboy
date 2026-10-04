@@ -1,0 +1,93 @@
+{
+  "id": "RES-PG-QUAL-EXECUTED",
+  "run_id": "zcode-acceptance-20261004",
+  "created_at": "2026-10-04T08:13:14+08:00",
+  "authorization": "user message this session: 授权你使用真机设备，授权你完成全部任务计划 (grants RES-PG-QUAL through RES-JOURNEYS within the two-plan contract boundaries; D-02..D-07 product decisions remain BLOCKED_DECISION; no push/deploy/production/payment/third-party)",
+  "input_validation": {
+    "script": "scripts/validate_acceptance_pg_inputs.py",
+    "RC": 0,
+    "port": 25432,
+    "compose_project": "imboy-acceptance-zcode-acceptance-20261004"
+  },
+  "image": {
+    "id": "sha256:fbe5570489c5b0cbd296581b61cd188daad15793381185df45295236a1234b4d",
+    "arch": "arm64",
+    "os": "linux",
+    "pull_policy": "never",
+    "registry_digest": "not verified (RepoDigests empty, as recorded in review)"
+  },
+  "qualification_result": {
+    "server_version": "18.1 (Debian 18.1-1.pgdg13+2)",
+    "required_extensions": {
+      "pg_jieba": "1.1.1",
+      "postgis": "3.6.1",
+      "timescaledb": "2.23.1",
+      "pgcrypto": "1.4"
+    },
+    "additional": [
+      "pgrouting 4.0.0",
+      "vector 0.8.1",
+      "pg_trgm 1.6",
+      "roaringbitmap 1.1",
+      "address_standardizer",
+      "fuzzystrmatch",
+      "postgis_tiger_geocoder",
+      "postgis_topology",
+      "pg_stat_statements 1.12"
+    ],
+    "shared_preload_libraries": "pgcrypto, pg_jieba, timescaledb, vector, pg_stat_statements",
+    "databases": [
+      "imboy_acceptance (main)",
+      "template_postgis (template)"
+    ],
+    "data": "tmpfs only; stops = wipe",
+    "BACKEND_READY": false,
+    "note": "PG_READY only; backend/migrations/fixtures are a separate approval unit (RES-PG-BACKEND), now authorized and starting next"
+  },
+  "recovery_history": [
+    {
+      "attempt": 1,
+      "fail": "image init 10_init.sh expects existing template_postgis (create-missing bug)",
+      "exit": 2
+    },
+    {
+      "attempt": 2,
+      "fail": "docker start re-ran init: tmpfs wiped on stop; initdb redone then same bug",
+      "exit": 2
+    },
+    {
+      "attempt": 3,
+      "fail": "init-hook via compose configs: entrypoint SOURCES init scripts in one shell, so 10_init.sh's \"${@}\" treated sibling script paths as db names",
+      "exit": 2,
+      "artifact": "isolated-backend/compose.pg18.init-hook.override.yml (rejected approach, kept for audit)"
+    },
+    {
+      "attempt": 4,
+      "fail": "explicit wrapper: initdb pwfile /tmp 600 root-owned -> postgres denied",
+      "exit": 1
+    },
+    {
+      "attempt": 5,
+      "fail": "pwfile /dev/stdin: initdb needs seekable regular file",
+      "exit": 1
+    },
+    {
+      "attempt": 6,
+      "fail": "pwfile path /var/lib/postgresql/18/ missing (tmpfs root is /var/lib/postgresql)",
+      "exit": 1
+    },
+    {
+      "attempt": 7,
+      "fail": "psql fe_sendauth: init psql lacked PGPASSWORD",
+      "exit": 1
+    },
+    {
+      "attempt": 8,
+      "PASS": "explicit wrapper init (stock preload+extension list) + handoff to stock entrypoint; health=healthy; all extensions verified"
+    }
+  ],
+  "artifacts": [
+    "isolated-backend/compose.pg18.init-wrapper.override.yml"
+  ],
+  "product_pass": false
+}

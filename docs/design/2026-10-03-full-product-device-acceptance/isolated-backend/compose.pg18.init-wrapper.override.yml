@@ -1,0 +1,36 @@
+# Run-scoped override: the image's entrypoint sources initdb.d scripts in a
+# shared shell, so 10_init.sh's "${@}" loop treats sibling script paths as
+# database names (any extra script breaks init). This wrapper performs the
+# stock initialization explicitly (same preload + extension list as
+# 10_init/20_update) and then hands off to the stock entrypoint.
+services:
+  postgres:
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/postgresql/18/bin
+        export PGDATA PGUSER POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD LANG
+        export PGPASSWORD="$$POSTGRES_PASSWORD"
+        if [ ! -s "$$PGDATA/PG_VERSION" ]; then
+          echo "[wrapper] fresh PGDATA: explicit initialization"
+          printf '%s\n' "$$POSTGRES_PASSWORD" > /var/lib/postgresql/pwfile
+          chown postgres:postgres /var/lib/postgresql/pwfile && chmod 600 /var/lib/postgresql/pwfile
+          gosu postgres initdb -D "$$PGDATA" -U "$$POSTGRES_USER" -A scram-sha-256 --pwfile=/var/lib/postgresql/pwfile
+          rm -f /var/lib/postgresql/pwfile
+          # Host-side published-port connections arrive from the docker bridge
+          # gateway (172.16.0.0/12), which the image's restrictive pg_hba
+          # rejects. Allow private docker ranges (scram still enforced).
+          printf '%s\n' 'host    all             all             172.16.0.0/12           scram-sha-256' >> "$$PGDATA/pg_hba.conf"
+          echo "shared_preload_libraries = 'pgcrypto, pg_jieba, timescaledb, vector, pg_stat_statements'" >> "$$PGDATA/postgresql.conf"
+          gosu postgres pg_ctl -D "$$PGDATA" -l /tmp/pginit.log start -w
+          psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d postgres -c "CREATE DATABASE template_postgis IS_TEMPLATE true;"
+          psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d postgres -c "CREATE DATABASE $$POSTGRES_DB;"
+          for DB in template_postgis "$$POSTGRES_DB"; do
+            psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" --dbname="$$DB" -c "CREATE EXTENSION IF NOT EXISTS postgis VERSION '3.6.1'; ALTER EXTENSION postgis UPDATE TO '3.6.1'; CREATE EXTENSION IF NOT EXISTS postgis_topology VERSION '3.6.1'; CREATE EXTENSION IF NOT EXISTS fuzzystrmatch; CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder;"
+          done
+          psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" --dbname="$$POSTGRES_DB" -c "CREATE EXTENSION IF NOT EXISTS pgrouting; CREATE EXTENSION IF NOT EXISTS address_standardizer; CREATE EXTENSION IF NOT EXISTS pg_jieba; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS timescaledb; CREATE EXTENSION IF NOT EXISTS pg_stat_statements; CREATE EXTENSION IF NOT EXISTS pgcrypto; CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS roaringbitmap;"
+          gosu postgres pg_ctl -D "$$PGDATA" stop -m fast -w
+          echo "[wrapper] init complete; handing to stock entrypoint"
+        fi
+        exec /usr/local/bin/docker-entrypoint.sh postgres

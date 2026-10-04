@@ -1,0 +1,2045 @@
+Makefile:247: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:249: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:661: warning: overriding recipe for target 'eunit'
+erlang.mk:3494: warning: ignoring old recipe for target 'eunit'
+Makefile:247: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:249: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:661: warning: overriding recipe for target 'eunit'
+erlang.mk:3494: warning: ignoring old recipe for target 'eunit'
+Makefile:247: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:249: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:661: warning: overriding recipe for target 'eunit'
+erlang.mk:3494: warning: ignoring old recipe for target 'eunit'
+ PRUNE  excluded=0 ebin_moment_left=11
+erl -noinput -boot no_dot_erlang -kernel start_distribution false +P 1024 +Q 1024 -pa ebin/ -pz /Users/leeyi/project/imboy.pub/imboy/.erlang.mk/rebar3/_build/prod/lib/*/ebin/ -eval "	Config = 	(fun() ->		Config0 =			case file:consult(\"/Users/leeyi/project/imboy.pub/imboy/relxlocal.config\") of				{ok, Terms} ->					Terms;				{error, _} ->					[]			end,		case filelib:is_file(\"/Users/leeyi/project/imboy.pub/imboy/relx.config.script\") of			true ->				Bindings = erl_eval:add_binding('CONFIG', Config0, erl_eval:new_bindings()),				{ok, Config1} = file:script(\"/Users/leeyi/project/imboy.pub/imboy/relx.config.script\", Bindings),				Config1;			false ->				Config0		end	end)(),	{release, {Name, Vsn0}, _} = lists:keyfind(release, 1, Config),	Vsn = case Vsn0 of		{cmd, Cmd} -> os:cmd(Cmd);		semver -> \"\";		{semver, _} -> \"\";		{git, short} -> string:trim(os:cmd(\"git rev-parse --short HEAD\"), both, \"\n\");		{git, long} -> string:trim(os:cmd(\"git rev-parse HEAD\"), both, \"\n\");		VsnStr -> Vsn0	end,	{ok, _} = relx:build_release(#{name => Name, vsn => Vsn}, Config ++ [{output_dir, \"_rel\"}]),	halt(0)." -- erlang.mk
+Solving Release imboy-1.0.0-alpha.75Resolved imboy-1.0.0-alpha.75release: imboy-1.0.0-alpha.75
+     erts: 17.0.2
+     goals: 
+          imboy
+          sasl
+          runtime_tools
+          mnesia
+     applications: 
+          {kernel,"11.0.2"}
+          {stdlib,"8.0.1"}
+          {mnesia,"4.26.1"}
+          {sasl,"4.4"}
+          {crypto,"5.9"}
+          {asn1,"5.5"}
+          {public_key,"1.21.2"}
+          {ssl,"11.7.2"}
+          {inets,"9.7.1"}
+          {eunit,"2.11"}
+          {ranch,"2.3.0"}
+          {cowlib,"2.20.0"}
+          {cowboy,"2.19.0"}
+          {gun,"2.6.0"}
+          {cf,"0.3.1"}
+          {erlware_commons,"git"}
+          {jose,"1.11.12"}
+          {gen_smtp,"1.3.0"}
+          {throttle,"0.3.0"}
+          {syntax_tools,"4.1"}
+          {compiler,"10.0.1"}
+          {goldrush,"0.2.0"}
+          {jsone,"1.9.0"}
+          {epgsql,"4.8.0"}
+          {pooler,"1.7.0"}
+          {erlang_migrate,"0.3.3"}
+          {depcache,"git"}
+          {syn,"3.4.2"}
+          {telemetry,"1.4.2"}
+          {ecron,"1.1.0"}
+          {uid,"git"}
+          {lager,"3.9.2"}
+          {recon,"2.5.6"}
+          {observer_cli,"2.0.0"}
+          {runtime_tools,"2.4"}
+          {redbug,"2.0.10"}
+          {opentelemetry_api,"1.5.0"}
+          {opentelemetry,"1.7.0"}
+          {ctx,"0.6.0"}
+          {hpack,"0.3.0"}
+          {chatterbox,"0.16.0"}
+          {acceptor_pool,"1.0.1"}
+          {gproc,"1.3.0"}
+          {grpcbox,"0.18.0"}
+          {ssl_verify_fun,"1.1.7"}
+          {tls_certificate_check,"1.35.0"}
+          {opentelemetry_exporter,"1.11.0"}
+          {simple_captcha,"0.1.0"}
+          {erlydtl,"0.14.0"}
+          {erlang_pay,"0.3.0"}
+          {imboy,"1.0.0-alpha.82"}
+Assembling release imboy-1.0.0-alpha.75...Release output dir /Users/leeyi/project/imboy.pub/imboy/_rel/imboyRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/kernel-11.0.2/ebin/kernel.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/stdlib-8.0.1/ebin/stdlib.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/mnesia-4.26.1/ebin/mnesia.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/sasl-4.4/ebin/sasl.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/crypto-5.9/ebin/crypto.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/asn1-5.5/ebin/asn1.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/public_key-1.21.2/ebin/public_key.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/ssl-11.7.2/ebin/ssl.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/inets-9.7.1/ebin/inets.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/eunit-2.11/ebin/eunit.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/ranch/ebin/ranch.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/cowlib/ebin/cowlib.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/cowboy/ebin/cowboy.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/gun/ebin/gun.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/cf/ebin/cf.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/erlware_commons/ebin/erlware_commons.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/jose/ebin/jose.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/gen_smtp/ebin/gen_smtp.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/throttle/ebin/throttle.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/syntax_tools-4.1/ebin/syntax_tools.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/compiler-10.0.1/ebin/compiler.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/goldrush/ebin/goldrush.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/jsone/ebin/jsone.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/epgsql/ebin/epgsql.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/pooler/ebin/pooler.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/erlang_migrate/ebin/erlang_migrate.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/depcache/ebin/depcache.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/syn/ebin/syn.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/telemetry/ebin/telemetry.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/ecron/ebin/ecron.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/uid/ebin/uid.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/lager/ebin/lager.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/recon/ebin/recon.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/observer_cli/ebin/observer_cli.appRewriting .app file: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib/runtime_tools-2.4/ebin/runtime_tools.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/redbug/ebin/redbug.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/opentelemetry_api/ebin/opentelemetry_api.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/opentelemetry/ebin/opentelemetry.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/ctx/ebin/ctx.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/hpack/ebin/hpack.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/chatterbox/ebin/chatterbox.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/acceptor_pool/ebin/acceptor_pool.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/gproc/ebin/gproc.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/grpcbox/ebin/grpcbox.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/ssl_verify_fun/ebin/ssl_verify_fun.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/tls_certificate_check/ebin/tls_certificate_check.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/opentelemetry_exporter/ebin/opentelemetry_exporter.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/simple_captcha/ebin/simple_captcha.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/erlydtl/ebin/erlydtl.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/deps/erlang_pay/ebin/erlang_pay.appRewriting .app file: /Users/leeyi/project/imboy.pub/imboy/ebin/imboy.apprelease start script createdRelease successfully assembled: _rel/imboymake[1]: Entering directory '/Users/leeyi/project/imboy.pub/imboy'
+Makefile:247: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:249: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:661: warning: overriding recipe for target 'eunit'
+erlang.mk:3494: warning: ignoring old recipe for target 'eunit'
+make[1]: Leaving directory '/Users/leeyi/project/imboy.pub/imboy'
+Exec: /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/erts-17.0.2/bin/erlexec -boot /Users/leeyi/project/imboy.pub/imboy/_rel/imboy/releases/1.0.0-alpha.75/start -mode embedded -boot_var SYSTEM_LIB_DIR /opt/homebrew/Cellar/erlang/29.0.2/lib/erlang/lib -config /Users/leeyi/project/imboy.pub/imboy/_rel/imboy/releases/1.0.0-alpha.75/sys.config -args_file /Users/leeyi/project/imboy.pub/imboy/_rel/imboy/releases/1.0.0-alpha.75/vm.args -- console
+Root: /Users/leeyi/project/imboy.pub/imboy/_rel/imboy
+/Users/leeyi/project/imboy.pub/imboy/_rel/imboy
+heart_beat_kill_pid = 43997
+Erlang/OTP 29 [erts-17.0.2] [source] [64-bit] [smp:2:2] [ds:2:2:10] [async-threads:1024] [jit] [dtrace]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.974496 UTC ===
+    application: kernel
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.974535 UTC ===
+    application: stdlib
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.974579 UTC ===
+    supervisor: {local,mnesia_sup}
+    started: [{pid,<0.2126.0>},
+              {id,mnesia_event},
+              {mfargs,{mnesia_sup,start_event,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,30000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.974628 UTC ===
+    supervisor: {local,mnesia_sup}
+    started: [{pid,<0.2127.0>},
+              {id,mnesia_ext_sup},
+              {mfargs,{mnesia_ext_sup,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.974871 UTC ===
+    supervisor: {local,mnesia_kernel_sup}
+    started: [{pid,<0.2129.0>},
+              {id,mnesia_monitor},
+              {mfargs,{mnesia_monitor,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,3000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.974928 UTC ===
+    supervisor: {local,mnesia_kernel_sup}
+    started: [{pid,<0.2130.0>},
+              {id,mnesia_subscr},
+              {mfargs,{mnesia_subscr,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,3000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.974968 UTC ===
+    supervisor: {local,mnesia_kernel_sup}
+    started: [{pid,<0.2131.0>},
+              {id,mnesia_locker},
+              {mfargs,{mnesia_locker,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,3000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.974994 UTC ===
+    supervisor: {local,mnesia_kernel_sup}
+    started: [{pid,<0.2132.0>},
+              {id,mnesia_recover},
+              {mfargs,{mnesia_recover,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,180000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.975106 UTC ===
+    supervisor: {local,mnesia_kernel_sup}
+    started: [{pid,<0.2133.0>},
+              {id,mnesia_tm},
+              {mfargs,{mnesia_tm,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,30000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.975134 UTC ===
+    supervisor: {local,mnesia_kernel_sup}
+    started: [{pid,<0.2134.0>},
+              {id,mnesia_rpc},
+              {mfargs,{mnesia_rpc,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,3000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.975160 UTC ===
+    supervisor: {local,mnesia_kernel_sup}
+    started: [{pid,<0.2135.0>},
+              {id,mnesia_checkpoint_sup},
+              {mfargs,{mnesia_checkpoint_sup,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.975188 UTC ===
+    supervisor: {local,mnesia_kernel_sup}
+    started: [{pid,<0.2136.0>},
+              {id,mnesia_controller},
+              {mfargs,{mnesia_controller,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,3000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.975294 UTC ===
+    supervisor: {local,mnesia_kernel_sup}
+    started: [{pid,<0.2137.0>},
+              {id,mnesia_late_loader},
+              {mfargs,{mnesia_late_loader,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,3000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.975334 UTC ===
+    supervisor: {local,mnesia_sup}
+    started: [{pid,<0.2128.0>},
+              {id,mnesia_kernel_sup},
+              {mfargs,{mnesia_kernel_sup,start,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.975372 UTC ===
+    application: mnesia
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.975825 UTC ===
+    supervisor: {local,sasl_safe_sup}
+    started: [{pid,<0.2145.0>},
+              {id,alarm_handler},
+              {mfargs,{alarm_handler,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,2000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.975858 UTC ===
+    supervisor: {local,sasl_sup}
+    started: [{pid,<0.2144.0>},
+              {id,sasl_safe_sup},
+              {mfargs,{supervisor,start_link,
+                                  [{local,sasl_safe_sup},sasl,safe]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976264 UTC ===
+    supervisor: {local,sasl_sup}
+    started: [{pid,<0.2146.0>},
+              {id,release_handler},
+              {mfargs,{release_handler,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,2000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976316 UTC ===
+    application: sasl
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976344 UTC ===
+    application: crypto
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976367 UTC ===
+    application: asn1
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976386 UTC ===
+    application: public_key
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976516 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.2155.0>},
+              {id,ssl_pem_cache},
+              {mfargs,{ssl_pem_cache,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976567 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.2156.0>},
+              {id,ssl_manager},
+              {mfargs,{ssl_manager,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976596 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.2157.0>},
+              {id,tls_client_ticket_store},
+              {mfargs,{tls_client_ticket_store,start_link,[1000,7200]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976623 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.2154.0>},
+              {id,ssl_admin_sup},
+              {mfargs,{ssl_admin_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976670 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.2160.0>},
+              {id,tls_connection_sup},
+              {mfargs,{tls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976714 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.2162.0>},
+              {id,ssl_listen_tracker_sup},
+              {mfargs,{ssl_listen_tracker_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976755 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.2163.0>},
+              {id,tls_server_session_ticket},
+              {mfargs,{tls_server_session_ticket_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976784 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.2164.0>},
+              {id,ssl_server_session_cache_sup},
+              {mfargs,{ssl_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976814 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.2165.0>},
+              {id,ssl_upgrade_server_session_cache_sup},
+              {mfargs,{ssl_upgrade_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976841 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.2161.0>},
+              {id,tls_server_sup},
+              {mfargs,{tls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976863 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.2159.0>},
+              {id,tls_sup},
+              {mfargs,{tls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976898 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.2167.0>},
+              {id,dtls_connection_sup},
+              {mfargs,{dtls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.976933 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.2169.0>},
+              {id,dtls_listener_sup},
+              {mfargs,{dtls_listener_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977001 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.2170.0>},
+              {id,dtls_server_session_cache_sup},
+              {mfargs,{dtls_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977028 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.2168.0>},
+              {id,dtls_server_sup},
+              {mfargs,{dtls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977052 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.2166.0>},
+              {id,dtls_sup},
+              {mfargs,{dtls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977076 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.2158.0>},
+              {id,ssl_connection_sup},
+              {mfargs,{ssl_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977109 UTC ===
+    application: ssl
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977173 UTC ===
+    supervisor: {local,httpc_profile_sup}
+    started: [{pid,<0.2176.0>},
+              {id,httpc_manager},
+              {mfargs,{httpc_manager,start_link,
+                                     [default,only_session_cookies,inets]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977212 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.2175.0>},
+              {id,httpc_profile_sup},
+              {mfargs,
+                  {httpc_profile_sup,start_link,
+                      [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977250 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.2177.0>},
+              {id,httpc_handler_sup},
+              {mfargs,{httpc_handler_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977283 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.2174.0>},
+              {id,httpc_sup},
+              {mfargs,{httpc_sup,start_link,
+                                 [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977321 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.2178.0>},
+              {id,httpd_sup},
+              {mfargs,{httpd_sup,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977352 UTC ===
+    application: inets
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977365 UTC ===
+    application: eunit
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977412 UTC ===
+    supervisor: {local,ranch_sup}
+    started: [{pid,<0.2182.0>},
+              {id,ranch_server},
+              {mfargs,{ranch_server,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977442 UTC ===
+    application: ranch
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977461 UTC ===
+    application: cowlib
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977671 UTC ===
+    supervisor: {local,cowboy_sup}
+    started: [{pid,<0.2186.0>},
+              {id,cowboy_clock},
+              {mfargs,{cowboy_clock,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977710 UTC ===
+    application: cowboy
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977744 UTC ===
+    supervisor: {local,gun_sup}
+    started: [{pid,<0.2190.0>},
+              {id,gun_conns_sup},
+              {mfargs,{gun_conns_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977788 UTC ===
+    supervisor: {local,gun_sup}
+    started: [{pid,<0.2191.0>},
+              {id,gun_pools_sup},
+              {mfargs,{gun_pools_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977814 UTC ===
+    application: gun
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977833 UTC ===
+    application: cf
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.977850 UTC ===
+    application: erlware_commons
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.988729 UTC ===
+    supervisor: {local,jose_sup}
+    started: [{pid,<0.2195.0>},
+              {id,jose_server},
+              {mfargs,{jose_server,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.988796 UTC ===
+    application: jose
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.988839 UTC ===
+    application: gen_smtp
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989034 UTC ===
+    application: throttle
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989052 UTC ===
+    application: syntax_tools
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989075 UTC ===
+    application: compiler
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989128 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.2236.0>},
+              {id,gr_counter_sup},
+              {mfargs,{gr_counter_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989179 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.2237.0>},
+              {id,gr_param_sup},
+              {mfargs,{gr_param_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989214 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.2238.0>},
+              {id,gr_manager_sup},
+              {mfargs,{gr_manager_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989368 UTC ===
+    application: goldrush
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989402 UTC ===
+    application: jsone
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989423 UTC ===
+    application: epgsql
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989465 UTC ===
+    supervisor: {local,pooler_sup}
+    started: [{pid,<0.2242.0>},
+              {id,pooler_starter_sup},
+              {mfargs,{pooler_starter_sup,start_link,[]}},
+              {restart_type,transient},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989501 UTC ===
+    application: pooler
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989521 UTC ===
+    application: erlang_migrate
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989534 UTC ===
+    application: depcache
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989587 UTC ===
+    supervisor: {local,syn_sup}
+    started: [{pid,<0.2246.0>},
+              {id,syn_backbone},
+              {mfargs,{syn_backbone,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,10000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989625 UTC ===
+    application: syn
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989670 UTC ===
+    supervisor: {local,telemetry_sup}
+    started: [{pid,<0.2250.0>},
+              {id,telemetry_handler_table},
+              {mfargs,{telemetry_handler_table,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.989731 UTC ===
+    application: telemetry
+    started_at: 'imboy_local@127.0.0.1'
+
+=NOTICE REPORT==== 4-Oct-2026::00:43:44.989856 UTC ===
+    name: teaching_ai_worker
+    action: activate
+    action_at: 1791074624989
+=NOTICE REPORT==== 4-Oct-2026::00:43:44.989893 UTC ===
+    name: attachment_pending_cleanup
+    action: activate
+    action_at: 1791074624989
+=NOTICE REPORT==== 4-Oct-2026::00:43:44.989919 UTC ===
+    name: teaching_ai_stuck_reclaim
+    action: activate
+    action_at: 1791074624989
+=NOTICE REPORT==== 4-Oct-2026::00:43:44.989967 UTC ===
+    name: red_packet_expire_refund
+    action: activate
+    action_at: 1791074624989
+=NOTICE REPORT==== 4-Oct-2026::00:43:44.989990 UTC ===
+    name: payment_reconcile
+    action: activate
+    action_at: 1791074624989
+=NOTICE REPORT==== 4-Oct-2026::00:43:44.990010 UTC ===
+    name: attachment_orphan_cleanup
+    action: activate
+    action_at: 1791074624990
+=NOTICE REPORT==== 4-Oct-2026::00:43:44.990040 UTC ===
+    name: teaching_unbound_cleanup
+    action: activate
+    action_at: 1791074624990
+=NOTICE REPORT==== 4-Oct-2026::00:43:44.990058 UTC ===
+    name: ops_weekly_report
+    action: activate
+    action_at: 1791074624990
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.990077 UTC ===
+    supervisor: {local,ecron_sup}
+    started: [{pid,<0.2254.0>},
+              {id,ecron},
+              {mfargs,
+                  {ecron,start_link,
+                      [{local,ecron_local},
+                       [{attachment_orphan_cleanup,"0 3 * * *",
+                            {attach_cleanup_logic,run_orphan_cleanup,[]}},
+                        {attachment_pending_cleanup,"17 * * * *",
+                            {attach_cleanup_logic,run_pending_cleanup,[]}},
+                        {teaching_unbound_cleanup,"23 * * * *",
+                            {moya_attach_logic,run_unbound_cleanup,[]}},
+                        {teaching_ai_worker,"*/1 * * * *",
+                            {moya_ai_worker,run_once,[]}},
+                        {teaching_ai_stuck_reclaim,"*/10 * * * *",
+                            {moya_ai_worker,reclaim_stuck,[]}},
+                        {payment_reconcile,"37 * * * *",
+                            {payment_reconcile_logic,run_hourly,[]}},
+                        {red_packet_expire_refund,"23 * * * *",
+                            {red_packet_logic,run_expire_refund,[]}},
+                        {ops_weekly_report,"0 9 * * 1",
+                            {ops_report_logic,run_weekly_report,[]}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,1000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.990163 UTC ===
+    application: ecron
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.990181 UTC ===
+    application: uid
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.990232 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.2258.0>},
+              {id,lager},
+              {mfargs,{gen_event,start_link,[{local,lager_event}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.990269 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.2259.0>},
+              {id,lager_handler_watcher_sup},
+              {mfargs,{lager_handler_watcher_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.990738 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.2260.0>},
+              {id,lager_crash_log},
+              {mfargs,
+                  {lager_crash_log,start_link,
+                      ["crash.log",65536,10485760,
+                       [{hour,0}],
+                       5,lager_rotator_default]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.998519 UTC ===
+    application: lager
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:44.998 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application lager started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.998590 UTC ===
+    application: recon
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.998611 UTC ===
+    application: observer_cli
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:44.998 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application recon started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.998680 UTC ===
+    supervisor: {local,runtime_tools_sup}
+    started: [{pid,<0.2281.0>},
+              {id,ttb_autostart},
+              {mfargs,{ttb_autostart,start_link,[]}},
+              {restart_type,temporary},
+              {significant,false},
+              {shutdown,3000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.998758 UTC ===
+    application: runtime_tools
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:44.998 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application observer_cli started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.998786 UTC ===
+    application: redbug
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.998816 UTC ===
+    application: opentelemetry_api
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:44.998 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application runtime_tools started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.998928 UTC ===
+    supervisor: {local,otel_span_sup}
+    started: [{pid,<0.2286.0>},
+              {id,otel_span_ets},
+              {mfargs,{otel_span_ets,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.998967 UTC ===
+    supervisor: {local,otel_span_sup}
+    started: [{pid,<0.2287.0>},
+              {id,otel_span_sweeper},
+              {mfargs,
+                  {otel_span_sweeper,start_link,
+                      [#{strategy => drop,interval => 600000,
+                         span_ttl => 1800000,storage_size => infinity}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+[1;32m2026-10-04 00:43:44.998 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application redbug started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.998998 UTC ===
+    supervisor: {local,opentelemetry_sup}
+    started: [{pid,<0.2285.0>},
+              {id,otel_span_sup},
+              {mfargs,
+                  {otel_span_sup,start_link,
+                      [#{log_level => info,id_generator => otel_id_generator,
+                         create_application_tracers => true,
+                         sdk_disabled => false,
+                         text_map_propagators => [trace_context,baggage],
+                         attribute_count_limit => 128,
+                         attribute_per_event_limit => 128,
+                         attribute_per_link_limit => 128,
+                         attribute_value_length_limit => infinity,
+                         bsp_exporting_timeout_ms => undefined,
+                         bsp_max_queue_size => undefined,
+                         bsp_scheduled_delay_ms => undefined,deny_list => [],
+                         event_count_limit => 128,
+                         exemplar_filter => trace_based,
+                         exemplars_enabled => false,link_count_limit => 128,
+                         metric_producers => [],
+                         metrics_exporter => {opentelemetry_exporter,#{}},
+                         processors =>
+                             [{otel_batch_processor,
+                                  #{exporter => {opentelemetry_exporter,#{}},
+                                    exporting_timeout_ms => 30000,
+                                    max_queue_size => 2048,
+                                    scheduled_delay_ms => 5000}}],
+                         readers => [],
+                         register_loaded_applications => undefined,
+                         resource_detector_timeout => 5000,
+                         resource_detectors =>
+                             [otel_resource_env_var,otel_resource_app_env],
+                         sampler => {parent_based,#{root => always_on}},
+                         ssp_exporting_timeout_ms => undefined,
+                         sweeper =>
+                             #{strategy => drop,interval => 600000,
+                               span_ttl => 1800000,storage_size => infinity},
+                         traces_exporter => {opentelemetry_exporter,#{}},
+                         views => []}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+[1;32m2026-10-04 00:43:44.998 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application opentelemetry_api started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.999120 UTC ===
+    supervisor: {local,opentelemetry_sup}
+    started: [{pid,<0.2288.0>},
+              {id,otel_resource_detector},
+              {mfargs,
+                  {otel_resource_detector,start_link,
+                      [#{log_level => info,id_generator => otel_id_generator,
+                         create_application_tracers => true,
+                         sdk_disabled => false,
+                         text_map_propagators => [trace_context,baggage],
+                         attribute_count_limit => 128,
+                         attribute_per_event_limit => 128,
+                         attribute_per_link_limit => 128,
+                         attribute_value_length_limit => infinity,
+                         bsp_exporting_timeout_ms => undefined,
+                         bsp_max_queue_size => undefined,
+                         bsp_scheduled_delay_ms => undefined,deny_list => [],
+                         event_count_limit => 128,
+                         exemplar_filter => trace_based,
+                         exemplars_enabled => false,link_count_limit => 128,
+                         metric_producers => [],
+                         metrics_exporter => {opentelemetry_exporter,#{}},
+                         processors =>
+                             [{otel_batch_processor,
+                                  #{exporter => {opentelemetry_exporter,#{}},
+                                    exporting_timeout_ms => 30000,
+                                    max_queue_size => 2048,
+                                    scheduled_delay_ms => 5000}}],
+                         readers => [],
+                         register_loaded_applications => undefined,
+                         resource_detector_timeout => 5000,
+                         resource_detectors =>
+                             [otel_resource_env_var,otel_resource_app_env],
+                         sampler => {parent_based,#{root => always_on}},
+                         ssp_exporting_timeout_ms => undefined,
+                         sweeper =>
+                             #{strategy => drop,interval => 600000,
+                               span_ttl => 1800000,storage_size => infinity},
+                         traces_exporter => {opentelemetry_exporter,#{}},
+                         views => []}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.999251 UTC ===
+    supervisor: {local,opentelemetry_sup}
+    started: [{pid,<0.2291.0>},
+              {id,otel_tracer_provider_sup},
+              {mfargs,{otel_tracer_provider_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.999308 UTC ===
+    supervisor: {<0.2292.0>,otel_tracer_server_sup}
+    started: [{pid,<0.2293.0>},
+              {id,otel_span_processor_sup},
+              {mfargs,
+                  {otel_span_processor_sup,start_link,
+                      [otel_span_processor_sup_global]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+[1;32m2026-10-04 00:43:44.999 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application ssl_verify_fun started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.999730 UTC ===
+    application: ssl_verify_fun
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:44.999647 UTC ===
+    supervisor: {<0.2292.0>,otel_tracer_server_sup}
+    started: [{pid,<0.2294.0>},
+              {id,otel_tracer_server},
+              {mfargs,
+                  {otel_tracer_server,start_link,
+                      [global,otel_tracer_provider_global,
+                       otel_span_processor_sup_global,
+                       {resource,undefined,
+                           {attributes,128,255,0,
+                               #{'process.executable.name' =>
+                                     <<"_rel/imboy/bin/imboy">>,
+                                 'process.runtime.description' =>
+                                     <<"Erlang/OTP 29 erts-17.0.2">>,
+                                 'process.runtime.version' => <<"17.0.2">>,
+                                 'process.runtime.name' => <<"BEAM">>,
+                                 'service.name' => <<"imboy">>,
+                                 'service.instance.id' =>
+                                     <<"imboy_local@127.0.0.1">>,
+                                 'service.version' => <<"1.0.0-alpha.75">>,
+                                 'telemetry.sdk.version' => <<"1.7.0">>,
+                                 'telemetry.sdk.language' => <<"erlang">>,
+                                 'telemetry.sdk.name' =>
+                                     <<"opentelemetry">>}}},
+                       #{log_level => info,id_generator => otel_id_generator,
+                         create_application_tracers => true,
+                         sdk_disabled => false,
+                         text_map_propagators => [trace_context,baggage],
+                         attribute_count_limit => 128,
+                         attribute_per_event_limit => 128,
+                         attribute_per_link_limit => 128,
+                         attribute_value_length_limit => infinity,
+                         bsp_exporting_timeout_ms => undefined,
+                         bsp_max_queue_size => undefined,
+                         bsp_scheduled_delay_ms => undefined,deny_list => [],
+                         event_count_limit => 128,
+                         exemplar_filter => trace_based,
+                         exemplars_enabled => false,link_count_limit => 128,
+                         metric_producers => [],
+                         metrics_exporter => {opentelemetry_exporter,#{}},
+                         processors =>
+                             [{otel_batch_processor,
+                                  #{exporter => {opentelemetry_exporter,#{}},
+                                    exporting_timeout_ms => 30000,
+                                    max_queue_size => 2048,
+                                    scheduled_delay_ms => 5000}}],
+                         readers => [],
+                         register_loaded_applications => undefined,
+                         resource_detector_timeout => 5000,
+                         resource_detectors =>
+                             [otel_resource_env_var,otel_resource_app_env],
+                         sampler => {parent_based,#{root => always_on}},
+                         ssp_exporting_timeout_ms => undefined,
+                         sweeper =>
+                             #{strategy => drop,interval => 600000,
+                               span_ttl => 1800000,storage_size => infinity},
+                         traces_exporter => {opentelemetry_exporter,#{}},
+                         views => []}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.003687 UTC ===
+    application: opentelemetry
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.003727 UTC ===
+    application: ctx
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:45.003 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application opentelemetry started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.003763 UTC ===
+    application: hpack
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.003798 UTC ===
+    application: chatterbox
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:45.003 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application ctx started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.003850 UTC ===
+    application: acceptor_pool
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:45.003 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application hpack started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.003952 UTC ===
+    supervisor: {local,gproc_sup}
+    started: [{pid,<0.2304.0>},
+              {id,gproc},
+              {mfargs,{gproc,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,2000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.004004 UTC ===
+    supervisor: {local,gproc_sup}
+    started: [{pid,<0.2305.0>},
+              {id,gproc_monitor},
+              {mfargs,{gproc_monitor,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,2000},
+              {child_type,worker}]
+
+[1;32m2026-10-04 00:43:45.003 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application chatterbox started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.004092 UTC ===
+    supervisor: {local,gproc_sup}
+    started: [{pid,<0.2306.0>},
+              {id,gproc_bcast},
+              {mfargs,{gproc_bcast,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,2000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.004134 UTC ===
+    supervisor: {local,gproc_sup}
+    started: [{pid,<0.2307.0>},
+              {id,gproc_pool},
+              {mfargs,{gproc_pool,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,2000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.004171 UTC ===
+    application: gproc
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:45.003 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application acceptor_pool started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.004203 UTC ===
+    supervisor: {local,grpcbox_sup}
+    started: [{pid,<0.2311.0>},
+              {id,grpcbox_services_simple_sup},
+              {mfargs,{grpcbox_services_simple_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.004255 UTC ===
+    supervisor: {local,grpcbox_sup}
+    started: [{pid,<0.2312.0>},
+              {id,grpcbox_channel_sup},
+              {mfargs,{grpcbox_channel_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+[1;32m2026-10-04 00:43:45.004 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application gproc started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.004302 UTC ===
+    application: grpcbox
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:45.004 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application grpcbox started on node 'imboy_local@127.0.0.1'
+=INFO REPORT==== 4-Oct-2026::00:43:45.022935 UTC ===
+Loading 161 CA(s) from otp store
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.022979 UTC ===
+    supervisor: {local,tls_certificate_check_sup}
+    started: [{pid,<0.2300.0>},
+              {id,tls_certificate_check_shared_state},
+              {mfargs,{tls_certificate_check_shared_state,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,worker}]
+
+[1;32m2026-10-04 00:43:45.023 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application tls_certificate_check started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.023038 UTC ===
+    application: tls_certificate_check
+    started_at: 'imboy_local@127.0.0.1'
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.023087 UTC ===
+    application: opentelemetry_exporter
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:45.023 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application opentelemetry_exporter started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.023137 UTC ===
+    application: simple_captcha
+    started_at: 'imboy_local@127.0.0.1'
+
+=INFO REPORT==== 4-Oct-2026::00:43:45.023139 UTC ===
+OTLP exporter successfully initialized
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.023169 UTC ===
+    application: erlydtl
+    started_at: 'imboy_local@127.0.0.1'
+
+[1;32m2026-10-04 00:43:45.023 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application simple_captcha started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.023193 UTC ===
+    application: erlang_pay
+    started_at: 'imboy_local@127.0.0.1'
+
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.023492 UTC ===
+IMBoy edition: community
+[1;32m2026-10-04 00:43:45.023 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application erlydtl started on node 'imboy_local@127.0.0.1'
+[1;32m2026-10-04 00:43:45.023 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application erlang_pay started on node 'imboy_local@127.0.0.1'
+=WARNING REPORT==== 4-Oct-2026::00:43:45.024222 UTC ===
+[imboy] password_salt not set — generated node-local dev salt. MUST set IMBOY_PASSWORD_SALT in production.
+[1;33m2026-10-04 00:43:45.024 UTC [warning] imboy_local@127.0.0.1#<0.2314.0> [license] è¯ç¨æå·²ç»æï¼éçº§ç¤¾åºç
+=INFO REPORT==== 4-Oct-2026::00:43:45.025035 UTC ===
+[imboy_migrate] running migrations from /Users/leeyi/project/imboy.pub/imboy/_rel/imboy/lib/imboy-1.0.0-alpha.82/priv/migrations
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.025100 UTC ===
+    supervisor: {local,inet_gethost_native_sup}
+    started: [{pid,<0.2317.0>},{mfa,{inet_gethost_native,init,[[]]}}]
+
+=INFO REPORT==== 4-Oct-2026::00:43:45.922879 UTC ===
+[imboy_migrate] all migrations applied
+=INFO REPORT==== 4-Oct-2026::00:43:45.922971 UTC ===
+telemetry: IMBOY_UPTRACE_DSN not set, OpenTelemetry disabled
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923141 UTC ===
+    scope: imboy_chat
+    event: tables_created
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.923225 UTC ===
+    supervisor: {<0.2318.0>,syn_scope_sup}
+    started: [{pid,<0.2319.0>},
+              {id,{syn_registry,imboy_chat}},
+              {mfargs,{syn_registry,start_link,[imboy_chat]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,10000},
+              {child_type,worker}]
+
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923311 UTC ===
+    scope: imboy_chat
+    handler: pg
+    event: discovering_cluster
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923281 UTC ===
+    scope: imboy_chat
+    handler: registry
+    event: discovering_cluster
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.923345 UTC ===
+    supervisor: {<0.2318.0>,syn_scope_sup}
+    started: [{pid,<0.2321.0>},
+              {id,{syn_pg,imboy_chat}},
+              {mfargs,{syn_pg,start_link,[imboy_chat]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,10000},
+              {child_type,worker}]
+
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923422 UTC ===
+    scope: imboy_chat
+    event: scope_added
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923468 UTC ===
+    scope: imboy_room
+    event: tables_created
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923499 UTC ===
+    scope: imboy_room
+    handler: registry
+    event: discovering_cluster
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.923505 UTC ===
+    supervisor: {<0.2323.0>,syn_scope_sup}
+    started: [{pid,<0.2324.0>},
+              {id,{syn_registry,imboy_room}},
+              {mfargs,{syn_registry,start_link,[imboy_room]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,10000},
+              {child_type,worker}]
+
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923591 UTC ===
+    scope: imboy_room
+    handler: pg
+    event: discovering_cluster
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.923604 UTC ===
+    supervisor: {<0.2323.0>,syn_scope_sup}
+    started: [{pid,<0.2326.0>},
+              {id,{syn_pg,imboy_room}},
+              {mfargs,{syn_pg,start_link,[imboy_room]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,10000},
+              {child_type,worker}]
+
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923633 UTC ===
+    scope: imboy_room
+    event: scope_added
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923668 UTC ===
+    scope: imboy_cache
+    event: tables_created
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923702 UTC ===
+    scope: imboy_cache
+    handler: registry
+    event: discovering_cluster
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.923707 UTC ===
+    supervisor: {<0.2328.0>,syn_scope_sup}
+    started: [{pid,<0.2329.0>},
+              {id,{syn_registry,imboy_cache}},
+              {mfargs,{syn_registry,start_link,[imboy_cache]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,10000},
+              {child_type,worker}]
+
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923742 UTC ===
+    scope: imboy_cache
+    handler: pg
+    event: discovering_cluster
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.923746 UTC ===
+    supervisor: {<0.2328.0>,syn_scope_sup}
+    started: [{pid,<0.2331.0>},
+              {id,{syn_pg,imboy_cache}},
+              {mfargs,{syn_pg,start_link,[imboy_cache]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,10000},
+              {child_type,worker}]
+
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923770 UTC ===
+    scope: imboy_cache
+    event: scope_added
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923811 UTC ===
+    scope: imboy_qr_login
+    event: tables_created
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923858 UTC ===
+    scope: imboy_qr_login
+    handler: registry
+    event: discovering_cluster
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.923874 UTC ===
+    supervisor: {<0.2333.0>,syn_scope_sup}
+    started: [{pid,<0.2334.0>},
+              {id,{syn_registry,imboy_qr_login}},
+              {mfargs,{syn_registry,start_link,[imboy_qr_login]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,10000},
+              {child_type,worker}]
+
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923907 UTC ===
+    scope: imboy_qr_login
+    handler: pg
+    event: discovering_cluster
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.923925 UTC ===
+    supervisor: {<0.2333.0>,syn_scope_sup}
+    started: [{pid,<0.2336.0>},
+              {id,{syn_pg,imboy_qr_login}},
+              {mfargs,{syn_pg,start_link,[imboy_qr_login]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,10000},
+              {child_type,worker}]
+
+=NOTICE REPORT==== 4-Oct-2026::00:43:45.923977 UTC ===
+    scope: imboy_qr_login
+    event: scope_added
+[1;32m2026-10-04 00:43:45.924 UTC [info] imboy_local@127.0.0.1#<0.2314.0> Ã©ÂÂÃ§Â¾Â¤Ã§Â®Â¡Ã§ÂÂÃ¥ÂÂÃ¥Â§ÂÃ¥ÂÂÃ¯Â¼ÂÃ¥Â½ÂÃ¥ÂÂÃ¨ÂÂÃ§ÂÂ¹: 'imboy_local@127.0.0.1'
+[1;32m2026-10-04 00:43:45.924 UTC [info] imboy_local@127.0.0.1#<0.2314.0> æªéç½®éç¾¤èç¹ï¼ä»¥åèç¹æ¨¡å¼è¿è¡
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.927215 UTC ===
+    supervisor: {<0.2359.0>,ranch_conns_sup_sup}
+    started: [{pid,<0.2360.0>},
+              {id,{ranch_conns_sup,1}},
+              {mfargs,
+                  {ranch_conns_sup,start_link,
+                      [imboy_listener,1,ranch_tcp,
+                       #{socket_opts => [{buffer,512},{port,19800}],
+                         connection_type => supervisor},
+                       cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.927490 UTC ===
+    supervisor: {<0.2359.0>,ranch_conns_sup_sup}
+    started: [{pid,<0.2361.0>},
+              {id,{ranch_conns_sup,2}},
+              {mfargs,
+                  {ranch_conns_sup,start_link,
+                      [imboy_listener,2,ranch_tcp,
+                       #{socket_opts => [{buffer,512},{port,19800}],
+                         connection_type => supervisor},
+                       cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.927746 UTC ===
+    supervisor: {<0.2359.0>,ranch_conns_sup_sup}
+    started: [{pid,<0.2362.0>},
+              {id,{ranch_conns_sup,3}},
+              {mfargs,
+                  {ranch_conns_sup,start_link,
+                      [imboy_listener,3,ranch_tcp,
+                       #{socket_opts => [{buffer,512},{port,19800}],
+                         connection_type => supervisor},
+                       cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.927975 UTC ===
+    supervisor: {<0.2359.0>,ranch_conns_sup_sup}
+    started: [{pid,<0.2363.0>},
+              {id,{ranch_conns_sup,4}},
+              {mfargs,
+                  {ranch_conns_sup,start_link,
+                      [imboy_listener,4,ranch_tcp,
+                       #{socket_opts => [{buffer,512},{port,19800}],
+                         connection_type => supervisor},
+                       cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.928277 UTC ===
+    supervisor: {<0.2359.0>,ranch_conns_sup_sup}
+    started: [{pid,<0.2364.0>},
+              {id,{ranch_conns_sup,5}},
+              {mfargs,
+                  {ranch_conns_sup,start_link,
+                      [imboy_listener,5,ranch_tcp,
+                       #{socket_opts => [{buffer,512},{port,19800}],
+                         connection_type => supervisor},
+                       cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.928509 UTC ===
+    supervisor: {<0.2359.0>,ranch_conns_sup_sup}
+    started: [{pid,<0.2365.0>},
+              {id,{ranch_conns_sup,6}},
+              {mfargs,
+                  {ranch_conns_sup,start_link,
+                      [imboy_listener,6,ranch_tcp,
+                       #{socket_opts => [{buffer,512},{port,19800}],
+                         connection_type => supervisor},
+                       cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.928742 UTC ===
+    supervisor: {<0.2359.0>,ranch_conns_sup_sup}
+    started: [{pid,<0.2366.0>},
+              {id,{ranch_conns_sup,7}},
+              {mfargs,
+                  {ranch_conns_sup,start_link,
+                      [imboy_listener,7,ranch_tcp,
+                       #{socket_opts => [{buffer,512},{port,19800}],
+                         connection_type => supervisor},
+                       cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.928967 UTC ===
+    supervisor: {<0.2359.0>,ranch_conns_sup_sup}
+    started: [{pid,<0.2367.0>},
+              {id,{ranch_conns_sup,8}},
+              {mfargs,
+                  {ranch_conns_sup,start_link,
+                      [imboy_listener,8,ranch_tcp,
+                       #{socket_opts => [{buffer,512},{port,19800}],
+                         connection_type => supervisor},
+                       cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929194 UTC ===
+    supervisor: {<0.2359.0>,ranch_conns_sup_sup}
+    started: [{pid,<0.2368.0>},
+              {id,{ranch_conns_sup,9}},
+              {mfargs,
+                  {ranch_conns_sup,start_link,
+                      [imboy_listener,9,ranch_tcp,
+                       #{socket_opts => [{buffer,512},{port,19800}],
+                         connection_type => supervisor},
+                       cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929429 UTC ===
+    supervisor: {<0.2359.0>,ranch_conns_sup_sup}
+    started: [{pid,<0.2369.0>},
+              {id,{ranch_conns_sup,10}},
+              {mfargs,
+                  {ranch_conns_sup,start_link,
+                      [imboy_listener,10,ranch_tcp,
+                       #{socket_opts => [{buffer,512},{port,19800}],
+                         connection_type => supervisor},
+                       cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929466 UTC ===
+    supervisor: {<0.2358.0>,ranch_listener_sup}
+    started: [{pid,<0.2359.0>},
+              {id,ranch_conns_sup_sup},
+              {mfargs,
+                  {ranch_conns_sup_sup,start_link,
+                      [imboy_listener,ranch_tcp,cowboy_clear,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929683 UTC ===
+    supervisor: {<0.2370.0>,ranch_acceptors_sup}
+    started: [{pid,<0.2371.0>},
+              {id,{acceptor,<0.2370.0>,1}},
+              {mfargs,{ranch_acceptor,start_link,
+                                      [imboy_listener,1,#Port<0.9>,ranch_tcp,
+                                       logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,brutal_kill},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929727 UTC ===
+    supervisor: {<0.2370.0>,ranch_acceptors_sup}
+    started: [{pid,<0.2372.0>},
+              {id,{acceptor,<0.2370.0>,2}},
+              {mfargs,{ranch_acceptor,start_link,
+                                      [imboy_listener,2,#Port<0.9>,ranch_tcp,
+                                       logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,brutal_kill},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929767 UTC ===
+    supervisor: {<0.2370.0>,ranch_acceptors_sup}
+    started: [{pid,<0.2373.0>},
+              {id,{acceptor,<0.2370.0>,3}},
+              {mfargs,{ranch_acceptor,start_link,
+                                      [imboy_listener,3,#Port<0.9>,ranch_tcp,
+                                       logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,brutal_kill},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929804 UTC ===
+    supervisor: {<0.2370.0>,ranch_acceptors_sup}
+    started: [{pid,<0.2374.0>},
+              {id,{acceptor,<0.2370.0>,4}},
+              {mfargs,{ranch_acceptor,start_link,
+                                      [imboy_listener,4,#Port<0.9>,ranch_tcp,
+                                       logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,brutal_kill},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929830 UTC ===
+    supervisor: {<0.2370.0>,ranch_acceptors_sup}
+    started: [{pid,<0.2375.0>},
+              {id,{acceptor,<0.2370.0>,5}},
+              {mfargs,{ranch_acceptor,start_link,
+                                      [imboy_listener,5,#Port<0.9>,ranch_tcp,
+                                       logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,brutal_kill},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929880 UTC ===
+    supervisor: {<0.2370.0>,ranch_acceptors_sup}
+    started: [{pid,<0.2376.0>},
+              {id,{acceptor,<0.2370.0>,6}},
+              {mfargs,{ranch_acceptor,start_link,
+                                      [imboy_listener,6,#Port<0.9>,ranch_tcp,
+                                       logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,brutal_kill},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929919 UTC ===
+    supervisor: {<0.2370.0>,ranch_acceptors_sup}
+    started: [{pid,<0.2377.0>},
+              {id,{acceptor,<0.2370.0>,7}},
+              {mfargs,{ranch_acceptor,start_link,
+                                      [imboy_listener,7,#Port<0.9>,ranch_tcp,
+                                       logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,brutal_kill},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929959 UTC ===
+    supervisor: {<0.2370.0>,ranch_acceptors_sup}
+    started: [{pid,<0.2378.0>},
+              {id,{acceptor,<0.2370.0>,8}},
+              {mfargs,{ranch_acceptor,start_link,
+                                      [imboy_listener,8,#Port<0.9>,ranch_tcp,
+                                       logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,brutal_kill},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.929996 UTC ===
+    supervisor: {<0.2370.0>,ranch_acceptors_sup}
+    started: [{pid,<0.2379.0>},
+              {id,{acceptor,<0.2370.0>,9}},
+              {mfargs,{ranch_acceptor,start_link,
+                                      [imboy_listener,9,#Port<0.9>,ranch_tcp,
+                                       logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,brutal_kill},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.930025 UTC ===
+    supervisor: {<0.2370.0>,ranch_acceptors_sup}
+    started: [{pid,<0.2380.0>},
+              {id,{acceptor,<0.2370.0>,10}},
+              {mfargs,{ranch_acceptor,start_link,
+                                      [imboy_listener,10,#Port<0.9>,ranch_tcp,
+                                       logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,brutal_kill},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.930058 UTC ===
+    supervisor: {<0.2358.0>,ranch_listener_sup}
+    started: [{pid,<0.2370.0>},
+              {id,ranch_acceptors_sup},
+              {mfargs,
+                  {ranch_acceptors_sup,start_link,
+                      [imboy_listener,ranch_tcp,logger]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.930155 UTC ===
+    supervisor: {local,pooler_pgsql_pool_sup}
+    started: [{pid,<0.2383.0>},
+              {id,pooler_pgsql_member_sup},
+              {mfargs,
+                  {pooler_pooled_worker_sup,start_link,
+                      [#{name => pgsql,init_count => 5,max_count => 80,
+                         start_mfa =>
+                             {imboy_pg_connection,connect,
+                                 [#{timeout => 4000,port => 25432,
+                                    ssl => false,host => "127.0.0.1",
+                                    password =>
+                                        "REDACTED-synthetic-pw",
+                                    username => "imboy_acceptance",
+                                    codecs => [{epgsql_codec_rfc3339_bin,[]}],
+                                    database => "imboy_acceptance"}]},
+                         metrics_api => folsom,
+                         metrics_mod => pooler_no_metrics}]}},
+              {restart_type,transient},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.982062 UTC ===
+    supervisor: {local,pooler_pgsql_pool_sup}
+    started: [{pid,<0.2384.0>},
+              {id,pooler},
+              {mfargs,
+                  {pooler,start_link,
+                      [#{name => pgsql,init_count => 5,max_count => 80,
+                         start_mfa =>
+                             {imboy_pg_connection,connect,
+                                 [#{timeout => 4000,port => 25432,
+                                    ssl => false,host => "127.0.0.1",
+                                    password =>
+                                        "REDACTED-synthetic-pw",
+                                    username => "imboy_acceptance",
+                                    codecs => [{epgsql_codec_rfc3339_bin,[]}],
+                                    database => "imboy_acceptance"}]},
+                         metrics_api => folsom,
+                         metrics_mod => pooler_no_metrics}]}},
+              {restart_type,transient},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.987473 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2395.0>},
+              {id,elib_tsid_guard},
+              {mfargs,
+                  {elib_tsid_guard,start_link,
+                      [#{root =>
+                             "/Users/leeyi/project/imboy.pub/imboy/_rel/imboy/lib/imboy-1.0.0-alpha.82/priv/tsid",
+                         names =>
+                             [user,user_device,user_collect,user_denylist,
+                              user_tag,user_tag_relation,
+                              user_deletion_request,user_deletion_job,
+                              moderation_action,moderation_appeal,friend,
+                              friend_category,group,group_info,group_member,
+                              group_notice,group_log,group_random_code,
+                              group_category,group_tag,group_vote,
+                              group_vote_option,group_schedule,
+                              group_schedule_reminder,group_album,
+                              group_album_photo,group_album_comment,
+                              group_file,group_task,group_task_assignment,
+                              msg_c2c,msg_c2g,msg_c2s,msg_s2c,msg_store,
+                              msg_read,msg_mention,msg_forward,msg_reply,
+                              msg_reaction,msg_pinned,conversation_pin,
+                              conversation_delete,attachment,moment_post,
+                              moment_comment,moment_like,moment_timeline,
+                              moment_post_acl,moment_report,channel,
+                              channel_message,channel_subscription,
+                              channel_admin,channel_message_view,
+                              channel_order,channel_invitation,
+                              channel_webhook,channel_comment,channel_price,
+                              organization,workspace,workspace_invite,
+                              organization_invite_code,
+                              owner_activation_invite,project,project_task,
+                              project_event,feedback,feedback_reply,
+                              e2ee_local_backup,e2ee_key_backup,report_ticket,
+                              report_action_log,wallet,wallet_transaction,
+                              recharge_order,payment_transaction,red_packet,
+                              red_packet_receive,transfer_order,
+                              agent_payment_compensation,billing_plan,
+                              billing_subscription,billing_invoice,
+                              billing_usage,live_room,push_token,announcement,
+                              compliance_key,olm_identity,olm_one_time_key,
+                              olm_fallback_key,adm_user,adm_role,admin_op_log,
+                              plugin_audit_log,app_version,app_ddl,
+                              app_upgrade_log,app_version_policy,fts_user,
+                              mcp_client,mcp_client_grant,mcp_audit_log,
+                              sso_identity,ai_agent_role_version,
+                              enterprise_message,enterprise_message_origin,
+                              enterprise_audit_event,enterprise_application,
+                              enterprise_application_grant,
+                              enterprise_application_credential,
+                              enterprise_external_identity,
+                              enterprise_oa_sso_code],
+                         dc_bits => 3,max_logical_lead_ms => 512,
+                         capacity_wait_timeout_ms => 100,combined_node => 129,
+                         lock_provider => registry,fence_window_ms => 1000,
+                         fence_renew_margin_ms => 100,
+                         store_bootstrap => existing,
+                         startup_clock_wait_timeout_ms => 5000}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,10000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.987666 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2396.0>},
+              {id,imboy_cache},
+              {mfargs,{imboy_cache,start_link,[[{depcache_memory_max,100}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.987691 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2398.0>},
+              {id,imboy_domain_event},
+              {mfargs,{imboy_domain_event,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.987729 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2399.0>},
+              {id,elib_metric},
+              {mfargs,{elib_metric,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.989388 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2400.0>},
+              {id,imboy_plugin_loader},
+              {mfargs,{imboy_plugin_loader,start_link,[]}},
+              {restart_type,transient},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.989450 UTC ===
+    supervisor: {local,imboy_plugin_sup}
+    started: [{pid,<0.2406.0>},
+              {id,imboy_router_registry},
+              {mfargs,{imboy_router_registry,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.989492 UTC ===
+    supervisor: {local,imboy_plugin_sup}
+    started: [{pid,<0.2407.0>},
+              {id,imboy_ws_action_registry},
+              {mfargs,{imboy_ws_action_registry,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.989528 UTC ===
+    supervisor: {local,imboy_plugin_sup}
+    started: [{pid,<0.2408.0>},
+              {id,channel_sup},
+              {mfargs,{imboy_plugin_generic_sup,start_link,[channel_sup]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.989558 UTC ===
+    supervisor: {local,imboy_plugin_sup}
+    started: [{pid,<0.2409.0>},
+              {id,moment_sup},
+              {mfargs,{imboy_plugin_generic_sup,start_link,[moment_sup]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.989599 UTC ===
+    supervisor: {local,imboy_plugin_sup}
+    started: [{pid,<0.2410.0>},
+              {id,location_sup},
+              {mfargs,{imboy_plugin_generic_sup,start_link,[location_sup]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.989627 UTC ===
+    supervisor: {local,imboy_plugin_sup}
+    started: [{pid,<0.2411.0>},
+              {id,group_collab_sup},
+              {mfargs,
+                  {imboy_plugin_generic_sup,start_link,[group_collab_sup]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.989651 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2405.0>},
+              {id,imboy_plugin_sup},
+              {mfargs,{imboy_plugin_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.989705 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2412.0>},
+              {id,login_attempt_ds},
+              {mfargs,{login_attempt_ds,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.989762 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2414.0>},
+              {id,user_server},
+              {mfargs,{user_server,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.993703 UTC ===
+    supervisor: {local,msg_store_sup}
+    started: [{pid,<0.2432.0>},
+              {id,msg_store_ds},
+              {mfargs,{msg_store_ds,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+[1;32m2026-10-04 00:43:45.993 UTC [info] imboy_local@127.0.0.1#<0.2432.0> msg_store_ds started successfully
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.993792 UTC ===
+    supervisor: {local,msg_store_sup}
+    started: [{pid,<0.2433.0>},
+              {id,msg_store_worker},
+              {mfargs,{msg_store_worker,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.993843 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2431.0>},
+              {id,msg_store_sup},
+              {mfargs,{msg_store_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+[1;32m2026-10-04 00:43:45.993 UTC [info] imboy_local@127.0.0.1#<0.2433.0> msg_store_worker started successfully
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.993908 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2434.0>},
+              {id,msg_burn_logic},
+              {mfargs,{msg_burn_logic,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+[1;32m2026-10-04 00:43:45.993 UTC [info] imboy_local@127.0.0.1#<0.2434.0> [msg_burn_logic,started,#{interval => 60000,batch_size => 500}]
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.993972 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2435.0>},
+              {id,moderation_sweep_logic},
+              {mfargs,{moderation_sweep_logic,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+[1;32m2026-10-04 00:43:45.993 UTC [info] imboy_local@127.0.0.1#<0.2435.0> [moderation_sweep_logic,started,#{interval => 300000}]
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994019 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2436.0>},
+              {id,user_deletion_logic},
+              {mfargs,{user_deletion_logic,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994040 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2437.0>},
+              {id,license_notice_worker},
+              {mfargs,{license_notice_worker,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+[1;32m2026-10-04 00:43:45.994 UTC [info] imboy_local@127.0.0.1#<0.2436.0> [user_deletion_logic,disabled]
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994066 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2438.0>},
+              {id,billing_invoice_worker},
+              {mfargs,{billing_invoice_worker,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994096 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2439.0>},
+              {id,olm_otk_cleanup_worker},
+              {mfargs,{olm_otk_cleanup_worker,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994138 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2440.0>},
+              {id,bot_webhook_delivery_worker},
+              {mfargs,{bot_webhook_delivery_worker,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994176 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2441.0>},
+              {id,credential_retention_worker},
+              {mfargs,{credential_retention_worker,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994219 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2442.0>},
+              {id,agent_payment_compensation_worker},
+              {mfargs,{agent_payment_compensation_worker,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994257 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2443.0>},
+              {id,ai_agent_runtime},
+              {mfargs,{ai_agent_runtime,start_link,[]}},
+              {restart_type,transient},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994300 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2444.0>},
+              {id,barrel_mcp_registry},
+              {mfargs,{barrel_mcp_registry,start_link,[]}},
+              {restart_type,transient},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994340 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2445.0>},
+              {id,barrel_mcp_session},
+              {mfargs,{barrel_mcp_session,start_link,[]}},
+              {restart_type,transient},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+[1;32m2026-10-04 00:43:45.994 UTC [info] imboy_local@127.0.0.1#<0.2072.0> Application imboy started on node 'imboy_local@127.0.0.1'
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994370 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2446.0>},
+              {id,imboy_mcp_tools},
+              {mfargs,{imboy_mcp_tools,start_link,[]}},
+              {restart_type,transient},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994393 UTC ===
+    supervisor: {local,imboy_sup}
+    started: [{pid,<0.2447.0>},
+              {id,eb_retention_purge_worker},
+              {mfargs,{eb_retention_purge_worker,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 4-Oct-2026::00:43:45.994427 UTC ===
+    application: imboy
+    started_at: 'imboy_local@127.0.0.1'
+
+Eshell V17.0.2 (press Ctrl+G to abort, type help(). for help)
+(imboy_local@127.0.0.1)1> *** Terminating erlang ('imboy_local@127.0.0.1')
+heart: Sun Oct  4 08:43:46 2026: Erlang has closed.
+heart: Sun Oct  4 08:43:46 2026: Would reboot. Terminating.

@@ -1,0 +1,50 @@
+{
+  "receipt": "res-pg-backend-executed",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "approval_basis": {
+    "resource_unit": "RES-PG-QUAL + RES-PG-BACKEND (resource-approval-table.json)",
+    "user_goal_grant": "/goal 授权你使用真机设备，授权你完成全部任务计划 (2026-10-04)",
+    "scope_note": "isolated acceptance backend only; no production, no push, no deploy, no third-party notification"
+  },
+  "prerequisite": "res-pg-port-binding-fix.json (Docker Engine 29 internal-network port publishing root cause fixed in compose source)",
+  "environment": {
+    "pg": "127.0.0.1:25432 imboy_acceptance (docker tmpfs, ephemeral, project imboy-acceptance-zcode-acceptance-20261004)",
+    "backend_http": "http://127.0.0.1:19800",
+    "imboyenv": "local",
+    "credentials_source": "IMBOY_PG_* env overrides at process start; password read from container runtime env in-line, never printed, redacted from logs (2 occurrences -> REDACTED-synthetic-pw)"
+  },
+  "attempts": [
+    {
+      "n": 1,
+      "command": "IMBOYENV=local HTTP_PORT=19800 IMBOY_PG_HOST=127.0.0.1 IMBOY_PG_PORT=25432 IMBOY_PG_DATABASE=imboy_acceptance IMBOY_PG_USER=imboy_acceptance IMBOY_PG_PASSWORD=<synthetic> IMBOY_SMS_SWITCH=off make run",
+      "result": "FAIL before this file's fix window: imboy_migrate econnrefused (port publishing broken)",
+      "log": "res-pg-backend-run-084219.log (earlier failed runs shared this file naming; this file is the successful run)"
+    },
+    {
+      "n": 2,
+      "command": "same env via make run after port fix",
+      "result": "migrations applied + Application imboy started, then node terminated: foreground `make run` erlang shell read stdin EOF in background task; heart reported 'Would reboot'",
+      "evidence": "res-pg-backend-run-084219.log lines: '[imboy_migrate] all migrations applied', 'Application imboy started on node', '*** Terminating erlang'"
+    },
+    {
+      "n": 3,
+      "command": "IMBOYENV=local HTTP_PORT=19800 IMBOY_PG_*=<same> IMBOY_SMS_SWITCH=off _rel/imboy/bin/imboy start (release daemon; release assembled by attempt-2 with local config merged)",
+      "result": "SUCCESS: bin/imboy ping -> pong; beam.smp listening *:19800; GET /healthz -> 200; GET / -> 200"
+    }
+  ],
+  "verification": {
+    "ping": "pong",
+    "healthz": "HTTP 200",
+    "migrations": "log line '[imboy_migrate] all migrations applied' (release ran imboy_migrate:migrate() at boot against 25432)",
+    "pg_tables_visible": 263,
+    "migration_source_files": 326,
+    "log_sha256": "e06ec53a9ae4812df8a13885a559216ff7bf9f68b34d9e5b167df666168123d9",
+    "log_path": "docs/design/2026-10-03-full-product-device-acceptance/evidence/zcode-acceptance-20261004/res-pg-backend-run-084219.log",
+    "imboy_repo_head_at_run": "2208e7e3b68c33e00eda7bacdc86ce4b3d7a9e3f"
+  },
+  "notes": [
+    "auth secret hygiene: no JWT secrets, no PG password, no tokens stored in this receipt; account credentials for synthetic accounts are documented in res-synth-acc-executed.json as isolated-scope-only.",
+    "backend stays running for RES-SYNTH-ACC / device smoke; stop with _rel/imboy/bin/imboy stop."
+  ]
+}

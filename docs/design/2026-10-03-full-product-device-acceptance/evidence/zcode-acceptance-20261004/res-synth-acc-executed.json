@@ -1,0 +1,37 @@
+{
+  "receipt": "res-synth-acc-executed",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "approval_basis": {
+    "resource_unit": "RES-SYNTH-ACC (resource-approval-table.json)",
+    "user_goal_grant": "/goal 授权你使用真机设备，授权你完成全部任务计划 (2026-10-04)",
+    "scope_note": "synthetic accounts on isolated acceptance backend only; no real phone numbers, no SMS sent (sms.switch=off verified in code path passport_logic send_sms_code/1: 'off' -> store only, no external send), no third-party impact"
+  },
+  "backend": "res-pg-backend-executed.json (http://127.0.0.1:19800)",
+  "registration_flow_verified": [
+    "POST /api/v1/passport/getcode {type=sms, account, scene=signup} -> code stored in pg verification_code (sms.switch=off: no external SMS)",
+    "code read from isolated PG via psql (SELECT code FROM verification_code WHERE id=<account>)",
+    "POST /api/v1/passport/signup {type=mobile, account, pwd, code, rsa_encrypt=0, nickname, sys_version=acceptance-test} -> code=0",
+    "POST /api/v1/passport/login {type=mobile, account, pwd, rsa_encrypt=0} + headers cos/did/dname -> uid+token+refreshtoken"
+  ],
+  "accounts": [
+    {"alias": "A", "mobile_synthetic": "13800000001", "nickname": "AccA", "uid": 116151519723915264, "account_no": "50008", "device_id": "acc-acceptance-device-a"},
+    {"alias": "B", "mobile_synthetic": "13800000002", "nickname": "AccB", "uid": 116151603672909824, "account_no": "50002", "device_id": "acc-acceptance-device-b"},
+    {"alias": "C", "mobile_synthetic": "13800000003", "nickname": "AccC", "uid": 116151603863750656, "account_no": "50005 (implied; see confirm payload of A->C when consumed)", "device_id": "acc-acceptance-device-c"}
+  ],
+  "credentials_note": "shared synthetic password documented here ONLY because environment is throwaway tmpfs-isolated: Zx9-Kp2m-Qw4r-Tn7v (rsa_encrypt=0 plaintext path, elib_cipher:safe_rsa_decrypt/2 non-'1' clause). Tokens NOT stored; re-login any time. /tmp/synth_tokens.env (600) holds current tokens outside all repos.",
+  "relationship_fixtures": [
+    {"relation": "A<->B friends", "evidence": "GET-equivalent POST /api/v1/friend/list for A shows AccB (is_friend=1,is_from=1); for B shows AccA (is_friend=1,is_from=0); confirm payload returned AccA profile to B", "created_at_ms": 1791075119005},
+    {"relation": "A->C pending friend request", "evidence": "POST /api/v1/friend/add A->C code=0; intentionally left pending for the confirm-friend flow acceptance (contact fn/f00 confirm-new-friend + device journey)", "created_at_ms": 1791075119067}
+  ],
+  "api_notes_for_followups": [
+    "friend/add requires: to, payload (JSON string in form field), created_at (ms)",
+    "friend/confirm requires: from, to, payload; respond code=0 with requester profile",
+    "all authed endpoints: Authorization: Bearer <token>; request body form-urlencoded (elib_param:post does not parse JSON bodies)",
+    "getcode type=sms vs signup/login type=mobile (different param names by endpoint)"
+  ],
+  "notes": [
+    "uids are TSID (64-bit) transmitted as JSON integers per project convention.",
+    "account C has no confirmed relationship yet; kept single for per-account isolation tests (e.g. non-friend boundaries)."
+  ]
+}

@@ -18,7 +18,12 @@
       ],
       "impacts": "本机一个隔离容器；不触任何现有库",
       "dependencies": [],
-      "approval_source": null
+      "approval_source": "user /goal 2026-10-04: 授权你使用真机设备，授权你完成全部任务计划",
+      "status": "EXECUTED",
+      "receipts": [
+        "res-pg-qual-executed.json",
+        "res-pg-port-binding-fix.json"
+      ]
     },
     {
       "id": "RES-PG-BACKEND",
@@ -34,8 +39,13 @@
       "dependencies": [
         "RES-PG-QUAL 资格通过"
       ],
-      "approval_source": null,
-      "note": "本格不含『全量 EUnit 两轮』——那是 F17 冻结门动作，届时单独申请 RES-L3-RERUN"
+      "approval_source": "user /goal 2026-10-04: 授权你使用真机设备，授权你完成全部任务计划",
+      "note": "本格不含『全量 EUnit 两轮』——那是 F17 冻结门动作，届时单独申请 RES-L3-RERUN",
+      "status": "EXECUTED",
+      "receipts": [
+        "res-pg-backend-executed.json",
+        "res-pg-port-binding-fix.json"
+      ]
     },
     {
       "id": "RES-L3-RERUN",
@@ -50,7 +60,8 @@
         "RES-PG-BACKEND",
         "冻结候选成立"
       ],
-      "approval_source": null
+      "approval_source": null,
+      "status": "PENDING_FROZEN_CANDIDATE"
     },
     {
       "id": "RES-DEV-INSTALL",
@@ -63,8 +74,9 @@
       ],
       "impacts": "设备上新增/移除本 run 应用；不改设备系统设置",
       "dependencies": [],
-      "approval_source": null,
-      "note": "不含账号/数据写入；不含旅程执行"
+      "approval_source": "user /goal 2026-10-04: 授权你使用真机设备，授权你完成全部任务计划",
+      "note": "不含账号/数据写入；不含旅程执行",
+      "status": "AUTHORIZED"
     },
     {
       "id": "RES-SYNTH-ACC",
@@ -79,8 +91,12 @@
         "RES-PG-BACKEND",
         "RES-DEV-INSTALL(用于 App 侧登录)"
       ],
-      "approval_source": null,
-      "note": "不含真实手机号/邮箱验证码通道；不含真实联系人"
+      "approval_source": "user /goal 2026-10-04: 授权你使用真机设备，授权你完成全部任务计划",
+      "note": "不含真实手机号/邮箱验证码通道；不含真实联系人",
+      "status": "EXECUTED",
+      "receipts": [
+        "res-synth-acc-executed.json"
+      ]
     },
     {
       "id": "RES-JOURNEYS",
@@ -96,7 +112,8 @@
         "RES-SYNTH-ACC",
         "RES-PG-BACKEND"
       ],
-      "approval_source": null
+      "approval_source": "user /goal 2026-10-04: 授权你使用真机设备，授权你完成全部任务计划",
+      "status": "AUTHORIZED"
     },
     {
       "id": "RES-CLEANUP",
@@ -111,8 +128,9 @@
       "dependencies": [
         "对应资源格已批准"
       ],
-      "approval_source": null,
-      "note": "禁止触碰共享 imboy_pg18(4323) 或其他会话资源"
+      "approval_source": "user /goal 2026-10-04: 授权你使用真机设备，授权你完成全部任务计划",
+      "note": "禁止触碰共享 imboy_pg18(4323) 或其他会话资源",
+      "status": "AUTHORIZED"
     },
     {
       "id": "RES-MITM",
@@ -127,7 +145,8 @@
         "RES-SYNTH-ACC"
       ],
       "approval_source": null,
-      "note": "不含生产环境任何检索"
+      "note": "不含生产环境任何检索",
+      "status": "NOT_AUTHORIZED"
     }
   ],
   "decisions": [
@@ -166,5 +185,7 @@
       ]
     }
   ],
-  "explicit_exclusions": "push/部署/生产迁移/真实支付/第三方通知不在任何格内；本表不新增授权。"
+  "explicit_exclusions": "push/部署/生产迁移/真实支付/第三方通知不在任何格内；本表不新增授权。",
+  "status_updated_at": "2026-10-04T08:55:00+08:00",
+  "status_note": "RES-PG-QUAL/BACKEND/SYNTH-ACC 已按 /goal 授权执行并留 receipt；RES-MITM 不在 /goal 授权文字范围内，保持 NOT_AUTHORIZED；RES-L3-RERUN 等冻结候选成立后执行。"
 }

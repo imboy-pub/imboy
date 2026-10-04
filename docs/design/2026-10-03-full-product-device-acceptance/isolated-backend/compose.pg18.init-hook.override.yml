@@ -1,0 +1,11 @@
+# Run-scoped override for the image init bug (template_postgis assumed
+# pre-existing). Binds a single read-only shell script; no data volumes.
+services:
+  postgres:
+    configs:
+      - source: init_template_postgis
+        target: /docker-entrypoint-initdb.d/05_create_template_postgis.sh
+        mode: 0555
+configs:
+  init_template_postgis:
+    file: ./05_create_template_postgis.sh
