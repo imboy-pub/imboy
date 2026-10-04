@@ -1,4 +1,5 @@
 -module(billing_subscription_repo).
+-moduledoc "订阅数据仓库层 / SaaS subscription repository。".
 %%%
 % billing_subscription 订阅数据仓库层 / SaaS subscription repository
 %

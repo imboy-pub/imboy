@@ -1,4 +1,5 @@
 -module(attach_pending_repo).
+-moduledoc "已签发 presigned PUT 但尚未 confirm 的对象登记表（迁移 00000054）。".
 %%%
 % 已签发 presigned PUT 但尚未 confirm 的对象登记表（迁移 00000054）
 %

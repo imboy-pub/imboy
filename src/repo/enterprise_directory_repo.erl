@@ -1,5 +1,6 @@
 -module(enterprise_directory_repo).
 
+-moduledoc "受限 cursor directory 的 tx 仓储层。".
 %%%
 % enterprise_directory_repo 是**受限 cursor directory** 的 tx 仓储层
 % （FULL-02 / plan-full §3.1「外部身份 … 受限 cursor directory，不允许无界导出」、

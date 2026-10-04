@@ -1,5 +1,6 @@
 -module(enterprise_group_origin_repo).
 
+-moduledoc "企业群 Application 归属仓储层。".
 %%%
 % enterprise_group_origin_repo 是企业群 **Application 归属** 仓储
 % （FULL-02 / plan-full §3.1「企业群生命周期、成员角色、Application membership」；

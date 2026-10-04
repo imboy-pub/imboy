@@ -1,5 +1,6 @@
 -module(enterprise_friend_request_repo).
 
+-moduledoc "企业好友申请（只发起，EPGZ-03 INT-11）仓储层。".
 %%%
 % enterprise_friend_request_repo 是 EPGZ-03（INT-11）好友申请（只发起）的
 % tx 仓储层。现有好友申请的持久化真源是 user_friend 表的 pending 行

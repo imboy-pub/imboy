@@ -1,5 +1,6 @@
 -module(enterprise_application_usage_repo).
 
+-moduledoc "企业 Application 用量聚合计量仓储层。".
 %%%
 % enterprise_application_usage_repo 是企业 Application 用量**聚合计量**仓储
 % （FULL-02 / plan-full §5：`enterprise_application_usage` 只存聚合计量，

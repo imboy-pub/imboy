@@ -1,4 +1,5 @@
 -module(billing_plan_repo).
+-moduledoc "套餐数据仓库层 / SaaS billing plan repository。".
 %%%
 % billing_plan 套餐数据仓库层 / SaaS billing plan repository
 %

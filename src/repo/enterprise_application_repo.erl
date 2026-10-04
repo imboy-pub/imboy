@@ -1,5 +1,6 @@
 -module(enterprise_application_repo).
 
+-moduledoc "企业集成 Application 仓储层（迁移 00000136）。".
 %%%
 % enterprise_application_repo 是企业集成 Application 仓储层（迁移 00000136，
 % EPGZ-01 / plan-gz §5）。Application 是 /api/internal/v1/* 的唯一调用主体

@@ -1,4 +1,5 @@
 -module(compliance_key_repo).
+-moduledoc "合规密钥数据仓库层 / compliance key repository。".
 %%%
 % compliance_key_repo 是合规密钥数据仓库层
 % 提供合规公钥的 CRUD 操作（仅存公钥侧；合规私钥由审计方本地保管，服务端零接触）。

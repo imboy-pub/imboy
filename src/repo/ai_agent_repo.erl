@@ -1,5 +1,6 @@
 -module(ai_agent_repo).
 
+-moduledoc "AI Agent 元数据仓库 / AI Agent metadata repository。".
 %%%
 % AI Agent 元数据仓库 / AI Agent metadata repository
 % 表 ai_agent（见 priv/migrations/00000027_ai_agent）：user_id 主键 = agent 的 user.id

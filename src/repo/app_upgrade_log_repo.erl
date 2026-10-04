@@ -1,4 +1,5 @@
 -module(app_upgrade_log_repo).
+-moduledoc "app_upgrade_log 存储库模块 / repository。".
 %%%
 % app_upgrade_log 存储库模块
 % 升级事件日志表的数据访问层

@@ -1,5 +1,6 @@
 -module(announcement_repo).
 
+-moduledoc "announcement 数据仓库模块 / repository。".
 %%%
 % announcement 数据仓库模块
 % announcement repository module

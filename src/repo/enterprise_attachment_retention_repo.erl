@@ -1,5 +1,6 @@
 -module(enterprise_attachment_retention_repo).
 
+-moduledoc "企业附件留存/法务 hold/purge 账本仓储层。".
 %%%
 % enterprise_attachment_retention_repo 是企业**附件**留存/法务 hold/purge 账本
 % 仓储（FULL-02 / plan-full §3.1「企业附件 … retention/hold/purge 不变量」；

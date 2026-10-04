@@ -1,4 +1,5 @@
 -module(workspace_resolver).
+-moduledoc "统一资源归属解析层（双体验 v2.5.2 WP3/T5）。".
 -compile([nowarn_deprecated_catch]).
 %%%
 % workspace_resolver 统一资源归属解析层（双体验 v2.5.2 WP3/T5）

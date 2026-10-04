@@ -1,5 +1,6 @@
 -module(enterprise_application_credential_repo).
 
+-moduledoc "企业 Application 凭证仓储层。".
 %%%
 % enterprise_application_credential_repo 是 Application 凭证仓储层（迁移
 % 00000136，EPGZ-01 / plan-gz §4.1）。凭证形态 ib_int_<credential_id>.<secret>：

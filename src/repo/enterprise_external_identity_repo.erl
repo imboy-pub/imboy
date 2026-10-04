@@ -1,5 +1,6 @@
 -module(enterprise_external_identity_repo).
 
+-moduledoc "外部身份映射仓储层（迁移 00000136）。".
 %%%
 % enterprise_external_identity_repo 是外部身份映射仓储层（迁移 00000136，
 % EPGZ-01 / plan-gz §5）。客户 OA 的 external_user_id <-> IMBoy active Human

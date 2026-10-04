@@ -1,4 +1,5 @@
 -module(app_version_policy_repo).
+-moduledoc "app_version_policy 存储库模块 / repository。".
 %%%
 % app_version_policy 存储库模块
 % 版本策略配置表的数据访问层
