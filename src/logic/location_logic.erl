@@ -1,4 +1,5 @@
 -module(location_logic).
+-moduledoc "location 业务逻辑模块 / business logic module。".
 %%%
 % location 业务逻辑模块
 % location business logic module

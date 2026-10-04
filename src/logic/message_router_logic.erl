@@ -1,5 +1,6 @@
 -module(message_router_logic).
 
+-moduledoc "消息路由模块 —— 消息分发编排。".
 %%%
 % 消息路由模块
 % 负责将 WebSocket 消息路由到对应的业务逻辑模块

@@ -1,5 +1,6 @@
 -module(moderation_action_logic).
 
+-moduledoc "举报处置动作层（R-02）—— warning / group_mute / group_kick / reject 小而可审计的动作集。".
 %% R-02：把已确认的举报变成小而可审计的动作。
 %% * 动作集（MVP）：warning / group_mute / group_kick / reject；
 %%   account_restrict 复用后台禁用语义（status=0，scope 记 prev_status）

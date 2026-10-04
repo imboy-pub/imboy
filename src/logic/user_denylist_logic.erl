@@ -1,5 +1,6 @@
 -module(user_denylist_logic).
 
+-moduledoc "user_denylist 业务逻辑模块 / business logic module。".
 %%%
 % user_denylist 业务逻辑模块
 % user_denylist business logic module

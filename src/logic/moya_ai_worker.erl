@@ -1,4 +1,5 @@
 -module(moya_ai_worker).
+-moduledoc "墨芽书法 AI 视频回课 Worker（Step 11 骨架 + AI-03 降级闭环优先）。".
 %%%
 % 墨芽书法 AI 视频回课 Worker（Step 11 骨架 + AI-03 降级闭环优先）
 % AI video review worker

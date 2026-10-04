@@ -1,4 +1,5 @@
 -module(project_task_logic).
+-moduledoc "项目任务业务逻辑（双体验 v2.5.2 WP4/T6b）。".
 -compile([nowarn_deprecated_catch]).
 %%%
 % project_task_logic 项目任务业务逻辑（双体验 v2.5.2 WP4/T6b）

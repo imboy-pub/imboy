@@ -1,4 +1,5 @@
 -module(moya_learner_bind_logic).
+-moduledoc "墨芽学员账号绑定逻辑（Step 16）—— 管理侧最小动作，无自助 UI。".
 %%%
 % 墨芽学员账号绑定逻辑（Step 16：管理侧最小动作，无自助 UI，计划 §6.4）
 % Learner account binding logic

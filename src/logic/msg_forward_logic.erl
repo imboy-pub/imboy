@@ -1,4 +1,5 @@
 -module(msg_forward_logic).
+-moduledoc "消息转发业务逻辑模块 / message forwarding logic。".
 %%%
 % msg_forward_logic 消息转发业务逻辑模块
 %%%

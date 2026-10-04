@@ -1,5 +1,6 @@
 -module(wallet_logic).
 
+-moduledoc "钱包业务逻辑层 / Wallet business logic layer。".
 %%%
 % 钱包业务逻辑层 / Wallet business logic layer
 %

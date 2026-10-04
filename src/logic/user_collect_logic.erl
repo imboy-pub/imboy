@@ -1,5 +1,6 @@
 -module(user_collect_logic).
 
+-moduledoc "social_graph 收藏域稳定边界 —— HTTP 适配层经此模块访问。".
 %% Stable social_graph collect domain boundary.
 
 %%%

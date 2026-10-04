@@ -1,5 +1,6 @@
 -module(moderation_sweep_logic).
 
+-moduledoc "处置动作到期 sweep（R-02）—— 周期性将过期禁言/限制审计行翻转为 expired。".
 %% R-02：处置动作到期 sweep。把 end_at 已过期的 executed 禁言/限制
 %% 审计行周期性翻转为 expired（业务失效由原语 until 保证，此处只闭环
 %% 审计状态）。默认启用、5 分钟一轮；数据零删除、可随时禁用。

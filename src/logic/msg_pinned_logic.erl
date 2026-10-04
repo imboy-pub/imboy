@@ -5,6 +5,7 @@
 
 -module(msg_pinned_logic).
 
+-moduledoc "消息置顶业务逻辑模块 / msg_pinned logic。".
 -export([pin/2, unpin/2]).
 
 -include("log.hrl").

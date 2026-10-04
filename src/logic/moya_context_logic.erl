@@ -1,4 +1,5 @@
 -module(moya_context_logic).
+-moduledoc "墨芽教学上下文业务逻辑（contexts / context switch）。".
 %%%
 % 墨芽教学上下文业务逻辑（contexts / context switch）
 % Teaching identity contexts logic

@@ -1,4 +1,5 @@
 -module(moya_roster_logic).
+-moduledoc "墨芽教师侧只读班级学员名单业务逻辑（MN-ROSTER-01，P0-2）。".
 %%%
 % 墨芽教师侧只读班级学员名单业务逻辑（MN-ROSTER-01，P0-2）
 % Read-only class roster logic：GET /api/v1/moya/classes/:group_id/learners。

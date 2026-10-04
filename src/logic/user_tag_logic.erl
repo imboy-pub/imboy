@@ -1,4 +1,5 @@
 -module(user_tag_logic).
+-moduledoc "user_tag 业务逻辑模块 / business logic module。".
 %%%
 % user_tag 业务逻辑模块
 % user_tag business logic module

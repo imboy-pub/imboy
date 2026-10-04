@@ -1,5 +1,6 @@
 -module(organization_member_logic).
 
+-moduledoc "Organization 成员关系逻辑 —— 成员资格不派生 Workspace 资格；离场同事务撤销协作资格。".
 %% Organization 成员关系不派生 Workspace 资格；离场同事务撤销本组织的协作资格。
 %%
 %% `suspend/3` 与 `remove/3` 的**依赖资源守卫**（EB-08 租约内的精确 removal/suspend

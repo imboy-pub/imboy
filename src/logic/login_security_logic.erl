@@ -1,4 +1,5 @@
 -module(login_security_logic).
+-moduledoc "登录安全业务逻辑层 / login security logic。".
 %%%===================================================================
 %%% @doc
 %%% login_security_logic - 登录安全逻辑层

@@ -5,6 +5,7 @@
 %%%-------------------------------------------------------------------
 -module(qr_login_logic).
 
+-moduledoc "QR 码登录业务逻辑层 / QR login logic。".
 -include("log.hrl").
 -include("common.hrl").
 

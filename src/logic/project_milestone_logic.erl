@@ -1,4 +1,5 @@
 -module(project_milestone_logic).
+-moduledoc "项目里程碑业务逻辑（迁移 00000081，W2 / ZC-03）。".
 -compile([nowarn_deprecated_catch]).
 %%%
 % project_milestone_logic 项目里程碑业务逻辑（迁移 00000081，W2 / ZC-03）

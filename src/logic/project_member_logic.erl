@@ -1,4 +1,5 @@
 -module(project_member_logic).
+-moduledoc "项目成员业务逻辑（Channel-first-class W2 ZC-02）。".
 -compile([nowarn_deprecated_catch]).
 %%%
 % project_member_logic 项目成员业务逻辑（Channel-first-class W2 ZC-02）

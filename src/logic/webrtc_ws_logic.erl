@@ -1,4 +1,5 @@
 -module(webrtc_ws_logic).
+-moduledoc "webrtc_ws 业务逻辑模块 / business logic module。".
 %%%
 % webrtc_ws 业务逻辑模块
 % webrtc_ws business logic module

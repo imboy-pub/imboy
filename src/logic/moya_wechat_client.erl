@@ -1,4 +1,5 @@
 -module(moya_wechat_client).
+-moduledoc "微信小程序服务端 HTTP 客户端（薄封装，可 meck）。".
 %%%
 % 微信小程序服务端 HTTP 客户端（薄封装，可 meck）
 % WeChat mini-program server-side client

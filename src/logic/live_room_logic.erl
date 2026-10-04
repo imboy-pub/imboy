@@ -1,4 +1,5 @@
 -module(live_room_logic).
+-moduledoc "直播间业务逻辑层 —— 薄委托 live_room_ds。".
 %% 直播间业务逻辑层
 %% Live room business logic layer — thin delegation to live_room_ds.
 

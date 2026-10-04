@@ -1,4 +1,5 @@
 -module(moya_attach_logic).
+-moduledoc "墨芽教学附件授权/校验/生命周期（Step 10）。".
 %%%
 % 墨芽教学附件授权/校验/生命周期（Step 10）
 % Teaching attachment scope: upload guard, MIME/size/duration whitelist,

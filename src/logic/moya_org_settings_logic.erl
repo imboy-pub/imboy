@@ -1,4 +1,5 @@
 -module(moya_org_settings_logic).
+-moduledoc "机构设置读写逻辑（墨芽教学域）—— 首版只放开 AI 辅助批改开关。".
 %%%
 % 机构设置读写逻辑（墨芽教学域）—— 首版只放开 AI 辅助批改开关。
 % Org settings logic
