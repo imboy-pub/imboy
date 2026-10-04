@@ -85,7 +85,6 @@ cancel_request_tx(Conn, Uid) ->
     %% 0 行={ok, 0, []}），dialyzer 规格内且无需解析行
     case elib_pg:execute_count(Conn, Sql, [Uid]) of
         {ok, Count} -> {ok, Count};
-        {ok, Count, _Tuples} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -100,11 +99,8 @@ approve_request_tx(Conn, Uid) ->
             "     approved_at = CURRENT_TIMESTAMP,"
             "     updated_at = CURRENT_TIMESTAMP"
             " WHERE user_id = $1 AND status = 'requested'">>,
-    %% execute/3 对 RETURNING 稳定返回计数（1 行={ok, N, Tuples}、
-    %% 0 行={ok, 0, []}），dialyzer 规格内且无需解析行
-    case elib_pg:execute(Conn, Sql, [Uid]) of
+    case elib_pg:execute_count(Conn, Sql, [Uid]) of
         {ok, Count} -> {ok, Count};
-        {ok, Count, _Tuples} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
 

@@ -64,7 +64,7 @@ upsert_active_tx(Conn, WsId, ProjectId, Uid, InvitedBy) ->
                     " ON CONFLICT (project_id, user_id) DO UPDATE",
                     " SET status = 'active', invited_by = EXCLUDED.invited_by,",
                     "     joined_at = EXCLUDED.joined_at, updated_at = EXCLUDED.updated_at">>,
-            case elib_pg:execute(Conn, Sql, [WsId, ProjectId, Uid, InvitedBy, Now]) of
+            case elib_pg:execute_count(Conn, Sql, [WsId, ProjectId, Uid, InvitedBy, Now]) of
                 {ok, _Count} ->
                     case find_tx(Conn, ProjectId, Uid, Columns) of
                         {error, _} = Err -> Err;

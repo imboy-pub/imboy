@@ -91,7 +91,7 @@ restore(Uid, ConversationId, Type) ->
     Tb = tablename(),
     Where = <<" WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
-    case elib_pg:execute(Sql, [Uid, ConversationId, Type]) of
+    case elib_pg:execute_count(Sql, [Uid, ConversationId, Type]) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
@@ -104,7 +104,7 @@ delete_by_user(Uid) ->
     Tb = tablename(),
     Where = <<" WHERE user_id = $1">>,
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
-    case elib_pg:execute(Sql, [Uid]) of
+    case elib_pg:execute_count(Sql, [Uid]) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.

@@ -27,6 +27,8 @@
 
     execute/2,
     execute/3,
+    execute_count/2,
+    execute_count/3,
 
     query/2,
     query/3,

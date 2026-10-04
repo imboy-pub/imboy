@@ -59,7 +59,7 @@ save_read(MsgId, FromUid, ToUid, ToDid, ReadAt) ->
         <<" WHERE msg_id = $1 AND to_uid = $3 AND to_did = $4)">>,
         <<" ON CONFLICT (msg_id, to_uid, to_did, created_at) DO NOTHING">>
     ],
-    case elib_pg:execute(Sql, [MsgId, FromUid, ToUid, ToDid, ReadAt]) of
+    case elib_pg:execute_count(Sql, [MsgId, FromUid, ToUid, ToDid, ReadAt]) of
         {ok, _Count} -> ok;
         {error, Reason} -> {error, Reason}
     end.
@@ -90,7 +90,6 @@ delete_read_records(MsgId, ToUid) ->
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE msg_id = $1 AND to_uid = $2">>,
     case elib_pg:execute_count(Sql, [MsgId, ToUid]) of
         {ok, Count} -> {ok, Count};
-        {ok, Count, _} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
 
