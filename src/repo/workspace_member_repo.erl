@@ -1,4 +1,5 @@
 -module(workspace_member_repo).
+-moduledoc "Workspace 成员仓储 / workspace member repository。".
 %%%
 % workspace_member_repo 是 workspace_member repository 缩写
 % 工作区成员数据仓库层（迁移 00000076，双体验 v2.5.2 WP3/T4）

@@ -1,5 +1,6 @@
 -module(ops_report_repo).
 
+-moduledoc "运营周报数据仓库（P0-3 A3-4）/ Ops weekly-report repository。".
 %%%
 %%% 运营周报数据仓库 / Ops weekly-report repository（P0-3 A3-4）
 %%%

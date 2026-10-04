@@ -1,4 +1,5 @@
 -module(project_event_repo).
+-moduledoc "项目事件仓储 / project event repository。".
 %%%
 % project_event_repo 是 project_event repository 缩写
 % 项目事件数据仓库层（迁移 00000078，双体验 v2.5.2 WP4/T6a）

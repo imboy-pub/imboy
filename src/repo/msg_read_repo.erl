@@ -1,4 +1,5 @@
 -module(msg_read_repo).
+-moduledoc "消息已读回执数据仓库层 / message read receipt repository。".
 %%%
 % msg_read_repo 是消息已读回执数据仓库层
 % 提供消息已读状态的基础数据库操作

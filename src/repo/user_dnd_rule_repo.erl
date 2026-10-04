@@ -1,4 +1,5 @@
 -module(user_dnd_rule_repo).
+-moduledoc "免打扰规则仓储 / user DND rule repository。".
 %%%
 % user_dnd_rule_repo 是 user_dnd_rule repository 缩写
 % 用户免打扰(DND)规则数据仓库层，提供免打扰规则的基础数据库操作

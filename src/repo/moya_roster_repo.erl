@@ -1,4 +1,5 @@
 -module(moya_roster_repo).
+-moduledoc "墨芽教师侧只读班级学员名单仓库层（MN-ROSTER-01，P0-2）。".
 %%%
 % 墨芽教师侧只读班级学员名单仓库层（MN-ROSTER-01，P0-2）
 % Teaching roster repository：本班 active enrollment learner 最小名单查询。

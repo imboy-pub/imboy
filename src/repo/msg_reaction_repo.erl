@@ -1,4 +1,5 @@
 -module(msg_reaction_repo).
+-moduledoc "消息表情回应数据仓库层 / message reaction repository。".
 %%%
 % msg_reaction_repo 是消息表情回应数据仓库层
 % 提供消息表情回应的基础数据库操作

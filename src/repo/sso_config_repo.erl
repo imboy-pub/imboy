@@ -1,5 +1,6 @@
 -module(sso_config_repo).
 
+-moduledoc "SSO 外部认证配置数据仓库模块 / repository。".
 %%%
 % SSO 外部认证配置数据仓库模块
 % SSO external authentication config repository module

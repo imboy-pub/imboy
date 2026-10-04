@@ -1,4 +1,5 @@
 -module(user_deletion_request_repo).
+-moduledoc "账号删除请求仓储 / user deletion request repository。".
 %%%
 % user_deletion_request_repo 是 user_deletion_request repository 缩写
 % 账号注销请求窄记录仓库层（迁移 00000085，Implementation Plan Task D-01）

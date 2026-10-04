@@ -1,5 +1,6 @@
 -module(organization_member_repo).
 
+-moduledoc "Organization 治理成员关系仓储 —— 与 workspace_member 相互独立。".
 %% Organization 治理成员关系。它与 workspace_member 相互独立：
 %% Workspace 可以邀请不属于其 Organization 的外部用户。
 

@@ -1,4 +1,5 @@
 -module(moya_subscribe_repo).
+-moduledoc "墨芽订阅消息一次性授权额度数据仓库（W3 服务端依赖之一）。".
 %%%
 % 墨芽订阅消息一次性授权额度数据仓库（W3 服务端依赖之一）
 % Moya subscribe-message one-shot grant repository

@@ -1,5 +1,6 @@
 -module(report_action_log_repo).
 
+-moduledoc "举报处置日志仓储 / report action log repository。".
 -export([create/4]).
 
 -spec tablename() -> binary().

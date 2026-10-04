@@ -1,5 +1,6 @@
 -module(sso_identity_repo).
 
+-moduledoc "SSO 身份映射数据仓库模块 / repository。".
 %%%
 % SSO 身份映射数据仓库模块
 % SSO identity mapping repository: (provider, subject) -> uid

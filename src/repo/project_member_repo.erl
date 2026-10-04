@@ -1,4 +1,5 @@
 -module(project_member_repo).
+-moduledoc "项目成员仓储 / project member repository。".
 %%%
 % project_member_repo 是 project_member repository 缩写
 % 项目成员数据仓库层（迁移 00000081，Channel-first-class W2 ZC-02）

@@ -1,4 +1,5 @@
 -module(moya_task_repo).
+-moduledoc "墨芽教师教学作业仓库层（MN-TASK-01 / MN-TASK-02，P0-3）。".
 %%%
 % 墨芽教师教学作业仓库层（MN-TASK-01 / MN-TASK-02，P0-3）
 % Teaching task repository：group_task 幂等创建、教学 assignment 写入、

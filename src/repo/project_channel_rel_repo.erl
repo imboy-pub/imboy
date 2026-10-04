@@ -1,4 +1,5 @@
 -module(project_channel_rel_repo).
+-moduledoc "项目↔频道关联仓储 / project channel relation repository。".
 %%%
 % project_channel_rel_repo 是 project_channel_rel repository 缩写
 % 项目↔频道关联数据仓库层（迁移 00000081，channel-firstclass W2 ZC-04）

@@ -1,4 +1,5 @@
 -module(project_channel_agg_repo).
+-moduledoc "项目频道聚合查询仓储 / project channel aggregate repository。".
 %%%
 % project_channel_agg_repo 是项目频道聚合查询 repository 缩写
 % Channel-firstclass W2 ZC-04：Pinned / Related Posts / Activity 三类聚合的
