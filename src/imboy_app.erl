@@ -321,6 +321,10 @@ tsid_generator_names() ->
         olm_identity,
         olm_one_time_key,
         olm_fallback_key,
+        %% trust_audit = 设备信任决策事件流（olm_identity_logic 换钥审计事件
+        %% 与 e2ee_trust_logic 信任决策写入；EWS-BE-D1 补登：此前漏注册，
+        %% 真节点换钥追加审计事件必 elib_tsid_generator_not_registered 崩溃）
+        trust_audit,
         %% ── 管理员 ──
         adm_user,
         adm_role,
