@@ -24,7 +24,15 @@
       "fn:contact:people_info_page:004 未修改按钮禁用 (tag 流程A/D)",
       "fn:contact:people_info_page:005 提交成功提示并返回 (tag 流程B pop)",
       "fn:contact:people_info_page:008 无标签显示添加标签 (tag 流程A)",
-      "fn:contact:people_info_page:009 备注 40 字上限 (tag 流程C)"
+      "fn:contact:people_info_page:009 备注 40 字上限 (tag 流程C)",
+      "fn:contact:contact_page:002 搜索本地过滤 (contact_page_search_test.dart 7 个纯函数用例: 匹配/大小写/清空/无结果)",
+      "fn:contact:contact_page:003 索引栏随过滤派生 (同文件: 过滤后索引标签一致性/空标签集)",
+      "fn:contact:assistant_plaza_page:001 加载并渲染助手列表 (assistant_plaza_provider_test.dart AP-1: 字段映射+accountType+hasMore, agentApiProvider Fake 注入)",
+      "fn:contact:assistant_plaza_page:005 搜索关键词重查 (AP-5 updateKwd 重置分页; 300ms 防抖时序本身未测, 部分)",
+      "fn:contact:assistant_plaza_page:007 滚动触底加载下一页 (AP-3 loadMore 追加+短页 hasMore=false)",
+      "fn:contact:assistant_plaza_page:008 下拉刷新重新拉取 (AP-3/AP-4 分页状态机; refresh 触发器 UI 半边未测, 部分)",
+      "fn:contact:assistant_plaza_page:009 加载失败展示错误态 (AP-2 error 置位+列表空; AP-4 失败保留列表供重试)",
+      "fn:contact:assistant_plaza_page:010 附注: AI 徽章/声明卡 widget 渲染层 (:004/:010) 仍未覆盖"
     ]
   },
   "newly_closed_this_round": [
@@ -67,6 +75,11 @@
       "fn_id": "fn:contact:people_info_more_page:010",
       "action": "黑名单状态联动图标颜色变化",
       "note": "ALREADY COVERED by destructive suite 流程B (icon red/gray tracked to switch state) - drift reconciliation"
+    },
+    {
+      "fn_id": "fn:contact:people_info_more_page:001/004/010 (reconciled)",
+      "action": "漂移核对补充登记",
+      "note": "see already_covered list"
     }
   ],
   "remaining_blocked_or_deferred": {
