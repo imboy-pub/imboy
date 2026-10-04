@@ -596,7 +596,7 @@ update_friends_last_seen_at_test_() ->
         [
             ?MOCK_ENV,
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+                {'execute_count', 2, fun(_Sql, _Params) -> {ok, 0} end}
             ]},
             {friend_repo, [
                 {'tablename', 0, fun() -> <<"public.user_friend">> end}
@@ -618,7 +618,7 @@ update_friends_last_seen_at_zero_uid_test_() ->
         [
             ?MOCK_ENV,
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+                {'execute_count', 2, fun(_Sql, _Params) -> {ok, 0} end}
             ]},
             {friend_repo, [
                 {'tablename', 0, fun() -> <<"public.user_friend">> end}

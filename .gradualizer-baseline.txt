@@ -326,7 +326,6 @@ user_export_logic
 user_handler
 user_log_repo
 user_onboarding_logic
-user_repo
 user_server
 user_tag_ds
 user_tag_relation_ds

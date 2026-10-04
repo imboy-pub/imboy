@@ -60,7 +60,8 @@ page(Page, Size, Where, OrderBy) ->
         "id,account,nickname,COALESCE(NULLIF(mobile, ''), account) AS mobile,"
         "email,avatar,gender,region,sign,status,created_at"
     >>,
-    elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
+    %% page_with_total 守卫强制 Page/Size > 0，而本函数边界收的是未验证整数
+    elib_pg:page_with_total(Tb, Column, Where, OrderBy, max(1, Page), max(1, Size)).
 
 %% @doc 兼容旧接口：创建用户
 %% @return {ok, UserId} 创建成功返回真实用户 id | {error, Reason}
@@ -102,7 +103,7 @@ create_tx(Conn, Data0) ->
 update_tx(Conn, Id, Data) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"id = $1">>, [Id]),
-    elib_pg:execute(Conn, Sql, Params).
+    elib_pg:execute_count(Conn, Sql, Params).
 
 %% @doc 兼容旧接口：按 uid 查询用户（排除 password 列）
 %% 注意：user 表自 00000001_foundation 起就没有 updated_at 列，此处列清单
@@ -277,7 +278,7 @@ delete(Id) ->
 %% @param Uid 用户ID
 %% @param Timestamp 要更新的时间戳
 %% @return {ok, Count} | {error, Reason}
--spec update_last_seen_at(binary(), pos_integer(), binary()) ->
+-spec update_last_seen_at(binary(), integer(), binary()) ->
     {ok, non_neg_integer()} | {error, term()}.
 update_last_seen_at(Field, Uid, Timestamp) ->
     Tb = friend_repo:tablename(),
@@ -285,7 +286,7 @@ update_last_seen_at(Field, Uid, Timestamp) ->
         <<"UPDATE ", Tb/binary,
             " SET last_seen_at = $1::timestamptz, updated_at = $2::timestamptz ", "WHERE ",
             Field/binary, " = $3 AND status = 1">>,
-    elib_pg:execute(Sql, [Timestamp, elib_dt:now(), Uid]).
+    elib_pg:execute_count(Sql, [Timestamp, elib_dt:now(), Uid]).
 
 %% @doc 兼容旧测试数据结构（uid/name 等）并补齐非空字段默认值
 %% 注意：本函数产出的是**固定键集**，不在其中的键会被静默丢弃。
