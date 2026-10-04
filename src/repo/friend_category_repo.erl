@@ -12,13 +12,11 @@
 %% API
 %% ===================================================================
 
-
 %% @doc 获取好友分类表的表名
 %% @return 返回好友分类表的完整表名
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"user_friend_category">>).
-
 
 %% @doc 查询指定用户的好友分类列表（使用默认限制10000）
 %% @param Uid 用户ID
@@ -35,7 +33,7 @@ list_by_uid(Uid, Column) ->
 %% @param Uid 用户ID
 %% @param Name 分类名称
 %% @returns {ok, map()} | {error, any()}
--spec find_by_name(integer(), binary()) -> {ok, map()}  | {error, any()}.
+-spec find_by_name(integer(), binary()) -> {ok, map()} | {error, any()}.
 find_by_name(Uid, Name) ->
     Tb = tablename(),
     Where = <<" WHERE owner_user_id = $1 AND name = $2">>,
@@ -51,15 +49,16 @@ find_by_name(Uid, Name) ->
 add(Uid, Name) ->
     Tb = tablename(),
     Id = elib_tsid:generate(friend_category),
-    Sql = <<"INSERT INTO ", Tb/binary, " (id, name, owner_user_id)
-        VALUES ($1, $2, $3)">>,
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
+            " (id, name, owner_user_id)\n"
+            "        VALUES ($1, $2, $3)">>,
     case elib_pg:execute(Sql, [Id, Name, Uid]) of
         {ok, _Count} ->
             {ok, Id};
         {error, Reason} ->
             {error, Reason}
     end.
-
 
 %% @doc 删除好友分类
 %% @param Uid 用户ID
@@ -71,13 +70,11 @@ delete(Uid, Id) ->
     Tb = tablename(),
     Where = <<" WHERE id = $1 AND owner_user_id = $2">>,
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
-    elib_pg:execute(Sql, [Id, Uid]).
-
+    elib_pg:execute_count(Sql, [Id, Uid]).
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
-
 
 %% @doc 查询指定用户的好友分类列表（指定限制数量）
 %% @param Uid 用户ID

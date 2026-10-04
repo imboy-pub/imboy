@@ -67,4 +67,4 @@ latest(Uid) ->
 -spec delete_by_uid(integer()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_by_uid(Uid) ->
     Sql1 = <<"DELETE FROM e2ee_key_backups WHERE uid = $1">>,
-    elib_pg:execute(Sql1, [Uid]).
+    elib_pg:execute_count(Sql1, [Uid]).

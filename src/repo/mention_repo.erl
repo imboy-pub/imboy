@@ -246,7 +246,7 @@ count_unread_in_group(Uid, Gid) ->
 delete_by_msg_id(MsgId) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE msg_id = $1">>,
-    elib_pg:execute(Sql, [MsgId]).
+    elib_pg:execute_count(Sql, [MsgId]).
 
 %% ===================================================================
 %% Internal functions

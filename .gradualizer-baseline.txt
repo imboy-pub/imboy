@@ -35,7 +35,6 @@ agent_hub_audit_repo
 agent_payment_command
 agent_payment_compensation_repo
 agent_payment_logic
-agent_payment_mandate_repo
 agent_rate_limiter
 agent_task_repo
 agent_trigger_policy
@@ -49,7 +48,6 @@ announcement_ds
 app_ddl_ds
 app_manifest_handler
 app_version_logic
-app_version_repo
 attach_handler
 attach_logic
 attachment_upload_logic
@@ -80,7 +78,6 @@ channel_logic_notify
 channel_logic_order
 channel_logic_stats
 channel_message_repo
-channel_order_repo
 channel_subscription_repo
 channel_webhook_ds
 channel_webhook_handler
@@ -90,7 +87,6 @@ config_ds
 conversation_handler
 cors_middleware
 data_disposition
-e2ee_backup_repo
 e2ee_kt_merkle
 e2ee_trust_logic
 elib_async
@@ -147,7 +143,6 @@ feedback_handler
 feedback_logic
 finance_adm_logic
 friend_category_ds
-friend_category_repo
 friend_ds
 friend_handler
 friend_logic
@@ -218,7 +213,6 @@ mcp_governance_logic
 mcp_handler
 mention_handler
 mention_logic
-mention_repo
 message_ds
 messaging_logic
 metrics_handler

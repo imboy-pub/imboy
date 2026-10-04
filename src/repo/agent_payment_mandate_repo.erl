@@ -148,25 +148,35 @@ reserve_with_compensation(MandateId, AmountFen, RefNo) ->
             " (id, mandate_id, amount_fen, reference_no, status,"
             "  next_attempt_at, created_at, updated_at)"
             " VALUES ($1, $2, $3, $4, 'settling', NOW(), NOW(), NOW())">>,
-    elib_pg:with_tx(fun(Conn) ->
-        case elib_pg:execute(Conn, ReserveSql, [MandateId, AmountFen]) of
-            {ok, 1, [{NewSpent}]} ->
-                case
-                    elib_pg:execute(
-                        Conn,
-                        InsertSql,
-                        [CompensationId, MandateId, AmountFen, RefNo]
-                    )
-                of
-                    {ok, _} -> {ok, NewSpent, CompensationId};
-                    {error, Reason} -> throw({rollback, Reason})
-                end;
-            {ok, 0} ->
-                {error, exceeds_total_limit};
-            {error, Reason} ->
-                {error, Reason}
-        end
-    end).
+    %% 三臂显式枚举收编 with_tx 的 {rollback,_} 臂：本事务的 outbox 写失败
+    %% 会真的 throw({rollback,_})，with_tx 原样返回该二元组——不归一的话
+    %% 调用链（agent_payment_logic:116 只匹配 {ok,..}/{error,..}）会
+    %% case_clause（潜伏崩溃，2026-10-04 类型检查揪出）。
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            case elib_pg:execute(Conn, ReserveSql, [MandateId, AmountFen]) of
+                {ok, 1, [{NewSpent}]} ->
+                    case
+                        elib_pg:execute(
+                            Conn,
+                            InsertSql,
+                            [CompensationId, MandateId, AmountFen, RefNo]
+                        )
+                    of
+                        {ok, _} -> {ok, NewSpent, CompensationId};
+                        {error, Reason} -> throw({rollback, Reason})
+                    end;
+                {ok, 0} ->
+                    {error, exceeds_total_limit};
+                {error, Reason} ->
+                    {error, Reason}
+            end
+        end)
+    of
+        {rollback, Reason} -> {error, Reason};
+        {error, Reason} -> {error, Reason};
+        {ok, Spent, CompId} -> {ok, Spent, CompId}
+    end.
 
 %% @doc 撤销/启用授权（status 1=有效 0=撤销）
 -spec set_status(integer(), 0 | 1) -> {ok, non_neg_integer()} | {error, term()}.

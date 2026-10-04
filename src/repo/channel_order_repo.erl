@@ -309,7 +309,10 @@ cas_status(OrderNo, From, To) ->
             "UPDATE channel_order SET status = $1, updated_at = NOW() "
             "WHERE order_no = $2 AND status = $3"
         >>,
-    case elib_pg:execute(Sql, [To, OrderNo, From]) of
-        {ok, N} -> {ok, N};
+    case elib_pg:execute_count(Sql, [To, OrderNo, From]) of
+        %% CAS 按 order_no 唯一命中至多 1 行：非零归一为 1（不可能分支的
+        %% 类型总化），0/1 语义与调用方完全不变。
+        {ok, N} when N >= 1 -> {ok, 1};
+        {ok, _} -> {ok, 0};
         {error, Reason} -> {error, Reason}
     end.

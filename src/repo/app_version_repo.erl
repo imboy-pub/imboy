@@ -1,14 +1,14 @@
--module (app_version_repo).
+-module(app_version_repo).
 %%%
 % app_version 相关操作都放到该模块，存储库模块
 % app_version related operations are put in this module, repository module
 % 应用版本数据仓库层，提供应用版本信息的基础数据库操作
 %%%
 
--export ([tablename/0]).
--export ([find/2]).
--export ([add/1]).
--export ([delete_by_id/1]).
+-export([tablename/0]).
+-export([find/2]).
+-export([add/1]).
+-export([delete_by_id/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -39,16 +39,22 @@ find(Type, RegionCode) ->
 %% @doc 构建查询语句和参数
 -spec build_find_query(binary(), binary()) -> {binary(), [term()]}.
 build_find_query(Type, <<>>) ->
-    Sql = <<"SELECT region_code, type, package_name, app_name, vsn, download_url, description, "
-            "force_update, min_supported_vsn, grayscale_percent, upgrade_type, changelog, file_size, file_hash "
-            "FROM ", (tablename())/binary,
-            " WHERE status = 1 AND type = $1 ORDER BY sort desc, updated_at desc limit 1">>,
+    Sql = <<
+        "SELECT region_code, type, package_name, app_name, vsn, download_url, description, "
+        "force_update, min_supported_vsn, grayscale_percent, upgrade_type, changelog, file_size, file_hash "
+        "FROM ",
+        (tablename())/binary,
+        " WHERE status = 1 AND type = $1 ORDER BY sort desc, updated_at desc limit 1"
+    >>,
     {Sql, [Type]};
 build_find_query(Type, RegionCode) ->
-    Sql = <<"SELECT region_code, type, package_name, app_name, vsn, download_url, description, "
-            "force_update, min_supported_vsn, grayscale_percent, upgrade_type, changelog, file_size, file_hash "
-            "FROM ", (tablename())/binary,
-            " WHERE status = 1 AND region_code = $1 AND type = $2 ORDER BY sort desc, updated_at desc limit 1">>,
+    Sql = <<
+        "SELECT region_code, type, package_name, app_name, vsn, download_url, description, "
+        "force_update, min_supported_vsn, grayscale_percent, upgrade_type, changelog, file_size, file_hash "
+        "FROM ",
+        (tablename())/binary,
+        " WHERE status = 1 AND region_code = $1 AND type = $2 ORDER BY sort desc, updated_at desc limit 1"
+    >>,
     {Sql, [RegionCode, Type]}.
 
 %% @private
@@ -83,7 +89,8 @@ add(Data) ->
 delete_by_id(Id) when is_integer(Id), Id > 0 ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
-    elib_pg:execute(Sql, [Id]).
+    %% 计数契约走 execute_count（execute 宽化臂破坏 {ok, non_neg_integer()}）
+    elib_pg:execute_count(Sql, [Id]).
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -94,4 +101,3 @@ delete_by_id(Id) when is_integer(Id), Id > 0 ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-
