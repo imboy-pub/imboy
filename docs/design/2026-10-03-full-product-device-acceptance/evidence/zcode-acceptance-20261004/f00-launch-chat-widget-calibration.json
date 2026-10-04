@@ -1,0 +1,18 @@
+{
+  "artifact": "f00 launch_chat_page widget calibration (GAMMA: evidence registration, NOT grid flips)",
+  "date": "2026-10-04",
+  "rule": "Companion-file calibration only; acceptance.tsv rows stay PENDING. Widget-level evidence (flutter_test + ffi seed db), complements but does not replace device-level gates.",
+  "source": {
+    "code": "imboyapp ce797c02 + 1899a5c7 test(group): launch-chat widget flows - preview remove, done gate, debounce, cancel",
+    "file": "imboyapp test/unit_test/page/group/launch_chat_widget_flow_test.dart",
+    "run": "4/4 All tests passed (twice, incl. post-cleanup rerun); dart analyze clean",
+    "harness": "same pattern as add_member suite: ffi no-isolate seed db + login-before-setDbForTest + Spy provider; groupAdd intercepted with a Completer gate to simulate in-flight submit"
+  },
+  "mappings": [
+    {"fn_id": "fn:group:launch_chat_page:005", "action": "点预览头像移除该已选成员", "note": "WIDGET PASS 流程B: list-row tap selects (preview avatar appears, find x2), tapping the preview instance (onRemove -> toggleSelection) removes it; count tip (1) and done-button disabled state track the removal"},
+    {"fn_id": "fn:group:launch_chat_page:006", "action": "未选人时完成按钮真正禁用", "note": "WIDGET PASS 流程A: onPressed null when selects empty (真正的 null 回调, 非仅置灰样式); re-asserted after removal in 流程B"},
+    {"fn_id": "fn:group:launch_chat_page:009", "action": "点取消退出选择联系人页", "note": "WIDGET PASS 流程D: tap 取消 (leading text button) pops back to host, LaunchChatPage off tree"},
+    {"fn_id": "fn:group:launch_chat_page:011", "action": "提交建群并防重复点击", "note": "WIDGET PASS 流程C: first tap routes through groupAdd (Spy intercepted, members=[8002]); with the Completer gate holding, done button onPressed becomes null (_isCreatingGroup debounce) and a repeat tap does NOT produce a second call (groupAddCalls stays 1); after gate completes with null (failure path) the debounce resets and the button is tappable again (selection retained)"}
+  ],
+  "acceptance_tsv_impact": "NONE"
+}
