@@ -1,4 +1,5 @@
 -module(project_channel_handler).
+-moduledoc "项目↔频道关联与四类聚合 HTTP handler（channel-firstclass W2 ZC-04）。".
 %%%
 % 项目↔频道关联 + 四类聚合 HTTP handler（channel-firstclass W2 ZC-04）
 %

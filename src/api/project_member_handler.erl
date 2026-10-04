@@ -1,4 +1,5 @@
 -module(project_member_handler).
+-moduledoc "项目成员 HTTP handler（Channel-first-class W2 ZC-02）。".
 %%%
 % 项目成员 HTTP handler（Channel-first-class W2 ZC-02）
 %

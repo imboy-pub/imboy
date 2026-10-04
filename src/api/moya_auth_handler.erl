@@ -1,4 +1,5 @@
 -module(moya_auth_handler).
+-moduledoc "墨芽教学认证 HTTP 适配层 —— 微信小程序登录。".
 %%%
 % 墨芽教学认证 HTTP 适配层（微信小程序登录）
 % Thin HTTP adapter for moya wechat-mini login

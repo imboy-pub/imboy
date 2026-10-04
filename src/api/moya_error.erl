@@ -1,4 +1,5 @@
 -module(moya_error).
+-moduledoc "墨芽教学域统一错误映射 —— Logic reason 原子 → imboy envelope 错误码（契约 STEP-04/error-codes.md）。".
 %%%
 % 墨芽教学域统一错误映射：Logic reason 原子 → imboy envelope 错误码
 % Teaching error reason → error_code mapping（契约 STEP-04/error-codes.md）

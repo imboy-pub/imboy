@@ -1,5 +1,6 @@
 -module(user_tag_relation_handler).
 
+-moduledoc "社交图谱标签关系边界的薄 HTTP 适配层 + user_tag_relation 控制器。".
 %% Thin HTTP adapter for the social_graph tag relation boundary.
 
 %%%

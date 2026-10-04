@@ -1,4 +1,5 @@
 -module(moya_task_handler).
+-moduledoc "墨芽教师侧教学作业 HTTP 适配层（MN-TASK-01）—— 作业列表等端点。".
 %%%
 % 墨芽教师侧教学作业 HTTP 适配层（MN-TASK-01，P0-3）
 % GET  /api/v1/moya/tasks          老师作业列表（?group_id=&page=）

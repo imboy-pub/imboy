@@ -1,4 +1,5 @@
 -module(group_member_handler).
+-moduledoc "群组成员 API 处理器 / Group member API —— 按 action 分发的成员管理端点。".
 -dialyzer({nowarn_function, [payload_list_key/1]}).
 
 -behavior(cowboy_rest).

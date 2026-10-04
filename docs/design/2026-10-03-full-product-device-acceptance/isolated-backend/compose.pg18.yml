@@ -28,4 +28,10 @@ services:
     restart: "no"
 networks:
   acceptance:
-    internal: true
+    # NOT internal: Docker Engine 29 silently drops port publishing on
+    # internal networks (NetworkSettings.Ports stays empty, host connect
+    # refused; verified 2026-10-04 vs default bridge control probe).
+    # Isolation instead: tmpfs (ephemeral data), pull_policy never,
+    # 127.0.0.1-only published port, dedicated synthetic credentials,
+    # dedicated project network (no shared default bridge).
+    driver: bridge

@@ -1,4 +1,5 @@
 -module(payment_callback_handler).
+-moduledoc "统一支付回调处理器 / Unified payment webhook handler。".
 %%%
 % 统一支付回调处理器 / Unified payment webhook handler
 %

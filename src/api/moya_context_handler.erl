@@ -1,4 +1,5 @@
 -module(moya_context_handler).
+-moduledoc "墨芽教学上下文 HTTP 适配层 —— contexts 与 context switch。".
 %%%
 % 墨芽教学上下文 HTTP 适配层（contexts / context switch）
 % Thin HTTP adapter for teaching contexts

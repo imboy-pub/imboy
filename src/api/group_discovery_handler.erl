@@ -1,4 +1,5 @@
 -module(group_discovery_handler).
+-moduledoc "群组发现 API 处理器 / Group discovery API —— 公开群搜索、发现、分类浏览。".
 %%%
 % group_discovery_handler 是群组发现 API 处理器
 % 处理公开群搜索、发现、分类浏览等 HTTP REST API 请求

@@ -1,4 +1,5 @@
 -module(moya_learner_bind_handler).
+-moduledoc "墨芽学员账号绑定 HTTP 适配层（Step 16）—— 管理侧绑定学员档案与 IMBoy 账号。".
 %%%
 % 墨芽学员账号绑定 HTTP 适配层（Step 16：管理侧最小动作，计划 §6.4）
 % POST /api/v1/moya/learners/:id/bind     绑定学员档案与 IMBoy 账号

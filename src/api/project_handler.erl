@@ -1,4 +1,5 @@
 -module(project_handler).
+-moduledoc "项目 HTTP handler（双体验 v2.5.2 WP4/T6a）。".
 %%%
 % 项目 HTTP handler（双体验 v2.5.2 WP4/T6a）
 %

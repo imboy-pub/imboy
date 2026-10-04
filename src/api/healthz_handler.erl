@@ -1,4 +1,5 @@
 -module(healthz_handler).
+-moduledoc "健康检查端点 / Liveness + readiness probe。".
 %%%===================================================================
 %%% @doc 健康检查端点 / Liveness + readiness probe
 %%%

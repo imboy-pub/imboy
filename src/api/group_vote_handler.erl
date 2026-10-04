@@ -1,4 +1,5 @@
 -module(group_vote_handler).
+-moduledoc "群协作投票边界的薄 HTTP 适配层 —— 插件门控的投票动作收敛于本模块与 group_vote_logic。".
 -dialyzer({nowarn_function, [create/2, cancel/2, my_vote/2]}).
 %% Thin HTTP adapter for the group_collab vote boundary.
 %% Plugin-gated vote actions should stay behind this handler and group_vote_logic.

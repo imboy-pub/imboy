@@ -1,4 +1,5 @@
 -module(project_milestone_handler).
+-moduledoc "项目里程碑 HTTP handler（Channel-first-class W2 ZC-03，迁移 00000081）。".
 %%%
 % 项目里程碑 HTTP handler（Channel-first-class W2 / ZC-03，迁移 00000081）
 %

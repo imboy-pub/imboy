@@ -1,5 +1,6 @@
 -module(user_denylist_handler).
 
+-moduledoc "user_denylist 控制器 / controller。".
 %%%
 % user_denylist 控制器模块
 % user_denylist controller module

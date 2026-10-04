@@ -1,5 +1,6 @@
 -module(group_file_handler).
 
+-moduledoc "群文件 API 处理器 / Group file API —— 按 action 分发的群文件管理端点。".
 -dialyzer(
     {nowarn_function, [
         handle_action/3,

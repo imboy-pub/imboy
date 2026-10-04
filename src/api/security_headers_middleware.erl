@@ -1,4 +1,5 @@
 -module(security_headers_middleware).
+-moduledoc "安全响应头中间件 —— 为所有 HTTP 响应添加标准安全头，防范常见 Web 攻击。".
 -behaviour(cowboy_middleware).
 
 -export([execute/2]).

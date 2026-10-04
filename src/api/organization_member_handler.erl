@@ -1,5 +1,6 @@
 -module(organization_member_handler).
 
+-moduledoc "组织成员 API 处理器 —— 成员增删、角色调整、owner 转让等动作分发。".
 -behavior(cowboy_rest).
 
 -export([init/2, handle_action/3]).

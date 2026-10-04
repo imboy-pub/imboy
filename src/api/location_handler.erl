@@ -1,5 +1,6 @@
 -module(location_handler).
 
+-moduledoc "location 控制器 / controller —— 位置（LBS）相关 HTTP 端点。".
 %%%
 % location 控制器模块
 % location controller module

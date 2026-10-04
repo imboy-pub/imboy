@@ -1,5 +1,6 @@
 -module(throttle_middleware).
 
+-moduledoc "限流中间件 —— 在 auth_middleware 之后、cowboy_handler 之前执行。".
 -behaviour(cowboy_middleware).
 
 -export([execute/2]).

@@ -1,4 +1,5 @@
 -module(live_room_handler).
+-moduledoc "直播间 HTTP API 处理器 —— 直播间创建、开始/停止直播、查询。".
 %% 直播间 HTTP API 处理器
 %% 提供直播间的创建、开始/停止直播、查询等功能
 

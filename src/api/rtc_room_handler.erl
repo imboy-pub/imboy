@@ -1,5 +1,6 @@
 -module(rtc_room_handler).
 
+-moduledoc "RTC 房间 HTTP 入口（LiveKit SFU）。".
 %%%
 % RTC 房间 HTTP 入口（LiveKit SFU）
 % RTC room HTTP entry (LiveKit SFU)

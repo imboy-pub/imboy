@@ -1,4 +1,5 @@
 -module(moya_roster_handler).
+-moduledoc "墨芽教师侧只读班级学员名单 HTTP 适配层（MN-ROSTER-01）。".
 %%%
 % 墨芽教师侧只读班级学员名单 HTTP 适配层（MN-ROSTER-01，P0-2）
 % GET  /api/v1/moya/classes/:id/learners   只读班级学员名单
