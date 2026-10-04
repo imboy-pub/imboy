@@ -1,0 +1,38 @@
+{
+  "artifact": "f2f acceptance suite GF1-GF11 on real device, isolated backend (post FIND-GROUP-04 parameterization)",
+  "date": "2026-10-04",
+  "commits": {
+    "parameterization": "imboyapp c50bcfa test(group): parameterize f2f carrier accounts, fail-closed gate",
+    "location_timeout_hardening": "imboyapp 5423a917 fix(group): bound face2face location lookup with 3s timeout fallback"
+  },
+  "backend": "http://127.0.0.1:19800 (isolated, imboy_acceptance@25432); device XWE6R19916004085 via adb reverse tcp:19800/25432",
+  "carriers": "D=50028 main, E=50022 peer, F=50020 empty-state (see find-group-04-carrier-parameterization.json)",
+  "results": {
+    "AT-GF1_publish_match": "PASS (run5 full-suite line 00:39 +1; single-scene run3 earlier)",
+    "AT-GF2_confirm_page_elements": "PASS (run5 full-suite, entered at 00:39, +1 counted)",
+    "AT-GF3_initial_member_count": "PASS (j-f2f-gf3-run1.log, 01:20 +1)",
+    "AT-GF4_throttle_error_toast": "FAIL-ENV: HTTP placeholder join succeeds, then UI 4th-digit submit must land inside the server 3s/uid throttle window, but on a real device the UI path includes getLocation (up to the new 3s timeout + RTT) so the window is consistently missed; UI submit then matches normally and pushes confirm page. macOS flutter_tester was immune (missing location plugin throws instantly). Scene semantics intentionally NOT weakened; needs either a faster location path or a server-side test hook.",
+    "AT-GF5_peer_join_ws_refresh": "PASS (j-f2f-gf5-run1.log, 00:40 +1; peer E joined via HTTP, WS downlink CLIENT_ACK, member count 1->2 live)",
+    "AT-GF6_offline_refetch": "SKIP by design (NetworkMonitor has no test injection channel, documented in file header)",
+    "AT-GF7_save_build_group": "PASS (j-f2f-gf7-run1.log, 01:31 +1; group gid 116230026210576384 persisted, chat page reached, DB group+member rows asserted)",
+    "AT-GF8_save_failure_path": "BUSINESS PATH VERIFIED / HARNESS TEARDOWN WARN: product log '[FaceToFaceConfirm] save 返回空 group，视为失败' proves server-failure handling fired after random_code deletion; DB no-group-row assertion not reached because test ends with 'FlutterError: A SemanticsHandle was active at the end of the test' (tester.ensureVisible under LiveTestWidgetsFlutterBinding). Harness cleanup TODO, no product defect.",
+    "AT-GF9_chat_empty_state": "BLOCKED: empty-state account F (50020) fails App-side login (11 attempts, md5 errorPassword -> rsa retry also fails silently). HTTP rsa_encrypt=0 login for F returns code=0, so account+password are fine; App rsa-retry channel is account-independent on paper and D logs in fine on the same app build - root cause TBD (suspect rsa retry path or per-account E2EE bootstrap interaction). GF10/GF11 share this blocker."
+  },
+  "full_suite_serial_run_finding": "run5 (all 11 scenes in one flutter test) degrades after scene 1: each testWidgets restarts app.main(); from scene 2 onward every login attempt fails md5->rsa retry (35 x errorPassword) even though single-scene runs pass. The file's documented usage is per-scene --plain-name; serial full-suite runs are NOT a supported mode for this harness. Recorded so nobody retries serial mode expecting green.",
+  "environment_mitigations_discovered": [
+    "flutter test (integration_test) uninstalls+reinstalls the APK on every invocation -> runtime permissions reset -> app startup fires the location permission dialog; on EMUI 9 the system dialog FREEZES the app process and flutter test's loading phase hangs forever. Mitigation: perm guard loop (dumpsys watch + uiautomator tap on 始终允许). Product-side fix candidate: app-side timeout (landed as 5423a917) covers the f2f path itself.",
+    "DDS 'Failed to start Dart Development Service' after killing a hung flutter test run: leftover dart development-service process must be killed before rerun."
+  ],
+  "evidence_files": [
+    "j-f2f-full-gf1-gf11-run1.log (AT-GF1 fail pre-timeout-hardening: permission reset)",
+    "j-f2f-full-gf1-gf11-run3.log (killed: permission dialog froze app)",
+    "j-f2f-full-gf1-gf11-run5.log (serial run: GF1+GF2 pass, then login degradation)",
+    "j-f2f-gf3-run1.log (GF3 PASS)",
+    "j-f2f-gf4-run1.log (GF4 FAIL-ENV)",
+    "j-f2f-gf5-run1.log (GF5 PASS incl WS)",
+    "j-f2f-gf7-run1.log (GF7 PASS incl DB)",
+    "j-f2f-gf8-run1.log (GF8 business path verified, harness warn)",
+    "j-f2f-gf9-run1.log (GF9 blocked by F login)"
+  ],
+  "calibration_note": "No AC grid cell flips from this receipt; it feeds W3 group-domain evidence. GF4/GF8-harness/GF9-11 blockers are tracked above for the next iteration."
+}

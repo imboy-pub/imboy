@@ -1,0 +1,466 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/integration_test/group/face_to_face_acceptance_test.dart
+Running Gradle task 'assembleDebug'...                          
+Your project is configured with Android NDK 27.0.12077973, but the following plugin(s) depend on a different Android NDK version:
+- integration_test requires Android NDK 28.2.13676358
+Fix this issue by using the highest Android NDK version (they are backward compatible).
+Add the following to /Users/leeyi/project/imboy.pub/imboyapp/android/app/build.gradle.kts:
+
+    android {
+        ndkVersion = "28.2.13676358"
+        ...
+    }
+INFO: Precompiled binaries are disabled
+INFO: Building vodozemac_bindings_dart for armv7-linux-androideabi
+INFO: Building vodozemac_bindings_dart for i686-linux-android
+INFO: Building vodozemac_bindings_dart for x86_64-linux-android
+Running Gradle task 'assembleDebug'...                             55.9s
+✓ Built build/app/outputs/flutter-apk/app-debug.apk
+Installing build/app/outputs/flutter-apk/app-debug.apk...          29.5s
+00:00 +0: AT-GF5 对端加入 → WS 事件 → 人数 1→2 实时刷新
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._setupEnvironment (package:imboy/config/init.dart:348:12)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Running in environment: local_office, Env().apiBaseUrl: http://127.0.0.1:19800, wsUrl: ws://127.0.0.1:19800/api/v1/ws;[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+🕐 NtpHelper: 从缓存加载时间偏移: 3369 ms
+✅ [INIT] deviceId 初始化成功 (长度: 14)
+✅ [INIT] AppEventBus 使用静态方法模式
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._initializeServices (package:imboy/config/init.dart:638:14)[0m
+[38;5;12m│ #1   AppInitializer.initialize (package:imboy/config/init.dart:228:13)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 🔧 Fetching initConfig (apiPublicKey empty: false, cache null: true)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+🔧 initConfig: 开始获取配置
+网络类型变化: unknown -> wifi
+检测到网络变化，准备重连WebSocket: NetworkType.unknown -> NetworkType.wifi
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/init
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+因网络类型变化触发WebSocket重连请求
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/init
+
+🔧 initConfig: 加密内容长度=2136 模式=gcm
+🔧 initConfig: 开始解密配置
+🔐 [INIT] signKey initialized
+🔧 initConfig: 解密完成
+🔧 initConfig 诊断: env=local_office keys=[attach_presign_endpoint, config_version, effective_product_experience, features, login_pwd_rsa_encrypt, login_rsa_pub_key, public_base_url, terminology, upload_key, upload_scene, upload_url, ws_url]
+🔧 initConfig 诊断: ws_url=(String, len=30)
+✅ initConfig: Saved ws_url to storage
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app/features
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app/features
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app/manifest
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app/manifest
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app/policy
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app/policy
+
+🧹 [QUEUE] 启动定期清理 Timer
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+Database path: currentEnv=local_office, uid=116209438819616768, dbName=local_office_116209438819616768.db
+✅ [INIT] E2EE健康检查与自愈服务已初始化
+> ws: 状态变化: disconnected -> connecting
+> ws: 开始连接 (from: init)
+[Push] 推送服务初始化...
+Opening existing database
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._runGroupMembershipSelfHeal (package:imboy/config/init.dart:758:14)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Group membership self-heal skipped (already done today), source=initialization[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppLogger.info (package:imboy/service/app_logger.dart:94:20)[0m
+[38;5;12m│ #1   WebSocketService._establishConnection (package:imboy/service/websocket.dart:415:17)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 WebSocket framing 模式: v2 (selected protocol: imboy.v2)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+> ws: 状态变化: connecting -> connected
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppLogger.info (package:imboy/service/app_logger.dart:94:20)[0m
+[38;5;12m│ #1   WebSocketService._establishConnection (package:imboy/service/websocket.dart:462:17)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 WebSocket 连接成功: ws://127.0.0.1:19800/api/v1/ws[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+🔄 [RETRY_QUEUE] 触发消息重试: source=WebSocketConnected, reason=WebSocket 连接恢复
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._runGroupMembershipSelfHeal (package:imboy/config/init.dart:758:14)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Group membership self-heal skipped (already done today), source=ws_connected[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/notifications/pull?since=0&limit=50
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+[Push] 权限状态: AuthorizationStatus.authorized
+[Push] FCM 初始化跳过: [firebase_messaging/unknown] java.lang.IllegalArgumentException: Please set a valid API key. A Firebase API key is required to communicate with Firebase server APIs: It authenticates your project with Google.Please refer to https://firebase.google.com/support/privacy/init-options.
+[Push] 推送服务初始化完成 (本地通知模式)
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/notifications/pull?since=0&limit=50
+
+ℹ️ [E2EE_HEALTH] 暂无密钥变更通知 since=0
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app_version/check?vsn=1.0.0-alpha.17
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app_version/check?vsn=1.0.0-alpha.17
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app_upgrade/report
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/conversation/mine
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/backup/info
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/conversation/mine
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app_upgrade/report
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/backup/info
+
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   AppLogger.debug (package:imboy/service/app_logger.dart:87:20)
+│ #1   SqliteService._onConfigure (package:imboy/service/sqlite.dart:357:15)
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 SqliteService_onConfigure 3 /data/user/0/pub.imboy.app/databases/local_office_116209438819616768.db
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+WAL mode not available, using default journal mode
+> on ConversationRepo/all 0 items
+ConversationNotifier: authoritative sync finished, items=0
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   AppLogger.debug (package:imboy/service/app_logger.dart:87:20)
+│ #1   EventBusTracker.trackEvent (package:imboy/service/event_bus.dart:134:15)
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 📡 [EVENT_BUS] Fire: ConversationAuthoritySyncEvent | props: prop0, prop1, prop2, prop3, prop4
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> on ConversationRepo/all 0 items
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+[FLOW] 已离开 E2EE 备份设置向导（稍后再说→暂不设置）
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   SoundManager.playMetallicSound (package:imboy/component/ui/sound_manager.dart:29:17)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ Metallic sound plugin not implemented: 'No implementation found for method playMetallicSound on channel imboy/sound'.[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   SoundManager.playMetallicSound (package:imboy/component/ui/sound_manager.dart:29:17)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ Metallic sound plugin not implemented: 'No implementation found for method playMetallicSound on channel imboy/sound'.[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   SoundManager.playMetallicSound (package:imboy/component/ui/sound_manager.dart:29:17)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ Metallic sound plugin not implemented: 'No implementation found for method playMetallicSound on channel imboy/sound'.[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   SoundManager.playMetallicSound (package:imboy/component/ui/sound_manager.dart:29:17)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ Metallic sound plugin not implemented: 'No implementation found for method playMetallicSound on channel imboy/sound'.[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[PeopleNearbyPerf]     权限检查 375ms 结果=true
+[AMap] 定位成功 lat=22.596783 lng=113.899407
+[PeopleNearbyPerf]     高德SDK出坐标 665ms 成功
+[PeopleNearbyPerf]   1a.高德定位 1104ms 成功，未降级
+[面对面建群] 开始请求, hasLocation=true
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/face2face?code=5163&longitude=113.899407&latitude=22.596783
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+[WS] v2 收到 text frame (265 chars)，降级 JSON
+[WS] msg type=S2C id=s2c.5zlhVcy4X3sgg3S action=group_member_join
+✅ [ACK_MANAGER] AckManager initialized
+📤 [ACK_MANAGER] 发送ACK: msgId=s2c.5zlhVcy4X3sgg3S, type=S2C, retryCount=0
+✅ [ACK_MANAGER] ACK发送成功: msgId=s2c.5zlhVcy4X3sgg3S, retryCount=0
+> ws: 消息已发送 (s2c.5zlhVcy4X3sgg3S) [UNKNOWN] [49 bytes]
+📥 [processMessage] type=S2C, msgId=s2c.5zlhVcy4X3sgg3S, from=116209438819616768, to=116209438819616768
+🔔 [S2C] 收到 group_member_join 消息
+  ├─ userId: 116209438819616768
+  ├─ gid: 116229584407758848
+[WS] v2 收到 text frame (148 chars)，降级 JSON
+[WS] msg type=CLIENT_ACK_CONFIRM id=s2c.5zlhVcy4X3sgg3S action=CLIENT_ACK_CONFIRM
+📈 [ACK_MANAGER] ACK RTT: msgId=s2c.5zlhVcy4X3sgg3S, rtt=119ms, p50=119ms, p95=119ms
+✅ [ACK_MANAGER] ACK已确认: msgId=s2c.5zlhVcy4X3sgg3S
+✅ [WS] CLIENT_ACK确认收到: msgId=s2c.5zlhVcy4X3sgg3S
+memberJoin gid=116229584407758848 exists=false
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/face2face?code=5163&longitude=113.899407&latitude=22.596783
+
+[面对面建群] API 响应, gid=116229584407758848, memberCount=1
+[面对面建群] 解析后成员数量: 1
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/detail?gid=116229584407758848
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/detail?gid=116229584407758848
+
+📢 [S2C] 发布 join_group 事件到 ChatExtendEvent
+✅ [S2C] group_member_join 事件处理完成
+> rtc msg CLIENT_ACK,S2C,s2c.5zlhVcy4X3sgg3S,HUAWEIMRD-AL00
+📤 [WS_ACK] 准备发送ACK: msgId=s2c.5zlhVcy4X3sgg3S, type=S2C, content=CLIENT_ACK,S2C,s2c.5zlhVcy4X3sgg3S,HUAWEIMRD-AL00
+🔌 [WS_ACK] WebSocket 状态: connected
+⚡ [WS_ACK] 直接发送ACK成功: msgId=s2c.5zlhVcy4X3sgg3S, type=S2C
+> ws: 消息已发送 (s2c.5zlhVcy4X3sgg3S) [UNKNOWN] [49 bytes]
+[WS] v2 收到 text frame (148 chars)，降级 JSON
+[WS] msg type=CLIENT_ACK_CONFIRM id=s2c.5zlhVcy4X3sgg3S action=CLIENT_ACK_CONFIRM
+✅ [WS] CLIENT_ACK确认收到: msgId=s2c.5zlhVcy4X3sgg3S
+[WS] v2 收到 text frame (265 chars)，降级 JSON
+[WS] msg type=S2C id=s2c.5zlhVcy4X3v2B3Y action=group_member_join
+📤 [ACK_MANAGER] 发送ACK: msgId=s2c.5zlhVcy4X3v2B3Y, type=S2C, retryCount=0
+✅ [ACK_MANAGER] ACK发送成功: msgId=s2c.5zlhVcy4X3v2B3Y, retryCount=0
+> ws: 消息已发送 (s2c.5zlhVcy4X3v2B3Y) [UNKNOWN] [49 bytes]
+📥 [processMessage] type=S2C, msgId=s2c.5zlhVcy4X3v2B3Y, from=116209439033526272, to=116209438819616768
+🔔 [S2C] 收到 group_member_join 消息
+  ├─ userId: 116209439033526272
+  ├─ gid: 116229584407758848
+[WS] v2 收到 text frame (265 chars)，降级 JSON
+[WS] msg type=S2C id=s2c.5zlhVcy4X3v2J3Z action=group_member_join
+📤 [ACK_MANAGER] 发送ACK: msgId=s2c.5zlhVcy4X3v2J3Z, type=S2C, retryCount=0
+✅ [ACK_MANAGER] ACK发送成功: msgId=s2c.5zlhVcy4X3v2J3Z, retryCount=0
+> ws: 消息已发送 (s2c.5zlhVcy4X3v2J3Z) [UNKNOWN] [49 bytes]
+[WS] v2 收到 text frame (148 chars)，降级 JSON
+[WS] msg type=CLIENT_ACK_CONFIRM id=s2c.5zlhVcy4X3v2B3Y action=CLIENT_ACK_CONFIRM
+📈 [ACK_MANAGER] ACK RTT: msgId=s2c.5zlhVcy4X3v2B3Y, rtt=48ms, p50=119ms, p95=119ms
+✅ [ACK_MANAGER] ACK已确认: msgId=s2c.5zlhVcy4X3v2B3Y
+✅ [WS] CLIENT_ACK确认收到: msgId=s2c.5zlhVcy4X3v2B3Y
+📥 [processMessage] type=S2C, msgId=s2c.5zlhVcy4X3v2J3Z, from=116209439033526272, to=116209438819616768
+🔔 [S2C] 收到 group_member_join 消息
+  ├─ userId: 116209439033526272
+  ├─ gid: 116229584407758848
+[WS] v2 收到 text frame (148 chars)，降级 JSON
+[WS] msg type=CLIENT_ACK_CONFIRM id=s2c.5zlhVcy4X3v2J3Z action=CLIENT_ACK_CONFIRM
+📈 [ACK_MANAGER] ACK RTT: msgId=s2c.5zlhVcy4X3v2J3Z, rtt=68ms, p50=68ms, p95=119ms
+✅ [ACK_MANAGER] ACK已确认: msgId=s2c.5zlhVcy4X3v2J3Z
+✅ [WS] CLIENT_ACK确认收到: msgId=s2c.5zlhVcy4X3v2J3Z
+memberJoin gid=116229584407758848 exists=false
+memberJoin gid=116229584407758848 exists=false
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/detail?gid=116229584407758848
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/detail?gid=116229584407758848
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/detail?gid=116229584407758848
+
+📢 [S2C] 发布 join_group 事件到 ChatExtendEvent
+✅ [S2C] group_member_join 事件处理完成
+> rtc msg CLIENT_ACK,S2C,s2c.5zlhVcy4X3v2B3Y,HUAWEIMRD-AL00
+📤 [WS_ACK] 准备发送ACK: msgId=s2c.5zlhVcy4X3v2B3Y, type=S2C, content=CLIENT_ACK,S2C,s2c.5zlhVcy4X3v2B3Y,HUAWEIMRD-AL00
+🔌 [WS_ACK] WebSocket 状态: connected
+⚡ [WS_ACK] 直接发送ACK成功: msgId=s2c.5zlhVcy4X3v2B3Y, type=S2C
+> ws: 消息已发送 (s2c.5zlhVcy4X3v2B3Y) [UNKNOWN] [49 bytes]
+[WS] v2 收到 text frame (148 chars)，降级 JSON
+[WS] msg type=CLIENT_ACK_CONFIRM id=s2c.5zlhVcy4X3v2B3Y action=CLIENT_ACK_CONFIRM
+✅ [WS] CLIENT_ACK确认收到: msgId=s2c.5zlhVcy4X3v2B3Y
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/detail?gid=116229584407758848
+
+📢 [S2C] 发布 join_group 事件到 ChatExtendEvent
+✅ [S2C] group_member_join 事件处理完成
+> rtc msg CLIENT_ACK,S2C,s2c.5zlhVcy4X3v2J3Z,HUAWEIMRD-AL00
+📤 [WS_ACK] 准备发送ACK: msgId=s2c.5zlhVcy4X3v2J3Z, type=S2C, content=CLIENT_ACK,S2C,s2c.5zlhVcy4X3v2J3Z,HUAWEIMRD-AL00
+🔌 [WS_ACK] WebSocket 状态: connected
+⚡ [WS_ACK] 直接发送ACK成功: msgId=s2c.5zlhVcy4X3v2J3Z, type=S2C
+> ws: 消息已发送 (s2c.5zlhVcy4X3v2J3Z) [UNKNOWN] [49 bytes]
+[WS] v2 收到 text frame (148 chars)，降级 JSON
+[WS] msg type=CLIENT_ACK_CONFIRM id=s2c.5zlhVcy4X3v2J3Z action=CLIENT_ACK_CONFIRM
+✅ [WS] CLIENT_ACK确认收到: msgId=s2c.5zlhVcy4X3v2J3Z
+00:39 +1: (tearDownAll)
+00:40 +1: All tests passed!

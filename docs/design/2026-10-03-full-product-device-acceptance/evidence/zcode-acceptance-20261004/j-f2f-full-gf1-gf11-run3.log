@@ -1,0 +1,35 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/integration_test/group/face_to_face_acceptance_test.dart
+Running Gradle task 'assembleDebug'...                          
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+Your project is configured with Android NDK 27.0.12077973, but the following plugin(s) depend on a different Android NDK version:
+- integration_test requires Android NDK 28.2.13676358
+Fix this issue by using the highest Android NDK version (they are backward compatible).
+Add the following to /Users/leeyi/project/imboy.pub/imboyapp/android/app/build.gradle.kts:
+
+    android {
+        ndkVersion = "28.2.13676358"
+        ...
+    }
+INFO: Precompiled binaries are disabled
+INFO: Building vodozemac_bindings_dart for armv7-linux-androideabi
+INFO: Building vodozemac_bindings_dart for i686-linux-android
+INFO: Building vodozemac_bindings_dart for x86_64-linux-android
+Running Gradle task 'assembleDebug'...                             65.3s
+✓ Built build/app/outputs/flutter-apk/app-debug.apk
+Installing build/app/outputs/flutter-apk/app-debug.apk...          29.1s
+00:00 +0 -1: loading /Users/leeyi/project/imboy.pub/imboyapp/integration_test/group/face_to_face_acceptance_test.dart [E]
+  Failed to load "/Users/leeyi/project/imboy.pub/imboyapp/integration_test/group/face_to_face_acceptance_test.dart": Instance of 'VmServiceDisappearedException'
+  package:flutter_tools/src/vmservice.dart 903:7                      FlutterVmService._getIsolateRefs
+  ===== asynchronous gap ===========================
+  package:flutter_tools/src/vmservice.dart 884:48                     FlutterVmService.findExtensionIsolate
+  ===== asynchronous gap ===========================
+  package:flutter_tools/src/test/integration_test_device.dart 111:46  IntegrationTestTestDevice.start
+  ===== asynchronous gap ===========================
+  package:flutter_tools/src/test/flutter_platform.dart 679:51         FlutterPlatform._startTest.<fn>
+  ===== asynchronous gap ===========================
+  package:flutter_tools/src/base/async_guard.dart 108:24              asyncGuard.<fn>
+  
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  /Users/leeyi/project/imboy.pub/imboyapp/integration_test/group/face_to_face_acceptance_test.dart: loading /Users/leeyi/project/imboy.pub/imboyapp/integration_test/group/face_to_face_acceptance_test.dart

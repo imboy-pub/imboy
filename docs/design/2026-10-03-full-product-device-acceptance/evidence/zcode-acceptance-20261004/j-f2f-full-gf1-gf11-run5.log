@@ -1,0 +1,2228 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/integration_test/group/face_to_face_acceptance_test.dart
+Running Gradle task 'assembleDebug'...                          
+Your project is configured with Android NDK 27.0.12077973, but the following plugin(s) depend on a different Android NDK version:
+- integration_test requires Android NDK 28.2.13676358
+Fix this issue by using the highest Android NDK version (they are backward compatible).
+Add the following to /Users/leeyi/project/imboy.pub/imboyapp/android/app/build.gradle.kts:
+
+    android {
+        ndkVersion = "28.2.13676358"
+        ...
+    }
+INFO: Precompiled binaries are disabled
+INFO: Building vodozemac_bindings_dart for armv7-linux-androideabi
+INFO: Building vodozemac_bindings_dart for i686-linux-android
+INFO: Building vodozemac_bindings_dart for x86_64-linux-android
+Running Gradle task 'assembleDebug'...                             55.1s
+✓ Built build/app/outputs/flutter-apk/app-debug.apk
+Installing build/app/outputs/flutter-apk/app-debug.apk...          35.6s
+00:00 +0: AT-GF1 输满四位自动发起建群匹配
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._setupEnvironment (package:imboy/config/init.dart:348:12)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Running in environment: local_office, Env().apiBaseUrl: http://127.0.0.1:19800, wsUrl: ws://127.0.0.1:19800/api/v1/ws;[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+🕐 NtpHelper: 从缓存加载时间偏移: 3369 ms
+✅ [INIT] deviceId 初始化成功 (长度: 14)
+✅ [INIT] AppEventBus 使用静态方法模式
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._initializeServices (package:imboy/config/init.dart:638:14)[0m
+[38;5;12m│ #1   AppInitializer.initialize (package:imboy/config/init.dart:228:13)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 🔧 Fetching initConfig (apiPublicKey empty: false, cache null: true)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+🔧 initConfig: 开始获取配置
+网络类型变化: unknown -> wifi
+检测到网络变化，准备重连WebSocket: NetworkType.unknown -> NetworkType.wifi
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/init
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+因网络类型变化触发WebSocket重连请求
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/init
+
+🔧 initConfig: 加密内容长度=2136 模式=gcm
+🔧 initConfig: 开始解密配置
+🔐 [INIT] signKey initialized
+🔧 initConfig: 解密完成
+🔧 initConfig 诊断: env=local_office keys=[attach_presign_endpoint, config_version, effective_product_experience, features, login_pwd_rsa_encrypt, login_rsa_pub_key, public_base_url, terminology, upload_key, upload_scene, upload_url, ws_url]
+🔧 initConfig 诊断: ws_url=(String, len=30)
+✅ initConfig: Saved ws_url to storage
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app/features
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app/features
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app/manifest
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app/manifest
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app/policy
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app/policy
+
+🧹 [QUEUE] 启动定期清理 Timer
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+Database path: currentEnv=local_office, uid=116209438819616768, dbName=local_office_116209438819616768.db
+✅ [INIT] E2EE健康检查与自愈服务已初始化
+> ws: 状态变化: disconnected -> connecting
+> ws: 开始连接 (from: init)
+[Push] 推送服务初始化...
+Opening existing database
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._runGroupMembershipSelfHeal (package:imboy/config/init.dart:758:14)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Group membership self-heal skipped (already done today), source=initialization[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppLogger.info (package:imboy/service/app_logger.dart:94:20)[0m
+[38;5;12m│ #1   WebSocketService._establishConnection (package:imboy/service/websocket.dart:415:17)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 WebSocket framing 模式: v2 (selected protocol: imboy.v2)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+> ws: 状态变化: connecting -> connected
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppLogger.info (package:imboy/service/app_logger.dart:94:20)[0m
+[38;5;12m│ #1   WebSocketService._establishConnection (package:imboy/service/websocket.dart:462:17)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 WebSocket 连接成功: ws://127.0.0.1:19800/api/v1/ws[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+🔄 [RETRY_QUEUE] 触发消息重试: source=WebSocketConnected, reason=WebSocket 连接恢复
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._runGroupMembershipSelfHeal (package:imboy/config/init.dart:758:14)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Group membership self-heal skipped (already done today), source=ws_connected[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[Push] 权限状态: AuthorizationStatus.authorized
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/notifications/pull?since=0&limit=50
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+[Push] FCM 初始化跳过: [firebase_messaging/unknown] java.lang.IllegalArgumentException: Please set a valid API key. A Firebase API key is required to communicate with Firebase server APIs: It authenticates your project with Google.Please refer to https://firebase.google.com/support/privacy/init-options.
+[Push] 推送服务初始化完成 (本地通知模式)
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/notifications/pull?since=0&limit=50
+
+ℹ️ [E2EE_HEALTH] 暂无密钥变更通知 since=0
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app_version/check?vsn=1.0.0-alpha.17
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app_version/check?vsn=1.0.0-alpha.17
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app_upgrade/report
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app_upgrade/report
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/conversation/mine
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/backup/info
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/conversation/mine
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/backup/info
+
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   AppLogger.debug (package:imboy/service/app_logger.dart:87:20)
+│ #1   SqliteService._onConfigure (package:imboy/service/sqlite.dart:357:15)
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 SqliteService_onConfigure 3 /data/user/0/pub.imboy.app/databases/local_office_116209438819616768.db
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+WAL mode not available, using default journal mode
+> on ConversationRepo/all 0 items
+ConversationNotifier: authoritative sync finished, items=0
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   AppLogger.debug (package:imboy/service/app_logger.dart:87:20)
+│ #1   EventBusTracker.trackEvent (package:imboy/service/event_bus.dart:134:15)
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 📡 [EVENT_BUS] Fire: ConversationAuthoritySyncEvent | props: prop0, prop1, prop2, prop3, prop4
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> on ConversationRepo/all 0 items
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+[FLOW] 已离开 E2EE 备份设置向导（稍后再说→暂不设置）
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   SoundManager.playMetallicSound (package:imboy/component/ui/sound_manager.dart:29:17)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ Metallic sound plugin not implemented: 'No implementation found for method playMetallicSound on channel imboy/sound'.[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   SoundManager.playMetallicSound (package:imboy/component/ui/sound_manager.dart:29:17)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ Metallic sound plugin not implemented: 'No implementation found for method playMetallicSound on channel imboy/sound'.[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   SoundManager.playMetallicSound (package:imboy/component/ui/sound_manager.dart:29:17)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ Metallic sound plugin not implemented: 'No implementation found for method playMetallicSound on channel imboy/sound'.[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;208m│ #0   AppLogger.warning (package:imboy/service/app_logger.dart:101:20)[0m
+[38;5;208m│ #1   SoundManager.playMetallicSound (package:imboy/component/ui/sound_manager.dart:29:17)[0m
+[38;5;208m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;208m│ ⚠️ Metallic sound plugin not implemented: 'No implementation found for method playMetallicSound on channel imboy/sound'.[0m
+[38;5;208m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[PeopleNearbyPerf]     权限检查 314ms 结果=true
+[AMap] 定位成功 lat=22.596799 lng=113.899373
+[PeopleNearbyPerf]     高德SDK出坐标 1255ms 成功
+[PeopleNearbyPerf]   1a.高德定位 1612ms 成功，未降级
+[面对面建群] 开始请求, hasLocation=true
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/face2face?code=1357&longitude=113.89937299999997&latitude=22.596799
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+[WS] v2 收到 text frame (265 chars)，降级 JSON
+[WS] msg type=S2C id=s2c.5zlf.cy4X6T2Z1f action=group_member_join
+✅ [ACK_MANAGER] AckManager initialized
+📤 [ACK_MANAGER] 发送ACK: msgId=s2c.5zlf.cy4X6T2Z1f, type=S2C, retryCount=0
+✅ [ACK_MANAGER] ACK发送成功: msgId=s2c.5zlf.cy4X6T2Z1f, retryCount=0
+> ws: 消息已发送 (s2c.5zlf.cy4X6T2Z1f) [UNKNOWN] [49 bytes]
+📥 [processMessage] type=S2C, msgId=s2c.5zlf.cy4X6T2Z1f, from=116209438819616768, to=116209438819616768
+🔔 [S2C] 收到 group_member_join 消息
+  ├─ userId: 116209438819616768
+  ├─ gid: 116224562414487552
+[WS] v2 收到 text frame (148 chars)，降级 JSON
+[WS] msg type=CLIENT_ACK_CONFIRM id=s2c.5zlf.cy4X6T2Z1f action=CLIENT_ACK_CONFIRM
+📈 [ACK_MANAGER] ACK RTT: msgId=s2c.5zlf.cy4X6T2Z1f, rtt=132ms, p50=132ms, p95=132ms
+✅ [ACK_MANAGER] ACK已确认: msgId=s2c.5zlf.cy4X6T2Z1f
+✅ [WS] CLIENT_ACK确认收到: msgId=s2c.5zlf.cy4X6T2Z1f
+memberJoin gid=116224562414487552 exists=false
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/face2face?code=1357&longitude=113.89937299999997&latitude=22.596799
+
+[面对面建群] API 响应, gid=116224562414487552, memberCount=1
+[面对面建群] 解析后成员数量: 1
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/detail?gid=116224562414487552
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/detail?gid=116224562414487552
+
+📢 [S2C] 发布 join_group 事件到 ChatExtendEvent
+✅ [S2C] group_member_join 事件处理完成
+> rtc msg CLIENT_ACK,S2C,s2c.5zlf.cy4X6T2Z1f,HUAWEIMRD-AL00
+📤 [WS_ACK] 准备发送ACK: msgId=s2c.5zlf.cy4X6T2Z1f, type=S2C, content=CLIENT_ACK,S2C,s2c.5zlf.cy4X6T2Z1f,HUAWEIMRD-AL00
+🔌 [WS_ACK] WebSocket 状态: connected
+⚡ [WS_ACK] 直接发送ACK成功: msgId=s2c.5zlf.cy4X6T2Z1f, type=S2C
+> ws: 消息已发送 (s2c.5zlf.cy4X6T2Z1f) [UNKNOWN] [49 bytes]
+[WS] v2 收到 text frame (148 chars)，降级 JSON
+[WS] msg type=CLIENT_ACK_CONFIRM id=s2c.5zlf.cy4X6T2Z1f action=CLIENT_ACK_CONFIRM
+✅ [WS] CLIENT_ACK确认收到: msgId=s2c.5zlf.cy4X6T2Z1f
+00:39 +1: AT-GF2 匹配成功跳转建群确认页（页面元素）
+00:40 +1: AT-GF1 输满四位自动发起建群匹配
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+
+02:09 +1: AT-GF2 匹配成功跳转建群确认页（页面元素）
+[DIAG] boot 未达稳定态，uid=116209438819616768，页面文本=[搜索, 全部, 全部, 我加入, 我加入, 我管理, 我管理, 我创建, 我创建, 暂无数据, 和身边的朋友输入同样的四个数字，进入同一个群聊, 发起群聊, 群聊, 和身边的朋友输入同样的四个数字，进入同一个群聊, 1, 3, 5, 7, 面对面建群, 暗号, 0 人即将进入群聊, 这些朋友也将进入群聊, 面对面建群, 进入该群]
+  未到达登录稳定态（workspace 引导页）
+02:09 +1 ~1: AT-GF3 确认页实时人数初始为 1（本人匹配）
+02:10 +1 ~1: AT-GF1 输满四位自动发起建群匹配
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+
+03:37 +1 ~1: AT-GF3 确认页实时人数初始为 1（本人匹配）
+[DIAG] boot 未达稳定态，uid=116209438819616768，页面文本=[搜索, 全部, 全部, 我加入, 我加入, 我管理, 我管理, 我创建, 我创建, 暂无数据, 和身边的朋友输入同样的四个数字，进入同一个群聊, 发起群聊, 群聊, 和身边的朋友输入同样的四个数字，进入同一个群聊, 面对面建群, 暗号, 0 人即将进入群聊, 这些朋友也将进入群聊, 面对面建群, 进入该群]
+  未到达登录稳定态（workspace 引导页）
+03:37 +1 ~2: AT-GF4 匹配失败展示红色错误文案（服务端节流）
+03:39 +1 ~2: AT-GF1 输满四位自动发起建群匹配
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._onConnectivityChanged (package:imboy/config/init.dart:887:12)[0m
+[38;5;12m│ #1   StackZoneSpecification._registerUnaryCallback.<anonymous closure>.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:127:36)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Connectivity changed: [ConnectivityResult.wifi][0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+05:06 +1 ~2: AT-GF4 匹配失败展示红色错误文案（服务端节流）
+[DIAG] boot 未达稳定态，uid=116209438819616768，页面文本=[搜索, 全部, 全部, 我加入, 我加入, 我管理, 我管理, 我创建, 我创建, 暂无数据, 和身边的朋友输入同样的四个数字，进入同一个群聊, 发起群聊, 群聊, 和身边的朋友输入同样的四个数字，进入同一个群聊, 面对面建群, 暗号, 0 人即将进入群聊, 这些朋友也将进入群聊, 面对面建群, 进入该群]
+  未到达登录稳定态（workspace 引导页）
+05:06 +1 ~3: AT-GF5 对端加入 → WS 事件 → 人数 1→2 实时刷新
+05:07 +1 ~3: AT-GF1 输满四位自动发起建群匹配
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+
+06:34 +1 ~3: AT-GF5 对端加入 → WS 事件 → 人数 1→2 实时刷新
+[DIAG] boot 未达稳定态，uid=116209438819616768，页面文本=[搜索, 全部, 全部, 我加入, 我加入, 我管理, 我管理, 我创建, 我创建, 暂无数据, 和身边的朋友输入同样的四个数字，进入同一个群聊, 发起群聊, 群聊, 和身边的朋友输入同样的四个数字，进入同一个群聊, 面对面建群, 暗号, 0 人即将进入群聊, 这些朋友也将进入群聊, 面对面建群, 进入该群]
+  未到达登录稳定态（workspace 引导页）
+06:34 +1 ~4: AT-GF6 断网恢复后补拉服务端成员
+  NetworkMonitorService 依赖 connectivity 插件真实网络切换事件，无测试注入通道（成员补拉逻辑 _syncMembersFromServer 已由代码审计+ AT-GF5 证明服务端成员数据正确）；解阻塞需真机飞行模式切换
+06:34 +1 ~5: AT-GF7 点进入该群提交建群并跳转聊天页
+06:35 +1 ~5: AT-GF1 输满四位自动发起建群匹配
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+
+08:02 +1 ~5: AT-GF7 点进入该群提交建群并跳转聊天页
+[DIAG] boot 未达稳定态，uid=116209438819616768，页面文本=[搜索, 全部, 全部, 我加入, 我加入, 我管理, 我管理, 我创建, 我创建, 暂无数据, 和身边的朋友输入同样的四个数字，进入同一个群聊, 发起群聊, 群聊, 和身边的朋友输入同样的四个数字，进入同一个群聊, 面对面建群, 暗号, 0 人即将进入群聊, 这些朋友也将进入群聊, 面对面建群, 进入该群]
+  未到达登录稳定态（workspace 引导页）
+08:02 +1 ~6: AT-GF8 建群失败弹出错误提示
+08:04 +1 ~6: AT-GF1 输满四位自动发起建群匹配
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+
+09:30 +1 ~6: AT-GF8 建群失败弹出错误提示
+[DIAG] boot 未达稳定态，uid=116209438819616768，页面文本=[搜索, 全部, 全部, 我加入, 我加入, 我管理, 我管理, 我创建, 我创建, 暂无数据, 和身边的朋友输入同样的四个数字，进入同一个群聊, 发起群聊, 群聊, 和身边的朋友输入同样的四个数字，进入同一个群聊, 面对面建群, 暗号, 0 人即将进入群聊, 这些朋友也将进入群聊, 面对面建群, 进入该群]
+  未到达登录稳定态（workspace 引导页）
+09:31 +1 ~7: AT-GF9 发起聊天页无好友空态
+09:32 +1 ~7: AT-GF1 输满四位自动发起建群匹配
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=manager
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=join
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=1000&attr=owner
+
+09:44 +1 ~7: AT-GF9 发起聊天页无好友空态
+> quitLogin: Starting logout process
+> quitLogin: User is logged in
+> quitLogin: Removing storage data
+> quitLogin: Purging E2EE secret inventory
+E2EE: 缓存已清理
+[olm] all state cleared
+> quitLogin: E2EE secrets purged
+> quitLogin: Clearing secure tokens
+> quitLogin: Secure tokens cleared successfully
+> quitLogin: Closing WebSocket
+> ws: 手动关闭连接
+> ws: 状态变化: connected -> disconnected
+> quitLogin: Closing database
+> quitLogin: Removing database for uid=116209438819616768
+🗑️ Deleted local database file: /data/user/0/pub.imboy.app/databases/local_office_116209438819616768.db
+> quitLogin: Logout process completed successfully
+09:46 +1 ~7: AT-GF1 输满四位自动发起建群匹配
+unhandled element <filter/>; Picture key: Svg loader
+| JVER | Flutter | setDebugMode
+| JVER | Flutter | setCollectionAuth
+| JVER | Flutter | setup
+handleMethod method = onReceiveSDKSetupCallBackEvent
+receive sdk setup call back event :{code: 8000, message: config init success}
+10:01 +1 ~7: AT-GF9 发起聊天页无好友空态
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[DIAG] boot 未达稳定态，uid=，页面文本=[IMBoy, Simple · Secure · Reliable, 账号, 手机, 邮箱, 账号/邮箱, 密码, 登录, 忘记密码？, 注册, 其他登录方式, 一键登录, 支, 支付宝, 返回]
+  未到达登录稳定态（workspace 引导页）
+12:11 +1 ~8: AT-GF10 群选择页无群空态
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[DIAG] boot 未达稳定态，uid=，页面文本=[IMBoy, Simple · Secure · Reliable, 账号, 手机, 邮箱, 账号/邮箱, 密码, 登录, 忘记密码？, 注册, 其他登录方式, 一键登录, 支, 支付宝, 返回]
+  未到达登录稳定态（workspace 引导页）
+14:42 +1 ~9: AT-GF11 添加成员页无联系人空态
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[FLOW] 登录: 50020
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection,_IconButtonM3,_SelectableIconButton
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[FLOW] 登录提交控件点击: 成功
+[FLOW] 登录后本地会话状态: 未建立
+[FLOW] 登录失败：接口回调后本地会话未建立
+[DIAG] boot 未达稳定态，uid=，页面文本=[IMBoy, Simple · Secure · Reliable, 账号, 手机, 邮箱, 账号/邮箱, 密码, 登录, 忘记密码？, 注册, 其他登录方式, 一键登录, 支, 支付宝, 返回]
+  未到达登录稳定态（workspace 引导页）
+17:11 +1 ~10: (tearDownAll)
+17:12 +1 ~10: All tests passed!
