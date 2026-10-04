@@ -11,9 +11,11 @@
 %%%      `cs_widget_frame_handler:frame_ancestors_csp/1` 纯函数；XFO 已由
 %%%      共享形状谓词 `imboy_route_shape:is_cs_seat_console_frame_path/1` 豁免。
 %%%
-%%% 错误统一 404 `seat_console_unavailable`（missing/revoked 三态不区分，
-%%% 无存在性枚举）；路径绑定形状非法 400。**本模块不做**：不读库、不写 SQL、
-%%% 不做业务判定、不签发任何 URL。
+%%% 错误统一 404 `seat_console_unavailable`（missing/形状非法/不存在/revoked
+%%% 四态不区分，无存在性枚举——V2 计划 §5.2/SC-BE-A05 原合同：非法形态不得
+%%% 与不存在可区分；2026-10-04 并行验收按原合同从 400 收敛为统一 404）；
+%%% 查询串凭证样式键仍为 400（值不读、不解析）。**本模块不做**：不读库、
+%%% 不写 SQL、不做业务判定、不签发任何 URL。
 -module(cs_seat_console_handler).
 
 -export([init/2, handle/2]).
@@ -51,12 +53,15 @@ handle(Req0, _State0) ->
     end.
 
 %% 路径绑定形状门：非空、≤128、[A-Za-z0-9_-]（与
-%% cs_seat_console:valid_public_seat_console_id/1 同口径——接口层先拒 400，
-%% application 层再守 422，纵深防御不互信）。
+%% cs_seat_console:valid_public_seat_console_id/1 同口径）。形状非法与
+%% missing/不存在/revoked 一律 seat_console_unavailable（404）——SC-BE-A05
+%% 原合同四态统一、无枚举；形状门只是省一次 facade 反查的快速路径，不改变
+%% 对外可观察状态码/信封。application 层对形状合法值再做 store 归一（纵深
+%% 防御不互信）。
 frame_binding(Req0) ->
     case cowboy_req:binding(public_seat_console_id, Req0) of
         undefined ->
-            cs_http:reply_error(Req0, {missing_path_param, public_seat_console_id});
+            cs_http:reply_error(Req0, seat_console_unavailable);
         Raw when is_binary(Raw) ->
             case cs_seat_console:valid_public_seat_console_id(Raw) of
                 true ->
@@ -70,10 +75,10 @@ frame_binding(Req0) ->
                         ),
                     frame_respond(Req0, Result);
                 false ->
-                    cs_http:reply_error(Req0, invalid_public_seat_console_id)
+                    cs_http:reply_error(Req0, seat_console_unavailable)
             end;
         _ ->
-            cs_http:reply_error(Req0, invalid_public_seat_console_id)
+            cs_http:reply_error(Req0, seat_console_unavailable)
     end.
 
 frame_respond(Req0, {ok, Projection}) ->

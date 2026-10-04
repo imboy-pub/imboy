@@ -41,6 +41,19 @@ failure_metrics_reach_exporter_test_() ->
 
 setup() ->
     %% This isolated VM owns the real metric process; no metric mock or reset.
+    %% 全量轨道让位模式（elib_metric_tests 同款，2026-10-04 SC153 run 实证）：
+    %% 共享 VM 里 app boot 已起 elib_metric（permanent worker），直接
+    %% start_link 必 {error,{already_started,_}} → 整组 cancel。正解：
+    %% supervisor:terminate_child 手动停（不触发 permanent 重启），测毕
+    %% restart_child 复原应用实例；无应用场景走原 start_link 路径。
+    Preempted =
+        case erlang:whereis(elib_metric) of
+            undefined ->
+                false;
+            _ ->
+                ok = supervisor:terminate_child(imboy_sup, elib_metric),
+                true
+        end,
     {ok, Pid} = elib_metric:start_link(),
     unlink(Pid),
     Modules = [
@@ -57,11 +70,14 @@ setup() ->
     meck:expect(group_ds, e2ee_mode, 1, fun(_) -> {error, synthetic_db_failure} end),
     meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) -> {ok, not_found} end),
     meck:expect(elib_log, internal_log, 4, fun(_, _, _, _) -> ok end),
-    {Pid, Modules}.
+    {Pid, Modules, Preempted}.
 
-cleanup({Pid, Modules}) ->
+cleanup({Pid, Modules, Preempted}) ->
     meck:unload(Modules),
-    gen_server:stop(Pid).
+    catch gen_server:stop(Pid),
+    Preempted andalso
+        (catch supervisor:restart_child(imboy_sup, elib_metric)),
+    ok.
 
 check_metric(Name, Call, Expected) ->
     Before = counter(Name),

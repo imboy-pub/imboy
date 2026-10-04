@@ -5463,7 +5463,7 @@
         "sources": [
           "src/logic/msg_c2c_logic.erl:113",
           "src/logic/msg_c2c_logic.erl:881",
-          "src/logic/webrtc_ws_logic.erl:57"
+          "src/logic/webrtc_ws_logic.erl:58"
         ]
       },
       {
@@ -5477,7 +5477,7 @@
       {
         "action": "invalid_message_type",
         "sources": [
-          "src/logic/message_router_logic.erl:114"
+          "src/logic/message_router_logic.erl:115"
         ]
       },
       {
@@ -5509,7 +5509,7 @@
         "sources": [
           "src/logic/msg_c2c_logic.erl:116",
           "src/logic/msg_c2c_logic.erl:884",
-          "src/logic/webrtc_ws_logic.erl:60"
+          "src/logic/webrtc_ws_logic.erl:61"
         ]
       },
       {
@@ -5522,7 +5522,7 @@
       {
         "action": "peer_offline",
         "sources": [
-          "src/logic/webrtc_ws_logic.erl:51"
+          "src/logic/webrtc_ws_logic.erl:52"
         ]
       },
       {
@@ -5571,7 +5571,7 @@
       {
         "action": "unknown_action",
         "sources": [
-          "src/logic/message_router_logic.erl:148",
+          "src/logic/message_router_logic.erl:149",
           "src/logic/msg_s2c_logic.erl:177"
         ]
       }
