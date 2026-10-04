@@ -1,0 +1,50 @@
+{
+  "id": "acceptance-calibration-notes",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "purpose": "Companion calibration notes for acceptance.tsv (97-ID ledger). BY DESIGN the ledger's status column is NOT modified by this file: calibration outcomes are not grid PASS. Each note records what was additionally learned for the referenced IDs and what remains for their formal gate.",
+  "ledger_invariant": "acceptance.tsv remains 97 rows, all status=PENDING; verify with `wc -l acceptance.tsv` (98 incl header) and `awk -F'\\t' '$4!=\"PENDING\"' acceptance.tsv | wc -l` (0).",
+  "notes": [
+    {
+      "ref_ids": ["F00-A01..F00-A03 (F00 card, contact/report scope)"],
+      "kind": "calibration-note",
+      "subject": "fn009 举报提交",
+      "learned": [
+        "API contract verified on isolated backend (receipt contact-fn009-api-verification.json): create code=0 with TSID report_id=116164681642805248; duplicate rejected code=1 '您已举报过该对象' matching ReportApi.friendlyError passthrough",
+        "widget layer covered by ded0c762 destructive-flow tests (contact_setting_page _submitReport path)"
+      ],
+      "still_required_for_grid": "device-grid execution with writable relationship fixture on the device account (same gap class as J2/J4); NOT_EXECUTED unchanged"
+    },
+    {
+      "ref_ids": ["full-product journey-cluster IDs (mine/settings, channel, group, organization, moment, C2C domains)"],
+      "kind": "calibration-note",
+      "subject": "W2 six-journey calibration (receipt w2-journeys-calibration.json)",
+      "learned": [
+        "J1 mine/settings PASS 2m13s on device (11 subpages) - first full-journey wall-clock datum for P50/P80",
+        "J3 channel discover readonly PASS 53s; J4 group creation-entry readonly PASS 57s (entry surfaces mount, no writes)",
+        "J2 organization = formal grid contract (9+ ACCEPTANCE_* inputs, correctly fail-closed)",
+        "J5 C2C strict = SKIP correct semantics (isolated backend non-strict E2EE; ties to D-02/D-05)",
+        "J6 moment visibility = SKIP (batch174 boot gate; no ACL carrier exists)",
+        "infra fixed during calibration: fail-closed probe gate (imboyapp 4750057d), E2EE backup wizard dismiss (imboyapp 4e3a39c1)"
+      ],
+      "still_required_for_grid": "writable carriers for group-revoke / channel-CRUD / moment-ACL; strict E2EE deployment for J5; formal grid inputs for J2; P50/P80 recalibration after those land"
+    },
+    {
+      "ref_ids": ["AC-19..AC-21 (D-02/D-05 blocked)", "AC-30..31 (D-03)", "AC-32..33 (D-04)", "AC-07/08 extensions (D-06 cond.)", "AC-26 (D-07)"],
+      "kind": "decision-blocked-reminder",
+      "subject": "D-02..D-07 remain BLOCKED_DECISION",
+      "learned": ["execution authorization (/goal) does not substitute product decisions per handoff contract"],
+      "still_required_for_grid": "user decisions on MLS/PQ/witness/SLO (D-02..D-07) before corresponding E2EE plan AC gates can run"
+    }
+  ],
+  "source_receipts": [
+    "w2-journeys-calibration.json",
+    "contact-fn009-api-verification.json",
+    "w2-register-flow-executed.json",
+    "res-pg-backend-executed.json",
+    "res-synth-acc-executed.json",
+    "res-dev-install-executed.json",
+    "res-pg-port-binding-fix.json",
+    "res-pg-qual-executed.json"
+  ]
+}
