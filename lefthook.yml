@@ -19,11 +19,16 @@ pre-commit:
       run: bash scripts/check_migrations.sh
     # 纵切架构门禁（ADR-0007 / feature-slice-rules 九铁律）：全仓扫描，故用 glob
     # 收窄为仅在涉及纵切单元或核心层时才跑，避免每次提交都付全仓代价。
+    # 注意 lefthook 的 ** 不匹配零层目录：src/lib 一级直置文件（elib_pg.erl 等）
+    # 需单独的 src/lib/*.erl 分支，否则这类提交会静默跳过本门禁（2026-10-04 实证）。
     arch-check:
-      glob: "{src/features,src/products,src/plugins,src/lib}/**/*.erl"
-      # Apple git（Xcode Git-157）给 hook 注入工具链 MANPATH，与 hook 环境组合会让
-      # 门尾的 python3（prune 门）在 dyld 装载期 SIGBUS（lefthook 报 exit 138）。
-      # 实证：保留 MANPATH 9/9 崩，剥离后 4/4 过；MANPATH 对各门禁无用，入口剥离无损。
+      glob: "{src/lib/*.erl,src/features/**/*.erl,src/products/**/*.erl,src/plugins/**/*.erl}"
+      # ⚠️ 2026-10-04 根因更正：exit 138 崩溃真因是 darwin 27 上 Apple /bin/bash 3.2
+      # 的 fork 子进程缺陷（崩溃报告 _libcoreservices_fork_child PAC failure）；
+      # Xcode /usr/bin/git 向 hook 注入 CPATH/LIBRARY_PATH/SDKROOT/MANPATH 肥环境，
+      # 令 fork 密集门禁必崩。此前"剥离 MANPATH 9/9 崩→4/4 过"是相关非因果的巧合。
+      # 修复见 .githooks/ 包装器（core.hooksPath 方案，exec 前剥离注入变量），
+      # 此处 env -u 保留作纵深防御；bash 为 Apple 3.2（本机无 brew bash）。
       run: env -u MANPATH bash scripts/check_feature_architecture.sh
 
 commit-msg:

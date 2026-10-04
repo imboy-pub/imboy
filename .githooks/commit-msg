@@ -1,0 +1,10 @@
+#!/bin/sh
+# darwin 27 + Apple bash 3.2 fork bug（SIGBUS/exit 138；崩溃报告
+# bash-2026-10-04-*.ips：_libcoreservices_fork_child PAC failure）：
+# Xcode 的 /usr/bin/git 会向 hook 注入 CPATH/LIBRARY_PATH/SDKROOT/MANPATH，
+# 肥环境令 bash fork 崩溃概率大增（arch-check 等 fork 密集门禁必崩，
+# 曾被迫 LEFTHOOK=0 连带绕过 gradualize 门禁漏进 63 个基线外失败模块）。
+# 本包装器先剥离注入变量再拉起 lefthook；exec 不 fork，自身免疫。
+# 启用（每克隆一次）：git config core.hooksPath .githooks
+unset MANPATH CPATH LIBRARY_PATH SDKROOT
+exec lefthook run commit-msg "$@"
