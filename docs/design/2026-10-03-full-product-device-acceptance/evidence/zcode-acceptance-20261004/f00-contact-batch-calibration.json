@@ -1,0 +1,45 @@
+{
+  "artifact": "f00 contact-domain batch calibration (GAMMA: evidence registration, NOT grid flips) + TSV drift reconciliation",
+  "date": "2026-10-04",
+  "rule": "Companion-file calibration only; acceptance.tsv rows stay PENDING.",
+  "source": {
+    "code": "imboyapp c8379494 test(contact): tag page focus/tag-row nav/chip cases (appends to W2 7c7e0ae7 suite)",
+    "files": [
+      "imboyapp test/unit_test/page/contact/contact_setting_tag_widget_flow_test.dart (8 cases: A-E from W2 + F/G/H new)",
+      "imboyapp test/unit_test/page/contact/confirm_new_friend_widget_flow_test.dart (5 cases, W2)"
+    ],
+    "run": "8/8 All tests passed; dart analyze clean"
+  },
+  "tsv_drift_reconciliation": {
+    "note": "f00-contact-batch-reconciliation.tsv verdicts predate the W2 widget suites (7c7e0ae7); the following rows marked TARGET_MISSING are in fact already evidenced:",
+    "already_covered_by_w2_suites": [
+      "fn:contact:confirm_new_friend_page:003 回显备注初值 (流程A)",
+      "fn:contact:confirm_new_friend_page:004 修改备注 80 字上限语义 (流程B/C 同族校验)",
+      "fn:contact:confirm_new_friend_page:005 标签页选择回填 (流程E tag 格式)",
+      "fn:contact:confirm_new_friend_page:006 未选标签「添加标签」占位 (流程A)",
+      "fn:contact:confirm_new_friend_page:007 提交中禁用转圈 (流程C gate)",
+      "fn:contact:confirm_new_friend_page:008 失败后按钮恢复 (流程D/E)",
+      "fn:contact:people_info_page:001 备注标签回显 (tag 流程A)",
+      "fn:contact:people_info_page:003 修改后按钮点亮 (tag 流程B)",
+      "fn:contact:people_info_page:004 未修改按钮禁用 (tag 流程A/D)",
+      "fn:contact:people_info_page:005 提交成功提示并返回 (tag 流程B pop)",
+      "fn:contact:people_info_page:008 无标签显示添加标签 (tag 流程A)",
+      "fn:contact:people_info_page:009 备注 40 字上限 (tag 流程C)"
+    ]
+  },
+  "newly_closed_this_round": [
+    {"fn_id": "fn:contact:people_info_page:002", "action": "备注输入框进入即自动聚焦", "note": "WIDGET PASS 流程F: autofocus declared + focusNode.hasFocus true after entry"},
+    {"fn_id": "fn:contact:people_info_page:006", "action": "点击标签行进入标签关系页", "note": "WIDGET PASS 流程G: tap Key(contact_tag_row) pushes TagRelationPage (userTagRelationProvider spied, statistics stubbed empty - local construction)"},
+    {"fn_id": "fn:contact:people_info_page:007", "action": "选完标签返回后渲染标签 Chip", "note": "WIDGET PASS (render half) 流程H: peerTag '家人,同事' renders two Wrap chips; the pop-backfill half (TagRelationPage save -> then setState) needs the relation page save chain - documented, not asserted"}
+  ],
+  "remaining_blocked_or_deferred": {
+    "assistant_plaza_page :004/006/009/010 + :005/007/008": "service-backed list (same FIND-GROUP-07 family: api singletons not injectable); :009 load-failure branch constructible only with injectable api",
+    "contact_page :002/003/004/006/008/009/010/011/012": "page-level integration cases; entries/navigation need full-app shell or service injection",
+    "people_info_more_page :001/002/004/010": "destructive/settings rows need denylist flow fixtures (:005-:007 integration flagged)",
+    "people_info_same_group_page 9 rows": "same-group API backed (FIND-GROUP-07 family)",
+    "people_nearby_page :001-:003": "defer-to-patrol-native (system location permission) - already verdicted PLATFORM_SENSITIVE",
+    "people_nearby_page :004-:011": "location mock fixture required",
+    "recently_registered_user_page 8 rows": "server-backed list (FIND-GROUP-07 family)"
+  },
+  "acceptance_tsv_impact": "NONE"
+}
