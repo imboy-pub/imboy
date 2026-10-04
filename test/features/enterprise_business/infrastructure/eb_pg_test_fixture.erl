@@ -49,9 +49,32 @@ id() ->
         elib_tsid:generate(default)
     catch
         _:_ ->
-            %% 纯套件（未启动 imboy app）下的兜底：仍在 TSID 量级之下且分布唯一。
-            1000000000000000 + erlang:unique_integer([positive, monotonic])
+            %% 纯套件（未启动 imboy app）下的兜底：仍在 TSID 量级之下。
+            %% EWS-T1：兜底 id 必须跨 VM/跨轮唯一。旧实现
+            %% `1e15 + unique_integer(monotonic)` 的计数器随节点重启重置，
+            %% eb_/cs_ 域共享同一测试库跨轮跑时必撞 user_pkey（23505），
+            %% 把一次 boot 失败放大成成片假失败。改为「本 VM 启动微秒盐
+            %% （persistent_term 缓存一次，隔离不同轮次的 VM）× VM 内单调
+            %% 计数器（生命周期内调用量远小于 1e6，不回绕）」。
+            %% 值域 [2e15, 1e16)：高于旧兜底历史行（< 1.01e15），
+            %% 仍低于 TSID 主值域（~1e18）。
+            2000000000000000 + fallback_offset()
     end.
+
+%% EWS-T1 兜底偏移：高位为 VM 启动盐（rem 8e9 μs ≈ 2.2 小时回绕周期），
+%% 低位为 VM 内单调计数（rem 1e6）。同 VM 内唯一；跨 VM 由启动盐隔离。
+-spec fallback_offset() -> integer().
+fallback_offset() ->
+    Salt =
+        case persistent_term:get({?MODULE, fallback_vm_salt}, undefined) of
+            undefined ->
+                S = os:system_time(microsecond) rem 8000000000,
+                persistent_term:put({?MODULE, fallback_vm_salt}, S),
+                S;
+            S ->
+                S
+        end,
+    Salt * 1000000 + (erlang:unique_integer([positive, monotonic]) rem 1000000).
 
 %% @doc 可归因的合成明文金丝雀（ASCII，便于在日志/DB 中做子串断言）。
 -spec canary() -> binary().
