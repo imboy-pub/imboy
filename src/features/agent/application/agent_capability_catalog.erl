@@ -30,6 +30,7 @@
 %%% 纯数据模块：零 I/O、零进程状态、零时钟依赖。
 -module(agent_capability_catalog).
 
+-moduledoc "Agent Capability Catalog（AG31-03，D7 裁决冻结实现）—— 能力目录契约。".
 -export([entries/0, lookup/3]).
 
 -export_type([entry/0, capability/0, action/0, resource_type/0]).

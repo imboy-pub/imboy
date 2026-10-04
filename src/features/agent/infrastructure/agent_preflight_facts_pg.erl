@@ -1,5 +1,6 @@
 -module(agent_preflight_facts_pg).
 
+-moduledoc "Agent 域 DeletionPreflightFacts provider（D6 认领 / ORG-A0 裁决），PG 实现。".
 %% Agent 域 DeletionPreflightFacts provider（D6 认领 / ORG-A0 裁决
 %% ruling-agent-provider-defer.md / Core Contract C17 + 计划 §1.6）。
 %%

@@ -1,0 +1,53 @@
+{
+  "receipt": "res-dev-install-executed",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "approval_basis": {
+    "resource_unit": "RES-DEV-INSTALL",
+    "approval_source": "user /goal 2026-10-04: 授权你使用真机设备，授权你完成全部任务计划",
+    "scope_note": "install/launch/screenshot of this run's APK only; no account creation or journey execution under this unit"
+  },
+  "device": {
+    "model": "MRD AL00 (Huawei, EMUI/Android 9, API 28, android-arm)",
+    "serial": "REDACTED-serial (qualified via flutter devices --machine: android arm64/emulator=false)",
+    "qualification": "auto_test.py qualify_device: android-* + emulator=false -> android"
+  },
+  "build": {
+    "command": "flutter build apk --debug --flavor standard --dart-define=APP_ENV=local_office",
+    "apk": "build/app/outputs/flutter-apk/app-standard-debug.apk (351841318 bytes)",
+    "env_binding": ".env.local_office API_BASE_URL=http://127.0.0.1:19800 + WS_URL ws://127.0.0.1:19800/api/v1/ws baked via build_runner into env_local_office.g.dart; .env.local_office restored after build (not git-tracked); generated .g.dart not git-tracked (HEAD stubs)",
+    "solidified_key_match": "sys.local.config solidified_key/iv == .env.local_office values (verified before build)",
+    "notes": [
+      "first attempt without APP_ENV dart-define produced pro-env APK (would target production) - rejected, rebuilt with APP_ENV=local_office",
+      "build_runner (full, no filter) required: HEAD .g.dart files are stubs without 'part of'; a --build-filter run deleted 63 stale generated outputs (git D) - full regen wrote 134 outputs"
+    ]
+  },
+  "install_and_smoke": [
+    "adb install -r app-standard-debug.apk -> Success",
+    "adb reverse tcp:19800 tcp:19800 -> listed",
+    "launch via monkey LAUNCHER -> splash (screenshot acc-launch-1.png) -> login page (acc-launch-2.png / acc-restart2.png)",
+    "APP->backend full-stack reachability PROVEN: device login page 'get code' button produced POST /api/v1/passport/getcode reaching isolated PG twice (verification_code id=+8613800000001, codes 383065@01:07:38Z and 344244@01:16:47Z) — solidified AES channel, JSON body, dio stack all functional"
+  ],
+  "findings": [
+    {
+      "id": "FIND-DEV-01",
+      "severity": "blocked-journey",
+      "summary": "adb shell input text unreliable on EMUI 9 for Flutter fields: observed double-insert (50008 -> '5000850008'; 18-char pwd -> 36 dots) and total loss (text stayed '56321'). Not an app defect; blocks adb-driven credential entry.",
+      "decision": "journey execution moves to integration_test channel (Flutter semantic driver, bypasses IME) per contract's spec->catalog->inventory chain"
+    },
+    {
+      "id": "FIND-DEV-02",
+      "severity": "fixture-consistency",
+      "summary": "App phone-tab emits +86-prefixed account (+8613800000001) for getcode/login; curl fixtures registered bare 13800000001. Backend stores/queries mobile verbatim, so a +86 login cannot match a bare-number user ('账号不存在'). App-registered users are self-consistent; fixtures must be created via App path or with +86 format.",
+      "decision": "fixture accounts for journeys will be created through the App/integration_test path; res-synth-acc fixtures remain for API-level tests with bare-number shape"
+    },
+    {
+      "id": "FIND-DEV-03",
+      "severity": "observation",
+      "summary": "After tapping login, screencap returned constant 7701-byte black frames while uiautomator dump still showed the login fields; no app logcat output under default buffers on EMUI 9. Surface capture limitation/IME state on this device; no crash (MainActivity focused throughout).",
+      "decision": "use integration_test takeScreenshot for in-journey evidence instead of host-side screencap"
+    }
+  ],
+  "screenshots_host_side": ["acc-launch-1.png (splash)", "acc-launch-2.png (login page)"],
+  "not_done_here": "credential login on device (deferred to RES-JOURNEYS via integration_test), uninstall (RES-CLEANUP)"
+}

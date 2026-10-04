@@ -12,6 +12,7 @@
 %%% 它写 enterprise 真源（CS-01-A03），不引用其 application/infrastructure 内层。
 -module(cs_ports).
 
+-moduledoc "Customer Service 扩展点注册表与装配契约（镜像 eb_ports 角色）。".
 -export([
     all/0,
     store/0,

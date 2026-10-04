@@ -34,6 +34,7 @@
 %%%     agent_run_command/agent_grant_command 的调用方注入口径一致）。
 -module(agent_tool_authorizer).
 
+-moduledoc "Agent Tool Permission 唯一 fail-closed 授权咽喉（AG31-05，§10.1 冻结入口）—— 强制决策审计。".
 -export([authorize/3, approve_effect/4, dispatch/1]).
 
 %% ===================================================================

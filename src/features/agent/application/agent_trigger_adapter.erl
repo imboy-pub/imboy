@@ -26,6 +26,7 @@
 %%% 全过 → agent_run_command:create_run/2（04B 冻结链：created+事件同事务）。
 -module(agent_trigger_adapter).
 
+-moduledoc "Message/Schedule/Webhook Trigger adapter（AG31-08，触发面首切片）。".
 -export([start_run/2]).
 
 membership_module() ->

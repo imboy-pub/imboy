@@ -14,6 +14,7 @@
 %%%     scripts/check_feature_architecture.sh 铁律 4。
 -module(agent_run_fsm).
 
+-moduledoc "AgentRun 八状态 FSM 纯函数真源（AG31-04B，架构 §9.3 冻结）。".
 -export([
     states/0,
     terminal_states/0,

@@ -32,6 +32,7 @@
 %%%   * `unavailable`：facts 底层不可用（{500} / crash / 未知返回形状）。
 -module(agent_membership_port).
 
+-moduledoc "Agent Membership Read Port（AG31-01，Interface 1 冻结签名）—— 成员关系读取扩展点。".
 -export_type([
     organization_id/0,
     agent_id/0,

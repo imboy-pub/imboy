@@ -16,6 +16,7 @@
 %%%     聚合，V3.1 禁止 Agent 转授权（delegator 必须非 Agent 身份，§8.2）。
 -module(agent_grant_domain).
 
+-moduledoc "Agent Grant 纯域决策真源（AG31-03）—— Frozen Grant Schema Contract 与 Delegation。".
 -export([
     scope_kinds/0,
     validate_issue/9,

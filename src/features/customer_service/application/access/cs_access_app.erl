@@ -14,6 +14,7 @@
 %%% 数据访问全部经 `cs_store_port`；零 SQL、零 `elib_pg`。
 -module(cs_access_app).
 
+-moduledoc "客服接入凭证的应用层用例 —— shop key 与访客 visit token。".
 -export([
     create_shop_key/2,
     revoke_shop_key/2,

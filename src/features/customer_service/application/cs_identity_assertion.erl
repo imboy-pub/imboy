@@ -22,6 +22,7 @@
 %%% **本模块不做**：不做 claims 取值判定、不读库、不写日志（材料/sig 零落盘）。
 -module(cs_identity_assertion).
 
+-moduledoc "签名身份断言验签器（CSB-02R）—— identity_exchange 的 assertion_verifier 缺省实现。".
 -export([verify/2]).
 
 -define(CLAIM_KEYS, [

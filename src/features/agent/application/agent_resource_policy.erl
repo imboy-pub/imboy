@@ -14,6 +14,7 @@
 %%% 能抛出；注入模块的异常由调用方 fail closed）。
 -module(agent_resource_policy).
 
+-moduledoc "Agent Resource Policy 默认模块（AG31-05，A0 裁决 R2）。".
 -export([evaluate/3]).
 
 evaluate(_AgentRunContext, _ToolDescriptor, _ResourceContext) ->

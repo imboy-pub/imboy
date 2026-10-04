@@ -18,6 +18,7 @@
 %%%     capability unknown_capability deny（能力面 staged off）。
 -module(agent_tool_decision).
 
+-moduledoc "Agent Tool Permission 纯决策链真源（AG31-05，Interface 5）。".
 -export([
     decide/1,
     validate_tool_descriptor/1,

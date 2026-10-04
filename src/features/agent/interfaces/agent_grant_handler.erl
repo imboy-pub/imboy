@@ -25,6 +25,7 @@
 %%%     （fail closed 对外呈现）。
 -module(agent_grant_handler).
 
+-moduledoc "Agent Grant 命令面薄 Handler（AG31-03）—— 请求形状 → 命令调用 → 响应形状。".
 -export([handle_issue/2, handle_get/2, handle_list/2, handle_revoke/2]).
 
 %% ===================================================================

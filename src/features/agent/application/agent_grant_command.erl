@@ -24,6 +24,7 @@
 %%%   * 时钟由调用方注入（Ctx.now）；domain 与本模块均不取系统时间。
 -module(agent_grant_command).
 
+-moduledoc "Agent Grant 命令面用例（AG31-03）—— issue/revoke contract 与委托事件血缘。".
 -export([issue/2, get/4, list/2, revoke/2]).
 
 %% ===================================================================

@@ -18,6 +18,7 @@
 %%% 得同一结果；门失败不影响 CS 存量数据。
 -module(cs_org_lifecycle_gate).
 
+-moduledoc "Organization archived → CS 新写稳定拒绝门（ORG-08 / C16 / C08）。".
 -include("generated/imboy_product_features.hrl").
 
 -export([assert_session_writable/2]).

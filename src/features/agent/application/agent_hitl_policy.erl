@@ -16,6 +16,7 @@
 %%% 无 I/O、无时钟、无进程状态；注入模块的异常由调用方 fail closed。
 -module(agent_hitl_policy).
 
+-moduledoc "Agent HITL Policy 默认模块（AG31-05，A0 裁决 R3）—— 人审策略。".
 -export([evaluate/2]).
 
 evaluate(RiskLevel, SideEffectClass) ->

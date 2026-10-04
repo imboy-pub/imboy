@@ -13,5 +13,6 @@
 %%%     不受影响（C16 INVARIANTS / compatibility matrix「历史不删除」）。
 -module(cs_org_lifecycle_port).
 
+-moduledoc "扩展点：Organization 生命周期事实（ORG-08 / C16 / C08，adapter-only）。".
 -callback status(OrgId :: integer()) ->
     {ok, active | archived} | {error, not_found | term()}.

@@ -36,6 +36,7 @@
 %%% 即时失效。本模块零进程字典 / 零 ETS / 零持久化状态。
 -module(agent_org_membership_adapter).
 
+-moduledoc "Agent Membership Read Adapter（AG31-01）—— ORG facts 到 agent_membership_port 的基础设施翻译层。".
 -behaviour(agent_membership_port).
 
 -export([

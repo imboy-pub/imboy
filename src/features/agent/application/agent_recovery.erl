@@ -22,6 +22,7 @@
 %%% assert_attempt_below_cap 钉死）。
 -module(agent_recovery).
 
+-moduledoc "Agent 恢复与并发语义（AG31-09，架构 §9.5/§14）。".
 -export([
     recover_run/5,
     recheck_effect/4,
