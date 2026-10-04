@@ -1,0 +1,36 @@
+{
+  "receipt": "w2-register-flow-executed",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "test": "integration_test/auth/register_flow_test.dart (通过邮箱注册新账号)",
+  "device": "MRD AL00 (EMUI 9 / API 28, real device, serial redacted)",
+  "result": "PASS (rc=0, 'All tests passed!')",
+  "duration_seconds": 43,
+  "command": "flutter test integration_test/auth/register_flow_test.dart --dart-define=APP_ENV=local_office --dart-define=API_BASE_URL=http://127.0.0.1:19800 --dart-define=TEST_ALLOW_REGISTER=true --dart-define=TEST_REG_CODE=123456 --dart-define=TEST_ALLOW_BUSINESS_WRITES=true -d <device>",
+  "flow_evidence": [
+    "[FLOW] 后端探活通过: http://127.0.0.1:19800/api/v1/init",
+    "reg_04_form_filled -> 注册下一步按钮状态: enabled",
+    "reg_06_pin_page -> reg_07_code_filled -> 验证码注册按钮状态: enabled",
+    "reg_08_register_success -> 邮箱注册全链完成：下一步→验证码注入→注册→管理账户页",
+    "PG: user row created id=116159388498266112 email=e2e_1791078676782@test.imboy.pub"
+  ],
+  "full_log": "/tmp/reg-flow-3.log (host-side transient; flow markers quoted above)",
+  "fixes_required_to_get_here": [
+    {
+      "file": "imboy/config/sys.local.config",
+      "change": "verification_master_code 'abc12345' (8 chars) -> '123456' (6 digits)",
+      "reason": "MaterialPinField on the verification page has a hard 6-cell input; an 8-char master code can never be entered via UI, making TEST_REG_CODE unattended flow impossible. Master code is a non-production-only convenience (is_master_code guards imboy_env current() in local/dev/test).",
+      "side_effect_note": "stale daemon holding :19800 could not be stopped via bin/imboy stop (release starts with -kernel start_distribution false => no EPMD registration); required kill <pid> + fresh daemon start to load new config"
+    },
+    {
+      "note": "explicit --dart-define=API_BASE_URL=http://127.0.0.1:19800 added to test command",
+      "reason": "FlowConfig.apiBaseUrl (explicit dart-define) takes precedence over Env(); without it ensureBackendAvailable() probed https://pro.imboy.pub/api/v1/init (production) even though the app itself used the local base - seen in failed-run log line '[FLOW] 后端探活通过: https://pro.imboy.pub/api/v1/init'. Follow-up TODO (imboyapp repo): test_utils should fail-closed when appEnv is non-production but probe URL host is not explicitly approved."
+    }
+  ],
+  "findings_for_ledger": [
+    "FIND-W2-01: test_utils.ensureBackendAvailable() probed production (pro.imboy.pub) under APP_ENV=local_office - must be fail-closed (open TODO)",
+    "FIND-W2-02: master code length (8) vs PIN input width (6) mismatch - fixed via config; consider asserting byte_size=6 at config validation for non-prod",
+    "FIND-W2-03: bin/imboy stop cannot stop a daemon started with start_distribution false; ops scripts should document kill-by-pid fallback"
+  ],
+  "not_yet_covered": "six calibration journeys (cross-device C2C, group permission revoke, moment visibility, channel CRUD, organization chart, mine/settings) - register flow is the entry precondition; journey runs follow on the same channel"
+}
