@@ -1,0 +1,26 @@
+{
+  "artifact": "f00 group widget calibration batch4 - group_vote_page partial + FIND-GROUP-07 (GAMMA: evidence registration, NOT grid flips)",
+  "date": "2026-10-04",
+  "rule": "Companion-file calibration only; acceptance.tsv rows stay PENDING.",
+  "source": {
+    "code": "imboyapp f313fbe7 + e8a06394 test(group): vote page widget flows",
+    "file": "imboyapp test/unit_test/page/group/vote/group_vote_widget_flow_test.dart (3 cases)",
+    "run": "3/3 All tests passed; dart analyze clean"
+  },
+  "mappings": [
+    {"fn_id": "fn:group:group_vote_page:005", "action": "从聊天面板直达自动弹创建表单", "note": "WIDGET PASS 流程A: autoCreate=true pops CupertinoAlertDialog with title + per-line options inputs on entry"},
+    {"fn_id": "fn:group:group_vote_page:002", "action": "弹窗填写标题选项创建投票", "note": "WIDGET PASS (form half, 流程B): manual + entry opens the same form with cancel/confirm actions. createSubmit round-trip requires service injection (see blocker)"},
+    {"fn_id": "fn:group:group_vote_page:003", "action": "选项不足两条时拦截并提示", "note": "WIDGET PASS 流程C: single option + confirm -> dialog dismissed, 每行一选项 guard toast shown, zero network window (guard fires before createVote)"}
+  ],
+  "blocked": {
+    "finding": "FIND-GROUP-07",
+    "scope": "group_vote_page 001/004/006/007/008/009/010/011 + group_task/group_task_detail/group_schedule_detail/group_file/group_album_photo/group_album_photo_detail/group_vote_detail pages (their ~12 TARGET_MISSING rows each)",
+    "cause": "data-dependent rows need GroupVoteService.to / sibling services: static final singletons with private _api fields - NOT injectable; real HTTP inside testWidgets' FakeAsync never completes (isolate/socket IO), so list render / badges / counts / refresh / detail-push cannot be constructed locally",
+    "options": [
+      "product-side minimal change: make service constructors accept an optional api (or add a @visibleForTesting override hook), then batch-follow with the established ffi+Spy harness",
+      "or cover these rows on the real device against the isolated backend (19800) - heavier per-row cost"
+    ],
+    "decision_not_made_by_agent": "service injectability is a product-code change; left for the next iteration per minimal-implementation contract"
+  },
+  "acceptance_tsv_impact": "NONE"
+}
