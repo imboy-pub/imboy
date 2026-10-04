@@ -15,8 +15,10 @@
     "AT-GF5_peer_join_ws_refresh": "PASS (j-f2f-gf5-run1.log, 00:40 +1; peer E joined via HTTP, WS downlink CLIENT_ACK, member count 1->2 live)",
     "AT-GF6_offline_refetch": "SKIP by design (NetworkMonitor has no test injection channel, documented in file header)",
     "AT-GF7_save_build_group": "PASS (j-f2f-gf7-run1.log, 01:31 +1; group gid 116230026210576384 persisted, chat page reached, DB group+member rows asserted)",
-    "AT-GF8_save_failure_path": "BUSINESS PATH VERIFIED / HARNESS TEARDOWN WARN: product log '[FaceToFaceConfirm] save 返回空 group，视为失败' proves server-failure handling fired after random_code deletion; DB no-group-row assertion not reached because test ends with 'FlutterError: A SemanticsHandle was active at the end of the test' (tester.ensureVisible under LiveTestWidgetsFlutterBinding). Harness cleanup TODO, no product defect.",
-    "AT-GF9_chat_empty_state": "BLOCKED: empty-state account F (50020) fails App-side login (11 attempts, md5 errorPassword -> rsa retry also fails silently). HTTP rsa_encrypt=0 login for F returns code=0, so account+password are fine; App rsa-retry channel is account-independent on paper and D logs in fine on the same app build - root cause TBD (suspect rsa retry path or per-account E2EE bootstrap interaction). GF10/GF11 share this blocker."
+    "AT-GF8_save_failure_path": "PASS (j-f2f-gf8-run2.log, 01:25 +1; harness fix imboyapp 4c4bfd5d removed tester.ensureVisible whose SemanticsHandle leaked under LiveTestWidgetsFlutterBinding; DB assertion now reached: save failure with deleted random_code leaves zero group rows)",
+    "AT-GF9_chat_empty_state": "PASS (j-f2f-gf9-run2.log, 01:13 +1). Prior blocker root-caused: NOT an rsa-channel issue - GF9/GF10/GF11 _boot calls hardcoded password 'admin888c' (a leftover call-site literal the FIND-GROUP-04 parameterization missed, so md5 and the rsa retry both carried a wrong password; account D passed only because it used the _boot default FlowConfig.testPassword). Fixed in 4c4bfd5d: all three empty-state scenes now pass FlowConfig.testPassword.",
+    "AT-GF10_group_select_empty_state": "PASS (j-f2f-gf10-run1.log, 01:15 +1)",
+    "AT-GF11_add_member_empty_state": "PASS (j-f2f-gf11-run1.log, 01:12 +1)"
   },
   "full_suite_serial_run_finding": "run5 (all 11 scenes in one flutter test) degrades after scene 1: each testWidgets restarts app.main(); from scene 2 onward every login attempt fails md5->rsa retry (35 x errorPassword) even though single-scene runs pass. The file's documented usage is per-scene --plain-name; serial full-suite runs are NOT a supported mode for this harness. Recorded so nobody retries serial mode expecting green.",
   "environment_mitigations_discovered": [
@@ -34,5 +36,11 @@
     "j-f2f-gf8-run1.log (GF8 business path verified, harness warn)",
     "j-f2f-gf9-run1.log (GF9 blocked by F login)"
   ],
-  "calibration_note": "No AC grid cell flips from this receipt; it feeds W3 group-domain evidence. GF4/GF8-harness/GF9-11 blockers are tracked above for the next iteration."
+  "calibration_note": "No AC grid cell flips from this receipt; it feeds W3 group-domain evidence. Final tally on isolated backend + real device: 9/11 PASS (GF1,2,3,5,7,8,9,10,11), GF6 skip-by-design, GF4 FAIL-ENV (3s throttle window vs real-device location latency) - sole remaining blocker, tracked for next iteration.",
+  "evidence_files_addendum": [
+    "j-f2f-gf8-run2.log (GF8 PASS after harness fix)",
+    "j-f2f-gf9-run2.log (GF9 PASS after password fix)",
+    "j-f2f-gf10-run1.log (GF10 PASS)",
+    "j-f2f-gf11-run1.log (GF11 PASS)"
+  ]
 }

@@ -1,0 +1,34 @@
+{
+  "artifact": "f00 f2f device-run calibration notes (GAMMA: evidence registration, NOT grid flips)",
+  "date": "2026-10-04",
+  "rule": "Per handoff contract: calibration annotations live in companion files and MUST NOT flip acceptance.tsv cell status. acceptance.tsv rows below stay PENDING until the formal gate rules say otherwise.",
+  "source_runs": {
+    "receipt": "f2f-suite-gf1-gf11-device-results.json",
+    "code": "imboyapp c50bcfa + 5423a917 + 4c4bfd5d",
+    "env": "isolated backend http://127.0.0.1:19800 (imboy_acceptance@25432) + real device XWE6R19916004085",
+    "tally": "9 PASS / 1 skip-by-design (GF6) / 1 FAIL-ENV (GF4)"
+  },
+  "mappings": [
+    {"fn_id": "fn:group:face_to_face_page:001", "action": "数字键盘输入四位暗号并回显", "note": "DEVICE-RUN PASS via AT-GF1/3/5/7/8/8 runs (NumericKeypad input chain on real device, metallic-key tap + display boxes); log j-f2f-gf*.log"},
+    {"fn_id": "fn:group:face_to_face_page:010", "action": "输满四位自动发起建群匹配", "note": "DEVICE-RUN PASS via AT-GF1 (auto face2face on 4th digit, gid returned, confirm page push); j-f2f-gf7-run1.log / run5"},
+    {"fn_id": "fn:group:face_to_face_page:011", "action": "匹配成功跳转建群确认页", "note": "DEVICE-RUN PASS via AT-GF2 (进入该群 confirm page elements asserted); run5 + earlier single-scene runs"},
+    {"fn_id": "fn:group:face_to_face_page:008", "action": "匹配失败展示红色错误文案", "note": "FAIL-ENV via AT-GF4: server 3s/uid throttle window vs real-device location latency (UI submit includes getLocation up to 3s timeout + RTT) -> throttle never hit on device; macOS flutter_tester immune (missing plugin fails fast). Scene semantics kept; needs server test hook or faster location path. evidence j-f2f-gf4-run1.log"},
+    {"fn_id": "fn:group:face_to_face_confirm_page:003", "action": "提交中按钮禁用并显示转圈", "note": "PARTIALLY EXERCISED via GF7/GF8 submit path (AppLoading show/dismiss observed in logs) but no dedicated disabled-state assertion yet"},
+    {"fn_id": "fn:group:face_to_face_confirm_page:006", "action": "建群失败弹出错误提示", "note": "DEVICE-RUN PASS via AT-GF8 (post-harness-fix): save failure path fired, zero group rows persisted; toast text itself remains unassertable (confirm page 3s auto-dismiss KNOWN-ISSUE); j-f2f-gf8-run2.log"},
+    {"fn_id": "fn:group:face_to_face_confirm_page:007", "action": "实时显示即将进群的人数", "note": "DEVICE-RUN PASS via AT-GF3 (1 人即将进入群聊) and AT-GF5 (1->2 live refresh); j-f2f-gf3-run1.log / j-f2f-gf5-run1.log"},
+    {"fn_id": "fn:group:face_to_face_confirm_page:008", "action": "收到入群事件实时追加头像", "note": "DEVICE-RUN PASS via AT-GF5: peer E HTTP join -> WS downlink (CLIENT_ACK logged) -> member count 1->2 live; j-f2f-gf5-run1.log"},
+    {"fn_id": "fn:group:face_to_face_confirm_page:009", "action": "断网恢复后补拉服务端成员", "note": "SKIP by design (AT-GF6): NetworkMonitor has no test injection channel; documented in test file header; unchanged"},
+    {"fn_id": "fn:group:face_to_face_confirm_page:010", "action": "点进入该群提交建群并跳转", "note": "DEVICE-RUN PASS via AT-GF7: face2face_save persisted group gid 116230026210576384, ChatPage mounted; j-f2f-gf7-run1.log"},
+    {"fn_id": "fn:group:launch_chat_page:008", "action": "快捷入口跳转面对面建群页", "note": "EXERCISED via router _go('/group/face_to_face') in every GF run (page reached, hint card text asserted)"},
+    {"fn_id": "fn:group:launch_chat_page:010", "action": "无好友时展示暂无数据空态", "note": "DEVICE-RUN PASS via AT-GF9 with empty-state carrier F (50020): 暂无数据 asserted after password-call-site fix (4c4bfd5d); j-f2f-gf9-run2.log"},
+    {"fn_id": "fn:group:group_select_page:001", "action": "加载可选群会话列表", "note": "EMPTY-BRANCH DEVICE-RUN PASS via AT-GF10 (zero-group carrier F, empty state asserted); full-list branch remains COVERED_BY_EXISTING_JOURNEY only; j-f2f-gf10-run1.log"},
+    {"fn_id": "fn:group:add_member_page:010", "action": "无联系人时展示暂无数据空态", "note": "DEVICE-RUN PASS via AT-GF11 (zero-contact carrier F); j-f2f-gf11-run1.log"}
+  ],
+  "not_covered_by_device_runs": [
+    "fn:group:face_to_face_page:002 删除键回退 (no GF scene)",
+    "fn:group:face_to_face_page:003 输入三秒自动清空 (no GF scene)",
+    "fn:group:face_to_face_page:007 点返回退出 (no GF scene)",
+    "fn:group:face_to_face_confirm_page:005 点返回退出确认页 (no GF scene)"
+  ],
+  "acceptance_tsv_impact": "NONE - all 97 rows remain PENDING; this file only records device-run calibration evidence per fn row for the W3 review."
+}
