@@ -46,7 +46,12 @@ parse(<<"c2c:", Rest/binary>>) ->
         [ABin, BBin] ->
             case {to_pos_int(ABin), to_pos_int(BBin)} of
                 {{ok, A}, {ok, B}} when A =/= B ->
-                    c2c(A, B);
+                    %% A/B 均为严格正整数且不等 → c2c/2 守卫必然命中；
+                    %% 错误分支不可达，映射回 parse 的公开错误契约。
+                    case c2c(A, B) of
+                        {ok, K} -> {ok, K};
+                        {error, invalid_c2c_uids} -> {error, invalid_conv_key}
+                    end;
                 _ ->
                     {error, invalid_conv_key}
             end;
@@ -81,7 +86,14 @@ c2c_members(Bin) ->
         {ok, #conv_key{type = c2c, v = V}} ->
             <<"c2c:", Rest/binary>> = V,
             [MinBin, MaxBin] = binary:split(Rest, <<":">>),
-            {ok, {binary_to_integer(MinBin), binary_to_integer(MaxBin)}};
+            %% parse 已保证 min/max 为严格正整数且不等；此处防御性复验
+            %% 以满足 pos_integer() 契约，else 分支不可达。
+            case {binary_to_integer(MinBin), binary_to_integer(MaxBin)} of
+                {Min, Max} when Min > 0, Max > 0 ->
+                    {ok, {Min, Max}};
+                _ ->
+                    {error, invalid_conv_key}
+            end;
         _ ->
             {error, invalid_conv_key}
     end.
