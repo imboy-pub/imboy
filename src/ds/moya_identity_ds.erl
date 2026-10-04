@@ -1,4 +1,5 @@
 -module(moya_identity_ds).
+-moduledoc "墨芽小程序「首登自动开户」事务编排层（2026-09-20 试点方案 B）。".
 %%%
 % 墨芽小程序「首登自动开户」事务编排层（2026-09-20 试点方案 B）
 % WeChat mini-program first-login auto-provisioning (atomic user + sso_identity)

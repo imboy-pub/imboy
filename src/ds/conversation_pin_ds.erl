@@ -1,4 +1,5 @@
 -module(conversation_pin_ds).
+-moduledoc "会话置顶数据服务模块 / conversation pin data service。".
 %%%
 % conversation_pin 数据服务模块
 % conversation pin data service module

@@ -1,5 +1,6 @@
 -module(group_vote_ds).
 
+-moduledoc "群投票数据服务层（2026-04 G2-a + G3 治理）。".
 %%%
 % group_vote_ds — 群投票数据服务层（2026-04 G2-a + G3 治理）
 %

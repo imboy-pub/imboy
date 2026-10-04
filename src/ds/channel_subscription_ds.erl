@@ -1,4 +1,5 @@
 -module(channel_subscription_ds).
+-moduledoc "频道订阅数据服务（G3 架构治理）。".
 %%%
 % channel_subscription_ds — G3 架构治理
 % G3: thin DS wrapper for channel subscriptions

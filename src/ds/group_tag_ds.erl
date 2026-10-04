@@ -1,4 +1,5 @@
 -module(group_tag_ds).
+-moduledoc "群组标签数据服务层 / group tag data service。".
 -dialyzer({nowarn_function, [count/1]}).
 %%%
 % group_tag_ds 是群组标签数据服务层

@@ -1,5 +1,6 @@
 -module(imboy_plugin_audit_ds).
 
+-moduledoc "插件审计数据服务 / plugin audit data service。".
 %%%-------------------------------------------------------------------
 %%% @doc
 %%% 插件审计日志数据服务层 / Plugin audit log data service

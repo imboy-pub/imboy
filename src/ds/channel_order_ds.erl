@@ -1,4 +1,5 @@
 -module(channel_order_ds).
+-moduledoc "频道订单数据服务（G3）—— logic 层不应直调 channel_order_repo。".
 %%%
 % channel_order_ds — G3 架构治理：channel_logic_order 不应直调 channel_order_repo
 % G3: thin DS wrapper for channel orders

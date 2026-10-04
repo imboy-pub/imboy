@@ -1,4 +1,5 @@
 -module(feedback_ds).
+-moduledoc "反馈领域服务模块 / feedback domain service。".
 -dialyzer({nowarn_function, [add/10]}).
 %%%
 % feedback 领域服务模块

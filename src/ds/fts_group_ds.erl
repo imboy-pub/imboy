@@ -1,4 +1,5 @@
 -module(fts_group_ds).
+-moduledoc "群组全文搜索数据服务层 / group full-text search data service。".
 %%%
 % fts_group_ds 是群组全文搜索数据服务层
 % 封装群组搜索和发现的数据操作

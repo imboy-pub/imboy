@@ -1,4 +1,5 @@
 -module(group_random_code_ds).
+-moduledoc "群随机码数据服务（G3）—— handler 不应直调 group_random_code_repo。".
 %%%
 % group_random_code_ds — G3 架构治理：group_handler 不应直调 group_random_code_repo
 % G3: thin DS wrapper for group random codes

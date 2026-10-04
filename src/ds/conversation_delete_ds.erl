@@ -1,4 +1,5 @@
 -module(conversation_delete_ds).
+-moduledoc "会话删除数据服务模块 / conversation delete data service。".
 %%%
 % conversation_delete 数据服务模块
 % conversation delete data service module

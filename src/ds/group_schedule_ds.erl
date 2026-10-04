@@ -1,5 +1,6 @@
 -module(group_schedule_ds).
 
+-moduledoc "群日程数据服务层（2026-04 G2-a + G3 治理）。".
 %%%
 % group_schedule_ds — 群日程数据服务层（2026-04 G2-a + G3 治理）
 %

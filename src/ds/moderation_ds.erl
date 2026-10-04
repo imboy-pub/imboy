@@ -1,5 +1,6 @@
 -module(moderation_ds).
 
+-moduledoc "内容审核数据服务 —— 敏感词与复审队列。".
 %%%
 % 内容审核数据服务模块（敏感词 + 复审队列）
 % Content moderation data service (sensitive words + review queue)

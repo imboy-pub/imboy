@@ -1,4 +1,5 @@
 -module(group_file_ds).
+-moduledoc "群文件领域服务 / group file domain service。".
 -dialyzer({nowarn_function, [upload_file/5]}).
 %%%
 % group_file_ds 是 group file domain service 缩写

@@ -1,5 +1,6 @@
 -module(group_task_ds).
 
+-moduledoc "群作业数据服务层（2026-04 G2-a + G3 治理）。".
 %%%
 % group_task_ds — 群作业数据服务层（2026-04 G2-a + G3 治理）
 %

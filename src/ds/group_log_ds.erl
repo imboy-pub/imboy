@@ -1,4 +1,5 @@
 -module(group_log_ds).
+-moduledoc "群日志数据服务（G3）—— logic 层不应直调 group_log_repo。".
 %%%
 % group_log_ds — G3 架构治理：group_logic 不应直调 group_log_repo
 % G3: thin DS wrapper for group operation logs

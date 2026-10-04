@@ -1,4 +1,5 @@
 -module(moya_roster_ds).
+-moduledoc "墨芽教师侧只读班级学员名单数据服务层（MN-ROSTER-01，P0-2）。".
 %%%
 % 墨芽教师侧只读班级学员名单数据服务层（MN-ROSTER-01，P0-2）
 % Teaching roster data service：名单读取编排（Logic 不直接触达 Repo）。

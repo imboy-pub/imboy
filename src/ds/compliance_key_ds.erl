@@ -1,4 +1,5 @@
 -module(compliance_key_ds).
+-moduledoc "合规密钥数据服务层 / compliance key data service。".
 %%%
 %% compliance_key_ds — 合规密钥数据服务层
 %% Compliance-key data service layer (thin pass-through to repo).

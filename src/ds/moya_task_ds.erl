@@ -1,4 +1,5 @@
 -module(moya_task_ds).
+-moduledoc "墨芽教师教学作业事务编排层（MN-TASK-01 / MN-TASK-02，P0-3）。".
 %%%
 % 墨芽教师教学作业事务编排层（MN-TASK-01 / MN-TASK-02，P0-3）
 % Teaching task data service：group_task + group_task_assignment 的
