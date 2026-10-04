@@ -1,0 +1,52 @@
+{
+  "artifact": "decision-requests-log - pending user decisions blocking W3 completion / W4 freeze",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "contract_basis": [
+    "原任务书: MLS/PQ/见证/SLO 不自行拍板",
+    "原任务书: 资源/设备/账号/隔离数据库/MITM及安全方案决策以明确批准记录为准",
+    "原任务书: 批准缩减范围须另建版本，不改原合同冒充完成",
+    "e2ee plan.md §2: 新产品决策须提交 reviewable decision card"
+  ],
+  "requests": [
+    {
+      "id": "DEC-1",
+      "topic": "D-02…D-07 AC 门启动策略",
+      "options": ["全部批准启动", "仅非加密类先行（D-06+D-07）", "全部延期"],
+      "unlocks": ["AC-19", "AC-20", "AC-21", "AC-30", "AC-31", "AC-32", "AC-33", "AC-26", "AC-07/08 扩展"],
+      "raised_via": ["AskUserQuestion (round 1)", "AskUserQuestion (round 2)"],
+      "status": "PENDING_USER"
+    },
+    {
+      "id": "DEC-2",
+      "topic": "FIND-GROUP-07 解阻选项（群应用页数据依赖行 ~70+）",
+      "options": ["(a) service @visibleForTesting 注入钩子（最小产品改动+回归）", "(b) 隔离后端真机逐行", "延期"],
+      "unlocks": ["vote :001/004/006/007/008/009/010/011", "task/schedule/file/album/vote_detail 各页批量"],
+      "raised_via": ["AskUserQuestion (round 1)", "AskUserQuestion (round 2)"],
+      "status": "PENDING_USER"
+    },
+    {
+      "id": "DEC-3",
+      "topic": "F01…F17 逐域 case 冻结范围（acceptance-set v1.3 status=PLANNED，61 macro IDs never replace cases）",
+      "options": ["全部 16 域", "指定优先域", "暂缓"],
+      "unlocks": ["各域 frozen case keys + 判定 TSV + 批量证据（前置计划工作）"],
+      "raised_via": ["AskUserQuestion (round 1)", "AskUserQuestion (round 2)"],
+      "status": "PENDING_USER"
+    },
+    {
+      "id": "DEC-4",
+      "topic": "GF4 定性（f2f :008 真机 3 秒节流窗口不可达，FAIL-ENV 留证中）",
+      "options": ["服务端测试钩子后真机重跑", "接受 FAIL-ENV 为终审结论", "延期"],
+      "unlocks": ["f2f 最后一行"],
+      "raised_via": ["AskUserQuestion (round 1)", "AskUserQuestion (round 2)"],
+      "status": "PENDING_USER"
+    }
+  ],
+  "non_blocking_work_status": "exhausted - group 域与 contact 域全部可本地构造行已收敛（10 套件 70+ 用例，imboyapp ab306ddf）；漂移核对 19+5 行已登记（imboy abb5794f）；W3 汇总已同步（291b8a39）",
+  "post_decision_sequence": [
+    "任一落定 -> 按 w3-domain-summary.md gap list 顺序恢复收敛",
+    "全部落定 -> RES-L3-RERUN（两仓 L3 全量回归，连续两轮 exit=0）",
+    "-> W4 冻结终审：逐格翻转 acceptance.tsv 并记 reviewer/completed_at"
+  ],
+  "note": "本台账是等待态的可审计记录；四项决策均不自我拍板。"
+}
