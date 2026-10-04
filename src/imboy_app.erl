@@ -157,7 +157,14 @@ start(_Type, _Args) ->
 maybe_migrate() ->
     case config_ds:env(auto_migrate, true) of
         true ->
-            imboy_migrate:migrate();
+            case imboy_migrate:migrate() of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    %% 自动迁移失败 ⇒ 显式拒绝启动：半迁移 schema 继续服务
+                    %% 会把故障推迟到更难排查的运行期（对齐 invalid_config 的 fail-fast 风格）
+                    erlang:error({auto_migrate_failed, Reason})
+            end;
         false ->
             logger:warning(
                 "[imboy_app] automatic migrations disabled; waiting for explicit db migrate"
@@ -179,12 +186,30 @@ stop(_State) ->
     StartMode = config_ds:env(start_mode, http),
     case StartMode of
         http_tls ->
-            _ = cowboy:stop_listener(imboy_listener),
-            _ = cowboy:stop_listener(imboy_listener_tls);
+            stop_listener(imboy_listener),
+            stop_listener(imboy_listener_tls);
         tls ->
-            _ = cowboy:stop_listener(imboy_listener_tls);
+            stop_listener(imboy_listener_tls);
         _ ->
-            _ = cowboy:stop_listener(imboy_listener)
+            stop_listener(imboy_listener)
+    end.
+
+%% @doc cowboy:stop_listener/1 返回 ok | {error, not_found}；
+%% 停止时监听器不存在（如 http 模式从未启动 tls 监听器）视为已停止。
+-spec stop_listener(atom()) -> ok.
+stop_listener(Name) ->
+    case cowboy:stop_listener(Name) of
+        ok -> ok;
+        {error, not_found} -> ok
+    end.
+
+%% @doc code:priv_dir/1 返回 string() | {error, bad_name}；
+%% 本应用运行期必然已加载，bad_name 视为致命配置错误而非可恢复分支。
+-spec priv_dir() -> string().
+priv_dir() ->
+    case code:priv_dir(imboy) of
+        Dir when is_list(Dir) -> Dir;
+        {error, bad_name} -> erlang:error({badarg, imboy_priv_dir_unavailable})
     end.
 
 %% ===================================================================
@@ -379,7 +404,7 @@ start_quic(_Dispatch) ->
 
 -spec start_tls(map(), integer()) -> {ok, pid()} | {error, any()}.
 start_tls(ProtoOpts, Port) ->
-    PrivDir = code:priv_dir(imboy),
+    PrivDir = priv_dir(),
     cowboy:start_tls(
         imboy_listener_tls,
         [
@@ -864,7 +889,7 @@ resolve_secret_file(Key) ->
 %% 若缺失则生成并落盘，保证重启后客户端缓存的公钥继续可用
 -spec ensure_dev_rsa_keypair() -> {binary(), binary()}.
 ensure_dev_rsa_keypair() ->
-    PrivDir = code:priv_dir(imboy),
+    PrivDir = priv_dir(),
     DevDir = filename:join(PrivDir, "dev_keys"),
     PubPath = filename:join(DevDir, "login_rsa_pub.pem"),
     PrivPath = filename:join(DevDir, "login_rsa_priv.pem"),
@@ -949,7 +974,13 @@ normalize_secret(false) ->
 normalize_secret(Value) when is_binary(Value) ->
     Value;
 normalize_secret(Value) when is_list(Value) ->
-    unicode:characters_to_binary(Value);
+    %% sys.config 中的密钥按 UTF-8 字符串配置；非法 chardata 走 latin1 字节兜底
+    %% （与 ec_cnv:to_binary 同语义，坏配置在 iolist_to_binary 处 fail-fast）
+    case unicode:characters_to_binary(Value) of
+        Bin when is_binary(Bin) -> Bin;
+        {error, _, _} -> erlang:iolist_to_binary(Value);
+        {incomplete, _, _} -> erlang:iolist_to_binary(Value)
+    end;
 normalize_secret(Value) when is_atom(Value) ->
     atom_to_binary(Value, utf8);
 normalize_secret(Value) ->
