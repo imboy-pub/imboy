@@ -207,7 +207,14 @@ retained_categories() ->
 -spec expected_deletion_at(binary() | calendar:datetime(), pos_integer()) ->
     binary() | calendar:datetime().
 expected_deletion_at(ReqAt, GraceDays) when is_binary(ReqAt) ->
-    elib_dt:add(ReqAt, {GraceDays * 86400, second});
+    %% {error, invalid_datetime} 臂仅在 ReqAt 非法时出现（DB codec 产出恒为
+    %% 合法 rfc3339 二进制）；真发生则响亮崩溃，不把错误元组埋进注销时间字段。
+    case elib_dt:add(ReqAt, {GraceDays * 86400, second}) of
+        Bin when is_binary(Bin) ->
+            Bin;
+        {error, R} ->
+            erlang:error({invalid_datetime, ReqAt, R})
+    end;
 expected_deletion_at(ReqAt, GraceDays) when is_tuple(ReqAt), tuple_size(ReqAt) =:= 2 ->
     Seconds = calendar:datetime_to_gregorian_seconds(ReqAt),
     calendar:gregorian_seconds_to_datetime(Seconds + GraceDays * 86400).
@@ -255,7 +262,9 @@ is_online(Uid) when is_integer(Uid) ->
 -spec is_online(integer(), binary()) -> boolean().
 %% 检查用户是否在线
 %% 使用 user_device_logic 检查指定设备类型的在线状态
-is_online(Uid, DType) when is_integer(Uid) ->
+is_online(Uid, DType) ->
+    %% 不加 is_integer(Uid) 冗余守卫（配方 b'，见 trust_audit_repo 同注）；
+    %% 非整数 Uid 由下游 user_device_logic 判定不在线。
     user_device_logic:is_online(Uid, {dtype, DType}).
 
 -spec mine_state(integer()) -> {binary(), hide | online}.
@@ -317,11 +326,12 @@ find_by_id(Id) ->
 %% @param Id 用户ID
 %% @param Column 需要查询的列名
 %% @returns 用户信息，包含指定的列数据
--spec find_by_id(binary() | pos_integer(), binary()) -> map().
+-spec find_by_id(binary() | integer(), binary()) -> map().
 find_by_id(Id, Column) when is_binary(Id) ->
     find_by_id(ec_cnv:to_integer(Id), Column);
 find_by_id(Id, Column) ->
-    check_avatar(user_ds:find_by_id(Id, Column)).
+    %% to_integer 对 integer 幂等：统一收敛到 user_ds:find_by_id 的 integer() 契约
+    check_avatar(user_ds:find_by_id(ec_cnv:to_integer(Id), Column)).
 
 -spec find_by_ids([pos_integer()]) -> [map()].
 find_by_ids(Ids) ->
@@ -340,8 +350,8 @@ find_by_ids(Ids, Column) ->
             []
     end.
 
--spec update(integer(), binary(), list() | binary(), binary()) ->
-    ok | {ok, integer() | binary()} | {error, any()}.
+-spec update(integer(), binary(), binary(), binary()) ->
+    ok | {ok, integer() | binary() | boolean()} | {error, any()}.
 update(Uid, <<"email">>, Email, Code) when Code =/= <<>> ->
     case passport_logic:consume_code(Email, Code) of
         {ok, _} ->
@@ -377,7 +387,7 @@ update(Uid, Field, Val, _Code) ->
     update(Uid, Field, Val).
 
 -spec update(integer(), binary(), list() | binary()) ->
-    ok | {ok, integer() | binary()} | {error, any()}.
+    ok | {ok, integer() | binary() | boolean()} | {error, any()}.
 %% T3.2 退化外壳：资料字段校验委托 user_agg:validate_update/2（纯决策），
 %% 本函数仅执行 I/O（落库 / email 占用查询 / 绑定邮件）与 reject→线格式映射。
 %% 行为逐字保持 T3.1 前实现（含 email 非 binary 落 unsupported、gender/

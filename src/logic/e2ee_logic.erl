@@ -23,8 +23,9 @@ user_keys(CurrentUid, TargetUid) when is_integer(CurrentUid), is_integer(TargetU
 
 -spec group_member_keys(integer(), integer()) -> {ok, map()} | {error, binary(), integer()}.
 group_member_keys(CurrentUid, Gid) when is_integer(CurrentUid), is_integer(Gid) ->
-    ProbeLimit = ?MAX_GROUP_KEY_ENTRIES + 1,
-    case group_ds:member_public_keys_authoritative(Gid, CurrentUid, ProbeLimit) of
+    %% 探测上限内联进调用点：let 绑定会丢失字面量算术的 pos_integer 精化
+    %% （Gradualizer 已知怪癖），被调方第三参要求 pos_integer()。
+    case group_ds:member_public_keys_authoritative(Gid, CurrentUid, ?MAX_GROUP_KEY_ENTRIES + 1) of
         {ok, Rows} when length(Rows) =< ?MAX_GROUP_KEY_ENTRIES ->
             group_member_keys_payload(Gid, Rows);
         {ok, _Rows} ->
@@ -94,7 +95,9 @@ group_history_grant(CurrentUid, Gid, SessionId) when
 %%   客户端据此判断是否为"换设备"场景（>0 才显示 E2EE 恢复横幅）。
 -spec report_device_key(integer(), binary(), binary(), binary() | undefined, binary(), binary()) ->
     {ok, non_neg_integer()} | {error, term()}.
-report_device_key(Uid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) when is_integer(Uid) ->
+%% 不加 is_integer(Uid) 守卫：对已声明 integer() 的参数做冗余守卫细化
+%% 触发 Gradualizer pick_value(none()) 崩溃（崩溃家族配方 b'，2026-10-04）。
+report_device_key(Uid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) ->
     Now = elib_dt:now(),
 
     % 1. 检查设备是否存在并更新公钥
@@ -213,7 +216,9 @@ get_active_compliance_key() ->
 %% @returns {ok, [Notification]}
 -spec pull_key_notifications(integer(), binary() | integer(), binary() | integer()) ->
     {ok, [map()]} | {error, term()}.
-pull_key_notifications(Uid, Since, Limit) when is_integer(Uid) ->
+%% 不加 is_integer(Uid) 守卫：对已声明 integer() 的参数做冗余守卫细化
+%% 触发 Gradualizer pick_value(none()) 崩溃（崩溃家族配方 b'，2026-10-04）。
+pull_key_notifications(Uid, Since, Limit) ->
     %% since/limit 可能是 handler 透传的未校验 query（如 since=abc、limit=-1）。
     %% safe_to_integer 兜底非数字降级为 0；再夹取范围：
     %% - limit 夹到 [1, 1000]：负数/0 会经 SQL "LIMIT $3" 触发 PG

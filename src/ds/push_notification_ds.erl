@@ -80,7 +80,9 @@ send_fcm(Token, Title, Body) ->
 %% @doc FCM 推送 + 固定常量路由数据（message.data；键值必须二进制）。
 -spec send_fcm(binary(), binary(), binary(), #{binary() => binary()}) ->
     ok | {error, term()}.
-send_fcm(Token, Title, Body, Data) when is_map(Data) ->
+%% 不加 is_map(Data) 守卫：对已声明 #{binary() => binary()} 的参数做冗余
+%% 守卫细化触发 Gradualizer pick_value(none()) 崩溃（配方 b'，2026-10-04）。
+send_fcm(Token, Title, Body, Data) ->
     case get_fcm_config() of
         {ok, ProjectId, AccessToken} ->
             Url = <<"https://fcm.googleapis.com/v1/projects/", ProjectId/binary, "/messages:send">>,
@@ -135,7 +137,9 @@ send_apns(Token, Title, Body) ->
 %% @doc APNs 推送 + 固定常量路由数据（aps 之外的根级自定义键）。
 -spec send_apns(binary(), binary(), binary(), #{binary() => binary()}) ->
     ok | {error, term()}.
-send_apns(Token, Title, Body, Data) when is_map(Data) ->
+%% 不加 is_map(Data) 守卫：同 send_fcm，冗余守卫细化触发
+%% pick_value(none()) 崩溃（配方 b'）。
+send_apns(Token, Title, Body, Data) ->
     case get_apns_config() of
         {ok, KeyId, TeamId, BundleId} ->
             Aps =
@@ -317,8 +321,17 @@ get_apns_config() ->
 %% @doc HTTP POST 请求（使用 gun，连接按 Host 复用）
 http_post(Url, Headers, Body) ->
     try
-        %% 解析 URL
-        #{host := Host, path := Path} = uri_string:parse(Url),
+        %% 解析 URL；path 归一为 binary：uri_string:parse 的 path 是
+        %% charlist() | unicode_binary() 联合，gun 要求 iodata()。
+        %% characters_to_binary 的 OTP29 spec 带 error/incomplete 臂，
+        %% 全臂 case 收敛为纯 binary（实际 URL 为 ASCII，首臂恒成立）。
+        #{host := Host, path := Path0} = uri_string:parse(Url),
+        Path =
+            case unicode:characters_to_binary(Path0) of
+                B when is_binary(B) -> B;
+                {incomplete, B, _} -> B;
+                _ -> <<>>
+            end,
         Port = 443,
         ConnPid = get_or_open_conn(Host, Port),
         HttpTimeout = config_ds:env(push_http_timeout, 15000),
@@ -485,7 +498,6 @@ base64url_encode(Data) ->
             (case C of
                 $+ -> $-;
                 $/ -> $_;
-                $= -> <<>>;
                 _ -> C
             end)
         >>
