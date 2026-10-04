@@ -321,6 +321,11 @@ tsid_generator_names() ->
         olm_identity,
         olm_one_time_key,
         olm_fallback_key,
+        %% trust_audit = E2EE 信任审计事件（olm_identity_logic 写 event 行；
+        %% 漏注册即 GZAPP-09 同类：真节点上首次信任审计必
+        %% elib_tsid_generator_not_registered → 崩，elib_tsid_registration_
+        %% guard_tests 已把该不变量钉进门禁）
+        trust_audit,
         %% ── 管理员 ──
         adm_user,
         adm_role,
