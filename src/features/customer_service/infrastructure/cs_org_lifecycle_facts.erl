@@ -15,6 +15,7 @@
 %%% 语义之外的 `{error, {unknown_org_status, _}}`，不猜默认放行。
 -module(cs_org_lifecycle_facts).
 
+-moduledoc "cs_org_lifecycle_port 的唯一装配实现（ORG-08 adapter，只读）。".
 -behaviour(cs_org_lifecycle_port).
 
 -export([status/1]).

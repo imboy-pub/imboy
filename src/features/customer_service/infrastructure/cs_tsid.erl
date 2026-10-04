@@ -5,6 +5,7 @@
 %%% `elib_tsid:init/1` 由应用启动路径完成，未就绪时不静默兜底。
 -module(cs_tsid).
 
+-moduledoc "注入 ID 的生产实现（cs_id_port 真实现，镜像 eb_tsid 口径）。".
 -behaviour(cs_id_port).
 
 -export([new_id/1]).

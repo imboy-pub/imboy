@@ -15,6 +15,7 @@
 %%% 未给则用 `cs_infra_ports` 装配默认）；零 SQL、零 `elib_pg`。
 -module(cs_seat_app).
 
+-moduledoc "客服坐席（seat）应用层用例 —— 创建与开关（suspend）。".
 -export([
     create_seat/2,
     suspend_seat/2,

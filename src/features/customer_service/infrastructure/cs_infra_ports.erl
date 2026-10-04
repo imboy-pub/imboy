@@ -5,6 +5,7 @@
 %%% （`cs_app_support:port/2`）。
 -module(cs_infra_ports).
 
+-moduledoc "客服基础设施端口装配映射（Port → 具体实现，镜像 eb_infra_ports）。".
 -export([
     store/0,
     id/0,

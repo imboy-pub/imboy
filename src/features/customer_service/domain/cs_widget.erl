@@ -20,6 +20,7 @@
 %%%     application 层。
 -module(cs_widget).
 
+-moduledoc "Widget 接入的领域纯函数（CSB-02）—— application cs_widget_app 的判定真源。".
 -export([
     normalize_origin/1,
     origin_allowed/2,

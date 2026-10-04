@@ -6,6 +6,7 @@
 %%% 铁律 6：每条 SQL 同语句带 `organization_id`。
 -module(cs_pg_token).
 
+-moduledoc "门店密钥/访客令牌 PG 实现（cs_store_port 的 key/token 段）。".
 -export([
     insert_shop_key/2,
     fetch_shop_key/2,

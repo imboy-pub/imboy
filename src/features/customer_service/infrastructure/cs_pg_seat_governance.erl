@@ -1,5 +1,6 @@
 %%% Organization-wide seat configuration on the caller's transaction connection.
 -module(cs_pg_seat_governance).
+-moduledoc "坐席治理配置 PG 实现 —— 在调用方事务连接上做 organization 级配置。".
 -export([govern/4]).
 
 -define(KEYS, [organization_id, business_identity_id, enabled, max_concurrent, version]).

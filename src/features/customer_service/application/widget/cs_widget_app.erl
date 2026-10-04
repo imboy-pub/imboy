@@ -29,6 +29,7 @@
 %%% fail-closed，不做隐式推断。
 -module(cs_widget_app).
 
+-moduledoc "Widget 接入的应用层用例（CSB-02）—— bootstrap 与可选签名身份 exchange。".
 -export([
     list_installations/2,
     create_installation/2,

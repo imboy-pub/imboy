@@ -19,6 +19,7 @@
 %%% `cs_identity_assertion`，digest/密钥只在本模块与验签器内流转，不进日志。
 -module(cs_widget_env).
 
+-moduledoc "Widget 接入的 env 级事实装配（CSB-02R）—— subject_key / default_workspace 等四类服务端事实。".
 -export([
     merge_bootstrap/2,
     %% BE-W01 A06：identity/exchange 能力开关（第一阶段 capability_disabled）

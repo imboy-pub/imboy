@@ -28,6 +28,7 @@
 %%% 投影同口径）。
 -module(cs_seat_console_app).
 
+-moduledoc "坐席控制台嵌入应用层用例（seat-console-embed SC-BE）—— 管理 CRUD 与嵌入面公开投影。".
 -export([
     list_consoles/2,
     create_console/2,

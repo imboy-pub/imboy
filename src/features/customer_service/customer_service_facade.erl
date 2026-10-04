@@ -14,6 +14,7 @@
 %%% 本 feature 不建消息/附件副本。本 facade 自身不直接引用 enterprise 模块。
 -module(customer_service_facade).
 
+-moduledoc "Customer Service Feature 公开 API（铁律 3：公开 API 只进 Facade）。".
 -export([
     %% seat
     create_seat/2,

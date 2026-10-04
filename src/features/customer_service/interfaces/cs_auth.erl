@@ -31,6 +31,7 @@
 %%% 本模块是纯决策函数：无 SQL、无进程、无隐式时间源（`now` 可注入，缺省取系统毫秒）。
 -module(cs_auth).
 
+-moduledoc "客服五类身份的 metadata 认证（CS-02-A01/A04，plan EB-D10/§5.2/§5.3）。".
 -export([
     authorize/3,
     principals/0,

@@ -1,6 +1,7 @@
 %%% Seat configuration for trusted adapters holding a transaction connection.
 %%% Authentication/Grant/idempotency belong to the adapter; no credentials issued.
 -module(cs_seat_governance_app).
+-moduledoc "坐席治理配置应用层用例 —— 面向持有事务连接的可信适配器；认证/授权/幂等属适配器职责。".
 -export([govern/2]).
 
 govern(OrgId, #{connection := Conn, operation := Operation} = Params) when is_pid(Conn) ->

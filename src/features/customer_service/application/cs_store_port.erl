@@ -18,6 +18,7 @@
 %%% 实现禁止任何 CASCADE 到 user 的写路径。
 -module(cs_store_port).
 
+-moduledoc "扩展点：客服持久化读写（CS-01 冻结契约；实现随 cs_pg_* 落地）。".
 -export_type([
     seat/0,
     session/0,

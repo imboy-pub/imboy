@@ -5,6 +5,7 @@
 %%% 零业务规则；租户门由各子模块的 SQL 同语句约束承担（铁律 6）。
 -module(cs_pg_store).
 
+-moduledoc "cs_store_port 的 PG 实现 —— cs_pg_seat / cs_pg_session / cs_pg_token 装配面。".
 -behaviour(cs_store_port).
 
 -export([

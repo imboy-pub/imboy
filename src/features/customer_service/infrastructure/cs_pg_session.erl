@@ -11,6 +11,7 @@
 %%% 会话不存任何消息副本：conversation/message 真源在 enterprise 侧（A03）。
 -module(cs_pg_session).
 
+-moduledoc "客服会话 PG 实现（cs_store_port 的 session 段，A02 DB 裁决点）。".
 -export([
     insert_session/3,
     insert_session/4,

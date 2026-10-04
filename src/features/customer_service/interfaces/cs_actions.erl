@@ -38,6 +38,7 @@
 %%% **本模块不做**：不解析请求、不读库、不判权限、不拼响应。
 -module(cs_actions).
 
+-moduledoc "客服 HTTP 动作表（CS-02，plan v4.1 §5.2/§5.3 冻结契约，纯数据+纯函数）。".
 -export([
     tenant/1,
     platform/1,

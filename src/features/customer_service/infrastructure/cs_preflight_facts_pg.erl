@@ -1,5 +1,6 @@
 -module(cs_preflight_facts_pg).
 
+-moduledoc "Customer Service 域 DeletionPreflightFacts provider（ORG-08 / C17，PG 实现）。".
 %% Customer Service 域 DeletionPreflightFacts provider（ORG-08 / C17 / 计划 §1.6）。
 %%
 %% 只读：本模块是 User deletion preflight 的 CS 域实时事实源，不做 handover/

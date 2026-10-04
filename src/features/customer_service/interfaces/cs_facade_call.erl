@@ -16,6 +16,7 @@
 %%% **本模块不做**：不加工参数、不解释结果（形状由 cs_http，语义由 application）。
 -module(cs_facade_call).
 
+-moduledoc "客服动作 → facade 的唯一调用点表（CS-02）。".
 -export([call/3, actions/0]).
 
 %% @doc 执行一次用例调用。`FacadeAction` 来自冻结的动作表（`cs_actions`）。

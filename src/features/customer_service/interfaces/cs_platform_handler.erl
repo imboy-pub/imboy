@@ -17,6 +17,7 @@
 %%% **本模块不做**：不读库、不写 SQL、不做业务判定、不缓存事实、不签发任何 URL。
 -module(cs_platform_handler).
 
+-moduledoc "客服平台运营面薄 Handler（CS-02，plan §5.3）。".
 -export([init/2, handle/3]).
 
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
