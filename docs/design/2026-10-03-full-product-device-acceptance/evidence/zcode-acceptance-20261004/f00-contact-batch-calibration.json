@@ -32,7 +32,9 @@
       "fn:contact:assistant_plaza_page:007 滚动触底加载下一页 (AP-3 loadMore 追加+短页 hasMore=false)",
       "fn:contact:assistant_plaza_page:008 下拉刷新重新拉取 (AP-3/AP-4 分页状态机; refresh 触发器 UI 半边未测, 部分)",
       "fn:contact:assistant_plaza_page:009 加载失败展示错误态 (AP-2 error 置位+列表空; AP-4 失败保留列表供重试)",
-      "fn:contact:assistant_plaza_page:010 附注: AI 徽章/声明卡 widget 渲染层 (:004/:010) 仍未覆盖"
+      "fn:contact:assistant_plaza_page:010 附注: AI 徽章/声明卡 widget 渲染层 (:004/:010) 仍未覆盖",
+      "fn:contact:people_info_more_page:006 打开开关加入黑名单【确认框+取消半边】(destructive 流程B-1: addedToDenylistTips 确认框+取消不切换; 确认执行半边见 FIND-CONTACT-01)",
+      "fn:contact:people_info_more_page:007 关闭开关移出黑名单【确认框+取消半边】(destructive 流程B-2: confirmRemoveFromDenylist 确认框+图标红态; 确认执行半边见 FIND-CONTACT-01)"
     ]
   },
   "newly_closed_this_round": [
@@ -110,5 +112,18 @@
   "harness_notes_new": [
     "ThemeManager needs ThemeManager.instance.setProviderContainer(container) in widget tests; overrides must live in the SAME ProviderContainer passed to UncontrolledProviderScope",
     "Spy notifiers must override initData/refresh/loadMore/updateKwd (real initData copyWith(isLoading:true) then hangs on real API inside FakeAsync)"
+  ],
+  "findings": [
+    {
+      "finding": "FIND-CONTACT-01",
+      "scope": "people_info_more_page :006/:007 确认执行半边（加入/移出黑名单确认后）",
+      "cause": "contact_setting_page._showDenylistToggle 确认后走 State 方法 _handleDenylistToggle 直接 new DenylistApi()/UserDenylistRepo() - provider.toggleDenylist 成为死代码（页面绕过 riverpod 直连 API）。确认路径打真实 HTTP，FakeAsync 下不可构造（FIND-GROUP-07 同族），且构成 provider/页面双轨架构债",
+      "evidence": "回退记录：confirm-path 用例 toggleCalls==0（Spy 未被触达，因页面不经 provider）；contact_setting_page.dart:187-230（_showDenylistConfirmation/_handleDenylistToggle 直连 API）",
+      "options": [
+        "产品侧：页面改走 provider.toggleDenylist（删双轨），随后测试可注入",
+        "或真机覆盖确认路径"
+      ],
+      "status": "PENDING_DECISION（与 FIND-GROUP-07 同族产品改造）"
+    }
   ]
 }
