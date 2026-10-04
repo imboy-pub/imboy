@@ -43,7 +43,8 @@ commit-msg:
 # 依赖: make gradualizer-setup（首次）+ 最近一次 make compile 的 ebin/
 # Ratchet 语义：只拦"基线外的新增失败模块"；存量失败（.gradualizer-baseline.txt 内）警告放行，
 # 与 CI 观察模式一致。修绿模块后跑 make gradualize-baseline 收紧基线（只准减不准增）。
-# 排除清单与 Makefile GRADUALIZE_EXCLUDE 对齐：imboy_pb（gpb 生成）、elib_str（触发上游崩溃）。
+# 排除清单与 Makefile GRADUALIZE_EXCLUDE 对齐：imboy_pb（gpb 生成）、elib_str（触发上游崩溃）、
+# barrel_mcp_*（vendored，不 patch 上游）。
 # ⚠️ 门禁生效前提：lefthook 需算出 push 文件集（首选 HEAD @{push}）。新 clone 后执行
 #   git config remote.pushDefault gitcode && git branch --set-upstream-to=gitcode/main main
 # 否则会以 "no matching push files" 静默跳过全部命令（2026-09-29 三仓实证；
@@ -53,7 +54,7 @@ pre-push:
     gradualize-changed:
       run: |
         files=$(git diff --name-only origin/main...HEAD -- 'src/*.erl' 'src/**/*.erl' \
-          | grep -v '_tests\.erl$' | grep -v 'imboy_pb\.erl$' | grep -v 'elib_str\.erl$' || true)
+          | grep -v '_tests\.erl$' | grep -v 'imboy_pb\.erl$' | grep -v 'elib_str\.erl$' | grep -v 'barrel_mcp_' || true)
         files=$(for f in $files; do [ -f "$f" ] && echo "$f"; done)
         [ -z "$files" ] && exit 0
         [ -x tools/gradualizer/bin/gradualizer ] || { echo "⚠️ 未安装 Gradualizer，跳过（make gradualizer-setup 安装）"; exit 0; }

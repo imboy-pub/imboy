@@ -53,9 +53,6 @@ auth_ds
 auth_oidc_handler
 auth_oidc_jwks
 auth_oidc_logic
-barrel_mcp_protocol
-barrel_mcp_registry
-barrel_mcp_tasks
 billing_logic
 bot_logic
 channel_admin_repo

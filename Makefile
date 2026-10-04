@@ -670,7 +670,11 @@ GRADUALIZER_REF  ?= 23533d7eb7541d8a146a507e837fdfff6499a202
 GRADUALIZE_BUDGET ?= 0
 # gpb 生成代码不参与门禁；elib_str 触发 Gradualizer 崩溃（pick_value none() bug，待上报上游）
 # 注意：elib_log 已修复 lager:log metadata 误报，重新纳入检查（否则调用方会报 internal_log undefined）
-GRADUALIZE_EXCLUDE := src/imboy_pb.erl src/lib/elib_str.erl
+# barrel_mcp_* 为 vendored 代码（LICENSE.barrel_mcp / VENDOR.md）：不参与本仓门禁，
+# 避免 patch 上游；其报错另受 gradualizer 未解析 barrel_mcp.hrl 的伪影影响
+GRADUALIZE_EXCLUDE := src/imboy_pb.erl src/lib/elib_str.erl \
+                      src/mcp/barrel_mcp_protocol.erl src/mcp/barrel_mcp_registry.erl \
+                      src/mcp/barrel_mcp_session.erl src/mcp/barrel_mcp_tasks.erl
 GRADUALIZER_OPTS ?= -pa ebin $(addprefix -pa ,$(wildcard deps/*/ebin)) \
                     -I $(CURDIR)/include --no_color --fmt_location brief
 # OTP 29 把 match_alias_pats 警告升级为错误，上游未适配，构建时压制
