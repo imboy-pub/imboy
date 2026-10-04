@@ -1,5 +1,6 @@
 -module(fts_handler).
 
+-moduledoc "全文搜索（FTS）控制器 —— 用户搜索等检索端点。".
 %%%
 % fts 控制器模块
 % fts controller module
@@ -52,47 +53,59 @@ parse_search_options(QueryList) ->
     Options0 = #{},
 
     % 解析日期范围
-    Options1 = case proplists:get_value(<<"start_date">>, QueryList, undefined) of
-        undefined -> Options0;
-        StartDate -> maps:put(<<"start_date">>, StartDate, Options0)
-    end,
+    Options1 =
+        case proplists:get_value(<<"start_date">>, QueryList, undefined) of
+            undefined -> Options0;
+            StartDate -> maps:put(<<"start_date">>, StartDate, Options0)
+        end,
 
-    Options2 = case proplists:get_value(<<"end_date">>, QueryList, undefined) of
-        undefined -> Options1;
-        EndDate -> maps:put(<<"end_date">>, EndDate, Options1)
-    end,
+    Options2 =
+        case proplists:get_value(<<"end_date">>, QueryList, undefined) of
+            undefined -> Options1;
+            EndDate -> maps:put(<<"end_date">>, EndDate, Options1)
+        end,
 
     % 解析消息类型
-    Options3 = case proplists:get_value(<<"msg_type">>, QueryList, undefined) of
-        undefined -> Options2;
-        MsgType -> maps:put(<<"msg_type">>, MsgType, Options2)
-    end,
+    Options3 =
+        case proplists:get_value(<<"msg_type">>, QueryList, undefined) of
+            undefined -> Options2;
+            MsgType -> maps:put(<<"msg_type">>, MsgType, Options2)
+        end,
 
     % 解析发送者ID（需要解码）
-    Options4 = case proplists:get_value(<<"from_uid">>, QueryList, undefined) of
-        undefined -> Options3;
-        FromUid ->
-            case ec_cnv:to_integer(FromUid) of
-                FromUidInt when is_integer(FromUidInt), FromUidInt > 0 -> maps:put(<<"from_uid">>, FromUidInt, Options3);
-                _ -> Options3
-            end
-    end,
+    Options4 =
+        case proplists:get_value(<<"from_uid">>, QueryList, undefined) of
+            undefined ->
+                Options3;
+            FromUid ->
+                case ec_cnv:to_integer(FromUid) of
+                    FromUidInt when is_integer(FromUidInt), FromUidInt > 0 ->
+                        maps:put(<<"from_uid">>, FromUidInt, Options3);
+                    _ ->
+                        Options3
+                end
+        end,
 
     % 解析会话ID（需要解码）
-    Options5 = case proplists:get_value(<<"conversation_id">>, QueryList, undefined) of
-        undefined -> Options4;
-        ConversationId ->
-            case ec_cnv:to_integer(ConversationId) of
-                ConversationIdInt when is_integer(ConversationIdInt), ConversationIdInt > 0 -> maps:put(<<"conversation_id">>, ConversationIdInt, Options4);
-                _ -> Options4
-            end
-    end,
+    Options5 =
+        case proplists:get_value(<<"conversation_id">>, QueryList, undefined) of
+            undefined ->
+                Options4;
+            ConversationId ->
+                case ec_cnv:to_integer(ConversationId) of
+                    ConversationIdInt when is_integer(ConversationIdInt), ConversationIdInt > 0 ->
+                        maps:put(<<"conversation_id">>, ConversationIdInt, Options4);
+                    _ ->
+                        Options4
+                end
+        end,
 
     % 解析排序方式
-    Options6 = case proplists:get_value(<<"sort_by">>, QueryList, undefined) of
-        undefined -> Options5;
-        SortBy -> maps:put(<<"sort_by">>, SortBy, Options5)
-    end,
+    Options6 =
+        case proplists:get_value(<<"sort_by">>, QueryList, undefined) of
+            undefined -> Options5;
+            SortBy -> maps:put(<<"sort_by">>, SortBy, Options5)
+        end,
 
     Options6.
 

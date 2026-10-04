@@ -1,5 +1,6 @@
 -module(user_tag_handler).
 
+-moduledoc "社交图谱标签边界的薄 HTTP 适配层 + user_tag 控制器 —— 用户标签管理端点。".
 %% Thin HTTP adapter for the social_graph tag boundary.
 
 %%%
@@ -80,13 +81,14 @@ page(Req0, State) ->
                 Where0
         end,
 
-    if CurrentUid == 0 ->
-           elib_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
-       Scene2 == 0 ->
-           elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
-       true ->
-           Payload = user_tag_logic:page(Scene2, Page, Size, WhereMap, OrderBy),
-           elib_response:success(Req0, Payload)
+    if
+        CurrentUid == 0 ->
+            elib_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
+        Scene2 == 0 ->
+            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+        true ->
+            Payload = user_tag_logic:page(Scene2, Page, Size, WhereMap, OrderBy),
+            elib_response:success(Req0, Payload)
     end.
 
 %% @doc 修改标签名称
@@ -124,14 +126,18 @@ change_name(Req0, State) ->
             elib_response:error(Req0, <<"TagId 不能同时为空"/utf8>>);
         {S2, _, Id} ->
             Count =
-                elib_pg:pluck_value(<<"public.user_tag">>,
-                                     <<"count(*)">>,
-                                     #{<<"scene">> => S2,
-                                       <<"creator_user_id">> => CurrentUid,
-                                       <<"name">> => TagName,
-                                       <<"id">> => {op, <<"<>">>, Id}},
-                                     #{},
-                                     0),
+                elib_pg:pluck_value(
+                    <<"public.user_tag">>,
+                    <<"count(*)">>,
+                    #{
+                        <<"scene">> => S2,
+                        <<"creator_user_id">> => CurrentUid,
+                        <<"name">> => TagName,
+                        <<"id">> => {op, <<"<>">>, Id}
+                    },
+                    #{},
+                    0
+                ),
             case user_tag_logic:change_name(Count, CurrentUid, S2, Id, TagName) of
                 ok ->
                     elib_response:success(Req0, #{}, "success.");
@@ -164,17 +170,18 @@ add(Req0, State) ->
                 0
         end,
     TagLen = string:length(Tag),
-    if Scene2 == 0 ->
-           elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
-       TagLen > 14 ->
-           elib_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
-       true ->
-           case user_tag_logic:add(CurrentUid, Scene2, Tag) of
-               {ok, TagId} ->
-                   elib_response:success(Req0, #{<<"tagId">> => TagId}, "success.");
-               {error, Err} ->
-                   elib_response:error(Req0, Err)
-           end
+    if
+        Scene2 == 0 ->
+            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+        TagLen > 14 ->
+            elib_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
+        true ->
+            case user_tag_logic:add(CurrentUid, Scene2, Tag) of
+                {ok, TagId} ->
+                    elib_response:success(Req0, #{<<"tagId">> => TagId}, "success.");
+                {error, Err} ->
+                    elib_response:error(Req0, Err)
+            end
     end.
 
 %% @doc 删除标签
@@ -200,11 +207,12 @@ delete(Req0, State) ->
             _ ->
                 0
         end,
-    if Scene2 == 0 ->
-           elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
-       true ->
-           user_tag_logic:delete(CurrentUid, Scene2, Tag),
-           elib_response:success(Req0, #{}, "success.")
+    if
+        Scene2 == 0 ->
+            elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
+        true ->
+            user_tag_logic:delete(CurrentUid, Scene2, Tag),
+            elib_response:success(Req0, #{}, "success.")
     end.
 
 %% ===================================================================

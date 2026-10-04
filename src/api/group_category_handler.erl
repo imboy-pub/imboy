@@ -1,5 +1,6 @@
 -module(group_category_handler).
 
+-moduledoc "群组分类 API —— 为当前用户创建与管理群组分类。".
 -behavior(cowboy_rest).
 
 -export([init/2]).
@@ -49,8 +50,10 @@ create(Req0, State) ->
         {error, ErrorMsg} when is_binary(ErrorMsg) ->
             elib_response:error(Req0, ErrorMsg);
         {ok, CategoryId} ->
-            Data = #{<<"id">> => CategoryId,
-                    <<"category_name">> => CategoryName},
+            Data = #{
+                <<"id">> => CategoryId,
+                <<"category_name">> => CategoryName
+            },
             elib_response:success(Req0, Data, <<"创建分类成功"/utf8>>)
     end.
 
@@ -145,14 +148,16 @@ sort(Req0, State) ->
 
     %% 解析排序列表
     %% 格式: [{id, sort_order}, ...]
-    SortOrders2 = case SortOrders of
-        List when is_list(List) ->
-            [{normalize_id(maps:get(<<"id">>, Item, 0)),
-              maps:get(<<"sort_order">>, Item, 0)}
-             || Item <- List];
-        _ ->
-            []
-    end,
+    SortOrders2 =
+        case SortOrders of
+            List when is_list(List) ->
+                [
+                    {normalize_id(maps:get(<<"id">>, Item, 0)), maps:get(<<"sort_order">>, Item, 0)}
+                 || Item <- List
+                ];
+            _ ->
+                []
+        end,
 
     case group_category_logic:update_sort_order(CurrentUid, SortOrders2) of
         {error, ErrorMsg} when is_binary(ErrorMsg) ->

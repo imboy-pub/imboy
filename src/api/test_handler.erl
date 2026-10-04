@@ -1,5 +1,6 @@
 -module(test_handler).
 
+-moduledoc "test 控制器 / test controller。".
 %%%
 % test 控制器模块
 % test controller module
@@ -56,14 +57,18 @@ req_get(Req0, _State) ->
     A = proplists:get_value(<<"a">>, Qs3, 0),
 
     % test_logic:demo(CurrentUid, Val1, Val2),
-    elib_response:success(Req0,
-                           #{<<"a">> => A,
-                             <<"config">> => elib_cnv:implode("", [config_ds:env(test)]),
-                             <<"type">> => Type,
-                             <<"host">> => cowboy_req:header(<<"host">>, Req0),
-                             <<"client">> => cowboy_req:header(<<"client">>, Req0),
-                             <<"content-type">> => cowboy_req:header(<<"content-type">>, Req0)},
-                           "success.").
+    elib_response:success(
+        Req0,
+        #{
+            <<"a">> => A,
+            <<"config">> => elib_cnv:implode("", [config_ds:env(test)]),
+            <<"type">> => Type,
+            <<"host">> => cowboy_req:header(<<"host">>, Req0),
+            <<"client">> => cowboy_req:header(<<"client">>, Req0),
+            <<"content-type">> => cowboy_req:header(<<"content-type">>, Req0)
+        },
+        "success."
+    ).
 
 %% @doc 测试POST请求
 %% 用于测试API的POST请求端点
@@ -84,4 +89,3 @@ req_post(Req0, _State) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-
