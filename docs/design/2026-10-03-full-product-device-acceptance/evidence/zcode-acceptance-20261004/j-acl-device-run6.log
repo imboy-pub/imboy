@@ -1,0 +1,961 @@
+00:00 +0: loading /Users/leeyi/project/imboy.pub/imboyapp/integration_test/moment/moment_visibility_device_test.dart
+Running Gradle task 'assembleDebug'...                          
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+Your project is configured with Android NDK 27.0.12077973, but the following plugin(s) depend on a different Android NDK version:
+- integration_test requires Android NDK 28.2.13676358
+Fix this issue by using the highest Android NDK version (they are backward compatible).
+Add the following to /Users/leeyi/project/imboy.pub/imboyapp/android/app/build.gradle.kts:
+
+    android {
+        ndkVersion = "28.2.13676358"
+        ...
+    }
+INFO: Precompiled binaries are disabled
+INFO: Building vodozemac_bindings_dart for armv7-linux-androideabi
+INFO: Building vodozemac_bindings_dart for i686-linux-android
+INFO: Building vodozemac_bindings_dart for x86_64-linux-android
+Running Gradle task 'assembleDebug'...                             66.7s
+✓ Built build/app/outputs/flutter-apk/app-debug.apk
+Installing build/app/outputs/flutter-apk/app-debug.apk...          28.7s
+00:00 +0: 朋友圈发布主链：可见性入口 + 纯文本发帖 + feed 回显
+[FLOW] App 首次启动
+[FLOW] 后端探活通过: http://127.0.0.1:19800/api/v1/init
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._setupEnvironment (package:imboy/config/init.dart:348:12)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Running in environment: local_office, Env().apiBaseUrl: http://127.0.0.1:19800, wsUrl: ws://127.0.0.1:19800/api/v1/ws;[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+✅ NtpHelper: NTP 同步成功，偏移量: 3323 ms
+✅ [INIT] deviceId 初始化成功 (长度: 14)
+✅ [INIT] AppEventBus 使用静态方法模式
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._initializeServices (package:imboy/config/init.dart:638:14)[0m
+[38;5;12m│ #1   AppInitializer.initialize (package:imboy/config/init.dart:228:13)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 🔧 Fetching initConfig (apiPublicKey empty: true, cache null: true)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+🔧 initConfig: 开始获取配置
+网络类型变化: unknown -> wifi
+检测到网络变化，准备重连WebSocket: NetworkType.unknown -> NetworkType.wifi
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/init
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+用户未登录，取消WebSocket重连
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/init
+
+🔧 initConfig: 加密内容长度=2136 模式=gcm
+🔧 initConfig: 开始解密配置
+🔐 [INIT] signKey initialized
+🔧 initConfig: 解密完成
+🔧 initConfig 诊断: env=local_office keys=[attach_presign_endpoint, config_version, effective_product_experience, features, login_pwd_rsa_encrypt, login_rsa_pub_key, public_base_url, terminology, upload_key, upload_scene, upload_url, ws_url]
+🔧 initConfig 诊断: ws_url=(String, len=30)
+✅ initConfig: Saved ws_url to storage
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app/features
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app/features
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app/manifest
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app/manifest
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app/policy
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app/policy
+
+🧹 [QUEUE] 启动定期清理 Timer
+🔍 [RETRY_SCAN] 开始扫描失败消息...
+✅ [INIT] E2EE健康检查与自愈服务已初始化
+[Push] 推送服务初始化...
+📊 [RETRY_SCAN] 扫描完成: 发现 0 条失败消息，添加 0 条到重试队列
+[Push] 权限状态: AuthorizationStatus.authorized
+[Push] FCM 初始化跳过: [firebase_messaging/unknown] java.lang.IllegalArgumentException: Please set a valid API key. A Firebase API key is required to communicate with Firebase server APIs: It authenticates your project with Google.Please refer to https://firebase.google.com/support/privacy/init-options.
+[Push] 推送服务初始化完成 (本地通知模式)
+AppUpgradeOrchestrator: first launch 1.0.0-alpha.17
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app_version/check?vsn=1.0.0-alpha.17
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app_version/check?vsn=1.0.0-alpha.17
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/app_upgrade/report
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/app_upgrade/report
+
+unhandled element <filter/>; Picture key: Svg loader
+| JVER | Flutter | setDebugMode
+| JVER | Flutter | setCollectionAuth
+| JVER | Flutter | setup
+[FLOW] pumpAndSettle 超时，回退固定抽帧: 2s
+handleMethod method = onReceiveSDKSetupCallBackEvent
+receive sdk setup call back event :{code: 8000, message: config init success}
+[FLOW] 登录: 50008
+[FLOW] 登录控件诊断: phoneKey=true, passwordKey=true, fields=2, submitKey=true, elevated=false, types=CupertinoButton,IconButtonTheme,LoginHistoryInput,LoginPage,OtherLoginSection
+🔧 initConfig: 返回缓存结果
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+[passport] login resp ok=false err=errorPassword rsa=0
+[passport] md5 登录失败，保留传输加密重试
+🔧 initConfig: 返回缓存结果
+[FLOW] pumpAndSettle 超时，回退固定抽帧: 2s
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:00:15.000000
+sendTimeout: 0:00:30.000000
+receiveTimeout: 0:00:30.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/passport/login
+
+Database path: currentEnv=local_office, uid=116151519723915264, dbName=local_office_116151519723915264.db
+[Push] 无推送 token，跳过注册
+Creating new database
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   AppLogger.debug (package:imboy/service/app_logger.dart:87:20)
+│ #1   SqliteService._onConfigure (package:imboy/service/sqlite.dart:357:15)
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 SqliteService_onConfigure 1 /data/user/0/pub.imboy.app/databases/local_office_116151519723915264.db
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+SqliteService_onCreate version=32
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.init (package:imboy/service/migration_service.dart:110:13)[0m
+[38;5;12m│ #1   MigrationService.migrate (package:imboy/service/migration_service.dart:198:13)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Initializing MigrationService...[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.init (package:imboy/service/migration_service.dart:132:15)[0m
+[38;5;12m│ #1   MigrationService.migrate (package:imboy/service/migration_service.dart:198:13)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 MigrationService initialized[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.init (package:imboy/service/migration_service.dart:133:15)[0m
+[38;5;12m│ #1   MigrationService.migrate (package:imboy/service/migration_service.dart:198:13)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Loaded 22 upgrade scripts[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.init (package:imboy/service/migration_service.dart:134:15)[0m
+[38;5;12m│ #1   MigrationService.migrate (package:imboy/service/migration_service.dart:198:13)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Loaded 14 downgrade scripts[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.init (package:imboy/service/migration_service.dart:135:15)[0m
+[38;5;12m│ #1   MigrationService.migrate (package:imboy/service/migration_service.dart:198:13)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Target version: 32[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:235:15)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Executing 16 migration scripts...[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 1/16 - v17 → v17[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: ALTER TABLE conversation ADD COLUMN mention_unread...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 17;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 2/16 - v18 → v18[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: ALTER TABLE conversation ADD COLUMN is_muted INTEG...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 18;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 3/16 - v19 → v19[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: ALTER TABLE group_member ADD COLUMN mute_until INT...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE INDEX IF NOT EXISTS idx_group_member_mute_u...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 19;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 4/16 - v20 → v20[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE TABLE IF NOT EXISTS moment_notify (
+│ 🐛   id IN...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE UNIQUE INDEX IF NOT EXISTS uq_moment_notify...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE INDEX IF NOT EXISTS idx_moment_notify_user_...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 20;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 5/16 - v21 → v21[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: DROP INDEX IF EXISTS uq_moment_notify_dedup;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE UNIQUE INDEX IF NOT EXISTS uq_moment_notify...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 21;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 6/16 - v22 → v22[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE TABLE user_collect_new (
+│ 🐛     auto_id INTEGE...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: INSERT INTO user_collect_new (
+│ 🐛     auto_id, user_i...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: DROP TABLE user_collect;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: ALTER TABLE user_collect_new RENAME TO user_collec...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE INDEX i_Source ON user_collect (source);
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE INDEX idx_user_collect_user_id_kind ON user...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 22;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 7/16 - v23 → v23[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:249:21)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Precondition satisfied, skip: ADD COLUMN already exists (ALTER TABLE channel_message ADD COLUMN my_reaction...)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 23;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 8/16 - v24 → v24[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: ALTER TABLE contact ADD COLUMN account_type INTEGE...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 24;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 9/16 - v25 → v25[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:249:21)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Precondition satisfied, skip: ADD COLUMN already exists (ALTER TABLE msg_c2c ADD COLUMN sender_did TEXT;)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 25;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 10/16 - v26 → v26[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:249:21)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Precondition satisfied, skip: ADD COLUMN already exists (ALTER TABLE contact ADD COLUMN last_seen_at INTEGE...)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 26;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 11/16 - v27 → v27[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:249:21)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Precondition satisfied, skip: ADD COLUMN already exists (ALTER TABLE channel ADD COLUMN user_role INTEGER D...)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:249:21)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Precondition satisfied, skip: ADD COLUMN already exists (ALTER TABLE channel ADD COLUMN is_subscribed INTEG...)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 27;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 12/16 - v28 → v28[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE TABLE IF NOT EXISTS channel_message_outbox ...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE INDEX IF NOT EXISTS idx_channel_message_out...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 28;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 13/16 - v29 → v29[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE TABLE IF NOT EXISTS channel_publish_outbox ...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE INDEX IF NOT EXISTS idx_channel_publish_out...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 29;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 14/16 - v30 → v30[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FLOW] 登录提交控件点击: 成功
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:249:21)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Precondition satisfied, skip: ADD COLUMN already exists (ALTER TABLE channel ADD COLUMN has_purchased INTEG...)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 30;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 15/16 - v31 → v31[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: ALTER TABLE channel ADD COLUMN visibility INTEGER ...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: ALTER TABLE channel ADD COLUMN access_type INTEGER...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: ALTER TABLE channel ADD COLUMN join_policy INTEGER...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: UPDATE channel SET visibility = 0, access_type = 0...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: UPDATE channel SET visibility = 1, access_type = 0...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: UPDATE channel SET visibility = 0, access_type = 1...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: UPDATE channel SET visibility = -1, access_type = ...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: DROP INDEX IF EXISTS idx_channel_type;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 31;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:240:17)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Progress: 16/16 - v32 → v32[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: CREATE TABLE IF NOT EXISTS "group_v32" (
+│ 🐛     id IN...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: INSERT INTO "group_v32" (
+│ 🐛     id, type, join_limit...
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: DROP TABLE "group";
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: ALTER TABLE "group_v32" RENAME TO "group";
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:256:19)
+│ #1   <asynchronous suspension>
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 Executed: PRAGMA user_version = 32;
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   MigrationService.migrate (package:imboy/service/migration_service.dart:267:15)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Migration completed: v16 → v32[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/report_device_key
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/report_device_key
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/olm/identity
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/olm/identity
+
+[olm] publishIdentityAndPrekeys failed (non-blocking): key_rotation_requires_old_key_proof
+> ws: 状态变化: disconnected -> connecting
+> ws: 开始连接 (from: login)
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppLogger.info (package:imboy/service/app_logger.dart:94:20)[0m
+[38;5;12m│ #1   WebSocketService._establishConnection (package:imboy/service/websocket.dart:415:17)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 WebSocket framing 模式: v2 (selected protocol: imboy.v2)[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+> ws: 状态变化: connecting -> connected
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer.triggerGroupMembershipSelfHeal (package:imboy/config/init.dart:708:14)[0m
+[38;5;12m│ #1   MessageService.initNetworkMonitoring.<anonymous closure> (package:imboy/service/message.dart:262:28)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Group membership self-heal already running, source=ws_connected[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppLogger.info (package:imboy/service/app_logger.dart:94:20)[0m
+[38;5;12m│ #1   WebSocketService._establishConnection (package:imboy/service/websocket.dart:462:17)[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 WebSocket 连接成功: ws://127.0.0.1:19800/api/v1/ws[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+🔄 [RETRY_QUEUE] 触发消息重试: source=WebSocketConnected, reason=WebSocket 连接恢复
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/conversation/mine
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/conversation/mine
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/notifications/pull?since=0&limit=50
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/conversation/mine
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/backup/info
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/notifications/pull?since=0&limit=50
+
+ℹ️ [E2EE_HEALTH] 暂无密钥变更通知 since=0
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/conversation/mine
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/e2ee/backup/info
+
+[FLOW] pumpAndSettle 超时，回退固定抽帧: 5s
+✅ Schema initialized: baseline(16) → v32
+WAL mode not available, using default journal mode
+> on ConversationRepo/all 0 items
+ConversationNotifier: authoritative sync finished, items=0
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   AppLogger.debug (package:imboy/service/app_logger.dart:87:20)
+│ #1   EventBusTracker.trackEvent (package:imboy/service/event_bus.dart:134:15)
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 📡 [EVENT_BUS] Fire: ConversationAuthoritySyncEvent | props: prop0, prop1, prop2, prop3, prop4
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> on ConversationRepo/all 0 items
+ConversationNotifier: authoritative sync finished, items=0
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ #0   AppLogger.debug (package:imboy/service/app_logger.dart:87:20)
+│ #1   EventBusTracker.trackEvent (package:imboy/service/event_bus.dart:134:15)
+├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+│ 🐛 📡 [EVENT_BUS] Fire: ConversationAuthoritySyncEvent | props: prop0, prop1, prop2, prop3, prop4
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> on ConversationRepo/all 0 items
+> on ConversationRepo/all 0 items
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=200&attr=manager
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=200&attr=manager
+
+GroupRepo_save 116177109493483520, null;
+清除缓存: group_member, 移除了 2 个缓存条目
+GroupRepo_save 116177002645686272, null;
+清除缓存: group_member, 移除了 0 个缓存条目
+GroupRepo_save 116176972666898432, null;
+清除缓存: group_member, 移除了 0 个缓存条目
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=200&attr=join
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=200&attr=join
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=200&attr=owner
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/group/page?page=1&size=200&attr=owner
+
+GroupRepo_save 116177109493483520, {id: 116177109493483520, type: 2, join_limit: 1, content_limit: 2, owner_uid: 116151519723915264, creator_uid: 116151519723915264, member_max: 1000, member_count: 1, introduction: , avatar: , title: , status: 1, updated_at: 1791087162738, created_at: 1791087162738};
+GroupRepo_update {type: 2, join_limit: 1, content_limit: 2, owner_uid: 116151519723915264, creator_uid: 116151519723915264, member_max: 1000, member_count: 1, introduction: , avatar: , title: , status: 1, updated_at: 1791087162738, created_at: 1791087162738};
+GroupRepo_save 116177002645686272, {id: 116177002645686272, type: 2, join_limit: 1, content_limit: 2, owner_uid: 116151519723915264, creator_uid: 116151519723915264, member_max: 1000, member_count: 1, introduction: , avatar: , title: , status: 1, updated_at: 1791087111788, created_at: 1791087111789};
+GroupRepo_update {type: 2, join_limit: 1, content_limit: 2, owner_uid: 116151519723915264, creator_uid: 116151519723915264, member_max: 1000, member_count: 1, introduction: , avatar: , title: , status: 1, updated_at: 1791087111788, created_at: 1791087111789};
+GroupRepo_save 116176972666898432, {id: 116176972666898432, type: 2, join_limit: 1, content_limit: 2, owner_uid: 116151519723915264, creator_uid: 116151519723915264, member_max: 1000, member_count: 1, introduction: , avatar: , title: , status: 1, updated_at: 1791087097494, created_at: 1791087097494};
+GroupRepo_update {type: 2, join_limit: 1, content_limit: 2, owner_uid: 116151519723915264, creator_uid: 116151519723915264, member_max: 1000, member_count: 1, introduction: , avatar: , title: , status: 1, updated_at: 1791087097494, created_at: 1791087097494};
+[38;5;12m┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;12m│ #0   AppInitializer._runGroupMembershipSelfHeal (package:imboy/config/init.dart:783:14)[0m
+[38;5;12m│ #1   <asynchronous suspension>[0m
+[38;5;12m├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[0m
+[38;5;12m│ 💡 Group membership self-heal done: groupRows=6, ownerRows=3, joinRows=0, managerRows=3, before(owner/join/manager)=(0/0/0), after(owner/join/manager)=(0/0/3), delta(owner/join/manager)=(0/0/3), errors=0, source=login[0m
+[38;5;12m└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[FLOW] 登录后本地会话状态: 已建立
+[FLOW] 登录接口成功，等待主 Shell
+[FLOW] 已离开 E2EE 备份设置向导（稍后再说→暂不设置）
+[FLOW] 截图跳过（Android 真机诊断不阻断流程）: mom_01_create_page
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/moment/create
+method: POST
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+[WS] v2 收到 text frame (231 chars)，降级 JSON
+[WS] msg type=S2C id=s2c.5zlYVcy4X6CWR.L action=moment_new
+✅ [ACK_MANAGER] AckManager initialized
+📤 [ACK_MANAGER] 发送ACK: msgId=s2c.5zlYVcy4X6CWR.L, type=S2C, retryCount=0
+✅ [ACK_MANAGER] ACK发送成功: msgId=s2c.5zlYVcy4X6CWR.L, retryCount=0
+> ws: 消息已发送 (s2c.5zlYVcy4X6CWR.L) [UNKNOWN] [49 bytes]
+📥 [processMessage] type=S2C, msgId=s2c.5zlYVcy4X6CWR.L, from=0, to=116151519723915264
+[S2C] moment_new: momentId=116208421635885056
+> rtc msg CLIENT_ACK,S2C,s2c.5zlYVcy4X6CWR.L,HUAWEIMRD-AL00
+📤 [WS_ACK] 准备发送ACK: msgId=s2c.5zlYVcy4X6CWR.L, type=S2C, content=CLIENT_ACK,S2C,s2c.5zlYVcy4X6CWR.L,HUAWEIMRD-AL00
+🔌 [WS_ACK] WebSocket 状态: connected
+⚡ [WS_ACK] 直接发送ACK成功: msgId=s2c.5zlYVcy4X6CWR.L, type=S2C
+> ws: 消息已发送 (s2c.5zlYVcy4X6CWR.L) [UNKNOWN] [49 bytes]
+[WS] v2 收到 text frame (148 chars)，降级 JSON
+[WS] msg type=CLIENT_ACK_CONFIRM id=s2c.5zlYVcy4X6CWR.L action=CLIENT_ACK_CONFIRM
+📈 [ACK_MANAGER] ACK RTT: msgId=s2c.5zlYVcy4X6CWR.L, rtt=119ms, p50=119ms, p95=119ms
+✅ [ACK_MANAGER] ACK已确认: msgId=s2c.5zlYVcy4X6CWR.L
+✅ [WS] CLIENT_ACK确认收到: msgId=s2c.5zlYVcy4X6CWR.L
+[WS] v2 收到 text frame (148 chars)，降级 JSON
+[WS] msg type=CLIENT_ACK_CONFIRM id=s2c.5zlYVcy4X6CWR.L action=CLIENT_ACK_CONFIRM
+✅ [WS] CLIENT_ACK确认收到: msgId=s2c.5zlYVcy4X6CWR.L
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/moment/create
+
+[FLOW] 截图跳过（Android 真机诊断不阻断流程）: mom_02_after_publish
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/moments/feed?limit=20
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/moments/feed?limit=20
+
+*** Request ***
+uri: http://127.0.0.1:19800/api/v1/user/show?id=116151519723915264
+method: GET
+responseType: ResponseType.json
+followRedirects: true
+persistentConnection: true
+connectTimeout: 0:01:00.000000
+sendTimeout: 0:01:00.000000
+receiveTimeout: 0:01:00.000000
+transformTimeout: null
+receiveDataWhenStatusError: true
+extra: {}
+
+*** Response ***
+uri: http://127.0.0.1:19800/api/v1/user/show?id=116151519723915264
+
+[FLOW] 截图跳过（Android 真机诊断不阻断流程）: mom_03_feed
+01:00 +1: (tearDownAll)
+01:01 +1: All tests passed!

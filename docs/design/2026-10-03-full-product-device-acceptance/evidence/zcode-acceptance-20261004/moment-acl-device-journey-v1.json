@@ -1,0 +1,44 @@
+{
+  "artifact": "moment ACL device journey v1 (visibility entry + publish chain on real device)",
+  "date": "2026-10-04",
+  "status": "PASS",
+  "commits": {
+    "test_file": "imboyapp 4d08d51e test(moment): device visibility journey v1 - publish chain + ACL entry assert",
+    "server_side_fix_referenced": "imboy 66ae4ab6 fix(moment): generate TSID id for post ACL rows"
+  },
+  "device": {
+    "id": "XWE6R19916004085",
+    "transport": "adb reverse tcp:19800 tcp:19800 (device 127.0.0.1:19800 -> mac isolated backend)"
+  },
+  "backend_recovery_before_run": {
+    "symptom": "beam 28247 + heart 28307 alive but nothing listening on 19800 (connection refused) - known 'heart re-pulled beam with incomplete env' failure mode from FIND-W2-03 series",
+    "recovery": "pkill heart; kill beam; clean restart per manifest below; ping=pong; /healthz {status:ok, db:up, tsid:ready}",
+    "restart_manifest": "IMBOYENV=local HTTP_PORT=19800 IMBOY_PG_HOST=127.0.0.1 IMBOY_PG_PORT=25432 IMBOY_PG_DATABASE=imboy_acceptance IMBOY_PG_USER=imboy_acceptance IMBOY_PG_PASSWORD=<synthetic-from-container-env-never-printed> IMBOY_SMS_SWITCH=off _rel/imboy/bin/imboy start"
+  },
+  "run_manifest": {
+    "n": 6,
+    "command": "flutter test integration_test/moment/moment_visibility_device_test.dart --dart-define=APP_ENV=local_office --dart-define=API_BASE_URL=http://127.0.0.1:19800 --dart-define=TEST_PHONE=50008 --dart-define=TEST_PASSWORD=<synthetic> --dart-define=TEST_ALLOW_BUSINESS_WRITES=true -d XWE6R19916004085",
+    "log": "j-acl-device-run6.log"
+  },
+  "history_of_failed_attempts": [
+    {"n": 3, "log": "j-acl-device3.log", "result": "login+create-page+visibility entry asserted; stuck on confirm-button label mismatch (code later fixed to 确认)"},
+    {"n": 4, "result": "gradle NPE - system fd exhaustion fatigue, not a code issue"},
+    {"n": 5, "result": "flutter SIGABRT rc=134 - same system fd exhaustion"}
+  ],
+  "assertions_passed": [
+    "login as synthetic account A (uid 116151519723915264, phone account 50008) via autoLoginOrSkip",
+    "E2EE backup wizard dismissed (稍后再说 -> 暂不设置)",
+    "main shell reached; router.push(AppRoutes.momentCreate)",
+    "publish page mounted; visibility entry visible (仅好友 present)",
+    "text entered; tap 确认; left publish page",
+    "router.push(AppRoutes.momentFeed); feed loaded (GET /api/v1/moments/feed?limit=20 OK); posted content visible in feed (author self-visible)"
+  ],
+  "evidence_lines": [
+    "j-acl-device-run6.log: 'uri: http://127.0.0.1:19800/api/v1/moments/feed?limit=20'",
+    "j-acl-device-run6.log: 'uri: http://127.0.0.1:19800/api/v1/user/show?id=116151519723915264'",
+    "j-acl-device-run6.log: '[FLOW] 截图跳过…: mom_03_feed'",
+    "j-acl-device-run6.log: '01:01 +1: All tests passed!'"
+  ],
+  "calibration_note": "This is a device-side UI journey for the visibility ENTRY + publish main chain. Full picker list-selection (partial-visible / hide-from via allow_uids/deny_uids UI) remains journey v2; server-side authz matrix already 6/6 at API layer (moment-acl-first-closure.json). No AC grid cell is flipped by this artifact alone; it feeds the W3 moment-domain evidence pile.",
+  "gitleaks_note": "initial commit attempt blocked by gitleaks (real synthetic password in header comment); replaced with <test-password> placeholder before commit 4d08d51e."
+}
