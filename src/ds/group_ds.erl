@@ -727,7 +727,7 @@ update(Data) -> group_repo:update(Data).
 %% @doc 统计用户拥有的有效群组数
 %% @param OwnerUid 群主UID
 %% @return 群组数量
--spec count_by_owner(integer()) -> integer().
+-spec count_by_owner(integer()) -> non_neg_integer().
 count_by_owner(OwnerUid) ->
     Tb = group_repo:tablename(),
     elib_pg:pluck_value(Tb, <<"count(*)">>, #{status => 1, owner_uid => OwnerUid}, 0).

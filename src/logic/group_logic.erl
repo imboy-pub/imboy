@@ -422,7 +422,7 @@ member_list_by_uids(Uids) ->
 %% @doc 查询用户已创建群组数量
 %% @param OwnerUid 群主用户ID
 %% @return integer()
--spec count_by_owner(integer()) -> integer().
+-spec count_by_owner(integer()) -> non_neg_integer().
 count_by_owner(OwnerUid) ->
     group_ds:count_by_owner(OwnerUid).
 

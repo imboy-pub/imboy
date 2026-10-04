@@ -68,7 +68,7 @@
 %% 启动 / 注册
 %%====================================================================
 
--spec start_link() -> {ok, pid()} | {error, term()}.
+-spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 

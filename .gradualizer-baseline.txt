@@ -162,7 +162,6 @@ imboy_frame
 imboy_http_metrics
 imboy_license
 imboy_llm_registry
-imboy_mcp_tools
 imboy_migrate
 imboy_plugin_dependency
 imboy_plugin_generic_sup
