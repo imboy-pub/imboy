@@ -567,6 +567,12 @@ docs-stop:
 # EUNIT_CONFIG 可覆盖配置文件（默认 config/sys.local）：CI 无 sys.local.config，
 # 物化 sys.config 后以 EUNIT_CONFIG=config/sys 传同口径全量（见 backend-ci.yml）。
 EUNIT_CONFIG ?= config/sys.local
+# relay 配置副本按调用唯一命名（:= 存下 $$，recipe 里由 shell 展开为本次
+# 进程组 PID）：固定名 config/sys.eunit-relay.config 会让并发 eunit-local
+# 互相覆写端口——2026-10-04 实证：两个会话并发跑 eunit，后写方写入的
+# http 端口被先写方的 VM 读走 → eaddrinuse → app 起不来 → elib_tsid
+# 未注册，连锁失败 19 例。
+EUNIT_RELAY_CONF := config/sys.eunit-relay.$$$$
 EUNIT_PROCESS_LIMIT ?= 32768
 EUNIT_ERL ?= erl -noinput -boot no_dot_erlang -kernel start_distribution false +P $(EUNIT_PROCESS_LIMIT) +Q 1024
 eunit-local:
@@ -593,7 +599,8 @@ eunit-local:
 	@# 并发/累计连接数与 PG 上限成因）；首例拒绝恒定出现在首轮全链迁移重 I/O 后。
 	@# 中继让触达 <目标端口> 的 connect 全部来自 fork 出的全新子进程，按进程楔死
 	@# 机制无法命中；eunit VM 只连 127.0.0.1:$(EUNIT_RELAY_PORT)。
-	@# 生成 <EUNIT_CONFIG>.config 的端口替换副本（sys.eunit-relay.config，不落 git）；
+	@# 生成 <EUNIT_CONFIG>.config 的端口替换副本（$(EUNIT_RELAY_CONF).config，
+	@# 不落 git；文件名按调用唯一，防并发 eunit 互相覆写）；
 	@# 无 python3 或配置里没有目标端口时自动退回直连，行为与旧版一致。
 	@if command -v python3 >/dev/null 2>&1 && [ "$(EUNIT_USE_RELAY)" != "0" ] && [ -f "$(EUNIT_CONFIG).config" ] \
 	     && grep -q "$(EUNIT_RELAY_TARGET)" "$(EUNIT_CONFIG).config"; then \
@@ -601,33 +608,33 @@ eunit-local:
 	      -e "s/{http_port, 9800}/{http_port, $(EUNIT_HTTP_PORT)}/" \
 	      -e "s/{http_port_adm, 9706}/{http_port_adm, $(EUNIT_HTTP_ADM_PORT)}/" \
 	      "$(EUNIT_CONFIG).config" \
-	    > config/sys.eunit-relay.config; \
+	    > $(EUNIT_RELAY_CONF).config; \
 	  echo "== EUNIT PG RELAY: 127.0.0.1:$(EUNIT_RELAY_PORT) -> 127.0.0.1:$(EUNIT_RELAY_TARGET) (http $(EUNIT_HTTP_PORT)/adm $(EUNIT_HTTP_ADM_PORT)) =="; \
 	  ( while true; do python3 test/common/pg_relay.py $(EUNIT_RELAY_PORT) $(EUNIT_RELAY_TARGET); sleep 1; done ) & \
 	  relay_pid=$$!; \
 	  sleep 1; \
 	  ln -sfn . imboy; \
 	  IMBOYENV=local $(MAKE) eunit IMBOY_EUNIT_INNER=1 $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
-	    EUNIT_ERL_OPTS="-config config/sys.eunit-relay -pa imboy/ebin -pa ebin -pa test"; \
+	    EUNIT_ERL_OPTS="-config $(EUNIT_RELAY_CONF) -pa imboy/ebin -pa ebin -pa test"; \
 	  rc=$$?; \
 	  rm -f imboy; \
 	  pkill -P $$relay_pid 2>/dev/null; \
 	  kill $$relay_pid 2>/dev/null; \
 	  pkill -f "pg_relay.py $(EUNIT_RELAY_PORT)" 2>/dev/null; \
-	  rm -f config/sys.eunit-relay.config; \
+	  rm -f $(EUNIT_RELAY_CONF).config; \
 	  exit $$rc; \
 	else \
 	  sed -e "s/{http_port, 9800}/{http_port, $(EUNIT_HTTP_PORT)}/" \
 	      -e "s/{http_port_adm, 9706}/{http_port_adm, $(EUNIT_HTTP_ADM_PORT)}/" \
 	      "$(EUNIT_CONFIG).config" \
-	    > config/sys.eunit-relay.config; \
+	    > $(EUNIT_RELAY_CONF).config; \
 	  echo "== EUNIT PG DIRECT: $(EUNIT_RELAY_TARGET) (http $(EUNIT_HTTP_PORT)/adm $(EUNIT_HTTP_ADM_PORT), EUNIT_USE_RELAY=0) =="; \
 	  ln -sfn . imboy; \
 	  IMBOYENV=local $(MAKE) eunit IMBOY_EUNIT_INNER=1 $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
-	    EUNIT_ERL_OPTS="-config config/sys.eunit-relay -pa imboy/ebin -pa ebin -pa test"; \
+	    EUNIT_ERL_OPTS="-config $(EUNIT_RELAY_CONF) -pa imboy/ebin -pa ebin -pa test"; \
 	  rc=$$?; \
 	  rm -f imboy; \
-	  rm -f config/sys.eunit-relay.config; \
+	  rm -f $(EUNIT_RELAY_CONF).config; \
 	  exit $$rc; \
 	fi
 
