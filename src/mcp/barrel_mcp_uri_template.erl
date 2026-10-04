@@ -24,6 +24,7 @@
 %%%-------------------------------------------------------------------
 -module(barrel_mcp_uri_template).
 
+-moduledoc "最小 RFC 6570 Level-1 URI Template 匹配与展开器（vendored barrel 组件）。".
 -export([match/2, expand/2]).
 
 %%====================================================================

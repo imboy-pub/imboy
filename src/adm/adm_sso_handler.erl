@@ -1,5 +1,6 @@
 -module(adm_sso_handler).
 
+-moduledoc "SSO 外部认证配置管理控制器 / SSO external auth config admin。".
 %%%
 % SSO 外部认证配置管理控制器模块
 % SSO external authentication config management controller

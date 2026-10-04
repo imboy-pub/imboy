@@ -1,5 +1,6 @@
 -module(adm_appeal_handler).
 
+-moduledoc "处置申诉复审控制器（R-04）/ Admin appeal review handler。".
 %%%
 % R-04 处置申诉复审控制器
 % Moderation appeal review controller

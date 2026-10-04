@@ -1,5 +1,6 @@
 -module(mcp_authz_gate).
 
+-moduledoc "MCP 授权闸门（imboy 集成层，非 vendored barrel 通用件）。".
 %%%
 % MCP 授权闸门 / MCP authorization gate（imboy 集成，非 vendored barrel 通用件）
 %

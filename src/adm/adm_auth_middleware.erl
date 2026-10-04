@@ -1,4 +1,5 @@
 -module(adm_auth_middleware).
+-moduledoc "管理后台认证中间件执行入口 / Admin auth middleware execution。".
 -dialyzer({nowarn_function, [ip_in_allowlist/2]}).
 -behaviour(cowboy_middleware).
 

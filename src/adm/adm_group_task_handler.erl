@@ -1,4 +1,5 @@
 -module(adm_group_task_handler).
+-moduledoc "群组子资源管理端点（自 adm_group_sub_handler 拆分）。".
 -dialyzer({nowarn_function, [task_detail/3, task_review/3]}).
 %%% 群组子资源 — adm_group_task_handler (从 adm_group_sub_handler 拆分 2026-06-03)
 

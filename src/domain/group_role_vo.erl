@@ -7,6 +7,7 @@
 %%% enum at construction. Keeps role validity out of scattered guards.
 -module(group_role_vo).
 
+-moduledoc "群成员角色值对象 / Group Role Value Object。".
 -export([new/1, value/1, equal/2, name/1]).
 
 -export_type([t/0]).

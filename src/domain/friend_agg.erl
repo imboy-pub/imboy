@@ -23,6 +23,7 @@
 %%% user_denylist_logic；DS load/save 接线与 logic 退化外壳留后续（T3.4）。
 -module(friend_agg).
 
+-moduledoc "好友关系聚合根 / Friendship Aggregate Root。".
 -export([new/2, rehydrate/1]).
 -export([request/1, accept/1, reject/1, block/1, unblock/1, remove/1]).
 -export([from/1, to/1, status/1]).

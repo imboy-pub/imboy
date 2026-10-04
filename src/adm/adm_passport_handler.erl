@@ -1,4 +1,5 @@
 -module(adm_passport_handler).
+-moduledoc "adm_passport 管理控制器 / admin controller。".
 %%%
 % adm_passport 控制器模块
 % adm_passport controller module

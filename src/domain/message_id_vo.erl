@@ -7,6 +7,7 @@
 %%% 模块外不得解构，只能经 new/1 构造、value/1 取值。
 -module(message_id_vo).
 
+-moduledoc "消息 ID 值对象（T0.2）/ Message ID Value Object。".
 -export([new/1, value/1, equal/2]).
 -export_type([t/0]).
 

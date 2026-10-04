@@ -9,6 +9,7 @@
 %%% imperative shell consumes. Enables zero-mock unit testing.
 -module(message_policy).
 
+-moduledoc "消息策略纯函数 / Message Policy (pure functions)。".
 -export([send_decision/2, encode_payload/1, reply_mode/1, build_server_ack/2]).
 
 -export_type([send_decision/0, reply_mode/0]).

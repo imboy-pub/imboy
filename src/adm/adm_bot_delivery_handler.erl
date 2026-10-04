@@ -1,5 +1,6 @@
 -module(adm_bot_delivery_handler).
 
+-moduledoc "Bot 出站交付死信重放端点（WH-01，管理员单次重放）。".
 %%%
 % WH-01：Bot 出站交付死信重放（管理员，单次重放）。
 % POST /api/adm/bot/deliveries/replay  {delivery_id}

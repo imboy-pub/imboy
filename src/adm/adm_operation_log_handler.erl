@@ -1,4 +1,5 @@
 -module(adm_operation_log_handler).
+-moduledoc "管理员操作审计日志查询接口 / admin operation audit log query。".
 -compile([nowarn_deprecated_catch]).
 
 %%%

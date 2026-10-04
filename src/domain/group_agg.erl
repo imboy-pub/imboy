@@ -20,6 +20,7 @@
 %%% DS load/save_aggregate 接线（T2.2）与 logic 退化外壳（T2.3）留后续。
 -module(group_agg).
 
+-moduledoc "群组聚合根 / Group Aggregate Root。".
 -include("group_role.hrl").
 
 -export([rehydrate/1]).

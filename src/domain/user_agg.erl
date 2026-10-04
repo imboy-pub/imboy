@@ -22,6 +22,7 @@
 %%%   - 透传字段（sign/nickname/avatar/region/birthday）无校验原样落库。
 -module(user_agg).
 
+-moduledoc "用户资料校验策略 / User profile validation policy (pure functions)。".
 -export([validate_update/2]).
 -export([is_valid_email/1, validate_gender/1, validate_allow_search/1, validate_bool/1]).
 

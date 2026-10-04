@@ -30,6 +30,7 @@
 %%%-------------------------------------------------------------------
 -module(barrel_mcp_schema).
 
+-moduledoc "MCP 工具入参的最小 JSON Schema 校验器（vendored barrel 组件）。".
 -export([validate/2]).
 
 -type path() :: [binary() | non_neg_integer()].

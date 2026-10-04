@@ -1,4 +1,5 @@
 -module(adm_enterprise_filter).
+-moduledoc "Admin 企业菜单入口的服务端强制资源过滤 / server-side resource filter。".
 %%%
 % adm_enterprise_filter —— Admin 企业菜单入口的服务端强制资源过滤
 %

@@ -1,5 +1,6 @@
 -module(adm_bot_handler).
 
+-moduledoc "adm_bot 管理控制器 / admin controller。".
 %%%
 % adm_bot 控制器模块
 % Bot 管理后台 API——平台对开发者 Bot 的处置能力：

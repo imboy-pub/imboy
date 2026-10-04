@@ -1,5 +1,6 @@
 -module(adm_report_action_handler).
 
+-moduledoc "举报处置动作端点（R-02）—— 权限门复用 reports:handle。".
 -behavior(cowboy_rest).
 
 -export([init/2]).

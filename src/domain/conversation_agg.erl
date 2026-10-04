@@ -18,6 +18,7 @@
 %%% DS load/save_aggregate 接线与 logic 退化外壳留后续 task。
 -module(conversation_agg).
 
+-moduledoc "会话聚合根 / Conversation Aggregate Root。".
 -export([new/2, rehydrate/1]).
 -export([receive_message/2, mark_read/2, pin/1, unpin/1]).
 -export([owner/1, unread/1, read_seq/1, is_pinned/1, key/1]).

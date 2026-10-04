@@ -1,4 +1,5 @@
 -module(adm_setup_handler).
+-moduledoc "首启初始化向导 API（P0-5）/ first-boot setup wizard API。".
 %%%
 %%% adm_setup_handler — 首启初始化向导 API（P0-5）
 %%%
