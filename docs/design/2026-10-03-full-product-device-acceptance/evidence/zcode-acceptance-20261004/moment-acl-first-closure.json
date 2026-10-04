@@ -1,0 +1,33 @@
+{
+  "receipt": "moment-acl-first-closure",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "scope": "W3: moment-visibility ACL journey carrier (server-side closure) on isolated backend 19800 + synthetic A/B/C. Closes the J6 gap class ('no ACL carrier') at the API-contract level; device-side carrier still open.",
+  "defect_found_and_fixed": {
+    "id": "FIND-MOMENT-01",
+    "severity": "product-defect (blocking visibility feature)",
+    "symptom": "any moment create with allow_uids/deny_uids failed whole tx: {code:1,msg:'发布动态失败'}, nothing persisted; moment_post_acl table permanently empty",
+    "root_cause": "moment_post_acl.id is NOT NULL without DB default; moment_post_acl_repo:insert_acl_batch/4 built INSERT without id (insert_batch does not auto-generate). moment_post_repo:add by contrast generates elib_tsid:generate(moment_post).",
+    "proof": "manual INSERT without id -> 'null value in column \"id\" ... violates not-null constraint' (psql transcript)",
+    "fix": "imboy commit 66ae4ab6: rows now carry elib_tsid:generate(moment_post_acl); recompiled, release reassembled, daemon restarted",
+    "regression": "post-fix D1/D2/D3 all code=0; acl rows persisted with correct acl_type (1=allow, 2=deny)"
+  },
+  "semantics_established": {
+    "visibility_enum": "1=所有好友(默认), 2=仅自己, 3=部分可见(allow_uids), 4=不给谁看(deny_uids) — per resolve_timeline_recipients/can_view_by_visibility",
+    "param_shape": "allow_uids/deny_uids accept JSON array strings only (parse_uid_list binary branch); bare single id silently parses to [] — probe artifact, not a bug",
+    "endpoints": "feed/show use can_view_post (acl via list_post_acl); error responses are HTTP 200 + business code=1 (show() must read body, not status code)"
+  },
+  "authorization_matrix": {
+    "D1_visibility4_denyB": {"B_feed": false, "B_show": "'无权限查看该动态' (code=1)", "A_own_feed": true},
+    "D2_visibility3_allowB": {"B_feed": true, "C_feed": false},
+    "D3_visibility3_allowC": {"C_feed": true, "B_feed": false},
+    "acl_rows": "post_id/uid/acl_type persisted correctly (type1=allow, type2=deny)",
+    "score": "6/6 as asserted + author-always-sees-own"
+  },
+  "probe_artifacts": ["D1=116174670631536640", "D2=116174672814671872", "D3=116174675004098560", "earlier visibility=2 private post correctly absent from B feed"],
+  "boundary": "isolated tmpfs PG; no production; fix confined to src/repo/moment_post_acl_repo.erl (parallel session WIP files group_ds/group_logic untouched)",
+  "still_open": [
+    "device-side moment ACL journey (pick ACL option in publish UI, verify cross-account feed on device) — needs UI wiring check before build",
+    "moment_logic_tests.beam exists; dedicated eunit for insert_acl_batch id generation recommended at RES-L3-RERUN time"
+  ]
+}

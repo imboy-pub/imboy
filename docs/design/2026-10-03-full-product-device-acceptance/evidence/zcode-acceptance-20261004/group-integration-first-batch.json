@@ -1,0 +1,42 @@
+{
+  "receipt": "group-integration-first-batch",
+  "run_id": "zcode-acceptance-20261004",
+  "recorded_at": "2026-10-04",
+  "scope": "W3 first batch: server-side write-loop closures for group domain (subset of the 70 new-integration-case rows in f00-group-batch-reconciliation.tsv), on isolated backend 19800 + synthetic accounts A/B",
+  "closed_steps": [
+    {"step": "group/add (A creates group with member_uids=[B])", "result": "PASS", "evidence": "code=0, gid=116172739727067136 (also 116172484482697216, 116172584785283072 in earlier iterations)"},
+    {"step": "group/detail (GET ?gid=)", "result": "PASS", "evidence": "code=0 full group payload (creator_uid=A, member_count=1, e2ee_mode=0)"},
+    {"step": "group/edit rename", "result": "PASS", "evidence": "code=0 with echoed gid"},
+    {"step": "group_member/page (GET ?gid=)", "result": "PASS", "evidence": "code=0 list/size/total/page, count=1 (creator)"},
+    {"step": "B group/page attr=member", "result": "PASS", "evidence": "empty list, consistent with member page (see FIND-GROUP-01)"},
+    {"step": "group_member/leave (B)", "result": "PASS with finding", "evidence": "code=0 — see FIND-GROUP-01"},
+    {"step": "group/dissolve (A)", "result": "PASS", "evidence": "code=0; owner list (attr=owner) returns 0 groups afterwards"}
+  ],
+  "findings": [
+    {
+      "id": "FIND-GROUP-01",
+      "severity": "contract-review",
+      "summary": "group_member/leave returns code=0 for a user who is NOT in the group (B was never materialized into member table — member_count stayed 1 and B's attr=member list empty). Leave should arguably 4xx for non-members.",
+      "action": "server contract review item; NOT silently treated as closure"
+    },
+    {
+      "id": "FIND-GROUP-02",
+      "severity": "contract-review",
+      "summary": "group/add member_uids does not materialize members: member_count=1 right after creation with member_uids=[B]. Invite/acceptance flow (join) likely the real membership path; TSV rows about '拉人/邀请' must follow the invite-acceptance chain, not assume direct add.",
+      "action": "follow-up: exercise group_member/join + invite acceptance chain before building member-revoke integration cases"
+    },
+    {
+      "id": "FIND-GROUP-03",
+      "severity": "contract-pending",
+      "summary": "group_notice/add returns 400 请求参数错误 with form gid/title/body (handler reads title/body at group_notice_handler.erl:157-162 but an earlier guard rejects; JSON-body variants not accepted by elib_param:post).",
+      "action": "notice endpoint param contract needs a dedicated probe; notice rows stay open"
+    }
+  ],
+  "api_contract_notes": [
+    "detail/member/page/group/page/group_notice/page are GET query-string endpoints (parse_qs); add/edit/leave/dissolve are POST form",
+    "throttle: group/add three_second_once per uid; notice add hit 429 on same-second retry",
+    "all gids/uids are TSID as JSON integers"
+  ],
+  "tsv_impact": "no row in f00-group-batch-reconciliation.tsv changes verdict; this receipt provides the server-loop evidence class that 'new-integration-case' rows will cite (cluster: group_creation/group_detail/group_member write chains)",
+  "boundary": "isolated tmpfs PG + synthetic accounts only; group_ds.erl/group_logic.erl untouched (parallel session WIP)"
+}
