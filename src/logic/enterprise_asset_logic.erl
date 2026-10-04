@@ -1,5 +1,6 @@
 -module(enterprise_asset_logic).
 
+-moduledoc "企业附件业务逻辑（EPGZ-04 INT-07/08）—— Garage presign → PUT → confirm 流程。".
 %%%
 % EPGZ-04 INT-07/08 企业附件（Application 域 Garage presign -> PUT -> confirm）。
 %

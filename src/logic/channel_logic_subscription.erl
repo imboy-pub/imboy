@@ -1,4 +1,5 @@
 -module(channel_logic_subscription).
+-moduledoc "频道内容订阅/申请业务逻辑（internal）。".
 -compile([nowarn_deprecated_catch]).
 %% Internal channel_content subscription/application logic.
 

@@ -1,5 +1,6 @@
 -module(enterprise_message_logic).
 
+-moduledoc "企业 OA 代发消息业务逻辑（EPGZ-04 INT-09/10）—— 企业托管非 E2EE：direct / Workspace 企业群。".
 %%%
 % EPGZ-04 INT-09/10 OA 代发消息（企业托管非 E2EE：direct / Workspace 企业群）。
 %

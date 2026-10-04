@@ -1,5 +1,6 @@
 -module(group_category_logic).
 
+-moduledoc "群组分类业务逻辑 —— 分组的创建与管理。".
 %%%
 % group_category 业务逻辑模块
 % 提供群组分类的业务逻辑处理

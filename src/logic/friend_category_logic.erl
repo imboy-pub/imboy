@@ -1,4 +1,5 @@
 -module(friend_category_logic).
+-moduledoc "friend_category 业务逻辑模块 / business logic module。".
 %%%
 % friend_category 业务逻辑模块
 %%%

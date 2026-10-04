@@ -1,5 +1,6 @@
 -module(group_tag_logic).
 
+-moduledoc "群组标签业务逻辑层 —— 含权限验证。".
 %%%
 % group_tag_logic 是群组标签业务逻辑层
 % 提供群组标签的业务逻辑处理，包括权限验证

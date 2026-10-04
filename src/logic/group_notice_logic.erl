@@ -1,4 +1,5 @@
 -module(group_notice_logic).
+-moduledoc "group_notice 业务逻辑模块 / business logic module。".
 %%%
 % group_notice 业务逻辑模块
 % group_notice business logic module

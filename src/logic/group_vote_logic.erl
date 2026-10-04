@@ -1,4 +1,5 @@
 -module(group_vote_logic).
+-moduledoc "群协作投票域稳定边界 —— HTTP 适配层应经此模块而非直连 repo 内部。".
 -dialyzer({nowarn_function, [do_create_vote/5, cancel_vote/2]}).
 %% Stable group_collab vote domain boundary.
 %% HTTP adapters should call this module instead of repo internals.

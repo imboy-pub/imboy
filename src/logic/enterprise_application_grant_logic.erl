@@ -1,5 +1,6 @@
 -module(enterprise_application_grant_logic).
 
+-moduledoc "Application Grant 授权求值层（FULL-01）—— Organization/Workspace Grant 与 scope 判定。".
 %%%
 % enterprise_application_grant_logic 是 Application Grant 的授权求值层
 % （FULL-01 / plan-full §3.1「Organization Grant + Workspace Grant；scope 与

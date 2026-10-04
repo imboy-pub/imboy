@@ -1,4 +1,5 @@
 -module(group_discovery_logic).
+-moduledoc "群组发现业务逻辑 —— 公开群搜索、发现、分类浏览。".
 %%%
 % group_discovery_logic 是群组发现业务逻辑模块
 % 处理公开群搜索、发现、分类浏览等业务逻辑

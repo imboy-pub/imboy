@@ -1,5 +1,6 @@
 %%% Application writes: Grant, resource, audit and idempotency share one transaction.
 -module(enterprise_workspace_write_logic).
+-moduledoc "企业 Application 写入编排 —— Grant、资源、审计与幂等同事务提交。".
 -export([write_tx/7]).
 
 write_tx(Conn, Ctx, Op, Key, Digest, WsId, Body) ->

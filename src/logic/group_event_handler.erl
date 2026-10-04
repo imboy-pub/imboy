@@ -11,6 +11,7 @@
 %%% 渐进策略（NOT Building）：本 task 仅新增订阅者并挂载；现有 join/leave
 %%% 仍走直调通知（handler 暂空载，行为零变化），T2.3 再切 publish + 删直调。
 -module(group_event_handler).
+-moduledoc "群组领域事件订阅者（DDD Phase 2 T2.0h）—— 领域事件的默认 handler。".
 -behaviour(gen_event).
 
 -export([attach/0, detach/0]).

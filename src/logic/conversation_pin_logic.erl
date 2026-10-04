@@ -1,5 +1,6 @@
 -module(conversation_pin_logic).
 
+-moduledoc "conversation_pin 业务逻辑模块 / conversation pin business logic module。".
 %%%
 % conversation_pin 业务逻辑模块
 % conversation pin business logic module

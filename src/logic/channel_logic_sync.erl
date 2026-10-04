@@ -1,5 +1,6 @@
 -module(channel_logic_sync).
 
+-moduledoc "已订阅频道增量同步 —— 按用户订阅列表与 Since 时间戳返回频道变更。".
 -export([sync_channels/2]).
 
 -spec sync_channels(integer(), integer()) -> {ok, map()} | {error, binary()}.

@@ -1,5 +1,6 @@
 -module(enterprise_friend_request_logic).
 
+-moduledoc "企业好友申请业务逻辑（EPGZ-03 INT-11）—— OA 以同 Org 已映射 active Human 名义代发起。".
 %%%
 % enterprise_friend_request_logic 是 EPGZ-03 INT-11「好友申请（只发起）」
 % 的业务逻辑层：OA 以同 Org 已映射 active Human 的名义代发起好友申请。

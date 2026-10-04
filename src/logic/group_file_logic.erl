@@ -1,4 +1,5 @@
 -module(group_file_logic).
+-moduledoc "群文件业务逻辑层 / group file logic。".
 -dialyzer({nowarn_function, [upload/5]}).
 %%%
 % group_file_logic 是 group file logic 缩写

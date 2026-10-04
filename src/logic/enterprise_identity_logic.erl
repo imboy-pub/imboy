@@ -1,5 +1,6 @@
 -module(enterprise_identity_logic).
 
+-moduledoc "企业身份映射 use case（EPGZ-03）—— INT-02 绑定 / INT-03 批量 resolve。".
 %%%
 % enterprise_identity_logic 是 EPGZ-03 身份映射 use case（INT-02 绑定 /
 % INT-03 批量 resolve）的业务逻辑层。
