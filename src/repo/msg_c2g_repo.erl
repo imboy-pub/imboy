@@ -95,8 +95,8 @@ insert_msg_with_reply_idempotent(Conn, TbMsg, MsgData) ->
     integer(),
     %% MsgType
     binary(),
-    %% E2EE (可选)
-    map() | null
+    %% E2EE (可选)：载荷 JSON 里该字段可能是对象，也可能是客户端直传的 JSON 字符串
+    map() | binary() | null
 ) -> ok.
 write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
     write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, null).
@@ -110,7 +110,8 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
     [integer()],
     integer(),
     binary(),
-    map() | null,
+    %% E2EE：载荷 JSON 里该字段可能是对象，也可能是客户端直传的 JSON 字符串
+    map() | binary() | null,
     binary() | null
 ) -> ok.
 write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, ExpireAt) ->
@@ -127,7 +128,8 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, Expi
     [integer()],
     integer(),
     binary(),
-    map() | null,
+    %% E2EE：同 /8，对象或 JSON 字符串都可能
+    map() | binary() | null,
     binary() | null,
     pos_integer() | null
 ) -> ok.
@@ -449,14 +451,16 @@ update_payload_by_msg_id(MsgId, PayloadJson) ->
 %% @param _ReplySnippet 被引用消息的摘要（暂不支持）
 %% @return ok | {error, Reason}
 -spec write_msg_with_reply(
-    binary(),
+    %% CreatedAt：impl 内部 to_rfc3339 归一（同 write_msg 的 CreatedAtRaw 契约）
+    binary() | integer(),
     binary(),
     binary(),
     integer(),
     [integer()],
     integer(),
     binary(),
-    map() | null,
+    %% E2EE：对象或客户端直传的 JSON 字符串
+    map() | binary() | null,
     binary(),
     integer(),
     binary()
@@ -490,14 +494,15 @@ write_msg_with_reply(
     ).
 
 -spec write_msg_with_reply(
-    binary(),
+    %% CreatedAt：impl 内部 to_rfc3339 归一（同 write_msg 的 CreatedAtRaw 契约）
+    binary() | integer(),
     binary(),
     binary(),
     integer(),
     [integer()],
     integer(),
     binary(),
-    map() | null,
+    map() | binary() | null,
     binary(),
     integer(),
     binary(),

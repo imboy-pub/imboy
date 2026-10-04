@@ -32,9 +32,18 @@
 %% @param ToUids 接收消息的用户ID列表
 %% @param Gid 群组ID
 %% @returns any() 数据库操作结果
--spec write_msg
-    (integer() | binary(), binary(), binary(), integer(), list(), integer()) -> ok;
-    (integer() | binary(), binary(), integer(), integer(), map(), binary()) -> ok.
+%% spec 由按参分信的多子句改为单一联合（同 read_msg，配方 c）：多子句
+%% spec 的子句交集分析触发 Gradualizer pick_value(none()) 崩溃。
+%% 第一子句三守卫保留——它们是两种调用约定的真实分派（非冗余细化），
+%% 删除会让 map 载荷调用错误落入文本载荷路径。
+-spec write_msg(
+    integer() | binary(),
+    binary(),
+    binary() | integer(),
+    integer(),
+    list() | map(),
+    integer() | binary()
+) -> ok.
 write_msg(CreatedAtRaw, Id, FromId, Gid, PayloadMap, _PayloadMd5) when
     is_integer(FromId), is_integer(Gid), is_map(PayloadMap)
 ->
@@ -130,9 +139,11 @@ write_msg(CreatedAtRaw, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
 %% 兼容两种历史入口：
 %% 1. `read_msg(MsgId)` 读取单条群消息；
 %% 2. `read_msg(ToUid)` 读取指定用户的离线群消息。
--spec read_msg
-    (integer()) -> [map()];
-    (binary()) -> {ok, map()} | {error, any()}.
+%% spec 由按参分信的多子句改为单一联合：多子句 spec 的子句交集分析触发
+%% Gradualizer pick_value(none()) 崩溃（配方 c，2026-10-04）；两守卫保留
+%% （分派语义不变），返回联合放宽由调用方按入参类型自证。
+-spec read_msg(integer() | binary()) ->
+    [map()] | {ok, map()} | {error, any()}.
 read_msg(MsgId) when is_binary(MsgId) ->
     case find_msg_by_id(MsgId) of
         {error, not_found} ->
@@ -141,7 +152,10 @@ read_msg(MsgId) when is_binary(MsgId) ->
             Result
     end;
 % msg_c2g_ds:read_msg(3).
-read_msg(ToUid) when is_integer(ToUid) ->
+%% 不加 is_integer(ToUid) 守卫：多子句 spec 的类型分派靠第一子句的
+%% is_binary 守卫保序，第二子句冗余守卫细化触发 pick_value(none()) 崩溃
+%% （配方 b'，2026-10-04）；非整数入参由此进入离线读路径按 SQL 语义报错。
+read_msg(ToUid) ->
     read_msg(ToUid, 1000, undefined).
 
 %% @doc 读取群消息
