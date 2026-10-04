@@ -51,6 +51,14 @@ digest_hex(Value) when is_binary(Value) ->
 %% @doc 事务内签发一次性 code（HUMAN-SSO-01：60 秒；ExpiresAt 二进制 RFC3339）。
 %% CodeDigest/NonceDigest 由上层先 digest_hex/1 计算，明文 code 只在签发响应
 %% 出现一次。redirect_uri 必须是 exact HTTPS origin（ck_eosc_redirect_https）。
+%%
+%% created_at 不由应用层写入：省略该列，由 DDL DEFAULT CURRENT_TIMESTAMP
+%% （事务开始时刻，事务内固定）在 DB 端生成——单一时钟源。EWS-BE-D2：
+%% 旧实现用 elib_dt:now()（VM 时钟）写 created_at，而 consume_locked 用 DB
+%% clock_timestamp() 写 consumed_at，ck_eosc_consumed_after_created 跨双时钟
+%% 求值；VM 领先 DB（毫秒级）时「签发→立即消费」以 23514 崩溃。改为
+%% CURRENT_TIMESTAMP 后，事务开始时刻在数学上必然 <= 后续任何
+%% clock_timestamp()，CHECK 恒可满足。
 -spec issue_tx(any(), integer(), integer(), integer(), binary(), binary(), binary(), binary()) ->
     {ok, map()} | {error, term()}.
 issue_tx(Conn, OrgId, AppId, UserId, CodeDigest, RedirectUri, NonceDigest, ExpiresAt) when
@@ -64,15 +72,14 @@ issue_tx(Conn, OrgId, AppId, UserId, CodeDigest, RedirectUri, NonceDigest, Expir
 ->
     Tb = tablename(),
     Id = next_id(),
-    Now = elib_dt:now(),
     Sql =
         <<"INSERT INTO ", Tb/binary, " (id, organization_id, application_id, user_id, code_digest,",
-            " redirect_uri, nonce_digest, expires_at, created_at)",
-            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz, $9)", " RETURNING ",
+            " redirect_uri, nonce_digest, expires_at)",
+            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz)", " RETURNING ",
             ?COLUMNS/binary>>,
     case
         elib_pg:query(Conn, Sql, [
-            Id, OrgId, AppId, UserId, CodeDigest, RedirectUri, NonceDigest, ExpiresAt, Now
+            Id, OrgId, AppId, UserId, CodeDigest, RedirectUri, NonceDigest, ExpiresAt
         ])
     of
         {ok, [Row | _]} -> {ok, Row};

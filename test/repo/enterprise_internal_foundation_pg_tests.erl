@@ -661,11 +661,19 @@ sso_code_oracle(C) ->
     ?assertEqual(CodeDigest, maps:get(<<"code_digest">>, Issued)),
     ?assertNotEqual(Code, maps:get(<<"code_digest">>, Issued)),
     ?assertEqual(null, maps:get(<<"consumed_at">>, Issued)),
+    %% EWS-BE-D2 回归：created_at 必须由 DB 端生成（RFC3339 UTC binary），
+    %% 不得来自应用/VM 时钟（双时钟源曾致 ck_eosc_consumed_after_created 23514）
+    ?assert(is_binary(maps:get(<<"created_at">>, Issued))),
     {ok, Found} = enterprise_oa_sso_code_repo:find_by_digest_tx(C, CodeDigest),
     ?assertEqual(false, maps:get(<<"expired">>, Found)),
-    %% 原子单次消费
+    %% 原子单次消费（签发→立即消费零间隔路径，即 D2 竞态现场）
     {ok, Consumed} = enterprise_oa_sso_code_repo:consume_tx(C, CodeDigest),
     ?assert(is_binary(maps:get(<<"consumed_at">>, Consumed))),
+    %% 时序合同：consumed_at(DB clock) >= created_at(DB CURRENT_TIMESTAMP)；
+    %% codec 输出统一 UTC RFC3339 定宽格式，字典序 = 时间序
+    ?assert(
+        maps:get(<<"created_at">>, Consumed) =< maps:get(<<"consumed_at">>, Consumed)
+    ),
     %% 重放 → already_consumed（拒绝，不是重放响应）
     ?assertEqual(
         {error, already_consumed},
