@@ -53,12 +53,12 @@ tablename() ->
 %% @returns {ok, Id} | {error, Reason}
 -spec create(map()) -> {ok, integer()} | {error, term()}.
 create(Data) ->
-    create_run(fun(Sql, Params) -> elib_pg:execute(Sql, Params) end, Data).
+    create_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Data).
 
 %% @doc 事务内创建邀请（归档写守卫同事务，DS 层 write_tx 调用）
 -spec create_tx(any(), map()) -> {ok, integer()} | {error, term()}.
 create_tx(Conn, Data) ->
-    create_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+    create_run(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Data).
 
 -spec create_run(fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()) ->
     {ok, integer()} | {error, term()}.
@@ -143,12 +143,12 @@ find_pending_by_channel_and_invitee(ChannelId, InviteeUid) ->
 %% @doc 接受邀请
 -spec accept(integer(), integer()) -> ok | {error, term()}.
 accept(Id, InviteeUid) ->
-    accept_exec(fun(Sql, Params) -> elib_pg:execute(Sql, Params) end, Id, InviteeUid).
+    accept_exec(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Id, InviteeUid).
 
 %% @doc 事务内接受邀请（归档写守卫同事务，DS 层 write_tx 调用）
 -spec accept_tx(any(), integer(), integer()) -> ok | {error, term()}.
 accept_tx(Conn, Id, InviteeUid) ->
-    accept_exec(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Id, InviteeUid).
+    accept_exec(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Id, InviteeUid).
 
 -spec accept_exec(
     fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), integer(), integer()
@@ -167,12 +167,12 @@ accept_exec(Exec, Id, InviteeUid) ->
 %% @doc 拒绝邀请
 -spec reject(integer(), integer()) -> ok | {error, term()}.
 reject(Id, InviteeUid) ->
-    reject_exec(fun(Sql, Params) -> elib_pg:execute(Sql, Params) end, Id, InviteeUid).
+    reject_exec(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Id, InviteeUid).
 
 %% @doc 事务内拒绝邀请（归档写守卫同事务）
 -spec reject_tx(any(), integer(), integer()) -> ok | {error, term()}.
 reject_tx(Conn, Id, InviteeUid) ->
-    reject_exec(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Id, InviteeUid).
+    reject_exec(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Id, InviteeUid).
 
 -spec reject_exec(
     fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), integer(), integer()
@@ -241,8 +241,12 @@ generate_invitation_code() ->
 generate_code_chars(0, _Chars, Acc) ->
     Acc;
 generate_code_chars(N, Chars, Acc) ->
-    % rand:uniform/1 returns 1..Len; convert to zero-based binary offset
-    Pos = rand:uniform(byte_size(Chars)) - 1,
+    % rand:uniform/1 要求 pos_integer；byte_size 无区间感知，case 守卫精化
+    Pos =
+        case byte_size(Chars) of
+            S when S > 0 -> rand:uniform(S) - 1;
+            _ -> 0
+        end,
     <<_:Pos/binary, Char:1/binary, _/binary>> = Chars,
     generate_code_chars(N - 1, Chars, <<Acc/binary, Char/binary>>).
 

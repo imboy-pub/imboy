@@ -112,7 +112,7 @@ list_by_tag_name(_TagName, _Column) ->
 delete(GroupId, TagName) when GroupId > 0, is_binary(TagName), TagName =/= <<>> ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE group_id = $1 AND tag_name = $2">>,
-    elib_pg:execute(Sql, [GroupId, TagName]);
+    elib_pg:execute_count(Sql, [GroupId, TagName]);
 delete(_, _) ->
     {ok, 0}.
 
@@ -121,7 +121,7 @@ delete(_, _) ->
 delete_tx(Conn, GroupId, TagName) when GroupId > 0, is_binary(TagName), TagName =/= <<>> ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE group_id = $1 AND tag_name = $2">>,
-    elib_pg:execute(Conn, Sql, [GroupId, TagName]);
+    elib_pg:execute_count(Conn, Sql, [GroupId, TagName]);
 delete_tx(_Conn, _, _) ->
     {ok, 0}.
 
@@ -132,7 +132,7 @@ delete_tx(_Conn, _, _) ->
 delete_by_group_id(GroupId) when GroupId > 0 ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE group_id = $1">>,
-    elib_pg:execute(Sql, [GroupId]);
+    elib_pg:execute_count(Sql, [GroupId]);
 delete_by_group_id(_) ->
     {ok, 0}.
 
@@ -141,7 +141,7 @@ delete_by_group_id(_) ->
 delete_by_group_id_tx(Conn, GroupId) when GroupId > 0 ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE group_id = $1">>,
-    elib_pg:execute(Conn, Sql, [GroupId]);
+    elib_pg:execute_count(Conn, Sql, [GroupId]);
 delete_by_group_id_tx(_Conn, _) ->
     {ok, 0}.
 

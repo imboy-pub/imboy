@@ -41,15 +41,15 @@ tablename() ->
 %% @return {ok, FileId} | {error, Reason}
 -spec insert(map()) -> {ok, integer()} | {error, term()}.
 insert(Data) ->
-    insert_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+    insert_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Data).
 
 %% @doc 事务内插入群文件记录（归档写守卫同事务，DS 层 write_tx 调用）
 -spec insert_tx(any(), map()) -> {ok, integer()} | {error, term()}.
 insert_tx(Conn, Data) ->
-    insert_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+    insert_run(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Data).
 
 -spec insert_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
 ) ->
     {ok, integer()} | {error, term()}.
 insert_run(Exec, Data) ->
@@ -168,14 +168,14 @@ list_by_category(Gid, Category, Page, Size) ->
 soft_delete(FileId) ->
     Tb = tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET status = 0 WHERE id = $1">>,
-    elib_pg:execute(Sql, [FileId]).
+    elib_pg:execute_count(Sql, [FileId]).
 
 %% @doc 事务内软删除文件（归档写守卫同事务；用户删除与 adm 治理共用）
 -spec soft_delete_tx(any(), integer()) -> {ok, integer()} | {error, term()}.
 soft_delete_tx(Conn, FileId) ->
     Tb = tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET status = 0 WHERE id = $1 AND status = 1">>,
-    elib_pg:execute(Conn, Sql, [FileId]).
+    elib_pg:execute_count(Conn, Sql, [FileId]).
 
 %% @doc 增加文件下载计数
 %% @param FileId 文件主键ID
@@ -186,7 +186,7 @@ increment_download(FileId) ->
     Sql =
         <<"UPDATE ", Tb/binary, " SET download_count = download_count + 1 ",
             " WHERE id = $1 AND status = 1">>,
-    elib_pg:execute(Sql, [FileId]).
+    elib_pg:execute_count(Sql, [FileId]).
 
 %% @doc 事务内增加文件下载计数（归档 freeze 语义，DS 层 write_tx_or_skip 调用）
 -spec increment_download_tx(any(), integer()) -> {ok, integer()} | {error, term()}.
@@ -195,7 +195,7 @@ increment_download_tx(Conn, FileId) ->
     Sql =
         <<"UPDATE ", Tb/binary, " SET download_count = download_count + 1 ",
             " WHERE id = $1 AND status = 1">>,
-    elib_pg:execute(Conn, Sql, [FileId]).
+    elib_pg:execute_count(Conn, Sql, [FileId]).
 
 %% @doc 统计群文件数量
 %% @param Gid 群组ID

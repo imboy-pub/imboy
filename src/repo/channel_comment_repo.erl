@@ -107,14 +107,14 @@ list_by_channel(ChannelId, Cursor, Limit) ->
 delete(CommentId) ->
     Tb = tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET status = 0 WHERE id = $1">>,
-    elib_pg:query(Sql, [CommentId]).
+    elib_pg:execute_count(Sql, [CommentId]).
 
 %% @doc 事务内软删除评论（归档写守卫同事务）
 -spec delete_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete_tx(Conn, CommentId) ->
     Tb = tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET status = 0 WHERE id = $1">>,
-    elib_pg:execute(Conn, Sql, [CommentId]).
+    elib_pg:execute_count(Conn, Sql, [CommentId]).
 
 %% @doc 统计消息评论数
 -spec count_by_message(integer()) -> {ok, non_neg_integer()} | {error, any()}.
@@ -131,14 +131,14 @@ count_by_message(MessageId) ->
 increment_like(CommentId) ->
     Tb = tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET like_count = like_count + 1 WHERE id = $1 AND status = 1">>,
-    elib_pg:query(Sql, [CommentId]).
+    elib_pg:execute_count(Sql, [CommentId]).
 
 %% @doc 事务内点赞 +1（归档写守卫同事务）
 -spec increment_like_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 increment_like_tx(Conn, CommentId) ->
     Tb = tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET like_count = like_count + 1 WHERE id = $1 AND status = 1">>,
-    elib_pg:execute(Conn, Sql, [CommentId]).
+    elib_pg:execute_count(Conn, Sql, [CommentId]).
 
 %% @doc 点赞 -1（下限 0）
 -spec decrement_like(integer()) -> {ok, non_neg_integer()} | {error, any()}.
@@ -147,7 +147,7 @@ decrement_like(CommentId) ->
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET like_count = GREATEST(like_count - 1, 0) WHERE id = $1 AND status = 1">>,
-    elib_pg:query(Sql, [CommentId]).
+    elib_pg:execute_count(Sql, [CommentId]).
 
 %% @doc 事务内点赞 -1（归档写守卫同事务）
 -spec decrement_like_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
@@ -156,4 +156,4 @@ decrement_like_tx(Conn, CommentId) ->
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET like_count = GREATEST(like_count - 1, 0) WHERE id = $1 AND status = 1">>,
-    elib_pg:execute(Conn, Sql, [CommentId]).
+    elib_pg:execute_count(Conn, Sql, [CommentId]).

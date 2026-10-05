@@ -111,7 +111,7 @@ update_name(Uid, CategoryId, NewName) ->
         <<"UPDATE ", Tb/binary,
             " SET category_name = $1 "
             "WHERE id = $2 AND user_id = $3">>,
-    elib_pg:execute(Sql, [NewName, CategoryId, Uid]).
+    elib_pg:execute_count(Sql, [NewName, CategoryId, Uid]).
 
 %% @doc 更新群组分类排序
 %% @param Uid 用户ID
@@ -125,7 +125,7 @@ update_sort_order(Uid, CategoryId, SortOrder) ->
         <<"UPDATE ", Tb/binary,
             " SET sort_order = $1 "
             "WHERE id = $2 AND user_id = $3">>,
-    elib_pg:execute(Sql, [SortOrder, CategoryId, Uid]).
+    elib_pg:execute_count(Sql, [SortOrder, CategoryId, Uid]).
 
 %% @doc 删除群组分类
 %% @param Uid 用户ID
@@ -135,7 +135,7 @@ update_sort_order(Uid, CategoryId, SortOrder) ->
 delete(Uid, CategoryId) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1 AND user_id = $2">>,
-    elib_pg:execute(Sql, [CategoryId, Uid]).
+    elib_pg:execute_count(Sql, [CategoryId, Uid]).
 
 %% @doc 更新群组成员的分类ID
 %% @param Uid 用户ID
@@ -148,7 +148,7 @@ update_group_category(Uid, Gid, CategoryId) ->
     Sql =
         <<"UPDATE ", Tb/binary, " SET category_id = $1, updated_at = $2 ",
             "WHERE group_id = $3 AND user_id = $4">>,
-    elib_pg:execute(Sql, [CategoryId, elib_dt:now(), Gid, Uid]).
+    elib_pg:execute_count(Sql, [CategoryId, elib_dt:now(), Gid, Uid]).
 
 %% @doc 事务内更新群组成员的分类ID（归档 freeze 语义，DS 层 write_tx_or_skip 调用）
 -spec update_group_category_tx(any(), integer(), integer(), integer()) ->
@@ -158,7 +158,7 @@ update_group_category_tx(Conn, Uid, Gid, CategoryId) ->
     Sql =
         <<"UPDATE ", Tb/binary, " SET category_id = $1, updated_at = $2 ",
             "WHERE group_id = $3 AND user_id = $4">>,
-    elib_pg:execute(Conn, Sql, [CategoryId, elib_dt:now(), Gid, Uid]).
+    elib_pg:execute_count(Conn, Sql, [CategoryId, elib_dt:now(), Gid, Uid]).
 
 %% @doc 查询指定分类下的群组列表
 %% @param Uid 用户ID

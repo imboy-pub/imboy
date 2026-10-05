@@ -35,19 +35,19 @@ tablename() ->
 %% @doc 插入群作业分配
 %% @param Data 作业分配数据映射
 %% @return {ok, AssignmentId, InsertResult} | {error, Reason}
--spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
+-spec insert(map()) -> {ok, integer()} | {error, term()}.
 insert(Data) ->
-    insert_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+    insert_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Data).
 
 %% @doc 事务内插入群作业分配（归档写守卫同事务，DS 层 write_tx 调用）
--spec insert_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+-spec insert_tx(any(), map()) -> {ok, integer()} | {error, term()}.
 insert_tx(Conn, Data) ->
-    insert_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+    insert_run(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Data).
 
 -spec insert_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
 ) ->
-    {ok, integer(), map()} | {error, term()}.
+    {ok, integer()} | {error, term()}.
 insert_run(Exec, Data) ->
     Tb = tablename(),
     % 验证必填字段

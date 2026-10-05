@@ -72,10 +72,9 @@ find(ChannelId, Uid) ->
 find_tx(Conn, ChannelId, Uid) ->
     Tb = tablename(),
     Sql = <<"SELECT * FROM ", Tb/binary, " WHERE channel_id = $1 AND user_id = $2 LIMIT 1">>,
-    %% elib_pg:one/2,3 是池化连接版（首参为 Sql）；事务内必须走 execute(Conn, ...)
-    %% 同快照读取（R3-5）。SELECT 经 execute 返回 {ok, N, Rows}。
-    case elib_pg:execute(Conn, Sql, [ChannelId, Uid]) of
-        {ok, _N, [Row | _]} -> Row;
+    %% 事务内快照读（R3-5）：elib_pg:query/3 首参为 Conn，直接用本事务连接。
+    case elib_pg:query(Conn, Sql, [ChannelId, Uid]) of
+        {ok, [Row | _]} -> Row;
         _ -> #{}
     end.
 
@@ -106,14 +105,14 @@ list_by_channel(ChannelId) ->
 delete(ChannelId, Uid) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE channel_id = $1 AND user_id = $2">>,
-    elib_pg:execute(Sql, [ChannelId, Uid]).
+    elib_pg:execute_count(Sql, [ChannelId, Uid]).
 
 %% @doc 事务内删除管理员（归档写守卫同事务，DS 层 write_tx 调用）
 -spec delete_tx(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete_tx(Conn, ChannelId, Uid) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE channel_id = $1 AND user_id = $2">>,
-    elib_pg:execute(Conn, Sql, [ChannelId, Uid]).
+    elib_pg:execute_count(Conn, Sql, [ChannelId, Uid]).
 
 %% @doc 检查用户是否为频道管理员
 -spec is_admin(integer(), integer()) -> boolean().
@@ -143,7 +142,7 @@ update_role_tx(Conn, ChannelId, Uid, Role) ->
         elib_pg_sql:update(Tb, #{role => Role}, <<"channel_id = $1 AND user_id = $2">>, [
             ChannelId, Uid
         ]),
-    elib_pg:execute(Conn, Sql, Params).
+    elib_pg:execute_count(Conn, Sql, Params).
 
 %% ===================================================================
 %% Internal Function Definitions

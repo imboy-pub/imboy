@@ -63,13 +63,11 @@ build_object_key(OrgId, AppId, FileName) ->
 %% @doc object_key 是否属于本 (org, app) 企业域前缀（confirm/引用时的
 %% ownership 校验：跨 org/app 的 key 一律拒绝）。
 -spec owned_key(binary(), integer(), integer()) -> boolean().
-owned_key(ObjectKey, OrgId, AppId) when is_binary(ObjectKey) ->
+owned_key(ObjectKey, OrgId, AppId) ->
     Prefix = object_key_prefix(OrgId, AppId),
     PrefixLen = byte_size(Prefix),
     byte_size(ObjectKey) >= PrefixLen andalso
-        binary:part(ObjectKey, 0, PrefixLen) =:= Prefix;
-owned_key(_, _, _) ->
-    false.
+        binary:part(ObjectKey, 0, PrefixLen) =:= Prefix.
 
 %%%===================================================================
 %%% attach_pending（presign 登记 / confirm 销账）
@@ -212,13 +210,15 @@ ensure_tsid(Name) ->
     ok.
 
 safe_basename(FileName) ->
-    Base = filename:basename(FileName),
-    case byte_size(Base) of
-        0 -> <<"file">>;
-        _ -> Base
+    case unicode:characters_to_binary(filename:basename(FileName)) of
+        B when is_binary(B), byte_size(B) > 0 -> B;
+        _ -> <<"file">>
     end.
 
 ymd() ->
-    {{Y, M, D} = Date, _} = calendar:universal_time(),
-    _ = Date,
-    iolist_to_binary(io_lib:format("~4..0B~2..0B~2..0B", [Y, M, D])).
+    {{Y, M, D}, _} = calendar:universal_time(),
+    case unicode:characters_to_binary(io_lib:format("~4..0B~2..0B~2..0B", [Y, M, D])) of
+        B when is_binary(B) -> B;
+        {incomplete, B, _} -> B;
+        _ -> <<>>
+    end.

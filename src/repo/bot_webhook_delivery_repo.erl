@@ -23,7 +23,8 @@ attempt_tablename() -> elib_pg_sql:public_tablename(<<"bot_delivery_attempt">>).
 insert(D) ->
     case elib_pg:with_tx(fun(Conn) -> insert_tx(Conn, D) end) of
         {rollback, Reason} -> {error, Reason};
-        Result -> Result
+        {error, Reason} -> {error, Reason};
+        {ok, Status} -> {ok, Status}
     end.
 
 insert_tx(Conn, D) ->
@@ -108,7 +109,8 @@ get_delivery(DeliveryId) ->
 claim_due(Limit) ->
     case elib_pg:with_tx(fun(Conn) -> claim_due_tx(Conn, Limit) end) of
         {rollback, Reason} -> {error, Reason};
-        Result -> Result
+        {error, Reason} -> {error, Reason};
+        {ok, Status} -> {ok, Status}
     end.
 
 %% @doc 事务化认领（FULL-03：并发 claim 判定需要调用方自持事务/连接）。
@@ -181,7 +183,8 @@ update_status(DeliveryId, Status, AttemptNo, RetryAfterSecs) ->
         end)
     of
         {rollback, Reason} -> {error, Reason};
-        Result -> Result
+        {error, Reason} -> {error, Reason};
+        {ok, Status} -> {ok, Status}
     end.
 
 status_sql(Tb, DeliveryId, <<"retry">>, AttemptNo, RetryAfterSecs) ->
@@ -243,7 +246,8 @@ list_dead(Page, Size) ->
 replay(DeliveryId) ->
     case elib_pg:with_tx(fun(Conn) -> replay_tx(Conn, DeliveryId) end) of
         {rollback, Reason} -> {error, Reason};
-        Result -> Result
+        {error, Reason} -> {error, Reason};
+        {ok, Status} -> {ok, Status}
     end.
 
 replay_tx(Conn, DeliveryId) ->

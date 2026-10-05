@@ -99,12 +99,6 @@ ensure_task_tx(Conn, Data) ->
                     ),
                     {error, Reason2}
             end;
-        %% ON CONFLICT DO NOTHING 且零行命中时 equery 只回 {ok, 0}
-        {ok, 0} ->
-            case get_task_tx(Conn, TaskId) of
-                {ok, Row} -> {ok, Row, false};
-                {error, _} = E -> E
-            end;
         {ok, [_]} ->
             case get_task_tx(Conn, TaskId) of
                 {ok, Row} -> {ok, Row, true};
@@ -161,9 +155,6 @@ cas_status(TaskId, {FromStates, ToStatus}) ->
         {ok, [_]} -> {ok, updated};
         {ok, []} -> {ok, not_matched};
         %% UPDATE..RETURNING 零行时 equery 只回 {ok, 0}（无列无行）
-        {ok, 0} -> {ok, not_matched};
-        {ok, 0, []} -> {ok, not_matched};
-        {ok, _N, [_]} -> {ok, updated};
         {error, _} = E -> E
     end.
 
@@ -180,9 +171,6 @@ cas_status_tx(Conn, TaskId, {FromStates, ToStatus}) ->
     case elib_pg:query(Conn, Sql, [ec_cnv:to_binary(TaskId), ToStatus, FromList]) of
         {ok, [_]} -> {ok, updated};
         {ok, []} -> {ok, not_matched};
-        {ok, 0} -> {ok, not_matched};
-        {ok, 0, []} -> {ok, not_matched};
-        {ok, _N, [_]} -> {ok, updated};
         {error, _} = E -> E
     end.
 

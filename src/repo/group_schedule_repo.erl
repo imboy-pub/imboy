@@ -61,15 +61,15 @@ tablename() ->
 %% @doc 插入新日程
 -spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
 insert(Data) ->
-    insert_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+    insert_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Data).
 
 %% @doc 事务内插入新日程（归档写守卫同事务，DS 层 write_tx 调用）
 -spec insert_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
 insert_tx(Conn, Data) ->
-    insert_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+    insert_run(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Data).
 
 -spec insert_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
 ) ->
     {ok, integer(), map()} | {error, term()}.
 insert_run(Exec, Data) ->
@@ -138,15 +138,13 @@ find_by_schedule_id(ScheduleId) ->
 
 %% @doc 根据schedule_id查询日程
 -spec find_by_schedule_id(binary(), binary()) -> map() | {error, term()}.
-find_by_schedule_id(ScheduleId, Column) when is_binary(ScheduleId) ->
+find_by_schedule_id(ScheduleId, Column) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{schedule_id => ScheduleId}, #{limit => 1}),
     case elib_pg:one(Sql, Params) of
         {ok, Row} -> Row;
         {error, Reason} -> {error, Reason}
-    end;
-find_by_schedule_id(_, _) ->
-    {error, invalid_schedule_id}.
+    end.
 
 %% @doc 查询群组的日程列表（默认字段）
 -spec list_by_group_id(integer(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
@@ -293,15 +291,15 @@ participant_tablename() ->
 %% @doc 插入参与人
 -spec insert_participant(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_participant(Data) ->
-    insert_participant_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+    insert_participant_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Data).
 
 %% @doc 事务内插入参与人（归档写守卫同事务）
 -spec insert_participant_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
 insert_participant_tx(Conn, Data) ->
-    insert_participant_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+    insert_participant_run(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Data).
 
 -spec insert_participant_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
 ) ->
     {ok, integer(), map()} | {error, term()}.
 insert_participant_run(Exec, Data) ->
@@ -347,33 +345,29 @@ list_participants(ScheduleId) ->
 
 %% @doc 查询日程的参与人列表
 -spec list_participants(binary(), binary()) -> {ok, list(map())} | {error, term()}.
-list_participants(ScheduleId, Column) when is_binary(ScheduleId) ->
+list_participants(ScheduleId, Column) ->
     Tb = participant_tablename(),
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{schedule_id => ScheduleId}, #{
         order_by => [{id, asc}]
     }),
-    elib_pg:query(Sql, Params);
-list_participants(_, _) ->
-    {ok, []}.
+    elib_pg:query(Sql, Params).
 
 %% @doc 统计日程参与人数量
 -spec count_participants(binary()) -> {ok, non_neg_integer()} | {error, term()}.
-count_participants(ScheduleId) when is_binary(ScheduleId) ->
+count_participants(ScheduleId) ->
     Tb = participant_tablename(),
     Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE schedule_id = $1">>,
     case elib_pg:one(Sql, [ScheduleId]) of
         {ok, #{<<"count">> := Count}} -> {ok, Count};
         {error, Reason} -> {error, Reason}
-    end;
-count_participants(_) ->
-    {ok, 0}.
+    end.
 
 %% @doc 删除参与人
 -spec delete_participant(binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_participant(ScheduleId, UserId) ->
     Tb = participant_tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE schedule_id = $1 AND user_id = $2">>,
-    elib_pg:query(Sql, [ScheduleId, UserId]).
+    elib_pg:execute_count(Sql, [ScheduleId, UserId]).
 
 %% @doc 事务内删除参与人（归档写守卫同事务）
 -spec delete_participant_tx(any(), binary(), integer()) ->
@@ -381,7 +375,7 @@ delete_participant(ScheduleId, UserId) ->
 delete_participant_tx(Conn, ScheduleId, UserId) ->
     Tb = participant_tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE schedule_id = $1 AND user_id = $2">>,
-    elib_pg:execute(Conn, Sql, [ScheduleId, UserId]).
+    elib_pg:execute_count(Conn, Sql, [ScheduleId, UserId]).
 
 %% ===================================================================
 %% API functions - 提醒表
@@ -395,15 +389,15 @@ remind_tablename() ->
 %% @doc 插入提醒记录
 -spec insert_remind(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_remind(Data) ->
-    insert_remind_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+    insert_remind_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Data).
 
 %% @doc 事务内插入提醒记录（归档写守卫同事务）
 -spec insert_remind_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
 insert_remind_tx(Conn, Data) ->
-    insert_remind_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+    insert_remind_run(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Data).
 
 -spec insert_remind_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
 ) ->
     {ok, integer(), map()} | {error, term()}.
 insert_remind_run(Exec, Data) ->

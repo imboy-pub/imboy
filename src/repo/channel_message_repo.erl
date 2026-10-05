@@ -216,7 +216,7 @@ update_tx(Conn, MessageId, Data) ->
     Tb = tablename(),
     UpdateData = maps:without([<<"id">>], Data),
     {Sql, Params} = elib_pg_sql:update(Tb, UpdateData, <<"id = $1">>, [MessageId]),
-    elib_pg:execute(Conn, Sql, Params).
+    elib_pg:execute_count(Conn, Sql, Params).
 
 %% @doc 删除消息（软删除）
 -spec delete(integer()) -> {ok, non_neg_integer()} | {error, any()}.
@@ -229,7 +229,7 @@ delete(MessageId) ->
 delete_tx(Conn, MessageId) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:update(Tb, #{status => -1}, <<"id = $1">>, [MessageId]),
-    elib_pg:execute(Conn, Sql, Params).
+    elib_pg:execute_count(Conn, Sql, Params).
 
 %% @doc 撤回消息（幂等）
 %% @param MessageId 消息ID
@@ -242,7 +242,7 @@ revoke(MessageId, RevokedBy, RevokedAt) ->
         <<"UPDATE ", Tb/binary,
             " SET revoked = true, revoked_by = $2, revoked_at = $3, updated_at = $3 "
             "WHERE id = $1 AND status = 1 AND revoked = false">>,
-    elib_pg:execute(Sql, [MessageId, RevokedBy, RevokedAt]).
+    elib_pg:execute_count(Sql, [MessageId, RevokedBy, RevokedAt]).
 
 %% @doc 事务内撤回频道消息（归档写守卫同事务）
 -spec revoke_tx(any(), integer(), integer(), binary()) ->
@@ -253,14 +253,14 @@ revoke_tx(Conn, MessageId, RevokedBy, RevokedAt) ->
         <<"UPDATE ", Tb/binary,
             " SET revoked = true, revoked_by = $2, revoked_at = $3, updated_at = $3 "
             "WHERE id = $1 AND status = 1 AND revoked = false">>,
-    elib_pg:execute(Conn, Sql, [MessageId, RevokedBy, RevokedAt]).
+    elib_pg:execute_count(Conn, Sql, [MessageId, RevokedBy, RevokedAt]).
 
 %% @doc 增加阅读量
 -spec increment_view_count(integer()) -> {ok, non_neg_integer()} | {error, any()}.
 increment_view_count(MessageId) ->
     Tb = tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET view_count = view_count + 1 WHERE id = $1">>,
-    elib_pg:execute(Sql, [MessageId]).
+    elib_pg:execute_count(Sql, [MessageId]).
 
 %% ===================================================================
 %% Internal Function Definitions

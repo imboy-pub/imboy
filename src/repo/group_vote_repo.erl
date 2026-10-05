@@ -69,15 +69,15 @@ tablename_record() ->
 %% 注意：刻意返回 3-tuple，与其他 repo 的 {ok, Id} 2-tuple 约定不同，调用方不可改为 2-tuple 匹配。
 -spec insert_vote(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_vote(Data) ->
-    insert_vote_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+    insert_vote_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Data).
 
 %% @doc 事务内插入群投票（归档写守卫同事务，DS 层 write_tx 调用）
 -spec insert_vote_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
 insert_vote_tx(Conn, Data) ->
-    insert_vote_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+    insert_vote_run(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Data).
 
 -spec insert_vote_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
 ) ->
     {ok, integer(), map()} | {error, term()}.
 insert_vote_run(Exec, Data) ->
@@ -290,18 +290,18 @@ insert_option(Data) ->
 -spec insert_options_batch([map()]) -> {ok, integer()} | {error, term()}.
 insert_options_batch(Options) ->
     insert_options_batch_run(
-        fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Options
+        fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Options
     ).
 
 %% @doc 事务内批量插入投票选项（归档写守卫同事务，DS 层 write_tx 调用）
 -spec insert_options_batch_tx(any(), [map()]) -> {ok, integer()} | {error, term()}.
 insert_options_batch_tx(Conn, Options) ->
     insert_options_batch_run(
-        fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Options
+        fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Options
     ).
 
 -spec insert_options_batch_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), [map()]
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), [map()]
 ) ->
     {ok, integer()} | {error, term()}.
 insert_options_batch_run(Exec, Options) when is_list(Options), length(Options) > 0 ->
@@ -376,10 +376,7 @@ list_options_by_vote_id(_VoteId) ->
 delete_vote_option_by_option_id(OptionId) when is_binary(OptionId), byte_size(OptionId) > 0 ->
     Tb = tablename_option(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE option_id = $1">>,
-    case elib_pg:query(Sql, [OptionId]) of
-        {ok, Count} -> {ok, Count};
-        {error, Reason} -> {error, Reason}
-    end;
+    elib_pg:execute_count(Sql, [OptionId]);
 delete_vote_option_by_option_id(_OptionId) ->
     {error, invalid_param}.
 
@@ -393,15 +390,15 @@ delete_vote_option_by_option_id(_OptionId) ->
 %% 注意：刻意返回 3-tuple，与其他 repo 的 {ok, Id} 2-tuple 约定不同，调用方不可改为 2-tuple 匹配。
 -spec insert_record(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_record(Data) ->
-    insert_record_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+    insert_record_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Data).
 
 %% @doc 事务内插入投票记录（归档写守卫同事务）
 -spec insert_record_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
 insert_record_tx(Conn, Data) ->
-    insert_record_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+    insert_record_run(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Data).
 
 -spec insert_record_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
 ) ->
     {ok, integer(), map()} | {error, term()}.
 insert_record_run(Exec, Data) ->
@@ -486,10 +483,7 @@ update_record_tx(_Conn, _RecordId, _Data) ->
 delete_record(RecordId) when is_integer(RecordId), RecordId > 0 ->
     Tb = tablename_record(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
-    case elib_pg:query(Sql, [RecordId]) of
-        {ok, Count} -> {ok, Count};
-        {error, Reason} -> {error, Reason}
-    end;
+    elib_pg:execute_count(Sql, [RecordId]);
 delete_record(_RecordId) ->
     {error, invalid_param}.
 
@@ -498,7 +492,7 @@ delete_record(_RecordId) ->
 delete_record_tx(Conn, RecordId) when is_integer(RecordId), RecordId > 0 ->
     Tb = tablename_record(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
-    elib_pg:execute(Conn, Sql, [RecordId]);
+    elib_pg:execute_count(Conn, Sql, [RecordId]);
 delete_record_tx(_Conn, _RecordId) ->
     {error, invalid_param}.
 

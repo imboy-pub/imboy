@@ -85,7 +85,7 @@ comment_tablename() ->
 -spec create_album(integer(), binary(), binary(), integer()) -> {ok, integer()} | {error, term()}.
 create_album(Gid, AlbumId, AlbumName, CreatorId) ->
     create_album_run(
-        fun(Sql, Params) -> elib_pg:query(Sql, Params) end,
+        fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end,
         Gid,
         AlbumId,
         AlbumName,
@@ -97,7 +97,7 @@ create_album(Gid, AlbumId, AlbumName, CreatorId) ->
     {ok, integer()} | {error, term()}.
 create_album_tx(Conn, Gid, AlbumId, AlbumName, CreatorId) ->
     create_album_run(
-        fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end,
+        fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end,
         Gid,
         AlbumId,
         AlbumName,
@@ -105,7 +105,7 @@ create_album_tx(Conn, Gid, AlbumId, AlbumName, CreatorId) ->
     ).
 
 -spec create_album_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}),
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}),
     integer(),
     binary(),
     binary(),
@@ -163,8 +163,18 @@ list_albums(Gid, Page, Size) ->
     Tb = tablename(),
     Column =
         <<"id, group_id, album_id, album_name, album_cover, creator_id, photo_count, created_at">>,
+    Page1 =
+        case Page of
+            P when P > 0 -> P;
+            _ -> 1
+        end,
+    Size1 =
+        case Size of
+            S when S > 0 -> S;
+            _ -> 1
+        end,
     elib_pg:page_with_total(
-        Tb, Column, #{group_id => Gid, status => 1}, <<"created_at DESC">>, Page, Size
+        Tb, Column, #{group_id => Gid, status => 1}, <<"created_at DESC">>, Page1, Size1
     ).
 
 %% @doc 更新相册
@@ -210,7 +220,7 @@ increment_photo_count(Id) ->
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET photo_count = photo_count + 1, updated_at = $1 WHERE id = $2">>,
-    elib_pg:execute(Sql, [elib_dt:now(), Id]).
+    elib_pg:execute_count(Sql, [elib_dt:now(), Id]).
 
 %% @doc 事务内增加相册照片计数（与照片插入同事务）
 -spec increment_photo_count_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
@@ -219,7 +229,7 @@ increment_photo_count_tx(Conn, Id) ->
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET photo_count = photo_count + 1, updated_at = $1 WHERE id = $2">>,
-    elib_pg:execute(Conn, Sql, [elib_dt:now(), Id]).
+    elib_pg:execute_count(Conn, Sql, [elib_dt:now(), Id]).
 
 %% @doc 减少相册照片计数
 %% @param Id 相册ID
@@ -230,7 +240,7 @@ decrement_photo_count(Id) ->
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET photo_count = GREATEST(photo_count - 1, 0), updated_at = $1 WHERE id = $2">>,
-    elib_pg:execute(Sql, [elib_dt:now(), Id]).
+    elib_pg:execute_count(Sql, [elib_dt:now(), Id]).
 
 %% @doc 事务内减少相册照片计数（与照片删除同事务）
 -spec decrement_photo_count_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
@@ -239,7 +249,7 @@ decrement_photo_count_tx(Conn, Id) ->
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET photo_count = GREATEST(photo_count - 1, 0), updated_at = $1 WHERE id = $2">>,
-    elib_pg:execute(Conn, Sql, [elib_dt:now(), Id]).
+    elib_pg:execute_count(Conn, Sql, [elib_dt:now(), Id]).
 
 %% ===================================================================
 %% 图片操作
@@ -250,15 +260,15 @@ decrement_photo_count_tx(Conn, Id) ->
 %% @return {ok, Id} | {error, Reason}
 -spec insert_photo(map()) -> {ok, integer()} | {error, term()}.
 insert_photo(Data) ->
-    insert_photo_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+    insert_photo_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Data).
 
 %% @doc 事务内插入图片（归档写守卫同事务；与相册计数更新同事务）
 -spec insert_photo_tx(any(), map()) -> {ok, integer()} | {error, term()}.
 insert_photo_tx(Conn, Data) ->
-    insert_photo_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+    insert_photo_run(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Data).
 
 -spec insert_photo_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
 ) ->
     {ok, integer()} | {error, term()}.
 insert_photo_run(Exec, Data) ->
@@ -292,8 +302,18 @@ find_photo_by_id(Id) ->
 -spec list_photos(binary(), integer(), integer(), binary()) -> {ok, map()} | {error, term()}.
 list_photos(AlbumId, Page, Size, Column) ->
     Tb = photo_tablename(),
+    Page1 =
+        case Page of
+            P when P > 0 -> P;
+            _ -> 1
+        end,
+    Size1 =
+        case Size of
+            S when S > 0 -> S;
+            _ -> 1
+        end,
     elib_pg:page_with_total(
-        Tb, Column, #{album_id => AlbumId, status => 1}, <<"created_at DESC">>, Page, Size
+        Tb, Column, #{album_id => AlbumId, status => 1}, <<"created_at DESC">>, Page1, Size1
     ).
 
 %% @doc 删除图片（软删除）
@@ -320,15 +340,17 @@ delete_photo_tx(Conn, Id) ->
 %% @return {ok, Count} | {error, Reason}
 -spec like_photo(binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 like_photo(PhotoId, UserId) ->
-    like_photo_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, PhotoId, UserId).
+    like_photo_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, PhotoId, UserId).
 
 %% @doc 事务内点赞图片（归档写守卫同事务；点赞记录与计数同事务化）
 -spec like_photo_tx(any(), binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 like_photo_tx(Conn, PhotoId, UserId) ->
-    like_photo_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, PhotoId, UserId).
+    like_photo_run(
+        fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, PhotoId, UserId
+    ).
 
 -spec like_photo_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), binary(), integer()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), binary(), integer()
 ) ->
     {ok, non_neg_integer()} | {error, term()}.
 like_photo_run(Exec, PhotoId, UserId) ->
@@ -355,17 +377,17 @@ like_photo_run(Exec, PhotoId, UserId) ->
 %% @return {ok, Count} | {error, Reason}
 -spec unlike_photo(binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 unlike_photo(PhotoId, UserId) ->
-    unlike_photo_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, PhotoId, UserId).
+    unlike_photo_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, PhotoId, UserId).
 
 %% @doc 事务内取消点赞（归档写守卫同事务；删除记录与计数同事务化）
 -spec unlike_photo_tx(any(), binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 unlike_photo_tx(Conn, PhotoId, UserId) ->
     unlike_photo_run(
-        fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, PhotoId, UserId
+        fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, PhotoId, UserId
     ).
 
 -spec unlike_photo_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), binary(), integer()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), binary(), integer()
 ) ->
     {ok, non_neg_integer()} | {error, term()}.
 unlike_photo_run(Exec, PhotoId, UserId) ->
@@ -410,7 +432,7 @@ is_liked(PhotoId, UserId) ->
 -spec add_comment(binary(), integer(), binary()) -> {ok, integer()} | {error, term()}.
 add_comment(PhotoId, UserId, Content) ->
     add_comment_run(
-        fun(Sql, Params) -> elib_pg:query(Sql, Params) end,
+        fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end,
         PhotoId,
         UserId,
         Content
@@ -420,14 +442,14 @@ add_comment(PhotoId, UserId, Content) ->
 -spec add_comment_tx(any(), binary(), integer(), binary()) -> {ok, integer()} | {error, term()}.
 add_comment_tx(Conn, PhotoId, UserId, Content) ->
     add_comment_run(
-        fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end,
+        fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end,
         PhotoId,
         UserId,
         Content
     ).
 
 -spec add_comment_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}),
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}),
     binary(),
     integer(),
     binary()

@@ -51,15 +51,15 @@ tablename() ->
 %% 与其他 repo 的 {ok, Id}（2-tuple）约定不同，调用方不可改为 2-tuple 匹配。
 -spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
 insert(Data) ->
-    insert_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+    insert_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, Data).
 
 %% @doc 事务内插入群作业（归档写守卫同事务，DS 层 write_tx 调用）
 -spec insert_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
 insert_tx(Conn, Data) ->
-    insert_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+    insert_run(fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, Data).
 
 -spec insert_run(
-    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
 ) ->
     {ok, integer(), map()} | {error, term()}.
 insert_run(Exec, Data) ->

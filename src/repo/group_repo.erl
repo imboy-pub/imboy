@@ -75,7 +75,12 @@ add(Conn, Data) ->
 -spec create(map()) -> {ok, integer()} | {error, term()}.
 create(Data0) ->
     Data = normalize_legacy_create_data(Data0),
-    elib_pg:with_tx(fun(Conn) -> add(Conn, Data) end).
+    TxRes = elib_pg:with_tx(fun(Conn) -> add(Conn, Data) end),
+    case TxRes of
+        {rollback, Reason} -> {error, Reason};
+        {error, Reason} -> {error, Reason};
+        {ok, GroupId} -> {ok, GroupId}
+    end.
 
 %% @doc 兼容旧接口：按 gid 查询群组（排除 chat_aes_key 列）
 -spec find_by_gid(integer() | binary()) -> {ok, map()} | {error, term()}.
@@ -167,7 +172,17 @@ page(Page, Size, Where, OrderBy) ->
             "id,title,avatar,owner_uid,creator_uid,type,join_limit,member_count,introduction,"
             "status,scope,workspace_id,created_at"
         >>,
-    elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
+    Page1 =
+        case Page of
+            P when P > 0 -> P;
+            _ -> 1
+        end,
+    Size1 =
+        case Size of
+            S when S > 0 -> S;
+            _ -> 1
+        end,
+    elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page1, Size1).
 
 %% @doc 更新群组信息
 -spec update(map()) -> {ok, non_neg_integer()} | {error, any()}.
@@ -183,7 +198,7 @@ update_by_id_tx(Conn, Gid, Data) ->
     Tb = tablename(),
     UpdateData = maps:without([<<"id">>], Data),
     {Sql, Params} = elib_pg_sql:update(Tb, UpdateData, <<"id = $1">>, [Gid]),
-    elib_pg:execute(Conn, Sql, Params).
+    elib_pg:execute_count(Conn, Sql, Params).
 
 %% @doc 在事务中更新群主
 %% 更新指定群组的群主ID

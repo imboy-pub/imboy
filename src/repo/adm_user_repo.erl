@@ -48,7 +48,7 @@ count(Conn) ->
     Result =
         case Conn of
             undefined -> elib_pg:query(Sql, []);
-            _ -> elib_pg:query(Conn, Sql, [])
+            P when is_pid(P) -> elib_pg:query(P, Sql, [])
         end,
     case Result of
         {ok, [#{<<"count">> := Count}]} -> {ok, Count};
@@ -101,22 +101,26 @@ select_by_where(WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) ->
 -spec select_by_where(binary(), binary() | map(), integer(), integer(), binary()) ->
     {ok, [map()]} | {error, any()}.
 select_by_where(Column, Where, Limit, Offset, OrderBy) when is_binary(Where) ->
-    case Limit > 0 of
-        false ->
-            {ok, []};
-        true ->
+    case Limit of
+        L when is_integer(L), L > 0 ->
             Tb = tablename(),
-            Page = (Offset div Limit) + 1,
-            elib_pg:page(Tb, Column, #{<<"__raw">> => Where}, OrderBy, Page, Limit)
+            Page =
+                case (Offset div Limit) + 1 of
+                    P when P > 0 -> P;
+                    _ -> 1
+                end,
+            elib_pg:page(Tb, Column, #{<<"__raw">> => Where}, OrderBy, Page, L)
     end;
 select_by_where(Column, WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) ->
-    case Limit > 0 of
-        false ->
-            {ok, []};
-        true ->
+    case Limit of
+        L when is_integer(L), L > 0 ->
             Tb = tablename(),
-            Page = (Offset div Limit) + 1,
-            elib_pg:page(Tb, Column, WhereMap, OrderBy, Page, Limit)
+            Page =
+                case (Offset div Limit) + 1 of
+                    P when P > 0 -> P;
+                    _ -> 1
+                end,
+            elib_pg:page(Tb, Column, WhereMap, OrderBy, Page, L)
     end.
 
 %% @doc 根据WHERE条件查询（安全排序）
@@ -132,10 +136,8 @@ select_by_where(Column, WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) 
 ) ->
     {ok, [map()]} | {error, any()}.
 select_by_where_safe(Column, WhereMap, Limit, Offset, OrderSpec, ValidFields) ->
-    case Limit > 0 of
-        false ->
-            {ok, []};
-        true ->
+    case Limit of
+        L when is_integer(L), L > 0 ->
             Tb = tablename(),
             {Sql, Params} =
                 elib_pg_sql:build_select_safe(
@@ -144,7 +146,7 @@ select_by_where_safe(Column, WhereMap, Limit, Offset, OrderSpec, ValidFields) ->
                     WhereMap,
                     OrderSpec,
                     ValidFields,
-                    #{limit => Limit, offset => Offset}
+                    #{limit => L, offset => Offset}
                 ),
             elib_pg:query(Sql, Params)
     end.
@@ -255,7 +257,7 @@ save(Conn, Data) ->
     Result =
         case Conn of
             undefined -> elib_pg:query(Sql, Params);
-            _ -> elib_pg:query(Conn, Sql, Params)
+            P when is_pid(P) -> elib_pg:query(P, Sql, Params)
         end,
     case Result of
         {ok, _Count} -> {ok, Id};
