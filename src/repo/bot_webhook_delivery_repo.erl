@@ -47,8 +47,11 @@ insert_tx(Conn, D) ->
             " correlation_id, idempotency_key, webhook_url, webhook_host, pinned_ip)"
             " VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10)"
             " ON CONFLICT (idempotency_key) DO NOTHING">>,
+    %% elib_pg:query/3 已收敛为 {ok, [map()]}：无 RETURNING 的 INSERT 的 {ok, Count}
+    %% 被收敛成 {ok, []}，旧形态映射把首插判成 duplicate、审计永不执行。改走
+    %% execute_count 计数契约（与 agent_task_repo insert_event_tx 同款修复）。
     case
-        elib_pg:query(Conn, Sql, [
+        elib_pg:execute_count(Conn, Sql, [
             Did,
             BotId,
             EventType,
@@ -61,15 +64,9 @@ insert_tx(Conn, D) ->
             PinnedIP
         ])
     of
-        {ok, [_]} ->
+        {ok, N} when is_integer(N), N > 0 ->
             inserted_with_audit(Conn, Corr, Did);
-        {ok, []} ->
-            {ok, duplicate};
-        {ok, N} when is_integer(N), N > 0 -> inserted_with_audit(Conn, Corr, Did);
-        {ok, 0} ->
-            {ok, duplicate};
-        {ok, N, _} when is_integer(N), N > 0 -> inserted_with_audit(Conn, Corr, Did);
-        {ok, 0, []} ->
+        {ok, _} ->
             {ok, duplicate};
         {error, Reason} ->
             ?ERROR_LOG("bot_delivery_repo:insert error ~p~n", [Reason]),
@@ -184,7 +181,10 @@ update_status(DeliveryId, Status, AttemptNo, RetryAfterSecs) ->
     of
         {rollback, Reason} -> {error, Reason};
         {error, Reason} -> {error, Reason};
-        {ok, Status} -> {ok, Status}
+        %% {ok, Status} 会把此处当成对函数头已绑定参数 Status 的匹配
+        %% （模式位置不重新绑定）——子句实际变成 {ok, <<"retry">>} 之类，
+        %% 行数 {ok, 1} 永不匹配 → case_clause。显式改用新变量名。
+        {ok, Count} -> {ok, Status}
     end.
 
 status_sql(Tb, DeliveryId, <<"retry">>, AttemptNo, RetryAfterSecs) ->

@@ -185,8 +185,12 @@ insert_event_tx(Conn, Data) ->
         <<"INSERT INTO ", Tb/binary,
             " (id, task_id, status, seq, correlation_id, idempotency_key) ",
             "VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (idempotency_key) DO NOTHING">>,
+    %% elib_pg:query/3 已收敛为 {ok, [map()]} 契约：无 RETURNING 的 INSERT 返回
+    %% {ok, Count} 被收敛成 {ok, []}，旧计数形态映射把每次首插都判成 duplicate
+    %% → persist_transition_tx abort → record_event 恒 skip（11 模块 main 红主根因）。
+    %% 无 RETURNING 语句走 execute_count 计数契约（与 cas_status 的 RETURNING id 模式对齐）。
     case
-        elib_pg:query(Conn, Sql, [
+        elib_pg:execute_count(Conn, Sql, [
             Id,
             ec_cnv:to_binary(TaskId),
             ec_cnv:to_binary(Status),
@@ -195,13 +199,8 @@ insert_event_tx(Conn, Data) ->
             Idem
         ])
     of
-        {ok, [_]} -> {ok, inserted};
-        {ok, []} -> {ok, duplicate};
-        %% INSERT 无 RETURNING 时 epgsql 返回 {ok, Count}（elib_pg 原样透传）
         {ok, Count} when is_integer(Count), Count > 0 -> {ok, inserted};
-        {ok, Count} when is_integer(Count) -> {ok, duplicate};
-        {ok, 1, [_]} -> {ok, inserted};
-        {ok, 0, []} -> {ok, duplicate};
+        {ok, _} -> {ok, duplicate};
         {error, _} = E -> E
     end.
 
@@ -236,8 +235,9 @@ insert_decision_tx(Conn, Data) ->
     Sql =
         <<"INSERT INTO ", Tb/binary, " (id, task_id, decision, approver_uid, correlation_id) ",
             "VALUES ($1,$2,$3,$4,$5) ON CONFLICT (task_id) DO NOTHING">>,
+    %% 同 insert_event_tx：无 RETURNING 的 INSERT 必须走 execute_count 计数契约。
     case
-        elib_pg:query(Conn, Sql, [
+        elib_pg:execute_count(Conn, Sql, [
             Id,
             ec_cnv:to_binary(TaskId),
             ec_cnv:to_binary(Decision),
@@ -245,13 +245,8 @@ insert_decision_tx(Conn, Data) ->
             Corr
         ])
     of
-        {ok, [_]} -> {ok, inserted};
-        {ok, []} -> {ok, duplicate};
-        %% INSERT 无 RETURNING 时 epgsql 返回 {ok, Count}（elib_pg 原样透传）
         {ok, Count} when is_integer(Count), Count > 0 -> {ok, inserted};
-        {ok, Count} when is_integer(Count) -> {ok, duplicate};
-        {ok, 1, [_]} -> {ok, inserted};
-        {ok, 0, []} -> {ok, duplicate};
+        {ok, _} -> {ok, duplicate};
         {error, _} = E -> E
     end.
 
