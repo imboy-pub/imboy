@@ -212,6 +212,15 @@ await_device_done(Dir, Deadline) ->
     end.
 
 run() ->
+    %% 单跑自足 boot（WH-05 ensure_cache 同族）：登录断言走真 passport 链，
+    %% login_security_logic 首步即 call login_attempt_ds:is_locked，其属主
+    %% 是 imboy sup 树 worker（init 建 login_attempt_ets）。全量轨道靠前面
+    %% ?TEST_WITH_DB 套件搭便车；单模块跑 app 缺位 → ets badarg → login 500。
+    %% eunit_setup 幂等：app 已启动时走 already_started 快径并幂等重放测试
+    %% 轨道 env（无行为增量）；fresh boot 按 pg_conf 先建指向共享库的默认
+    %% 池，setup_all 的 ensure_pool 随后 rm+重建指向 marker 库——池名 pgsql
+    %% 全程唯一，套件内池化路径只落 marker 库，隔离不变。
+    _ = eunit_runner:eunit_setup(),
     H = ?HTTP:setup_all(),
     Old = [
         {K, application:get_env(imboy, K)}
