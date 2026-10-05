@@ -298,6 +298,14 @@ TEST_ERLC_OPTS += $(ERLC_COMPILE_OPTS)
 # Common Test
 CT_CONFIG ?= config/sys.config
 TEST_HTTP_PORT ?= 0
+# 2026-10-04 SC153 review §13.7：本变量此前从未 export，`?= 0` 是死代码——
+# eunit VM 里 os:getenv("TEST_HTTP_PORT") 恒为 false，test_http_port() 回落
+# 硬编码 19800；19800 被同机 release VM 占用时全量轨道 boot 即
+# {listener_start_failed,http,eaddrinuse} 连锁全灭（SC153 验收期实证）。
+# export 后默认 0 = 内核随机端口，与 CT 轨道语义对齐（CT_ERL_ARGS 一直
+# 直接注入 $(TEST_HTTP_PORT)=0）；调用方显式导出非零值（如门跑
+# TEST_HTTP_PORT=47980）经环境继承，行为不变。
+export TEST_HTTP_PORT
 CT_CONFIG_BASE = $(patsubst %.config,%,$(CT_CONFIG))
 CT_CONFIG_BASE_ABS = $(abspath $(CT_CONFIG_BASE))
 CT_ERL_ARGS = -config $(CT_CONFIG_BASE_ABS) -eval 'application:load(imboy)' -eval 'application:set_env(imboy, env, test)' -eval 'application:set_env(imboy, http_port, $(TEST_HTTP_PORT))' -eval 'application:set_env(imboy, dsync_enabled, false)'
