@@ -15,10 +15,14 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    fun() ->
+    %% public_tablename/1 按 sql_driver 分叉（pgsql → "public." 前缀）：
+    %% 本用例是文件首个用例且无 setup，单模块跑时 app env 为空 → 驱动
+    %% 未知退裸名 → 断言必挂（全量轨道里靠前面套件的 boot 搭便车，
+    %% 顺序敏感债）。显式走 ?TEST_WITH_APP 补 boot，消除对执行顺序的依赖。
+    ?TEST_WITH_APP(fun() ->
         Result = group_log_repo:tablename(),
         ?assertEqual(<<"public.group_log">>, Result)
-    end.
+    end).
 
 %% ===================================================================
 %% add/2 测试
@@ -28,6 +32,7 @@ add_log_success_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
+                {'execute_count', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end},
                 {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
             ]},
             {elib_pg_sql, [
@@ -57,6 +62,7 @@ add_log_different_types_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
+                {'execute_count', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end},
                 {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
             ]},
             {elib_pg_sql, [
@@ -128,6 +134,7 @@ batch_add_single_log_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
+                {'execute_count', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end},
                 {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
             ]},
             {elib_tsid, [
@@ -155,6 +162,7 @@ batch_add_multiple_logs_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
+                {'execute_count', 3, fun(_Conn, _Sql, _Params) -> {ok, 3} end},
                 {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 3} end}
             ]},
             {elib_tsid, [
@@ -196,7 +204,7 @@ batch_add_error_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 3, fun(_Conn, _Sql, _Params) -> {error, batch_insert_failed} end}
+                {'execute_count', 3, fun(_Conn, _Sql, _Params) -> {error, batch_insert_failed} end}
             ]},
             {elib_tsid, [
                 {'generate', 1, fun(_Table) -> 12345 end}
@@ -227,9 +235,15 @@ add_and_batch_add_logs_flow_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 3, fun(_Conn, _Sql, Params) ->
+                {'execute_count', 3, fun(_Conn, _Sql, Params) ->
                     case length(Params) of
                         % batch_add has 12 params (2 rows * 6, 含 id)
+                        L when L > 6 -> {ok, 2};
+                        _ -> {ok, 1}
+                    end
+                end},
+                {'execute', 3, fun(_Conn, _Sql, Params) ->
+                    case length(Params) of
                         L when L > 6 -> {ok, 2};
                         _ -> {ok, 1}
                     end

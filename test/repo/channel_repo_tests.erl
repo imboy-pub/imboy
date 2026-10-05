@@ -86,7 +86,7 @@ increment_subscribers_positive_uses_plus_operator_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 2, fun(Sql, [3, 11]) ->
+                {'execute_count', 2, fun(Sql, [3, 11]) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assert(
                         re:run(SqlBin, <<"subscriber_count = subscriber_count \\+ \\$1">>) =/=
@@ -105,7 +105,7 @@ increment_subscribers_negative_uses_minus_operator_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 2, fun(Sql, [2, 11]) ->
+                {'execute_count', 2, fun(Sql, [2, 11]) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assert(
                         re:run(SqlBin, <<"subscriber_count = subscriber_count - \\$1">>) =/= nomatch
@@ -123,7 +123,7 @@ increment_subscribers_with_conn_uses_execute3_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 3, fun(fake_conn, Sql, [4, 11]) ->
+                {'execute_count', 3, fun(fake_conn, Sql, [4, 11]) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assert(
                         re:run(SqlBin, <<"subscriber_count = subscriber_count \\+ \\$1">>) =/=

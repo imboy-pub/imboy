@@ -102,7 +102,7 @@ delete_by_uid_returns_count_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 2, fun(Sql, [9999]) ->
+                {'execute_count', 2, fun(Sql, [9999]) ->
                     ?assertMatch({_, _}, binary:match(Sql, <<"DELETE FROM e2ee_key_backups">>)),
                     {ok, 2}
                 end}

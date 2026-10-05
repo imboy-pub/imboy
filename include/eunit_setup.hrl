@@ -225,7 +225,14 @@
 -define(WITH_MECKS(MockConfigs, TestFun),
     {setup,
         fun() ->
-            lists:foreach(
+            %% 先补 boot（幂等：全量轨道里 app 已起则直通）。历史行为依赖
+            %% 「同 VM 前面的 TEST_WITH_DB 套件已把 app 拉起来」——单模块跑
+            %% 纯 mock 套件时 app env 为空（-config 值未 load 进 env）：
+            %% sql_driver 未知 → public_tablename 退裸名、pg_conf 缺失 →
+            %% pooler 未启动 → 未被 mock 拦住的真调用直接 noproc
+            %% （group_log/friend_category/app_version 单跑实证）。
+            BootState = eunit_runner:eunit_setup(),
+            MockState = lists:foreach(
                 fun({Module, Expectations}) ->
                     case meck_helper:setup_mock(Module, Expectations) of
                         {ok, _} ->
@@ -235,15 +242,17 @@
                     end
                 end,
                 MockConfigs
-            )
+            ),
+            {BootState, MockState}
         end,
-        fun(_) ->
+        fun({BootState, _MockState}) ->
             lists:foreach(
                 fun({Module, _Expectations}) ->
                     meck_helper:cleanup_mock(Module)
                 end,
                 MockConfigs
-            )
+            ),
+            eunit_runner:eunit_cleanup(BootState)
         end,
         fun(_) -> ?_test((TestFun)()) end}
 ).
