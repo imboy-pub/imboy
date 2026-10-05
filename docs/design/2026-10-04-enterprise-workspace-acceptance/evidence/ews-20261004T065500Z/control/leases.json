@@ -1,0 +1,18 @@
+{
+  "run_id": "ews-20261004T065500Z",
+  "owned_by_this_run": {
+    "imboy_worktree": {"path": "/private/tmp/imboy-ews-be", "branch": "run/ews-acceptance", "created_from": "main@0be001e3"},
+    "imboyadmin_worktree": {"path": "/private/tmp/imboy-ews-admin", "branch": "run/ews-acceptance", "created_from": "main@c9e73ad"},
+    "run_root": "imboy/docs/design/2026-10-04-enterprise-workspace-acceptance/evidence/ews-20261004T065500Z/",
+    "proposed_not_yet_authorized": {"pg_container": {"name": "ews_pg18", "port": 26432, "mode": "tmpfs+synthetic creds, compose project ews-<run_id>"}, "backend_node": {"port": 20800, "cookie": "ews_<run_id>"}, "admin_dev": {"port": 20706}}
+  },
+  "foreign_not_to_touch": {
+    "imboy_pg18_4323": "runtime DB since 2026-09-18, forbidden by V2.1",
+    "local_pg_5432": "shared native, forbidden",
+    "android_XWE6R19916004085": "full-product owner first; this run does not lease",
+    "full_product_ports": "25432/19800/19706 proposed by full-product line",
+    "customer_service_line": "seat domain per b65c8b42 handoff"
+  },
+  "shared_paths_queue": ["src/imboy_router.erl", "Admin src/App.tsx", "Admin sidebarSchema.ts", "Makefile", "vite.config.ts", "package.json", "flutter app_router.dart", "i18n"],
+  "git_identity": "leeyi <leeyisoft@qq.com>"
+}

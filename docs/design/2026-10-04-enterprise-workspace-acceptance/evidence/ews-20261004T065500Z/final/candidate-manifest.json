@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "run_id": "ews-20261004T065500Z",
+  "plan_path": "docs/plans/2026-10-04-zcode-enterprise-workspace-parallel-acceptance.md",
+  "plan_sha256": "afefa4d977397567db7e207da12c06dffc2f1b5c20b8d4049e8a67e8a06679e9",
+  "created_at": "2026-10-04T10:30:00+08:00",
+  "repos": {
+    "imboy": {"base_sha": "0be001e33444db8fec78961d4916e71056f48d78", "candidate_sha": "1b8b8c0df6abfd1f31a91e91e602ef07320f6022", "branch": "run/ews-acceptance", "commits": ["fd53e9b3 fix(contract): resync api_contract.json with attachment download gateway route", "1b8b8c0d test(eb): resync frozen SQL audit counts with purge-intent and orphan-asset statements"], "dirty_state": [], "untracked_run_assets": ["config/sys.ews.config (archived to evidence/backend/)"]},
+    "imboyadmin": {"base_sha": "c9e73adcf3151d2214461d12e0998651ec811dd6", "candidate_sha": "2750da6ca951891507a5427f9562d8cdcffd19b7", "branch": "run/ews-acceptance", "commits": ["b89141e1 test(adm): parameterize ADM-03 unique org name", "a132da2 test(ent-int01): parameterize org/member anchors", "2750da6 test(ent-int01): parameterize writeops PG_DB and oracle log"], "dirty_state": [], "untracked_run_assets": ["ews.int01.config.ts (archived to evidence/ADM-03-L0/)"]},
+    "imboyapp": {"base_sha": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b", "candidate_sha": "d17bb0208e99a16ef7702ceabf2492f3f129ac4b", "branch": "main (read-only, no handoff)", "commits": [], "dirty_state": []}
+  },
+  "runtime_fingerprint": {"pg_database": "imboy_ews_20261004T0655Z@127.0.0.1:4323 (extensions timescaledb/pgcrypto/postgis/pg_jieba; schema_migrations version=164 dirty=f)", "backend_node": "ews_be@127.0.0.1 http 20800/adm 20706 cookie ews_cookie_20261004", "admin_dev": "vite 20706 + 8906 -> VITE_PROXY_TARGET 20800", "relay": "127.0.0.1:26543 -> 4323 (run-owned; foreign 15432 untouched)"},
+  "integration_ledger_hash": "n/a (single-owner integration; run branch commits listed above)",
+  "acceptance_binding": "acceptance.tsv + control/evidence-hashes-*.txt bind every green gate to these candidate SHAs"
+}

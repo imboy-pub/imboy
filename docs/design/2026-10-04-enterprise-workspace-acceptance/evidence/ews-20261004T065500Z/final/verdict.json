@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "run_id": "ews-20261004T065500Z",
+  "computed_at": "2026-10-04T13:30:00+08:00",
+  "candidate": {"imboy": "1b8b8c0d", "imboyadmin": "2750da6", "imboyapp": "d17bb020 (read-only)"},
+  "verdicts": {
+    "BACKEND_ENTERPRISE_DOMAIN_GATES": "PASS — 合同(CON-01/02 flatten 42ops/18scopes四方) + CONTRACT-GATE(835) + ORG-01 12/12 + 域批 ~60模块绿 + Internal PG 40/40 + Grant 10/10 + OA 53/53 + eb e2e a01-a06 + E2EE-LOCAL 497/497 + EB db_it 153/0",
+    "BACKEND_FULL_EUNIT_RC0": "FAIL(2) — R6 final: 10889 passed / 2 failed / 0 skipped; both failures are main-base defects (mechanically proven: git diff base -- src/ test/ = 0): EWS-BE-D1 trust_audit TSID unregistered (P2), EWS-BE-D2 OA SSO dual-clock check violation (P1, INT-14 error contract). Not exempted, not mislabeled; R5's other 4 failures proven infra (disk_full/timeout) and green in R6/standalone",
+    "MIG_01": "PASS — empty-up 164 migrations/240 tables + db_it up/down/up + hold/purge negatives 153/0",
+    "ADM_02": "PASS — unit 2386/0 + lint + typecheck + build",
+    "ADM_03": "PASS — real-browser 32/32 (nine-leaves 10 + ent-int01 5 + writeops 17) on run-scoped stack with triple oracle (HTTP+psql DB+UI); mock L0 layer 13 pass/7 declared-skip",
+    "APP_DEVICE": "BLOCKED_NO_HANDOFF — case manifest + 3 defect cards delivered to full-product owner; no App source/device touched",
+    "OA_SSO_LOCAL": "PASS with defect — oa_sso 53/53 + expiry + context_binding green; EWS-BE-D2 (P1) filed with SQL proof; customer-OA live integration BLOCKED_EXTERNAL (kept in scope registry)",
+    "EXTERNAL": "NOT_EXECUTED", "PRODUCTION": "NOT_EXECUTED", "RELEASE": "NO_GO",
+    "USER_VISUAL": "PENDING"
+  },
+  "environment_recoveries": [
+    "heart-managed run node auto-restart held port 20800 (R1/R2/R2b invalid) — killed heart-first",
+    "admin vite on 20706 collided with eunit adm port — stopped after browser gates done",
+    "eunit default TEST_HTTP_PORT 19800 held by foreign main-tree node imboy_local — rerouted to 29800 (R5/R6 clean)",
+    "PG instance disk exhaustion (170 historical inttest marker DBs) crashed instance mid-R5; auto-recovered; 4 failures attributed infra and verified green post-recovery; zero foreign DBs touched"
+  ],
+  "fixes": {"imboy": ["fd53e9b3 contract resync", "1b8b8c0d eb audit counts"], "imboyadmin": ["b89141e1", "a132da2", "2750da6 spec anchor parameterization"]},
+  "main_base_defects_filed": ["EWS-BE-D1 defect-trust-audit-tsid.md (P2)", "EWS-BE-D2 defect-oa-sso-dual-clock.md (P1, SQL proof)"],
+  "not_a_pass_for": ["production", "release", "external integrations", "user visual acceptance", "App device journeys (await handoff)"]
+}
