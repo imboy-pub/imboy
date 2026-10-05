@@ -74,7 +74,7 @@ page_active(Page, Size) ->
     Column = <<"id,user_id,title,cover,status,viewer_count,tag_id,scene,created_at,updated_at">>,
     Where = #{status => 1},
     OrderBy = <<"viewer_count DESC, id DESC">>,
-    elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
+    elib_pg:page_with_total(Tb, Column, Where, OrderBy, max(1, Page), max(1, Size)).
 
 %% @doc 按用户分页查询直播间
 %% @param Uid 用户ID
@@ -87,4 +87,4 @@ page_by_uid(Uid, Page, Size) ->
     Column = <<"id,user_id,title,cover,status,viewer_count,tag_id,scene,created_at,updated_at">>,
     Where = #{user_id => Uid},
     OrderBy = <<"id DESC">>,
-    elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
+    elib_pg:page_with_total(Tb, Column, Where, OrderBy, max(1, Page), max(1, Size)).

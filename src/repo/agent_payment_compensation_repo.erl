@@ -46,40 +46,46 @@ release(CompensationId) ->
             " SET status = 'released', released_at = NOW(), updated_at = NOW(),"
             "     lease_until = NULL, last_error = NULL"
             " WHERE id = $1 AND status IN ('settling', 'pending', 'processing')">>,
-    elib_pg:with_tx(fun(Conn) ->
-        case elib_pg:query(Conn, SelectSql, [CompensationId]) of
-            {ok, []} ->
-                {error, compensation_not_found};
-            {ok, [
-                #{
-                    <<"mandate_id">> := MandateId,
-                    <<"amount_fen">> := AmountFen,
-                    <<"status">> := Status
-                }
-            ]} ->
-                case Status of
-                    <<"settled">> ->
-                        ok;
-                    <<"released">> ->
-                        ok;
-                    _ ->
-                        case elib_pg:execute(Conn, ReleaseSql, [MandateId, AmountFen]) of
-                            {ok, 1} ->
-                                case elib_pg:execute(Conn, MarkSql, [CompensationId]) of
-                                    {ok, 1} -> ok;
-                                    {ok, 0} -> throw({rollback, compensation_state_changed});
-                                    {error, Reason} -> throw({rollback, Reason})
-                                end;
-                            {ok, 0} ->
-                                throw({rollback, mandate_not_found});
-                            {error, Reason} ->
-                                throw({rollback, Reason})
-                        end
-                end;
-            {error, Reason} ->
-                {error, Reason}
-        end
-    end).
+    TxRes =
+        elib_pg:with_tx(fun(Conn) ->
+            case elib_pg:query(Conn, SelectSql, [CompensationId]) of
+                {ok, []} ->
+                    {error, compensation_not_found};
+                {ok, [
+                    #{
+                        <<"mandate_id">> := MandateId,
+                        <<"amount_fen">> := AmountFen,
+                        <<"status">> := Status
+                    }
+                ]} ->
+                    case Status of
+                        <<"settled">> ->
+                            ok;
+                        <<"released">> ->
+                            ok;
+                        _ ->
+                            case elib_pg:execute(Conn, ReleaseSql, [MandateId, AmountFen]) of
+                                {ok, 1} ->
+                                    case elib_pg:execute(Conn, MarkSql, [CompensationId]) of
+                                        {ok, 1} -> ok;
+                                        {ok, 0} -> throw({rollback, compensation_state_changed});
+                                        {error, Reason} -> throw({rollback, Reason})
+                                    end;
+                                {ok, 0} ->
+                                    throw({rollback, mandate_not_found});
+                                {error, Reason} ->
+                                    throw({rollback, Reason})
+                            end
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
+            end
+        end),
+    case TxRes of
+        {rollback, Reason} -> {error, Reason};
+        {error, Reason} -> {error, Reason};
+        ok -> ok
+    end.
 
 %% @doc 领取到期/待重试/租约过期的补偿记录，单条 UPDATE 避免多节点重复处理。
 -spec claim_pending(pos_integer()) -> {ok, [map()]} | {error, term()}.
@@ -113,11 +119,13 @@ mark_retry(CompensationId, DelaySecs, Reason) ->
             " SET status = 'pending', next_attempt_at = NOW() + ($2 * INTERVAL '1 second'),"
             "     lease_until = NULL, last_error = $3, updated_at = NOW()"
             " WHERE id = $1 AND status = 'processing'">>,
-    case
-        elib_pg:query(Sql, [
-            CompensationId, DelaySecs, iolist_to_binary(io_lib:format("~p", [Reason]))
-        ])
-    of
+    ReasonBin =
+        case unicode:characters_to_binary(io_lib:format("~p", [Reason])) of
+            B when is_binary(B) -> B;
+            {incomplete, B, _} -> B;
+            _ -> <<>>
+        end,
+    case elib_pg:query(Sql, [CompensationId, DelaySecs, ReasonBin]) of
         {ok, _} -> ok;
         {error, Error} -> {error, Error}
     end.

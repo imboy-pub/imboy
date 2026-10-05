@@ -54,8 +54,6 @@ set_delivery_status_tx(Conn, DeliveryId, Status) ->
     case elib_pg:query(Conn, Sql, [DeliveryId, delivery_status(Status)]) of
         {ok, [_]} -> ok;
         {ok, []} -> no_chain;
-        {ok, 0} -> no_chain;
-        {ok, _N, [_]} -> ok;
         {error, Reason} -> abort({audit_delivery_update_failed, Reason});
         Other -> abort({audit_delivery_update_failed, Other})
     end.
@@ -114,7 +112,6 @@ insert_tx(Conn, Corr, Type, EntityId, ParentId, Status) ->
             " VALUES ($1,$2,$3,$4,$5) RETURNING entity_id">>,
     case elib_pg:query(Conn, Sql, [Corr, Type, EntityId, ParentId, Status]) of
         {ok, [_]} -> ok;
-        {ok, _N, [_]} -> ok;
         {error, Reason} -> abort({audit_insert_failed, Type, Reason});
         Other -> abort({audit_insert_failed, Type, Other})
     end.
@@ -160,14 +157,13 @@ latest_parent_tx(Conn, Corr, Types) ->
     of
         {ok, [#{<<"entity_id">> := EntityId}]} -> {ok, EntityId};
         {ok, []} -> not_found;
-        {ok, 0} -> not_found;
         {error, Reason} -> abort({audit_parent_lookup_failed, Reason});
         Other -> abort({audit_parent_lookup_failed, Other})
     end.
 
 stable_id(Prefix, Seed) ->
     Hex = binary:encode_hex(crypto:hash(sha256, Seed), lowercase),
-    <<Head:32/binary, _/binary>> = Hex,
+    Head = binary:part(Hex, 0, 32),
     <<Prefix/binary, Head/binary>>.
 
 delivery_status(<<"success">>) -> <<"delivered">>;

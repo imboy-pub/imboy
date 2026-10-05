@@ -41,7 +41,7 @@ page(Page, Size, Filters) ->
                 Where1
         end,
     Column = <<"id, word, category, severity, created_at">>,
-    elib_pg:page_with_total(Tb, Column, Where2, <<"id desc">>, Page, Size).
+    elib_pg:page_with_total(Tb, Column, Where2, <<"id desc">>, max(1, Page), max(1, Size)).
 
 %% @doc 全量词表（R-03 policy 入口消费；量级=人工维护的黑名单，几十到几千行）
 -spec all() -> {ok, [map()]} | {error, term()}.
@@ -76,4 +76,4 @@ insert(Word, Category, Severity) ->
 delete_by_id(Id) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
-    elib_pg:execute(Sql, [Id]).
+    elib_pg:execute_count(Sql, [Id]).

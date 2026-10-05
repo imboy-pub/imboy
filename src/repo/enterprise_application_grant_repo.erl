@@ -424,8 +424,6 @@ validate_workspaces(explicit, [_ | _] = Ids) ->
         false -> {error, invalid_workspaces}
     end;
 validate_workspaces(explicit, []) ->
-    {error, invalid_workspaces};
-validate_workspaces(_Kind, _WorkspaceIds) ->
     {error, invalid_workspaces}.
 
 -spec insert_grant(
@@ -669,6 +667,4 @@ map_error(Other) ->
 
 -spec constraint_name(list()) -> binary() | undefined.
 constraint_name(Extra) when is_list(Extra) ->
-    proplists:get_value(constraint_name, Extra);
-constraint_name(_Extra) ->
-    undefined.
+    proplists:get_value(constraint_name, Extra).

@@ -43,7 +43,7 @@ save(Uid, Lat, Lng) ->
             "ON CONFLICT (user_id) DO UPDATE SET "
             "location = EXCLUDED.location">>,
     % ?DEBUG_LOG(Sql),
-    elib_pg:execute(Sql, [Uid, Lng, Lat]).
+    elib_pg:execute_count(Sql, [Uid, Lng, Lat]).
 
 %% @doc 删除用户地理位置信息
 %% @param Uid 用户ID
@@ -53,7 +53,7 @@ delete(Uid) ->
     Tb = tablename(),
     Where = <<" WHERE user_id = $1">>,
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
-    elib_pg:execute(Sql, [Uid]).
+    elib_pg:execute_count(Sql, [Uid]).
 
 %% @doc 查询附近的人
 %% 使用 PostgreSQL PostGIS 插件的地理空间查询功能

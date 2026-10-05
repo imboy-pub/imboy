@@ -55,7 +55,7 @@ save(ToEmail, VerifyCode, ValidityAt, Now) ->
             "code = EXCLUDED.code, "
             "validity_at = EXCLUDED.validity_at, "
             "created_at = EXCLUDED.created_at">>,
-    elib_pg:execute(Sql, [ToEmail, VerifyCode, ValidityAt, Now]).
+    elib_pg:execute_count(Sql, [ToEmail, VerifyCode, ValidityAt, Now]).
 
 %% ===================================================================
 %% T-02 保留清理（retention-policy.yml sessions_tokens: event-driven→delete）
@@ -84,7 +84,7 @@ purge_expired(Cutoff, Limit) ->
     end.
 
 %% @doc 过期行计数（dry-run 用）
--spec count_expired(binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec count_expired(binary()) -> {ok, integer()} | {error, term()}.
 count_expired(Cutoff) ->
     Tb = tablename(),
     Sql =

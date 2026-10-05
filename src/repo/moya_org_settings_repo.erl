@@ -56,9 +56,7 @@ ai_assist_enabled_tx(Conn, OrgId) ->
 %% @doc 从 org_row_tx 的行取开关（Logic 层回读 payload 用）。纯函数、无 DB。
 -spec ai_assist_enabled_of(map()) -> boolean().
 ai_assist_enabled_of(Row) when is_map(Row) ->
-    ai_assist_from(maps:get(<<"settings">>, Row, #{}));
-ai_assist_enabled_of(_Other) ->
-    true.
+    ai_assist_from(maps:get(<<"settings">>, Row, #{})).
 
 %% @doc 写 AI 辅助开关（事务内）。只 jsonb_set 该键；机构不存在 → not_found。
 -spec set_ai_assist_enabled_tx(any(), integer(), boolean()) ->
@@ -93,9 +91,7 @@ ai_assist_from(Settings) when is_map(Settings) ->
         false -> false;
         <<"false">> -> false;
         _ -> true
-    end;
-ai_assist_from(_Other) ->
-    true.
+    end.
 
 -spec bool_json(boolean()) -> binary().
 bool_json(true) -> <<"true">>;

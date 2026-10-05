@@ -239,7 +239,7 @@ change_remark(FromUid, ToUid, Remark) ->
         <<"UPDATE ", Tb/binary,
             " SET remark = $1, updated_at = $2\n"
             "        WHERE status = $3 AND from_user_id = $4 AND to_user_id = $5">>,
-    elib_pg:execute(Sql, [Remark, Dt, 1, FromUid, ToUid]).
+    elib_pg:execute_count(Sql, [Remark, Dt, 1, FromUid, ToUid]).
 
 %% @doc 批量按分类变更好友分类ID
 %% @param Uid 用户ID
@@ -253,7 +253,7 @@ set_category_by_cid(Uid, CategoryId, NewCid) ->
         <<"UPDATE ", Tb/binary,
             " SET category_id = $1, updated_at = $2\n"
             "        WHERE status = $3 AND from_user_id = $4 AND category_id = $5">>,
-    elib_pg:execute(Sql, [NewCid, elib_dt:now(), 1, Uid, CategoryId]).
+    elib_pg:execute_count(Sql, [NewCid, elib_dt:now(), 1, Uid, CategoryId]).
 
 %% ===================================================================
 %% Internal Function Definitions

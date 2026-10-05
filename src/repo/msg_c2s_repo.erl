@@ -55,14 +55,15 @@ delete_msg(Id) ->
 %% @return {ok, Count} 删除成功 | {error, Reason} 删除失败
 -spec delete_msg
     (binary(), list()) -> {ok, non_neg_integer()} | {error, term()};
-    (binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+    (binary(), binary()) -> {ok, non_neg_integer()} | {error, term()};
+    (binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_msg(Where, Val) when is_list(Val) ->
     % 支持参数列表的安全版本（修复 SQL 注入风险）
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", Where/binary>>,
-    elib_pg:execute(Sql, Val);
+    elib_pg:execute_count(Sql, Val);
 delete_msg(Where, Val) ->
     % 兼容旧版本（单值）
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
-    elib_pg:execute(Sql, [Val]).
+    elib_pg:execute_count(Sql, [Val]).

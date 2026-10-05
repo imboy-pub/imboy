@@ -89,7 +89,7 @@ set_status_tx(Conn, ChannelId, WebhookId, Status) ->
             <<"id = $1 AND channel_id = $2">>,
             [WebhookId, ChannelId]
         ),
-    elib_pg:execute(Conn, Sql, Params).
+    elib_pg:execute_count(Conn, Sql, Params).
 
 %% ===================================================================
 %% WH-02：token 摘要化与轮换（PDT-01 webhook 契约 §3）
@@ -128,7 +128,7 @@ rotate(WebhookId, NewDigest, NewPrefix, OldDigest, GraceUntil) ->
             undefined -> null;
             B when is_binary(B) -> B
         end,
-    elib_pg:execute(
+    elib_pg:execute_count(
         <<"UPDATE ", Tb/binary,
             " SET token_digest = $2, token_prefix = $3,"
             " grace_digest = $4, grace_until = $5, updated_at = NOW()"

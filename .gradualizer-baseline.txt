@@ -31,9 +31,7 @@ adm_user_ds
 adm_user_handler
 adm_user_repo
 adm_workspace_handler
-agent_hub_audit_repo
 agent_payment_command
-agent_payment_compensation_repo
 agent_payment_logic
 agent_rate_limiter
 agent_task_repo
@@ -81,7 +79,6 @@ channel_message_repo
 channel_webhook_ds
 channel_webhook_handler
 channel_webhook_logic
-channel_webhook_repo
 config_ds
 conversation_handler
 cors_middleware
@@ -112,7 +109,6 @@ elib_uri
 elib_uuid
 elib_wechat_msg
 enterprise_admin_governance_logic
-enterprise_application_grant_repo
 enterprise_asset_handler
 enterprise_asset_repo
 enterprise_asset_retention_logic
@@ -144,9 +140,7 @@ friend_category_ds
 friend_ds
 friend_handler
 friend_logic
-friend_repo
 fts_logic
-geo_people_nearby_repo
 group_album_ds
 group_album_handler
 group_album_logic
@@ -202,7 +196,6 @@ imboy_syn
 imboy_telemetry
 index_handler
 live_room_ds
-live_room_repo
 log_redact
 login_attempt_ds
 mcp_governance_logic
@@ -225,7 +218,6 @@ moya_assignment_logic
 moya_auth_logic
 moya_invite_handler
 moya_invite_logic
-moya_org_settings_repo
 moya_review_handler
 moya_review_logic
 moya_submission_repo
@@ -244,12 +236,10 @@ msg_c2g_logic
 msg_c2g_repo
 msg_c2g_timeline_repo
 msg_c2s_logic
-msg_c2s_repo
 msg_handler
 msg_rate_logic
 msg_s2c_ds
 msg_s2c_logic
-msg_s2c_repo
 msg_store_ds
 msg_store_repo
 msg_store_sup
@@ -277,7 +267,6 @@ product_terminology
 project_ds
 project_milestone_ds
 project_milestone_repo
-project_repo
 project_task_ds
 project_task_handler
 push_provider_jpush_http
@@ -291,7 +280,6 @@ report_logic
 report_ticket_ds
 report_ticket_repo
 rtc_room_logic
-sensitive_word_repo
 sso_config_ds
 sso_logic
 transfer_logic
@@ -305,14 +293,12 @@ user_device_handler
 user_device_logic
 user_export_logic
 user_handler
-user_log_repo
 user_onboarding_logic
 user_server
 user_tag_ds
 user_tag_relation_ds
 user_tag_relation_logic
 verification_code_ds
-verification_code_repo
 wallet_handler
 wallet_repo
 websocket_ds

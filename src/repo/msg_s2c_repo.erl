@@ -108,19 +108,11 @@ delete_msg(Id) ->
 delete_msg(Where, Val) when is_list(Val) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
-    case elib_pg:execute(Sql, Val) of
-        {ok, Count} -> {ok, Count};
-        {ok, Count, _} -> {ok, Count};
-        {error, Reason} -> {error, Reason}
-    end;
+    elib_pg:execute_count(Sql, Val);
 delete_msg(Where, Val) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
-    case elib_pg:execute(Sql, [Val]) of
-        {ok, Count} -> {ok, Count};
-        {ok, Count, _} -> {ok, Count};
-        {error, Reason} -> {error, Reason}
-    end.
+    elib_pg:execute_count(Sql, [Val]).
 
 % msg_s2c_repo:count_by_to_id(1).
 -spec count_by_to_id(integer()) -> non_neg_integer().
@@ -159,7 +151,7 @@ delete_by_msg_ids_and_to_id(MsgIds, ToUid) when is_list(MsgIds), length(MsgIds) 
     {InClause, InParams} = elib_pg_sql:in(<<"msg_id">>, MsgIds, 2),
     WhereClause = <<"to_id = $1 AND ", InClause/binary>>,
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", WhereClause/binary>>,
-    elib_pg:execute(Sql, [ToUid | InParams]);
+    elib_pg:execute_count(Sql, [ToUid | InParams]);
 delete_by_msg_ids_and_to_id([], _ToUid) ->
     {ok, 0}.
 
