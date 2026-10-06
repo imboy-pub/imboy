@@ -106,7 +106,7 @@ list(Gid, CurrentUid, Page, Size, Options) ->
 
             % 4. 返回结果
             FileList = #{
-                <<"items">> => Files,
+                <<"items">> => with_object_keys(Files),
                 <<"total">> => Total,
                 <<"page">> => Page,
                 <<"size">> => Size
@@ -131,10 +131,39 @@ search(Gid, Keyword, Page, Size, CurrentUid) ->
     % 2. 调用DS层搜索文件（内部校验群成员身份）
     case group_file_ds:search_files(Gid2, Keyword, Page, Size, CurrentUid) of
         {ok, Files} ->
-            {ok, Files};
+            {ok, with_object_keys(Files)};
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% @doc 出站行补 object_key：客户端（GroupFilePage._resolveFileUrl 首查
+%% object_key → AssetUrlResolver 走 view_url 票据签发）依赖该字段走鉴权
+%% 读取；缺它则回退 file_url 完整 URL → legacy 分支产出 JWT API URL，
+%% WebView 无凭据打不开（EO-20261006 GROUP_FILE 段 r2 实证）。
+%% SQL 侧（group_file_repo select_columns 的 attachment 子查询）已带
+%% object_key（attachment.path）时原样保留，仅缺失/null/空串时才由
+%% file_url 派生——避免把 legacy 外域行上原本可用的 attachment.path
+%% 降级为 null。file_url 缺失/非本桶 URL 时置 null（字段恒在，客户端按
+%% containsKey 分流）。
+-spec with_object_keys(list(map())) -> list(map()).
+with_object_keys(Files) ->
+    [
+        case existing_object_key(Row) of
+            Key when is_binary(Key), Key =/= <<>> ->
+                Row;
+            _ ->
+                case elib_oss:object_key_from_url(maps:get(<<"file_url">>, Row, <<>>)) of
+                    undefined -> Row#{<<"object_key">> => null};
+                    ObjectKey -> Row#{<<"object_key">> => ObjectKey}
+                end
+        end
+     || Row <- Files
+    ].
+
+existing_object_key(Row) when is_map(Row) ->
+    maps:get(<<"object_key">>, Row, null);
+existing_object_key(_) ->
+    null.
 
 %% @doc 获取群文件分类统计
 %% @param Gid 群组ID（整数）

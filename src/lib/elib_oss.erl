@@ -25,6 +25,7 @@
 -export([presign_get_for_key/2, presign_get_for_key/3]).
 -export([build_object_key/2, build_object_key/4, owner_of_key/1]).
 -export([get_bucket/1, public_base_url/0, public_url_for_key/1]).
+-export([object_key_from_url/1]).
 -export([endpoint/0, public_endpoint/0]).
 -export([garage_config/0, key_prefix/0]).
 -export([delete_object/1, delete_object/2, head_object/1, head_object/2, parse_head_response/1]).
@@ -559,6 +560,66 @@ public_base_url() ->
 -spec public_url_for_key(binary()) -> binary().
 public_url_for_key(ObjectKey) ->
     <<(public_base_url())/binary, "/", ObjectKey/binary>>.
+
+%% @doc 从完整存储 URL 提取 object_key（scheme://host/bucket/<key> → <key>）。
+%% 群文件历史行以 file_url 完整 URL 形态出站；客户端 object_key 契约
+%% （AssetsService.isObjectKey → view_url 票据签发）要求剥除 scheme/host/
+%% bucket 前缀。首段非本桶（bucket/public_bucket）或解析失败返回 undefined，
+%% 调用方按无 key 降级。
+%% 不走 uri_string:parse：上传侧 file_url 为 raw 拼接（不做百分号编码），
+%% 中文文件名等多字节路径会令 uri_string:parse 直接 exit（function_clause）。
+-spec object_key_from_url(binary()) -> binary() | undefined.
+object_key_from_url(Url) when is_binary(Url) ->
+    Segments = url_path_segments(Url),
+    case Segments of
+        [Bucket | KeySegments] when KeySegments =/= [] ->
+            Cfg = garage_config(),
+            Buckets = [
+                maps:get(K, Cfg, <<>>)
+             || K <- [bucket, public_bucket]
+            ],
+            case lists:member(Bucket, Buckets) of
+                true ->
+                    %% segments 以 "/" 连接，末段不带尾斜杠——与上传侧
+                    %% key_prefix()/FileId/SafeName 的真实 key 形态一致
+                    lists:foldl(
+                        fun(Seg, Acc) -> <<Acc/binary, "/", Seg/binary>> end,
+                        hd(KeySegments),
+                        tl(KeySegments)
+                    );
+                false ->
+                    undefined
+            end;
+        _ ->
+            undefined
+    end;
+object_key_from_url(_) ->
+    undefined.
+
+%% @doc 剥 scheme://host[:port] 与 query/fragment，仅按 raw 字节切分出
+%% 路径段（不含空段），对未编码的 UTF-8 路径安全。
+url_path_segments(Url) ->
+    Rest =
+        case binary:split(Url, <<"://">>) of
+            [_Scheme, AfterScheme] -> AfterScheme;
+            _ -> Url
+        end,
+    AfterHost =
+        case binary:split(Rest, <<"/">>) of
+            [_HostPort, Path] -> Path;
+            _ -> <<>>
+        end,
+    NoFragment =
+        case binary:split(AfterHost, <<"#">>) of
+            [P0 | _] -> P0;
+            _ -> AfterHost
+        end,
+    NoQuery =
+        case binary:split(NoFragment, <<"?">>) of
+            [P1 | _] -> P1;
+            _ -> NoFragment
+        end,
+    [S || S <- binary:split(NoQuery, <<"/">>, [global]), S =/= <<>>].
 
 %% @doc 校验 Garage 配置完整性，access_key/secret_key 不得为空
 -spec assert_garage_configured() -> ok.
