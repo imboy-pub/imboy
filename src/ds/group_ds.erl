@@ -171,10 +171,7 @@ member_uids_strict(Gid) ->
                     imboy_cache:set(CacheKey, Li, ?HOUR),
                     {ok, Li};
                 {error, Reason} ->
-                    {error, Reason};
-                Other ->
-                    %% 非 {ok,_} / {error,_} 的第三种形态：当作失败而非空群。
-                    {error, {unexpected_repo_result, Other}}
+                    {error, Reason}
             end
     end.
 
@@ -331,9 +328,7 @@ check_avatar(Group) when is_map(Group) ->
     case Avatar of
         <<>> -> Group#{<<"avatar">> => Default};
         _ -> Group
-    end;
-check_avatar(_) ->
-    #{}.
+    end.
 
 %% @doc 创建群组（事务版本）
 %% @param Conn 数据库连接
@@ -498,7 +493,8 @@ face2face_create(Conn, Uid, Code, Lng, Lat) ->
 %% @param Gid 群组ID
 %% @param Uid 用户ID
 %% @return {ok, binary()} | {error, Reason}
--spec face2face_save(binary(), integer(), integer()) -> {ok, binary()} | {error, binary() | atom()}.
+-spec face2face_save(binary(), integer(), integer()) ->
+    {ok, binary()} | {error, binary() | atom()} | {rollback, term()}.
 face2face_save(Code, Gid, Uid) ->
     elib_pg:with_tx(fun(Conn) ->
         % 读取随机码记录

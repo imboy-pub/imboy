@@ -731,7 +731,7 @@ value_or_empty({error, Reason}) ->
 value_or_empty(_) ->
     #{}.
 
--spec parse_result({ok, list(), list()} | {error, term()}) ->
+-spec parse_result({ok, term()} | {ok, term(), term()} | {error, term()}) ->
     {ok, integer(), map()} | {error, term()}.
 parse_result({ok, _, [#{<<"id">> := Id}]}) -> {ok, Id, #{}};
 % For epgsql result [{123}]
