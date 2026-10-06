@@ -25,7 +25,10 @@ add_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute_count', 2, fun(_Sql, _Params) ->
+                %% group_category_repo:add/2 的 INSERT 走 elib_pg:execute/2
+                %% （无计数包装）——mock 面必须与被调面一致，错挂
+                %% execute_count/2 会静默穿透到真实库（23505）。
+                {'execute', 2, fun(_Sql, _Params) ->
                     {ok, 1}
                 end}
             ]},
