@@ -220,7 +220,14 @@ setup_all() ->
                 inttest_marker_db:release(State),
                 erlang:raise(Class, {intbe02_seed_failed, Reason}, Stack)
         end,
-    Covered = ets:new(?COVERED_TAB, [named_table, public, set]),
+    %% named_table 跨套件幂等：33 个 intbe02 系套件共用本 setup_all，若前序
+    %% 套件异常退出未走 teardown_all（catch ets:delete），残留表会让本套件
+    %% ets:new 直接 badarg（run7 三连失败根因）——复用旧表并清空。
+    Covered =
+        case ets:whereis(?COVERED_TAB) of
+            undefined -> ets:new(?COVERED_TAB, [named_table, public, set]);
+            Existing -> Existing
+        end,
     ets:delete_all_objects(Covered),
     {ok, _} = application:ensure_all_started(cowboy),
     {ok, _} = application:ensure_all_started(ranch),
