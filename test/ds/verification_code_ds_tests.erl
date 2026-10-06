@@ -215,14 +215,14 @@ verify_code_with_expired_code_returns_error_test_() ->
             {verification_code_repo, [
                 {'find_by_id', 1, fun(_Id) ->
                     #{
-                        <<"code">> => <<"123456">>,
+                        <<"code">> => <<"654321">>,
                         <<"validity_at">> => <<"2023-01-01T01:00:00Z">>
                     }
                 end}
             ]}
         ],
         fun() ->
-            Result = verification_code_ds:verify_code(<<"user@example.com">>, <<"123456">>),
+            Result = verification_code_ds:verify_code(<<"user@example.com">>, <<"654321">>),
             ?assertEqual({error, <<"验证码无效"/utf8>>}, Result)
         end
     ).
@@ -238,7 +238,7 @@ verify_code_with_nonexistent_id_returns_error_test_() ->
             ]}
         ],
         fun() ->
-            Result = verification_code_ds:verify_code(<<"nonexistent@example.com">>, <<"123456">>),
+            Result = verification_code_ds:verify_code(<<"nonexistent@example.com">>, <<"654321">>),
             ?assertEqual({error, <<"验证码无效"/utf8>>}, Result)
         end
     ).
@@ -252,7 +252,7 @@ verify_code_at_exact_expiry_time_returns_error_test_() ->
             {verification_code_repo, [
                 {'find_by_id', 1, fun(_Id) ->
                     #{
-                        <<"code">> => <<"123456">>,
+                        <<"code">> => <<"654321">>,
                         <<"validity_at">> => <<"2023-01-01T01:00:00Z">>
                     }
                 end}
@@ -260,7 +260,7 @@ verify_code_at_exact_expiry_time_returns_error_test_() ->
         ],
         fun() ->
             % 当前时间等于过期时间，应该返回无效
-            Result = verification_code_ds:verify_code(<<"user@example.com">>, <<"123456">>),
+            Result = verification_code_ds:verify_code(<<"user@example.com">>, <<"654321">>),
             ?assertEqual({error, <<"验证码无效"/utf8>>}, Result)
         end
     ).

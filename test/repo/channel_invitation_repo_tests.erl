@@ -51,7 +51,7 @@ create_uses_default_pending_status_and_expiry_test_() ->
                 {'millisecond', 0, fun() -> 1700000000000 end}
             ]},
             {elib_pg, [
-                {'execute', 2, fun(Sql, Params) ->
+                {'execute_count', 2, fun(Sql, Params) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assert(re:run(SqlBin, <<"INSERT INTO channel_invitation">>) =/= nomatch),
                     ?assertEqual(
@@ -95,7 +95,7 @@ create_maps_unique_violation_to_already_invited_test_() ->
                 {'millisecond', 0, fun() -> 1700000000000 end}
             ]},
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) ->
+                {'execute_count', 2, fun(_Sql, _Params) ->
                     {error, {pgsql_error, #{code => <<"23505">>}}}
                 end}
             ]}
@@ -170,7 +170,7 @@ accept_returns_not_found_or_expired_when_no_row_updated_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 2, fun(Sql, [1, 777, 2002]) ->
+                {'execute_count', 2, fun(Sql, [1, 777, 2002]) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assert(re:run(SqlBin, <<"status = 0 AND expires_at > NOW">>) =/= nomatch),
                     {ok, 0}
@@ -189,7 +189,7 @@ accept_returns_ok_when_row_updated_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 2, fun(_Sql, [1, 777, 2002]) ->
+                {'execute_count', 2, fun(_Sql, [1, 777, 2002]) ->
                     {ok, 1}
                 end}
             ]}

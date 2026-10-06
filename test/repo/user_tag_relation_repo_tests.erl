@@ -110,7 +110,7 @@ delete_by_tag_id_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(elib_pg, [no_link]),
 
-        meck:expect(elib_pg, execute, fun(_Sql, Params) ->
+        meck:expect(elib_pg, execute_count, fun(_Sql, Params) ->
             [TagId] = Params,
             ?assertEqual(?TEST_TAG_ID, TagId),
             {ok, 5}
@@ -119,7 +119,7 @@ delete_by_tag_id_test_() ->
         try
             Result = user_tag_relation_repo:delete_by_tag_id(?TEST_TAG_ID),
             ?assertMatch({ok, _}, Result),
-            ?assert(meck:called(elib_pg, execute, 2))
+            ?assert(meck:called(elib_pg, execute_count, 2))
         after
             meck:unload(elib_pg)
         end

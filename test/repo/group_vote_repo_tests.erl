@@ -36,7 +36,7 @@ insert_vote_success_test() ->
     meck:expect(elib_tsid, generate, fun(_Table) -> 1001 end),
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    meck:expect(elib_pg, execute_count, fun(_Sql, _Params) -> {ok, 1} end),
     Data = #{
         group_id => 123,
         vote_id => <<"vote123">>,
@@ -133,7 +133,7 @@ insert_option_batch_success_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'query', 2, fun(_Sql, _Params) ->
+            {'execute_count', 2, fun(_Sql, _Params) ->
                 {ok, 2}
             end}
         ],
@@ -171,7 +171,7 @@ insert_option_batch_includes_id_column_test() ->
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     Self = self(),
-    meck:expect(elib_pg, query, fun(Sql, Params) ->
+    meck:expect(elib_pg, execute_count, fun(Sql, Params) ->
         Self ! {captured, iolist_to_binary(Sql), Params},
         {ok, 2}
     end),
@@ -233,7 +233,7 @@ insert_record_success_test() ->
     meck:expect(elib_tsid, generate, fun(_Table) -> 3001 end),
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    meck:expect(elib_pg, execute_count, fun(_Sql, _Params) -> {ok, 1} end),
     Data = #{
         vote_id => <<"vote123">>,
         user_id => 789,
@@ -438,7 +438,7 @@ delete_vote_option_by_option_id_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'query', 2, fun(_Sql, _Params) ->
+            {'execute_count', 2, fun(_Sql, _Params) ->
                 {ok, 1}
             end}
         ],

@@ -40,7 +40,9 @@ insert_success_test_() ->
                 {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT INTO t VALUES($1)">>, [1]} end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-01-01T00:00:00Z">> end}
@@ -288,7 +290,7 @@ insert_duplicate_assignment_test_() ->
                 {'insert', 2, fun(_Tb, _Data) -> {<<"INSERT INTO t VALUES($1)">>, [1]} end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) ->
+                {'execute_count', 2, fun(_Sql, _Params) ->
                     {error, {unique_violation, <<"group_task_assignment_task_id_user_id_key">>}}
                 end}
             ]},

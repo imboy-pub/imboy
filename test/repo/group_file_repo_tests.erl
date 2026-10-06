@@ -34,7 +34,9 @@ insert_valid_file_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]},
             {elib_tsid, [
                 {'generate', 1, fun(_Table) -> 50001 end}
@@ -220,7 +222,9 @@ soft_delete_existing_file_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]}
         ],
         fun() ->
@@ -234,7 +238,9 @@ soft_delete_not_existing_file_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 0}
+                end}
             ]}
         ],
         fun() ->
@@ -252,7 +258,9 @@ increment_download_existing_file_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]}
         ],
         fun() ->
@@ -266,7 +274,9 @@ increment_download_not_existing_file_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 0}
+                end}
             ]}
         ],
         fun() ->

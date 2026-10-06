@@ -39,7 +39,9 @@ create_album_valid_test_() ->
                 {'generate', 1, fun(_Table) -> 100001 end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000 end}
@@ -139,7 +141,9 @@ insert_photo_valid_test_() ->
                 {'generate', 1, fun(_Table) -> 200001 end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000 end}
@@ -244,8 +248,12 @@ like_photo_test_() ->
                 {'generate', 1, fun(_Table) -> 300001 end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end},
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end},
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000 end}
@@ -270,7 +278,9 @@ unlike_photo_test_() ->
                 {'env', 1, fun(sql_driver) -> pgsql end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]}
         ],
         fun() ->
@@ -335,8 +345,12 @@ add_comment_test_() ->
                 {'generate', 1, fun(_Table) -> 400001 end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end},
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end},
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000 end}
@@ -457,7 +471,9 @@ increment_photo_count_test_() ->
                 {'env', 1, fun(sql_driver) -> pgsql end}
             ]},
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000 end}
@@ -480,7 +496,9 @@ decrement_photo_count_test_() ->
                 {'env', 1, fun(sql_driver) -> pgsql end}
             ]},
             {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                {'execute_count', 2, fun(_Sql, _Params) ->
+                    {ok, 1}
+                end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000 end}

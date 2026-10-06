@@ -36,7 +36,7 @@ insert_success_test() ->
     meck:expect(elib_tsid, generate, fun(_Table) -> 1001 end),
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    meck:expect(elib_pg, execute_count, fun(_Sql, _Params) -> {ok, 1} end),
     Data = #{
         group_id => 123,
         schedule_id => <<"sched_123">>,
@@ -289,7 +289,7 @@ insert_participant_success_test() ->
     meck:expect(elib_tsid, generate, fun(_Table) -> 2001 end),
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    meck:expect(elib_pg, execute_count, fun(_Sql, _Params) -> {ok, 1} end),
     Data = #{
         schedule_id => <<"sched_123">>,
         user_id => 789,
@@ -339,7 +339,7 @@ insert_remind_success_test() ->
     meck:expect(elib_tsid, generate, fun(_Table) -> 3001 end),
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    meck:expect(elib_pg, execute_count, fun(_Sql, _Params) -> {ok, 1} end),
     Data = #{
         schedule_id => <<"sched_123">>,
         user_id => 789,

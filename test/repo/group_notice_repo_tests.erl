@@ -37,6 +37,7 @@ insert_success_test() ->
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    meck:expect(elib_pg, execute_count, fun(_Sql, _Params) -> {ok, 1} end),
     Data = #{
         group_id => 123,
         user_id => 456,
@@ -73,7 +74,7 @@ update_success_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'query', 2, fun(_Sql, _Params) ->
+            {'execute_count', 2, fun(_Sql, _Params) ->
                 {ok, 1}
             end}
         ],
@@ -88,7 +89,7 @@ update_not_found_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'query', 2, fun(_Sql, _Params) ->
+            {'execute_count', 2, fun(_Sql, _Params) ->
                 {ok, 0}
             end}
         ],
@@ -107,7 +108,7 @@ soft_delete_success_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'query', 2, fun(_Sql, _Params) ->
+            {'execute_count', 2, fun(_Sql, _Params) ->
                 {ok, 1}
             end}
         ],
@@ -121,7 +122,7 @@ soft_delete_not_found_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'query', 2, fun(_Sql, _Params) ->
+            {'execute_count', 2, fun(_Sql, _Params) ->
                 {ok, 0}
             end}
         ],
@@ -139,7 +140,7 @@ pin_success_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'query', 2, fun(_Sql, _Params) ->
+            {'execute_count', 2, fun(_Sql, _Params) ->
                 {ok, 1}
             end}
         ],
@@ -153,7 +154,7 @@ pin_already_pinned_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'query', 2, fun(_Sql, _Params) ->
+            {'execute_count', 2, fun(_Sql, _Params) ->
                 {ok, 1}
             end}
         ],
@@ -171,7 +172,7 @@ unpin_success_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'query', 2, fun(_Sql, _Params) ->
+            {'execute_count', 2, fun(_Sql, _Params) ->
                 {ok, 1}
             end}
         ],
@@ -382,7 +383,7 @@ insert_with_long_title_test() ->
     meck:expect(elib_tsid, generate, fun(_Table) -> 1002 end),
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, query, fun(_Sql, _Params) ->
+    meck:expect(elib_pg, execute_count, fun(_Sql, _Params) ->
         {error, {string_too_long, title}}
     end),
     LongTitle = binary:copy(<<"测试"/utf8>>, 100),
@@ -403,7 +404,7 @@ insert_with_long_body_test() ->
     meck:expect(elib_tsid, generate, fun(_Table) -> 1003 end),
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, query, fun(_Sql, _Params) ->
+    meck:expect(elib_pg, execute_count, fun(_Sql, _Params) ->
         {error, {string_too_long, body}}
     end),
     LongBody = binary:copy(<<"测试"/utf8>>, 3000),

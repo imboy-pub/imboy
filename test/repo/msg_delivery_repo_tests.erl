@@ -17,7 +17,7 @@ mark_acked_batch_builds_upsert_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'execute', 2, fun(Sql, Params) ->
+            {'execute_count', 2, fun(Sql, Params) ->
                 ?assertMatch({_, _}, binary:match(Sql, <<"INSERT INTO">>)),
                 ?assertMatch({_, _}, binary:match(Sql, <<"msg_delivery">>)),
                 ?assertMatch({_, _}, binary:match(Sql, <<"ON CONFLICT DO NOTHING">>)),
@@ -45,7 +45,7 @@ mark_acked_delegates_to_batch_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
-            {'execute', 2, fun(_Sql, Params) ->
+            {'execute_count', 2, fun(_Sql, Params) ->
                 ?assertEqual([<<"s2c">>, 7, <<"did-b">>, <<"m9">>], Params),
                 {ok, 1}
             end}
