@@ -109,7 +109,10 @@ select_by_where(Column, Where, Limit, Offset, OrderBy) when is_binary(Where) ->
                     P when P > 0 -> P;
                     _ -> 1
                 end,
-            elib_pg:page(Tb, Column, #{<<"__raw">> => Where}, OrderBy, Page, L)
+            elib_pg:page(Tb, Column, #{<<"__raw">> => Where}, OrderBy, Page, L);
+        _ ->
+            %% Limit 非正：空集短路（bae2bf3a 前行为，零限调用方契约）
+            {ok, []}
     end;
 select_by_where(Column, WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) ->
     case Limit of
@@ -120,7 +123,9 @@ select_by_where(Column, WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) 
                     P when P > 0 -> P;
                     _ -> 1
                 end,
-            elib_pg:page(Tb, Column, WhereMap, OrderBy, Page, L)
+            elib_pg:page(Tb, Column, WhereMap, OrderBy, Page, L);
+        _ ->
+            {ok, []}
     end.
 
 %% @doc 根据WHERE条件查询（安全排序）
@@ -148,7 +153,9 @@ select_by_where_safe(Column, WhereMap, Limit, Offset, OrderSpec, ValidFields) ->
                     ValidFields,
                     #{limit => L, offset => Offset}
                 ),
-            elib_pg:query(Sql, Params)
+            elib_pg:query(Sql, Params);
+        _ ->
+            {ok, []}
     end.
 
 %% @doc 根据邮箱查找管理员用户
