@@ -810,10 +810,12 @@ list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) when
             Page = lists:sublist(Rows, Limit),
             HasMore = length(Rows) > Limit,
             %% 模式匹配取末行：HasMore=true 时 Page 必非空，
-            %% 但不依赖该推论（Limit=0 等退化入参下 lists:last 会崩）
+            %% 但不依赖该推论（Limit=0 等退化入参下 lists:last 会崩）。
+            %% 游标契约与 channel 列表一致：末页（has_more=false）必须回 0，
+            %% 客户端（WorkspaceApi._memberGroupRows）以 0 为终止标记。
             Next =
                 case lists:reverse(Page) of
-                    [LastRow | _] -> maps:get(<<"id">>, LastRow);
+                    [LastRow | _] when HasMore -> maps:get(<<"id">>, LastRow);
                     _ -> 0
                 end,
             {ok, #{
