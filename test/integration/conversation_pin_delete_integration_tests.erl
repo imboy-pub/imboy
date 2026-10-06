@@ -37,6 +37,9 @@ conversation_pin_delete_test_() ->
     end.
 
 setup() ->
+    %% 同 e2ee_message_pipeline：staging 表不由迁移创建，套件自足确保在位
+    %% （c2c 发送链经 msg_store_ds:stage 打 public.msg_store_staging）。
+    ok = msg_store_repo:ensure_table_exists(),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"user1_conv">>),
     {ok, User2} = create_test_user(<<"user2_conv">>),

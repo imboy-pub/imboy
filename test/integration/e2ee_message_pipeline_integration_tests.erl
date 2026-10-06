@@ -37,6 +37,10 @@ e2ee_pipeline_test_() ->
     end.
 
 setup() ->
+    %% msg_store_staging 不由迁移创建（msg_store_ds:init 运行时建），全量门
+    %% 里 init 建表时点与套件运行时点之间存在缺口（run7 14:11 CST 42P01）
+    %% ——套件自足：用例前幂等确保表与索引在位（CREATE TABLE IF NOT EXISTS）。
+    ok = msg_store_repo:ensure_table_exists(),
     {ok, User1} = create_test_user(<<"e2ee_pipe_u1">>),
     {ok, User2} = create_test_user(<<"e2ee_pipe_u2">>),
     Context = #{user1 => User1, user2 => User2},
