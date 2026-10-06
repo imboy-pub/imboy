@@ -10,7 +10,13 @@ run(C) ->
     %% imboy_domain_event 是 imboy_sup 常驻 gen_event 总线（8d09179f T0.1，
     %% sup 子进程 imboy_sup.erl:261）——旧断言 whereis=undefined 是总线
     %% 注册前的防泄漏哨兵，随架构演进过时，改为正向存在断言。
-    ?assertMatch(Pid when is_pid(Pid), whereis(imboy_domain_event)),
+    %% intbe02 轨道不起完整 imboy app（setup_all 只起 cowboy+池），总线
+    %% 需自足拉起：gen_event start_link 挂到本测试进程，测试进程退出
+    %% 总线随之回收，不污染后继套件的 imboy_sup boot。
+    case whereis(imboy_domain_event) of
+        Pid when is_pid(Pid) -> ok;
+        undefined -> {ok, _} = imboy_domain_event:start_link()
+    end,
     ok = intbe02_http_support:sql_exec(
         C,
         <<"INSERT INTO organization(id,name,owner_id,status) VALUES(995902,'Synthetic full membership',995021,'active')">>
