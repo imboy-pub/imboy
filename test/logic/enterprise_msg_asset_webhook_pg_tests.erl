@@ -1388,13 +1388,20 @@ seed_dead_delivery(C, State) ->
         }),
         {ok, Result} = enterprise_message_logic:direct_tx(C, ctx_a(State), direct_input_human()),
         _ = msg_row_id(C, maps:get(<<"msg_id">>, Result)),
+        %% 种子选择必须自隔离：无归属过滤的全表 LIMIT 1 会拿到同事务族/
+        %% 同套件先前用例已 replay 过的投递（ewh_replay_of 在途唯一索引
+        %% 仲裁 → replay_already_queued）。限定本 org 且排除已 replay 行。
         Did = one(
             C,
             <<
-                "SELECT delivery_id FROM bot_delivery WHERE idempotency_key LIKE 'evt-%'"
-                " ORDER BY created_at DESC LIMIT 1"
+                "SELECT delivery_id FROM bot_delivery d"
+                " WHERE d.idempotency_key LIKE 'evt-%'"
+                " AND d.ewh_owner_organization_id = $1"
+                " AND NOT EXISTS ("
+                "   SELECT 1 FROM bot_delivery r WHERE r.ewh_replay_of = d.delivery_id)"
+                " ORDER BY d.created_at DESC LIMIT 1"
             >>,
-            []
+            [?ORG_A]
         ),
         maps:get(<<"delivery_id">>, Did)
     end).
