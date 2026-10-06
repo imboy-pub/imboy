@@ -253,7 +253,10 @@ insert_delivery_tx(
             " VALUES ($1,$2,$3,$4::jsonb,'',$5,$6,$7,$8,$9,$10,$11,$12,$13)"
             " ON CONFLICT (idempotency_key) DO NOTHING">>,
     case
-        elib_pg:query(Conn, Sql, [
+        %% INSERT 无 RETURNING：elib_pg:query/3 会把 epgsql 的 {ok, Count}
+        %% 收敛为 {ok, []}，成功插入也会被下面的 {ok, _} 分支误判为
+        %% duplicate——必须走计数语义 execute_count/3。
+        elib_pg:execute_count(Conn, Sql, [
             Did,
             BotId,
             EventType,
@@ -269,12 +272,11 @@ insert_delivery_tx(
             Generation
         ])
     of
-        {ok, [_]} ->
-            {ok, inserted};
-        {ok, N} when is_integer(N), N > 0 ->
-            {ok, inserted};
-        {ok, _} ->
+        {ok, 0} ->
+            %% ON CONFLICT (idempotency_key) DO NOTHING 跳过：同幂等键已入箱
             {ok, duplicate};
+        {ok, _Count} ->
+            {ok, inserted};
         {error, #error{code = <<"23505">>}} ->
             %% 在途重放唯一索引命中：并发/重复 replay，另一次已在途
             {ok, duplicate};
