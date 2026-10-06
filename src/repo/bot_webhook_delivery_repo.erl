@@ -184,7 +184,7 @@ update_status(DeliveryId, Status, AttemptNo, RetryAfterSecs) ->
         %% {ok, Status} 会把此处当成对函数头已绑定参数 Status 的匹配
         %% （模式位置不重新绑定）——子句实际变成 {ok, <<"retry">>} 之类，
         %% 行数 {ok, 1} 永不匹配 → case_clause。显式改用新变量名。
-        {ok, Count} -> {ok, Status}
+        {ok, _Count} -> {ok, Status}
     end.
 
 status_sql(Tb, DeliveryId, <<"retry">>, AttemptNo, RetryAfterSecs) ->
