@@ -30,7 +30,9 @@ run(S) ->
     archive_and_replay(S, W, Path, B40, R40, B41, R41).
 
 archive_and_replay(S, W, Path, B40, R40, B41, R41) ->
-    {ok, 1} = elib_pg:query(
+    %% INSERT 无 RETURNING：elib_pg:query/3 收敛为 {ok, []}，计数断言
+    %% 必须走 execute_count/3。
+    {ok, 1} = elib_pg:execute_count(
         maps:get(conn, S),
         <<"INSERT INTO channel_message(id,channel_id,author_id,content) VALUES(9959502,$1,995012,'synthetic-retained-history')">>,
         [W]

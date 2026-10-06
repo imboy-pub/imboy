@@ -86,7 +86,9 @@ reject_archived_workspace(C, Opts) ->
     ?assertMatch(
         {error, {980, _}},
         elib_pg:with_tx(fun(Tx) ->
-            {ok, 1} = elib_pg:query(
+            %% UPDATE 无 RETURNING：elib_pg:query/3 按行集契约收敛为
+            %% {ok, []}，计数断言必须走 execute_count/3。
+            {ok, 1} = elib_pg:execute_count(
                 Tx,
                 <<"UPDATE workspace SET status='archived' WHERE id=$1">>,
                 [995201]
