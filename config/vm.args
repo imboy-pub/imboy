@@ -1,5 +1,8 @@
 -name imboy@127.0.0.1
--setcookie imboy_local_dev_only  %% W6-A02: 本地开发占位；生产构建必须用随机值覆盖
+# W6-A02: 本地开发占位 cookie；生产构建必须用随机值覆盖。
+# 注意：本文件是 erl -args_file，注释符是 # 而非 %%——行内 %% 尾缀会被
+# erlexec 当作额外参数，破坏 -setcookie 的分发握手（invalid challenge reply）。
+-setcookie imboy_local_dev_only
 -heart
 -kernel inet_dist_use_interface {127,0,0,1}
 +K true
