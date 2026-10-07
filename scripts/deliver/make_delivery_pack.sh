@@ -28,7 +28,7 @@
 #                    （^ _ - . 分界）且扩展非源码/契约/文档类
 #                    （.erl/.hrl/.app.src/.yaml/.yml/.md/.py/.sh/.ts/.js 豁免——
 #                    elib_password.erl、change-password.yaml 属业务语义非凭据）
-#   内容级（硬失败）  真实私钥 PEM 块（私钥头 + 200+ 连续 base64 高熵体）；
+#   内容级（硬失败）  完整私钥 PEM 块（支持分行 Base64）；
 #                    --secret-fingerprints 提供时的已知环境口令指纹。
 #
 # 退出码：0 成功；1 自检失败或参数错误。
@@ -64,11 +64,17 @@ GIT_SHA="$(git rev-parse HEAD)"
 GIT_SHA8="$(git rev-parse --short HEAD)"
 STAMP="$(date +%Y%m%d%H%M%S)"
 : "${OUT_DIR:=/tmp/imboy-delivery-${GIT_SHA8}-${STAMP}}"
+# Resolve relative paths, parent components and symlinks before creating output.
+OUT_DIR="$(python3 - "$REPO_ROOT" "$OUT_DIR" <<'PY_PATH'
+from pathlib import Path
+import sys
+root, output = (Path(value).resolve() for value in sys.argv[1:])
+if output == root or root in output.parents:
+    sys.exit("ERROR: --out-dir must be outside the repository")
+print(output)
+PY_PATH
+)" || exit 1
 mkdir -p "$OUT_DIR"
-# 输出目录若在仓库内则拒绝（防止生成物污染 tracked 集与文件域）
-case "$OUT_DIR/" in
-    "$REPO_ROOT"/*) echo "ERROR: --out-dir must be outside the repository: $OUT_DIR" >&2; exit 1 ;;
-esac
 
 MANIFEST="$OUT_DIR/manifest.txt"
 META="$OUT_DIR/manifest.meta.md"
@@ -150,15 +156,29 @@ grep -E '(^|/)node_modules/'                       "$MANIFEST" >> "$VIOLATIONS" 
 grep -E '(^|/)(evidence|test-results|playwright-report)/' "$MANIFEST" >> "$VIOLATIONS" || true
 credential_named_paths "$MANIFEST" | sed 's/^/[cred-name] /' >> "$VIOLATIONS" || true
 
-# 内容级 A：真实私钥 PEM 块 = 私钥头 + 200+ 连续 base64 高熵体。
-# 文档注释、占位串（测试 fixture 里的 "test"/"key"）不会命中。
-PEM_HITS=$(tr '\n' '\0' < "$MANIFEST" | xargs -0 grep -IlE -- \
-    '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' 2>/dev/null || true)
-for f in $PEM_HITS; do
-    if grep -qE '[A-Za-z0-9+/]{200,}' "$f" 2>/dev/null; then
-        echo "[real-pem] $f" >> "$VIOLATIONS"
-    fi
-done
+# Content check: decode complete PEM bodies, including conventional wrapped lines.
+python3 - "$MANIFEST" "$VIOLATIONS" <<'PY_PEM'
+import base64
+import binascii
+from pathlib import Path
+import re
+import sys
+pattern = re.compile(
+    rb"-----BEGIN ((?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY)-----"
+    rb"(.*?)-----END \1-----", re.S
+)
+with Path(sys.argv[2]).open("a") as violations:
+    for name in Path(sys.argv[1]).read_text().splitlines():
+        for block in pattern.finditer(Path(name).read_bytes()):
+            body = re.sub(rb"\s+", b"", block.group(2))
+            try:
+                decoded = base64.b64decode(body, validate=True)
+            except (ValueError, binascii.Error):
+                continue
+            if len(decoded) >= 32:
+                violations.write(f"[real-pem] {name}\n")
+                break
+PY_PEM
 
 # 内容级 B：已知环境凭据指纹（指纹文件仓外维护，本脚本绝不内嵌任何真实凭据）
 if [ -n "$FINGERPRINTS" ] && [ -s "$FINGERPRINTS" ]; then
