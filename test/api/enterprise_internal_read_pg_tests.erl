@@ -436,7 +436,7 @@ seed_group_origin(C, Gid, OrgId, AppId, WsId, Status) ->
 
 seed_group_member(C, MId, Gid, Uid, Role, Status, CreatedOffsetSec) ->
     exec(C, [
-        <<"INSERT INTO group_member (id, group_id, user_id, role, status, created_at, updated_at) VALUES (">>,
+        <<"INSERT INTO group_member (id, group_id, user_id, role, is_join, status, created_at, updated_at) VALUES (">>,
         integer_to_binary(MId),
         ", ",
         integer_to_binary(Gid),
@@ -444,7 +444,7 @@ seed_group_member(C, MId, Gid, Uid, Role, Status, CreatedOffsetSec) ->
         integer_to_binary(Uid),
         ", ",
         integer_to_binary(Role),
-        ", ",
+        ", true, ",
         integer_to_binary(Status),
         <<" , NOW() - ('">>,
         integer_to_binary(CreatedOffsetSec),

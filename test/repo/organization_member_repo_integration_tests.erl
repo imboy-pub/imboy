@@ -285,6 +285,9 @@ seed(Conn) ->
         "(id,owner_uid,creator_uid,scope,workspace_id,title) "
         "VALUES (99113301,99113001,99113001,'workspace',99113201,'Shared group')"
     >>),
+    %% role=0（?ROLE_UNDEFINED）是刻意构造的负例：验证组织成员同步不依赖群 role。
+    %% 不改 role；若将来 schema 以 CHECK 收紧 role >= 1，此用例须先改语义
+    %% （EUNIT-FIXTURE-AUDIT A8 / §4.3）。
     ok = exec(Conn, <<
         "INSERT INTO group_member (id,group_id,user_id,role,is_join,status) "
         "VALUES (99113401,99113301,99113002,0,true,1)"

@@ -455,8 +455,8 @@ mk_group(Gid, OwnerUid, MemberUids) ->
 add_member(Gid, Uid, Role) ->
     elib_pg:execute(
         <<
-            "INSERT INTO group_member (id, group_id, user_id, role, status, created_at)\n"
-            "VALUES ($1, $2, $3, $4, 1, NOW())"
+            "INSERT INTO group_member (id, group_id, user_id, role, is_join, status, created_at)\n"
+            "VALUES ($1, $2, $3, $4, true, 1, NOW())"
         >>,
         [next_id(), Gid, Uid, Role]
     ).

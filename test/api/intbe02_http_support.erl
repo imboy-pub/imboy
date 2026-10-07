@@ -498,7 +498,7 @@ seed_group(C, Gid, WsId, OwnerUid, Status) ->
 
 seed_group_member(C, MId, Gid, Uid, Role) ->
     sql_exec(C, [
-        <<"INSERT INTO group_member (id, group_id, user_id, role, status, created_at, updated_at) VALUES (">>,
+        <<"INSERT INTO group_member (id, group_id, user_id, role, is_join, status, created_at, updated_at) VALUES (">>,
         integer_to_binary(MId),
         ", ",
         integer_to_binary(Gid),
@@ -506,7 +506,7 @@ seed_group_member(C, MId, Gid, Uid, Role) ->
         integer_to_binary(Uid),
         ", ",
         integer_to_binary(Role),
-        ", 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        ", true, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
     ]).
 
 seed_mapping(C, OrgId, AppId, Ext, Uid) ->

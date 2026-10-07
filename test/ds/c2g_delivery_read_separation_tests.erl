@@ -34,9 +34,13 @@ setup_fixture() ->
             "VALUES ($1, $2, $2, 'f05_fixture', 1)">>,
         [?F05_GID, ?F05_SENDER]
     ),
+    %% role/is_join 显式对齐生产写入口 group_member_repo:upsert_active
+    %% （owner_uid=sender：sender role=4、receiver role=1，is_join=true）。
+    %% 缺列会落 schema 默认 role=0（?ROLE_UNDEFINED）幻影成员——与
+    %% ws_e2e_test.py 踩过的 forbidden 同构（EUNIT-FIXTURE-AUDIT A1/HIGH）。
     {ok, _} = elib_pg:execute(
-        <<"INSERT INTO group_member (id, group_id, user_id, status) ",
-            "VALUES ($1, $2, $3, 1), ($4, $2, $5, 1)">>,
+        <<"INSERT INTO group_member (id, group_id, user_id, role, is_join, status) ",
+            "VALUES ($1, $2, $3, 4, true, 1), ($4, $2, $5, 1, true, 1)">>,
         [98000001, ?F05_GID, ?F05_SENDER, 98000002, ?F05_UID]
     ),
     {ok, _} = elib_pg:execute(

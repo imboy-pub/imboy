@@ -114,7 +114,9 @@ seed(C, W, G, Ch) ->
         [W, ?U]
     ),
     ok = ?H:sql_exec(
-        C, <<"INSERT INTO group_member(id,group_id,user_id,role,status) VALUES($1,$2,$3,3,1)">>, [
+        C,
+        <<"INSERT INTO group_member(id,group_id,user_id,role,is_join,status) VALUES($1,$2,$3,3,true,1)">>,
+        [
             cs_pg_test_fixture:id(), G, ?U
         ]
     ),
