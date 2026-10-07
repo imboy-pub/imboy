@@ -129,8 +129,10 @@ assert_generation_acl(Sql) ->
             <<"gm.status = 1">>,
             <<"gmg.end_seq IS NULL">>,
             <<"tl.to_uid = $1">>,
-            <<"tl.client_ack = false">>,
             <<"tl.conv_seq IS NOT NULL">>,
             <<"tl.conv_seq >= gmg.start_seq">>
         ]
-    ].
+    ],
+    %% Q04/F05（I3）：pending 过滤不得排除 client_ack = true 的行——
+    %% client_ack 是 per-uid 送达标记，同 uid 设备 A ACK 后设备 B 仍须取回。
+    ?assertEqual(nomatch, binary:match(Sql, <<"client_ack = false">>)).

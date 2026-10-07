@@ -8,6 +8,7 @@
 %% 群级 E2EE fail-closed 门（导出供 EUnit 直测）
 -export([group_e2ee_gate/5]).
 -export([c2g_client_ack/3]).
+-export([c2g_read/3]).
 -export([c2g_revoke/3]).
 -export([c2g_revoke_ack/3]).
 -export([c2g_edit/3]).
@@ -565,6 +566,87 @@ mention_uid(_) ->
 -spec c2g_client_ack(binary(), integer(), binary()) -> ok.
 c2g_client_ack(MsgId, Uid, DID) ->
     msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, DID).
+
+%% @doc 群消息已读上报（WS action: c2g/message_read）Q04/F05（AC07/AC08）
+%%
+%% 已读是 per-user per-conversation 行为，与送达 ACK（CLIENT_ACK，per-uid bool）
+%% 完全分离（I1/I5）：本函数只推进已读游标 + 广播跨设备已读同步事件，
+%% 不触碰 client_ack；CLIENT_ACK 也不推进已读游标。
+%%
+%% 帧契约（与 c2c/message_read 对称）：
+%%   to = 群 gid；payload.msg_ids = 已读到的消息 id 批量（顶层 id 为回执自身），
+%%   payload.read_at 可选（缺省服务器时间）。
+%%
+%% 处理：
+%%   1. 成员校验（fail-closed，非成员回 invalid_operation）；
+%%   2. group_ds:mark_read 推进 per-generation 已读游标（SQL 层 GREATEST 单调，
+%%      I2：重复/逆序已读不回退）；
+%%   3. S2C message_read_sync 发给本人所有设备（AC08：设备 B 最终同步至 N；
+%%      离线设备按 per-device 送达语义重连后可拉回）；
+%%   4. 回 message_read_ack 帧给上报设备。
+-spec c2g_read(binary(), integer(), map()) -> ok | {reply, map()}.
+c2g_read(MsgId, CurrentUid, Data) ->
+    Gid = ec_cnv:to_integer(maps:get(<<"to">>, Data, 0)),
+    Payload = maps:get(<<"payload">>, Data, #{}),
+    MsgIds =
+        case maps:get(<<"msg_ids">>, Payload, []) of
+            [_ | _] = L ->
+                [ec_cnv:to_binary(I) || I <- L];
+            _ ->
+                [MsgId]
+        end,
+    NowMs = elib_dt:millisecond(),
+    ReadAt = maps:get(<<"read_at">>, Payload, NowMs),
+
+    case Gid > 0 andalso group_ds:is_member(CurrentUid, Gid) of
+        true ->
+            handle_c2g_read_receipt(MsgId, CurrentUid, Gid, lists:usort(MsgIds), ReadAt, NowMs);
+        false ->
+            {reply, #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2G">>,
+                <<"action">> => <<"message_read_ack">>,
+                <<"payload">> => #{<<"gid">> => Gid, <<"error">> => <<"invalid_operation">>},
+                <<"server_ts">> => NowMs
+            }}
+    end.
+
+%% @private 已读回执落库 + 跨设备同步 + 回执帧。
+%% {ok, []}（msg_ids 均未命中本人 timeline，游标不动）不广播 sync：
+%% 游标无变化，B 端无需同步；仍回 ack 帧（幂等上报不是错误）。
+-spec handle_c2g_read_receipt(
+    binary(), integer(), integer(), list(binary()), integer(), integer()
+) ->
+    ok | {reply, map()}.
+handle_c2g_read_receipt(MsgId, CurrentUid, Gid, MsgIds, ReadAt, NowMs) ->
+    case group_ds:mark_read(CurrentUid, Gid, MsgIds) of
+        {ok, [#{<<"read_seq">> := ReadSeq} | _]} when is_integer(ReadSeq), ReadSeq > 0 ->
+            ReadSyncPayload = #{
+                <<"conversation_type">> => <<"c2g">>,
+                <<"gid">> => Gid,
+                <<"read_seq">> => ReadSeq,
+                <<"msg_ids">> => MsgIds,
+                <<"read_at">> => ReadAt
+            },
+            _ = msg_s2c_ds:send(
+                0, [CurrentUid], <<"message_read_sync">>, <<>>, null, ReadSyncPayload, save
+            ),
+            {reply, #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2G">>,
+                <<"action">> => <<"message_read_ack">>,
+                <<"payload">> => #{<<"gid">> => Gid, <<"read_seq">> => ReadSeq},
+                <<"server_ts">> => NowMs
+            }};
+        _Other ->
+            {reply, #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2G">>,
+                <<"action">> => <<"message_read_ack">>,
+                <<"payload">> => #{<<"gid">> => Gid},
+                <<"server_ts">> => NowMs
+            }}
+    end.
 
 %% 客户端撤回消息 for c2g
 -spec c2g_revoke(binary(), integer(), map()) -> ok | {reply, map()}.

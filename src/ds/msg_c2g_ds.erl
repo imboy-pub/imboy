@@ -15,11 +15,14 @@
 -export([update_payload_by_msg_id/2]).
 -export([timeline_delete_by_msg_ids_and_to_id/2]).
 -export([count_unread_timeline_since/2]).
+-export([count_unread_by_uid/2]).
+-export([check_and_delete_overflow/1]).
 -export([set_expire_at/2]).
 -export([delete_expired/2]).
 -export([page/3]).
 
 -include("log.hrl").
+-include("chat.hrl").
 
 %% @doc 存储群组消息
 %%
@@ -383,6 +386,38 @@ count_unread_timeline_since(ToId, undefined) ->
     msg_c2g_timeline_repo:count_pending_by_uid(ToId, undefined);
 count_unread_timeline_since(ToId, Since) ->
     msg_c2g_timeline_repo:count_pending_by_uid(ToId, Since).
+
+%% Q04/F05（I1/I4）：会话级未读数——由 per-user per-group 已读游标驱动，
+%% 与送达标记 client_ack 完全解耦（送达 ACK 永不减未读）。
+%% G3: logic 层消费入口，不应直调 msg_c2g_timeline_repo。
+-spec count_unread_by_uid(integer(), integer()) -> non_neg_integer().
+count_unread_by_uid(Uid, Gid) ->
+    msg_c2g_timeline_repo:count_unread_by_uid(Uid, Gid).
+
+%% Q04/F05（I3）：timeline 行不再被 offline_ack 删除后的容量治理兜底
+%% （retention 30 天之外的近实时清理），模式与 msg_c2c_ds 一致：
+%% 1/20 采样 + ?SAVE_MSG_LIMIT 上限 + 异步删最老。
+-spec check_and_delete_overflow(integer()) -> ok.
+check_and_delete_overflow(ToUid) ->
+    _ =
+        case rand:uniform(20) =:= 1 of
+            true ->
+                Count = msg_c2g_timeline_repo:count_by_to_id(ToUid),
+                case Count >= ?SAVE_MSG_LIMIT of
+                    true ->
+                        Limit = Count - ?SAVE_MSG_LIMIT + 1,
+                        _ = elib_async:async_retry(
+                            fun() ->
+                                msg_c2g_timeline_repo:delete_overflow_timeline(ToUid, Limit)
+                            end
+                        );
+                    false ->
+                        ok
+                end;
+            false ->
+                ok
+        end,
+    ok.
 
 %% G3: msg_c2g_logic 不应直调 msg_c2g_repo:tablename()
 -spec set_expire_at(binary(), binary()) -> ok.

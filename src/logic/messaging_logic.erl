@@ -401,13 +401,23 @@ process_offline_ack(Uid, <<"c2c">>, MsgIds, DID) when is_binary(DID), DID =/= <<
     offline_ack_result(msg_operation_ds:ack_c2c_batch(MsgIds, Uid, DID), MsgIds);
 process_offline_ack(Uid, <<"s2c">>, MsgIds, DID) when is_binary(DID), DID =/= <<>> ->
     offline_ack_result(msg_operation_ds:ack_s2c_batch(MsgIds, Uid, DID), MsgIds);
+process_offline_ack(Uid, <<"c2g">>, MsgIds, _DID) ->
+    %% Q04/F05（I3）：c2g 离线确认改为置 per-uid 送达标记（client_ack=true），
+    %% 不再删除 timeline 行——行删除会使同 uid 其他离线设备永久取回不到。
+    %% 置标记后走容量治理采样（retention 30 天之外的兜底清理）。
+    %% DID 不参与：client_ack 是 per-uid 语义（现状合同），已读清零只由
+    %% c2g/message_read 的已读游标驱动（I1：送达确认永不清未读）。
+    case msg_operation_ds:ack_c2g_timeline_batch(MsgIds, Uid) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, _Count} = Ok ->
+            _ = msg_c2g_ds:check_and_delete_overflow(Uid),
+            Ok
+    end;
 process_offline_ack(Uid, Type, MsgIds, _DID) ->
     case Type of
         <<"c2c">> ->
             Count = msg_c2c_ds:delete_by_msg_ids_and_to_id(MsgIds, Uid),
-            {ok, Count};
-        <<"c2g">> ->
-            Count = msg_c2g_ds:timeline_delete_by_msg_ids_and_to_id(MsgIds, Uid),
             {ok, Count};
         <<"s2c">> ->
             Count = msg_s2c_ds:delete_by_msg_ids_and_to_id(MsgIds, Uid),

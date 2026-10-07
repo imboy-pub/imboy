@@ -7,10 +7,12 @@
 
 -export([tablename/0]).
 -export([client_ack/2]).
+-export([client_ack_batch/2]).
 -export([delete_timeline/2]).
 -export([list_by_uid/2, list_by_uid/3]).
 -export([list_by_uid_since/4]).
 -export([count_pending_by_uid/2]).
+-export([count_unread_by_uid/2]).
 -export([check_msg/1]).
 -export([count_by_to_id/1]).
 -export([delete_by_msg_id/1]).
@@ -67,6 +69,11 @@ count_pending_by_uid(Uid, Since) ->
         _ -> 0
     end.
 
+%% Q04/F05（I3）：pending 过滤只保留成员代际 ACL（generation boundary），
+%% 不再排除 client_ack = true 的行——timeline 行是 per (to_uid, msg_id) 的
+%% 投递记录，client_ack 是 per-uid 送达标记：同 uid 的设备 A ACK 后，设备 B
+%% 离线取回仍必须拿到该行（客户端按各自时间游标 next_last_msg_at 增量拉取，
+%% 行保留不会造成重复下发）。行清理交给 retention（30 天）与容量治理。
 authorized_pending_sql(Tb, Column, SinceSql, LimitParam) ->
     LimitSql =
         case LimitParam of
@@ -78,10 +85,36 @@ authorized_pending_sql(Tb, Column, SinceSql, LimitParam) ->
         "JOIN public.group_member gm ON gm.group_id = tl.to_gid ",
         "AND gm.user_id = tl.to_uid AND gm.status = 1 ",
         "JOIN public.group_member_generation gmg ON gmg.group_id = tl.to_gid ",
-        "AND gmg.user_id = tl.to_uid AND gmg.end_seq IS NULL ",
-        "WHERE tl.to_uid = $1 AND tl.client_ack = false ",
+        "AND gmg.user_id = tl.to_uid AND gmg.end_seq IS NULL ", "WHERE tl.to_uid = $1 ",
         "AND tl.conv_seq IS NOT NULL AND tl.conv_seq >= gmg.start_seq", SinceSql/binary,
         LimitSql/binary>>.
+
+%% Q04/F05（I1/I4）：未读计数由 per-user per-group 的已读游标
+%% （workspace_group_read_cursor.read_seq，按成员代际隔离）驱动——
+%% 未读 = 已投递（timeline 行存在）且 conv_seq > 已读游标、非本人发送、
+%% 未过期、非撤回确认。与 client_ack（送达）完全解耦：送达 ACK 永不减未读。
+-spec count_unread_by_uid(integer(), integer()) -> non_neg_integer().
+count_unread_by_uid(Uid, Gid) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT count(DISTINCT tl.msg_id)::integer AS count FROM ", Tb/binary, " tl ",
+            "JOIN public.\"group\" grp ON grp.id = tl.to_gid AND grp.status = 1 ",
+            "JOIN public.group_member gm ON gm.group_id = tl.to_gid ",
+            "AND gm.user_id = tl.to_uid AND gm.status = 1 ",
+            "JOIN public.msg_c2g m ON m.msg_id = tl.msg_id ",
+            "AND m.created_at = tl.created_at AND m.to_id = tl.to_gid ",
+            "JOIN public.group_member_generation gmg ON gmg.group_id = tl.to_gid ",
+            "AND gmg.user_id = tl.to_uid AND gmg.end_seq IS NULL ",
+            "LEFT JOIN public.workspace_group_read_cursor r ON r.generation_id = gmg.id ",
+            "WHERE tl.to_uid = $1 AND tl.to_gid = $2 ",
+            "AND tl.conv_seq IS NOT NULL AND tl.conv_seq >= gmg.start_seq ",
+            "AND tl.conv_seq > COALESCE(r.read_seq, 0) AND m.from_id <> $1 ",
+            "AND (m.expire_at IS NULL OR m.expire_at > NOW()) ",
+            "AND m.payload->>'action' IS DISTINCT FROM 'message_revoke_ack'">>,
+    case elib_pg:query(Sql, [Uid, Gid]) of
+        {ok, [#{<<"count">> := Count}]} when is_integer(Count) -> Count;
+        _ -> 0
+    end.
 
 % msg_c2g_timeline_repo:client_ack(109, <<"cor1aup1a20rgjtl5t8g">>).
 -spec client_ack(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
@@ -91,6 +124,26 @@ client_ack(ToUid, MsgId) ->
     % 使用安全的参数化查询，避免SQL注入
     Sql = <<"UPDATE ", Tb/binary, " SET client_ack = true WHERE to_uid = $1 AND msg_id = $2">>,
     elib_pg:execute(Sql, [ToUid, MsgId]).
+
+%% Q04/F05（I3）：offline_ack 的 c2g 批量送达确认——置 per-uid 送达标记而非删行。
+%% 此前离线拉取确认直接删除 per-uid 行，任一设备确认后其他设备再也无法通过
+%% 离线链路取回（设备 B 永丢）。行清理交给 retention（30 天）与容量治理。
+-spec client_ack_batch(list(binary()), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+client_ack_batch([], _ToUid) ->
+    {ok, 0};
+client_ack_batch(MsgIds, ToUid) when is_list(MsgIds) ->
+    Tb = tablename(),
+    Placeholders = iolist_to_binary(
+        lists:join(
+            <<",">>,
+            [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(MsgIds))]
+        )
+    ),
+    Last = integer_to_binary(length(MsgIds) + 1),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET client_ack = true ", "WHERE msg_id IN (", Placeholders/binary,
+            ") AND to_uid = $", Last/binary>>,
+    elib_pg:execute(Sql, MsgIds ++ [ToUid]).
 
 % msg_c2g_timeline_repo:delete_timeline(6).
 -spec delete_timeline(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.

@@ -18,6 +18,7 @@
 -export([member_uids_strict/1]).
 -export([member_public_keys_authoritative/3]).
 -export([is_member/2]).
+-export([mark_read/3]).
 -export([authorize_group_history/2]).
 -export([authorize_group_history/3]).
 -export([e2ee_mode/1]).
@@ -63,6 +64,16 @@ is_member(Uid, Gid) ->
         _ ->
             true
     end.
+
+%% Q04/F05（AC07/AC08）：普通群已读游标推进（per-user per-group，单调不减）。
+%% 写入 workspace_group_read_cursor（按成员代际隔离，与 workspace 域共用存储）。
+%% 单调性由 SQL 层 ON CONFLICT ... GREATEST 保证（I2）。
+%% 返回 {ok, [#{<<"read_seq">> := Seq}]}（新游标）| {ok, []}（无 open 代际或
+%% msg_ids 均未命中本人 timeline，游标不动）| {error, Reason}。
+-spec mark_read(integer(), integer(), list(binary())) ->
+    {ok, list(map())} | {error, term()}.
+mark_read(Uid, Gid, MsgIds) ->
+    group_repo:mark_group_read(Uid, Gid, MsgIds).
 
 %% ===================================================================
 %% E2EE-2026-012 共享群历史授权（Task 8 / LT-03）

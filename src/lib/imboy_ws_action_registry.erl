@@ -58,6 +58,10 @@
     {<<"c2g">>, <<"message_revoke_ack">>, msg_c2g_logic, c2g_revoke_ack},
     {<<"c2g">>, <<"message_edit">>, msg_c2g_logic, c2g_edit},
     {<<"c2g">>, <<"message_edit_ack">>, msg_c2g_logic, c2g_edit_ack},
+    %% Q04/F05（AC07/AC08）：群消息已读上报——推进 per-user per-group 已读游标
+    %% （与 c2c/message_read 对称）。送达（CLIENT_ACK）与已读（本 action）自此
+    %% 分离：已读游标驱动未读，client_ack 仅作 per-uid 投递确认（I1/I5）。
+    {<<"c2g">>, <<"message_read">>, msg_c2g_logic, c2g_read},
     %% E2EE 密钥分发帧（2026-09-12 补注册）：客户端把 room key（Megolm 会话密钥，
     %% 逐设备 Olm 包裹后）作为 payload 经 C2G/C2C 通道分发，帧带顶层
     %% action = <<"e2ee_room_key">>（imboyapp group_session_service.dart:

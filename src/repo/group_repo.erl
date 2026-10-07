@@ -1,6 +1,7 @@
 -module(group_repo).
 -export([workspace_groups/2, member_workspace_groups/4, member_workspace_groups/5]).
 -export([mark_workspace_group_read/4]).
+-export([mark_group_read/3]).
 %%%
 % group_repo 是 group repository 缩写
 % 群组数据仓库层，提供群组数据的基础数据库操作
@@ -342,6 +343,30 @@ mark_workspace_group_read(Conn, Uid, GroupId, MsgIds) ->
     elib_pg:query(Conn, Sql, [Uid, GroupId, MsgIds]).
 
 workspace_group_columns() ->
-    <<"g.id,g.type,g.join_limit,g.content_limit,g.owner_uid,g.creator_uid,",
+    <<"g.id,g.type,g.join_limit,g.content_limit,", "g.owner_uid,g.creator_uid,",
         "g.member_max,g.member_count,g.introduction,g.avatar,g.title,g.status,g.scope,g.workspace_id,",
         "g.updated_at,g.created_at">>.
+
+%% Q04/F05（I2/AC08）：普通群（会话域）已读游标——复用 workspace_group_read_cursor
+%% （PK = generation_id，成员代际隔离；group_member_generation 覆盖全部群，与 scope 无关）。
+%% 与 mark_workspace_group_read 的差异：
+%%   - 资格只校验 群 status=1 + 成员 status=1 + open 代际（无 workspace/组织链校验）；
+%%   - observed 宽松：msg_ids 是"已读到的消息"而非"必须全部存在"——timeline 行有
+%%     30 天 retention 且会被容量治理清理，行缺失时按命中子集的 max(conv_seq) 推进，
+%%     不允许伪造：只能推进到自己 timeline 行（to_uid=$1 AND to_gid=$2）真实存在的 seq。
+%% 单调性由 ON CONFLICT ... GREATEST 保证（I2）：重复/逆序已读事件不回退游标。
+mark_group_read(Uid, GroupId, MsgIds) ->
+    Sql =
+        <<"WITH eligible AS (", " SELECT gen.id, gen.start_seq FROM \"group\" g",
+            " JOIN group_member gm ON gm.group_id = g.id AND gm.user_id = $1",
+            " JOIN group_member_generation gen ON gen.group_id = g.id AND gen.user_id = $1",
+            " WHERE g.id = $2 AND g.status = 1 AND gm.status = 1 AND gen.end_seq IS NULL",
+            " ), observed AS (", " SELECT e.id, max(tl.conv_seq) AS seq FROM eligible e",
+            " JOIN msg_c2g_timeline tl ON tl.to_uid = $1 AND tl.to_gid = $2",
+            " AND tl.msg_id = ANY($3::text[]) AND tl.conv_seq >= e.start_seq",
+            " AND tl.conv_seq IS NOT NULL", " GROUP BY e.id HAVING max(tl.conv_seq) IS NOT NULL)",
+            " INSERT INTO workspace_group_read_cursor (generation_id, read_seq)",
+            " SELECT id, seq FROM observed ON CONFLICT (generation_id) DO UPDATE",
+            " SET read_seq = GREATEST(workspace_group_read_cursor.read_seq, EXCLUDED.read_seq),",
+            " updated_at = NOW() RETURNING read_seq">>,
+    elib_pg:query(Sql, [Uid, GroupId, MsgIds]).

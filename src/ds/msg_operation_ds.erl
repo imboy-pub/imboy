@@ -13,6 +13,7 @@
 -export([delete_c2g_timeline/2]).
 -export([ack_c2c_msg/2, ack_c2c_msg/3]).
 -export([ack_c2g_timeline/2]).
+-export([ack_c2g_timeline_batch/2]).
 -export([ack_s2c_msg/2, ack_s2c_msg/3]).
 -export([ack_c2s_msg/2]).
 -export([ack_c2c_batch/3]).
@@ -119,6 +120,16 @@ ack_c2c_batch(MsgIds, Uid, DID) ->
     {ok, non_neg_integer()} | {error, term()}.
 ack_c2g_timeline(MsgId, Uid) ->
     msg_c2g_timeline_repo:client_ack(Uid, MsgId).
+
+%% @doc C2G 批量送达确认（REST offline_ack 的 c2g 路径）Q04/F05（I3）
+%% 置 per-uid 送达标记（client_ack=true），不再删除 timeline 行——
+%% 删除会使同 uid 其他离线设备永久取回不到（设备 B 永丢）。
+%% 行清理交给 retention（30 天）与容量治理（check_and_delete_overflow）。
+%% @return {ok, N}（N=本次标记行数） | {error, Reason}
+-spec ack_c2g_timeline_batch([binary()], integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+ack_c2g_timeline_batch(MsgIds, Uid) ->
+    msg_c2g_timeline_repo:client_ack_batch(MsgIds, Uid).
 
 %% @doc S2C 消息 ACK 处理（legacy：无设备维度，按 uid 删行）
 %% @param MsgId 消息ID
