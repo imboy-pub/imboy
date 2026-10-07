@@ -140,3 +140,7 @@ tmp
 # 本机节点时钟状态（TSID-05/07 部署口径为持久卷挂载点 priv/tsid），按机
 # 各自演化、绝不入库；eunit 轨道已隔离到 /tmp/imboy-eunit-tsid-<pid>。
 /priv/tsid/
+# S3 门加固（2026-10-07 S3-SEC-AUDIT）：上述精确路径不匹配带端口后缀的变体，
+# evidence 目录含 run-configs 同源凭据副本与未检二进制件——整体不入仓
+/config/sys.eunit-relay*.config
+docs/design/**/evidence/
