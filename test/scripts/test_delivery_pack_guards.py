@@ -1,5 +1,7 @@
 """Exercise delivery guards in disposable repositories with synthetic bytes."""
 import base64
+import hashlib
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -10,6 +12,36 @@ SCRIPT = Path(__file__).resolve().parents[2] / 'scripts/deliver/make_delivery_pa
 
 
 class DeliveryPackGuardsTests(unittest.TestCase):
+    def test_required_profile_uses_committed_manifest_and_records_its_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'repo'
+            root.mkdir()
+            self.initialize(root)
+            manifest = root / 'config/product-feature-manifest.json'
+            manifest.parent.mkdir()
+            manifest.write_text(json.dumps({'profile': 'full-selected'}))
+            self.commit_fixture(root)
+            committed = manifest.read_bytes()
+            manifest.write_text(json.dumps({'profile': 'phase1_delivery'}))
+            rejected = Path(directory) / 'rejected'
+            result = subprocess.run(
+                ['bash', str(SCRIPT), '--out-dir', str(rejected),
+                 '--require-profile', 'phase1_delivery'],
+                cwd=root, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('profile mismatch', result.stderr)
+            self.assertFalse(list(rejected.glob('*.tar')))
+            output = Path(directory) / 'matching'
+            result = subprocess.run(
+                ['bash', str(SCRIPT), '--out-dir', str(output), '--no-tar',
+                 '--require-profile', 'full-selected'],
+                cwd=root, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            metadata = (output / 'manifest.meta.md').read_text()
+            self.assertIn('profile: full-selected', metadata)
+            self.assertIn(hashlib.sha256(committed).hexdigest(), metadata)
+            self.assertNotIn('phase-1 delivery manifest', metadata)
+
     def test_contract_exclusions_do_not_remove_operational_documents(self):
         excluded = [
             'deploy/nginx/prod-vhosts/customer.conf', '.github/workflows/ci.yml',

@@ -4,10 +4,11 @@
 #
 # 用法 / Usage:
 #   scripts/deliver/make_delivery_pack.sh [--out-dir DIR] [--no-tar]
-#                                        [--secret-fingerprints FILE]
+#                                        [--secret-fingerprints FILE] [--require-profile NAME]
 #
 #   --out-dir DIR             manifest 与 tar 输出目录（默认 /tmp，绝不写仓内）
 #   --no-tar                  只生成 manifest 并跑自检，不产 tar
+#   --require-profile NAME    要求已提交 manifest 的 profile 匹配；不改写源码
 #   --secret-fingerprints F   环境特定凭据指纹清单（每行一个字面量，仓外维护，
 #                             绝不提交）；命中即 FAIL。未提供时跳过并提示。
 #
@@ -43,11 +44,13 @@ umask 077
 OUT_DIR=""
 NO_TAR=0
 FINGERPRINTS=""
+REQUIRED_PROFILE=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --out-dir)             OUT_DIR="${2:?--out-dir needs a value}"; shift 2 ;;
         --no-tar)              NO_TAR=1; shift ;;
+        --require-profile)     REQUIRED_PROFILE="${2:?--require-profile needs a value}"; shift 2 ;;
         --secret-fingerprints) FINGERPRINTS="${2:?--secret-fingerprints needs a value}"; shift 2 ;;
         -h|--help)             sed -n '2,12p' "$0"; exit 0 ;;
         *) echo "ERROR: unknown arg: $1" >&2; exit 1 ;;
@@ -103,6 +106,28 @@ sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{
 
 log()  { printf '[deliver] %s\n' "$*"; }
 fail() { printf '[deliver] FAIL: %s\n' "$*" >&2; exit 1; }
+
+# Read the immutable snapshot, never the dirty workspace's manifest.
+PROFILE="$(python3 - "$REQUIRED_PROFILE" <<'PY_PROFILE'
+import json
+from pathlib import Path
+import re
+import sys
+path = Path('config/product-feature-manifest.json')
+profile = 'unbound'
+if path.exists():
+    profile = json.loads(path.read_text()).get('profile')
+    if not isinstance(profile, str) or not re.fullmatch(r'[a-zA-Z0-9_-]+', profile):
+        sys.exit('ERROR: invalid manifest profile')
+if sys.argv[1] and profile != sys.argv[1]:
+    sys.exit(f'ERROR: profile mismatch: required {sys.argv[1]}, committed {profile}')
+print(profile)
+PY_PROFILE
+)" || exit 1
+MANIFEST_FILE_HASH="unbound"
+if [ -f config/product-feature-manifest.json ]; then
+    MANIFEST_FILE_HASH="$(sha256 config/product-feature-manifest.json)"
+fi
 
 # ---------------------------------------------------------------------------
 # 规则函数：输入路径列表文件，输出命中"凭据命名特征"的路径。
@@ -265,10 +290,12 @@ fi
 # 第 4 步：manifest 元信息（可追溯：SHA、时间、规则、规模）
 # ---------------------------------------------------------------------------
 {
-    echo "# imboy phase-1 delivery manifest"
+    echo "# imboy source delivery manifest"
     echo ""
     echo "- generated_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "- git_sha: $GIT_SHA"
+    echo "- profile: $PROFILE"
+    echo "- manifest_file_sha256: $MANIFEST_FILE_HASH"
     echo "- source: immutable git archive snapshot (index/worktree excluded)"
     echo "- tracked_files: $TRACKED_N"
     echo "- excluded_files: $EXCLUDED_N"

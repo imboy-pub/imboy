@@ -16,6 +16,9 @@ scripts/deliver/make_delivery_pack.sh
 # 只要 manifest + 自检（不产 tar）
 scripts/deliver/make_delivery_pack.sh --no-tar
 
+# 一期验收：已提交 manifest 必须是一期；完整版会被拒绝
+scripts/deliver/make_delivery_pack.sh --require-profile phase1_delivery
+
 # 指定输出目录（必须在仓库外，脚本会拒绝仓内路径）
 scripts/deliver/make_delivery_pack.sh --out-dir /path/outside/repo
 
@@ -43,6 +46,7 @@ scripts/deliver/make_delivery_pack.sh --secret-fingerprints ~/.imboy/secret-fp.t
 ## 校验方法
 
 1. `manifest.meta.md`：记录 git SHA、tracked/excluded/manifest 计数、规则摘要——核对计数闭合（tracked = excluded + manifest）。
+   同时记录归档内实际 `profile` 和 `manifest_file_sha256`（manifest 原始文件字节的 SHA256，不是生成器的规范化 hash）。无 manifest 时记为 `unbound`，指定 `--require-profile` 后不得通过。
 2. `tar.sha256`：tar 的 SHA256；接收方 `shasum -a 256 -c tar.sha256` 验完整性。
 3. tar 条数 == manifest 条数（脚本内建断言）。
 4. `.pem` 文件触发 WARN 清单：需人工确认全部为公钥/开发 fixture（当前唯一命中 `priv/vendor_pubkey_dev.pem` 已确认为 `BEGIN PUBLIC KEY`）。
