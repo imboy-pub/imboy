@@ -3,6 +3,18 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("generated/imboy_product_features.hrl").
 
+agent_demo_route_uses_agent_hub_gate_test() ->
+    Route = {"/api/v1/agent_task/demo", agent_task_demo_handler, #{action => demo}},
+    ?assertEqual(agent_hub, imboy_feature:route_feature(api, agent_task_demo_handler, demo)),
+    ?assertEqual(
+        [
+            {"/api/v1/agent_task/demo", agent_task_demo_handler, #{
+                action => demo, required_feature => agent_hub
+            }}
+        ],
+        imboy_feature:compiled_routes(api, [Route], [core])
+    ).
+
 generated_manifest_metadata_is_exposed_test() ->
     ?assertEqual(?IMBOY_PRODUCT_FEATURE_MANIFEST_HASH, imboy_feature:manifest_hash()),
     ?assertEqual(?IMBOY_PRODUCT_FEATURE_SCHEMA_VERSION, imboy_feature:manifest_schema_version()).

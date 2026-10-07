@@ -223,6 +223,8 @@ route_feature(api, agent_card_handler, _Action) ->
     agent_hub;
 route_feature(api, agent_task_handler, _Action) ->
     agent_hub;
+route_feature(api, agent_task_demo_handler, _Action) ->
+    agent_hub;
 route_feature(api, agent_mandate_handler, _Action) ->
     agent_hub;
 route_feature(api, moya_review_handler, ai_draft) ->
