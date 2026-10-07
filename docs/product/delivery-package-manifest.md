@@ -31,7 +31,7 @@
 - `docs/qa/`（HISTORICAL）、`docs/design/`（进行中计划与 run；已归档部分在 `docs/archive/design/`，亦不进包）、`docs/plans/`（gitignored 历史悬留）
 - 仓根 `evidence/`（历史 run 证据，无导航引用；可追溯性走 git 历史与 Q12 证据台账）
 - `docs-site/`（官网 CI）、`.github/`、`.githooks/`、`.contract/`、`.ecc/`、`.mcp.json`、`.qa/`、`.gitcode`、`.elp.toml`、`.gradualizer-baseline.txt`（可选）、`lefthook.yml`、`sonar-project.properties`、`index.html`
-- 仓根 `AGENTS.md`、`CLAUDE.md`：AI 工作区上下文，引用父级聚合工作区，不属于客户安装与操作文档；源码仓保留，客户包排除。
+- 任意层级 `AGENTS.md`、`CLAUDE.md`：AI 工作区上下文，依赖仓库与聚合工作区上下文，不属于客户安装与操作文档；源码仓保留，客户包排除。
 - `deploy/nginx/prod-vhosts/`：tracked 的生产 vhost 快照，**含真实域名等环境信息**；存在疑似环境敏感内容待治理，未经 AC27 逐条审查前一律不得进入交付包（审查通过前按排除处理）
 
 ## 3. imboyadmin（管理后台仓）
