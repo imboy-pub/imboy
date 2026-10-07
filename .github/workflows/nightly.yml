@@ -170,7 +170,7 @@ jobs:
         id: gate
         run: |
           # CI-00：与本地 `make eunit-local` 完全同口径（eunit-local 目标负责
-          # .otp/imboy OTP 布局 symlink 让 code:priv_dir(imboy) 可解析 + -pa 注入；
+          # imboy/ebin OTP 布局 symlink 让 code:priv_dir(imboy) 可解析 + -pa 注入；
           # EUNIT_CONFIG=config/sys 等价配置注入，sys.config 已从 example 物化）。
           # 原 `make eunit` 裸口径缺 -config 注入，依赖 app 启动的用例级联失败。
           # 不带 EUNIT_MODS = erlang.mk 默认全量 test/*_tests（本地 4 批分跑仅是

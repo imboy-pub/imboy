@@ -8,6 +8,10 @@ import re
 
 def forbidden_reason(path):
     parts = PurePosixPath(path).parts
+    if any(part in {".otp", ".dart_tool", "__pycache__", "node_modules", "_build"} for part in parts):
+        return "generated build cache"
+    if path.endswith((".beam", ".pyc")):
+        return "compiled artifact"
     if any(part in {"evidence", "test-results", "playwright-report"} for part in parts):
         return "execution evidence"
     if "docs" in parts and any(

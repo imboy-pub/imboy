@@ -121,7 +121,7 @@ jobs:
       - name: Run Moment Targeted EUnit (eunit-local 等价口径)
         run: |
           # CI-00：与本地 `make eunit-local` 完全同口径 —— eunit-local 目标负责
-          # .otp/imboy OTP 布局 symlink（code:priv_dir(imboy) 可解析）并注入
+          # imboy/ebin OTP 布局 symlink（code:priv_dir(imboy) 可解析）并注入
           # -pa 布局路径；EUNIT_CONFIG=config/sys 为等价配置注入（sys.config 已
           # 从 example 物化，eunit_runner:ensure_config_loaded/0 会 application:load
           # 后取 env，无需 -eval）。EUNIT_MODS 经命令行变量透传子 make；

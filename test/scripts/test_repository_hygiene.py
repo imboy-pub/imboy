@@ -15,6 +15,9 @@ SPEC.loader.exec_module(HYGIENE)
 class RepositoryHygieneTests(unittest.TestCase):
     def test_rejects_execution_materials_at_any_depth(self):
         for path in [
+            ".otp/imboy/priv", ".dart_tool/package_config.json",
+            "lib/__pycache__/module.pyc", "ebin/module.beam",
+            "nested/node_modules/cache.json", "_build/default/app.beam",
             "docs/qa/report.md", "docs/plans/task.md", "docs/archive/design/run/plan.md",
             "docs/archive/review/code.md", "docs/archive/analysis/report.md",
             "docs/reference/evidence/screenshot.png", "test-results/result.json",
