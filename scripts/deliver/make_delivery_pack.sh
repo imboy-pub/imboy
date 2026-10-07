@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # make_delivery_pack.sh — 一期交付包生成（AC27：tracked 白名单打包）
-# Generate the Phase-1 delivery pack from the git-tracked whitelist.
+# Generate the Phase-1 delivery pack from an immutable committed whitelist.
 #
 # 用法 / Usage:
 #   scripts/deliver/make_delivery_pack.sh [--out-dir DIR] [--no-tar]
@@ -12,7 +12,8 @@
 #                             绝不提交）；命中即 FAIL。未提供时跳过并提示。
 #
 # 设计原则（详见 docs/deliver/deliver-pack.md）：
-#   1. 白名单 = `git ls-files`。未 tracked 的工作区产物（_build/、deps/、
+#   1. 白名单与文件字节均来自固定 HEAD；暂存和工作区修改不进入交付包。
+#      未提交的工作区产物（_build/、deps/、
 #      erl_crash.dump、config/sys.local*、顶层 evidence/、运行日志）天然不进包。
 #   2. tracked 集将来若混入禁项，第 2 步排除 + 第 3 步自检双保险拦截。
 #   3. tar 只输出到 --out-dir（默认 /tmp），仓库内不落任何生成物。
@@ -38,6 +39,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # 参数解析
 # ---------------------------------------------------------------------------
+umask 077
 OUT_DIR=""
 NO_TAR=0
 FINGERPRINTS=""
@@ -81,6 +83,20 @@ META="$OUT_DIR/manifest.meta.md"
 TAR_OUT="$OUT_DIR/imboy-delivery-${GIT_SHA8}-${STAMP}.tar"
 WORK="$OUT_DIR/.work"
 mkdir -p "$WORK"
+SOURCE="$WORK/source"
+[ ! -e "$SOURCE" ] || { echo "ERROR: output already contains a source snapshot" >&2; exit 1; }
+mkdir "$SOURCE"
+if [ -n "$FINGERPRINTS" ]; then
+    FINGERPRINTS="$(python3 - "$FINGERPRINTS" <<'PY_FINGERPRINT'
+from pathlib import Path
+import sys
+print(Path(sys.argv[1]).resolve())
+PY_FINGERPRINT
+)"
+fi
+# Snapshot immutable committed bytes; staged and working-tree edits are excluded.
+git archive --format=tar "$GIT_SHA" | tar -xf - -C "$SOURCE"
+cd "$SOURCE"
 
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}';
            else shasum -a 256 "$1" | awk '{print $1}'; fi; }
@@ -106,10 +122,25 @@ credential_named_paths() {
 # ---------------------------------------------------------------------------
 # 第 1 步：tracked 白名单
 # ---------------------------------------------------------------------------
-log "step 1/5: collecting git-tracked whitelist (git ls-files)"
-# core.quotepath=off：非 ASCII 文件名原样输出；默认的八进制转义+引号形式
-# 会让下游 tar -T 按字面匹配而 stat 失败（中文测试图片文件名实测踩坑）。
-git -c core.quotepath=off ls-files | grep . > "$WORK/all.list" || true
+log "step 1/5: collecting committed whitelist (git ls-tree)"
+python3 - "$REPO_ROOT" "$GIT_SHA" "$WORK/all.list" <<'PY_LIST'
+from pathlib import Path
+import subprocess
+import sys
+entries = subprocess.check_output([
+    "git", "-C", sys.argv[1], "ls-tree", "-rz", "--full-tree", sys.argv[2]
+]).split(b"\0")
+names = []
+for entry in filter(None, entries):
+    metadata, name = entry.split(b"\t", 1)
+    if metadata.split()[1] != b"blob":
+        sys.exit("ERROR: submodule content requires an explicit delivery contract")
+    if b"\n" in name or b"\r" in name:
+        sys.exit("ERROR: newline in delivery filename")
+    names.append(name)
+Path(sys.argv[3]).write_bytes(b"\n".join(sorted(names)) + b"\n")
+PY_LIST
+
 TRACKED_N=$(grep -c . "$WORK/all.list" || true)
 log "  tracked files: $TRACKED_N"
 
@@ -128,7 +159,7 @@ grep -E '(^|/)(erl_)?crash\.dump$'                  "$WORK/all.list" >> "$WORK/e
 # X2 真实 env 文件：.env 及 .env.<variant>；*.example 豁免（配置入口模板）
 grep -E '(^|/)\.env' "$WORK/all.list" | grep -v '\.example$' >> "$WORK/exclude.list" || true
 # X5 缓存 / 第三方包目录
-grep -E '(^|/)node_modules/'                        "$WORK/all.list" >> "$WORK/exclude.list" || true
+grep -E '(^|/)(node_modules|_build|\.otp)/'                        "$WORK/all.list" >> "$WORK/exclude.list" || true
 # X4 Execution artifacts are excluded at every depth.
 grep -E '(^|/)(evidence|test-results|playwright-report)/' "$WORK/all.list" >> "$WORK/exclude.list" || true
 # X6 凭据命名（见 credential_named_paths 注释）
@@ -152,7 +183,7 @@ grep -E '(^|/)config/sys\.(local|dev|prod|eunit)' "$MANIFEST" >> "$VIOLATIONS" |
 grep -E '\.log$'                                   "$MANIFEST" >> "$VIOLATIONS" || true
 grep -E '(^|/)(erl_)?crash\.dump$'                 "$MANIFEST" >> "$VIOLATIONS" || true
 grep -E '(^|/)\.env' "$MANIFEST" | grep -v '\.example$' >> "$VIOLATIONS" || true
-grep -E '(^|/)node_modules/'                       "$MANIFEST" >> "$VIOLATIONS" || true
+grep -E '(^|/)(node_modules|_build|\.otp)/'                       "$MANIFEST" >> "$VIOLATIONS" || true
 grep -E '(^|/)(evidence|test-results|playwright-report)/' "$MANIFEST" >> "$VIOLATIONS" || true
 credential_named_paths "$MANIFEST" | sed 's/^/[cred-name] /' >> "$VIOLATIONS" || true
 
@@ -167,8 +198,21 @@ pattern = re.compile(
     rb"-----BEGIN ((?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY)-----"
     rb"(.*?)-----END \1-----", re.S
 )
+root = Path.cwd().resolve()
+names = Path(sys.argv[1]).read_text().splitlines()
+selected = set(names)
 with Path(sys.argv[2]).open("a") as violations:
-    for name in Path(sys.argv[1]).read_text().splitlines():
+    for name in names:
+        if Path(name).is_symlink():
+            try:
+                target = Path(name).resolve(strict=True)
+                target_name = str(target.relative_to(root))
+                safe = target.is_file() and target_name in selected
+            except (OSError, RuntimeError, ValueError):
+                safe = False
+            if not safe:
+                violations.write(f"[symlink] {name}\n")
+                continue
         for block in pattern.finditer(Path(name).read_bytes()):
             body = re.sub(rb"\s+", b"", block.group(2))
             try:
@@ -179,6 +223,11 @@ with Path(sys.argv[2]).open("a") as violations:
                 violations.write(f"[real-pem] {name}\n")
                 break
 PY_PEM
+
+if grep -q '^\[symlink\]' "$VIOLATIONS"; then
+    cat "$VIOLATIONS" >&2
+    fail "unsafe delivery symlink"
+fi
 
 # 内容级 B：已知环境凭据指纹（指纹文件仓外维护，本脚本绝不内嵌任何真实凭据）
 if [ -n "$FINGERPRINTS" ] && [ -s "$FINGERPRINTS" ]; then
@@ -212,6 +261,7 @@ fi
     echo ""
     echo "- generated_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "- git_sha: $GIT_SHA"
+    echo "- source: immutable git archive snapshot (index/worktree excluded)"
     echo "- tracked_files: $TRACKED_N"
     echo "- excluded_files: $EXCLUDED_N"
     echo "- manifest_entries: $MANIFEST_N"
@@ -234,7 +284,15 @@ if [ "$NO_TAR" -eq 1 ]; then
     exit 0
 fi
 log "step 5/5: creating tar (output only under $OUT_DIR)"
-tar -cf "$TAR_OUT" -C "$REPO_ROOT" -T "$MANIFEST"
+python3 - "$SOURCE" "$MANIFEST" "$TAR_OUT" <<'PY_TAR'
+from pathlib import Path
+import sys
+import tarfile
+root = Path(sys.argv[1])
+with tarfile.open(sys.argv[3], "w") as archive:
+    for name in Path(sys.argv[2]).read_text().splitlines():
+        archive.add(root / name, arcname=name, recursive=False)
+PY_TAR
 TAR_N=$(tar -tf "$TAR_OUT" | grep -c . || true)
 [ "$TAR_N" -eq "$MANIFEST_N" ] || fail "tar entries ($TAR_N) != manifest entries ($MANIFEST_N)"
 TAR_SHA=$(sha256 "$TAR_OUT")
