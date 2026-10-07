@@ -12,6 +12,17 @@
 -export([save/3]).
 -export([delete/1]).
 -export([people_nearby/5]).
+-export([set_visible/3, set_hidden/1]).
+
+-spec set_visible(integer(), binary(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()} | {rollback, term()}.
+set_visible(Uid, Lat, Lng) ->
+    geo_people_nearby_repo:set_visibility(Uid, true, Lat, Lng).
+
+-spec set_hidden(integer()) ->
+    {ok, non_neg_integer()} | {error, term()} | {rollback, term()}.
+set_hidden(Uid) ->
+    geo_people_nearby_repo:set_visibility(Uid, false, <<>>, <<>>).
 
 %% ===================================================================
 %% API Functions
@@ -43,7 +54,7 @@ delete(Uid) ->
 %% @param Limit 查询结果数量限制
 %% @return {ok, Rows} | {error, Reason}
 -spec people_nearby(binary(), binary(), integer(), binary(), integer()) ->
-          {ok, [map()]} | {error, any()}.
+    {ok, [map()]} | {error, any()}.
 people_nearby(Lng, Lat, Radius, Unit, Limit) ->
     geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit, Limit).
 

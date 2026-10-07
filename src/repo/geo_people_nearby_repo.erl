@@ -8,6 +8,7 @@
 -export([save/3]).
 -export([delete/1]).
 -export([people_nearby/5]).
+-export([set_visibility/4]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -54,6 +55,49 @@ delete(Uid) ->
     Where = <<" WHERE user_id = $1">>,
     Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
     elib_pg:execute_count(Sql, [Uid]).
+
+%% Serialize changes for one user on the setting row, then update the location
+%% on the same connection. Either both writes commit or neither does.
+-spec set_visibility(integer(), boolean(), binary(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()} | {rollback, term()}.
+set_visibility(Uid, Visible, Lat, Lng) ->
+    elib_pg:with_tx(fun(Conn) ->
+        set_visibility_setting(Conn, Uid, Visible),
+        set_location(Conn, Uid, Visible, Lat, Lng),
+        {ok, 1}
+    end).
+
+set_visibility_setting(Conn, Uid, Visible) ->
+    Tb = user_setting_repo:tablename(),
+    Sql = <<
+        "INSERT INTO ",
+        Tb/binary,
+        " (user_id, setting, updated_at) "
+        "VALUES ($1, jsonb_build_object('people_nearby_visible', $2::boolean)::json, $3) "
+        "ON CONFLICT (user_id) DO UPDATE SET setting = "
+        "(COALESCE(",
+        Tb/binary,
+        ".setting::jsonb, '{}'::jsonb) || "
+        "jsonb_build_object('people_nearby_visible', $2::boolean))::json, "
+        "updated_at = EXCLUDED.updated_at"
+    >>,
+    require_write(elib_pg:execute_count(Conn, Sql, [Uid, Visible, elib_dt:now()])).
+
+set_location(Conn, Uid, false, _Lat, _Lng) ->
+    Sql = <<"DELETE FROM ", (tablename())/binary, " WHERE user_id = $1">>,
+    require_write(elib_pg:execute_count(Conn, Sql, [Uid]));
+set_location(Conn, Uid, true, Lat, Lng) ->
+    Sql = <<
+        "INSERT INTO ",
+        (tablename())/binary,
+        " (user_id, location) "
+        "VALUES ($1, ST_GeomFromText('POINT(' || $2 || ' ' || $3 || ')', 4326)) "
+        "ON CONFLICT (user_id) DO UPDATE SET location = EXCLUDED.location"
+    >>,
+    require_write(elib_pg:execute_count(Conn, Sql, [Uid, Lng, Lat])).
+
+require_write({ok, Count}) when is_integer(Count), Count >= 0 -> ok;
+require_write({error, Reason}) -> throw({abort_tx, {location_write_failed, Reason}}).
 
 %% @doc 查询附近的人
 %% 使用 PostgreSQL PostGIS 插件的地理空间查询功能

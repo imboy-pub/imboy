@@ -22,17 +22,17 @@ cleanup(Modules) ->
     meck:unload(Modules).
 
 failed_save_does_not_report_visible() ->
-    ok = meck:expect(geo_people_nearby_ds, save, fun(_, _, _) -> {error, db_unavailable} end),
+    ok = meck:expect(geo_people_nearby_ds, set_visible, fun(_, _, _) -> {error, db_unavailable} end),
     ?assertMatch({error, _}, location_logic:make_myself_visible(100, <<"23">>, <<"113">>)),
     ?assertEqual(0, meck:num_calls(user_setting_ds, save, ['_', '_', '_'])).
 
 failed_delete_does_not_report_hidden() ->
-    ok = meck:expect(geo_people_nearby_ds, delete, fun(_) -> {error, db_unavailable} end),
+    ok = meck:expect(geo_people_nearby_ds, set_hidden, fun(_) -> {error, db_unavailable} end),
     ?assertMatch({error, _}, location_logic:make_myself_unvisible(100)),
     ?assertEqual(0, meck:num_calls(user_setting_ds, save, ['_', '_', '_'])).
 
 hidden_endpoint_reports_delete_failure() ->
-    ok = meck:expect(geo_people_nearby_ds, delete, fun(_) -> {error, db_unavailable} end),
+    ok = meck:expect(geo_people_nearby_ds, set_hidden, fun(_) -> {error, db_unavailable} end),
     {ok, Req, _} = location_handler:init(#{}, #{
         action => make_myself_unvisible, current_uid => 100
     }),
@@ -40,13 +40,10 @@ hidden_endpoint_reports_delete_failure() ->
     ?assertEqual(0, meck:num_calls(elib_response, success, ['_', '_', '_'])).
 
 successful_writes_update_visibility() ->
-    ok = meck:expect(geo_people_nearby_ds, save, fun(_, _, _) -> {ok, 1} end),
-    ok = meck:expect(geo_people_nearby_ds, delete, fun(_) -> {ok, 0} end),
+    ok = meck:expect(geo_people_nearby_ds, set_visible, fun(_, _, _) -> {ok, 1} end),
+    ok = meck:expect(geo_people_nearby_ds, set_hidden, fun(_) -> {ok, 0} end),
     ?assertEqual(ok, location_logic:make_myself_visible(100, <<"23">>, <<"113">>)),
     ?assertEqual(ok, location_logic:make_myself_unvisible(100)),
-    ?assertEqual(
-        1, meck:num_calls(user_setting_ds, save, [100, <<"people_nearby_visible">>, true])
-    ),
-    ?assertEqual(
-        1, meck:num_calls(user_setting_ds, save, [100, <<"people_nearby_visible">>, false])
-    ).
+    ?assertEqual(1, meck:num_calls(geo_people_nearby_ds, set_visible, [100, <<"23">>, <<"113">>])),
+    ?assertEqual(1, meck:num_calls(geo_people_nearby_ds, set_hidden, [100])),
+    ?assertEqual(0, meck:num_calls(user_setting_ds, save, ['_', '_', '_'])).

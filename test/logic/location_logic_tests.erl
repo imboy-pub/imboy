@@ -21,7 +21,7 @@ save_location_success_test_() ->
                 {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
             ]},
             {geo_people_nearby_ds, [
-                {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+                {'set_visible', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -40,7 +40,7 @@ save_location_with_string_coordinates_test_() ->
                 {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
             ]},
             {geo_people_nearby_ds, [
-                {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+                {'set_visible', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -59,7 +59,7 @@ save_location_with_number_coordinates_test_() ->
                 {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
             ]},
             {geo_people_nearby_ds, [
-                {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+                {'set_visible', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -261,7 +261,7 @@ save_with_zero_coordinates_test_() ->
                 {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
             ]},
             {geo_people_nearby_ds, [
-                {'save', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
+                {'set_visible', 3, fun(_Uid, _Lat, _Lng) -> {ok, 1} end}
             ]}
         ],
         fun() ->
