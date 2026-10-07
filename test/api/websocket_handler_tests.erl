@@ -1,6 +1,7 @@
 -module(websocket_handler_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-include("imboy_frame.hrl").
 
 log_mocks() ->
     [
@@ -219,10 +220,45 @@ websocket_info_timeout_without_ack_resend_test_() ->
         fun() ->
             State = #{current_uid => 1},
             Info = {timeout, ref1, {[100, 200], {1, <<"did_1">>, <<"msg_1">>}, <<"raw_msg">>}},
-            {ok, State2, hibernate} = websocket_handler:websocket_info(
+            {reply, {text, <<"raw_msg">>}, State2, hibernate} = websocket_handler:websocket_info(
                 Info, State
             ),
             ?assertEqual(State, State2)
+        end
+    ).
+
+positive_delay_chain_delivers_each_current_v2_message_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {ack_retry_cache, [
+                    {'delete_if_value', 2, fun(_, _) -> true end},
+                    {'get', 1, fun(_) -> undefined end}
+                ]},
+                {message_ds, [{'send_next', 6, fun(_, _, _, _, _, _) -> ok end}]}
+            ],
+        fun() ->
+            Msg = jsone:encode(#{<<"id">> => <<"offline-1">>, <<"type">> => <<"C2G">>}),
+            State = #{protocol => json, framing => v2},
+            ExpectedFrame = imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_C2G, 0, Msg),
+            lists:foreach(
+                fun(Tail) ->
+                    Info = {timeout, make_ref(), {Tail, {1, <<"did_1">>, <<"offline-1">>}, Msg}},
+                    ?assertEqual(
+                        {reply, {binary, ExpectedFrame}, State, hibernate},
+                        websocket_handler:websocket_info(Info, State)
+                    ),
+                    ?assertEqual(
+                        1,
+                        meck:num_calls(
+                            message_ds,
+                            send_next,
+                            [1, <<"offline-1">>, Msg, Tail, [<<"did_1">>], true]
+                        )
+                    )
+                end,
+                [[10000, 20000], [20000], []]
+            )
         end
     ).
 
@@ -294,7 +330,7 @@ websocket_info_timeout_with_invalid_ack_flag_resend_test_() ->
         fun() ->
             State = #{current_uid => 1},
             Info = {timeout, ref3, {[100, 200], {1, <<"did_1">>, <<"msg_3">>}, <<"raw_msg_3">>}},
-            {ok, State2, hibernate} = websocket_handler:websocket_info(
+            {reply, {text, <<"raw_msg_3">>}, State2, hibernate} = websocket_handler:websocket_info(
                 Info, State
             ),
             ?assertEqual(State, State2),
@@ -546,7 +582,10 @@ timeout_delivery_protobuf_test_() ->
             JsonMsg = jsone:encode(Msg, [native_utf8]),
             State = #{current_uid => 1, protocol => protobuf},
             Info = {timeout, ref1, {[100], {1, <<"did_1">>, <<"m3">>}, JsonMsg}},
-            {ok, _, hibernate} = websocket_handler:websocket_info(Info, State),
+            {reply, {binary, Frame}, State, hibernate} = websocket_handler:websocket_info(
+                Info, State
+            ),
+            ?assertEqual(imboy_codec:encode(protobuf, Msg), Frame),
             ?assertEqual(1, meck:num_calls(ack_retry_cache, get, 1)),
             ?assertEqual(1, meck:num_calls(message_ds, send_next, 6))
         end
@@ -575,7 +614,10 @@ timeout_final_retry_protobuf_test_() ->
             JsonMsg = jsone:encode(Msg, [native_utf8]),
             State = #{protocol => protobuf},
             Info = {timeout, ref2, {[], {1, <<"did_1">>, <<"m4">>}, JsonMsg}},
-            {ok, _, hibernate} = websocket_handler:websocket_info(Info, State),
+            {reply, {binary, Frame}, State, hibernate} = websocket_handler:websocket_info(
+                Info, State
+            ),
+            ?assertEqual(imboy_codec:encode(protobuf, Msg), Frame),
             ?assertEqual(1, meck:num_calls(ack_retry_cache, get, 1)),
             ?assertEqual(1, meck:num_calls(message_ds, send_next, 6))
         end

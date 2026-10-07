@@ -623,16 +623,14 @@ websocket_info({timeout, Ref, {MsLi, {Uid, DID, MsgId} = TimerKey, Msg}}, State)
                     {ok, State, hibernate};
                 {ok, _} ->
                     ok = ?WARN_LOG({timeout_ack_flag_invalid, MsgId}),
-                    %% 安全审计 P2-5：send_next 续排（含 0-delay 立即投递）交由
-                    %% send_next_loop 内部的 ACK 检查与重试逻辑处理，此处不再
-                    %% 发送 {reply, ...} 避免双投递（send_next 本身的 0-delay 分支
-                    %% 会通过 erlang:start_timer(0, Pid, Msg) 触发另一次投递）。
+                    %% 当前 timer 对应一次投递；MsLi 仅是后续重试。
+                    %% 只续排而不回复会丢掉所有正延迟投递，含最终重试。
                     websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
-                    {ok, State, hibernate};
+                    {reply, encode_delivery_frame(Msg, State), State, hibernate};
                 undefined ->
                     ok = ?DEBUG_LOG({timeout_no_ack, MsgId, Uid}),
                     websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
-                    {ok, State, hibernate}
+                    {reply, encode_delivery_frame(Msg, State), State, hibernate}
             end
     end;
 %% 处理其他超时消息
