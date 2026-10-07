@@ -638,12 +638,24 @@ handle_c2g_read_receipt(MsgId, CurrentUid, Gid, MsgIds, ReadAt, NowMs) ->
                 <<"payload">> => #{<<"gid">> => Gid, <<"read_seq">> => ReadSeq},
                 <<"server_ts">> => NowMs
             }};
-        _Other ->
+        {ok, []} ->
             {reply, #{
                 <<"id">> => MsgId,
                 <<"type">> => <<"C2G">>,
                 <<"action">> => <<"message_read_ack">>,
                 <<"payload">> => #{<<"gid">> => Gid},
+                <<"server_ts">> => NowMs
+            }};
+        _Failure ->
+            {reply, #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2G">>,
+                <<"action">> => <<"message_read_ack">>,
+                <<"payload">> => #{
+                    <<"gid">> => Gid,
+                    <<"error">> => <<"storage_unavailable">>,
+                    <<"retryable">> => true
+                },
                 <<"server_ts">> => NowMs
             }}
     end.
