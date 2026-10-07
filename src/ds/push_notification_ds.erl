@@ -122,7 +122,12 @@ send_fcm(Token, Title, Body, Data) ->
             end;
         {error, not_configured} ->
             ?DEBUG_LOG(["FCM not configured, skip push"]),
-            {error, not_configured}
+            {error, not_configured};
+        {error, Reason} ->
+            %% G4：刷新链路失败（配置类/token endpoint 拒绝）——错误原样上抛，
+            %% 调用方按失败分类决定是否重试
+            ?ERROR_LOG(["FCM access token unavailable", Reason]),
+            {error, Reason}
     end.
 
 %% @doc 发送 APNs 推送（Apple Push Notification Service HTTP/2）
@@ -237,6 +242,10 @@ do_send_push(Row, Title, Body, Data) when is_map(Data) ->
                         {error, {fcm_error, 404}} -> ok;
                         % token 已注销，不重试
                         {error, {fcm_error, 410}} -> ok;
+                        % G4：service account 配置类错误，不重试
+                        {error, {config_error, _}} -> ok;
+                        % G4：token endpoint 明确拒绝，不重试（下轮缓存过期再试）
+                        {error, {fcm_token_error, _}} -> ok;
                         {error, Reason} -> error({push_failed, Reason})
                     end;
                 <<"apns">> ->
@@ -284,21 +293,44 @@ send_jpush(Token, Title, Body, Data) ->
 extract_push_info(Row) when is_map(Row) ->
     {maps:get(<<"platform">>, Row, <<>>), maps:get(<<"token">>, Row, <<>>)}.
 
-%% @doc 获取 FCM 配置
+%% @doc 获取 FCM 配置（G4：access token 来源优先级）
+%%   1. service account（fcm_service_account_json/_path）→ 动态刷新
+%%      （push_provider_fcm_token，OAuth2 JWT-bearer，缓存 50min）；
+%%   2. 静态 {fcm_access_token, ...}（向后兼容，短期/测试用途）；
+%%   3. 均无 → not_configured。
+%% 刷新失败（配置类/endpoint 拒绝）原样返回 {error, Reason}，由 send_fcm
+%% 上抛、do_send_push 按分类决定不重试。
 get_fcm_config() ->
     case application:get_env(imboy, push) of
         {ok, PushConfig} ->
-            ProjectId = proplists:get_value(fcm_project_id, PushConfig),
-            AccessToken = proplists:get_value(fcm_access_token, PushConfig),
-            case ProjectId =/= undefined andalso AccessToken =/= undefined of
-                true ->
-                    {ok, elib_cnv:safe_to_binary(ProjectId), elib_cnv:safe_to_binary(AccessToken)};
-                false ->
-                    {error, not_configured}
+            case proplists:get_value(fcm_project_id, PushConfig) of
+                undefined ->
+                    {error, not_configured};
+                ProjectId ->
+                    TokenResult =
+                        case service_account_configured(PushConfig) of
+                            true ->
+                                push_provider_fcm_token:get_access_token();
+                            false ->
+                                case proplists:get_value(fcm_access_token, PushConfig) of
+                                    undefined -> {error, not_configured};
+                                    Static -> {ok, elib_cnv:safe_to_binary(Static)}
+                                end
+                        end,
+                    case TokenResult of
+                        {ok, AccessToken} ->
+                            {ok, elib_cnv:safe_to_binary(ProjectId), AccessToken};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end
             end;
         undefined ->
             {error, not_configured}
     end.
+
+service_account_configured(PushConfig) ->
+    proplists:get_value(fcm_service_account_json, PushConfig) =/= undefined orelse
+        proplists:get_value(fcm_service_account_path, PushConfig) =/= undefined.
 
 %% @doc 获取 APNs 配置
 get_apns_config() ->
