@@ -79,6 +79,8 @@ delete_delivered_batch_cleans_marks_after_main_delete_test_() ->
                         %% 第二条：清除主行已消失的标记
                         ?assertMatch({_, _}, binary:match(Sql, <<"msg_delivery">>)),
                         ?assertEqual([<<"c2c">>, 100, <<"m1">>], Params),
+                        ?assertMatch({_, _}, binary:match(Sql, <<"a.msg_id IN ($3)">>)),
+                        ?assertEqual(nomatch, binary:match(Sql, <<"$4">>)),
                         {ok, 1}
                 end
             end}

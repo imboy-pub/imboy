@@ -92,7 +92,7 @@ delete_delivered_batch(Kind, MsgIds, ToUid, ActiveDays) ->
                 "DELETE FROM ",
                 Tb/binary,
                 " a WHERE a.msg_kind = $1 AND a.to_uid = $2 AND a.msg_id IN (",
-                In/binary,
+                (placeholders(2, length(MsgIds)))/binary,
                 ") AND NOT EXISTS (SELECT 1 FROM ",
                 MsgTb/binary,
                 " m WHERE m.msg_id = a.msg_id AND m.to_id = a.to_uid)"
