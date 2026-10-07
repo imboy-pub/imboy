@@ -216,8 +216,8 @@ stage_unique_violation_converts_to_business_error_test_() ->
             ]},
             {elib_pg, [
                 {'query', 2, fun(_Sql, _Params) ->
-                    {error,
-                        {error, {error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}}
+                    %% Q06（AC11）：真实 epgsql 唯一冲突形状（三层伪造形状已废弃）
+                    {error, {error, error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}
                 end}
             ]}
         ],
@@ -383,8 +383,7 @@ c2g_stage_list_bypass_precedes_database_write_test_() ->
             ]},
             {elib_pg, [
                 {'query', 2, fun(_Sql, _Params) ->
-                    {error,
-                        {error, {error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}}
+                    {error, {error, error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}
                 end}
             ]}
         ],

@@ -175,14 +175,18 @@ stage(
     Data2 = Data#{id => GenId},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     %% 【幂等性修复】捕获唯一约束错误
+    %% Q06（AC11 真库注入修复）：真实 epgsql 唯一冲突形状为
+    %% {error, {error, Severity, <<"23505">>, unique_violation, Msg, Extra}}
+    %% （全仓 passport_logic/bot_ds 等 15+ 处同款）；此前的三层
+    %% {error, {error, {error, <<"23505">>, ...}}} 形状在真实链路中不存在，
+    %% 仅被 mock 测试伪造——真实重发（staging UNIQUE(type,msg_id) 冲突）
+    %% 落入兜底分支返回原始错误，C2C 重发无法幂等收敛为 duplicate。
     case elib_pg:query(Sql, Params) of
         {ok, _} ->
             {ok, GenId};
-        {error, {error, {error, <<"23505">>, unique_violation, _, _}}} ->
+        {error, {error, _Severity, <<"23505">>, unique_violation, _Msg, _Extra}} ->
             %% PostgreSQL 唯一约束错误：消息已存在（幂等性）
             {error, {unique_violation, MsgId}};
-        {error, {error, Reason}} ->
-            {error, Reason};
         {error, Reason} ->
             {error, Reason}
     end;
@@ -229,15 +233,14 @@ stage(
     GenId2 = elib_tsid:generate(msg_store),
     Data3 = Data#{id => GenId2},
     {Sql2, Params2} = elib_pg_sql:insert(Tb, Data3),
-    %% 【幂等性修复】捕获唯一约束错误
+    %% 【幂等性修复】捕获唯一约束错误（Q06/AC11：真实 epgsql 形状，
+    %% 详见 c2c 分支注释）
     case elib_pg:query(Sql2, Params2) of
         {ok, _} ->
             {ok, GenId2};
-        {error, {error, {error, <<"23505">>, unique_violation, _, _}}} ->
+        {error, {error, _Severity, <<"23505">>, unique_violation, _Msg, _Extra}} ->
             %% PostgreSQL 唯一约束错误：消息已存在（幂等性）
             {error, {unique_violation, MsgId}};
-        {error, {error, Reason}} ->
-            {error, Reason};
         {error, Reason} ->
             {error, Reason}
     end.

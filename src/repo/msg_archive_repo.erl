@@ -127,7 +127,10 @@ archive(Row) ->
                     case elib_pg:insert(?TABLE, FinalData) of
                         {ok, _} ->
                             ok;
-                        {error, {error, {error, <<"23505">>, unique_violation, _, _}}} ->
+                        %% Q06（AC11 真库注入修复）：真实 epgsql 唯一冲突形状
+                        %% {error, {error, Severity, <<"23505">>, unique_violation, Msg, Extra}}
+                        %% （与 msg_store_repo stage 同款修正；旧三层形状仅存在于 mock）
+                        {error, {error, _Severity, <<"23505">>, unique_violation, _Msg, _Extra}} ->
                             %% 幂等：消息已归档（Worker 重试场景），视为成功
                             ok;
                         {error, Reason} ->
