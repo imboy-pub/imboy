@@ -154,7 +154,7 @@ delete_location_error_test_() ->
     ).
 
 %% ===================================================================
-%% people_nearby/5 测试
+%% people_nearby/6 测试
 %% ===================================================================
 
 people_nearby_found_users_test_() ->
@@ -176,7 +176,7 @@ people_nearby_found_users_test_() ->
             Unit = <<"m">>,
             Limit = 10,
 
-            Result = geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit, Limit),
+            Result = geo_people_nearby_repo:people_nearby(100, Lng, Lat, Radius, Unit, Limit),
             ?assertMatch({ok, _}, Result)
         end
     ).
@@ -197,7 +197,7 @@ people_nearby_no_users_found_test_() ->
             Unit = <<"m">>,
             Limit = 10,
 
-            Result = geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit, Limit),
+            Result = geo_people_nearby_repo:people_nearby(100, Lng, Lat, Radius, Unit, Limit),
             ?assertMatch({ok, []}, Result)
         end
     ).
@@ -220,7 +220,7 @@ people_nearby_with_different_radius_test_() ->
             Unit = <<"m">>,
             Limit = 20,
 
-            Result = geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit, Limit),
+            Result = geo_people_nearby_repo:people_nearby(100, Lng, Lat, Radius, Unit, Limit),
             ?assertMatch({ok, _}, Result)
         end
     ).
@@ -240,7 +240,7 @@ people_nearby_database_error_test_() ->
             Unit = <<"m">>,
             Limit = 10,
 
-            Result = geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit, Limit),
+            Result = geo_people_nearby_repo:people_nearby(100, Lng, Lat, Radius, Unit, Limit),
             ?assertEqual({error, database_error}, Result)
         end
     ).
@@ -272,7 +272,7 @@ save_find_and_delete_location_flow_test_() ->
             ?assertEqual({ok, 1}, geo_people_nearby_repo:save(Uid, Lat, Lng)),
 
             % 2. 查询附近的人
-            Result = geo_people_nearby_repo:people_nearby(Lng, Lat, 1000, <<"m">>, 10),
+            Result = geo_people_nearby_repo:people_nearby(100, Lng, Lat, 1000, <<"m">>, 10),
             ?assertMatch({ok, _}, Result),
 
             % 3. 删除位置
@@ -308,7 +308,40 @@ update_location_and_query_nearby_flow_test_() ->
             ?assertEqual({ok, 1}, geo_people_nearby_repo:save(Uid, Lat2, Lng2)),
 
             % 3. 查询附近的人
-            Result = geo_people_nearby_repo:people_nearby(Lng2, Lat2, 1000, <<"m">>, 10),
+            Result = geo_people_nearby_repo:people_nearby(100, Lng2, Lat2, 1000, <<"m">>, 10),
             ?assertMatch({ok, _}, Result)
+        end
+    ).
+
+requester_scoped_privacy_query_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {query, 2, fun(Sql, Params) ->
+                ?assertEqual([<<"113">>, <<"23">>, 500, 1, 100], Params),
+                lists:foreach(
+                    fun(Clause) ->
+                        ?assertNotEqual(nomatch, binary:match(Sql, Clause))
+                    end,
+                    [
+                        <<"u.id <> $5">>,
+                        <<"u.status = 1">>,
+                        <<"u.account_type = 0">>,
+                        <<"people_nearby_visible">>,
+                        <<"d.user_id = $5 AND d.denied_user_id = u.id">>,
+                        <<"d.user_id = u.id AND d.denied_user_id = $5">>,
+                        <<"ORDER BY distance ASC, u.id ASC">>
+                    ]
+                ),
+                {ok, []}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, []},
+                geo_people_nearby_repo:people_nearby(
+                    100, <<"113">>, <<"23">>, 500, <<"m">>, 1
+                )
+            )
         end
     ).

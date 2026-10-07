@@ -11,7 +11,7 @@
 
 -export([save/3]).
 -export([delete/1]).
--export([people_nearby/5]).
+-export([people_nearby/6]).
 -export([set_visible/3, set_hidden/1]).
 
 -spec set_visible(integer(), binary(), binary()) ->
@@ -53,10 +53,10 @@ delete(Uid) ->
 %% @param Unit 单位（预留参数，当前固定使用米）
 %% @param Limit 查询结果数量限制
 %% @return {ok, Rows} | {error, Reason}
--spec people_nearby(binary(), binary(), integer(), binary(), integer()) ->
+-spec people_nearby(integer(), binary(), binary(), integer(), binary(), integer()) ->
     {ok, [map()]} | {error, any()}.
-people_nearby(Lng, Lat, Radius, Unit, Limit) ->
-    geo_people_nearby_repo:people_nearby(Lng, Lat, Radius, Unit, Limit).
+people_nearby(CurrentUid, Lng, Lat, Radius, Unit, Limit) ->
+    geo_people_nearby_repo:people_nearby(CurrentUid, Lng, Lat, Radius, Unit, Limit).
 
 %% ===================================================================
 %% Internal Functions

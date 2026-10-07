@@ -7,7 +7,7 @@
 -export([tablename/0]).
 -export([save/3]).
 -export([delete/1]).
--export([people_nearby/5]).
+-export([people_nearby/6]).
 -export([set_visibility/4]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -107,9 +107,9 @@ require_write({error, Reason}) -> throw({abort_tx, {location_write_failed, Reaso
 %% @param Unit 单位（预留参数，当前固定使用米）
 %% @param Limit 查询结果数量限制
 %% @return {ok, Rows} 查询成功返回附近用户列表（按距离排序） | {error, Reason} 查询失败
--spec people_nearby(binary(), binary(), integer(), binary(), integer()) ->
+-spec people_nearby(integer(), binary(), binary(), integer(), binary(), integer()) ->
     {ok, [map()]} | {error, term()}.
-people_nearby(Lng, Lat, Radius, _Unit, Limit) ->
+people_nearby(CurrentUid, Lng, Lat, Radius, _Unit, Limit) ->
     % 使用安全的参数化查询，避免SQL注入
     %% 点用字符串拼接构造(经度/纬度为 binary，$1/$2 在 || 中被推断为 text 正常绑定)。
     %% 注意: 勿改成 $1::float8 —— 会让 epgsql 把参数类型推断为 float8，二进制经纬度
@@ -120,13 +120,19 @@ people_nearby(Lng, Lat, Radius, _Unit, Limit) ->
         "SELECT u.id, u.account, u.nickname, u.avatar, u.sign, u.gender, u.region,\n"
         "                    ST_Distance(ST_GeographyFromText('SRID=4326;POINT(' || $1 || ' ' || $2 || ')'), location) as distance\n"
         "             FROM public.geo_people_nearby gpn\n"
-        "             LEFT JOIN public.user u ON u.id = gpn.user_id\n"
+        "             JOIN public.user u ON u.id = gpn.user_id\n"
         "             WHERE ST_DWithin(location::geography, ST_GeographyFromText('POINT(' || $1 || ' ' || $2 || ')'), $3)\n"
-        "             ORDER BY distance ASC\n"
+        "             AND u.id <> $5 AND u.status = 1 AND u.account_type = 0\n"
+        "             AND EXISTS (SELECT 1 FROM public.user_setting us WHERE us.user_id = u.id\n"
+        "                 AND us.setting::jsonb->>'people_nearby_visible' = 'true')\n"
+        "             AND NOT EXISTS (SELECT 1 FROM public.user_denylist d\n"
+        "                 WHERE (d.user_id = $5 AND d.denied_user_id = u.id)\n"
+        "                    OR (d.user_id = u.id AND d.denied_user_id = $5))\n"
+        "             ORDER BY distance ASC, u.id ASC\n"
         "             LIMIT $4"
     >>,
     % ?DEBUG_LOG(Sql),
-    elib_pg:query(Sql, [Lng, Lat, Radius, Limit]).
+    elib_pg:query(Sql, [Lng, Lat, Radius, Limit, CurrentUid]).
 
 %% ===================================================================
 %% Internal Function Definitions

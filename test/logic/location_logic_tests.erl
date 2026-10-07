@@ -79,7 +79,7 @@ people_nearby_success_test_() ->
     ?WITH_MECKS(
         [
             {geo_people_nearby_ds, [
-                {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+                {'people_nearby', 6, fun(_CurrentUid, _Lng, _Lat, _Radius, _Unit, _Limit) ->
                     {ok, [
                         #{<<"id">> => 101, <<"distance">> => 100},
                         #{<<"id">> => 102, <<"distance">> => 200}
@@ -115,7 +115,7 @@ people_nearby_with_empty_result_test_() ->
     ?WITH_MECK(
         geo_people_nearby_ds,
         [
-            {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+            {'people_nearby', 6, fun(_CurrentUid, _Lng, _Lat, _Radius, _Unit, _Limit) ->
                 {ok, []}
             end}
         ],
@@ -135,7 +135,7 @@ people_nearby_with_kilometer_unit_test_() ->
     ?WITH_MECKS(
         [
             {geo_people_nearby_ds, [
-                {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+                {'people_nearby', 6, fun(_CurrentUid, _Lng, _Lat, _Radius, _Unit, _Limit) ->
                     {ok, [#{<<"id">> => 101}]}
                 end}
             ]},
@@ -168,7 +168,7 @@ people_nearby_with_custom_limit_test_() ->
     ?WITH_MECKS(
         [
             {geo_people_nearby_ds, [
-                {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+                {'people_nearby', 6, fun(_CurrentUid, _Lng, _Lat, _Radius, _Unit, _Limit) ->
                     {ok, lists:duplicate(20, #{<<"id">> => 101})}
                 end}
             ]},
@@ -205,7 +205,7 @@ people_nearby_with_zero_radius_test_() ->
     ?WITH_MECK(
         geo_people_nearby_ds,
         [
-            {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+            {'people_nearby', 6, fun(_CurrentUid, _Lng, _Lat, _Radius, _Unit, _Limit) ->
                 {ok, []}
             end}
         ],
@@ -225,7 +225,7 @@ people_nearby_with_large_radius_test_() ->
     ?WITH_MECKS(
         [
             {geo_people_nearby_ds, [
-                {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+                {'people_nearby', 6, fun(_CurrentUid, _Lng, _Lat, _Radius, _Unit, _Limit) ->
                     {ok, [#{<<"id">> => 101}]}
                 end}
             ]},
@@ -277,7 +277,7 @@ people_nearby_with_negative_coordinates_test_() ->
     ?WITH_MECKS(
         [
             {geo_people_nearby_ds, [
-                {'people_nearby', 5, fun(_Lng, _Lat, _Radius, _Unit, _Limit) ->
+                {'people_nearby', 6, fun(_CurrentUid, _Lng, _Lat, _Radius, _Unit, _Limit) ->
                     {ok, [#{<<"id">> => 101}]}
                 end}
             ]},

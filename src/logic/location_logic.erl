@@ -76,7 +76,7 @@ people_nearby(CurrentUid, Lng, Lat, Radius, <<"km">>, Limit) when is_binary(Radi
 people_nearby(CurrentUid, Lng, Lat, Radius, Unit, Limit) ->
     %% Lng/Lat 为 handler 透传的未校验 query（可能非数字或 undefined），PostGIS 解析
     %% 失败时 ds 返回 {error,_}，此处 case 兜底避免 badmatch 崩溃 → 500
-    case geo_people_nearby_ds:people_nearby(Lng, Lat, Radius, Unit, Limit) of
+    case geo_people_nearby_ds:people_nearby(CurrentUid, Lng, Lat, Radius, Unit, Limit) of
         {ok, Li} ->
             % {Id, Account, Nickname, Avatar, Sign, Gender, Region, Location, Distance} <- Li .
             % 一次批量查好友关系(替代逐行 N+1)，再为每个用户填充 remark / created_at
