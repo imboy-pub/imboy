@@ -98,6 +98,8 @@ phase1_delivery_whitelist_test_() ->
         ?assertEqual(true, maps:get(appeal, Features)),
         ?assertEqual(true, maps:get(enterprise_business, Features)),
         ?assertEqual(true, maps:get(customer_service, Features)),
+        ?assertEqual(true, maps:get(moment, Features)),
+        ?assertEqual(true, maps:get(location, Features)),
 
         %% 二期七域全部关闭。
         lists:foreach(
@@ -111,8 +113,6 @@ phase1_delivery_whitelist_test_() ->
             [
                 wallet,
                 moya,
-                moment,
-                location,
                 channel_discover,
                 channel_invitation,
                 channel_order,
@@ -127,7 +127,9 @@ phase1_delivery_whitelist_test_() ->
         %% fail_closed 语义压 false，此处直接断言 known 键之外无 true）。
         TrueKeys = [K || {K, V} <- maps:to_list(Features), V =:= true],
         ?assertEqual(
-            lists:sort([core, channel, appeal, enterprise_business, customer_service]),
+            lists:sort([
+                core, channel, appeal, enterprise_business, customer_service, moment, location
+            ]),
             lists:sort(TrueKeys)
         )
     end).
@@ -158,6 +160,8 @@ phase1_delivery_delivery_lock_test_() ->
         ?assert(lists:member(mcp, Locked)),
         ?assert(lists:member(wallet, Locked)),
         ?assert(lists:member(moya, Locked)),
+        ?assertNot(lists:member(moment, Locked)),
+        ?assertNot(lists:member(location, Locked)),
 
         %% 其它 profile 不受交付锁约束（保持现有行为）。
         ?assertEqual([], imboy_profile_preset:delivery_locked_features(community)),

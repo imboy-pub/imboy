@@ -42,8 +42,6 @@ delivery_locked_features(phase1_delivery) ->
         mcp,
         wallet,
         moya,
-        moment,
-        location,
         channel_discover,
         channel_invitation,
         channel_order,
@@ -144,7 +142,9 @@ profile_defaults(phase1_delivery) ->
         channel,
         appeal,
         enterprise_business,
-        customer_service
+        customer_service,
+        moment,
+        location
     ],
     AllKeys = lists:usort(imboy_feature:feature_names()),
     Features = maps:from_list([

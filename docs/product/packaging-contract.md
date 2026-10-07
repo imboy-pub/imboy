@@ -39,7 +39,7 @@ Feature 全集的**唯一权威源**是代码：`imboy_feature:feature_names()`�
 
 约束（`generate_product_features.py:validate` 强制）：schema_version=1；product_id=imboy；`base_ref` 固定；`disabled_base_features` 必须为空（Base 不可禁）；`selected_features` ⊆ 全集且满足依赖闭包；`compiled_features = selected + 依赖闭包 ∪ Base`，生成器输出 `manifest_hash`（sha256）。
 
-**Tracked manifest 位置**：`config/product-feature-manifests/*.json`（如 `overseas_baseline.json`、一期交付 `phase1_delivery.json`——selected = `channel` + `enterprise_business` + `customer_service`）；`config/product-feature-manifest.json` 为 full-selected 默认清单。运行时镜像校验见 `feature_composition_compat_tests:tracked_manifests_within_catalog_test_`。
+**Tracked manifest 位置**：`config/product-feature-manifests/*.json`（如 `overseas_baseline.json`、一期交付 `phase1_delivery.json`——selected = `channel` + `moment` + `location` + `enterprise_business` + `customer_service`）；`config/product-feature-manifest.json` 为 full-selected 默认清单。运行时镜像校验见 `feature_composition_compat_tests:tracked_manifests_within_catalog_test_`。
 
 **部署级（Git 外）关闭示例——广州企业版关 `project`（GZAPP-02/G6 定案：不建广州 profile，通用 manifest 默认开）**：
 
@@ -144,7 +144,7 @@ python3 imboy/scripts/verify_product_feature_artifacts.py \
 
 ### 9.1 白名单（运行时开启面）
 
-`phase1_delivery` 是**白名单语义** profile：运行时默认开启的特性键只有 5 个——
+`phase1_delivery` 是**白名单语义** profile：运行时默认开启的特性键只有 7 个——
 
 | 键 | 覆盖能力 |
 |---|---|
@@ -153,17 +153,19 @@ python3 imboy/scripts/verify_product_feature_artifacts.py \
 | `appeal` | 处置申诉链（R-04 operational baseline，治理保留） |
 | `enterprise_business` | 企业组织/部门/成员/工作区/RBAC 与企业业务底座 |
 | `customer_service` | 人工客服（坐席队列/认领/转接/关闭/历史/附件/SSE/Widget） |
+| `moment` | 朋友圈：发布、浏览、互动及内容可见性 |
+| `location` | 附近的人：定位授权、可见性与隐私控制 |
 
 `imboy_feature:feature_names()` 全集中的**其余键一律默认 false**；且 `fail_closed(phase1_delivery) = true`——未在 preset 枚举的键（含未来新增 plugin 键）默认关闭而不是默认开启，DB saved / 远端配置不能开启白名单之外的键。
 
-编译裁剪维度与运行时白名单是两回事：manifest `config/product-feature-manifests/phase1_delivery.json` 的 `selected_features = [channel, enterprise_business, customer_service]`（`core`/`e2ee` 是 Base 恒在不可禁，`appeal` 是平台内建特性随 Base 语义保留在白名单内）；依赖边 `customer_service → enterprise_business` 由 `imboy_policy_catalog:dependencies/1` 在生成期强制（EB-10：不允许"先有客服、后补企业底座"）。
+编译裁剪维度与运行时白名单是两回事：manifest `config/product-feature-manifests/phase1_delivery.json` 的 `selected_features = [channel, moment, location, enterprise_business, customer_service]`（`core`/`e2ee` 是 Base 恒在不可禁，`appeal` 是平台内建特性随 Base 语义保留在白名单内）；依赖边 `customer_service → enterprise_business` 由 `imboy_policy_catalog:dependencies/1` 在生成期强制（EB-10：不允许"先有客服、后补企业底座"）。
 
 ### 9.2 交付锁（delivery_locked_features）
 
-一期交付 profile 下，运行时（DB saved / 远端配置）**不得重新开启**的特性键，合并链最后强制压 `false`（与 e2ee `storage_mode` 硬闸同一时机），保证"旧缓存或远端全开配置不能绕过关闭面"（AC03）。共 18 键：
+一期交付 profile 下，运行时（DB saved / 远端配置）**不得重新开启**的特性键，合并链最后强制压 `false`（与 e2ee `storage_mode` 硬闸同一时机），保证"旧缓存或远端全开配置不能绕过关闭面"（AC03）。共 16 键：
 
 - **二期七域**：`e2ee`、`rtc`、`live_room`、`bot_webhook`、`ai_assistant`、`agent_hub`、`mcp`
-- **一期默认不承诺的运营域**：`wallet`、`moya`、`moment`、`location`、`channel_discover`、`channel_invitation`、`channel_order`、`group_vote`、`group_schedule`、`group_task`、`project`
+- **一期默认不承诺的运营域**：`wallet`、`moya`、`channel_discover`、`channel_invitation`、`channel_order`、`group_vote`、`group_schedule`、`group_task`、`project`
 
 **OA 共享设施豁免（F08）**：`bot_delivery` outbox / worker / guard 不在锁内——`enterprise_webhook`（OA 对接）走独立门，Bot 产品关闭不影响合法企业事件投递。
 

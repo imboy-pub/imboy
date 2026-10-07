@@ -5,6 +5,8 @@
   "base_ref": "imboy-feature-inventory-v1",
   "selected_features": [
     "channel",
+    "moment",
+    "location",
     "enterprise_business",
     "customer_service"
   ]

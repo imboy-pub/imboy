@@ -15,11 +15,12 @@ IMBoy 是可私有部署的即时通讯平台。本仓库包含 Erlang/OTP 后�
 - 单聊、群聊与消息推送（Core IM：联系人、历史/离线/多端同步、附件与消息治理）
 - 企业组织/部门/成员/工作区与 RBAC；人工客服坐席与访客 Widget；OA 对接（internal API / SSO / Webhook）
 - 频道底座（组织内部 General 群与公告频道）
+- 朋友圈与附近的人（一期范围；发布、互动、定位及隐私控制须按交付矩阵验收）
 - HTTP API 与 WebSocket 长连接
 - PostgreSQL 持久化与 Garage S3 附件直传
 - Docker Compose 单节点生产部署（Helm/Kubernetes 为实验性，未经生产集群验证）
 
-完整版（full-selected）另含朋友圈、频道发现/邀请/付费频道、E2EE 端到端加密、RTC、Bot、AI 助手等域；一期交付 profile 下这些域经交付锁与 fail-closed 门禁关闭，旧缓存或远端配置不能重新打开。分期边界、白名单与交付锁清单见[打包契约](./docs/product/packaging-contract.md)，交付包内容见[交付包清单](./docs/product/delivery-package-manifest.md)。
+完整版（full-selected）另含频道发现/邀请/付费频道、E2EE 端到端加密、RTC、Bot、AI 助手等域；一期交付 profile 下这些域经交付锁与 fail-closed 门禁关闭，旧缓存或远端配置不能重新打开。分期边界、白名单与交付锁清单见[打包契约](./docs/product/packaging-contract.md)，交付包内容见[交付包清单](./docs/product/delivery-package-manifest.md)。
 
 ## 系统架构
 

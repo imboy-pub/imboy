@@ -2344,8 +2344,6 @@ phase1_delivery_full_open_overrides_still_locked_test_() ->
                 [
                     wallet,
                     moya,
-                    moment,
-                    location,
                     channel_discover,
                     channel_invitation,
                     channel_order,
@@ -2359,7 +2357,7 @@ phase1_delivery_full_open_overrides_still_locked_test_() ->
         %% 一期白名单域可用。
         lists:foreach(
             fun(K) -> ?assertEqual(true, maps:get(K, Features)) end,
-            [core, channel, appeal, enterprise_business, customer_service]
+            [core, channel, appeal, enterprise_business, customer_service, moment, location]
         ),
 
         %% 交付 profile 生效（public view 的 profile 为 binary）。
@@ -2378,7 +2376,9 @@ phase1_delivery_unknown_keys_default_false_test_() ->
         Features0 = maps:get(<<"features">>, Policy),
         Features = #{binary_to_atom(K, utf8) => V || {K, V} <- maps:to_list(Features0)},
         ?assertEqual(true, maps:get(channel, Features)),
-        ?assertEqual(false, maps:get(moment, Features)),
+        ?assertEqual(true, maps:get(moment, Features)),
+        ?assertEqual(true, maps:get(location, Features)),
+        ?assertEqual(false, maps:get(project, Features)),
         ?assertEqual(false, maps:get(e2ee, Features))
     end).
 
