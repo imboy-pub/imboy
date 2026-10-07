@@ -122,7 +122,9 @@ i1_delivery_ack_keeps_unread_test_() ->
             ?assertEqual(3, msg_c2g_ds:count_unread_by_uid(?F05_UID, ?F05_GID)),
 
             %% 设备 A（DID_A）逐条送达确认——全部消息已"至少一台设备收到"
-            {ok, _} = msg_operation_ds:ack_c2g_timeline(<<"f05m1">>, ?F05_UID),
+            {ok, 1} = msg_operation_ds:ack_c2g_timeline(<<"f05m1">>, ?F05_UID),
+            %% 重复送达确认没有状态转换，计数必须为零以免重复记指标。
+            {ok, 0} = msg_operation_ds:ack_c2g_timeline(<<"f05m1">>, ?F05_UID),
             {ok, _} = msg_operation_ds:ack_c2g_timeline(<<"f05m2">>, ?F05_UID),
             {ok, _} = msg_operation_ds:ack_c2g_timeline(<<"f05m3">>, ?F05_UID),
 

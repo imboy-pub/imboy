@@ -122,7 +122,9 @@ client_ack(ToUid, MsgId) ->
     Tb = tablename(),
     % use index uk_c2g_timeline_ToUid_MsgId
     % 使用安全的参数化查询，避免SQL注入
-    Sql = <<"UPDATE ", Tb/binary, " SET client_ack = true WHERE to_uid = $1 AND msg_id = $2">>,
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET client_ack = true WHERE to_uid = $1 AND msg_id = $2 AND client_ack = false">>,
     elib_pg:execute(Sql, [ToUid, MsgId]).
 
 %% Q04/F05（I3）：offline_ack 的 c2g 批量送达确认——置 per-uid 送达标记而非删行。
