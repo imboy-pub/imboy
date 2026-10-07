@@ -493,3 +493,40 @@ s2c_unknown_action_returns_unknown_action_test_() ->
             ?assertEqual(<<"unknown_action">>, maps:get(<<"action">>, Reply))
         end
     ).
+
+%% Q06（AC13-R4）：DS 层已补属主校验，s2c 层对 DS 的 {error,_} 返回
+%% （属主竞态窗口/库故障）必须受控回复 permission_denied，
+%% 不得 badmatch 崩溃断开 WS 连接。
+c2g_del_everyone_ds_rejection_returns_permission_denied_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_ds, [
+                {'is_member', 2, fun(456, 101) -> true end}
+            ]},
+            {msg_c2g_ds, [
+                {'find_msg_by_id', 1, fun(<<"old_5">>) ->
+                    {ok, #{<<"from_id">> => 456}}
+                end}
+            ]},
+            {msg_operation_ds, [
+                {'delete_c2g_msg', 3, fun(<<"C2G_DEL_EVERYONE">>, 456, <<"old_5">>) ->
+                    {error, not_owner}
+                end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(_MsgId, Action, _To) ->
+                    #{<<"action">> => Action}
+                end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => 101,
+                <<"payload">> => #{<<"old_msg_id">> => <<"old_5">>}
+            },
+            %% 前置校验通过（成员+属主），但 DS 层第二道防线在竞态窗口
+            %% （消息已被并发删除等）拒绝——handler 不得崩溃
+            Result = msg_s2c_logic:s2c(<<"C2G_DEL_EVERYONE">>, <<"msg_5">>, 456, Data),
+            ?assertMatch({reply, #{<<"action">> := <<"permission_denied">>}}, Result)
+        end
+    ).

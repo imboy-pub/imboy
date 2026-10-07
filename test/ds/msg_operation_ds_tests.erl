@@ -83,14 +83,15 @@ delete_c2g_msg_for_me_success_test_() ->
         end
     ).
 
-%% @doc 测试群聊消息 - 删除所有人消息
+%% @doc 测试群聊消息 - 删除所有人消息（Q06：WHERE 绑定属主 from_id）
 delete_c2g_msg_for_everyone_success_test_() ->
     ?WITH_MECK(
         msg_c2g_repo,
         [
-            {'delete_msg', 2, fun(Where, [MsgId]) ->
-                ?assertEqual(<<"WHERE msg_id = $1">>, Where),
+            {'delete_msg', 2, fun(Where, [MsgId, FromId]) ->
+                ?assertEqual(<<"WHERE msg_id = $1 AND from_id = $2">>, Where),
                 ?assertEqual(<<"msg123">>, MsgId),
+                ?assertEqual(100, FromId),
                 {ok, 1}
             end}
         ],
@@ -112,6 +113,47 @@ delete_c2g_msg_for_everyone_with_error_returns_error_test_() ->
         fun() ->
             Result = msg_operation_ds:delete_c2g_msg(<<"C2G_DEL_EVERYONE">>, 100, <<"msg123">>),
             ?assertEqual({error, <<"database_error">>}, Result)
+        end
+    ).
+
+%% ===================================================================
+%% Q06（AC13-R4 债务修复）：C2G_DEL_EVERYONE DS 层属主校验
+%% ===================================================================
+
+%% @doc 属主不匹配（0 行命中）必须拒绝：修复前 WHERE 只有 msg_id、
+%% _Uid 被忽略，任何 uid 都能删他人消息（防越权完全依赖 s2c 层前置
+%% 校验，双层防线缺一层）。修复后 WHERE 绑 from_id 且 {ok,0} 拒绝。
+delete_c2g_msg_for_everyone_owner_mismatch_rejected_test_() ->
+    ?WITH_MECK(
+        msg_c2g_repo,
+        [
+            {'delete_msg', 2, fun(Where, Params) ->
+                ?assertEqual(<<"WHERE msg_id = $1 AND from_id = $2">>, Where),
+                ?assertEqual([<<"msg123">>, 100], Params),
+                {ok, 0}
+            end}
+        ],
+        fun() ->
+            Result = msg_operation_ds:delete_c2g_msg(<<"C2G_DEL_EVERYONE">>, 100, <<"msg123">>),
+            ?assertMatch({error, _}, Result)
+        end
+    ).
+
+%% @doc 属主匹配路径：DELETE 语句必须携带 from_id 属主约束（参数化）
+delete_c2g_msg_for_everyone_owner_scoped_where_test_() ->
+    ?WITH_MECK(
+        msg_c2g_repo,
+        [
+            {'delete_msg', 2, fun(Where, [MsgId, FromId]) ->
+                ?assertEqual(<<"WHERE msg_id = $1 AND from_id = $2">>, Where),
+                ?assertEqual(<<"msg123">>, MsgId),
+                ?assertEqual(100, FromId),
+                {ok, 3}
+            end}
+        ],
+        fun() ->
+            Result = msg_operation_ds:delete_c2g_msg(<<"C2G_DEL_EVERYONE">>, 100, <<"msg123">>),
+            ?assertEqual(ok, Result)
         end
     ).
 
@@ -548,12 +590,12 @@ complete_c2c_msg_deletion_flow_test_() ->
         end
     ).
 
-%% @doc 测试完整的群聊消息删除流程（所有人）
+%% @doc 测试完整的群聊消息删除流程（所有人，Q06：带属主参数）
 complete_c2g_msg_deletion_for_everyone_flow_test_() ->
     ?WITH_MECK(
         msg_c2g_repo,
         [
-            {'delete_msg', 2, fun(_Where, [MsgId]) ->
+            {'delete_msg', 2, fun(_Where, [MsgId, _FromId]) ->
                 ?assertEqual(<<"msg456">>, MsgId),
                 {ok, 1}
             end}

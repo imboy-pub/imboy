@@ -41,6 +41,9 @@ delete_c2c_msg(MsgId, FromId) ->
 %% @param Uid 用户ID
 %% @param MsgId 消息ID
 %% @return ok | {error, Reason}
+%% Q06（AC13-R4）：C2G_DEL_EVERYONE 补 DS 层属主校验（第二道防线）——
+%% 此前 WHERE 只有 msg_id、Uid 被忽略，防越权完全依赖 s2c 层前置校验；
+%% 现绑 from_id 属主约束，属主不匹配（0 行命中）返回 {error, not_owner}。
 -spec delete_c2g_msg(binary(), integer(), binary()) -> ok | {error, term()}.
 delete_c2g_msg(<<"C2G_DEL_FOR_ME">>, Uid, MsgId) ->
     % 只删除用户自己的时间线记录
@@ -48,11 +51,12 @@ delete_c2g_msg(<<"C2G_DEL_FOR_ME">>, Uid, MsgId) ->
         {ok, _} -> ok;
         {error, _} -> ok
     end;
-delete_c2g_msg(<<"C2G_DEL_EVERYONE">>, _Uid, MsgId) ->
-    % 删除群组消息（所有人）
-    Where = <<"WHERE msg_id = $1">>,
-    case msg_c2g_repo:delete_msg(Where, [MsgId]) of
-        {ok, _} -> ok;
+delete_c2g_msg(<<"C2G_DEL_EVERYONE">>, Uid, MsgId) ->
+    % 删除群组消息（所有人）；WHERE 绑定属主，非属主调用删不到任何行
+    Where = <<"WHERE msg_id = $1 AND from_id = $2">>,
+    case msg_c2g_repo:delete_msg(Where, [MsgId, Uid]) of
+        {ok, N} when N > 0 -> ok;
+        {ok, 0} -> {error, not_owner};
         {error, Reason} -> {error, Reason}
     end;
 delete_c2g_msg(_Action, _Uid, _MsgId) ->

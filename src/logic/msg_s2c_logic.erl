@@ -109,28 +109,36 @@ s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
         true ->
             case msg_c2g_ds:find_msg_by_id(OldMsgId) of
                 {ok, #{<<"from_id">> := CurrentUid}} ->
-                    MemberUids = group_ds:member_uids(ToGID),
-                    NowTs = elib_dt:now(),
-
                     % 删除原有消息 - 使用 DS 层接口（此前误用了单聊删除函数，导致群消息实际未被删除）
-                    ok = msg_operation_ds:delete_c2g_msg(
-                        <<"C2G_DEL_EVERYONE">>, CurrentUid, OldMsgId
-                    ),
+                    % Q06（AC13-R4）：DS 层已补属主校验，{error,_}（属主不匹配/
+                    % 并发窗口内消息已被删/库故障）不再让 handler 崩溃，改回
+                    % permission_denied（对齐本函数其他拒绝分支的错误语义）。
+                    case
+                        msg_operation_ds:delete_c2g_msg(
+                            <<"C2G_DEL_EVERYONE">>, CurrentUid, OldMsgId
+                        )
+                    of
+                        ok ->
+                            MemberUids = group_ds:member_uids(ToGID),
+                            NowTs = elib_dt:now(),
 
-                    From = CurrentUid,
+                            From = CurrentUid,
 
-                    % 存储s2c消息
-                    [
-                        s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload)
-                     || Uid <- MemberUids, CurrentUid /= Uid
-                    ],
+                            % 存储s2c消息
+                            [
+                                s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload)
+                             || Uid <- MemberUids, CurrentUid /= Uid
+                            ],
 
-                    % 给操作者回复消息
-                    Action = <<"C2G_DEL_EVERYONE">>,
-                    Msg = message_ds:assemble_msg(
-                        <<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, null
-                    ),
-                    {reply, Msg};
+                            % 给操作者回复消息
+                            Action = <<"C2G_DEL_EVERYONE">>,
+                            Msg = message_ds:assemble_msg(
+                                <<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, null
+                            ),
+                            {reply, Msg};
+                        {error, _Reason} ->
+                            {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, Gid)}
+                    end;
                 {ok, #{<<"from_id">> := _OtherId}} ->
                     {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, Gid)};
                 {error, _} ->
