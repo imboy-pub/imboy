@@ -235,8 +235,7 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
                                                     }),
                                                     <<"created_at">> => Now
                                                 },
-                                                _ = group_log_ds:add(Conn, LogData),
-                                                ok;
+                                                save_transfer_log(Conn, LogData);
                                             {error, Reason} ->
                                                 {error, Reason}
                                         end;
@@ -271,6 +270,14 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
             end;
         _ ->
             {error, <<"只有群主可以转让群组"/utf8>>}
+    end.
+
+%% Audit is part of the ownership transaction; failure must roll back roles too.
+-spec save_transfer_log(epgsql:connection() | pid(), map()) -> ok | no_return().
+save_transfer_log(Conn, Data) ->
+    case group_log_ds:add(Conn, Data) of
+        {ok, _} -> ok;
+        {error, _Reason} -> throw({abort_tx, <<"群转让审计写入失败"/utf8>>})
     end.
 
 %% @doc 查询附近的群组
@@ -383,8 +390,7 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
                                                     }),
                                                     <<"created_at">> => Now
                                                 },
-                                                _ = group_log_ds:add(Conn, LogData),
-                                                ok;
+                                                save_transfer_log(Conn, LogData);
                                             {error, Reason} ->
                                                 {error, Reason}
                                         end;
