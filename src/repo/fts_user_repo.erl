@@ -153,11 +153,14 @@ search_c2g_msg(Keyword, Limit, Offset, Uid) ->
             % 搜索群聊消息，只返回当前用户所在的群的消息
             % m.e2ee IS NULL: E2EE 密文不可搜索（与部分索引谓词一致）
             % msg_c2g.payload 是 jsonb：没有 jsonb @@ tsquery 操作符，必须先
-            % 取 payload->>'text' 再 to_tsvector；群 id 列是 to_id（表里没有
-            % group_id 列），群名列是 title（没有 group_name 列）——修正前
-            % 这三处列名/类型错使 SQL 恒报错，被上层吞成恒空结果。
+            % 取文本再 to_tsvector。文档表达式须同时覆盖两种真实形态：
+            %   1) 现行 C2G 信封（msg_c2g_logic MsgFull）——文本在嵌套
+            %      payload.text（payload #>> '{payload,text}'）；
+            %   2) 早期平铺形态——文本在顶层 text（payload->>'text'）。
+            % Q06/AC04 S3 真库验证发现：修复前只取顶层 text，真实信封消息
+            % （嵌套）恒不命中——mock 单测构造的平铺形态掩盖了该缺陷。
             Sql =
-                <<"select m.*, f.nickname as from_nickname, g.title as group_name, m.to_id as group_id from msg_c2g m left join public.user f on m.from_id = f.id left join public.group g on m.to_id = g.id where to_tsvector('jiebacfg', m.payload->>'text') @@ to_tsquery('jiebacfg', $1) and m.e2ee is null and exists (select 1 from public.group_member gm where gm.group_id = m.to_id and gm.user_id = $2) order by m.created_at desc LIMIT $3 OFFSET $4">>,
+                <<"select m.*, f.nickname as from_nickname, g.title as group_name, m.to_id as group_id from msg_c2g m left join public.user f on m.from_id = f.id left join public.group g on m.to_id = g.id where to_tsvector('jiebacfg', coalesce(m.payload #>> '{payload,text}', m.payload->>'text')) @@ to_tsquery('jiebacfg', $1) and m.e2ee is null and exists (select 1 from public.group_member gm where gm.group_id = m.to_id and gm.user_id = $2) order by m.created_at desc LIMIT $3 OFFSET $4">>,
             elib_pg:query(Sql, [Keyword2, Uid, Limit, Offset]);
         _ ->
             {ok, []}
@@ -199,9 +202,11 @@ search_c2g_msg_count(Keyword) ->
     case elib_pg:one(Sql1, [Keyword]) of
         {ok, #{<<"keyword">> := Keyword2}} ->
             % 统计群聊消息数量
-            % payload 是 jsonb：无 jsonb @@ tsquery 操作符，须先取 text 再 to_tsvector
+            % payload 是 jsonb：无 jsonb @@ tsquery 操作符，须先取 text 再
+            % to_tsvector；文档表达式与 search_c2g_msg/4 同款（嵌套信封
+            % payload.text 优先，平铺顶层 text 回退——Q06/AC04 S3 修复）
             Sql =
-                <<"SELECT count(*) as count FROM msg_c2g WHERE to_tsvector('jiebacfg', payload->>'text') @@ to_tsquery('jiebacfg', $1) AND e2ee IS NULL">>,
+                <<"SELECT count(*) as count FROM msg_c2g WHERE to_tsvector('jiebacfg', coalesce(payload #>> '{payload,text}', payload->>'text')) @@ to_tsquery('jiebacfg', $1) AND e2ee IS NULL">>,
             case elib_pg:one(Sql, [Keyword2]) of
                 {ok, #{<<"count">> := Count}} ->
                     Count;
