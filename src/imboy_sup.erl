@@ -482,12 +482,21 @@ init([]) ->
             OlmOtkCleanupWorker,
             BotDeliveryWorker,
             CredentialRetentionWorker,
-            AgentPaymentCompensationWorker,
-            AiAgentRuntime,
-            McpRegistry,
-            McpSession,
-            McpTools
-        ] ++ eb_retention_purge_children() ++ CacheSyncSpec,
+            AgentPaymentCompensationWorker
+        ] ++
+            %% Q02 二期域常驻 runtime 条件启动（AC03"无任务/外呼"）：
+            %% AI Agent presence 与 MCP 协议引擎仅在其域 feature 开启时
+            %% 进入 supervision tree；phase1_delivery 下不启动、零后台触发。
+            %% 注意 BotDeliveryWorker 不在此列——bot_delivery outbox 是
+            %% OA 企业 webhook 共享投递设施（F08），交付关闭 Bot 产品时仍
+            %% 必须运行。
+            feature_gated_specs([
+                {ai_assistant, AiAgentRuntime},
+                {mcp, McpRegistry},
+                {mcp, McpSession},
+                {mcp, McpTools}
+            ]) ++
+            eb_retention_purge_children() ++ CacheSyncSpec,
     % intensity/period 放宽：顶层 supervisor 下挂了十余个 worker，
     % 5次/50s 门槛偏紧，短时多个worker同时重启（如DB抖动）易触发supervisor整体退出
     % CI-00：再放宽到 50/60s——全量 eunit 实测单个 child（imboy_cache）被
@@ -495,6 +504,18 @@ init([]) ->
     % 拖垮整个 app（run10）；单子进程崩溃风暴不应带崩整个 IM 服务。
     Restart = #{strategy => one_for_one, intensity => 50, period => 60},
     {ok, {Restart, Specs}}.
+
+%% @private feature 门控的 child spec 过滤：域 feature 关闭时不启动。
+%% imboy_feature:enabled/1 读 policy 有效特性（profile 白名单 + 运行时
+%% 覆盖 + 交付锁），在 sup init 时求值——profile 由 config_ds/env 提供，
+%% 早于 DB 覆盖可用时回落 profile 预设。
+-spec feature_gated_specs([{atom(), map()}]) -> [map()].
+feature_gated_specs(Specs) ->
+    [
+        Child
+     || {Feature, Child} <- Specs,
+        imboy_feature:enabled(Feature)
+    ].
 
 %% 企业留存 bounded purge 定时 worker（R4-②：默认禁用 + 目标空 = 不清理任何
 %% 行，需 sys.config 显式启用；补全 F-1 孤儿资产清理的调度入口）。模块属于

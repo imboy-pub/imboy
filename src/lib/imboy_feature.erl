@@ -17,6 +17,23 @@
 -include("error_code.hrl").
 -include("generated/imboy_product_features.hrl").
 
+%% Q02 运行时域键：二期七域（e2ee 除外——它在 CoreFixed）、一期默认
+%% 不承诺域（钱包/支付、moya）、以及 appeal（治理申诉，builtin 键但
+%% 从未进 manifest selected_features，模块常驻 beam）。这些域无编译期
+%% 物理裁剪，compiled/1 恒 true——完全物理裁剪是渐进优化（主计划 §6），
+%% 关闭面由运行时门承担：profile 白名单 + 交付锁 + feature_gate 中间件
+%% + compiled_routes 运行时过滤（imboy_policy:effective_features）。
+-define(RUNTIME_DOMAIN_FEATURES, [
+    rtc,
+    live_room,
+    ai_assistant,
+    agent_hub,
+    mcp,
+    wallet,
+    moya,
+    appeal
+]).
+
 -type feature() :: atom() | binary() | string().
 
 -spec enabled(feature()) -> boolean().
@@ -31,9 +48,11 @@ enabled(Feature) ->
 
 -spec compiled(feature()) -> boolean().
 compiled(Feature) when is_atom(Feature) ->
-    lists:member(Feature, ?IMBOY_COMPILED_FEATURES);
+    lists:member(Feature, ?IMBOY_COMPILED_FEATURES) orelse
+        lists:member(Feature, ?RUNTIME_DOMAIN_FEATURES);
 compiled(Feature) when is_binary(Feature) ->
-    lists:member(Feature, [atom_to_binary(Name, utf8) || Name <- ?IMBOY_COMPILED_FEATURES]);
+    lists:member(Feature, [atom_to_binary(Name, utf8) || Name <- ?IMBOY_COMPILED_FEATURES]) orelse
+        lists:member(Feature, [atom_to_binary(Name, utf8) || Name <- ?RUNTIME_DOMAIN_FEATURES]);
 compiled(Feature) when is_list(Feature) ->
     compiled(unicode:characters_to_binary(Feature)).
 
@@ -63,8 +82,13 @@ compiled_routes(Surface, Routes, CompiledFeatures) ->
 route_is_compiled(Surface, {_Path, Handler, Opts}, CompiledFeatures) when is_map(Opts) ->
     Action = maps:get(action, Opts, false),
     case maps:get(required_feature, Opts, route_feature(Surface, Handler, Action)) of
-        undefined -> true;
-        Feature -> lists:member(Feature, CompiledFeatures)
+        undefined ->
+            true;
+        Feature ->
+            %% manifest 编译集，或运行时域键（?RUNTIME_DOMAIN_FEATURES，
+            %% 模块常驻 beam）：后者不参与编译期剔除，交给
+            %% feature_gate_middleware 按运行时开关统一拦截（Q02）。
+            lists:member(Feature, CompiledFeatures) orelse compiled(Feature)
     end;
 route_is_compiled(_Surface, _Route, _CompiledFeatures) ->
     true.
@@ -174,6 +198,60 @@ route_feature(api, Handler, _Action) when
     Handler =:= project_channel_handler
 ->
     project;
+%% Q02 二期域路由门（主计划 §3"二期保留关闭"）：MCP/RTC/live_room/Bot
+%% 产品/AI 助手/Agent Hub 全部入口挂 feature 键。此前这些 handler 在
+%% route_feature 与 plugin registry 均无映射——compiled_routes 不过滤、
+%% feature_gate_middleware 不拦截（F04）。AI 草稿（ai_draft）挂在
+%% report_handler 的 action 上；ai_chat 走 im_chat_handler。
+route_feature(api, mcp_handler, _Action) ->
+    mcp;
+route_feature(api, rtc_room_handler, _Action) ->
+    rtc;
+route_feature(api, live_room_handler, _Action) ->
+    live_room;
+route_feature(api, bot_handler, _Action) ->
+    bot_webhook;
+route_feature(api, ai_agent_handler, _Action) ->
+    agent_hub;
+route_feature(admin, adm_ai_agent_handler, _Action) ->
+    agent_hub;
+route_feature(api, agent_card_handler, _Action) ->
+    agent_hub;
+route_feature(api, agent_task_handler, _Action) ->
+    agent_hub;
+route_feature(api, agent_mandate_handler, _Action) ->
+    agent_hub;
+route_feature(api, moya_review_handler, ai_draft) ->
+    ai_assistant;
+%% 钱包/支付域（一期默认不承诺，主计划 §3）：购买/回调/计费动作挂 wallet；
+%% adm_finance 只读运营视图不挂门。moya 行业定制域整体挂 moya（其
+%% ai_draft 动作单独走 ai_assistant 门——AI 能力外呼按能力域关闭）。
+route_feature(api, Handler, _Action) when
+    Handler =:= wallet_handler;
+    Handler =:= billing_handler;
+    Handler =:= payment_callback_handler
+->
+    wallet;
+route_feature(api, Handler, _Action) when
+    Handler =:= moya_assignment_handler;
+    Handler =:= moya_auth_handler;
+    Handler =:= moya_context_handler;
+    Handler =:= moya_invite_handler;
+    Handler =:= moya_learner_bind_handler;
+    Handler =:= moya_review_handler;
+    Handler =:= moya_roster_handler;
+    Handler =:= moya_subscribe_handler;
+    Handler =:= moya_task_handler;
+    Handler =:= moya_wechat_msg_handler
+->
+    moya;
+%% Bot 产品 Admin 管理面（注册/启停/列表）。adm_bot_delivery_handler 不
+%% 挂门——bot_delivery outbox 是 OA 企业 webhook 共享投递设施（F08），
+%% 一期 Admin 需要死信/重试运维视图。
+route_feature(admin, adm_bot_handler, _Action) ->
+    bot_webhook;
+route_feature(admin, adm_mcp_handler, _Action) ->
+    mcp;
 route_feature(Surface, Handler, Action) ->
     imboy_plugin_registry:required_feature(Surface, Handler, Action).
 
@@ -239,7 +317,14 @@ feature_names() ->
     %%   （admin workspace 概览/资源计数仍引用），裁剪面只到 API handler
     %%   与路由（compiled_routes 运行时过滤）。
     Builtin = [bot_webhook, appeal, enterprise_business, customer_service, project],
-    CoreFixed ++ Ordered ++ Extra ++ Builtin.
+    %% 非一期域键（Q02/主计划 §3）：二期七域 RTC/live_room/Bot 产品/AI
+    %% 助手/Agent Hub/MCP/E2EE（e2ee 在 CoreFixed），加一期默认不承诺的
+    %% 钱包/支付域（wallet）与行业定制域（moya）。尚未挂物理插件的纯
+    %% feature 键——路由门（route_feature/3）与运行时开关（imboy_policy）
+    %% 先于插件化存在；phase1_delivery 预设把它们全部压 false 并交付锁
+    %% （delivery_locked_features/1）。
+    Phase2Domains = [rtc, live_room, ai_assistant, agent_hub, mcp, wallet, moya],
+    CoreFixed ++ Ordered ++ Extra ++ Builtin ++ Phase2Domains.
 
 -spec normalize_feature_key(feature()) -> atom() | undefined.
 normalize_feature_key(Feature) when is_atom(Feature) ->

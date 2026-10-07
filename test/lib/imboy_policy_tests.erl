@@ -486,7 +486,7 @@ admin_config_view_returns_meta_saved_effective_and_adjustments_sections_test_() 
             ?assert(maps:is_key(<<"adjustments">>, View)),
             ?assert(maps:is_key(<<"origins">>, View)),
             ?assertEqual(
-                [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>],
+                [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>, <<"phase1_delivery">>],
                 maps:get(<<"supported">>, maps:get(<<"profiles">>, maps:get(<<"meta">>, View)))
             ),
             ?assertEqual(
@@ -586,7 +586,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         RequestShape = maps:get(<<"request_shape">>, WriteContract),
 
         ?assertEqual(
-            [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>],
+            [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>, <<"phase1_delivery">>],
             maps:get(<<"supported">>, Profiles)
         ),
         ?assertEqual(<<"canonical_saved_snapshot">>, maps:get(<<"semantics">>, Origins)),
@@ -671,7 +671,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             maps:get(<<"sections">>, EditorOrder)
         ),
         ?assertEqual(
-            [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>],
+            [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>, <<"phase1_delivery">>],
             maps:get(<<"profiles">>, EditorOrder)
         ),
         ?assertEqual(
@@ -708,7 +708,16 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
                 <<"customer_service">>,
                 %% GZAPP-02/G6：project 为 Builtin 末位（字面量契约，
                 %% 与 src/lib/imboy_feature.erl 的 Builtin 同序）
-                <<"project">>
+                <<"project">>,
+                %% Q02 非一期域键（字面量契约，与 Builtin 后的
+                %% Phase2Domains 同序）：二期七域 + 钱包/支付 + moya。
+                <<"rtc">>,
+                <<"live_room">>,
+                <<"ai_assistant">>,
+                <<"agent_hub">>,
+                <<"mcp">>,
+                <<"wallet">>,
+                <<"moya">>
             ],
             maps:get(<<"features">>, EditorOrder)
         ),
@@ -2309,4 +2318,82 @@ storage_mode_disabled_is_accepted_on_all_paths_test_() ->
             {ok, disabled},
             imboy_policy_normalize:normalize_capability_payload_value(storage_mode, <<"disabled">>)
         )
+    end).
+
+%% ===================================================================
+%% Q02 一期交付 profile（phase1_delivery）：白名单 + 交付锁 + fail-closed
+%% ===================================================================
+
+%% AC03 服务端 oracle：远端全开/旧全开缓存（features 全 true 覆盖）不能
+%% 把交付锁定的二期/排除域顶开；白名单域保持可用。
+phase1_delivery_full_open_overrides_still_locked_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        AllKeys = imboy_feature:feature_names(),
+        AllTrue = maps:from_list([{K, true} || K <- AllKeys]),
+        Policy = imboy_policy:effective_view_from_configs(
+            phase1_delivery, #{}, AllTrue
+        ),
+        Features0 = maps:get(<<"features">>, Policy),
+        %% public view 的 features 键为 binary。
+        Features = #{binary_to_atom(K, utf8) => V || {K, V} <- maps:to_list(Features0)},
+
+        %% 被锁域在"全开覆盖"下仍为 false。
+        lists:foreach(
+            fun(K) -> ?assertEqual(false, maps:get(K, Features)) end,
+            [e2ee, rtc, live_room, bot_webhook, ai_assistant, agent_hub, mcp] ++
+                [
+                    wallet,
+                    moya,
+                    moment,
+                    location,
+                    channel_discover,
+                    channel_invitation,
+                    channel_order,
+                    group_vote,
+                    group_schedule,
+                    group_task,
+                    project
+                ]
+        ),
+
+        %% 一期白名单域可用。
+        lists:foreach(
+            fun(K) -> ?assertEqual(true, maps:get(K, Features)) end,
+            [core, channel, appeal, enterprise_business, customer_service]
+        ),
+
+        %% 交付 profile 生效（public view 的 profile 为 binary）。
+        ?assertEqual(<<"phase1_delivery">>, maps:get(<<"profile">>, Policy))
+    end).
+
+%% 白名单缺省关闭：preset 未枚举的键（模拟未来新增 plugin 键）在
+%% phase1_delivery 下默认 false，而不是 fail-open true。
+phase1_delivery_unknown_keys_default_false_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% 只覆盖一个白名单键，其余走 preset；合并结果对新键（此处用
+        %% feature_names 全集模拟"键存在但配置未提"）缺省 false。
+        Policy = imboy_policy:effective_view_from_configs(
+            phase1_delivery, #{}, #{channel => true}
+        ),
+        Features0 = maps:get(<<"features">>, Policy),
+        Features = #{binary_to_atom(K, utf8) => V || {K, V} <- maps:to_list(Features0)},
+        ?assertEqual(true, maps:get(channel, Features)),
+        ?assertEqual(false, maps:get(moment, Features)),
+        ?assertEqual(false, maps:get(e2ee, Features))
+    end).
+
+%% 传统 profile 不受交付锁影响：全开覆盖在 community 下照常生效
+%% （保持现有行为，交付锁只约束 delivery profile）。
+community_full_open_overrides_respected_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        AllKeys = imboy_feature:feature_names(),
+        AllTrue = maps:from_list([{K, true} || K <- AllKeys]),
+        Policy = imboy_policy:effective_view_from_configs(
+            community, #{}, AllTrue
+        ),
+        Features0 = maps:get(<<"features">>, Policy),
+        Features = #{binary_to_atom(K, utf8) => V || {K, V} <- maps:to_list(Features0)},
+        ?assertEqual(true, maps:get(moment, Features)),
+        ?assertEqual(true, maps:get(rtc, Features)),
+        ?assertEqual(true, maps:get(mcp, Features))
     end).

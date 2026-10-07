@@ -145,7 +145,7 @@ payload_value(Payload, [Key | Rest]) ->
 %% ===================================================================
 
 -spec normalize_profile_input(term()) ->
-    {ok, community | enterprise | overseas_baseline} | error.
+    {ok, community | enterprise | overseas_baseline | phase1_delivery} | error.
 normalize_profile_input(community) ->
     {ok, community};
 normalize_profile_input(enterprise) ->
@@ -164,6 +164,13 @@ normalize_profile_input("community") ->
     {ok, community};
 normalize_profile_input("enterprise") ->
     {ok, enterprise};
+%% Q02：一期交付 profile（与 imboy_profile_preset:normalize_profile 同集）。
+normalize_profile_input(phase1_delivery) ->
+    {ok, phase1_delivery};
+normalize_profile_input(<<"phase1_delivery">>) ->
+    {ok, phase1_delivery};
+normalize_profile_input("phase1_delivery") ->
+    {ok, phase1_delivery};
 normalize_profile_input(_) ->
     error.
 

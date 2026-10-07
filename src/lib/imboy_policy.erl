@@ -56,7 +56,8 @@
 -define(FEATURES_CONFIG_KEY, <<"features">>).
 -define(DELETE_VALUE, '$delete').
 
--spec current_profile() -> community | enterprise | overseas_baseline.
+-spec current_profile() ->
+    community | enterprise | overseas_baseline | phase1_delivery.
 current_profile() ->
     case normalize_profile_input(load_profile_config()) of
         {ok, Profile} ->
@@ -522,7 +523,7 @@ saved_view_from_values(Profile0, CapabilityOverrides, FeatureOverrides0) ->
     imboy_policy_codec:public_term(maybe_put_saved_section(Sections2, features, SavedFeatures)).
 
 -spec normalize_saved_profile_value(term()) ->
-    community | enterprise | overseas_baseline | undefined.
+    community | enterprise | overseas_baseline | phase1_delivery | undefined.
 normalize_saved_profile_value(undefined) ->
     undefined;
 normalize_saved_profile_value(Value) ->
@@ -533,7 +534,8 @@ normalize_saved_profile_value(Value) ->
             undefined
     end.
 
--spec resolve_profile(term()) -> community | enterprise | overseas_baseline.
+-spec resolve_profile(term()) ->
+    community | enterprise | overseas_baseline | phase1_delivery.
 resolve_profile(ProfileConfig) ->
     case normalize_profile_input(ProfileConfig) of
         {ok, Profile} ->
@@ -543,7 +545,7 @@ resolve_profile(ProfileConfig) ->
     end.
 
 -spec effective_capabilities_for_profile(
-    community | enterprise | overseas_baseline, term()
+    community | enterprise | overseas_baseline | phase1_delivery, term()
 ) ->
     map().
 effective_capabilities_for_profile(Profile, CapabilityConfig) ->
@@ -554,14 +556,52 @@ effective_capabilities_for_profile(Profile, CapabilityConfig) ->
     normalize_capabilities(maps:merge(Defaults, Overrides), Defaults).
 
 -spec effective_policy_components(
-    community | enterprise | overseas_baseline, term(), term()
+    community | enterprise | overseas_baseline | phase1_delivery, term(), term()
 ) ->
     {map(), map(), map()}.
 effective_policy_components(Profile, CapabilityConfig, FeatureConfig) ->
     Capabilities = effective_capabilities_for_profile(Profile, CapabilityConfig),
     BaseFeatures = effective_features_for_profile(Profile, FeatureConfig),
-    {Features, Plugins} = resolve_plugin_constraints(BaseFeatures, Capabilities),
-    {Capabilities, apply_hard_off_feature_overrides(Capabilities, Features), Plugins}.
+    {Features0, Plugins} = resolve_plugin_constraints(BaseFeatures, Capabilities),
+    Features1 = apply_hard_off_feature_overrides(Capabilities, Features0),
+    {Capabilities, apply_delivery_locked_features(Profile, Features1), Plugins}.
+
+%% @private 一期交付锁（Q02/主计划 §3）：delivery profile 下运行时
+%% （DB saved / 远端 / 热重载配置）不得重新开启被锁特性。与 e2ee 硬闸
+%% 同一时机（resolve_plugin_constraints 与硬闸之后执行）——旧缓存或
+%% 远端全开配置不能把交付关闭面顶开（AC03）。
+-spec apply_delivery_locked_features(atom(), map()) -> map().
+apply_delivery_locked_features(Profile, Features) ->
+    lists:foldl(
+        fun(Name, Acc) -> maps:put(Name, false, Acc) end,
+        Features,
+        imboy_profile_preset:delivery_locked_features(Profile)
+    ).
+
+%% @private 白名单 profile 的缺省关闭：未出现在合并结果中的特性键显式
+%% 压 false。否则未来新增的 plugin 键（未在 preset 枚举）会经
+%% switch_enabled(undefined) -> true 的 fail-open 缺省回到开启态。
+-spec apply_fail_closed_defaults(
+    community | enterprise | overseas_baseline | phase1_delivery, map()
+) -> map().
+apply_fail_closed_defaults(Profile, Merged) ->
+    case imboy_profile_preset:fail_closed(Profile) of
+        true ->
+            lists:foldl(
+                fun(Name, Acc) ->
+                    case maps:is_key(Name, Acc) of
+                        true ->
+                            Acc;
+                        false ->
+                            maps:put(Name, false, Acc)
+                    end
+                end,
+                Merged,
+                feature_names()
+            );
+        false ->
+            Merged
+    end.
 
 -spec apply_hard_off_feature_overrides(map(), map()) -> map().
 %% @private 硬闸下的功能位强制关闭。
@@ -583,7 +623,7 @@ effective_features_from_config(FeatureConfig) ->
     effective_features_from_switches(normalize_feature_switches(FeatureConfig)).
 
 -spec effective_features_for_profile(
-    community | enterprise | overseas_baseline, term()
+    community | enterprise | overseas_baseline | phase1_delivery, term()
 ) ->
     map().
 effective_features_for_profile(Profile, FeatureConfig) ->
@@ -591,12 +631,14 @@ effective_features_for_profile(Profile, FeatureConfig) ->
         maps:get(features, imboy_profile_preset:defaults(Profile), #{})
     ),
     Overrides = normalize_feature_switches(FeatureConfig),
-    effective_features_from_config(maps:merge(Defaults, Overrides)).
+    Merged = maps:merge(Defaults, Overrides),
+    MergedWithMissing = apply_fail_closed_defaults(Profile, Merged),
+    effective_features_from_config(MergedWithMissing).
 
 -spec effective_features_from_switches(map()) -> map().
 effective_features_from_switches(Features) ->
     maps:from_list([
-        {Name, lists:member(Name, ?IMBOY_COMPILED_FEATURES) andalso feature_enabled(Name, Features)}
+        {Name, imboy_feature:compiled(Name) andalso feature_enabled(Name, Features)}
      || Name <- feature_names()
     ]).
 

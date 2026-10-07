@@ -102,7 +102,11 @@ case "$PRESET" in
     MANIFEST="$ROOT/config/product-feature-manifests/agent_hub.json"
     [ -f "$MANIFEST" ] || { echo "agent_hub preset is not available yet" >&2; exit 2; }
     ;;
-  *) echo "usage: $0 {base-only|full-selected|overseas_baseline|agent_hub}" >&2; exit 2 ;;
+  phase1_delivery)
+    MANIFEST="$ROOT/config/product-feature-manifests/phase1_delivery.json"
+    [ -f "$MANIFEST" ] || { echo "phase1_delivery preset is not available yet" >&2; exit 2; }
+    ;;
+  *) echo "usage: $0 {base-only|full-selected|overseas_baseline|agent_hub|phase1_delivery}" >&2; exit 2 ;;
 esac
 
 python3 "$ROOT/scripts/generate_product_features.py" --manifest "$MANIFEST"

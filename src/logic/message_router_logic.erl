@@ -79,10 +79,18 @@ route_normal_message(MsgId, CurrentUid, Data, Type, OriginalMsg) ->
             Action = maps:get(<<"action">>, Data, <<>>),
             msg_s2c_logic:s2c(Action, MsgId, CurrentUid, Data);
         <<"webrtc_", _Event/binary>> ->
-            %% WebRTC 信令处理
-            To = maps:get(<<"to">>, Data),
-            ToUid = ec_cnv:to_integer(To),
-            webrtc_ws_logic:event(CurrentUid, ToUid, MsgId, OriginalMsg);
+            %% Q02（AC02/AC03）：RTC 是二期域。一期交付（phase1_delivery）
+            %% 下 rtc feature 关闭时信令入口必须拒绝——不能只靠 App 不发，
+            %% 旧客户端/直连 WS 的 webrtc_* 帧同样被拦。
+            case imboy_feature:enabled(rtc) of
+                true ->
+                    To = maps:get(<<"to">>, Data),
+                    ToUid = ec_cnv:to_integer(To),
+                    webrtc_ws_logic:event(CurrentUid, ToUid, MsgId, OriginalMsg);
+                false ->
+                    _ = ?WARN_LOG({webrtc_disabled, MsgId, CurrentUid}),
+                    {reply, message_ds:assemble_s2c(MsgId, <<"feature_disabled">>, <<>>)}
+            end;
         _ ->
             %% 未知消息类型
             _ = ?WARN_LOG({unknown_message_type, Type, MsgId, CurrentUid}),

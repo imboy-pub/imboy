@@ -104,7 +104,15 @@ all_returns_binary_key_view_for_known_features_test_() ->
         appeal => false,
         enterprise_business => EnterpriseCompiled,
         customer_service => CustomerServiceCompiled,
-        project => ProjectCompiled
+        project => ProjectCompiled,
+        %% Q02 运行时域键（与 feature_names 的 Phase2Domains 同集）
+        rtc => true,
+        live_room => false,
+        ai_assistant => true,
+        agent_hub => false,
+        mcp => true,
+        wallet => false,
+        moya => false
     },
     ?WITH_MECKS(
         [
@@ -147,7 +155,15 @@ feature_names_contract_test() ->
             customer_service,
             %% GZAPP-02/G6：project 是 Builtin 列表的末位（与
             %% src/lib/imboy_feature.erl 的 Builtin 字面量同序）
-            project
+            project,
+            %% Q02 非一期运行时域键（与 Builtin 后的 Phase2Domains 同序）
+            rtc,
+            live_room,
+            ai_assistant,
+            agent_hub,
+            mcp,
+            wallet,
+            moya
         ],
         imboy_feature:feature_names()
     ).
