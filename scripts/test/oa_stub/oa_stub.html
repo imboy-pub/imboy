@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>IMBoy Q08 OA 替身工作台【仅测试】</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; color: #222; }
+  .card { border: 1px solid #ccc; border-radius: 8px; padding: 12px 16px; margin: 8px 0; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+  .muted { color: #666; font-size: 13px; }
+  code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; word-break: break-all; }
+  .ok { color: #080; } .err { color: #c00; }
+  textarea { width: 100%; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<h2>OA 工作台替身（IMBoy Q08 / AC20 本地验证）</h2>
+<p class="muted">
+  本页面扮演「客户 OA 侧的 SSO 起点页」：用 IMBoy App 用户的 JWT 调
+  <code>GET /api/v1/workbench/entries</code> 拉取可用企业应用卡片，点击卡片后调
+  <code>POST /api/v1/oa/sso/code</code> 取一次性 code，随后
+  <code>location.assign(redirect_uri?code=...&amp;state=nonce)</code> 完成「跳转登录」。
+  「撤权后重试」用于验证 identity mapping 被移除后签发返回 403。
+  <strong>测试替身，勿用于生产。</strong>
+</p>
+
+<label>IMBoy API 基址（如 http://127.0.0.1:9800）<br>
+<input id="base" size="40" value="http://127.0.0.1:9800"></label><br><br>
+<label>App 用户 JWT（Authorization: Bearer）<br>
+<textarea id="jwt" rows="3" cols="90"></textarea></label><br>
+<label>organization_id <input id="org" size="16"></label>
+<button onclick="loadEntries()">拉取应用卡片（entries）</button>
+
+<hr>
+<h3>应用卡片</h3>
+<div id="cards"><span class="muted">（未拉取）</span></div>
+
+<hr>
+<h3>结果</h3>
+<pre id="out" class="muted">（空）</pre>
+
+<script>
+const out = (msg, cls) => {
+  const el = document.getElementById('out');
+  el.textContent = msg;
+  el.className = cls || '';
+};
+
+async function loadEntries() {
+  const base = document.getElementById('base').value.replace(/\/$/, '');
+  const jwt = document.getElementById('jwt').value.trim();
+  const org = document.getElementById('org').value.trim();
+  if (!jwt || !org) { out('请先填 JWT 与 organization_id', 'err'); return; }
+  try {
+    const r = await fetch(base + '/api/v1/workbench/entries?organization_id=' + org, {
+      headers: { 'Authorization': 'Bearer ' + jwt }
+    });
+    const j = await r.json();
+    const list = (j && j.entries) || [];
+    if (!r.ok || !list.length) { out('entries HTTP ' + r.status + ' → ' + JSON.stringify(j), 'err'); return; }
+    const box = document.getElementById('cards');
+    box.innerHTML = '';
+    list.forEach(e => {
+      const d = document.createElement('div');
+      d.className = 'card';
+      d.innerHTML = '<span><b>' + e.label + '</b><br><span class="muted">' + e.application_key +
+        ' → ' + e.redirect_uri + '</span></span>';
+      const b = document.createElement('button');
+      b.textContent = '跳转登录（签发 code）';
+      b.onclick = () => sso(e);
+      d.appendChild(b);
+      box.appendChild(d);
+    });
+    out('entries OK：' + list.length + ' 个应用', 'ok');
+  } catch (err) { out('entries 失败：' + err, 'err'); }
+}
+
+async function sso(entry) {
+  const base = document.getElementById('base').value.replace(/\/$/, '');
+  const jwt = document.getElementById('jwt').value.trim();
+  const org = document.getElementById('org').value.trim();
+  const nonce = 'stub_' + crypto.randomUUID().replace(/-/g, '');
+  try {
+    const r = await fetch(base + '/api/v1/oa/sso/code', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + jwt, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        organization_id: Number(org),
+        application_key: entry.application_key,
+        redirect_uri: entry.redirect_uri,
+        nonce: nonce
+      })
+    });
+    const j = await r.json();
+    if (!r.ok) { out('签发被拒（预期撤权后 403）：HTTP ' + r.status + ' → ' + JSON.stringify(j), 'err'); return; }
+    const code = j.code;
+    out('签发成功，code=' + code + '，跳转 ' + entry.redirect_uri + '?code=…&state=' + nonce, 'ok');
+    location.assign(entry.redirect_uri + '?code=' + encodeURIComponent(code) + '&state=' + nonce);
+  } catch (err) { out('签发失败：' + err, 'err'); }
+}
+</script>
+</body>
+</html>
