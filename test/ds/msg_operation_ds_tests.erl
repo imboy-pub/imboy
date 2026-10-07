@@ -267,12 +267,13 @@ ack_c2g_timeline_success_test_() ->
         ],
         fun() ->
             Result = msg_operation_ds:ack_c2g_timeline(<<"msg123">>, 100),
-            ?assertEqual(ok, Result)
+            ?assertEqual({ok, 1}, Result)
         end
     ).
 
-%% @doc 测试C2G消息ACK失败仍返回ok
-ack_c2g_timeline_error_still_returns_ok_test_() ->
+%% @doc Q04/F06（AC09）：C2G ACK 落库失败必须直通 {error,_}，
+%% 不再吞成 ok——msg_ack_logic 据此不增投递指标并向调用方可观察。
+ack_c2g_timeline_error_is_propagated_test_() ->
     ?WITH_MECK(
         msg_c2g_timeline_repo,
         [
@@ -282,7 +283,23 @@ ack_c2g_timeline_error_still_returns_ok_test_() ->
         ],
         fun() ->
             Result = msg_operation_ds:ack_c2g_timeline(<<"msg123">>, 100),
-            ?assertEqual(ok, Result)
+            ?assertEqual({error, <<"not_found">>}, Result)
+        end
+    ).
+
+%% @doc Q04/F06（AC09）：重复 ACK（0 行生效）返回 {ok, 0}，
+%% 供 msg_ack_logic 跳过投递指标（重复 ACK 不计指标）。
+ack_c2g_timeline_duplicate_returns_zero_test_() ->
+    ?WITH_MECK(
+        msg_c2g_timeline_repo,
+        [
+            {'client_ack', 2, fun(_Uid, _MsgId) ->
+                {ok, 0}
+            end}
+        ],
+        fun() ->
+            Result = msg_operation_ds:ack_c2g_timeline(<<"msg123">>, 100),
+            ?assertEqual({ok, 0}, Result)
         end
     ).
 
@@ -562,8 +579,8 @@ complete_ack_flow_test_() ->
         fun() ->
             % C2C ACK
             ?assertEqual(ok, msg_operation_ds:ack_c2c_msg(<<"msg123">>, 100)),
-            % C2G ACK
-            ?assertEqual(ok, msg_operation_ds:ack_c2g_timeline(<<"msg456">>, 100))
+            % C2G ACK（Q04/F06：直通 {ok,N}）
+            ?assertEqual({ok, 1}, msg_operation_ds:ack_c2g_timeline(<<"msg456">>, 100))
         end
     ).
 

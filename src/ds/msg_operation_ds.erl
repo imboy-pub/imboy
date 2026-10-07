@@ -111,13 +111,14 @@ ack_c2c_batch(MsgIds, Uid, DID) ->
 %% 注意：C2G 不删除离线消息，只标记 timeline
 %% @param MsgId 消息ID
 %% @param Uid 用户ID
-%% @return ok
--spec ack_c2g_timeline(binary(), integer()) -> ok.
+%% @return {ok, N}（N=本次标记行数，重复 ACK 为 0） | {error, Reason}
+%% Q04/F06（AC09）：repo 错误直通，不再吞成 ok——ACK 落库失败必须可
+%% 观察（msg_ack_logic 据此不增投递指标并向调用方返回错误，重试按
+%% 合同可执行）；{ok, 0} 语义与 ack_c2c_msg/3 对齐（重复 ACK 不计指标）。
+-spec ack_c2g_timeline(binary(), integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
 ack_c2g_timeline(MsgId, Uid) ->
-    case msg_c2g_timeline_repo:client_ack(Uid, MsgId) of
-        {ok, _} -> ok;
-        {error, _} -> ok
-    end.
+    msg_c2g_timeline_repo:client_ack(Uid, MsgId).
 
 %% @doc S2C 消息 ACK 处理（legacy：无设备维度，按 uid 删行）
 %% @param MsgId 消息ID

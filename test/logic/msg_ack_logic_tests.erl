@@ -285,3 +285,92 @@ teardown_(_) ->
     % 清理 Mock
     meck:unload(),
     ok.
+
+%% ===================================================================
+%% Q04/F06（AC09）：C2G ACK 落库失败可观察——错误传播到调用方、
+%% 投递指标不增长、恢复后补 ACK 只计一次。
+%% ===================================================================
+
+c2g_ack_db_failure_is_observable_and_metric_not_incremented_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Uid = 1041,
+        Did = <<"device_q04_001">>,
+        MsgId = <<"test_c2g_msg_q04_001">>,
+
+        meck:new(elib_metric, [no_link]),
+        meck:expect(elib_metric, increment, 1, ok),
+        meck:expect(elib_metric, record, 2, ok),
+
+        %% repo 注入失败（模拟 DB 写失败）
+        ?WITH_MECK(
+            msg_c2g_timeline_repo,
+            [
+                {'client_ack', 2, fun(_Uid2, _MsgId2) ->
+                    {error, <<"injected_db_failure">>}
+                end}
+            ],
+            fun() ->
+                Result = msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, Did),
+                %% 错误不得被 ok 吞掉
+                ?assertEqual({error, <<"injected_db_failure">>}, Result),
+                %% 投递成功指标不得增长
+                ?assertEqual(0, meck:num_calls(elib_metric, increment, 1))
+            end
+        ),
+
+        meck:unload(elib_metric)
+    end).
+
+c2g_ack_duplicate_does_not_increment_metric_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Uid = 1042,
+        Did = <<"device_q04_002">>,
+        MsgId = <<"test_c2g_msg_q04_002">>,
+
+        meck:new(elib_metric, [no_link]),
+        meck:expect(elib_metric, increment, 1, ok),
+        meck:expect(elib_metric, record, 2, ok),
+
+        %% 重复 ACK：0 行生效
+        ?WITH_MECK(
+            msg_c2g_timeline_repo,
+            [
+                {'client_ack', 2, fun(_Uid2, _MsgId2) ->
+                    {ok, 0}
+                end}
+            ],
+            fun() ->
+                ?assertEqual(ok, msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, Did)),
+                ?assertEqual(0, meck:num_calls(elib_metric, increment, 1))
+            end
+        ),
+
+        meck:unload(elib_metric)
+    end).
+
+c2g_ack_first_delivery_increments_metric_once_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Uid = 1043,
+        Did = <<"device_q04_003">>,
+        MsgId = <<"test_c2g_msg_q04_003">>,
+
+        meck:new(elib_metric, [no_link]),
+        meck:expect(elib_metric, increment, 1, ok),
+        meck:expect(elib_metric, record, 2, ok),
+
+        %% 首次送达：1 行生效 → 指标恰一次
+        ?WITH_MECK(
+            msg_c2g_timeline_repo,
+            [
+                {'client_ack', 2, fun(_Uid2, _MsgId2) ->
+                    {ok, 1}
+                end}
+            ],
+            fun() ->
+                ?assertEqual(ok, msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, Did)),
+                ?assertEqual(1, meck:num_calls(elib_metric, increment, 1))
+            end
+        ),
+
+        meck:unload(elib_metric)
+    end).
