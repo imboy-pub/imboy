@@ -1,9 +1,9 @@
 # IMBoy 打包契约与运维指南（Packaging Contract & Operator Guide）
 
-> 版本：v1.0 | 最后更新：2026-09-08
-> 任务：海外合规计划 **F-09 — Packaging Contract and Operator Documentation** 与 **F-08 — Migration and Stored-Data Compatibility**（兼容性 Runbook 见 §7）
-> 受众：负责构建/发布 IMBoy 组合产物（Base-only / full-selected / overseas_baseline / agent_hub 等 profile）的运维与发布工程师
-> 关联：`scripts/generate_product_features.py`（契约源）、`scripts/verify_product_feature_artifacts.py`（产物验证）、`scripts/run_product_feature_matrix.sh`（三仓矩阵）、[F-07 三产物构建矩阵](../compliance/IMBoy%20Feature%20Composition%20F07%20Execution%20Record.md)
+> 版本：v1.1 | 最后更新：2026-10-07（v1.1 增补一期交付 profile `phase1_delivery`，见 §9）
+> 任务：海外合规计划 **F-09 — Packaging Contract and Operator Documentation** 与 **F-08 — Migration and Stored-Data Compatibility**（兼容性 Runbook 见 §7）；一期交付收敛主计划 Q11 同步（`docs/design/2026-10-07-phase1-delivery-quality-plan.md`）
+> 受众：负责构建/发布 IMBoy 组合产物（Base-only / full-selected / overseas_baseline / agent_hub / **phase1_delivery** 等 profile）的运维与发布工程师
+> 关联：`scripts/generate_product_features.py`（契约源）、`scripts/verify_product_feature_artifacts.py`（产物验证）、`scripts/run_product_feature_matrix.sh`（三仓矩阵，已支持 `phase1_delivery` preset）、[F-07 三产物构建矩阵](../compliance/IMBoy%20Feature%20Composition%20F07%20Execution%20Record.md)、[交付包清单](./delivery-package-manifest.md)（Q11 落地的交付内容白名单）
 
 ---
 
@@ -39,7 +39,7 @@ Feature 全集的**唯一权威源**是代码：`imboy_feature:feature_names()`�
 
 约束（`generate_product_features.py:validate` 强制）：schema_version=1；product_id=imboy；`base_ref` 固定；`disabled_base_features` 必须为空（Base 不可禁）；`selected_features` ⊆ 全集且满足依赖闭包；`compiled_features = selected + 依赖闭包 ∪ Base`，生成器输出 `manifest_hash`（sha256）。
 
-**Tracked manifest 位置**：`config/product-feature-manifests/*.json`（如 `overseas_baseline.json`）；`config/product-feature-manifest.json` 为 full-selected 默认清单。运行时镜像校验见 `feature_composition_compat_tests:tracked_manifests_within_catalog_test_`。
+**Tracked manifest 位置**：`config/product-feature-manifests/*.json`（如 `overseas_baseline.json`、一期交付 `phase1_delivery.json`——selected = `channel` + `enterprise_business` + `customer_service`）；`config/product-feature-manifest.json` 为 full-selected 默认清单。运行时镜像校验见 `feature_composition_compat_tests:tracked_manifests_within_catalog_test_`。
 
 **部署级（Git 外）关闭示例——广州企业版关 `project`（GZAPP-02/G6 定案：不建广州 profile，通用 manifest 默认开）**：
 
@@ -123,7 +123,7 @@ python3 imboy/scripts/verify_product_feature_artifacts.py \
 |---|---|---|
 | 静态契约（eunit，本批新增） | `test/lib/feature_composition_compat_tests.erl`（6/6） | schema 超集、manifest ⊆ 全集、运行时门语义、retention worker 恒跑 |
 | 端点级 | `feature_route_http_tests`（矩阵脚本内 `make eunit t=`） | base-only/full-selected 下可选路由 401/404 语义 |
-| 产物级（三仓矩阵） | `run_product_feature_matrix.sh {base-only\|full-selected\|overseas_baseline\|agent_hub}` | 生成→构建→三层物理断言→证据 JSON（含三仓 SHA） |
+| 产物级（三仓矩阵） | `run_product_feature_matrix.sh {base-only\|full-selected\|overseas_baseline\|agent_hub\|phase1_delivery}` | 生成→构建→三层物理断言→证据 JSON（含三仓 SHA） |
 | 双 profile boot | F-03 执行记录（9803/9804） | 运行时 effective_features/capability 全景 |
 
 ## 8. 已知保留的共享代码/Schema（Retained Shared Infrastructure）
@@ -137,3 +137,53 @@ python3 imboy/scripts/verify_product_feature_artifacts.py \
 - **插件壳**：feature 以插件注册表键存在（`imboy_plugin_registry`），壳与目录恒在，被裁的是键对应的业务实现模块。
 
 > 区分口径（F-09 Acceptance）：产物里**找不到的是业务模块**（如某 feature 专属 handler/logic/repo 的 beam），**找不到≠删了数据**；找到的共享基础设施不构成 feature 存在的声明——feature 是否启用只以 manifest + 运行时 policy 为准。
+
+## 9. 一期交付 profile（phase1_delivery）
+
+> 代码真源：`src/lib/imboy_profile_preset.erl`（`profile_defaults/1`、`delivery_locked_features/1`、`fail_closed/1`）。本节与代码不一致时**以代码为准**并回改本文。落地提交：`1ac0c8ad`（一期交付收敛主计划 Q02）。
+
+### 9.1 白名单（运行时开启面）
+
+`phase1_delivery` 是**白名单语义** profile：运行时默认开启的特性键只有 5 个——
+
+| 键 | 覆盖能力 |
+|---|---|
+| `core` | Core IM（登录/会话、联系人、C2C/C2G、历史/离线/重连、多端、附件与消息治理） |
+| `channel` | 频道底座：组织内部 General 群与公告频道（一期依赖保留） |
+| `appeal` | 处置申诉链（R-04 operational baseline，治理保留） |
+| `enterprise_business` | 企业组织/部门/成员/工作区/RBAC 与企业业务底座 |
+| `customer_service` | 人工客服（坐席队列/认领/转接/关闭/历史/附件/SSE/Widget） |
+
+`imboy_feature:feature_names()` 全集中的**其余键一律默认 false**；且 `fail_closed(phase1_delivery) = true`——未在 preset 枚举的键（含未来新增 plugin 键）默认关闭而不是默认开启，DB saved / 远端配置不能开启白名单之外的键。
+
+编译裁剪维度与运行时白名单是两回事：manifest `config/product-feature-manifests/phase1_delivery.json` 的 `selected_features = [channel, enterprise_business, customer_service]`（`core`/`e2ee` 是 Base 恒在不可禁，`appeal` 是平台内建特性随 Base 语义保留在白名单内）；依赖边 `customer_service → enterprise_business` 由 `imboy_policy_catalog:dependencies/1` 在生成期强制（EB-10：不允许"先有客服、后补企业底座"）。
+
+### 9.2 交付锁（delivery_locked_features）
+
+一期交付 profile 下，运行时（DB saved / 远端配置）**不得重新开启**的特性键，合并链最后强制压 `false`（与 e2ee `storage_mode` 硬闸同一时机），保证"旧缓存或远端全开配置不能绕过关闭面"（AC03）。共 18 键：
+
+- **二期七域**：`e2ee`、`rtc`、`live_room`、`bot_webhook`、`ai_assistant`、`agent_hub`、`mcp`
+- **一期默认不承诺的运营域**：`wallet`、`moya`、`moment`、`location`、`channel_discover`、`channel_invitation`、`channel_order`、`group_vote`、`group_schedule`、`group_task`、`project`
+
+**OA 共享设施豁免（F08）**：`bot_delivery` outbox / worker / guard 不在锁内——`enterprise_webhook`（OA 对接）走独立门，Bot 产品关闭不影响合法企业事件投递。
+
+### 9.3 capabilities 预设
+
+| 能力键 | 值 | 说明 |
+|---|---|---|
+| `storage_mode` | `archived` | 明文归档存储 |
+| `e2ee_mode` | `disabled` | E2EE 产品面关闭 |
+| `message_search` | `true` | 检索保持 |
+| `message_export` | `true` | 导出保持 |
+| `audit_mode` | `full` | 全量审计 |
+| `retention_policy` | `rolling_days` / 365 天 | 与 enterprise 预设同档 |
+
+**E2EE OFF 语义边界（AC04）**：关闭的只是 E2EE 产品能力——TLS、企业托管加密（`body_cipher` / keyring）、访问控制、归档/检索/推送/保留合同全部保持；不自动解密、降级或迁移历史密文，有历史加密会话时显式拒绝不兼容写入。
+
+### 9.4 构建入口
+
+```bash
+python3 scripts/run_product_feature_matrix.sh phase1_delivery
+# 单 manifest 复现：python3 scripts/generate_product_features.py \
+#   --manifest config/product-feature-manifests/phase1_delivery.json
+```
