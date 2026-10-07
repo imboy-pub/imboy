@@ -324,7 +324,7 @@ do_write(c2g, Row) ->
             msg_c2g_repo:write_accepted_msg(
                 CreatedAt,
                 MsgId,
-                PayloadBin,
+                jsone:encode(maps:get(<<"payload">>, PayloadMap), [native_utf8]),
                 FromId,
                 ToIdList,
                 G,

@@ -134,6 +134,56 @@ read_incremental_offline_msg_includes_authoritative_conv_seq_test_() ->
         end
     ).
 
+read_offline_payload_shapes_test_() ->
+    Body = #{<<"text">> => <<"offline text">>},
+    Envelope = #{
+        <<"id">> => <<"m1">>,
+        <<"type">> => <<"C2G">>,
+        <<"from">> => <<"1">>,
+        <<"to">> => <<"9">>,
+        <<"payload">> => Body
+    },
+    Cases = [
+        {Body, Body},
+        {Envelope, Body},
+        {Envelope#{<<"payload">> => <<"ciphertext">>}, <<"ciphertext">>},
+        {Envelope#{<<"id">> => <<"other">>}, Envelope#{<<"id">> => <<"other">>}},
+        {Envelope#{<<"from">> => <<"other">>}, Envelope#{<<"from">> => <<"other">>}}
+    ],
+    [
+        offline_payload_case(Stored, Expected, Since)
+     || {Stored, Expected} <- Cases,
+        Since <- [undefined, <<"2026-09-12T00:00:00Z">>]
+    ].
+
+offline_payload_case(Stored, Expected, Since) ->
+    Timeline = [#{<<"msg_id">> => <<"m1">>, <<"conv_seq">> => 481}],
+    Rows = [
+        #{
+            <<"id">> => 123,
+            <<"msg_id">> => <<"m1">>,
+            <<"from_id">> => 1,
+            <<"to_id">> => 9,
+            <<"payload">> => jsone:encode(Stored),
+            <<"e2ee">> => null
+        }
+    ],
+    ?WITH_MECKS(
+        [
+            {msg_c2g_timeline_repo, [
+                {'list_by_uid', 3, fun(7, _, 20) -> {ok, Timeline} end},
+                {'list_by_uid_since', 4, fun(7, _, 20, _) -> {ok, Timeline} end}
+            ]},
+            {msg_c2g_repo, [{'list_by_ids', 2, fun([<<"m1">>], _) -> {ok, Rows} end}]}
+        ],
+        fun() ->
+            [Msg] = msg_c2g_ds:read_msg(7, 20, Since),
+            ?assertEqual(Expected, maps:get(<<"payload">>, Msg)),
+            ?assertEqual(481, maps:get(<<"conv_seq">>, Msg)),
+            ?assertEqual(123, maps:get(<<"id">>, Msg))
+        end
+    ).
+
 delete_msg_test_() ->
     ?TEST_WITH_DB(fun() ->
         MsgId = <<"msg_delete_123">>,

@@ -196,9 +196,7 @@ read_msg(ToUid, Limit, undefined) ->
             % 同时反序列化 payload 与 e2ee 列（二者写入时均为 JSON 字符串）
             [
                 attach_timeline_conv_seq(
-                    elib_response:json_decode_field(
-                        elib_response:json_decode_field(Row, <<"payload">>), <<"e2ee">>
-                    ),
+                    decode_offline_message(Row),
                     SeqByMsgId
                 )
              || Row <- Rows2
@@ -226,15 +224,42 @@ read_msg(ToUid, Limit, LastMsgAt) ->
                     % 同时反序列化 payload 与 e2ee 列（二者写入时均为 JSON 字符串）
                     [
                         attach_timeline_conv_seq(
-                            elib_response:json_decode_field(
-                                elib_response:json_decode_field(Row, <<"payload">>), <<"e2ee">>
-                            ),
+                            decode_offline_message(Row),
                             SeqByMsgId
                         )
                      || Row <- Rows2
                     ]
             end
     end.
+
+%% Legacy rows stored the complete realtime envelope in the payload column.
+%% Unwrap only when its identity agrees with the authoritative database row.
+decode_offline_message(Row) ->
+    Decoded = elib_response:json_decode_field(
+        elib_response:json_decode_field(Row, <<"payload">>), <<"e2ee">>
+    ),
+    restore_legacy_payload(Decoded).
+
+restore_legacy_payload(
+    #{
+        <<"msg_id">> := Id,
+        <<"from_id">> := FromId,
+        <<"to_id">> := ToId,
+        <<"payload">> := #{
+            <<"id">> := Id,
+            <<"type">> := <<"C2G">>,
+            <<"from">> := From,
+            <<"to">> := To,
+            <<"payload">> := Body
+        }
+    } = Row
+) when is_integer(FromId), is_integer(ToId) ->
+    case {integer_to_binary(FromId), integer_to_binary(ToId)} of
+        {From, To} -> Row#{<<"payload">> := Body};
+        _ -> Row
+    end;
+restore_legacy_payload(Row) ->
+    Row.
 
 -spec timeline_seq_by_msg_id([map()]) -> map().
 timeline_seq_by_msg_id(Rows) ->

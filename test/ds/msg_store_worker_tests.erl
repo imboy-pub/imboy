@@ -294,8 +294,9 @@ c2g_write_propagates_authoritative_conv_seq_test_() ->
         [
             {msg_c2g_repo, [
                 {'write_accepted_msg', 11, fun(
-                    _, _, _, _, _, 9, _, _, null, 77, <<"did-1">>
+                    _, _, BodyJson, _, _, 9, _, _, null, 77, <<"did-1">>
                 ) ->
+                    ?assertEqual(#{<<"text">> => <<"stored text">>}, jsone:decode(BodyJson)),
                     ok
                 end}
             ]}
@@ -308,7 +309,7 @@ c2g_write_propagates_authoritative_conv_seq_test_() ->
 
 c2g_row(ConvSeq) ->
     #{
-        <<"payload">> => <<"{\"to\":\"9\"}">>,
+        <<"payload">> => <<"{\"to\":\"9\",\"payload\":{\"text\":\"stored text\"}}">>,
         <<"from_id">> => 1,
         <<"to_id_list">> => [1, 2],
         <<"created_at">> => <<"2026-09-11T00:00:00Z">>,
