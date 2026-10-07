@@ -593,7 +593,6 @@ ensure_dissolve_authz_tx(org_manager, Conn, Gid, Uid) ->
 do_dissolve(Uid, Gid, G, Authz) ->
     Now = elib_dt:now(),
     {ok, Body} = jsone_encode:encode(G, [native_utf8]),
-    ToUidLi = member_uids(Gid),
 
     case
         elib_pg:with_tx(fun(Conn) ->
@@ -636,11 +635,24 @@ do_dissolve(Uid, Gid, G, Authz) ->
             Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
             {ok, _} = elib_pg:execute(Conn, Sql, [Gid]),
 
+            %% Q05/F07：接收者快照与成员审计同源——事务内、DELETE 成员前
+            %% 读取（member_uids 的 1 小时缓存不再参与投递判定，消除
+            %% stale 缓存多收与缓存折空漏发两个窗口）。
+            MemberRows =
+                case group_member_repo:list_by_gid_tx(Conn, Gid, <<"*">>, 1_000_000) of
+                    {ok, Rows} ->
+                        Rows;
+                    {error, Reason} ->
+                        %% R3-6：成员列表读失败不能当"没有成员"放过——
+                        %% 那会删掉群却一条成员审计都不写。
+                        throw({abort_tx, {group_member_list_failed, Gid, Reason}})
+                end,
+
             % 批量添加成员日志
-            case group_member_repo:list_by_gid(Gid, <<"*">>, 1_000_000) of
-                {ok, []} ->
+            case MemberRows of
+                [] ->
                     ok;
-                {ok, Li} ->
+                Li ->
                     MemberLogs = [
                         #{
                             type => 201,
@@ -655,25 +667,15 @@ do_dissolve(Uid, Gid, G, Authz) ->
                         }
                      || V <- Li
                     ],
-                    case MemberLogs of
-                        [] ->
+                    case group_log_repo:batch_add(Conn, MemberLogs) of
+                        {ok, _} ->
                             ok;
-                        _ ->
-                            case group_log_repo:batch_add(Conn, MemberLogs) of
-                                {ok, _} ->
-                                    ok;
-                                {error, BatchReason} ->
-                                    %% R3-6：同 101 审计——成员变更审计缺失即回滚
-                                    throw(
-                                        {abort_tx, {group_log_batch_add_failed, Gid, BatchReason}}
-                                    )
-                            end,
-                            ok
-                    end;
-                {error, Reason} ->
-                    %% R3-6：成员列表读失败不能当"没有成员"放过——
-                    %% 那会删掉群却一条成员审计都不写。
-                    throw({abort_tx, {group_member_list_failed, Gid, Reason}})
+                        {error, BatchReason} ->
+                            %% R3-6：同 101 审计——成员变更审计缺失即回滚
+                            throw(
+                                {abort_tx, {group_log_batch_add_failed, Gid, BatchReason}}
+                            )
+                    end
             end,
 
             % 删除群成员
@@ -681,14 +683,15 @@ do_dissolve(Uid, Gid, G, Authz) ->
             Sql2 = <<"DELETE FROM ", Tb2/binary, " WHERE group_id = $1">>,
             {ok, _} = elib_pg:execute(Conn, Sql2, [Gid]),
 
-            ok
+            %% 事务成功后按本快照直发解散通知（接收者列表提交给外层 case）
+            {ok, [maps:get(<<"user_id">>, V) || V <- MemberRows]}
         end)
     of
-        ok ->
+        {ok, ToUidLi} ->
             % 清除缓存
             dissolve(Gid),
 
-            % 发送通知
+            % 发送通知（接收者=事务内成员快照；快照为空时发空列表为无害空转）
             Action = <<"group_dissolve">>,
             Payload = #{<<"gid">> => Gid},
             msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
@@ -809,7 +812,9 @@ page_managed(Uid, Page, Size) ->
     elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.id desc">>, Page, Size).
 
 %% ===================================================================
-%% 聚合加载/保存（T2.2：group_agg 聚合根 DS 接线）
+%% 聚合加载/保存（group_agg 聚合根 I/O 外壳）
+%% Q05 盘点确认：生产通知路径不经聚合接线（logic 事务成功后 publish），
+%% 本组函数保留为 SERVICE_PATTERN 外壳参考，无生产调用方。
 %% SERVICE_PATTERN 的 I/O 外壳：load=读、save=写，经 Repo 层落库。
 %% ===================================================================
 

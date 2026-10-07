@@ -16,8 +16,10 @@
 %%% group_role_vo 接入：role_of/2 以角色值对象表达成员角色，转让不变量
 %%% 经由角色 VO（actor 角色须为 ROLE_OWNER）判定，权威源 group_role.hrl。
 %%%
-%%% 渐进策略（NOT Building）：本 task 仅新增纯领域层，不改既有 logic；
-%%% DS load/save_aggregate 接线（T2.2）与 logic 退化外壳（T2.3）留后续。
+%%% 渐进策略（NOT Building）：本模块保持纯函数供单测使用。Q05 盘点确认：
+%%% 通知投递走 logic 事务成功后 publish → group_event_handler（T2.3 已切净），
+%%% 生产路径不经聚合接线——load/save_aggregate（T2.2）保留为 I/O 外壳参考，
+%%% 不再声称"待接线"。
 -module(group_agg).
 
 -moduledoc "群组聚合根 / Group Aggregate Root。".

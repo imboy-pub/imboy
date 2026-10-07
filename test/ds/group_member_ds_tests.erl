@@ -203,6 +203,25 @@ leave_success_test_() ->
         end
     ).
 
+%% Q05/F07：成员行不存在时返回 {ok, absent}，供 logic 层区分"真实删除"
+%% 与"重复请求"，避免重复 publish group_member_leave 通知。
+leave_absent_member_returns_absent_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_member_repo, [
+                {'tablename', 0, fun() ->
+                    <<"group_member">>
+                end},
+                {'find', 3, fun(_Gid, _Uid, <<"*">>) ->
+                    #{}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({ok, absent}, group_member_ds:leave(self(), 100, 1, 100))
+        end
+    ).
+
 alias_success_test_() ->
     ?WITH_MECKS(
         [

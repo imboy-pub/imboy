@@ -60,3 +60,32 @@ leave_publishes_member_removed_test_() ->
             ?assertEqual(ok, group_member_logic:leave(100, 1, 100))
         end
     ).
+
+%% leave 幂等（Q05/F07）：成员行已不存在（{ok, absent}）→ 不 publish、
+%% 不清缓存，HTTP 假成功契约保持不变（重复退群/重复踢人不重发通知）。
+leave_absent_does_not_publish_test_() ->
+    ?WITH_MECKS(
+        [
+            %% T7 归档写守卫桩：with_tx 内 ensure_writable_tx 直通（守卫行为由 workspace 域测试覆盖）
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
+            {group_member_ds, [
+                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) -> {ok, absent} end}
+            ]},
+            {group_ds, [
+                {'leave', 2, fun(_Uid, _Gid) -> ok end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+            ]},
+            {imboy_domain_event, [
+                {'publish', 1, fun(_Events) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(ok, group_member_logic:leave(100, 1, 100)),
+            ?assertEqual(0, meck:num_calls(imboy_domain_event, publish, 1)),
+            ?assertEqual(0, meck:num_calls(group_ds, leave, 2))
+        end
+    ).

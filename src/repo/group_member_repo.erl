@@ -12,6 +12,8 @@
 -export([list_same_group/2]).
 % -export ([list_same_group/2]).
 -export([list_by_gid/2, list_by_gid/3]).
+%% Q05/F07：解散接收者快照须与删除同事务同快照（不走 member_uids 缓存）。
+-export([list_by_gid_tx/4]).
 -export([list_authorized_public_keys/3]).
 %% 真库回归直接执行生产 SQL，避免 mock 只验证字符串形状。
 -export([authorized_public_keys_sql/0]).
@@ -124,6 +126,23 @@ list_by_gid(Gid, Column, Limit) ->
     Where = <<" WHERE group_id = $1 AND status = 1 LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
     elib_pg:query(Sql, [Gid, Limit]).
+
+%% @doc 查询群组成员列表（事务内版本：在指定连接的快照上读取）
+%% Q05/F07：群解散的接收者快照与成员审计共用本函数——读取发生在
+%% DELETE 之前、同一事务快照内，消除 1 小时 member_uids 缓存的
+%% stale/折空窗口（快照后入群者收不到通知、缓存抖动通知整体丢失）。
+%% @param Conn 事务连接
+%% @param Gid 群组ID
+%% @param Column 要查询的列名，支持多个列用逗号分隔
+%% @param Limit 查询结果数量限制
+%% @return {ok, Rows} 查询成功返回map列表 | {error, Reason} 查询失败
+-spec list_by_gid_tx(pid(), integer(), binary(), integer()) ->
+    {ok, list(map())} | {error, any()}.
+list_by_gid_tx(Conn, Gid, Column, Limit) ->
+    Tb = tablename(),
+    Where = <<" WHERE group_id = $1 AND status = 1 LIMIT $2">>,
+    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
+    elib_pg:query(Conn, Sql, [Gid, Limit]).
 
 %% @doc 在一个数据库快照内校验 active 群和 active 调用者，并读取 active
 %% 成员的设备公钥。LATERAL 子查询依赖授权行，未授权时不会物化整群成员。

@@ -152,6 +152,10 @@ leave_execute(Uid, Gid, CurrentUid) ->
             leave_internal(Conn, Uid, Gid, CurrentUid)
         end)
     of
+        {ok, absent} ->
+            %% Q05/F07 幂等：成员行已不存在（重复退群/重复踢人/竞态）——
+            %% 不 publish、不清缓存，HTTP 假成功契约保持不变。
+            ok;
         {ok, _UidSum, _GM} ->
             % 更新内存缓存
             group_ds:leave(Uid, Gid),

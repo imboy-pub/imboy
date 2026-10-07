@@ -42,7 +42,12 @@ handle_event({member_added, Gid, Uid}, State) ->
 handle_event({member_removed, Gid, Uid}, State) ->
     notify_member_leave(Gid, Uid),
     {ok, State};
-%% 其余领域事件（owner_transferred/group_dissolved 等）暂不投递，留后续接线。
+%% 群主转让 → group_transfer 通知（Q05/F07：补齐四场景中唯一"零通知"缺口）。
+handle_event({owner_transferred, Gid, FromUid, ToUid}, State) ->
+    notify_owner_transferred(Gid, FromUid, ToUid),
+    {ok, State};
+%% 其余领域事件（group_dissolved 等）暂不投递：解散保持既有直发形态，
+%% 不迁事件总线（主计划 §8：已有直发有效时不机械追加双轨）。
 handle_event(_Event, State) ->
     {ok, State}.
 
@@ -77,12 +82,37 @@ notify_member_join(Gid, Uid) ->
     ok.
 
 %% @doc 群成员离开通知（save）。
+%% Q05/F07：被移除者本人追加进接收列表（去重）——被踢端即时/离线均可感知
+%% （此前缓存先行删除导致本人永远不在 member_uids 里），主动退群场景同时
+%% 兼顾多端同步；App 端 memberLeave 已有 leave_uid==self 分支。
 -spec notify_member_leave(integer(), integer()) -> ok.
 notify_member_leave(Gid, Uid) ->
-    ToUidLi = group_ds:member_uids(Gid),
+    Members = group_ds:member_uids(Gid),
+    ToUidLi =
+        case lists:member(Uid, Members) of
+            true ->
+                %% 缓存竞态（member_uids 仍含被移除者）：不重复追加
+                Members;
+            false ->
+                Members ++ [Uid]
+        end,
     Payload = #{
         <<"gid">> => Gid,
         <<"leave_uid">> => Uid
     },
     _ = msg_s2c_ds:send(Uid, ToUidLi, <<"group_member_leave">>, <<>>, null, Payload, save),
+    ok.
+
+%% @doc 群主转让通知（save，离线可补）。
+%% 事件 {owner_transferred, Gid, From, To} 由 group_logic:do_transfer 在
+%% 事务提交成功后 publish；From 为旧群主（S2C from 字段），To 为新群主。
+-spec notify_owner_transferred(integer(), integer(), integer()) -> ok.
+notify_owner_transferred(Gid, FromUid, ToUid) ->
+    ToUidLi = group_ds:member_uids(Gid),
+    Payload = #{
+        <<"gid">> => Gid,
+        <<"from_owner_uid">> => FromUid,
+        <<"to_owner_uid">> => ToUid
+    },
+    _ = msg_s2c_ds:send(FromUid, ToUidLi, <<"group_transfer">>, <<>>, null, Payload, save),
     ok.

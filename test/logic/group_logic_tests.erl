@@ -409,3 +409,72 @@ set_e2ee_mode_one_way_error_kept_without_hard_off_test_() ->
             )
         end
     ).
+
+%% ===================================================================
+%% transfer/3 群转让通知链（Q05/F07/AC10）
+%% ===================================================================
+
+%% 转让事务成功 → publish {owner_transferred, Gid, From, To} 恰一次。
+%% 修复前该场景事务成功后无任何通知（设计文档 Q05 §1.1 唯一"零通知"缺口）。
+transfer_success_publishes_owner_transferred_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_ds, [
+                {'find_by_id', 2, fun(1, _Cols) -> #{<<"owner_uid">> => 100} end},
+                {'update_owner_tx', 3, fun(_Conn, 1, 200) -> ok end}
+            ]},
+            {group_member_ds, [
+                {'find_by_gid_and_uid', 3, fun(1, 200, _Col) -> #{<<"id">> => 9} end},
+                {'update_role', 4, fun(_Conn, 1, _Uid, _Role) -> ok end}
+            ]},
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
+            {group_log_ds, [
+                {'add', 2, fun(_Conn, _Data) -> {ok, 1} end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+            ]},
+            {imboy_domain_event, [
+                {'publish', 1, fun(Events) ->
+                    ?assertEqual([{owner_transferred, 1, 100, 200}], Events),
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(ok, group_logic:transfer(100, 1, 200)),
+            ?assertEqual(1, meck:num_calls(imboy_domain_event, publish, 1))
+        end
+    ).
+
+%% 转让事务失败 → 不 publish（通知只随成功提交；AC10 事务回滚变体）。
+transfer_failure_does_not_publish_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_ds, [
+                {'find_by_id', 2, fun(1, _Cols) -> #{<<"owner_uid">> => 100} end},
+                {'update_owner_tx', 3, fun(_Conn, _Gid, _New) -> {error, db_down} end}
+            ]},
+            {group_member_ds, [
+                {'find_by_gid_and_uid', 3, fun(1, 200, _Col) -> #{<<"id">> => 9} end}
+            ]},
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+            ]},
+            {imboy_domain_event, [
+                {'publish', 1, fun(_Events) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"db_down">>},
+                group_logic:transfer(100, 1, 200)
+            ),
+            ?assertEqual(0, meck:num_calls(imboy_domain_event, publish, 1))
+        end
+    ).

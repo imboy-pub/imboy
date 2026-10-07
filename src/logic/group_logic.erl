@@ -251,6 +251,12 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
                     %% 统一归一到 {error, binary()} 契约，防止向调用方泄漏。
                     case TxRes of
                         ok ->
+                            %% Q05/F07：转让事务提交成功后发布领域事件，由
+                            %% group_event_handler 投递 group_transfer 通知
+                            %% （save，离线可补）——补齐四场景唯一"零通知"缺口。
+                            imboy_domain_event:publish([
+                                {owner_transferred, Gid, OwnerUid, NewOwnerUid}
+                            ]),
                             ok;
                         {error, Reason} when is_binary(Reason) ->
                             {error, Reason};
@@ -291,6 +297,11 @@ nearby_gid(Lng, Lat, Radius, Unit, Limit, Code) ->
 
 %% @doc 群转让（增强版，支持保留管理员身份）
 %% 将群组转让给指定的新群主，可选择是否保留原群主的管理员身份
+%%
+%% **@deprecated 无生产调用方**（Q05 盘点确认，仅集成测试引用）。生产路径
+%% 是 transfer/3 → do_transfer/5。保留供 KeepAsAdmin 语义将来启用时参考；
+%% 启用前须与 do_transfer/5 对齐 Q05 通知契约（事务成功后 publish
+%% owner_transferred）。
 %%
 %% @param CurrentUid 当前用户ID
 %% @param Gid 群组ID

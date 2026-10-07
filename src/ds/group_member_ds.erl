@@ -261,15 +261,18 @@ ensure_workspace_membership(Conn, Gid, Uid) ->
 %% @param Uid 用户ID
 %% @param Gid 群组ID
 %% @param CurrentUid 当前操作用户ID
-%% @return {ok, UidSum, MemberInfo} | {error, Reason}
--spec leave(pid(), integer(), integer(), integer()) -> {ok, integer(), map()} | {error, any()}.
+%% @return {ok, UidSum, MemberInfo} 真实删除 | {ok, absent} 成员行不存在（重复退群/踢人）| {error, Reason}
+-spec leave(pid(), integer(), integer(), integer()) ->
+    {ok, integer(), map()} | {ok, absent} | {error, any()}.
 leave(Conn, Uid, Gid, CurrentUid) ->
     GMTb = group_member_repo:tablename(),
     GM = group_member_repo:find(Gid, Uid, <<"*">>),
 
     case maps:size(GM) of
         0 ->
-            {ok, 0, #{}};
+            %% Q05/F07：成员行不存在时显式返回 {ok, absent}，供 logic 层
+            %% 区分"真实删除"与"重复请求"——避免重复 publish 通知全群。
+            {ok, absent};
         _ ->
             Now = elib_dt:now(),
             Id = maps:get(<<"id">>, GM, 0),
