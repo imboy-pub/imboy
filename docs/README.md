@@ -31,14 +31,14 @@
 | 业务与合规 | 产品边界、商业、安全披露是什么？ | [business](./business/service-offering.md) · [compliance](./compliance/e2ee-policy.md) · [legal](https://github.com/imboy-pub/imboy/tree/main/docs/legal) |
 | 决策与过程 | 方案、审计和阶段性结论是什么？ | [adr](https://github.com/imboy-pub/imboy/blob/main/docs/adr/README.md) · [archive](https://github.com/imboy-pub/imboy/blob/main/docs/archive/README.md) |
 
-判断规则：教技能是「教程」，办事情是「指南」，查事实是「参考」，讲原理是「解释」。一次性计划和已完成审计不进入稳定入口，完成后放入 `archive/`。
+判断规则：教技能是「教程」，办事情是「指南」，查事实是「参考」，讲原理是「解释」。AI 执行计划、审查报告、测试报告和一次性测试材料保存在仓外，不进入 Git 或交付包。
 
 ### 目录口径备注
 
 - 操作手册主阵地是 `guides/operations/`；`docs/runbooks/` 收运行手册；`docs/ops/support-matrix.md` 为支持矩阵（被 `scripts/check_release_consistency.sh` 引用，位置固定）。
 - `adr/` 收编号 ADR；E2EE v2 体系（`guides/e2ee/v2/`）内部的编号 ADR 属于该体系，不并入。
-- `docs/qa/` 为 HISTORICAL 一次性 QA 记录（见其 [README](./qa/README.md)），现行验收以一期交付质量主计划 §5 AC 与 Q12 冻结 run 为准；`docs/design/` 只收进行中的设计/计划文档，一次性 run 产出已整体移入 `docs/archive/design/`（2026-10-07，Q11）。
-- `docs/plans/` 已被 `.gitignore` 忽略：目录内仍有历史 tracked 存量悬留（2026-09~10 已闭合计划），属历史记录非现行承诺，不进导航；新计划一律放 `docs/design/`。
+- 稳定架构和接口合同使用 `architecture/`、`api-contracts/`、`reference/`；自动化测试源码及必要合成 fixture 与代码一起维护。
+- 执行计划和 run 证据放在仓外目录；验收工具显式接收计划与 run 路径，禁止依赖开发者机器上的固定路径。
 
 ## 内容状态标注（四态）
 

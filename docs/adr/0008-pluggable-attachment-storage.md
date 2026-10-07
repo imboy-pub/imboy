@@ -255,7 +255,7 @@ Garage/COS/OSS；启动检查和文档必须明确该限制。
 
 ## References
 
-- [实施计划](../architecture/2026-09-25-attachment-pluggable-storage-disk-phase1-plan.md)
+- 实施计划（仓外执行材料）
 - [Garage 安装指南](../guides/operations/garage-deployment.md)
 - [Mattermost 文件存储建议](https://docs.mattermost.com/deployment-guide/server/prepare-file-storage)
 - [GitLab Object Storage](https://docs.gitlab.com/administration/object_storage/)

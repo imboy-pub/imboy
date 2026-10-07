@@ -1,30 +1,7 @@
-# 归档区（Archive）
+# 历史产品文档 / Historical product documentation
 
-> **规则**：只进不出。过期文档移入此处而非删除，保留历史可查。
+本目录只保留仍有维护价值的历史产品说明。当前接口合同见 [API 契约](../api-contracts/)，协议与参数见 [参考文档](../reference/)，操作步骤见 [运行指南](../guides/operations/)。
 
-## 这里有什么
+AI 执行计划、审查报告、测试报告、截图、运行日志和一次性 fixture 保存在仓外，不再归档进 Git。自动化测试源码及其必要合成数据仍与代码一起维护；二者不能混为一谈。
 
-| 子目录 | 内容 | 归档时间 |
-|--------|------|---------|
-| [review/](./review/) | 2026-07 三仓系统评审（15 篇：架构/后端/前端/数据库/性能/协议/安全/测试等） | 2026-07-24 |
-| [analysis/](./analysis/) | 独有分析 3 篇（E2EE 跨设备评估含行业对标、flutter_chat_ui 移除评估、FTS 联调报告） | 2026-07-24 |
-| [design/](./design/) | 2026-09-30 ~ 10-04 五个一次性 run 目录（整目录 `git mv`，共 1457 文件）：`2026-10-03-full-product-device-acceptance`（全产品设备验收 run，替代入口=一期交付质量主计划 §5 AC + Q12 冻结验收 run）、`2026-09-30-guangzhou-enterprise-ux` 与 `2026-10-04-enterprise-workspace-acceptance`、`2026-10-02-enterprise-non-oa-closure`（企业域一次性实现/验收/闭合记录，替代入口=`docs/concepts/enterprise-business.md`）、`2026-10-03-e2ee-production-excellence`（E2EE 研究计划，二期专题见 `docs/guides/e2ee/`） | 2026-10-07 |
-
-> 2026-07-25 去重清理：CODEMAPS/（6 篇，数据失真，现行版在 `src/*/CLAUDE.md`）、plans/ TSID 计划（现行版在 `reference/tsid-field-*.md`）、analysis/ 6 篇（内容已并入 e2ee/v2 规范、p0-webrtc 文档、rest-api-v1-catalog）、根级 2 篇（quote-reply 已并入 WS 契约、商业冷启动提示词）共 **15 篇因内容已在活文档中存在而删除**；同日再清 **10 篇被 2026-07 评审取代的 5-6 月审计**（analysis/ 9 篇 + audit/ Flutter 审计，细节可从 git 历史找回）；backend-readme 因与根 README 重复删除。
-
-## 什么时候把文档放进来
-
-- 一次性工作完成：评审、审计、修复计划、检查单 → 工作关闭时移入
-- 文档被取代：新版发布，旧版移入（不删除）
-- 内容过期：描述的行为与当前代码明显不符，且无更新价值
-
-## 什么时候**不要**放进来
-
-- 仍被引用的契约/参考 → 放 [../reference/](../reference/)
-- 仍可执行的操作指南 → 放 [../guides/](../guides/)
-
-## 纪律
-
-- 移入时用 `git mv`，保留历史。
-- 移入后更新所有引用点（`grep -rl <文件名>` 排查）。
-- 本目录内容原则上不删除；**例外**：实质内容已在活文档中存在的重复副本，经评估后可删除（2026-07-25 起执行过一次，见上）。
+历史文档不是现行能力或交付通过的证明。仍被程序依赖的规范必须移入稳定合同目录并修复引用；过期实现结论不应留在当前导航中。历史版本可从 Git 历史查看。

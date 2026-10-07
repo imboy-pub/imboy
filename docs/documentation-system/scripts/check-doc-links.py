@@ -1,56 +1,59 @@
 #!/usr/bin/env python3
-"""imboy 三仓文档死链全量检查器
-扫描指定 docs 目录下所有 .md 文件中的相对链接，验证目标文件是否存在。
-"""
-import os
+"""Check local Markdown links in tracked product documentation."""
+import argparse
+from pathlib import Path
 import re
-import sys
+import subprocess
+from urllib.parse import unquote, urlsplit
 
 LINK_RE = re.compile(r'\[[^\]]*\]\(([^)]+)\)')
 
+
+def markdown_files(root):
+    try:
+        repo = Path(subprocess.check_output(
+            ['git', '-C', str(root), 'rev-parse', '--show-toplevel'],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip())
+        paths = subprocess.check_output(
+            ['git', '-C', str(repo), 'ls-files', '-z', '--', str(root)],
+        ).decode().split('\0')
+        return [repo / path for path in paths if path.endswith('.md')]
+    except subprocess.CalledProcessError:
+        return list(root.rglob('*.md'))
+
+
 def check_dir(root):
-    dead = []
-    checked = 0
-    for dirpath, _, files in os.walk(root):
-        for fn in files:
-            if not fn.endswith('.md'):
+    root = Path(root).resolve()
+    dead, checked = [], 0
+    for source in markdown_files(root):
+        for match in LINK_RE.finditer(source.read_text(encoding='utf-8')):
+            link = match.group(1).strip().strip('<>')
+            parsed = urlsplit(link)
+            if parsed.scheme or not parsed.path:
                 continue
-            fpath = os.path.join(dirpath, fn)
-            try:
-                with open(fpath, encoding='utf-8') as f:
-                    content = f.read()
-            except Exception:
-                continue
-            for m in LINK_RE.finditer(content):
-                link = m.group(1).strip()
-                # 跳过外链、锚点、mailto、asset://
-                if link.startswith(('http://', 'https://', '#', 'mailto:', 'asset://', 'ftp://')):
-                    continue
-                # 去掉锚点部分
-                target = link.split('#')[0]
-                if not target:
-                    continue
-                # 相对当前 md 文件目录解析
-                resolved = os.path.normpath(os.path.join(dirpath, target))
-                checked += 1
-                if not os.path.exists(resolved):
-                    dead.append((os.path.relpath(fpath, root), link))
+            target = unquote(parsed.path)
+            checked += 1
+            if not (source.parent / target).exists():
+                dead.append((str(source.relative_to(root)), link))
     return checked, dead
 
-repos = [
-    '/Users/leeyi/project/imboy.pub/imboy/docs',
-    '/Users/leeyi/project/imboy.pub/imboyapp/docs',
-    '/Users/leeyi/project/imboy.pub/imboyadmin/docs',
-]
 
-total_dead = 0
-for root in repos:
-    checked, dead = check_dir(root)
-    name = root.split('/imboy.pub/')[-1]
-    print(f'\n=== {name}: 检查 {checked} 个链接，死链 {len(dead)} 个')
-    for src, link in dead[:20]:
-        print(f'  [{src}] -> {link}')
-    total_dead += len(dead)
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('roots', nargs='*', type=Path, help='Documentation directories')
+    args = parser.parse_args()
+    repo = Path(__file__).resolve().parents[3]
+    roots = args.roots or [repo / 'docs']
+    total = 0
+    for root in roots:
+        checked, dead = check_dir(root)
+        print(f'{root}: checked={checked}, dead={len(dead)}')
+        for source, link in dead:
+            print(f'  [{source}] -> {link}')
+        total += len(dead)
+    return int(total > 0)
 
-print(f'\n总计死链: {total_dead}')
-sys.exit(1 if total_dead else 0)
+
+if __name__ == '__main__':
+    raise SystemExit(main())

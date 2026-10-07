@@ -1,1 +1,0 @@
-PASS: real Garage bytes survive server and client restart; anonymous denial, tenant prefix, invalid signature, delete and missing config

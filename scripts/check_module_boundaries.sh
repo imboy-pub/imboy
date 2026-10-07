@@ -26,8 +26,7 @@ if [[ -n "$legacy_moya_modules" ]]; then
 fi
 
 legacy_moya_routes="$(
-  rg -n --glob '!docs/plans/evidence/**' \
-    '/api/v1/teaching' src test .contract docs/reference docs/plans || true
+  rg -n '/api/v1/teaching' src test .contract docs/reference || true
 )"
 if [[ -n "$legacy_moya_routes" ]]; then
   echo "route naming violation: Moya HTTP routes must use the /api/v1/moya prefix" >&2

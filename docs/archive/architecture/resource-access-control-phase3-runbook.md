@@ -2,7 +2,7 @@
 
 > **状态 / Status**: ⚠️ 待人工执行 / Pending manual execution（命令就绪，**未执行任何生产操作**）
 > **创建 / Created**: 2026-06-20
-> **前置 / Prereq**: 阶段一（后端）已完成；阶段二（客户端）已完成并通过绿灯门（见 [resource-access-control-progress.md](./resource-access-control-progress.md)）
+> **前置 / Prereq**: 阶段一（后端）已完成；阶段二（客户端）已完成并通过绿灯门（见 resource-access-control-progress.md（仓外执行材料））
 > **权威设计 / Design**: [resource-access-control.md](./resource-access-control.md) §4、§9、§10.3、§10.4
 
 ---

@@ -11,7 +11,7 @@
 ## 1. 范围与版本锚定
 
 **锚定原则**：精确到 commit 与库版本，**含排除项声明**。当前锚见
-[`evidence-manifest.generated.md`](./evidence-manifest.generated.md) §1（机器生成，含工作树脏否）。
+`evidence-manifest.generated.md`（仓外执行材料） §1（机器生成，含工作树脏否）。
 
 ### 范围内
 
@@ -59,7 +59,7 @@
 
 | 要求 | 说明 |
 |---|---|
-| 唯一编号 | ⚠️ **不要用 `IMB-2026-NNN` 前缀** —— 该命名空间已被我方[已知问题台账](./known-issues-ledger.md)占用（001..027）。请用贵方自有前缀或 `EXT-2026-NNN` |
+| 唯一编号 | ⚠️ **不要用 `IMB-2026-NNN` 前缀** —— 该命名空间已被我方已知问题台账（仓外执行材料）占用（001..027）。请用贵方自有前缀或 `EXT-2026-NNN` |
 | 严重度分级 | Critical / High / Medium / Low / Info |
 | 漏洞 vs 弱点 | 必须区分：可利用的缺陷 vs 加固建议 |
 | 复现步骤 | 每条 finding 附最小复现路径 |
@@ -80,7 +80,7 @@
 | 许可证门 | `scripts/license_inventory.sh --check`（当前必然退出 1，AGPL 未解，属预期） |
 | 证据清单 | `scripts/evidence_manifest.sh` |
 
-已知会红 / 会跳过的项，以及理由，见[已知问题台账](./known-issues-ledger.md) §5。
+已知会红 / 会跳过的项，以及理由，见已知问题台账（仓外执行材料） §5。
 
 ---
 
@@ -118,8 +118,8 @@
 | 答疑通道 | `[联系方式 —— 签约时由我方指定]` | 🔒 待定 |
 | 密码学清单 | [`crypto-inventory.md`](./crypto-inventory.md) | ✅ |
 | 密钥生命周期 | [`../key-lifecycle.md`](../key-lifecycle.md) | ✅ |
-| 已知问题台账 | [`known-issues-ledger.md`](./known-issues-ledger.md) | ✅ |
-| 证据清单 | [`evidence-manifest.generated.md`](./evidence-manifest.generated.md) | ✅ |
+| 已知问题台账 | `known-issues-ledger.md`（仓外执行材料） | ✅ |
+| 证据清单 | `evidence-manifest.generated.md`（仓外执行材料） | ✅ |
 
 > **开工前置**：白皮书缺位不阻塞代码审计，但会显著抬高协议层分析的成本
 > ——审计方需自行从 31 份 ADR（`v2/00`–`31`，其中 23 号缺号）里重建协议全貌。

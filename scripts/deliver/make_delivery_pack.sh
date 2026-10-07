@@ -22,8 +22,7 @@
 #   X2 真实 env      .env 及 .env.<variant>；*.example 模板是"配置入口"豁免保留
 #   X3 日志/crash    *.log（含 docs 归档中的 evidence 日志原件——归档可追溯性由
 #                    仓内 git 历史与结论文档承担）；erl_crash.dump / crash.dump
-#   X4 临时 evidence 顶层 evidence/（内部审计工作产物；docs/archive、docs/qa 的
-#                    文档化归档保留以满足"历史证据可追溯"，仅剥离 .log 原件）
+#   X4 任意层级 evidence/test-results/playwright-report（执行材料不交付）
 #   X5 缓存          node_modules/
 #   X6 凭据命名      basename 含 private[_-]?key（一律拦）；password 作为词元
 #                    （^ _ - . 分界）且扩展非源码/契约/文档类
@@ -124,8 +123,8 @@ grep -E '(^|/)(erl_)?crash\.dump$'                  "$WORK/all.list" >> "$WORK/e
 grep -E '(^|/)\.env' "$WORK/all.list" | grep -v '\.example$' >> "$WORK/exclude.list" || true
 # X5 缓存 / 第三方包目录
 grep -E '(^|/)node_modules/'                        "$WORK/all.list" >> "$WORK/exclude.list" || true
-# X4 临时 evidence：顶层 evidence/（内部审计工作产物，非文档化归档）
-grep -E '^evidence/'                                "$WORK/all.list" >> "$WORK/exclude.list" || true
+# X4 Execution artifacts are excluded at every depth.
+grep -E '(^|/)(evidence|test-results|playwright-report)/' "$WORK/all.list" >> "$WORK/exclude.list" || true
 # X6 凭据命名（见 credential_named_paths 注释）
 credential_named_paths "$WORK/all.list"             >> "$WORK/exclude.list" || true
 
@@ -148,7 +147,7 @@ grep -E '\.log$'                                   "$MANIFEST" >> "$VIOLATIONS" 
 grep -E '(^|/)(erl_)?crash\.dump$'                 "$MANIFEST" >> "$VIOLATIONS" || true
 grep -E '(^|/)\.env' "$MANIFEST" | grep -v '\.example$' >> "$VIOLATIONS" || true
 grep -E '(^|/)node_modules/'                       "$MANIFEST" >> "$VIOLATIONS" || true
-grep -E '^evidence/'                               "$MANIFEST" >> "$VIOLATIONS" || true
+grep -E '(^|/)(evidence|test-results|playwright-report)/' "$MANIFEST" >> "$VIOLATIONS" || true
 credential_named_paths "$MANIFEST" | sed 's/^/[cred-name] /' >> "$VIOLATIONS" || true
 
 # 内容级 A：真实私钥 PEM 块 = 私钥头 + 200+ 连续 base64 高熵体。
@@ -199,7 +198,7 @@ fi
     echo "- rules: AC27 exclusions (see scripts/deliver/make_delivery_pack.sh header)"
     echo "  * config/sys.{local,dev,prod,eunit}* ; real .env (non-example) kept out"
     echo "  * *.log ; crash dumps ; node_modules/"
-    echo "  * top-level evidence/ (ephemeral internal audit artifacts)"
+    echo "  * evidence/, test-results/, playwright-report/ at every depth"
     echo "  * credential-looking filenames (private-key always; password as a"
     echo "    filename token with non-source/contract/doc extension)"
     echo "  * content: real PEM private-key blocks; optional secret fingerprints"

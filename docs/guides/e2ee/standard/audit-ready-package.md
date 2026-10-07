@@ -12,10 +12,10 @@
 | 2 | 密码学清单 | 原语/参数/曲线/库/版本/许可证；**AGPL 状态醒目标注** | ✅ [`crypto-inventory.md`](./crypto-inventory.md)（原语与参数，每行标注 📄本仓实证 / 📕上游规范 / ⚙️上游默认）+ [`../../../legal/third-party-licenses.md`](https://github.com/imboy-pub/imboy/blob/main/docs/legal/third-party-licenses.md)（143 条许可证清单）。**未含 SBOM hash 锚** | P5-2 |
 | 3 | 协议规范白皮书 | 生效状态解析 + 协议分段导航 + 规范与实现落差 | ✅ [`protocol-whitepaper.md`](./protocol-whitepaper.md)。**刻意不复制 wire 格式**——规范字节留在 ADR 作唯一真源（复制副本正是 `e2ee-key-rotation-policy.md` 失真的成因）。核心是 supersedes 生效解析表：直接读 ADR 03/04/05/06/07/08/13 会读到已被取代的条款 | P5-3 |
 | 4 | 密钥生命周期 | 生成/存储/轮换/备份/销毁/吊销级联全链路 | ✅ [`../key-lifecycle.md`](../key-lifecycle.md)（10 类密钥材料矩阵 + 服务端 8 表敏感度分级 + 三条销毁路径 + 可验证性主张） | P5-4 |
-| 5 | 已知问题台账 | Acknowledged/Open/Blocked 状态机 | ✅ [`known-issues-ledger.md`](./known-issues-ledger.md)（IMB-2026-001..027，按问题而非按标准条款组织；含 §2「名义防御与运行时不符」三条与 §6 审计方使用说明） | P5-5 |
+| 5 | 已知问题台账 | Acknowledged/Open/Blocked 状态机 | ✅ `known-issues-ledger.md`（仓外执行材料）（IMB-2026-001..027，按问题而非按标准条款组织；含 §2「名义防御与运行时不符」三条与 §6 审计方使用说明） | P5-5 |
 | 6 | 审计范围书（SOW 模板） | 范围锚定/方法/环境复现/交付物格式/答疑通道 | ✅ [`audit-sow-template.md`](./audit-sow-template.md)，逐项对齐 `research/public-audit-cases.md` §3 八条惯例。含**命名空间约定**（审计方 findings 勿用 `IMB-2026-` 前缀，已被台账占用）与两处 🔒 待拍板（报告是否公开、答疑通道联系方式） | P5-6 |
-| 附 A | 自审计报告 | 按 `top-tier-standard-2026.md` 32 条逐条核验+证据链接+签字 | 🟡 [`self-audit-report.md`](./self-audit-report.md) 已建，**签字栏留空待人工签署**。头条数字：26 条 MUST 中仅 **6 条达成且有证据**，2 条「✅待证」按未取证单列不计入达成 | P5-7 |
-| 附 B | Evidence Manifest | 版本/commit/依赖 hash/测试计数/真机结果/向量 hash/故障注入计数 | ✅ [`evidence-manifest.generated.md`](./evidence-manifest.generated.md)，由 `scripts/evidence_manifest.sh` 生成（格式=v2/20 §13）。**11 项拿不到的字段全部打印「⛔ 未提供 + 原因」而非省略**——漏报的证据清单比没有清单更危险 | P5-8 |
+| 附 A | 自审计报告 | 按 `top-tier-standard-2026.md` 逐条核验并绑定候选与证据 | 报告保存在仓外，每次候选重新生成；历史自审不作为当前通过证明 | P5-7 |
+| 附 B | Evidence Manifest | 版本/commit/依赖 hash/测试计数/真机结果/向量 hash/故障注入计数 | ✅ `evidence-manifest.generated.md`（仓外执行材料），由 `scripts/evidence_manifest.sh` 生成（格式=v2/20 §13）。**11 项拿不到的字段全部打印「⛔ 未提供 + 原因」而非省略**——漏报的证据清单比没有清单更危险 | P5-8 |
 
 ## 2. 审计方快速上手（SOW 模板核心段草稿）
 

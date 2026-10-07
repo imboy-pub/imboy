@@ -3,7 +3,7 @@
 > 版本：v1.1 | 最后更新：2026-10-07（v1.1 增补一期交付 profile `phase1_delivery`，见 §9）
 > 任务：海外合规计划 **F-09 — Packaging Contract and Operator Documentation** 与 **F-08 — Migration and Stored-Data Compatibility**（兼容性 Runbook 见 §7）；一期交付收敛主计划 Q11 同步（`docs/design/2026-10-07-phase1-delivery-quality-plan.md`）
 > 受众：负责构建/发布 IMBoy 组合产物（Base-only / full-selected / overseas_baseline / agent_hub / **phase1_delivery** 等 profile）的运维与发布工程师
-> 关联：`scripts/generate_product_features.py`（契约源）、`scripts/verify_product_feature_artifacts.py`（产物验证）、`scripts/run_product_feature_matrix.sh`（三仓矩阵，已支持 `phase1_delivery` preset）、[F-07 三产物构建矩阵](../compliance/IMBoy%20Feature%20Composition%20F07%20Execution%20Record.md)、[交付包清单](./delivery-package-manifest.md)（Q11 落地的交付内容白名单）
+> 关联：`scripts/generate_product_features.py`（契约源）、`scripts/verify_product_feature_artifacts.py`（产物验证）、`scripts/run_product_feature_matrix.sh`（三仓矩阵，支持 `phase1_delivery` preset）、[交付包清单](./delivery-package-manifest.md)。具体构建和验收记录保存在仓外，并绑定交付产物哈希。
 
 ---
 
@@ -183,7 +183,7 @@ python3 imboy/scripts/verify_product_feature_artifacts.py \
 ### 9.4 构建入口
 
 ```bash
-python3 scripts/run_product_feature_matrix.sh phase1_delivery
+bash scripts/run_product_feature_matrix.sh phase1_delivery
 # 单 manifest 复现：python3 scripts/generate_product_features.py \
 #   --manifest config/product-feature-manifests/phase1_delivery.json
 ```

@@ -4,7 +4,7 @@
 > **取代**：[`15-supersedes-05-13-authenticated-envelope.md`](./15-supersedes-05-13-authenticated-envelope.md) §3.1 中 `epoch_or_counter` 行的约束与语义、§7 第 2 条
 > **不改动**：ADR 15 其余全部条款；`protected_header` 的字段名、CBOR 类型与字段顺序**保持冻结**（wire 格式不变）
 > **决策依据**：[`25-proposal-replay-counter-semantics.md`](./25-proposal-replay-counter-semantics.md) 选项 C
-> **实证**：[`evidence/E2EE-025-production-wiring-finding.md`](./evidence/E2EE-025-production-wiring-finding.md)
+> **实证记录**：保存在仓外，协议语义以本文及自动化回归为准。
 
 ---
 

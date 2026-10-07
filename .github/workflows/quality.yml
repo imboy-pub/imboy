@@ -18,6 +18,17 @@ permissions:
   contents: read
 
 jobs:
+  repository-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - run: python3 scripts/check_repository_hygiene.py --revision HEAD
+      - run: python3 -m unittest discover -s test/scripts -p test_repository_hygiene.py
+
   # ----------------------------------------------------------------
   # 1) Erlang lint — elvis 5.0.3 风格检查（不跑 dialyze/xref，那是业务 CI）
   # ----------------------------------------------------------------

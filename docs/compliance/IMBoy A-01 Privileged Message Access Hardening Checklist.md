@@ -1,6 +1,6 @@
 # IMBoy A-01 Privileged Message Access Hardening Checklist
 
-> 实施计划 [IMBoy Overseas Compliance Implementation Plan.md](./IMBoy%20Overseas%20Compliance%20Implementation%20Plan.md) Task A-01。
+> 主题：特权消息访问；历史执行计划保存在仓外。
 > Gap Matrix 对应行：Admin RBAC（export 共享 read 权限、无职责分离）、Admin access audit（消息读取无逐次审计）。
 > 状态：**后端+Admin UI 已实施（2026-09-07），A-02 角色基线未做**。
 

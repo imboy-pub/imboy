@@ -123,7 +123,7 @@ scripts/evidence_manifest.sh              # 输出证据清单
 
 ## 6. 期望值参考
 
-跑通后应看到的量级（详见[证据清单](./evidence-manifest.generated.md)，随代码变动）：
+跑通后应看到的量级（详见证据清单（仓外执行材料），随代码变动）：
 
 | 项 | 量级 |
 |---|---|

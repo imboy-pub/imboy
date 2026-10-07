@@ -149,3 +149,66 @@ tmp
 /config/sys.fixturefix*.config
 /config/sys.soak*.config
 docs/design/**/evidence/
+
+# Execution evidence belongs outside the repository.
+**/evidence/
+**/test-results/
+**/playwright-report/
+
+# Local AI execution plans and audit snapshots are not product documentation.
+/docs/design/2026-10-07-phase1-delivery-quality-plan.md
+/docs/design/2026-10-07-phase1-delivery-quality-audit-v1.md
+
+# One-off execution materials are retained outside Git.
+/docs/plans/
+/docs/planning/
+/docs/qa/
+/docs/archive/plans/
+/docs/archive/qa/
+/docs/archive/review/
+/docs/archive/analysis/
+/docs/architecture/2026-09-28-customer-service-seat-console-embed-mall-admin-implementation-plan-v2.md
+/docs/documentation-system/2026-09-19-documentation-audit.md
+
+/docs/archive/design/
+
+# Historical execution snapshots and reports.
+/docs/security/audits/e2ee-2026-09-07/E2EE_AUDIT_REPORT.md
+/docs/guides/e2ee/standard/self-audit-report.md
+/docs/compliance/IMBoy Overseas Compliance Self-Audit.md
+/docs/documentation-system/2026-09-20-docs-slimdown-plan.md
+/docs/documentation-system/cleanup-plan.md
+
+# Execution records are retained outside the repository.
+/docs/compliance/IMBoy Account Deletion D-chain Gap Analysis.md
+/docs/compliance/IMBoy Compliance Gap Matrix.md
+/docs/compliance/IMBoy Feature Composition Execution Prompt.md
+/docs/compliance/IMBoy Feature Composition F00-F02 Execution Record.md
+/docs/compliance/IMBoy Feature Composition F00-F07 Completion Audit.md
+/docs/compliance/IMBoy Feature Composition F03 Execution Record.md
+/docs/compliance/IMBoy Feature Composition F04 Execution Record.md
+/docs/compliance/IMBoy Feature Composition F05 Execution Record.md
+/docs/compliance/IMBoy Feature Composition F06 Execution Record.md
+/docs/compliance/IMBoy Feature Composition F07 Execution Record.md
+/docs/compliance/IMBoy Overseas Compliance Implementation Plan.md
+
+/docs/security/audits/e2ee-2026-09-07/E2EE_ATTACK_MATRIX.md
+
+# Execution plans and candidate-specific reports belong outside Git.
+/.qa/quality-ledger.md
+/docs/api-contracts/api-contract-reconciliation.md
+/docs/api-contracts/reconciliation-remediation-plan.md
+/docs/architecture/2026-09-25-attachment-pluggable-storage-disk-phase1-plan.md
+/docs/archive/architecture/resource-access-control-progress.md
+/docs/design/2026-10-06-enterprise-organization-gap/execution-prompt-v1.md
+/docs/design/2026-10-06-enterprise-organization-gap/plan-v1.md
+/docs/design/2026-10-06-enterprise-organization-gap/plan-v1.md.sha256
+/docs/guides/e2ee/standard/evidence-manifest.generated.md
+/docs/guides/e2ee/standard/evidence-matrix.md
+/docs/guides/e2ee/standard/known-issues-ledger.md
+/docs/guides/e2ee/v2/20-implementation-and-acceptance-plan.md
+/docs/guides/testing/coverage-plan.md
+/docs/reference/static-typechecking/elp-eqwalizer-landing-plan.md
+/docs/reference/static-typechecking/eqwalizer-support-fork-plan.md
+/docs/reference/static-typechecking/gradualizer-landing-plan.md
+/docs/roadmap/2026-09-24-livekit-single-service-closure-plan-v2.md

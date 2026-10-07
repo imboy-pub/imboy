@@ -2,7 +2,7 @@
 
 > **用途**：多个 Claude Code 会话之间共享唯一的 E2EE 任务状态，避免重复实现、跳过验收或在协议未批准时越界开发。  
 > **详细计划**：[`21-claude-code-execution-playbook.md`](./21-claude-code-execution-playbook.md)  
-> **上位验收计划**：[`20-implementation-and-acceptance-plan.md`](./20-implementation-and-acceptance-plan.md)  
+> **上位验收计划**：`20-implementation-and-acceptance-plan.md`（仓外执行材料）
 > **状态文件**：本文件是任务状态的唯一事实来源；`21` 中的状态表仅作为初始快照。
 
 ## 1. 当前总状态

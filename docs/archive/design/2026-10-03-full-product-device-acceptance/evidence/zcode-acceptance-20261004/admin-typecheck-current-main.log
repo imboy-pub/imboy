@@ -1,1 +1,0 @@
-$ tsc --noEmit -p tsconfig.app.json
