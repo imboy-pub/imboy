@@ -26,6 +26,7 @@ class RepositoryHygieneTests(unittest.TestCase):
             "docs/compliance/IMBoy Feature Composition F07 Execution Record.md",
             "docs/architecture/2026-09-25-storage-phase1-plan.md",
             "test/auto_test/LOOP_PROMPT.md",
+            "test/auto_test/task_state.json",
         ]:
             with self.subTest(path=path):
                 self.assertIsNotNone(HYGIENE.forbidden_reason(path))

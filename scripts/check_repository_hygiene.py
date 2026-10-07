@@ -8,6 +8,8 @@ import re
 
 def forbidden_reason(path):
     parts = PurePosixPath(path).parts
+    if path == "test/auto_test/task_state.json":
+        return "historical test execution state"
     if any(part in {".otp", ".dart_tool", "__pycache__", "node_modules", "_build"} for part in parts):
         return "generated build cache"
     if path.endswith((".beam", ".pyc")):
