@@ -8,6 +8,7 @@
 |--------|------|---------|
 | [review/](./review/) | 2026-07 三仓系统评审（15 篇：架构/后端/前端/数据库/性能/协议/安全/测试等） | 2026-07-24 |
 | [analysis/](./analysis/) | 独有分析 3 篇（E2EE 跨设备评估含行业对标、flutter_chat_ui 移除评估、FTS 联调报告） | 2026-07-24 |
+| [design/](./design/) | 2026-09-30 ~ 10-04 五个一次性 run 目录（整目录 `git mv`，共 1457 文件）：`2026-10-03-full-product-device-acceptance`（全产品设备验收 run，替代入口=一期交付质量主计划 §5 AC + Q12 冻结验收 run）、`2026-09-30-guangzhou-enterprise-ux` 与 `2026-10-04-enterprise-workspace-acceptance`、`2026-10-02-enterprise-non-oa-closure`（企业域一次性实现/验收/闭合记录，替代入口=`docs/concepts/enterprise-business.md`）、`2026-10-03-e2ee-production-excellence`（E2EE 研究计划，二期专题见 `docs/guides/e2ee/`） | 2026-10-07 |
 
 > 2026-07-25 去重清理：CODEMAPS/（6 篇，数据失真，现行版在 `src/*/CLAUDE.md`）、plans/ TSID 计划（现行版在 `reference/tsid-field-*.md`）、analysis/ 6 篇（内容已并入 e2ee/v2 规范、p0-webrtc 文档、rest-api-v1-catalog）、根级 2 篇（quote-reply 已并入 WS 契约、商业冷启动提示词）共 **15 篇因内容已在活文档中存在而删除**；同日再清 **10 篇被 2026-07 评审取代的 5-6 月审计**（analysis/ 9 篇 + audit/ Flutter 审计，细节可从 git 历史找回）；backend-readme 因与根 README 重复删除。
 

@@ -37,6 +37,8 @@
 
 - 操作手册主阵地是 `guides/operations/`；`docs/runbooks/` 收运行手册；`docs/ops/support-matrix.md` 为支持矩阵（被 `scripts/check_release_consistency.sh` 引用，位置固定）。
 - `adr/` 收编号 ADR；E2EE v2 体系（`guides/e2ee/v2/`）内部的编号 ADR 属于该体系，不并入。
+- `docs/qa/` 为 HISTORICAL 一次性 QA 记录（见其 [README](./qa/README.md)），现行验收以一期交付质量主计划 §5 AC 与 Q12 冻结 run 为准；`docs/design/` 只收进行中的设计/计划文档，一次性 run 产出已整体移入 `docs/archive/design/`（2026-10-07，Q11）。
+- `docs/plans/` 已被 `.gitignore` 忽略：目录内仍有历史 tracked 存量悬留（2026-09~10 已闭合计划），属历史记录非现行承诺，不进导航；新计划一律放 `docs/design/`。
 
 ## 内容状态标注（四态）
 
