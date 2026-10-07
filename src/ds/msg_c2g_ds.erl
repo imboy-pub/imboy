@@ -6,7 +6,7 @@
 -export([write_msg/8]).
 -export([write_msg_with_reply/11]).
 -export([read_msg/1]).
--export([read_msg/3]).
+-export([read_msg/3, read_msg_after/3, count_pending_after/2]).
 -export([find_msg_by_id/1]).
 -export([delete_msg/1]).
 -export([timeline_find_by_msg_id/1]).
@@ -180,57 +180,45 @@ read_msg(GroupId, Columns, Limit) when
     elib_pg:query(Sql, [GroupId, Limit]);
 % msg_c2g_ds:read_msg(3, 1000, 1707686743435).
 read_msg(ToUid, Limit, undefined) ->
-    % 获取用户未确认的消息
     Column = <<"tl.msg_id, tl.created_at, tl.conv_seq">>,
     {ok, Rows} = msg_c2g_timeline_repo:list_by_uid(ToUid, Column, Limit),
-    MsgIds = [MsgId || #{<<"msg_id">> := MsgId} <- Rows],
-    SeqByMsgId = timeline_seq_by_msg_id(Rows),
-    % 按创建时间排序获取消息内容（包含 from_id 和 to_id）
-    Column2 =
-        <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did">>,
-    case msg_c2g_repo:list_by_ids(MsgIds, Column2) of
-        {ok, []} ->
-            [];
-        {ok, Rows2} ->
-            % 与 msg_c2c_ds:read_msg 保持一致，返回包含 from_id 和 to_id 的数据
-            % 同时反序列化 payload 与 e2ee 列（二者写入时均为 JSON 字符串）
-            [
-                attach_timeline_conv_seq(
-                    decode_offline_message(Row),
-                    SeqByMsgId
-                )
-             || Row <- Rows2
-            ]
-    end;
+    load_timeline_messages(Rows);
 read_msg(ToUid, Limit, LastMsgAt) ->
-    % 使用 elib_dt:to_rfc3339/1 统一转换时间戳为 RFC3339 格式
-    FixedLastMsgAt = elib_dt:to_rfc3339(LastMsgAt),
-    % 获取指定时间之后的用户未确认消息
     Column = <<"tl.msg_id, tl.created_at, tl.conv_seq">>,
-    case msg_c2g_timeline_repo:list_by_uid_since(ToUid, Column, Limit, FixedLastMsgAt) of
-        {ok, []} ->
-            [];
-        {ok, Rows} ->
-            MsgIds = [MsgId || #{<<"msg_id">> := MsgId} <- Rows],
-            SeqByMsgId = timeline_seq_by_msg_id(Rows),
-            % 按创建时间排序获取消息内容（包含 from_id 和 to_id）
-            Column2 =
-                <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did">>,
-            case msg_c2g_repo:list_by_ids(MsgIds, Column2) of
-                {ok, []} ->
-                    [];
-                {ok, Rows2} ->
-                    % 与 msg_c2c_ds:read_msg 保持一致，返回包含 from_id 和 to_id 的数据
-                    % 同时反序列化 payload 与 e2ee 列（二者写入时均为 JSON 字符串）
-                    [
-                        attach_timeline_conv_seq(
-                            decode_offline_message(Row),
-                            SeqByMsgId
-                        )
-                     || Row <- Rows2
-                    ]
-            end
-    end.
+    Since = elib_dt:to_rfc3339(LastMsgAt),
+    {ok, Rows} = msg_c2g_timeline_repo:list_by_uid_since(ToUid, Column, Limit, Since),
+    load_timeline_messages(Rows).
+
+read_msg_after(ToUid, Limit, Cursor) ->
+    Column = <<"tl.msg_id, tl.created_at, tl.conv_seq">>,
+    {ok, Rows} = msg_c2g_timeline_repo:list_by_uid_after(ToUid, Column, Limit, Cursor),
+    load_timeline_messages(Rows).
+
+count_pending_after(ToUid, Cursor) ->
+    msg_c2g_timeline_repo:count_pending_after(ToUid, Cursor).
+
+%% The content query can return timestamp ties in a different order. Keep
+%% the timeline's total ordering, including its authoritative timestamp.
+load_timeline_messages([]) ->
+    [];
+load_timeline_messages(Rows) ->
+    MsgIds = [maps:get(<<"msg_id">>, Row) || Row <- Rows],
+    Columns =
+        <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did">>,
+    {ok, Contents} = msg_c2g_repo:list_by_ids(MsgIds, Columns),
+    ById = maps:from_list([{maps:get(<<"msg_id">>, Row), Row} || Row <- Contents]),
+    SeqById = timeline_seq_by_msg_id(Rows),
+    [
+        attach_timeline_conv_seq(
+            decode_offline_message((maps:get(Id, ById))#{
+                <<"created_at">> => maps:get(
+                    <<"created_at">>, Row, maps:get(<<"created_at">>, maps:get(Id, ById), 0)
+                )
+            }),
+            SeqById
+        )
+     || Row <- Rows, Id <- [maps:get(<<"msg_id">>, Row)], maps:is_key(Id, ById)
+    ].
 
 %% Legacy rows stored the complete realtime envelope in the payload column.
 %% Unwrap only when its identity agrees with the authoritative database row.

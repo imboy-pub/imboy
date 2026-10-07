@@ -1,53 +1,36 @@
-# ----------------------------------------------------------------------------
-# imboy/api/paths/api/v1/msg/offline.yaml
-# POST /api/msg/offline — 拉取离线消息 / Fetch offline messages
-#
-# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
-# 调用方:  api/openapi.yaml#/paths/~1msg~1offline
-# Handler: src/api/msg_handler.erl#offline/2 → messaging_logic:offline/2
-# 修订(Q32)：参数从 query 改为 requestBody（POST body），limit 默认值改为 1000
-# 修订(响应层)：payload 按 c2c/c2g/s2c 分桶，每桶 {list,total,has_more,next_last_msg_at}
-#   桶结构完全内联（path 文件内不可定义 components，避免 bundle 时 $ref 断裂）
-# ----------------------------------------------------------------------------
-post:
+get:
   tags: [msg]
   summary: 客户端上线后拉取离线消息
   description: |
-    ## 中文
-    客户端上线后调用，按 C2C / C2G / S2C 三类拉取自上次 ACK 后服务端为
-    当前 uid 累积的离线消息。
-    投递语义：服务端把消息标记为"已投递但待 ACK"，客户端收到后必须调用
-    `/msg/offline_ack` 显式确认；超时未 ACK 会按 2s/5s/7s/11s 重投递。
-    详见 docs/architecture/overview.md#消息 QoS 投递。
-    ## English
-    Called by the client after coming online to fetch offline messages
-    accumulated by the server for the current uid, bucketed into C2C /
-    C2G / S2C. The server marks them as "delivered, awaiting ACK"; the
-    client MUST follow up with `/msg/offline_ack` or the messages will
-    be re-delivered (2s/5s/7s/11s back-off).
+    按 C2C / C2G / S2C 读取当前登录用户的离线消息。C2C/S2C 使用 did
+    排除本设备已确认的消息；C2G ACK 只标记送达，不删除时间线、不清已读。
+    C2G 按精确创建时间及消息 ID 稳定分页，客户端应使用 next_cursor。
+    游标不提供访问权限；每页始终校验当前用户、有效群成员及成员代际。
+    客户端落库并成功调用 /api/v1/msg/offline_ack 后才保存游标。
   operationId: getOfflineMessages
-  requestBody:
-    required: false
-    content:
-      application/json:
-        schema:
-          type: object
-          properties:
-            limit:
-              type: integer
-              minimum: 1
-              maximum: 2000
-              default: 1000
-              description: 每类离线消息拉取上限 / Per-bucket limit
-            c2c_last_msg_at:
-              type: integer
-              description: C2C 离线消息起始时间戳（毫秒）/ C2C cursor
-            c2g_last_msg_at:
-              type: integer
-              description: C2G 离线消息起始时间戳（毫秒）/ C2G cursor
-            s2c_last_msg_at:
-              type: integer
-              description: S2C 离线消息起始时间戳（毫秒）/ S2C cursor
+  parameters:
+    - in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 1000, default: 1000 }
+      description: 每类单页上限 / Per-bucket page limit
+    - in: query
+      name: did
+      schema: { type: string }
+      description: C2C/S2C 设备送达过滤标识，与 ACK 使用相同设备标识
+    - in: query
+      name: c2c_last_msg_at
+      schema: { type: integer, default: 0 }
+    - in: query
+      name: c2g_last_msg_at
+      schema: { type: integer, default: 0 }
+      description: 兼容旧客户端的毫秒时间游标；不能单独区分同时间戳消息
+    - in: query
+      name: c2g_cursor
+      schema: { type: string, maxLength: 512 }
+      description: 原样回传上页 c2g.next_cursor；优先于 c2g_last_msg_at。包含精确时间和消息ID，客户端落库且 ACK 成功后保存。非法游标返回400。
+    - in: query
+      name: s2c_last_msg_at
+      schema: { type: integer, default: 0 }
   responses:
     '200':
       description: "离线消息桶 { c2c: {...}, c2g: {...}, s2c: {...} }"
@@ -82,6 +65,7 @@ post:
                           total: { type: integer, description: 该桶消息总数 / Total count }
                           has_more: { type: boolean, description: 是否还有更多 / Whether more exist }
                           next_last_msg_at: { type: integer, description: 下次请求游标时间戳（毫秒）/ Next cursor }
+                          next_cursor: { type: string, description: C2G不透明复合游标；客户端无需解析，下一页原样回传 }
                       s2c:
                         type: object
                         properties:

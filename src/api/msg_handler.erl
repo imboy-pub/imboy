@@ -96,10 +96,22 @@ offline(Req0, State) ->
             {ok, C2GLastMsgAtInt} = elib_param:int(c2g_last_msg_at, Req0, 0),
             {ok, S2CLastMsgAtInt} = elib_param:int(s2c_last_msg_at, Req0, 0),
             DID = proplists:get_value(<<"did">>, cowboy_req:parse_qs(Req0), <<>>),
-            Payload = messaging_logic:offline(
-                CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DID
-            ),
-            elib_response:success(Req0, Payload)
+            Token = proplists:get_value(<<"c2g_cursor">>, cowboy_req:parse_qs(Req0), <<>>),
+            case msg_offline_cursor:decode(Token) of
+                {ok, Cursor} ->
+                    Payload = messaging_logic:offline(
+                        CurrentUid,
+                        Limit,
+                        C2CLastMsgAtInt,
+                        C2GLastMsgAtInt,
+                        S2CLastMsgAtInt,
+                        DID,
+                        Cursor
+                    ),
+                    elib_response:success(Req0, Payload);
+                {error, _} ->
+                    elib_response:error(Req0, <<"invalid_offline_cursor">>, ?ERR_BAD_REQUEST)
+            end
     end.
 
 %% @doc 处理离线消息确认

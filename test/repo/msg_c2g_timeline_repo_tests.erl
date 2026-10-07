@@ -136,3 +136,42 @@ assert_generation_acl(Sql) ->
     %% Q04/F05（I3）：pending 过滤不得排除 client_ack = true 的行——
     %% client_ack 是 per-uid 送达标记，同 uid 设备 A ACK 后设备 B 仍须取回。
     ?assertEqual(nomatch, binary:match(Sql, <<"client_ack = false">>)).
+
+composite_cursor_page_and_count_keep_acl_test_() ->
+    At = <<"2026-10-08T00:00:00.123456Z">>,
+    Id = <<"m2">>,
+    ?WITH_MECKS(
+        [
+            {config_ds, [{'env', 1, fun(sql_driver) -> pgsql end}]},
+            {elib_pg, [
+                {'query', 2, fun(Sql, Params) ->
+                    assert_generation_acl(Sql),
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(
+                            Sql, <<"(tl.created_at, tl.msg_id) > ($2::timestamptz, $3::varchar)">>
+                        )
+                    ),
+                    case Params of
+                        [42, At, Id, 2] ->
+                            ?assertNotEqual(
+                                nomatch,
+                                binary:match(
+                                    Sql, <<"ORDER BY tl.created_at ASC, tl.msg_id ASC LIMIT $4">>
+                                )
+                            ),
+                            {ok, []};
+                        [42, At, Id] ->
+                            ?assertEqual(nomatch, binary:match(Sql, <<"LIMIT">>)),
+                            {ok, [#{<<"count">> => 3}]}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, []}, msg_c2g_timeline_repo:list_by_uid_after(42, <<"tl.msg_id">>, 2, {At, Id})
+            ),
+            ?assertEqual(3, msg_c2g_timeline_repo:count_pending_after(42, {At, Id}))
+        end
+    ).

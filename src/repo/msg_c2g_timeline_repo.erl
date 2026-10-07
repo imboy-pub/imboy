@@ -10,7 +10,7 @@
 -export([client_ack_batch/2]).
 -export([delete_timeline/2]).
 -export([list_by_uid/2, list_by_uid/3]).
--export([list_by_uid_since/4]).
+-export([list_by_uid_since/4, list_by_uid_after/4, count_pending_after/2]).
 -export([count_pending_by_uid/2]).
 -export([count_unread_by_uid/2]).
 -export([check_msg/1]).
@@ -55,6 +55,20 @@ list_authorized(Uid, Column, Limit, Since) ->
     Sql = authorized_pending_sql(Tb, Column, SinceSql, LimitParam),
     elib_pg:query(Sql, Params).
 
+%% Composite cursor uses exactly the same ordering for the page and count.
+list_by_uid_after(Uid, Column, Limit, {At, Id}) ->
+    Where = <<" AND (tl.created_at, tl.msg_id) > ($2::timestamptz, $3::varchar)">>,
+    Sql = authorized_pending_sql(tablename(), Column, Where, <<"4">>),
+    elib_pg:query(Sql, [Uid, At, Id, Limit]).
+
+count_pending_after(Uid, {At, Id}) ->
+    Where = <<" AND (tl.created_at, tl.msg_id) > ($2::timestamptz, $3::varchar)">>,
+    Sql = authorized_pending_sql(tablename(), <<"count(*) AS count">>, Where, undefined),
+    case elib_pg:query(Sql, [Uid, At, Id]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        {error, Reason} -> error({offline_count_failed, Reason})
+    end.
+
 -spec count_pending_by_uid(integer(), undefined | binary()) -> non_neg_integer().
 count_pending_by_uid(Uid, Since) ->
     Tb = tablename(),
@@ -78,7 +92,7 @@ authorized_pending_sql(Tb, Column, SinceSql, LimitParam) ->
     LimitSql =
         case LimitParam of
             undefined -> <<>>;
-            _ -> <<" ORDER BY tl.created_at ASC LIMIT $", LimitParam/binary>>
+            _ -> <<" ORDER BY tl.created_at ASC, tl.msg_id ASC LIMIT $", LimitParam/binary>>
         end,
     <<"SELECT ", Column/binary, " FROM ", Tb/binary, " tl ",
         "JOIN public.\"group\" grp ON grp.id = tl.to_gid AND grp.status = 1 ",

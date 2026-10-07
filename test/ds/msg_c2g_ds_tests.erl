@@ -194,3 +194,28 @@ delete_msg_test_() ->
             {error, _} -> ok
         end
     end).
+
+composite_page_keeps_timeline_order_and_precision_test_() ->
+    At = <<"2026-10-08T00:00:00.123456Z">>,
+    Timeline = [
+        #{<<"msg_id">> => <<"m1">>, <<"created_at">> => At, <<"conv_seq">> => 1},
+        #{<<"msg_id">> => <<"m2">>, <<"created_at">> => At, <<"conv_seq">> => 2}
+    ],
+    Contents = [
+        #{<<"msg_id">> => <<"m2">>, <<"payload">> => <<"{}">>},
+        #{<<"msg_id">> => <<"m1">>, <<"payload">> => <<"{}">>}
+    ],
+    ?WITH_MECKS(
+        [
+            {msg_c2g_timeline_repo, [
+                {'list_by_uid_after', 4, fun(7, _, 2, {At, <<"m0">>}) -> {ok, Timeline} end}
+            ]},
+            {msg_c2g_repo, [{'list_by_ids', 2, fun([<<"m1">>, <<"m2">>], _) -> {ok, Contents} end}]}
+        ],
+        fun() ->
+            Rows = msg_c2g_ds:read_msg_after(7, 2, {At, <<"m0">>}),
+            ?assertEqual([<<"m1">>, <<"m2">>], [maps:get(<<"msg_id">>, Row) || Row <- Rows]),
+            ?assertEqual([At, At], [maps:get(<<"created_at">>, Row) || Row <- Rows]),
+            ?assertEqual([1, 2], [maps:get(<<"conv_seq">>, Row) || Row <- Rows])
+        end
+    ).

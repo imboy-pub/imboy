@@ -3,6 +3,7 @@
 
 -export([
     offline/6,
+    offline/7,
     offline_ack/4,
     read_stats/2,
     history/5,
@@ -32,6 +33,9 @@
 ) ->
     map().
 offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DID) ->
+    offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DID, undefined).
+
+offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DID, Cursor) ->
     %% 【P0-1】可选 did：客户端携带时 C2C/S2C 按设备过滤（排除本设备已确认的消息）；
     %% 缺省保持按 uid 的旧语义（旧客户端零破坏）
     C2CLastMsgAt = ms_to_since_ts(C2CLastMsgAtInt),
@@ -39,7 +43,11 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
     S2CLastMsgAt = ms_to_since_ts(S2CLastMsgAtInt),
 
     CountC2CMsg = msg_c2c_ds:count_unread_since(CurrentUid, C2CLastMsgAt, DID),
-    CountC2GMsg = get_c2g_msg_count(CurrentUid, C2GLastMsgAt),
+    CountC2GMsg =
+        case Cursor of
+            undefined -> get_c2g_msg_count(CurrentUid, C2GLastMsgAt);
+            _ -> msg_c2g_ds:count_pending_after(CurrentUid, Cursor)
+        end,
     CountS2CMsg = msg_s2c_ds:count_since(CurrentUid, S2CLastMsgAt, DID),
 
     C2CMsgs0 = msg_c2c_ds:read_msg_for_device(CurrentUid, DID, Limit, C2CLastMsgAt),
@@ -47,7 +55,11 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
     %% （密文构造时就不含该设备，客户端恢复密钥也永远解不开）；滤掉的同时
     %% 按 (uid, did) 标记已确认，pending_filter/count 随即排除，不会每轮重取
     C2CMsgs = filter_c2c_for_device(C2CMsgs0, DID, CurrentUid),
-    C2GMsgs = msg_c2g_ds:read_msg(CurrentUid, Limit, C2GLastMsgAt),
+    C2GMsgs =
+        case Cursor of
+            undefined -> msg_c2g_ds:read_msg(CurrentUid, Limit, C2GLastMsgAt);
+            _ -> msg_c2g_ds:read_msg_after(CurrentUid, Limit, Cursor)
+        end,
     S2CMsgs = msg_s2c_ds:read_msg_for_device(CurrentUid, DID, Limit, S2CLastMsgAt),
 
     ProcessedC2CMsgs = [process_message(Msg) || Msg <- C2CMsgs],
@@ -68,6 +80,7 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
                 <<"has_more">> => length(ProcessedC2GMsgs) < CountC2GMsg,
                 <<"next_last_msg_at">> =>
                     calculate_next_last_msg_at(ProcessedC2GMsgs, C2GLastMsgAtInt),
+                <<"next_cursor">> => next_c2g_cursor(C2GMsgs, Cursor),
                 <<"total">> => CountC2GMsg,
                 <<"list">> => ProcessedC2GMsgs
             },
@@ -80,6 +93,18 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
                 <<"list">> => ProcessedS2CMsgs
             }
     }.
+
+next_c2g_cursor([], Cursor) ->
+    msg_offline_cursor:encode(Cursor);
+next_c2g_cursor(Msgs, _Cursor) ->
+    Last = lists:last(Msgs),
+    case {maps:get(<<"created_at">>, Last, undefined), maps:get(<<"msg_id">>, Last, undefined)} of
+        {At, Id} when is_binary(At), is_binary(Id) -> msg_offline_cursor:encode({At, Id});
+        {Ms, Id} when is_integer(Ms), is_binary(Id) ->
+            msg_offline_cursor:encode({elib_dt:to_rfc3339(Ms, millisecond), Id});
+        _ ->
+            <<>>
+    end.
 
 -spec read_stats(integer() | binary(), integer()) ->
     {ok, map()} | {error, binary(), integer()}.
