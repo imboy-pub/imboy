@@ -2,6 +2,32 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+delivery_profile_env_override_test() ->
+    SavedApp = [{product_profile, application:get_env(imboy, product_profile)}],
+    SavedEnv = [{"IMBOY_PRODUCT_PROFILE", os:getenv("IMBOY_PRODUCT_PROFILE")}],
+    try
+        lists:foreach(
+            fun({Raw, Expected}) ->
+                os:putenv("IMBOY_PRODUCT_PROFILE", Raw),
+                ok = imboy_env:override_from_env(),
+                ?assertEqual({ok, Expected}, application:get_env(imboy, product_profile))
+            end,
+            [
+                {"phase1_delivery", phase1_delivery},
+                {" PHASE1_DELIVERY ", phase1_delivery},
+                {"overseas_baseline", overseas_baseline}
+            ]
+        ),
+        os:putenv("IMBOY_PRODUCT_PROFILE", "phase1_typo"),
+        ?assertError(
+            {invalid_env, "IMBOY_PRODUCT_PROFILE", "phase1_typo"},
+            imboy_env:override_from_env()
+        )
+    after
+        restore_app_env(SavedApp),
+        restore_os_env(SavedEnv)
+    end.
+
 sales_policy_env_override_test() ->
     AppKeys = [product_profile, capabilities, features],
     EnvKeys = [

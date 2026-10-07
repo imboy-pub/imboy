@@ -47,7 +47,8 @@
 %   IMBOY_STRIPE_SECRET_KEY / IMBOY_STRIPE_WEBHOOK_SECRET
 %   IMBOY_PAYMENT_MODE     -> {imboy, payment_mode}  (sandbox | live)
 %   IMBOY_AUTO_MIGRATE     -> {imboy, auto_migrate}  (true | false)
-%   IMBOY_PRODUCT_PROFILE   -> {imboy, product_profile} (community | enterprise)
+%   IMBOY_PRODUCT_PROFILE   -> {imboy, product_profile}
+%                              (community | enterprise | overseas_baseline | phase1_delivery)
 %   IMBOY_PRODUCT_EXPERIENCE -> {imboy, product_experience} (chat | workspace)
 %                              (体验开关；缺失/非法值 fail-safe 为 chat，只告警不拒启)
 %   IMBOY_PLUGIN_ROOT       -> {imboy, plugin_root}  (install Path 受控插件根，SEC-02)
@@ -234,9 +235,16 @@ override_product_profile() ->
             ok;
         Value when is_list(Value), length(Value) > 0 ->
             case string:trim(string:lowercase(Value)) of
-                "community" -> application:set_env(imboy, product_profile, community);
-                "enterprise" -> application:set_env(imboy, product_profile, enterprise);
-                Other -> erlang:error({invalid_env, "IMBOY_PRODUCT_PROFILE", Other})
+                "community" ->
+                    application:set_env(imboy, product_profile, community);
+                "enterprise" ->
+                    application:set_env(imboy, product_profile, enterprise);
+                "overseas_baseline" ->
+                    application:set_env(imboy, product_profile, overseas_baseline);
+                "phase1_delivery" ->
+                    application:set_env(imboy, product_profile, phase1_delivery);
+                Other ->
+                    erlang:error({invalid_env, "IMBOY_PRODUCT_PROFILE", Other})
             end,
             ok;
         _ ->
