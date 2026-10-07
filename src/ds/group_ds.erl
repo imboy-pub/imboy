@@ -328,18 +328,21 @@ gid() ->
 
 %% @doc 检查和设置群组头像
 %%
-%% 检查群组头像是否为空，如果为空则设置默认头像
+%% 检查群组头像是否为空，如果为空则设置默认头像；非 map 输入（如
+%% 上游 {error,_} 误传/畸形数据）返回空 map，不向调用方抛函数子句崩溃。
 %%
 %% @param Group 群组信息列表
 %% @returns list() 处理后的群组信息列表
--spec check_avatar(map()) -> map().
+-spec check_avatar(term()) -> map().
 check_avatar(Group) when is_map(Group) ->
     Default = <<"/static/image/group_default_avatar.jpeg">>,
     Avatar = maps:get(<<"avatar">>, Group, <<>>),
     case Avatar of
         <<>> -> Group#{<<"avatar">> => Default};
         _ -> Group
-    end.
+    end;
+check_avatar(_NonMap) ->
+    #{}.
 
 %% @doc 创建群组（事务版本）
 %% @param Conn 数据库连接
