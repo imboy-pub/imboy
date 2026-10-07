@@ -421,7 +421,7 @@ transfer_success_publishes_owner_transferred_test_() ->
         [
             {group_ds, [
                 {'find_by_id', 2, fun(1, _Cols) -> #{<<"owner_uid">> => 100} end},
-                {'update_owner_tx', 3, fun(_Conn, 1, 200) -> ok end}
+                {'update_owner_tx', 4, fun(_Conn, 1, 200, 100) -> ok end}
             ]},
             {group_member_ds, [
                 {'find_by_gid_and_uid', 3, fun(1, 200, _Col) -> #{<<"id">> => 9} end},
@@ -455,7 +455,7 @@ transfer_failure_does_not_publish_test_() ->
         [
             {group_ds, [
                 {'find_by_id', 2, fun(1, _Cols) -> #{<<"owner_uid">> => 100} end},
-                {'update_owner_tx', 3, fun(_Conn, _Gid, _New) -> {error, db_down} end}
+                {'update_owner_tx', 4, fun(_Conn, _Gid, _New, _Expected) -> {error, db_down} end}
             ]},
             {group_member_ds, [
                 {'find_by_gid_and_uid', 3, fun(1, 200, _Col) -> #{<<"id">> => 9} end}

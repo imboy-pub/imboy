@@ -16,7 +16,7 @@
 -export([page/2, page/4]).
 -export([update/1]).
 -export([update_by_id_tx/3]).
--export([update_owner_tx/3]).
+-export([update_owner_tx/4]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -207,14 +207,17 @@ update_by_id_tx(Conn, Gid, Data) ->
 %% @param Gid 群组ID
 %% @param NewOwnerUid 新群主ID
 %% @return ok | {error, Reason}
--spec update_owner_tx(any(), integer(), integer()) -> ok | {error, any()}.
-update_owner_tx(Conn, Gid, NewOwnerUid) ->
+%% The expected owner is checked atomically with the write, after row-lock waits.
+-spec update_owner_tx(any(), integer(), integer(), integer()) -> ok | {error, any()}.
+update_owner_tx(Conn, Gid, NewOwnerUid, ExpectedOwnerUid) ->
     Tb = tablename(),
     Now = elib_dt:now(),
-    Sql = <<"UPDATE ", Tb/binary, " SET owner_uid = $1, updated_at = $2 WHERE id = $3">>,
-    case elib_pg:execute(Conn, Sql, [NewOwnerUid, Now, Gid]) of
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET owner_uid = $1, updated_at = $2 WHERE id = $3 AND owner_uid = $4">>,
+    case elib_pg:execute(Conn, Sql, [NewOwnerUid, Now, Gid, ExpectedOwnerUid]) of
         {ok, 1} -> ok;
-        {ok, _} -> {error, "群组不存在"};
+        {ok, _} -> {error, <<"群主已变更或群组不存在，请刷新后重试"/utf8>>};
         {error, Reason} -> {error, Reason}
     end.
 

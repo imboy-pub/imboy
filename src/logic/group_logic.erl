@@ -208,7 +208,7 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
                         ok = workspace_guard:abort_on_error(
                             workspace_guard:ensure_writable_tx(Conn, {group, Gid})
                         ),
-                        case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid) of
+                        case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid, OwnerUid) of
                             ok ->
                                 case
                                     group_member_ds:update_role(Conn, Gid, OwnerUid, ?ROLE_MEMBER)
@@ -353,7 +353,7 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
                         ok = workspace_guard:abort_on_error(
                             workspace_guard:ensure_writable_tx(Conn, {group, Gid})
                         ),
-                        case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid) of
+                        case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid, OwnerUid) of
                             ok ->
                                 % 更新原群主角色
                                 OldOwnerRole =

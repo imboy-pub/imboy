@@ -3,7 +3,7 @@
 % group_ds 是 group domain service 缩写
 %%%
 -export([find_by_id/2]).
--export([update_owner_tx/3]).
+-export([update_owner_tx/4]).
 -export([check_avatar/1]).
 -export([gid/0]).
 -export([create_group/6]).
@@ -727,9 +727,9 @@ do_dissolve(Uid, Gid, G, Authz) ->
 find_by_id(Gid, Column) ->
     group_repo:find_by_id(Gid, Column).
 
--spec update_owner_tx(any(), integer(), integer()) -> ok | {error, any()}.
-update_owner_tx(Conn, Gid, NewOwnerUid) ->
-    group_repo:update_owner_tx(Conn, Gid, NewOwnerUid).
+-spec update_owner_tx(any(), integer(), integer(), integer()) -> ok | {error, any()}.
+update_owner_tx(Conn, Gid, NewOwnerUid, ExpectedOwnerUid) ->
+    group_repo:update_owner_tx(Conn, Gid, NewOwnerUid, ExpectedOwnerUid).
 
 %% G3: group_member_handler 不应直调 group_repo
 -spec list_by_ids(list(integer()), binary()) -> {ok, list(map())} | {error, any()}.

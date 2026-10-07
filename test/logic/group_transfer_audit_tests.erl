@@ -21,7 +21,7 @@ assert_audit_failure(Mode) ->
     try
         lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link]) end, Modules),
         meck:expect(group_ds, find_by_id, fun(1, _) -> #{<<"owner_uid">> => 100} end),
-        meck:expect(group_ds, update_owner_tx, fun(_, 1, 200) -> ok end),
+        meck:expect(group_ds, update_owner_tx, fun(_, 1, 200, 100) -> ok end),
         meck:expect(
             group_member_ds,
             find_by_gid_and_uid,
