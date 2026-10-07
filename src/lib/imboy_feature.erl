@@ -85,10 +85,14 @@ route_is_compiled(Surface, {_Path, Handler, Opts}, CompiledFeatures) when is_map
         undefined ->
             true;
         Feature ->
-            %% manifest 编译集，或运行时域键（?RUNTIME_DOMAIN_FEATURES，
-            %% 模块常驻 beam）：后者不参与编译期剔除，交给
-            %% feature_gate_middleware 按运行时开关统一拦截（Q02）。
-            lists:member(Feature, CompiledFeatures) orelse compiled(Feature)
+            %% 仅运行时域键（?RUNTIME_DOMAIN_FEATURES，模块常驻 beam）豁免
+            %% 编译期剔除，交给 feature_gate_middleware 按运行时开关统一拦截
+            %% （Q02）。manifest 编译集成员不在此豁免：compiled_routes/2 传
+            %% 全集时 member 已覆盖编译集；显式传子集（/3）时参数是权威过滤
+            %% 集——否则 [core] 过滤会被编译集豁免击穿（1ac0c8ad 引入
+            %% orelse compiled/1 时未复跑 base_only 过滤测试）。
+            lists:member(Feature, CompiledFeatures) orelse
+                lists:member(Feature, ?RUNTIME_DOMAIN_FEATURES)
     end;
 route_is_compiled(_Surface, _Route, _CompiledFeatures) ->
     true.

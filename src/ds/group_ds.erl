@@ -182,7 +182,12 @@ member_uids_strict(Gid) ->
                     imboy_cache:set(CacheKey, Li, ?HOUR),
                     {ok, Li};
                 {error, Reason} ->
-                    {error, Reason}
+                    {error, Reason};
+                %% 非 {ok,_}/{error,_} 的第三种形态（如驱动返回 undefined）
+                %% 当作失败传播，而不是让 case_clause 崩溃——strict 版的
+                %% 合同就是 DS 层如实报告、调用方 fail-closed。
+                Other ->
+                    {error, {unexpected_repo_result, Other}}
             end
     end.
 
