@@ -147,7 +147,7 @@ credential_named_paths() {
 # Product delivery manifest section 2: development metadata and environment
 # snapshots are not customer deliverables. Share this rule with the final check.
 contract_excluded_paths() {
-    grep -E '^(deploy/nginx/prod-vhosts/|docs-site/|\.github/|\.githooks/|\.contract/|\.ecc/|\.qa/|\.gitcode(/|$)|docs/(qa|design|plans)/|docs/archive/design/|docs/runbooks/agent-hub-[^/]*\.md$|\.mcp\.json$|\.elp\.toml$|\.gradualizer-baseline\.txt$|lefthook\.yml$|sonar-project\.properties$|index\.html$)' "$1"
+    grep -E '^(deploy/nginx/prod-vhosts/|docs-site/|\.github/|\.githooks/|\.contract/|\.ecc/|\.qa/|\.gitcode(/|$)|docs/(qa|design|plans)/|docs/archive/design/|docs/runbooks/agent-hub-[^/]*\.md$|\.mcp\.json$|\.elp\.toml$|\.gradualizer-baseline\.txt$|lefthook\.yml$|sonar-project\.properties$|index\.html$|AGENTS\.md$|CLAUDE\.md$)' "$1"
 }
 
 # ---------------------------------------------------------------------------

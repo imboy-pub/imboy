@@ -52,6 +52,7 @@ class DeliveryPackGuardsTests(unittest.TestCase):
             'docs/archive/design/old.md', 'docs/qa/report.md', 'docs/plans/task.md',
             'docs/runbooks/agent-hub-scheduler.md',
             'docs/runbooks/agent-hub-worker.md',
+            'AGENTS.md', 'CLAUDE.md',
         ]
         included = ['deploy/nginx/template.conf', 'docs/ops/restore.md',
                     'docs/runbooks/bot-webhook-aead-key.md', 'LICENSE']
