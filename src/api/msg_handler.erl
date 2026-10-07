@@ -88,7 +88,10 @@ offline(Req0, State) ->
         undefined ->
             elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
         CurrentUid ->
-            {ok, Limit} = elib_param:int(limit, Req0, 1000),
+            {ok, Limit0} = elib_param:int(limit, Req0, 1000),
+            %% Q06（AC12-R3）：单页上限 1000（与 App 离线拉取合同一致，
+            %% 对齐 history 的 min 100 夹紧范式），下限 1 防 0/负数空扫描
+            Limit = erlang:max(1, erlang:min(Limit0, 1000)),
             {ok, C2CLastMsgAtInt} = elib_param:int(c2c_last_msg_at, Req0, 0),
             {ok, C2GLastMsgAtInt} = elib_param:int(c2g_last_msg_at, Req0, 0),
             {ok, S2CLastMsgAtInt} = elib_param:int(s2c_last_msg_at, Req0, 0),

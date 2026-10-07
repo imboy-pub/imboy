@@ -398,3 +398,86 @@ response_structure_validation_test_() ->
             [<<"c2c">>, <<"c2g">>, <<"s2c">>]
         )
     end).
+
+%% ===================================================================
+%% Q06（AC12-R3 债务修复）：offline limit 上限夹紧
+%% ===================================================================
+
+%% @doc 客户端可传超大 limit（如 10^6）；修复前 elib_param 默认值 1000
+%% 之外无上限，超大值直通 DS 查询（DB 压垮面）。修复后与 history 的
+%% min 100 范式对齐：上限夹 1000（App 离线拉取合同的单页上限）。
+offline_limit_clamped_upper_test_() ->
+    offline_limit_clamp_case(1000000, 1000).
+
+%% @doc 下限保护：limit=0/负数不得产生空扫描或非法 LIMIT 参数
+offline_limit_clamped_lower_test_() ->
+    offline_limit_clamp_case(0, 1).
+
+offline_limit_clamp_case(InputLimit, ExpectedLimit) ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'int', 3, fun
+                    (limit, _Req, _Default) -> {ok, InputLimit};
+                    (_Param, _Req, Default) -> {ok, Default}
+                end}
+            ]},
+            {elib_dt, [
+                {'to_rfc3339', 2, fun(_Ts, _Unit) -> <<"1970-01-01T00:00:00Z">> end}
+            ]},
+            {msg_c2c_repo, [
+                {'tablename', 0, fun() -> <<"public.msg_c2c">> end}
+            ]},
+            {msg_c2g_timeline_repo, [
+                {'tablename', 0, fun() -> <<"public.msg_c2g_timeline">> end}
+            ]},
+            {msg_s2c_repo, [
+                {'tablename', 0, fun() -> <<"public.msg_s2c">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) -> {ok, [#{<<"count">> => 0}]} end}
+            ]},
+            {msg_c2c_ds, [
+                {'count_unread_since', 3, fun(_Uid, _Ts, _DID) -> 0 end},
+                {'read_msg_for_device', 4, fun(_Uid, _DID, Limit, _LastMsgAt) ->
+                    %% 钉住夹紧后的 limit 直通 DS 查询
+                    self() ! {ds_received_limit, Limit},
+                    []
+                end}
+            ]},
+            {msg_c2g_ds, [
+                {'read_msg', 3, fun(_Uid, Limit, _LastMsgAt) ->
+                    self() ! {ds_received_limit_c2g, Limit},
+                    []
+                end}
+            ]},
+            {msg_s2c_ds, [
+                {'count_since', 3, fun(_Uid, _Ts, _DID) -> 0 end},
+                {'read_msg_for_device', 4, fun(_Uid, _DID, _Limit, _LastMsgAt) -> [] end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, _Data) -> req_ok end}
+            ]}
+        ],
+        fun() ->
+            {ok, Req1, _State} = msg_handler:init(
+                req_mock(), #{action => offline, current_uid => 12345}
+            ),
+            ?assertEqual(req_ok, Req1),
+            Received =
+                receive
+                    {ds_received_limit, L} -> L
+                after 1000 ->
+                    timeout
+                end,
+            ?assertNotEqual(timeout, Received),
+            ?assertEqual(ExpectedLimit, Received),
+            ReceivedC2G =
+                receive
+                    {ds_received_limit_c2g, L2} -> L2
+                after 1000 ->
+                    timeout
+                end,
+            ?assertEqual(ExpectedLimit, ReceivedC2G)
+        end
+    ).
