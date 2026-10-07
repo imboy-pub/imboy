@@ -385,14 +385,16 @@ enterprise_entries_are_thin_delegations_test() ->
     ?assertEqual(nomatch, binary:match(EntSection, [<<"?PUSH_TITLE">>])),
     ?assertEqual(nomatch, binary:match(EntSection, [<<"?PUSH_BODY">>])),
     ?assertEqual(nomatch, binary:match(EntSection, [<<"imboy_syn:">>])),
-    %% 项目内企业推送只允许从这两个出口触发（不得绕过 logic 直连 DS）
+    %% 项目内企业推送只允许从这两个出口触发（不得绕过 logic 直连 DS）。
+    %% 只拦「推送通道」函数（send_* 前缀）：push_cleanup_logic 挂载的
+    %% cleanup_inactive_tokens 是运维清理入口，不构成消息正文入通道。
     {ok, Files} = file:list_dir("src/logic"),
     EnterpriseCallers = [
         F
      || F <- Files,
         lists:suffix(".erl", F),
         F =/= "push_notification_logic.erl",
-        binary:match(read_src("src/logic/" ++ F), [<<"push_notification_ds:">>]) =/= nomatch
+        binary:match(read_src("src/logic/" ++ F), [<<"push_notification_ds:send">>]) =/= nomatch
     ],
     ?assertEqual([], EnterpriseCallers).
 
