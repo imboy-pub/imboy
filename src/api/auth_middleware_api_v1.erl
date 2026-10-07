@@ -172,7 +172,7 @@ is_single_segment_route(Path, Prefix) ->
 %% olm/* / devices* / trust/record）与 /api/v1/group/set_e2ee_mode。
 %% 门未配置（app_version 无该平台记录或 min_vsn=0.0.0）时恒 allow，
 %% 现网行为零变化；rollout 顺序（客户端先发布→后端配置 min_vsn→开
-%% required E2EE）见 docs/design/2026-10-03-e2ee-production-excellence/
+%% required E2EE）见 docs/archive/design/2026-10-03-e2ee-production-excellence/
 %% runbook。判定真源复用 app_version_logic:e2ee_gate/2（与升级提示
 %% check/3 同一套 min_vsn），阻断响应错误码 ?ERR_E2EE_APP_VERSION_TOO_LOW。
 %% ===================================================================
