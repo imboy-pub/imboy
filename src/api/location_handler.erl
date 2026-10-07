@@ -93,8 +93,12 @@ make_myself_visible(Req0, State) ->
 -spec make_myself_unvisible(cowboy_req:req(), map()) -> cowboy_req:req().
 make_myself_unvisible(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    location_logic:make_myself_unvisible(CurrentUid),
-    elib_response:success(Req0, #{}, "success.").
+    case location_logic:make_myself_unvisible(CurrentUid) of
+        ok ->
+            elib_response:success(Req0, #{}, "success.");
+        {error, Msg} ->
+            elib_response:error(Req0, Msg)
+    end.
 
 % 附近的人
 -spec people_nearby(cowboy_req:req(), map()) -> cowboy_req:req().

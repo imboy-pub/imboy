@@ -33,9 +33,12 @@ make_myself_visible(_Uid, <<>>, _Lng) ->
 make_myself_visible(_Uid, _Lat, <<>>) ->
     {error, <<"经度不能为空"/utf8>>};
 make_myself_visible(Uid, Lat, Lng) ->
-    user_setting_ds:save(Uid, <<"people_nearby_visible">>, true),
-    _ = geo_people_nearby_ds:save(Uid, Lat, Lng),
-    ok.
+    case geo_people_nearby_ds:save(Uid, Lat, Lng) of
+        {ok, _} ->
+            user_setting_ds:save(Uid, <<"people_nearby_visible">>, true);
+        {error, _} ->
+            {error, <<"位置保存失败，请重试"/utf8>>}
+    end.
 
 %% @doc 设置用户位置不可见
 %% 删除用户位置信息，不允许被附近的人搜索到
@@ -43,9 +46,12 @@ make_myself_visible(Uid, Lat, Lng) ->
 %% @return ok | {error, Reason}
 -spec make_myself_unvisible(integer()) -> ok | {error, binary()}.
 make_myself_unvisible(Uid) ->
-    user_setting_ds:save(Uid, <<"people_nearby_visible">>, false),
-    _ = geo_people_nearby_ds:delete(Uid),
-    ok.
+    case geo_people_nearby_ds:delete(Uid) of
+        {ok, _} ->
+            user_setting_ds:save(Uid, <<"people_nearby_visible">>, false);
+        {error, _} ->
+            {error, <<"隐藏位置失败，请重试"/utf8>>}
+    end.
 
 %% @doc 查询附近的人
 %% 基于地理位置查询附近用户，并检查好友关系
