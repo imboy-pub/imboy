@@ -39,7 +39,11 @@ if [ "$DRY_RUN" -eq 0 ]; then
 fi
 cd "$IMBOYADMIN_ROOT"
 
-CMD=(bun test)
+CMD=(bun test --isolate)
+# --isolate 不可省：裸 bun test 全量并发下 CsWidgetInstallationsPage×4+
+# CustomerServiceHomePage.i18n×1 因文件间状态互踩必 fail（单跑全绿）；
+# package.json test script 与本门注释（A1 行 "= bun test --isolate"）均为
+# isolate 口径——2026-10-07 主线预演实测确认。
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "[DRY-RUN] cd $IMBOYADMIN_ROOT && ${CMD[*]}"
