@@ -191,9 +191,14 @@ i3_offline_retrieval_after_peer_device_ack_test_() ->
             ?assert(lists:member(<<"f05m2">>, GotIds)),
 
             %% 设备 A 走 REST offline_ack（批量离线确认）——不得删行
-            {ok, _Payload} = messaging_logic:offline_ack(
+            {ok, Payload} = messaging_logic:offline_ack(
                 ?F05_UID, <<"c2g">>, [<<"f05m1">>, <<"f05m2">>], <<"f05_did_a">>
             ),
+            ?assertEqual(1, maps:get(<<"processed_count">>, Payload)),
+            {ok, Replay} = messaging_logic:offline_ack(
+                ?F05_UID, <<"c2g">>, [<<"f05m1">>, <<"f05m2">>], <<"f05_did_b">>
+            ),
+            ?assertEqual(0, maps:get(<<"processed_count">>, Replay)),
             ?assertEqual(true, timeline_client_ack(<<"f05m1">>)),
             ?assertEqual(true, timeline_client_ack(<<"f05m2">>)),
 

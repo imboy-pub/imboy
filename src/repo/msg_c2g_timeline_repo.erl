@@ -144,7 +144,7 @@ client_ack_batch(MsgIds, ToUid) when is_list(MsgIds) ->
     Last = integer_to_binary(length(MsgIds) + 1),
     Sql =
         <<"UPDATE ", Tb/binary, " SET client_ack = true ", "WHERE msg_id IN (", Placeholders/binary,
-            ") AND to_uid = $", Last/binary>>,
+            ") AND to_uid = $", Last/binary, " AND client_ack = false">>,
     elib_pg:execute(Sql, MsgIds ++ [ToUid]).
 
 % msg_c2g_timeline_repo:delete_timeline(6).
