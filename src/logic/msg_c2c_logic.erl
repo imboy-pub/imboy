@@ -429,7 +429,19 @@ stage_and_send_c2c(
                             )
                         end
                     ),
-                    {ok, new}
+                    {ok, new};
+                {error, StageError} ->
+                    %% Q06（AC11 故障注入修复）：staging 同步写入失败 ⇒ durable 承诺
+                    %% 未达成，必须受控拒绝——不发 SERVER_ACK、不进持久化/投递
+                    %% 管道（client 走重发链路，staging 幂等保证不产生重复业务行）。
+                    %% 修复前本 case 无 {error,_} 分支，stage 失败直接 case_clause
+                    %% 崩掉调用进程（WS handler）；对齐 msg_c2g_logic 的
+                    %% case StageResult {error,_} 分支范式。c2c_send 对 {reply,_}
+                    %% 已有"门后旁路"处理（不触发 agent/billing 副作用）。
+                    {reply,
+                        message_ds:assemble_s2c(
+                            MsgId, elib_cnv:safe_to_binary(StageError), To
+                        )}
                 % end case StageResult
             end;
         {error, Reason} ->

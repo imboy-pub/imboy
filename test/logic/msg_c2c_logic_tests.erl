@@ -1418,3 +1418,74 @@ c2c_plaintext_allowed_when_storage_mode_hard_off_test_() ->
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11))
         end
     ).
+
+%% ===================================================================
+%% Q06（AC11 故障注入）：staging 写入失败的 SERVER_ACK 持久化边界
+%% ===================================================================
+
+%% @doc durable 承诺点 = staging 同步写成功。注入 msg_store_ds:stage/11
+%% 返回 {error, unavailable}（DB 故障）：必须不发 C2C_SERVER_ACK、不进
+%% 投递管道（enqueue 0 次）、受控返回错误 reply。修复前 case StageResult
+%% 无 {error,_} 分支，case_clause 直接崩掉调用进程（WS handler）。
+c2c_stage_failure_no_ack_no_dispatch_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'check_relationship', 2, fun(456, 123) -> {true, false} end}
+            ]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> false end}
+            ]},
+            {bot_ds, [
+                {'is_bot', 1, fun(_) -> false end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+                {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+                {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+            ]},
+            {msg_store_ds, [
+                %% 故障注入：staging 同步写入失败
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                    {error, unavailable}
+                end},
+                {'enqueue', 3, fun(_, _, _) -> ok end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(MsgId, Action, _To) ->
+                    #{<<"id">> => MsgId, <<"type">> => <<"S2C">>, <<"action">> => Action}
+                end}
+            ]},
+            {elib_cnv, [
+                {'safe_to_binary', 1, fun(unavailable) -> <<"unavailable">> end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2c_stage_fail_001">>,
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"from">> => <<"123">>,
+                <<"payload">> => #{<<"content">> => <<"hello">>},
+                <<"created_at">> => 1708768700000,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<>>,
+                <<"e2ee">> => null
+            },
+            Stamped = message_ds:stamp_sender_device(
+                Data, #{did => <<"server-device">>, dtype => <<"android">>}
+            ),
+            %% 受控返回（不崩溃）
+            Result = msg_c2c_logic:c2c(MsgId, 123, Stamped),
+            ?assertMatch({reply, #{<<"action">> := <<"unavailable">>}}, Result),
+            %% 不发 SERVER_ACK
+            NoAck =
+                receive
+                    {reply, #{<<"type">> := <<"C2C_SERVER_ACK">>}} -> got_ack
+                after 200 ->
+                    none
+                end,
+            ?assertEqual(none, NoAck),
+            %% 不进持久化/投递管道
+            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3))
+        end
+    ).
