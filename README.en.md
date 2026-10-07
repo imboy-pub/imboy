@@ -10,11 +10,16 @@ IMBoy is a self-hostable instant messaging platform. This repository contains th
 
 ## Features
 
-- One-on-one chat, group chat, channels, moments, and push notifications
+Phase-1 delivery capability surface (`phase1_delivery` profile):
+
+- One-on-one chat, group chat, and push notifications (Core IM: contacts, history/offline/multi-device sync, attachments and message governance)
+- Enterprise organizations/departments/members/workspaces with RBAC; human customer-service seats and visitor Widget; OA integration (internal API / SSO / Webhook)
+- Channel foundation (in-organization General groups and announcement channels)
 - HTTP APIs and persistent WebSocket connections
-- Optional end-to-end encryption (E2EE)
 - PostgreSQL persistence and direct uploads to Garage S3
 - Single-node production deployment with Docker Compose (Helm/Kubernetes is experimental and not validated on a production cluster)
+
+The full-selected build additionally includes moments, channel discovery/invitation/paid channels, end-to-end encryption (E2EE), RTC, Bots, the AI assistant, and other domains. Under the phase-1 delivery profile these domains are closed by delivery locks and fail-closed gates; stale caches or remote configuration cannot re-enable them. See the [packaging contract](./docs/product/packaging-contract.md) for phase boundaries, the whitelist, and delivery locks, and the [delivery package manifest](./docs/product/delivery-package-manifest.md) for package contents.
 
 ## System architecture
 
