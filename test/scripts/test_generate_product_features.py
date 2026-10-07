@@ -332,6 +332,40 @@ class ProductFeatureManifestTest(unittest.TestCase):
         )[overlay_path]
         self.assertIn("pathPattern", e2ee)
 
+    def test_android_overlay_cleartext_only_in_debug(self):
+        """debug overlay 允许本地 http 隔离后端；profile/release 禁明文流量。"""
+        outputs = MODULE.render(MODULE.validate(self.manifest(["e2ee"]), self.catalog))
+        debug = next(
+            path for path in outputs
+            if path.name == "AndroidManifest.xml" and path.parent.name == "debug"
+        )
+        release = next(
+            path for path in outputs
+            if path.name == "AndroidManifest.xml" and path.parent.name == "release"
+        )
+        profile = next(
+            path for path in outputs
+            if path.name == "AndroidManifest.xml" and path.parent.name == "profile"
+        )
+        self.assertIn('android:usesCleartextTraffic="true"', outputs[debug])
+        self.assertNotIn("usesCleartextTraffic", outputs[release])
+        self.assertNotIn("usesCleartextTraffic", outputs[profile])
+
+    def test_android_overlay_debug_cleartext_survives_feature_pruning(self):
+        """关闭 e2ee 等特性后 debug 仍保留 cleartext（不依赖 e2ee 节点存在）。"""
+        outputs = MODULE.render(MODULE.validate(self.manifest([]), self.catalog))
+        debug = next(
+            path for path in outputs
+            if path.name == "AndroidManifest.xml" and path.parent.name == "debug"
+        )
+        release = next(
+            path for path in outputs
+            if path.name == "AndroidManifest.xml" and path.parent.name == "release"
+        )
+        self.assertIn('android:usesCleartextTraffic="true"', outputs[debug])
+        self.assertNotIn("pathPattern", outputs[debug])
+        self.assertNotIn("usesCleartextTraffic", outputs[release])
+
     def test_source_catalog_bootstraps_without_beams(self):
         catalog = MODULE.source_catalog(SCRIPT.parents[1])
         self.assertEqual("core", catalog["features"][0])
