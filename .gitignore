@@ -143,4 +143,9 @@ tmp
 # S3 门加固（2026-10-07 S3-SEC-AUDIT）：上述精确路径不匹配带端口后缀的变体，
 # evidence 目录含 run-configs 同源凭据副本与未检二进制件——整体不入仓
 /config/sys.eunit-relay*.config
+# fixture 修复回归（WS-FIXTURE-FIX）与 soak 压测的本地配置副本：与
+# sys.eunit-relay 同源派生（local 凭据测试值），同口径 untracked by design；
+# AI 密钥经 {env, ...} 环境变量解析，无明文真实密钥，但仍不入仓
+/config/sys.fixturefix*.config
+/config/sys.soak*.config
 docs/design/**/evidence/
