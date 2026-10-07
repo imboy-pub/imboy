@@ -46,7 +46,15 @@ if [ "$DRY_RUN" -eq 0 ]; then
 fi
 cd "$IMBOYAPP_ROOT"
 
-CMD=(flutter test)
+CMD=(flutter test --no-pub)
+# --no-pub 不可省：pub.dev 网络抖动会使 flutter test 在依赖解析阶段
+# "Connection terminated during handshake" 假失败（2026-10-07 预演实测，
+# 15:15 与 14:40 两次复现）；依赖解析属 pub get 职责，Q12 前置步骤单独做。
+# 裁决基线更新（G17-BASELINE-ATTRIBUTED，15:33）：-30 失败全数为
+# customer_service/enterprise 契约流类（需真实后端栈环境前置），e2ee 备份域
+# 在 ~242 skip 集内未以失败形态出现——G17 正式跑前须先完成 APP 域环境前置
+# 修复（setup_test_data.sh/test.env 注入或 EXECUTE-GATED 化），否则按
+# 门判定 FAIL 记录，不得豁免。
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "[DRY-RUN] cd $IMBOYAPP_ROOT && ${CMD[*]}"
