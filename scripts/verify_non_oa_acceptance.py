@@ -10,8 +10,6 @@ import sys
 import tempfile
 IDS = {'N0-A01', 'N5-A01'} | {f'N{card}-A{number:02}' for (card, count) in ((1, 3), (2, 4), (3, 4), (4, 3)) for number in range(1, count + 1)}
 STATUSES = {'PASS_EXECUTED', 'PASS_REQUALIFIED', 'PARTIAL', 'NOT_PROVEN', 'BLOCKED_ENV', 'IN_PROGRESS'}
-ROOT = Path(__file__).resolve().parents[1]
-PLAN = ROOT / 'docs/plans/2026-10-02-enterprise-non-oa-final-acceptance-plan-v1.md'
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -53,10 +51,10 @@ def validate_artifacts(run):
             raise ValueError(f"artifact mismatch: {ref['path']}")
     return {ref['path']: ref['sha256'] for ref in manifest}
 
-def verify(run):
+def verify(run, plan):
     with (run / 'acceptance.tsv').open() as ledger:
         rows = list(csv.DictReader(ledger, delimiter='\t'))
-    validate_rows(rows, digest(PLAN))
+    validate_rows(rows, digest(plan))
     artifacts = validate_artifacts(run)
     for row in rows:
         if not artifacts.get(row['evidence_path']) == row['evidence_sha256']:
@@ -81,7 +79,7 @@ def verify(run):
     print(f'INTEGRITY_PASS: {len(rows)} IDs; acceptance requires external independent review')
     if pending:
         print('Pending: ' + ', '.join(pending))
-    return False
+    return not pending
 
 def self_test():
     with tempfile.TemporaryDirectory() as directory:
@@ -102,15 +100,18 @@ def self_test():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-root', type=Path)
+    parser.add_argument('--plan-path', type=Path, help='External execution plan bound to the ledger')
     parser.add_argument('--require-complete', action='store_true')
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
     if args.require_complete and not args.run_root:
         parser.error("--require-complete requires --run-root")
+    if args.run_root and not args.plan_path:
+        parser.error("--run-root requires --plan-path; execution plans are not stored in Git")
     if args.self_test:
         self_test()
     if args.run_root:
-        complete = verify(args.run_root)
+        complete = verify(args.run_root, args.plan_path)
         return 2 if args.require_complete and (not complete) else 0
     if not args.self_test:
         parser.error('provide --run-root or --self-test')
