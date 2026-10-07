@@ -83,6 +83,18 @@ class ProductFeatureManifestTest(unittest.TestCase):
             for feature in contract["compiled_features"]:
                 self.assertIn(f'"{feature}"', output)
 
+    def test_admin_composition_metadata_is_provenance_not_unused_exports(self):
+        contract = MODULE.validate(self.manifest(["channel", "e2ee"]), self.catalog)
+        outputs = MODULE.render(contract)
+        composition = next(
+            output for path, output in outputs.items()
+            if path.name == "generatedFeatureComposition.tsx"
+        )
+        self.assertIn(contract["manifest_hash"], composition)
+        self.assertIn("// compiled_features:", composition)
+        self.assertNotIn("export const adminFeatureComposition", composition)
+        self.assertIn("export function compiledAdminFeatureRoutes", composition)
+
     def test_backend_erlc_exclude_follows_compiled_features(self):
         base = MODULE.render(MODULE.validate(self.manifest(), self.catalog))
         mk_path = next(

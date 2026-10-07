@@ -667,10 +667,10 @@ const channelOrderWidgetFeatures = {route_feature_list};
 
 {admin_page_declarations}
 
-export const adminFeatureCompositionManifestHash =
-  {json.dumps(contract['manifest_hash'])}
-export const adminFeatureCompositionSchemaVersion = {SCHEMA_VERSION}
-export const adminFeatureCompositionFeatures = {json.dumps(features)} as const
+// Composition provenance; runtime feature metadata lives in productFeatures.ts.
+// manifest_hash: {json.dumps(contract['manifest_hash'])}
+// schema_version: {SCHEMA_VERSION}
+// compiled_features: {json.dumps(features)}
 
 export function compiledAdminFeatureRoutes() {{
   return {admin_route_tree}
