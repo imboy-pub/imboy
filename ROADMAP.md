@@ -99,8 +99,8 @@
 
 ## 不在计划中 / Not Planned
 
-以下需求目前不在路线图内，但可以在 [Discussions](../../discussions) 中讨论：
-The following are currently out of scope but can be discussed in [Discussions](../../discussions):
+以下需求目前不在路线图内，但可以在 Discussions 中讨论：
+The following are currently out of scope but can be discussed in Discussions:
 
 - 浏览器端（Web App）PWA / Browser PWA
 - 第三方登录（微信 / Google OAuth）/ Third-party OAuth login
@@ -108,5 +108,7 @@ The following are currently out of scope but can be discussed in [Discussions](.
 
 ---
 
-> 路线图内容随项目进展调整，欢迎在 [GitHub Discussions](../../discussions) 提交功能建议。
-> This roadmap evolves with the project. Feature suggestions are welcome in [GitHub Discussions](../../discussions).
+> 路线图内容随项目进展调整，欢迎在 GitHub Discussions 提交功能建议。
+> This roadmap evolves with the project. Feature suggestions are welcome in GitHub Discussions.
+
+反馈渠道说明 / Feedback channels: [SUPPORT.md](./SUPPORT.md).

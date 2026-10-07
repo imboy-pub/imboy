@@ -8,7 +8,7 @@ Before asking, please check these resources — most common questions are alread
 - 📖 **部署文档 / Deployment docs**：[`deploy/README.md`](deploy/README.md)
 - 📖 **贡献指南 / Contributing guide**：[`CONTRIBUTING.md`](CONTRIBUTING.md)
 - 📖 **安全政策 / Security policy**：[`SECURITY.md`](SECURITY.md)
-- 🔍 **搜索已有 Issue / Search existing issues**：[GitHub Issues](../../issues)
+- 🔍 **搜索已有 Issue / Search existing issues**：GitHub Issues（项目仓库页面 / project repository page）
 
 ---
 
@@ -19,7 +19,7 @@ Before asking, please check these resources — most common questions are alread
 一般性问题、使用咨询、功能想法，请前往：
 For general questions, usage advice, and feature ideas:
 
-👉 **[GitHub Discussions](../../discussions)**
+👉 **GitHub Discussions（项目仓库页面 / project repository page）**
 
 分类建议 / Suggested categories:
 - **Q&A** — 如何配置 / 部署 / 使用 IMBoy / How to configure / deploy / use IMBoy
@@ -31,7 +31,8 @@ For general questions, usage advice, and feature ideas:
 **仅用于 Bug 报告**。请先确认问题可稳定复现，再提交 Issue。
 **For bug reports only.** Please confirm the issue is reproducible before filing.
 
-使用 Issue 模板 / Use the issue template：[Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
+在项目仓库页面选择 Bug Report 模板；离线交付包的问题信息要求见下文“提问时请包含”。
+Select the Bug Report template on the project repository page; for offline delivery, see “When asking, please include” below.
 
 ### 关于 Erlang/OTP 和 Flutter
 
