@@ -5,7 +5,9 @@
 % 用户免打扰(DND)规则领域服务，封装缓存与时段判断逻辑
 % 调用链：Logic -> user_dnd_rule_ds -> user_dnd_rule_repo -> PostgreSQL
 %
-%% NOTE: 未接线——等待 DND handler/logic 落地（见根 CLAUDE.md 功能表）
+%% NOTE: 已接线（Q09/G1，2026-10-07）——push_notification_logic 的四个离线
+%% 推送入口在离线判定后经 is_dnd_at/2 判定免打扰，命中即静默。
+%% DND 规则写入 API（handler）尚未提供：规则面目前由运维/后续 API 落库。
 %%%
 
 -include("log.hrl").

@@ -62,8 +62,11 @@ notify_offline_user(Uid, Title, Body) ->
 notify_offline_user(Uid, Title, Body, Data) ->
     case imboy_syn:count_user(Uid) of
         0 ->
-            %% 用户完全离线，发送推送
-            push_notification_ds:send_to_user_with_data(Uid, Title, Body, Data);
+            %% 用户完全离线且未处于免打扰时段，发送推送
+            case dnd_muted(Uid) of
+                true -> ok;
+                false -> push_notification_ds:send_to_user_with_data(Uid, Title, Body, Data)
+            end;
         _ ->
             %% 用户有在线设备，不推送
             ok
@@ -75,9 +78,10 @@ notify_offline_users([], _Title, _Body) ->
     ok;
 notify_offline_users(Uids, Title, Body) ->
     OfflineUids = [Uid || Uid <- Uids, imboy_syn:count_user(Uid) =:= 0],
-    case OfflineUids of
+    AudibleUids = [Uid || Uid <- OfflineUids, not dnd_muted(Uid)],
+    case AudibleUids of
         [] -> ok;
-        _ -> push_notification_ds:send_to_users(OfflineUids, Title, Body)
+        _ -> push_notification_ds:send_to_users(AudibleUids, Title, Body)
     end.
 
 %% 隐私不变量（fail-closed）：推送 title/body 恒为固定常量。
@@ -122,7 +126,10 @@ maybe_push_for_c2c(_FromUid, ToUid, _MsgType, _Payload) ->
     elib_async:async(fun() ->
         case imboy_syn:count_user(ToUid) of
             0 ->
-                push_notification_ds:send_to_user(ToUid, ?PUSH_TITLE, ?PUSH_BODY);
+                case dnd_muted(ToUid) of
+                    true -> ok;
+                    false -> push_notification_ds:send_to_user(ToUid, ?PUSH_TITLE, ?PUSH_BODY)
+                end;
             _ ->
                 ok
         end
@@ -137,14 +144,36 @@ maybe_push_for_c2g(FromUid, _GroupId, _MsgType, MemberUids) ->
         %% 排除发送者自己
         OtherUids = [Uid || Uid <- MemberUids, Uid =/= FromUid],
         OfflineUids = [Uid || Uid <- OtherUids, imboy_syn:count_user(Uid) =:= 0],
-        case OfflineUids of
+        %% 免打扰成员剔除（G1）：离线但处于 DND 时段的成员不推
+        AudibleUids = [Uid || Uid <- OfflineUids, not dnd_muted(Uid)],
+        case AudibleUids of
             [] ->
                 ok;
             _ ->
-                push_notification_ds:send_to_users(OfflineUids, ?PUSH_TITLE, ?PUSH_BODY)
+                push_notification_ds:send_to_users(AudibleUids, ?PUSH_TITLE, ?PUSH_BODY)
         end
     end),
     ok.
+
+%% ===================================================================
+%% 免打扰（DND）判定（G1 / Q09-AC22#7）
+%% ===================================================================
+%%
+%% 接线说明：user_dnd_rule_ds:is_dnd_at/2 内部走 find_by_uid（depcache
+%% TTL 1h + user_dnd_rule 表），规则由 status=1 启用、支持跨午夜时段
+%% （23:00-08:00 类）。判定位于**离线判定之后**——在线用户短路返回，
+%% 不触发 DND 查询；命中即整条静默（含 org_invite 触达：免打扰期间
+%% 全部离线推送静默，口径统一，不做按通知类型的豁免白名单）。
+%%
+%% 时区口径：App 侧免打扰（群免打扰 KV 源合并）按用户设备本地时区判定；
+%% 服务端此处按**服务器本地时区**（calendar:local_time()）换算当日分钟数。
+%% 自托管单节点部署下两者通常一致；跨时区多租户的精确对齐属后续增强。
+
+%% @doc 免打扰判定：当前时刻落在用户 DND 时段则返回 true（该用户静默）
+-spec dnd_muted(integer()) -> boolean().
+dnd_muted(Uid) ->
+    {_Date, {H, M, _S}} = calendar:local_time(),
+    user_dnd_rule_ds:is_dnd_at(Uid, H * 60 + M).
 
 %% ===================================================================
 %% 企业托管消息离线推送入口（FULL-07）

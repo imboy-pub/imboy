@@ -181,6 +181,10 @@ install_runtime_stubs() ->
     meck:expect(push_provider_jpush_http, post, 3, fun(_U, _H, _B) ->
         erlang:error({unexpected_real_http_post, blocked_by_test})
     end),
+    %% 免打扰判定（G1 接线后离线分支必经）：eunit VM 无 depcache，
+    %% 桩为「不在免打扰时段」以保持离线推送语义不变
+    meck:new(user_dnd_rule_ds, [passthrough, no_link]),
+    meck:expect(user_dnd_rule_ds, is_dnd_at, fun(_Uid, _NowMin) -> false end),
     ok.
 
 uninstall_runtime_stubs() ->
@@ -194,7 +198,13 @@ uninstall_runtime_stubs() ->
                 _:_ -> ok
             end
         end,
-        [elib_async, imboy_syn, push_provider_jpush_http, push_provider_jpush]
+        [
+            elib_async,
+            imboy_syn,
+            push_provider_jpush_http,
+            push_provider_jpush,
+            user_dnd_rule_ds
+        ]
     ),
     ok.
 
