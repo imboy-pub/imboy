@@ -31,7 +31,7 @@
 | React 管理后台 | ✅ |
 | Docker Compose 一键生产部署 + nginx 反代 + certbot 自动 TLS | ✅ |
 | 首启初始化向导（消除默认密码风险）| ✅ |
-| Prometheus + Grafana 可观测性包（33 条 SLO 告警规则，14 组）| ✅ |
+| Prometheus + Grafana 可观测性包（56 条 SLO 告警规则，19 组）| ✅ |
 | CI/CD 三端自动化（ci + release + codeql + trivy）| ✅ |
 | 部署后 sanity_check.sh（8 项验证）| ✅ |
 

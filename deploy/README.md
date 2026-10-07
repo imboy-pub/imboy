@@ -21,8 +21,8 @@ deploy/
 │                                # --edition community|business（默认 community）
 ├── preflight.sh                 # 前置检查（--edition 按版本切换检查口径）/ Pre-flight check
 ├── docker-compose.community.yml # 社区版编排，随仓分发 / Community stack, shipped in-repo
-│                                # 7 核心服务：pg18 + garage + backend + admin + nginx
-│                                # + certbot + livekit；监控 5 服务走 --profile monitoring
+│                                # 8 核心服务：pg18 + garage + backend + admin + widget
+│                                # + nginx + certbot + livekit；监控 5 服务走 --profile monitoring
 ├── docker-compose.uptrace.yml   # 可选 Uptrace overlay（默认关闭）
 ├── docker-compose.tsid-cutover.yml # TSID 割接 overlay（ACK 确认通道，仅割接时叠加；
 │                                # 手册见 docs/architecture/tsid-cutover-runbook.md §4a）
@@ -441,7 +441,7 @@ On first login, the "IMBoy Overview" dashboard is available in the **Dashboards 
 告警规则位于 `deploy/prometheus/rules/imboy-alerts.yml`，随 Prometheus 启动时自动加载。
 Alert rules live in `deploy/prometheus/rules/imboy-alerts.yml`, auto-loaded when Prometheus starts.
 
-**33 条规则、14 个分组覆盖 / 33 rules in 14 groups：**（以 `imboy-alerts.yml` 为真源；下表阈值摘要与该文件同步于 2026-09-19）
+**56 条规则、19 个分组覆盖 / 56 rules in 19 groups：**（以 `imboy-alerts.yml` 为真源，2026-10-07 复核；下表为其中 14 组的阈值摘要，非全集——e2ee / license / online_users / red_packet / l4_sni 组未列出，全集以规则文件为准）
 
 | 分组 / Group | 规则 / Rule | 触发条件（摘要）/ Threshold | 级别 |
 |---|---|---|---|

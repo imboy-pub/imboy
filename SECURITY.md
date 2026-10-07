@@ -13,7 +13,7 @@
 | `0.8.x` (app) / `0.7.x` (backend) | ⚠️ 仅修高危 | 1.0.0 GA 后 3 个月 |
 | `< 0.7` | ❌ 不再支持 | —— |
 
-首个标准 SKU 版本计划为 `1.0.0-rc.1`（尚未发布）；当前为 `1.0.0-alpha.77` 公测线。早期 pre-SKU 版本仅在紧急情况下修复。
+首个标准 SKU 版本计划为 `1.0.0-rc.1`（尚未发布）；当前为 `1.0.0-alpha.82` 公测线（以 `VERSION` 文件为准）。早期 pre-SKU 版本仅在紧急情况下修复。
 
 ---
 
@@ -85,7 +85,7 @@
 
 1. 密码哈希算法为 HMAC-SHA512，非 memory-hard 函数；计划在 1.1 迁移到 Argon2id，老 hash 届时通过登录惰性 rehash 迁移
 2. 消息存储层 `msg_store` 为明文落库（非 E2EE 对话），由运营方承担加密落盘责任
-3. 首次管理员创建目前仍需要 `erl remote_console`（P0-5 已列入 1.0.0 计划）
+3. ~~首次管理员创建需要 `erl remote_console`~~ 已消除：首次访问管理后台走 `/setup` 初始化向导（`/api/adm/setup/status|init`），纯脚本部署可用 `install.sh --admin-phone/--admin-password` 经 `imboy_ctl adm create` 创建超管；`erl remote_console` 仅剩故障恢复场景
 
 ---
 
