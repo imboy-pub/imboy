@@ -10,6 +10,35 @@ SCRIPT = Path(__file__).resolve().parents[2] / 'scripts/deliver/make_delivery_pa
 
 
 class DeliveryPackGuardsTests(unittest.TestCase):
+    def test_contract_exclusions_do_not_remove_operational_documents(self):
+        excluded = [
+            'deploy/nginx/prod-vhosts/customer.conf', '.github/workflows/ci.yml',
+            '.githooks/pre-commit', '.contract/api_contract.json', '.ecc/config.json',
+            '.mcp.json', '.qa/results.json', '.gitcode/config.yml', '.elp.toml',
+            '.gradualizer-baseline.txt', 'lefthook.yml', 'sonar-project.properties',
+            'index.html', 'docs-site/package.json', 'docs/design/current.md',
+            'docs/archive/design/old.md', 'docs/qa/report.md', 'docs/plans/task.md',
+            'docs/runbooks/agent-hub-scheduler.md',
+            'docs/runbooks/agent-hub-worker.md',
+        ]
+        included = ['deploy/nginx/template.conf', 'docs/ops/restore.md',
+                    'docs/runbooks/bot-webhook-aead-key.md', 'LICENSE']
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'repo'
+            root.mkdir()
+            self.initialize(root)
+            for name in excluded + included:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('Synthetic contract fixture\n')
+            self.commit_fixture(root)
+            output = Path(directory) / 'output'
+            result = self.run_pack(root, str(output))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            names = set((output / 'manifest.txt').read_text().splitlines())
+            self.assertTrue(set(included).issubset(names))
+            self.assertFalse(set(excluded) & names)
+
     def test_rejects_repository_output_without_creating_it(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / 'repo'

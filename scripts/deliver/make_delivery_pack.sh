@@ -119,6 +119,12 @@ credential_named_paths() {
         | grep -ivE '\.(erl|hrl|app\.src|yaml|yml|md|py|sh|ts|js)(\.gz)?$' | cut -f2
 }
 
+# Product delivery manifest section 2: development metadata and environment
+# snapshots are not customer deliverables. Share this rule with the final check.
+contract_excluded_paths() {
+    grep -E '^(deploy/nginx/prod-vhosts/|docs-site/|\.github/|\.githooks/|\.contract/|\.ecc/|\.qa/|\.gitcode(/|$)|docs/(qa|design|plans)/|docs/archive/design/|docs/runbooks/agent-hub-[^/]*\.md$|\.mcp\.json$|\.elp\.toml$|\.gradualizer-baseline\.txt$|lefthook\.yml$|sonar-project\.properties$|index\.html$)' "$1"
+}
+
 # ---------------------------------------------------------------------------
 # 第 1 步：tracked 白名单
 # ---------------------------------------------------------------------------
@@ -164,6 +170,7 @@ grep -E '(^|/)(node_modules|_build|\.otp)/'                        "$WORK/all.li
 grep -E '(^|/)(evidence|test-results|playwright-report)/' "$WORK/all.list" >> "$WORK/exclude.list" || true
 # X6 凭据命名（见 credential_named_paths 注释）
 credential_named_paths "$WORK/all.list"             >> "$WORK/exclude.list" || true
+contract_excluded_paths "$WORK/all.list" >> "$WORK/exclude.list" || true
 
 sort -u "$WORK/exclude.list" -o "$WORK/exclude.list"
 EXCLUDED_N=$(grep -c . "$WORK/exclude.list" || true)
@@ -186,6 +193,7 @@ grep -E '(^|/)\.env' "$MANIFEST" | grep -v '\.example$' >> "$VIOLATIONS" || true
 grep -E '(^|/)(node_modules|_build|\.otp)/'                       "$MANIFEST" >> "$VIOLATIONS" || true
 grep -E '(^|/)(evidence|test-results|playwright-report)/' "$MANIFEST" >> "$VIOLATIONS" || true
 credential_named_paths "$MANIFEST" | sed 's/^/[cred-name] /' >> "$VIOLATIONS" || true
+contract_excluded_paths "$MANIFEST" | sed 's/^/[delivery-contract] /' >> "$VIOLATIONS" || true
 
 # Content check: decode complete PEM bodies, including conventional wrapped lines.
 python3 - "$MANIFEST" "$VIOLATIONS" <<'PY_PEM'
@@ -269,6 +277,7 @@ fi
     echo "  * config/sys.{local,dev,prod,eunit}* ; real .env (non-example) kept out"
     echo "  * *.log ; crash dumps ; node_modules/"
     echo "  * evidence/, test-results/, playwright-report/ at every depth"
+    echo "  * production vhost snapshots, development metadata and task documents"
     echo "  * credential-looking filenames (private-key always; password as a"
     echo "    filename token with non-source/contract/doc extension)"
     echo "  * content: real PEM private-key blocks; optional secret fingerprints"

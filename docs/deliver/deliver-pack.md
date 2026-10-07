@@ -30,10 +30,12 @@ scripts/deliver/make_delivery_pack.sh --secret-fingerprints ~/.imboy/secret-fp.t
 | 真实配置 | `config/sys.{local,dev,prod,eunit}*`（任意层级） | 环境配置永不入包 |
 | 真实 env | `.env`、`.env.<variant>`；`*.example` 豁免 | example 是配置入口模板 |
 | 日志/crash | `*.log`、`erl_crash.dump`/`crash.dump` | 归档可追溯性由 git 历史与结论文档承担 |
-| 临时 evidence | 顶层 `evidence/` | 内部审计工作产物；`docs/archive`、`docs/qa` 的文档化归档保留 |
-| 缓存 | `node_modules/` | — |
+| 执行材料 | 任意层级 `evidence/`、`test-results/`、`playwright-report/` | 不随交付包分发 |
+| 非交付文件 | `docs/qa/`、`docs/design/`、`docs/plans/`、`docs/archive/design/`、`docs-site/`、工具元数据及 Agent Hub 运维篇 | 按[交付清单](../product/delivery-package-manifest.md)后端排除合同执行 |
+| 生产环境快照 | `deploy/nginx/prod-vhosts/` | 普通 nginx 模板仍保留 |
+| 缓存 | `node_modules/`、`_build/`、`.otp/` | — |
 | 凭据命名 | basename 含 `private[_-]?key` 一律拦；`password` 词元且扩展非源码/契约/文档 | `elib_password.erl` 等业务语义文件豁免 |
-| 内容级（硬失败） | 真实私钥 PEM 块（私钥头 + 200+ 连续 base64）；可选指纹扫描 | 文档注释与占位串不会命中 |
+| 内容级（硬失败） | 完整私钥 PEM 块，解码后至少 32 字节；可选指纹扫描 | 支持分行 Base64；不是私钥头字符串扫描 |
 
 排除与自检共用同一规则函数（`credential_named_paths`），两者逻辑不漂移；
 自检对最终 manifest 断言，任一命中即 exit 1（双保险）。
@@ -54,3 +56,4 @@ scripts/deliver/make_delivery_pack.sh --secret-fingerprints ~/.imboy/secret-fp.t
   排除段与自检段两处（规则函数注释有对应关系表）。
 - 本脚本只打包 imboy 主仓；App/Admin 仓交付物由各仓自己的发布通道产出（见各自 README），
   三仓指纹对应关系由 Q12 终验冻结（AC30）。
+- 脚本不会自动切换产品 profile：归档中的 manifest 与固定 HEAD 相同。开发完整版源码包不能据此标记为一期交付产物；一期需另外冻结 profile、生成物和构建指纹并验收。
