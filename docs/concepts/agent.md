@@ -3,6 +3,7 @@
 > Purpose：定义平台 AI 智能体从「账号」到「受约束执行」的完整链路。
 > 账号层面的定义（account_type=1）见[账号与主体](./accounts-and-actors.md)；本文覆盖执行治理层。
 > 架构权威：[Agent Runtime V3.1 架构](../architecture/2026-09-16-imboy-agent-runtime-v3.1.md)（2026-09-16 冻结契约）。
+> **分期口径**：智能体域（AI 助手 / Agent Hub / MCP，连同 Bot 产品）属二期七域。本文描述的是代码已实现的能力面（full-selected 完整版）；一期交付（`phase1_delivery` profile）下这些域经交付锁 fail-closed 关闭、默认不可启用。见[打包契约](../product/packaging-contract.md) §9。
 
 ## Concept：一条执行链
 

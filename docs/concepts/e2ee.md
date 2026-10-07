@@ -2,6 +2,7 @@
 
 > Purpose：概念入口——定义 E2EE 的协议矩阵、信任模型与三端职责分工。
 > 协议细节权威：[E2EE 协议规范](../reference/e2ee-protocol-specification.md)；驱动体系与证据见 `docs/guides/e2ee/`。
+> **分期口径**：E2EE 属二期七域之一。本文描述的是代码已实现的能力面（full-selected 完整版）；一期交付（`phase1_delivery` profile）下 E2EE 经交付锁 fail-closed 关闭、默认不可启用（一期交付同时验证 E2EE OFF 下归档/检索/推送合同仍成立）。见[打包契约](../product/packaging-contract.md) §9。
 
 ## Concept：服务器不可读的消息加密
 

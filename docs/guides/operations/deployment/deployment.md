@@ -2,7 +2,7 @@
 
 > - **自动化部署脚本**（推荐）：[deploy-script.md](./deploy-script.md) — 配置一次 `.env.deploy`，一条命令完成全量或增量部署
 > - **5 分钟快速上手**：[day1-quickstart.md](./day1-quickstart.md) — 从零搭建最小生产环境
-> - **LiveKit 通话运行手册**：[livekit-single-service-runbook.md](./livekit-single-service-runbook.md) — rtc WSS + SFU + embedded TURN 的部署/验证/升级/回滚（小白可逐行执行）
+> - **LiveKit 通话运行手册**（二期域，一期 `phase1_delivery` 默认关闭）：[livekit-single-service-runbook.md](./livekit-single-service-runbook.md) — rtc WSS + SFU + embedded TURN 的部署/验证/升级/回滚（小白可逐行执行）
 > - **生产架构图**：[production-architecture.md](./production-architecture.md) — 服务分布与端口一览
 >
 > 本文是完整参考手册，适合定制化配置场景。

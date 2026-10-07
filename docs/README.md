@@ -10,11 +10,11 @@
 | 查一个术语的准确含义 | [术语表](./glossary.md) |
 | 本地跑通后端 | [后端快速上手](./tutorials/quickstart-backend.md) |
 | 生产部署 | [部署 README](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md) → [Day-1 部署](./guides/operations/deployment/day1-quickstart.md) |
-| 通话（LiveKit RTC/TURN）部署运维 | [LiveKit 单服务运行手册](./guides/operations/deployment/livekit-single-service-runbook.md) |
+| 通话（LiveKit RTC/TURN）部署运维（二期域，一期 `phase1_delivery` 默认关闭） | [LiveKit 单服务运行手册](./guides/operations/deployment/livekit-single-service-runbook.md) |
 | 备份、恢复、升级 | [备份恢复](./guides/operations/deployment/backup-restore.md) · [升级手册](./guides/operations/upgrade-runbook.md) |
 | 对接 REST / WebSocket | [API 格式](./reference/api-format.md) → [REST API 目录](./reference/rest-api-v1-catalog.md) → [WebSocket 协议](./reference/ws-protocol-contract.md) |
 | 理解后端架构 | [架构总览](./architecture/overview.md) → [模块地图](./architecture/module-map.md) → [分层速查](./architecture/module-layer-cheatsheet.md) |
-| 审核 E2EE / 合规 | [E2EE 概念](./concepts/e2ee.md) → [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 政策](./compliance/e2ee-policy.md) · [等保清单](./compliance/mlps2-checklist.md) |
+| 审核 E2EE / 合规（E2EE 为二期域，一期 `phase1_delivery` 默认关闭） | [E2EE 概念](./concepts/e2ee.md) → [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 政策](./compliance/e2ee-policy.md) · [等保清单](./compliance/mlps2-checklist.md) |
 | 当前正在做什么 | [路线图](https://github.com/imboy-pub/imboy/blob/main/ROADMAP.md) · [CHANGELOG](https://github.com/imboy-pub/imboy/blob/main/CHANGELOG.md) |
 | 查看历史结论 | [已归档](https://github.com/imboy-pub/imboy/blob/main/docs/archive/README.md) |
 

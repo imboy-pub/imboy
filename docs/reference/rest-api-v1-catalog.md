@@ -17,6 +17,8 @@
 - E2EE 社交恢复分片：[e2ee-server-persisted-shard-contract-v1.md](./contracts/e2ee-server-persisted-shard-contract-v1.md)
 - WebSocket 协议：[websocket-api-2.md](./websocket-api-2.md)
 
+> **分期口径**：本文是 full-selected 完整版的端点全目录。一期交付（`phase1_delivery` profile）仅开放核心 IM、频道底座、企业组织/企业业务、人工客服与 OA 对接相关端点；直播间（live_room）、RTC 房间（LiveKit）、钱包、朋友圈、频道发现/邀请/付费等端点属二期或一期不承诺运营域，一期 profile 下经交付锁 fail-closed 关闭、默认不可用。见[打包契约](../product/packaging-contract.md) §9。
+
 ---
 
 ## 概览 / Overview

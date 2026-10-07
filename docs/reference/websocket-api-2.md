@@ -5,7 +5,8 @@
 > Scope: WebSocket 连接、消息结构、错误约定与迁移说明  
 > Source of truth: `src/imboy_router.erl` + `src/api/websocket_handler.erl` + `src/logic/websocket_logic.erl` + `src/ds/message_ds.erl` + `src/ds/websocket_ds.erl` + `src/lib/imboy_codec.erl` + `src/lib/imboy_frame.erl` + `include/imboy_frame.hrl`  
 > Note: 本文中的 `v2.0` 指消息结构版本，`imboy.v2` 指分层二进制帧协议版本，二者相互独立。  
-> Related docs: `docs/reference/rest-api.md`, `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`, `docs/guides/operations/security.md`, `proto/imboy.proto`, [`api/proto/README.md`](https://github.com/imboy-pub/imboy/blob/main/api/proto/README.md)`（帧协议真源）`
+> Related docs: `docs/reference/rest-api.md`, `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`, `docs/guides/operations/security.md`, `proto/imboy.proto`, [`api/proto/README.md`](https://github.com/imboy-pub/imboy/blob/main/api/proto/README.md)`（帧协议真源）`  
+> 分期口径：本文是 full-selected 完整版的协议全貌。一期交付（`phase1_delivery` profile）下，`webrtcAudio`/`webrtcVideo` 等 RTC 信令消息与 E2EE 相关 action 属二期七域，经交付锁 fail-closed 关闭、默认不可用（见 `docs/product/packaging-contract.md` §9）。
 
 ## 变更记录 (Changelog)
 
