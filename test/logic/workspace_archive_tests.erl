@@ -33,6 +33,14 @@ ws_row(Status) ->
 %% setup → 执行断言 → cleanup，使断言真实生效（simple fun 与 generator 同进程，
 %% Self 哨兵可用，无需改进程字典）。
 run_with_mocks(MockConfigs, TestFun) ->
+    State = eunit_runner:eunit_setup(),
+    try
+        run_initialized_mocks(MockConfigs, TestFun)
+    after
+        eunit_runner:eunit_cleanup(State)
+    end.
+
+run_initialized_mocks(MockConfigs, TestFun) ->
     lists:foreach(
         fun({Module, Expectations}) ->
             case meck_helper:setup_mock(Module, Expectations) of
@@ -378,8 +386,11 @@ personal_not_affected_test_() ->
     [
         {"personal group message write passes without workspace query", fun() ->
             run_with_mocks([PersonalResolver, PgMock], fun() ->
-                %% 真跑 msg_c2g_repo 需 TSID 环境：先 init（幂等）再注册
-                _ = elib_tsid:init(#{dc_id => 1, node_id => 1}),
+                %% Reuse a running TSID instance; initialize only for standalone execution.
+                case elib_tsid:runtime_handle() of
+                    {ok, _} -> ok;
+                    error -> ok = elib_tsid:init(#{dc_id => 1, node_id => 1})
+                end,
                 ok = elib_tsid:register(msg_c2g),
                 ?assertEqual(
                     ok,
