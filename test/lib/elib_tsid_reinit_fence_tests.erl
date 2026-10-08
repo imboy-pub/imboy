@@ -35,9 +35,44 @@ reinitialization_preserves_fence_test() ->
         ?assert(lists:member(guarded_name, elib_tsid:registered())),
         ?assert(lists:member(added_name, elib_tsid:registered())),
         ?assertError(
-            {elib_tsid_fenced, #{phase := renew_unreachable}},
+            {elib_tsid_fenced, #{phase := renew_unreachable, cause := noproc}},
             elib_tsid:generate(guarded_name)
         )
     after
+        elib_tsid:reset_for_test()
+    end.
+
+renew_timeout_preserves_fence_test() ->
+    Pid = spawn(fun() ->
+        receive
+            stop -> ok
+        end
+    end),
+    try
+        elib_tsid:reset_for_test(),
+        Fence = atomics:new(2, []),
+        atomics:put(Fence, 1, 1),
+        atomics:put(Fence, 2, 0),
+        ok = elib_tsid:guarded_publish(#{
+            combined_node => 129,
+            dc_bits => 3,
+            names => [guarded_name],
+            max_logical_lead_ms => 512,
+            capacity_wait_timeout_ms => 100,
+            max_batch_chunk => 1050624,
+            cursor_floor_ts => erlang:system_time(millisecond) - 1735689600000,
+            guard_ref => Fence,
+            guard_pid => Pid
+        }),
+        {ok, Before} = elib_tsid:runtime_handle(),
+        Cursor = atomics:get(maps:get(cursor, Before), 1),
+        ?assertError(
+            {elib_tsid_fenced, #{phase := renew_unreachable, cause := timeout}},
+            elib_tsid:generate(guarded_name)
+        ),
+        ?assertEqual(0, atomics:get(Fence, 2)),
+        ?assertEqual(Cursor, atomics:get(maps:get(cursor, Before), 1))
+    after
+        exit(Pid, kill),
         elib_tsid:reset_for_test()
     end.

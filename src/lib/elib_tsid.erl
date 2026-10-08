@@ -652,7 +652,8 @@ renew_fence(#{guard_pid := GPid} = _Handle, Horizon, Budget) ->
                 catch
                     %% guard 已死（noproc）/call 超时——fail-closed 且保持
                     %% typed 错误族（review F5：裸 exit 违反错误族合同）
-                    _C:_R -> {exit, unreachable}
+                    exit:ExitReason -> {exit, renew_exit_cause(ExitReason)};
+                    _C:_R -> {exit, call_exception}
                 end,
             case RenewRes of
                 {ok, _NewSafeBefore} ->
@@ -660,10 +661,15 @@ renew_fence(#{guard_pid := GPid} = _Handle, Horizon, Budget) ->
                     retry;
                 {error, Reason} ->
                     error(Reason);
-                {exit, _} ->
-                    error({elib_tsid_fenced, #{phase => renew_unreachable}})
+                {exit, Cause} ->
+                    error({elib_tsid_fenced, #{phase => renew_unreachable, cause => Cause}})
             end
     end.
+
+%% 只记录有界原因，不把调用参数或堆栈暴露到错误响应。
+renew_exit_cause({timeout, _}) -> timeout;
+renew_exit_cause({noproc, _}) -> noproc;
+renew_exit_cause(_) -> guard_exit.
 
 %% @private 无 busy-spin 等待：睡眠由 deadline 剩余量约束；单调钟停滞
 %% （异常/seam 冻结）立即 fail-closed，绝不无限等待。
