@@ -212,7 +212,7 @@ http(State, Method, UrlPath, Opts) ->
     Body = maps:get(body, Opts, <<>>),
     Headers = maps:merge(
         #{
-            <<"host">> => <<"localhost">>,
+            <<"host">> => request_host(),
             <<"connection">> => <<"close">>,
             <<"content-type">> => <<"application/json">>,
             <<"content-length">> => integer_to_binary(byte_size(Body))
@@ -243,6 +243,14 @@ http(State, Method, UrlPath, Opts) ->
                 end
         end,
     Parsed#{json => Json}.
+
+%% Use the same host as router dispatch in isolated test configurations.
+request_host() ->
+    case config_ds:env(host, '_') of
+        '_' -> <<"localhost">>;
+        Host when is_binary(Host) -> Host;
+        Host when is_list(Host) -> list_to_binary(Host)
+    end.
 
 recv_all(Socket, Acc) ->
     case gen_tcp:recv(Socket, 0, 15000) of
