@@ -125,7 +125,10 @@ all_returns_binary_key_view_for_known_features_test_() ->
             lists:foreach(
                 fun(Name) ->
                     BinKey = atom_to_binary(Name, utf8),
-                    ?assertEqual(maps:get(Name, FeatureMap), maps:get(BinKey, Payload))
+                    ?assertEqual(
+                        imboy_feature:compiled(Name) andalso maps:get(Name, FeatureMap),
+                        maps:get(BinKey, Payload)
+                    )
                 end,
                 imboy_feature:feature_names()
             )
