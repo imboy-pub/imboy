@@ -84,18 +84,21 @@ wait_for_dead(Pid, N) ->
 %% 1. imboy_plugin_sup 启动后 router_registry + ws_action_registry + 4 个 plugin sup 全部注册
 %% ===================================================================
 
+group_collab_compiled() ->
+    lists:any(fun imboy_feature:compiled/1, [group_vote, group_schedule, group_task]).
+
 sup_starts_with_4_plugin_sups_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun(Pid) ->
         Children = supervisor:which_children(Pid),
         [
-            %% 6 个子进程：router_registry + ws_action_registry（WS 路由查表前置）+ 4 plugin sup
-            ?_assertEqual(6, length(Children)),
+            %% 两个注册表、三个一期插件，以及编译启用时的协同插件。
+            ?_assertEqual(5 + bool_count(group_collab_compiled()), length(Children)),
             ?_assert(lists:keymember(imboy_router_registry, 1, Children)),
             ?_assert(lists:keymember(imboy_ws_action_registry, 1, Children)),
             ?_assert(lists:keymember(channel_sup, 1, Children)),
             ?_assert(lists:keymember(moment_sup, 1, Children)),
             ?_assert(lists:keymember(location_sup, 1, Children)),
-            ?_assert(lists:keymember(group_collab_sup, 1, Children))
+            ?_assertEqual(group_collab_compiled(), lists:keymember(group_collab_sup, 1, Children))
         ]
     end}.
 
@@ -109,7 +112,7 @@ each_plugin_sup_registered_test_() ->
             ?_assert(is_pid(whereis(channel_sup))),
             ?_assert(is_pid(whereis(moment_sup))),
             ?_assert(is_pid(whereis(location_sup))),
-            ?_assert(is_pid(whereis(group_collab_sup)))
+            ?_assertEqual(group_collab_compiled(), is_pid(whereis(group_collab_sup)))
         ]
     end}.
 
@@ -123,9 +126,21 @@ each_plugin_sup_has_empty_children_test_() ->
             ?_assertEqual([], supervisor:which_children(channel_sup)),
             ?_assertEqual([], supervisor:which_children(moment_sup)),
             ?_assertEqual([], supervisor:which_children(location_sup)),
-            ?_assertEqual([], supervisor:which_children(group_collab_sup))
+            ?_assertEqual([], group_collab_children())
         ]
     end}.
+
+bool_count(true) -> 1;
+bool_count(false) -> 0.
+
+group_collab_children() ->
+    case group_collab_compiled() of
+        true ->
+            supervisor:which_children(group_collab_sup);
+        false ->
+            ?assertEqual(undefined, whereis(group_collab_sup)),
+            []
+    end.
 
 %% ===================================================================
 %% 4. Isolation：杀 channel_sup 后 moment/location/group_collab 不受影响（one_for_one）
