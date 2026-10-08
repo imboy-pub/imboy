@@ -1,5 +1,16 @@
 # 三端 API 对齐（Three-Platform API Alignment）
 
+## 企业附件检索 / Workspace attachment search
+
+App 的工作台“附件”检索当前工作区内有权查看的群组、频道附件。检索不扩大权限，不返回对象路径或下载地址。客服/OA 的 `enterprise_asset` 尚未并入；检索也不改变现有留存策略。 / The App searches authorized group and channel attachments in the current workspace. Search does not expand access or expose storage references. Managed customer-service/OA assets and retention governance remain separate.
+
+| Endpoint | Contract / 契约 |
+|---|---|
+| `GET /api/v1/workspaces/:workspace_id/attachments` | JWT；`keyword`、`group_id` 或 `channel_id`、`user_id` / `user_keyword`、`from_ms`、`until_ms`、`cursor`；时间为 `[from_ms, until_ms)`。返回 `workspace_id, items, next_cursor`，每批扫描最多 100 条并逐项复用附件 ACL。 / JWT; combined filters, half-open time interval and bounded scanning with per-item ACL. |
+| `GET /api/v1/workspaces/:workspace_id/attachments/:attachment_id/open` | 重新校验成员与附件权限，再签发下载地址；加密附件返回 409，App 群附件回到来源聊天处理解密。 / Reauthorizes before signing; encrypted attachments stay in the source conversation. |
+
+App 对响应工作区、元数据白名单和游标推进做校验；切换账号或工作区后弃用旧请求。真实双组织权限矩阵、真机打开与长期留存验收不能由组件测试替代。 / The App validates scope, metadata and cursor progress, and discards stale requests. Component tests do not replace real multi-organization, device or retention qualification.
+
 > Purpose：一张表回答「后端 API 面、Flutter 客户端（imboyapp）、管理后台（imboyadmin）三者谁消费什么、约定差异在哪」，并登记**契约漂移（Contract Drift）**。
 > 机器真源：后端路由 `src/imboy_router.erl`；契约产物 `.contract/api_contract.json`（当前 758 endpoints：adm 282 / api_v1 465 / main 8 / test_dev_only 3）。本文做人工导航与漂移登记，不复制端点全清单。
 

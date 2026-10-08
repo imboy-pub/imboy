@@ -15,6 +15,7 @@
 %%%
 
 -export([presign/5, confirm/5, view_url/2, download/1]).
+-export([authorize/2]).
 
 -ifdef(TEST).
 %% 纯函数，导出仅为可直接验收「不做套件协商」这一 fail-closed 语义

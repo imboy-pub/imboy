@@ -856,6 +856,9 @@ get_routes() ->
                 {"/api/v1/workspaces/:workspace_id/groups", workspace_handler, #{
                     action => group_list
                 }},
+                {"/api/v1/workspaces/:workspace_id/attachments", workspace_attachment_handler, #{}},
+                {"/api/v1/workspaces/:workspace_id/attachments/:attachment_id/open",
+                    workspace_attachment_handler, #{}},
                 {"/api/v1/groups/:group_id/read", workspace_handler, #{
                     action => group_read
                 }},
