@@ -1,15 +1,15 @@
 # 第三方依赖许可证清单与合规结论
 
 > 对应 E2EE gap-matrix **D3**（依赖清单缺失 / AGPL 未标注）与 **X5/X15**（AGPL 发布门）。
-> 最后核对：2026-08-02
+> 技术来源核对：2026-10-08；许可证处置要求仍沿用原发布门，未作新的法律判断。
 
-清单正文见 **[third-party-licenses.generated.md](./third-party-licenses.generated.md)**（143 条，机器生成）。
+仓内 **[third-party-licenses.generated.md](./third-party-licenses.generated.md)** 是历史清单快照，不能证明当前锁文件或交付产物已完成许可证核查。当前扫描结果保存在仓库外，并绑定候选版本与依赖锁文件。
 
 重新生成：
 
 ```bash
 cd imboy
-scripts/license_inventory.sh > docs/legal/third-party-licenses.generated.md
+scripts/license_inventory.sh > /tmp/imboy-third-party-licenses.md
 scripts/license_inventory.sh --check      # 门禁：发现强 copyleft 退出 1
 scripts/license_inventory.sh --selftest   # 校验判别函数本身（10 条样本，含无标题行的裸 MIT）
 ```
@@ -21,15 +21,14 @@ scripts/license_inventory.sh --selftest   # 校验判别函数本身（10 条样
 
 | 范围 | 状态 |
 |------|------|
-| imboy Erlang 运行时依赖（`deps/*`，34 个） | ✅ 已扫 |
-| imboyapp Flutter 直接依赖（`direct main`，109 个） | ✅ 已扫（含 path/git/sdk 三种来源） |
+| imboy Erlang 运行时依赖（`deps/*`） | 脚本扫描本机依赖副本；数量以当前结果为准 |
+| imboyapp Flutter 直接依赖（`direct main`） | 脚本扫描 path/git/sdk 来源；数量以当前结果为准 |
 | Flutter 传递依赖 | ❌ 未扫——随包分发，发布前需补 |
 | imboyadmin（npm） | ❌ 未扫 |
-| imboy-sdk-js（npm） | ❌ 未扫 |
 
 **未扫的部分是真未扫**，不要把本文当成"依赖已全部合规"的凭据。
 
-## 许可证分布（已扫部分）
+## 历史快照的许可证分布（不代表当前交付产物）
 
 | 许可证 | 数量 |
 |--------|------|
@@ -48,8 +47,8 @@ scripts/license_inventory.sh --selftest   # 校验判别函数本身（10 条样
 
 | 包 | 版本 | 位置 |
 |----|------|------|
-| `vodozemac` | 0.5.0 | imboyapp `pubspec.yaml:222` |
-| `flutter_vodozemac` | 0.5.0 | imboyapp `pubspec.yaml:221` |
+| `vodozemac` | 0.8.0 | imboyapp `pubspec.lock` 的同名依赖条目 |
+| `flutter_vodozemac` | 0.8.1 | imboyapp `pubspec.lock` 的同名依赖条目 |
 
 这是 E2EE 的 Olm/Megolm 实现，功能上无法直接摘掉。AGPL-3.0 的网络条款要求
 向使用者提供**完整对应源码**，与私有化售卖的商业模式不相容。
@@ -62,7 +61,7 @@ crate** 自建 FFI 绑定，保持 `fvod` 调用面兼容以使 `lib/` 零改动
 
 ## ⚠️ 需查明：无许可证授权的依赖
 
-以下两项都是我们自己在 `gitee.com/imboy-tripartite-deps` 下的 fork，fork 时丢了或从未有过许可证正文。
+当前副本中，`simple_captcha` 没有项目级许可证正文，`ic_storage_space` 的 LICENSE 只有版权声明。来源以实际 Git revision 与 Flutter 锁文件为准；不能从 fork 地址推断授权。
 **没有许可证 = 没有再分发权**，性质上和 AGPL 一样是分发阻断项，只是更容易解决。
 
 | 包 | 现状 | 动作 |
