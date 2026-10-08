@@ -208,6 +208,19 @@ include erlang.mk
 # 模块名在 Erlang 里全局唯一，`%/$(m).erl` 不会误伤其他模块。
 ERLC_EXCLUDE_PATHS = $(foreach m,$(ERLC_EXCLUDE),$(filter %/$(m).erl,$(ERL_FILES)))
 
+# Preserve direct-module unit coverage for physically excluded features.
+# Fixtures are test-only: neither production ebin nor the release app includes them.
+# Full builds never add this directory to EUnit's code path, even after a profile switch.
+IMBOY_FEATURE_TEST_EBIN = $(ERLANG_MK_TMP)/feature-test-ebin
+ifneq ($(strip $(ERLC_EXCLUDE)),)
+override EUNIT_ERL_OPTS += -pa $(IMBOY_FEATURE_TEST_EBIN)
+test-build::
+	$(verbose) mkdir -p $(IMBOY_FEATURE_TEST_EBIN)
+	$(verbose) erlc $(TEST_ERLC_OPTS) -pa ebin -I include \
+		$(foreach p,$(wildcard $(DEPS_DIR)/*/ebin),-pa $(p)) \
+		-o $(IMBOY_FEATURE_TEST_EBIN) $(ERLC_EXCLUDE_PATHS)
+endif
+
 # BUILD-00R 物理裁剪装配钩子：erlang.mk 的 ERLC_EXCLUDE 只保证被排除模块
 # 不进 .app modules（relx 按整目录拷贝 ebin，不读 modules），因此必须在
 # relx 组装前清掉 ebin 中的陈旧 beam，并删除同版本号的既有 release 目录
