@@ -31,6 +31,7 @@ create_vote_success_test_() ->
                     {ok, 2}
                 end}
             ]},
+            {group_vote_message_logic, [{publish, 1, fun(_) -> {error, message_not_accepted} end}]},
             {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]}
         ],
         fun() ->
@@ -78,6 +79,7 @@ create_vote_with_options_test_() ->
                     {ok, 3}
                 end}
             ]},
+            {group_vote_message_logic, [{publish, 1, fun(_) -> {error, message_not_accepted} end}]},
             {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]}
         ],
         fun() ->
@@ -158,6 +160,7 @@ cast_vote_single_choice_test_() ->
                     {ok, 3001, [{<<"id">>, 3001}]}
                 end}
             ]},
+            {group_vote_message_logic, [{publish, 1, fun(_) -> {error, message_not_accepted} end}]},
             {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]}
         ],
         fun() ->
@@ -195,6 +198,7 @@ cast_vote_multiple_choice_test_() ->
                     {ok, 3001, [{<<"id">>, 3001}]}
                 end}
             ]},
+            {group_vote_message_logic, [{publish, 1, fun(_) -> {error, message_not_accepted} end}]},
             {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]}
         ],
         fun() ->
@@ -219,6 +223,7 @@ cast_vote_already_voted_test_() ->
                     {ok, #{<<"id">> => 3001, <<"option_ids">> => <<"[\"opt1\"]">>}}
                 end}
             ]},
+            {group_vote_message_logic, [{publish, 1, fun(_) -> {error, message_not_accepted} end}]},
             {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]}
         ],
         fun() ->
@@ -254,6 +259,7 @@ cast_vote_closed_test_() ->
                     }}
                 end}
             ]},
+            {group_vote_message_logic, [{publish, 1, fun(_) -> {error, message_not_accepted} end}]},
             {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]}
         ],
         fun() ->
@@ -275,6 +281,7 @@ cast_vote_expired_test_() ->
                     }}
                 end}
             ]},
+            {group_vote_message_logic, [{publish, 1, fun(_) -> {error, message_not_accepted} end}]},
             {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]}
         ],
         fun() ->
@@ -337,6 +344,7 @@ update_vote_success_test_() ->
                     {ok, 1}
                 end}
             ]},
+            {group_vote_message_logic, [{publish, 1, fun(_) -> {error, message_not_accepted} end}]},
             {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]}
         ],
         fun() ->

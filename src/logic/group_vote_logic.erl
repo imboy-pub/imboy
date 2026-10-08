@@ -108,14 +108,18 @@ do_create_vote(Gid, CreatorId, Title, Options, Extra) ->
         {ok, _VoteId, _} ->
             case normalize_write_result(group_vote_ds:insert_options_batch(OptionsData)) of
                 {ok, _Count} ->
-                    {ok, #{
+                    Vote = #{
                         <<"vote_id">> => VoteId,
                         <<"group_id">> => Gid,
                         <<"creator_id">> => CreatorId,
                         <<"title">> => Title,
                         <<"vote_type">> => VoteType,
                         <<"is_anonymous">> => IsAnonymous
-                    }};
+                    },
+                    case group_vote_message_logic:publish(Vote) of
+                        {ok, Message} -> {ok, Vote#{<<"chat_message">> => Message}};
+                        {error, _} -> {ok, Vote#{<<"message_status">> => <<"failed">>}}
+                    end;
                 {error, Reason} ->
                     {error, Reason}
             end;
