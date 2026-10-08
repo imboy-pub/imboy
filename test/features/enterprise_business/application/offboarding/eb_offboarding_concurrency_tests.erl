@@ -418,7 +418,14 @@ scrub(Scope) ->
     _ = ?FIX:cleanup(Scope),
     case is_integer(Org) of
         true ->
-            _ = ?FIX:exec(<<"DELETE FROM organization_member WHERE organization_id=$1">>, [Org]);
+            %% Preserve the owner required by the deferred organization constraint.
+            _ = ?FIX:tx(fun(Conn) ->
+                elib_pg:execute(
+                    Conn,
+                    <<"DELETE FROM organization_member WHERE organization_id=$1 AND role<>'owner'">>,
+                    [Org]
+                )
+            end);
         false ->
             ok
     end,
