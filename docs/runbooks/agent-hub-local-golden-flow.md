@@ -1,105 +1,44 @@
-# Runbook — Agent Hub 本地 Golden Flow 复现（E2E-01）
+# Agent Hub 本地诊断 / Agent Hub local diagnostics
 
-> 目标：从零 scratch 环境复现 Agent Hub 全链（incoming webhook → 内建 Agent 对话
-> → MCP Agent task/HITL → 人工审批 → Bot mention/delivery/reply）并归档证据。
-> 前置阅读：PDT-01 三契约、ADR 信任边界、EVID-00 证据协议、
-> [bot-webhook-aead-key](../runbooks/bot-webhook-aead-key.md)（AEAD 主密钥生命周期）。
->
-> 当前自动化状态：脚本使用 marker scratch DB 跑全链迁移和 20 套模块/真库测试；
-> runtime audit 持久记录可按同一 correlation 重建 request/task/event/approval/
-> execution/delivery/outcome，并由冻结 verifier 校验。随后脚本启动真实 loopback
-> 后端，以独立标准库 HTTP 客户端完成 MCP create/approve/grant/task/revoke、
-> 未授权 tool、过期/错误/撤销凭证，以及第二个合法 client 跨 owner 读写拒绝和
-> 零副作用，共 25 项检查；频道 incoming webhook 同时完成
-> 有效 token 发布、无效/停用 token 同形 404 共 4 项检查，并核对仅有效请求落一条
-> system-bot 消息。内建 Agent
-> 子链在运行节点用 `ai_agent_ds:create/1` 建号，经真实 WebSocket C2G `mentions`
-> 帧触发本地 `chat/3` fake provider，并同时核对人类消息和 Agent 定稿已写入
-> `msg_c2g` 与 `msg_store`。fake provider 仅从临时 ebin 加载，不发起任何网络请求。
-> 脚本还验证 Bot 503 四次耗尽、400 一次死信、管理员同 delivery_id 重放、E2EE
-> task 零业务副作用，并真实 stop/start 后端，比较 task/approval/delivery/correlation
-> 快照及从重启进程回读终态。预合并运行通过时 A01-A06 为 PASS、A07 为 SKIP，
-> 整体输出 verifier 接受的 `PARTIAL`（退出码 1）。
+本手册介绍本地诊断脚本的运行条件，不包含历史运行结果或候选验收结论。Agent Hub、Bot、AI 助手与 MCP 属于第二期，一期交付保持入口关闭。
 
-## 1. 环境准备（从空 scratch 开始）
+This guide describes local diagnostic prerequisites without certifying a candidate or recording historical results. Agent Hub, Bot, AI assistants, and MCP belong to phase two and remain disabled in phase-one deliveries.
 
-1. PostgreSQL 实例（本地 4323 或自备），创建 scratch 库：
-   `createdb imboy_agenthub_e2e`
-2. 安装扩展（12 个，见 imboy-clean-deploy 文档：pg_jieba/postgis/timescaledb/…）。
-3. 后端配置：`IMBOYENV=local`、`sys.local.config` 指向 scratch 库；
-   `postgre_aes_key` 必须配置（WH-01 AEAD 主密钥，缺失时投递 fail-closed）。
-4. 前端（可选）：管理台 `bun run dev`（8082）。
-5. harness 默认占用 loopback `19862`；如被占用，用
-   `IMBOY_AGENT_HUB_HTTP_PORT=<未占用私有端口>` 覆盖。非 loopback 地址会拒绝。
+## 隔离与配置 / Isolation and configuration
 
-## 2. 启动与种子
+- 使用脚本创建并标记的 scratch 数据库及 loopback 端点，不连接生产或真实用户数据。
+- 依据目标候选配置数据库、迁移及所需扩展；不要沿用历史固定迁移号或扩展数量。
+- 本地 fixture provider 和 webhook receiver 用于诊断，不证明真实外部服务可用。
+- 凭证及原始产物写入仓库外的受控目录，避免泄露到日志和提交。
 
-```bash
-IMBOYENV=local make run            # 启动即自动迁移 1→93+（imboy_migrate strict）
-# fake LLM provider：harness 编译 test fixture 到临时 ebin（无真实外呼）
-# fake Bot webhook receiver：tests 提供 gen_tcp fixture（或 nc -l 本地端口）
-# 最小 MCP client：tests 提供 JSON-RPC 脚本（initialize → tools/list → tools/call）
-```
+- Use marked scratch databases and loopback endpoints, excluding production and real-user data.
+- Configure database prerequisites, migrations, and extensions for the target candidate rather than historical fixed numbers.
+- Local fixture providers and webhook receivers diagnose behavior; they do not qualify external services.
+- Keep credentials and raw artifacts in controlled directories outside Git.
 
-种子（管理台或 API）：两个用户、一个非 E2EE 群、一个 AI Agent、一个 Bot
-（webhook_url 指向 fixture receiver）、一个 MCP Client（记录一次性 secret）。
+## 运行脚本 / Running the script
 
-## 3. Golden Flow
+先阅读 `scripts/agent_hub_golden_flow.sh` 的参数及资源创建、清理逻辑。输出目录必须位于工作区外且末级目录为 `E2E-01`：
 
-| # | 步骤 | 验证点 |
-|---|---|---|
-| 1 | 频道 incoming webhook 发消息（token） | 200；消息落频道；correlation_id 生成 |
-| 2 | 内建 Agent 纯对话 | 已自动化；真 WS `mentions` 输入，fake LLM 回复，两条消息皆进正式表与归档表 |
-| 3 | MCP client：create_agent_task | task=submitted；同 client+idem 重放返回原任务 |
-| 4 | update(start/progress) | working；attempt 事件累计 |
-| 5 | request_task_approval | 群卡片 awaiting_approval；MCP poll 可读 |
-| 6 | 群内人工 approve | approved → 系统调度 resume → 执行 → completed |
-| 7 | 群内 @Bot mention | delivery 入 outbox → fixture 收到签名请求（200）|
-| 8 | Bot 携 reply_context 回复原群 | 验签/归属/到期/一次性全过；消息落原群 |
-
-## 4. 负例（全部预期拒绝）
-
-- MCP：revoked / expired / disabled credential → 401；未授权 tool → deny；
-- 独立 credential 跨 owner 读取/推进任务 → 同形拒绝，原任务状态不变；
-- 重复 idempotency key → 返回原结果，不产生第二任务；
-- Webhook：fixture 503 → 四次耗尽后 dead；400 → 一次 dead；管理员重放后
-  delivery_id 不变且状态回到 pending；
-- 跨群 Bot reply（context 归属不符）→ 拒绝；过期/已用 context → 拒绝；
-- E2EE 群的 agent task → 服务端不产生卡片帧；
-- 服务重启（kill 后端再起）：pending/approval/correlation 全部从 DB 恢复。
-
-## 5. 证据与清理
+Read script arguments and resource creation and cleanup behavior first. The output directory must be outside the workspace and end with `E2E-01`:
 
 ```bash
 bash scripts/agent_hub_golden_flow.sh --profile local-fixture \
   --evidence-dir "$IMBOY_EVIDENCE_ROOT/E2E-01"
-python3 scripts/verify_agent_hub_task_evidence.py --task "$IMBOY_EVIDENCE_ROOT/E2E-01/evidence.json"
-(cd "$IMBOY_EVIDENCE_ROOT/E2E-01" && shasum -a 256 -c manifest.sha256)
 ```
 
-预合并运行通过时，脚本和 verifier 都以退出码 `1` 明确返回 `PARTIAL`：A01-A06
-已通过，A07 等最终合并 Base。合并后只在 `main` 执行：
+根据实际退出码、日志和业务断言判断结果；部分通过、跳过或缺失的检查不能解释为完整通过。最终集成模式额外要求脚本规定的分支和候选文件一致性，应在冻结候选上运行。
 
-```bash
-bash scripts/agent_hub_golden_flow.sh --final-integrated-base \
-  --profile local-fixture \
-  --evidence-dir "$IMBOY_EVIDENCE_ROOT/E2E-01"
-```
+Assess actual exits, logs, and behavioral assertions. Partial, skipped, and missing checks do not establish full completion. Final integration mode adds branch and candidate consistency requirements and must run on a frozen candidate.
 
-最终模式会先确认分支为 `main`，并确认 Agent Hub 候选路径与 HEAD 完全一致；任一
-条件不满足都会在访问 PostgreSQL 前以退出码 `2` 拒绝。全链通过后 A01-A07 和
-verifier 均为 `PASS`（退出码 0）。同一路径旧证据会先移动到带
-`.superseded.<timestamp>.<pid>` 后缀的同级目录。
+## 密钥生命周期 / Key lifecycle
 
-清理只删除本 harness 创建且带 marker 的临时资源（scratch 库 drop、fixture
-端口关闭、临时 secret 文件删除），避免旧文件混入新 manifest。
+长期操作规范见 [Bot webhook AEAD 密钥 / Bot webhook AEAD keys](./bot-webhook-aead-key.md)。密钥轮换及退役须遵循对应环境的授权和恢复要求。
 
-## 6. WH-01 AEAD 主密钥生命周期演练
+Follow the linked key lifecycle guide for rotation and retirement, including target-environment authorization and recovery requirements.
 
-见 [bot-webhook-aead-key](../runbooks/bot-webhook-aead-key.md)：双密钥窗轮换五步、
-密钥丢失 fail-closed 演练（停 worker → 影响面 → 凭证重置/SLA 通知）、
-发布前演练清单。要点：
+## 记录与清理 / Records and cleanup
 
-- 主密钥缺失/解密失败 → 投递 dead（`no_key`），无明文降级路径；
-- 轮换后 `token_migrated=false` 行数必须归零；
-- 旧密钥退役在全部节点滚动完成后执行。
+执行计划、验收卡、截图、测试日志和报告保存在仓库外。记录当前候选与配置哈希、实际命令及行为断言。清理限定于本次创建且具有归属标记的资源，核对数据库、端口、进程和凭证文件的实际终态。
+
+Keep plans, acceptance cards, screenshots, test logs, and reports outside Git. Record current candidate and configuration hashes, commands, and behavioral assertions. Clean only resources created and marked by the current run, and verify final database, port, process, and credential-file state.
