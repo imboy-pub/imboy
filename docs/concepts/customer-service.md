@@ -1,7 +1,7 @@
 # 客服域（Customer Service）
 
 > Purpose：定义 IMBoy 内置客服系统的坐席、会话、访客接入与挂件模型。
-> 实施进度与验收结论见 CHANGELOG.md（首版验收为 PARTIAL，2026-09）。
+> 本文描述领域模型与接口规则；实现存在不代表当前交付候选已完成验收。
 
 ## Concept：三层接入结构
 
@@ -29,7 +29,7 @@
 - **事件**：`customer_service_event` append-only（actor_kind: seat/visitor/tenant_admin/platform_admin/system）。
 - **三端分布**：App 端 `lib/modules/customer_service/`（坐席工作台：入口闸 `cs_seat_gate`、会话状态机、队列）；Admin 端 `/customer-service` 运营面 + 会话列表 + Widget 接入；坐席读写消息复用企业业务端点（会话/消息/ack/资产三步上传）。
 
-**验收边界（来自 progress-assessment，2026-09-16）：** 实现状态整体 PARTIAL，个别验收门（EB-CS-FINAL）曾 BLOCKED，后续经 2026-09-18 三计划集成轮推进——以 evidence 树为准，不在此复制状态快照。
+验收报告、运行记录和历史计划保存在仓外；交付结论应绑定实际候选、平台与测试结果，不沿用历史状态快照。
 
 ## Contract
 
@@ -37,6 +37,9 @@
 2. 客服会话**不存消息副本**：消息唯一真源是企业会话（`enterprise_message`），客服域只管状态与路由。
 3. 平台面（admin）客服路径**每条必带 `workspace_id`**（缺失 422）。
 4. 挂件凭证只走 `x-cs-visit-token` 头（URL 出现 token 即客户端先拒）。
+5. 当前坐席嵌入页面 `/seat/:public_id`：有效可用的 ID 返回 200；缺失、形状非法、不存在或停用的 ID 统一返回 404 `seat_console_unavailable`；非 GET 返回 405；查询参数出现凭证键返回 400。公开 ID 不是登录凭证，页面访问仍受后续票据和来源校验约束。
+
+旧状态码修订曾要求形状非法的 ID 返回 400；当前处理器尚未采用该规则。此合同冲突应在交付验收中明确裁决，不能引用旧执行记录宣称已经实现。
 
 ## Constraints
 
