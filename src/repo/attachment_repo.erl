@@ -30,9 +30,9 @@
 %% Status: 1=正常 0=禁用 -1=软删除
 -export([update_status/2]).
 
-%% @doc 把 scope='moment' 且尚未绑定(scope_ref IS NULL)的附件回填 scope_ref=MomentId
-%% （两阶段绑定：媒体在发帖前上传时 scope_ref 未知，发帖后按 object_key 回填）。
--export([bind_moment_scope_ref/3]).
+%% @doc 在发帖事务连接上绑定作者的正常、未绑定 moment 附件。
+%% 每个对象必须成功绑定；部分命中返回错误，调用方必须回滚事务。
+-export([bind_moment_scope_ref/4]).
 
 %% @doc 孤儿附件统计（预览用）
 -export([orphan_stats/1]).
@@ -315,8 +315,10 @@ update_status(Id, Status) when Status =:= -1; Status =:= 0; Status =:= 1 ->
         {error, Reason} -> {error, Reason}
     end.
 
--spec bind_moment_scope_ref(integer(), [binary()], integer() | binary()) -> ok | {error, term()}.
-bind_moment_scope_ref(Uid, ObjectKeys, MomentId) when is_integer(Uid), Uid > 0 ->
+-spec bind_moment_scope_ref(
+    epgsql:connection() | pid(), integer(), [binary()], integer() | binary()
+) -> ok | {error, term()}.
+bind_moment_scope_ref(Conn, Uid, ObjectKeys, MomentId) when is_integer(Uid), Uid > 0 ->
     case ObjectKeys of
         [] ->
             ok;
@@ -325,21 +327,22 @@ bind_moment_scope_ref(Uid, ObjectKeys, MomentId) when is_integer(Uid), Uid > 0 -
             %% Client-supplied object paths do not prove ownership.
             Sql =
                 <<"UPDATE ", Tb/binary, " SET scope_ref = $1, updated_at = $2 ",
-                    "WHERE scope = 'moment' AND scope_ref IS NULL AND path = ANY($3) ",
+                    "WHERE scope = 'moment' AND status = 1 AND scope_ref IS NULL AND path = ANY($3) ",
                     "AND creator_user_id = $4">>,
             case
-                elib_pg:query(Sql, [
+                elib_pg:execute(Conn, Sql, [
                     ec_cnv:to_binary(MomentId),
                     elib_dt:now(),
                     ObjectKeys,
                     Uid
                 ])
             of
-                {ok, _} -> ok;
+                {ok, Count} when Count =:= length(ObjectKeys) -> ok;
+                {ok, _} -> {error, invalid_media_attachment};
                 {error, Reason} -> {error, Reason}
             end
     end;
-bind_moment_scope_ref(_, _, _) ->
+bind_moment_scope_ref(_, _, _, _) ->
     {error, invalid_user}.
 
 -spec orphan_stats(map()) -> {ok, map()} | {error, term()}.

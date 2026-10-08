@@ -61,6 +61,14 @@ create_post(AuthorUid, Data) ->
             PostData = maybe_put_location(PostData0, Location),
             case moment_post_repo:add(Conn, PostData) of
                 {ok, PostId} ->
+                    case
+                        attachment_ds:bind_moment_scope_ref(
+                            Conn, AuthorUid, media_object_keys(Media), PostId
+                        )
+                    of
+                        ok -> ok;
+                        {error, BindReason} -> throw({abort_tx, BindReason})
+                    end,
                     case moment_post_acl_repo:replace_for_post(Conn, PostId, AllowUids, DenyUids) of
                         ok ->
                             Recipients = resolve_timeline_recipients(
@@ -495,3 +503,20 @@ find_report_by_id(ReportId) -> moment_report_repo:find_by_id(ReportId).
     {ok, non_neg_integer()} | {error, any()}.
 resolve_report(ReportId, Result, Note, AdmUid) ->
     moment_report_repo:resolve(ReportId, Result, Note, AdmUid).
+
+%% @doc 从媒体列表提取所有 object_key（图片 url、视频 url + cover_url），
+%% 用于同一发帖事务中的附件绑定。过滤空值并去重。
+-spec media_object_keys(list()) -> [binary()].
+media_object_keys(Media) when is_list(Media) ->
+    Keys = lists:flatmap(
+        fun
+            (M) when is_map(M) ->
+                [maps:get(<<"url">>, M, <<>>), maps:get(<<"cover_url">>, M, <<>>)];
+            (_) ->
+                []
+        end,
+        Media
+    ),
+    lists:usort([K || K <- Keys, is_binary(K), K =/= <<>>]);
+media_object_keys(_) ->
+    [].

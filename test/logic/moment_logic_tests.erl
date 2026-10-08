@@ -37,9 +37,6 @@ create_post_parses_location_and_notifies_mentions_test_() ->
                     (2003, _Post) -> false
                 end}
             ]},
-            {attachment_ds, [
-                {'bind_moment_scope_ref', 3, fun(1001, _, _) -> ok end}
-            ]},
             {moment_logic_notify, [
                 {'notify_post_created', 2, fun(1001, 555) -> ok end},
                 {'notify_post_at', 3, fun(1001, 555, Recipients) ->
@@ -106,9 +103,6 @@ create_post_drops_invalid_location_and_skips_at_notify_test_() ->
                         <<"at_uids">> => <<"[]">>
                     }
                 end}
-            ]},
-            {attachment_ds, [
-                {'bind_moment_scope_ref', 3, fun(1001, _, _) -> ok end}
             ]},
             {moment_logic_notify, [
                 {'notify_post_created', 2, fun(1001, 556) -> ok end}
@@ -422,3 +416,20 @@ admin_resolve_report_invalid_result_returns_error_test_() ->
         Result = moment_logic:admin_resolve_report(9001, <<"abc">>, 9, <<>>),
         ?assertEqual({error, <<"举报参数无效"/utf8>>}, Result)
     end).
+
+create_post_transaction_failure_never_notifies_test_() ->
+    ?WITH_MECKS(
+        [
+            {moment_ds, [{'create_post', 2, fun(1001, _) -> {error, invalid_media_attachment} end}]},
+            {moderation_policy, [{'inspect', 2, fun(moment_post, _) -> clean end}]},
+            {moment_logic_notify, [
+                {'notify_post_created', 2, fun(_, _) -> error(unexpected_notification) end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, _}, moment_logic:create_post(1001, #{<<"content">> => <<"post">>})
+            ),
+            ?assertEqual(0, meck:num_calls(moment_logic_notify, notify_post_created, '_'))
+        end
+    ).

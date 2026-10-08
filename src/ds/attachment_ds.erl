@@ -19,7 +19,7 @@
 -export([pending_add/4, pending_remove/1, pending_cleanup/1]).
 -export([find_by_path_and_uid/2]).
 -export([find_by_path/1]).
--export([bind_moment_scope_ref/3]).
+-export([bind_moment_scope_ref/4]).
 
 -export([find_path_by_id/1]).
 -export([find_path_by_group_file/2]).
@@ -235,10 +235,12 @@ find_by_path(ObjectKey) ->
 authorize_group_access(ObjectKey, Uid) ->
     attachment_repo:authorize_group_access(ObjectKey, Uid).
 
-%% @doc 发帖后把 scope='moment' 待绑定的媒体附件回填 scope_ref=MomentId
--spec bind_moment_scope_ref(integer(), [binary()], integer() | binary()) -> ok | {error, term()}.
-bind_moment_scope_ref(Uid, ObjectKeys, MomentId) ->
-    attachment_repo:bind_moment_scope_ref(Uid, ObjectKeys, MomentId).
+%% @doc 在同一发帖事务连接上绑定作者的全部媒体附件
+-spec bind_moment_scope_ref(
+    epgsql:connection() | pid(), integer(), [binary()], integer() | binary()
+) -> ok | {error, term()}.
+bind_moment_scope_ref(Conn, Uid, ObjectKeys, MomentId) ->
+    attachment_repo:bind_moment_scope_ref(Conn, Uid, ObjectKeys, MomentId).
 
 %% @doc 按 id 查询附件 path（admin 下载端点签发 presign GET 用）
 -spec find_path_by_id(integer() | binary()) -> {ok, binary()} | {error, not_found | term()}.

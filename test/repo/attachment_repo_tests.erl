@@ -388,24 +388,29 @@ moment_binding_requires_explicit_owner_test_() ->
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.attachment">> end}]},
             {elib_pg, [
-                {'query', 2, fun(Sql, Params) ->
+                {'execute', 3, fun(owned_conn, Sql, Params) ->
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"creator_user_id = $4">>)),
                     ?assertEqual(
                         [<<"7001">>, lists:nth(2, Params), [<<"other/path">>], 1001], Params
                     ),
-                    {ok, 0}
+                    {ok, 1}
                 end}
             ]}
         ],
         fun() ->
-            ?assertEqual(ok, attachment_repo:bind_moment_scope_ref(1001, [<<"other/path">>], 7001))
+            ?assertEqual(
+                ok,
+                attachment_repo:bind_moment_scope_ref(owned_conn, 1001, [<<"other/path">>], 7001)
+            )
         end
     ).
 
 moment_binding_rejects_invalid_owner_test() ->
     ?assertEqual(
-        {error, invalid_user}, attachment_repo:bind_moment_scope_ref(0, [<<"path">>], 7001)
+        {error, invalid_user},
+        attachment_repo:bind_moment_scope_ref(owned_conn, 0, [<<"path">>], 7001)
     ),
     ?assertEqual(
-        {error, invalid_user}, attachment_repo:bind_moment_scope_ref(<<"1001">>, [], 7001)
+        {error, invalid_user},
+        attachment_repo:bind_moment_scope_ref(owned_conn, <<"1001">>, [], 7001)
     ).
