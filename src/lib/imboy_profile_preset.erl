@@ -45,9 +45,6 @@ delivery_locked_features(phase1_delivery) ->
         channel_discover,
         channel_invitation,
         channel_order,
-        group_vote,
-        group_schedule,
-        group_task,
         project
     ];
 delivery_locked_features(_) ->
@@ -132,7 +129,8 @@ profile_defaults(enterprise) ->
     };
 %% @doc 一期交付白名单（主计划 2026-10-07 §1/§3）：Core IM、组织/工作区/
 %% RBAC（enterprise_business）、人工客服（customer_service）、公告频道底座
-%% （channel，组织内部 General 群依赖）、处置申诉（appeal，治理保留）。
+%% （channel，组织内部 General 群依赖）、处置申诉（appeal，治理保留）、
+%% 群投票、群日程与群作业（一期群协作消息）。
 %% 二期七域与一期默认不承诺的运营域显式关闭；未枚举键经 fail_closed/1
 %% 同样压 false。E2EE OFF 只针对产品能力：TLS、企业托管加密（body_cipher/
 %% keyring）、归档/检索/推送/保留合同全部保持（AC04）。
@@ -144,7 +142,10 @@ profile_defaults(phase1_delivery) ->
         enterprise_business,
         customer_service,
         moment,
-        location
+        location,
+        group_vote,
+        group_schedule,
+        group_task
     ],
     AllKeys = lists:usort(imboy_feature:feature_names()),
     Features = maps:from_list([

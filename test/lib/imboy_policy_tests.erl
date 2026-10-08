@@ -2357,9 +2357,6 @@ phase1_delivery_full_open_overrides_still_locked_test_() ->
                     channel_discover,
                     channel_invitation,
                     channel_order,
-                    group_vote,
-                    group_schedule,
-                    group_task,
                     project
                 ]
         ),
@@ -2367,7 +2364,18 @@ phase1_delivery_full_open_overrides_still_locked_test_() ->
         %% 一期白名单域可用。
         lists:foreach(
             fun(K) -> ?assertEqual(true, maps:get(K, Features)) end,
-            [core, channel, appeal, enterprise_business, customer_service, moment, location]
+            [
+                core,
+                channel,
+                appeal,
+                enterprise_business,
+                customer_service,
+                moment,
+                location,
+                group_vote,
+                group_schedule,
+                group_task
+            ]
         ),
 
         %% 交付 profile 生效（public view 的 profile 为 binary）。

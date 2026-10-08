@@ -100,6 +100,9 @@ phase1_delivery_whitelist_test_() ->
         ?assertEqual(true, maps:get(customer_service, Features)),
         ?assertEqual(true, maps:get(moment, Features)),
         ?assertEqual(true, maps:get(location, Features)),
+        ?assertEqual(true, maps:get(group_vote, Features)),
+        ?assertEqual(true, maps:get(group_schedule, Features)),
+        ?assertEqual(true, maps:get(group_task, Features)),
 
         %% 二期七域全部关闭。
         lists:foreach(
@@ -116,9 +119,6 @@ phase1_delivery_whitelist_test_() ->
                 channel_discover,
                 channel_invitation,
                 channel_order,
-                group_vote,
-                group_schedule,
-                group_task,
                 project
             ]
         ),
@@ -128,7 +128,16 @@ phase1_delivery_whitelist_test_() ->
         TrueKeys = [K || {K, V} <- maps:to_list(Features), V =:= true],
         ?assertEqual(
             lists:sort([
-                core, channel, appeal, enterprise_business, customer_service, moment, location
+                core,
+                channel,
+                appeal,
+                enterprise_business,
+                customer_service,
+                moment,
+                location,
+                group_vote,
+                group_schedule,
+                group_task
             ]),
             lists:sort(TrueKeys)
         )
@@ -162,6 +171,9 @@ phase1_delivery_delivery_lock_test_() ->
         ?assert(lists:member(moya, Locked)),
         ?assertNot(lists:member(moment, Locked)),
         ?assertNot(lists:member(location, Locked)),
+        ?assertNot(lists:member(group_vote, Locked)),
+        ?assertNot(lists:member(group_schedule, Locked)),
+        ?assertNot(lists:member(group_task, Locked)),
 
         %% 其它 profile 不受交付锁约束（保持现有行为）。
         ?assertEqual([], imboy_profile_preset:delivery_locked_features(community)),
