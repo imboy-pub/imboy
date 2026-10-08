@@ -213,9 +213,9 @@ validate_file_type_mp3_allowed_test_() ->
         ?assertEqual(true, elib_oss:validate_file_type(<<"audio/mpeg">>))
     end).
 
-validate_file_type_octet_stream_rejected_test_() ->
+validate_file_type_octet_stream_allowed_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual(false, elib_oss:validate_file_type(<<"application/octet-stream">>))
+        ?assertEqual(true, elib_oss:validate_file_type(<<"application/octet-stream">>))
     end).
 
 validate_file_type_executable_rejected_test_() ->

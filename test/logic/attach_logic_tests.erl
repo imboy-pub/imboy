@@ -44,6 +44,19 @@ presign_private_ok_returns_bound_key_test() ->
     %% 非 public 不返回 public_url
     ?assertEqual(error, maps:find(<<"public_url">>, Data)).
 
+presign_arbitrary_file_as_binary_test() ->
+    set_garage_env(),
+    lists:foreach(
+        fun(Name) ->
+            {ok, Data} = attach_logic:presign(
+                789, Name, <<"application/octet-stream">>, <<"private">>, undefined
+            ),
+            ?assertMatch(<<"u789/file/", _/binary>>, maps:get(<<"object_key">>, Data)),
+            ?assert(is_binary(maps:get(<<"put_url">>, Data)))
+        end,
+        [<<"settings.toml">>, <<"archive.unknown">>, <<"tool.exe">>]
+    ).
+
 presign_public_returns_public_url_test() ->
     set_garage_env(),
     {ok, Data} = attach_logic:presign(

@@ -39,6 +39,8 @@
 -define(FILE_ID_PREFIX, "file").
 
 -define(ALLOWED_TYPES, [
+    %% 普通文件按二进制附件存储；扩展名不限制，访问仍由 scope 鉴权。
+    <<"application/octet-stream">>,
     <<"application/pdf">>,
     <<"application/msword">>,
     <<"application/vnd.openxmlformats-officedocument.wordprocessingml.document">>,
