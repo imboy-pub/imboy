@@ -173,16 +173,20 @@ strict_mode_test_() ->
 
 strict_setup() ->
     Saved = {
+        application:get_env(imboy, product_profile),
         application:get_env(imboy, plugin_trusted_public_keys),
         application:get_env(imboy, plugin_signature_required)
     },
+    %% 此组验证社区版可配置签名策略；商务版强制规则由 business 组覆盖。
+    application:set_env(imboy, product_profile, community),
     application:unset_env(imboy, plugin_trusted_public_keys),
     application:unset_env(imboy, plugin_signature_required),
     Path = unique_path(),
     ok = file:write_file(Path, <<"plugin content">>),
     {Saved, Path}.
 
-strict_cleanup({{Keys, Required}, Path}) ->
+strict_cleanup({{Profile, Keys, Required}, Path}) ->
+    restore_env(product_profile, Profile),
     restore_env(plugin_trusted_public_keys, Keys),
     restore_env(plugin_signature_required, Required),
     file:delete(Path),
