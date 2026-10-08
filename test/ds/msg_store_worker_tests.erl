@@ -457,6 +457,22 @@ process_row_structural_failure_marks_terminal_test_() ->
         end
     ).
 
+process_row_missing_payload_marks_terminal_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_store_repo, [
+                {'mark_terminal', 3, fun(_T, _M, _E) -> {ok, 1} end},
+                {'mark_failed', 4, fun(_T, _M, _E, _D) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Row = c2g_guard_row(#{<<"payload">> => <<"{\"to\":\"538039\"}">>}),
+            msg_store_worker:process_row(Row),
+            ?assertEqual(1, meck:num_calls(msg_store_repo, mark_terminal, 3)),
+            ?assertEqual(0, meck:num_calls(msg_store_repo, mark_failed, 4))
+        end
+    ).
+
 process_row_db_failure_retries_not_terminal_test_() ->
     ?WITH_MECKS(
         [
@@ -474,5 +490,29 @@ process_row_db_failure_retries_not_terminal_test_() ->
             msg_store_worker:process_row(c2g_guard_row(#{})),
             ?assertEqual(0, meck:num_calls(msg_store_repo, mark_terminal, 3)),
             ?assertEqual(1, meck:num_calls(msg_store_repo, mark_failed, 4))
+        end
+    ).
+
+process_row_poison_does_not_block_next_message_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2g_repo, [
+                {'write_accepted_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> ok end}
+            ]},
+            {msg_store_ds, [{'unstage', 1, fun(_) -> ok end}]},
+            {msg_archive_repo, [{'archive', 1, fun(_) -> ok end}]},
+            {msg_store_repo, [
+                {'mark_terminal', 3, fun(_, _, _) -> {ok, 1} end},
+                {'mark_failed', 4, fun(_, _, _, _) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Bad = c2g_guard_row(#{<<"payload">> => <<"{\"to\":\"538039\"}">>}),
+            Good = c2g_guard_row(#{<<"msg_id">> => <<"m-after-poison">>}),
+            lists:foreach(fun msg_store_worker:process_row/1, [Bad, Good]),
+            ?assertEqual(1, meck:num_calls(msg_store_repo, mark_terminal, 3)),
+            ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_accepted_msg, 11)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, unstage, [<<"m-after-poison">>])),
+            ?assertEqual(0, meck:num_calls(msg_store_repo, mark_failed, 4))
         end
     ).

@@ -196,7 +196,7 @@ process_row(Row) ->
     MsgId = maps:get(<<"msg_id">>, Row),
     RetryCount = maps:get(<<"retry_count">>, Row, 0),
     TypeAtom = msg_type_atom(TypeBin),
-    WriteResult = do_write(TypeAtom, Row),
+    WriteResult = safe_write(TypeAtom, Row),
     case WriteResult of
         ok ->
             maybe_archive(Row),
@@ -234,7 +234,23 @@ process_row(Row) ->
             end
     end.
 
+safe_write(Type, Row) ->
+    try
+        do_write(Type, Row)
+    catch
+        error:{badkey, Key} ->
+            {error, {invalid_staging_payload, missing_field, Key}};
+        error:{badmap, _} ->
+            {error, {invalid_staging_payload, expected_object}};
+        Class:_ ->
+            {error, {write_exception, Class}}
+    end.
+
 -spec terminal_write_reason(term()) -> boolean().
+terminal_write_reason({invalid_staging_payload, _, _}) ->
+    true;
+terminal_write_reason({invalid_staging_payload, _}) ->
+    true;
 terminal_write_reason(no_recipients) ->
     true;
 terminal_write_reason(c2g_conv_seq_missing) ->
