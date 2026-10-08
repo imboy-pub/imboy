@@ -6,6 +6,8 @@ post:
     ## 中文 / English
     管理后台 adm-report handler 的 `create` 动作；路径 `/adm/report/create`。
     Admin handler `adm-report`, action `create`. Path `/adm/report/create`.
+    APP 提交使用 /api/v1/report/create，不能以管理端创建入口代替用户鉴权。
+    Apps submit via /api/v1/report/create; this admin endpoint does not replace user authentication.
   operationId: adm_report_create
   requestBody:
     required: true
@@ -14,6 +16,25 @@ post:
         schema:
           type: object
           additionalProperties: true
+          required: [target_type, target_id, reason]
+          properties:
+            target_type:
+              type: string
+              enum: [moment, group, channel, user]
+              description: 管理端兼容创建入口；消息举报使用用户端正式入口 / Legacy admin creation; message reports use the user endpoint
+            target_id:
+              oneOf:
+                - type: integer
+                  format: int64
+                  minimum: 1
+                - type: string
+                  pattern: '^[1-9][0-9]*$'
+            reason:
+              type: string
+              description: 举报原因 / Report reason
+            description:
+              type: string
+              description: 补充说明 / Additional description
   responses:
     '200':
       description: 成功

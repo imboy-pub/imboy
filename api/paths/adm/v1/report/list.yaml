@@ -6,10 +6,47 @@ get:
     ## 中文 / English
     管理后台 adm-report handler 的 `list` 动作；路径 `/adm/report/list`。
     Admin handler `adm-report`, action `list`. Path `/adm/report/list`.
+    权限 reports:read 或 moments:report:read；moment 查询仅使用状态及分页，其他筛选仅对非 moment 生效。
+    Permission: reports:read or moments:report:read. Moment queries use status and pagination only; other filters apply to non-moment tickets.
   operationId: adm_report_list
   parameters:
     - $ref: '../../../../components/parameters/PaginationPage.yaml'
     - $ref: '../../../../components/parameters/PaginationSize.yaml'
+    - in: query
+      name: target_type
+      schema:
+        type: string
+        enum:
+        - moment
+        - group
+        - channel
+        - user
+        - message
+        description: 举报目标类型 / Report target type
+        default: moment
+    - in: query
+      name: status
+      schema:
+        type: integer
+        default: -1
+        description: -1 全部，0 待处理，1 无违规，2 违规 / -1 all, 0 pending, 1 dismissed, 2 confirmed
+    - in: query
+      name: target_id
+      schema: &id001
+        oneOf:
+        - type: integer
+          format: int64
+          minimum: 1
+        - type: string
+          pattern: ^[1-9][0-9]*$
+    - in: query
+      name: reporter_uid
+      schema: *id001
+    - in: query
+      name: keyword
+      schema:
+        type: string
+        description: 非 moment 检索关键字，最多128字符 / Non-moment search keyword, capped at 128 characters
   responses:
     '200':
       description: 成功

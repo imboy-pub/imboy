@@ -6,6 +6,8 @@ post:
     ## 中文 / English
     管理后台 adm-report handler 的 `resolve` 动作；路径 `/adm/report/resolve`。
     Admin handler `adm-report`, action `resolve`. Path `/adm/report/resolve`.
+    权限 reports:handle 或 moments:report:handle / Permission: reports:handle or moments:report:handle.
+    moment 必须显式指定类型；其余工单可从工单记录推断类型 / Specify moment explicitly; other ticket types may be inferred from the stored ticket.
   operationId: adm_report_resolve
   requestBody:
     required: true
@@ -14,6 +16,36 @@ post:
         schema:
           type: object
           additionalProperties: true
+          required:
+          - report_id
+          - result
+          properties:
+            target_type:
+              type: string
+              enum:
+              - moment
+              - group
+              - channel
+              - user
+              - message
+              description: 举报目标类型 / Report target type
+            report_id:
+              oneOf:
+              - type: integer
+                format: int64
+                minimum: 1
+              - type: string
+                pattern: ^[1-9][0-9]*$
+            result:
+              type: integer
+              enum:
+              - 1
+              - 2
+              description: 1 无违规，2 违规确认 / 1 dismiss, 2 confirm violation
+            note:
+              type: string
+              default: ''
+              description: 备注；非 moment 最多保留500字符 / Note; non-moment notes are capped at 500 characters
   responses:
     '200':
       description: 成功（payload 为空对象）/ Success (empty payload)
