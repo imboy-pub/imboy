@@ -15,7 +15,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(HIRD_BIN, <<"/Users/leeyi/project/imboy.pub/hird/target/debug/hird">>).
+-define(HIRD_BIN, os:getenv("IMBOY_HIRD_BIN", "hird")).
 -define(OUT_ROOT, <<"_build/ag31_10b">>).
 -define(PG, agent_run_pg).
 -define(GPG, agent_grant_pg).
@@ -206,11 +206,11 @@ a20_multi_run_isolation_test() ->
 %% ===================================================================
 
 setup() ->
+    ensure_built(),
     meck:new(?PG, [no_link]),
     meck:new(?GPG, [no_link]),
     meck:new(?MEMBERSHIP, [no_link]),
     meck:new(?CATALOG, [no_link]),
-    ensure_built(),
     ok.
 
 teardown() ->

@@ -25,7 +25,7 @@
 %%% 纪律：hird 仓库只读；runtime 不复制进本仓（产物现场生成到本仓
 %%% gitignored 的 _build/ 下）；mock handler，不接真实 Model/Tool/DB/网络。
 
--define(HIRD_BIN, <<"/Users/leeyi/project/imboy.pub/hird/target/debug/hird">>).
+-define(HIRD_BIN, os:getenv("IMBOY_HIRD_BIN", "hird")).
 -define(OUT_ROOT,
     <<"/Users/leeyi/project/imboy.pub/.worktrees/track-agent-v31-20260916/imboy/_build/spike_ag31_10a">>
 ).
