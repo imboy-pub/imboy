@@ -22,10 +22,9 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
-%% app 根定位：ebin 父目录即 app 根（make eunit-local 的 -pa 布局保证，
-%% code:which 对 .eunit/beam 返回 <app>/.eunit/<mod>.beam）。
+%% Resolve source assets from the application beam, even with external test overlays.
 app_root() ->
-    Ebin = code:which(?MODULE),
+    Ebin = code:which(imboy_sup),
     filename:dirname(filename:dirname(Ebin)).
 
 %% ===================================================================
@@ -95,9 +94,7 @@ runtime_gate_disabled_means_off_test_() ->
         fun() ->
             ?assertEqual(false, imboy_feature:enabled(channel)),
             ?assertEqual(false, imboy_feature:enabled(moment)),
-            %% e2ee 是 Base 固定 feature（CoreFixed）——运行时门同样可关其
-            %% 可选面，但编译期恒在（compiled(e2ee) 恒 true，不随 manifest 裁剪）
-            ?assert(imboy_feature:compiled(e2ee)),
+            %% E2EE is optional; runtime disable must hold in both compiled profiles.
             ?assert(imboy_feature:compiled(core)),
             ?assertEqual(false, imboy_feature:enabled(e2ee)),
             ?assertEqual(false, imboy_feature:enabled(bot_webhook)),
@@ -114,6 +111,7 @@ retention_duties_survive_feature_disable_test_() ->
     ?WITH_MECKS(
         [
             {config_ds, [
+                {'get', 2, fun(_Key, Default) -> Default end},
                 {'env', 1, fun
                     (pg_conf) ->
                         #{
