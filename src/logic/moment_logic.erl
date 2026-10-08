@@ -702,8 +702,23 @@ validate_create(_Content, _Media, Visibility) when
     Visibility < 0; Visibility > 4
 ->
     {error, <<"可见性参数无效"/utf8>>};
-validate_create(_Content, _Media, _Visibility) ->
-    ok.
+validate_create(_Content, Media, _Visibility) ->
+    case lists:all(fun valid_media_item/1, Media) of
+        true -> ok;
+        false -> {error, <<"媒体对象路径无效"/utf8>>}
+    end.
+
+valid_media_item(#{<<"url">> := Url} = Item) when is_binary(Url) ->
+    valid_media_path(Url) andalso
+        is_binary(maps:get(<<"cover_url">>, Item, <<>>));
+valid_media_item(_) ->
+    false.
+
+valid_media_path(Url) ->
+    case unicode:characters_to_list(Url) of
+        Chars when is_list(Chars) -> string:trim(Chars) =/= [];
+        _ -> false
+    end.
 
 -spec validate_comment(binary(), integer()) -> ok | {error, binary()}.
 validate_comment(_Content, PostId) when PostId =< 0 ->
@@ -729,16 +744,18 @@ normalize_non_empty_binary(_) ->
 
 -spec parse_media(term()) -> list().
 parse_media(Media) when is_list(Media) ->
-    [Item || Item <- Media, is_map(Item)];
+    Media;
 parse_media(Media) when is_binary(Media), Media =/= <<>> ->
-    case decode_json(Media, []) of
-        List when is_list(List) -> [Item || Item <- List, is_map(Item)];
-        _ -> []
+    case decode_json(Media, invalid_media) of
+        List when is_list(List) -> List;
+        _ -> [invalid_media]
     end;
 parse_media(Media) when is_map(Media) ->
     [Media];
+parse_media(Media) when Media =:= undefined; Media =:= null; Media =:= <<>> ->
+    [];
 parse_media(_) ->
-    [].
+    [invalid_media].
 
 -spec parse_uid_list(term()) -> [integer()].
 parse_uid_list(undefined) ->
