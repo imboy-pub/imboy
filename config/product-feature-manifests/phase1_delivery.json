@@ -7,6 +7,9 @@
     "channel",
     "moment",
     "location",
+    "group_vote",
+    "group_schedule",
+    "group_task",
     "enterprise_business",
     "customer_service"
   ]
