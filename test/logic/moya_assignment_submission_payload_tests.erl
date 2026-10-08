@@ -92,8 +92,8 @@ replay_full_chain_reads_draft_current_status_test_() ->
     %% meck repo：重放行 created=false + AI 草稿现值 succeeded →
     %% 响应 ai_status=succeeded（RED：现实现硬编码 queued，客户端显示错态）
     ?WITH_MECKS(replay_mocks(<<"succeeded">>), fun() ->
-        %% create_in_tx 入参行含 elib_tsid:generate()，需先初始化（幂等）
-        _ = elib_tsid:init(#{dc_id => 1, node_id => 1}),
+        %% Reuse the TSID runtime started by the shared EUnit fixture.
+        {ok, _} = elib_tsid:runtime_handle(),
         {ok, Payload} = moya_assignment_logic:create_submission(
             978001, 979001, <<"idem-key-8c">>, replay_body()
         ),
@@ -108,7 +108,7 @@ replay_full_chain_reads_draft_current_status_test_() ->
 replay_full_chain_no_draft_row_test_() ->
     %% 无草稿行（ai_draft_status_tx → undefined）→ none
     ?WITH_MECKS(replay_mocks(undefined), fun() ->
-        _ = elib_tsid:init(#{dc_id => 1, node_id => 1}),
+        {ok, _} = elib_tsid:runtime_handle(),
         {ok, Payload} = moya_assignment_logic:create_submission(
             978001, 979001, <<"idem-key-8c">>, replay_body()
         ),
