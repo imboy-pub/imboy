@@ -13,7 +13,7 @@
 > **Status**: 长期协议设计文档（Phase 5 前置）
 > **Scope**: 后端 `/v1/app/manifest` + WS push + Flutter / Vue 双端集成
 > **Source of truth**: `src/api/app_handler.erl`（待 Phase 5 扩展）、`src/lib/imboy_plugin_loader.erl`、`imboy_plugin_registry.erl#manifest_v2/1`
-> **Related docs**: `docs/reference/plugin/contract.md` §3.2 entries / i18n、`.claude/plan/industrial-plugin-architecture-roadmap.md` Phase 5
+> **Related docs**: [插件契约](./contract.md) §3.2 entries / i18n
 > **简体中文为权威版本，本文采用 Pattern A 同节并排双语 / Chinese is authoritative; Pattern A bilingual**
 
 ---
@@ -542,38 +542,6 @@ audience_match(#{kind := tenant, tenant_ids := Ts}, _, T) ->
 5. **WS 推送频率限制**：单用户每秒不超过 1 次 manifest_updated（防 admin 误操作风暴）
 6. **etag 不含时间戳**：避免缓存永不命中导致 manifest 流量爆炸
 7. **manifest 体积控制**：单 manifest < 32KB；entries 总数 < 200（防 DoS）
-
----
-
-## 10. 实施切片建议 / Implementation slices
-
-### Phase 5 切片 1（后端）
-- 在 `src/api/app_handler.erl` 添加 `manifest/2` action
-- 实现 ETag 计算与 304 返回
-- per-user 缓存（imboy_cache 60s TTL）
-- eunit 测试覆盖
-
-### Phase 5 切片 2（后端 WS）
-- `imboy_plugin_lifecycle` 状态变更后调 `imboy_app_manifest:invalidate_all/0`
-- WebSocket S2C `manifest_updated` 事件类型
-- syn 按 user group 推送
-
-### Phase 5 切片 3（Flutter）
-- `imboyapp/lib/plugin/plugin_registry.dart`（factory map）
-- `ManifestProvider`（state management）
-- 主页底部 tab 动态生成 + 深链处理
-- shared_preferences 持久化
-
-### Phase 5 切片 4（Vue admin）
-- `imboy-admin-frontend/src/router/plugin-routes.ts`
-- Pinia `manifest` store
-- 路由动态注入 / 移除
-- 菜单可见性
-
-### Phase 5 切片 5（联调 + 灰度发布）
-- 端到端：后端 disable moment → Flutter 朋友圈 tab 30s 内消失
-- admin 朋友圈管理菜单同步消失
-- 灰度按 uid_hash bucket 验证
 
 ---
 

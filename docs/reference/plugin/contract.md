@@ -21,8 +21,8 @@
 > **Last Updated**: 2026-04-29（架构评审反馈整合版）
 > **Status**: 长期插件架构契约文档（Phase 0 立项版，contract_version=1.0）
 > **Scope**: 定义 IMBoy 后端"插件"的形态、清单格式、behaviour 接口、命名约定与通信规则
-> **Source of truth**: `src/lib/imboy_plugin.erl`（待 P0-T1 实现）、`include/imboy_plugin.hrl`、`priv/plugins/*/plugin.toml`
-> **Related docs**: `.claude/plan/industrial-plugin-architecture-roadmap.md`、`docs/architecture/overview.md`、`docs/adr/0005-modular-monolith-boundaries.md`、`priv/plugin-examples/example/plugin.config`（P0-T5 教学样板，第三方插件作者参考）
+> **Source of truth**: `src/lib/imboy_plugin.erl`、`include/imboy_plugin.hrl`、`priv/plugins/*/plugin.toml`
+> **Related docs**: [架构总览](../../architecture/overview.md)、[模块边界 ADR](../../adr/0005-modular-monolith-boundaries.md)、[插件配置示例](../../../priv/plugin-examples/example/plugin.config)
 > **简体中文为权威版本，本文采用 Pattern A 同节并排双语 / Chinese is authoritative; bilingual sections side-by-side**
 
 ---
