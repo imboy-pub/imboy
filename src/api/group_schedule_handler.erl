@@ -120,6 +120,36 @@ create(Req0, State) ->
         {_, _, _, _} when RemindBefore < 0 ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         _ ->
+            create_validated_schedule(
+                Req0,
+                GroupId2,
+                Uid,
+                Title,
+                Description,
+                Location,
+                StartAt,
+                EndAt,
+                RemindBefore,
+                ParticipantIds
+            )
+    end.
+
+create_validated_schedule(
+    Req0,
+    GroupId2,
+    Uid,
+    Title,
+    Description,
+    Location,
+    StartAt,
+    EndAt,
+    RemindBefore,
+    ParticipantIds
+) ->
+    case future_schedule_start(StartAt) of
+        false ->
+            elib_response:error(Req0, <<"开始时间必须晚于当前时间"/utf8>>, ?ERR_BAD_REQUEST);
+        true ->
             case
                 group_schedule_logic:create_schedule(
                     GroupId2,
@@ -154,6 +184,15 @@ create(Req0, State) ->
                     ?LOG_ERROR("创建日程失败: ~p", [Reason]),
                     elib_response:error(Req0, <<"创建日程失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
             end
+    end.
+
+future_schedule_start(StartAt) ->
+    try
+        StartTs = elib_dt:rfc3339_to(StartAt),
+        NowTs = elib_dt:rfc3339_to(elib_dt:now()),
+        is_integer(StartTs) andalso is_integer(NowTs) andalso StartTs > NowTs
+    catch
+        _:_ -> false
     end.
 
 %% @doc 修改群组日程

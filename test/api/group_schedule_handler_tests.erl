@@ -517,11 +517,56 @@ init_my_list_with_time_range_query_compatible_test_() ->
         end
     ).
 
+init_create_past_or_current_start_rejected_before_business_write_test_() ->
+    [
+        rejected_start_case(Start)
+     || Start <- [
+            <<"2019-12-31T23:59:59Z">>, <<"2020-01-01T00:00:00Z">>
+        ]
+    ].
+
+rejected_start_case(Start) ->
+    ?WITH_MECKS(
+        feature_gate_bypass_mocks() ++
+            [
+                {elib_param, [
+                    {post, 1, fun(_) ->
+                        #{
+                            <<"group_id">> => <<"9">>,
+                            <<"title">> => <<"Regression">>,
+                            <<"start_at">> => Start,
+                            <<"end_at">> => <<"2026-02-22T11:00:00Z">>
+                        }
+                    end}
+                ]},
+                {group_schedule_logic, [
+                    {create_schedule, 9, fun(_, _, _, _, _, _, _, _, _) ->
+                        error(unexpected_schedule_creation)
+                    end}
+                ]},
+                {elib_response, [
+                    {error, 3, fun(_, _, Code) ->
+                        self() ! {resp_code, Code},
+                        req_error
+                    end}
+                ]}
+            ],
+        fun() ->
+            {ok, Req, _} = group_schedule_handler:init(req_mock(), #{
+                action => create, current_uid => 300
+            }),
+            ?assertEqual(req_error, Req),
+            ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code()),
+            ?assertEqual(0, meck:num_calls(group_schedule_logic, create_schedule, '_'))
+        end
+    ).
+
 req_mock() ->
     #{mock_req => true}.
 
 feature_gate_bypass_mocks() ->
     [
+        {elib_dt, [{now, 0, fun() -> <<"2020-01-01T00:00:00Z">> end}]},
         {imboy_feature, [
             {'ensure_enabled', 2, fun(_Req, _Feature) ->
                 ok
