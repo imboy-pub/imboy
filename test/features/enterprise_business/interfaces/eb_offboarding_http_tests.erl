@@ -818,7 +818,15 @@ scrub(Scope) ->
     _ = ?FIX:cleanup(Scope),
     case is_integer(Org) of
         true ->
-            _ = ?FIX:exec(<<"DELETE FROM organization_member WHERE organization_id=$1">>, [Org]);
+            %% Owner 受提交时约束保护，不能作为普通成员单独清理。
+            %% 显式事务使其它延迟约束失败返回 SQL 错误，不击穿驱动连接。
+            _ = ?FIX:tx(fun(Conn) ->
+                elib_pg:execute(
+                    Conn,
+                    <<"DELETE FROM organization_member WHERE organization_id=$1 AND role<>'owner'">>,
+                    [Org]
+                )
+            end);
         false ->
             ok
     end,
