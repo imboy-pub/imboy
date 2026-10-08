@@ -349,7 +349,7 @@ repeated_read_zero_side_effect_test_() ->
 %% ===================================================================
 
 new_uid() ->
-    erlang:system_time(millisecond) * 1000 + rand:uniform(999).
+    elib_tsid:generate().
 
 create_human(Uid) ->
     create_user(Uid, 0).
