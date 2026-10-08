@@ -202,6 +202,7 @@ user_keys_with_forbidden_returns_403_test_() ->
 user_keys_with_internal_error_returns_500_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
@@ -233,6 +234,7 @@ user_keys_with_internal_error_returns_500_test_() ->
 group_member_keys_with_valid_gid_returns_success_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
@@ -265,6 +267,7 @@ group_member_keys_with_valid_gid_returns_success_test_() ->
 group_member_keys_with_invalid_gid_returns_400_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
@@ -287,6 +290,7 @@ group_member_keys_with_invalid_gid_returns_400_test_() ->
 group_member_keys_with_non_member_returns_403_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
@@ -314,6 +318,7 @@ group_member_keys_with_non_member_returns_403_test_() ->
 group_member_keys_with_database_error_returns_500_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
@@ -341,6 +346,7 @@ group_member_keys_with_database_error_returns_500_test_() ->
 group_member_keys_with_fanout_limit_returns_409_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
@@ -480,6 +486,7 @@ group_history_grant_rejects_non_get_methods_test_() ->
 user_keys_with_same_user_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
@@ -507,6 +514,7 @@ user_keys_with_same_user_test_() ->
 group_member_keys_with_empty_group_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
@@ -534,6 +542,7 @@ group_member_keys_with_empty_group_test_() ->
 user_keys_with_zero_uid_returns_400_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
@@ -556,6 +565,7 @@ user_keys_with_zero_uid_returns_400_test_() ->
 user_keys_with_negative_uid_returns_400_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
@@ -578,6 +588,7 @@ user_keys_with_negative_uid_returns_400_test_() ->
 group_member_keys_with_zero_gid_returns_400_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end}
             ]},
