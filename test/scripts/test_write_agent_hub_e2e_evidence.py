@@ -28,11 +28,10 @@ class EvidenceWriterTest(unittest.TestCase):
         self.base = Path(self.tmp.name)
         self.repo = self.base / "repo"
         (self.repo / "scripts").mkdir(parents=True)
-        (self.repo / "docs/operations").mkdir(parents=True)
         (self.repo / "docs/runbooks").mkdir(parents=True)
         (self.repo / "scripts/agent_hub_golden_flow.sh").write_text(
             "#!/bin/sh\n", encoding="utf-8")
-        (self.repo / "docs/operations/agent-hub-local-golden-flow.md").write_text(
+        (self.repo / "docs/runbooks/agent-hub-local-golden-flow.md").write_text(
             "runbook\n", encoding="utf-8")
         (self.repo / "docs/runbooks/bot-webhook-aead-key.md").write_text(
             "aead runbook\n", encoding="utf-8")
@@ -121,6 +120,11 @@ class EvidenceWriterTest(unittest.TestCase):
         evidence = VERIFIER._load_evidence_json(self.evidence / "evidence.json")
         self.assertIn(
             "failed_step=none", (self.evidence / "run-summary.txt").read_text())
+        runbook = next(row for row in evidence["artifacts"]
+                       if row["id"] == "artifact-runbook")
+        self.assertEqual(Path(runbook["path"]),
+                         (self.repo / "docs/runbooks/agent-hub-local-golden-flow.md").resolve())
+        self.assertTrue(Path(runbook["path"]).is_file())
         by_id = {row["acceptance_id"]: row for row in evidence["acceptance"]}
         self.assertEqual(by_id["E2E-01-A01"]["status"], "PASS")
         self.assertEqual(by_id["E2E-01-A02"]["status"], "PASS")

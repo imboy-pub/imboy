@@ -60,7 +60,7 @@ esac
 FINAL_INTEGRATED_PATHS=(
   priv/migrations/00000107_agent_hub_runtime_audit.down.sql
   priv/migrations/00000107_agent_hub_runtime_audit.up.sql
-  docs/operations/agent-hub-local-golden-flow.md
+  docs/runbooks/agent-hub-local-golden-flow.md
   scripts/agent_hub_delivery_replay_smoke.py
   scripts/agent_hub_ext01_mcp_client_smoke.py
   scripts/agent_hub_golden_flow.sh

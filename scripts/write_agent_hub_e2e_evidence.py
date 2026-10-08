@@ -74,7 +74,7 @@ def build_evidence(args):
     trace_exporter_path = repo_root / "scripts/export_agent_hub_correlation_trace.sql"
     if trace_exporter_path.is_file():
         artifacts.append(artifact("artifact-trace-exporter", trace_exporter_path))
-    runbook_path = repo_root / "docs/operations/agent-hub-local-golden-flow.md"
+    runbook_path = repo_root / "docs/runbooks/agent-hub-local-golden-flow.md"
     if runbook_path.is_file():
         artifacts.append(artifact("artifact-runbook", runbook_path))
     aead_runbook_path = repo_root / "docs/runbooks/bot-webhook-aead-key.md"
@@ -343,7 +343,7 @@ def build_evidence(args):
             "imboyadmin": args.imboyadmin_sha,
         },
         "final_diff": [
-            "imboy:docs/operations/agent-hub-local-golden-flow.md",
+            "imboy:docs/runbooks/agent-hub-local-golden-flow.md",
             "imboy:priv/migrations/00000107_agent_hub_runtime_audit.down.sql",
             "imboy:priv/migrations/00000107_agent_hub_runtime_audit.up.sql",
             "imboy:scripts/agent_hub_delivery_replay_smoke.py",
