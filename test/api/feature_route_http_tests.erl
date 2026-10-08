@@ -26,7 +26,7 @@ compiled_route_http_contract() ->
     end.
 
 assert_optional_route_contract(Port) ->
-    case imboy_feature:compiled(channel) of
+    case imboy_feature:compiled(channel_discover) of
         false ->
             Response = request(Port, <<"/api/v1/channels/discover">>),
             ?assertMatch(<<"HTTP/1.1 404", _/binary>>, Response);
@@ -43,9 +43,20 @@ request(Port, Path) ->
         5000
     ),
     ok = gen_tcp:send(Socket, [
-        <<"GET ">>, Path, <<" HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n">>
+        <<"GET ">>,
+        Path,
+        <<" HTTP/1.1\r\nHost: ">>,
+        request_host(),
+        <<"\r\nConnection: close\r\n\r\n">>
     ]),
     receive_all(Socket, []).
+
+request_host() ->
+    case config_ds:env(host, '_') of
+        '_' -> <<"localhost">>;
+        Host when is_binary(Host) -> Host;
+        Host when is_list(Host) -> list_to_binary(Host)
+    end.
 
 receive_all(Socket, Acc) ->
     case gen_tcp:recv(Socket, 0, 5000) of
