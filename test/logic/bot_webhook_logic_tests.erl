@@ -2,7 +2,8 @@
 
 %% L-01：Bot webhook 外呼受 feature bot_webhook 守卫——
 %% overseas_baseline 预设默认关闭（effective_features 无键或 false → 不外呼），
-%% community/enterprise 无显式覆盖时保持开放。
+%% 编译包含 Bot 的版本中 community/enterprise 无显式覆盖时保持开放；
+%% 未编译 Bot 的交付版本即使显式开启也不得外呼。
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -30,30 +31,36 @@ msg() ->
     }.
 
 overseas_blocks_push_test_() ->
-    {"overseas 语义（bot_webhook=false）→ push_message 不进入异步外呼", fun() ->
-        setup(#{effective => #{bot_webhook => false}}),
-        R = bot_webhook_logic:push_message(1000000051, from_user(), msg()),
-        ?assertEqual(ok, R),
-        ?assertNot(meck:called(elib_async, async, ['_'])),
-        teardown(ok)
+    {setup, fun() -> setup(#{effective => #{bot_webhook => false}}) end, fun teardown/1, fun(_) ->
+        fun() ->
+            R = bot_webhook_logic:push_message(1000000051, from_user(), msg()),
+            ?assertEqual(ok, R),
+            ?assertNot(meck:called(elib_async, async, ['_']))
+        end
     end}.
 
 missing_key_defaults_open_test_() ->
-    {"community/enterprise 语义（无该键）→ 默认放行进入异步外呼", fun() ->
-        setup(#{effective => #{}}),
-        R = bot_webhook_logic:push_message(1000000051, from_user(), msg()),
-        ?assertEqual(ok, R),
-        ?assert(meck:called(elib_async, async, ['_'])),
-        teardown(ok)
+    {setup, fun() -> setup(#{effective => #{}}) end, fun teardown/1, fun(_) ->
+        fun() ->
+            R = bot_webhook_logic:push_message(1000000051, from_user(), msg()),
+            ?assertEqual(ok, R),
+            ?assertEqual(
+                imboy_feature:compiled(bot_webhook),
+                meck:called(elib_async, async, ['_'])
+            )
+        end
     end}.
 
 explicit_true_opens_test_() ->
-    {"bot_webhook=true → push 异步外呼", fun() ->
-        setup(#{effective => #{bot_webhook => true}}),
-        R = bot_webhook_logic:push(1000000051, #{<<"event">> => <<"test">>}),
-        ?assertEqual(ok, R),
-        ?assert(meck:called(elib_async, async, ['_'])),
-        teardown(ok)
+    {setup, fun() -> setup(#{effective => #{bot_webhook => true}}) end, fun teardown/1, fun(_) ->
+        fun() ->
+            R = bot_webhook_logic:push(1000000051, #{<<"event">> => <<"test">>}),
+            ?assertEqual(ok, R),
+            ?assertEqual(
+                imboy_feature:compiled(bot_webhook),
+                meck:called(elib_async, async, ['_'])
+            )
+        end
     end}.
 
 signature_uses_contract_lowercase_hex_test() ->
