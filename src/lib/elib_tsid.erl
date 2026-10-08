@@ -250,7 +250,9 @@ init(Opts) ->
     pos_integer()
 ) -> ok.
 publish_runtime(Cursor, RegLock, Stats, CombinedNode, DcBits, AllNames, Lead, CapWait, MaxChunk) ->
-    Handle = #{
+    %% 幂等初始化不可把 guarded runtime 静默降级为 standalone。
+    Fence = maps:with([guard_ref, guard_pid], persistent_term:get(?PT_RUNTIME, #{})),
+    Handle = maps:merge(Fence, #{
         cursor => Cursor,
         reg_lock => RegLock,
         stats => Stats,
@@ -260,7 +262,7 @@ publish_runtime(Cursor, RegLock, Stats, CombinedNode, DcBits, AllNames, Lead, Ca
         max_logical_lead_ms => Lead,
         capacity_wait_timeout_ms => CapWait,
         max_batch_chunk => MaxChunk
-    },
+    }),
     persistent_term:put(?PT_RUNTIME, Handle),
     ok.
 
