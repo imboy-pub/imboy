@@ -419,11 +419,11 @@ detail(TaskId, ViewerUid) when
     is_integer(TaskId), TaskId > 0, is_integer(ViewerUid), ViewerUid > 0
 ->
     case detail(TaskId) of
-        {ok, Task} = Ok ->
+        {ok, Task} ->
             GroupId = maps:get(<<"group_id">>, Task, 0),
             case group_ds:is_member(ViewerUid, GroupId) of
                 true ->
-                    Ok;
+                    viewer_assignment(Task, ViewerUid);
                 false ->
                     {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED),
                         ?ERR_TASK_PERMISSION_DENIED}
@@ -433,6 +433,17 @@ detail(TaskId, ViewerUid) when
     end;
 detail(_TaskId, _ViewerUid) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
+
+viewer_assignment(Task, ViewerUid) ->
+    TaskId = maps:get(<<"task_id">>, Task),
+    case group_task_ds:assignment_find_by_task_and_user(TaskId, ViewerUid) of
+        {ok, Assignment} ->
+            {ok, Task#{<<"my_assignment">> => Assignment}};
+        {error, not_found} ->
+            {ok, Task#{<<"my_assignment">> => null}};
+        {error, _} ->
+            {error, imboy_error:error_msg(?ERR_INTERNAL_SERVER_ERROR), ?ERR_INTERNAL_SERVER_ERROR}
+    end.
 
 %% @doc 查询群作业列表
 %% @param GroupId 群组ID
