@@ -337,7 +337,7 @@ create_test_group(OwnerId, Name) ->
 send_c2c_message(From, To, Content) ->
     MsgId = integer_to_binary(elib_tsid:generate()),
     MsgData = #{
-        <<"payload">> => Content,
+        <<"payload">> => #{<<"body">> => Content},
         <<"msg_type">> => <<"text">>,
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
@@ -349,7 +349,7 @@ send_c2c_message(From, To, Content) ->
 send_c2g_message(From, Group, Content) ->
     MsgId = integer_to_binary(elib_tsid:generate()),
     MsgData = #{
-        <<"payload">> => Content,
+        <<"payload">> => #{<<"body">> => Content},
         <<"msg_type">> => <<"text">>,
         <<"action">> => <<"send">>,
         <<"created_at">> => elib_dt:millisecond()
