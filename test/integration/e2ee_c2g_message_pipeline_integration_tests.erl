@@ -78,11 +78,9 @@ test_via_c2g_logic_survives_pipeline() ->
     ?assertEqual(E2EE, E2EEDecoded),
     assert_archive_matches_timeline_seq(MsgId),
 
-    %% payload 列是 jsonb 完整消息信封，其中内嵌 payload.body 必须保真
-    PayloadEnvelope = jsone:decode(maps:get(<<"payload">>, Row), [{object_format, map}]),
-    ?assertEqual(
-        <<"[E2EE]"/utf8>>, maps:get(<<"body">>, maps:get(<<"payload">>, PayloadEnvelope))
-    ).
+    %% Final storage keeps message content in payload; envelope metadata has own columns.
+    StoredPayload = jsone:decode(maps:get(<<"payload">>, Row), [{object_format, map}]),
+    ?assertEqual(maps:get(<<"payload">>, Data), StoredPayload).
 
 test_raw_stage_multi_recipient_survives_pipeline() ->
     #{owner := Owner, member := Member, gid := Gid} = get_context(),
