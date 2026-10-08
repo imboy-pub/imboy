@@ -2,6 +2,31 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("micro_community_test.hrl").
 
+%% Check the real export independently, before any fixture can add mock exports.
+shared_acl_role_permissions_export_test() ->
+    {module, adm_acl} = code:ensure_loaded(adm_acl),
+    ?assertNot(lists:member(adm_acl, meck:mocked())),
+    ?assert(lists:member({role_permissions, 1}, adm_acl:module_info(exports))).
+
+real_role_permissions_preserve_platform_boundary_test_() ->
+    %% Only persisted display-name/ACL overrides are stubbed to their defaults.
+    %% Both adm_acl and adm_index_handler execute their real compiled code.
+    ?MC_WITH_MECKS(
+        [{config_ds, [{get, 2, fun(_Key, Default) -> Default end}]}],
+        fun() ->
+            {module, adm_acl} = code:ensure_loaded(adm_acl),
+            {module, adm_index_handler} = code:ensure_loaded(adm_index_handler),
+            ?assertNot(lists:member(adm_acl, meck:mocked())),
+            ?assertNot(lists:member(adm_index_handler, meck:mocked())),
+            Required = [<<"channels:update">>, <<"groups:update">>],
+            OwnerPermissions = adm_acl:role_permissions(1),
+            ?assert(lists:all(fun(P) -> lists:member(P, OwnerPermissions) end, Required)),
+            UnknownPermissions = adm_acl:role_permissions(2147483647),
+            ?assertEqual([<<"dashboard:view">>], UnknownPermissions),
+            ?assertEqual([], [P || P <- Required, lists:member(P, UnknownPermissions)])
+        end
+    ).
+
 platform_actor_never_becomes_personal_owner_test_() ->
     with_platform(fun() ->
         meck:expect(
