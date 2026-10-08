@@ -14,6 +14,7 @@ get:
     - $ref: '../../../../components/parameters/PaginationSize.yaml'
     - in: query
       name: target_type
+      description: 举报目标类型；省略时查询 moment / Report target type; defaults to moment
       schema:
         type: string
         enum:
@@ -26,13 +27,15 @@ get:
         default: moment
     - in: query
       name: status
+      description: 处理状态；-1 查询全部 / Resolution status; -1 selects all
       schema:
         type: integer
         default: -1
         description: -1 全部，0 待处理，1 无违规，2 违规 / -1 all, 0 pending, 1 dismissed, 2 confirmed
     - in: query
       name: target_id
-      schema: &id001
+      description: 被举报对象 ID，仅非 moment 生效 / Target ID; non-moment only
+      schema:
         oneOf:
         - type: integer
           format: int64
@@ -41,9 +44,17 @@ get:
           pattern: ^[1-9][0-9]*$
     - in: query
       name: reporter_uid
-      schema: *id001
+      description: 举报人员 ID，仅非 moment 生效 / Reporter ID; non-moment only
+      schema:
+        oneOf:
+        - type: integer
+          format: int64
+          minimum: 1
+        - type: string
+          pattern: ^[1-9][0-9]*$
     - in: query
       name: keyword
+      description: 关键字，仅非 moment 生效 / Search keyword; non-moment only
       schema:
         type: string
         description: 非 moment 检索关键字，最多128字符 / Non-moment search keyword, capped at 128 characters
