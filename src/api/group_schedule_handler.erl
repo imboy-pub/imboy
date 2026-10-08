@@ -150,40 +150,42 @@ create_validated_schedule(
         false ->
             elib_response:error(Req0, <<"开始时间必须晚于当前时间"/utf8>>, ?ERR_BAD_REQUEST);
         true ->
-            case
-                group_schedule_logic:create_schedule(
-                    GroupId2,
-                    Uid,
-                    Title,
-                    Description,
-                    Location,
-                    StartAt,
-                    EndAt,
-                    RemindBefore,
-                    ParticipantIds
-                )
-            of
-                {ok, Result} ->
-                    elib_response:success(Req0, Result, <<"日程创建成功"/utf8>>);
-                {error, too_many_participants} ->
-                    elib_response:error(Req0, <<"参与人数量超过限制"/utf8>>, ?ERR_BAD_REQUEST);
-                {error, not_group_member} ->
-                    elib_response:error(Req0, <<"你不是该群成员"/utf8>>, ?ERR_FORBIDDEN);
-                {error, {missing_field, Field}} ->
-                    Msg = <<"缺少必填字段: ", (ec_cnv:to_binary(Field))/binary>>,
-                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
-                {error, {invalid_time_range, _, _}} ->
-                    elib_response:error(Req0, <<"结束时间必须晚于开始时间"/utf8>>, ?ERR_BAD_REQUEST);
-                {error, ?ERR_WORKSPACE_ARCHIVED} ->
-                    elib_response:error(
-                        Req0,
-                        error_msg(?ERR_WORKSPACE_ARCHIVED),
-                        ?ERR_WORKSPACE_ARCHIVED
-                    );
-                {error, Reason} ->
-                    ?LOG_ERROR("创建日程失败: ~p", [Reason]),
-                    elib_response:error(Req0, <<"创建日程失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
-            end
+            Result = group_schedule_logic:create_schedule(
+                GroupId2,
+                Uid,
+                Title,
+                Description,
+                Location,
+                StartAt,
+                EndAt,
+                RemindBefore,
+                ParticipantIds
+            ),
+            create_schedule_response(Req0, Result)
+    end.
+
+create_schedule_response(Req0, Response) ->
+    case Response of
+        {ok, Result} ->
+            elib_response:success(Req0, Result, <<"日程创建成功"/utf8>>);
+        {error, too_many_participants} ->
+            elib_response:error(Req0, <<"参与人数量超过限制"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, not_group_member} ->
+            elib_response:error(Req0, <<"你不是该群成员"/utf8>>, ?ERR_FORBIDDEN);
+        {error, {missing_field, Field}} ->
+            Msg = <<"缺少必填字段: ", (ec_cnv:to_binary(Field))/binary>>,
+            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+        {error, {invalid_time_range, _, _}} ->
+            elib_response:error(Req0, <<"结束时间必须晚于开始时间"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, ?ERR_WORKSPACE_ARCHIVED} ->
+            elib_response:error(
+                Req0,
+                error_msg(?ERR_WORKSPACE_ARCHIVED),
+                ?ERR_WORKSPACE_ARCHIVED
+            );
+        {error, Reason} ->
+            ?LOG_ERROR("创建日程失败: ~p", [Reason]),
+            elib_response:error(Req0, <<"创建日程失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
     end.
 
 future_schedule_start(StartAt) ->
