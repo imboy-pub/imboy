@@ -114,6 +114,8 @@ effective_capabilities_merge_profile_defaults_and_overrides_test_() ->
 effective_features_use_profile_defaults_when_features_block_missing_test_() ->
     ?WITH_MECKS(
         [
+            %% 配置策略用例固定全功能编译条件；裁剪边界由 imboy_feature_tests 验证。
+            {imboy_feature, [{'compiled', 1, fun(_) -> true end}]},
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
@@ -163,6 +165,8 @@ effective_features_explicit_overrides_beat_profile_defaults_test_() ->
 effective_policy_returns_profile_capabilities_features_and_plugins_test_() ->
     ?WITH_MECKS(
         [
+            %% 配置策略用例固定全功能编译条件；裁剪边界由 imboy_feature_tests 验证。
+            {imboy_feature, [{'compiled', 1, fun(_) -> true end}]},
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
@@ -873,6 +877,8 @@ saved_view_keeps_mixed_plugin_feature_overrides_under_features_test_() ->
 preview_config_returns_saved_and_effective_views_without_persisting_test_() ->
     ?WITH_MECKS(
         [
+            %% 配置策略用例固定全功能编译条件；裁剪边界由 imboy_feature_tests 验证。
+            {imboy_feature, [{'compiled', 1, fun(_) -> true end}]},
             {config_ds, [
                 {'get', 2, fun(Key, Default) ->
                     case persistent_term:get({policy_config, Key}, undefined) of
@@ -1394,6 +1400,8 @@ save_config_rejects_invalid_profile_test_() ->
 save_config_explicit_feature_override_beats_plugin_translation_test_() ->
     ?WITH_MECKS(
         [
+            %% 配置策略用例固定全功能编译条件；裁剪边界由 imboy_feature_tests 验证。
+            {imboy_feature, [{'compiled', 1, fun(_) -> true end}]},
             {config_ds, [
                 {'get', 2, fun(Key, Default) ->
                     case persistent_term:get({policy_config, Key}, undefined) of
@@ -2287,6 +2295,8 @@ hard_off_forces_e2ee_feature_off_in_view_test_() ->
 hard_off_absent_keeps_e2ee_feature_on_test_() ->
     ?WITH_MECKS(
         [
+            %% 配置策略用例固定全功能编译条件；裁剪边界由 imboy_feature_tests 验证。
+            {imboy_feature, [{'compiled', 1, fun(_) -> true end}]},
             {config_ds, [
                 {'get', 2, fun default_config_get/2},
                 {'env', 2, fun
