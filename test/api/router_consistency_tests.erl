@@ -93,6 +93,12 @@ open_routes_map_to_route_table_test() ->
     MissingPaths = missing_paths(imboy_router:open(), RoutePathSet),
     ?assertEqual([], MissingPaths).
 
+bot_open_route_matches_compiled_capability_test() ->
+    ?assertEqual(
+        imboy_feature:compiled(bot_webhook),
+        lists:member(<<"/api/v1/bot/send_message">>, imboy_router:open())
+    ).
+
 option_routes_map_to_route_table_test() ->
     RoutePathSet = route_path_set(),
     MissingPaths = missing_paths(imboy_router:option(), RoutePathSet),

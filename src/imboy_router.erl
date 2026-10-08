@@ -1572,17 +1572,23 @@ open() ->
         %% 必须免 902 签名门，否则微信保存配置时恒 403、后台报「Token 验证失败」。
         <<"/api/v1/wechat/mini/events">>,
 
-        %% Bot 发消息：Bot 服务器无用户 JWT，凭证是 api_token
-        %% （Authorization: Bearer <api_token>，校验在 bot_handler:authenticate/1，
-        %% 并有 agent_rate_limiter + has_exchange 防骚扰闸门）
-        <<"/api/v1/bot/send_message">>,
-
         <<"/api/v1/metrics">>,
 
         %% 首启初始化向导（P0-5）— 部署后首次访问必须免鉴权
         <<"/api/adm/setup/status">>,
         <<"/api/adm/setup/init">>
-    ] ++ test_open_routes().
+    ] ++ bot_open_routes() ++ test_open_routes().
+
+-ifdef(IMBOY_FEATURE_BOT_WEBHOOK).
+bot_open_routes() ->
+    %% Bot 发消息：Bot 服务器无用户 JWT，凭证是 api_token
+    %% （Authorization: Bearer <api_token>，校验在 bot_handler:authenticate/1，
+    %% 并有 agent_rate_limiter + has_exchange 防骚扰闸门）
+    [<<"/api/v1/bot/send_message">>].
+-else.
+bot_open_routes() ->
+    [].
+-endif.
 
 %% ===================================================================
 %% 测试路由（仅非生产环境注册）
