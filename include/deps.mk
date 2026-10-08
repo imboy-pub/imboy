@@ -160,7 +160,7 @@ dep_pg_types = ln ../../pg_types
 
 # erlang_pay：纯 Erlang 第三方支付库
 # https://gitee.com/imboy-pub/erlang_pay
-dep_erlang_pay = git https://gitee.com/imboy-pub/erlang_pay.git main
+dep_erlang_pay = git https://gitee.com/imboy-pub/erlang_pay.git v0.3.2
 
 dep_pooler = git https://github.com/epgsql/pooler.git 1.7.0
 dep_epgsql = git https://github.com/epgsql/epgsql.git 4.8.0
@@ -172,7 +172,7 @@ dep_epgsql = git https://github.com/epgsql/epgsql.git 4.8.0
 # partial rollback (PrevVersion derived inside the rolled-back sublist).
 # NOTE: v0.3.3 tag HAS been pushed to github.com/imboy-pub/erlang_migrate
 # (verified via git ls-remote on 2026-08-28); external/Docker builds can resolve it.
-dep_erlang_migrate = git https://github.com/imboy-pub/erlang_migrate.git v0.3.3
+dep_erlang_migrate = git https://github.com/imboy-pub/erlang_migrate.git v0.3.4
 dep_idna = hex 6.1.1 idna
 dep_hackney = git https://gitee.com/imboy-tripartite-deps/hackney.git 1.20.1
 dep_guanco = git https://gitee.com/imboy-tripartite-deps/guanco.git main
