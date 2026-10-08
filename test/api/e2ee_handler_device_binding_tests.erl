@@ -19,10 +19,12 @@
 %% ===================================================================
 
 %% 核心漏洞复现：token 绑定 dev-A，body 声称 dev-B → 必须 403。
-%% 当前代码不校验，此测试在修复前 FAIL。
+%% 启用功能后仍必须检查设备归属，不能只靠交付开关阻止请求。
 report_key_cross_device_must_403_test_() ->
     ?WITH_MECKS(
         [
+            %% 设备绑定用例先启用 E2EE；功能关闭由 capability 套件覆盖。
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end},
                 {'current_did', 1, fun(_State) -> <<"dev-A">> end}
@@ -66,6 +68,8 @@ report_key_cross_device_must_403_test_() ->
 report_key_legacy_unbound_must_403_test_() ->
     ?WITH_MECKS(
         [
+            %% 设备绑定用例先启用 E2EE；功能关闭由 capability 套件覆盖。
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end},
                 {'current_did', 1, fun(_State) -> <<>> end}
@@ -107,6 +111,8 @@ report_key_legacy_unbound_must_403_test_() ->
 report_key_matching_device_allowed_test_() ->
     ?WITH_MECKS(
         [
+            %% 设备绑定用例先启用 E2EE；功能关闭由 capability 套件覆盖。
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
             {auth_ds, [
                 {'current_uid', 1, fun(_State) -> 123 end},
                 {'current_did', 1, fun(_State) -> <<"dev-A">> end}
