@@ -87,10 +87,12 @@ route_s2c_message_success_test_() ->
     ).
 
 route_webrtc_message_success_test_() ->
-    ?WITH_MECK(
-        webrtc_ws_logic,
+    ?WITH_MECKS(
         [
-            {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
+            {imboy_feature, [{'enabled', 1, fun(rtc) -> true end}]},
+            {webrtc_ws_logic, [
+                {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
+            ]}
         ],
         fun() ->
             MsgId = <<"msg_webrtc">>,
@@ -581,6 +583,7 @@ route_c2g_edit_ack_action_test_() ->
 route_webrtc_answer_event_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_feature, [{'enabled', 1, fun(rtc) -> true end}]},
             {webrtc_ws_logic, [
                 {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
             ]}
@@ -600,6 +603,7 @@ route_webrtc_answer_event_test_() ->
 route_webrtc_ice_candidate_event_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_feature, [{'enabled', 1, fun(rtc) -> true end}]},
             {webrtc_ws_logic, [
                 {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
             ]}
@@ -619,6 +623,7 @@ route_webrtc_ice_candidate_event_test_() ->
 route_webrtc_hangup_event_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_feature, [{'enabled', 1, fun(rtc) -> true end}]},
             {webrtc_ws_logic, [
                 {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
             ]}
@@ -736,6 +741,7 @@ route_with_mixed_case_action_test_() ->
 route_with_lowercase_webrtc_type_test_() ->
     ?WITH_MECKS(
         [
+            {imboy_feature, [{'enabled', 1, fun(rtc) -> true end}]},
             {webrtc_ws_logic, [
                 {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
             ]}
@@ -797,5 +803,25 @@ route_s2s_with_action_returns_error_test_() ->
 
             Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
             ?assertMatch({reply, #{<<"code">> := <<"invalid_message_type">>}}, Result)
+        end
+    ).
+
+%% 关闭边界：即使旧客户端发送信令，也不得进入 RTC 处理器。
+route_webrtc_disabled_rejects_without_dispatch_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_feature, [{'enabled', 1, fun(rtc) -> false end}]},
+            {webrtc_ws_logic, [{'event', 4, fun(_, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            Result = message_router_logic:route(
+                <<"rtc-disabled">>,
+                1,
+                #{<<"to">> => <<"2">>},
+                <<"webrtc_offer">>,
+                <<"{}">>
+            ),
+            ?assertMatch({reply, #{<<"action">> := <<"feature_disabled">>}}, Result),
+            ?assertEqual(0, meck:num_calls(webrtc_ws_logic, event, 4))
         end
     ).
