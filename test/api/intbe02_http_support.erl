@@ -603,7 +603,7 @@ http(Port, Method, Path, Body0, Headers0) ->
         end,
     Headers = maps:merge(
         #{
-            <<"host">> => <<"localhost">>,
+            <<"host">> => request_host(),
             <<"connection">> => <<"close">>,
             <<"content-type">> => <<"application/json">>,
             <<"content-length">> => integer_to_binary(byte_size(Body))
@@ -619,6 +619,14 @@ http(Port, Method, Path, Body0, Headers0) ->
     Raw = recv_all(Socket, []),
     ok = gen_tcp:close(Socket),
     parse(Raw).
+
+%% Match the listener's configured host; wildcard dispatch accepts localhost.
+request_host() ->
+    case config_ds:env(host, '_') of
+        '_' -> <<"localhost">>;
+        Host when is_binary(Host) -> Host;
+        Host when is_list(Host) -> list_to_binary(Host)
+    end.
 
 recv_all(Socket, Acc) ->
     case gen_tcp:recv(Socket, 0, 15000) of
