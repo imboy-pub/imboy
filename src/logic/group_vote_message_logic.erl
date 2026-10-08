@@ -8,35 +8,15 @@ publish(#{
     <<"creator_id">> := Creator,
     <<"title">> := Title
 }) ->
-    MsgId = <<"vote_", VoteId/binary>>,
-    Message = #{
-        <<"id">> => MsgId,
-        <<"type">> => <<"C2G">>,
-        <<"from">> => integer_to_binary(Creator),
-        <<"to">> => integer_to_binary(Gid),
-        <<"msg_type">> => <<"groupVote">>,
-        <<"created_at">> => elib_dt:millisecond(),
-        <<"payload">> => #{
+    group_collab_message_logic:publish(
+        Gid,
+        Creator,
+        <<"groupVote">>,
+        VoteId,
+        #{
             <<"vote_id">> => VoteId,
             <<"group_id">> => integer_to_binary(Gid),
             <<"title">> => Title,
             <<"content">> => Title
         }
-    },
-    try msg_c2g_logic:c2g(MsgId, Creator, Message) of
-        ok -> accepted(MsgId, Message);
-        _ -> {error, message_rejected}
-    catch
-        Class:_ ->
-            logger:warning("Group vote message delivery failed: ~p", [Class]),
-            {error, message_not_accepted}
-    end.
-
-accepted(MsgId, Message) ->
-    receive
-        {reply, #{<<"id">> := MsgId, <<"type">> := <<"C2G_SERVER_ACK">>}} ->
-            {ok, Message};
-        {reply, #{<<"id">> := MsgId}} ->
-            {error, message_rejected}
-    after 0 -> {error, message_not_accepted}
-    end.
+    ).

@@ -141,10 +141,26 @@ do_create_schedule(
             schedule_reminders(ScheduleId, StartAt, RemindBefore, ParticipantIds ++ [CreatorId]),
 
             % 返回结果
-            {ok, #{
-                schedule_id => ScheduleId,
-                id => ScheduleDbId
-            }};
+            Result = #{schedule_id => ScheduleId, id => ScheduleDbId},
+            Payload = #{
+                <<"id">> => integer_to_binary(ScheduleDbId),
+                <<"group_id">> => integer_to_binary(GroupId),
+                <<"title">> => Title,
+                <<"content">> => Title,
+                <<"start_time">> => StartAt
+            },
+            case
+                group_collab_message_logic:publish(
+                    GroupId,
+                    CreatorId,
+                    <<"groupSchedule">>,
+                    ScheduleId,
+                    Payload
+                )
+            of
+                {ok, Message} -> {ok, Result#{chat_message => Message}};
+                {error, _} -> {ok, Result#{message_status => <<"failed">>}}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
