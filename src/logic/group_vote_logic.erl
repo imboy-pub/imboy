@@ -85,46 +85,48 @@ do_create_vote(Gid, CreatorId, Title, Options, Extra) ->
         end_at => EndAt
     },
 
-    % 准备选项数据
-    OptionsData = lists:map(
+    OptionsData = vote_options(VoteId, Options),
+    persist_vote(VoteData, OptionsData).
+
+vote_options(VoteId, Options) ->
+    lists:map(
         fun(Option) ->
-            %% 前端经 JSON 提交的 option 为二进制键(<<"option_text">>)，
-            %% 而 logic 单测构造的为原子键(option_text)，两者均需兼容。
-            OptionText = maps:get(<<"option_text">>, Option, maps:get(option_text, Option, <<>>)),
-            SortOrder = maps:get(<<"sort_order">>, Option, maps:get(sort_order, Option, 0)),
-            OptionId = elib_id:gen(<<"opt">>),
+            %% JSON 二进制键和内部原子键均遵循同一选项合同。
             #{
                 vote_id => VoteId,
-                option_id => OptionId,
-                option_text => OptionText,
-                sort_order => SortOrder
+                option_id => elib_id:gen(<<"opt">>),
+                option_text => maps:get(
+                    <<"option_text">>, Option, maps:get(option_text, Option, <<>>)
+                ),
+                sort_order => maps:get(<<"sort_order">>, Option, maps:get(sort_order, Option, 0))
             }
         end,
         Options
-    ),
+    ).
 
-    % 插入投票和选项
+persist_vote(VoteData, OptionsData) ->
     case normalize_write_result(group_vote_ds:insert_vote(VoteData)) of
         {ok, _VoteId, _} ->
             case normalize_write_result(group_vote_ds:insert_options_batch(OptionsData)) of
-                {ok, _Count} ->
-                    Vote = #{
-                        <<"vote_id">> => VoteId,
-                        <<"group_id">> => Gid,
-                        <<"creator_id">> => CreatorId,
-                        <<"title">> => Title,
-                        <<"vote_type">> => VoteType,
-                        <<"is_anonymous">> => IsAnonymous
-                    },
-                    case group_vote_message_logic:publish(Vote) of
-                        {ok, Message} -> {ok, Vote#{<<"chat_message">> => Message}};
-                        {error, _} -> {ok, Vote#{<<"message_status">> => <<"failed">>}}
-                    end;
-                {error, Reason} ->
-                    {error, Reason}
+                {ok, _Count} -> publish_created_vote(VoteData);
+                {error, Reason} -> {error, Reason}
             end;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+publish_created_vote(Data) ->
+    Vote = #{
+        <<"vote_id">> => maps:get(vote_id, Data),
+        <<"group_id">> => maps:get(group_id, Data),
+        <<"creator_id">> => maps:get(creator_id, Data),
+        <<"title">> => maps:get(title, Data),
+        <<"vote_type">> => maps:get(vote_type, Data),
+        <<"is_anonymous">> => maps:get(is_anonymous, Data)
+    },
+    case group_vote_message_logic:publish(Vote) of
+        {ok, Message} -> {ok, Vote#{<<"chat_message">> => Message}};
+        {error, _} -> {ok, Vote#{<<"message_status">> => <<"failed">>}}
     end.
 
 %% @doc 投票
