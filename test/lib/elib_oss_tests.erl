@@ -252,10 +252,20 @@ get_url_contains_file_id_test_() ->
 
 get_url_has_garage_path_format_test_() ->
     ?TEST_SIMPLE(fun() ->
-        %% get_url 现在返回 Garage path-style URL（使用默认配置）
-        {ok, Url} = elib_oss:get_url(<<"file_999_888">>),
-        ?assert(binary:match(Url, <<"file_999_888">>) =/= nomatch),
-        ?assert(binary:match(Url, <<"imboy">>) =/= nomatch)
+        %% 明确配置，避免把独立测试桶误判为 URL 格式错误。
+        with_garage_cfg(
+            #{
+                endpoint => <<"http://127.0.0.1:3900">>,
+                public_endpoint => <<"https://storage.example.invalid">>,
+                bucket => <<"fixture-attachments">>
+            },
+            fun() ->
+                ?assertEqual(
+                    {ok, <<"https://storage.example.invalid/fixture-attachments/file_999_888">>},
+                    elib_oss:get_url(<<"file_999_888">>)
+                )
+            end
+        )
     end).
 
 %% ===================================================================
