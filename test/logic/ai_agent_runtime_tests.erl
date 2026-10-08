@@ -20,12 +20,13 @@ runtime_test_() ->
     ]}.
 
 setup() ->
+    Takeover = takeover_runtime(),
     safe_meck(ai_agent_repo),
     safe_meck(imboy_syn),
     safe_meck(elib_log),
-    takeover_runtime().
+    Takeover.
 
-cleanup(_Takeover) ->
+cleanup(Takeover) ->
     %% 兜底停掉用例内自建的受控实例（正常路径用例 after 段已停）
     case whereis(ai_agent_runtime) of
         Pid when is_pid(Pid) -> catch gen_server:stop(Pid, normal, 5000);
@@ -34,7 +35,7 @@ cleanup(_Takeover) ->
     catch meck:unload(ai_agent_repo),
     catch meck:unload(imboy_syn),
     catch meck:unload(elib_log),
-    restore_runtime().
+    restore_runtime(Takeover).
 
 registers_active_agents() ->
     meck:expect(ai_agent_repo, active_ids, 0, {ok, [101, 202]}),
@@ -45,10 +46,10 @@ registers_active_agents() ->
         Ids = lists:sort(ai_agent_runtime:online_ids()),
         ?assertEqual([101, 202], Ids),
         ?assert(
-            meck:called(imboy_syn, join, [101, <<"ai">>, '_', <<"ai_runtime">>])
+            meck:called(imboy_syn, join, [101, <<"ai">>, Pid, <<"ai_runtime">>])
         ),
         ?assert(
-            meck:called(imboy_syn, join, [202, <<"ai">>, '_', <<"ai_runtime">>])
+            meck:called(imboy_syn, join, [202, <<"ai">>, Pid, <<"ai_runtime">>])
         )
     after
         catch gen_server:stop(Pid)
@@ -62,7 +63,7 @@ survives_db_error() ->
     {ok, Pid} = ai_agent_runtime:start_link(),
     try
         ?assertEqual([], ai_agent_runtime:online_ids()),
-        ?assertNot(meck:called(imboy_syn, join, '_'))
+        ?assertNot(meck:called(imboy_syn, join, ['_', '_', Pid, '_']))
     after
         catch gen_server:stop(Pid)
     end,
@@ -79,17 +80,36 @@ takeover_runtime() ->
             OldPid
     end.
 
-restore_runtime() ->
+restore_runtime(undefined) ->
+    %% 没有被接管的实例时，不创建跨用例存活的后台进程。
+    ok;
+restore_runtime(_OldPid) ->
     case whereis(ai_agent_runtime) of
         undefined ->
-            %% 不链接 fixture 进程：裸测试 VM（无 app）里 pgsql 连接池不
-            %% 存在，恢复实例的首次 refresh 会因 noproc 崩溃——链接传播
-            %% 会把测试进程拖成 cancelled；spawn 启动隔离该风险。
-            spawn(fun() -> catch ai_agent_runtime:start_link() end);
+            %% 等待恢复完成，下一次 setup 先停实例再安装 mock。
+            Parent = self(),
+            Ref = make_ref(),
+            spawn(fun() ->
+                Result =
+                    try ai_agent_runtime:start_link() of
+                        {ok, Pid} ->
+                            unlink(Pid),
+                            ok;
+                        Other ->
+                            Other
+                    catch
+                        Class:Reason -> {Class, Reason}
+                    end,
+                Parent ! {Ref, Result}
+            end),
+            receive
+                {Ref, ok} -> ok;
+                {Ref, Error} -> error({runtime_restore_failed, Error})
+            after 5000 -> error(runtime_restore_timeout)
+            end;
         _ ->
             ok
-    end,
-    ok.
+    end.
 
 %% @doc 兄弟套件/先前崩溃遗留的 meck_proc 未卸载时，先卸载再重新 meck。
 %% 注意 meck_proc:start/2 对已注册模块是内部 badmatch raise（不是
