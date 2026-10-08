@@ -427,11 +427,11 @@ view_url(Uid, ObjectKey) ->
             {error, forbidden}
     end.
 
-%% Group/channel URLs are capabilities checked again on every HTTP read.
+%% Group/channel/moment URLs are checked again on every HTTP read.
 authorized_view(_, Rec, <<"/", _/binary>> = ObjectKey) ->
     sign_view(Rec, ObjectKey);
 authorized_view(Uid, #{<<"scope">> := Scope}, ObjectKey) when
-    Scope =:= <<"group">>; Scope =:= <<"channel">>
+    Scope =:= <<"group">>; Scope =:= <<"channel">>; Scope =:= <<"moment">>
 ->
     case attachment_download_ticket:issue(Uid, ObjectKey, config_ds:env(jwt_key, <<>>)) of
         {ok, Ticket} ->
@@ -464,7 +464,7 @@ download(Ticket) ->
 download_authorized(Uid, ObjectKey) ->
     case attachment_ds:find_by_path(ObjectKey) of
         {ok, #{<<"scope">> := Scope} = Rec} when
-            Scope =:= <<"group">>; Scope =:= <<"channel">>
+            Scope =:= <<"group">>; Scope =:= <<"channel">>; Scope =:= <<"moment">>
         ->
             case authorize(Uid, Rec) of
                 true -> sign_view(Rec, ObjectKey);

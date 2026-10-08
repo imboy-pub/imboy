@@ -716,7 +716,7 @@ authorize_moment_visible_grants_test_() ->
                 {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
             ],
             fun() ->
-                ?assertEqual({ok, <<"https://sig">>}, attach_logic:view_url(7, <<"u1/m555/a.png">>))
+                assert_gateway_url(7, <<"u1/m555/a.png">>)
             end
         )
     ).
