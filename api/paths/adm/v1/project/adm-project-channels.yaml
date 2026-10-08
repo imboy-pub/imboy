@@ -10,13 +10,16 @@ get:
   operationId: admProjectChannels
   parameters:
     - name: project_id
+      description: 查询目标项目 ID / Project ID to query
       in: query
       required: true
       schema: { type: integer, format: int64 }
     - name: page
+      description: 分页页码，默认1 / Page number, defaults to 1
       in: query
       schema: { type: integer, default: 1 }
     - name: size
+      description: 每页条数，默认10 / Items per page, defaults to 10
       in: query
       schema: { type: integer, default: 10 }
   responses:

@@ -12,16 +12,20 @@ get:
   operationId: admProjectAggregations
   parameters:
     - name: project_id
+      description: 查询目标项目 ID / Project ID to query
       in: query
       required: true
       schema: { type: integer, format: int64 }
     - name: type
+      description: 聚合类型，默认 pinned / Aggregation type, defaults to pinned
       in: query
       schema: { type: string, enum: [pinned, resources, activity, related_posts], default: pinned }
     - name: page
+      description: 分页页码，默认1 / Page number, defaults to 1
       in: query
       schema: { type: integer, default: 1 }
     - name: size
+      description: 每页条数，默认10 / Items per page, defaults to 10
       in: query
       schema: { type: integer, default: 10 }
   responses:
