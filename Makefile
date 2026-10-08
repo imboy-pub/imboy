@@ -120,6 +120,7 @@ EDOC_OPTS = {doclet, edown_doclet}
 # generator_not_registered 级联失败，而三套件单跑全绿、受害套件单跑全绿
 # （friend_repo_tests 13/13 隔离复跑 RC=0）。Excl 排除出全量 VM，覆盖由
 # 专项单跑承载（make eunit-local t=<模块名>，Gate G1/G3/G5 证据线）。
+# elib_tsid_reinit_fence_tests 同样重置 VM runtime 并发布合成 guard，必须独立执行。
 # 全量 EUNIT_MODS 对存在 src 模块的套件只列源模块名，eunit:test({module,
 # elib_tsid}) 再自动附带 elib_tsid_tests；因此 Excl 必须写源模块名，只有
 # 无同名 src 模块的 bootstrap_harness 直接写测试模块名。
@@ -151,7 +152,7 @@ EDOC_OPTS = {doclet, edown_doclet}
 ifdef t
 EUNIT_TEST_SPEC = (fun() -> lists:append([$1]) end)()
 else
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, elib_tsid_guard, elib_tsid_bootstrap_harness_tests, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, elib_tsid_guard, elib_tsid_bootstrap_harness_tests, elib_tsid_reinit_fence_tests, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 endif
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属
