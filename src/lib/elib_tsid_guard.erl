@@ -472,7 +472,13 @@ handle_cast(_Msg, State) ->
 %% -------------------------------------------------------------------
 
 handle_info(renew_tick, State) ->
-    {noreply, maybe_renew(State)};
+    State1 = maybe_renew(State),
+    schedule_tick(State1),
+    {noreply, State1};
+handle_info(demand_renew, #state{waiting = []} = State) ->
+    {noreply, State};
+handle_info(demand_renew, State) ->
+    {noreply, do_renew(State)};
 handle_info({Port, {exit_status, _N}}, #state{lock = Lock} = State) when Port =:= Lock ->
     %% flock port 死亡 = 锁丢失：STOPPING 并停止（绝不换 NodeId 偷跑）
     {stop, {lock_lost, port_exit}, mark_stopping(State)};
@@ -492,6 +498,10 @@ terminate(_Reason, #state{guard_ref = GRef, lock = Lock} = _State) ->
 %% -------------------------------------------------------------------
 
 enqueue_renewal(Horizon, {Pid, Ref} = _From, #state{waiting = W} = State) ->
+    case W of
+        [] -> self() ! demand_renew;
+        _ -> ok
+    end,
     State#state{waiting = [{Pid, Ref, Horizon} | W]}.
 
 maybe_renew(#state{waiting = [], guard_ref = GRef, store = Store} = State) when
@@ -506,11 +516,9 @@ maybe_renew(#state{waiting = [], guard_ref = GRef, store = Store} = State) when
         true ->
             do_renew(State);
         false ->
-            schedule_tick(State),
             State
     end;
 maybe_renew(#state{waiting = []} = State) ->
-    schedule_tick(State),
     State;
 maybe_renew(#state{} = State) ->
     %% 有等待调用方：立即续租
@@ -524,7 +532,6 @@ do_renew(#state{guard_ref = GRef, store = Store} = State) ->
     case NewSafeBefore =< Current of
         true ->
             State1 = reply_waiting(State, {ok, Current}),
-            _ = schedule_tick(State1),
             State1;
         false ->
             case elib_tsid_store:persist(Store, NewSafeBefore) of
@@ -538,7 +545,6 @@ do_renew(#state{guard_ref = GRef, store = Store} = State) ->
                             ok
                     end,
                     State2 = reply_waiting(State, {ok, NewSafeBefore}),
-                    _ = schedule_tick(State2),
                     State2#state{store = Store1};
                 {error, _Reason} ->
                     %% 持久化失败：FENCED——调用方下一次 fence_gate 立即
@@ -548,7 +554,6 @@ do_renew(#state{guard_ref = GRef, store = Store} = State) ->
                         reply_waiting(
                             State, {error, {elib_tsid_fenced, #{phase => renew_persist}}}
                         ),
-                    _ = schedule_tick(State3),
                     State3
             end
     end.

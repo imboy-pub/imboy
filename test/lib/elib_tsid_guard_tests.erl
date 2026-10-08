@@ -726,3 +726,26 @@ guard_tests_tail_state_reset_test() ->
                 end
             )
     end.
+
+%% 主动续期不能等待周期 tick；调用预算可短于周期检查间隔。
+demand_renewal_respects_caller_budget_test() ->
+    Root = tmp_root(),
+    Cfg = (fast_cfg(Root))#{
+        fence_window_ms => 5000,
+        fence_renew_margin_ms => 1000,
+        capacity_wait_timeout_ms => 100
+    },
+    {ok, Pid} = elib_tsid_guard:start_link(Cfg),
+    try
+        ok = wait_ready(Pid, 50),
+        {ok, #{guard_ref := GRef}} = elib_tsid:runtime_handle(),
+        Before = atomics:get(GRef, 2),
+        {ok, After} = gen_server:call(Pid, {renew_fence, Before}, 100),
+        ?assert(After >= Before),
+        ?assertEqual(After, atomics:get(GRef, 2)),
+        {ok, Store} = elib_tsid_store:open(read_store_cfg(Root)),
+        #{safe_before := Durable} = elib_tsid_store:status(Store),
+        ?assertEqual(After, Durable)
+    after
+        stop_guard(Pid)
+    end.
