@@ -1,7 +1,7 @@
 # 工程质量总览（Engineering Overview）
 
 > 聚焦工程能力(非业务功能)· 描述现状 + 增量改进 · 日期 2026-07-22
-> 本目录是既有评审的工程视角延伸,不重复内容。深度分析见 `docs/archive/review/`,演进排期见 `docs/roadmap/`。
+> 本目录提供工程主题索引；实施计划与执行证据在仓库外维护。
 > 本文是索引与跨主题小结;各主题详见同目录专项。
 
 ---
@@ -11,7 +11,6 @@
 | 已有文档 | 本目录关系 |
 |---|---|
 | `docs/archive/review/*` | 深度评审(架构/安全/性能/协议/DB/测试),含 P0-P3 台账 |
-| `docs/roadmap/*` | 2 年演进排期,任务编号 ARCH/PERF/SEC/TEST/ENG |
 | `docs/reference/engineering/*`（本目录）| 工程基建现状描述:结构/依赖/配置/日志/可观测/发布/Docker/CI/债务 |
 
 本目录**只做工程质量的现状记录与增量改进建议**,不重设计架构、不提大重构。重复处一律引用而非重写。
@@ -45,7 +44,7 @@
 
 ## 贯穿性观察（与既有评审一致,此处记工程含义）
 
-1. **工具齐、机制软**:lefthook(erlfmt/gitleaks/conventional)、xref=0、check_module_boundaries、SBOM diff、Sonar 都在,但全量 eunit/dialyzer/覆盖率/E2E 多为软门。工程效能的最高杠杆是"把已有软门收紧"(见 ci-notes 与 roadmap TEST-01/02)。
+1. **工具齐、机制软**:lefthook(erlfmt/gitleaks/conventional)、xref=0、check_module_boundaries、SBOM diff、Sonar 都在,但全量 eunit/dialyzer/覆盖率/E2E 多为软门。工程效能的最高杠杆是"把已有软门收紧"(见 ci-notes)。
 2. **覆盖密度不足**:日志、指标埋点、测试覆盖率三处都是"设施在但用得薄"。这是可增量补齐的,不需重构。
 3. **正确范本已存在**:多处"对的做法 + 未推广",工程改进 = 推广而非发明。
 

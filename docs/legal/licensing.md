@@ -65,7 +65,7 @@ BSL 1.1 的默认授予是"复制、修改、创作演绎作品、再分发，�
 
 `imboy-flutter` 当前依赖两个 **AGPL-3.0** 包（`flutter_vodozemac`、`vodozemac`，E2EE 的 Olm/Megolm 实现），12 个源文件直接 import。AGPL-3.0 的分发义务在对外分发时触发。
 
-因为服务端（BSL 1.1）与客户端（MulanPSL-2.0）是**分别交付**的独立程序，服务端的 BSL 1.1 授权不受客户端 AGPL 义务影响。但客户端自身声明的 MulanPSL-2.0 与其 AGPL 依赖存在张力——**这是客户端侧独立存在的未决事项**，处置方案（自建 Apache-2.0 FFI 绑定 / 购买上游商业授权 / 客户端改为 AGPL）见 [第三方依赖许可证清单](./third-party-licenses.md) 与 `docs/roadmap/security-roadmap.md`。
+因为服务端（BSL 1.1）与客户端（MulanPSL-2.0）是**分别交付**的独立程序，服务端的 BSL 1.1 授权不受客户端 AGPL 义务影响。但客户端自身声明的 MulanPSL-2.0 与其 AGPL 依赖存在张力——**这是客户端侧独立存在的未决事项**，处置方案（自建 Apache-2.0 FFI 绑定 / 购买上游商业授权 / 客户端改为 AGPL）见 [第三方依赖许可证清单](./third-party-licenses.md)。
 
 ---
 
