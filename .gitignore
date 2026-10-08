@@ -224,3 +224,22 @@ docs/design/**/evidence/
 
 # Product-feature execution reports are archived outside Git.
 /docs/compliance/feature-composition-evidence/
+
+# Historical compliance execution plans, checklists and evidence ledgers.
+/docs/compliance/IMBoy A-01 Privileged Message Access Hardening Checklist.md
+/docs/compliance/IMBoy A-02 Admin Role Baseline Checklist.md
+/docs/compliance/IMBoy B-01 Shared Block Decision Implementation Checklist.md
+/docs/compliance/IMBoy D-04 Store Evidence Checklist.md
+/docs/compliance/IMBoy E-01 E2EE Safety Contract Checklist.md
+/docs/compliance/IMBoy E-02 E2EE Real-device Safety Acceptance Checklist.md
+/docs/compliance/IMBoy F-08 F-09 Packaging and Compatibility Checklist.md
+/docs/compliance/IMBoy Feature Boundary Inventory.md
+/docs/compliance/IMBoy L-01 Overseas Baseline Preset Implementation Checklist.md
+/docs/compliance/IMBoy P-01 Complete User Export Checklist.md
+/docs/compliance/IMBoy R-02 Moderation Case Action Implementation Checklist.md
+/docs/compliance/IMBoy R-03 Operational Moderation Queue Checklist.md
+/docs/compliance/IMBoy R-04 Appeal and Decision Notice Checklist.md
+/docs/compliance/IMBoy T-01 Retention Policy Registry Checklist.md
+/docs/compliance/IMBoy T-02 Retention Enforcement Checklist.md
+/docs/compliance/IMBoy V-01 Third-party Data Inventory Checklist.md
+/docs/compliance/IMBoy V-02 Logging and Crash Redaction Checklist.md

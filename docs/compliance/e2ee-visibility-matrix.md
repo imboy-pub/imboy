@@ -2,7 +2,7 @@
 
 > 版本：v1.1（2026-09-09 当前事实对账修订）| 原版：v1.0 / 2026-09-07
 > 任务：海外合规计划 E-01 — E2EE Safety Contract（"Document and test what server, admin, push, logs and report flows can see"）
-> 关联文档：[e2ee-policy.md](./e2ee-policy.md)（e2ee_mode 四态与 compliance 托管披露）、[IMBoy A-01 Privileged Message Access Hardening Checklist.md](./IMBoy%20A-01%20Privileged%20Message%20Access%20Hardening%20Checklist.md)（管理端内容访问工单制）、`docs/security/audits/e2ee-2026-09-07/`（红队审计与当前 Base C 级重验）
+> 关联文档：[e2ee-policy.md](./e2ee-policy.md)（e2ee_mode 四态与 compliance 托管披露）、[管理端消息访问](../security/admin-message-access.md)（管理端内容访问工单制）、`docs/security/audits/e2ee-2026-09-07/`（红队审计与当前 Base C 级重验）
 > 适用：imboy 后端 + imboyadmin + imboyapp
 > 当前发布姿态：**NO-GO**（LT02-SEC-01 HIGH/OPEN + E2EE-2026-012 待决策 + A 级证据为 0；当前 Base C 级重验：后端 9 模块 124 PASS/0 FAIL、Flutter 45 文件 410 PASS/0 FAIL/1 SKIP）
 

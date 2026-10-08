@@ -14,7 +14,7 @@
 | 备份、恢复、升级 | [备份恢复](./guides/operations/deployment/backup-restore.md) · [升级手册](./guides/operations/upgrade-runbook.md) |
 | 对接 REST / WebSocket | [API 格式](./reference/api-format.md) → [REST API 目录](./reference/rest-api-v1-catalog.md) → [WebSocket 协议](./reference/ws-protocol-contract.md) |
 | 理解后端架构 | [架构总览](./architecture/overview.md) → [模块地图](./architecture/module-map.md) → [分层速查](./architecture/module-layer-cheatsheet.md) |
-| 审核 E2EE / 合规（E2EE 为二期域，一期 `phase1_delivery` 默认关闭） | [E2EE 概念](./concepts/e2ee.md) → [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 政策](./compliance/e2ee-policy.md) · [等保清单](./compliance/mlps2-checklist.md) |
+| 审核 E2EE / 合规（E2EE 为二期域，一期 `phase1_delivery` 默认关闭） | [E2EE 概念](./concepts/e2ee.md) → [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 政策](./compliance/e2ee-policy.md) · [管理端消息访问](./security/admin-message-access.md) · [等保清单](./compliance/mlps2-checklist.md) |
 | 当前正在做什么 | [路线图](https://github.com/imboy-pub/imboy/blob/main/ROADMAP.md) · [CHANGELOG](https://github.com/imboy-pub/imboy/blob/main/CHANGELOG.md) |
 | 查看历史结论 | [已归档](https://github.com/imboy-pub/imboy/blob/main/docs/archive/README.md) |
 
@@ -66,7 +66,7 @@
 1. API 或 WebSocket 变更，先更新机器可读契约，再更新对应参考文档和客户端说明。
 2. 部署命令、环境变量或端口变更，同时更新 `deploy/` 与操作指南，并验证命令可执行。
 3. 安全、合规和产品能力只写已实现或明确标注状态的事实；不要把规划写成现状。
-4. 新文档先判断能否并入现有页面；阶段性产物完成后移入 `archive/`，不要继续挂在主入口。
+4. 新文档先判断能否并入现有页面；AI 计划、审查与测试报告、一次性材料移到仓外，不进入 `archive/`。仍有维护价值的历史产品说明才保留在仓内归档目录。
 5. 不提交生产数据、真实密钥、个人联系方式和环境专属配置。
 6. 新术语先查[术语表](./glossary.md)：有则复用，无则先在术语表立项再写正文。
 
