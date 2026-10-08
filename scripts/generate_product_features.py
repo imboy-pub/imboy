@@ -314,8 +314,12 @@ def _validate_catalog_graph(known: set[str], dependencies: dict) -> None:
         visit(feature)
 
 
-def render(contract: dict) -> dict[Path, str]:
+def render(
+    contract: dict, *, app_dir: Path | None = None, admin_dir: Path | None = None
+) -> dict[Path, str]:
     root = Path(__file__).resolve().parents[1]
+    app_dir = (app_dir or root.parent / "imboyapp").resolve()
+    admin_dir = (admin_dir or root.parent / "imboyadmin").resolve()
     features = contract["compiled_features"]
     excluded_modules = sorted(
         module
@@ -763,15 +767,15 @@ compiled_features={compiled_features}
     return {
         root / "include/generated/imboy_product_features.hrl": backend,
         root / "include/generated/imboy_product_features_erlc.mk": erlc_mk,
-        root.parent / "imboyapp/lib/app_core/feature_flags/generated_product_features.dart": dart,
-        root.parent / "imboyapp/lib/config/router/generated_product_feature_routes.dart": dart_routes,
-        root.parent / "imboyapp/lib/app_core/feature_flags/generated_channel_order_widget.dart": dart_channel_order,
-        root.parent / "imboyadmin/src/generated/productFeatures.ts": ts,
-        root.parent / "imboyadmin/src/generated/generatedFeatureComposition.tsx": admin_composition,
-        root.parent / "imboyapp/android/app/product-features.properties": android_properties,
-        root.parent / "imboyapp/android/app/src/debug/AndroidManifest.xml": android_overlay_debug,
-        root.parent / "imboyapp/android/app/src/profile/AndroidManifest.xml": android_overlay,
-        root.parent / "imboyapp/android/app/src/release/AndroidManifest.xml": android_overlay,
+        app_dir / "lib/app_core/feature_flags/generated_product_features.dart": dart,
+        app_dir / "lib/config/router/generated_product_feature_routes.dart": dart_routes,
+        app_dir / "lib/app_core/feature_flags/generated_channel_order_widget.dart": dart_channel_order,
+        admin_dir / "src/generated/productFeatures.ts": ts,
+        admin_dir / "src/generated/generatedFeatureComposition.tsx": admin_composition,
+        app_dir / "android/app/product-features.properties": android_properties,
+        app_dir / "android/app/src/debug/AndroidManifest.xml": android_overlay_debug,
+        app_dir / "android/app/src/profile/AndroidManifest.xml": android_overlay,
+        app_dir / "android/app/src/release/AndroidManifest.xml": android_overlay,
     }
 
 
@@ -823,12 +827,16 @@ def main(argv=None) -> int:
     parser.add_argument("--manifest", type=Path, default=Path(__file__).resolve().parents[1] / "config/product-feature-manifest.json")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--require-profile")
+    parser.add_argument("--app-dir", type=Path)
+    parser.add_argument("--admin-dir", type=Path)
     args = parser.parse_args(argv)
     try:
         manifest = read_manifest(args.manifest)
         require_profile(manifest, args.require_profile)
         contract = validate(manifest, runtime_catalog(Path(__file__).resolve().parents[1]))
-        write_or_check(render(contract), args.check)
+        write_or_check(
+            render(contract, app_dir=args.app_dir, admin_dir=args.admin_dir), args.check
+        )
     except ManifestError as exc:
         print(f"product feature manifest: {exc}", file=sys.stderr)
         return 1

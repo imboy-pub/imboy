@@ -79,7 +79,8 @@ def main() -> int:
         return 3
 
     result = subprocess.run(
-        [sys.executable, str(GENERATOR), "--check"],
+        [sys.executable, str(GENERATOR), "--check",
+         "--app-dir", str(app_dir), "--admin-dir", str(admin_dir)],
         cwd=ROOT,
         capture_output=True,
         text=True,
