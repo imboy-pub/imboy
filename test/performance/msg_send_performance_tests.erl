@@ -23,7 +23,7 @@
 msg_performance_test_() ->
     {foreach, fun setup/0, fun cleanup/1, [
         {"单聊消息发送性能", fun test_c2c_send_performance/0},
-        {"群聊消息发送性能", fun test_c2g_send_performance/0},
+        {"群聊消息发送性能", {timeout, 30, fun test_c2g_send_performance/0}},
         {"批量消息发送性能", fun test_batch_send_performance/0},
         %% 50 条消息的落库轮询最多 sleep 50s；性能断言仍为每次平均 <= 200ms。
         {"消息查询性能", {timeout, 90, fun test_query_performance/0}},
@@ -117,11 +117,11 @@ test_c2g_send_performance() ->
     Group = maps:get(group, Context),
 
     % 发送100条群聊消息，计算平均耗时
-    Times = lists:map(
+    Measurements = lists:map(
         fun(N) ->
             MsgId = integer_to_binary(elib_tsid:generate()),
             MsgData = #{
-                <<"payload">> => <<N/integer, "群聊性能测试"/utf8>>,
+                <<"payload">> => #{<<"body">> => <<(integer_to_binary(N))/binary, "群聊性能测试"/utf8>>},
                 <<"msg_type">> => <<"text">>,
                 <<"action">> => <<"send">>,
                 <<"created_at">> => elib_dt:millisecond()
@@ -131,10 +131,13 @@ test_c2g_send_performance() ->
             ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(Group)}),
             EndTime = erlang:monotonic_time(millisecond),
 
-            EndTime - StartTime
+            {EndTime - StartTime, MsgId}
         end,
         lists:seq(1, ?BATCH_COUNT)
     ),
+
+    {Times, MsgIds} = lists:unzip(Measurements),
+    lists:foreach(fun(Id) -> wait_for_group_msg(Id, 100) end, MsgIds),
 
     % 计算统计数据
     AvgTime = lists:sum(Times) / length(Times),
@@ -382,4 +385,19 @@ wait_for_msg(MsgId, Attempts) ->
             timer:sleep(10),
             catch gen_statem:cast(msg_store_worker, kick),
             wait_for_msg(MsgId, Attempts - 1)
+    end.
+
+%% A fast rejected request is not a successful message send.
+wait_for_group_msg(MsgId, 0) ->
+    error({group_message_not_persisted, MsgId});
+wait_for_group_msg(MsgId, Attempts) ->
+    case msg_c2g_repo:find_msg_by_id(MsgId) of
+        {ok, _} ->
+            ok;
+        {error, not_found} ->
+            gen_statem:cast(msg_store_worker, kick),
+            timer:sleep(10),
+            wait_for_group_msg(MsgId, Attempts - 1);
+        Other ->
+            error({group_message_read_failed, MsgId, Other})
     end.
