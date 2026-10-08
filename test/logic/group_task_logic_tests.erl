@@ -212,6 +212,7 @@ assign_empty_list_test_() ->
 submit_success_test_() ->
     ?WITH_MECKS(
         [
+            {group_ds, [{is_member, 2, fun(_, _) -> true end}]},
             %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
             {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
             {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
@@ -219,6 +220,7 @@ submit_success_test_() ->
                 {'find_by_task_id', 1, fun(_TaskId) ->
                     {ok, #{
                         <<"id">> => 1001,
+                        <<"group_id">> => 123,
                         <<"task_id">> => <<"task123">>,
                         <<"deadline">> => undefined
                     }}
@@ -244,12 +246,14 @@ submit_success_test_() ->
 submit_assignment_not_found_test_() ->
     ?WITH_MECKS(
         [
+            {group_ds, [{is_member, 2, fun(_, _) -> true end}]},
             {group_task_repo, [
                 {'find_by_task_id', 1, fun(_TaskId) ->
-                    {ok, #{<<"id">> => 1001, <<"task_id">> => <<"task123">>}}
+                    {ok, #{<<"id">> => 1001, <<"group_id">> => 123, <<"task_id">> => <<"task123">>}}
                 end}
             ]},
             {group_task_assignment_repo, [
+                {list_by_task_id, 3, fun(_, _, _) -> {ok, [#{<<"user_id">> => 456}]} end},
                 {'find_by_task_and_user', 2, fun(_TaskId, _UserId) ->
                     {error, not_found}
                 end}

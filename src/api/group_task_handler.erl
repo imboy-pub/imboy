@@ -69,7 +69,6 @@ create(Req0, State) ->
     Gid = maps:get(<<"group_id">>, PostVals, <<>>),
     Gid2 = elib_cnv:safe_to_integer(Gid),
     Title = maps:get(<<"title">>, PostVals, <<>>),
-    UserIds = maps:get(<<"user_ids">>, PostVals, []),
 
     case {Gid2, Title} of
         {0, _} ->
@@ -85,12 +84,45 @@ create(Req0, State) ->
             },
             case group_task_logic:create(Gid2, CurrentUid, Title, Data) of
                 {ok, TaskId} ->
-                    maybe_assign_task(TaskId, UserIds, CurrentUid),
-                    TaskId2 = TaskId,
-                    elib_response:success(Req0, #{<<"task_id">> => TaskId2}, <<"作业创建成功"/utf8>>);
+                    finish_task_create(Req0, PostVals, Gid2, CurrentUid, TaskId, Title);
                 {error, Msg, Code} ->
                     elib_response:error(Req0, Msg, Code)
             end
+    end.
+
+%% 分配成功才发布卡片；明确指定执行人时不扩大范围。
+finish_task_create(Req0, PostVals, Gid2, CurrentUid, TaskId, Title) ->
+    UserIds = maps:get(<<"user_ids">>, PostVals, []),
+    Assignees =
+        case maps:is_key(<<"user_ids">>, PostVals) of
+            true -> UserIds;
+            false -> group_ds:member_uids(Gid2)
+        end,
+    case maybe_assign_task(TaskId, Assignees, CurrentUid) of
+        ok ->
+            Result = #{<<"task_id">> => TaskId},
+            Payload = #{
+                <<"id">> => integer_to_binary(TaskId),
+                <<"group_id">> => integer_to_binary(Gid2),
+                <<"title">> => Title,
+                <<"content">> => Title
+            },
+            Published =
+                case
+                    group_collab_message_logic:publish(
+                        Gid2,
+                        CurrentUid,
+                        <<"groupTask">>,
+                        integer_to_binary(TaskId),
+                        Payload
+                    )
+                of
+                    {ok, Message} -> Result#{<<"chat_message">> => Message};
+                    {error, _} -> Result#{<<"message_status">> => <<"failed">>}
+                end,
+            elib_response:success(Req0, Published, <<"作业创建成功"/utf8>>);
+        {error, Msg, Code} ->
+            elib_response:error(Req0, Msg, Code)
     end.
 
 %% @doc 更新作业
@@ -469,7 +501,7 @@ normalize_attachment(Value) when is_list(Value); is_map(Value) ->
 normalize_attachment(Value) ->
     ec_cnv:to_binary(Value).
 
--spec maybe_assign_task(integer(), list(), integer()) -> ok.
+-spec maybe_assign_task(integer(), list(), integer()) -> ok | {error, binary(), integer()}.
 maybe_assign_task(TaskId, UserIds, CurrentUid) when
     is_integer(TaskId), TaskId > 0, is_list(UserIds)
 ->
@@ -483,7 +515,7 @@ maybe_assign_task(TaskId, UserIds, CurrentUid) when
                     ok;
                 {error, Msg, Code} ->
                     ?WARN_LOG("group_task create assign failed: ~p ~p", [Msg, Code]),
-                    ok
+                    {error, Msg, Code}
             end
     end;
 maybe_assign_task(_TaskId, _UserIds, _CurrentUid) ->

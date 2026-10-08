@@ -154,6 +154,38 @@ update(TaskId, CreatorId, Data) when
 update(_TaskId, _CreatorId, _Data) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
 
+%% 老版本未指定执行人时没有生成任何分配。仅空分配作业默认面向当前群成员；
+%% 已有明确分配的作业不扩大范围，非群成员也不得借此领取作业。
+submit_assignment(Task, TaskId, UserId) ->
+    Gid = maps:get(<<"group_id">>, Task, 0),
+    case group_ds:is_member(UserId, Gid) of
+        false ->
+            {error, not_found};
+        true ->
+            case group_task_ds:assignment_find_by_task_and_user(TaskId, UserId) of
+                {error, not_found} -> default_assignment(Gid, TaskId, UserId);
+                {error, _} -> assignment_failure();
+                Result -> Result
+            end
+    end.
+
+default_assignment(Gid, TaskId, UserId) ->
+    case group_task_ds:assignment_list_by_task_id(TaskId, 1, 1) of
+        {ok, []} ->
+            case assign_users(TaskId, group_ds:member_uids(Gid)) of
+                ok -> group_task_ds:assignment_find_by_task_and_user(TaskId, UserId);
+                {error, Msg, Code} -> {error, Msg, Code};
+                _ -> assignment_failure()
+            end;
+        {ok, [_ | _]} ->
+            {error, not_found};
+        _ ->
+            assignment_failure()
+    end.
+
+assignment_failure() ->
+    {error, imboy_error:error_msg(?ERR_INTERNAL_SERVER_ERROR), ?ERR_INTERNAL_SERVER_ERROR}.
+
 %% @doc 分配作业给成员
 %% @param TaskId 作业ID
 %% @param UserIds 用户ID列表
@@ -207,7 +239,7 @@ submit(TaskId, UserId, Data) when
                         ?ERR_TASK_DEADLINE_PASSED};
                 false ->
                     % 检查作业分配是否存在
-                    case group_task_ds:assignment_find_by_task_and_user(TaskId, UserId) of
+                    case submit_assignment(Task, TaskId, UserId) of
                         {ok, Assignment} ->
                             Status = maps:get(<<"status">>, Assignment, 0),
                             case Status of
@@ -247,7 +279,9 @@ submit(TaskId, UserId, Data) when
                             end;
                         {error, not_found} ->
                             {error, imboy_error:error_msg(?ERR_TASK_ASSIGNMENT_NOT_FOUND),
-                                ?ERR_TASK_ASSIGNMENT_NOT_FOUND}
+                                ?ERR_TASK_ASSIGNMENT_NOT_FOUND};
+                        {error, Msg, Code} ->
+                            {error, Msg, Code}
                     end
             end;
         {error, not_found} ->
