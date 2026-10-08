@@ -428,8 +428,6 @@ view_url(Uid, ObjectKey) ->
     end.
 
 %% Group/channel/moment URLs are checked again on every HTTP read.
-authorized_view(_, Rec, <<"/", _/binary>> = ObjectKey) ->
-    sign_view(Rec, ObjectKey);
 authorized_view(Uid, #{<<"scope">> := Scope}, ObjectKey) when
     Scope =:= <<"group">>; Scope =:= <<"channel">>; Scope =:= <<"moment">>
 ->

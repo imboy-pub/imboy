@@ -3,10 +3,12 @@
 -include("eunit_setup.hrl").
 
 moment_ticket_rechecks_visibility_before_signing_test_() ->
+    [moment_ticket_case(Key) || Key <- [<<"u1001/moment/image.png">>, <<"/legacy/image.png">>]].
+
+moment_ticket_case(Key) ->
     State = atomics:new(1, []),
     atomics:put(State, 1, 1),
     Secret = <<"synthetic-moment-ticket-secret">>,
-    Key = <<"u1001/moment/image.png">>,
     ?WITH_MECKS(
         [
             {config_ds, [
@@ -18,7 +20,10 @@ moment_ticket_rechecks_visibility_before_signing_test_() ->
             {attachment_ds, [
                 {'find_by_path', 1, fun(K) when K =:= Key ->
                     {ok, #{
-                        <<"scope">> => <<"moment">>, <<"scope_ref">> => <<"555">>, <<"status">> => 1
+                        <<"scope">> => <<"moment">>,
+                        <<"scope_ref">> => <<"555">>,
+                        <<"status">> => 1,
+                        <<"url">> => <<"https://synthetic-signed">>
                     }}
                 end}
             ]},
@@ -40,6 +45,11 @@ moment_ticket_rechecks_visibility_before_signing_test_() ->
             ?assertEqual({ok, <<"https://synthetic-signed">>}, attach_logic:download(Ticket)),
             atomics:put(State, 1, -1),
             ?assertEqual({error, forbidden}, attach_logic:download(Ticket)),
-            ?assertEqual(1, meck:num_calls(elib_oss, presign_get_for_key, '_'))
+            ExpectedSigns =
+                case Key of
+                    <<"/", _/binary>> -> 0;
+                    _ -> 1
+                end,
+            ?assertEqual(ExpectedSigns, meck:num_calls(elib_oss, presign_get_for_key, '_'))
         end
     ).
