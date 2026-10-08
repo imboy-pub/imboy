@@ -3,7 +3,26 @@
 
 modules() -> [elib_param, group_task_logic, elib_response, group_ds, group_collab_message_logic].
 setup() ->
-    [meck:new(M, [non_strict]) || M <- modules()],
+    cleanup(),
+    try
+        setup_mocks()
+    catch
+        Class:Reason:Stack ->
+            cleanup(),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+cleanup() ->
+    [
+        case meck:unload(M) of
+            _ -> ok
+        end
+     || M <- meck:mocked(), lists:member(M, modules())
+    ],
+    ok.
+
+setup_mocks() ->
+    [meck:new(M, [non_strict, no_link]) || M <- modules()],
     meck:expect(elib_param, post, fun(_) ->
         #{<<"group_id">> => <<"123">>, <<"title">> => <<"作业"/utf8>>}
     end),
@@ -22,7 +41,7 @@ setup() ->
 create() -> group_task_handler:handle_action(create, #{}, #{current_uid => 456}).
 
 creation_test_() ->
-    {foreach, fun setup/0, fun(_) -> [meck:unload(M) || M <- modules()] end, [
+    {foreach, fun setup/0, fun(_) -> cleanup() end, [
         fun defaults/0, fun specified/0, fun assignment_failed/0, fun publication_failed/0
     ]}.
 
