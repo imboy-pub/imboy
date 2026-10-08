@@ -6,8 +6,7 @@
 %%% （用户 ID、群 ID、频道 ID 这一类）。不做分布式同步的实体不应使用
 %%% TSID；治理路径是把对应实体的主键迁移为数据库本地生成
 %%% （bigserial / uuid），每完成一个治理批次就同步递减本 catalog
-%%% 版本。已登记为独立后续事项（见
-%%% docs/architecture/2026-09-28-tsid-correctness-hardening-status.md）。
+%%% 版本。治理约束见 docs/reference/tsid-field-convention.md。
 %%%
 %%% == v2 为什么取「现状口径」（schema 全量单列 bigint 主键） ==
 %%% 第一次 cutover 的唯一安全要求：凡可能已写入历史 TSID 的主键列，

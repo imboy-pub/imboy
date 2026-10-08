@@ -183,3 +183,9 @@ Payload = #{<<"id">> => Id, <<"from_id">> => FromId}.
 - `src/lib/elib_tsid.erl` — TSID 生成器实现
 - `imboy-admin-frontend/src/services/api/client.ts` — safeParseBigIntJson 实现
 - `imboy-admin-frontend/src/types/common.ts` — EntityId 类型定义
+
+## 主键治理与 catalog 收缩约束
+
+TSID 用于需要跨数据中心、跨地域同步的实体主键。非同步实体改用数据库本地生成的主键时，必须先完成历史数据与调用点迁移，再移除 catalog 对应列；不能先缩减扫描范围。历史 TSID 列未完成迁移前，仍须纳入高水位扫描，避免重启后撞号。
+
+每次调整 catalog，必须同步更新版本和 digest，并按 [割接操作手册](../architecture/tsid-cutover-runbook.md) 显式重绑既有 manifest。上线前验证完整 schema 检查、高水位扫描、崩溃恢复、唯一性以及相关 API/外键回归；未经分类的主键或不匹配的 digest 应继续拒绝启动。
