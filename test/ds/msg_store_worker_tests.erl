@@ -382,7 +382,8 @@ c2g_guard_row(Overrides) ->
         #{
             <<"type">> => <<"c2g">>,
             <<"msg_id">> => <<"m-guard-1">>,
-            <<"payload">> => <<"{\"to\": \"538339\"}">>,
+            <<"payload">> =>
+                <<"{\"to\":\"538339\",\"payload\":{\"text\":\"fixture\"}}">>,
             <<"from_id">> => 7,
             <<"to_id_list">> => [9, 10],
             <<"msg_type">> => <<"text">>,
