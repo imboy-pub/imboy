@@ -382,3 +382,30 @@ attachment_write_error_aborts_transaction_test_() ->
             )
         end
     ).
+
+moment_binding_requires_explicit_owner_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.attachment">> end}]},
+            {elib_pg, [
+                {'query', 2, fun(Sql, Params) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"creator_user_id = $4">>)),
+                    ?assertEqual(
+                        [<<"7001">>, lists:nth(2, Params), [<<"other/path">>], 1001], Params
+                    ),
+                    {ok, 0}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(ok, attachment_repo:bind_moment_scope_ref(1001, [<<"other/path">>], 7001))
+        end
+    ).
+
+moment_binding_rejects_invalid_owner_test() ->
+    ?assertEqual(
+        {error, invalid_user}, attachment_repo:bind_moment_scope_ref(0, [<<"path">>], 7001)
+    ),
+    ?assertEqual(
+        {error, invalid_user}, attachment_repo:bind_moment_scope_ref(<<"1001">>, [], 7001)
+    ).

@@ -38,7 +38,7 @@ create_post_parses_location_and_notifies_mentions_test_() ->
                 end}
             ]},
             {attachment_ds, [
-                {'bind_moment_scope_ref', 2, fun(_, _) -> ok end}
+                {'bind_moment_scope_ref', 3, fun(1001, _, _) -> ok end}
             ]},
             {moment_logic_notify, [
                 {'notify_post_created', 2, fun(1001, 555) -> ok end},
@@ -108,7 +108,7 @@ create_post_drops_invalid_location_and_skips_at_notify_test_() ->
                 end}
             ]},
             {attachment_ds, [
-                {'bind_moment_scope_ref', 2, fun(_, _) -> ok end}
+                {'bind_moment_scope_ref', 3, fun(1001, _, _) -> ok end}
             ]},
             {moment_logic_notify, [
                 {'notify_post_created', 2, fun(1001, 556) -> ok end}

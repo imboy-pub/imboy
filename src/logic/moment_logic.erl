@@ -86,7 +86,7 @@ create_post_with_verdict(Uid, Data, Content, Media, AtUids, Verdict) ->
             %% 使读鉴权 authorize_moment 能按帖子 ACL 放行。非致命：
             %% 回填失败仅影响非作者读取（退回旧行为），不阻断发帖。
             _ = attachment_ds:bind_moment_scope_ref(
-                media_object_keys(Media), PostId
+                Uid, media_object_keys(Media), PostId
             ),
             Post = moment_ds:get_post(PostId),
             Payload = post_transfer(Post),
